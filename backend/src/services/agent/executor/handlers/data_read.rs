@@ -9,7 +9,9 @@ use crate::models::entities::{
 use crate::services::agent::executor::utils::{validate_platform_name, VALID_PLATFORMS};
 use crate::services::netease_utils::{get_random_china_ip, get_random_user_agent};
 use once_cell::sync::Lazy;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
+use sea_orm::{
+    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
+};
 use serde_json::{json, Value};
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -26,11 +28,11 @@ pub async fn execute(
     match capability_id {
         "platform.read" => execute_platform_read(params).await,
         "platform.stats" => execute_platform_stats(params).await,
-        "brew.read" => execute_brew_read(params).await,
+        "brew.read" => execute_brew_read(params, ctx).await,
         "brew.sources" => execute_brew_sources(params, ctx).await,
         "brew.items" => execute_brew_items(params, ctx).await,
-        "brew.article" => execute_brew_article(params).await,
-        "brew.stats" => execute_brew_stats(params).await,
+        "brew.article" => execute_brew_article(params, ctx).await,
+        "brew.stats" => execute_brew_stats(params, ctx).await,
         "brew.discover" => execute_brew_discover(params, ctx).await,
         "brew.page" => execute_brew_page_content(params, ctx).await,
         "brew.generateReadingList" => execute_brew_generate_reading_list(params, ctx).await,
@@ -429,30 +431,348 @@ fn analyze_steam_stats(data: &Value) -> Result<Value, String> {
 }
 
 // ============================================================================
-// Brew 相关 (简化版，完整版需要更多代码)
+// Brew 相关
 // ============================================================================
 
-async fn execute_brew_read(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let source_id = params.get("sourceId").and_then(|v| v.as_i64());
-    let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20) as usize;
+/// Opt-in flag for external/web search fallback (brew.generateReadingList).
+/// Accepts allowWebSearch / useWebSearch / webSearch / allowExternal / external.
+/// Default false — local miss must not force ai.webSearch.
+fn parse_allow_web_search(params: &HashMap<String, Value>) -> bool {
+    const KEYS: &[&str] = &[
+        "allowWebSearch",
+        "useWebSearch",
+        "webSearch",
+        "allowExternal",
+        "external",
+    ];
+    for key in KEYS {
+        if let Some(v) = params.get(*key) {
+            if v.as_bool() == Some(true) {
+                return true;
+            }
+            if matches!(v.as_i64(), Some(1)) || matches!(v.as_u64(), Some(1)) {
+                return true;
+            }
+            if let Some(s) = v.as_str() {
+                let s = s.trim().to_lowercase();
+                if matches!(s.as_str(), "true" | "1" | "yes" | "on") {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
 
-    // 简化实现：从缓存文件读取
-    let cache_files = ["cache/tianli_rss.xml", "cache/zhilu_atom.xml"];
-    let mut all_items = Vec::new();
+/// Parse a JSON value as optional i32 (integer, unsigned, or numeric string).
+fn parse_optional_i32(v: &Value) -> Option<i32> {
+    if let Some(n) = v.as_i64() {
+        return i32::try_from(n).ok();
+    }
+    if let Some(n) = v.as_u64() {
+        return i32::try_from(n).ok();
+    }
+    v.as_str()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse::<i32>().ok())
+}
 
-    for file in cache_files {
-        if let Ok(content) = tokio::fs::read_to_string(file).await {
-            let items = parse_brew_content(&content);
-            all_items.extend(items);
+/// Non-empty trimmed string from a JSON value.
+fn parse_optional_str(v: &Value) -> Option<&str> {
+    v.as_str().map(str::trim).filter(|s| !s.is_empty())
+}
+
+/// Filters extracted from brew.read params (sourceId / source / sourceName / limit / since).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BrewReadFilters {
+    source_id: Option<i32>,
+    source_name: Option<String>,
+    limit: usize,
+    since: Option<String>,
+}
+
+/// Align schema `source` with handler `sourceId` / `sourceName`.
+/// - `sourceId` (int or numeric string) wins for id
+/// - numeric `source` also resolves as id
+/// - non-numeric `source` / `sourceName` resolve as name filter
+fn parse_brew_read_filters(params: &HashMap<String, Value>) -> BrewReadFilters {
+    let source_id = params
+        .get("sourceId")
+        .and_then(parse_optional_i32)
+        .or_else(|| params.get("source").and_then(parse_optional_i32));
+
+    let source_name = params
+        .get("sourceName")
+        .and_then(parse_optional_str)
+        .map(|s| s.to_string())
+        .or_else(|| {
+            // Only treat `source` as a name when it is not a pure integer id
+            params
+                .get("source")
+                .and_then(parse_optional_str)
+                .filter(|s| s.parse::<i32>().is_err())
+                .map(|s| s.to_string())
+        });
+
+    let limit = params
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(50)
+        .clamp(1, 200) as usize;
+
+    let since = params
+        .get("since")
+        .and_then(parse_optional_str)
+        .map(|s| s.to_string());
+
+    BrewReadFilters {
+        source_id,
+        source_name,
+        limit,
+        since,
+    }
+}
+
+/// Resolve brew.article lookup keys: id (i32), guid/string id, or url/link.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BrewArticleLookup {
+    item_id: Option<i32>,
+    /// Raw articleId when not purely numeric (guid / link fallback)
+    article_key: Option<String>,
+    url: Option<String>,
+    source_id: Option<i32>,
+}
+
+fn parse_brew_article_lookup(params: &HashMap<String, Value>) -> BrewArticleLookup {
+    let article_id_val = params
+        .get("articleId")
+        .or_else(|| params.get("itemId"))
+        .or_else(|| params.get("id"));
+
+    let item_id = article_id_val.and_then(parse_optional_i32);
+    let article_key = article_id_val
+        .and_then(parse_optional_str)
+        .filter(|_| item_id.is_none())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            // Keep string form of numeric id as guid fallback only when provided as string
+            article_id_val
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        });
+
+    let url = params
+        .get("url")
+        .or_else(|| params.get("link"))
+        .and_then(parse_optional_str)
+        .map(|s| s.to_string());
+
+    let source_id = params.get("sourceId").and_then(parse_optional_i32);
+
+    BrewArticleLookup {
+        item_id,
+        article_key,
+        url,
+        source_id,
+    }
+}
+
+fn brew_item_to_read_json(
+    item: &brew_items::Model,
+    source: Option<&brew_sources::Model>,
+) -> Value {
+    let src_name = source.map(|s| s.name.as_str()).unwrap_or("");
+    let source_url = source.map(|s| s.url.as_str()).unwrap_or("");
+    json!({
+        "id": item.id,
+        "guid": item.guid,
+        "title": item.title,
+        "link": item.link,
+        "pubDate": item.published_at.to_rfc3339(),
+        "publishedAt": item.published_at.to_rfc3339(),
+        "content": item.content,
+        "summary": item.summary,
+        "author": item.author,
+        "sourceId": item.source_id,
+        "sourceName": src_name,
+        "_sourceId": item.source_id,
+        "_feedTitle": src_name,
+        "_feedUrl": source_url,
+    })
+}
+
+fn brew_item_to_article_json(
+    item: &brew_items::Model,
+    source: Option<&brew_sources::Model>,
+) -> Value {
+    let content_str = item
+        .content
+        .as_deref()
+        .or(item.summary.as_deref())
+        .unwrap_or("");
+    let plain_text = extract_plain_text(content_str);
+    let source_name = source.map(|s| s.name.clone());
+    // Prefer item link as the article URL; fall back to feed URL
+    let source_url = if !item.link.is_empty() {
+        item.link.clone()
+    } else {
+        source.map(|s| s.url.clone()).unwrap_or_default()
+    };
+
+    json!({
+        "id": item.id,
+        "guid": item.guid,
+        "title": item.title,
+        "content": content_str,
+        "plainText": plain_text,
+        "author": item.author,
+        "publishedAt": item.published_at.to_rfc3339(),
+        "sourceName": source_name,
+        "sourceUrl": source_url,
+        "link": item.link,
+        "sourceId": item.source_id,
+    })
+}
+
+/// Whether an item matches article lookup (id / guid / url). Pure helper for tests.
+#[cfg(test)]
+fn article_lookup_matches(
+    lookup: &BrewArticleLookup,
+    item_id: i32,
+    guid: &str,
+    link: &str,
+) -> bool {
+    if let Some(id) = lookup.item_id {
+        if item_id == id {
+            return true;
+        }
+    }
+    if let Some(ref key) = lookup.article_key {
+        if guid == key.as_str() || link == key.as_str() {
+            return true;
+        }
+    }
+    if let Some(ref url) = lookup.url {
+        if link == url.as_str() || guid == url.as_str() {
+            return true;
+        }
+    }
+    false
+}
+
+async fn execute_brew_read(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
+    let filters = parse_brew_read_filters(params);
+
+    let sources = brew_sources::Entity::find()
+        .all(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to fetch brew sources: {}", e))?;
+    let source_map: HashMap<i32, &brew_sources::Model> =
+        sources.iter().map(|s| (s.id, s)).collect();
+
+    // Resolve sourceName → source ids (case-insensitive contains)
+    let name_source_ids: Option<Vec<i32>> = if let Some(ref name) = filters.source_name {
+        let name_lower = name.to_lowercase();
+        let ids: Vec<i32> = sources
+            .iter()
+            .filter(|s| {
+                s.name.to_lowercase().contains(&name_lower)
+                    || s.url.to_lowercase().contains(&name_lower)
+                    || s.site_url
+                        .as_deref()
+                        .map(|u| u.to_lowercase().contains(&name_lower))
+                        .unwrap_or(false)
+            })
+            .map(|s| s.id)
+            .collect();
+        Some(ids)
+    } else {
+        None
+    };
+
+    if let Some(ref ids) = name_source_ids {
+        if ids.is_empty() && filters.source_id.is_none() {
+            return Ok(json!({
+                "items": [],
+                "total": 0,
+                "sourceId": filters.source_id,
+                "sourceName": filters.source_name,
+                "matched": false,
+                "notFound": true,
+                "searchedFor": filters.source_name,
+                "message": format!(
+                    "未找到匹配「{}」的订阅源",
+                    filters.source_name.as_deref().unwrap_or("")
+                ),
+            }));
         }
     }
 
-    all_items.truncate(limit);
+    let mut query = brew_items::Entity::find().order_by_desc(brew_items::Column::PublishedAt);
+
+    if let Some(sid) = filters.source_id {
+        query = query.filter(brew_items::Column::SourceId.eq(sid));
+    } else if let Some(ref ids) = name_source_ids {
+        if !ids.is_empty() {
+            query = query.filter(brew_items::Column::SourceId.is_in(ids.clone()));
+        }
+    }
+
+    if let Some(ref since_str) = filters.since {
+        if let Ok(since_dt) = chrono::DateTime::parse_from_rfc3339(since_str) {
+            query = query.filter(brew_items::Column::PublishedAt.gte(since_dt));
+        } else {
+            tracing::warn!(since = %since_str, "[brew.read] Invalid since (expected RFC3339), ignoring");
+        }
+    }
+
+    let items = query
+        .limit(filters.limit as u64)
+        .all(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to fetch brew items: {}", e))?;
+
+    let last_updated = items
+        .first()
+        .map(|i| i.published_at.to_rfc3339())
+        .or_else(|| {
+            sources
+                .iter()
+                .filter_map(|s| s.last_fetched_at)
+                .max()
+                .map(|t| t.to_rfc3339())
+        });
+
+    let out_items: Vec<Value> = items
+        .iter()
+        .map(|item| brew_item_to_read_json(item, source_map.get(&item.source_id).copied()))
+        .collect();
+
+    let matched_source_name = filters.source_id.and_then(|sid| {
+        source_map
+            .get(&sid)
+            .map(|s| s.name.clone())
+            .or(filters.source_name.clone())
+    }).or_else(|| {
+        name_source_ids.as_ref().and_then(|ids| {
+            ids.first()
+                .and_then(|id| source_map.get(id).map(|s| s.name.clone()))
+        })
+    });
 
     Ok(json!({
-        "items": all_items,
-        "total": all_items.len(),
-        "sourceId": source_id
+        "items": out_items,
+        "total": out_items.len(),
+        "sourceId": filters.source_id,
+        "sourceName": matched_source_name,
+        "lastUpdated": last_updated,
+        "matched": true,
     }))
 }
 
@@ -1025,67 +1345,124 @@ async fn execute_brew_items(
     }
 }
 
-async fn execute_brew_article(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let article_id = params.get("articleId").and_then(|v| v.as_str());
-    let article_url = params.get("url").and_then(|v| v.as_str());
-
-    let cache_files = ["cache/tianli_rss.xml", "cache/zhilu_atom.xml"];
-
-    for file in cache_files {
-        if let Ok(content) = tokio::fs::read_to_string(file).await {
-            let items = parse_brew_content(&content);
-
-            for item in items {
-                let item_link = item.get("link").and_then(|v| v.as_str()).unwrap_or("");
-                let item_id = item.get("id").and_then(|v| v.as_str());
-
-                let matches = match (article_id, article_url) {
-                    (Some(id), _) => item_id == Some(id) || item_link == id,
-                    (_, Some(url)) => item_link == url,
-                    _ => false,
-                };
-
-                if matches {
-                    let content_str = item.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                    let plain_text = extract_plain_text(content_str);
-
-                    return Ok(json!({
-                        "title": item.get("title"),
-                        "content": content_str,
-                        "plainText": plain_text,
-                        "author": item.get("author"),
-                        "publishedAt": item.get("pubDate"),
-                        "sourceUrl": item_link
-                    }));
-                }
-            }
-        }
-    }
-
-    Err(format!(
-        "未找到文章: id={:?}, url={:?}",
-        article_id, article_url
-    ))
+async fn load_article_with_source(
+    ctx: &HandlerContext<'_>,
+    item: brew_items::Model,
+) -> Result<Value, String> {
+    let source = brew_sources::Entity::find_by_id(item.source_id)
+        .one(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to fetch brew source: {}", e))?;
+    Ok(brew_item_to_article_json(&item, source.as_ref()))
 }
 
-async fn execute_brew_stats(_params: &HashMap<String, Value>) -> Result<Value, String> {
-    let cache_files = ["cache/tianli_rss.xml", "cache/zhilu_atom.xml"];
-    let mut total_items = 0;
-    let mut source_count = 0;
+async fn execute_brew_article(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
+    let lookup = parse_brew_article_lookup(params);
 
-    for file in cache_files {
-        if let Ok(content) = tokio::fs::read_to_string(file).await {
-            let items = parse_brew_content(&content);
-            total_items += items.len();
-            source_count += 1;
-        }
+    if lookup.item_id.is_none() && lookup.article_key.is_none() && lookup.url.is_none() {
+        return Err(
+            "Missing article lookup: provide articleId (id/guid) or url/link".to_string(),
+        );
     }
 
+    // Build OR conditions for id / guid / link
+    let mut cond = sea_orm::Condition::any();
+    let mut has_key = false;
+
+    if let Some(id) = lookup.item_id {
+        cond = cond.add(brew_items::Column::Id.eq(id));
+        let id_str = id.to_string();
+        cond = cond.add(brew_items::Column::Guid.eq(id_str.clone()));
+        cond = cond.add(brew_items::Column::Link.eq(id_str));
+        has_key = true;
+    }
+    if let Some(ref key) = lookup.article_key {
+        cond = cond.add(brew_items::Column::Guid.eq(key.clone()));
+        cond = cond.add(brew_items::Column::Link.eq(key.clone()));
+        has_key = true;
+    }
+    if let Some(ref url) = lookup.url {
+        cond = cond.add(brew_items::Column::Link.eq(url.clone()));
+        cond = cond.add(brew_items::Column::Guid.eq(url.clone()));
+        has_key = true;
+    }
+
+    if !has_key {
+        return Err(
+            "Missing article lookup: provide articleId (id/guid) or url/link".to_string(),
+        );
+    }
+
+    let mut q = brew_items::Entity::find().filter(cond);
+    if let Some(sid) = lookup.source_id {
+        q = q.filter(brew_items::Column::SourceId.eq(sid));
+    }
+
+    // Prefer newest match if multiple (e.g. same link re-ingested)
+    let item = q
+        .order_by_desc(brew_items::Column::PublishedAt)
+        .one(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to fetch brew article: {}", e))?;
+
+    match item {
+        Some(item) => load_article_with_source(ctx, item).await,
+        None => Err(format!(
+            "未找到文章: id={:?}, key={:?}, url={:?}",
+            lookup.item_id, lookup.article_key, lookup.url
+        )),
+    }
+}
+
+async fn execute_brew_stats(
+    _params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
+    let total_sources = brew_sources::Entity::find()
+        .count(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to count brew sources: {}", e))? as i64;
+
+    let total_items = brew_items::Entity::find()
+        .count(ctx.db)
+        .await
+        .map_err(|e| format!("Failed to count brew items: {}", e))? as i64;
+
+    let user_id = ctx.user_id;
+    let (unread_count, starred_count) = if user_id > 0 {
+        let starred_count = brew_user_states::Entity::find()
+            .filter(brew_user_states::Column::UserId.eq(user_id))
+            .filter(brew_user_states::Column::IsStarred.eq(true))
+            .count(ctx.db)
+            .await
+            .map_err(|e| format!("Failed to count starred items: {}", e))?
+            as i64;
+
+        // Unread ≈ items without a is_read=true state for this user
+        let read_count = brew_user_states::Entity::find()
+            .filter(brew_user_states::Column::UserId.eq(user_id))
+            .filter(brew_user_states::Column::IsRead.eq(true))
+            .count(ctx.db)
+            .await
+            .map_err(|e| format!("Failed to count read items: {}", e))?
+            as i64;
+
+        let unread_count = total_items.saturating_sub(read_count);
+        (unread_count, starred_count)
+    } else {
+        // No auth context: treat all items as unread, no stars
+        (total_items, 0)
+    };
+
     Ok(json!({
-        "totalSources": source_count,
+        "totalSources": total_sources,
         "totalItems": total_items,
-        "unreadCount": total_items,
-        "starredCount": 0
+        "unreadCount": unread_count,
+        "starredCount": starred_count,
+        "userId": if user_id > 0 { Value::from(user_id) } else { Value::Null },
     }))
 }
 
@@ -1108,6 +1485,9 @@ async fn execute_brew_generate_reading_list(
         .unwrap_or(10) as usize;
     let source_name_filter = params.get("sourceName").and_then(|v| v.as_str());
     let days_back = params.get("daysBack").and_then(|v| v.as_i64()).unwrap_or(7);
+    // Opt-in only: do not force ai.webSearch when local keyword miss.
+    // Cascade escalation for other capabilities is owned by myriad-149.
+    let allow_web_search = parse_allow_web_search(params);
 
     // 获取关键词过滤条件（支持多种参数名）
     let keyword = params
@@ -1132,6 +1512,7 @@ async fn execute_brew_generate_reading_list(
     tracing::info!(
         keyword = %keyword,
         criteria = %criteria,
+        allow_web_search = allow_web_search,
         "[brew.generateReadingList] Parameters parsed"
     );
 
@@ -1193,14 +1574,15 @@ async fn execute_brew_generate_reading_list(
             "[brew.generateReadingList] Keyword search results"
         );
 
-        // 🔴 关键修复：如果关键词搜索结果为空，不要补充无关文章
-        // 直接返回空，让后面的 AI 联网搜索来处理
+        // If keyword search is empty, do not pad with unrelated local articles.
+        // Web search is only attempted later when allowWebSearch is explicit.
         if keyword_items.is_empty() {
             tracing::info!(
                 keyword = %keyword,
-                "[brew.generateReadingList] No keyword matches, will trigger AI web search"
+                allow_web_search = allow_web_search,
+                "[brew.generateReadingList] No keyword matches in local brew_items"
             );
-            vec![] // 返回空，触发 AI 搜索
+            vec![]
         } else if keyword_items.len() < MIN_CANDIDATES {
             // 只有当有部分结果时才补充相关文章
             tracing::info!(
@@ -1236,16 +1618,29 @@ async fn execute_brew_generate_reading_list(
             .unwrap_or_default()
     };
 
-    // 如果数据库结果为空或不足，且有关键词，尝试 AI 联网搜索
-    if items.is_empty() || (items.len() < 3 && !keyword.is_empty()) {
-        tracing::info!(
-            keyword = %keyword,
-            db_results = items.len(),
-            "[brew.generateReadingList] Insufficient results, triggering AI web search"
-        );
+    // Local miss / thin results: only call AI web search when explicitly opted in.
+    // Default: honest empty + local suggestions (do not force ai.webSearch / Gemini).
+    let needs_more = items.is_empty() || (items.len() < 3 && !keyword.is_empty());
+    if needs_more {
+        let list_name = if !keyword.is_empty() {
+            keyword
+        } else {
+            criteria
+        };
+        let available_sources: Vec<&str> = sources
+            .iter()
+            .filter(|s| !s.name.is_empty())
+            .map(|s| s.name.as_str())
+            .take(8)
+            .collect();
 
-        // 尝试 AI 联网搜索
-        if !keyword.is_empty() || !criteria.is_empty() {
+        if allow_web_search && (!keyword.is_empty() || !criteria.is_empty()) {
+            tracing::info!(
+                keyword = %keyword,
+                db_results = items.len(),
+                "[brew.generateReadingList] allowWebSearch=true, trying AI web search"
+            );
+
             let search_query = if !keyword.is_empty() {
                 format!("{} 相关文章 新闻 资讯", keyword)
             } else {
@@ -1261,15 +1656,16 @@ async fn execute_brew_generate_reading_list(
                     return Ok(json!({
                         "readingList": web_results,
                         "totalMatched": web_results.len(),
-                        "listName": format!("网络搜索 - {}", if !keyword.is_empty() { keyword } else { criteria }),
+                        "listName": format!("网络搜索 - {}", list_name),
                         "criteria": criteria,
                         "fromWebSearch": true,
+                        "allowWebSearch": true,
                         "message": crate::services::agent::response_agent::web_search_fallback(web_results.len()),
                         "action": {
                             "type": "reading_list",
                             "payload": {
                                 "items": web_results,
-                                "name": format!("网络搜索 - {}", if !keyword.is_empty() { keyword } else { criteria }),
+                                "name": format!("网络搜索 - {}", list_name),
                                 "fromWebSearch": true
                             }
                         }
@@ -1282,40 +1678,111 @@ async fn execute_brew_generate_reading_list(
                     tracing::warn!(error = %e, "[brew.generateReadingList] AI web search failed");
                 }
             }
+
+            // Opt-in web search attempted but empty/failed
+            let mut suggestions = vec![
+                "尝试更换关键词".to_string(),
+                "放宽 daysBack 或去掉 sourceName 限制".to_string(),
+                "订阅更多相关的 RSS 源".to_string(),
+                "检查 Gemini API Key 是否已配置".to_string(),
+            ];
+            if !available_sources.is_empty() {
+                suggestions.insert(
+                    0,
+                    format!("本地已有订阅：{}", available_sources.join("、")),
+                );
+            }
+
+            return Ok(json!({
+                "readingList": [],
+                "totalMatched": 0,
+                "listName": list_name,
+                "criteria": criteria,
+                "matched": false,
+                "notFound": true,
+                "fromWebSearch": false,
+                "allowWebSearch": true,
+                "message": crate::services::agent::response_agent::no_articles_found(
+                    if keyword.is_empty() && criteria.is_empty() {
+                        "请提供搜索关键词"
+                    } else {
+                        "本地与联网搜索均未返回结果"
+                    }
+                ),
+                "suggestions": suggestions,
+                "availableSources": available_sources,
+                "action": {
+                    "type": "reading_list",
+                    "payload": {
+                        "items": [],
+                        "name": list_name
+                    }
+                }
+            }));
         }
 
-        // 如果联网搜索也失败，返回空结果，并说明原因
-        let ai_search_hint = if keyword.is_empty() && criteria.is_empty() {
-            "请提供搜索关键词"
+        // No explicit web/external request — if we still have a few local hits,
+        // continue to AI local ranking; otherwise honest empty.
+        if !items.is_empty() {
+            tracing::info!(
+                keyword = %keyword,
+                db_results = items.len(),
+                "[brew.generateReadingList] Thin local results, ranking without web search"
+            );
         } else {
-            "AI 联网搜索未返回结果，请检查 Gemini API 配置"
-        };
+            tracing::info!(
+                keyword = %keyword,
+                allow_web_search = false,
+                "[brew.generateReadingList] Local keyword empty; honest empty (no forced webSearch)"
+            );
 
-        let list_name = if !keyword.is_empty() {
-            keyword
-        } else {
-            criteria
-        };
-
-        return Ok(json!({
-            "readingList": [],
-            "totalMatched": 0,
-            "listName": list_name,
-            "criteria": criteria,
-            "message": crate::services::agent::response_agent::no_articles_found(ai_search_hint),
-            "suggestions": [
-                "检查 Gemini API Key 是否已配置",
-                "尝试更换关键词",
-                "订阅更多相关的 RSS 源"
-            ],
-            "action": {
-                "type": "reading_list",
-                "payload": {
-                    "items": [],
-                    "name": list_name
-                }
+            let searched = if !keyword.is_empty() {
+                keyword
+            } else {
+                criteria
+            };
+            let mut suggestions = vec![
+                "尝试更换或放宽关键词".to_string(),
+                "增大 daysBack 查看更早文章".to_string(),
+                "用 brew.items / brew.read 浏览本地订阅".to_string(),
+                "订阅更多相关 RSS 源后再生成列表".to_string(),
+            ];
+            if !available_sources.is_empty() {
+                suggestions.insert(
+                    0,
+                    format!("可浏览的本地订阅：{}", available_sources.join("、")),
+                );
             }
-        }));
+            if !allow_web_search {
+                suggestions.push(
+                    "如需联网补充，请显式传 allowWebSearch=true".to_string(),
+                );
+            }
+
+            return Ok(json!({
+                "readingList": [],
+                "totalMatched": 0,
+                "listName": list_name,
+                "criteria": criteria,
+                "matched": false,
+                "notFound": true,
+                "fromWebSearch": false,
+                "allowWebSearch": false,
+                "searchedFor": searched,
+                "message": crate::services::agent::response_agent::no_articles_found(
+                    &format!("本地订阅中无「{}」相关文章", searched)
+                ),
+                "suggestions": suggestions,
+                "availableSources": available_sources,
+                "action": {
+                    "type": "reading_list",
+                    "payload": {
+                        "items": [],
+                        "name": list_name
+                    }
+                }
+            }));
+        }
     }
 
     // 限制单个来源的最大数量（不超过总数的 1/2），确保多样性
@@ -1746,7 +2213,8 @@ fn extract_json_from_response(response: &str) -> Option<String> {
     None
 }
 
-/// 解析 RSS/Atom 内容 (简化版)
+/// 解析 RSS/Atom 内容 (legacy cache helper; DB path preferred for brew.*)
+#[allow(dead_code)]
 fn parse_brew_content(content: &str) -> Vec<Value> {
     let mut items = Vec::new();
 
@@ -4700,4 +5168,169 @@ fn extract_domain_from_url(url: &str) -> String {
         .next()
         .unwrap_or("未知来源")
         .to_string()
+}
+
+#[cfg(test)]
+mod brew_db_helpers_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_optional_i32_accepts_int_and_numeric_string() {
+        assert_eq!(parse_optional_i32(&json!(42)), Some(42));
+        assert_eq!(parse_optional_i32(&json!(42u64)), Some(42));
+        assert_eq!(parse_optional_i32(&json!("7")), Some(7));
+        assert_eq!(parse_optional_i32(&json!("  9  ")), Some(9));
+        assert_eq!(parse_optional_i32(&json!("akiday")), None);
+        assert_eq!(parse_optional_i32(&json!(null)), None);
+    }
+
+    #[test]
+    fn brew_read_filters_align_source_and_source_id() {
+        let mut params = HashMap::new();
+        params.insert("sourceId".into(), json!(3));
+        params.insert("limit".into(), json!(10));
+        let f = parse_brew_read_filters(&params);
+        assert_eq!(f.source_id, Some(3));
+        assert_eq!(f.limit, 10);
+        assert!(f.source_name.is_none());
+
+        let mut params = HashMap::new();
+        params.insert("source".into(), json!("12"));
+        let f = parse_brew_read_filters(&params);
+        assert_eq!(f.source_id, Some(12));
+        assert!(f.source_name.is_none());
+
+        let mut params = HashMap::new();
+        params.insert("source".into(), json!("akiday"));
+        let f = parse_brew_read_filters(&params);
+        assert!(f.source_id.is_none());
+        assert_eq!(f.source_name.as_deref(), Some("akiday"));
+
+        let mut params = HashMap::new();
+        params.insert("sourceName".into(), json!("天利"));
+        params.insert("sourceId".into(), json!("5"));
+        let f = parse_brew_read_filters(&params);
+        assert_eq!(f.source_id, Some(5));
+        assert_eq!(f.source_name.as_deref(), Some("天利"));
+
+        let mut params = HashMap::new();
+        params.insert("limit".into(), json!(9999));
+        let f = parse_brew_read_filters(&params);
+        assert_eq!(f.limit, 200); // clamped
+    }
+
+    #[test]
+    fn brew_article_lookup_id_guid_url() {
+        let mut params = HashMap::new();
+        params.insert("articleId".into(), json!(101));
+        let l = parse_brew_article_lookup(&params);
+        assert_eq!(l.item_id, Some(101));
+        assert!(l.url.is_none());
+
+        let mut params = HashMap::new();
+        params.insert("articleId".into(), json!("guid-abc"));
+        let l = parse_brew_article_lookup(&params);
+        assert!(l.item_id.is_none());
+        assert_eq!(l.article_key.as_deref(), Some("guid-abc"));
+
+        let mut params = HashMap::new();
+        params.insert("url".into(), json!("https://example.com/post"));
+        params.insert("sourceId".into(), json!(2));
+        let l = parse_brew_article_lookup(&params);
+        assert_eq!(l.url.as_deref(), Some("https://example.com/post"));
+        assert_eq!(l.source_id, Some(2));
+
+        let mut params = HashMap::new();
+        params.insert("itemId".into(), json!("55"));
+        let l = parse_brew_article_lookup(&params);
+        assert_eq!(l.item_id, Some(55));
+    }
+
+    #[test]
+    fn article_lookup_matches_by_id_guid_or_link() {
+        let by_id = BrewArticleLookup {
+            item_id: Some(7),
+            article_key: None,
+            url: None,
+            source_id: None,
+        };
+        assert!(article_lookup_matches(&by_id, 7, "g", "https://x"));
+        assert!(!article_lookup_matches(&by_id, 8, "g", "https://x"));
+
+        let by_guid = BrewArticleLookup {
+            item_id: None,
+            article_key: Some("guid-1".into()),
+            url: None,
+            source_id: None,
+        };
+        assert!(article_lookup_matches(
+            &by_guid,
+            1,
+            "guid-1",
+            "https://other"
+        ));
+        assert!(article_lookup_matches(
+            &by_guid,
+            1,
+            "other",
+            "guid-1" // key also matches link
+        ));
+
+        let by_url = BrewArticleLookup {
+            item_id: None,
+            article_key: None,
+            url: Some("https://example.com/a".into()),
+            source_id: None,
+        };
+        assert!(article_lookup_matches(
+            &by_url,
+            1,
+            "x",
+            "https://example.com/a"
+        ));
+        assert!(!article_lookup_matches(
+            &by_url,
+            1,
+            "x",
+            "https://example.com/b"
+        ));
+    }
+
+    #[test]
+    fn extract_plain_text_strips_tags() {
+        let plain = extract_plain_text("<p>Hello&nbsp;<b>world</b></p>");
+        assert_eq!(plain, "Hello world");
+    }
+
+    #[test]
+    fn allow_web_search_is_opt_in_only() {
+        let empty = HashMap::new();
+        assert!(!parse_allow_web_search(&empty));
+
+        let mut params = HashMap::new();
+        params.insert("allowWebSearch".into(), json!(false));
+        assert!(!parse_allow_web_search(&params));
+
+        let mut params = HashMap::new();
+        params.insert("allowWebSearch".into(), json!(true));
+        assert!(parse_allow_web_search(&params));
+
+        let mut params = HashMap::new();
+        params.insert("useWebSearch".into(), json!("yes"));
+        assert!(parse_allow_web_search(&params));
+
+        let mut params = HashMap::new();
+        params.insert("webSearch".into(), json!(1));
+        assert!(parse_allow_web_search(&params));
+
+        let mut params = HashMap::new();
+        params.insert("external".into(), json!("on"));
+        assert!(parse_allow_web_search(&params));
+
+        // Explicit false / garbage must not enable
+        let mut params = HashMap::new();
+        params.insert("webSearch".into(), json!("no"));
+        assert!(!parse_allow_web_search(&params));
+    }
 }
