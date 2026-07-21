@@ -1548,13 +1548,16 @@ export default function WidgetGrid({
                     : undefined,
               }
 
+              const libraryLabel =
+                (t.widgets as any)[getWidgetTranslationKey(widgetType.id)] ||
+                widgetType.name
+
               return (
                 <motion.div
                   key={widgetType.id}
-                  className="relative group cursor-move shrink-0"
+                  className="relative group cursor-move shrink-0 flex flex-col items-center"
                   style={{
                     width: wrapperWidth,
-                    height: wrapperHeight,
                   }}
                   draggable
                   onMouseDown={(e: React.MouseEvent) =>
@@ -1566,32 +1569,42 @@ export default function WidgetGrid({
                   whileHover={{ scale: 1.05, zIndex: 10 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  {/* 缩放容器 */}
+                  {/* 预览框：固定缩略尺寸；名称放在框外下方，避免 1x1 内叠 tip 溢出 */}
                   <div
-                    className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
+                    className="relative"
                     style={{
-                      width: renderWidth,
-                      height: renderHeight,
-                      transform: `scale(${scale})`,
+                      width: wrapperWidth,
+                      height: wrapperHeight,
                     }}
                   >
-                    <Suspense fallback={null}>
-                      <WidgetComponent
-                        config={previewConfig}
-                        isEditMode={true}
-                        isPreview={true}
-                      />
-                    </Suspense>
+                    {/* 缩放容器 */}
+                    <div
+                      className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
+                      style={{
+                        width: renderWidth,
+                        height: renderHeight,
+                        transform: `scale(${scale})`,
+                      }}
+                    >
+                      <Suspense fallback={null}>
+                        <WidgetComponent
+                          config={previewConfig}
+                          isEditMode={true}
+                          isPreview={true}
+                        />
+                      </Suspense>
+                    </div>
+
+                    {/* 遮罩层 - 用于拖拽交互和高亮 */}
+                    <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
                   </div>
 
-                  {/* 遮罩层 - 用于拖拽交互和高亮 */}
-                  <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
-
-                  {/* 悬浮提示 */}
-                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-neutral-900/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-neutral-700/50">
-                    {(t.widgets as any)[
-                      getWidgetTranslationKey(widgetType.id)
-                    ] || widgetType.name}
+                  {/* 名称：组件下方显示（原 bottom 内叠 tip 在 1x1 上会裁切/溢出） */}
+                  <div
+                    className="mt-1.5 w-full px-0.5 text-center text-[10px] font-bold leading-tight text-gray-600 dark:text-gray-300 line-clamp-2 break-words pointer-events-none"
+                    title={libraryLabel}
+                  >
+                    {libraryLabel}
                   </div>
                 </motion.div>
               )
