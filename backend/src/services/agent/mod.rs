@@ -1004,19 +1004,105 @@ impl Agent {
         })
     }
 
+    /// 从 TaskState 提取能力 ID 列表（用于升级门控）
+    fn capability_ids_from_task(task_state: &TaskState) -> Vec<String> {
+        if let Some(recipe) = &task_state.recipe {
+            let ids: Vec<String> = recipe
+                .steps
+                .iter()
+                .map(|s| s.capability_id.clone())
+                .collect();
+            if !ids.is_empty() {
+                return ids;
+            }
+        }
+        if let Some(trace) = &task_state.execution_trace {
+            let ids: Vec<String> = trace
+                .steps
+                .iter()
+                .map(|s| s.capability_id.clone())
+                .collect();
+            if !ids.is_empty() {
+                return ids;
+            }
+        }
+        Vec::new()
+    }
+
+    /// 是否允许联网搜索升级（白名单：generateReadingList + 显式 flag，或纯外部调研链）
+    fn allow_web_search_escalation(task_state: &TaskState, capability_ids: &[String]) -> bool {
+        // brew.generateReadingList 仅在步骤参数显式开启时允许 web
+        if let Some(recipe) = &task_state.recipe {
+            for step in &recipe.steps {
+                if step.capability_id == "brew.generateReadingList" {
+                    let flag = step
+                        .params
+                        .get("allowWebSearch")
+                        .or_else(|| step.params.get("useWebSearch"))
+                        .or_else(|| step.params.get("allow_web_search"))
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    if flag {
+                        return true;
+                    }
+                }
+            }
+        }
+        // 已包含 webSearch 的计划不算「从本地升级到 web」；本地域默认禁止
+        let has_local = capability_ids
+            .iter()
+            .any(|id| escalation::ResultEvaluator::is_local_data_capability(id));
+        if has_local {
+            return false;
+        }
+        // 非本地域空结果可继续建议 web
+        true
+    }
+
+    /// 构建评估上下文
+    fn evaluation_context_for_task(
+        task_state: &TaskState,
+    ) -> escalation::EvaluationContext {
+        let capability_ids = Self::capability_ids_from_task(task_state);
+        let allow_web_search = Self::allow_web_search_escalation(task_state, &capability_ids);
+        escalation::EvaluationContext {
+            capability_ids,
+            allow_web_search,
+        }
+    }
+
     /// 判断是否需要升级
     fn should_escalate(&self, task_state: &TaskState, result: &Value) -> bool {
         if task_state.status == TaskStatus::Failed {
+            // 配置类错误（API Key 未配置）不应触发 replan 烧预算/再次选 webSearch
+            if let Some(err) = &task_state.error {
+                let err_lower = err.to_lowercase();
+                if err.contains("API Key 未配置")
+                    || err.contains("未配置")
+                    || err_lower.contains("not configured")
+                    || err_lower.contains("api key")
+                {
+                    tracing::info!(
+                        error = %err,
+                        "[Agent] Configuration error — skip escalation/replan"
+                    );
+                    return false;
+                }
+            }
             return true;
         }
-        // 使用 ResultEvaluator 进行深度评估（不需要 ParsedIntent，用简化路径）
+        // 使用 ResultEvaluator 进行深度评估（携带能力上下文以门控 webSearch）
         let evaluator = escalation::ResultEvaluator::new();
-        let eval = evaluator.evaluate_result(result);
+        let ctx = Self::evaluation_context_for_task(task_state);
+        let eval = evaluator.evaluate_with_context(result, &ctx);
         if !eval.is_satisfied {
             tracing::info!(
                 score = eval.satisfaction_score,
                 reason = ?eval.reason,
                 patterns = ?eval.failure_patterns,
+                suggests_web = eval.suggests_web_search,
+                suggests_local = eval.suggests_local_alternatives,
+                caps = ?ctx.capability_ids,
                 "[Agent] ResultEvaluator: escalation recommended"
             );
         }
@@ -1026,27 +1112,67 @@ impl Agent {
     /// 构建升级提示（使用 ResultEvaluator 的失败模式分析）
     fn build_escalation_hint(&self, task_state: &TaskState, result: &Value) -> String {
         if task_state.status == TaskStatus::Failed {
-            return format!(
-                "前次执行失败：{}。请尝试替代方案。",
-                task_state.error.as_deref().unwrap_or("未知错误")
-            );
+            let err = task_state.error.as_deref().unwrap_or("未知错误");
+            let err_lower = err.to_lowercase();
+            if err.contains("API Key 未配置")
+                || err.contains("未配置")
+                || err_lower.contains("not configured")
+            {
+                return format!(
+                    "前次执行因配置缺失失败：{}。请勿重试同一能力或改用 ai.webSearch；改为本地能力或提示用户配置密钥。",
+                    err
+                );
+            }
+            return format!("前次执行失败：{}。请尝试替代方案。", err);
         }
 
         let evaluator = escalation::ResultEvaluator::new();
-        let eval = evaluator.evaluate_result(result);
+        let ctx = Self::evaluation_context_for_task(task_state);
+        let eval = evaluator.evaluate_with_context(result, &ctx);
 
         let mut hints = Vec::new();
         if let Some(reason) = &eval.reason {
             hints.push(format!("失败原因：{}", reason));
+        }
+        // notFound 建议值：replan 最高优先 — 用建议值重试 brew，禁止 webSearch
+        if !eval.suggested_retry_values.is_empty() {
+            let joined = eval.suggested_retry_values.join(" / ");
+            let brew_cap = ctx
+                .capability_ids
+                .iter()
+                .find(|id| id.starts_with("brew."))
+                .map(|s| s.as_str())
+                .unwrap_or("brew.items");
+            hints.push(format!(
+                "【最高优先】用 {} 重试，将 sourceName/name/query/author 设为建议值之一：{}。不要使用 ai.webSearch",
+                brew_cap, joined
+            ));
         }
         for hint in &eval.improvement_hints {
             hints.push(hint.clone());
         }
         if eval.suggests_web_search {
             hints.push("请尝试联网搜索能力（ai.webSearch 或 ai.groundingSearch）".to_string());
+        } else if eval.suggests_local_alternatives {
+            // 本地 brew miss：强制 replan 走 brew.page / search.fuzzy / brew.items
+            let already_forbids = eval
+                .improvement_hints
+                .iter()
+                .any(|h| h.contains("禁止使用 ai.webSearch") || h.contains("禁止改用 ai.webSearch"));
+            if !already_forbids {
+                hints.push(
+                    "禁止使用 ai.webSearch / ai.groundingSearch；优先 brew.page、search.fuzzy 或 brew.items（放宽参数）"
+                        .to_string(),
+                );
+            }
         }
         if hints.is_empty() {
-            "前次执行结果为空或不满足目标，请尝试其他能力或联网搜索。".to_string()
+            if eval.suggests_local_alternatives {
+                "前次本地数据结果为空，请用 brew.page / search.fuzzy / brew.items 放宽查询或向用户澄清，不要联网搜索。"
+                    .to_string()
+            } else {
+                "前次执行结果为空或不满足目标，请尝试其他能力或联网搜索。".to_string()
+            }
         } else {
             hints.join("。")
         }

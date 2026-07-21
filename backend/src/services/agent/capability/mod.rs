@@ -124,6 +124,9 @@ pub async fn get_capability_summary() -> Value {
 ///
 /// 返回仅包含 ID + 一句话 hint 的轻量列表，大幅减少 prompt token 用量。
 /// AI 根据此索引选出 `suggested_capabilities`，后续再按需加载完整 schema。
+///
+/// Note: AI 能力（含 ai.webSearch）始终保持注册与可规划；缺失 API Key 时由执行层
+/// 返回非重试错误，而不是在索引中降级/隐藏能力。
 pub async fn get_compact_index() -> Value {
     let registry = get_registry().await;
 
