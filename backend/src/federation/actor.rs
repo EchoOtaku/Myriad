@@ -103,16 +103,17 @@ pub async fn get_actor(
     let public_key_pem: Option<String> = row.try_get("", "public_key_pem").ok();
     let fetched_key_id: Option<String> = row.try_get("", "key_id").ok();
 
-    // **G shared keys**: one RSA keypair per local user for life of the account.
-    // Domain Move retargets `key_id` host only — never generates a fresh pair here
-    // when keys already exist. Same `public_key_pem` is advertised on old and new
-    // actor URLs; `keyId` host follows the document we serve (`#main-key`).
+    // **G shared keys**: one RSA keypair per local user unless explicitly rotated
+    // via POST /api/federation/keys/rotate. Domain Move retargets `key_id` host only
+    // — never generates a fresh pair here when keys already exist. Same
+    // `public_key_pem` is advertised on old and new actor URLs; `keyId` host
+    // follows the document we serve (`#main-key`).
     let (pub_key, stored_kid) = match (public_key_pem, fetched_key_id) {
         (Some(pk), Some(ki)) if !pk.trim().is_empty() => (pk, ki),
         (Some(pk), None) if !pk.trim().is_empty() => (pk, key_id(&configured_base, &username)),
         _ => {
             // First-time only: generate once under configured base.
-            generate_and_store_keys(&db, user_id, &configured_base, &username)
+            ensure_user_federation_keys(&db, user_id, &username)
                 .await
                 .map_err(|e| {
                     tracing::error!(
@@ -128,9 +129,13 @@ pub async fn get_actor(
         }
     };
 
-    // keyId host matches the actor id we are serving (old Host → old keyId path;
-    // new base → new keyId path). PEM material is always `pub_key` from the store.
-    let kid = if stored_kid.contains(base_url.trim_end_matches('/')) {
+    // Prefer stored key_id when it belongs under the **serve base** (domain-move
+    // **G** retargets host; same PEM). When Host resolves to the old base after
+    // G, stored kid is already the new host — rewrite to `key_id(serve_base, …)`
+    // so Move signatures (old origin) verify against the old actor document.
+    // Matches `move_actor::local_actor_document_for_base`. Empty column → recompute.
+    let serve = base_url.trim_end_matches('/');
+    let kid = if !stored_kid.trim().is_empty() && stored_kid.contains(serve) {
         stored_kid
     } else {
         key_id(&base_url, &username)
@@ -750,6 +755,10 @@ pub struct LocalFederationIdentity {
 }
 
 /// 构造当前用户可分享给远端的联邦身份。
+///
+/// Also ensures federation keys exist so Aro opening federation settings (or any
+/// client calling `GET /api/federation/identity`) initializes signing material
+/// before the first outbound delivery.
 pub async fn get_local_identity(username: &str) -> LocalFederationIdentity {
     let base_url = get_base_url().await;
     let frontend_url = get_frontend_url().await;
@@ -762,7 +771,7 @@ pub async fn get_local_identity(username: &str) -> LocalFederationIdentity {
         if let Ok(Some(row)) = db
             .query_one(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                r#"SELECT display_name,
+                r#"SELECT id, display_name,
                           COALESCE(
                               NULLIF(
                                   CASE
@@ -791,8 +800,19 @@ pub async fn get_local_identity(username: &str) -> LocalFederationIdentity {
             ))
             .await
         {
+            let user_id: i32 = row.try_get("", "id").unwrap_or(0);
             display_name = row.try_get("", "display_name").ok();
             avatar_url = row.try_get("", "avatar_url").ok();
+            if user_id > 0 {
+                if let Err(e) = ensure_user_federation_keys(&db, user_id, username).await {
+                    tracing::warn!(
+                        user_id = user_id,
+                        username = %username,
+                        error = %e,
+                        "Failed to ensure federation keys on identity lookup"
+                    );
+                }
+            }
         }
     }
 
@@ -868,8 +888,107 @@ async fn get_local_avatar_url(
 
 // ==================== 辅助函数 ====================
 
-/// 为用户生成联邦密钥并存库
-async fn generate_and_store_keys(
+/// Whether stored public key material is missing or empty and needs generation.
+///
+/// Existing non-empty PEMs must never be rotated by ensure/generate paths.
+pub(crate) fn needs_federation_key_generation(public_key_pem: Option<&str>) -> bool {
+    match public_key_pem {
+        Some(pk) => pk.trim().is_empty(),
+        None => true,
+    }
+}
+
+/// Ensure the local user has a federation keypair.
+///
+/// Generates and stores keys only when missing or empty. Never rotates an
+/// existing non-empty keypair (actor id / username unchanged).
+///
+/// Call sites (defense-in-depth):
+/// - `GET /api/federation/identity` (`get_local_identity`)
+/// - `GET /users/{username}` actor document
+/// - Room fan-out, ring `add_peer`, follow outbound
+///
+/// **Universal recovery:** `delivery::load_user_keypair_ensuring` also ensures
+/// once before sign so every `federation_delivery_queue` producer (room, ring,
+/// follow, content, channel, inbox, interactions, file_transfer) recovers
+/// already-queued jobs without patching each INSERT.
+///
+/// Returns `(public_key_pem, key_id)`.
+pub async fn ensure_user_federation_keys(
+    db: &DatabaseConnection,
+    user_id: i32,
+    username: &str,
+) -> Result<(String, String), String> {
+    if let Some((pub_pem, kid)) = load_stored_federation_keys(db, user_id).await? {
+        if !needs_federation_key_generation(Some(&pub_pem)) {
+            let base_url = get_base_url().await;
+            let resolved_kid = if kid.trim().is_empty() {
+                key_id(&base_url, username)
+            } else {
+                kid
+            };
+            return Ok((pub_pem, resolved_kid));
+        }
+    }
+
+    let base_url = get_base_url().await;
+    generate_and_store_keys(db, user_id, &base_url, username).await
+}
+
+/// Explicit key rotation result (username / actor id unchanged).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FederationKeyRotationResult {
+    pub public_key_pem: String,
+    pub key_id: String,
+    pub previous_public_key_pem: Option<String>,
+    /// Rows enqueued for Update(Person) fan-out (0 if no followers or enqueue fail)
+    pub update_queued: u32,
+    /// Peers should re-fetch `GET /users/{username}` for the new publicKey.
+    pub note: String,
+}
+
+/// Rotate federation signing keys for a local user.
+///
+/// **Explicit only** — never called from `ensure_user_federation_keys`.
+/// Generates a new RSA keypair, overwrites `federation_keys` (same
+/// `user_id` / key_id path pattern), and best-effort fans out an
+/// ActivityPub `Update` of the Person actor so followers can refresh.
+///
+/// Actor URL and username are **not** changed. Remote peers that miss the
+/// Update can still re-fetch the actor document.
+pub async fn rotate_user_federation_keys(
+    db: &DatabaseConnection,
+    user_id: i32,
+    username: &str,
+) -> Result<FederationKeyRotationResult, String> {
+    if username.trim().is_empty() || user_id <= 0 {
+        return Err("user_id and username required for key rotation".into());
+    }
+
+    let previous = load_stored_federation_keys(db, user_id)
+        .await?
+        .map(|(pem, _)| pem)
+        .filter(|p| !p.trim().is_empty());
+
+    let base_url = get_base_url().await;
+    let (pub_pem, kid) = force_store_new_keys(db, user_id, &base_url, username).await?;
+
+    // Best-effort Update(Person) so followers learn the new publicKey.
+    let update_queued = broadcast_person_key_update(db, user_id, username, &base_url, &pub_pem, &kid)
+        .await
+        .unwrap_or(0);
+
+    Ok(FederationKeyRotationResult {
+        public_key_pem: pub_pem,
+        key_id: kid,
+        previous_public_key_pem: previous,
+        update_queued,
+        note: "Actor publicKey rotated. Peers should re-fetch GET /users/{username} if they miss Update(Person).".into(),
+    })
+}
+
+/// Force-overwrite key material (used only by explicit rotate).
+async fn force_store_new_keys(
     db: &DatabaseConnection,
     user_id: i32,
     base_url: &str,
@@ -895,10 +1014,163 @@ async fn generate_and_store_keys(
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
+        r#"INSERT INTO federation_keys (user_id, public_key_pem, private_key_encrypted, key_id, algorithm, created_at, rotated_at)
+           VALUES ($1, $2, $3, $4, 'RSA-SHA256', NOW(), NOW())
+           ON CONFLICT (user_id) DO UPDATE SET
+               public_key_pem = EXCLUDED.public_key_pem,
+               private_key_encrypted = EXCLUDED.private_key_encrypted,
+               key_id = EXCLUDED.key_id,
+               rotated_at = NOW()"#,
+        [
+            user_id.into(),
+            pub_pem.clone().into(),
+            encrypted.into(),
+            kid.clone().into(),
+        ],
+    ))
+    .await
+    .map_err(|e| format!("Failed to store rotated keys: {}", e))?;
+
+    // Concurrent rotates: last writer wins. Return DB winner so Update(Person)
+    // and the API response match what peers will fetch / what delivery signs with.
+    match load_stored_federation_keys(db, user_id).await? {
+        Some((stored_pem, stored_kid)) if !needs_federation_key_generation(Some(&stored_pem)) => {
+            let resolved_kid = if stored_kid.trim().is_empty() {
+                kid
+            } else {
+                stored_kid
+            };
+            Ok((stored_pem, resolved_kid))
+        }
+        _ => Ok((pub_pem, kid)),
+    }
+}
+
+/// Enqueue Update(Person) to incoming followers with the new publicKey.
+async fn broadcast_person_key_update(
+    db: &DatabaseConnection,
+    user_id: i32,
+    username: &str,
+    base_url: &str,
+    public_key_pem: &str,
+    kid: &str,
+) -> Result<u32, String> {
+    let actor_id = actor_url(base_url, username);
+    let activity_id = generate_activity_id(base_url);
+    let update = json!({
+        "@context": build_context(),
+        "type": "Update",
+        "id": &activity_id,
+        "actor": &actor_id,
+        "to": [crate::federation::types::AP_PUBLIC, followers_url(base_url, username)],
+        "object": {
+            "type": "Person",
+            "id": &actor_id,
+            "preferredUsername": username,
+            "inbox": inbox_url(base_url, username),
+            "outbox": outbox_url(base_url, username),
+            "followers": followers_url(base_url, username),
+            "following": following_url(base_url, username),
+            "publicKey": {
+                "id": kid,
+                "owner": &actor_id,
+                "publicKeyPem": public_key_pem,
+            }
+        }
+    });
+
+    let act_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"INSERT INTO federation_activities
+               (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
+               VALUES ($1, $2, 'Update', 'Person', $3, true, NOW())
+               RETURNING id"#,
+            [
+                activity_id.into(),
+                user_id.into(),
+                update.clone().into(),
+            ],
+        ))
+        .await
+        .map_err(|e| format!("Failed to record Update activity: {}", e))?;
+
+    let act_db_id: i32 = act_row
+        .and_then(|r| r.try_get("", "id").ok())
+        .unwrap_or(0);
+    if act_db_id <= 0 {
+        return Ok(0);
+    }
+
+    let queued =
+        crate::federation::content::fan_out_to_followers(db, user_id, act_db_id, &update).await;
+    tracing::info!(
+        user_id = user_id,
+        username = %username,
+        queued = queued,
+        "Broadcast Update(Person) after key rotation"
+    );
+    Ok(queued)
+}
+
+async fn load_stored_federation_keys(
+    db: &DatabaseConnection,
+    user_id: i32,
+) -> Result<Option<(String, String)>, String> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT public_key_pem, key_id FROM federation_keys WHERE user_id = $1",
+            [user_id.into()],
+        ))
+        .await
+        .map_err(|e| format!("DB error loading federation keys: {}", e))?;
+
+    Ok(row.map(|r| {
+        let pub_pem: String = r.try_get("", "public_key_pem").unwrap_or_default();
+        let kid: String = r.try_get("", "key_id").unwrap_or_default();
+        (pub_pem, kid)
+    }))
+}
+
+/// Generate a new keypair and store it. Only overwrites on conflict when the
+/// existing row has an empty public key (no rotation of live keys).
+async fn generate_and_store_keys(
+    db: &DatabaseConnection,
+    user_id: i32,
+    base_url: &str,
+    username: &str,
+) -> Result<(String, String), String> {
+    let keypair = crate::federation::keys::KeyPair::generate()
+        .map_err(|e| format!("Key generation failed: {}", e))?;
+
+    let pub_pem = keypair
+        .public_key_pem()
+        .map_err(|e| format!("PEM encoding failed: {}", e))?;
+
+    let jwt_secret = {
+        let config = crate::GLOBAL_CONFIG.read().await;
+        config.jwt_secret.clone()
+    };
+
+    let encrypted = keypair
+        .encrypt_private_key(&jwt_secret)
+        .map_err(|e| format!("Key encryption failed: {}", e))?;
+
+    let kid = key_id(base_url, username);
+
+    // Same ON CONFLICT shape as before, but only apply the update when the
+    // stored public key is missing/empty so concurrent ensures cannot rotate.
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
         r#"INSERT INTO federation_keys (user_id, public_key_pem, private_key_encrypted, key_id, algorithm, created_at)
            VALUES ($1, $2, $3, $4, 'RSA-SHA256', NOW())
            ON CONFLICT (user_id) DO UPDATE SET
-               public_key_pem = $2, private_key_encrypted = $3, key_id = $4, rotated_at = NOW()"#,
+               public_key_pem = EXCLUDED.public_key_pem,
+               private_key_encrypted = EXCLUDED.private_key_encrypted,
+               key_id = EXCLUDED.key_id,
+               rotated_at = NOW()
+           WHERE TRIM(COALESCE(federation_keys.public_key_pem, '')) = ''"#,
         [
             user_id.into(),
             pub_pem.clone().into(),
@@ -909,7 +1181,18 @@ async fn generate_and_store_keys(
     .await
     .map_err(|e| format!("Failed to store keys: {}", e))?;
 
-    Ok((pub_pem, kid))
+    // Re-read so a concurrent winner's keys are returned instead of our discarded pair.
+    match load_stored_federation_keys(db, user_id).await? {
+        Some((stored_pem, stored_kid)) if !needs_federation_key_generation(Some(&stored_pem)) => {
+            let resolved_kid = if stored_kid.trim().is_empty() {
+                kid
+            } else {
+                stored_kid
+            };
+            Ok((stored_pem, resolved_kid))
+        }
+        _ => Ok((pub_pem, kid)),
+    }
 }
 
 /// Upsert 实例信息
@@ -978,4 +1261,53 @@ async fn get_db() -> Result<DatabaseConnection, String> {
     db_opt
         .clone()
         .ok_or_else(|| "Database not connected".to_string())
+}
+
+/// Shared confirm gate for POST /api/federation/keys/rotate (and unit tests).
+///
+/// Must live above `mod tests` (clippy `items_after_test_module`).
+pub fn rotation_confirm_accepted(body: &serde_json::Value) -> bool {
+    body.get("confirm").and_then(|v| v.as_bool()) == Some(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn needs_generation_when_missing() {
+        assert!(needs_federation_key_generation(None));
+    }
+
+    #[test]
+    fn needs_generation_when_empty_or_whitespace() {
+        assert!(needs_federation_key_generation(Some("")));
+        assert!(needs_federation_key_generation(Some("   \n\t  ")));
+    }
+
+    #[test]
+    fn no_generation_when_pem_present() {
+        let pem = "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A\n-----END PUBLIC KEY-----\n";
+        assert!(!needs_federation_key_generation(Some(pem)));
+        // Non-empty material must not be treated as missing (no rotate).
+        assert!(!needs_federation_key_generation(Some("not-empty-pem")));
+    }
+
+    #[test]
+    fn ensure_never_treats_live_pem_as_missing() {
+        // Contract: ensure_user_federation_keys must not call force_store when
+        // needs_federation_key_generation is false. Rotation is explicit only.
+        let live = "-----BEGIN PUBLIC KEY-----\nEXISTING\n-----END PUBLIC KEY-----\n";
+        assert!(!needs_federation_key_generation(Some(live)));
+        assert!(!needs_federation_key_generation(Some("x")));
+    }
+
+    #[test]
+    fn key_rotation_confirm_gate() {
+        // API body must pass confirm:true; pure gate used by the handler.
+        assert!(!rotation_confirm_accepted(&serde_json::json!({})));
+        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": false})));
+        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": "yes"})));
+        assert!(rotation_confirm_accepted(&serde_json::json!({"confirm": true})));
+    }
 }

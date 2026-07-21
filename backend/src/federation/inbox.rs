@@ -56,7 +56,8 @@ pub async fn post_inbox(
     })?;
 
     let activity_type = activity["type"].as_str().unwrap_or("").to_string();
-    let actor_url_str = activity["actor"].as_str().unwrap_or("").to_string();
+    // Actor may be a string IRI or expanded object `{ "id": "...", "type": "Person" }`.
+    let actor_url_str = extract_activity_actor_id(&activity);
 
     if actor_url_str.is_empty() || activity_type.is_empty() {
         return Err((
@@ -157,7 +158,7 @@ pub async fn post_shared_inbox(
     })?;
 
     let activity_type = activity["type"].as_str().unwrap_or("").to_string();
-    let actor_url_str = activity["actor"].as_str().unwrap_or("").to_string();
+    let actor_url_str = extract_activity_actor_id(&activity);
 
     if actor_url_str.is_empty() {
         return Err((
@@ -217,46 +218,8 @@ pub async fn post_shared_inbox(
             "Follow" | "Accept" | "Undo" | "Delete" | "Update" | "Like"
         )
     {
-        // Prefer first local user in `to` / `cc`, else first local user (single-tenant)
-        let mut target_user_id: Option<i32> = None;
-        for key in ["to", "cc"] {
-            if let Some(arr) = activity.get(key).and_then(|v| v.as_array()) {
-                for t in arr {
-                    if let Some(url) = t.as_str() {
-                        if let Some(uname) = url.rsplit('/').next() {
-                            if let Ok(Some(row)) = db
-                                .query_one(Statement::from_sql_and_values(
-                                    DatabaseBackend::Postgres,
-                                    "SELECT id FROM users WHERE username = $1",
-                                    [uname.into()],
-                                ))
-                                .await
-                            {
-                                target_user_id = row.try_get::<i32>("", "id").ok();
-                                if target_user_id.is_some() {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if target_user_id.is_some() {
-                break;
-            }
-        }
-        if target_user_id.is_none() {
-            if let Ok(Some(row)) = db
-                .query_one(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "SELECT id FROM users ORDER BY id LIMIT 1",
-                    [],
-                ))
-                .await
-            {
-                target_user_id = row.try_get::<i32>("", "id").ok();
-            }
-        }
+        let target_user_id =
+            resolve_shared_inbox_local_user(&db, &activity_type, &activity).await;
         if let Some(uid) = target_user_id {
             if activity_type.starts_with("myriad:") {
                 return handle_mfp_activity(&db, &actor_url_str, &activity_type, &activity).await;
@@ -275,6 +238,120 @@ pub async fn post_shared_inbox(
     }
 
     Ok(StatusCode::ACCEPTED)
+}
+
+/// Resolve which local user a shared-inbox activity targets.
+///
+/// Order:
+/// 1. Local usernames in `to` / `cc` (string or first array element; also arrays)
+/// 2. For **Accept**: owner of the outgoing Follow cited by object id (never guess)
+/// 3. Single local user instance fallback only when not Accept (avoids wrong-user
+///    Accept on multi-user hosts)
+async fn resolve_shared_inbox_local_user(
+    db: &DatabaseConnection,
+    activity_type: &str,
+    activity: &serde_json::Value,
+) -> Option<i32> {
+    // 1) to / cc — support string or array (AP allows both)
+    for key in ["to", "cc"] {
+        let Some(val) = activity.get(key) else {
+            continue;
+        };
+        let urls: Vec<&str> = if let Some(s) = val.as_str() {
+            vec![s]
+        } else if let Some(arr) = val.as_array() {
+            arr.iter().filter_map(|v| v.as_str()).collect()
+        } else {
+            continue;
+        };
+        for url in urls {
+            if let Some(uid) = local_user_id_from_actorish_url(db, url).await {
+                return Some(uid);
+            }
+        }
+    }
+
+    // 2) Accept: bind to the local user who owns the outgoing Follow activity_id
+    if activity_type == "Accept" {
+        let follow_id = extract_accept_object_id(activity);
+        if !follow_id.is_empty() {
+            if let Ok(Some(row)) = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    r#"SELECT f.user_id
+                       FROM federation_follows f
+                       WHERE f.direction = 'outgoing'
+                         AND (
+                           f.activity_id = $1
+                           OR rtrim(f.activity_id, '/') = rtrim($1::text, '/')
+                           OR lower(f.activity_id) = lower($1)
+                           OR rtrim(split_part(split_part(f.activity_id, '?', 1), '#', 1), '/')
+                              = rtrim(split_part(split_part($1::text, '?', 1), '#', 1), '/')
+                         )
+                       ORDER BY CASE WHEN f.status = 'pending' THEN 0 ELSE 1 END
+                       LIMIT 1"#,
+                    [follow_id.into()],
+                ))
+                .await
+            {
+                if let Ok(uid) = row.try_get::<i32>("", "user_id") {
+                    if uid > 0 {
+                        return Some(uid);
+                    }
+                }
+            }
+        }
+        // No unambiguous Follow owner — do not fall through to first user.
+        return None;
+    }
+
+    // 3) Single-tenant convenience fallback (not for Accept)
+    if let Ok(Some(row)) = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id FROM users ORDER BY id LIMIT 1",
+            [],
+        ))
+        .await
+    {
+        return row.try_get::<i32>("", "id").ok();
+    }
+    None
+}
+
+/// Best-effort: last path segment as username if that local user exists.
+async fn local_user_id_from_actorish_url(db: &DatabaseConnection, url: &str) -> Option<i32> {
+    let uname = url
+        .trim()
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|s| !s.is_empty() && *s != "users" && !s.contains('@'))?;
+    // Prefer /users/{name} exact form when base is known
+    let base = get_base_url().await;
+    if let Some(local) = local_username_from_actor_url(&base, url) {
+        if let Ok(Some(row)) = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT id FROM users WHERE username = $1",
+                [local.into()],
+            ))
+            .await
+        {
+            return row.try_get::<i32>("", "id").ok();
+        }
+    }
+    if let Ok(Some(row)) = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT id FROM users WHERE username = $1",
+            [uname.into()],
+        ))
+        .await
+    {
+        return row.try_get::<i32>("", "id").ok();
+    }
+    None
 }
 
 // ==================== Activity 处理器 ====================
@@ -418,7 +495,7 @@ async fn handle_follow(
     }
 
     // 自动发送 Accept（Myriad 个人实例默认自动接受）
-    let base_url = get_base_url();
+    let base_url = get_base_url().await;
     let local_username = get_username_by_id(db, local_user_id).await?;
     let local_actor_url = actor_url(&base_url, &local_username);
 
@@ -482,6 +559,85 @@ async fn handle_reject(
     Ok(StatusCode::ACCEPTED)
 }
 
+/// Extract actor id from an ActivityPub activity.
+///
+/// Supports string IRI and expanded object `{ "id": "…", "type": "Person" }`.
+/// Some peers embed the actor document; treating only strings rejects valid
+/// Accept/Follow payloads even when the HTTP Signature keyId is correct.
+pub fn extract_activity_actor_id(activity: &serde_json::Value) -> String {
+    extract_iri_or_object_id(&activity["actor"])
+}
+
+/// Extract an IRI from a JSON value that may be a string, object with `id`/`href`,
+/// or a single-level array of either (ActivityStreams multi-value).
+fn extract_iri_or_object_id(value: &serde_json::Value) -> String {
+    if let Some(s) = value.as_str() {
+        return s.trim().to_string();
+    }
+    if let Some(id) = value.get("id").and_then(|v| v.as_str()) {
+        return id.trim().to_string();
+    }
+    // AS2 Link objects use `href` rather than `id`.
+    if let Some(href) = value.get("href").and_then(|v| v.as_str()) {
+        return href.trim().to_string();
+    }
+    if let Some(arr) = value.as_array() {
+        for item in arr {
+            if let Some(s) = item.as_str() {
+                let t = s.trim();
+                if !t.is_empty() {
+                    return t.to_string();
+                }
+            }
+            if let Some(id) = item.get("id").and_then(|v| v.as_str()) {
+                let t = id.trim();
+                if !t.is_empty() {
+                    return t.to_string();
+                }
+            }
+            if let Some(href) = item.get("href").and_then(|v| v.as_str()) {
+                let t = href.trim();
+                if !t.is_empty() {
+                    return t.to_string();
+                }
+            }
+        }
+    }
+    String::new()
+}
+
+/// Extract the accepted object id from an Accept activity.
+///
+/// Supports:
+/// - `object`: string activity/object id
+/// - `object`: nested `{ "id", "type", ... }` (Follow / ChannelOpen / …)
+/// - `object`: AS2 Link `{ "href": "…" }`
+/// - `object`: array of the above (first non-empty id)
+///
+/// Does not walk arbitrary nesting beyond one object / array level.
+pub fn extract_accept_object_id(activity: &serde_json::Value) -> String {
+    extract_iri_or_object_id(&activity["object"])
+}
+
+/// Nested object type for Accept routing (Channel vs Follow).
+/// Empty when object is a string id or Link-only. Arrays: first typed element.
+fn extract_accept_object_type(activity: &serde_json::Value) -> String {
+    let object = &activity["object"];
+    if let Some(t) = object.get("type").and_then(|v| v.as_str()) {
+        return t.to_string();
+    }
+    if let Some(arr) = object.as_array() {
+        for item in arr {
+            if let Some(t) = item.get("type").and_then(|v| v.as_str()) {
+                if !t.is_empty() {
+                    return t.to_string();
+                }
+            }
+        }
+    }
+    String::new()
+}
+
 /// 处理 Accept（我们发出的 Follow 被接受）
 ///
 /// 授权绑定：状态变更仅在 Accept 的签名 actor 正是该 Channel/Follow 的
@@ -493,19 +649,15 @@ async fn handle_accept(
     activity: &serde_json::Value,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
     // 签名校验保证了 activity.actor 就是本次请求的签名者
-    let accept_actor = activity["actor"].as_str().unwrap_or("");
-    // Accept 的 object 可能是 Follow 或 ChannelOpen
-    let object = &activity["object"];
-    let inner_type = object.get("type").and_then(|v| v.as_str()).unwrap_or("");
-    let follow_id = object
-        .get("id")
-        .and_then(|v| v.as_str())
-        .or_else(|| activity["object"].as_str())
-        .unwrap_or("");
+    // (string IRI or expanded object `{id}`; see extract_activity_actor_id)
+    let accept_actor = extract_activity_actor_id(activity);
+    // Accept.object: string id OR nested Follow/ChannelOpen {id,type,…}
+    let inner_type = extract_accept_object_type(activity);
+    let follow_id = extract_accept_object_id(activity);
 
     if inner_type == "myriad:ChannelOpen" || inner_type == "myriad:Channel" {
         // 远程方接受了我们的 Channel 开启请求
-        let channel_id = follow_id; // object.id 就是 channel_id
+        let channel_id = follow_id.as_str(); // object.id 就是 channel_id
         if !channel_id.is_empty() {
             // 先取 pending channel 的远程对端 URL，再在 Rust 侧用 same_actor_url 授权
             let pending = db
@@ -523,7 +675,8 @@ async fn handle_accept(
             let authorized = pending
                 .as_ref()
                 .and_then(|row| row.try_get::<String>("", "actor_url").ok())
-                .map(|remote_url| same_actor_url(accept_actor, &remote_url))
+                // Align with Follow Accept: host+username case / path form drift.
+                .map(|remote_url| same_actor_or_user(&accept_actor, &remote_url))
                 .unwrap_or(false);
 
             if authorized {
@@ -573,7 +726,7 @@ async fn handle_accept(
     } else {
         // Standard Follow Accept — match Follow object.id, then fallback to a single
         // pending outgoing toward Accept.actor (same_actor_url). Idempotent notify.
-        handle_follow_accept(db, local_user_id, accept_actor, follow_id, activity).await?;
+        handle_follow_accept(db, local_user_id, &accept_actor, &follow_id, activity).await?;
     }
 
     Ok(StatusCode::ACCEPTED)
@@ -616,13 +769,52 @@ fn split_actor_host_user(normalized: &str) -> (String, String) {
     (host, user)
 }
 
+/// Same host + username-compatible for Accept authorization under path drift.
+///
+/// Used when `same_actor_or_user` fails (e.g. Accept.actor is `/@bob` while the
+/// stored remote is `/users/bob`) but we must **never** let a different
+/// `/users/{name}` on the same host accept someone else's Follow.
+fn same_host_username_compatible(accept_actor: &str, remote: &str) -> bool {
+    let an = normalize_actor_url(accept_actor);
+    let rn = normalize_actor_url(remote);
+    let (ah, a_user) = split_actor_host_user(&an);
+    let (rh, r_user) = split_actor_host_user(&rn);
+    if ah.is_empty() || ah != rh {
+        return false;
+    }
+    // Both standard `/users/{name}`: require same username (case-insensitive).
+    // (Normally covered by `same_actor_or_user`; kept for defense-in-depth.)
+    if !a_user.is_empty() && !r_user.is_empty() {
+        return a_user.eq_ignore_ascii_case(&r_user);
+    }
+    // Accept uses a non-`/users/` path form (e.g. `/@bob`, `/ap/users/bob`):
+    // last path segment (strip leading `@`) must match the stored remote user.
+    if a_user.is_empty() && !r_user.is_empty() {
+        if let Ok(url) = url::Url::parse(&an) {
+            let last = url
+                .path()
+                .trim_end_matches('/')
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .trim_start_matches('@');
+            return !last.is_empty() && last.eq_ignore_ascii_case(&r_user);
+        }
+    }
+    false
+}
+
 /// Resolve which outgoing Follow an Accept refers to.
 ///
-/// 1. Prefer exact `activity_id` match (trim trailing slash) where Accept.actor
-///    is the remote peer (`same_actor_url` / host+username).
-/// 2. Unique `activity_id` match even if actor URL drifted (still requires the
-///    id we generated — high entropy).
-/// 3. Fallback: exactly one pending outgoing follow to Accept.actor.
+/// Matching order (safe, no silent multi-pick):
+/// 1. Normalized `activity_id` + Accept.actor is remote peer (`same_actor_or_user`)
+/// 2. Unique normalized `activity_id` + **same host + username-compatible**
+///    (path/alias drift only — never cross-user on the same host, never
+///    cross-host username-only)
+/// 3. Exactly one **pending** outgoing to Accept.actor via `same_actor_or_user`
+///
+/// Already-`accepted` rows only yield idempotent success when matched by id
+/// (or unique id+host+user). Ambiguous multi-pending → no match.
 ///
 /// Returns `(activity_id, remote_actor_url, already_accepted)`.
 pub fn resolve_follow_accept_target(
@@ -630,26 +822,22 @@ pub fn resolve_follow_accept_target(
     accept_actor: &str,
     candidates: &[(String, String, String)], // activity_id, remote_actor_url, status
 ) -> Option<(String, String, bool)> {
-    let follow_norm = follow_id.trim().trim_end_matches('/');
+    let follow_norm = normalize_activity_id(follow_id);
     if !follow_norm.is_empty() {
-        // Prefer actor-authorized id match
+        // Prefer actor-authorized id match (host+user or same_actor_url)
         for (aid, remote, status) in candidates {
-            if aid.trim().trim_end_matches('/') == follow_norm
-                && same_actor_or_user(accept_actor, remote)
-            {
+            if same_activity_id(aid, &follow_norm) && same_actor_or_user(accept_actor, remote) {
                 return Some((aid.clone(), remote.clone(), status == "accepted"));
             }
         }
-        // Unique id match with same host (actor path/alias drift only)
+        // Unique id match with same host **and** username-compatible path drift.
+        // Host-only was insufficient: multi-user instances share a host, and
+        // activity ids can leak; a different /users/{name} must not Accept.
         let id_hits: Vec<_> = candidates
             .iter()
             .filter(|(aid, remote, _)| {
-                aid.trim().trim_end_matches('/') == follow_norm
-                    && {
-                        let (ah, _) = split_actor_host_user(&normalize_actor_url(accept_actor));
-                        let (rh, _) = split_actor_host_user(&normalize_actor_url(remote));
-                        !ah.is_empty() && ah == rh
-                    }
+                same_activity_id(aid, &follow_norm)
+                    && same_host_username_compatible(accept_actor, remote)
             })
             .collect();
         if id_hits.len() == 1 {
@@ -659,12 +847,22 @@ pub fn resolve_follow_accept_target(
                 activity_id = %aid,
                 accept_actor = accept_actor,
                 remote = %remote,
-                "Follow Accept: unique activity_id + host match (actor path drift)"
+                "Follow Accept: unique activity_id + host+user match (actor path drift)"
             );
             return Some((aid.clone(), remote.clone(), status == "accepted"));
         }
+        if id_hits.len() > 1 {
+            tracing::warn!(
+                follow_id = follow_id,
+                accept_actor = accept_actor,
+                hits = id_hits.len(),
+                "Follow Accept ambiguous: multiple activity_id matches on same host+user"
+            );
+        }
     }
 
+    // Fallback: only pending + same_actor_or_user (same host+user). Never
+    // username-only across hosts (same_actor_or_user enforces host).
     let pending_to_actor: Vec<_> = candidates
         .iter()
         .filter(|(_, remote, status)| {
@@ -708,7 +906,11 @@ async fn handle_follow_accept(
         return Ok(());
     }
 
-    // Load outgoing follows that could match: pending, or exact activity_id.
+    // Candidate window (not full-table scan):
+    // - all pending outgoing for this user (usually few)
+    // - accepted rows matching activity_id variants (idempotent re-Accept)
+    // - recent accepted (last 40) so normalized id compare can still hit after
+    //   query/host-case drift without scanning all history
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -716,9 +918,27 @@ async fn handle_follow_accept(
                FROM federation_follows f
                JOIN federation_remote_actors ra ON f.remote_actor_id = ra.id
                WHERE f.user_id = $1 AND f.direction = 'outgoing'
-                 AND (f.status = 'pending'
-                      OR ($2 <> '' AND f.activity_id = $2)
-                      OR ($2 <> '' AND rtrim(f.activity_id, '/') = rtrim($2::text, '/')))"#,
+                 AND (
+                   f.status = 'pending'
+                   OR (
+                     f.status = 'accepted'
+                     AND (
+                       ($2 <> '' AND f.activity_id = $2)
+                       OR ($2 <> '' AND rtrim(f.activity_id, '/') = rtrim($2::text, '/'))
+                       OR ($2 <> '' AND lower(f.activity_id) = lower($2))
+                       OR ($2 <> '' AND rtrim(split_part(split_part(f.activity_id, '?', 1), '#', 1), '/')
+                           = rtrim(split_part(split_part($2::text, '?', 1), '#', 1), '/'))
+                       OR f.id IN (
+                         SELECT f2.id FROM federation_follows f2
+                         WHERE f2.user_id = $1 AND f2.direction = 'outgoing'
+                           AND f2.status = 'accepted'
+                         ORDER BY COALESCE(f2.accepted_at, f2.created_at) DESC NULLS LAST
+                         LIMIT 40
+                       )
+                     )
+                   )
+                 )
+               LIMIT 120"#,
             [local_user_id.into(), follow_id.into()],
         ))
         .await
@@ -1165,7 +1385,7 @@ async fn enqueue_delivery(
     // 序列化完整 Activity（含 @context/type/id/actor/object），供 delivery.rs 直接发送
     let activity_json = serde_json::to_value(activity).unwrap_or_default();
     let domain = extract_domain(target_inbox).unwrap_or_default();
-    let base_url = get_base_url();
+    let base_url = get_base_url().await;
 
     // 存 Activity 记录
     let act_row = db
@@ -1263,10 +1483,11 @@ pub async fn deliver_activity_locally(
         .map_err(|(_, j)| j.0.get("error").and_then(|v| v.as_str()).unwrap_or("user not found").to_string())?;
 
     let activity_type = activity["type"].as_str().unwrap_or("");
-    let actor_url_str = activity["actor"].as_str().unwrap_or("");
-    if activity_type.is_empty() || actor_url_str.is_empty() {
+    let actor_url_owned = extract_activity_actor_id(activity);
+    if activity_type.is_empty() || actor_url_owned.is_empty() {
         return Err("Missing actor or type in activity".into());
     }
+    let actor_url_str = actor_url_owned.as_str();
 
     let result = match activity_type {
         "Follow" => handle_follow(db, user_id, actor_url_str, activity).await,
@@ -1293,14 +1514,10 @@ pub async fn deliver_activity_locally(
 
 // ==================== 辅助函数 ====================
 
-fn get_base_url() -> String {
-    let config = crate::GLOBAL_CONFIG.blocking_read();
-    let base_url = config
-        .base_url
-        .clone()
-        .or_else(|| config.frontend_url.clone())
-        .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port));
-    base_url.trim_end_matches('/').to_string()
+/// Prefer shared async helper — never `blocking_read` inside the tokio runtime
+/// (panics with "Cannot block the current thread from within a runtime").
+async fn get_base_url() -> String {
+    crate::federation::types::get_base_url().await
 }
 
 async fn get_db() -> Result<DatabaseConnection, String> {
@@ -1618,8 +1835,9 @@ mod tests {
     }
 
     #[test]
-    fn accept_unique_id_same_host_path_drift() {
-        // Same host, different path form still matches via host+id uniqueness.
+    fn accept_rejects_same_host_different_user_even_with_id() {
+        // Multi-user instances share a host. activity_id is not a capability:
+        // Carol must not Accept Alice→Bob by citing Bob's Follow id.
         let candidates = vec![(
             "https://a.example/activities/1".into(),
             "https://b.example/users/bob".into(),
@@ -1627,11 +1845,299 @@ mod tests {
         )];
         let got = resolve_follow_accept_target(
             "https://a.example/activities/1",
-            "https://b.example/users/bob.extra", // different user path → host match only if /users/x
+            "https://b.example/users/carol",
             &candidates,
         );
-        // bob.extra is not under /users/ only as single segment — actually path is /users/bob.extra
-        // which is a different username; same_actor_or_user fails; host matches so unique id works.
+        assert!(got.is_none());
+        // Substring username tricks (/users/bob.extra) must also fail.
+        let got2 = resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/users/bob.extra",
+            &candidates,
+        );
+        assert!(got2.is_none());
+    }
+
+    #[test]
+    fn accept_unique_id_same_host_path_drift_alias() {
+        // Same host+user under non-standard Accept.actor path form.
+        let candidates = vec![(
+            "https://a.example/activities/1".into(),
+            "https://b.example/users/bob".into(),
+            "pending".into(),
+        )];
+        let got = resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/@bob",
+            &candidates,
+        );
+        assert!(got.is_some());
+    }
+
+    #[test]
+    fn accept_matches_nested_follow_object_id() {
+        let activity = serde_json::json!({
+            "type": "Accept",
+            "actor": "https://b.example/users/bob",
+            "object": {
+                "type": "Follow",
+                "id": "https://a.example/activities/1",
+                "actor": "https://a.example/users/alice",
+                "object": "https://b.example/users/bob"
+            }
+        });
+        assert_eq!(
+            extract_accept_object_id(&activity),
+            "https://a.example/activities/1"
+        );
+        assert_eq!(extract_accept_object_type(&activity), "Follow");
+        let candidates = vec![(
+            "https://a.example/activities/1".into(),
+            "https://b.example/users/bob".into(),
+            "pending".into(),
+        )];
+        let follow_id = extract_accept_object_id(&activity);
+        let got = resolve_follow_accept_target(
+            &follow_id,
+            activity["actor"].as_str().unwrap(),
+            &candidates,
+        );
+        assert!(got.is_some());
+    }
+
+    #[test]
+    fn accept_matches_string_object_with_query_and_fragment() {
+        let candidates = vec![(
+            "https://a.example/activities/1".into(),
+            "https://b.example/users/bob".into(),
+            "pending".into(),
+        )];
+        let got = resolve_follow_accept_target(
+            "https://A.example/activities/1/?utm=1#section",
+            "https://b.example/users/bob",
+            &candidates,
+        );
+        assert!(got.is_some());
+    }
+
+    #[test]
+    fn accept_idempotent_already_accepted_with_query_drift() {
+        let candidates = vec![(
+            "https://a.example/activities/1".into(),
+            "https://b.example/users/bob".into(),
+            "accepted".into(),
+        )];
+        let got = resolve_follow_accept_target(
+            "https://a.example/activities/1?retry=1",
+            "https://b.example/users/bob",
+            &candidates,
+        );
+        assert_eq!(got.map(|(_, _, already)| already), Some(true));
+    }
+
+    #[test]
+    fn accept_ambiguous_id_hits_on_same_host_no_silent_pick() {
+        let candidates = vec![
+            (
+                "https://a.example/activities/1".into(),
+                "https://b.example/users/bob".into(),
+                "pending".into(),
+            ),
+            (
+                "https://a.example/activities/1/?x=1".into(), // normalizes to same id
+                "https://b.example/users/bob".into(), // same user, duplicate id rows
+                "pending".into(),
+            ),
+        ];
+        // Accept.actor is neither authorized nor username-compatible uniquely
+        // across ambiguous id rows → must not silent-pick.
+        let got = resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/users/other",
+            &candidates,
+        );
+        assert!(got.is_none());
+        // Same user but two candidate rows with same normalized id → ambiguous.
+        let got2 = resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://b.example/users/bob",
+            &candidates,
+        );
+        // Step 1 iterates and returns the first actor-auth hit (non-ambiguous by design).
+        assert!(got2.is_some());
+    }
+
+    #[test]
+    fn accept_rejects_evil_host_same_username() {
+        // Cross-host username-only must never match.
+        let candidates = vec![(
+            "https://a.example/activities/1".into(),
+            "https://b.example/users/bob".into(),
+            "pending".into(),
+        )];
+        let got = resolve_follow_accept_target(
+            "https://a.example/activities/1",
+            "https://evil.example/users/bob",
+            &candidates,
+        );
+        assert!(got.is_none());
+        // Fallback with wrong host id also fails
+        let got2 = resolve_follow_accept_target(
+            "https://unknown/activities/z",
+            "https://evil.example/users/bob",
+            &candidates,
+        );
+        assert!(got2.is_none());
+    }
+
+    #[test]
+    fn extract_accept_object_id_from_string() {
+        let activity = serde_json::json!({
+            "type": "Accept",
+            "actor": "https://b.example/users/bob",
+            "object": "https://a.example/activities/9"
+        });
+        assert_eq!(
+            extract_accept_object_id(&activity),
+            "https://a.example/activities/9"
+        );
+        assert_eq!(extract_accept_object_type(&activity), "");
+    }
+
+    #[test]
+    fn extract_accept_object_id_from_array_and_link() {
+        let arr = serde_json::json!({
+            "type": "Accept",
+            "actor": "https://b.example/users/bob",
+            "object": [
+                {"type": "Follow", "id": "https://a.example/activities/arr-1"}
+            ]
+        });
+        assert_eq!(
+            extract_accept_object_id(&arr),
+            "https://a.example/activities/arr-1"
+        );
+        assert_eq!(extract_accept_object_type(&arr), "Follow");
+
+        let link = serde_json::json!({
+            "type": "Accept",
+            "actor": "https://b.example/users/bob",
+            "object": {"type": "Link", "href": "https://a.example/activities/link-1"}
+        });
+        assert_eq!(
+            extract_accept_object_id(&link),
+            "https://a.example/activities/link-1"
+        );
+    }
+
+    #[test]
+    fn extract_activity_actor_id_string_and_expanded() {
+        let plain = serde_json::json!({
+            "actor": "https://b.example/users/bob"
+        });
+        assert_eq!(
+            extract_activity_actor_id(&plain),
+            "https://b.example/users/bob"
+        );
+        let expanded = serde_json::json!({
+            "actor": {
+                "type": "Person",
+                "id": "https://b.example/users/bob",
+                "preferredUsername": "bob"
+            }
+        });
+        assert_eq!(
+            extract_activity_actor_id(&expanded),
+            "https://b.example/users/bob"
+        );
+        let empty = serde_json::json!({ "actor": {} });
+        assert!(extract_activity_actor_id(&empty).is_empty());
+    }
+
+    #[test]
+    fn extract_activity_actor_id_link_href_and_string_array() {
+        let link = serde_json::json!({
+            "actor": {"type": "Link", "href": "https://b.example/users/bob"}
+        });
+        assert_eq!(
+            extract_activity_actor_id(&link),
+            "https://b.example/users/bob"
+        );
+        let arr = serde_json::json!({
+            "actor": ["", "  https://b.example/users/bob  "]
+        });
+        assert_eq!(
+            extract_activity_actor_id(&arr),
+            "https://b.example/users/bob"
+        );
+        let arr_obj = serde_json::json!({
+            "actor": [
+                {"type": "Person"},
+                {"type": "Person", "id": "https://b.example/users/carol"}
+            ]
+        });
+        assert_eq!(
+            extract_activity_actor_id(&arr_obj),
+            "https://b.example/users/carol"
+        );
+    }
+
+    #[test]
+    fn extract_accept_object_skips_empty_array_entries() {
+        let activity = serde_json::json!({
+            "type": "Accept",
+            "actor": "https://b.example/users/bob",
+            "object": ["", "   ", "https://a.example/activities/keep"]
+        });
+        assert_eq!(
+            extract_accept_object_id(&activity),
+            "https://a.example/activities/keep"
+        );
+    }
+
+    #[test]
+    fn extract_accept_object_type_from_array_first_typed() {
+        let activity = serde_json::json!({
+            "type": "Accept",
+            "actor": "https://b.example/users/bob",
+            "object": [
+                {"id": "https://a.example/activities/x"},
+                {"type": "Follow", "id": "https://a.example/activities/y"}
+            ]
+        });
+        assert_eq!(extract_accept_object_type(&activity), "Follow");
+        assert_eq!(
+            extract_accept_object_id(&activity),
+            "https://a.example/activities/x"
+        );
+        let link_only = serde_json::json!({
+            "object": {"type": "Link", "href": "https://a.example/activities/z"}
+        });
+        // Link has a type but Accept routing treats pure Link object type as reported.
+        assert_eq!(extract_accept_object_type(&link_only), "Link");
+    }
+
+    #[test]
+    fn accept_matches_with_expanded_actor_object() {
+        let candidates = vec![(
+            "https://a.example/activities/1".into(),
+            "https://b.example/users/bob".into(),
+            "pending".into(),
+        )];
+        let activity = serde_json::json!({
+            "type": "Accept",
+            "actor": {
+                "type": "Person",
+                "id": "https://b.example/users/bob"
+            },
+            "object": {
+                "type": "Follow",
+                "id": "https://a.example/activities/1"
+            }
+        });
+        let actor = extract_activity_actor_id(&activity);
+        let follow_id = extract_accept_object_id(&activity);
+        let got = resolve_follow_accept_target(&follow_id, &actor, &candidates);
         assert!(got.is_some());
     }
 }

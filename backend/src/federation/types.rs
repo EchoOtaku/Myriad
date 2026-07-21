@@ -542,6 +542,38 @@ pub fn same_actor_url(left: &str, right: &str) -> bool {
     normalize_actor_url(left) == normalize_actor_url(right)
 }
 
+/// Normalize an Activity / object id for Follow Accept matching.
+///
+/// - trim whitespace
+/// - lowercase host
+/// - strip trailing slash on path
+/// - drop query string and fragment
+///
+/// Used so `https://A.example/activities/1/?x=1#frag` matches stored
+/// `https://a.example/activities/1`.
+pub fn normalize_activity_id(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if let Ok(url) = url::Url::parse(trimmed) {
+        let host = url.host_str().unwrap_or("").to_ascii_lowercase();
+        let path = url.path().trim_end_matches('/');
+        let port = url.port().map(|p| format!(":{}", p)).unwrap_or_default();
+        // Intentionally omit query + fragment for id equality.
+        return format!("{}://{}{}{}", url.scheme(), host, port, path);
+    }
+    // Non-URL ids: strip trailing slash only.
+    trimmed.trim_end_matches('/').to_string()
+}
+
+/// Compare activity ids after [`normalize_activity_id`].
+pub fn same_activity_id(left: &str, right: &str) -> bool {
+    let l = normalize_activity_id(left);
+    let r = normalize_activity_id(right);
+    !l.is_empty() && l == r
+}
+
 /// Normalize an HTTP Signature `keyId` URL: host case, trailing slash on path,
 /// **preserve fragment** (`#main-key`). Actor URL normalization drops fragments.
 pub fn normalize_key_id(raw: &str) -> String {
@@ -633,6 +665,10 @@ pub fn db_err(e: sea_orm::DbErr) -> (axum::http::StatusCode, axum::Json<serde_js
 /// SSRF 防护：检查 URL 是否指向内网/保留地址
 ///
 /// 阻止联邦模块请求 127.x / 10.x / 172.16-31.x / 192.168.x / [::1] / 169.254.x 等
+///
+/// When `MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND=1`, loopback/private targets are
+/// allowed after scheme validation so local dual-instance federation labs work.
+/// Production must leave that env unset.
 pub fn is_internal_url(url_str: &str) -> bool {
     let parsed = match url::Url::parse(url_str) {
         Ok(u) => u,
@@ -648,6 +684,11 @@ pub fn is_internal_url(url_str: &str) -> bool {
         Some(h) => h,
         None => return true,
     };
+
+    // Local dual-instance lab: after http(s) + host present, do not treat private as blocked.
+    if crate::services::outbound_security::federation_lab_private_outbound_enabled() {
+        return false;
+    }
 
     // 检查 IP 地址
     if let Ok(ip) = host.parse::<std::net::IpAddr>() {
@@ -692,6 +733,45 @@ pub const AP_PUBLIC: &str = "https://www.w3.org/ns/activitystreams#Public";
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn is_internal_url_lab_flag_toggles_private_hosts() {
+        // Serialize env mutation against other lab-flag tests in this crate.
+        let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
+        let prev = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
+        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        assert!(is_internal_url("http://127.0.0.1:18080/users/a"));
+        assert!(is_internal_url("http://localhost:18081/inbox"));
+        assert!(is_internal_url("http://10.0.0.5/inbox"));
+        assert!(!is_internal_url("https://example.com/users/a"));
+
+        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        assert!(!is_internal_url("http://127.0.0.1:18081/users/bob/inbox"));
+        // Still reject non-http
+        assert!(is_internal_url("ftp://127.0.0.1/x"));
+        assert!(is_internal_url("not-a-url"));
+        match prev {
+            Some(v) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", v),
+            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+        }
+    }
+
+    #[test]
+    fn normalize_activity_id_strips_query_fragment_slash_and_host_case() {
+        assert_eq!(
+            normalize_activity_id("https://A.Example/activities/1/?x=1#frag"),
+            "https://a.example/activities/1"
+        );
+        assert!(same_activity_id(
+            "https://a.example/activities/1",
+            "https://A.example/activities/1/?q=1"
+        ));
+        assert!(!same_activity_id(
+            "https://a.example/activities/1",
+            "https://evil.example/activities/1"
+        ));
+        assert_eq!(normalize_activity_id("  "), "");
+    }
 
     #[test]
     fn normalize_actor_url_host_case_and_trailing_slash() {
