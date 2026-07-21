@@ -98,6 +98,52 @@ describe('getWatchProgress anime/Bangumi', () => {
     assert.equal(p!.percent, 100)
     assert.equal(p!.status, 'done')
   })
+
+  it('fills empty ep_status to total when Bangumi marked done', () => {
+    const p = getWatchProgress('anime', {
+      ep_status: 0,
+      type: 2,
+      subject: { eps: 24 },
+    })
+    assert.ok(p)
+    assert.deepEqual(p!.primary, { current: 24, total: 24 })
+    assert.equal(p!.percent, 100)
+    assert.equal(p!.status, 'done')
+  })
+
+  it('fills missing progress to total when Bangumi marked done', () => {
+    const p = getWatchProgress('anime', {
+      type: 2,
+      subject: { eps: 13 },
+    })
+    assert.ok(p)
+    assert.deepEqual(p!.primary, { current: 13, total: 13 })
+    assert.equal(p!.percent, 100)
+  })
+
+  it('fills zero watched to total when MAL completed', () => {
+    const p = getWatchProgress('anime', {
+      progress: '0/12',
+      status: 'completed',
+      node: { num_episodes: 12 },
+    })
+    assert.ok(p)
+    assert.deepEqual(p!.primary, { current: 12, total: 12 })
+    assert.equal(p!.percent, 100)
+    assert.equal(p!.status, 'done')
+  })
+
+  it('fills partial logged progress to total when completed', () => {
+    // Users often mark done without bumping ep_status to the last episode
+    const p = getWatchProgress('anime', {
+      ep_status: 3,
+      type: 2,
+      subject: { eps: 12 },
+    })
+    assert.ok(p)
+    assert.deepEqual(p!.primary, { current: 12, total: 12 })
+    assert.equal(p!.percent, 100)
+  })
 })
 
 describe('getWatchProgress book', () => {
@@ -135,6 +181,34 @@ describe('getWatchProgress book', () => {
       getWatchProgress('book', { ep_status: 0, vol_status: 0 }),
       null,
     )
+  })
+
+  it('fills empty chapter progress when book marked done', () => {
+    const p = getWatchProgress('book', {
+      ep_status: 0,
+      vol_status: 0,
+      type: 2,
+      subject: { eps: 40, volumes: 4 },
+    })
+    assert.ok(p)
+    assert.deepEqual(p!.chapters, { current: 40, total: 40 })
+    assert.deepEqual(p!.volumes, { current: 4, total: 4 })
+    assert.equal(p!.percent, 100)
+    assert.equal(p!.status, 'done')
+  })
+
+  it('fills zero chapters when MAL manga completed', () => {
+    const p = getWatchProgress('book', {
+      status: 'completed',
+      list_status: { num_chapters_read: 0, num_volumes_read: 0 },
+      node: { num_chapters: 100, num_volumes: 10 },
+    })
+    // list_status is nested; ep_status/vol may be absent — use totals only
+    // After fill: still need current fields. Without ep_status, chapters from null.
+    // completed + totals via fillCompletedPart on missing parts:
+    assert.ok(p)
+    assert.deepEqual(p!.chapters, { current: 100, total: 100 })
+    assert.deepEqual(p!.volumes, { current: 10, total: 10 })
   })
 
   it('ignores game/music', () => {

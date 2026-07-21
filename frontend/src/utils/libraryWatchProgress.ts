@@ -161,6 +161,35 @@ function percentOf(p: ProgressPart): number | null {
 }
 
 /**
+ * Bangumi/MAL often leave progress at 0 when the user marks the entry as
+ * completed ("看过" / completed). If we know the total, treat done as full.
+ */
+function fillCompletedPart(
+  p: ProgressPart | null | undefined,
+  status: CollectionStatusKey | null,
+  totalHint?: number | null,
+): ProgressPart | null {
+  if (status !== 'done') {
+    return p ?? null
+  }
+
+  const total =
+    (p?.total != null && p.total > 0 ? p.total : null) ??
+    (totalHint != null && totalHint > 0 ? totalHint : null)
+
+  if (total != null) {
+    // Prefer known total as both current and total when marked done.
+    // If the user already logged a higher current (edge), keep max.
+    const current = Math.max(p?.current ?? 0, total)
+    return part(current, total)
+  }
+
+  // No total: keep a positive current if present; still nothing useful if 0.
+  if (p && hasMeaningfulPart(p)) return p
+  return null
+}
+
+/**
  * Extract watch/read progress from a library item metadata bag.
  * Returns null when there is nothing useful to display.
  */
@@ -180,6 +209,7 @@ export function getWatchProgress(
   if (isAnimeLike) {
     // Prefer flattened "n/m" (MAL anime); fall back to Bangumi ep_status + subject.eps
     let episodes: ProgressPart | null = parseProgressString(meta.progress)
+    const epTotal = episodeTotal(meta)
 
     if (!episodes) {
       const watched =
@@ -187,13 +217,15 @@ export function getWatchProgress(
         toNonNegInt(ls?.num_episodes_watched) ??
         toNonNegInt(meta.num_episodes_watched)
       if (watched != null) {
-        episodes = part(watched, episodeTotal(meta))
+        episodes = part(watched, epTotal)
       }
-    } else if (episodes.total == null) {
+    } else if (episodes.total == null && epTotal != null) {
       // Enrich total from subject/node when progress was "5" only
-      const total = episodeTotal(meta)
-      if (total != null) episodes = part(episodes.current, total)
+      episodes = part(episodes.current, epTotal)
     }
+
+    // Completed with empty/zero progress → show full total (not an empty bar)
+    episodes = fillCompletedPart(episodes, status, epTotal)
 
     if (!episodes || !hasMeaningfulPart(episodes)) return null
 
@@ -206,6 +238,9 @@ export function getWatchProgress(
   }
 
   if (isBook) {
+    const chTotal = chapterTotal(meta)
+    const volTotal = volumeTotal(meta)
+
     const chCurrent =
       toNonNegInt(meta.ep_status) ??
       toNonNegInt(ls?.num_chapters_read) ??
@@ -218,20 +253,27 @@ export function getWatchProgress(
     // MAL may only expose progress string for manga (chapters[/volumes] legacy)
     const fromProgress = parseProgressString(meta.progress)
 
-    const chapters: ProgressPart | undefined =
+    let chapters: ProgressPart | null =
       chCurrent != null
-        ? part(chCurrent, chapterTotal(meta))
+        ? part(chCurrent, chTotal)
         : fromProgress
-          ? part(fromProgress.current, fromProgress.total ?? chapterTotal(meta))
-          : undefined
+          ? part(fromProgress.current, fromProgress.total ?? chTotal)
+          : null
 
-    const volumes: ProgressPart | undefined =
-      volCurrent != null
-        ? part(volCurrent, volumeTotal(meta))
-        : undefined
+    let volumes: ProgressPart | null =
+      volCurrent != null ? part(volCurrent, volTotal) : null
 
-    const meaningfulCh = hasMeaningfulPart(chapters)
-    const meaningfulVol = hasMeaningfulPart(volumes)
+    chapters = fillCompletedPart(chapters, status, chTotal)
+    volumes = fillCompletedPart(volumes, status, volTotal)
+
+    // Done book with only one side of totals known — still show that side full
+    if (status === 'done' && !chapters && !volumes) {
+      if (chTotal != null) chapters = part(chTotal, chTotal)
+      if (volTotal != null) volumes = part(volTotal, volTotal)
+    }
+
+    const meaningfulCh = hasMeaningfulPart(chapters ?? undefined)
+    const meaningfulVol = hasMeaningfulPart(volumes ?? undefined)
 
     if (!meaningfulCh && !meaningfulVol) return null
 
@@ -244,8 +286,8 @@ export function getWatchProgress(
 
     return {
       primary,
-      chapters: meaningfulCh ? chapters : undefined,
-      volumes: meaningfulVol ? volumes : undefined,
+      chapters: meaningfulCh ? chapters ?? undefined : undefined,
+      volumes: meaningfulVol ? volumes ?? undefined : undefined,
       status,
       percent: percentOf(primary),
     }
