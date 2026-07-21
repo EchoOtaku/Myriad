@@ -1551,14 +1551,20 @@ export default function WidgetGrid({
               const libraryLabel =
                 (t.widgets as any)[getWidgetTranslationKey(widgetType.id)] ||
                 widgetType.name
+              const isLibrary1x1 = widgetType.defaultSize === '1x1'
 
               return (
                 <motion.div
                   key={widgetType.id}
-                  className="relative group cursor-move shrink-0 flex flex-col items-center"
-                  style={{
-                    width: wrapperWidth,
-                  }}
+                  className={`relative group cursor-move shrink-0${isLibrary1x1 ? ' flex flex-col items-center' : ''}`}
+                  style={
+                    isLibrary1x1
+                      ? { width: wrapperWidth }
+                      : {
+                          width: wrapperWidth,
+                          height: wrapperHeight,
+                        }
+                  }
                   draggable
                   onMouseDown={(e: React.MouseEvent) =>
                     handleNewWidgetDragStart(e, widgetType.id)
@@ -1569,43 +1575,70 @@ export default function WidgetGrid({
                   whileHover={{ scale: 1.05, zIndex: 10 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  {/* 预览框：固定缩略尺寸；名称放在框外下方，避免 1x1 内叠 tip 溢出 */}
-                  <div
-                    className="relative"
-                    style={{
-                      width: wrapperWidth,
-                      height: wrapperHeight,
-                    }}
-                  >
-                    {/* 缩放容器 */}
-                    <div
-                      className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
-                      style={{
-                        width: renderWidth,
-                        height: renderHeight,
-                        transform: `scale(${scale})`,
-                      }}
-                    >
-                      <Suspense fallback={null}>
-                        <WidgetComponent
-                          config={previewConfig}
-                          isEditMode={true}
-                          isPreview={true}
-                        />
-                      </Suspense>
-                    </div>
+                  {isLibrary1x1 ? (
+                    <>
+                      {/* 1x1：预览框固定尺寸；名称放框外下方，避免内叠 tip 溢出 */}
+                      <div
+                        className="relative"
+                        style={{
+                          width: wrapperWidth,
+                          height: wrapperHeight,
+                        }}
+                      >
+                        <div
+                          className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
+                          style={{
+                            width: renderWidth,
+                            height: renderHeight,
+                            transform: `scale(${scale})`,
+                          }}
+                        >
+                          <Suspense fallback={null}>
+                            <WidgetComponent
+                              config={previewConfig}
+                              isEditMode={true}
+                              isPreview={true}
+                            />
+                          </Suspense>
+                        </div>
+                        <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
+                      </div>
+                      <div
+                        className="mt-5 w-full px-0.5 text-center text-[10px] font-bold leading-tight text-gray-600 dark:text-gray-300 line-clamp-2 break-words pointer-events-none"
+                        title={libraryLabel}
+                      >
+                        {libraryLabel}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* 缩放容器 */}
+                      <div
+                        className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
+                        style={{
+                          width: renderWidth,
+                          height: renderHeight,
+                          transform: `scale(${scale})`,
+                        }}
+                      >
+                        <Suspense fallback={null}>
+                          <WidgetComponent
+                            config={previewConfig}
+                            isEditMode={true}
+                            isPreview={true}
+                          />
+                        </Suspense>
+                      </div>
 
-                    {/* 遮罩层 - 用于拖拽交互和高亮 */}
-                    <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
-                  </div>
+                      {/* 遮罩层 - 用于拖拽交互和高亮 */}
+                      <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
 
-                  {/* 名称：组件下方显示（原 bottom 内叠 tip 在 1x1 上会裁切/溢出） */}
-                  <div
-                    className="mt-1.5 w-full px-0.5 text-center text-[10px] font-bold leading-tight text-gray-600 dark:text-gray-300 line-clamp-2 break-words pointer-events-none"
-                    title={libraryLabel}
-                  >
-                    {libraryLabel}
-                  </div>
+                      {/* 悬浮提示（非 1x1 维持原样） */}
+                      <div className="absolute bottom-2 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-bold text-gray-600 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none bg-white/90 dark:bg-neutral-900/90 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm border border-gray-200/50 dark:border-neutral-700/50">
+                        {libraryLabel}
+                      </div>
+                    </>
+                  )}
                 </motion.div>
               )
             })}
