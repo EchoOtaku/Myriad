@@ -1306,7 +1306,8 @@ export const enUS: TranslationKeys = {
     surfaceSolid: 'Solid',
     surfaceFlat: 'Airy',
     surfaceOutline: 'Outline',
-    surfaceLiquid: 'Liquid (High load)',
+    surfaceLiquid: 'Liquid',
+    surfaceLiquidLoadWarning: 'Ultra-high load',
     // Widget glow options
     glowIdentity: 'Accent glow',
     glowPrimary: 'Theme glow',

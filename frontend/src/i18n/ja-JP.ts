@@ -1280,7 +1280,8 @@ export const jaJP: TranslationKeys = {
     surfaceSolid: 'ソリッド',
     surfaceFlat: 'ライト',
     surfaceOutline: 'アウトライン',
-    surfaceLiquid: 'リキッド（高負荷）',
+    surfaceLiquid: 'リキッド',
+    surfaceLiquidLoadWarning: '超高負荷',
     // ウィジェットグローオプション
     glowIdentity: 'アクセント光',
     glowPrimary: 'テーマ色光',

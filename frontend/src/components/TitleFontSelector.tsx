@@ -336,14 +336,19 @@ export const TitleFontSelector: React.FC<TitleFontSelectorProps> = React.memo(
             ${surface === opt.id ? 'bg-black/10 dark:bg-white/10' : 'hover:bg-black/5 dark:hover:bg-white/5'}
           `}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 min-w-0">
                 <div
-                  className={`w-6 h-6 rounded-md ${opt.className}`}
+                  className={`w-6 h-6 rounded-md shrink-0 ${opt.className}`}
                   aria-hidden
                 />
                 <span className="text-sm text-gray-600 dark:text-gray-400">
                   {t.titleStyle[opt.nameKey as keyof typeof t.titleStyle]}
                 </span>
+                {opt.id === 'liquid' && (
+                  <span className="shrink-0 rounded-full border border-red-500/40 bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-red-600 dark:border-red-400/40 dark:text-red-400">
+                    {t.titleStyle.surfaceLiquidLoadWarning}
+                  </span>
+                )}
               </div>
               {surface === opt.id && (
                 <FaCheck

@@ -1133,6 +1133,7 @@ export interface TranslationKeys {
     surfaceFlat: string
     surfaceOutline: string
     surfaceLiquid: string
+    surfaceLiquidLoadWarning: string
     // 小组件光晕选项
     glowIdentity: string
     glowPrimary: string
