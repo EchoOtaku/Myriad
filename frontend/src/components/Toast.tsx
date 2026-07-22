@@ -19,10 +19,10 @@ import './Toast.css'
 export type ToastType = 'success' | 'error' | 'warning' | 'info'
 
 const STATUS_ICON_ASSETS = {
-  success: '/icons/status/success.png',
-  error: '/icons/status/error.png',
-  warning: '/icons/status/warning.png',
-  info: '/icons/status/info.png',
+  success: '/icons/status/success.webp',
+  error: '/icons/status/error.webp',
+  warning: '/icons/status/warning.webp',
+  info: '/icons/status/info.webp',
 } satisfies Record<ToastType, string>
 
 /** Toast 配置接口 */

@@ -2,7 +2,7 @@
 // 性能优化版 - 缓存策略 + 安全过滤 + 206 响应处理
 // 当前缓存策略不缓存壁纸图片，避免跨域问题
 
-const CACHE_VERSION = 'myriad-v2.2'
+const CACHE_VERSION = 'myriad-v2.3'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`
 const IMAGE_CACHE = `${CACHE_VERSION}-images`
@@ -12,7 +12,10 @@ const STATIC_ASSETS = ['/', '/logo.webp']
 
 // 缓存配置
 const MAX_DYNAMIC_CACHE_SIZE = 50
-const MAX_IMAGE_CACHE_SIZE = 50 // 增加图片缓存上限
+// Must exceed the app's own icon set (~64 files) or the LRU eviction thrashes:
+// icons get evicted then re-downloaded on the next screen. Headroom left for
+// dynamic images (avatars, thumbnails) sharing this cache.
+const MAX_IMAGE_CACHE_SIZE = 200
 const CACHE_MAX_AGE = {
   static: 30 * 24 * 60 * 60 * 1000, // 30天
   images: 7 * 24 * 60 * 60 * 1000, // 7天

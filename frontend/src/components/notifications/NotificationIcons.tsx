@@ -1,14 +1,14 @@
 import type { NotificationSourceKey } from '../../services/notificationPreferencesApi'
 
 const NOTIFICATION_SOURCE_ICON_ASSETS = {
-  agent: '/icons/notifications/arael.png',
-  heartbeat: '/icons/notifications/heartbeat.png',
-  mcp: '/icons/notifications/mcp.png',
-  brew: '/icons/notifications/brew.png',
-  tapp: '/icons/notifications/tapp.png',
-  updater: '/icons/notifications/updater.png',
-  federation: '/icons/notifications/aro.png',
-  system: '/icons/notifications/system.png',
+  agent: '/icons/notifications/arael.webp',
+  heartbeat: '/icons/notifications/heartbeat.webp',
+  mcp: '/icons/notifications/mcp.webp',
+  brew: '/icons/notifications/brew.webp',
+  tapp: '/icons/notifications/tapp.webp',
+  updater: '/icons/notifications/updater.webp',
+  federation: '/icons/notifications/aro.webp',
+  system: '/icons/notifications/system.webp',
 } satisfies Record<NotificationSourceKey, string>
 
 export function notificationSourceIconAsset(source: NotificationSourceKey) {

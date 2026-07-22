@@ -8,22 +8,22 @@ import { dedupedFetch } from './requestDedup'
 const WEATHER_ICON_BASE = '/icons/weather'
 
 export const WEATHER_ICON_ASSETS = {
-  sunny: `${WEATHER_ICON_BASE}/sunny.png`,
-  partlyCloudy: `${WEATHER_ICON_BASE}/partly-cloudy.png`,
-  cloudy: `${WEATHER_ICON_BASE}/cloudy.png`,
-  fog: `${WEATHER_ICON_BASE}/fog.png`,
-  drizzle: `${WEATHER_ICON_BASE}/drizzle.png`,
-  rain: `${WEATHER_ICON_BASE}/rain.png`,
-  snow: `${WEATHER_ICON_BASE}/snow.png`,
-  thunderstorm: `${WEATHER_ICON_BASE}/thunderstorm.png`,
+  sunny: `${WEATHER_ICON_BASE}/sunny.webp`,
+  partlyCloudy: `${WEATHER_ICON_BASE}/partly-cloudy.webp`,
+  cloudy: `${WEATHER_ICON_BASE}/cloudy.webp`,
+  fog: `${WEATHER_ICON_BASE}/fog.webp`,
+  drizzle: `${WEATHER_ICON_BASE}/drizzle.webp`,
+  rain: `${WEATHER_ICON_BASE}/rain.webp`,
+  snow: `${WEATHER_ICON_BASE}/snow.webp`,
+  thunderstorm: `${WEATHER_ICON_BASE}/thunderstorm.webp`,
 } as const
 
 export const WEATHER_DETAIL_ICON_ASSETS = {
-  humidity: `${WEATHER_ICON_BASE}/humidity.png`,
-  wind: `${WEATHER_ICON_BASE}/wind.png`,
-  airGood: `${WEATHER_ICON_BASE}/air-good.png`,
-  airModerate: `${WEATHER_ICON_BASE}/air-moderate.png`,
-  airPoor: `${WEATHER_ICON_BASE}/air-poor.png`,
+  humidity: `${WEATHER_ICON_BASE}/humidity.webp`,
+  wind: `${WEATHER_ICON_BASE}/wind.webp`,
+  airGood: `${WEATHER_ICON_BASE}/air-good.webp`,
+  airModerate: `${WEATHER_ICON_BASE}/air-moderate.webp`,
+  airPoor: `${WEATHER_ICON_BASE}/air-poor.webp`,
 } as const
 
 export interface ForecastDay {

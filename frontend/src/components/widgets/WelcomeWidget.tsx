@@ -32,7 +32,7 @@ interface NavigationGuide {
   color: string
 }
 
-const WELCOME_ICON_ASSET = '/icons/widgets/welcome.png'
+const WELCOME_ICON_ASSET = '/icons/widgets/welcome.webp'
 
 export const WelcomeWidget = memo(
   ({ config, isEditMode, isPreview }: WidgetComponentProps) => {

@@ -50,11 +50,11 @@ import {
 import RSSHubConfigComponent from './RSSHubConfig'
 
 const BREW_TIP_ICON_ASSETS = {
-  unreadInbox: '/icons/brew/inbox.png',
-  subscriptions: '/icons/notifications/brew.png',
-  morning: '/icons/greeting/sunrise.png',
-  afternoon: '/icons/weather/partly-cloudy.png',
-  evening: '/icons/greeting/night.png',
+  unreadInbox: '/icons/brew/inbox.webp',
+  subscriptions: '/icons/notifications/brew.webp',
+  morning: '/icons/greeting/sunrise.webp',
+  afternoon: '/icons/weather/partly-cloudy.webp',
+  evening: '/icons/greeting/night.webp',
 } as const
 
 // 根据订阅源数据生成动态提示

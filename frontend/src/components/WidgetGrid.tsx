@@ -1461,7 +1461,7 @@ export default function WidgetGrid({
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
               <img
-                src="/icons/widgets/library.png"
+                src="/icons/widgets/library.webp"
                 alt=""
                 aria-hidden="true"
                 className="h-5 w-5 object-contain"

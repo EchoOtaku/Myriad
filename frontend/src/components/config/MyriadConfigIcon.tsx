@@ -23,10 +23,10 @@ interface MyriadConfigIconProps {
 
 const SHARED_CONFIG_ICON_ASSETS: Partial<Record<MyriadConfigIconKind, string>> =
   {
-    ui: '/icons/control-panel/config.png',
-    music: '/icons/dynamic/music.png',
+    ui: '/icons/control-panel/config.webp',
+    music: '/icons/dynamic/music.webp',
     // Same icon as notification center federation source
-    federation: '/icons/notifications/aro.png',
+    federation: '/icons/notifications/aro.webp',
   }
 
 /**
@@ -35,7 +35,7 @@ const SHARED_CONFIG_ICON_ASSETS: Partial<Record<MyriadConfigIconKind, string>> =
  */
 export const MyriadConfigIcon = React.memo<MyriadConfigIconProps>(
   ({ kind, className = '' }) => {
-    const src = SHARED_CONFIG_ICON_ASSETS[kind] ?? `/icons/config/${kind}.png`
+    const src = SHARED_CONFIG_ICON_ASSETS[kind] ?? `/icons/config/${kind}.webp`
 
     return (
       <img

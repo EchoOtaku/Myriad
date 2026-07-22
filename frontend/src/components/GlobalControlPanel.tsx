@@ -61,27 +61,27 @@ const MusicPlayer = lazy(() =>
 )
 
 const GREETING_ICON_ASSETS = {
-  sunrise: '/icons/greeting/sunrise.png',
+  sunrise: '/icons/greeting/sunrise.webp',
   sun: WEATHER_ICON_ASSETS.sunny,
   cloudSun: WEATHER_ICON_ASSETS.partlyCloudy,
-  sunset: '/icons/greeting/sunset.png',
-  moon: '/icons/greeting/night.png',
+  sunset: '/icons/greeting/sunset.webp',
+  moon: '/icons/greeting/night.webp',
 } as const
 
 const CONTROL_PANEL_ICON_ASSETS = {
   appearanceLight: WEATHER_ICON_ASSETS.sunny,
   appearanceDark: GREETING_ICON_ASSETS.moon,
-  animationStandard: '/icons/control-panel/animation-standard.png',
-  animationLight: '/icons/control-panel/animation-light.png',
-  language: '/icons/control-panel/language.png',
-  wallpaper: '/icons/control-panel/wallpaper.png',
-  config: '/icons/control-panel/config.png',
+  animationStandard: '/icons/control-panel/animation-standard.webp',
+  animationLight: '/icons/control-panel/animation-light.webp',
+  language: '/icons/control-panel/language.webp',
+  wallpaper: '/icons/control-panel/wallpaper.webp',
+  config: '/icons/control-panel/config.webp',
 } as const
 
 const DYNAMIC_ICON_ASSETS = {
-  quote: '/icons/dynamic/quote.png',
-  music: '/icons/dynamic/music.png',
-  musicPaused: '/icons/dynamic/music-paused.png',
+  quote: '/icons/dynamic/quote.webp',
+  music: '/icons/dynamic/music.webp',
+  musicPaused: '/icons/dynamic/music-paused.webp',
 } as const
 
 /** 外观偏好：浅色 / 深色 / 跟随系统 */

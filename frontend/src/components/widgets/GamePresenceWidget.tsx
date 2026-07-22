@@ -130,19 +130,19 @@ const GAME_META: Record<
   }
 > = {
   genshin: {
-    appIcon: '/game-logos/genshin-icon.png',
+    appIcon: '/game-logos/genshin-icon.webp',
     logoClass: 'gp-logo-genshin',
     fontClass: 'gp-font-genshin',
     artPos: 'center top',
   },
   hsr: {
-    appIcon: '/game-logos/starrail-icon.png',
+    appIcon: '/game-logos/starrail-icon.webp',
     logoClass: 'gp-logo-hsr',
     fontClass: 'gp-font-hsr',
     artPos: 'center 25%',
   },
   zzz: {
-    appIcon: '/game-logos/zzz-icon.png',
+    appIcon: '/game-logos/zzz-icon.webp',
     logoClass: 'gp-logo-zzz',
     fontClass: 'gp-font-zzz',
     artPos: 'center top',
