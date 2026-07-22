@@ -60,8 +60,6 @@ fn is_zero_u32(v: &u32) -> bool {
     *v == 0
 }
 
-
-
 /// Fan-out enqueue stats for room activities.
 #[derive(Debug, Clone, Default)]
 pub struct FanoutResult {
@@ -75,14 +73,15 @@ impl FanoutResult {
     pub fn to_enqueue_info(&self) -> DeliveryEnqueueInfo {
         let mut info = DeliveryEnqueueInfo {
             queued: self.enqueued,
-            remote_targets: self.remote_with_inbox + self.skipped_empty_inbox + self.unresolved_members,
+            remote_targets: self.remote_with_inbox
+                + self.skipped_empty_inbox
+                + self.unresolved_members,
             unresolved: self.unresolved_members + self.skipped_empty_inbox,
             warning: None,
         };
         if self.enqueued == 0 && info.remote_targets > 0 {
-            info.warning = Some(
-                "no_delivery_queued: remote members lack inbox or remote_actors row".into(),
-            );
+            info.warning =
+                Some("no_delivery_queued: remote members lack inbox or remote_actors row".into());
         } else if self.skipped_empty_inbox > 0 || self.unresolved_members > 0 {
             info.warning = Some(format!(
                 "partial_enqueue: queued={} empty_inbox={} unresolved={}",
@@ -226,12 +225,8 @@ pub async fn process_delivery_queue_detailed(
         // Move is signed as the **old** actor. Prefer activity.actor origin for
         // keyId so peers verifying against the old actor document succeed even
         // after local base_url has switched to the new domain.
-        let (sign_base, sign_username) = signing_identity_for_activity(
-            &activity_type,
-            &object_json,
-            &base_url,
-            &username,
-        );
+        let (sign_base, sign_username) =
+            signing_identity_for_activity(&activity_type, &object_json, &base_url, &username);
 
         // 获取用户密钥对 — if missing, ensure once then reload so already-queued
         // deliveries recover without waiting for GET /users/{username}.
@@ -410,19 +405,9 @@ pub async fn process_delivery_queue_detailed(
     Ok(stats)
 }
 
-async fn mark_delivery_dead(
-    user_id: i32,
-    activity_type: &str,
-    target_domain: &str,
-    error: &str,
-) {
-    crate::federation::notify::notify_delivery_failed(
-        user_id,
-        activity_type,
-        target_domain,
-        error,
-    )
-    .await;
+async fn mark_delivery_dead(user_id: i32, activity_type: &str, target_domain: &str, error: &str) {
+    crate::federation::notify::notify_delivery_failed(user_id, activity_type, target_domain, error)
+        .await;
     // Also log at error level for operator dashboards / log aggregators
     tracing::error!(
         user_id = user_id,
@@ -1259,8 +1244,7 @@ async fn load_user_keypair_ensuring(
                 error = %e,
                 "Federation keys missing for outbound delivery; ensuring once"
             );
-            match crate::federation::actor::ensure_user_federation_keys(db, user_id, username)
-                .await
+            match crate::federation::actor::ensure_user_federation_keys(db, user_id, username).await
             {
                 Ok(_) => match load_user_keypair(db, user_id).await {
                     Ok(loaded) => {
@@ -1288,7 +1272,10 @@ async fn load_user_keypair_ensuring(
                         error = %ensure_e,
                         "Failed to ensure federation keys before delivery"
                     );
-                    Err(format!("Key load failed (ensure): {}; original: {}", ensure_e, e))
+                    Err(format!(
+                        "Key load failed (ensure): {}; original: {}",
+                        ensure_e, e
+                    ))
                 }
             }
         }
@@ -1311,7 +1298,10 @@ fn is_unrecoverable_key_load_error(err: &str) -> bool {
 }
 
 /// 加载用户的密钥对 + 库内 key_id（domain-move 后的规范 keyId）
-async fn load_user_keypair(db: &DatabaseConnection, user_id: i32) -> Result<LoadedSigningKey, String> {
+async fn load_user_keypair(
+    db: &DatabaseConnection,
+    user_id: i32,
+) -> Result<LoadedSigningKey, String> {
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -1378,12 +1368,8 @@ mod tests {
             "object": "https://old.example/users/alice",
             "target": "https://new.example/users/alice",
         });
-        let (base, user) = signing_identity_for_activity(
-            "Move",
-            &act,
-            "https://new.example",
-            "alice",
-        );
+        let (base, user) =
+            signing_identity_for_activity("Move", &act, "https://new.example", "alice");
         assert_eq!(base, "https://old.example");
         assert_eq!(user, "alice");
     }
@@ -1401,7 +1387,9 @@ mod tests {
         assert!(!is_missing_federation_keys_error(
             "Key decryption failed: AES-GCM decryption failed"
         ));
-        assert!(!is_missing_federation_keys_error("DB error: connection refused"));
+        assert!(!is_missing_federation_keys_error(
+            "DB error: connection refused"
+        ));
         assert!(!is_missing_federation_keys_error(
             "Key load failed (ensure): Key generation failed"
         ));
@@ -1412,12 +1400,7 @@ mod tests {
         let stored = "https://new.example/users/alice#main-key";
         // Normal activities: stored keyId wins (post domain-move G).
         assert_eq!(
-            resolve_signing_key_id(
-                "Follow",
-                "https://old.example",
-                "alice",
-                Some(stored),
-            ),
+            resolve_signing_key_id("Follow", "https://old.example", "alice", Some(stored),),
             stored
         );
         assert_eq!(
@@ -1467,14 +1450,8 @@ mod tests {
 
     #[test]
     fn retry_status_allows_dead_and_pending_only() {
-        assert_eq!(
-            classify_retry_status("dead"),
-            RetryStatusDecision::Allow
-        );
-        assert_eq!(
-            classify_retry_status("pending"),
-            RetryStatusDecision::Allow
-        );
+        assert_eq!(classify_retry_status("dead"), RetryStatusDecision::Allow);
+        assert_eq!(classify_retry_status("pending"), RetryStatusDecision::Allow);
         assert_eq!(
             classify_retry_status("delivered"),
             RetryStatusDecision::AlreadyDelivered
@@ -1484,10 +1461,7 @@ mod tests {
             RetryStatusDecision::InProgress
         );
         // Legacy / soft statuses: allow requeue (single-id path).
-        assert_eq!(
-            classify_retry_status("failed"),
-            RetryStatusDecision::Allow
-        );
+        assert_eq!(classify_retry_status("failed"), RetryStatusDecision::Allow);
         assert_eq!(
             classify_retry_status("cancelled"),
             RetryStatusDecision::Allow
@@ -1503,9 +1477,7 @@ mod tests {
         assert!(!is_user_cancelled_delivery_error(Some(
             "PERMANENT HTTP 401: signature failed"
         )));
-        assert!(!is_user_cancelled_delivery_error(Some(
-            "suite seeded dead"
-        )));
+        assert!(!is_user_cancelled_delivery_error(Some("suite seeded dead")));
     }
 
     #[test]
@@ -1560,10 +1532,7 @@ mod tests {
     #[test]
     fn retry_status_allows_failed_and_cancelled_status_strings() {
         // Historical / alternate status spellings still requeue.
-        assert_eq!(
-            classify_retry_status("failed"),
-            RetryStatusDecision::Allow
-        );
+        assert_eq!(classify_retry_status("failed"), RetryStatusDecision::Allow);
         assert_eq!(
             classify_retry_status("cancelled"),
             RetryStatusDecision::Allow
@@ -1577,10 +1546,7 @@ mod tests {
             classify_cancel_status("unknown"),
             CancelStatusDecision::Cancel
         );
-        assert_eq!(
-            classify_cancel_status(""),
-            CancelStatusDecision::Cancel
-        );
+        assert_eq!(classify_cancel_status(""), CancelStatusDecision::Cancel);
     }
 
     #[test]
@@ -1612,12 +1578,8 @@ mod tests {
     fn move_signing_empty_actor_falls_back_to_default() {
         use serde_json::json;
         let act = json!({"type": "Move", "actor": ""});
-        let (base, user) = signing_identity_for_activity(
-            "Move",
-            &act,
-            "https://new.example",
-            "alice",
-        );
+        let (base, user) =
+            signing_identity_for_activity("Move", &act, "https://new.example", "alice");
         assert_eq!(base, "https://new.example");
         assert_eq!(user, "alice");
     }
@@ -1626,12 +1588,8 @@ mod tests {
     fn move_signing_malformed_actor_path_falls_back() {
         use serde_json::json;
         let act = json!({"type": "Move", "actor": "https://old.example/not-users/alice"});
-        let (base, user) = signing_identity_for_activity(
-            "Move",
-            &act,
-            "https://new.example",
-            "alice",
-        );
+        let (base, user) =
+            signing_identity_for_activity("Move", &act, "https://new.example", "alice");
         assert_eq!(base, "https://new.example");
         assert_eq!(user, "alice");
     }
@@ -1713,51 +1671,63 @@ mod tests {
     #[test]
     fn classify_cancel_status_unknown_and_failed() {
         // Unknown / failed / cancelled → treat as cancelable (best-effort).
-        assert_eq!(classify_cancel_status("failed"), CancelStatusDecision::Cancel);
-        assert_eq!(classify_cancel_status("cancelled"), CancelStatusDecision::Cancel);
+        assert_eq!(
+            classify_cancel_status("failed"),
+            CancelStatusDecision::Cancel
+        );
+        assert_eq!(
+            classify_cancel_status("cancelled"),
+            CancelStatusDecision::Cancel
+        );
         assert_eq!(classify_cancel_status(""), CancelStatusDecision::Cancel);
         assert_eq!(classify_cancel_status("DEAD"), CancelStatusDecision::Cancel); // case-sensitive
-        // Canonical dead stays idempotent
-        assert_eq!(classify_cancel_status("dead"), CancelStatusDecision::AlreadyDead);
+                                                                                  // Canonical dead stays idempotent
+        assert_eq!(
+            classify_cancel_status("dead"),
+            CancelStatusDecision::AlreadyDead
+        );
     }
-
 
     #[test]
     fn classify_retry_status_failed_cancelled_unknown() {
         assert_eq!(classify_retry_status("failed"), RetryStatusDecision::Allow);
-        assert_eq!(classify_retry_status("cancelled"), RetryStatusDecision::Allow);
+        assert_eq!(
+            classify_retry_status("cancelled"),
+            RetryStatusDecision::Allow
+        );
         assert_eq!(classify_retry_status("unknown"), RetryStatusDecision::Allow);
         assert_eq!(classify_retry_status(""), RetryStatusDecision::Allow);
         // Case: delivered is exact match only
-        assert_eq!(classify_retry_status("Delivered"), RetryStatusDecision::Allow);
-        assert_eq!(classify_retry_status("delivered"), RetryStatusDecision::AlreadyDelivered);
+        assert_eq!(
+            classify_retry_status("Delivered"),
+            RetryStatusDecision::Allow
+        );
+        assert_eq!(
+            classify_retry_status("delivered"),
+            RetryStatusDecision::AlreadyDelivered
+        );
     }
-
 
     #[test]
     fn move_signing_empty_or_malformed_actor_fallback() {
         let empty = json!({"type": "Move", "actor": ""});
-        let (base, user) = signing_identity_for_activity(
-            "Move", &empty, "https://new.example/", "alice",
-        );
+        let (base, user) =
+            signing_identity_for_activity("Move", &empty, "https://new.example/", "alice");
         assert_eq!(base, "https://new.example");
         assert_eq!(user, "alice");
 
         let bad = json!({"type": "Move", "actor": "https://old.example/not-users/alice"});
-        let (base2, user2) = signing_identity_for_activity(
-            "Move", &bad, "https://new.example", "alice",
-        );
+        let (base2, user2) =
+            signing_identity_for_activity("Move", &bad, "https://new.example", "alice");
         assert_eq!(base2, "https://new.example");
         assert_eq!(user2, "alice");
 
         let nested = json!({"type": "Move", "actor": "https://old.example/users/alice/inbox"});
-        let (base3, user3) = signing_identity_for_activity(
-            "Move", &nested, "https://new.example", "alice",
-        );
+        let (base3, user3) =
+            signing_identity_for_activity("Move", &nested, "https://new.example", "alice");
         assert_eq!(base3, "https://new.example");
         assert_eq!(user3, "alice");
     }
-
 
     #[test]
     fn move_signing_trims_trailing_slash_on_username() {
@@ -1765,13 +1735,11 @@ mod tests {
             "type": "Move",
             "actor": "https://old.example/users/alice/",
         });
-        let (base, user) = signing_identity_for_activity(
-            "Move", &act, "https://new.example", "bob",
-        );
+        let (base, user) =
+            signing_identity_for_activity("Move", &act, "https://new.example", "bob");
         assert_eq!(base, "https://old.example");
         assert_eq!(user, "alice");
     }
-
 
     #[test]
     fn non_move_signing_ignores_actor_field() {
@@ -1780,72 +1748,109 @@ mod tests {
             "type": "Follow",
             "actor": "https://old.example/users/alice",
         });
-        let (base, user) = signing_identity_for_activity(
-            "Follow", &act, "https://new.example/", "carol",
-        );
+        let (base, user) =
+            signing_identity_for_activity("Follow", &act, "https://new.example/", "carol");
         assert_eq!(base, "https://new.example");
         assert_eq!(user, "carol");
     }
 
-
     #[test]
     fn classify_cancel_and_retry_pending_delivering_matrix() {
         // pending: cancel + retry both allowed
-        assert_eq!(classify_cancel_status("pending"), CancelStatusDecision::Cancel);
+        assert_eq!(
+            classify_cancel_status("pending"),
+            CancelStatusDecision::Cancel
+        );
         assert_eq!(classify_retry_status("pending"), RetryStatusDecision::Allow);
         // delivering: cancel ok, retry blocked as in-progress
-        assert_eq!(classify_cancel_status("delivering"), CancelStatusDecision::Cancel);
-        assert_eq!(classify_retry_status("delivering"), RetryStatusDecision::InProgress);
+        assert_eq!(
+            classify_cancel_status("delivering"),
+            CancelStatusDecision::Cancel
+        );
+        assert_eq!(
+            classify_retry_status("delivering"),
+            RetryStatusDecision::InProgress
+        );
         // dead: cancel idempotent, retry allowed
-        assert_eq!(classify_cancel_status("dead"), CancelStatusDecision::AlreadyDead);
+        assert_eq!(
+            classify_cancel_status("dead"),
+            CancelStatusDecision::AlreadyDead
+        );
         assert_eq!(classify_retry_status("dead"), RetryStatusDecision::Allow);
         // delivered: both terminal rejects
-        assert_eq!(classify_cancel_status("delivered"), CancelStatusDecision::AlreadyDelivered);
-        assert_eq!(classify_retry_status("delivered"), RetryStatusDecision::AlreadyDelivered);
+        assert_eq!(
+            classify_cancel_status("delivered"),
+            CancelStatusDecision::AlreadyDelivered
+        );
+        assert_eq!(
+            classify_retry_status("delivered"),
+            RetryStatusDecision::AlreadyDelivered
+        );
     }
-
 
     #[test]
     fn r37_classify_cancel_status_pending_and_delivering() {
-        assert_eq!(classify_cancel_status("pending"), CancelStatusDecision::Cancel);
-        assert_eq!(classify_cancel_status("delivering"), CancelStatusDecision::Cancel);
-        assert_eq!(classify_cancel_status("dead"), CancelStatusDecision::AlreadyDead);
-        assert_eq!(classify_cancel_status("delivered"), CancelStatusDecision::AlreadyDelivered);
+        assert_eq!(
+            classify_cancel_status("pending"),
+            CancelStatusDecision::Cancel
+        );
+        assert_eq!(
+            classify_cancel_status("delivering"),
+            CancelStatusDecision::Cancel
+        );
+        assert_eq!(
+            classify_cancel_status("dead"),
+            CancelStatusDecision::AlreadyDead
+        );
+        assert_eq!(
+            classify_cancel_status("delivered"),
+            CancelStatusDecision::AlreadyDelivered
+        );
     }
-
 
     #[test]
     fn r38_classify_retry_status_dead_vs_delivering() {
         assert_eq!(classify_retry_status("dead"), RetryStatusDecision::Allow);
-        assert_eq!(classify_retry_status("delivering"), RetryStatusDecision::InProgress);
-        assert_eq!(classify_retry_status("delivered"), RetryStatusDecision::AlreadyDelivered);
+        assert_eq!(
+            classify_retry_status("delivering"),
+            RetryStatusDecision::InProgress
+        );
+        assert_eq!(
+            classify_retry_status("delivered"),
+            RetryStatusDecision::AlreadyDelivered
+        );
     }
-
 
     #[test]
     fn r39_classify_retry_status_failed_and_cancelled_allow() {
         assert_eq!(classify_retry_status("failed"), RetryStatusDecision::Allow);
-        assert_eq!(classify_retry_status("cancelled"), RetryStatusDecision::Allow);
+        assert_eq!(
+            classify_retry_status("cancelled"),
+            RetryStatusDecision::Allow
+        );
     }
-
 
     #[test]
     fn r40_is_missing_federation_keys_error_exact_substring() {
-        assert!(is_missing_federation_keys_error("No federation keys found for user"));
-        assert!(is_missing_federation_keys_error("x: No federation keys found for user"));
+        assert!(is_missing_federation_keys_error(
+            "No federation keys found for user"
+        ));
+        assert!(is_missing_federation_keys_error(
+            "x: No federation keys found for user"
+        ));
         assert!(!is_missing_federation_keys_error("No keys found for user"));
         assert!(!is_missing_federation_keys_error("Key decryption failed"));
     }
 
-
     #[test]
     fn r41_is_user_cancelled_delivery_error_prefix() {
-        assert!(is_user_cancelled_delivery_error(Some("cancelled: pending by user")));
+        assert!(is_user_cancelled_delivery_error(Some(
+            "cancelled: pending by user"
+        )));
         assert!(is_user_cancelled_delivery_error(Some("CANCELLED: x")));
         assert!(!is_user_cancelled_delivery_error(Some("not-cancelled: x")));
         assert!(!is_user_cancelled_delivery_error(None));
     }
-
 
     #[test]
     fn r42_signing_identity_move_parses_old_actor() {
@@ -1853,13 +1858,11 @@ mod tests {
             "type": "Move",
             "actor": "https://old.example/users/alice"
         });
-        let (base, user) = signing_identity_for_activity(
-            "Move", &act, "https://new.example", "alice",
-        );
+        let (base, user) =
+            signing_identity_for_activity("Move", &act, "https://new.example", "alice");
         assert_eq!(base, "https://old.example");
         assert_eq!(user, "alice");
     }
-
 
     #[test]
     fn r43_resolve_signing_key_id_move_ignores_stored() {
@@ -1874,7 +1877,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn r44_resolve_signing_key_id_follow_prefers_stored() {
         let stored = "https://new.example/users/alice#main-key";
@@ -1883,6 +1885,4 @@ mod tests {
             stored
         );
     }
-
 }
-

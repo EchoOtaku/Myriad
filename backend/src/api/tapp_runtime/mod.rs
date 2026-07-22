@@ -75,8 +75,8 @@ pub use runtime_grant::{
 
 // Federation WebSocket one-time tickets (browser WS cannot carry grant headers)
 pub use ws_ticket::{
-    consume_ws_ticket, mint_channel_ws_ticket, mint_room_ws_ticket, ConsumedWsTicket,
-    WsTicketKind, TAPP_WS_TICKET_QUERY,
+    consume_ws_ticket, mint_channel_ws_ticket, mint_room_ws_ticket, ConsumedWsTicket, WsTicketKind,
+    TAPP_WS_TICKET_QUERY,
 };
 
 // Ensure the public query-param constant is linked (used by clients / docs).

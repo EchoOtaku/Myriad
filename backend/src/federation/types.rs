@@ -47,11 +47,7 @@ pub struct Actor {
 
     /// ActivityPub alias list (e.g. previous actor IDs after domain Move).
     /// Present on the **new** actor so peers can bind old→new identity.
-    #[serde(
-        rename = "alsoKnownAs",
-        default,
-        skip_serializing_if = "Vec::is_empty"
-    )]
+    #[serde(rename = "alsoKnownAs", default, skip_serializing_if = "Vec::is_empty")]
     pub also_known_as: Vec<String>,
     /// ActivityPub Move target: set on the **old** actor document while the
     /// previous domain remains reachable during domain migration.
@@ -938,8 +934,14 @@ mod tests {
     #[test]
     fn normalize_activity_id_non_url_strips_slash_only() {
         // Opaque non-URL ids: only trailing slash stripped (no host/query logic).
-        assert_eq!(normalize_activity_id("local-activity-9/"), "local-activity-9");
-        assert_eq!(normalize_activity_id("local-activity-9"), "local-activity-9");
+        assert_eq!(
+            normalize_activity_id("local-activity-9/"),
+            "local-activity-9"
+        );
+        assert_eq!(
+            normalize_activity_id("local-activity-9"),
+            "local-activity-9"
+        );
         assert!(same_activity_id("opaque-id-xyz/", "opaque-id-xyz"));
         assert!(!same_activity_id("opaque-id-xyz", "opaque-id-other"));
     }
@@ -955,7 +957,10 @@ mod tests {
             Some("127.0.0.1".into())
         );
         // userinfo must not be treated as the authority host for trust decisions
-        assert_eq!(extract_domain("https://evil@legitimate.example/users/x"), None);
+        assert_eq!(
+            extract_domain("https://evil@legitimate.example/users/x"),
+            None
+        );
         assert_eq!(extract_domain("ftp://remote.example/users/x"), None);
         assert_eq!(extract_domain("not a url"), None);
     }
@@ -963,12 +968,30 @@ mod tests {
     #[test]
     fn actor_inbox_outbox_key_url_builders() {
         let base = "https://myriad.example";
-        assert_eq!(actor_url(base, "alice"), "https://myriad.example/users/alice");
-        assert_eq!(inbox_url(base, "alice"), "https://myriad.example/users/alice/inbox");
-        assert_eq!(outbox_url(base, "alice"), "https://myriad.example/users/alice/outbox");
-        assert_eq!(followers_url(base, "alice"), "https://myriad.example/users/alice/followers");
-        assert_eq!(following_url(base, "alice"), "https://myriad.example/users/alice/following");
-        assert_eq!(key_id(base, "alice"), "https://myriad.example/users/alice#main-key");
+        assert_eq!(
+            actor_url(base, "alice"),
+            "https://myriad.example/users/alice"
+        );
+        assert_eq!(
+            inbox_url(base, "alice"),
+            "https://myriad.example/users/alice/inbox"
+        );
+        assert_eq!(
+            outbox_url(base, "alice"),
+            "https://myriad.example/users/alice/outbox"
+        );
+        assert_eq!(
+            followers_url(base, "alice"),
+            "https://myriad.example/users/alice/followers"
+        );
+        assert_eq!(
+            following_url(base, "alice"),
+            "https://myriad.example/users/alice/following"
+        );
+        assert_eq!(
+            key_id(base, "alice"),
+            "https://myriad.example/users/alice#main-key"
+        );
         // key_id fragment must survive same_key_id with host-case drift
         assert!(same_key_id(
             &key_id("https://Myriad.Example", "alice"),
@@ -1037,28 +1060,23 @@ mod tests {
 
     #[test]
     fn same_actor_url_rejects_empty_pair() {
-
         assert!(!same_actor_url("", ""));
         assert!(!same_actor_url("   ", "https://a.example/users/x"));
         assert!(!same_actor_url("https://a.example/users/x", ""));
-
     }
 
     #[test]
     fn same_key_id_rejects_empty_and_missing_fragment() {
-
         assert!(!same_key_id("", ""));
         assert!(!same_key_id("https://a.example/users/a#main-key", ""));
         assert!(!same_key_id(
             "https://a.example/users/a#main-key",
             "https://a.example/users/a#other-key"
         ));
-
     }
 
     #[test]
     fn extract_domain_with_non_default_port() {
-
         assert_eq!(
             extract_domain("https://remote.example:8443/users/bob"),
             Some("remote.example".into())
@@ -1068,48 +1086,57 @@ mod tests {
             extract_domain("http://127.0.0.1:18081/users/a"),
             Some("127.0.0.1".into())
         );
-
     }
 
     #[test]
     fn url_builders_strip_trailing_slash_on_base() {
-
         let base = "https://myriad.example/";
-        assert_eq!(actor_url(base, "alice"), "https://myriad.example/users/alice");
-        assert_eq!(inbox_url(base, "alice"), "https://myriad.example/users/alice/inbox");
-        assert_eq!(key_id(base, "alice"), "https://myriad.example/users/alice#main-key");
-
+        assert_eq!(
+            actor_url(base, "alice"),
+            "https://myriad.example/users/alice"
+        );
+        assert_eq!(
+            inbox_url(base, "alice"),
+            "https://myriad.example/users/alice/inbox"
+        );
+        assert_eq!(
+            key_id(base, "alice"),
+            "https://myriad.example/users/alice#main-key"
+        );
     }
 
     #[test]
     fn build_context_includes_as_security_mfp() {
-
         let ctx = build_context();
         let arr = ctx.as_array().expect("context array");
-        let s: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(str::to_string)).collect();
+        let s: Vec<String> = arr
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
         assert!(s.iter().any(|x| x.contains("activitystreams")));
-        assert!(s.iter().any(|x| x.contains("security") || x.contains("w3id.org/security")));
-
+        assert!(s
+            .iter()
+            .any(|x| x.contains("security") || x.contains("w3id.org/security")));
     }
 
     #[test]
     fn build_ap_context_is_activitystreams_only() {
-
         let ctx = build_ap_context();
         // AP-only context is a string or single-element list
         if let Some(s) = ctx.as_str() {
             assert!(s.contains("activitystreams"));
         } else if let Some(arr) = ctx.as_array() {
-            assert!(arr.iter().any(|v| v.as_str().map(|s| s.contains("activitystreams")).unwrap_or(false)));
+            assert!(arr.iter().any(|v| v
+                .as_str()
+                .map(|s| s.contains("activitystreams"))
+                .unwrap_or(false)));
         } else {
             panic!("unexpected build_ap_context shape: {ctx}");
         }
-
     }
 
     #[test]
     fn followers_following_urls_stable() {
-
         let base = "https://myriad.example";
         assert_eq!(
             followers_url(base, "bob"),
@@ -1119,38 +1146,31 @@ mod tests {
             following_url(base, "bob"),
             "https://myriad.example/users/bob/following"
         );
-
     }
 
     #[test]
     fn generate_activity_id_uses_base_and_uuid_shape() {
-
         let id = generate_activity_id("https://myriad.example");
         assert!(id.starts_with("https://myriad.example/"));
         assert!(id.contains("activities") || id.len() > "https://myriad.example/".len() + 8);
         let id2 = generate_activity_id("https://myriad.example");
         assert_ne!(id, id2, "activity ids must be unique");
-
     }
 
     #[test]
     fn same_actor_url_ignores_default_https_port_if_present() {
-
         // Explicit :443 is uncommon; if parser keeps it, host identity still holds via normalize.
         let a = "https://a.example/users/alice";
         let b = "https://A.Example/users/alice/";
         assert!(same_actor_url(a, b));
-
     }
 
     #[test]
     fn normalize_activity_id_drops_fragment_and_query() {
-
         assert_eq!(
             normalize_activity_id("https://A.Example/activities/9?x=1#frag"),
             "https://a.example/activities/9"
         );
-
     }
 
     #[test]
@@ -1158,7 +1178,6 @@ mod tests {
         let s = now_iso8601();
         assert!(s.contains('T') || s.contains('-'));
         assert!(s.len() >= 20);
-
     }
 
     #[test]
@@ -1170,7 +1189,6 @@ mod tests {
         let r = generate_room_id();
         let m = generate_message_id();
         assert_ne!(r, m);
-
     }
 
     #[test]
@@ -1195,7 +1213,6 @@ mod tests {
         ));
     }
 
-
     #[test]
     fn r26_same_activity_id_rejects_path_suffix_collision() {
         assert!(!same_activity_id(
@@ -1208,7 +1225,6 @@ mod tests {
         ));
     }
 
-
     #[test]
     fn r27_normalize_activity_id_preserves_ipv6_host_brackets() {
         let id = "https://[::1]:18080/activities/9/?q=1#f";
@@ -1218,7 +1234,6 @@ mod tests {
         assert!(same_activity_id(id, "https://[::1]:18080/activities/9/"));
     }
 
-
     #[test]
     fn r28_same_activity_id_http_vs_https_never_equal() {
         assert!(!same_activity_id(
@@ -1226,7 +1241,6 @@ mod tests {
             "https://a.example/activities/1"
         ));
     }
-
 
     #[test]
     fn r29_normalize_activity_id_trims_outer_whitespace() {
@@ -1240,15 +1254,19 @@ mod tests {
         ));
     }
 
-
     #[test]
     fn r30_key_id_and_same_key_id_fragment_required() {
         let kid = key_id("https://Myriad.Example", "alice");
         assert!(kid.ends_with("#main-key"));
-        assert!(same_key_id(&kid, "https://myriad.example/users/alice#main-key"));
-        assert!(!same_key_id(&kid, "https://myriad.example/users/alice#other"));
+        assert!(same_key_id(
+            &kid,
+            "https://myriad.example/users/alice#main-key"
+        ));
+        assert!(!same_key_id(
+            &kid,
+            "https://myriad.example/users/alice#other"
+        ));
     }
-
 
     #[test]
     fn r31_generate_activity_id_under_base_and_unique() {
@@ -1258,22 +1276,27 @@ mod tests {
         assert_ne!(a, b);
     }
 
-
     #[test]
     fn r32_extract_domain_rejects_ftp_and_empty() {
         assert_eq!(extract_domain("ftp://evil.example/x"), None);
         assert_eq!(extract_domain(""), None);
-        assert_eq!(extract_domain("https://ok.example/users/a"), Some("ok.example".into()));
+        assert_eq!(
+            extract_domain("https://ok.example/users/a"),
+            Some("ok.example".into())
+        );
     }
-
 
     #[test]
     fn r33_followers_following_urls_stable() {
         let base = "https://a.example";
-        assert_eq!(followers_url(base, "u"), "https://a.example/users/u/followers");
-        assert_eq!(following_url(base, "u"), "https://a.example/users/u/following");
+        assert_eq!(
+            followers_url(base, "u"),
+            "https://a.example/users/u/followers"
+        );
+        assert_eq!(
+            following_url(base, "u"),
+            "https://a.example/users/u/following"
+        );
         assert_eq!(inbox_url(base, "u"), "https://a.example/users/u/inbox");
     }
-
 }
-

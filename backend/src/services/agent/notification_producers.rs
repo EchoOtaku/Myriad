@@ -103,12 +103,7 @@ impl NotificationManager {
     }
 
     /// Skill 自动淘汰 / AI 改进完成时通知管理员
-    pub async fn notify_skill_evolution(
-        &self,
-        skill_id: &str,
-        action: &str,
-        detail: &str,
-    ) {
+    pub async fn notify_skill_evolution(&self, skill_id: &str, action: &str, detail: &str) {
         let (title, event_key, priority) = match action {
             "pruned" => (
                 format!("技能已自动淘汰: {}", skill_id),

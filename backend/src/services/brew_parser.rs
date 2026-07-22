@@ -694,9 +694,8 @@ impl FeedParser {
                             if let Some(ref mut item) = current_item {
                                 for attr in e.attributes().flatten() {
                                     if attr.key.as_ref() == b"term" {
-                                        item.categories.push(
-                                            String::from_utf8_lossy(&attr.value).to_string(),
-                                        );
+                                        item.categories
+                                            .push(String::from_utf8_lossy(&attr.value).to_string());
                                     }
                                 }
                             }

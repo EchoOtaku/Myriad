@@ -414,7 +414,11 @@ impl HeartbeatManager {
             Ok(result) => {
                 let n = result.rows_affected();
                 if n > 0 {
-                    tracing::info!(deleted = n, keep_hours = hours, "[Heartbeat] Cleaned old claims");
+                    tracing::info!(
+                        deleted = n,
+                        keep_hours = hours,
+                        "[Heartbeat] Cleaned old claims"
+                    );
                 }
                 n
             }
@@ -990,13 +994,7 @@ mod tests {
 
         // 无效 cron 拒绝
         let err = mgr
-            .add_task(
-                None,
-                "Bad".into(),
-                "0 0 * *".into(),
-                "do it".into(),
-                true,
-            )
+            .add_task(None, "Bad".into(), "0 0 * *".into(), "do it".into(), true)
             .await
             .unwrap_err();
         assert!(err.contains("Invalid cron"), "{err}");

@@ -266,8 +266,7 @@ pub fn apply_site_domain_to_env_content(
         .or_else(|| std::env::var("CORS_ORIGINS").ok())
         .unwrap_or_default();
 
-    let merged_cors =
-        merge_cors_origins(&current_cors, previous.as_deref(), &normalized);
+    let merged_cors = merge_cors_origins(&current_cors, previous.as_deref(), &normalized);
 
     // Never leave production without an explicit CORS list after a domain change.
     if merged_cors.is_empty() {
@@ -379,22 +378,19 @@ pub async fn change_site_domain(
         String::new()
     };
 
-    let (updated, applied_origin) = match apply_site_domain_to_env_content(
-        &existing,
-        &normalized,
-        previous.as_deref(),
-    ) {
-        Ok(v) => v,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({
-                    "success": false,
-                    "message": e,
-                })),
-            );
-        }
-    };
+    let (updated, applied_origin) =
+        match apply_site_domain_to_env_content(&existing, &normalized, previous.as_deref()) {
+            Ok(v) => v,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": e,
+                    })),
+                );
+            }
+        };
 
     let cors_value = read_env_key(&updated, "CORS_ORIGINS").unwrap_or_default();
 
@@ -539,9 +535,12 @@ FRONTEND_URL=https://old.example
 CORS_ORIGINS=https://old.example,https://cdn.example
 JWT_SECRET=keep-me
 ";
-        let (out, origin) =
-            apply_site_domain_to_env_content(input, "https://new.example/", Some("https://old.example"))
-                .unwrap();
+        let (out, origin) = apply_site_domain_to_env_content(
+            input,
+            "https://new.example/",
+            Some("https://old.example"),
+        )
+        .unwrap();
         assert_eq!(origin, "https://new.example");
         assert!(out.contains("BASE_URL=https://new.example"));
         assert!(out.contains("FRONTEND_URL=https://new.example"));

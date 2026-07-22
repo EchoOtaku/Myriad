@@ -182,9 +182,9 @@ impl BrewSchedulerEngine {
         // 收集本 tick 内新增了分类内容的 user_id，批末触发 brew-recommend 环网同步。
         let db_ref = db.clone();
         let tx_ref = notification_tx.clone();
-        let ring_users = std::sync::Arc::new(tokio::sync::Mutex::new(
-            std::collections::HashSet::<i32>::new(),
-        ));
+        let ring_users = std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashSet::<
+            i32,
+        >::new()));
 
         stream::iter(due_sources)
             .map(|source| {
@@ -627,13 +627,9 @@ impl BrewSchedulerEngine {
                     .await
                     .map_err(|e| format!("Failed to update source: {}", e))?;
 
-                let new_count = Self::save_items(
-                    &self.db,
-                    &updated_source,
-                    &feed,
-                    &self.notification_tx,
-                )
-                .await?;
+                let new_count =
+                    Self::save_items(&self.db, &updated_source, &feed, &self.notification_tx)
+                        .await?;
 
                 // Best-effort: push categorized brew into brew-recommend rings
                 if new_count > 0

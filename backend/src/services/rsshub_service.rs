@@ -314,10 +314,7 @@ impl RsshubService {
     }
 
     /// Live health check and persist success/failure stats (same path as brew admin checks).
-    pub async fn health_check_and_record(
-        &self,
-        instance: &InstanceModel,
-    ) -> Result<i32, String> {
+    pub async fn health_check_and_record(&self, instance: &InstanceModel) -> Result<i32, String> {
         match self.health_check(instance).await {
             Ok(ms) => {
                 self.record_success(instance, ms).await;

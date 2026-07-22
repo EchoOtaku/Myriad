@@ -264,7 +264,6 @@ mod tests {
             parse_acct_uri("acct:Bob@Example.COM"),
             Some(("Bob".into(), "example.com".into()))
         );
-
     }
 
     #[test]
@@ -272,7 +271,6 @@ mod tests {
         assert_eq!(parse_acct_uri("bob@example.com"), None);
         assert_eq!(parse_acct_uri("acct:"), None);
         assert_eq!(parse_acct_uri("acct:@onlydomain"), None);
-
     }
 
     #[test]
@@ -281,7 +279,6 @@ mod tests {
             parse_acct_uri("  acct:alice@example.com  "),
             Some(("alice".into(), "example.com".into()))
         );
-
     }
 
     #[test]
@@ -290,18 +287,14 @@ mod tests {
             parse_acct_uri("acct:Alice@Example.COM"),
             Some(("Alice".into(), "example.com".into()))
         );
-
     }
-
 
     #[test]
     fn w175_parse_acct_rejects_bare() {
         assert_eq!(parse_acct_uri("alice@example.com"), None);
         assert_eq!(parse_acct_uri("acct:"), None);
         assert_eq!(parse_acct_uri("acct:@only"), None);
-
     }
-
 
     #[test]
     fn w175_parse_acct_trims() {
@@ -309,8 +302,5 @@ mod tests {
             parse_acct_uri("  acct:bob@example.com  "),
             Some(("bob".into(), "example.com".into()))
         );
-
     }
-
 }
-

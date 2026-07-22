@@ -969,10 +969,9 @@ pub async fn admin_create_user(
     let actor_id: i32 = claims.sub.parse().unwrap_or(0);
     // 仅站点 owner 可创建带 is_admin=true 的账号（was: actor id=1）
     let actor_is_owner = crate::api::admin_users::actor_is_owner(&db, actor_id).await?;
-    if let Some(msg) = crate::api::admin_users::non_owner_grant_admin_on_create_error(
-        actor_is_owner,
-        req.is_admin,
-    ) {
+    if let Some(msg) =
+        crate::api::admin_users::non_owner_grant_admin_on_create_error(actor_is_owner, req.is_admin)
+    {
         return Err((StatusCode::FORBIDDEN, Json(json!({"error": msg}))));
     }
 

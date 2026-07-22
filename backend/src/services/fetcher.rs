@@ -1825,12 +1825,10 @@ impl PlatformFetcher {
         });
 
         if let Some(m) = anime_mean {
-            user["anime_statistics"]["mean_score"] =
-                serde_json::json!((m * 100.0).round() / 100.0);
+            user["anime_statistics"]["mean_score"] = serde_json::json!((m * 100.0).round() / 100.0);
         }
         if let Some(m) = manga_mean {
-            user["manga_statistics"]["mean_score"] =
-                serde_json::json!((m * 100.0).round() / 100.0);
+            user["manga_statistics"]["mean_score"] = serde_json::json!((m * 100.0).round() / 100.0);
         }
 
         user
@@ -1850,7 +1848,9 @@ impl PlatformFetcher {
             return Err(anyhow!("MyAnimeList username is required"));
         }
         if client_id.is_empty() {
-            return Err(anyhow!("MyAnimeList client_id is required for official API"));
+            return Err(anyhow!(
+                "MyAnimeList client_id is required for official API"
+            ));
         }
 
         let encoded = urlencoding::encode(username);
@@ -1969,18 +1969,32 @@ impl PlatformFetcher {
     ) -> Result<serde_json::Value> {
         let user = self.fetch_mal_user_official(username, client_id).await?;
 
-        let anime_list = match self.fetch_mal_anime_list_official(username, client_id).await {
+        let anime_list = match self
+            .fetch_mal_anime_list_official(username, client_id)
+            .await
+        {
             Ok(list) => list,
             Err(e) => {
-                tracing::warn!("MAL official anime list fetch failed for {}: {}", username, e);
+                tracing::warn!(
+                    "MAL official anime list fetch failed for {}: {}",
+                    username,
+                    e
+                );
                 Vec::new()
             }
         };
 
-        let manga_list = match self.fetch_mal_manga_list_official(username, client_id).await {
+        let manga_list = match self
+            .fetch_mal_manga_list_official(username, client_id)
+            .await
+        {
             Ok(list) => list,
             Err(e) => {
-                tracing::warn!("MAL official manga list fetch failed for {}: {}", username, e);
+                tracing::warn!(
+                    "MAL official manga list fetch failed for {}: {}",
+                    username,
+                    e
+                );
                 Vec::new()
             }
         };
@@ -2013,10 +2027,7 @@ impl PlatformFetcher {
         Ok(Self::synthesize_mal_user(username, &anime_list, &[]))
     }
 
-    async fn fetch_mal_anime_list_public(
-        &self,
-        username: &str,
-    ) -> Result<Vec<serde_json::Value>> {
+    async fn fetch_mal_anime_list_public(&self, username: &str) -> Result<Vec<serde_json::Value>> {
         let raw = self
             .fetch_mal_load_json_raw(username, "animelist", Self::MAL_MAX_ITEMS)
             .await?;
@@ -2026,10 +2037,7 @@ impl PlatformFetcher {
             .collect())
     }
 
-    async fn fetch_mal_manga_list_public(
-        &self,
-        username: &str,
-    ) -> Result<Vec<serde_json::Value>> {
+    async fn fetch_mal_manga_list_public(&self, username: &str) -> Result<Vec<serde_json::Value>> {
         let raw = self
             .fetch_mal_load_json_raw(username, "mangalist", Self::MAL_MAX_ITEMS)
             .await?;

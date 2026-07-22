@@ -525,12 +525,20 @@ fn enrich_github_items(items: &mut [Value], raw: &Value) {
             .or_else(|| repo.get("url"))
             .and_then(|v| v.as_str())
         {
-            if item.get("url").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+            if item
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .is_empty()
+            {
                 item["url"] = json!(url);
             }
         }
         let og = if !owner.is_empty() {
-            format!("https://opengraph.githubassets.com/1/{owner}/{}", repo.get("name").and_then(|v| v.as_str()).unwrap_or(&title))
+            format!(
+                "https://opengraph.githubassets.com/1/{owner}/{}",
+                repo.get("name").and_then(|v| v.as_str()).unwrap_or(&title)
+            )
         } else {
             String::new()
         };
@@ -711,7 +719,8 @@ fn enrich_bangumi_items(items: &mut [Value], raw: &Value) {
         if let Some(meta) = item.get_mut("metadata").and_then(|m| m.as_object_mut()) {
             if let Some(rate) = c.get("rate").and_then(|v| v.as_i64()) {
                 if rate > 0 {
-                    meta.entry("rate".to_string()).or_insert_with(|| json!(rate));
+                    meta.entry("rate".to_string())
+                        .or_insert_with(|| json!(rate));
                 }
             }
             if let Some(ep) = c.get("ep_status").and_then(|v| v.as_i64()) {
@@ -840,8 +849,7 @@ fn normalize_platform_item(item: &Value, platform: &str, index: usize) -> Value 
         .and_then(|o| first_string(o, &["title", "name", "username", "label"]))
         .unwrap_or_else(|| format!("Item {}", index + 1));
     let item_type = normalize_item_type(
-        &obj
-            .and_then(|o| first_string(o, &["type", "content_type", "subject_type"]))
+        &obj.and_then(|o| first_string(o, &["type", "content_type", "subject_type"]))
             .unwrap_or_else(|| "item".to_string()),
         platform,
     );
@@ -849,7 +857,15 @@ fn normalize_platform_item(item: &Value, platform: &str, index: usize) -> Value 
         .and_then(|o| {
             first_string(
                 o,
-                &["id", "title_id", "subject_id", "item_id", "appid", "bvid", "season_id"],
+                &[
+                    "id",
+                    "title_id",
+                    "subject_id",
+                    "item_id",
+                    "appid",
+                    "bvid",
+                    "season_id",
+                ],
             )
         })
         .unwrap_or_else(|| format!("{platform}_{index}"));
@@ -891,10 +907,23 @@ fn normalize_platform_item(item: &Value, platform: &str, index: usize) -> Value 
             for (k, v) in o {
                 if matches!(
                     k.as_str(),
-                    "id" | "title" | "name" | "type" | "content_type"
-                        | "subject_type" | "image" | "cover" | "display_image"
-                        | "profile_image_url" | "thumbnail" | "poster" | "metadata"
-                        | "platform" | "description" | "url" | "createdAt" | "source"
+                    "id" | "title"
+                        | "name"
+                        | "type"
+                        | "content_type"
+                        | "subject_type"
+                        | "image"
+                        | "cover"
+                        | "display_image"
+                        | "profile_image_url"
+                        | "thumbnail"
+                        | "poster"
+                        | "metadata"
+                        | "platform"
+                        | "description"
+                        | "url"
+                        | "createdAt"
+                        | "source"
                 ) {
                     continue;
                 }
@@ -945,19 +974,13 @@ fn project_unknown_content(entry: &Value, platform: &str, index: usize) -> Value
         .and_then(|o| first_string(o, &["title", "name"]))
         .unwrap_or_else(|| format!("Item {}", index + 1));
     let item_type = normalize_item_type(
-        &obj
-            .and_then(|o| first_string(o, &["content_type", "type"]))
+        &obj.and_then(|o| first_string(o, &["content_type", "type"]))
             .unwrap_or_else(|| "item".to_string()),
         platform,
     );
-    let metadata = entry
-        .get("metadata")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
+    let metadata = entry.get("metadata").cloned().unwrap_or_else(|| json!({}));
     let image = obj
-        .and_then(|o| {
-            first_string(o, &["image", "cover", "display_image", "profile_image_url"])
-        })
+        .and_then(|o| first_string(o, &["image", "cover", "display_image", "profile_image_url"]))
         .or_else(|| {
             metadata.as_object().and_then(|m| {
                 first_string(m, &["image", "cover", "display_image", "profile_image_url"])
@@ -972,7 +995,12 @@ fn project_unknown_content(entry: &Value, platform: &str, index: usize) -> Value
                 .map(steam_header_image)
         });
     let id = obj
-        .and_then(|o| first_string(o, &["id", "title_id", "subject_id", "appid", "bvid", "season_id"]))
+        .and_then(|o| {
+            first_string(
+                o,
+                &["id", "title_id", "subject_id", "appid", "bvid", "season_id"],
+            )
+        })
         .or_else(|| {
             metadata
                 .as_object()
@@ -1164,9 +1192,19 @@ fn project_content_analysis(analysis: &Value, platform: &str, start_index: usize
             for (k, v) in entry_obj {
                 if matches!(
                     k.as_str(),
-                    "id" | "title" | "name" | "username" | "type" | "content_type"
-                        | "subject_type" | "image" | "cover" | "display_image"
-                        | "profile_image_url" | "thumbnail" | "poster" | "description"
+                    "id" | "title"
+                        | "name"
+                        | "username"
+                        | "type"
+                        | "content_type"
+                        | "subject_type"
+                        | "image"
+                        | "cover"
+                        | "display_image"
+                        | "profile_image_url"
+                        | "thumbnail"
+                        | "poster"
+                        | "description"
                         | "summary"
                 ) {
                     continue;
@@ -1784,7 +1822,10 @@ mod tests {
         assert_eq!(items[0]["title"], "涙では消せない焔");
         // type normalizes to music (from song list key or platform default)
         let t = items[0]["type"].as_str().unwrap_or("");
-        assert!(t == "music" || t == "song" || t == "item" || t == "recent_song", "type={t}");
+        assert!(
+            t == "music" || t == "song" || t == "item" || t == "recent_song",
+            "type={t}"
+        );
     }
 
     #[test]

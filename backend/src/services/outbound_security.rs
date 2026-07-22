@@ -215,12 +215,9 @@ mod tests {
     async fn lab_flag_allows_loopback_http_client() {
         let _guard = tests_lab_env_lock().await;
         std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
-        let result = build_public_http_client(
-            "http://127.0.0.1:18080/inbox",
-            Duration::from_secs(1),
-            None,
-        )
-        .await;
+        let result =
+            build_public_http_client("http://127.0.0.1:18080/inbox", Duration::from_secs(1), None)
+                .await;
         std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
         assert!(
             result.is_ok(),

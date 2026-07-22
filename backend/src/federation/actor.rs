@@ -33,14 +33,9 @@ pub async fn get_actor(
 
     let configured_base = get_base_url().await;
     let aliases = crate::federation::move_actor::load_domain_aliases(&db).await;
-    let host = headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok());
-    let base_url = crate::federation::move_actor::resolve_serve_base(
-        &configured_base,
-        host,
-        &aliases,
-    );
+    let host = headers.get(header::HOST).and_then(|v| v.to_str().ok());
+    let base_url =
+        crate::federation::move_actor::resolve_serve_base(&configured_base, host, &aliases);
 
     // 查询用户 + 联邦密钥
     let user = db
@@ -429,8 +424,8 @@ pub async fn fetch_remote_actor(
     let body = crate::services::outbound_security::read_limited_body(resp, 1024 * 1024)
         .await
         .map_err(|e| format!("Failed to read actor response: {}", e))?;
-    let actor_json: serde_json::Value = serde_json::from_slice(&body)
-        .map_err(|e| format!("Failed to parse actor JSON: {}", e))?;
+    let actor_json: serde_json::Value =
+        serde_json::from_slice(&body).map_err(|e| format!("Failed to parse actor JSON: {}", e))?;
 
     // If the document declares an id, it must match the requested actor URL
     // (host case / trailing slash normalized). Prevents cache poisoning via
@@ -974,9 +969,10 @@ pub async fn rotate_user_federation_keys(
     let (pub_pem, kid) = force_store_new_keys(db, user_id, &base_url, username).await?;
 
     // Best-effort Update(Person) so followers learn the new publicKey.
-    let update_queued = broadcast_person_key_update(db, user_id, username, &base_url, &pub_pem, &kid)
-        .await
-        .unwrap_or(0);
+    let update_queued =
+        broadcast_person_key_update(db, user_id, username, &base_url, &pub_pem, &kid)
+            .await
+            .unwrap_or(0);
 
     Ok(FederationKeyRotationResult {
         public_key_pem: pub_pem,
@@ -1095,9 +1091,7 @@ async fn broadcast_person_key_update(
         .await
         .map_err(|e| format!("Failed to record Update activity: {}", e))?;
 
-    let act_db_id: i32 = act_row
-        .and_then(|r| r.try_get("", "id").ok())
-        .unwrap_or(0);
+    let act_db_id: i32 = act_row.and_then(|r| r.try_get("", "id").ok()).unwrap_or(0);
     if act_db_id <= 0 {
         return Ok(0);
     }
@@ -1306,15 +1300,25 @@ mod tests {
     fn key_rotation_confirm_gate() {
         // API body must pass confirm:true; pure gate used by the handler.
         assert!(!rotation_confirm_accepted(&serde_json::json!({})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": false})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": "yes"})));
-        assert!(rotation_confirm_accepted(&serde_json::json!({"confirm": true})));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": false})
+        ));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": "yes"})
+        ));
+        assert!(rotation_confirm_accepted(
+            &serde_json::json!({"confirm": true})
+        ));
         // Nested / wrong-type must never pass (bridge/UI mistakes).
         assert!(!rotation_confirm_accepted(&serde_json::json!({
             "confirm": {"nested": true}
         })));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": 1})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": null})));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": 1})
+        ));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": null})
+        ));
         // Extra fields OK as long as confirm:true is present.
         assert!(rotation_confirm_accepted(&serde_json::json!({
             "confirm": true,
@@ -1325,9 +1329,15 @@ mod tests {
     #[test]
     fn key_rotation_confirm_rejects_truthy_non_bool() {
         // JSON numbers / null / missing nested keys must not open rotate.
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": 1})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": null})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": "true"})));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": 1})
+        ));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": null})
+        ));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": "true"})
+        ));
         assert!(!rotation_confirm_accepted(&serde_json::json!({"ok": true})));
     }
 
@@ -1341,23 +1351,38 @@ mod tests {
 
     #[test]
     fn rotation_confirm_requires_boolean_true_only() {
-
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": [true]})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": {"ok": true}})));
-        assert!(rotation_confirm_accepted(&serde_json::json!({"confirm": true, "extra": 1})));
-
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": [true]})
+        ));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": {"ok": true}})
+        ));
+        assert!(rotation_confirm_accepted(
+            &serde_json::json!({"confirm": true, "extra": 1})
+        ));
     }
 
     #[test]
     fn rotation_confirm_accepted_only_true_bool() {
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": null})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": 1})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": "true"})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"Confirm": true})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": [true]})));
-        assert!(rotation_confirm_accepted(&serde_json::json!({"confirm": true, "extra": 1})));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": null})
+        ));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": 1})
+        ));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": "true"})
+        ));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"Confirm": true})
+        ));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": [true]})
+        ));
+        assert!(rotation_confirm_accepted(
+            &serde_json::json!({"confirm": true, "extra": 1})
+        ));
     }
-
 
     #[test]
     fn needs_federation_key_generation_boundary() {
@@ -1369,15 +1394,19 @@ mod tests {
         assert!(needs_federation_key_generation(None));
     }
 
-
     #[test]
     fn r34_rotation_confirm_accepted_requires_json_true() {
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": 0})));
-        assert!(!rotation_confirm_accepted(&serde_json::json!({"confirm": "true"})));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": 0})
+        ));
+        assert!(!rotation_confirm_accepted(
+            &serde_json::json!({"confirm": "true"})
+        ));
         assert!(!rotation_confirm_accepted(&serde_json::json!({"ok": true})));
-        assert!(rotation_confirm_accepted(&serde_json::json!({"confirm": true})));
+        assert!(rotation_confirm_accepted(
+            &serde_json::json!({"confirm": true})
+        ));
     }
-
 
     #[test]
     fn r35_rotation_confirm_accepted_ignores_nested_confirm() {
@@ -1386,12 +1415,9 @@ mod tests {
         })));
     }
 
-
     #[test]
     fn r36_needs_federation_key_generation_whitespace_only() {
         assert!(needs_federation_key_generation(Some("\t\t")));
         assert!(!needs_federation_key_generation(Some("pem-bytes")));
     }
-
 }
-

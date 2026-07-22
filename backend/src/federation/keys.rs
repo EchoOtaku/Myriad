@@ -219,9 +219,7 @@ mod tests {
         // Too short to hold nonce + ciphertext
         let short = BASE64.encode([0u8; 4]);
         let err = KeyPair::from_encrypted(&public_pem, &short, "secret").unwrap_err();
-        assert!(
-            format!("{err:#}").contains("too short") || format!("{err}").contains("too short")
-        );
+        assert!(format!("{err:#}").contains("too short") || format!("{err}").contains("too short"));
     }
 
     #[test]
@@ -243,7 +241,6 @@ mod tests {
         let r1 = KeyPair::from_encrypted(&pem, &e1, secret).unwrap();
         let r2 = KeyPair::from_encrypted(&pem, &e2, secret).unwrap();
         assert_eq!(r1.public_key_pem().unwrap(), r2.public_key_pem().unwrap());
-
     }
 
     #[test]
@@ -255,11 +252,14 @@ mod tests {
         assert_ne!(e1, e2);
         let pem = kp.public_key_pem().unwrap();
         assert_eq!(
-            KeyPair::from_encrypted(&pem, &e1, secret).unwrap().public_key_pem().unwrap(),
-            KeyPair::from_encrypted(&pem, &e2, secret).unwrap().public_key_pem().unwrap()
+            KeyPair::from_encrypted(&pem, &e1, secret)
+                .unwrap()
+                .public_key_pem()
+                .unwrap(),
+            KeyPair::from_encrypted(&pem, &e2, secret)
+                .unwrap()
+                .public_key_pem()
+                .unwrap()
         );
-
     }
-
 }
-

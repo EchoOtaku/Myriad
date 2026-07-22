@@ -115,7 +115,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "brew.stats".to_string(),
         name: "阅读统计".to_string(),
-        description: "从数据库聚合 Brew 阅读统计：订阅源数、文章数、当前用户未读/收藏数。".to_string(),
+        description: "从数据库聚合 Brew 阅读统计：订阅源数、文章数、当前用户未读/收藏数。"
+            .to_string(),
         category: CapabilityCategory::DataRead,
         supported_actions: vec![IntentAction::Query, IntentAction::Analyze],
         input_schema: json!({

@@ -284,11 +284,19 @@ mod tests {
     fn redacts_password_in_standard_postgres_url() {
         let raw = "postgres://myuser:s3cret-pass@db.internal:5432/myriad";
         let redacted = redact_database_url(raw);
-        assert!(!redacted.contains("s3cret-pass"), "password leaked: {redacted}");
-        assert!(redacted.contains("myuser"), "user should remain: {redacted}");
+        assert!(
+            !redacted.contains("s3cret-pass"),
+            "password leaked: {redacted}"
+        );
+        assert!(
+            redacted.contains("myuser"),
+            "user should remain: {redacted}"
+        );
         assert!(redacted.contains("***"), "mask missing: {redacted}");
         assert!(
-            redacted.contains("db.internal") && redacted.contains("5432") && redacted.contains("myriad"),
+            redacted.contains("db.internal")
+                && redacted.contains("5432")
+                && redacted.contains("myriad"),
             "host/port/db missing: {redacted}"
         );
         assert!(
@@ -301,10 +309,16 @@ mod tests {
     fn redacts_password_with_special_chars() {
         let raw = "postgresql://u:p%40ss%2Fword@localhost:5432/app";
         let redacted = redact_database_url(raw);
-        assert!(!redacted.to_ascii_lowercase().contains("p%40ss"), "{redacted}");
+        assert!(
+            !redacted.to_ascii_lowercase().contains("p%40ss"),
+            "{redacted}"
+        );
         assert!(!redacted.contains("p@ss"), "{redacted}");
         assert!(redacted.contains("***"), "{redacted}");
-        assert!(redacted.contains("u@") || redacted.contains("u:***@"), "{redacted}");
+        assert!(
+            redacted.contains("u@") || redacted.contains("u:***@"),
+            "{redacted}"
+        );
     }
 
     #[test]
@@ -332,7 +346,9 @@ mod tests {
     #[test]
     fn classifies_timeout() {
         assert_eq!(
-            classify_connect_error_message("Failed to acquire connection from pool: Connection pool timed out"),
+            classify_connect_error_message(
+                "Failed to acquire connection from pool: Connection pool timed out"
+            ),
             DbConnectErrorKind::Timeout
         );
         assert_eq!(
@@ -344,7 +360,9 @@ mod tests {
     #[test]
     fn classifies_refused() {
         assert_eq!(
-            classify_connect_error_message("Connection Error: error connecting to server: Connection refused (os error 111)"),
+            classify_connect_error_message(
+                "Connection Error: error connecting to server: Connection refused (os error 111)"
+            ),
             DbConnectErrorKind::ConnectionRefused
         );
         assert_eq!(

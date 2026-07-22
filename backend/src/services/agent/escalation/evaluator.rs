@@ -153,7 +153,8 @@ impl ResultEvaluator {
             || self.has_stub_markers(result);
         let is_local = self.is_local_data_domain(&ctx.capability_ids);
         // generateReadingList 空结果默认本地域：禁止空→web cascade（除非 allow_web_search）
-        let is_reading_list_empty = self.is_generate_reading_list_empty(result, &ctx.capability_ids);
+        let is_reading_list_empty =
+            self.is_generate_reading_list_empty(result, &ctx.capability_ids);
 
         if is_stub {
             eval.suggests_web_search = false;
@@ -170,17 +171,15 @@ impl ResultEvaluator {
         // notFound + 实体建议：优先用建议值重试 brew，绝不 webSearch
         if !eval.suggested_retry_values.is_empty()
             && (is_local
-                || ctx
-                    .capability_ids
-                    .iter()
-                    .any(|id| id.starts_with("brew."))
+                || ctx.capability_ids.iter().any(|id| id.starts_with("brew."))
                 || ctx.capability_ids.is_empty())
         {
             eval.suggests_web_search = false;
             eval.suggests_local_alternatives = true;
             eval.suggests_expand_scope = true;
-            eval.improvement_hints
-                .push(self.suggestion_retry_hint(&eval.suggested_retry_values, &ctx.capability_ids));
+            eval.improvement_hints.push(
+                self.suggestion_retry_hint(&eval.suggested_retry_values, &ctx.capability_ids),
+            );
             eval.improvement_hints
                 .extend(self.local_data_hints(&ctx.capability_ids));
             return;
@@ -344,10 +343,8 @@ impl ResultEvaluator {
     /// 本地替代方案提示（replan 优先 brew.page / search.fuzzy / brew.items）
     fn local_data_hints(&self, capability_ids: &[String]) -> Vec<String> {
         let mut hints = Vec::new();
-        let has_brew = capability_ids
-            .iter()
-            .any(|c| c.starts_with("brew."))
-            || capability_ids.is_empty();
+        let has_brew =
+            capability_ids.iter().any(|c| c.starts_with("brew.")) || capability_ids.is_empty();
 
         if has_brew {
             hints.push(
@@ -869,7 +866,10 @@ mod tests {
             "应该检测到失败模式: {:?}",
             eval.failure_patterns
         );
-        assert!(eval.suggests_web_search, "无本地域上下文时应建议升级到联网搜索");
+        assert!(
+            eval.suggests_web_search,
+            "无本地域上下文时应建议升级到联网搜索"
+        );
     }
 
     // ── 门控：stub / 本地数据域不得建议 webSearch ──
@@ -905,7 +905,9 @@ mod tests {
         assert!(
             eval.improvement_hints
                 .iter()
-                .any(|h| h.contains("brew.page") || h.contains("search.fuzzy") || h.contains("stub")),
+                .any(|h| h.contains("brew.page")
+                    || h.contains("search.fuzzy")
+                    || h.contains("stub")),
             "应提示本地替代: {:?}",
             eval.improvement_hints
         );
@@ -946,7 +948,9 @@ mod tests {
         assert!(eval.suggests_expand_scope);
         let joined = eval.improvement_hints.join(" ");
         assert!(
-            joined.contains("brew.page") || joined.contains("brew.items") || joined.contains("search.fuzzy"),
+            joined.contains("brew.page")
+                || joined.contains("brew.items")
+                || joined.contains("search.fuzzy"),
             "replan 应优先本地 brew/search: {:?}",
             eval.improvement_hints
         );
@@ -1022,7 +1026,9 @@ mod tests {
         assert!(ResultEvaluator::is_local_data_capability("brew.items"));
         assert!(ResultEvaluator::is_local_data_capability("platform.read"));
         assert!(ResultEvaluator::is_local_data_capability("search.fuzzy"));
-        assert!(ResultEvaluator::is_local_data_capability("brew.generateReadingList"));
+        assert!(ResultEvaluator::is_local_data_capability(
+            "brew.generateReadingList"
+        ));
         assert!(!ResultEvaluator::is_local_data_capability("ai.webSearch"));
         assert!(!ResultEvaluator::is_local_data_capability("ai.image"));
     }

@@ -216,10 +216,7 @@ mod tests {
             Some(MatchKind::Contains)
         );
         // typo / near miss
-        assert_eq!(
-            loose_text_match("akiday", "akday"),
-            Some(MatchKind::Fuzzy)
-        );
+        assert_eq!(loose_text_match("akiday", "akday"), Some(MatchKind::Fuzzy));
         assert_eq!(loose_text_match("akiday", "zzzzzz"), None);
         assert_eq!(loose_text_match("", "akiday"), None);
         assert_eq!(loose_text_match("akiday", ""), None);
@@ -259,7 +256,10 @@ mod tests {
         assert!(brew_category_token_matches("友情链接", "友情链接"));
         assert!(brew_category_token_matches("友情链接, 技术", "友情链接"));
         assert!(brew_category_token_matches("技术, 友情链接", "友情链接"));
-        assert!(brew_category_token_matches("技术, 友情链接, 生活", "友情链接"));
+        assert!(brew_category_token_matches(
+            "技术, 友情链接, 生活",
+            "友情链接"
+        ));
         assert!(!brew_category_token_matches("技术", "友情链接"));
         // substring of a token must not match
         assert!(!brew_category_token_matches("科学技术", "技术"));

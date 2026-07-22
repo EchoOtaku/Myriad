@@ -351,22 +351,16 @@ mod tests {
 
     #[test]
     fn require_covered_headers_body_requires_digest() {
-
         let mut parsed = ParsedSignature {
             key_id: "k".into(),
             algorithm: "rsa-sha256".into(),
-            headers: vec![
-                "(request-target)".into(),
-                "host".into(),
-                "date".into(),
-            ],
+            headers: vec!["(request-target)".into(), "host".into(), "date".into()],
             signature: vec![0u8; 32],
         };
         assert!(require_covered_headers(&parsed, false).is_ok());
         assert!(require_covered_headers(&parsed, true).is_err());
         parsed.headers.push("digest".into());
         assert!(require_covered_headers(&parsed, true).is_ok());
-
     }
 
     #[test]
@@ -374,7 +368,6 @@ mod tests {
         assert!(!verify_digest(b"hello", "md5=deadbeef"));
         assert!(!verify_digest(b"hello", "SHA-256"));
         assert!(!verify_digest(b"hello", ""));
-
     }
 
     #[test]
@@ -386,7 +379,6 @@ mod tests {
             signature: vec![0u8; 8],
         };
         assert!(require_covered_headers(&parsed, false).is_err());
-
     }
 
     #[test]
@@ -396,7 +388,6 @@ mod tests {
             .format("%a, %d %b %Y %H:%M:%S GMT")
             .to_string();
         assert!(verify_date_freshness(&future, now, Duration::minutes(5)).is_err());
-
     }
 
     #[test]
@@ -404,9 +395,7 @@ mod tests {
         assert!(!verify_digest(b"hello", "md5=deadbeef"));
         assert!(!verify_digest(b"hello", "SHA-256"));
         assert!(!verify_digest(b"hello", ""));
-
     }
-
 
     #[test]
     fn w175_require_headers_missing_host() {
@@ -417,9 +406,7 @@ mod tests {
             signature: vec![0u8; 8],
         };
         assert!(require_covered_headers(&parsed, false).is_err());
-
     }
-
 
     #[test]
     fn w175_date_freshness_future() {
@@ -428,8 +415,5 @@ mod tests {
             .format("%a, %d %b %Y %H:%M:%S GMT")
             .to_string();
         assert!(verify_date_freshness(&future, now, Duration::minutes(5)).is_err());
-
     }
-
 }
-

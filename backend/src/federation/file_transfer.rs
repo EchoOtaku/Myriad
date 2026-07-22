@@ -530,9 +530,12 @@ pub async fn upload_chunk(
         .try_get::<Option<String>>("", "room_id")
         .unwrap_or(None)
         .filter(|s| !s.is_empty());
-    let owner_user_id: Option<i32> = row.try_get::<Option<i32>>("", "owner_user_id").unwrap_or(None);
-    let channel_user_id: Option<i32> =
-        row.try_get::<Option<i32>>("", "channel_user_id").unwrap_or(None);
+    let owner_user_id: Option<i32> = row
+        .try_get::<Option<i32>>("", "owner_user_id")
+        .unwrap_or(None);
+    let channel_user_id: Option<i32> = row
+        .try_get::<Option<i32>>("", "channel_user_id")
+        .unwrap_or(None);
 
     let allowed = if room_id.is_some() {
         owner_user_id == Some(user_id)
@@ -855,7 +858,10 @@ pub async fn open_transfer_file(
             ));
         }
     } else {
-        let channel_user: i32 = row.try_get::<Option<i32>>("", "channel_user_id").unwrap_or(None).unwrap_or(0);
+        let channel_user: i32 = row
+            .try_get::<Option<i32>>("", "channel_user_id")
+            .unwrap_or(None)
+            .unwrap_or(0);
         if channel_user != user_id {
             return Err((
                 StatusCode::FORBIDDEN,
@@ -875,7 +881,9 @@ pub async fn open_transfer_file(
         ));
     }
 
-    let filename: String = row.try_get("", "filename").unwrap_or_else(|_| "file".into());
+    let filename: String = row
+        .try_get("", "filename")
+        .unwrap_or_else(|_| "file".into());
     let mime_type: String = row
         .try_get::<Option<String>>("", "mime_type")
         .ok()
@@ -1204,9 +1212,13 @@ pub async fn cancel_transfer(
         .filter(|s| !s.is_empty());
     let channel_id: String = row.try_get("", "channel_id").unwrap_or_default();
     let allowed = if room_id.is_some() {
-        row.try_get::<Option<i32>>("", "owner_user_id").unwrap_or(None) == Some(user_id)
+        row.try_get::<Option<i32>>("", "owner_user_id")
+            .unwrap_or(None)
+            == Some(user_id)
     } else {
-        row.try_get::<Option<i32>>("", "channel_user_id").unwrap_or(None) == Some(user_id)
+        row.try_get::<Option<i32>>("", "channel_user_id")
+            .unwrap_or(None)
+            == Some(user_id)
     };
     if !allowed {
         return Err((

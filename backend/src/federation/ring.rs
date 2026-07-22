@@ -1146,10 +1146,7 @@ async fn collect_brew_recommend_entries(
 
 /// Best-effort: after new categorized brew items land, trigger brew-recommend ring sync
 /// for rings that have peers. Rate-limited to one pass per call (caller batches per tick).
-pub async fn maybe_trigger_brew_recommend_sync_for_user(
-    db: &DatabaseConnection,
-    user_id: i32,
-) {
+pub async fn maybe_trigger_brew_recommend_sync_for_user(db: &DatabaseConnection, user_id: i32) {
     // Resolve username for trigger_sync
     let username = match db
         .query_one(Statement::from_sql_and_values(
@@ -1787,10 +1784,9 @@ mod tests {
 
     #[test]
     fn create_ring_request_deserializes_category_aliases() {
-        let a: CreateRingRequest = serde_json::from_str(
-            r#"{"name":"r","ring_type":"brew-recommend","category":"技术"}"#,
-        )
-        .unwrap();
+        let a: CreateRingRequest =
+            serde_json::from_str(r#"{"name":"r","ring_type":"brew-recommend","category":"技术"}"#)
+                .unwrap();
         assert_eq!(a.category.as_deref(), Some("技术"));
 
         let b: CreateRingRequest = serde_json::from_str(

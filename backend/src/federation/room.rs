@@ -452,9 +452,7 @@ fn validate_public_transition(
     requested: Option<bool>,
 ) -> Result<(), &'static str> {
     match requested {
-        Some(false) if currently_public => {
-            Err("Public rooms cannot be made private again")
-        }
+        Some(false) if currently_public => Err("Public rooms cannot be made private again"),
         _ => Ok(()),
     }
 }
@@ -1940,11 +1938,7 @@ pub async fn join_room(
                    is_local = true,
                    local_user_id = EXCLUDED.local_user_id,
                    joined_at = COALESCE(federation_room_members.joined_at, NOW())"#,
-            [
-                room_id.into(),
-                local_actor.clone().into(),
-                user_id.into(),
-            ],
+            [room_id.into(), local_actor.clone().into(), user_id.into()],
         ))
         .await
         .map_err(db_err)?;
@@ -1980,7 +1974,11 @@ pub async fn join_room(
     )
     .await
     {
-        tracing::warn!("[Room] open-join RoomJoin fanout failed for {}: {}", room_id, e);
+        tracing::warn!(
+            "[Room] open-join RoomJoin fanout failed for {}: {}",
+            room_id,
+            e
+        );
     }
 
     crate::federation::ws_gateway::broadcast_to_room(
@@ -1996,11 +1994,7 @@ pub async fn join_room(
     )
     .await;
 
-    tracing::info!(
-        "[Room] {} self-joined open room {}",
-        local_actor,
-        room_id
-    );
+    tracing::info!("[Room] {} self-joined open room {}", local_actor, room_id);
 
     Ok(json!({
         "success": true,
@@ -2103,8 +2097,7 @@ pub async fn accept_room_invite(
     .await;
 
     // Dismiss pending invite notification
-    let notif_id =
-        crate::federation::notify::room_invite_notification_id(room_id, user_id);
+    let notif_id = crate::federation::notify::room_invite_notification_id(room_id, user_id);
     crate::federation::notify::mark_invite_notification_read(user_id, &notif_id).await;
 
     tracing::info!(
@@ -2235,15 +2228,10 @@ pub async fn reject_room_invite(
     )
     .await;
 
-    let notif_id =
-        crate::federation::notify::room_invite_notification_id(room_id, user_id);
+    let notif_id = crate::federation::notify::room_invite_notification_id(room_id, user_id);
     crate::federation::notify::mark_invite_notification_read(user_id, &notif_id).await;
 
-    tracing::info!(
-        "[Room] {} rejected invite to room {}",
-        local_actor,
-        room_id
-    );
+    tracing::info!("[Room] {} rejected invite to room {}", local_actor, room_id);
 
     Ok(json!({
         "success": true,
@@ -2647,24 +2635,24 @@ pub async fn send_room_message(
             tracing::debug!(room_id = %room_id, "No peer E2E keys yet; sending plaintext");
             (req.payload.clone(), false)
         } else {
-        // 也给自己 wrap 一份，便于本端历史解密
-        let mut all = recipients;
-        if let Ok((my_pk, _)) = load_member_e2e_keys(db, room_id, &local_actor).await {
-            if !all.iter().any(|(_, pk)| pk == &my_pk) {
-                all.push((local_actor.clone(), my_pk));
+            // 也给自己 wrap 一份，便于本端历史解密
+            let mut all = recipients;
+            if let Ok((my_pk, _)) = load_member_e2e_keys(db, room_id, &local_actor).await {
+                if !all.iter().any(|(_, pk)| pk == &my_pk) {
+                    all.push((local_actor.clone(), my_pk));
+                }
             }
-        }
-        match crate::federation::e2e::encrypt_json_for_recipients(
-            &req.payload,
-            room_id.as_bytes(),
-            &all,
-        ) {
-            Ok(encrypted) => (encrypted, true),
-            Err(e) => {
-                tracing::warn!(room_id = %room_id, error = %e, "E2E encrypt failed; plaintext");
-                (req.payload.clone(), false)
+            match crate::federation::e2e::encrypt_json_for_recipients(
+                &req.payload,
+                room_id.as_bytes(),
+                &all,
+            ) {
+                Ok(encrypted) => (encrypted, true),
+                Err(e) => {
+                    tracing::warn!(room_id = %room_id, error = %e, "E2E encrypt failed; plaintext");
+                    (req.payload.clone(), false)
+                }
             }
-        }
         }
     } else {
         (req.payload.clone(), false)
@@ -2855,7 +2843,10 @@ pub async fn get_room_messages(
 fn room_file_kind(message_type: &str, payload: &serde_json::Value) -> Option<&'static str> {
     let mut mt = message_type;
     if mt.is_empty() || mt == "text" {
-        if payload.get("transfer_id").and_then(|v| v.as_str()).is_some()
+        if payload
+            .get("transfer_id")
+            .and_then(|v| v.as_str())
+            .is_some()
             && payload.get("filename").and_then(|v| v.as_str()).is_some()
         {
             mt = "file-meta";
@@ -2880,7 +2871,11 @@ fn room_file_kind(message_type: &str, payload: &serde_json::Value) -> Option<&'s
     }
 }
 
-fn room_file_status(has_inline: bool, transfer_status: Option<&str>, has_transfer_id: bool) -> String {
+fn room_file_status(
+    has_inline: bool,
+    transfer_status: Option<&str>,
+    has_transfer_id: bool,
+) -> String {
     if has_inline {
         return "ready".into();
     }
@@ -2929,9 +2924,7 @@ pub async fn list_room_files(
 
     let limit = limit.unwrap_or(50).clamp(1, 200);
     let filter = filter.unwrap_or("all").to_ascii_lowercase();
-    let q_norm = q
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| !s.is_empty());
+    let q_norm = q.map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty());
     let my_keys = load_member_e2e_keys(db, room_id, &local_actor).await.ok();
 
     // Local transfer status map for this room
@@ -2946,8 +2939,10 @@ pub async fn list_room_files(
         .await
         .map_err(db_err)?;
 
-    let mut transfer_map: std::collections::HashMap<String, (String, String, i64, Option<String>, String)> =
-        std::collections::HashMap::new();
+    let mut transfer_map: std::collections::HashMap<
+        String,
+        (String, String, i64, Option<String>, String),
+    > = std::collections::HashMap::new();
     // transfer_id -> (status, filename, file_size, mime, created_at)
     for r in &transfer_rows {
         let tid: String = r.try_get("", "transfer_id").unwrap_or_default();
@@ -3080,16 +3075,20 @@ pub async fn list_room_files(
                 .map(|s| !s.is_empty())
                 .unwrap_or(true); // non-string data still counts as present
 
-        let tr = transfer_id
-            .as_ref()
-            .and_then(|id| transfer_map.get(id));
+        let tr = transfer_id.as_ref().and_then(|id| transfer_map.get(id));
         let filename = payload
             .get("filename")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
             .or_else(|| tr.map(|t| t.1.clone()))
-            .unwrap_or_else(|| if kind == "image" { "image".into() } else { "file".into() });
+            .unwrap_or_else(|| {
+                if kind == "image" {
+                    "image".into()
+                } else {
+                    "file".into()
+                }
+            });
 
         if let Some(ref qn) = q_norm {
             if !filename.to_lowercase().contains(qn) {
@@ -3100,7 +3099,12 @@ pub async fn list_room_files(
         let size = payload
             .get("size")
             .and_then(|v| v.as_i64())
-            .or_else(|| payload.get("size").and_then(|v| v.as_u64()).map(|u| u as i64))
+            .or_else(|| {
+                payload
+                    .get("size")
+                    .and_then(|v| v.as_u64())
+                    .map(|u| u as i64)
+            })
             .or_else(|| tr.map(|t| t.2))
             .unwrap_or(0);
         let mime_type = payload
@@ -3108,11 +3112,7 @@ pub async fn list_room_files(
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .or_else(|| tr.and_then(|t| t.3.clone()));
-        let status = room_file_status(
-            has_inline,
-            tr.map(|t| t.0.as_str()),
-            transfer_id.is_some(),
-        );
+        let status = room_file_status(has_inline, tr.map(|t| t.0.as_str()), transfer_id.is_some());
         let message_id: String = r.try_get("", "message_id").unwrap_or_default();
         let sender_actor: String = r.try_get("", "sender_actor").unwrap_or_default();
         let created_at = r
@@ -3518,9 +3518,7 @@ pub async fn handle_room_invite(
     if !same_actor_url(owner_actor, &local_actor) {
         upsert_remote_room_member(db, room_id, owner_actor, "owner", None).await?;
     }
-    if !same_actor_url(actor_url_str, &local_actor)
-        && !same_actor_url(actor_url_str, owner_actor)
-    {
+    if !same_actor_url(actor_url_str, &local_actor) && !same_actor_url(actor_url_str, owner_actor) {
         upsert_remote_room_member(db, room_id, actor_url_str, "admin", None).await?;
     } else if !same_actor_url(actor_url_str, &local_actor) {
         // inviter is owner — already upserted; ensure role stays owner
@@ -3540,10 +3538,7 @@ pub async fn handle_room_invite(
             if same_actor_url(member_actor, &local_actor) {
                 continue;
             }
-            let member_role = m
-                .get("role")
-                .and_then(|v| v.as_str())
-                .unwrap_or("member");
+            let member_role = m.get("role").and_then(|v| v.as_str()).unwrap_or("member");
             upsert_remote_room_member(db, room_id, member_actor, member_role, None).await?;
         }
     }
@@ -3774,9 +3769,7 @@ pub async fn handle_room_leave(
         let kicker_role = get_member_role(db, room_id, actor_url_str)
             .await
             .map_err(|e| e.to_string())?;
-        if kicker_role.as_deref() != Some("owner")
-            && kicker_role.as_deref() != Some("admin")
-        {
+        if kicker_role.as_deref() != Some("owner") && kicker_role.as_deref() != Some("admin") {
             // Still allow if kicker not known locally (roster lag) — log and proceed
             tracing::warn!(
                 "[Room] kick from {} without local admin role in room {}",
@@ -4095,11 +4088,7 @@ async fn refanout_local_e2e_keys_to_member(
 }
 
 /// Notify local users (inviter preferred, else owner) that someone joined/accepted.
-async fn notify_local_members_of_join(
-    db: &DatabaseConnection,
-    room_id: &str,
-    joining_actor: &str,
-) {
+async fn notify_local_members_of_join(db: &DatabaseConnection, room_id: &str, joining_actor: &str) {
     // Prefer invited_by local user; fall back to local owner/admin members
     let inviter_row = db
         .query_one(Statement::from_sql_and_values(
@@ -4567,39 +4556,38 @@ pub async fn initiate_e2e_key_exchange(
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
-    let (public_key, sealed_sk) =
-        if let (Some(pk), Some(sk_stored)) = (existing_pk, existing_sk) {
-            match crate::federation::e2e::unseal_private_key(&sk_stored, &jwt_secret) {
-                Ok(_) => (pk, sk_stored),
-                Err(_) => {
-                    let session = crate::federation::e2e::create_session(room_id);
-                    let sealed = crate::federation::e2e::seal_private_key(
-                        &session.local_keypair.private_key,
-                        &jwt_secret,
-                    )
-                    .map_err(|e| {
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
-                        )
-                    })?;
-                    (session.local_keypair.public_key, sealed)
-                }
-            }
-        } else {
-            let session = crate::federation::e2e::create_session(room_id);
-            let sealed = crate::federation::e2e::seal_private_key(
-                &session.local_keypair.private_key,
-                &jwt_secret,
-            )
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+    let (public_key, sealed_sk) = if let (Some(pk), Some(sk_stored)) = (existing_pk, existing_sk) {
+        match crate::federation::e2e::unseal_private_key(&sk_stored, &jwt_secret) {
+            Ok(_) => (pk, sk_stored),
+            Err(_) => {
+                let session = crate::federation::e2e::create_session(room_id);
+                let sealed = crate::federation::e2e::seal_private_key(
+                    &session.local_keypair.private_key,
+                    &jwt_secret,
                 )
-            })?;
-            (session.local_keypair.public_key, sealed)
-        };
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+                    )
+                })?;
+                (session.local_keypair.public_key, sealed)
+            }
+        }
+    } else {
+        let session = crate::federation::e2e::create_session(room_id);
+        let sealed = crate::federation::e2e::seal_private_key(
+            &session.local_keypair.private_key,
+            &jwt_secret,
+        )
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+            )
+        })?;
+        (session.local_keypair.public_key, sealed)
+    };
 
     perms["e2e"] = json!({
         "local_public_key": public_key,
@@ -4838,7 +4826,10 @@ mod tests {
 
     #[test]
     fn non_empty_room_name_trims_and_rejects_blank() {
-        assert_eq!(non_empty_room_name(Some(" 测试群 ")).as_deref(), Some("测试群"));
+        assert_eq!(
+            non_empty_room_name(Some(" 测试群 ")).as_deref(),
+            Some("测试群")
+        );
         assert_eq!(non_empty_room_name(Some("   ")), None);
         assert_eq!(non_empty_room_name(Some("")), None);
         assert_eq!(non_empty_room_name(None), None);
@@ -4847,18 +4838,12 @@ mod tests {
     #[test]
     fn resolve_invite_room_name_prefers_real_name() {
         let room_id = "rm_08355abcdef";
-        assert_eq!(
-            resolve_invite_room_name(Some("测试群"), room_id),
-            "测试群"
-        );
+        assert_eq!(resolve_invite_room_name(Some("测试群"), room_id), "测试群");
         assert_eq!(
             resolve_invite_room_name(Some("  "), room_id),
             "Room rm_08355"
         );
-        assert_eq!(
-            resolve_invite_room_name(None, room_id),
-            "Room rm_08355"
-        );
+        assert_eq!(resolve_invite_room_name(None, room_id), "Room rm_08355");
     }
 
     #[test]
@@ -4878,10 +4863,7 @@ mod tests {
         let room_id = "rm_abc12345";
         let with_name = json!({"id": room_id, "name": "  测试群  "});
         let name = non_empty_room_name(with_name.get("name").and_then(|v| v.as_str()));
-        assert_eq!(
-            resolve_invite_room_name(name.as_deref(), room_id),
-            "测试群"
-        );
+        assert_eq!(resolve_invite_room_name(name.as_deref(), room_id), "测试群");
 
         let blank = json!({"id": room_id, "name": "  "});
         let name = non_empty_room_name(blank.get("name").and_then(|v| v.as_str()));
@@ -4905,14 +4887,12 @@ mod tests {
         assert!(!is_admin_role("member"));
         assert!(!is_admin_role("moderator"));
         assert!(!is_admin_role(""));
-
     }
 
     #[test]
     fn fallback_room_name_uses_first_8_chars() {
         assert_eq!(fallback_room_name("rm_abcdefghij"), "Room rm_abcde");
         assert_eq!(fallback_room_name("short"), "Room short");
-
     }
 
     #[test]
@@ -4921,7 +4901,6 @@ mod tests {
         assert!(validate_public_transition(true, Some(true)).is_ok());
         assert!(validate_public_transition(false, Some(true)).is_ok());
         assert!(validate_public_transition(false, None).is_ok());
-
     }
 
     #[test]
@@ -4929,7 +4908,6 @@ mod tests {
         assert_eq!(non_empty_room_name(Some("  hi  ")).as_deref(), Some("hi"));
         assert_eq!(non_empty_room_name(Some("   ")), None);
         assert_eq!(non_empty_room_name(None), None);
-
     }
 
     #[test]
@@ -4938,17 +4916,13 @@ mod tests {
         assert!(is_admin_role("admin"));
         assert!(!is_admin_role("member"));
         assert!(!is_admin_role(""));
-
     }
-
 
     #[test]
     fn w175_fallback_room_name() {
         assert_eq!(fallback_room_name("rm_abcdefghij"), "Room rm_abcde");
         assert_eq!(fallback_room_name("short"), "Room short");
-
     }
-
 
     #[test]
     fn w175_public_transition_one_way() {
@@ -4956,17 +4930,12 @@ mod tests {
         assert!(validate_public_transition(true, Some(true)).is_ok());
         assert!(validate_public_transition(false, Some(true)).is_ok());
         assert!(validate_public_transition(false, None).is_ok());
-
     }
-
 
     #[test]
     fn w175_non_empty_room_name() {
         assert_eq!(non_empty_room_name(Some("  hi  ")).as_deref(), Some("hi"));
         assert_eq!(non_empty_room_name(Some("  ")), None);
         assert_eq!(non_empty_room_name(None), None);
-
     }
-
 }
-

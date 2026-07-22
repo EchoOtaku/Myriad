@@ -261,9 +261,7 @@ async fn attribute_host_request(
     // Coarse per-(subject, tapp, operation class) limits on write-ish methods.
     // Host UI traffic never reaches this branch (no grant header above).
     if let Some(operation) = host_attribution_rate_limit_operation(req.method(), permission) {
-        if let Err(error) =
-            check_rate_limit(grant.subject_id(), grant.tapp_id(), operation).await
-        {
+        if let Err(error) = check_rate_limit(grant.subject_id(), grant.tapp_id(), operation).await {
             return error.into_response();
         }
     }
@@ -456,7 +454,8 @@ mod tests {
                 .map(|a| a.permission.as_str())
                 .collect();
             assert_eq!(
-                host_perms, action_perms,
+                host_perms,
+                action_perms,
                 "domain {domain}: host route permission set must equal action permission set.\n\
                  host-only: {:?}\naction-only: {:?}",
                 host_perms
@@ -681,10 +680,7 @@ mod tests {
             Some("brew.comment")
         );
         assert_eq!(
-            host_attribution_rate_limit_operation(
-                &Method::POST,
-                TappPermission::FederationMessage
-            ),
+            host_attribution_rate_limit_operation(&Method::POST, TappPermission::FederationMessage),
             Some("federation.message")
         );
         assert_eq!(
@@ -717,7 +713,10 @@ mod tests {
             None
         );
         assert_eq!(
-            host_attribution_rate_limit_operation(&Method::OPTIONS, TappPermission::FederationWrite),
+            host_attribution_rate_limit_operation(
+                &Method::OPTIONS,
+                TappPermission::FederationWrite
+            ),
             None
         );
     }

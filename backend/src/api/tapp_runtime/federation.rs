@@ -66,11 +66,7 @@ fn feed_item(row: FeedRow) -> Value {
     })
 }
 
-async fn enrich_feed_items(
-    db: &DatabaseConnection,
-    user_id: i32,
-    items: &mut [Value],
-) {
+async fn enrich_feed_items(db: &DatabaseConnection, user_id: i32, items: &mut [Value]) {
     let object_ids: Vec<String> = items
         .iter()
         .filter_map(|it| {

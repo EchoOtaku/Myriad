@@ -146,7 +146,9 @@ fn format_openai_compatible_http_error(
     body: &str,
 ) -> String {
     let body = body.trim();
-    let region_blocked = body.to_ascii_lowercase().contains("not available in your region")
+    let region_blocked = body
+        .to_ascii_lowercase()
+        .contains("not available in your region")
         || body.contains("\"code\":403")
         || body.contains("\"code\": 403");
 
@@ -231,7 +233,7 @@ pub enum AiProvider {
 impl AiProvider {
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
-            "openai" => Self::OpenAI,
+            "openai" | "openrouter" => Self::OpenAI,
             _ => Self::Gemini,
         }
     }
@@ -294,14 +296,7 @@ impl AiAnalyzer {
         model: String,
         base_url: Option<String>,
     ) -> Self {
-        Self::new_with_timeout(
-            provider,
-            api_key,
-            model,
-            base_url,
-            Duration::from_secs(120),
-        )
-        .await
+        Self::new_with_timeout(provider, api_key, model, base_url, Duration::from_secs(120)).await
     }
 
     /// 与 [`AiAnalyzer::new`] 相同，但允许长任务（如 Tapp Playground 生成）

@@ -374,10 +374,9 @@ fn valid_locale_tag(tag: &str) -> bool {
         && tag.split('-').all(|part| {
             !part.is_empty() && part.len() <= 8 && part.bytes().all(|b| b.is_ascii_alphanumeric())
         })
-        && tag
-            .split('-')
-            .next()
-            .is_some_and(|lang| (2..=3).contains(&lang.len()) && lang.bytes().all(|b| b.is_ascii_alphabetic()))
+        && tag.split('-').next().is_some_and(|lang| {
+            (2..=3).contains(&lang.len()) && lang.bytes().all(|b| b.is_ascii_alphabetic())
+        })
 }
 
 pub(crate) fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {

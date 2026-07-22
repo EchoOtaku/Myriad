@@ -660,10 +660,16 @@ mod tests {
         }
 
         // Friend links: category filter on brew.sources, no fake caps
-        let friend = registry.get("brew-friend-links").await.expect("friend skill");
+        let friend = registry
+            .get("brew-friend-links")
+            .await
+            .expect("friend skill");
         assert_eq!(friend.origin, SkillOrigin::Manual);
         assert!(
-            friend.gating.capabilities.contains(&"brew.sources".to_string()),
+            friend
+                .gating
+                .capabilities
+                .contains(&"brew.sources".to_string()),
             "brew-friend-links must gate on brew.sources"
         );
         assert!(
@@ -671,7 +677,10 @@ mod tests {
             "instructions body required"
         );
         assert!(
-            friend.triggers.iter().any(|t| t.contains("友情链接") || t.contains("友链")),
+            friend
+                .triggers
+                .iter()
+                .any(|t| t.contains("友情链接") || t.contains("友链")),
             "zh triggers required"
         );
 
@@ -709,7 +718,10 @@ mod tests {
             .await
             .expect("latest skill");
         assert!(
-            latest.gating.capabilities.contains(&"brew.items".to_string()),
+            latest
+                .gating
+                .capabilities
+                .contains(&"brew.items".to_string()),
             "brew-latest-articles must gate on brew.items"
         );
         assert!(

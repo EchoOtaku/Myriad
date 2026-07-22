@@ -812,25 +812,29 @@ impl SmartFilter {
                         .and_then(|v| v.as_str())
                         .map(|s| s.trim().to_string())
                         .filter(|s| !s.is_empty());
-                    let season_id = item.get("season_id").map(|v| match v {
-                        Value::String(s) => s.trim().to_string(),
-                        Value::Number(n) => n.to_string(),
-                        _ => String::new(),
-                    }).filter(|s| !s.is_empty());
+                    let season_id = item
+                        .get("season_id")
+                        .map(|v| match v {
+                            Value::String(s) => s.trim().to_string(),
+                            Value::Number(n) => n.to_string(),
+                            _ => String::new(),
+                        })
+                        .filter(|s| !s.is_empty());
                     let progress = item
                         .get("progress")
                         .and_then(|v| v.as_str())
                         .map(|s| s.trim().to_string())
                         .filter(|s| !s.is_empty());
-                    let season_type = item.get("season_type").map(|v| match v {
-                        Value::String(s) => s.trim().to_string(),
-                        Value::Number(n) => n.to_string(),
-                        _ => String::new(),
-                    }).filter(|s| !s.is_empty());
-                    bangumi_meta.insert(
-                        title.to_string(),
-                        (cover, season_id, progress, season_type),
-                    );
+                    let season_type = item
+                        .get("season_type")
+                        .map(|v| match v {
+                            Value::String(s) => s.trim().to_string(),
+                            Value::Number(n) => n.to_string(),
+                            _ => String::new(),
+                        })
+                        .filter(|s| !s.is_empty());
+                    bangumi_meta
+                        .insert(title.to_string(), (cover, season_id, progress, season_type));
                     watch_list.push((title.to_string(), author));
                 }
             }
@@ -933,21 +937,22 @@ impl SmartFilter {
             std::collections::HashMap::new();
         let mut recent_games = Vec::new();
 
-        let push_game = |game: &Value,
-                         game_list: &mut Vec<(String, i64)>,
-                         name_to_appid: &mut std::collections::HashMap<String, i64>| {
-            if let Some(name) = game.get("name").and_then(|v| v.as_str()) {
-                let playtime = game
-                    .get("playtime_forever")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0);
-                let appid = game.get("appid").and_then(|v| v.as_i64());
-                if let Some(id) = appid {
-                    name_to_appid.insert(name.to_string(), id);
+        let push_game =
+            |game: &Value,
+             game_list: &mut Vec<(String, i64)>,
+             name_to_appid: &mut std::collections::HashMap<String, i64>| {
+                if let Some(name) = game.get("name").and_then(|v| v.as_str()) {
+                    let playtime = game
+                        .get("playtime_forever")
+                        .and_then(|v| v.as_i64())
+                        .unwrap_or(0);
+                    let appid = game.get("appid").and_then(|v| v.as_i64());
+                    if let Some(id) = appid {
+                        name_to_appid.insert(name.to_string(), id);
+                    }
+                    game_list.push((name.to_string(), playtime));
                 }
-                game_list.push((name.to_string(), playtime));
-            }
-        };
+            };
 
         // 收集所有拥有的游戏
         if let Some(games) = owned_games {
@@ -964,16 +969,15 @@ impl SmartFilter {
                         .get("playtime_forever")
                         .and_then(|v| v.as_i64())
                         .unwrap_or(0);
-                    let appid = game.get("appid").and_then(|v| v.as_i64()).or_else(|| {
-                        name_to_appid.get(name).copied()
-                    });
+                    let appid = game
+                        .get("appid")
+                        .and_then(|v| v.as_i64())
+                        .or_else(|| name_to_appid.get(name).copied());
                     if let Some(id) = appid {
                         name_to_appid.insert(name.to_string(), id);
                     }
                     let image = appid.map(|id| {
-                        format!(
-                            "https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/header.jpg"
-                        )
+                        format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/header.jpg")
                     });
                     recent_games.push(GameItem {
                         name: name.to_string(),
@@ -998,9 +1002,7 @@ impl SmartFilter {
                 metadata.insert("appid".to_string(), appid.to_string());
                 metadata.insert(
                     "image".to_string(),
-                    format!(
-                        "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"
-                    ),
+                    format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"),
                 );
                 metadata.insert("id".to_string(), appid.to_string());
             }
@@ -1255,11 +1257,14 @@ impl SmartFilter {
 
                             song_list.push((name.to_string(), artist.to_string()));
 
-                            let song_id = track.get("id").map(|v| match v {
-                                Value::String(s) => s.trim().to_string(),
-                                Value::Number(n) => n.to_string(),
-                                _ => String::new(),
-                            }).filter(|s| !s.is_empty());
+                            let song_id = track
+                                .get("id")
+                                .map(|v| match v {
+                                    Value::String(s) => s.trim().to_string(),
+                                    Value::Number(n) => n.to_string(),
+                                    _ => String::new(),
+                                })
+                                .filter(|s| !s.is_empty());
                             let album = track
                                 .get("al")
                                 .and_then(|al| al.get("name"))
@@ -2423,7 +2428,9 @@ impl SmartFilter {
             .and_then(|v| v.as_u64())
             .map(|c| format!("#{:06X}", c & 0xFF_FFFF));
         let badges = Self::discord_public_flags_badges(
-            user.get("public_flags").and_then(|v| v.as_u64()).unwrap_or(0),
+            user.get("public_flags")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
         );
         let mfa_enabled = user
             .get("mfa_enabled")
@@ -2555,7 +2562,11 @@ impl SmartFilter {
                     let b_admin = b.permissions_highlight.iter().any(|p| p == "ADMINISTRATOR");
                     b_admin.cmp(&a_admin)
                 })
-                .then_with(|| b.member_count.unwrap_or(0).cmp(&a.member_count.unwrap_or(0)))
+                .then_with(|| {
+                    b.member_count
+                        .unwrap_or(0)
+                        .cmp(&a.member_count.unwrap_or(0))
+                })
                 .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
         });
         guilds_preview.truncate(30);
@@ -2844,12 +2855,7 @@ impl SmartFilter {
     /// 从 guild features 数组挑出能体现社区身份/规格的标签，忽略其余噪声特性。
     fn discord_guild_feature_highlight(features: &[String]) -> Vec<String> {
         // 仅保留有含义、面向读者的少量特性；其余（如 NEWS、THREADS_ENABLED）丢弃。
-        const KEEP: &[&str] = &[
-            "PARTNERED",
-            "VERIFIED",
-            "COMMUNITY",
-            "DISCOVERABLE",
-        ];
+        const KEEP: &[&str] = &["PARTNERED", "VERIFIED", "COMMUNITY", "DISCOVERABLE"];
         let mut out = Vec::new();
         for f in features {
             let upper = f.to_ascii_uppercase();
@@ -3297,10 +3303,7 @@ mod tests {
                 assert_eq!(analysis.guild_stats.total_online_reach, 8_300);
                 assert_eq!(analysis.guild_stats.community_guild_count, 1);
                 assert_eq!(analysis.guild_stats.partnered_or_verified_count, 1);
-                assert_eq!(
-                    analysis.guilds_preview[0].member_count,
-                    Some(1200)
-                );
+                assert_eq!(analysis.guilds_preview[0].member_count, Some(1200));
                 assert!(analysis.guilds_preview[0]
                     .feature_highlight
                     .contains(&"COMMUNITY".to_string()));
@@ -3310,7 +3313,10 @@ mod tests {
                     .contains(&"NEWS".to_string()));
 
                 // identify 派生：徽章 / 头像 / accent / MFA / 账号年龄
-                assert!(analysis.profile.badges.contains(&"Active Developer".to_string()));
+                assert!(analysis
+                    .profile
+                    .badges
+                    .contains(&"Active Developer".to_string()));
                 assert!(analysis
                     .profile
                     .badges

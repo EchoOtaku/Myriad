@@ -63,10 +63,9 @@ fn apply_no_store_headers(response: &mut Response) {
         header::CACHE_CONTROL,
         HeaderValue::from_static("no-store, private"),
     );
-    response.headers_mut().insert(
-        header::PRAGMA,
-        HeaderValue::from_static("no-cache"),
-    );
+    response
+        .headers_mut()
+        .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
 }
 
 /// `Redirect` → `Response` with Cache-Control: no-store, private.
@@ -397,10 +396,7 @@ async fn handle_callback_replay(
                 provider = %slug,
                 "OAuth Login state replay — soft-success redirect (no re-exchange)"
             );
-            let url = format!(
-                "{}/?auth=success",
-                frontend_base.trim_end_matches('/')
-            );
+            let url = format!("{}/?auth=success", frontend_base.trim_end_matches('/'));
             Ok(no_store_redirect(&url))
         }
         OAuthPurpose::PlatformData { platform, .. } => {
@@ -1018,12 +1014,9 @@ pub async fn set_primary_identity(
     };
 
     let provider: String = row.try_get("", "provider").unwrap_or_default();
-    let provider_username: Option<String> =
-        row.try_get("", "provider_username").unwrap_or(None);
+    let provider_username: Option<String> = row.try_get("", "provider_username").unwrap_or(None);
     let avatar_url: Option<String> = row.try_get("", "avatar_url").unwrap_or(None);
-    let provider_user_id: String = row
-        .try_get("", "provider_user_id")
-        .unwrap_or_default();
+    let provider_user_id: String = row.try_get("", "provider_user_id").unwrap_or_default();
 
     let run = async {
         // Clear other primaries, then mark this one
@@ -1079,10 +1072,7 @@ pub async fn set_primary_identity(
                         linked_github_id = COALESCE($1, linked_github_id), \
                         updated_at = NOW() \
                      WHERE id = $2",
-                    vec![
-                        SeaValue::BigInt(github_id),
-                        SeaValue::Int(Some(user_id)),
-                    ],
+                    vec![SeaValue::BigInt(github_id), SeaValue::Int(Some(user_id))],
                 ))
                 .await
                 .map_err(|e| err_500(format!("Failed to apply profile: {e}")))?;

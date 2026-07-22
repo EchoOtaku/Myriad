@@ -698,7 +698,10 @@ mod tests {
             .unwrap();
 
         assert!(root.join("page.css").is_file());
-        assert_eq!(std::fs::read_to_string(root.join("page.css")).unwrap(), page_css);
+        assert_eq!(
+            std::fs::read_to_string(root.join("page.css")).unwrap(),
+            page_css
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 

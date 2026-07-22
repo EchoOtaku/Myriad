@@ -172,10 +172,7 @@ async fn resolve_local_object(
 }
 
 /// attributedTo / actor URL for an object (local resolution).
-async fn resolve_object_author(
-    db: &DatabaseConnection,
-    object_id: &str,
-) -> Option<String> {
+async fn resolve_object_author(db: &DatabaseConnection, object_id: &str) -> Option<String> {
     if let Some(obj) = resolve_local_object(db, object_id).await {
         if let Some(a) = obj
             .get("attributedTo")
@@ -375,11 +372,7 @@ pub struct InteractionStats {
     pub reply_count: i64,
 }
 
-async fn stats_for_one(
-    db: &DatabaseConnection,
-    user_id: i32,
-    object_id: &str,
-) -> InteractionStats {
+async fn stats_for_one(db: &DatabaseConnection, user_id: i32, object_id: &str) -> InteractionStats {
     interaction_stats_for_objects(db, user_id, &[object_id.to_string()])
         .await
         .ok()
@@ -508,8 +501,11 @@ pub async fn unlike_object(
         .await
         .map_err(db_err)?;
 
-    let original_like_id: Option<String> = row
-        .and_then(|r| r.try_get::<Option<String>>("", "activity_id").ok().flatten());
+    let original_like_id: Option<String> = row.and_then(|r| {
+        r.try_get::<Option<String>>("", "activity_id")
+            .ok()
+            .flatten()
+    });
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
@@ -927,10 +923,7 @@ fn slim_quoted_object_depth(obj: &serde_json::Value, depth: usize) -> serde_json
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let attributed = obj
-        .get("attributedTo")
-        .cloned()
-        .unwrap_or(json!(null));
+    let attributed = obj.get("attributedTo").cloned().unwrap_or(json!(null));
     let preview = plain_preview_from_object(obj);
     let kind_repost = is_repost_object(obj);
 
@@ -1114,11 +1107,7 @@ pub async fn announce_object(
         .and_then(|o| o.get("mfp:quoteDepth").and_then(|v| v.as_u64()))
         .map(|d| d.saturating_add(1))
         .unwrap_or_else(|| {
-            if object_value
-                .as_ref()
-                .map(is_repost_object)
-                .unwrap_or(false)
-            {
+            if object_value.as_ref().map(is_repost_object).unwrap_or(false) {
                 1
             } else {
                 0
@@ -1205,10 +1194,7 @@ pub async fn announce_object(
 
     // Author timeline: show the quote-repost as a Create Note (user's commentary).
     let preview: Option<String> = Some(content.chars().take(200).collect::<String>());
-    let content_for_tl = create_json
-        .get("object")
-        .cloned()
-        .unwrap_or(json!({}));
+    let content_for_tl = create_json.get("object").cloned().unwrap_or(json!({}));
 
     let _ = db
         .execute(Statement::from_sql_and_values(
@@ -1272,8 +1258,11 @@ pub async fn unannounce_object(
         .await
         .map_err(db_err)?;
 
-    let original_id: Option<String> = row
-        .and_then(|r| r.try_get::<Option<String>>("", "activity_id").ok().flatten());
+    let original_id: Option<String> = row.and_then(|r| {
+        r.try_get::<Option<String>>("", "activity_id")
+            .ok()
+            .flatten()
+    });
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
@@ -1306,18 +1295,18 @@ pub async fn unannounce_object(
             .ok()
             .flatten();
 
-        let (act_type, object_json): (String, Option<serde_json::Value>) =
-            if let Some(r) = orig_act {
-                (
-                    r.try_get::<String>("", "activity_type")
-                        .unwrap_or_else(|_| "Announce".into()),
-                    r.try_get::<Option<serde_json::Value>>("", "object_json")
-                        .ok()
-                        .flatten(),
-                )
-            } else {
-                ("Announce".into(), None)
-            };
+        let (act_type, object_json): (String, Option<serde_json::Value>) = if let Some(r) = orig_act
+        {
+            (
+                r.try_get::<String>("", "activity_type")
+                    .unwrap_or_else(|_| "Announce".into()),
+                r.try_get::<Option<serde_json::Value>>("", "object_json")
+                    .ok()
+                    .flatten(),
+            )
+        } else {
+            ("Announce".into(), None)
+        };
 
         let undo_id = generate_activity_id(&base_url);
         let undo_json = if act_type == "Create" {
@@ -1473,11 +1462,7 @@ async fn deliver_to_object_author(
                    SELECT 1 FROM federation_delivery_queue
                    WHERE activity_id = $1 AND target_inbox = $2 AND status = 'pending'
                )"#,
-            [
-                activity_db_id.into(),
-                inbox.into(),
-                domain.into(),
-            ],
+            [activity_db_id.into(), inbox.into(), domain.into()],
         ))
         .await;
 
@@ -1495,11 +1480,7 @@ pub async fn handle_inbound_like(
     activity: &serde_json::Value,
 ) {
     let object_id = extract_object_id(&activity["object"]).unwrap_or_default();
-    tracing::debug!(
-        "👍 Inbound Like from {} on {}",
-        actor_url_str,
-        object_id
-    );
+    tracing::debug!("👍 Inbound Like from {} on {}", actor_url_str, object_id);
     // Counts derived from federation_activities (is_local=false).
 }
 
@@ -1559,8 +1540,7 @@ mod tests {
     #[test]
     fn extract_object_id_from_note() {
         assert_eq!(
-            extract_object_id(&json!({"type": "Note", "id": "https://ex.com/notes/2"}))
-                .as_deref(),
+            extract_object_id(&json!({"type": "Note", "id": "https://ex.com/notes/2"})).as_deref(),
             Some("https://ex.com/notes/2")
         );
     }
@@ -1598,20 +1578,16 @@ mod tests {
         let slim = slim_quoted_object(&mid);
         assert_eq!(slim["id"], "https://ex.com/notes/mid");
         assert_eq!(slim["mfp:kind"], "repost");
-        assert!(
-            slim["content_preview"]
-                .as_str()
-                .unwrap_or("")
-                .contains("bob")
-        );
+        assert!(slim["content_preview"]
+            .as_str()
+            .unwrap_or("")
+            .contains("bob"));
         let nested = &slim["mfp:quotedObject"];
         assert_eq!(nested["id"], "https://ex.com/notes/root");
-        assert!(
-            nested["content_preview"]
-                .as_str()
-                .unwrap_or("")
-                .contains("original")
-        );
+        assert!(nested["content_preview"]
+            .as_str()
+            .unwrap_or("")
+            .contains("original"));
         assert_eq!(
             root_quoted_object_id(Some(&mid), "fallback"),
             "https://ex.com/notes/root"
@@ -1652,17 +1628,16 @@ mod tests {
 
     #[test]
     fn extract_object_id_rejects_blank_and_accepts_nested() {
-
         assert!(extract_object_id(&serde_json::json!("")).is_none());
         assert!(extract_object_id(&serde_json::json!("   ")).is_none());
         assert_eq!(
             extract_object_id(&serde_json::json!({
                 "type": "Create",
                 "object": {"type": "Note", "id": "https://a.example/notes/1"}
-            })).as_deref(),
+            }))
+            .as_deref(),
             Some("https://a.example/notes/1")
         );
-
     }
 
     #[test]
@@ -1671,10 +1646,10 @@ mod tests {
             extract_object_id(&serde_json::json!({
                 "type": "Update",
                 "object": {"id": "https://a.example/notes/9", "type": "Note"}
-            })).as_deref(),
+            }))
+            .as_deref(),
             Some("https://a.example/notes/9")
         );
-
     }
 
     #[test]
@@ -1683,7 +1658,6 @@ mod tests {
             extract_object_id(&serde_json::json!("  https://a.example/notes/1  ")).as_deref(),
             Some("https://a.example/notes/1")
         );
-
     }
 
     #[test]
@@ -1692,12 +1666,11 @@ mod tests {
             extract_object_id(&serde_json::json!({
                 "type": "Update",
                 "object": {"id": "https://a.example/notes/9", "type": "Note"}
-            })).as_deref(),
+            }))
+            .as_deref(),
             Some("https://a.example/notes/9")
         );
-
     }
-
 
     #[test]
     fn w175_extract_object_id_trims() {
@@ -1706,8 +1679,5 @@ mod tests {
             Some("https://a.example/notes/1")
         );
         assert!(extract_object_id(&serde_json::json!("")).is_none());
-
     }
-
 }
-

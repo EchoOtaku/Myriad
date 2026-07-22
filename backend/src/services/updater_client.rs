@@ -53,9 +53,7 @@ impl std::fmt::Display for UpdaterClientError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Never echo UPDATE_TOKEN / JWT_SECRET / etc. into logs or JSON error bodies.
         match self {
-            Self::NotConfigured => {
-                f.write_str("updater not configured (set MYRIAD_UPDATER_URL)")
-            }
+            Self::NotConfigured => f.write_str("updater not configured (set MYRIAD_UPDATER_URL)"),
             Self::Upstream(s, body) => {
                 write!(
                     f,
@@ -223,24 +221,16 @@ impl UpdaterClient {
             req = req.json(b);
         }
 
-        let resp = req
-            .send()
-            .await
-            .map_err(|e| {
-                UpdaterClientError::Transport(crate::util::redact::redact_secrets(&e.to_string()))
-            })?;
+        let resp = req.send().await.map_err(|e| {
+            UpdaterClientError::Transport(crate::util::redact::redact_secrets(&e.to_string()))
+        })?;
         let status = resp.status();
-        let bytes = resp
-            .bytes()
-            .await
-            .map_err(|e| {
-                UpdaterClientError::Transport(crate::util::redact::redact_secrets(&e.to_string()))
-            })?;
+        let bytes = resp.bytes().await.map_err(|e| {
+            UpdaterClientError::Transport(crate::util::redact::redact_secrets(&e.to_string()))
+        })?;
 
         if !status.is_success() {
-            let detail = crate::util::redact::redact_secrets(
-                &String::from_utf8_lossy(&bytes),
-            );
+            let detail = crate::util::redact::redact_secrets(&String::from_utf8_lossy(&bytes));
             return Err(UpdaterClientError::Upstream(status, detail));
         }
 

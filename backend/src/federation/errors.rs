@@ -168,24 +168,19 @@ mod tests {
 
     #[test]
     fn access_denied_is_permanent() {
-
         assert!(is_permanent_federation_error("access denied for peer"));
         assert!(is_permanent_delivery_error("HTTP 500: access denied"));
-
     }
 
     #[test]
     fn already_closed_is_permanent() {
-
         assert!(is_permanent_federation_error("Channel ch_x already closed"));
         let (st, _) = map_inbox_handler_error("Channel ch_x already closed".into());
         assert_eq!(st, StatusCode::GONE);
-
     }
 
     #[test]
     fn unknown_error_maps_to_500() {
-
         let (st, body) = map_inbox_handler_error("DB connection refused".into());
         assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(
@@ -193,41 +188,37 @@ mod tests {
             Some("DB connection refused")
         );
         assert!(!is_permanent_federation_error("DB connection refused"));
-
     }
 
     #[test]
     fn permanent_prefix_case_sensitive_short_circuit() {
-
         assert!(is_permanent_delivery_error("PERMANENT HTTP 410: gone"));
         // lowercase permanent alone is not the delivery short-circuit
-        assert!(!is_permanent_delivery_error("permanent maybe") || is_permanent_federation_error("permanent maybe"));
-        assert!(! "permanent maybe".starts_with("PERMANENT "));
-
+        assert!(
+            !is_permanent_delivery_error("permanent maybe")
+                || is_permanent_federation_error("permanent maybe")
+        );
+        assert!(!"permanent maybe".starts_with("PERMANENT "));
     }
 
     #[test]
     fn is_closed_message_is_permanent() {
-
         assert!(is_permanent_federation_error("channel is closed by peer"));
-
     }
 
     #[test]
     fn w175_access_denied_permanent() {
         assert!(is_permanent_federation_error("access denied for peer"));
         assert!(is_permanent_delivery_error("HTTP 500: access denied"));
-
     }
-
 
     #[test]
     fn w175_unknown_error_500() {
         let (st, body) = map_inbox_handler_error("DB connection refused".into());
         assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(body.0.get("error").and_then(|v| v.as_str()), Some("DB connection refused"));
-
+        assert_eq!(
+            body.0.get("error").and_then(|v| v.as_str()),
+            Some("DB connection refused")
+        );
     }
-
 }
-

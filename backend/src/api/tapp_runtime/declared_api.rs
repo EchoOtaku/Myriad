@@ -161,8 +161,7 @@ pub async fn execute_tapp_api(
     })?;
 
     // 1. Resolve the same private-first installation bound into the Runtime Grant.
-    let tapp =
-        resolve_declared_api_tapp(&db, user_id, &tapp_id, runtime_grant.owner_id()).await?;
+    let tapp = resolve_declared_api_tapp(&db, user_id, &tapp_id, runtime_grant.owner_id()).await?;
 
     // 2. 解析 manifest 中的 APIs（带缓存）
     let manifest_cache_key = format!("{}:{}", tapp.user_id, tapp_id);
@@ -285,8 +284,7 @@ pub async fn list_tapp_apis(
             Json(json!({ "error": "Invalid user" })),
         )
     })?;
-    let tapp =
-        resolve_declared_api_tapp(&db, user_id, &tapp_id, runtime_grant.owner_id()).await?;
+    let tapp = resolve_declared_api_tapp(&db, user_id, &tapp_id, runtime_grant.owner_id()).await?;
 
     let manifest_cache_key = format!("{}:{}", tapp.user_id, tapp_id);
     let apis = get_tapp_apis(&manifest_cache_key, &tapp_id, &tapp.manifest).await;

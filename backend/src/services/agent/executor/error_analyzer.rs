@@ -86,10 +86,7 @@ impl ErrorAnalyzer {
                 category: ErrorCategory::Configuration,
                 retryable: false,
                 param_fixes: HashMap::new(),
-                description: format!(
-                    "配置缺失（不可重试）: {}",
-                    truncate_str(error, 100)
-                ),
+                description: format!("配置缺失（不可重试）: {}", truncate_str(error, 100)),
                 delay_multiplier: 1.0,
                 suggested_prepend_capability: None,
                 suggested_prepend_params: HashMap::new(),
@@ -367,9 +364,7 @@ impl ErrorAnalyzer {
                     ParamFix::SetValue(serde_json::json!("play")),
                 );
             }
-            "brew.discover"
-                if error_lower.contains("url") || error_lower.contains("query") =>
-            {
+            "brew.discover" if error_lower.contains("url") || error_lower.contains("query") => {
                 param_fixes.insert(
                     "query".to_string(),
                     ParamFix::SetValue(serde_json::json!("*")),
@@ -660,8 +655,7 @@ mod tests {
     fn test_gemini_api_key_not_configured_non_retryable() {
         let params = HashMap::new();
         // 与 response_agent::api_key_not_configured("Gemini") 一致
-        let analysis =
-            ErrorAnalyzer::analyze("Gemini API Key 未配置", "ai.webSearch", &params);
+        let analysis = ErrorAnalyzer::analyze("Gemini API Key 未配置", "ai.webSearch", &params);
         assert_eq!(analysis.category, ErrorCategory::Configuration);
         assert!(
             !analysis.retryable,
@@ -697,8 +691,7 @@ mod tests {
     #[test]
     fn test_ai_analyzer_not_configured_non_retryable() {
         let params = HashMap::new();
-        let analysis =
-            ErrorAnalyzer::analyze("AI analyzer not configured", "ai.analyze", &params);
+        let analysis = ErrorAnalyzer::analyze("AI analyzer not configured", "ai.analyze", &params);
         assert_eq!(analysis.category, ErrorCategory::Configuration);
         assert!(!analysis.retryable);
     }

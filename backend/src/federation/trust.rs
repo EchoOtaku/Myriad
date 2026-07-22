@@ -946,7 +946,13 @@ pub async fn create_content_filter(
             json!({"error": "name, filter_type, and value are required"}),
         ));
     }
-    if !["block_activity_type", "block_keyword", "require_trust_level"].contains(&filter_type) {
+    if ![
+        "block_activity_type",
+        "block_keyword",
+        "require_trust_level",
+    ]
+    .contains(&filter_type)
+    {
         return Err((
             StatusCode::BAD_REQUEST,
             json!({"error": "filter_type must be block_activity_type | block_keyword | require_trust_level"}),
@@ -998,7 +1004,13 @@ pub async fn update_content_filter(
         return Err((StatusCode::BAD_REQUEST, json!({"error": "invalid id"})));
     }
     if let Some(ft) = filter_type {
-        if !["block_activity_type", "block_keyword", "require_trust_level"].contains(&ft) {
+        if ![
+            "block_activity_type",
+            "block_keyword",
+            "require_trust_level",
+        ]
+        .contains(&ft)
+        {
             return Err((
                 StatusCode::BAD_REQUEST,
                 json!({"error": "invalid filter_type"}),
@@ -1029,11 +1041,8 @@ pub async fn update_content_filter(
     let new_value = value
         .map(|s| s.to_string())
         .unwrap_or_else(|| existing.try_get("", "value").unwrap_or_default());
-    let new_enabled = enabled.unwrap_or_else(|| {
-        existing
-            .try_get::<bool>("", "enabled")
-            .unwrap_or(true)
-    });
+    let new_enabled =
+        enabled.unwrap_or_else(|| existing.try_get::<bool>("", "enabled").unwrap_or(true));
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
@@ -1107,8 +1116,7 @@ mod tests {
         assert!(exceeded4);
 
         // After window expires, counter resets
-        let (e5, exceeded5) =
-            record_window_hit(Some(&e4), t0 + Duration::from_secs(61), 60, 3);
+        let (e5, exceeded5) = record_window_hit(Some(&e4), t0 + Duration::from_secs(61), 60, 3);
         assert_eq!(e5.count, 1);
         assert!(!exceeded5);
     }
@@ -1120,14 +1128,8 @@ mod tests {
             window_seconds: 60,
             trusted_multiplier: 5,
         };
-        assert_eq!(
-            effective_max_requests(&policy, TrustLevel::Unknown),
-            100
-        );
-        assert_eq!(
-            effective_max_requests(&policy, TrustLevel::Trusted),
-            500
-        );
+        assert_eq!(effective_max_requests(&policy, TrustLevel::Unknown), 100);
+        assert_eq!(effective_max_requests(&policy, TrustLevel::Trusted), 500);
     }
 
     #[test]
@@ -1164,7 +1166,6 @@ mod tests {
         assert_eq!(effective_max_requests(&policy, TrustLevel::Unknown), 100);
         assert_eq!(effective_max_requests(&policy, TrustLevel::Discovered), 100);
         assert_eq!(effective_max_requests(&policy, TrustLevel::Followed), 100);
-
     }
 
     #[test]
@@ -1176,7 +1177,6 @@ mod tests {
         };
         assert_eq!(effective_max_requests(&policy, TrustLevel::Trusted), 30);
         assert_eq!(effective_max_requests(&policy, TrustLevel::Federated), 30);
-
     }
 
     #[test]
@@ -1222,9 +1222,7 @@ mod tests {
         assert_eq!(effective_max_requests(&policy, TrustLevel::Unknown), 50);
         assert_eq!(effective_max_requests(&policy, TrustLevel::Discovered), 50);
         assert_eq!(effective_max_requests(&policy, TrustLevel::Followed), 50);
-
     }
-
 
     #[test]
     fn w175_effective_max_trusted_mul() {
@@ -1235,9 +1233,7 @@ mod tests {
         };
         assert_eq!(effective_max_requests(&policy, TrustLevel::Trusted), 30);
         assert_eq!(effective_max_requests(&policy, TrustLevel::Federated), 30);
-
     }
-
 
     #[test]
     fn w175_filter_block_keyword() {
@@ -1252,9 +1248,7 @@ mod tests {
             apply_content_filters(&act, TrustLevel::Discovered, &rules),
             FilterVerdict::Reject(_)
         ));
-
     }
-
 
     #[test]
     fn w175_filter_disabled_ignored() {
@@ -1269,8 +1263,5 @@ mod tests {
             apply_content_filters(&act, TrustLevel::Unknown, &rules),
             FilterVerdict::Allow
         ));
-
     }
-
 }
-

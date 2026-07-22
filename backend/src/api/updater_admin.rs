@@ -512,12 +512,7 @@ pub async fn trigger_update(headers: HeaderMap, Json(body): Json<UpdateBody>) ->
         payload["allow_irreversible"] = json!(v);
     }
     match c
-        .post_json_with_actor(
-            "/update",
-            Some(&payload),
-            idem.as_deref(),
-            actor.as_deref(),
-        )
+        .post_json_with_actor("/update", Some(&payload), idem.as_deref(), actor.as_deref())
         .await
     {
         Ok(v) => {

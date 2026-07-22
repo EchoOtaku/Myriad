@@ -421,7 +421,8 @@ async fn require_heartbeat_admin(ctx: &HandlerContext<'_>) -> Result<(), String>
     }
 }
 
-fn heartbeat_manager() -> Result<&'static std::sync::Arc<crate::services::agent::heartbeat::HeartbeatManager>, String> {
+fn heartbeat_manager(
+) -> Result<&'static std::sync::Arc<crate::services::agent::heartbeat::HeartbeatManager>, String> {
     crate::services::agent::heartbeat::get_heartbeat()
         .ok_or_else(|| "Heartbeat not initialized".to_string())
 }
@@ -752,10 +753,7 @@ async fn execute_rsshub_healthcheck(
     }
 
     if instances.is_empty() {
-        return Err(
-            "没有配置的 RSSHub 实例可检查。请在 Brew 设置中添加实例。"
-                .to_string(),
-        );
+        return Err("没有配置的 RSSHub 实例可检查。请在 Brew 设置中添加实例。".to_string());
     }
 
     let mut results = Vec::new();

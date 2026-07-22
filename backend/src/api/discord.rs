@@ -117,10 +117,9 @@ fn apply_no_store_headers(response: &mut Response) {
         header::CACHE_CONTROL,
         HeaderValue::from_static("no-store, private"),
     );
-    response.headers_mut().insert(
-        header::PRAGMA,
-        HeaderValue::from_static("no-cache"),
-    );
+    response
+        .headers_mut()
+        .insert(header::PRAGMA, HeaderValue::from_static("no-cache"));
 }
 
 fn no_store_redirect(url: &str) -> Response {
@@ -303,12 +302,7 @@ pub async fn oauth_start(headers: HeaderMap) -> Result<Response, (StatusCode, Js
         },
     })
     .await
-    .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": e})),
-        )
-    })?;
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))))?;
 
     let mut url = url::Url::parse(DISCORD_AUTHORIZE_URL).map_err(|e| {
         (

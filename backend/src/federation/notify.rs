@@ -415,10 +415,7 @@ pub async fn notify_delivery_failed(
         activity_type
     };
     let err_short = truncate(error, 140);
-    let body = format!(
-        "投递到 {} 的 {} 已放弃：{}",
-        domain, kind, err_short
-    );
+    let body = format!("投递到 {} 的 {} 已放弃：{}", domain, kind, err_short);
     let mut notification = Notification::new(
         user_id,
         NotificationType::SystemInfo,

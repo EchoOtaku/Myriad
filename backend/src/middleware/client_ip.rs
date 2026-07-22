@@ -95,10 +95,7 @@ mod tests {
     fn trusted_proxy_prefers_x_real_ip_over_xff() {
         let mut headers = HeaderMap::new();
         headers.insert("x-real-ip", HeaderValue::from_static("203.0.113.50"));
-        headers.insert(
-            "x-forwarded-for",
-            HeaderValue::from_static("198.51.100.4"),
-        );
+        headers.insert("x-forwarded-for", HeaderValue::from_static("198.51.100.4"));
         let peer = "10.0.0.2".parse().unwrap();
 
         assert_eq!(
@@ -112,10 +109,7 @@ mod tests {
         let headers = HeaderMap::new();
         let peer = "10.0.0.2".parse().unwrap();
 
-        assert_eq!(
-            client_ip_from_parts(&headers, Some(peer), true),
-            Some(peer)
-        );
+        assert_eq!(client_ip_from_parts(&headers, Some(peer), true), Some(peer));
     }
 
     #[test]

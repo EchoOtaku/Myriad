@@ -201,10 +201,9 @@ fn purpose_from_payload(p: &str, uid: Option<i32>, plat: Option<String>) -> Opti
         "login" => Some(OAuthPurpose::Login),
         "link" => uid.map(OAuthPurpose::LinkAccount),
         "platform" => match (uid, plat) {
-            (Some(user_id), Some(platform)) => Some(OAuthPurpose::PlatformData {
-                user_id,
-                platform,
-            }),
+            (Some(user_id), Some(platform)) => {
+                Some(OAuthPurpose::PlatformData { user_id, platform })
+            }
             _ => None,
         },
         _ => None,
@@ -212,8 +211,7 @@ fn purpose_from_payload(p: &str, uid: Option<i32>, plat: Option<String>) -> Opti
 }
 
 fn sign_payload_b64(payload_b64: &str, secret: &[u8]) -> Result<String, String> {
-    let mut mac =
-        HmacSha256::new_from_slice(secret).map_err(|e| format!("HMAC key error: {e}"))?;
+    let mut mac = HmacSha256::new_from_slice(secret).map_err(|e| format!("HMAC key error: {e}"))?;
     mac.update(payload_b64.as_bytes());
     let sig = mac.finalize().into_bytes();
     Ok(URL_SAFE_NO_PAD.encode(sig))
@@ -365,8 +363,8 @@ pub async fn consume_state(token: &str) -> Result<ConsumeOutcome, ConsumeStateEr
     }
 
     let nonce = payload.n.clone();
-    let remaining_ttl = Duration::from_secs((payload.exp - unix_now()).max(0) as u64)
-        + Duration::from_secs(60); // grace so cleanup does not race TTL edge
+    let remaining_ttl =
+        Duration::from_secs((payload.exp - unix_now()).max(0) as u64) + Duration::from_secs(60); // grace so cleanup does not race TTL edge
 
     // Parse purpose before anti-replay so Replay still exposes StoredState.
     let stored = payload_to_stored(payload)?;
@@ -410,7 +408,10 @@ mod tests {
         INIT_SECRET.call_once(|| {
             if env::var("OAUTH_STATE_SECRET").is_err() && env::var("JWT_SECRET").is_err() {
                 // SAFETY: tests run single-process; set once before concurrent tests use state.
-                env::set_var("OAUTH_STATE_SECRET", "test-oauth-state-secret-for-unit-tests");
+                env::set_var(
+                    "OAUTH_STATE_SECRET",
+                    "test-oauth-state-secret-for-unit-tests",
+                );
             }
         });
     }
@@ -539,18 +540,12 @@ mod tests {
         let token = issue_state(sample_link(99)).await.expect("issue");
         let first = consume_state(&token).await.expect("first");
         assert!(matches!(first, ConsumeOutcome::Fresh(_)));
-        assert_eq!(
-            first.stored().purpose,
-            OAuthPurpose::LinkAccount(99)
-        );
+        assert_eq!(first.stored().purpose, OAuthPurpose::LinkAccount(99));
 
         let second = consume_state(&token).await.expect("replay is Ok(Replay)");
         assert!(second.is_replay());
         assert_eq!(second.stored().provider_slug, "google");
-        assert_eq!(
-            second.stored().purpose,
-            OAuthPurpose::LinkAccount(99)
-        );
+        assert_eq!(second.stored().purpose, OAuthPurpose::LinkAccount(99));
         // Still one-shot for Fresh: third consume remains Replay, never Fresh again.
         let third = consume_state(&token).await.expect("still replay");
         assert!(matches!(third, ConsumeOutcome::Replay(_)));

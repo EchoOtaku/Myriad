@@ -64,15 +64,12 @@ fn buffer_early_channel_activity(
     }
 
     // Deduplicate by AP activity id or messageId
-    let dedupe_key = activity
-        .get("id")
-        .and_then(|v| v.as_str())
-        .or_else(|| {
-            activity
-                .get("object")
-                .and_then(|o| o.get("messageId"))
-                .and_then(|v| v.as_str())
-        });
+    let dedupe_key = activity.get("id").and_then(|v| v.as_str()).or_else(|| {
+        activity
+            .get("object")
+            .and_then(|o| o.get("messageId"))
+            .and_then(|v| v.as_str())
+    });
     if let Some(key) = dedupe_key {
         let already = entry.iter().any(|m| {
             m.activity.get("id").and_then(|v| v.as_str()) == Some(key)
@@ -1572,8 +1569,7 @@ pub async fn accept_channel(
         }
     }
 
-    let notif_id =
-        crate::federation::notify::channel_invite_notification_id(channel_id, user_id);
+    let notif_id = crate::federation::notify::channel_invite_notification_id(channel_id, user_id);
     crate::federation::notify::mark_invite_notification_read(user_id, &notif_id).await;
 
     Ok(json!({
@@ -1702,8 +1698,7 @@ pub async fn handle_key_exchange(
                 .map_err(|e| e.to_string())?
                 .is_some();
             if !channel_exists {
-                let buffered =
-                    buffer_early_channel_activity(channel_id, actor_url_str, activity);
+                let buffered = buffer_early_channel_activity(channel_id, actor_url_str, activity);
                 if buffered {
                     tracing::info!(
                         "[Channel] Buffered early KeyExchange for {} from {} (channel not yet present)",
@@ -1907,60 +1902,60 @@ pub async fn initiate_e2e_key_exchange(
 
     let jwt_secret = jwt_secret_for_channel_e2e().await;
     // new_keypair: only write a history KeyExchange bubble when the local key is mint-new
-    let (public_key, sealed_sk, established, new_keypair) =
-        if let (Some(pk), Some(sk_stored)) = (existing_local_pk, existing_local_sk) {
-            // Validate we can still unseal; if seal secret rotated, mint a new pair.
-            match crate::federation::e2e::unseal_private_key(&sk_stored, &jwt_secret) {
-                Ok(_sk) => {
-                    let established = existing_remote
-                        .as_ref()
-                        .map(|r| crate::federation::e2e::validate_public_key_b64(r).is_ok())
-                        .unwrap_or(false);
-                    (pk, sk_stored, established, false)
-                }
-                Err(_) => {
-                    let mut session = crate::federation::e2e::create_session(channel_id);
-                    let mut established = false;
-                    if let Some(ref remote_pk) = existing_remote {
-                        if crate::federation::e2e::accept_key_exchange(&mut session, remote_pk)
-                            .is_ok()
-                        {
-                            established = true;
-                        }
+    let (public_key, sealed_sk, established, new_keypair) = if let (Some(pk), Some(sk_stored)) =
+        (existing_local_pk, existing_local_sk)
+    {
+        // Validate we can still unseal; if seal secret rotated, mint a new pair.
+        match crate::federation::e2e::unseal_private_key(&sk_stored, &jwt_secret) {
+            Ok(_sk) => {
+                let established = existing_remote
+                    .as_ref()
+                    .map(|r| crate::federation::e2e::validate_public_key_b64(r).is_ok())
+                    .unwrap_or(false);
+                (pk, sk_stored, established, false)
+            }
+            Err(_) => {
+                let mut session = crate::federation::e2e::create_session(channel_id);
+                let mut established = false;
+                if let Some(ref remote_pk) = existing_remote {
+                    if crate::federation::e2e::accept_key_exchange(&mut session, remote_pk).is_ok()
+                    {
+                        established = true;
                     }
-                    let sealed = crate::federation::e2e::seal_private_key(
-                        &session.local_keypair.private_key,
-                        &jwt_secret,
-                    )
-                    .map_err(|e| {
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
-                        )
-                    })?;
-                    (session.local_keypair.public_key, sealed, established, true)
                 }
-            }
-        } else {
-            let mut session = crate::federation::e2e::create_session(channel_id);
-            let mut established = false;
-            if let Some(ref remote_pk) = existing_remote {
-                if crate::federation::e2e::accept_key_exchange(&mut session, remote_pk).is_ok() {
-                    established = true;
-                }
-            }
-            let sealed = crate::federation::e2e::seal_private_key(
-                &session.local_keypair.private_key,
-                &jwt_secret,
-            )
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+                let sealed = crate::federation::e2e::seal_private_key(
+                    &session.local_keypair.private_key,
+                    &jwt_secret,
                 )
-            })?;
-            (session.local_keypair.public_key, sealed, established, true)
-        };
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+                    )
+                })?;
+                (session.local_keypair.public_key, sealed, established, true)
+            }
+        }
+    } else {
+        let mut session = crate::federation::e2e::create_session(channel_id);
+        let mut established = false;
+        if let Some(ref remote_pk) = existing_remote {
+            if crate::federation::e2e::accept_key_exchange(&mut session, remote_pk).is_ok() {
+                established = true;
+            }
+        }
+        let sealed = crate::federation::e2e::seal_private_key(
+            &session.local_keypair.private_key,
+            &jwt_secret,
+        )
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+            )
+        })?;
+        (session.local_keypair.public_key, sealed, established, true)
+    };
 
     let e2e_state = json!({
         "local_public_key": public_key,

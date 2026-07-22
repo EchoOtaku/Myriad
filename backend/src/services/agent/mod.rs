@@ -288,10 +288,7 @@ impl Agent {
                 Some(Ok(())) => {} // 系统任务已自动确认，继续执行
                 Some(Err(blocked)) => return Ok(blocked),
                 None => {
-                    let session_id = request
-                        .context
-                        .as_ref()
-                        .and_then(|c| c.session_id.clone());
+                    let session_id = request.context.as_ref().and_then(|c| c.session_id.clone());
                     let run_id = request.context.as_ref().and_then(|c| c.run_id.clone());
                     return self
                         .request_confirmation_v2(
@@ -680,10 +677,7 @@ impl Agent {
                 Some(Ok(())) => {} // 系统任务已自动确认，继续执行
                 Some(Err(blocked)) => return Ok(blocked),
                 None => {
-                    let session_id = request
-                        .context
-                        .as_ref()
-                        .and_then(|c| c.session_id.clone());
+                    let session_id = request.context.as_ref().and_then(|c| c.session_id.clone());
                     let run_id = request.context.as_ref().and_then(|c| c.run_id.clone());
                     return self
                         .request_confirmation_v2(
@@ -1060,9 +1054,7 @@ impl Agent {
     }
 
     /// 构建评估上下文
-    fn evaluation_context_for_task(
-        task_state: &TaskState,
-    ) -> escalation::EvaluationContext {
+    fn evaluation_context_for_task(task_state: &TaskState) -> escalation::EvaluationContext {
         let capability_ids = Self::capability_ids_from_task(task_state);
         let allow_web_search = Self::allow_web_search_escalation(task_state, &capability_ids);
         escalation::EvaluationContext {
@@ -1155,10 +1147,9 @@ impl Agent {
             hints.push("请尝试联网搜索能力（ai.webSearch 或 ai.groundingSearch）".to_string());
         } else if eval.suggests_local_alternatives {
             // 本地 brew miss：强制 replan 走 brew.page / search.fuzzy / brew.items
-            let already_forbids = eval
-                .improvement_hints
-                .iter()
-                .any(|h| h.contains("禁止使用 ai.webSearch") || h.contains("禁止改用 ai.webSearch"));
+            let already_forbids = eval.improvement_hints.iter().any(|h| {
+                h.contains("禁止使用 ai.webSearch") || h.contains("禁止改用 ai.webSearch")
+            });
             if !already_forbids {
                 hints.push(
                     "禁止使用 ai.webSearch / ai.groundingSearch；优先 brew.page、search.fuzzy 或 brew.items（放宽参数）"
@@ -3753,9 +3744,7 @@ mod tests {
     #[test]
     fn apply_pre_param_writes_back_to_recipe_step() {
         let mut recipe = Recipe::new("t", "open tapp", ExecutionType::Instant);
-        recipe
-            .steps
-            .push(sample_step("step_1", "tapp.interact"));
+        recipe.steps.push(sample_step("step_1", "tapp.interact"));
 
         assert!(apply_pre_param_answer_to_recipe(
             &mut recipe,
@@ -3763,7 +3752,10 @@ mod tests {
             " my-tapp "
         ));
         assert_eq!(
-            recipe.steps[0].params.get("tappId").and_then(|v| v.as_str()),
+            recipe.steps[0]
+                .params
+                .get("tappId")
+                .and_then(|v| v.as_str()),
             Some("my-tapp")
         );
     }
@@ -3772,8 +3764,7 @@ mod tests {
     fn step_has_param_respects_from_refs() {
         let mut step = sample_step("s", "ai.summarize");
         assert!(!step_has_param_value(&step, "content"));
-        step.params
-            .insert("contentFrom".into(), json!("step_0"));
+        step.params.insert("contentFrom".into(), json!("step_0"));
         assert!(step_has_param_value(&step, "content"));
     }
 }

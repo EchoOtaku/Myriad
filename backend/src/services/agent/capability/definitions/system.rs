@@ -38,7 +38,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "scheduler.create".to_string(),
         name: "创建 Tapp 定时任务".to_string(),
-        description: "为已安装的 Tapp 创建真实可执行的定时任务（Tapp 调度器，非 Agent Heartbeat）".to_string(),
+        description: "为已安装的 Tapp 创建真实可执行的定时任务（Tapp 调度器，非 Agent Heartbeat）"
+            .to_string(),
         category: CapabilityCategory::SystemOp,
         supported_actions: vec![IntentAction::Monitor, IntentAction::Create],
         input_schema: json!({
@@ -161,7 +162,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "heartbeat.list".to_string(),
         name: "心跳任务列表".to_string(),
-        description: "列出 Agent Heartbeat 定时任务（HEARTBEAT.md，按 cron 主动执行自然语言指令）".to_string(),
+        description: "列出 Agent Heartbeat 定时任务（HEARTBEAT.md，按 cron 主动执行自然语言指令）"
+            .to_string(),
         category: CapabilityCategory::DataRead,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({

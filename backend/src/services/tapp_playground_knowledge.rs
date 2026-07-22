@@ -235,10 +235,22 @@ fn expand_query_aliases(query: &str) -> String {
         ("图形", " graphics canvas "),
         ("动画", " animation graphics "),
         ("安装", " install package manifest "),
-        ("联邦", " federation publish media note uploadMedia createNote "),
-        ("federation", " federation publish media note uploadMedia createNote "),
-        ("多语言", " locales i18n name description manifest store catalog "),
-        ("locales", " locales name description manifest store catalog en-US ja-JP "),
+        (
+            "联邦",
+            " federation publish media note uploadMedia createNote ",
+        ),
+        (
+            "federation",
+            " federation publish media note uploadMedia createNote ",
+        ),
+        (
+            "多语言",
+            " locales i18n name description manifest store catalog ",
+        ),
+        (
+            "locales",
+            " locales name description manifest store catalog en-US ja-JP ",
+        ),
         ("标题", " locales name description manifest "),
         ("商店", " store install locales package manifest "),
     ];
@@ -304,7 +316,11 @@ mod tests {
 
     #[test]
     fn locales_queries_hit_manifest_or_generation_context() {
-        for query in ["locales", "多语言", "manifest locales en-US name description"] {
+        for query in [
+            "locales",
+            "多语言",
+            "manifest locales en-US name description",
+        ] {
             let results = search(query, 5);
             assert!(
                 !results.is_empty(),

@@ -264,7 +264,9 @@ mod tests {
         assert!(is_admin_updater_mutate("/api/admin/updater/update"));
         assert!(is_admin_updater_mutate("/api/admin/updater/rollback"));
         assert!(is_admin_updater_mutate("/api/admin/updater/self-update"));
-        assert!(is_admin_updater_mutate("/api/admin/updater/rescue/continue"));
+        assert!(is_admin_updater_mutate(
+            "/api/admin/updater/rescue/continue"
+        ));
         assert!(is_admin_updater_mutate("/api/admin/updater/prefs"));
         assert!(is_admin_updater_mutate(
             "/api/admin/updater/snapshots/snap-abc"

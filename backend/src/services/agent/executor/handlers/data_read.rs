@@ -9,9 +9,7 @@ use crate::models::entities::{
 use crate::services::agent::executor::utils::{validate_platform_name, VALID_PLATFORMS};
 use crate::services::netease_utils::{get_random_china_ip, get_random_user_agent};
 use once_cell::sync::Lazy;
-use sea_orm::{
-    ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
-};
+use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};
 use serde_json::{json, Value};
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -581,10 +579,7 @@ fn parse_brew_article_lookup(params: &HashMap<String, Value>) -> BrewArticleLook
     }
 }
 
-fn brew_item_to_read_json(
-    item: &brew_items::Model,
-    source: Option<&brew_sources::Model>,
-) -> Value {
+fn brew_item_to_read_json(item: &brew_items::Model, source: Option<&brew_sources::Model>) -> Value {
     let src_name = source.map(|s| s.name.as_str()).unwrap_or("");
     let source_url = source.map(|s| s.url.as_str()).unwrap_or("");
     json!({
@@ -755,17 +750,20 @@ async fn execute_brew_read(
         .map(|item| brew_item_to_read_json(item, source_map.get(&item.source_id).copied()))
         .collect();
 
-    let matched_source_name = filters.source_id.and_then(|sid| {
-        source_map
-            .get(&sid)
-            .map(|s| s.name.clone())
-            .or(filters.source_name.clone())
-    }).or_else(|| {
-        name_source_ids.as_ref().and_then(|ids| {
-            ids.first()
-                .and_then(|id| source_map.get(id).map(|s| s.name.clone()))
+    let matched_source_name = filters
+        .source_id
+        .and_then(|sid| {
+            source_map
+                .get(&sid)
+                .map(|s| s.name.clone())
+                .or(filters.source_name.clone())
         })
-    });
+        .or_else(|| {
+            name_source_ids.as_ref().and_then(|ids| {
+                ids.first()
+                    .and_then(|id| source_map.get(id).map(|s| s.name.clone()))
+            })
+        });
 
     Ok(json!({
         "items": out_items,
@@ -1144,8 +1142,7 @@ async fn execute_brew_items(
                 let url_matches: Vec<Value> = all_items
                     .iter()
                     .filter(|item| {
-                        let feed_url =
-                            item.get("_feedUrl").and_then(|v| v.as_str()).unwrap_or("");
+                        let feed_url = item.get("_feedUrl").and_then(|v| v.as_str()).unwrap_or("");
                         feed_url.to_lowercase().contains(&name_lower)
                     })
                     .cloned()
@@ -1364,9 +1361,7 @@ async fn execute_brew_article(
     let lookup = parse_brew_article_lookup(params);
 
     if lookup.item_id.is_none() && lookup.article_key.is_none() && lookup.url.is_none() {
-        return Err(
-            "Missing article lookup: provide articleId (id/guid) or url/link".to_string(),
-        );
+        return Err("Missing article lookup: provide articleId (id/guid) or url/link".to_string());
     }
 
     // Build OR conditions for id / guid / link
@@ -1392,9 +1387,7 @@ async fn execute_brew_article(
     }
 
     if !has_key {
-        return Err(
-            "Missing article lookup: provide articleId (id/guid) or url/link".to_string(),
-        );
+        return Err("Missing article lookup: provide articleId (id/guid) or url/link".to_string());
     }
 
     let mut q = brew_items::Entity::find().filter(cond);
@@ -1425,7 +1418,8 @@ async fn execute_brew_stats(
     let total_sources = brew_sources::Entity::find()
         .count(ctx.db)
         .await
-        .map_err(|e| format!("Failed to count brew sources: {}", e))? as i64;
+        .map_err(|e| format!("Failed to count brew sources: {}", e))?
+        as i64;
 
     let total_items = brew_items::Entity::find()
         .count(ctx.db)
@@ -1688,10 +1682,7 @@ async fn execute_brew_generate_reading_list(
                 "检查 Gemini API Key 是否已配置".to_string(),
             ];
             if !available_sources.is_empty() {
-                suggestions.insert(
-                    0,
-                    format!("本地已有订阅：{}", available_sources.join("、")),
-                );
+                suggestions.insert(0, format!("本地已有订阅：{}", available_sources.join("、")));
             }
 
             return Ok(json!({
@@ -1755,9 +1746,7 @@ async fn execute_brew_generate_reading_list(
                 );
             }
             if !allow_web_search {
-                suggestions.push(
-                    "如需联网补充，请显式传 allowWebSearch=true".to_string(),
-                );
+                suggestions.push("如需联网补充，请显式传 allowWebSearch=true".to_string());
             }
 
             return Ok(json!({
@@ -2309,8 +2298,7 @@ async fn execute_fuzzy_search(
 
             for source in sources {
                 // Score name, category, and site_url so「友情链接」hits friend-link sources
-                let name_score =
-                    calculate_fuzzy_score(&query_lower, &source.name.to_lowercase());
+                let name_score = calculate_fuzzy_score(&query_lower, &source.name.to_lowercase());
                 let category_score = source
                     .category
                     .as_deref()
@@ -2329,10 +2317,9 @@ async fn execute_fuzzy_search(
                         source
                             .category
                             .as_deref()
-                            .map(|c| calculate_fuzzy_score(
-                                &normalized.to_lowercase(),
-                                &c.to_lowercase(),
-                            ))
+                            .map(|c| {
+                                calculate_fuzzy_score(&normalized.to_lowercase(), &c.to_lowercase())
+                            })
                             .unwrap_or(0.0)
                     } else {
                         0.0
@@ -3234,10 +3221,7 @@ async fn execute_brew_page_content(
                 })
                 .collect();
 
-            let title = category_filter
-                .as_deref()
-                .unwrap_or("订阅源")
-                .to_string();
+            let title = category_filter.as_deref().unwrap_or("订阅源").to_string();
 
             Ok(json!({
                 "level": "sources",
@@ -4577,7 +4561,12 @@ async fn execute_rsshub_instances(
     let instances = service
         .get_instances(Some(ctx.user_id))
         .await
-        .map_err(|e| format!("读取 RSSHub 实例失败: {}。请确认数据库连接与 brew 迁移状态。", e))?;
+        .map_err(|e| {
+            format!(
+                "读取 RSSHub 实例失败: {}。请确认数据库连接与 brew 迁移状态。",
+                e
+            )
+        })?;
 
     if instances.is_empty() {
         return Err(
@@ -5419,10 +5408,7 @@ mod brew_db_helpers_tests {
             "https://other"
         ));
         assert!(article_lookup_matches(
-            &by_guid,
-            1,
-            "other",
-            "guid-1" // key also matches link
+            &by_guid, 1, "other", "guid-1" // key also matches link
         ));
 
         let by_url = BrewArticleLookup {

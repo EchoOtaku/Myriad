@@ -627,10 +627,7 @@ async fn run_playground_generation(
     step_tx: Option<mpsc::Sender<PlaygroundStreamEvent>>,
     mut cancel_rx: Option<watch::Receiver<bool>>,
 ) -> Result<PlaygroundGenerateResponse, GenerationError> {
-    if cancel_rx
-        .as_ref()
-        .is_some_and(cancelled_from_watch)
-    {
+    if cancel_rx.as_ref().is_some_and(cancelled_from_watch) {
         return Err(GenerationError::Cancelled);
     }
 
@@ -645,11 +642,7 @@ async fn run_playground_generation(
             })?;
 
     let instruction = request.instruction.trim();
-    let successful_history_count = request
-        .history
-        .iter()
-        .filter(|turn| !turn.failed)
-        .count();
+    let successful_history_count = request.history.iter().filter(|turn| !turn.failed).count();
     let failed_history_count = request.history.iter().filter(|turn| turn.failed).count();
 
     let mut agent_trace = Vec::new();
@@ -777,10 +770,7 @@ async fn run_playground_generation(
         }
     };
 
-    if cancel_rx
-        .as_ref()
-        .is_some_and(cancelled_from_watch)
-    {
+    if cancel_rx.as_ref().is_some_and(cancelled_from_watch) {
         return Err(GenerationError::Cancelled);
     }
 
@@ -847,10 +837,7 @@ async fn run_playground_generation(
     let mut validation_attempts = 0usize;
     let mut last_validation_error = String::new();
     for attempt in 1..=MAX_AGENT_ATTEMPTS {
-        if cancel_rx
-            .as_ref()
-            .is_some_and(cancelled_from_watch)
-        {
+        if cancel_rx.as_ref().is_some_and(cancelled_from_watch) {
             return Err(GenerationError::Cancelled);
         }
 
@@ -881,10 +868,7 @@ async fn run_playground_generation(
         {
             Ok(raw) => raw,
             Err(error) => {
-                if cancel_rx
-                    .as_ref()
-                    .is_some_and(cancelled_from_watch)
-                {
+                if cancel_rx.as_ref().is_some_and(cancelled_from_watch) {
                     return Err(GenerationError::Cancelled);
                 }
                 tracing::error!(
@@ -944,10 +928,7 @@ async fn run_playground_generation(
                 )
                 .await?;
                 if attempt < MAX_AGENT_ATTEMPTS {
-                    if cancel_rx
-                        .as_ref()
-                        .is_some_and(cancelled_from_watch)
-                    {
+                    if cancel_rx.as_ref().is_some_and(cancelled_from_watch) {
                         return Err(GenerationError::Cancelled);
                     }
                     let previous = truncate_utf8(&raw, 96 * 1024);
@@ -1181,9 +1162,7 @@ fn validate_history(history: &[PlaygroundHistoryTurn]) -> Result<(), (StatusCode
                 if bytes.len() > MAX_PROJECT_BYTES {
                     return Err((
                         StatusCode::PAYLOAD_TOO_LARGE,
-                        format!(
-                            "History turn {index} project exceeds {MAX_PROJECT_BYTES} bytes"
-                        ),
+                        format!("History turn {index} project exceeds {MAX_PROJECT_BYTES} bytes"),
                     ));
                 }
             }
@@ -1227,12 +1206,7 @@ fn format_prior_instructions(history: &[PlaygroundHistoryTurn]) -> String {
         .enumerate()
         .map(|(index, turn)| {
             let origin = turn.origin.as_deref().unwrap_or("user");
-            format!(
-                "{}. [{}] {}",
-                index + 1,
-                origin,
-                turn.instruction.trim()
-            )
+            format!("{}. [{}] {}", index + 1, origin, turn.instruction.trim())
         })
         .collect();
     if lines.is_empty() {
@@ -1325,10 +1299,7 @@ fn compact_project_summary(project: &PlaygroundProject) -> String {
 
 /// Whether successful-turn index `success_index` (0-based among successful
 /// turns only) should carry full project JSON on the model wire.
-fn successful_turn_keeps_full_project(
-    success_index: usize,
-    successful_count: usize,
-) -> bool {
+fn successful_turn_keeps_full_project(success_index: usize, successful_count: usize) -> bool {
     let full_start = successful_count.saturating_sub(FULL_PROJECT_HISTORY_TURNS);
     success_index >= full_start
 }
@@ -1356,11 +1327,7 @@ fn build_codegen_messages(
 
     for turn in history {
         if turn.failed {
-            let error = turn
-                .error
-                .as_deref()
-                .unwrap_or("Generation failed")
-                .trim();
+            let error = turn.error.as_deref().unwrap_or("Generation failed").trim();
             // Prefer a compact snapshot when present; otherwise reuse the last
             // successful turn representation. Full CURRENT project is on the
             // final user message — avoid another full dump here.
@@ -1568,9 +1535,7 @@ fn validate_playground_project(project: &PlaygroundProject) -> Result<(), String
 
     if manifest.has_page {
         if manifest.page_template.as_deref() != Some("page.html") {
-            return Err(
-                "Playground Page mode requires pageTemplate: page.html".to_string(),
-            );
+            return Err("Playground Page mode requires pageTemplate: page.html".to_string());
         }
         if code.page.trim().is_empty() || code.page_html.trim().is_empty() {
             return Err(
@@ -1582,9 +1547,7 @@ fn validate_playground_project(project: &PlaygroundProject) -> Result<(), String
         // Widget-only: pageTemplate optional/absent; page fields may be empty.
         if let Some(template) = manifest.page_template.as_deref() {
             if template != "page.html" {
-                return Err(
-                    "Playground pageTemplate must be page.html when declared".to_string(),
-                );
+                return Err("Playground pageTemplate must be page.html when declared".to_string());
             }
         }
         if code.widget.as_deref().is_none_or(str::is_empty)
@@ -1948,8 +1911,7 @@ mod tests {
 
     #[test]
     fn codegen_messages_empty_history_is_create_only() {
-        let messages =
-            build_codegen_messages(&[], "FINAL USER CONTENT").expect("messages");
+        let messages = build_codegen_messages(&[], "FINAL USER CONTENT").expect("messages");
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].role, "user");
         assert_eq!(messages[0].content, "FINAL USER CONTENT");
@@ -1989,7 +1951,9 @@ mod tests {
         assert_eq!(messages.len(), 5);
         assert_eq!(messages[0].role, "user");
         assert!(messages[0].content.contains("Create a counter"));
-        assert!(messages[0].content.contains("<previous_project>null</previous_project>"));
+        assert!(messages[0]
+            .content
+            .contains("<previous_project>null</previous_project>"));
         assert_eq!(messages[1].role, "assistant");
         assert!(messages[1].content.contains("Created counter v1"));
         assert!(messages[1].content.contains(&p1.manifest.id));
@@ -2031,8 +1995,7 @@ mod tests {
                 error: Some("validation failed: bad field".into()),
             },
         ];
-        let messages =
-            build_codegen_messages(&history, "FINAL retry").expect("messages");
+        let messages = build_codegen_messages(&history, "FINAL retry").expect("messages");
         // success pair (2) + failed user (1) + final (1)
         assert_eq!(messages.len(), 4);
         assert_eq!(messages[2].role, "user");
@@ -2095,8 +2058,7 @@ mod tests {
                 error: None,
             },
         ];
-        let messages =
-            build_codegen_messages(&history, "FINAL: keep going").expect("messages");
+        let messages = build_codegen_messages(&history, "FINAL: keep going").expect("messages");
         // 3 pairs + final
         assert_eq!(messages.len(), 7);
 
@@ -2164,8 +2126,7 @@ mod tests {
             failed: false,
             error: None,
         }];
-        let mut messages =
-            build_codegen_messages(&history, "FINAL modify").expect("base");
+        let mut messages = build_codegen_messages(&history, "FINAL modify").expect("base");
         let base_len = messages.len();
         assert_eq!(base_len, 3); // user+assistant+final
         messages.push(ChatMessage::user(
@@ -2334,8 +2295,7 @@ mod tests {
             "templates": { "2x2": "templates/widget-2x2.html" }
         }]);
         value["project"]["manifest"]["assets"] = json!(["templates/widget-2x2.html"]);
-        value["project"]["code"]["widget"] =
-            json!("Tapp.lifecycle.onReady(function () {});");
+        value["project"]["code"]["widget"] = json!("Tapp.lifecycle.onReady(function () {});");
         value["project"]["code"]["widgetHtml"] = json!("<div class=\"widget\">Hi</div>");
         value["project"]["code"]["assets"] = json!({
             "templates/widget-2x2.html": "<div>should not be an asset</div>"
@@ -2384,7 +2344,12 @@ mod tests {
             Some(vec!["assets/icon.png".to_string()].as_slice())
         );
         assert_eq!(
-            output.project.code.assets.get("assets/icon.png").map(String::as_str),
+            output
+                .project
+                .code
+                .assets
+                .get("assets/icon.png")
+                .map(String::as_str),
             Some(png_b64)
         );
     }

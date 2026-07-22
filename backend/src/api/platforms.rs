@@ -56,7 +56,14 @@ fn platforms_with_library_cache() -> HashSet<String> {
     out
 }
 
-fn platform_json(id: i32, catalog_name: &str, display_name: &str, icon: &str, catalog_enabled: bool, with_data: &HashSet<String>) -> Value {
+fn platform_json(
+    id: i32,
+    catalog_name: &str,
+    display_name: &str,
+    icon: &str,
+    catalog_enabled: bool,
+    with_data: &HashSet<String>,
+) -> Value {
     // Prefer cache-compatible slug so `platform.getData(id)` resolves files.
     let slug = cache_slug_for_platform(catalog_name);
     let has_library = with_data.contains(&slug.to_ascii_lowercase())
@@ -76,7 +83,11 @@ fn platform_json(id: i32, catalog_name: &str, display_name: &str, icon: &str, ca
     })
 }
 
-fn platform_json_from_seed(seed: &DefaultPlatformSeed, id: i32, with_data: &HashSet<String>) -> Value {
+fn platform_json_from_seed(
+    seed: &DefaultPlatformSeed,
+    id: i32,
+    with_data: &HashSet<String>,
+) -> Value {
     // Keep `id` = numeric PK and `name` = display label for host UI compatibility.
     // Additive `slug`/`key` = stable platform key for cache paths / Tapp SDK.
     platform_json(
@@ -126,7 +137,10 @@ fn merge_missing_seed_platforms(
 }
 
 /// Append cache-only platforms not present in catalog/seeds (defensive).
-fn merge_cache_only_platforms(mut platforms: Vec<Value>, with_data: &HashSet<String>) -> Vec<Value> {
+fn merge_cache_only_platforms(
+    mut platforms: Vec<Value>,
+    with_data: &HashSet<String>,
+) -> Vec<Value> {
     let mut known: HashSet<String> = HashSet::new();
     for p in &platforms {
         if let Some(slug) = p.get("slug").and_then(|v| v.as_str()) {

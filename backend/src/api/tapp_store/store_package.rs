@@ -29,7 +29,10 @@ pub(crate) fn store_package_root(code_or_manifest_path: &str) -> String {
 /// → `apps/com.myriad.doudizhu/assets/felt/table_felt.png`
 pub(crate) fn store_asset_store_path(package_root: &str, asset_path: &str) -> String {
     let asset = asset_path.trim().trim_start_matches('/');
-    let root = package_root.trim().trim_start_matches('/').trim_end_matches('/');
+    let root = package_root
+        .trim()
+        .trim_start_matches('/')
+        .trim_end_matches('/');
     if root.is_empty() {
         asset.to_string()
     } else {
@@ -89,7 +92,9 @@ pub(super) async fn fetch_from_store(
 ) -> Result<PreparedTappPackage, (StatusCode, Json<ApiResponse<()>>)> {
     // Reject install-mode placeholders mistaken for catalog refs (Aro legacy bug).
     let trimmed = store_source.trim();
-    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("store") || trimmed.eq_ignore_ascii_case("direct")
+    if trimmed.is_empty()
+        || trimmed.eq_ignore_ascii_case("store")
+        || trimmed.eq_ignore_ascii_case("direct")
     {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -120,12 +125,15 @@ pub(super) async fn fetch_from_store(
             s
         } else {
             let want = normalize_store_catalog_url(trimmed);
-            let all = tapp_store_sources::Entity::find().all(db).await.map_err(|_| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    api_error("Database error"),
-                )
-            })?;
+            let all = tapp_store_sources::Entity::find()
+                .all(db)
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        api_error("Database error"),
+                    )
+                })?;
             all.into_iter()
                 .find(|s| normalize_store_catalog_url(&s.url) == want)
                 .ok_or_else(|| {
@@ -317,12 +325,14 @@ pub(super) async fn fetch_from_store(
     // 下载 Page 专用 CSS（分离模式）
     if let Some(page_styles_path) = download.get("page_styles").and_then(|v| v.as_str()) {
         let page_styles_url = format!("{}/{}", base_url, page_styles_path);
-        let resp = fetch_public_store_url(&page_styles_url).await.map_err(|e| {
-            (
-                StatusCode::BAD_GATEWAY,
-                api_error(format!("Failed to fetch page styles: {e}")),
-            )
-        })?;
+        let resp = fetch_public_store_url(&page_styles_url)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    api_error(format!("Failed to fetch page styles: {e}")),
+                )
+            })?;
         if !resp.status().is_success() {
             return Err((
                 StatusCode::BAD_GATEWAY,
@@ -589,16 +599,10 @@ mod tests {
     #[test]
     fn asset_store_path_joins_package_root() {
         assert_eq!(
-            store_asset_store_path(
-                "apps/com.myriad.doudizhu",
-                "assets/felt/table_felt.png"
-            ),
+            store_asset_store_path("apps/com.myriad.doudizhu", "assets/felt/table_felt.png"),
             "apps/com.myriad.doudizhu/assets/felt/table_felt.png"
         );
-        assert_eq!(
-            store_asset_store_path("", "assets/x.png"),
-            "assets/x.png"
-        );
+        assert_eq!(store_asset_store_path("", "assets/x.png"), "assets/x.png");
         assert_eq!(
             store_asset_store_path("apps/foo/", "/assets/x.png"),
             "apps/foo/assets/x.png"

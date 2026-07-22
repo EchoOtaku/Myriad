@@ -104,11 +104,7 @@ fn wait_loop_channel_dropped_event(task_id: &str) -> AgentProgressEvent {
 
 /// Ensure session-message metadata always carries top-level run/task ids for reattach.
 /// Merges into an existing JSON object (e.g. ApiResponse value) without dropping fields.
-fn session_metadata_with_run_identity(
-    base: Option<Value>,
-    run_id: &str,
-    task_id: &str,
-) -> Value {
+fn session_metadata_with_run_identity(base: Option<Value>, run_id: &str, task_id: &str) -> Value {
     let mut meta = match base {
         Some(Value::Object(map)) => Value::Object(map),
         Some(other) => json!({ "data": other }),
@@ -808,13 +804,13 @@ mod api_contract_tests {
                 "pendingQuestion": { "questionId": "q2", "question": "再确认？" }
             }
         });
-        let meta = session_metadata_with_run_identity(
-            Some(answer_payload),
-            "run_abc",
-            "task_multi",
-        );
+        let meta =
+            session_metadata_with_run_identity(Some(answer_payload), "run_abc", "task_multi");
         assert_eq!(meta.get("runId").and_then(|v| v.as_str()), Some("run_abc"));
-        assert_eq!(meta.get("taskId").and_then(|v| v.as_str()), Some("task_multi"));
+        assert_eq!(
+            meta.get("taskId").and_then(|v| v.as_str()),
+            Some("task_multi")
+        );
         assert_eq!(
             meta.pointer("/task/status").and_then(|v| v.as_str()),
             Some("waiting_for_input")
@@ -1190,10 +1186,16 @@ pub async fn process(
     }
 
     // 获取 Lane Queue 执行许可（同一用户串行，全局并发上限 4）
-    let _guard = LANE_QUEUE.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await.map_err(|e| {
-        tracing::warn!(error = %e, "[Agent API] Queue acquisition failed");
-        (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e })))
-    })?;
+    let _guard = LANE_QUEUE
+        .acquire_timeout(
+            &lane_key,
+            std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS),
+        )
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "[Agent API] Queue acquisition failed");
+            (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e })))
+        })?;
 
     // 创建 Agent 并处理请求
     let agent = Agent::new(db.clone()).await;
@@ -1339,18 +1341,17 @@ pub async fn process_stream(
         let mut mid_run_identity_persisted = false;
         while let Some(event) = rx.recv().await {
             // Snapshot identity fields before moving event into publish.
-            let mid_run_identity = if !mid_run_identity_persisted
-                && !session_for_identity.is_empty()
-            {
-                match &event {
-                    AgentProgressEvent::TaskCreated {
-                        task_id, message, ..
-                    } => Some((task_id.clone(), message.clone())),
-                    _ => None,
-                }
-            } else {
-                None
-            };
+            let mid_run_identity =
+                if !mid_run_identity_persisted && !session_for_identity.is_empty() {
+                    match &event {
+                        AgentProgressEvent::TaskCreated {
+                            task_id, message, ..
+                        } => Some((task_id.clone(), message.clone())),
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
 
             // Criterion 5: live fanout first — never await DB on this hot path.
             run_for_forwarder.publish(event).await;
@@ -1407,7 +1408,13 @@ pub async fn process_stream(
                     .await;
             }
         }
-        let mut lane_guard = match queue.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await {
+        let mut lane_guard = match queue
+            .acquire_timeout(
+                &lane_key,
+                std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS),
+            )
+            .await
+        {
             Ok(guard) => Some(guard),
             Err(e) => {
                 let _ = tx
@@ -1597,9 +1604,7 @@ pub async fn process_stream(
                                     "[Agent API] Answer sender dropped unexpectedly; terminalizing run"
                                 );
                                 let _ = take_waiting_task(&task_id, user_id).await;
-                                let _ = tx
-                                    .send(wait_loop_channel_dropped_event(&task_id))
-                                    .await;
+                                let _ = tx.send(wait_loop_channel_dropped_event(&task_id)).await;
                                 break;
                             }
                             Err(_) => {
@@ -2159,7 +2164,13 @@ pub async fn answer_task_question_stream(
 
         // resume 执行前重新获取 lane 许可（process_stream 在 wait-for-input 时已释放）
         let queue = LANE_QUEUE.clone();
-        let _lane_guard = match queue.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await {
+        let _lane_guard = match queue
+            .acquire_timeout(
+                &lane_key,
+                std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS),
+            )
+            .await
+        {
             Ok(guard) => guard,
             Err(e) => {
                 let _ = tx
@@ -2377,12 +2388,18 @@ pub async fn confirm_operation(
             )
         })?
         .unwrap_or_else(|| LaneQueue::make_lane_key(user_id, None));
-    let _guard = LANE_QUEUE.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await.map_err(|error| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": error })),
+    let _guard = LANE_QUEUE
+        .acquire_timeout(
+            &lane_key,
+            std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS),
         )
-    })?;
+        .await
+        .map_err(|error| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "error": error })),
+            )
+        })?;
     let response = agent
         .process_confirmation(confirmation)
         .await
@@ -2457,7 +2474,13 @@ pub async fn confirm_operation_stream(
         });
 
         let agent = Agent::new(db_clone.clone()).await;
-        let _guard = match LANE_QUEUE.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await {
+        let _guard = match LANE_QUEUE
+            .acquire_timeout(
+                &lane_key,
+                std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS),
+            )
+            .await
+        {
             Ok(guard) => guard,
             Err(error) => {
                 let _ = tx
@@ -2517,10 +2540,7 @@ pub async fn confirm_operation_stream(
                     )
                     .await
                     {
-                        tracing::warn!(
-                            "[Agent API] Failed to persist confirmation result: {}",
-                            e
-                        );
+                        tracing::warn!("[Agent API] Failed to persist confirmation result: {}", e);
                     }
                 }
 
@@ -2641,9 +2661,7 @@ pub async fn confirm_operation_stream(
                                     "[Agent API] Confirmation answer sender dropped; terminalizing run"
                                 );
                                 let _ = take_waiting_task(&task_id, user_id).await;
-                                let _ = tx
-                                    .send(wait_loop_channel_dropped_event(&task_id))
-                                    .await;
+                                let _ = tx.send(wait_loop_channel_dropped_event(&task_id)).await;
                                 break;
                             }
                             Err(_) => {
@@ -3240,7 +3258,13 @@ pub async fn execute_preset(
     let lane_key = LaneQueue::make_lane_key(user_id, None);
     tokio::spawn(async move {
         // 获取 Lane Queue 执行许可
-        let _guard = match queue.acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS)).await {
+        let _guard = match queue
+            .acquire_timeout(
+                &lane_key,
+                std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS),
+            )
+            .await
+        {
             Ok(guard) => guard,
             Err(e) => {
                 let _ = tx
@@ -3411,10 +3435,9 @@ async fn update_heartbeat(
         .await
     {
         Ok(task) => Ok(Json(json!({ "task": task }))),
-        Err(e) if e.contains("not found") => Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": e })),
-        )),
+        Err(e) if e.contains("not found") => {
+            Err((StatusCode::NOT_FOUND, Json(json!({ "error": e }))))
+        }
         Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({ "error": e })))),
     }
 }
@@ -3448,20 +3471,13 @@ async fn create_heartbeat(
     })?;
 
     match manager
-        .add_task(
-            body.id,
-            body.name,
-            body.schedule,
-            body.action,
-            body.enabled,
-        )
+        .add_task(body.id, body.name, body.schedule, body.action, body.enabled)
         .await
     {
         Ok(task) => Ok(Json(json!({ "task": task }))),
-        Err(e) if e.contains("already exists") => Err((
-            StatusCode::CONFLICT,
-            Json(json!({ "error": e })),
-        )),
+        Err(e) if e.contains("already exists") => {
+            Err((StatusCode::CONFLICT, Json(json!({ "error": e }))))
+        }
         Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({ "error": e })))),
     }
 }
@@ -3482,10 +3498,9 @@ async fn delete_heartbeat(
 
     match manager.delete_task(&task_id).await {
         Ok(()) => Ok(Json(json!({ "deleted": true, "task_id": task_id }))),
-        Err(e) if e.contains("not found") => Err((
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": e })),
-        )),
+        Err(e) if e.contains("not found") => {
+            Err((StatusCode::NOT_FOUND, Json(json!({ "error": e }))))
+        }
         Err(e) => Err((StatusCode::BAD_REQUEST, Json(json!({ "error": e })))),
     }
 }
@@ -3505,10 +3520,7 @@ async fn reload_mcp(
             };
             Ok(Json(json!({ "reloaded": true, "tool_count": tools })))
         }
-        Err(e) => Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": e })),
-        )),
+        Err(e) => Err((StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e })))),
     }
 }
 
@@ -3774,7 +3786,10 @@ async fn interrupt_session(
     // 提交新请求（通过 LaneQueue 保护并发）
     let lane_key = LaneQueue::make_lane_key(user_id, None);
     let _guard = LANE_QUEUE
-        .acquire_timeout(&lane_key, std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS))
+        .acquire_timeout(
+            &lane_key,
+            std::time::Duration::from_secs(LaneQueue::DEFAULT_ACQUIRE_TIMEOUT_SECS),
+        )
         .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))))?;
 
@@ -4453,10 +4468,9 @@ async fn notification_stream(
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                     tracing::warn!("Notification stream lagged by {} messages", n);
                     // 告知客户端丢事件，前端应重新 list() 补全历史
-                    let resync =
-                        crate::services::agent::notifications::NotificationEvent::Resync {
-                            lagged_by: n,
-                        };
+                    let resync = crate::services::agent::notifications::NotificationEvent::Resync {
+                        lagged_by: n,
+                    };
                     let data = serde_json::to_string(&resync).unwrap_or_default();
                     if tx.send(Ok(Event::default().data(data))).await.is_err() {
                         break;
@@ -4596,8 +4610,7 @@ struct NotificationListParams {
 /// `waiting_for_input` tasks so answer/subscribe keep working and notifications
 /// stay consistent. Called once from `main` after `init_task_store`.
 pub async fn restore_waiting_runs_after_boot() {
-    let waiting =
-        crate::services::agent::executor::task_store::list_waiting_tasks_snapshot().await;
+    let waiting = crate::services::agent::executor::task_store::list_waiting_tasks_snapshot().await;
     if waiting.is_empty() {
         tracing::info!("[Agent API] Boot restore: no waiting_for_input tasks");
         return;
@@ -4746,9 +4759,7 @@ async fn spawn_restored_wait_loop(
             }
             Ok(Err(_)) => {
                 let _ = take_waiting_task(&task_id, user_id).await;
-                let _ = tx
-                    .send(wait_loop_channel_dropped_event(&task_id))
-                    .await;
+                let _ = tx.send(wait_loop_channel_dropped_event(&task_id)).await;
                 break;
             }
             Err(_) => {
@@ -4758,8 +4769,7 @@ async fn spawn_restored_wait_loop(
                         .await;
 
                 if let Some(task) = current_task.as_ref() {
-                    if task.status
-                        == crate::services::agent::types::TaskStatus::WaitingForInput
+                    if task.status == crate::services::agent::types::TaskStatus::WaitingForInput
                         && task
                             .pending_question
                             .as_ref()

@@ -991,10 +991,7 @@ async fn fetch_fresh_platform_data(
                 .as_ref()
                 .map(|s| s.trim())
                 .filter(|s| !s.is_empty());
-            match fetcher
-                .fetch_mal_profile_bundle(username, client_id)
-                .await
-            {
+            match fetcher.fetch_mal_profile_bundle(username, client_id).await {
                 Ok(bundle) => {
                     all_data["mal"] = bundle;
                     let anime_count = all_data["mal"]["anime_list"]

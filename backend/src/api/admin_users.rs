@@ -17,11 +17,10 @@ use axum::{
     Json,
 };
 use chrono::{DateTime, Utc};
-use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, QueryResult, Statement,
-    TransactionTrait,
-};
 use sea_orm::Value as SeaValue;
+use sea_orm::{
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, QueryResult, Statement, TransactionTrait,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -699,7 +698,11 @@ mod tests {
         target_is_admin && admin_count <= 1
     }
 
-    fn reject_last_admin_demote(target_is_admin: bool, new_is_admin: bool, admin_count: i64) -> bool {
+    fn reject_last_admin_demote(
+        target_is_admin: bool,
+        new_is_admin: bool,
+        admin_count: i64,
+    ) -> bool {
         target_is_admin && !new_is_admin && admin_count <= 1
     }
 

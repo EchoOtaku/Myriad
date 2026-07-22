@@ -5,11 +5,7 @@
 //! it as `?tapp_ws_ticket=` on the channel/room upgrade. Host UI traffic omits
 //! the ticket and continues to authenticate with Claims only.
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::Path, http::StatusCode, Json};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -66,8 +62,6 @@ pub struct ConsumedWsTicket {
     pub kind: WsTicketKind,
     pub resource_id: String,
 }
-
-
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -234,19 +228,20 @@ pub async fn consume_ws_ticket(
         .map_err(|_| registry_unavailable())?;
 
     // Atomic take: single-use across replicas.
-    let stored = shared_registry::take::<StoredWsTicket>(&db, WS_TICKET_NAMESPACE, &token_hash(ticket))
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "[TAPP] Federation WS ticket consume failed");
-            registry_unavailable()
-        })?
-        .ok_or_else(|| {
-            api_error(
-                StatusCode::UNAUTHORIZED,
-                "INVALID_WS_TICKET",
-                "WebSocket ticket is missing, invalid, expired, or already used",
-            )
-        })?;
+    let stored =
+        shared_registry::take::<StoredWsTicket>(&db, WS_TICKET_NAMESPACE, &token_hash(ticket))
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "[TAPP] Federation WS ticket consume failed");
+                registry_unavailable()
+            })?
+            .ok_or_else(|| {
+                api_error(
+                    StatusCode::UNAUTHORIZED,
+                    "INVALID_WS_TICKET",
+                    "WebSocket ticket is missing, invalid, expired, or already used",
+                )
+            })?;
 
     if stored.subject_id != subject_id {
         return Err(api_error(

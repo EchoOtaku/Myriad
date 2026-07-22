@@ -622,10 +622,8 @@ impl UserQuestion {
     /// 保证有过期时间：缺失时用 created_at + DEFAULT_QUESTION_TTL_MINUTES。
     pub fn ensure_expires_at(&mut self) {
         if self.expires_at.is_none() {
-            self.expires_at = Some(
-                self.created_at
-                    + chrono::Duration::minutes(DEFAULT_QUESTION_TTL_MINUTES),
-            );
+            self.expires_at =
+                Some(self.created_at + chrono::Duration::minutes(DEFAULT_QUESTION_TTL_MINUTES));
         }
     }
 

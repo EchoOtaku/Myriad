@@ -1022,8 +1022,7 @@ origin: agent_generated
                     trash = %dest.display(),
                     "[SkillEvolution] Soft-deleted pruned skill"
                 );
-                if let Some(nm) =
-                    crate::services::agent::notifications::get_notification_manager()
+                if let Some(nm) = crate::services::agent::notifications::get_notification_manager()
                 {
                     nm.notify_skill_evolution(
                         &skill.id,
