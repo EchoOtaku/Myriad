@@ -8,6 +8,7 @@ export { InfoCard } from './InfoCard'
 export { ButtonItem } from './items/ButtonItem'
 export { CheckboxGroupItem } from './items/CheckboxGroupItem'
 export { CheckboxItem } from './items/CheckboxItem'
+export { FieldSelect } from './items/FieldSelect'
 export { InputItem } from './items/InputItem'
 
 export { NumberGroupItem } from './items/NumberGroupItem'
