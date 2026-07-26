@@ -75,6 +75,13 @@ out/
 /proxy/target/
 /updater/target/
 
+# Tapp CLI / contract export (local deps & build trees)
+/tools/tapp-cli/node_modules/
+/tools/tapp-cli/dist/
+/tools/tapp-contract-export/target/
+/crates/tapp-contract/Cargo.lock
+/crates/tapp-contract/target/
+
 # Updater state (per-host runtime data, never in git)
 /state/
 /backups/
