@@ -41,6 +41,7 @@ import {
   SettingGroup,
   ToggleSwitch,
 } from '../settings'
+import { Spinner } from '../Spinner'
 import {
   AGO_TICK_MS,
   computeAgo,
@@ -1036,11 +1037,8 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                   ? `${u.updaterRescueContinueDesc} · ${status.rescue_source_version}`
                   : u.updaterRescueContinueDesc
               }
-              buttonText={
-                busy === 'rescue-continue'
-                  ? u.updaterProcessing
-                  : u.updaterRescueContinue
-              }
+              buttonText={u.updaterRescueContinue}
+              loading={busy === 'rescue-continue'}
               onClick={rescueContinue}
               variant="primary"
               layout="horizontal"
@@ -1051,11 +1049,8 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
             itemKey="exit_maintenance"
             label={u.updaterForceExit}
             description={u.updaterForceExitDesc}
-            buttonText={
-              busy === 'exit-maintenance'
-                ? u.updaterProcessing
-                : u.updaterForceExit
-            }
+            buttonText={u.updaterForceExit}
+            loading={busy === 'exit-maintenance'}
             onClick={exitMaintenance}
             variant="danger"
             layout="horizontal"
@@ -1129,9 +1124,11 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                 }
                 onClick={() => triggerSelfUpdate()}
               >
-                {busy === 'self-update'
-                  ? u.updaterProcessing
-                  : u.updaterSelfUpdateButton}
+                {busy === 'self-update' ? (
+                  <Spinner size="xs" color="current" />
+                ) : (
+                  u.updaterSelfUpdateButton
+                )}
               </button>
             </div>
             <div className="updater-infra-row">
@@ -1147,9 +1144,11 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                 }
                 onClick={() => triggerProxyUpdate()}
               >
-                {busy === 'proxy-update'
-                  ? u.updaterProcessing
-                  : u.updaterInfraProxyUpdateButton}
+                {busy === 'proxy-update' ? (
+                  <Spinner size="xs" color="current" />
+                ) : (
+                  u.updaterInfraProxyUpdateButton
+                )}
               </button>
             </div>
           </div>
@@ -1339,17 +1338,12 @@ function StatusHero({
         onClick={onCheck}
         disabled={busy === 'check' || loading || tokenRequired}
       >
-        <LuRefreshCw
-          className={
-            busy === 'check' || autoRechecking ? 'is-spinning' : undefined
-          }
-          size={13}
-        />
-        <span>
-          {busy === 'check' || autoRechecking
-            ? u.updaterChecking
-            : u.updaterCheckNow}
-        </span>
+        {busy === 'check' || autoRechecking ? (
+          <Spinner size="xs" color="current" />
+        ) : (
+          <LuRefreshCw size={13} />
+        )}
+        <span>{u.updaterCheckNow}</span>
       </button>
     )
   } else if (mood === 'available' || mood === 'downgrade') {
@@ -1360,11 +1354,11 @@ function StatusHero({
         onClick={onSelfUpdate}
         disabled={busy === 'self-update' || tokenRequired}
       >
-        <span>
-          {busy === 'self-update'
-            ? u.updaterProcessing
-            : u.updaterSelfUpdateButton}
-        </span>
+        {busy === 'self-update' ? (
+          <Spinner size="xs" color="current" />
+        ) : (
+          <span>{u.updaterSelfUpdateButton}</span>
+        )}
       </button>
     ) : (
       <button
@@ -1379,17 +1373,17 @@ function StatusHero({
           busy === 'update' || busy === 'check' || tokenRequired
         }
       >
-        <span>
-          {busy === 'update'
-            ? u.updaterDispatching
-            : busy === 'check'
-              ? u.updaterChecking
-              : mood === 'downgrade'
-                ? format(u.updaterDowngradeNow, {
-                    version: targetVersion ?? '…',
-                  })
-                : u.updaterUpdateNow}
-        </span>
+        {busy === 'update' || busy === 'check' ? (
+          <Spinner size="xs" color="current" />
+        ) : (
+          <span>
+            {mood === 'downgrade'
+              ? format(u.updaterDowngradeNow, {
+                  version: targetVersion ?? '…',
+                })
+              : u.updaterUpdateNow}
+          </span>
+        )}
       </button>
     )
   } else if (mood === 'offline') {
@@ -1400,11 +1394,12 @@ function StatusHero({
         onClick={onRetry}
         disabled={loading || tokenRequired}
       >
-        <LuRefreshCw
-          className={loading ? 'is-spinning' : undefined}
-          size={13}
-        />
-        <span>{loading ? u.updaterLoading : u.updaterRetry}</span>
+        {loading ? (
+          <Spinner size="xs" color="current" />
+        ) : (
+          <LuRefreshCw size={13} />
+        )}
+        <span>{u.updaterRetry}</span>
       </button>
     )
   }
@@ -1477,13 +1472,12 @@ function StatusHero({
                   onClick={onCheck}
                   disabled={busy === 'check' || loading || tokenRequired}
                 >
-                  <LuRefreshCw
-                    className={checking ? 'is-spinning' : undefined}
-                    size={12}
-                  />
-                  <span>
-                    {busy === 'check' ? u.updaterChecking : u.updaterCheckNow}
-                  </span>
+                  {checking ? (
+                    <Spinner size="xs" color="current" />
+                  ) : (
+                    <LuRefreshCw size={12} />
+                  )}
+                  <span>{u.updaterCheckNow}</span>
                 </button>
               )}
             </span>
@@ -1938,7 +1932,9 @@ function TargetPicker({
           <p className="updater-empty">{u.updaterDockerHubFallback}</p>
         )}
         {listLoading ? (
-          <p className="updater-empty">{u.updaterLoading}</p>
+          <div className="updater-empty flex justify-center py-6" role="status">
+            <Spinner size="sm" color="primary" />
+          </div>
         ) : items.length === 0 ? (
           <p className="updater-empty">{u.updaterTargetEmpty}</p>
         ) : (
@@ -2018,11 +2014,13 @@ function TargetPicker({
             onInstall(target, { isDowngrade, needsRisk })
           }}
         >
-          <span>
-            {installing
-              ? u.updaterDispatching
-              : format(u.updaterInstallTarget, { version: target || '…' })}
-          </span>
+          {installing ? (
+            <Spinner size="xs" color="current" />
+          ) : (
+            <span>
+              {format(u.updaterInstallTarget, { version: target || '…' })}
+            </span>
+          )}
         </button>
       </div>
     </div>
@@ -2104,7 +2102,11 @@ function SnapshotRow({
           onClick={onRollback}
           disabled={busy || disabled}
         >
-          {busyKind === 'rollback' ? u.updaterProcessing : u.updaterRollback}
+          {busyKind === 'rollback' ? (
+            <Spinner size="xs" color="current" />
+          ) : (
+            u.updaterRollback
+          )}
         </button>
         <button
           type="button"
@@ -2113,9 +2115,11 @@ function SnapshotRow({
           disabled={busy || disabled || deleteDisabled}
           title={deleteReason ?? u.updaterDeleteSnapshot}
         >
-          {busyKind === 'delete'
-            ? u.updaterProcessing
-            : u.updaterDeleteSnapshot}
+          {busyKind === 'delete' ? (
+            <Spinner size="xs" color="current" />
+          ) : (
+            u.updaterDeleteSnapshot
+          )}
         </button>
       </div>
     </div>
