@@ -221,6 +221,25 @@ pub struct PinRoomMessageRequest {
 
 // ==================== 辅助函数 ====================
 
+/// Advance this member's room read cursor (used by list_rooms unread_count).
+async fn mark_room_read(
+    db: &DatabaseConnection,
+    room_id: &str,
+    actor_url: &str,
+) -> Result<(), sea_orm::DbErr> {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"UPDATE federation_room_members
+           SET last_read_at = NOW()
+           WHERE room_id = $1
+             AND actor_url = $2
+             AND COALESCE(membership_status, 'active') = 'active'"#,
+        [room_id.into(), actor_url.into()],
+    ))
+    .await?;
+    Ok(())
+}
+
 /// Resolve active membership to the *stored* actor_url + role (host/case tolerant).
 async fn resolve_active_member_actor(
     db: &DatabaseConnection,
@@ -1306,12 +1325,12 @@ pub async fn list_rooms(
                        WHERE room_id = r.room_id
                          AND COALESCE(membership_status, 'active') = 'active') AS member_count,
                       (SELECT MAX(created_at) FROM federation_room_messages WHERE room_id = r.room_id) AS last_message_at,
+                      -- Unread = messages from others after this member's last_read_at.
+                      -- (Previously used "last message I sent", so opening a group never cleared the badge.)
                       COALESCE((SELECT COUNT(*) FROM federation_room_messages msg
                                 WHERE msg.room_id = r.room_id
-                                  AND msg.sender_actor != $2
-                                  AND msg.created_at > COALESCE(
-                                      (SELECT MAX(m2.created_at) FROM federation_room_messages m2
-                                       WHERE m2.room_id = r.room_id AND m2.sender_actor = $2), r.created_at)
+                                  AND msg.sender_actor IS DISTINCT FROM $2
+                                  AND msg.created_at > COALESCE(rm.last_read_at, r.created_at)
                       ), 0) AS unread_count
                FROM federation_rooms r
                JOIN federation_room_members rm ON rm.room_id = r.room_id AND rm.actor_url = $2
@@ -3381,6 +3400,15 @@ pub async fn get_room_messages(
     let _ = user_id;
     let limit = limit.unwrap_or(50).min(200);
     let my_keys = load_member_e2e_keys(db, room_id, &local_actor).await.ok();
+
+    // Opening the latest page marks the room as read for this member (sidebar badge).
+    // Pagination (`before`) does not advance last_read_at — that would clear unread while
+    // the user is only browsing history.
+    if before.is_none() {
+        if let Err(e) = mark_room_read(db, room_id, &local_actor).await {
+            tracing::debug!(room_id = %room_id, error = %e, "mark_room_read skipped");
+        }
+    }
 
     let rows = if let Some(before_id) = before {
         db.query_all(Statement::from_sql_and_values(

@@ -15,6 +15,7 @@ use std::collections::HashSet;
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
 ///
 /// 变更日志：
+/// - 2026.07.27.1: federation_room_members.last_read_at（群侧栏未读已读光标）
 /// - 2026.07.21.1: federation_domain_aliases（ActivityPub domain Move old→new bases）
 /// - 2026.07.20.6: federation_object_interactions（like/bookmark/announce）
 /// - 2026.07.20.5: heartbeat_claims（多副本 heartbeat 分钟桶认领）
@@ -30,7 +31,7 @@ use std::collections::HashSet;
 /// - 2026.07.17.1: tapp_ai_cost_ledger 表与索引
 /// - 2026.07.11.1: Discord 数据平台种子
 /// - 2026.07.10.1: 默认平台种子同步（含 X）
-const SCHEMA_VERSION: &str = "2026.07.21.1";
+const SCHEMA_VERSION: &str = "2026.07.27.1";
 
 /// 内置平台种子定义（与 migrations/001_initial_schema.rs 中 INSERT 保持同步）
 ///
@@ -3462,6 +3463,13 @@ fn get_expected_schema() -> Vec<TableDef> {
                     is_nullable: false,
                     default_value: Some("'active'".into()),
                 },
+                // Per-member read cursor for sidebar unread badges (Aro groups).
+                ColumnDef {
+                    name: "last_read_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
             ],
         },
         // ==================== federation_content_filters 表 ====================
@@ -4533,6 +4541,18 @@ CREATE INDEX IF NOT EXISTS idx_federation_domain_aliases_new
     Ok(())
 }
 
+/// Per-member room read cursor for Aro sidebar unread badges.
+async fn ensure_room_member_last_read_at(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+ALTER TABLE federation_room_members
+  ADD COLUMN IF NOT EXISTS last_read_at TIMESTAMPTZ;
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
 /// Local Like / Bookmark / Announce records (Aro feed interactions).
 async fn ensure_federation_object_interactions_table(
     db: &DatabaseConnection,
@@ -4950,6 +4970,9 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     if let Err(e) = ensure_federation_object_interactions_table(db).await {
         tracing::warn!("federation_object_interactions table ensure warning: {}", e);
     }
+    if let Err(e) = ensure_room_member_last_read_at(db).await {
+        tracing::warn!("federation_room_members.last_read_at ensure warning: {}", e);
+    }
     if let Err(e) = ensure_single_owner(db).await {
         tracing::warn!("Site owner seed warning: {}", e);
     }
@@ -5112,6 +5135,12 @@ async fn do_force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     if let Err(e) = ensure_federation_object_interactions_table(db).await {
         tracing::warn!(
             "Force check: federation_object_interactions table ensure warning: {}",
+            e
+        );
+    }
+    if let Err(e) = ensure_room_member_last_read_at(db).await {
+        tracing::warn!(
+            "Force check: federation_room_members.last_read_at ensure warning: {}",
             e
         );
     }
