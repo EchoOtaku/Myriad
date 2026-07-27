@@ -420,24 +420,39 @@ HTTP 声明式 API 都需要，不只是 `protected`）：
 
 ## 商店安装 / storeSource
 
+完整协议见 **[Tapp 商店](STORE.md)**。
+
 ### ❌ `tappList.install` 找不到商店源或 502
 
 **症状**：分享卡片或 Tapp 内「安装」失败；后端报无法拉取商店 / 502；或安装了错误源的包。
 
 **原因**：
 
-1. SDK `Tapp.tappList.install({ source, tappId })` 里的 **`source` 是商店源 ID**
-   （写入 REST 的 `storeSource`），**不是** 模式字面量 `"store"` / `"direct"`。
+1. SDK 商店路径的 **catalog 引用**只认 `storeSource`，或 **http(s) 形式的 `source`**。
+   裸 `{ source: "1", tappId }` **不会**把 `"1"` 当源 id，会直接 `Invalid source`。
+   `storeSource` 也不能是模式字面量 `"store"` / `"direct"`。
 2. 后端容器访问不了 raw.githubusercontent.com 等外网时 store 安装失败；宿主可能回退为
-   浏览器下载 + `source: "direct"`。
-3. 直接上传 `.tapp` / 代码安装应走宿主 `install-file` 或 `source: "direct"`，不经
-   `tappList.install`。
+   浏览器下载 + REST `source: "direct"`。
+3. 上传 `.tapp` 走 `install-file`；SDK 内联包用 `tappList.install({ source: "direct",
+   manifest, code, ... })`（见 [API 参考 · Tapp 列表](./API_REFERENCE.md#tapp-列表-api)）。
 
 **解决方案**：
 
-1. 传入真实源 id（如配置里的 `"1"`），与 [REST API](./REST_API.md) 商店安装示例一致。
+1. 使用 `{ source: "store", storeSource: "1", tappId }` 或
+   `{ source: "https://…/index.json", tappId }`（见 [STORE](./STORE.md) /
+   [REST API](./REST_API.md)）。
 2. 确认商店源已启用且 `tappId` 存在于该源 `index.json`。
-3. 需要离线/内网包时使用文件安装或 direct 安装路径。
+3. 离线/内网包使用 `install-file` 或 SDK/REST direct 安装。
+
+### ❌ 商店安装报 category 不匹配 / 缺 page 资源
+
+**症状**：后端 `BAD_GATEWAY` 提示 category 不一致，或缺少 `page_styles` / `page_template`。
+
+**原因**：索引 `apps[].category` 与 `manifest.category` 不一致；或 Manifest 声明了
+`pageStyles` / `pageTemplate` 但 `download` 表未给出对应路径或远程 404。
+
+**解决方案**：对齐分类稳定 ID；补齐 `download` 路径并保证 `base_url` 下可 GET。见
+[STORE · 索引检查清单](STORE.md#索引检查清单)。
 
 ---
 
@@ -487,9 +502,13 @@ Tapp.lifecycle.onReady(async function () {
 - [ ] `manifest.main` 与实际入口一致
 - [ ] 商店 `index.json` 的 `download.code` 能下载同一入口
 - [ ] manifest 声明的所有资源文件都存在
-- [ ] 版本号在 `index.json` 和 `manifest.json` 中一致
+- [ ] 版本号与 **category** 在 `index.json` 和 `manifest.json` 中一致
+- [ ] 声明了 `pageStyles` / `pageTemplate` / Widget 模板时，索引 `download` 路径齐全
+- [ ] `manifest.assets` 文件位于包根 `assets/` 且远程可下载
+- [ ] 大包填写索引 `size`（字节）
 - [ ] Widget 模板文件格式正确
 - [ ] 在多个 Widget 尺寸下测试显示效果
 - [ ] 在亮色和暗色模式下测试样式
 - [ ] `Tapp.api` 使用的名称已在 manifest 的 `apis` 中声明
 - [ ] 无控制台错误（忽略已知的安全警告）
+- [ ] 完整清单见 [STORE.md](STORE.md#索引检查清单)

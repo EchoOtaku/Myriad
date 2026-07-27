@@ -4,7 +4,8 @@
 `POST /api/tapps/install-file`，multipart 文件字段名为 `file`。
 
 开发模型与运行时边界见 [Tapp 架构](../development/tapp/ARCHITECTURE.md)，完整字段见
-[Manifest 配置](../development/tapp/MANIFEST.md)。
+[Manifest 配置](../development/tapp/MANIFEST.md)。远程目录安装（非 ZIP）见
+[Tapp 商店](../development/tapp/STORE.md)。
 
 ## 最小包
 

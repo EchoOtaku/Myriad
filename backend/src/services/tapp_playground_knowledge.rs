@@ -82,6 +82,11 @@ const DOCUMENTS: &[KnowledgeDocument] = &[
         content: include_str!("../../../docs/development/tapp/TROUBLESHOOTING.md"),
     },
     KnowledgeDocument {
+        id: "STORE",
+        description: "remote Tapp store catalog index.json, storeSource vs SDK install shapes, assets path rules, publish checklist",
+        content: include_str!("../../../docs/development/tapp/STORE.md"),
+    },
+    KnowledgeDocument {
         id: "TAPP_FILE_FORMAT",
         description: "packaged .tapp archive structure and resource rules",
         content: include_str!("../../../docs/features/TAPP_FILE_FORMAT.md"),
@@ -283,11 +288,28 @@ mod tests {
             "API_REFERENCE",
             "WIDGET",
             "SANDBOX",
+            "STORE",
             "RUNTIME_CONTRACT_DESIGN",
             "TAPP_FILE_FORMAT",
+            "PLAYGROUND_GENERATION_CONTEXT",
         ] {
-            assert!(catalog.contains(document));
+            assert!(
+                catalog.contains(document),
+                "catalog missing {document}: {catalog}"
+            );
         }
+    }
+
+    #[test]
+    fn store_source_query_hits_store_or_api_or_troubleshooting() {
+        let results = search("storeSource index.json catalog install store", 5);
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|result| {
+            result.document == "STORE"
+                || result.document == "API_REFERENCE"
+                || result.document == "TROUBLESHOOTING"
+                || result.document == "REST_API"
+        }));
     }
 
     #[test]

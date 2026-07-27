@@ -33,12 +33,12 @@ docs/
 ├── development/              # Development Documentation
 │   ├── ARCHITECTURE.md      # System architecture & design
 │   ├── BUILD.md             # Build from source instructions
-│   ├── TAPP_DEVELOPMENT.md  # Tapp development guide
-│   └── tapp/                # Tapp reference docs
+│   ├── TAPP_DEVELOPMENT.md  # Tapp development guide (index)
+│   └── tapp/                # Tapp reference docs (incl. STORE.md catalog)
 │
 ├── features/                 # Feature Documentation
 │   ├── LIBRARY.md           # Library feature guide
-│   └── TAPP_FILE_FORMAT.md  # Tapp file format
+│   └── TAPP_FILE_FORMAT.md  # Tapp ZIP package format
 │
 ├── guides/                   # User Guides
 │   └── SECURITY_HEADERS.md  # Security configuration
@@ -197,12 +197,12 @@ docs/
 ├── development/                # 💻 Developer Guides
 │   ├── ARCHITECTURE.md        # System design
 │   ├── BUILD.md               # Build instructions
-│   ├── TAPP_DEVELOPMENT.md    # Tapp guide
-│   └── tapp/                  # Tapp reference docs
+│   ├── TAPP_DEVELOPMENT.md    # Tapp guide (index)
+│   └── tapp/                  # Tapp reference docs (incl. STORE.md)
 │
 ├── features/                   # 📖 Feature Docs
 │   ├── LIBRARY.md             # Library feature
-│   └── TAPP_FILE_FORMAT.md    # Tapp file format
+│   └── TAPP_FILE_FORMAT.md    # Tapp ZIP package format
 │
 ├── guides/                     # 📚 User Guides
 │   └── SECURITY_HEADERS.md    # Security setup
@@ -290,6 +290,8 @@ make backup      # Backup PostgreSQL into ./backups
 | [BUILD.md](../development/BUILD.md)               | Build from source            | Developers |
 | [TAPP_DEVELOPMENT.md](../development/TAPP_DEVELOPMENT.md) | Tapp development guide | Developers |
 | [development/tapp/](../development/tapp/QUICKSTART.md) | Tapp reference docs | Developers |
+| [tapp/STORE.md](../development/tapp/STORE.md) | Remote Tapp store catalog & publish | Developers |
+| [TAPP_FILE_FORMAT.md](../features/TAPP_FILE_FORMAT.md) | `.tapp` ZIP package format | Developers |
 
 **Start with:** ARCHITECTURE.md
 

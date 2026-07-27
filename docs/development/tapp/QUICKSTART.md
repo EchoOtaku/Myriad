@@ -245,61 +245,19 @@ Tapp.widgets["my-widget"] = {
 
 ---
 
-## 商店发布要求
+## 商店发布（摘要）
 
-如果你要将 Tapp 发布到商店，请注意以下要求：
+完整目录协议、源管理、服务端/浏览器安装链路与检查清单见 **[Tapp 商店](STORE.md)**。
 
-### 文件完整性
+最少注意：
 
-1. 商店 `index.json` 中的 `download.code` 必须指向实际存在的 JS 文件，并与
-   `manifest.main` 表示同一入口
-2. 如果 manifest 声明了 `styles`、`pageTemplate` 或 Widget `templates`，对应文件必须存在
-3. 所有文件路径区分大小写
+1. 商店 `index.json` 的 `download.code` 必须能下载到与 `manifest.main` **同一份**入口代码（路径字符串不必相同）。
+2. Manifest 声明的 `styles` / `pageTemplate` / Widget 模板 / `pageStyles` 等，索引 `download` 表与磁盘文件必须齐全。
+3. 索引与 Manifest 的 `version`、`category` 必须一致；`category` 用稳定用途 ID（见 [MANIFEST](MANIFEST.md#应用分类)）。
+4. 二进制贴图等走 `manifest.assets`，**不要**写进 `download` 表；路径须在包根下的 `assets/`。
+5. 大包在索引填写真实 `size`（字节），≥ 1 MiB 时宿主走客户端下载以显示进度。
 
-### 常见错误
-
-```json
-// ❌ 错误：文件名不匹配
-{
-  "download": {
-    "manifest": "apps/com.example.my-tapp/manifest.json",
-    "code": "apps/com.example.my-tapp/index.js"
-  }
-}
-
-// ✅ 正确
-{
-  "download": {
-    "manifest": "apps/com.example.my-tapp/manifest.json",
-    "code": "apps/com.example.my-tapp/main.js"
-  }
-}
-```
-
-商店索引路径是仓库级下载定位；`manifest.main` 是安装包/安装目录内的相对入口。两者
-不要求字符串完全相同，但必须下载和安装同一份入口代码。
-
-### 版本号同步
-
-`index.json` 中的版本号应与 `manifest.json` 中的版本号一致：
-
-```json
-// index.json
-{
-  "apps": [
-    {
-      "id": "com.example.my-tapp",
-      "version": "1.0.0"
-    }
-  ]
-}
-
-// manifest.json
-{
-  "id": "com.example.my-tapp",
-  "version": "1.0.0"
-}
-```
+官方目录仓库：[Myriad-You/tapp-store](https://github.com/Myriad-You/tapp-store)。
 
 ---
 
@@ -424,8 +382,10 @@ Tapp.lifecycle.onReady(async function () {
 ## 下一步
 
 - [Manifest 配置](./MANIFEST.md) - 完整的配置选项说明
+- [Tapp 商店](./STORE.md) - 远程目录、安装与发布
 - [API 参考](./API_REFERENCE.md) - 所有可用 API 的详细文档
 - [小组件开发](./WIDGET.md) - 创建漂亮的 Widget
 - [页面样式规范](./PAGE.md) - 页面布局和深色模式样式
 - [样式规范](./STYLING.md) - Glass Morphism 设计规范
 - [安全沙箱](./SANDBOX.md) - 沙箱限制和安全机制
+- [故障排除](./TROUBLESHOOTING.md) - 安装与运行时问题

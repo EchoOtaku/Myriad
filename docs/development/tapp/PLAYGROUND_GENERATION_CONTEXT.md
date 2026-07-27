@@ -1,7 +1,8 @@
 # Playground 生成契约
 
 本文档是 Tapp Playground 发送给 Pro 模型的精简开发上下文。完整解释仍以同目录的
-`MANIFEST.md`、`API_REFERENCE.md`、`SANDBOX.md` 和 `STYLING.md` 为准。
+`MANIFEST.md`、`API_REFERENCE.md`、`SANDBOX.md`、`STORE.md` 和 `STYLING.md` 为准
+（检索目录见 `tapp_playground_knowledge.rs`）。
 
 ## 文件与运行模式
 
@@ -104,7 +105,7 @@ await Tapp.storage.clear();
 下列能力在完整 SDK 里可能有方法名，但 **Playground 预览中不可用**（失败或明确错误）：
 
 - **Federation** 全套（`uploadMedia` → `createNote` 附件 URL、Channel/Room/Ring 等）
-- **platform** / **report** / **brewList** / **tappList**（含商店安装）
+- **platform** / **report** / **brewList** / **tappList**（含列表与商店/直接安装）
 - **dataExchange**、**ai**、**agent**、**event** Broker、**scheduler**、宿主 **media** 控制
 - 声明式 **`Tapp.api` 执行**（预览仅 list 空表）
 - **`Tapp.background.require`**（预览无后台常驻；勿空写 `backgroundRequirements`）
@@ -114,6 +115,13 @@ await Tapp.storage.clear();
 - 可在 Manifest 声明真实权限与正式运行时代码（见 [API_REFERENCE](./API_REFERENCE.md)）；
 - 预览只验证 UI、生命周期、主题、`code.i18n`、`manifest.locales` 与内存 storage；
 - **不要**臆造预览 mock 联邦 / Brew / platform API。
+- 若生成 **正式运行后** 调用 `Tapp.tappList.install` 的商店安装代码，必须使用合法 SDK 形状
+  （见 [STORE](./STORE.md) / [API_REFERENCE · Tapp 列表](./API_REFERENCE.md#tapp-列表-api)）：
+  - ✅ `{ source: "store", storeSource: "<源 id 或 catalog URL>", tappId }`
+  - ✅ `{ source: "https://…/index.json", tappId }`（HTTP `source` 即 catalog）
+  - ❌ `{ source: "1", tappId }`（裸非 HTTP `source` **不会**当作源 id）
+  - ✅ direct：`{ source: "direct", manifest, code, … }`（须有 manifest + code）
+  Playground **工作区「安装到本机」**走宿主 direct 包安装，不是商店 `source=store` 路径。
 
 Bridge 默认 payload 约 **1 MiB**；正式运行特例：`file.download` 内容 **10 MiB**，
 `federation.uploadMedia` 对齐图片 10 MiB / 视频 50 MiB 的 base64 预算（见

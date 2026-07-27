@@ -7,6 +7,10 @@ import type { TappBridge } from '../../TappBridge'
 import { getDefaultLocale } from '../../../../i18n'
 import * as TappApiService from '../../../services/TappApiService'
 import { resolveManifestText } from '../../../utils/manifestLocale'
+import {
+  resolveTappListInstallRequest,
+  type TappListInstallRequestInput,
+} from '../../../utils/tappListInstallRequest'
 
 // 统一错误返回
 function fail(error: unknown) {
@@ -87,109 +91,46 @@ export function registerTappListHandlers(
     }
   })
 
-  // 安装 Tapp — source: 'store' | 'direct'
-  //
-  // InstallFromStoreRequest.source means **catalog URL/id**, not mode.
-  // Correct store install shape:
-  //   { source: 'store', storeSource: 'https://…/index.json', tappId }
-  // Never pass mode string "store" as storeSource.
+  // 安装 Tapp — source: 'store' | 'direct' | http(s) catalog URL
+  // Shape resolution: utils/tappListInstallRequest.ts (shared with docs gating tests).
+  // Correct store install: { source: 'store', storeSource: id|url, tappId }
+  // or { source: 'https://…/index.json', tappId }. Bare source:"1" alone fails.
   bridge.registerHandler('tappList.install', async (message) => {
-    const [request] = getArgs(message) as [
-      {
-        source?: string
-        tappId?: string
-        storeSource?: string
-        permissions?: string[]
-        manifest?: unknown
-        code?: string
-        styles?: string
-        pageTemplate?: string
-        widgetTemplates?: Record<string, Record<string, string>>
-        widgetCss?: string
-        pageCss?: string
-        i18n?: Record<string, unknown>
-        pageModules?: Record<string, string>
-        assets?: Record<string, string>
-      },
-    ]
+    const [request] = getArgs(message) as [TappListInstallRequestInput]
     try {
-      const rawSource = (request?.source || '').trim()
-      const sourceLower = rawSource.toLowerCase()
-      const isHttp =
-        sourceLower.startsWith('https://') || sourceLower.startsWith('http://')
-      const storeSourceCandidate = (
-        request?.storeSource ||
-        (isHttp ? rawSource : '') ||
-        ''
-      ).trim()
-
-      if (sourceLower === 'direct') {
-        if (!request?.manifest || typeof request.code !== 'string') {
-          return {
-            success: false,
-            error:
-              'Direct install requires manifest and code (shared package missing)',
-          }
-        }
+      const resolved = resolveTappListInstallRequest(request)
+      if (resolved.kind === 'error') {
+        return { success: false, error: resolved.error }
+      }
+      if (resolved.kind === 'direct') {
         const result = await TappApiService.installDirect({
-          manifest: request.manifest as Parameters<
+          manifest: resolved.manifest as Parameters<
             typeof TappApiService.installDirect
           >[0]['manifest'],
-          code: request.code,
-          styles: request.styles,
-          pageTemplate: request.pageTemplate,
-          widgetTemplates: request.widgetTemplates,
-          widgetCss: request.widgetCss,
-          pageCss: request.pageCss,
-          i18n: request.i18n,
-          pageModules: request.pageModules,
-          assets: request.assets,
-          permissions: request.permissions,
+          code: resolved.code,
+          styles: resolved.styles,
+          pageTemplate: resolved.pageTemplate,
+          widgetTemplates: resolved.widgetTemplates,
+          widgetCss: resolved.widgetCss,
+          pageCss: resolved.pageCss,
+          i18n: resolved.i18n,
+          pageModules: resolved.pageModules,
+          assets: resolved.assets,
+          permissions: resolved.permissions,
         })
         return {
           success: true,
           data: { id: result.id, name: result.name, status: result.status },
         }
       }
-
-      // Store path: mode "store", or legacy where source itself is the catalog URL/id.
-      const isStoreMode =
-        sourceLower === 'store' ||
-        isHttp ||
-        (!!storeSourceCandidate && sourceLower !== 'direct')
-
-      if (isStoreMode) {
-        const tappId = request.tappId
-        if (!tappId) {
-          return { success: false, error: 'tappId is required for store install' }
-        }
-        // Prefer explicit storeSource; then HTTP source; never use mode "store".
-        const catalogRef = storeSourceCandidate
-        if (
-          !catalogRef ||
-          catalogRef.toLowerCase() === 'store' ||
-          catalogRef.toLowerCase() === 'direct'
-        ) {
-          return {
-            success: false,
-            error:
-              'storeSource (catalog URL) is required for store install. Re-share the Tapp from Aro so the catalog URL is included.',
-          }
-        }
-        const result = await TappApiService.installFromStore({
-          source: catalogRef,
-          tappId,
-          permissions: request.permissions,
-        })
-        return {
-          success: true,
-          data: { id: result.id, name: result.name, status: result.status },
-        }
-      }
-
+      const result = await TappApiService.installFromStore({
+        source: resolved.catalogRef,
+        tappId: resolved.tappId,
+        permissions: resolved.permissions,
+      })
       return {
-        success: false,
-        error: "Invalid source, must be 'direct' or 'store' (with storeSource)",
+        success: true,
+        data: { id: result.id, name: result.name, status: result.status },
       }
     } catch (error) {
       return fail(error)

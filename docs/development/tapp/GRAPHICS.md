@@ -100,7 +100,8 @@ function frame(ts) {
 内置示例仅 **helloWorld**（`com.myriad.hello-world`）。社交客户端 **Aro**、
 联机 **斗地主** 等完整应用发布在官方
 [tapp-store](https://github.com/Myriad-You/tapp-store)
-（`apps/com.myriad.aro`、`apps/com.myriad.doudizhu`），经商店索引安装。
+（`apps/com.myriad.aro`、`apps/com.myriad.doudizhu`），经商店索引安装。目录协议、
+`manifest.assets` 在商店中的路径拼接与安装回退见 [Tapp 商店](STORE.md)。
 
 ## 后续（非第一版）
 

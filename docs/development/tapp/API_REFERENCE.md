@@ -872,13 +872,31 @@ const items = await Tapp.tappList.list();
 const one = await Tapp.tappList.get("com.example.app");
 const recent = await Tapp.tappList.getRecent(10);
 
-// 仅商店安装路径：source = 配置的商店源 ID（映射为 REST body 的 storeSource），
-// 不是字面量 "store"/"direct"。
+// 商店安装（SDK 请求形状，见 resolveTappListInstallRequest / contentHandlers）：
+// catalog 引用只来自 storeSource，或 source 本身是 http(s) 目录 URL。
+// 裸数字源 id 不能单独放在 source 上（会 Invalid source）。
 await Tapp.tappList.install({
-  source: "1",
+  source: "store",
+  storeSource: "1", // 或完整 index.json URL；禁止 "store"/"direct"
   tappId: "com.example.app",
   permissions: ["storage"],
 });
+// 等价：source 为 http(s) catalog URL（可省略 storeSource）
+// await Tapp.tappList.install({
+//   source: "https://raw.githubusercontent.com/Myriad-You/tapp-store/main/index.json",
+//   tappId: "com.example.app",
+// });
+// ❌ 无效：{ source: "1", tappId } — 非 HTTP 的 source 不会当作 catalog
+
+// 直接安装（包体经 Bridge → installDirect → REST source:"direct"）：
+// await Tapp.tappList.install({
+//   source: "direct",
+//   manifest: { id: "com.example.app", name: "App", version: "1.0.0",
+//               category: "utility", main: "main.js", permissions: [] },
+//   code: "/* ... */",
+//   permissions: ["storage"],
+// });
+// ❌ 无效：source:"direct" 且缺少 manifest 或 code
 
 await Tapp.tappList.start("com.example.app");
 await Tapp.tappList.stop("com.example.app");
@@ -888,13 +906,16 @@ await Tapp.tappList.export("com.example.app");
 
 注意：
 
-- `tappList.install` **只**走 `installFromStore`：HTTP 固定 `source: "store"`，并把请求里的
-  `source` 字段写成 `storeSource`。填错商店源 ID 会导致后端拉包失败；网络失败时宿主可能
-  回退为浏览器下载 + `source: "direct"` 安装。
-- **直接包路径 / 上传 `.tapp`** 不经此 SDK 方法，由宿主 `POST /api/tapps/install`
-  （`source: "direct"`）或 `install-file` 完成（见 [REST API](REST_API.md)）。
-- 分享卡片里的「安装」必须传入真实 `storeSource`（如源 id `"1"`），不要把模式关键字
-  `"store"` 当成源 id 传给 `source`（除非碰巧配置了同名源；否则依赖宿主 fallback）。
+- **商店路径**：handler 解析后调用 `installFromStore({ source: catalogRef, … })`。
+  SDK 层 **catalog 引用** = `storeSource`，或当 `source` 为 `http(s)://…` 时用该 URL；
+  不要用裸 `source: "1"`。`storeSource` / catalog 不能是模式字面量 `"store"` / `"direct"`。
+  宿主再发 REST `source:"store"` + `storeSource: catalogRef`。后端拉包失败（如 502）或大包
+  （索引 `size` ≥ 1 MiB）时可回退浏览器下载 + REST `source:"direct"`。
+- **直接路径**：`source: "direct"` 时必须带 `manifest` + `code`（及可选资源）；走
+  `installDirect`，包体会经过 sandbox Bridge（与商店元数据-only 路径不同）。
+- **上传 `.tapp` 文件**仍走宿主 UI / `POST /api/tapps/install-file`，不经
+  `tappList.install`（见 [REST API](REST_API.md)、[文件格式](../../features/TAPP_FILE_FORMAT.md)）。
+- 分享卡片安装必须带真实 catalog（`storeSource` 或 HTTP `source`），见 [STORE](STORE.md)。
 
 ---
 
@@ -902,12 +923,12 @@ await Tapp.tappList.export("com.example.app");
 
 **权限**（按 action，见 `permissionConfig` / fixtures）：
 
-| 权限 | 典型方法 |
+| 权限 | 典型方法（与 `fixtures/action_permissions.json` / `PERMISSION_MAP` 对齐） |
 | ---- | -------- |
-| `brew:read` | `list`, `get`, `sources`, `categories`, `stats`, `discover`, `exportOpml` |
-| `brew:write` | `markRead` / `star` / 源增删改刷新 / `importOpml` 等 |
-| `brew:comment` | `getComments`, `createComment`, `updateComment`, `deleteComment`, replies |
-| `brew:manage` | **`createCategory` / `deleteCategory`**（用户文件夹式分类） |
+| `brew:read` | `list`, `get`, `sources`, `categories`, `stats`, `exportOpml` |
+| `brew:write` | `markRead`, `markUnread`, `star`, `unstar`, `markAllRead` |
+| `brew:comment` | `getComments`, `createComment`, `updateComment`, `deleteComment`, `getReplies`, `createReply` |
+| `brew:manage` | `discover`, `addSource`, `updateSource`, `deleteSource`, `refreshSource`, `importOpml`, `createCategory`, `deleteCategory` |
 
 Playground **临时预览不注册** brew handlers。完整 SDK（`Tapp.brewList`）仅在安装后可用：
 

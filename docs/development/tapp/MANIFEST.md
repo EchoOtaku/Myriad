@@ -38,8 +38,8 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `category`               | string   | ✅   | 应用用途分类（稳定 ID）            |
 | `assets`                 | string[] | ❌   | 包内静态资源路径（须在 `assets/` 下） |
 
-`author.name` 必填；`author.email` 与 `author.url` 可选。作者名称会显示在商店卡片和 Tapp
-详情页，详情页还会显示邮箱，并为通过 HTTP(S) 校验的作者主页生成外部链接。
+`author` 整体可选；**若提供**则 `author.name` 必填（1–255 字符），`email` / `url` 可选且须合法。
+作者名称会显示在商店卡片和 Tapp 详情页，详情页还会显示邮箱，并为通过 HTTP(S) 校验的作者主页生成外部链接。
 
 所有资源路径都是相对安装根目录的安全路径。`.tapp` 文件安装会保留经过校验的嵌套
 目录，例如 `templates/widget-2x2.html`；direct/store 安装也会把内容写到 Manifest
@@ -99,6 +99,9 @@ Page、Widget 和 headless core 是运行形态，由 `hasPage`、`widgets` 和
 `development`、`music`、`visualization` 等规范为上述 ID；新包应直接使用规范值。
 界面仅翻译显示名称，Manifest 和商店索引不存储本地化分类文本。
 从商店安装时，后端会在规范化旧别名后比对索引和 Manifest；两者分类不一致会拒绝安装。
+完整别名（Rust `TappCategory` / 前端 `CATEGORY_ALIASES`）：`data`←`data-extension|platform|visualization`，
+`developer`←`development|dev`，`game`←`games`，`media`←`entertainment|music`，
+`social`←`communication`，`utility`←`demo|page|test|tool|tools|utilities|widget`。
 
 `version` 必须是语义版本；`themeColor` 使用 `#RRGGBB`；`homepage`、`repository` 和
 作者主页只接受 HTTP(S)。声明 Widget 必须同时声明 `widget:register`；所有 HTTP API

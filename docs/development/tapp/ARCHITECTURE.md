@@ -97,8 +97,10 @@ HTTP 路径、Bridge method、持久化 key/channel 或 Manifest `protocolVersio
 | 来源     | 入口                                       | 行为                                                      |
 | -------- | ------------------------------------------ | --------------------------------------------------------- |
 | 直接安装 | `POST /api/tapps/install`, `source=direct` | 请求直接携带 Manifest、代码和可选资源                     |
-| 商店安装 | `POST /api/tapps/install`, `source=store`  | 后端从已配置商店下载；网络失败时前端可下载后回退到 direct |
+| 商店安装 | `POST /api/tapps/install`, `source=store`  | 后端从已配置商店下载；网络失败或大包时前端可下载后回退到 direct |
 | 文件安装 | `POST /api/tapps/install-file`             | 上传 ZIP 格式 `.tapp`，安全解包后安装                     |
+
+远程目录格式、源 CRUD、`storeSource` 语义与发布清单见 **[Tapp 商店](STORE.md)**。
 
 安装和更新时必须先校验 Tapp ID、Manifest 资源路径、资源类型和命名资源键。安全的嵌套
 相对路径会原样保留；绝对路径、隐藏路径、反斜杠和 `..` 会被拒绝。入口、CSS、HTML 模板

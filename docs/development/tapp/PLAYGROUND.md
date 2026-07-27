@@ -13,7 +13,13 @@ Tapp Playground 是 Myriad 内置的临时 Tapp 开发环境。它把 Pro AI、�
 8. 导出 `.tapp` 或安装前走客户端 preflight；安装成功后 `syncFromBackend` + `startTapp`。
 
 相关契约：[`MANIFEST.md`](./MANIFEST.md)、[`WIDGET.md`](./WIDGET.md)、
-[`SANDBOX.md`](./SANDBOX.md)、[`PLAYGROUND_GENERATION_CONTEXT.md`](./PLAYGROUND_GENERATION_CONTEXT.md)。
+[`SANDBOX.md`](./SANDBOX.md)、[`STORE.md`](./STORE.md)、
+[`API_REFERENCE.md`](./API_REFERENCE.md)、
+[`PLAYGROUND_GENERATION_CONTEXT.md`](./PLAYGROUND_GENERATION_CONTEXT.md)。
+
+注入模型的文档目录由 `backend/src/services/tapp_playground_knowledge.rs` 的
+`include_str!` 列表决定（含 STORE、MANIFEST、API_REFERENCE 等）；`DESIGN_SPEC.md`
+无条件注入。重新编译 backend 后才会带上文档改动。
 
 ## 为什么不是直接运行 Grok Build
 
@@ -173,9 +179,17 @@ Agent 不会声称把所有文档永久放进模型上下文。每轮先从仓�
 | 包文件映射 | `buildPlaygroundPackageFiles`：**导出 ZIP 与 install-from-code 共用**同一路径布局 |
 | Preflight | `validatePlaygroundPackage`：导出前与安装前均执行；失败则阻断并展示错误列表 |
 | 导出 | 客户端 JSZip 下载 `{manifest.id}.tapp`，无需后端写库 |
-| 安装 | 走现有权限审批 / 资源 staging / 安装 API |
+| 安装 | 宿主 **direct** 安装（内联 manifest/code/资源 → `POST /api/tapps/install` `source:direct`），**不是**远程商店 `source:store` 路径 |
 | 安装后 | `getTappRuntime().syncFromBackend(true)` + `startTapp(id)`（启用） |
 | 部分失败 | 安装本身已成功但 sync/start 失败时：提示仍可安装成功，并给出 start 失败文案；用户可在详情页手动启用 |
+
+Playground 自己的「安装到本机」与生成代码里调用的 `Tapp.tappList.install` 是两回事：
+
+- **Playground UI 安装**：当前工作区包 → direct install（见上表）。
+- **生成代码若写商店安装**：必须用 SDK 合法形状
+  `{ source: "store", storeSource: "<源 id 或 index.json URL>", tappId }`，或
+  `{ source: "https://…/index.json", tappId }`；**不要**写裸 `{ source: "1", tappId }`。
+  完整协议见 [STORE.md](./STORE.md) 与 [API_REFERENCE · Tapp 列表](./API_REFERENCE.md#tapp-列表-api)。
 
 ## 后续阶段
 

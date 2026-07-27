@@ -115,8 +115,12 @@ Tapp SDK 把调用转换为请求消息。宿主只接受同时满足以下条�
 
 - 默认 1 MiB 针对的是 **postMessage JSON payload**，与 `Tapp.storage` 单值 1 MiB 是不同层，
   但数量级一致，避免大 blob 经 bridge 灌入主线程。
-- 商店安装包体积不经 sandbox bridge 传输：`tappList.install` 只传 `source`/`tappId` 等
-  元数据；实际包体由后端 `source=store` 下载或宿主 direct/install-file 路径处理。
+- **商店**安装：`tappList.install` 只传元数据（`source: "store"` + `storeSource`，或 HTTP
+  catalog `source`，加 `tappId`），包体不经 Bridge；由后端 REST `source=store` 下载，或宿主
+  在失败/大包时浏览器下载后再 REST `source=direct` 安装。
+- **SDK 直接安装**：`source: "direct"` 时 `manifest`/`code`/可选资源会经 Bridge 传到宿主
+  `installDirect`（体积受消息与配额约束，大资源包优先商店或 `install-file`）。
+- **`.tapp` 文件上传**：走宿主 `POST /api/tapps/install-file`，不经 sandbox Bridge。
 - Playground 临时预览的 storage 单值同样限制约 1 MiB（内存实现），且**不**提供
   federation handlers。
 

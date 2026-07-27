@@ -63,7 +63,7 @@ dark:bg-black/90      /* 纯黑色 90% 不透明度 */
 ### 实际使用示例
 
 ```tsx
-// Reports.tsx - 卡片背景
+// 页面卡片背景
 <div className="bg-white dark:bg-black/90 rounded-xl shadow-lg">
 
 // TappListPage.tsx - 容器背景
@@ -72,7 +72,7 @@ dark:bg-black/90      /* 纯黑色 90% 不透明度 */
 // WidgetGrid.tsx - 工具栏
 <div className="bg-white/80 dark:bg-black/80 backdrop-blur-xl border-b border-gray-200/50 dark:border-white/5">
 
-// StageMode.tsx - 信息面板
+// 页面信息面板
 <div className="bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm rounded-lg p-3">
 ```
 
@@ -160,7 +160,7 @@ html.dark .glass {
 
 ### 标准卡片
 
-来自 Reports.tsx、TappListPage.tsx 的真实卡片样式：
+来自 `ReportCardWidget.tsx`、`TappListPage.tsx` 的真实卡片样式：
 
 ```tsx
 // 基础卡片
@@ -217,7 +217,7 @@ html.dark .glass {
 ### 使用示例
 
 ```tsx
-// Reports.tsx - 数字显示
+// ReportCardWidget.tsx - 数字显示
 <span className="text-5xl font-black text-gray-800 dark:text-gray-100 leading-none">
   {score}
 </span>

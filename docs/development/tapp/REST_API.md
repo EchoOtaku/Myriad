@@ -229,12 +229,19 @@ Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外�
 
 | 方法   | 路径                                  | 说明                         |
 | ------ | ------------------------------------- | ---------------------------- |
+| GET    | `/api/tapps/store/sources`            | 列出全部源（公开；见可选认证读取表） |
 | POST   | `/api/tapps/store/sources`            | 添加源；handler 内检查管理员 |
 | POST   | `/api/tapps/store/sources/{sourceId}` | 更新源；handler 内检查管理员 |
 | DELETE | `/api/tapps/store/sources/{sourceId}` | 删除源；handler 内检查管理员 |
 
-不存在 `/api/tapp-store/...` 路由。商店索引和应用资源也可能由浏览器通过
-`RemoteStoreService` 读取；后端商店下载失败时，安装器会回退到浏览器下载 + direct 安装。
+不存在 `/api/tapp-store/...` 路由。
+
+**商店安装语义**（完整协议见 [Tapp 商店](STORE.md)）：
+
+- `source: "store"` 时 `storeSource` 必须是已配置源的 **数字 id**、完整 `index.json` URL，或可规范化匹配到已配置源的 base URL；禁止传字面量 `"store"` / `"direct"`。
+- 后端从该源拉 `index.json` 与 `download` / `manifest.assets` 文件，校验索引与 Manifest 的 `category` 一致后进入与 direct 相同的 staging 安装。
+- 浏览器侧列表经 `RemoteStoreService` 直连远程索引；后端 502 / 大包（索引 `size` ≥ 1 MiB）时宿主回退为浏览器下载 + `source: "direct"`。
+- 官方源由迁移预置：`https://raw.githubusercontent.com/Myriad-You/tapp-store/main/index.json`（`official=true`，URL 不可改）。
 
 ## 运行时 `/api/tapp`
 
