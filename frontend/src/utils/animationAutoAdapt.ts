@@ -28,9 +28,8 @@ export type AutoSampleResult = {
 
 // —— wantHigh 持久化（localStorage）————————————————————————————
 
-/** auto 是否选「高」档；默认 true；false 表示曾降级并记住 */
-export function getSessionAutoWantHigh(): boolean {
-  // 名称保留 getSession… 兼容调用方；实际读 localStorage
+/** auto 是否选「高」档；默认 true；false 表示曾降级并记在 localStorage */
+export function getStoredAutoWantHigh(): boolean {
   if (typeof localStorage === 'undefined') return true
   try {
     const v = localStorage.getItem(STORAGE_KEY)
@@ -42,7 +41,12 @@ export function getSessionAutoWantHigh(): boolean {
   return true
 }
 
-export function setSessionAutoWantHigh(wantHigh: boolean): void {
+/** @deprecated use getStoredAutoWantHigh */
+export function getSessionAutoWantHigh(): boolean {
+  return getStoredAutoWantHigh()
+}
+
+export function setStoredAutoWantHigh(wantHigh: boolean): void {
   if (typeof localStorage === 'undefined') return
   try {
     localStorage.setItem(STORAGE_KEY, wantHigh ? '1' : '0')
@@ -51,9 +55,18 @@ export function setSessionAutoWantHigh(wantHigh: boolean): void {
   }
 }
 
-/** 用户手动选「高」时调用：清掉降级记忆，下次 auto 可再采 */
+/** @deprecated use setStoredAutoWantHigh */
+export function setSessionAutoWantHigh(wantHigh: boolean): void {
+  setStoredAutoWantHigh(wantHigh)
+}
+
+/** 用户手动选「高」时调用：清掉降级记忆；本页可再 schedule 一次采样 */
 export function clearAutoDemoteMemory(): void {
-  setSessionAutoWantHigh(true)
+  setStoredAutoWantHigh(true)
+  // 允许本页在仍为 auto 时重新 probe（仅此入口会重置）
+  probeStarted = false
+  activeCancel?.()
+  activeCancel = null
 }
 
 export function evaluateCounters(
@@ -106,7 +119,7 @@ export function startSessionAutoFrameAdapt(options?: {
   }
 
   // 已经记住低档：不采
-  if (!getSessionAutoWantHigh()) {
+  if (!getStoredAutoWantHigh()) {
     return unsubscribe
   }
 
@@ -118,9 +131,10 @@ export function startSessionAutoFrameAdapt(options?: {
   probeStarted = true
   activeCancel = runProbeOnce((result) => {
     activeCancel = null
+    // 无论是否降级都保持 probeStarted=true，本页不再二次 schedule
     if (!result.demoted) return
-    if (!getSessionAutoWantHigh()) return
-    setSessionAutoWantHigh(false)
+    if (!getStoredAutoWantHigh()) return
+    setStoredAutoWantHigh(false)
     for (const fn of demoteListeners) {
       try {
         fn(result)

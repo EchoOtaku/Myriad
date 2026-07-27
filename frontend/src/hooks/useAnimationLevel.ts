@@ -1,8 +1,7 @@
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { AnimationPreferenceContext } from '../contexts/AnimationPreferenceContext'
 import {
-  clearAutoDemoteMemory,
-  getSessionAutoWantHigh,
+  getStoredAutoWantHigh,
   startSessionAutoFrameAdapt,
 } from '../utils/animationAutoAdapt'
 import { configureAnimationCoordinator } from './animation'
@@ -167,7 +166,7 @@ export function getAnimationConfigSync(): AnimationConfig {
   const perf = getPerformanceProfileSync()
   const pref = readStoredUserPreference() ?? 'auto'
   const autoWantHigh =
-    pref === 'auto' || pref == null ? getSessionAutoWantHigh() : true
+    pref === 'auto' || pref == null ? getStoredAutoWantHigh() : true
   return resolveAnimationConfig(pref, perf, autoWantHigh)
 }
 
@@ -194,26 +193,28 @@ export function useAnimationLevel(): AnimationConfig {
     readStoredUserPreference() ??
     'auto') as AnimationUserPreference
 
-  // auto 会话档：默认高；采样仅在很差时降为 false（不自动升）
-  const [autoWantHigh, setAutoWantHigh] = useState(getSessionAutoWantHigh)
+  // localStorage 为 auto 高/低真源；epoch 在 demote 后 +1 触发重读
+  const [autoEpoch, setAutoEpoch] = useState(0)
+  const autoWantHigh = useMemo(() => {
+    if (pref !== 'auto' && pref != null) return true
+    return getStoredAutoWantHigh()
+  }, [pref, autoEpoch])
 
-  const config = useMemo(() => {
-    const sessionHigh =
-      pref === 'auto' || pref == null ? autoWantHigh : true
-    return resolveAnimationConfig(pref, perf, sessionHigh)
-  }, [perf, pref, autoWantHigh])
+  const config = useMemo(
+    () => resolveAnimationConfig(pref, perf, autoWantHigh),
+    [perf, pref, autoWantHigh],
+  )
 
-  // 仅 auto：空闲后采样；手动档不跑
+  // 仅 auto：空闲后全局只采一次；手动档不跑
   useEffect(() => {
     if (pref !== 'auto') return
     if (perf.reduceMotion) return
-    // 已降过则不再采
     if (!autoWantHigh) return
 
     return startSessionAutoFrameAdapt({
       enabled: true,
       onDemote: () => {
-        setAutoWantHigh(false)
+        setAutoEpoch((n) => n + 1)
       },
     })
   }, [pref, perf.reduceMotion, autoWantHigh])
