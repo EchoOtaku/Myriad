@@ -162,14 +162,20 @@ html.dark .site-footer-content:hover {
   font-size: 0.625rem;
   font-weight: 500;
   white-space: nowrap;
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 1.5rem));
   border-radius: 0.375rem;
   opacity: 0;
   visibility: hidden;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0.2s;
   pointer-events: none;
   z-index: 1000;
   box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
   backdrop-filter: blur(8px);
+  box-sizing: border-box;
 }
 
 .tooltip-wrapper:hover .tooltip-content {
@@ -232,20 +238,27 @@ html.dark .tooltip-content {
 /*
  * Compact footer sits fixed bottom-right. Centered tooltips
  * (left: 50%; translateX(-50%)) overflow the viewport for long
- * 备案/公安 strings — pin to the right edge of each icon and allow wrap.
+ * 备案/公安 strings — pin to the right edge of each icon.
+ *
+ * Do NOT use overflow-wrap:anywhere on absolute tooltips without an
+ * explicit width: shrink-to-fit collapses to one glyph and text stacks
+ * as a vertical line. width:max-content + max-width is the fix.
  */
 .site-footer-compact .tooltip-content {
   left: auto;
   right: 0;
   transform: translateY(4px);
   white-space: normal;
-  max-width: min(16rem, calc(100vw - 1rem));
-  overflow-wrap: anywhere;
-    text-align: right;
+  width: max-content;
+  max-width: min(16rem, calc(100vw - 1.5rem));
+  overflow-wrap: break-word;
+  word-break: normal;
+  text-align: left;
   line-height: 1.35;
 }
 
-.site-footer-compact .tooltip-wrapper:hover .tooltip-content {
+.site-footer-compact .tooltip-wrapper:hover .tooltip-content,
+.site-footer-compact .tooltip-wrapper:focus-within .tooltip-content {
   transform: translateY(0);
 }
 
