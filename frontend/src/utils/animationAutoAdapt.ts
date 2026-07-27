@@ -1,46 +1,41 @@
 /**
  * auto 动效：会话内自适应（可降不可升）
  *
- * - 默认 wantHigh=true（取硬件允许对中的高档）
- * - 空闲后轻量 rAF 采样；仅当帧质量**明显很差**才降为 wantHigh=false
- * - 结果写入 sessionStorage，本标签页会话内保持，不轻易降
+ * 采样刻意轻量：
+ * - 不分配数组，只累加标量
+ * - 少帧数（24 个间隔 ≈ 0.4s@60Hz）
+ * - 空闲后再开，不抢首屏
+ * - rAF 回调内仅几次比较与加减
  */
 
 const SESSION_KEY = 'myriad-anim-auto-want-high'
 
-/** 空闲多久后再采（ms）—— 避开首屏抢主线程 */
-const IDLE_BEFORE_SAMPLE_MS = 2000
-
-/** 采样帧数 */
-const SAMPLE_FRAMES = 40
+/** 空闲多久后再采（ms） */
+const IDLE_BEFORE_SAMPLE_MS = 2500
 
 /**
- * 单帧间隔超过此值才算「坏帧」（约 < 30fps）。
- * 比 16ms 宽很多，轻微掉帧不会触发。
+ * 需要记录的间隔个数（不含丢弃的首帧）。
+ * 24 足够做占比判断，比 40 更轻。
  */
+const SAMPLE_GAPS = 24
+
+/** 坏帧阈值（约 <30fps） */
 const BAD_FRAME_MS = 34
 
-/**
- * 「极差帧」：卡顿感明显（约 < 20fps）
- */
+/** 极差帧（约 <20fps） */
 const SEVERE_FRAME_MS = 50
 
-/**
- * 坏帧占比需达到此比例才降级（0–1）。
- * 默认 45%：40 帧里约 ≥18 帧偏慢才认。
- */
+/** 坏帧占比门槛（偏严，不易降） */
 const BAD_RATIO_THRESHOLD = 0.45
 
-/**
- * 极差帧至少要有这么多才允许降级（防止偶发长任务误伤）。
- */
+/** 极差帧下限 */
 const MIN_SEVERE_FRAMES = 4
 
-/**
- * 平均帧间隔还要超过此值（ms）才降。
- * 与坏帧占比双条件，避免「偶发尖刺、平均仍健康」误降。
- */
+/** 平均间隔门槛 */
 const AVG_FRAME_MS_THRESHOLD = 24
+
+/** 丢弃的间隔上限（切后台等） */
+const MAX_GAP_MS = 120
 
 export type AutoSampleResult = {
   demoted: boolean
@@ -72,55 +67,42 @@ export function setSessionAutoWantHigh(wantHigh: boolean): void {
   }
 }
 
-function evaluateSample(intervals: number[]): AutoSampleResult {
-  const frames = intervals.length
-  if (frames < 10) {
+/** 仅用累加计数判定，无数组分配 */
+export function evaluateCounters(
+  frames: number,
+  sumMs: number,
+  bad: number,
+  severe: number,
+): AutoSampleResult {
+  if (frames < 12) {
     return {
       demoted: false,
       avgMs: 0,
       badRatio: 0,
-      severeCount: 0,
+      severeCount: severe,
       frames,
     }
   }
-
-  let sum = 0
-  let bad = 0
-  let severe = 0
-  for (const ms of intervals) {
-    sum += ms
-    if (ms >= BAD_FRAME_MS) bad += 1
-    if (ms >= SEVERE_FRAME_MS) severe += 1
-  }
-  const avgMs = sum / frames
+  const avgMs = sumMs / frames
   const badRatio = bad / frames
-
-  // 双条件 + 极差帧下限：不容易降
   const demoted =
     badRatio >= BAD_RATIO_THRESHOLD &&
     severe >= MIN_SEVERE_FRAMES &&
     avgMs >= AVG_FRAME_MS_THRESHOLD
-
   return { demoted, avgMs, badRatio, severeCount: severe, frames }
 }
 
 /**
- * 在页面空闲后做一次 rAF 采样；若判定应降级则写入 session 并回调。
- * 若会话已是 wantHigh=false，直接 no-op（不升、不重复采）。
- *
- * @returns cancel 函数
+ * 空闲后一次轻量 rAF 采样；明显很差才降级。
+ * @returns cancel
  */
 export function startSessionAutoFrameAdapt(options?: {
   onDemote?: (result: AutoSampleResult) => void
-  /** 仅 auto 偏好时启用；调用方保证 */
   enabled?: boolean
 }): () => void {
-  const enabled = options?.enabled !== false
-  if (!enabled || typeof window === 'undefined') {
+  if (options?.enabled === false || typeof window === 'undefined') {
     return () => {}
   }
-
-  // 本会话已经降过，不再采样（可降不可升）
   if (!getSessionAutoWantHigh()) {
     return () => {}
   }
@@ -129,47 +111,77 @@ export function startSessionAutoFrameAdapt(options?: {
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let rafId = 0
   let idleCallbackId = 0
+  let visHandler: (() => void) | null = null
 
-  const cleanupRaf = () => {
+  const cancelAll = () => {
+    cancelled = true
+    if (idleTimer != null) {
+      clearTimeout(idleTimer)
+      idleTimer = null
+    }
     if (rafId) {
       cancelAnimationFrame(rafId)
       rafId = 0
+    }
+    if (idleCallbackId && 'cancelIdleCallback' in window) {
+      ;(
+        window as Window & { cancelIdleCallback: (id: number) => void }
+      ).cancelIdleCallback(idleCallbackId)
+      idleCallbackId = 0
+    }
+    if (visHandler) {
+      document.removeEventListener('visibilitychange', visHandler)
+      visHandler = null
     }
   }
 
   const runSample = () => {
     if (cancelled || document.hidden) return
 
-    const intervals: number[] = []
-    let last = performance.now()
-    let count = 0
+    // 标量累加，rAF 内零分配
+    let last = 0
+    let gaps = 0
+    let sumMs = 0
+    let bad = 0
+    let severe = 0
+    let sawFirst = false
 
     const tick = (now: number) => {
       if (cancelled) return
-      const dt = now - last
-      last = now
-      // 跳过第一帧（调度间隙）与异常超大间隔（切后台等）
-      if (count > 0 && dt < 200) {
-        intervals.push(dt)
-      }
-      count += 1
-      if (count <= SAMPLE_FRAMES) {
+
+      if (!sawFirst) {
+        // 首帧只打时间戳，不计间隔
+        sawFirst = true
+        last = now
         rafId = requestAnimationFrame(tick)
         return
       }
 
-      const result = evaluateSample(intervals)
-      if (result.demoted && getSessionAutoWantHigh()) {
-        setSessionAutoWantHigh(false)
-        options?.onDemote?.(result)
-        if (typeof import.meta !== 'undefined') {
-          const dev = (import.meta as ImportMeta & { env?: { DEV?: boolean } })
-            .env?.DEV
-          if (dev) {
-            console.info('[anim-auto] session demote', result)
-          }
+      const dt = now - last
+      last = now
+
+      // 合法间隔：累加；过大直接丢弃（不计入分母）
+      if (dt > 0 && dt < MAX_GAP_MS) {
+        gaps += 1
+        sumMs += dt
+        if (dt >= BAD_FRAME_MS) {
+          bad += 1
+          if (dt >= SEVERE_FRAME_MS) severe += 1
         }
       }
+
+      if (gaps < SAMPLE_GAPS) {
+        rafId = requestAnimationFrame(tick)
+        return
+      }
+
+      rafId = 0
+      const result = evaluateCounters(gaps, sumMs, bad, severe)
+      if (!result.demoted) return
+      // 再读一次 session，避免竞态；热路径外可接受
+      if (!getSessionAutoWantHigh()) return
+      setSessionAutoWantHigh(false)
+      options?.onDemote?.(result)
     }
 
     rafId = requestAnimationFrame(tick)
@@ -177,52 +189,65 @@ export function startSessionAutoFrameAdapt(options?: {
 
   const schedule = () => {
     if (cancelled) return
-    // 页面不可见则延后
     if (document.hidden) {
-      const onVis = () => {
-        if (!document.hidden) {
-          document.removeEventListener('visibilitychange', onVis)
-          schedule()
+      visHandler = () => {
+        if (document.hidden || cancelled) return
+        if (visHandler) {
+          document.removeEventListener('visibilitychange', visHandler)
+          visHandler = null
         }
+        schedule()
       }
-      document.addEventListener('visibilitychange', onVis)
+      document.addEventListener('visibilitychange', visHandler)
       return
     }
 
-    const startAfterIdle = () => {
+    const kick = () => {
       if (cancelled) return
+      // 再等一小段，错开首屏 paint/数据请求尖峰
       idleTimer = setTimeout(runSample, IDLE_BEFORE_SAMPLE_MS)
     }
 
-    if ('requestIdleCallback' in window) {
+    if (typeof (
+      window as Window & {
+        requestIdleCallback?: (
+          cb: () => void,
+          opts?: { timeout: number },
+        ) => number
+      }
+    ).requestIdleCallback === 'function') {
       idleCallbackId = (
         window as Window & {
-          requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number
+          requestIdleCallback: (
+            cb: () => void,
+            opts?: { timeout: number },
+          ) => number
         }
-      ).requestIdleCallback(startAfterIdle, { timeout: 4000 })
+      ).requestIdleCallback(kick, { timeout: 5000 })
     } else {
-      startAfterIdle()
+      kick()
     }
   }
 
   schedule()
-
-  return () => {
-    cancelled = true
-    if (idleTimer) clearTimeout(idleTimer)
-    cleanupRaf()
-    if (
-      idleCallbackId &&
-      'cancelIdleCallback' in window
-    ) {
-      ;(
-        window as Window & { cancelIdleCallback: (id: number) => void }
-      ).cancelIdleCallback(idleCallbackId)
-    }
-  }
+  return cancelAll
 }
 
-/** 测试用：导出阈值评估 */
+/** @deprecated test alias */
 export function __evaluateSampleForTest(intervals: number[]): AutoSampleResult {
-  return evaluateSample(intervals)
+  let sum = 0
+  let bad = 0
+  let severe = 0
+  let n = 0
+  for (let i = 0; i < intervals.length; i++) {
+    const dt = intervals[i]
+    if (dt <= 0 || dt >= MAX_GAP_MS) continue
+    n += 1
+    sum += dt
+    if (dt >= BAD_FRAME_MS) {
+      bad += 1
+      if (dt >= SEVERE_FRAME_MS) severe += 1
+    }
+  }
+  return evaluateCounters(n, sum, bad, severe)
 }
