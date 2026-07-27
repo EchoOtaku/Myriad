@@ -3,12 +3,12 @@ import { createContext, useContext, useState } from 'react'
 
 /**
  * 动效偏好（用户只在两档间切换；落地档位由硬件是否达标映射）
- * - 'auto': 取当前硬件允许对中的「高」档
- * - 'standard': 用户选「高」→ 达标 hardware: standard · 不达标: light
- * - 'light': 用户选「低」→ 达标 hardware: light · 不达标: exlight
+ * - 'auto': 默认硬件允许对中的「高」档；会话内 rAF 采样仅在帧质明显很差时降为「低」（可降不可升）
+ * - 'standard': 用户选「高」→ 达标: standard · 不达标: light（不采样）
+ * - 'light': 用户选「低」→ 达标: light · 不达标: exlight（不采样）
  *
  * 真正的 AnimationLevel（exlight | light | standard）见 useAnimationLevel。
- * prefers-reduced-motion 与弱机「低」档均落到 exlight（已无独立 none）。
+ * prefers-reduced-motion → 强制 exlight。
  */
 export type AnimationPreference = 'auto' | 'standard' | 'light'
 

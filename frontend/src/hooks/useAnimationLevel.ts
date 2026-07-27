@@ -1,5 +1,9 @@
-import { useContext, useEffect, useMemo } from 'react'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import { AnimationPreferenceContext } from '../contexts/AnimationPreferenceContext'
+import {
+  getSessionAutoWantHigh,
+  startSessionAutoFrameAdapt,
+} from '../utils/animationAutoAdapt'
 import { configureAnimationCoordinator } from './animation'
 import {
   getPerformanceProfileSync,
@@ -111,18 +115,29 @@ export function meetsAnimationHardwareRequirement(
  * - prefers-reduced-motion → always `exlight` (not overridable)
  * - `wantHigh === true`  →  capable: standard · weak: light
  * - `wantHigh === false` →  capable: light    · weak: exlight
- * - `auto` prefers the high slot of the allowed pair
+ * - `auto`：默认高档；会话采样仅在帧质**明显很差**时降为低档（可降不可升）
+ * - 手动 standard / light：不走采样
  */
 export function resolveAnimationConfig(
   userPref: AnimationUserPreference | null | undefined,
   perf: PerformanceProfile,
+  /** auto 会话内是否选高档；仅 userPref 为 auto 时生效 */
+  autoWantHigh: boolean = true,
 ): AnimationConfig {
   if (perf.reduceMotion) {
     return CONFIG_EXLIGHT
   }
 
   const capable = meetsAnimationHardwareRequirement(perf)
-  const wantHigh = userPref !== 'light' // standard | auto | unset → high slot
+  let wantHigh: boolean
+  if (userPref === 'light') {
+    wantHigh = false
+  } else if (userPref === 'standard') {
+    wantHigh = true
+  } else {
+    // auto / unset
+    wantHigh = autoWantHigh
+  }
 
   if (capable) {
     return wantHigh ? CONFIG_STANDARD : CONFIG_LIGHT
@@ -149,7 +164,10 @@ function readStoredUserPreference(): AnimationUserPreference | null {
  */
 export function getAnimationConfigSync(): AnimationConfig {
   const perf = getPerformanceProfileSync()
-  return resolveAnimationConfig(readStoredUserPreference() ?? 'auto', perf)
+  const pref = readStoredUserPreference() ?? 'auto'
+  const autoWantHigh =
+    pref === 'auto' || pref == null ? getSessionAutoWantHigh() : true
+  return resolveAnimationConfig(pref, perf, autoWantHigh)
 }
 
 /** 模块级缓存：供非 React 回调（如音乐呼吸动画）读取用户偏好后的真实级别 */
@@ -171,13 +189,33 @@ function syncPerfModeToDocument(level: AnimationLevel): void {
 export function useAnimationLevel(): AnimationConfig {
   const perf = usePerformanceProfile()
   const prefContext = useContext(AnimationPreferenceContext)
+  const pref = (prefContext?.preference ??
+    readStoredUserPreference() ??
+    'auto') as AnimationUserPreference
+
+  // auto 会话档：默认高；采样仅在很差时降为 false（不自动升）
+  const [autoWantHigh, setAutoWantHigh] = useState(getSessionAutoWantHigh)
 
   const config = useMemo(() => {
-    const pref = (prefContext?.preference ??
-      readStoredUserPreference() ??
-      'auto') as AnimationUserPreference
-    return resolveAnimationConfig(pref, perf)
-  }, [perf, prefContext?.preference])
+    const sessionHigh =
+      pref === 'auto' || pref == null ? autoWantHigh : true
+    return resolveAnimationConfig(pref, perf, sessionHigh)
+  }, [perf, pref, autoWantHigh])
+
+  // 仅 auto：空闲后采样；手动档不跑
+  useEffect(() => {
+    if (pref !== 'auto') return
+    if (perf.reduceMotion) return
+    // 已降过则不再采
+    if (!autoWantHigh) return
+
+    return startSessionAutoFrameAdapt({
+      enabled: true,
+      onDemote: () => {
+        setAutoWantHigh(false)
+      },
+    })
+  }, [pref, perf.reduceMotion, autoWantHigh])
 
   useEffect(() => {
     currentAnimationConfig = config
