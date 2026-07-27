@@ -41,6 +41,14 @@ const ENV_ALLOWLIST: &[&str] = &[
     "http_proxy",
     "https_proxy",
     "no_proxy",
+    // TLS / 企业自签 CA：路径指向证书束，不是密钥。
+    // 缺了这些时 Node/Python/curl 在企业代理环境会 TLS handshake 失败。
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+    "REQUESTS_CA_BUNDLE",
+    "CURL_CA_BUNDLE",
+    "NODE_EXTRA_CA_CERTS",
+    "AWS_CA_BUNDLE",
     // Windows 上进程创建的基本要求
     "SYSTEMROOT",
     "SYSTEMDRIVE",
@@ -365,16 +373,33 @@ mod tests {
 
     #[test]
     fn env_allowlist_keeps_what_runtimes_need() {
-        for needed in ["PATH", "HOME", "NODE_PATH", "HTTPS_PROXY"] {
+        for needed in [
+            "PATH",
+            "HOME",
+            "NODE_PATH",
+            "HTTPS_PROXY",
+            "SSL_CERT_FILE",
+            "NODE_EXTRA_CA_CERTS",
+            "REQUESTS_CA_BUNDLE",
+        ] {
             assert!(ENV_ALLOWLIST.contains(&needed), "{needed} should pass through");
         }
     }
 
     /// 白名单本身不能出现凭据形状的名字 —— 防止将来有人顺手往里加。
+    ///
+    /// 证书*路径*（`*_CA_*` / `SSL_CERT_*`）允许：它们是文件系统路径，不是密钥。
     #[test]
     fn env_allowlist_has_no_credential_shaped_names() {
         for name in ENV_ALLOWLIST {
             let lower = name.to_ascii_lowercase();
+            let is_cert_path = lower.contains("ssl_cert")
+                || lower.contains("ca_bundle")
+                || lower.contains("ca_certs")
+                || lower.contains("extra_ca");
+            if is_cert_path {
+                continue;
+            }
             assert!(
                 !(lower.contains("secret")
                     || lower.contains("token")
