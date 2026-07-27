@@ -130,6 +130,10 @@ pub async fn get_global_client() -> Client {
 ///
 /// 图片模型一次请求可能接近两分钟，因此不能复用普通 API 的 30 秒超时；
 /// 代理来源仍与全局动态配置一致。
+///
+/// 目前由本地未合并的 `image_generation` 提供方使用；主线仍保留符号以免
+/// 下游 WIP 反复分叉，故允许 dead_code。
+#[allow(dead_code)]
 pub async fn get_long_running_client() -> Client {
     // Image + long LLM-backed image APIs regularly exceed 2–3 minutes.
     let request_timeout = Duration::from_secs(360);
