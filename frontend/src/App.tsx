@@ -37,6 +37,7 @@ import { preloadCriticalRoutes } from './utils/codeSplitting'
 import {
   canAccessModuleVisibility,
   canUseAgent,
+  DEFAULT_MODULE_VISIBILITY_PREFERENCES,
   useModuleVisibilityPreferences,
 } from './utils/moduleVisibility'
 import './styles/fonts.css'
@@ -140,7 +141,15 @@ function ModuleVisibilityGuard({
   const { preferences, isLoading } = useModuleVisibilityPreferences()
   const visibility = preferences.modules[moduleKey]
 
+  /*
+   * 门禁加载中不要 return null：会整页卸挂，数字生命毛玻璃 / 房间解码冷启动必闪。
+   * 默认可见的模块（life 等为 all）乐观先渲染；加载完再按真实偏好裁。
+   */
   if (!hasChecked || isLoading) {
+    const fallback = DEFAULT_MODULE_VISIBILITY_PREFERENCES.modules[moduleKey]
+    if (fallback === 'all') {
+      return children
+    }
     return null
   }
 
@@ -243,7 +252,7 @@ function AnimatedPage({
 }: {
   children: React.ReactNode
   animationKey?: string
-  animationStyle?: 'normal' | 'fixed' | 'opacity-only'
+  animationStyle?: 'normal' | 'fixed' | 'opacity-only' | 'none'
 }) {
   const location = useLocation()
   const style = animationStyle ?? 'normal'
@@ -262,7 +271,10 @@ function AnimatedPage({
   // 合成层 bug（内容看得见/DOM 在但点不到，或干脆不绘制）。原先用 body portal
   // 规避绘制，却引入几何同步与命中错乱，移动端表现为「摸得到但不触发交互」。
   // 去掉页面级 opacity 后，iframe 可安全内联，触摸链路恢复正常。
-  if (style === 'fixed') {
+  //
+  // /life 同理：祖先 opacity 动画期间 backdrop-filter 不采样或采样残缺，
+  // 进场结束会「先透后突然糊」——直接静态挂载，毛玻璃首帧就位。
+  if (style === 'fixed' || style === 'none') {
     return (
       <div key={animationKey ?? location.pathname} style={wrapperStyle}>
         {children}
@@ -347,9 +359,15 @@ function AppRoutes() {
 
   // 🎯 动画风格选择：
   // - 'fixed': 绝对定位包装器（仅 tapp/run 等自带 fixed 全屏布局的页面）
+  // - 'none': 无进场动画（数字生命：避免 opacity 进场导致毛玻璃闪现）
+  // - 'opacity-only': 不用 transform
   // - 'normal': 正常页面（带 transform 动画）
-  const animationStyle: 'normal' | 'fixed' | 'opacity-only' =
-    location.pathname.startsWith('/tapp/run') ? 'fixed' : 'normal'
+  const animationStyle: 'normal' | 'fixed' | 'opacity-only' | 'none' =
+    location.pathname.startsWith('/tapp/run')
+      ? 'fixed'
+      : location.pathname.startsWith('/life')
+        ? 'none'
+        : 'normal'
 
   // 🎯 动画分组 key：同组路由之间不触发 exit/enter 动画，避免白屏间隙
   const animationKey = location.pathname
@@ -408,6 +426,11 @@ function AppRoutes() {
               <SuspensePage>
                 <Reports />
               </SuspensePage>
+            </ModuleVisibilityGuard>
+          }
+        />
+                </SuspensePage>
+              </RequireAuth>
             </ModuleVisibilityGuard>
           }
         />

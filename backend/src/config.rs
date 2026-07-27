@@ -4,6 +4,8 @@ use std::env;
 /// AI 模型层级
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ModelTier {
+    /// Lite 模型 - 用于高频、低成本、短输出任务
+    Lite,
     /// 标准模型 - 用于日常任务
     #[default]
     Standard,
@@ -178,6 +180,13 @@ pub struct DynamicConfig {
     pub openai_model: String,
     pub openai_base_url: String,
     pub openai_max_tokens: i32,
+    // AI 配置（Lite 模型）
+    pub lite_ai_provider: String,
+    pub lite_gemini_api_key: Option<String>,
+    pub lite_gemini_model: String,
+    pub lite_openai_api_key: Option<String>,
+    pub lite_openai_model: String,
+    pub lite_openai_base_url: String,
     // AI 配置（Pro 模型）
     pub pro_enabled: bool,
     pub pro_ai_provider: String,
@@ -280,11 +289,15 @@ pub struct DynamicConfig {
     pub music_source: Option<String>,
     pub music_playlist_id: Option<String>,
 
-    // AI 图片生成配置（从虚拟人设移动过来）
-    pub ai_image_provider: String, // "pollinations" 或 "pixai"
+    // AI 图片生成配置（统一服务：OpenAI / OpenRouter / Volcengine / PixAI）
+    pub ai_image_provider: String,
     pub ai_image_model: String,
     pub ai_image_width: i32,
     pub ai_image_height: i32,
+    pub ai_image_openai_api_key: Option<String>,
+    pub ai_image_openrouter_api_key: Option<String>,
+    pub ai_image_volcengine_api_key: Option<String>,
+    pub ai_image_volcengine_base_url: String,
     pub pixai_api_key: Option<String>,
 
     // 自动数据获取配置
@@ -426,6 +439,13 @@ impl Default for DynamicConfig {
             openai_model: "minimax/minimax-m3".to_string(),
             openai_base_url: "https://openrouter.ai/api/v1".to_string(),
             openai_max_tokens: 2000,
+            // Lite 模型默认配置
+            lite_ai_provider: "openai".to_string(),
+            lite_gemini_api_key: None,
+            lite_gemini_model: "gemini-3.5-flash".to_string(),
+            lite_openai_api_key: None,
+            lite_openai_model: "openai/gpt-oss-20b:free".to_string(),
+            lite_openai_base_url: "https://openrouter.ai/api/v1".to_string(),
             // Pro 模型默认配置
             pro_enabled: false,
             pro_ai_provider: "openai".to_string(),
@@ -504,10 +524,14 @@ impl Default for DynamicConfig {
             music_playlist_id: None,
 
             // AI 图片生成配置
-            ai_image_provider: "pollinations".to_string(),
-            ai_image_model: "1983308862240288769".to_string(),
-            ai_image_width: 768,
-            ai_image_height: 1280,
+            ai_image_provider: "openrouter".to_string(),
+            ai_image_model: "openai/gpt-image-2".to_string(),
+            ai_image_width: 1024,
+            ai_image_height: 1024,
+            ai_image_openai_api_key: None,
+            ai_image_openrouter_api_key: None,
+            ai_image_volcengine_api_key: None,
+            ai_image_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
             pixai_api_key: None,
             enable_auto_fetch: false,
             fetch_interval_hours: 24,
@@ -591,48 +615,27 @@ impl Default for DynamicConfig {
 impl DynamicConfig {
     /// 根据模型层级解析 AI 配置
     ///
-    /// Pro 层级：如果 pro_enabled 且 Pro 有独立 API Key，则使用 Pro 配置；
-    /// 否则回退到标准配置。
+    /// Lite 使用低成本独立配置；Pro 在未启用或未单独配置时回退到 Standard。
     pub fn resolve_ai_config(&self, tier: ModelTier) -> ResolvedAiConfig {
+        if tier == ModelTier::Lite {
+            return self.resolve_secondary_tier(
+                &self.lite_ai_provider,
+                self.lite_gemini_api_key.clone(),
+                &self.lite_gemini_model,
+                self.lite_openai_api_key.clone(),
+                &self.lite_openai_model,
+                &self.lite_openai_base_url,
+            );
+        }
         if tier == ModelTier::Pro && self.pro_enabled {
-            let provider = &self.pro_ai_provider;
-            let (api_key, model, base_url) = if provider == "openai" {
-                let key = self
-                    .pro_openai_api_key
-                    .clone()
-                    .filter(|k| !k.is_empty())
-                    .or_else(|| self.openai_api_key.clone());
-                let model = if self.pro_openai_model.is_empty() {
-                    self.openai_model.clone()
-                } else {
-                    self.pro_openai_model.clone()
-                };
-                let base_url = if self.pro_openai_base_url.is_empty() {
-                    self.openai_base_url.clone()
-                } else {
-                    self.pro_openai_base_url.clone()
-                };
-                (key, model, base_url)
-            } else {
-                // gemini
-                let key = self
-                    .pro_gemini_api_key
-                    .clone()
-                    .filter(|k| !k.is_empty())
-                    .or_else(|| self.gemini_api_key.clone());
-                let model = if self.pro_gemini_model.is_empty() {
-                    self.gemini_model.clone()
-                } else {
-                    self.pro_gemini_model.clone()
-                };
-                (key, model, String::new())
-            };
-            return ResolvedAiConfig {
-                provider: provider.clone(),
-                api_key,
-                model,
-                base_url,
-            };
+            return self.resolve_secondary_tier(
+                &self.pro_ai_provider,
+                self.pro_gemini_api_key.clone(),
+                &self.pro_gemini_model,
+                self.pro_openai_api_key.clone(),
+                &self.pro_openai_model,
+                &self.pro_openai_base_url,
+            );
         }
 
         // 标准层级
@@ -657,6 +660,48 @@ impl DynamicConfig {
             base_url,
         }
     }
+
+    fn resolve_secondary_tier(
+        &self,
+        provider: &str,
+        gemini_api_key: Option<String>,
+        gemini_model: &str,
+        openai_api_key: Option<String>,
+        openai_model: &str,
+        openai_base_url: &str,
+    ) -> ResolvedAiConfig {
+        if provider == "openai" {
+            ResolvedAiConfig {
+                provider: "openai".to_string(),
+                api_key: openai_api_key
+                    .filter(|key| !key.trim().is_empty())
+                    .or_else(|| self.openai_api_key.clone()),
+                model: if openai_model.trim().is_empty() {
+                    self.openai_model.clone()
+                } else {
+                    openai_model.to_string()
+                },
+                base_url: if openai_base_url.trim().is_empty() {
+                    self.openai_base_url.clone()
+                } else {
+                    openai_base_url.to_string()
+                },
+            }
+        } else {
+            ResolvedAiConfig {
+                provider: "gemini".to_string(),
+                api_key: gemini_api_key
+                    .filter(|key| !key.trim().is_empty())
+                    .or_else(|| self.gemini_api_key.clone()),
+                model: if gemini_model.trim().is_empty() {
+                    self.gemini_model.clone()
+                } else {
+                    gemini_model.to_string()
+                },
+                base_url: String::new(),
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -675,5 +720,20 @@ mod tests {
             Some(v) => std::env::set_var("DATABASE_URL", v),
             None => std::env::remove_var("DATABASE_URL"),
         }
+    }
+
+    #[test]
+    fn resolves_lite_with_the_same_provider_contract_as_pro() {
+        let config = DynamicConfig {
+            lite_ai_provider: "openai".to_string(),
+            lite_openai_api_key: Some("lite-key".to_string()),
+            lite_openai_model: "cheap/model".to_string(),
+            ..DynamicConfig::default()
+        };
+        let resolved = config.resolve_ai_config(ModelTier::Lite);
+        assert_eq!(resolved.provider, "openai");
+        assert_eq!(resolved.api_key.as_deref(), Some("lite-key"));
+        assert_eq!(resolved.model, "cheap/model");
+        assert!(resolved.base_url.contains("openrouter.ai"));
     }
 }

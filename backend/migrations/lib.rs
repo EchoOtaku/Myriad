@@ -19,6 +19,8 @@ mod federation;
 #[path = "006_oauth_identities.rs"]
 mod oauth_identities;
 
+
+
 pub struct Migrator;
 
 #[async_trait::async_trait]

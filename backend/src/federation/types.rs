@@ -513,6 +513,25 @@ pub fn extract_domain(actor_url: &str) -> Option<String> {
     parsed.host_str().map(|h| h.to_string())
 }
 
+/// Host[:port] for federation addressing (room home_server, shareable ids).
+///
+/// Unlike [`extract_domain`], non-default ports are preserved so public-room
+/// lookup can rebuild `http(s)://host:port/...` for lab/dev instances.
+pub fn extract_host_port(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return None;
+    }
+    let host = parsed.host_str()?;
+    match parsed.port() {
+        Some(port) => Some(format!("{host}:{port}")),
+        None => Some(host.to_string()),
+    }
+}
+
 /// Strip trailing slash on base URL for path join (avoids `//users/…`).
 fn base_join(base_url: &str) -> &str {
     base_url.trim_end_matches('/')
@@ -1085,6 +1104,22 @@ mod tests {
         assert_eq!(
             extract_domain("http://127.0.0.1:18081/users/a"),
             Some("127.0.0.1".into())
+        );
+    }
+
+    #[test]
+    fn extract_host_port_preserves_non_default_port() {
+        assert_eq!(
+            extract_host_port("https://remote.example:8443/users/bob"),
+            Some("remote.example:8443".into())
+        );
+        assert_eq!(
+            extract_host_port("http://127.0.0.1:18081/users/a"),
+            Some("127.0.0.1:18081".into())
+        );
+        assert_eq!(
+            extract_host_port("https://remote.example/users/bob"),
+            Some("remote.example".into())
         );
     }
 

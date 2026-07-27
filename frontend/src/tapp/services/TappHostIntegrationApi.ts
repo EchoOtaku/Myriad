@@ -6,7 +6,7 @@ import { apiRequest } from './TappHttpClient'
 export interface CreateReportRequest {
   tappId: string
   title: string
-  reportType: 'platform' | 'comprehensive' | 'custom'
+  reportType: 'platform' | 'custom'
   content: unknown
   metadata?: unknown
 }

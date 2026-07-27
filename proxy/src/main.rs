@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 
 use axum::body::Body;
 use axum::extract::{ConnectInfo, Request, State};
-use axum::http::{header, HeaderMap, HeaderValue, StatusCode, Uri};
+use axum::http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode, Uri};
 use axum::response::{Html, IntoResponse, Json, Response};
 use axum::routing::any;
 use axum::Router;
@@ -36,6 +36,11 @@ use tracing::{info, warn};
 /// updater phase transitions appear promptly; long enough to avoid a disk read
 /// on every static-asset request.
 const MAINT_CACHE_TTL: Duration = Duration::from_millis(250);
+
+/// Document-level Permissions-Policy. Must match backend `security.rs` and
+/// frontend `serve.json`: allow first-party geolocation (weather), keep mic/cam off.
+/// Applied on proxy responses when upstream omitted it (static frontend often does).
+const PERMISSIONS_POLICY: &str = "geolocation=(self), microphone=(), camera=()";
 
 #[derive(Clone)]
 struct AppState {
@@ -443,7 +448,22 @@ async fn forward(
         }
         out = out.header(k, v);
     }
-    Ok(out.body(Body::new(body))?)
+    let mut response = out.body(Body::new(body))?;
+    ensure_permissions_policy(response.headers_mut());
+    Ok(response)
+}
+
+/// Ensure SPA/document responses expose geolocation for weather when upstream
+/// (e.g. `serve` static frontend) did not set Permissions-Policy. Never overrides
+/// an existing header (backend already sets the same policy).
+fn ensure_permissions_policy(headers: &mut HeaderMap) {
+    if headers.contains_key("permissions-policy") {
+        return;
+    }
+    headers.insert(
+        HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static(PERMISSIONS_POLICY),
+    );
 }
 
 fn is_hop_by_hop(name: &str) -> bool {
@@ -715,6 +735,7 @@ fn maintenance_response(m: &MaintenanceFile) -> Response {
         HeaderValue::from_static("text/html; charset=utf-8"),
     );
     headers.insert("Retry-After", HeaderValue::from_static("15"));
+    ensure_permissions_policy(&mut headers);
     (StatusCode::SERVICE_UNAVAILABLE, headers, Html(body)).into_response()
 }
 
@@ -795,6 +816,30 @@ mod tests {
         let uri: Uri = "/_updater/status?detail=1".parse().unwrap();
 
         assert_eq!(updater_path_with_query(&uri), "/status?detail=1");
+    }
+
+    #[test]
+    fn permissions_policy_injected_when_missing() {
+        let mut headers = HeaderMap::new();
+        ensure_permissions_policy(&mut headers);
+        assert_eq!(
+            headers.get("permissions-policy").and_then(|v| v.to_str().ok()),
+            Some(PERMISSIONS_POLICY)
+        );
+    }
+
+    #[test]
+    fn permissions_policy_not_overridden_when_present() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("permissions-policy"),
+            HeaderValue::from_static("geolocation=()"),
+        );
+        ensure_permissions_policy(&mut headers);
+        assert_eq!(
+            headers.get("permissions-policy").and_then(|v| v.to_str().ok()),
+            Some("geolocation=()")
+        );
     }
 
     #[test]

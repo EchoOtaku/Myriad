@@ -38,7 +38,7 @@ export const jaJP: TranslationKeys = {
   nav: {
     home: 'ホーム',
     library: 'ライブラリ',
-    reports: 'データレポート',
+    reports: 'プラットフォームレポート',
     config: '設定',
     login: 'ログイン',
     logout: 'ログアウト',
@@ -52,8 +52,6 @@ export const jaJP: TranslationKeys = {
     backToNav: 'ナビに戻る',
     platformReport: 'プラットフォームレポート',
     showPlatformReport: 'プラットフォームレポートを表示',
-    comprehensiveReport: '総合レポート',
-    showComprehensiveReport: '総合レポートを表示',
     all: 'すべて',
     showAll: 'すべてを表示',
     game: 'ゲーム',
@@ -75,7 +73,6 @@ export const jaJP: TranslationKeys = {
     currentFilterAnime: '現在のフィルター：アニメ - クリックで展開',
     currentFilterTvSeries: '現在のフィルター：ドラマ - クリックで展開',
     currentTabPlatform: '現在表示中：プラットフォームレポート - クリックで切替',
-    currentTabComprehensive: '現在表示中：総合レポート - クリックで切替',
     expandFilters: 'クリックでフィルターを展開',
     switchTab: 'クリックでタブを切替',
     // Brew
@@ -337,7 +334,8 @@ export const jaJP: TranslationKeys = {
     network: 'ネットワークプロキシ',
     networkDesc: '外部サービスにアクセスするためのプロキシを設定',
     federation: '連合管理',
-    federationDesc: '信頼ポリシー、許可リスト、インスタンス遮断、コンテンツフィルタ',
+    federationDesc:
+      '信頼ポリシー、許可リスト、インスタンス遮断、コンテンツフィルタ',
     federationPolicySaved: '信頼ポリシーを保存しました',
     federationLoadFailed: '信頼ポリシーの読み込みに失敗しました',
     federationSaveFailed: '保存に失敗しました',
@@ -419,7 +417,8 @@ export const jaJP: TranslationKeys = {
     federationRateMaxRequestsDesc:
       '各時間枠における送信元ドメインあたりの受信上限（既定 100）。',
     federationRateWindowSeconds: '時間枠（秒）',
-    federationRateWindowSecondsDesc: '集計ウィンドウ長（既定 60、最大 86400）。',
+    federationRateWindowSecondsDesc:
+      '集計ウィンドウ長（既定 60、最大 86400）。',
     federationRateTrustedMultiplier: '信頼ドメイン倍率',
     federationRateTrustedMultiplierDesc:
       '信頼レベル ≥ 3 の場合、有効上限 = 最大リクエスト数 × 倍率（既定 5）。',
@@ -533,8 +532,7 @@ export const jaJP: TranslationKeys = {
     usersMakeAdmin: '管理者にする',
     usersRevokeAdmin: '管理者を解除',
     usersRevokeAdminConfirm: 'このユーザーの管理者権限を解除しますか？',
-    usersPrimaryAdminOnly:
-      '管理者権限の付与・解除はサイト所有者のみ可能です',
+    usersPrimaryAdminOnly: '管理者権限の付与・解除はサイト所有者のみ可能です',
     usersPromoteReLoginNotice:
       '管理者権限を付与しました。昇格したユーザーは一度サインアウトして再ログインしないと、管理 API がセッションを受け付けません。',
     usersDemoteImmediateNotice:
@@ -703,7 +701,8 @@ export const jaJP: TranslationKeys = {
       'proxy を {version} へ更新しますか？エッジ入口が短時間中断します（通常 10 秒未満）。',
     updaterInfraProxyDispatched:
       'proxy を {version} に更新しました（以前: {previous}）。',
-    updaterInfraNeedCheck: '先に「更新を確認」して目標バージョンを取得してください。',
+    updaterInfraNeedCheck:
+      '先に「更新を確認」して目標バージョンを取得してください。',
     updaterTargetGroupTitle: '特定バージョンのインストール（上級者向け）',
     updaterTargetGroupDesc: '過去のリリースや特定コミット。通常は不要。',
     updaterTargetReleaseHead: '選択可能なバージョン（クリックで選択）',
@@ -937,20 +936,14 @@ export const jaJP: TranslationKeys = {
       'OpenAI APIおよび他の互換サービス（Azure OpenAI、サードパーティプロキシなど）をサポート',
     // AI画像生成設定
     aiImageTitle: 'AI画像生成',
-    aiImageDesc: 'Pollinations 無料・高速 · PixAI プロアニメ画像生成（有料）',
+    aiImageDesc:
+      'OpenAI、OpenRouter、Volcengine Seedream、PixAIを統合した画像生成',
     aiImageUsageTitle: '使用説明',
     enableAiImage: 'AI画像生成を有効化',
     aiImageHint: '有効にすると Myriad 内で AI 画像生成機能を使用できます',
-    pollinationsDescription:
-      '完全無料、高速レスポンス（1秒以下）、開発テストや迅速な反復に最適',
     pixaiDescription:
       'プロアニメ画像生成API、複数モデル対応（有料、APIキー必要）',
-    pollinationsFree: '無料',
     pixaiBadge: 'SD/DiT',
-    fluxAnimeRecommend: 'Flux Anime (推奨)',
-    fluxDefault: 'Flux (デフォルト)',
-    fluxRealism: 'Flux Realism (写実)',
-    flux3D: 'Flux 3D (3Dスタイル)',
     pixaiPlaceholder: 'platform.pixai.artから取得',
     pixaiModelId: 'モデルバージョンID',
     // 音声サービス設定 (TTS/ASR)
@@ -985,7 +978,8 @@ export const jaJP: TranslationKeys = {
     platformDescX: 'X のプロフィールと投稿を同期。共有は Web Intent',
     platformDescDiscord:
       'Discord のプロフィール、サーバー参加状況、連携アカウントを同期',
-    platformDescMal: 'ユーザー名必須。Client ID は任意（未設定は公開 load.json、設定時は公式 API）',
+    platformDescMal:
+      'ユーザー名必須。Client ID は任意（未設定は公開 load.json、設定時は公式 API）',
     discordConnect: 'Discord で認可',
     discordReconnect: 'Discord を再認可',
     discordConnectHint:
@@ -1031,7 +1025,8 @@ export const jaJP: TranslationKeys = {
     domainChangeConfirm:
       'サイト公開アドレスを {origin} に変更しますか？BASE_URL・FRONTEND_URL・CORS_ORIGINS が更新されます。',
     domainChangeEmpty: '新しい公開 origin を入力してください',
-    domainChangeSuccess: 'ドメインを更新しました。運用チェックリストを完了してください',
+    domainChangeSuccess:
+      'ドメインを更新しました。運用チェックリストを完了してください',
     domainChangeFailed: 'ドメイン更新に失敗しました',
     domainChecklistTitle: 'ドメイン変更後の運用チェックリスト',
     domainChecklist: {
@@ -1322,11 +1317,11 @@ export const jaJP: TranslationKeys = {
     tappShortcut: 'Tapp ショートカット',
     gamePresence: 'miHoYoゲームカード',
     library: 'ライブラリ',
-    dataReport: 'データレポート',
+    dataReport: 'プラットフォームレポート',
     multiPlatformAggregation: 'マルチプラットフォームコンテンツ集約',
-    dualLayerAnalysis: '二層インテリジェント分析',
+    dualLayerAnalysis: '各プラットフォームのプロフィールと洞察',
     showPersonality: 'あなたの個性を一か所に',
-    platformProfile: 'プラットフォームプロファイル + AI総合分析',
+    platformProfile: 'プラットフォームレポートの生成と閲覧',
     // Brew リーディング
     brewReading: 'Brew リーディング',
     brewDesc: 'RSS購読管理',
@@ -1452,6 +1447,7 @@ export const jaJP: TranslationKeys = {
     generating: 'レポート生成中...',
     generated: 'レポート生成完了',
   },
+
 
   // アカウント
   account: {
@@ -1804,19 +1800,7 @@ export const jaJP: TranslationKeys = {
     unknownPlatform: '不明なプラットフォーム',
     generating: '生成中',
     generate: '生成',
-    comprehensiveReport: '総合レポート',
-    adminOnlyGenerateHint: '管理者のみ生成可能',
-    styleDescPlaceholder: 'スタイル説明を入力...',
-    allPlatformReport: '全プラットフォーム総合レポート',
-    confirmDeleteReport:
-      'この総合レポートを削除してもよろしいですか？この操作は元に戻せません。',
-    deleteReport: 'レポートを削除',
     tenThousandSuffix: '万',
-    noComprehensiveReport: '総合レポートがありません',
-    useInputToGenerate:
-      '上の入力ボックスを使って最初の総合レポートを生成しましょう',
-    adminNotGenerated: '管理者がまだ総合レポートを生成していません',
-    waitingGenerate: '生成待ち',
     bangumiDone: '視聴済',
     bangumiDoing: '視聴中',
     bangumiWish: '視聴予定',
@@ -2049,6 +2033,7 @@ export const jaJP: TranslationKeys = {
     samplePlaylist: 'サンプルプレイリスト',
     samplePlaylist2: '夜ドライブ',
     bangumiTasteDefault: 'ACG深掘り収集家',
+    malTasteDefault: 'アニメリスト収集家',
     fetchReportFailed: 'レポートの取得に失敗しました',
     steamOnline: 'オンライン',
     steamOffline: 'オフライン',
@@ -3255,7 +3240,11 @@ export const jaJP: TranslationKeys = {
         'シャッフル再生',
       ],
       brew: ['何を飲みますか？', '購読を確認', 'コンテンツ更新', '発見する'],
-      reports: ['レポートを見る', 'レポート生成', 'データ分析'],
+      reports: ['レポートを見る', 'レポートを生成', 'データ洞察'],
+        'キャラクターの様子を見る',
+        'キャラクターと話す',
+        'パーソナル空間を整える',
+      ],
       config: ['設定を変更？', 'カスタマイズ', '体験を最適化'],
       dataManagement: ['データ管理', 'データ同期', 'キャッシュクリア'],
       tapp: ['アプリを発見', 'Tapp管理', 'アプリ実行'],

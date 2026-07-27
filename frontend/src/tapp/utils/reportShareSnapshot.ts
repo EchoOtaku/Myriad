@@ -88,21 +88,6 @@ export function formatReportContentBody(
     }
   }
 
-  const analysis = obj['综合分析']
-  if (analysis && typeof analysis === 'object') {
-    const a = analysis as Record<string, unknown>
-    if (typeof a['总体画像'] === 'string' && a['总体画像'].trim()) {
-      parts.push(String(a['总体画像']).trim())
-    } else if (a.content && typeof a.content === 'object') {
-      const c = a.content as Record<string, unknown>
-      if (typeof c['总体画像'] === 'string' && c['总体画像'].trim()) {
-        parts.push(String(c['总体画像']).trim())
-      }
-    }
-  } else if (typeof analysis === 'string' && analysis.trim()) {
-    parts.push(analysis.trim())
-  }
-
   if (parts.length) return parts.join('\n')
 
   // Last resort: primitive key/value lines (not JSON dump, not [object Object])

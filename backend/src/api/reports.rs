@@ -1,9 +1,8 @@
-/// 新的双层报告系统 API
+/// 平台报告系统 API
 ///
 /// 架构：
-/// 1. 平台元数据过滤 -> 提取5W关键信息
+/// 1. 平台元数据过滤 -> 提取 5W 关键信息
 /// 2. 平台报告生成 -> 基于元数据生成各平台独立报告
-/// 3. 全平台报告生成 -> 聚合各平台报告生成综合报告
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
@@ -25,12 +24,7 @@ pub struct GeneratePlatformReportsRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GenerateAllReportsRequest {
-    pub style: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GenerateComprehensiveReportRequest {
-    pub platform_reports: Option<Vec<PlatformReport>>,
+    /// Reserved for API compatibility; platform-only generate-all ignores style.
     pub style: Option<String>,
 }
 
@@ -43,60 +37,6 @@ pub struct PlatformReport {
     #[serde(default)]
     pub card_visuals: Value,
     pub created_at: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CrossPlatformReport {
-    pub platform_reports: Vec<PlatformReport>,
-    #[serde(rename = "综合分析")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub comprehensive_analysis: Option<ComprehensiveAnalysis>,
-    pub created_at: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ComprehensiveAnalysis {
-    // AI自由生成的内容字段 - 使用flatten接受任意字段
-    #[serde(flatten)]
-    pub content: serde_json::Map<String, Value>,
-
-    // 必需的样式字段（用于前端渲染）
-    #[serde(default = "default_theme_color")]
-    pub theme_color: String,
-    #[serde(default = "default_visual_style")]
-    pub visual_style: String,
-    #[serde(default = "default_decorative_emojis")]
-    pub decorative_emojis: Vec<String>,
-    #[serde(default = "default_card_subtitle")]
-    pub card_subtitle: String,
-    #[serde(default = "default_key_metric")]
-    pub key_metric: String,
-
-    // 可选的样式字段
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub theme_icon: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub icon_image_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub icon_prompt: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub background_elements: Option<Value>,
-}
-
-fn default_theme_color() -> String {
-    "#4F46E5".to_string()
-}
-fn default_visual_style() -> String {
-    "modern".to_string()
-}
-fn default_decorative_emojis() -> Vec<String> {
-    vec!["📊".to_string(), "🎯".to_string()]
-}
-fn default_card_subtitle() -> String {
-    "综合分析".to_string()
-}
-fn default_key_metric() -> String {
-    "数据洞察".to_string()
 }
 
 /// User id under which public platform reports are stored.
@@ -407,6 +347,11 @@ async fn generate_platform_reports_internal(
                         );
                         obj.insert(
                             "collection_type_distribution".to_string(),
+                            json!(analysis.collection_type_distribution),
+                        );
+                        // 与 MAL 对齐：卡片优先读 status_counts，回退 collection_type_distribution
+                        obj.insert(
+                            "status_counts".to_string(),
                             json!(analysis.collection_type_distribution),
                         );
                         obj.insert(
@@ -1171,280 +1116,7 @@ async fn generate_platform_reports_internal(
     (platform_reports, skipped)
 }
 
-/// 生成全平台综合报告（第二层）
-/// POST /api/reports/comprehensive
-pub async fn generate_comprehensive_report(
-    State(db): State<DatabaseConnection>,
-    Extension(claims): Extension<Claims>,
-    Json(req): Json<GenerateComprehensiveReportRequest>,
-) -> Result<Json<Value>, StatusCode> {
-    let actor_id = claims
-        .sub
-        .parse::<i32>()
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
-    let user_id = report_storage_user_id(&db, actor_id).await;
-
-    // 1. 获取平台报告：如果请求中没有，则从数据库获取最新的
-    let platform_reports = if let Some(reports) = req.platform_reports {
-        reports
-    } else {
-        // 从数据库获取最新的单平台报告
-        let user_reports = platform_reports::Entity::find()
-            .filter(platform_reports::Column::UserId.eq(user_id))
-            .filter(platform_reports::Column::Platform.ne("all"))
-            .order_by_desc(platform_reports::Column::CreatedAt)
-            .all(&db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Database error fetching user reports: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-
-        if user_reports.is_empty() {
-            tracing::info!("No platform reports found for user {}", user_id);
-            return Ok(Json(json!({
-                "success": false,
-                "message": "请先生成至少一个平台报告",
-                "hint": "点击平台卡片生成单平台报告后,再生成综合分析"
-            })));
-        }
-
-        use std::collections::HashMap;
-        let mut latest_map = HashMap::new();
-
-        // 保留每个平台最新的一份报告
-        for r in user_reports {
-            if let std::collections::hash_map::Entry::Vacant(e) = latest_map.entry(r.platform) {
-                // 将数据库中的 JSON 转换回 PlatformReport 结构
-                if let Ok(report_struct) = serde_json::from_value::<PlatformReport>(r.report) {
-                    e.insert(report_struct);
-                }
-            }
-        }
-
-        latest_map.into_values().collect()
-    };
-
-    let style = req.style;
-
-    if platform_reports.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-
-    // 2. 聚合所有平台的洞察
-    let mut all_interests = Vec::new();
-    let mut all_activities = Vec::new();
-    let mut platform_summaries = Vec::new();
-
-    for report in &platform_reports {
-        platform_summaries.push(format!("{}：{}", report.platform, report.summary));
-
-        // 从 SmartFilteredData 提取兴趣和活动
-        match &report.metadata.content_analysis {
-            crate::services::smart_filter::ContentAnalysis::Bilibili(analysis) => {
-                all_activities.push("观看视频".to_string());
-                if !analysis.anime_analysis.is_empty() {
-                    all_activities.push("追番".to_string());
-                    for anime in &analysis.anime_analysis {
-                        for genre in anime.genres.keys() {
-                            all_interests.push(genre.clone());
-                        }
-                    }
-                }
-            }
-            crate::services::smart_filter::ContentAnalysis::Steam(analysis) => {
-                all_activities.push("玩游戏".to_string());
-                for genre in &analysis.genre_analysis {
-                    all_interests.push(genre.genre.clone());
-                }
-            }
-            crate::services::smart_filter::ContentAnalysis::GitHub(analysis) => {
-                all_activities.push("写代码".to_string());
-                all_activities.push("开源贡献".to_string());
-                for lang in analysis.language_distribution.keys() {
-                    all_interests.push(lang.clone());
-                }
-            }
-            crate::services::smart_filter::ContentAnalysis::Netease(analysis) => {
-                all_activities.push("听音乐".to_string());
-                for genre in &analysis.artist_analysis.genre_analysis {
-                    all_interests.push(genre.genre.clone());
-                }
-            }
-            crate::services::smart_filter::ContentAnalysis::Bangumi(analysis) => {
-                all_activities.push("追番与收藏".to_string());
-                for tag in analysis.tag_distribution.keys() {
-                    all_interests.push(tag.clone());
-                }
-            }
-            crate::services::smart_filter::ContentAnalysis::Mal(analysis) => {
-                all_activities.push("追番与漫画".to_string());
-                for tag in analysis.tag_distribution.keys() {
-                    all_interests.push(tag.clone());
-                }
-            }
-            crate::services::smart_filter::ContentAnalysis::X(analysis) => {
-                all_activities.push("发帖与互动".to_string());
-                for lang in analysis.language_distribution.keys() {
-                    all_interests.push(format!("lang:{}", lang));
-                }
-                for post in analysis.top_posts.iter().take(3) {
-                    let snippet: String = post.text.chars().take(24).collect();
-                    if !snippet.is_empty() {
-                        all_interests.push(snippet);
-                    }
-                }
-            }
-            crate::services::smart_filter::ContentAnalysis::Discord(analysis) => {
-                all_activities.push("社区交流".to_string());
-                if analysis.guild_stats.manage_guild_count > 0 {
-                    all_activities.push("服务器管理".to_string());
-                }
-                for platform in &analysis.identity_graph.linked_platforms {
-                    all_interests.push(format!("linked:{}", platform));
-                }
-            }
-            crate::services::smart_filter::ContentAnalysis::Xbox(analysis) => {
-                all_activities.push("主机游戏".to_string());
-                if analysis.completed_games > 0 {
-                    all_activities.push("全成就攻略".to_string());
-                }
-                for title in analysis.recent_titles.iter().take(3) {
-                    all_interests.push(title.name.clone());
-                }
-            }
-            crate::services::smart_filter::ContentAnalysis::Psn(analysis) => {
-                all_activities.push("主机游戏".to_string());
-                if analysis.platinum_count > 0 {
-                    all_activities.push("白金奖杯收集".to_string());
-                }
-                for title in analysis.recent_titles.iter().take(3) {
-                    all_interests.push(title.name.clone());
-                }
-            }
-        }
-    }
-
-    // 去重
-    all_interests.sort();
-    all_interests.dedup();
-    all_activities.sort();
-    all_activities.dedup();
-
-    // 3. 生成综合分析
-    let comprehensive =
-        match generate_ai_comprehensive_report(&platform_reports, style.as_deref()).await {
-            Ok(analysis) => analysis,
-            Err(e) => {
-                tracing::warn!("Failed to generate AI comprehensive report: {}", e);
-                // 降级处理：使用简单的聚合逻辑
-                let mut content = serde_json::Map::new();
-                content.insert(
-                    "总体画像".to_string(),
-                    Value::String(format!(
-                        "一个活跃在 {} 个平台的数字游民",
-                        platform_reports.len()
-                    )),
-                );
-                content.insert(
-                    "跨平台洞察".to_string(),
-                    json!(vec![
-                        format!("涉及 {} 个不同领域", all_activities.len()),
-                        format!(
-                            "兴趣广泛，包括：{}",
-                            all_interests
-                                .iter()
-                                .take(5)
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .join("、")
-                        ),
-                    ]),
-                );
-                content.insert("兴趣图谱".to_string(), json!(all_interests));
-                content.insert("行为模式".to_string(), json!(all_activities));
-                content.insert(
-                    "建议".to_string(),
-                    json!(vec![
-                        "继续保持多元化的兴趣爱好",
-                        "可以考虑将不同平台的内容进行跨平台整合",
-                    ]),
-                );
-
-                ComprehensiveAnalysis {
-                    content,
-                    theme_color: default_theme_color(),
-                    visual_style: default_visual_style(),
-                    decorative_emojis: default_decorative_emojis(),
-                    card_subtitle: default_card_subtitle(),
-                    key_metric: default_key_metric(),
-                    theme_icon: None,
-                    icon_image_url: None,
-                    icon_prompt: None,
-                    background_elements: None,
-                }
-            }
-        };
-
-    let report = CrossPlatformReport {
-        platform_reports,
-        comprehensive_analysis: Some(comprehensive),
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-
-    // 保存综合报告到数据库 (platform = "all")
-    let report_json = serde_json::to_value(&report).unwrap_or(json!({}));
-
-    // 从综合分析中提取 visual_style 作为报告标题
-    let report_title = report
-        .comprehensive_analysis
-        .as_ref()
-        .map(|analysis| analysis.visual_style.clone());
-
-    // 综合报告不覆盖，直接插入新的一份
-    let report_settings = crate::api::config::load_report_settings(&db).await;
-    let active_model = platform_reports::ActiveModel {
-        user_id: Set(user_id),
-        platform: Set("all".to_string()),
-        metadata: Set(json!({})), // 综合报告没有单一的 metadata
-        report: Set(report_json),
-        report_title: Set(report_title), // 使用 visual_style 作为报告标题
-        created_at: Set(chrono::Utc::now().naive_utc()),
-        expires_at: Set(
-            (chrono::Utc::now() + chrono::Duration::days(report_settings.expiry_days)).naive_utc(),
-        ),
-        ..Default::default()
-    };
-
-    let inserted_model = match active_model.insert(&db).await {
-        Ok(model) => model,
-        Err(e) => {
-            tracing::error!("Failed to save comprehensive report: {}", e);
-            return Err(StatusCode::INTERNAL_SERVER_ERROR);
-        }
-    };
-
-    tracing::info!(
-        "✓ Saved comprehensive report with ID: {}",
-        inserted_model.id
-    );
-
-    // 构建包含ID的响应
-    let report_with_id = serde_json::to_value(&report).unwrap_or(json!({}));
-    let report_with_id = if let Some(mut obj) = report_with_id.as_object().cloned() {
-        obj.insert("id".to_string(), json!(inserted_model.id));
-        serde_json::Value::Object(obj)
-    } else {
-        report_with_id
-    };
-
-    Ok(Json(json!({
-        "success": true,
-        "report": report_with_id,
-    })))
-}
-
-/// 一键生成完整报告（两层）
+/// 一键生成所有启用平台的平台报告
 /// POST /api/reports/generate-all
 pub async fn generate_all_reports(
     State(db): State<DatabaseConnection>,
@@ -1544,26 +1216,25 @@ pub async fn generate_all_reports(
     drop(config);
 
     // 2. 生成平台报告 (使用内部函数，避免序列化开销)
+    let _ = req.style; // style reserved for API compatibility; ignored in platform-only mode
     let (platform_reports, skipped) =
         generate_platform_reports_internal(&db, user_id, enabled_platforms).await;
+    let skipped_json: Vec<_> = skipped
+        .iter()
+        .map(|(platform, reason)| json!({ "platform": platform, "reason": reason }))
+        .collect();
     if !skipped.is_empty() {
         tracing::warn!("⚠️ generate-all skipped platforms: {:?}", skipped);
     }
 
-    // 3. 生成综合报告
-    let comprehensive_req = GenerateComprehensiveReportRequest {
-        platform_reports: Some(platform_reports),
-        style: req.style,
-    };
-
-    let comprehensive_resp =
-        generate_comprehensive_report(State(db), Extension(claims), Json(comprehensive_req))
-            .await?;
-
-    Ok(comprehensive_resp)
+    Ok(Json(json!({
+        "success": true,
+        "platform_reports": platform_reports,
+        "skipped": skipped_json,
+    })))
 }
 
-/// 获取最新的平台报告（只包含单平台报告，不包含综合报告）
+/// 获取最新的平台报告（排除历史 `platform = "all"` 行）
 /// GET /api/reports/latest
 /// Public home / report cards: always return the **site owner's** platform reports
 /// (same authority as `/api/user`, library, activities). Do not switch to the
@@ -1666,9 +1337,7 @@ fn finalize_public_platform_report(platform: &str, report: Value) -> Value {
         let normalized_visuals = match obj.get("card_visuals") {
             Some(v) if v.is_object() => {
                 // Unwrap double-nested card_visuals: { card_visuals: { …stats } }
-                v.get("card_visuals")
-                    .filter(|i| i.is_object())
-                    .cloned()
+                v.get("card_visuals").filter(|i| i.is_object()).cloned()
             }
             Some(v) if v.is_string() => {
                 let raw = v.as_str().unwrap_or("").to_string();
@@ -2066,167 +1735,12 @@ pub async fn get_latest_report(
         })));
     }
 
-    // 只返回平台报告，不包含综合分析.
     // Include user_id so clients/debug can verify which account fed home cards.
     Ok(Json(json!({
         "success": true,
         "user_id": user_id,
         "platform_reports": platform_reports_list,
         "created_at": chrono::Utc::now().to_rfc3339()
-    })))
-}
-
-/// 获取所有综合报告列表
-/// GET /api/reports/comprehensive/list
-/// Public: site owner's comprehensive reports (same owner resolution as /latest).
-pub async fn get_comprehensive_reports_list(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-) -> Result<Json<Value>, StatusCode> {
-    let user_id = public_report_owner_user_id(&db, &headers).await;
-
-    // 查找所有综合报告（platform="all"）
-    let reports = platform_reports::Entity::find()
-        .filter(platform_reports::Column::Platform.eq("all"))
-        .filter(platform_reports::Column::UserId.eq(user_id))
-        .order_by_desc(platform_reports::Column::CreatedAt)
-        .all(&db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    let now = chrono::Utc::now().naive_utc();
-    let settings = crate::api::config::load_report_settings(&db).await;
-
-    // 只返回未过期的报告的摘要信息（过期机制关闭时全部返回）
-    let report_list: Vec<Value> = reports
-        .into_iter()
-        .filter(|r| {
-            !settings.expiry_enabled
-                || r.created_at + chrono::Duration::days(settings.expiry_days) > now
-        })
-        .map(|r| {
-            json!({
-                "id": r.id,
-                "report_title": r.report_title,
-                "created_at": r.created_at.to_string(),
-            })
-        })
-        .collect();
-
-    Ok(Json(json!({
-        "success": true,
-        "reports": report_list,
-    })))
-}
-
-/// 删除特定的综合报告
-/// DELETE /api/reports/comprehensive/{id}
-pub async fn delete_comprehensive_report(
-    State(db): State<DatabaseConnection>,
-    Extension(claims): Extension<Claims>,
-    axum::extract::Path(report_id): axum::extract::Path<i32>,
-) -> Result<Json<Value>, StatusCode> {
-    let user_id = claims.sub.parse::<i32>().unwrap_or(1);
-
-    // 查找报告并验证所有权
-    let report = platform_reports::Entity::find_by_id(report_id)
-        .one(&db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    match report {
-        Some(r) => {
-            // 验证是否是综合报告且属于当前用户
-            if r.platform != "all" {
-                return Ok(Json(json!({
-                    "success": false,
-                    "message": "只能删除综合报告"
-                })));
-            }
-
-            if r.user_id != user_id {
-                return Ok(Json(json!({
-                    "success": false,
-                    "message": "无权删除此报告"
-                })));
-            }
-
-            // 删除报告
-            platform_reports::Entity::delete_by_id(report_id)
-                .exec(&db)
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to delete report: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?;
-
-            tracing::info!("✓ Deleted comprehensive report ID: {}", report_id);
-
-            Ok(Json(json!({
-                "success": true,
-                "message": "报告已删除"
-            })))
-        }
-        None => Ok(Json(json!({
-            "success": false,
-            "message": "报告不存在"
-        }))),
-    }
-}
-
-/// 根据ID获取特定的综合报告
-/// GET /api/reports/comprehensive/{id}
-/// 支持未认证访问，默认返回管理员（user_id=1）的报告
-pub async fn get_comprehensive_report_by_id(
-    State(db): State<DatabaseConnection>,
-    headers: axum::http::HeaderMap,
-    axum::extract::Path(report_id): axum::extract::Path<i32>,
-) -> Result<Json<Value>, StatusCode> {
-    let user_id = crate::middleware::auth::extract_optional_claims(&headers)
-        .and_then(|claims| claims.sub.parse::<i32>().ok())
-        .unwrap_or(1);
-
-    let report_model = platform_reports::Entity::find_by_id(report_id)
-        .one(&db)
-        .await
-        .map_err(|e| {
-            tracing::error!("Database error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    if let Some(model) = report_model {
-        // 验证报告所有权
-        if model.user_id != user_id {
-            return Err(StatusCode::FORBIDDEN);
-        }
-
-        // 检查是否过期（过期机制关闭时跳过）
-        let now = chrono::Utc::now().naive_utc();
-        let settings = crate::api::config::load_report_settings(&db).await;
-        let expired_at = model.created_at + chrono::Duration::days(settings.expiry_days);
-        if settings.expiry_enabled && expired_at <= now {
-            return Ok(Json(json!({
-                "success": false,
-                "message": "Report has expired",
-            })));
-        }
-
-        return Ok(Json(json!({
-            "success": true,
-            "report": model.report,
-            "created_at": model.created_at.to_string(),
-        })));
-    }
-
-    Ok(Json(json!({
-        "success": false,
-        "message": "Report not found",
     })))
 }
 
@@ -3039,270 +2553,9 @@ fn generate_mock_report(
     Ok((summary, insights, visuals))
 }
 
-/// 生成图标图片URL（使用Pollinations AI）
-fn generate_icon_image_url(prompt: &str) -> String {
-    use urlencoding::encode;
-
-    let encoded_prompt = encode(prompt);
-    // 图标尺寸：512x512，使用flux模型，无logo，增强效果
-    let seed = chrono::Utc::now().timestamp() % 100000;
-
-    format!(
-        "https://image.pollinations.ai/prompt/{}?width=512&height=512&model=flux&nologo=true&enhance=true&seed={}",
-        encoded_prompt, seed
-    )
-}
-
-/// 辅助函数：调用AI生成综合报告
-async fn generate_ai_comprehensive_report(
-    reports: &[PlatformReport],
-    style: Option<&str>,
-) -> Result<ComprehensiveAnalysis, String> {
-    // 1. 获取配置
-    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
-
-    // 2. 确定 Provider 和 Key
-    let (provider, api_key, model, base_url) = match config.ai_provider.as_str() {
-        "openai" => (
-            AiProvider::OpenAI,
-            config.openai_api_key.clone(),
-            config.openai_model.clone(),
-            Some(config.openai_base_url.clone()),
-        ),
-        "gemini" => (
-            AiProvider::Gemini,
-            config.gemini_api_key.clone(),
-            config.gemini_model.clone(),
-            None,
-        ),
-        _ => (
-            AiProvider::Gemini,
-            config.gemini_api_key.clone(),
-            config.gemini_model.clone(),
-            None,
-        ),
-    };
-
-    // 3. 检查 API Key 是否存在
-    if api_key.is_none() || api_key.as_ref().unwrap().is_empty() {
-        return Err("AI API key not configured".to_string());
-    }
-
-    // 4. 初始化 Analyzer
-    let analyzer = AiAnalyzer::new(provider, api_key.unwrap(), model, base_url).await;
-
-    // 5. 构建 Prompt
-    // 提取每个平台的摘要和洞察，减少 Token 消耗
-    let summaries: Vec<Value> = reports
-        .iter()
-        .map(|r| {
-            json!({
-                "platform": r.platform,
-                "summary": r.summary,
-                "insights": r.insights
-            })
-        })
-        .collect();
-
-    let style_instruction = if let Some(s) = style {
-        format!(
-            "用户要求的风格: '{}'。你必须严格按照这个风格进行分析、表达和视觉设计。",
-            s
-        )
-    } else {
-        "用户未指定风格，请根据数据自行创造独特的风格。".to_string()
-    };
-
-    let emoji_instruction = if let Some(s) = style {
-        format!(
-            "decorative_emojis 必须直接反映用户的风格描述 '{}'。\n\
-            例如：\n\
-            - 如果是'赛博朋克'→使用 🤖💾⚡🌃🔮\n\
-            - 如果是'诗意'→使用 📖🌸🍃✨🎭\n\
-            - 如果是'游戏主播'→使用 🎮🎬🔥👾🏆\n\
-            - 如果是'极客'→使用 💻🔧⚙️🚀🧠\n\
-            不要使用通用emoji如❤️🌟👍，必须具体且与风格强相关。",
-            s
-        )
-    } else {
-        "decorative_emojis 必须反映用户的核心兴趣和平台行为特征，要具体不要泛用。".to_string()
-    };
-
-    let data_str = serde_json::to_string_pretty(&summaries).map_err(|e| e.to_string())?;
-    let full_prompt = format!(
-        "System: 你是一个富有创造力的数字艺术家和心理分析师。\n\n\
-        {}\n\n\
-        Task: 深入分析用户数据，用你认为最合适的方式和结构呈现洞察。不要被固定框架限制，自由创作内容。\n\n\
-        CRITICAL: 返回纯JSON对象（不要```，不要markdown）\n\n\
-        JSON结构完全由你决定，但必须包含以下样式字段用于视觉渲染：\n\
-        {{\n\
-          // 你自由创作的内容字段（字段名、数量、结构完全自定义）\n\
-          // ⚠️ CRITICAL: 内容字段只能是【字符串】或【字符串数组】，禁止嵌套对象！\n\
-          // ✅ 正确示例: \"开篇语\": \"这是一段文字\", \"核心洞察\": [\"洞察1\", \"洞察2\"]\n\
-          // ❌ 错误示例: \"章节\": {{\"标题\": \"...\", \"内容\": \"...\"}} ← 禁止这样的嵌套对象\n\
-          \n\
-          // 必需的样式字段（用于前端渲染）：\n\
-          \"theme_color\": \"十六进制颜色，必须精确匹配'{}'风格的典型色彩\",\n\
-          \"visual_style\": \"风格描述（限制15字以内），要独特且准确\",\n\
-          \"decorative_emojis\": [\"{}的emoji（限制3-6个），每个必须精准匹配风格\"],\n\
-          \"card_subtitle\": \"副标题文本（限制30字以内）\",\n\
-          \"key_metric\": \"核心指标文本（限制20字以内）\",\n\
-          \n\
-          // 图标字段（推荐使用icon_prompt自动生成）：\n\
-          \"icon_prompt\": \"**推荐**：提供专业的英文绘画提示词(prompt)用于AI图标生成。\n\
-CRITICAL: 必须是图标(icon)设计，不是完整插画或场景！\n\
-必须使用英文，遵循以下结构：\n\
-1. 主体元素（简洁，1-2个核心物体）\n\
-2. 风格关键词\n\
-3. 颜色方案\n\
-4. 必须包含：'icon design', 'simple', 'minimalist', 'flat design' 或 'logo style'\n\
-5. **必须包含**：'transparent background' 或 'no background'（必须透明背景，不要白色或其他颜色背景！）\n\
-6. 质量词：'clean', 'vector art', 'high quality', 'sharp edges'\n\n\
-正确示例：\n\
-- 'elegant scales of justice with quill pen, Fontaine baroque style, water blue and gold colors, icon design, minimalist, transparent background, clean vector art, centered composition'\n\
-- 'robot head with circuit pattern, cyberpunk style, neon purple and blue glow, icon design, flat design, no background, simple geometric shapes, high quality'\n\
-- 'musical note with heartbeat wave, modern style, gradient pink to red, logo style icon, transparent background, minimalist vector art, sharp edges'\n\n\
-错误示例（不要生成）：\n\
-- 'detailed landscape with mountains and sky'（太复杂，不是图标）\n\
-- 'realistic portrait of a person'（太写实，不是图标风格）\n\
-- 'complex scene with multiple characters'（场景，不是图标）\",\n\
-          \"icon_image_url\": \"如果有特定的图标URL，可以直接提供（会覆盖icon_prompt）\",\n\
-          \"theme_icon\": \"备选方案：从 FaRobot,FaBrain,FaHeart,FaMusic,FaCode,FaGamepad,FaPalette,FaRocket 中选择\",\n\
-          \n\
-          \"background_elements\": [\n\
-            {{\"type\": \"circle/rect\", \"className\": \"Tailwind classes\", \"style\": {{\"top/left等\": \"值\", \"background\": \"rgba\", \"filter\": \"blur\"}}, \"animate\": {{\"x/y/scale/rotate\": [数组]}}, \"transition\": {{\"duration\": 数字, \"repeat\": \"Infinity\", \"ease\": \"easeInOut\"}}}}\n\
-          ]\n\
-        }}\n\n\
-        关键原则：\n\
-        1. **扁平化结构**: 内容字段必须是字符串或字符串数组，禁止嵌套对象！用有意义的字段名代替层级结构\n\
-        2. **内容自由**: 除了样式字段，所有内容的字段名、数量完全由你决定\n\
-        3. **样式精准**: theme_color和decorative_emojis必须100%匹配'{}'这个风格\n\
-        4. **风格优先**: 所有内容都要用'{}'风格的语言和视角表达\n\
-        5. **拒绝通用**: 不要用\"多元化\"\"全面\"等空洞词汇\n\
-        6. **必须具体化**: 禁止空洞描述！每个分析必须包含：\n\
-           - 具体的数据实例（歌曲名、游戏名、项目名等）\n\
-           - 实际的行为模式（如\"最常听YOASOBI的《アイドル》\"而非\"喜欢日系音乐\"）\n\
-           - 真实的时间/数量统计（如\"136位追随者\"\"3765星项目\"）\n\
-           - 平台具体内容引用（B站收藏的动漫、GitHub的技术栈、Steam的游戏类型）\n\
-        7. **引用原始数据**: 从Platform Data中提取真实信息，不要编造或泛泛而谈\n\n\
-        结构示例 - \"原神风格\"（扁平化，无嵌套对象）:\n\
-        {{\n\
-          \"theme_color\": \"#4A90E2\",\n\
-          \"visual_style\": \"提瓦特叙事绘卷\",\n\
-          \"decorative_emojis\": [\"✨\", \"🌌\", \"🗺️\", \"📜\", \"💎\"],\n\
-          \"card_subtitle\": \"游历四方，心系万象的旅者\",\n\
-          \"key_metric\": \"元素共鸣度：深邃\",\n\
-          \"icon_prompt\": \"...\",\n\
-          \"开篇语\": \"敬爱的旅者，我是提瓦特的星空观测者...\",\n\
-          \"核心洞察\": \"你是一位对'叙事'与'情感'有着极度渴望的探索者...\",\n\
-          \"数字足迹\": [\"平台1的观察\", \"平台2的发现\", \"平台3的解析\"],\n\
-          \"总结寄语\": \"愿星辰指引你的路途...\"\n\
-        }}\n\
-        ⚠️ 注意：以上示例中所有内容字段都是字符串或字符串数组，没有嵌套对象！\n\n\
-        Platform Data:\n{}",
-        style_instruction,
-        style.unwrap_or("用户风格"),
-        emoji_instruction,
-        style.unwrap_or("用户风格"),
-        style.unwrap_or("用户风格"),
-        data_str
-    );
-
-    // 6. 调用 AI
-    let input_data = json!({
-        "prompt": full_prompt
-    });
-
-    match analyzer.analyze_profile(&input_data).await {
-        Ok(response) => {
-            tracing::info!(
-                "Generated AI comprehensive report: {} chars",
-                response.len()
-            );
-
-            // 清理可能的 markdown 标记
-            let clean_json = response
-                .trim()
-                .trim_start_matches("```json")
-                .trim_start_matches("```")
-                .trim_end_matches("```")
-                .trim();
-
-            match serde_json::from_str::<ComprehensiveAnalysis>(clean_json) {
-                Ok(mut res) => {
-                    // 调试：打印解析后的所有字段
-                    tracing::info!(
-                        "🔍 Parsed content keys: {:?}",
-                        res.content.keys().collect::<Vec<_>>()
-                    );
-                    tracing::info!("🎨 Initial style fields - color: {}, style: {}, emojis: {:?}, subtitle: {}, metric: {}",
-                        res.theme_color, res.visual_style, res.decorative_emojis, res.card_subtitle, res.key_metric);
-
-                    // 检查是否使用了默认值（说明AI没有正确返回样式字段）
-                    if res.theme_color == default_theme_color() {
-                        tracing::warn!(
-                            "⚠️ Using default theme_color - AI may not have provided it"
-                        );
-                    }
-                    if res.visual_style == default_visual_style() {
-                        tracing::warn!(
-                            "⚠️ Using default visual_style - AI may not have provided it"
-                        );
-                    }
-
-                    // 从content Map中提取样式字段到结构体字段
-                    if let Some(Value::String(icon_url)) = res.content.remove("icon_image_url") {
-                        tracing::info!("📌 Extracted icon_image_url: {}", icon_url);
-                        res.icon_image_url = Some(icon_url);
-                    }
-                    if let Some(Value::String(icon_p)) = res.content.remove("icon_prompt") {
-                        tracing::info!("📌 Extracted icon_prompt: {}", icon_p);
-                        res.icon_prompt = Some(icon_p);
-                    }
-                    if let Some(Value::String(icon)) = res.content.remove("theme_icon") {
-                        tracing::info!("📌 Extracted theme_icon: {}", icon);
-                        res.theme_icon = Some(icon);
-                    }
-                    if let Some(bg_elements) = res.content.remove("background_elements") {
-                        tracing::info!("📌 Extracted background_elements");
-                        res.background_elements = Some(bg_elements);
-                    }
-
-                    // 调试：打印最终结构体的图标字段
-                    tracing::info!(
-                        "📦 Final icon fields - image_url: {:?}, prompt: {:?}, theme: {:?}",
-                        res.icon_image_url,
-                        res.icon_prompt,
-                        res.theme_icon
-                    );
-
-                    // 如果有icon_prompt但没有icon_image_url，自动生成图标
-                    if res.icon_image_url.is_none() && res.icon_prompt.is_some() {
-                        if let Some(prompt) = &res.icon_prompt {
-                            tracing::info!("🎨 Generating icon image from prompt: {}", prompt);
-                            let icon_url = generate_icon_image_url(prompt);
-                            tracing::info!("✅ Generated icon URL: {}", icon_url);
-                            res.icon_image_url = Some(icon_url);
-                        }
-                    }
-
-                    Ok(res)
-                }
-                Err(e) => {
-                    tracing::error!("Failed to parse AI JSON response: {}. Raw: {}", e, response);
-                    Err(format!("Failed to parse AI response: {}", e))
-                }
-            }
-        }
-        Err(e) => Err(format!("AI generation failed: {}", e)),
-    }
-}
-
 /// 从bilibili平台数据中提取资料库内容（基于报告中提到的作品）
 /// Discord 服务器锐评兜底：按角色 / 规模 / 特性生成短句，≤16 字左右
-fn discord_fallback_guild_take(
-    g: &crate::services::smart_filter::DiscordGuildItem,
-) -> String {
+fn discord_fallback_guild_take(g: &crate::services::smart_filter::DiscordGuildItem) -> String {
     let members = g.member_count.unwrap_or(0);
     let size = if members >= 100_000 {
         Some("万人广场")
@@ -3316,14 +2569,8 @@ fn discord_fallback_guild_take(
         None
     };
 
-    let is_admin = g
-        .permissions_highlight
-        .iter()
-        .any(|p| p == "ADMINISTRATOR");
-    let is_mod = g
-        .permissions_highlight
-        .iter()
-        .any(|p| p == "MANAGE_GUILD");
+    let is_admin = g.permissions_highlight.iter().any(|p| p == "ADMINISTRATOR");
+    let is_mod = g.permissions_highlight.iter().any(|p| p == "MANAGE_GUILD");
     let is_partnered = g.feature_highlight.iter().any(|f| f == "PARTNERED");
     let is_verified = g.feature_highlight.iter().any(|f| f == "VERIFIED");
     let is_community = g.feature_highlight.iter().any(|f| f == "COMMUNITY");
@@ -3366,10 +2613,14 @@ fn normalize_discord_guild_takes(
     obj: &mut serde_json::Map<String, Value>,
     guilds: &[crate::services::smart_filter::DiscordGuildItem],
 ) {
-    let known_by_name: std::collections::HashMap<&str, &crate::services::smart_filter::DiscordGuildItem> =
-        guilds.iter().map(|g| (g.name.as_str(), g)).collect();
-    let known_by_id: std::collections::HashMap<&str, &crate::services::smart_filter::DiscordGuildItem> =
-        guilds.iter().map(|g| (g.id.as_str(), g)).collect();
+    let known_by_name: std::collections::HashMap<
+        &str,
+        &crate::services::smart_filter::DiscordGuildItem,
+    > = guilds.iter().map(|g| (g.name.as_str(), g)).collect();
+    let known_by_id: std::collections::HashMap<
+        &str,
+        &crate::services::smart_filter::DiscordGuildItem,
+    > = guilds.iter().map(|g| (g.id.as_str(), g)).collect();
 
     let raw = obj
         .get("guild_takes")

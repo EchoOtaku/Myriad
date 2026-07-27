@@ -4,9 +4,6 @@
 
 use super::HandlerContext;
 use crate::models::entities::{tapp_storage, tapps};
-use crate::services::agent::executor::utils::{
-    is_valid_platform as validate_platform_name, VALID_PLATFORMS,
-};
 use crate::services::data_paths::paths;
 use crate::services::permission_service::{TappPermissionService, UserRole};
 use crate::GLOBAL_DYNAMIC_CONFIG;
@@ -33,7 +30,6 @@ pub async fn execute(
         "tapp.generate" => execute_tapp_generate(params, ctx).await,
         "tapp.install" => execute_tapp_install(params, ctx).await,
         "report.create" => execute_report_create(params, ctx).await,
-        "report.comprehensive" => execute_report_comprehensive(params, ctx).await,
         "reminder.create" => execute_reminder_create(params, ctx).await,
         "note.create" => execute_note_create(params, ctx).await,
         "bookmark.save" => execute_bookmark_save(params, ctx).await,
@@ -417,139 +413,6 @@ async fn execute_report_create(
                 "reportId": report_id,
                 "title": title,
                 "format": format
-            },
-            "timestamp": now.timestamp_millis()
-        }
-    }))
-}
-
-async fn execute_report_comprehensive(
-    params: &HashMap<String, Value>,
-    ctx: &HandlerContext<'_>,
-) -> Result<Value, String> {
-    let analyzer = ctx
-        .ai_analyzer
-        .ok_or("AI analyzer not configured for comprehensive report")?;
-
-    let platforms = params
-        .get("platforms")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-        .unwrap_or_else(|| VALID_PLATFORMS.to_vec());
-
-    let style = params
-        .get("style")
-        .and_then(|v| v.as_str())
-        .unwrap_or("casual");
-
-    // 收集所有平台数据（白名单校验，防止路径穿越）
-    let mut platform_data = Vec::new();
-    for platform in &platforms {
-        if !validate_platform_name(platform) {
-            tracing::warn!(platform = %platform, "[Report] 跳过无效平台名");
-            continue;
-        }
-        let cache_file = format!("cache/platforms/{}_filtered.json", platform);
-        if let Ok(content) = tokio::fs::read_to_string(&cache_file).await {
-            if let Ok(data) = serde_json::from_str::<Value>(&content) {
-                platform_data.push(json!({
-                    "platform": platform,
-                    "data": data.get("content_analysis").cloned().unwrap_or(json!({})),
-                    "user": data.get("user_summary").cloned().unwrap_or(json!({}))
-                }));
-            }
-        }
-    }
-
-    let style_instruction = match style {
-        "formal" => "使用正式、专业的语言风格",
-        "detailed" => "提供详细的数据分析和深入见解",
-        _ => "使用轻松、友好的语言风格",
-    };
-
-    let platform_data_str = serde_json::to_string_pretty(&platform_data).unwrap_or_default();
-    let truncated_data: String = platform_data_str.chars().take(10000).collect();
-
-    let prompt = format!(
-        "你是一个专业的数据分析师。请根据以下用户的多平台数据生成一份综合分析报告。\n\n\
-        风格要求：{}\n\n\
-        平台数据：\n{}\n\n\
-        报告结构要求（使用 Markdown 格式）：\n\
-        ## 用户画像概述\n\
-        简要描述用户的整体数字形象\n\n\
-        ## 各平台使用习惯\n\
-        逐平台分析用户的使用模式和特点\n\n\
-        ## 兴趣爱好总结\n\
-        归纳用户的核心兴趣领域，提供具体证据\n\n\
-        ## 跨平台关联发现\n\
-        分析平台间的关联和交叉兴趣\n\n\
-        ## 个性化建议\n\
-        基于数据分析给出 3-5 条具体建议\n\n\
-        请确保分析基于实际数据，不要编造信息。报告长度约 800-1500 字。",
-        style_instruction, truncated_data
-    );
-
-    let result = analyzer
-        .analyze(&prompt)
-        .await
-        .map_err(|e| format!("Comprehensive report generation failed: {}", e))?;
-
-    let report_id = format!("report_{}", Utc::now().timestamp_millis());
-    let now = Utc::now();
-
-    let insights: Vec<String> = result
-        .lines()
-        .filter(|line| line.starts_with("- ") || line.starts_with("* "))
-        .take(5)
-        .map(|s| {
-            s.trim_start_matches("- ")
-                .trim_start_matches("* ")
-                .to_string()
-        })
-        .collect();
-
-    // 持久化到 tapp_storage
-    let report_data = json!({
-        "id": report_id,
-        "title": "综合分析报告",
-        "format": "markdown",
-        "content": result,
-        "platforms": platforms,
-        "style": style,
-        "insights": insights,
-        "createdAt": now.to_rfc3339()
-    });
-
-    let new_record = tapp_storage::ActiveModel {
-        tapp_id: Set("agent_reports".to_string()),
-        user_id: Set(ctx.user_id),
-        key: Set(report_id.clone()),
-        value: Set(report_data),
-        created_at: Set(now.into()),
-        updated_at: Set(now.into()),
-        ..Default::default()
-    };
-    new_record
-        .insert(ctx.db)
-        .await
-        .map_err(|e| format!("Failed to save comprehensive report: {}", e))?;
-
-    tracing::info!(report_id = %report_id, "[ReportComprehensive] Report persisted");
-
-    Ok(json!({
-        "success": true,
-        "reportId": report_id,
-        "platforms": platforms,
-        "style": style,
-        "summary": result,
-        "insights": insights,
-        "generatedAt": now.to_rfc3339(),
-        "frontendAction": {
-            "type": "show_report",
-            "params": {
-                "reportId": report_id,
-                "title": "综合分析报告",
-                "format": "markdown"
             },
             "timestamp": now.timestamp_millis()
         }

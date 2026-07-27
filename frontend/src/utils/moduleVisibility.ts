@@ -7,6 +7,7 @@ export type ModuleVisibilityKey =
   | 'library'
   | 'brew'
   | 'reports'
+  | 'life'
   | 'tapp'
   | 'agent'
 
@@ -36,6 +37,7 @@ export const MODULE_VISIBILITY_KEYS: ModuleVisibilityKey[] = [
   'library',
   'brew',
   'reports',
+  'life',
   'tapp',
   'agent',
 ]
@@ -72,6 +74,7 @@ export const DEFAULT_MODULE_VISIBILITY_PREFERENCES: ModuleVisibilityPreferences 
       library: 'all',
       brew: 'all',
       reports: 'all',
+      life: 'all',
       tapp: 'all',
       agent: 'all',
     },
@@ -191,6 +194,12 @@ export function getModuleVisibilityKeyForPath(
   }
   if (pathname === '/reports' || pathname.startsWith('/reports/')) {
     return 'reports'
+  }
+  if (
+    pathname === '/life' ||
+    pathname.startsWith('/life/')
+  ) {
+    return 'life'
   }
   if (pathname === '/tapp' || pathname.startsWith('/tapp/')) {
     return 'tapp'

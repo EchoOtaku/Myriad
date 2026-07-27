@@ -8,6 +8,7 @@
 - [Library](/library)
 - [Brew](/brew)
 - [Reports](/reports)
+- [Digital Life](/life)
 - [Tapp](/tapp)
 
 ## Project

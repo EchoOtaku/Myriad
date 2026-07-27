@@ -43,7 +43,7 @@ async function executeHostIntent(
         typeof title !== 'string' ||
         title.trim().length === 0 ||
         title.length > 200 ||
-        !['platform', 'comprehensive', 'custom'].includes(String(reportType))
+        !['platform', 'custom'].includes(String(reportType))
       ) {
         throw new Error('report.create requires title and a valid reportType')
       }
@@ -51,7 +51,7 @@ async function executeHostIntent(
         {
           tappId: tappInstance.id,
           title,
-          reportType: reportType as 'platform' | 'comprehensive' | 'custom',
+          reportType: reportType as 'platform' | 'custom',
           content: params.content ?? null,
           metadata: params.metadata,
         },

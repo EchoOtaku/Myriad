@@ -93,20 +93,20 @@ html.dark .site-footer-content:hover {
   text-decoration: underline;
 }
 
-/* 云赞助商 */
-.footer-sponsors {
+/* 云基础设施（class 避免 sponsor/ad 等广告拦截敏感词） */
+.footer-infra {
   display: flex;
   align-items: center;
   gap: 0.25rem;
 }
 
-.sponsors-label {
+.infra-label {
   font-size: 0.5rem;
   opacity: 0.5;
   margin-right: 0.0625rem;
 }
 
-.sponsor-link {
+.infra-link {
   display: flex;
   align-items: center;
   opacity: 0.7;
@@ -116,31 +116,31 @@ html.dark .site-footer-content:hover {
   font-size: 0.875rem;
 }
 
-.sponsor-link:hover {
+.infra-link:hover {
   opacity: 1;
   transform: scale(1.1);
 }
 
-.sponsor-link svg {
+.infra-link svg {
   width: 0.875rem;
   height: 0.875rem;
 }
 
 /* 云服务商颜色 */
-.sponsor-cloudflare {
+.cdn-cloudflare {
   color: #f6821f;
 }
 
-.sponsor-edgeone {
+.cdn-edgeone {
   /* EdgeOne 使用 SVG 内置渐变 */
 }
 
-.sponsor-upyun {
+.cdn-upyun {
   color: #00a0ff;
 }
 
 /* 又拍云 logo 稍小 */
-.sponsor-upyun svg {
+.cdn-upyun svg {
   width: 0.7rem;
   height: 0.7rem;
 }
@@ -272,7 +272,7 @@ html.dark .tooltip-content {
     gap: 0.375rem;
   }
 
-  .sponsors-label {
+  .infra-label {
     display: none;
   }
 

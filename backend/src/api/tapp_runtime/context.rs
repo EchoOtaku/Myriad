@@ -151,7 +151,7 @@ pub async fn get_context_navigation(
         "availableRoutes": [
             { "path": "/", "name": "home", "icon": "home" },
             { "path": "/library", "name": "library", "icon": "book" },
-            { "path": "/reports", "name": "reports", "icon": "file-text" },
+            { "path": "/life", "name": "life", "icon": "heart" },
             { "path": "/settings", "name": "settings", "icon": "settings" }
         ],
         "tappPages": [],

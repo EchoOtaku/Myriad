@@ -122,6 +122,12 @@ pub async fn post_inbox(
                 "myriad:RingLeave",
                 "myriad:FileTransfer",
                 "myriad:KeyExchange",
+                "myriad:CharacterVisitRequest",
+                "myriad:CharacterVisitAccept",
+                "myriad:CharacterVisitReject",
+                "myriad:CharacterVisitInteraction",
+                "myriad:CharacterVisitReceipt",
+                "myriad:CharacterVisitComplete",
             ];
             if !ALLOWED_MFP_TYPES.contains(&ty) {
                 tracing::warn!("Rejected unknown MFP activity type: {}", ty);
@@ -130,7 +136,7 @@ pub async fn post_inbox(
                     Json(json!({"error": format!("Unknown MFP activity type: {}", ty)})),
                 ));
             }
-            handle_mfp_activity(&db, &actor_url_str, ty, &activity).await
+            handle_mfp_activity(&db, Some(user_id), &actor_url_str, ty, &activity).await
         }
         _ => {
             tracing::warn!("Unsupported activity type: {}", activity_type);
@@ -218,11 +224,17 @@ pub async fn post_shared_inbox(
             "Follow" | "Accept" | "Undo" | "Delete" | "Update" | "Like"
         )
     {
-        let target_user_id =
-            resolve_shared_inbox_local_user(&db, &activity_type, &activity).await;
+        let target_user_id = resolve_shared_inbox_local_user(&db, &activity_type, &activity).await;
         if let Some(uid) = target_user_id {
             if activity_type.starts_with("myriad:") {
-                return handle_mfp_activity(&db, &actor_url_str, &activity_type, &activity).await;
+                return handle_mfp_activity(
+                    &db,
+                    Some(uid),
+                    &actor_url_str,
+                    &activity_type,
+                    &activity,
+                )
+                .await;
             }
             return match activity_type.as_str() {
                 "Follow" => handle_follow(&db, uid, &actor_url_str, &activity).await,
@@ -377,10 +389,7 @@ async fn handle_move(
 
     let (old_actor, new_actor) = verify_move_structure(activity, signed_actor).map_err(|e| {
         tracing::warn!("Move rejected (structure): {}", e);
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": e})),
-        )
+        (StatusCode::BAD_REQUEST, Json(json!({"error": e})))
     })?;
 
     let old_doc = fetch_actor_document(db, &old_actor).await.map_err(|e| {
@@ -393,10 +402,7 @@ async fn handle_move(
 
     verify_old_actor_moved_to(&old_doc, &old_actor, &new_actor).map_err(|e| {
         tracing::warn!("Move rejected (movedTo): {}", e);
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": e})),
-        )
+        (StatusCode::BAD_REQUEST, Json(json!({"error": e})))
     })?;
 
     let new_doc = fetch_actor_document(db, &new_actor).await.map_err(|e| {
@@ -409,10 +415,7 @@ async fn handle_move(
 
     verify_new_actor_also_known_as(&new_doc, &new_actor, &old_actor).map_err(|e| {
         tracing::warn!("Move rejected (alsoKnownAs): {}", e);
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": e})),
-        )
+        (StatusCode::BAD_REQUEST, Json(json!({"error": e})))
     })?;
 
     let migrated = migrate_follows_old_to_new(db, &old_actor, &new_actor)
@@ -551,10 +554,7 @@ async fn handle_reject(
             .await
             .map_err(|e| inbox_err("Room invite Reject handling failed", e))?;
     } else {
-        tracing::debug!(
-            "Ignoring Reject for unsupported object type={}",
-            inner_type
-        );
+        tracing::debug!("Ignoring Reject for unsupported object type={}", inner_type);
     }
     Ok(StatusCode::ACCEPTED)
 }
@@ -1413,7 +1413,13 @@ async fn enqueue_delivery(
     // Box::pin breaks the async recursion cycle:
     //   deliver_activity_locally → handle_follow → enqueue_delivery → …
     if let Some(local_username) = local_username_from_inbox_url(&base_url, target_inbox) {
-        match Box::pin(deliver_activity_locally(db, &local_username, &activity_json)).await {
+        match Box::pin(deliver_activity_locally(
+            db,
+            &local_username,
+            &activity_json,
+        ))
+        .await
+        {
             Ok(()) => {
                 tracing::info!(
                     activity_type = %activity.activity_type,
@@ -1478,9 +1484,12 @@ pub async fn deliver_activity_locally(
     username: &str,
     activity: &serde_json::Value,
 ) -> Result<(), String> {
-    let (user_id, _) = get_local_user(db, username)
-        .await
-        .map_err(|(_, j)| j.0.get("error").and_then(|v| v.as_str()).unwrap_or("user not found").to_string())?;
+    let (user_id, _) = get_local_user(db, username).await.map_err(|(_, j)| {
+        j.0.get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("user not found")
+            .to_string()
+    })?;
 
     let activity_type = activity["type"].as_str().unwrap_or("");
     let actor_url_owned = extract_activity_actor_id(activity);
@@ -1498,8 +1507,14 @@ pub async fn deliver_activity_locally(
         "Create" | "Update" | "Delete" | "Announce" | "Like" => {
             handle_content_activity(db, user_id, actor_url_str, activity_type, activity).await
         }
+        other if other.starts_with("myriad:") => {
+            handle_mfp_activity(db, Some(user_id), actor_url_str, other, activity).await
+        }
         other => {
-            tracing::debug!(activity_type = other, "Local delivery: unsupported type, ignoring");
+            tracing::debug!(
+                activity_type = other,
+                "Local delivery: unsupported type, ignoring"
+            );
             Ok(StatusCode::ACCEPTED)
         }
     };
@@ -1579,6 +1594,7 @@ async fn get_username_by_id(
 /// 处理 MFP 扩展 Activity（myriad:ChannelOpen, myriad:ChannelMessage, myriad:ChannelClose 等）
 async fn handle_mfp_activity(
     db: &DatabaseConnection,
+    _local_user_id: Option<i32>,
     actor_url_str: &str,
     activity_type: &str,
     activity: &serde_json::Value,
@@ -1706,7 +1722,6 @@ async fn handle_mfp_activity(
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1945,7 +1960,7 @@ mod tests {
             ),
             (
                 "https://a.example/activities/1/?x=1".into(), // normalizes to same id
-                "https://b.example/users/bob".into(), // same user, duplicate id rows
+                "https://b.example/users/bob".into(),         // same user, duplicate id rows
                 "pending".into(),
             ),
         ];
@@ -2208,7 +2223,6 @@ mod tests {
 
     #[test]
     fn extract_accept_object_type_from_nested_follow() {
-
         let activity = serde_json::json!({
             "type": "Accept",
             "object": {"type": "Follow", "id": "https://a.example/activities/1"}
@@ -2218,12 +2232,10 @@ mod tests {
             extract_accept_object_id(&activity),
             "https://a.example/activities/1"
         );
-
     }
 
     #[test]
     fn extract_activity_actor_id_from_link_href() {
-
         let activity = serde_json::json!({
             "actor": {"type": "Link", "href": "https://b.example/users/bob"}
         });
@@ -2231,12 +2243,10 @@ mod tests {
             extract_activity_actor_id(&activity),
             "https://b.example/users/bob"
         );
-
     }
 
     #[test]
     fn extract_iri_or_object_id_from_string_array() {
-
         let activity = serde_json::json!({
             "object": ["", "  https://a.example/activities/arr  "]
         });
@@ -2244,7 +2254,6 @@ mod tests {
             extract_accept_object_id(&activity),
             "https://a.example/activities/arr"
         );
-
     }
 
     #[test]
@@ -2269,7 +2278,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn same_host_username_compatible_at_handle_and_reject() {
         assert!(same_host_username_compatible(
@@ -2291,7 +2299,6 @@ mod tests {
             "https://b.example/users/bob"
         ));
     }
-
 
     #[test]
     fn resolve_follow_accept_empty_candidates_and_empty_id() {
@@ -2318,10 +2325,11 @@ mod tests {
             "https://b.example/users/bob".into(),
             "accepted".into(),
         )];
-        assert!(resolve_follow_accept_target("", "https://b.example/users/bob", &accepted_only)
-            .is_none());
+        assert!(
+            resolve_follow_accept_target("", "https://b.example/users/bob", &accepted_only)
+                .is_none()
+        );
     }
-
 
     #[test]
     fn resolve_follow_accept_fallback_ignores_non_pending() {
@@ -2346,7 +2354,6 @@ mod tests {
         .is_none());
     }
 
-
     #[test]
     fn resolve_follow_accept_port_sensitive_actor_auth() {
         let candidates = vec![(
@@ -2369,7 +2376,6 @@ mod tests {
         .is_some());
     }
 
-
     #[test]
     fn split_actor_host_user_shapes() {
         let (h, u) = split_actor_host_user("https://b.example/users/bob");
@@ -2386,7 +2392,6 @@ mod tests {
         assert_eq!(u4, "");
     }
 
-
     #[test]
     fn resolve_follow_accept_accepted_id_path_drift_idempotent() {
         // Already accepted + @handle Accept.actor still yields already=true.
@@ -2400,9 +2405,11 @@ mod tests {
             "https://b.example/@bob",
             &candidates,
         );
-        assert_eq!(got.map(|(_, remote, already)| (remote, already)), Some(("https://b.example/users/bob".into(), true)));
+        assert_eq!(
+            got.map(|(_, remote, already)| (remote, already)),
+            Some(("https://b.example/users/bob".into(), true))
+        );
     }
-
 
     #[test]
     fn resolve_follow_accept_prefers_actor_auth_over_host_only() {
@@ -2442,7 +2449,6 @@ mod tests {
         .is_none());
     }
 
-
     #[test]
     fn r45_same_host_username_compatible_users_path_case() {
         assert!(same_host_username_compatible(
@@ -2454,7 +2460,6 @@ mod tests {
             "https://b.example/users/carol"
         ));
     }
-
 
     #[test]
     fn r46_same_host_username_compatible_at_handle_last_segment() {
@@ -2468,7 +2473,6 @@ mod tests {
         ));
     }
 
-
     #[test]
     fn r47_resolve_follow_accept_target_no_candidates() {
         assert!(resolve_follow_accept_target(
@@ -2478,7 +2482,6 @@ mod tests {
         )
         .is_none());
     }
-
 
     #[test]
     fn r48_resolve_follow_accept_target_id_match_trailing_slash() {
@@ -2495,7 +2498,6 @@ mod tests {
         .is_some());
     }
 
-
     #[test]
     fn r49_resolve_follow_accept_target_rejects_cross_user_same_host() {
         let candidates = vec![(
@@ -2511,7 +2513,6 @@ mod tests {
         .is_none());
     }
 
-
     #[test]
     fn r50_resolve_follow_accept_target_idempotent_accepted() {
         let candidates = vec![(
@@ -2526,7 +2527,6 @@ mod tests {
         );
         assert_eq!(got.map(|(_, _, already)| already), Some(true));
     }
-
 
     #[test]
     fn r51_extract_accept_object_id_string_vs_nested() {
@@ -2544,7 +2544,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn r52_same_actor_or_user_rejects_different_ports() {
         assert!(!same_actor_or_user(
@@ -2556,7 +2555,6 @@ mod tests {
             "https://b.example:8443/users/BOB/"
         ));
     }
-
 
     #[test]
     fn extract_activity_actor_id_from_string_array() {
@@ -2579,7 +2577,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn extract_accept_object_id_prefers_id_over_href_on_same_object() {
         // When both id and href exist, id wins (canonical activity id).
@@ -2596,7 +2593,6 @@ mod tests {
             "https://a.example/activities/id-wins"
         );
     }
-
 
     #[test]
     fn accept_path_alias_ap_users_form_matches_stored_users_url() {
@@ -2620,7 +2616,4 @@ mod tests {
         );
         assert!(got_bad.is_none());
     }
-
 }
-
-

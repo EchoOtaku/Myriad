@@ -130,6 +130,14 @@ const sampleManga = t.reportCardWidget.sampleManga
 const sampleGame2 = t.reportCardWidget.sampleGame2
 const sampleAnime2 = t.reportCardWidget.sampleAnime2
 
+// Bangumi 与 MAL 的条目类型词表并不重合（MAL 只有 anime/manga，Bangumi 没有
+// manga）。共用一份并集会让两张卡都画出对方的类型段，且落到未翻译的原始键 +
+// 兜底颜色，所以这两个字段按平台分发。
+const isMal = platformId === 'mal'
+const animeTypeDistribution = isMal
+  ? { anime: 80, manga: 28 }
+  : { anime: 80, book: 28, game: 22, music: 12, real: 8 }
+
 return {
   // —— 通用评分 / 身份标签 ——
   hardcore_score: 85,
@@ -137,7 +145,9 @@ return {
   gamer_type: t.reportCardWidget.xboxGamerDefault,
   hunter_type: t.reportCardWidget.psnHunterDefault,
   contribution_level: t.reportCardWidget.seniorDev,
-  taste_profile: t.reportCardWidget.bangumiTasteDefault,
+  taste_profile: isMal
+    ? t.reportCardWidget.malTasteDefault
+    : t.reportCardWidget.bangumiTasteDefault,
 
   // —— Steam ——
   games_count: 120,
@@ -190,14 +200,7 @@ return {
 
   // —— Bangumi / MAL 收藏结构 ——
   status_counts: { done: 128, doing: 12, wish: 45 },
-  subject_type_distribution: {
-    anime: 80,
-    book: 28,
-    manga: 28,
-    game: 22,
-    music: 12,
-    real: 8,
-  },
+  subject_type_distribution: animeTypeDistribution,
 
   // —— 详情轮播 / 海报墙（多平台共用，字段取并集） ——
   library_items: [

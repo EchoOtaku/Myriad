@@ -53,9 +53,7 @@ impl TierRouter {
 
             // ===== Complex：Pro =====
             // 创造性生成
-            "ai.chat" | "prompt.generate" | "tapp.generate" | "report.comprehensive" => {
-                TaskComplexity::Complex
-            }
+            "ai.chat" | "prompt.generate" | "tapp.generate" => TaskComplexity::Complex,
             // 代码理解
             "code.explain" => TaskComplexity::Complex,
 
@@ -94,10 +92,9 @@ impl TierRouter {
             // 系统和数据操作
             "data.transform" | "export.data" | "cache.status" | "cache.clear"
             | "system.metrics" | "stats.overview" | "profile.summary" | "task.status"
-            | "scheduler.list" | "scheduler.create" | "scheduler.trigger"
-            | "heartbeat.list" | "heartbeat.create" | "heartbeat.update"
-            | "heartbeat.delete" | "heartbeat.toggle" | "setup.status"
-            | "auth.status" | "time.info" | "config.get" | "metadata.history"
+            | "scheduler.list" | "scheduler.create" | "scheduler.trigger" | "heartbeat.list"
+            | "heartbeat.create" | "heartbeat.update" | "heartbeat.delete" | "heartbeat.toggle"
+            | "setup.status" | "auth.status" | "time.info" | "config.get" | "metadata.history"
             | "rsshub.instances" | "rsshub.healthcheck" | "context.reference" => {
                 TaskComplexity::Simple
             }
@@ -289,10 +286,12 @@ impl CircuitBreaker {
     }
 }
 
-/// 全局熔断器（Pro 和 Standard 各一个）
+/// 全局熔断器（三个模型层级各一个）
 static PRO_BREAKER: once_cell::sync::Lazy<CircuitBreaker> =
     once_cell::sync::Lazy::new(CircuitBreaker::default);
 static STANDARD_BREAKER: once_cell::sync::Lazy<CircuitBreaker> =
+    once_cell::sync::Lazy::new(CircuitBreaker::default);
+static LITE_BREAKER: once_cell::sync::Lazy<CircuitBreaker> =
     once_cell::sync::Lazy::new(CircuitBreaker::default);
 
 /// 获取指定 tier 的熔断器
@@ -300,6 +299,7 @@ pub fn get_circuit_breaker(tier: ModelTier) -> &'static CircuitBreaker {
     match tier {
         ModelTier::Pro => &PRO_BREAKER,
         ModelTier::Standard => &STANDARD_BREAKER,
+        ModelTier::Lite => &LITE_BREAKER,
     }
 }
 
@@ -340,6 +340,13 @@ pub fn resolve_with_circuit_breaker(
                 tracing::error!(
                     capability_id = capability_id,
                     "[CircuitBreaker] Standard tier breaker open, rejecting request"
+                );
+                None
+            }
+            ModelTier::Lite => {
+                tracing::error!(
+                    capability_id = capability_id,
+                    "[CircuitBreaker] Lite tier breaker open, rejecting request"
                 );
                 None
             }

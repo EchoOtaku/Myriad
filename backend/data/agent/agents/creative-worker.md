@@ -14,10 +14,10 @@ Handle tasks requiring creativity, deep reasoning, or generative AI capabilities
 
 ## Capabilities
 - Free-form AI chat and conversation
-- Image generation (Pollinations / PixAI)
+- Image generation (OpenAI / OpenRouter / Seedream / PixAI)
 - Tapp (mini web app) generation
 - Code explanation and generation
-- Report creation and comprehensive analysis
+- Platform report creation and analysis
 - Text-to-speech
 
 ## Model Tier

@@ -38,7 +38,7 @@ export const enUS: TranslationKeys = {
   nav: {
     home: 'Home',
     library: 'Library',
-    reports: 'Reports',
+    reports: 'Platform Reports',
     config: 'Config',
     login: 'Login',
     logout: 'Logout',
@@ -52,8 +52,6 @@ export const enUS: TranslationKeys = {
     backToNav: 'Back to Navigation',
     platformReport: 'Platform Report',
     showPlatformReport: 'Show Platform Report',
-    comprehensiveReport: 'Comprehensive Report',
-    showComprehensiveReport: 'Show Comprehensive Report',
     all: 'All',
     showAll: 'Show All Content',
     game: 'Games',
@@ -75,8 +73,6 @@ export const enUS: TranslationKeys = {
     currentFilterAnime: 'Current Filter: Anime - Click to Expand',
     currentFilterTvSeries: 'Current Filter: TV Series - Click to Expand',
     currentTabPlatform: 'Current Tab: Platform Report - Click to Expand',
-    currentTabComprehensive:
-      'Current Tab: Comprehensive Report - Click to Expand',
     expandFilters: 'Click to expand filters',
     switchTab: 'Click to switch tab',
     // Brew
@@ -711,7 +707,8 @@ export const enUS: TranslationKeys = {
     updaterInfraProxyUpdateButton: 'Upgrade proxy',
     updaterInfraProxyConfirm:
       'Upgrade proxy to {version}? The edge entry will briefly interrupt (usually <10s).',
-    updaterInfraProxyDispatched: 'Proxy upgraded to {version} (was {previous}).',
+    updaterInfraProxyDispatched:
+      'Proxy upgraded to {version} (was {previous}).',
     updaterInfraNeedCheck:
       'Run “Check for updates” first to resolve a target version.',
     updaterTargetGroupTitle: 'Install a specific version (advanced)',
@@ -952,20 +949,13 @@ export const enUS: TranslationKeys = {
     // AI Image Generation Configuration
     aiImageTitle: 'AI Image Generation',
     aiImageDesc:
-      'Pollinations free & fast · PixAI professional anime image generation (paid)',
+      'Unified OpenAI, OpenRouter, Volcengine Seedream, and PixAI image generation',
     aiImageUsageTitle: 'Usage Guide',
     enableAiImage: 'Enable AI Image Generation',
     aiImageHint: 'Enable to use AI image generation in Myriad',
-    pollinationsDescription:
-      'Completely free, fast response (<1 sec), suitable for development testing and rapid iteration',
     pixaiDescription:
       'Professional anime image generation API with multiple model support (paid, API key required)',
-    pollinationsFree: 'Free',
     pixaiBadge: 'SD/DiT',
-    fluxAnimeRecommend: 'Flux Anime (Recommended)',
-    fluxDefault: 'Flux (Default)',
-    fluxRealism: 'Flux Realism',
-    flux3D: 'Flux 3D',
     pixaiPlaceholder: 'Get from platform.pixai.art',
     pixaiModelId: 'Model Version ID',
     // Speech service (TTS/ASR) configuration
@@ -1348,11 +1338,11 @@ export const enUS: TranslationKeys = {
     tappShortcut: 'Tapp Shortcut',
     gamePresence: 'HoYoverse Game Card',
     library: 'Library',
-    dataReport: 'Data Report',
+    dataReport: 'Platform Reports',
     multiPlatformAggregation: 'Multi-platform Content Aggregation',
-    dualLayerAnalysis: 'Dual-layer Smart Analysis',
+    dualLayerAnalysis: 'Per-platform profiles and insights',
     showPersonality: 'Show your personality, in one place',
-    platformProfile: 'Platform Profile + AI Comprehensive Analysis',
+    platformProfile: 'Platform profiles and report generation',
     // Brew Reading
     brewReading: 'Brew Reading',
     brewDesc: 'RSS Subscription',
@@ -1477,6 +1467,7 @@ export const enUS: TranslationKeys = {
     generating: 'Generating report...',
     generated: 'Report generated',
   },
+
 
   // Account
   account: {
@@ -1824,19 +1815,7 @@ export const enUS: TranslationKeys = {
     unknownPlatform: 'Unknown platform',
     generating: 'Generating',
     generate: 'Generate',
-    comprehensiveReport: 'Comprehensive Report',
-    adminOnlyGenerateHint: 'Admin only',
-    styleDescPlaceholder: 'Enter style description...',
-    allPlatformReport: 'All Platform Report',
-    confirmDeleteReport:
-      'Are you sure you want to delete this report? This cannot be undone.',
-    deleteReport: 'Delete report',
     tenThousandSuffix: 'W',
-    noComprehensiveReport: 'No Comprehensive Report',
-    useInputToGenerate:
-      'Use the input above to generate your first comprehensive report',
-    adminNotGenerated: 'Admin has not generated a comprehensive report yet',
-    waitingGenerate: 'Waiting to generate',
     bangumiDone: 'Done',
     bangumiDoing: 'Doing',
     bangumiWish: 'Wish',
@@ -2068,6 +2047,7 @@ export const enUS: TranslationKeys = {
     samplePlaylist: 'Sample Playlist',
     samplePlaylist2: 'Night Drive',
     bangumiTasteDefault: 'Deep ACG Collector',
+    malTasteDefault: 'Devoted Anime Lister',
     fetchReportFailed: 'Failed to fetch report',
     steamOnline: 'Online',
     steamOffline: 'Offline',
@@ -3263,7 +3243,11 @@ export const enUS: TranslationKeys = {
         'Refresh content',
         'Explore',
       ],
-      reports: ['View reports', 'Generate report', 'Data insights'],
+      reports: ['View platform reports', 'Generate a report', 'Data insights'],
+        'Check in on your character',
+        'Start a conversation',
+        'Arrange the personal world',
+      ],
       config: ['Adjust settings?', 'Personalize', 'Optimize experience'],
       dataManagement: ['Manage data', 'Sync data', 'Clear cache'],
       tapp: ['Discover apps', 'Manage Tapps', 'Run app'],

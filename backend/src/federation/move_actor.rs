@@ -454,9 +454,7 @@ pub fn verify_old_actor_moved_to(
     let moved_to = old_actor_json
         .get("movedTo")
         .and_then(activity_id_string)
-        .ok_or_else(|| {
-            "Old actor missing movedTo (required for Move acceptance)".to_string()
-        })?;
+        .ok_or_else(|| "Old actor missing movedTo (required for Move acceptance)".to_string())?;
     if !same_actor_url(&moved_to, target) {
         return Err(format!(
             "Old actor movedTo '{}' does not match Move target '{}'",
@@ -482,9 +480,7 @@ pub fn verify_new_actor_also_known_as(
     }
     let aliases = parse_also_known_as(new_actor_json);
     if aliases.is_empty() {
-        return Err(
-            "New actor missing alsoKnownAs (required for Move acceptance)".to_string(),
-        );
+        return Err("New actor missing alsoKnownAs (required for Move acceptance)".to_string());
     }
     if !aliases.iter().any(|a| same_actor_url(a, old_actor_id)) {
         return Err(format!(
@@ -522,11 +518,7 @@ pub async fn fetch_actor_document(
         return Err(format!("Refused to fetch internal URL: {}", actor_url_str));
     }
 
-    let user_agent = format!(
-        "Myriad/{} (+{})",
-        env!("CARGO_PKG_VERSION"),
-        base_url
-    );
+    let user_agent = format!("Myriad/{} (+{})", env!("CARGO_PKG_VERSION"), base_url);
     let (url, client) = crate::services::outbound_security::build_public_http_client(
         actor_url_str,
         std::time::Duration::from_secs(10),
@@ -551,8 +543,8 @@ pub async fn fetch_actor_document(
     let body = crate::services::outbound_security::read_limited_body(resp, 1024 * 1024)
         .await
         .map_err(|e| format!("Failed to read actor body: {}", e))?;
-    let actor_json: serde_json::Value = serde_json::from_slice(&body)
-        .map_err(|e| format!("Failed to parse actor JSON: {}", e))?;
+    let actor_json: serde_json::Value =
+        serde_json::from_slice(&body).map_err(|e| format!("Failed to parse actor JSON: {}", e))?;
 
     if let Some(json_id) = actor_json.get("id").and_then(|v| v.as_str()) {
         if !json_id.is_empty() && !same_actor_url(json_id, actor_url_str) {
@@ -875,9 +867,7 @@ pub async fn retarget_shared_keys(
         ))
         .await
         .map_err(|e| format!("Failed to count users: {}", e))?;
-    let total_users: i32 = all_users
-        .and_then(|r| r.try_get("", "c").ok())
-        .unwrap_or(0);
+    let total_users: i32 = all_users.and_then(|r| r.try_get("", "c").ok()).unwrap_or(0);
 
     let mut report = SharedKeysReport {
         users_with_keys: rows.len() as u32,
@@ -951,7 +941,10 @@ async fn count_prefix_rows(
         .iter()
         .any(|(t, c)| *t == table && *c == column)
     {
-        return Err(format!("column {}.{} not on rewrite whitelist", table, column));
+        return Err(format!(
+            "column {}.{} not on rewrite whitelist",
+            table, column
+        ));
     }
     let like = prefix_like_pattern(old_base);
     // Identifier whitelist only — safe static concat.
@@ -1101,9 +1094,7 @@ pub async fn rewrite_local_federation_urls(
             ))
             .await
             .map_err(|e| format!("count delivery target_domain: {}", e))?;
-        let c = dq
-            .and_then(|r| r.try_get::<i32>("", "c").ok())
-            .unwrap_or(0) as u32;
+        let c = dq.and_then(|r| r.try_get::<i32>("", "c").ok()).unwrap_or(0) as u32;
         if c > 0 {
             report.columns.push(RewriteColumnStat {
                 table: "federation_delivery_queue".into(),
@@ -1250,12 +1241,7 @@ pub async fn domain_move_all_users(
     } else {
         store_domain_alias(db, &old_base, &new_base)
             .await
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": e})),
-                )
-            })?;
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))))?;
         true
     };
 
@@ -1414,9 +1400,7 @@ mod tests {
             "object": "https://old.example/users/a",
             "target": "https://new.example/users/a",
         });
-        assert!(
-            verify_move_structure(&signed_mismatch, "https://evil.example/users/x").is_err()
-        );
+        assert!(verify_move_structure(&signed_mismatch, "https://evil.example/users/x").is_err());
     }
 
     #[test]
@@ -1514,10 +1498,7 @@ mod tests {
 
         let (aka2, moved2) = actor_move_fields("https://old.example", "alice", &aliases);
         assert!(aka2.is_empty());
-        assert_eq!(
-            moved2.as_deref(),
-            Some("https://new.example/users/alice")
-        );
+        assert_eq!(moved2.as_deref(), Some("https://new.example/users/alice"));
     }
 
     #[test]
@@ -1597,17 +1578,12 @@ mod tests {
             Some("https://new.example/users/alice")
         );
         assert_eq!(
-            rewrite_url_if_local(
-                "https://old.example/users/alice#main-key",
-                old_b,
-                new_b
-            )
-            .as_deref(),
+            rewrite_url_if_local("https://old.example/users/alice#main-key", old_b, new_b)
+                .as_deref(),
             Some("https://new.example/users/alice#main-key")
         );
         assert_eq!(
-            rewrite_url_if_local("https://old.example/users/alice/inbox", old_b, new_b)
-                .as_deref(),
+            rewrite_url_if_local("https://old.example/users/alice/inbox", old_b, new_b).as_deref(),
             Some("https://new.example/users/alice/inbox")
         );
     }
@@ -1616,21 +1592,14 @@ mod tests {
     fn foreign_url_untouched_by_rewrite() {
         let old_b = "https://old.example";
         let new_b = "https://new.example";
+        assert!(rewrite_url_if_local("https://mastodon.social/users/bob", old_b, new_b).is_none());
         assert!(
-            rewrite_url_if_local("https://mastodon.social/users/bob", old_b, new_b).is_none()
+            rewrite_url_if_local("https://old.example.evil.com/users/alice", old_b, new_b)
+                .is_none()
         );
-        assert!(rewrite_url_if_local(
-            "https://old.example.evil.com/users/alice",
-            old_b,
-            new_b
-        )
-        .is_none());
-        assert!(rewrite_url_if_local(
-            "https://not-old.example/users/alice",
-            old_b,
-            new_b
-        )
-        .is_none());
+        assert!(
+            rewrite_url_if_local("https://not-old.example/users/alice", old_b, new_b).is_none()
+        );
         // Substring host must not match
         assert!(!url_is_under_base(
             "https://prefix-old.example/users/x",
@@ -1697,10 +1666,7 @@ mod tests {
             mfp_channels_url: None,
         };
         let v = serde_json::to_value(&a).unwrap();
-        assert_eq!(
-            v["alsoKnownAs"][0],
-            "https://old.example/users/a"
-        );
+        assert_eq!(v["alsoKnownAs"][0], "https://old.example/users/a");
         assert!(v.get("movedTo").is_none());
 
         let old = Actor {
@@ -1728,14 +1694,12 @@ mod tests {
             "https://old.example/users/alice#main-key",
             "https://old.example"
         ));
-
     }
 
     #[test]
     fn url_is_under_base_empty_inputs() {
         assert!(!url_is_under_base("", "https://a.example"));
         assert!(!url_is_under_base("https://a.example/users/x", ""));
-
     }
 
     #[test]
@@ -1745,13 +1709,16 @@ mod tests {
             "https://old.example",
             "https://new.example",
         );
-        assert_eq!(got.as_deref(), Some("https://new.example/users/alice/inbox"));
+        assert_eq!(
+            got.as_deref(),
+            Some("https://new.example/users/alice/inbox")
+        );
         assert!(rewrite_url_if_local(
             "https://foreign.example/users/alice",
             "https://old.example",
             "https://new.example",
-        ).is_none());
-
+        )
+        .is_none());
     }
 
     #[test]
@@ -1760,7 +1727,6 @@ mod tests {
         assert!(normalize_base_url("   ").is_err());
         let ok = normalize_base_url("https://a.example/").unwrap();
         assert_eq!(ok, "https://a.example");
-
     }
 
     #[test]
@@ -1774,25 +1740,29 @@ mod tests {
             Some("https://a.example/activities/2".into())
         );
         assert_eq!(activity_id_string(&serde_json::json!({})), None);
-
     }
 
     #[test]
     fn w175_url_under_base_foreign() {
-        assert!(!url_is_under_base("https://evil.example/users/a", "https://old.example"));
-        assert!(url_is_under_base("https://old.example/users/a", "https://old.example"));
-        assert!(url_is_under_base("https://old.example/users/a#main-key", "https://old.example"));
-
+        assert!(!url_is_under_base(
+            "https://evil.example/users/a",
+            "https://old.example"
+        ));
+        assert!(url_is_under_base(
+            "https://old.example/users/a",
+            "https://old.example"
+        ));
+        assert!(url_is_under_base(
+            "https://old.example/users/a#main-key",
+            "https://old.example"
+        ));
     }
-
 
     #[test]
     fn w175_url_under_base_empty() {
         assert!(!url_is_under_base("", "https://a.example"));
         assert!(!url_is_under_base("https://a.example/x", ""));
-
     }
-
 
     #[test]
     fn w175_rewrite_url_preserves_path() {
@@ -1801,25 +1771,26 @@ mod tests {
                 "https://old.example/users/alice/inbox",
                 "https://old.example",
                 "https://new.example",
-            ).as_deref(),
+            )
+            .as_deref(),
             Some("https://new.example/users/alice/inbox")
         );
         assert!(rewrite_url_if_local(
             "https://foreign.example/users/alice",
             "https://old.example",
             "https://new.example",
-        ).is_none());
-
+        )
+        .is_none());
     }
-
 
     #[test]
     fn w175_normalize_base_empty() {
         assert!(normalize_base_url("").is_err());
-        assert_eq!(normalize_base_url("https://a.example/").unwrap(), "https://a.example");
-
+        assert_eq!(
+            normalize_base_url("https://a.example/").unwrap(),
+            "https://a.example"
+        );
     }
-
 
     #[test]
     fn w175_activity_id_string_shapes() {
@@ -1832,8 +1803,5 @@ mod tests {
             Some("https://a.example/activities/2".into())
         );
         assert_eq!(activity_id_string(&serde_json::json!({})), None);
-
     }
-
 }
-

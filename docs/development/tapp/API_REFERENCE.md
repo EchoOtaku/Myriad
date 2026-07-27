@@ -843,23 +843,62 @@ SDK 已暴露完整方法面（`sdkGenerator` + `FederationBridge`）。调用�
 
 | 域 | 读 (`federation:read`) | 写 / 消息 |
 | -- | ---------------------- | --------- |
-| Channel | `getChannels`, `getChannel`, `getMessages` | `createChannel`, `acceptChannel`, `closeChannel`；消息与订阅：`sendMessage`, `subscribeChannel`…（`federation:message`） |
-| Room | `getRooms`, `getRoom`, `getRoomMembers`, `getRoomMessages` | `createRoom`, `updateRoom`, `inviteMember`, `removeMember`, `leaveRoom`, `deleteRoom`, `pinRoomMessage`；消息：`sendRoomMessage` 等 |
+| Channel | `getChannels`, `getChannel`, `getMessages` | `createChannel`, `acceptChannel`, `closeChannel`, `deleteChannel`；E2E：`initiateChannelE2e`（`federation:write`）；消息与订阅：`sendMessage`, `subscribeChannel`…（`federation:message`） |
+| Room | `getRooms`, `getRoom`, `getRoomMembers`, `getRoomMessages`, `listRoomFiles` | `createRoom`, `updateRoom`, `inviteMember`, `acceptRoomInvite`, `rejectRoomInvite`, `joinRoom`, `removeMember`, `leaveRoom`, `transferRoomOwnership`, `deleteRoom`, `pinRoomMessage`；E2E：`initiateRoomE2e`（`federation:write`）；消息：`sendRoomMessage`（`federation:message`） |
 | Ring | `getRings`, `getRing`, `getRingPeers` | `createRing`, `leaveRing`, `addPeer`, `removePeer`, `triggerSync` |
 | Trust | — | `getTrustPolicy`, `getInstances`, `updateInstanceTrust`, `toggleInstanceBlock`（`federation:trust`） |
-| Files | — | `initiateTransfer`, `listTransfers`, `getTransfer`, `uploadChunk`, `cancelTransfer`（`federation:files`） |
+| Files | — | `initiateTransfer`, `initiateRoomTransfer`, `listTransfers`, `listRoomTransfers`, `getTransfer`, `uploadChunk`, `cancelTransfer`, `downloadTransfer`（`federation:files`） |
+
+#### Room 常用写路径
+
+```javascript
+// 创建（公开群建议 is_public + invite_policy: "open"）
+const room = await Tapp.federation.createRoom({
+  name: "Labs",
+  is_public: true,
+  invite_policy: "open",
+});
+// room.home_server 含 host[:port]；可分享 ID 推荐：`${room.room_id}@${room.home_server}`
+
+// 按 ID 加入公开/open 群（同实例可用裸 rm_…；跨实例用 rm_…@home 或 opts.home_server）
+await Tapp.federation.joinRoom("rm_…@peer.example:8443");
+// 等价：await Tapp.federation.joinRoom("rm_…", { home_server: "peer.example:8443" });
+
+// 邀请 / 接受 / 转让
+await Tapp.federation.inviteMember(roomId, { actor: "https://peer/users/bob" });
+await Tapp.federation.acceptRoomInvite(roomId);
+await Tapp.federation.transferRoomOwnership(roomId, "https://peer/users/bob");
+
+// 群 E2E：发布本端公钥（多方 published_keys）；≥2 把公钥后再 sendRoomMessage({ encrypt: true })
+await Tapp.federation.initiateRoomE2e(roomId);
+const detail = await Tapp.federation.getRoom(roomId);
+// detail.shared_data_config?.e2e?.published_keys — 仅公钥，无私钥材料
+```
+
+**公开群 REST（无 Tapp Grant、无需登录）**：`GET /api/federation/public/rooms/{room_id}`  
+仅当 `is_public = true` 时返回卡片（name、owner、home_server、member_count 等）。跨实例
+`joinRoom` 会向该端点拉元数据并物化本地行；**不可**用任意 `home_server` 把本机私有群改成公开。
+
+**`getRoom` 字段**：除基础治理字段外，成员可读 `shared_data_config`（含
+`e2e.published_keys`，公钥 map，供 UI 判断 E2E 是否就绪）。私有密钥只在服务端成员
+`custom_permissions` 密封存储，不会出现在详情响应里。
 
 实时事件（沙箱内回调，不单独占权限条目；订阅本身要 `federation:message`）：
 
 ```javascript
 Tapp.federation.onMessage((ev) => { /* scope: channel | room */ });
 Tapp.federation.onChannelUpdate((ev) => { /* accepted | closed | disconnected */ });
-Tapp.federation.onRoomUpdate((ev) => { /* governance_changed | disconnected */ });
+Tapp.federation.onRoomUpdate((ev) => { /* governance_changed | member_* | disconnected */ });
 ```
 
-Channel/Room 文本消息后端载荷上限约 **10 MiB**；文件传输默认 chunk 约 **1 MiB** raw
-（base64 后约 1.37 MiB，低于联邦 inbox 体量上限）。参数与 REST 字段以
-`frontend/src/types/federation.ts` 与后端路由为准，勿从方法名臆造字段。
+Channel/Room **JSON 消息**（含内联 base64 图）后端载荷上限 **32 MiB**
+（`MAX_MESSAGE_PAYLOAD` / `MAX_ROOM_MESSAGE_PAYLOAD`）；联邦 API 路由 DefaultBodyLimit
+约 **40 MiB**。更大附件请走分块传输（默认 chunk 约 **1 MiB** raw，base64 后约 1.37 MiB）。
+加密时 `sendMessage` / `sendRoomMessage` 可设 `encrypt: true`：库内与联邦 fan-out 仍为密文，
+本机 WebSocket 在密钥可用时推送明文以免 UI 先闪 ciphertext。
+
+参数与 REST 字段以 `frontend/src/types/federation.ts`、后端路由与
+`fixtures/action_permissions.json` 为准，勿从方法名臆造字段。
 
 ---
 

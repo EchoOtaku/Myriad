@@ -1,8 +1,27 @@
 # 安全响应头配置指南
 
-当前状态：安全响应头已经由后端中间件
-`backend/src/middleware/security.rs` 添加，并在 `backend/src/main.rs` 的 router
-上启用。生产部署中，浏览器请求先进入 Myriad `proxy`，再转发到 backend/frontend。
+当前状态：安全响应头由多层协作。生产部署中，浏览器请求先进入 Myriad `proxy`，
+再转发到 backend / frontend。
+
+## 分层职责
+
+| 层 | 路径 | 作用 |
+| --- | --- | --- |
+| **backend** | `backend/src/middleware/security.rs` | API 响应：CSP、XFO、Permissions-Policy 等 |
+| **proxy** | `proxy/src/main.rs` | 上游**未带** `Permissions-Policy` 时补齐（覆盖静态 SPA 文档） |
+| **frontend** | `frontend/public/serve.json` + Astro dev middleware | 静态 `serve` / 本地 dev 文档级策略 |
+
+浏览器定位（天气）依赖 **HTML 文档** 上的
+`Permissions-Policy: geolocation=(self)`，而不是仅 API 响应头。
+因此 proxy 会在转发 frontend 时注入该头（若缺失）。
+
+统一策略字符串（三处保持一致）：
+
+```text
+geolocation=(self), microphone=(), camera=()
+```
+
+含义：本站可请求定位；麦克风/摄像头仍禁用。
 
 ## 后端已添加的响应头
 
@@ -12,7 +31,7 @@
 - `X-Frame-Options: DENY`
 - `X-XSS-Protection: 1; mode=block`
 - `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy: geolocation=(), microphone=(), camera=()`
+- `Permissions-Policy: geolocation=(self), microphone=(), camera=()`（本站可请求定位，用于天气等）
 - `Strict-Transport-Security`：仅 `ENVIRONMENT=production` 时添加。
 
 开发环境默认不启用 CSP。如需本地验证 CSP：
@@ -21,12 +40,22 @@
 ENABLE_CSP_DEV=true
 ```
 
+### 天气定位与安全头 / proxy
+
+1. **浏览器定位**：需 secure context（HTTPS 或 localhost）+ 文档级
+   `geolocation=(self)`。不经 proxy 解析 IP。
+2. **IP 兜底**：`GET /api/proxy/client-geo` 经 proxy 解析真客户端 IP
+   （`X-Real-IP` / 可信 XFF / CDN 头）。见下文「Docker + 宿主反向代理」。
+3. **外层 Nginx/Caddy**：不要设置 `Permissions-Policy: geolocation=()`，否则会覆盖
+   Myriad 允许本站定位的策略。若外层自行加 Permissions-Policy，请使用与上表相同的
+   `geolocation=(self), microphone=(), camera=()`。
+
 ## 当前生产拓扑
 
 ```text
 client -> optional TLS entrypoint -> Myriad proxy:${HTTP_PORT:-80}
-                                    ├-> frontend:1102
-                                    └-> backend:1103
+                                    ├-> frontend:1102  (+ Permissions-Policy if missing)
+                                    └-> backend:1103   (full security headers)
 ```
 
 外层 Nginx/Caddy/负载均衡器如果存在，应**整站**代理到 Myriad `proxy` 的宿主端口，

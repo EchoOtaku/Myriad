@@ -38,7 +38,7 @@ export const zhCN: TranslationKeys = {
   nav: {
     home: '首页',
     library: '资料库',
-    reports: '数据报告',
+    reports: '平台报告',
     config: '配置',
     login: '登录',
     logout: '退出',
@@ -52,8 +52,6 @@ export const zhCN: TranslationKeys = {
     backToNav: '返回导航',
     platformReport: '平台报告',
     showPlatformReport: '显示平台报告',
-    comprehensiveReport: '综合报告',
-    showComprehensiveReport: '显示综合报告',
     all: '全部',
     showAll: '显示全部内容',
     game: '游戏',
@@ -75,7 +73,6 @@ export const zhCN: TranslationKeys = {
     currentFilterAnime: '当前筛选：追番 - 点击展开筛选',
     currentFilterTvSeries: '当前筛选：追剧 - 点击展开筛选',
     currentTabPlatform: '当前查看：平台报告 - 点击展开切换',
-    currentTabComprehensive: '当前查看：综合报告 - 点击展开切换',
     expandFilters: '点击展开筛选',
     switchTab: '点击切换标签',
     // Brew
@@ -160,12 +157,10 @@ export const zhCN: TranslationKeys = {
     oauthErrorStateSlugMismatch:
       'OAuth 提供商不匹配（可能混用了两个登录按钮）。请从登录页重新开始。',
     oauthErrorMissingCode: '授权未完成（未返回授权码）。请重新尝试登录。',
-    oauthErrorMissingState:
-      '回调中缺少登录会话。请在本页重新发起第三方登录。',
+    oauthErrorMissingState: '回调中缺少登录会话。请在本页重新发起第三方登录。',
     oauthErrorAccessDenied:
       '已取消或拒绝授权。若要登录，请在提供商页面同意访问，或换用其他方式。',
-    oauthErrorTemporarilyUnavailable:
-      '身份提供商暂时不可用。请稍后再试。',
+    oauthErrorTemporarilyUnavailable: '身份提供商暂时不可用。请稍后再试。',
     oauthErrorServerError:
       '身份提供商返回服务器错误。请稍后再试，或使用其他登录方式。',
     oauthErrorInvalidRequest:
@@ -184,15 +179,13 @@ export const zhCN: TranslationKeys = {
     oauthErrorLoginFailed:
       '第三方登录失败。请重试，或在可用时使用用户名密码登录。',
     invalidCredentials: '用户名或密码不正确。',
-    localLoginDisabled:
-      '此账号已禁用密码登录。请使用已绑定的第三方账号登录。',
+    localLoginDisabled: '此账号已禁用密码登录。请使用已绑定的第三方账号登录。',
     linkSuccess: '账号绑定成功。',
     linkSuccessProvider: '已成功绑定 {provider}。',
     linkSuccessDetail: '已绑定 {provider}（{username}）。',
     linkErrorAlreadyLinked:
       '该第三方账号已绑定到其他用户。请先在对方账号解绑，或换用其他账号。',
-    linkErrorUserNotFound:
-      '绑定时找不到当前用户会话。请重新登录后再试绑定。',
+    linkErrorUserNotFound: '绑定时找不到当前用户会话。请重新登录后再试绑定。',
     linkErrorUnknown: '无法绑定账号（{reason}）。请重试或联系站点管理员。',
     linkErrorGeneric: '无法绑定账号。请重试或联系站点管理员。',
     loginWith: '使用 {name} 登录',
@@ -355,7 +348,8 @@ export const zhCN: TranslationKeys = {
     federationKnownInstances: '已知实例',
     federationKnownInstancesDesc:
       '按域名维护信任等级与封禁状态。等级 2–4 仅支持手动设置；用户关注关系不会变更此处等级。已封禁域名的入站与出站投递均被拒绝。',
-    federationNoInstances: '暂无实例记录。启用自动登记或产生入站流量后将出现于此。',
+    federationNoInstances:
+      '暂无实例记录。启用自动登记或产生入站流量后将出现于此。',
     federationBlocked: '已封禁',
     federationBlock: '封禁',
     federationUnblock: '解封',
@@ -397,7 +391,8 @@ export const zhCN: TranslationKeys = {
     federationRateLimitDesc:
       '按来源域名限制入站 Activity 频率。信任等级 ≥ 3（受信）时适用下方倍率。',
     federationRateMaxRequests: '窗口内最大请求数',
-    federationRateMaxRequestsDesc: '每个时间窗口内，单一来源域名允许的入站次数上限（默认 100）。',
+    federationRateMaxRequestsDesc:
+      '每个时间窗口内，单一来源域名允许的入站次数上限（默认 100）。',
     federationRateWindowSeconds: '时间窗口（秒）',
     federationRateWindowSecondsDesc: '计数窗口长度（默认 60 秒，最大 86400）。',
     federationRateTrustedMultiplier: '受信域名倍率',
@@ -671,8 +666,7 @@ export const zhCN: TranslationKeys = {
     updaterInfraProxyUpdateButton: '升级 proxy',
     updaterInfraProxyConfirm:
       '升级 proxy 到 {version}？边缘入口会短暂中断（通常 <10 秒）。',
-    updaterInfraProxyDispatched:
-      'proxy 已升级到 {version}（原 {previous}）。',
+    updaterInfraProxyDispatched: 'proxy 已升级到 {version}（原 {previous}）。',
     updaterInfraNeedCheck: '请先「检查更新」以获取目标版本。',
     updaterTargetGroupTitle: '安装指定版本（高级）',
     updaterTargetGroupDesc: '安装历史正式版或指定提交。日常无需使用。',
@@ -887,20 +881,13 @@ export const zhCN: TranslationKeys = {
       '支持 OpenAI API 和其他兼容服务（如 Azure OpenAI、第三方代理等）',
     // AI 图片生成配置
     aiImageTitle: 'AI 图片生成',
-    aiImageDesc: 'Pollinations 免费快速响应 · PixAI 专业动漫图片生成（需付费）',
+    aiImageDesc: '统一接入 OpenAI、OpenRouter、火山引擎 Seedream 与 PixAI',
     aiImageUsageTitle: '使用说明',
     enableAiImage: '启用 AI 图片生成',
     aiImageHint: '启用后可在 Myriad 中使用 AI 生成图片功能',
-    pollinationsDescription:
-      '完全免费，响应快速（<1秒），适合开发测试和快速迭代',
     pixaiDescription:
       '专业动漫图片生成 API，支持多种模型（需付费，需要 API Key）',
-    pollinationsFree: '免费',
     pixaiBadge: 'SD/DiT',
-    fluxAnimeRecommend: 'Flux Anime (推荐)',
-    fluxDefault: 'Flux (默认)',
-    fluxRealism: 'Flux Realism (写实)',
-    flux3D: 'Flux 3D (3D风格)',
     pixaiPlaceholder: '从 platform.pixai.art 获取',
     pixaiModelId: '模型版本 ID',
     // 语音服务配置 (TTS/ASR)
@@ -933,7 +920,8 @@ export const zhCN: TranslationKeys = {
     platformDescX: '同步你的 X 资料与帖子；分享走 Web Intent',
     platformDescDiscord:
       '同步 Discord 画像、服务器足迹与绑定账号（Steam / GitHub 等）',
-    platformDescMal: '用户名必填；可不填 Client ID（默认公开列表 load.json），填写后走官方 API',
+    platformDescMal:
+      '用户名必填；可不填 Client ID（默认公开列表 load.json），填写后走官方 API',
     discordConnect: '使用 Discord 授权',
     discordReconnect: '重新授权 Discord',
     discordConnectHint:
@@ -1261,11 +1249,11 @@ export const zhCN: TranslationKeys = {
     tappShortcut: 'Tapp 快捷方式',
     gamePresence: '米哈游游戏卡片',
     library: '资料库',
-    dataReport: '数据报告',
+    dataReport: '平台报告',
     multiPlatformAggregation: '多平台内容聚合',
-    dualLayerAnalysis: '双层智能分析',
+    dualLayerAnalysis: '各平台画像与数据洞察',
     showPersonality: '展示个性，在一个地方',
-    platformProfile: '平台画像 + AI综合分析',
+    platformProfile: '平台画像与报告生成',
     // Brew 阅读
     brewReading: 'Brew 阅读',
     brewDesc: 'RSS 订阅管理',
@@ -1389,6 +1377,7 @@ export const zhCN: TranslationKeys = {
     generating: '正在生成报告...',
     generated: '报告已生成',
   },
+
 
   // 账户
   account: {
@@ -1733,17 +1722,7 @@ export const zhCN: TranslationKeys = {
     unknownPlatform: '未知平台',
     generating: '生成中',
     generate: '生成',
-    comprehensiveReport: '综合报告',
-    adminOnlyGenerateHint: '仅管理员可生成',
-    styleDescPlaceholder: '输入风格描述...',
-    allPlatformReport: '全平台综合报告',
-    confirmDeleteReport: '确定要删除这份综合报告吗？此操作不可恢复。',
-    deleteReport: '删除报告',
     tenThousandSuffix: '万',
-    noComprehensiveReport: '暂无综合报告',
-    useInputToGenerate: '使用上方的输入框生成你的第一份综合报告',
-    adminNotGenerated: '管理员还未生成综合报告',
-    waitingGenerate: '等待生成',
     bangumiDone: '看过',
     bangumiDoing: '在看',
     bangumiWish: '想看',
@@ -1971,6 +1950,7 @@ export const zhCN: TranslationKeys = {
     samplePlaylist: '示例歌单',
     samplePlaylist2: '夜车电台',
     bangumiTasteDefault: 'ACG 深度收藏',
+    malTasteDefault: '动漫列表收藏家',
     fetchReportFailed: '获取报告失败',
     steamOnline: '在线',
     steamOffline: '离线',
@@ -3122,7 +3102,7 @@ export const zhCN: TranslationKeys = {
     pageHints: {
       library: ['想听什么音乐？', '探索新歌单', '整理收藏', '随机播放'],
       brew: ['来杯什么？', '查看订阅', '刷新内容', '探索发现'],
-      reports: ['查看分析报告', '生成新报告', '数据洞察'],
+      reports: ['查看平台报告', '生成新报告', '数据洞察'],
       config: ['需要调整设置？', '个性化配置', '优化体验'],
       dataManagement: ['管理数据', '同步数据', '清理缓存'],
       tapp: ['发现新应用', '管理 Tapp', '运行应用'],

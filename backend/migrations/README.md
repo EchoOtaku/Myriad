@@ -24,7 +24,7 @@ sea-orm-cli migrate generate create_new_table
 5. `005_federation` - Federation identities and messages
 6. `006_oauth_identities` - OAuth/OIDC identity bindings
 
-Base CREATE tables (001–006) include the current column set for greenfield installs.
+Base CREATE tables (001–007) include the current column set for greenfield installs.
 Thin ALTER-only migrations that only added columns or healed data were retired:
 
 - `007_notification_preferences` → `users.notification_preferences` in 001
@@ -32,7 +32,7 @@ Thin ALTER-only migrations that only added columns or healed data were retired:
 - `009_user_presence` → `users.last_seen_at` / `online_seconds` in 001 + schema_check
 - `010_user_owner` / `011_owner_is_admin` → `users.is_owner` in 001 + `ensure_single_owner`
 
-Whole tables are created by Migrator (001–006). Runtime `schema_check` keeps
+Whole tables are created by Migrator (001–007). Runtime `schema_check` keeps
 **structure authority** (expected columns/indexes) and **ongoing** heals (platform
 seeds, single owner, storage-quota trigger). It does **not** re-create long-stable
 tables for ancient half-upgraded DBs. The `_schema_versions` mark records the

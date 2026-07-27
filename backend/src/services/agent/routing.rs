@@ -195,7 +195,6 @@ impl AgentRouter {
             "ai.image".to_string(),
             "tapp.generate".to_string(),
             "prompt.".to_string(),
-            "report.comprehensive".to_string(),
             "report.create".to_string(),
             "code.".to_string(),
             "speech.".to_string(),

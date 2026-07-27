@@ -209,6 +209,12 @@ pub async fn create_report(
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(TappPermission::ReportWrite)?;
+    if !matches!(req.report_type.as_str(), "platform" | "custom") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": "report_type must be platform or custom" })),
+        ));
+    }
     let user_id =
         authorize_tapp_permission(&db, &claims, &req.tapp_id, TappPermission::ReportWrite).await?;
 

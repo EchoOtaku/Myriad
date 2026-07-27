@@ -1,8 +1,4 @@
-import {
-  getBrowserGeolocation,
-  getClientIdentifier,
-  getGeoLocationWithLocalCache,
-} from './geoLocation'
+import { resolvePreciseLocation } from './geoLocation'
 import { dedupedFetch } from './requestDedup'
 
 const WEATHER_ICON_BASE = '/icons/weather'
@@ -50,36 +46,27 @@ export interface WeatherData {
 }
 
 /**
- * 获取天气信息 - 完全重构版（改进缓存策略）
+ * 获取天气信息
  *
- * 缓存策略：
- * 1. IP→地理位置：缓存24小时（位置很少变化）
- * 2. 位置→天气：缓存30分钟（天气会变化）
- * 3. 每个用户根据自己的IP获取对应位置的天气
+ * 定位优先级：
+ * 1. 浏览器定位（高精度，缓存约 6h；用户拒绝后不再弹窗）
+ * 2. IP 定位（后端 client-geo + 公共 API 兜底）
  *
- * 工作流程：
- * 1. 获取客户端IP
- * 2. 检查IP→地理位置缓存（24小时）
- * 3. 如果没有缓存，通过多个服务获取地理位置并缓存
- * 4. 检查位置→天气缓存（30分钟）
- * 5. 如果没有缓存，获取天气数据并缓存
+ * 缓存：
+ * - 位置→天气：localStorage 30 分钟
  */
 export async function getWeatherInfo(): Promise<WeatherData | null> {
   try {
-    // 步骤1: 获取客户端IP
-    const clientIP = await getClientIP()
-    if (!clientIP) {
-      return null
-    }
-
-    // 步骤2: 获取地理位置（带缓存）
-    const location = await getGeolocationWithCache(clientIP)
+    const location = await resolvePreciseLocation()
     if (!location) {
       return null
     }
 
-    // 步骤3: 获取天气数据（带缓存）
-    const weatherData = await getWeatherDataWithCache(location)
+    const weatherData = await getWeatherDataWithCache({
+      latitude: location.latitude,
+      longitude: location.longitude,
+      city: location.city,
+    })
     if (!weatherData) {
       return null
     }
@@ -89,44 +76,6 @@ export async function getWeatherInfo(): Promise<WeatherData | null> {
     console.warn('[天气] 获取失败:', error)
     return null
   }
-}
-
-/**
- * 获取客户端IP地址/标识
- * 使用统一的地理位置服务
- */
-async function getClientIP(): Promise<string | null> {
-  return getClientIdentifier()
-}
-
-/**
- * 获取地理位置（带IP缓存）
- * 使用统一的地理位置服务
- */
-async function getGeolocationWithCache(
-  clientIP: string,
-): Promise<{ latitude: number; longitude: number; city: string } | null> {
-  const location = await getGeoLocationWithLocalCache(clientIP)
-
-  if (location) {
-    return {
-      latitude: location.latitude,
-      longitude: location.longitude,
-      city: location.city,
-    }
-  }
-
-  // 最后尝试浏览器地理位置 API
-  const browserLocation = await getBrowserGeolocation()
-  if (browserLocation) {
-    return {
-      latitude: browserLocation.latitude,
-      longitude: browserLocation.longitude,
-      city: browserLocation.city,
-    }
-  }
-
-  return null
 }
 
 /**

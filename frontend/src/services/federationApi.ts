@@ -1175,14 +1175,19 @@ export const federationApi = {
     )
   },
 
-  /** Self-join an open-policy room */
+  /** Self-join an open/public room. `roomId` may be bare or `rm_…@home[:port]`. */
   joinRoom(
     roomId: string,
     runtimeGrant?: string,
+    options?: { home_server?: string },
   ): Promise<{ success: boolean; membership_status?: string }> {
+    const body =
+      options?.home_server && options.home_server.trim()
+        ? { home_server: options.home_server.trim() }
+        : {}
     return apiService.post(
-      `${PREFIX}/rooms/${roomId}/join`,
-      {},
+      `${PREFIX}/rooms/${encodeURIComponent(roomId)}/join`,
+      body,
       attributionOptions(runtimeGrant),
     )
   },

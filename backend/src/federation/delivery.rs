@@ -2181,10 +2181,7 @@ mod tests {
             "CANCELLED: suite",
         ];
         for msg in cancelled_msgs {
-            assert!(
-                is_intentional_cancel_delivery_error(Some(msg)),
-                "msg={msg}"
-            );
+            assert!(is_intentional_cancel_delivery_error(Some(msg)), "msg={msg}");
             assert!(
                 !should_offer_retry_for_dead_error(Some(msg)),
                 "no retry for {msg}"

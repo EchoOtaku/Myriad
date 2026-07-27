@@ -1,19 +1,11 @@
 import type { WidgetConfig } from './WidgetGrid'
 import {
-  FaBook,
-  FaGamepad,
-  FaMusic,
-  FaVideo,
-} from '@lib/icons'
-import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
 
-import { useReportsVisibilityInterval } from '../hooks/animation'
-import PlatformIcon from './PlatformIcon'
 import { ReportCardWidget } from './widgets/ReportCardWidget'
 
 const DARK_ORIGINAL_BG =
@@ -95,14 +87,6 @@ function getBlurAmount(easeProgress: number, isEnteringPhase: boolean) {
   return isEnteringPhase ? easeProgress * 20 : (1 - easeProgress) * 20
 }
 
-function getPlaceholderIcon(type: string) {
-  if (type === 'game') return <FaGamepad />
-  if (type === 'video' || type === 'anime' || type === 'tv_series')
-    return <FaVideo />
-  if (type === 'music') return <FaMusic />
-  return <FaBook />
-}
-
 // 🚀 性能优化：预编译正则表达式（避免每次调用时重新创建）
 const CONTROL_CHARS_REGEX = /[\u0000-\u001F\u007F-\u009F]/g
 const MARKDOWN_SYMBOLS_REGEX = /[*_~`]/g
@@ -147,15 +131,7 @@ interface StageModeProps {
     summary?: string
     insights?: string[]
     card_visuals?: any
-    // 综合报告字段
-    综合分析?: any
-    library_items?: Array<{
-      title: string
-      cover?: string
-      type: string
-      platform?: string
-    }>
-    type?: 'platform' | 'comprehensive'
+    type?: 'platform'
   } | null
   onRefresh?: () => void // 刷新当前报告的回调
   playAllMode?: boolean // 是否在播放全部模式下
@@ -321,226 +297,6 @@ function SubtitleDisplay({
   )
 }
 
-// 综合报告资料库卡片组件
-const ComprehensiveLibraryWidget = memo(
-  ({
-    libraryItems,
-  }: {
-    libraryItems: Array<{
-      title: string
-      cover?: string
-      type: string
-      platform?: string
-    }>
-  }) => {
-    const { t } = useI18n()
-
-    // 内容类型标签映射
-    const getTypeLabel = (type: string) => {
-      switch (type) {
-        case 'game':
-          return t.reportsPage.game
-        case 'anime':
-          return t.reportsPage.anime
-        case 'tv_series':
-          return t.reportsPage.tvSeries
-        case 'video':
-          return t.reportsPage.video
-        case 'music':
-          return t.reportsPage.music
-        default:
-          return t.reportsPage.content
-      }
-    }
-
-    // 随机打乱数组并缓存
-    const shuffledItems = useMemo(() => {
-      const items = [...libraryItems]
-      for (let i = items.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1))
-        ;[items[i], items[j]] = [items[j], items[i]]
-      }
-      return items
-    }, [libraryItems])
-
-    const [currentIndex, setCurrentIndex] = useState(0)
-
-    // 🔧 使用报告页原子化可见性感知定时器进行舞台模式轮播
-    useReportsVisibilityInterval(
-      () => setCurrentIndex((prev) => (prev + 1) % shuffledItems.length),
-      shuffledItems.length > 0 ? 5000 : null,
-    )
-
-    if (shuffledItems.length === 0) return null
-
-    const currentItem = shuffledItems[currentIndex]
-
-    // 获取平台颜色
-    const getPlatformColor = () => {
-      const platform = currentItem.platform?.toLowerCase()
-      switch (platform) {
-        case 'bilibili':
-          return '#00A1D6'
-        case 'steam':
-          return '#171a21'
-        case 'github':
-          return '#24292e'
-        case 'netease':
-        case 'netease music':
-          return '#d33a31'
-        case 'bangumi':
-          return '#f09199'
-        default:
-          return '#6b7280'
-      }
-    }
-
-    return (
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={currentIndex}
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9 }}
-          transition={{ duration: 0.5 }}
-          className="w-full h-full"
-        >
-          <div className="relative w-full h-full rounded-xl overflow-hidden shadow-2xl bg-white dark:bg-black/90">
-            <div className="absolute inset-0">
-              {currentItem.cover ? (
-                <img
-                  src={currentItem.cover}
-                  alt={currentItem.title}
-                  className="w-full h-full object-cover"
-                  loading="lazy"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-[var(--color-primary,#10b981)] to-[var(--color-accent,#059669)]">
-                  <span className="text-6xl">
-                    {getPlaceholderIcon(currentItem.type)}
-                  </span>
-                </div>
-              )}
-              <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/50 to-transparent" />
-            </div>
-
-            <div className="absolute bottom-0 left-0 right-0 p-4">
-              <div className="inline-flex max-w-full">
-                <div className="bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm rounded-lg p-3 shadow-lg">
-                  <h3 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 mb-2">
-                    {currentItem.title}
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    {currentItem.platform && (
-                      <div
-                        className="flex items-center justify-center w-6 h-6 rounded-md"
-                        style={{
-                          backgroundColor: `${getPlatformColor()}15`,
-                          color: getPlatformColor(),
-                        }}
-                      >
-                        <PlatformIcon
-                          platform={currentItem.platform}
-                          className="w-4 h-4"
-                        />
-                      </div>
-                    )}
-                    <span className="px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300">
-                      {getTypeLabel(currentItem.type)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      </AnimatePresence>
-    )
-  },
-)
-
-// 综合报告解析：将综合分析转换为篇章
-function parseComprehensiveReportToChapters(analysis: any): StageChapter[] {
-  const chapters: StageChapter[] = []
-
-  // 遍历综合分析的所有字段
-  const styleFields = [
-    'theme_color',
-    'theme_icon',
-    'visual_style',
-    'decorative_emojis',
-    'card_subtitle',
-    'key_metric',
-    'background_elements',
-    'icon_image_url',
-    'icon_prompt',
-  ]
-
-  Object.entries(analysis)
-    .filter(([key]) => !styleFields.includes(key))
-    .forEach(([key, value]) => {
-      if (typeof value === 'string' && value.trim()) {
-        const cleanedText = cleanText(value)
-        const sentences = splitByPunctuation(cleanedText)
-
-        if (sentences.length > 0) {
-          const formatFieldName = (name: string) => {
-            return name
-              .split('_')
-              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-              .join(' ')
-          }
-
-          chapters.push({
-            title: formatFieldName(key),
-            lines: sentences.map((sentence, i) => ({
-              text: sentence,
-              delay: i === 0 ? 800 : 1500,
-            })),
-          })
-        }
-      } else if (
-        Array.isArray(value) &&
-        value.length > 0 &&
-        typeof value[0] === 'string'
-      ) {
-        const isShortStrings = value.every(
-          (item: any) => typeof item === 'string' && item.length < 20,
-        )
-
-        if (!isShortStrings) {
-          const formatFieldName = (name: string) => {
-            return name
-              .split('_')
-              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-              .join(' ')
-          }
-
-          // 对数组中的每一项进行标点分段处理
-          const allLines: SubtitleLine[] = []
-          value.forEach((item: string, itemIndex: number) => {
-            const cleanedItem = cleanText(item)
-            const sentences = splitByPunctuation(cleanedItem)
-
-            sentences.forEach((sentence, sentenceIndex) => {
-              allLines.push({
-                text: sentence,
-                delay: itemIndex === 0 && sentenceIndex === 0 ? 800 : 1500,
-              })
-            })
-          })
-
-          chapters.push({
-            title: formatFieldName(key),
-            lines: allLines,
-          })
-        }
-      }
-    })
-
-  return chapters
-}
-
 // 内容解析：将报告转换为篇章
 function parseReportToChapters(
   reportData: {
@@ -622,26 +378,16 @@ export default function StageMode({
 
   // 与报告页卡片共用同一 config 形状，避免 memo 无意义失效
   const stageWidgetConfig = useMemo((): WidgetConfig | null => {
-    if (!reportData?.platform || reportData.type === 'comprehensive') return null
+    if (!reportData?.platform) return null
     return {
       config: { platformId: reportData.platform },
     } as WidgetConfig
-  }, [reportData?.platform, reportData?.type])
+  }, [reportData?.platform])
 
   const renderWidget = () => {
-    if (!reportData) return null
-
-    // 综合报告显示资料库卡片
-    if (reportData.type === 'comprehensive') {
-      const libraryItems = reportData.library_items || []
-      if (libraryItems.length > 0) {
-        return <ComprehensiveLibraryWidget libraryItems={libraryItems} />
-      }
-      return null
-    }
+    if (!reportData || !stageWidgetConfig) return null
 
     // 平台报告：复用 ReportCardWidget，舞台放大时内部内容等比缩放
-    if (!stageWidgetConfig) return null
     return (
       <StageScaledReportCard
         config={stageWidgetConfig}
@@ -681,10 +427,7 @@ export default function StageMode({
         deepInsight: t.reportsPage.deepInsight,
       }
 
-      // 判断是综合报告还是平台报告
-      if (reportData.type === 'comprehensive' && reportData.综合分析) {
-        parsedChapters = parseComprehensiveReportToChapters(reportData.综合分析)
-      } else if (reportData.summary && reportData.insights) {
+      if (reportData.summary && reportData.insights) {
         parsedChapters = parseReportToChapters(
           {
             summary: reportData.summary,

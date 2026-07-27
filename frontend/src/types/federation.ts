@@ -408,6 +408,14 @@ export interface RoomDetail {
   max_members: number
   is_public: boolean
   enabled_tapps?: unknown
+  /** Includes e2e.published_keys (public keys only) for room E2E readiness */
+  shared_data_config?: {
+    e2e?: {
+      published_keys?: Record<string, string>
+      [key: string]: unknown
+    }
+    [key: string]: unknown
+  }
   my_role?: string
   /** active | pending */
   my_membership_status?: string

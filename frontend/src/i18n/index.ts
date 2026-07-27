@@ -53,8 +53,6 @@ export interface TranslationKeys {
     backToNav: string
     platformReport: string
     showPlatformReport: string
-    comprehensiveReport: string
-    showComprehensiveReport: string
     all: string
     showAll: string
     game: string
@@ -76,7 +74,6 @@ export interface TranslationKeys {
     currentFilterAnime: string
     currentFilterTvSeries: string
     currentTabPlatform: string
-    currentTabComprehensive: string
     expandFilters: string
     switchTab: string
     // Brew
@@ -839,14 +836,8 @@ export interface TranslationKeys {
     aiImageUsageTitle: string
     enableAiImage: string
     aiImageHint: string
-    pollinationsDescription: string
     pixaiDescription: string
-    pollinationsFree: string
     pixaiBadge: string
-    fluxAnimeRecommend: string
-    fluxDefault: string
-    fluxRealism: string
-    flux3D: string
     pixaiPlaceholder: string
     pixaiModelId: string
     // Speech service (TTS/ASR) configuration
@@ -1292,6 +1283,8 @@ export interface TranslationKeys {
     generated: string
   }
 
+  // 数字生命
+
   // 账户
   account: {
     title: string
@@ -1633,17 +1626,7 @@ export interface TranslationKeys {
     unknownPlatform: string
     generating: string
     generate: string
-    comprehensiveReport: string
-    adminOnlyGenerateHint: string
-    styleDescPlaceholder: string
-    allPlatformReport: string
-    confirmDeleteReport: string
-    deleteReport: string
     tenThousandSuffix: string
-    noComprehensiveReport: string
-    useInputToGenerate: string
-    adminNotGenerated: string
-    waitingGenerate: string
     bangumiDone: string
     bangumiDoing: string
     bangumiWish: string
@@ -1870,6 +1853,7 @@ export interface TranslationKeys {
     calmMood: string
     nightMood: string
     bangumiTasteDefault: string
+    malTasteDefault: string
     fetchReportFailed: string
     steamOnline: string
     steamOffline: string

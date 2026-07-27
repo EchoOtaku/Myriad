@@ -853,7 +853,7 @@ export function generateFullSDK(
         sendRequest('federation', 'cancelAllPendingDelivery', [limit]),
       dismissDelivery: (id) => sendRequest('federation', 'dismissDelivery', [id]),
       purgeDeadDelivery: (opts) => sendRequest('federation', 'purgeDeadDelivery', [opts]),
-      joinRoom: (roomId) => sendRequest('federation', 'joinRoom', [roomId]),
+      joinRoom: (roomId, opts) => sendRequest('federation', 'joinRoom', [roomId, opts]),
       updateInstanceTrust: (req) => sendRequest('federation', 'updateInstanceTrust', [req]),
       toggleInstanceBlock: (req) => sendRequest('federation', 'toggleInstanceBlock', [req]),
       // 文件传输

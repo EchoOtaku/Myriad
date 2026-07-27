@@ -76,6 +76,13 @@ export const WelcomeWidget = memo(
           color: '#06b6d4',
         },
         {
+          title: t.widgets.digitalLife,
+          description: t.widgets.digitalLifeDesc,
+          features: [t.widgets.digitalLifeFeature],
+          path: '/life',
+          color: '#14b8a6',
+        },
+        {
           title: t.widgets.brewReading,
           description: t.widgets.brewDesc,
           features: [t.widgets.brewFeature],
@@ -197,6 +204,25 @@ export const WelcomeWidget = memo(
               strokeLinejoin="round"
               d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
             />
+          </svg>
+        )
+      }
+      if (guide.path === '/life') {
+        return (
+          <svg
+            className={iconClass}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M19.25 4.75h-3m1.5-1.5v3M12 21a8 8 0 100-16 8 8 0 000 16zM8.75 14.75c.85.85 1.93 1.25 3.25 1.25s2.4-.4 3.25-1.25"
+            />
+            <circle cx="9" cy="11.5" r="0.8" fill="currentColor" stroke="none" />
+            <circle cx="15" cy="11.5" r="0.8" fill="currentColor" stroke="none" />
           </svg>
         )
       }

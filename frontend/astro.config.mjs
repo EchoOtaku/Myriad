@@ -22,6 +22,10 @@ const APP_VERSION = pkg.version || '0.3.12'
  * 将动态路由（如 /tapp/run/:id）在服务端重定向到 catch-all 页面
  * 但保留原始 URL，让 React Router 在客户端正确解析参数
  */
+/** Align with proxy/backend: document-level geolocation for weather. */
+const DOCUMENT_PERMISSIONS_POLICY =
+  'geolocation=(self), microphone=(), camera=()'
+
 function spaFallbackPlugin() {
   return {
     name: 'spa-fallback',
@@ -29,6 +33,11 @@ function spaFallbackPlugin() {
     configureServer(server) {
       // 直接添加中间件，不返回函数
       server.middlewares.use((req, res, next) => {
+        // Dev: document gets Permissions-Policy without going through Myriad proxy
+        if (!res.getHeader('Permissions-Policy')) {
+          res.setHeader('Permissions-Policy', DOCUMENT_PERMISSIONS_POLICY)
+        }
+
         const url = req.url || ''
 
         // 动态 Tapp 路由回退：/tapp/run/* 和 /tapp/detail/*
@@ -53,6 +62,14 @@ function spaFallbackPlugin() {
         next()
       })
     },
+    configurePreviewServer(server) {
+      server.middlewares.use((_req, res, next) => {
+        if (!res.getHeader('Permissions-Policy')) {
+          res.setHeader('Permissions-Policy', DOCUMENT_PERMISSIONS_POLICY)
+        }
+        next()
+      })
+    },
   }
 }
 
@@ -65,6 +82,11 @@ const BACKEND_TARGET = 'http://127.0.0.1:1103'
 const PLAYGROUND_PROXY_TIMEOUT_MS = 20 * 60 * 1000
 // Federation file-meta downloads / chunk uploads can exceed the default 30s.
 const FEDERATION_TRANSFER_PROXY_TIMEOUT_MS = 10 * 60 * 1000
+// Digital Life onboarding / visuals: a single directional rig is composed
+// from five independently validated image sheets. Provider retries can exceed
+// three minutes, so the proxy must match the 15-minute rig client contract
+// instead of abandoning a still-running backend job.
+const DIGITAL_LIFE_PROXY_TIMEOUT_MS = 15 * 60 * 1000
 
 const HOP_BY_HOP_HEADERS = new Set([
   'connection',
@@ -82,6 +104,10 @@ const HOP_BY_HOP_HEADERS = new Set([
 function isFederationTransferContentPath(urlPath) {
   const path = (urlPath || '').split('?')[0] || ''
   return /^\/api\/federation\/transfers\/[^/]+\/content$/.test(path)
+}
+
+function isDigitalLifeApiPath(urlPath) {
+  const path = (urlPath || '').split('?')[0] || ''
 }
 
 /** Long-running federation transfer REST (initiate / list / chunk / cancel / get). */
@@ -321,7 +347,9 @@ function backendDevProxyPlugin() {
             : isFederationTransferApiPath(originalUrl) ||
                 isFederationTransferContentPath(originalUrl)
               ? FEDERATION_TRANSFER_PROXY_TIMEOUT_MS
-              : 30000
+              : isDigitalLifeApiPath(originalUrl)
+                ? DIGITAL_LIFE_PROXY_TIMEOUT_MS
+                : 30000
           // SSE and large transfer downloads must be piped. Buffering a multi-MB
           // GET /transfers/{id}/content (or a long-lived EventSource) hits the
           // ordinary timeout / memory path and turns a healthy stream into 502.

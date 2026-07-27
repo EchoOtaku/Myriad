@@ -1349,10 +1349,20 @@ const ModernConfigForm: React.FC = () => {
             let defaultValue = ''
             if (field.key === 'model') defaultValue = 'gemini-3-flash-preview'
             else if (field.key === 'ai_image_provider')
-              defaultValue = 'pollinations'
-            else if (field.key === 'ai_image_model') defaultValue = 'flux-anime'
-            else if (field.key === 'ai_image_width') defaultValue = '512'
-            else if (field.key === 'ai_image_height') defaultValue = '768'
+              defaultValue = 'openrouter'
+            else if (field.key === 'ai_image_model')
+              defaultValue = 'openai/gpt-image-2'
+            else if (field.key === 'ai_image_width') defaultValue = '1024'
+            else if (field.key === 'ai_image_height') defaultValue = '1024'
+            else if (field.key === 'ai_image_volcengine_base_url')
+              defaultValue = 'https://ark.cn-beijing.volces.com/api/v3'
+            else if (field.key === 'lite_provider') defaultValue = 'openai'
+            else if (field.key === 'lite_openai_model')
+              defaultValue = 'openai/gpt-oss-20b:free'
+            else if (field.key === 'lite_openai_base_url')
+              defaultValue = 'https://openrouter.ai/api/v1'
+            else if (field.key === 'lite_gemini_model')
+              defaultValue = 'gemini-3.5-flash'
             return { ...field, value: defaultValue }
           }),
         },

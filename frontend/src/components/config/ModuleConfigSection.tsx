@@ -145,6 +145,26 @@ function ReportsTitleIcon({ className }: { className?: string }) {
   )
 }
 
+function LifeTitleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+        d="M19.25 4.75h-3m1.5-1.5v3M12 21a8 8 0 100-16 8 8 0 000 16zM8.75 14.75c.85.85 1.93 1.25 3.25 1.25s2.4-.4 3.25-1.25"
+      />
+      <circle cx="9" cy="11.5" r="0.8" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="11.5" r="0.8" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 function QuoteTitleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="currentColor" viewBox="0 0 24 24">
@@ -404,6 +424,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       library: t.nav.library,
       brew: t.nav.brewReading,
       reports: t.nav.reports,
+      life: t.nav.life,
       tapp: t.nav.tappStore,
       agent: t.nav.agent,
     }),
@@ -417,6 +438,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       ),
       brew: <BrewTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       reports: <ReportsTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
+      life: <LifeTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       tapp: <MyriadStoreIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       agent: <LuSparkles className={MODULE_SETTING_TITLE_ICON_CLASS} />,
     }),

@@ -36,34 +36,6 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
-    // 综合报告生成
-    registry.register(Capability {
-        id: "report.comprehensive".to_string(),
-        name: "综合报告生成".to_string(),
-        description: "生成跨平台综合分析报告".to_string(),
-        category: CapabilityCategory::ResourceCreate,
-        supported_actions: vec![IntentAction::Create, IntentAction::Analyze],
-        input_schema: json!({
-            "type": "object",
-            "properties": {
-                "platforms": { "type": "array", "items": { "type": "string" } },
-                "style": { "type": "string", "enum": ["formal", "casual", "detailed"] }
-            }
-        }),
-        output_schema: json!({
-            "type": "object",
-            "properties": {
-                "reportId": { "type": "string" },
-                "summary": { "type": "string" },
-                "insights": { "type": "array" }
-            }
-        }),
-        required_permissions: vec!["report:write".to_string()],
-        requires_ai: true,
-        estimated_duration_ms: Some(8000),
-        ..Default::default()
-    });
-
     // 创建提醒
     registry.register(Capability {
         id: "reminder.create".to_string(),

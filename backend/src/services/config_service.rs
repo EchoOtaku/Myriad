@@ -89,6 +89,34 @@ impl ConfigService {
             }
         }
 
+        // AI Lite 模型配置
+        if let Some(v) = map.get("lite_ai_provider") {
+            if let Some(s) = v.as_str() {
+                config.lite_ai_provider = s.to_string();
+            }
+        }
+        if let Some(v) = map.get("lite_gemini_api_key") {
+            config.lite_gemini_api_key = v.as_str().map(str::to_string);
+        }
+        if let Some(v) = map.get("lite_gemini_model") {
+            if let Some(s) = v.as_str() {
+                config.lite_gemini_model = s.to_string();
+            }
+        }
+        if let Some(v) = map.get("lite_openai_api_key") {
+            config.lite_openai_api_key = v.as_str().map(str::to_string);
+        }
+        if let Some(v) = map.get("lite_openai_model") {
+            if let Some(s) = v.as_str() {
+                config.lite_openai_model = s.to_string();
+            }
+        }
+        if let Some(v) = map.get("lite_openai_base_url") {
+            if let Some(s) = v.as_str() {
+                config.lite_openai_base_url = s.to_string();
+            }
+        }
+
         // AI Pro 模型配置
         if let Some(v) = map.get("pro_enabled") {
             if let Some(b) = v.as_bool() {
@@ -392,10 +420,23 @@ impl ConfigService {
                 config.ai_image_height = n as i32;
             }
         }
+        if let Some(v) = map.get("ai_image_openai_api_key") {
+            config.ai_image_openai_api_key = v.as_str().map(str::to_string);
+        }
+        if let Some(v) = map.get("ai_image_openrouter_api_key") {
+            config.ai_image_openrouter_api_key = v.as_str().map(str::to_string);
+        }
+        if let Some(v) = map.get("ai_image_volcengine_api_key") {
+            config.ai_image_volcengine_api_key = v.as_str().map(str::to_string);
+        }
+        if let Some(v) = map.get("ai_image_volcengine_base_url") {
+            if let Some(s) = v.as_str() {
+                config.ai_image_volcengine_base_url = s.to_string();
+            }
+        }
         if let Some(v) = map.get("pixai_api_key") {
             config.pixai_api_key = v.as_str().map(|s| s.to_string());
         }
-
         // 腾讯云语音服务配置 (TTS/ASR)
         if let Some(v) = map.get("tencent_secret_id") {
             config.tencent_secret_id = v.as_str().map(|s| s.to_string());

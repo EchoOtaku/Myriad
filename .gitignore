@@ -88,3 +88,9 @@ out/
 /pgdata/
 /.dev-updater/
 /.pnpm-store
+/backend/data/digital-life
+/backend/data/digital-life/assets
+/backend/data/digital-life/assets
+/frontend/public/digital-life/animation-study
+/frontend/public/digital-life/animation-study
+/.verify-tapp-audit

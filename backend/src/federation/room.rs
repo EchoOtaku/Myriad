@@ -46,6 +46,28 @@ pub struct InviteMemberRequest {
     pub role: Option<String>,
 }
 
+/// Self-join open/public room (optional home for remote public rooms).
+#[derive(Debug, Default, Deserialize)]
+pub struct JoinRoomRequest {
+    /// Home instance host[:port] when room is not local (or use `room_id@home` in path).
+    pub home_server: Option<String>,
+}
+
+/// Unauthenticated public room metadata (only when `is_public = true`).
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PublicRoomInfo {
+    pub room_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub avatar_url: Option<String>,
+    pub owner_actor: String,
+    pub home_server: String,
+    pub invite_policy: String,
+    pub max_members: i32,
+    pub is_public: bool,
+    pub member_count: i64,
+}
+
 /// 发送 Room 消息请求
 #[derive(Debug, Deserialize)]
 pub struct SendRoomMessageRequest {
@@ -96,6 +118,9 @@ pub struct RoomDetail {
     pub max_members: i32,
     pub is_public: bool,
     pub enabled_tapps: Option<serde_json::Value>,
+    /// Includes `e2e.published_keys` (public keys only) for client E2E readiness UI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_data_config: Option<serde_json::Value>,
     pub my_role: Option<String>,
     /// active | pending
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -195,6 +220,59 @@ pub struct PinRoomMessageRequest {
 }
 
 // ==================== 辅助函数 ====================
+
+/// Resolve active membership to the *stored* actor_url + role (host/case tolerant).
+async fn resolve_active_member_actor(
+    db: &DatabaseConnection,
+    room_id: &str,
+    actor_url: &str,
+) -> Result<Option<(String, String)>, sea_orm::DbErr> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT actor_url, role, COALESCE(membership_status, 'active') AS membership_status
+               FROM federation_room_members
+               WHERE room_id = $1 AND actor_url = $2"#,
+            [room_id.into(), actor_url.into()],
+        ))
+        .await?;
+    if let Some(r) = row {
+        let status: String = r
+            .try_get("", "membership_status")
+            .unwrap_or_else(|_| "active".into());
+        if status == "active" {
+            let stored: String = r.try_get("", "actor_url").unwrap_or_default();
+            let role: String = r.try_get("", "role").unwrap_or_else(|_| "member".into());
+            if !stored.is_empty() {
+                return Ok(Some((stored, role)));
+            }
+        } else {
+            return Ok(None);
+        }
+    }
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT actor_url, role, COALESCE(membership_status, 'active') AS membership_status
+               FROM federation_room_members WHERE room_id = $1"#,
+            [room_id.into()],
+        ))
+        .await?;
+    for r in rows {
+        let url: String = r.try_get("", "actor_url").unwrap_or_default();
+        if same_actor_url(&url, actor_url) {
+            let status: String = r
+                .try_get("", "membership_status")
+                .unwrap_or_else(|_| "active".into());
+            if status != "active" {
+                return Ok(None);
+            }
+            let role: String = r.try_get("", "role").unwrap_or_else(|_| "member".into());
+            return Ok(Some((url, role)));
+        }
+    }
+    Ok(None)
+}
 
 /// 检查用户在 Room 中的角色
 pub(crate) async fn get_member_role(
@@ -678,7 +756,9 @@ pub async fn create_room(
 ) -> Result<RoomDetail, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
-    let home_server = extract_domain(&base_url).unwrap_or_default();
+    let home_server = extract_host_port(&base_url)
+        .or_else(|| extract_domain(&base_url))
+        .unwrap_or_default();
     let room_id = generate_room_id();
 
     let governance = req.governance_type.as_deref().unwrap_or("owner");
@@ -776,6 +856,7 @@ pub async fn create_room(
         max_members,
         is_public,
         enabled_tapps: None,
+        shared_data_config: None,
         my_role: Some("owner".to_string()),
         my_membership_status: Some("active".to_string()),
         member_count: 1,
@@ -1297,7 +1378,7 @@ pub async fn get_room(
             r#"SELECT r.room_id, r.name, r.description, r.avatar_url, r.owner_actor, r.home_server,
                       r.governance_type, r.governance_config, r.invite_policy,
                       r.distribution_strategy, r.max_members, r.is_public,
-                      r.enabled_tapps, r.created_at,
+                      r.enabled_tapps, r.shared_data_config, r.created_at,
                       rm.role AS my_role,
                       COALESCE(rm.membership_status, 'active') AS my_membership_status,
                       (SELECT COUNT(*) FROM federation_room_members
@@ -1338,6 +1419,10 @@ pub async fn get_room(
         is_public: row.try_get::<bool>("", "is_public").unwrap_or(false),
         enabled_tapps: row
             .try_get::<Option<serde_json::Value>>("", "enabled_tapps")
+            .unwrap_or(None),
+        // Public keys only (no private material) — used by Aro E2E readiness badge.
+        shared_data_config: row
+            .try_get::<Option<serde_json::Value>>("", "shared_data_config")
             .unwrap_or(None),
         my_role: row.try_get::<Option<String>>("", "my_role").unwrap_or(None),
         my_membership_status: row
@@ -1486,7 +1571,8 @@ pub async fn invite_member(
     let room_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT invite_policy, max_members, name, owner_actor FROM federation_rooms WHERE room_id = $1",
+            r#"SELECT invite_policy, max_members, name, owner_actor, is_public, home_server
+               FROM federation_rooms WHERE room_id = $1"#,
             [room_id.into()],
         ))
         .await
@@ -1502,6 +1588,11 @@ pub async fn invite_member(
     let max_members: i32 = room_row.try_get("", "max_members").unwrap_or(50);
     let room_name: String = room_row.try_get("", "name").unwrap_or_default();
     let owner_actor: String = room_row.try_get("", "owner_actor").unwrap_or_default();
+    let room_is_public: bool = room_row.try_get("", "is_public").unwrap_or(false);
+    let room_home_server: String = room_row
+        .try_get::<String>("", "home_server")
+        .unwrap_or_default();
+    let room_invite_policy = policy.clone();
 
     match policy.as_str() {
         "admin-only" if !is_admin_role(&my_role) => {
@@ -1676,7 +1767,10 @@ pub async fn invite_member(
                 "name": &invite_room_name,
                 "owner": &owner_actor,
                 "role": role,
-                "members": members_json
+                "members": members_json,
+                "isPublic": room_is_public,
+                "invitePolicy": room_invite_policy,
+                "homeServer": room_home_server
             }
         });
 
@@ -1856,18 +1950,358 @@ pub async fn invite_member(
     }))
 }
 
-/// Self-join a room when `invite_policy = open` (or public open rooms).
+/// Parse `rm_…` or shareable `rm_…@home[:port]` (optional `myriad:room:` prefix).
+pub fn parse_room_join_ref(raw: &str) -> (String, Option<String>) {
+    let mut s = raw.trim();
+    if let Some(rest) = s.strip_prefix("myriad:room:") {
+        s = rest.trim();
+    }
+    // Allow full public API URLs ending with /public/rooms/{id}
+    if let Some(idx) = s.rfind("/public/rooms/") {
+        let tail = &s[idx + "/public/rooms/".len()..];
+        let id = tail.split(['?', '#', '/']).next().unwrap_or("").trim();
+        if id.starts_with("rm_") {
+            let home = extract_host_port(s).or_else(|| extract_domain(s));
+            return (id.to_string(), home);
+        }
+    }
+    if let Some((id, host)) = s.rsplit_once('@') {
+        let id = id.trim();
+        let host = host.trim();
+        if id.starts_with("rm_")
+            && !host.is_empty()
+            && !host.contains('/')
+            && !host.contains('?')
+            && !host.contains('#')
+            && !host.contains('@')
+        {
+            return (id.to_string(), Some(host.to_string()));
+        }
+    }
+    (s.to_string(), None)
+}
+
+/// GET public room metadata (no auth). 404 if missing or not public.
+pub async fn get_public_room(
+    room_id: &str,
+    db: &DatabaseConnection,
+) -> Result<PublicRoomInfo, (StatusCode, Json<serde_json::Value>)> {
+    let (room_id, _) = parse_room_join_ref(room_id);
+    if !room_id.starts_with("rm_") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid room id"})),
+        ));
+    }
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT room_id, name, description, avatar_url, owner_actor, home_server,
+                      invite_policy, max_members, is_public,
+                      (SELECT COUNT(*) FROM federation_room_members
+                       WHERE room_id = federation_rooms.room_id
+                         AND COALESCE(membership_status, 'active') = 'active') AS member_count
+               FROM federation_rooms
+               WHERE room_id = $1 AND is_public = true"#,
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Public room not found"})),
+            )
+        })?;
+
+    Ok(PublicRoomInfo {
+        room_id: row.try_get("", "room_id").unwrap_or_default(),
+        name: row.try_get("", "name").unwrap_or_default(),
+        description: row
+            .try_get::<Option<String>>("", "description")
+            .unwrap_or(None),
+        avatar_url: row
+            .try_get::<Option<String>>("", "avatar_url")
+            .unwrap_or(None),
+        owner_actor: row.try_get("", "owner_actor").unwrap_or_default(),
+        home_server: row.try_get("", "home_server").unwrap_or_default(),
+        invite_policy: row.try_get("", "invite_policy").unwrap_or_default(),
+        max_members: row.try_get::<i32>("", "max_members").unwrap_or(50),
+        is_public: true,
+        member_count: row.try_get::<i64>("", "member_count").unwrap_or(0),
+    })
+}
+
+async fn fetch_remote_public_room(
+    home_server: &str,
+    room_id: &str,
+) -> Result<PublicRoomInfo, String> {
+    let home = home_server.trim().trim_end_matches('/');
+    if home.is_empty() {
+        return Err("home_server is empty".into());
+    }
+    let bases: Vec<String> = if home.starts_with("http://") || home.starts_with("https://") {
+        vec![home.to_string()]
+    } else {
+        vec![format!("https://{home}"), format!("http://{home}")]
+    };
+    let user_agent = format!(
+        "Myriad/{} (+{})",
+        env!("CARGO_PKG_VERSION"),
+        get_base_url().await
+    );
+    let mut last_err = "unreachable".to_string();
+    for base in bases {
+        let url = format!("{base}/api/federation/public/rooms/{room_id}");
+        let (target, client) = match crate::services::outbound_security::build_public_http_client(
+            &url,
+            std::time::Duration::from_secs(10),
+            Some(&user_agent),
+        )
+        .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        };
+        let resp = match client
+            .get(target)
+            .header("Accept", "application/json")
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = e.to_string();
+                continue;
+            }
+        };
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err("Public room not found on home server".into());
+        }
+        if !resp.status().is_success() {
+            last_err = format!("home returned {}", resp.status());
+            continue;
+        }
+        let body = crate::services::outbound_security::read_limited_body(resp, 256 * 1024)
+            .await
+            .map_err(|e| format!("read public room: {e}"))?;
+        let info: PublicRoomInfo = serde_json::from_slice(&body)
+            .map_err(|e| format!("parse public room: {e}"))?;
+        if !info.is_public || info.room_id != room_id {
+            return Err("Remote document is not a valid public room".into());
+        }
+        return Ok(info);
+    }
+    Err(last_err)
+}
+
+/// Normalize home_server for comparison (strip scheme, trailing slash, lowercase).
+fn normalize_home_server(raw: &str) -> String {
+    let mut s = raw.trim().trim_end_matches('/');
+    if let Some(rest) = s.strip_prefix("https://") {
+        s = rest;
+    } else if let Some(rest) = s.strip_prefix("http://") {
+        s = rest;
+    }
+    s.trim_end_matches('/').to_ascii_lowercase()
+}
+
+fn home_servers_match(a: &str, b: &str) -> bool {
+    let a = normalize_home_server(a);
+    let b = normalize_home_server(b);
+    !a.is_empty() && a == b
+}
+
+/// Validate a remote public room document before materialize (pure, unit-tested).
+///
+/// Returns normalized `(home_server, invite_policy, max_members)` on success.
+fn validate_remote_public_room_doc(
+    info: &PublicRoomInfo,
+    fetched_from: &str,
+) -> Result<(String, String, i32), String> {
+    if !info.is_public {
+        return Err("remote document is not public".into());
+    }
+    if info.room_id.is_empty() || !info.room_id.starts_with("rm_") {
+        return Err("invalid remote room id".into());
+    }
+    let home = if info.home_server.trim().is_empty() {
+        extract_host_port(&info.owner_actor)
+            .or_else(|| extract_domain(&info.owner_actor))
+            .unwrap_or_else(|| fetched_from.to_string())
+    } else {
+        info.home_server.clone()
+    };
+    // Document home must agree with the host we contacted (or be empty → use fetch host).
+    if !home.is_empty() && !home_servers_match(&home, fetched_from) {
+        return Err(format!(
+            "remote home_server mismatch: document={home} fetched_from={fetched_from}"
+        ));
+    }
+    let home = if home.is_empty() {
+        fetched_from.to_string()
+    } else {
+        home
+    };
+    let invite_policy = match info.invite_policy.as_str() {
+        "admin-only" | "member-invite" | "open" => info.invite_policy.clone(),
+        _ => "open".into(),
+    };
+    let max_members = if (2..=5000).contains(&info.max_members) {
+        info.max_members
+    } else {
+        50
+    };
+    Ok((home, invite_policy, max_members))
+}
+
+/// Whether an existing local private room may be upgraded public from a remote
+/// document (homes must match; local authority never upgraded via remote join).
+fn may_promote_private_room_to_public(existing_home: &str, document_home: &str) -> bool {
+    if existing_home.trim().is_empty() {
+        return true;
+    }
+    home_servers_match(existing_home, document_home)
+}
+
+/// Materialize a remote public room row + owner member for local join.
+///
+/// On conflict: never flip a local private room public unless the existing
+/// `home_server` already matches the fetched document's home (authoritative
+/// remote). Never overwrite owner/home when they already identify a different
+/// authority (blocks evil-home escalation via known room_id).
+async fn materialize_remote_public_room(
+    db: &DatabaseConnection,
+    info: &PublicRoomInfo,
+    // Host we actually fetched from (may differ from document.home_server).
+    fetched_from: &str,
+) -> Result<(), String> {
+    let (home, invite_policy, max_members) =
+        validate_remote_public_room_doc(info, fetched_from)?;
+    let name = non_empty_room_name(Some(&info.name))
+        .unwrap_or_else(|| resolve_invite_room_name(None, &info.room_id));
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"INSERT INTO federation_rooms
+           (room_id, name, description, avatar_url, owner_actor, home_server, governance_type,
+            invite_policy, max_members, is_public, distribution_strategy, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'owner', $7, $8, true, 'fan-out', NOW())
+           ON CONFLICT (room_id) DO UPDATE SET
+             name = CASE
+               WHEN btrim(EXCLUDED.name) <> ''
+                    AND (
+                      lower(btrim(federation_rooms.home_server)) = lower(btrim(EXCLUDED.home_server))
+                      OR btrim(federation_rooms.home_server) = ''
+                    )
+               THEN EXCLUDED.name
+               ELSE federation_rooms.name
+             END,
+             description = CASE
+               WHEN lower(btrim(federation_rooms.home_server)) = lower(btrim(EXCLUDED.home_server))
+                    OR btrim(federation_rooms.home_server) = ''
+               THEN COALESCE(EXCLUDED.description, federation_rooms.description)
+               ELSE federation_rooms.description
+             END,
+             avatar_url = CASE
+               WHEN lower(btrim(federation_rooms.home_server)) = lower(btrim(EXCLUDED.home_server))
+                    OR btrim(federation_rooms.home_server) = ''
+               THEN COALESCE(EXCLUDED.avatar_url, federation_rooms.avatar_url)
+               ELSE federation_rooms.avatar_url
+             END,
+             -- Never steal ownership of an existing local/private room from a random home.
+             owner_actor = CASE
+               WHEN btrim(federation_rooms.owner_actor) = '' THEN EXCLUDED.owner_actor
+               WHEN lower(btrim(federation_rooms.home_server)) = lower(btrim(EXCLUDED.home_server))
+               THEN EXCLUDED.owner_actor
+               ELSE federation_rooms.owner_actor
+             END,
+             home_server = CASE
+               WHEN btrim(federation_rooms.home_server) = '' THEN EXCLUDED.home_server
+               ELSE federation_rooms.home_server
+             END,
+             invite_policy = CASE
+               WHEN federation_rooms.is_public
+                    OR lower(btrim(federation_rooms.home_server)) = lower(btrim(EXCLUDED.home_server))
+               THEN EXCLUDED.invite_policy
+               ELSE federation_rooms.invite_policy
+             END,
+             max_members = CASE
+               WHEN federation_rooms.is_public
+                    OR lower(btrim(federation_rooms.home_server)) = lower(btrim(EXCLUDED.home_server))
+               THEN EXCLUDED.max_members
+               ELSE federation_rooms.max_members
+             END,
+             -- Only promote to public when existing home matches the document home
+             -- (or home was empty). Blocks: private local rm_X + evil home claiming public.
+             is_public = CASE
+               WHEN federation_rooms.is_public THEN true
+               WHEN lower(btrim(federation_rooms.home_server)) = lower(btrim(EXCLUDED.home_server))
+                    OR btrim(federation_rooms.home_server) = ''
+               THEN true
+               ELSE federation_rooms.is_public
+             END,
+             updated_at = NOW()"#,
+        [
+            info.room_id.clone().into(),
+            name.into(),
+            info.description.clone().into(),
+            info.avatar_url.clone().into(),
+            info.owner_actor.clone().into(),
+            home.into(),
+            invite_policy.into(),
+            max_members.into(),
+        ],
+    ))
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if !info.owner_actor.is_empty() {
+        upsert_remote_room_member(db, &info.room_id, &info.owner_actor, "owner", None).await?;
+        if let Err(e) = crate::federation::actor::fetch_remote_actor(db, &info.owner_actor).await {
+            tracing::warn!(
+                "[Room] fetch owner actor for public join {} failed: {}",
+                info.owner_actor,
+                e
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Self-join a room when `invite_policy = open` (or public rooms).
+///
+/// Path may be bare `rm_…` or shareable `rm_…@home[:port]`. When the room is not
+/// on this instance, `home_server` (path or body) is required to fetch public
+/// metadata and materialize a local row before joining.
 pub async fn join_room(
     user_id: i32,
     username: &str,
-    room_id: &str,
+    room_id_raw: &str,
     db: &DatabaseConnection,
+    req: Option<&JoinRoomRequest>,
 ) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
+    let (room_id, home_from_ref) = parse_room_join_ref(room_id_raw);
+    if !room_id.starts_with("rm_") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid room id"})),
+        ));
+    }
+    let home_hint = req
+        .and_then(|r| r.home_server.as_deref())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or(home_from_ref);
 
     // Already active?
-    if let Ok(Some((role, status))) = get_membership(db, room_id, &local_actor).await {
+    if let Ok(Some((role, status))) = get_membership(db, &room_id, &local_actor).await {
         if status == "active" {
             return Ok(json!({
                 "success": true,
@@ -1879,25 +2313,140 @@ pub async fn join_room(
         }
         if status == "pending" {
             // Pending invite: accept instead
-            return accept_room_invite(user_id, username, room_id, db).await;
+            return accept_room_invite(user_id, username, &room_id, db).await;
         }
     }
 
-    let room_row = db
+    let mut room_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT invite_policy, max_members, is_public, name
+            r#"SELECT invite_policy, max_members, is_public, name, home_server, owner_actor
                FROM federation_rooms WHERE room_id = $1"#,
-            [room_id.into()],
+            [room_id.clone().into()],
         ))
         .await
-        .map_err(db_err)?
-        .ok_or_else(|| {
-            (
+        .map_err(db_err)?;
+
+    let local_home = extract_host_port(&base_url)
+        .or_else(|| extract_domain(&base_url))
+        .unwrap_or_default();
+
+    // Remote public join: materialize only when the room row is missing.
+    // Never trust an arbitrary home_server to rewrite an existing private room.
+    if room_row.is_none() {
+        let Some(home) = home_hint.clone() else {
+            return Err((
+                StatusCode::NOT_FOUND,
+                Json(json!({
+                    "error": "Room not found on this instance",
+                    "hint": "For remote public groups, use room_id@home_server (shown when sharing)"
+                })),
+            ));
+        };
+        if !local_home.is_empty() && home_servers_match(&home, &local_home) {
+            return Err((
                 StatusCode::NOT_FOUND,
                 Json(json!({"error": "Room not found"})),
-            )
-        })?;
+            ));
+        }
+        let info = fetch_remote_public_room(&home, &room_id)
+            .await
+            .map_err(|e| {
+                tracing::warn!(
+                    room_id = %room_id,
+                    home = %home,
+                    error = %e,
+                    "[Room] remote public room fetch failed"
+                );
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({
+                        "error": "Public room not found on home server",
+                        "detail": e
+                    })),
+                )
+            })?;
+        materialize_remote_public_room(db, &info, &home)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({"error": format!("Failed to materialize room: {e}")})),
+                )
+            })?;
+        room_row = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT invite_policy, max_members, is_public, name, home_server, owner_actor
+                   FROM federation_rooms WHERE room_id = $1"#,
+                [room_id.clone().into()],
+            ))
+            .await
+            .map_err(db_err)?;
+    } else if let Some(ref row) = room_row {
+        // Federated invite stub may still be private while home has since gone
+        // public. Refresh ONLY from the stub's recorded home_server (never from
+        // attacker-supplied home_hint), and only if we are not the home authority.
+        let is_public: bool = row.try_get("", "is_public").unwrap_or(false);
+        let existing_home: String = row.try_get("", "home_server").unwrap_or_default();
+        // Only remote stubs (not local authority) can be upgraded public from home.
+        let is_remote_stub = !existing_home.is_empty()
+            && !home_servers_match(&existing_home, &local_home);
+        if !is_public
+            && is_remote_stub
+            && may_promote_private_room_to_public(&existing_home, &existing_home)
+        {
+            // Require join ref home to match stub home when provided (never evil home).
+            if let Some(ref hint) = home_hint {
+                if !home_servers_match(hint, &existing_home) {
+                    tracing::debug!(
+                        room_id = %room_id,
+                        hint = %hint,
+                        existing_home = %existing_home,
+                        "[Room] ignoring home_hint that does not match room home_server"
+                    );
+                } else if let Ok(info) =
+                    fetch_remote_public_room(&existing_home, &room_id).await
+                {
+                    if !may_promote_private_room_to_public(&existing_home, &info.home_server)
+                        && !info.home_server.trim().is_empty()
+                    {
+                        tracing::warn!(
+                            room_id = %room_id,
+                            existing_home = %existing_home,
+                            doc_home = %info.home_server,
+                            "[Room] refusing public promote: document home mismatch"
+                        );
+                    } else if let Err(e) =
+                        materialize_remote_public_room(db, &info, &existing_home).await
+                    {
+                        tracing::warn!(
+                            room_id = %room_id,
+                            error = %e,
+                            "[Room] public refresh from authoritative home failed"
+                        );
+                    } else {
+                        room_row = db
+                            .query_one(Statement::from_sql_and_values(
+                                DatabaseBackend::Postgres,
+                                r#"SELECT invite_policy, max_members, is_public, name, home_server, owner_actor
+                                   FROM federation_rooms WHERE room_id = $1"#,
+                                [room_id.clone().into()],
+                            ))
+                            .await
+                            .map_err(db_err)?;
+                    }
+                }
+            }
+        }
+    }
+
+    let room_row = room_row.ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Room not found"})),
+        )
+    })?;
 
     let invite_policy: String = room_row.try_get("", "invite_policy").unwrap_or_default();
     let is_public: bool = room_row.try_get("", "is_public").unwrap_or(false);
@@ -1920,7 +2469,7 @@ pub async fn join_room(
             DatabaseBackend::Postgres,
             r#"SELECT COUNT(*)::int AS cnt FROM federation_room_members
                WHERE room_id = $1 AND COALESCE(membership_status, 'active') = 'active'"#,
-            [room_id.into()],
+            [room_id.clone().into()],
         ))
         .await
         .map_err(db_err)?;
@@ -1945,7 +2494,11 @@ pub async fn join_room(
                    is_local = true,
                    local_user_id = EXCLUDED.local_user_id,
                    joined_at = COALESCE(federation_room_members.joined_at, NOW())"#,
-            [room_id.into(), local_actor.clone().into(), user_id.into()],
+            [
+                room_id.clone().into(),
+                local_actor.clone().into(),
+                user_id.into(),
+            ],
         ))
         .await
         .map_err(db_err)?;
@@ -1965,7 +2518,7 @@ pub async fn join_room(
         "actor": &local_actor,
         "object": {
             "type": "myriad:Room",
-            "id": room_id,
+            "id": &room_id,
             "member": &local_actor,
             "role": "member"
         }
@@ -1973,7 +2526,7 @@ pub async fn join_room(
     if let Err(e) = fanout_to_remote_members(
         db,
         user_id,
-        room_id,
+        &room_id,
         &join_activity_id,
         &join_activity,
         "RoomJoin",
@@ -1989,10 +2542,10 @@ pub async fn join_room(
     }
 
     crate::federation::ws_gateway::broadcast_to_room(
-        room_id,
+        &room_id,
         &json!({
             "type": "system",
-            "room_id": room_id,
+            "room_id": &room_id,
             "event": "member_joined",
             "actor": &local_actor,
             "role": "member",
@@ -2390,7 +2943,7 @@ pub async fn transfer_room_ownership(
     }
 
     // Resolve target: full actor URL or local username
-    let target_actor = if new_owner.starts_with("http://")
+    let resolved_target = if new_owner.starts_with("http://")
         || new_owner.starts_with("https://")
         || new_owner.starts_with("acct:")
         || new_owner.contains('@')
@@ -2400,21 +2953,30 @@ pub async fn transfer_room_ownership(
         actor_url(&base_url, new_owner)
     };
 
-    let target_role = get_member_role(db, room_id, &target_actor)
-        .await
-        .map_err(db_err)?
-        .ok_or_else(|| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "New owner must already be a room member"})),
-            )
-        })?;
+    // Use the *stored* actor_url for role UPDATEs (host/case/slash may differ
+    // from the request while still matching via same_actor_url).
+    let (target_actor, target_role) =
+        resolve_active_member_actor(db, room_id, &resolved_target)
+            .await
+            .map_err(db_err)?
+            .ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "New owner must already be a room member"})),
+                )
+            })?;
     if target_role == "observer" {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Cannot transfer ownership to an observer"})),
         ));
     }
+    // Canonical stored owner URL (same_actor_url may have matched differently)
+    let owner_stored = resolve_active_member_actor(db, room_id, &owner_actor)
+        .await
+        .map_err(db_err)?
+        .map(|(url, _)| url)
+        .unwrap_or_else(|| owner_actor.clone());
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
@@ -2424,16 +2986,42 @@ pub async fn transfer_room_ownership(
     .await
     .map_err(db_err)?;
 
-    let _ = db
+    let demoted = db
         .execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"UPDATE federation_room_members
                SET role = 'admin'
                WHERE room_id = $1 AND actor_url = $2 AND role = 'owner'"#,
-            [room_id.into(), owner_actor.clone().into()],
+            [room_id.into(), owner_stored.clone().into()],
         ))
-        .await;
-    let _ = db
+        .await
+        .map_err(db_err)?;
+    if demoted.rows_affected() == 0 {
+        // Fallback: demote any same_actor owner row
+        let rows = db
+            .query_all(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT actor_url FROM federation_room_members
+                   WHERE room_id = $1 AND role = 'owner'"#,
+                [room_id.into()],
+            ))
+            .await
+            .map_err(db_err)?;
+        for r in rows {
+            let url: String = r.try_get("", "actor_url").unwrap_or_default();
+            if same_actor_url(&url, &owner_actor) {
+                let _ = db
+                    .execute(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"UPDATE federation_room_members SET role = 'admin'
+                           WHERE room_id = $1 AND actor_url = $2"#,
+                        [room_id.into(), url.into()],
+                    ))
+                    .await;
+            }
+        }
+    }
+    let promoted = db
         .execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"UPDATE federation_room_members
@@ -2441,7 +3029,14 @@ pub async fn transfer_room_ownership(
                WHERE room_id = $1 AND actor_url = $2"#,
             [room_id.into(), target_actor.clone().into()],
         ))
-        .await;
+        .await
+        .map_err(db_err)?;
+    if promoted.rows_affected() == 0 {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to promote new owner membership row"})),
+        ));
+    }
 
     let changes = json!({ "transfer_owner": &target_actor });
     crate::federation::ws_gateway::broadcast_to_room(
@@ -2687,7 +3282,14 @@ pub async fn send_room_message(
     .await
     .map_err(db_err)?;
 
-    // 广播给 WebSocket 连接
+    // 广播给 WebSocket 连接。
+    // 本地展示用：E2E 时用发送端明文，避免 Aro 先渲染 ciphertext 信封、等 poll 才正常。
+    // DB / ActivityPub fan-out 仍存密文。
+    let ws_payload = if is_encrypted {
+        req.payload.clone()
+    } else {
+        stored_payload.clone()
+    };
     let ws_msg = json!({
         "type": "message",
         "room_id": room_id,
@@ -2695,7 +3297,7 @@ pub async fn send_room_message(
             "message_id": &message_id,
             "sender_actor": &local_actor,
             "message_type": message_type,
-            "payload": &stored_payload,
+            "payload": &ws_payload,
             "is_encrypted": is_encrypted,
             "thread_id": &req.thread_id,
             "reply_to": &req.reply_to,
@@ -3477,9 +4079,25 @@ pub async fn handle_room_invite(
     // Ensure Room row exists; if it already exists with empty/fallback name and
     // the invite carries a real name, upgrade it (ON CONFLICT DO NOTHING left
     // invitees stuck on "Room rm_xxxx" forever after a partial insert).
-    let home_server = extract_domain(owner_actor)
+    let home_server = object
+        .get("homeServer")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .or_else(|| extract_host_port(owner_actor))
+        .or_else(|| extract_domain(owner_actor))
+        .or_else(|| extract_host_port(actor_url_str))
         .or_else(|| extract_domain(actor_url_str))
         .unwrap_or_default();
+    let invite_is_public = object
+        .get("isPublic")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let invite_policy = object
+        .get("invitePolicy")
+        .and_then(|v| v.as_str())
+        .filter(|s| ["admin-only", "member-invite", "open"].contains(s))
+        .unwrap_or(if invite_is_public { "open" } else { "admin-only" });
     let has_real_name = invite_name.is_some();
     let display_name = resolve_invite_room_name(invite_name.as_deref(), room_id);
     db.execute(Statement::from_sql_and_values(
@@ -3487,7 +4105,7 @@ pub async fn handle_room_invite(
         r#"INSERT INTO federation_rooms
            (room_id, name, description, owner_actor, home_server, governance_type, invite_policy,
             max_members, is_public, distribution_strategy, created_at)
-           VALUES ($1, $2, NULL, $3, $4, 'owner', 'admin-only', 50, false, 'fan-out', NOW())
+           VALUES ($1, $2, NULL, $3, $4, 'owner', $6, 50, $7, 'fan-out', NOW())
            ON CONFLICT (room_id) DO UPDATE SET
              name = CASE
                WHEN $5::boolean
@@ -3498,6 +4116,35 @@ pub async fn handle_room_invite(
                     )
                THEN EXCLUDED.name
                ELSE federation_rooms.name
+             END,
+             -- Promote is_public only when homes match (or local home empty).
+             -- Blocks: existing private local room + spoofed invite claiming public.
+             is_public = CASE
+               WHEN federation_rooms.is_public THEN true
+               WHEN EXCLUDED.is_public
+                    AND (
+                      btrim(federation_rooms.home_server) = ''
+                      OR lower(btrim(federation_rooms.home_server))
+                         = lower(btrim(EXCLUDED.home_server))
+                    )
+               THEN true
+               ELSE federation_rooms.is_public
+             END,
+             invite_policy = CASE
+               WHEN EXCLUDED.is_public
+                    AND (
+                      btrim(federation_rooms.home_server) = ''
+                      OR lower(btrim(federation_rooms.home_server))
+                         = lower(btrim(EXCLUDED.home_server))
+                    )
+               THEN EXCLUDED.invite_policy
+               ELSE federation_rooms.invite_policy
+             END,
+             home_server = CASE
+               WHEN btrim(federation_rooms.home_server) = ''
+                    AND btrim(EXCLUDED.home_server) <> ''
+               THEN EXCLUDED.home_server
+               ELSE federation_rooms.home_server
              END,
              updated_at = CASE
                WHEN $5::boolean
@@ -3515,6 +4162,8 @@ pub async fn handle_room_invite(
             owner_actor.into(),
             home_server.into(),
             has_real_name.into(),
+            invite_policy.into(),
+            invite_is_public.into(),
         ],
     ))
     .await
@@ -3690,7 +4339,15 @@ pub async fn handle_room_message(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 广播到本地 WebSocket
+    // 广播到本地 WebSocket。
+    // E2E 时尽量解密后再广播：多方信封对各收件人明文相同，任一本地成员密钥成功即可。
+    // 失败则仍推密文（与 get_messages 在无密钥时行为一致），避免挡住投递。
+    let mut ws_payload = payload.clone();
+    if is_encrypted {
+        if let Ok(plain) = decrypt_room_payload_for_local_ws(db, room_id, &payload).await {
+            ws_payload = plain;
+        }
+    }
     crate::federation::ws_gateway::broadcast_to_room(
         room_id,
         &json!({
@@ -3700,7 +4357,7 @@ pub async fn handle_room_message(
                 "message_id": message_id,
                 "sender_actor": sender,
                 "message_type": message_type,
-                "payload": payload,
+                "payload": ws_payload,
                 "is_encrypted": is_encrypted,
                 "thread_id": thread_id,
                 "reply_to": reply_to,
@@ -4415,6 +5072,47 @@ async fn jwt_secret_for_e2e_seal() -> String {
     config.jwt_secret.clone()
 }
 
+/// 用任一本地成员密钥解密多方信封，供 WebSocket 广播展示（明文各收件人相同）。
+async fn decrypt_room_payload_for_local_ws(
+    db: &DatabaseConnection,
+    room_id: &str,
+    encrypted_payload: &serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT actor_url FROM federation_room_members
+               WHERE room_id = $1 AND is_local = true
+                 AND COALESCE(membership_status, 'active') = 'active'"#,
+            [room_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut last_err = "no local members with e2e keys".to_string();
+    for row in rows {
+        let actor: String = row.try_get("", "actor_url").unwrap_or_default();
+        if actor.is_empty() {
+            continue;
+        }
+        match load_member_e2e_keys(db, room_id, &actor).await {
+            Ok((pk, sk)) => {
+                match crate::federation::e2e::decrypt_json_for_recipient(
+                    encrypted_payload,
+                    &sk,
+                    &pk,
+                    room_id.as_bytes(),
+                ) {
+                    Ok(plain) => return Ok(plain),
+                    Err(e) => last_err = e,
+                }
+            }
+            Err(e) => last_err = e,
+        }
+    }
+    Err(last_err)
+}
+
 /// 从成员 custom_permissions 读取本地 E2E 密钥对
 async fn load_member_e2e_keys(
     db: &DatabaseConnection,
@@ -4829,6 +5527,116 @@ mod tests {
         assert!(validate_public_transition(true, Some(true)).is_ok()); // no-op
         assert!(validate_public_transition(true, None).is_ok());
         assert!(validate_public_transition(true, Some(false)).is_err());
+    }
+
+    #[test]
+    fn parse_room_join_ref_bare_and_shareable() {
+        let (id, home) = parse_room_join_ref("rm_6297d497-1ecb-494c-9abe-5247585c75a9");
+        assert_eq!(id, "rm_6297d497-1ecb-494c-9abe-5247585c75a9");
+        assert!(home.is_none());
+
+        let (id, home) =
+            parse_room_join_ref("rm_6297d497-1ecb-494c-9abe-5247585c75a9@example.com:8443");
+        assert_eq!(id, "rm_6297d497-1ecb-494c-9abe-5247585c75a9");
+        assert_eq!(home.as_deref(), Some("example.com:8443"));
+
+        let (id, home) = parse_room_join_ref(
+            "myriad:room:rm_6297d497-1ecb-494c-9abe-5247585c75a9@127.0.0.1:1103",
+        );
+        assert_eq!(id, "rm_6297d497-1ecb-494c-9abe-5247585c75a9");
+        assert_eq!(home.as_deref(), Some("127.0.0.1:1103"));
+    }
+
+    #[test]
+    fn home_servers_match_normalizes_scheme_and_case() {
+        assert!(home_servers_match("Example.COM:8443", "https://example.com:8443/"));
+        assert!(home_servers_match("127.0.0.1:1103", "http://127.0.0.1:1103"));
+        assert!(!home_servers_match("evil.example", "good.example"));
+        assert!(!home_servers_match("", "example.com"));
+    }
+
+    fn sample_public_info(home: &str, owner: &str) -> PublicRoomInfo {
+        PublicRoomInfo {
+            room_id: "rm_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
+            name: "Public".into(),
+            description: None,
+            avatar_url: None,
+            owner_actor: owner.into(),
+            home_server: home.into(),
+            invite_policy: "open".into(),
+            max_members: 50,
+            is_public: true,
+            member_count: 1,
+        }
+    }
+
+    #[test]
+    fn validate_remote_public_doc_rejects_private_and_bad_id() {
+        let mut info = sample_public_info("evil.example", "https://evil.example/users/x");
+        info.is_public = false;
+        assert!(validate_remote_public_room_doc(&info, "evil.example").is_err());
+
+        info.is_public = true;
+        info.room_id = "not-a-room".into();
+        assert!(validate_remote_public_room_doc(&info, "evil.example").is_err());
+    }
+
+    #[test]
+    fn validate_remote_public_doc_rejects_home_mismatch() {
+        // Attacker hosts card but document claims victim home — blocked.
+        let info = sample_public_info(
+            "victim.example",
+            "https://victim.example/users/owner",
+        );
+        let err = validate_remote_public_room_doc(&info, "evil.example").unwrap_err();
+        assert!(err.contains("mismatch"), "{err}");
+    }
+
+    #[test]
+    fn validate_remote_public_doc_accepts_matching_home() {
+        let info = sample_public_info(
+            "peer.example:8443",
+            "https://peer.example:8443/users/owner",
+        );
+        let (home, policy, max) =
+            validate_remote_public_room_doc(&info, "https://peer.example:8443").unwrap();
+        assert!(home_servers_match(&home, "peer.example:8443"));
+        assert_eq!(policy, "open");
+        assert_eq!(max, 50);
+    }
+
+    #[test]
+    fn validate_remote_public_doc_defaults_bad_invite_policy() {
+        let mut info = sample_public_info("peer.example", "https://peer.example/users/o");
+        info.invite_policy = "not-a-policy".into();
+        let (_, policy, _) =
+            validate_remote_public_room_doc(&info, "peer.example").unwrap();
+        assert_eq!(policy, "open");
+    }
+
+    #[test]
+    fn may_promote_private_requires_home_match() {
+        // Private local room on this instance: evil home cannot promote.
+        assert!(!may_promote_private_room_to_public(
+            "127.0.0.1:1103",
+            "evil.example"
+        ));
+        // Federated stub whose home went public: matching home OK.
+        assert!(may_promote_private_room_to_public(
+            "peer.example",
+            "https://peer.example/"
+        ));
+        // Empty home (legacy) may promote.
+        assert!(may_promote_private_room_to_public("", "peer.example"));
+    }
+
+    #[test]
+    fn parse_room_join_ref_public_url() {
+        let (id, home) = parse_room_join_ref(
+            "https://peer.example:8443/api/federation/public/rooms/rm_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        );
+        assert_eq!(id, "rm_aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+        assert_eq!(home.as_deref(), Some("peer.example:8443"));
     }
 
     #[test]

@@ -6,7 +6,7 @@ export async function listReports(runtimeGrant?: string): Promise<{
   reports: {
     id: string
     platform: string
-    type: 'platform' | 'comprehensive'
+    type: 'platform'
     createdAt: string
     summary?: string
   }[]
@@ -20,7 +20,7 @@ export async function getReport(
 ): Promise<{
   id: string
   platform?: string
-  type: 'platform' | 'comprehensive'
+  type: 'platform'
   /** Top-level summary from report catalog (also often nested in content.summary). */
   summary?: string
   content: unknown

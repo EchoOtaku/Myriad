@@ -1548,12 +1548,25 @@ export function registerFederationHandlers(
   bridge.registerHandler(
     'federation.joinRoom',
     async (message: TappMessage) => {
-      const [roomId] = (message.payload as { args: unknown[] }).args || []
+      const args = (message.payload as { args: unknown[] }).args || []
+      const roomId = args[0]
+      const opts = args[1]
       if (!roomId || typeof roomId !== 'string')
         return { success: false, error: 'Room ID is required' }
+      const home_server =
+        opts &&
+        typeof opts === 'object' &&
+        opts !== null &&
+        typeof (opts as { home_server?: unknown }).home_server === 'string'
+          ? (opts as { home_server: string }).home_server
+          : undefined
       try {
         const runtimeGrant = await bridge.getRuntimeGrant()
-        const data = await federationApi.joinRoom(roomId, runtimeGrant)
+        const data = await federationApi.joinRoom(
+          roomId,
+          runtimeGrant,
+          home_server ? { home_server } : undefined,
+        )
         return { success: true, data }
       } catch (error) {
         return {

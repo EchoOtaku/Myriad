@@ -1,6 +1,7 @@
 use axum::{http::StatusCode, Json};
 use serde_json::{json, Value};
 
+pub mod admin_users;
 pub mod agent; // 🤖 AI Agent 自然语言任务编排 API
 pub mod ai_recommend; // ✅ AI图标推荐 API
 pub mod analysis;
@@ -24,6 +25,7 @@ pub mod prompt;
 pub mod proxy;
 pub mod reports; // ✅ 双层报告系统API
 pub mod setup;
+pub mod site_domain; // 🌐 Site public domain (BASE_URL / FRONTEND_URL / CORS) — not federation Move
 pub mod speech; // 🎙️ 腾讯云语音服务 API (TTS/ASR)
 pub mod steam;
 pub mod system;
@@ -32,8 +34,6 @@ pub mod tapp_runtime; // ✅ Tapp 运行时 API（平台数据、AI、上下文�
 pub mod tapp_scheduler; // ✅ Tapp 定时任务调度 API
 pub mod tapp_store; // ✅ Tapp 应用商店/管理 API（安装、卸载、配置…）
 pub mod tasks; // ✅ 后台任务管理 API
-pub mod admin_users;
-pub mod site_domain; // 🌐 Site public domain (BASE_URL / FRONTEND_URL / CORS) — not federation Move
 pub mod updater_admin;
 pub mod x; // ✅ X (Twitter) 平台 API // 🚀 Updater admin proxy
 

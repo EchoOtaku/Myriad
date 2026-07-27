@@ -12,7 +12,7 @@ pub struct Model {
     pub report: Json,
     pub created_at: DateTime,
     pub expires_at: DateTime,
-    pub report_title: Option<String>, // 报告标题，用于区分不同的综合报告
+    pub report_title: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

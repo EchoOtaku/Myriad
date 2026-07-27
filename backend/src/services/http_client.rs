@@ -126,6 +126,36 @@ pub async fn get_global_client() -> Client {
     client
 }
 
+/// 创建适合图片生成等长耗时上游请求的客户端。
+///
+/// 图片模型一次请求可能接近两分钟，因此不能复用普通 API 的 30 秒超时；
+/// 代理来源仍与全局动态配置一致。
+pub async fn get_long_running_client() -> Client {
+    // Image + long LLM-backed image APIs regularly exceed 2–3 minutes.
+    let request_timeout = Duration::from_secs(360);
+    let proxy_config = ProxyConfig::from_dynamic_config().await;
+    let mut builder = Client::builder()
+        .timeout(request_timeout)
+        .connect_timeout(Duration::from_secs(15))
+        .user_agent("Myriad-ImageGeneration/1.0");
+    if proxy_config.should_use_proxy() {
+        if let Some(proxy_url) = proxy_config.proxy_url {
+            if let Ok(proxy) = Proxy::all(&proxy_url) {
+                builder = builder.proxy(proxy);
+            }
+        }
+    }
+    builder.build().unwrap_or_else(|error| {
+        tracing::error!(%error, "Failed to create long-running HTTP client");
+        Client::builder()
+            .timeout(request_timeout)
+            .connect_timeout(Duration::from_secs(15))
+            .user_agent("Myriad-ImageGeneration/1.0")
+            .build()
+            .expect("Failed to create fallback image-generation HTTP client")
+    })
+}
+
 /// 重新加载全局 HTTP 客户端（配置更新时调用）
 pub async fn reload_global_client() {
     let proxy_config = ProxyConfig::from_dynamic_config().await;

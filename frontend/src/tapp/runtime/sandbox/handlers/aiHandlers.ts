@@ -207,8 +207,7 @@ export function registerReportHandlers(
           {
             tappId: tappInstance.id,
             title: title || '',
-            reportType: (reportType || 'custom') as
-              'custom' | 'platform' | 'comprehensive',
+            reportType: (reportType || 'custom') as 'custom' | 'platform',
             content,
             metadata,
           },

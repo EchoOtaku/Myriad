@@ -6,7 +6,9 @@ use super::HandlerContext;
 use crate::models::entities::{
     brew_items, brew_sources, brew_user_states, tapp_scheduled_tasks, tapps,
 };
-use crate::services::agent::executor::utils::{truncate_str, validate_platform_name, VALID_PLATFORMS};
+use crate::services::agent::executor::utils::{
+    truncate_str, validate_platform_name, VALID_PLATFORMS,
+};
 use crate::services::netease_utils::{get_random_china_ip, get_random_user_agent};
 use once_cell::sync::Lazy;
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect};

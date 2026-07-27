@@ -821,23 +821,23 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                         .map(|c| c.ai_image_provider.clone())
                         .unwrap_or_else(|| {
                             std::env::var("AI_IMAGE_PROVIDER")
-                                .unwrap_or_else(|_| "pollinations".to_string())
+                                .unwrap_or_else(|_| "openrouter".to_string())
                         }),
-                    placeholder: "pollinations or pixai".to_string(),
+                    placeholder: "openai, openrouter, volcengine, or pixai".to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "ai_image_model".to_string(),
-                    label: "Image Model (Pollinations)".to_string(),
-                    field_type: "select".to_string(),
+                    label: "Image Model".to_string(),
+                    field_type: "text".to_string(),
                     value: db_config
                         .as_ref()
                         .map(|c| c.ai_image_model.clone())
                         .unwrap_or_else(|| {
                             std::env::var("AI_IMAGE_MODEL")
-                                .unwrap_or_else(|_| "1983308862240288769".to_string())
+                                .unwrap_or_else(|_| "openai/gpt-image-2".to_string())
                         }),
-                    placeholder: "1983308862240288769".to_string(),
+                    placeholder: "openai/gpt-image-2".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -848,9 +848,9 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                         .as_ref()
                         .map(|c| c.ai_image_width.to_string())
                         .unwrap_or_else(|| {
-                            std::env::var("AI_IMAGE_WIDTH").unwrap_or_else(|_| "768".to_string())
+                            std::env::var("AI_IMAGE_WIDTH").unwrap_or_else(|_| "1024".to_string())
                         }),
-                    placeholder: "768".to_string(),
+                    placeholder: "1024".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -861,9 +861,63 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                         .as_ref()
                         .map(|c| c.ai_image_height.to_string())
                         .unwrap_or_else(|| {
-                            std::env::var("AI_IMAGE_HEIGHT").unwrap_or_else(|_| "1280".to_string())
+                            std::env::var("AI_IMAGE_HEIGHT").unwrap_or_else(|_| "1024".to_string())
                         }),
-                    placeholder: "1280".to_string(),
+                    placeholder: "1024".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "ai_image_openai_api_key".to_string(),
+                    label: "OpenAI Image API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.ai_image_openai_api_key.clone()),
+                        "AI_IMAGE_OPENAI_API_KEY",
+                    )),
+                    placeholder: "Falls back to the standard OpenAI key when compatible".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "ai_image_openrouter_api_key".to_string(),
+                    label: "OpenRouter Image API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.ai_image_openrouter_api_key.clone()),
+                        "AI_IMAGE_OPENROUTER_API_KEY",
+                    )),
+                    placeholder: "Falls back to the standard OpenRouter key when compatible".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "ai_image_volcengine_api_key".to_string(),
+                    label: "Volcengine Ark API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.ai_image_volcengine_api_key.clone()),
+                        "AI_IMAGE_VOLCENGINE_API_KEY",
+                    )),
+                    placeholder: "Ark API key".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "ai_image_volcengine_base_url".to_string(),
+                    label: "Volcengine Ark Base URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.ai_image_volcengine_base_url.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("AI_IMAGE_VOLCENGINE_BASE_URL").unwrap_or_else(|_| {
+                                "https://ark.cn-beijing.volces.com/api/v3".to_string()
+                            })
+                        }),
+                    placeholder: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -875,6 +929,90 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                         "PIXAI_API_KEY",
                     )),
                     placeholder: "Get from platform.pixai.art".to_string(),
+                    required: false,
+                },
+                // Lite 模型配置（与 Pro 使用同一字段协议）
+                ConfigField {
+                    key: "lite_provider".to_string(),
+                    label: "【Lite Model】AI Provider".to_string(),
+                    field_type: "select".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.lite_ai_provider.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("LITE_AI_PROVIDER")
+                                .unwrap_or_else(|_| "openai".to_string())
+                        }),
+                    placeholder: "openai".to_string(),
+                    required: true,
+                },
+                ConfigField {
+                    key: "lite_gemini_api_key".to_string(),
+                    label: "【Lite Model】Gemini API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.lite_gemini_api_key.clone()),
+                        "LITE_GEMINI_API_KEY",
+                    )),
+                    placeholder: "Leave empty to reuse Standard".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "lite_gemini_model".to_string(),
+                    label: "【Lite Model】Gemini Model Name".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.lite_gemini_model.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("LITE_GEMINI_MODEL")
+                                .unwrap_or_else(|_| "gemini-3.5-flash".to_string())
+                        }),
+                    placeholder: "gemini-3.5-flash".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "lite_openai_api_key".to_string(),
+                    label: "【Lite Model】OpenAI API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.lite_openai_api_key.clone()),
+                        "LITE_OPENAI_API_KEY",
+                    )),
+                    placeholder: "Leave empty to reuse Standard".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "lite_openai_model".to_string(),
+                    label: "【Lite Model】OpenAI Model Name".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.lite_openai_model.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("LITE_OPENAI_MODEL")
+                                .unwrap_or_else(|_| "openai/gpt-oss-20b:free".to_string())
+                        }),
+                    placeholder: "openai/gpt-oss-20b:free".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "lite_openai_base_url".to_string(),
+                    label: "【Lite Model】OpenAI Base URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.lite_openai_base_url.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("LITE_OPENAI_BASE_URL").unwrap_or_else(|_| {
+                                "https://openrouter.ai/api/v1".to_string()
+                            })
+                        }),
+                    placeholder: "https://openrouter.ai/api/v1".to_string(),
                     required: false,
                 },
                 // 腾讯云语音服务配置 (TTS/ASR)
@@ -919,7 +1057,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                 .map(|c| c.ai_image_provider.clone())
                 .unwrap_or_else(|| {
                     std::env::var("AI_IMAGE_PROVIDER")
-                        .unwrap_or_else(|_| "pollinations".to_string())
+                        .unwrap_or_else(|_| "openrouter".to_string())
                 }),
         },
         report_config: ReportConfig {
@@ -1456,7 +1594,11 @@ struct SettingDescriptor {
 const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "ai_image_height",
     "ai_image_model",
+    "ai_image_openai_api_key",
+    "ai_image_openrouter_api_key",
     "ai_image_provider",
+    "ai_image_volcengine_api_key",
+    "ai_image_volcengine_base_url",
     "ai_image_width",
     "ai_provider",
     "allow_local_registration",
@@ -1501,6 +1643,12 @@ const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "guest_perm_event_publish",
     "guest_perm_media_control",
     "guest_perm_network_fetch",
+    "lite_ai_provider",
+    "lite_gemini_api_key",
+    "lite_gemini_model",
+    "lite_openai_api_key",
+    "lite_openai_base_url",
+    "lite_openai_model",
     "guest_perm_report_write",
     "guest_perm_scheduler_register",
     "guest_perm_shortcut_register",
@@ -2662,6 +2810,22 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 "pro_openai_base_url",
                 JsonValue::String(field.value.clone()),
             ),
+            // AI Lite 模型配置
+            "lite_provider" => ("lite_ai_provider", JsonValue::String(field.value.clone())),
+            "lite_gemini_api_key" => (
+                "lite_gemini_api_key",
+                JsonValue::String(field.value.clone()),
+            ),
+            "lite_gemini_model" => ("lite_gemini_model", JsonValue::String(field.value.clone())),
+            "lite_openai_api_key" => (
+                "lite_openai_api_key",
+                JsonValue::String(field.value.clone()),
+            ),
+            "lite_openai_model" => ("lite_openai_model", JsonValue::String(field.value.clone())),
+            "lite_openai_base_url" => (
+                "lite_openai_base_url",
+                JsonValue::String(field.value.clone()),
+            ),
             // AI 图片生成配置
             "ai_image_provider" => ("ai_image_provider", JsonValue::String(field.value.clone())),
             "ai_image_model" => ("ai_image_model", JsonValue::String(field.value.clone())),
@@ -2679,6 +2843,22 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                     continue;
                 }
             }
+            "ai_image_openai_api_key" => (
+                "ai_image_openai_api_key",
+                JsonValue::String(field.value.clone()),
+            ),
+            "ai_image_openrouter_api_key" => (
+                "ai_image_openrouter_api_key",
+                JsonValue::String(field.value.clone()),
+            ),
+            "ai_image_volcengine_api_key" => (
+                "ai_image_volcengine_api_key",
+                JsonValue::String(field.value.clone()),
+            ),
+            "ai_image_volcengine_base_url" => (
+                "ai_image_volcengine_base_url",
+                JsonValue::String(field.value.clone()),
+            ),
             "pixai_api_key" => ("pixai_api_key", JsonValue::String(field.value.clone())),
             // 腾讯云语音服务配置 (TTS/ASR)
             "tencent_secret_id" => ("tencent_secret_id", JsonValue::String(field.value.clone())),
@@ -2952,7 +3132,17 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "ai_image_model" => "AI_IMAGE_MODEL",
             "ai_image_width" => "AI_IMAGE_WIDTH",
             "ai_image_height" => "AI_IMAGE_HEIGHT",
+            "ai_image_openai_api_key" => "AI_IMAGE_OPENAI_API_KEY",
+            "ai_image_openrouter_api_key" => "AI_IMAGE_OPENROUTER_API_KEY",
+            "ai_image_volcengine_api_key" => "AI_IMAGE_VOLCENGINE_API_KEY",
+            "ai_image_volcengine_base_url" => "AI_IMAGE_VOLCENGINE_BASE_URL",
             "pixai_api_key" => "PIXAI_API_KEY",
+            "lite_ai_provider" => "LITE_AI_PROVIDER",
+            "lite_gemini_api_key" => "LITE_GEMINI_API_KEY",
+            "lite_gemini_model" => "LITE_GEMINI_MODEL",
+            "lite_openai_api_key" => "LITE_OPENAI_API_KEY",
+            "lite_openai_model" => "LITE_OPENAI_MODEL",
+            "lite_openai_base_url" => "LITE_OPENAI_BASE_URL",
             _ => continue,
         };
         env_content = update_env_var(&env_content, key, &field.value);
@@ -3466,10 +3656,7 @@ pub async fn test_platform(
                 "public load.json"
             };
             let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
-            match fetcher
-                .fetch_mal_user(username, client_id.as_deref())
-                .await
-            {
+            match fetcher.fetch_mal_user(username, client_id.as_deref()).await {
                 Ok(user_info) => {
                     let display = user_info["name"].as_str().unwrap_or(username);
                     let anime_completed = user_info
@@ -4246,7 +4433,7 @@ pub async fn update_tapp_window_schemes(
 }
 
 const MODULE_VISIBILITY_PREFERENCES_KEY: &str = "module_visibility_preferences";
-const MODULE_VISIBILITY_KEYS: [&str; 5] = ["library", "brew", "reports", "tapp", "agent"];
+const MODULE_VISIBILITY_KEYS: [&str; 6] = ["library", "brew", "reports", "life", "tapp", "agent"];
 const MODULE_VISIBILITY_LEVELS: [&str; 3] = ["all", "authenticated", "admin"];
 /// 兼容旧配置字段（能力已迁至 Tapp 权限预设；读写仍规范化但不参与鉴权）
 const AGENT_GUEST_USAGE_LEVELS: [&str; 2] = ["none", "visible"];
@@ -4305,6 +4492,7 @@ fn default_module_visibility_modules() -> std::collections::HashMap<String, Stri
         ("library".to_string(), "all".to_string()),
         ("brew".to_string(), "all".to_string()),
         ("reports".to_string(), "all".to_string()),
+        ("life".to_string(), "all".to_string()),
         ("tapp".to_string(), "all".to_string()),
         ("agent".to_string(), "all".to_string()),
     ])

@@ -1,6 +1,8 @@
 /**
  * 站点底部信息组件
- * 显示版本号、备案号、云赞助商 Logo
+ * 显示版本号、备案号、云基础设施 Logo
+ *
+ * 注意：DOM class 避免使用 sponsor/ad 等易被广告拦截规则误杀的词。
  */
 
 import { SiCloudflare } from '@lib/icons'
@@ -51,27 +53,27 @@ const EdgeOneLogo: React.FC<{ className?: string }> = ({ className }) => (
   </svg>
 )
 
-// 云服务商 Logo 配置
-const CLOUD_SPONSORS: Record<
+// 云服务商 Logo 配置（config key 仍为 cloud_sponsors；class 用中性名避免广告插件误杀）
+const CLOUD_PROVIDERS: Record<
   string,
   { name: string; icon: React.ReactNode; url: string; className: string }
 > = {
   cloudflare: {
     name: 'Cloudflare',
     url: 'https://www.cloudflare.com',
-    className: 'sponsor-cloudflare',
+    className: 'cdn-cloudflare',
     icon: <SiCloudflare />,
   },
   edgeone: {
     name: 'EdgeOne',
     url: 'https://cloud.tencent.com/product/eo',
-    className: 'sponsor-edgeone',
+    className: 'cdn-edgeone',
     icon: <EdgeOneLogo />,
   },
   upyun: {
     name: '又拍云',
     url: 'https://www.upyun.com',
-    className: 'sponsor-upyun',
+    className: 'cdn-upyun',
     icon: <UpyunLogo />,
   },
 }
@@ -126,17 +128,17 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
       loadConfig()
     }, [])
 
-    // 解析云赞助商
-    const sponsors = config?.cloud_sponsors
+    // 解析云基础设施展示（config: cloud_sponsors）
+    const providers = config?.cloud_sponsors
       ? config.cloud_sponsors
           .split(',')
           .map((s) => s.trim().toLowerCase())
-          .filter((s) => CLOUD_SPONSORS[s])
+          .filter((s) => CLOUD_PROVIDERS[s])
       : []
 
     // 如果没有任何内容要显示，不渲染
     const hasContent =
-      config?.site_icp || config?.site_gongan || sponsors.length > 0
+      config?.site_icp || config?.site_gongan || providers.length > 0
 
     // 移动端强制使用简化模式
     const useCompactMode = !isHomePage || isMobile
@@ -144,7 +146,7 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
     // 简化模式（非首页或移动端）：只显示图标
     if (useCompactMode) {
       const hasAnyIcon =
-        config?.site_icp || config?.site_gongan || sponsors.length > 0
+        config?.site_icp || config?.site_gongan || providers.length > 0
       if (!hasAnyIcon) return null
 
       return (
@@ -177,18 +179,18 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
               </Tooltip>
             )}
 
-            {/* 云赞助商图标 */}
-            {sponsors.map((key) => {
-              const sponsor = CLOUD_SPONSORS[key]
+            {/* 云基础设施图标 */}
+            {providers.map((key) => {
+              const provider = CLOUD_PROVIDERS[key]
               return (
-                <Tooltip key={key} content={sponsor.name}>
+                <Tooltip key={key} content={provider.name}>
                   <a
-                    href={sponsor.url}
+                    href={provider.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`sponsor-link ${sponsor.className}`}
+                    className={`infra-link ${provider.className}`}
                   >
-                    {sponsor.icon}
+                    {provider.icon}
                   </a>
                 </Tooltip>
               )
@@ -247,24 +249,24 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
             </a>
           )}
 
-          {/* 云赞助商 */}
-          {sponsors.length > 0 && (
+          {/* 云基础设施 */}
+          {providers.length > 0 && (
             <>
               <span className="footer-divider">·</span>
-              <div className="footer-sponsors">
-                <span className="sponsors-label">Powered by</span>
-                {sponsors.map((key) => {
-                  const sponsor = CLOUD_SPONSORS[key]
+              <div className="footer-infra">
+                <span className="infra-label">Powered by</span>
+                {providers.map((key) => {
+                  const provider = CLOUD_PROVIDERS[key]
                   return (
                     <a
                       key={key}
-                      href={sponsor.url}
+                      href={provider.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`sponsor-link ${sponsor.className}`}
-                      title={sponsor.name}
+                      className={`infra-link ${provider.className}`}
+                      title={provider.name}
                     >
-                      {sponsor.icon}
+                      {provider.icon}
                     </a>
                   )
                 })}

@@ -67,6 +67,20 @@ let geoLocationCacheTime: number = 0
 /** 地理位置缓存有效期（5分钟） */
 const GEO_CACHE_TTL = 5 * 60 * 1000
 
+// ===== 浏览器定位常量（须在 resetGeoCache 之前声明）=====
+
+/** localStorage：成功拿到的浏览器定位 */
+const BROWSER_GEO_CACHE_KEY = 'browser_geo_location_v1'
+/** localStorage：用户已拒绝定位（避免反复弹窗） */
+const BROWSER_GEO_DENIED_KEY = 'browser_geo_denied_v1'
+/** 浏览器定位缓存默认 6 小时（天气用城市级足够） */
+const BROWSER_GEO_CACHE_TTL = 6 * 60 * 60 * 1000
+
+/** 本会话已尝试过未授权定位（避免定时刷新反复弹窗） */
+let browserGeoSessionAttempted = false
+/** 进行中的浏览器定位 Promise（去重） */
+let browserGeoInflight: Promise<GeoLocationData | null> | null = null
+
 // ===== 核心 API =====
 
 /**
@@ -204,12 +218,18 @@ export function resetGeoCache(): void {
   chinaCheckPromise = null
   geoLocationCache = null
   geoLocationCacheTime = 0
+  browserGeoInflight = null
+  browserGeoSessionAttempted = false
 
   // 清除 localStorage 中的缓存
   try {
     const keys = Object.keys(localStorage)
     keys.forEach((key) => {
-      if (key.startsWith('geo_location_')) {
+      if (
+        key.startsWith('geo_location_') ||
+        key === BROWSER_GEO_CACHE_KEY ||
+        key === BROWSER_GEO_DENIED_KEY
+      ) {
         localStorage.removeItem(key)
       }
     })
@@ -391,60 +411,224 @@ export async function getGeoLocationWithLocalCache(
   return location
 }
 
+// ===== 浏览器定位（高精度，需用户授权）=====
+
+function readBrowserGeoCache(ttl: number): GeoLocationData | null {
+  try {
+    const raw = localStorage.getItem(BROWSER_GEO_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as {
+      data: GeoLocationData
+      timestamp: number
+    }
+    if (
+      parsed?.data?.latitude != null &&
+      parsed?.data?.longitude != null &&
+      Date.now() - parsed.timestamp < ttl
+    ) {
+      return parsed.data
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+function writeBrowserGeoCache(data: GeoLocationData): void {
+  try {
+    localStorage.setItem(
+      BROWSER_GEO_CACHE_KEY,
+      JSON.stringify({ data, timestamp: Date.now() }),
+    )
+    localStorage.removeItem(BROWSER_GEO_DENIED_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+function isBrowserGeoDeniedStored(): boolean {
+  try {
+    return localStorage.getItem(BROWSER_GEO_DENIED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markBrowserGeoDenied(): void {
+  try {
+    localStorage.setItem(BROWSER_GEO_DENIED_KEY, '1')
+    localStorage.removeItem(BROWSER_GEO_CACHE_KEY)
+  } catch {
+    // ignore
+  }
+}
+
+async function queryGeolocationPermission(): Promise<
+  PermissionState | 'unsupported'
+> {
+  try {
+    if (!navigator.permissions?.query) return 'unsupported'
+    // Safari 等对 name: 'geolocation' 支持不一致
+    const status = await navigator.permissions.query({
+      name: 'geolocation' as PermissionName,
+    })
+    return status.state
+  } catch {
+    return 'unsupported'
+  }
+}
+
+async function reverseGeocodeCity(
+  latitude: number,
+  longitude: number,
+): Promise<string> {
+  try {
+    const reverseGeoUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=10&addressdetails=1`
+    const reverseResponse = await fetch(reverseGeoUrl, {
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        'User-Agent': 'Myriad Weather App',
+      },
+    })
+    if (!reverseResponse.ok) return '当前位置'
+    const reverseData = await reverseResponse.json()
+    return (
+      reverseData.address?.city ||
+      reverseData.address?.town ||
+      reverseData.address?.village ||
+      reverseData.address?.county ||
+      reverseData.address?.state ||
+      '当前位置'
+    )
+  } catch {
+    return '当前位置'
+  }
+}
+
 /**
- * 使用浏览器地理位置 API 获取位置（需要用户授权）
- * 这是最后的备用方案
+ * 使用浏览器地理位置 API 获取位置（需用户授权，精度远高于 IP）
  *
- * @returns 地理位置数据
+ * 策略：
+ * 1. 命中本地缓存则直接返回（默认 6h）
+ * 2. 已拒绝过则不再请求（避免刷屏弹窗）
+ * 3. Permissions API 为 denied 时跳过
+ * 4. prompt 态本会话只尝试一次
+ * 5. 成功后缓存坐标 + 反向地理编码城市名
  */
-export async function getBrowserGeolocation(): Promise<GeoLocationData | null> {
-  if (!('geolocation' in navigator)) {
+export async function getBrowserGeolocation(options?: {
+  /** 忽略本地缓存，重新向系统要一次位置 */
+  force?: boolean
+  /** 缓存有效期（ms），默认 6 小时 */
+  cacheTTL?: number
+}): Promise<GeoLocationData | null> {
+  if (!('geolocation' in navigator) || !navigator.geolocation) {
     return null
   }
 
-  try {
-    const position = await new Promise<GeolocationPosition>(
-      (resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          timeout: 10000,
-          maximumAge: 600000, // 10分钟缓存
-        })
-      },
-    )
+  const cacheTTL = options?.cacheTTL ?? BROWSER_GEO_CACHE_TTL
+  const force = options?.force === true
 
-    // 使用 Nominatim 反向地理编码获取城市名
-    let city = '当前位置'
+  if (!force) {
+    const cached = readBrowserGeoCache(cacheTTL)
+    if (cached) return cached
+  }
+
+  if (!force && isBrowserGeoDeniedStored()) {
+    return null
+  }
+
+  if (browserGeoInflight) {
+    return browserGeoInflight
+  }
+
+  browserGeoInflight = (async () => {
+    const permission = await queryGeolocationPermission()
+
+    if (permission === 'denied') {
+      markBrowserGeoDenied()
+      return null
+    }
+
+    // 未授权态（prompt / 无 Permissions API）：本会话只尝试一次，
+    // 避免天气 30 分钟刷新或并发调用反复弹窗
+    if (
+      permission !== 'granted' &&
+      browserGeoSessionAttempted &&
+      !force
+    ) {
+      return null
+    }
+    if (permission !== 'granted') {
+      browserGeoSessionAttempted = true
+    }
+
     try {
-      const reverseGeoUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${position.coords.latitude}&lon=${position.coords.longitude}&zoom=10&addressdetails=1`
-
-      const reverseResponse = await fetch(reverseGeoUrl, {
-        signal: AbortSignal.timeout(5000),
-        headers: {
-          'User-Agent': 'Myriad Weather App',
+      const position = await new Promise<GeolocationPosition>(
+        (resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: false, // 天气不需要 GPS 级精度，更快更省电
+            timeout: 12000,
+            maximumAge: 10 * 60 * 1000, // 系统侧最多复用 10 分钟
+          })
         },
-      })
+      )
 
-      if (reverseResponse.ok) {
-        const reverseData = await reverseResponse.json()
-        city =
-          reverseData.address?.city ||
-          reverseData.address?.town ||
-          reverseData.address?.village ||
-          reverseData.address?.county ||
-          reverseData.address?.state ||
-          '当前位置'
+      const latitude = position.coords.latitude
+      const longitude = position.coords.longitude
+      const city = await reverseGeocodeCity(latitude, longitude)
+
+      const data: GeoLocationData = {
+        latitude,
+        longitude,
+        city,
       }
-    } catch (_e) {
-      // 反向地理编码失败，使用默认城市名
+      writeBrowserGeoCache(data)
+      console.debug(
+        `[GeoLocation] 浏览器定位成功: ${city} (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
+      )
+      return data
+    } catch (error) {
+      const code =
+        error && typeof error === 'object' && 'code' in error
+          ? (error as GeolocationPositionError).code
+          : undefined
+      // 1 = PERMISSION_DENIED
+      if (code === 1) {
+        markBrowserGeoDenied()
+        console.debug('[GeoLocation] 用户拒绝浏览器定位，回退 IP')
+      } else {
+        console.debug('[GeoLocation] 浏览器定位失败，回退 IP:', error)
+      }
+      return null
+    } finally {
+      browserGeoInflight = null
     }
+  })()
 
-    return {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      city,
+  return browserGeoInflight
+}
+
+/**
+ * 天气等场景用的位置解析：浏览器定位优先，失败再 IP
+ */
+export async function resolvePreciseLocation(): Promise<GeoLocationData | null> {
+  try {
+    const browser = await getBrowserGeolocation()
+    if (
+      browser &&
+      Number.isFinite(browser.latitude) &&
+      Number.isFinite(browser.longitude)
+    ) {
+      return browser
     }
-  } catch (_error) {
-    // 浏览器 API 失败（可能用户拒绝授权）
+  } catch (error) {
+    console.warn('[GeoLocation] 浏览器定位异常:', error)
+  }
+
+  try {
+    return await getClientGeoLocation()
+  } catch (error) {
+    console.warn('[GeoLocation] IP 定位失败:', error)
     return null
   }
 }

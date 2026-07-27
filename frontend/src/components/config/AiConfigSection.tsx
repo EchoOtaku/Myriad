@@ -5,7 +5,6 @@
 
 import type { SettingOption } from '../settings/types'
 import {
-  FaFreeCodeCamp,
   FaMicrophone,
   FaVolumeUp,
   LuPalette,
@@ -62,7 +61,8 @@ interface ConfigField {
 const OPENAI_BASE_URL = 'https://api.openai.com/v1'
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 const OPENAI_MODEL = 'gpt-5.5'
-// OpenRouter 默认模型：标准层级用 MiniMax M3，Pro 层级用 Opus 4.8
+// OpenRouter 默认模型：三个文本模型层级共用同一种 Provider 配置协议。
+const OPENROUTER_MODEL_LITE = 'openai/gpt-oss-20b:free'
 const OPENROUTER_MODEL_STANDARD = 'minimax/minimax-m3'
 const OPENROUTER_MODEL_PRO = 'anthropic/claude-opus-4.8'
 
@@ -94,6 +94,89 @@ interface AiConfigSectionProps {
   sectionId?: string
 }
 
+interface ModelTierGroupProps {
+  title: string
+  icon: React.ReactNode
+  description: React.ReactNode
+  providerItemKey: string
+  providerLabel: string
+  provider: string
+  providerOptions: SettingOption<string>[]
+  providerHint?: string
+  fields: ConfigField[]
+  enabled?: boolean
+  controls?: React.ReactNode
+  onProviderChange: (provider: string) => void
+  updateValue: (key: string, value: string) => void
+}
+
+const ModelTierGroup: React.FC<ModelTierGroupProps> = ({
+  title,
+  icon,
+  description,
+  providerItemKey,
+  providerLabel,
+  provider,
+  providerOptions,
+  providerHint,
+  fields,
+  enabled = true,
+  controls,
+  onProviderChange,
+  updateValue,
+}) => (
+  <SettingGroup title={title} icon={icon} description={description}>
+    {controls}
+    {enabled && (
+      <>
+        <ProviderItem
+          itemKey={providerItemKey}
+          label={providerLabel}
+          value={provider}
+          onChange={onProviderChange}
+          options={providerOptions}
+          hint={providerHint}
+          layout="horizontal"
+        />
+        {fields.map((field) => (
+          <InputItem
+            key={field.key}
+            itemKey={field.key}
+            label={field.label}
+            required={field.required}
+            value={field.value}
+            onChange={(value) => updateValue(field.key, value)}
+            placeholder={field.placeholder}
+            inputType={field.field_type as 'text' | 'password'}
+            autoSelectOnMask
+            layout="vertical"
+          />
+        ))}
+      </>
+    )}
+  </SettingGroup>
+)
+
+function fieldsForModelTier(
+  configFields: ConfigField[],
+  prefix: '' | 'lite_' | 'pro_',
+  provider: string,
+): ConfigField[] {
+  const providerKey = `${prefix}provider`
+  const geminiPrefix = `${prefix}gemini_`
+  const openaiPrefix = `${prefix}openai_`
+  const openaiBaseUrlKey = `${prefix}openai_base_url`
+  return configFields.filter((field) => {
+    if (field.key === providerKey) return false
+    if (provider === 'gemini') return field.key.startsWith(geminiPrefix)
+    if (provider === 'openai' || provider === 'openrouter') {
+      if (!field.key.startsWith(openaiPrefix)) return false
+      return provider !== 'openrouter' || field.key !== openaiBaseUrlKey
+    }
+    return false
+  })
+}
+
 export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   configFields,
   updateValue,
@@ -123,6 +206,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     const raw = getFieldValue('provider')
     if (!raw) return 'openrouter'
     return resolveProvider(raw, getFieldValue('openai_base_url'))
+  }, [getFieldValue])
+
+  const currentLiteProvider = useMemo(() => {
+    const raw = getFieldValue('lite_provider')
+    if (!raw) return 'openrouter'
+    return resolveProvider(raw, getFieldValue('lite_openai_base_url'))
   }, [getFieldValue])
 
   // Pro 模型是否启用
@@ -170,7 +259,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
   // 当前图片生成 Provider
   const currentImageProvider = useMemo(
-    () => getFieldValue('ai_image_provider', 'pollinations'),
+    () => getFieldValue('ai_image_provider', 'openrouter'),
     [getFieldValue],
   )
 
@@ -188,35 +277,45 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   const imageProviderOptions: SettingOption<string>[] = useMemo(
     () => [
       {
-        value: 'pollinations',
-        label: 'Pollinations',
-        icon: <FaFreeCodeCamp />,
-        badge: t.config.pollinationsFree,
+        value: 'openai',
+        label: 'OpenAI',
+        icon: <SiOpenai />,
+        badge: 'GPT Image',
+      },
+      {
+        value: 'openrouter',
+        label: 'OpenRouter',
+        icon: <SiOpenrouter />,
+        badge: 'Image API',
+      },
+      {
+        value: 'volcengine',
+        label: 'Volcengine',
+        icon: <LuSparkles />,
+        badge: 'Seedream',
       },
       {
         value: 'pixai',
         label: 'PixAI',
         icon: <PixAIIcon />,
-        badge: 'SD/DiT',
+        badge: '不用于 Life',
       },
     ],
-    [t.config.pollinationsFree],
+    [],
   )
 
-  // Pollinations 模型选项
-  const pollinationsModelOptions: SettingOption<string>[] = useMemo(
-    () => [
-      { value: 'flux-anime', label: t.config.fluxAnimeRecommend },
-      { value: 'flux', label: t.config.fluxDefault },
-      { value: 'flux-realism', label: t.config.fluxRealism },
-      { value: 'flux-3d', label: t.config.flux3D },
-    ],
-    [
-      t.config.fluxAnimeRecommend,
-      t.config.fluxDefault,
-      t.config.fluxRealism,
-      t.config.flux3D,
-    ],
+  const handleImageProviderChange = useCallback(
+    (provider: string) => {
+      const defaults: Record<string, string> = {
+        openai: 'gpt-image-2',
+        openrouter: 'openai/gpt-image-2',
+        volcengine: 'doubao-seedream-5-0-260128',
+        pixai: '1983308862240288769',
+      }
+      updateValue('ai_image_provider', provider)
+      updateValue('ai_image_model', defaults[provider] ?? '')
+    },
+    [updateValue],
   )
 
   // 腾讯云区域选项
@@ -239,53 +338,18 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     ],
   )
 
-  // Standard Provider 对应的配置字段
-  const providerFields = useMemo(() => {
-    return configFields.filter((field) => {
-      if (field.key === 'provider') return false
-      if (field.key.startsWith('pro_')) return false
-      if (field.key.startsWith('ai_image_') || field.key.startsWith('pixai_'))
-        return false
-      if (field.key.startsWith('tencent_')) return false
-
-      if (currentProvider === 'gemini') {
-        return field.key.startsWith('gemini_')
-      } else if (currentProvider === 'openai' || currentProvider === 'openrouter') {
-        // OpenRouter 复用 OpenAI 兼容字段，但 Base URL 固定无需展示
-        if (!field.key.startsWith('openai_')) return false
-        if (currentProvider === 'openrouter' && field.key === 'openai_base_url')
-          return false
-        return true
-      }
-      return false
-    })
-  }, [configFields, currentProvider])
-
-  // Pro Provider 对应的配置字段
-  const proProviderFields = useMemo(() => {
-    return configFields.filter((field) => {
-      if (field.key === 'pro_provider') return false
-      if (!field.key.startsWith('pro_')) return false
-
-      if (currentProProvider === 'gemini') {
-        return field.key.startsWith('pro_gemini_')
-      } else if (
-        currentProProvider === 'openai' ||
-        currentProProvider === 'openrouter'
-      ) {
-        // OpenRouter 复用 OpenAI 兼容字段，但 Base URL 固定无需展示
-        if (!field.key.startsWith('pro_openai_')) return false
-        if (
-          currentProProvider === 'openrouter' &&
-          field.key === 'pro_openai_base_url'
-        ) {
-          return false
-}
-        return true
-      }
-      return false
-    })
-  }, [configFields, currentProProvider])
+  const liteProviderFields = useMemo(
+    () => fieldsForModelTier(configFields, 'lite_', currentLiteProvider),
+    [configFields, currentLiteProvider],
+  )
+  const providerFields = useMemo(
+    () => fieldsForModelTier(configFields, '', currentProvider),
+    [configFields, currentProvider],
+  )
+  const proProviderFields = useMemo(
+    () => fieldsForModelTier(configFields, 'pro_', currentProProvider),
+    [configFields, currentProProvider],
+  )
 
   // 处理语音测试
   const handleSpeechTest = useCallback(async () => {
@@ -311,13 +375,35 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       description={description}
       sectionId={sectionId}
     >
-      {/* 标准模型 AI 服务 */}
-      <SettingGroup
+      <ModelTierGroup
+        title="Lite 模型"
+        icon={<LuSparkles />}
+        description="高频、低成本层，负责角色对话、自主决策与轻量整理；与 Standard、Pro 使用完全相同的 Provider 配置结构。"
+        providerItemKey="lite_ai_provider"
+        providerLabel={t.config.aiProvider}
+        provider={currentLiteProvider}
+        providerOptions={aiProviderOptions}
+        providerHint="可单独配置，留空的凭据会按同一 Provider 复用 Standard。"
+        fields={liteProviderFields}
+        onProviderChange={(provider) =>
+          handleProviderChange(
+            'lite_provider',
+            'lite_openai_base_url',
+            'lite_openai_model',
+            OPENROUTER_MODEL_LITE,
+            provider,
+          )
+        }
+        updateValue={updateValue}
+      />
+
+      <ModelTierGroup
         title={t.config.aiStandardModelTitle}
         icon={<LuSparkles />}
         description={
           <>
             {t.config.aiStandardModelDesc}
+            {' · '}Standard 负责常规分析与中等复杂度任务。
             {' · '}
             Gemini {t.config.geminiDescription}{' '}
             <a
@@ -331,100 +417,58 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             {t.config.openaiCompatible}：{t.config.openaiDescription}
           </>
         }
-      >
-        {/* AI Provider 选择 */}
-        <ProviderItem
-          itemKey="ai_provider"
-          label={t.config.aiProvider}
-          value={currentProvider}
-          onChange={(v) =>
-            handleProviderChange(
-              'provider',
-              'openai_base_url',
-              'openai_model',
-              OPENROUTER_MODEL_STANDARD,
-              v,
-            )
-          }
-          options={aiProviderOptions}
-          hint={t.config.aiProviderHint}
-          layout="horizontal"
-        />
+        providerItemKey="ai_provider"
+        providerLabel={t.config.aiProvider}
+        provider={currentProvider}
+        providerOptions={aiProviderOptions}
+        providerHint={t.config.aiProviderHint}
+        fields={providerFields}
+        onProviderChange={(provider) =>
+          handleProviderChange(
+            'provider',
+            'openai_base_url',
+            'openai_model',
+            OPENROUTER_MODEL_STANDARD,
+            provider,
+          )
+        }
+        updateValue={updateValue}
+      />
 
-        {/* Provider 配置字段 */}
-        {providerFields.map((field) => (
-          <InputItem
-            key={field.key}
-            itemKey={field.key}
-            label={field.label}
-            required={field.required}
-            value={field.value}
-            onChange={(v) => updateValue(field.key, v)}
-            placeholder={field.placeholder}
-            inputType={field.field_type as 'text' | 'password'}
-            autoSelectOnMask
-            layout="vertical"
-          />
-        ))}
-      </SettingGroup>
-
-      {/* Pro 模型 AI 服务 */}
-      <SettingGroup
+      <ModelTierGroup
         title={t.config.aiProModelTitle}
         icon={<LuZap />}
-        description={t.config.aiProModelDesc}
-      >
-        {/* Pro 模型开关 */}
-        <SwitchItem
-          itemKey="pro_enabled"
-          label={t.config.aiProEnable}
-          description={t.config.aiProEnableDesc}
-          value={proEnabled}
-          onChange={(v: boolean) =>
-            updateValue('pro_enabled', v ? 'true' : 'false')
-          }
-          layout="horizontal"
-        />
-
-        {proEnabled && (
-          <>
-            {/* Pro AI Provider 选择 */}
-            <ProviderItem
-              itemKey="pro_ai_provider"
-              label={t.config.aiProvider}
-              value={currentProProvider}
-              onChange={(v) =>
-                handleProviderChange(
-                  'pro_provider',
-                  'pro_openai_base_url',
-                  'pro_openai_model',
-                  OPENROUTER_MODEL_PRO,
-                  v,
-                )
-              }
-              options={aiProviderOptions}
-              hint={t.config.aiProProviderHint}
-              layout="horizontal"
-            />
-
-            {/* Pro Provider 配置字段 */}
-            {proProviderFields.map((field) => (
-              <InputItem
-                key={field.key}
-                itemKey={field.key}
-                label={field.label}
-                required={field.required}
-                value={field.value}
-                onChange={(v) => updateValue(field.key, v)}
-                placeholder={field.placeholder}
-                inputType={field.field_type as 'text' | 'password'}
-                autoSelectOnMask
-                layout="vertical"
-              />
-            ))}
-          </>
-        )}
-      </SettingGroup>
+        description={`${t.config.aiProModelDesc} · Digital Life 的 DNA 语义归纳、人物设定与最终绘图提示词固定使用 Pro。`}
+        providerItemKey="pro_ai_provider"
+        providerLabel={t.config.aiProvider}
+        provider={currentProProvider}
+        providerOptions={aiProviderOptions}
+        providerHint={t.config.aiProProviderHint}
+        fields={proProviderFields}
+        enabled={proEnabled}
+        controls={
+          <SwitchItem
+            itemKey="pro_enabled"
+            label={t.config.aiProEnable}
+            description={t.config.aiProEnableDesc}
+            value={proEnabled}
+            onChange={(value: boolean) =>
+              updateValue('pro_enabled', value ? 'true' : 'false')
+            }
+            layout="horizontal"
+          />
+        }
+        onProviderChange={(provider) =>
+          handleProviderChange(
+            'pro_provider',
+            'pro_openai_base_url',
+            'pro_openai_model',
+            OPENROUTER_MODEL_PRO,
+            provider,
+          )
+        }
+        updateValue={updateValue}
+      />
 
       {/* AI 图片生成配置 */}
       <SettingGroup
@@ -432,111 +476,128 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         icon={<LuPalette />}
         description={t.config.aiImageDesc}
       >
-        {/* 图片生成 Provider 选择 */}
         <ProviderItem
           itemKey="image_provider"
           label={t.config.imageGenService}
           value={currentImageProvider}
-          onChange={(v) => updateValue('ai_image_provider', v)}
+          onChange={handleImageProviderChange}
           options={imageProviderOptions}
           layout="horizontal"
         />
 
-        {/* Pollinations 配置 */}
-        {currentImageProvider === 'pollinations' && (
-          <>
-            <SelectItem
-              itemKey="ai_image_model"
-              label={t.config.aiModel}
-              value={getFieldValue('ai_image_model', 'flux-anime')}
-              onChange={(v) => updateValue('ai_image_model', v)}
-              options={pollinationsModelOptions}
-              layout="vertical"
-            />
-            <CompactSettingGroup>
-              <NumberItem
-                itemKey="ai_image_width_poll"
-                label={t.config.width}
-                value={Number.parseInt(
-                  getFieldValue('ai_image_width', '512'),
-                  10,
-                )}
-                onChange={(v) => updateValue('ai_image_width', String(v))}
-                min={256}
-                max={1024}
-                step={64}
-                layout="vertical"
-              />
-              <NumberItem
-                itemKey="ai_image_height_poll"
-                label={t.config.height}
-                value={Number.parseInt(
-                  getFieldValue('ai_image_height', '768'),
-                  10,
-                )}
-                onChange={(v) => updateValue('ai_image_height', String(v))}
-                min={256}
-                max={1024}
-                step={64}
-                layout="vertical"
-              />
-            </CompactSettingGroup>
-          </>
+        {currentImageProvider === 'openai' && (
+          <InputItem
+            itemKey="ai_image_openai_api_key"
+            label="OpenAI Image API Key"
+            required
+            value={getFieldValue('ai_image_openai_api_key')}
+            onChange={(v) => updateValue('ai_image_openai_api_key', v)}
+            placeholder="sk-..."
+            inputType="password"
+            autoSelectOnMask
+            layout="vertical"
+          />
         )}
 
-        {/* PixAI 配置 */}
-        {currentImageProvider === 'pixai' && (
+        {currentImageProvider === 'openrouter' && (
+          <InputItem
+            itemKey="ai_image_openrouter_api_key"
+            label="OpenRouter Image API Key"
+            required
+            value={getFieldValue('ai_image_openrouter_api_key')}
+            onChange={(v) => updateValue('ai_image_openrouter_api_key', v)}
+            placeholder="sk-or-v1-..."
+            inputType="password"
+            autoSelectOnMask
+            layout="vertical"
+          />
+        )}
+
+        {currentImageProvider === 'volcengine' && (
           <>
             <InputItem
-              itemKey="pixai_api_key"
-              label="API Key"
+              itemKey="ai_image_volcengine_api_key"
+              label="Volcengine Ark API Key"
               required
-              value={getFieldValue('pixai_api_key')}
-              onChange={(v) => updateValue('pixai_api_key', v)}
-              placeholder={t.config.pixaiPlaceholder}
+              value={getFieldValue('ai_image_volcengine_api_key')}
+              onChange={(v) => updateValue('ai_image_volcengine_api_key', v)}
+              placeholder="Ark API Key"
               inputType="password"
               autoSelectOnMask
               layout="vertical"
             />
             <InputItem
-              itemKey="ai_image_model_pixai"
-              label={t.config.pixaiModelId}
-              value={getFieldValue('ai_image_model', '1983308862240288769')}
-              onChange={(v) => updateValue('ai_image_model', v)}
-              placeholder="1983308862240288769"
+              itemKey="ai_image_volcengine_base_url"
+              label="Ark Base URL"
+              value={getFieldValue(
+                'ai_image_volcengine_base_url',
+                'https://ark.cn-beijing.volces.com/api/v3',
+              )}
+              onChange={(v) => updateValue('ai_image_volcengine_base_url', v)}
+              placeholder="https://ark.cn-beijing.volces.com/api/v3"
               inputType="text"
               layout="vertical"
             />
-            <CompactSettingGroup>
-              <NumberItem
-                itemKey="ai_image_width_pixai"
-                label={t.config.width}
-                value={Number.parseInt(
-                  getFieldValue('ai_image_width', '768'),
-                  10,
-                )}
-                onChange={(v) => updateValue('ai_image_width', String(v))}
-                min={768}
-                max={1280}
-                step={128}
-                layout="vertical"
-              />
-              <NumberItem
-                itemKey="ai_image_height_pixai"
-                label={t.config.height}
-                value={Number.parseInt(
-                  getFieldValue('ai_image_height', '1280'),
-                  10,
-                )}
-                onChange={(v) => updateValue('ai_image_height', String(v))}
-                min={768}
-                max={1280}
-                step={128}
-                layout="vertical"
-              />
-            </CompactSettingGroup>
           </>
         )}
+
+        {currentImageProvider === 'pixai' && (
+          <InputItem
+            itemKey="pixai_api_key"
+            label="PixAI API Key"
+            required
+            value={getFieldValue('pixai_api_key')}
+            onChange={(v) => updateValue('pixai_api_key', v)}
+            placeholder={t.config.pixaiPlaceholder}
+            inputType="password"
+            autoSelectOnMask
+            layout="vertical"
+          />
+        )}
+
+        <InputItem
+          itemKey="ai_image_model"
+          label={t.config.aiModel}
+          value={getFieldValue('ai_image_model', 'openai/gpt-image-2')}
+          onChange={(v) => updateValue('ai_image_model', v)}
+          placeholder={
+            currentImageProvider === 'openai'
+              ? 'gpt-image-2'
+              : currentImageProvider === 'volcengine'
+                ? 'doubao-seedream-5-0-260128'
+                : currentImageProvider === 'pixai'
+                  ? '1983308862240288769'
+                  : 'openai/gpt-image-2'
+          }
+          inputType="text"
+          layout="vertical"
+        />
+
+        <CompactSettingGroup>
+          <NumberItem
+            itemKey="ai_image_width"
+            label={t.config.width}
+            value={Number.parseInt(getFieldValue('ai_image_width', '1024'), 10)}
+            onChange={(v) => updateValue('ai_image_width', String(v))}
+            min={256}
+            max={3840}
+            step={16}
+            layout="vertical"
+          />
+          <NumberItem
+            itemKey="ai_image_height"
+            label={t.config.height}
+            value={Number.parseInt(
+              getFieldValue('ai_image_height', '1024'),
+              10,
+            )}
+            onChange={(v) => updateValue('ai_image_height', String(v))}
+            min={256}
+            max={3840}
+            step={16}
+            layout="vertical"
+          />
+        </CompactSettingGroup>
       </SettingGroup>
 
       {/* 语音服务配置 */}

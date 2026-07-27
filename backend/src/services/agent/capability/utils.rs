@@ -325,7 +325,10 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
     );
     map.insert(
         "scheduler.create",
-        ("此操作将创建 Tapp 定时任务，可能影响系统资源", RiskLevel::Medium),
+        (
+            "此操作将创建 Tapp 定时任务，可能影响系统资源",
+            RiskLevel::Medium,
+        ),
     );
     map.insert(
         "scheduler.trigger",
@@ -333,7 +336,10 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
     );
     map.insert(
         "heartbeat.create",
-        ("此操作将创建 Agent 心跳定时任务（HEARTBEAT.md）", RiskLevel::Medium),
+        (
+            "此操作将创建 Agent 心跳定时任务（HEARTBEAT.md）",
+            RiskLevel::Medium,
+        ),
     );
     map.insert(
         "heartbeat.update",
@@ -421,7 +427,6 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         // ============ 报告系统 ============
         "report.create" => "生成报告。用户说'生成报告'、'做个总结报告'时使用",
         "report.list" => "报告列表。用户说'历史报告'时使用",
-        "report.comprehensive" => "综合报告生成。生成跨平台综合分析报告",
 
         // ============ 路由导航 ============
         "router.state" => "路由状态。获取当前页面路由状态，了解用户在哪个页面",
@@ -530,7 +535,7 @@ pub fn get_quick_reference() -> Value {
             "Tapp/应用列表": ["tapp.list"],
             "打开应用/Tapp窗口": ["tapp.window.open"],
             "与Tapp交互/点击按钮": ["tapp.interact", "tapp.understand"],
-            "生成报告": ["report.create", "report.comprehensive"],
+            "生成报告": ["report.create"],
             "推荐/建议": ["ai.recommend"],
             "对话/聊天": ["ai.chat"],
             "当前页面内容": ["page.content", "brew.page", "tapp.page"],
@@ -597,7 +602,7 @@ pub fn get_quick_reference() -> Value {
             "ai.summarize": {"content": "文章内容或 contentFrom 引用", "maxLength": 300},
             "ai.analyze": {"content": "待分析文本", "analysisType": "sentiment|trends|custom", "customPrompt": "自定义分析角度"},
             "brew.items": {"limit": 10, "source_id": "可选源ID", "unread_only": true},
-            "router.navigate": {"path": "/library, /brew, /reports, /config, /data-management, /tapp"},
+            "router.navigate": {"path": "/library, /brew, /life, /config, /data-management, /tapp"},
             "music.control": {"action": "play|pause|next|prev|mute|unmute|volume", "volume": 50},
             "scheduler.create": {"tappId": "已安装TappID", "name": "任务名", "scheduleType": "cron", "schedule": {"cron": "*/30 * * * *"}},
             "heartbeat.create": {"name": "Brew早间总结", "schedule": "0 9 * * *", "action": "总结 brew 订阅", "enabled": true}

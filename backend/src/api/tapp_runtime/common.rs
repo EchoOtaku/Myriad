@@ -290,6 +290,10 @@ static AI_CONFIG_CACHE: Lazy<Arc<RwLock<SingleCache<AiConfig>>>> =
 static AI_PRO_CONFIG_CACHE: Lazy<Arc<RwLock<SingleCache<AiConfig>>>> =
     Lazy::new(|| Arc::new(RwLock::new(SingleCache::new(Duration::from_secs(300)))));
 
+/// AI Lite 配置缓存（5分钟 TTL）
+static AI_LITE_CONFIG_CACHE: Lazy<Arc<RwLock<SingleCache<AiConfig>>>> =
+    Lazy::new(|| Arc::new(RwLock::new(SingleCache::new(Duration::from_secs(300)))));
+
 /// AI 图片配置缓存（5分钟 TTL）
 static AI_IMAGE_CONFIG_CACHE: Lazy<Arc<RwLock<SingleCache<AiImageConfig>>>> =
     Lazy::new(|| Arc::new(RwLock::new(SingleCache::new(Duration::from_secs(300)))));
@@ -299,6 +303,7 @@ pub async fn get_ai_config_for_tier(
     tier: crate::config::ModelTier,
 ) -> Result<AiConfig, (StatusCode, Json<Value>)> {
     let cache_ref = match tier {
+        crate::config::ModelTier::Lite => &*AI_LITE_CONFIG_CACHE,
         crate::config::ModelTier::Standard => &*AI_CONFIG_CACHE,
         crate::config::ModelTier::Pro => &*AI_PRO_CONFIG_CACHE,
     };

@@ -1392,7 +1392,32 @@ pub async fn handle_channel_message(
     .await
     .map_err(|e| e.to_string())?;
 
-    // 广播到 WebSocket
+    // 广播到 WebSocket。E2E 时优先明文，避免收件人先闪 ciphertext。
+    let mut ws_payload = payload.clone();
+    if is_encrypted {
+        if let Ok(Some(prop_row)) = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT properties FROM federation_channels WHERE channel_id = $1",
+                [channel_id.into()],
+            ))
+            .await
+        {
+            let properties = prop_row
+                .try_get::<Option<serde_json::Value>>("", "properties")
+                .ok()
+                .flatten();
+            if let Ok(session) = load_e2e_session(channel_id, properties.as_ref()).await {
+                if session.established {
+                    if let Ok(plain) =
+                        crate::federation::e2e::decrypt_json_payload(&session, &payload)
+                    {
+                        ws_payload = plain;
+                    }
+                }
+            }
+        }
+    }
     crate::federation::ws_gateway::broadcast_to_channel(
         channel_id,
         &json!({
@@ -1402,7 +1427,7 @@ pub async fn handle_channel_message(
                 "message_id": message_id,
                 "sender_actor": sender,
                 "message_type": message_type,
-                "payload": payload,
+                "payload": ws_payload,
                 "is_encrypted": is_encrypted,
                 "reply_to": reply_to,
                 "created_at": now_iso8601()

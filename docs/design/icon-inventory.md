@@ -78,7 +78,6 @@ Myriad 自有图标采用接近 emoji 的大图标表达，但不直接复刻系
 | `frontend/src/tapp/constants/icons.ts`                   | Tapp 官方 token 到 PNG 资源路径的映射                                                |
 | `frontend/src/utils/weather.ts`                          | WMO 天气代码到天气资源图标的映射                                                     |
 | `frontend/src/components/GlobalControlPanel.tsx`         | 问候、右上动态岛、控制面板资源图标                                                   |
-| `frontend/src/views/reports/ComprehensiveReportCard.tsx` | 综合报告主题和装饰图标入口                                                           |
 
 ### 彩绘 PNG 与线性 SVG 的分工
 

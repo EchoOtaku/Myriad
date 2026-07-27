@@ -151,7 +151,12 @@ pub async fn publish_content(
     }
 
     let content_id = if content_type == "note" {
-        match req.content_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        match req
+            .content_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             Some(id) => id.to_string(),
             None => format!("note_{}", uuid::Uuid::new_v4()),
         }
@@ -275,8 +280,7 @@ pub async fn publish_content(
     .await?;
 
     // Best-effort fan-out: enqueue deliveries; never fail the publish on queue errors.
-    let delivered_queued =
-        fan_out_to_followers(db, user_id, act_db_id, &activity_json).await;
+    let delivered_queued = fan_out_to_followers(db, user_id, act_db_id, &activity_json).await;
 
     tracing::info!(
         "📢 Published {} #{} as {} ({}); delivered_queued={}",
@@ -520,8 +524,7 @@ pub async fn unpublish_content(
         .await;
 
     // Best-effort fan-out of Delete to followers
-    let delivered_queued =
-        fan_out_to_followers(db, user_id, del_db_id, &delete_json).await;
+    let delivered_queued = fan_out_to_followers(db, user_id, del_db_id, &delete_json).await;
 
     tracing::info!(
         "🗑️ Unpublished {} #{} (Delete: {}); delivered_queued={}",
@@ -603,7 +606,12 @@ pub async fn store_federation_media(
     mime: &str,
     bytes: &[u8],
 ) -> Result<MediaUploadResponse, (StatusCode, Json<serde_json::Value>)> {
-    let mime = mime.split(';').next().unwrap_or(mime).trim().to_ascii_lowercase();
+    let mime = mime
+        .split(';')
+        .next()
+        .unwrap_or(mime)
+        .trim()
+        .to_ascii_lowercase();
     let attachment_type = classify_media_mime(&mime).ok_or_else(|| {
         (
             StatusCode::UNSUPPORTED_MEDIA_TYPE,
@@ -635,13 +643,15 @@ pub async fn store_federation_media(
         ));
     }
 
-    let ext_raw = extension_for_mime(&mime).map(|s| s.to_string()).unwrap_or_else(|| {
-        Path::new(filename)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("bin")
-            .to_ascii_lowercase()
-    });
+    let ext_raw = extension_for_mime(&mime)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            Path::new(filename)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("bin")
+                .to_ascii_lowercase()
+        });
     // Sanitize extension
     let ext: String = ext_raw
         .chars()
@@ -732,7 +742,11 @@ fn extension_for_mime(mime: &str) -> Option<&'static str> {
 
 /// Human-readable reason if `url` is not a valid local federation media URL for this user.
 /// Returns `None` when the URL is acceptable.
-fn attachment_url_rejection_reason(base_url: &str, user_id: i32, url: &str) -> Option<&'static str> {
+fn attachment_url_rejection_reason(
+    base_url: &str,
+    user_id: i32,
+    url: &str,
+) -> Option<&'static str> {
     let url = url.trim();
     if url.is_empty() {
         return Some("Attachment URL is empty");
@@ -864,7 +878,7 @@ async fn build_ap_object(
             Ok(note)
         }
         "report" => {
-            // 综合报告 → AP Article
+            // 单平台报告 → AP Article
             let report_id: i32 = content_id.parse().unwrap_or(0);
             let row = db
                 .query_one(Statement::from_sql_and_values(
@@ -883,17 +897,10 @@ async fn build_ap_object(
             let title: Option<String> = row.try_get("", "report_title").ok();
 
             // Display title for the Article name
-            let name = if platform == "all" {
-                title
-                    .clone()
-                    .filter(|t| !t.is_empty())
-                    .unwrap_or_else(|| "综合分析报告".to_string())
-            } else {
-                title
-                    .clone()
-                    .filter(|t| !t.is_empty())
-                    .unwrap_or_else(|| format!("{} 平台报告", platform))
-            };
+            let name = title
+                .clone()
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| format!("{} 平台报告", platform));
 
             // Align with Aro chat snapshot fields: report_id, summary, platform, content_preview
             // so remote instances can render without a user-scoped catalog lookup.
@@ -1037,62 +1044,60 @@ async fn build_ap_object(
             // Library 发布：content_id = platform_metadata.id（平台收藏快照）
             // 或 platform 名（取该用户该平台最新一条 metadata）。
             // 无独立 library_items 表；数据来自 platform_metadata.raw_data 摘要。
-            let (meta_id, platform_name, raw): (i32, String, serde_json::Value) =
-                if let Ok(id) = content_id.parse::<i32>() {
-                    let row = db
-                        .query_one(Statement::from_sql_and_values(
-                            DatabaseBackend::Postgres,
-                            r#"SELECT id, platform_name, raw_data
+            let (meta_id, platform_name, raw): (i32, String, serde_json::Value) = if let Ok(id) =
+                content_id.parse::<i32>()
+            {
+                let row = db
+                    .query_one(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"SELECT id, platform_name, raw_data
                                FROM platform_metadata
                                WHERE id = $1 AND user_id = $2"#,
-                            [id.into(), user_id.into()],
-                        ))
-                        .await
-                        .map_err(db_err)?
-                        .ok_or_else(|| not_found("Library metadata not found"))?;
-                    (
-                        row.try_get::<i32>("", "id").unwrap_or(id),
-                        row.try_get::<String>("", "platform_name")
-                            .unwrap_or_default(),
-                        row.try_get::<serde_json::Value>("", "raw_data")
-                            .unwrap_or(json!({})),
-                    )
-                } else {
-                    let platform = content_id.trim();
-                    if platform.is_empty() {
-                        return Err((
-                            StatusCode::BAD_REQUEST,
-                            Json(json!({
-                                "error": "library content_id must be platform_metadata id or platform name"
-                            })),
-                        ));
-                    }
-                    let row = db
-                        .query_one(Statement::from_sql_and_values(
-                            DatabaseBackend::Postgres,
-                            r#"SELECT id, platform_name, raw_data
+                        [id.into(), user_id.into()],
+                    ))
+                    .await
+                    .map_err(db_err)?
+                    .ok_or_else(|| not_found("Library metadata not found"))?;
+                (
+                    row.try_get::<i32>("", "id").unwrap_or(id),
+                    row.try_get::<String>("", "platform_name")
+                        .unwrap_or_default(),
+                    row.try_get::<serde_json::Value>("", "raw_data")
+                        .unwrap_or(json!({})),
+                )
+            } else {
+                let platform = content_id.trim();
+                if platform.is_empty() {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({
+                            "error": "library content_id must be platform_metadata id or platform name"
+                        })),
+                    ));
+                }
+                let row = db
+                    .query_one(Statement::from_sql_and_values(
+                        DatabaseBackend::Postgres,
+                        r#"SELECT id, platform_name, raw_data
                                FROM platform_metadata
                                WHERE user_id = $1 AND lower(platform_name) = lower($2)
                                ORDER BY fetched_at DESC NULLS LAST, id DESC
                                LIMIT 1"#,
-                            [user_id.into(), platform.into()],
-                        ))
-                        .await
-                        .map_err(db_err)?
-                        .ok_or_else(|| {
-                            not_found(&format!(
-                                "No library metadata for platform '{}'",
-                                platform
-                            ))
-                        })?;
-                    (
-                        row.try_get::<i32>("", "id").unwrap_or(0),
-                        row.try_get::<String>("", "platform_name")
-                            .unwrap_or_else(|_| platform.to_string()),
-                        row.try_get::<serde_json::Value>("", "raw_data")
-                            .unwrap_or(json!({})),
-                    )
-                };
+                        [user_id.into(), platform.into()],
+                    ))
+                    .await
+                    .map_err(db_err)?
+                    .ok_or_else(|| {
+                        not_found(&format!("No library metadata for platform '{}'", platform))
+                    })?;
+                (
+                    row.try_get::<i32>("", "id").unwrap_or(0),
+                    row.try_get::<String>("", "platform_name")
+                        .unwrap_or_else(|_| platform.to_string()),
+                    row.try_get::<serde_json::Value>("", "raw_data")
+                        .unwrap_or(json!({})),
+                )
+            };
 
             let (item_count, sample_titles) = summarize_library_raw(&raw);
             let name = format!("{} library", platform_name);
@@ -1844,17 +1849,6 @@ fn summarize_library_raw(raw: &serde_json::Value) -> (usize, Vec<String>) {
 
 /// 从报告 JSON 中提取纯文本摘要（chat / mfp snapshot 用）
 fn extract_report_summary_plain(report_json: &serde_json::Value) -> String {
-    // 尝试从综合分析中提取
-    if let Some(analysis) = report_json.get("综合分析") {
-        if let Some(profile) = analysis.get("总体画像").and_then(|v| v.as_str()) {
-            return profile.to_string();
-        }
-        if let Some(content) = analysis.get("content") {
-            if let Some(profile) = content.get("总体画像").and_then(|v| v.as_str()) {
-                return profile.to_string();
-            }
-        }
-    }
     // 尝试从单平台报告提取 summary
     if let Some(summary) = report_json.get("summary").and_then(|v| v.as_str()) {
         return summary.to_string();
@@ -1983,25 +1977,12 @@ mod tests {
 
     #[test]
     fn extract_report_summary_plain_from_summary_and_insights() {
-        let with_summary = json!({"summary": "活跃开发者", "insights": ["ignored when summary present"]});
-        assert_eq!(
-            extract_report_summary_plain(&with_summary),
-            "活跃开发者"
-        );
+        let with_summary =
+            json!({"summary": "活跃开发者", "insights": ["ignored when summary present"]});
+        assert_eq!(extract_report_summary_plain(&with_summary), "活跃开发者");
 
         let with_insights = json!({"insights": ["首条洞察", "第二条"]});
-        assert_eq!(
-            extract_report_summary_plain(&with_insights),
-            "首条洞察"
-        );
-
-        let comprehensive = json!({
-            "综合分析": { "总体画像": "跨平台综合画像" }
-        });
-        assert_eq!(
-            extract_report_summary_plain(&comprehensive),
-            "跨平台综合画像"
-        );
+        assert_eq!(extract_report_summary_plain(&with_insights), "首条洞察");
 
         assert_eq!(extract_report_summary_plain(&json!({})), "");
     }
@@ -2009,14 +1990,8 @@ mod tests {
     #[test]
     fn extract_report_summary_html_escapes_and_falls_back() {
         let xss = json!({"summary": "a<b>&c"});
-        assert_eq!(
-            extract_report_summary(&xss),
-            "<p>a&lt;b&gt;&amp;c</p>"
-        );
-        assert_eq!(
-            extract_report_summary(&json!({})),
-            "<p>数据分析报告</p>"
-        );
+        assert_eq!(extract_report_summary(&xss), "<p>a&lt;b&gt;&amp;c</p>");
+        assert_eq!(extract_report_summary(&json!({})), "<p>数据分析报告</p>");
     }
 
     /// Contract: Aro chat + federation report shares use these field names for the viewable snapshot.
@@ -2069,7 +2044,9 @@ mod tests {
         let (title, summary, preview, attachments) =
             published_fields_from_activity_json(Some(&create));
         assert_eq!(title.as_deref(), Some("Spring Report"));
-        assert!(summary.as_ref().is_some_and(|s| s.contains("short summary")));
+        assert!(summary
+            .as_ref()
+            .is_some_and(|s| s.contains("short summary")));
         assert!(preview.is_some());
         assert!(attachments.is_empty());
     }
@@ -2156,7 +2133,6 @@ mod tests {
         assert_eq!(classify_media_mime("image/svg+xml"), None);
         assert_eq!(classify_media_mime("image/jpeg"), Some("Image"));
         assert_eq!(classify_media_mime("video/mp4"), Some("Video"));
-
     }
 
     #[test]
@@ -2165,7 +2141,6 @@ mod tests {
         assert_eq!(extension_for_mime("image/png"), Some("png"));
         assert_eq!(extension_for_mime("video/quicktime"), Some("mov"));
         assert_eq!(extension_for_mime("application/octet-stream"), None);
-
     }
 
     #[test]
@@ -2179,7 +2154,6 @@ mod tests {
         assert!(cc2.is_empty());
         let (to3, cc3) = resolve_audience("direct", base, "alice");
         assert!(to3.is_empty() && cc3.is_empty());
-
     }
 
     #[test]
@@ -2189,20 +2163,24 @@ mod tests {
         assert!(s.len() <= 20 || s.chars().count() <= 20);
         let long = strip_tags_preview(&"a".repeat(100), 10);
         assert_eq!(long.chars().count(), 10);
-
     }
 
     #[test]
     fn attachment_url_rejects_path_traversal() {
         let base = "https://myriad.example";
         assert!(attachment_url_rejection_reason(
-            base, 1, "https://myriad.example/media/federation/1/../etc"
-        ).is_some());
+            base,
+            1,
+            "https://myriad.example/media/federation/1/../etc"
+        )
+        .is_some());
         assert!(attachment_url_rejection_reason(
-            base, 1, "https://myriad.example/media/federation/1/ok-file.jpg"
-        ).is_none());
+            base,
+            1,
+            "https://myriad.example/media/federation/1/ok-file.jpg"
+        )
+        .is_none());
         assert!(attachment_url_rejection_reason(base, 1, "").is_some());
-
     }
 
     #[test]
@@ -2216,7 +2194,6 @@ mod tests {
             local_username_from_inbox_url(base, "https://evil.example/users/alice/inbox"),
             None
         );
-
     }
 
     #[test]
@@ -2225,9 +2202,7 @@ mod tests {
         assert_eq!(classify_media_mime("text/html"), None);
         assert_eq!(classify_media_mime("image/jpeg"), Some("Image"));
         assert_eq!(classify_media_mime("video/webm"), Some("Video"));
-
     }
-
 
     #[test]
     fn w175_extension_for_mime_maps() {
@@ -2235,9 +2210,7 @@ mod tests {
         assert_eq!(extension_for_mime("image/webp"), Some("webp"));
         assert_eq!(extension_for_mime("video/mp4"), Some("mp4"));
         assert_eq!(extension_for_mime("audio/mpeg"), None);
-
     }
-
 
     #[test]
     fn w175_resolve_audience_matrix() {
@@ -2250,32 +2223,32 @@ mod tests {
         assert!(cc_f.is_empty());
         let (to_d, cc_d) = resolve_audience("direct", base, "carol");
         assert!(to_d.is_empty() && cc_d.is_empty());
-
     }
-
 
     #[test]
     fn w175_strip_tags_preview_limit() {
         let s = strip_tags_preview("<p>Hi&amp;there</p>", 50);
         assert!(s.contains("Hi") && (s.contains("&") || s.contains("there")));
         assert_eq!(strip_tags_preview(&"z".repeat(40), 8).chars().count(), 8);
-
     }
-
 
     #[test]
     fn w175_attachment_url_rejects_traversal() {
         let base = "https://myriad.example";
         assert!(attachment_url_rejection_reason(
-            base, 7, "https://myriad.example/media/federation/7/../x"
-        ).is_some());
+            base,
+            7,
+            "https://myriad.example/media/federation/7/../x"
+        )
+        .is_some());
         assert!(attachment_url_rejection_reason(
-            base, 7, "https://myriad.example/media/federation/7/ok.jpg"
-        ).is_none());
+            base,
+            7,
+            "https://myriad.example/media/federation/7/ok.jpg"
+        )
+        .is_none());
         assert!(attachment_url_rejection_reason(base, 7, "").is_some());
-
     }
-
 
     #[test]
     fn w175_local_username_from_inbox_host() {
@@ -2288,8 +2261,5 @@ mod tests {
             local_username_from_inbox_url(base, "https://evil.example/users/alice/inbox"),
             None
         );
-
     }
-
 }
-

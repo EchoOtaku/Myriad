@@ -28,8 +28,7 @@ pub mod utils;
 pub use task_store::{
     cancel_task_for_user, claim_task_for_resume, clear_cancellation, enqueue_steering,
     get_task_for_user, get_user_tasks, init_task_store_db, is_cancelled, maybe_cleanup_tasks,
-    request_cancel,
-    persist_task_async, refresh_task_for_user, take_steering, TASK_STORE,
+    persist_task_async, refresh_task_for_user, request_cancel, take_steering, TASK_STORE,
 };
 pub use utils::{extract_image_url, summarize_output, truncate_str};
 
@@ -79,6 +78,13 @@ impl Executor {
                 .as_ref()
                 .or(self.standard_analyzer.as_ref()),
             ModelTier::Standard => self
+                .standard_analyzer
+                .as_ref()
+                .or(self.pro_analyzer.as_ref()),
+            // Executor tasks do not currently route to Lite. Keep this arm so
+            // explicit future Lite tasks degrade safely until a cached Lite
+            // analyzer is added to the executor.
+            ModelTier::Lite => self
                 .standard_analyzer
                 .as_ref()
                 .or(self.pro_analyzer.as_ref()),
@@ -2427,10 +2433,7 @@ impl Executor {
         };
 
         // 优先使用 task 上保存的 recipe（可能已写入先前 pre_param 答案），否则用调用方传入的
-        let mut recipe = task_state
-            .recipe
-            .clone()
-            .unwrap_or_else(|| recipe.clone());
+        let mut recipe = task_state.recipe.clone().unwrap_or_else(|| recipe.clone());
 
         // 恢复执行上下文
         let mut context = task_state.execution_context.take().unwrap_or_default();

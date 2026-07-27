@@ -123,6 +123,40 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Cache-Control for statically served frontend assets. `ServeDir` emits only
+/// `Last-Modified`, so without this every asset forces a revalidation round-trip
+/// per navigation (dozens of unhashed icons ⇒ dozens of conditional GETs). Tiers:
+///   - `/assets/*`  content-hashed by Astro → immutable, cache for a year.
+///   - media/fonts  unhashed but rarely change → week-long TTL, revalidate in
+///     the background while serving the stale copy.
+///   - `/sw.js` + HTML  must always revalidate so a new deploy (and its fresh
+///     hashed-asset references) lands immediately.
+fn static_asset_cache_control(path: &str) -> &'static str {
+    if path.starts_with("/assets/") {
+        return "public, max-age=31536000, immutable";
+    }
+    if path == "/sw.js" {
+        return "no-cache";
+    }
+    let is_longlived_static = path.starts_with("/icons/")
+        || path.starts_with("/game-logos/")
+        || path.starts_with("/fonts/")
+        || path.ends_with(".webp")
+        || path.ends_with(".png")
+        || path.ends_with(".jpg")
+        || path.ends_with(".jpeg")
+        || path.ends_with(".gif")
+        || path.ends_with(".svg")
+        || path.ends_with(".avif")
+        || path.ends_with(".ico")
+        || path.ends_with(".woff")
+        || path.ends_with(".woff2");
+    if is_longlived_static {
+        return "public, max-age=604800, stale-while-revalidate=86400";
+    }
+    "no-cache"
+}
+
 async fn run_server() -> anyhow::Result<()> {
     // Load configuration
     let config = AppConfig::from_env()?;
@@ -249,6 +283,7 @@ async fn run_server() -> anyhow::Result<()> {
                 services::agent::notifications::init_notifications(db.clone()).await;
                 api::updater_admin::resume_pending_job_notifications().await;
                 tracing::info!("✅ Agent notification system initialized");
+
 
                 // Initialize Tapp scheduler engine
                 api::tapp_scheduler::init_scheduler(db.clone()).await;
@@ -418,8 +453,9 @@ async fn run_server() -> anyhow::Result<()> {
                                         tokio::sync::mpsc::channel::<
                                             services::agent::types::AgentProgressEvent,
                                         >(64);
-                                    let captured_exec_task =
-                                        std::sync::Arc::new(tokio::sync::Mutex::new(None::<String>));
+                                    let captured_exec_task = std::sync::Arc::new(
+                                        tokio::sync::Mutex::new(None::<String>),
+                                    );
                                     let captured_for_fwd = captured_exec_task.clone();
                                     tokio::spawn(async move {
                                         while let Some(event) = progress_rx.recv().await {
@@ -1108,9 +1144,11 @@ async fn change_site_domain_wrapper(
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
-            let (status, json) =
-                api::site_domain::change_site_domain(axum::extract::State(db.clone()), Json(payload))
-                    .await;
+            let (status, json) = api::site_domain::change_site_domain(
+                axum::extract::State(db.clone()),
+                Json(payload),
+            )
+            .await;
             (status, json).into_response()
         }
         None => (
@@ -1766,70 +1804,6 @@ async fn get_latest_report_wrapper(headers: axum::http::HeaderMap) -> Response {
     }
 }
 
-/// Wrapper for get_comprehensive_reports_list that gets DB from global state
-async fn get_comprehensive_reports_list_wrapper(headers: axum::http::HeaderMap) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::reports::get_comprehensive_reports_list(
-                axum::extract::State(db.clone()),
-                headers,
-            )
-            .await
-            {
-                Ok(json) => (StatusCode::OK, json).into_response(),
-                Err(status) => (
-                    status,
-                    Json(json!({ "error": "Failed to get comprehensive reports" })),
-                )
-                    .into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，无法获取综合报告列表"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_comprehensive_report_by_id that gets DB from global state
-async fn get_comprehensive_report_by_id_wrapper(
-    headers: axum::http::HeaderMap,
-    axum::extract::Path(report_id): axum::extract::Path<i32>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::reports::get_comprehensive_report_by_id(
-                axum::extract::State(db.clone()),
-                headers,
-                axum::extract::Path(report_id),
-            )
-            .await
-            {
-                Ok(json) => (StatusCode::OK, json).into_response(),
-                Err(status) => (
-                    status,
-                    Json(json!({ "error": "Failed to get comprehensive report" })),
-                )
-                    .into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，无法获取综合报告详情"
-            })),
-        )
-            .into_response(),
-    }
-}
-
 // ==================== Federation Wrappers ====================
 
 async fn federation_admin_required(claims: &middleware::auth::Claims) -> Option<Response> {
@@ -1868,17 +1842,17 @@ async fn admin_federation_domain_move_wrapper(req: axum::extract::Request) -> Re
         }
     };
 
-    let payload: federation::move_actor::DomainMoveRequest = match serde_json::from_slice(&body_bytes)
-    {
-        Ok(p) => p,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": format!("Invalid JSON: {}", e)})),
-            )
-                .into_response()
-        }
-    };
+    let payload: federation::move_actor::DomainMoveRequest =
+        match serde_json::from_slice(&body_bytes) {
+            Ok(p) => p,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": format!("Invalid JSON: {}", e)})),
+                )
+                    .into_response()
+            }
+        };
 
     let db_guard = crate::DB_CONNECTION.read().await;
     match db_guard.as_ref() {
@@ -1977,11 +1951,7 @@ async fn federation_keys_rotate_wrapper(req: axum::extract::Request) -> Response
                 error = %e,
                 "Federation key rotation failed"
             );
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e})),
-            )
-                .into_response()
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response()
         }
     }
 }
@@ -2248,7 +2218,13 @@ async fn federation_publish_wrapper(req: axum::extract::Request) -> Response {
 /// Shared body parse helper for object-id interaction endpoints.
 async fn federation_object_id_from_body(
     req: axum::extract::Request,
-) -> Result<(middleware::auth::Claims, federation::interactions::ObjectIdRequest), Response> {
+) -> Result<
+    (
+        middleware::auth::Claims,
+        federation::interactions::ObjectIdRequest,
+    ),
+    Response,
+> {
     let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
         Some(c) => c,
         None => {
@@ -2300,7 +2276,9 @@ async fn federation_like_wrapper(req: axum::extract::Request) -> Response {
             )
             .await
             {
-                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Ok(resp) => {
+                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
+                }
                 Err((status, json)) => (status, json).into_response(),
             }
         }
@@ -2329,7 +2307,9 @@ async fn federation_unlike_wrapper(req: axum::extract::Request) -> Response {
             )
             .await
             {
-                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Ok(resp) => {
+                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
+                }
                 Err((status, json)) => (status, json).into_response(),
             }
         }
@@ -2351,7 +2331,9 @@ async fn federation_bookmark_wrapper(req: axum::extract::Request) -> Response {
         Some(db) => {
             let user_id: i32 = claims.sub.parse().unwrap_or(0);
             match federation::interactions::bookmark_object(user_id, db, &payload.object_id).await {
-                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Ok(resp) => {
+                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
+                }
                 Err((status, json)) => (status, json).into_response(),
             }
         }
@@ -2374,7 +2356,9 @@ async fn federation_unbookmark_wrapper(req: axum::extract::Request) -> Response 
             let user_id: i32 = claims.sub.parse().unwrap_or(0);
             match federation::interactions::unbookmark_object(user_id, db, &payload.object_id).await
             {
-                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Ok(resp) => {
+                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
+                }
                 Err((status, json)) => (status, json).into_response(),
             }
         }
@@ -2402,7 +2386,9 @@ async fn federation_bookmarks_list_wrapper(req: axum::extract::Request) -> Respo
         Some(db) => {
             let user_id: i32 = claims.sub.parse().unwrap_or(0);
             match federation::interactions::list_bookmarks(user_id, db).await {
-                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Ok(resp) => {
+                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
+                }
                 Err((status, json)) => (status, json).into_response(),
             }
         }
@@ -2416,7 +2402,13 @@ async fn federation_bookmarks_list_wrapper(req: axum::extract::Request) -> Respo
 
 async fn federation_announce_from_body(
     req: axum::extract::Request,
-) -> Result<(middleware::auth::Claims, federation::interactions::AnnounceRequest), Response> {
+) -> Result<
+    (
+        middleware::auth::Claims,
+        federation::interactions::AnnounceRequest,
+    ),
+    Response,
+> {
     let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
         Some(c) => c,
         None => {
@@ -2470,7 +2462,9 @@ async fn federation_announce_wrapper(req: axum::extract::Request) -> Response {
             )
             .await
             {
-                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Ok(resp) => {
+                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
+                }
                 Err((status, json)) => (status, json).into_response(),
             }
         }
@@ -2499,7 +2493,9 @@ async fn federation_unannounce_wrapper(req: axum::extract::Request) -> Response 
             )
             .await
             {
-                Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+                Ok(resp) => {
+                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
+                }
                 Err((status, json)) => (status, json).into_response(),
             }
         }
@@ -2533,7 +2529,8 @@ async fn federation_create_note_wrapper(req: axum::extract::Request) -> Response
                 .into_response()
         }
     };
-    let payload: federation::content::CreateNoteRequest = match serde_json::from_slice(&body_bytes) {
+    let payload: federation::content::CreateNoteRequest = match serde_json::from_slice(&body_bytes)
+    {
         Ok(p) => p,
         Err(_) => {
             return (
@@ -2682,9 +2679,21 @@ async fn federation_unpublish_wrapper(req: axum::extract::Request) -> Response {
                 user_id,
                 &claims.username,
                 db,
-                if content_type.is_empty() { None } else { Some(content_type) },
-                if content_id.is_empty() { None } else { Some(content_id) },
-                if activity_id.is_empty() { None } else { Some(activity_id) },
+                if content_type.is_empty() {
+                    None
+                } else {
+                    Some(content_type)
+                },
+                if content_id.is_empty() {
+                    None
+                } else {
+                    Some(content_id)
+                },
+                if activity_id.is_empty() {
+                    None
+                } else {
+                    Some(activity_id)
+                },
             )
             .await
             {
@@ -3726,22 +3735,32 @@ async fn federation_send_room_message_wrapper(req: axum::extract::Request) -> Re
         .strip_suffix("/messages")
         .unwrap_or("")
         .to_string();
-    let body = match axum::body::to_bytes(req.into_body(), 1024 * 64).await {
+    // Align with channel send + MAX_ROOM_MESSAGE_PAYLOAD (32 MiB). A prior 64 KiB
+    // to_bytes cap made any inline image/data-URL fail with opaque "Invalid body".
+    let body = match axum::body::Bytes::from_request(req, &()).await {
         Ok(b) => b,
-        Err(_) => {
+        Err(e) => {
+            tracing::warn!(
+                room_id = %room_id,
+                error = %e,
+                "[Room] send message body rejected (likely over DefaultBodyLimit)"
+            );
             return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(json!({
+                    "error": "Request body too large or unreadable",
+                    "hint": "Inline images max ~32 MiB payload; larger files use chunked transfer"
+                })),
             )
-                .into_response()
+                .into_response();
         }
     };
     let parsed: federation::room::SendRoomMessageRequest = match serde_json::from_slice(&body) {
         Ok(p) => p,
-        Err(_) => {
+        Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
+                Json(json!({"error": format!("Invalid JSON: {}", e)})),
             )
                 .into_response()
         }
@@ -4134,17 +4153,12 @@ async fn federation_remove_ring_peer_wrapper(req: axum::extract::Request) -> Res
         .to_string();
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
-        Some(db) => match federation::ring::remove_peer(
-            &ring_id,
-            &peer_url,
-            &claims.username,
-            db,
-        )
-        .await
-        {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
+        Some(db) => {
+            match federation::ring::remove_peer(&ring_id, &peer_url, &claims.username, db).await {
+                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+                Err((status, json)) => (status, json).into_response(),
+            }
+        }
         None => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({"error": "Database not connected"})),
@@ -4207,11 +4221,9 @@ async fn federation_delivery_stats_wrapper(req: axum::extract::Request) -> Respo
     match db_opt.as_ref() {
         Some(db) => match federation::delivery::delivery_stats_for_user(db, user_id).await {
             Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e})),
-            )
-                .into_response(),
+            Err(e) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response()
+            }
         },
         None => (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -4331,8 +4343,7 @@ async fn federation_retry_all_dead_delivery_wrapper(req: axum::extract::Request)
         .unwrap_or(50);
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
-        Some(db) => match federation::delivery::retry_all_dead_for_user(db, user_id, limit).await
-        {
+        Some(db) => match federation::delivery::retry_all_dead_for_user(db, user_id, limit).await {
             Ok(v) => (StatusCode::OK, Json(v)).into_response(),
             Err((status, v)) => (status, Json(v)).into_response(),
         },
@@ -4411,10 +4422,12 @@ async fn federation_dismiss_delivery_wrapper(req: axum::extract::Request) -> Res
     };
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
-        Some(db) => match federation::delivery::dismiss_delivery_item(db, user_id, queue_id).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, v)) => (status, Json(v)).into_response(),
-        },
+        Some(db) => {
+            match federation::delivery::dismiss_delivery_item(db, user_id, queue_id).await {
+                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+                Err((status, v)) => (status, Json(v)).into_response(),
+            }
+        }
         None => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({"error": "Database not connected"})),
@@ -4447,12 +4460,7 @@ async fn federation_purge_dead_delivery_wrapper(req: axum::extract::Request) -> 
         .unwrap_or(100);
     let cancelled_only = params
         .get("cancelled_only")
-        .map(|s| {
-            matches!(
-                s.to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
+        .map(|s| matches!(s.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
         .unwrap_or(false);
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
@@ -4472,7 +4480,10 @@ async fn federation_purge_dead_delivery_wrapper(req: axum::extract::Request) -> 
     }
 }
 
-/// POST /api/federation/rooms/{room_id}/join — self-join open rooms
+/// POST /api/federation/rooms/{room_id}/join — self-join open/public rooms
+///
+/// `room_id` may be bare `rm_…` or shareable `rm_…@home[:port]`. Body may include
+/// `{ "home_server": "host:port" }` for remote public rooms not yet local.
 async fn federation_join_room_wrapper(req: axum::extract::Request) -> Response {
     let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
         Some(c) => c,
@@ -4485,21 +4496,61 @@ async fn federation_join_room_wrapper(req: axum::extract::Request) -> Response {
         }
     };
     let path = req.uri().path().to_string();
-    let room_id = path
+    let room_id_encoded = path
         .strip_prefix("/api/federation/rooms/")
         .unwrap_or("")
         .strip_suffix("/join")
-        .unwrap_or("")
-        .to_string();
+        .unwrap_or("");
+    let room_id = urlencoding::decode(room_id_encoded)
+        .map(|s| s.into_owned())
+        .unwrap_or_else(|_| room_id_encoded.to_string());
+    // Optional body: { "home_server": "…" } — empty body is fine.
+    let body_bytes = axum::body::to_bytes(req.into_body(), 8 * 1024)
+        .await
+        .unwrap_or_default();
+    let join_req: federation::room::JoinRoomRequest = if body_bytes.is_empty() {
+        federation::room::JoinRoomRequest::default()
+    } else {
+        serde_json::from_slice(&body_bytes).unwrap_or_default()
+    };
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
             let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::join_room(user_id, &claims.username, &room_id, db).await {
+            match federation::room::join_room(
+                user_id,
+                &claims.username,
+                &room_id,
+                db,
+                Some(&join_req),
+            )
+            .await
+            {
                 Ok(result) => (StatusCode::OK, Json(result)).into_response(),
                 Err((status, json)) => (status, json).into_response(),
             }
         }
+        None => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Database not connected"})),
+        )
+            .into_response(),
+    }
+}
+
+/// GET /api/federation/public/rooms/{room_id} — unauthenticated public room card
+async fn federation_get_public_room_wrapper(req: axum::extract::Request) -> Response {
+    let path = req.uri().path().to_string();
+    let room_id = path
+        .strip_prefix("/api/federation/public/rooms/")
+        .unwrap_or("")
+        .to_string();
+    let db_opt = DB_CONNECTION.read().await;
+    match db_opt.as_ref() {
+        Some(db) => match federation::room::get_public_room(&room_id, db).await {
+            Ok(info) => (StatusCode::OK, Json(json!(info))).into_response(),
+            Err((status, json)) => (status, json).into_response(),
+        },
         None => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({"error": "Database not connected"})),
@@ -4534,11 +4585,9 @@ async fn federation_list_delivery_wrapper(req: axum::extract::Request) -> Respon
     match db_opt.as_ref() {
         Some(db) => match federation::delivery::list_delivery_for_user(db, user_id, limit).await {
             Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": e})),
-            )
-                .into_response(),
+            Err(e) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response()
+            }
         },
         None => (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -4637,7 +4686,7 @@ async fn federation_update_trust_policy_wrapper(req: axum::extract::Request) -> 
                 rate_window,
                 rate_mul,
             )
-                .await
+            .await
             {
                 Ok(v) => (StatusCode::OK, Json(v)).into_response(),
                 Err((status, v)) => (status, Json(v)).into_response(),
@@ -5247,7 +5296,7 @@ async fn federation_get_transfer_wrapper(req: axum::extract::Request) -> Respons
 /// Stream completed transfer bytes for browser / Tapp host download.
 async fn federation_download_transfer_wrapper(req: axum::extract::Request) -> Response {
     use axum::body::Body;
-    use axum::http::header::{CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, HeaderValue};
+    use axum::http::header::{HeaderValue, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE};
     use tokio::io::AsyncReadExt;
     use tokio_stream::wrappers::ReceiverStream;
 
@@ -5305,7 +5354,13 @@ async fn federation_download_transfer_wrapper(req: axum::extract::Request) -> Re
     let ascii_name: String = file
         .filename
         .chars()
-        .map(|c| if c.is_ascii() && c != '"' && c != '\\' { c } else { '_' })
+        .map(|c| {
+            if c.is_ascii() && c != '"' && c != '\\' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let ascii_name = if ascii_name.trim_matches('_').is_empty() {
         "download".to_string()
@@ -5745,7 +5800,10 @@ fn federation_api_router() -> Router {
             post(federation_keys_rotate_wrapper),
         )
         .route("/api/federation/follow", post(federation_follow_wrapper))
-        .route("/api/federation/unfollow", post(federation_unfollow_wrapper))
+        .route(
+            "/api/federation/unfollow",
+            post(federation_unfollow_wrapper),
+        )
         .route(
             "/api/federation/following",
             get(federation_following_list_wrapper),
@@ -5756,10 +5814,16 @@ fn federation_api_router() -> Router {
         )
         .route("/api/federation/timeline", get(federation_timeline_wrapper))
         .route("/api/federation/publish", post(federation_publish_wrapper))
-        .route("/api/federation/notes", post(federation_create_note_wrapper))
+        .route(
+            "/api/federation/notes",
+            post(federation_create_note_wrapper),
+        )
         .route("/api/federation/like", post(federation_like_wrapper))
         .route("/api/federation/unlike", post(federation_unlike_wrapper))
-        .route("/api/federation/bookmark", post(federation_bookmark_wrapper))
+        .route(
+            "/api/federation/bookmark",
+            post(federation_bookmark_wrapper),
+        )
         .route(
             "/api/federation/unbookmark",
             post(federation_unbookmark_wrapper),
@@ -5768,7 +5832,10 @@ fn federation_api_router() -> Router {
             "/api/federation/bookmarks",
             get(federation_bookmarks_list_wrapper),
         )
-        .route("/api/federation/announce", post(federation_announce_wrapper))
+        .route(
+            "/api/federation/announce",
+            post(federation_announce_wrapper),
+        )
         .route(
             "/api/federation/unannounce",
             post(federation_unannounce_wrapper),
@@ -6312,6 +6379,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             get(federation::discovery::nodeinfo_wellknown),
         )
         .route("/nodeinfo/2.1", get(federation::discovery::nodeinfo))
+        // Public room directory card (join-by-id / federated public join)
+        .route(
+            "/api/federation/public/rooms/{room_id}",
+            get(federation_get_public_room_wrapper),
+        )
         // Layer 2: Actor + Outbox + Collections（无需认证，AP 标准端点）
         .route("/users/{username}", get(federation::actor::get_actor))
         .route(
@@ -6337,9 +6409,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     axum::http::header::CACHE_CONTROL,
                     axum::http::HeaderValue::from_static("public, max-age=604800"),
                 ))
-                .service(ServeDir::new(
-                    federation::content::federation_media_root(),
-                )),
+                .service(ServeDir::new(federation::content::federation_media_root())),
         )
         .route(
             "/users/{username}/outbox",
@@ -6374,27 +6444,15 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
     // These routes require more complex state handling so keep them conditional for now
     if let Some(db) = db_opt {
         let db_router = Router::new()
-            // 双层报告系统API - 🔒 REQUIRE AUTHENTICATION
+            // 单平台 Insights 生成 - 🔒 REQUIRE AUTHENTICATION
             .route(
                 "/api/reports/platform",
                 post(api::reports::generate_platform_reports)
                     .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
             .route(
-                "/api/reports/comprehensive",
-                post(api::reports::generate_comprehensive_report)
-                    .route_layer(from_fn(middleware::auth::admin_middleware)),
-            )
-            .route(
                 "/api/reports/generate-all",
                 post(api::reports::generate_all_reports)
-                    .route_layer(from_fn(middleware::auth::admin_middleware)),
-            )
-            // Note: /api/reports/latest, /api/reports/comprehensive/list, /api/reports/comprehensive/{id}
-            // are now registered above with wrappers in the main api_router
-            .route(
-                "/api/reports/comprehensive/{id}/delete",
-                delete(api::reports::delete_comprehensive_report)
                     .route_layer(from_fn(middleware::auth::admin_middleware)),
             )
             // Note: /api/auth/me and /api/auth/logout are now registered above with wrappers
@@ -6502,14 +6560,6 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 "/api/reports/list",
                 get(api::tapp_runtime::list_reports)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
-            )
-            .route(
-                "/api/reports/comprehensive/list",
-                get(get_comprehensive_reports_list_wrapper),
-            )
-            .route(
-                "/api/reports/comprehensive/{id}",
-                get(get_comprehensive_report_by_id_wrapper),
             )
             // ============ Tapp 应用管理 API ============
             // 部分公开访问（游客可查看管理员的 Tapp），部分需要认证（在路由内部处理）
@@ -7135,6 +7185,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         let index_html = std::path::Path::new(&config.frontend_dist_path).join("index.html");
         let serve_dir =
             ServeDir::new(&config.frontend_dist_path).not_found_service(ServeFile::new(index_html));
+
         api_router.fallback(move |req: Request| {
             let serve_dir = serve_dir.clone();
             async move {
@@ -7153,9 +7204,18 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     )
                         .into_response();
                 }
+                // Resolve the cache tier before `req` is consumed by oneshot.
+                let cache_control = static_asset_cache_control(path);
                 use tower::ServiceExt;
                 match serve_dir.oneshot(req).await {
-                    Ok(res) => res.into_response(),
+                    Ok(res) => {
+                        let mut res = res.into_response();
+                        res.headers_mut().insert(
+                            axum::http::header::CACHE_CONTROL,
+                            axum::http::HeaderValue::from_static(cache_control),
+                        );
+                        res
+                    }
                     Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
                 }
             }
@@ -7399,4 +7459,50 @@ async fn shutdown_signal() {
         tracing::info!("[Shutdown] Skill evolution stats flushed");
     }
     services::agent::mcp::shutdown_mcp().await;
+}
+
+#[cfg(test)]
+mod cache_control_tests {
+    use super::static_asset_cache_control;
+
+    #[test]
+    fn hashed_assets_are_immutable() {
+        assert_eq!(
+            static_asset_cache_control("/assets/AnimatedView-xVp24sZE.js"),
+            "public, max-age=31536000, immutable"
+        );
+        // A hashed image under /assets/ is still immutable (hash wins over ext).
+        assert_eq!(
+            static_asset_cache_control("/assets/logo-abc123.png"),
+            "public, max-age=31536000, immutable"
+        );
+    }
+
+    #[test]
+    fn unhashed_media_and_fonts_get_weeklong_ttl() {
+        let expected = "public, max-age=604800, stale-while-revalidate=86400";
+        assert_eq!(
+            static_asset_cache_control("/icons/config/users.png"),
+            expected
+        );
+        assert_eq!(
+            static_asset_cache_control("/game-logos/starrail.png"),
+            expected
+        );
+        assert_eq!(static_asset_cache_control("/logo.webp"), expected);
+        assert_eq!(static_asset_cache_control("/favicon.webp"), expected);
+        assert_eq!(
+            static_asset_cache_control("/fonts/hoyo/GenshinUI-subset.woff2"),
+            expected
+        );
+    }
+
+    #[test]
+    fn sw_and_html_always_revalidate() {
+        assert_eq!(static_asset_cache_control("/sw.js"), "no-cache");
+        assert_eq!(static_asset_cache_control("/"), "no-cache");
+        assert_eq!(static_asset_cache_control("/index.html"), "no-cache");
+        // SPA fallback routes resolve to index.html but keep their request path.
+        assert_eq!(static_asset_cache_control("/tapp/run/abc"), "no-cache");
+    }
 }

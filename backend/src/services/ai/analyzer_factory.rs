@@ -1,6 +1,6 @@
 //! AI 分析器工厂
 //!
-//! 统一创建 AI 分析器实例，支持 OpenAI 和 Gemini，支持 Standard/Pro 模型层级
+//! 统一创建 AI 分析器实例，支持 OpenAI 和 Gemini，支持 Lite/Standard/Pro 模型层级
 
 use crate::config::ModelTier;
 use crate::services::analyzer::{AiAnalyzer, AiProvider};
@@ -34,8 +34,7 @@ pub async fn create_ai_analyzer_for_tier_with_timeout(
 
     Some(match request_timeout {
         Some(timeout) => {
-            AiAnalyzer::new_with_timeout(provider, api_key, resolved.model, base_url, timeout)
-                .await
+            AiAnalyzer::new_with_timeout(provider, api_key, resolved.model, base_url, timeout).await
         }
         None => AiAnalyzer::new(provider, api_key, resolved.model, base_url).await,
     })
