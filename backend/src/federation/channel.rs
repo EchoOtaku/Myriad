@@ -983,7 +983,21 @@ pub async fn send_message(
         );
     }
 
-    // 广播给该 Channel 的 WebSocket 连接
+    // 广播给该 Channel 的 WebSocket 连接。
+    // 本地展示用：若会话已建立，优先广播解密后的明文，避免 Aro 先渲染 ciphertext 信封、
+    // 等 poll/getMessages 才正常（WS 回声还可能覆盖已解密内容）。
+    let mut ws_payload = stored_payload.clone();
+    if is_encrypted {
+        if let Ok(session) = load_e2e_session(channel_id, properties.as_ref()).await {
+            if session.established {
+                if let Ok(plain) =
+                    crate::federation::e2e::decrypt_json_payload(&session, &stored_payload)
+                {
+                    ws_payload = plain;
+                }
+            }
+        }
+    }
     crate::federation::ws_gateway::broadcast_to_channel(
         channel_id,
         &json!({
@@ -993,7 +1007,7 @@ pub async fn send_message(
                 "message_id": &message_id,
                 "sender_actor": &local_actor,
                 "message_type": message_type,
-                "payload": &stored_payload,
+                "payload": &ws_payload,
                 "is_encrypted": is_encrypted,
                 "reply_to": &req.reply_to,
                 "created_at": now_iso8601()
