@@ -986,7 +986,10 @@ pub async fn send_message(
     // 广播给该 Channel 的 WebSocket 连接。
     // 本地展示用：若会话已建立，优先广播解密后的明文，避免 Aro 先渲染 ciphertext 信封、
     // 等 poll/getMessages 才正常（WS 回声还可能覆盖已解密内容）。
+    // 成功解密后 is_encrypted 也必须改 false，否则客户端会按 flag 再解一次。
+    // DB / ActivityPub fan-out 仍用 stored_payload 密文；HTTP 响应的 is_encrypted 反映存储形态。
     let mut ws_payload = stored_payload.clone();
+    let mut ws_is_encrypted = is_encrypted;
     if is_encrypted {
         if let Ok(session) = load_e2e_session(channel_id, properties.as_ref()).await {
             if session.established {
@@ -994,6 +997,7 @@ pub async fn send_message(
                     crate::federation::e2e::decrypt_json_payload(&session, &stored_payload)
                 {
                     ws_payload = plain;
+                    ws_is_encrypted = false;
                 }
             }
         }
@@ -1008,7 +1012,7 @@ pub async fn send_message(
                 "sender_actor": &local_actor,
                 "message_type": message_type,
                 "payload": &ws_payload,
-                "is_encrypted": is_encrypted,
+                "is_encrypted": ws_is_encrypted,
                 "reply_to": &req.reply_to,
                 "created_at": now_iso8601()
             }

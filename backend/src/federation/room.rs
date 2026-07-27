@@ -3304,10 +3304,11 @@ pub async fn send_room_message(
     // 广播给 WebSocket 连接。
     // 本地展示用：E2E 时用发送端明文，避免 Aro 先渲染 ciphertext 信封、等 poll 才正常。
     // DB / ActivityPub fan-out 仍存密文。
-    let ws_payload = if is_encrypted {
-        req.payload.clone()
+    // 明文落地时 is_encrypted 必须为 false，避免客户端按 flag 二次解密。
+    let (ws_payload, ws_is_encrypted) = if is_encrypted {
+        (req.payload.clone(), false)
     } else {
-        stored_payload.clone()
+        (stored_payload.clone(), false)
     };
     let ws_msg = json!({
         "type": "message",
@@ -3317,7 +3318,7 @@ pub async fn send_room_message(
             "sender_actor": &local_actor,
             "message_type": message_type,
             "payload": &ws_payload,
-            "is_encrypted": is_encrypted,
+            "is_encrypted": ws_is_encrypted,
             "thread_id": &req.thread_id,
             "reply_to": &req.reply_to,
             "created_at": now_iso8601()
