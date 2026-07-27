@@ -600,7 +600,9 @@ async function installFromStoreViaClient(
     percent: 2,
   })
 
-  const index = await RemoteStoreService.fetchStoreIndex(source)
+  // Always refresh index on install so production reinstalls do not reuse a
+  // 5-minute in-memory catalog that lags GitHub main.
+  const index = await RemoteStoreService.fetchStoreIndex(source, true)
   const baseUrl =
     index.base_url ||
     source.url.replace(/\/index\.json$/, '').replace(/\/$/, '')
@@ -709,7 +711,10 @@ export interface UpdateTappFromStoreRequest {
 /**
  * 更新 Tapp（从远程商店获取最新版本）
  *
- * 保留用户数据，仅更新代码和资源
+ * Same dual path as installFromStore:
+ * - large packages (≥1 MiB): browser download + direct update (measurable progress;
+ *   avoids production backend→GitHub failures)
+ * - otherwise: backend store fetch, with client fallback on 502/unreachable
  *
  * @param tappId - 要更新的 Tapp ID
  * @param request - 更新请求参数
@@ -718,15 +723,129 @@ export interface UpdateTappFromStoreRequest {
 export async function updateTappFromStore(
   tappId: string,
   request: UpdateTappFromStoreRequest,
+  options?: InstallFromStoreOptions,
 ): Promise<TappListItem> {
-  return apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/update`, {
-    method: 'POST',
-    body: JSON.stringify({
-      source: 'store',
-      storeSource: request.source,
-      permissions: request.permissions,
-    }),
+  if (isInstallModePlaceholder(request.source)) {
+    throw new Error(
+      'Invalid storeSource: expected catalog URL or store source id, not install mode "store"',
+    )
+  }
+
+  const { isLargeTappInstall, clampInstallPercent } = await import(
+    '../utils/tappInstallProgress',
+  )
+  const large = isLargeTappInstall(options?.estimatedBytes)
+
+  if (large) {
+    return updateFromStoreViaClient(tappId, request, options)
+  }
+
+  try {
+    return await apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/update`, {
+      method: 'POST',
+      body: JSON.stringify({
+        source: 'store',
+        storeSource: request.source,
+        permissions: request.permissions,
+      }),
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    const shouldFallback =
+      /502|BAD_GATEWAY|Failed to fetch store|cannot reach store|Failed to fetch manifest|Failed to fetch code|Failed to fetch|NetworkError|ECONNREFUSED|timeout|Load failed|Store source not found|not found/i.test(
+        message,
+      )
+    if (!shouldFallback) throw error
+    console.warn(
+      '[Tapp] Backend store update failed, falling back to client-side download:',
+      message,
+    )
+    options?.onProgress?.({
+      phase: 'download',
+      message: 'download',
+      percent: clampInstallPercent(5),
+    })
+    return updateFromStoreViaClient(tappId, request, options)
+  }
+}
+
+/** Browser-side download of store package, then POST direct update. */
+async function updateFromStoreViaClient(
+  tappId: string,
+  request: UpdateTappFromStoreRequest,
+  options?: InstallFromStoreOptions,
+): Promise<TappListItem> {
+  const { default: RemoteStoreService } = await import('./RemoteStoreService')
+  const { clampInstallPercent } = await import('../utils/tappInstallProgress')
+  const report = options?.onProgress
+
+  const sources = await RemoteStoreService.getSources()
+  const reqNorm = normalizeStoreCatalogUrl(request.source)
+  let source = sources.find(
+    (s) =>
+      String(s.id) === request.source ||
+      normalizeStoreCatalogUrl(s.url) === reqNorm,
+  )
+  if (!source && isHttpStoreSource(request.source)) {
+    const url = request.source.includes('index.json')
+      ? request.source.trim()
+      : `${reqNorm}/index.json`
+    source = { name: 'Shared catalog', url, enabled: true }
+  }
+  if (!source) {
+    throw new Error(
+      `Store source not configured on this instance: ${request.source}`,
+    )
+  }
+
+  report?.({ phase: 'prepare', message: 'prepare', percent: 2 })
+  // Force a fresh index so version/size/download map match GitHub main.
+  const index = await RemoteStoreService.fetchStoreIndex(source, true)
+  const baseUrl =
+    index.base_url ||
+    source.url.replace(/\/index\.json$/, '').replace(/\/$/, '')
+  const storeIndex = { ...index, base_url: baseUrl }
+  const app = storeIndex.apps.find((a) => a.id === tappId)
+  if (!app) throw new Error(`商店中未找到应用: ${tappId}`)
+
+  report?.({ phase: 'download', message: 'download', percent: 5 })
+  const pkg = await RemoteStoreService.downloadAppPackage(app, storeIndex, {
+    onProgress: report,
+    estimatedBytes: options?.estimatedBytes ?? app.size,
   })
+
+  report?.({
+    phase: 'install',
+    message: 'register',
+    percent: clampInstallPercent(92),
+  })
+
+  const body: Record<string, unknown> = {
+    source: 'direct',
+    manifest: pkg.manifest,
+    code: pkg.code,
+    permissions: request.permissions ?? pkg.manifest.permissions,
+  }
+  if (pkg.styles) body.styles = pkg.styles
+  if (pkg.pageTemplate) body.pageTemplate = pkg.pageTemplate
+  if (pkg.widgetTemplates) body.widgetTemplates = pkg.widgetTemplates
+  if (pkg.widgetCss) body.widgetCss = pkg.widgetCss
+  if (pkg.pageCss != null && pkg.pageCss !== '') body.pageCss = pkg.pageCss
+  else if (pkg.manifest.pageStyles) {
+    throw new Error(
+      `Client update package is missing pageCss for manifest.pageStyles=${pkg.manifest.pageStyles}`,
+    )
+  }
+  if (pkg.i18n) body.i18n = pkg.i18n
+  if (pkg.pageModules) body.pageModules = pkg.pageModules
+  if (pkg.assets && Object.keys(pkg.assets).length > 0) body.assets = pkg.assets
+
+  const result = await apiRequest<TappListItem>(
+    `/api/tapps/${encodeURIComponent(tappId)}/update`,
+    { method: 'POST', body: JSON.stringify(body) },
+  )
+  report?.({ phase: 'done', message: 'done', percent: 100 })
+  return result
 }
 
 /**

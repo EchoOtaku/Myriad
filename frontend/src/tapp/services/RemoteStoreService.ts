@@ -504,6 +504,26 @@ class RemoteStoreServiceImpl {
 
   // ============ 应用下载 ============
 
+  /**
+   * Store package fetches must bypass browser/CDN intermediate caches.
+   * GitHub raw serves `Cache-Control: max-age=300`; without this, delete+reinstall
+   * on a production host can mix a fresh manifest with a stale page.css/page.html
+   * (looks like "store install is wrong" while a clean local browser works).
+   */
+  private storeResourceFetchInit(
+    extraHeaders?: Record<string, string>,
+  ): RequestInit {
+    return {
+      cache: 'no-cache',
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+        ...(extraHeaders || {}),
+      },
+    }
+  }
+
   /** 下载应用的 manifest */
   async downloadManifest(
     app: RemoteApp,
@@ -514,7 +534,10 @@ class RemoteStoreServiceImpl {
       storeIndex.base_url,
     )
 
-    const response = await fetch(manifestUrl)
+    const response = await fetch(
+      manifestUrl,
+      this.storeResourceFetchInit({ Accept: 'application/json' }),
+    )
     if (!response.ok) {
       throw new Error(`无法下载 manifest: HTTP ${response.status}`)
     }
@@ -530,7 +553,7 @@ class RemoteStoreServiceImpl {
   ): Promise<string> {
     const codeUrl = this.resolveUrl(app.download.code, storeIndex.base_url)
 
-    const response = await fetch(codeUrl)
+    const response = await fetch(codeUrl, this.storeResourceFetchInit())
     if (!response.ok) {
       throw new Error(`无法下载代码: HTTP ${response.status}`)
     }
@@ -586,7 +609,7 @@ class RemoteStoreServiceImpl {
       }
       try {
         const url = this.resolveUrl(relativePath, baseUrl)
-        const response = await fetch(url)
+        const response = await fetch(url, this.storeResourceFetchInit())
         if (!response.ok) {
           if (requiredLabel) {
             throw new Error(
@@ -612,7 +635,10 @@ class RemoteStoreServiceImpl {
       if (!relativePath) return undefined
       try {
         const url = this.resolveUrl(relativePath, baseUrl)
-        const response = await fetch(url)
+        const response = await fetch(
+          url,
+          this.storeResourceFetchInit({ Accept: 'application/json' }),
+        )
         if (!response.ok) return undefined
         return await response.json()
       } catch {
@@ -797,7 +823,10 @@ class RemoteStoreServiceImpl {
         }
         const storeRel = storeAssetStorePath(packageRoot, assetPath)
         const url = this.resolveUrl(storeRel, baseUrl)
-        const response = await fetch(url)
+        const response = await fetch(
+          url,
+          this.storeResourceFetchInit({ Accept: '*/*' }),
+        )
         if (!response.ok) {
           throw new Error(
             `Failed to fetch asset ${assetPath}: HTTP ${response.status}`,
@@ -842,7 +871,7 @@ class RemoteStoreServiceImpl {
         app.download.readme,
         storeIndex.base_url,
       )
-      const response = await fetch(readmeUrl)
+      const response = await fetch(readmeUrl, this.storeResourceFetchInit())
       if (!response.ok) return null
       return await response.text()
     } catch {

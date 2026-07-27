@@ -1626,12 +1626,19 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
             throw new Error('无法找到商店源')
           }
 
-          // 调用更新 API
+          // Same dual path as install: large packages download in-browser so
+          // production backend→GitHub gaps cannot leave a half-old tree.
           const { updateTappFromStore } =
             await import('../services/TappApiService')
-          await updateTappFromStore(app.id, {
-            source: source.id ? String(source.id) : source.url,
-          })
+          await updateTappFromStore(
+            app.id,
+            {
+              source: source.id ? String(source.id) : source.url,
+            },
+            {
+              estimatedBytes: app.size ?? app.remoteApp?.size ?? 0,
+            },
+          )
           runtime.clearCodeCache(app.id)
         } else {
           throw new Error('Unsupported update source')

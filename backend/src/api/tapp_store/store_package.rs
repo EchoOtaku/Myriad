@@ -50,8 +50,12 @@ async fn fetch_public_store_url(url: &str) -> Result<reqwest::Response, String> 
         Some("Myriad-Tapp-Store/1.0"),
     )
     .await?;
+    // Bypass intermediate HTTP caches (GitHub raw max-age=300). Production
+    // reinstall/update must not mix a fresh index with stale page.css/html.
     client
         .get(target_url)
+        .header("Cache-Control", "no-cache")
+        .header("Pragma", "no-cache")
         .send()
         .await
         .map_err(|error| error.to_string())
