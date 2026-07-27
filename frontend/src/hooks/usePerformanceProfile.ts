@@ -11,8 +11,7 @@ import {
  * 设备性能画像
  *
  * 硬件是否达标只看 `highHardware`（分平台规则见 deviceHardwareTier）。
- * 动效降级看 `data-perf-mode` / useAnimationLevel（exlight|light|standard），
- * 不再维护独立的 lowEndDevice 布尔。
+ * 动效降级看 `data-perf-mode` / useAnimationLevel（exlight|light|standard）。
  */
 export interface PerformanceProfile {
   isMobile: boolean
@@ -95,20 +94,15 @@ export function resetPerformanceProfileCache(): void {
   cachedProfile = null
 }
 
-/** Sync hardware flags to <html> for CSS / debug (no lowEndDevice). */
+/** Sync hardware flags to <html>（生产仅 OS/高低；reason 仅 DEV） */
 function syncHardwareToDocument(profile: PerformanceProfile) {
   if (typeof document === 'undefined') return
   const root = document.documentElement
-  // Drop legacy marker if any
-  delete root.dataset.lowEndDevice
-
   root.dataset.deviceOs = profile.os
   root.dataset.highHardware = profile.highHardware ? 'true' : 'false'
 
-  // hardwareReason 仅开发构建挂 DOM，避免生产泄漏设备指纹式信息
   const isDev =
     typeof import.meta !== 'undefined' &&
-    // Vite
     Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV)
   if (isDev && profile.hardwareReason) {
     root.dataset.hardwareReason = profile.hardwareReason

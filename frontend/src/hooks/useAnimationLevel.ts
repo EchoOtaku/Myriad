@@ -2,7 +2,7 @@ import { useContext, useEffect, useMemo, useState } from 'react'
 import { AnimationPreferenceContext } from '../contexts/AnimationPreferenceContext'
 import {
   getStoredAutoWantHigh,
-  startSessionAutoFrameAdapt,
+  startAutoFrameAdapt,
 } from '../utils/animationAutoAdapt'
 import { configureAnimationCoordinator } from './animation'
 import {
@@ -211,7 +211,7 @@ export function useAnimationLevel(): AnimationConfig {
     if (perf.reduceMotion) return
     if (!autoWantHigh) return
 
-    return startSessionAutoFrameAdapt({
+    return startAutoFrameAdapt({
       enabled: true,
       onDemote: () => {
         setAutoEpoch((n) => n + 1)

@@ -41,11 +41,6 @@ export function getStoredAutoWantHigh(): boolean {
   return true
 }
 
-/** @deprecated use getStoredAutoWantHigh */
-export function getSessionAutoWantHigh(): boolean {
-  return getStoredAutoWantHigh()
-}
-
 export function setStoredAutoWantHigh(wantHigh: boolean): void {
   if (typeof localStorage === 'undefined') return
   try {
@@ -55,15 +50,9 @@ export function setStoredAutoWantHigh(wantHigh: boolean): void {
   }
 }
 
-/** @deprecated use setStoredAutoWantHigh */
-export function setSessionAutoWantHigh(wantHigh: boolean): void {
-  setStoredAutoWantHigh(wantHigh)
-}
-
-/** 用户手动选「高」时调用：清掉降级记忆；本页可再 schedule 一次采样 */
+/** 用户手动选「高」时：清掉降级记忆，并允许本页再 schedule 一次采样 */
 export function clearAutoDemoteMemory(): void {
   setStoredAutoWantHigh(true)
-  // 允许本页在仍为 auto 时重新 probe（仅此入口会重置）
   probeStarted = false
   activeCancel?.()
   activeCancel = null
@@ -103,7 +92,7 @@ const demoteListeners = new Set<(result: AutoSampleResult) => void>()
  * 订阅 demote，并确保全局只 schedule 一次采样（幂等）。
  * unsubscribe 只摘掉回调，不取消进行中的全局 probe。
  */
-export function startSessionAutoFrameAdapt(options?: {
+export function startAutoFrameAdapt(options?: {
   onDemote?: (result: AutoSampleResult) => void
   enabled?: boolean
 }): () => void {

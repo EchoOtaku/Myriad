@@ -131,7 +131,6 @@ img[loading='lazy'] {
 /*
  * 动效降级只认 data-perf-mode（useAnimationLevel）：
  * light / exlight 去掉 Tailwind backdrop-blur。
- * 硬件档位见 data-high-hardware（不再写 data-low-end-device）。
  * 不改写壁纸 filter。
  */
 html[data-perf-mode='light'] [class*='backdrop-blur'],
