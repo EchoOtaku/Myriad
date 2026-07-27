@@ -12,7 +12,7 @@
 //! Privilege model: durable `users.is_owner` (previously heuristic `id = 1`).
 
 use axum::{
-    extract::{Path, State},
+    extract::Path,
     http::StatusCode,
     Json,
 };
@@ -191,7 +191,7 @@ const USER_SELECT: &str = "SELECT u.id, u.username, u.display_name, u.email, u.a
 
 /// GET /api/admin/users
 pub async fn list_users(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     require_admin(&headers).await?;
@@ -239,7 +239,7 @@ pub async fn list_users(
 
 /// GET /api/admin/users/{id}
 pub async fn get_user(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Path(user_id): Path<i32>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
@@ -313,7 +313,7 @@ pub const DEMOTE_IMMEDIATE_NOTICE: &str =
 
 /// PATCH /api/admin/users/{id}
 pub async fn update_user(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Path(user_id): Path<i32>,
     headers: axum::http::HeaderMap,
     Json(req): Json<UpdateUserRequest>,
@@ -446,7 +446,7 @@ pub async fn update_user(
     );
 
     // 返回更新后的完整行，前端直接原位替换；promote/demote 附带 re-login 提示
-    let Json(mut body) = get_user(State(db), Path(user_id), headers).await?;
+    let Json(mut body) = get_user(crate::extract::Db(db), Path(user_id), headers).await?;
     if req.is_admin == Some(true) && !target_is_admin {
         body["notice"] = json!(PROMOTE_RELOGIN_NOTICE);
         body["message"] = json!(PROMOTE_RELOGIN_NOTICE);
@@ -459,7 +459,7 @@ pub async fn update_user(
 
 /// DELETE /api/admin/users/{id}/identities/{identity_id}
 pub async fn unlink_identity(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Path((user_id, identity_id)): Path<(i32, i32)>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
@@ -515,7 +515,7 @@ pub async fn unlink_identity(
         user_id
     );
 
-    get_user(State(db), Path(user_id), headers).await
+    get_user(crate::extract::Db(db), Path(user_id), headers).await
 }
 
 /// 在删除 users 行之前，清理无 FK / 非 CASCADE 的用户关联数据。
@@ -595,7 +595,7 @@ async fn cleanup_user_related_data(
 /// - 非 owner 不得删除管理员 → 403
 /// - 不能删除最后一位管理员 → 400
 pub async fn delete_user(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Path(user_id): Path<i32>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, ApiError> {

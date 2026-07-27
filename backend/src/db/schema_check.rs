@@ -4886,6 +4886,104 @@ impl AdvisoryLockGuard {
     }
 }
 
+/// 一条 schema 差异及其修补 DDL。
+#[derive(Debug, Clone)]
+pub struct DriftItem {
+    /// 人类可读标识（`表.列` 或索引名）
+    pub label: String,
+    /// 补齐它所需的 DDL
+    pub ddl: String,
+}
+
+/// 期望结构（本文件里的权威列表）与数据库实际结构的差异。
+///
+/// # 为什么需要它
+///
+/// 期望结构在两个地方各写了一遍：`migrations/` 里的 `Table::create`，以及本文件
+/// 里 49 个 `TableDef` / 554 个 `ColumnDef`。两份定义没有任何机制保证一致，
+/// 审计已经观察到索引语义漂移。
+///
+/// 有了这个只读报告，就能在 CI 里断言一件很强的事：
+/// **在一个刚跑完 migration 的全新数据库上，drift 必须为空。**
+/// 不为空就说明两份定义已经不一致 —— 不需要先做去重，就能立刻止住继续漂移。
+#[derive(Debug, Default)]
+pub struct SchemaDrift {
+    pub missing_columns: Vec<DriftItem>,
+    pub missing_indexes: Vec<DriftItem>,
+}
+
+impl SchemaDrift {
+    pub fn is_empty(&self) -> bool {
+        self.missing_columns.is_empty() && self.missing_indexes.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.missing_columns.len() + self.missing_indexes.len()
+    }
+
+    /// 补齐全部差异所需的 DDL，顺序为先列后索引（索引可能依赖新列）。
+    pub fn ddl_statements(&self) -> Vec<String> {
+        self.missing_columns
+            .iter()
+            .chain(self.missing_indexes.iter())
+            .map(|i| i.ddl.clone())
+            .collect()
+    }
+
+    /// 供 CI 失败信息使用的多行摘要。
+    pub fn summary(&self) -> String {
+        let mut out = String::new();
+        for i in &self.missing_columns {
+            out.push_str(&format!("  missing column: {}\n", i.label));
+        }
+        for i in &self.missing_indexes {
+            out.push_str(&format!("  missing index:  {}\n", i.label));
+        }
+        out
+    }
+}
+
+/// 只读比对期望结构与实际结构；不执行任何 DDL。
+///
+/// 表本身不存在时跳过该表的列检查 —— 建表是 Migrator 的职责，
+/// schema_check 不再兜底整表创建。
+pub async fn report_schema_drift(db: &DatabaseConnection) -> Result<SchemaDrift, DbErr> {
+    let mut drift = SchemaDrift::default();
+
+    let existing_tables = get_existing_tables(db).await?;
+
+    for table_def in &get_expected_schema() {
+        if !existing_tables.contains(&table_def.name) {
+            tracing::debug!(
+                "Table '{}' does not exist, skipping column check (rely on Migrator)",
+                table_def.name
+            );
+            continue;
+        }
+        let existing_columns = get_table_columns(db, &table_def.name).await?;
+        for col in &table_def.columns {
+            if !existing_columns.contains(&col.name) {
+                drift.missing_columns.push(DriftItem {
+                    label: format!("{}.{}", table_def.name, col.name),
+                    ddl: generate_add_column_ddl(&table_def.name, col),
+                });
+            }
+        }
+    }
+
+    let existing_indexes = get_existing_indexes(db).await?;
+    for idx in &get_expected_indexes() {
+        if !existing_indexes.contains(&idx.name) && existing_tables.contains(&idx.table) {
+            drift.missing_indexes.push(DriftItem {
+                label: idx.name.clone(),
+                ddl: generate_create_index_ddl(idx),
+            });
+        }
+    }
+
+    Ok(drift)
+}
+
 /// 实际执行 schema 检查的内部函数
 async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     // 检查版本是否已应用
@@ -4904,7 +5002,6 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
         );
     }
 
-    let mut ddl_statements: Vec<String> = Vec::new();
     let mut changes_made = 0;
 
     // 1. 同步默认平台种子行（表由 Migrator 创建；此处只补业务目录数据）
@@ -4914,43 +5011,20 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
         Err(e) => tracing::warn!("Default platforms seed warning: {}", e),
     }
 
-    // 2. 比对期望列/索引（整表创建已不再由 schema_check 兜底）
-    let existing_tables = get_existing_tables(db).await?;
-    let expected_tables = get_expected_schema();
-
-    for table_def in &expected_tables {
-        if !existing_tables.contains(&table_def.name) {
-            tracing::debug!(
-                "Table '{}' does not exist, skipping column check (rely on Migrator)",
-                table_def.name
-            );
-            continue;
-        }
-
-        let existing_columns = get_table_columns(db, &table_def.name).await?;
-
-        for col in &table_def.columns {
-            if !existing_columns.contains(&col.name) {
-                let ddl = generate_add_column_ddl(&table_def.name, col);
-                tracing::info!("📝 Missing column: {}.{}", table_def.name, col.name);
-                ddl_statements.push(ddl);
-                changes_made += 1;
-            }
-        }
+    // 2/3. 比对期望列与索引（整表创建已不再由 schema_check 兜底）
+    let drift = report_schema_drift(db).await?;
+    if !drift.is_empty() {
+        // 正常情况下这里应该是空的 —— migration 就该产出完整结构。
+        // 有内容说明要么是从旧版本升级上来的库，要么 migration 与本文件的
+        // 权威结构列表又漂移了（CI 的 migrations_leave_no_schema_drift 守这条）。
+        tracing::info!(
+            "📝 Schema healer will patch {} item(s):\n{}",
+            drift.len(),
+            drift.summary().trim_end()
+        );
     }
-
-    // 3. 检查缺失的索引
-    let existing_indexes = get_existing_indexes(db).await?;
-    let expected_indexes = get_expected_indexes();
-
-    for idx in &expected_indexes {
-        if !existing_indexes.contains(&idx.name) && existing_tables.contains(&idx.table) {
-            let ddl = generate_create_index_ddl(idx);
-            tracing::info!("📝 Missing index: {}", idx.name);
-            ddl_statements.push(ddl);
-            changes_made += 1;
-        }
-    }
+    let ddl_statements: Vec<String> = drift.ddl_statements();
+    changes_made += ddl_statements.len();
 
     // 4. 执行所有 DDL
     if !ddl_statements.is_empty() {
@@ -5277,5 +5351,44 @@ mod tests {
         assert!(ddl.contains("CREATE UNIQUE INDEX IF NOT EXISTS"));
         assert!(ddl.contains("idx_test"));
         assert!(ddl.contains("col1, col2"));
+    }
+
+    /// **CI 漂移闸门。**
+    ///
+    /// 在一个刚跑完 `Migrator::up` 的全新数据库上，`report_schema_drift` 必须返回空。
+    /// 一旦不为空，就说明 `migrations/` 里的建表语句与本文件的权威结构列表
+    /// （49 个 TableDef / 554 个 ColumnDef）已经不一致 —— 也就是审计指出的
+    /// "5228 行 runtime healer 与 migration 重复定义并已发生漂移"。
+    ///
+    /// 需要真实 PostgreSQL。没有 `MYRIAD_SCHEMA_DRIFT_DB` 时静默跳过，
+    /// 这样本地 `cargo test` 不受影响；CI 里由 postgres service 提供该变量。
+    #[tokio::test]
+    async fn migrations_leave_no_schema_drift() {
+        let Ok(url) = std::env::var("MYRIAD_SCHEMA_DRIFT_DB") else {
+            eprintln!("skipping: set MYRIAD_SCHEMA_DRIFT_DB to run the schema drift gate");
+            return;
+        };
+
+        use sea_orm_migration::MigratorTrait;
+        let db = sea_orm::Database::connect(&url)
+            .await
+            .expect("connect to the drift-check database");
+
+        crate::db::Migrator::up(&db, None)
+            .await
+            .expect("migrations must apply cleanly to an empty database");
+
+        let drift = report_schema_drift(&db)
+            .await
+            .expect("drift report must succeed");
+
+        assert!(
+            drift.is_empty(),
+            "migrations and the schema_check expectation list disagree on {} item(s).\n\
+             Either the migration is missing this structure, or schema_check declares \n\
+             something the migrations never create:\n{}",
+            drift.len(),
+            drift.summary()
+        );
     }
 }

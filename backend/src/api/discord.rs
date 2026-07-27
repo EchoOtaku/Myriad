@@ -8,7 +8,7 @@
 // 但 redirect_uri 与 scope 独立，需在 Discord Developer Portal 额外登记 callback。
 
 use axum::{
-    extract::{Query, State},
+    extract::Query,
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Redirect, Response},
     Json,
@@ -330,7 +330,7 @@ pub async fn oauth_start(headers: HeaderMap) -> Result<Response, (StatusCode, Js
 
 /// Discord 数据平台 OAuth 回调：交换 token → 写入配置 → 回配置页
 pub async fn oauth_callback(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Query(params): Query<OAuthCallbackQuery>,
 ) -> Result<Response, (StatusCode, Json<Value>)> {
     let frontend_base = SiteConfig::get_base_url().await;

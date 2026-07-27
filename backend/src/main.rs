@@ -19,6 +19,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod api;
 mod config;
 mod db;
+mod extract;
 mod federation;
 mod middleware;
 mod models;
@@ -283,6 +284,7 @@ async fn run_server() -> anyhow::Result<()> {
                 services::agent::notifications::init_notifications(db.clone()).await;
                 api::updater_admin::resume_pending_job_notifications().await;
                 tracing::info!("✅ Agent notification system initialized");
+
 
                 // Initialize Tapp scheduler engine
                 api::tapp_scheduler::init_scheduler(db.clone()).await;
@@ -717,430 +719,6 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
     next.run(req).await
 }
 
-/// Wrapper for check_setup_status that gets DB from global state
-async fn check_setup_status_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::setup::check_setup_status(axum::extract::State(db.clone())).await {
-            Ok(response) => response.into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "Database connection not available. Please configure database first."
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for init_database that gets DB from global state
-async fn init_database_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::setup::init_database(axum::extract::State(db.clone())).await {
-            Ok(response) => response.into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "Database connection not available. Please configure database first."
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for create_admin that gets DB from global state
-async fn create_admin_wrapper(
-    Json(payload): Json<api::auth_local::CreateAdminRequest>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::auth_local::create_admin(axum::extract::State(db.clone()), Json(payload))
-                .await
-            {
-                Ok(response) => response.into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "Database connection not available. Please configure database first."
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for register that gets DB from global state (PR #4)
-async fn register_wrapper(Json(payload): Json<api::auth_local::RegisterRequest>) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::auth_local::register(axum::extract::State(db.clone()), Json(payload)).await {
-                Ok(response) => response.into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，请先完成初始配置"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for set_password (PR #4)
-async fn set_password_wrapper(
-    headers: axum::http::HeaderMap,
-    Json(payload): Json<api::auth_local::SetPasswordRequest>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::auth_local::set_password(
-            axum::extract::State(db.clone()),
-            headers,
-            Json(payload),
-        )
-        .await
-        {
-            Ok(response) => response.into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
-}
-
-/// PR #6: Wrapper for admin_create_user
-async fn admin_create_user_wrapper(
-    headers: axum::http::HeaderMap,
-    Json(payload): Json<api::auth_local::AdminCreateUserRequest>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::auth_local::admin_create_user(
-            axum::extract::State(db.clone()),
-            headers,
-            Json(payload),
-        )
-        .await
-        {
-            Ok(response) => response.into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
-}
-
-/// 设置页用户管理：列表（api::admin_users 取代 PR #6 的旧版列表）
-async fn admin_list_users_wrapper(headers: axum::http::HeaderMap) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::admin_users::list_users(axum::extract::State(db.clone()), headers).await {
-                Ok(response) => response.into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
-}
-
-/// 设置页用户管理：单用户详情
-async fn admin_get_user_wrapper(
-    axum::extract::Path(user_id): axum::extract::Path<i32>,
-    headers: axum::http::HeaderMap,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::admin_users::get_user(
-            axum::extract::State(db.clone()),
-            axum::extract::Path(user_id),
-            headers,
-        )
-        .await
-        {
-            Ok(response) => response.into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
-}
-
-/// 设置页用户管理：更新用户
-async fn admin_update_user_wrapper(
-    axum::extract::Path(user_id): axum::extract::Path<i32>,
-    headers: axum::http::HeaderMap,
-    Json(payload): Json<api::admin_users::UpdateUserRequest>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::admin_users::update_user(
-            axum::extract::State(db.clone()),
-            axum::extract::Path(user_id),
-            headers,
-            Json(payload),
-        )
-        .await
-        {
-            Ok(response) => response.into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
-}
-
-/// 设置页用户管理：解绑用户的 OAuth identity
-async fn admin_unlink_identity_wrapper(
-    axum::extract::Path(path): axum::extract::Path<(i32, i32)>,
-    headers: axum::http::HeaderMap,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::admin_users::unlink_identity(
-            axum::extract::State(db.clone()),
-            axum::extract::Path(path),
-            headers,
-        )
-        .await
-        {
-            Ok(response) => response.into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
-}
-
-/// 设置页用户管理：删除用户
-async fn admin_delete_user_wrapper(
-    axum::extract::Path(user_id): axum::extract::Path<i32>,
-    headers: axum::http::HeaderMap,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::admin_users::delete_user(
-            axum::extract::State(db.clone()),
-            axum::extract::Path(user_id),
-            headers,
-        )
-        .await
-        {
-            Ok(response) => response.into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for toggle_local_login (PR #4)
-async fn toggle_local_login_wrapper(
-    headers: axum::http::HeaderMap,
-    Json(payload): Json<api::auth_local::LocalLoginToggleRequest>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::auth_local::toggle_local_login(
-            axum::extract::State(db.clone()),
-            headers,
-            Json(payload),
-        )
-        .await
-        {
-            Ok(response) => response.into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for local_login that gets DB from global state
-async fn local_login_wrapper(Json(payload): Json<api::auth_local::LocalLoginRequest>) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::auth_local::local_login(axum::extract::State(db.clone()), Json(payload))
-                .await
-            {
-                Ok(response) => response.into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，请先完成初始配置"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for change_password that gets DB from global state
-async fn change_password_wrapper(
-    headers: axum::http::HeaderMap,
-    Json(payload): Json<api::auth_local::ChangePasswordRequest>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::auth_local::change_password(
-                axum::extract::State(db.clone()),
-                headers,
-                Json(payload),
-            )
-            .await
-            {
-                Ok(response) => response.into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，请先完成初始配置"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_site_metadata that gets DB from global state
-async fn get_site_metadata_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::get_site_metadata(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => {
-            // 返回默认元数据，不需要数据库连接
-            (
-                StatusCode::OK,
-                Json(json!({
-                    "site_title": "Myriad - A myriad of lights, in one place.",
-                    "site_description": "A myriad of lights, in one place.",
-                    "site_favicon": "/favicon.webp"
-                })),
-            )
-                .into_response()
-        }
-    }
-}
-
-/// Wrapper for get_public_config that gets DB from global state
-/// 🔓 公开端点 - 返回脱敏的平台配置（仅用于社交链接显示）
-async fn get_public_config_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::get_public_config(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => {
-            // 没有数据库连接时返回空配置
-            (
-                StatusCode::OK,
-                Json(json!({
-                    "platforms": []
-                })),
-            )
-                .into_response()
-        }
-    }
-}
-
-/// Wrapper for get_public_ui_config that gets DB from global state
-/// 🔓 公开端点 - 返回公开的UI配置（萌宠、壁纸等）
-async fn get_public_ui_config_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::get_public_ui_config(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => {
-            // 没有数据库连接时返回默认配置
-            (
-                StatusCode::OK,
-                Json(json!({
-                    "pet_enabled": true,
-                    "pet_image_url": "",
-                    "wallpaper_url": "",
-                    "wallpaper_blur": 3
-                })),
-            )
-                .into_response()
-        }
-    }
-}
-
-/// Wrapper for get_config that gets DB from global state
-async fn get_config_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::config::get_config(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，配置功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
 /// Wrapper for update_config that gets DB from global state
 async fn update_config_wrapper(
     headers: axum::http::HeaderMap,
@@ -1294,552 +872,15 @@ async fn restore_settings_wrapper(
     }
 }
 
-/// Wrapper for update_dashboard_config that gets DB from global state
-async fn update_dashboard_config_wrapper(
-    Json(payload): Json<api::config::DashboardConfigPayload>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::config::update_dashboard_config(
-                axum::extract::State(db.clone()),
-                Json(payload),
-            )
-            .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，配置功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for update_control_panel_config that gets DB from global state
-async fn update_control_panel_config_wrapper(
-    Json(payload): Json<api::config::ControlPanelConfigPayload>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::config::update_control_panel_config(
-                axum::extract::State(db.clone()),
-                Json(payload),
-            )
-            .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，配置功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for update_tapp_window_schemes that gets DB from global state
-async fn update_tapp_window_schemes_wrapper(
-    Json(payload): Json<api::config::TappWindowSchemesPayload>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::config::update_tapp_window_schemes(
-                axum::extract::State(db.clone()),
-                Json(payload),
-            )
-            .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，配置功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_module_visibility_preferences that gets DB from global state
-async fn get_module_visibility_preferences_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::get_module_visibility_preferences(axum::extract::State(db.clone()))
-                    .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，模块可见性功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for update_module_visibility_preferences that gets DB from global state
-async fn update_module_visibility_preferences_wrapper(
-    Json(payload): Json<api::config::ModuleVisibilityPreferences>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::config::update_module_visibility_preferences(
-                axum::extract::State(db.clone()),
-                Json(payload),
-            )
-            .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，模块可见性功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_hitokoto_config that gets DB from global state
-async fn get_hitokoto_config_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::get_hitokoto_config(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，一言配置功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for update_hitokoto_config that gets DB from global state
-async fn update_hitokoto_config_wrapper(
-    Json(payload): Json<api::config::HitokotoConfig>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::config::update_hitokoto_config(
-                axum::extract::State(db.clone()),
-                Json(payload),
-            )
-            .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，一言配置功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_report_settings that gets DB from global state
-async fn get_report_settings_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::get_report_settings(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，报告设置功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for update_report_settings that gets DB from global state
-async fn update_report_settings_wrapper(
-    Json(payload): Json<api::config::ReportSettings>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::config::update_report_settings(
-                axum::extract::State(db.clone()),
-                Json(payload),
-            )
-            .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，报告设置功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_permissions that gets DB from global state
-async fn get_permissions_wrapper(headers: axum::http::HeaderMap) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::get_permissions(axum::extract::State(db.clone()), headers).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，权限功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for update_permissions that gets DB from global state
-async fn update_permissions_wrapper(
-    Json(payload): Json<api::config::UpdatePermissionsPayload>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::update_permissions(axum::extract::State(db.clone()), Json(payload))
-                    .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，权限功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
 /// PR #6: Wrapper for get_oauth_providers (admin)
 async fn get_oauth_providers_wrapper() -> Response {
     let (status, json) = api::config::get_oauth_providers().await;
     (status, json).into_response()
 }
 
-/// PR #6: Wrapper for update_oauth_providers (admin)
-async fn update_oauth_providers_wrapper(
-    Json(payload): Json<api::config::UpdateOAuthProvidersPayload>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::config::update_oauth_providers(
-                axum::extract::State(db.clone()),
-                Json(payload),
-            )
-            .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for test_platform that gets DB from global state
-async fn test_platform_wrapper(Json(payload): Json<serde_json::Value>) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::test_platform(axum::extract::State(db.clone()), Json(payload)).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，配置功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_current_user that gets DB from global state
-async fn get_current_user_wrapper(headers: axum::http::HeaderMap) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::auth::get_current_user(axum::extract::State(db.clone()), headers).await {
-                Ok(response) => response.into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，认证功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
 /// Wrapper for logout - no auth required, just clear cookie
 async fn logout_wrapper() -> Response {
     api::auth::logout().await.into_response()
-}
-
-/// Wrapper for OAuth callback that gets DB from global state.
-///
-/// Keep the route registered even when DB is temporarily unavailable, so the
-/// login surface gets a clear 503 instead of a route-table 404.
-async fn oauth_provider_callback_wrapper(
-    axum::extract::Path(slug): axum::extract::Path<String>,
-    axum::extract::Query(params): axum::extract::Query<api::oauth::CallbackQuery>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::oauth::provider_callback(
-            axum::extract::Path(slug),
-            axum::extract::Query(params),
-            axum::extract::State(db.clone()),
-        )
-        .await
-        {
-            Ok(response) => response,
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，OAuth 回调暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Discord 数据平台一键授权 callback（需要 DB 写配置）
-async fn discord_platform_oauth_callback_wrapper(
-    axum::extract::Query(params): axum::extract::Query<api::discord::OAuthCallbackQuery>,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::discord::oauth_callback(
-            axum::extract::State(db.clone()),
-            axum::extract::Query(params),
-        )
-        .await
-        {
-            Ok(response) => response,
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，Discord 数据授权回调暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for OAuth identity unlink that gets DB from global state.
-async fn oauth_provider_unlink_wrapper(
-    axum::extract::Path((slug, identity_id)): axum::extract::Path<(String, i32)>,
-    headers: axum::http::HeaderMap,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match api::oauth::provider_unlink(
-            axum::extract::Path((slug, identity_id)),
-            axum::extract::State(db.clone()),
-            headers,
-        )
-        .await
-        {
-            Ok(json) => json.into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，OAuth 身份解绑暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for listing the current user's linked OAuth identities.
-async fn oauth_list_my_identities_wrapper(headers: axum::http::HeaderMap) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::oauth::list_my_identities(axum::extract::State(db.clone()), headers).await {
-                Ok(json) => json.into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，OAuth 身份列表暂不可用"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper: set which linked OAuth identity supplies profile avatar / primary flag.
-async fn oauth_set_primary_identity_wrapper(
-    axum::extract::Path(identity_id): axum::extract::Path<i32>,
-    headers: axum::http::HeaderMap,
-) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::oauth::set_primary_identity(
-                axum::extract::Path(identity_id),
-                axum::extract::State(db.clone()),
-                headers,
-            )
-            .await
-            {
-                Ok(json) => json.into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，无法设置画像源"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_user_info that gets DB from global state
-async fn get_user_info_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::profile::get_user_info(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_batch_user_info that gets DB from global state
-/// 批量获取用户信息 - 性能优化版本，减少多次API调用
-async fn get_batch_user_info_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::profile::get_batch_user_info(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_raw_metadata that gets DB from global state
-async fn get_raw_metadata_wrapper() -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::profile::get_raw_metadata(axum::extract::State(db.clone())).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接"
-            })),
-        )
-            .into_response(),
-    }
-}
-
-/// Wrapper for get_latest_report that gets DB from global state
-async fn get_latest_report_wrapper(headers: axum::http::HeaderMap) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match api::reports::get_latest_report(axum::extract::State(db.clone()), headers).await {
-                Ok(json) => (StatusCode::OK, json).into_response(),
-                Err(status) => {
-                    (status, Json(json!({ "error": "Failed to get report" }))).into_response()
-                }
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，无法获取报告"
-            })),
-        )
-            .into_response(),
-    }
 }
 
 // ==================== Federation Wrappers ====================
@@ -1907,18 +948,8 @@ async fn admin_federation_domain_move_wrapper(req: axum::extract::Request) -> Re
 }
 
 /// GET /api/federation/identity — 获取当前登录用户的联邦地址
-async fn federation_identity_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-
+/// 路由已挂 `auth_middleware`，claims 由 `AuthedClaims` 直接取出。
+async fn federation_identity(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
     let identity = federation::actor::get_local_identity(&claims.username).await;
     (StatusCode::OK, Json(identity)).into_response()
 }
@@ -2106,17 +1137,8 @@ async fn federation_unfollow_wrapper(req: axum::extract::Request) -> Response {
 }
 
 /// GET /api/federation/following — 获取我关注的远程用户列表
-async fn federation_following_list_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
+async fn federation_following_list(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -2137,17 +1159,8 @@ async fn federation_following_list_wrapper(req: axum::extract::Request) -> Respo
 }
 
 /// GET /api/federation/followers — 获取关注我的远程用户列表
-async fn federation_followers_list_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
+async fn federation_followers_list(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -2168,17 +1181,8 @@ async fn federation_followers_list_wrapper(req: axum::extract::Request) -> Respo
 }
 
 /// GET /api/federation/timeline — 获取联邦时间线
-async fn federation_timeline_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
+async fn federation_timeline(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -2253,172 +1257,83 @@ async fn federation_publish_wrapper(req: axum::extract::Request) -> Response {
     }
 }
 
-/// Shared body parse helper for object-id interaction endpoints.
-async fn federation_object_id_from_body(
-    req: axum::extract::Request,
-) -> Result<
-    (
-        middleware::auth::Claims,
-        federation::interactions::ObjectIdRequest,
-    ),
-    Response,
-> {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response())
+/// 路由已挂 auth_middleware；claims / body / db 全部走提取器。
+async fn federation_like(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::interactions::ObjectIdRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::interactions::like_object(
+        user_id,
+        &claims.username,
+        &db,
+        &payload.object_id,
+    )
+    .await
+    {
+        Ok(resp) => {
+            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
         }
-    };
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response())
-        }
-    };
-    let payload: federation::interactions::ObjectIdRequest =
-        match serde_json::from_slice(&body_bytes) {
-            Ok(p) => p,
-            Err(_) => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "Invalid JSON (expect { object_id })"})),
-                )
-                    .into_response())
-            }
-        };
-    Ok((claims, payload))
-}
-
-async fn federation_like_wrapper(req: axum::extract::Request) -> Response {
-    let (claims, payload) = match federation_object_id_from_body(req).await {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::interactions::like_object(
-                user_id,
-                &claims.username,
-                db,
-                &payload.object_id,
-            )
-            .await
-            {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_unlike_wrapper(req: axum::extract::Request) -> Response {
-    let (claims, payload) = match federation_object_id_from_body(req).await {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::interactions::unlike_object(
-                user_id,
-                &claims.username,
-                db,
-                &payload.object_id,
-            )
-            .await
-            {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
+/// 路由已挂 auth_middleware；claims / body / db 全部走提取器。
+async fn federation_unlike(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::interactions::ObjectIdRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::interactions::unlike_object(
+        user_id,
+        &claims.username,
+        &db,
+        &payload.object_id,
+    )
+    .await
+    {
+        Ok(resp) => {
+            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
         }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_bookmark_wrapper(req: axum::extract::Request) -> Response {
-    let (claims, payload) = match federation_object_id_from_body(req).await {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::interactions::bookmark_object(user_id, db, &payload.object_id).await {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
+/// 路由已挂 auth_middleware；claims / body / db 全部走提取器。
+async fn federation_bookmark(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::interactions::ObjectIdRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::interactions::bookmark_object(user_id, &db, &payload.object_id).await {
+        Ok(resp) => {
+            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
         }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_unbookmark_wrapper(req: axum::extract::Request) -> Response {
-    let (claims, payload) = match federation_object_id_from_body(req).await {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::interactions::unbookmark_object(user_id, db, &payload.object_id).await
-            {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
+/// 路由已挂 auth_middleware；claims / body / db 全部走提取器。
+async fn federation_unbookmark(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::interactions::ObjectIdRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::interactions::unbookmark_object(user_id, &db, &payload.object_id).await
+    {
+        Ok(resp) => {
+            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
         }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_bookmarks_list_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
+async fn federation_bookmarks_list(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -2514,34 +1429,25 @@ async fn federation_announce_wrapper(req: axum::extract::Request) -> Response {
     }
 }
 
-async fn federation_unannounce_wrapper(req: axum::extract::Request) -> Response {
-    let (claims, payload) = match federation_object_id_from_body(req).await {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::interactions::unannounce_object(
-                user_id,
-                &claims.username,
-                db,
-                &payload.object_id,
-            )
-            .await
-            {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
+/// 路由已挂 auth_middleware；claims / body / db 全部走提取器。
+async fn federation_unannounce(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::interactions::ObjectIdRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::interactions::unannounce_object(
+        user_id,
+        &claims.username,
+        &db,
+        &payload.object_id,
+    )
+    .await
+    {
+        Ok(resp) => {
+            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
         }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
@@ -2748,17 +1654,8 @@ async fn federation_unpublish_wrapper(req: axum::extract::Request) -> Response {
 }
 
 /// GET /api/federation/published — 获取已发布内容列表
-async fn federation_published_list_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
+async fn federation_published_list(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -2836,17 +1733,8 @@ async fn federation_create_channel_wrapper(req: axum::extract::Request) -> Respo
 }
 
 /// Channel 列表
-async fn federation_list_channels_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
+async fn federation_list_channels(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -3236,17 +2124,8 @@ async fn federation_create_room_wrapper(req: axum::extract::Request) -> Response
     }
 }
 
-async fn federation_list_rooms_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
+async fn federation_list_rooms(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -4243,17 +3122,8 @@ async fn federation_trigger_ring_sync_wrapper(req: axum::extract::Request) -> Re
 // ==================== Phase 5 补全: Trust 策略管理 ====================
 
 /// GET /api/federation/delivery/stats — user delivery queue counters
-async fn federation_delivery_stats_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
+async fn federation_delivery_stats(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
@@ -5832,7 +4702,7 @@ async fn get_federation_timeline(
 /// (fail-closed). Admin-only trust management keeps its extra admin gate.
 fn federation_api_router() -> Router {
     let main_router = Router::new()
-        .route("/api/federation/identity", get(federation_identity_wrapper))
+        .route("/api/federation/identity", get(federation_identity))
         .route(
             "/api/federation/keys/rotate",
             post(federation_keys_rotate_wrapper),
@@ -5844,31 +4714,31 @@ fn federation_api_router() -> Router {
         )
         .route(
             "/api/federation/following",
-            get(federation_following_list_wrapper),
+            get(federation_following_list),
         )
         .route(
             "/api/federation/followers",
-            get(federation_followers_list_wrapper),
+            get(federation_followers_list),
         )
-        .route("/api/federation/timeline", get(federation_timeline_wrapper))
+        .route("/api/federation/timeline", get(federation_timeline))
         .route("/api/federation/publish", post(federation_publish_wrapper))
         .route(
             "/api/federation/notes",
             post(federation_create_note_wrapper),
         )
-        .route("/api/federation/like", post(federation_like_wrapper))
-        .route("/api/federation/unlike", post(federation_unlike_wrapper))
+        .route("/api/federation/like", post(federation_like))
+        .route("/api/federation/unlike", post(federation_unlike))
         .route(
             "/api/federation/bookmark",
-            post(federation_bookmark_wrapper),
+            post(federation_bookmark),
         )
         .route(
             "/api/federation/unbookmark",
-            post(federation_unbookmark_wrapper),
+            post(federation_unbookmark),
         )
         .route(
             "/api/federation/bookmarks",
-            get(federation_bookmarks_list_wrapper),
+            get(federation_bookmarks_list),
         )
         .route(
             "/api/federation/announce",
@@ -5876,7 +4746,7 @@ fn federation_api_router() -> Router {
         )
         .route(
             "/api/federation/unannounce",
-            post(federation_unannounce_wrapper),
+            post(federation_unannounce),
         )
         .route(
             "/api/federation/unpublish",
@@ -5884,11 +4754,11 @@ fn federation_api_router() -> Router {
         )
         .route(
             "/api/federation/published",
-            get(federation_published_list_wrapper),
+            get(federation_published_list),
         )
         .route(
             "/api/federation/channels",
-            get(federation_list_channels_wrapper).post(federation_create_channel_wrapper),
+            get(federation_list_channels).post(federation_create_channel_wrapper),
         )
         .route(
             "/api/federation/channels/{channel_id}",
@@ -5920,7 +4790,7 @@ fn federation_api_router() -> Router {
         )
         .route(
             "/api/federation/rooms",
-            get(federation_list_rooms_wrapper).post(federation_create_room_wrapper),
+            get(federation_list_rooms).post(federation_create_room_wrapper),
         )
         .route(
             "/api/federation/rooms/{room_id}",
@@ -6006,7 +4876,7 @@ fn federation_api_router() -> Router {
         )
         .route(
             "/api/federation/delivery/stats",
-            get(federation_delivery_stats_wrapper),
+            get(federation_delivery_stats),
         )
         .route(
             "/api/federation/delivery",
@@ -6205,15 +5075,15 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/health", get(api::health))
         // Setup routes (always available)
         .route("/api/setup/config", get(api::setup::get_setup_config))
-        .route("/api/setup/status", get(check_setup_status_wrapper))
+        .route("/api/setup/status", get(api::setup::check_setup_status))
         .route("/api/setup/init-env", post(api::setup::initialize_env_file))
         .route("/api/setup/update-env", post(api::setup::update_env_file))
         .route(
             "/api/setup/database-config",
             post(api::setup::save_database_config),
         )
-        .route("/api/setup/init-database", post(init_database_wrapper))
-        .route("/api/setup/create-admin", post(create_admin_wrapper))
+        .route("/api/setup/init-database", post(api::setup::init_database))
+        .route("/api/setup/create-admin", post(api::auth_local::create_admin))
         // System management routes
         // ⚠️ P2: system/status 暴露了一些系统信息，但为了监控保持公开（考虑移除敏感字段）
         .route("/api/system/status", get(api::system::system_status))
@@ -6229,8 +5099,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             get(api::metrics::get_metrics).route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // Authentication routes (use wrapper for dynamic DB access)
-        .route("/api/auth/login", post(local_login_wrapper))
-        .route("/api/auth/me", get(get_current_user_wrapper))
+        .route("/api/auth/login", post(api::auth_local::local_login))
+        .route("/api/auth/me", get(api::auth::get_current_user))
         .route(
             "/api/auth/logout",
             post(logout_wrapper), // 不需要认证中间件
@@ -6244,7 +5114,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         )
         .route(
             "/api/auth/oauth/{slug}/callback",
-            get(oauth_provider_callback_wrapper),
+            get(api::oauth::provider_callback),
         )
         .route(
             "/api/auth/oauth/{slug}/link",
@@ -6252,40 +5122,40 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         )
         .route(
             "/api/auth/oauth/{slug}/unlink/{identity_id}",
-            axum::routing::delete(oauth_provider_unlink_wrapper)
+            axum::routing::delete(api::oauth::provider_unlink)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(
             "/api/auth/identities",
-            get(oauth_list_my_identities_wrapper)
+            get(api::oauth::list_my_identities)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(
             "/api/auth/identities/{identity_id}/primary",
-            post(oauth_set_primary_identity_wrapper)
+            post(api::oauth::set_primary_identity)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(
             "/api/auth/change-password",
-            post(change_password_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+            post(api::auth_local::change_password).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 设置页用户管理（列表/创建/详情/更新/解绑 identity）— 仅管理员
         .route(
             "/api/admin/users",
-            get(admin_list_users_wrapper)
-                .post(admin_create_user_wrapper)
+            get(api::admin_users::list_users)
+                .post(api::auth_local::admin_create_user)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/admin/users/{id}",
-            get(admin_get_user_wrapper)
-                .patch(admin_update_user_wrapper)
-                .delete(admin_delete_user_wrapper)
+            get(api::admin_users::get_user)
+                .patch(api::admin_users::update_user)
+                .delete(api::admin_users::delete_user)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/admin/users/{id}/identities/{identity_id}",
-            axum::routing::delete(admin_unlink_identity_wrapper)
+            axum::routing::delete(api::admin_users::unlink_identity)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // Site public domain (BASE_URL / FRONTEND_URL / CORS) — not federation Move
@@ -6301,20 +5171,20 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // PR #4: 公开注册（开关受 allow_local_registration 控制） + 后补密码 + 本地登录开关
-        .route("/api/auth/register", post(register_wrapper))
+        .route("/api/auth/register", post(api::auth_local::register))
         .route(
             "/api/auth/me/set-password",
-            post(set_password_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+            post(api::auth_local::set_password).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(
             "/api/auth/me/local-login",
-            axum::routing::patch(toggle_local_login_wrapper)
+            axum::routing::patch(api::auth_local::toggle_local_login)
                 .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // Configuration routes (use wrapper for dynamic DB access)
         .route(
             "/api/config",
-            get(get_config_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+            get(api::config::get_config).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(
             "/api/config",
@@ -6333,66 +5203,66 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         )
         .route(
             "/api/config/dashboard",
-            post(update_dashboard_config_wrapper)
+            post(api::config::update_dashboard_config)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/config/control-panel",
-            post(update_control_panel_config_wrapper)
+            post(api::config::update_control_panel_config)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/config/tapp-window-schemes",
-            post(update_tapp_window_schemes_wrapper)
+            post(api::config::update_tapp_window_schemes)
                 .route_layer(from_fn(middleware::auth::auth_middleware)), // 登录用户可保存
         )
         .route(
             "/api/config/module-visibility",
-            get(get_module_visibility_preferences_wrapper),
+            get(api::config::get_module_visibility_preferences),
         )
         .route(
             "/api/config/module-visibility",
-            put(update_module_visibility_preferences_wrapper)
+            put(api::config::update_module_visibility_preferences)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // 一言配置读取公开；全局写入仅管理员
-        .route("/api/config/hitokoto", get(get_hitokoto_config_wrapper))
+        .route("/api/config/hitokoto", get(api::config::get_hitokoto_config))
         .route(
             "/api/config/hitokoto",
-            axum::routing::put(update_hitokoto_config_wrapper)
+            axum::routing::put(api::config::update_hitokoto_config)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // 报告过期设置：读取公开（读取路径需要）；写入仅管理员
         .route(
             "/api/config/report-settings",
-            get(get_report_settings_wrapper),
+            get(api::config::get_report_settings),
         )
         .route(
             "/api/config/report-settings",
-            axum::routing::put(update_report_settings_wrapper)
+            axum::routing::put(api::config::update_report_settings)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // 权限配置 API
-        .route("/api/config/permissions", get(get_permissions_wrapper)) // 🔓 公开端点：获取当前用户权限
+        .route("/api/config/permissions", get(api::config::get_permissions)) // 🔓 公开端点：获取当前用户权限
         .route(
             "/api/config/permissions",
-            post(update_permissions_wrapper)
+            post(api::config::update_permissions)
                 .route_layer(from_fn(middleware::auth::admin_middleware)), // 🔒 仅管理员
         )
         // PR #6: OAuth providers + 本地注册开关（仅管理员可读写）
         .route(
             "/api/config/oauth-providers",
             get(get_oauth_providers_wrapper)
-                .put(update_oauth_providers_wrapper)
+                .put(api::config::update_oauth_providers)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/config/test",
-            post(test_platform_wrapper).route_layer(from_fn(middleware::auth::auth_middleware)),
+            post(api::config::test_platform).route_layer(from_fn(middleware::auth::auth_middleware)),
         )
-        .route("/api/config/metadata", get(get_site_metadata_wrapper)) // 🔓 公开端点：网站元数据
-        .route("/api/config/public", get(get_public_config_wrapper)) // 🔓 公开端点：平台公开信息（用于社交链接）
-        .route("/api/config/ui", get(get_public_ui_config_wrapper)) // 🔓 公开端点：UI配置（萌宠、壁纸等）
+        .route("/api/config/metadata", get(api::config::get_site_metadata)) // 🔓 公开端点：网站元数据
+        .route("/api/config/public", get(api::config::get_public_config)) // 🔓 公开端点：平台公开信息（用于社交链接）
+        .route("/api/config/ui", get(api::config::get_public_ui_config)) // 🔓 公开端点：UI配置（萌宠、壁纸等）
         // ✅ 安全修复 P0: CSRF Token 获取端点
         .route("/api/csrf-token", get(middleware::csrf::get_csrf_token))
         // AI推荐API - 🔓 公开端点：图标推荐服务
@@ -6401,11 +5271,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             post(api::ai_recommend::recommend_icon),
         )
         // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
-        .route("/api/profile/user-info", get(get_user_info_wrapper))
-        .route("/api/profile/batch", get(get_batch_user_info_wrapper)); // 🚀 性能优化：批量API
+        .route("/api/profile/user-info", get(api::profile::get_user_info))
+        .route("/api/profile/batch", get(api::profile::get_batch_user_info)); // 🚀 性能优化：批量API
 
     let mut api_router = api_router
-        .route("/api/profile/metadata", get(get_raw_metadata_wrapper))
+        .route("/api/profile/metadata", get(api::profile::get_raw_metadata))
         // ==================== Federation (MFP) 公开端点 ====================
         // Layer 1: 发现（无需认证）
         .route(
@@ -6598,7 +5468,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             // Recent activities route (公开访问 - 单用户系统)
             .route("/api/activities", get(api::profile::get_recent_activities))
             // Reports routes (读取端点公开访问，支持未认证用户)
-            .route("/api/reports/latest", get(get_latest_report_wrapper))
+            .route("/api/reports/latest", get(api::reports::get_latest_report))
             .route(
                 "/api/reports/list",
                 get(api::tapp_runtime::list_reports)
@@ -7087,7 +5957,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             )
             .route(
                 "/api/platforms/discord/oauth/callback",
-                get(discord_platform_oauth_callback_wrapper),
+                get(api::discord::oauth_callback),
             )
             // MyAnimeList — 调试接口：username 必填，client_id 可选；正式同步走配置 + profile fetch
             .route(

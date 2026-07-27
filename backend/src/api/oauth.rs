@@ -12,7 +12,7 @@
 //!   POST   /api/auth/identities/:id/primary       设为画像源（is_primary + 同步头像等）
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::{IntoResponse, Redirect, Response},
     Json,
@@ -234,7 +234,7 @@ pub struct CallbackQuery {
 pub async fn provider_callback(
     Path(slug): Path<String>,
     Query(params): Query<CallbackQuery>,
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
 ) -> Result<Response, (StatusCode, Json<Value>)> {
     let frontend_base = SiteConfig::get_base_url().await;
 
@@ -839,7 +839,7 @@ async fn ensure_unique_username(
 
 pub async fn provider_unlink(
     Path((slug, identity_id)): Path<(String, i32)>,
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     use crate::middleware::auth::verify_jwt_token;
@@ -920,7 +920,7 @@ pub async fn provider_unlink(
 // ---------- GET /api/auth/identities ----------
 
 pub async fn list_my_identities(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     use crate::middleware::auth::verify_jwt_token;
@@ -969,7 +969,7 @@ pub async fn list_my_identities(
 
 pub async fn set_primary_identity(
     Path(identity_id): Path<i32>,
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     use crate::middleware::auth::verify_jwt_token;

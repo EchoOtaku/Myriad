@@ -1743,7 +1743,7 @@ fn clean_platform_data(data: &mut Value) {
 }
 
 /// 获取最近一次获取的原始元数据（用于调试）
-pub async fn get_raw_metadata(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+pub async fn get_raw_metadata(crate::extract::Db(_db): crate::extract::Db) -> (StatusCode, Json<Value>) {
     tracing::info!("📊 Reading cached platform metadata for debugging...");
 
     // 尝试从缓存文件读取
@@ -1779,7 +1779,7 @@ pub async fn get_raw_metadata(State(_db): State<DatabaseConnection>) -> (StatusC
 
 /// 从数据库或缓存中获取用户信息（支持多平台）
 /// 优先从数据库获取，若数据库无数据则从缓存获取
-pub async fn get_user_info(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+pub async fn get_user_info(crate::extract::Db(db): crate::extract::Db) -> (StatusCode, Json<Value>) {
     let user_id = match site_owner_user_id(&db).await {
         Ok(user_id) => user_id,
         Err(error) => return site_owner_error(error),
@@ -2916,7 +2916,7 @@ pub struct BatchUserInfoResponse {
 }
 
 pub async fn get_batch_user_info(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
 ) -> (StatusCode, Json<Value>) {
     tracing::info!("📦 Fetching batch site-owner information");
 
@@ -2926,7 +2926,7 @@ pub async fn get_batch_user_info(
     };
 
     // 1. 获取用户基本信息
-    let (status, json) = get_user_info(State(db.clone())).await;
+    let (status, json) = get_user_info(crate::extract::Db(db.clone())).await;
     if status == StatusCode::OK {
         response.user_info = Some(json.0);
     } else {
@@ -2937,7 +2937,8 @@ pub async fn get_batch_user_info(
     }
 
     // 2. 获取配置信息 - 仅返回平台启用状态，不返回敏感数据
-    let (config_status, config_json) = crate::api::config::get_config(State(db.clone())).await;
+    let (config_status, config_json) =
+        crate::api::config::get_config(crate::extract::Db(db.clone())).await;
     if config_status == StatusCode::OK {
         let full_config = config_json.0;
         // 只提取平台启用状态和图标，移除所有配置字段

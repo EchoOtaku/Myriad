@@ -249,6 +249,16 @@ impl MigrationTrait for Migration {
         manager
             .create_index(
                 Index::create()
+                    .name("idx_users_auth_provider")
+                    .table(Users::Table)
+                    .col(Users::AuthProvider)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
                     .name("idx_linked_github_id")
                     .table(Users::Table)
                     .col(Users::LinkedGithubId)
@@ -324,6 +334,16 @@ impl MigrationTrait for Migration {
                             .timestamp_with_time_zone()
                             .default(Expr::current_timestamp()),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("idx_configurations_category")
+                    .table(Configurations::Table)
+                    .col(Configurations::Category)
+                    .if_not_exists()
                     .to_owned(),
             )
             .await?;

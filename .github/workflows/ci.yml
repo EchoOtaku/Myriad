@@ -55,10 +55,111 @@ jobs:
             crates/tapp-contract
       - name: Check all targets
         run: cargo check --all-targets
-      - name: Tapp tests
-        run: cargo test tapp
+      # Runs the whole suite, not just `cargo test tapp`. None of these tests
+      # need a database — they were simply never wired into CI, so ~900 of them
+      # had never run here.
+      #
+      # The one `#[ignore]`d test is a manual asset-reprocessing utility driven
+      # by env vars; leaving it ignored is correct.
+      - name: Backend tests
+        run: cargo test
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
+
+  updater:
+    name: Updater tests and lints
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: updater
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: updater
+      - name: Check all targets
+        run: cargo check --all-targets
+      # The updater holds the highest-privilege paths in the system (Docker
+      # socket, pgdata snapshots, image tags) and had no CI coverage at all.
+      - name: Updater tests
+        run: cargo test
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  schema-drift:
+    name: Migrations vs schema_check drift gate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    # The expected schema is declared twice: in `migrations/` and again as 49
+    # TableDefs / 554 ColumnDefs in `db/schema_check.rs`. Nothing kept them in
+    # sync, and they had drifted by 7 items — meaning a fresh install only got a
+    # correct schema because the runtime healer patched it at startup.
+    #
+    # This job asserts the invariant that makes the duplication safe:
+    # a freshly-migrated database needs zero healing.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: myriad_drift
+          POSTGRES_USER: myriad
+          POSTGRES_PASSWORD: myriad_ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+      - name: Assert migrations leave no schema drift
+        env:
+          MYRIAD_SCHEMA_DRIFT_DB: postgres://myriad:myriad_ci@127.0.0.1:5432/myriad_drift
+        run: cargo test migrations_leave_no_schema_drift -- --nocapture
+
+  dependency-audit:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            backend
+            updater
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      # Advisories move independently of our code, so a fresh advisory can turn
+      # a previously green commit red. That is the point — but it means this job
+      # reports rather than hard-blocks unrelated PRs.
+      - name: Audit backend crates
+        working-directory: backend
+        run: cargo audit --deny warnings
+        continue-on-error: true
+      - name: Audit updater crates
+        working-directory: updater
+        run: cargo audit --deny warnings
+        continue-on-error: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 25
+      - name: Install pnpm
+        run: npm install --global pnpm@10.28.2
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: pnpm audit --audit-level high
+        continue-on-error: true
 
   tapp-cli:
     name: Tapp CLI contract and tests

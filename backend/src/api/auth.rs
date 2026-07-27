@@ -3,12 +3,11 @@
 //! GitHub/OIDC login is handled by `api::oauth` via `/api/auth/oauth/:slug/*`.
 
 use axum::{
-    extract::State,
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::IntoResponse,
     Json,
 };
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::{json, Value};
 use std::env;
 
@@ -51,7 +50,7 @@ fn extract_auth_token(headers: &HeaderMap) -> Option<&str> {
 /// This is intentionally a probe, not a hard auth gate — protected mutating
 /// routes keep their own 401/403 checks.
 pub async fn get_current_user(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     let Some(token) = extract_auth_token(&headers) else {

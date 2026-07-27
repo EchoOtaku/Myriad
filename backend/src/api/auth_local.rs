@@ -3,7 +3,6 @@ use argon2::{
     Argon2,
 };
 use axum::{
-    extract::State,
     http::{header, StatusCode},
     response::IntoResponse,
     Json,
@@ -11,7 +10,7 @@ use axum::{
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use regex::Regex;
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::env;
@@ -60,7 +59,7 @@ pub struct UserInfo {
 /// Create the local administrator account (only during setup)
 /// ✅ PROTECTION: Checks if admin already exists and prevents duplicate creation
 pub async fn create_admin(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(request): Json<CreateAdminRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     tracing::info!("Creating local admin account: {}", request.username);
@@ -203,7 +202,7 @@ pub async fn create_admin(
 /// POST /api/auth/login
 /// Local login endpoint
 pub async fn local_login(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(request): Json<LocalLoginRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
     tracing::info!("Local login attempt: {}", request.username);
@@ -364,7 +363,7 @@ pub async fn local_login(
 /// POST /api/auth/change-password
 /// Change password for local account
 pub async fn change_password(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
     Json(request): Json<ChangePasswordRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
@@ -633,7 +632,7 @@ pub struct RegisterRequest {
 }
 
 pub async fn register(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(req): Json<RegisterRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
     // 开关检查
@@ -738,7 +737,7 @@ pub struct SetPasswordRequest {
 }
 
 pub async fn set_password(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
     Json(req): Json<SetPasswordRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
@@ -824,7 +823,7 @@ pub struct LocalLoginToggleRequest {
 }
 
 pub async fn toggle_local_login(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
     Json(req): Json<LocalLoginToggleRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
@@ -981,7 +980,7 @@ pub struct AdminCreateUserRequest {
 }
 
 pub async fn admin_create_user(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
     Json(req): Json<AdminCreateUserRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {

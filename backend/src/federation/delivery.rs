@@ -313,7 +313,7 @@ pub async fn process_delivery_queue_detailed(
                             stats.dead += 1;
                         } else {
                             // 指数退避：2^attempts 秒，最大 86400 秒 (24h)
-                            let backoff_secs = std::cmp::min(2i64.pow(new_attempts as u32), 86400);
+                            let backoff_secs = retry_backoff_secs(new_attempts);
                             let mark = db
                                 .execute(Statement::from_sql_and_values(
                                     DatabaseBackend::Postgres,
@@ -380,7 +380,7 @@ pub async fn process_delivery_queue_detailed(
                     stats.dead += 1;
                 } else {
                     // 密钥问题几乎不会自愈；按普通失败计数退避，避免 15s 热循环刷日志
-                    let backoff_secs = std::cmp::min(2i64.pow(new_attempts as u32), 86400);
+                    let backoff_secs = retry_backoff_secs(new_attempts);
                     let mark = db
                         .execute(Statement::from_sql_and_values(
                             DatabaseBackend::Postgres,
@@ -1099,7 +1099,14 @@ async fn deliver_activity(
     if status.is_success() || status.as_u16() == 202 {
         Ok(())
     } else {
-        let body_text = resp.text().await.unwrap_or_default();
+        // 只读错误正文的前若干字节。`resp.text()` 会把整个响应缓冲进内存，
+        // 而这条路径上的对端是任意联邦实例 —— 一个恶意或故障的远端可以对每次
+        // 投递失败回一个巨大的 body，把内存打爆。我们只需要够写日志的一小段。
+        const MAX_ERROR_BODY: usize = 8 * 1024;
+        let body_text = crate::services::outbound_security::read_limited_body(resp, MAX_ERROR_BODY)
+            .await
+            .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+            .unwrap_or_default();
         let snippet = body_text.chars().take(200).collect::<String>();
         let code = status.as_u16();
         // Permanent client errors: do not burn max_attempts with useless retries.
@@ -1110,6 +1117,24 @@ async fn deliver_activity(
             Err(format!("HTTP {}: {}", code, snippet))
         }
     }
+}
+
+/// 重试退避：指数增长 + 抖动，上限 24 小时。
+///
+/// 没有抖动时，同一个远端实例宕机期间积压的**所有**投递会算出完全相同的
+/// `next_retry_at`，于是每一轮都整齐地同时打过去 —— 对方刚恢复就被我们自己
+/// 制造的尖峰再打一次。抖动把它们摊开。
+///
+/// 抖动取 ±25%：足以打散同批，又不会让退避语义走形。
+fn retry_backoff_secs(attempts: i32) -> i64 {
+    let base = 2i64.saturating_pow(attempts.clamp(0, 32) as u32).min(86_400);
+    // 低位退避（1~2 秒）加抖动没有意义，反而可能算出 0
+    if base <= 2 {
+        return base;
+    }
+    let spread = base / 4;
+    let jitter = (rand::random::<u64>() % (2 * spread as u64 + 1)) as i64 - spread;
+    (base + jitter).clamp(1, 86_400)
 }
 
 // ==================== 辅助函数 ====================
@@ -1580,6 +1605,37 @@ async fn get_base_url() -> String {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn retry_backoff_grows_exponentially_and_is_capped() {
+        // 低位不加抖动，可精确断言
+        assert_eq!(retry_backoff_secs(0), 1);
+        assert_eq!(retry_backoff_secs(1), 2);
+        // 高位落在 base ±25% 内
+        for attempts in 3..=16 {
+            let base = 2i64.pow(attempts as u32).min(86_400);
+            let got = retry_backoff_secs(attempts);
+            let spread = base / 4;
+            assert!(
+                got >= (base - spread).max(1) && got <= (base + spread).min(86_400),
+                "attempts={attempts} base={base} got={got}"
+            );
+        }
+        // 永不超过 24h，永不为 0；且极大 attempts 不会溢出 panic
+        for attempts in [17, 32, 64, i32::MAX] {
+            let got = retry_backoff_secs(attempts);
+            assert!((1..=86_400).contains(&got), "attempts={attempts} got={got}");
+        }
+    }
+
+    #[test]
+    fn retry_backoff_jitter_actually_spreads_a_batch() {
+        // 同一实例宕机时积压的投递必须算出不同的 next_retry_at，
+        // 否则对方一恢复就被我们同时打一轮
+        let seen: std::collections::HashSet<i64> =
+            (0..64).map(|_| retry_backoff_secs(10)).collect();
+        assert!(seen.len() > 1, "backoff must not be deterministic at scale");
+    }
     use super::*;
     use serde_json::json;
 

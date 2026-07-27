@@ -1537,7 +1537,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
     config
 }
 
-pub async fn get_config(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+pub async fn get_config(crate::extract::Db(db): crate::extract::Db) -> (StatusCode, Json<Value>) {
     let config = build_config(&db, false).await;
     (StatusCode::OK, Json(json!(config)))
 }
@@ -3311,7 +3311,7 @@ pub(crate) fn update_env_var(content: &str, key: &str, value: &str) -> String {
 }
 
 pub async fn test_platform(
-    State(_db): State<DatabaseConnection>,
+    crate::extract::Db(_db): crate::extract::Db,
     Json(payload): Json<Value>,
 ) -> (StatusCode, Json<Value>) {
     let platform = payload["platform"].as_str().unwrap_or("");
@@ -3858,7 +3858,7 @@ pub async fn test_platform(
 /// 获取公开的网站元数据（不需要认证）
 /// 直接从环境变量读取（配置保存时已经写入 .env 并重新加载）
 /// 优先级：.env 文件（通过 save_all_configs 保存） > 默认值
-pub async fn get_site_metadata(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+pub async fn get_site_metadata(crate::extract::Db(db): crate::extract::Db) -> (StatusCode, Json<Value>) {
     // 优先从数据库读取站点元数据配置
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     let db_config = config_service.load_config().await.ok();
@@ -3904,7 +3904,7 @@ pub async fn get_site_metadata(State(db): State<DatabaseConnection>) -> (StatusC
 
 /// 获取公开的平台配置（不包含敏感信息，仅用于社交链接显示）
 /// 🔓 公开端点 - 不需要认证
-pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+pub async fn get_public_config(crate::extract::Db(db): crate::extract::Db) -> (StatusCode, Json<Value>) {
     // 优先从数据库读取配置
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     let db_config = config_service.load_config().await.ok();
@@ -4219,7 +4219,7 @@ pub async fn get_public_config(State(db): State<DatabaseConnection>) -> (StatusC
 /// 获取公开的 UI 配置（萌宠、虚拟人设等）
 /// 🔓 公开端点 - 不需要认证
 pub async fn get_public_ui_config(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
 ) -> (StatusCode, Json<Value>) {
     // 优先从数据库读取配置
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
@@ -4309,7 +4309,7 @@ pub struct DashboardConfigPayload {
 }
 
 pub async fn update_dashboard_config(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<DashboardConfigPayload>,
 ) -> (StatusCode, Json<Value>) {
     let config_service = crate::services::config_service::ConfigService::new(db);
@@ -4369,7 +4369,7 @@ pub struct ControlPanelConfigPayload {
 }
 
 pub async fn update_control_panel_config(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<ControlPanelConfigPayload>,
 ) -> (StatusCode, Json<Value>) {
     let config_service = crate::services::config_service::ConfigService::new(db);
@@ -4410,7 +4410,7 @@ pub struct TappWindowSchemesPayload {
 }
 
 pub async fn update_tapp_window_schemes(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<TappWindowSchemesPayload>,
 ) -> (StatusCode, Json<Value>) {
     let config_service = crate::services::config_service::ConfigService::new(db);
@@ -4588,7 +4588,7 @@ async fn load_module_visibility_preferences(
 }
 
 pub async fn get_module_visibility_preferences(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
 ) -> (StatusCode, Json<Value>) {
     let preferences = load_module_visibility_preferences(&db).await;
     (
@@ -4601,7 +4601,7 @@ pub async fn get_module_visibility_preferences(
 }
 
 pub async fn update_module_visibility_preferences(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<ModuleVisibilityPreferences>,
 ) -> (StatusCode, Json<Value>) {
     let preferences = payload.normalized();
@@ -4717,7 +4717,7 @@ async fn load_hitokoto_config(db: &DatabaseConnection) -> HitokotoConfig {
 }
 
 pub async fn get_hitokoto_config(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
 ) -> (StatusCode, Json<Value>) {
     let config = load_hitokoto_config(&db).await;
     (
@@ -4730,7 +4730,7 @@ pub async fn get_hitokoto_config(
 }
 
 pub async fn update_hitokoto_config(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<HitokotoConfig>,
 ) -> (StatusCode, Json<Value>) {
     let config = payload.normalized();
@@ -4833,7 +4833,7 @@ pub async fn load_report_settings(db: &DatabaseConnection) -> ReportSettings {
 }
 
 pub async fn get_report_settings(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
 ) -> (StatusCode, Json<Value>) {
     let settings = load_report_settings(&db).await;
     (
@@ -4846,7 +4846,7 @@ pub async fn get_report_settings(
 }
 
 pub async fn update_report_settings(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<ReportSettings>,
 ) -> (StatusCode, Json<Value>) {
     let settings = payload.normalized();
@@ -4889,7 +4889,7 @@ use axum::http::HeaderMap;
 /// 返回当前用户的权限等级和系统权限下放配置
 #[axum::debug_handler]
 pub async fn get_permissions(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: HeaderMap,
 ) -> (StatusCode, Json<Value>) {
     let config_service = crate::services::config_service::ConfigService::new(db);
@@ -5015,7 +5015,7 @@ mod tapp_permission_payload_tests {
 
 #[axum::debug_handler]
 pub async fn update_permissions(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(payload): Json<UpdatePermissionsPayload>,
 ) -> (StatusCode, Json<Value>) {
     let config_service = crate::services::config_service::ConfigService::new(db);
@@ -5241,7 +5241,7 @@ pub struct UpdateOAuthProvidersPayload {
 ///
 /// 保存后触发 [`ProviderRegistry::reload`]。
 pub async fn update_oauth_providers(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     Json(mut payload): Json<UpdateOAuthProvidersPayload>,
 ) -> (StatusCode, Json<Value>) {
     // 校验 + secret 回填

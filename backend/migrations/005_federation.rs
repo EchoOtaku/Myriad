@@ -762,6 +762,18 @@ impl MigrationTrait for Migration {
                             .extra("DEFAULT NOW()".to_owned()),
                     )
                     .col(ColumnDef::new(FederationRoomMembers::InvitedBy).text())
+                    // 邀请生命周期：pending（已邀未接受）/ active
+                    .col(
+                        ColumnDef::new(FederationRoomMembers::MembershipStatus)
+                            .string()
+                            .not_null()
+                            .default("active"),
+                    )
+                    // 群侧栏未读徽标的已读光标
+                    .col(
+                        ColumnDef::new(FederationRoomMembers::LastReadAt)
+                            .timestamp_with_time_zone(),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -1137,6 +1149,22 @@ impl MigrationTrait for Migration {
                         ColumnDef::new(FederationFileTransfers::CompletedAt)
                             .timestamp_with_time_zone(),
                     )
+                    // 群聊分块传输：传输归属的房间与发起者
+                    .col(ColumnDef::new(FederationFileTransfers::RoomId).text())
+                    .col(ColumnDef::new(FederationFileTransfers::OwnerUserId).integer())
+                    .to_owned(),
+            )
+            .await?;
+
+        // 群文件列表：按 room_id 查 transfer，按时间倒序
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx_file_transfers_room")
+                    .table(FederationFileTransfers::Table)
+                    .col(FederationFileTransfers::RoomId)
+                    .col(FederationFileTransfers::CreatedAt)
                     .to_owned(),
             )
             .await?;
@@ -1395,6 +1423,8 @@ pub enum FederationRoomMembers {
     CustomPermissions,
     JoinedAt,
     InvitedBy,
+    MembershipStatus,
+    LastReadAt,
 }
 
 #[derive(Iden)]
@@ -1473,4 +1503,6 @@ pub enum FederationFileTransfers {
     LocalPath,
     CreatedAt,
     CompletedAt,
+    RoomId,
+    OwnerUserId,
 }

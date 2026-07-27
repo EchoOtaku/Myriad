@@ -1671,7 +1671,7 @@ fn spawn_report_auto_regen(db: DatabaseConnection, user_id: i32, platforms: Vec<
 }
 
 pub async fn get_latest_report(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, StatusCode> {
     // Public dashboard: site owner first; historical rows may live under another admin.

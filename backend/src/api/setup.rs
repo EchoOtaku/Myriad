@@ -1,5 +1,4 @@
 ﻿use axum::{
-    extract::State,
     http::{HeaderMap, StatusCode},
     Json,
 };
@@ -24,7 +23,7 @@ pub struct SetupStatus {
 /// GET /api/setup/status
 /// Check if initial setup is required
 pub async fn check_setup_status(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
 ) -> Result<Json<SetupStatus>, (StatusCode, Json<Value>)> {
     tracing::info!("Checking setup status");
 
@@ -166,7 +165,7 @@ async fn check_admin_user_exists(db: &DatabaseConnection) -> bool {
 /// POST /api/setup/init-database
 /// Run non-destructive database migrations during initial configuration.
 pub async fn init_database(
-    State(db): State<DatabaseConnection>,
+    crate::extract::Db(db): crate::extract::Db,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
     // Setup switches out of CONFIG_MODE as soon as the database can be reached.
     // Keep the recovery migration available until the installation is claimed,
