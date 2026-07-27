@@ -293,12 +293,18 @@ idle
                                                          └─► idle
 
 任意步骤失败 (在 swap_tag 之前)：
-  └─► cleanup → idle
+  └─► pre-swap cleanup → idle
+       1. 按失败进度重启已停止的服务：
+          - 已 stop frontend/backend → `compose up -d backend frontend`
+          - 已 stop postgres（bundled 快照）→ 先确保 postgres 再起 app
+       2. `MYRIAD_TAG` 未改写时**不**做 pgdata snapshot restore
+       3. finalize job=`failed`，清 maintenance
+       4. 若服务恢复本身失败 → `needs_manual`（保持维护页，提示人工 compose up / rescue）
 
 任意步骤失败 (swap_tag 之后)：
   └─► rollback_in_progress
        └─► stop_new → restore_snapshot → swap_tag_back → start_old → health_probing
-            └─► (成功) idle
+            └─► (成功) idle（job=`failed`，服务回到上一版本）
             └─► (失败) needs_manual
 
 `swap_tag_back` 的目标 tag（上一正常业务版本）按以下优先级解析，**从不写死版本号**：
@@ -326,12 +332,41 @@ updater 会先从 `*:myriad-rollback` 重新创建原版本 tag，再交给 Comp
 | `idle` | 正常启动 |
 | `preflight` | 撤销 lock，回 idle（无副作用） |
 | `maintenance_on` | 退维护，回 idle |
-| `stopping` / `snapshotting` | 检查 snapshot 完整性 → 完整则进 swap，否则 cleanup → idle |
+| `stopping` / `snapshotting` | 清 maintenance + 标记 job failed，并 **best-effort 重启** 上一栈（postgres + backend/frontend）；不自动进入 swap |
 | `swap_tag` 之后任意步骤 | **不自动恢复**，进 `needs_manual` |
+| `health_probing` 且 `active=false`（为测前端已抬起维护） | **仍算 post-swap**：进 `needs_manual`（**禁止**当 idle） |
+| `job.current` 仍指向 Running 且 last step 为 post-swap | 即使 maintenance 文件 inactive / 损坏 → `needs_manual` |
 | `rollback_in_progress` | 检查 snapshot 在 → 继续 restore；不在 → `needs_manual` |
 | `needs_manual` | 维持，proxy 维护页显示 rescue 指令 |
 
 **规则**：`swap_tag` 之后的任何步骤崩溃，必须人工 `POST /rescue/continue` 或 `/rescue/rollback`。
+崩溃恢复决策以 `plan_crash_recovery` 为准，**不得**只看 `maintenance.active`。
+
+**审计行**：`audit: pre_swap_cleanup_ok` / `audit: pre_swap_restore_failed`（swap 前失败恢复）；
+`audit: auto_rollback_ok`（swap 后自动回滚成功）；`audit: recovery_needs_manual` / `recovery_pre_swap_clear`。
+
+`/status` 返回 `last_failed_update`：自动回滚成功后 maintenance 已 idle 时，UI 仍能提示「上次更新未成功」。
+
+### 7.2 更新主流程失败调度（实现）
+
+`update::run` 在 `maintenance_on` 之后使用 `UpdateFlowCtx` 跟踪进度：
+
+| 标志 | 含义 | 失败时动作 |
+|------|------|------------|
+| `scope` | pre-swap 已停哪些服务 | `finish_pre_swap_failure` 按 scope 重启 |
+| `post_swap` | **`swap_tag` 已成功写入** 新 `MYRIAD_TAG` | `finish_with_rollback`（snapshot + tag + 起旧镜像） |
+| `committed` | health 已通过（在任何 post-health 写状态之前置位） | **禁止**自动回滚；job 记 `Succeeded`，清维护 |
+
+任何 `?` 错误都进入统一的 `dispatch_update_failure`，避免裸错误路径遗漏恢复。
+
+硬不变量（实现注释 + 单测约束）：
+
+1. `post_swap` 仅在 `swap_tag` **成功**后置位  
+2. `committed` 在 health **一通过**立刻置位；之后禁止自动回滚，job 记 Succeeded  
+3. preflight / maintenance 入口失败必须清维护  
+4. rollback 中途 Err 后仍 best-effort `compose up` 业务容器  
+
+回归：`./scripts/test-updater-smoke.sh`；`./scripts/test-updater-e2e.sh`；`cargo test -p myriad-updater --lib`。
 
 ## 8. 网络与下载
 
@@ -731,7 +766,9 @@ M2：cosign 签名（已实现）
 |---|---|
 | `audit: update_request job=…` | 业务更新开始（含 risk flags） |
 | `audit: update_succeeded job=…` | 业务更新成功 finalize 前 |
-| `audit: auto_rollback_ok job=…` | 更新失败后自动回滚成功 |
+| `audit: auto_rollback_ok job=…` | 更新失败后（swap 后）自动回滚成功 |
+| `audit: pre_swap_cleanup_ok job=…` | swap 前失败后已重启上一栈并退出维护 |
+| `audit: pre_swap_restore_failed job=…` | swap 前失败且重启上一栈也失败 → needs_manual |
 | `audit: rollback_start job=… snapshot=…` | 独立回滚任务开始 |
 | `audit: self_update_scheduled …` | 自更新已调度（docker-guard 执行双服务重建） |
 | `audit: job_terminal job=… status=…` | 任意 job finalize（Succeeded/Failed/NeedsManual 等） |

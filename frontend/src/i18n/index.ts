@@ -528,6 +528,9 @@ export interface TranslationKeys {
     updaterStatusNeedsManual: string
     updaterStatusOffline: string
     updaterStatusFirstRun: string
+    /** Banner when last update failed even if auto-rollback left maintenance idle. */
+    updaterLastFailedTitle: string
+    updaterLastFailedBody: string
     // 状态下方的一行人话解释
     updaterHintHealthy: string
     updaterHintUpdating: string

@@ -23,6 +23,56 @@ fail() { echo "  ✗ $1" >&2; exit 1; }
 
 mkdir -p "$TMPROOT/state" "$TMPROOT/state/snapshots" "$TMPROOT/state/cache"
 
+echo "== Case 0: recovery decision matrix (shell mirror of plan_crash_recovery)"
+# These mirror updater/src/worker/mod.rs::plan_crash_recovery. If this table drifts from
+# Rust, e2e recovery integration tests will still catch regressions; this is a cheap CI gate.
+expect_recovery() {
+  local name="$1" active="$2" phase="$3" job_status="$4" last_step="$5" want="$6"
+  # Shell-side decision (must stay in sync with plan_crash_recovery):
+  local result="idle"
+  case "$phase" in
+    swap_tag|starting_new|health_probing|swapping_proxy|finalize|\
+    rollback_in_progress|stop_new|restore_snapshot|swap_tag_back|start_old|needs_manual)
+      if [ "$job_status" = "running" ] || [ "$job_status" = "pending" ] || \
+         [ "$job_status" = "needs_manual" ] || [ "$active" = "true" ]; then
+        result="needs_manual"
+      fi
+      ;;
+    preflight|maintenance_on|stopping|snapshotting|cleanup)
+      if [ "$job_status" = "running" ] || [ "$job_status" = "pending" ] || [ "$active" = "true" ]; then
+        result="clear_pre_swap"
+      fi
+      ;;
+    *)
+      if [ "$active" = "true" ]; then
+        if [ -n "$last_step" ]; then
+          case "$last_step" in
+            swap_tag|starting_new|health_probing|swapping_proxy|finalize)
+              result="needs_manual" ;;
+            stopping|snapshotting)
+              result="clear_pre_swap" ;;
+            *) result="clear_orphan" ;;
+          esac
+        else
+          result="clear_orphan"
+        fi
+      fi
+      ;;
+  esac
+  # Special: inactive + health_probing + running job (frontend probe lift)
+  if [ "$active" = "false" ] && [ "$phase" = "health_probing" ] && [ "$job_status" = "running" ]; then
+    result="needs_manual"
+  fi
+  [ "$result" = "$want" ] || fail "recovery matrix $name: want=$want got=$result (active=$active phase=$phase job=$job_status step=$last_step)"
+  pass "recovery: $name → $want"
+}
+expect_recovery "idle clean" false idle succeeded idle idle
+expect_recovery "health probe lifted" false health_probing running health_probing needs_manual
+expect_recovery "pre-swap stopping" true stopping running stopping clear_pre_swap
+expect_recovery "post-swap starting" true starting_new running starting_new needs_manual
+expect_recovery "rollback mid" true restore_snapshot running restore_snapshot needs_manual
+
+echo
 echo "== Case 1: duplicate keys in .env"
 cat > "$TMPROOT/.env.dup" <<'E'
 MYRIAD_TAG=v0.1.0

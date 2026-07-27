@@ -340,6 +340,90 @@ Tapp.widgets['my-widget'] = {
 
 ---
 
+## 数据加载与更新
+
+Widget / Page **不能**直接 `fetch`。外部 HTTP 必须写在 `manifest.apis` 里，再用
+`Tapp.api(name, params)`。同一 Tapp 的 Page、Widget、headless 共享 `Tapp.storage`；
+宿主默认在 storage 变更时刷新可见 Widget（`widgets[].refreshPolicy`）。
+
+### 推荐模式
+
+```
+core: Tapp.api(...) → Tapp.storage.set(key, data)
+                    ↓ 宿主广播
+Widget: render() 里 Tapp.storage.get(key)   （或 onChanged 局部更新）
+```
+
+**1. Manifest 声明 API 与刷新策略**
+
+```json
+{
+  "permissions": ["network:fetch", "storage:read", "storage:write"],
+  "apis": {
+    "feed": {
+      "type": "http",
+      "endpoint": "https://api.example.com/feed",
+      "method": "GET",
+      "access": "protected"
+    }
+  },
+  "backgroundRequirements": ["scheduler", "sync"],
+  "widgets": [
+    {
+      "id": "feed",
+      "name": "Feed",
+      "defaultSize": "2x2",
+      "sizes": ["2x2"],
+      "refreshPolicy": { "mode": "event", "refreshOnVisible": true }
+    }
+  ]
+}
+```
+
+**2. core 拉数写 storage**
+
+```javascript
+// main.js 的 core 段 — 三种模式都会加载
+async function pullFeed() {
+  const data = await Tapp.api("feed", {});
+  await Tapp.storage.set("feed.latest", data);
+}
+
+Tapp.lifecycle.onReady(async () => {
+  await pullFeed();
+});
+```
+
+**3. Widget 读 storage 渲染**
+
+```javascript
+Tapp.widgets["feed"] = {
+  render: async function (container) {
+    const feed = (await Tapp.storage.get("feed.latest")) || { items: [] };
+    container.textContent = `${feed.items.length} items`;
+  },
+};
+```
+
+### 何时用哪种触发
+
+| 触发 | 用法 | 说明 |
+| ---- | ---- | ---- |
+| storage 写入 | `await Tapp.storage.set(k, v)` | **默认路径**：同 Tapp 广播，event 模式 Widget 自动 re-render |
+| 显式 invalidate | `await Tapp.widget.invalidate("reason")` | 当前 Widget 实例请求宿主刷新（未写 storage 时也可用） |
+| 订阅变更 | `Tapp.storage.onChanged(cb)` | 局部改 DOM，或再决定是否 invalidate |
+| 可见轮询 | `refreshPolicy.mode: "interval"` | 仅页面+Widget 可见时计时；**不要**当后台同步 |
+| 后台同步 | `backgroundRequirements` + scheduler / headless | 见下一节；离开 UI 后仍要跑的任务放这里 |
+
+要点：
+
+- `render` 保持幂等：优先读 storage，避免每次 re-render 都打外部 API。
+- 平台只读接口（如 `Tapp.platform.*`）≠ 你声明的业务 `apis`。
+- 完整示例与注意项见 [WIDGET — 数据加载与更新](WIDGET.md#数据加载与更新)；
+  API 细节见 [API 参考](API_REFERENCE.md)；`refreshPolicy` 字段见 [Manifest](MANIFEST.md)。
+
+---
+
 ## 后台运行
 
 Tapp 默认在用户离开运行页面后会被**冻结**（暂停执行）。如果 Tapp 需要在后台持续运行，必须**声明后台运行需求**。
@@ -353,6 +437,8 @@ Tapp 默认在用户离开运行页面后会被**冻结**（暂停执行）。�
 ```
 
 运行时的 `Tapp.background.require/release` 适合动态增减需求；manifest 声明则负责首次启动和刷新后的恢复。两类来源独立计数，`release` 不会取消 manifest 的常驻声明。后台实例只加载共享 core，不加载 Page HTML/CSS 或 Widget 视图代码。
+
+后台同步结果应写入 `Tapp.storage`，让可见 Widget 通过默认 `refreshPolicy` 自动更新（见上一节），不要依赖 Widget 可见 interval。
 
 ### 后台需求类型
 
@@ -372,8 +458,18 @@ Tapp.lifecycle.onReady(async function () {
   // 声明需要后台同步数据
   await Tapp.background.require("sync", "每5分钟同步一次数据");
 
-  // 启动定时同步
-  setInterval(syncData, 5 * 60 * 1000);
+  // 周期任务请用 Tapp.scheduler + onTask（持久、可在 headless 恢复），
+  // 不要用 setInterval 冒充离开页面后仍运行的后台
+  await Tapp.scheduler.register({
+    taskId: "sync-feed",
+    name: "同步 Feed",
+    scheduleType: "interval",
+    schedule: { interval: 5 * 60 * 1000 },
+    executionTarget: "frontend",
+  });
+  Tapp.scheduler.onTask("sync-feed", async () => {
+    await pullFeed(); // 内部 Tapp.api → storage.set，Widget 自动刷新
+  });
 });
 ```
 
@@ -384,7 +480,7 @@ Tapp.lifecycle.onReady(async function () {
 - [Manifest 配置](./MANIFEST.md) - 完整的配置选项说明
 - [Tapp 商店](./STORE.md) - 远程目录、安装与发布
 - [API 参考](./API_REFERENCE.md) - 所有可用 API 的详细文档
-- [小组件开发](./WIDGET.md) - 创建漂亮的 Widget
+- [小组件开发](./WIDGET.md) - Widget 样式与[数据加载与更新](WIDGET.md#数据加载与更新)
 - [页面样式规范](./PAGE.md) - 页面布局和深色模式样式
 - [样式规范](./STYLING.md) - Glass Morphism 设计规范
 - [安全沙箱](./SANDBOX.md) - 沙箱限制和安全机制

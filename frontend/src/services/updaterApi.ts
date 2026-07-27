@@ -121,6 +121,20 @@ export interface UpdaterStatus {
   available_channels?: string[]
   /** Last TCB self-update helper outcome (`state/self-update-last.json`), when present. */
   self_update_last?: SelfUpdateLastStatus | null
+  /**
+   * Last failed update attempt. Present even when auto-rollback restored the prior
+   * stack and maintenance is idle (job status was `failed`, not `needs_manual`).
+   */
+  last_failed_update?: LastFailedUpdate | null
+}
+
+export interface LastFailedUpdate {
+  from_version?: string | null
+  to_version?: string | null
+  /** RFC3339 */
+  at: string
+  reason: string
+  job_id: string
 }
 
 /** UI presets for periodic update checks (seconds). */

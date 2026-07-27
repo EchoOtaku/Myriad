@@ -50,10 +50,25 @@ pub async fn run(
         from_version: worker.state().read_updater()?.current_version.clone(),
         to_version: None,
     };
-    rec.enter(Phase::RollbackInProgress, "updater.phase.rollback")?;
-    rec.finish_step_ok()?;
+    let _ = rec.enter(Phase::RollbackInProgress, "updater.phase.rollback");
+    let _ = rec.finish_step_ok();
 
-    let compose = super::update::build_compose_runner_pub(&worker).await?;
+    let compose = match super::update::build_compose_runner_pub(&worker).await {
+        Ok(c) => c,
+        Err(e) => {
+            error!(err = %e, "standalone rollback: compose runner unavailable");
+            let _ = rec.finish_step_err(format!("compose runner: {e}"));
+            let _ = rec.finalize(JobStatus::NeedsManual);
+            if let Ok(mut m) = worker.state().read_maintenance() {
+                m.active = true;
+                m.phase = Phase::NeedsManual;
+                m.message_key = "updater.phase.needs_manual".into();
+                m.bump_heartbeat();
+                let _ = worker.state().write_maintenance(&m);
+            }
+            return Err(e);
+        }
+    };
     let snap = SnapshotManager {
         state: worker.state(),
         pgdata: worker.cli().pgdata.clone(),
@@ -64,21 +79,25 @@ pub async fn run(
     match execute_inline(worker.clone(), &rec, &compose, &snap, &snapshot_id, None).await {
         Ok(restored) => {
             if let Some(v) = restored {
-                let mut job = worker.state().read_job(&job_id)?;
-                job.to_version = Some(v);
-                worker.state().write_job(&job)?;
+                if let Ok(mut job) = worker.state().read_job(&job_id) {
+                    job.to_version = Some(v);
+                    let _ = worker.state().write_job(&job);
+                }
             }
-            rec.finalize(JobStatus::Succeeded)?;
-            crate::worker::machine::clear_maintenance(worker.state())?;
+            let _ = rec.finalize(JobStatus::Succeeded);
+            let _ = crate::worker::machine::clear_maintenance(worker.state());
             Ok(())
         }
         Err(e) => {
             error!(err = %e, "standalone rollback failed");
-            rec.finalize(JobStatus::NeedsManual)?;
-            let mut m = worker.state().read_maintenance()?;
-            m.phase = Phase::NeedsManual;
-            m.bump_heartbeat();
-            worker.state().write_maintenance(&m)?;
+            let _ = rec.finalize(JobStatus::NeedsManual);
+            if let Ok(mut m) = worker.state().read_maintenance() {
+                m.active = true;
+                m.phase = Phase::NeedsManual;
+                m.message_key = "updater.phase.needs_manual".into();
+                m.bump_heartbeat();
+                let _ = worker.state().write_maintenance(&m);
+            }
             Err(e)
         }
     }
@@ -87,6 +106,10 @@ pub async fn run(
 /// Execute the core rollback steps.
 ///
 /// Returns the version tag that was restored into `MYRIAD_TAG` (when known).
+///
+/// **Invariant**: after this function returns (Ok or Err), we best-effort attempt to
+/// leave backend/frontend (and postgres when bundled) running. Mid-rollback `?` must
+/// not leave a fully stopped stack without a start attempt.
 pub async fn execute_inline(
     worker: Arc<Worker>,
     rec: &PhaseRecorder<'_>,
@@ -95,31 +118,64 @@ pub async fn execute_inline(
     snapshot_id: &str,
     swap_back_tag: Option<&str>,
 ) -> Result<Option<DeployTag>> {
+    let result =
+        execute_inline_inner(worker.clone(), rec, compose, snap, snapshot_id, swap_back_tag)
+            .await;
+    if result.is_err() {
+        // Last resort: do not leave the stack fully stopped after a partial rollback.
+        warn!("rollback path failed; best-effort restart of app (and postgres if bundled)");
+        if !worker.cli().db_mode.is_external() {
+            let _ = compose.start(&["postgres"]).await;
+            let _ = compose.up_detached(&["postgres"]).await;
+        }
+        let _ = compose.up_detached(&["backend", "frontend"]).await;
+    }
+    result
+}
+
+async fn execute_inline_inner(
+    worker: Arc<Worker>,
+    rec: &PhaseRecorder<'_>,
+    compose: &ComposeRunner,
+    snap: &SnapshotManager<'_>,
+    snapshot_id: &str,
+    swap_back_tag: Option<&str>,
+) -> Result<Option<DeployTag>> {
     info!(snapshot = snapshot_id, "rollback: stopping new containers");
-    rec.enter(Phase::StopNew, "updater.phase.stop_new")?;
-    let stop_app = compose.stop(&["frontend", "backend"], 30).await?;
-    if !stop_app.ok() {
-        warn!(
-            summary = %stop_app.error_summary(),
-            "compose stop frontend/backend non-zero; forcing container stop"
-        );
-        for name in ["myriad-frontend", "frontend", "myriad-backend", "backend"] {
-            let _ = worker.docker().force_stop_container(name).await;
+    let _ = rec.enter(Phase::StopNew, "updater.phase.stop_new");
+    let stop_app = compose.stop(&["frontend", "backend"], 30).await;
+    match &stop_app {
+        Ok(out) if out.ok() => {}
+        Ok(out) => {
+            warn!(
+                summary = %out.error_summary(),
+                "compose stop frontend/backend non-zero; forcing container stop"
+            );
+            for name in ["myriad-frontend", "frontend", "myriad-backend", "backend"] {
+                let _ = worker.docker().force_stop_container(name).await;
+            }
+        }
+        Err(e) => {
+            warn!(
+                err = %e,
+                "compose stop frontend/backend errored; forcing container stop"
+            );
+            for name in ["myriad-frontend", "frontend", "myriad-backend", "backend"] {
+                let _ = worker.docker().force_stop_container(name).await;
+            }
         }
     }
-    rec.finish_step_ok()?;
+    let _ = rec.finish_step_ok();
 
     // --- Resolve + restore MYRIAD_TAG BEFORE snapshot work ---
     // So any later failure (EBUSY restore, etc.) still leaves env at the rollback version.
     let prev_tag = resolve_previous_tag(worker.state(), snapshot_id, swap_back_tag)?;
     let restored_version = match &prev_tag {
         Some(tag) => {
-            rec.enter(Phase::SwapTagBack, "updater.phase.swap_tag_back")?;
+            let _ = rec.enter(Phase::SwapTagBack, "updater.phase.swap_tag_back");
             let parsed = DeployTag::parse(tag).ok();
             if let Some(ref version) = parsed {
                 if let Err(e) = materialize_pinned_rollback_images(worker.as_ref(), version).await {
-                    // The immutable version tag may still be local or pullable by Compose. Keep
-                    // the normal rollback path available, but make the lost local fallback loud.
                     warn!(
                         err = %e,
                         version = %version,
@@ -136,7 +192,7 @@ pub async fn execute_inline(
                 to = %tag,
                 "rollback: restored MYRIAD_TAG to last known good (before snapshot restore)"
             );
-            rec.finish_step_ok()?;
+            let _ = rec.finish_step_ok();
             parsed
         }
         None => {
@@ -148,44 +204,43 @@ pub async fn execute_inline(
         }
     };
 
-    rec.enter(Phase::RestoreSnapshot, "updater.phase.restore_snapshot")?;
+    let _ = rec.enter(Phase::RestoreSnapshot, "updater.phase.restore_snapshot");
     let mut restore_failed: Option<String> = None;
 
     if should_skip_pgdata_restore(worker.cli().db_mode, snapshot_id) {
-        // External Postgres (or no snapshot taken): restore image tags only.
-        // Never require or overwrite local pgdata paths.
         info!(
             db_mode = %worker.cli().db_mode,
             snapshot = snapshot_id,
             "db_mode=external or no snapshot; skipping pgdata restore (tag-only rollback)"
         );
-        rec.finish_step_ok()?;
+        let _ = rec.finish_step_ok();
     } else {
-        // Missing pgdata is non-fatal at startup; restore still needs the path to exist.
         if let Err(e) = crate::probe::filesystem::require_pgdata(&worker.cli().pgdata) {
             let msg = e.to_string();
             let _ = rec.finish_step_err(&msg);
+            // Tag may already be restored; outer execute_inline will best-effort start services.
             return Err(e);
         }
-        let stop_pg = compose.stop(&["postgres"], 60).await?;
-        if !stop_pg.ok() {
-            warn!(
-                summary = %stop_pg.error_summary(),
-                "compose stop postgres non-zero; forcing stop"
-            );
+        match compose.stop(&["postgres"], 60).await {
+            Ok(stop_pg) if !stop_pg.ok() => {
+                warn!(
+                    summary = %stop_pg.error_summary(),
+                    "compose stop postgres non-zero; forcing stop"
+                );
+            }
+            Err(e) => {
+                warn!(err = %e, "compose stop postgres errored; forcing stop");
+            }
+            _ => {}
         }
-        // Hard guarantee: no process may hold open files under pgdata.
         for name in ["myriad-postgres", "postgres"] {
             if let Err(e) = worker.docker().force_stop_container(name).await {
                 warn!(%name, err = %e, "force_stop postgres attempt");
             }
         }
-        // Brief settle so the kernel releases bind-mount file handles.
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         if let Err(e) = snap.restore(snapshot_id).await {
-            // Do NOT abort the whole rollback here — tag is already restored; try to bring
-            // services back so the operator is not left with a fully stopped stack.
             warn!(
                 err = %e,
                 snapshot = snapshot_id,
@@ -195,42 +250,55 @@ pub async fn execute_inline(
             restore_failed = Some(e.to_string());
             let _ = rec.finish_step_err(format!("restore snapshot (continuing): {e}"));
         } else {
-            rec.finish_step_ok()?;
+            let _ = rec.finish_step_ok();
         }
 
-        let start_pg = compose.start(&["postgres"]).await?;
-        if !start_pg.ok() {
-            // Try compose up for postgres if start failed (container removed).
-            let up_pg = compose.up_detached(&["postgres"]).await?;
-            if !up_pg.ok() {
+        let start_pg = compose.start(&["postgres"]).await;
+        let start_ok = start_pg.as_ref().map(|o| o.ok()).unwrap_or(false);
+        if !start_ok {
+            let up_pg = compose.up_detached(&["postgres"]).await;
+            let up_ok = up_pg.as_ref().map(|o| o.ok()).unwrap_or(false);
+            if !up_ok {
+                let start_summary = start_pg
+                    .as_ref()
+                    .map(|o| o.error_summary())
+                    .unwrap_or_else(|_| "start errored".into());
+                let up_summary = up_pg
+                    .as_ref()
+                    .map(|o| o.error_summary())
+                    .unwrap_or_else(|_| "up errored".into());
                 let err = format!(
-                    "post-restore start postgres failed: start={} up={}",
-                    start_pg.error_summary(),
-                    up_pg.error_summary()
+                    "post-restore start postgres failed: start={start_summary} up={up_summary}"
                 );
-                rec.finish_step_err(&err)?;
+                let _ = rec.finish_step_err(&err);
                 return Err(UpdaterError::Internal(anyhow::anyhow!(err)));
             }
         }
     }
 
-    rec.enter(Phase::StartOld, "updater.phase.start_old")?;
-    let up = compose.up_detached(&["backend", "frontend"]).await?;
+    let _ = rec.enter(Phase::StartOld, "updater.phase.start_old");
+    let up = compose
+        .up_detached(&["backend", "frontend"])
+        .await
+        .map_err(|e| {
+            UpdaterError::Internal(anyhow::anyhow!("start old failed: {e}"))
+        })?;
     if !up.ok() {
         let err = format!("start old failed: {}", up.error_summary());
-        rec.finish_step_err(&err)?;
+        let _ = rec.finish_step_err(&err);
         return Err(UpdaterError::Internal(anyhow::anyhow!(err)));
     }
-    rec.finish_step_ok()?;
+    let _ = rec.finish_step_ok();
 
     // Liveness only (no version stamp required — old image may still be pulling).
     match rollback_health_wait(worker.as_ref(), Duration::from_secs(180)).await {
         Ok(()) => {
             if let Some(ref v) = restored_version {
-                let mut st = worker.state().read_updater()?;
-                st.current_version = Some(v.clone());
-                st.current_commit_sha = None;
-                worker.state().write_updater(&st)?;
+                if let Ok(mut st) = worker.state().read_updater() {
+                    st.current_version = Some(v.clone());
+                    st.current_commit_sha = None;
+                    let _ = worker.state().write_updater(&st);
+                }
                 if let Err(e) = worker.reconcile_current_deploy().await {
                     warn!(err = %e, "rollback restored version but commit reconciliation failed");
                 }

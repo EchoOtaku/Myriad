@@ -107,6 +107,10 @@ struct StatusResp {
     db_mode: String,
     /// Whether update flow snapshots/restores local pgdata (false when external).
     pgdata_snapshot_enabled: bool,
+    /// Last failed update (including cases where auto-rollback restored the prior stack).
+    /// Omitted when never failed. UI should surface this even when maintenance is idle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_failed_update: Option<crate::state::FailedUpdate>,
 }
 
 /// Public liveness probe. Intentionally minimal: no versions, token status, or secrets.
@@ -169,6 +173,7 @@ async fn status(State(st): State<ApiState>) -> Result<Json<StatusResp>, ApiError
         self_update_last,
         db_mode: db_mode.as_str().to_string(),
         pgdata_snapshot_enabled: db_mode.pgdata_snapshot_enabled(),
+        last_failed_update: u.last_failed_update,
     }))
 }
 

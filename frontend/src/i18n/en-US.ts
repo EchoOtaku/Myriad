@@ -598,6 +598,9 @@ export const enUS: TranslationKeys = {
     updaterStatusNeedsManual: 'Last update failed — action needed',
     updaterStatusOffline: 'Cannot reach the update service',
     updaterStatusFirstRun: 'No version recorded yet',
+    updaterLastFailedTitle: 'Last update did not complete (rollback attempted)',
+    updaterLastFailedBody:
+      'From {from} to {to} failed; the previous stack should be restored if auto-rollback succeeded. Reason: {reason}',
     updaterHintHealthy: 'No updates are available on this channel.',
     updaterHintUpdating: 'The system will be checked when it finishes.',
     updaterHintMaintenance: 'Exit maintenance mode below when ready.',

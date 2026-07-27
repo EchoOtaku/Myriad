@@ -60,9 +60,11 @@ Tapp.widgets["my-widget"] = {
 
 Manifest 顶层 `settings` 由整个 Tapp 共享；`widgets[].settings` 则为每个 Dashboard
 实例独立保存。Widget 可读取 `props.config` 或 `Tapp.widget.getInstanceSettings()`，并用
-`Tapp.widget.updateInstanceSettings(patch)` 更新已声明字段。数据准备完成后可调用
-`Tapp.widget.invalidate(reason)` 请求宿主刷新。storage 的跨 Page/Widget/headless 变化可用
-`Tapp.storage.onChanged(callback)` 订阅。
+`Tapp.widget.updateInstanceSettings(patch)` 更新已声明字段。
+
+**数据怎么进 Widget、怎么更新**：推荐用声明式 `Tapp.api` + 共享 `Tapp.storage` +
+宿主 `refreshPolicy`（默认 storage 变更即刷）。详见下方
+[数据加载与更新](#数据加载与更新)。
 
 ---
 
@@ -641,20 +643,148 @@ container.appendChild(div);
 
 ---
 
-## 刷新机制
+## 数据加载与更新
 
-```javascript
-window.parent.postMessage(
-  {
-    type: "widget-message",
-    widgetId: "my-widget",
-    messageType: "refresh",
-  },
-  "*",
-);
+Widget **不是**平台首页数据源，也**不能**在沙箱里直接 `fetch` / 开 WebSocket。
+外部 HTTP 与受控能力必须先写进 `manifest.apis`，再通过 `Tapp.api(name, params)` 调用。
+同一 Tapp 内 Page、Widget、headless core 共享一份 storage；宿主按 `refreshPolicy`
+决定何时重新调用 `render`。
+
+### 推荐链路（core 拉数 → storage → Widget 刷新）
+
+```
+manifest.apis + permissions
+        │
+        ▼
+core / headless（scheduler 或 onReady）
+  Tapp.api("stats", …)  ──►  Tapp.storage.set("stats.summary", data)
+        │
+        │  同 Tapp storage 变更由宿主广播
+        ▼
+Dashboard Widget（refreshPolicy 默认 event）
+  宿主 re-render → render() 里 Tapp.storage.get("stats.summary")
+  可选：Tapp.storage.onChanged 做局部更新
+  可选：Tapp.widget.invalidate("data-ready") 显式请求刷新
 ```
 
-> 刷新请求会被防抖处理（300ms 延迟，1s 最小间隔）
+1. **声明 API**（`manifest.json`）
+
+```json
+{
+  "permissions": ["network:fetch", "storage:read", "storage:write"],
+  "apis": {
+    "stats": {
+      "type": "http",
+      "endpoint": "https://api.example.com/stats",
+      "method": "GET",
+      "access": "protected",
+      "description": "拉取统计摘要"
+    }
+  },
+  "backgroundRequirements": ["scheduler", "sync"],
+  "widgets": [
+    {
+      "id": "stats",
+      "name": "统计",
+      "defaultSize": "2x2",
+      "sizes": ["2x2"],
+      "refreshPolicy": {
+        "mode": "event",
+        "refreshOnVisible": true
+      }
+    }
+  ]
+}
+```
+
+2. **core 拉数并写入 storage**（可在 headless 中被 scheduler 周期性执行）
+
+```javascript
+// CORE_CODE — Page / Widget / headless 都会加载
+async function refreshStats() {
+  const data = await Tapp.api("stats", {});
+  await Tapp.storage.set("stats.summary", {
+    total: data.total,
+    updatedAt: Date.now(),
+  });
+}
+
+Tapp.lifecycle.onReady(async () => {
+  // 前台打开时立刻拉一次
+  await refreshStats();
+
+  // 需要离开 UI 后仍同步时：manifest 已声明 backgroundRequirements，
+  // 再用 scheduler + onTask（不要 setInterval 冒充后台）
+  if (Tapp.scheduler) {
+    await Tapp.scheduler.register({
+      taskId: "stats-sync",
+      name: "统计同步",
+      scheduleType: "interval",
+      schedule: { interval: 5 * 60 * 1000 },
+      executionTarget: "frontend",
+    });
+    Tapp.scheduler.onTask("stats-sync", async () => {
+      await refreshStats();
+    });
+  }
+});
+```
+
+3. **Widget 只读 storage 渲染**；宿主在 storage 变更时默认会 re-render
+
+```javascript
+// WIDGET_CODE
+Tapp.widgets["stats"] = {
+  render: async function (container, props) {
+    const summary = (await Tapp.storage.get("stats.summary")) || { total: "—" };
+    container.innerHTML = `
+      <div class="stats-widget glass rounded-xl p-3">
+        <div class="stats-widget-value">${summary.total}</div>
+        <div class="text-xs opacity-60">统计</div>
+      </div>
+    `;
+  },
+};
+```
+
+### 四种触发更新的方式
+
+| 方式 | 谁发起 | 宿主行为 | 适用场景 |
+| ---- | ------ | -------- | -------- |
+| **`Tapp.storage.set/remove/clear`** | Page / Widget / headless | 同 Tapp 广播；`refreshPolicy.mode` 默认 `event` 时刷新可见 Widget | **首选**：后台同步、Page 改配置、core 写缓存 |
+| **`Tapp.widget.invalidate(reason)`** | 当前 Widget 沙箱 | 请求宿主对该实例 re-render（与 storage 刷新一样会去抖） | 内存态算完、未写 storage、或只想刷自己 |
+| **`refreshPolicy.mode: "interval"`** | 宿主计时器 | 仅在**页面与 Widget 均可见**且 Tapp 运行时按 `intervalSeconds`（15–86400）重渲染 | 可见轮询；**不要**用它做后台同步 |
+| **`refreshOnVisible: true`**（默认） | 宿主 | Widget 重新进入可见区域时刷新 | 切回 Dashboard 时补最新 storage |
+
+```javascript
+// Widget 内：数据已在本实例算完，显式请求刷新
+await Tapp.widget.invalidate("data-ready");
+
+// 任意沙箱：订阅 storage 做局部更新（不依赖整卡 re-render）
+const unsubscribe = Tapp.storage.onChanged(({ key, operation }) => {
+  if (key === "stats.summary" || operation === "clear") {
+    // 自行 patch DOM，或再 invalidate
+  }
+});
+// 在 onDestroy / 下次 render 前调用 unsubscribe()
+```
+
+### 实践约定
+
+- **拉网关 / 外部 HTTP**：只用 `Tapp.api`；名称必须与 `manifest.apis` 一致。`Tapp.api.list()`
+  可查看当前已解析声明。
+- **跨 Page / Widget / headless 共享状态**：写 `Tapp.storage`，不要假设全局变量在各 iframe
+  之间存活。
+- **后台周期同步**：`backgroundRequirements` + headless core + `Tapp.scheduler`；不要依赖
+  Widget 的 interval 计时器（不可见时不计时）。
+- **render 保持幂等**：宿主可能因 storage 批次写入、`invalidate`、可见性多次调用 `render`；
+  避免在 render 里无节制打外部 API。缓存进 storage，render 读缓存。
+- **刷新去抖**：宿主对 storage 变更与 `invalidate` 统一去抖，避免同一批写入连刷多次。
+- **平台数据**：`Tapp.platform.*` 是只读平台统计等，与你在 `apis` 里声明的业务 API 无关。
+
+更多字段见 [Manifest `refreshPolicy`](MANIFEST.md)、[Storage / Widget / 声明 API](API_REFERENCE.md)、
+[后台 core](ARCHITECTURE.md#后台-core)。快速入门中的浓缩版见
+[QUICKSTART — 数据加载与更新](QUICKSTART.md#数据加载与更新)。
 
 ---
 

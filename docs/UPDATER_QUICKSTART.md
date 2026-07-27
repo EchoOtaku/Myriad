@@ -217,12 +217,37 @@ preflight → maintenance_on → stopping → snapshotting → swap_tag
   → starting_new → health_probing → swapping_proxy → finalize
 ```
 
-任何步骤失败都会自动回滚到 snapshot，并恢复 **上一正常业务版本** 的 `MYRIAD_TAG`
-（优先用 swap 前捕获的 tag，其次快照 `source_version`，再次 `updater.json.current_version`，
-不是写死某个固定版本）。回滚再失败进入 `needs_manual`，proxy 维护页会展示恢复命令。
+失败时的自动恢复分两段（这是用户最常踩的点）：
+
+| 失败时机 | 自动行为 | 不会做的事 |
+| -------- | -------- | ---------- |
+| **`swap_tag` 之前**（stop / 快照 / 写 compose 等） | **pre-swap cleanup**：把已停掉的 backend/frontend（以及 bundled 下已停的 postgres）重新拉起，清维护模式，job=`failed` | 不改 `MYRIAD_TAG`；一般也**不需要** restore pgdata（tag 还没换） |
+| **`swap_tag` 之后**（起新容器 / 健康检查等） | **完整自动回滚**：stop 新容器 → restore snapshot（bundled）→ 写回上一业务版 `MYRIAD_TAG` → 起旧镜像 → 健康探测 | — |
+| 上述自动恢复本身再失败 | 进入 `needs_manual`，维护页保留，需 `rescue/continue` 或手动回滚 | — |
+
+上一业务版本 tag 的解析顺序：swap 前捕获的 `MYRIAD_TAG` → 快照 `source_version` →
+`updater.json.current_version`（从不写死某个固定版本）。
 
 UI / API 手动回滚到某个快照时，同样会按快照的 `source_version` 写回 `MYRIAD_TAG`，
 而不是只恢复数据库。
+
+若升级失败后站点仍停在维护页或 backend 起不来：先看 job 是否 `needs_manual` /
+history 是否有 `PRE_SWAP_FAIL` / `ROLLBACK_OK` / `NEEDS_MANUAL`；再按 §5 救援。
+
+管理 UI 在自动回滚成功、维护已退出时，仍会通过 `/status.last_failed_update` 显示
+「上次更新未成功」横幅，避免误以为升级成功。
+
+本地回归：
+
+```bash
+# 无 Docker 的决策矩阵 + schema 冒烟
+./scripts/test-updater-smoke.sh
+
+# 需 release 二进制 + Docker：含 crash recovery（health_probing active=false → needs_manual）
+cd updater && cargo build --release --bins
+cd proxy && cargo build --release
+./scripts/test-updater-e2e.sh
+```
 
 ## 5. 出问题怎么办
 

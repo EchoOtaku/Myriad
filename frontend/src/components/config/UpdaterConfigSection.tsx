@@ -936,6 +936,20 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         </div>
       )}
 
+      {/* Auto-rollback / pre-swap cleanup leaves maintenance idle but records this. */}
+      {status?.last_failed_update && mood !== 'updating' && (
+        <div className="updater-last-failed" role="status">
+          <strong>{u.updaterLastFailedTitle}</strong>
+          <span>
+            {format(u.updaterLastFailedBody, {
+              from: status.last_failed_update.from_version ?? '—',
+              to: status.last_failed_update.to_version ?? '—',
+              reason: status.last_failed_update.reason,
+            })}
+          </span>
+        </div>
+      )}
+
       {showProgress ? (
         <ProgressCard job={activeJob!} u={u} />
       ) : (

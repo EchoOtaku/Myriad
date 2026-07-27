@@ -21,10 +21,31 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TESTBED="${TESTBED:-/tmp/myriad-e2e}"
-UPDATER_BIN="${UPDATER_BIN:-$ROOT/updater/target/release/myriad-updater}"
-RESCUE_BIN="${RESCUE_BIN:-$ROOT/updater/target/release/myriad-rescue}"
-PROXY_BIN="${PROXY_BIN:-$ROOT/proxy/target/release/myriad-proxy}"
-DOCKER_GUARD_BIN="${DOCKER_GUARD_BIN:-$ROOT/updater/target/release/myriad-docker-guard}"
+# Prefer CARGO_TARGET_DIR when set (shared cache builds), else package-local target/.
+CARGO_TARGET="${CARGO_TARGET_DIR:-}"
+if [ -z "$CARGO_TARGET" ]; then
+  if [ -x "$ROOT/updater/target/release/myriad-updater" ]; then
+    CARGO_TARGET="$ROOT/updater/target"
+  elif [ -x "${HOME}/.cache/cargo-targets/release/myriad-updater" ]; then
+    CARGO_TARGET="${HOME}/.cache/cargo-targets"
+  else
+    CARGO_TARGET="$ROOT/updater/target"
+  fi
+fi
+PROXY_TARGET="${PROXY_TARGET_DIR:-}"
+if [ -z "$PROXY_TARGET" ]; then
+  if [ -x "$ROOT/proxy/target/release/myriad-proxy" ]; then
+    PROXY_TARGET="$ROOT/proxy/target"
+  elif [ -x "${CARGO_TARGET}/release/myriad-proxy" ]; then
+    PROXY_TARGET="$CARGO_TARGET"
+  else
+    PROXY_TARGET="$ROOT/proxy/target"
+  fi
+fi
+UPDATER_BIN="${UPDATER_BIN:-$CARGO_TARGET/release/myriad-updater}"
+RESCUE_BIN="${RESCUE_BIN:-$CARGO_TARGET/release/myriad-rescue}"
+PROXY_BIN="${PROXY_BIN:-$PROXY_TARGET/release/myriad-proxy}"
+DOCKER_GUARD_BIN="${DOCKER_GUARD_BIN:-$CARGO_TARGET/release/myriad-docker-guard}"
 UPDATER_PORT="${UPDATER_PORT:-19090}"
 PROXY_PORT="${PROXY_PORT:-18080}"
 DOCKER_GUARD_PORT="${DOCKER_GUARD_PORT:-19375}"
@@ -285,9 +306,47 @@ check_updater_status() {
         and (.maintenance_phase | type) == "string"
         and (.update_available | type) == "boolean"
         and (.requires_self_update | type) == "boolean"
+        and (
+          (has("last_failed_update") | not)
+          or .last_failed_update == null
+          or (.last_failed_update | type) == "object"
+        )
+        and (
+          (has("pgdata_snapshot_enabled") | not)
+          or (.pgdata_snapshot_enabled | type) == "boolean"
+        )
     ' >/dev/null
 }
 run_check "updater /status requires token and returns spec-conformant shape" check_updater_status
+
+# 5b. last_failed_update surfaces on /status when present in updater.json
+check_last_failed_update_status() {
+    cat > "$TESTBED/state/updater.json" <<'JSON'
+{
+  "schema_version": 1,
+  "current_version": "v0.0.0-e2e",
+  "channel": "stable",
+  "update_mode": "release",
+  "auto_install": false,
+  "last_failed_update": {
+    "from_version": "v0.0.0-e2e",
+    "to_version": "v9.9.9",
+    "at": "2026-01-01T00:00:00Z",
+    "reason": "e2e simulated failure after auto-rollback",
+    "job_id": "e2e-failed-job"
+  }
+}
+JSON
+    # Give the running daemon a moment if it caches (it re-reads each request).
+    local body
+    body=$(curl -fsS -H "X-Update-Token: $TOKEN" "http://127.0.0.1:$UPDATER_PORT/status")
+    echo "$body" | jq -e '
+        .last_failed_update.job_id == "e2e-failed-job"
+        and (.last_failed_update.reason | type) == "string"
+        and (.last_failed_update.to_version | tostring | length) > 0
+    ' >/dev/null
+}
+run_check "updater /status exposes last_failed_update when recorded" check_last_failed_update_status
 
 # 6. updater /update without token returns 401
 check_update_no_token() {
@@ -362,6 +421,167 @@ check_rescue_status() {
         status >/dev/null 2>&1
 }
 run_check "myriad-rescue status succeeds against testbed" check_rescue_status
+
+# 12. Crash recovery: simulate mid-health-probe state, restart updater, expect needs_manual
+check_recovery_health_probe_lifted() {
+    # Stop running updater so we can rewrite state and re-run recover_or_idle on start.
+    if [ -n "$UPDATER_PID" ]; then
+        kill "$UPDATER_PID" 2>/dev/null || true
+        wait "$UPDATER_PID" 2>/dev/null || true
+        UPDATER_PID=""
+    fi
+
+    cat > "$TESTBED/state/job.e2e-probe.json" <<'JSON'
+{
+  "id": "e2e-probe",
+  "kind": "update",
+  "created_at": "2026-01-01T00:00:00Z",
+  "finished_at": null,
+  "from_version": "v0.0.0-e2e",
+  "to_version": "v9.9.9",
+  "snapshot_id": "snap-e2e-probe",
+  "status": "running",
+  "steps": [
+    {
+      "phase": "health_probing",
+      "started_at": "2026-01-01T00:00:00Z",
+      "finished_at": null,
+      "ok": null,
+      "log_tail": "",
+      "error": null
+    }
+  ],
+  "idempotency_key": null
+}
+JSON
+    echo -n "e2e-probe" > "$TESTBED/state/job.current"
+    cat > "$TESTBED/state/maintenance.json" <<'JSON'
+{
+  "schema_version": 1,
+  "active": false,
+  "phase": "health_probing",
+  "from_version": "v0.0.0-e2e",
+  "to_version": "v9.9.9",
+  "started_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z",
+  "job_id": "e2e-probe",
+  "message_key": "updater.phase.health_probing_live"
+}
+JSON
+
+    # Restart updater — recover_or_idle runs at boot.
+    "$UPDATER_BIN" \
+        --state-dir "$TESTBED/state" \
+        --compose-dir "$TESTBED" \
+        --env-file "$TESTBED/.env" \
+        --pgdata "$TESTBED/pgdata" \
+        --listen "127.0.0.1:$UPDATER_PORT" \
+        >"$TESTBED/updater-recovery.log" 2>&1 &
+    UPDATER_PID=$!
+
+    local ready=0 i
+    for i in $(seq 1 60); do
+        if curl -fsS "http://127.0.0.1:$UPDATER_PORT/healthz" >/dev/null 2>&1; then
+            ready=1
+            break
+        fi
+        sleep 0.25
+    done
+    [ "$ready" = "1" ] || return 1
+
+    local body phase active
+    body=$(curl -fsS -H "X-Update-Token: $TOKEN" "http://127.0.0.1:$UPDATER_PORT/status")
+    phase=$(echo "$body" | jq -r '.maintenance_phase')
+    active=$(echo "$body" | jq -r '.maintenance_active')
+    [ "$phase" = "needs_manual" ] || {
+        echo "expected needs_manual phase, got: $body" >&2
+        return 1
+    }
+    [ "$active" = "true" ] || {
+        echo "expected maintenance_active=true, got: $body" >&2
+        return 1
+    }
+    # job file should be needs_manual
+    jq -e '.status == "needs_manual"' "$TESTBED/state/job.e2e-probe.json" >/dev/null
+}
+run_check "crash recovery: health_probing active=false → needs_manual on restart" check_recovery_health_probe_lifted
+
+# 13. Crash recovery: pre-swap stopping → clear + failed job (stack restore best-effort)
+check_recovery_pre_swap_clear() {
+    if [ -n "$UPDATER_PID" ]; then
+        kill "$UPDATER_PID" 2>/dev/null || true
+        wait "$UPDATER_PID" 2>/dev/null || true
+        UPDATER_PID=""
+    fi
+
+    cat > "$TESTBED/state/job.e2e-pre.json" <<'JSON'
+{
+  "id": "e2e-pre",
+  "kind": "update",
+  "created_at": "2026-01-01T00:00:00Z",
+  "finished_at": null,
+  "from_version": "v0.0.0-e2e",
+  "to_version": "v9.9.9",
+  "snapshot_id": null,
+  "status": "running",
+  "steps": [
+    {
+      "phase": "stopping",
+      "started_at": "2026-01-01T00:00:00Z",
+      "finished_at": null,
+      "ok": null,
+      "log_tail": "",
+      "error": null
+    }
+  ],
+  "idempotency_key": null
+}
+JSON
+    echo -n "e2e-pre" > "$TESTBED/state/job.current"
+    cat > "$TESTBED/state/maintenance.json" <<'JSON'
+{
+  "schema_version": 1,
+  "active": true,
+  "phase": "stopping",
+  "from_version": "v0.0.0-e2e",
+  "to_version": "v9.9.9",
+  "started_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z",
+  "job_id": "e2e-pre",
+  "message_key": "updater.phase.stopping"
+}
+JSON
+
+    "$UPDATER_BIN" \
+        --state-dir "$TESTBED/state" \
+        --compose-dir "$TESTBED" \
+        --env-file "$TESTBED/.env" \
+        --pgdata "$TESTBED/pgdata" \
+        --listen "127.0.0.1:$UPDATER_PORT" \
+        >"$TESTBED/updater-recovery-pre.log" 2>&1 &
+    UPDATER_PID=$!
+
+    local ready=0 i
+    for i in $(seq 1 60); do
+        if curl -fsS "http://127.0.0.1:$UPDATER_PORT/healthz" >/dev/null 2>&1; then
+            ready=1
+            break
+        fi
+        sleep 0.25
+    done
+    [ "$ready" = "1" ] || return 1
+
+    local body active
+    body=$(curl -fsS -H "X-Update-Token: $TOKEN" "http://127.0.0.1:$UPDATER_PORT/status")
+    active=$(echo "$body" | jq -r '.maintenance_active')
+    [ "$active" = "false" ] || {
+        echo "expected maintenance cleared after pre-swap recovery, got: $body" >&2
+        return 1
+    }
+    jq -e '.status == "failed"' "$TESTBED/state/job.e2e-pre.json" >/dev/null
+    [ ! -f "$TESTBED/state/job.current" ] || [ ! -s "$TESTBED/state/job.current" ]
+}
+run_check "crash recovery: pre-swap stopping → clear maintenance + failed job" check_recovery_pre_swap_clear
 
 # ============================================================================
 # Summary

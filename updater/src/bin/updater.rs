@@ -10,7 +10,7 @@ use myriad_updater::{
     docker::DockerClient,
     log as logging, probe, self_version,
     state::StateDir,
-    worker::{Worker, WorkerCli},
+    worker::{RecoveryReport, Worker, WorkerCli},
 };
 
 #[derive(Debug, Parser)]
@@ -167,6 +167,21 @@ async fn main() -> Result<()> {
         config.clone(),
         worker_cli,
     ));
+    // Pre-swap crash recovery only cleared maintenance; services may still be stopped.
+    if matches!(recovery, RecoveryReport::ClearedPreSwap) {
+        match worker.restore_stack_after_pre_swap().await {
+            Ok(()) => info!("recovery: pre-swap stack restore completed"),
+            Err(e) => {
+                error!(
+                    err = %e,
+                    "recovery: pre-swap stack restore failed; site may stay down until manual compose up"
+                );
+                let _ = state.append_history(&format!(
+                    "recovery: pre-swap stack restore failed: {e}"
+                ));
+            }
+        }
+    }
     if let Err(e) = worker.reconcile_current_deploy().await {
         warn!(err = %e, "failed to reconcile current deploy identity; continuing with persisted state");
     }

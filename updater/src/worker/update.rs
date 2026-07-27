@@ -2,6 +2,18 @@
 //! Supports release (GitHub `release.json` when present, else Docker Hub `vX.Y.Z` images)
 //! and commit (CI image tags) modes. Swap/health use `PreflightReport` digests and tags;
 //! a missing `pre.manifest` is fine for the Docker Hub release path.
+//!
+//! # Failure invariants (do not regress)
+//!
+//! 1. **After app stop**: any `Err` must go through `dispatch_update_failure` → restart app
+//!    (`PreSwap`) or full rollback (`PostSwap`).
+//! 2. **`post_swap` only after `swap_tag` Ok** — failed tag write must not snapshot-restore.
+//! 3. **`committed` immediately after health Ok** — never rollback a live healthy stack.
+//! 4. **After `committed`**: always leave job=`Succeeded` + maintenance clear; return `Ok`
+//!    even if bookkeeping I/O fails.
+//! 5. **Preflight / maintenance entry failures**: always clear maintenance (best-effort).
+//! 6. **Rollback paths**: on Err after stopping services, best-effort `compose up` again
+//!    (`execute_inline` outer wrapper).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -46,7 +58,10 @@ pub async fn run(
     };
 
     // ============================================================
-    // Pre-swap phase: any failure cleans up without touching prod.
+    // Pre-swap phase: any failure must restore the previous stack
+    // (frontend/backend, and postgres if we stopped it) then leave idle.
+    // Historically cleanup only cleared maintenance — services stayed down
+    // and some Err paths never finalized the job (stuck maintenance).
     // ============================================================
     // Structured audit line before any side effects (operator risk acknowledgements).
     let actor_suffix = actor
@@ -65,20 +80,24 @@ pub async fn run(
         risk.allow_irreversible,
         actor_suffix,
     );
-    worker.state().append_history(&audit)?;
+    let _ = worker.state().append_history(&audit);
     let _ = worker.state().append_audit(&audit);
 
-    rec.enter(Phase::Preflight, "updater.phase.preflight")?;
+    if let Err(e) = rec.enter(Phase::Preflight, "updater.phase.preflight") {
+        let _ = rec.finalize(JobStatus::Failed);
+        let _ = crate::worker::machine::clear_maintenance(worker.state());
+        return Err(e);
+    }
     let pre = match preflight::run(worker.clone(), &target, mode, risk).await {
         Ok(r) => {
-            rec.finish_step_ok()?;
+            let _ = rec.finish_step_ok();
             r
         }
         Err(e) => {
             error!(job = %job_id, err = %e, "preflight failed");
-            rec.finish_step_err(format!("preflight: {e}"))?;
-            rec.finalize(JobStatus::Failed)?;
-            crate::worker::machine::clear_maintenance(worker.state())?;
+            let _ = rec.finish_step_err(format!("preflight: {e}"));
+            let _ = rec.finalize(JobStatus::Failed);
+            let _ = crate::worker::machine::clear_maintenance(worker.state());
             return Err(e);
         }
     };
@@ -86,10 +105,9 @@ pub async fn run(
     // Commit mode normalizes branch tips → dev-<sha>; use pre.target for the rest of the flow.
     let target = pre.target.clone();
     // Keep job.to_version in sync with the effective tag (not the raw request).
-    {
-        let mut job = worker.state().read_job(&job_id)?;
+    if let Ok(mut job) = worker.state().read_job(&job_id) {
         job.to_version = Some(target.clone());
-        worker.state().write_job(&job)?;
+        let _ = worker.state().write_job(&job);
     }
     // Refresh recorder to_version to the effective tag.
     let rec = PhaseRecorder {
@@ -99,125 +117,272 @@ pub async fn run(
         to_version: Some(target.clone()),
     };
 
-    // Maintenance ON.
-    rec.enter(Phase::MaintenanceOn, "updater.phase.maintenance_on")?;
-    rec.finish_step_ok()?;
-
-    let compose = build_compose_runner(&worker).await?;
-
-    // Stop business containers.
-    rec.enter(Phase::Stopping, "updater.phase.stopping")?;
-    let out = compose
-        .stop(&["frontend", "backend"], 30)
-        .await
-        .map_err(|e| {
-            rec.finish_step_err(format!("stop frontend/backend: {e}"))
-                .ok();
-            e
-        })?;
-    if !out.ok() {
-        let err = format!("compose stop failed: {}", out.error_summary());
-        rec.finish_step_err(&err)?;
-        rec.finalize(JobStatus::Failed)?;
-        crate::worker::machine::clear_maintenance(worker.state())?;
-        return Err(UpdaterError::Internal(anyhow::anyhow!(err)));
+    // Maintenance ON. From here, every error is routed through UpdateFlowCtx so we
+    // never leave services stopped or a swapped tag without cleanup.
+    //
+    // enter/finish failures must not leave maintenance.active stuck without a dispatcher.
+    if let Err(e) = rec.enter(Phase::MaintenanceOn, "updater.phase.maintenance_on") {
+        let _ = rec.finalize(JobStatus::Failed);
+        let _ = crate::worker::machine::clear_maintenance(worker.state());
+        return Err(e);
     }
-    rec.finish_step_ok()?;
+    if let Err(e) = rec.finish_step_ok() {
+        let _ = rec.finalize(JobStatus::Failed);
+        let _ = crate::worker::machine::clear_maintenance(worker.state());
+        return Err(e);
+    }
 
-    // Snapshot pgdata (bundled only). External DB: skip path requirement and snapshot.
-    rec.enter(Phase::Snapshotting, "updater.phase.snapshotting")?;
+    let compose = match build_compose_runner(&worker).await {
+        Ok(c) => c,
+        Err(e) => {
+            let _ = rec.finish_step_err(format!("compose runner: {e}"));
+            return finish_pre_swap_failure(
+                &worker,
+                &rec,
+                None,
+                PreSwapRestoreScope::None,
+                e,
+            )
+            .await;
+        }
+    };
+
     let snap = SnapshotManager {
         state: worker.state(),
         pgdata: worker.cli().pgdata.clone(),
     };
-    let snapshot_id = if worker.cli().db_mode.is_external() {
+    let mut flow = UpdateFlowCtx::new();
+
+    match run_update_body(
+        worker.clone(),
+        &rec,
+        &compose,
+        &snap,
+        &mut flow,
+        &pre,
+        &target,
+        mode,
+        &job_id,
+    )
+    .await
+    {
+        Ok(()) => Ok(()),
+        Err(e) => dispatch_update_failure(&worker, &rec, &compose, &snap, &flow, e).await,
+    }
+}
+
+/// Tracks how far the update progressed so a single dispatcher can clean up.
+#[derive(Debug, Clone)]
+pub(crate) struct UpdateFlowCtx {
+    /// What to restart if we fail before a successful tag swap.
+    scope: PreSwapRestoreScope,
+    /// True once we attempt / complete writing the new MYRIAD_TAG (destructive zone).
+    post_swap: bool,
+    /// Snapshot id for post-swap rollback (empty string = tag-only / external DB).
+    snapshot_id: String,
+    /// Previous MYRIAD_TAG to restore on rollback.
+    from_tag: Option<String>,
+    /// Health passed and deploy was recorded — never auto-rollback after this.
+    committed: bool,
+}
+
+impl UpdateFlowCtx {
+    fn new() -> Self {
+        Self {
+            scope: PreSwapRestoreScope::None,
+            post_swap: false,
+            snapshot_id: String::new(),
+            from_tag: None,
+            committed: false,
+        }
+    }
+}
+
+/// Classify failure for tests and the dispatcher.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UpdateFailureKind {
+    PreSwap(PreSwapRestoreScope),
+    PostSwap,
+    /// Health already passed; log-only (do not destroy the new stack).
+    Committed,
+}
+
+pub(crate) fn classify_update_failure(flow: &UpdateFlowCtx) -> UpdateFailureKind {
+    if flow.committed {
+        UpdateFailureKind::Committed
+    } else if flow.post_swap {
+        UpdateFailureKind::PostSwap
+    } else {
+        UpdateFailureKind::PreSwap(flow.scope)
+    }
+}
+
+async fn dispatch_update_failure(
+    worker: &Arc<Worker>,
+    rec: &PhaseRecorder<'_>,
+    compose: &ComposeRunner,
+    snap: &SnapshotManager<'_>,
+    flow: &UpdateFlowCtx,
+    err: UpdaterError,
+) -> Result<()> {
+    let kind = classify_update_failure(flow);
+    match kind {
+        UpdateFailureKind::Committed => {
+            // Health already passed and the new stack is live. Bookkeeping errors must
+            // NOT mark the job Failed or leave maintenance up — that reads as "update
+            // failed without rollback" while the site is actually on the new version.
+            warn!(
+                err = %err,
+                "post-health bookkeeping error; treating deploy as succeeded (no rollback)"
+            );
+            let _ = rec.finish_step_err(format!("post-health bookkeeping: {err}"));
+            // Prefer Succeeded so UI/status match the running stack.
+            let _ = rec.finalize(JobStatus::Succeeded);
+            let _ = crate::worker::machine::clear_maintenance(worker.state());
+            let _ = worker.state().append_history(&format!(
+                "job {}: SUCCESS_WITH_BOOKKEEPING_ERR ({err})",
+                rec.job_id
+            ));
+            let _ = worker.state().append_audit(&format!(
+                "audit: update_succeeded_with_bookkeeping_err job={} err={err}",
+                rec.job_id
+            ));
+            // Stack is healthy — report Ok so callers do not treat a live deploy as failed.
+            Ok(())
+        }
+        UpdateFailureKind::PostSwap => {
+            let _ = rec.finish_step_err(err.to_string());
+            finish_with_rollback(
+                worker,
+                rec,
+                compose,
+                snap,
+                &flow.snapshot_id,
+                flow.from_tag.as_deref(),
+                err,
+            )
+            .await
+        }
+        UpdateFailureKind::PreSwap(scope) => {
+            let _ = rec.finish_step_err(err.to_string());
+            finish_pre_swap_failure(worker, rec, Some(compose), scope, err).await
+        }
+    }
+}
+
+/// Body after maintenance_on + compose ready. Any `Err` is handled by
+/// [`dispatch_update_failure`] — do not call finish_* helpers here.
+async fn run_update_body(
+    worker: Arc<Worker>,
+    rec: &PhaseRecorder<'_>,
+    compose: &ComposeRunner,
+    snap: &SnapshotManager<'_>,
+    flow: &mut UpdateFlowCtx,
+    pre: &preflight::PreflightReport,
+    target: &DeployTag,
+    mode: UpdateMode,
+    job_id: &str,
+) -> Result<()> {
+    // ----- Stop app -----
+    flow.scope = PreSwapRestoreScope::App;
+    rec.enter(Phase::Stopping, "updater.phase.stopping")?;
+    let out = compose
+        .stop(&["frontend", "backend"], 30)
+        .await
+        .map_err(|e| UpdaterError::Internal(anyhow::anyhow!("stop frontend/backend: {e}")))?;
+    if !out.ok() {
+        return Err(UpdaterError::Internal(anyhow::anyhow!(
+            "compose stop failed: {}",
+            out.error_summary()
+        )));
+    }
+    rec.finish_step_ok()?;
+
+    // ----- Snapshot -----
+    rec.enter(Phase::Snapshotting, "updater.phase.snapshotting")?;
+    if worker.cli().db_mode.is_external() {
         info!("db_mode=external; skipping pgdata snapshot");
         let _ = worker
             .state()
             .append_history(&format!("job {job_id}: db_mode=external; skipping pgdata snapshot"));
-        // Empty id: rollback restores image tags only (never touches pgdata).
-        String::new()
+        flow.snapshot_id.clear();
     } else {
-        if let Err(e) = crate::probe::filesystem::require_pgdata(&worker.cli().pgdata) {
-            rec.finish_step_err(e.to_string()).ok();
-            rec.finalize(JobStatus::Failed)?;
-            crate::worker::machine::clear_maintenance(worker.state())?;
-            return Err(e);
-        }
-        let stop_pg = compose.stop(&["postgres"], 60).await?;
+        crate::probe::filesystem::require_pgdata(&worker.cli().pgdata)?;
+        flow.scope = PreSwapRestoreScope::AppAndPostgres;
+        let stop_pg = compose
+            .stop(&["postgres"], 60)
+            .await
+            .map_err(|e| UpdaterError::Internal(anyhow::anyhow!("stop postgres: {e}")))?;
         if !stop_pg.ok() {
-            let err = format!("stop postgres failed: {}", stop_pg.error_summary());
-            rec.finish_step_err(&err)?;
-            rec.finalize(JobStatus::Failed)?;
-            crate::worker::machine::clear_maintenance(worker.state())?;
-            return Err(UpdaterError::Internal(anyhow::anyhow!(err)));
+            return Err(UpdaterError::Internal(anyhow::anyhow!(
+                "stop postgres failed: {}",
+                stop_pg.error_summary()
+            )));
         }
 
-        let snapshot_id = format!("snap-{}", job_id);
+        let snapshot_id = format!("snap-{job_id}");
         let source_version = pre.from_version.clone().or_else(|| {
             EnvFile::load(&worker.cli().env_file)
                 .ok()
                 .and_then(|e| e.get("MYRIAD_TAG").map(|s| s.to_string()))
                 .and_then(|t| DeployTag::parse(&t).ok())
         });
-        let _ = snap
-            .create(&snapshot_id, source_version)
-            .await
-            .map_err(|e| {
-                rec.finish_step_err(format!("snapshot: {e}")).ok();
-                e
-            })?;
+        snap.create(&snapshot_id, source_version).await?;
 
-        let start_pg = compose.start(&["postgres"]).await?;
+        let start_pg = compose
+            .start(&["postgres"])
+            .await
+            .map_err(|e| UpdaterError::Internal(anyhow::anyhow!("restart postgres: {e}")))?;
         if !start_pg.ok() {
-            let err = format!("restart postgres failed: {}", start_pg.error_summary());
-            rec.finish_step_err(&err)?;
-            rec.finalize(JobStatus::Failed)?;
-            crate::worker::machine::clear_maintenance(worker.state())?;
-            return Err(UpdaterError::Internal(anyhow::anyhow!(err)));
+            let up_pg = compose.up_detached(&["postgres"]).await;
+            let up_ok = up_pg.as_ref().map(|o| o.ok()).unwrap_or(false);
+            if !up_ok {
+                let up_summary = up_pg
+                    .as_ref()
+                    .map(|o| o.error_summary())
+                    .unwrap_or_else(|_| "compose up errored".into());
+                return Err(UpdaterError::Internal(anyhow::anyhow!(
+                    "restart postgres failed: start={}; up={}",
+                    start_pg.error_summary(),
+                    up_summary
+                )));
+            }
         }
-        {
-            let mut job = worker.state().read_job(&job_id)?;
-            job.snapshot_id = Some(snapshot_id.clone());
-            worker.state().write_job(&job)?;
+        // Postgres is back; only app containers remain down.
+        flow.scope = PreSwapRestoreScope::App;
+        flow.snapshot_id = snapshot_id.clone();
+        // Snapshot id is best-effort metadata — failure must not leave stack down.
+        if let Ok(mut job) = worker.state().read_job(job_id) {
+            job.snapshot_id = Some(snapshot_id);
+            if let Err(e) = worker.state().write_job(&job) {
+                warn!(err = %e, "failed to record snapshot_id on job; continuing");
+            }
         }
-        snapshot_id
-    };
+    }
     rec.finish_step_ok()?;
 
-    // ============================================================
-    // Swap tag. Beyond here, any failure triggers automated rollback.
-    // ============================================================
+    // ----- Swap tag (destructive zone starts only after tag is written) -----
     rec.enter(Phase::SwapTag, "updater.phase.swap_tag")?;
     let from_tag_hint = rec
         .from_version
         .as_ref()
         .map(|v| v.to_string())
         .or_else(|| pre.from_version.as_ref().map(|v| v.to_string()));
-    let from_tag_backup = match swap_tag(&worker, target.as_str()) {
-        Ok(prev) => prev,
-        Err(e) => {
-            rec.finish_step_err(format!("swap_tag: {e}"))?;
-            return finish_with_rollback(
-                &worker,
-                &rec,
-                &compose,
-                &snap,
-                &snapshot_id,
-                from_tag_hint.as_deref(),
-                e,
-            )
-            .await;
-        }
-    };
+    flow.from_tag = from_tag_hint.clone();
+    // Keep post_swap=false until swap_tag succeeds so a failed tag write does not
+    // trigger snapshot restore (postgres stop) — only app restart via PreSwap.
+    let from_tag_backup = swap_tag(&worker, target.as_str())?;
+    flow.post_swap = true;
+    flow.from_tag = Some(from_tag_backup.clone());
     rec.finish_step_ok()?;
 
     match pin_rollback_images(&worker, &from_tag_backup).await {
         Ok(true) => {
             if let Ok(v) = DeployTag::parse(&from_tag_backup) {
-                let mut st = worker.state().read_updater()?;
-                st.rollback_version = Some(v);
-                let _ = worker.state().write_updater(&st);
+                if let Ok(mut st) = worker.state().read_updater() {
+                    st.rollback_version = Some(v);
+                    let _ = worker.state().write_updater(&st);
+                }
             }
         }
         Ok(false) => {
@@ -231,101 +396,81 @@ pub async fn run(
         }
     }
 
+    // ----- Start new -----
     rec.enter(Phase::StartingNew, "updater.phase.starting_new")?;
-    let volume_init = match compose.init_backend_volumes().await {
-        Ok(output) => output,
-        Err(error) => {
-            let err = format!("backend volume ownership initialization failed: {error}");
-            rec.finish_step_err(&err)?;
-            return finish_with_rollback(
-                &worker,
-                &rec,
-                &compose,
-                &snap,
-                &snapshot_id,
-                Some(&from_tag_backup),
-                UpdaterError::Internal(anyhow::anyhow!(err)),
-            )
-            .await;
-        }
-    };
+    let volume_init = compose
+        .init_backend_volumes()
+        .await
+        .map_err(|e| {
+            UpdaterError::Internal(anyhow::anyhow!(
+                "backend volume ownership initialization failed: {e}"
+            ))
+        })?;
     if !volume_init.ok() {
-        let err = format!(
+        return Err(UpdaterError::Internal(anyhow::anyhow!(
             "backend volume ownership initialization failed: {}",
             volume_init.error_summary()
-        );
-        rec.finish_step_err(&err)?;
-        return finish_with_rollback(
-            &worker,
-            &rec,
-            &compose,
-            &snap,
-            &snapshot_id,
-            Some(&from_tag_backup),
-            UpdaterError::Internal(anyhow::anyhow!(err)),
-        )
-        .await;
+        )));
     }
     tracing::info!(
         output = %volume_init.stdout_tail.trim(),
         diagnostics = %volume_init.stderr_tail.trim(),
         "backend volume ownership and write verification completed"
     );
-    let up = compose.up_detached(&["backend", "frontend"]).await?;
+    let up = compose
+        .up_detached(&["backend", "frontend"])
+        .await
+        .map_err(|e| {
+            UpdaterError::Internal(anyhow::anyhow!("compose up new failed: {e}"))
+        })?;
     if !up.ok() {
-        let err = format!("compose up new failed: {}", up.error_summary());
-        rec.finish_step_err(&err)?;
-        return finish_with_rollback(
-            &worker,
-            &rec,
-            &compose,
-            &snap,
-            &snapshot_id,
-            Some(&from_tag_backup),
-            UpdaterError::Internal(anyhow::anyhow!(err)),
-        )
-        .await;
+        return Err(UpdaterError::Internal(anyhow::anyhow!(
+            "compose up new failed: {}",
+            up.error_summary()
+        )));
     }
     rec.finish_step_ok()?;
 
+    // ----- Health -----
     rec.enter(Phase::HealthProbing, "updater.phase.health_probing")?;
     let deadline = Duration::from_secs(300u64.max((pre.estimated_seconds as u64) * 3));
-    let probe_result = health_probe_phased(&worker, &target, deadline).await;
-    if let Err(e) = probe_result {
-        rec.finish_step_err(format!("health: {e}"))?;
-        return finish_with_rollback(
-            &worker,
-            &rec,
-            &compose,
-            &snap,
-            &snapshot_id,
-            Some(&from_tag_backup),
-            e,
-        )
-        .await;
+    // Preserve original error text so is_health_probe_failure still matches.
+    health_probe_phased(&worker, target, deadline).await?;
+
+    // CRITICAL: mark committed immediately after health OK, *before* any state
+    // writes. A finish_step_ok / write_updater failure must not trigger rollback
+    // of a live, healthy new stack.
+    flow.committed = true;
+    let _ = rec.finish_step_ok();
+
+    let _ = rec.enter(Phase::SwappingProxy, "updater.phase.swapping_proxy");
+    match worker.state().read_updater() {
+        Ok(mut st) => {
+            record_successful_deploy(&mut st, target.clone(), pre.target_commit_sha.clone());
+            if let Err(e) = worker.state().write_updater(&st) {
+                warn!(err = %e, "write updater state after health ok failed; continuing finalize");
+            }
+        }
+        Err(e) => {
+            warn!(err = %e, "read updater state after health ok failed; continuing finalize");
+        }
     }
-    rec.finish_step_ok()?;
+    let _ = rec.finish_step_ok();
 
-    rec.enter(Phase::SwappingProxy, "updater.phase.swapping_proxy")?;
-    let mut st = worker.state().read_updater()?;
-    record_successful_deploy(&mut st, target.clone(), pre.target_commit_sha.clone());
-    worker.state().write_updater(&st)?;
-    rec.finish_step_ok()?;
-
-    rec.enter(Phase::Finalize, "updater.phase.finalize")?;
-    // Keep `*:myriad-rollback` and `rollback_version` on the build that was running
-    // before this update. The next update will advance the slot to this build before
-    // it starts its own target.
-    rec.finish_step_ok()?;
-
+    let _ = rec.enter(Phase::Finalize, "updater.phase.finalize");
+    let _ = rec.finish_step_ok();
     let _ = snap.prune(3);
-
-    rec.finalize(JobStatus::Succeeded)?;
-    // Maintenance may already be inactive after frontend probe phase; full clear resets job pointer.
-    crate::worker::machine::clear_maintenance(worker.state())?;
-    worker
+    // After health OK we NEVER return Err: stack is live on the new tag.
+    // Bookkeeping failures are logged; job is forced Succeeded and maintenance cleared.
+    if let Err(e) = rec.finalize(JobStatus::Succeeded) {
+        warn!(err = %e, "finalize Succeeded failed after healthy deploy (forcing clear)");
+    }
+    if let Err(e) = crate::worker::machine::clear_maintenance(worker.state()) {
+        warn!(err = %e, "clear_maintenance failed after healthy deploy");
+    }
+    let _ = worker
         .state()
-        .append_history(&format!("job {job_id}: SUCCESS {target} ({mode})"))?;
+        .append_history(&format!("job {job_id}: SUCCESS {target} ({mode})"));
     let _ = worker.state().append_audit(&format!(
         "audit: update_succeeded job={job_id} target={} mode={}",
         target.as_str(),
@@ -465,6 +610,154 @@ fn record_successful_deploy(
     // previous known-good build pinned immediately before this deploy started.
 }
 
+/// What the pre-swap abort path must restart after a failed update step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PreSwapRestoreScope {
+    /// Maintenance only; compose stack was not touched.
+    None,
+    /// frontend/backend were stopped (postgres still running or external).
+    App,
+    /// postgres was also stopped for snapshot (bundled DB).
+    AppAndPostgres,
+}
+
+pub(crate) fn pre_swap_needs_postgres(scope: PreSwapRestoreScope, db_external: bool) -> bool {
+    matches!(scope, PreSwapRestoreScope::AppAndPostgres) && !db_external
+}
+
+/// Best-effort restart of the stack that was running before the update.
+///
+/// Used by in-flow pre-swap abort and by crash recovery after clearing a stuck
+/// pre-swap job. Does not change `MYRIAD_TAG` (still the previous tag).
+pub(crate) async fn restore_previous_stack(
+    worker: &Arc<Worker>,
+    compose: &ComposeRunner,
+    scope: PreSwapRestoreScope,
+) -> Result<()> {
+    if matches!(scope, PreSwapRestoreScope::None) {
+        return Ok(());
+    }
+
+    let need_pg = pre_swap_needs_postgres(scope, worker.cli().db_mode.is_external());
+    if need_pg {
+        info!("pre-swap restore: ensuring postgres is up");
+        let start_pg = compose.start(&["postgres"]).await;
+        let start_ok = start_pg.as_ref().map(|o| o.ok()).unwrap_or(false);
+        if !start_ok {
+            let up_pg = compose.up_detached(&["postgres"]).await?;
+            if !up_pg.ok() {
+                let start_summary = start_pg
+                    .as_ref()
+                    .map(|o| o.error_summary())
+                    .unwrap_or_else(|_| "start errored".into());
+                return Err(UpdaterError::Internal(anyhow::anyhow!(
+                    "pre-swap restore postgres failed: start={start_summary}; up={}",
+                    up_pg.error_summary()
+                )));
+            }
+        }
+    }
+
+    info!("pre-swap restore: bringing backend/frontend back");
+    let up = compose.up_detached(&["backend", "frontend"]).await?;
+    if !up.ok() {
+        return Err(UpdaterError::Internal(anyhow::anyhow!(
+            "pre-swap restore app failed: {}",
+            up.error_summary()
+        )));
+    }
+    Ok(())
+}
+
+/// Pre-swap failure cleanup (spec §7: cleanup → idle).
+///
+/// Unlike post-swap `finish_with_rollback`, this does **not** restore a pgdata snapshot
+/// or rewrite tags — the previous tag is still current. It must still:
+/// 1. restart any services we stopped
+/// 2. finalize the job
+/// 3. clear maintenance (or leave `needs_manual` if restore itself fails)
+async fn finish_pre_swap_failure(
+    worker: &Arc<Worker>,
+    rec: &PhaseRecorder<'_>,
+    compose: Option<&ComposeRunner>,
+    scope: PreSwapRestoreScope,
+    original_err: UpdaterError,
+) -> Result<()> {
+    error!(
+        err = %original_err,
+        ?scope,
+        "pre-swap failure; restoring previous stack before leaving update"
+    );
+    let _ = worker.state().append_history(&format!(
+        "job {}: PRE_SWAP_FAIL scope={scope:?} err={original_err}",
+        rec.job_id
+    ));
+
+    let mut restore_err: Option<String> = None;
+    match compose {
+        Some(c) => {
+            if let Err(e) = restore_previous_stack(worker, c, scope).await {
+                error!(err = %e, "pre-swap stack restore failed");
+                restore_err = Some(e.to_string());
+            }
+        }
+        None if !matches!(scope, PreSwapRestoreScope::None) => {
+            restore_err = Some("compose runner unavailable; cannot restart services".into());
+        }
+        None => {}
+    }
+
+    // Record failure context for UI / ops (same shape as post-swap auto-rollback).
+    if let Ok(mut st) = worker.state().read_updater() {
+        st.last_failed_update = Some(crate::state::FailedUpdate {
+            from_version: rec.from_version.clone(),
+            to_version: rec.to_version.clone(),
+            at: Utc::now(),
+            reason: original_err.to_string(),
+            job_id: rec.job_id.clone(),
+        });
+        let _ = worker.state().write_updater(&st);
+    }
+
+    if let Some(re) = restore_err {
+        let _ = rec.finish_step_err(format!("pre-swap restore failed: {re}"));
+        let _ = rec.finalize(JobStatus::NeedsManual);
+        if let Ok(mut m) = worker.state().read_maintenance() {
+            m.active = true;
+            m.phase = Phase::NeedsManual;
+            m.message_key = "updater.phase.needs_manual".into();
+            m.job_id = Some(rec.job_id.clone());
+            m.bump_heartbeat();
+            let _ = worker.state().write_maintenance(&m);
+        }
+        let _ = worker.state().append_history(&format!(
+            "job {}: NEEDS_MANUAL — original={original_err}; pre_swap_restore={re}",
+            rec.job_id
+        ));
+        let _ = worker.state().append_audit(&format!(
+            "audit: pre_swap_restore_failed job={} err={original_err} restore={re}",
+            rec.job_id
+        ));
+        return Err(UpdaterError::Precondition(format!(
+            "update failed ({original_err}); restoring previous stack also failed ({re})"
+        )));
+    }
+
+    let _ = rec.finalize(JobStatus::Failed);
+    if let Err(e) = crate::worker::machine::clear_maintenance(worker.state()) {
+        warn!(err = %e, "pre-swap cleanup: clear_maintenance failed after stack restored");
+    }
+    let _ = worker.state().append_history(&format!(
+        "job {}: PRE_SWAP_CLEANUP_OK ({original_err})",
+        rec.job_id
+    ));
+    let _ = worker.state().append_audit(&format!(
+        "audit: pre_swap_cleanup_ok job={} err={original_err}",
+        rec.job_id
+    ));
+    Err(original_err)
+}
+
 async fn finish_with_rollback(
     worker: &Arc<Worker>,
     rec: &PhaseRecorder<'_>,
@@ -501,21 +794,23 @@ async fn finish_with_rollback(
                         "health re-check succeeded after timeout — treating update as SUCCESS \
                          (skipping rollback). Original probe was a false negative."
                     );
-                    rec.enter(Phase::SwappingProxy, "updater.phase.swapping_proxy")?;
-                    let mut st = worker.state().read_updater()?;
-                    record_successful_deploy(&mut st, target.clone(), None);
-                    worker.state().write_updater(&st)?;
-                    rec.finish_step_ok()?;
-                    rec.enter(Phase::Finalize, "updater.phase.finalize")?;
-                    rec.finish_step_ok()?;
+                    // Best-effort bookkeeping only — stack is already live.
+                    let _ = rec.enter(Phase::SwappingProxy, "updater.phase.swapping_proxy");
+                    if let Ok(mut st) = worker.state().read_updater() {
+                        record_successful_deploy(&mut st, target.clone(), None);
+                        let _ = worker.state().write_updater(&st);
+                    }
+                    let _ = rec.finish_step_ok();
+                    let _ = rec.enter(Phase::Finalize, "updater.phase.finalize");
+                    let _ = rec.finish_step_ok();
                     let _ = snap.prune(3);
-                    rec.finalize(JobStatus::Succeeded)?;
-                    crate::worker::machine::clear_maintenance(worker.state())?;
-                    worker.state().append_history(&format!(
+                    let _ = rec.finalize(JobStatus::Succeeded);
+                    let _ = crate::worker::machine::clear_maintenance(worker.state());
+                    let _ = worker.state().append_history(&format!(
                         "job {}: SUCCESS after health false-negative recheck ({target}); \
                          original_probe_err={original_err}",
                         rec.job_id
-                    ))?;
+                    ));
                     return Ok(());
                 }
                 ProbeTick::NotReady { detail } => {
@@ -528,31 +823,51 @@ async fn finish_with_rollback(
         }
     }
 
+    // Health probe may have set maintenance.active=false; re-enter so proxy shows
+    // maintenance during destructive rollback and crash recovery can see us.
+    if let Ok(mut m) = worker.state().read_maintenance() {
+        if !m.active {
+            m.active = true;
+            m.phase = Phase::RollbackInProgress;
+            m.message_key = "updater.phase.rollback".into();
+            m.job_id = Some(rec.job_id.clone());
+            m.bump_heartbeat();
+            let _ = worker.state().write_maintenance(&m);
+        }
+    }
+
     error!(err = %original_err, "rollback triggered");
     let rb_result =
         rollback::execute_inline(worker.clone(), rec, compose, snap, snapshot_id, from_tag).await;
     match rb_result {
         Ok(restored) => {
-            rec.finalize(JobStatus::Failed)?;
-            let mut st = worker.state().read_updater()?;
-            if let Some(v) = restored.or_else(|| rec.from_version.clone()) {
-                let version_changed = st.current_version.as_ref() != Some(&v);
-                st.current_version = Some(v);
-                if version_changed {
-                    st.current_commit_sha = None;
+            // Best-effort state updates: services are already on the previous stack.
+            // A failed write_updater must not leave maintenance active forever.
+            let _ = rec.finalize(JobStatus::Failed);
+            if let Ok(mut st) = worker.state().read_updater() {
+                if let Some(v) = restored.or_else(|| rec.from_version.clone()) {
+                    let version_changed = st.current_version.as_ref() != Some(&v);
+                    st.current_version = Some(v);
+                    if version_changed {
+                        st.current_commit_sha = None;
+                    }
+                }
+                st.last_failed_update = Some(crate::state::FailedUpdate {
+                    from_version: rec.from_version.clone(),
+                    to_version: rec.to_version.clone(),
+                    at: Utc::now(),
+                    reason: original_err.to_string(),
+                    job_id: rec.job_id.clone(),
+                });
+                if let Err(e) = worker.state().write_updater(&st) {
+                    warn!(err = %e, "auto-rollback: write_updater failed after services restored");
                 }
             }
-            st.last_failed_update = Some(crate::state::FailedUpdate {
-                from_version: rec.from_version.clone(),
-                to_version: rec.to_version.clone(),
-                at: Utc::now(),
-                reason: original_err.to_string(),
-                job_id: rec.job_id.clone(),
-            });
-            worker.state().write_updater(&st)?;
-            crate::worker::machine::clear_maintenance(worker.state())?;
+            if let Err(e) = crate::worker::machine::clear_maintenance(worker.state()) {
+                warn!(err = %e, "auto-rollback: clear_maintenance failed");
+            }
             let rb_ok = format!("job {}: ROLLBACK_OK ({original_err})", rec.job_id);
-            worker.state().append_history(&rb_ok)?;
+            let _ = worker.state().append_history(&rb_ok);
             let _ = worker.state().append_audit(&format!(
                 "audit: auto_rollback_ok job={} err={original_err}",
                 rec.job_id
@@ -560,19 +875,31 @@ async fn finish_with_rollback(
             Err(original_err)
         }
         Err(rb_err) => {
-            rec.finish_step_err(format!("rollback failed: {rb_err}"))?;
-            rec.finalize(JobStatus::NeedsManual)?;
-            let mut m = worker.state().read_maintenance()?;
-            m.phase = Phase::NeedsManual;
-            m.message_key = "updater.phase.needs_manual".into();
-            m.bump_heartbeat();
-            worker.state().write_maintenance(&m)?;
-            worker.state().append_history(&format!(
+            let _ = rec.finish_step_err(format!("rollback failed: {rb_err}"));
+            let _ = rec.finalize(JobStatus::NeedsManual);
+            if let Ok(mut m) = worker.state().read_maintenance() {
+                m.active = true;
+                m.phase = Phase::NeedsManual;
+                m.message_key = "updater.phase.needs_manual".into();
+                m.job_id = Some(rec.job_id.clone());
+                m.bump_heartbeat();
+                let _ = worker.state().write_maintenance(&m);
+            }
+            // Persist last_failed even when rollback itself failed.
+            if let Ok(mut st) = worker.state().read_updater() {
+                st.last_failed_update = Some(crate::state::FailedUpdate {
+                    from_version: rec.from_version.clone(),
+                    to_version: rec.to_version.clone(),
+                    at: Utc::now(),
+                    reason: format!("{original_err}; rollback also failed: {rb_err}"),
+                    job_id: rec.job_id.clone(),
+                });
+                let _ = worker.state().write_updater(&st);
+            }
+            let _ = worker.state().append_history(&format!(
                 "job {}: NEEDS_MANUAL — original={original_err}; rollback={rb_err}",
                 rec.job_id
-            ))?;
-            // Prefer returning the original health/update error when rollback also failed,
-            // but keep rollback detail in the message for operators.
+            ));
             Err(UpdaterError::Precondition(format!(
                 "update failed ({original_err}); rollback also failed ({rb_err})"
             )))
@@ -1176,5 +1503,54 @@ mod health_match_tests {
             state.current_commit_sha.as_deref(),
             Some("0123456789abcdef")
         );
+    }
+
+    #[test]
+    fn pre_swap_restore_scope_includes_postgres_only_when_needed() {
+        assert!(!pre_swap_needs_postgres(PreSwapRestoreScope::None, false));
+        assert!(!pre_swap_needs_postgres(PreSwapRestoreScope::App, false));
+        assert!(pre_swap_needs_postgres(
+            PreSwapRestoreScope::AppAndPostgres,
+            false
+        ));
+        assert!(!pre_swap_needs_postgres(
+            PreSwapRestoreScope::AppAndPostgres,
+            true
+        ));
+    }
+
+    #[test]
+    fn classify_update_failure_respects_flow_ctx() {
+        let mut flow = UpdateFlowCtx::new();
+        assert_eq!(
+            classify_update_failure(&flow),
+            UpdateFailureKind::PreSwap(PreSwapRestoreScope::None)
+        );
+        flow.scope = PreSwapRestoreScope::AppAndPostgres;
+        assert_eq!(
+            classify_update_failure(&flow),
+            UpdateFailureKind::PreSwap(PreSwapRestoreScope::AppAndPostgres)
+        );
+        // swap_tag not yet successful → still pre-swap even if scope is App
+        flow.scope = PreSwapRestoreScope::App;
+        assert_eq!(
+            classify_update_failure(&flow),
+            UpdateFailureKind::PreSwap(PreSwapRestoreScope::App)
+        );
+        flow.post_swap = true;
+        assert_eq!(classify_update_failure(&flow), UpdateFailureKind::PostSwap);
+        // committed wins over post_swap — never destroy a healthy stack
+        flow.committed = true;
+        assert_eq!(classify_update_failure(&flow), UpdateFailureKind::Committed);
+    }
+
+    #[test]
+    fn health_probe_failure_detector_matches_probe_errors() {
+        let e = UpdaterError::Precondition("health probe exceeded 300s".into());
+        assert!(is_health_probe_failure(&e));
+        let e2 = UpdaterError::Precondition("health: backend not ready".into());
+        assert!(is_health_probe_failure(&e2));
+        let e3 = UpdaterError::Internal(anyhow::anyhow!("compose up new failed"));
+        assert!(!is_health_probe_failure(&e3));
     }
 }

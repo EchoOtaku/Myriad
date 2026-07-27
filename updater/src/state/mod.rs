@@ -104,8 +104,31 @@ impl StateDir {
             return Ok(MaintenanceFile::inactive());
         }
         let bytes = std::fs::read(&path)?;
-        // Fail-open: a corrupt maintenance file should NOT block traffic.
-        Ok(serde_json::from_slice(&bytes).unwrap_or_else(|_| MaintenanceFile::inactive()))
+        match serde_json::from_slice(&bytes) {
+            Ok(m) => Ok(m),
+            Err(e) => {
+                // Corrupt file: if a job is in flight, fail *closed* into needs_manual so
+                // crash recovery / UI do not silently treat a mid-update as idle.
+                tracing::warn!(error = %e, "maintenance.json corrupt");
+                if self
+                    .read_current_job()
+                    .ok()
+                    .flatten()
+                    .filter(|s| !s.is_empty())
+                    .is_some()
+                {
+                    let mut m = MaintenanceFile::inactive();
+                    m.active = true;
+                    m.phase = crate::state::Phase::NeedsManual;
+                    m.job_id = self.read_current_job().ok().flatten();
+                    m.message_key = "updater.phase.needs_manual".into();
+                    m.bump_heartbeat();
+                    return Ok(m);
+                }
+                // No job pointer: fail-open so proxy can serve traffic.
+                Ok(MaintenanceFile::inactive())
+            }
+        }
     }
 
     pub fn write_maintenance(&self, m: &MaintenanceFile) -> Result<()> {

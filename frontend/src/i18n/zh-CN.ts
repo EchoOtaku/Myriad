@@ -563,6 +563,9 @@ export const zhCN: TranslationKeys = {
     updaterStatusNeedsManual: '上次更新失败，需要处理',
     updaterStatusOffline: '无法连接更新服务',
     updaterStatusFirstRun: '还没有版本记录',
+    updaterLastFailedTitle: '上次更新未成功（已尝试回退）',
+    updaterLastFailedBody:
+      '从 {from} 到 {to} 失败，服务已按上一版本恢复（若自动回退成功）。原因：{reason}',
     updaterHintHealthy: '当前通道没有可用更新。',
     updaterHintUpdating: '完成后将自动检查运行状态。',
     updaterHintMaintenance: '可在下方退出维护模式。',

@@ -591,6 +591,9 @@ export const jaJP: TranslationKeys = {
     updaterStatusNeedsManual: '前回の更新が失敗 — 対応が必要です',
     updaterStatusOffline: '更新サービスに接続できません',
     updaterStatusFirstRun: 'バージョンはまだ記録されていません',
+    updaterLastFailedTitle: '前回の更新は完了しませんでした（ロールバック試行済み）',
+    updaterLastFailedBody:
+      '{from} から {to} への更新に失敗しました。自動ロールバックが成功していれば以前の構成に戻っています。理由: {reason}',
     updaterHintHealthy: 'このチャネルに利用可能な更新はありません。',
     updaterHintUpdating: '完了後に動作状態を自動確認します。',
     updaterHintMaintenance: '準備ができたら下から解除できます。',
