@@ -1,6 +1,8 @@
 /**
  * 分平台硬件档位判定（动画 standard/light vs light/exlight 的「是否达标」）。
  *
+ * OS / iOS 版本解析见 `platformDetect.ts`（与 WebKit、音频通路共用）。
+ *
  * 产品规则（2026-07）：
  * - Android：内存 ≥ 8GB 且 CPU 逻辑核 ≥ 8 → 高
  * - iOS：系统主版本 >= 18 → 高；小于 18 → 低（含未来 26/27 等）
@@ -14,7 +16,14 @@
  * - macOS 上 `navigator.platform` 在 M 芯片仍常为 MacIntel，需 architecture / WebGL 辅助。
  */
 
-export type OsKind = 'android' | 'ios' | 'macos' | 'windows' | 'linux' | 'unknown'
+import {
+  detectOsKind,
+  type OsKind,
+  parseIosMajorVersion,
+} from './platformDetect'
+
+export type { OsKind }
+export { detectOsKind, parseIosMajorVersion }
 
 export interface HardwareSignals {
   os: OsKind
@@ -34,60 +43,6 @@ export interface HardwareTierResult {
   signals: HardwareSignals
   /** 简短原因，便于 debug */
   reason: string
-}
-
-// —— 平台识别 ————————————————————————————————————————————————
-
-export function detectOsKind(
-  ua: string = typeof navigator !== 'undefined' ? navigator.userAgent : '',
-  nav: Navigator | null = typeof navigator !== 'undefined' ? navigator : null,
-): OsKind {
-  const uaDataPlatform =
-    nav &&
-    'userAgentData' in nav &&
-    (nav as Navigator & { userAgentData?: { platform?: string } }).userAgentData
-      ?.platform
-
-  const p = (uaDataPlatform || '').toLowerCase()
-  if (p === 'android') return 'android'
-  if (p === 'ios') return 'ios'
-  if (p === 'macos') return 'macos'
-  if (p === 'windows') return 'windows'
-  if (p === 'linux') return 'linux'
-
-  // Android 必须在 Linux 之前
-  if (/Android/i.test(ua)) return 'android'
-
-  // iPadOS 13+ 桌面 UA：Macintosh + 多点触控
-  const maxTouch =
-    nav && typeof nav.maxTouchPoints === 'number' ? nav.maxTouchPoints : 0
-  if (/iPhone|iPod/i.test(ua)) return 'ios'
-  if (/iPad/i.test(ua)) return 'ios'
-  if (/Macintosh|Mac OS X/i.test(ua) && maxTouch > 1) return 'ios'
-
-  if (/Mac OS X|Macintosh/i.test(ua)) return 'macos'
-  if (/Windows NT|Win64|WOW64|Windows /i.test(ua)) return 'windows'
-  if (/Linux/i.test(ua)) return 'linux'
-
-  return 'unknown'
-}
-
-/** 从 UA 解析 iOS / iPadOS 主版本，如 CPU iPhone OS 18_2 → 18 */
-export function parseIosMajorVersion(ua: string): number | null {
-  // iPhone OS 18_3 / CPU OS 17_0 like Mac OS X (iPad)
-  const patterns = [
-    new RegExp('OS (\\d+)[._](\\d+)', 'i'),
-    new RegExp('iPhone OS (\\d+)', 'i'),
-    new RegExp('CPU OS (\\d+)', 'i'),
-  ]
-  for (const re of patterns) {
-    const m = ua.match(re)
-    if (m) {
-      const major = Number.parseInt(m[1], 10)
-      if (Number.isFinite(major)) return major
-    }
-  }
-  return null
 }
 
 /**
@@ -213,7 +168,7 @@ function readMemoryGiB(
  */
 export function collectHardwareSignals(
   nav: Navigator | null = typeof navigator !== 'undefined' ? navigator : null,
-  ua: string = typeof navigator !== 'undefined' ? navigator.userAgent : '',
+  ua?: string,
 ): HardwareSignals {
   const os = detectOsKind(ua, nav)
   return {

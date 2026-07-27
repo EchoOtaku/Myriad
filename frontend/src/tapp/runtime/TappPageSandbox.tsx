@@ -69,19 +69,9 @@ import { onTappStorageChange } from './WidgetRuntimeSignals'
 
 // 处理器
 
-// WebKit/Safari 检测（模块加载时一次）
+// WebKit/Safari 引擎检测：统一走 platformDetect（与 OS/硬件档位共用 UA 基础）
 // 供运行页工具栏 portal、禁用多窗口等宿主决策使用。
-// 注意：Page iframe 已统一内联挂载，不再依赖 portal 规避合成层 bug
-// （/tapp/run 已去掉页面级 opacity 动画，见 App.tsx）。
-const RE_APPLE_WEBKIT = /\bAppleWebKit\b/
-const RE_CHROMIUM = /\bChrom(e|ium)\b/
-export const isWebKit: boolean = (() => {
-  if (typeof navigator === 'undefined') return false
-  const ua = navigator.userAgent
-  const uaIsWebKit = RE_APPLE_WEBKIT.test(ua) && !RE_CHROMIUM.test(ua)
-  const isAppleVendor = navigator.vendor === 'Apple Computer, Inc.'
-  return uaIsWebKit && isAppleVendor
-})()
+export { isWebKit } from '../../utils/platformDetect'
 
 export interface TappPageSandboxProps {
   /** Tapp 实例 */

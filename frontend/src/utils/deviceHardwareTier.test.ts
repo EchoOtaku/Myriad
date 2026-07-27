@@ -2,60 +2,9 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
-  detectOsKind,
   evaluateHighHardware,
-  parseIosMajorVersion,
   type HardwareSignals,
 } from './deviceHardwareTier'
-
-describe('detectOsKind', () => {
-  it('detects android before linux', () => {
-    assert.equal(
-      detectOsKind(
-        'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36',
-        null,
-      ),
-      'android',
-    )
-  })
-
-  it('detects iPhone', () => {
-    assert.equal(
-      detectOsKind(
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X)',
-        null,
-      ),
-      'ios',
-    )
-  })
-
-  it('detects windows', () => {
-    assert.equal(
-      detectOsKind('Mozilla/5.0 (Windows NT 10.0; Win64; x64)', null),
-      'windows',
-    )
-  })
-})
-
-describe('parseIosMajorVersion', () => {
-  it('parses iPhone OS version', () => {
-    assert.equal(
-      parseIosMajorVersion(
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_1 like Mac OS X)',
-      ),
-      18,
-    )
-  })
-
-  it('parses older iOS', () => {
-    assert.equal(
-      parseIosMajorVersion(
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X)',
-      ),
-      16,
-    )
-  })
-})
 
 function sig(partial: Partial<HardwareSignals>): HardwareSignals {
   return {

@@ -4,6 +4,9 @@
 
 import { API_URL } from '../config'
 import { isUserInChinaMainland } from './geoLocation'
+import { shouldPreserveNativeAudioOutput } from './platformDetect'
+
+export { shouldPreserveNativeAudioOutput }
 
 /**
  * 网易云「仅解析播放链」接口：后端 302 到 HTTPS CDN，音频字节仍直连网易。
@@ -1126,36 +1129,6 @@ export function highlightText(text: string, query: string): string {
     'gi',
   )
   return escaped.replace(regex, '<mark>$1</mark>')
-}
-
-/**
- * 移动端是否应走原生 HTMLAudio 输出（不经 Web Audio 图）。
- *
- * createMediaElementSource 会把 <audio> 输出永久劫持到 AudioContext；
- * 页面进后台时系统会 suspend AudioContext → 音乐静音/停止。
- * iOS/Android 后台播放必须保留原生媒体通路 + Media Session。
- */
-export function shouldPreserveNativeAudioOutput(): boolean {
-  if (typeof navigator === 'undefined' || typeof window === 'undefined') {
-    return false
-  }
-  const ua = navigator.userAgent || ''
-  // iPhone / iPod / 旧 iPad
-  if (/iPad|iPhone|iPod/.test(ua)) return true
-  // iPadOS 13+ 桌面 UA
-  if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) {
-    return true
-  }
-  // 粗指针移动设备（多数 Android 手机）
-  try {
-    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
-      return true
-    }
-  } catch {
-    // matchMedia 不可用时按 UA 兜底
-  }
-  if (/Android/i.test(ua)) return true
-  return false
 }
 
 /**
