@@ -248,7 +248,7 @@ function AnimatedPage({
   const location = useLocation()
   const style = animationStyle ?? 'normal'
   const animationConfig = useAnimationLevel()
-  const animationsEnabled = animationConfig.level !== 'none'
+  const animationsEnabled = animationConfig.level !== 'exlight'
 
   // 选择动画变体和包装样式
   const variants = style === 'normal' ? pageVariants : fixedPageVariants

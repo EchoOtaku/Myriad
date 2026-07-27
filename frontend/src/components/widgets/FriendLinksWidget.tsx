@@ -299,7 +299,7 @@ export const FriendLinksWidget = memo(
       if (batchCount <= 1 || batchTransitioningRef.current) return
 
       const nextIndex = (batchIndexRef.current + 1) % batchCount
-      if (anim.level === 'none' || anim.durationScale === 0) {
+      if (anim.level === 'exlight' || anim.durationScale === 0) {
         batchIndexRef.current = nextIndex
         setBatchIndex(nextIndex)
         return

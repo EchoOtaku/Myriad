@@ -860,7 +860,7 @@ const GlobalControlPanel: React.FC = () => {
       perf.isMobile ||
       perf.lowEndDevice ||
       anim.level === 'light' ||
-      anim.level === 'none'
+      anim.level === 'exlight'
 
     // ⚠️ 节流时间：防止短时间内多次事件触发重复测量
     // 🔧 加大节流时间，减少克隆测量频率

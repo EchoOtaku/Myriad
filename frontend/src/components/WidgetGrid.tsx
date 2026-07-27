@@ -275,7 +275,7 @@ const WidgetGridItem = React.memo(
     const instanceSettings = widgetType.settings || []
 
     // 使用统一动画协调系统；none 模式直接显示且不进入调度队列。
-    const animationsEnabled = anim.level !== 'none'
+    const animationsEnabled = anim.level !== 'exlight'
     const { canAnimate, onComplete } = useStaggerAnimation({
       groupId: 'widget-grid',
       index: index || 0,

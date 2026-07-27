@@ -102,15 +102,15 @@ export function useBrewAnimationConfig(): AnimationConfig & {
       return cached
     }
 
-    const isNone = baseConfig.level === 'none'
+    const isExlight = baseConfig.level === 'exlight'
     const isLight = baseConfig.level === 'light'
 
     const config = {
       ...baseConfig,
-      enableStagger: !isNone,
-      enableHover: !isNone,
-      cardDuration: isNone ? 0 : isLight ? 120 : 200,
-      readerDuration: isNone ? 0 : isLight ? 100 : 200,
+      enableStagger: !isExlight,
+      enableHover: !isExlight,
+      cardDuration: isExlight ? 0 : isLight ? 120 : 200,
+      readerDuration: isExlight ? 0 : isLight ? 100 : 200,
     }
 
     ANIM_CONFIG_CACHE.set(cacheKey, config)
@@ -167,7 +167,7 @@ export function useBrewCardStagger(
   const config = STAGGER_CONFIG[type]
 
   // 动画级别为 none 时直接显示
-  const isDisabled = animConfig.level === 'none'
+  const isDisabled = animConfig.level === 'exlight'
 
   // 使用 ref 追踪已处理的动画批次，避免重复动画
   const lastBatchIdRef = useRef(0)
@@ -298,19 +298,19 @@ export function getBrewTransition(
 ): { duration: number; ease: [number, number, number, number] } {
   const durations = {
     card:
-      animConfig.level === 'none'
+      animConfig.level === 'exlight'
         ? 0
         : animConfig.level === 'light'
           ? 0.15
           : 0.25,
     reader:
-      animConfig.level === 'none'
+      animConfig.level === 'exlight'
         ? 0
         : animConfig.level === 'light'
           ? 0.2
           : 0.4,
     fade:
-      animConfig.level === 'none'
+      animConfig.level === 'exlight'
         ? 0
         : animConfig.level === 'light'
           ? 0.1

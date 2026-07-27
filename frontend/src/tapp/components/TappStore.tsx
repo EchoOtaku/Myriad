@@ -294,7 +294,7 @@ function useHeightTransition({
     const wrapper = wrapperRef.current
     if (!wrapper) return
     wrapper.style.transition =
-      animConfig.level === 'none'
+      animConfig.level === 'exlight'
         ? ''
         : `height ${(0.25 * animConfig.durationScale).toFixed(2)}s cubic-bezier(0.4, 0, 0.2, 1)`
     applyHeight()
@@ -393,7 +393,7 @@ const UnifiedAppCard = forwardRef<
 
     // 根据动画级别计算动画属�?
     const animProps = useMemo(() => {
-      if (!animConfig || animConfig.level === 'none') {
+      if (!animConfig || animConfig.level === 'exlight') {
         return { initial: {}, animate: {}, transition: {} }
       }
       const baseDelay = index * 0.03 * animConfig.durationScale
@@ -419,11 +419,11 @@ const UnifiedAppCard = forwardRef<
     return (
       <motion.div
         ref={ref}
-        layout={animConfig?.level !== 'none'}
+        layout={animConfig?.level !== 'exlight'}
         initial={animProps.initial}
         animate={animProps.animate}
         transition={animProps.transition}
-        whileHover={animConfig?.level !== 'none' ? { y: -4 } : {}}
+        whileHover={animConfig?.level !== 'exlight' ? { y: -4 } : {}}
         whileTap={{ scale: 0.98 }}
         onClick={onOpen}
         onMouseEnter={() => setIsHovered(true)}
@@ -1763,7 +1763,7 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
   // 切换动效：进入详情向左滑（详情从右侧进入），返回反向
   const viewMotionProps = useCallback(
     (dir: 1 | -1) =>
-      animConfig.level === 'none'
+      animConfig.level === 'exlight'
         ? {}
         : {
             initial: { opacity: 0, x: 24 * dir },
@@ -1779,7 +1779,7 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
 
   // 计算模态框动画属�?
   const modalAnimProps = useMemo(() => {
-    if (animConfig.level === 'none') {
+    if (animConfig.level === 'exlight') {
       return {
         backdrop: { initial: {}, animate: {}, exit: {} },
         content: { initial: {}, animate: {}, exit: {} },
@@ -1813,7 +1813,7 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
         animate={modalAnimProps.content.animate}
         exit={modalAnimProps.content.exit}
         transition={
-          animConfig.level !== 'none'
+          animConfig.level !== 'exlight'
             ? {
                 duration: 0.2 * animConfig.durationScale,
                 type: animConfig.spring ? 'spring' : 'tween',

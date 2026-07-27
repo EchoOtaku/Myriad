@@ -102,8 +102,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   // ⚠️ 低性能模式下强制禁用所有动效
   const isLowPerformance =
     anim.level === 'exlight' ||
-    anim.level === 'light' ||
-    anim.level === 'none'
+    anim.level === 'light'
   useEvocativeWallpaper('wallpaper', {
     parallax: {
       enabled: evocativeConfig.parallax && !isLowPerformance,
@@ -293,7 +292,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           id="bg-gradient"
           className="pointer-events-none absolute inset-0 z-[2] bg-linear-to-b from-transparent from-35% via-white/40 via-55% to-white/90 to-85% transition-opacity duration-500 ease-out"
         ></div>
-        {anim.level !== 'none' && (
+        {anim.level !== 'exlight' && (
           <div className="pointer-events-none absolute inset-0 z-[3] bg-grid-pattern opacity-[0.02]"></div>
         )}
       </div>

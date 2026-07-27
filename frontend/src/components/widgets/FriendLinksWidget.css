@@ -130,15 +130,15 @@
   }
 }
 
-html[data-perf-mode='none'] .friend-links-batch-enter .friend-links-entry,
-html[data-perf-mode='none'] .friend-links-batch-exit .friend-links-entry,
-html[data-perf-mode='none']
+html[data-perf-mode='exlight'] .friend-links-batch-enter .friend-links-entry,
+html[data-perf-mode='exlight'] .friend-links-batch-exit .friend-links-entry,
+html[data-perf-mode='exlight']
   .friend-links-batch-enter
   .friend-links-entry
   > span:first-child {
   animation: none;
 }
 
-html[data-perf-mode='none'] .friend-links-square-gradient {
+html[data-perf-mode='exlight'] .friend-links-square-gradient {
   transition: none;
 }

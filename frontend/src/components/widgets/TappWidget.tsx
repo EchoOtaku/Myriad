@@ -110,7 +110,7 @@ const TappWidgetPreview = memo(
   }: {
     tappWidgetId: string
     config: WidgetComponentProps['config']
-    animLevel: 'none' | 'exlight' | 'light' | 'standard'
+    animLevel: 'exlight' | 'light' | 'standard'
   }) => {
     const { locale } = useI18n()
 

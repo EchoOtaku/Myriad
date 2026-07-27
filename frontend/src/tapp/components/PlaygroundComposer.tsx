@@ -297,7 +297,7 @@ export function PlaygroundComposer({
 }: PlaygroundComposerProps) {
   const { t, format } = useI18n()
   const animConfig = useAnimationLevel()
-  const animationsEnabled = animConfig.level !== 'none'
+  const animationsEnabled = animConfig.level !== 'exlight'
   const springTransition = animConfig.spring
     ? ({ type: 'spring', stiffness: 400, damping: 30 } as const)
     : ({ type: 'tween', duration: 0.25 * animConfig.durationScale } as const)

@@ -53,8 +53,8 @@ export const GlowBackground = memo(
     size = 'md',
     opacity,
   }: GlowBackgroundProps) => {
-    // exlight / none：不渲染光晕（静态也不画），省合成层
-    if (animLevel === 'exlight' || animLevel === 'none') {
+    // exlight：不渲染光晕（静态也不画），省合成层
+    if (animLevel === 'exlight') {
       return null
     }
 

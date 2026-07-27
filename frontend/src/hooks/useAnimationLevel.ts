@@ -14,9 +14,9 @@ import {
  * - Meets hardware bar:  low → `light`,  high → `standard`
  * - Below hardware bar:  low → `exlight`, high → `light`
  *
- * `none` is reserved for prefers-reduced-motion (not a user toggle).
+ * `prefers-reduced-motion` also resolves to `exlight` (former `none` merged in).
  */
-export type AnimationLevel = 'none' | 'exlight' | 'light' | 'standard'
+export type AnimationLevel = 'exlight' | 'light' | 'standard'
 
 /** User-facing two-way preference stored in localStorage (plus `auto`). */
 export type AnimationUserPreference = 'auto' | 'standard' | 'light'
@@ -37,17 +37,10 @@ export interface AnimationConfig {
   killAllBackdrop: boolean
 }
 
-const CONFIG_NONE: AnimationConfig = {
-  level: 'none',
-  loop: false,
-  spring: false,
-  durationScale: 0.0,
-  widgetGlow: false,
-  widgetUiRotation: false,
-  killAllBackdrop: true,
-}
-
-/** Extreme light — weak hardware "low" slot. */
+/**
+ * Minimal tier — weak-hardware "low" slot AND prefers-reduced-motion.
+ * Former `none` is fully merged here.
+ */
 const CONFIG_EXLIGHT: AnimationConfig = {
   level: 'exlight',
   loop: false,
@@ -98,16 +91,18 @@ export function meetsAnimationHardwareRequirement(
 /**
  * Map two-way user preference → effective config under current hardware.
  *
+ * - prefers-reduced-motion → always `exlight` (not overridable)
  * - `wantHigh === true`  →  capable: standard · weak: light
  * - `wantHigh === false` →  capable: light    · weak: exlight
- * - `auto` prefers the high slot of the allowed pair (legacy auto behaviour).
+ * - `auto` prefers the high slot of the allowed pair
  */
 export function resolveAnimationConfig(
   userPref: AnimationUserPreference | null | undefined,
   perf: PerformanceProfile,
 ): AnimationConfig {
+  // System reduced-motion: same minimal tier as weak-hardware "low"
   if (perf.reduceMotion) {
-    return CONFIG_NONE
+    return CONFIG_EXLIGHT
   }
 
   const capable = meetsAnimationHardwareRequirement(perf)
@@ -160,22 +155,26 @@ export function getCurrentAnimationConfig(): AnimationConfig {
   return currentAnimationConfig
 }
 
-/** 是否处于需要性能降级的模式（exlight / light / none） */
+/** 是否处于需要性能降级的模式（exlight / light） */
 export function isReducedAnimation(config?: AnimationConfig): boolean {
   const level = (config ?? currentAnimationConfig).level
-  return level === 'exlight' || level === 'light' || level === 'none'
+  return level === 'exlight' || level === 'light'
 }
 
-/** Extreme tier: no glow, no widget UI rotation, kill all backdrops. */
-export function isExlightOrNone(level?: AnimationLevel): boolean {
+/** Minimal tier (exlight): no glow, no widget UI rotation, kill all backdrops. */
+export function isExlight(level?: AnimationLevel): boolean {
   const l = level ?? currentAnimationConfig.level
-  return l === 'exlight' || l === 'none'
+  return l === 'exlight'
+}
+
+/** @deprecated use isExlight — `none` was merged into exlight */
+export function isExlightOrNone(level?: AnimationLevel): boolean {
+  return isExlight(level)
 }
 
 function syncPerfModeToDocument(level: AnimationLevel): void {
   if (typeof document === 'undefined') return
-  const root = document.documentElement
-  root.dataset.perfMode = level
+  document.documentElement.dataset.perfMode = level
 }
 
 export function useAnimationLevel(): AnimationConfig {
@@ -200,7 +199,6 @@ export function useAnimationLevel(): AnimationConfig {
     const isMobile = perf.isMobile
 
     switch (config.level) {
-      case 'none':
       case 'exlight':
         configureAnimationCoordinator({
           baseConcurrent: 4,

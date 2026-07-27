@@ -603,7 +603,7 @@ export function TappPlaygroundPage() {
   /** Avoid re-notifying the same prune event on every effect run. */
   const lastPruneNoticeKeyRef = useRef('')
 
-  const animationsEnabled = animConfig.level !== 'none'
+  const animationsEnabled = animConfig.level !== 'exlight'
   const springTransition = animConfig.spring
     ? ({ type: 'spring', stiffness: 400, damping: 30 } as const)
     : ({ type: 'tween', duration: 0.25 * animConfig.durationScale } as const)

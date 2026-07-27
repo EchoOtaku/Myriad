@@ -7,7 +7,8 @@ import { createContext, useContext, useState } from 'react'
  * - 'standard': 用户选「高」→ 达标 hardware: standard · 不达标: light
  * - 'light': 用户选「低」→ 达标 hardware: light · 不达标: exlight
  *
- * 真正的 AnimationLevel（含 exlight）见 useAnimationLevel.resolveAnimationConfig
+ * 真正的 AnimationLevel（exlight | light | standard）见 useAnimationLevel。
+ * prefers-reduced-motion 与弱机「低」档均落到 exlight（已无独立 none）。
  */
 export type AnimationPreference = 'auto' | 'standard' | 'light'
 

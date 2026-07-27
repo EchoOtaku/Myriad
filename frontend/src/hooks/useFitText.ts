@@ -172,9 +172,8 @@ export function useFitText(options: FitTextOptions): FitTextResult {
   // 低性能模式 / 低端设备：仅挂载后补测一次，不持续挂 ResizeObserver
   const reducedPerf =
     perf.lowEndDevice ||
-      anim.level === 'exlight' ||
-      anim.level === 'light' ||
-      anim.level === 'none'
+    anim.level === 'exlight' ||
+    anim.level === 'light'
   const active = enabled ?? !reducedPerf
   const marqueeAllowed = marquee !== false && active && !!anim.loop
 

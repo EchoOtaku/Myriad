@@ -86,7 +86,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
 
   // 动画配置
   const animConfig = useAnimationLevel()
-  const noAnimation = animConfig.level === 'none'
+  const noAnimation = animConfig.level === 'exlight'
 
   const [tapp, setTapp] = useState<TappInstance | null>(null)
   const [code, setCode] = useState<TappCodeStructure | null>(null)

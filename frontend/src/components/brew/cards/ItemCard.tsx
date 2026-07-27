@@ -86,7 +86,7 @@ export const ItemCard = React.memo<ItemCardProps>(
 
     // 接入动画调度器
     const { animateStyle, animConfig } = useBrewCardStagger(index, 'item')
-    const enableHover = animConfig.level !== 'none'
+    const enableHover = animConfig.level !== 'exlight'
 
     // 缓存摘要文本；短文正文仅在可能为短文时才 strip，避免长 HTML 全文占内存
     const summaryText = useMemo(

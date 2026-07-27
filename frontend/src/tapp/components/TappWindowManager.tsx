@@ -169,7 +169,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
   }) => {
     const { t, locale } = useI18n()
     const animConfig = useAnimationLevel()
-    const noAnimation = animConfig.level === 'none'
+    const noAnimation = animConfig.level === 'exlight'
     const windowTappName = window.tapp
       ? resolveManifestText(window.tapp.manifest, locale).name
       : ''
@@ -668,7 +668,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   const { t, locale } = useI18n()
   const { isAuthenticated } = useAuth()
   const animConfig = useAnimationLevel()
-  const noAnimation = animConfig.level === 'none'
+  const noAnimation = animConfig.level === 'exlight'
   const runtime = getTappRuntime()
 
   const containerRef = useRef<HTMLDivElement>(null)

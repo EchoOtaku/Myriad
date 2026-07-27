@@ -172,7 +172,7 @@ export const SourceCard = React.memo(
         animateStyle,
       } = useBrewCardStagger(index, 'source')
 
-      const enableHover = animConfig.level !== 'none'
+      const enableHover = animConfig.level !== 'exlight'
 
       const color = getSourceColor(source)
       const hasUnread = source.unread_count > 0

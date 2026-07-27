@@ -863,7 +863,7 @@ export function registerAnimationHandlers(
   bridge.registerHandler('animation.shouldAnimate', async () => {
     return {
       success: true,
-      data: (animationConfigRef?.current?.level || 'standard') !== 'none',
+      data: (animationConfigRef?.current?.level || 'standard') !== 'exlight',
     }
   })
 
@@ -888,7 +888,7 @@ export function registerAnimationHandlers(
     const cfg = animationConfigRef?.current
     if (!cfg) return { success: true, data: index * (baseDelay as number) }
     let delay = baseDelay as number
-    if (cfg.level === 'none') delay = 0
+    if (cfg.level === 'exlight') delay = 0
     else if (cfg.level === 'light') delay = (baseDelay as number) * 0.5
     return { success: true, data: index * delay * cfg.durationScale }
   })

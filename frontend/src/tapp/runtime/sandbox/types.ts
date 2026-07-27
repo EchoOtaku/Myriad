@@ -71,7 +71,7 @@ export interface BridgeMessage {
 
 /** 动画配置引用类型（与 useAnimationLevel 对齐） */
 export interface AnimationConfigRef {
-  level: 'none' | 'exlight' | 'light' | 'standard'
+  level: 'exlight' | 'light' | 'standard'
   loop: boolean
   spring: boolean
   durationScale: number

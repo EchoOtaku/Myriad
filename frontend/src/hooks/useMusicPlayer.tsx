@@ -376,8 +376,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       perf.isMobile ||
       perf.lowEndDevice ||
       anim.level === 'exlight' ||
-      anim.level === 'light' ||
-      anim.level === 'none'
+    anim.level === 'light'
     ) {
       return
     }

@@ -130,7 +130,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
     const [isHovered, setIsHovered] = useState(false)
 
     // 交错延迟完全由协调器管理；none 模式直接显示。
-    const animationsEnabled = animConfig.level !== 'none'
+    const animationsEnabled = animConfig.level !== 'exlight'
     const { canAnimate, onComplete } = useTappStagger(index, {
       enabled: animationsEnabled,
     })
@@ -181,7 +181,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
     return (
       <motion.div
         ref={ref}
-        layout={animConfig.level !== 'none'}
+        layout={animConfig.level !== 'exlight'}
         initial={animationsEnabled ? { opacity: 0, y: 20 } : false}
         animate={
           !animationsEnabled || canAnimate

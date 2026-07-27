@@ -337,7 +337,7 @@ export default function BrewReader({
     () => getBrewTransition(animConfig, 'reader'),
     [animConfig],
   )
-  const enableAnimations = animConfig.level !== 'none'
+  const enableAnimations = animConfig.level !== 'exlight'
 
   // WebKit 优化：延迟渲染内容，让入场动画先完成
   const [contentReady, setContentReady] = useState(!enableAnimations)
