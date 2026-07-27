@@ -186,8 +186,8 @@ pub fn require_bootstrap(headers: &HeaderMap) -> Result<(), (StatusCode, Json<Va
         .unwrap_or("");
 
     // 长度先比，避免把长度差异也交给常数时间比较（长度本身不是秘密）。
-    let ok = provided.len() == expected.len()
-        && provided.as_bytes().ct_eq(expected.as_bytes()).into();
+    let ok =
+        provided.len() == expected.len() && provided.as_bytes().ct_eq(expected.as_bytes()).into();
 
     if ok {
         return Ok(());

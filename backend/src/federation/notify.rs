@@ -43,13 +43,44 @@ pub async fn actor_label(db: &DatabaseConnection, actor_url: &str) -> String {
         .to_string()
 }
 
+/// True when payload is an E2E ciphertext envelope (not yet decrypted).
+fn is_e2e_ciphertext_envelope(payload: &Value) -> bool {
+    if !payload.is_object() {
+        if let Some(s) = payload.as_str() {
+            let t = s.trim();
+            return t.starts_with('{') && t.contains("ciphertext") && t.contains("algorithm");
+        }
+        return false;
+    }
+    let has_ct = payload.get("ciphertext").is_some() || payload.get("cipher_text").is_some();
+    let has_alg = payload
+        .get("algorithm")
+        .and_then(|v| v.as_str())
+        .is_some_and(|a| !a.is_empty());
+    has_ct && has_alg
+}
+
 /// 消息正文预览
 pub fn payload_preview(message_type: &str, payload: &Value) -> String {
     match message_type {
         "image" => return "📷 图片".to_string(),
         "file" | "file-meta" => return "📎 文件".to_string(),
         "system" => return "系统消息".to_string(),
+        "link" => {
+            if let Some(u) = payload
+                .get("url")
+                .or_else(|| payload.get("href"))
+                .or_else(|| payload.get("link"))
+                .and_then(|v| v.as_str())
+            {
+                return truncate(u, 160);
+            }
+        }
         _ => {}
+    }
+    // Never dump ciphertext / algorithm envelopes into the notification tray.
+    if is_e2e_ciphertext_envelope(payload) {
+        return "🔒 加密消息".to_string();
     }
     let raw = if let Some(s) = payload.as_str() {
         s.to_string()
@@ -59,10 +90,21 @@ pub fn payload_preview(message_type: &str, payload: &Value) -> String {
         t.to_string()
     } else if let Some(n) = payload.get("name").and_then(|v| v.as_str()) {
         n.to_string()
+    } else if let Some(u) = payload
+        .get("url")
+        .or_else(|| payload.get("href"))
+        .or_else(|| payload.get("link"))
+        .and_then(|v| v.as_str())
+    {
+        u.to_string()
     } else if payload.is_null() {
         "新消息".to_string()
     } else {
         let s = payload.to_string();
+        // Suppress crypto-looking JSON leftovers
+        if s.contains("ciphertext") && s.contains("algorithm") {
+            return "🔒 加密消息".to_string();
+        }
         if s.len() > 120 {
             format!("{}…", &s[..117])
         } else {
@@ -495,6 +537,22 @@ mod tests {
         let preview = payload_preview("text", &json!(long));
         assert!(preview.ends_with('…'));
         assert!(preview.chars().count() <= 160);
+        // Ciphertext envelopes must not leak into notification body
+        assert_eq!(
+            payload_preview(
+                "text",
+                &json!({
+                    "algorithm": "x25519-chacha20poly1305",
+                    "ciphertext": "abc123",
+                    "ephemeral_key": "xyz"
+                })
+            ),
+            "🔒 加密消息"
+        );
+        assert_eq!(
+            payload_preview("link", &json!({"url": "https://example.com/a"})),
+            "https://example.com/a"
+        );
     }
 
     #[test]

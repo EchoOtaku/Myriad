@@ -86,6 +86,8 @@ mod tests {
             let mut f = OpenOptions::new()
                 .create(true)
                 .write(true)
+                // 显式声明：这里就是要从头写一个超限文件来触发轮转
+                .truncate(true)
                 .open(&path)
                 .unwrap();
             let chunk = vec![b'x'; MAX_AUDIT_BYTES as usize + 1];

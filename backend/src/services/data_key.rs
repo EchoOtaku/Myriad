@@ -111,8 +111,7 @@ impl DataKey {
 
     /// 加密为 `myriad-enc:v1:<nonce>:<ct>`
     pub fn encrypt(&self, plaintext: &str) -> Result<String> {
-        let cipher =
-            Aes256Gcm::new_from_slice(&self.key).context("Failed to create AES cipher")?;
+        let cipher = Aes256Gcm::new_from_slice(&self.key).context("Failed to create AES cipher")?;
         let nonce_bytes = rand::random::<[u8; AES_NONCE_LEN]>();
         let ciphertext = cipher
             .encrypt(&Nonce::from(nonce_bytes), plaintext.as_bytes())
@@ -141,10 +140,11 @@ impl DataKey {
             .context("Failed to decode nonce")?
             .try_into()
             .map_err(|_| anyhow!("Invalid nonce length"))?;
-        let ciphertext = BASE64.decode(ct_b64).context("Failed to decode ciphertext")?;
+        let ciphertext = BASE64
+            .decode(ct_b64)
+            .context("Failed to decode ciphertext")?;
 
-        let cipher =
-            Aes256Gcm::new_from_slice(&self.key).context("Failed to create AES cipher")?;
+        let cipher = Aes256Gcm::new_from_slice(&self.key).context("Failed to create AES cipher")?;
         let plaintext = cipher
             .decrypt(&Nonce::from(nonce_bytes), ciphertext.as_ref())
             .map_err(|e| anyhow!("AES-GCM decryption failed: {e}"))?;
@@ -373,9 +373,7 @@ pub async fn migrate_plaintext_config_values(
     if data_key().source().is_fallback() {
         // 兜底密钥仍然绑在 JWT_SECRET 上。此时加密只会把"明文风险"换成
         // "轮换即失数据"的风险，得不偿失 —— 等运维修好密钥文件再迁。
-        tracing::warn!(
-            "Skipping configuration encryption migration: data key is in fallback mode"
-        );
+        tracing::warn!("Skipping configuration encryption migration: data key is in fallback mode");
         return Ok(0);
     }
 

@@ -25,6 +25,47 @@ use super::{NormalizedProfile, OAuthProvider, ProviderKind, ProviderTokens};
 
 const DISCOVERY_TTL: Duration = Duration::from_secs(24 * 3600);
 
+/// OIDC 出站请求的超时与响应体上限。
+///
+/// discovery / JWKS / userinfo / token 都是小 JSON；给足余量即可。
+const OIDC_HTTP_TIMEOUT: Duration = Duration::from_secs(15);
+const OIDC_MAX_BODY: usize = 512 * 1024;
+
+/// 为一个 OIDC 端点构造受 SSRF 约束的客户端。
+///
+/// # 为什么必须走这里
+///
+/// `discovery_url` 由管理员配置（半可信），但 **`jwks_uri` / `token_endpoint` /
+/// `userinfo_endpoint` 来自 discovery 响应本身** —— 也就是说远端 provider 决定
+/// 我们下一跳连到哪里。一个恶意或被攻陷的 provider 可以把它们指向
+/// `http://169.254.169.254/` 或内网地址，用我们的后端当跳板。
+///
+/// [`build_public_http_client`] 会解析域名、逐个校验解析出的地址公网可路由、
+/// 把 DNS 结果 pin 住并禁用重定向，堵死 DNS 重绑定与重定向两条路。
+///
+/// **行为变化**：禁用重定向。OIDC 端点通常不重定向；若某个 provider 依赖
+/// 重定向，需要逐跳校验后为每跳单独建客户端，而不是放开这里。
+async fn oidc_client(url: &str) -> Result<(url::Url, reqwest::Client), String> {
+    crate::services::outbound_security::build_public_http_client(
+        url,
+        OIDC_HTTP_TIMEOUT,
+        Some("Myriad-OIDC"),
+    )
+    .await
+    .map_err(|e| format!("OIDC endpoint rejected by outbound policy ({url}): {e}"))
+}
+
+/// 读取受限长度的响应体并按 JSON 解析。
+async fn oidc_json<T: serde::de::DeserializeOwned>(
+    resp: reqwest::Response,
+    what: &str,
+) -> Result<T, String> {
+    let bytes = crate::services::outbound_security::read_limited_body(resp, OIDC_MAX_BODY)
+        .await
+        .map_err(|e| format!("OIDC {what} body rejected: {e}"))?;
+    serde_json::from_slice(&bytes).map_err(|e| format!("OIDC {what} JSON parse failed: {e:?}"))
+}
+
 /// OIDC discovery 文档（只保留我们用得到的字段）
 #[derive(Debug, Clone, Deserialize)]
 struct DiscoveryDoc {
@@ -88,15 +129,13 @@ impl OidcProvider {
         }
 
         tracing::debug!("🔄 Refreshing OIDC discovery for {}", self.slug);
-        let http = crate::services::http_client::get_global_client().await;
-        let doc: DiscoveryDoc = http
-            .get(&self.discovery_url)
+        let (endpoint, http) = oidc_client(&self.discovery_url).await?;
+        let resp = http
+            .get(endpoint)
             .send()
             .await
-            .map_err(|e| format!("OIDC discovery GET failed: {e:?}"))?
-            .json()
-            .await
-            .map_err(|e| format!("OIDC discovery JSON parse failed: {e:?}"))?;
+            .map_err(|e| format!("OIDC discovery GET failed: {e:?}"))?;
+        let doc: DiscoveryDoc = oidc_json(resp, "discovery").await?;
 
         let mut guard = self.cache.write().await;
         *guard = Some(DiscoveryCache {
@@ -124,9 +163,10 @@ impl OidcProvider {
             .jwks_uri
             .as_deref()
             .ok_or_else(|| "OIDC discovery missing 'jwks_uri'".to_string())?;
-        let http = crate::services::http_client::get_global_client().await;
+        // jwks_uri 来自 discovery 响应 —— 由远端决定，必须走 SSRF 策略
+        let (endpoint, http) = oidc_client(jwks_uri).await?;
         let resp = http
-            .get(jwks_uri)
+            .get(endpoint)
             .send()
             .await
             .map_err(|e| format!("OIDC JWKS GET failed: {e:?}"))?;
@@ -212,7 +252,8 @@ impl OAuthProvider for OidcProvider {
         redirect_uri: &str,
     ) -> Result<ProviderTokens, String> {
         let doc = self.discovery().await?;
-        let http = crate::services::http_client::get_global_client().await;
+        // token_endpoint 同样来自 discovery 响应
+        let (endpoint, http) = oidc_client(&doc.token_endpoint).await?;
 
         let params = [
             ("grant_type", "authorization_code"),
@@ -230,7 +271,7 @@ impl OAuthProvider for OidcProvider {
         }
 
         let resp = http
-            .post(&doc.token_endpoint)
+            .post(endpoint)
             .header("Accept", "application/json")
             .form(&params)
             .send()
@@ -243,10 +284,7 @@ impl OAuthProvider for OidcProvider {
             return Err(format!("OIDC token endpoint returned {status}: {body}"));
         }
 
-        let token: TokenResp = resp
-            .json()
-            .await
-            .map_err(|e| format!("OIDC token JSON parse failed: {e:?}"))?;
+        let token: TokenResp = oidc_json(resp, "token").await?;
 
         Ok(ProviderTokens {
             access_token: token.access_token,
@@ -267,15 +305,15 @@ impl OAuthProvider for OidcProvider {
             _ => {
                 let doc = self.discovery().await?;
                 if let Some(url) = doc.userinfo_endpoint.as_ref() {
-                    let http = crate::services::http_client::get_global_client().await;
-                    http.get(url)
+                    // userinfo_endpoint 也来自 discovery 响应
+                    let (endpoint, http) = oidc_client(url).await?;
+                    let resp = http
+                        .get(endpoint)
                         .bearer_auth(&tokens.access_token)
                         .send()
                         .await
-                        .map_err(|e| format!("OIDC userinfo GET failed: {e:?}"))?
-                        .json::<serde_json::Value>()
-                        .await
-                        .map_err(|e| format!("OIDC userinfo parse failed: {e:?}"))?
+                        .map_err(|e| format!("OIDC userinfo GET failed: {e:?}"))?;
+                    oidc_json::<serde_json::Value>(resp, "userinfo").await?
                 } else {
                     id_claims.clone()
                 }
@@ -426,4 +464,48 @@ fn validate_authorized_party(claims: &serde_json::Value, client_id: &str) -> Res
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod outbound_policy_tests {
+    /// OAuth 的每一条出站请求都必须经过 `outbound_security`。
+    ///
+    /// # 为什么用源码断言
+    ///
+    /// OIDC 的 `jwks_uri` / `token_endpoint` / `userinfo_endpoint` **来自 discovery
+    /// 响应本身** —— 远端 provider 决定我们下一跳连哪里。任何一处退回裸
+    /// `reqwest::Client` 或全局客户端，就重新打开一条「provider 指哪我们打哪」
+    /// 的 SSRF 通道，而且不会有任何编译期信号。
+    ///
+    /// 类型系统表达不了「这个 Client 是受策略约束的那个」，所以对源码断言。
+    #[test]
+    fn oauth_modules_never_use_an_unrestricted_http_client() {
+        for (name, src) in [
+            ("oidc.rs", include_str!("oidc.rs")),
+            ("github.rs", include_str!("github.rs")),
+        ] {
+            // 去掉测试模块自身与所有注释：断言的是**代码**，不是文档里
+            // 提到的字面量（否则解释"为什么不用裸客户端"的注释会自己触发）。
+            let code: String = src
+                .split("#[cfg(test)]")
+                .next()
+                .unwrap_or(src)
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let code = code.as_str();
+
+            assert!(
+                !code.contains("get_global_client"),
+                "{name}: the shared client has no SSRF policy, DNS pinning, or body \
+                 limit — route OAuth traffic through outbound_security instead"
+            );
+            assert!(
+                !code.contains("reqwest::Client::new()"),
+                "{name}: a bare reqwest client follows redirects and buffers unbounded \
+                 bodies — route it through outbound_security::build_public_http_client"
+            );
+        }
+    }
 }

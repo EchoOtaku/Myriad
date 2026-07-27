@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(
   readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
 )
-const APP_VERSION = pkg.version || '0.3.13'
+const APP_VERSION = pkg.version || '0.3.14'
 
 /**
  * 自定义 Vite 插件：SPA 路由回退
@@ -677,7 +677,18 @@ export default defineConfig({
       __APP_VERSION__: JSON.stringify(APP_VERSION),
     },
     optimizeDeps: {
-      include: ['jszip'],
+      // Pre-bundle deps used by lazy routes (Tapp detail / playground).
+      // Discovering them mid-session triggers "504 Outdated Optimize Dep" and
+      // breaks React.lazy chunks like TappDetailView until a full hard reload.
+      include: [
+        'jszip',
+        'prismjs',
+        'prismjs/components/prism-json',
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react-router-dom',
+      ],
     },
     plugins: [
       tailwindcss(), // Tailwind CSS v4 Vite plugin

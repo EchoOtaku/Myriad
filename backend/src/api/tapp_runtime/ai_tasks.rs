@@ -1324,7 +1324,8 @@ async fn execute_task(execution: AiTaskExecution) {
 
     match outcome {
         Ok((result, input_tokens, output_tokens)) => {
-            if let Err(error) = settle_ai_quota(&db, &reservation, input_tokens + output_tokens).await
+            if let Err(error) =
+                settle_ai_quota(&db, &reservation, input_tokens + output_tokens).await
             {
                 tracing::error!(?error, task_id, "[TAPP] Failed to settle AI Task quota");
             }

@@ -428,7 +428,8 @@ pub async fn leave_ring(
                             DatabaseBackend::Postgres,
                             r#"INSERT INTO federation_delivery_queue
                                (activity_id, target_inbox, target_domain, status, created_at)
-                               VALUES ($1, $2, $3, 'pending', NOW())"#,
+                               VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                             [act_id.into(), remote.inbox_url.into(), domain.into()],
                         ))
                         .await;
@@ -601,7 +602,8 @@ pub async fn add_peer(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
                        (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                       VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                     [act_id.into(), remote.inbox_url.into(), domain.into()],
                 ))
                 .await;
@@ -684,7 +686,8 @@ pub async fn remove_peer(
                             DatabaseBackend::Postgres,
                             r#"INSERT INTO federation_delivery_queue
                                (activity_id, target_inbox, target_domain, status, created_at)
-                               VALUES ($1, $2, $3, 'pending', NOW())"#,
+                               VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                             [act_id.into(), remote.inbox_url.into(), domain.into()],
                         ))
                         .await;
@@ -848,7 +851,8 @@ pub async fn trigger_sync(
                             DatabaseBackend::Postgres,
                             r#"INSERT INTO federation_delivery_queue
                                (activity_id, target_inbox, target_domain, status, created_at)
-                               VALUES ($1, $2, $3, 'pending', NOW())"#,
+                               VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                             [act_id.into(), remote.inbox_url.into(), domain.into()],
                         ))
                         .await;
@@ -1540,7 +1544,8 @@ pub async fn handle_ring_sync(
                 DatabaseBackend::Postgres,
                 r#"INSERT INTO federation_timeline
                    (user_id, activity_id, activity_type, object_type, content_preview, content_json, received_at)
-                   VALUES ($1, $2, 'Create', $3, $4, $5, NOW())"#,
+                   VALUES ($1, $2, 'Create', $3, $4, $5, NOW())
+                   ON CONFLICT (user_id, activity_id) DO NOTHING"#,
                 [
                     first_user.into(),
                     activity_id_val.into(),
@@ -1655,7 +1660,8 @@ pub async fn handle_ring_sync(
                                             DatabaseBackend::Postgres,
                                             r#"INSERT INTO federation_delivery_queue
                                                (activity_id, target_inbox, target_domain, status, created_at)
-                                               VALUES ($1, $2, $3, 'pending', NOW())"#,
+                                               VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                                             [act_id.into(), remote.inbox_url.into(), domain.into()],
                                         ))
                                         .await;

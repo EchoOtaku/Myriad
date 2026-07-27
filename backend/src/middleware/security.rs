@@ -90,7 +90,9 @@ pub async fn security_headers_middleware(req: Request, next: Next) -> Response {
     // 字符串须与 proxy PERMISSIONS_POLICY / frontend serve.json 保持一致。
     headers.insert(
         "Permissions-Policy".parse::<header::HeaderName>().unwrap(),
-        "geolocation=(self), microphone=(), camera=()".parse().unwrap(),
+        "geolocation=(self), microphone=(), camera=()"
+            .parse()
+            .unwrap(),
     );
 
     // Strict-Transport-Security: 强制HTTPS（仅生产环境）

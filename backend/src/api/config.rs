@@ -3858,7 +3858,9 @@ pub async fn test_platform(
 /// 获取公开的网站元数据（不需要认证）
 /// 直接从环境变量读取（配置保存时已经写入 .env 并重新加载）
 /// 优先级：.env 文件（通过 save_all_configs 保存） > 默认值
-pub async fn get_site_metadata(crate::extract::Db(db): crate::extract::Db) -> (StatusCode, Json<Value>) {
+pub async fn get_site_metadata(
+    crate::extract::Db(db): crate::extract::Db,
+) -> (StatusCode, Json<Value>) {
     // 优先从数据库读取站点元数据配置
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     let db_config = config_service.load_config().await.ok();
@@ -3904,7 +3906,9 @@ pub async fn get_site_metadata(crate::extract::Db(db): crate::extract::Db) -> (S
 
 /// 获取公开的平台配置（不包含敏感信息，仅用于社交链接显示）
 /// 🔓 公开端点 - 不需要认证
-pub async fn get_public_config(crate::extract::Db(db): crate::extract::Db) -> (StatusCode, Json<Value>) {
+pub async fn get_public_config(
+    crate::extract::Db(db): crate::extract::Db,
+) -> (StatusCode, Json<Value>) {
     // 优先从数据库读取配置
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     let db_config = config_service.load_config().await.ok();

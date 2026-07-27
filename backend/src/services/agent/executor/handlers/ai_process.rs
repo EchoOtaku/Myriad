@@ -181,10 +181,7 @@ fn with_system_guidance(params: &HashMap<String, Value>, prompt: String) -> Stri
         .map(str::trim)
         .filter(|s| !s.is_empty())
     {
-        Some(sys) => format!(
-            "【补充指令 / 上下文（优先遵循）】\n{}\n\n{}",
-            sys, prompt
-        ),
+        Some(sys) => format!("【补充指令 / 上下文（优先遵循）】\n{}\n\n{}", sys, prompt),
         None => prompt,
     }
 }

@@ -59,6 +59,30 @@ impl TokenBucket {
 }
 
 // 全局代理限流器映射 (域名 -> 令牌桶)
+/// 音频代理的响应体上限。
+///
+/// 原实现直接 `bytes()`，**完全没有上限** —— 上游返回多大就往内存里读多大。
+/// 128 MiB 足以覆盖无损单曲（FLAC 一首约 30–60 MB），同时把单个请求的
+/// 内存占用封死。
+/// 上游 JSON 元数据的响应体上限。
+///
+/// 这些都是歌单/歌词/地理位置之类的小 JSON。`resp.json()` 会无界缓冲，
+/// 上游被劫持或故障时是一条内存放大路径。
+const MAX_UPSTREAM_JSON_BYTES: usize = 2 * 1024 * 1024;
+
+/// 限长读取并解析 JSON。
+///
+/// 语义与 `resp.json::<Value>()` 一致（成功给 Value，失败给 Err），
+/// 只是先把体积封顶。
+async fn read_limited_json(resp: reqwest::Response) -> Result<Value, String> {
+    let bytes =
+        crate::services::outbound_security::read_limited_body(resp, MAX_UPSTREAM_JSON_BYTES)
+            .await?;
+    serde_json::from_slice(&bytes).map_err(|e| format!("Invalid JSON from upstream: {e}"))
+}
+
+const MAX_AUDIO_BYTES: usize = 128 * 1024 * 1024;
+
 static PROXY_LIMITERS: Lazy<Arc<Mutex<HashMap<String, TokenBucket>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 
@@ -280,26 +304,28 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
     }
 
     // 获取图片数据，限制大小为 10MB
-    let image_data = match response.bytes().await {
-        Ok(data) => {
-            // ✅ P2 安全增强：限制图片大小，防止内存耗尽
-            // Hard reject oversized payloads (DoS), not soft-fail — body is already buffered.
-            if data.len() > 10 * 1024 * 1024 {
-                tracing::warn!(
-                    "🚨 Rejected proxy request: Image too large ({} bytes)",
-                    data.len()
-                );
-                return (
-                    StatusCode::PAYLOAD_TOO_LARGE,
-                    "Image size exceeds 10MB limit",
-                )
-                    .into_response();
-            }
-            data
-        }
+    // 流式读取并封顶。
+    //
+    // 原实现是 `response.bytes()` 先把整个响应缓冲进内存、再判断是否超过
+    // 10 MiB —— 上限拦不住内存消耗，只是在事后拒绝。白名单域名被攻陷或
+    // 单纯故障时，一个 500 MB 的响应会先被完整读进来。
+    //
+    // `read_limited_body` 逐块累加、一超限就中断，内存占用真正有界。
+    const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+    let image_data = match crate::services::outbound_security::read_limited_body(
+        response,
+        MAX_IMAGE_BYTES,
+    )
+    .await
+    {
+        Ok(data) => data,
         Err(e) => {
-            tracing::debug!(%url, error = %e, "Image proxy failed to read body");
-            return soft_fail_placeholder("failed to read image body", &url);
+            tracing::warn!(%url, error = %e, "🚨 Image proxy body rejected");
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "Image size exceeds the 10MB limit or could not be read",
+            )
+                .into_response();
         }
     };
 
@@ -781,7 +807,12 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
                         .unwrap_or("audio/mpeg")
                         .to_string();
 
-                    match audio_resp.bytes().await {
+                    match crate::services::outbound_security::read_limited_body(
+                        audio_resp,
+                        MAX_AUDIO_BYTES,
+                    )
+                    .await
+                    {
                         Ok(audio_data) => (
                             StatusCode::OK,
                             [
@@ -1041,7 +1072,9 @@ pub async fn proxy_qq_audio(Path(song_mid): Path<String>) -> Response {
                 .unwrap_or("audio/mpeg")
                 .to_string();
 
-            match audio_resp.bytes().await {
+            match crate::services::outbound_security::read_limited_body(audio_resp, MAX_AUDIO_BYTES)
+                .await
+            {
                 Ok(audio_data) => (
                     StatusCode::OK,
                     [
@@ -1125,7 +1158,7 @@ pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
         .send()
         .await
     {
-        Ok(resp) => match resp.json::<Value>().await {
+        Ok(resp) => match read_limited_json(resp).await {
             Ok(mut data) => {
                 // QQ 匿名接口不返回可靠 VIP 字段；按 payplay 粗略标注（播放链仍以 audio 代理实测为准）
                 if let Some(cdlist) = data.get_mut("cdlist") {
@@ -1241,7 +1274,7 @@ pub async fn get_client_geo(
 
         // 方案1: 使用 ipify.org 获取服务器公网IP
         if let Ok(resp) = client.get("https://api.ipify.org?format=json").send().await {
-            if let Ok(data) = resp.json::<Value>().await {
+            if let Ok(data) = read_limited_json(resp).await {
                 if let Some(ip) = data.get("ip").and_then(|v| v.as_str()) {
                     tracing::info!("Server public IP from ipify: {}", ip);
                     ip.to_string()
@@ -1254,7 +1287,12 @@ pub async fn get_client_geo(
         } else {
             // 方案2: 使用 icanhazip.com
             if let Ok(resp) = client.get("https://icanhazip.com").send().await {
-                if let Ok(text) = resp.text().await {
+                // 期望的响应就是一行 IP。限到 1 KiB：这个端点被劫持或故障时
+                // 不该能把任意大小的响应读进内存。
+                if let Ok(bytes) =
+                    crate::services::outbound_security::read_limited_body(resp, 1024).await
+                {
+                    let text = String::from_utf8_lossy(&bytes);
                     let ip = text.trim().to_string();
                     tracing::info!("Server public IP from icanhazip: {}", ip);
                     ip
@@ -1280,7 +1318,7 @@ pub async fn get_client_geo(
     );
 
     if let Ok(resp) = client.get(&url1).send().await {
-        if let Ok(mut data) = resp.json::<Value>().await {
+        if let Ok(mut data) = read_limited_json(resp).await {
             if data.get("status").and_then(|s| s.as_str()) == Some("success") {
                 tracing::info!(
                     "Geolocation success via ip-api.com for IP {}: city={}, region={}, country={}",
@@ -1313,7 +1351,7 @@ pub async fn get_client_geo(
     let url2 = format!("https://ipapi.co/{}/json/", target_ip);
 
     if let Ok(resp) = client.get(&url2).send().await {
-        if let Ok(data) = resp.json::<Value>().await {
+        if let Ok(data) = read_limited_json(resp).await {
             if let (Some(lat), Some(lon)) = (
                 data.get("latitude").and_then(|v| v.as_f64()),
                 data.get("longitude").and_then(|v| v.as_f64()),
@@ -1354,7 +1392,7 @@ pub async fn get_client_geo(
     let url3 = format!("https://get.geojs.io/v1/ip/geo/{}.json", target_ip);
 
     if let Ok(resp) = client.get(&url3).send().await {
-        if let Ok(data) = resp.json::<Value>().await {
+        if let Ok(data) = read_limited_json(resp).await {
             if let (Some(lat_str), Some(lon_str)) = (
                 data.get("latitude").and_then(|v| v.as_str()),
                 data.get("longitude").and_then(|v| v.as_str()),
@@ -1475,7 +1513,7 @@ pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
         .send()
         .await
     {
-        Ok(resp) => match resp.json::<Value>().await {
+        Ok(resp) => match read_limited_json(resp).await {
             Ok(data) => {
                 // 存入缓存
                 {
@@ -1712,20 +1750,13 @@ pub async fn fetch_web_content(Query(params): Query<FetchWebContentQuery>) -> Re
                     .into_response();
             }
 
-            match resp.text().await {
+            // 流式限长：`resp.text()` 会先缓冲整页再判断大小，上限拦不住内存消耗。
+            const MAX_PAGE_BYTES: usize = 5 * 1024 * 1024;
+            match crate::services::outbound_security::read_limited_body(resp, MAX_PAGE_BYTES)
+                .await
+                .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+            {
                 Ok(html) => {
-                    // 限制大小（最大 5MB）
-                    if html.len() > 5 * 1024 * 1024 {
-                        return (
-                            StatusCode::PAYLOAD_TOO_LARGE,
-                            Json(json!({
-                                "error": "Page too large",
-                                "fallbackUrl": url
-                            })),
-                        )
-                            .into_response();
-                    }
-
                     // 提取文章内容
                     let extracted = extract_article_content(&html, url);
 
@@ -2061,4 +2092,40 @@ fn extract_domain_from_url_simple(url: &str) -> Option<String> {
         .trim_start_matches("www.");
 
     url.split('/').next().map(|s| s.to_string())
+}
+
+#[cfg(test)]
+mod unbounded_read_tests {
+    /// 代理模块不得存在无界的上游响应读取。
+    ///
+    /// `resp.bytes()` / `resp.text()` / `resp.json()` 都会把整个响应缓冲进内存。
+    /// 这些端点连的是上游 CDN 与第三方 API：对方被劫持、故障，或单纯返回了
+    /// 一个超大响应，都会变成本进程的内存放大 —— 而这里有**公开未认证**的
+    /// 图片代理。
+    ///
+    /// 之前的写法是先 `bytes()` 再判断长度，代码注释自己承认
+    /// "body is already buffered"：上限只能事后拒绝，拦不住内存消耗。
+    ///
+    /// 类型系统区分不了「这次读取有上限」，所以对源码断言。
+    #[test]
+    fn proxy_never_buffers_an_upstream_body_without_a_cap() {
+        let src = include_str!("proxy.rs");
+        let code: String = src
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap_or(src)
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        for pattern in [".bytes().await", ".text().await", ".json::<"] {
+            assert!(
+                !code.contains(pattern),
+                "unbounded `{pattern}` in proxy.rs — use \
+                 outbound_security::read_limited_body (or read_limited_json) so the \
+                 cap actually bounds memory instead of rejecting after the fact"
+            );
+        }
+    }
 }

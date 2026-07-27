@@ -1201,11 +1201,8 @@ pub async fn announce_object(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_timeline
                    (user_id, activity_id, remote_actor_id, activity_type, object_type, content_preview, content_json, received_at)
-               SELECT $1, $2, NULL, 'Create', 'repost', $3, $4, NOW()
-               WHERE NOT EXISTS (
-                   SELECT 1 FROM federation_timeline
-                   WHERE user_id = $1 AND activity_id = $2
-               )"#,
+               VALUES ($1, $2, NULL, 'Create', 'repost', $3, $4, NOW())
+               ON CONFLICT (user_id, activity_id) DO NOTHING"#,
             [
                 user_id.into(),
                 activity_id.clone().into(),
@@ -1455,13 +1452,13 @@ async fn deliver_to_object_author(
     let _ = db
         .execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
+            // 去重交给 (activity_id, target_inbox) 唯一索引。
+            // 原先的 `WHERE NOT EXISTS` 是先查后插，两个并发请求可以同时通过
+            // 检查再双双插入 —— 正是唯一约束要消除的竞态。
             r#"INSERT INTO federation_delivery_queue
                    (activity_id, target_inbox, target_domain, status, created_at)
-               SELECT $1, $2, $3, 'pending', NOW()
-               WHERE NOT EXISTS (
-                   SELECT 1 FROM federation_delivery_queue
-                   WHERE activity_id = $1 AND target_inbox = $2 AND status = 'pending'
-               )"#,
+               VALUES ($1, $2, $3, 'pending', NOW())
+               ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
             [activity_db_id.into(), inbox.into(), domain.into()],
         ))
         .await;

@@ -8,25 +8,113 @@
 //!   2. Pull proxy image and verify digest when present in manifest
 //!   3. Rewrite `.env` `PROXY_TAG`
 //!   4. `docker compose up -d --no-deps proxy` via the policy docker-guard
+//!   5. Probe `/healthz` on the compose network; on failure restore `PROXY_TAG`
+//!      and recreate the previous proxy image
 //!
 //! Brief downtime (<10s) is expected while the edge container recreates.
+//! Durable outcome: `state/proxy-update-last.json` (mirrors self-update-last).
 
+use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::release::GithubClient;
+use crate::state::atomic;
 use crate::version::{DeployTag, DeployTagKind, UpdateMode};
 use crate::worker::Worker;
 
-#[derive(Debug, Clone, serde::Serialize)]
+/// File under the deployment state root.
+pub const PROXY_UPDATE_LAST_FILE: &str = "proxy-update-last.json";
+
+/// How long to wait for proxy `/healthz` after recreate before rolling back.
+const PROXY_HEALTH_DEADLINE: Duration = Duration::from_secs(25);
+const PROXY_HEALTH_INTERVAL: Duration = Duration::from_secs(1);
+const PROXY_HEALTH_PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Compose service DNS + container_name (either may resolve depending on network aliases).
+const PROXY_HEALTH_URLS: &[&str] = &[
+    "http://proxy:80/healthz",
+    "http://myriad-proxy:80/healthz",
+];
+const PROXY_CONTAINER_NAMES: &[&str] = &["myriad-proxy", "proxy"];
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ProxyUpdateReport {
     pub previous_proxy_tag: String,
     pub new_proxy_tag: String,
     pub image_ref: String,
     pub pulled_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxyUpdateOutcome {
+    Succeeded,
+    Failed,
+}
+
+/// Durable last proxy-update outcome (`state/proxy-update-last.json`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ProxyUpdateLastStatus {
+    pub status: ProxyUpdateOutcome,
+    pub target_tag: String,
+    pub previous_tag: String,
+    /// RFC3339 UTC.
+    pub at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// True when compose failed or health failed and we restored `PROXY_TAG`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub rolled_back: bool,
+}
+
+impl ProxyUpdateLastStatus {
+    pub fn succeeded(previous_tag: &str, target_tag: &str) -> Self {
+        Self {
+            status: ProxyUpdateOutcome::Succeeded,
+            target_tag: target_tag.to_string(),
+            previous_tag: previous_tag.to_string(),
+            at: Utc::now().to_rfc3339(),
+            error: None,
+            rolled_back: false,
+        }
+    }
+
+    pub fn failed(
+        previous_tag: &str,
+        target_tag: &str,
+        error: impl Into<String>,
+        rolled_back: bool,
+    ) -> Self {
+        Self {
+            status: ProxyUpdateOutcome::Failed,
+            target_tag: target_tag.to_string(),
+            previous_tag: previous_tag.to_string(),
+            at: Utc::now().to_rfc3339(),
+            error: Some(error.into()),
+            rolled_back,
+        }
+    }
+}
+
+pub fn write_proxy_update_last(state_root: &Path, status: &ProxyUpdateLastStatus) -> Result<()> {
+    let path = state_root.join(PROXY_UPDATE_LAST_FILE);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    atomic::write_atomic_json(&path, status)
+}
+
+pub fn read_proxy_update_last(state_root: &Path) -> Option<ProxyUpdateLastStatus> {
+    let path = state_root.join(PROXY_UPDATE_LAST_FILE);
+    let raw = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&raw).ok()
 }
 
 /// Resolved proxy target before pull/rewrite.
@@ -53,7 +141,6 @@ pub async fn run(
         "proxy-update: resolved target"
     );
 
-    // Skip no-op when PROXY_TAG already matches and digest is already local.
     let previous_tag = {
         let env = EnvFile::load(&worker.cli().env_file)?;
         env.get("PROXY_TAG").unwrap_or_default().to_string()
@@ -89,15 +176,56 @@ pub async fn run(
     let compose = crate::worker::update::build_compose_runner_pub(&worker).await?;
     let up = compose.up_detached(&["proxy"]).await?;
     if !up.ok() {
-        // Restore previous tag so a failed recreate does not leave .env advanced.
-        let mut env = EnvFile::load(&worker.cli().env_file)?;
-        env.set("PROXY_TAG", &previous_tag)?;
-        env.save()?;
-        return Err(UpdaterError::Internal(anyhow::anyhow!(
-            "compose up proxy failed: {}",
-            up.error_summary()
-        )));
+        let compose_err = up.error_summary();
+        let rolled_back = restore_proxy_tag(&previous_tag, worker.as_ref()).is_ok();
+        // Best-effort bring previous image back if we rewrote .env.
+        if rolled_back && !previous_tag.is_empty() {
+            let _ = compose.up_detached(&["proxy"]).await;
+        }
+        let msg = format!("compose up proxy failed: {compose_err}");
+        let _ = write_proxy_update_last(
+            worker.state().root(),
+            &ProxyUpdateLastStatus::failed(&previous_tag, &resolved.tag, &msg, rolled_back),
+        );
+        return Err(UpdaterError::Internal(anyhow::anyhow!(msg)));
     }
+
+    // Compose exit 0 is not enough — wait for /healthz; otherwise roll back tag.
+    if let Err(health_err) = wait_proxy_healthy(worker.as_ref()).await {
+        warn!(err = %health_err, "proxy-update: health probe failed; rolling back PROXY_TAG");
+        let mut parts = vec![health_err.to_string()];
+        let mut rolled_back = false;
+        match restore_proxy_tag(&previous_tag, worker.as_ref()) {
+            Ok(()) => {
+                rolled_back = true;
+                parts.push(format!("restored PROXY_TAG to {previous_tag}"));
+                match compose.up_detached(&["proxy"]).await {
+                    Ok(rollback_up) if rollback_up.ok() => {
+                        parts.push("recreated proxy with previous tag".into());
+                    }
+                    Ok(rollback_up) => {
+                        parts.push(format!(
+                            "previous-tag compose failed: {}",
+                            rollback_up.error_summary()
+                        ));
+                    }
+                    Err(e) => parts.push(format!("previous-tag compose error: {e}")),
+                }
+            }
+            Err(e) => parts.push(format!("FAILED to restore PROXY_TAG: {e}")),
+        }
+        let combined = parts.join("; ");
+        let _ = write_proxy_update_last(
+            worker.state().root(),
+            &ProxyUpdateLastStatus::failed(&previous_tag, &resolved.tag, &combined, rolled_back),
+        );
+        return Err(UpdaterError::Precondition(combined));
+    }
+
+    let _ = write_proxy_update_last(
+        worker.state().root(),
+        &ProxyUpdateLastStatus::succeeded(&previous_tag, &resolved.tag),
+    );
 
     let actor_suffix = actor
         .as_deref()
@@ -109,7 +237,7 @@ pub async fn run(
     );
     worker.state().append_history(&audit)?;
     let _ = worker.state().append_audit(&audit);
-    info!(%resolved.tag, "proxy-update: proxy recreated");
+    info!(%resolved.tag, "proxy-update: proxy recreated and healthy");
 
     Ok(ProxyUpdateReport {
         previous_proxy_tag: previous_tag,
@@ -117,6 +245,81 @@ pub async fn run(
         image_ref: resolved.image_ref,
         pulled_digest,
     })
+}
+
+fn restore_proxy_tag(previous_tag: &str, worker: &Worker) -> Result<()> {
+    if previous_tag.trim().is_empty() {
+        return Err(UpdaterError::Precondition(
+            "cannot restore PROXY_TAG: previous tag is empty".into(),
+        ));
+    }
+    let mut env = EnvFile::load(&worker.cli().env_file)?;
+    env.set("PROXY_TAG", previous_tag)?;
+    env.save()?;
+    Ok(())
+}
+
+/// Poll proxy `/healthz` (and container running) until deadline.
+async fn wait_proxy_healthy(worker: &Worker) -> Result<()> {
+    let start = std::time::Instant::now();
+    let mut last = String::from("no probe yet");
+    while start.elapsed() < PROXY_HEALTH_DEADLINE {
+        tokio::time::sleep(PROXY_HEALTH_INTERVAL).await;
+
+        let running = proxy_container_running(worker).await;
+        match probe_proxy_healthz(worker).await {
+            Ok(()) => {
+                info!(
+                    elapsed_ms = start.elapsed().as_millis() as u64,
+                    "proxy-update: healthz ok"
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                last = if running {
+                    format!("running but healthz failed: {e}")
+                } else {
+                    format!("not running / healthz failed: {e}")
+                };
+            }
+        }
+    }
+    Err(UpdaterError::Precondition(format!(
+        "proxy health probe exceeded {}s; last={last}",
+        PROXY_HEALTH_DEADLINE.as_secs()
+    )))
+}
+
+async fn proxy_container_running(worker: &Worker) -> bool {
+    for name in PROXY_CONTAINER_NAMES {
+        if worker.docker().is_running(name).await.unwrap_or(false) {
+            return true;
+        }
+    }
+    false
+}
+
+async fn probe_proxy_healthz(worker: &Worker) -> Result<()> {
+    let mut last_err = String::new();
+    for url in PROXY_HEALTH_URLS {
+        match worker
+            .docker()
+            .http_probe(url, PROXY_HEALTH_PROBE_TIMEOUT)
+            .await
+        {
+            Ok((200, _)) => return Ok(()),
+            Ok((code, body)) => {
+                last_err = format!(
+                    "{url} → HTTP {code}: {}",
+                    body.chars().take(60).collect::<String>()
+                );
+            }
+            Err(e) => {
+                last_err = format!("{url}: {e}");
+            }
+        }
+    }
+    Err(UpdaterError::Docker(last_err))
 }
 
 async fn resolve_proxy_target(
@@ -394,5 +597,24 @@ mod tests {
             !msg.contains("DOCKER_GUARD_ALLOWED_IMAGES"),
             "non-allowlist errors should not mention allowlist: {msg}"
         );
+    }
+
+    #[test]
+    fn last_status_roundtrip_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let failed = ProxyUpdateLastStatus::failed("v0.1.0", "v0.2.0", "health boom", true);
+        write_proxy_update_last(dir.path(), &failed).unwrap();
+        let loaded = read_proxy_update_last(dir.path()).expect("load last");
+        assert_eq!(loaded.status, ProxyUpdateOutcome::Failed);
+        assert_eq!(loaded.previous_tag, "v0.1.0");
+        assert_eq!(loaded.target_tag, "v0.2.0");
+        assert!(loaded.rolled_back);
+        assert_eq!(loaded.error.as_deref(), Some("health boom"));
+
+        let ok = ProxyUpdateLastStatus::succeeded("v0.1.0", "v0.2.0");
+        write_proxy_update_last(dir.path(), &ok).unwrap();
+        let loaded = read_proxy_update_last(dir.path()).expect("load ok");
+        assert_eq!(loaded.status, ProxyUpdateOutcome::Succeeded);
+        assert!(!loaded.rolled_back);
     }
 }

@@ -106,7 +106,11 @@ pub fn parse_signature_header(header: &str) -> Result<ParsedSignature> {
     macro_rules! set_once {
         ($slot:expr, $name:literal, $value:expr) => {{
             if $slot.is_some() {
-                anyhow::bail!(concat!("Duplicate `", $name, "` parameter in Signature header"));
+                anyhow::bail!(concat!(
+                    "Duplicate `",
+                    $name,
+                    "` parameter in Signature header"
+                ));
             }
             $slot = Some($value);
         }};

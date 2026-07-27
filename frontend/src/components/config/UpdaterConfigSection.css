@@ -1335,6 +1335,24 @@ html.dark .updater-infra-current {
   color: #9ca3af;
 }
 
+.updater-infra-last-fail {
+  margin: 0.45rem 0 0;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgb(244 63 94 / 22%);
+  border-radius: 0.5rem;
+  background: rgb(244 63 94 / 7%);
+  color: #9f1239;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+html.dark .updater-infra-last-fail {
+  border-color: rgb(244 63 94 / 30%);
+  background: rgb(127 29 29 / 28%);
+  color: #fecdd3;
+}
+
 .updater-infra-row .btn-base {
   flex-shrink: 0;
   white-space: nowrap;

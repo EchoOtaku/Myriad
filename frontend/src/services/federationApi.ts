@@ -1014,6 +1014,51 @@ export const federationApi = {
     )
   },
 
+  /** Share a sticker into the room pack (opt-in group stickers) */
+  addRoomSticker(
+    roomId: string,
+    req: { data: string; name?: string },
+    runtimeGrant?: string,
+  ): Promise<{
+    success: boolean
+    room_id: string
+    stickers: Array<{
+      id: string
+      data: string
+      name?: string
+      actor: string
+      created_at: string
+    }>
+  }> {
+    return apiService.post(
+      `${PREFIX}/rooms/${roomId}/stickers`,
+      req,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
+  /** Remove a sticker from the room pack (publisher or admin) */
+  removeRoomSticker(
+    roomId: string,
+    stickerId: string,
+    runtimeGrant?: string,
+  ): Promise<{
+    success: boolean
+    room_id: string
+    stickers: Array<{
+      id: string
+      data: string
+      name?: string
+      actor: string
+      created_at: string
+    }>
+  }> {
+    return apiService.delete(
+      `${PREFIX}/rooms/${roomId}/stickers/${encodeURIComponent(stickerId)}`,
+      attributionOptions(runtimeGrant),
+    )
+  },
+
   /**
    * Download completed transfer bytes.
    * - Channel (DM): channel owner

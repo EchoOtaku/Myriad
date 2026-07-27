@@ -646,10 +646,7 @@ mod tests {
             guest_perm_media_control: false,
             ..DynamicConfig::default()
         };
-        assert_eq!(
-            TappPermission::MediaControl.level(),
-            PermissionLevel::Basic
-        );
+        assert_eq!(TappPermission::MediaControl.level(), PermissionLevel::Basic);
         assert!(!TappPermission::all_elevated().contains(&TappPermission::MediaControl));
         assert!(TappPermissionService::check(
             &config,

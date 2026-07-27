@@ -408,12 +408,19 @@ export interface RoomDetail {
   max_members: number
   is_public: boolean
   enabled_tapps?: unknown
-  /** Includes e2e.published_keys (public keys only) for room E2E readiness */
+  /** Includes e2e.published_keys and stickers (room shared image pack) */
   shared_data_config?: {
     e2e?: {
       published_keys?: Record<string, string>
       [key: string]: unknown
     }
+    stickers?: Array<{
+      id: string
+      data: string
+      name?: string
+      actor: string
+      created_at: string
+    }>
     [key: string]: unknown
   }
   my_role?: string

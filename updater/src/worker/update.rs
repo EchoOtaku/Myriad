@@ -272,6 +272,10 @@ async fn dispatch_update_failure(
 
 /// Body after maintenance_on + compose ready. Any `Err` is handled by
 /// [`dispatch_update_failure`] — do not call finish_* helpers here.
+///
+/// 参数多是这条流程的固有形态：一次更新需要 worker/recorder/compose/快照/
+/// 版本等全部上下文，打包成结构体只是把同样的耦合换个地方放。
+#[allow(clippy::too_many_arguments)]
 async fn run_update_body(
     worker: Arc<Worker>,
     rec: &PhaseRecorder<'_>,

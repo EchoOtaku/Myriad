@@ -26,7 +26,7 @@ use crate::services::image_cache::ImageCacheService;
 pub async fn get_actor(
     Path(username): Path<String>,
     headers: HeaderMap,
-) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let db = get_db()
         .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
@@ -176,7 +176,13 @@ pub async fn get_actor(
         mfp_channels_url: Some(format!("{}/users/{}/channels", base_url, username)),
     };
 
-    Ok((StatusCode::OK, Json(serde_json::to_value(actor).unwrap())))
+    // Actor 是远端反复拉取的文档：带上 ETag + Cache-Control，
+    // 未变更时回 304，有效期内远端根本不会再问。
+    Ok(crate::federation::http_cache::public_ap_document(
+        &headers,
+        AP_CONTENT_TYPE,
+        serde_json::to_value(actor).unwrap(),
+    ))
 }
 
 /// GET /users/{username}/avatar
@@ -257,7 +263,8 @@ pub async fn get_avatar(Path(username): Path<String>) -> Response {
 /// Followers Collection
 pub async fn get_followers(
     Path(username): Path<String>,
-) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let db = get_db()
         .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
@@ -292,9 +299,10 @@ pub async fn get_followers(
         last: None,
     };
 
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::to_value(collection).unwrap()),
+    Ok(crate::federation::http_cache::public_ap_document(
+        &headers,
+        AP_CONTENT_TYPE,
+        serde_json::to_value(collection).unwrap(),
     ))
 }
 
@@ -303,7 +311,8 @@ pub async fn get_followers(
 /// Following Collection
 pub async fn get_following(
     Path(username): Path<String>,
-) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let db = get_db()
         .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
@@ -336,9 +345,10 @@ pub async fn get_following(
         last: None,
     };
 
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::to_value(collection).unwrap()),
+    Ok(crate::federation::http_cache::public_ap_document(
+        &headers,
+        AP_CONTENT_TYPE,
+        serde_json::to_value(collection).unwrap(),
     ))
 }
 
@@ -349,43 +359,62 @@ pub async fn fetch_remote_actor(
     db: &DatabaseConnection,
     actor_url_str: &str,
 ) -> Result<RemoteActorInfo, String> {
-    // 先查本地缓存
-    let cached = db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"SELECT id, actor_url, username, domain, display_name, avatar_url,
-                      inbox_url, public_key_pem, public_key_id, mfp_version, last_fetched_at
-               FROM federation_remote_actors
-               WHERE actor_url = $1
-               LIMIT 1"#,
-            [actor_url_str.into()],
-        ))
-        .await
-        .map_err(|e| format!("DB error: {}", e))?;
+    fetch_remote_actor_inner(db, actor_url_str, false).await
+}
 
-    if let Some(row) = cached {
-        let last_fetched: Option<chrono::DateTime<chrono::FixedOffset>> =
-            row.try_get("", "last_fetched_at").ok();
-        let is_fresh = last_fetched
-            .map(|t| chrono::Utc::now().signed_duration_since(t).num_hours() < 24)
-            .unwrap_or(false);
+/// Force re-fetch remote Actor (ignore 24h cache). Use on Signature keyId mismatch
+/// so key rotation / stale `public_key_id` does not permanently 401 peers.
+pub async fn fetch_remote_actor_fresh(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+) -> Result<RemoteActorInfo, String> {
+    fetch_remote_actor_inner(db, actor_url_str, true).await
+}
 
-        if is_fresh {
-            return Ok(RemoteActorInfo {
-                id: row.try_get("", "id").unwrap_or(0),
-                actor_url: row.try_get("", "actor_url").unwrap_or_default(),
-                username: row.try_get("", "username").ok(),
-                domain: row.try_get("", "domain").unwrap_or_default(),
-                display_name: row.try_get("", "display_name").ok(),
-                avatar_url: row
-                    .try_get::<Option<String>>("", "avatar_url")
-                    .ok()
-                    .flatten(),
-                inbox_url: row.try_get("", "inbox_url").unwrap_or_default(),
-                public_key_pem: row.try_get("", "public_key_pem").ok(),
-                public_key_id: row.try_get("", "public_key_id").ok(),
-                mfp_version: row.try_get("", "mfp_version").ok(),
-            });
+async fn fetch_remote_actor_inner(
+    db: &DatabaseConnection,
+    actor_url_str: &str,
+    force_refresh: bool,
+) -> Result<RemoteActorInfo, String> {
+    // 先查本地缓存（除非强制刷新）
+    if !force_refresh {
+        let cached = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"SELECT id, actor_url, username, domain, display_name, avatar_url,
+                          inbox_url, public_key_pem, public_key_id, mfp_version, last_fetched_at
+                   FROM federation_remote_actors
+                   WHERE actor_url = $1
+                   LIMIT 1"#,
+                [actor_url_str.into()],
+            ))
+            .await
+            .map_err(|e| format!("DB error: {}", e))?;
+
+        if let Some(row) = cached {
+            let last_fetched: Option<chrono::DateTime<chrono::FixedOffset>> =
+                row.try_get("", "last_fetched_at").ok();
+            let is_fresh = last_fetched
+                .map(|t| chrono::Utc::now().signed_duration_since(t).num_hours() < 24)
+                .unwrap_or(false);
+
+            if is_fresh {
+                return Ok(RemoteActorInfo {
+                    id: row.try_get("", "id").unwrap_or(0),
+                    actor_url: row.try_get("", "actor_url").unwrap_or_default(),
+                    username: row.try_get("", "username").ok(),
+                    domain: row.try_get("", "domain").unwrap_or_default(),
+                    display_name: row.try_get("", "display_name").ok(),
+                    avatar_url: row
+                        .try_get::<Option<String>>("", "avatar_url")
+                        .ok()
+                        .flatten(),
+                    inbox_url: row.try_get("", "inbox_url").unwrap_or_default(),
+                    public_key_pem: row.try_get("", "public_key_pem").ok(),
+                    public_key_id: row.try_get("", "public_key_id").ok(),
+                    mfp_version: row.try_get("", "mfp_version").ok(),
+                });
+            }
         }
     }
 

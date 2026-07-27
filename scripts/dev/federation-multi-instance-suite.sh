@@ -620,6 +620,81 @@ case_channel_open_accept_message() {
 
 # --- expanded cases ---
 
+# B shares a sticker into the room pack; A (remote home) must mirror via
+# RoomGovernance stickers fan-out into shared_data_config.stickers.
+case_room_stickers() {
+  local jar_a="$JAR_A" jar_b="$JAR_B"
+  local room_id png add_json stk_id cnt_b cnt_a del_json i mirrored cleared get_a n_a
+  room_id=$(cat "$SCRATCH_DIR/last_room_id.txt" 2>/dev/null || true)
+  [[ -n "$room_id" ]] || die "missing last_room_id (room case must run first)"
+
+  png='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+
+  clear_queue b
+  add_json=$(api POST "$BASE_B" "$jar_b" "/api/federation/rooms/${room_id}/stickers" \
+    "{\"data\":\"${png}\",\"name\":\"fed-suite-dot.png\"}")
+  echo "$add_json" >"$SCRATCH_DIR/room-sticker-add.json"
+  stk_id=$(echo "$add_json" | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("stickers") or [{}])[0].get("id",""))')
+  [[ -n "$stk_id" ]] || die "add sticker returned no id: $add_json"
+
+  # shared_data_config column is json (not jsonb) — cast before jsonb_array_length
+  cnt_b=$(sql_int_b "SELECT COALESCE(jsonb_array_length((shared_data_config::jsonb)->'stickers'),0) FROM federation_rooms WHERE room_id='${room_id}';" || echo 0)
+  # Prefer API body if SQL helper is noisy
+  if [[ "${cnt_b:-0}" -lt 1 ]]; then
+    cnt_b=$(echo "$add_json" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(len(d.get("stickers") or []))')
+  fi
+  [[ "${cnt_b:-0}" -ge 1 ]] || die "home B shared_data_config.stickers empty after add (cnt=$cnt_b body=$add_json)"
+
+  # Wait for RoomGovernance stickers fan-out to remote A
+  mirrored=0
+  for i in $(seq 1 40); do
+    cnt_a=$(sql_int_a "SELECT COALESCE(jsonb_array_length((shared_data_config::jsonb)->'stickers'),0) FROM federation_rooms WHERE room_id='${room_id}';" 2>/dev/null || echo 0)
+    if [[ "${cnt_a:-0}" -ge 1 ]]; then
+      mirrored=1
+      break
+    fi
+    if sql_a "SELECT 1 FROM federation_rooms WHERE room_id='${room_id}' AND shared_data_config::text LIKE '%${stk_id}%';" 2>/dev/null | grep -q 1; then
+      mirrored=1
+      break
+    fi
+    sleep 1
+  done
+  [[ "$mirrored" == "1" ]] || die "remote A never mirrored sticker pack (stk=$stk_id cnt_a=${cnt_a:-0})"
+
+  get_a=$(curl -fsS -b "$jar_a" "$BASE_A/api/federation/rooms/${room_id}" || true)
+  echo "$get_a" >"$SCRATCH_DIR/room-sticker-get-a.json"
+  n_a=$(echo "$get_a" | python3 -c 'import sys,json
+try:
+  d=json.load(sys.stdin)
+  s=(d.get("shared_data_config") or {}).get("stickers") or []
+  print(len(s))
+except Exception:
+  print(0)')
+  [[ "${n_a:-0}" -ge 1 ]] || die "A getRoom has no stickers (n=$n_a)"
+
+  # Remove on B → A should drop the sticker
+  clear_queue b
+  del_json=$(api DELETE "$BASE_B" "$jar_b" "/api/federation/rooms/${room_id}/stickers/${stk_id}" "")
+  echo "$del_json" >"$SCRATCH_DIR/room-sticker-del.json"
+
+  cleared=0
+  for i in $(seq 1 40); do
+    cnt_a=$(sql_int_a "SELECT COALESCE(jsonb_array_length(COALESCE((shared_data_config::jsonb)->'stickers','[]'::jsonb)),0) FROM federation_rooms WHERE room_id='${room_id}';" 2>/dev/null || echo 0)
+    if [[ "${cnt_a:-0}" -eq 0 ]]; then
+      cleared=1
+      break
+    fi
+    if ! sql_a "SELECT 1 FROM federation_rooms WHERE room_id='${room_id}' AND shared_data_config::text LIKE '%${stk_id}%';" 2>/dev/null | grep -q 1; then
+      cleared=1
+      break
+    fi
+    sleep 1
+  done
+  [[ "$cleared" == "1" ]] || die "remote A still has sticker after delete (stk=$stk_id cnt_a=${cnt_a:-0})"
+
+  echo "room_stickers room=$room_id stk=$stk_id mirrored_then_cleared" >>"$SUITE_LOG"
+}
+
 case_room_pin() {
   local jar_b="$JAR_B"
   local room_id mid
@@ -1391,6 +1466,8 @@ main() {
   run_case "content_note_fanout" case_content_note
   sleep 2
   run_case "room_invite_accept_message" case_room_invite_accept_message
+  sleep 2
+  run_case "room_stickers" case_room_stickers
   sleep 2
   run_case "ring_add_peer_sync" case_ring_add_peer
   sleep 2

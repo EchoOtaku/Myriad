@@ -393,8 +393,8 @@ pub fn apply_content_filters(
                 }
             }
             "block_keyword" => {
-                let content = lowered_activity
-                    .get_or_insert_with(|| activity.to_string().to_lowercase());
+                let content =
+                    lowered_activity.get_or_insert_with(|| activity.to_string().to_lowercase());
                 let keyword = rule.value.to_lowercase();
                 if content.contains(&keyword) {
                     return FilterVerdict::Reject(format!(

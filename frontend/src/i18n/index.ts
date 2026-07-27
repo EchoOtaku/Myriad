@@ -40,6 +40,7 @@ export interface TranslationKeys {
     home: string
     library: string
     reports: string
+    life: string
     config: string
     login: string
     logout: string
@@ -617,19 +618,42 @@ export interface TranslationKeys {
     updaterSelfUpdateNeeded: string
     updaterSelfUpdateButton: string
     updaterSelfUpdateConfirm: string
+    /** Confirm when no app tip is cached; backend resolves registry tip. */
+    updaterSelfUpdateConfirmAuto: string
+    /** Params: version (new), previous (old). */
     updaterSelfUpdateDispatched: string
     // 边缘与更新器组件（常驻入口）
     updaterInfraGroupTitle: string
     updaterInfraGroupDesc: string
     updaterInfraUpdaterTitle: string
     updaterInfraUpdaterDesc: string
-    updaterInfraUpdaterCurrent: string
+    /** Shared "Current version" label for updater / proxy rows. */
+    updaterInfraCurrent: string
+    /** Badge when min_updater_version requires self-update first. */
+    updaterInfraRequired: string
     updaterInfraProxyTitle: string
     updaterInfraProxyDesc: string
     updaterInfraProxyUpdateButton: string
     updaterInfraProxyConfirm: string
+    /** Confirm when no app tip is cached; backend resolves registry tip. */
+    updaterInfraProxyConfirmAuto: string
+    /** Params: version (new), previous (old). */
     updaterInfraProxyDispatched: string
     updaterInfraNeedCheck: string
+    /** Params: target, previous, error — last failed self-update. */
+    updaterInfraSelfLastFailed: string
+    /** Params: target, previous, error — last failed proxy update. */
+    updaterInfraProxyLastFailed: string
+    /** Shown when proxy rolled_back=true after a failed upgrade. */
+    updaterInfraProxyRolledBack: string
+    /** Self-update scheduled; waiting for helper result. */
+    updaterSelfUpdateWaiting: string
+    /** Params: error — self-update helper reported failure. */
+    updaterSelfUpdateFailed: string
+    /** Self-update helper reported success after poll. */
+    updaterSelfUpdateSucceeded: string
+    /** Poll timed out before self_update_last changed. */
+    updaterSelfUpdateStillPending: string
     // 安装指定版本（高级，折叠）
     updaterTargetGroupTitle: string
     updaterTargetGroupDesc: string
@@ -1154,10 +1178,13 @@ export interface TranslationKeys {
     gamePresence: string
     library: string
     dataReport: string
+    digitalLife: string
     multiPlatformAggregation: string
     dualLayerAnalysis: string
+    digitalLifeDesc: string
     showPersonality: string
     platformProfile: string
+    digitalLifeFeature: string
     // Brew 阅读
     brewReading: string
     brewDesc: string
@@ -1283,6 +1310,206 @@ export interface TranslationKeys {
   }
 
   // 数字生命
+  life: {
+    onboarding: {
+      title: string
+      stepOf: string
+      next: string
+      backTo: string
+      optional: string
+      step1Short: string
+      step2Short: string
+      step3Short: string
+      step4Short: string
+      step5Short: string
+      step6Short: string
+      step1Title: string
+      step1Lead: string
+      step2Title: string
+      step2Lead: string
+      step3Title: string
+      step3Lead: string
+      step3LeadPending: string
+      regeneratePersona: string
+      regeneratingPersona: string
+      regeneratePersonaFailed: string
+      personaNotCompletePending: string
+      personaNotCompleteIncomplete: string
+      personaFieldGenerating: string
+      personaDraftLabel: string
+      step4Title: string
+      step4Lead: string
+      step5Title: string
+      step5Lead: string
+      step6Title: string
+      step6Lead: string
+      loadingAiSignals: string
+      loadSignalsFailed: string
+      reportCount: string
+      aiDistilledMeta: string
+      reportsButFallback: string
+      noReports: string
+      selectedCount: string
+      selectNothingYet: string
+      dragCanvas: string
+      skipTags: string
+      regenerateSeeds: string
+      regeneratingSeeds: string
+      nameLabel: string
+      nameHint: string
+      namePlaceholder: string
+      /** Step-2 random display name button (Lite AI) */
+      randomName: string
+      randomNameBusy: string
+      randomNameFailed: string
+      genderLabel: string
+      gender: {
+        female: string
+        male: string
+        nonbinary: string
+        unspecified: string
+      }
+      genderRequired: string
+      outfitNeedGender: string
+      extraLabel: string
+      extraHint: string
+      extraPlaceholder: string
+      creating: string
+      createAndContinue: string
+      createFailed: string
+      outfitSuggestTitle: string
+      outfitSuggestLead: string
+      outfitSuggesting: string
+      outfitSuggestAgain: string
+      outfitSuggestFailed: string
+      outfitSuggestEmpty: string
+      roomSuggestTitle: string
+      roomSuggestLead: string
+      roomSuggesting: string
+      roomSuggestAgain: string
+      roomSuggestFailed: string
+      roomSuggestEmpty: string
+      signalsEmpty: string
+      visualsWaitingDesign: string
+      roomMoodHint: string
+      roomPickFirst: string
+      envNotesLabel: string
+      envNotesHint: string
+      envNotesPlaceholder: string
+      designPendingSync: string
+      designPendingSyncHint: string
+      designBgBadge: string
+      designBgNotice: string
+      designPhaseBootstrap: string
+      designPhaseQueued: string
+      designPhaseDesigning: string
+      designPhasePending: string
+      designPhaseReady: string
+      designPhaseFallback: string
+      designPhaseFailed: string
+      designStepBootstrap: string
+      designStepDesign: string
+      designStepReady: string
+      designElapsed: string
+      identityStaleRebuild: string
+      localeGlossHint: string
+      editPersona: string
+      doneEditing: string
+      cancelEdit: string
+      personaGroupCharacter: string
+      personaGroupLook: string
+      personaGroupRoom: string
+      fieldTemperament: string
+      fieldLikes: string
+      fieldDrives: string
+      fieldSocial: string
+      fieldVoice: string
+      fieldSummary: string
+      fieldOutfit: string
+      fieldHair: string
+      fieldRoomMood: string
+      fieldPaletteMood: string
+      saving: string
+      saveAndContinue: string
+      saveFailed: string
+      characterMaster: string
+      worldMaster: string
+      locked: string
+      needsMaster: string
+      lockedUntilCharacter: string
+      worldNeedsCharacter: string
+      noAssetsBeforePreview: string
+      step5SequenceHint: string
+      firstPreviewBadge: string
+      previewLabel: string
+      awaitingFirstPreview: string
+      readyForFirstPreview: string
+      generatingFirstPreview: string
+      busyPleaseWait: string
+      designCardTitle: string
+      designCardArchetype: string
+      designCardAccessory: string
+      designCardBeforeImage: string
+      advancedPrompt: string
+      planAppearance: string
+      planning: string
+      generateMaster: string
+      generating: string
+      rollAgain: string
+      reviewAsset: string
+      reviewingAsset: string
+      acceptMaster: string
+      redoMaster: string
+      overrideAccept: string
+      overrideReasonPrompt: string
+      accepted: string
+      finishBothFirst: string
+      visualUnavailable: string
+      waitDesignForVisuals: string
+      step6Optional: string
+      actionAssets: string
+      lightingAssets: string
+      noLightingRecipesYet: string
+      furnitureAssets: string
+      assetDone: string
+      assetPending: string
+      selectPending: string
+      selectSomething: string
+      generate: string
+      rollSelected: string
+      batchProgress: string
+      generateFailed: string
+      noRecipesYet: string
+      furnitureDone: string
+      derivedUnavailable: string
+      finish: string
+      missingCharacter: string
+      slotFront: string
+      slotSide: string
+      slotBack: string
+      slotIdle: string
+      slotTalk: string
+      slotHappy: string
+      slotSad: string
+      slotSleep: string
+      slotWalkDown: string
+      slotWalkUp: string
+      slotWalkLeft: string
+      slotWalkRight: string
+      slotSit: string
+      slotStudy: string
+      slotListen: string
+      slotObserve: string
+      slotUse: string
+      slotPat: string
+      slotPoke: string
+      slotGift: string
+      slotWorldDawn: string
+      slotWorldDay: string
+      slotWorldDusk: string
+      slotWorldNight: string
+    }
+  }
 
   // 账户
   account: {
@@ -3007,6 +3234,7 @@ export interface TranslationKeys {
       library: string[]
       brew: string[]
       reports: string[]
+      life: string[]
       config: string[]
       dataManagement: string[]
       tapp: string[]

@@ -71,6 +71,9 @@ pub fn build(state: ApiState) -> Router {
 struct StatusResp {
     schema_version: u32,
     updater_version: String,
+    /// Running `PROXY_TAG` from `.env` (edge reverse-proxy image tag).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proxy_version: Option<String>,
     current_version: Option<DeployTag>,
     current_commit_sha: Option<String>,
     channel: String,
@@ -103,6 +106,9 @@ struct StatusResp {
     /// Last TCB self-update helper outcome from `state/self-update-last.json` (if any).
     #[serde(skip_serializing_if = "Option::is_none")]
     self_update_last: Option<crate::docker::self_update_helper::SelfUpdateLastStatus>,
+    /// Last manual proxy upgrade outcome from `state/proxy-update-last.json` (if any).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proxy_update_last: Option<crate::worker::proxy_update::ProxyUpdateLastStatus>,
     /// `bundled` | `external` — from `MYRIAD_DB_MODE` (default bundled).
     db_mode: String,
     /// Whether update flow snapshots/restores local pgdata (false when external).
@@ -146,11 +152,18 @@ async fn status(State(st): State<ApiState>) -> Result<Json<StatusResp>, ApiError
     // in validate_channel_for_mode); the channel list itself does not change.
     let available_channels = vec!["stable", "preview"];
     let self_update_last = read_self_update_last(st.state.root());
+    let proxy_update_last =
+        crate::worker::proxy_update::read_proxy_update_last(st.state.root());
+    let proxy_version = crate::env_file::EnvFile::load(&st.worker.cli().env_file)
+        .ok()
+        .and_then(|env| env.get("PROXY_TAG").map(str::to_owned))
+        .filter(|s| !s.trim().is_empty());
 
     let db_mode = st.worker.cli().db_mode;
     Ok(Json(StatusResp {
         schema_version: 1,
         updater_version: crate::self_version().to_string(),
+        proxy_version,
         current_version: u.current_version,
         current_commit_sha: u.current_commit_sha,
         channel,
@@ -171,6 +184,7 @@ async fn status(State(st): State<ApiState>) -> Result<Json<StatusResp>, ApiError
         rollback_version: u.rollback_version,
         available_channels,
         self_update_last,
+        proxy_update_last,
         db_mode: db_mode.as_str().to_string(),
         pgdata_snapshot_enabled: db_mode.pgdata_snapshot_enabled(),
         last_failed_update: u.last_failed_update,

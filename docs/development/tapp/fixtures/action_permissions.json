@@ -383,6 +383,16 @@
     },
     {
       "domain": "federation",
+      "action": "federation.addRoomSticker",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
+      "action": "federation.removeRoomSticker",
+      "permission": "federation:write"
+    },
+    {
+      "domain": "federation",
       "action": "federation.pinRoomMessage",
       "permission": "federation:write"
     },

@@ -168,8 +168,11 @@ pub struct OrderedCollectionPage {
     pub id: String,
     #[serde(rename = "partOf")]
     pub part_of: String,
-    #[serde(rename = "totalItems")]
-    pub total_items: u64,
+    /// AS2 允许 page 省略 `totalItems`（Mastodon 等实现也不带）。
+    ///
+    /// 省掉它意味着取一页不必再跑一次全表 `COUNT(*)` —— 摘要文档仍然给出总数。
+    #[serde(rename = "totalItems", skip_serializing_if = "Option::is_none")]
+    pub total_items: Option<u64>,
     #[serde(rename = "orderedItems")]
     pub ordered_items: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -620,15 +623,36 @@ pub fn same_activity_id(left: &str, right: &str) -> bool {
 
 /// Normalize an HTTP Signature `keyId` URL: host case, trailing slash on path,
 /// **preserve fragment** (`#main-key`). Actor URL normalization drops fragments.
+///
+/// Also tolerates common peer quirks that otherwise cause permanent 401s:
+/// - scheme-less host/path (`example.com/users/a#main-key` → assume `https://`)
+/// - fragment with a leading slash (`#/main-key` → `#main-key`, Mastodon/Pleroma style)
 pub fn normalize_key_id(raw: &str) -> String {
     let trimmed = raw.trim();
-    if let Ok(url) = url::Url::parse(trimmed) {
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    // Relative / scheme-less keyIds: treat as https absolute (common mis-sign).
+    let candidate =
+        if !trimmed.contains("://") && trimmed.contains('/') && !trimmed.starts_with('/') {
+            format!("https://{}", trimmed)
+        } else {
+            trimmed.to_string()
+        };
+    if let Ok(url) = url::Url::parse(&candidate) {
         let host = url.host_str().unwrap_or("").to_ascii_lowercase();
         let path = url.path().trim_end_matches('/');
         let port = url.port().map(|p| format!(":{}", p)).unwrap_or_default();
         let fragment = url
             .fragment()
-            .map(|f| format!("#{}", f))
+            .map(|f| {
+                let f = f.trim_start_matches('/');
+                if f.is_empty() {
+                    String::new()
+                } else {
+                    format!("#{f}")
+                }
+            })
             .unwrap_or_default();
         return format!("{}://{}{}{}{}", url.scheme(), host, port, path, fragment);
     }
@@ -665,6 +689,25 @@ pub fn same_key_id(left: &str, right: &str) -> bool {
     let l = normalize_key_id(left);
     let r = normalize_key_id(right);
     !l.is_empty() && l == r
+}
+
+/// True when `key_id` is a key document id under this actor URL
+/// (`{actor}`, `{actor}#…`, or `{actor}/…` after normalization).
+///
+/// Used as a soft acceptance path when cached/fresh `publicKey.id` drifts from
+/// the Signature keyId but both still name the same actor.
+pub fn key_id_belongs_to_actor(key_id: &str, actor_url: &str) -> bool {
+    let kid = normalize_key_id(key_id);
+    let actor = normalize_actor_url(actor_url);
+    if kid.is_empty() || actor.is_empty() {
+        return false;
+    }
+    // Strip fragment from keyId for path compare against actor (no fragment).
+    let kid_base = kid.split('#').next().unwrap_or(&kid);
+    let kid_base = kid_base.trim_end_matches('/');
+    kid_base == actor
+        || kid_base.starts_with(&format!("{}/", actor))
+        || kid.starts_with(&format!("{}#", actor))
 }
 
 /// 若 candidate 是本实例的 Actor URL（{base_url}/users/{username}），返回 username。
@@ -880,7 +923,10 @@ mod tests {
             "https://myriad.example/users/alice#main-key",
             base
         ));
-        assert!(key_id_belongs_to_base("https://Myriad.Example/users/a", base));
+        assert!(key_id_belongs_to_base(
+            "https://Myriad.Example/users/a",
+            base
+        ));
         assert!(key_id_belongs_to_base("https://myriad.example#k", base));
         assert!(key_id_belongs_to_base("https://myriad.example/", base));
 
@@ -911,6 +957,16 @@ mod tests {
         assert!(same_key_id(
             "https://myriad.example.com/users/alice/#main-key",
             "https://myriad.example.com/users/alice#main-key"
+        ));
+        // Leading slash in fragment is a common peer quirk
+        assert!(same_key_id(
+            "https://tangbao.ltd/users/yueful#/main-key",
+            "https://tangbao.ltd/users/yueful#main-key"
+        ));
+        // Scheme-less keyId vs absolute stored id
+        assert!(same_key_id(
+            "tangbao.ltd/users/yueful#main-key",
+            "https://tangbao.ltd/users/yueful#main-key"
         ));
         assert!(!same_key_id(
             "https://myriad.example.com/users/alice#main-key",

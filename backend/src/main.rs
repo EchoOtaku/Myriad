@@ -1,5 +1,5 @@
 use axum::{
-    extract::{FromRequest, Request},
+    extract::Request,
     http::StatusCode,
     middleware::{from_fn, Next},
     response::{IntoResponse, Response},
@@ -34,6 +34,113 @@ use std::sync::atomic::{AtomicBool, Ordering}; // P1: 用于数据库健康检�
 
 // Global flag to indicate if server is running in configuration mode
 pub static CONFIG_MODE: AtomicBool = AtomicBool::new(false);
+
+/// 小请求体联邦端点的上限（64 KiB）。
+///
+/// 这些端点原本用 `to_bytes(req.into_body(), 64 * 1024)` 自己封顶。改用 `Json<T>`
+/// 提取器后上限由 layer 决定，若不显式加这一层就会退回到路由级的 40 MiB ——
+/// 一个只需要几百字节 JSON 的端点没有理由允许缓冲 40 MiB。
+/// `?limit=` 查询参数。
+///
+/// 用 `Option<String>` 而不是 `Option<i64>` 是为了保持原有的宽松语义：
+/// 手写解析对 `limit=abc` / `limit=` 是静默回落到默认值，而 `Option<i64>`
+/// 会让 serde 直接拒绝成 400。行为改变不该夹带在重构里。
+#[derive(serde::Deserialize)]
+struct LimitQuery {
+    limit: Option<String>,
+}
+
+impl LimitQuery {
+    fn or(&self, default: i64) -> i64 {
+        self.limit
+            .as_deref()
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(default)
+    }
+}
+
+/// `?limit=&cancelled_only=` 查询参数。
+///
+/// `cancelled_only` 保持原有的宽松真值解析（`1|true|yes|on`，其余一律 false）。
+/// 换成 `Option<bool>` 会让 serde 只认 `true`/`false`，把 `?cancelled_only=1`
+/// 变成 400 —— 前端正在用的写法。
+#[derive(serde::Deserialize)]
+struct PurgeDeadQuery {
+    limit: Option<String>,
+    cancelled_only: Option<String>,
+}
+
+impl PurgeDeadQuery {
+    fn limit_or(&self, default: i64) -> i64 {
+        self.limit
+            .as_deref()
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(default)
+    }
+
+    fn cancelled_only(&self) -> bool {
+        self.cancelled_only
+            .as_deref()
+            .map(|s| matches!(s.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false)
+    }
+}
+
+/// 分页与过滤查询参数（消息列表、房间文件列表共用）。
+///
+/// 全部字段用 `Option<String>`：手写解析对 `limit=abc` 是静默忽略、回落到
+/// 「不限制」，而 `Option<i64>` 会让 serde 直接拒成 400。`filter` / `q` 本就是
+/// 字符串，`list_room_files` 才用得到。
+#[derive(serde::Deserialize)]
+struct ListQuery {
+    before: Option<String>,
+    limit: Option<String>,
+    filter: Option<String>,
+    q: Option<String>,
+}
+
+impl ListQuery {
+    fn before(&self) -> Option<&str> {
+        self.before.as_deref()
+    }
+
+    /// 解析失败即 `None`（与手写的 `.and_then(|s| s.parse().ok())` 一致）。
+    fn limit(&self) -> Option<i64> {
+        self.limit.as_deref().and_then(|v| v.parse::<i64>().ok())
+    }
+
+    fn filter(&self) -> Option<&str> {
+        self.filter.as_deref()
+    }
+
+    fn q(&self) -> Option<&str> {
+        self.q.as_deref()
+    }
+}
+
+/// 把 `Json<T>` 提取失败翻译成本项目的 JSON 错误体。
+///
+/// 直接用 `Json<T>` 会让超限 body 拿到 axum 的纯文本 413，丢掉
+/// `send_room_message` 原有的那句运维指引（"内联图片上限 ~32 MiB，
+/// 更大的走分块传输"）—— 那是用户真正需要看到的下一步动作。
+///
+/// 体积类拒绝（413）附带 `size_hint`，其余按原状态码返回解析错误详情。
+fn json_rejection_response(
+    rejection: axum::extract::rejection::JsonRejection,
+    size_hint: Option<&str>,
+) -> Response {
+    let status = rejection.status();
+    if status == StatusCode::PAYLOAD_TOO_LARGE {
+        let mut body = json!({"error": "Request body too large or unreadable"});
+        if let Some(hint) = size_hint {
+            body["hint"] = json!(hint);
+        }
+        return (status, Json(body)).into_response();
+    }
+    (status, Json(json!({"error": rejection.body_text()}))).into_response()
+}
+
+const FEDERATION_SMALL_BODY_LIMIT: usize = federation::limits::SMALL_CONTROL_BODY_LIMIT;
 
 /// Fail-soft: production images run as uid 1000 (`myriad`); root is a hygiene warning only.
 fn warn_if_running_as_root() {
@@ -284,7 +391,6 @@ async fn run_server() -> anyhow::Result<()> {
                 services::agent::notifications::init_notifications(db.clone()).await;
                 api::updater_admin::resume_pending_job_notifications().await;
                 tracing::info!("✅ Agent notification system initialized");
-
 
                 // Initialize Tapp scheduler engine
                 api::tapp_scheduler::init_scheduler(db.clone()).await;
@@ -719,231 +825,100 @@ async fn config_mode_middleware(req: Request, next: Next) -> Response {
     next.run(req).await
 }
 
-/// Wrapper for update_config that gets DB from global state
-async fn update_config_wrapper(
-    headers: axum::http::HeaderMap,
+/// 路由已挂 `admin_middleware`；`AdminClaims` 把同一个检查写进签名。
+async fn update_config(
+    extract::AdminClaims(_claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
     Json(payload): Json<api::config::ConfigResponse>,
 ) -> Response {
-    if let Err((status, json)) = middleware::auth::verify_current_admin_from_headers(&headers).await
-    {
-        return (status, json).into_response();
-    }
-
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::update_config(axum::extract::State(db.clone()), Json(payload)).await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，配置功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
+    let (status, json) = api::config::update_config(axum::extract::State(db), Json(payload)).await;
+    (status, json).into_response()
 }
 
-/// Site public domain change: rewrite BASE_URL / FRONTEND_URL / CORS_ORIGINS (not federation Move).
-async fn change_site_domain_wrapper(
-    headers: axum::http::HeaderMap,
+/// 路由已挂 `admin_middleware`；`AdminClaims` 把同一个检查写进签名。
+async fn change_site_domain(
+    extract::AdminClaims(_claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
     Json(payload): Json<api::site_domain::ChangeSiteDomainRequest>,
 ) -> Response {
-    if let Err((status, json)) = middleware::auth::verify_current_admin_from_headers(&headers).await
-    {
-        return (status, json).into_response();
-    }
-
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::site_domain::change_site_domain(
-                axum::extract::State(db.clone()),
-                Json(payload),
-            )
-            .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "数据库未连接，域名变更功能暂不可用"
-            })),
-        )
-            .into_response(),
-    }
+    let (status, json) =
+        api::site_domain::change_site_domain(axum::extract::State(db), Json(payload)).await;
+    (status, json).into_response()
 }
 
-/// Export every persisted setting plus the current administrator's user preferences.
-async fn export_settings_wrapper(headers: axum::http::HeaderMap) -> Response {
-    let claims = match middleware::auth::verify_current_admin_from_headers(&headers).await {
-        Ok(claims) => claims,
-        Err((status, json)) => return (status, json).into_response(),
-    };
-    let user_id = match claims.sub.parse::<i32>() {
-        Ok(user_id) => user_id,
-        Err(_) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Invalid authenticated user"})),
-            )
-                .into_response();
-        }
+/// 路由已挂 `admin_middleware`；`AdminClaims` 把同一个检查写进签名，
+/// 路由被重挂时也带不走（与 ring 端点保持一致的写法）。
+async fn export_settings(
+    extract::AdminClaims(claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
+) -> Response {
+    let Ok(user_id) = claims.sub.parse::<i32>() else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid authenticated user"})),
+        )
+            .into_response();
     };
 
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) =
-                api::config::export_settings(axum::extract::State(db.clone()), user_id).await;
-            let mut response = (status, json).into_response();
-            response.headers_mut().insert(
-                axum::http::header::CACHE_CONTROL,
-                axum::http::HeaderValue::from_static("no-store, private"),
-            );
-            response.headers_mut().insert(
-                axum::http::header::PRAGMA,
-                axum::http::HeaderValue::from_static("no-cache"),
-            );
-            response
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
+    let (status, json) = api::config::export_settings(axum::extract::State(db), user_id).await;
+    let mut response = (status, json).into_response();
+    // 导出内容含明文密钥，禁止任何缓存层留存
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store, private"),
+    );
+    response.headers_mut().insert(
+        axum::http::header::PRAGMA,
+        axum::http::HeaderValue::from_static("no-cache"),
+    );
+    response
 }
 
-/// Preview an adaptive settings restore without changing persisted state.
-async fn preview_settings_restore_wrapper(
-    headers: axum::http::HeaderMap,
+/// 路由已挂 `admin_middleware`；`AdminClaims` 把同一个检查写进签名。
+/// 这个端点只做校验预演，不碰数据库。
+async fn preview_settings_restore(
+    extract::AdminClaims(_claims): extract::AdminClaims,
     Json(payload): Json<api::config::SettingsBackup>,
 ) -> Response {
-    if let Err((status, json)) = middleware::auth::verify_current_admin_from_headers(&headers).await
-    {
-        return (status, json).into_response();
-    }
-
     let (status, json) = api::config::preview_settings_restore(Json(payload)).await;
     (status, json).into_response()
 }
 
-/// Atomically restore a versioned settings backup.
-async fn restore_settings_wrapper(
-    headers: axum::http::HeaderMap,
+/// 路由已挂 `admin_middleware`；`AdminClaims` 把同一个检查写进签名。
+async fn restore_settings(
+    extract::AdminClaims(claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
     Json(payload): Json<api::config::SettingsBackup>,
 ) -> Response {
-    let claims = match middleware::auth::verify_current_admin_from_headers(&headers).await {
-        Ok(claims) => claims,
-        Err((status, json)) => return (status, json).into_response(),
-    };
-    let user_id = match claims.sub.parse::<i32>() {
-        Ok(user_id) => user_id,
-        Err(_) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Invalid authenticated user"})),
-            )
-                .into_response();
-        }
-    };
-
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let (status, json) = api::config::restore_settings(
-                axum::extract::State(db.clone()),
-                user_id,
-                Json(payload),
-            )
-            .await;
-            (status, json).into_response()
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
+    let Ok(user_id) = claims.sub.parse::<i32>() else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": "Invalid authenticated user"})),
         )
-            .into_response(),
-    }
-}
+            .into_response();
+    };
 
-/// PR #6: Wrapper for get_oauth_providers (admin)
-async fn get_oauth_providers_wrapper() -> Response {
-    let (status, json) = api::config::get_oauth_providers().await;
+    let (status, json) =
+        api::config::restore_settings(axum::extract::State(db), user_id, Json(payload)).await;
     (status, json).into_response()
-}
-
-/// Wrapper for logout - no auth required, just clear cookie
-async fn logout_wrapper() -> Response {
-    api::auth::logout().await.into_response()
 }
 
 // ==================== Federation Wrappers ====================
 
-async fn federation_admin_required(claims: &middleware::auth::Claims) -> Option<Response> {
-    match middleware::auth::ensure_current_admin(claims).await {
-        Ok(()) => None,
-        Err((status, body)) => Some((status, body).into_response()),
-    }
-}
-
+/// POST /api/admin/federation/domain-move
+///
 /// POST /api/admin/federation/domain-move
 ///
 /// Emit ActivityPub Move for every local user (domain migration). Admin only.
-async fn admin_federation_domain_move_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    if let Some(resp) = federation_admin_required(&claims).await {
-        return resp;
-    }
-
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-
-    let payload: federation::move_actor::DomainMoveRequest =
-        match serde_json::from_slice(&body_bytes) {
-            Ok(p) => p,
-            Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": format!("Invalid JSON: {}", e)})),
-                )
-                    .into_response()
-            }
-        };
-
-    let db_guard = crate::DB_CONNECTION.read().await;
-    match db_guard.as_ref() {
-        Some(db) => match federation::move_actor::domain_move_all_users(db, &payload).await {
-            Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
-            Err((status, body)) => (status, body).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// `AdminClaims` 取代函数体里的 `federation_admin_required`。
+async fn admin_federation_domain_move(
+    extract::AdminClaims(_claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::move_actor::DomainMoveRequest>,
+) -> Response {
+    match federation::move_actor::domain_move_all_users(&db, &payload).await {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, body)) => (status, body).into_response(),
     }
 }
 
@@ -956,40 +931,18 @@ async fn federation_identity(extract::AuthedClaims(claims): extract::AuthedClaim
 
 /// POST /api/federation/keys/rotate — explicit federation key rotation
 ///
-/// Body: `{ "confirm": true }`. Generates a new RSA keypair, updates
-/// `federation_keys` and actor publicKey, best-effort fans out Update(Person).
-/// Does **not** change username / actor id. `ensure_user_federation_keys` never
-/// rotates live keys — only this endpoint does.
-async fn federation_keys_rotate_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware。
+///
+/// 这里用 `Bytes` 而不是 `Json<Value>`：原实现是
+/// `from_slice(..).unwrap_or(json!({}))`，空 body / 畸形 JSON 会落到「缺少
+/// confirm」这条**带操作指引**的 400；换成 `Json` 提取器会先被 axum 拒成一条
+/// 通用错误，用户看不到"需要 {\"confirm\": true}"这句提示。
+async fn federation_keys_rotate(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    body_bytes: axum::body::Bytes,
+) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    if user_id <= 0 {
-        return (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": "Invalid user"})),
-        )
-            .into_response();
-    }
-
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
     let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap_or(json!({}));
     if !federation::actor::rotation_confirm_accepted(&body) {
         return (
@@ -1002,16 +955,7 @@ async fn federation_keys_rotate_wrapper(req: axum::extract::Request) -> Response
             .into_response();
     }
 
-    let db_opt = DB_CONNECTION.read().await;
-    let Some(db) = db_opt.as_ref() else {
-        return (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response();
-    };
-
-    match federation::actor::rotate_user_federation_keys(db, user_id, &claims.username).await {
+    match federation::actor::rotate_user_federation_keys(&db, user_id, &claims.username).await {
         Ok(result) => (StatusCode::OK, Json(result)).into_response(),
         Err(e) => {
             tracing::error!(
@@ -1026,119 +970,41 @@ async fn federation_keys_rotate_wrapper(req: axum::extract::Request) -> Response
 }
 
 /// POST /api/federation/follow — 关注远程用户
-async fn federation_follow_wrapper(req: axum::extract::Request) -> Response {
-    let claims = req.extensions().get::<middleware::auth::Claims>().cloned();
-    let claims = match claims {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: federation::follow::FollowRequest = match serde_json::from_slice(&body_bytes) {
-        Ok(p) => p,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::follow::follow_remote(user_id, &claims.username, db, &payload.target)
-                .await
-            {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已挂 auth_middleware；claims / body / db 走提取器。
+/// body 上限仍由路由的 DefaultBodyLimit 决定（与改造前一致）。
+async fn federation_follow(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::follow::FollowRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::follow::follow_remote(user_id, &claims.username, &db, &payload.target).await {
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// POST /api/federation/unfollow — 取消关注远程用户
-async fn federation_unfollow_wrapper(req: axum::extract::Request) -> Response {
-    let claims = req.extensions().get::<middleware::auth::Claims>().cloned();
-    let claims = match claims {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: federation::follow::FollowRequest = match serde_json::from_slice(&body_bytes) {
-        Ok(p) => p,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::follow::unfollow_remote(
-                user_id,
-                &claims.username,
-                db,
-                &payload.target,
-            )
-            .await
-            {
-                Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已挂 auth_middleware；claims / body / db 走提取器。
+/// body 上限仍由路由的 DefaultBodyLimit 决定（与改造前一致）。
+async fn federation_unfollow(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::follow::FollowRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::follow::unfollow_remote(user_id, &claims.username, &db, &payload.target).await
+    {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// GET /api/federation/following — 获取我关注的远程用户列表
 /// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
-async fn federation_following_list(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
+async fn federation_following_list(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -1160,7 +1026,9 @@ async fn federation_following_list(extract::AuthedClaims(claims): extract::Authe
 
 /// GET /api/federation/followers — 获取关注我的远程用户列表
 /// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
-async fn federation_followers_list(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
+async fn federation_followers_list(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -1205,55 +1073,17 @@ async fn federation_timeline(extract::AuthedClaims(claims): extract::AuthedClaim
 // ==================== Phase 2: Content Publishing Wrappers ====================
 
 /// POST /api/federation/publish — 发布内容到联邦网络
-async fn federation_publish_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: federation::content::PublishRequest = match serde_json::from_slice(&body_bytes) {
-        Ok(p) => p,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::content::publish_content(user_id, &claims.username, db, &payload)
-                .await
-            {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已挂 auth_middleware；claims / body / db 走提取器。
+/// body 上限仍由路由的 DefaultBodyLimit 决定（与改造前一致）。
+async fn federation_publish(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::content::PublishRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::content::publish_content(user_id, &claims.username, &db, &payload).await {
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
@@ -1264,17 +1094,10 @@ async fn federation_like(
     Json(payload): Json<federation::interactions::ObjectIdRequest>,
 ) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    match federation::interactions::like_object(
-        user_id,
-        &claims.username,
-        &db,
-        &payload.object_id,
-    )
-    .await
+    match federation::interactions::like_object(user_id, &claims.username, &db, &payload.object_id)
+        .await
     {
-        Ok(resp) => {
-            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-        }
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => (status, json).into_response(),
     }
 }
@@ -1294,9 +1117,7 @@ async fn federation_unlike(
     )
     .await
     {
-        Ok(resp) => {
-            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-        }
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => (status, json).into_response(),
     }
 }
@@ -1309,9 +1130,7 @@ async fn federation_bookmark(
 ) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
     match federation::interactions::bookmark_object(user_id, &db, &payload.object_id).await {
-        Ok(resp) => {
-            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-        }
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => (status, json).into_response(),
     }
 }
@@ -1323,17 +1142,16 @@ async fn federation_unbookmark(
     Json(payload): Json<federation::interactions::ObjectIdRequest>,
 ) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    match federation::interactions::unbookmark_object(user_id, &db, &payload.object_id).await
-    {
-        Ok(resp) => {
-            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-        }
+    match federation::interactions::unbookmark_object(user_id, &db, &payload.object_id).await {
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
-async fn federation_bookmarks_list(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
+async fn federation_bookmarks_list(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -1353,79 +1171,25 @@ async fn federation_bookmarks_list(extract::AuthedClaims(claims): extract::Authe
     }
 }
 
-async fn federation_announce_from_body(
-    req: axum::extract::Request,
-) -> Result<
-    (
-        middleware::auth::Claims,
-        federation::interactions::AnnounceRequest,
-    ),
-    Response,
-> {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response())
-        }
-    };
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response())
-        }
-    };
-    let payload: federation::interactions::AnnounceRequest =
-        match serde_json::from_slice(&body_bytes) {
-            Ok(p) => p,
-            Err(_) => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "Invalid JSON (expect { object_id, content })"})),
-                )
-                    .into_response())
-            }
-        };
-    Ok((claims, payload))
-}
-
-async fn federation_announce_wrapper(req: axum::extract::Request) -> Response {
-    let (claims, payload) = match federation_announce_from_body(req).await {
-        Ok(v) => v,
-        Err(r) => return r,
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            let content = payload.content.as_deref().unwrap_or("");
-            match federation::interactions::announce_object(
-                user_id,
-                &claims.username,
-                db,
-                &payload.object_id,
-                content,
-            )
-            .await
-            {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已挂 auth_middleware；claims / body / db 全部走提取器。
+async fn federation_announce(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::interactions::AnnounceRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let content = payload.content.as_deref().unwrap_or("");
+    match federation::interactions::announce_object(
+        user_id,
+        &claims.username,
+        &db,
+        &payload.object_id,
+        content,
+    )
+    .await
+    {
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
@@ -1444,88 +1208,32 @@ async fn federation_unannounce(
     )
     .await
     {
-        Ok(resp) => {
-            (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-        }
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
         Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// POST /api/federation/notes — 创建 freeform Note（文本 + 附件）
-async fn federation_create_note_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: federation::content::CreateNoteRequest = match serde_json::from_slice(&body_bytes)
-    {
-        Ok(p) => p,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::content::create_note(user_id, &claims.username, db, &payload).await {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已挂 auth_middleware；body 上限仍由路由的 DefaultBodyLimit 决定。
+async fn federation_create_note(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::content::CreateNoteRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::content::create_note(user_id, &claims.username, &db, &payload).await {
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-/// POST /api/federation/media — multipart 上传图片/视频，返回公开 URL
-async fn federation_media_upload_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；`Multipart` 是 axum 自带的提取器，
+/// 提取失败（非 multipart/form-data）由它自己返回 400。
+async fn federation_media_upload(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    mut multipart: axum::extract::Multipart,
+) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    let mut multipart = match axum::extract::Multipart::from_request(req, &()).await {
-        Ok(m) => m,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Expected multipart/form-data"})),
-            )
-                .into_response()
-        }
-    };
 
     let mut file_bytes: Option<Vec<u8>> = None;
     let mut filename = "upload.bin".to_string();
@@ -1569,38 +1277,12 @@ async fn federation_media_upload_wrapper(req: axum::extract::Request) -> Respons
     }
 }
 
-/// POST /api/federation/unpublish — 取消发布
-async fn federation_unpublish_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: serde_json::Value = match serde_json::from_slice(&body_bytes) {
-        Ok(p) => p,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；body 上限仍由路由的 DefaultBodyLimit 决定。
+async fn federation_unpublish(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
     let content_type = payload["content_type"].as_str().unwrap_or("").trim();
     let content_id = payload["content_id"].as_str().unwrap_or("").trim();
     let activity_id = payload["activity_id"].as_str().unwrap_or("").trim();
@@ -1615,47 +1297,39 @@ async fn federation_unpublish_wrapper(req: axum::extract::Request) -> Response {
         )
             .into_response();
     }
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::content::unpublish_content(
-                user_id,
-                &claims.username,
-                db,
-                if content_type.is_empty() {
-                    None
-                } else {
-                    Some(content_type)
-                },
-                if content_id.is_empty() {
-                    None
-                } else {
-                    Some(content_id)
-                },
-                if activity_id.is_empty() {
-                    None
-                } else {
-                    Some(activity_id)
-                },
-            )
-            .await
-            {
-                Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::content::unpublish_content(
+        user_id,
+        &claims.username,
+        &db,
+        if content_type.is_empty() {
+            None
+        } else {
+            Some(content_type)
+        },
+        if content_id.is_empty() {
+            None
+        } else {
+            Some(content_id)
+        },
+        if activity_id.is_empty() {
+            None
+        } else {
+            Some(activity_id)
+        },
+    )
+    .await
+    {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// GET /api/federation/published — 获取已发布内容列表
 /// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
-async fn federation_published_list(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
+async fn federation_published_list(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -1679,62 +1353,24 @@ async fn federation_published_list(extract::AuthedClaims(claims): extract::Authe
 
 // ==================== Phase 3: Channel Wrapper Functions ====================
 
-/// 创建 Channel
-async fn federation_create_channel_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: federation::channel::CreateChannelRequest =
-        match serde_json::from_slice(&body_bytes) {
-            Ok(p) => p,
-            Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": format!("Invalid JSON: {}", e)})),
-                )
-                    .into_response()
-            }
-        };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::channel::create_channel(user_id, &claims.username, db, &payload).await
-            {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已挂 auth_middleware；body 上限仍由路由的 DefaultBodyLimit 决定。
+async fn federation_create_channel(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<federation::channel::CreateChannelRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::channel::create_channel(user_id, &claims.username, &db, &payload).await {
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// Channel 列表
 /// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
-async fn federation_list_channels(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
+async fn federation_list_channels(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+) -> Response {
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
         Some(db) => {
@@ -1757,370 +1393,144 @@ async fn federation_list_channels(extract::AuthedClaims(claims): extract::Authed
 }
 
 /// Channel 详情
-async fn federation_get_channel_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let channel_id = req
-        .uri()
-        .path()
-        .strip_prefix("/api/federation/channels/")
-        .unwrap_or("")
-        .split('/')
-        .next()
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::channel::get_channel(user_id, &channel_id, db).await {
-                Ok(detail) => {
-                    (StatusCode::OK, Json(serde_json::to_value(detail).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_get_channel(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(channel_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::channel::get_channel(user_id, &channel_id, &db).await {
+        Ok(detail) => (StatusCode::OK, Json(serde_json::to_value(detail).unwrap())).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// 关闭 Channel
-async fn federation_close_channel_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let channel_id = req
-        .uri()
-        .path()
-        .strip_prefix("/api/federation/channels/")
-        .unwrap_or("")
-        .strip_suffix("/close")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::channel::close_channel(user_id, &claims.username, &channel_id, db)
-                .await
-            {
-                Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_close_channel(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(channel_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::channel::close_channel(user_id, &claims.username, &channel_id, &db).await {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// 删除已关闭的 Channel（本地硬删除）
-async fn federation_delete_channel_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let channel_id = req
-        .uri()
-        .path()
-        .strip_prefix("/api/federation/channels/")
-        .unwrap_or("")
-        .split('/')
-        .next()
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::channel::delete_channel(user_id, &channel_id, db).await {
-                Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_delete_channel(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(channel_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::channel::delete_channel(user_id, &channel_id, &db).await {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// 接受 Channel
-async fn federation_accept_channel_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let channel_id = req
-        .uri()
-        .path()
-        .strip_prefix("/api/federation/channels/")
-        .unwrap_or("")
-        .strip_suffix("/accept")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::channel::accept_channel(user_id, &claims.username, &channel_id, db)
-                .await
-            {
-                Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_accept_channel(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(channel_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::channel::accept_channel(user_id, &claims.username, &channel_id, &db).await {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// 发起 Channel E2E 密钥交换
-async fn federation_e2e_key_exchange_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let channel_id = req
-        .uri()
-        .path()
-        .strip_prefix("/api/federation/channels/")
-        .unwrap_or("")
-        .strip_suffix("/e2e/key-exchange")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::channel::initiate_e2e_key_exchange(
-                user_id,
-                &claims.username,
-                &channel_id,
-                db,
-            )
-            .await
-            {
-                Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
-    }
-}
-
-/// 发送消息
-async fn federation_send_message_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let channel_id = req
-        .uri()
-        .path()
-        .strip_prefix("/api/federation/channels/")
-        .unwrap_or("")
-        .strip_suffix("/messages")
-        .unwrap_or("")
-        .to_string();
-    let body_bytes = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: federation::channel::SendMessageRequest = match serde_json::from_slice(&body_bytes)
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_e2e_key_exchange(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(channel_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::channel::initiate_e2e_key_exchange(
+        user_id,
+        &claims.username,
+        &channel_id,
+        &db,
+    )
+    .await
     {
-        Ok(p) => p,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": format!("Invalid JSON: {}", e)})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::channel::send_message(
-                user_id,
-                &claims.username,
-                &channel_id,
-                db,
-                &payload,
-            )
-            .await
-            {
-                Ok(resp) => {
-                    (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response()
-                }
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-/// 获取消息历史
-async fn federation_get_messages_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
+/// 路由已声明 `{channel_id}`；body 上限来自 federation 路由层。
+async fn federation_send_message(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(channel_id): axum::extract::Path<String>,
+    payload: Result<
+        Json<federation::channel::SendMessageRequest>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Response {
+    let Json(parsed) = match payload {
+        Ok(v) => v,
+        Err(e) => {
+            return json_rejection_response(
+                e,
+                Some("Inline images max ~32 MiB payload; larger files use chunked transfer"),
             )
-                .into_response()
         }
     };
-    let uri = req.uri().clone();
-    let path = uri.path();
-    let channel_id = path
-        .strip_prefix("/api/federation/channels/")
-        .unwrap_or("")
-        .strip_suffix("/messages")
-        .unwrap_or("")
-        .to_string();
-    // 解析查询参数
-    let query_str = uri.query().unwrap_or("");
-    let params: std::collections::HashMap<String, String> =
-        url::form_urlencoded::parse(query_str.as_bytes())
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-    let before = params.get("before").map(|s| s.as_str());
-    let limit = params.get("limit").and_then(|s| s.parse::<i64>().ok());
 
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::channel::get_messages(user_id, &channel_id, db, before, limit).await {
-                Ok(messages) => (
-                    StatusCode::OK,
-                    Json(json!({"messages": messages, "total": messages.len()})),
-                )
-                    .into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::channel::send_message(user_id, &claims.username, &channel_id, &db, &parsed)
+        .await
+    {
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+        Err((status, json)) => (status, json).into_response(),
+    }
+}
+
+/// 路由已声明 `{channel_id}`；分页参数走 `Query<ListQuery>`。
+async fn federation_get_messages(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(channel_id): axum::extract::Path<String>,
+    axum::extract::Query(q): axum::extract::Query<ListQuery>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::channel::get_messages(user_id, &channel_id, &db, q.before(), q.limit()).await
+    {
+        Ok(messages) => (
+            StatusCode::OK,
+            Json(json!({"messages": messages, "total": messages.len()})),
         )
             .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 // ==================== Phase 4: Room 多方通信 Wrapper ====================
 
-async fn federation_create_room_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let body = match axum::body::to_bytes(req.into_body(), 1024 * 64).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let parsed: federation::room::CreateRoomRequest = match serde_json::from_slice(&body) {
-        Ok(p) => p,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::create_room(user_id, &claims.username, db, &parsed).await {
-                Ok(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由通过 `DefaultBodyLimit::max(FEDERATION_SMALL_BODY_LIMIT)` 保留原有的
+/// 64 KiB 上限 —— 换成 Json 提取器后若不显式加这层，端点会退回到
+/// 路由级的 40 MiB，等于放大可缓冲的请求体。
+async fn federation_create_room(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(parsed): Json<federation::room::CreateRoomRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::create_room(user_id, &claims.username, &db, &parsed).await {
+        Ok(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
@@ -2147,975 +1557,414 @@ async fn federation_list_rooms(extract::AuthedClaims(claims): extract::AuthedCla
     }
 }
 
-async fn federation_get_room_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::get_room(user_id, &claims.username, &room_id, db).await {
-                Ok(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 全部走提取器，
+/// 不再手工 strip_prefix 重解析 URI。
+async fn federation_get_room(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::get_room(user_id, &claims.username, &room_id, &db).await {
+        Ok(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_update_room_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .to_string();
-    let body = match axum::body::to_bytes(req.into_body(), 1024 * 64).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let parsed: federation::room::UpdateRoomRequest = match serde_json::from_slice(&body) {
-        Ok(p) => p,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::update_room(user_id, &claims.username, &room_id, db, &parsed)
-                .await
-            {
-                Ok(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数并挂了 auth_middleware；
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+async fn federation_update_room(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+    Json(parsed): Json<federation::room::UpdateRoomRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::update_room(user_id, &claims.username, &room_id, &db, &parsed).await {
+        Ok(detail) => (StatusCode::OK, Json(json!(detail))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_delete_room_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::delete_room(user_id, &claims.username, &room_id, db).await {
-                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 全部走提取器，
+/// 不再手工 strip_prefix 重解析 URI。
+async fn federation_delete_room(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::delete_room(user_id, &claims.username, &room_id, &db).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_get_room_members_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/members")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::get_members(user_id, &claims.username, &room_id, db).await {
-                Ok(members) => (
-                    StatusCode::OK,
-                    Json(json!({"members": members, "total": members.len()})),
-                )
-                    .into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_get_room_members(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::get_members(user_id, &claims.username, &room_id, &db).await {
+        Ok(members) => (
+            StatusCode::OK,
+            Json(json!({"members": members, "total": members.len()})),
         )
             .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_invite_room_member_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/invite")
-        .unwrap_or("")
-        .to_string();
-    let body = match axum::body::to_bytes(req.into_body(), 1024 * 64).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let parsed: federation::room::InviteMemberRequest = match serde_json::from_slice(&body) {
-        Ok(p) => p,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::invite_member(user_id, &claims.username, &room_id, db, &parsed)
-                .await
-            {
-                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数并挂了 auth_middleware；
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+async fn federation_invite_room_member(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+    Json(parsed): Json<federation::room::InviteMemberRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::invite_member(user_id, &claims.username, &room_id, &db, &parsed).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_remove_room_member_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    // /api/federation/rooms/{room_id}/members/{actor} — actor is URL-encoded
-    let after_rooms = path.strip_prefix("/api/federation/rooms/").unwrap_or("");
-    let parts: Vec<&str> = after_rooms.splitn(2, "/members/").collect();
-    let room_id = parts.first().copied().unwrap_or("").to_string();
-    let target_actor = parts.get(1).copied().unwrap_or("");
-    let target_actor_decoded = urlencoding::decode(target_actor)
-        .unwrap_or_default()
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::remove_member(
-                user_id,
-                &claims.username,
-                &room_id,
-                &target_actor_decoded,
-                db,
-            )
-            .await
-            {
-                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由声明的是 `{room_id}/members/{actor}`。
+///
+/// `Path<(String, String)>` 会对每段做百分号解码，与原先手工
+/// `urlencoding::decode(actor)` 等价 —— actor 是完整 URL，必然带编码。
+async fn federation_remove_room_member(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path((room_id, target_actor)): axum::extract::Path<(String, String)>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::remove_member(user_id, &claims.username, &room_id, &target_actor, &db)
+        .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_leave_room_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/leave")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::leave_room(user_id, &claims.username, &room_id, db).await {
-                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_leave_room(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::leave_room(user_id, &claims.username, &room_id, &db).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// POST /api/federation/rooms/{room_id}/accept — accept pending room invite
-async fn federation_accept_room_invite_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/accept")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::accept_room_invite(user_id, &claims.username, &room_id, db)
-                .await
-            {
-                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_accept_room_invite(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::accept_room_invite(user_id, &claims.username, &room_id, &db).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// POST /api/federation/rooms/{room_id}/reject — reject pending room invite
-async fn federation_reject_room_invite_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/reject")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::reject_room_invite(user_id, &claims.username, &room_id, db)
-                .await
-            {
-                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_reject_room_invite(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::reject_room_invite(user_id, &claims.username, &room_id, &db).await {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-/// POST /api/federation/rooms/{room_id}/transfer-ownership
-async fn federation_transfer_room_ownership_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/transfer-ownership")
-        .unwrap_or("")
-        .to_string();
-    let body = match axum::body::to_bytes(req.into_body(), 64 * 1024).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let parsed: serde_json::Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已声明 `{room_id}`。
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+async fn federation_transfer_room_ownership(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+    Json(parsed): Json<serde_json::Value>,
+) -> Response {
+    // `new_owner` 是规范键名，`actor` 是老客户端的写法 —— 兜底保留。
     let new_owner = parsed
         .get("new_owner")
         .or_else(|| parsed.get("actor"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::transfer_room_ownership(
-                user_id,
-                &claims.username,
-                &room_id,
-                &new_owner,
-                db,
-            )
-            .await
-            {
-                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::transfer_room_ownership(
+        user_id,
+        &claims.username,
+        &room_id,
+        &new_owner,
+        &db,
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// 发起 Room E2E 密钥发布
-async fn federation_room_e2e_key_exchange_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let room_id = req
-        .uri()
-        .path()
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/e2e/key-exchange")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::initiate_e2e_key_exchange(
-                user_id,
-                &claims.username,
-                &room_id,
-                db,
-            )
-            .await
-            {
-                Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_room_e2e_key_exchange(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::initiate_e2e_key_exchange(user_id, &claims.username, &room_id, &db)
+        .await
+    {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_send_room_message_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/messages")
-        .unwrap_or("")
-        .to_string();
-    // Align with channel send + MAX_ROOM_MESSAGE_PAYLOAD (32 MiB). A prior 64 KiB
-    // to_bytes cap made any inline image/data-URL fail with opaque "Invalid body".
-    let body = match axum::body::Bytes::from_request(req, &()).await {
-        Ok(b) => b,
+/// POST /api/federation/rooms/{room_id}/stickers — share sticker into group pack
+async fn federation_add_room_sticker(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+    Json(req): Json<federation::room::AddRoomStickerRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::add_room_sticker(user_id, &claims.username, &room_id, req, &db).await {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
+    }
+}
+
+/// DELETE /api/federation/rooms/{room_id}/stickers/{sticker_id}
+async fn federation_remove_room_sticker(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path((room_id, sticker_id)): axum::extract::Path<(String, String)>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::remove_room_sticker(
+        user_id,
+        &claims.username,
+        &room_id,
+        &sticker_id,
+        &db,
+    )
+    .await
+    {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
+    }
+}
+
+/// 路由已声明 `{room_id}`；body 上限来自 federation 路由层（见 `federation::limits`）。
+///
+/// 用 `Result<Json<T>, JsonRejection>` 而不是裸 `Json<T>`：超限时要保住原有的
+/// 413 + 分块传输指引，而不是 axum 的纯文本拒绝。
+async fn federation_send_room_message(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+    payload: Result<
+        Json<federation::room::SendRoomMessageRequest>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Response {
+    let Json(parsed) = match payload {
+        Ok(v) => v,
         Err(e) => {
             tracing::warn!(
                 room_id = %room_id,
                 error = %e,
                 "[Room] send message body rejected (likely over DefaultBodyLimit)"
             );
-            return (
-                StatusCode::PAYLOAD_TOO_LARGE,
-                Json(json!({
-                    "error": "Request body too large or unreadable",
-                    "hint": "Inline images max ~32 MiB payload; larger files use chunked transfer"
-                })),
-            )
-                .into_response();
+            return json_rejection_response(
+                e,
+                Some("Inline images max ~32 MiB payload; larger files use chunked transfer"),
+            );
         }
     };
-    let parsed: federation::room::SendRoomMessageRequest = match serde_json::from_slice(&body) {
-        Ok(p) => p,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": format!("Invalid JSON: {}", e)})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::send_room_message(
-                user_id,
-                &claims.username,
-                &room_id,
-                db,
-                &parsed,
-            )
-            .await
-            {
-                Ok(resp) => (StatusCode::OK, Json(json!(resp))).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::send_room_message(user_id, &claims.username, &room_id, &db, &parsed)
+        .await
+    {
+        Ok(resp) => (StatusCode::OK, Json(json!(resp))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_get_room_messages_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let uri = req.uri().clone();
-    let path = uri.path();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/messages")
-        .unwrap_or("")
-        .to_string();
-    let query_str = uri.query().unwrap_or("");
-    let params: std::collections::HashMap<String, String> =
-        url::form_urlencoded::parse(query_str.as_bytes())
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-    let before = params.get("before").map(|s| s.as_str());
-    let limit = params.get("limit").and_then(|s| s.parse::<i64>().ok());
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::get_room_messages(
-                user_id,
-                &claims.username,
-                &room_id,
-                db,
-                before,
-                limit,
-            )
-            .await
-            {
-                Ok(messages) => (
-                    StatusCode::OK,
-                    Json(json!({"messages": messages, "total": messages.len()})),
-                )
-                    .into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
+/// 路由已声明 `{room_id}`；分页参数走 `Query<ListQuery>`。
+async fn federation_get_room_messages(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+    axum::extract::Query(q): axum::extract::Query<ListQuery>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::get_room_messages(
+        user_id,
+        &claims.username,
+        &room_id,
+        &db,
+        q.before(),
+        q.limit(),
+    )
+    .await
+    {
+        Ok(messages) => (
+            StatusCode::OK,
+            Json(json!({"messages": messages, "total": messages.len()})),
         )
             .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_pin_room_message_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let after_rooms = path.strip_prefix("/api/federation/rooms/").unwrap_or("");
-    let parts: Vec<&str> = after_rooms.splitn(2, "/messages/").collect();
-    let room_id = parts.first().copied().unwrap_or("").to_string();
-    let message_encoded = parts
-        .get(1)
-        .copied()
-        .unwrap_or("")
-        .strip_suffix("/pin")
-        .unwrap_or("");
-    let message_id = urlencoding::decode(message_encoded)
-        .unwrap_or_default()
-        .to_string();
-    let body = match axum::body::to_bytes(req.into_body(), 1024 * 16).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let parsed: federation::room::PinRoomMessageRequest = match serde_json::from_slice(&body) {
-        Ok(p) => p,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::pin_room_message(
-                user_id,
-                &claims.username,
-                &room_id,
-                &message_id,
-                db,
-                &parsed,
-            )
-            .await
-            {
-                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由声明的是 `{room_id}/messages/{message_id}/pin`。
+/// `Path<(String, String)>` 对每段做百分号解码，与原先手工
+/// `urlencoding::decode(message_id)` 等价。
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 16 KiB）。
+async fn federation_pin_room_message(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path((room_id, message_id)): axum::extract::Path<(String, String)>,
+    Json(parsed): Json<federation::room::PinRoomMessageRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::pin_room_message(
+        user_id,
+        &claims.username,
+        &room_id,
+        &message_id,
+        &db,
+        &parsed,
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 // ==================== Phase 5: Ring 去中心化环网 ====================
 
-async fn federation_create_ring_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    if let Some(resp) = federation_admin_required(&claims).await {
-        return resp;
-    }
-    let body = match axum::body::to_bytes(req.into_body(), 65536).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let create_req: federation::ring::CreateRingRequest = match serde_json::from_slice(&body) {
-        Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": format!("Invalid JSON: {}", e)})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::ring::create_ring(user_id, db, &create_req).await {
-                Ok(ring) => (StatusCode::CREATED, Json(json!(ring))).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// `AdminClaims` 取代函数体里的 `federation_admin_required` —— 这些 ring 端点的
+/// 路由只有 router 级 `auth_middleware`（普通登录），管理员校验必须留在这里。
+/// 写进签名后，路由被挪动或重挂中间件也带不走它。
+async fn federation_create_ring(
+    extract::AdminClaims(claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
+    Json(create_req): Json<federation::ring::CreateRingRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::ring::create_ring(user_id, &db, &create_req).await {
+        Ok(ring) => (StatusCode::CREATED, Json(json!(ring))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_list_rings_wrapper(_req: axum::extract::Request) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::ring::list_rings(db).await {
-            Ok(rings) => (
-                StatusCode::OK,
-                Json(json!({"rings": rings, "total": rings.len()})),
-            )
-                .into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
+async fn federation_list_rings(extract::Db(db): extract::Db) -> Response {
+    match federation::ring::list_rings(&db).await {
+        Ok(rings) => (
+            StatusCode::OK,
+            Json(json!({"rings": rings, "total": rings.len()})),
         )
             .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_get_ring_wrapper(req: axum::extract::Request) -> Response {
-    let path = req.uri().path().to_string();
-    let ring_id = path
-        .strip_prefix("/api/federation/rings/")
-        .unwrap_or("")
-        .split('/')
-        .next()
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::ring::get_ring(&ring_id, db).await {
-            Ok(ring) => (StatusCode::OK, Json(json!(ring))).into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；不再手工解析 URI。
+async fn federation_get_ring(
+    extract::Db(db): extract::Db,
+    axum::extract::Path(ring_id): axum::extract::Path<String>,
+) -> Response {
+    match federation::ring::get_ring(&ring_id, &db).await {
+        Ok(ring) => (StatusCode::OK, Json(json!(ring))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_leave_ring_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    if let Some(resp) = federation_admin_required(&claims).await {
-        return resp;
-    }
-    let path = req.uri().path().to_string();
-    let ring_id = path
-        .strip_prefix("/api/federation/rings/")
-        .unwrap_or("")
-        .strip_suffix("/leave")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::ring::leave_ring(&ring_id, &claims.username, db).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 见 [`federation_create_ring`]：管理员校验由 `AdminClaims` 承担。
+async fn federation_leave_ring(
+    extract::AdminClaims(claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(ring_id): axum::extract::Path<String>,
+) -> Response {
+    match federation::ring::leave_ring(&ring_id, &claims.username, &db).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_get_ring_peers_wrapper(req: axum::extract::Request) -> Response {
-    let path = req.uri().path().to_string();
-    let ring_id = path
-        .strip_prefix("/api/federation/rings/")
-        .unwrap_or("")
-        .strip_suffix("/peers")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::ring::get_peers(&ring_id, db).await {
-            Ok(peers) => (
-                StatusCode::OK,
-                Json(json!({"peers": peers, "total": peers.len()})),
-            )
-                .into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
+/// 路由已声明该路径参数；不再手工解析 URI。
+async fn federation_get_ring_peers(
+    extract::Db(db): extract::Db,
+    axum::extract::Path(ring_id): axum::extract::Path<String>,
+) -> Response {
+    match federation::ring::get_peers(&ring_id, &db).await {
+        Ok(peers) => (
+            StatusCode::OK,
+            Json(json!({"peers": peers, "total": peers.len()})),
         )
             .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_add_ring_peer_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    if let Some(resp) = federation_admin_required(&claims).await {
-        return resp;
-    }
-    let path = req.uri().path().to_string();
-    let ring_id = path
-        .strip_prefix("/api/federation/rings/")
-        .unwrap_or("")
-        .strip_suffix("/peers")
-        .unwrap_or("")
-        .to_string();
-    let body = match axum::body::to_bytes(req.into_body(), 65536).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let add_req: federation::ring::AddPeerRequest = match serde_json::from_slice(&body) {
-        Ok(r) => r,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": format!("Invalid JSON: {}", e)})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match federation::ring::add_peer(&ring_id, &claims.username, db, &add_req).await {
-                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 见 [`federation_create_ring`]：管理员校验由 `AdminClaims` 承担。
+async fn federation_add_ring_peer(
+    extract::AdminClaims(claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(ring_id): axum::extract::Path<String>,
+    Json(add_req): Json<federation::ring::AddPeerRequest>,
+) -> Response {
+    match federation::ring::add_peer(&ring_id, &claims.username, &db, &add_req).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_remove_ring_peer_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    if let Some(resp) = federation_admin_required(&claims).await {
-        return resp;
-    }
-    let path = req.uri().path().to_string();
-    let rest = path.strip_prefix("/api/federation/rings/").unwrap_or("");
-    let parts: Vec<&str> = rest.splitn(3, '/').collect();
-    let ring_id = parts.first().unwrap_or(&"").to_string();
-    let peer_encoded = parts.get(2).unwrap_or(&"").to_string();
-    let peer_url = urlencoding::decode(&peer_encoded)
-        .unwrap_or_default()
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match federation::ring::remove_peer(&ring_id, &peer_url, &claims.username, db).await {
-                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 见 [`federation_create_ring`]：管理员校验由 `AdminClaims` 承担。
+///
+/// `Path<(String, String)>` 会对每段做百分号解码，与原先手工
+/// `urlencoding::decode(peer)` 等价 —— peer 是完整 Actor URL，必然带编码。
+async fn federation_remove_ring_peer(
+    extract::AdminClaims(claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path((ring_id, peer_url)): axum::extract::Path<(String, String)>,
+) -> Response {
+    match federation::ring::remove_peer(&ring_id, &peer_url, &claims.username, &db).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_trigger_ring_sync_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    if let Some(resp) = federation_admin_required(&claims).await {
-        return resp;
-    }
-    let path = req.uri().path().to_string();
-    let ring_id = path
-        .strip_prefix("/api/federation/rings/")
-        .unwrap_or("")
-        .strip_suffix("/sync")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::ring::trigger_sync(&ring_id, &claims.username, db).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 见 [`federation_create_ring`]：管理员校验由 `AdminClaims` 承担。
+async fn federation_trigger_ring_sync(
+    extract::AdminClaims(claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(ring_id): axum::extract::Path<String>,
+) -> Response {
+    match federation::ring::trigger_sync(&ring_id, &claims.username, &db).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
@@ -3123,7 +1972,9 @@ async fn federation_trigger_ring_sync_wrapper(req: axum::extract::Request) -> Re
 
 /// GET /api/federation/delivery/stats — user delivery queue counters
 /// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
-async fn federation_delivery_stats(extract::AuthedClaims(claims): extract::AuthedClaims) -> Response {
+async fn federation_delivery_stats(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
     let db_opt = DB_CONNECTION.read().await;
     match db_opt.as_ref() {
@@ -3142,419 +1993,162 @@ async fn federation_delivery_stats(extract::AuthedClaims(claims): extract::Authe
 }
 
 /// POST /api/federation/delivery/{id}/retry — requeue a dead/stuck item
-async fn federation_retry_delivery_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已声明该数值路径参数；`Path<i32>` 取代手工 strip + parse。
+async fn federation_retry_delivery(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(queue_id): axum::extract::Path<i32>,
+) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    let path = req.uri().path().to_string();
-    // /api/federation/delivery/{id}/retry
-    let id_str = path
-        .strip_prefix("/api/federation/delivery/")
-        .unwrap_or("")
-        .strip_suffix("/retry")
-        .unwrap_or("");
-    let queue_id: i32 = match id_str.parse() {
-        Ok(i) => i,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid delivery id"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::delivery::retry_delivery_item(db, user_id, queue_id).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, v)) => (status, Json(v)).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::delivery::retry_delivery_item(&db, user_id, queue_id).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
 /// POST /api/federation/delivery/{id}/cancel — cancel pending/delivering item
-async fn federation_cancel_delivery_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已声明该数值路径参数；`Path<i32>` 取代手工 strip + parse。
+async fn federation_cancel_delivery(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(queue_id): axum::extract::Path<i32>,
+) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    let path = req.uri().path().to_string();
-    let id_str = path
-        .strip_prefix("/api/federation/delivery/")
-        .unwrap_or("")
-        .strip_suffix("/cancel")
-        .unwrap_or("");
-    let queue_id: i32 = match id_str.parse() {
-        Ok(i) => i,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid delivery id"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::delivery::cancel_delivery_item(db, user_id, queue_id).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, v)) => (status, Json(v)).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::delivery::cancel_delivery_item(&db, user_id, queue_id).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
-/// POST /api/federation/delivery/retry-dead — requeue all dead items for user
-async fn federation_retry_all_dead_delivery_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；`Query<LimitQuery>` 取代手工切 query 串。
+async fn federation_retry_all_dead_delivery(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Query(q): axum::extract::Query<LimitQuery>,
+) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    let limit = req
-        .uri()
-        .query()
-        .and_then(|q| {
-            q.split('&')
-                .find_map(|p| p.strip_prefix("limit=").and_then(|v| v.parse::<i64>().ok()))
-        })
-        .unwrap_or(50);
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::delivery::retry_all_dead_for_user(db, user_id, limit).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, v)) => (status, Json(v)).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::delivery::retry_all_dead_for_user(&db, user_id, q.or(50)).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
-/// POST /api/federation/delivery/cancel-pending — cancel all pending/delivering items for user
-async fn federation_cancel_all_pending_delivery_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；`Query<LimitQuery>` 取代手工切 query 串。
+async fn federation_cancel_all_pending_delivery(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Query(q): axum::extract::Query<LimitQuery>,
+) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    let limit = req
-        .uri()
-        .query()
-        .and_then(|q| {
-            q.split('&')
-                .find_map(|p| p.strip_prefix("limit=").and_then(|v| v.parse::<i64>().ok()))
-        })
-        .unwrap_or(100);
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match federation::delivery::cancel_all_pending_for_user(db, user_id, limit).await {
-                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-                Err((status, v)) => (status, Json(v)).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::delivery::cancel_all_pending_for_user(&db, user_id, q.or(100)).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
 /// DELETE /api/federation/delivery/{id} — purge a dead queue row (user-owned dismiss)
-async fn federation_dismiss_delivery_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已声明该数值路径参数；`Path<i32>` 取代手工 strip + parse。
+async fn federation_dismiss_delivery(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(queue_id): axum::extract::Path<i32>,
+) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    let path = req.uri().path().to_string();
-    let id_str = path
-        .strip_prefix("/api/federation/delivery/")
-        .unwrap_or("")
-        .trim_end_matches('/');
-    let queue_id: i32 = match id_str.parse() {
-        Ok(i) => i,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid delivery id"})),
-            )
-                .into_response()
+    {
+        match federation::delivery::dismiss_delivery_item(&db, user_id, queue_id).await {
+            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+            Err((status, v)) => (status, Json(v)).into_response(),
         }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match federation::delivery::dismiss_delivery_item(db, user_id, queue_id).await {
-                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-                Err((status, v)) => (status, Json(v)).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
     }
 }
 
-/// POST /api/federation/delivery/purge-dead — bulk-delete dead rows (optional cancelled-only)
-async fn federation_purge_dead_delivery_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；`Query<PurgeDeadQuery>` 保留原有的宽松真值解析。
+async fn federation_purge_dead_delivery(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Query(q): axum::extract::Query<PurgeDeadQuery>,
+) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    let query_str = req.uri().query().unwrap_or("");
-    let params: std::collections::HashMap<String, String> =
-        url::form_urlencoded::parse(query_str.as_bytes())
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-    let limit = params
-        .get("limit")
-        .and_then(|s| s.parse::<i64>().ok())
-        .unwrap_or(100);
-    let cancelled_only = params
-        .get("cancelled_only")
-        .map(|s| matches!(s.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false);
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match federation::delivery::purge_dead_for_user(db, user_id, limit, cancelled_only)
-                .await
-            {
-                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-                Err((status, v)) => (status, Json(v)).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::delivery::purge_dead_for_user(
+        &db,
+        user_id,
+        q.limit_or(100),
+        q.cancelled_only(),
+    )
+    .await
+    {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
 /// POST /api/federation/rooms/{room_id}/join — self-join open/public rooms
 ///
-/// `room_id` may be bare `rm_…` or shareable `rm_…@home[:port]`. Body may include
-/// `{ "home_server": "host:port" }` for remote public rooms not yet local.
-async fn federation_join_room_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id_encoded = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/join")
-        .unwrap_or("");
-    let room_id = urlencoding::decode(room_id_encoded)
-        .map(|s| s.into_owned())
-        .unwrap_or_else(|_| room_id_encoded.to_string());
-    // Optional body: { "home_server": "…" } — empty body is fine.
-    let body_bytes = axum::body::to_bytes(req.into_body(), 8 * 1024)
+/// 路由已声明 `{room_id}`。
+///
+/// body 是**可选**的（`{"home_server": "…"}`，空 body 合法），所以用
+/// `Option<Json<T>>` 而不是 `Json<T>` —— 后者会把「不带 body 加入房间」
+/// 这个正常用法拒成 400。
+///
+/// 与原实现有一处**有意的差异**：畸形 JSON 原先被 `unwrap_or_default()` 静默
+/// 吞掉，现在会返回 400。用户写错 `home_server` 时显式报错优于静默忽略。
+/// 行为已由 `federation::limits` 里的 `optional_json_distinguishes_absent_from_malformed`
+/// 实测锁定。
+async fn federation_join_room(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+    body: Option<Json<federation::room::JoinRoomRequest>>,
+) -> Response {
+    let join_req = body.map(|Json(v)| v).unwrap_or_default();
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::join_room(user_id, &claims.username, &room_id, &db, Some(&join_req))
         .await
-        .unwrap_or_default();
-    let join_req: federation::room::JoinRoomRequest = if body_bytes.is_empty() {
-        federation::room::JoinRoomRequest::default()
-    } else {
-        serde_json::from_slice(&body_bytes).unwrap_or_default()
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::join_room(
-                user_id,
-                &claims.username,
-                &room_id,
-                db,
-                Some(&join_req),
-            )
-            .await
-            {
-                Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
 /// GET /api/federation/public/rooms/{room_id} — unauthenticated public room card
-async fn federation_get_public_room_wrapper(req: axum::extract::Request) -> Response {
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/public/rooms/")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::room::get_public_room(&room_id, db).await {
-            Ok(info) => (StatusCode::OK, Json(json!(info))).into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；不再手工解析 URI。
+async fn federation_get_public_room(
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+) -> Response {
+    match federation::room::get_public_room(&room_id, &db).await {
+        Ok(info) => (StatusCode::OK, Json(json!(info))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-/// GET /api/federation/delivery?limit= — recent queue rows (dead first)
-async fn federation_list_delivery_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 auth_middleware；`Query<LimitQuery>` 取代手工 form_urlencoded 解析。
+async fn federation_list_delivery(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Query(q): axum::extract::Query<LimitQuery>,
+) -> Response {
     let user_id: i32 = claims.sub.parse().unwrap_or(0);
-    let query_str = req.uri().query().unwrap_or("");
-    let params: std::collections::HashMap<String, String> =
-        url::form_urlencoded::parse(query_str.as_bytes())
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-    let limit = params
-        .get("limit")
-        .and_then(|s| s.parse::<i64>().ok())
-        .unwrap_or(30);
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::delivery::list_delivery_for_user(db, user_id, limit).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err(e) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response()
-            }
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::delivery::list_delivery_for_user(&db, user_id, q.or(30)).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error": e}))).into_response(),
     }
 }
 
-async fn federation_get_trust_policy_wrapper(_req: axum::extract::Request) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::trust::get_policy(db).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, v)) => (status, Json(v)).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+async fn federation_get_trust_policy(extract::Db(db): extract::Db) -> Response {
+    match federation::trust::get_policy(&db).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
-/// PUT /api/federation/trust/policy — update allowlist / min_trust / auto_discover (admin)
-async fn federation_update_trust_policy_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    if let Some(resp) = federation_admin_required(&claims).await {
-        return resp;
-    }
-    let body = match axum::body::to_bytes(req.into_body(), 65536).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: serde_json::Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
+/// 见 [`federation_create_ring`]：管理员校验由 `AdminClaims` 承担。
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+async fn federation_update_trust_policy(
+    extract::AdminClaims(_claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
     let min_trust = payload
         .get("min_trust_level")
         .and_then(|v| v.as_i64())
@@ -3582,68 +2176,36 @@ async fn federation_update_trust_policy_wrapper(req: axum::extract::Request) -> 
         .and_then(|r| r.get("trusted_multiplier"))
         .or_else(|| payload.get("rate_trusted_multiplier"))
         .and_then(|v| v.as_i64());
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match federation::trust::update_policy(
-                db,
-                min_trust,
-                allowed_domains,
-                auto_discover,
-                rate_max,
-                rate_window,
-                rate_mul,
-            )
-            .await
-            {
-                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-                Err((status, v)) => (status, Json(v)).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::trust::update_policy(
+        &db,
+        min_trust,
+        allowed_domains,
+        auto_discover,
+        rate_max,
+        rate_window,
+        rate_mul,
+    )
+    .await
+    {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
-async fn federation_list_instances_wrapper(_req: axum::extract::Request) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::trust::list_instances(db).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, v)) => (status, Json(v)).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+async fn federation_list_instances(extract::Db(db): extract::Db) -> Response {
+    match federation::trust::list_instances(&db).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
-async fn federation_update_instance_trust_wrapper(req: axum::extract::Request) -> Response {
-    let body = match axum::body::to_bytes(req.into_body(), 65536).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: serde_json::Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 admin_middleware；`AuthedClaims` 保留原 wrapper 的 401 行为。
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+async fn federation_update_instance_trust(
+    extract::AuthedClaims(_claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
     let domain = match payload.get("domain").and_then(|v| v.as_str()) {
         Some(d) => d.to_string(),
         None => {
@@ -3658,56 +2220,26 @@ async fn federation_update_instance_trust_wrapper(req: axum::extract::Request) -
         .get("trust_level")
         .and_then(|v| v.as_i64())
         .unwrap_or(0) as i16;
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::trust::update_instance_trust(db, &domain, level).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, v)) => (status, Json(v)).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::trust::update_instance_trust(&db, &domain, level).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
-async fn federation_list_content_filters_wrapper(_req: axum::extract::Request) -> Response {
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::trust::list_content_filters(db).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, v)) => (status, Json(v)).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+async fn federation_list_content_filters(extract::Db(db): extract::Db) -> Response {
+    match federation::trust::list_content_filters(&db).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
-async fn federation_create_content_filter_wrapper(req: axum::extract::Request) -> Response {
-    let body = match axum::body::to_bytes(req.into_body(), 65536).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: serde_json::Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 admin_middleware；`AuthedClaims` 保留原 wrapper 的 401 行为。
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+async fn federation_create_content_filter(
+    extract::AuthedClaims(_claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
     let name = payload
         .get("name")
         .and_then(|v| v.as_str())
@@ -3727,140 +2259,51 @@ async fn federation_create_content_filter_wrapper(req: axum::extract::Request) -
         .get("enabled")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match federation::trust::create_content_filter(db, &name, &filter_type, &value, enabled)
-                .await
-            {
-                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-                Err((status, v)) => (status, Json(v)).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::trust::create_content_filter(&db, &name, &filter_type, &value, enabled).await
+    {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
-async fn federation_update_content_filter_wrapper(req: axum::extract::Request) -> Response {
-    let path = req.uri().path().to_string();
-    let id_str = path
-        .strip_prefix("/api/federation/trust/filters/")
-        .unwrap_or("")
-        .to_string();
-    let id: i32 = match id_str.parse() {
-        Ok(i) => i,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid filter id"})),
-            )
-                .into_response()
-        }
-    };
-    let body = match axum::body::to_bytes(req.into_body(), 65536).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: serde_json::Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已声明该数值路径参数并挂了 admin_middleware；
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+async fn federation_update_content_filter(
+    extract::AuthedClaims(_claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(id): axum::extract::Path<i32>,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
     let name = payload.get("name").and_then(|v| v.as_str());
     let filter_type = payload.get("filter_type").and_then(|v| v.as_str());
     let value = payload.get("value").and_then(|v| v.as_str());
     let enabled = payload.get("enabled").and_then(|v| v.as_bool());
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            match federation::trust::update_content_filter(
-                db,
-                id,
-                name,
-                filter_type,
-                value,
-                enabled,
-            )
-            .await
-            {
-                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-                Err((status, v)) => (status, Json(v)).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::trust::update_content_filter(&db, id, name, filter_type, value, enabled).await
+    {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
-async fn federation_delete_content_filter_wrapper(req: axum::extract::Request) -> Response {
-    let path = req.uri().path().to_string();
-    let id_str = path
-        .strip_prefix("/api/federation/trust/filters/")
-        .unwrap_or("")
-        .to_string();
-    let id: i32 = match id_str.parse() {
-        Ok(i) => i,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid filter id"})),
-            )
-                .into_response()
-        }
-    };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::trust::delete_content_filter(db, id).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, v)) => (status, Json(v)).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该数值路径参数并挂了 admin_middleware。
+async fn federation_delete_content_filter(
+    extract::AdminClaims(_claims): extract::AdminClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(id): axum::extract::Path<i32>,
+) -> Response {
+    match federation::trust::delete_content_filter(&db, id).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
-async fn federation_toggle_instance_block_wrapper(req: axum::extract::Request) -> Response {
-    let body = match axum::body::to_bytes(req.into_body(), 65536).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let payload: serde_json::Value = match serde_json::from_slice(&body) {
-        Ok(v) => v,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid JSON"})),
-            )
-                .into_response()
-        }
-    };
+/// 路由已挂 admin_middleware；`AuthedClaims` 保留原 wrapper 的 401 行为。
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+async fn federation_toggle_instance_block(
+    extract::AuthedClaims(_claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
     let domain = match payload.get("domain").and_then(|v| v.as_str()) {
         Some(d) => d.to_string(),
         None => {
@@ -3875,387 +2318,173 @@ async fn federation_toggle_instance_block_wrapper(req: axum::extract::Request) -
         .get("block")
         .and_then(|v| v.as_bool())
         .unwrap_or(true);
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::trust::toggle_instance_block(db, &domain, block).await {
-            Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-            Err((status, v)) => (status, Json(v)).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+    match federation::trust::toggle_instance_block(&db, &domain, block).await {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, v)) => (status, Json(v)).into_response(),
     }
 }
 
 // ==================== Phase 5 补全: 文件传输 ====================
 
-async fn federation_initiate_transfer_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let channel_id = path
-        .strip_prefix("/api/federation/channels/")
-        .unwrap_or("")
-        .strip_suffix("/transfers")
-        .unwrap_or("")
-        .to_string();
-    let body = match axum::body::to_bytes(req.into_body(), 65536).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let transfer_req: federation::file_transfer::InitTransferRequest =
-        match serde_json::from_slice(&body) {
-            Ok(r) => r,
-            Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": format!("Invalid JSON: {}", e)})),
-                )
-                    .into_response()
-            }
-        };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::file_transfer::initiate_transfer(
-                user_id,
-                &claims.username,
-                &channel_id,
-                db,
-                &transfer_req,
-            )
-            .await
-            {
-                Ok(t) => (StatusCode::CREATED, Json(json!(t))).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数并挂了 auth_middleware；
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+async fn federation_initiate_transfer(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(channel_id): axum::extract::Path<String>,
+    Json(transfer_req): Json<federation::file_transfer::InitTransferRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::file_transfer::initiate_transfer(
+        user_id,
+        &claims.username,
+        &channel_id,
+        &db,
+        &transfer_req,
+    )
+    .await
+    {
+        Ok(t) => (StatusCode::CREATED, Json(json!(t))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_list_transfers_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let channel_id = path
-        .strip_prefix("/api/federation/channels/")
-        .unwrap_or("")
-        .strip_suffix("/transfers")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::file_transfer::list_transfers(
-            &channel_id,
-            claims.sub.parse().unwrap_or(0),
-            db,
-        )
-        .await
-        {
-            Ok(transfers) => (
-                StatusCode::OK,
-                Json(json!({"transfers": transfers, "total": transfers.len()})),
-            )
-                .into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
+/// 路由已声明该路径参数；不再手工解析 URI。
+async fn federation_list_transfers(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(channel_id): axum::extract::Path<String>,
+) -> Response {
+    match federation::file_transfer::list_transfers(
+        &channel_id,
+        claims.sub.parse().unwrap_or(0),
+        &db,
+    )
+    .await
+    {
+        Ok(transfers) => (
+            StatusCode::OK,
+            Json(json!({"transfers": transfers, "total": transfers.len()})),
         )
             .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_initiate_room_transfer_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/transfers")
-        .unwrap_or("")
-        .to_string();
-    let body = match axum::body::to_bytes(req.into_body(), 65536).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body"})),
-            )
-                .into_response()
-        }
-    };
-    let transfer_req: federation::file_transfer::InitTransferRequest =
-        match serde_json::from_slice(&body) {
-            Ok(r) => r,
-            Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": format!("Invalid JSON: {}", e)})),
-                )
-                    .into_response()
-            }
-        };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::file_transfer::initiate_room_transfer(
-                user_id,
-                &claims.username,
-                &room_id,
-                db,
-                &transfer_req,
-            )
-            .await
-            {
-                Ok(t) => (StatusCode::CREATED, Json(json!(t))).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数并挂了 auth_middleware；
+/// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。
+async fn federation_initiate_room_transfer(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+    Json(transfer_req): Json<federation::file_transfer::InitTransferRequest>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::file_transfer::initiate_room_transfer(
+        user_id,
+        &claims.username,
+        &room_id,
+        &db,
+        &transfer_req,
+    )
+    .await
+    {
+        Ok(t) => (StatusCode::CREATED, Json(json!(t))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_list_room_transfers_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/transfers")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::file_transfer::list_room_transfers(
-            &room_id,
-            claims.sub.parse().unwrap_or(0),
-            &claims.username,
-            db,
-        )
-        .await
-        {
-            Ok(transfers) => (
-                StatusCode::OK,
-                Json(json!({"transfers": transfers, "total": transfers.len()})),
-            )
-                .into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
+/// 路由已声明该路径参数；不再手工解析 URI。
+async fn federation_list_room_transfers(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+) -> Response {
+    match federation::file_transfer::list_room_transfers(
+        &room_id,
+        claims.sub.parse().unwrap_or(0),
+        &claims.username,
+        &db,
+    )
+    .await
+    {
+        Ok(transfers) => (
+            StatusCode::OK,
+            Json(json!({"transfers": transfers, "total": transfers.len()})),
         )
             .into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-/// GET /api/federation/rooms/{room_id}/files — group attachment library index
-async fn federation_list_room_files_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let uri = req.uri().clone();
-    let path = uri.path();
-    let room_id = path
-        .strip_prefix("/api/federation/rooms/")
-        .unwrap_or("")
-        .strip_suffix("/files")
-        .unwrap_or("")
-        .to_string();
-    let query_str = uri.query().unwrap_or("");
-    let params: std::collections::HashMap<String, String> =
-        url::form_urlencoded::parse(query_str.as_bytes())
-            .map(|(k, v)| (k.to_string(), v.to_string()))
-            .collect();
-    let before = params.get("before").map(|s| s.as_str());
-    let limit = params.get("limit").and_then(|s| s.parse::<i64>().ok());
-    let filter = params.get("filter").map(|s| s.as_str());
-    let q = params.get("q").map(|s| s.as_str());
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::room::list_room_files(
-                user_id,
-                &claims.username,
-                &room_id,
-                db,
-                before,
-                limit,
-                filter,
-                q,
-            )
-            .await
-            {
-                Ok(result) => (StatusCode::OK, Json(json!(result))).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明 `{room_id}`；before/limit/filter/q 全部走 `Query<ListQuery>`。
+async fn federation_list_room_files(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(room_id): axum::extract::Path<String>,
+    axum::extract::Query(q): axum::extract::Query<ListQuery>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::room::list_room_files(
+        user_id,
+        &claims.username,
+        &room_id,
+        &db,
+        q.before(),
+        q.limit(),
+        q.filter(),
+        q.q(),
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(json!(result))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_get_transfer_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let transfer_id = path
-        .strip_prefix("/api/federation/transfers/")
-        .unwrap_or("")
-        .split('/')
-        .next()
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => match federation::file_transfer::get_transfer(
-            &transfer_id,
-            claims.sub.parse().unwrap_or(0),
-            &claims.username,
-            db,
-        )
-        .await
-        {
-            Ok(t) => (StatusCode::OK, Json(json!(t))).into_response(),
-            Err((status, json)) => (status, json).into_response(),
-        },
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；不再手工解析 URI。
+async fn federation_get_transfer(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(transfer_id): axum::extract::Path<String>,
+) -> Response {
+    match federation::file_transfer::get_transfer(
+        &transfer_id,
+        claims.sub.parse().unwrap_or(0),
+        &claims.username,
+        &db,
+    )
+    .await
+    {
+        Ok(t) => (StatusCode::OK, Json(json!(t))).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-/// Stream completed transfer bytes for browser / Tapp host download.
-async fn federation_download_transfer_wrapper(req: axum::extract::Request) -> Response {
+/// 路由已声明 `{transfer_id}`。
+///
+/// 只把 claims/path/db 的样板换成提取器；下面的流式响应与 RFC 5987 文件名
+/// 处理原样保留 —— 这条路径返回的是文件流而不是 JSON。
+async fn federation_download_transfer(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(transfer_id): axum::extract::Path<String>,
+) -> Response {
     use axum::body::Body;
     use axum::http::header::{HeaderValue, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE};
     use tokio::io::AsyncReadExt;
     use tokio_stream::wrappers::ReceiverStream;
 
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    // /api/federation/transfers/{id}/content
-    let transfer_id = path
-        .strip_prefix("/api/federation/transfers/")
-        .unwrap_or("")
-        .strip_suffix("/content")
-        .unwrap_or("")
-        .to_string();
-    if transfer_id.is_empty() || transfer_id.contains('/') {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(json!({"error": "Invalid transfer id"})),
-        )
-            .into_response();
-    }
-
-    let db_opt = DB_CONNECTION.read().await;
-    let file = match db_opt.as_ref() {
-        Some(db) => {
-            match federation::file_transfer::open_transfer_file(
-                &transfer_id,
-                claims.sub.parse().unwrap_or(0),
-                &claims.username,
-                db,
-            )
-            .await
-            {
-                Ok(f) => f,
-                Err((status, json)) => return (status, json).into_response(),
-            }
-        }
-        None => {
-            return (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({"error": "Database not connected"})),
-            )
-                .into_response()
-        }
+    let file = match federation::file_transfer::open_transfer_file(
+        &transfer_id,
+        claims.sub.parse().unwrap_or(0),
+        &claims.username,
+        &db,
+    )
+    .await
+    {
+        Ok(f) => f,
+        Err((status, json)) => return (status, json).into_response(),
     };
 
     // RFC 5987 filename* for non-ASCII; ASCII fallback for legacy clients.
@@ -4329,111 +2558,53 @@ async fn federation_download_transfer_wrapper(req: axum::extract::Request) -> Re
     res
 }
 
-async fn federation_upload_chunk_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
+/// 路由已声明 `{transfer_id}`。
+///
+/// 块内容是 base64（4/3 膨胀），上限由路由的 `TRANSFER_CHUNK_BODY_LIMIT` 层
+/// 提供 —— 见 `federation::limits`，那里有编译期断言保证它容得下一整块。
+async fn federation_upload_chunk(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(transfer_id): axum::extract::Path<String>,
+    chunk_req: Result<
+        Json<federation::file_transfer::UploadChunkRequest>,
+        axum::extract::rejection::JsonRejection,
+    >,
+) -> Response {
+    let Json(chunk_req) = match chunk_req {
+        Ok(v) => v,
+        Err(e) => {
+            return json_rejection_response(e, Some("Chunk payload exceeds the per-chunk limit"))
         }
     };
-    let path = req.uri().path().to_string();
-    let transfer_id = path
-        .strip_prefix("/api/federation/transfers/")
-        .unwrap_or("")
-        .strip_suffix("/chunks")
-        .unwrap_or("")
-        .to_string();
-    // Chunk payload is base64 of up to 1 MiB raw (~1.37 MiB) plus JSON keys.
-    // 1 MiB cap was truncating real uploads and broke file-meta entirely.
-    let body = match axum::body::to_bytes(req.into_body(), 3 * 1024 * 1024).await {
-        Ok(b) => b,
-        Err(_) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Invalid body or chunk too large"})),
-            )
-                .into_response()
-        }
-    };
-    let chunk_req: federation::file_transfer::UploadChunkRequest =
-        match serde_json::from_slice(&body) {
-            Ok(r) => r,
-            Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": format!("Invalid JSON: {}", e)})),
-                )
-                    .into_response()
-            }
-        };
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::file_transfer::upload_chunk(
-                user_id,
-                &claims.username,
-                &transfer_id,
-                db,
-                &chunk_req,
-            )
-            .await
-            {
-                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::file_transfer::upload_chunk(
+        user_id,
+        &claims.username,
+        &transfer_id,
+        &db,
+        &chunk_req,
+    )
+    .await
+    {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
-async fn federation_cancel_transfer_wrapper(req: axum::extract::Request) -> Response {
-    let claims = match req.extensions().get::<middleware::auth::Claims>().cloned() {
-        Some(c) => c,
-        None => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": "Not authenticated"})),
-            )
-                .into_response()
-        }
-    };
-    let path = req.uri().path().to_string();
-    let transfer_id = path
-        .strip_prefix("/api/federation/transfers/")
-        .unwrap_or("")
-        .strip_suffix("/cancel")
-        .unwrap_or("")
-        .to_string();
-    let db_opt = DB_CONNECTION.read().await;
-    match db_opt.as_ref() {
-        Some(db) => {
-            let user_id: i32 = claims.sub.parse().unwrap_or(0);
-            match federation::file_transfer::cancel_transfer(
-                user_id,
-                &claims.username,
-                &transfer_id,
-                db,
-            )
-            .await
-            {
-                Ok(v) => (StatusCode::OK, Json(v)).into_response(),
-                Err((status, json)) => (status, json).into_response(),
-            }
-        }
-        None => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({"error": "Database not connected"})),
-        )
-            .into_response(),
+/// 路由已声明该路径参数；claims / path / db 走提取器，不再手工解析 URI。
+async fn federation_cancel_transfer(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path(transfer_id): axum::extract::Path<String>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::file_transfer::cancel_transfer(user_id, &claims.username, &transfer_id, &db)
+        .await
+    {
+        Ok(v) => (StatusCode::OK, Json(v)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
     }
 }
 
@@ -4703,82 +2874,46 @@ async fn get_federation_timeline(
 fn federation_api_router() -> Router {
     let main_router = Router::new()
         .route("/api/federation/identity", get(federation_identity))
-        .route(
-            "/api/federation/keys/rotate",
-            post(federation_keys_rotate_wrapper),
-        )
-        .route("/api/federation/follow", post(federation_follow_wrapper))
-        .route(
-            "/api/federation/unfollow",
-            post(federation_unfollow_wrapper),
-        )
-        .route(
-            "/api/federation/following",
-            get(federation_following_list),
-        )
-        .route(
-            "/api/federation/followers",
-            get(federation_followers_list),
-        )
+        .route("/api/federation/keys/rotate", post(federation_keys_rotate))
+        .route("/api/federation/follow", post(federation_follow))
+        .route("/api/federation/unfollow", post(federation_unfollow))
+        .route("/api/federation/following", get(federation_following_list))
+        .route("/api/federation/followers", get(federation_followers_list))
         .route("/api/federation/timeline", get(federation_timeline))
-        .route("/api/federation/publish", post(federation_publish_wrapper))
-        .route(
-            "/api/federation/notes",
-            post(federation_create_note_wrapper),
-        )
+        .route("/api/federation/publish", post(federation_publish))
+        .route("/api/federation/notes", post(federation_create_note))
         .route("/api/federation/like", post(federation_like))
         .route("/api/federation/unlike", post(federation_unlike))
-        .route(
-            "/api/federation/bookmark",
-            post(federation_bookmark),
-        )
-        .route(
-            "/api/federation/unbookmark",
-            post(federation_unbookmark),
-        )
-        .route(
-            "/api/federation/bookmarks",
-            get(federation_bookmarks_list),
-        )
-        .route(
-            "/api/federation/announce",
-            post(federation_announce_wrapper),
-        )
-        .route(
-            "/api/federation/unannounce",
-            post(federation_unannounce),
-        )
-        .route(
-            "/api/federation/unpublish",
-            post(federation_unpublish_wrapper),
-        )
-        .route(
-            "/api/federation/published",
-            get(federation_published_list),
-        )
+        .route("/api/federation/bookmark", post(federation_bookmark))
+        .route("/api/federation/unbookmark", post(federation_unbookmark))
+        .route("/api/federation/bookmarks", get(federation_bookmarks_list))
+        .route("/api/federation/announce", post(federation_announce))
+        .route("/api/federation/unannounce", post(federation_unannounce))
+        .route("/api/federation/unpublish", post(federation_unpublish))
+        .route("/api/federation/published", get(federation_published_list))
         .route(
             "/api/federation/channels",
-            get(federation_list_channels).post(federation_create_channel_wrapper),
+            get(federation_list_channels).post(federation_create_channel),
         )
         .route(
             "/api/federation/channels/{channel_id}",
-            get(federation_get_channel_wrapper).delete(federation_delete_channel_wrapper),
+            get(federation_get_channel).delete(federation_delete_channel),
         )
         .route(
             "/api/federation/channels/{channel_id}/close",
-            post(federation_close_channel_wrapper),
+            post(federation_close_channel),
         )
         .route(
             "/api/federation/channels/{channel_id}/accept",
-            post(federation_accept_channel_wrapper),
+            post(federation_accept_channel),
         )
         .route(
             "/api/federation/channels/{channel_id}/e2e/key-exchange",
-            post(federation_e2e_key_exchange_wrapper),
+            post(federation_e2e_key_exchange),
         )
         .route(
             "/api/federation/channels/{channel_id}/messages",
-            get(federation_get_messages_wrapper).post(federation_send_message_wrapper),
+            get(federation_get_messages).post(federation_send_message),
         )
         .route(
             "/api/federation/channels/{channel_id}/ws-ticket",
@@ -4790,57 +2925,82 @@ fn federation_api_router() -> Router {
         )
         .route(
             "/api/federation/rooms",
-            get(federation_list_rooms).post(federation_create_room_wrapper),
+            get(federation_list_rooms)
+                .post(federation_create_room)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
         .route(
             "/api/federation/rooms/{room_id}",
-            get(federation_get_room_wrapper)
-                .put(federation_update_room_wrapper)
-                .delete(federation_delete_room_wrapper),
+            get(federation_get_room)
+                .put(federation_update_room)
+                .delete(federation_delete_room)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
         .route(
             "/api/federation/rooms/{room_id}/members",
-            get(federation_get_room_members_wrapper),
+            get(federation_get_room_members),
         )
         .route(
             "/api/federation/rooms/{room_id}/invite",
-            post(federation_invite_room_member_wrapper),
+            post(federation_invite_room_member).layer(axum::extract::DefaultBodyLimit::max(
+                FEDERATION_SMALL_BODY_LIMIT,
+            )),
         )
         .route(
             "/api/federation/rooms/{room_id}/accept",
-            post(federation_accept_room_invite_wrapper),
+            post(federation_accept_room_invite),
         )
         .route(
             "/api/federation/rooms/{room_id}/reject",
-            post(federation_reject_room_invite_wrapper),
+            post(federation_reject_room_invite),
         )
         .route(
             "/api/federation/rooms/{room_id}/join",
-            post(federation_join_room_wrapper),
+            post(federation_join_room).layer(axum::extract::DefaultBodyLimit::max(
+                FEDERATION_SMALL_BODY_LIMIT,
+            )),
         )
         .route(
             "/api/federation/rooms/{room_id}/members/{actor}",
-            delete(federation_remove_room_member_wrapper),
+            delete(federation_remove_room_member),
         )
         .route(
             "/api/federation/rooms/{room_id}/leave",
-            post(federation_leave_room_wrapper),
+            post(federation_leave_room),
         )
         .route(
             "/api/federation/rooms/{room_id}/transfer-ownership",
-            post(federation_transfer_room_ownership_wrapper),
+            post(federation_transfer_room_ownership).layer(axum::extract::DefaultBodyLimit::max(
+                FEDERATION_SMALL_BODY_LIMIT,
+            )),
         )
         .route(
             "/api/federation/rooms/{room_id}/messages",
-            get(federation_get_room_messages_wrapper).post(federation_send_room_message_wrapper),
+            get(federation_get_room_messages).post(federation_send_room_message),
         )
         .route(
             "/api/federation/rooms/{room_id}/e2e/key-exchange",
-            post(federation_room_e2e_key_exchange_wrapper),
+            post(federation_room_e2e_key_exchange),
+        )
+        .route(
+            "/api/federation/rooms/{room_id}/stickers",
+            post(federation_add_room_sticker).layer(axum::extract::DefaultBodyLimit::max(
+                FEDERATION_SMALL_BODY_LIMIT,
+            )),
+        )
+        .route(
+            "/api/federation/rooms/{room_id}/stickers/{sticker_id}",
+            delete(federation_remove_room_sticker),
         )
         .route(
             "/api/federation/rooms/{room_id}/messages/{message_id}/pin",
-            post(federation_pin_room_message_wrapper),
+            post(federation_pin_room_message).layer(axum::extract::DefaultBodyLimit::max(
+                FEDERATION_SMALL_BODY_LIMIT,
+            )),
         )
         .route(
             "/api/federation/rooms/{room_id}/ws-ticket",
@@ -4852,135 +3012,162 @@ fn federation_api_router() -> Router {
         )
         .route(
             "/api/federation/rings",
-            get(federation_list_rings_wrapper).post(federation_create_ring_wrapper),
+            get(federation_list_rings)
+                .post(federation_create_ring)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
-        .route(
-            "/api/federation/rings/{ring_id}",
-            get(federation_get_ring_wrapper),
-        )
+        .route("/api/federation/rings/{ring_id}", get(federation_get_ring))
         .route(
             "/api/federation/rings/{ring_id}/leave",
-            post(federation_leave_ring_wrapper),
+            post(federation_leave_ring),
         )
         .route(
             "/api/federation/rings/{ring_id}/peers",
-            get(federation_get_ring_peers_wrapper).post(federation_add_ring_peer_wrapper),
+            get(federation_get_ring_peers)
+                .post(federation_add_ring_peer)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
         .route(
             "/api/federation/rings/{ring_id}/peers/{peer}",
-            delete(federation_remove_ring_peer_wrapper),
+            delete(federation_remove_ring_peer),
         )
         .route(
             "/api/federation/rings/{ring_id}/sync",
-            post(federation_trigger_ring_sync_wrapper),
+            post(federation_trigger_ring_sync),
         )
         .route(
             "/api/federation/delivery/stats",
             get(federation_delivery_stats),
         )
-        .route(
-            "/api/federation/delivery",
-            get(federation_list_delivery_wrapper),
-        )
+        .route("/api/federation/delivery", get(federation_list_delivery))
         .route(
             "/api/federation/delivery/retry-dead",
-            post(federation_retry_all_dead_delivery_wrapper),
+            post(federation_retry_all_dead_delivery),
         )
         .route(
             "/api/federation/delivery/cancel-pending",
-            post(federation_cancel_all_pending_delivery_wrapper),
+            post(federation_cancel_all_pending_delivery),
         )
         .route(
             "/api/federation/delivery/purge-dead",
-            post(federation_purge_dead_delivery_wrapper),
+            post(federation_purge_dead_delivery),
         )
         .route(
             "/api/federation/delivery/{id}/retry",
-            post(federation_retry_delivery_wrapper),
+            post(federation_retry_delivery),
         )
         .route(
             "/api/federation/delivery/{id}/cancel",
-            post(federation_cancel_delivery_wrapper),
+            post(federation_cancel_delivery),
         )
         .route(
             "/api/federation/delivery/{id}",
-            delete(federation_dismiss_delivery_wrapper),
+            delete(federation_dismiss_delivery),
         )
         .route(
             "/api/federation/trust/policy",
-            get(federation_get_trust_policy_wrapper).put(federation_update_trust_policy_wrapper),
+            get(federation_get_trust_policy)
+                .put(federation_update_trust_policy)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
         .route(
             "/api/federation/trust/instances",
-            get(federation_list_instances_wrapper),
+            get(federation_list_instances),
         )
         .route(
             "/api/federation/trust/update",
-            post(federation_update_instance_trust_wrapper)
-                .route_layer(from_fn(middleware::auth::admin_middleware)),
+            post(federation_update_instance_trust)
+                .route_layer(from_fn(middleware::auth::admin_middleware))
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
         .route(
             "/api/federation/trust/block",
-            post(federation_toggle_instance_block_wrapper)
-                .route_layer(from_fn(middleware::auth::admin_middleware)),
+            post(federation_toggle_instance_block)
+                .route_layer(from_fn(middleware::auth::admin_middleware))
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
         .route(
             "/api/federation/trust/filters",
-            get(federation_list_content_filters_wrapper)
-                .post(federation_create_content_filter_wrapper)
-                .route_layer(from_fn(middleware::auth::admin_middleware)),
+            get(federation_list_content_filters)
+                .post(federation_create_content_filter)
+                .route_layer(from_fn(middleware::auth::admin_middleware))
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
         .route(
             "/api/federation/trust/filters/{id}",
-            axum::routing::put(federation_update_content_filter_wrapper)
-                .delete(federation_delete_content_filter_wrapper)
-                .route_layer(from_fn(middleware::auth::admin_middleware)),
+            axum::routing::put(federation_update_content_filter)
+                .delete(federation_delete_content_filter)
+                .route_layer(from_fn(middleware::auth::admin_middleware))
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
         .route(
             "/api/federation/channels/{channel_id}/transfers",
-            get(federation_list_transfers_wrapper).post(federation_initiate_transfer_wrapper),
+            get(federation_list_transfers)
+                .post(federation_initiate_transfer)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
         .route(
             "/api/federation/rooms/{room_id}/transfers",
-            get(federation_list_room_transfers_wrapper)
-                .post(federation_initiate_room_transfer_wrapper),
+            get(federation_list_room_transfers)
+                .post(federation_initiate_room_transfer)
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    FEDERATION_SMALL_BODY_LIMIT,
+                )),
         )
         .route(
             "/api/federation/rooms/{room_id}/files",
-            get(federation_list_room_files_wrapper),
+            get(federation_list_room_files),
         )
         .route(
             "/api/federation/transfers/{transfer_id}",
-            get(federation_get_transfer_wrapper),
+            get(federation_get_transfer),
         )
         .route(
             "/api/federation/transfers/{transfer_id}/content",
-            get(federation_download_transfer_wrapper),
+            get(federation_download_transfer),
         )
         .route(
             "/api/federation/transfers/{transfer_id}/chunks",
-            post(federation_upload_chunk_wrapper),
+            post(federation_upload_chunk).layer(axum::extract::DefaultBodyLimit::max(
+                federation::limits::TRANSFER_CHUNK_BODY_LIMIT,
+            )),
         )
         .route(
             "/api/federation/transfers/{transfer_id}/cancel",
-            post(federation_cancel_transfer_wrapper),
+            post(federation_cancel_transfer),
         )
-        // Federation control-plane writes are JSON (follow/channel/room/message)
-        // plus base64 file-transfer chunks / optional Tapp package snapshots.
-        // 40 MiB covers MAX_MESSAGE_PAYLOAD (32 MiB) with headroom and
-        // DEFAULT_CHUNK_SIZE = 1 MiB raw (~1.37 MiB base64). Global 50MB stays
-        // for media uploads outside this router — do not lower the global limit.
-        .layer(axum::extract::DefaultBodyLimit::max(40 * 1024 * 1024))
+        // 已认证本地用户提交的联邦写操作（follow/channel/room/message、
+        // base64 文件分块、Tapp 包快照）。上限见 federation::limits —— 那里
+        // 同时约束「本端发得出的东西本端必须收得进」。
+        .layer(axum::extract::DefaultBodyLimit::max(
+            federation::limits::AUTHENTICATED_BODY_LIMIT,
+        ))
         .route_layer(from_fn(api::tapp_runtime::federation_host_attribution))
         .route_layer(from_fn(middleware::auth::auth_middleware));
 
-    // Freeform Note media: images ≤10MB, video ≤50MB — dedicated limit + same auth/attribution.
+    // Freeform Note 媒体：图片/视频上限见 federation::limits::{NOTE_IMAGE_LIMIT,
+    // NOTE_VIDEO_LIMIT}；路由层取二者中较大者再留信封余量。
     let media_router = Router::new()
-        .route(
-            "/api/federation/media",
-            post(federation_media_upload_wrapper),
-        )
-        .layer(axum::extract::DefaultBodyLimit::max(55 * 1024 * 1024))
+        .route("/api/federation/media", post(federation_media_upload))
+        .layer(axum::extract::DefaultBodyLimit::max(
+            federation::limits::NOTE_VIDEO_LIMIT + 16 * 1024 * 1024,
+        ))
         .route_layer(from_fn(api::tapp_runtime::federation_host_attribution))
         .route_layer(from_fn(middleware::auth::auth_middleware));
 
@@ -5083,7 +3270,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             post(api::setup::save_database_config),
         )
         .route("/api/setup/init-database", post(api::setup::init_database))
-        .route("/api/setup/create-admin", post(api::auth_local::create_admin))
+        .route(
+            "/api/setup/create-admin",
+            post(api::auth_local::create_admin),
+        )
         // System management routes
         // ⚠️ P2: system/status 暴露了一些系统信息，但为了监控保持公开（考虑移除敏感字段）
         .route("/api/system/status", get(api::system::system_status))
@@ -5103,7 +3293,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route("/api/auth/me", get(api::auth::get_current_user))
         .route(
             "/api/auth/logout",
-            post(logout_wrapper), // 不需要认证中间件
+            post(api::auth::logout), // 不需要认证中间件
         )
         // OAuth routes stay registered even if DB is temporarily unavailable,
         // keeping login/setup surfaces on 503 responses instead of 404s.
@@ -5137,7 +3327,8 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         )
         .route(
             "/api/auth/change-password",
-            post(api::auth_local::change_password).route_layer(from_fn(middleware::auth::auth_middleware)),
+            post(api::auth_local::change_password)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         // 设置页用户管理（列表/创建/详情/更新/解绑 identity）— 仅管理员
         .route(
@@ -5161,20 +3352,20 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         // Site public domain (BASE_URL / FRONTEND_URL / CORS) — not federation Move
         .route(
             "/api/admin/site/domain",
-            post(change_site_domain_wrapper)
-                .route_layer(from_fn(middleware::auth::admin_middleware)),
+            post(change_site_domain).route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // ActivityPub domain Move (emit Move to followers for every local user)
         .route(
             "/api/admin/federation/domain-move",
-            post(admin_federation_domain_move_wrapper)
+            post(admin_federation_domain_move)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // PR #4: 公开注册（开关受 allow_local_registration 控制） + 后补密码 + 本地登录开关
         .route("/api/auth/register", post(api::auth_local::register))
         .route(
             "/api/auth/me/set-password",
-            post(api::auth_local::set_password).route_layer(from_fn(middleware::auth::auth_middleware)),
+            post(api::auth_local::set_password)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route(
             "/api/auth/me/local-login",
@@ -5188,18 +3379,17 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         )
         .route(
             "/api/config",
-            post(update_config_wrapper).route_layer(from_fn(middleware::auth::admin_middleware)),
+            post(update_config).route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/config/settings-backup",
-            get(export_settings_wrapper)
-                .post(restore_settings_wrapper)
+            get(export_settings)
+                .post(restore_settings)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/config/settings-backup/preview",
-            post(preview_settings_restore_wrapper)
-                .route_layer(from_fn(middleware::auth::admin_middleware)),
+            post(preview_settings_restore).route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/config/dashboard",
@@ -5226,7 +3416,10 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         // 一言配置读取公开；全局写入仅管理员
-        .route("/api/config/hitokoto", get(api::config::get_hitokoto_config))
+        .route(
+            "/api/config/hitokoto",
+            get(api::config::get_hitokoto_config),
+        )
         .route(
             "/api/config/hitokoto",
             axum::routing::put(api::config::update_hitokoto_config)
@@ -5252,13 +3445,14 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         // PR #6: OAuth providers + 本地注册开关（仅管理员可读写）
         .route(
             "/api/config/oauth-providers",
-            get(get_oauth_providers_wrapper)
+            get(api::config::get_oauth_providers)
                 .put(api::config::update_oauth_providers)
                 .route_layer(from_fn(middleware::auth::admin_middleware)),
         )
         .route(
             "/api/config/test",
-            post(api::config::test_platform).route_layer(from_fn(middleware::auth::auth_middleware)),
+            post(api::config::test_platform)
+                .route_layer(from_fn(middleware::auth::auth_middleware)),
         )
         .route("/api/config/metadata", get(api::config::get_site_metadata)) // 🔓 公开端点：网站元数据
         .route("/api/config/public", get(api::config::get_public_config)) // 🔓 公开端点：平台公开信息（用于社交链接）
@@ -5290,7 +3484,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         // Public room directory card (join-by-id / federated public join)
         .route(
             "/api/federation/public/rooms/{room_id}",
-            get(federation_get_public_room_wrapper),
+            get(federation_get_public_room),
         )
         // Layer 2: Actor + Outbox + Collections（无需认证，AP 标准端点）
         .route("/users/{username}", get(federation::actor::get_actor))
@@ -5324,10 +3518,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             get(federation::outbox::get_outbox),
         )
         // 让 generate_activity_id 产出的 id 真正可解引用（与 Outbox 同一可见性投影）
-        .route(
-            "/activities/{id}",
-            get(federation::outbox::get_activity),
-        )
+        .route("/activities/{id}", get(federation::outbox::get_activity))
         .route(
             "/users/{username}/followers",
             get(federation::actor::get_followers),
@@ -5347,7 +3538,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
                     post(federation::inbox::post_inbox),
                 )
                 .route("/inbox", post(federation::inbox::post_shared_inbox))
-                .layer(axum::extract::DefaultBodyLimit::max(40 * 1024 * 1024)),
+                // 远端可达表面。verify_preparse_gate 会在解析 JSON 之前先校验
+                // 签名头 / Date / Digest，攻击者要触发解析必须先算出正确的
+                // SHA-256 —— 这是这个上限敢放宽的前提。
+                .layer(axum::extract::DefaultBodyLimit::max(
+                    federation::limits::INBOX_BODY_LIMIT,
+                )),
         )
         // ==================== Federation API（需认证）====================
         // Tapp 宿主归因与认证在 federation_api_router() 内按 Router 级统一挂载。
@@ -6376,6 +4572,77 @@ async fn shutdown_signal() {
 
 #[cfg(test)]
 mod cache_control_tests {
+
+    /// `?limit=` 的宽松解析必须保持不变。
+    ///
+    /// 改造前是手写 `q.split('&').find_map(...)`，对 `limit=abc` / `limit=` 静默
+    /// 回落到默认值。换成 `Query<LimitQuery>` 时若用 `Option<i64>`，serde 会把
+    /// 这些请求变成 400 —— 那是夹带在重构里的行为改变。
+    #[test]
+    fn limit_query_falls_back_instead_of_rejecting() {
+        let malformed = super::LimitQuery {
+            limit: Some("abc".into()),
+        };
+        assert_eq!(malformed.or(50), 50);
+
+        let empty = super::LimitQuery {
+            limit: Some(String::new()),
+        };
+        assert_eq!(empty.or(100), 100);
+
+        let absent = super::LimitQuery { limit: None };
+        assert_eq!(absent.or(7), 7);
+
+        let valid = super::LimitQuery {
+            limit: Some("25".into()),
+        };
+        assert_eq!(valid.or(50), 25);
+
+        // 负数与超大值原样透传给下游（与手写解析一致，不在这层做范围检查）
+        let negative = super::LimitQuery {
+            limit: Some("-1".into()),
+        };
+        assert_eq!(negative.or(50), -1);
+    }
+
+    /// `?cancelled_only=` 的真值解析必须保持宽松。
+    ///
+    /// 前端用的是 `?cancelled_only=1`。若换成 `Option<bool>`，serde 只认
+    /// `true`/`false`，`1` 会变成 400。
+    #[test]
+    fn purge_dead_query_accepts_loose_truthy_values() {
+        let t = |v: &str| {
+            super::PurgeDeadQuery {
+                limit: None,
+                cancelled_only: Some(v.into()),
+            }
+            .cancelled_only()
+        };
+
+        for truthy in ["1", "true", "TRUE", "yes", "on", "On"] {
+            assert!(t(truthy), "{truthy} should be truthy");
+        }
+        for falsy in ["0", "false", "no", "off", "", "garbage"] {
+            assert!(!t(falsy), "{falsy} should be falsy");
+        }
+
+        // 缺省即 false
+        assert!(!super::PurgeDeadQuery {
+            limit: None,
+            cancelled_only: None,
+        }
+        .cancelled_only());
+
+        // limit 沿用同样的宽松回落
+        assert_eq!(
+            super::PurgeDeadQuery {
+                limit: Some("abc".into()),
+                cancelled_only: None,
+            }
+            .limit_or(100),
+            100
+        );
+    }
     use super::static_asset_cache_control;
 
     #[test]

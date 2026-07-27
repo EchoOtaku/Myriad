@@ -91,7 +91,16 @@ impl OAuthProvider for GithubProvider {
         redirect_uri: &str,
     ) -> Result<ProviderTokens, String> {
         let client = build_github_client!(self, redirect_uri);
-        let http = reqwest::Client::new();
+        // GITHUB_TOKEN_URL 是硬编码常量，这里没有 SSRF 面；用安全客户端是为了
+        // 拿到超时与禁重定向 —— 裸 `reqwest::Client::new()` 没有超时，
+        // 对端挂起时这次交换会无限期占住请求。
+        let (_endpoint, http) = crate::services::outbound_security::build_public_http_client(
+            GITHUB_TOKEN_URL,
+            std::time::Duration::from_secs(15),
+            Some("Myriad-App"),
+        )
+        .await
+        .map_err(|e| format!("GitHub token endpoint rejected by outbound policy: {e}"))?;
         let token = client
             .exchange_code(AuthorizationCode::new(code.to_string()))
             .request_async(&http)
@@ -105,21 +114,32 @@ impl OAuthProvider for GithubProvider {
     }
 
     async fn fetch_profile(&self, tokens: &ProviderTokens) -> Result<NormalizedProfile, String> {
-        let http = crate::services::http_client::get_global_client().await;
         let user_url = format!(
             "{}/user",
             crate::services::http_client::GitHubApiUrl::get_api_base().await
         );
 
-        let user: GitHubUser = http
-            .get(user_url)
+        // API base 可由管理员配置（GitHub Enterprise），所以这条出站也走
+        // SSRF 策略：解析后校验公网可路由、pin 住 DNS、禁用重定向。
+        // 风险低于 OIDC（那里下一跳由远端 provider 决定），但成本同样低。
+        let (endpoint, http) = crate::services::outbound_security::build_public_http_client(
+            &user_url,
+            std::time::Duration::from_secs(15),
+            Some("Myriad-App"),
+        )
+        .await
+        .map_err(|e| format!("GitHub API base rejected by outbound policy: {e}"))?;
+
+        let resp = http
+            .get(endpoint)
             .header("Authorization", format!("Bearer {}", tokens.access_token))
-            .header("User-Agent", "Myriad-App")
             .send()
             .await
-            .map_err(|e| format!("GitHub /user request failed: {e:?}"))?
-            .json()
+            .map_err(|e| format!("GitHub /user request failed: {e:?}"))?;
+        let bytes = crate::services::outbound_security::read_limited_body(resp, 512 * 1024)
             .await
+            .map_err(|e| format!("GitHub /user body rejected: {e}"))?;
+        let user: GitHubUser = serde_json::from_slice(&bytes)
             .map_err(|e| format!("GitHub /user parse failed: {e:?}"))?;
 
         let raw = serde_json::json!({

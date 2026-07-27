@@ -840,6 +840,10 @@ export function generateFullSDK(
         sendRequest('federation', 'initiateChannelE2e', [channelId]),
       initiateRoomE2e: (roomId) =>
         sendRequest('federation', 'initiateRoomE2e', [roomId]),
+      addRoomSticker: (roomId, req) =>
+        sendRequest('federation', 'addRoomSticker', [roomId, req]),
+      removeRoomSticker: (roomId, stickerId) =>
+        sendRequest('federation', 'removeRoomSticker', [roomId, stickerId]),
       deleteRoom: (roomId) => sendRequest('federation', 'deleteRoom', [roomId]),
       // Ring
       getRings: () => sendRequest('federation', 'getRings', []),

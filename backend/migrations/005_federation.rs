@@ -463,6 +463,22 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // 同一条活动对同一个 inbox 只应排队一次。25 个入队点都是裸 INSERT，
+        // 没有这个约束就无法阻止重复投递（远端会收到两次同一条活动）。
+        // 入队处配合 ON CONFLICT (activity_id, target_inbox) DO NOTHING。
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .unique()
+                    .name("idx_delivery_queue_activity_target")
+                    .table(FederationDeliveryQueue::Table)
+                    .col(FederationDeliveryQueue::ActivityId)
+                    .col(FederationDeliveryQueue::TargetInbox)
+                    .to_owned(),
+            )
+            .await?;
+
         // ==================== 7. FEDERATION_CHANNELS 表 ====================
         // 1:1 双向通道
         manager
@@ -1066,6 +1082,21 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .extra("DEFAULT NOW()".to_owned()),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        // 同一用户的同一条活动只应出现一次。6 个写入点原先各自用
+        // `WHERE NOT EXISTS` 去重，那是先查后插，并发下会双双插入。
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .unique()
+                    .name("idx_timeline_user_activity")
+                    .table(FederationTimeline::Table)
+                    .col(FederationTimeline::UserId)
+                    .col(FederationTimeline::ActivityId)
                     .to_owned(),
             )
             .await?;

@@ -198,7 +198,10 @@ pub async fn rewrap_legacy_private_keys(
             Ok(pem) => pem,
             Err(e) => {
                 // 通常意味着 JWT_SECRET 已经被换过 —— 这把私钥本来就已经不可恢复。
-                tracing::error!(user_id, "Cannot decrypt legacy federation key for rewrap: {e}");
+                tracing::error!(
+                    user_id,
+                    "Cannot decrypt legacy federation key for rewrap: {e}"
+                );
                 continue;
             }
         };
@@ -311,15 +314,17 @@ mod tests {
         assert!(!is_legacy_ciphertext(&v1));
         // v1 不依赖 JWT_SECRET —— 传一个完全不同的 secret 也必须解得开，
         // 这正是"轮换 JWT_SECRET 不再丢身份"的含义。
-        let restored =
-            KeyPair::from_encrypted(&kp.public_key_pem().unwrap(), &v1, "a-totally-rotated-secret")
-                .unwrap();
+        let restored = KeyPair::from_encrypted(
+            &kp.public_key_pem().unwrap(),
+            &v1,
+            "a-totally-rotated-secret",
+        )
+        .unwrap();
         assert_eq!(
             kp.public_key_pem().unwrap(),
             restored.public_key_pem().unwrap()
         );
     }
-
 
     #[test]
     fn test_sign_and_verify() {

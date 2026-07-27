@@ -164,7 +164,8 @@ pub async fn follow_remote(
                         DatabaseBackend::Postgres,
                         r#"INSERT INTO federation_delivery_queue
                                (activity_id, target_inbox, target_domain, status, created_at, last_attempt_at)
-                           VALUES ($1, $2, $3, 'delivered', NOW(), NOW())"#,
+                           VALUES ($1, $2, $3, 'delivered', NOW(), NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                         [
                             act_db_id.into(),
                             remote.inbox_url.clone().into(),
@@ -199,7 +200,8 @@ pub async fn follow_remote(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
                            (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                       VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                     [
                         act_db_id.into(),
                         remote.inbox_url.clone().into(),
@@ -216,7 +218,8 @@ pub async fn follow_remote(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_delivery_queue
                    (activity_id, target_inbox, target_domain, status, created_at)
-               VALUES ($1, $2, $3, 'pending', NOW())"#,
+               VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
             [
                 act_db_id.into(),
                 remote.inbox_url.clone().into(),
@@ -325,7 +328,8 @@ pub async fn unfollow_remote(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_delivery_queue
                    (activity_id, target_inbox, target_domain, status, created_at)
-               VALUES ($1, $2, $3, 'pending', NOW())"#,
+               VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
             [act_db_id.into(), inbox.into(), domain.into()],
         ))
         .await;

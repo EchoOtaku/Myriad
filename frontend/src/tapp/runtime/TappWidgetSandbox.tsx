@@ -92,9 +92,10 @@ export interface TappWidgetSandboxProps {
  * 生成 Widget 沙箱 HTML
  *
  * 支持三种渲染方式：
- * 1. 纯 JS 模式：Tapp.widgets[id].render(container, props)
- * 2. 纯 HTML 模式：widgetHtml 直接渲染（适合静态展示）
- * 3. 混合模式：widgetHtml 定义结构 + JS 处理交互（性能最优）
+ * 1. 纯 JS 模式：Tapp.widgets[id].render(container, props) 填满容器
+ * 2. 纯 HTML 模式：widgetHtml 直接渲染（无 render 时保持静态）
+ * 3. 混合模式：widgetHtml 定义结构，宿主仍调用 render(container) 绑定数据
+ *    （旧逻辑在有 HTML 时跳过 render，导致 storage 有数但 UI 永远是 "--"）
  *
  * 🔒 安全特性：
  * - 使用 CSP nonce 替代 unsafe-inline，只有带正确 nonce 的脚本才能执行
@@ -144,9 +145,12 @@ function generateWidgetHTML(
   // 🎯 使用安装时预编译的 CSS
   const tailwindCSS = code.widgetCSS || ''
 
-  // 是否需要调用 Tapp.widgets.render()
-  // 仅在没有 HTML 模板时才需要（纯 JS 模式）
-  const needsJsRender = !hasHtmlTemplate
+  // Always invoke Tapp.widgets[id].render when registered.
+  // Hybrid mode (HTML template + JS) used to skip render entirely — templates
+  // only showed static placeholders ("--") while data was written to storage
+  // and never painted (see cn.xciy.xingji.dashboard). HTML seeds structure;
+  // render() binds data/events. Pure-HTML widgets without a render() still work.
+  const hasHtmlTemplateLiteral = hasHtmlTemplate ? 'true' : 'false'
 
   return `<!DOCTYPE html>
 <html>
@@ -172,7 +176,7 @@ function generateWidgetHTML(
     window._TAPP_LOCALE = ${serializeSandboxScriptValue(widgetProps.locale)};
     window._TAPP_I18N = ${serializeSandboxScriptValue(code.i18n || {})};
     window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1, isCompact: false, isMini: false };
-    window._TAPP_HAS_HTML = ${hasHtmlTemplate};
+    window._TAPP_HAS_HTML = ${hasHtmlTemplateLiteral};
 
     window.addEventListener('message', function(e) {
       var msg = e.data;
@@ -209,26 +213,27 @@ function generateWidgetHTML(
     })();
   </script>
 
-  ${
-    needsJsRender
-      ? `
-  <!-- 纯 JS 模式：调用 render 函数 -->
+  <!-- Always try render(): pure-JS fills container; hybrid paints data into template -->
   <script nonce="${nonce}">
     (function() {
       'use strict';
       setTimeout(function() {
         try {
           var widgetId = ${serializeSandboxScriptValue(widgetId)};
-          var widgetDef = Tapp.widgets[widgetId];
+          var widgetDef = Tapp.widgets && Tapp.widgets[widgetId];
           var container = document.getElementById('widget-root');
+          if (!container) return;
 
           if (!widgetDef || typeof widgetDef.render !== 'function') {
-            console.warn('[Widget] Not found:', widgetId);
-            container.innerHTML = '<div class="tapp-empty">Widget not found: ' + widgetId + '</div>';
+            // Pure HTML static widget is fine; only error when there is no HTML either.
+            if (!window._TAPP_HAS_HTML) {
+              console.warn('[Widget] Not found:', widgetId);
+              container.innerHTML = '<div class="tapp-empty">Widget not found: ' + widgetId + '</div>';
+            }
             return;
           }
 
-          var props = window._TAPP_WIDGET_PROPS;
+          var props = window._TAPP_WIDGET_PROPS || {};
           props.scale = window._TAPP_DIMENSIONS.scale;
           props.fontScale = window._TAPP_DIMENSIONS.fontScale;
 
@@ -236,15 +241,15 @@ function generateWidgetHTML(
 
         } catch (error) {
           console.error('[Widget] Render error:', error);
-          document.getElementById('widget-root').innerHTML =
-            '<div class="tapp-empty tapp-text-error">Error: ' + error.message + '</div>';
+          var root = document.getElementById('widget-root');
+          if (root) {
+            root.innerHTML =
+              '<div class="tapp-empty tapp-text-error">Error: ' + (error && error.message ? error.message : error) + '</div>';
+          }
         }
       }, 16);
     })();
   </script>
-  `
-      : '<!-- 混合/HTML 模式：HTML 已渲染，JS 用于交互 -->'
-  }
 </body>
 </html>`
 }

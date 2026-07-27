@@ -91,6 +91,8 @@ export interface CompareResult {
 export interface UpdaterStatus {
   schema_version: number
   updater_version: string
+  /** Running PROXY_TAG from .env (edge reverse-proxy image tag). Optional on older updaters. */
+  proxy_version?: string | null
   current_version: string | null
   /** Exact source commit backing current_version, when resolved. */
   current_commit_sha?: string | null
@@ -121,6 +123,8 @@ export interface UpdaterStatus {
   available_channels?: string[]
   /** Last TCB self-update helper outcome (`state/self-update-last.json`), when present. */
   self_update_last?: SelfUpdateLastStatus | null
+  /** Last manual proxy upgrade outcome (`state/proxy-update-last.json`), when present. */
+  proxy_update_last?: InfraUpdateLastStatus | null
   /**
    * Last failed update attempt. Present even when auto-rollback restored the prior
    * stack and maintenance is idle (job status was `failed`, not `needs_manual`).
@@ -143,14 +147,20 @@ export const CHECK_INTERVAL_PRESETS = [
 ] as const
 export type CheckIntervalSecs = (typeof CHECK_INTERVAL_PRESETS)[number]
 
-export interface SelfUpdateLastStatus {
+/** Shared shape for self-update / proxy-update durable last outcome. */
+export interface InfraUpdateLastStatus {
   status: 'succeeded' | 'failed'
   target_tag: string
   previous_tag: string
   /** RFC3339 UTC */
   at: string
   error?: string | null
+  /** Proxy only: true when PROXY_TAG was restored after failure. */
+  rolled_back?: boolean
 }
+
+/** @deprecated Prefer InfraUpdateLastStatus — same JSON shape. */
+export type SelfUpdateLastStatus = InfraUpdateLastStatus
 
 export interface ImageRef {
   ref: string
@@ -513,6 +523,8 @@ export function makeUpdaterApi(
         ok: boolean
         helper_container_id: string
         new_updater_tag: string
+        previous_updater_tag?: string
+        scheduled?: boolean
       }>(
         'POST',
         // backend mode: 走 backend 代理；direct mode: 直接命中 updater /admin/self-update

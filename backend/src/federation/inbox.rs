@@ -12,7 +12,7 @@ use axum::{
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::json;
 
-use crate::federation::actor::fetch_remote_actor;
+use crate::federation::actor::{fetch_remote_actor, fetch_remote_actor_fresh};
 use crate::federation::errors::{is_permanent_federation_error, map_inbox_handler_error};
 use crate::federation::signature::{
     parse_signature_header, require_covered_headers, verify_date_freshness, verify_digest,
@@ -125,12 +125,15 @@ pub async fn post_inbox(
                 "myriad:RingLeave",
                 "myriad:FileTransfer",
                 "myriad:KeyExchange",
-                "myriad:CharacterVisitRequest",
-                "myriad:CharacterVisitAccept",
-                "myriad:CharacterVisitReject",
-                "myriad:CharacterVisitInteraction",
-                "myriad:CharacterVisitReceipt",
-                "myriad:CharacterVisitComplete",
+                // Digital Life 角色互访（myriad:CharacterVisit*）随该功能一并移出。
+                //
+                // 白名单和分派必须同进同退：只加白名单会让这些活动通过验签、
+                // 拿到 202 Accepted，然后因为没有处理器被静默丢弃 —— 远端据此
+                // 认为投递成功、不再重试。现在不在白名单里，inbox 返回 400
+                // "Unknown MFP activity type"，行为是诚实的。
+                //
+                // 功能回归时，这 6 个类型与 handle_mfp_activity 里的分派分支
+                // 必须在同一次改动里一起加回来。
             ];
             if !ALLOWED_MFP_TYPES.contains(&ty) {
                 tracing::warn!("Rejected unknown MFP activity type: {}", ty);
@@ -237,7 +240,9 @@ pub async fn post_shared_inbox(
                 tracing::warn!(actor = %actor_url_str, "Shared inbox Create rejected: {}", e);
                 return Err((
                     StatusCode::FORBIDDEN,
-                    Json(json!({"error": "Object ownership check failed", "reason": e.to_string()})),
+                    Json(
+                        json!({"error": "Object ownership check failed", "reason": e.to_string()}),
+                    ),
                 ));
             }
         }
@@ -1252,11 +1257,8 @@ async fn handle_content_activity(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_timeline
                (user_id, activity_id, remote_actor_id, activity_type, object_type, content_preview, content_json, received_at)
-           SELECT $1, $2, $3, $4, $5, $6, $7, NOW()
-           WHERE NOT EXISTS (
-               SELECT 1 FROM federation_timeline
-               WHERE user_id = $1 AND activity_id = $2
-           )"#,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+           ON CONFLICT (user_id, activity_id) DO NOTHING"#,
         [
             local_user_id.into(),
             activity["id"].as_str().unwrap_or("").into(),
@@ -1324,10 +1326,9 @@ async fn distribute_to_followers(
                SELECT f.user_id, $1, $2, $3, $4, $5, $6, NOW()
                FROM federation_follows f
                WHERE f.remote_actor_id = $2 AND f.direction = 'outgoing' AND f.status = 'accepted'
-                 AND NOT EXISTS (
-                     SELECT 1 FROM federation_timeline t
-                     WHERE t.user_id = f.user_id AND t.activity_id = $1
-                 )"#,
+               -- 去重由 (user_id, activity_id) 唯一索引保证。原先的 NOT EXISTS
+               -- 是先查后插：同一条活动并发送达时，两次扇出可以同时通过检查。
+               ON CONFLICT (user_id, activity_id) DO NOTHING"#,
             [
                 activity_id_str.into(),
                 remote_actor_id.into(),
@@ -1508,13 +1509,62 @@ async fn verify_request_signature(
         }
     }
 
-    // 获取远程 Actor 的公钥
-    let remote = fetch_remote_actor(db, actor_url_str).await.map_err(|e| {
+    // 获取远程 Actor 的公钥（先走缓存）
+    let mut remote = fetch_remote_actor(db, actor_url_str).await.map_err(|e| {
         (
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": format!("Cannot verify actor: {}", e)})),
         )
     })?;
+
+    // If we stored a public_key_id for this actor, Signature keyId must match
+    // (normalized). On mismatch, force re-fetch once — stale cache after key
+    // rotation / domain path change was a common permanent 401 source.
+    // If no stored key id, PEM-only verify.
+    if let Some(ref stored_kid) = remote.public_key_id {
+        if !stored_kid.is_empty() && !same_key_id(stored_kid, &parsed.key_id) {
+            tracing::warn!(
+                "Signature keyId mismatch (will refresh actor): stored={}, request={}",
+                stored_kid,
+                parsed.key_id
+            );
+            match fetch_remote_actor_fresh(db, actor_url_str).await {
+                Ok(fresh) => remote = fresh,
+                Err(e) => {
+                    tracing::warn!("Actor refresh after keyId mismatch failed: {}", e);
+                }
+            }
+            if let Some(ref fresh_kid) = remote.public_key_id {
+                if !fresh_kid.is_empty() && !same_key_id(fresh_kid, &parsed.key_id) {
+                    // Last chance: request keyId may still be a valid id for the
+                    // same actor path even if publicKey.id differs slightly —
+                    // only accept when the request keyId is clearly under this
+                    // actor URL (same origin + /users/{name}).
+                    let actor_ok = key_id_belongs_to_actor(&parsed.key_id, actor_url_str);
+                    if !actor_ok {
+                        tracing::warn!(
+                            "Signature keyId mismatch after refresh: stored={}, request={}",
+                            fresh_kid,
+                            parsed.key_id
+                        );
+                        return Err((
+                            StatusCode::UNAUTHORIZED,
+                            Json(json!({
+                                "error": "Signature keyId does not match actor public key id",
+                                "stored_key_id": fresh_kid,
+                                "request_key_id": parsed.key_id,
+                            })),
+                        ));
+                    }
+                    tracing::info!(
+                        "Accepting Signature keyId under actor URL after publicKey.id drift: request={} actor={}",
+                        parsed.key_id,
+                        actor_url_str
+                    );
+                }
+            }
+        }
+    }
 
     let public_key_pem = remote.public_key_pem.ok_or_else(|| {
         (
@@ -1522,26 +1572,6 @@ async fn verify_request_signature(
             Json(json!({"error": "Remote actor has no public key"})),
         )
     })?;
-
-    // If we stored a public_key_id for this actor, Signature keyId must match
-    // (normalized). Fail closed on mismatch. If no stored key id, PEM-only verify.
-    if let Some(ref stored_kid) = remote.public_key_id {
-        if !stored_kid.is_empty() && !same_key_id(stored_kid, &parsed.key_id) {
-            tracing::warn!(
-                "Signature keyId mismatch: stored={}, request={}",
-                stored_kid,
-                parsed.key_id
-            );
-            return Err((
-                StatusCode::UNAUTHORIZED,
-                Json(json!({
-                    "error": "Signature keyId does not match actor public key id",
-                    "stored_key_id": stored_kid,
-                    "request_key_id": parsed.key_id,
-                })),
-            ));
-        }
-    }
 
     // 构建请求方法和路径
     let method = "POST"; // Inbox 总是 POST
@@ -1639,7 +1669,8 @@ async fn enqueue_delivery(
                         DatabaseBackend::Postgres,
                         r#"INSERT INTO federation_delivery_queue
                                (activity_id, target_inbox, target_domain, status, created_at, last_attempt_at)
-                           VALUES ($1, $2, $3, 'delivered', NOW(), NOW())"#,
+                           VALUES ($1, $2, $3, 'delivered', NOW(), NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                         [
                             act_id.into(),
                             target_inbox.into(),
@@ -1665,7 +1696,8 @@ async fn enqueue_delivery(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_delivery_queue
                (activity_id, target_inbox, target_domain, status, created_at)
-           VALUES ($1, $2, $3, 'pending', NOW())"#,
+           VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
         [act_id.into(), target_inbox.into(), domain.into()],
     ))
     .await
@@ -1932,6 +1964,53 @@ async fn handle_mfp_activity(
 
 #[cfg(test)]
 mod tests {
+
+    /// 白名单与分派必须一一对应。
+    ///
+    /// 这个不变量已经出过两次问题：`myriad:CharacterVisit*` 先是只进了白名单、
+    /// 没有分派分支（活动验签通过、返 202、然后被静默丢弃 —— 对远端撒谎，
+    /// 它以为投递成功不会重试）；随后功能被移除时白名单又没跟着摘。
+    ///
+    /// 跨两个 match 的约束类型系统表达不了，所以对源码断言。
+    #[test]
+    fn every_allowed_mfp_type_has_a_dispatch_arm() {
+        let src = include_str!("inbox.rs");
+
+        let allowlist = src
+            .split("const ALLOWED_MFP_TYPES: &[&str] = &[")
+            .nth(1)
+            .expect("ALLOWED_MFP_TYPES literal moved")
+            .split("];")
+            .next()
+            .unwrap();
+        let allowed: Vec<&str> = allowlist
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.starts_with("//"))
+            .filter_map(|l| l.strip_prefix('"'))
+            .filter_map(|l| l.split('"').next())
+            .collect();
+        assert!(
+            allowed.len() >= 15,
+            "expected the full MFP allowlist, got {allowed:?}"
+        );
+
+        let dispatch = src
+            .split("async fn handle_mfp_activity(")
+            .nth(1)
+            .expect("handle_mfp_activity moved");
+
+        let undispatched: Vec<&&str> = allowed
+            .iter()
+            .filter(|ty| !dispatch.contains(&format!("\"{ty}\"")))
+            .collect();
+
+        assert!(
+            undispatched.is_empty(),
+            "these MFP types are accepted by the inbox allowlist but have no dispatch arm, \n\
+             so they would be signature-verified, answered 202, then silently dropped: {undispatched:?}"
+        );
+    }
     use super::*;
 
     #[test]

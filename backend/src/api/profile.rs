@@ -1743,7 +1743,9 @@ fn clean_platform_data(data: &mut Value) {
 }
 
 /// 获取最近一次获取的原始元数据（用于调试）
-pub async fn get_raw_metadata(crate::extract::Db(_db): crate::extract::Db) -> (StatusCode, Json<Value>) {
+pub async fn get_raw_metadata(
+    crate::extract::Db(_db): crate::extract::Db,
+) -> (StatusCode, Json<Value>) {
     tracing::info!("📊 Reading cached platform metadata for debugging...");
 
     // 尝试从缓存文件读取
@@ -1779,7 +1781,9 @@ pub async fn get_raw_metadata(crate::extract::Db(_db): crate::extract::Db) -> (S
 
 /// 从数据库或缓存中获取用户信息（支持多平台）
 /// 优先从数据库获取，若数据库无数据则从缓存获取
-pub async fn get_user_info(crate::extract::Db(db): crate::extract::Db) -> (StatusCode, Json<Value>) {
+pub async fn get_user_info(
+    crate::extract::Db(db): crate::extract::Db,
+) -> (StatusCode, Json<Value>) {
     let user_id = match site_owner_user_id(&db).await {
         Ok(user_id) => user_id,
         Err(error) => return site_owner_error(error),

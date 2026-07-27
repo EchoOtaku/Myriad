@@ -663,6 +663,20 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
 - **可见性**：`GET /status`（token）返回可选字段 `self_update_last`；亦可
   `GET /self-update/last`。backend admin 代理原样转发 `/status`。
 
+### 14.4 手动 proxy 升级的失败回退（轻量）
+
+`POST /admin/proxy-update`（同步）在改写 `PROXY_TAG` 并 `compose up proxy` 后：
+
+1. 在 compose 网络上轮询 `http://proxy:80/healthz`（约 25s）。
+2. **compose 失败或 healthz 失败**：将 `PROXY_TAG` 写回 `previous_tag`，再
+   `compose up proxy` 尽量拉起旧镜像；写入
+   `state/proxy-update-last.json`（`status: failed`、`rolled_back`、`error`）。
+3. **成功**：写 `status: succeeded`。
+4. **`GET /status`** 可选字段 `proxy_update_last`（与 `self_update_last` 同形）。
+
+仍不保证「健康检查误报」或「旧镜像也已损坏」时的二次恢复；此时需主机手动改
+`PROXY_TAG` 后 `docker compose up -d proxy`。
+
 ### 14.2 兜底
 
 用户可在部署目录手动执行（宿主机管理员路径）：

@@ -332,6 +332,8 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['federation.transferRoomOwnership', 'federation:write'],
     ['federation.initiateChannelE2e', 'federation:write'],
     ['federation.initiateRoomE2e', 'federation:write'],
+    ['federation.addRoomSticker', 'federation:write'],
+    ['federation.removeRoomSticker', 'federation:write'],
     ['federation.pinRoomMessage', 'federation:write'],
     ['federation.createRing', 'federation:write'],
     ['federation.leaveRing', 'federation:write'],

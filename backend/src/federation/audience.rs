@@ -400,7 +400,10 @@ mod tests {
             "https://A.EXAMPLE/users/alice"
         ));
         assert!(!same_origin("http://a.example/x", "https://a.example/y"));
-        assert!(!same_origin("https://a.example:8443/x", "https://a.example/y"));
+        assert!(!same_origin(
+            "https://a.example:8443/x",
+            "https://a.example/y"
+        ));
         assert!(!same_origin("not-a-url", "https://a.example/y"));
     }
 }

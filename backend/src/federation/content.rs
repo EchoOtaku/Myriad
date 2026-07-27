@@ -120,10 +120,10 @@ pub struct MediaUploadResponse {
 
 // ==================== 媒体限制 ====================
 
-const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
-const MAX_VIDEO_BYTES: usize = 50 * 1024 * 1024;
-const MAX_NOTE_ATTACHMENTS: usize = 8;
-const MAX_NOTE_TEXT_CHARS: usize = 10_000;
+use crate::federation::limits::NOTE_ATTACHMENT_COUNT_LIMIT as MAX_NOTE_ATTACHMENTS;
+use crate::federation::limits::NOTE_IMAGE_LIMIT as MAX_IMAGE_BYTES;
+use crate::federation::limits::NOTE_TEXT_CHAR_LIMIT as MAX_NOTE_TEXT_CHARS;
+use crate::federation::limits::NOTE_VIDEO_LIMIT as MAX_VIDEO_BYTES;
 
 // ==================== 核心发布功能 ====================
 
@@ -1314,7 +1314,8 @@ pub(crate) async fn fan_out_to_followers(
                 DatabaseBackend::Postgres,
                 r#"INSERT INTO federation_delivery_queue
                        (activity_id, target_inbox, target_domain, status, created_at)
-                   VALUES ($1, $2, $3, 'pending', NOW())"#,
+                   VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                 [
                     activity_db_id.into(),
                     inbox.clone().into(),
@@ -1423,11 +1424,8 @@ async fn deliver_create_to_local_follower(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_timeline
                (user_id, activity_id, remote_actor_id, activity_type, object_type, content_preview, content_json, received_at)
-           SELECT $1, $2, $3, $4, $5, $6, $7, NOW()
-           WHERE NOT EXISTS (
-               SELECT 1 FROM federation_timeline
-               WHERE user_id = $1 AND activity_id = $2
-           )"#,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+           ON CONFLICT (user_id, activity_id) DO NOTHING"#,
         [
             follower_user_id.into(),
             activity_id.into(),
@@ -1578,11 +1576,8 @@ async fn insert_author_timeline(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_timeline
                (user_id, activity_id, remote_actor_id, activity_type, object_type, content_preview, content_json, received_at)
-           SELECT $1, $2, NULL, $3, $4, $5, $6, NOW()
-           WHERE NOT EXISTS (
-               SELECT 1 FROM federation_timeline
-               WHERE user_id = $1 AND activity_id = $2
-           )"#,
+           VALUES ($1, $2, NULL, $3, $4, $5, $6, NOW())
+           ON CONFLICT (user_id, activity_id) DO NOTHING"#,
         [
             user_id.into(),
             activity_id.into(),
@@ -2277,7 +2272,11 @@ mod tests {
         use crate::federation::audience::{fan_out_scope, parse_visibility};
         for raw in ["direct", "mentioned"] {
             let v = parse_visibility(raw).expect("modelled visibility");
-            assert_eq!(fan_out_scope(v), FanOutScope::ExplicitRecipientsOnly, "{raw}");
+            assert_eq!(
+                fan_out_scope(v),
+                FanOutScope::ExplicitRecipientsOnly,
+                "{raw}"
+            );
         }
         for raw in ["public", "followers", "unlisted", "private"] {
             let v = parse_visibility(raw).expect("modelled visibility");

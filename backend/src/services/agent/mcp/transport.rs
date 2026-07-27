@@ -382,7 +382,10 @@ mod tests {
             "NODE_EXTRA_CA_CERTS",
             "REQUESTS_CA_BUNDLE",
         ] {
-            assert!(ENV_ALLOWLIST.contains(&needed), "{needed} should pass through");
+            assert!(
+                ENV_ALLOWLIST.contains(&needed),
+                "{needed} should pass through"
+            );
         }
     }
 

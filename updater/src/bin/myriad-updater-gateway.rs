@@ -171,6 +171,10 @@ async fn proxy(State(state): State<Arc<GatewayState>>, req: Request<Body>) -> Re
 }
 
 /// Validate `X-Updater-Gateway-Secret` with a length-checked constant-time compare.
+///
+/// `Err` 携带的是一个完整的 `Response`（较大）。这条路径每个请求最多走一次、
+/// 且失败即返回，装箱换来的间接寻址不值得。
+#[allow(clippy::result_large_err)]
 fn authorize_gateway_caller(
     headers: &HeaderMap,
     expected: &str,

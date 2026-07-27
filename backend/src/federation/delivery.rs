@@ -1127,7 +1127,9 @@ async fn deliver_activity(
 ///
 /// 抖动取 ±25%：足以打散同批，又不会让退避语义走形。
 fn retry_backoff_secs(attempts: i32) -> i64 {
-    let base = 2i64.saturating_pow(attempts.clamp(0, 32) as u32).min(86_400);
+    let base = 2i64
+        .saturating_pow(attempts.clamp(0, 32) as u32)
+        .min(86_400);
     // 低位退避（1~2 秒）加抖动没有意义，反而可能算出 0
     if base <= 2 {
         return base;

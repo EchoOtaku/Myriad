@@ -408,7 +408,8 @@ pub async fn create_channel(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
                        (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                       VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                     [act_id.into(), inbox.into(), domain.into()],
                 ))
                 .await;
@@ -667,7 +668,8 @@ pub async fn close_channel(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
                        (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                       VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                     [act_id.into(), inbox.into(), domain.into()],
                 ))
                 .await;
@@ -770,9 +772,9 @@ pub async fn delete_channel(
 
 // ==================== 消息功能 ====================
 
-/// 最大消息载荷大小: 32 MiB（JSON 序列化后字符串长度）。
-/// 覆盖小文件内联 base64 与 Tapp 安装包快照分享；更大附件仍走 file_transfer 分块。
-const MAX_MESSAGE_PAYLOAD: usize = 32 * 1024 * 1024;
+/// 最大消息载荷大小（JSON 序列化后字符串长度）。
+/// 取值与上限链的单一事实源见 [`crate::federation::limits`]。
+use crate::federation::limits::MESSAGE_PAYLOAD_LIMIT as MAX_MESSAGE_PAYLOAD;
 
 /// 发送消息到 Channel
 pub async fn send_message(
@@ -956,7 +958,8 @@ pub async fn send_message(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
                        (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                       VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                     [act_id.into(), inbox.into(), domain.into()],
                 ))
                 .await
@@ -1440,19 +1443,39 @@ pub async fn handle_channel_message(
     )
     .await;
 
-    // 新消息才推通知中心（重放/去重不通知）
+    // 新消息才推通知中心（重放/去重不通知）。
+    // 跳过自己发的内容（本机 actor 回环 / 同实例双端）。
+    // 预览用已解密的 ws_payload，避免通知栏出现 ciphertext JSON。
     if inserted.rows_affected() > 0 {
         if let Some(user_id) = owner_user_id {
-            let label = crate::federation::notify::actor_label(db, sender).await;
-            crate::federation::notify::notify_channel_message(
-                user_id,
-                channel_id,
-                sender,
-                &label,
-                message_type,
-                &payload,
-            )
-            .await;
+            let base_url = get_base_url().await;
+            let is_self = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT username FROM users WHERE id = $1 LIMIT 1",
+                    [user_id.into()],
+                ))
+                .await
+                .ok()
+                .flatten()
+                .and_then(|r| r.try_get::<String>("", "username").ok())
+                .map(|uname| {
+                    let mine = actor_url(&base_url, &uname);
+                    same_actor_url(sender, &mine)
+                })
+                .unwrap_or(false);
+            if !is_self {
+                let label = crate::federation::notify::actor_label(db, sender).await;
+                crate::federation::notify::notify_channel_message(
+                    user_id,
+                    channel_id,
+                    sender,
+                    &label,
+                    message_type,
+                    &ws_payload,
+                )
+                .await;
+            }
         }
     }
 
@@ -1607,7 +1630,8 @@ pub async fn accept_channel(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
                        (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                       VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                     [act_id.into(), inbox.into(), domain.into()],
                 ))
                 .await;
@@ -2085,7 +2109,8 @@ pub async fn initiate_e2e_key_exchange(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
                        (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                       VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                     [act_id.into(), inbox.into(), domain.into()],
                 ))
                 .await;

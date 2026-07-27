@@ -86,10 +86,10 @@ pub struct TransferDetail {
 }
 
 /// 默认块大小: 1 MiB raw（base64 后约 1.37 MiB，远低于联邦 inbox 40 MiB 上限）
-const DEFAULT_CHUNK_SIZE: i64 = 1024 * 1024;
+use crate::federation::limits::TRANSFER_CHUNK_SIZE as DEFAULT_CHUNK_SIZE;
 
 /// 最大文件大小: 5GB
-const MAX_FILE_SIZE: i64 = 5_368_709_120;
+use crate::federation::limits::MAX_FILE_SIZE;
 
 // ==================== 存储辅助 ====================
 
@@ -356,7 +356,8 @@ pub async fn initiate_transfer(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
                        (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                       VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                     [act_id.into(), inbox.into(), domain.into()],
                 ))
                 .await;
@@ -775,7 +776,8 @@ pub async fn upload_chunk(
                         DatabaseBackend::Postgres,
                         r#"INSERT INTO federation_delivery_queue
                            (activity_id, target_inbox, target_domain, status, created_at)
-                           VALUES ($1, $2, $3, 'pending', NOW())"#,
+                           VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                         [act_id.into(), inbox.into(), domain.into()],
                     ))
                     .await;
@@ -1313,7 +1315,8 @@ pub async fn cancel_transfer(
                             DatabaseBackend::Postgres,
                             r#"INSERT INTO federation_delivery_queue
                                (activity_id, target_inbox, target_domain, status, created_at)
-                               VALUES ($1, $2, $3, 'pending', NOW())"#,
+                               VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                             [act_id.into(), inbox.into(), domain.into()],
                         ))
                         .await;

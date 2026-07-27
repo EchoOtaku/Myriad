@@ -6,7 +6,8 @@
 
 use axum::{
     extract::{Path, Query},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
+    response::Response,
     Json,
 };
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
@@ -40,86 +41,148 @@ const PUBLIC_OUTBOX_FILTER: &str = r#"
 
 #[derive(Debug, Deserialize)]
 pub struct OutboxQuery {
+    /// 传统页码。仍然接受（远端可能缓存过这类 URL），但我们只在 `first`
+    /// 里生成 `?page=1`；之后的 `next` 一律用游标。
     pub page: Option<u32>,
+    /// Keyset 游标：`<published_at 微秒>.<activity id>`。
+    pub cursor: Option<String>,
 }
 
-/// GET /users/{username}/outbox  (可选 ?page=N)
+/// 一页的定位方式。
+#[derive(Debug, PartialEq, Eq)]
+enum PagePosition {
+    /// 从最新一条开始。
+    Start,
+    /// 严格早于该 `(published_at, id)` 的条目。
+    After { published_us: i64, id: i32 },
+}
+
+/// 解析 `?cursor=<micros>.<id>`。
 ///
-/// 无 page：返回 OrderedCollection 摘要（totalItems + first/last 指针）
-/// 有 page：返回该页的 OrderedCollectionPage
+/// 格式不合法一律当作"从头开始"而不是报错：游标是我们自己生成的不透明串，
+/// 远端把它截断或改坏时，给出第一页比返回 400 更符合 AP 的爬取语义。
+fn parse_cursor(raw: &str) -> PagePosition {
+    let Some((ts, id)) = raw.split_once('.') else {
+        return PagePosition::Start;
+    };
+    match (ts.parse::<i64>(), id.parse::<i32>()) {
+        (Ok(published_us), Ok(id)) => PagePosition::After { published_us, id },
+        _ => PagePosition::Start,
+    }
+}
+
+/// 生成下一页游标。
+fn encode_cursor(published_us: i64, id: i32) -> String {
+    format!("{published_us}.{id}")
+}
+
+/// GET /users/{username}/outbox
+///
+/// - 无参数：返回 `OrderedCollection` 摘要（`totalItems` + `first`）
+/// - `?cursor=…`：keyset 分页，`next` 链接都是这种形态
+/// - `?page=N`：传统页码，仍然接受（远端可能缓存过），但我们不再生成
+///
+/// # 为什么不再用 `COUNT(*) + OFFSET`
+///
+/// 旧实现每次取页都跑一遍全表 `COUNT(*)`，并用 `OFFSET` 跳过前面的行：
+///
+/// - 代价随历史增长线性上升，翻到第 N 页要扫过前 N×20 行；
+/// - **翻页不稳定** —— 爬取过程中有新内容发布，后续页的 OFFSET 会整体位移，
+///   远端要么漏掉条目、要么重复收到。
+///
+/// keyset 用 `(published_at, id)` 作游标：每页代价恒定，且新内容只会出现在
+/// 游标之前，不会挪动已经翻过的窗口。
 pub async fn get_outbox(
     Path(username): Path<String>,
     Query(query): Query<OutboxQuery>,
-) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let db = get_db()
         .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
     let base_url = get_base_url().await;
 
     let (user_id, _) = get_local_user(&db, &username).await?;
-
-    // 总数（与下面的分页查询共用同一个可见性投影）
-    let total: i64 = db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            format!("SELECT COUNT(*) as count {}", PUBLIC_OUTBOX_FILTER),
-            [user_id.into()],
-        ))
-        .await
-        .map_err(db_err)?
-        .map(|r| r.try_get::<i64>("", "count").unwrap_or(0))
-        .unwrap_or(0);
-    let total_u64 = total.max(0) as u64;
-
     let outbox_id = outbox_url(&base_url, &username);
-    let last_page = if total == 0 {
-        1
-    } else {
-        ((total - 1) / OUTBOX_PAGE_SIZE + 1) as u32
-    };
 
-    // 无 page 参数 → 返回 Collection 摘要
-    let Some(page) = query.page else {
+    // 无任何分页参数 → 摘要文档。COUNT 只在这里跑一次。
+    if query.page.is_none() && query.cursor.is_none() {
+        let total: i64 = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                format!("SELECT COUNT(*) as count {}", PUBLIC_OUTBOX_FILTER),
+                [user_id.into()],
+            ))
+            .await
+            .map_err(db_err)?
+            .map(|r| r.try_get::<i64>("", "count").unwrap_or(0))
+            .unwrap_or(0);
+
         let collection = OrderedCollection {
             context: build_ap_context(),
             collection_type: "OrderedCollection".to_string(),
             id: outbox_id.clone(),
-            total_items: total_u64,
-            first: if total > 0 {
-                Some(format!("{}?page=1", outbox_id))
-            } else {
-                None
-            },
-            last: if total > 0 {
-                Some(format!("{}?page={}", outbox_id, last_page))
-            } else {
-                None
-            },
+            total_items: total.max(0) as u64,
+            first: (total > 0).then(|| format!("{}?page=1", outbox_id)),
+            // keyset 下没有可直接跳转的"最后一页"。AS2 不要求 `last`，
+            // 爬虫按 `first` → `next` 遍历即可。
+            last: None,
         };
-        return Ok((
-            StatusCode::OK,
-            Json(serde_json::to_value(collection).unwrap()),
+        return Ok(crate::federation::http_cache::public_ap_document(
+            &headers,
+            AP_CONTENT_TYPE,
+            serde_json::to_value(collection).unwrap(),
         ));
+    }
+
+    // 定位这一页的起点
+    let position = match query.cursor.as_deref() {
+        Some(raw) => parse_cursor(raw),
+        None => PagePosition::Start,
+    };
+    // 传统 ?page=N 仍走 OFFSET —— 只为兼容已缓存的 URL，我们自己不生成。
+    let legacy_offset = match (&position, query.page) {
+        (PagePosition::Start, Some(p)) => (p.max(1) as i64 - 1) * OUTBOX_PAGE_SIZE,
+        _ => 0,
     };
 
-    let page = page.max(1);
-    let offset = (page as i64 - 1) * OUTBOX_PAGE_SIZE;
+    // 多取一条用来判断"还有没有下一页"，省掉一次 COUNT
+    let fetch = OUTBOX_PAGE_SIZE + 1;
+    let rows = match position {
+        PagePosition::Start => {
+            db.query_all(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                format!(
+                    "SELECT a.object_json, a.id, a.published_at {} \
+                     ORDER BY a.published_at DESC, a.id DESC LIMIT $2 OFFSET $3",
+                    PUBLIC_OUTBOX_FILTER
+                ),
+                [user_id.into(), fetch.into(), legacy_offset.into()],
+            ))
+            .await
+        }
+        PagePosition::After { published_us, id } => {
+            let ts = chrono::DateTime::from_timestamp_micros(published_us)
+                .unwrap_or_else(chrono::Utc::now);
+            db.query_all(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                format!(
+                    "SELECT a.object_json, a.id, a.published_at {} \
+                       AND (a.published_at, a.id) < ($2, $3) \
+                     ORDER BY a.published_at DESC, a.id DESC LIMIT $4",
+                    PUBLIC_OUTBOX_FILTER
+                ),
+                [user_id.into(), ts.into(), id.into(), fetch.into()],
+            ))
+            .await
+        }
+    }
+    .map_err(db_err)?;
 
-    // 取该页 Activity
-    let rows = db
-        .query_all(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            format!(
-                "SELECT a.object_json {} ORDER BY a.published_at DESC NULLS LAST, a.id DESC \
-                 LIMIT $2 OFFSET $3",
-                PUBLIC_OUTBOX_FILTER
-            ),
-            [user_id.into(), OUTBOX_PAGE_SIZE.into(), offset.into()],
-        ))
-        .await
-        .map_err(db_err)?;
+    let has_more = rows.len() as i64 > OUTBOX_PAGE_SIZE;
+    let page_rows = &rows[..rows.len().min(OUTBOX_PAGE_SIZE as usize)];
 
-    let items: Vec<serde_json::Value> = rows
+    let items: Vec<serde_json::Value> = page_rows
         .iter()
         .map(|r| {
             r.try_get::<serde_json::Value>("", "object_json")
@@ -127,16 +190,24 @@ pub async fn get_outbox(
         })
         .collect();
 
-    let page_id = format!("{}?page={}", outbox_id, page);
-    let next = if (page as i64) < last_page as i64 {
-        Some(format!("{}?page={}", outbox_id, page + 1))
-    } else {
-        None
-    };
-    let prev = if page > 1 {
-        Some(format!("{}?page={}", outbox_id, page - 1))
-    } else {
-        None
+    // 下一页游标 = 本页最后一条的 (published_at, id)
+    let next = has_more
+        .then(|| page_rows.last())
+        .flatten()
+        .and_then(|last| {
+            let id: i32 = last.try_get("", "id").ok()?;
+            let ts: chrono::DateTime<chrono::FixedOffset> =
+                last.try_get("", "published_at").ok()?;
+            Some(format!(
+                "{}?cursor={}",
+                outbox_id,
+                encode_cursor(ts.timestamp_micros(), id)
+            ))
+        });
+
+    let page_id = match query.cursor.as_deref() {
+        Some(c) => format!("{}?cursor={}", outbox_id, c),
+        None => format!("{}?page={}", outbox_id, query.page.unwrap_or(1).max(1)),
     };
 
     let page_doc = OrderedCollectionPage {
@@ -144,15 +215,18 @@ pub async fn get_outbox(
         collection_type: "OrderedCollectionPage".to_string(),
         id: page_id,
         part_of: outbox_id,
-        total_items: total_u64,
+        // 省略：取一页不该再跑一次全表 COUNT（AS2 允许，摘要里已有总数）
+        total_items: None,
         ordered_items: items,
         next,
-        prev,
+        // keyset 是单向游标，没有可靠的 `prev`。AS2 不要求它。
+        prev: None,
     };
 
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::to_value(page_doc).unwrap()),
+    Ok(crate::federation::http_cache::public_ap_document(
+        &headers,
+        AP_CONTENT_TYPE,
+        serde_json::to_value(page_doc).unwrap(),
     ))
 }
 
@@ -168,7 +242,8 @@ pub async fn get_outbox(
 /// Outbox 过滤的旁路。
 pub async fn get_activity(
     Path(id): Path<String>,
-) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+    headers: HeaderMap,
+) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
     let db = get_db()
         .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
@@ -202,7 +277,11 @@ pub async fn get_activity(
         .try_get::<serde_json::Value>("", "object_json")
         .unwrap_or(json!({}));
 
-    Ok((StatusCode::OK, Json(object_json)))
+    Ok(crate::federation::http_cache::public_ap_document(
+        &headers,
+        AP_CONTENT_TYPE,
+        object_json,
+    ))
 }
 
 // ==================== 辅助函数 ====================
@@ -241,4 +320,70 @@ async fn get_local_user(
         row.try_get("", "id").unwrap_or(0),
         row.try_get("", "username").unwrap_or_default(),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cursor_roundtrips() {
+        let c = encode_cursor(1_738_000_000_000_000, 42);
+        assert_eq!(c, "1738000000000000.42");
+        assert_eq!(
+            parse_cursor(&c),
+            PagePosition::After {
+                published_us: 1_738_000_000_000_000,
+                id: 42
+            }
+        );
+    }
+
+    /// 游标是我们生成的不透明串。远端把它截断/改坏时给第一页，
+    /// 而不是 400 —— 爬虫遇到 400 会整个放弃这个 Outbox。
+    #[test]
+    fn malformed_cursor_falls_back_to_start() {
+        for bad in [
+            "", "garbage", "123", ".", "abc.def", "123.", ".456", "1.2.3",
+        ] {
+            assert_eq!(
+                parse_cursor(bad),
+                PagePosition::Start,
+                "{bad:?} should fall back to the first page"
+            );
+        }
+    }
+
+    #[test]
+    fn negative_timestamps_are_accepted() {
+        // 1970 之前的 published_at 不该被当成畸形游标
+        assert_eq!(
+            parse_cursor("-1000.7"),
+            PagePosition::After {
+                published_us: -1000,
+                id: 7
+            }
+        );
+    }
+
+    /// 分页文档不带 totalItems —— 这正是省掉每页 COUNT(*) 的体现。
+    #[test]
+    fn page_document_omits_total_items() {
+        let page = OrderedCollectionPage {
+            context: build_ap_context(),
+            collection_type: "OrderedCollectionPage".to_string(),
+            id: "https://x/outbox?cursor=1.2".into(),
+            part_of: "https://x/outbox".into(),
+            total_items: None,
+            ordered_items: vec![],
+            next: None,
+            prev: None,
+        };
+        let v = serde_json::to_value(&page).unwrap();
+        assert!(
+            v.get("totalItems").is_none(),
+            "pages must not carry totalItems; that would force a COUNT(*) per page"
+        );
+        assert_eq!(v["type"], "OrderedCollectionPage");
+    }
 }

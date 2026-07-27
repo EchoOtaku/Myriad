@@ -704,61 +704,118 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     dispatchUpdate,
   ])
 
+  /**
+   * Self-update is async (HTTP 202 + helper). Poll `/status.self_update_last`
+   * until a new outcome appears or we time out (~90s).
+   */
+  const waitSelfUpdateOutcome = useCallback(
+    async (beforeAt: string | null | undefined, targetTag: string) => {
+      setToast({ kind: 'ok', text: u.updaterSelfUpdateWaiting })
+      for (let i = 0; i < 45; i++) {
+        await new Promise((r) => window.setTimeout(r, 2_000))
+        try {
+          const s = await api.status()
+          setStatus(s)
+          const last = s?.self_update_last
+          if (!last) continue
+          if (beforeAt && last.at === beforeAt) continue
+          if (targetTag && last.target_tag && last.target_tag !== targetTag) {
+            continue
+          }
+          if (last.status === 'succeeded') {
+            setToast({
+              kind: 'ok',
+              text: format(u.updaterSelfUpdateSucceeded, {
+                version: last.target_tag || targetTag || '—',
+                previous: last.previous_tag || '—',
+              }),
+            })
+            return
+          }
+          if (last.status === 'failed') {
+            setToast({
+              kind: 'error',
+              text: format(u.updaterSelfUpdateFailed, {
+                error: last.error || '—',
+              }),
+            })
+            return
+          }
+        } catch {
+          // Updater / gateway may be restarting mid self-update.
+        }
+      }
+      setToast({ kind: 'ok', text: u.updaterSelfUpdateStillPending })
+    },
+    [api, u],
+  )
+
   const triggerSelfUpdate = useCallback(async () => {
     if (tokenRequired) {
       setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
       return
     }
-    const target = status?.latest_available?.version ?? ''
-    if (!target) {
-      setToast({ kind: 'error', text: u.updaterInfraNeedCheck })
-      return
-    }
-    if (!confirm(format(u.updaterSelfUpdateConfirm, { version: target }))) {
-      return
-    }
+    // Backend resolves the tip itself (release.json or Docker Hub). App
+    // `latest_available` is only a hint — it is cleared when already current.
+    const tip = status?.latest_available?.version
+    const ok = tip
+      ? confirm(format(u.updaterSelfUpdateConfirm, { version: tip }))
+      : confirm(u.updaterSelfUpdateConfirmAuto)
+    if (!ok) return
+    const beforeAt = status?.self_update_last?.at
     setBusy('self-update')
     setToast(null)
     try {
-      await api.triggerSelfUpdate()
-      setToast({ kind: 'ok', text: u.updaterSelfUpdateDispatched })
+      const report = await api.triggerSelfUpdate()
+      const target = report.new_updater_tag || tip || ''
+      setToast({
+        kind: 'ok',
+        text: format(u.updaterSelfUpdateDispatched, {
+          version: target || '—',
+          previous: report.previous_updater_tag || status?.updater_version || '—',
+        }),
+      })
+      // Confirm helper outcome (success or rolled-back failure).
+      await waitSelfUpdateOutcome(beforeAt, target)
     } catch (e) {
       setToast({ kind: 'error', text: explain(e) })
     } finally {
       setBusy(null)
     }
-  }, [api, status, tokenRequired, explain, u])
+  }, [api, status, tokenRequired, explain, u, waitSelfUpdateOutcome])
 
   const triggerProxyUpdate = useCallback(async () => {
     if (tokenRequired) {
       setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
       return
     }
-    const target = status?.latest_available?.version ?? ''
-    if (!target) {
-      setToast({ kind: 'error', text: u.updaterInfraNeedCheck })
-      return
-    }
-    if (!confirm(format(u.updaterInfraProxyConfirm, { version: target }))) {
-      return
-    }
+    // Same as self-update: tip is optional. Empty body lets the updater pick
+    // the component tip from GitHub/Docker Hub when status has no app tip.
+    const tip = status?.latest_available?.version
+    const ok = tip
+      ? confirm(format(u.updaterInfraProxyConfirm, { version: tip }))
+      : confirm(u.updaterInfraProxyConfirmAuto)
+    if (!ok) return
     setBusy('proxy-update')
     setToast(null)
     try {
-      const report = await api.triggerProxyUpdate(target)
+      const report = await api.triggerProxyUpdate(tip || undefined)
       setToast({
         kind: 'ok',
         text: format(u.updaterInfraProxyDispatched, {
           version: report.new_proxy_tag,
-          previous: report.previous_proxy_tag || '—',
+          previous: report.previous_proxy_tag || status?.proxy_version || '—',
         }),
       })
+      await refresh()
     } catch (e) {
+      // Health-failed path restores PROXY_TAG server-side; refresh to show version.
+      await refresh().catch(() => {})
       setToast({ kind: 'error', text: explain(e) })
     } finally {
       setBusy(null)
     }
-  }, [api, status, tokenRequired, explain, u])
+  }, [api, status, refresh, tokenRequired, explain, u])
 
   const rollbackTo = useCallback(
     async (snap: SnapshotMeta) => {
@@ -1112,7 +1169,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                 <strong>{u.updaterInfraUpdaterTitle}</strong>
                 <p className="updater-infra-desc">{u.updaterInfraUpdaterDesc}</p>
                 <p className="updater-infra-current">
-                  {u.updaterInfraUpdaterCurrent}{' '}
+                  {u.updaterInfraCurrent}{' '}
                   <code>{status?.updater_version ?? '—'}</code>
                   {status?.latest_available?.min_updater_version && (
                     <>
@@ -1122,9 +1179,21 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                     </>
                   )}
                   {requiresSelfUpdate && (
-                    <span className="updater-hero-warning"> · required</span>
+                    <span className="updater-hero-warning">
+                      {' '}
+                      · {u.updaterInfraRequired}
+                    </span>
                   )}
                 </p>
+                {status?.self_update_last?.status === 'failed' && (
+                  <p className="updater-infra-last-fail" role="status">
+                    {format(u.updaterInfraSelfLastFailed, {
+                      target: status.self_update_last.target_tag || '—',
+                      previous: status.self_update_last.previous_tag || '—',
+                      error: status.self_update_last.error || '—',
+                    })}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
@@ -1134,7 +1203,10 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                     : 'btn-base btn-secondary'
                 }
                 disabled={
-                  !!busy || tokenRequired || !status?.latest_available?.version
+                  // Do not require latest_available: backend clears it when the
+                  // app is already current, but self/proxy update still resolve
+                  // their own component tips independently.
+                  !!busy || tokenRequired || !status
                 }
                 onClick={() => triggerSelfUpdate()}
               >
@@ -1149,13 +1221,27 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
               <div className="updater-infra-meta">
                 <strong>{u.updaterInfraProxyTitle}</strong>
                 <p className="updater-infra-desc">{u.updaterInfraProxyDesc}</p>
+                <p className="updater-infra-current">
+                  {u.updaterInfraCurrent}{' '}
+                  <code>{status?.proxy_version ?? '—'}</code>
+                </p>
+                {status?.proxy_update_last?.status === 'failed' && (
+                  <p className="updater-infra-last-fail" role="status">
+                    {format(u.updaterInfraProxyLastFailed, {
+                      target: status.proxy_update_last.target_tag || '—',
+                      previous: status.proxy_update_last.previous_tag || '—',
+                      error: status.proxy_update_last.error || '—',
+                    })}
+                    {status.proxy_update_last.rolled_back
+                      ? ` ${u.updaterInfraProxyRolledBack}`
+                      : ''}
+                  </p>
+                )}
               </div>
               <button
                 type="button"
                 className="btn-base btn-secondary"
-                disabled={
-                  !!busy || tokenRequired || !status?.latest_available?.version
-                }
+                disabled={!!busy || tokenRequired || !status}
                 onClick={() => triggerProxyUpdate()}
               >
                 {busy === 'proxy-update' ? (

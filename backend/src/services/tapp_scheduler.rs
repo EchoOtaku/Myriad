@@ -1973,7 +1973,9 @@ SELECT EXISTS (
     ) -> Result<tapp_scheduled_tasks::Model, String> {
         let now = Utc::now();
 
-        // 检查是否已存在
+        // 检查是否已存在 — 幂等：同 user/tapp/task_id 重复注册返回已有行。
+        // Page/Widget/headless 都会在 onReady 里 register 一次；返回 500 会刷屏且
+        // 让沙箱误以为调度失败（前端虽会 getTask 兜底，但 Network 面板仍是 500）。
         let existing = tapp_scheduled_tasks::Entity::find()
             .filter(tapp_scheduled_tasks::Column::UserId.eq(user_id))
             .filter(tapp_scheduled_tasks::Column::TappId.eq(tapp_id))
@@ -1982,8 +1984,14 @@ SELECT EXISTS (
             .await
             .map_err(|e| format!("Query failed: {}", e))?;
 
-        if existing.is_some() {
-            return Err(format!("Task {} already exists", task_id));
+        if let Some(existing) = existing {
+            tracing::debug!(
+                "[TappScheduler] Task {} already registered for tapp {} (user {}) — idempotent reuse",
+                task_id,
+                tapp_id,
+                user_id
+            );
+            return Ok(existing);
         }
 
         // 计算首次执行时间

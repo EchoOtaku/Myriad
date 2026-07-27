@@ -434,13 +434,24 @@ await Tapp.widget.updateConfig("my-widget", {
 });
 ```
 
-在 Widget 沙箱内还提供当前 Dashboard 实例专用 API（无需 `widget:register`）：
+在 **Widget 沙箱**内还提供当前 Dashboard 实例专用 API（无需 `widget:register`）。
+这些方法 **不在** Page / headless 的 `Tapp.widget` 上：
 
 ```javascript
+// 仅 Widget 沙箱
 const settings = Tapp.widget.getInstanceSettings();
 await Tapp.widget.updateInstanceSettings({ compact: true });
 await Tapp.widget.invalidate("data-ready");
 ```
+
+| 沙箱 | `Tapp.widget` |
+| ---- | ------------- |
+| Page | `register` / `unregister` / `listRegistered` / `updateConfig` |
+| Widget | `getInstanceSettings` / `updateInstanceSettings` / `invalidate` |
+| headless | 无（对象被删除） |
+
+跨 Page ↔ Widget 同步数据请用 `Tapp.storage.set`（宿主广播 + `refreshPolicy`），
+不要在 core 里调用 `invalidate`。
 
 `updateInstanceSettings()` 只能更新当前 Widget 的 `widgets[].settings` 已声明字段，宿主会
 按类型、select 选项和数值范围校验，然后写入 Dashboard 布局。顶层 `settings` 仍是整个

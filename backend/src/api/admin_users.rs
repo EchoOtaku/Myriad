@@ -11,11 +11,7 @@
 //!
 //! Privilege model: durable `users.is_owner` (previously heuristic `id = 1`).
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::Path, http::StatusCode, Json};
 use chrono::{DateTime, Utc};
 use sea_orm::Value as SeaValue;
 use sea_orm::{

@@ -358,7 +358,7 @@ Widget: render() 里 Tapp.storage.get(key)   （或 onChanged 局部更新）
 
 ```json
 {
-  "permissions": ["network:fetch", "storage:read", "storage:write"],
+  "permissions": ["network:fetch", "storage", "scheduler:register"],
   "apis": {
     "feed": {
       "type": "http",
@@ -380,10 +380,17 @@ Widget: render() 里 Tapp.storage.get(key)   （或 onChanged 局部更新）
 }
 ```
 
+> 权限字符串必须是宿主白名单里的完整 token。存储只有 **`storage`**（没有
+> `storage:read` / `storage:write`）；定时任务权限是 **`scheduler:register`**
+> （`backgroundRequirements` 里的 `"scheduler"` 是后台能力类型，不是权限 token）。
+> 未知权限会在安装时被拒绝或过滤。
+
 **2. core 拉数写 storage**
 
 ```javascript
 // main.js 的 core 段 — 三种模式都会加载
+// ⚠️ 只写 storage 即可；不要在 core/Page/headless 里调用 Tapp.widget.invalidate
+//    （该方法仅存在于 Widget 沙箱，见下表）
 async function pullFeed() {
   const data = await Tapp.api("feed", {});
   await Tapp.storage.set("feed.latest", data);
@@ -407,18 +414,21 @@ Tapp.widgets["feed"] = {
 
 ### 何时用哪种触发
 
-| 触发 | 用法 | 说明 |
-| ---- | ---- | ---- |
-| storage 写入 | `await Tapp.storage.set(k, v)` | **默认路径**：同 Tapp 广播，event 模式 Widget 自动 re-render |
-| 显式 invalidate | `await Tapp.widget.invalidate("reason")` | 当前 Widget 实例请求宿主刷新（未写 storage 时也可用） |
-| 订阅变更 | `Tapp.storage.onChanged(cb)` | 局部改 DOM，或再决定是否 invalidate |
-| 可见轮询 | `refreshPolicy.mode: "interval"` | 仅页面+Widget 可见时计时；**不要**当后台同步 |
-| 后台同步 | `backgroundRequirements` + scheduler / headless | 见下一节；离开 UI 后仍要跑的任务放这里 |
+| 触发 | 用法 | 谁能用 | 说明 |
+| ---- | ---- | ------ | ---- |
+| storage 写入 | `await Tapp.storage.set(k, v)` | **Page / Widget / headless** | **默认路径**：同 Tapp 广播，event 模式可见 Widget 自动 re-render |
+| 显式 invalidate | `await Tapp.widget.invalidate("reason")` | **仅 Widget 沙箱** | 当前实例请求 re-render；**core/Page/headless 没有此方法**，调用会抛错并中断同步 |
+| 订阅变更 | `Tapp.storage.onChanged(cb)` | Page / Widget / headless | 局部改 DOM；一般不必再 invalidate |
+| 可见轮询 | `refreshPolicy.mode: "interval"` | 宿主计时器 | 仅页面+Widget 可见时计时；**不要**当后台同步 |
+| 后台同步 | `backgroundRequirements` + scheduler / headless | headless core | 离开 UI 后仍要跑的任务 |
 
 要点：
 
 - `render` 保持幂等：优先读 storage，避免每次 re-render 都打外部 API。
 - 平台只读接口（如 `Tapp.platform.*`）≠ 你声明的业务 `apis`。
+- Page 的 `Tapp.widget` 是 **register/unregister/listRegistered/updateConfig**（需要
+  `widget:register`）；与 Widget 沙箱里的实例 API（`getInstanceSettings` /
+  `updateInstanceSettings` / `invalidate`）不是同一套方法。
 - 完整示例与注意项见 [WIDGET — 数据加载与更新](WIDGET.md#数据加载与更新)；
   API 细节见 [API 参考](API_REFERENCE.md)；`refreshPolicy` 字段见 [Manifest](MANIFEST.md)。
 

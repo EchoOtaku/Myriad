@@ -124,6 +124,14 @@ export function registerFederationHandlers(
               event: 'governance_changed',
               changes: data.changes,
             })
+          } else if (data.event === 'stickers_changed') {
+            bridge.emit('federation:roomUpdate', {
+              roomId,
+              event: 'stickers_changed',
+              stickers: data.stickers,
+              actor: data.actor,
+              op: data.op,
+            })
           } else if (data.type === 'room_deleted') {
             bridge.emit('federation:roomUpdate', {
               roomId,
@@ -1079,6 +1087,59 @@ export function registerFederationHandlers(
         return {
           success: false,
           error: error instanceof Error ? error.message : 'Failed',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.addRoomSticker',
+    async (message: TappMessage) => {
+      const [roomId, req] = (message.payload as { args: unknown[] }).args || []
+      if (!roomId || typeof roomId !== 'string')
+        return { success: false, error: 'Room ID is required' }
+      if (!req || typeof req !== 'object')
+        return { success: false, error: 'Sticker payload is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.addRoomSticker(
+          roomId,
+          req as { data: string; name?: string },
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'Failed to add sticker',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
+    'federation.removeRoomSticker',
+    async (message: TappMessage) => {
+      const [roomId, stickerId] =
+        (message.payload as { args: unknown[] }).args || []
+      if (!roomId || typeof roomId !== 'string')
+        return { success: false, error: 'Room ID is required' }
+      if (!stickerId || typeof stickerId !== 'string')
+        return { success: false, error: 'Sticker ID is required' }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.removeRoomSticker(
+          roomId,
+          stickerId,
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'Failed to remove sticker',
         }
       }
     },

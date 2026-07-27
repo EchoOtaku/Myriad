@@ -7,6 +7,7 @@ use axum::{http::StatusCode, Json};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashSet;
 
 use crate::federation::types::*;
 
@@ -218,6 +219,38 @@ pub struct RoomE2eKeyExchangeResponse {
 pub struct PinRoomMessageRequest {
     pub pinned: bool,
 }
+
+/// Add a sticker to the room shared pack (`shared_data_config.stickers`).
+/// Opt-in group share — any active member may publish their own images.
+#[derive(Debug, Deserialize)]
+pub struct AddRoomStickerRequest {
+    /// data:image/*;base64,... (already client-compressed)
+    pub data: String,
+    pub name: Option<String>,
+}
+
+/// One entry in the room shared sticker pack.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RoomStickerItem {
+    pub id: String,
+    pub data: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub actor: String,
+    pub created_at: String,
+}
+
+/// Response after add/remove on the room sticker pack.
+#[derive(Debug, Serialize)]
+pub struct RoomStickersResponse {
+    pub success: bool,
+    pub room_id: String,
+    pub stickers: Vec<RoomStickerItem>,
+}
+
+/// Soft caps for room-shared stickers (personal packs are larger / client-only).
+const ROOM_STICKER_MAX_COUNT: usize = 24;
+const ROOM_STICKER_MAX_DATA_LEN: usize = 120_000;
 
 // ==================== 辅助函数 ====================
 
@@ -722,7 +755,8 @@ pub(crate) async fn fanout_to_remote_members_excluding(
                 DatabaseBackend::Postgres,
                 r#"INSERT INTO federation_delivery_queue
                    (activity_id, target_inbox, target_domain, status, created_at)
-                   VALUES ($1, $2, $3, 'pending', NOW())"#,
+                   VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                 [act_db_id.into(), inbox.into(), domain.into()],
             ))
             .await
@@ -930,10 +964,25 @@ pub async fn update_room(
         }
     }
     if let Some(ref avatar) = req.avatar_url {
-        if avatar.len() > 2048 {
+        // https URLs stay short; data:image/* uploads need more room (base64).
+        let max = if avatar.starts_with("data:image/") {
+            600_000
+        } else {
+            2048
+        };
+        if avatar.is_empty() || avatar.len() > max {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": "Avatar URL too long"})),
+                Json(json!({"error": "Invalid avatar (empty or too large)"})),
+            ));
+        }
+        if !avatar.starts_with("data:image/")
+            && !avatar.starts_with("https://")
+            && !avatar.starts_with("http://")
+        {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Avatar must be http(s) URL or data:image"})),
             ));
         }
     }
@@ -1814,7 +1863,8 @@ pub async fn invite_member(
                         DatabaseBackend::Postgres,
                         r#"INSERT INTO federation_delivery_queue
                            (activity_id, target_inbox, target_domain, status, created_at)
-                           VALUES ($1, $2, $3, 'pending', NOW())"#,
+                           VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                         [act_id.into(), inbox.into(), domain.into()],
                     ))
                     .await;
@@ -2107,8 +2157,8 @@ async fn fetch_remote_public_room(
         let body = crate::services::outbound_security::read_limited_body(resp, 256 * 1024)
             .await
             .map_err(|e| format!("read public room: {e}"))?;
-        let info: PublicRoomInfo = serde_json::from_slice(&body)
-            .map_err(|e| format!("parse public room: {e}"))?;
+        let info: PublicRoomInfo =
+            serde_json::from_slice(&body).map_err(|e| format!("parse public room: {e}"))?;
         if !info.is_public || info.room_id != room_id {
             return Err("Remote document is not a valid public room".into());
         }
@@ -2198,8 +2248,7 @@ async fn materialize_remote_public_room(
     // Host we actually fetched from (may differ from document.home_server).
     fetched_from: &str,
 ) -> Result<(), String> {
-    let (home, invite_policy, max_members) =
-        validate_remote_public_room_doc(info, fetched_from)?;
+    let (home, invite_policy, max_members) = validate_remote_public_room_doc(info, fetched_from)?;
     let name = non_empty_room_name(Some(&info.name))
         .unwrap_or_else(|| resolve_invite_room_name(None, &info.room_id));
 
@@ -2409,8 +2458,8 @@ pub async fn join_room(
         let is_public: bool = row.try_get("", "is_public").unwrap_or(false);
         let existing_home: String = row.try_get("", "home_server").unwrap_or_default();
         // Only remote stubs (not local authority) can be upgraded public from home.
-        let is_remote_stub = !existing_home.is_empty()
-            && !home_servers_match(&existing_home, &local_home);
+        let is_remote_stub =
+            !existing_home.is_empty() && !home_servers_match(&existing_home, &local_home);
         if !is_public
             && is_remote_stub
             && may_promote_private_room_to_public(&existing_home, &existing_home)
@@ -2424,9 +2473,7 @@ pub async fn join_room(
                         existing_home = %existing_home,
                         "[Room] ignoring home_hint that does not match room home_server"
                     );
-                } else if let Ok(info) =
-                    fetch_remote_public_room(&existing_home, &room_id).await
-                {
+                } else if let Ok(info) = fetch_remote_public_room(&existing_home, &room_id).await {
                     if !may_promote_private_room_to_public(&existing_home, &info.home_server)
                         && !info.home_server.trim().is_empty()
                     {
@@ -2784,7 +2831,8 @@ pub async fn reject_room_invite(
                                     DatabaseBackend::Postgres,
                                     r#"INSERT INTO federation_delivery_queue
                                        (activity_id, target_inbox, target_domain, status, created_at)
-                                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                                       VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                                     [act_id.into(), inbox.into(), domain.into()],
                                 ))
                                 .await;
@@ -2974,16 +3022,15 @@ pub async fn transfer_room_ownership(
 
     // Use the *stored* actor_url for role UPDATEs (host/case/slash may differ
     // from the request while still matching via same_actor_url).
-    let (target_actor, target_role) =
-        resolve_active_member_actor(db, room_id, &resolved_target)
-            .await
-            .map_err(db_err)?
-            .ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "New owner must already be a room member"})),
-                )
-            })?;
+    let (target_actor, target_role) = resolve_active_member_actor(db, room_id, &resolved_target)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "New owner must already be a room member"})),
+            )
+        })?;
     if target_role == "observer" {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -3197,8 +3244,8 @@ pub async fn leave_room(
 
 // ==================== 消息功能 ====================
 
-/// 最大消息载荷大小: 32 MiB（与 channel MAX_MESSAGE_PAYLOAD 对齐；Tapp 包分享）
-const MAX_ROOM_MESSAGE_PAYLOAD: usize = 32 * 1024 * 1024;
+/// 最大消息载荷大小（与 channel 共用同一常量，见 [`crate::federation::limits`]）
+use crate::federation::limits::MESSAGE_PAYLOAD_LIMIT as MAX_ROOM_MESSAGE_PAYLOAD;
 
 /// 发送 Room 消息
 pub async fn send_room_message(
@@ -4126,7 +4173,11 @@ pub async fn handle_room_invite(
         .get("invitePolicy")
         .and_then(|v| v.as_str())
         .filter(|s| ["admin-only", "member-invite", "open"].contains(s))
-        .unwrap_or(if invite_is_public { "open" } else { "admin-only" });
+        .unwrap_or(if invite_is_public {
+            "open"
+        } else {
+            "admin-only"
+        });
     let has_real_name = invite_name.is_some();
     let display_name = resolve_invite_room_name(invite_name.as_deref(), room_id);
     db.execute(Statement::from_sql_and_values(
@@ -4396,25 +4447,35 @@ pub async fn handle_room_message(
     )
     .await;
 
-    // 新消息才通知本地成员（排除发送者若其为本地用户）
+    // 新消息才通知本地成员（排除发送者若其为本地用户；actor URL 规范化比较）。
+    // 预览用已解密的 ws_payload，避免通知栏出现 ciphertext JSON。
     if inserted.rows_affected() > 0 {
         let label = crate::federation::notify::actor_label(db, sender).await;
         let name = crate::federation::notify::room_name(db, room_id).await;
         let local_users = crate::federation::notify::room_local_user_ids(db, room_id).await;
-        // 若发送者绑定了本地 user，跳过该 user
-        let sender_local: Option<i32> = db
-            .query_one(Statement::from_sql_and_values(
+        // Resolve which local user_ids belong to the sender (tolerate URL drift).
+        let sender_local_ids: HashSet<i32> = db
+            .query_all(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                r#"SELECT local_user_id FROM federation_room_members
-                   WHERE room_id = $1 AND actor_url = $2 AND is_local = true"#,
-                [room_id.into(), sender.into()],
+                r#"SELECT local_user_id, actor_url FROM federation_room_members
+                   WHERE room_id = $1 AND is_local = true AND local_user_id IS NOT NULL"#,
+                [room_id.into()],
             ))
             .await
-            .ok()
-            .flatten()
-            .and_then(|r| r.try_get::<i32>("", "local_user_id").ok());
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|r| {
+                let uid = r.try_get::<i32>("", "local_user_id").ok()?;
+                let act: String = r.try_get("", "actor_url").ok()?;
+                if same_actor_url(&act, sender) {
+                    Some(uid)
+                } else {
+                    None
+                }
+            })
+            .collect();
         for user_id in local_users {
-            if sender_local == Some(user_id) {
+            if sender_local_ids.contains(&user_id) {
                 continue;
             }
             crate::federation::notify::notify_room_message(
@@ -4424,7 +4485,7 @@ pub async fn handle_room_message(
                 sender,
                 &label,
                 message_type,
-                &payload,
+                &ws_payload,
             )
             .await;
         }
@@ -4761,7 +4822,8 @@ async fn refanout_local_e2e_keys_to_member(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
                        (activity_id, target_inbox, target_domain, status, created_at)
-                       VALUES ($1, $2, $3, 'pending', NOW())"#,
+                       VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
                     [act_id.into(), inbox.clone().into(), domain.clone().into()],
                 ))
                 .await;
@@ -4948,11 +5010,12 @@ pub async fn handle_room_governance(
         .and_then(|v| v.as_object())
         .ok_or("Missing changes object")?;
 
-    // 验证发送方是 owner / admin
+    // 验证发送方是成员。名称/策略等仍需 admin；stickers 包允许任意 active 成员同步。
     let sender_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT m.role, r.owner_actor
+            r#"SELECT m.role, r.owner_actor,
+                      COALESCE(m.membership_status, 'active') AS membership_status
                FROM federation_room_members m
                JOIN federation_rooms r ON r.room_id = m.room_id
                WHERE m.room_id = $1 AND m.actor_url = $2"#,
@@ -4969,8 +5032,66 @@ pub async fn handle_room_governance(
 
     let role: String = sender_row.try_get("", "role").unwrap_or_default();
     let owner: String = sender_row.try_get("", "owner_actor").unwrap_or_default();
-    let is_owner = owner == actor_url_str;
+    let membership_status: String = sender_row
+        .try_get("", "membership_status")
+        .unwrap_or_else(|_| "active".to_string());
+    let is_owner = owner == actor_url_str || same_actor_url(&owner, actor_url_str);
     let is_admin = role == "admin" || is_owner;
+    let stickers_only = changes.contains_key("stickers") && changes.keys().all(|k| k == "stickers");
+    if stickers_only {
+        if membership_status != "active" {
+            return Err(format!(
+                "Actor {} is not an active member of room {}",
+                actor_url_str, room_id
+            ));
+        }
+        // Apply sticker pack mirror from home / peer.
+        if let Some(stickers_val) = changes.get("stickers") {
+            let room_row = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
+                    [room_id.into()],
+                ))
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("Room {room_id} not found"))?;
+            let mut shared = room_row
+                .try_get::<Option<serde_json::Value>>("", "shared_data_config")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| json!({}));
+            let parsed = parse_room_stickers(&json!({ "stickers": stickers_val }));
+            shared["stickers"] = stickers_to_json(&parsed);
+            db.execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
+                [room_id.into(), shared.into()],
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
+
+            crate::federation::ws_gateway::broadcast_to_room(
+                room_id,
+                &json!({
+                    "type": "system",
+                    "room_id": room_id,
+                    "event": "stickers_changed",
+                    "actor": actor_url_str,
+                    "op": "sync",
+                    "stickers": stickers_to_json(&parsed),
+                }),
+            )
+            .await;
+            tracing::info!(
+                "[Room] Sticker pack synced in {} by {} (count={})",
+                room_id,
+                actor_url_str,
+                parsed.len()
+            );
+        }
+        return Ok(());
+    }
     if !is_admin {
         return Err(format!(
             "Actor {} has no governance rights in room {}",
@@ -5544,6 +5665,288 @@ pub async fn handle_key_exchange(
     Ok(())
 }
 
+// ==================== Room shared stickers ====================
+
+fn parse_room_stickers(shared: &serde_json::Value) -> Vec<RoomStickerItem> {
+    shared
+        .get("stickers")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| serde_json::from_value::<RoomStickerItem>(v.clone()).ok())
+                .filter(|s| {
+                    !s.id.is_empty()
+                        && s.data.starts_with("data:image/")
+                        && s.data.len() <= ROOM_STICKER_MAX_DATA_LEN
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn stickers_to_json(list: &[RoomStickerItem]) -> serde_json::Value {
+    serde_json::to_value(list).unwrap_or_else(|_| json!([]))
+}
+
+async fn load_room_shared_config(
+    db: &DatabaseConnection,
+    room_id: &str,
+) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
+    let room_row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Room not found"})),
+            )
+        })?;
+    Ok(room_row
+        .try_get::<Option<serde_json::Value>>("", "shared_data_config")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| json!({})))
+}
+
+async fn save_room_shared_config(
+    db: &DatabaseConnection,
+    room_id: &str,
+    shared: serde_json::Value,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
+        [room_id.into(), shared.into()],
+    ))
+    .await
+    .map_err(db_err)?;
+    Ok(())
+}
+
+async fn broadcast_and_fanout_stickers(
+    db: &DatabaseConnection,
+    user_id: i32,
+    room_id: &str,
+    local_actor: &str,
+    base_url: &str,
+    stickers: &[RoomStickerItem],
+    op: &str,
+) {
+    let stickers_val = stickers_to_json(stickers);
+    crate::federation::ws_gateway::broadcast_to_room(
+        room_id,
+        &json!({
+            "type": "system",
+            "room_id": room_id,
+            "event": "stickers_changed",
+            "actor": local_actor,
+            "op": op,
+            "stickers": &stickers_val,
+        }),
+    )
+    .await;
+
+    // Fan-out as RoomGovernance so remote homes mirror the pack.
+    // handle_room_governance applies `stickers` for any active member.
+    let activity_id = generate_activity_id(base_url);
+    let gov_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:RoomGovernance",
+        "id": &activity_id,
+        "actor": local_actor,
+        "object": {
+            "type": "myriad:RoomGovernance",
+            "room": room_id,
+            "changes": {
+                "stickers": stickers_val
+            }
+        }
+    });
+    if let Err(e) = fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &activity_id,
+        &gov_activity,
+        "RoomGovernance",
+        "RoomGovernance",
+    )
+    .await
+    {
+        tracing::warn!(
+            "[Room] Failed to fan-out stickers for room {}: {}",
+            room_id,
+            e
+        );
+    }
+}
+
+/// POST /rooms/{id}/stickers — any active member can share a sticker into the group pack.
+pub async fn add_room_sticker(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    req: AddRoomStickerRequest,
+    db: &DatabaseConnection,
+) -> Result<RoomStickersResponse, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    let (stored_actor, _role) = resolve_active_member_actor(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Only active members can share stickers"})),
+            )
+        })?;
+
+    let data = req.data.trim().to_string();
+    if !data.starts_with("data:image/") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Sticker must be a data:image URL"})),
+        ));
+    }
+    if data.len() > ROOM_STICKER_MAX_DATA_LEN {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Sticker image too large"})),
+        ));
+    }
+
+    let mut shared = load_room_shared_config(db, room_id).await?;
+    let mut stickers = parse_room_stickers(&shared);
+    if stickers.len() >= ROOM_STICKER_MAX_COUNT {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!("Room sticker pack full (max {})", ROOM_STICKER_MAX_COUNT)
+            })),
+        ));
+    }
+
+    let name = req
+        .name
+        .as_ref()
+        .map(|s| s.trim().chars().take(120).collect::<String>())
+        .filter(|s| !s.is_empty());
+
+    let entry = RoomStickerItem {
+        id: format!("stk_{}", uuid::Uuid::new_v4().simple()),
+        data,
+        name,
+        actor: stored_actor.clone(),
+        created_at: now_iso8601(),
+    };
+    let local_actor = stored_actor;
+    stickers.insert(0, entry);
+    if stickers.len() > ROOM_STICKER_MAX_COUNT {
+        stickers.truncate(ROOM_STICKER_MAX_COUNT);
+    }
+    shared["stickers"] = stickers_to_json(&stickers);
+    save_room_shared_config(db, room_id, shared).await?;
+
+    broadcast_and_fanout_stickers(
+        db,
+        user_id,
+        room_id,
+        &local_actor,
+        &base_url,
+        &stickers,
+        "add",
+    )
+    .await;
+
+    tracing::info!(
+        "[Room] Sticker shared in {} by {} (count={})",
+        room_id,
+        username,
+        stickers.len()
+    );
+
+    Ok(RoomStickersResponse {
+        success: true,
+        room_id: room_id.to_string(),
+        stickers,
+    })
+}
+
+/// DELETE /rooms/{id}/stickers/{sticker_id} — publisher or admin/owner.
+pub async fn remove_room_sticker(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    sticker_id: &str,
+    db: &DatabaseConnection,
+) -> Result<RoomStickersResponse, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+
+    if sticker_id.is_empty() || sticker_id.len() > 128 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Invalid sticker id"})),
+        ));
+    }
+
+    let (stored_actor, role) = resolve_active_member_actor(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Only active members can manage stickers"})),
+            )
+        })?;
+    let local_actor = stored_actor;
+
+    let mut shared = load_room_shared_config(db, room_id).await?;
+    let mut stickers = parse_room_stickers(&shared);
+    let found = stickers.iter().find(|s| s.id == sticker_id).cloned();
+    let Some(target) = found else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Sticker not found"})),
+        ));
+    };
+
+    let is_publisher = same_actor_url(&target.actor, &local_actor);
+    if !is_publisher && !is_admin_role(&role) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Only the sharer or an admin can remove this sticker"})),
+        ));
+    }
+
+    stickers.retain(|s| s.id != sticker_id);
+    shared["stickers"] = stickers_to_json(&stickers);
+    save_room_shared_config(db, room_id, shared).await?;
+
+    broadcast_and_fanout_stickers(
+        db,
+        user_id,
+        room_id,
+        &local_actor,
+        &base_url,
+        &stickers,
+        "remove",
+    )
+    .await;
+
+    Ok(RoomStickersResponse {
+        success: true,
+        room_id: room_id.to_string(),
+        stickers,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5578,8 +5981,14 @@ mod tests {
 
     #[test]
     fn home_servers_match_normalizes_scheme_and_case() {
-        assert!(home_servers_match("Example.COM:8443", "https://example.com:8443/"));
-        assert!(home_servers_match("127.0.0.1:1103", "http://127.0.0.1:1103"));
+        assert!(home_servers_match(
+            "Example.COM:8443",
+            "https://example.com:8443/"
+        ));
+        assert!(home_servers_match(
+            "127.0.0.1:1103",
+            "http://127.0.0.1:1103"
+        ));
         assert!(!home_servers_match("evil.example", "good.example"));
         assert!(!home_servers_match("", "example.com"));
     }
@@ -5613,20 +6022,14 @@ mod tests {
     #[test]
     fn validate_remote_public_doc_rejects_home_mismatch() {
         // Attacker hosts card but document claims victim home — blocked.
-        let info = sample_public_info(
-            "victim.example",
-            "https://victim.example/users/owner",
-        );
+        let info = sample_public_info("victim.example", "https://victim.example/users/owner");
         let err = validate_remote_public_room_doc(&info, "evil.example").unwrap_err();
         assert!(err.contains("mismatch"), "{err}");
     }
 
     #[test]
     fn validate_remote_public_doc_accepts_matching_home() {
-        let info = sample_public_info(
-            "peer.example:8443",
-            "https://peer.example:8443/users/owner",
-        );
+        let info = sample_public_info("peer.example:8443", "https://peer.example:8443/users/owner");
         let (home, policy, max) =
             validate_remote_public_room_doc(&info, "https://peer.example:8443").unwrap();
         assert!(home_servers_match(&home, "peer.example:8443"));
@@ -5638,8 +6041,7 @@ mod tests {
     fn validate_remote_public_doc_defaults_bad_invite_policy() {
         let mut info = sample_public_info("peer.example", "https://peer.example/users/o");
         info.invite_policy = "not-a-policy".into();
-        let (_, policy, _) =
-            validate_remote_public_room_doc(&info, "peer.example").unwrap();
+        let (_, policy, _) = validate_remote_public_room_doc(&info, "peer.example").unwrap();
         assert_eq!(policy, "open");
     }
 
@@ -5760,6 +6162,92 @@ mod tests {
         assert!(is_admin_role("admin"));
         assert!(!is_admin_role("member"));
         assert!(!is_admin_role(""));
+    }
+
+    #[test]
+    fn parse_room_stickers_filters_invalid() {
+        let shared = json!({
+            "stickers": [
+                {
+                    "id": "stk_ok",
+                    "data": "data:image/png;base64,AAAA",
+                    "actor": "https://example.com/users/a",
+                    "created_at": "2026-01-01T00:00:00Z"
+                },
+                {
+                    "id": "stk_bad_url",
+                    "data": "https://evil.example/x.png",
+                    "actor": "https://example.com/users/a",
+                    "created_at": "2026-01-01T00:00:00Z"
+                },
+                {
+                    "id": "",
+                    "data": "data:image/png;base64,BBBB",
+                    "actor": "https://example.com/users/a",
+                    "created_at": "2026-01-01T00:00:00Z"
+                },
+                { "not": "a sticker" }
+            ]
+        });
+        let list = parse_room_stickers(&shared);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "stk_ok");
+        assert!(list[0].data.starts_with("data:image/"));
+    }
+
+    #[test]
+    fn parse_room_stickers_rejects_oversized() {
+        let big = format!(
+            "data:image/png;base64,{}",
+            "A".repeat(ROOM_STICKER_MAX_DATA_LEN)
+        );
+        let too_big = format!(
+            "data:image/png;base64,{}",
+            "B".repeat(ROOM_STICKER_MAX_DATA_LEN)
+        );
+        // `big` length is prefix + max => > MAX; craft exact edge
+        let ok_data = format!(
+            "data:image/png;base64,{}",
+            "C".repeat(ROOM_STICKER_MAX_DATA_LEN - "data:image/png;base64,".len())
+        );
+        assert!(ok_data.len() <= ROOM_STICKER_MAX_DATA_LEN);
+        assert!(too_big.len() > ROOM_STICKER_MAX_DATA_LEN);
+        let shared = json!({
+            "stickers": [
+                {
+                    "id": "stk_ok",
+                    "data": ok_data,
+                    "actor": "https://example.com/users/a",
+                    "created_at": "2026-01-01T00:00:00Z"
+                },
+                {
+                    "id": "stk_big",
+                    "data": too_big,
+                    "actor": "https://example.com/users/a",
+                    "created_at": "2026-01-01T00:00:00Z"
+                }
+            ]
+        });
+        let list = parse_room_stickers(&shared);
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "stk_ok");
+        let _ = big; // silence unused if compiler optimizes
+    }
+
+    #[test]
+    fn stickers_to_json_roundtrip_shape() {
+        let items = vec![RoomStickerItem {
+            id: "stk_1".into(),
+            data: "data:image/webp;base64,QQ==".into(),
+            name: Some("hi".into()),
+            actor: "https://example.com/users/a".into(),
+            created_at: "2026-01-01T00:00:00Z".into(),
+        }];
+        let v = stickers_to_json(&items);
+        let again = parse_room_stickers(&json!({ "stickers": v }));
+        assert_eq!(again.len(), 1);
+        assert_eq!(again[0].id, "stk_1");
+        assert_eq!(again[0].name.as_deref(), Some("hi"));
     }
 
     #[test]
