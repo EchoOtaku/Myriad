@@ -128,13 +128,12 @@ img[loading='lazy'] {
   /* 禁用昂贵的视觉效果 */
 }
 
-/* 低端设备优化（html[data-low-end-device] 由 usePerformanceProfile 写入）
-   不改写壁纸 filter；仅降级 UI 毛玻璃，减轻 GPU 合成压力。
-   data-perf-mode 由 useAnimationLevel 写入（exlight | light | standard）。
-   注：former `none` 已并入 exlight（含 prefers-reduced-motion）。 */
-
-/* Tailwind backdrop-blur：light / exlight / 设备低端 — 去掉昂贵合成 */
-html[data-low-end-device='true'] [class*='backdrop-blur'],
+/*
+ * 动效降级只认 data-perf-mode（useAnimationLevel）：
+ * light / exlight 去掉 Tailwind backdrop-blur。
+ * 硬件档位见 data-high-hardware（不再写 data-low-end-device）。
+ * 不改写壁纸 filter。
+ */
 html[data-perf-mode='light'] [class*='backdrop-blur'],
 html[data-perf-mode='exlight'] [class*='backdrop-blur'] {
   backdrop-filter: none !important;

@@ -8,39 +8,33 @@ import {
 } from '../utils/deviceHardwareTier'
 
 /**
- * 设备性能画像与动态特性检测
- * - 分平台硬件门槛 → highHardware / lowEndDevice
- * - 供 useAnimationLevel 映射 standard/light/exlight
+ * 设备性能画像
+ *
+ * 硬件是否达标只看 `highHardware`（分平台规则见 deviceHardwareTier）。
+ * 动效降级看 `data-perf-mode` / useAnimationLevel（exlight|light|standard），
+ * 不再维护独立的 lowEndDevice 布尔。
  */
 export interface PerformanceProfile {
   isMobile: boolean
   reduceMotion: boolean
-  /**
-   * 未达「高硬件」门槛（或 reduceMotion）。
-   * 动画侧：不达标时用户高/低 = light / exlight。
-   */
-  lowEndDevice: boolean
   /** 是否达到分平台高硬件标准（与 reduceMotion 无关） */
   highHardware: boolean
   os: OsKind
   hardwareConcurrency: number | null
   deviceMemory: number | null
-  /** debug */
+  /** 判定原因；仅 dev 写入 DOM */
   hardwareReason?: string
 }
 
-// SSR 安全的默认值 - 乐观策略：假设为中高端设备
 const DEFAULT_PROFILE: PerformanceProfile = {
   isMobile: false,
   reduceMotion: false,
-  lowEndDevice: false,
   highHardware: true,
   os: 'unknown',
   hardwareConcurrency: null,
   deviceMemory: null,
 }
 
-// 🔧 性能优化：全局缓存检测结果，避免重复检测
 let cachedProfile: PerformanceProfile | null = null
 let hasDetected = false
 
@@ -50,12 +44,9 @@ function buildProfile(
   isMobile: boolean,
 ): PerformanceProfile {
   const tier = evaluateHighHardware(signals)
-  // reduceMotion 不改变 highHardware 字段，但 lowEndDevice 对旧调用方仍表示「应降级」
-  const lowEndDevice = reduceMotion || !tier.highHardware
   return {
     isMobile,
     reduceMotion,
-    lowEndDevice,
     highHardware: tier.highHardware,
     os: signals.os,
     hardwareConcurrency: signals.cores,
@@ -65,12 +56,10 @@ function buildProfile(
 }
 
 function detectPerformanceProfile(): PerformanceProfile {
-  // 🔧 优化：如果已经检测过，直接返回缓存
   if (hasDetected && cachedProfile) {
     return cachedProfile
   }
 
-  // 每次调用时检测浏览器环境
   if (
     typeof window === 'undefined' ||
     typeof window.matchMedia !== 'function'
@@ -90,7 +79,6 @@ function detectPerformanceProfile(): PerformanceProfile {
 
     cachedProfile = profile
     hasDetected = true
-
     return profile
   } catch (e) {
     console.warn('Failed to detect performance profile:', e)
@@ -98,73 +86,87 @@ function detectPerformanceProfile(): PerformanceProfile {
   }
 }
 
-/**
- * 同步获取性能配置（用于模块初始化时，非 React 上下文）
- * 返回当前检测到的设备性能画像
- */
 export function getPerformanceProfileSync(): PerformanceProfile {
   return detectPerformanceProfile()
 }
 
-/** 测试或 macOS async 补全后清空缓存 */
 export function resetPerformanceProfileCache(): void {
   hasDetected = false
   cachedProfile = null
 }
 
-/** 将低端标记同步到 <html>，激活 performance.css 中的 [data-low-end-device] 规则 */
-function syncLowEndToDocument(profile: PerformanceProfile) {
+/** Sync hardware flags to <html> for CSS / debug (no lowEndDevice). */
+function syncHardwareToDocument(profile: PerformanceProfile) {
   if (typeof document === 'undefined') return
   const root = document.documentElement
-  if (profile.lowEndDevice) {
-    root.dataset.lowEndDevice = 'true'
-  } else {
-    delete root.dataset.lowEndDevice
-  }
+  // Drop legacy marker if any
+  delete root.dataset.lowEndDevice
+
   root.dataset.deviceOs = profile.os
   root.dataset.highHardware = profile.highHardware ? 'true' : 'false'
-  if (profile.hardwareReason) {
+
+  // hardwareReason 仅开发构建挂 DOM，避免生产泄漏设备指纹式信息
+  const isDev =
+    typeof import.meta !== 'undefined' &&
+    // Vite
+    Boolean((import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV)
+  if (isDev && profile.hardwareReason) {
     root.dataset.hardwareReason = profile.hardwareReason
+  } else {
+    delete root.dataset.hardwareReason
   }
 }
 
+function readViewportFlags() {
+  const isMobile = window.matchMedia(
+    '(hover: none) and (pointer: coarse)',
+  ).matches
+  const reduceMotion = window.matchMedia(
+    '(prefers-reduced-motion: reduce)',
+  ).matches
+  return { isMobile, reduceMotion }
+}
+
 export function usePerformanceProfile(): PerformanceProfile {
-  // 🔧 SSR 安全：始终使用默认值作为初始状态，避免 hydration 不匹配
   const [profile, setProfile] = useState<PerformanceProfile>(DEFAULT_PROFILE)
   const hasInitialized = useRef(false)
 
-  // 客户端初始化：在组件挂载后检测真实性能配置
   useEffect(() => {
     if (hasInitialized.current) return
     hasInitialized.current = true
 
+    let cancelled = false
+    const apply = (next: PerformanceProfile) => {
+      if (cancelled) return
+      resetPerformanceProfileCache()
+      cachedProfile = next
+      hasDetected = true
+      syncHardwareToDocument(next)
+      setProfile(next)
+    }
+
     const detected = detectPerformanceProfile()
-    syncLowEndToDocument(detected)
+    syncHardwareToDocument(detected)
     setProfile(detected)
 
-    // macOS：异步补全 architecture（Apple Silicon）
+    // macOS：同步路径可能认不出芯片（保守 low）。异步 architecture 确认后再升/降。
+    // 先保持 conservative 结果，避免 Intel 误开 standard。
     if (detected.os === 'macos') {
       void detectAppleSiliconAsync().then((appleSilicon) => {
-        if (appleSilicon == null) return
+        if (cancelled || appleSilicon == null) return
         const signals = collectHardwareSignals()
+        if (signals.appleSilicon === appleSilicon) return
         signals.appleSilicon = appleSilicon
-        const isMobile = window.matchMedia(
-          '(hover: none) and (pointer: coarse)',
-        ).matches
-        const reduceMotion = window.matchMedia(
-          '(prefers-reduced-motion: reduce)',
-        ).matches
-        const next = buildProfile(signals, reduceMotion, isMobile)
-        resetPerformanceProfileCache()
-        cachedProfile = next
-        hasDetected = true
-        syncLowEndToDocument(next)
-        setProfile(next)
+        const { isMobile, reduceMotion } = readViewportFlags()
+        apply(buildProfile(signals, reduceMotion, isMobile))
       })
+    }
+
+    return () => {
+      cancelled = true
     }
   }, [])
 
-  // 监听 reduceMotion 变化
   useEffect(() => {
     if (typeof window === 'undefined') return
 
@@ -172,7 +174,7 @@ export function usePerformanceProfile(): PerformanceProfile {
     const handler = () => {
       resetPerformanceProfileCache()
       const next = detectPerformanceProfile()
-      syncLowEndToDocument(next)
+      syncHardwareToDocument(next)
       setProfile(next)
     }
 

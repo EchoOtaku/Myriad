@@ -1002,7 +1002,7 @@ const GlobalControlPanel: React.FC = () => {
     // 加入 deps 后翻转即触发 measure(true) 精确重测
   }, [
     isExpanded,
-    perf.lowEndDevice,
+    perf.highHardware,
     perf.isMobile,
     anim.level,
     canRefreshWallpaper,
