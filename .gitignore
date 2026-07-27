@@ -62,6 +62,9 @@ out/
 /.claude/
 .claude/settings.local.json
 /backend/data/brew
+# data_key master secret + local debug JWT (never commit)
+/backend/data/.secret-key
+/backend/.regen-token
 .env
 /.astro
 /.claude

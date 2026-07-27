@@ -12,6 +12,12 @@ data/*.json
 !data/.gitkeep
 data/tapps
 
+# Runtime crypto key (data_key envelopes for config secrets / federation keys)
+data/.secret-key
+
+# Local debug JWT / one-off API tokens (never commit)
+.regen-token
+
 # Brew icon cache (downloaded at runtime)
 data/brew/icons/*
 !data/brew/icons/.gitkeep
