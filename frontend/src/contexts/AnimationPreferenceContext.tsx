@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
 import { createContext, useContext, useState } from 'react'
+import { clearAutoDemoteMemory } from '../utils/animationAutoAdapt'
 
 /**
  * 动效偏好（用户只在两档间切换；落地档位由硬件是否达标映射）
- * - 'auto': 默认硬件允许对中的「高」档；会话内 rAF 采样仅在帧质明显很差时降为「低」（可降不可升）
- * - 'standard': 用户选「高」→ 达标: standard · 不达标: light（不采样）
+ * - 'auto': 默认高档；rAF 采样仅在帧质明显很差时降为低档，结果记 localStorage
+ * - 'standard': 用户选「高」→ 达标: standard · 不达标: light（不采样；并清除 auto 降级记忆）
  * - 'light': 用户选「低」→ 达标: light · 不达标: exlight（不采样）
  *
  * 真正的 AnimationLevel（exlight | light | standard）见 useAnimationLevel。
@@ -48,6 +49,10 @@ export function AnimationPreferenceProvider({
     setPreferenceState(pref)
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, pref)
+    }
+    // 用户明确要「高」：清掉 auto 降级记忆，之后若回到 auto 可再轻量采一次
+    if (pref === 'standard') {
+      clearAutoDemoteMemory()
     }
   }
 

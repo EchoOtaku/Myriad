@@ -1,6 +1,7 @@
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { AnimationPreferenceContext } from '../contexts/AnimationPreferenceContext'
 import {
+  clearAutoDemoteMemory,
   getSessionAutoWantHigh,
   startSessionAutoFrameAdapt,
 } from '../utils/animationAutoAdapt'
@@ -115,13 +116,13 @@ export function meetsAnimationHardwareRequirement(
  * - prefers-reduced-motion → always `exlight` (not overridable)
  * - `wantHigh === true`  →  capable: standard · weak: light
  * - `wantHigh === false` →  capable: light    · weak: exlight
- * - `auto`：默认高档；会话采样仅在帧质**明显很差**时降为低档（可降不可升）
+ * - `auto`：默认高档；采样仅在帧质**明显很差**时降为低档，记 localStorage（可降不可升）
  * - 手动 standard / light：不走采样
  */
 export function resolveAnimationConfig(
   userPref: AnimationUserPreference | null | undefined,
   perf: PerformanceProfile,
-  /** auto 会话内是否选高档；仅 userPref 为 auto 时生效 */
+  /** auto 是否选高档（localStorage）；仅 userPref 为 auto 时生效 */
   autoWantHigh: boolean = true,
 ): AnimationConfig {
   if (perf.reduceMotion) {

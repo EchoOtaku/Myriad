@@ -1,40 +1,21 @@
 /**
- * auto 动效：会话内自适应（可降不可升）
+ * auto 动效：自适应（可降不可升，结果记 localStorage）
  *
- * 采样刻意轻量：
- * - 不分配数组，只累加标量
- * - 少帧数（24 个间隔 ≈ 0.4s@60Hz）
- * - 空闲后再开，不抢首屏
- * - rAF 回调内仅几次比较与加减
+ * - 默认 wantHigh=true
+ * - 空闲后 **整页只采一次**（模块单例，多 useAnimationLevel 共享）
+ * - 仅帧质明显很差才降级，写入 localStorage，下次进站直接低档、不再采
+ * - 用户手动切到「高」(standard) 时清掉降级标记，便于以后再 auto 时重试
  */
 
-const SESSION_KEY = 'myriad-anim-auto-want-high'
+const STORAGE_KEY = 'myriad-anim-auto-want-high'
 
-/** 空闲多久后再采（ms） */
 const IDLE_BEFORE_SAMPLE_MS = 2500
-
-/**
- * 需要记录的间隔个数（不含丢弃的首帧）。
- * 24 足够做占比判断，比 40 更轻。
- */
 const SAMPLE_GAPS = 24
-
-/** 坏帧阈值（约 <30fps） */
 const BAD_FRAME_MS = 34
-
-/** 极差帧（约 <20fps） */
 const SEVERE_FRAME_MS = 50
-
-/** 坏帧占比门槛（偏严，不易降） */
 const BAD_RATIO_THRESHOLD = 0.45
-
-/** 极差帧下限 */
 const MIN_SEVERE_FRAMES = 4
-
-/** 平均间隔门槛 */
 const AVG_FRAME_MS_THRESHOLD = 24
-
-/** 丢弃的间隔上限（切后台等） */
 const MAX_GAP_MS = 120
 
 export type AutoSampleResult = {
@@ -45,11 +26,14 @@ export type AutoSampleResult = {
   frames: number
 }
 
-/** 会话内 auto 是否仍选「高」档（默认 true） */
+// —— wantHigh 持久化（localStorage）————————————————————————————
+
+/** auto 是否选「高」档；默认 true；false 表示曾降级并记住 */
 export function getSessionAutoWantHigh(): boolean {
-  if (typeof sessionStorage === 'undefined') return true
+  // 名称保留 getSession… 兼容调用方；实际读 localStorage
+  if (typeof localStorage === 'undefined') return true
   try {
-    const v = sessionStorage.getItem(SESSION_KEY)
+    const v = localStorage.getItem(STORAGE_KEY)
     if (v === '0') return false
     if (v === '1') return true
   } catch {
@@ -59,15 +43,19 @@ export function getSessionAutoWantHigh(): boolean {
 }
 
 export function setSessionAutoWantHigh(wantHigh: boolean): void {
-  if (typeof sessionStorage === 'undefined') return
+  if (typeof localStorage === 'undefined') return
   try {
-    sessionStorage.setItem(SESSION_KEY, wantHigh ? '1' : '0')
+    localStorage.setItem(STORAGE_KEY, wantHigh ? '1' : '0')
   } catch {
     /* ignore */
   }
 }
 
-/** 仅用累加计数判定，无数组分配 */
+/** 用户手动选「高」时调用：清掉降级记忆，下次 auto 可再采 */
+export function clearAutoDemoteMemory(): void {
+  setSessionAutoWantHigh(true)
+}
+
 export function evaluateCounters(
   frames: number,
   sumMs: number,
@@ -92,9 +80,15 @@ export function evaluateCounters(
   return { demoted, avgMs, badRatio, severeCount: severe, frames }
 }
 
+// —— 全局只采一次 ————————————————————————————————————————————
+
+let probeStarted = false
+let activeCancel: (() => void) | null = null
+const demoteListeners = new Set<(result: AutoSampleResult) => void>()
+
 /**
- * 空闲后一次轻量 rAF 采样；明显很差才降级。
- * @returns cancel
+ * 订阅 demote，并确保全局只 schedule 一次采样（幂等）。
+ * unsubscribe 只摘掉回调，不取消进行中的全局 probe。
  */
 export function startSessionAutoFrameAdapt(options?: {
   onDemote?: (result: AutoSampleResult) => void
@@ -103,18 +97,51 @@ export function startSessionAutoFrameAdapt(options?: {
   if (options?.enabled === false || typeof window === 'undefined') {
     return () => {}
   }
-  if (!getSessionAutoWantHigh()) {
-    return () => {}
+
+  const onDemote = options?.onDemote
+  if (onDemote) demoteListeners.add(onDemote)
+
+  const unsubscribe = () => {
+    if (onDemote) demoteListeners.delete(onDemote)
   }
 
+  // 已经记住低档：不采
+  if (!getSessionAutoWantHigh()) {
+    return unsubscribe
+  }
+
+  // 本页已启动过：只挂监听
+  if (probeStarted) {
+    return unsubscribe
+  }
+
+  probeStarted = true
+  activeCancel = runProbeOnce((result) => {
+    activeCancel = null
+    if (!result.demoted) return
+    if (!getSessionAutoWantHigh()) return
+    setSessionAutoWantHigh(false)
+    for (const fn of demoteListeners) {
+      try {
+        fn(result)
+      } catch {
+        /* ignore */
+      }
+    }
+  })
+
+  return unsubscribe
+}
+
+function runProbeOnce(onDone: (result: AutoSampleResult) => void): () => void {
   let cancelled = false
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   let rafId = 0
   let idleCallbackId = 0
   let visHandler: (() => void) | null = null
+  let done = false
 
-  const cancelAll = () => {
-    cancelled = true
+  const cleanupTimers = () => {
     if (idleTimer != null) {
       clearTimeout(idleTimer)
       idleTimer = null
@@ -135,10 +162,17 @@ export function startSessionAutoFrameAdapt(options?: {
     }
   }
 
+  const finish = (result: AutoSampleResult) => {
+    if (done) return
+    done = true
+    cancelled = true
+    cleanupTimers()
+    onDone(result)
+  }
+
   const runSample = () => {
     if (cancelled || document.hidden) return
 
-    // 标量累加，rAF 内零分配
     let last = 0
     let gaps = 0
     let sumMs = 0
@@ -150,7 +184,6 @@ export function startSessionAutoFrameAdapt(options?: {
       if (cancelled) return
 
       if (!sawFirst) {
-        // 首帧只打时间戳，不计间隔
         sawFirst = true
         last = now
         rafId = requestAnimationFrame(tick)
@@ -160,7 +193,6 @@ export function startSessionAutoFrameAdapt(options?: {
       const dt = now - last
       last = now
 
-      // 合法间隔：累加；过大直接丢弃（不计入分母）
       if (dt > 0 && dt < MAX_GAP_MS) {
         gaps += 1
         sumMs += dt
@@ -176,12 +208,7 @@ export function startSessionAutoFrameAdapt(options?: {
       }
 
       rafId = 0
-      const result = evaluateCounters(gaps, sumMs, bad, severe)
-      if (!result.demoted) return
-      // 再读一次 session，避免竞态；热路径外可接受
-      if (!getSessionAutoWantHigh()) return
-      setSessionAutoWantHigh(false)
-      options?.onDemote?.(result)
+      finish(evaluateCounters(gaps, sumMs, bad, severe))
     }
 
     rafId = requestAnimationFrame(tick)
@@ -204,36 +231,39 @@ export function startSessionAutoFrameAdapt(options?: {
 
     const kick = () => {
       if (cancelled) return
-      // 再等一小段，错开首屏 paint/数据请求尖峰
       idleTimer = setTimeout(runSample, IDLE_BEFORE_SAMPLE_MS)
     }
 
-    if (typeof (
-      window as Window & {
-        requestIdleCallback?: (
-          cb: () => void,
-          opts?: { timeout: number },
-        ) => number
-      }
-    ).requestIdleCallback === 'function') {
-      idleCallbackId = (
-        window as Window & {
-          requestIdleCallback: (
-            cb: () => void,
-            opts?: { timeout: number },
-          ) => number
-        }
-      ).requestIdleCallback(kick, { timeout: 5000 })
+    const w = window as Window & {
+      requestIdleCallback?: (
+        cb: () => void,
+        opts?: { timeout: number },
+      ) => number
+    }
+    if (typeof w.requestIdleCallback === 'function') {
+      idleCallbackId = w.requestIdleCallback(kick, { timeout: 5000 })
     } else {
       kick()
     }
   }
 
   schedule()
-  return cancelAll
+
+  return () => {
+    if (done) return
+    cancelled = true
+    cleanupTimers()
+  }
 }
 
-/** @deprecated test alias */
+/** 测试用 */
+export function __resetAutoAdaptForTest(): void {
+  activeCancel?.()
+  activeCancel = null
+  probeStarted = false
+  demoteListeners.clear()
+}
+
 export function __evaluateSampleForTest(intervals: number[]): AutoSampleResult {
   let sum = 0
   let bad = 0
