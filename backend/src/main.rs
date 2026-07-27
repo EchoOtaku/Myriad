@@ -1213,6 +1213,20 @@ async fn federation_unannounce(
     }
 }
 
+/// GET /api/federation/objects?id= — resolve a public object for quote click-through.
+/// Does not require following the author (local DB + optional remote public fetch).
+async fn federation_get_object(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Query(q): axum::extract::Query<federation::interactions::GetObjectQuery>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    match federation::interactions::get_object(user_id, &db, &q.id).await {
+        Ok(resp) => (StatusCode::OK, Json(serde_json::to_value(resp).unwrap())).into_response(),
+        Err((status, json)) => (status, json).into_response(),
+    }
+}
+
 /// POST /api/federation/notes — 创建 freeform Note（文本 + 附件）
 /// 路由已挂 auth_middleware；body 上限仍由路由的 DefaultBodyLimit 决定。
 async fn federation_create_note(
@@ -2889,6 +2903,7 @@ fn federation_api_router() -> Router {
         .route("/api/federation/bookmarks", get(federation_bookmarks_list))
         .route("/api/federation/announce", post(federation_announce))
         .route("/api/federation/unannounce", post(federation_unannounce))
+        .route("/api/federation/objects", get(federation_get_object))
         .route("/api/federation/unpublish", post(federation_unpublish))
         .route("/api/federation/published", get(federation_published_list))
         .route(

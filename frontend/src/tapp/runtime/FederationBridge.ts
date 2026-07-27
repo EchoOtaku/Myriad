@@ -247,6 +247,27 @@ export function registerFederationHandlers(
     }
   })
 
+  bridge.registerHandler(
+    'federation.getObject',
+    async (message: TappMessage) => {
+      const [objectId] = (message.payload as { args: unknown[] }).args || []
+      if (!objectId || typeof objectId !== 'string') {
+        return { success: false, error: 'objectId is required' }
+      }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.getObject(objectId, runtimeGrant)
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'Failed to get object',
+        }
+      }
+    },
+  )
+
   // ==================== 关注管理 ====================
 
   bridge.registerHandler('federation.follow', async (message: TappMessage) => {

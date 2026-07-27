@@ -106,6 +106,13 @@ pub struct PublishedItem {
     /// Note Image/Video attachments so Aro can render media on 已发布 cards.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<PublishedAttachment>,
+    /// Full AP object (Create envelope unwrapped) so quote-reposts can show nested
+    /// mfp:quotedObject and open original posts without a second fetch.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_json: Option<serde_json::Value>,
+    /// Canonical object id when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub object_id: Option<String>,
 }
 
 /// 媒体上传响应
@@ -612,6 +619,17 @@ pub async fn list_published(
                 .flatten();
             let (title, summary, content_preview, attachments) =
                 published_fields_from_activity_json(object_json.as_ref());
+            // Unwrap Create envelope → object for clients (quote chain / full body).
+            let content_obj = object_json.as_ref().map(|root| {
+                if root.get("object").map(|o| o.is_object()).unwrap_or(false) {
+                    root["object"].clone()
+                } else {
+                    root.clone()
+                }
+            });
+            let object_id = content_obj
+                .as_ref()
+                .and_then(crate::federation::interactions::extract_object_id);
             PublishedItem {
                 id: r.try_get("", "id").unwrap_or(0),
                 content_type: r.try_get("", "content_type").unwrap_or_default(),
@@ -626,6 +644,8 @@ pub async fn list_published(
                 title,
                 summary,
                 attachments,
+                content_json: content_obj,
+                object_id,
             }
         })
         .collect();
@@ -1670,6 +1690,7 @@ fn published_fields_from_activity_json(
                 let q = quoted
                     .get("content_preview")
                     .and_then(|v| v.as_str())
+                    .or_else(|| quoted.get("content").and_then(|v| v.as_str()))
                     .or_else(|| quoted.get("summary").and_then(|v| v.as_str()))
                     .or_else(|| {
                         quoted
@@ -1677,7 +1698,8 @@ fn published_fields_from_activity_json(
                             .and_then(|s| s.get("content"))
                             .and_then(|v| v.as_str())
                     })
-                    .map(|s| s.chars().take(160).collect::<String>())
+                    // Keep a generous snippet for list cards; full body lives in content_json.
+                    .map(|s| s.chars().take(800).collect::<String>())
                     .filter(|s| !s.is_empty());
                 if let Some(q) = q {
                     summary_out = Some(format!("↪ {q}"));

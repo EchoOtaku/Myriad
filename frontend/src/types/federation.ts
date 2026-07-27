@@ -207,6 +207,10 @@ export interface PublishedItem {
   summary?: string
   /** Note Image/Video attachments for federated published media preview. */
   attachments?: PublishedAttachment[]
+  /** Full AP object for quote-reposts (nested mfp:quotedObject). */
+  content_json?: Record<string, unknown> | null
+  /** Canonical object id when known. */
+  object_id?: string
 }
 
 export interface PublishedListResponse {

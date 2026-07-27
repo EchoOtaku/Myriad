@@ -224,6 +224,27 @@ export const federationApi = {
     )
   },
 
+  /**
+   * Resolve a public federated object by id (quote click-through).
+   * Does not require following the author.
+   */
+  getObject(
+    objectId: string,
+    runtimeGrant?: string,
+  ): Promise<{
+    success: boolean
+    object_id: string
+    object: Record<string, unknown>
+    source: string
+    actor?: Record<string, unknown> | null
+  }> {
+    const base = attributionOptions(runtimeGrant) || {}
+    return apiService.get(`${PREFIX}/objects`, {
+      ...base,
+      params: { id: objectId },
+    })
+  },
+
   /** Quote-repost an object (requires non-empty commentary). */
   announce(
     objectId: string,

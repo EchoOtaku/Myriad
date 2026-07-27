@@ -216,6 +216,12 @@
     {
       "domain": "federation",
       "method": "GET",
+      "path": "/api/federation/objects",
+      "permission": "federation:read"
+    },
+    {
+      "domain": "federation",
+      "method": "GET",
       "path": "/api/federation/following",
       "permission": "federation:read"
     },

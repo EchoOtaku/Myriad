@@ -288,6 +288,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['federation.rotateKeys', 'federation:write'],
     ['federation.getFeed', 'federation:read'],
     ['federation.getTimeline', 'federation:read'],
+    ['federation.getObject', 'federation:read'],
     ['federation.getFollowing', 'federation:read'],
     ['federation.getFollowers', 'federation:read'],
     ['federation.getPublished', 'federation:read'],

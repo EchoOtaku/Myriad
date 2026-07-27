@@ -788,6 +788,8 @@ export function generateFullSDK(
       // 时间线
       getFeed: () => sendRequest('federation', 'getFeed', []),
       getTimeline: () => sendRequest('federation', 'getTimeline', []),
+      /** Resolve public object by id (quote click-through; no follow required). */
+      getObject: (objectId) => sendRequest('federation', 'getObject', [objectId]),
       // 关注
       follow: (target) => sendRequest('federation', 'follow', [target]),
       unfollow: (target) => sendRequest('federation', 'unfollow', [target]),

@@ -106,8 +106,9 @@ fn require_object_id(raw: &str) -> Result<String, (StatusCode, Json<serde_json::
     Ok(id.to_string())
 }
 
-/// Resolve an AP object (Note/Article) from local DB for repost/reply previews.
-async fn resolve_local_object(
+/// Resolve an AP object (Note/Article) from local DB for repost/reply previews
+/// and public object detail views (no follow graph required).
+pub async fn resolve_local_object(
     db: &DatabaseConnection,
     object_id: &str,
 ) -> Option<serde_json::Value> {
@@ -869,6 +870,10 @@ fn escape_html_lite(s: &str) -> String {
 /// Max nested quote depth embedded into a repost card (root + chain).
 const MAX_QUOTE_NEST_DEPTH: usize = 3;
 
+/// Plain text from an AP object for quote cards.
+/// Keep enough body so quote blocks can show the full post (not a 200-char stub).
+const QUOTE_BODY_CHAR_LIMIT: usize = 8000;
+
 fn plain_preview_from_object(obj: &serde_json::Value) -> String {
     obj.pointer("/source/content")
         .and_then(|v| v.as_str())
@@ -878,9 +883,9 @@ fn plain_preview_from_object(obj: &serde_json::Value) -> String {
         .or_else(|| obj.get("name").and_then(|v| v.as_str()))
         .map(|s| {
             let plain = s
-                .replace("<br>", " ")
-                .replace("<br/>", " ")
-                .replace("<br />", " ");
+                .replace("<br>", "\n")
+                .replace("<br/>", "\n")
+                .replace("<br />", "\n");
             let mut out = String::new();
             let mut in_tag = false;
             for c in plain.chars() {
@@ -891,7 +896,7 @@ fn plain_preview_from_object(obj: &serde_json::Value) -> String {
                     _ => {}
                 }
             }
-            out.chars().take(200).collect::<String>()
+            out.chars().take(QUOTE_BODY_CHAR_LIMIT).collect::<String>()
         })
         .unwrap_or_default()
 }
@@ -927,14 +932,35 @@ fn slim_quoted_object_depth(obj: &serde_json::Value, depth: usize) -> serde_json
     let preview = plain_preview_from_object(obj);
     let kind_repost = is_repost_object(obj);
 
+    // Embed full-ish body so quote cards can render completely and open a detail
+    // view without requiring the viewer to follow the original author.
     let mut slim = json!({
         "id": id,
         "type": obj.get("type").cloned().unwrap_or(json!("Note")),
         "attributedTo": attributed,
         "content_preview": preview,
+        "content": preview,
         "name": obj.get("name").cloned().unwrap_or(json!(null)),
         "summary": obj.get("summary").cloned().unwrap_or(json!(null)),
+        "published": obj.get("published").cloned().unwrap_or(json!(null)),
+        "url": obj.get("url").cloned().unwrap_or(json!(null)),
     });
+    if let Some(src) = obj.get("source").cloned() {
+        slim["source"] = src;
+    } else if !preview.is_empty() {
+        slim["source"] = json!({
+            "content": preview,
+            "mediaType": "text/plain",
+        });
+    }
+    // Preserve media so quote blocks are not text-only stubs.
+    if let Some(att) = obj
+        .get("attachment")
+        .or_else(|| obj.get("attachments"))
+        .cloned()
+    {
+        slim["attachment"] = att;
+    }
 
     if kind_repost {
         slim["mfp:kind"] = json!("repost");
@@ -1540,6 +1566,189 @@ pub async fn handle_inbound_undo_interaction(
         }
         _ => {}
     }
+}
+
+// ==================== Object detail (quote click-through) ====================
+
+/// Query for GET /api/federation/objects?id=
+#[derive(Debug, Deserialize)]
+pub struct GetObjectQuery {
+    /// Canonical AP object id / URL.
+    pub id: String,
+}
+
+/// Response for public object lookup (no follow required).
+#[derive(Debug, Serialize)]
+pub struct GetObjectResponse {
+    pub success: bool,
+    pub object_id: String,
+    /// Resolved AP object (Note / Article / repost).
+    pub object: serde_json::Value,
+    /// Where the object was resolved from.
+    pub source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actor: Option<serde_json::Value>,
+}
+
+fn object_is_public_addressed(obj: &serde_json::Value) -> bool {
+    let public = AP_PUBLIC;
+    let as_public = "as:Public";
+    let check_arr = |v: Option<&serde_json::Value>| -> bool {
+        match v {
+            Some(serde_json::Value::Array(a)) => a.iter().any(|x| {
+                x.as_str()
+                    .map(|s| s == public || s == as_public || s.ends_with("#Public"))
+                    .unwrap_or(false)
+            }),
+            Some(serde_json::Value::String(s)) => {
+                s == public || s == as_public || s.ends_with("#Public")
+            }
+            _ => false,
+        }
+    };
+    check_arr(obj.get("to")) || check_arr(obj.get("cc")) || check_arr(obj.get("audience"))
+}
+
+async fn fetch_remote_public_object(object_id: &str) -> Option<serde_json::Value> {
+    if !object_id.starts_with("https://") && !object_id.starts_with("http://") {
+        return None;
+    }
+    if crate::federation::types::is_internal_url(object_id) {
+        return None;
+    }
+    let user_agent = format!(
+        "Myriad/{} (+{})",
+        env!("CARGO_PKG_VERSION"),
+        get_base_url().await
+    );
+    let (url, client) = crate::services::outbound_security::build_public_http_client(
+        object_id,
+        std::time::Duration::from_secs(10),
+        Some(&user_agent),
+    )
+    .await
+    .ok()?;
+    let resp = client
+        .get(url)
+        .header("Accept", AP_CONTENT_TYPE)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body = crate::services::outbound_security::read_limited_body(resp, 1024 * 1024)
+        .await
+        .ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&body).ok()?;
+    // Unwrap Create envelope if present.
+    let obj = if json
+        .get("type")
+        .and_then(|t| t.as_str())
+        .map(|t| t == "Create" || t == "Update")
+        .unwrap_or(false)
+    {
+        json.get("object").cloned().unwrap_or(json)
+    } else {
+        json
+    };
+    if !obj.is_object() {
+        return None;
+    }
+    // Only return publicly addressed objects for unfollowed authors.
+    if !object_is_public_addressed(&obj) {
+        // Some remote instances omit to/cc on Note documents; allow type Note/Article
+        // with an id that matches the requested URL.
+        let ty = obj.get("type").and_then(|t| t.as_str()).unwrap_or("");
+        let id_ok = obj
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim_end_matches('/') == object_id.trim_end_matches('/'))
+            .unwrap_or(false);
+        if !(id_ok && (ty == "Note" || ty == "Article" || ty == "Page")) {
+            return None;
+        }
+    }
+    Some(obj)
+}
+
+async fn actor_summary_for_object(
+    db: &DatabaseConnection,
+    obj: &serde_json::Value,
+) -> Option<serde_json::Value> {
+    let actor_url = obj
+        .get("attributedTo")
+        .and_then(|v| {
+            if let Some(s) = v.as_str() {
+                Some(s.to_string())
+            } else {
+                v.get("id").and_then(|x| x.as_str()).map(|s| s.to_string())
+            }
+        })
+        .filter(|s| !s.is_empty())?;
+    if let Ok(Some(row)) = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT actor_url, username, domain, display_name, avatar_url, false AS is_local
+               FROM federation_remote_actors WHERE actor_url = $1
+               LIMIT 1"#,
+            [actor_url.clone().into()],
+        ))
+        .await
+    {
+        return Some(json!({
+            "actor_url": row.try_get::<String>("", "actor_url").ok().unwrap_or_else(|| actor_url.clone()),
+            "username": row.try_get::<Option<String>>("", "username").ok().flatten(),
+            "domain": row.try_get::<Option<String>>("", "domain").ok().flatten(),
+            "display_name": row.try_get::<Option<String>>("", "display_name").ok().flatten(),
+            "avatar_url": row.try_get::<Option<String>>("", "avatar_url").ok().flatten(),
+            "is_local": false,
+        }));
+    }
+    Some(json!({ "actor_url": actor_url }))
+}
+
+/// GET /api/federation/objects?id=
+///
+/// Resolve a public federated object for detail view (quote click-through).
+/// Does **not** require following the author — local DB first, then remote
+/// public fetch for https object ids.
+pub async fn get_object(
+    _user_id: i32,
+    db: &DatabaseConnection,
+    object_id: &str,
+) -> Result<GetObjectResponse, (StatusCode, Json<serde_json::Value>)> {
+    let object_id = require_object_id(object_id)?;
+
+    if let Some(obj) = resolve_local_object(db, &object_id).await {
+        let actor = actor_summary_for_object(db, &obj).await;
+        return Ok(GetObjectResponse {
+            success: true,
+            object_id: object_id.clone(),
+            object: obj,
+            source: "local".into(),
+            actor,
+        });
+    }
+
+    if let Some(obj) = fetch_remote_public_object(&object_id).await {
+        let actor = actor_summary_for_object(db, &obj).await;
+        return Ok(GetObjectResponse {
+            success: true,
+            object_id: object_id.clone(),
+            object: obj,
+            source: "remote".into(),
+            actor,
+        });
+    }
+
+    Err((
+        StatusCode::NOT_FOUND,
+        Json(json!({
+            "error": "Object not found",
+            "object_id": object_id,
+        })),
+    ))
 }
 
 #[cfg(test)]

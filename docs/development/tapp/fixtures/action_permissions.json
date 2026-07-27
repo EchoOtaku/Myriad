@@ -163,6 +163,11 @@
     },
     {
       "domain": "federation",
+      "action": "federation.getObject",
+      "permission": "federation:read"
+    },
+    {
+      "domain": "federation",
       "action": "federation.getFollowing",
       "permission": "federation:read"
     },
