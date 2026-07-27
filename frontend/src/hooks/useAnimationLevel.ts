@@ -78,13 +78,17 @@ const CONFIG_STANDARD: AnimationConfig = {
 /**
  * Whether the device may run the full `standard` tier as its "high" slot.
  *
- * Product will replace this with explicit hardware requirements later.
- * Interim: same signal as today's non-lowEnd path (`!lowEndDevice`).
+ * 分平台规则见 `utils/deviceHardwareTier.ts`：
+ * Android 8G+ & 8 核+ · iOS ≥18 · macOS Apple Silicon · Win/Linux ~12G+ & 6 核+
  */
 export function meetsAnimationHardwareRequirement(
   perf: PerformanceProfile,
 ): boolean {
-  // TODO(product): replace with real hardware bar (cores / memory / frame sample).
+  // highHardware 已由 usePerformanceProfile 按平台算好；reduceMotion 在 resolve 里单独处理
+  if (typeof perf.highHardware === 'boolean') {
+    return perf.highHardware
+  }
+  // 旧缓存/测试桩兜底
   return !perf.lowEndDevice
 }
 

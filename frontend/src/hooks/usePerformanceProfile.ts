@@ -1,15 +1,32 @@
 import { useEffect, useRef, useState } from 'react'
+import {
+  collectHardwareSignals,
+  detectAppleSiliconAsync,
+  evaluateHighHardware,
+  type HardwareSignals,
+  type OsKind,
+} from '../utils/deviceHardwareTier'
 
 /**
  * 设备性能画像与动态特性检测
- * - 用于在移动端 / 低性能设备 / 降低动效场景下自动降级动画与计算频率
+ * - 分平台硬件门槛 → highHardware / lowEndDevice
+ * - 供 useAnimationLevel 映射 standard/light/exlight
  */
 export interface PerformanceProfile {
   isMobile: boolean
   reduceMotion: boolean
+  /**
+   * 未达「高硬件」门槛（或 reduceMotion）。
+   * 动画侧：不达标时用户高/低 = light / exlight。
+   */
   lowEndDevice: boolean
+  /** 是否达到分平台高硬件标准（与 reduceMotion 无关） */
+  highHardware: boolean
+  os: OsKind
   hardwareConcurrency: number | null
   deviceMemory: number | null
+  /** debug */
+  hardwareReason?: string
 }
 
 // SSR 安全的默认值 - 乐观策略：假设为中高端设备
@@ -17,6 +34,8 @@ const DEFAULT_PROFILE: PerformanceProfile = {
   isMobile: false,
   reduceMotion: false,
   lowEndDevice: false,
+  highHardware: true,
+  os: 'unknown',
   hardwareConcurrency: null,
   deviceMemory: null,
 }
@@ -24,6 +43,26 @@ const DEFAULT_PROFILE: PerformanceProfile = {
 // 🔧 性能优化：全局缓存检测结果，避免重复检测
 let cachedProfile: PerformanceProfile | null = null
 let hasDetected = false
+
+function buildProfile(
+  signals: HardwareSignals,
+  reduceMotion: boolean,
+  isMobile: boolean,
+): PerformanceProfile {
+  const tier = evaluateHighHardware(signals)
+  // reduceMotion 不改变 highHardware 字段，但 lowEndDevice 对旧调用方仍表示「应降级」
+  const lowEndDevice = reduceMotion || !tier.highHardware
+  return {
+    isMobile,
+    reduceMotion,
+    lowEndDevice,
+    highHardware: tier.highHardware,
+    os: signals.os,
+    hardwareConcurrency: signals.cores,
+    deviceMemory: signals.memoryGiB,
+    hardwareReason: tier.reason,
+  }
+}
 
 function detectPerformanceProfile(): PerformanceProfile {
   // 🔧 优化：如果已经检测过，直接返回缓存
@@ -46,30 +85,9 @@ function detectPerformanceProfile(): PerformanceProfile {
     const reduceMotion = window.matchMedia(
       '(prefers-reduced-motion: reduce)',
     ).matches
-    const hardwareConcurrency = (navigator as any).hardwareConcurrency ?? null
-    const deviceMemory = (navigator as any).deviceMemory ?? null
+    const signals = collectHardwareSignals()
+    const profile = buildProfile(signals, reduceMotion, isMobile)
 
-    // 🔧 极简判定逻辑
-    // 移动端：全部判定为中高端，现代手机性能都足够
-    // 只有用户主动开启 reduceMotion 才降级
-    let lowEndDevice = reduceMotion
-
-    // 桌面端：根据硬件判断
-    if (!lowEndDevice && !isMobile) {
-      lowEndDevice =
-        (hardwareConcurrency !== null && hardwareConcurrency <= 4) ||
-        (deviceMemory !== null && deviceMemory <= 4)
-    }
-
-    const profile = {
-      isMobile,
-      reduceMotion,
-      lowEndDevice,
-      hardwareConcurrency,
-      deviceMemory,
-    }
-
-    // 🔧 缓存结果
     cachedProfile = profile
     hasDetected = true
 
@@ -88,13 +106,25 @@ export function getPerformanceProfileSync(): PerformanceProfile {
   return detectPerformanceProfile()
 }
 
+/** 测试或 macOS async 补全后清空缓存 */
+export function resetPerformanceProfileCache(): void {
+  hasDetected = false
+  cachedProfile = null
+}
+
 /** 将低端标记同步到 <html>，激活 performance.css 中的 [data-low-end-device] 规则 */
-function syncLowEndToDocument(lowEnd: boolean) {
+function syncLowEndToDocument(profile: PerformanceProfile) {
   if (typeof document === 'undefined') return
-  if (lowEnd) {
-    document.documentElement.dataset.lowEndDevice = 'true'
+  const root = document.documentElement
+  if (profile.lowEndDevice) {
+    root.dataset.lowEndDevice = 'true'
   } else {
-    delete document.documentElement.dataset.lowEndDevice
+    delete root.dataset.lowEndDevice
+  }
+  root.dataset.deviceOs = profile.os
+  root.dataset.highHardware = profile.highHardware ? 'true' : 'false'
+  if (profile.hardwareReason) {
+    root.dataset.hardwareReason = profile.hardwareReason
   }
 }
 
@@ -109,14 +139,28 @@ export function usePerformanceProfile(): PerformanceProfile {
     hasInitialized.current = true
 
     const detected = detectPerformanceProfile()
-    syncLowEndToDocument(detected.lowEndDevice)
-    // 只有在检测结果与默认值不同时才更新，避免不必要的重渲染
-    if (
-      detected.isMobile !== DEFAULT_PROFILE.isMobile ||
-      detected.reduceMotion !== DEFAULT_PROFILE.reduceMotion ||
-      detected.lowEndDevice !== DEFAULT_PROFILE.lowEndDevice
-    ) {
-      setProfile(detected)
+    syncLowEndToDocument(detected)
+    setProfile(detected)
+
+    // macOS：异步补全 architecture（Apple Silicon）
+    if (detected.os === 'macos') {
+      void detectAppleSiliconAsync().then((appleSilicon) => {
+        if (appleSilicon == null) return
+        const signals = collectHardwareSignals()
+        signals.appleSilicon = appleSilicon
+        const isMobile = window.matchMedia(
+          '(hover: none) and (pointer: coarse)',
+        ).matches
+        const reduceMotion = window.matchMedia(
+          '(prefers-reduced-motion: reduce)',
+        ).matches
+        const next = buildProfile(signals, reduceMotion, isMobile)
+        resetPerformanceProfileCache()
+        cachedProfile = next
+        hasDetected = true
+        syncLowEndToDocument(next)
+        setProfile(next)
+      })
     }
   }, [])
 
@@ -126,11 +170,9 @@ export function usePerformanceProfile(): PerformanceProfile {
 
     const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
     const handler = () => {
-      // 🔧 重置缓存，重新检测
-      hasDetected = false
-      cachedProfile = null
+      resetPerformanceProfileCache()
       const next = detectPerformanceProfile()
-      syncLowEndToDocument(next.lowEndDevice)
+      syncLowEndToDocument(next)
       setProfile(next)
     }
 
