@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::{Path, PathBuf};
 
+use crate::federation::audience::{FanOutScope, Visibility};
 use crate::federation::types::*;
 
 // ==================== 请求/响应类型 ====================
@@ -141,7 +142,29 @@ pub async fn publish_content(
     req: &PublishRequest,
 ) -> Result<PublishResponse, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
-    let visibility = req.visibility.as_deref().unwrap_or("public");
+
+    // visibility 必须是明确建模过的取值。过去未知取值（含前端已声明的
+    // `direct`）会走到 `resolve_audience` 的 `_ =>` 分支拿到空 to/cc，然后
+    // **照样 fan-out 给全部粉丝** —— 收件人为空反而让接收端无从补救。
+    let visibility_raw = req.visibility.as_deref().unwrap_or("public");
+    let visibility_kind =
+        crate::federation::audience::parse_visibility(visibility_raw).map_err(|bad| {
+            tracing::warn!(
+                user_id,
+                visibility = %bad,
+                "Publish rejected: unsupported visibility"
+            );
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Unsupported visibility",
+                    "visibility": bad,
+                    "supported": ["public", "followers", "unlisted", "private", "direct", "mentioned"],
+                })),
+            )
+        })?;
+    let visibility = visibility_kind.as_str();
+
     let content_type = req.content_type.trim();
     if content_type.is_empty() {
         return Err((
@@ -200,7 +223,7 @@ pub async fn publish_content(
         &base_url,
         content_type,
         &content_id,
-        visibility,
+        visibility_kind,
         req.text.as_deref(),
         req.attachments.as_deref(),
         req.in_reply_to.as_deref(),
@@ -211,7 +234,7 @@ pub async fn publish_content(
     let activity_id = generate_activity_id(&base_url);
     let local_actor = actor_url(&base_url, username);
 
-    let (to, cc) = resolve_audience(visibility, &base_url, username);
+    let (to, cc) = resolve_audience(visibility_kind, &base_url, username);
 
     let activity_json = json!({
         "@context": build_context(),
@@ -280,7 +303,20 @@ pub async fn publish_content(
     .await?;
 
     // Best-effort fan-out: enqueue deliveries; never fail the publish on queue errors.
-    let delivered_queued = fan_out_to_followers(db, user_id, act_db_id, &activity_json).await;
+    // Direct 走 ExplicitRecipientsOnly —— 没有收件人就一个 inbox 都不投。
+    let delivered_queued = match crate::federation::audience::fan_out_scope(visibility_kind) {
+        FanOutScope::AllFollowers => {
+            fan_out_to_followers(db, user_id, act_db_id, &activity_json).await
+        }
+        FanOutScope::ExplicitRecipientsOnly => {
+            tracing::info!(
+                user_id,
+                visibility,
+                "Skipping follower fan-out for non-broadcast visibility"
+            );
+            0
+        }
+    };
 
     tracing::info!(
         "📢 Published {} #{} as {} ({}); delivered_queued={}",
@@ -785,7 +821,7 @@ async fn build_ap_object(
     base_url: &str,
     content_type: &str,
     content_id: &str,
-    visibility: &str,
+    visibility: Visibility,
     note_text: Option<&str>,
     note_attachments: Option<&[NoteAttachmentInput]>,
     in_reply_to: Option<&str>,
@@ -1741,19 +1777,25 @@ fn strip_tags_preview(s: &str, max_chars: usize) -> String {
 
 // ==================== 辅助函数 ====================
 
-/// 解析观众列表
+/// 解析观众列表。
+///
+/// 每个 [`Visibility`] 分支都必须产出**非空**的 `to` —— 空收件人集合是过去
+/// 隐私缺陷的根源：接收端拿不到任何寻址信息，只能按投递通道去猜。
+///
+/// `Direct` 目前没有可表达的收件人字段（`PublishRequest` 不带 recipients），
+/// 所以自寻址给作者本人：语义上等于"仅自己可见"，且绝不 fan-out。
 fn resolve_audience(
-    visibility: &str,
+    visibility: Visibility,
     base_url: &str,
     username: &str,
 ) -> (Vec<String>, Vec<String>) {
     match visibility {
-        "public" => (
+        Visibility::Public => (
             vec![AP_PUBLIC.to_string()],
             vec![followers_url(base_url, username)],
         ),
-        "followers" => (vec![followers_url(base_url, username)], vec![]),
-        _ => (vec![], vec![]),
+        Visibility::Followers => (vec![followers_url(base_url, username)], vec![]),
+        Visibility::Direct => (vec![actor_url(base_url, username)], vec![]),
     }
 }
 
@@ -2146,14 +2188,17 @@ mod tests {
     #[test]
     fn resolve_audience_public_and_followers() {
         let base = "https://myriad.example";
-        let (to, cc) = resolve_audience("public", base, "alice");
+        let (to, cc) = resolve_audience(Visibility::Public, base, "alice");
         assert!(to.iter().any(|u| u.contains("Public") || u == AP_PUBLIC));
         assert!(cc.iter().any(|u| u.ends_with("/users/alice/followers")));
-        let (to2, cc2) = resolve_audience("followers", base, "alice");
+        let (to2, cc2) = resolve_audience(Visibility::Followers, base, "alice");
         assert!(to2.iter().any(|u| u.ends_with("/users/alice/followers")));
         assert!(cc2.is_empty());
-        let (to3, cc3) = resolve_audience("direct", base, "alice");
-        assert!(to3.is_empty() && cc3.is_empty());
+        // Direct 自寻址给作者本人，绝不留空 to —— 空收件人集合曾让接收端
+        // 只能按投递通道猜测意图。
+        let (to3, cc3) = resolve_audience(Visibility::Direct, base, "alice");
+        assert_eq!(to3, vec!["https://myriad.example/users/alice".to_string()]);
+        assert!(cc3.is_empty());
     }
 
     #[test]
@@ -2215,14 +2260,31 @@ mod tests {
     #[test]
     fn w175_resolve_audience_matrix() {
         let base = "https://myriad.example";
-        let (to, cc) = resolve_audience("public", base, "alice");
+        let (to, cc) = resolve_audience(Visibility::Public, base, "alice");
         assert!(to.iter().any(|u| u == AP_PUBLIC || u.contains("Public")));
         assert!(cc.iter().any(|u| u.ends_with("/users/alice/followers")));
-        let (to_f, cc_f) = resolve_audience("followers", base, "bob");
+        let (to_f, cc_f) = resolve_audience(Visibility::Followers, base, "bob");
         assert!(to_f.iter().any(|u| u.ends_with("/users/bob/followers")));
         assert!(cc_f.is_empty());
-        let (to_d, cc_d) = resolve_audience("direct", base, "carol");
-        assert!(to_d.is_empty() && cc_d.is_empty());
+        let (to_d, cc_d) = resolve_audience(Visibility::Direct, base, "carol");
+        assert_eq!(to_d, vec!["https://myriad.example/users/carol".to_string()]);
+        assert!(cc_d.is_empty());
+    }
+
+    /// C4 回归：非广播 visibility 必须完全跳过粉丝 fan-out。
+    #[test]
+    fn non_broadcast_visibility_never_fans_out() {
+        use crate::federation::audience::{fan_out_scope, parse_visibility};
+        for raw in ["direct", "mentioned"] {
+            let v = parse_visibility(raw).expect("modelled visibility");
+            assert_eq!(fan_out_scope(v), FanOutScope::ExplicitRecipientsOnly, "{raw}");
+        }
+        for raw in ["public", "followers", "unlisted", "private"] {
+            let v = parse_visibility(raw).expect("modelled visibility");
+            assert_eq!(fan_out_scope(v), FanOutScope::AllFollowers, "{raw}");
+        }
+        // 拼错的 visibility 在 publish_content 入口就会 400，而不是退化成广播
+        assert!(parse_visibility("publik").is_err());
     }
 
     #[test]

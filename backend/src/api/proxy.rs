@@ -1523,68 +1523,90 @@ pub struct HitokotoQuery {
 /// 支持通过 `url` 参数使用自定义 / 其他语言的一言源。
 pub async fn proxy_hitokoto(Query(params): Query<HitokotoQuery>) -> Response {
     const DEFAULT_URL: &str = "https://v1.hitokoto.cn/?c=d&c=i&c=k&encode=json";
+    /// 一言响应是一小段 JSON；给足余量即可，不必按 MiB 计。
+    const MAX_BODY: usize = 64 * 1024;
 
-    // 解析目标地址：自定义地址需通过 SSRF 校验，防止代理请求内网资源
     let url = match params.url.as_deref().map(str::trim) {
-        Some(custom) if !custom.is_empty() => {
-            if crate::federation::types::is_internal_url(custom) {
-                tracing::warn!("Rejected hitokoto proxy for unsafe url: {}", custom);
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({"error": "Invalid or disallowed hitokoto url"})),
-                )
-                    .into_response();
-            }
-            custom.to_string()
-        }
+        Some(custom) if !custom.is_empty() => custom.to_string(),
         _ => DEFAULT_URL.to_string(),
     };
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        .build()
-        .unwrap();
-
-    match client.get(&url).send().await {
-        Ok(resp) => {
-            if !resp.status().is_success() {
-                tracing::error!("Hitokoto API returned status: {}", resp.status());
-                return (
-                    StatusCode::BAD_GATEWAY,
-                    Json(json!({"error": "Hitokoto API failed"})),
-                )
-                    .into_response();
-            }
-
-            match resp.json::<Value>().await {
-                Ok(data) => {
-                    tracing::debug!("Hitokoto data fetched successfully");
-                    (
-                        StatusCode::OK,
-                        [
-                            (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
-                            (header::CACHE_CONTROL, "public, max-age=600"), // 10分钟缓存
-                        ],
-                        Json(data),
-                    )
-                        .into_response()
-                }
-                Err(e) => {
-                    tracing::error!("Failed to parse Hitokoto response: {}", e);
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        Json(json!({"error": "Failed to parse Hitokoto response"})),
-                    )
-                        .into_response()
-                }
-            }
+    // 这是一个**未认证**的任意 URL 出站端点。以前只用 `is_internal_url` 做
+    // 字符串/字面 IP 检查，然后交给默认 reqwest client —— 于是：
+    //   1. 主机名解析到 169.254.169.254 / 10.x 照样放行（DNS 重绑定）
+    //   2. 默认跟随 10 次重定向，第一跳合法即可跳进内网
+    //   3. `resp.json()` 先把整个响应缓冲进内存，没有上限
+    // 改用集中式安全客户端：解析后逐个地址校验公网可路由、把 DNS 结果 pin 住、
+    // 禁用重定向；响应体流式读取并限长。
+    let (parsed, client) = match crate::services::outbound_security::build_public_http_client(
+        &url,
+        std::time::Duration::from_secs(10),
+        Some("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"),
+    )
+    .await
+    {
+        Ok(pair) => pair,
+        Err(e) => {
+            tracing::warn!("Rejected hitokoto proxy for unsafe url {}: {}", url, e);
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid or disallowed hitokoto url"})),
+            )
+                .into_response();
         }
+    };
+
+    let resp = match client.get(parsed).send().await {
+        Ok(resp) => resp,
         Err(e) => {
             tracing::error!("Failed to fetch Hitokoto: {}", e);
-            (
+            return (
                 StatusCode::BAD_GATEWAY,
                 Json(json!({"error": "Failed to fetch Hitokoto"})),
+            )
+                .into_response();
+        }
+    };
+
+    if !resp.status().is_success() {
+        tracing::error!("Hitokoto API returned status: {}", resp.status());
+        return (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({"error": "Hitokoto API failed"})),
+        )
+            .into_response();
+    }
+
+    let body = match crate::services::outbound_security::read_limited_body(resp, MAX_BODY).await {
+        Ok(body) => body,
+        Err(e) => {
+            tracing::error!("Failed to read Hitokoto response: {}", e);
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({"error": "Hitokoto response too large or unreadable"})),
+            )
+                .into_response();
+        }
+    };
+
+    match serde_json::from_slice::<Value>(&body) {
+        Ok(data) => {
+            tracing::debug!("Hitokoto data fetched successfully");
+            (
+                StatusCode::OK,
+                [
+                    (header::ACCESS_CONTROL_ALLOW_ORIGIN, "*"),
+                    (header::CACHE_CONTROL, "public, max-age=600"), // 10分钟缓存
+                ],
+                Json(data),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to parse Hitokoto response: {}", e);
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(json!({"error": "Failed to parse Hitokoto response"})),
             )
                 .into_response()
         }

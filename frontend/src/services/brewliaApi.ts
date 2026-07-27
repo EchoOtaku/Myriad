@@ -630,20 +630,6 @@ export function extractTextFromHtml(html: string): string {
 }
 
 /**
- * HTML 转义，防止 XSS 攻击
- */
-function escapeHtml(text: string): string {
-  const escapeMap: Record<string, string> = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  }
-  return text.replace(/[&<>"']/g, (char) => escapeMap[char] || char)
-}
-
-/**
  * 在 HTML 中高亮注释词汇
  *
  * 规则：
@@ -750,86 +736,142 @@ export function highlightAnnotations(
     }
   }
 
+  /**
+   * 构造一个 <mark> 元素。
+   *
+   * 全程走 DOM API：`textContent` 与 `setAttribute` 不会把内容当 HTML 解析，
+   * 因此 term / explanation 里出现什么字符都不可能变成标签或属性。
+   */
+  const buildMark = (
+    annotation: AnnotationItem,
+    matchedText: string,
+    fallbackIndex: number,
+  ): HTMLElement => {
+    const mark = document.createElement('mark')
+    mark.className = 'brewlia-annotation'
+    const rawId = annotation.id || `${annotation.type}-${fallbackIndex}`
+    mark.setAttribute('data-annotation-id', String(rawId).replace(/[^\w-]/g, ''))
+    mark.setAttribute('data-type', annotation.type)
+    mark.setAttribute('data-term', encodeURIComponent(annotation.term))
+    mark.setAttribute(
+      'data-explanation',
+      encodeURIComponent(annotation.explanation),
+    )
+    mark.textContent = matchedText
+    return mark
+  }
+
   // 追踪当前处理到的文本偏移
   let currentTextOffset = 0
 
-  // 递归处理文本节点
-  const processNode = (node: Node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent || ''
-      if (!text.trim()) {
-        currentTextOffset += text.length
-        return
+  /**
+   * 处理单个文本节点。
+   *
+   * `allowAnyPosition` 为 true 时跳过 reference 的"最佳位置"约束，用于保底轮。
+   *
+   * 关键安全点：这里**不再**拼 HTML 字符串再赋给 innerHTML。
+   * 原实现是 `let newHtml = node.textContent` → 拼接 → `span.innerHTML = newHtml`。
+   * DOMParser 解析原文时已经把 `&lt;img …&gt;` 解码成了文本 `<img …>`，把它
+   * 重新交给 innerHTML 等于二次解析，实体编码过的标签会复活成真元素 ——
+   * 典型的 mutation XSS。改成拼 DOM 节点后，文本永远只是文本。
+   */
+  const processTextNode = (node: Node, allowAnyPosition: boolean): boolean => {
+    const text = node.textContent || ''
+    if (!text.trim()) {
+      currentTextOffset += text.length
+      return false
+    }
+
+    const nodeStartOffset = currentTextOffset
+    currentTextOffset += text.length
+
+    // 先在纯文本里收集互不重叠的命中区间，再一次性构造节点。
+    // 这样就不需要原来那个「跳过 150 字符大约是 mark 标签长度」的偏移补偿。
+    type Hit = { start: number; end: number; annotation: AnnotationItem }
+    const hits: Hit[] = []
+    const taken: boolean[] = new Array(text.length).fill(false)
+
+    for (const annotation of sortedAnnotations) {
+      if (!annotation.term || annotation.term.length === 0) continue
+
+      const termKey = `${annotation.type}:${annotation.term}`
+      if (markedTerms.has(termKey)) continue
+
+      // 找到第一个还没被更长的词占用的位置
+      let termIndex = text.indexOf(annotation.term)
+      while (termIndex !== -1) {
+        const overlaps = taken
+          .slice(termIndex, termIndex + annotation.term.length)
+          .some(Boolean)
+        if (!overlaps) break
+        termIndex = text.indexOf(annotation.term, termIndex + 1)
       }
+      if (termIndex === -1) continue
 
-      const nodeStartOffset = currentTextOffset
-      const nodeEndOffset = currentTextOffset + text.length
+      // 指代类型：只在最佳位置附近标记
+      if (
+        !allowAnyPosition &&
+        annotation.type === 'reference' &&
+        referencePositions.has(annotation.term)
+      ) {
+        const bestPos = referencePositions.get(annotation.term)!
+        const actualPos = nodeStartOffset + termIndex
 
-      let newHtml = text
-      let hasMatch = false
-      let localOffset = 0 // 记录在当前节点内已处理的偏移
+        const isOnlyOccurrence =
+          !fullText.includes(annotation.term, bestPos + 1) &&
+          !fullText.includes(annotation.term, bestPos - 1)
 
-      for (const annotation of sortedAnnotations) {
-        if (!annotation.term || annotation.term.length === 0) continue
-
-        // 已标记过的词跳过
-        const termKey = `${annotation.type}:${annotation.term}`
-        if (markedTerms.has(termKey)) continue
-
-        // 查找位置
-        const termIndex = newHtml.indexOf(annotation.term, localOffset)
-        if (termIndex === -1) continue
-
-        // 对于指代类型，检查是否是最佳位置
-        if (
-          annotation.type === 'reference' &&
-          referencePositions.has(annotation.term)
-        ) {
-          const bestPos = referencePositions.get(annotation.term)!
-          const actualPos = nodeStartOffset + termIndex
-
-          // 如果当前位置不在最佳位置的合理范围内（±150字符），跳过
-          // 但如果这是唯一一次出现（bestPos 就是第一次），则允许
-          const isOnlyOccurrence =
-            !fullText.includes(annotation.term, bestPos + 1) &&
-            !fullText.includes(annotation.term, bestPos - 1)
-
-          if (!isOnlyOccurrence && Math.abs(actualPos - bestPos) > 150) {
-            continue
-          }
+        if (!isOnlyOccurrence && Math.abs(actualPos - bestPos) > 150) {
+          continue
         }
-
-        hasMatch = true
-        totalMatches++
-        markedTerms.add(termKey)
-
-        // 只替换这一次出现
-        const before = newHtml.slice(0, termIndex)
-        const after = newHtml.slice(termIndex + annotation.term.length)
-        // 安全：确保 annotationId 只包含安全字符
-        const rawId = annotation.id || `${annotation.type}-${totalMatches}`
-        const annotationId = String(rawId).replace(/[^\w-]/g, '')
-
-        // 安全：对 term 进行 HTML 转义，防止 XSS
-        const safeTerm = escapeHtml(annotation.term)
-        newHtml = `${before}<mark class="brewlia-annotation" data-annotation-id="${annotationId}" data-type="${escapeHtml(annotation.type)}" data-term="${encodeURIComponent(annotation.term)}" data-explanation="${encodeURIComponent(annotation.explanation)}">${safeTerm}</mark>${after}`
-
-        // 更新本地偏移，跳过刚插入的标记
-        localOffset = termIndex + annotation.term.length + 150 // 大约是 mark 标签的长度
       }
 
-      currentTextOffset = nodeEndOffset
-
-      if (hasMatch && node.parentNode) {
-        const span = document.createElement('span')
-        span.innerHTML = newHtml
-        node.parentNode.replaceChild(span, node)
+      totalMatches++
+      markedTerms.add(termKey)
+      hits.push({
+        start: termIndex,
+        end: termIndex + annotation.term.length,
+        annotation,
+      })
+      for (let i = termIndex; i < termIndex + annotation.term.length; i++) {
+        taken[i] = true
       }
+    }
+
+    if (hits.length === 0 || !node.parentNode) return false
+
+    hits.sort((a, b) => a.start - b.start)
+
+    const fragment = document.createDocumentFragment()
+    let cursor = 0
+    for (const hit of hits) {
+      if (hit.start > cursor) {
+        fragment.appendChild(
+          document.createTextNode(text.slice(cursor, hit.start)),
+        )
+      }
+      fragment.appendChild(
+        buildMark(hit.annotation, text.slice(hit.start, hit.end), totalMatches),
+      )
+      cursor = hit.end
+    }
+    if (cursor < text.length) {
+      fragment.appendChild(document.createTextNode(text.slice(cursor)))
+    }
+
+    node.parentNode.replaceChild(fragment, node)
+    return true
+  }
+
+  // 递归处理文本节点
+  const processNode = (node: Node, allowAnyPosition = false) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      processTextNode(node, allowAnyPosition)
     } else if (node.nodeType === Node.ELEMENT_NODE) {
       const tagName = (node as Element).tagName.toLowerCase()
       if (!['script', 'style', 'mark', 'code', 'pre'].includes(tagName)) {
         const children = Array.from(node.childNodes)
-        children.forEach((child) => processNode(child))
+        children.forEach((child) => processNode(child, allowAnyPosition))
       }
     }
   }
@@ -849,41 +891,14 @@ export function highlightAnnotations(
       'unmarked annotations',
     )
 
-    // 获取当前 HTML 并重新处理
-    let currentHtml = div.innerHTML
-
-    for (const annotation of unmarkedAnnotations) {
-      if (!annotation.term || annotation.term.length === 0) continue
-
-      const termKey = `${annotation.type}:${annotation.term}`
-      if (markedTerms.has(termKey)) continue
-
-      // 简单文本替换第一次出现（需要避免替换已有的 mark 标签内容）
-      // 使用正则匹配：不在 < 和 > 之间的文本
-      const escapedTerm = annotation.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const regex = new RegExp(`(?<!<[^>]*)${escapedTerm}(?![^<]*>)`, '')
-
-      if (regex.test(currentHtml)) {
-        totalMatches++
-        markedTerms.add(termKey)
-        // 安全：确保 annotationId 只包含安全字符
-        const rawId = annotation.id || `${annotation.type}-${totalMatches}`
-        const annotationId = String(rawId).replace(/[^\w-]/g, '')
-
-        // 安全：对 term 进行 HTML 转义，防止 XSS
-        const safeTerm = escapeHtml(annotation.term)
-        currentHtml = currentHtml.replace(
-          regex,
-          `<mark class="brewlia-annotation" data-annotation-id="${annotationId}" data-type="${escapeHtml(annotation.type)}" data-term="${encodeURIComponent(annotation.term)}" data-explanation="${encodeURIComponent(annotation.explanation)}">${safeTerm}</mark>`,
-        )
-
-        console.debug(`[Brewlia] Fallback marked: "${annotation.term}"`)
-      }
-    }
-
-    // 用 DOMParser 重新解析修改后的 HTML，避免直接 innerHTML 赋值
-    const updatedDoc = domParser.parseFromString(currentHtml, 'text/html')
-    div.replaceChildren(...Array.from(updatedDoc.body.childNodes))
+    // 保底轮走同一条 DOM 路径，只是放开 reference 的"最佳位置"约束。
+    //
+    // 原实现在这里退回到「序列化成 HTML 字符串 → 正则替换 → 重新解析」。
+    // 那个正则用 `(?<!<[^>]*)…(?![^<]*>)` 猜测"不在标签内"，词一旦出现在
+    // 属性值里（例如上一轮写进 data-explanation 的内容）就会把 <mark> 插进
+    // 属性中间，破坏结构。DOM 遍历天然只碰文本节点，没有这个问题。
+    currentTextOffset = 0
+    processNode(div, true)
   }
 
   console.debug('[Brewlia] Total matches found:', totalMatches)

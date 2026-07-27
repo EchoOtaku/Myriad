@@ -1104,13 +1104,18 @@ export function filterPlaylist(
  * @param text 原文本
  * @param query 搜索关键词
  */
-export function highlightText(text: string, query: string): string {
-  // 先转义 HTML 元字符，防止 XSS
-  const escaped = text
+export function escapeHtmlText(text: string): string {
+  return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+export function highlightText(text: string, query: string): string {
+  // 先转义 HTML 元字符，防止 XSS
+  const escaped = escapeHtmlText(text)
 
   if (!query || !query.trim()) {
     return escaped

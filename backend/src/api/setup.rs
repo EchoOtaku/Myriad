@@ -1,4 +1,8 @@
-﻿use axum::{extract::State, http::StatusCode, Json};
+﻿use axum::{
+    extract::State,
+    http::{HeaderMap, StatusCode},
+    Json,
+};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use sea_orm_migration::MigratorTrait;
 use serde::{Deserialize, Serialize};
@@ -308,8 +312,13 @@ pub async fn init_database(
 
 /// POST /api/setup/init-env
 /// Initialize .env file from .env.example
-/// ✅ PROTECTION: Only accessible during CONFIG_MODE (checked by middleware)
-pub async fn initialize_env_file() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+///
+/// 保护：CONFIG_MODE + 引导令牌（实例此前已配置过时）。
+pub async fn initialize_env_file(
+    headers: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    crate::api::setup_bootstrap::require_bootstrap(&headers)?;
+
     // ✅ SECURITY CHECK: Only allow in CONFIG_MODE
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
 
@@ -409,10 +418,14 @@ pub struct EnvUpdateRequest {
 
 /// POST /api/setup/update-env
 /// Update .env file with new configuration
-/// ✅ PROTECTION: Only accessible during CONFIG_MODE (checked by middleware)
+///
+/// 保护：CONFIG_MODE + 引导令牌（实例此前已配置过时）+ 值语法校验。
 pub async fn update_env_file(
+    headers: HeaderMap,
     Json(config): Json<EnvUpdateRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    crate::api::setup_bootstrap::require_bootstrap(&headers)?;
+
     // ✅ SECURITY CHECK: Only allow in CONFIG_MODE
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
 
@@ -462,10 +475,24 @@ pub async fn update_env_file(
     // Update configuration values
     let mut updated_content = content;
 
-    // Helper macro to update env values (only for core config)
+    // Helper macro to update env values (only for core config).
+    //
+    // 每个值都先过语法校验：`.env` 是逐行 `KEY=VALUE`，值里的 CR/LF 会凭空
+    // 生成新的一行，等于注入任意环境变量（例如追加一个 `JWT_SECRET=` 或
+    // 攻击者可控的 `RUST_LOG`）。
     macro_rules! update_env_var {
         ($field:expr, $key:expr) => {
             if let Some(value) = $field {
+                crate::api::setup_bootstrap::validate_env_value($key, &value).map_err(|msg| {
+                    tracing::warn!("🚨 Rejected .env update: {}", msg);
+                    (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({
+                            "error": "Invalid configuration value",
+                            "message": msg,
+                        })),
+                    )
+                })?;
                 updated_content = update_env_variable(&updated_content, $key, &value);
             }
         };
@@ -653,11 +680,15 @@ fn build_database_url(config: &DatabaseConfigRequest) -> Result<String, String> 
 /// Save database configuration to .env file (专门用于配置数据库)
 /// 🔒 安全保护：只能在 CONFIG_MODE 下修改数据库配置
 pub async fn save_database_config(
+    headers: HeaderMap,
     Json(config): Json<DatabaseConfigRequest>,
 ) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    // 这是最危险的端点：它能把实例重新指向任意 PostgreSQL。
+    // CONFIG_MODE 本身会因为数据库故障自动开启，所以它不足以作为唯一门槛 ——
+    // 已配置过的实例还必须提供启动日志里的引导令牌。
+    crate::api::setup_bootstrap::require_bootstrap(&headers)?;
+
     // ✅ P0 安全修复：强制要求 CONFIG_MODE
-    // 这是最危险的端点之一，它可以修改数据库连接
-    // 如果不在 CONFIG_MODE，攻击者可以劫持整个数据库连接
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
 
     if !config_mode {
@@ -814,8 +845,18 @@ fn get_env_path() -> PathBuf {
     path
 }
 
-/// Update a single environment variable in the content
+/// Update a single environment variable in the content.
+///
+/// 调用方必须先用 [`crate::api::setup_bootstrap::validate_env_value`] 校验。这里
+/// 再兜一层：把值里的 CR/LF 换成空格，保证无论调用路径如何，一个 key 永远只
+/// 产出一行，不会把 `.env` 撕成多条记录。
 fn update_env_variable(content: &str, key: &str, value: &str) -> String {
+    let value: String = value
+        .chars()
+        .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
+        .collect();
+    let value = value.as_str();
+
     let lines: Vec<&str> = content.lines().collect();
     let mut result = Vec::new();
     let mut found = false;

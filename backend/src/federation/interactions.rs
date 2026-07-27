@@ -1485,38 +1485,59 @@ pub async fn handle_inbound_like(
 }
 
 /// Undo Like / Announce from remote.
+///
+/// `undo_actor_url` 是本次请求 HTTP Signature 验证过的 Actor。所有删除都必须
+/// 通过 `remote_actor_id` 绑定到它 —— 否则任何远端都能凭一个 activity id
+/// 撤销别人的互动（记录被删掉，计数随之改变）。
 pub async fn handle_inbound_undo_interaction(
     db: &DatabaseConnection,
     local_user_id: i32,
+    undo_actor_url: &str,
     activity: &serde_json::Value,
 ) {
     let inner = &activity["object"];
     let inner_type = inner["type"].as_str().unwrap_or("");
     let inner_id = inner["id"].as_str().unwrap_or("");
 
+    if inner_id.is_empty() || undo_actor_url.is_empty() {
+        return;
+    }
+
+    // 子查询取 Actor 内部 id；Actor 未知时子查询为 NULL，等值比较不成立 →
+    // 一行都删不掉，正是我们要的 fail-closed。
+    const OWNED_ACTIVITY: &str = "DELETE FROM federation_activities \
+         WHERE activity_id = $1 AND is_local = false \
+           AND remote_actor_id = (SELECT id FROM federation_remote_actors WHERE actor_url = $2)";
+
     match inner_type {
-        "Like" if !inner_id.is_empty() => {
+        "Like" => {
             let _ = db
                 .execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
-                    "DELETE FROM federation_activities WHERE activity_id = $1 AND is_local = false",
-                    [inner_id.into()],
+                    OWNED_ACTIVITY,
+                    [inner_id.into(), undo_actor_url.into()],
                 ))
                 .await;
         }
-        "Announce" if !inner_id.is_empty() => {
+        "Announce" => {
             let _ = db
                 .execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
-                    "DELETE FROM federation_timeline WHERE user_id = $1 AND activity_id = $2",
-                    [local_user_id.into(), inner_id.into()],
+                    "DELETE FROM federation_timeline \
+                     WHERE user_id = $1 AND activity_id = $2 \
+                       AND remote_actor_id = (SELECT id FROM federation_remote_actors WHERE actor_url = $3)",
+                    [
+                        local_user_id.into(),
+                        inner_id.into(),
+                        undo_actor_url.into(),
+                    ],
                 ))
                 .await;
             let _ = db
                 .execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
-                    "DELETE FROM federation_activities WHERE activity_id = $1 AND is_local = false",
-                    [inner_id.into()],
+                    OWNED_ACTIVITY,
+                    [inner_id.into(), undo_actor_url.into()],
                 ))
                 .await;
         }

@@ -373,6 +373,11 @@ pub fn apply_content_filters(
 ) -> FilterVerdict {
     let activity_type = activity.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
+    // 关键词匹配需要活动的扁平化小写文本。以前每条 block_keyword 规则都重新
+    // `to_string().to_lowercase()` 一遍整个活动 —— 40 MiB 的入站活动配上 N 条
+    // 规则就是 N×2 次全量分配。这里改成惰性求值 + 全程只算一次。
+    let mut lowered_activity: Option<String> = None;
+
     for rule in rules {
         if !rule.enabled {
             continue;
@@ -388,7 +393,8 @@ pub fn apply_content_filters(
                 }
             }
             "block_keyword" => {
-                let content = activity.to_string().to_lowercase();
+                let content = lowered_activity
+                    .get_or_insert_with(|| activity.to_string().to_lowercase());
                 let keyword = rule.value.to_lowercase();
                 if content.contains(&keyword) {
                     return FilterVerdict::Reject(format!(

@@ -25,6 +25,7 @@ pub mod prompt;
 pub mod proxy;
 pub mod reports; // ✅ 双层报告系统API
 pub mod setup;
+pub mod setup_bootstrap;
 pub mod site_domain; // 🌐 Site public domain (BASE_URL / FRONTEND_URL / CORS) — not federation Move
 pub mod speech; // 🎙️ 腾讯云语音服务 API (TTS/ASR)
 pub mod steam;

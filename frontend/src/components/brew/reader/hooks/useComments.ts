@@ -378,10 +378,15 @@ export function useComments({
             ? comment.color
             : borderColor
 
+        // id 声明为 number，但这里是拼进 HTML 属性的裸插值 —— 用 Number()
+        // 把"后端某天返回字符串"这一类失误挡在属性注入之外。
+        const safeCommentId = Number(comment.id)
+        if (!Number.isFinite(safeCommentId)) continue
+
         result = result.replace(
           regex,
           (match) =>
-            `<mark class="user-comment-highlight" data-comment-id="${comment.id}" style="background-color: ${bgColor}40; cursor: pointer; border-radius: 2px; padding: 0 2px; border-bottom: 2px solid ${underlineColor};">${match}</mark>`,
+            `<mark class="user-comment-highlight" data-comment-id="${safeCommentId}" style="background-color: ${bgColor}40; cursor: pointer; border-radius: 2px; padding: 0 2px; border-bottom: 2px solid ${underlineColor};">${match}</mark>`,
         )
       }
 

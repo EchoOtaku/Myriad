@@ -8,6 +8,7 @@
 //! - Layer 5: Application Tapps（联邦应用）
 
 // Phase 0: 基础设施
+pub mod audience;
 pub mod errors;
 pub mod keys;
 pub mod signature;

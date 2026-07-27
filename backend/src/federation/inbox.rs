@@ -47,6 +47,9 @@ pub async fn post_inbox(
     // 验证用户存在
     let (user_id, _) = get_local_user(&db, &username).await?;
 
+    // 先做只依赖 header/原始字节的检查，再解析 body（inbox 允许 40 MiB）
+    verify_preparse_gate(&headers, &body)?;
+
     // 解析 Activity JSON
     let activity: serde_json::Value = serde_json::from_slice(&body).map_err(|_| {
         (
@@ -156,6 +159,9 @@ pub async fn post_shared_inbox(
         .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
 
+    // 先做只依赖 header/原始字节的检查，再解析 body（inbox 允许 40 MiB）
+    verify_preparse_gate(&headers, &body)?;
+
     let activity: serde_json::Value = serde_json::from_slice(&body).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
@@ -200,6 +206,19 @@ pub async fn post_shared_inbox(
 
     // 公开内容 → 粉丝时间线
     if matches!(activity_type.as_str(), "Create" | "Announce") {
+        // 只有寻址到 Public 或该 Actor 自己 followers collection 的活动才能进入
+        // 粉丝首页。定向给具体个人（甚至完全未寻址）的活动过去也会被广播给
+        // 该 Actor 的全部本地粉丝。
+        if !crate::federation::audience::may_distribute_to_followers(&activity, &actor_url_str) {
+            tracing::warn!(
+                actor = %actor_url_str,
+                activity_type = %activity_type,
+                "Shared inbox activity is not addressed to Public or the actor's followers; not distributing"
+            );
+            // 静默接受：投递方无需知道我们的分发决策，重投也无意义。
+            return Ok(StatusCode::ACCEPTED);
+        }
+
         let remote = fetch_remote_actor(&db, &actor_url_str).await.map_err(|e| {
             tracing::warn!("Failed to fetch remote actor {}: {}", actor_url_str, e);
             (
@@ -207,6 +226,22 @@ pub async fn post_shared_inbox(
                 Json(json!({"error": "Unknown actor"})),
             )
         })?;
+
+        // Create 还需要证明内嵌对象确实属于签名 Actor（Announce 的对象本来
+        // 就是别人的，不能套用同一条规则）。
+        if activity_type == "Create" {
+            if let Err(e) = crate::federation::audience::verify_object_ownership(
+                &actor_url_str,
+                &activity["object"],
+            ) {
+                tracing::warn!(actor = %actor_url_str, "Shared inbox Create rejected: {}", e);
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(json!({"error": "Object ownership check failed", "reason": e.to_string()})),
+                ));
+            }
+        }
+
         distribute_to_followers(&db, remote.id, &activity_type, &activity).await?;
         return Ok(StatusCode::ACCEPTED);
     }
@@ -317,47 +352,43 @@ async fn resolve_shared_inbox_local_user(
         return None;
     }
 
-    // 3) Single-tenant convenience fallback (not for Accept)
-    if let Ok(Some(row)) = db
-        .query_one(Statement::from_sql_and_values(
+    // 3) Single-tenant convenience fallback (not for Accept).
+    //    Only when the instance genuinely has exactly one user. The previous
+    //    `ORDER BY id LIMIT 1` silently handed unaddressed activities to the
+    //    oldest account on multi-user hosts.
+    if let Ok(rows) = db
+        .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id FROM users ORDER BY id LIMIT 1",
+            "SELECT id FROM users ORDER BY id LIMIT 2",
             [],
         ))
         .await
     {
-        return row.try_get::<i32>("", "id").ok();
+        if rows.len() == 1 {
+            return rows[0].try_get::<i32>("", "id").ok();
+        }
+        tracing::warn!(
+            activity_type,
+            "Shared inbox activity has no resolvable local recipient and the instance \
+             has more than one user; refusing first-user fallback"
+        );
     }
     None
 }
 
-/// Best-effort: last path segment as username if that local user exists.
+/// Resolve a local user id from an actor-ish URL.
+///
+/// Exact `{base_url}/users/{username}` form only. The previous implementation
+/// fell back to "last path segment" for any URL, so a remote
+/// `https://evil.example/users/alice` resolved to the **local** `alice`.
 async fn local_user_id_from_actorish_url(db: &DatabaseConnection, url: &str) -> Option<i32> {
-    let uname = url
-        .trim()
-        .trim_end_matches('/')
-        .rsplit('/')
-        .next()
-        .filter(|s| !s.is_empty() && *s != "users" && !s.contains('@'))?;
-    // Prefer /users/{name} exact form when base is known
     let base = get_base_url().await;
-    if let Some(local) = local_username_from_actor_url(&base, url) {
-        if let Ok(Some(row)) = db
-            .query_one(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT id FROM users WHERE username = $1",
-                [local.into()],
-            ))
-            .await
-        {
-            return row.try_get::<i32>("", "id").ok();
-        }
-    }
+    let local = local_username_from_actor_url(&base, url)?;
     if let Ok(Some(row)) = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id FROM users WHERE username = $1",
-            [uname.into()],
+            [local.into()],
         ))
         .await
     {
@@ -454,6 +485,44 @@ async fn handle_follow(
     actor_url_str: &str,
     activity: &serde_json::Value,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    // Follow.object 必须就是本次要记录的本地 Actor。
+    //
+    // 过去只用投递路径（/users/{name}/inbox 或 sharedInbox 的收件人解析）决定
+    // local_user_id，从不看 activity.object，于是向 bob 的 inbox POST 一条
+    // `Follow{object: ".../users/alice"}` 会给 **bob** 记上一个粉丝，随后
+    // 发出的 Accept 里 object 还被重写成 bob 的 Actor。
+    let base_url = get_base_url().await;
+    let local_username = get_username_by_id(db, local_user_id).await?;
+    let local_actor_url = actor_url(&base_url, &local_username);
+
+    let follow_target = crate::federation::audience::object_id(&activity["object"]);
+    match follow_target.as_deref() {
+        Some(target) if same_actor_url(target, &local_actor_url) => {}
+        Some(target) => {
+            tracing::warn!(
+                actor = %actor_url_str,
+                target,
+                expected = %local_actor_url,
+                "Follow rejected: object does not match the local actor being followed"
+            );
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                Json(json!({
+                    "error": "Follow.object does not match this actor",
+                    "expected": local_actor_url,
+                    "found": target,
+                })),
+            ));
+        }
+        None => {
+            tracing::warn!(actor = %actor_url_str, "Follow rejected: missing object");
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Follow.object is required"})),
+            ));
+        }
+    }
+
     // 获取或缓存远程 Actor
     let remote = fetch_remote_actor(db, actor_url_str).await.map_err(|e| {
         tracing::warn!("Failed to fetch actor for Follow: {}", e);
@@ -498,9 +567,7 @@ async fn handle_follow(
     }
 
     // 自动发送 Accept（Myriad 个人实例默认自动接受）
-    let base_url = get_base_url().await;
-    let local_username = get_username_by_id(db, local_user_id).await?;
-    let local_actor_url = actor_url(&base_url, &local_username);
+    // base_url / local_username / local_actor_url 已在入口处校验 Follow.object 时取得。
 
     // Embed a minimal Follow object (type/id/actor/object). Full inbound JSON
     // may omit id or carry extra @context noise that confuses remote Accept matching.
@@ -1039,9 +1106,28 @@ async fn handle_undo(
             );
         }
         "Like" | "Announce" => {
+            // 被撤销的互动必须由本次签名 Actor 创建 —— 否则任意远端都能
+            // 按 activity id 撤销别人的 Like/Announce。
+            let inner_actor = extract_activity_actor_id(&activity["object"]);
+            if !inner_actor.is_empty() && !same_actor_url(&inner_actor, actor_url_str) {
+                tracing::warn!(
+                    actor = %actor_url_str,
+                    inner_actor = %inner_actor,
+                    "Undo rejected: inner activity belongs to a different actor"
+                );
+                return Err((
+                    StatusCode::FORBIDDEN,
+                    Json(json!({
+                        "error": "Undo actor does not own the undone activity",
+                        "actor": actor_url_str,
+                        "inner_actor": inner_actor,
+                    })),
+                ));
+            }
             crate::federation::interactions::handle_inbound_undo_interaction(
                 db,
                 local_user_id,
+                actor_url_str,
                 activity,
             )
             .await;
@@ -1062,6 +1148,37 @@ async fn handle_content_activity(
     activity_type: &str,
     activity: &serde_json::Value,
 ) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    // 签名只证明"请求由 activity.actor 的公钥签出"。要动对象，还得证明这个
+    // Actor 有权动它 —— 否则任意联邦实例都能伪造他人内容或删除他人条目。
+    //
+    // Create/Update：attributedTo 必须是签名 Actor，对象 id 必须同源。
+    // Delete：对象通常已压缩成裸 IRI，只能做同源判断，真正的所有权在下面的
+    //         SQL 里用 remote_actor_id 再收一次。
+    // Announce/Like：对象本来就是别人的，不适用。
+    let ownership = match activity_type {
+        "Create" | "Update" => Some(crate::federation::audience::verify_object_ownership(
+            actor_url_str,
+            &activity["object"],
+        )),
+        "Delete" => Some(crate::federation::audience::verify_object_same_origin(
+            actor_url_str,
+            &activity["object"],
+        )),
+        _ => None,
+    };
+    if let Some(Err(e)) = ownership {
+        tracing::warn!(
+            actor = %actor_url_str,
+            activity_type,
+            "Content activity rejected by ownership check: {}",
+            e
+        );
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Object ownership check failed", "reason": e.to_string()})),
+        ));
+    }
+
     let remote = fetch_remote_actor(db, actor_url_str).await.map_err(|e| {
         tracing::warn!("Failed to fetch actor: {}", e);
         (StatusCode::BAD_REQUEST, Json(json!({"error": e})))
@@ -1095,17 +1212,20 @@ async fn handle_content_activity(
             .or_else(|| activity["object"].as_str())
             .unwrap_or("");
         if !object_id.is_empty() {
+            // `remote_actor_id` 约束是关键：没有它，任何持有效签名的远端都能
+            // 用任意 object id 删掉目标用户时间线里**别人**的条目。
             let _ = db
                 .execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"DELETE FROM federation_timeline
                        WHERE user_id = $1
+                         AND remote_actor_id = $3
                          AND (
                            content_json->>'id' = $2
                            OR activity_id = $2
                            OR content_json #>> '{object,id}' = $2
                          )"#,
-                    [local_user_id.into(), object_id.into()],
+                    [local_user_id.into(), object_id.into(), remote.id.into()],
                 ))
                 .await;
         }
@@ -1223,6 +1343,93 @@ async fn distribute_to_followers(
 }
 
 // ==================== HTTP Signature 验证 ====================
+
+/// 解析请求体**之前**必须通过的检查。
+///
+/// inbox 允许 40 MiB 的请求体（房间/频道消息与文件分块确实需要），而过去的顺序是
+/// 「先 `serde_json::from_slice` 整个 body，再验签」—— 于是任何未认证客户端都能
+/// 用一坨 40 MiB 的 JSON 逼服务端做一次完整解析，代价完全不对等。
+///
+/// 这里把只依赖 header 和原始字节、不需要网络往返的检查提到解析之前：
+/// Signature 头存在且可解析、签名覆盖的 header 集合合规、Date 新鲜、
+/// Digest 与原始 body 逐字节相符。攻击者要让我们开始解析 JSON，至少得先算出
+/// 这段 body 正确的 SHA-256 并附上格式合法的签名头。
+///
+/// 注意这**不是**认证 —— 真正的签名验证仍然在 [`verify_request_signature`] 里
+/// 完成（需要先解析出 actor 才能取公钥）。这只是把最廉价的拒绝点前移。
+fn verify_preparse_gate(
+    headers: &HeaderMap,
+    body: &[u8],
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    let sig_header = headers
+        .get("Signature")
+        .or_else(|| headers.get("signature"))
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Missing Signature header"})),
+            )
+        })?;
+
+    let parsed = parse_signature_header(sig_header).map_err(|e| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": format!("Invalid Signature header: {}", e)})),
+        )
+    })?;
+    require_covered_headers(&parsed, !body.is_empty()).map_err(|e| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({"error": format!("Invalid signed-header set: {}", e)})),
+        )
+    })?;
+
+    let date = headers
+        .get("Date")
+        .or_else(|| headers.get("date"))
+        .and_then(|value| value.to_str().ok())
+        .ok_or_else(|| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Missing Date header"})),
+            )
+        })?;
+    verify_date_freshness(date, chrono::Utc::now(), chrono::Duration::minutes(5)).map_err(
+        |error| {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": format!("Invalid request date: {}", error)})),
+            )
+        },
+    )?;
+
+    if !body.is_empty() {
+        let digest = headers
+            .get("Digest")
+            .or_else(|| headers.get("digest"))
+            .ok_or_else(|| {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": "Missing Digest header for request with body"})),
+                )
+            })?;
+        let digest_str = digest.to_str().map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Invalid Digest header encoding"})),
+            )
+        })?;
+        if !verify_digest(body, digest_str) {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                Json(json!({"error": "Digest verification failed"})),
+            ));
+        }
+    }
+
+    Ok(())
+}
 
 /// 验证请求的 HTTP Signature
 async fn verify_request_signature(

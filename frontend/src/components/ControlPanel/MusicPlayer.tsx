@@ -451,12 +451,13 @@ const PlaylistItem = memo<{
         <span className="music-playlist-index">{originalIndex + 1}</span>
         <div className="music-playlist-info">
           <div className="music-playlist-name-row">
+            {/* 曲名/艺人名来自远端音乐 API，属于不可信数据。highlightText 内部
+                会转义 HTML 元字符；无搜索词时也必须走转义，不能直接把原值塞进
+                innerHTML —— 那条分支曾经是一个可执行的 XSS。 */}
             <div
               className="music-playlist-name"
               dangerouslySetInnerHTML={{
-                __html: searchQuery
-                  ? highlightText(song.name, searchQuery)
-                  : song.name,
+                __html: highlightText(song.name, searchQuery),
               }}
             />
             {vipStatus.displayText && (
@@ -470,9 +471,7 @@ const PlaylistItem = memo<{
           <div
             className="music-playlist-artist"
             dangerouslySetInnerHTML={{
-              __html: searchQuery
-                ? highlightText(song.artist, searchQuery)
-                : song.artist,
+              __html: highlightText(song.artist, searchQuery),
             }}
           />
         </div>

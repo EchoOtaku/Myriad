@@ -826,6 +826,11 @@ async fn rollback(
     headers: axum::http::HeaderMap,
     Json(body): Json<RollbackBody>,
 ) -> Result<Json<Value>, ApiError> {
+    // Reject path-influencing ids at the edge so a bad request never reaches the
+    // worker and shows up as a half-finished rollback job.
+    crate::snapshot::validate_snapshot_id(&body.snapshot_id)
+        .map_err(|e| ApiError(StatusCode::BAD_REQUEST, e.to_string()))?;
+
     let actor = extract_actor(&headers);
     let (tx, rx) = tokio::sync::oneshot::channel();
     st.worker

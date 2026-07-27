@@ -34,6 +34,30 @@ pub struct SnapshotManager<'a> {
     pub pgdata: PathBuf,
 }
 
+/// Reject any snapshot id that could influence path resolution.
+///
+/// Every snapshot id is an opaque, updater-generated token; it is only ever
+/// joined onto `state/snapshots/`. Restricting it to `[A-Za-z0-9_-]` means
+/// `Path::join` can never escape that directory — no `..`, no absolute paths,
+/// no separators, no NUL.
+///
+/// `delete` has always enforced this. `restore` did not: it took the id
+/// straight from the rollback request body and only checked whether the joined
+/// path existed, so an authenticated caller could point a restore at any
+/// directory on the host and have its contents copied over `pgdata`.
+pub fn validate_snapshot_id(id: &str) -> Result<()> {
+    if id.is_empty()
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+    {
+        return Err(UpdaterError::InvalidInput(format!(
+            "invalid snapshot id: {id:?}"
+        )));
+    }
+    Ok(())
+}
+
 impl<'a> SnapshotManager<'a> {
     /// Snapshot pgdata. Returns the snapshot id (matches caller-supplied job id for traceability).
     /// Caller is responsible for stopping postgres beforehand.
@@ -109,6 +133,23 @@ impl<'a> SnapshotManager<'a> {
     ///
     /// The snapshot itself is always *copied* (never renamed away) so retry remains possible.
     pub async fn restore(&self, snapshot_id: &str) -> Result<()> {
+        // Opaque-id rule first: the id must not be able to steer path resolution.
+        validate_snapshot_id(snapshot_id)?;
+
+        // Then require it to be a snapshot we actually took. `exists()` alone
+        // would accept any directory that happens to sit under snapshots/.
+        if !self
+            .state
+            .read_snapshots()?
+            .items
+            .iter()
+            .any(|m| m.id == snapshot_id)
+        {
+            return Err(UpdaterError::NotFound(format!(
+                "snapshot {snapshot_id} is not present in snapshots.json"
+            )));
+        }
+
         crate::probe::filesystem::require_pgdata(&self.pgdata)?;
         let snap_path = self.state.snapshots_dir().join(snapshot_id);
         if !snap_path.exists() {
@@ -247,15 +288,7 @@ impl<'a> SnapshotManager<'a> {
     /// - Otherwise removes `state/snapshots/<id>` and updates `snapshots.json` atomically,
     ///   then appends history + audit lines (timestamped; `actor` when provided).
     pub fn delete(&self, id: &str, actor: Option<&str>) -> Result<()> {
-        if id.is_empty()
-            || !id
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
-        {
-            return Err(UpdaterError::InvalidInput(format!(
-                "invalid snapshot id: {id:?}"
-            )));
-        }
+        validate_snapshot_id(id)?;
 
         let path = self.state.snapshots_dir().join(id);
         let mut sf = self.state.read_snapshots()?;

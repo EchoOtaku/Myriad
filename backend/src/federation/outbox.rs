@@ -17,6 +17,26 @@ use crate::federation::types::*;
 
 const OUTBOX_PAGE_SIZE: i64 = 20;
 
+/// Outbox 的可见性投影。
+///
+/// `federation_activities` 是**通用**联邦活动表：Follow/Accept、房间邀请、
+/// 频道消息、密钥交换、Ring 同步、文件分块都写在这里，且 `is_local = true`。
+/// 过去 Outbox 直接按 `user_id + is_local` 全表返回 `object_json`，等于把整个
+/// 内部控制面匿名公开。
+///
+/// 现在改成 fail-closed 投影：只有**同时**满足
+///   1. activity 类型在下面的白名单里，且
+///   2. 在 `federation_published_content` 里有一条 `visibility = 'public'` 记录
+/// 的活动才会出现。任何新增的活动类型默认不可见，必须显式登记成公开内容。
+const PUBLIC_OUTBOX_FILTER: &str = r#"
+    FROM federation_activities a
+    JOIN federation_published_content p ON p.activity_id = a.activity_id
+    WHERE a.user_id = $1
+      AND a.is_local = true
+      AND a.activity_type IN ('Create', 'Announce')
+      AND p.visibility = 'public'
+"#;
+
 #[derive(Debug, Deserialize)]
 pub struct OutboxQuery {
     pub page: Option<u32>,
@@ -37,11 +57,11 @@ pub async fn get_outbox(
 
     let (user_id, _) = get_local_user(&db, &username).await?;
 
-    // 总数
+    // 总数（与下面的分页查询共用同一个可见性投影）
     let total: i64 = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT COUNT(*) as count FROM federation_activities WHERE user_id = $1 AND is_local = true",
+            &format!("SELECT COUNT(*) as count {}", PUBLIC_OUTBOX_FILTER),
             [user_id.into()],
         ))
         .await
@@ -88,11 +108,11 @@ pub async fn get_outbox(
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT object_json
-               FROM federation_activities
-               WHERE user_id = $1 AND is_local = true
-               ORDER BY published_at DESC NULLS LAST, id DESC
-               LIMIT $2 OFFSET $3"#,
+            &format!(
+                "SELECT a.object_json {} ORDER BY a.published_at DESC NULLS LAST, a.id DESC \
+                 LIMIT $2 OFFSET $3",
+                PUBLIC_OUTBOX_FILTER
+            ),
             [user_id.into(), OUTBOX_PAGE_SIZE.into(), offset.into()],
         ))
         .await
