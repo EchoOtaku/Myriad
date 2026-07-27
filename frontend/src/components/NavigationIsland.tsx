@@ -2,13 +2,13 @@
  * 导航岛组件 - Apple Dynamic Island 风格
  *
  * 职责：
- * - 渲染一级导航（主页、资料库、Brew、报告、数字生命、Tapp）
+ * - 渲染一级导航（主页、资料库、Brew、报告、Tapp）
  * - 根据 NavigationContext 渲染页面声明的二级导航
  * - 处理一二级导航的切换动画
  */
 
 import type { ModuleVisibilityKey } from '../utils/moduleVisibility'
-import {, MyriadStoreIcon } from '@lib/icons'
+import { MyriadStoreIcon } from '@lib/icons'
 import {
   memo,
   useCallback,
@@ -360,7 +360,7 @@ export function NavigationIsland() {
   // 会导致进入动画 effect 的 deps 变化而中断进行中的动画（导航项卡在不可见态）
   const showSecondary = Boolean(
     secondaryNav?.expanded &&
-    location.pathname.startsWith(secondaryNav.routePath),
+      location.pathname.startsWith(secondaryNav.routePath),
   )
 
   // 动画期间锁定的渲染模式
@@ -856,64 +856,72 @@ export function NavigationIsland() {
   }, [currentRenderMode, isAnimating, handleCollapse])
 
   // 一级导航项 - 数据驱动，仅随语言变化重建（active 在渲染时按当前路由计算）
-  const primaryNavItems = useMemo<PrimaryNavItem[]>(() => {
-    const items: PrimaryNavItem[] = [
-      {
-        id: 'main',
-        path: '/',
-        icon: IconHome,
-        tooltip: t.nav.home,
-        ariaLabel: t.nav.backToHome,
-        asAnchor: true,
-      },
-      {
-        id: 'library',
-        path: '/library',
-        icon: IconLibrary,
-        tooltip: t.nav.library,
-        ariaLabel: t.nav.library,
-        moduleKey: 'library',
-      },
-      {
-        id: 'brew',
-        path: '/brew',
-        icon: IconBrew,
-        tooltip: t.nav.brewReading,
-        ariaLabel: t.nav.brewReading,
-        moduleKey: 'brew',
-      },
-      {
-        id: 'reports',
-        path: '/reports',
-        icon: IconReports,
-        tooltip: t.nav.reports,
-        ariaLabel: t.nav.reports,
-        moduleKey: 'reports',
-      },
-      {
-      {
-        id: 'tapp',
-        path: '/tapp',
-        icon: <MyriadStoreIcon className="w-5 h-5" />,
-        tooltip: t.nav.tappStore,
-        ariaLabel: t.nav.openTappStore,
-        matchPrefix: true,
-        asAnchor: true,
-        moduleKey: 'tapp',
-      },
-    ]
-
-    return items.filter((item) => {
-      if (!item.moduleKey || !hasChecked) return true
-      return canAccessModuleVisibility(
-        moduleVisibilityPreferences.modules[item.moduleKey],
+  const primaryNavItems = useMemo<PrimaryNavItem[]>(
+    () => {
+      const items: PrimaryNavItem[] = [
         {
-          isAuthenticated,
-          isAdmin,
+          id: 'main',
+          path: '/',
+          icon: IconHome,
+          tooltip: t.nav.home,
+          ariaLabel: t.nav.backToHome,
+          asAnchor: true,
         },
-      )
-    })
-  }, [t, hasChecked, isAuthenticated, isAdmin, moduleVisibilityPreferences])
+        {
+          id: 'library',
+          path: '/library',
+          icon: IconLibrary,
+          tooltip: t.nav.library,
+          ariaLabel: t.nav.library,
+          moduleKey: 'library',
+        },
+        {
+          id: 'brew',
+          path: '/brew',
+          icon: IconBrew,
+          tooltip: t.nav.brewReading,
+          ariaLabel: t.nav.brewReading,
+          moduleKey: 'brew',
+        },
+        {
+          id: 'reports',
+          path: '/reports',
+          icon: IconReports,
+          tooltip: t.nav.reports,
+          ariaLabel: t.nav.reports,
+          moduleKey: 'reports',
+        },
+        {
+          id: 'tapp',
+          path: '/tapp',
+          icon: <MyriadStoreIcon className="w-5 h-5" />,
+          tooltip: t.nav.tappStore,
+          ariaLabel: t.nav.openTappStore,
+          matchPrefix: true,
+          asAnchor: true,
+          moduleKey: 'tapp',
+        },
+      ]
+
+      return items.filter((item) => {
+        if (!item.moduleKey || !hasChecked) return true
+        return canAccessModuleVisibility(
+          moduleVisibilityPreferences.modules[item.moduleKey],
+          {
+            isAuthenticated,
+            isAdmin,
+          },
+        )
+      })
+    },
+    [
+      t,
+      hasChecked,
+      isAuthenticated,
+      isAdmin,
+      moduleVisibilityPreferences,
+    ],
+  )
 
   /** 可见一级项签名：项增删时触发岛尺寸重测 */
   const primaryNavSignature = useMemo(
