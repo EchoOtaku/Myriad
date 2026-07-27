@@ -3491,6 +3491,9 @@ pub async fn get_room_messages(
     for r in rows {
         let is_encrypted: bool = r.try_get("", "is_encrypted").unwrap_or(false);
         let mut payload: serde_json::Value = r.try_get("", "payload").unwrap_or(json!(null));
+        // After successful decrypt, mark is_encrypted=false so clients treat the
+        // payload as display plaintext (WS/GET race used to re-flash ciphertext).
+        let mut display_encrypted = is_encrypted;
         if is_encrypted {
             if let Some((pk, sk)) = my_keys.as_ref() {
                 if let Ok(plain) = crate::federation::e2e::decrypt_json_for_recipient(
@@ -3500,6 +3503,7 @@ pub async fn get_room_messages(
                     room_id.as_bytes(),
                 ) {
                     payload = plain;
+                    display_encrypted = false;
                 }
             }
         }
@@ -3512,7 +3516,7 @@ pub async fn get_room_messages(
             reply_to: r.try_get::<Option<String>>("", "reply_to").unwrap_or(None),
             reactions: r.try_get("", "reactions").unwrap_or(json!({})),
             is_pinned: r.try_get::<bool>("", "is_pinned").unwrap_or(false),
-            is_encrypted,
+            is_encrypted: display_encrypted,
             created_at: r
                 .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
                 .map(|t| t.to_rfc3339())
@@ -4423,9 +4427,13 @@ pub async fn handle_room_message(
     // E2E 时尽量解密后再广播：多方信封对各收件人明文相同，任一本地成员密钥成功即可。
     // 失败则仍推密文（与 get_messages 在无密钥时行为一致），避免挡住投递。
     let mut ws_payload = payload.clone();
+    let mut ws_is_encrypted = is_encrypted;
     if is_encrypted {
         if let Ok(plain) = decrypt_room_payload_for_local_ws(db, room_id, &payload).await {
             ws_payload = plain;
+            // Match local-send path: display plaintext must not keep is_encrypted=true
+            // or Aro may treat the bubble as still sealed / flash ciphertext on merge.
+            ws_is_encrypted = false;
         }
     }
     crate::federation::ws_gateway::broadcast_to_room(
@@ -4438,7 +4446,7 @@ pub async fn handle_room_message(
                 "sender_actor": sender,
                 "message_type": message_type,
                 "payload": ws_payload,
-                "is_encrypted": is_encrypted,
+                "is_encrypted": ws_is_encrypted,
                 "thread_id": thread_id,
                 "reply_to": reply_to,
                 "created_at": now_iso8601()

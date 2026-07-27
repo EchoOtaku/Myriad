@@ -1100,6 +1100,7 @@ pub async fn get_messages(
         let is_encrypted: bool = row.try_get("", "is_encrypted").unwrap_or(false);
         let mut payload: serde_json::Value = row.try_get("", "payload").unwrap_or(json!(null));
         // 本地持有会话时，把加密信封还原为明文 JSON（DB 仍保留密文）
+        let mut display_encrypted = is_encrypted;
         if is_encrypted {
             if let Some(session) = e2e_session.as_ref() {
                 if session.established {
@@ -1107,6 +1108,7 @@ pub async fn get_messages(
                         crate::federation::e2e::decrypt_json_payload(session, &payload)
                     {
                         payload = plain;
+                        display_encrypted = false;
                     }
                 }
             }
@@ -1119,7 +1121,7 @@ pub async fn get_messages(
             reply_to: row
                 .try_get::<Option<String>>("", "reply_to")
                 .unwrap_or(None),
-            is_encrypted,
+            is_encrypted: display_encrypted,
             created_at: row
                 .try_get::<chrono::DateTime<chrono::FixedOffset>>("", "created_at")
                 .map(|t| t.to_rfc3339())
@@ -1401,6 +1403,7 @@ pub async fn handle_channel_message(
 
     // 广播到 WebSocket。E2E 时优先明文，避免收件人先闪 ciphertext。
     let mut ws_payload = payload.clone();
+    let mut ws_is_encrypted = is_encrypted;
     if is_encrypted {
         if let Ok(Some(prop_row)) = db
             .query_one(Statement::from_sql_and_values(
@@ -1420,6 +1423,7 @@ pub async fn handle_channel_message(
                         crate::federation::e2e::decrypt_json_payload(&session, &payload)
                     {
                         ws_payload = plain;
+                        ws_is_encrypted = false;
                     }
                 }
             }
@@ -1435,7 +1439,7 @@ pub async fn handle_channel_message(
                 "sender_actor": sender,
                 "message_type": message_type,
                 "payload": ws_payload,
-                "is_encrypted": is_encrypted,
+                "is_encrypted": ws_is_encrypted,
                 "reply_to": reply_to,
                 "created_at": now_iso8601()
             }
