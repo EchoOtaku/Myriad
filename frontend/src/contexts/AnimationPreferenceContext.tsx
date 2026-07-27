@@ -2,10 +2,12 @@ import type { ReactNode } from 'react'
 import { createContext, useContext, useState } from 'react'
 
 /**
- * 动效偏好设置类型
- * - 'auto': 自动检测设备性能
- * - 'standard': 强制使用标准动效（中高性能）
- * - 'light': 强制使用轻量动效（低性能）
+ * 动效偏好（用户只在两档间切换；落地档位由硬件是否达标映射）
+ * - 'auto': 取当前硬件允许对中的「高」档
+ * - 'standard': 用户选「高」→ 达标 hardware: standard · 不达标: light
+ * - 'light': 用户选「低」→ 达标 hardware: light · 不达标: exlight
+ *
+ * 真正的 AnimationLevel（含 exlight）见 useAnimationLevel.resolveAnimationConfig
  */
 export type AnimationPreference = 'auto' | 'standard' | 'light'
 
@@ -48,7 +50,7 @@ export function AnimationPreferenceProvider({
     }
   }
 
-  // 切换性能模式（在 standard 和 light 之间）
+  // 两档切换：高(standard) ↔ 低(light)。硬件映射在 useAnimationLevel 内完成。
   const togglePerformanceMode = () => {
     const currentMode = preference === 'auto' ? 'standard' : preference
     const newMode = currentMode === 'standard' ? 'light' : 'standard'

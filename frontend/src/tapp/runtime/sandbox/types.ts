@@ -69,12 +69,15 @@ export interface BridgeMessage {
   timestamp: number
 }
 
-/** 动画配置引用类型 */
+/** 动画配置引用类型（与 useAnimationLevel 对齐） */
 export interface AnimationConfigRef {
-  level: 'none' | 'light' | 'standard'
+  level: 'none' | 'exlight' | 'light' | 'standard'
   loop: boolean
   spring: boolean
   durationScale: number
+  widgetGlow?: boolean
+  widgetUiRotation?: boolean
+  killAllBackdrop?: boolean
 }
 
 export type { TappInstance }

@@ -10,7 +10,10 @@
  */
 
 import { memo, useMemo } from 'react'
-import { getAnimationConfigSync } from '../../../hooks/useAnimationLevel'
+import {
+  type AnimationLevel,
+  getAnimationConfigSync,
+} from '../../../hooks/useAnimationLevel'
 import './GlowBackground.css'
 
 // 🔑 模块加载时同步获取动画配置，确保首次渲染正确
@@ -22,7 +25,7 @@ export interface GlowBackgroundProps {
   /** 光晕颜色 (CSS 颜色值或 CSS 变量) */
   color: string
   /** 动画级别 */
-  animLevel: 'none' | 'light' | 'standard'
+  animLevel: AnimationLevel
   /** 是否启用动画 */
   shouldAnimate: boolean
   /**
@@ -50,6 +53,11 @@ export const GlowBackground = memo(
     size = 'md',
     opacity,
   }: GlowBackgroundProps) => {
+    // exlight / none：不渲染光晕（静态也不画），省合成层
+    if (animLevel === 'exlight' || animLevel === 'none') {
+      return null
+    }
+
     // 根据动画级别选择模糊程度
     const blurClass = animLevel === 'standard' ? 'glow-blur-lg' : 'glow-blur-sm'
 

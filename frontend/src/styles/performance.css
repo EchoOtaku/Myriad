@@ -130,13 +130,42 @@ img[loading='lazy'] {
 
 /* 低端设备优化（html[data-low-end-device] 由 usePerformanceProfile 写入）
    不改写壁纸 filter；仅降级 UI 毛玻璃，减轻 GPU 合成压力。
-   手动选 light / none 时同样降级（data-perf-mode，与设备档位正交）。 */
+   data-perf-mode 由 useAnimationLevel 写入（exlight | light | standard | none）。 */
 
-/* Tailwind backdrop-blur 工具类：低端 / light 下去掉昂贵合成 */
+/* Tailwind backdrop-blur：light / 设备低端 — 去掉昂贵合成（与旧 light 行为一致） */
 html[data-low-end-device='true'] [class*='backdrop-blur'],
 html[data-perf-mode='light'] [class*='backdrop-blur'],
+html[data-perf-mode='exlight'] [class*='backdrop-blur'],
 html[data-perf-mode='none'] [class*='backdrop-blur'] {
   backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/*
+ * exlight / none：全局关掉 backdrop（含非 Tailwind 的 glass / modal），
+ * 并隐藏小组件光晕节点。不改壁纸 filter。
+ */
+html[data-perf-mode='exlight'] *,
+html[data-perf-mode='exlight'] *::before,
+html[data-perf-mode='exlight'] *::after,
+html[data-perf-mode='none'] *,
+html[data-perf-mode='none'] *::before,
+html[data-perf-mode='none'] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-perf-mode='exlight'] .glow-orb,
+html[data-perf-mode='none'] .glow-orb {
+  display: none !important;
+}
+
+/* exlight：弱化友链批入场 / pulse 类装饰 */
+html[data-perf-mode='exlight'] .friend-links-batch-enter .friend-links-entry,
+html[data-perf-mode='exlight'] .friend-links-batch-exit .friend-links-entry,
+html[data-perf-mode='exlight'] .friend-links-square-gradient,
+html[data-perf-mode='exlight'] .animate-pulse {
+  animation: none !important;
 }
 
 /* ============================================

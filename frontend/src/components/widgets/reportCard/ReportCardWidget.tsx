@@ -143,6 +143,11 @@ export const ReportCardWidget = memo(
         setInternalShowOverview(true)
         return
       }
+      // exlight / none：只显示概览，不自动翻面
+      if (!animLevel.widgetUiRotation) {
+        setInternalShowOverview(true)
+        return
+      }
 
       // 10秒切换概览/详情 - timeout 链 + 可见性暂停
       let cancelled = false
@@ -169,7 +174,7 @@ export const ReportCardWidget = memo(
         if (timeoutId) clearTimeout(timeoutId)
         document.removeEventListener('visibilitychange', onVisibility)
       }
-    }, [isPreview, isOverviewControlled, hasDetailContent])
+    }, [isPreview, isOverviewControlled, hasDetailContent, animLevel.widgetUiRotation])
 
     const handleContentChange = useCallback((content: any) => {
       setCardContent(content)
@@ -331,7 +336,7 @@ export const ReportCardWidget = memo(
             <GlowBackground
               color={platformConfig.color}
               animLevel={animLevel.level}
-              shouldAnimate={animLevel.loop}
+              shouldAnimate={animLevel.loop && animLevel.widgetGlow}
               variant="single"
               size="lg"
             />

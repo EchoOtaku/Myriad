@@ -78,7 +78,10 @@ export function useWidgetSize(
   const anim = useAnimationLevel()
   // 低性能模式与硬件低端：仅首次测量，不持续监听
   const reduceResizeWork =
-    perf.lowEndDevice || anim.level === 'light' || anim.level === 'none'
+    perf.lowEndDevice ||
+      anim.level === 'exlight' ||
+      anim.level === 'light' ||
+      anim.level === 'none'
   const reduceResizeWorkRef = useRef(reduceResizeWork)
   reduceResizeWorkRef.current = reduceResizeWork
 

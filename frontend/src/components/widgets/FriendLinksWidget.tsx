@@ -319,7 +319,7 @@ export const FriendLinksWidget = memo(
     useHomeVisibilityInterval(
       advanceBatch,
       BATCH_INTERVAL,
-      !isPreview && !isEditMode && batchCount > 1,
+      !isPreview && !isEditMode && batchCount > 1 && anim.widgetUiRotation,
     )
 
     const openBrew = useCallback(() => {

@@ -100,7 +100,10 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // 🎨 Evocative 壁纸动效统一 Hook
   // ⚠️ 低性能模式下强制禁用所有动效
-  const isLowPerformance = anim.level === 'light' || anim.level === 'none'
+  const isLowPerformance =
+    anim.level === 'exlight' ||
+    anim.level === 'light' ||
+    anim.level === 'none'
   useEvocativeWallpaper('wallpaper', {
     parallax: {
       enabled: evocativeConfig.parallax && !isLowPerformance,
