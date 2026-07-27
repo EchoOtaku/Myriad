@@ -236,21 +236,30 @@ html.dark .tooltip-content {
 }
 
 /*
- * Compact footer sits fixed bottom-right. Centered tooltips
- * (left: 50%; translateX(-50%)) overflow the viewport for long
- * 备案/公安 strings — pin to the right edge of each icon.
+ * Compact footer is fixed bottom-right. Tooltips must NOT:
+ *  1) center on the icon (overflows right), or
+ *  2) size against the icon with overflow-wrap:anywhere (collapses to a
+ *     1-glyph vertical strip), or
+ *  3) use max-width:100vw while right-aligned to a mid-cluster icon
+ *     (overflows left on narrow viewports).
  *
- * Do NOT use overflow-wrap:anywhere on absolute tooltips without an
- * explicit width: shrink-to-fit collapses to one glyph and text stacks
- * as a vertical line. width:max-content + max-width is the fix.
+ * Anchor the bubble to the footer (viewport right), not the individual
+ * icon: wrapper is static so absolute tooltip positions against .site-footer.
  */
+.site-footer-compact .tooltip-wrapper {
+  position: static;
+}
+
 .site-footer-compact .tooltip-content {
+  /* Position against .site-footer (position:fixed; right:0; bottom:0) */
   left: auto;
-  right: 0;
+  right: 0.5rem;
+  bottom: calc(100% + 4px);
   transform: translateY(4px);
   white-space: normal;
   width: max-content;
-  max-width: min(16rem, calc(100vw - 1.5rem));
+  /* Stay fully inside the viewport: right inset 0.5rem + left margin 0.5rem */
+  max-width: min(16rem, calc(100vw - 1rem - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
   overflow-wrap: break-word;
   word-break: normal;
   text-align: left;
@@ -260,6 +269,14 @@ html.dark .tooltip-content {
 .site-footer-compact .tooltip-wrapper:hover .tooltip-content,
 .site-footer-compact .tooltip-wrapper:focus-within .tooltip-content {
   transform: translateY(0);
+}
+
+/* Mobile footer padding is tighter; keep the same inset math */
+@media (width <= 768px) {
+  .site-footer-compact .tooltip-content {
+    right: 0.5rem;
+    bottom: calc(100% + 6px);
+  }
 }
 
 .footer-icon-link {
