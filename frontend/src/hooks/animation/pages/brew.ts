@@ -31,7 +31,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useAnimationLevel } from '../../useAnimationLevel'
+import { isExlight, useAnimationLevel } from '../../useAnimationLevel'
 import { registerPageCleanup } from '../core'
 
 /** 动画级别配置类型（派生自 useAnimationLevel 返回值，避免越层类型导入） */
@@ -102,15 +102,15 @@ export function useBrewAnimationConfig(): AnimationConfig & {
       return cached
     }
 
-    const isExlight = baseConfig.level === 'exlight'
+    const minimal = isExlight(baseConfig)
     const isLight = baseConfig.level === 'light'
 
     const config = {
       ...baseConfig,
-      enableStagger: !isExlight,
-      enableHover: !isExlight,
-      cardDuration: isExlight ? 0 : isLight ? 120 : 200,
-      readerDuration: isExlight ? 0 : isLight ? 100 : 200,
+      enableStagger: !minimal,
+      enableHover: !minimal,
+      cardDuration: minimal ? 0 : isLight ? 120 : 200,
+      readerDuration: minimal ? 0 : isLight ? 100 : 200,
     }
 
     ANIM_CONFIG_CACHE.set(cacheKey, config)
@@ -167,7 +167,7 @@ export function useBrewCardStagger(
   const config = STAGGER_CONFIG[type]
 
   // 动画级别为 none 时直接显示
-  const isDisabled = animConfig.level === 'exlight'
+  const isDisabled = isExlight(animConfig)
 
   // 使用 ref 追踪已处理的动画批次，避免重复动画
   const lastBatchIdRef = useRef(0)
@@ -298,19 +298,19 @@ export function getBrewTransition(
 ): { duration: number; ease: [number, number, number, number] } {
   const durations = {
     card:
-      animConfig.level === 'exlight'
+      isExlight(animConfig)
         ? 0
         : animConfig.level === 'light'
           ? 0.15
           : 0.25,
     reader:
-      animConfig.level === 'exlight'
+      isExlight(animConfig)
         ? 0
         : animConfig.level === 'light'
           ? 0.2
           : 0.4,
     fade:
-      animConfig.level === 'exlight'
+      isExlight(animConfig)
         ? 0
         : animConfig.level === 'light'
           ? 0.1

@@ -13,8 +13,10 @@ import {
   useHomeVisibilityInterval,
   useLoopAnimation,
 } from '../../hooks/animation'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
-import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
+import {
+  isStandardAnimation,
+  useAnimationLevel,
+} from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import {
   getAirQualityIcon,
@@ -107,7 +109,6 @@ export const WeatherWidget = memo(
       config.size,
       isPreview ? 1 : undefined,
     )
-    const perf = usePerformanceProfile()
     const anim = useAnimationLevel()
     const { t, locale } = useI18n()
     // framer-motion 动态模块（仅在需要动画时加载）
@@ -662,7 +663,7 @@ export const WeatherWidget = memo(
               initial={{ y: 10, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               transition={
-                perf.lowEndDevice || anim.level !== 'standard'
+                !isStandardAnimation(anim)
                   ? { duration: 0.2 }
                   : { duration: 0.4, delay: 0.3 }
               }

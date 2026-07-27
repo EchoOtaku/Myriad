@@ -22,11 +22,12 @@ import { createPortal } from 'react-dom'
 
 import { useI18n } from '../contexts/I18nContext'
 import { useHomeResizeObserver, useStaggerAnimation } from '../hooks/animation'
-import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import {
-  getPerformanceProfileSync,
-  usePerformanceProfile,
-} from '../hooks/usePerformanceProfile'
+  isExlight,
+  isStandardAnimation,
+  useAnimationLevel,
+} from '../hooks/useAnimationLevel'
+import { getPerformanceProfileSync } from '../hooks/usePerformanceProfile'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
 import { preloadBuiltinWidgets } from './widgets/builtinWidgets'
 import './WidgetGrid.css'
@@ -268,14 +269,13 @@ const WidgetGridItem = React.memo(
     /** 组件索引，用于计算递增延迟 */
     index?: number
   }) => {
-    const perf = usePerformanceProfile()
     const anim = useAnimationLevel()
     const { t } = useI18n()
     const [showSettings, setShowSettings] = useState(false)
     const instanceSettings = widgetType.settings || []
 
-    // 使用统一动画协调系统；none 模式直接显示且不进入调度队列。
-    const animationsEnabled = anim.level !== 'exlight'
+    // 使用统一动画协调系统；exlight 模式直接显示且不进入调度队列。
+    const animationsEnabled = !isExlight(anim)
     const { canAnimate, onComplete } = useStaggerAnimation({
       groupId: 'widget-grid',
       index: index || 0,
@@ -316,7 +316,7 @@ const WidgetGridItem = React.memo(
 
     // 低性能模式 / 低端设备：禁用 spring，改用轻量 tween
     const useLiteTransition =
-      !anim.spring || perf.lowEndDevice || anim.level !== 'standard'
+      !anim.spring || !isStandardAnimation(anim)
 
     return (
       <motion.div

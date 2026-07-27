@@ -33,6 +33,7 @@ import {
   getBrewTransition,
   useBrewAnimationConfig,
 } from '../../hooks/animation'
+import { isExlight } from '../../hooks/useAnimationLevel'
 import * as brewliaApi from '../../services/brewliaApi'
 import {
   loadEmbedData,
@@ -337,7 +338,7 @@ export default function BrewReader({
     () => getBrewTransition(animConfig, 'reader'),
     [animConfig],
   )
-  const enableAnimations = animConfig.level !== 'exlight'
+  const enableAnimations = !isExlight(animConfig)
 
   // WebKit 优化：延迟渲染内容，让入场动画先完成
   const [contentReady, setContentReady] = useState(!enableAnimations)

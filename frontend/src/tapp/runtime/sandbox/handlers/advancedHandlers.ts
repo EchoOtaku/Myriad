@@ -8,6 +8,7 @@ import type { DynamicContentItem } from '../../../../services/DynamicContentProv
 import type { BackgroundRequirement, TappInstance } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
 import type { AnimationConfigRef } from '../types'
+import { isExlight } from '../../../../hooks/useAnimationLevel'
 import { getDynamicContentProvider } from '../../../../services/DynamicContentProvider'
 import { analyzeBeatGrid } from '../../../../utils/beatAnalyzer'
 import { getLyricsWithVerbatim } from '../../../../utils/musicPlayer'
@@ -861,9 +862,10 @@ export function registerAnimationHandlers(
   })
 
   bridge.registerHandler('animation.shouldAnimate', async () => {
+    const level = animationConfigRef?.current?.level || 'standard'
     return {
       success: true,
-      data: (animationConfigRef?.current?.level || 'standard') !== 'exlight',
+      data: !isExlight(level),
     }
   })
 
@@ -888,7 +890,7 @@ export function registerAnimationHandlers(
     const cfg = animationConfigRef?.current
     if (!cfg) return { success: true, data: index * (baseDelay as number) }
     let delay = baseDelay as number
-    if (cfg.level === 'exlight') delay = 0
+    if (isExlight(cfg)) delay = 0
     else if (cfg.level === 'light') delay = (baseDelay as number) * 0.5
     return { success: true, data: index * delay * cfg.durationScale }
   })

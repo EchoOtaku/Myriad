@@ -77,7 +77,6 @@ export interface AnimationConfigRef {
   durationScale: number
   widgetGlow?: boolean
   widgetUiRotation?: boolean
-  killAllBackdrop?: boolean
 }
 
 export type { TappInstance }

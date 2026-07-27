@@ -18,7 +18,10 @@ import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
-import { useAnimationLevel } from '../hooks/useAnimationLevel'
+import {
+  isReducedAnimation,
+  useAnimationLevel,
+} from '../hooks/useAnimationLevel'
 import { useMusicPlayer } from '../hooks/useMusicPlayer'
 import { useNotificationCenter } from '../hooks/useNotificationCenter'
 import { useNotificationPreferences } from '../hooks/useNotificationPreferences'
@@ -856,11 +859,7 @@ const GlobalControlPanel: React.FC = () => {
     let isAnimating = false // 🔧 动画状态标记
 
     // ⚠️ 移动端 / 低性能模式：加大节流、跳过 ResizeObserver
-    const isMobileDevice =
-      perf.isMobile ||
-      perf.lowEndDevice ||
-      anim.level === 'light' ||
-      anim.level === 'exlight'
+    const isMobileDevice = perf.isMobile || isReducedAnimation(anim)
 
     // ⚠️ 节流时间：防止短时间内多次事件触发重复测量
     // 🔧 加大节流时间，减少克隆测量频率

@@ -33,7 +33,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { PlaygroundTraceIcon } from './PlaygroundIcons'
 
 /** Persisted generate failure for status-band + Retry (localStorage via parent) */
@@ -297,7 +297,7 @@ export function PlaygroundComposer({
 }: PlaygroundComposerProps) {
   const { t, format } = useI18n()
   const animConfig = useAnimationLevel()
-  const animationsEnabled = animConfig.level !== 'exlight'
+  const animationsEnabled = !isExlight(animConfig)
   const springTransition = animConfig.spring
     ? ({ type: 'spring', stiffness: 400, damping: 30 } as const)
     : ({ type: 'tween', duration: 0.25 * animConfig.durationScale } as const)

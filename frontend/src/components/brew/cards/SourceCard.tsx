@@ -28,6 +28,7 @@ import React, {
 } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { useBrewCardStagger } from '../../../hooks/animation'
+import { isExlight } from '../../../hooks/useAnimationLevel'
 import { extractColorsFromLoadedImage } from '../../../utils/colorExtractor'
 import {
   API_URL,
@@ -172,7 +173,7 @@ export const SourceCard = React.memo(
         animateStyle,
       } = useBrewCardStagger(index, 'source')
 
-      const enableHover = animConfig.level !== 'exlight'
+      const enableHover = !isExlight(animConfig)
 
       const color = getSourceColor(source)
       const hasUnread = source.unread_count > 0

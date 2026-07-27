@@ -29,7 +29,7 @@ import { NavigationProvider } from './contexts/NavigationContext'
 import { PageContentProvider } from './contexts/PageContentContext'
 import { ReadingListProvider } from './contexts/ReadingListContext'
 import { useRouteScheduler } from './hooks/animation/useRouteScheduler'
-import { useAnimationLevel } from './hooks/useAnimationLevel'
+import { isExlight, useAnimationLevel } from './hooks/useAnimationLevel'
 import { AppLayout } from './layouts/AppLayout'
 import { recordNavigation } from './router/navigationHistory'
 import { TappDataExchangeConsentHost } from './tapp/components/TappDataExchangeConsentHost'
@@ -248,7 +248,7 @@ function AnimatedPage({
   const location = useLocation()
   const style = animationStyle ?? 'normal'
   const animationConfig = useAnimationLevel()
-  const animationsEnabled = animationConfig.level !== 'exlight'
+  const animationsEnabled = !isExlight(animationConfig)
 
   // 选择动画变体和包装样式
   const variants = style === 'normal' ? pageVariants : fixedPageVariants

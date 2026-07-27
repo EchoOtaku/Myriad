@@ -32,7 +32,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
 import { useNavigation } from '../../contexts/NavigationContext'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { TappIcon } from '../components/TappIcon'
 import { TappWindowManager } from '../components/TappWindowManager'
@@ -86,7 +86,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
 
   // 动画配置
   const animConfig = useAnimationLevel()
-  const noAnimation = animConfig.level === 'exlight'
+  const noAnimation = isExlight(animConfig)
 
   const [tapp, setTapp] = useState<TappInstance | null>(null)
   const [code, setCode] = useState<TappCodeStructure | null>(null)

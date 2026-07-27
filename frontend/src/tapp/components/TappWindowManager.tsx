@@ -32,7 +32,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 // 统一动画调度器
 import { isPageVisible, scheduleIdle, startPage } from '../../hooks/animation'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 // CSRF 防护
 import { getCSRFToken } from '../../utils/csrf'
 import { getUIConfigDeduped } from '../../utils/requestDedup'
@@ -169,7 +169,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
   }) => {
     const { t, locale } = useI18n()
     const animConfig = useAnimationLevel()
-    const noAnimation = animConfig.level === 'exlight'
+    const noAnimation = isExlight(animConfig)
     const windowTappName = window.tapp
       ? resolveManifestText(window.tapp.manifest, locale).name
       : ''
@@ -668,7 +668,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   const { t, locale } = useI18n()
   const { isAuthenticated } = useAuth()
   const animConfig = useAnimationLevel()
-  const noAnimation = animConfig.level === 'exlight'
+  const noAnimation = isExlight(animConfig)
   const runtime = getTappRuntime()
 
   const containerRef = useRef<HTMLDivElement>(null)

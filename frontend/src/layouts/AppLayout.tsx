@@ -18,7 +18,11 @@ import {
   useIdleEffect,
   useVisibilityInterval,
 } from '../hooks/animation/atomicHooks'
-import { useAnimationLevel } from '../hooks/useAnimationLevel'
+import {
+  isExlight,
+  isReducedAnimation,
+  useAnimationLevel,
+} from '../hooks/useAnimationLevel'
 import { useAuthUrlFeedback } from '../hooks/useAuthUrlFeedback'
 import { useEvocativeWallpaper } from '../hooks/useEvocativeWallpaper'
 import { useNavAutoHide } from '../hooks/useNavAutoHide'
@@ -100,9 +104,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // 🎨 Evocative 壁纸动效统一 Hook
   // ⚠️ 低性能模式下强制禁用所有动效
-  const isLowPerformance =
-    anim.level === 'exlight' ||
-    anim.level === 'light'
+  const isLowPerformance = isReducedAnimation(anim)
   useEvocativeWallpaper('wallpaper', {
     parallax: {
       enabled: evocativeConfig.parallax && !isLowPerformance,
@@ -292,7 +294,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           id="bg-gradient"
           className="pointer-events-none absolute inset-0 z-[2] bg-linear-to-b from-transparent from-35% via-white/40 via-55% to-white/90 to-85% transition-opacity duration-500 ease-out"
         ></div>
-        {anim.level !== 'exlight' && (
+        {!isExlight(anim) && (
           <div className="pointer-events-none absolute inset-0 z-[3] bg-grid-pattern opacity-[0.02]"></div>
         )}
       </div>

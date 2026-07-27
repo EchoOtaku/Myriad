@@ -143,7 +143,7 @@ export const ReportCardWidget = memo(
         setInternalShowOverview(true)
         return
       }
-      // exlight / none：只显示概览，不自动翻面
+      // exlight：只显示概览，不自动翻面
       if (!animLevel.widgetUiRotation) {
         setInternalShowOverview(true)
         return

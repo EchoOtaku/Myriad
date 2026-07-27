@@ -13,6 +13,7 @@ import { memo, useMemo } from 'react'
 import {
   type AnimationLevel,
   getAnimationConfigSync,
+  isExlight,
 } from '../../../hooks/useAnimationLevel'
 import './GlowBackground.css'
 
@@ -54,7 +55,7 @@ export const GlowBackground = memo(
     opacity,
   }: GlowBackgroundProps) => {
     // exlight：不渲染光晕（静态也不画），省合成层
-    if (animLevel === 'exlight') {
+    if (isExlight(animLevel)) {
       return null
     }
 

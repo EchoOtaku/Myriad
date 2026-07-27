@@ -156,10 +156,7 @@ html[data-perf-mode='exlight'] .glow-orb {
   display: none !important;
 }
 
-/* exlight：弱化友链批入场 / pulse 类装饰 */
-html[data-perf-mode='exlight'] .friend-links-batch-enter .friend-links-entry,
-html[data-perf-mode='exlight'] .friend-links-batch-exit .friend-links-entry,
-html[data-perf-mode='exlight'] .friend-links-square-gradient,
+/* pulse: generic exlight (friend-links also has component-level rules) */
 html[data-perf-mode='exlight'] .animate-pulse {
   animation: none !important;
 }

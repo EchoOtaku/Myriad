@@ -42,8 +42,11 @@ import Toast from '../../components/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { useTappScheduler, useTappStagger } from '../../hooks/animation'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
-import { usePerformanceProfile } from '../../hooks/usePerformanceProfile'
+import {
+  isExlight,
+  isStandardAnimation,
+  useAnimationLevel,
+} from '../../hooks/useAnimationLevel'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { useResolvedTitleColor, useTitleFont } from '../../hooks/useTitleFont'
 import { hasSessionHint } from '../../utils/sessionDetection'
@@ -125,12 +128,11 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
     const { t, locale } = useI18n()
     const { name: displayName, description: displayDescription } =
       resolveManifestText(manifest, locale)
-    const perf = usePerformanceProfile()
     const animConfig = useAnimationLevel()
     const [isHovered, setIsHovered] = useState(false)
 
-    // 交错延迟完全由协调器管理；none 模式直接显示。
-    const animationsEnabled = animConfig.level !== 'exlight'
+    // 交错延迟完全由协调器管理；exlight 模式直接显示。
+    const animationsEnabled = !isExlight(animConfig)
     const { canAnimate, onComplete } = useTappStagger(index, {
       enabled: animationsEnabled,
     })
@@ -181,7 +183,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
     return (
       <motion.div
         ref={ref}
-        layout={animConfig.level !== 'exlight'}
+        layout={!isExlight(animConfig)}
         initial={animationsEnabled ? { opacity: 0, y: 20 } : false}
         animate={
           !animationsEnabled || canAnimate
@@ -194,8 +196,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
           !animationsEnabled
             ? { duration: 0 }
             : !animConfig.spring ||
-                perf.lowEndDevice ||
-                animConfig.level !== 'standard'
+!isStandardAnimation(animConfig)
               ? { type: 'tween', duration: 0.25 }
               : {
                   type: 'spring',
@@ -204,7 +205,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
                 }
         }
         whileHover={
-          animConfig.level === 'standard' && !perf.lowEndDevice ? { y: -4 } : {}
+          isStandardAnimation(animConfig) ? { y: -4 } : {}
         }
         whileTap={animationsEnabled ? { scale: 0.98 } : {}}
         onClick={handleCardClick}

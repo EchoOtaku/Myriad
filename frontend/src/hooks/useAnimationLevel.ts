@@ -14,7 +14,7 @@ import {
  * - Meets hardware bar:  low → `light`,  high → `standard`
  * - Below hardware bar:  low → `exlight`, high → `light`
  *
- * `prefers-reduced-motion` also resolves to `exlight` (former `none` merged in).
+ * `prefers-reduced-motion` also resolves to `exlight`.
  */
 export type AnimationLevel = 'exlight' | 'light' | 'standard'
 
@@ -33,13 +33,11 @@ export interface AnimationConfig {
   widgetGlow: boolean
   /** Widget UI carousels / overview↔detail auto flip. */
   widgetUiRotation: boolean
-  /** Aggressive global backdrop kill (modals, glass, non-Tailwind). */
-  killAllBackdrop: boolean
 }
 
 /**
  * Minimal tier — weak-hardware "low" slot AND prefers-reduced-motion.
- * Former `none` is fully merged here.
+ * Global backdrop kill is CSS-driven via `html[data-perf-mode=exlight]`.
  */
 const CONFIG_EXLIGHT: AnimationConfig = {
   level: 'exlight',
@@ -48,7 +46,6 @@ const CONFIG_EXLIGHT: AnimationConfig = {
   durationScale: 0.4,
   widgetGlow: false,
   widgetUiRotation: false,
-  killAllBackdrop: true,
 }
 
 /**
@@ -62,7 +59,6 @@ const CONFIG_LIGHT: AnimationConfig = {
   durationScale: 0.6,
   widgetGlow: true,
   widgetUiRotation: true,
-  killAllBackdrop: false,
 }
 
 const CONFIG_STANDARD: AnimationConfig = {
@@ -72,24 +68,41 @@ const CONFIG_STANDARD: AnimationConfig = {
   durationScale: 1.0,
   widgetGlow: true,
   widgetUiRotation: true,
-  killAllBackdrop: false,
+}
+
+/** Anything with a `.level` field (AnimationConfig, sandbox ref, etc.). */
+type LevelLike = AnimationLevel | { level: AnimationLevel } | null | undefined
+
+function asLevel(input?: LevelLike): AnimationLevel | undefined {
+  if (input == null) return undefined
+  if (typeof input === 'string') return input
+  return input.level
+}
+
+/** Full-effects tier (standard only). */
+export function isStandardAnimation(input?: LevelLike): boolean {
+  return asLevel(input ?? currentAnimationConfig) === 'standard'
+}
+
+/** Minimal tier (exlight). */
+export function isExlight(input?: LevelLike): boolean {
+  return asLevel(input ?? currentAnimationConfig) === 'exlight'
+}
+
+/** Any non-standard tier (light | exlight) — prefer this over duplicating level checks. */
+export function isReducedAnimation(input?: LevelLike): boolean {
+  const level = asLevel(input ?? currentAnimationConfig)
+  return level === 'exlight' || level === 'light'
 }
 
 /**
  * Whether the device may run the full `standard` tier as its "high" slot.
- *
- * 分平台规则见 `utils/deviceHardwareTier.ts`：
- * Android 8G+ & 8 核+ · iOS ≥18 · macOS Apple Silicon · Win/Linux ~12G+ & 6 核+
+ * Rules: `utils/deviceHardwareTier.ts` → `perf.highHardware`.
  */
 export function meetsAnimationHardwareRequirement(
   perf: PerformanceProfile,
 ): boolean {
-  // highHardware 已由 usePerformanceProfile 按平台算好；reduceMotion 在 resolve 里单独处理
-  if (typeof perf.highHardware === 'boolean') {
-    return perf.highHardware
-  }
-  // 旧缓存/测试桩兜底
-  return !perf.lowEndDevice
+  return perf.highHardware === true
 }
 
 /**
@@ -104,21 +117,12 @@ export function resolveAnimationConfig(
   userPref: AnimationUserPreference | null | undefined,
   perf: PerformanceProfile,
 ): AnimationConfig {
-  // System reduced-motion: same minimal tier as weak-hardware "low"
   if (perf.reduceMotion) {
     return CONFIG_EXLIGHT
   }
 
   const capable = meetsAnimationHardwareRequirement(perf)
-  let wantHigh: boolean
-  if (userPref === 'light') {
-    wantHigh = false
-  } else if (userPref === 'standard') {
-    wantHigh = true
-  } else {
-    // auto / unset: pick the high slot of the hardware-allowed pair
-    wantHigh = true
-  }
+  const wantHigh = userPref !== 'light' // standard | auto | unset → high slot
 
   if (capable) {
     return wantHigh ? CONFIG_STANDARD : CONFIG_LIGHT
@@ -159,23 +163,6 @@ export function getCurrentAnimationConfig(): AnimationConfig {
   return currentAnimationConfig
 }
 
-/** 是否处于需要性能降级的模式（exlight / light） */
-export function isReducedAnimation(config?: AnimationConfig): boolean {
-  const level = (config ?? currentAnimationConfig).level
-  return level === 'exlight' || level === 'light'
-}
-
-/** Minimal tier (exlight): no glow, no widget UI rotation, kill all backdrops. */
-export function isExlight(level?: AnimationLevel): boolean {
-  const l = level ?? currentAnimationConfig.level
-  return l === 'exlight'
-}
-
-/** @deprecated use isExlight — `none` was merged into exlight */
-export function isExlightOrNone(level?: AnimationLevel): boolean {
-  return isExlight(level)
-}
-
 function syncPerfModeToDocument(level: AnimationLevel): void {
   if (typeof document === 'undefined') return
   document.documentElement.dataset.perfMode = level
@@ -192,13 +179,11 @@ export function useAnimationLevel(): AnimationConfig {
     return resolveAnimationConfig(pref, perf)
   }, [perf, prefContext?.preference])
 
-  // 同步模块缓存 + DOM 标记，供非 React 路径与样式钩子读取
   useEffect(() => {
     currentAnimationConfig = config
     syncPerfModeToDocument(config.level)
   }, [config])
 
-  // 根据性能级别自动配置动画协调器
   useEffect(() => {
     const isMobile = perf.isMobile
 

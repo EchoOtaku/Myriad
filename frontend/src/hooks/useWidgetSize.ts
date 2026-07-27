@@ -27,8 +27,7 @@ import type { WidgetSize } from '../components/WidgetGrid'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getCachedSize } from './animation'
 import { useHomeResizeObserver } from './animation/pages/home'
-import { useAnimationLevel } from './useAnimationLevel'
-import { usePerformanceProfile } from './usePerformanceProfile'
+import { isReducedAnimation, useAnimationLevel } from './useAnimationLevel'
 
 // 标准尺寸映射 (像素值基于假设的标准单元格大小)
 // 调整基准：从 120px 降至 80px，以适应 1366px/1440px 等主流笔记本屏幕
@@ -74,13 +73,9 @@ export function useWidgetSize(
 ): WidgetSizeInfo {
   const [size, setSize] = useState({ width: 0, height: 0 })
   const elementRef = useRef<HTMLDivElement | null>(null)
-  const perf = usePerformanceProfile()
   const anim = useAnimationLevel()
   // 低性能模式与硬件低端：仅首次测量，不持续监听
-  const reduceResizeWork =
-    perf.lowEndDevice ||
-    anim.level === 'exlight' ||
-    anim.level === 'light'
+  const reduceResizeWork = isReducedAnimation(anim)
   const reduceResizeWorkRef = useRef(reduceResizeWork)
   reduceResizeWorkRef.current = reduceResizeWork
 

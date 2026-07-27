@@ -30,7 +30,7 @@ import { Navigate, useNavigate } from 'react-router-dom'
 import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
 import { useNavigation } from '../../contexts/NavigationContext'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { PlaygroundComposer } from '../components/PlaygroundComposer'
 import { TappPlaygroundIcon } from '../components/PlaygroundIcons'
@@ -603,7 +603,7 @@ export function TappPlaygroundPage() {
   /** Avoid re-notifying the same prune event on every effect run. */
   const lastPruneNoticeKeyRef = useRef('')
 
-  const animationsEnabled = animConfig.level !== 'exlight'
+  const animationsEnabled = !isExlight(animConfig)
   const springTransition = animConfig.spring
     ? ({ type: 'spring', stiffness: 400, damping: 30 } as const)
     : ({ type: 'tween', duration: 0.25 * animConfig.durationScale } as const)

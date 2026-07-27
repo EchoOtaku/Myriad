@@ -28,7 +28,10 @@ import {
 } from '../utils/musicPlayer'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { loadResource } from '../utils/resourceLoader'
-import { getCurrentAnimationConfig } from './useAnimationLevel'
+import {
+  getCurrentAnimationConfig,
+  isReducedAnimation,
+} from './useAnimationLevel'
 import { getPerformanceProfileSync } from './usePerformanceProfile'
 
 // 播放模式类型
@@ -374,9 +377,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     // 移动端、低端设备或低性能模式直接返回,不启动动画
     if (
       perf.isMobile ||
-      perf.lowEndDevice ||
-      anim.level === 'exlight' ||
-    anim.level === 'light'
+      isReducedAnimation(anim)
     ) {
       return
     }

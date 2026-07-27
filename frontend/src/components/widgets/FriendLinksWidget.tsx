@@ -19,7 +19,10 @@ import { useNavigate } from 'react-router-dom'
 
 import { useI18n } from '../../contexts/I18nContext'
 import { useHomeVisibilityInterval } from '../../hooks/animation'
-import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import {
+  isExlight,
+  useAnimationLevel,
+} from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { getSources } from '../../services/brewApi'
 import { getIconUrl } from '../brew/constants'
@@ -299,7 +302,7 @@ export const FriendLinksWidget = memo(
       if (batchCount <= 1 || batchTransitioningRef.current) return
 
       const nextIndex = (batchIndexRef.current + 1) % batchCount
-      if (anim.level === 'exlight' || anim.durationScale === 0) {
+      if (isExlight(anim)) {
         batchIndexRef.current = nextIndex
         setBatchIndex(nextIndex)
         return

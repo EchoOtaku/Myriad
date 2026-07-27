@@ -43,8 +43,7 @@
 
 import type { DependencyList, RefCallback } from 'react'
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import { useAnimationLevel } from './useAnimationLevel'
-import { usePerformanceProfile } from './usePerformanceProfile'
+import { isReducedAnimation, useAnimationLevel } from './useAnimationLevel'
 
 export type FitTextMode = 'single' | 'wrap' | 'marquee'
 
@@ -167,13 +166,9 @@ export function useFitText(options: FitTextOptions): FitTextResult {
     enabled,
   } = options
 
-  const perf = usePerformanceProfile()
   const anim = useAnimationLevel()
   // 低性能模式 / 低端设备：仅挂载后补测一次，不持续挂 ResizeObserver
-  const reducedPerf =
-    perf.lowEndDevice ||
-    anim.level === 'exlight' ||
-    anim.level === 'light'
+  const reducedPerf = isReducedAnimation(anim)
   const active = enabled ?? !reducedPerf
   const marqueeAllowed = marquee !== false && active && !!anim.loop
 
