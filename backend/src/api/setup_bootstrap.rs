@@ -77,15 +77,23 @@ fn env_value<'a>(content: &'a str, key: &str) -> Option<&'a str> {
 /// 判定依据只看磁盘上的 `.env` —— 因为进入 CONFIG_MODE 时数据库按定义是不可达的，
 /// 不能依赖任何数据库状态。
 pub fn instance_previously_configured(env_path: &Path) -> bool {
-    let Ok(content) = std::fs::read_to_string(env_path) else {
-        return false;
-    };
+    configured_with_env(env_path, std::env::var("DATABASE_URL").ok().as_deref())
+}
+
+/// [`instance_previously_configured`] 的纯函数版本。
+///
+/// 把进程环境作为参数传入而不是在内部读取 —— 否则这个判断没法在测试里
+/// 稳定复现（环境变量是进程全局的，并行测试会互相干扰）。
+fn configured_with_env(env_path: &Path, database_url_env: Option<&str>) -> bool {
     // 环境变量里直接给了 DATABASE_URL（compose 常见写法）也算已配置。
-    if let Ok(from_env) = std::env::var("DATABASE_URL") {
-        if !is_placeholder_database_url(&from_env) {
+    if let Some(from_env) = database_url_env {
+        if !is_placeholder_database_url(from_env) {
             return true;
         }
     }
+    let Ok(content) = std::fs::read_to_string(env_path) else {
+        return false;
+    };
     env_value(&content, "DATABASE_URL")
         .map(|v| !is_placeholder_database_url(v))
         .unwrap_or(false)
@@ -249,8 +257,9 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let env_path = dir.join(".env");
 
+        // 显式传 None，不受运行环境里是否设了 DATABASE_URL 影响
         // 不存在 → 首次安装
-        assert!(!instance_previously_configured(&env_path));
+        assert!(!configured_with_env(&env_path, None));
 
         // 占位符 → 仍算首次安装
         std::fs::write(
@@ -258,13 +267,29 @@ mod tests {
             "DATABASE_URL=postgres://user:your_password@localhost/db\n",
         )
         .unwrap();
-        assert!(!instance_previously_configured(&env_path));
+        assert!(!configured_with_env(&env_path, None));
 
         // 真实值 → 已配置，setup 必须上锁
         std::fs::write(&env_path, "DATABASE_URL=postgres://m:p@db:5432/m\n").unwrap();
-        assert!(instance_previously_configured(&env_path));
+        assert!(configured_with_env(&env_path, None));
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn process_env_database_url_alone_marks_configured() {
+        // compose 直接把 DATABASE_URL 注进环境、磁盘上没有 .env 的部署形态
+        let missing = Path::new("/nonexistent/myriad/.env");
+        assert!(configured_with_env(
+            missing,
+            Some("postgres://m:p@db:5432/m")
+        ));
+        assert!(!configured_with_env(missing, Some("")));
+        assert!(!configured_with_env(
+            missing,
+            Some("postgres://u:your_password@h/d")
+        ));
+        assert!(!configured_with_env(missing, None));
     }
 
     #[test]
