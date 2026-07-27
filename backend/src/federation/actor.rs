@@ -129,8 +129,10 @@ pub async fn get_actor(
     // G, stored kid is already the new host — rewrite to `key_id(serve_base, …)`
     // so Move signatures (old origin) verify against the old actor document.
     // Matches `move_actor::local_actor_document_for_base`. Empty column → recompute.
-    let serve = base_url.trim_end_matches('/');
-    let kid = if !stored_kid.trim().is_empty() && stored_kid.contains(serve) {
+    // 前缀判断而非 `contains`：`contains` 会把 serve base 出现在路径或 query
+    // 任意位置的 key id 也认成"属于本站"，例如
+    // `https://evil.example/x?u=https://myriad.example`。
+    let kid = if key_id_belongs_to_base(&stored_kid, &base_url) {
         stored_kid
     } else {
         key_id(&base_url, &username)
@@ -163,6 +165,10 @@ pub async fn get_actor(
             url: avatar_proxy_url(&base_url, &username),
         }),
         image: None,
+        // 声明实例级共享收件箱，远端才会把同一条公开活动合并成一次投递
+        endpoints: Some(ActorEndpoints {
+            shared_inbox: Some(shared_inbox_url(&base_url)),
+        }),
         also_known_as,
         moved_to,
         mfp_instance_version: Some(env!("CARGO_PKG_VERSION").to_string()),
@@ -997,13 +1003,9 @@ async fn force_store_new_keys(
         .public_key_pem()
         .map_err(|e| format!("PEM encoding failed: {}", e))?;
 
-    let jwt_secret = {
-        let config = crate::GLOBAL_CONFIG.read().await;
-        config.jwt_secret.clone()
-    };
-
+    // 新私钥直接用 v1 信封（数据密钥），不再绑定 JWT_SECRET
     let encrypted = keypair
-        .encrypt_private_key(&jwt_secret)
+        .encrypt_private_key()
         .map_err(|e| format!("Key encryption failed: {}", e))?;
 
     let kid = key_id(base_url, username);
@@ -1142,13 +1144,9 @@ async fn generate_and_store_keys(
         .public_key_pem()
         .map_err(|e| format!("PEM encoding failed: {}", e))?;
 
-    let jwt_secret = {
-        let config = crate::GLOBAL_CONFIG.read().await;
-        config.jwt_secret.clone()
-    };
-
+    // 新私钥直接用 v1 信封（数据密钥），不再绑定 JWT_SECRET
     let encrypted = keypair
-        .encrypt_private_key(&jwt_secret)
+        .encrypt_private_key()
         .map_err(|e| format!("Key encryption failed: {}", e))?;
 
     let kid = key_id(base_url, username);

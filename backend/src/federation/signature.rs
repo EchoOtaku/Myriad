@@ -98,30 +98,43 @@ pub fn parse_signature_header(header: &str) -> Result<ParsedSignature> {
     let mut headers = None;
     let mut signature = None;
 
-    // 解析 key="value" 格式的参数
+    // 解析 key="value" 格式的参数。
+    //
+    // 重复的参数一律拒绝，不做"后者覆盖前者"。歧义的签名头是经典的解析器差异
+    // 攻击面：中间环节按第一个值判断、我们按最后一个值验证，两边就会对同一个
+    // 请求得出不同结论。宁可 401。
+    macro_rules! set_once {
+        ($slot:expr, $name:literal, $value:expr) => {{
+            if $slot.is_some() {
+                anyhow::bail!(concat!("Duplicate `", $name, "` parameter in Signature header"));
+            }
+            $slot = Some($value);
+        }};
+    }
+
     for part in split_signature_params(header) {
         let part = part.trim();
         if let Some((key, value)) = part.split_once('=') {
             let key = key.trim();
             let value = value.trim().trim_matches('"');
             match key {
-                "keyId" => key_id = Some(value.to_string()),
-                "algorithm" => algorithm = Some(value.to_string()),
-                "headers" => {
-                    headers = Some(
-                        value
-                            .split_whitespace()
-                            .map(|s| s.to_ascii_lowercase())
-                            .collect(),
-                    )
-                }
-                "signature" => {
-                    signature = Some(
-                        BASE64
-                            .decode(value)
-                            .context("Invalid base64 in signature")?,
-                    );
-                }
+                "keyId" => set_once!(key_id, "keyId", value.to_string()),
+                "algorithm" => set_once!(algorithm, "algorithm", value.to_string()),
+                "headers" => set_once!(
+                    headers,
+                    "headers",
+                    value
+                        .split_whitespace()
+                        .map(|s| s.to_ascii_lowercase())
+                        .collect::<Vec<String>>()
+                ),
+                "signature" => set_once!(
+                    signature,
+                    "signature",
+                    BASE64
+                        .decode(value)
+                        .context("Invalid base64 in signature")?
+                ),
                 _ => {} // 忽略未知参数
             }
         }

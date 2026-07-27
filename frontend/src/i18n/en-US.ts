@@ -50,8 +50,6 @@ export const enUS: TranslationKeys = {
     mainNavigation: 'Main Navigation',
     back: 'Back',
     backToNav: 'Back to Navigation',
-    platformReport: 'Platform Report',
-    showPlatformReport: 'Show Platform Report',
     all: 'All',
     showAll: 'Show All Content',
     game: 'Games',
@@ -72,9 +70,7 @@ export const enUS: TranslationKeys = {
     currentFilterMusic: 'Current Filter: Music - Click to Expand',
     currentFilterAnime: 'Current Filter: Anime - Click to Expand',
     currentFilterTvSeries: 'Current Filter: TV Series - Click to Expand',
-    currentTabPlatform: 'Current Tab: Platform Report - Click to Expand',
     expandFilters: 'Click to expand filters',
-    switchTab: 'Click to switch tab',
     // Brew
     brew: 'Brew',
     brewReading: 'Brew Reader',
@@ -1785,8 +1781,6 @@ export const enUS: TranslationKeys = {
     adminOnlyGenerate: 'Only admin can generate reports',
     generateFailed: 'Generation failed',
     generateFailedRetry: 'Generation failed, please try again',
-    deleteFailed: 'Delete failed',
-    deleteFailedRetry: 'Delete failed, please try again',
 
     // UI text
     close: 'Close',

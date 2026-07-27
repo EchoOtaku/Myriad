@@ -33,6 +33,9 @@ impl ConfigService {
                 row.try_get::<String>("", "key"),
                 row.try_get::<JsonValue>("", "value"),
             ) {
+                // 敏感值在库里是密文；这里解封成明文供运行时使用。
+                // 未迁移的遗留明文原样通过。
+                let value = crate::services::data_key::open_config_value(&key, value);
                 config_map.insert(key, value);
             }
         }
@@ -758,7 +761,13 @@ impl ConfigService {
     }
 
     /// 更新单个配置项
+    ///
+    /// 敏感 key（`*api_key*` / `*token*` / `*secret*` / `*password*` / `*npsso*`）
+    /// 在这里加密后落库，因此调用方始终传明文。这是配置写入的唯一漏斗，
+    /// 加密放在这一层就不会有绕过的写路径。
     pub async fn update_config(&self, key: &str, value: JsonValue) -> Result<()> {
+        let value = crate::services::data_key::seal_config_value(key, value);
+
         let sql = r#"
             INSERT INTO configurations (key, value, updated_at)
             VALUES ($1, $2, CURRENT_TIMESTAMP)

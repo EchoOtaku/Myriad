@@ -106,7 +106,7 @@ pub async fn create_admin(
     }
 
     // Hash password using Argon2id
-    let password_hash = hash_password(&request.password)?;
+    let password_hash = hash_password(&request.password).await?;
 
     // Insert admin user
     use sea_orm::Value as SeaValue;
@@ -237,7 +237,7 @@ pub async fn local_login(
         None => {
             // 执行虚拟 Argon2 验证以防止时序攻击枚举用户名
             let dummy_hash = "$argon2id$v=19$m=19456,t=2,p=1$dW5rbm93bnNhbHQ$dW5rbm93bmhhc2g";
-            let _ = verify_password(&request.password, dummy_hash);
+            let _ = verify_password(&request.password, dummy_hash).await;
             tracing::warn!("User not found: {}", request.username);
             return Err((
                 StatusCode::UNAUTHORIZED,
@@ -289,7 +289,7 @@ pub async fn local_login(
     }
 
     // Verify password
-    verify_password(&request.password, &password_hash)?;
+    verify_password(&request.password, &password_hash).await?;
 
     // Update last login timestamp
     let _ = db
@@ -452,10 +452,10 @@ pub async fn change_password(
     };
 
     // Verify old password
-    verify_password(&request.old_password, &current_password_hash)?;
+    verify_password(&request.old_password, &current_password_hash).await?;
 
     // Hash new password
-    let new_password_hash = hash_password(&request.new_password)?;
+    let new_password_hash = hash_password(&request.new_password).await?;
 
     // Update password
     let update_query =
@@ -543,49 +543,78 @@ fn validate_password(password: &str) -> Result<(), (StatusCode, Json<Value>)> {
     Ok(())
 }
 
-/// Hash password using Argon2id
-fn hash_password(password: &str) -> Result<String, (StatusCode, Json<Value>)> {
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-
-    let password_hash = argon2
-        .hash_password(password.as_bytes(), &salt)
-        .map_err(|e| {
-            tracing::error!("Failed to hash password: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to process password"})),
-            )
-        })?
-        .to_string();
-
-    Ok(password_hash)
+/// Argon2id 是**故意**设计成慢且吃内存的（默认参数约 19 MiB / 数十毫秒）。
+///
+/// 直接在 async handler 里同步跑，等于在 Tokio worker 线程上阻塞几十毫秒 ——
+/// 登录和注册都是公开端点，并发请求足以让整个 runtime 的调度停摆，连不相关
+/// 的请求也被拖住。所有 Argon2 计算都必须挪到 blocking 线程池。
+fn blocking_pool_error<T>(e: tokio::task::JoinError) -> Result<T, (StatusCode, Json<Value>)> {
+    tracing::error!("Password hashing task failed: {:?}", e);
+    Err((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({"error": "Failed to process password"})),
+    ))
 }
 
-/// Verify password against hash
-fn verify_password(password: &str, hash: &str) -> Result<(), (StatusCode, Json<Value>)> {
-    let parsed_hash = PasswordHash::new(hash).map_err(|e| {
-        tracing::error!("Failed to parse password hash: {:?}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to verify password"})),
-        )
-    })?;
+/// Hash password using Argon2id (on the blocking pool)
+async fn hash_password(password: &str) -> Result<String, (StatusCode, Json<Value>)> {
+    let password = password.to_owned();
+    let joined = tokio::task::spawn_blocking(move || {
+        let salt = SaltString::generate(&mut OsRng);
+        let argon2 = Argon2::default();
+        argon2
+            .hash_password(password.as_bytes(), &salt)
+            .map(|h| h.to_string())
+    })
+    .await;
 
-    let argon2 = Argon2::default();
+    match joined {
+        Ok(Ok(hash)) => Ok(hash),
+        Ok(Err(e)) => {
+            tracing::error!("Failed to hash password: {:?}", e);
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Failed to process password"})),
+            ))
+        }
+        Err(e) => blocking_pool_error(e),
+    }
+}
 
-    argon2
-        .verify_password(password.as_bytes(), &parsed_hash)
-        .map_err(|_| {
+/// Verify password against hash (on the blocking pool)
+async fn verify_password(password: &str, hash: &str) -> Result<(), (StatusCode, Json<Value>)> {
+    let password = password.to_owned();
+    let hash = hash.to_owned();
+
+    let joined = tokio::task::spawn_blocking(move || {
+        let parsed_hash = PasswordHash::new(&hash).map_err(|e| {
+            tracing::error!("Failed to parse password hash: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+        Argon2::default()
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .map_err(|_| StatusCode::UNAUTHORIZED)
+    })
+    .await;
+
+    match joined {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(StatusCode::UNAUTHORIZED)) => {
             tracing::warn!("Password verification failed");
-            (
+            Err((
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
                     "error": "Invalid credentials",
                     "message": "Username or password is incorrect"
                 })),
-            )
-        })
+            ))
+        }
+        Ok(Err(_)) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "Failed to verify password"})),
+        )),
+        Err(e) => blocking_pool_error(e),
+    }
 }
 
 // ============================================================================
@@ -651,7 +680,7 @@ pub async fn register(
         ));
     }
 
-    let password_hash = hash_password(&req.password)?;
+    let password_hash = hash_password(&req.password).await?;
 
     let insert = db
         .query_one(Statement::from_sql_and_values(
@@ -763,7 +792,7 @@ pub async fn set_password(
         ));
     }
 
-    let hash = hash_password(&req.new_password)?;
+    let hash = hash_password(&req.new_password).await?;
 
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
@@ -1004,7 +1033,7 @@ pub async fn admin_create_user(
         ));
     }
 
-    let password_hash = hash_password(&req.password)?;
+    let password_hash = hash_password(&req.password).await?;
     // 非 owner 路径上 is_admin 必为 false（上方已校验）
     let create_as_admin = req.is_admin;
 

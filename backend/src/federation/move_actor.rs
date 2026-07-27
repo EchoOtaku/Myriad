@@ -597,7 +597,7 @@ async fn local_actor_document_for_base(
     let kid = key_id_stored.unwrap_or_else(|| key_id(serve_base, username));
     // When serving under a non-current base (old domain), keyId must match that base
     // so Move signature verification against the old actor document succeeds.
-    let kid = if kid.contains(serve_base.trim_end_matches('/')) {
+    let kid = if key_id_belongs_to_base(&kid, serve_base) {
         kid
     } else {
         key_id(serve_base, username)
@@ -624,6 +624,9 @@ async fn local_actor_document_for_base(
         },
         icon: None,
         image: None,
+        endpoints: Some(ActorEndpoints {
+            shared_inbox: Some(shared_inbox_url(serve_base)),
+        }),
         also_known_as,
         moved_to,
         mfp_instance_version: Some(env!("CARGO_PKG_VERSION").to_string()),
@@ -1659,6 +1662,7 @@ mod tests {
             },
             icon: None,
             image: None,
+            endpoints: None,
             also_known_as: vec!["https://old.example/users/a".into()],
             moved_to: None,
             mfp_instance_version: None,

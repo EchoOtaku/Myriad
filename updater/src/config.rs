@@ -382,8 +382,22 @@ mod tests {
         assert!(!DbMode::Bundled.is_external());
     }
 
+    /// `MYRIAD_DB_MODE` is process-global, so the tests that read or write it
+    /// must not run concurrently. Without this they interleave: one clears the
+    /// var while another has just set it, and `db_mode_resolve_from_env_file`
+    /// intermittently sees `bundled` instead of the file's `external`.
+    fn db_mode_env_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+        // A poisoned lock only means some other test panicked; the env state is
+        // reset by each test anyway, so recover rather than cascade failures.
+        LOCK.get_or_init(|| std::sync::Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn db_mode_resolve_defaults_bundled() {
+        let _guard = db_mode_env_lock();
         // Unset process env + missing file → bundled.
         std::env::remove_var("MYRIAD_DB_MODE");
         let missing = std::path::Path::new("/tmp/myriad-db-mode-missing-env-xyz");
@@ -393,6 +407,7 @@ mod tests {
 
     #[test]
     fn db_mode_resolve_from_env_file() {
+        let _guard = db_mode_env_lock();
         std::env::remove_var("MYRIAD_DB_MODE");
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(".env");
@@ -402,6 +417,7 @@ mod tests {
 
     #[test]
     fn db_mode_process_env_overrides_file() {
+        let _guard = db_mode_env_lock();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(".env");
         std::fs::write(&path, "MYRIAD_DB_MODE=external\n").unwrap();

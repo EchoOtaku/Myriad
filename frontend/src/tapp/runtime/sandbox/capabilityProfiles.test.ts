@@ -60,8 +60,16 @@ function evaluateSdk(profile: 'page' | 'headless'): Record<string, unknown> {
 describe('sandbox capability profiles', () => {
   it('keeps every generated SDK action governed by PERMISSION_MAP', () => {
     const sdk = generateFullSDK(instance, 'session-token', 'page')
+    // `\s*` 必须同时出现在 `(` 之后：SDK 里的调用可以是
+    //   sendRequest('media', 'getStatus', [])
+    // 也可以因为参数变长而被格式化成
+    //   sendRequest(
+    //     'media',
+    //     'playTrack',
+    // 少了这个 `\s*`，多行写法会被整条漏掉，于是该 action 看起来"从 SDK 消失了"。
+    // 断言的是能力面而不是源码排版，不该被换行影响。
     const sdkActions = new Set(
-      [...sdk.matchAll(/sendRequest\('([^']+)',\s*'([^']+)'/g)].map(
+      [...sdk.matchAll(/sendRequest\(\s*'([^']+)',\s*'([^']+)'/g)].map(
         ([, namespace, operation]) => `${namespace}.${operation}`,
       ),
     )

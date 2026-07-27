@@ -24,10 +24,11 @@ const OUTBOX_PAGE_SIZE: i64 = 20;
 /// 过去 Outbox 直接按 `user_id + is_local` 全表返回 `object_json`，等于把整个
 /// 内部控制面匿名公开。
 ///
-/// 现在改成 fail-closed 投影：只有**同时**满足
-///   1. activity 类型在下面的白名单里，且
-///   2. 在 `federation_published_content` 里有一条 `visibility = 'public'` 记录
-/// 的活动才会出现。任何新增的活动类型默认不可见，必须显式登记成公开内容。
+/// 现在改成 fail-closed 投影：只有**同时**满足以下两条的活动才会出现 ——
+/// 1. activity 类型在下面的白名单里；
+/// 2. 在 `federation_published_content` 里有一条 `visibility = 'public'` 记录。
+///
+/// 任何新增的活动类型默认不可见，必须显式登记成公开内容。
 const PUBLIC_OUTBOX_FILTER: &str = r#"
     FROM federation_activities a
     JOIN federation_published_content p ON p.activity_id = a.activity_id
@@ -61,7 +62,7 @@ pub async fn get_outbox(
     let total: i64 = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            &format!("SELECT COUNT(*) as count {}", PUBLIC_OUTBOX_FILTER),
+            format!("SELECT COUNT(*) as count {}", PUBLIC_OUTBOX_FILTER),
             [user_id.into()],
         ))
         .await
@@ -108,7 +109,7 @@ pub async fn get_outbox(
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            &format!(
+            format!(
                 "SELECT a.object_json {} ORDER BY a.published_at DESC NULLS LAST, a.id DESC \
                  LIMIT $2 OFFSET $3",
                 PUBLIC_OUTBOX_FILTER
@@ -153,6 +154,55 @@ pub async fn get_outbox(
         StatusCode::OK,
         Json(serde_json::to_value(page_doc).unwrap()),
     ))
+}
+
+/// GET /activities/{id}
+///
+/// 解引用单条公开活动。
+///
+/// `generate_activity_id` 一直在生成 `{base_url}/activities/{uuid}` 形态的 id，
+/// 但从来没有对应的 GET 路由 —— 远端拿到一条 Create 之后无法回查验证，
+/// 转发/引用这条活动的实例也解析不出内容。
+///
+/// 可见性规则与 Outbox 完全一致（同一个投影），所以这里不会成为绕过
+/// Outbox 过滤的旁路。
+pub async fn get_activity(
+    Path(id): Path<String>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+    let db = get_db()
+        .await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
+    let base_url = get_base_url().await;
+
+    let activity_id = format!("{}/activities/{}", base_url.trim_end_matches('/'), id);
+
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT a.object_json
+               FROM federation_activities a
+               JOIN federation_published_content p ON p.activity_id = a.activity_id
+               WHERE a.activity_id = $1
+                 AND a.is_local = true
+                 AND a.activity_type IN ('Create', 'Announce')
+                 AND p.visibility = 'public'"#,
+            [activity_id.clone().into()],
+        ))
+        .await
+        .map_err(db_err)?;
+
+    let Some(row) = row else {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Activity not found"})),
+        ));
+    };
+
+    let object_json: serde_json::Value = row
+        .try_get::<serde_json::Value>("", "object_json")
+        .unwrap_or(json!({}));
+
+    Ok((StatusCode::OK, Json(object_json)))
 }
 
 // ==================== 辅助函数 ====================

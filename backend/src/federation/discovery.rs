@@ -19,9 +19,17 @@ pub struct WebFingerQuery {
 /// GET /.well-known/webfinger?resource=acct:user@domain
 ///
 /// RFC 7033 WebFinger 端点 — AP 联邦发现的入口
+#[allow(clippy::type_complexity)]
 pub async fn webfinger(
     Query(query): Query<WebFingerQuery>,
-) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+) -> Result<
+    (
+        StatusCode,
+        [(axum::http::HeaderName, &'static str); 1],
+        Json<serde_json::Value>,
+    ),
+    (StatusCode, Json<serde_json::Value>),
+> {
     let resource = &query.resource;
 
     // 解析 acct:username@domain 格式
@@ -91,8 +99,14 @@ pub async fn webfinger(
         ],
     };
 
+    // RFC 7033 §10.2 要求 JRD 用 application/jrd+json；axum 的 Json 只会发
+    // application/json。多数实现不校验，但规范一致性没有代价。
     Ok((
         StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/jrd+json; charset=utf-8",
+        )],
         Json(serde_json::to_value(response).unwrap()),
     ))
 }

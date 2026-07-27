@@ -18,8 +18,8 @@
 
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import { escapeHtmlText, highlightText } from './musicPlayer.ts'
 
@@ -81,9 +81,15 @@ describe('MusicPlayer innerHTML call sites', () => {
     )
     const source = readFileSync(componentPath, 'utf8')
 
-    const htmlExpressions = [...source.matchAll(/__html:\s*([\s\S]*?),\n/g)].map(
-      (m) => m[1].trim(),
-    )
+    // 取每个 `__html:` 到其后第一个行尾逗号之间的表达式。
+    // 用字符串切分而不是正则，省得为了跨行匹配写出会回溯爆炸的模式。
+    const htmlExpressions = source
+      .split('__html:')
+      .slice(1)
+      .map((chunk) => {
+        const end = chunk.indexOf(',\n')
+        return (end === -1 ? chunk : chunk.slice(0, end)).trim()
+      })
 
     assert.ok(
       htmlExpressions.length > 0,

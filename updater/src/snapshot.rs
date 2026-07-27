@@ -573,6 +573,65 @@ mod tests {
     }
 
     #[test]
+    fn validate_snapshot_id_rejects_path_influencing_ids() {
+        for bad in [
+            "",
+            "..",
+            "../../etc",
+            "a/b",
+            "a\\b",
+            "/absolute",
+            "with space",
+            "nul\0byte",
+            "dot.dot",
+        ] {
+            assert!(
+                validate_snapshot_id(bad).is_err(),
+                "should reject {bad:?}"
+            );
+        }
+        for good in ["snap-1", "job_2026", "AbC123", "a"] {
+            assert!(validate_snapshot_id(good).is_ok(), "should accept {good:?}");
+        }
+    }
+
+    /// Regression: `restore` used to accept any id whose joined path existed,
+    /// so a rollback request could aim the restore outside `state/snapshots/`
+    /// and copy an arbitrary host directory over pgdata.
+    #[tokio::test]
+    async fn restore_rejects_traversal_and_unregistered_ids() {
+        let dir = tempdir().unwrap();
+        let state = StateDir::open(&dir.path().join("state")).unwrap();
+        let pgdata = dir.path().join("pgdata");
+        write_file(&pgdata.join("PG_VERSION"), "18\n");
+        write_file(&pgdata.join("base/1"), "live\n");
+
+        let mgr = SnapshotManager {
+            state: &state,
+            pgdata: pgdata.clone(),
+        };
+
+        // Traversal id — refused on the opaque-id rule, before any filesystem work.
+        let err = mgr.restore("../../etc").await.unwrap_err();
+        assert!(
+            matches!(err, UpdaterError::InvalidInput(_)),
+            "expected InvalidInput, got {err:?}"
+        );
+
+        // Well-formed id, directory planted on disk, but never registered in
+        // snapshots.json — still refused.
+        std::fs::create_dir_all(state.snapshots_dir().join("not-ours")).unwrap();
+        let err = mgr.restore("not-ours").await.unwrap_err();
+        assert!(
+            matches!(err, UpdaterError::NotFound(_)),
+            "expected NotFound, got {err:?}"
+        );
+
+        // pgdata untouched by either attempt.
+        assert!(pgdata.join("base/1").exists());
+    }
+
+    #[test]
     fn is_busy_detects_ebusy() {
         let e = std::io::Error::from_raw_os_error(16);
         assert!(is_busy(&e));

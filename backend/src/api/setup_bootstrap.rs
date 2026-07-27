@@ -162,11 +162,6 @@ pub fn init_for_config_mode(env_path: &Path) -> Option<&'static str> {
         .as_deref()
 }
 
-/// 当前进程是否要求引导令牌。
-pub fn bootstrap_required() -> bool {
-    BOOTSTRAP_TOKEN.get().map(Option::is_some).unwrap_or(false)
-}
-
 /// 校验请求携带的引导令牌。
 ///
 /// 首次安装（无令牌要求）直接放行。

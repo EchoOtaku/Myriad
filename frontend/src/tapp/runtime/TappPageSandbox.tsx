@@ -133,12 +133,11 @@ function generateHeadlessCoreHTML(
 ): string {
   const { manifest } = tappInstance
   const nonce = generateNonce()
-  const csp = generateCSP(
-    nonce,
-    cspOptionsFromPermissions(tappInstance.grantedPermissions),
-  )
+  const cspOptions = cspOptionsFromPermissions(tappInstance.grantedPermissions)
+  const csp = generateCSP(nonce, cspOptions)
   const securityWrapper = escapeSandboxScriptSource(
-    generateSecurityWrapper(sessionToken),
+    // 包装层的图片 URL 判断必须与 CSP 用同一份选项，否则提示与实际拦截会脱节
+    generateSecurityWrapper(sessionToken, cspOptions.allowRemoteMedia),
   )
   const sdkCode = escapeSandboxScriptSource(
     generateFullSDK(tappInstance, sessionToken, 'headless'),
@@ -219,12 +218,11 @@ function generatePageHTML(
 
   // 🔒 生成唯一 nonce（每个沙箱实例独立）
   const nonce = generateNonce()
-  const csp = generateCSP(
-    nonce,
-    cspOptionsFromPermissions(tappInstance.grantedPermissions),
-  )
+  const cspOptions = cspOptionsFromPermissions(tappInstance.grantedPermissions)
+  const csp = generateCSP(nonce, cspOptions)
   const securityWrapper = escapeSandboxScriptSource(
-    generateSecurityWrapper(sessionToken),
+    // 包装层的图片 URL 判断必须与 CSP 用同一份选项，否则提示与实际拦截会脱节
+    generateSecurityWrapper(sessionToken, cspOptions.allowRemoteMedia),
   )
   const sdkCode = escapeSandboxScriptSource(
     generateFullSDK(tappInstance, sessionToken),

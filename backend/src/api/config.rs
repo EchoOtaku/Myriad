@@ -1833,13 +1833,12 @@ fn validate_settings_backup(backup: &SettingsBackup) -> Result<(), String> {
     Ok(())
 }
 
+/// 敏感 key 判定。
+///
+/// 单一定义放在 `data_key`，这样"标记为已加密"和"实际加密"永远同源 ——
+/// 修复前这个列只是个标签，值仍然明文落库。
 fn is_sensitive_configuration_key(key: &str) -> bool {
-    let key = key.to_ascii_lowercase();
-    key.contains("api_key")
-        || key.contains("token")
-        || key.contains("secret")
-        || key.contains("password")
-        || key.contains("npsso")
+    crate::services::data_key::is_sensitive_config_key(key)
 }
 
 fn merge_settings_backup_entries(
@@ -2014,9 +2013,12 @@ pub async fn export_settings(
             continue;
         };
         let entry = SettingsBackupEntry {
-            key,
             value: match row.try_get("", "value") {
-                Ok(value) => value,
+                // 备份**明文**导出：这样导出的文件可以恢复到任意新实例，不必
+                // 同时带上密钥文件。这是有意的取舍 —— 导出是管理员主动执行的
+                // 认证操作（双重 admin 校验），同一个管理员在设置页本来就能看到
+                // 这些值；而加密要挡的是数据库副本泄露，那条路径上库里仍是密文。
+                Ok(value) => crate::services::data_key::open_config_value(&key, value),
                 Err(error) => {
                     tracing::error!("Failed to decode configuration value: {}", error);
                     return (
@@ -2025,6 +2027,7 @@ pub async fn export_settings(
                     );
                 }
             },
+            key,
             schema_version: descriptor.schema_version,
             description: row.try_get("", "description").ok().flatten(),
             category: row.try_get("", "category").ok().flatten(),
@@ -2137,8 +2140,10 @@ pub async fn restore_settings(
                             updated_at = CURRENT_TIMESTAMP
                     "#,
                     vec![
-                        entry.key.into(),
-                        entry.value.into(),
+                        entry.key.clone().into(),
+                        // 备份里是明文（见 export_settings），落库前重新加密。
+                        crate::services::data_key::seal_config_value(&entry.key, entry.value)
+                            .into(),
                         entry.description.into(),
                         entry.category.into(),
                         entry.is_encrypted.into(),

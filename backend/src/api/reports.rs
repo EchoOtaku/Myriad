@@ -22,12 +22,6 @@ pub struct GeneratePlatformReportsRequest {
     pub platforms: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GenerateAllReportsRequest {
-    /// Reserved for API compatibility; platform-only generate-all ignores style.
-    pub style: Option<String>,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PlatformReport {
     pub platform: String,
@@ -1087,7 +1081,7 @@ async fn generate_platform_reports_internal(
             platform: Set(report.platform.clone()),
             metadata: Set(metadata_json),
             report: Set(report_json),
-            report_title: Set(None), // 平台报告不需要标题
+            report_title: Set(None),
             created_at: Set(chrono::Utc::now().naive_utc()),
             expires_at: Set((chrono::Utc::now()
                 + chrono::Duration::days(report_settings.expiry_days))
@@ -1121,7 +1115,6 @@ async fn generate_platform_reports_internal(
 pub async fn generate_all_reports(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
-    Json(req): Json<GenerateAllReportsRequest>,
 ) -> Result<Json<Value>, StatusCode> {
     let actor_id = claims
         .sub
@@ -1216,7 +1209,6 @@ pub async fn generate_all_reports(
     drop(config);
 
     // 2. 生成平台报告 (使用内部函数，避免序列化开销)
-    let _ = req.style; // style reserved for API compatibility; ignored in platform-only mode
     let (platform_reports, skipped) =
         generate_platform_reports_internal(&db, user_id, enabled_platforms).await;
     let skipped_json: Vec<_> = skipped
@@ -1234,7 +1226,7 @@ pub async fn generate_all_reports(
     })))
 }
 
-/// 获取最新的平台报告（排除历史 `platform = "all"` 行）
+/// 获取最新的平台报告
 /// GET /api/reports/latest
 /// Public home / report cards: always return the **site owner's** platform reports
 /// (same authority as `/api/user`, library, activities). Do not switch to the

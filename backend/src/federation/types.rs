@@ -45,6 +45,14 @@ pub struct Actor {
     pub icon: Option<MediaObject>,
     pub image: Option<MediaObject>,
 
+    /// `endpoints.sharedInbox` —— 实例级共享收件箱。
+    ///
+    /// 实例一直在 `POST /inbox` 上提供共享收件箱，却从不在 Actor 文档里声明它，
+    /// 于是远端只会逐个 Actor 投递（同一条公开活动有多少本地粉丝就投多少次），
+    /// 共享收件箱的去重收益完全拿不到。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoints: Option<ActorEndpoints>,
+
     /// ActivityPub alias list (e.g. previous actor IDs after domain Move).
     /// Present on the **new** actor so peers can bind old→new identity.
     #[serde(rename = "alsoKnownAs", default, skip_serializing_if = "Vec::is_empty")]
@@ -67,6 +75,18 @@ pub struct Actor {
     pub mfp_tapp_capabilities: Option<Vec<TappCapability>>,
     #[serde(rename = "myriad:channels", skip_serializing_if = "Option::is_none")]
     pub mfp_channels_url: Option<String>,
+}
+
+/// Actor `endpoints` 对象（AP §4.1）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActorEndpoints {
+    #[serde(rename = "sharedInbox", skip_serializing_if = "Option::is_none")]
+    pub shared_inbox: Option<String>,
+}
+
+/// 共享收件箱 URL（`{base_url}/inbox`）
+pub fn shared_inbox_url(base_url: &str) -> String {
+    format!("{}/inbox", base_url.trim_end_matches('/'))
 }
 
 /// Actor 公钥
@@ -618,6 +638,29 @@ pub fn normalize_key_id(raw: &str) -> String {
 /// Compare Signature keyId values (host case / trailing slash / fragment).
 ///
 /// Empty / whitespace-only inputs never match.
+/// 某个存储的 keyId 是否归属于给定的 serve base。
+///
+/// 用规范化后的**前缀**判断，而不是 `contains`。`stored.contains(base)` 会把
+/// base 出现在路径或 query 里的 URL 也算成本站的，例如
+/// `https://evil.example/x?u=https://myriad.example` 对
+/// `https://myriad.example` 会返回 true。
+///
+/// 域名迁移期间要按被请求的 base 提供对应的 keyId，所以这个判断直接决定
+/// 我们对外声称哪把钥匙是自己的。
+pub fn key_id_belongs_to_base(stored_kid: &str, base_url: &str) -> bool {
+    let stored = normalize_key_id(stored_kid);
+    if stored.is_empty() {
+        return false;
+    }
+    let base = normalize_actor_url(base_url.trim_end_matches('/'));
+    if base.is_empty() {
+        return false;
+    }
+    stored == base
+        || stored.starts_with(&format!("{}/", base))
+        || stored.starts_with(&format!("{}#", base))
+}
+
 pub fn same_key_id(left: &str, right: &str) -> bool {
     let l = normalize_key_id(left);
     let r = normalize_key_id(right);
@@ -828,6 +871,35 @@ mod tests {
             "https://myriad.example.com/users/alice",
             "https://other.example.com/users/alice"
         ));
+    }
+
+    #[test]
+    fn key_id_belongs_to_base_uses_prefix_not_substring() {
+        let base = "https://myriad.example";
+        assert!(key_id_belongs_to_base(
+            "https://myriad.example/users/alice#main-key",
+            base
+        ));
+        assert!(key_id_belongs_to_base("https://Myriad.Example/users/a", base));
+        assert!(key_id_belongs_to_base("https://myriad.example#k", base));
+        assert!(key_id_belongs_to_base("https://myriad.example/", base));
+
+        // 这些在 `contains` 下会被误判为本站
+        assert!(!key_id_belongs_to_base(
+            "https://evil.example/x?u=https://myriad.example",
+            base
+        ));
+        assert!(!key_id_belongs_to_base(
+            "https://evil.example/https://myriad.example/users/a",
+            base
+        ));
+        // 相邻域名不能靠前缀混过去
+        assert!(!key_id_belongs_to_base(
+            "https://myriad.example.evil.com/users/a",
+            base
+        ));
+        assert!(!key_id_belongs_to_base("", base));
+        assert!(!key_id_belongs_to_base("https://myriad.example/u", ""));
     }
 
     #[test]

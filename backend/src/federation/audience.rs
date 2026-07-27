@@ -50,11 +50,6 @@ impl Visibility {
             Visibility::Direct => "direct",
         }
     }
-
-    /// 是否允许出现在**未认证可读**的 Outbox 里。
-    pub fn is_publicly_listable(self) -> bool {
-        matches!(self, Visibility::Public)
-    }
 }
 
 /// 解析客户端传入的 visibility；未知值返回 `Err(原值)` 交由调用方拒绝。
@@ -310,13 +305,6 @@ mod tests {
             fan_out_scope(Visibility::Followers),
             FanOutScope::AllFollowers
         );
-    }
-
-    #[test]
-    fn only_public_visibility_is_outbox_listable() {
-        assert!(Visibility::Public.is_publicly_listable());
-        assert!(!Visibility::Followers.is_publicly_listable());
-        assert!(!Visibility::Direct.is_publicly_listable());
     }
 
     #[test]

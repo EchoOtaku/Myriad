@@ -13,6 +13,44 @@ use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use super::config::McpServerConfig;
 use super::protocol::{JsonRpcRequest, JsonRpcResponse};
 
+/// 允许透传给 MCP 子进程的环境变量。
+///
+/// 只放"进程要跑起来"必需的东西。任何凭据类变量都不在这里 ——
+/// server 自己需要的密钥由 `mcp_servers.json` 的 `env` 显式声明，
+/// 这样每个 server 拿到什么是可审计的，而不是默认继承一切。
+const ENV_ALLOWLIST: &[&str] = &[
+    "PATH",
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TMPDIR",
+    "TZ",
+    "LANG",
+    "LC_ALL",
+    "TERM",
+    // Node/Python 运行时定位自身依赖所需
+    "NODE_PATH",
+    "NVM_DIR",
+    "PYTHONPATH",
+    "PYTHONHOME",
+    // 代理设置：MCP server 常需联网，且这些不是凭据
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "no_proxy",
+    // Windows 上进程创建的基本要求
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "COMSPEC",
+    "PATHEXT",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "USERPROFILE",
+];
+
 /// Stdio 双向传输通道
 pub struct StdioTransport {
     child: Child,
@@ -30,17 +68,27 @@ impl StdioTransport {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped()); // stderr 用于服务器日志
 
-        // 注入环境变量
-        for (k, v) in &config.env {
-            cmd.env(k, v);
+        // ⚠️ env_clear 必须在任何 cmd.env() 之前。
+        //
+        // Command 默认**继承父进程的整个环境**。之前这里只是"再设一遍"
+        // PATH/HOME，看着像白名单，实际上每个 MCP server 子进程都拿到了
+        // JWT_SECRET、DATABASE_URL（含 POSTGRES_PASSWORD）、
+        // UPDATER_GATEWAY_SECRET —— 一个 `cat /proc/self/environ` 全都有。
+        //
+        // MCP server 是第三方代码（npx 拉取的包、社区实现），不该看到宿主凭据。
+        cmd.env_clear();
+
+        // 显式白名单：只给运行时真正需要的变量。
+        for key in ENV_ALLOWLIST {
+            if let Ok(value) = std::env::var(key) {
+                cmd.env(key, value);
+            }
         }
 
-        // 继承 PATH 等基本环境
-        if let Ok(path) = std::env::var("PATH") {
-            cmd.env("PATH", path);
-        }
-        if let Ok(home) = std::env::var("HOME") {
-            cmd.env("HOME", home);
+        // 该 server 在配置里声明的环境变量（它自己的 API key 等）。
+        // 放在白名单之后，允许显式覆盖 PATH 这类值。
+        for (k, v) in &config.env {
+            cmd.env(k, v);
         }
 
         let mut child = cmd
@@ -292,5 +340,48 @@ mod tests {
         assert_eq!(extract(&s), Some(id));
         assert_ne!(extract(&wrong), Some(id));
         assert!(notif.get("method").is_some() && notif.get("result").is_none());
+    }
+
+    /// MCP server 是第三方代码。这条断言锁住"宿主凭据不进子进程环境"。
+    ///
+    /// 修复前 `Command` 默认继承整个父环境，这些变量全都泄给了每个 MCP server。
+    #[test]
+    fn env_allowlist_excludes_host_credentials() {
+        for leaked in [
+            "JWT_SECRET",
+            "DATABASE_URL",
+            "POSTGRES_PASSWORD",
+            "UPDATER_GATEWAY_SECRET",
+            "UPDATE_TOKEN",
+            "MYRIAD_DATA_KEY",
+            "OAUTH_STATE_SECRET",
+        ] {
+            assert!(
+                !ENV_ALLOWLIST.contains(&leaked),
+                "{leaked} must never be inherited by MCP subprocesses"
+            );
+        }
+    }
+
+    #[test]
+    fn env_allowlist_keeps_what_runtimes_need() {
+        for needed in ["PATH", "HOME", "NODE_PATH", "HTTPS_PROXY"] {
+            assert!(ENV_ALLOWLIST.contains(&needed), "{needed} should pass through");
+        }
+    }
+
+    /// 白名单本身不能出现凭据形状的名字 —— 防止将来有人顺手往里加。
+    #[test]
+    fn env_allowlist_has_no_credential_shaped_names() {
+        for name in ENV_ALLOWLIST {
+            let lower = name.to_ascii_lowercase();
+            assert!(
+                !(lower.contains("secret")
+                    || lower.contains("token")
+                    || lower.contains("password")
+                    || lower.contains("api_key")),
+                "{name} looks like a credential; it must not be allowlisted"
+            );
+        }
     }
 }

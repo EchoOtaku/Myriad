@@ -50,8 +50,6 @@ export const zhCN: TranslationKeys = {
     mainNavigation: '主导航',
     back: '返回',
     backToNav: '返回导航',
-    platformReport: '平台报告',
-    showPlatformReport: '显示平台报告',
     all: '全部',
     showAll: '显示全部内容',
     game: '游戏',
@@ -72,9 +70,7 @@ export const zhCN: TranslationKeys = {
     currentFilterMusic: '当前筛选：音乐 - 点击展开筛选',
     currentFilterAnime: '当前筛选：追番 - 点击展开筛选',
     currentFilterTvSeries: '当前筛选：追剧 - 点击展开筛选',
-    currentTabPlatform: '当前查看：平台报告 - 点击展开切换',
     expandFilters: '点击展开筛选',
-    switchTab: '点击切换标签',
     // Brew
     brew: 'Brew',
     brewReading: 'Brew 阅读',
@@ -1692,8 +1688,6 @@ export const zhCN: TranslationKeys = {
     adminOnlyGenerate: '仅管理员可生成报告',
     generateFailed: '生成失败',
     generateFailedRetry: '生成失败,请稍后重试',
-    deleteFailed: '删除失败',
-    deleteFailedRetry: '删除失败，请稍后重试',
 
     // UI 文本
     close: '关闭',

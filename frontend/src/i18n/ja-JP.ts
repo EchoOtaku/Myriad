@@ -50,8 +50,6 @@ export const jaJP: TranslationKeys = {
     mainNavigation: 'メインナビゲーション',
     back: '戻る',
     backToNav: 'ナビに戻る',
-    platformReport: 'プラットフォームレポート',
-    showPlatformReport: 'プラットフォームレポートを表示',
     all: 'すべて',
     showAll: 'すべてを表示',
     game: 'ゲーム',
@@ -72,9 +70,7 @@ export const jaJP: TranslationKeys = {
     currentFilterMusic: '現在のフィルター：音楽 - クリックで展開',
     currentFilterAnime: '現在のフィルター：アニメ - クリックで展開',
     currentFilterTvSeries: '現在のフィルター：ドラマ - クリックで展開',
-    currentTabPlatform: '現在表示中：プラットフォームレポート - クリックで切替',
     expandFilters: 'クリックでフィルターを展開',
-    switchTab: 'クリックでタブを切替',
     // Brew
     brew: 'Brew',
     brewReading: 'Brew リーダー',
@@ -1770,8 +1766,6 @@ export const jaJP: TranslationKeys = {
     adminOnlyGenerate: '管理者のみレポートを生成できます',
     generateFailed: '生成失敗',
     generateFailedRetry: '生成に失敗しました、後でもう一度お試しください',
-    deleteFailed: '削除失敗',
-    deleteFailedRetry: '削除に失敗しました、後でもう一度お試しください',
 
     // UIテキスト
     close: '閉じる',

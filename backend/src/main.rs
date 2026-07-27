@@ -603,6 +603,30 @@ async fn run_server() -> anyhow::Result<()> {
                 federation::delivery::spawn_delivery_worker(db.clone());
                 tracing::info!("✅ Federation delivery worker started");
 
+                // 密钥迁移：把存量明文配置与 v0 联邦私钥升级到数据密钥信封。
+                //
+                // 两者都幂等可重入，中断了下次启动接着做，不需要维护窗口。
+                // 联邦私钥必须在这里同步做完 —— 它要随时可用于签名，不能惰性升级。
+                services::data_key::log_startup_state();
+                match services::data_key::migrate_plaintext_config_values(&db).await {
+                    Ok(n) if n > 0 => {
+                        tracing::info!("✅ Configuration encryption migration: {n} value(s)")
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::error!("Configuration encryption migration failed: {e}"),
+                }
+                let legacy_jwt_secret = {
+                    let cfg = GLOBAL_CONFIG.read().await;
+                    cfg.jwt_secret.clone()
+                };
+                match federation::keys::rewrap_legacy_private_keys(&db, &legacy_jwt_secret).await {
+                    Ok(n) if n > 0 => {
+                        tracing::info!("✅ Federation key rewrap: {n} key(s)")
+                    }
+                    Ok(_) => {}
+                    Err(e) => tracing::error!("Federation key rewrap failed: {e}"),
+                }
+
                 tracing::info!("🌐 Starting in FULL MODE - all features available");
                 *DB_CONNECTION.write().await = Some(db);
                 CONFIG_MODE.store(false, Ordering::Relaxed);
@@ -6428,6 +6452,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         .route(
             "/users/{username}/outbox",
             get(federation::outbox::get_outbox),
+        )
+        // 让 generate_activity_id 产出的 id 真正可解引用（与 Outbox 同一可见性投影）
+        .route(
+            "/activities/{id}",
+            get(federation::outbox::get_activity),
         )
         .route(
             "/users/{username}/followers",

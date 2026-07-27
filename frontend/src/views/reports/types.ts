@@ -41,33 +41,9 @@ export interface PlatformReport {
   created_at: string
 }
 
-export interface BackgroundElement {
-  type: 'circle' | 'rect' | 'gradient' | 'pattern' | 'svg'
-  style?: React.CSSProperties
-  className?: string
-  animate?: any
-  transition?: any
-  svgPath?: string
-  content?: string
-}
-
-export interface ComprehensiveAnalysis {
-  [key: string]: any
-  theme_color: string
-  visual_style: string
-  decorative_emojis: string[]
-  card_subtitle: string
-  key_metric: string
-  background_elements?: BackgroundElement[]
-  icon_image_url?: string
-  icon_prompt?: string
-  theme_icon?: string
-}
-
 export interface CrossPlatformReport {
   id?: number
   platform_reports: PlatformReport[]
-  综合分析?: ComprehensiveAnalysis | null
   created_at: string
 }
 
@@ -90,7 +66,7 @@ export const REPORT_CARD_FLEX_BASIS =
   'calc((min(100dvw - 2 * var(--report-page-padding), 80rem) - 1rem) / var(--report-visible-cards))'
 
 /**
- * Shared carousel strip CSS vars for platform + comprehensive strips.
+ * Shared carousel strip CSS vars for the platform report strip.
  * Padding mirrors page gutters; visible-cards tracks home 4x2 fractions (1/2/4).
  */
 export const REPORT_CAROUSEL_CSS_VARS =

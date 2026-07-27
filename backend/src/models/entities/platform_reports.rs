@@ -12,6 +12,7 @@ pub struct Model {
     pub report: Json,
     pub created_at: DateTime,
     pub expires_at: DateTime,
+    /// Optional display title. Single-platform reports leave this null.
     pub report_title: Option<String>,
 }
 

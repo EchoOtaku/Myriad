@@ -51,8 +51,6 @@ export interface TranslationKeys {
     mainNavigation: string
     back: string
     backToNav: string
-    platformReport: string
-    showPlatformReport: string
     all: string
     showAll: string
     game: string
@@ -73,9 +71,7 @@ export interface TranslationKeys {
     currentFilterMusic: string
     currentFilterAnime: string
     currentFilterTvSeries: string
-    currentTabPlatform: string
     expandFilters: string
-    switchTab: string
     // Brew
     brew: string
     brewReading: string
@@ -1597,8 +1593,6 @@ export interface TranslationKeys {
     adminOnlyGenerate: string
     generateFailed: string
     generateFailedRetry: string
-    deleteFailed: string
-    deleteFailedRetry: string
 
     // UI 文本
     close: string

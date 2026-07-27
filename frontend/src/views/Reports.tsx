@@ -1,13 +1,10 @@
 import type { ReactNode } from 'react'
 import type { ToastType } from '../components/Toast'
 import type { WidgetConfig } from '../components/WidgetGrid'
-import type { SecondaryNavItem } from '../contexts/NavigationContext'
 import {
   FaGithub,
-  FaMagic,
   FaSteam,
   FaTimes,
-  FaTrash,
   FaXbox,
   FaXTwitter,
   LuGlobe,
@@ -41,12 +38,10 @@ import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
 import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
-import { useSecondaryNav } from '../contexts/NavigationContext'
 import {
   usePageReady,
   useReportsScheduler,
 } from '../hooks/animation'
-import { useAnimationLevel } from '../hooks/useAnimationLevel'
 import {
   useResolvedTitleColor,
   useTitleFont,
@@ -56,29 +51,10 @@ import { notifyRecentActivityUpdated } from '../utils/recentActivity'
 import { REPORT_PLATFORM_IDS } from '../utils/reportCardVisuals'
 import { invalidateLatestReportCache } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
-import { ComprehensiveReportCard } from './reports/ComprehensiveReportCard'
-import { EmptyComprehensiveReport } from './reports/EmptyComprehensiveReport'
 import {
   REPORT_CARD_FLEX_BASIS,
   REPORT_CAROUSEL_CSS_VARS,
 } from './reports/types'
-
-// 🚀 性能优化：防抖Hook
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value)
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value)
-    }, delay)
-
-    return () => {
-      clearTimeout(handler)
-    }
-  }, [value, delay])
-
-  return debouncedValue
-}
 
 interface PlatformReport {
   platform: string
@@ -119,38 +95,9 @@ interface PlatformReport {
   created_at: string
 }
 
-interface BackgroundElement {
-  type: 'circle' | 'rect' | 'gradient' | 'pattern' | 'svg'
-  style?: React.CSSProperties
-  className?: string
-  animate?: any // framer-motion animate props
-  transition?: any // framer-motion transition props
-  svgPath?: string // SVG path data
-  content?: string // 文本或emoji内容
-}
-
-interface ComprehensiveAnalysis {
-  // AI自由生成的内容字段 - 使用索引签名接受任意字段
-  [key: string]: any
-
-  // 必需的样式字段（用于前端渲染）
-  theme_color: string
-  visual_style: string
-  decorative_emojis: string[]
-  card_subtitle: string
-  key_metric: string
-  background_elements?: BackgroundElement[]
-
-  // 图标字段（三选一，优先级从高到低）
-  icon_image_url?: string // AI生成的图标URL或图片链接
-  icon_prompt?: string // AI生成的图标描述（用于后续图标生成）
-  theme_icon?: string // 备选：预定义的React图标名称
-}
-
 interface CrossPlatformReport {
   id?: number // 报告ID
   platform_reports: PlatformReport[]
-  综合分析?: ComprehensiveAnalysis | null
   created_at: string
 }
 
@@ -338,7 +285,6 @@ const StagePlayingCardPlaceholder = memo(({
   )
 })
 
-// 🚀 性能优化：将综合报告卡片提取为独立的 memo 组件
 export default function Reports() {
   // 🆕 初始化报告页调度器（Visibility + Interval + RAF + DOMBatch）
   useReportsScheduler()
@@ -354,98 +300,10 @@ export default function Reports() {
   const { currentFont, titleFontSize } = useTitleFont()
   // 自适应色对齐 Tapp 音乐播放器歌词：对比度推导
   const titleColorPrimary = useResolvedTitleColor('primary')
-  const titleColorAccent = useResolvedTitleColor('accent')
-
-  // 二级导航项配置
-  const navItems: SecondaryNavItem[] = useMemo(
-    () => [
-      {
-        id: 'platform',
-        icon: (
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0a4 4 0 004-4v-4a2 2 0 012-2h4a2 2 0 012 2v4a4 4 0 01-4 4h-8z"
-            />
-          </svg>
-        ),
-        label: t.nav.platformReport,
-        title: t.nav.platformReport,
-        ariaLabel: t.nav.showPlatformReport,
-      },
-      {
-        id: 'comprehensive',
-        icon: (
-          <svg
-            className="w-5 h-5"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"
-            />
-          </svg>
-        ),
-        label: t.nav.comprehensiveReport,
-        title: t.nav.comprehensiveReport,
-        ariaLabel: t.nav.showComprehensiveReport,
-      },
-    ],
-    [t],
-  )
-
-  // 使用二级导航 Hook
-  const {
-    activeId: activeTab,
-    setActiveId: _setActiveTab,
-    setExpanded,
-  } = useSecondaryNav({
-    routePath: '/reports',
-    items: navItems,
-    defaultActiveId: 'platform',
-    expandHint: t.nav.switchTab,
-  })
-
-  // 监听展开事件
-  useEffect(() => {
-    const handleExpandSecondary = (e: CustomEvent<{ path: string }>) => {
-      if (e.detail.path === '/reports') {
-        setExpanded(true)
-      }
-    }
-
-    window.addEventListener(
-      'nav-expand-secondary',
-      handleExpandSecondary as EventListener,
-    )
-    return () => {
-      window.removeEventListener(
-        'nav-expand-secondary',
-        handleExpandSecondary as EventListener,
-      )
-    }
-  }, [setExpanded])
 
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null)
   const [report, setReport] = useState<CrossPlatformReport | null>(null)
-  const [customStyle, setCustomStyle] = useState<string>('')
-  // 🚀 性能优化：防抖处理用户输入
-  const debouncedCustomStyle = useDebounce(customStyle, 300)
-  // 🆕 动画级别控制，用于装饰性动画
-  const anim = useAnimationLevel()
   const [isAdmin, setIsAdmin] = useState(false)
-  const [comprehensiveReports, setComprehensiveReports] = useState<any[]>([]) // 所有综合报告列表
   const [enabledPlatformIds, setEnabledPlatformIds] = useState<string[]>([])
   const [platformVisibilityReady, setPlatformVisibilityReady] =
     useState(false)
@@ -464,17 +322,7 @@ export default function Reports() {
     summary?: string
     insights?: string[]
     card_visuals?: any
-    // 综合报告字段
-    id?: number // 综合报告 ID（删除/关闭舞台时匹配）
-    综合分析?: any
-    library_items?: Array<{
-      title: string
-      cover?: string
-      type: string
-      platform?: string
-    }>
-    type?: 'platform' | 'comprehensive'
-    title?: string // 综合报告标题
+    type?: 'platform'
   } | null>(null)
 
   const showToastMessage = useCallback(
@@ -558,12 +406,6 @@ export default function Reports() {
     })
     return map
   }, [])
-
-  // 🚀 性能优化：缓存显示的综合报告列表（限制20个）
-  const displayedComprehensiveReports = useMemo(
-    () => comprehensiveReports.slice(0, 20),
-    [comprehensiveReports],
-  )
 
   // 🎭 打开舞台模式
   const openStageMode = useCallback(
@@ -710,7 +552,6 @@ export default function Reports() {
 
       return {
         platform_reports,
-        综合分析: prev?.综合分析 || null,
         created_at: updated.created_at || prev?.created_at || new Date().toISOString(),
       }
     })
@@ -898,24 +739,17 @@ export default function Reports() {
     setIsAdmin(authIsAdmin)
   }, [authIsAdmin, isAuthenticated])
 
-  // 加载最新报告（平台报告 + 综合报告）- 性能优化版
+  // 加载最新平台报告
   useEffect(() => {
     const fetchLatestReport = async () => {
       try {
-        // 🚀 性能优化：并行获取平台报告和综合报告列表
-        const [platformResponse, comprehensiveResponse] = await Promise.all([
-          fetch(`${API_URL}/api/reports/latest`, {
-            credentials: 'include',
-          }),
-          fetch(`${API_URL}/api/reports/comprehensive/list`, {
-            credentials: 'include',
-          }),
-        ])
+        const platformResponse = await fetch(`${API_URL}/api/reports/latest`, {
+          credentials: 'include',
+        })
 
         let platformReports = []
         let createdAt = new Date().toISOString()
 
-        // 1. 处理平台报告
         if (platformResponse.ok) {
           const platformData = await platformResponse.json()
           if (platformData.platform_reports) {
@@ -924,49 +758,8 @@ export default function Reports() {
           }
         }
 
-        // 2. 处理综合报告列表
-        if (comprehensiveResponse.ok) {
-          const comprehensiveData = await comprehensiveResponse.json()
-          if (
-            comprehensiveData.success &&
-            comprehensiveData.reports &&
-            comprehensiveData.reports.length > 0
-          ) {
-            // 🚀 性能优化：并行获取所有综合报告的详情（批量请求）
-            const detailPromises = comprehensiveData.reports.map(
-              async (report: any) => {
-                try {
-                  const detailResponse = await fetch(
-                    `${API_URL}/api/reports/comprehensive/${report.id}`,
-                    {
-                      credentials: 'include',
-                    },
-                  )
-                  if (detailResponse.ok) {
-                    const detailData = await detailResponse.json()
-                    if (detailData.success && detailData.report) {
-                      return {
-                        ...report,
-                        综合分析: detailData.report.综合分析 || null,
-                      }
-                    }
-                  }
-                } catch (err) {
-                  console.error(`获取报告 ${report.id} 详情失败:`, err)
-                }
-                return report
-              },
-            )
-
-            const reportsWithDetails = await Promise.all(detailPromises)
-            setComprehensiveReports(reportsWithDetails)
-          }
-        }
-
-        // 3. 设置平台报告
         setReport({
           platform_reports: platformReports,
-          综合分析: null, // 综合分析由comprehensiveReports单独管理
           created_at: createdAt,
         })
       } catch (err) {
@@ -1064,152 +857,6 @@ export default function Reports() {
     [t.reportsPage.generateFailed, mergePlatformReport, showToastMessage],
   )
 
-  // 生成综合分析 (基于已有平台报告) - 性能优化：使用 useCallback
-  const generateComprehensiveReport = useCallback(async () => {
-    setLoadingPlatform('comprehensive')
-    try {
-      const csrfToken = await getCSRFToken(true)
-      if (!csrfToken) return
-
-      // 构建请求体 - 只包含有值的字段
-      const requestBody: any = {}
-      if (debouncedCustomStyle && debouncedCustomStyle.trim()) {
-        requestBody.style = debouncedCustomStyle.trim()
-      }
-
-      const response = await fetch(`${API_URL}/api/reports/comprehensive`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
-        },
-        credentials: 'include',
-        body: JSON.stringify(requestBody),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        console.error('Generation failed:', errorData)
-        throw new Error(errorData.message || t.reportsPage.generateFailed)
-      }
-
-      const data = await response.json()
-      if (data.success && data.report) {
-        // 🚀 性能优化：并行获取综合报告列表和详情
-        const listResponse = await fetch(
-          `${API_URL}/api/reports/comprehensive/list`,
-          {
-            credentials: 'include',
-          },
-        )
-
-        if (listResponse.ok) {
-          const listData = await listResponse.json()
-          if (listData.success && listData.reports) {
-            // 并行获取所有综合报告的详情
-            const detailPromises = listData.reports.map(async (report: any) => {
-              try {
-                const detailResponse = await fetch(
-                  `${API_URL}/api/reports/comprehensive/${report.id}`,
-                  {
-                    credentials: 'include',
-                  },
-                )
-                if (detailResponse.ok) {
-                  const detailData = await detailResponse.json()
-                  if (detailData.success && detailData.report) {
-                    return {
-                      ...report,
-                      综合分析: detailData.report.综合分析 || null,
-                    }
-                  }
-                }
-              } catch (err) {
-                console.error(`Get report ${report.id} details failed:`, err)
-              }
-              return report
-            })
-
-            const reportsWithDetails = await Promise.all(detailPromises)
-            setComprehensiveReports(reportsWithDetails)
-          }
-        }
-      } else if (!data.success && data.message) {
-        console.warn(data.message)
-        alert(data.message)
-      }
-    } catch (err) {
-      console.error('Generate comprehensive report failed:', err)
-      alert(
-        err instanceof Error ? err.message : t.reportsPage.generateFailedRetry,
-      )
-    } finally {
-      setLoadingPlatform(null)
-    }
-  }, [
-    debouncedCustomStyle,
-    t.reportsPage.generateFailed,
-    t.reportsPage.generateFailedRetry,
-  ])
-
-  // 删除综合报告（仅所有者/管理员；与生成按钮可见性一致）
-  const handleDeleteComprehensive = useCallback(
-    async (id: number) => {
-      try {
-        const csrfToken = await getCSRFToken(true)
-        if (!csrfToken) {
-          showToastMessage(t.reportsPage.getTokenFailed, 'error')
-          return
-        }
-
-        const response = await fetch(
-          `${API_URL}/api/reports/comprehensive/${id}/delete`,
-          {
-            method: 'DELETE',
-            headers: {
-              'X-CSRF-Token': csrfToken,
-            },
-            credentials: 'include',
-          },
-        )
-
-        const data = await response.json().catch(() => ({}))
-        if (!response.ok || !data.success) {
-          throw new Error(
-            (data as { message?: string }).message ||
-              t.reportsPage.deleteFailed,
-          )
-        }
-
-        setComprehensiveReports((prev) => prev.filter((r) => r.id !== id))
-
-        // 若舞台正在查看该报告，关闭舞台
-        if (
-          stageReportData?.type === 'comprehensive' &&
-          stageReportData.id === id
-        ) {
-          setIsStageMode(false)
-          setStageReportData(null)
-        }
-      } catch (err) {
-        console.error('Delete comprehensive report failed:', err)
-        showToastMessage(
-          err instanceof Error
-            ? err.message
-            : t.reportsPage.deleteFailedRetry,
-          'error',
-        )
-      }
-    },
-    [
-      showToastMessage,
-      stageReportData,
-      t.reportsPage.deleteFailed,
-      t.reportsPage.deleteFailedRetry,
-      t.reportsPage.getTokenFailed,
-    ],
-  )
-
   return (
     <AnimatedView className="min-h-screen md:h-screen md:overflow-hidden">
       {/* Toast提示 */}
@@ -1236,44 +883,22 @@ export default function Reports() {
 
           {/* 下半部分：卡片列表区域 - 移动端/桌面端都在下半部分 */}
           <div className="md:h-[40%] flex flex-col gap-3 relative justify-end md:justify-start">
-            {activeTab === 'platform' && (
-              <>
-                {/* 平台报告标题 - 绝对定位在整个区域 */}
-                <div
-                  className={`absolute left-2 whitespace-nowrap pointer-events-none z-0 ${isStageMode ? 'hidden md:block' : ''}`}
-                  style={{
-                    top: `calc(25px - ${7.5 * titleFontSize}rem)`,
-                    fontFamily: currentFont.family,
-                    fontWeight: 700,
-                    fontSize: `${6 * titleFontSize}rem`,
-                    color: titleColorPrimary,
-                    WebkitTextStroke: `0.5px color-mix(in srgb, ${titleColorPrimary} 30%, transparent)`,
-                  }}
-                >
-                  Character
-                </div>
-              </>
-            )}
-            {activeTab === 'comprehensive' && (
-              <>
-                {/* 综合报告标题 - 绝对定位在整个区域 */}
-                <div
-                  className={`absolute left-2 whitespace-nowrap pointer-events-none z-0 ${isStageMode ? 'hidden md:block' : ''}`}
-                  style={{
-                    top: `calc(25px - ${7.5 * titleFontSize}rem)`,
-                    fontFamily: currentFont.family,
-                    fontWeight: 700,
-                    fontSize: `${6 * titleFontSize}rem`,
-                    color: titleColorAccent,
-                    WebkitTextStroke: `0.5px color-mix(in srgb, ${titleColorAccent} 30%, transparent)`,
-                  }}
-                >
-                  Stage
-                </div>
-              </>
-            )}
+            {/* 平台报告标题 - 绝对定位在整个区域 */}
+            <div
+              className={`absolute left-2 whitespace-nowrap pointer-events-none z-0 ${isStageMode ? 'hidden md:block' : ''}`}
+              style={{
+                top: `calc(25px - ${7.5 * titleFontSize}rem)`,
+                fontFamily: currentFont.family,
+                fontWeight: 700,
+                fontSize: `${6 * titleFontSize}rem`,
+                color: titleColorPrimary,
+                WebkitTextStroke: `0.5px color-mix(in srgb, ${titleColorPrimary} 30%, transparent)`,
+              }}
+            >
+              Character
+            </div>
             <div className="flex flex-col gap-3 relative z-10">
-              {activeTab === 'platform' && platformVisibilityReady && (
+              {platformVisibilityReady && (
                 <>
                   {/* 平台报告提示条 */}
                   <motion.div
@@ -1366,8 +991,8 @@ export default function Reports() {
                       {/* 舞台模式控制按钮 - 仅在舞台模式下显示 */}
                       {isStageMode && (
                         <div className="flex items-center gap-2 ml-auto">
-                          {/* 刷新按钮 - 仅管理员且平台报告显示 */}
-                          {isAdmin && stageReportData?.type === 'platform' && (
+                          {/* 刷新按钮 - 仅管理员 */}
+                          {isAdmin && (
                             <button
                               onClick={refreshStageReport}
                               disabled={refreshingStage}
@@ -1407,32 +1032,6 @@ export default function Reports() {
                               </motion.svg>
                             </button>
                           )}
-
-                          {/* 删除综合报告 - 仅管理员且综合报告显示 */}
-                          {isAdmin &&
-                            stageReportData?.type === 'comprehensive' &&
-                            stageReportData.id != null && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (
-                                    !window.confirm(
-                                      t.reportsPage.confirmDeleteReport,
-                                    )
-                                  ) {
-                                    return
-                                  }
-                                  void handleDeleteComprehensive(
-                                    stageReportData.id!,
-                                  )
-                                }}
-                                className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-red-50 dark:hover:bg-red-900/30 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-all shadow-sm"
-                                title={t.reportsPage.deleteReport}
-                                aria-label={t.reportsPage.deleteReport}
-                              >
-                                <FaTrash size={12} />
-                              </button>
-                            )}
 
                           {/* 播放/暂停按钮 */}
                           <button
@@ -1640,9 +1239,7 @@ export default function Reports() {
                 </>
               )}
 
-              {activeTab === 'platform' &&
-                platformVisibilityReady &&
-                !hasEnabledPlatforms && (
+              {platformVisibilityReady && !hasEnabledPlatforms && (
                   <div className="pt-8 pb-12 -mt-7 -mb-11">
                     <motion.div
                       className="relative rounded-2xl overflow-hidden min-h-55"
@@ -1683,274 +1280,6 @@ export default function Reports() {
                     </motion.div>
                   </div>
                 )}
-
-              {activeTab === 'comprehensive' && (
-                <>
-                  {/* 综合报告提示条 */}
-                  <motion.div
-                    className={`h-12.5 ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={
-                      isPageReady
-                        ? { opacity: 1, x: 0 }
-                        : { opacity: 0, x: -20 }
-                    }
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{
-                      duration: 0.3,
-                      ease: 'easeOut',
-                      delay: isPageReady ? 0.1 : 0,
-                    }}
-                  >
-                    <motion.div
-                      className="w-full md:w-[24%] h-full glass rounded-xl px-4 flex items-center gap-2 shadow-sm"
-                      whileHover={{ scale: 1.02 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      {isStageMode &&
-                      stageReportData?.type === 'comprehensive' ? (
-                        // 舞台模式下显示标题和控制按钮
-                        <>
-                          <FaMagic className="text-base shrink-0 text-accent-color" />
-                          <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
-                            <span className="text-sm font-medium truncate">
-                              {stageReportData.title}
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => {
-                                  const event = new CustomEvent(
-                                    'stage-toggle-pause',
-                                  )
-                                  window.dispatchEvent(event)
-                                }}
-                                className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
-                                title={
-                                  stagePaused
-                                    ? t.reportsPage.continuePlay
-                                    : t.reportsPage.pause
-                                }
-                              >
-                                {stagePaused ? (
-                                  <svg
-                                    className="w-4 h-4"
-                                    fill="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path d="M8 5v14l11-7z" />
-                                  </svg>
-                                ) : (
-                                  <svg
-                                    className="w-4 h-4"
-                                    fill="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
-                                  </svg>
-                                )}
-                              </button>
-                              <button
-                                onClick={handleUserCloseStage}
-                                className="w-8 h-8 rounded-lg bg-white dark:bg-neutral-800 hover:bg-gray-100 dark:hover:bg-neutral-600 flex items-center justify-center text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-all shadow-sm"
-                                title={t.reportsPage.closeStage}
-                              >
-                                <FaTimes size={14} />
-                              </button>
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        // 默认状态显示输入框和生成按钮（仅管理员可见）
-                        <>
-                          {isAdmin ? (
-                            <>
-                              <motion.div
-                                animate={
-                                  anim.loop
-                                    ? {
-                                        rotate: [0, 10, -10, 10, 0],
-                                        scale: [1, 1.1, 1.1, 1.1, 1],
-                                      }
-                                    : {}
-                                }
-                                transition={{
-                                  duration: 2,
-                                  repeat: anim.loop ? Infinity : 0,
-                                  repeatDelay: 3,
-                                  ease: 'easeInOut',
-                                }}
-                              >
-                                <FaMagic className="text-base shrink-0 text-accent-color" />
-                              </motion.div>
-                              <div className="flex-1 min-w-0 flex items-center gap-2">
-                                <input
-                                  type="text"
-                                  value={customStyle}
-                                  onChange={(e) =>
-                                    setCustomStyle(e.target.value)
-                                  }
-                                  placeholder={
-                                    t.reportsPage.styleDescPlaceholder
-                                  }
-                                  className="clean-input flex-1 min-w-0 text-sm"
-                                />
-                                <motion.button
-                                  onClick={generateComprehensiveReport}
-                                  disabled={loadingPlatform === 'comprehensive'}
-                                  className="shrink-0 h-6.5 px-3 text-white rounded text-xs font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-                                  style={{
-                                    background: `linear-gradient(135deg, var(--color-accent), var(--color-secondary))`,
-                                  }}
-                                  whileHover={{
-                                    scale: 1.08,
-                                    transition: { duration: 0.2 },
-                                  }}
-                                  whileTap={{
-                                    scale: 0.92,
-                                    transition: { duration: 0.1 },
-                                  }}
-                                >
-                                  {loadingPlatform === 'comprehensive' ? (
-                                    <Spinner size="xs" color="white" />
-                                  ) : (
-                                    <>
-                                      <motion.div
-                                        animate={
-                                          anim.loop
-                                            ? {
-                                                scale: [1, 1.2, 1],
-                                                rotate: [0, 5, -5, 0],
-                                              }
-                                            : {}
-                                        }
-                                        transition={{
-                                          duration: 1.5,
-                                          repeat: anim.loop ? Infinity : 0,
-                                          repeatDelay: 2,
-                                        }}
-                                      >
-                                        <FaMagic size={10} />
-                                      </motion.div>
-                                      <span>{t.reportsPage.generate}</span>
-                                    </>
-                                  )}
-                                </motion.button>
-                              </div>
-                            </>
-                          ) : (
-                            // 非管理员显示提示
-                            <>
-                              <FaMagic className="text-base shrink-0 opacity-50 text-accent-color" />
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-600 dark:text-gray-400">
-                                  {t.reportsPage.comprehensiveReport}
-                                </div>
-                                <div className="text-[10px] text-gray-500 dark:text-gray-500">
-                                  {t.reportsPage.adminOnlyGenerateHint}
-                                </div>
-                              </div>
-                            </>
-                          )}
-                        </>
-                      )}
-                    </motion.div>
-                  </motion.div>
-                  {displayedComprehensiveReports.length > 0 ? (
-                    <motion.div
-                      className={`${isStageMode ? 'hidden md:flex' : 'flex'} relative left-1/2 w-dvw max-w-none -translate-x-1/2 gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pt-8 pb-12 -mt-7 -mb-11 pr-3 xs:pr-4 sm:pr-6 md:pr-8 ${REPORT_CAROUSEL_CSS_VARS}`}
-                      style={
-                        {
-                          paddingLeft:
-                            'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
-                          scrollPaddingLeft:
-                            'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
-                        } as React.CSSProperties
-                      }
-                      initial={{ opacity: 0 }}
-                      animate={isPageReady ? { opacity: 1 } : { opacity: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{
-                        duration: 0.3,
-                        delay: isPageReady ? 0.15 : 0,
-                      }}
-                    >
-                      <AnimatePresence mode="popLayout">
-                        {displayedComprehensiveReports.map(
-                          (compReport: any, index: number) => (
-                            <ComprehensiveReportCard
-                              key={compReport.id}
-                              compReport={compReport}
-                              index={index}
-                              onDelete={
-                                isAdmin
-                                  ? handleDeleteComprehensive
-                                  : undefined
-                              }
-                              onOpen={(
-                                analysis: any,
-                                id: number,
-                                _createdAt: string,
-                              ) => {
-                                // 打开综合报告的舞台模式
-                                // 从所有平台报告中提取 library_items
-                                const allLibraryItems: Array<{
-                                  title: string
-                                  cover?: string
-                                  type: string
-                                  platform?: string
-                                }> = []
-
-                                if (report?.platform_reports) {
-                                  report.platform_reports.forEach(
-                                    (platformReport) => {
-                                      const cardVisuals: any =
-                                        platformReport.card_visuals
-                                      if (
-                                        cardVisuals &&
-                                        typeof cardVisuals === 'object'
-                                      ) {
-                                        const items = cardVisuals.library_items
-                                        if (Array.isArray(items)) {
-                                          items.forEach((item: any) => {
-                                            allLibraryItems.push({
-                                              title: item.title,
-                                              cover: item.cover,
-                                              type: item.type || 'content',
-                                              platform: platformReport.platform,
-                                            })
-                                          })
-                                        }
-                                      }
-                                    },
-                                  )
-                                }
-
-                                setStageReportData({
-                                  type: 'comprehensive',
-                                  id,
-                                  综合分析: analysis,
-                                  library_items: allLibraryItems,
-                                  title:
-                                    analysis.visual_style ||
-                                    t.reportsPage.allPlatformReport,
-                                })
-                                setIsStageMode(true)
-                              }}
-                            />
-                          ),
-                        )}
-                      </AnimatePresence>
-                    </motion.div>
-                  ) : (
-                    <div className="pt-8 pb-12 -mt-7 -mb-11">
-                      <EmptyComprehensiveReport
-                        isAdmin={isAdmin}
-                        isPageReady={isPageReady}
-                      />
-                    </div>
-                  )}
-                </>
-              )}
             </div>
           </div>
         </div>

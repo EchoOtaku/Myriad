@@ -787,9 +787,13 @@ export function highlightAnnotations(
 
     // 先在纯文本里收集互不重叠的命中区间，再一次性构造节点。
     // 这样就不需要原来那个「跳过 150 字符大约是 mark 标签长度」的偏移补偿。
-    type Hit = { start: number; end: number; annotation: AnnotationItem }
+    interface Hit {
+      start: number
+      end: number
+      annotation: AnnotationItem
+    }
     const hits: Hit[] = []
-    const taken: boolean[] = new Array(text.length).fill(false)
+    const taken: boolean[] = Array.from({ length: text.length }, () => false)
 
     for (const annotation of sortedAnnotations) {
       if (!annotation.term || annotation.term.length === 0) continue
