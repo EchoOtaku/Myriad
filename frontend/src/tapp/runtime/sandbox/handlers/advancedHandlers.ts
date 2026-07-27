@@ -432,10 +432,69 @@ export function registerMediaHandlers(
 
   bridge.registerHandler('media.playTrack', async (message) => {
     const [params] = (message.payload as { args: unknown[] }).args || []
-    const { trackId, trackIndex } = (params || {}) as {
+    const raw = (params || {}) as {
       trackId?: string
       trackIndex?: number
+      id?: string
+      name?: string
+      title?: string
+      artist?: string
+      album?: string
+      cover?: string
+      image?: string
+      url?: string
+      duration?: number
+      source?: string
+      isVip?: boolean
+      song?: Record<string, unknown>
     }
+
+    // Full song object (Aro library share / embed play) — not limited to current playlist.
+    const songIn =
+      raw.song && typeof raw.song === 'object'
+        ? (raw.song as Record<string, unknown>)
+        : raw.id || raw.trackId
+          ? (raw as Record<string, unknown>)
+          : null
+    if (songIn && (songIn.id || songIn.trackId)) {
+      const id = String(songIn.id || songIn.trackId || '')
+      const source = String(songIn.source || 'netease')
+      const song = {
+        id,
+        name: String(songIn.name || songIn.title || `Track #${id}`),
+        artist: String(songIn.artist || ''),
+        album: String(songIn.album || ''),
+        cover: String(songIn.cover || songIn.image || ''),
+        url:
+          String(songIn.url || '') ||
+          (source === 'netease'
+            ? `/api/proxy/music/netease/audio/${encodeURIComponent(id)}`
+            : ''),
+        duration:
+          typeof songIn.duration === 'number' && isFinite(songIn.duration)
+            ? songIn.duration
+            : 0,
+        source,
+        isVip: !!songIn.isVip,
+      }
+      window.dispatchEvent(new CustomEvent('play-song', { detail: { song } }))
+      window.dispatchEvent(new CustomEvent('open-control-panel'))
+      return {
+        success: true,
+        data: {
+          track: {
+            id: song.id,
+            title: song.name,
+            artist: song.artist,
+            duration: song.duration,
+            cover: song.cover,
+          },
+        },
+      }
+    }
+
+    const trackId = raw.trackId
+    const trackIndex = raw.trackIndex
     const globalState = (
       window as { __musicPlayerState?: Record<string, unknown> }
     ).__musicPlayerState

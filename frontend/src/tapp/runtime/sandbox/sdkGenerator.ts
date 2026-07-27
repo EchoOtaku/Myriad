@@ -603,7 +603,17 @@ export function generateFullSDK(
       getSpectrum: () => sendRequest('media', 'getSpectrum', []),
       getLyrics: (opts) => sendRequest('media', 'getLyrics', [opts || {}]),
       getBeatGrid: () => sendRequest('media', 'getBeatGrid', []),
-      playTrack: (id, idx) => sendRequest('media', 'playTrack', [{ trackId: id, trackIndex: idx }]),
+      playTrack: (id, idx) =>
+        sendRequest(
+          'media',
+          'playTrack',
+          // Object form: full song snapshot (Aro share cards). Scalar form: playlist trackId/index.
+          [
+            id && typeof id === 'object'
+              ? id
+              : { trackId: id, trackIndex: idx },
+          ],
+        ),
       jumpToIndex: (idx) => sendRequest('media', 'jumpToIndex', [{ index: idx }]),
       loadNeteasePlaylist: (playlistId) => sendRequest('media', 'loadNeteasePlaylist', [{ playlistId }]),
       getSkipVip: () => sendRequest('media', 'getSkipVip', []),
@@ -1390,7 +1400,11 @@ export function generateWidgetSDK(
       getSpectrum: function() { return sendRequest('media', 'getSpectrum', []); },
       getLyrics: function(opts) { return sendRequest('media', 'getLyrics', [opts || {}]); },
       getBeatGrid: function() { return sendRequest('media', 'getBeatGrid', []); },
-      playTrack: function(id, idx) { return sendRequest('media', 'playTrack', [{ trackId: id, trackIndex: idx }]); },
+      playTrack: function(id, idx) {
+        return sendRequest('media', 'playTrack', [
+          id && typeof id === 'object' ? id : { trackId: id, trackIndex: idx },
+        ]);
+      },
       jumpToIndex: function(idx) { return sendRequest('media', 'jumpToIndex', [{ index: idx }]); },
       loadNeteasePlaylist: function(playlistId) { return sendRequest('media', 'loadNeteasePlaylist', [{ playlistId: playlistId }]); },
       getSkipVip: function() { return sendRequest('media', 'getSkipVip', []); },
