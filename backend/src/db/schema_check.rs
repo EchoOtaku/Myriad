@@ -15,6 +15,7 @@ use std::collections::HashSet;
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
 ///
 /// 变更日志：
+/// - 2026.07.27.2: 删除历史 comprehensive 报告行（platform = 'all'）
 /// - 2026.07.27.1: federation_room_members.last_read_at（群侧栏未读已读光标）
 /// - 2026.07.21.1: federation_domain_aliases（ActivityPub domain Move old→new bases）
 /// - 2026.07.20.6: federation_object_interactions（like/bookmark/announce）
@@ -31,7 +32,7 @@ use std::collections::HashSet;
 /// - 2026.07.17.1: tapp_ai_cost_ledger 表与索引
 /// - 2026.07.11.1: Discord 数据平台种子
 /// - 2026.07.10.1: 默认平台种子同步（含 X）
-const SCHEMA_VERSION: &str = "2026.07.27.1";
+const SCHEMA_VERSION: &str = "2026.07.27.2";
 
 /// 内置平台种子定义（与 migrations/001_initial_schema.rs 中 INSERT 保持同步）
 ///
@@ -4553,6 +4554,20 @@ ALTER TABLE federation_room_members
     Ok(())
 }
 
+/// 退休跨平台综合报告：历史行 `platform = 'all'` 已无生成/读取产品路径。
+///
+/// API 侧已用 `platform.ne("all")` 过滤，这里做一次幂等物理清理，避免库内残留
+/// 被 federation content 导出或手工 SQL 重新暴露。
+async fn cleanup_retired_comprehensive_reports(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+DELETE FROM platform_reports WHERE platform = 'all';
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
 /// Local Like / Bookmark / Announce records (Aro feed interactions).
 async fn ensure_federation_object_interactions_table(
     db: &DatabaseConnection,
@@ -4973,6 +4988,9 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     if let Err(e) = ensure_room_member_last_read_at(db).await {
         tracing::warn!("federation_room_members.last_read_at ensure warning: {}", e);
     }
+    if let Err(e) = cleanup_retired_comprehensive_reports(db).await {
+        tracing::warn!("retired comprehensive reports cleanup warning: {}", e);
+    }
     if let Err(e) = ensure_single_owner(db).await {
         tracing::warn!("Site owner seed warning: {}", e);
     }
@@ -5141,6 +5159,12 @@ async fn do_force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     if let Err(e) = ensure_room_member_last_read_at(db).await {
         tracing::warn!(
             "Force check: federation_room_members.last_read_at ensure warning: {}",
+            e
+        );
+    }
+    if let Err(e) = cleanup_retired_comprehensive_reports(db).await {
+        tracing::warn!(
+            "Force check: retired comprehensive reports cleanup warning: {}",
             e
         );
     }
