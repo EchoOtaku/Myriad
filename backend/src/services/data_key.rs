@@ -290,8 +290,24 @@ pub fn data_key() -> &'static DataKey {
 ///
 /// 这条规则同时决定 `configurations.is_encrypted` 列的取值 —— 在加密落地之前，
 /// 那个列只是个标签，值照样明文入库。现在它和实际加密行为绑定了。
+///
+/// # 匹配策略
+///
+/// 用子串会误伤配额 / 元数据字段（`user_ai_daily_tokens`、`openai_max_tokens`、
+/// `discord_token_expires_at`）。对这些**明确非密钥**的形状先排除，再匹配
+/// `api_key` / `token` / `secret` / `password` / `npsso`。
 pub fn is_sensitive_config_key(key: &str) -> bool {
     let key = key.to_ascii_lowercase();
+
+    // 配额、上限、过期时间戳 —— 名字里带 token 但不是密钥。
+    if key.ends_with("_tokens")
+        || key.contains("max_tokens")
+        || key.ends_with("_expires_at")
+        || key.contains("token_expires")
+    {
+        return false;
+    }
+
     key.contains("api_key")
         || key.contains("token")
         || key.contains("secret")
@@ -533,6 +549,44 @@ mod tests {
         assert!(parse_key_material("not-base64!!").is_none());
         // 尾部换行是密钥文件的正常形态
         assert!(parse_key_material(&format!("{}\n", BASE64.encode([0u8; 32]))).is_some());
+    }
+
+    #[test]
+    fn sensitive_key_heuristic_covers_secrets_not_quotas() {
+        for secret in [
+            "github_token",
+            "token",
+            "access_token",
+            "refresh_token",
+            "x_bearer_token",
+            "bangumi_access_token",
+            "steam_api_key",
+            "gemini_api_key",
+            "github_client_secret",
+            "tencent_secret_key",
+            "tencent_secret_id",
+            "admin_password",
+            "psn_npsso",
+        ] {
+            assert!(
+                is_sensitive_config_key(secret),
+                "{secret} must be treated as sensitive"
+            );
+        }
+        for non_secret in [
+            "user_ai_daily_tokens",
+            "guest_ai_daily_tokens",
+            "openai_max_tokens",
+            "discord_token_expires_at",
+            "github_username",
+            "enabled",
+            "base_url",
+        ] {
+            assert!(
+                !is_sensitive_config_key(non_secret),
+                "{non_secret} must not be encrypted"
+            );
+        }
     }
 
     #[test]

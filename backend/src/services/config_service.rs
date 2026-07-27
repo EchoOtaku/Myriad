@@ -762,9 +762,10 @@ impl ConfigService {
 
     /// 更新单个配置项
     ///
-    /// 敏感 key（`*api_key*` / `*token*` / `*secret*` / `*password*` / `*npsso*`）
-    /// 在这里加密后落库，因此调用方始终传明文。这是配置写入的唯一漏斗，
-    /// 加密放在这一层就不会有绕过的写路径。
+    /// 敏感 key 由 [`crate::services::data_key::is_sensitive_config_key`] 判定
+    /// （密钥类 token/secret/api_key/password/npsso；排除 `*_tokens` 配额与
+    /// `*_expires_at` 元数据）。在这里加密后落库，调用方始终传明文。
+    /// 这是配置写入的唯一漏斗，加密放在这一层就不会有绕过的写路径。
     pub async fn update_config(&self, key: &str, value: JsonValue) -> Result<()> {
         let value = crate::services::data_key::seal_config_value(key, value);
 
