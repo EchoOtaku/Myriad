@@ -381,18 +381,41 @@ export interface TranslationKeys {
     federationDeliveryQueue: string
     federationDeliveryQueueDesc: string
     federationDeliveryStatsLine: string
+    federationDeliveryStatPending: string
+    federationDeliveryStatDelivering: string
+    federationDeliveryStatDelivered: string
+    federationDeliveryStatDead: string
     federationDeliveryEmpty: string
     federationDeliveryRetry: string
+    /** Unified row action: cancel if active, dismiss if terminal. */
+    federationDeliveryRemove: string
+    /** @deprecated Prefer federationDeliveryRemove */
     federationDeliveryCancel: string
+    /** @deprecated Prefer federationDeliveryRemove */
     federationDeliveryDismiss: string
+    /** @deprecated Prefer federationDeliveryClear */
     federationDeliveryPurgeCancelled: string
+    /** @deprecated Prefer federationDeliveryClearConfirm */
     federationDeliveryPurgeCancelledConfirm: string
     federationDeliveryStatusCancelled: string
     federationDeliveryStatusFailed: string
+    federationDeliveryStatusPending: string
+    federationDeliveryStatusDelivering: string
+    federationDeliveryStatusDelivered: string
     federationDeliveryAttempts: string
+    /** Bulk: re-queue non-cancelled dead/failed only. */
+    federationDeliveryRetryFailures: string
+    federationDeliveryRetryFailuresConfirm: string
+    /** Bulk: cancel in-flight + purge all dead (failed + cancelled). */
+    federationDeliveryClear: string
+    federationDeliveryClearConfirm: string
+    /** @deprecated Prefer federationDeliveryRetryFailures */
     federationDeliveryRetryAllDead: string
+    /** @deprecated Prefer federationDeliveryClear */
     federationDeliveryCancelAllPending: string
+    /** @deprecated Prefer federationDeliveryRetryFailuresConfirm */
     federationDeliveryRetryAllConfirm: string
+    /** @deprecated Prefer federationDeliveryClearConfirm */
     federationDeliveryCancelAllConfirm: string
     federationDeliveryActionOk: string
     federationDeliveryActionFailed: string
@@ -637,7 +660,7 @@ export interface TranslationKeys {
     updaterInfraProxyConfirm: string
     /** Confirm when no app tip is cached; backend resolves registry tip. */
     updaterInfraProxyConfirmAuto: string
-    /** Params: version (new), previous (old). */
+    /** Params: version (new), previous (old). Dispatched / in progress. */
     updaterInfraProxyDispatched: string
     updaterInfraNeedCheck: string
     /** Params: target, previous, error — last failed self-update. */
@@ -648,12 +671,24 @@ export interface TranslationKeys {
     updaterInfraProxyRolledBack: string
     /** Self-update scheduled; waiting for helper result. */
     updaterSelfUpdateWaiting: string
+    /** Self-update: updater briefly unreachable while containers recreate. */
+    updaterSelfUpdateReconnecting: string
     /** Params: error — self-update helper reported failure. */
     updaterSelfUpdateFailed: string
     /** Self-update helper reported success after poll. */
     updaterSelfUpdateSucceeded: string
     /** Poll timed out before self_update_last changed. */
     updaterSelfUpdateStillPending: string
+    /** Proxy update in progress; waiting for durable outcome. */
+    updaterProxyUpdateWaiting: string
+    /** Proxy recreate: edge briefly unreachable. */
+    updaterProxyUpdateReconnecting: string
+    /** Params: version, previous — confirmed via proxy_update_last. */
+    updaterProxyUpdateSucceeded: string
+    /** Params: error — durable proxy update failure. */
+    updaterProxyUpdateFailed: string
+    /** Poll timed out before proxy_update_last changed. */
+    updaterProxyUpdateStillPending: string
     // 安装指定版本（高级，折叠）
     updaterTargetGroupTitle: string
     updaterTargetGroupDesc: string

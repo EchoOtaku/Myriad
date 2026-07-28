@@ -41,7 +41,28 @@ settings/
 | 数字 + 单位 | `NumberItem` |
 | 下拉（必须用自定义 listbox，勿用原生 `<select>`） | `FieldSelect` 或 `SelectItem` |
 | 多选芯片组 | `CheckboxGroupItem` |
+| 可操作列表（统计 + 工具栏 + 行操作） | `ManagedList` |
 | 区块标题 | `SettingSection` + `SettingGroup` |
+
+`ManagedList` 只负责结构与样式；数据与乐观更新由调用方维护。
+
+**已接入的设置页列表**
+
+| 区块 | 文件 |
+| ---- | ---- |
+| 联邦 · 出站投递队列 | `FederationDeliveryQueue.tsx` |
+| 联邦 · 已知实例 | `FederationConfigSection.tsx` |
+| 联邦 · 内容过滤 | `FederationConfigSection.tsx` |
+| 关于 · 更新备份快照 | `UpdaterConfigSection.tsx` |
+
+**不适合迁入的设置页列表（保留专用 UI）**
+
+| 区块 | 原因 |
+| ---- | ---- |
+| 用户管理 | 展开详情 + 多段表单 / 身份解绑 |
+| OAuth providers | 可展开编辑的凭证卡片 |
+| 通知来源网格 | 每源一整组 Switch/Checkbox，非行操作队列 |
+| 更新器目标选择 | 单选列表，不是 CRUD 管理 |
 
 ## 原则
 

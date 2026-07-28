@@ -439,11 +439,16 @@ export const enUS: TranslationKeys = {
     federationKeysNoIdentity: 'Could not load federation identity.',
     federationDeliveryQueue: 'Outbound delivery queue',
     federationDeliveryQueueDesc:
-      'Pending and failed ActivityPub deliveries for your account. User-cancelled rows stay dead when bulk-retrying; use per-item retry to recover a cancelled row.',
+      'Pending, in-flight, failed, and cancelled outbound deliveries. Retry real failures; Remove stops and drops a row; Clear cancels in-flight and purges every finished row.',
     federationDeliveryStatsLine:
-      'pending {pending} · delivering {delivering} · delivered {delivered} · dead {dead}',
+      'pending {pending} · delivering {delivering} · delivered {delivered} · finished {dead}',
+    federationDeliveryStatPending: 'Pending',
+    federationDeliveryStatDelivering: 'Delivering',
+    federationDeliveryStatDelivered: 'Delivered',
+    federationDeliveryStatDead: 'Failed / cancelled',
     federationDeliveryEmpty: 'No recent delivery queue rows.',
     federationDeliveryRetry: 'Retry',
+    federationDeliveryRemove: 'Remove',
     federationDeliveryCancel: 'Cancel',
     federationDeliveryDismiss: 'Dismiss',
     federationDeliveryPurgeCancelled: 'Clear cancelled',
@@ -451,16 +456,25 @@ export const enUS: TranslationKeys = {
       'Remove all intentionally cancelled dead deliveries from the queue? This cannot be undone.',
     federationDeliveryStatusCancelled: 'Cancelled',
     federationDeliveryStatusFailed: 'Failed',
+    federationDeliveryStatusPending: 'Pending',
+    federationDeliveryStatusDelivering: 'Delivering',
+    federationDeliveryStatusDelivered: 'Delivered',
     federationDeliveryAttempts: 'attempts {attempts}/{max}',
-    federationDeliveryRetryAllDead: 'Retry all dead',
-    federationDeliveryCancelAllPending: 'Cancel all pending',
+    federationDeliveryRetryFailures: 'Retry failures',
+    federationDeliveryRetryFailuresConfirm:
+      'Re-queue every delivery that failed (not user-cancelled)?',
+    federationDeliveryClear: 'Clear',
+    federationDeliveryClearConfirm:
+      'Cancel all pending/delivering items and delete every failed or cancelled row from the list? This cannot be undone.',
+    federationDeliveryRetryAllDead: 'Retry failures',
+    federationDeliveryCancelAllPending: 'Clear',
     federationDeliveryRetryAllConfirm:
-      'Re-queue all non-cancelled dead deliveries? User-cancelled rows are skipped.',
+      'Re-queue every delivery that failed (not user-cancelled)?',
     federationDeliveryCancelAllConfirm:
-      'Mark all pending/delivering items as cancelled? They will not be bulk-retried.',
+      'Cancel all pending/delivering items and delete every failed or cancelled row from the list? This cannot be undone.',
     federationDeliveryActionOk: 'Delivery queue updated',
     federationDeliveryActionFailed: 'Delivery action failed',
-    federationDeliveryRefresh: 'Refresh queue',
+    federationDeliveryRefresh: 'Refresh',
     federationFilterNamePlaceholder: 'e.g. block-announce',
     federationActivityFollow: 'Follow',
     federationActivityAccept: 'Accept',
@@ -595,9 +609,9 @@ export const enUS: TranslationKeys = {
     updaterStatusNeedsManual: 'Last update failed — action needed',
     updaterStatusOffline: 'Cannot reach the update service',
     updaterStatusFirstRun: 'No version recorded yet',
-    updaterLastFailedTitle: 'Last update did not complete (rollback attempted)',
+    updaterLastFailedTitle: 'Last update did not complete',
     updaterLastFailedBody:
-      'From {from} to {to} failed; the previous stack should be restored if auto-rollback succeeded. Reason: {reason}',
+      'From {from} to {to} failed. Reason: {reason}',
     updaterHintHealthy: 'No updates are available on this channel.',
     updaterHintUpdating: 'The system will be checked when it finishes.',
     updaterHintMaintenance: 'Exit maintenance mode below when ready.',
@@ -713,7 +727,7 @@ export const enUS: TranslationKeys = {
     updaterInfraProxyConfirmAuto:
       'Upgrade proxy to the current registry tip? Brief edge interruption (usually <10s).',
     updaterInfraProxyDispatched:
-      'Proxy upgraded to {version} (was {previous}).',
+      'Proxy upgrade to {version} started (was {previous}); confirming result…',
     updaterInfraNeedCheck:
       'Run “Check for updates” first to resolve a target version.',
     updaterInfraSelfLastFailed:
@@ -722,11 +736,21 @@ export const enUS: TranslationKeys = {
       'Last proxy upgrade failed: target {target} (was {previous}). {error}',
     updaterInfraProxyRolledBack: 'Automatically rolled back to the previous version.',
     updaterSelfUpdateWaiting: 'Updater upgrade scheduled; confirming result…',
+    updaterSelfUpdateReconnecting:
+      'Updater is restarting — connection may drop briefly; reconnecting…',
     updaterSelfUpdateFailed: 'Updater upgrade failed: {error}',
     updaterSelfUpdateSucceeded:
       'Updater upgraded to {version} (was {previous}).',
     updaterSelfUpdateStillPending:
       'Updater upgrade still in progress or result not recorded yet; refresh this page later.',
+    updaterProxyUpdateWaiting: 'Proxy upgrade in progress; confirming result…',
+    updaterProxyUpdateReconnecting:
+      'Edge proxy is restarting — connection may drop briefly; reconnecting…',
+    updaterProxyUpdateSucceeded:
+      'Proxy upgraded to {version} (was {previous}).',
+    updaterProxyUpdateFailed: 'Proxy upgrade failed: {error}',
+    updaterProxyUpdateStillPending:
+      'Proxy upgrade still in progress or result not recorded yet; refresh this page later.',
     updaterTargetGroupTitle: 'Install a specific version (advanced)',
     updaterTargetGroupDesc:
       'Past releases or a specific commit. Not for daily use.',

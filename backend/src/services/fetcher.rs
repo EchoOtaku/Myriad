@@ -467,11 +467,29 @@ impl PlatformFetcher {
         let game_list: Vec<SteamGame> = games
             .iter()
             .filter_map(|game| {
+                let appid = game["appid"]
+                    .as_i64()
+                    .or_else(|| game["appid"].as_u64().map(|u| u as i64))?;
+                let playtime_forever = game["playtime_forever"]
+                    .as_i64()
+                    .or_else(|| game["playtime_forever"].as_u64().map(|u| u as i64))
+                    .or_else(|| {
+                        game["playtime_forever"]
+                            .as_f64()
+                            .filter(|f| f.is_finite())
+                            .map(|f| f.round() as i64)
+                    })
+                    .unwrap_or(0)
+                    .max(0);
+                let playtime_2weeks = game["playtime_2weeks"]
+                    .as_i64()
+                    .or_else(|| game["playtime_2weeks"].as_u64().map(|u| u as i64))
+                    .map(|v| v.max(0) as i32);
                 Some(SteamGame {
-                    appid: game["appid"].as_i64()?,
+                    appid,
                     name: game["name"].as_str()?.to_string(),
-                    playtime_forever: game["playtime_forever"].as_i64().unwrap_or(0) as i32,
-                    playtime_2weeks: game["playtime_2weeks"].as_i64().map(|v| v as i32),
+                    playtime_forever: playtime_forever.min(i32::MAX as i64) as i32,
+                    playtime_2weeks,
                     img_icon_url: game["img_icon_url"].as_str().unwrap_or("").to_string(),
                     img_logo_url: game["img_logo_url"].as_str().unwrap_or("").to_string(),
                 })

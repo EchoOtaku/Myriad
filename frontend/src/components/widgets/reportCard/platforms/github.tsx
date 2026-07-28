@@ -42,12 +42,23 @@ export const GithubStatsWidget = memo(({ data }: any) => {
     () => data?.contribution_level || t.reportCard.beginnerDev,
     [data?.contribution_level, t.reportCard.beginnerDev],
   )
+  const safeNonNegInt = (v: unknown): number => {
+    const n = Number(v)
+    if (!Number.isFinite(n) || n < 0) return 0
+    return Math.round(n)
+  }
   const contributions = useMemo(
-    () => data?.total_contributions || 0,
+    () => safeNonNegInt(data?.total_contributions),
     [data?.total_contributions],
   )
-  const reposCount = useMemo(() => data?.repos_count || 0, [data?.repos_count])
-  const totalStars = useMemo(() => data?.total_stars || 0, [data?.total_stars])
+  const reposCount = useMemo(
+    () => safeNonNegInt(data?.repos_count),
+    [data?.repos_count],
+  )
+  const totalStars = useMemo(
+    () => safeNonNegInt(data?.total_stars),
+    [data?.total_stars],
+  )
   const contributionCalendar = useMemo(
     () => data?.contribution_calendar,
     [data?.contribution_calendar],

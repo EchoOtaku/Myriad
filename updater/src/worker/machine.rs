@@ -16,9 +16,11 @@ pub struct PhaseRecorder<'a> {
 
 impl<'a> PhaseRecorder<'a> {
     pub fn enter(&self, phase: Phase, message_key: &str) -> Result<()> {
+        // Preflight must keep active=false so a failed pre-check never strand
+        // the SPA on the maintenance page or block /api via the proxy.
         let m = MaintenanceFile {
             schema_version: 1,
-            active: !matches!(phase, Phase::Idle),
+            active: phase.takes_site_offline(),
             phase,
             from_version: self.from_version.clone(),
             to_version: self.to_version.clone(),

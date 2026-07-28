@@ -84,6 +84,7 @@ pub async fn run(
     let _ = worker.state().append_audit(&audit);
 
     if let Err(e) = rec.enter(Phase::Preflight, "updater.phase.preflight") {
+        record_preflight_failure(&worker, &rec, &e);
         let _ = rec.finalize(JobStatus::Failed);
         let _ = crate::worker::machine::clear_maintenance(worker.state());
         return Err(e);
@@ -96,6 +97,9 @@ pub async fn run(
         Err(e) => {
             error!(job = %job_id, err = %e, "preflight failed");
             let _ = rec.finish_step_err(format!("preflight: {e}"));
+            // Surface reason on About → update block; stop auto-install so a
+            // broken pre-check does not keep firing until the operator fixes it.
+            record_preflight_failure(&worker, &rec, &e);
             let _ = rec.finalize(JobStatus::Failed);
             let _ = crate::worker::machine::clear_maintenance(worker.state());
             return Err(e);
@@ -945,6 +949,52 @@ async fn finish_with_rollback(
 fn is_health_probe_failure(err: &UpdaterError) -> bool {
     let s = err.to_string();
     s.contains("health probe") || s.contains("health:")
+}
+
+/// Persist preflight failure for the About-page update block and turn off
+/// auto-install so a hard pre-check failure cannot loop on the next tick.
+fn record_preflight_failure(worker: &Worker, rec: &PhaseRecorder<'_>, err: &UpdaterError) {
+    if let Ok(mut st) = worker.state().read_updater() {
+        let was_auto = st.auto_install;
+        let reason = if was_auto {
+            format!("preflight: {err} (auto-update disabled)")
+        } else {
+            format!("preflight: {err}")
+        };
+        st.last_failed_update = Some(crate::state::FailedUpdate {
+            from_version: rec.from_version.clone(),
+            to_version: rec.to_version.clone(),
+            at: Utc::now(),
+            reason: reason.clone(),
+            job_id: rec.job_id.clone(),
+        });
+        if was_auto {
+            st.auto_install = false;
+        }
+        if let Err(e) = worker.state().write_updater(&st) {
+            warn!(err = %e, "preflight failure: write_updater failed");
+            return;
+        }
+        if was_auto {
+            info!(
+                job = %rec.job_id,
+                "preflight failed: auto_install disabled"
+            );
+            let _ = worker.state().append_history(&format!(
+                "job {}: PREFLIGHT_FAIL auto_install=off reason={reason}",
+                rec.job_id
+            ));
+            let _ = worker.state().append_audit(&format!(
+                "audit: preflight_failed_auto_install_off job={} reason={reason}",
+                rec.job_id
+            ));
+        } else {
+            let _ = worker.state().append_history(&format!(
+                "job {}: PREFLIGHT_FAIL reason={reason}",
+                rec.job_id
+            ));
+        }
+    }
 }
 
 pub(crate) async fn build_compose_runner_pub(worker: &Arc<Worker>) -> Result<ComposeRunner> {

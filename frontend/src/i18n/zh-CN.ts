@@ -410,11 +410,16 @@ export const zhCN: TranslationKeys = {
     federationKeysNoIdentity: '无法加载联邦身份。',
     federationDeliveryQueue: '出站投递队列',
     federationDeliveryQueueDesc:
-      '你的账户待处理与失败的 ActivityPub 投递。用户取消的行在批量重试时保持 dead；可用单条重试恢复。',
+      '待处理、投递中，以及失败/已取消的出站投递。可重试真正的失败；「移除」会停止并删掉该行，「清理」会取消进行中并清掉所有结束项。',
     federationDeliveryStatsLine:
-      '待处理 {pending} · 投递中 {delivering} · 已投递 {delivered} · 失败 {dead}',
+      '待处理 {pending} · 投递中 {delivering} · 已投递 {delivered} · 结束 {dead}',
+    federationDeliveryStatPending: '待处理',
+    federationDeliveryStatDelivering: '投递中',
+    federationDeliveryStatDelivered: '已投递',
+    federationDeliveryStatDead: '失败/取消',
     federationDeliveryEmpty: '暂无投递队列记录。',
     federationDeliveryRetry: '重试',
+    federationDeliveryRemove: '移除',
     federationDeliveryCancel: '取消',
     federationDeliveryDismiss: '清除',
     federationDeliveryPurgeCancelled: '清除已取消',
@@ -422,16 +427,25 @@ export const zhCN: TranslationKeys = {
       '从队列中移除所有故意取消的失败记录？此操作不可撤销。',
     federationDeliveryStatusCancelled: '已取消',
     federationDeliveryStatusFailed: '失败',
+    federationDeliveryStatusPending: '待处理',
+    federationDeliveryStatusDelivering: '投递中',
+    federationDeliveryStatusDelivered: '已投递',
     federationDeliveryAttempts: '尝试 {attempts}/{max}',
-    federationDeliveryRetryAllDead: '重试全部失败',
-    federationDeliveryCancelAllPending: '取消全部待处理',
+    federationDeliveryRetryFailures: '重试失败',
+    federationDeliveryRetryFailuresConfirm:
+      '重新排队所有因投递失败而结束的项？已取消的不会重试。',
+    federationDeliveryClear: '清理',
+    federationDeliveryClearConfirm:
+      '取消所有待处理/投递中的项，并删除列表中所有失败与已取消记录？此操作不可撤销。',
+    federationDeliveryRetryAllDead: '重试失败',
+    federationDeliveryCancelAllPending: '清理',
     federationDeliveryRetryAllConfirm:
-      '重新排队所有非用户取消的失败投递？用户取消的行会被跳过。',
+      '重新排队所有因投递失败而结束的项？已取消的不会重试。',
     federationDeliveryCancelAllConfirm:
-      '将所有 pending/delivering 标记为已取消？它们不会被批量重试。',
+      '取消所有待处理/投递中的项，并删除列表中所有失败与已取消记录？此操作不可撤销。',
     federationDeliveryActionOk: '投递队列已更新',
     federationDeliveryActionFailed: '投递操作失败',
-    federationDeliveryRefresh: '刷新队列',
+    federationDeliveryRefresh: '刷新',
     federationFilterNamePlaceholder: '例如 block-announce',
     federationActivityFollow: '关注 (Follow)',
     federationActivityAccept: '接受 (Accept)',
@@ -560,9 +574,9 @@ export const zhCN: TranslationKeys = {
     updaterStatusNeedsManual: '上次更新失败，需要处理',
     updaterStatusOffline: '无法连接更新服务',
     updaterStatusFirstRun: '还没有版本记录',
-    updaterLastFailedTitle: '上次更新未成功（已尝试回退）',
+    updaterLastFailedTitle: '上次更新未成功',
     updaterLastFailedBody:
-      '从 {from} 到 {to} 失败，服务已按上一版本恢复（若自动回退成功）。原因：{reason}',
+      '从 {from} 到 {to} 失败。原因：{reason}',
     updaterHintHealthy: '当前通道没有可用更新。',
     updaterHintUpdating: '完成后将自动检查运行状态。',
     updaterHintMaintenance: '可在下方退出维护模式。',
@@ -673,7 +687,7 @@ export const zhCN: TranslationKeys = {
     updaterInfraProxyConfirmAuto:
       '升级 proxy 到镜像仓库当前 tip？边缘入口会短暂中断（通常 <10 秒）。',
     updaterInfraProxyDispatched:
-      'proxy 已升级到 {version}（原 {previous}）。',
+      'proxy 已开始升级到 {version}（原 {previous}），正在确认结果…',
     updaterInfraNeedCheck: '请先「检查更新」以获取目标版本。',
     updaterInfraSelfLastFailed:
       '上次更新器升级失败：目标 {target}（原 {previous}）。{error}',
@@ -681,11 +695,21 @@ export const zhCN: TranslationKeys = {
       '上次 proxy 升级失败：目标 {target}（原 {previous}）。{error}',
     updaterInfraProxyRolledBack: '已自动回退到原版本。',
     updaterSelfUpdateWaiting: '更新器升级已调度，正在确认结果…',
+    updaterSelfUpdateReconnecting:
+      '更新器正在重启，连接会短暂中断，正在自动重连…',
     updaterSelfUpdateFailed: '更新器升级失败：{error}',
     updaterSelfUpdateSucceeded:
       '更新器已升级到 {version}（原 {previous}）。',
     updaterSelfUpdateStillPending:
       '更新器升级仍在进行或结果尚未写入；请稍后刷新本页。',
+    updaterProxyUpdateWaiting: 'proxy 升级进行中，正在确认结果…',
+    updaterProxyUpdateReconnecting:
+      '边缘入口正在重启，连接会短暂中断，正在自动重连…',
+    updaterProxyUpdateSucceeded:
+      'proxy 已升级到 {version}（原 {previous}）。',
+    updaterProxyUpdateFailed: 'proxy 升级失败：{error}',
+    updaterProxyUpdateStillPending:
+      'proxy 升级仍在进行或结果尚未写入；请稍后刷新本页。',
     updaterTargetGroupTitle: '安装指定版本（高级）',
     updaterTargetGroupDesc: '安装历史正式版或指定提交。日常无需使用。',
     updaterTargetReleaseHead: '可选版本（点击选择）',

@@ -15,14 +15,12 @@ import type {
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { federationApi } from '../../services/federationApi'
-import {
-  isCancelledDeliveryError,
-  shouldOfferDeliveryRetry,
-} from '../../utils/federationDeliveryUi'
+import type { ManagedListItem } from '../settings/ManagedList'
 import {
   ButtonItem,
   FieldSelect,
   InputItem,
+  ManagedList,
   NumberItem,
   SelectItem,
   SettingGroup,
@@ -30,6 +28,7 @@ import {
   SwitchItem,
 } from '../settings'
 import { Spinner } from '../Spinner'
+import { FederationDeliveryQueue } from './FederationDeliveryQueue'
 
 interface FederationConfigSectionProps {
   title: string
@@ -122,7 +121,6 @@ export const FederationConfigSection: React.FC<
   const [rotatingKeys, setRotatingKeys] = useState(false)
   const [deliveryStats, setDeliveryStats] = useState<DeliveryStats | null>(null)
   const [deliveryItems, setDeliveryItems] = useState<DeliveryQueueItem[]>([])
-  const [deliveryBusy, setDeliveryBusy] = useState(false)
 
   // Policy draft
   const [minTrust, setMinTrust] = useState(0)
@@ -137,6 +135,10 @@ export const FederationConfigSection: React.FC<
   const [newFilterName, setNewFilterName] = useState('')
   const [newFilterType, setNewFilterType] = useState<FilterType>('block_keyword')
   const [newFilterValue, setNewFilterValue] = useState('')
+  const [instanceBusy, setInstanceBusy] = useState<Record<string, boolean>>({})
+  const [filterBusy, setFilterBusy] = useState<
+    Record<number, 'toggle' | 'delete' | undefined>
+  >({})
 
   const trustLevels = useMemo(
     () => [
@@ -231,19 +233,23 @@ export const FederationConfigSection: React.FC<
     }
   }, [c])
 
+  /**
+   * Soft re-fetch for the delivery panel.
+   * Only apply successful responses — never replace a good optimistic list
+   * with `[]` / null when one endpoint blips.
+   */
   const loadDelivery = useCallback(async () => {
-    try {
-      const [stats, list] = await Promise.all([
-        federationApi.getDeliveryStats().catch(() => null),
-        federationApi.listDelivery(25).catch(() => ({ items: [], total: 0 })),
-      ])
-      setDeliveryStats(stats)
-      setDeliveryItems(list.items || [])
-    } catch {
-      // Non-admin sessions may lack delivery endpoints; keep trust UI usable.
-      setDeliveryStats(null)
-      setDeliveryItems([])
+    const [statsResult, listResult] = await Promise.allSettled([
+      federationApi.getDeliveryStats(),
+      federationApi.listDelivery(25),
+    ])
+    if (statsResult.status === 'fulfilled' && statsResult.value) {
+      setDeliveryStats(statsResult.value)
     }
+    if (listResult.status === 'fulfilled' && listResult.value) {
+      setDeliveryItems(listResult.value.items || [])
+    }
+    // First paint with neither: leave empty (initial state). Do not wipe.
   }, [])
 
   const load = useCallback(async () => {
@@ -299,22 +305,6 @@ export const FederationConfigSection: React.FC<
     }
   }
 
-  const withDeliveryAction = async (fn: () => Promise<void>) => {
-    setDeliveryBusy(true)
-    try {
-      await fn()
-      onMessage?.(c.federationDeliveryActionOk, 'success')
-      await loadDelivery()
-    } catch (e) {
-      onMessage?.(
-        e instanceof Error ? e.message : c.federationDeliveryActionFailed,
-        'error',
-      )
-    } finally {
-      setDeliveryBusy(false)
-    }
-  }
-
   const savePolicy = async () => {
     setSaving(true)
     try {
@@ -367,18 +357,25 @@ export const FederationConfigSection: React.FC<
   }
 
   const toggleBlock = async (domain: string, block: boolean) => {
+    const snapshot = instances
+    setInstanceBusy((b) => ({ ...b, [domain]: true }))
+    setInstances((prev) =>
+      prev.map((i) => (i.domain === domain ? { ...i, blocked: block } : i)),
+    )
     try {
       await federationApi.toggleInstanceBlock({ domain, block })
-      setInstances((prev) =>
-        prev.map((i) =>
-          i.domain === domain ? { ...i, blocked: block } : i,
-        ),
-      )
     } catch (e) {
+      setInstances(snapshot)
       onMessage?.(
         e instanceof Error ? e.message : c.federationBlockFailed,
         'error',
       )
+    } finally {
+      setInstanceBusy((b) => {
+        const next = { ...b }
+        delete next[domain]
+        return next
+      })
     }
   }
 
@@ -439,32 +436,109 @@ export const FederationConfigSection: React.FC<
   }
 
   const toggleFilter = async (f: ContentFilterItem) => {
+    const snapshot = filters
+    setFilterBusy((b) => ({ ...b, [f.id]: 'toggle' }))
+    setFilters((prev) =>
+      prev.map((x) =>
+        x.id === f.id ? { ...x, enabled: !x.enabled } : x,
+      ),
+    )
     try {
       await federationApi.updateContentFilter(f.id, { enabled: !f.enabled })
-      setFilters((prev) =>
-        prev.map((x) =>
-          x.id === f.id ? { ...x, enabled: !x.enabled } : x,
-        ),
-      )
     } catch (e) {
+      setFilters(snapshot)
       onMessage?.(
         e instanceof Error ? e.message : c.federationUpdateFailed,
         'error',
       )
+    } finally {
+      setFilterBusy((b) => {
+        const next = { ...b }
+        delete next[f.id]
+        return next
+      })
     }
   }
 
   const deleteFilter = async (id: number) => {
+    const snapshot = filters
+    setFilterBusy((b) => ({ ...b, [id]: 'delete' }))
+    setFilters((prev) => prev.filter((x) => x.id !== id))
     try {
       await federationApi.deleteContentFilter(id)
-      setFilters((prev) => prev.filter((x) => x.id !== id))
     } catch (e) {
+      setFilters(snapshot)
       onMessage?.(
         e instanceof Error ? e.message : c.federationUpdateFailed,
         'error',
       )
+    } finally {
+      setFilterBusy((b) => {
+        const next = { ...b }
+        delete next[id]
+        return next
+      })
     }
   }
+
+  const instanceListItems: ManagedListItem[] = instances.map((inst) => ({
+    id: inst.domain,
+    title: inst.domain,
+    badge: inst.blocked
+      ? { label: c.federationBlocked, tone: 'danger' }
+      : undefined,
+    busy: !!instanceBusy[inst.domain],
+    trailing: (
+      <FieldSelect
+        size="sm"
+        value={String(inst.trust_level)}
+        options={trustLevels.map((l) => ({
+          value: String(l.value),
+          label: l.label,
+        }))}
+        onChange={(v) => void setInstanceTrust(inst.domain, Number(v))}
+        aria-label={c.federationMinTrustInbound}
+        disabled={!!instanceBusy[inst.domain]}
+      />
+    ),
+    actions: [
+      {
+        key: 'block',
+        label: inst.blocked ? c.federationUnblock : c.federationBlock,
+        variant: inst.blocked ? 'primary' : 'danger',
+        onClick: () => void toggleBlock(inst.domain, !inst.blocked),
+        loading: !!instanceBusy[inst.domain],
+      },
+    ],
+  }))
+
+  const filterListItems: ManagedListItem[] = filters.map((f) => ({
+    id: f.id,
+    title: f.name,
+    subtitle: formatFilterSummary(f),
+    badge: f.enabled
+      ? { label: c.federationFilterEnabled, tone: 'success' }
+      : { label: c.federationFilterDisabled, tone: 'muted' },
+    busy: !!filterBusy[f.id],
+    actions: [
+      {
+        key: 'toggle',
+        label: f.enabled
+          ? c.federationFilterEnabled
+          : c.federationFilterDisabled,
+        variant: f.enabled ? 'secondary' : 'primary',
+        onClick: () => void toggleFilter(f),
+        loading: filterBusy[f.id] === 'toggle',
+      },
+      {
+        key: 'delete',
+        label: t.common?.delete || 'Delete',
+        variant: 'danger',
+        onClick: () => void deleteFilter(f.id),
+        loading: filterBusy[f.id] === 'delete',
+      },
+    ],
+  }))
 
   if (loading) {
     return (
@@ -483,14 +557,6 @@ export const FederationConfigSection: React.FC<
 
   const saveButtonText =
     saving ? '…' : c.federationSavePolicy || t.common?.save || 'Save'
-
-  const statsLine = deliveryStats
-    ? c.federationDeliveryStatsLine
-        .replace('{pending}', String(deliveryStats.pending ?? 0))
-        .replace('{delivering}', String(deliveryStats.delivering ?? 0))
-        .replace('{delivered}', String(deliveryStats.delivered ?? 0))
-        .replace('{dead}', String(deliveryStats.dead ?? 0))
-    : null
 
   return (
     <SettingSection
@@ -551,139 +617,14 @@ export const FederationConfigSection: React.FC<
         title={c.federationDeliveryQueue}
         description={c.federationDeliveryQueueDesc}
       >
-        {statsLine ? (
-          <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-            {statsLine}
-          </p>
-        ) : null}
-        <div className="flex flex-wrap gap-2 mb-3">
-          <ButtonItem
-            label={c.federationDeliveryRefresh}
-            buttonText={c.federationDeliveryRefresh}
-            onClick={() => void loadDelivery()}
-            disabled={deliveryBusy}
-            variant="secondary"
-          />
-          <ButtonItem
-            label={c.federationDeliveryRetryAllDead}
-            buttonText={c.federationDeliveryRetryAllDead}
-            onClick={() => {
-              if (!window.confirm(c.federationDeliveryRetryAllConfirm)) return
-              void withDeliveryAction(async () => {
-                await federationApi.retryAllDeadDelivery()
-              })
-            }}
-            disabled={deliveryBusy}
-          />
-          <ButtonItem
-            label={c.federationDeliveryCancelAllPending}
-            buttonText={c.federationDeliveryCancelAllPending}
-            onClick={() => {
-              if (!window.confirm(c.federationDeliveryCancelAllConfirm)) return
-              void withDeliveryAction(async () => {
-                await federationApi.cancelAllPendingDelivery()
-              })
-            }}
-            disabled={deliveryBusy}
-            variant="secondary"
-          />
-          <ButtonItem
-            label={c.federationDeliveryPurgeCancelled}
-            buttonText={c.federationDeliveryPurgeCancelled}
-            onClick={() => {
-              if (!window.confirm(c.federationDeliveryPurgeCancelledConfirm))
-                return
-              void withDeliveryAction(async () => {
-                await federationApi.purgeDeadDelivery({ cancelledOnly: true })
-              })
-            }}
-            disabled={deliveryBusy}
-            variant="secondary"
-          />
-        </div>
-        {deliveryItems.length === 0 ? (
-          <p className="text-sm text-gray-500">{c.federationDeliveryEmpty}</p>
-        ) : (
-          <ul className="space-y-1.5 max-h-72 overflow-y-auto">
-            {deliveryItems.map((item) => {
-              const cancelled =
-                item.intentional_cancel === true ||
-                isCancelledDeliveryError(item.error_message)
-              const statusLabel =
-                item.status === 'dead' && cancelled
-                  ? c.federationDeliveryStatusCancelled
-                  : item.status === 'dead'
-                    ? c.federationDeliveryStatusFailed
-                    : item.status
-              const attemptsLabel = c.federationDeliveryAttempts
-                .replace('{attempts}', String(item.attempts ?? 0))
-                .replace('{max}', String(item.max_attempts ?? 0))
-              const showRetry = shouldOfferDeliveryRetry(item)
-              return (
-              <li
-                key={item.id}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-black/5 bg-black/[0.02] px-3 py-2 text-sm dark:border-white/5 dark:bg-white/[0.03]"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate">
-                    #{item.id} · {statusLabel} · {item.activity_type || '—'}
-                  </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    {item.target_domain || item.target_inbox}
-                    {` · ${attemptsLabel}`}
-                    {item.error_message
-                      ? ` · ${item.error_message}`
-                      : ''}
-                  </div>
-                </div>
-                {showRetry && (
-                  <button
-                    type="button"
-                    className="text-xs rounded-full px-2.5 py-1 font-medium bg-black/5 dark:bg-white/10 disabled:opacity-50"
-                    disabled={deliveryBusy}
-                    onClick={() =>
-                      void withDeliveryAction(async () => {
-                        await federationApi.retryDelivery(item.id)
-                      })
-                    }
-                  >
-                    {c.federationDeliveryRetry}
-                  </button>
-                )}
-                {(item.status === 'pending' ||
-                  item.status === 'delivering') && (
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-red-500 disabled:opacity-50"
-                    disabled={deliveryBusy}
-                    onClick={() =>
-                      void withDeliveryAction(async () => {
-                        await federationApi.cancelDelivery(item.id)
-                      })
-                    }
-                  >
-                    {c.federationDeliveryCancel}
-                  </button>
-                )}
-                {item.status === 'dead' && (
-                  <button
-                    type="button"
-                    className="text-xs rounded-full px-2.5 py-1 font-medium text-gray-600 dark:text-gray-300 bg-black/5 dark:bg-white/10 disabled:opacity-50"
-                    disabled={deliveryBusy}
-                    onClick={() =>
-                      void withDeliveryAction(async () => {
-                        await federationApi.dismissDelivery(item.id)
-                      })
-                    }
-                  >
-                    {c.federationDeliveryDismiss}
-                  </button>
-                )}
-              </li>
-              )
-            })}
-          </ul>
-        )}
+        <FederationDeliveryQueue
+          stats={deliveryStats}
+          items={deliveryItems}
+          onStatsChange={setDeliveryStats}
+          onItemsChange={setDeliveryItems}
+          onMessage={onMessage}
+          onRefresh={loadDelivery}
+        />
       </SettingGroup>
 
       <SettingGroup
@@ -733,49 +674,11 @@ export const FederationConfigSection: React.FC<
         title={c.federationKnownInstances}
         description={c.federationKnownInstancesDesc}
       >
-        {instances.length === 0 ? (
-          <p className="text-sm text-gray-500">{c.federationNoInstances}</p>
-        ) : (
-          <ul className="space-y-2">
-            {instances.map((inst) => (
-              <li
-                key={inst.domain}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-black/5 bg-black/[0.02] px-3 py-2.5 text-sm dark:border-white/5 dark:bg-white/[0.03]"
-              >
-                <span className="min-w-0 flex-1 font-medium truncate">
-                  {inst.domain}
-                  {inst.blocked && (
-                    <span className="ml-2 text-xs text-red-500">
-                      {c.federationBlocked}
-                    </span>
-                  )}
-                </span>
-                <FieldSelect
-                  size="sm"
-                  value={String(inst.trust_level)}
-                  options={trustLevels.map((l) => ({
-                    value: String(l.value),
-                    label: l.label,
-                  }))}
-                  onChange={(v) => void setInstanceTrust(inst.domain, Number(v))}
-                  aria-label={c.federationMinTrustInbound}
-                />
-                <button
-                  type="button"
-                  className={
-                    `rounded-full px-2.5 py-1 text-xs font-medium ${
-                    inst.blocked
-                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                      : 'bg-red-500/10 text-red-600 dark:text-red-300'}`
-                  }
-                  onClick={() => void toggleBlock(inst.domain, !inst.blocked)}
-                >
-                  {inst.blocked ? c.federationUnblock : c.federationBlock}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <ManagedList
+          items={instanceListItems}
+          emptyText={c.federationNoInstances}
+          maxHeight={null}
+        />
       </SettingGroup>
 
       <SettingGroup
@@ -855,41 +758,11 @@ export const FederationConfigSection: React.FC<
           />
         </div>
 
-        {filters.length === 0 ? (
-          <p className="text-sm text-gray-500">{c.federationNoFilters}</p>
-        ) : (
-          <ul className="space-y-1.5">
-            {filters.map((f) => (
-              <li
-                key={f.id}
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-black/5 bg-black/[0.02] px-3 py-2.5 text-sm dark:border-white/5 dark:bg-white/[0.03]"
-              >
-                <span className="min-w-0 flex-1 truncate">
-                  <strong>{f.name}</strong>{' '}
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {formatFilterSummary(f)}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  className="text-xs rounded-full px-2.5 py-1 font-medium bg-black/5 dark:bg-white/10"
-                  onClick={() => void toggleFilter(f)}
-                >
-                  {f.enabled
-                    ? c.federationFilterEnabled
-                    : c.federationFilterDisabled}
-                </button>
-                <button
-                  type="button"
-                  className="text-xs font-medium text-red-500"
-                  onClick={() => void deleteFilter(f.id)}
-                >
-                  {t.common?.delete || 'Delete'}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <ManagedList
+          items={filterListItems}
+          emptyText={c.federationNoFilters}
+          maxHeight={null}
+        />
       </SettingGroup>
 
       <SettingGroup

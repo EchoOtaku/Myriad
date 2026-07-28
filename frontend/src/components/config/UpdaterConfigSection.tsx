@@ -34,10 +34,12 @@ import {
   makeUpdaterApi,
   UpdaterError,
 } from '../../services/updaterApi'
+import type { ManagedListItem } from '../settings/ManagedList'
 import {
   ButtonItem,
   FieldSelect,
   InputItem,
+  ManagedList,
   SettingGroup,
   ToggleSwitch,
 } from '../settings'
@@ -70,6 +72,9 @@ function modeForTarget(target: string, fallback: UpdateMode): UpdateMode {
 }
 
 const POLL_INTERVAL = 4_000
+/** Infra (updater/proxy) outcome poll: 2s × 45 ≈ 90s. */
+const INFRA_OUTCOME_POLL_MS = 2_000
+const INFRA_OUTCOME_MAX_TRIES = 45
 const TEMPLATE_RE = /\{(\w+)\}/g
 const COMMIT_URL = 'https://github.com/Myriad-You/Myriad/commit/'
 
@@ -77,6 +82,26 @@ type U = ReturnType<typeof useI18n>['t']['config']
 
 function format(template: string, params: Record<string, string>): string {
   return template.replace(TEMPLATE_RE, (_, k) => params[k] ?? `{${k}}`)
+}
+
+/** Brief proxy/updater restart windows surface as 502/503 or fetch failures. */
+function isTransientUpdaterError(e: unknown): boolean {
+  if (e instanceof UpdaterError) {
+    return (
+      e.status === 0 ||
+      e.status === 502 ||
+      e.status === 503 ||
+      e.status === 504
+    )
+  }
+  const msg = e instanceof Error ? e.message : String(e)
+  return /failed to fetch|networkerror|load failed|aborted|timeout|network/i.test(
+    msg,
+  )
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => window.setTimeout(r, ms))
 }
 
 /** 从 upstream 转发的错误体里提取一句人能读的话（剥掉嵌套 JSON）。 */
@@ -251,6 +276,12 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast>(null)
+  /**
+   * True while an infra upgrade (updater self-update / proxy recreate) briefly
+   * drops the admin→updater path. Keep last-known status so the panel does not
+   * flash “offline”; toast + banner explain the gap.
+   */
+  const [linkDown, setLinkDown] = useState(false)
   const [drift, setDrift] = useState<{ build: string; current: string } | null>(
     null,
   )
@@ -365,6 +396,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       let s: UpdaterStatus | null = null
       try {
         s = await api.status()
+        setLinkDown(false)
         if (transport === 'backend' && accessDenied) setAccessDenied(false)
       } catch (e) {
         if (
@@ -376,6 +408,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
           setStatus(null)
           setSnapshots([])
           setActiveJob(null)
+          setLinkDown(false)
           return
         }
         // Fallback: once a job is in flight, non-JSON 503 means proxy is
@@ -390,23 +423,34 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
           navigateToMaintOnce(watchJob)
           return
         }
+        // Transient gap (proxy recreate / updater self-replace): keep last good
+        // status so About does not flip to offline mid-upgrade.
+        if (statusRef.current && isTransientUpdaterError(e)) {
+          setLinkDown(true)
+          return
+        }
+      }
+      if (!s) {
+        // First load truly offline, or non-transient failure without prior data.
+        if (!statusRef.current) {
+          setStatus(null)
+          setSnapshots([])
+          setActiveJob(null)
+        }
+        return
       }
       setStatus(s)
       // Snapshots are a dependent updater resource. Do not emit another 503/502
       // after status has already established that the updater is unavailable.
-      if (s) {
-        const snaps = await api
-          .snapshots()
-          .catch(() => ({ schema_version: 1, items: [] as SnapshotMeta[] }))
-        setSnapshots(snaps.items ?? [])
-      } else {
-        setSnapshots([])
-      }
-      if (s && !selHydratedRef.current) {
+      const snaps = await api
+        .snapshots()
+        .catch(() => ({ schema_version: 1, items: [] as SnapshotMeta[] }))
+      setSnapshots(snaps.items ?? [])
+      if (!selHydratedRef.current) {
         setSel(deriveSelection(s))
         selHydratedRef.current = true
       }
-      if (s?.job_in_flight) {
+      if (s.job_in_flight) {
         const j = await api.job(s.job_in_flight).catch(() => null)
         setActiveJob(j)
       } else {
@@ -705,50 +749,114 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   ])
 
   /**
-   * Self-update is async (HTTP 202 + helper). Poll `/status.self_update_last`
-   * until a new outcome appears or we time out (~90s).
+   * After proxy/updater recreate the HTTP path blips. Poll durable
+   * `*_update_last` until a new outcome appears (~90s), keep last status on
+   * transient errors, and surface reconnect feedback in toast + linkDown.
    */
-  const waitSelfUpdateOutcome = useCallback(
-    async (beforeAt: string | null | undefined, targetTag: string) => {
-      setToast({ kind: 'ok', text: u.updaterSelfUpdateWaiting })
-      for (let i = 0; i < 45; i++) {
-        await new Promise((r) => window.setTimeout(r, 2_000))
+  const waitInfraUpdateOutcome = useCallback(
+    async (opts: {
+      kind: 'self' | 'proxy'
+      beforeAt: string | null | undefined
+      targetTag: string
+    }): Promise<'succeeded' | 'failed' | 'timeout'> => {
+      const waitingText =
+        opts.kind === 'self'
+          ? u.updaterSelfUpdateWaiting
+          : u.updaterProxyUpdateWaiting
+      const reconnectText =
+        opts.kind === 'self'
+          ? u.updaterSelfUpdateReconnecting
+          : u.updaterProxyUpdateReconnecting
+      setToast({ kind: 'ok', text: waitingText })
+      setLinkDown(false)
+
+      let sawDisconnect = false
+      for (let i = 0; i < INFRA_OUTCOME_MAX_TRIES; i++) {
+        await sleep(INFRA_OUTCOME_POLL_MS)
         try {
           const s = await api.status()
+          if (sawDisconnect) {
+            setLinkDown(false)
+            setToast({ kind: 'ok', text: waitingText })
+            sawDisconnect = false
+          }
           setStatus(s)
-          const last = s?.self_update_last
+          const last =
+            opts.kind === 'self' ? s?.self_update_last : s?.proxy_update_last
           if (!last) continue
-          if (beforeAt && last.at === beforeAt) continue
-          if (targetTag && last.target_tag && last.target_tag !== targetTag) {
+          if (opts.beforeAt && last.at === opts.beforeAt) continue
+          if (
+            opts.targetTag &&
+            last.target_tag &&
+            last.target_tag !== opts.targetTag
+          ) {
             continue
           }
           if (last.status === 'succeeded') {
+            setLinkDown(false)
             setToast({
               kind: 'ok',
-              text: format(u.updaterSelfUpdateSucceeded, {
-                version: last.target_tag || targetTag || '—',
-                previous: last.previous_tag || '—',
-              }),
+              text:
+                opts.kind === 'self'
+                  ? format(u.updaterSelfUpdateSucceeded, {
+                      version: last.target_tag || opts.targetTag || '—',
+                      previous: last.previous_tag || '—',
+                    })
+                  : format(u.updaterProxyUpdateSucceeded, {
+                      version: last.target_tag || opts.targetTag || '—',
+                      previous: last.previous_tag || '—',
+                    }),
             })
-            return
+            return 'succeeded'
           }
           if (last.status === 'failed') {
-            setToast({
-              kind: 'error',
-              text: format(u.updaterSelfUpdateFailed, {
-                error: last.error || '—',
-              }),
-            })
-            return
+            setLinkDown(false)
+            const errText =
+              opts.kind === 'self'
+                ? format(u.updaterSelfUpdateFailed, {
+                    error: last.error || '—',
+                  })
+                : format(u.updaterProxyUpdateFailed, {
+                    error: last.error || '—',
+                  })
+            setToast({ kind: 'error', text: errText })
+            return 'failed'
           }
         } catch {
-          // Updater / gateway may be restarting mid self-update.
+          // Updater image replace / proxy recreate: expected brief blip.
+          sawDisconnect = true
+          setLinkDown(true)
+          setToast({ kind: 'ok', text: reconnectText })
         }
       }
-      setToast({ kind: 'ok', text: u.updaterSelfUpdateStillPending })
+      setLinkDown(false)
+      setToast({
+        kind: 'ok',
+        text:
+          opts.kind === 'self'
+            ? u.updaterSelfUpdateStillPending
+            : u.updaterProxyUpdateStillPending,
+      })
+      return 'timeout'
     },
     [api, u],
   )
+
+  /** Full status + silent available recheck so version badges/buttons catch up. */
+  const refreshAfterInfra = useCallback(async () => {
+    try {
+      await refresh()
+    } catch {
+      /* refresh already soft-fails */
+    }
+    try {
+      const manifest = await api.available()
+      setAvailable(manifest)
+      await refresh()
+    } catch {
+      // Tip recheck is best-effort; durable outcome toast already shown.
+    }
+  }, [api, refresh])
 
   const triggerSelfUpdate = useCallback(async () => {
     if (tokenRequired) {
@@ -765,24 +873,52 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     const beforeAt = status?.self_update_last?.at
     setBusy('self-update')
     setToast(null)
+    setLinkDown(false)
+    let target = tip || ''
+    let shouldWait = true
     try {
-      const report = await api.triggerSelfUpdate()
-      const target = report.new_updater_tag || tip || ''
-      setToast({
-        kind: 'ok',
-        text: format(u.updaterSelfUpdateDispatched, {
-          version: target || '—',
-          previous: report.previous_updater_tag || status?.updater_version || '—',
-        }),
-      })
-      // Confirm helper outcome (success or rolled-back failure).
-      await waitSelfUpdateOutcome(beforeAt, target)
-    } catch (e) {
-      setToast({ kind: 'error', text: explain(e) })
+      try {
+        const report = await api.triggerSelfUpdate()
+        target = report.new_updater_tag || tip || ''
+        setToast({
+          kind: 'ok',
+          text: format(u.updaterSelfUpdateDispatched, {
+            version: target || '—',
+            previous:
+              report.previous_updater_tag || status?.updater_version || '—',
+          }),
+        })
+      } catch (e) {
+        // Schedule may have been accepted then the gateway died on recreate.
+        if (!isTransientUpdaterError(e)) {
+          setToast({ kind: 'error', text: explain(e) })
+          shouldWait = false
+        } else {
+          setLinkDown(true)
+          setToast({ kind: 'ok', text: u.updaterSelfUpdateReconnecting })
+        }
+      }
+      if (shouldWait) {
+        await waitInfraUpdateOutcome({
+          kind: 'self',
+          beforeAt,
+          targetTag: target,
+        })
+        await refreshAfterInfra()
+      }
     } finally {
       setBusy(null)
+      setLinkDown(false)
     }
-  }, [api, status, tokenRequired, explain, u, waitSelfUpdateOutcome])
+  }, [
+    api,
+    status,
+    tokenRequired,
+    explain,
+    u,
+    waitInfraUpdateOutcome,
+    refreshAfterInfra,
+  ])
 
   const triggerProxyUpdate = useCallback(async () => {
     if (tokenRequired) {
@@ -796,26 +932,59 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       ? confirm(format(u.updaterInfraProxyConfirm, { version: tip }))
       : confirm(u.updaterInfraProxyConfirmAuto)
     if (!ok) return
+    const beforeAt = status?.proxy_update_last?.at
     setBusy('proxy-update')
     setToast(null)
+    setLinkDown(false)
+    let target = tip || ''
+    let shouldWait = true
     try {
-      const report = await api.triggerProxyUpdate(tip || undefined)
-      setToast({
-        kind: 'ok',
-        text: format(u.updaterInfraProxyDispatched, {
-          version: report.new_proxy_tag,
-          previous: report.previous_proxy_tag || status?.proxy_version || '—',
-        }),
-      })
-      await refresh()
-    } catch (e) {
-      // Health-failed path restores PROXY_TAG server-side; refresh to show version.
-      await refresh().catch(() => {})
-      setToast({ kind: 'error', text: explain(e) })
+      try {
+        const report = await api.triggerProxyUpdate(tip || undefined)
+        target = report.new_proxy_tag || tip || ''
+        setToast({
+          kind: 'ok',
+          text: format(u.updaterInfraProxyDispatched, {
+            version: target || '—',
+            previous: report.previous_proxy_tag || status?.proxy_version || '—',
+          }),
+        })
+      } catch (e) {
+        // Proxy recreate tears down the HTTP path mid-request even when the
+        // upgrade succeeds; durable proxy_update_last is the source of truth.
+        if (!isTransientUpdaterError(e)) {
+          // Hard error before/after work: surface API message, still one
+          // refresh so last_failed / version lines catch up if written.
+          await refresh().catch(() => {})
+          setToast({ kind: 'error', text: explain(e) })
+          shouldWait = false
+        } else {
+          setLinkDown(true)
+          setToast({ kind: 'ok', text: u.updaterProxyUpdateReconnecting })
+        }
+      }
+      if (shouldWait) {
+        await waitInfraUpdateOutcome({
+          kind: 'proxy',
+          beforeAt,
+          targetTag: target,
+        })
+        await refreshAfterInfra()
+      }
     } finally {
       setBusy(null)
+      setLinkDown(false)
     }
-  }, [api, status, refresh, tokenRequired, explain, u])
+  }, [
+    api,
+    status,
+    refresh,
+    tokenRequired,
+    explain,
+    u,
+    waitInfraUpdateOutcome,
+    refreshAfterInfra,
+  ])
 
   const rollbackTo = useCallback(
     async (snap: SnapshotMeta) => {
@@ -870,12 +1039,16 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       ) {
         return
       }
+      const prev = snapshots
       setBusy(`delete-${snap.id}`)
+      // Optimistic remove so the row vanishes without a full panel refresh.
+      setSnapshots((list) => list.filter((s) => s.id !== snap.id))
       try {
         await api.deleteSnapshot(snap.id)
         setToast({ kind: 'ok', text: u.updaterDeleteSnapshotDispatched })
         await refresh()
       } catch (e) {
+        setSnapshots(prev)
         setToast({ kind: 'error', text: explain(e) })
       } finally {
         setBusy(null)
@@ -888,7 +1061,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       explain,
       u,
       status?.rescue_snapshot_id,
-      snapshots.length,
+      snapshots,
     ],
   )
 
@@ -1024,6 +1197,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
           pendingConfirm={pendingConfirm}
           nowTick={nowTick}
           toast={toast}
+          linkDown={linkDown}
           u={u}
           onCheck={() => checkAvailable()}
           onUpdate={updateToLatest}
@@ -1185,13 +1359,21 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                     </span>
                   )}
                 </p>
-                {status?.self_update_last?.status === 'failed' && (
+                {status?.self_update_last?.status === 'failed' &&
+                  busy !== 'self-update' && (
                   <p className="updater-infra-last-fail" role="status">
                     {format(u.updaterInfraSelfLastFailed, {
                       target: status.self_update_last.target_tag || '—',
                       previous: status.self_update_last.previous_tag || '—',
                       error: status.self_update_last.error || '—',
                     })}
+                  </p>
+                )}
+                {busy === 'self-update' && (
+                  <p className="updater-infra-progress" role="status">
+                    {linkDown
+                      ? u.updaterSelfUpdateReconnecting
+                      : u.updaterSelfUpdateWaiting}
                   </p>
                 )}
               </div>
@@ -1225,7 +1407,8 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                   {u.updaterInfraCurrent}{' '}
                   <code>{status?.proxy_version ?? '—'}</code>
                 </p>
-                {status?.proxy_update_last?.status === 'failed' && (
+                {status?.proxy_update_last?.status === 'failed' &&
+                  busy !== 'proxy-update' && (
                   <p className="updater-infra-last-fail" role="status">
                     {format(u.updaterInfraProxyLastFailed, {
                       target: status.proxy_update_last.target_tag || '—',
@@ -1235,6 +1418,13 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                     {status.proxy_update_last.rolled_back
                       ? ` ${u.updaterInfraProxyRolledBack}`
                       : ''}
+                  </p>
+                )}
+                {busy === 'proxy-update' && (
+                  <p className="updater-infra-progress" role="status">
+                    {linkDown
+                      ? u.updaterProxyUpdateReconnecting
+                      : u.updaterProxyUpdateWaiting}
                   </p>
                 )}
               </div>
@@ -1262,41 +1452,56 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         collapsible
         defaultExpanded={false}
       >
-        {snapshots.length === 0 ? (
-          <p className="updater-empty">{u.updaterNoSnapshots}</p>
-        ) : (
-          <div className="updater-snapshot-list">
-            {snapshots.map((s) => {
-              const deleteReason = snapshotDeleteBlockReason(s, {
-                rescueSnapshotId: status?.rescue_snapshot_id,
-                totalSnapshots: snapshots.length,
-                u,
-              })
-              return (
-                <SnapshotRow
-                  key={s.id}
-                  snapshot={s}
-                  u={u}
-                  busy={
-                    busy === `rollback-${s.id}` || busy === `delete-${s.id}`
+        <ManagedList
+          className="updater-snapshot-managed"
+          emptyText={u.updaterNoSnapshots}
+          maxHeight={null}
+          items={snapshots.map((s): ManagedListItem => {
+            const deleteReason = snapshotDeleteBlockReason(s, {
+              rescueSnapshotId: status?.rescue_snapshot_id,
+              totalSnapshots: snapshots.length,
+              u,
+            })
+            const rowBusy =
+              busy === `rollback-${s.id}` || busy === `delete-${s.id}`
+            return {
+              id: s.id,
+              title: s.source_version ? (
+                <code>{s.source_version}</code>
+              ) : (
+                <span className="managed-list-muted">—</span>
+              ),
+              badge: s.keep
+                ? {
+                    label: u.updaterDeleteSnapshotKeptBadge,
+                    tone: 'warn',
                   }
-                  busyKind={
-                    busy === `delete-${s.id}`
-                      ? 'delete'
-                      : busy === `rollback-${s.id}`
-                        ? 'rollback'
-                        : null
-                  }
-                  disabled={tokenRequired}
-                  deleteDisabled={!!deleteReason}
-                  deleteReason={deleteReason}
-                  onRollback={() => rollbackTo(s)}
-                  onDelete={() => deleteSnapshot(s)}
-                />
-              )
-            })}
-          </div>
-        )}
+                : undefined,
+              subtitle: `${new Date(s.created_at).toLocaleString()} · ${formatBytes(s.size_bytes)}`,
+              meta: deleteReason || undefined,
+              busy: rowBusy,
+              actions: [
+                {
+                  key: 'rollback',
+                  label: u.updaterRollback,
+                  variant: 'secondary',
+                  onClick: () => void rollbackTo(s),
+                  disabled: tokenRequired,
+                  loading: busy === `rollback-${s.id}`,
+                },
+                {
+                  key: 'delete',
+                  label: u.updaterDeleteSnapshot,
+                  variant: 'danger',
+                  onClick: () => void deleteSnapshot(s),
+                  disabled: tokenRequired || !!deleteReason,
+                  loading: busy === `delete-${s.id}`,
+                  title: deleteReason ?? u.updaterDeleteSnapshot,
+                },
+              ],
+            }
+          })}
+        />
       </SettingGroup>
 
       {/* ===== 高级与诊断（折叠）===== */}
@@ -1341,6 +1546,7 @@ function StatusHero({
   pendingConfirm,
   nowTick,
   toast,
+  linkDown,
   u,
   onCheck,
   onUpdate,
@@ -1361,6 +1567,8 @@ function StatusHero({
   pendingConfirm: boolean
   nowTick: number
   toast: Toast
+  /** Brief admin↔updater/proxy blip (self-update / proxy recreate). */
+  linkDown: boolean
   u: U
   onCheck: () => void
   onUpdate: () => void
@@ -1426,6 +1634,16 @@ function StatusHero({
       effectiveHint = u.updaterCheckStale
     } else {
       effectiveHint = u.updaterCheckStaleAction
+    }
+  }
+  // Prefer reconnect copy while infra is recreating — stronger than stale check.
+  if (linkDown && mood !== 'offline') {
+    if (busy === 'proxy-update') {
+      effectiveHint = u.updaterProxyUpdateReconnecting
+    } else if (busy === 'self-update') {
+      effectiveHint = u.updaterSelfUpdateReconnecting
+    } else {
+      effectiveHint = u.updaterSelfUpdateReconnecting
     }
   }
 
@@ -2148,82 +2366,6 @@ function snapshotDeleteBlockReason(
     return opts.u.updaterDeleteSnapshotLast
   }
   return null
-}
-
-function SnapshotRow({
-  snapshot,
-  u,
-  busy,
-  busyKind,
-  disabled,
-  deleteDisabled,
-  deleteReason,
-  onRollback,
-  onDelete,
-}: {
-  snapshot: SnapshotMeta
-  u: U
-  busy: boolean
-  busyKind: 'rollback' | 'delete' | null
-  disabled: boolean
-  /** Policy block: last remaining, keep=true, or rescue-in-use. */
-  deleteDisabled: boolean
-  deleteReason: string | null
-  onRollback: () => void
-  onDelete: () => void
-}) {
-  return (
-    <div className="updater-snapshot-item">
-      <div className="updater-snapshot-meta">
-        <div className="updater-snapshot-version">
-          {snapshot.source_version ? (
-            <code>{snapshot.source_version}</code>
-          ) : (
-            <span className="muted">—</span>
-          )}
-          {snapshot.keep && (
-            <span className="updater-snapshot-keep-badge">
-              {u.updaterDeleteSnapshotKeptBadge}
-            </span>
-          )}
-        </div>
-        <div className="updater-snapshot-info">
-          {new Date(snapshot.created_at).toLocaleString()} ·{' '}
-          {formatBytes(snapshot.size_bytes)}
-        </div>
-        {deleteDisabled && deleteReason && (
-          <div className="updater-snapshot-delete-reason">{deleteReason}</div>
-        )}
-      </div>
-      <div className="updater-snapshot-actions">
-        <button
-          type="button"
-          className="btn-base btn-secondary"
-          onClick={onRollback}
-          disabled={busy || disabled}
-        >
-          {busyKind === 'rollback' ? (
-            <Spinner size="xs" color="current" />
-          ) : (
-            u.updaterRollback
-          )}
-        </button>
-        <button
-          type="button"
-          className="btn-base btn-danger"
-          onClick={onDelete}
-          disabled={busy || disabled || deleteDisabled}
-          title={deleteReason ?? u.updaterDeleteSnapshot}
-        >
-          {busyKind === 'delete' ? (
-            <Spinner size="xs" color="current" />
-          ) : (
-            u.updaterDeleteSnapshot
-          )}
-        </button>
-      </div>
-    </div>
-  )
 }
 
 // ===== 高级与诊断 =====

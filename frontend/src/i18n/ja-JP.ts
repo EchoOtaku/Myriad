@@ -434,11 +434,16 @@ export const jaJP: TranslationKeys = {
     federationKeysNoIdentity: '連邦アイデンティティを読み込めませんでした。',
     federationDeliveryQueue: '送信配信キュー',
     federationDeliveryQueueDesc:
-      'アカウントの保留中・失敗した ActivityPub 配信。ユーザー取消し行は一括リトライ対象外です。個別リトライで復帰できます。',
+      '保留・配信中・失敗・取消済みの送信配信。「再試行」は本当の失敗のみ。「削除」は停止して行を落とし、「クリア」は進行中を取消し終了済みをすべて消去します。',
     federationDeliveryStatsLine:
-      '保留 {pending} · 配信中 {delivering} · 配信済 {delivered} · 失敗 {dead}',
+      '保留 {pending} · 配信中 {delivering} · 配信済 {delivered} · 終了 {dead}',
+    federationDeliveryStatPending: '保留',
+    federationDeliveryStatDelivering: '配信中',
+    federationDeliveryStatDelivered: '配信済',
+    federationDeliveryStatDead: '失敗 / 取消',
     federationDeliveryEmpty: '最近の配信キュー行はありません。',
     federationDeliveryRetry: '再試行',
+    federationDeliveryRemove: '削除',
     federationDeliveryCancel: '取消',
     federationDeliveryDismiss: '消去',
     federationDeliveryPurgeCancelled: '取消しを消去',
@@ -446,16 +451,25 @@ export const jaJP: TranslationKeys = {
       '意図的に取消した失敗行をキューからすべて削除しますか？元に戻せません。',
     federationDeliveryStatusCancelled: '取消済み',
     federationDeliveryStatusFailed: '失敗',
+    federationDeliveryStatusPending: '保留',
+    federationDeliveryStatusDelivering: '配信中',
+    federationDeliveryStatusDelivered: '配信済',
     federationDeliveryAttempts: '試行 {attempts}/{max}',
-    federationDeliveryRetryAllDead: '失敗をすべて再試行',
-    federationDeliveryCancelAllPending: '保留をすべて取消',
+    federationDeliveryRetryFailures: '失敗を再試行',
+    federationDeliveryRetryFailuresConfirm:
+      '配信失敗で終了した項目をすべて再キューしますか？（ユーザー取消しは対象外）',
+    federationDeliveryClear: 'クリア',
+    federationDeliveryClearConfirm:
+      '保留/配信中をすべて取消し、失敗・取消済みの行をリストからすべて削除しますか？元に戻せません。',
+    federationDeliveryRetryAllDead: '失敗を再試行',
+    federationDeliveryCancelAllPending: 'クリア',
     federationDeliveryRetryAllConfirm:
-      'ユーザー取消し以外の失敗配信を再キューしますか？取消し行はスキップされます。',
+      '配信失敗で終了した項目をすべて再キューしますか？（ユーザー取消しは対象外）',
     federationDeliveryCancelAllConfirm:
-      'pending/delivering をすべて取消にしますか？一括リトライ対象にはなりません。',
+      '保留/配信中をすべて取消し、失敗・取消済みの行をリストからすべて削除しますか？元に戻せません。',
     federationDeliveryActionOk: '配信キューを更新しました',
     federationDeliveryActionFailed: '配信操作に失敗しました',
-    federationDeliveryRefresh: 'キューを更新',
+    federationDeliveryRefresh: '更新',
     federationFilterNamePlaceholder: '例: block-announce',
     federationActivityFollow: 'フォロー (Follow)',
     federationActivityAccept: '承認 (Accept)',
@@ -588,9 +602,9 @@ export const jaJP: TranslationKeys = {
     updaterStatusNeedsManual: '前回の更新が失敗 — 対応が必要です',
     updaterStatusOffline: '更新サービスに接続できません',
     updaterStatusFirstRun: 'バージョンはまだ記録されていません',
-    updaterLastFailedTitle: '前回の更新は完了しませんでした（ロールバック試行済み）',
+    updaterLastFailedTitle: '前回の更新は完了しませんでした',
     updaterLastFailedBody:
-      '{from} から {to} への更新に失敗しました。自動ロールバックが成功していれば以前の構成に戻っています。理由: {reason}',
+      '{from} から {to} への更新に失敗しました。理由: {reason}',
     updaterHintHealthy: 'このチャネルに利用可能な更新はありません。',
     updaterHintUpdating: '完了後に動作状態を自動確認します。',
     updaterHintMaintenance: '準備ができたら下から解除できます。',
@@ -705,7 +719,7 @@ export const jaJP: TranslationKeys = {
     updaterInfraProxyConfirmAuto:
       'proxy をレジストリの現在 tip へ更新しますか？エッジ入口が短時間中断します（通常 10 秒未満）。',
     updaterInfraProxyDispatched:
-      'proxy を {version} に更新しました（以前: {previous}）。',
+      'proxy を {version} へ更新開始（以前: {previous}）。結果を確認中…',
     updaterInfraNeedCheck:
       '先に「更新を確認」して目標バージョンを取得してください。',
     updaterInfraSelfLastFailed:
@@ -714,11 +728,21 @@ export const jaJP: TranslationKeys = {
       '前回の proxy 更新に失敗: 目標 {target}（以前: {previous}）。{error}',
     updaterInfraProxyRolledBack: '以前のバージョンへ自動で戻しました。',
     updaterSelfUpdateWaiting: 'アップデーター更新をスケジュール済み。結果を確認中…',
+    updaterSelfUpdateReconnecting:
+      'アップデーター再起動中です。接続が一時的に切れます。自動再接続中…',
     updaterSelfUpdateFailed: 'アップデーター更新に失敗: {error}',
     updaterSelfUpdateSucceeded:
       'アップデーターを {version} に更新しました（以前: {previous}）。',
     updaterSelfUpdateStillPending:
       'アップデーター更新は継続中か、結果が未記録です。後でもう一度このページを更新してください。',
+    updaterProxyUpdateWaiting: 'proxy 更新中。結果を確認中…',
+    updaterProxyUpdateReconnecting:
+      'エッジ入口を再起動中です。接続が一時的に切れます。自動再接続中…',
+    updaterProxyUpdateSucceeded:
+      'proxy を {version} に更新しました（以前: {previous}）。',
+    updaterProxyUpdateFailed: 'proxy 更新に失敗: {error}',
+    updaterProxyUpdateStillPending:
+      'proxy 更新は継続中か、結果が未記録です。後でもう一度このページを更新してください。',
     updaterTargetGroupTitle: '特定バージョンのインストール（上級者向け）',
     updaterTargetGroupDesc: '過去のリリースや特定コミット。通常は不要。',
     updaterTargetReleaseHead: '選択可能なバージョン（クリックで選択）',

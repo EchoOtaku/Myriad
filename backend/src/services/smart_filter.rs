@@ -16,6 +16,44 @@ use std::path::Path;
 
 use super::content_databases::{AnimeDatabase, ArtistDatabase, GameDatabase};
 
+/// Parse a non-negative integer from JSON without dropping valid `u64` / float /
+/// string forms (Steam / GitHub APIs occasionally switch representation).
+///
+/// Returns `None` for missing/non-numeric; never returns negative.
+fn json_nonneg_i64(v: &Value) -> Option<i64> {
+    let n = if let Some(i) = v.as_i64() {
+        i
+    } else if let Some(u) = v.as_u64() {
+        if u > i64::MAX as u64 {
+            i64::MAX
+        } else {
+            u as i64
+        }
+    } else if let Some(f) = v.as_f64() {
+        if !f.is_finite() {
+            return None;
+        }
+        f.round() as i64
+    } else if let Some(s) = v.as_str() {
+        let t = s.trim().replace(',', "");
+        if t.is_empty() {
+            return None;
+        }
+        t.parse::<i64>()
+            .ok()
+            .or_else(|| t.parse::<f64>().ok().map(|f| f.round() as i64))?
+    } else {
+        return None;
+    };
+    Some(n.max(0))
+}
+
+/// Steam `playtime_forever` is minutes. Cap absurd values (API glitches / unit
+/// mix-ups) at ~100 years so downstream hour conversion stays sane.
+const STEAM_PLAYTIME_MINUTES_CAP: i64 = 100 * 365 * 24 * 60;
+/// Single-day contribution spikes above this are almost always bad data.
+const GITHUB_CONTRIB_DAY_CAP: i64 = 10_000;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmartFilteredData {
     pub platform: String,
@@ -330,6 +368,12 @@ pub struct SteamAnalysis {
     pub game_summary: String,
     pub genre_analysis: Vec<super::content_databases::game_database::GameGenreAnalysis>,
     pub recent_games: Vec<GameItem>,
+    /// Owned library size (not “recent only”). Default 0 for older cache files.
+    #[serde(default)]
+    pub games_count: usize,
+    /// Sum of `playtime_forever` over owned games, **minutes** (Steam API unit).
+    #[serde(default)]
+    pub total_playtime_minutes: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -350,6 +394,9 @@ pub struct GitHubAnalysis {
     pub language_distribution: std::collections::HashMap<String, usize>,
     pub recent_repos: Vec<RepoItem>,
     pub contribution_calendar: Option<Vec<ContributionDay>>,
+    /// `user.public_repos` when present (may exceed `recent_repos.len()`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_repos: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -942,11 +989,13 @@ impl SmartFilter {
              game_list: &mut Vec<(String, i64)>,
              name_to_appid: &mut std::collections::HashMap<String, i64>| {
                 if let Some(name) = game.get("name").and_then(|v| v.as_str()) {
+                    // Steam Web API: playtime_forever is **minutes**.
                     let playtime = game
                         .get("playtime_forever")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0);
-                    let appid = game.get("appid").and_then(|v| v.as_i64());
+                        .and_then(json_nonneg_i64)
+                        .unwrap_or(0)
+                        .min(STEAM_PLAYTIME_MINUTES_CAP);
+                    let appid = game.get("appid").and_then(json_nonneg_i64);
                     if let Some(id) = appid {
                         name_to_appid.insert(name.to_string(), id);
                     }
@@ -967,11 +1016,12 @@ impl SmartFilter {
                 if let Some(name) = game.get("name").and_then(|v| v.as_str()) {
                     let playtime = game
                         .get("playtime_forever")
-                        .and_then(|v| v.as_i64())
-                        .unwrap_or(0);
+                        .and_then(json_nonneg_i64)
+                        .unwrap_or(0)
+                        .min(STEAM_PLAYTIME_MINUTES_CAP);
                     let appid = game
                         .get("appid")
-                        .and_then(|v| v.as_i64())
+                        .and_then(json_nonneg_i64)
                         .or_else(|| name_to_appid.get(name).copied());
                     if let Some(id) = appid {
                         name_to_appid.insert(name.to_string(), id);
@@ -988,6 +1038,13 @@ impl SmartFilter {
                 }
             }
         }
+
+        let games_count = game_list.len();
+        let total_playtime_minutes: i64 = game_list
+            .iter()
+            .map(|(_, p)| (*p).max(0))
+            .sum::<i64>()
+            .min(STEAM_PLAYTIME_MINUTES_CAP);
 
         // 3. 使用游戏数据库分析
         let game_db = GameDatabase::new();
@@ -1017,6 +1074,8 @@ impl SmartFilter {
             game_summary: game_analysis.summary.clone(),
             genre_analysis: game_analysis.genre_analysis,
             recent_games,
+            games_count,
+            total_playtime_minutes,
         });
 
         Ok(SmartFilteredData {
@@ -1047,13 +1106,17 @@ impl SmartFilter {
             stats: UserStats {
                 follower_count: user
                     .and_then(|u| u.get("followers"))
-                    .and_then(|v| v.as_i64()),
+                    .and_then(json_nonneg_i64),
                 following_count: user
                     .and_then(|u| u.get("following"))
-                    .and_then(|v| v.as_i64()),
+                    .and_then(json_nonneg_i64),
                 total_content: 0,
             },
         };
+
+        let public_repos = user
+            .and_then(|u| u.get("public_repos"))
+            .and_then(json_nonneg_i64);
 
         // 2. 收集所有仓库信息
         let repos = data.get("repos").and_then(|v| v.as_array());
@@ -1075,11 +1138,11 @@ impl SmartFilter {
                     let stars = repo
                         .get("stargazers_count")
                         .or_else(|| repo.get("stars"))
-                        .and_then(|v| v.as_i64());
+                        .and_then(json_nonneg_i64);
                     let forks = repo
                         .get("forks_count")
                         .or_else(|| repo.get("forks"))
-                        .and_then(|v| v.as_i64());
+                        .and_then(json_nonneg_i64);
                     let description = repo
                         .get("description")
                         .and_then(|v| v.as_str())
@@ -1128,9 +1191,13 @@ impl SmartFilter {
             }
         }
 
+        let repo_count_display = public_repos
+            .map(|n| n as usize)
+            .unwrap_or(0)
+            .max(recent_repos.len());
         let repo_summary = format!(
             "拥有 {} 个仓库，主要使用 {}",
-            repos.map(|r| r.len()).unwrap_or(0),
+            repo_count_display,
             language_distribution
                 .iter()
                 .map(|(k, v)| format!("{} ({})", k, v))
@@ -1147,7 +1214,10 @@ impl SmartFilter {
                     .iter()
                     .filter_map(|day| {
                         let date = day.get("date").and_then(|v| v.as_str())?;
-                        let count = day.get("count").and_then(|v| v.as_i64())?;
+                        let count = day
+                            .get("count")
+                            .and_then(json_nonneg_i64)?
+                            .min(GITHUB_CONTRIB_DAY_CAP);
                         Some(ContributionDay {
                             date: date.to_string(),
                             count,
@@ -1166,6 +1236,7 @@ impl SmartFilter {
             language_distribution,
             recent_repos,
             contribution_calendar,
+            public_repos,
         });
 
         Ok(SmartFilteredData {

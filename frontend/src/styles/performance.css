@@ -148,9 +148,17 @@ html[data-perf-mode='exlight'] [class*='backdrop-blur'] {
 
 /* ---------- exlight only（弱硬件低档 / prefers-reduced-motion）---------- */
 
-/* 令牌：只清滤镜；默认 alpha 仅在无 data-surface 时抬高，避免破坏 solid/flat/liquid */
-html[data-perf-mode='exlight'] {
-  --surface-filter: none;
+/*
+ * 令牌：清 --surface-filter。
+ * theme.css 里 :root[data-surface=liquid|outline] 特异性 (0,2,0) 会压过
+ * 单写 html[data-perf-mode=exlight] (0,1,1)，导致变量仍是 blur(...)，
+ * 虽有 * { backdrop-filter:none !important } 兜底，但令牌应自洽。
+ * 用 !important + 带 data-surface 的选择器压过 surface 主题。
+ * 默认 alpha 仍只在无 data-surface 时抬高，不破坏 solid/flat/liquid 底色设计。
+ */
+html[data-perf-mode='exlight'],
+html[data-perf-mode='exlight'][data-surface] {
+  --surface-filter: none !important;
 }
 
 html[data-perf-mode='exlight']:not([data-surface]) {

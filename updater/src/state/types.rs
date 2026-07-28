@@ -177,6 +177,17 @@ pub enum Phase {
 }
 
 impl Phase {
+    /// Whether the proxy should take the site offline (`maintenance.active=true`).
+    ///
+    /// Preflight / Checking / Ready run with all services still up — they must
+    /// **not** flip `active` or the proxy serves maintenance.html and the admin
+    /// SPA navigates away. Failures in those phases clear the job without ever
+    /// having stopped the stack (see `preflight.rs` module docs).
+    pub fn takes_site_offline(self) -> bool {
+        use Phase::*;
+        !matches!(self, Idle | Checking | Ready | Preflight)
+    }
+
     /// Phases after `MYRIAD_TAG` has been rewritten (destructive zone).
     ///
     /// **`SwapTag` is excluded**: the phase is entered *before* the tag write.
@@ -310,5 +321,19 @@ mod tests {
         let migrated = serde_json::to_value(state).unwrap();
         assert_eq!(migrated["rollback_version"], "v0.2.2");
         assert!(migrated.get("last_good_version").is_none());
+    }
+
+    #[test]
+    fn preflight_and_idle_do_not_take_site_offline() {
+        // Preflight failures must never put the proxy into maintenance mode.
+        for phase in [Phase::Idle, Phase::Checking, Phase::Ready, Phase::Preflight] {
+            assert!(
+                !phase.takes_site_offline(),
+                "{phase:?} must keep maintenance.active=false"
+            );
+        }
+        assert!(Phase::MaintenanceOn.takes_site_offline());
+        assert!(Phase::Stopping.takes_site_offline());
+        assert!(Phase::NeedsManual.takes_site_offline());
     }
 }

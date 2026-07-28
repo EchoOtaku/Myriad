@@ -2160,7 +2160,7 @@ pub(crate) fn set_phase(
 ) -> Result<()> {
     let m = MaintenanceFile {
         schema_version: 1,
-        active: !matches!(phase, Phase::Idle),
+        active: phase.takes_site_offline(),
         phase,
         from_version: from.cloned(),
         to_version: to.cloned(),

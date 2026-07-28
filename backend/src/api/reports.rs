@@ -189,10 +189,55 @@ async fn generate_platform_reports_internal(
                 }
             }
 
-            // 5. 对于steam平台，额外添加资料库内容到card_visuals
+            // 5. Steam：强制覆盖数字字段（AI 易把分钟当小时或乱估数量）
             if platform == "steam" {
+                if let crate::services::smart_filter::ContentAnalysis::Steam(analysis) =
+                    &metadata.content_analysis
+                {
+                    if !card_visuals.is_object() {
+                        card_visuals = json!({});
+                    }
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        let games_count = if analysis.games_count > 0 {
+                            analysis.games_count
+                        } else {
+                            // 旧缓存无 games_count 时，用 recent + 未知列表兜底
+                            analysis.recent_games.len().max(
+                                analysis
+                                    .genre_analysis
+                                    .iter()
+                                    .map(|g| g.examples.len())
+                                    .sum(),
+                            )
+                        };
+                        let minutes = analysis.total_playtime_minutes.max(0);
+                        let hours = (minutes / 60) as u64;
+                        obj.insert("games_count".to_string(), json!(games_count));
+                        obj.insert("total_playtime".to_string(), json!(hours));
+                        // hardcore_score: keep AI flavour but clamp 0..=100
+                        let score = obj
+                            .get("hardcore_score")
+                            .and_then(|v| {
+                                v.as_i64()
+                                    .or_else(|| v.as_u64().map(|u| u as i64))
+                                    .or_else(|| {
+                                        v.as_f64().and_then(|f| {
+                                            f.is_finite().then_some(f.round() as i64)
+                                        })
+                                    })
+                            })
+                            .unwrap_or(50)
+                            .clamp(0, 100);
+                        obj.insert("hardcore_score".to_string(), json!(score));
+                        tracing::info!(
+                            "✅ Steam card_visuals: games={}, playtime_h={} (from {} min)",
+                            games_count,
+                            hours,
+                            minutes
+                        );
+                    }
+                }
                 if let Ok(library_items) = extract_steam_library_items(&metadata).await {
-                    // 确保 card_visuals 是对象类型
                     if !card_visuals.is_object() {
                         card_visuals = json!({});
                     }
@@ -202,7 +247,7 @@ async fn generate_platform_reports_internal(
                 }
             }
 
-            // 6. 对于github平台，强制覆盖关键数据字段（避免AI生成不稳定的值）
+            // 6. GitHub：强制覆盖关键数据字段（避免 AI 生成不稳定的值）
             if platform == "github" {
                 if let crate::services::smart_filter::ContentAnalysis::GitHub(analysis) =
                     &metadata.content_analysis
@@ -217,18 +262,25 @@ async fn generate_platform_reports_internal(
                             .contribution_calendar
                             .as_ref()
                             .map(|calendar| {
-                                let sum: i64 = calendar.iter().map(|day| day.count).sum();
-                                sum
+                                let sum: i64 = calendar
+                                    .iter()
+                                    .map(|day| day.count.max(0))
+                                    .sum();
+                                sum.max(0)
                             })
                             .unwrap_or(0);
 
-                        let repos_count = analysis.recent_repos.len();
+                        let repos_count = analysis
+                            .public_repos
+                            .map(|n| n.max(0) as usize)
+                            .unwrap_or(0)
+                            .max(analysis.recent_repos.len());
 
                         // ⭐ star 总数是衡量开发者影响力的重要因素
                         let total_stars: i64 = analysis
                             .recent_repos
                             .iter()
-                            .filter_map(|repo| repo.stars)
+                            .filter_map(|repo| repo.stars.map(|s| s.max(0)))
                             .sum();
 
                         // 根据真实数据计算贡献等级（star 数作为独立的晋级通道）
@@ -246,6 +298,32 @@ async fn generate_platform_reports_internal(
                         } else {
                             "新兴贡献者"
                         };
+
+                        // 语言占比：用实测 language_distribution，不用 AI 百分比
+                        let total_lang: usize =
+                            analysis.language_distribution.values().sum();
+                        if total_lang > 0 {
+                            let mut langs: Vec<_> = analysis
+                                .language_distribution
+                                .iter()
+                                .map(|(name, n)| {
+                                    let percentage = ((*n as f64 / total_lang as f64) * 100.0)
+                                        .round()
+                                        .clamp(0.0, 100.0)
+                                        as i64;
+                                    (name.clone(), *n, percentage)
+                                })
+                                .collect();
+                            langs.sort_by(|a, b| b.1.cmp(&a.1));
+                            let languages: Vec<Value> = langs
+                                .into_iter()
+                                .take(5)
+                                .map(|(name, _, percentage)| {
+                                    json!({ "name": name, "percentage": percentage })
+                                })
+                                .collect();
+                            obj.insert("languages".to_string(), json!(languages));
+                        }
 
                         // 强制覆盖这些字段（忽略AI可能生成的值）
                         obj.insert(
@@ -2007,15 +2085,24 @@ fn generate_mock_report(
             )
         }
         crate::services::smart_filter::ContentAnalysis::Steam(analysis) => {
-            let games_count = analysis
-                .genre_analysis
-                .iter()
-                .map(|g| g.examples.len())
-                .sum::<usize>();
-            // 计算总游戏时长（从recent_games的playtime字段累加，单位：分钟，转换为小时）
-            let total_playtime_minutes: i64 =
-                analysis.recent_games.iter().map(|g| g.playtime).sum();
-            let total_playtime_hours = (total_playtime_minutes / 60) as u64;
+            let games_count = if analysis.games_count > 0 {
+                analysis.games_count
+            } else {
+                analysis.recent_games.len().max(
+                    analysis
+                        .genre_analysis
+                        .iter()
+                        .map(|g| g.examples.len())
+                        .sum(),
+                )
+            };
+            // playtime_forever is minutes → hours for card UI
+            let total_playtime_minutes = if analysis.total_playtime_minutes > 0 {
+                analysis.total_playtime_minutes
+            } else {
+                analysis.recent_games.iter().map(|g| g.playtime.max(0)).sum()
+            };
+            let total_playtime_hours = (total_playtime_minutes.max(0) / 60) as u64;
 
             (
                 format!(
@@ -2070,38 +2157,39 @@ fn generate_mock_report(
             let total_stars: i64 = analysis
                 .recent_repos
                 .iter()
-                .filter_map(|repo| repo.stars)
+                .filter_map(|repo| repo.stars.map(|s| s.max(0)))
                 .sum();
+            let repos_count = analysis
+                .public_repos
+                .map(|n| n.max(0) as usize)
+                .unwrap_or(0)
+                .max(analysis.recent_repos.len());
 
             // 根据真实贡献数、仓库数量和 star 数确定贡献等级（star 作为独立晋级通道）
-            let contribution_level = if (total_contributions > 1000
-                && analysis.recent_repos.len() > 20)
+            let contribution_level = if (total_contributions > 1000 && repos_count > 20)
                 || total_stars >= 1000
             {
                 "传奇开发者"
-            } else if (total_contributions > 500 && analysis.recent_repos.len() > 10)
-                || total_stars >= 200
-            {
+            } else if (total_contributions > 500 && repos_count > 10) || total_stars >= 200 {
                 "资深工程师"
-            } else if total_contributions > 200
-                || analysis.recent_repos.len() > 5
-                || total_stars >= 50
-            {
+            } else if total_contributions > 200 || repos_count > 5 || total_stars >= 50 {
                 "活跃开发者"
             } else {
                 "新兴贡献者"
             };
 
-            // 计算语言百分比
+            // 计算语言百分比（按仓库数排序，百分比 clamp）
             let total_lang_count: usize = analysis.language_distribution.values().sum();
             let languages = if total_lang_count > 0 {
-                analysis
-                    .language_distribution
-                    .iter()
-                    .take(3)
+                let mut pairs: Vec<_> = analysis.language_distribution.iter().collect();
+                pairs.sort_by(|a, b| b.1.cmp(a.1));
+                pairs
+                    .into_iter()
+                    .take(5)
                     .map(|(k, v)| {
-                        let percentage =
-                            (*v as f64 / total_lang_count as f64 * 100.0).round() as i32;
+                        let percentage = ((*v as f64 / total_lang_count as f64) * 100.0)
+                            .round()
+                            .clamp(0.0, 100.0) as i32;
                         json!({"name": k, "percentage": percentage})
                     })
                     .collect::<Vec<_>>()
@@ -2130,7 +2218,7 @@ fn generate_mock_report(
                 json!({
                     "contribution_level": contribution_level,
                     "total_contributions": total_contributions,
-                    "repos_count": analysis.recent_repos.len(),
+                    "repos_count": repos_count,
                     "total_stars": total_stars,
                     "languages": languages,
                     "contribution_calendar": analysis.contribution_calendar

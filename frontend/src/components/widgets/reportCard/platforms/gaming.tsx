@@ -353,10 +353,17 @@ export const SteamStatsWidget = memo(({ data }: any) => {
     () => data?.player_type || t.reportCard.casualPlayer,
     [data, t.reportCard.casualPlayer],
   )
-  const gamesCount = useMemo(() => data?.games_count || 0, [data])
+  const gamesCount = useMemo(() => {
+    const n = Number(data?.games_count)
+    if (!Number.isFinite(n) || n < 0) return 0
+    return Math.round(n)
+  }, [data])
   const totalPlaytime = useMemo(() => {
-    const hours = data?.total_playtime || 0
-    return hours >= 1000 ? `${(hours / 1000).toFixed(1)}k` : hours.toString()
+    // card_visuals.total_playtime is **hours** (backend converts from Steam minutes)
+    const hours = Number(data?.total_playtime)
+    if (!Number.isFinite(hours) || hours < 0) return '0'
+    const h = Math.round(hours)
+    return h >= 1000 ? `${(h / 1000).toFixed(1)}k` : String(h)
   }, [data])
   const presence = livePresence ?? fallbackPresence
   const presenceText = useMemo(

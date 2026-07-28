@@ -1,0 +1,541 @@
+/**
+ * ManagedList — cohesive list panel for settings (delivery queue, etc.)
+ * Aligns with SettingItem surface tokens (glass / dark).
+ */
+
+.managed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.managed-list.is-working {
+  opacity: 0.92;
+}
+
+/* —— Stats chips —— */
+
+.managed-list-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.managed-list-stat {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  min-width: 3.75rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgb(229 231 235 / 55%);
+  background: rgb(255 255 255 / 45%);
+  line-height: 1.2;
+}
+
+html.dark .managed-list-stat {
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(255 255 255 / 4%);
+}
+
+.managed-list-stat-value {
+  font-size: 0.95rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: #111827;
+}
+
+html.dark .managed-list-stat-value {
+  color: #f3f4f6;
+}
+
+.managed-list-stat-label {
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #6b7280;
+  letter-spacing: 0.01em;
+}
+
+html.dark .managed-list-stat-label {
+  color: #9ca3af;
+}
+
+.managed-list-stat--active {
+  border-color: rgb(59 130 246 / 28%);
+  background: rgb(59 130 246 / 8%);
+}
+
+.managed-list-stat--active .managed-list-stat-value {
+  color: #1d4ed8;
+}
+
+html.dark .managed-list-stat--active .managed-list-stat-value {
+  color: #93c5fd;
+}
+
+.managed-list-stat--success {
+  border-color: rgb(16 185 129 / 28%);
+  background: rgb(16 185 129 / 8%);
+}
+
+.managed-list-stat--success .managed-list-stat-value {
+  color: #047857;
+}
+
+html.dark .managed-list-stat--success .managed-list-stat-value {
+  color: #6ee7b7;
+}
+
+.managed-list-stat--warn {
+  border-color: rgb(245 158 11 / 30%);
+  background: rgb(245 158 11 / 9%);
+}
+
+.managed-list-stat--warn .managed-list-stat-value {
+  color: #b45309;
+}
+
+html.dark .managed-list-stat--warn .managed-list-stat-value {
+  color: #fcd34d;
+}
+
+.managed-list-stat--danger {
+  border-color: rgb(244 63 94 / 28%);
+  background: rgb(244 63 94 / 8%);
+}
+
+.managed-list-stat--danger .managed-list-stat-value {
+  color: #be123c;
+}
+
+html.dark .managed-list-stat--danger .managed-list-stat-value {
+  color: #fda4af;
+}
+
+.managed-list-stat--muted .managed-list-stat-value {
+  color: #6b7280;
+}
+
+/* —— Toolbar —— */
+
+.managed-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* —— Body / rows —— */
+
+.managed-list-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-height: 2.5rem;
+  padding: 0.15rem 0.1rem 0.15rem 0;
+  margin: 0;
+  border-radius: 0.75rem;
+}
+
+.managed-list-body.is-scroll {
+  overflow-y: auto;
+}
+
+.managed-list-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 4.5rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  border: 1px dashed rgb(209 213 219 / 70%);
+  color: #6b7280;
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+html.dark .managed-list-empty {
+  border-color: rgb(255 255 255 / 12%);
+  color: #9ca3af;
+}
+
+.managed-list-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgb(229 231 235 / 55%);
+  background: rgb(255 255 255 / 42%);
+  transition:
+    opacity 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.managed-list-row-leading {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.managed-list-row-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.managed-list-row-trailing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+/* Keep FieldSelect compact inside list rows */
+.managed-list-row-trailing .field-select-wrap {
+  min-width: 7.5rem;
+  max-width: 12rem;
+}
+
+html.dark .managed-list-row {
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(255 255 255 / 3.5%);
+}
+
+.managed-list-row:hover {
+  border-color: rgb(156 163 175 / 45%);
+  background: rgb(255 255 255 / 58%);
+}
+
+html.dark .managed-list-row:hover {
+  border-color: rgb(255 255 255 / 14%);
+  background: rgb(255 255 255 / 6%);
+}
+
+.managed-list-row.is-busy {
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.managed-list-row-main {
+  min-width: 0;
+  flex: 1 1 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.managed-list-row-title-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.managed-list-row-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #111827;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+html.dark .managed-list-row-title {
+  color: #f3f4f6;
+}
+
+.managed-list-row-subtitle {
+  font-size: 0.75rem;
+  color: #4b5563;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+html.dark .managed-list-row-subtitle {
+  color: #9ca3af;
+}
+
+.managed-list-row-meta {
+  font-size: 0.7rem;
+  color: #9ca3af;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+html.dark .managed-list-row-meta {
+  color: #6b7280;
+}
+
+.managed-list-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+}
+
+.managed-list-row-title code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgb(0 0 0 / 5%);
+}
+
+html.dark .managed-list-row-title code {
+  background: rgb(255 255 255 / 8%);
+}
+
+/* —— Badge —— */
+
+.managed-list-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  border: 1px solid transparent;
+  background: rgb(107 114 128 / 12%);
+  color: #4b5563;
+}
+
+html.dark .managed-list-badge {
+  background: rgb(255 255 255 / 10%);
+  color: #d1d5db;
+}
+
+.managed-list-badge--active {
+  background: rgb(59 130 246 / 14%);
+  color: #1d4ed8;
+  border-color: rgb(59 130 246 / 20%);
+}
+
+html.dark .managed-list-badge--active {
+  background: rgb(59 130 246 / 22%);
+  color: #bfdbfe;
+}
+
+.managed-list-badge--success {
+  background: rgb(16 185 129 / 14%);
+  color: #047857;
+  border-color: rgb(16 185 129 / 22%);
+}
+
+html.dark .managed-list-badge--success {
+  background: rgb(16 185 129 / 20%);
+  color: #a7f3d0;
+}
+
+.managed-list-badge--warn {
+  background: rgb(245 158 11 / 16%);
+  color: #b45309;
+  border-color: rgb(245 158 11 / 24%);
+}
+
+html.dark .managed-list-badge--warn {
+  background: rgb(245 158 11 / 20%);
+  color: #fde68a;
+}
+
+.managed-list-badge--danger {
+  background: rgb(244 63 94 / 12%);
+  color: #be123c;
+  border-color: rgb(244 63 94 / 22%);
+}
+
+html.dark .managed-list-badge--danger {
+  background: rgb(244 63 94 / 18%);
+  color: #fecdd3;
+}
+
+.managed-list-badge--muted {
+  background: rgb(107 114 128 / 10%);
+  color: #6b7280;
+}
+
+html.dark .managed-list-badge--muted {
+  color: #9ca3af;
+}
+
+/* —— Buttons —— */
+
+.managed-list-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 1.85rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.managed-list-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.managed-list-btn--sm {
+  min-height: 1.65rem;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.7rem;
+}
+
+.managed-list-btn--secondary {
+  background: rgb(0 0 0 / 5%);
+  border-color: rgb(0 0 0 / 6%);
+  color: #374151;
+}
+
+.managed-list-btn--secondary:hover:not(:disabled) {
+  background: rgb(0 0 0 / 9%);
+}
+
+html.dark .managed-list-btn--secondary {
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 8%);
+  color: #e5e7eb;
+}
+
+html.dark .managed-list-btn--secondary:hover:not(:disabled) {
+  background: rgb(255 255 255 / 13%);
+}
+
+.managed-list-btn--primary {
+  background: rgb(37 99 235 / 12%);
+  border-color: rgb(37 99 235 / 22%);
+  color: #1d4ed8;
+}
+
+.managed-list-btn--primary:hover:not(:disabled) {
+  background: rgb(37 99 235 / 18%);
+}
+
+html.dark .managed-list-btn--primary {
+  background: rgb(59 130 246 / 20%);
+  border-color: rgb(59 130 246 / 28%);
+  color: #bfdbfe;
+}
+
+.managed-list-btn--danger {
+  background: rgb(244 63 94 / 10%);
+  border-color: rgb(244 63 94 / 18%);
+  color: #be123c;
+}
+
+.managed-list-btn--danger:hover:not(:disabled) {
+  background: rgb(244 63 94 / 16%);
+}
+
+html.dark .managed-list-btn--danger {
+  background: rgb(244 63 94 / 16%);
+  border-color: rgb(244 63 94 / 24%);
+  color: #fecdd3;
+}
+
+.managed-list-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: #6b7280;
+}
+
+.managed-list-btn--ghost:hover:not(:disabled) {
+  background: rgb(0 0 0 / 5%);
+  color: #374151;
+}
+
+html.dark .managed-list-btn--ghost {
+  color: #9ca3af;
+}
+
+html.dark .managed-list-btn--ghost:hover:not(:disabled) {
+  background: rgb(255 255 255 / 8%);
+  color: #e5e7eb;
+}
+
+/* —— Footer —— */
+
+.managed-list-footer {
+  font-size: 0.72rem;
+  color: #9ca3af;
+  padding: 0 0.15rem;
+}
+
+html.dark .managed-list-footer {
+  color: #6b7280;
+}
+
+/* Domain-specific helpers used inside row title/subtitle slots */
+.managed-list-id {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+  font-weight: 500;
+}
+
+.managed-list-muted {
+  color: #9ca3af;
+  font-weight: 500;
+}
+
+html.dark .managed-list-muted {
+  color: #6b7280;
+}
+
+.managed-list-error {
+  color: #be123c;
+  word-break: break-word;
+}
+
+html.dark .managed-list-error {
+  color: #fda4af;
+}
+
+@media (width <= 520px) {
+  .managed-list-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .managed-list-row-side {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .managed-list-row-actions {
+    justify-content: flex-start;
+  }
+
+  .managed-list-row-trailing .field-select-wrap {
+    max-width: none;
+    flex: 1 1 auto;
+  }
+}

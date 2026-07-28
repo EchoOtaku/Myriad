@@ -5,6 +5,15 @@
 export { CompactSettingGroup } from './CompactSettingGroup'
 
 export { InfoCard } from './InfoCard'
+export { ManagedList } from './ManagedList'
+export type {
+  ManagedListAction,
+  ManagedListButtonVariant,
+  ManagedListItem,
+  ManagedListProps,
+  ManagedListStat,
+  ManagedListTone,
+} from './ManagedList'
 export { ButtonItem } from './items/ButtonItem'
 export { CheckboxGroupItem } from './items/CheckboxGroupItem'
 export { CheckboxItem } from './items/CheckboxItem'
