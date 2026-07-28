@@ -27,6 +27,20 @@ pub(crate) fn store_package_root(code_or_manifest_path: &str) -> String {
 ///
 /// Example: root `apps/com.myriad.doudizhu` + `assets/felt/table_felt.png`
 /// → `apps/com.myriad.doudizhu/assets/felt/table_felt.png`
+#[cfg(test)]
+mod cache_bust_tests {
+    use super::with_store_cache_bust;
+
+    #[test]
+    fn cache_bust_appends_query() {
+        let a = with_store_cache_bust("https://example.com/a.json");
+        assert!(a.contains("?_myriad_cb="), "{a}");
+        let b = with_store_cache_bust("https://example.com/a.json?x=1");
+        assert!(b.contains("&_myriad_cb="), "{b}");
+        assert!(b.contains("x=1"), "{b}");
+    }
+}
+
 pub(crate) fn store_asset_store_path(package_root: &str, asset_path: &str) -> String {
     let asset = asset_path.trim().trim_start_matches('/');
     let root = package_root
@@ -40,21 +54,38 @@ pub(crate) fn store_asset_store_path(package_root: &str, asset_path: &str) -> St
     }
 }
 
+/// Append a unique query param so CDN/proxy layers cannot reuse a previous
+/// package file (GitHub raw `max-age=300` is a common culprit).
+fn with_store_cache_bust(url: &str) -> String {
+    let token = format!(
+        "{}{}",
+        chrono::Utc::now().timestamp_millis(),
+        std::process::id()
+    );
+    if url.contains('?') {
+        format!("{url}&_myriad_cb={token}")
+    } else {
+        format!("{url}?_myriad_cb={token}")
+    }
+}
+
 /// 从远程商店下载 Tapp 文件
 ///
 /// 返回 (manifest, code, styles, widget_styles, page_styles, page_template, widget_templates)
 async fn fetch_public_store_url(url: &str) -> Result<reqwest::Response, String> {
+    let busted = with_store_cache_bust(url);
     let (target_url, client) = crate::services::outbound_security::build_public_http_client(
-        url,
+        &busted,
         std::time::Duration::from_secs(20),
         Some("Myriad-Tapp-Store/1.0"),
     )
     .await?;
     // Bypass intermediate HTTP caches (GitHub raw max-age=300). Production
     // reinstall/update must not mix a fresh index with stale page.css/html.
+    // Server-side requests may set Cache-Control (no browser CORS preflight).
     client
         .get(target_url)
-        .header("Cache-Control", "no-cache")
+        .header("Cache-Control", "no-cache, no-store, must-revalidate")
         .header("Pragma", "no-cache")
         .send()
         .await

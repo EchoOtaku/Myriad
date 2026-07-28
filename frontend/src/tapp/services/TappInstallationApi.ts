@@ -600,8 +600,9 @@ async function installFromStoreViaClient(
     percent: 2,
   })
 
-  // Always refresh index on install so production reinstalls do not reuse a
-  // 5-minute in-memory catalog that lags GitHub main.
+  // Drop in-memory index and always re-fetch catalog so install never uses a
+  // 5-minute stale listing (version / download paths can lag GitHub main).
+  RemoteStoreService.clearCache()
   const index = await RemoteStoreService.fetchStoreIndex(source, true)
   const baseUrl =
     index.base_url ||
@@ -800,6 +801,7 @@ async function updateFromStoreViaClient(
 
   report?.({ phase: 'prepare', message: 'prepare', percent: 2 })
   // Force a fresh index so version/size/download map match GitHub main.
+  RemoteStoreService.clearCache()
   const index = await RemoteStoreService.fetchStoreIndex(source, true)
   const baseUrl =
     index.base_url ||

@@ -408,13 +408,18 @@ class RemoteStoreServiceImpl {
   ): Promise<RemoteStoreIndex> {
     // 从远程获取
     try {
-      const response = await fetch(source.url, {
-        headers: {
-          Accept: 'application/json',
+      const response = await fetch(
+        this.withStoreCacheBust(source.url, this.newStoreDownloadSessionId()),
+        {
+          // Simple request only — see storeResourceFetchInit CORS note.
+          headers: {
+            Accept: 'application/json',
+          },
+          cache: 'no-store',
+          credentials: 'omit',
+          signal,
         },
-        cache: 'no-cache',
-        signal,
-      })
+      )
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
@@ -507,31 +512,83 @@ class RemoteStoreServiceImpl {
   /**
    * Store package fetches must bypass browser/CDN intermediate caches.
    * GitHub raw serves `Cache-Control: max-age=300`; without this, delete+reinstall
-   * on a production host can mix a fresh manifest with a stale page.css/page.html
-   * (looks like "store install is wrong" while a clean local browser works).
+   * on a production host can mix a fresh manifest with a stale page.css/page.html.
+   *
+   * **CORS:** Do not set `Cache-Control` / `Pragma` request headers. They are not
+   * CORS-safelisted and force a preflight OPTIONS that raw.githubusercontent.com
+   * rejects (install fallback then fails with "Failed to fetch" from localhost).
+   * Use `cache: 'no-store'` + query cache-bust instead.
    */
   private storeResourceFetchInit(
     extraHeaders?: Record<string, string>,
   ): RequestInit {
-    return {
-      cache: 'no-cache',
-      headers: {
-        Accept: 'application/json, text/plain, */*',
-        'Cache-Control': 'no-cache',
-        Pragma: 'no-cache',
-        ...(extraHeaders || {}),
-      },
+    const headers: Record<string, string> = {
+      // Keep Accept simple (CORS-safelisted) when provided by callers.
+      ...(extraHeaders || {}),
     }
+    return {
+      cache: 'no-store',
+      // mode default is cors for cross-origin; omit credentials for public store URLs
+      credentials: 'omit',
+      headers,
+    }
+  }
+
+  /**
+   * Unique token per install/download session so every package file is fetched
+   * with the same bust id (consistent snapshot) but never reuses a prior session.
+   */
+  private newStoreDownloadSessionId(): string {
+    if (
+      typeof crypto !== 'undefined' &&
+      typeof crypto.randomUUID === 'function'
+    ) {
+      return crypto.randomUUID().replace(/-/g, '')
+    }
+    return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+  }
+
+  /**
+   * Append cache-bust query so CDN/browser cannot serve a previous package file.
+   * Applied to **all** store hosts (not only GitHub) for install-path downloads.
+   * CORS-safe: no non-simple request headers required.
+   */
+  private withStoreCacheBust(url: string, sessionId: string): string {
+    try {
+      const parsed = new URL(url)
+      // Stable per download session; replace any prior bust params.
+      parsed.searchParams.delete('_myriad_cb')
+      parsed.searchParams.delete('_')
+      parsed.searchParams.set('_myriad_cb', sessionId)
+      return parsed.toString()
+    } catch {
+      const sep = url.includes('?') ? '&' : '?'
+      return `${url}${sep}_myriad_cb=${encodeURIComponent(sessionId)}`
+    }
+  }
+
+  private storeFetchUrl(
+    relativeOrAbsolute: string,
+    baseUrl: string,
+    sessionId: string,
+  ): string {
+    return this.withStoreCacheBust(
+      this.resolveUrl(relativeOrAbsolute, baseUrl),
+      sessionId,
+    )
   }
 
   /** 下载应用的 manifest */
   async downloadManifest(
     app: RemoteApp,
     storeIndex: RemoteStoreIndex,
+    sessionId?: string,
   ): Promise<TappManifest> {
-    const manifestUrl = this.resolveUrl(
+    const sid = sessionId || this.newStoreDownloadSessionId()
+    const manifestUrl = this.storeFetchUrl(
       app.download.manifest,
       storeIndex.base_url,
+      sid,
     )
 
     const response = await fetch(
@@ -550,8 +607,14 @@ class RemoteStoreServiceImpl {
   async downloadCode(
     app: RemoteApp,
     storeIndex: RemoteStoreIndex,
+    sessionId?: string,
   ): Promise<string> {
-    const codeUrl = this.resolveUrl(app.download.code, storeIndex.base_url)
+    const sid = sessionId || this.newStoreDownloadSessionId()
+    const codeUrl = this.storeFetchUrl(
+      app.download.code,
+      storeIndex.base_url,
+      sid,
+    )
 
     const response = await fetch(codeUrl, this.storeResourceFetchInit())
     if (!response.ok) {
@@ -594,6 +657,9 @@ class RemoteStoreServiceImpl {
     const baseUrl = storeIndex.base_url || this.deriveBaseUrl(storeIndex)
     const { clampInstallPercent } = await import('../utils/tappInstallProgress')
     const report = options?.onProgress
+    // One session id for the whole package so all files share the same bust
+    // token (coherent snapshot) and never hit a prior install's CDN entry.
+    const downloadSessionId = this.newStoreDownloadSessionId()
 
     const downloadText = async (
       relativePath?: string,
@@ -608,7 +674,7 @@ class RemoteStoreServiceImpl {
         return undefined
       }
       try {
-        const url = this.resolveUrl(relativePath, baseUrl)
+        const url = this.storeFetchUrl(relativePath, baseUrl, downloadSessionId)
         const response = await fetch(url, this.storeResourceFetchInit())
         if (!response.ok) {
           if (requiredLabel) {
@@ -634,7 +700,7 @@ class RemoteStoreServiceImpl {
     ): Promise<unknown | undefined> => {
       if (!relativePath) return undefined
       try {
-        const url = this.resolveUrl(relativePath, baseUrl)
+        const url = this.storeFetchUrl(relativePath, baseUrl, downloadSessionId)
         const response = await fetch(
           url,
           this.storeResourceFetchInit({ Accept: 'application/json' }),
@@ -655,14 +721,30 @@ class RemoteStoreServiceImpl {
 
     const indexWithBase = { ...storeIndex, base_url: baseUrl }
     // Manifest first so we know which package fields are required (pageStyles etc.)
-    const downloadedManifest = await this.downloadManifest(app, indexWithBase)
+    const downloadedManifest = await this.downloadManifest(
+      app,
+      indexWithBase,
+      downloadSessionId,
+    )
     const manifest: TappManifest = downloadedManifest
+
+    // Catalog entry version must match the package we just pulled (stale index / CDN).
+    if (
+      app.version &&
+      manifest.version &&
+      app.version.trim() !== manifest.version.trim()
+    ) {
+      throw new Error(
+        `Store package version mismatch: catalog lists ${app.version} but manifest.json is ${manifest.version}. Refresh the store and retry.`,
+      )
+    }
+
     const needsPageCss = !!manifest.pageStyles
     const needsPageTemplate = !!manifest.pageTemplate
     const needsWidgetCss = !!manifest.widgetStyles
 
     const [code, styles, widgetCss, pageCss, pageTemplate] = await Promise.all([
-      this.downloadCode(app, indexWithBase),
+      this.downloadCode(app, indexWithBase, downloadSessionId),
       downloadText(app.download.styles),
       downloadText(
         app.download.widget_styles,
@@ -754,6 +836,7 @@ class RemoteStoreServiceImpl {
       manifest,
       packageRoot,
       baseUrl,
+      downloadSessionId,
       {
         onProgress: report,
         estimatedBytes: options?.estimatedBytes ?? app.size,
@@ -789,6 +872,7 @@ class RemoteStoreServiceImpl {
     manifest: TappManifest,
     packageRoot: string,
     baseUrl: string,
+    sessionId: string,
     options?: {
       onProgress?: import('../utils/tappInstallProgress').TappInstallProgressCallback
       estimatedBytes?: number
@@ -822,7 +906,7 @@ class RemoteStoreServiceImpl {
           )
         }
         const storeRel = storeAssetStorePath(packageRoot, assetPath)
-        const url = this.resolveUrl(storeRel, baseUrl)
+        const url = this.storeFetchUrl(storeRel, baseUrl, sessionId)
         const response = await fetch(
           url,
           this.storeResourceFetchInit({ Accept: '*/*' }),
@@ -867,9 +951,10 @@ class RemoteStoreServiceImpl {
     if (!app.download.readme) return null
 
     try {
-      const readmeUrl = this.resolveUrl(
+      const readmeUrl = this.storeFetchUrl(
         app.download.readme,
-        storeIndex.base_url,
+        storeIndex.base_url || this.deriveBaseUrl(storeIndex),
+        this.newStoreDownloadSessionId(),
       )
       const response = await fetch(readmeUrl, this.storeResourceFetchInit())
       if (!response.ok) return null
