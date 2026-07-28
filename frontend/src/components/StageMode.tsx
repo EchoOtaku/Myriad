@@ -5,6 +5,7 @@ import {
 } from '@lib/motionShim'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
+import { isExlight } from '../hooks/useAnimationLevel'
 
 import { ReportCardWidget } from './widgets/ReportCardWidget'
 
@@ -541,7 +542,10 @@ export default function StageMode({
 
     const { easeProgress, isEntering } = gradientStateRef.current
     applyStageGradient(bgGradient, isDarkMode, easeProgress, isEntering)
-    const blurAmount = getBlurAmount(easeProgress, isEntering)
+    // exlight：不写内联 backdrop（即便 CSS !important 能盖住，也避免多余合成）
+    const blurAmount = isExlight()
+      ? 0
+      : getBlurAmount(easeProgress, isEntering)
     if (blurAmount > 0.5) {
       bgGradient.style.backdropFilter = `blur(${blurAmount}px)`
     } else {
@@ -643,7 +647,9 @@ export default function StageMode({
       const themeIsDark = isDarkModeRef.current
       applyStageGradient(bgGradient, themeIsDark, easeProgress, isEnteringPhase)
 
-      const blurAmount = getBlurAmount(easeProgress, isEnteringPhase)
+      const blurAmount = isExlight()
+        ? 0
+        : getBlurAmount(easeProgress, isEnteringPhase)
       if (blurAmount > 0.5) {
         bgGradient.style.backdropFilter = `blur(${blurAmount}px)`
       } else {

@@ -428,16 +428,17 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
       [isActive],
     )
 
-    // 缓存标题栏样式
+    // 缓存标题栏样式（exlight：不透明底，避免关 blur 后仍透壁纸）
     const headerStyle = useMemo(
       () => ({
-        backgroundColor:
-          'color-mix(in srgb, var(--bg-secondary) 85%, transparent)',
+        backgroundColor: noAnimation
+          ? 'var(--bg-secondary)'
+          : 'color-mix(in srgb, var(--bg-secondary) 85%, transparent)',
         borderBottom: '1px solid var(--border-color)',
         opacity: isActive ? 1 : 0.7,
         transition: 'opacity 0.2s ease',
       }),
-      [isActive],
+      [isActive, noAnimation],
     )
 
     // 缓存窗口点击处理函数
@@ -1205,8 +1206,9 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         <div
           className="flex items-center gap-2 rounded-xl px-2 py-1.5 backdrop-blur-md"
           style={{
-            backgroundColor:
-              'color-mix(in srgb, var(--bg-card) 80%, transparent)',
+            backgroundColor: noAnimation
+              ? 'var(--bg-card)'
+              : 'color-mix(in srgb, var(--bg-card) 80%, transparent)',
             border: '1px solid var(--border-color)',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
           }}

@@ -186,6 +186,20 @@ function syncPerfModeToDocument(level: AnimationLevel): void {
   document.documentElement.dataset.perfMode = level
 }
 
+/*
+ * 模块加载时立刻写 data-perf-mode（仅客户端）。
+ * 避免首屏在 useEffect 前仍按 standard 画毛玻璃；
+ * 解析结果与 resolveAnimationConfig 一致：正常硬件默认仍是 standard/light，
+ * 不会把正常设备误标成 exlight。
+ */
+if (typeof document !== 'undefined') {
+  try {
+    syncPerfModeToDocument(currentAnimationConfig.level)
+  } catch {
+    /* ignore */
+  }
+}
+
 export function useAnimationLevel(): AnimationConfig {
   const perf = usePerformanceProfile()
   const prefContext = useContext(AnimationPreferenceContext)

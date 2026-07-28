@@ -457,7 +457,12 @@ function CustomScrollbarInner() {
                     : '8%'
             }, transparent)`,
             backdropFilter:
-              isDragging || isScrolling ? 'blur(10px)' : 'blur(6px)',
+              typeof document !== 'undefined' &&
+              document.documentElement.dataset.perfMode === 'exlight'
+                ? 'none'
+                : isDragging || isScrolling
+                  ? 'blur(10px)'
+                  : 'blur(6px)',
             boxShadow: isDragging
               ? `inset 0 0 24px color-mix(in srgb, var(--color-primary) 15%, transparent)`
               : isScrolling
@@ -484,7 +489,11 @@ function CustomScrollbarInner() {
                        0 3px 10px color-mix(in srgb, var(--color-primary) 45%, transparent)`,
             transform: 'scaleX(1) scaleY(1)',
             transition: 'none',
-            backdropFilter: 'blur(4px)',
+            backdropFilter:
+              typeof document !== 'undefined' &&
+              document.documentElement.dataset.perfMode === 'exlight'
+                ? 'none'
+                : 'blur(4px)',
             willChange: isDragging ? 'top' : 'auto',
           }}
           onMouseDown={handleMouseDown}

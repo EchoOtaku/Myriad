@@ -187,7 +187,6 @@ export const MusicStatsWidget = memo(
             </motion.div>
             <motion.div
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg bg-white/90 dark:bg-black/90 border border-white/30 dark:border-white/10"
-              style={{ backdropFilter: 'blur(10px)' }}
               initial={{ scale: 0.8, opacity: 0, x: 20 }}
               animate={{ scale: 1, opacity: 1, x: 0 }}
               transition={{ duration: 0.4, delay: 0.2 }}

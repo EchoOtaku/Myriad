@@ -302,8 +302,14 @@ const NavIslandTooltip = memo(
       padding: '6px 10px',
       borderRadius: '8px',
       background: 'var(--bg-secondary)',
-      backdropFilter: 'blur(12px)',
-      WebkitBackdropFilter: 'blur(12px)',
+      // exlight 下由 performance.css 全局关 backdrop；此处不写 blur，避免无意义合成
+      ...(typeof document !== 'undefined' &&
+      document.documentElement.dataset.perfMode === 'exlight'
+        ? {}
+        : {
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+          }),
       color: 'var(--text-primary)',
       border: '1px solid var(--border-color)',
       boxShadow: '0 2px 8px var(--shadow-color)',

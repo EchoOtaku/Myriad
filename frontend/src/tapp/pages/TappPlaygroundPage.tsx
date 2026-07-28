@@ -259,6 +259,8 @@ function FloatingPane({
   interactive,
   staticClassName,
 }: FloatingPaneProps) {
+  const animConfig = useAnimationLevel()
+  const solidChrome = isExlight(animConfig)
   const paneRef = useRef<HTMLDivElement>(null)
   const [rect, setRect] = useState<Rect>(() => defaultRect)
   const [isDragging, setIsDragging] = useState(false)
@@ -389,8 +391,9 @@ function FloatingPane({
         <div
           className="flex items-center h-9 shrink-0 select-none backdrop-blur-sm"
           style={{
-            backgroundColor:
-              'color-mix(in srgb, var(--bg-secondary) 85%, transparent)',
+            backgroundColor: solidChrome
+              ? 'var(--bg-secondary)'
+              : 'color-mix(in srgb, var(--bg-secondary) 85%, transparent)',
             borderBottom: '1px solid var(--border-color)',
           }}
         >
@@ -432,8 +435,9 @@ function FloatingPane({
           isDragging ? 'cursor-grabbing' : 'cursor-grab'
         }`}
         style={{
-          backgroundColor:
-            'color-mix(in srgb, var(--bg-secondary) 85%, transparent)',
+          backgroundColor: solidChrome
+            ? 'var(--bg-secondary)'
+            : 'color-mix(in srgb, var(--bg-secondary) 85%, transparent)',
           borderBottom: '1px solid var(--border-color)',
           opacity: isActive ? 1 : 0.7,
           transition: 'opacity 0.2s ease',
@@ -1995,8 +1999,9 @@ export function TappPlaygroundPage() {
         <div
           className="flex items-center gap-1.5 rounded-xl pl-1.5 pr-3 py-1.5 backdrop-blur-md"
           style={{
-            backgroundColor:
-              'color-mix(in srgb, var(--bg-card) 80%, transparent)',
+            backgroundColor: isExlight(animConfig)
+              ? 'var(--bg-card)'
+              : 'color-mix(in srgb, var(--bg-card) 80%, transparent)',
             border: '1px solid var(--border-color)',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
           }}

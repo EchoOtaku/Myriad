@@ -196,10 +196,17 @@
     -webkit-touch-callout: none;
   }
 
-  /* 移动端减少 blur */
-  [class*='backdrop-blur-xl'],
-  [class*='backdrop-blur-2xl'],
-  [class*='backdrop-blur-3xl'] {
+  /*
+   * 移动端减弱 blur（仅 standard / 未写 data-perf-mode）。
+   * light、exlight 已在 performance.css 关模糊，这里再写 blur(8px)!important
+   * 会在部分层叠下把毛玻璃加回来。
+   */
+  html:not([data-perf-mode='light']):not([data-perf-mode='exlight'])
+    [class*='backdrop-blur-xl'],
+  html:not([data-perf-mode='light']):not([data-perf-mode='exlight'])
+    [class*='backdrop-blur-2xl'],
+  html:not([data-perf-mode='light']):not([data-perf-mode='exlight'])
+    [class*='backdrop-blur-3xl'] {
     backdrop-filter: blur(8px) !important;
   }
 }

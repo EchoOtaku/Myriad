@@ -12,6 +12,10 @@ import type {
 } from '../types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  isExlight,
+  useAnimationLevel,
+} from '../../../../hooks/useAnimationLevel'
+import {
   getIsDarkMode,
   subscribeToTheme,
 } from '../../../../utils/themeSubscriber'
@@ -61,6 +65,8 @@ export interface UseReaderSettingsReturn {
 }
 
 export function useReaderSettings(): UseReaderSettingsReturn {
+  const anim = useAnimationLevel()
+
   // 阅读设置状态 - 使用懒初始化，避免每次渲染都读 localStorage
   const [fontSize, setFontSize] = useState(
     () => getStoredSettings()?.fontSize ?? 18,
@@ -92,7 +98,15 @@ export function useReaderSettings(): UseReaderSettingsReturn {
   }, [fontSize, lineHeight, fontFamily, layout])
 
   // 计算值 - useMemo 缓存
-  const currentTheme = useMemo(() => THEMES[theme], [theme])
+  // exlight：侧栏等用 surface + backdrop-blur；blur 被关后 /80 半透明仍像毛玻璃，
+  // 改用已有的 surfaceSolid，不动 standard/light。
+  const currentTheme = useMemo(() => {
+    const base = THEMES[theme]
+    if (isExlight(anim)) {
+      return { ...base, surface: base.surfaceSolid }
+    }
+    return base
+  }, [theme, anim])
   const currentFont = useMemo(
     () => FONT_OPTIONS.find((f) => f.id === fontFamily) || FONT_OPTIONS[0],
     [fontFamily],
