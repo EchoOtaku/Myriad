@@ -66,6 +66,7 @@ impl<'a> SnapshotManager<'a> {
         snapshot_id: &str,
         source_version: Option<DeployTag>,
     ) -> Result<SnapshotMeta> {
+        validate_snapshot_id(snapshot_id)?;
         crate::probe::filesystem::require_pgdata(&self.pgdata)?;
         let snapshots_dir = self.state.snapshots_dir();
         std::fs::create_dir_all(&snapshots_dir)?;
@@ -223,16 +224,48 @@ impl<'a> SnapshotManager<'a> {
                 "copying current pgdata contents aside before in-place restore"
             );
             if let Err(e) = copy_tree(&self.pgdata, &safety).await {
-                warn!(err = %e, "safety copy of current pgdata failed; continuing with restore");
                 let _ = std::fs::remove_dir_all(&safety);
+                // Fail closed: never wipe pgdata without a safety copy of non-empty data.
+                return Err(UpdaterError::Internal(anyhow::anyhow!(
+                    "safety copy of current pgdata failed before in-place restore: {e}; \
+                     refusing to clear pgdata (snapshot {snapshot_id})"
+                )));
             }
+        }
+
+        // Stage into a temp dir under snapshots, then swap contents — if stage fails,
+        // existing pgdata is still intact.
+        let stage = self
+            .state
+            .snapshots_dir()
+            .join(format!("restore-stage-{ts}"));
+        if stage.exists() {
+            std::fs::remove_dir_all(&stage)?;
+        }
+        std::fs::create_dir_all(&stage)?;
+        if let Err(e) = copy_tree_into(snap_path, &stage).await {
+            let _ = std::fs::remove_dir_all(&stage);
+            return Err(UpdaterError::Internal(anyhow::anyhow!(
+                "staged snapshot copy failed (pgdata untouched): {e}"
+            )));
         }
 
         // Wipe children of the mount point (cannot remove the mount itself).
         clear_dir_contents(&self.pgdata)?;
 
-        // `cp -a snap/. dest/` copies *contents* into the existing mount directory.
-        copy_tree_into(snap_path, &self.pgdata).await?;
+        // `cp -a stage/. dest/` into the existing mount directory.
+        if let Err(e) = copy_tree_into(&stage, &self.pgdata).await {
+            // Attempt to put safety copy back if we have one.
+            if safety.exists() {
+                let _ = clear_dir_contents(&self.pgdata);
+                let _ = copy_tree_into(&safety, &self.pgdata).await;
+            }
+            let _ = std::fs::remove_dir_all(&stage);
+            return Err(UpdaterError::Internal(anyhow::anyhow!(
+                "in-place restore into pgdata failed after wipe: {e}"
+            )));
+        }
+        let _ = std::fs::remove_dir_all(&stage);
         fsync_dir(&self.pgdata)?;
         info!(
             snapshot = %snapshot_id,

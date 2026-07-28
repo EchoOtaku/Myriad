@@ -141,7 +141,14 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
         }
 
         if (!runtime.isRunning(tappId)) {
-          await runtime.startTapp(tappId)
+          // 仅所有者可启动；访客打开已停的公开 Tapp 不得会话假启动。
+          if (runtime.canControlLifecycle(instance)) {
+            await runtime.startTapp(tappId)
+          } else {
+            setError(t.tapp.stopped || 'Tapp is not running')
+            setLoading(false)
+            return
+          }
         }
         if (cancelled) return
 
@@ -247,9 +254,9 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const isReady = !loading && !error && !!tapp && !!code
   const hasError = !loading && (error || !tapp || !code)
 
-  // 权限检查（只有在 tapp 存在时才有意义）
-  const canStartStop = tapp?.userRole !== 'guest'
-  const canConfigure = tapp?.userRole !== 'guest'
+  // 与 Runtime 一致：访客/普通用户不能启停站主公开装
+  const canStartStop = !!tapp && runtime.canControlLifecycle(tapp)
+  const canConfigure = canStartStop
   const iconStyle = tapp ? getTappIconStyle(tapp.manifest) : null
   const displayName = tapp
     ? resolveManifestText(tapp.manifest, locale).name

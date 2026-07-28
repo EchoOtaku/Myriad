@@ -149,7 +149,9 @@ async fn main() -> Result<()> {
     let docker = Arc::new(DockerClient::connect().await?);
 
     // Phase 5: recover any in-flight job per §7.1.
-    let recovery = Worker::recover_or_idle(state.clone(), docker.clone()).await?;
+    let recovery =
+        Worker::recover_or_idle(state.clone(), docker.clone(), Some(cli.env_file.as_path()))
+            .await?;
     info!(recovered = ?recovery, "state recovery complete");
 
     // Phase 6: spawn worker.

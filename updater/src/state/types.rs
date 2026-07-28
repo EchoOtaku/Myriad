@@ -177,11 +177,16 @@ pub enum Phase {
 }
 
 impl Phase {
+    /// Phases after `MYRIAD_TAG` has been rewritten (destructive zone).
+    ///
+    /// **`SwapTag` is excluded**: the phase is entered *before* the tag write.
+    /// Crash recovery must disambiguate pre-write vs post-write via `.env`
+    /// (see `plan_crash_recovery` + `env_myriad_tag`).
     pub fn is_post_swap(self) -> bool {
         use Phase::*;
         matches!(
             self,
-            SwapTag | StartingNew | HealthProbing | SwappingProxy | Finalize
+            StartingNew | HealthProbing | SwappingProxy | Finalize
         )
     }
 

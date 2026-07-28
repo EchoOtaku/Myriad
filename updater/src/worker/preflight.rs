@@ -16,11 +16,22 @@
 //!   newer / different tag is enough). Release + full manifest still treats unknown as risk;
 //!   release Docker Hub fallback (no git compare) matches commit without ancestry.
 //! - irreversible migration + downgrade → requires both flags (manifest path only)
+//!
+//! Local gates (before image pull when possible):
+//! - env keys, pgdata disk (bundled)
+//! - **local environment**: tag vars, writable state/.env, Docker API (via docker-guard)
+//! - **compose contract**: required services / container_name / bundled pgdata bind /
+//!   running Compose project labels (no orchestration change — inspect only)
+//! - **compose network allowlist** (docker-guard parity)
 
 use std::sync::Arc;
 
 use tracing::{info, warn};
 
+use crate::docker::network_allowlist::{
+    find_disallowed_attachments, networks_for_services, NetworkAllowlist,
+    UPDATE_RECREATE_SERVICES,
+};
 use crate::env_file::EnvFile;
 use crate::error::{Result, UpdaterError};
 use crate::release::{CommitRelation, Manifest};
@@ -115,6 +126,11 @@ async fn run_release(
             run_release_with_manifest(worker, target, risk, gh, manifest).await
         }
         Ok(None) => {
+            // Self-host / dev-channel often installs formal v* tags from Docker Hub when
+            // GitHub release.json is missing (private repo, no token, asset not published).
+            // Fall back without an extra allow gate — digests/cosign/min_from are skipped
+            // on this path (same as pre-hardening behavior). Cosign hard-failures still
+            // do not fall back (try_fetch_release_manifest returns Err).
             warn!(
                 target = %release,
                 "preflight(release): GitHub release.json unavailable; verifying via Docker Hub images"
@@ -180,6 +196,19 @@ async fn run_release_with_manifest(
             "this updater ({}) is older than required min_updater_version {}; self-update first",
             self_v, manifest.updater.min_updater_version
         )));
+    }
+
+    // postgres.min_pg_version is advisory until we can probe a live major reliably
+    // without Docker exec. Surface it so operators see the requirement in logs.
+    if !manifest.postgres.min_pg_version.is_empty()
+        && manifest.postgres.min_pg_version != "unbounded"
+    {
+        warn!(
+            min_pg = %manifest.postgres.min_pg_version,
+            "preflight: release requires PostgreSQL >= {}; updater does not auto-probe PG major — \
+             ensure your DB meets this before applying migrations",
+            manifest.postgres.min_pg_version
+        );
     }
 
     let st = worker.state().read_updater()?;
@@ -299,6 +328,8 @@ async fn run_release_with_manifest(
 
     check_env_keys(worker.as_ref(), Some(&manifest))?;
     check_disk(worker.as_ref())?;
+    crate::worker::preflight_env::check_local_environment(&worker).await?;
+    check_compose_networks(&worker).await?;
 
     let backend = manifest
         .image("backend")
@@ -471,6 +502,8 @@ async fn run_release_via_dockerhub(
     // No manifest: cannot enforce min_from_version / irreversible / min_updater_version.
     check_env_keys(worker.as_ref(), None)?;
     check_disk(worker.as_ref())?;
+    crate::worker::preflight_env::check_local_environment(&worker).await?;
+    check_compose_networks(&worker).await?;
 
     let (backend_repo, frontend_repo) = worker.image_repos_required()?;
     let tag = release.as_str();
@@ -697,6 +730,8 @@ async fn run_commit(
 
     check_env_keys(worker.as_ref(), None)?;
     check_disk(worker.as_ref())?;
+    crate::worker::preflight_env::check_local_environment(&worker).await?;
+    check_compose_networks(&worker).await?;
 
     let (backend_repo, frontend_repo) = worker.image_repos_required()?;
     let tag = effective.as_str();
@@ -774,13 +809,20 @@ fn check_env_keys(worker: &Worker, manifest: Option<&Manifest>) -> Result<()> {
             }
         }
     } else {
-        for k in [
+        // Baseline keys for non-manifest paths (commit + Docker Hub release fallback).
+        let mut keys: Vec<&str> = vec![
             "MYRIAD_TAG",
-            "POSTGRES_PASSWORD",
             "JWT_SECRET",
             "BACKEND_IMAGE",
             "FRONTEND_IMAGE",
-        ] {
+        ];
+        if worker.cli().db_mode.is_external() {
+            // Official external-DB deploy has no local postgres service / password.
+            keys.push("DATABASE_URL");
+        } else {
+            keys.push("POSTGRES_PASSWORD");
+        }
+        for k in keys {
             if env.get(k).is_none() {
                 missing.push(k.to_string());
             }
@@ -816,6 +858,146 @@ fn check_disk(worker: &Worker) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Fail closed when compose would attach update/rollback services to a network
+/// docker-guard will reject — otherwise `compose up` fails after stop/snapshot and
+/// rollback hits the same error (site stuck down).
+async fn check_compose_networks(worker: &Arc<Worker>) -> Result<()> {
+    let allow = NetworkAllowlist::resolve(Some(worker.cli().env_file.as_path()));
+    let compose = crate::worker::update::build_compose_runner_pub(worker)
+        .await
+        .map_err(|e| {
+            UpdaterError::Precondition(format!(
+                "cannot build compose runner for network preflight: {e}"
+            ))
+        })?;
+
+    let config = compose.config_json().await.map_err(|e| {
+        UpdaterError::Precondition(format!(
+            "compose config for network preflight failed: {e}"
+        ))
+    })?;
+
+    // Topology / volume / project-label contract — inspect only; does not alter compose.
+    crate::worker::preflight_env::check_compose_contract(
+        worker,
+        &config,
+        compose.project(),
+    )
+    .await?;
+
+    let mut services: Vec<&str> = UPDATE_RECREATE_SERVICES.to_vec();
+    if worker.cli().db_mode.is_external() {
+        services.retain(|s| *s != "postgres");
+    }
+
+    let attachments = networks_for_services(&config, compose.project(), &services);
+    if attachments.is_empty() {
+        return Err(UpdaterError::Precondition(
+            "compose config lists no networks for backend/frontend \
+             (and postgres when bundled); refusing update"
+                .into(),
+        ));
+    }
+
+    let bad = find_disallowed_attachments(&allow, &attachments);
+    if !bad.is_empty() {
+        let detail = bad
+            .iter()
+            .map(|(svc, net)| format!("{svc}→{net}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(UpdaterError::Precondition(format!(
+            "compose network(s) outside the Myriad docker-guard allowlist: {detail}. \
+             Allowed names: {}. Fix MYRIAD_DOCKER_NETWORK / MYRIAD_ADMIN_NETWORK / \
+             MYRIAD_DOCKER_GUARD_NETWORK (and matching compose `networks.*.name`) so they \
+             match before retrying — otherwise update and rollback both fail at compose up.",
+            allow.describe()
+        )));
+    }
+
+    // docker-guard cannot create networks; confirm each required name already exists
+    // and inspect Name still matches the allowlist (connect path uses inspect Name).
+    let mut missing = Vec::new();
+    let mut mismatched = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for (_svc, name) in &attachments {
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+        match worker.docker().raw().inspect_network(name, None).await {
+            Ok(info) => {
+                let actual = info.name.unwrap_or_else(|| name.clone());
+                let actual = actual.trim_start_matches('/');
+                if !allow.contains(actual) {
+                    mismatched.push(format!("{name} (inspect Name={actual})"));
+                }
+            }
+            Err(_) => missing.push(name.clone()),
+        }
+    }
+    if !missing.is_empty() {
+        return Err(UpdaterError::Precondition(format!(
+            "required Docker network(s) missing: {}. \
+             docker-guard cannot create networks; create them (or run an initial \
+             `docker compose up` that creates allowlisted nets) before updating. \
+             Allowed names: {}.",
+            missing.join(", "),
+            allow.describe()
+        )));
+    }
+    if !mismatched.is_empty() {
+        return Err(UpdaterError::Precondition(format!(
+            "Docker network Name outside allowlist: {}. Allowed: {}.",
+            mismatched.join(", "),
+            allow.describe()
+        )));
+    }
+
+    // Running containers on a non-allowlisted net also break recreate (connect/disconnect).
+    check_running_container_networks(worker, &allow).await?;
+
+    info!(
+        allowlist = %allow.describe(),
+        attachments = attachments.len(),
+        "preflight: compose networks within docker-guard allowlist"
+    );
+    Ok(())
+}
+
+async fn check_running_container_networks(
+    worker: &Worker,
+    allow: &NetworkAllowlist,
+) -> Result<()> {
+    // Fixed container_name values from production compose (skip leftover postgres when external).
+    let containers =
+        crate::worker::preflight_env::running_check_containers(worker.cli().db_mode);
+    let mut bad = Vec::new();
+    for name in containers {
+        let info = match worker.docker().raw().inspect_container(name, None).await {
+            Ok(info) => info,
+            Err(_) => continue, // not present yet — compose up will create
+        };
+        let Some(networks) = info.network_settings.and_then(|ns| ns.networks) else {
+            continue;
+        };
+        for net_name in networks.keys() {
+            if !allow.contains(net_name) {
+                bad.push(format!("{name}→{net_name}"));
+            }
+        }
+    }
+    if bad.is_empty() {
+        return Ok(());
+    }
+    Err(UpdaterError::Precondition(format!(
+        "running container(s) attached to network(s) outside the Myriad allowlist: {}. \
+         Allowed: {}. Reattach to allowlisted nets (or recreate the stack) before updating; \
+         otherwise compose up / rollback will fail with the same denial.",
+        bad.join(", "),
+        allow.describe()
+    )))
 }
 
 /// Pure helper used by unit tests — mirrors external short-circuit in [`check_disk`].

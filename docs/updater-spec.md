@@ -712,6 +712,22 @@ docker compose up -d docker-guard updater updater-gateway
   未鉴权的 Docker API（`:2375`）。
 - **允许的网络名**（create/connect）：业务 `myriad-net`、管理平面 `myriad-admin-net`
   （`MYRIAD_ADMIN_NETWORK`）、guard-net。其它网络名拒绝。
+- **更新 preflight**（不改编排，仅只读探测，失败则**不停服**）：
+  1. **本地环境**：`.env` 仍含 `MYRIAD_TAG` / `PROXY_TAG` / `UPDATER_TAG`；compose 仍引用
+     `${MYRIAD_TAG}`；`state/`（及 bundled 下 `state/snapshots/`）与 `.env` 可写；经
+     docker-guard 的 Docker API `ping` 可达。external 模式要求 `DATABASE_URL`（不要求
+     `POSTGRES_PASSWORD`）；bundled 要求 `POSTGRES_PASSWORD`。
+  2. **Compose 契约**（`docker compose config`，且**更新时重扫** compose 文件）：必备服务
+     `backend`/`frontend`（bundled 含 `postgres`）；`container_name` 须为 `myriad-backend`
+     等固定名；bundled 下 postgres 的 pgdata 须为 **bind**；运行中容器 project 标签一致
+     （external 不 inspect 残留 `myriad-postgres`）。
+  3. **网络 allowlist**：三网 allowlist + 已存在 + 运行中容器不得挂外来网。
+  4. **release 无 manifest**：GitHub `release.json` 不可用时 **允许** 回退 Docker Hub
+     `vX.Y.Z` 镜像（开发频道 / 无私有 GitHub 常态）；该路径无 digest/cosign/min_from。
+     cosign **硬失败** 仍不 fallback。
+  5. **NeedsManual**：卡住时拒绝新的业务 update / auto-install（rescue/rollback 仍可用）。
+  6. **健康 recheck**：探针超时后仅 **HardOk** 可跳过回滚；SoftOk（含维护页）必须回滚。
+  面板改 project / container_name / 外来网络 / pgdata named volume 时，应在此阶段被拦下。
 - **updater 不在业务 `myriad-net`**：frontend/postgres 与 updater HTTP 无共享 L2；
   backend 经 admin-net 访问 `updater-gateway`。
 - **推荐部署中 backend 进程不持有 `UPDATE_TOKEN`**：token 仅在 updater、updater-gateway、
@@ -839,6 +855,8 @@ M1 release 前必须跑通。状态：
 | 9 | 磁盘满 | preflight 拒绝 | manual |
 | 10 | .env 缺新 required env | preflight 拒绝 | manual |
 | 11 | min_from_version 不满足 | preflight 拒绝 | manual |
+| 11b | compose 网络不在 docker-guard allowlist | preflight 拒绝（停服前） | unit + manual |
+| 11c | 面板改 container_name / project / pgdata named volume / .env 只读 | preflight 拒绝（停服前） | unit + manual |
 | 12 | min_updater_version 高于自己 | 拒绝并提示 | manual |
 | 13 | 并发 POST /update | 第二个 409 | manual |
 | 14 | pgdata 是 named volume | 启动时拒绝 | unit + smoke |

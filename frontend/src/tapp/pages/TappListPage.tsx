@@ -140,15 +140,17 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
     // 鑾峰彇鏉冮檺缁熻鍜屽簲鐢ㄧ被鍒?
     const permissionCounts = getPermissionCounts(tapp.grantedPermissions)
     const categoryId = resolveTappCategory(manifest)
-    // 权限检查：判断当前用户是否可以执行操作
-    // - admin: 可以操作所有 Tapp
-    // - user: 只能操作自己临时安装的 Tapp（isTemporary=true），不能操作管理员的 Tapp
-    // - guest: 只能查看，不能操作
-    const canStartStop = tapp.userRole !== 'guest'
+    // 启动/停止：仅站主公开装所有者，或自己的临时装（与 TappRuntime.canControlLifecycle 一致）。
+    // 普通用户不能对站主「已停止」的公开 Tapp 点启动。
+    const canStartStop =
+      (tapp.userRole === 'admin' && tapp.isAdminTapp === true) ||
+      (tapp.userRole === 'user' && tapp.isTemporary === true)
     const canUninstall =
       tapp.userRole === 'admin' ||
       (tapp.userRole === 'user' && tapp.isTemporary === true)
-    const canConfigure = tapp.userRole !== 'guest'
+    const canConfigure =
+      tapp.userRole === 'admin' ||
+      (tapp.userRole === 'user' && tapp.isTemporary === true)
     const category = t.tapp[TAPP_CATEGORY_I18N_KEYS[categoryId]]
     const totalPermissions =
       permissionCounts.basic +

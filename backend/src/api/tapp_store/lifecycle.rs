@@ -78,9 +78,17 @@ pub(super) async fn start_tapp(
                     .update(&db)
                     .await
                     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                record_user_activity(&db, user_id, &tapp_id, now).await?;
+                return Ok(Json(ApiResponse::success(())));
             }
-            record_user_activity(&db, user_id, &tapp_id, now).await?;
-            return Ok(Json(ApiResponse::success(())));
+
+            // Non-admin viewing the site-public install: do not allow "start" to
+            // imply a session run of a stopped Tapp. Idempotent if already running.
+            if matches!(tapp.status, tapps::TappStatus::Running) {
+                record_user_activity(&db, user_id, &tapp_id, now).await?;
+                return Ok(Json(ApiResponse::success(())));
+            }
+            return Err(StatusCode::FORBIDDEN);
         }
     }
 

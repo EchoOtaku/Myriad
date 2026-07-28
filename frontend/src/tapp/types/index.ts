@@ -485,6 +485,12 @@ export interface TappInstance {
   /** 是否为管理员的 Tapp（对所有用户可见） */
   isAdminTapp?: boolean
 
+  /**
+   * 安装记录在服务端的生命周期状态（不含本页会话假启动）。
+   * 公开站主 Tapp 以它为准：`running` 全站可显示；`installed` 表示站长已停，访客不得启动。
+   */
+  installationStatus?: TappStatus
+
   /** 错误信息（如果状态为 error） */
   error?: string
 }

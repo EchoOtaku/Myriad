@@ -8,6 +8,7 @@
 pub mod bootstrap_self;
 pub mod machine;
 pub mod preflight;
+pub mod preflight_env;
 pub mod proxy_update;
 pub mod rollback;
 pub mod self_update;
@@ -202,16 +203,20 @@ pub enum CrashRecoveryPlan {
     ClearOrphanMaintenance,
 }
 
-/// Decide crash recovery without I/O.
+/// Decide crash recovery without I/O (except the optional `env_myriad_tag` snapshot).
 ///
 /// Inputs:
 /// - `maint` — on-disk maintenance.json (may have `active=false` during live frontend probe)
 /// - `current_job_id` — job.current
 /// - `job` — loaded job file when either id is known
+/// - `env_myriad_tag` — current `MYRIAD_TAG` from `.env` (if readable); used to tell
+///   pre-write `SwapTag` (tag still old → ClearPreSwap) from post-write (tag matches
+///   `job.to_version` → NeedsManual)
 pub fn plan_crash_recovery(
     maint: &MaintenanceFile,
     current_job_id: Option<&str>,
     job: Option<&Job>,
+    env_myriad_tag: Option<&str>,
 ) -> CrashRecoveryPlan {
     let job_id = maint
         .job_id
@@ -232,10 +237,16 @@ pub fn plan_crash_recovery(
     // otherwise fall back to the job's last step (covers active=false health probe).
     let effective_phase = {
         let mp = maint.phase;
-        if mp.is_post_swap() || mp.is_rollback() || matches!(mp, Phase::NeedsManual) {
+        if mp.is_post_swap()
+            || mp.is_rollback()
+            || matches!(mp, Phase::NeedsManual | Phase::SwapTag)
+        {
             mp
         } else if let Some(lp) = last_step_phase {
-            if lp.is_post_swap() || lp.is_rollback() || matches!(lp, Phase::NeedsManual) {
+            if lp.is_post_swap()
+                || lp.is_rollback()
+                || matches!(lp, Phase::NeedsManual | Phase::SwapTag)
+            {
                 lp
             } else if maint.active {
                 mp
@@ -248,6 +259,37 @@ pub fn plan_crash_recovery(
             mp
         }
     };
+
+    // SwapTag is entered *before* writing MYRIAD_TAG. Only treat as post-swap when
+    // .env already shows the job's target tag.
+    if matches!(effective_phase, Phase::SwapTag) {
+        let to = job.and_then(|j| j.to_version.as_ref().map(|t| t.as_str()));
+        let post_write = matches!(
+            (to, env_myriad_tag),
+            (Some(t), Some(e)) if t == e
+        );
+        if let Some(ref id) = job_id {
+            if post_write {
+                return CrashRecoveryPlan::NeedsManual {
+                    job_id: id.clone(),
+                    phase: Phase::SwapTag,
+                    reason: format!(
+                        "recovered mid-SwapTag after MYRIAD_TAG already matches target \
+                         ({}); manual intervention required",
+                        to.unwrap_or("?")
+                    ),
+                };
+            }
+            if job_inflight || maint.active {
+                return CrashRecoveryPlan::ClearPreSwap {
+                    job_id: id.clone(),
+                    phase: Phase::SwapTag,
+                };
+            }
+        } else if maint.active {
+            return CrashRecoveryPlan::ClearOrphanMaintenance;
+        }
+    }
 
     // Post-swap / rollback / already needs_manual with a recoverable job identity.
     if effective_phase.is_post_swap()
@@ -334,6 +376,34 @@ impl Worker {
             rx: Mutex::new(Some(rx)),
             idempotency: Mutex::new(std::collections::VecDeque::with_capacity(100)),
         }
+    }
+
+    /// Block business updates while the stack is in a stuck rescue state.
+    ///
+    /// `NeedsManual` clears `job.current` when the spawn ends, so conflict alone
+    /// is not enough — operators (or auto_install) could start another update
+    /// and overwrite maintenance while services are still half-down.
+    pub(crate) fn refuse_update_if_stuck(&self) -> Result<()> {
+        let maint = self.state.read_maintenance().unwrap_or_else(|_| {
+            crate::state::MaintenanceFile::inactive()
+        });
+        if matches!(maint.phase, Phase::NeedsManual)
+            || (maint.active
+                && (maint.phase.is_post_swap()
+                    || maint.phase.is_rollback()
+                    || matches!(maint.phase, Phase::NeedsManual)))
+        {
+            return Err(UpdaterError::Conflict);
+        }
+        // Job file left in NeedsManual even if maintenance was partially cleared.
+        if let Ok(Some(id)) = self.state.read_current_job() {
+            if let Ok(job) = self.state.read_job(&id) {
+                if matches!(job.status, JobStatus::NeedsManual) {
+                    return Err(UpdaterError::Conflict);
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn cli(&self) -> &WorkerCli {
@@ -589,13 +659,16 @@ impl Worker {
     pub async fn recover_or_idle(
         state: Arc<StateDir>,
         _docker: Arc<DockerClient>,
+        env_file: Option<&std::path::Path>,
     ) -> Result<RecoveryReport> {
-        // Docker is unused today; kept for API stability / future compose restore on recovery.
-        Self::recover_or_idle_state(state).await
+        Self::recover_or_idle_state(state, env_file).await
     }
 
     /// State-only recovery (unit/integration tests; no Docker required).
-    pub async fn recover_or_idle_state(state: Arc<StateDir>) -> Result<RecoveryReport> {
+    pub async fn recover_or_idle_state(
+        state: Arc<StateDir>,
+        env_file: Option<&std::path::Path>,
+    ) -> Result<RecoveryReport> {
         let maint = state.read_maintenance()?;
         let current_job_id = state.read_current_job()?;
         let job_id = maint
@@ -608,7 +681,17 @@ impl Worker {
             None => None,
         };
 
-        let plan = plan_crash_recovery(&maint, job_id.as_deref(), job.as_ref());
+        let env_tag = env_file.and_then(|p| {
+            crate::env_file::EnvFile::load(p)
+                .ok()
+                .and_then(|e| e.get("MYRIAD_TAG").map(|s| s.to_string()))
+        });
+        let plan = plan_crash_recovery(
+            &maint,
+            job_id.as_deref(),
+            job.as_ref(),
+            env_tag.as_deref(),
+        );
         match plan {
             CrashRecoveryPlan::Idle => Ok(RecoveryReport::Idle),
             CrashRecoveryPlan::NeedsManual {
@@ -945,6 +1028,9 @@ impl Worker {
         if self.state.read_current_job()?.is_some() {
             return Ok(None);
         }
+        if self.refuse_update_if_stuck().is_err() {
+            return Ok(None);
+        }
         let st = self.state.read_updater()?;
         let Some(la) = st.latest_available.as_ref() else {
             return Ok(None);
@@ -1078,6 +1164,11 @@ impl Worker {
 
         if let Some(_existing) = self.state.read_current_job()? {
             return Err(UpdaterError::Conflict);
+        }
+        // NeedsManual / sticky post-swap maintenance must not start another business update.
+        // Rollback and rescue APIs remain available.
+        if let Err(e) = self.refuse_update_if_stuck() {
+            return Err(e);
         }
 
         let job_id = uuid::Uuid::new_v4().simple().to_string();
@@ -2190,7 +2281,10 @@ mod recovery_plan_tests {
     #[test]
     fn idle_when_nothing_in_flight() {
         let m = MaintenanceFile::inactive();
-        assert_eq!(plan_crash_recovery(&m, None, None), CrashRecoveryPlan::Idle);
+        assert_eq!(
+            plan_crash_recovery(&m, None, None, None),
+            CrashRecoveryPlan::Idle
+        );
     }
 
     #[test]
@@ -2198,7 +2292,7 @@ mod recovery_plan_tests {
         // Phase 2 frontend probe sets active=false while job still running post-swap.
         let m = maint(false, Phase::HealthProbing, Some("j1"));
         let j = job(JobStatus::Running, Phase::HealthProbing);
-        match plan_crash_recovery(&m, Some("j1"), Some(&j)) {
+        match plan_crash_recovery(&m, Some("j1"), Some(&j), None) {
             CrashRecoveryPlan::NeedsManual { phase, .. } => {
                 assert_eq!(phase, Phase::HealthProbing);
             }
@@ -2210,7 +2304,7 @@ mod recovery_plan_tests {
     fn job_current_alone_with_post_swap_step_is_needs_manual() {
         let m = MaintenanceFile::inactive();
         let j = job(JobStatus::Running, Phase::StartingNew);
-        match plan_crash_recovery(&m, Some("j1"), Some(&j)) {
+        match plan_crash_recovery(&m, Some("j1"), Some(&j), None) {
             CrashRecoveryPlan::NeedsManual { phase, .. } => {
                 assert_eq!(phase, Phase::StartingNew);
             }
@@ -2222,7 +2316,7 @@ mod recovery_plan_tests {
     fn pre_swap_stopping_clears_for_stack_restore() {
         let m = maint(true, Phase::Stopping, Some("j1"));
         let j = job(JobStatus::Running, Phase::Stopping);
-        match plan_crash_recovery(&m, Some("j1"), Some(&j)) {
+        match plan_crash_recovery(&m, Some("j1"), Some(&j), None) {
             CrashRecoveryPlan::ClearPreSwap { phase, .. } => {
                 assert_eq!(phase, Phase::Stopping);
             }
@@ -2231,11 +2325,39 @@ mod recovery_plan_tests {
     }
 
     #[test]
+    fn swap_tag_pre_write_clears_for_stack_restore() {
+        let m = maint(true, Phase::SwapTag, Some("j1"));
+        let mut j = job(JobStatus::Running, Phase::SwapTag);
+        j.to_version = Some(DeployTag::parse("v0.2.3").unwrap());
+        j.from_version = Some(DeployTag::parse("v0.2.2").unwrap());
+        // .env still on old tag → pre-write crash
+        match plan_crash_recovery(&m, Some("j1"), Some(&j), Some("v0.2.2")) {
+            CrashRecoveryPlan::ClearPreSwap { phase, .. } => {
+                assert_eq!(phase, Phase::SwapTag);
+            }
+            other => panic!("expected ClearPreSwap for pre-write SwapTag, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn swap_tag_post_write_is_needs_manual() {
+        let m = maint(true, Phase::SwapTag, Some("j1"));
+        let mut j = job(JobStatus::Running, Phase::SwapTag);
+        j.to_version = Some(DeployTag::parse("v0.2.3").unwrap());
+        match plan_crash_recovery(&m, Some("j1"), Some(&j), Some("v0.2.3")) {
+            CrashRecoveryPlan::NeedsManual { phase, .. } => {
+                assert_eq!(phase, Phase::SwapTag);
+            }
+            other => panic!("expected NeedsManual for post-write SwapTag, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn active_rollback_phase_is_needs_manual() {
         let m = maint(true, Phase::RestoreSnapshot, Some("j1"));
         let j = job(JobStatus::Running, Phase::RestoreSnapshot);
         assert!(matches!(
-            plan_crash_recovery(&m, Some("j1"), Some(&j)),
+            plan_crash_recovery(&m, Some("j1"), Some(&j), None),
             CrashRecoveryPlan::NeedsManual { .. }
         ));
     }
@@ -2244,7 +2366,7 @@ mod recovery_plan_tests {
     fn orphan_active_maintenance_clears() {
         let m = maint(true, Phase::MaintenanceOn, None);
         assert_eq!(
-            plan_crash_recovery(&m, None, None),
+            plan_crash_recovery(&m, None, None, None),
             CrashRecoveryPlan::ClearOrphanMaintenance
         );
     }
@@ -2262,7 +2384,7 @@ mod recovery_plan_tests {
             .write_maintenance(&maint(false, Phase::HealthProbing, Some("j1")))
             .unwrap();
 
-        let report = Worker::recover_or_idle_state(state.clone())
+        let report = Worker::recover_or_idle_state(state.clone(), None)
             .await
             .expect("recover");
         match report {
@@ -2290,7 +2412,7 @@ mod recovery_plan_tests {
             .write_maintenance(&maint(true, Phase::Stopping, Some("j1")))
             .unwrap();
 
-        let report = Worker::recover_or_idle_state(state.clone())
+        let report = Worker::recover_or_idle_state(state.clone(), None)
             .await
             .expect("recover");
         assert!(matches!(report, RecoveryReport::ClearedPreSwap));

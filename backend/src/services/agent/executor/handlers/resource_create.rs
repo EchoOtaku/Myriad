@@ -144,7 +144,7 @@ async fn persist_agent_tapp(
         icon: Set(icon),
         theme_color: Set(theme_color),
         manifest: Set(manifest),
-        status: Set(tapps::TappStatus::Installed),
+        status: Set(tapps::TappStatus::Running),
         granted_permissions: Set(json!(granted_permissions.clone())),
         approved_permissions: Set(json!(granted_permissions)),
         file_path: Set(manifest_path.to_string_lossy().to_string()),

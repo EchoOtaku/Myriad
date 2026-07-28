@@ -136,7 +136,24 @@ impl ComposeRunner {
     }
 
     pub async fn up_detached(&self, services: &[&str]) -> Result<ComposeOutput> {
+        self.up_detached_opts(services, false).await
+    }
+
+    /// Like [`up_detached`] but with `--force-recreate` so tag swaps / rollbacks do not
+    /// reuse stopped containers that still match a stale create config.
+    pub async fn up_detached_recreate(&self, services: &[&str]) -> Result<ComposeOutput> {
+        self.up_detached_opts(services, true).await
+    }
+
+    async fn up_detached_opts(
+        &self,
+        services: &[&str],
+        force_recreate: bool,
+    ) -> Result<ComposeOutput> {
         let mut args: Vec<&str> = vec!["up", "-d", "--no-deps"];
+        if force_recreate {
+            args.push("--force-recreate");
+        }
         args.extend_from_slice(services);
         self.run(&args, Duration::from_secs(600)).await
     }
@@ -280,6 +297,66 @@ impl ComposeRunner {
             )));
         }
         Ok(out.stdout_tail)
+    }
+
+    /// Resolved compose project config as JSON (full stdout; not truncated).
+    ///
+    /// Used by preflight network allowlist checks — must not truncate lest we
+    /// parse incomplete JSON on larger stacks.
+    pub async fn config_json(&self) -> Result<serde_json::Value> {
+        let mut cmd = self.base_cmd();
+        cmd.args(["config", "--format", "json"]);
+        debug!(project = %self.project, "compose config --format json");
+
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| UpdaterError::Docker(format!("spawn compose config: {e}")))?;
+
+        let mut stdout_buf = Vec::<u8>::with_capacity(64 * 1024);
+        let mut stderr_buf = Vec::<u8>::with_capacity(8192);
+        let mut stdout = child.stdout.take().unwrap();
+        let mut stderr = child.stderr.take().unwrap();
+
+        let copy_stdout = async {
+            let _ = stdout.read_to_end(&mut stdout_buf).await;
+        };
+        let copy_stderr = async {
+            let _ = stderr.read_to_end(&mut stderr_buf).await;
+        };
+        let wait_status = async { child.wait().await };
+
+        let status = tokio::select! {
+            res = async {
+                tokio::join!(copy_stdout, copy_stderr);
+                wait_status.await
+            } => res,
+            _ = tokio::time::sleep(Duration::from_secs(60)) => {
+                let _ = child.start_kill();
+                return Err(UpdaterError::Docker(
+                    "compose config timed out after 60s".into(),
+                ));
+            }
+        };
+
+        let status =
+            status.map_err(|e| UpdaterError::Docker(format!("await compose config: {e}")))?;
+        if !status.success() {
+            return Err(UpdaterError::Docker(format!(
+                "compose config failed: exit {:?}: {}",
+                status.code(),
+                String::from_utf8_lossy(&stderr_buf).trim()
+            )));
+        }
+        serde_json::from_slice(&stdout_buf).map_err(|e| {
+            UpdaterError::Docker(format!(
+                "compose config JSON parse failed ({e}); stdout_len={}",
+                stdout_buf.len()
+            ))
+        })
+    }
+
+    pub fn project(&self) -> &str {
+        &self.project
     }
 }
 

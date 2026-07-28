@@ -14,8 +14,8 @@
 //! ## Resilience (coupled with health-probe false negatives)
 //!
 //! Order matters: we **restore MYRIAD_TAG first**, then snapshot, so a mid-rollback crash
-//! still leaves `.env` pointing at the rollback version. If snapshot restore fails we still attempt
-//! to start services so operators are not stuck with everything stopped.
+//! still leaves `.env` pointing at the rollback version. If snapshot restore fails we
+//! **fail closed** (do not start services on inconsistent pgdata); use rescue manually.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -205,7 +205,6 @@ async fn execute_inline_inner(
     };
 
     let _ = rec.enter(Phase::RestoreSnapshot, "updater.phase.restore_snapshot");
-    let mut restore_failed: Option<String> = None;
 
     if should_skip_pgdata_restore(worker.cli().db_mode, snapshot_id) {
         info!(
@@ -241,17 +240,21 @@ async fn execute_inline_inner(
         tokio::time::sleep(Duration::from_secs(1)).await;
 
         if let Err(e) = snap.restore(snapshot_id).await {
-            warn!(
-                err = %e,
-                snapshot = snapshot_id,
-                "rollback: snapshot restore failed; continuing to start rollback images \
-                 (pgdata may still be post-upgrade)"
+            // Fail closed for data: do not start postgres/app on a half-wiped or
+            // post-upgrade pgdata after restore failure — operator must rescue.
+            let msg = format!(
+                "rollback: snapshot restore failed: {e}; refusing to start services \
+                 (pgdata may be inconsistent — use rescue / manual restore)"
             );
-            restore_failed = Some(e.to_string());
-            let _ = rec.finish_step_err(format!("restore snapshot (continuing): {e}"));
-        } else {
-            let _ = rec.finish_step_ok();
+            error!(err = %e, snapshot = %snapshot_id, %msg, "rollback snapshot restore failed");
+            let _ = rec.finish_step_err(&msg);
+            let _ = worker.state().append_audit(&format!(
+                "audit: rollback_restore_failed job={} snapshot={} err={e}",
+                rec.job_id, snapshot_id
+            ));
+            return Err(UpdaterError::Internal(anyhow::anyhow!(msg)));
         }
+        let _ = rec.finish_step_ok();
 
         let start_pg = compose.start(&["postgres"]).await;
         let start_ok = start_pg.as_ref().map(|o| o.ok()).unwrap_or(false);
@@ -278,7 +281,7 @@ async fn execute_inline_inner(
 
     let _ = rec.enter(Phase::StartOld, "updater.phase.start_old");
     let up = compose
-        .up_detached(&["backend", "frontend"])
+        .up_detached_recreate(&["backend", "frontend"])
         .await
         .map_err(|e| {
             UpdaterError::Internal(anyhow::anyhow!("start old failed: {e}"))
@@ -303,23 +306,9 @@ async fn execute_inline_inner(
                     warn!(err = %e, "rollback restored version but commit reconciliation failed");
                 }
             }
-            if let Some(ref e) = restore_failed {
-                // Services up but data not restored — still NeedsManual signal via error.
-                return Err(UpdaterError::Precondition(format!(
-                    "rollback brought services up on the rollback tag, but pgdata restore failed: {e}"
-                )));
-            }
             Ok(restored_version)
         }
-        Err(e) => {
-            if let Some(ref re) = restore_failed {
-                Err(UpdaterError::Precondition(format!(
-                    "rollback health failed ({e}); also pgdata restore failed: {re}"
-                )))
-            } else {
-                Err(e)
-            }
-        }
+        Err(e) => Err(e),
     }
 }
 

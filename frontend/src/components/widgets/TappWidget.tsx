@@ -712,15 +712,61 @@ function TappWidgetRuntime({
     previousPageVisibleRef.current = pageVisible
   }, [pageVisible, inViewport, requestRefresh, widget])
 
-  // 启动 Tapp
+  // 仅站长/临时装所有者可启动；公开 Tapp 未运行时访客不得点开。
+  const canControlLifecycle = useMemo(
+    () => (tappInstance ? runtime.canControlLifecycle(tappInstance) : false),
+    [runtime, tappInstance],
+  )
+
+  // 启动 Tapp（仅 canControlLifecycle）
   const handleStartTapp = useCallback(async () => {
-    if (!widget) return
+    if (!widget || !canControlLifecycle) return
     try {
       await runtime.startTapp(widget.tappId)
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to start Tapp')
     }
-  }, [widget, runtime])
+  }, [widget, runtime, canControlLifecycle])
+
+  // 所有者挂载小组件时：若自己的装仍是 stopped，自动拉起（不帮访客启动站主已停的 Tapp）。
+  const autoStartKeyRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (isPreview) return
+    if (!widget || !tappInstance || isRunning || loading || error) return
+    if (!canControlLifecycle) return
+    const key = widget.tappId
+    if (autoStartKeyRef.current === key) return
+    autoStartKeyRef.current = key
+
+    let cancelled = false
+    setLoading(true)
+    void (async () => {
+      try {
+        await runtime.startTapp(widget.tappId)
+      } catch (err) {
+        if (cancelled) return
+        autoStartKeyRef.current = null
+        setLoading(false)
+        console.warn(
+          '[TappWidget] auto-start failed:',
+          err instanceof Error ? err.message : err,
+        )
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    widget,
+    tappInstance,
+    isRunning,
+    loading,
+    error,
+    isPreview,
+    runtime,
+    canControlLifecycle,
+  ])
 
   // 跳转到 Tapp 详情
   const handleGoToTapp = useCallback(() => {
@@ -827,21 +873,25 @@ function TappWidgetRuntime({
 
         {/* 提示 */}
         <div className="text-xs text-gray-500 dark:text-gray-400 mb-4 text-center">
-          需要启动 Tapp 以显示
+          {canControlLifecycle
+            ? '需要启动 Tapp 以显示'
+            : 'Tapp 未启动'}
         </div>
 
-        {/* 操作按钮 */}
+        {/* 操作：仅所有者可启动；访客只能看详情，不能把站长已停的 Tapp 拉起来 */}
         {!isEditMode && (
           <div className="flex gap-2 justify-center">
-            <button
-              onClick={handleStartTapp}
-              className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-all shadow-sm hover:shadow-md"
-              style={{
-                background: `linear-gradient(135deg, ${themeColor}, color-mix(in srgb, ${themeColor} 80%, black))`,
-              }}
-            >
-              启动
-            </button>
+            {canControlLifecycle && (
+              <button
+                onClick={handleStartTapp}
+                className="px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-all shadow-sm hover:shadow-md"
+                style={{
+                  background: `linear-gradient(135deg, ${themeColor}, color-mix(in srgb, ${themeColor} 80%, black))`,
+                }}
+              >
+                启动
+              </button>
+            )}
             <button
               onClick={handleGoToTapp}
               className="px-3 py-1.5 text-xs font-medium bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15 text-gray-700 dark:text-gray-200 rounded-lg transition-colors"

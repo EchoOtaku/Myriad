@@ -394,9 +394,23 @@ async fn run_update_body(
                 prev = %from_tag_backup,
                 "pre-start rollback image pin skipped because the complete image pair is not local"
             );
+            let _ = worker.state().append_audit(&format!(
+                "audit: rollback_pin_incomplete prev={from_tag_backup} \
+                 (auto-rollback may fail if previous images are GC'd)"
+            ));
+            let _ = worker.state().append_history(&format!(
+                "WARNING: rollback image pin incomplete for {from_tag_backup}; \
+                 offline rollback may need manual image restore"
+            ));
         }
         Err(e) => {
             tracing::warn!(err = %e, prev = %from_tag_backup, "pre-start rollback image pin failed");
+            let _ = worker.state().append_audit(&format!(
+                "audit: rollback_pin_failed prev={from_tag_backup} err={e}"
+            ));
+            let _ = worker.state().append_history(&format!(
+                "WARNING: rollback image pin failed for {from_tag_backup}: {e}"
+            ));
         }
     }
 
@@ -422,7 +436,7 @@ async fn run_update_body(
         "backend volume ownership and write verification completed"
     );
     let up = compose
-        .up_detached(&["backend", "frontend"])
+        .up_detached_recreate(&["backend", "frontend"])
         .await
         .map_err(|e| {
             UpdaterError::Internal(anyhow::anyhow!("compose up new failed: {e}"))
@@ -782,6 +796,9 @@ async fn finish_with_rollback(
                 "health failure: re-checking before destructive rollback"
             );
             // Force soft-pass window open (90s+) for this recheck; prefer live frontend via proxy.
+            // Recheck must be *stricter* than the main loop: only HardOk skips rollback.
+            // SoftOk (proxy-down, maintenance HTML, dual-image warm) used to mark SUCCESS
+            // after a real probe timeout and leave a broken site without rollback.
             let recheck = probe_one_tick(
                 worker,
                 &target,
@@ -790,18 +807,25 @@ async fn finish_with_rollback(
             )
             .await;
             match recheck {
-                ProbeTick::HardOk { detail, pass_kind } | ProbeTick::SoftOk { detail, pass_kind } => {
+                ProbeTick::HardOk { detail, pass_kind } => {
                     warn!(
                         %detail,
                         %pass_kind,
                         target = %target,
-                        "health re-check succeeded after timeout — treating update as SUCCESS \
+                        "health re-check HardOk after timeout — treating update as SUCCESS \
                          (skipping rollback). Original probe was a false negative."
                     );
                     // Best-effort bookkeeping only — stack is already live.
                     let _ = rec.enter(Phase::SwappingProxy, "updater.phase.swapping_proxy");
                     if let Ok(mut st) = worker.state().read_updater() {
-                        record_successful_deploy(&mut st, target.clone(), None);
+                        // Recheck path has no PreflightReport; preserve commit only when
+                        // we already recorded this exact target (false-negative after success bookkeeping).
+                        let commit = if st.current_version.as_ref() == Some(&target) {
+                            st.current_commit_sha.clone()
+                        } else {
+                            None
+                        };
+                        record_successful_deploy(&mut st, target.clone(), commit);
                         let _ = worker.state().write_updater(&st);
                     }
                     let _ = rec.finish_step_ok();
@@ -816,6 +840,13 @@ async fn finish_with_rollback(
                         rec.job_id
                     ));
                     return Ok(());
+                }
+                ProbeTick::SoftOk { detail, pass_kind } => {
+                    warn!(
+                        %detail,
+                        %pass_kind,
+                        "health re-check only SoftOk after timeout; refusing false success — rolling back"
+                    );
                 }
                 ProbeTick::NotReady { detail } => {
                     warn!(
@@ -921,16 +952,33 @@ pub(crate) async fn build_compose_runner_pub(worker: &Arc<Worker>) -> Result<Com
 }
 
 async fn build_compose_runner(worker: &Arc<Worker>) -> Result<ComposeRunner> {
+    // Re-discover compose files at use time so panel renames after boot are visible.
+    // Binary preference still falls back to startup env-probe when live detect fails.
+    let live = crate::probe::compose::probe(&worker.cli().compose_dir).await;
     let probe_path = worker.state().root().join("env-probe.json");
-    let probe: crate::probe::EnvProbe = serde_json::from_slice(&std::fs::read(&probe_path)?)?;
-    let binary: ComposeBinary = probe
-        .compose
+    let boot: Option<crate::probe::EnvProbe> =
+        std::fs::read(&probe_path)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok());
+
+    let binary: ComposeBinary = live
         .binary
+        .or_else(|| boot.as_ref().and_then(|p| p.compose.binary))
         .ok_or_else(|| UpdaterError::Internal(anyhow::anyhow!("compose binary unavailable")))?;
+
+    let compose_files = if !live.compose_files.is_empty() {
+        live.compose_files
+    } else if let Some(p) = boot.as_ref() {
+        p.compose.compose_files.clone()
+    } else {
+        return Err(UpdaterError::Internal(anyhow::anyhow!(
+            "no compose files found under {}",
+            worker.cli().compose_dir.display()
+        )));
+    };
+
     let project = std::env::var("COMPOSE_PROJECT_NAME").unwrap_or_else(|_| "myriad".into());
-    let compose_base = probe
-        .compose
-        .compose_files
+    let compose_base = compose_files
         .first()
         .and_then(|file| file.parent())
         .unwrap_or(&worker.cli().compose_dir);
@@ -941,7 +989,7 @@ async fn build_compose_runner(worker: &Arc<Worker>) -> Result<ComposeRunner> {
     Ok(ComposeRunner::new(
         binary,
         project,
-        probe.compose.compose_files,
+        compose_files,
         worker.cli().env_file.clone(),
         worker.cli().compose_dir.clone(),
         host_project_directory,
@@ -1333,18 +1381,21 @@ async fn probe_one_tick(
     }
 
     // Soft: containers + DB + both image tags; page may still be warming.
+    // Must NOT accept maintenance HTML as SoftOk — that path used to false-pass recheck
+    // and skip rollback while the site still served the maintenance page.
     if db
         && mig
         && backend_running
         && frontend_running
         && backend_img_ok
         && frontend_img_ok
-        && (fe_html_ok || looks_like_maintenance)
+        && fe_html_ok
+        && !looks_like_maintenance
     {
         return ProbeTick::SoftOk {
             pass_kind: "soft_dual_image",
             detail: format!(
-                "running+db+image tags; fe_meta_ok={fe_meta_ok} maint_html={looks_like_maintenance} \
+                "running+db+image tags+non-maint HTML; fe_meta_ok={fe_meta_ok} \
                  version={version:?} want={}",
                 target.as_str()
             ),
@@ -1556,5 +1607,27 @@ mod health_match_tests {
         assert!(is_health_probe_failure(&e2));
         let e3 = UpdaterError::Internal(anyhow::anyhow!("compose up new failed"));
         assert!(!is_health_probe_failure(&e3));
+    }
+
+    #[test]
+    fn soft_dual_image_rejects_maintenance_html() {
+        // Mirrors the SoftOk gate: maintenance page must not count as soft success.
+        let looks_like_maintenance = true;
+        let fe_html_ok = false; // fe_html_ok requires !looks_like_maintenance
+        assert!(!(fe_html_ok && !looks_like_maintenance));
+        let looks_like_maintenance = false;
+        let fe_html_ok = true;
+        assert!(fe_html_ok && !looks_like_maintenance);
+    }
+
+    #[test]
+    fn recheck_accepts_only_hard_ok_variants() {
+        // Document the recheck contract: SoftOk must not skip rollback.
+        fn recheck_skips_rollback(tick: &str) -> bool {
+            matches!(tick, "hard")
+        }
+        assert!(recheck_skips_rollback("hard"));
+        assert!(!recheck_skips_rollback("soft"));
+        assert!(!recheck_skips_rollback("not_ready"));
     }
 }

@@ -394,13 +394,16 @@ async fn install_prepared_package(
         icon: Set(manifest.icon.clone()),
         theme_color: Set(manifest.theme_color.clone()),
         manifest: Set(serde_json::to_value(&manifest).unwrap()),
-        status: Set(tapps::TappStatus::Installed),
+        // Default to Running so dashboard widgets for public (admin) installs
+        // render immediately for visitors/non-admin without a manual Start click.
+        // Operators can still Stop from the Tapp list UI.
+        status: Set(tapps::TappStatus::Running),
         granted_permissions: Set(serde_json::to_value(&granted).unwrap()),
         approved_permissions: Set(serde_json::to_value(&approved).unwrap()),
         file_path: Set(manifest_path.to_string_lossy().to_string()),
         code_path: Set(code_path.to_string_lossy().to_string()),
         installed_at: Set(now),
-        last_run_at: Set(None),
+        last_run_at: Set(Some(now)),
         updated_at: Set(now),
         error_message: Set(None),
     };

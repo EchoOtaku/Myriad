@@ -216,18 +216,36 @@ export class TappRuntime {
           const persistsLifecycle =
             (userRole === 'admin' && isAdminTapp) ||
             (userRole === 'user' && detail.is_temporary === true)
-          const isRunning =
-            this.sessionRunningTapps.has(detail.id) ||
-            (persistsLifecycle && detail.status === 'running')
+          const installationStatus: TappInstance['installationStatus'] =
+            detail.status === 'running'
+              ? 'running'
+              : detail.status === 'error'
+                ? 'error'
+                : 'installed'
+
+          // Site-public (admin) install stopped → drop any leftover local session
+          // "starts" so visitors cannot keep a stopped Tapp alive after refresh.
+          if (isAdminTapp && installationStatus !== 'running') {
+            this.sessionRunningTapps.delete(detail.id)
+          }
+
+          // Public admin Tapp: only server `running` counts for everyone (including
+          // guests). Session starts are not used to override a site-wide stop.
+          // Owners (admin public / user temporary) still use persisted + session.
+          const isRunning = isAdminTapp
+            ? installationStatus === 'running'
+            : this.sessionRunningTapps.has(detail.id) ||
+              (persistsLifecycle && installationStatus === 'running')
 
           const instance: TappInstance = {
             id: detail.id,
             manifest: detail.manifest as TappManifest,
             status: isRunning
               ? 'running'
-              : detail.status === 'error'
+              : installationStatus === 'error'
                 ? 'error'
                 : 'installed',
+            installationStatus,
             installedAt: detail.installed_at,
             lastRunAt: detail.last_run_at,
             grantedPermissions: detail.granted_permissions as TappPermission[],
@@ -436,6 +454,14 @@ export class TappRuntime {
   }
 
   /**
+   * 当前查看者是否可启动/停止该安装（站主公开装 或 自己的临时装）。
+   * 访客/普通用户不能对「未启动」的站主公开 Tapp 做启动。
+   */
+  canControlLifecycle(instance: TappInstance): boolean {
+    return this.persistsLifecycle(instance)
+  }
+
+  /**
    * 启动 Tapp
    */
   async startTapp(tappId: string): Promise<void> {
@@ -450,9 +476,17 @@ export class TappRuntime {
 
       if (this.runningTapps.has(tappId)) return
 
+      // 站主公开 Tapp：只有站主可改全站运行态；访客不得用会话假启动绕过「已停止」。
+      if (instance.isAdminTapp && !this.persistsLifecycle(instance)) {
+        throw new Error(
+          'This Tapp is stopped by the site admin and cannot be started by other users',
+        )
+      }
+
       const persistsLifecycle = this.persistsLifecycle(instance)
       if (persistsLifecycle) {
         await TappApiService.startTapp(tappId)
+        instance.installationStatus = 'running'
       } else {
         this.sessionRunningTapps.add(tappId)
       }
@@ -543,8 +577,15 @@ export class TappRuntime {
 
       if (!this.runningTapps.has(tappId)) return
 
+      if (instance.isAdminTapp && !this.persistsLifecycle(instance)) {
+        throw new Error(
+          'This Tapp is managed by the site admin and cannot be stopped by other users',
+        )
+      }
+
       if (this.persistsLifecycle(instance)) {
         await TappApiService.stopTapp(tappId)
+        instance.installationStatus = 'installed'
       } else {
         this.sessionRunningTapps.delete(tappId)
       }

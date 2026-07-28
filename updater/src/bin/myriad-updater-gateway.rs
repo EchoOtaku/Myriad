@@ -9,9 +9,10 @@
 //! via the gateway (token still never leaves gateway→updater). Prefer not placing
 //! untrusted workloads on admin-net; protect the gateway secret like other secrets.
 
+use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Context, Result};
 use axum::body::{to_bytes, Body};
@@ -20,6 +21,7 @@ use axum::http::{header, HeaderMap, HeaderName, HeaderValue, Method, Request, St
 use axum::response::{IntoResponse, Response};
 use axum::routing::any;
 use axum::Router;
+use once_cell::sync::Lazy;
 use reqwest::Client;
 use tracing::{error, info, warn};
 
@@ -27,6 +29,13 @@ const MAX_BODY: usize = 16 * 1024 * 1024;
 const GATEWAY_SECRET_MIN_LEN: usize = 32;
 const HEADER_GATEWAY_SECRET: &str = "x-updater-gateway-secret";
 const HEADER_UPDATE_TOKEN: &str = "x-update-token";
+const MAX_FAILED_PER_MIN: u32 = 10;
+const BLOCK_DURATION: Duration = Duration::from_secs(600);
+const FAILURE_WINDOW: Duration = Duration::from_secs(60);
+
+/// Failed gateway-secret attempts by source (XFF or "unknown"). Correct secrets never blocked.
+static GATEWAY_LIMITER: Lazy<Mutex<HashMap<String, (Vec<Instant>, Option<Instant>)>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Clone)]
 struct GatewayState {
@@ -108,6 +117,7 @@ async fn proxy(State(state): State<Arc<GatewayState>>, req: Request<Body>) -> Re
     let _ = parts; // method/uri/headers already cloned
 
     // Caller auth: shared secret between backend and gateway (admin-net peers).
+    // Wrong secrets are rate-limited per source; correct secrets always pass.
     if let Err(resp) = authorize_gateway_caller(&headers, &state.gateway_secret) {
         return resp;
     }
@@ -179,24 +189,109 @@ fn authorize_gateway_caller(
     headers: &HeaderMap,
     expected: &str,
 ) -> Result<(), Response> {
+    let source = gateway_source_key(headers);
+    if gateway_is_blocked(&source) {
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            axum::Json(serde_json::json!({
+                "message": "too many invalid gateway secret attempts; try again later"
+            })),
+        )
+            .into_response());
+    }
+
     let provided = headers
         .get(HEADER_GATEWAY_SECRET)
         .and_then(|v| v.to_str().ok());
     match provided {
-        Some(got) if constant_time_eq(got.as_bytes(), expected.as_bytes()) => Ok(()),
-        Some(_) => Err((
-            StatusCode::UNAUTHORIZED,
-            axum::Json(serde_json::json!({"message": "invalid gateway secret"})),
-        )
-            .into_response()),
-        None => Err((
-            StatusCode::UNAUTHORIZED,
-            axum::Json(serde_json::json!({
-                "message": "missing X-Updater-Gateway-Secret"
-            })),
-        )
-            .into_response()),
+        Some(got) if constant_time_eq(got.as_bytes(), expected.as_bytes()) => {
+            gateway_clear_failures(&source);
+            Ok(())
+        }
+        Some(_) => {
+            let blocked = gateway_record_failure(&source);
+            Err(if blocked {
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    axum::Json(serde_json::json!({
+                        "message": "too many invalid gateway secret attempts; try again later"
+                    })),
+                )
+                    .into_response()
+            } else {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    axum::Json(serde_json::json!({"message": "invalid gateway secret"})),
+                )
+                    .into_response()
+            })
+        }
+        None => {
+            let blocked = gateway_record_failure(&source);
+            Err(if blocked {
+                (
+                    StatusCode::TOO_MANY_REQUESTS,
+                    axum::Json(serde_json::json!({
+                        "message": "too many invalid gateway secret attempts; try again later"
+                    })),
+                )
+                    .into_response()
+            } else {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    axum::Json(serde_json::json!({
+                        "message": "missing X-Updater-Gateway-Secret"
+                    })),
+                )
+                    .into_response()
+            })
+        }
     }
+}
+
+fn gateway_source_key(headers: &HeaderMap) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|v| v.trim())
+        .filter(|v| !v.is_empty())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+fn gateway_record_failure(key: &str) -> bool {
+    let mut map = GATEWAY_LIMITER.lock().unwrap();
+    let entry = map.entry(key.to_string()).or_default();
+    let now = Instant::now();
+    entry.0.retain(|t| now.duration_since(*t) < FAILURE_WINDOW);
+    entry.0.push(now);
+    if entry.0.len() as u32 > MAX_FAILED_PER_MIN {
+        entry.1 = Some(now + BLOCK_DURATION);
+        true
+    } else {
+        false
+    }
+}
+
+fn gateway_is_blocked(key: &str) -> bool {
+    let mut map = GATEWAY_LIMITER.lock().unwrap();
+    let now = Instant::now();
+    if let Some(entry) = map.get_mut(key) {
+        if let Some(until) = entry.1 {
+            if now < until {
+                return true;
+            }
+            entry.1 = None;
+            entry.0.clear();
+        }
+    }
+    false
+}
+
+fn gateway_clear_failures(key: &str) {
+    let mut map = GATEWAY_LIMITER.lock().unwrap();
+    map.remove(key);
 }
 
 /// Constant-time equality for equal-length secrets. Different lengths return false

@@ -564,6 +564,10 @@ fn is_narrow_backend_volume_init(value: &Value, host: &Value, service: &str) -> 
 }
 
 fn is_allowlisted_network_name(name: &str, config: &GuardConfig) -> bool {
+    // Keep in sync with `crate::docker::network_allowlist::NetworkAllowlist::contains`
+    // (same three env-backed names). Preflight rejects updates before stop/snapshot when
+    // compose would attach managed services outside this set.
+    let name = name.trim_start_matches('/');
     name == config.compose_network || name == config.admin_network || name == config.guard_network
 }
 
