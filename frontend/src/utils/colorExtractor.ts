@@ -103,7 +103,8 @@ const memoryCache = new Map<string, ColorPalette>()
 const MAX_MEMORY_CACHE = 50
 
 /**
- * 是否为「取色失败占位」默认灰（不可当作真实主题缓存）。
+ * 是否为「取色失败占位」固定 DEFAULT 灰（网络/解码失败用）。
+ * 注意：黑白封面分析出的真实灰阶 palette 不是它，应正常使用与缓存。
  */
 export function isDefaultPalette(
   palette: ColorPalette | null | undefined,
@@ -111,7 +112,10 @@ export function isDefaultPalette(
   if (!palette) return true
   return (
     palette.primary === DEFAULT_PALETTE.primary &&
-    palette.secondary === DEFAULT_PALETTE.secondary
+    palette.secondary === DEFAULT_PALETTE.secondary &&
+    palette.accent === DEFAULT_PALETTE.accent &&
+    palette.light === DEFAULT_PALETTE.light &&
+    palette.dark === DEFAULT_PALETTE.dark
   )
 }
 
@@ -379,22 +383,30 @@ function darkenColor(r: number, g: number, b: number): string {
 // ============================================================================
 
 /**
- * 分析图片颜色
+ * 从像素采样构建量化色直方图。
+ * @param vividOnly 仅鲜艳色（音乐封面优先）；false 时纳入灰/低饱和（黑白封面）
  */
-function analyzeImageColors(imageData: ImageData): ColorPalette {
-  const pixels = imageData.data
+function sampleColorMap(
+  pixels: Uint8ClampedArray | Uint8Array,
+  vividOnly: boolean,
+): { colorMap: Map<string, number>; totalSamples: number } {
   const colorMap = new Map<string, number>()
   let totalSamples = 0
 
-  // 采样和量化
   for (let i = 0; i < pixels.length; i += SAMPLE_STEP * 4) {
     const r = pixels[i]
     const g = pixels[i + 1]
     const b = pixels[i + 2]
     const a = pixels[i + 3]
 
-    if (a < 128) continue // 跳过透明像素
-    if (!isVividColor(r, g, b)) continue
+    if (a < 128) continue
+    if (vividOnly) {
+      if (!isVividColor(r, g, b)) continue
+    } else {
+      // 中性色路径：跳过近全透明逻辑后的极端黑白噪声
+      const br = getPerceptualBrightness(r, g, b)
+      if (br < 12 || br > 244) continue
+    }
 
     const qR = Math.round(r / COLOR_QUANTIZE_STEP) * COLOR_QUANTIZE_STEP
     const qG = Math.round(g / COLOR_QUANTIZE_STEP) * COLOR_QUANTIZE_STEP
@@ -404,11 +416,16 @@ function analyzeImageColors(imageData: ImageData): ColorPalette {
     totalSamples++
   }
 
-  if (colorMap.size === 0) {
-    return { ...DEFAULT_PALETTE }
-  }
+  return { colorMap, totalSamples }
+}
 
-  // 排序并转换为颜色信息
+function paletteFromColorMap(
+  colorMap: Map<string, number>,
+  totalSamples: number,
+  preferVivid: boolean,
+): ColorPalette | null {
+  if (colorMap.size === 0 || totalSamples <= 0) return null
+
   const sortedColors: ColorInfo[] = Array.from(colorMap.entries())
     .sort((a, b) => b[1] - a[1])
     .map(([color, count]) => {
@@ -424,32 +441,42 @@ function analyzeImageColors(imageData: ImageData): ColorPalette {
       }
     })
 
-  // 筛选鲜艳颜色
   const { minPercentage, fallbackMinPercentage, minSaturation, minChroma } =
     COLOR_THRESHOLDS
 
-  let selectedColors = sortedColors.filter(
-    (c) =>
-      c.percentage > minPercentage &&
-      c.saturation > minSaturation &&
-      c.chroma > minChroma &&
-      c.brightness > 40 &&
-      c.brightness < 220,
-  )
+  let selectedColors: ColorInfo[]
 
-  // 如果没有足够鲜艳的颜色，放宽条件
-  if (selectedColors.length === 0) {
+  if (preferVivid) {
+    selectedColors = sortedColors.filter(
+      (c) =>
+        c.percentage > minPercentage &&
+        c.saturation > minSaturation &&
+        c.chroma > minChroma &&
+        c.brightness > 40 &&
+        c.brightness < 220,
+    )
+    if (selectedColors.length === 0) {
+      selectedColors = sortedColors.filter(
+        (c) =>
+          c.percentage > fallbackMinPercentage &&
+          c.saturation > minSaturation * 0.8 &&
+          c.chroma > minChroma * 0.7,
+      )
+    }
+  } else {
+    // 灰阶/低饱和：按占比取主色，不强制 chroma/saturation
     selectedColors = sortedColors.filter(
       (c) =>
         c.percentage > fallbackMinPercentage &&
-        c.saturation > minSaturation * 0.8 &&
-        c.chroma > minChroma * 0.7,
+        c.brightness > 18 &&
+        c.brightness < 235,
     )
+    if (selectedColors.length === 0) {
+      selectedColors = sortedColors.slice(0, 3)
+    }
   }
 
-  if (selectedColors.length === 0) {
-    return { ...DEFAULT_PALETTE }
-  }
+  if (selectedColors.length === 0) return null
 
   const primary = selectedColors[0]
   const secondary = selectedColors[1] || primary
@@ -462,6 +489,33 @@ function analyzeImageColors(imageData: ImageData): ColorPalette {
     light: lightenColor(primary.r, primary.g, primary.b),
     dark: darkenColor(primary.r, primary.g, primary.b),
   }
+}
+
+/**
+ * 分析图片颜色。
+ * 优先鲜艳色；无鲜艳色时（黑白/灰封面）回退中性采样，返回真实灰阶主题，
+ * 而不是占位 DEFAULT_PALETTE（占位灰会被业务层当成失败丢弃）。
+ */
+function analyzeImageColors(imageData: ImageData): ColorPalette {
+  const pixels = imageData.data
+
+  const vivid = sampleColorMap(pixels, true)
+  const vividPalette = paletteFromColorMap(
+    vivid.colorMap,
+    vivid.totalSamples,
+    true,
+  )
+  if (vividPalette) return vividPalette
+
+  const neutral = sampleColorMap(pixels, false)
+  const neutralPalette = paletteFromColorMap(
+    neutral.colorMap,
+    neutral.totalSamples,
+    false,
+  )
+  if (neutralPalette) return neutralPalette
+
+  return { ...DEFAULT_PALETTE }
 }
 
 /**
@@ -620,12 +674,12 @@ export async function extractColorsFromImage(
             if (myController.signal.aborted) {
               throw new Error('Extraction cancelled')
             }
-            // 分析得到默认灰：视为软失败，high 可重试
+            // 仅「完全分析失败」的占位 DEFAULT 才重试；真实灰阶封面会正常返回
             if (!isDefaultPalette(palette)) {
               setMemoryCache(imageUrl, palette)
               return palette
             }
-            lastError = new Error('default palette from image analysis')
+            lastError = new Error('empty analysis fallback palette')
           } catch (error) {
             if (isAbortError(error)) throw error
             lastError = error
