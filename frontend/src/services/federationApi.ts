@@ -569,6 +569,25 @@ export const federationApi = {
     )
   },
 
+  /** Owner-only: set member role to `admin` or `member`. */
+  setMemberRole(
+    roomId: string,
+    actorUrl: string,
+    role: 'admin' | 'member',
+    runtimeGrant?: string,
+  ): Promise<{
+    success: boolean
+    room_id?: string
+    actor?: string
+    role?: string
+  }> {
+    return apiService.put(
+      `${PREFIX}/rooms/${roomId}/members/${encodeURIComponent(actorUrl)}/role`,
+      { role },
+      attributionOptions(runtimeGrant),
+    )
+  },
+
   /** 离开 Room */
   leaveRoom(
     roomId: string,
@@ -1035,7 +1054,7 @@ export const federationApi = {
     )
   },
 
-  /** Share a sticker into the room pack (opt-in group stickers) */
+  /** Add a sticker to the room pack (owner/admin only; host enforces). */
   addRoomSticker(
     roomId: string,
     req: { data: string; name?: string },
@@ -1058,7 +1077,7 @@ export const federationApi = {
     )
   },
 
-  /** Remove a sticker from the room pack (publisher or admin) */
+  /** Remove a sticker from the room pack (owner/admin only; host enforces). */
   removeRoomSticker(
     roomId: string,
     stickerId: string,

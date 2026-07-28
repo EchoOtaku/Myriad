@@ -735,9 +735,19 @@ export async function updateTappFromStore(
   const { isLargeTappInstall, clampInstallPercent } = await import(
     '../utils/tappInstallProgress',
   )
-  const large = isLargeTappInstall(options?.estimatedBytes)
 
-  if (large) {
+  // Resolve size for path selection (list may omit size; catalog is authoritative).
+  let estimatedBytes = options?.estimatedBytes ?? 0
+  if (!isLargeTappInstall(estimatedBytes)) {
+    const peeked = await peekStoreAppSize(request.source, tappId)
+    if (peeked != null && peeked > 0) {
+      estimatedBytes = peeked
+      options = { ...options, estimatedBytes }
+    }
+  }
+
+  // Same dual path as installFromStore: ≥1 MiB → browser download + direct update.
+  if (isLargeTappInstall(estimatedBytes)) {
     return updateFromStoreViaClient(tappId, request, options)
   }
 
@@ -753,7 +763,7 @@ export async function updateTappFromStore(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const shouldFallback =
-      /502|BAD_GATEWAY|Failed to fetch store|cannot reach store|Failed to fetch manifest|Failed to fetch code|Failed to fetch|NetworkError|ECONNREFUSED|timeout|Load failed|Store source not found|not found/i.test(
+      /502|BAD_GATEWAY|Failed to fetch store|cannot reach store|Failed to fetch manifest|Failed to fetch code|Failed to fetch|NetworkError|ECONNREFUSED|timeout|Load failed|Store source not found|not found|413|Payload Too Large|body.*limit|too large/i.test(
         message,
       )
     if (!shouldFallback) throw error
@@ -767,6 +777,40 @@ export async function updateTappFromStore(
       percent: clampInstallPercent(5),
     })
     return updateFromStoreViaClient(tappId, request, options)
+  }
+}
+
+/**
+ * Lightweight catalog peek: resolve app.size for large-package path selection
+ * without downloading the full package.
+ */
+async function peekStoreAppSize(
+  sourceRef: string,
+  tappId: string,
+): Promise<number | null> {
+  try {
+    const { default: RemoteStoreService } = await import('./RemoteStoreService')
+    const sources = await RemoteStoreService.getSources()
+    const reqNorm = normalizeStoreCatalogUrl(sourceRef)
+    let source = sources.find(
+      (s) =>
+        String(s.id) === sourceRef ||
+        normalizeStoreCatalogUrl(s.url) === reqNorm,
+    )
+    if (!source && isHttpStoreSource(sourceRef)) {
+      const url = sourceRef.includes('index.json')
+        ? sourceRef.trim()
+        : `${reqNorm}/index.json`
+      source = { name: 'Shared catalog', url, enabled: true }
+    }
+    if (!source) return null
+    RemoteStoreService.clearCache()
+    const index = await RemoteStoreService.fetchStoreIndex(source, true)
+    const app = index.apps.find((a) => a.id === tappId)
+    const size = app?.size
+    return typeof size === 'number' && size > 0 ? size : null
+  } catch {
+    return null
   }
 }
 

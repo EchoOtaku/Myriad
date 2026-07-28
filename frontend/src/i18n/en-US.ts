@@ -1206,7 +1206,8 @@ export const enUS: TranslationKeys = {
     permReportWrite: 'Generate Reports',
     permReportWriteHint: 'Allow Tapp to generate and save reports',
     permNetworkFetch: 'Network Requests',
-    permNetworkFetchHint: 'Allow Tapp to make external network requests',
+    permNetworkFetchHint:
+      'Allow declared outbound requests and loading remote images/media',
     permMediaControl: 'Media Control',
     permMediaControlHint: 'Allow Tapp to control music player',
     permComponentTheme: 'Register Theme',
@@ -2403,6 +2404,11 @@ export const enUS: TranslationKeys = {
     installProgress: 'Installing… {percent}%',
     installDownloading: 'Downloading… {percent}%',
     installRegistering: 'Registering… {percent}%',
+    installPreparing: 'Preparing… {percent}%',
+    updateProgress: 'Updating… {percent}%',
+    updateDownloading: 'Downloading update… {percent}%',
+    updateRegistering: 'Applying update… {percent}%',
+    updatePreparing: 'Preparing update… {percent}%',
     version: 'Version',
     author: 'Author',
     dataExchangeConsentTitle: 'Allow this data request?',
@@ -2497,7 +2503,8 @@ export const enUS: TranslationKeys = {
     permFullscreenDesc: 'Allow requesting fullscreen display',
     permReadThemeDesc: 'Allow reading current theme settings',
     permConfirmDesc: 'Allow showing confirm dialogs',
-    permNetworkFetchDesc: 'Allow sending HTTP requests via proxy',
+    permNetworkFetchDesc:
+      'Allow declared HTTP APIs and loading remote images/media (e.g. cover CDNs)',
     permMediaControlDesc:
       'Allow controlling media playback (play, pause, switch, etc.)',
     permMediaReadDesc: 'Allow reading current media playback status',

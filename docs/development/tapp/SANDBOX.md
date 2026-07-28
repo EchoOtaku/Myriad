@@ -44,12 +44,12 @@ Tapp 代码不会进入 Myriad 主页面的 JavaScript 上下文，而是在 `sr
 script-src 'nonce-<random>' 'wasm-unsafe-eval';
 default-src 'none';
 style-src 'unsafe-inline' https://fonts.googleapis.com;
-img-src data: blob: <host-origin>;
+img-src data: blob: <host-origin>;   /* + https: http: 当授予 network:fetch */
 font-src data: https://fonts.gstatic.com;
 connect-src 'none';
 frame-src 'none';
 object-src 'none';
-media-src 'none';   /* 授予 media:audio 时为 blob: data: */
+media-src 'none';   /* media:audio → blob: data:；远程音视频/图需 network:fetch */
 worker-src 'none';
 form-action 'none';
 base-uri 'none';
@@ -59,12 +59,14 @@ manifest-src 'none'
 - `script-src` 仅 nonce（+ 可选 `'wasm-unsafe-eval'`），不放行任何外部脚本 host（含
   Tailwind CDN）。Tailwind 在安装时预编译为 CSS，经 `sandbox/styles.ts` 的
   `TAILWIND_MAP` 注入。
-- `img-src` 仅 `data:`、`blob:` 与宿主同源；远程图片须经 `/api/proxy/image`。不放行
-  `https:` / `http:` 通配，避免通过第三方图片 URL query 外泄数据。沙箱包装器对
-  `Image` / `img.src` 与 CSP 对齐（data/blob/host/相对路径 `/`），但包装器是深度防御，
-  真正边界是 iframe sandbox + CSP + Bridge。
+- `img-src` 默认仅 `data:` / `blob:` / 宿主同源。需要外链封面、CDN 图时，在
+  `manifest.permissions` 声明 **`network:fetch`**（安装时由用户授权）；CSP 会
+  追加 `https:` / `http:`。不要用 `/api/proxy/image` 折中绕过声明。
+- `connect-src` 始终 `'none'`：即使有 `network:fetch`，Tapp 也不能直接
+  `fetch`/XHR/WS，出站仍走 Manifest `apis` + Bridge。
 - `'wasm-unsafe-eval'` 仅用于 WebAssembly 编译，不等于开放 `eval`。
-- `media:audio` 仅把 `media-src` 放宽到 `blob: data:`，不开放任意远程媒体。
+- `media:audio` 仅把 `media-src` 放宽到 `blob: data:`；任意远程音视频同样要
+  `network:fetch`。
 - Manifest 不能覆盖这份 CSP；如果确实需要新的资源能力，应修改并审计宿主策略，而不是让
   单个 Tapp 放宽隔离。
 

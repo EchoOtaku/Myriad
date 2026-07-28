@@ -339,6 +339,206 @@ function formatSize(bytes: number): string {
   return `${value >= 10 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`
 }
 
+/**
+ * Unified author + version line (list card & detail).
+ * Update available → compact chip `vA → vB`; otherwise `· vX`.
+ */
+function AppVersionMeta({
+  author,
+  version,
+  installedVersion,
+  hasUpdate,
+}: {
+  author: string
+  version: string
+  installedVersion?: string
+  hasUpdate: boolean
+}) {
+  const { t } = useI18n()
+  return (
+    <div className="flex items-center gap-1.5 min-w-0">
+      {/* 作者：比版本号略亮一点的灰，不抢主信息 */}
+      <span className="text-sm text-gray-500 dark:text-gray-400 truncate min-w-0">
+        {author}
+      </span>
+      {hasUpdate && installedVersion ? (
+        <span
+          className="inline-flex items-center gap-0.5 shrink-0 rounded-md bg-amber-500/12 px-1.5 py-px text-[11px] font-semibold tabular-nums leading-none text-amber-600 dark:text-amber-400"
+          title={t.tapp.hasUpdate}
+        >
+          <span className="font-medium text-amber-600/70 dark:text-amber-400/70">
+            v{installedVersion}
+          </span>
+          <span className="opacity-45 px-px" aria-hidden>
+            →
+          </span>
+          <span>v{version}</span>
+        </span>
+      ) : (
+        <>
+          <span
+            className="text-gray-300 dark:text-gray-600 shrink-0 text-sm"
+            aria-hidden
+          >
+            ·
+          </span>
+          <span className="text-sm text-gray-400 dark:text-gray-500 shrink-0 tabular-nums">
+            v{version}
+          </span>
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Map progress phase key → localized label (install vs update). */
+function packageProgressLabel(
+  t: ReturnType<typeof useI18n>['t'],
+  mode: 'install' | 'update',
+  phase: string | null | undefined,
+  percent: number,
+  detail?: string | null,
+): string {
+  const p = (phase || 'download').toLowerCase()
+  const isUpdate = mode === 'update'
+  let template: string
+  if (p === 'prepare') {
+    template = isUpdate ? t.tapp.updatePreparing : t.tapp.installPreparing
+  } else if (p === 'register' || p === 'install' || p === 'done') {
+    template = isUpdate ? t.tapp.updateRegistering : t.tapp.installRegistering
+  } else {
+    template = isUpdate ? t.tapp.updateDownloading : t.tapp.installDownloading
+  }
+  let label = template.replace('{percent}', String(percent))
+  if (detail && p === 'download') {
+    // Shorten long module filenames for the strip
+    const short =
+      detail.length > 28 ? `${detail.slice(0, 12)}…${detail.slice(-10)}` : detail
+    label = `${label} · ${short}`
+  }
+  return label
+}
+
+/** Progress percent with a smaller `%` so the digits stay readable. */
+function ProgressPercent({
+  value,
+  className = '',
+}: {
+  value: number
+  className?: string
+}) {
+  return (
+    <span className={`tabular-nums font-bold leading-none ${className}`}>
+      {Math.round(value)}
+      <span className="text-[0.72em] font-semibold opacity-80">%</span>
+    </span>
+  )
+}
+
+/** Shared progress strip for card + detail (install and update). */
+function PackageProgressStrip({
+  percent,
+  phase,
+  mode,
+  detail,
+  compact,
+}: {
+  percent: number
+  phase?: string | null
+  mode: 'install' | 'update'
+  detail?: string | null
+  /** Card footer: bar only. Detail: bar + caption. */
+  compact?: boolean
+}) {
+  const { t } = useI18n()
+  const pct = Math.max(0, Math.min(100, Math.round(percent)))
+  const isUpdate = mode === 'update'
+  const accent = isUpdate
+    ? 'bg-linear-to-r from-amber-500 to-orange-400'
+    : 'bg-linear-to-r from-[var(--color-primary)] to-violet-400'
+  const track = isUpdate
+    ? 'bg-amber-500/12 dark:bg-amber-400/12'
+    : 'bg-[var(--color-primary)]/12 dark:bg-[var(--color-primary)]/18'
+  const label = packageProgressLabel(t, mode, phase, pct, detail)
+  const fillGlow = isUpdate
+    ? 'shadow-[0_0_8px_rgba(245,158,11,0.45)]'
+    : 'shadow-[0_0_8px_rgba(99,102,241,0.4)]'
+
+  const shimmer = (
+    <div
+      className="absolute inset-0 opacity-45 pointer-events-none"
+      style={{
+        background:
+          'linear-gradient(90deg, transparent 0%, rgba(255,255,255,.55) 50%, transparent 100%)',
+        backgroundSize: '200% 100%',
+        animation: 'tappPkgProgressShimmer 1.4s linear infinite',
+      }}
+    />
+  )
+
+  if (compact) {
+    return (
+      <div
+        className={`absolute bottom-0 left-0 right-0 z-20 h-1 ${track} overflow-hidden`}
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label}
+        title={label}
+      >
+        <div
+          className={`h-full ${accent} transition-[width] duration-300 ease-out relative overflow-hidden`}
+          style={{ width: `${Math.max(pct, pct > 0 ? 2 : 0)}%` }}
+        >
+          {shimmer}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={`w-full max-w-sm mt-3 rounded-xl px-3 py-2.5 ${
+        isUpdate
+          ? 'bg-amber-500/8 dark:bg-amber-400/10 ring-1 ring-amber-500/15 dark:ring-amber-400/20'
+          : 'bg-[var(--color-primary)]/8 dark:bg-[var(--color-primary)]/12 ring-1 ring-[var(--color-primary)]/15 dark:ring-[var(--color-primary)]/20'
+      }`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-xs font-medium text-gray-600 dark:text-gray-300 truncate min-w-0 leading-snug">
+          {label}
+        </span>
+        <ProgressPercent
+          value={pct}
+          className={`text-base shrink-0 tracking-tight ${
+            isUpdate
+              ? 'text-amber-600 dark:text-amber-400'
+              : 'text-[var(--color-primary)]'
+          }`}
+        />
+      </div>
+      <div
+        className={`h-2 rounded-full ${track} overflow-hidden ring-1 ring-inset ring-black/5 dark:ring-white/10`}
+        role="progressbar"
+        aria-valuenow={pct}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={label}
+      >
+        <div
+          className={`h-full rounded-full ${accent} ${fillGlow} transition-[width] duration-300 ease-out relative overflow-hidden`}
+          style={{ width: `${Math.max(pct, pct > 0 ? 2 : 0)}%` }}
+        >
+          {shimmer}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** 统一的应用卡片 - 支持更新功能 */
 const UnifiedAppCard = forwardRef<
   HTMLDivElement,
@@ -354,9 +554,10 @@ const UnifiedAppCard = forwardRef<
     /** 点击卡片打开详情视图 */
     onOpen: () => void
     installing: boolean
-    /** 0–100 when showing large-package install progress */
+    /** 0–100 when showing large-package install/update progress */
     installPercent?: number | null
     installPhase?: string | null
+    installDetail?: string | null
     updating?: boolean
     animConfig?: ReturnType<typeof useAnimationLevel>
     index?: number
@@ -374,7 +575,8 @@ const UnifiedAppCard = forwardRef<
       onOpen,
       installing,
       installPercent,
-      installPhase: _installPhase,
+      installPhase,
+      installDetail,
       updating,
       animConfig,
       index = 0,
@@ -382,8 +584,9 @@ const UnifiedAppCard = forwardRef<
     ref,
   ) => {
     const [isHovered, setIsHovered] = useState(false)
-    void _installPhase
     const { t } = useI18n()
+    const busyProgress =
+      installPercent != null && (installing || updating)
 
     // 检查是否有更新可用
     const hasUpdate =
@@ -475,50 +678,37 @@ const UnifiedAppCard = forwardRef<
             </div>
 
             {/* 名称 + 元信息 */}
-            <div className="flex-1 min-w-0 pt-1">
-              <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate text-base leading-tight">
-                {app.name}
-              </h3>
-              {/* 作者信息 - 强化显示 */}
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <span className="text-xs text-gray-600 dark:text-gray-300 font-medium truncate">
-                  {app.author.name}
-                </span>
-                <span className="text-gray-300 dark:text-gray-600">·</span>
-                <span
-                  className={`text-xs ${hasUpdate ? 'text-amber-500 font-medium' : 'text-gray-400 dark:text-gray-500'}`}
-                >
-                  v{app.version}
-                  {hasUpdate && installedVersion && (
-                    <span className="text-gray-400 dark:text-gray-500 font-normal">
-                      {' '}
-                      (
-                      {t.tapp.currentVersion.replace(
-                        '{version}',
-                        installedVersion,
-                      )}
-                      )
-                    </span>
-                  )}
-                </span>
+            <div className="flex-1 min-w-0 pt-0.5">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate text-base leading-tight min-w-0">
+                  {app.name}
+                </h3>
                 {app.source === 'remote' && (
                   <MyriadStoreIcon
-                    className="w-3 h-3 text-indigo-400"
+                    className="w-3 h-3 text-indigo-400 shrink-0"
                     title={t.tapp.remoteStore}
                   />
                 )}
                 {app.verified && (
                   <FaCheckCircle
-                    className="w-3 h-3 text-blue-500"
+                    className="w-3 h-3 text-blue-500 shrink-0"
                     title={t.tapp.verified}
                   />
                 )}
+              </div>
+              <div className="mt-0.5">
+                <AppVersionMeta
+                  author={app.author.name}
+                  version={app.version}
+                  installedVersion={installedVersion}
+                  hasUpdate={!!hasUpdate}
+                />
               </div>
             </div>
 
             {/* 安装/更新/卸载按钮 */}
             {hasUpdate && onUpdate ? (
-              // 有更新可用 - 显示更新按钮
+              // 有更新可用 - 显示更新按钮（大包更新显示百分比，与安装一致）
               <motion.button
                 onClick={(e: React.MouseEvent) => {
                   e.stopPropagation()
@@ -528,10 +718,27 @@ const UnifiedAppCard = forwardRef<
                 className="p-2.5 rounded-xl transition-all shadow-sm shrink-0 bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25"
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}
-                title={t.tapp.update}
+                title={
+                  updating && installPercent != null
+                    ? packageProgressLabel(
+                        t,
+                        'update',
+                        installPhase,
+                        installPercent,
+                        installDetail,
+                      )
+                    : t.tapp.update
+                }
               >
                 {updating ? (
-                  <Spinner size="sm" color="current" />
+                  installPercent != null ? (
+                    <ProgressPercent
+                      value={installPercent}
+                      className="text-xs min-w-[2rem] text-center"
+                    />
+                  ) : (
+                    <Spinner size="sm" color="current" />
+                  )
                 ) : (
                   <FaArrowUp className="w-4 h-4" />
                 )}
@@ -570,9 +777,12 @@ const UnifiedAppCard = forwardRef<
                   isInstalled
                     ? t.tapp.installed
                     : installing && installPercent != null
-                      ? t.tapp.installProgress.replace(
-                          '{percent}',
-                          String(installPercent),
+                      ? packageProgressLabel(
+                          t,
+                          'install',
+                          installPhase,
+                          installPercent,
+                          installDetail,
                         )
                       : installing
                         ? t.tapp.installing
@@ -581,9 +791,10 @@ const UnifiedAppCard = forwardRef<
               >
                 {installing ? (
                   installPercent != null ? (
-                    <span className="text-[10px] font-bold tabular-nums min-w-[1.75rem] text-center">
-                      {installPercent}%
-                    </span>
+                    <ProgressPercent
+                      value={installPercent}
+                      className="text-xs min-w-[2rem] text-center"
+                    />
                   ) : (
                     <Spinner size="sm" color="current" />
                   )
@@ -658,17 +869,15 @@ const UnifiedAppCard = forwardRef<
           }}
         />
 
-        {/* ≥1 MiB install progress strip */}
-        {installing && installPercent != null && (
-          <div
-            className="absolute bottom-0 left-0 right-0 z-20 h-1 bg-indigo-500/15 overflow-hidden"
-            aria-hidden
-          >
-            <div
-              className="h-full bg-indigo-500 transition-[width] duration-200 ease-out"
-              style={{ width: `${installPercent}%` }}
-            />
-          </div>
+        {/* ≥1 MiB install / update progress strip */}
+        {busyProgress && (
+          <PackageProgressStrip
+            percent={installPercent!}
+            phase={installPhase}
+            mode={updating ? 'update' : 'install'}
+            detail={installDetail}
+            compact
+          />
         )}
       </motion.div>
     )
@@ -686,6 +895,7 @@ function AppDetailView({
   installing,
   installPercent,
   installPhase,
+  installDetail,
   updating,
   onInstall,
   onUpdate,
@@ -698,6 +908,7 @@ function AppDetailView({
   installing: boolean
   installPercent?: number | null
   installPhase?: string | null
+  installDetail?: string | null
   updating: boolean
   onInstall: () => void
   onUpdate: () => void
@@ -710,6 +921,9 @@ function AppDetailView({
     isInstalled &&
     !!installedVersion &&
     compareVersions(app.version, installedVersion) > 0
+  const busyProgress =
+    installPercent != null && (installing || updating)
+  const progressMode: 'install' | 'update' = updating ? 'update' : 'install'
 
   const homepageUrl = app.homepage ? sanitizeUrl(app.homepage) : ''
   const repositoryUrl = app.repository ? sanitizeUrl(app.repository) : ''
@@ -772,30 +986,30 @@ function AppDetailView({
         </div>
 
         <div className="min-w-0 flex-1">
-          <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 sm:text-2xl">
-            {app.name}
-          </h3>
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
-            <span className="truncate">{app.author.name}</span>
-            <span className="text-gray-300 dark:text-gray-600">·</span>
-            <span>v{app.version}</span>
-            {hasUpdate && installedVersion && (
-              <span className="text-amber-500">
-                ({t.tapp.currentVersion.replace('{version}', installedVersion)})
-              </span>
-            )}
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="text-xl font-bold text-gray-800 dark:text-gray-100 sm:text-2xl truncate min-w-0">
+              {app.name}
+            </h3>
             {app.source === 'remote' && (
               <MyriadStoreIcon
-                className="w-3.5 h-3.5 text-indigo-400"
+                className="w-3.5 h-3.5 text-indigo-400 shrink-0"
                 title={t.tapp.remoteStore}
               />
             )}
             {app.verified && (
               <FaCheckCircle
-                className="w-3.5 h-3.5 text-blue-500"
+                className="w-3.5 h-3.5 text-blue-500 shrink-0"
                 title={t.tapp.verified}
               />
             )}
+          </div>
+          <div className="mt-1">
+            <AppVersionMeta
+              author={app.author.name}
+              version={app.version}
+              installedVersion={installedVersion}
+              hasUpdate={hasUpdate}
+            />
           </div>
 
           {/* 操作按钮 + 外部链接 */}
@@ -805,13 +1019,36 @@ function AppDetailView({
                 onClick={onUpdate}
                 disabled={updating}
                 className="flex h-9 items-center gap-2 rounded-full bg-amber-500 px-5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
+                title={
+                  busyProgress && updating
+                    ? packageProgressLabel(
+                        t,
+                        'update',
+                        installPhase,
+                        installPercent!,
+                        installDetail,
+                      )
+                    : undefined
+                }
               >
                 {updating ? (
-                  <Spinner size="xs" color="current" />
+                  installPercent != null ? (
+                    <ProgressPercent
+                      value={installPercent}
+                      className="text-sm min-w-[2.25rem] text-center"
+                    />
+                  ) : (
+                    <Spinner size="xs" color="current" />
+                  )
                 ) : (
                   <FaArrowUp className="w-3.5 h-3.5" />
                 )}
-                {t.tapp.update}
+                {updating
+                  ? t.tapp.updateProgress
+                      .replace('{percent}%', '')
+                      .replace('{percent}', '')
+                      .trim()
+                  : t.tapp.update}
               </button>
             ) : isInstalled ? (
               <span className="flex h-9 items-center gap-2 rounded-full bg-green-500/15 px-5 text-sm font-semibold text-green-600 dark:text-green-400">
@@ -824,39 +1061,32 @@ function AppDetailView({
                 disabled={installing}
                 className="flex h-9 items-center gap-2 rounded-full px-5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90 disabled:opacity-60"
                 style={{ background: 'var(--color-primary)' }}
+                title={
+                  busyProgress && installing
+                    ? packageProgressLabel(
+                        t,
+                        'install',
+                        installPhase,
+                        installPercent!,
+                        installDetail,
+                      )
+                    : undefined
+                }
               >
                 {installing ? (
                   installPercent != null ? (
-                    <span className="text-[11px] font-bold tabular-nums">
-                      {installPercent}%
-                    </span>
+                    <ProgressPercent
+                      value={installPercent}
+                      className="text-sm min-w-[2.25rem] text-center"
+                    />
                   ) : (
                     <Spinner size="xs" color="current" />
                   )
                 ) : (
-                  <>
-                    <FaDownload className="w-3.5 h-3.5" />
-                    {t.tapp.install}
-                  </>
+                  <FaDownload className="w-3.5 h-3.5" />
                 )}
+                {installing ? t.tapp.installing : t.tapp.install}
               </button>
-            )}
-            {installing && installPercent != null && (
-              <div className="w-full max-w-xs mt-2">
-                <div className="h-1.5 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-[var(--color-primary)] transition-[width] duration-200 ease-out"
-                    style={{ width: `${installPercent}%` }}
-                  />
-                </div>
-                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
-                  {(
-                    installPhase === 'register' || installPhase === 'install'
-                      ? t.tapp.installRegistering
-                      : t.tapp.installDownloading
-                  ).replace('{percent}', String(installPercent))}
-                </p>
-              </div>
             )}
             {isInstalled && canUninstall && (
               <button
@@ -890,6 +1120,16 @@ function AppDetailView({
               </a>
             )}
           </div>
+
+          {/* 大包安装/更新进度条 */}
+          {busyProgress && (
+            <PackageProgressStrip
+              percent={installPercent!}
+              phase={installPhase}
+              mode={progressMode}
+              detail={installDetail}
+            />
+          )}
         </div>
       </div>
 
@@ -1614,6 +1854,7 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
       }
 
       setUpdating(app.id)
+      setInstallProgress(null)
       try {
         if (app.source === 'local' && app.localTapp) {
           const { updateTappFromCode } =
@@ -1626,17 +1867,43 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
             throw new Error('无法找到商店源')
           }
 
-          // Same dual path as install: large packages download in-browser so
-          // production backend→GitHub gaps cannot leave a half-old tree.
+          // Same dual path as install: large packages (≥1 MiB) download in-browser
+          // with progress; small packages try backend then client fallback.
           const { updateTappFromStore } =
             await import('../services/TappApiService')
+          const { isLargeTappInstall, clampInstallPercent } = await import(
+            '../utils/tappInstallProgress',
+          )
+          const estimatedBytes = app.size ?? app.remoteApp?.size ?? 0
+          const showProgress = isLargeTappInstall(estimatedBytes)
+
           await updateTappFromStore(
             app.id,
             {
               source: source.id ? String(source.id) : source.url,
             },
             {
-              estimatedBytes: app.size ?? app.remoteApp?.size ?? 0,
+              estimatedBytes,
+              onProgress: showProgress
+                ? (p) => {
+                    setInstallProgress({
+                      id: app.id,
+                      percent: clampInstallPercent(p.percent ?? 0),
+                      phase: p.message || p.phase,
+                      detail: p.detail,
+                    })
+                  }
+                : // Still report progress when path switches to client after size peek
+                  (p) => {
+                    if (p.percent != null && p.percent > 0) {
+                      setInstallProgress({
+                        id: app.id,
+                        percent: clampInstallPercent(p.percent ?? 0),
+                        phase: p.message || p.phase,
+                        detail: p.detail,
+                      })
+                    }
+                  },
             },
           )
           runtime.clearCodeCache(app.id)
@@ -1664,6 +1931,7 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
         )
       } finally {
         setUpdating(null)
+        setInstallProgress(null)
       }
     },
     [runtime, onInstalled, sources, t, isAuthenticated],
@@ -2044,6 +2312,11 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
                         ? installProgress.phase
                         : null
                     }
+                    installDetail={
+                      installProgress?.id === detailApp.id
+                        ? (installProgress.detail ?? null)
+                        : null
+                    }
                     updating={updating === detailApp.id}
                     onInstall={() => handleInstall(detailApp)}
                     onUpdate={() => handleUpdate(detailApp)}
@@ -2123,6 +2396,11 @@ export function TappStore({ isOpen, onClose, onInstalled }: TappStoreProps) {
                               installPhase={
                                 installProgress?.id === app.id
                                   ? installProgress.phase
+                                  : null
+                              }
+                              installDetail={
+                                installProgress?.id === app.id
+                                  ? (installProgress.detail ?? null)
                                   : null
                               }
                               updating={updating === app.id}

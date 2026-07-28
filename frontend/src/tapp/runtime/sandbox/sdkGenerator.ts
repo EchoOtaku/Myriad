@@ -835,6 +835,8 @@ export function generateFullSDK(
       acceptRoomInvite: (roomId) => sendRequest('federation', 'acceptRoomInvite', [roomId]),
       rejectRoomInvite: (roomId) => sendRequest('federation', 'rejectRoomInvite', [roomId]),
       removeMember: (roomId, actorUrl) => sendRequest('federation', 'removeMember', [roomId, actorUrl]),
+      setMemberRole: (roomId, actorUrl, role) =>
+        sendRequest('federation', 'setMemberRole', [roomId, actorUrl, role]),
       leaveRoom: (roomId) => sendRequest('federation', 'leaveRoom', [roomId]),
       transferRoomOwnership: (roomId, newOwner) =>
         sendRequest('federation', 'transferRoomOwnership', [roomId, newOwner]),

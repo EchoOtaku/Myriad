@@ -816,15 +816,51 @@ class RemoteStoreServiceImpl {
 
     let pageModules: Record<string, string> | undefined
     if (app.download.page_modules) {
+      const entries = Object.entries(app.download.page_modules)
       const modules: Record<string, string> = {}
+      const totalPm = entries.length
+      let donePm = 0
+      // Bound concurrency (same idea as assets) + progress for multi-file page packs
+      const concurrency = 4
+      let nextPm = 0
+      const worker = async () => {
+        while (nextPm < entries.length) {
+          const i = nextPm++
+          const [filename, path] = entries[i]!
+          const content = await downloadText(path, `page module ${filename}`)
+          if (!content) {
+            throw new Error(
+              `Failed to download page module ${filename} (${path})`,
+            )
+          }
+          modules[filename] = content
+          donePm++
+          // Map page-module downloads into 20–75% of the download bar
+          const frac = totalPm > 0 ? donePm / totalPm : 1
+          report?.({
+            phase: 'download',
+            message: 'download',
+            percent: clampInstallPercent(20 + frac * 55),
+            detail: filename,
+          })
+        }
+      }
       await Promise.all(
-        Object.entries(app.download.page_modules).map(
-          async ([filename, path]) => {
-            const content = await downloadText(path)
-            if (content) modules[filename] = content
-          },
+        Array.from({ length: Math.min(concurrency, Math.max(1, totalPm)) }, () =>
+          worker(),
         ),
       )
+      // Manifest may declare pageModules; store index map must cover them all
+      const declared = Array.isArray(manifest.pageModules)
+        ? manifest.pageModules
+        : []
+      for (const name of declared) {
+        if (!modules[name]) {
+          throw new Error(
+            `Store package is missing page module declared in manifest: ${name}`,
+          )
+        }
+      }
       if (Object.keys(modules).length > 0) pageModules = modules
     }
 

@@ -329,6 +329,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['federation.acceptRoomInvite', 'federation:write'],
     ['federation.rejectRoomInvite', 'federation:write'],
     ['federation.removeMember', 'federation:write'],
+    ['federation.setMemberRole', 'federation:write'],
     ['federation.leaveRoom', 'federation:write'],
     ['federation.transferRoomOwnership', 'federation:write'],
     ['federation.initiateChannelE2e', 'federation:write'],

@@ -249,7 +249,8 @@ pub struct RoomStickersResponse {
 }
 
 /// Soft caps for room-shared stickers (personal packs are larger / client-only).
-const ROOM_STICKER_MAX_COUNT: usize = 24;
+/// Only room owner/admin may edit the pack; all active members can send stickers.
+const ROOM_STICKER_MAX_COUNT: usize = 50;
 const ROOM_STICKER_MAX_DATA_LEN: usize = 120_000;
 
 // ==================== 辅助函数 ====================
@@ -2867,6 +2868,149 @@ pub async fn reject_room_invite(
     }))
 }
 
+/// Set a member's role (`admin` | `member`). Owner only for promote/demote of admins;
+/// owner or admin may demote? Spec: **owner only** can grant/revoke admin.
+/// Cannot change owner role here (use transfer ownership).
+pub async fn set_member_role(
+    user_id: i32,
+    username: &str,
+    room_id: &str,
+    target_actor: &str,
+    new_role: &str,
+    db: &DatabaseConnection,
+) -> Result<serde_json::Value, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+    let local_actor = actor_url(&base_url, username);
+    let new_role = new_role.trim();
+    if new_role != "admin" && new_role != "member" {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Role must be admin or member"})),
+        ));
+    }
+
+    let my_role = get_member_role(db, room_id, &local_actor)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Not a member"})),
+            )
+        })?;
+
+    // Only owner can promote/demote admins. (Admins cannot mint more admins.)
+    if my_role != "owner" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(json!({"error": "Only the room owner can change member roles"})),
+        ));
+    }
+
+    let (target_stored, target_role) = resolve_active_member_actor(db, room_id, target_actor)
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Target is not an active member"})),
+            )
+        })?;
+
+    if target_role == "owner" || same_actor_url(&target_stored, &local_actor) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"error": "Cannot change the owner's role; use transfer ownership"})),
+        ));
+    }
+
+    if target_role == new_role {
+        return Ok(json!({
+            "success": true,
+            "room_id": room_id,
+            "actor": target_stored,
+            "role": new_role,
+            "unchanged": true
+        }));
+    }
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"UPDATE federation_room_members
+           SET role = $3
+           WHERE room_id = $1 AND actor_url = $2
+             AND COALESCE(membership_status, 'active') = 'active'"#,
+        [
+            room_id.into(),
+            target_stored.clone().into(),
+            new_role.into(),
+        ],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    let system_msg = json!({
+        "type": "system",
+        "room_id": room_id,
+        "event": "member_role_changed",
+        "actor": &target_stored,
+        "role": new_role,
+        "changed_by": &local_actor
+    });
+    crate::federation::ws_gateway::broadcast_to_room(room_id, &system_msg).await;
+
+    // Fan-out so remote homes mirror role (governance admin-only).
+    let activity_id = generate_activity_id(&base_url);
+    let gov_activity = json!({
+        "@context": build_context(),
+        "type": "myriad:RoomGovernance",
+        "id": &activity_id,
+        "actor": &local_actor,
+        "object": {
+            "type": "myriad:RoomGovernance",
+            "room": room_id,
+            "changes": {
+                "set_member_role": {
+                    "actor": &target_stored,
+                    "role": new_role
+                }
+            }
+        }
+    });
+    if let Err(e) = fanout_to_remote_members(
+        db,
+        user_id,
+        room_id,
+        &activity_id,
+        &gov_activity,
+        "RoomGovernance",
+        "RoomGovernance",
+    )
+    .await
+    {
+        tracing::warn!(
+            "[Room] set_member_role fanout failed for {}: {}",
+            room_id,
+            e
+        );
+    }
+
+    tracing::info!(
+        "[Room] {} set {} role to {} in {}",
+        local_actor,
+        target_stored,
+        new_role,
+        room_id
+    );
+
+    Ok(json!({
+        "success": true,
+        "room_id": room_id,
+        "actor": target_stored,
+        "role": new_role
+    }))
+}
+
 /// 移除成员
 pub async fn remove_member(
     user_id: i32,
@@ -5018,7 +5162,7 @@ pub async fn handle_room_governance(
         .and_then(|v| v.as_object())
         .ok_or("Missing changes object")?;
 
-    // 验证发送方是成员。名称/策略等仍需 admin；stickers 包允许任意 active 成员同步。
+    // 验证发送方是成员。名称/策略/贴纸包均需 admin 或 owner。
     let sender_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -5044,12 +5188,19 @@ pub async fn handle_room_governance(
         .try_get("", "membership_status")
         .unwrap_or_else(|_| "active".to_string());
     let is_owner = owner == actor_url_str || same_actor_url(&owner, actor_url_str);
-    let is_admin = role == "admin" || is_owner;
+    let is_admin = is_admin_role(&role) || is_owner;
     let stickers_only = changes.contains_key("stickers") && changes.keys().all(|k| k == "stickers");
     if stickers_only {
         if membership_status != "active" {
             return Err(format!(
                 "Actor {} is not an active member of room {}",
+                actor_url_str, room_id
+            ));
+        }
+        // Sticker pack edits are owner/admin-only (same as other governance).
+        if !is_admin {
+            return Err(format!(
+                "Actor {} has no sticker governance rights in room {}",
                 actor_url_str, room_id
             ));
         }
@@ -5105,6 +5256,60 @@ pub async fn handle_room_governance(
             "Actor {} has no governance rights in room {}",
             actor_url_str, room_id
         ));
+    }
+
+    // set_member_role — only owner may mint/revoke room admins
+    if let Some(role_change) = changes.get("set_member_role").and_then(|v| v.as_object()) {
+        if !is_owner {
+            return Err("Only owner can change member roles".to_string());
+        }
+        let target = role_change
+            .get("actor")
+            .and_then(|v| v.as_str())
+            .ok_or("set_member_role missing actor")?;
+        let role = role_change
+            .get("role")
+            .and_then(|v| v.as_str())
+            .ok_or("set_member_role missing role")?;
+        if role != "admin" && role != "member" {
+            return Err("set_member_role role must be admin or member".to_string());
+        }
+        if same_actor_url(target, actor_url_str) {
+            return Err("Cannot change own role via governance".to_string());
+        }
+        let (target_stored, target_role) = resolve_active_member_actor(db, room_id, target)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("Target {target} is not an active member"))?;
+        if target_role == "owner" {
+            return Err("Cannot change owner role; use transfer_owner".to_string());
+        }
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_room_members
+               SET role = $3
+               WHERE room_id = $1 AND actor_url = $2
+                 AND COALESCE(membership_status, 'active') = 'active'"#,
+            [
+                room_id.into(),
+                target_stored.clone().into(),
+                role.into(),
+            ],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+        crate::federation::ws_gateway::broadcast_to_room(
+            room_id,
+            &json!({
+                "type": "system",
+                "room_id": room_id,
+                "event": "member_role_changed",
+                "actor": target_stored,
+                "role": role,
+                "changed_by": actor_url_str
+            }),
+        )
+        .await;
     }
 
     // 转移 owner — 仅 owner 可发；同步成员 role 字段避免双 owner
@@ -5760,7 +5965,7 @@ async fn broadcast_and_fanout_stickers(
     .await;
 
     // Fan-out as RoomGovernance so remote homes mirror the pack.
-    // handle_room_governance applies `stickers` for any active member.
+    // handle_room_governance applies `stickers` only from owner/admin actors.
     let activity_id = generate_activity_id(base_url);
     let gov_activity = json!({
         "@context": build_context(),
@@ -5794,7 +5999,7 @@ async fn broadcast_and_fanout_stickers(
     }
 }
 
-/// POST /rooms/{id}/stickers — any active member can share a sticker into the group pack.
+/// POST /rooms/{id}/stickers — room owner/admin only (edit shared pack).
 pub async fn add_room_sticker(
     user_id: i32,
     username: &str,
@@ -5805,15 +6010,38 @@ pub async fn add_room_sticker(
     let base_url = get_base_url().await;
     let local_actor = actor_url(&base_url, username);
 
-    let (stored_actor, _role) = resolve_active_member_actor(db, room_id, &local_actor)
+    let (stored_actor, role) = resolve_active_member_actor(db, room_id, &local_actor)
         .await
         .map_err(db_err)?
         .ok_or_else(|| {
             (
                 StatusCode::FORBIDDEN,
-                Json(json!({"error": "Only active members can share stickers"})),
+                Json(json!({"error": "Only active members can manage stickers"})),
             )
         })?;
+    if !is_admin_role(&role) {
+        // Also accept room owner when member.role is not labeled "owner".
+        let owner_ok = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT owner_actor FROM federation_rooms WHERE room_id = $1",
+                [room_id.into()],
+            ))
+            .await
+            .map_err(db_err)?
+            .and_then(|row| {
+                row.try_get::<String>("", "owner_actor")
+                    .ok()
+                    .filter(|o| same_actor_url(o, &stored_actor) || o == &stored_actor)
+            })
+            .is_some();
+        if !owner_ok {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Only room owner or admin can edit the group sticker pack"})),
+            ));
+        }
+    }
 
     let data = req.data.trim().to_string();
     if !data.starts_with("data:image/") {
@@ -5886,7 +6114,7 @@ pub async fn add_room_sticker(
     })
 }
 
-/// DELETE /rooms/{id}/stickers/{sticker_id} — publisher or admin/owner.
+/// DELETE /rooms/{id}/stickers/{sticker_id} — room owner/admin only.
 pub async fn remove_room_sticker(
     user_id: i32,
     username: &str,
@@ -5915,21 +6143,36 @@ pub async fn remove_room_sticker(
         })?;
     let local_actor = stored_actor;
 
+    if !is_admin_role(&role) {
+        let owner_ok = db
+            .query_one(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT owner_actor FROM federation_rooms WHERE room_id = $1",
+                [room_id.into()],
+            ))
+            .await
+            .map_err(db_err)?
+            .and_then(|row| {
+                row.try_get::<String>("", "owner_actor")
+                    .ok()
+                    .filter(|o| same_actor_url(o, &local_actor) || o == &local_actor)
+            })
+            .is_some();
+        if !owner_ok {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({"error": "Only room owner or admin can edit the group sticker pack"})),
+            ));
+        }
+    }
+
     let mut shared = load_room_shared_config(db, room_id).await?;
     let mut stickers = parse_room_stickers(&shared);
-    let found = stickers.iter().find(|s| s.id == sticker_id).cloned();
-    let Some(target) = found else {
+    let found = stickers.iter().any(|s| s.id == sticker_id);
+    if !found {
         return Err((
             StatusCode::NOT_FOUND,
             Json(json!({"error": "Sticker not found"})),
-        ));
-    };
-
-    let is_publisher = same_actor_url(&target.actor, &local_actor);
-    if !is_publisher && !is_admin_role(&role) {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(json!({"error": "Only the sharer or an admin can remove this sticker"})),
         ));
     }
 

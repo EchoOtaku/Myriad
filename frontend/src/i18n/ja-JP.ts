@@ -1191,7 +1191,8 @@ export const jaJP: TranslationKeys = {
     permReportWrite: 'レポート生成',
     permReportWriteHint: 'Tappにレポートの生成と保存を許可',
     permNetworkFetch: 'ネットワークリクエスト',
-    permNetworkFetchHint: 'Tappに外部ネットワークリクエストの発行を許可',
+    permNetworkFetchHint:
+      '宣言型の送信リクエストとリモート画像/メディアの読み込みを許可',
     permMediaControl: 'メディア制御',
     permMediaControlHint: 'Tappに音楽プレイヤーの制御を許可',
     permComponentTheme: 'テーマ登録',
@@ -2389,6 +2390,11 @@ export const jaJP: TranslationKeys = {
     installProgress: 'インストール中… {percent}%',
     installDownloading: 'ダウンロード中… {percent}%',
     installRegistering: '登録中… {percent}%',
+    installPreparing: '準備中… {percent}%',
+    updateProgress: '更新中… {percent}%',
+    updateDownloading: '更新をダウンロード中… {percent}%',
+    updateRegistering: '更新を適用中… {percent}%',
+    updatePreparing: '更新を準備中… {percent}%',
     version: 'バージョン',
     author: '作者',
     dataExchangeConsentTitle: '今回のデータ取得を許可しますか？',
@@ -2483,7 +2489,8 @@ export const jaJP: TranslationKeys = {
     permFullscreenDesc: 'フルスクリーン表示のリクエストを許可',
     permReadThemeDesc: '現在のテーマ設定の読取を許可',
     permConfirmDesc: '確認ダイアログの表示を許可',
-    permNetworkFetchDesc: 'プロキシ経由での HTTP リクエスト送信を許可',
+    permNetworkFetchDesc:
+      '宣言型 HTTP API、およびリモート画像/メディア（カバー CDN 等）の読み込みを許可',
     permMediaControlDesc:
       'メディア再生の制御（再生、一時停止、切替など）を許可',
     permMediaReadDesc: '現在のメディア再生状態の読取を許可',

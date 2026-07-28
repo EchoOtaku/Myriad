@@ -1027,6 +1027,42 @@ export function registerFederationHandlers(
   )
 
   bridge.registerHandler(
+    'federation.setMemberRole',
+    async (message: TappMessage) => {
+      const [roomId, actorUrl, role] =
+        (message.payload as { args: unknown[] }).args || []
+      if (
+        !roomId ||
+        typeof roomId !== 'string' ||
+        !actorUrl ||
+        typeof actorUrl !== 'string' ||
+        (role !== 'admin' && role !== 'member')
+      ) {
+        return {
+          success: false,
+          error: 'Room ID, actor URL, and role (admin|member) are required',
+        }
+      }
+      try {
+        const runtimeGrant = await bridge.getRuntimeGrant()
+        const data = await federationApi.setMemberRole(
+          roomId,
+          actorUrl,
+          role,
+          runtimeGrant,
+        )
+        return { success: true, data }
+      } catch (error) {
+        return {
+          success: false,
+          error:
+            error instanceof Error ? error.message : 'Failed to set member role',
+        }
+      }
+    },
+  )
+
+  bridge.registerHandler(
     'federation.leaveRoom',
     async (message: TappMessage) => {
       const [roomId] = (message.payload as { args: unknown[] }).args || []

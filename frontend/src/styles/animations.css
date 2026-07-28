@@ -145,6 +145,16 @@
   }
 }
 
+/* Tapp 商店安装/更新进度条扫光 */
+@keyframes tappPkgProgressShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 /* 减少动画复杂度 */
 @media (prefers-reduced-motion: reduce) {
   *,

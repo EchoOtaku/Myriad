@@ -1751,6 +1751,38 @@ async fn federation_room_e2e_key_exchange(
     }
 }
 
+/// PUT /api/federation/rooms/{room_id}/members/{actor}/role — owner sets admin|member
+async fn federation_set_room_member_role(
+    extract::AuthedClaims(claims): extract::AuthedClaims,
+    extract::Db(db): extract::Db,
+    axum::extract::Path((room_id, actor)): axum::extract::Path<(String, String)>,
+    Json(body): Json<serde_json::Value>,
+) -> Response {
+    let user_id: i32 = claims.sub.parse().unwrap_or(0);
+    let role = body
+        .get("role")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    // Path may be percent-encoded actor URL
+    let actor = urlencoding::decode(&actor)
+        .map(|s| s.into_owned())
+        .unwrap_or(actor);
+    match federation::room::set_member_role(
+        user_id,
+        &claims.username,
+        &room_id,
+        &actor,
+        &role,
+        &db,
+    )
+    .await
+    {
+        Ok(resp) => (StatusCode::OK, Json(resp)).into_response(),
+        Err((status, json)) => (status, json).into_response(),
+    }
+}
+
 /// POST /api/federation/rooms/{room_id}/stickers — share sticker into group pack
 async fn federation_add_room_sticker(
     extract::AuthedClaims(claims): extract::AuthedClaims,
@@ -2982,6 +3014,12 @@ fn federation_api_router() -> Router {
         .route(
             "/api/federation/rooms/{room_id}/members/{actor}",
             delete(federation_remove_room_member),
+        )
+        .route(
+            "/api/federation/rooms/{room_id}/members/{actor}/role",
+            put(federation_set_room_member_role).layer(axum::extract::DefaultBodyLimit::max(
+                FEDERATION_SMALL_BODY_LIMIT,
+            )),
         )
         .route(
             "/api/federation/rooms/{room_id}/leave",

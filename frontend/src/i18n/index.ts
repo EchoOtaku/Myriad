@@ -2197,6 +2197,16 @@ export interface TranslationKeys {
     installDownloading: string
     /** Registering package on server after download */
     installRegistering: string
+    /** Preparing catalog / package before download */
+    installPreparing: string
+    /** Large package update progress, e.g. "Updating… 42%" */
+    updateProgress: string
+    /** Downloading package files during update */
+    updateDownloading: string
+    /** Applying update on server after download */
+    updateRegistering: string
+    /** Preparing update package */
+    updatePreparing: string
     version: string
     author: string
     dataExchangeConsentTitle: string
