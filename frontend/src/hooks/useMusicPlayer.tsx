@@ -15,7 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   extractColorsFromImage,
   getCachedPalette,
-  getDefaultPalette,
+  isDefaultPalette,
   setCachedPalette,
 } from '../utils/colorExtractor'
 import type { ColorPalette } from '../utils/colorExtractor'
@@ -890,6 +890,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
   /** 写入双缓存，保持 hook colorCache 与 extractor 内存缓存一致 */
   const rememberCoverColors = useCallback(
     (cover: string, colors: MusicColors) => {
+      if (isDefaultPalette(colors)) return
       if (colorCacheRef.current.size >= 50) {
         const firstKey = colorCacheRef.current.keys().next().value
         if (firstKey !== undefined) colorCacheRef.current.delete(firstKey)
@@ -898,6 +899,116 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       setCachedPalette(cover, colors)
     },
     [],
+  )
+
+  /**
+   * 当前曲封面取色 + 失败后延迟再试（连点 abort / 瞬时网络失败后仍能补色）。
+   * generation 过期或曲目已变则放弃。
+   */
+  const extractCoverColorsForSong = useCallback(
+    (
+      song: Song,
+      index: number,
+      generation: number,
+      settleAttempt: number = 0,
+    ) => {
+      if (!song.cover) return
+      const cover = song.cover
+      const isCurrent = () =>
+        selectGenerationRef.current === generation &&
+        currentSongRef.current?.id === song.id
+
+      // 已有真实色则跳过
+      const cached =
+        colorCacheRef.current.get(cover) ||
+        (getCachedPalette(cover) as MusicColors | null)
+      if (cached && !isDefaultPalette(cached)) {
+        if (isCurrent()) {
+          rememberCoverColors(cover, cached)
+          pushSongTheme(
+            song,
+            index,
+            cached,
+            !!(audioRef.current && !audioRef.current.paused),
+            { resetProgress: false },
+          )
+        }
+        return
+      }
+
+      const musicContainer = musicContainerRef.current
+      if (settleAttempt === 0 && musicContainer) {
+        musicContainer.classList.add('color-transitioning')
+      }
+
+      void extractColorsFromImage(cover, {
+        context: 'music',
+        priority: 'high',
+        // settle 重试时强制绕过可能卡住的 in-flight
+        forceRefresh: settleAttempt > 0,
+      })
+        .then((palette: ColorPalette) => {
+          if (!isCurrent()) return
+          const colors = palette as MusicColors
+          if (isDefaultPalette(colors)) {
+            // extractor 已内部重试仍失败 → 宿主侧再排一次 settle
+            if (settleAttempt < 3) {
+              const delay = 350 * Math.pow(2, settleAttempt)
+              window.setTimeout(() => {
+                if (!isCurrent()) return
+                extractCoverColorsForSong(
+                  song,
+                  index,
+                  generation,
+                  settleAttempt + 1,
+                )
+              }, delay)
+            }
+            if (musicContainer) {
+              musicContainer.classList.remove('color-transitioning')
+            }
+            return
+          }
+          rememberCoverColors(cover, colors)
+          pushSongTheme(
+            song,
+            index,
+            colors,
+            !!(audioRef.current && !audioRef.current.paused),
+            { resetProgress: false },
+          )
+          if (musicContainer) {
+            musicContainer.classList.remove('color-transitioning')
+          }
+        })
+        .catch((error) => {
+          if (!isCurrent()) return
+          // abort 不算失败；切走后 generation 会变
+          const msg = error instanceof Error ? error.message : String(error)
+          const aborted =
+            msg.includes('cancel') ||
+            msg.includes('Abort') ||
+            msg.includes('aborted')
+          if (!aborted && settleAttempt < 3) {
+            const delay = 350 * Math.pow(2, settleAttempt)
+            window.setTimeout(() => {
+              if (!isCurrent()) return
+              extractCoverColorsForSong(
+                song,
+                index,
+                generation,
+                settleAttempt + 1,
+              )
+            }, delay)
+          } else if (!aborted) {
+            console.warn('Failed to extract colors from cover:', error)
+          }
+          if (musicContainer) {
+            musicContainer.classList.remove('color-transitioning')
+          }
+        })
+    },
+    [pushSongTheme, rememberCoverColors],
   )
 
   /** 预取邻曲封面 + 取色入缓存，连点切歌时热命中（low 优先级，不打断当前曲） */
@@ -1050,50 +1161,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         }
       }
 
-      // 异步取色（high）：必须在邻曲预取之前启动，避免被 low 抢占 in-flight 槽
+      // 异步取色（high + 失败 settle 重试）；须在邻曲 low 预取之前启动
       if (song.cover && !immediateColors) {
-        const musicContainer = musicContainerRef.current
-        if (musicContainer) {
-          musicContainer.classList.add('color-transitioning')
-        }
-        void extractColorsFromImage(song.cover, {
-          context: 'music',
-          priority: 'high',
-        })
-          .then((palette: ColorPalette) => {
-            if (!isCurrentSelect()) return
-            const colors = palette as MusicColors
-            // 取色失败回落的默认灰不推送，继续沿用上一首主题
-            const fallback = getDefaultPalette()
-            if (
-              colors.primary === fallback.primary &&
-              colors.secondary === fallback.secondary
-            ) {
-              if (musicContainer) {
-                musicContainer.classList.remove('color-transitioning')
-              }
-              return
-            }
-            rememberCoverColors(song.cover, colors)
-            // 颜色补丁：禁止 resetProgress，否则会把已播放进度打回 0
-            pushSongTheme(
-              song,
-              index,
-              colors,
-              !!(audioRef.current && !audioRef.current.paused),
-              { resetProgress: false },
-            )
-            if (musicContainer) {
-              musicContainer.classList.remove('color-transitioning')
-            }
-          })
-          .catch((error) => {
-            if (!isCurrentSelect()) return
-            console.warn('Failed to extract colors from cover:', error)
-            if (musicContainer) {
-              musicContainer.classList.remove('color-transitioning')
-            }
-          })
+        extractCoverColorsForSong(song, index, generation, 0)
       }
       // 无封面：不 setMusicColors(null)，避免切到无封面曲时闪默认色
 
@@ -1112,6 +1182,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       pushSongTheme,
       prefetchAroundIndex,
       rememberCoverColors,
+      extractCoverColorsForSong,
     ],
   )
 
@@ -1591,6 +1662,23 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         lastPlaybackError: null,
         generation: selectGenerationRef.current,
       })
+
+      // 连点后停在本曲：若封面色仍未命中缓存，再补一次取色（canplay 时机网络较稳）
+      const settled = currentSongRef.current
+      const gen = selectGenerationRef.current
+      if (settled?.cover) {
+        const hit =
+          colorCacheRef.current.get(settled.cover) ||
+          getCachedPalette(settled.cover)
+        if (!hit || isDefaultPalette(hit)) {
+          extractCoverColorsForSong(
+            settled,
+            currentSongIndexRef.current,
+            gen,
+            0,
+          )
+        }
+      }
     }
 
     const handleLoadedMetadata = () => {
@@ -1848,45 +1936,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           loadLyricsForSong(nextSong)
 
           if (nextSong.cover && !immediateColors) {
-            const musicContainer = musicContainerRef.current
-            if (musicContainer) {
-              musicContainer.classList.add('color-transitioning')
-            }
-            void extractColorsFromImage(nextSong.cover, {
-              context: 'music',
-              priority: 'high',
-            })
-              .then((palette) => {
-                if (!isCurrentSelect()) return
-                const colors = palette as MusicColors
-                const fallback = getDefaultPalette()
-                if (
-                  colors.primary === fallback.primary &&
-                  colors.secondary === fallback.secondary
-                ) {
-                  if (musicContainer) {
-                    musicContainer.classList.remove('color-transitioning')
-                  }
-                  return
-                }
-                rememberCoverColors(nextSong.cover, colors)
-                pushSongTheme(
-                  nextSong,
-                  newIndex,
-                  colors,
-                  !!(audioRef.current && !audioRef.current.paused),
-                  { resetProgress: false },
-                )
-                if (musicContainer) {
-                  musicContainer.classList.remove('color-transitioning')
-                }
-              })
-              .catch(() => {
-                if (!isCurrentSelect()) return
-                if (musicContainer) {
-                  musicContainer.classList.remove('color-transitioning')
-                }
-              })
+            extractCoverColorsForSong(nextSong, newIndex, generation, 0)
           }
           // 无封面：保留上一首主题色
 
@@ -1973,6 +2023,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     prefetchAroundIndex,
     rememberCoverColors,
     resetLyrics,
+    extractCoverColorsForSong,
   ])
 
   // 播放列表变化时清除预加载缓存
