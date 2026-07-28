@@ -31,11 +31,8 @@
   box-shadow: 0 4px 16px
     color-mix(in srgb, var(--music-base-primary) 4%, rgb(0 0 0 / 4%));
 
-  /* 背景/描边随 --music-* 渐变（变量本身在 :root 上 transition） */
-  transition:
-    background 0.55s cubic-bezier(0.4, 0, 0.2, 1),
-    border-color 0.55s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+  /* 边框/背景已用 var(--music-*)：只靠 :root 上 @property 插值即可。
+     勿再 transition border-color/box-shadow，否则会与变量过渡叠成「边框慢半拍」。 */
 }
 
 /* 取色进行中：不再淡出/缩放，避免与主题色渐变叠成「闪一下」 */
