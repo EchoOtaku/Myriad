@@ -951,9 +951,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           if (!isCurrent()) return
           const colors = palette as MusicColors
           if (isDefaultPalette(colors)) {
-            // extractor 已内部重试仍失败 → 宿主侧再排一次 settle
-            if (settleAttempt < 3) {
-              const delay = 350 * Math.pow(2, settleAttempt)
+            // extractor 已内部重试仍失败 → 宿主侧再排一次 settle（缩短首轮等待）
+            if (settleAttempt < 2) {
+              const delay = 180 * Math.pow(2, settleAttempt)
               window.setTimeout(() => {
                 if (!isCurrent()) return
                 extractCoverColorsForSong(
@@ -989,8 +989,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
             msg.includes('cancel') ||
             msg.includes('Abort') ||
             msg.includes('aborted')
-          if (!aborted && settleAttempt < 3) {
-            const delay = 350 * Math.pow(2, settleAttempt)
+          if (!aborted && settleAttempt < 2) {
+            const delay = 180 * Math.pow(2, settleAttempt)
             window.setTimeout(() => {
               if (!isCurrent()) return
               extractCoverColorsForSong(
