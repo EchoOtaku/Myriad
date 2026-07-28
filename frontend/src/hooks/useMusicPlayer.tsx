@@ -12,7 +12,17 @@ import type {
 } from '../utils/musicPlayer'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { extractColorsFromImage } from '../utils/colorExtractor'
+import {
+  extractColorsFromImage,
+  getCachedPalette,
+  getDefaultPalette,
+  setCachedPalette,
+} from '../utils/colorExtractor'
+import type { ColorPalette } from '../utils/colorExtractor'
+import {
+  buildMusicPlayerSnapshot,
+  readLiveAudioProgress,
+} from '../utils/musicPlayerState'
 import {
   audioManager,
   createPlaybackAudioElement,
@@ -151,6 +161,32 @@ function setGlobalState(state: any) {
   }
 }
 
+/**
+ * 立即补丁加载/错误标志并通知 Tapp（不依赖 React 下一帧）。
+ * 用于 canplay / error 热路径，让缓冲条与错误提示及时出现。
+ */
+function patchPlaybackFlags(flags: {
+  isAudioLoading?: boolean
+  lastPlaybackError?: string | null
+  generation?: number
+}) {
+  if (!isBrowser) return
+  const prev = (window as any).__musicPlayerState || {}
+  const next = { ...prev, ...flags }
+  ;(window as any).__musicPlayerState = next
+  window.dispatchEvent(
+    new CustomEvent('music-player-state-change', {
+      detail: {
+        ...next,
+        // 保证 Tapp merge 能读到标志位
+        isAudioLoading: next.isAudioLoading,
+        lastPlaybackError: next.lastPlaybackError ?? null,
+        generation: next.generation ?? 0,
+      },
+    }),
+  )
+}
+
 export function useMusicPlayer(): UseMusicPlayerReturn {
   // 基本状态 - 使用默认值初始化，避免 SSR 问题
   const [playlist, setPlaylist] = useState<Song[]>([])
@@ -174,6 +210,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     useState<MusicPlayerView>('info')
   const [playMode, setPlayMode] = useState<PlayMode>('loop')
   const [musicColors, setMusicColors] = useState<MusicColors | null>(null)
+  /** 与 musicColors 同步，供 pushSongTheme 读最新色而不塞进 useCallback 依赖 */
+  const musicColorsRef = useRef<MusicColors | null>(null)
+  musicColorsRef.current = musicColors
 
   // 在客户端从全局状态恢复
   const initializedRef = useRef(false)
@@ -330,39 +369,24 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     return '#999999'
   }, [])
 
-  // 应用音乐颜色到全局作用域
+  // 应用音乐颜色到全局作用域（null 时保留上一帧 CSS，避免切歌闪默认色）
   useEffect(() => {
+    if (!musicColors) return
     const root = document.documentElement
-    if (musicColors) {
-      root.style.setProperty(
-        '--music-primary',
-        normalizeColor(musicColors.primary),
-      )
-      root.style.setProperty(
-        '--music-secondary',
-        normalizeColor(musicColors.secondary),
-      )
-      root.style.setProperty(
-        '--music-accent',
-        normalizeColor(musicColors.accent),
-      )
-      root.style.setProperty('--music-light', normalizeColor(musicColors.light))
-      root.style.setProperty('--music-dark', normalizeColor(musicColors.dark))
-    } else {
-      root.style.removeProperty('--music-primary')
-      root.style.removeProperty('--music-secondary')
-      root.style.removeProperty('--music-accent')
-      root.style.removeProperty('--music-light')
-      root.style.removeProperty('--music-dark')
-    }
-
-    return () => {
-      root.style.removeProperty('--music-primary')
-      root.style.removeProperty('--music-secondary')
-      root.style.removeProperty('--music-accent')
-      root.style.removeProperty('--music-light')
-      root.style.removeProperty('--music-dark')
-    }
+    root.style.setProperty(
+      '--music-primary',
+      normalizeColor(musicColors.primary),
+    )
+    root.style.setProperty(
+      '--music-secondary',
+      normalizeColor(musicColors.secondary),
+    )
+    root.style.setProperty(
+      '--music-accent',
+      normalizeColor(musicColors.accent),
+    )
+    root.style.setProperty('--music-light', normalizeColor(musicColors.light))
+    root.style.setProperty('--music-dark', normalizeColor(musicColors.dark))
   }, [musicColors, normalizeColor])
 
   // 进度条呼吸动画控制
@@ -660,14 +684,27 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     }
     lastBroadcastRef.current = stateSnapshot
 
+    // 主题色：优先 React 态，否则沿用全局已有色，避免广播时塞默认红
+    const prevG = (window as any).__musicPlayerState as
+      | Record<string, unknown>
+      | undefined
+    const resolvedPalette =
+      musicColors ||
+      (prevG?.musicColors as MusicColors | null | undefined) ||
+      null
+    const resolvedMusicColor =
+      resolvedPalette?.primary ||
+      (typeof prevG?.musicColor === 'string' ? prevG.musicColor : null) ||
+      null
+
     // 🎯 同步更新全局状态（供 Tapp API 读取）— 写入完整状态，不依赖 Context 转手
     ;(window as any).__musicPlayerState = {
       ...((window as any).__musicPlayerState || {}),
       currentSong,
       isEnabled: musicEnabled,
       isPlaying,
-      musicColor: musicColors?.primary || '#ef4444',
-      musicColors,
+      musicColor: resolvedMusicColor || '#ef4444',
+      musicColors: resolvedPalette,
       isTempPlay: tempPlayModeRef.current.enabled,
       currentSongIndex,
       playlistLength: playlist.length,
@@ -681,6 +718,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       hasVerbatimLyrics: verbatimLyrics.length > 0,
       verbatimLyricsSource,
       currentLyricIndex,
+      generation: selectGenerationRef.current,
+      isAudioLoading,
     }
 
     window.dispatchEvent(
@@ -689,8 +728,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           currentSong,
           isEnabled: musicEnabled,
           isPlaying,
-          musicColor: musicColors?.primary || '#ef4444',
-          musicColors, // 完整的颜色对象
+          musicColor: resolvedMusicColor || '#ef4444',
+          musicColors: resolvedPalette,
           isTempPlay: tempPlayModeRef.current.enabled,
           currentSongIndex,
           playlistLength: playlist.length,
@@ -698,6 +737,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           // 🎯 添加实时播放信息（供 Tapp 使用）
           currentTime: liveCurrentTime,
           audioDuration: liveDuration,
+          generation: selectGenerationRef.current,
+          isAudioLoading,
           volume,
           playMode,
           // 🎯 添加歌词信息
@@ -724,6 +765,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     verbatimLyrics,
     verbatimLyricsSource,
     currentLyricIndex,
+    isAudioLoading,
   ])
 
   const resetLyrics = useCallback(() => {
@@ -765,6 +807,133 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     [resetLyrics],
   )
 
+  /**
+   * 立即写入全局态并推送给 Tapp（不依赖 React 下一帧）。
+   * - resetProgress=true：切歌，进度/歌词归零
+   * - resetProgress=false：颜色-only 等补丁，保留 audio 实时进度与现有歌词
+   * - colors=null：保留上一首主题色，绝不刷默认红/灰（等新曲取色完成再换）
+   */
+  const pushSongTheme = useCallback(
+    (
+      song: Song,
+      index: number,
+      colors: MusicColors | null,
+      playing: boolean,
+      options?: { resetProgress?: boolean },
+    ) => {
+      const resetProgress = options?.resetProgress ?? false
+
+      const g = (window as any).__musicPlayerState as
+        | Record<string, unknown>
+        | undefined
+      const prevColors =
+        (g?.musicColors as MusicColors | null | undefined) ||
+        musicColorsRef.current ||
+        null
+      // 未命中缓存时沿用上一首 palette，避免切歌瞬间默认色闪烁
+      const resolvedColors = colors ?? prevColors
+
+      if (colors) {
+        setMusicColors(colors)
+        musicColorsRef.current = colors
+      }
+      // colors === null：不 setMusicColors(null)，CSS 变量与 React 态保持上一首
+
+      const live = resetProgress
+        ? { currentTime: 0, audioDuration: 0 }
+        : readLiveAudioProgress(audioRef.current)
+
+      const detail = buildMusicPlayerSnapshot({
+        song,
+        index,
+        colors: resolvedColors,
+        isPlaying: playing,
+        isEnabled: musicEnabled,
+        volume,
+        playMode,
+        playlist,
+        isTempPlay: tempPlayModeRef.current.enabled,
+        resetProgress,
+        liveCurrentTime: live.currentTime,
+        liveDuration: live.audioDuration,
+        lyrics: resetProgress ? [] : ((g?.lyrics as LyricLine[]) ?? []),
+        verbatimLyrics: resetProgress
+          ? []
+          : ((g?.verbatimLyrics as WordLyricLine[]) ?? []),
+        hasVerbatimLyrics: resetProgress
+          ? false
+          : Boolean(g?.hasVerbatimLyrics),
+        verbatimLyricsSource: resetProgress
+          ? ''
+          : String(g?.verbatimLyricsSource || ''),
+        currentLyricIndex: resetProgress
+          ? -1
+          : typeof g?.currentLyricIndex === 'number'
+            ? g.currentLyricIndex
+            : -1,
+        generation: selectGenerationRef.current,
+        isLoading: resetProgress
+          ? true
+          : Boolean(
+              (g as { isAudioLoading?: boolean } | undefined)?.isAudioLoading,
+            ),
+      })
+
+      setGlobalState(detail)
+      window.dispatchEvent(
+        new CustomEvent('music-player-state-change', { detail }),
+      )
+    },
+    [musicEnabled, playlist, volume, playMode],
+  )
+
+  /** 写入双缓存，保持 hook colorCache 与 extractor 内存缓存一致 */
+  const rememberCoverColors = useCallback(
+    (cover: string, colors: MusicColors) => {
+      if (colorCacheRef.current.size >= 50) {
+        const firstKey = colorCacheRef.current.keys().next().value
+        if (firstKey !== undefined) colorCacheRef.current.delete(firstKey)
+      }
+      colorCacheRef.current.set(cover, colors)
+      setCachedPalette(cover, colors)
+    },
+    [],
+  )
+
+  /** 预取邻曲封面 + 取色入缓存，连点切歌时热命中（low 优先级，不打断当前曲） */
+  const prefetchAroundIndex = useCallback(
+    (center: number) => {
+      if (!playlist.length) return
+      const targets = [center - 1, center + 1, center + 2]
+      for (const raw of targets) {
+        if (raw < 0 || raw >= playlist.length || raw === center) continue
+        const s = playlist[raw]
+        if (!s?.cover) continue
+        if (colorCacheRef.current.has(s.cover) || getCachedPalette(s.cover)) {
+          continue
+        }
+        // 浏览器预解码封面（显示用全尺寸）
+        try {
+          const img = new Image()
+          img.decoding = 'async'
+          img.referrerPolicy = 'no-referrer'
+          img.src = s.cover
+        } catch {
+          /* ignore */
+        }
+        void extractColorsFromImage(s.cover, {
+          context: 'music',
+          priority: 'low',
+        })
+          .then((palette) => {
+            rememberCoverColors(s.cover, palette as MusicColors)
+          })
+          .catch(() => {})
+      }
+    },
+    [playlist, rememberCoverColors],
+  )
+
   // 选择歌曲
   const selectSong = useCallback(
     async (song: Song, index: number, autoPlay: boolean = false) => {
@@ -798,109 +967,49 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       // 切歌瞬间清空歌词/进度，避免 Tapp 合并全局态时「新歌 + 旧歌词」
       resetLyrics()
 
-      const baseDetail = {
-        currentSong: song,
-        isEnabled: musicEnabled,
-        isPlaying: false,
-        musicColor: musicColors?.primary || '#ef4444',
-        musicColors,
-        isTempPlay: tempPlayModeRef.current.enabled,
-        currentSongIndex: index,
-        playlistLength: playlist.length,
-        playlist,
-        currentTime: 0,
-        audioDuration: 0,
-        volume,
-        playMode,
-        lyrics: [] as LyricLine[],
-        verbatimLyrics: [] as WordLyricLine[],
-        hasVerbatimLyrics: false,
-        verbatimLyricsSource: '' as VerbatimLyricsSource | '',
-        currentLyricIndex: -1,
+      // 同步解析主题色（双缓存），立刻推给 Tapp，避免带着上一首颜色
+      let immediateColors: MusicColors | null = null
+      if (song.cover) {
+        immediateColors =
+          colorCacheRef.current.get(song.cover) ||
+          (getCachedPalette(song.cover) as MusicColors | null)
+        if (immediateColors) {
+          rememberCoverColors(song.cover, immediateColors)
+        }
       }
+      // 立刻推主题：缓存命中则新色；未命中则 pushSongTheme 内保留上一首色
+      pushSongTheme(song, index, immediateColors, autoPlay, {
+        resetProgress: true,
+      })
+      // 清除上一首错误；标记缓冲（与 isAudioLoading 对齐）
+      patchPlaybackFlags({
+        isAudioLoading: true,
+        lastPlaybackError: null,
+        generation,
+      })
 
-      // 同步写入全局状态，供 Tapp media API 读取
-      setGlobalState(baseDetail)
-
-      // 加载歌词（低优先级）：逐字优先，逐行兜底；先重置，避免切歌时残留上一首
-      loadLyricsForSong(song)
-
-      // 立即触发状态更新（带空歌词/零进度，防止 bridge 合并出旧曲内容）
-      window.dispatchEvent(
-        new CustomEvent('music-player-state-change', {
-          detail: { ...baseDetail },
-        }),
-      )
-
-      // 提取封面颜色
+      // 封面预解码（显示与取色并行，不阻塞音频）
       if (song.cover) {
         try {
-          const musicContainer = musicContainerRef.current
-
-          if (colorCacheRef.current.has(song.cover)) {
-            if (!isCurrentSelect()) return
-            const cachedColors = colorCacheRef.current.get(song.cover)!
-            setMusicColors(cachedColors)
-          } else {
-            if (musicContainer) {
-              musicContainer.classList.add('color-transitioning')
-            }
-
-            const colors = await extractColorsFromImage(song.cover, {
-              context: 'music',
-            })
-
-            // 快速切歌：丢弃过期取色结果，避免主题色串曲
-            if (!isCurrentSelect()) {
-              if (musicContainer) {
-                musicContainer.classList.remove('color-transitioning')
-              }
-              return
-            }
-
-            if (colorCacheRef.current.size >= 50) {
-              const firstKey = colorCacheRef.current.keys().next().value
-              if (firstKey !== undefined) {
-                colorCacheRef.current.delete(firstKey)
-              }
-            }
-            colorCacheRef.current.set(song.cover, colors)
-
-            const tid1 = window.setTimeout(() => {
-              if (!isCurrentSelect()) return
-              setMusicColors(colors)
-              if (musicContainer) {
-                const tid2 = window.setTimeout(() => {
-                  if (!isCurrentSelect()) return
-                  musicContainer.classList.remove('color-transitioning')
-                }, 50)
-                timeoutIdsRef.current.push(tid2)
-              }
-            }, 300)
-            timeoutIdsRef.current.push(tid1)
-          }
-        } catch (error) {
-          if (!isCurrentSelect()) return
-          console.warn('Failed to extract colors from cover:', error)
-          setMusicColors(null)
-          const musicContainer = musicContainerRef.current
-          if (musicContainer) {
-            musicContainer.classList.remove('color-transitioning')
-          }
+          const warm = new Image()
+          warm.decoding = 'async'
+          warm.fetchPriority = 'high'
+          warm.referrerPolicy = 'no-referrer'
+          warm.src = song.cover
+        } catch {
+          /* ignore */
         }
-      } else {
-        setMusicColors(null)
       }
 
-      if (!isCurrentSelect()) return
+      // 加载歌词（低优先级）：逐字优先，逐行兜底
+      loadLyricsForSong(song)
 
-      // 加载歌曲
+      // 音频立刻加载——不再等取色 await
       if (audioRef.current) {
         setIsAudioLoading(true)
 
         audioRef.current.pause()
         audioRef.current.currentTime = 0
-        // 绑定本次 load，供 error 路径识别 stale 事件
         audioLoadSongIdRef.current = song.id
         audioLoadGenerationRef.current = generation
         audioRef.current.src = song.url
@@ -910,26 +1019,22 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
         if (autoPlay) {
           userWantsPlayingRef.current = true
-          // 延迟后尝试播放，状态由 audio 事件处理器同步
           pendingPlayTimeoutRef.current = setTimeout(async () => {
             pendingPlayTimeoutRef.current = null
-            // 期间又切歌了：不要 play 旧曲
             if (!isCurrentSelect()) return
             if (currentSongRef.current?.id !== song.id) return
             try {
               await audioRef.current?.play()
               if (!isCurrentSelect()) return
-              // 播放成功后才设置状态（handlePlay 事件也会设置，这里确保一致）
               setIsPlaying(true)
               audioManager.setPlaybackState('playing')
             } catch (_error) {
               if (!isCurrentSelect()) return
-              // 播放失败
               userWantsPlayingRef.current = false
               setIsPlaying(false)
               audioManager.setPlaybackState('paused')
             }
-          }, 100)
+          }, 40)
         } else {
           userWantsPlayingRef.current = false
           setIsPlaying(false)
@@ -945,47 +1050,58 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         }
       }
 
-      if (!isCurrentSelect()) return
+      // 异步取色（high）：必须在邻曲预取之前启动，避免被 low 抢占 in-flight 槽
+      if (song.cover && !immediateColors) {
+        const musicContainer = musicContainerRef.current
+        if (musicContainer) {
+          musicContainer.classList.add('color-transitioning')
+        }
+        void extractColorsFromImage(song.cover, {
+          context: 'music',
+          priority: 'high',
+        })
+          .then((palette: ColorPalette) => {
+            if (!isCurrentSelect()) return
+            const colors = palette as MusicColors
+            // 取色失败回落的默认灰不推送，继续沿用上一首主题
+            const fallback = getDefaultPalette()
+            if (
+              colors.primary === fallback.primary &&
+              colors.secondary === fallback.secondary
+            ) {
+              if (musicContainer) {
+                musicContainer.classList.remove('color-transitioning')
+              }
+              return
+            }
+            rememberCoverColors(song.cover, colors)
+            // 颜色补丁：禁止 resetProgress，否则会把已播放进度打回 0
+            pushSongTheme(
+              song,
+              index,
+              colors,
+              !!(audioRef.current && !audioRef.current.paused),
+              { resetProgress: false },
+            )
+            if (musicContainer) {
+              musicContainer.classList.remove('color-transitioning')
+            }
+          })
+          .catch((error) => {
+            if (!isCurrentSelect()) return
+            console.warn('Failed to extract colors from cover:', error)
+            if (musicContainer) {
+              musicContainer.classList.remove('color-transitioning')
+            }
+          })
+      }
+      // 无封面：不 setMusicColors(null)，避免切到无封面曲时闪默认色
 
-      // 更新全局状态（仍显式带上清空后的进度/歌词，防止被旧字段回填）
-      setGlobalState({
-        playlist,
-        currentSongIndex: index,
-        currentSong: song,
-        isEnabled: musicEnabled,
-        musicColor: musicColors?.primary || '#ef4444',
-        musicColors,
-        currentTime: 0,
-        audioDuration: 0,
-        isPlaying: autoPlay,
-        volume,
-        playMode,
-      })
-
-      // 触发状态更新事件
-      window.dispatchEvent(
-        new CustomEvent('music-player-state-change', {
-          detail: {
-            currentSong: song,
-            isEnabled: musicEnabled,
-            isPlaying: autoPlay,
-            musicColor: musicColors?.primary || '#ef4444',
-            musicColors,
-            isTempPlay: tempPlayModeRef.current.enabled,
-            currentSongIndex: index,
-            playlistLength: playlist.length,
-            playlist,
-            currentTime: 0,
-            audioDuration: 0,
-            volume,
-            playMode,
-          },
-        }),
-      )
+      // 邻曲封面/颜色预热（low，不打断当前曲 high 取色）
+      prefetchAroundIndex(index)
     },
     [
       musicEnabled,
-      musicColors,
       playlist,
       playMode,
       volume,
@@ -993,6 +1109,9 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       generateNextShuffleIndex,
       loadLyricsForSong,
       resetLyrics,
+      pushSongTheme,
+      prefetchAroundIndex,
+      rememberCoverColors,
     ],
   )
 
@@ -1456,11 +1575,22 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     }, 200)
 
     const handleCanPlay = () => {
+      if (
+        selectGenerationRef.current !== audioLoadGenerationRef.current ||
+        currentSongRef.current?.id !== audioLoadSongIdRef.current
+      ) {
+        return
+      }
       if (!currentSongLoadedRef.current) {
         currentSongLoadedRef.current = true
         currentSongStartTimeRef.current = Date.now()
       }
       setIsAudioLoading(false)
+      patchPlaybackFlags({
+        isAudioLoading: false,
+        lastPlaybackError: null,
+        generation: selectGenerationRef.current,
+      })
     }
 
     const handleLoadedMetadata = () => {
@@ -1543,6 +1673,11 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
       setIsPlaying(false)
       setIsAudioLoading(false)
+      patchPlaybackFlags({
+        isAudioLoading: false,
+        lastPlaybackError: 'playback_failed',
+        generation: selectGenerationRef.current,
+      })
 
       if (playlist.length > 1 && playMode !== 'single') {
         if (errorAdvanceTimer !== null) clearTimeout(errorAdvanceTimer)
@@ -1635,13 +1770,61 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
         const nextSong = playlist[newIndex]
 
-        // 如果下一首已预加载
+        // 如果下一首已预加载：复用缓冲音频，主题/取色走与 selectSong 相同的非阻塞路径
         if (
           preloadedSongIndex === newIndex &&
           preloadAudioRef.current &&
           preloadAudioRef.current.readyState >= 2
         ) {
+          const generation = ++selectGenerationRef.current
+          const isCurrentSelect = () =>
+            selectGenerationRef.current === generation
+
           setIsAudioLoading(false)
+          currentSongLoadedRef.current = false
+          currentSongStartTimeRef.current = 0
+          preloadTriggeredRef.current = false
+          currentSongIndexRef.current = newIndex
+          currentSongRef.current = nextSong
+          audioLoadSongIdRef.current = nextSong.id
+          audioLoadGenerationRef.current = generation
+
+          setCurrentSong(nextSong)
+          setCurrentSongIndex(newIndex)
+          setCurrentTime(0)
+          setAudioDuration(0)
+          resetLyrics()
+
+          // 同步主题（缓存命中立刻；否则默认色，后台补真色）
+          let immediateColors: MusicColors | null = null
+          if (nextSong.cover) {
+            immediateColors =
+              colorCacheRef.current.get(nextSong.cover) ||
+              (getCachedPalette(nextSong.cover) as MusicColors | null)
+            if (immediateColors) {
+              rememberCoverColors(nextSong.cover, immediateColors)
+            }
+          }
+          pushSongTheme(nextSong, newIndex, immediateColors, true, {
+            resetProgress: true,
+          })
+          patchPlaybackFlags({
+            isAudioLoading: true,
+            lastPlaybackError: null,
+            generation,
+          })
+
+          if (nextSong.cover) {
+            try {
+              const warm = new Image()
+              warm.decoding = 'async'
+              warm.fetchPriority = 'high'
+              warm.referrerPolicy = 'no-referrer'
+              warm.src = nextSong.cover
+            } catch {
+              /* ignore */
+            }
+          }
 
           if (audioRef.current) {
             audioRef.current.pause()
@@ -1649,61 +1832,71 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
             audioRef.current.src = preloadAudioRef.current.src
             audioRef.current.volume = volume
             audioRef.current.load()
-            // 使用 async/await 确保播放成功后才更新状态
             try {
               userWantsPlayingRef.current = true
               await audioRef.current.play()
+              if (!isCurrentSelect()) return
               setIsPlaying(true)
               audioManager.setCurrentAudio(audioRef.current, nextSong)
             } catch {
+              if (!isCurrentSelect()) return
               userWantsPlayingRef.current = false
               setIsPlaying(false)
             }
           }
 
-          setCurrentSong(nextSong)
-          setCurrentSongIndex(newIndex)
-          setCurrentTime(0)
-
-          // 加载歌词
           loadLyricsForSong(nextSong)
 
-          // 提取颜色
-          if (nextSong.cover) {
-            try {
-              const musicContainer = musicContainerRef.current
-              if (musicContainer) {
-                musicContainer.classList.add('color-transitioning')
-              }
-
-              const colors = await extractColorsFromImage(nextSong.cover, {
-                context: 'music',
-              })
-
-              const tid1 = window.setTimeout(() => {
-                setMusicColors(colors)
-                if (musicContainer) {
-                  const tid2 = window.setTimeout(() => {
-                    musicContainer.classList.remove('color-transitioning')
-                  }, 30)
-                  timeoutIdsRef.current.push(tid2)
-                }
-              }, 150)
-              timeoutIdsRef.current.push(tid1)
-            } catch (_error) {
-              setMusicColors(null)
+          if (nextSong.cover && !immediateColors) {
+            const musicContainer = musicContainerRef.current
+            if (musicContainer) {
+              musicContainer.classList.add('color-transitioning')
             }
-          } else {
-            setMusicColors(null)
+            void extractColorsFromImage(nextSong.cover, {
+              context: 'music',
+              priority: 'high',
+            })
+              .then((palette) => {
+                if (!isCurrentSelect()) return
+                const colors = palette as MusicColors
+                const fallback = getDefaultPalette()
+                if (
+                  colors.primary === fallback.primary &&
+                  colors.secondary === fallback.secondary
+                ) {
+                  if (musicContainer) {
+                    musicContainer.classList.remove('color-transitioning')
+                  }
+                  return
+                }
+                rememberCoverColors(nextSong.cover, colors)
+                pushSongTheme(
+                  nextSong,
+                  newIndex,
+                  colors,
+                  !!(audioRef.current && !audioRef.current.paused),
+                  { resetProgress: false },
+                )
+                if (musicContainer) {
+                  musicContainer.classList.remove('color-transitioning')
+                }
+              })
+              .catch(() => {
+                if (!isCurrentSelect()) return
+                if (musicContainer) {
+                  musicContainer.classList.remove('color-transitioning')
+                }
+              })
           }
+          // 无封面：保留上一首主题色
 
-          // 随机模式确定下一首
           if (playMode === 'shuffle' && playlist.length > 1) {
             const nextIndex = generateNextShuffleIndex(newIndex)
             if (nextIndex !== -1 && nextIndex !== newIndex) {
               nextShuffleIndexRef.current = nextIndex
             }
           }
+          prefetchAroundIndex(newIndex)
         } else {
           selectSong(playlist[newIndex], newIndex, true)
         }
@@ -1776,6 +1969,10 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     playMode,
     generateNextShuffleIndex,
     excludeVipSongs,
+    pushSongTheme,
+    prefetchAroundIndex,
+    rememberCoverColors,
+    resetLyrics,
   ])
 
   // 播放列表变化时清除预加载缓存
@@ -2022,7 +2219,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
   useEffect(() => {
     // 构建关键状态快照（不含 currentTime，进度由 music-player-progress 实时推送）
-    const keyState = `${currentSong?.id}|${musicEnabled}|${isPlaying}|${musicColors?.primary}|${currentSongIndex}|${playlist.length}|${volume}|${playMode}|${lyrics.length}|${currentLyricIndex}|${verbatimLyrics.length}|${verbatimLyricsSource}`
+    const keyState = `${currentSong?.id}|${musicEnabled}|${isPlaying}|${musicColors?.primary}|${currentSongIndex}|${playlist.length}|${volume}|${playMode}|${lyrics.length}|${currentLyricIndex}|${verbatimLyrics.length}|${verbatimLyricsSource}|${isAudioLoading}|${selectGenerationRef.current}`
 
     if (prevKeyStateRef.current === keyState) {
       return
@@ -2044,6 +2241,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     currentLyricIndex,
     verbatimLyrics.length,
     verbatimLyricsSource,
+    isAudioLoading,
     broadcastStateChange,
   ])
 

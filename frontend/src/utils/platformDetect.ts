@@ -144,7 +144,11 @@ export const isWebKit: boolean = (() => {
 
 /**
  * 是否应走原生 HTMLAudio（不经 Web Audio 图）—— iOS/Android 后台播放。
- * 逻辑与原 musicPlayer.shouldPreserveNativeAudioOutput 对齐，基于共用 OS 检测。
+ *
+ * **不要**仅凭 `(hover:none) and (pointer:coarse)` 判定：Windows 触控本 /
+ * Surface 会误锁，导致 `createMediaElementSource` 永不接入 → 频谱全 0 →
+ * 音乐播放器 Tapp 的 Aurora / 节奏涟漪等桌面动效全部静默。
+ * 桌面 OS 一律允许 Web Audio 频谱（与后台策略无关）。
  */
 export function shouldPreserveNativeAudioOutput(): boolean {
   if (typeof navigator === 'undefined' || typeof window === 'undefined') {
@@ -152,7 +156,7 @@ export function shouldPreserveNativeAudioOutput(): boolean {
   }
   const os = detectOsKind()
   if (os === 'ios' || os === 'android') return true
-  // 其它粗指针设备（罕见桌面触控平板等）
-  if (isCoarsePointerPrimary()) return true
+  // 未知 UA 的粗指针设备（多数移动壳）仍保原生输出；桌面 OS 已在上方放过
+  if (os === 'unknown' && isCoarsePointerPrimary()) return true
   return false
 }

@@ -165,6 +165,14 @@ export function registerMediaHandlers(
         data: {
           isPlaying: globalState.isPlaying || false,
           isPaused: !globalState.isPlaying && currentSong !== null,
+          isLoading: Boolean(globalState.isAudioLoading),
+          generation:
+            typeof globalState.generation === 'number'
+              ? globalState.generation
+              : 0,
+          lastError:
+            (globalState.lastPlaybackError as string | null | undefined) ??
+            null,
           currentTrack: currentSong
             ? {
                 id: currentSong.id || '',

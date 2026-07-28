@@ -228,24 +228,70 @@ function getMusicStateSnapshot() {
   return globalMusicState
 }
 
-/** 更新全局状态并通知监听器 */
+/**
+ * 更新 Context 订阅层状态并通知监听器。
+ *
+ * 注意：__musicPlayerState 由 useMusicPlayer 独占写入。
+ * 这里禁止把事件里的 currentTime:0 / 缺字段碎片回写全局态，
+ * 否则颜色补丁或 Context 合并会把进度/歌词冲坏。
+ */
 function updateGlobalMusicState(newState: Partial<MusicPlayerState>) {
-  const prevState = globalMusicState
-  globalMusicState = { ...globalMusicState, ...newState }
-  // 只有状态真正变化时才通知
-  if (prevState !== globalMusicState) {
-    // 同步写回 __musicPlayerState，供 Tapp media API 读取
-    ;(window as any).__musicPlayerState = {
-      ...((window as any).__musicPlayerState || {}),
-      ...globalMusicState,
-    }
-    emitMusicStateChange()
-  }
+  const next = { ...globalMusicState, ...newState }
+  const changed =
+    next.currentSong !== globalMusicState.currentSong ||
+    next.isEnabled !== globalMusicState.isEnabled ||
+    next.isPlaying !== globalMusicState.isPlaying ||
+    next.musicColor !== globalMusicState.musicColor ||
+    next.isTempPlay !== globalMusicState.isTempPlay ||
+    next.currentSongIndex !== globalMusicState.currentSongIndex ||
+    next.playlistLength !== globalMusicState.playlistLength ||
+    next.playlist !== globalMusicState.playlist ||
+    next.lyrics !== globalMusicState.lyrics ||
+    next.verbatimLyrics !== globalMusicState.verbatimLyrics ||
+    next.hasVerbatimLyrics !== globalMusicState.hasVerbatimLyrics ||
+    next.verbatimLyricsSource !== globalMusicState.verbatimLyricsSource ||
+    next.currentLyricIndex !== globalMusicState.currentLyricIndex
+
+  if (!changed) return
+  globalMusicState = next
+  emitMusicStateChange()
 }
 
 function handleGlobalMusicStateChange(event: Event) {
-  const detail = (event as CustomEvent).detail
-  if (detail) updateGlobalMusicState(detail)
+  const detail = (event as CustomEvent).detail as
+    | Record<string, unknown>
+    | undefined
+  if (!detail) return
+  // 只吸收 Context 关心的字段，忽略 currentTime / musicColors 等宿主专属字段
+  const patch: Partial<MusicPlayerState> = {}
+  if ('currentSong' in detail)
+    patch.currentSong = (detail.currentSong as Song | null) ?? null
+  if ('isEnabled' in detail) patch.isEnabled = Boolean(detail.isEnabled)
+  if ('isPlaying' in detail) patch.isPlaying = Boolean(detail.isPlaying)
+  if ('musicColor' in detail)
+    patch.musicColor = String(detail.musicColor || '#ef4444')
+  if ('isTempPlay' in detail) patch.isTempPlay = Boolean(detail.isTempPlay)
+  if ('currentSongIndex' in detail)
+    patch.currentSongIndex = Number(detail.currentSongIndex) || 0
+  if ('playlistLength' in detail)
+    patch.playlistLength = Number(detail.playlistLength) || 0
+  if ('playlist' in detail)
+    patch.playlist = (detail.playlist as Song[]) || []
+  if ('lyrics' in detail)
+    patch.lyrics = (detail.lyrics as LyricLine[]) || []
+  if ('verbatimLyrics' in detail)
+    patch.verbatimLyrics = (detail.verbatimLyrics as WordLyricLine[]) || []
+  if ('hasVerbatimLyrics' in detail)
+    patch.hasVerbatimLyrics = Boolean(detail.hasVerbatimLyrics)
+  if ('verbatimLyricsSource' in detail)
+    patch.verbatimLyricsSource = (detail.verbatimLyricsSource ||
+      '') as VerbatimLyricsSource
+  if ('currentLyricIndex' in detail)
+    patch.currentLyricIndex =
+      typeof detail.currentLyricIndex === 'number'
+        ? detail.currentLyricIndex
+        : -1
+  updateGlobalMusicState(patch)
 }
 
 function attachMusicEventListener() {

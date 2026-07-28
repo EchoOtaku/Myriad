@@ -15,6 +15,10 @@ import type { TappCodeStructure, TappInstance } from '../types'
 import type { WidgetRenderProps } from './sandbox'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  buildTappMediaState,
+  mergeMusicPlayerEventDetail,
+} from '../../utils/musicPlayerState'
+import {
   calculateWidgetDimensions,
   sendResizeMessage,
   useIframeResize,
@@ -352,57 +356,9 @@ export const TappWidgetSandbox = memo(
       [tappInstance.id],
     )
 
-    // 构建媒体状态对象（供 mediaStateChange 事件使用）
+    // 构建媒体状态对象（供 mediaStateChange 事件使用）— 与 Page 共用纯函数
     const buildMediaState = useCallback((detail: Record<string, unknown>) => {
-      const modeMap: Record<string, string> = {
-        loop: 'loop',
-        single: 'single',
-        shuffle: 'shuffle',
-      }
-      const currentSong = detail.currentSong as Record<string, unknown> | null
-      const currentTime = (detail.currentTime as number) || 0
-      const audioDuration =
-        (detail.audioDuration as number) ||
-        (currentSong?.duration as number) ||
-        0
-      const volume = (detail.volume as number) ?? 0.7
-      const playMode = (detail.playMode as string) || 'loop'
-      return {
-        isPlaying: detail.isPlaying || false,
-        isPaused: !detail.isPlaying && currentSong !== null,
-        currentTrack: currentSong
-          ? {
-              id: currentSong.id || '',
-              title: currentSong.name || currentSong.title || '',
-              name: currentSong.name || currentSong.title || '',
-              artist: currentSong.artist || '',
-              album: currentSong.album || '',
-              cover: currentSong.cover || '',
-              duration: currentSong.duration || 0,
-            }
-          : null,
-        progress: {
-          current: currentTime,
-          duration: audioDuration,
-          percentage:
-            audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0,
-        },
-        position: currentTime,
-        volume: Math.round(volume * 100),
-        mode: modeMap[playMode] || 'sequence',
-        muted: volume === 0,
-        lyrics: detail.lyrics || [],
-        currentLyricIndex: (detail.currentLyricIndex as number) ?? -1,
-        primaryColor: detail.musicColor || '#fc3c44',
-        secondaryColor:
-          (detail.musicColors as any)?.secondary ||
-          detail.musicColor ||
-          '#fc3c44',
-        accentColor:
-          (detail.musicColors as any)?.accent || detail.musicColor || '#fc3c44',
-        lightColor: (detail.musicColors as any)?.light || '#ffffff',
-        darkColor: (detail.musicColors as any)?.dark || '#000000',
-      }
+      return buildTappMediaState(detail)
     }, [])
 
     // 🎵 媒体状态变化 — 转发给 Widget 沙箱
@@ -419,45 +375,10 @@ export const TappWidgetSandbox = memo(
         if (!detail || !bridgeRef.current) return
         const currentTapp = tappInstanceRef.current
         if (!currentTapp?.grantedPermissions?.includes('media:read')) return
-        // 部分派发（如 selectSong 只带曲目字段）缺 lyrics/currentTime——
-        // 用全局状态兜底合并，避免编造「歌词清空/进度归零」传给 tapp
         const globalState =
           (window as { __musicPlayerState?: Record<string, unknown> })
             .__musicPlayerState || {}
-        const merged: Record<string, unknown> = { ...globalState, ...detail }
-        // 切歌时禁止沿用旧曲歌词/进度，避免标题与内容串曲
-        const detailSong = detail.currentSong as
-          | { id?: string | number }
-          | null
-          | undefined
-        const globalSong = globalState.currentSong as
-          | { id?: string | number }
-          | null
-          | undefined
-        const detailId = detailSong?.id
-        const globalId = globalSong?.id
-        if (
-          detailId != null &&
-          globalId != null &&
-          String(detailId) !== String(globalId)
-        ) {
-          if (!('lyrics' in detail)) {
-            merged.lyrics = []
-            merged.currentLyricIndex = -1
-          }
-          if (!('verbatimLyrics' in detail)) {
-            merged.verbatimLyrics = []
-            merged.hasVerbatimLyrics = false
-            merged.verbatimLyricsSource = ''
-          }
-          if (!('currentTime' in detail)) {
-            merged.currentTime = 0
-          }
-          if (!('audioDuration' in detail)) {
-            merged.audioDuration =
-              (detailSong as { duration?: number } | null)?.duration || 0
-          }
-        }
+        const merged = mergeMusicPlayerEventDetail(globalState, detail)
         bridgeRef.current.emit('mediaStateChange', buildMediaState(merged))
       }
 

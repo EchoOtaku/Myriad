@@ -1527,6 +1527,11 @@ class GlobalAudioManager {
     }
     this.lastSpectrumTime = now
 
+    // Windows/Chromium 常在首播后把 AudioContext 挂起；频谱全 0 时视觉效果全灭
+    if (this.audioContext && this.audioContext.state === 'suspended') {
+      void this.audioContext.resume().catch(() => {})
+    }
+
     if (!this.analyser || !this.frequencyData) {
       // 移除随机频响后退方案：无分析器时返回静默
       this.spectrumResult.fill(0)

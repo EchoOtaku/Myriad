@@ -12,8 +12,11 @@
  * @version 3.3
  */
 
+import { coverUrlForColorExtract } from './coverUrlForColorExtract'
 import { imagePool, withPooledCanvas } from './objectPool'
 import { wallpaperState } from './wallpaperState'
+
+export { coverUrlForColorExtract } from './coverUrlForColorExtract'
 
 // ============================================================================
 // 类型定义
@@ -39,6 +42,12 @@ interface ExtractOptions {
   forceRefresh?: boolean
   /** 提取上下文：wallpaper | music */
   context?: 'wallpaper' | 'music' | string
+  /**
+   * 仅 music 上下文：
+   * - high（默认）：当前曲取色，会取消上一个 high 与所有 low 预取
+   * - low：邻曲预取，不打断当前 high，彼此也可并行
+   */
+  priority?: 'high' | 'low'
 }
 
 interface ColorInfo {
@@ -105,9 +114,38 @@ function setMemoryCache(url: string, palette: ColorPalette): void {
   }
 }
 
-/** 当前正在进行的提取任务 */
+/** 当前正在进行的提取任务（壁纸 / 通用） */
 let currentExtractionController: AbortController | null = null
 let currentExtractionUrl: string | null = null
+/** 音乐封面：当前曲 high 优先级取色 */
+let musicHighController: AbortController | null = null
+/** 音乐封面：邻曲 low 优先级预取（可并行） */
+const musicLowControllers = new Set<AbortController>()
+/** 同一封面 URL 的 in-flight 去重（预取与当前曲撞同一图时复用） */
+const musicInflight = new Map<string, Promise<ColorPalette>>()
+
+/**
+ * 同步读内存调色板缓存（切歌热路径：避免再进 async extract）。
+ */
+export function getCachedPalette(url: string | null | undefined): ColorPalette | null {
+  if (!url) return null
+  const hit = memoryCache.get(url)
+  if (!hit) return null
+  // LRU touch
+  setMemoryCache(url, hit)
+  return hit
+}
+
+/**
+ * 写入内存调色板（供播放器 colorCache 与 extractor 双写对齐）。
+ */
+export function setCachedPalette(
+  url: string | null | undefined,
+  palette: ColorPalette,
+): void {
+  if (!url || !palette) return
+  setMemoryCache(url, palette)
+}
 
 /**
  * 获取localStorage缓存
@@ -450,92 +488,137 @@ export async function extractColorsFromImage(
 ): Promise<ColorPalette> {
   const isMusic = options.context === 'music'
   const isWallpaper = options.context === 'wallpaper'
+  const priority: 'high' | 'low' = options.priority ?? 'high'
 
-  // 非音乐提取时取消之前的任务
-  if (!isMusic && currentExtractionController) {
+  // ── 音乐路径：缓存 / in-flight 优先，再按 priority 调度 ──
+  if (isMusic) {
+    if (!options.forceRefresh) {
+      const cached = memoryCache.get(imageUrl)
+      if (cached) {
+        setMemoryCache(imageUrl, cached)
+        return cached
+      }
+      const inflight = musicInflight.get(imageUrl)
+      if (inflight) return inflight
+    }
+
+    // high：取消上一个当前曲 + 所有预取（用户已切走）
+    // low：不打断 high，也不互取消（邻曲可并行预热）
+    if (priority === 'high') {
+      if (musicHighController) musicHighController.abort()
+      for (const c of musicLowControllers) {
+        try {
+          c.abort()
+        } catch {
+          /* ignore */
+        }
+      }
+      musicLowControllers.clear()
+    }
+
+    const myController = new AbortController()
+    if (priority === 'high') {
+      musicHighController = myController
+    } else {
+      musicLowControllers.add(myController)
+    }
+
+    const fetchUrl = coverUrlForColorExtract(imageUrl)
+
+    const run = (async (): Promise<ColorPalette> => {
+      try {
+        const palette = await extractFromImage(fetchUrl, myController.signal)
+        if (myController.signal.aborted) {
+          throw new Error('Extraction cancelled')
+        }
+        setMemoryCache(imageUrl, palette)
+        return palette
+      } catch (error) {
+        console.debug(
+          '[ColorExtractor] Music extraction failed:',
+          error instanceof Error ? error.message : error,
+        )
+        if (error instanceof Error) {
+          if (
+            error.message.includes('cancel') ||
+            error.message.includes('Abort')
+          ) {
+            throw error
+          }
+        }
+        return { ...DEFAULT_PALETTE }
+      } finally {
+        if (priority === 'high' && musicHighController === myController) {
+          musicHighController = null
+        }
+        if (priority === 'low') {
+          musicLowControllers.delete(myController)
+        }
+      }
+    })()
+
+    musicInflight.set(imageUrl, run)
+    try {
+      return await run
+    } finally {
+      if (musicInflight.get(imageUrl) === run) {
+        musicInflight.delete(imageUrl)
+      }
+    }
+  }
+
+  // ── 壁纸 / 通用路径 ──
+  if (currentExtractionController) {
     currentExtractionController.abort()
   }
 
-  const myController = isMusic
-    ? new AbortController()
-    : (currentExtractionController = new AbortController())
-
-  if (!isMusic) {
-    currentExtractionUrl = imageUrl
-  }
+  const myController = new AbortController()
+  currentExtractionController = myController
+  currentExtractionUrl = imageUrl
 
   try {
-    // 壁纸提取时验证一致性（软验证，只记录警告）
     if (isWallpaper && !wallpaperState.isUrlActive(imageUrl)) {
       console.debug(
         '[ColorExtractor] Wallpaper URL may have changed, but continuing extraction',
       )
-      // 不再抛出错误，继续提取（因为用户可能正在等待颜色）
     }
 
-    // 检查缓存
     if (!options.forceRefresh) {
       const cached = memoryCache.get(imageUrl) || getLocalStorageCache(imageUrl)
       if (cached) {
-        console.debug('[ColorExtractor] Using cached palette')
         setMemoryCache(imageUrl, cached)
         return cached
       }
     }
 
-    console.debug(
-      '[ColorExtractor] Starting extraction for:',
-      imageUrl.substring(0, 80),
-    )
-
-    // 提取颜色
     const palette = await extractFromImage(imageUrl, myController.signal)
 
     if (myController.signal.aborted) {
       throw new Error('Extraction cancelled')
     }
 
-    // 验证URL未变化
-    if (!isMusic && currentExtractionUrl !== imageUrl) {
-      console.debug(
-        '[ColorExtractor] URL changed during extraction, but using result anyway',
-      )
-    }
-
-    // 壁纸提取完成后验证（软验证）
-    if (isWallpaper && !wallpaperState.isUrlActive(imageUrl)) {
-      console.debug(
-        '[ColorExtractor] Wallpaper changed during extraction, but applying colors anyway',
-      )
-    }
-
-    // 缓存结果
     setMemoryCache(imageUrl, palette)
     saveToLocalStorage(imageUrl, palette)
 
-    console.debug('[ColorExtractor] Extraction completed:', palette.primary)
-
     return palette
   } catch (error) {
-    // 记录错误以便调试
     console.debug(
       '[ColorExtractor] Extraction failed:',
       error instanceof Error ? error.message : error,
     )
 
     if (error instanceof Error) {
-      // 只在取消或壁纸变更时抛出错误
       if (
         error.message.includes('cancel') ||
+        error.message.includes('Abort') ||
         error.message.includes('Wallpaper')
       ) {
         throw error
       }
     }
-    // 其他错误返回默认颜色
     return { ...DEFAULT_PALETTE }
   } finally {
-    if (!isMusic && currentExtractionController === myController) {
+    if (currentExtractionController === myController) {
       currentExtractionController = null
       currentExtractionUrl = null
     }

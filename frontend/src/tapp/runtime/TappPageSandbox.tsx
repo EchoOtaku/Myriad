@@ -11,6 +11,10 @@ import type { TappBridge } from './TappBridge'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
+import {
+  buildTappMediaState,
+  mergeMusicPlayerEventDetail,
+} from '../../utils/musicPlayerState'
 import { getIsDarkMode } from '../../utils/themeSubscriber'
 import { sendResizeMessage, useIframeResize } from '../utils/iframeResize'
 import {
@@ -502,55 +506,9 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     bridgeRef.current.emit('locale:change', locale)
   }, [locale, isReady])
 
-  // 构建媒体状态对象（供 mediaStateChange 事件使用）
-  const modeMap: Record<string, string> = {
-    loop: 'loop',
-    single: 'single',
-    shuffle: 'shuffle',
-  }
-
+  // 构建媒体状态对象（供 mediaStateChange 事件使用）— 与 Widget 共用纯函数
   const buildMediaState = useCallback((detail: Record<string, unknown>) => {
-    const currentSong = detail.currentSong as Record<string, unknown> | null
-    const currentTime = (detail.currentTime as number) || 0
-    const audioDuration =
-      (detail.audioDuration as number) || (currentSong?.duration as number) || 0
-    const volume = (detail.volume as number) ?? 0.7
-    const playMode = (detail.playMode as string) || 'loop'
-    return {
-      isPlaying: detail.isPlaying || false,
-      isPaused: !detail.isPlaying && currentSong !== null,
-      currentTrack: currentSong
-        ? {
-            id: currentSong.id || '',
-            title: currentSong.name || currentSong.title || '',
-            name: currentSong.name || currentSong.title || '',
-            artist: currentSong.artist || '',
-            album: currentSong.album || '',
-            cover: currentSong.cover || '',
-            duration: currentSong.duration || 0,
-          }
-        : null,
-      progress: {
-        current: currentTime,
-        duration: audioDuration,
-        percentage: audioDuration > 0 ? (currentTime / audioDuration) * 100 : 0,
-      },
-      position: currentTime,
-      volume: Math.round(volume * 100),
-      mode: modeMap[playMode] || 'sequence',
-      muted: volume === 0,
-      lyrics: detail.lyrics || [],
-      currentLyricIndex: (detail.currentLyricIndex as number) ?? -1,
-      primaryColor: detail.musicColor || '#fc3c44',
-      secondaryColor:
-        (detail.musicColors as any)?.secondary ||
-        detail.musicColor ||
-        '#fc3c44',
-      accentColor:
-        (detail.musicColors as any)?.accent || detail.musicColor || '#fc3c44',
-      lightColor: (detail.musicColors as any)?.light || '#ffffff',
-      darkColor: (detail.musicColors as any)?.dark || '#000000',
-    }
+    return buildTappMediaState(detail)
   }, [])
 
   // 媒体状态变化 - 转发给 Tapp 沙箱
@@ -567,47 +525,11 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       if (!detail || !bridgeRef.current) return
       const currentTapp = tappInstanceRef.current
       if (!currentTapp?.grantedPermissions?.includes('media:read')) return
-      // 部分派发（如 selectSong 只带曲目字段）缺 lyrics/currentTime——
-      // 用全局状态兜底合并，避免 buildMediaState 把缺失字段编造成
-      // 「歌词清空/进度归零」传给 tapp（歌词高亮会闪没/跳回开头）
+      // 部分派发缺字段时用全局态兜底；切歌时禁止串曲歌词/进度
       const globalState =
         (window as { __musicPlayerState?: Record<string, unknown> })
           .__musicPlayerState || {}
-      const merged: Record<string, unknown> = { ...globalState, ...detail }
-      // 切歌时 detail 的 currentSong 与全局旧曲不同：禁止沿用旧歌词/进度，
-      // 否则会出现「标题已是 B、歌词仍是 A」的串曲状态
-      const detailSong = detail.currentSong as
-        | { id?: string | number }
-        | null
-        | undefined
-      const globalSong = globalState.currentSong as
-        | { id?: string | number }
-        | null
-        | undefined
-      const detailId = detailSong?.id
-      const globalId = globalSong?.id
-      if (
-        detailId != null &&
-        globalId != null &&
-        String(detailId) !== String(globalId)
-      ) {
-        if (!('lyrics' in detail)) {
-          merged.lyrics = []
-          merged.currentLyricIndex = -1
-        }
-        if (!('verbatimLyrics' in detail)) {
-          merged.verbatimLyrics = []
-          merged.hasVerbatimLyrics = false
-          merged.verbatimLyricsSource = ''
-        }
-        if (!('currentTime' in detail)) {
-          merged.currentTime = 0
-        }
-        if (!('audioDuration' in detail)) {
-          merged.audioDuration =
-            (detailSong as { duration?: number } | null)?.duration || 0
-        }
-      }
+      const merged = mergeMusicPlayerEventDetail(globalState, detail)
       bridgeRef.current.emit('mediaStateChange', buildMediaState(merged))
     }
 
