@@ -36,6 +36,7 @@ import {
   shouldPreserveNativeAudioOutput,
   throttle,
 } from '../utils/musicPlayer'
+import { parseCssColor } from '../utils/readableColor'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { loadResource } from '../utils/resourceLoader'
 import {
@@ -424,6 +425,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     let lastColorUpdate = Date.now()
     const colorUpdateInterval = 1000
 
+    // --music-* 注册为 @property <color>，computed value 是 rgb() 不是 hex，
+    // 必须走 parseCssColor；纯 hex 解析会得到 NaN 让阴影整条失效
+    const FALLBACK_RGB = { r: 236, g: 72, b: 153 } // #ec4899
+    const toRgba = (color: string, alpha: number) => {
+      const { r, g, b } = parseCssColor(color) ?? FALLBACK_RGB
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`
+    }
+
     const animate = () => {
       const now = Date.now()
       const elapsed = now - startTime
@@ -442,19 +451,11 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       const opacity = 0.85 + 0.15 * Math.sin(progress * Math.PI * 2)
       const shadowIntensity = 0.3 + 0.25 * Math.sin(progress * Math.PI * 2)
 
-      const hexToRgba = (hex: string, alpha: number) => {
-        const cleanHex = hex.replace('#', '')
-        const r = Number.parseInt(cleanHex.substring(0, 2), 16)
-        const g = Number.parseInt(cleanHex.substring(2, 4), 16)
-        const b = Number.parseInt(cleanHex.substring(4, 6), 16)
-        return `rgba(${r}, ${g}, ${b}, ${alpha})`
-      }
-
       progressBar.style.setProperty('--thumb-scale', scale.toString())
       progressBar.style.setProperty('--thumb-opacity', opacity.toString())
       progressBar.style.setProperty(
         '--thumb-shadow',
-        `0 ${2 + (2 * (scale - 1)) / 0.3}px ${6 + (6 * (scale - 1)) / 0.3}px ${hexToRgba(cachedPrimaryColor, shadowIntensity)}, 0 0 ${(20 * (scale - 1)) / 0.3}px ${hexToRgba(cachedPrimaryColor, shadowIntensity * 0.6)}`,
+        `0 ${2 + (2 * (scale - 1)) / 0.3}px ${6 + (6 * (scale - 1)) / 0.3}px ${toRgba(cachedPrimaryColor, shadowIntensity)}, 0 0 ${(20 * (scale - 1)) / 0.3}px ${toRgba(cachedPrimaryColor, shadowIntensity * 0.6)}`,
       )
 
       breathAnimationRef.current = requestAnimationFrame(animate)

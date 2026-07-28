@@ -3,7 +3,16 @@
    从 index.astro 提取
    ============================================ */
 
-/* 注册为 <color> 后，JS 改 --music-* 时浏览器才能插值渐变（非硬切） */
+/* 注册为 <color> 后，JS 改 --music-* 时浏览器才能插值渐变（非硬切）。
+ *
+ * ⚠️ 只注册 --music-*，壁纸色 --color-* 一律不要注册。注册会带来两个副作用：
+ * 1. getComputedStyle 读到的不再是写入的 `#rrggbb`，而是 `rgb(r, g, b)`；
+ *    readableColor / tapp sandbox / 各 widget 都按 hex 解析，会解析失败退兜底色。
+ * 2. transition 真的生效后，样式写入当帧读到的仍是旧色，colorSubscriber
+ *    的 rAF 采样会永久滞后一次壁纸切换。
+ * --music-* 没有这两个问题：它只在 CSS 里消费（唯一的 JS 读取点见
+ * useMusicPlayer 呼吸阴影）。详见 790ae92d 引入的回归。
+ */
 @property --music-primary {
   syntax: '<color>';
   inherits: true;
@@ -28,31 +37,6 @@
   syntax: '<color>';
   inherits: true;
   initial-value: #374151;
-}
-@property --color-primary {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #94a3b8;
-}
-@property --color-secondary {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #94a3b8;
-}
-@property --color-accent {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #cbd5e1;
-}
-@property --color-light {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #cbd5e1;
-}
-@property --color-dark {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #475569;
 }
 
 :root {
@@ -85,7 +69,11 @@
   --input-bg: rgb(255 255 255 / 80%);
   --input-border: rgb(0 0 0 / 15%);
 
-  /* 主题色 / 音乐色切换：渐变插值（@property 已注册） */
+  /* 音乐色（--music-*，已注册）走真插值；
+   * 壁纸色（--color-*，未注册）这几行是惰性的——自定义属性未注册即不可过渡，
+   * 壁纸换色为瞬时生效，JS 读到的即是刚写入的 hex。保留声明是为了让上面
+   * @supports 的降级查询仍有意义，切勿为了「让它动起来」去注册 --color-*。
+   * :root 特异性 (0,1,0) 高于下方 html 规则，本声明是 html 元素的实际生效值 */
   transition:
     --color-primary 0.6s ease-in-out,
     --color-secondary 0.6s ease-in-out,

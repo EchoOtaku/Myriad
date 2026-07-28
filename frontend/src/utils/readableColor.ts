@@ -78,6 +78,43 @@ export function hexToRgb(value: string | null | undefined): RgbColor | null {
   }
 }
 
+/**
+ * 解析任意 CSS 颜色字符串为 RGB：`#rgb` / `#rrggbb` / `#rrggbbaa`，
+ * 以及 `rgb()` / `rgba()`（逗号或空格分隔，可带 `/ alpha`，通道支持百分比）。
+ * alpha 一律丢弃。
+ *
+ * ⚠️ 读 CSS 自定义属性时必须用它而不是 hexToRgb：注册为 @property <color>
+ * 的变量，其 computed value 是 `rgb(r, g, b)` 而非写入时的 hex（如 --music-*）。
+ */
+export function parseCssColor(
+  value: string | null | undefined,
+): RgbColor | null {
+  if (!value) return null
+
+  const hex = hexToRgb(value)
+  if (hex) return hex
+
+  const match = /^rgba?\(([^)]*)\)$/i.exec(String(value).trim())
+  if (!match) return null
+
+  const parts = match[1].split(/[,/\s]+/).filter(Boolean)
+  if (parts.length < 3) return null
+
+  const channel = (raw: string): number | null => {
+    const parsed = Number.parseFloat(raw)
+    if (!Number.isFinite(parsed)) return null
+    const scaled = raw.trim().endsWith('%') ? (parsed / 100) * 255 : parsed
+    return clampNumber(Math.round(scaled), 0, 255)
+  }
+
+  const r = channel(parts[0])
+  const g = channel(parts[1])
+  const b = channel(parts[2])
+  if (r === null || g === null || b === null) return null
+
+  return { r, g, b }
+}
+
 export function rgbToHex(rgb: RgbColor): string {
   const part = (value: number) => {
     const hex = clampNumber(Math.round(value), 0, 255).toString(16)

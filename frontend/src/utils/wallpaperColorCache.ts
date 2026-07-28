@@ -11,6 +11,7 @@
  */
 
 import type { ColorPalette } from './colorExtractor'
+import { isDefaultPalette } from './colorExtractor'
 import {
   areUrlsEquivalent,
   extractBackgroundUrl,
@@ -197,6 +198,13 @@ export function getColorFromCache(url: string): ColorPalette | null {
       return null
     }
 
+    // 取色失败的占位灰不算命中，让调用方重新提取
+    if (isDefaultPalette(item.palette)) {
+      store.items = store.items.filter((i) => i.url !== normalizedUrl)
+      saveCacheStore(store)
+      return null
+    }
+
     // 更新访问次数
     item.accessCount++
     saveCacheStore(store)
@@ -211,6 +219,9 @@ export function getColorFromCache(url: string): ColorPalette | null {
  * 保存颜色配色到缓存
  */
 export function saveColorToCache(url: string, palette: ColorPalette): void {
+  // 与 colorExtractor 的内存/localStorage 缓存对齐：失败占位灰不写入
+  if (isDefaultPalette(palette)) return
+
   try {
     const normalizedUrl = normalizeWallpaperUrl(url)
     let store = getCacheStore()

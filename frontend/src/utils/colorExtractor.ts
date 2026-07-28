@@ -739,7 +739,8 @@ export async function extractColorsFromImage(
 
     if (!options.forceRefresh) {
       const cached = memoryCache.get(imageUrl) || getLocalStorageCache(imageUrl)
-      if (cached) {
+      // 历史上失败的默认灰可能已落盘，视为未命中以便重取
+      if (cached && !isDefaultPalette(cached)) {
         setMemoryCache(imageUrl, cached)
         return cached
       }
@@ -751,8 +752,11 @@ export async function extractColorsFromImage(
       throw new Error('Extraction cancelled')
     }
 
+    // 与 setMemoryCache 对齐：取色失败的占位灰不落盘，否则会被永久缓存
     setMemoryCache(imageUrl, palette)
-    saveToLocalStorage(imageUrl, palette)
+    if (!isDefaultPalette(palette)) {
+      saveToLocalStorage(imageUrl, palette)
+    }
 
     return palette
   } catch (error) {
