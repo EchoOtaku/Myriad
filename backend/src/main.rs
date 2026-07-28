@@ -10,6 +10,7 @@ use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -4345,8 +4346,16 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         // 静态文件服务——否则未注册的 POST（例如旧 backend 进程缺 /prefs）会误报 405
         // 而不是可读的 JSON 404。
         let index_html = std::path::Path::new(&config.frontend_dist_path).join("index.html");
-        let serve_dir =
-            ServeDir::new(&config.frontend_dist_path).not_found_service(ServeFile::new(index_html));
+        // 前端产物此前是**未压缩**直传的（Cargo.toml 早已开了 compression-gzip/br 两个
+        // feature，但从没接过 CompressionLayer）。实测 dist/assets 的 JS+CSS 合计
+        // 3290KB → gzip 906KB / brotli 687KB，首屏传输量少约八成。
+        // 用默认谓词即可：DefaultPredicate = SizeAbove ∧ 非 gRPC ∧ 非图片 ∧ 非 SSE，
+        // 所以 text/event-stream（agent 流式）和已压缩的图片/字体不会被二次处理；
+        // 压缩响应还会自动补 `Vary: accept-encoding`，与下面的 Cache-Control 分层共存。
+        let serve_dir = tower::Layer::layer(
+            &CompressionLayer::new(),
+            ServeDir::new(&config.frontend_dist_path).not_found_service(ServeFile::new(index_html)),
+        );
 
         api_router.fallback(move |req: Request| {
             let serve_dir = serve_dir.clone();
@@ -4737,5 +4746,73 @@ mod cache_control_tests {
         assert_eq!(static_asset_cache_control("/index.html"), "no-cache");
         // SPA fallback routes resolve to index.html but keep their request path.
         assert_eq!(static_asset_cache_control("/tapp/run/abc"), "no-cache");
+    }
+
+    /// 前端产物必须是压缩后下发的。此前 Cargo.toml 开着 compression-gzip/br 却
+    /// 从未接过 CompressionLayer，3.2MB 的 JS/CSS 一直裸传；这里守住接线本身。
+    mod static_compression {
+        use axum::http::{header, Request, StatusCode};
+        use std::io::Write;
+        use tower::ServiceExt;
+        use tower_http::compression::CompressionLayer;
+        use tower_http::services::ServeDir;
+
+        /// 建一个临时 dist 目录，放一个足够大且高度可压缩的 JS
+        fn make_dist(tag: &str) -> std::path::PathBuf {
+            let dir = std::env::temp_dir().join(format!("myriad-compress-test-{tag}"));
+            let assets = dir.join("assets");
+            std::fs::create_dir_all(&assets).expect("create temp dist");
+            let mut f = std::fs::File::create(assets.join("app-deadbeef.js")).expect("create js");
+            for _ in 0..400 {
+                writeln!(f, "export const answer = 42; // padding padding padding").expect("write");
+            }
+            dir
+        }
+
+        #[tokio::test]
+        async fn assets_are_brotli_encoded_and_vary() {
+            let dir = make_dist("br");
+            // 与 main.rs 里 fallback 的接线完全一致
+            let svc = tower::Layer::layer(&CompressionLayer::new(), ServeDir::new(&dir));
+            let req = Request::builder()
+                .uri("/assets/app-deadbeef.js")
+                .header(header::ACCEPT_ENCODING, "br")
+                .body(axum::body::Body::empty())
+                .unwrap();
+            let res = svc.oneshot(req).await.expect("serve");
+            assert_eq!(res.status(), StatusCode::OK);
+            assert_eq!(
+                res.headers().get(header::CONTENT_ENCODING).map(|v| v.to_str().unwrap()),
+                Some("br"),
+                "静态资源必须压缩下发"
+            );
+            // 与 Cache-Control 分层共存的前提：必须按 Accept-Encoding 分缓存
+            let vary = res
+                .headers()
+                .get_all(header::VARY)
+                .iter()
+                .map(|v| v.to_str().unwrap().to_ascii_lowercase())
+                .collect::<Vec<_>>()
+                .join(",");
+            assert!(vary.contains("accept-encoding"), "缺少 Vary: accept-encoding");
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+
+        #[tokio::test]
+        async fn plain_client_still_gets_identity() {
+            let dir = make_dist("identity");
+            let svc = tower::Layer::layer(&CompressionLayer::new(), ServeDir::new(&dir));
+            let req = Request::builder()
+                .uri("/assets/app-deadbeef.js")
+                .body(axum::body::Body::empty())
+                .unwrap();
+            let res = svc.oneshot(req).await.expect("serve");
+            assert_eq!(res.status(), StatusCode::OK);
+            assert!(
+                res.headers().get(header::CONTENT_ENCODING).is_none(),
+                "未声明 Accept-Encoding 的客户端不应收到压缩体"
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
     }
 }
