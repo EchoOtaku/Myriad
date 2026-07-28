@@ -349,6 +349,7 @@ export function registerMediaHandlers(
   // 获取歌词（逐字 + 逐行兜底）通用能力
   // 多源逐字：网易云 yrc（按 id）→ 酷狗 KRC（按 歌名+歌手+时长）→ 逐行
   // 默认取当前播放歌曲，也可通过 { songId, source } 指定
+  // 宿主已加载本曲歌词时直接返回全局态，避免 Tapp 恢复/重开时再等网络
   bridge.registerHandler('media.getLyrics', async (message) => {
     const [params] = (message.payload as { args: unknown[] }).args || []
     const { songId, source } = (params || {}) as {
@@ -378,6 +379,48 @@ export function registerMediaHandlers(
     try {
       const lyricSource = src === 'qq' ? 'qq' : 'netease'
       const isCurrent = !songId || String(songId) === String(currentSong?.id)
+
+      // 快路径：宿主已为本曲拉过词（含逐字），直接回包，避免酷狗兜底二次等待
+      if (isCurrent && globalState) {
+        const gLines =
+          (globalState.lyrics as Array<{
+            time: number
+            text: string
+            translation?: string
+          }>) || []
+        const gVerbatim =
+          (globalState.verbatimLyrics as Array<{
+            time: number
+            text: string
+            words?: unknown[]
+            translation?: string
+          }>) || []
+        if (gLines.length > 0 || gVerbatim.length > 0) {
+          const lines =
+            gLines.length > 0
+              ? gLines
+              : gVerbatim.map((v) => ({
+                  time: v.time,
+                  text: v.text,
+                  translation: v.translation,
+                }))
+          const hasTranslation = lines.some((l) => !!l.translation)
+          return {
+            success: true,
+            data: {
+              lines,
+              verbatim: gVerbatim,
+              hasVerbatim: gVerbatim.length > 0,
+              source: src,
+              verbatimSource:
+                (globalState.verbatimLyricsSource as string) || '',
+              hasTranslation,
+              translationLang: hasTranslation ? 'zh' : '',
+            },
+          }
+        }
+      }
+
       const result = await getLyricsWithVerbatim({
         id: String(id),
         source: lyricSource,
