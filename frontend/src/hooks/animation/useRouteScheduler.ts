@@ -36,7 +36,6 @@ const pathToPageId: Record<string, string> = {
   '/brew': 'brew',
   '/tapp': 'tapp',
   '/config': 'config',
-  '/data-management': 'data-management',
   '/login': 'login',
   '/details': 'details',
   '/setup': 'setup',

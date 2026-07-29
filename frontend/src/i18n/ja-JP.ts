@@ -32,6 +32,8 @@ export const jaJP: TranslationKeys = {
     required: '必須',
     networkError: 'ネットワークエラー',
     unknownError: '不明なエラー',
+    copy: 'コピー',
+    copied: 'コピーしました',
   },
 
   // ナビゲーション
@@ -44,7 +46,6 @@ export const jaJP: TranslationKeys = {
     login: 'ログイン',
     logout: 'ログアウト',
     account: 'アカウント',
-    dataManagement: 'データ管理',
     federation: '連合',
     backToHome: 'ホームに戻る',
     // ナビゲーションアイランド
@@ -76,8 +77,8 @@ export const jaJP: TranslationKeys = {
     brew: 'Brew',
     brewReading: 'Brew リーダー',
     // Agent
-    agent: 'AIアシスタント',
-    aiAssistant: 'AIアシスタント',
+    agent: 'Arael Agent',
+    aiAssistant: 'Arael Agent',
     // Tapp
     tapp: 'アプリ',
     tappStore: 'Tapp ストア',
@@ -303,57 +304,62 @@ export const jaJP: TranslationKeys = {
     title: 'システム設定',
     platforms: 'データプラットフォーム',
     platformsDesc:
-      '各データソースプラットフォームのアクセス認証情報を設定。並び順がレポートのカード順になります',
+      'データソースを接続して同期。並び順がレポートのカード順になります',
+    configBackupTitle: 'バックアップと復元',
+    configBackupDesc: '設定のエクスポート / インポート、または初期値へリセット',
     dragToReorder: '長押しでドラッグ並べ替え',
-    autoRefreshTitle: 'プラットフォームの自動更新',
-    autoRefreshDescription:
-      'ブラウザを開いていなくても、バックエンドの Core スケジューラが有効なプラットフォームを更新します。',
-    autoRefreshFrequency: '更新頻度',
+    showHelpDetails: '説明を表示',
+    showHelpDetailsDesc: '説明とガイドを表示',
+    optionGuide: 'オプションガイド',
+    optionGuideHeading: '{title} · ガイド',
+    openOptionGuide: '「{title}」のガイドを開く',
+    optionGuideFooterHint:
+      '各項目の意味と画面への影響です。ページの指示に従って保存してください。',
+    guideSectionWhat: 'これは何',
+    guideSectionChain: '何に影響する',
+    guideSectionFrontend: 'どこに出る',
+    guideSectionNotes: '気をつけること',
+    resetCurrentPage: 'ページをリセット',
+    resetCurrentPageDesc: '既定に戻す',
+    resetCurrentPageAction: 'リセットしますか？',
+    resetCurrentPageConfirm: 'もう一度',
+    resetCurrentPageDone: 'このページをリセットしました',
+    resetCurrentPageNone: 'このページにリセットできる項目はありません',
+    autoRefreshTitle: '更新',
+    autoRefreshDescription: '有効なプラットフォームを定期取得します。',
     autoRefreshFrequencyDesc:
       '外部サービスへの同時アクセスを避けるため、各タスクは時間をずらして実行されます。',
     autoRefreshOff: 'オフ',
     autoRefreshEveryHours: '{hours}時間ごと',
-    autoRefreshSummary:
-      '保存後、有効な {count} プラットフォームを {hours} 時間ごとに更新します。',
-    autoRefreshNoPlatforms:
-      '有効なデータプラットフォームがないため、更新タスクは作成されません。',
-    autoRefreshDisabledHint:
-      '自動更新はオフです。手動更新時のみプラットフォームデータが変わります。',
+    autoRefreshSummary: '現在：{count} プラットフォーム、{hours} 時間ごと。',
+    autoRefreshNoPlatforms: '現在：有効なプラットフォームなし。',
+    autoRefreshDisabledHint: '現在：オフ。',
     ai: 'AI設定',
-    aiDesc: 'AIモデルとAPIキーを設定',
+    aiDesc: '階層別テキストモデル、画像生成、音声サービスを設定',
     basic: '基本設定',
-    basicDesc: 'サイトURL、背景、テーマなどの基本設定',
+    basicDesc: 'サイト URL、壁紙、テーマ、サイトメタデータ',
     oauth: 'サードパーティログイン',
     oauthDesc:
-      'GitHub、Google、Microsoft 等のログイン方式と、ローカル登録ポリシーを設定',
+      'GitHub、Google、Microsoft などのログイン提供元を追加・設定',
     music: '音楽プレイヤー',
-    musicDesc: 'プレイリスト再生を設定',
-    network: 'ネットワークプロキシ',
-    networkDesc: '外部サービスにアクセスするためのプロキシを設定',
+    musicDesc: '音楽プラットフォームとプレイリストを選択。オフでプレイヤーを非表示',
+    network: 'ネットワークとミラー',
+    networkDesc: 'アウトバウンドプロキシと Gemini / GitHub API ミラー',
     federation: '連合管理',
     federationDesc:
-      '信頼ポリシー、許可リスト、インスタンス遮断、コンテンツフィルタ',
+      '鍵と識別子、インスタンス方針、既知インスタンス、コンテンツフィルタ、配送キュー、受信レート制限',
     federationPolicySaved: '信頼ポリシーを保存しました',
     federationLoadFailed: '信頼ポリシーの読み込みに失敗しました',
-    federationSaveFailed: '保存に失敗しました',
     federationUpdateFailed: '更新に失敗しました',
     federationBlockFailed: '遮断操作に失敗しました',
     federationFilterNameValueRequired: '名前と値が必要です',
     federationFilterAdded: 'フィルタを追加しました',
     federationAddFilterFailed: 'フィルタを追加できませんでした',
-    federationActiveEnforcement: '有効な適用状況',
-    federationBlocklist: 'ブロックリスト',
     federationAllowlist: '許可リスト',
-    federationAllowlistOn: 'オン（{n} ドメイン）',
-    federationAllowlistOff: 'オフ（空 = 未遮断はすべて許可）',
     federationMinTrust: '最低信頼',
-    federationMinTrustOn: '≥ {n}',
-    federationMinTrustOff: 'オフ（0）',
-    federationContentFiltersOn: 'オン（{n} 件有効）',
-    federationContentFiltersOff: 'オフ',
-    federationOn: 'オン',
-    federationOff: 'オフ',
     federationInstancePolicy: 'インスタンス方針',
+    federationInstancePolicyDesc:
+      '受信最低信頼・許可リスト・自動登録。どのドメインと連合できるかを制御',
     federationMinTrustInbound: '受信の最低信頼レベル',
     federationMinTrustInboundDesc:
       '送信元ドメインがこのレベル未満の場合、受信リクエストは拒否されます。既定値 0 は信頼下限を無効にします。引き上げる場合は「既知のインスタンス」で対象ドメインに十分なレベルを設定してください。',
@@ -364,12 +370,33 @@ export const jaJP: TranslationKeys = {
     federationAutoDiscover: 'インスタンスの自動登録',
     federationAutoDiscoverDesc:
       '有効時、未登録ドメインは初回接触で「発見済み」(1) として記録されます。無効時は「不明」(0) のままです。2 以上への自動昇格はありません。',
-    federationSavePolicy: '方針を保存',
     federationKnownInstances: '既知のインスタンス',
     federationKnownInstancesDesc:
       'ドメイン単位で信頼レベルと遮断状態を管理します。レベル 2–4 は手動設定のみです。ユーザーのフォロー関係はインスタンス信頼に影響しません。遮断中のドメインは送受信とも拒否されます。',
     federationNoInstances:
       '記録はありません。自動登録または受信トラフィックの後に表示されます。',
+    federationInstanceStatTotal: '合計',
+    federationInstanceStatActive: '有効',
+    federationInstanceStatBlocked: '遮断中',
+    federationInstanceStatTrusted: '信頼+',
+    federationListQueryToggle: '検索と絞り込み',
+    federationListQueryToggleDesc: 'キーワードと条件で一覧を絞る',
+    federationListQueryCollapse: '閉じる',
+    federationListQueryCollapseDesc: '検索バーを閉じる',
+    federationInstanceSearchPlaceholder: 'ドメインまたはソフトウェアを検索…',
+    federationInstanceSearchAria: '既知インスタンスを検索',
+    federationInstanceFilterAria: '状態または信頼レベルで絞り込み',
+    federationInstanceFilterAll: 'すべて',
+    federationInstanceFilterActive: '有効',
+    federationInstanceFilterBlocked: '遮断中',
+    federationInstanceFilterLevel0: '0 不明',
+    federationInstanceFilterLevel1: '1 発見',
+    federationInstanceFilterLevel2: '2 関連',
+    federationInstanceFilterLevel3: '3 信頼',
+    federationInstanceFilterLevel4: '4 コア',
+    federationInstanceFilterEmpty: '検索条件またはフィルタに一致するインスタンスはありません。',
+    federationInstanceShowing: '{shown} / {total} 件を表示',
+    federationInstanceTrustAria: 'インスタンスの信頼レベル',
     federationBlocked: '遮断中',
     federationBlock: '遮断',
     federationUnblock: '解除',
@@ -391,7 +418,13 @@ export const jaJP: TranslationKeys = {
     federationFilterDescRequireTrust:
       '送信元ドメインの信頼レベルが選択値未満の場合に拒否します。上の「インスタンス方針」の最低信頼とは独立で、併用できます。',
     federationAddFilter: 'フィルタを追加',
+    federationAddFilterDesc: 'コンテンツフィルタを作成',
     federationNoFilters: 'コンテンツフィルタはありません。',
+    federationFilterSearchPlaceholder: '名前・種類・値を検索…',
+    federationFilterSearchAria: 'コンテンツフィルタを検索',
+    federationFilterFilterAria: '状態または種類で絞り込み',
+    federationFilterFilterEmpty: '検索条件またはフィルタに一致するルールはありません。',
+    federationFilterShowing: '{shown} / {total} 件を表示',
     federationFilterEnabled: 'オン',
     federationFilterDisabled: 'オフ',
     federationTrustUnknown: '0 · 不明（未登録）',
@@ -399,17 +432,12 @@ export const jaJP: TranslationKeys = {
     federationTrustFollowed: '2 · 関連付け（手動）',
     federationTrustTrusted: '3 · 信頼（レート緩和・手動）',
     federationTrustFederated: '4 · 連合コア（最高・手動）',
-    federationTrustLevelHelp:
-      '信頼レベルは連合インスタンスのドメイン単位で評価され、受信制御に用いられます。ユーザー間のフォロー関係とは独立です。',
     federationFilterTypeBlockActivity: 'アクティビティ種別を遮断',
     federationFilterTypeBlockKeyword: 'キーワードを遮断',
     federationFilterTypeRequireTrust: '信頼レベルを要求',
-    federationAdvanced: '詳細設定',
+    federationAdvanced: '受信レート制限',
     federationAdvancedDesc:
-      '受信レート制限など運用パラメータです。上の「インスタンス方針」（許可リスト・最低信頼）とは独立して併用されます。既定値は一般構成向けで、厳しすぎると正当な連合トラフィックを拒否する場合があります。',
-    federationRateLimit: '受信レート制限',
-    federationRateLimitDesc:
-      '送信元ドメイン単位で受信 Activity を制限します。信頼レベル ≥ 3 には下記倍率を適用します。',
+      '送信元ドメイン単位で受信 Activity を制限。上のインスタンス方針と独立して併用。既定は一般構成向けで、厳しすぎると正当なピアも拒否します。',
     federationRateMaxRequests: 'ウィンドウ内の最大リクエスト数',
     federationRateMaxRequestsDesc:
       '各時間枠における送信元ドメインあたりの受信上限（既定 100）。',
@@ -419,7 +447,6 @@ export const jaJP: TranslationKeys = {
     federationRateTrustedMultiplier: '信頼ドメイン倍率',
     federationRateTrustedMultiplierDesc:
       '信頼レベル ≥ 3 の場合、有効上限 = 最大リクエスト数 × 倍率（既定 5）。',
-    federationRateResetDefaults: 'レート制限を既定に戻す',
     federationKeysIdentity: 'アイデンティティと鍵',
     federationKeysIdentityDesc:
       'ActivityPub アクターと署名鍵。ローテーションは RSA 鍵ペアを差し替え Update(Person) を扇出します。ensure-keys は黙って鍵を回しません。',
@@ -435,20 +462,20 @@ export const jaJP: TranslationKeys = {
     federationDeliveryQueue: '送信配信キュー',
     federationDeliveryQueueDesc:
       '保留・配信中・失敗・取消済みの送信配信。「再試行」は本当の失敗のみ。「削除」は停止して行を落とし、「クリア」は進行中を取消し終了済みをすべて消去します。',
-    federationDeliveryStatsLine:
-      '保留 {pending} · 配信中 {delivering} · 配信済 {delivered} · 終了 {dead}',
     federationDeliveryStatPending: '保留',
     federationDeliveryStatDelivering: '配信中',
     federationDeliveryStatDelivered: '配信済',
     federationDeliveryStatDead: '失敗 / 取消',
     federationDeliveryEmpty: '最近の配信キュー行はありません。',
+    federationDeliverySearchPlaceholder: 'ID・ドメイン・種別・エラーを検索…',
+    federationDeliverySearchAria: '配信キューを検索',
+    federationDeliveryFilterAria: '状態で絞り込み',
+    federationDeliveryFilterAll: 'すべて',
+    federationDeliveryFilterEmpty:
+      '検索条件またはフィルタに一致する配信はありません。',
+    federationDeliveryShowing: '{shown} / {total} 件を表示',
     federationDeliveryRetry: '再試行',
     federationDeliveryRemove: '削除',
-    federationDeliveryCancel: '取消',
-    federationDeliveryDismiss: '消去',
-    federationDeliveryPurgeCancelled: '取消しを消去',
-    federationDeliveryPurgeCancelledConfirm:
-      '意図的に取消した失敗行をキューからすべて削除しますか？元に戻せません。',
     federationDeliveryStatusCancelled: '取消済み',
     federationDeliveryStatusFailed: '失敗',
     federationDeliveryStatusPending: '保留',
@@ -456,20 +483,16 @@ export const jaJP: TranslationKeys = {
     federationDeliveryStatusDelivered: '配信済',
     federationDeliveryAttempts: '試行 {attempts}/{max}',
     federationDeliveryRetryFailures: '失敗を再試行',
+    federationDeliveryRetryFailuresDesc: '失敗した配信を再キュー',
     federationDeliveryRetryFailuresConfirm:
       '配信失敗で終了した項目をすべて再キューしますか？（ユーザー取消しは対象外）',
     federationDeliveryClear: 'クリア',
+    federationDeliveryClearDesc: '進行中を取消し死信を削除',
     federationDeliveryClearConfirm:
       '保留/配信中をすべて取消し、失敗・取消済みの行をリストからすべて削除しますか？元に戻せません。',
-    federationDeliveryRetryAllDead: '失敗を再試行',
-    federationDeliveryCancelAllPending: 'クリア',
-    federationDeliveryRetryAllConfirm:
-      '配信失敗で終了した項目をすべて再キューしますか？（ユーザー取消しは対象外）',
-    federationDeliveryCancelAllConfirm:
-      '保留/配信中をすべて取消し、失敗・取消済みの行をリストからすべて削除しますか？元に戻せません。',
-    federationDeliveryActionOk: '配信キューを更新しました',
     federationDeliveryActionFailed: '配信操作に失敗しました',
     federationDeliveryRefresh: '更新',
+    federationDeliveryRefreshDesc: '配信キューを再読み込み',
     federationFilterNamePlaceholder: '例: block-announce',
     federationActivityFollow: 'フォロー (Follow)',
     federationActivityAccept: '承認 (Accept)',
@@ -498,7 +521,7 @@ export const jaJP: TranslationKeys = {
     federationActivityFileTransfer: 'ファイル転送 (MFP)',
     federationActivityKeyExchange: '鍵交換 (MFP)',
     data: 'データ管理',
-    dataDesc: 'キャッシュとプラットフォームデータを管理',
+    dataDesc: 'キャッシュとデータ',
     about: 'Myriad について',
     aboutDesc: 'Myriad のバージョンとプロジェクト情報を確認',
     aboutTagline: 'あなたという物語を、ひとつに',
@@ -506,17 +529,11 @@ export const jaJP: TranslationKeys = {
     aboutLicense: 'ライセンス',
     aboutOrganization: '組織',
     aboutRepository: 'リポジトリ',
-    aboutDevInfo: '開発情報',
     aboutLogoAlt: 'Myriad Logo',
     // ユーザー管理
     users: 'ユーザー管理',
     usersDesc:
-      '管理者アカウントと登録ユーザーを管理：OAuth 連携、インストール済みアプリ、オンライン時間',
-    usersAdminGroup: '管理者アカウント',
-    usersAdminGroupDesc: '管理者権限を持つアカウントとそのログイン方法',
-    usersRegisteredGroup: '登録ユーザー',
-    usersRegisteredGroupDesc:
-      '全登録ユーザーの OAuth 状態・インストール済みアプリ・オンライン状況',
+      '管理者と登録ユーザー、ローカル登録の可否；OAuth 連携、インストール済みアプリ、オンライン状態',
     usersOnline: 'オンライン',
     usersOffline: 'オフライン',
     usersLastSeen: '最終アクティブ',
@@ -536,7 +553,6 @@ export const jaJP: TranslationKeys = {
       'この OAuth アカウントの連携を解除しますか？このユーザーはこのアカウントでログインできなくなります。',
     usersInstalledTapps: 'インストール済みアプリ',
     usersNoTapps: 'アプリ未インストール',
-    usersTappCount: '{count} 個のアプリ',
     usersRole: 'ロール',
     usersRoleAdmin: '管理者',
     usersRoleUser: 'ユーザー',
@@ -559,12 +575,15 @@ export const jaJP: TranslationKeys = {
     usersDeleteSuccess: 'ユーザーを削除しました',
     usersEmail: 'メールアドレス',
     usersCancel: 'キャンセル',
+    usersCancelDesc: '作成をやめる',
     usersCreateUser: '新規ユーザー',
+    usersCreateUserDesc: 'ローカルアカウントを作成',
     usersCreateUsername: 'ユーザー名',
     usersCreatePassword: '初期パスワード',
     usersCreateIsAdmin: '管理者権限を付与',
     usersCreateSubmit: '作成',
     usersRefresh: '更新',
+    usersRefreshDesc: '一覧を再読み込み',
     usersLoadError: 'ユーザー一覧の読み込みに失敗しました',
     usersActionError: '操作に失敗しました',
     usersErrorUnlinkLast:
@@ -580,15 +599,11 @@ export const jaJP: TranslationKeys = {
     usersEmpty: '登録ユーザーはまだいません',
     usersSearchLabel: 'ユーザーを検索',
     usersSearchPlaceholder: 'ユーザー名、表示名、メール、OAuth で検索',
-    usersSearchClear: '検索をクリア',
     usersFilterRole: 'ロール',
     usersFilterStatus: '状態',
     usersFilterAll: 'すべて',
-    usersFilterClear: 'フィルタをクリア',
     usersNoMatch: '一致するユーザーがありません',
     usersResultCount: '{count} 件',
-    usersShowDetail: '詳細を表示',
-    usersHideDetail: '詳細を閉じる',
     usersHours: '時間',
     usersMinutes: '分',
     // Updater
@@ -616,27 +631,17 @@ export const jaJP: TranslationKeys = {
     updaterLastChecked: '最終確認',
     updaterUnknown: '不明',
     updaterCheckNow: '更新を確認',
-    updaterChecking: '確認中…',
     updaterRetry: '再接続',
     updaterNoAvailable: '最新の状態です。利用可能な更新はありません。',
-    updaterLoading: '読み込み中…',
     updaterCheckStale: '確認結果が古い可能性があります。再確認しています…',
     updaterCheckStaleAction:
       '前回の確認から時間が経っています。再確認してください',
     updaterStatusUnconfirmed: '未確認',
-    updaterAvailableTitle: '新しいバージョンが見つかりました',
-    updaterAvailableDowngradeTitle:
-      '対象は現在より古いバージョンです（ダウングレード）',
     updaterReleaseNotes: 'リリースノートを見る',
     updaterUpdateNow: '今すぐ更新',
     updaterDowngradeNow: '{version} へダウングレード',
-    updaterDispatching: '更新を開始しています…',
     updaterDispatched:
       '更新を開始しました（ジョブ {jobId}）。進捗はメンテナンスページで確認できます。',
-    updaterWhatHappensTitle: '更新では何が起きますか？',
-    updaterWhatHappens1: 'データを自動バックアップ',
-    updaterWhatHappens2: 'メンテナンスモード（サイトは一時不可）',
-    updaterWhatHappens3: 'ヘルスチェック。失敗時は自動ロールバック',
     updaterIrreversibleWarn:
       '不可逆なデータ変更を含みます。更新後は単純に旧版へ戻せません。',
     updaterFreshnessAhead: '現在より {n} コミット新しい',
@@ -669,7 +674,6 @@ export const jaJP: TranslationKeys = {
       '新バージョンを自動で導入し、ダウングレード・競合・元に戻せない変更は先に確認します。',
     updaterAutoPrefsSaved: '自動更新設定を保存しました',
     updaterStepLog: '詳細ステップを表示',
-    updaterProcessing: '処理中…',
     updaterProgressOnMaintenance:
       'メンテナンス開始後は、メンテナンスページで進捗を確認してください。',
     updaterConfirmUpgrade:
@@ -705,6 +709,7 @@ export const jaJP: TranslationKeys = {
     updaterInfraGroupTitle: 'エッジとアップデーター',
     updaterInfraGroupDesc:
       'アップデーターとリバースプロキシ（proxy）は通常のアプリ更新では上がりません。ここで個別に実行します。',
+    updaterInfraUpdateAvailableHint: '更新あり',
     updaterInfraUpdaterTitle: 'アップデーター（updater）',
     updaterInfraUpdaterDesc:
       'docker-guard / updater-gateway を含む。独立経路で数秒、業務コンテナは止めません。',
@@ -720,8 +725,6 @@ export const jaJP: TranslationKeys = {
       'proxy をレジストリの現在 tip へ更新しますか？エッジ入口が短時間中断します（通常 10 秒未満）。',
     updaterInfraProxyDispatched:
       'proxy を {version} へ更新開始（以前: {previous}）。結果を確認中…',
-    updaterInfraNeedCheck:
-      '先に「更新を確認」して目標バージョンを取得してください。',
     updaterInfraSelfLastFailed:
       '前回のアップデーター更新に失敗: 目標 {target}（以前: {previous}）。{error}',
     updaterInfraProxyLastFailed:
@@ -829,7 +832,6 @@ export const jaJP: TranslationKeys = {
     importConfigInvalid: '無効な設定ファイルです。JSON形式を確認してください。',
     importConfirmMessage:
       '現在のバージョンに合わせて設定を統合し、現在の管理者の通知設定を復元します。新しい項目は維持し、廃止項目は無視します。以下のプレビューを確認してください。',
-    dangerZone: '危険エリア',
     searchConfig: '設定項目を検索...',
     searchResults: '検索結果',
     noMatchingConfig: '一致する設定項目が見つかりません',
@@ -838,25 +840,19 @@ export const jaJP: TranslationKeys = {
     configSaveFailed: '設定の保存に失敗しました',
     configEmpty: '設定が空のため、保存できません',
     loadConfigFailed: '設定の読み込みに失敗しました',
+    loadConfigFailedDesc: '設定を取得できません。接続を確認して再試行してください。',
     resettingConfig: '設定をリセット中...',
     configReset: '設定をリセットして保存しました！',
-    testConnection: '接続テスト',
-    testFailed: '接続テスト失敗',
-    imageGenService: '画像生成サービス',
     free: '無料',
     aiModel: 'AIモデル',
-    width: '幅 (px)',
-    height: '高さ (px)',
     enableMusicPlayer: '音楽プレイヤーを有効化',
-    musicPlayerDesc: 'コントロールアイランドに音楽プレイヤーを表示',
     musicPlatform: '音楽プラットフォーム',
     playlistId: 'プレイリストID',
-    playlistIdHint: 'プレイリストリンクの数字ID',
     clearMusicCache: '音楽キャッシュをクリア',
     siteMetadata: 'サイトメタデータ',
+    siteMetadataDesc: 'サイトタイトル、説明、ファビコン',
     backgroundAndTheme: '背景とテーマ',
-    parallaxHint:
-      '有効にすると、マウス移動やデバイス傾きに応じて壁紙がわずかに移動し、立体的な空間感を演出します',
+    backgroundAndThemeDesc: '壁紙、ぼかし、テーマ関連の見た目',
     // Evocative 壁紙エフェクト
     evocativeTitle: 'Evocative 壁紙エフェクト',
     evocativeEffects: 'エフェクト切り替え',
@@ -875,33 +871,35 @@ export const jaJP: TranslationKeys = {
     fpsBalanced: 'バランス',
     fpsSmooth: 'スムーズ',
     fieldEvocativeRippleQuality: 'リップル品質',
-    fieldEvocativeRippleQualityHint:
-      '高品質のリップルはより美しいですが、リソースを消費します',
-    qualityLow: '低',
-    qualityMedium: '中',
-    qualityHigh: '高',
-    qualityUltra: '最高',
+    sliderRippleLow: '低 · 負荷を抑える',
+    sliderRippleUltra: '最高 · より細やか',
+    sliderRecommended: 'おすすめ',
     // UIフィールドラベル
     fieldWallpaperUrl: '壁紙URL',
-    fieldWallpaperBlur: '壁紙ぼかし度 (0-10)',
+    fieldWallpaperBlur: '壁紙ぼかし度',
+    sliderWeak: '弱 · くっきり',
+    sliderStrong: '強 · ぼかし強め',
     fieldWallpaperParallax: '壁紙パララックス効果',
     fieldPetEnabled: 'ペットを有効化',
     fieldPetImageUrl: 'ペット画像URL',
     fieldSiteTitle: 'サイトタイトル',
     fieldSiteDescription: 'サイト説明',
-    fieldSiteFavicon: 'ファビコンURL',
+    fieldSiteFavicon: 'サイトアイコン',
+    imageUpload: 'アップロード',
+    imageUploadClear: 'クリア',
+    imageUploadLocal: 'ローカル画像をアップロード済み',
+    imageUploadHint:
+      'URL を入力、またはローカル画像をアップロード（PNG/JPEG/WebP/GIF/SVG/ICO、≤512KB）',
+    imageUploadTypeError: '画像ファイルを選択してください',
+    imageUploadSizeError: '画像サイズは 512KB 以下にしてください',
+    imageUploadReadError: '画像の読み込みに失敗しました',
     fieldMusicEnabled: '音楽プレイヤーを有効化',
     fieldMusicSource: '音楽ソース',
     fieldMusicPlaylistId: 'プレイリストID',
     // ネットワークプロキシ設定
-    networkConfigTitle: 'ネットワークプロキシ',
-    networkConfigDesc:
-      '中国本土のサーバーが外部APIにアクセスするためのプロキシを設定',
     advanced: '詳細設定',
-    advancedDesc: '高度なシステム設定と危険な操作',
-    networkProxyInfoTitle: 'プロキシ設定ガイド',
-    networkProxyInfo:
-      'サーバーが中国本土にある場合、GitHub OAuthやGemini AIなどの外部サービスにアクセスするためにプロキシが必要な場合があります。以下の方法から選択できます：',
+    advancedDesc:
+      'アウトバウンドプロキシ、API ミラー、設定バックアップ/復元、危険な操作',
     enableProxy: 'ネットワークプロキシを有効化',
     enableProxyHint:
       '有効にすると、外部APIリクエストはプロキシ経由で送信されます',
@@ -912,35 +910,20 @@ export const jaJP: TranslationKeys = {
     proxyBypass: 'プロキシバイパスリスト',
     proxyBypassHint:
       'プロキシを使用しないドメインをカンマ区切りで指定。Bilibiliなどの国内サービスに推奨',
-    apiMirrorConfig: 'APIミラーサービス',
-    apiMirrorConfigHint:
-      'プロキシ設定の代替としてサードパーティのAPIミラーサービスを使用',
     geminiBaseUrl: 'Gemini APIベースURL',
     geminiBaseUrlHint:
       '空欄の場合は公式エンドポイント、またはサードパーティプロキシサービスURLを入力',
     githubApiBaseUrl: 'GitHub APIベースURL',
     githubApiBaseUrlHint:
       '空欄の場合は公式エンドポイント、またはGitHub APIミラーURLを入力（注意：OAuthは公式エンドポイントが必要）',
-    proxyOption: 'プロキシ',
-    proxyOptionDesc:
-      'プロキシサーバーアドレスを設定し、すべての外部リクエストはプロキシ経由で送信されます。',
-    mirrorOption: 'ミラーサービス',
-    mirrorOptionDesc:
-      'プロキシ設定なしでサードパーティのAPIミラー/リレーサービスを使用。',
     // UIフィールドプレースホルダー
     placeholderWallpaperUrl: '壁紙画像またはAPIエンドポイントのURL',
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteFavicon:
-      '/favicon.webp または https://example.com/icon.png（外部リンク対応）',
+      '/favicon.webp または https://example.com/icon.png',
     placeholderPetImageUrl: 'ペットキャラクター画像のURL',
-    githubOAuthHint: 'GitHub OAuth認証情報の取得方法',
     callbackUrl: 'コールバックURL',
-    redirectUrl: 'リダイレクトURL',
-    aiServiceDesc: 'Google GeminiおよびOpenAI互換形式のAPIをサポート',
-    getApiKey: 'APIキーを取得',
-    personaServiceDesc:
-      'AIがあなたのデータに基づいて独自のバーチャルペルソナを生成します。ホームページ右上の丸いアバターをクリックして確認',
     savingDefault: 'デフォルト設定を保存中...',
     resetFailed: '設定のリセットに失敗：',
     refreshing: '更新中...',
@@ -949,47 +932,30 @@ export const jaJP: TranslationKeys = {
     // ConfigForm拡張
     configured: '設定済み',
     notConfigured: '未設定',
-    aiConfigTitle: 'AI設定',
-    aiConfigDesc: 'AIモデルとAPIキーを設定',
-    aiServiceTitle: 'AIサービス',
-    aiServiceInfoTitle: 'AIサービス設定説明',
-    aiServiceInfo:
-      'Google GeminiおよびOpenAI互換形式のAPIをサポート。\nGoogle Gemini：無料枠あり、個人利用に最適。\nOpenAI互換：OpenAI APIおよび他の互換サービス（Azure OpenAI、サードパーティプロキシなど）をサポート',
     aiProvider: 'AIプロバイダー',
     aiProviderHint:
       'AIサービスプロバイダーを選択すると、対応する設定項目が表示されます',
-    aiServiceInfoDescription:
-      'Google GeminiおよびOpenAI互換形式のAPIをサポート。',
+    aiLiteModelTitle: 'Lite モデル',
+    aiLiteModelDesc: '低コスト。軽量・高頻度タスク向け',
+    aiLiteEnable: 'Lite モデルを有効化',
+    aiLiteEnableDesc: 'オフ時は Lite タスクがスタンダードに戻る',
+    aiLiteProviderHint: 'スタンダードと別設定可。空欄はスタンダードを流用',
     aiStandardModelTitle: 'スタンダードモデル',
-    aiStandardModelDesc: '日常タスク（語彙注釈、簡易分析など）に使用',
-    aiProModelTitle: 'Pro モデル設定',
-    aiProModelDesc:
-      '複雑なタスク（詳細分析、レポート生成など）に使用。API Keyが空の場合は自動的にスタンダードモデルの設定を使用',
+    aiStandardModelDesc: '既定階層。通常タスク向け',
+    aiProModelTitle: 'Pro モデル',
+    aiProModelDesc: '高品質。複雑な推論・創作向け',
     aiProEnable: 'Pro モデルを有効化',
-    aiProEnableDesc:
-      '複雑なタスク用に別の高性能モデルを設定できます。オフの場合、全タスクがスタンダードモデルを使用',
-    aiProProviderHint:
-      'Proモデルのプロバイダーを選択（スタンダードモデルと異なるプロバイダーも可）',
-    geminiDescription: '無料枠あり、個人利用に最適。',
+    aiProEnableDesc: 'オフ時は Pro タスクがスタンダードに戻る',
+    aiProProviderHint: 'スタンダードと別設定可。空欄はスタンダードを流用',
     openaiCompatible: 'OpenAI互換',
-    openaiDescription:
-      'OpenAI APIおよび他の互換サービス（Azure OpenAI、サードパーティプロキシなど）をサポート',
     // AI画像生成設定
-    aiImageTitle: 'AI画像生成',
-    aiImageDesc:
-      'OpenAI、OpenRouter、Volcengine Seedream、PixAIを統合した画像生成',
-    aiImageUsageTitle: '使用説明',
-    enableAiImage: 'AI画像生成を有効化',
-    aiImageHint: '有効にすると Myriad 内で AI 画像生成機能を使用できます',
-    pixaiDescription:
-      'プロアニメ画像生成API、複数モデル対応（有料、APIキー必要）',
-    pixaiBadge: 'SD/DiT',
+    aiImageTitle: '画像生成モデル',
+    aiImageDesc: '画像を生成。解像度はリクエストで指定',
     pixaiPlaceholder: 'platform.pixai.artから取得',
     pixaiModelId: 'モデルバージョンID',
     // 音声サービス設定 (TTS/ASR)
     speechServiceTitle: '音声サービス',
-    speechServiceDesc:
-      'Tencent Cloud音声合成(TTS)と音声認識(ASR)サービスを設定',
+    speechServiceDesc: 'Tencent Cloud の TTS 読み上げと ASR 認識',
     tencentSecretId: 'Tencent Cloud Secret ID',
     tencentSecretIdPlaceholder: 'Tencent Cloudコンソールから取得',
     tencentSecretKey: 'Tencent Cloud Secret Key',
@@ -1004,32 +970,22 @@ export const jaJP: TranslationKeys = {
     speechTestAvailability: '接続テスト',
     speechTestSuccess: '音声サービス接続成功',
     speechTestFailed: '音声サービス接続失敗',
-    speechTestTesting: 'テスト中...',
-    speechNotConfigured: '先にTencent Cloud認証情報を設定してください',
     // プラットフォーム設定
-    platformsConfigTitle: 'データプラットフォーム設定',
-    platformsConfigDesc:
-      '各データソースプラットフォームのアクセス認証情報を設定',
-    platformDescGithub: 'リポジトリ、スター、コントリビューションを追跡',
-    platformDescBilibili: 'お気に入り、アニメ、視聴履歴を追跡',
-    platformDescBangumi: 'Bangumiのコレクション、評価、視聴状態を同期',
-    platformDescSteam: 'ゲームライブラリ、ウィッシュリスト、ゲーム統計を同期',
-    platformDescNetease: 'お気に入りの曲と音楽の好みを同期',
-    platformDescX: 'X のプロフィールと投稿を同期。共有は Web Intent',
-    platformDescDiscord:
-      'Discord のプロフィール、サーバー参加状況、連携アカウントを同期',
-    platformDescMal:
-      'ユーザー名必須。Client ID は任意（未設定は公開 load.json、設定時は公式 API）',
+    platformDescGithub: 'リポジトリ、スター、コントリビューション',
+    platformDescBilibili: 'お気に入り、アニメ、視聴履歴',
+    platformDescBangumi: 'コレクション、評価、視聴状態',
+    platformDescSteam: 'ライブラリ、ウィッシュリスト、プレイ統計',
+    platformDescNetease: 'お気に入りの曲と音楽の好み',
+    platformDescX: 'プロフィールと投稿、共有対応',
+    platformDescDiscord: 'プロフィール、サーバー、連携アカウント',
+    platformDescMal: 'アニメ / マンガリストと評価',
+    platformDescXbox: '実績、Gamerscore、最近のゲーム',
+    platformDescPsn: 'トロフィー、トロフィーレベル、最近のゲーム',
     discordConnect: 'Discord で認可',
-    discordReconnect: 'Discord を再認可',
-    discordConnectHint:
-      '推奨：Discord 認可（先に OAuth ログインで Discord アプリを設定し、Developer Portal にデータ用コールバックを追加）。Access Token の手動入力も可。',
     discordOAuthSuccess:
       'Discord データ認可に成功しました。トークンを保存しプラットフォームを有効化しました。',
     discordOAuthFailed: 'Discord データ認可に失敗しました',
     discordDataCallbackUrl: 'データ連携コールバック URL（一括認可）',
-    bangumiCredentialRequirement:
-      'Bangumi ユーザー名またはアクセストークンのどちらか一方を入力してください。公開プロフィールはユーザー名のみ、非公開コレクションはアクセストークンを推奨します。',
     bangumiCredentialMissing:
       'Bangumi を有効化して保存する前にユーザー名またはアクセストークンを入力してください。',
     bangumiUsernameLabel: 'Bangumi ユーザー名',
@@ -1038,73 +994,85 @@ export const jaJP: TranslationKeys = {
     bangumiUsernamePlaceholder: 'Bangumi ユーザー名',
     bangumiAccessTokenPlaceholder: '非公開コレクション用の Bearer Token',
     bangumiUserAgentPlaceholder: 'haru/Myriad',
-    configuredStatus: '設定済み',
-    unconfiguredStatus: '未設定',
-    enablePlatform: '{platform}プラットフォームを有効化',
-    testingConnection: 'テスト中...',
-    howToGetToken: 'トークンの取得方法',
-    basicConfigTitle: '基本設定',
+    platformSetupTitle: '設定ステップ',
+    platformSetupOptional: '任意',
+    platformSetupOpen: '開く',
+    platformSetupFillTitle: 'このページで入力',
+    platformSetupFillDesc:
+      '取得した値を下のフォームに入力し、保存してから有効化します。',
+    platformSetupGithub1Title: 'ユーザー名を確認',
+    platformSetupGithub1Desc: 'GitHub プロフィールを開き、ユーザー名をコピー。',
+    platformSetupGithub2Title: 'アクセストークンを作成',
+    platformSetupGithub2Desc:
+      'Settings → Developer settings → Personal access tokens。任意（レート制限緩和）。',
+    platformSetupBilibili1Title: 'UID を取得',
+    platformSetupBilibili1Desc:
+      '個人スペースを開き、space.bilibili.com/ の後の数字が UID。',
+    platformSetupSteam1Title: 'API キーを申請',
+    platformSetupSteam1Desc:
+      'Steam Web API Key ページでドメインを登録し、キーをコピー。',
+    platformSetupSteam2Title: 'Steam ID を取得',
+    platformSetupSteam2Desc:
+      'アカウント詳細、またはプロフィール URL から 17 桁の SteamID64。',
+    platformSetupNetease1Title: 'ユーザー ID を取得',
+    platformSetupNetease1Desc:
+      'NetEase プロフィールを開き、/user/home?id= の後の数字。',
+    platformSetupBangumi1Title: 'ユーザー名を確認',
+    platformSetupBangumi1Desc:
+      'bgm.tv のユーザー名。公開コレクションはこれだけで可。',
+    platformSetupBangumi2Title: 'アクセストークンを申請',
+    platformSetupBangumi2Desc:
+      '非公開コレクション向け（next.bgm.tv の Access Token）。',
+    platformSetupX1Title: 'ユーザー名を確認',
+    platformSetupX1Desc: 'X の @ なしハンドル。',
+    platformSetupX2Title: 'Bearer トークンを作成',
+    platformSetupX2Desc:
+      'developer.x.com でアプリを作成し、読み取り専用 Bearer をコピー。',
+    platformSetupDiscord1Title: 'Discord アプリを設定',
+    platformSetupDiscord1Desc:
+      '「サードパーティログイン」で Discord を追加し、データ用コールバックを登録。',
+    platformSetupDiscord2Title: '認可する',
+    platformSetupDiscord2Desc:
+      'ワンクリック認可を推奨。Access Token の手入力も可。',
+    platformSetupDiscord2Action: 'Discord を連携',
+    platformSetupMal1Title: 'ユーザー名を確認',
+    platformSetupMal1Desc: 'MyAnimeList のユーザー名（必須）。',
+    platformSetupMal2Title: 'Client ID を申請',
+    platformSetupMal2Desc:
+      'apiconfig でアプリ作成。空なら公開 load.json を使用。',
+    platformSetupXbox1Title: 'Gamertag を確認',
+    platformSetupXbox1Desc: 'Xbox の Gamertag（# 付き可）。',
+    platformSetupXbox2Title: 'OpenXBL キーを取得',
+    platformSetupXbox2Desc: 'xbl.io で登録し API Key をコピー。',
+    platformSetupPsn1Title: 'Online ID を確認',
+    platformSetupPsn1Desc: 'PlayStation Network の Online ID。',
+    platformSetupPsn2Title: 'NPSSO を取得',
+    platformSetupPsn2Desc:
+      'Sony にログイン後、ca.account.sony.com の npsso から 64 文字トークンをコピー。',
     siteUrlConfig: 'サイトURL',
-    baseUrl: 'サイト公開アドレス / BASE_URL',
-    baseUrlPlaceholder:
-      'https://yourdomain.com（OAuthコールバックとCookie設定用）',
-    baseUrlHint:
-      'サイトの公開 origin（BASE_URL）。保存時に同じ origin の FRONTEND_URL と CORS_ORIGINS も更新します（複数 origin では旧値を置換するか追加。* は使いません）。OAuth コールバックと HTTPS Cookie 判定に使用します。',
-    domainChangeTitle: 'ドメイン変更',
-    domainChangeDesc:
-      '公開 origin を設定 DB と .env（BASE_URL / FRONTEND_URL / CORS_ORIGINS）に書き込みます。サイトアクセス用のみで、フェデレーション Move は実行しません。',
-    domainChangeNewOrigin: '新しい公開 origin',
-    domainChangePlaceholder: 'https://new.example.com',
-    domainChangeHint:
-      'https のみ（localhost は http 可）、パス不可。適用後は運用チェックリスト（DNS / TLS / OAuth / 再起動）を完了してください。',
-    domainChangeAction: 'ドメイン変更を適用',
-    domainChangeActionDesc:
-      'BASE_URL・FRONTEND_URL・CORS_ORIGINS を原子的に書き換え、運用チェックリストを返します。',
-    domainChangeApply: 'ドメイン変更を確認',
-    domainChangeApplying: '適用中…',
-    domainChangeConfirm:
-      'サイト公開アドレスを {origin} に変更しますか？BASE_URL・FRONTEND_URL・CORS_ORIGINS が更新されます。',
-    domainChangeEmpty: '新しい公開 origin を入力してください',
-    domainChangeSuccess:
-      'ドメインを更新しました。運用チェックリストを完了してください',
-    domainChangeFailed: 'ドメイン更新に失敗しました',
-    domainChecklistTitle: 'ドメイン変更後の運用チェックリスト',
+    baseUrl: 'URL',
+    baseUrlPlaceholder: 'https://example.com',
+    siteUrlFieldDesc: 'クリックで編集。保存で即時反映しチェックリストを返します。',
+    siteUrlUnset: '未設定',
+    siteUrlEdit: '編集',
+    siteUrlSave: '保存',
+    siteUrlCancel: 'キャンセル',
+    domainChangeConfirm: '{origin} に保存しますか？',
+    domainChangeEmpty: 'URLを入力',
+    domainChangeSuccess: '更新済み',
+    domainChangeFailed: '更新失敗',
+    domainChecklistTitle: 'チェックリスト',
     domainChecklist: {
       dns: 'DNS',
-      tls: 'TLS 証明書',
-      reverse_proxy_301: 'リバースプロキシ 301',
-      oauth_callbacks: 'OAuth コールバック',
-      federation_move_separate: 'フェデレーション移行（別途）',
-      backend_restart_for_cors: 'CORS 反映のためのバックエンド再起動',
+      tls: 'TLS',
+      reverse_proxy_301: 'リバプロ 301',
+      oauth_callbacks: 'OAuth',
+      federation_move_separate: '連合移行（別途）',
+      backend_restart_for_cors: '再起動（CORS）',
     },
-    domainFederationNote:
-      'フェデレーション移行は federation domain-move（ActivityPub Move）を使用してください。この機能は federation_* テーブルを書き換えません。docs/deployment/MIGRATION_DOMAIN.md を参照。',
-    basicConfigDesc: 'サイトURL、背景、テーマなどの基本設定',
-    oauthConfigTitle: 'サードパーティログイン (OAuth)',
-    oauthConfigDesc:
-      'GitHub / Google / Microsoft 等のログイン方式と、ローカル登録ポリシーを設定。',
-    oauthGuideTitle: 'はじめに',
-    oauthGuideStep1: 'GitHub Developer Settingsにアクセス',
-    oauthGuideStep2: '「New OAuth App」をクリックして新しいアプリを作成',
-    oauthGuideStep3: 'アプリ情報を入力、Callback URLは：',
-    oauthGuideStep4: '作成後、Client IDをコピーしてClient Secretを生成',
+    domainFederationNote: '連合移行は federation domain-move を別途実行。',
     currentCallbackUrl: '現在のコールバックURL',
-    currentCallbackUrlHint:
-      'このURLをGitHub OAuth AppのAuthorization callback URLに入力してください',
     callbackUrlNotConfigured: '「基本設定」でサイトURLを先に設定してください',
-    githubClientId: 'GitHub Client ID',
-    githubClientIdPlaceholder: 'GitHub OAuth AppのClient ID',
-    githubClientSecret: 'GitHub Client Secret',
-    githubClientSecretPlaceholder: 'GitHub OAuth AppのClient Secret',
-    oidcSectionTitle: 'その他の OAuth ログイン (OIDC)',
-    oidcSectionDesc:
-      'Google、Microsoft、Authentik、Keycloak、Auth0 など OpenID Connect 準拠の任意プロバイダに対応',
-    oidcCallbackTemplate: 'コールバック URL の形式：',
-    oidcEmpty: 'OIDC プロバイダは未登録です。',
-    oidcAddProvider: 'OIDC プロバイダを追加',
-    oidcSaveConfig: 'OAuth 設定を保存',
-    oidcSaving: '保存中…',
-    oidcSaved: '保存しました',
     oidcEnabled: '有効',
     oidcDelete: '削除',
     oidcSlugLabel: 'Slug（ルーティング用）',
@@ -1122,43 +1090,98 @@ export const jaJP: TranslationKeys = {
     oidcIconLabel: 'アイコン URL（任意）',
     oidcIconPlaceholder: 'https://...',
     oidcNewProvider: '(新規 provider)',
-    oauthProvidersTitle: '設定済みのログイン方式',
-    oauthProvidersDesc:
-      'GitHub、Google、Microsoft、GitLab、Discord 等を設定。各 provider に専用の client_id / client_secret とコールバック URL が必要。',
     oauthProvidersEmpty:
       'まだログイン方式が未設定。下の「ログイン方式を追加」からプリセットを選択。',
     oauthAddLoginMethod: 'ログイン方式を追加',
     oauthPickPreset: 'プリセットを選択',
     oauthHowToHint:
       '先に「基本設定」で Base URL を入力すると、下の各カードに provider 専用のコールバック URL が表示されます。それを各プラットフォームに貼り付け',
-    oauthOpenDocs: 'ドキュメント',
     oauthAdvanced: '詳細設定（Slug / 表示名 / Scopes / アイコン）',
-    oauthPresetHintGithub:
-      '手順：GitHub アバター → `Settings` → `Developer settings` → `OAuth Apps` → `New OAuth App`',
-    oauthPresetHintGoogle:
-      '手順：Google Cloud Console → `APIs & Services` → `Credentials` → `Create credentials` → `OAuth client ID`',
-    oauthPresetHintMicrosoft:
-      '手順：Azure Portal → `App registrations` → `New registration`。Discovery URL の `common` は任意テナント対応、シングルテナントは自分の Tenant ID に置換',
-    oauthPresetHintGitlab:
-      '手順：GitLab → `User Settings` → `Applications`。セルフホスト時は `gitlab.com` を自分のドメインに置換',
-    oauthPresetHintDiscord:
-      '手順：Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`。データ連携の一括認可では Redirect に `/api/platforms/discord/oauth/callback` も追加',
-    oauthPresetHintAuthentik:
-      'Discovery URL は `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration` 形式。`<slug>` は Application のスラッグ',
-    oauthPresetHintKeycloak:
-      'Discovery URL は `https://keycloak.yourdomain.com/realms/<realm>/.well-known/openid-configuration` 形式。`<realm>` は Realm 名',
-    oauthPresetHintAuth0:
-      'Discovery URL は `https://<your-tenant>.auth0.com/.well-known/openid-configuration` 形式',
-    oauthPresetHintCustom:
-      '任意の OIDC 準拠プロバイダ。`Discovery URL`、`Client ID`、`Client Secret` を自分で入力',
+    oauthSetupTitle: '設定ステップ',
+    oauthSetupCopyCallback: 'コールバックをコピー',
+    oauthSetupFillTitle: 'このページで入力',
+    oauthSetupFillDesc:
+      'Client ID / Secret（と Discovery）を下のフォームに入力して保存。',
+    oauthSetupGithub1Title: 'GitHub OAuth Apps を開く',
+    oauthSetupGithub1Desc:
+      'アバター → Settings → Developer settings → OAuth Apps。',
+    oauthSetupGithub2Title: 'アプリ作成とコールバック登録',
+    oauthSetupGithub2Desc:
+      'New OAuth App。Authorization callback URL に下のコールバックを設定。',
+    oauthSetupGithub3Title: '認証情報をコピー',
+    oauthSetupGithub3Desc:
+      'Client ID をコピーし、Client Secret を生成。',
+    oauthSetupGoogle1Title: 'Google Cloud 認証情報を開く',
+    oauthSetupGoogle1Desc:
+      'APIs & Services → Credentials → Create credentials → OAuth client ID。',
+    oauthSetupGoogle2Title: 'リダイレクト URI を登録',
+    oauthSetupGoogle2Desc:
+      'Web アプリケーションを選択し、Authorized redirect URIs に下のコールバックを追加。',
+    oauthSetupGoogle3Title: '認証情報をコピー',
+    oauthSetupGoogle3Desc: '作成後に Client ID と Client Secret をコピー。',
+    oauthSetupMicrosoft1Title: 'Azure アプリ登録を開く',
+    oauthSetupMicrosoft1Desc:
+      'Azure Portal → App registrations → New registration。',
+    oauthSetupMicrosoft2Title: 'リダイレクト URI を登録',
+    oauthSetupMicrosoft2Desc:
+      'プラットフォーム Web。Redirect URI に下のコールバック。単一テナントは Discovery の common を Tenant ID に。',
+    oauthSetupMicrosoft3Title: '認証情報をコピー',
+    oauthSetupMicrosoft3Desc:
+      'Overview の Application (client) ID。Certificates & secrets でシークレット作成。',
+    oauthSetupGitlab1Title: 'GitLab Applications を開く',
+    oauthSetupGitlab1Desc:
+      'User Settings → Applications（セルフホストは自ドメイン）。',
+    oauthSetupGitlab2Title: '作成とコールバック登録',
+    oauthSetupGitlab2Desc:
+      'Redirect URI に下のコールバック。openid / email / profile を有効化。',
+    oauthSetupGitlab3Title: '認証情報をコピー',
+    oauthSetupGitlab3Desc: '保存後に Application ID と Secret をコピー。',
+    oauthSetupDiscord1Title: 'Discord Developer Portal を開く',
+    oauthSetupDiscord1Desc:
+      'Applications → New Application → OAuth2 → General。',
+    oauthSetupDiscord2Title: 'Redirects を登録',
+    oauthSetupDiscord2Desc:
+      'ログイン用コールバックを追加。データ連携ワンクリック認可なら /api/platforms/discord/oauth/callback も。',
+    oauthSetupDiscord3Title: '認証情報をコピー',
+    oauthSetupDiscord3Desc: 'Client ID と Client Secret をコピー。',
+    oauthSetupAuthentik1Title: 'OAuth2 Provider を作成',
+    oauthSetupAuthentik1Desc:
+      'Authentik 管理画面 → Providers / Applications で OAuth2/OpenID を作成。',
+    oauthSetupAuthentik2Title: 'コールバックと Discovery',
+    oauthSetupAuthentik2Desc:
+      'Redirect URI は下のコールバック。Discovery は …/application/o/<slug>/.well-known/openid-configuration。',
+    oauthSetupAuthentik3Title: '認証情報をコピー',
+    oauthSetupAuthentik3Desc:
+      'Client ID、Client Secret、Discovery URL をコピー。',
+    oauthSetupKeycloak1Title: 'Keycloak Clients を開く',
+    oauthSetupKeycloak1Desc:
+      'Admin Console → 対象 Realm → Clients → Create。',
+    oauthSetupKeycloak2Title: 'コールバックと Discovery',
+    oauthSetupKeycloak2Desc:
+      'Valid redirect URIs に下のコールバック。Discovery は …/realms/<realm>/.well-known/openid-configuration。',
+    oauthSetupKeycloak3Title: '認証情報をコピー',
+    oauthSetupKeycloak3Desc: 'Credentials で Client ID / Secret をコピー。',
+    oauthSetupAuth0Step1Title: 'Auth0 Applications を開く',
+    oauthSetupAuth0Step1Desc:
+      'Dashboard → Applications → Create Application。',
+    oauthSetupAuth0Step2Title: 'コールバックを登録',
+    oauthSetupAuth0Step2Desc:
+      'Allowed Callback URLs に下のコールバック。Discovery は https://<tenant>.auth0.com/.well-known/openid-configuration。',
+    oauthSetupAuth0Step3Title: '認証情報をコピー',
+    oauthSetupAuth0Step3Desc:
+      'Settings で Client ID と Client Secret をコピー。',
+    oauthSetupCustom1Title: 'IdP 情報を用意',
+    oauthSetupCustom1Desc:
+      '標準 OIDC：Discovery URL、Client ID、Client Secret。',
+    oauthSetupCustom2Title: 'コールバックを登録',
+    oauthSetupCustom2Desc:
+      'IdP 側で下のコールバックを Redirect URI として登録。',
+    oauthSetupCustom3Title: '認証情報をコピー',
+    oauthSetupCustom3Desc:
+      'IdP コンソールから Client ID / Secret と Discovery をコピー。',
     allowRegisterTitle: 'ローカルアカウントの公開登録を許可',
     allowRegisterDesc:
       '有効時は /register で誰でも登録可能。無効時は管理者のみが作成可能。',
-    musicConfigTitle: '音楽プレイヤー',
-    musicConfigDesc: 'プレイリスト再生を設定',
-    musicUsageTitle: '音楽プレイヤー説明',
-    musicUsageInfo:
-      'コントロールアイランドで指定したプレイリストの音楽を再生します。NetEase MusicとQQ Musicに対応。歌詞付きの曲を再生すると、縮小状態でリアルタイム歌詞が自動表示されます。',
     neteaseMusic: 'NetEase Music',
     qqMusic: 'QQ Music',
     neteasePlaylistHint:
@@ -1171,36 +1194,28 @@ export const jaJP: TranslationKeys = {
     clearMusicCacheBtn: '音楽キャッシュをクリア',
     musicCacheCleared:
       '音楽キャッシュをクリアしました。次回読み込み時にデータを再取得します',
-    wallpaperParallaxHint:
-      '有効にすると、マウス移動やデバイス傾きに応じて壁紙がわずかに移動し、立体的な空間感を演出します',
     neteasePlaylistExample: '例：2884035',
     qqPlaylistExample: '例：8039305244',
-    removeFavorite: 'お気に入りから削除',
-    addFavorite: 'お気に入りに追加',
-    resetConfigLabel: '設定をリセット',
     saveConfigLabel: '設定を保存',
-    clearSearchLabel: '検索をクリア',
-    closeLabel: '閉じる',
     // Tapp権限管理設定
     permissions: '権限管理',
     permissionsDesc:
       'Tappのelevated権限委譲とAI使用制限を設定。権限は4段階：public、basic、elevated（委譲可）、privileged（管理者のみ）',
-    permissionsTitle: 'Tapp権限管理',
-    tappPermissionsInfoTitle: '権限レベルについて',
-    tappPermissionsInfo:
-      'public/basic は既定で開放、elevated はここで委譲、privileged（report:write 含む）は管理者のみ。AI アシスタントは本ページと強制整合：上部の「アシスタントプリセット」または個別スイッチ（会話は ai:chat、出站は network:fetch）。',
-    agentPresetTitle: 'AIアシスタントプリセット',
+    agentPresetTitle: 'Arael Agent プリセット',
     agentPresetDesc:
-      'Agent 関連の elevated スイッチを一括適用。下で個別調整可。メディア/テーマなど無関係項目は変更しません',
+      'Arael Agent 関連の elevated スイッチを一括適用。下で個別調整可。メディア/テーマなど無関係項目は変更しません',
     agentPresetUserHint:
       '無効=AI/出站オフ；会話のみ=ai:chat+analyze；標準=全AI；拡張=AI+出站+スケジューラ',
     agentPresetGuestHint:
-      'ゲストに Agent セッションはありません。ai:chat 等は入口表示と Tapp AI 向け。慎重に開放してください',
+      'ゲストに Arael Agent セッションはありません。ai:chat 等は入口表示と Tapp AI 向け。慎重に開放してください',
     agentPresetCustom: 'カスタム',
+    agentFineTuneTitle: '権限の個別調整',
+    agentFineTuneDesc:
+      'Arael Agent プリセットを基に elevated を個別調整。変更後はプリセットが「カスタム」になる場合があります',
     // ユーザーelevated権限
     userElevatedPermissions: 'ユーザー権限委譲',
     userElevatedPermissionsDesc:
-      'elevated を個別付与。AI/出站/スケジューラは上部プリセットでも一括設定可',
+      'elevated を個別付与。AI/出站/スケジューラは上部の Arael Agent プリセットでも一括設定可',
     // ゲストelevated権限
     guestElevatedPermissions: 'ゲスト権限委譲',
     guestElevatedPermissionsDesc:
@@ -1212,13 +1227,10 @@ export const jaJP: TranslationKeys = {
     permAiAnalyzeHint: 'TappにAIでのデータ分析を許可',
     permAiChat: 'AIチャット',
     permAiChatHint: 'TappにAIチャット機能の使用を許可',
-    permReportWrite: 'レポート生成',
-    permReportWriteHint: 'Tappにレポートの生成と保存を許可',
     permNetworkFetch: 'ネットワークリクエスト',
     permNetworkFetchHint:
       '宣言型の送信リクエストとリモート画像/メディアの読み込みを許可',
     permMediaControl: 'メディア制御',
-    permMediaControlHint: 'Tappに音楽プレイヤーの制御を許可',
     permComponentTheme: 'テーマ登録',
     permComponentThemeHint: 'Tappにカスタムテーマの登録を許可',
     permShortcutRegister: 'ショートカット登録',
@@ -1235,10 +1247,10 @@ export const jaJP: TranslationKeys = {
     permSpeechAsrHint: 'Tappにクラウド音声認識サービス（ASR）の使用を許可',
     permissionsSaved: '権限設定を保存しました',
     permissionsSaveFailed: '権限設定の保存に失敗しました',
-    loadPermissionsFailed: '権限設定の読み込みに失敗しました',
     // モジュール設定
     moduleSettings: 'モジュール設定',
-    moduleSettingsDesc: '各機能モジュールの表示と動作を管理',
+    moduleSettingsDesc:
+      '各機能の表示範囲と、ライブラリソース・レポート期限・音楽プレイヤー・一言',
     libraryModuleTitle: 'ライブラリ',
     libraryModuleDesc: 'カテゴリごとに表示するプラットフォームソースを選択',
     librarySourceVisibleCount:
@@ -1250,20 +1262,14 @@ export const jaJP: TranslationKeys = {
     librarySourceLoadFailed: 'ライブラリソース設定の読み込みに失敗しました',
     moduleVisibilityTitle: 'ページ表示範囲',
     moduleVisibilityDesc:
-      'ライブラリ、Brew、レポート、Tapp、AIアシスタントを表示できるユーザーを設定',
+      'ライブラリ、Brew リーダー、プラットフォームレポート、Tapp ストア、Arael Agent を表示できるユーザーを設定',
     moduleVisibilityAll: '全員',
     moduleVisibilityAuthenticated: 'ログインユーザー',
     moduleVisibilityAdmin: '管理者ユーザー',
     moduleVisibilitySaved: 'ページ表示範囲設定を保存しました',
     moduleVisibilityLoadFailed: 'ページ表示範囲設定の読み込みに失敗しました',
-    agentUsageTitle: 'AIアシスタント利用権限',
-    agentUsageDesc: 'Tapp権限管理のアシスタントプリセットに統合済み',
     agentUsageGuest: 'ゲスト',
-    agentUsageGuestHint: 'Tapp権限のアシスタントプリセットを参照',
-    agentUsageGuestHidden: '非表示',
-    agentUsageGuestVisible: '入口を表示',
     agentUsageUser: '一般ユーザー',
-    agentUsageUserHint: 'Tapp権限のアシスタントプリセットを参照',
     agentUsageNone: '無効',
     agentUsageChat: '会話のみ',
     agentUsageStandard: '標準',
@@ -1316,7 +1322,6 @@ export const jaJP: TranslationKeys = {
     aiDailyTokensHint: '1日あたりのAIトークン使用量',
     aiCooldownSeconds: 'クールダウン時間',
     aiCooldownSecondsHint: 'AI呼び出し間の最小間隔（秒）',
-    aiQuotaAdminNote: '管理者アカウントはこれらの制限を受けません',
     // サイトフッターとクラウドスポンサー
     siteFooterTitle: 'サイトフッター',
     siteFooterDesc:
@@ -1329,7 +1334,6 @@ export const jaJP: TranslationKeys = {
     siteGonganPlaceholder: '例：京公网安备11010502000001号',
     cloudSponsors: 'クラウドスポンサー',
     cloudSponsorsHint: 'フッターに表示するクラウドプロバイダーのロゴを選択',
-    cloudSponsorsPlaceholder: '例：cloudflare,upyun',
     cloudflare: 'Cloudflare',
     edgeone: 'EdgeOne',
     upyun: '又拍云',
@@ -2100,9 +2104,8 @@ export const jaJP: TranslationKeys = {
     changePasswordBtn: 'パスワード変更',
   },
 
-  // データ管理ページ
+  // プラットフォーム詳細のデータ管理
   dataManagement: {
-    neteaseMusic: 'NetEase Music',
     loadStatusFailed: '状態の読み込みに失敗しました',
     confirmRefreshData: '{platform}の元データを更新してもよろしいですか？',
     csrfTokenError: 'CSRFトークンを取得できません',
@@ -2114,7 +2117,6 @@ export const jaJP: TranslationKeys = {
     cacheCleared: '{platform}キャッシュをクリアしました',
     clearCacheFailed: '{platform}キャッシュのクリアに失敗しました',
     unknown: '不明',
-    backToConfig: '設定に戻る',
     refreshData: 'データ更新',
     processData: 'データ処理',
     process: '処理',
@@ -2131,13 +2133,6 @@ export const jaJP: TranslationKeys = {
     processing: '処理中',
     clearing: 'クリア中',
     clear: 'クリア',
-    usageTitle: '使用説明',
-    usageRawData:
-      '生データ：各プラットフォームAPIから取得した未処理データ、更新ボタンで再取得',
-    usageSmartFilter:
-      'スマートフィルター：AI分析処理後のデータ、処理ボタンでキャッシュ生成',
-    usageBackground:
-      'バックグラウンド処理：データ処理タスクは非同期で実行、トップで進捗を確認可能',
   },
 
   // クイック統計ウィジェット
@@ -2477,7 +2472,7 @@ export const jaJP: TranslationKeys = {
     permMediaRead: 'メディア状態読取',
     permMediaAudio: 'オーディオ再生',
     permRegisterTheme: 'テーマ登録',
-    permRegisterAgent: 'Agent 登録',
+    permRegisterAgent: 'Arael Agent 登録',
     permRegisterShortcut: 'ショートカット登録',
     permPublishEvent: 'イベント発行',
     permSubscribeEvent: 'イベント購読',
@@ -2521,7 +2516,7 @@ export const jaJP: TranslationKeys = {
     permMediaAudioDesc:
       'サンドボックス内でパッケージ/blob/data オーディオの再生を許可',
     permRegisterThemeDesc: 'カスタムテーマスタイルの登録を許可',
-    permRegisterAgentDesc: 'AI Agent 能力の登録を許可',
+    permRegisterAgentDesc: 'Arael Agent 能力の登録を許可',
     permRegisterShortcutDesc: 'キーボードショートカットの登録を許可',
     permPublishEventDesc: 'システムイベントの発行を許可',
     permSubscribeEventDesc: 'システムイベントの購読を許可',
@@ -3512,7 +3507,6 @@ export const jaJP: TranslationKeys = {
         'パーソナル空間を整える',
       ],
       config: ['設定を変更？', 'カスタマイズ', '体験を最適化'],
-      dataManagement: ['データ管理', 'データ同期', 'キャッシュクリア'],
       tapp: ['アプリを発見', 'Tapp管理', 'アプリ実行'],
     },
     generalHints: [

@@ -5,7 +5,14 @@ import type {
 } from '../../utils/moduleVisibility'
 import type { HitokotoConfig } from '../../utils/quote'
 import type { ReportSettings } from '../../utils/reportSettings'
-import { LuEye, LuSparkles, MyriadStoreIcon } from '@lib/icons'
+import {
+  FaTrash,
+  LuEye,
+  MyriadStoreIcon,
+  SiNeteasecloudmusic,
+  SiQqmusic,
+} from '@lib/icons'
+import { MyriadConfigIcon } from './MyriadConfigIcon'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import apiService from '../../services/api'
@@ -14,15 +21,26 @@ import {
   MODULE_VISIBILITY_LEVELS,
   normalizeModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
+import { clearPlaylistCache } from '../../utils/musicPlayer'
 import PlatformIcon from '../PlatformIcon'
 import {
+  ButtonItem,
   InputItem,
   NumberItem,
+  ProviderItem,
+  SegmentedControl,
   SettingGroup,
+  SettingGroupGrid,
   SettingSection,
   SwitchItem,
+  useSettingGuide,
 } from '../settings'
 import { Spinner } from '../Spinner'
+
+interface UiConfigField {
+  key: string
+  value: string
+}
 
 export type LibraryItemType =
   'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'
@@ -70,6 +88,9 @@ interface ModuleConfigSectionProps {
   setHitokotoDraft: React.Dispatch<React.SetStateAction<HitokotoConfig>>
   reportSettingsDraft: ReportSettings
   setReportSettingsDraft: React.Dispatch<React.SetStateAction<ReportSettings>>
+  /** UI config fields (music player lives in ui_config). */
+  uiConfigFields: UiConfigField[]
+  updateUiFieldValue: (key: string, value: string) => void
   onMessage?: (message: string, type?: 'success' | 'error' | 'info') => void
 }
 
@@ -81,12 +102,6 @@ const LIBRARY_ITEM_TYPES: LibraryItemType[] = [
   'tv_series',
   'book',
 ]
-
-const MODULE_SETTING_CARD_CLASS =
-  'rounded-lg border border-gray-100 bg-gray-50/80 p-3 dark:border-white/10 dark:bg-white/[0.03]'
-
-const MODULE_SETTING_SEGMENTED_CLASS =
-  'grid grid-cols-3 gap-1 rounded-lg border border-gray-100 bg-gray-50/80 p-1 dark:border-white/10 dark:bg-white/[0.03]'
 
 const MODULE_SETTING_TITLE_ICON_CLASS =
   'h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]'
@@ -334,10 +349,26 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
   setHitokotoDraft,
   reportSettingsDraft,
   setReportSettingsDraft,
+  uiConfigFields,
+  updateUiFieldValue,
   onMessage,
 }) => {
   const { t } = useI18n()
+  const { catalog: g, renderGuide } = useSettingGuide()
   const [loading, setLoading] = useState(true)
+
+  const getUiFieldValue = useCallback(
+    (key: string) => uiConfigFields.find((f) => f.key === key)?.value || '',
+    [uiConfigFields],
+  )
+  const musicEnabled = getUiFieldValue('music_enabled') === 'true'
+  const musicSource = getUiFieldValue('music_source')
+  const playlistId = getUiFieldValue('music_playlist_id')
+
+  const handleClearMusicCache = useCallback(() => {
+    clearPlaylistCache()
+    onMessage?.(t.config.musicCacheCleared, 'success')
+  }, [onMessage, t.config.musicCacheCleared])
   const [rawTotal, setRawTotal] = useState(0)
   const [shownTotal, setShownTotal] = useState(0)
   const isSourceDirtyRef = React.useRef(isSourceDirty)
@@ -418,7 +449,12 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       brew: <BrewTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       reports: <ReportsTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       tapp: <MyriadStoreIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
-      agent: <LuSparkles className={MODULE_SETTING_TITLE_ICON_CLASS} />,
+      agent: (
+        <MyriadConfigIcon
+          kind="agent"
+          className={MODULE_SETTING_TITLE_ICON_CLASS}
+        />
+      ),
     }),
     [],
   )
@@ -525,25 +561,6 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
     [sourceDraft.categories, sourceOptions],
   )
 
-  const toggleSourceForType = useCallback(
-    (type: LibraryItemType, source: string) => {
-      setSourceDraft((prev) => {
-        const current = prev.categories[type] ?? []
-        const nextSources = current.includes(source)
-          ? current.filter((candidate) => candidate !== source)
-          : [...current, source]
-        return {
-          ...prev,
-          categories: {
-            ...prev.categories,
-            [type]: nextSources,
-          },
-        }
-      })
-    },
-    [setSourceDraft],
-  )
-
   const updateVisibilityForModule = useCallback(
     (moduleKey: ModuleVisibilityKey, visibility: ModuleVisibilityLevel) => {
       setVisibilityDraft((prev) =>
@@ -567,66 +584,125 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       description={description}
       sectionId={sectionId}
     >
+      {/* 1. 可见性 → 2. 媒体库 → 3. 报告 → 4. 音乐 → 5. 一言 */}
       <SettingGroup
         title={t.config.moduleVisibilityTitle}
         description={t.config.moduleVisibilityDesc}
+        guide={renderGuide(g.modules.visibility)}
         icon={<LuEye size={15} />}
       >
-        <div className="grid gap-3 md:grid-cols-2">
+        <SettingGroupGrid
+          columns={2}
+          variant="card"
+          align="stretch"
+          minColumnWidth="16rem"
+          ariaLabel={t.config.moduleVisibilityTitle}
+        >
           {MODULE_VISIBILITY_KEYS.map((moduleKey) => {
             const selectedVisibility = visibilityDraft.modules[moduleKey]
             return (
-              <div key={moduleKey} className={MODULE_SETTING_CARD_CLASS}>
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="flex min-w-0 items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200">
-                    {moduleIcons[moduleKey]}
-                    <span className="truncate">{moduleLabels[moduleKey]}</span>
-                  </span>
-                  <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+              <SettingGroup
+                key={moduleKey}
+                title={moduleLabels[moduleKey]}
+                icon={moduleIcons[moduleKey]}
+                guide={renderGuide(g.modules.visibilityItem)}
+                titleExtra={
+                  <span className="settings-text-3 text-[11px] font-medium">
                     {visibilityLabels[selectedVisibility]}
                   </span>
-                </div>
-                <div className={MODULE_SETTING_SEGMENTED_CLASS}>
-                  {MODULE_VISIBILITY_LEVELS.map((visibility) => {
-                    const checked = selectedVisibility === visibility
-                    return (
-                      <button
-                        key={visibility}
-                        type="button"
-                        aria-pressed={checked}
-                        onClick={() =>
-                          updateVisibilityForModule(moduleKey, visibility)
-                        }
-                        className={`min-h-8 rounded-md px-2 text-xs font-medium transition-colors ${
-                          checked
-                            ? 'text-[var(--color-primary)]'
-                            : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
-                        }`}
-                        style={
-                          checked
-                            ? {
-                                backgroundColor:
-                                  'color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)',
-                                boxShadow:
-                                  '0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 18%, transparent)',
-                              }
-                            : undefined
-                        }
-                      >
-                        {visibilityLabels[visibility]}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
+                }
+              >
+                <SegmentedControl
+                  size="sm"
+                  columns={3}
+                  value={selectedVisibility}
+                  options={MODULE_VISIBILITY_LEVELS.map((visibility) => ({
+                    value: visibility,
+                    label: visibilityLabels[visibility],
+                  }))}
+                  onChange={(visibility) =>
+                    updateVisibilityForModule(moduleKey, visibility)
+                  }
+                  ariaLabel={moduleLabels[moduleKey]}
+                />
+              </SettingGroup>
             )
           })}
+        </SettingGroupGrid>
+      </SettingGroup>
+
+      <SettingGroup
+        title={t.config.libraryModuleTitle}
+        description={t.config.libraryModuleDesc}
+        guide={renderGuide(g.modules.library)}
+        icon={<LibrarySubtitleIcon />}
+      >
+        <div className="settings-text-3 text-xs">
+          {rawTotal > 0 ? (
+            t.config.librarySourceVisibleCount
+              .replace('{shown}', String(shownTotal))
+              .replace('{total}', String(rawTotal))
+          ) : loading ? (
+            <span className="inline-flex items-center" role="status">
+              <Spinner size="xs" color="primary" />
+            </span>
+          ) : (
+            t.config.librarySourceNoData
+          )}
         </div>
+
+        <SettingGroupGrid
+          columns={2}
+          variant="card"
+          align="stretch"
+          minColumnWidth="16rem"
+          ariaLabel={t.config.libraryModuleTitle}
+        >
+          {LIBRARY_ITEM_TYPES.map((type) => {
+            const options = getSourceOptionsForType(type)
+            return (
+              <SettingGroup
+                key={type}
+                title={typeLabels[type]}
+                icon={typeIcons[type]}
+                guide={renderGuide(g.modules.libraryType)}
+              >
+                <SegmentedControl
+                  mode="multi"
+                  size="sm"
+                  value={sourceDraft.categories[type] ?? []}
+                  options={options.map((option) => ({
+                    value: option.source,
+                    label: option.source,
+                    count: option.count,
+                    icon: (
+                      <PlatformIcon
+                        platform={option.source}
+                        className="h-3.5 w-3.5"
+                      />
+                    ),
+                  }))}
+                  onChange={(next) => {
+                    setSourceDraft((prev) => ({
+                      ...prev,
+                      categories: {
+                        ...prev.categories,
+                        [type]: next,
+                      },
+                    }))
+                  }}
+                  ariaLabel={typeLabels[type]}
+                />
+              </SettingGroup>
+            )
+          })}
+        </SettingGroupGrid>
       </SettingGroup>
 
       <SettingGroup
         title={t.config.reportSettingsTitle}
         description={t.config.reportSettingsDesc}
+        guide={renderGuide(g.modules.report)}
         icon={<ReportsTitleIcon className="h-3.5 w-3.5" />}
       >
         <div className="space-y-3">
@@ -634,6 +710,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
             itemKey="report-expiry-enabled"
             label={t.config.reportExpiryEnabled}
             description={t.config.reportExpiryEnabledDesc}
+            guide={renderGuide(g.modules.reportExpiry)}
             value={reportSettingsDraft.expiryEnabled}
             onChange={(value) => updateReportSettings({ expiryEnabled: value })}
           />
@@ -641,6 +718,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
             itemKey="report-auto-regenerate"
             label={t.config.reportAutoRegenerate}
             description={t.config.reportAutoRegenerateDesc}
+            guide={renderGuide(g.modules.reportAutoRegen)}
             value={reportSettingsDraft.autoRegenerate}
             onChange={(value) =>
               updateReportSettings({ autoRegenerate: value })
@@ -651,6 +729,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
             itemKey="report-expiry-days"
             label={t.config.reportExpiryDays}
             description={t.config.reportExpiryDaysHint}
+            guide={renderGuide(g.modules.reportExpiryDays)}
             value={reportSettingsDraft.expiryDays}
             onChange={(value) => {
               if (Number.isFinite(value)) {
@@ -676,144 +755,106 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
         </div>
       </SettingGroup>
 
+      {/* 音乐播放器（原独立「音乐」设置区，并入模块） */}
       <SettingGroup
-        title={t.config.libraryModuleTitle}
-        description={t.config.libraryModuleDesc}
-        icon={<LibrarySubtitleIcon />}
+        title={t.config.music}
+        description={t.config.musicDesc}
+        guide={renderGuide(g.modules.music)}
+        icon={
+          <LibraryTypeIcon
+            type="music"
+            className={MODULE_SETTING_TITLE_ICON_CLASS}
+          />
+        }
+        switch={{
+          checked: musicEnabled,
+          onChange: (v) => updateUiFieldValue('music_enabled', v.toString()),
+          ariaLabel: t.config.enableMusicPlayer,
+        }}
       >
-        <div className="space-y-4">
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            {rawTotal > 0 ? (
-              t.config.librarySourceVisibleCount
-                .replace('{shown}', String(shownTotal))
-                .replace('{total}', String(rawTotal))
-            ) : loading ? (
-              <span className="inline-flex items-center" role="status">
-                <Spinner size="xs" color="primary" />
-              </span>
-            ) : (
-              t.config.librarySourceNoData
-            )}
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            {LIBRARY_ITEM_TYPES.map((type) => {
-              const options = getSourceOptionsForType(type)
-              return (
-                <div key={type} className={MODULE_SETTING_CARD_CLASS}>
-                  <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200">
-                    {typeIcons[type]}
-                    <span>{typeLabels[type]}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {options.map((option) => {
-                      const checked =
-                        sourceDraft.categories[type]?.includes(option.source) ??
-                        false
-                      return (
-                        <button
-                          key={option.source}
-                          type="button"
-                          aria-pressed={checked}
-                          onClick={() =>
-                            toggleSourceForType(type, option.source)
-                          }
-                          className={`inline-flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                            checked
-                              ? 'text-[var(--color-primary)]'
-                              : 'border-gray-200 bg-white text-gray-500 hover:border-[var(--color-primary)] hover:text-gray-800 dark:border-white/10 dark:bg-neutral-900 dark:text-gray-400 dark:hover:text-gray-100'
-                          }`}
-                          style={
-                            checked
-                              ? {
-                                  backgroundColor:
-                                    'color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)',
-                                  borderColor:
-                                    'color-mix(in srgb, var(--color-primary, #3b82f6) 50%, transparent)',
-                                  boxShadow:
-                                    '0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 18%, transparent)',
-                                }
-                              : undefined
-                          }
-                        >
-                          <PlatformIcon
-                            platform={option.source}
-                            className="h-3.5 w-3.5"
-                          />
-                          <span>{option.source}</span>
-                          <span
-                            className="rounded bg-black/5 px-1.5 py-0.5 text-[10px] text-gray-500 dark:bg-white/10 dark:text-gray-300"
-                            style={
-                              checked
-                                ? {
-                                    backgroundColor:
-                                      'color-mix(in srgb, var(--color-primary, #3b82f6) 14%, transparent)',
-                                    color: 'var(--color-primary, #3b82f6)',
-                                  }
-                                : undefined
-                            }
-                          >
-                            {option.count}
-                          </span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        <ProviderItem
+          itemKey="music_source"
+          label={t.config.musicPlatform}
+          guide={renderGuide(g.modules.musicPlatform)}
+          value={musicSource}
+          onChange={(v) => updateUiFieldValue('music_source', v)}
+          options={[
+            {
+              value: 'netease',
+              label: t.config.neteaseMusic,
+              icon: <SiNeteasecloudmusic />,
+            },
+            {
+              value: 'qq',
+              label: t.config.qqMusic,
+              icon: <SiQqmusic />,
+            },
+          ]}
+          layout="horizontal"
+          disabled={!musicEnabled}
+        />
+        <InputItem
+          itemKey="music_playlist_id"
+          label={t.config.playlistId}
+          required
+          value={playlistId}
+          onChange={(v) => updateUiFieldValue('music_playlist_id', v)}
+          placeholder={
+            musicSource === 'netease'
+              ? t.config.neteasePlaylistExample
+              : t.config.qqPlaylistExample
+          }
+          hint={
+            musicSource === 'netease'
+              ? t.config.neteasePlaylistHint
+              : t.config.qqPlaylistHint
+          }
+          guide={renderGuide(g.modules.musicPlaylist)}
+          layout="vertical"
+          disabled={!musicEnabled}
+        />
+        <ButtonItem
+          itemKey="clear_music_cache"
+          label={t.config.cacheManagement}
+          description={t.config.clearMusicCacheDesc}
+          guide={renderGuide(g.modules.musicCache)}
+          buttonText={t.config.clearMusicCacheBtn}
+          buttonIcon={<FaTrash />}
+          variant="secondary"
+          layout="horizontal"
+          size="md"
+          onClick={handleClearMusicCache}
+        />
       </SettingGroup>
 
       <SettingGroup
         title={t.config.hitokotoTitle}
         description={t.config.hitokotoDesc}
+        guide={renderGuide(g.modules.hitokoto)}
         icon={<QuoteTitleIcon className="h-3.5 w-3.5" />}
       >
         <div className="space-y-3">
-          <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
+          <div className="settings-text-2 text-xs font-medium">
             {t.config.hitokotoSourceLabel}
           </div>
-          <div className="flex flex-wrap gap-2">
-            {HITOKOTO_SOURCE_IDS.map((sourceId) => {
-              const checked = hitokotoDraft.sourceId === sourceId
-              return (
-                <button
-                  key={sourceId}
-                  type="button"
-                  aria-pressed={checked}
-                  onClick={() => updateHitokotoConfig({ sourceId })}
-                  className={`inline-flex items-center rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
-                    checked
-                      ? 'text-[var(--color-primary)]'
-                      : 'border-gray-200 bg-white text-gray-500 hover:border-[var(--color-primary)] hover:text-gray-800 dark:border-white/10 dark:bg-neutral-900 dark:text-gray-400 dark:hover:text-gray-100'
-                  }`}
-                  style={
-                    checked
-                      ? {
-                          backgroundColor:
-                            'color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)',
-                          borderColor:
-                            'color-mix(in srgb, var(--color-primary, #3b82f6) 50%, transparent)',
-                          boxShadow:
-                            '0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 18%, transparent)',
-                        }
-                      : undefined
-                  }
-                >
-                  {hitokotoSourceLabels[sourceId]}
-                </button>
-              )
-            })}
-          </div>
+          <SegmentedControl
+            size="sm"
+            value={hitokotoDraft.sourceId}
+            options={HITOKOTO_SOURCE_IDS.map((sourceId) => ({
+              value: sourceId,
+              label: hitokotoSourceLabels[sourceId],
+            }))}
+            onChange={(sourceId) => updateHitokotoConfig({ sourceId })}
+            ariaLabel={t.config.hitokotoSourceLabel}
+          />
 
           {hitokotoDraft.sourceId === 'custom' && (
-            <div className={`${MODULE_SETTING_CARD_CLASS} space-y-1`}>
+            <div className="settings-inset-card space-y-1">
               <InputItem
                 itemKey="hitokoto-custom-url"
                 label={t.config.hitokotoCustomUrl}
                 hint={t.config.hitokotoCustomUrlHint}
+                guide={renderGuide(g.modules.hitokotoCustomUrl)}
                 value={hitokotoDraft.customUrl ?? ''}
                 onChange={(customUrl) => updateHitokotoConfig({ customUrl })}
                 placeholder={t.config.hitokotoCustomUrlPlaceholder}
@@ -826,6 +867,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                   itemKey="hitokoto-text-field"
                   label={t.config.hitokotoTextField}
                   hint={t.config.hitokotoTextFieldHint}
+                  guide={renderGuide(g.modules.hitokotoTextField)}
                   value={hitokotoDraft.customTextField ?? ''}
                   onChange={(customTextField) =>
                     updateHitokotoConfig({ customTextField })
@@ -839,6 +881,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                   itemKey="hitokoto-author-field"
                   label={t.config.hitokotoAuthorField}
                   hint={t.config.hitokotoAuthorFieldHint}
+                  guide={renderGuide(g.modules.hitokotoAuthorField)}
                   value={hitokotoDraft.customAuthorField ?? ''}
                   onChange={(customAuthorField) =>
                     updateHitokotoConfig({ customAuthorField })

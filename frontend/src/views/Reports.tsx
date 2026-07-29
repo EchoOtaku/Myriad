@@ -42,11 +42,13 @@ import {
   usePageReady,
   useReportsScheduler,
 } from '../hooks/animation'
+import { useHorizontalStripScroll } from '../hooks/useHorizontalStripScroll'
 import {
   useResolvedTitleColor,
   useTitleFont,
 } from '../hooks/useTitleFont'
 import { getCSRFToken } from '../utils/csrf'
+import { resolvePlatformId } from '../utils/platformId'
 import { notifyRecentActivityUpdated } from '../utils/recentActivity'
 import { REPORT_PLATFORM_IDS } from '../utils/reportCardVisuals'
 import { invalidateLatestReportCache } from '../utils/requestDedup'
@@ -205,33 +207,6 @@ const PLATFORMS = [
   },
 ]
 
-const PLATFORM_NAME_TO_ID: Record<string, string> = {
-  bilibili: 'bilibili',
-  steam: 'steam',
-  github: 'github',
-  bangumi: 'bangumi',
-  mal: 'mal',
-  myanimelist: 'mal',
-  'my anime list': 'mal',
-  x: 'x',
-  twitter: 'x',
-  'x (twitter)': 'x',
-  discord: 'discord',
-  xbox: 'xbox',
-  psn: 'psn',
-  playstation: 'psn',
-  'netease music': 'netease',
-  'netease cloud music': 'netease',
-  'netease cloudmusic': 'netease',
-  '网易云': 'netease',
-  '网易云音乐': 'netease',
-}
-
-function resolvePlatformId(platformName: string): string | null {
-  const normalizedName = platformName.trim().toLowerCase().replace(/\s+/g, ' ')
-  return PLATFORM_NAME_TO_ID[normalizedName] ?? null
-}
-
 function PlatformReportGeneratingSpin({
   className = '',
 }: {
@@ -300,6 +275,8 @@ export default function Reports() {
   const { currentFont, titleFontSize } = useTitleFont()
   // 自适应色对齐 Tapp 音乐播放器歌词：对比度推导
   const titleColorPrimary = useResolvedTitleColor('primary')
+  // 平台报告卡片条：滚轮横向滚动 + 鼠标拖拽
+  const platformStripScroll = useHorizontalStripScroll()
 
   const [loadingPlatform, setLoadingPlatform] = useState<string | null>(null)
   const [report, setReport] = useState<CrossPlatformReport | null>(null)
@@ -1081,15 +1058,23 @@ export default function Reports() {
                   </motion.div>
                   {hasEnabledPlatforms && (
                     <motion.div
-                      className={`${isStageMode ? 'hidden md:flex' : 'flex'} relative left-1/2 w-dvw max-w-none -translate-x-1/2 gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory pt-8 pb-12 -mt-7 -mb-11 pr-3 xs:pr-4 sm:pr-6 md:pr-8 ${REPORT_CAROUSEL_CSS_VARS}`}
+                      ref={platformStripScroll.ref}
+                      className={`${isStageMode ? 'hidden md:flex' : 'flex'} relative left-1/2 w-dvw max-w-none -translate-x-1/2 gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory touch-pan-x pt-8 pb-12 -mt-7 -mb-11 pr-3 xs:pr-4 sm:pr-6 md:pr-8 ${REPORT_CAROUSEL_CSS_VARS} ${platformStripScroll.className}`}
                       style={
                         {
                           paddingLeft:
                             'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
                           scrollPaddingLeft:
                             'calc(max(var(--report-page-padding), (100dvw - 80rem) / 2) + 0.5rem)',
+                          ...platformStripScroll.style,
                         } as React.CSSProperties
                       }
+                      onWheel={platformStripScroll.onWheel}
+                      onPointerDown={platformStripScroll.onPointerDown}
+                      onPointerMove={platformStripScroll.onPointerMove}
+                      onPointerUp={platformStripScroll.onPointerUp}
+                      onPointerCancel={platformStripScroll.onPointerCancel}
+                      onClickCapture={platformStripScroll.onClickCapture}
                       initial={{ opacity: 0 }}
                       animate={isPageReady ? { opacity: 1 } : { opacity: 0 }}
                       exit={{ opacity: 0 }}

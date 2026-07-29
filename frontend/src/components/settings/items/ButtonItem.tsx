@@ -1,12 +1,12 @@
 /**
- * 按钮设置项组件
+ * 按钮设置项组件 — 行标签壳 + SettingsButton
  */
 
 import type { ReactNode } from 'react'
 import type { ButtonSettingConfig } from '../types'
 import React, { useCallback, useState } from 'react'
-import { ButtonSpinner } from '../../Spinner'
 import { SettingItemWrapper } from './SettingItemWrapper'
+import { SettingsButton } from './SettingsButton'
 import './SettingItem.css'
 
 export interface ButtonItemProps extends Omit<ButtonSettingConfig, 'type'> {
@@ -24,6 +24,7 @@ export interface ButtonItemProps extends Omit<ButtonSettingConfig, 'type'> {
 export const ButtonItem = React.memo<ButtonItemProps>(
   ({
     label,
+    detail,
     description,
     hint,
     onClick,
@@ -57,19 +58,17 @@ export const ButtonItem = React.memo<ButtonItemProps>(
       }
     }, [onClick, disabled, loading, asyncAction])
 
-    const renderIcon = () => {
-      if (!buttonIcon) return null
-      if (typeof buttonIcon === 'string') {
-        return <span>{buttonIcon}</span>
-      }
-      return buttonIcon
-    }
+    const btnVariant =
+      variant === 'primary' || variant === 'danger' || variant === 'secondary'
+        ? variant
+        : 'secondary'
 
-    const variantClass = `btn-${variant}`
+    const btnSize = size === 'sm' || size === 'lg' ? size : 'md'
 
     return (
       <SettingItemWrapper
         label={label}
+        detail={detail}
         description={description}
         hint={hint}
         layout={layout}
@@ -79,22 +78,16 @@ export const ButtonItem = React.memo<ButtonItemProps>(
         contentRight={true}
       >
         <div className="setting-button-row">
-          <button
-            type="button"
+          <SettingsButton
+            variant={btnVariant}
+            size={btnSize}
             onClick={handleClick}
-            disabled={disabled || loading}
-            className={`btn-base ${variantClass}`}
-            aria-busy={loading || undefined}
+            disabled={disabled}
+            loading={loading}
+            icon={buttonIcon}
           >
-            {loading ? (
-              <ButtonSpinner />
-            ) : (
-              <>
-                {renderIcon()}
-                <span>{buttonText}</span>
-              </>
-            )}
-          </button>
+            {buttonText}
+          </SettingsButton>
           {result &&
             (renderResult ? (
               renderResult(result)

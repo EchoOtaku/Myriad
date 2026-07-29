@@ -1,9 +1,7 @@
-.notification-source-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
+/* 网格布局由 SettingGroupGrid 负责；此处仅保留通知页局部微调 */
 
-  /* 原生控件（checkbox 等）跟随主题 */
+.notification-source-grid {
+  /* 与表单主题控件一致 */
   color-scheme: light;
 }
 
@@ -13,51 +11,14 @@ html.dark .notification-source-grid {
 
 .notification-source-group {
   min-width: 0;
-  margin: 0;
 }
 
-.notification-switch-group {
+.notification-choice-group {
   margin-bottom: 0;
 }
 
-.notification-switch-group .checkbox-group-options {
-  align-items: stretch;
-}
-
-.notification-switch-group .checkbox-group-card {
-  flex: 1 1 13rem;
-  max-width: 18rem;
-}
-
-.notification-event-switches .checkbox-group-card,
-.notification-location-switches .checkbox-group-card {
-  flex-basis: 10rem;
-  max-width: 14rem;
-}
-
-/* 深色：卡片边框/底对比加强，避免与背景融在一起 */
-html.dark .notification-switch-group .checkbox-group-card {
-  border-color: rgb(75 85 99 / 70%);
-  background: rgb(31 41 55 / 55%);
-}
-
-html.dark .notification-switch-group .checkbox-group-card:hover {
-  border-color: rgb(107 114 128 / 75%);
-  background: rgb(31 41 55 / 75%);
-}
-
-html.dark .notification-switch-group .checkbox-group-card.active {
-  border-color: color-mix(in srgb, var(--color-primary, #818cf8) 50%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--color-primary, #818cf8) 14%,
-    rgb(31 41 55 / 70%)
-  );
-}
-
-@media (width <= 560px) {
-  .notification-switch-group .checkbox-group-card {
-    max-width: none;
-    width: 100%;
-  }
+/* 事件较多时允许换行，轨道仍贴合选项宽度 */
+.notification-event-choices.choice-segmented,
+.notification-choice-group .choice-segmented {
+  max-width: 100%;
 }

@@ -2,12 +2,10 @@ import React from 'react'
 
 export type MyriadConfigIconKind =
   | 'platforms'
-  | 'data'
   | 'ai'
   | 'ui'
   | 'music'
   | 'oauth'
-  | 'network'
   | 'permissions'
   | 'notifications'
   | 'modules'
@@ -15,6 +13,8 @@ export type MyriadConfigIconKind =
   | 'about'
   | 'users'
   | 'federation'
+  /** Arael Agent — same asset as notification source `agent` */
+  | 'agent'
 
 interface MyriadConfigIconProps {
   kind: MyriadConfigIconKind
@@ -27,6 +27,8 @@ const SHARED_CONFIG_ICON_ASSETS: Partial<Record<MyriadConfigIconKind, string>> =
     music: '/icons/dynamic/music.webp',
     // Same icon as notification center federation source
     federation: '/icons/notifications/aro.webp',
+    // Same icon as notification center Arael / agent source
+    agent: '/icons/notifications/arael.webp',
   }
 
 /**

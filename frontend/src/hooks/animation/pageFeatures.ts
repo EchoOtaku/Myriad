@@ -49,7 +49,6 @@ export interface PageFeatureConfig {
  * | reports         | Visibility, Interval, RAF, DOMBatch           |
  * | life            | Visibility                                    |
  * | config          | Timeout                                       |
- * | data-management | 基础（无特殊需求）                              |
  * | login           | Timeout                                       |
  * | details         | 基础（无特殊需求）                              |
  * | setup           | Timeout                                       |
@@ -79,9 +78,6 @@ export const PAGE_FEATURES: Record<string, number> = {
 
   // 配置页：防抖保存(Timeout)
   config: Feature.Timeout,
-
-  // 数据管理：简单页面，只需基础动画
-  'data-management': 0,
 
   // 登录页：延迟跳转(Timeout)
   login: Feature.Timeout,

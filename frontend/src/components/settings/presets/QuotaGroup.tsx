@@ -4,9 +4,7 @@
  */
 
 import type { NumberGroupOption } from '../items/NumberGroupItem'
-
 import type { QuotaGroupConfig } from '../types'
-
 import React, { useCallback, useMemo } from 'react'
 import { NumberGroupItem } from '../items/NumberGroupItem'
 import './presets.css'
@@ -20,6 +18,7 @@ export const QuotaGroup: React.FC<QuotaGroupProps> = ({
   values,
   onChange,
   disabled = false,
+  loading = false,
 }) => {
   const handleChange = useCallback(
     (key: string, value: number) => {
@@ -49,7 +48,7 @@ export const QuotaGroup: React.FC<QuotaGroupProps> = ({
       description={description}
       options={options}
       onChange={handleChange}
-      disabled={disabled}
+      disabled={disabled || loading}
       className="quota-number-group"
     />
   )

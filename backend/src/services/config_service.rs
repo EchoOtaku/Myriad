@@ -93,6 +93,13 @@ impl ConfigService {
         }
 
         // AI Lite 模型配置
+        if let Some(v) = map.get("lite_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.lite_enabled = b;
+            } else if let Some(s) = v.as_str() {
+                config.lite_enabled = s == "true";
+            }
+        }
         if let Some(v) = map.get("lite_ai_provider") {
             if let Some(s) = v.as_str() {
                 config.lite_ai_provider = s.to_string();
@@ -413,18 +420,15 @@ impl ConfigService {
                 config.ai_image_model = s.to_string();
             }
         }
-        if let Some(v) = map.get("ai_image_width") {
-            if let Some(n) = v.as_i64() {
-                config.ai_image_width = n as i32;
-            }
-        }
-        if let Some(v) = map.get("ai_image_height") {
-            if let Some(n) = v.as_i64() {
-                config.ai_image_height = n as i32;
-            }
-        }
         if let Some(v) = map.get("ai_image_openai_api_key") {
             config.ai_image_openai_api_key = v.as_str().map(str::to_string);
+        }
+        if let Some(v) = map.get("ai_image_openai_base_url") {
+            if let Some(s) = v.as_str() {
+                if !s.trim().is_empty() {
+                    config.ai_image_openai_base_url = s.to_string();
+                }
+            }
         }
         if let Some(v) = map.get("ai_image_openrouter_api_key") {
             config.ai_image_openrouter_api_key = v.as_str().map(str::to_string);

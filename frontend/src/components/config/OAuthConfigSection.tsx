@@ -2,10 +2,9 @@
  * OAuth 配置区块（重构版）
  *
  * 设计：
- * - 顶部：回调 URL 显示器（动态根据 slug）+ 注册开关
- * - 中部：已配置的 providers 卡片列表（GitHub 也是其中一种，kind="github"）
- * - 底部：「+ 添加登录方式」→ preset 选择器 → 自动填 discovery/scopes/icon，
- *   用户只补 client_id/secret
+ * - 右上角页级动作：「添加登录方式」→ preset 选择器
+ * - 列表：已配置的 providers 卡片（GitHub 也是其中一种，kind="github"）
+ * - 选 preset 后自动填 discovery/scopes/icon，用户只补 client_id/secret
  *
  * 详见 docs/oauth-refactor-plan.md + oauthPresets.ts
  */
@@ -15,7 +14,6 @@ import type { OAuthProviderEntry } from '../../utils/oauthSettings'
 import {
   FaCheck,
   FaClipboard,
-  FaExternalLinkAlt,
   FaGithub,
   FaPlus,
   FaTrash,
@@ -29,27 +27,17 @@ import {
 } from '../../utils/oauthIcons'
 import OAuthIconImage from '../OAuthIconImage'
 import {
-  InfoCard,
+  CheckboxCard,
   InputItem,
   SettingSection,
+  SettingsButton,
+  SetupFlow,
   ToggleSwitch,
+  useSettingGuide,
 } from '../settings'
 import { Spinner } from '../Spinner'
 import { findPreset, OAUTH_PRESETS } from './oauthPresets'
-
-/** 把字符串中反引号 `foo` 包裹的片段渲染为 <code>foo</code> */
-function renderHint(text: string): React.ReactNode {
-  const parts = text.split(/`([^`]+)`/g)
-  return parts.map((part, i) =>
-    i % 2 === 1 ? (
-      <code key={i} className="inline-code">
-        {part}
-      </code>
-    ) : (
-      <React.Fragment key={i}>{part}</React.Fragment>
-    ),
-  )
-}
+import { getOAuthSetupGuideForEntry } from './oauthSetupGuides'
 
 interface ConfigField {
   key: string
@@ -86,6 +74,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
   onProvidersChange,
 }) => {
   const { t } = useI18n()
+  const { catalog: g, renderGuide } = useSettingGuide()
 
   const getFieldValue = useCallback(
     (key: string) => {
@@ -162,41 +151,42 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
       title={title}
       icon={icon}
       description={description}
+      detail={
+        !baseUrl ? (
+          <>
+            <strong>{t.config.callbackUrlNotConfigured}</strong>
+            <br />
+            {t.config.oauthHowToHint}
+            {description ? (
+              <>
+                <br />
+                <br />
+                {description}
+              </>
+            ) : null}
+          </>
+        ) : undefined
+      }
+      guide={renderGuide(g.oauth.section)}
+      detailTone={!baseUrl ? 'warning' : 'default'}
       sectionId={sectionId}
-    >
-      {!baseUrl && (
-        <InfoCard
-          title={t.config.oauthGuideTitle}
-          content={
-            <>
-              <strong>{t.config.callbackUrlNotConfigured}</strong>
-              <br />
-              {t.config.oauthHowToHint}
-            </>
-          }
-          className="info-card-spaced"
+      headerActions={
+        <CheckboxCard
+          variant="action"
+          tone="primary"
+          label={t.config.oauthAddLoginMethod}
+          description={t.config.oauthPickPreset}
+          icon={<FaPlus />}
+          checked={picker}
+          onChange={() => handleTogglePicker()}
+          title={t.config.oauthPickPreset}
+          className="setting-section-header-action"
+          aria-expanded={picker}
         />
-      )}
-
-      {/* providers 列表（本地注册开关已移至「用户管理」区块） */}
+      }
+    >
+      {/* 登录方式列表（与 SettingSection 标题重复，不再套一层子分类） */}
       <div className="oidc-section">
-        <div className="oidc-section-head">
-          <div className="oidc-section-head-text">
-            <h3 className="oidc-section-title">
-              {t.config.oauthProvidersTitle}
-            </h3>
-            <p className="oidc-section-desc">{t.config.oauthProvidersDesc}</p>
-          </div>
-          <button
-            type="button"
-            className="btn-base btn-secondary btn-sm"
-            onClick={handleTogglePicker}
-          >
-            <FaPlus />
-            {t.config.oauthAddLoginMethod}
-          </button>
-        </div>
-
         {picker && (
           <PresetPicker
             presets={availablePresets}
@@ -233,7 +223,6 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
             t={t}
           />
         ))}
-
       </div>
     </SettingSection>
   )
@@ -289,11 +278,12 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     setTimeout(setCopiedData, 2000, false)
   }
 
-  // preset 提示（按 slug 匹配 — 比如 slug='github-2' 也算 github 类型）
-  const preset = OAUTH_PRESETS.find(
-    (p) =>
-      p.kind === entry.kind && entry.slug.startsWith(p.defaultSlug || p.id),
-  )
+  const setupGuide = getOAuthSetupGuideForEntry(entry, t.config, {
+    hasCallback: Boolean(callbackUrl),
+    copyCallback: () => {
+      void copy()
+    },
+  })
 
   return (
     <div className={`oidc-provider-card${entry.enabled ? '' : ' disabled'}`}>
@@ -319,16 +309,22 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
               aria-label={t.config.oidcEnabled}
             />
           </div>
-          <button
-            type="button"
-            className="btn-base btn-danger btn-sm"
+          <SettingsButton
+            variant="danger"
+            size="sm"
+            icon={<FaTrash />}
             onClick={onRemove}
             aria-label={t.config.oidcDelete}
-          >
-            <FaTrash />
-          </button>
+          />
         </div>
       </div>
+
+      <SetupFlow
+        title={setupGuide.title}
+        optionalLabel={setupGuide.optionalLabel}
+        steps={setupGuide.steps}
+        className="oidc-provider-setup-flow"
+      />
 
       {/* 回调 URL — 用户复制粘到 provider 后台 */}
       {callbackUrl && (
@@ -365,34 +361,6 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
             {copiedData ? <FaCheck /> : <FaClipboard />}
           </button>
         </div>
-      )}
-
-      {/* preset 提示 — i18n 翻译 + 反引号片段渲染为 <code> */}
-      {preset?.hintKey && (
-        <InfoCard
-          content={
-            <>
-              {renderHint(
-                (t.config as Record<string, string>)[preset.hintKey] ?? '',
-              )}
-              {preset.docs_url && (
-                <>
-                  {' '}
-                  <a
-                    href={preset.docs_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="oidc-docs-link"
-                  >
-                    {t.config.oauthOpenDocs}
-                    <FaExternalLinkAlt />
-                  </a>
-                </>
-              )}
-            </>
-          }
-          className="info-card-spaced"
-        />
       )}
 
       <div className="oidc-provider-fields">

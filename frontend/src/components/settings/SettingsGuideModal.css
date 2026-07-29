@@ -1,0 +1,129 @@
+/**
+ * 选项指南弹窗 — 精简：遮罩 + 标题栏 + 正文
+ */
+
+.settings-guide-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10040;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem
+    max(1rem, env(safe-area-inset-bottom));
+  background: rgb(0 0 0 / 40%);
+  overflow-y: auto;
+}
+
+html.dark .settings-guide-modal-overlay {
+  background: rgb(0 0 0 / 55%);
+}
+
+/* 指南弹窗：浮层壳 → 低中透模糊 */
+.settings-guide-modal {
+  position: relative;
+  width: 100%;
+  max-width: 32rem;
+  max-height: min(80vh, 36rem);
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.875rem;
+  background: var(--cfg-frost-elevated-bg);
+  backdrop-filter: var(--cfg-frost-filter);
+  border: 1px solid var(--cfg-frost-border);
+  box-shadow: 0 20px 40px -16px rgb(0 0 0 / 22%);
+  overflow: hidden;
+}
+
+html.dark .settings-guide-modal {
+  background: var(--cfg-frost-elevated-bg);
+  border-color: var(--cfg-frost-border);
+  box-shadow: 0 20px 40px -16px rgb(0 0 0 / 55%);
+}
+
+.settings-guide-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid rgb(229 231 235 / 90%);
+  flex-shrink: 0;
+}
+
+html.dark .settings-guide-modal-header {
+  border-bottom-color: rgb(63 63 70 / 80%);
+}
+
+.settings-guide-modal-title {
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--cfg-text-1);
+  word-break: break-word;
+}
+
+html.dark .settings-guide-modal-title {
+  color: var(--cfg-text-1);
+}
+
+.settings-guide-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--cfg-text-3);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.settings-guide-modal-close:hover,
+.settings-guide-modal-close:focus-visible {
+  color: var(--cfg-text-2);
+  background: rgb(0 0 0 / 5%);
+  outline: none;
+}
+
+html.dark .settings-guide-modal-close {
+  color: var(--cfg-text-3);
+}
+
+html.dark .settings-guide-modal-close:hover,
+html.dark .settings-guide-modal-close:focus-visible {
+  color: var(--cfg-text-1);
+  background: rgb(255 255 255 / 8%);
+}
+
+.settings-guide-modal-body {
+  padding: 0.875rem 1rem 1.125rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--cfg-text-2);
+  -webkit-overflow-scrolling: touch;
+}
+
+html.dark .settings-guide-modal-body {
+  color: var(--cfg-text-2);
+}
+
+.settings-guide-modal-body > p {
+  margin: 0 0 0.75rem;
+}
+
+.settings-guide-modal-body > p:last-child {
+  margin-bottom: 0;
+}

@@ -12,6 +12,7 @@ import type {
   PlatformAutoFetchConfig,
 } from './config'
 import type { PermissionConfigValues } from './config/PermissionsConfigSection'
+import type { SectionSwitchDirection } from './settings'
 import type { ToastType } from './Toast'
 
 import {
@@ -19,11 +20,12 @@ import {
   FaSearch,
   FaStar,
   FaTimes,
-  LuGripVertical,
+  LuChevronLeft,
+  LuChevronRight,
+  LuRefreshCw,
 } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { API_URL } from '../config'
 
 import { useAuth } from '../contexts/AuthContext'
@@ -72,28 +74,41 @@ import {
   fetchReportSettings,
   updateReportSettings,
 } from '../utils/reportSettings'
+import { deepEqual } from '../utils/deepEqual'
 import { clearDedupCache } from '../utils/requestDedup'
 import {
   AboutConfigSection,
   AdvancedConfigSection,
   AiConfigSection,
+  areFederationPoliciesEqual,
   areLibrarySourcePreferencesEqual,
+  DEFAULT_FEDERATION_POLICY,
   DEFAULT_LIBRARY_SOURCE_PREFERENCES,
   FederationConfigSection,
+  federationPolicyFromApi,
+  federationPolicyToUpdateRequest,
+  hasBangumiCredential,
+  isBangumiPlatform,
   ModuleConfigSection,
-  MusicConfigSection,
-  NetworkConfigSection,
   normalizeLibraryPreferences,
   NotificationConfigSection,
   OAuthConfigSection,
   PermissionsConfigSection,
-  PlatformAutoRefreshSettings,
+  PlatformsConfigSection,
+  sanitizeMaskedFieldValue,
   UiConfigSection,
   UsersConfigSection,
 } from './config'
+import type { FederationPolicyDraft } from './config'
+import { federationApi } from '../services/federationApi'
 import MyriadConfigIcon from './config/MyriadConfigIcon'
-import PlatformIcon from './PlatformIcon'
-import { InputItem, ToggleSwitch } from './settings'
+import {
+  SectionSwitch,
+  SETTINGS_PAGE_MOTION,
+  SETTINGS_SIDEBAR_MOTION,
+  SettingsButton,
+  SettingsPageActionsProvider,
+} from './settings'
 import { Spinner } from './Spinner'
 import Toast from './Toast'
 import './ConfigForm.css'
@@ -153,6 +168,8 @@ interface Config {
 interface QuickAccessItem {
   id: string
   label: string
+  /** Page header description (source of truth; not from search aliases). */
+  description: string
   icon: React.ReactNode
   section: string
   subsection?: string
@@ -203,58 +220,59 @@ const DEFAULT_AUTO_FETCH_CONFIG: PlatformAutoFetchConfig = {
   interval_hours: 24,
 }
 
+/** Retired config nav ids remapped when restoring favorites / deep links / search. */
+const LEGACY_CONFIG_SECTION_MAP: Record<string, string> = {
+  music: 'modules',
+  /** Standalone data-management page removed; alias lands on platforms list. */
+  data: 'platforms',
+  network: 'advanced',
+}
+
 function loadConfigFavorites(): string[] {
   if (typeof window === 'undefined') return DEFAULT_CONFIG_FAVORITES
   try {
     const saved = localStorage.getItem('config_favorites')
     if (!saved) return DEFAULT_CONFIG_FAVORITES
     const parsed: unknown = JSON.parse(saved)
-    return Array.isArray(parsed) &&
-      parsed.every((item) => typeof item === 'string')
-      ? parsed
-      : DEFAULT_CONFIG_FAVORITES
+    if (!Array.isArray(parsed) || !parsed.every((item) => typeof item === 'string')) {
+      return DEFAULT_CONFIG_FAVORITES
+    }
+    return [
+      ...new Set(
+        (parsed as string[]).map((id) => LEGACY_CONFIG_SECTION_MAP[id] ?? id),
+      ),
+    ]
   } catch {
     return DEFAULT_CONFIG_FAVORITES
   }
 }
 
-function isMaskedValue(value: string) {
-  return value.includes('••') || value.includes('**') || value === '********'
-}
-
-function hasFieldValue(field?: ConfigField) {
-  return Boolean(field && String(field.value).trim().length > 0)
-}
-
-function isBangumiPlatform(platform: PlatformConfig) {
-  return platform.name.toLowerCase() === 'bangumi'
-}
-
-function hasBangumiCredential(platform: PlatformConfig) {
-  const username = platform.config_fields.find(
-    (field) => field.key === 'username',
-  )
-  const accessToken = platform.config_fields.find(
-    (field) => field.key === 'access_token',
-  )
-
-  return hasFieldValue(username) || hasFieldValue(accessToken)
-}
-
 // 优化：提取为独立的 memo 组件避免不必要的重渲染
-interface QuickAccessCardProps {
+interface ConfigNavItemProps {
   item: QuickAccessItem
   isActive: boolean
   isFavorite: boolean
-  onCardClick: (section: string) => void
+  /** 'all' 组里已收藏的行在桌面端由 CSS 隐藏（收藏组已列出），移动端滑轨仍需要它 */
+  group: 'all' | 'favorites'
+  onSelect: (section: string) => void
   onToggleFavorite: (id: string) => void
 }
 
-const QuickAccessCard = React.memo<QuickAccessCardProps>(
-  ({ item, isActive, isFavorite, onCardClick, onToggleFavorite }) => {
-    const handleCardClick = React.useCallback(() => {
-      onCardClick(item.section)
-    }, [onCardClick, item.section])
+/** 侧边栏一行：图标 + 名称 + 收藏星（整行可点，星单独可点） */
+const ConfigNavItem = React.memo<ConfigNavItemProps>(
+  ({ item, isActive, isFavorite, group, onSelect, onToggleFavorite }) => {
+    const handleSelect = React.useCallback(() => {
+      onSelect(item.section)
+    }, [onSelect, item.section])
+
+    const handleKeyDown = React.useCallback(
+      (e: React.KeyboardEvent) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return
+        e.preventDefault()
+        handleSelect()
+      },
+      [handleSelect],
+    )
 
     const handleFavoriteClick = React.useCallback(
       (e: React.MouseEvent) => {
@@ -266,27 +284,38 @@ const QuickAccessCard = React.memo<QuickAccessCardProps>(
 
     return (
       <div
-        onClick={handleCardClick}
-        className={`quick-access-card ${isActive ? 'active' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-current={isActive ? 'page' : undefined}
+        title={item.description}
+        onClick={handleSelect}
+        onKeyDown={handleKeyDown}
+        className={`config-nav-item${isActive ? ' is-active' : ''}${
+          group === 'all' && isFavorite ? ' is-pinned' : ''
+        }`}
       >
-        <span className="card-icon">{item.icon}</span>
-        <span className="card-label">{item.label}</span>
+        <span className="config-nav-item-icon">{item.icon}</span>
+        <span className="config-nav-item-label">{item.label}</span>
         <button
+          type="button"
           onClick={handleFavoriteClick}
-          className={`favorite-btn ${isFavorite ? 'active' : ''}`}
+          aria-pressed={isFavorite}
+          className={`config-nav-item-star${isFavorite ? ' is-active' : ''}`}
           aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
         >
           <FaStar />
         </button>
+        <span className="config-nav-item-chevron" aria-hidden>
+          <LuChevronRight size={16} />
+        </span>
       </div>
     )
   },
 )
 
-QuickAccessCard.displayName = 'QuickAccessCard'
+ConfigNavItem.displayName = 'ConfigNavItem'
 
 const ModernConfigForm: React.FC = () => {
-  const navigate = useNavigate()
   const { t } = useI18n()
   const { user, isAdmin } = useAuth()
   const [config, setConfig] = useState<Config | null>(null)
@@ -296,13 +325,17 @@ const ModernConfigForm: React.FC = () => {
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<ToastType>('info')
   const [activeSection, setActiveSection] = useState<string>('platforms')
-  const [platformModalOpen, setPlatformModalOpen] = useState<string | null>(
-    null,
-  )
-  // 🆕 平台拖拽排序状态：仅在按住拖拽手柄时才允许拖动
-  const [dragIndex, setDragIndex] = useState<number | null>(null)
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
-  const [dragArmedIndex, setDragArmedIndex] = useState<number | null>(null)
+  /** 分类切换动效方向（按侧边栏顺序） */
+  const [sectionDir, setSectionDir] =
+    useState<SectionSwitchDirection>('forward')
+  /**
+   * 移动端分层：nav = 一级分类列表；section = 二级内容（平台详情为三级，在区块内）。
+   * 桌面端双栏同显，此状态仅影响 <1024px。
+   */
+  const [mobilePane, setMobilePane] = useState<'nav' | 'section'>('nav')
+  const [isMobileLayout, setIsMobileLayout] = useState(false)
+  /** 外部深链打开某平台二级页（如 Discord OAuth 回调） */
+  const [platformFocus, setPlatformFocus] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [favorites, setFavorites] = useState<string[]>(loadConfigFavorites)
   const [savedFavorites, setSavedFavorites] =
@@ -354,6 +387,10 @@ const ModernConfigForm: React.FC = () => {
     useState<ReportSettings>(DEFAULT_REPORT_SETTINGS)
   const [savedReportSettings, setSavedReportSettings] =
     useState<ReportSettings>(DEFAULT_REPORT_SETTINGS)
+  const [federationPolicyDraft, setFederationPolicyDraft] =
+    useState<FederationPolicyDraft>(DEFAULT_FEDERATION_POLICY)
+  const [savedFederationPolicy, setSavedFederationPolicy] =
+    useState<FederationPolicyDraft>(DEFAULT_FEDERATION_POLICY)
 
   const showMessage = useCallback(
     (nextMessage: string, nextType: ToastType = 'info', duration = 3000) => {
@@ -452,6 +489,25 @@ const ModernConfigForm: React.FC = () => {
     }
   }, [showMessage, t])
 
+  const loadFederationPolicy = useCallback(async () => {
+    if (!isAdmin) return
+    try {
+      const p = await federationApi.getTrustPolicy()
+      const draft = federationPolicyFromApi(p)
+      setFederationPolicyDraft(draft)
+      setSavedFederationPolicy(draft)
+    } catch (error) {
+      console.error('Failed to load federation trust policy:', error)
+    }
+  }, [isAdmin])
+
+  const updateFederationPolicy = useCallback(
+    (patch: Partial<FederationPolicyDraft>) => {
+      setFederationPolicyDraft((prev) => ({ ...prev, ...patch }))
+    },
+    [],
+  )
+
   const loadOAuthSettings = useCallback(async () => {
     try {
       setOAuthLoading(true)
@@ -465,47 +521,6 @@ const ModernConfigForm: React.FC = () => {
       setOAuthLoading(false)
     }
   }, [showMessage, t])
-
-  const getPlatformDescription = useCallback(
-    (platform: PlatformConfig) => {
-      const descMap: Record<string, string> = {
-        github: t.config.platformDescGithub,
-        bilibili: t.config.platformDescBilibili,
-        bangumi: t.config.platformDescBangumi,
-        steam: t.config.platformDescSteam,
-        'netease music': t.config.platformDescNetease,
-        x: t.config.platformDescX,
-        discord: t.config.platformDescDiscord,
-        myanimelist: t.config.platformDescMal,
-      }
-      return descMap[platform.name.toLowerCase()] || platform.description
-    },
-    [t],
-  )
-
-  const isPlatformConfigured = useCallback((platform: PlatformConfig) => {
-    if (!platform.config_fields || platform.config_fields.length === 0)
-      return true
-
-    if (isBangumiPlatform(platform)) {
-      return hasBangumiCredential(platform)
-    }
-
-    // Discord 一键授权后 has_token=true；掩码字段也算已配置
-    if (platform.name.toLowerCase() === 'discord') {
-      if (platform.has_token) return true
-    }
-
-    return platform.config_fields.every((field) => {
-      if (!field.required) return true
-      return field.value && String(field.value).trim().length > 0
-    })
-  }, [])
-
-  const connectDiscordOAuth = useCallback(() => {
-    // 与登录/绑定一致：浏览器导航，携带 auth_token cookie
-    window.location.href = `${API_URL}/api/platforms/discord/oauth/start`
-  }, [])
 
   // 获取翻译后的字段标签（覆盖后端返回的标签）
   const getFieldLabel = useCallback(
@@ -543,34 +558,6 @@ const ModernConfigForm: React.FC = () => {
     [t],
   )
 
-  const getPlatformFieldLabel = useCallback(
-    (platform: PlatformConfig, field: ConfigField): string => {
-      if (!isBangumiPlatform(platform)) return field.label
-
-      const labels: Record<string, string> = {
-        username: t.config.bangumiUsernameLabel,
-        access_token: t.config.bangumiAccessTokenLabel,
-        user_agent: t.config.bangumiUserAgentLabel,
-      }
-      return labels[field.key] || field.label
-    },
-    [t],
-  )
-
-  const getPlatformFieldPlaceholder = useCallback(
-    (platform: PlatformConfig, field: ConfigField): string => {
-      if (!isBangumiPlatform(platform)) return field.placeholder
-
-      const placeholders: Record<string, string> = {
-        username: t.config.bangumiUsernamePlaceholder,
-        access_token: t.config.bangumiAccessTokenPlaceholder,
-        user_agent: t.config.bangumiUserAgentPlaceholder,
-      }
-      return placeholders[field.key] || field.placeholder
-    },
-    [t],
-  )
-
   // 使用防抖优化搜索性能 - 避免频繁搜索
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
 
@@ -580,50 +567,37 @@ const ModernConfigForm: React.FC = () => {
       {
         id: 'platforms',
         label: t.config.platforms,
+        description: t.config.platformsDesc,
         icon: <MyriadConfigIcon kind="platforms" />,
         section: 'platforms',
       },
       {
-        id: 'data',
-        label: t.config.data,
-        icon: <MyriadConfigIcon kind="data" />,
-        section: 'data',
-      },
-      {
         id: 'ai',
         label: t.config.ai,
+        description: t.config.aiDesc,
         icon: <MyriadConfigIcon kind="ai" />,
         section: 'ai',
       },
       {
         id: 'ui',
         label: t.config.basic,
+        description: t.config.basicDesc,
         icon: <MyriadConfigIcon kind="ui" />,
         section: 'ui',
       },
       {
-        id: 'music',
-        label: t.config.music,
-        icon: <MyriadConfigIcon kind="music" />,
-        section: 'music',
-      },
-      {
         id: 'oauth',
         label: t.config.oauth,
+        description: t.config.oauthDesc,
         icon: <MyriadConfigIcon kind="oauth" />,
         section: 'oauth',
-      },
-      {
-        id: 'network',
-        label: t.config.network,
-        icon: <MyriadConfigIcon kind="network" />,
-        section: 'network',
       },
       ...(isAdmin
         ? [
             {
               id: 'federation',
               label: t.config.federation,
+              description: t.config.federationDesc,
               icon: <MyriadConfigIcon kind="federation" />,
               section: 'federation',
             },
@@ -632,36 +606,42 @@ const ModernConfigForm: React.FC = () => {
       {
         id: 'permissions',
         label: t.config.permissions,
+        description: t.config.permissionsDesc,
         icon: <MyriadConfigIcon kind="permissions" />,
         section: 'permissions',
       },
       {
         id: 'users',
         label: t.config.users,
+        description: t.config.usersDesc,
         icon: <MyriadConfigIcon kind="users" />,
         section: 'users',
       },
       {
         id: 'notifications',
         label: t.notificationCenter.title,
+        description: t.notificationCenter.settingsDesc,
         icon: <MyriadConfigIcon kind="notifications" />,
         section: 'notifications',
       },
       {
         id: 'modules',
         label: t.config.moduleSettings,
+        description: t.config.moduleSettingsDesc,
         icon: <MyriadConfigIcon kind="modules" />,
         section: 'modules',
       },
       {
         id: 'advanced',
         label: t.config.advanced,
+        description: t.config.advancedDesc,
         icon: <MyriadConfigIcon kind="advanced" />,
         section: 'advanced',
       },
       {
         id: 'about',
         label: t.config.about,
+        description: t.config.aboutDesc,
         icon: <MyriadConfigIcon kind="about" />,
         section: 'about',
       },
@@ -699,6 +679,26 @@ const ModernConfigForm: React.FC = () => {
         'netease',
         'myanimelist',
         'mal',
+        '数据管理',
+        '缓存',
+        '刷新',
+      ],
+    })
+
+    // 数据管理已迁入各平台二级页，搜索结果回到平台列表。
+    items.push({
+      type: 'section',
+      section: 'platforms',
+      title: t.config.data,
+      description: t.config.dataDesc,
+      keywords: [
+        '数据管理',
+        'data',
+        '缓存',
+        'cache',
+        '过滤',
+        '智能过滤',
+        '刷新',
       ],
     })
 
@@ -738,7 +738,7 @@ const ModernConfigForm: React.FC = () => {
       ],
     })
 
-    // UI配置
+    // UI配置（含站点地址 / 更换域名）
     items.push({
       type: 'section',
       section: 'ui',
@@ -753,6 +753,12 @@ const ModernConfigForm: React.FC = () => {
         '样式',
         'theme',
         'url',
+        'domain',
+        '域名',
+        '更换域名',
+        'base_url',
+        'cors',
+        'origin',
       ],
     })
 
@@ -765,21 +771,20 @@ const ModernConfigForm: React.FC = () => {
       keywords: ['oauth', 'github', '登录', 'auth', '认证'],
     })
 
-    // 音乐播放器
+    // 搜索别名：跳转到已并入的正式页（type=alias，不得用于页头说明）
     items.push({
-      type: 'section',
-      section: 'music',
+      type: 'alias',
+      section: 'modules',
       title: t.config.music,
       description: t.config.musicDesc,
       keywords: ['音乐', 'music', '歌单', '播放器', '网易云', 'qq音乐'],
     })
 
-    // 网络代理
     items.push({
-      type: 'section',
-      section: 'network',
-      title: t.config.network || '网络代理',
-      description: t.config.networkDesc || '配置网络代理以访问外部服务',
+      type: 'alias',
+      section: 'advanced',
+      title: t.config.network,
+      description: t.config.networkDesc,
       keywords: [
         'proxy',
         '代理',
@@ -790,6 +795,7 @@ const ModernConfigForm: React.FC = () => {
         '镜像',
         'mirror',
         'socks',
+        'network',
       ],
     })
 
@@ -819,7 +825,18 @@ const ModernConfigForm: React.FC = () => {
       section: 'advanced',
       title: t.config.advanced,
       description: t.config.advancedDesc,
-      keywords: ['advanced', '高级', 'danger', 'reset', '重置', '危险'],
+      keywords: [
+        'advanced',
+        '高级',
+        'danger',
+        'reset',
+        '重置',
+        '危险',
+        'proxy',
+        '代理',
+        '导入',
+        '导出',
+      ],
     })
 
     // 关于（含 updater 管理内联面板）
@@ -963,19 +980,51 @@ const ModernConfigForm: React.FC = () => {
     })
   }, [])
 
+  // 移动端断点与桌面 CSS（1024px）对齐
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+    const mq = window.matchMedia('(max-width: 1023px)')
+    const sync = () => setIsMobileLayout(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
   // 处理节切换
   const handleSectionChange = React.useCallback(
     (section: string) => {
-      // 如果是数据管理，直接跳转到专门页面
-      if (section === 'data') {
-        navigate('/data-management')
-        return
-      }
-      setActiveSection(section)
+      const next = LEGACY_CONFIG_SECTION_MAP[section] ?? section
+      // 切换方向按侧边栏里的先后顺序：往下选 = forward，往上 = back
+      const order = quickAccessItems.map((item) => item.section)
+      const from = order.indexOf(activeSection)
+      const to = order.indexOf(next)
+      setSectionDir(from >= 0 && to >= 0 && to < from ? 'back' : 'forward')
+
+      setActiveSection(next)
       setSearchQuery('')
+      setPlatformFocus(null)
+      // 移动端进入二级内容页
+      setMobilePane('section')
     },
-    [navigate],
+    [quickAccessItems, activeSection],
   )
+
+  /**
+   * 换分类 = 换页：滚动位置归零。
+   * 在新分类换上的那一帧做（旧页已淡出），所以看不到跳动；
+   * 不归零的话，从长分类滚到一半切到短分类，粘顶侧栏会突然弹位。
+   * 用 'auto' 覆盖全局 scroll-behavior: smooth——切换过程中再来一段平滑滚动只会更乱。
+   */
+  const scrollSettingsToTop = React.useCallback(() => {
+    if (typeof window === 'undefined') return
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }, [])
+
+  const handleMobileBackToNav = React.useCallback(() => {
+    setMobilePane('nav')
+    setPlatformFocus(null)
+    scrollSettingsToTop()
+  }, [scrollSettingsToTop])
 
   const notifyDirtyState = React.useCallback((dirty: boolean) => {
     window.dispatchEvent(
@@ -1081,8 +1130,7 @@ const ModernConfigForm: React.FC = () => {
     }
 
     const hasConfigChanges =
-      Boolean(initialConfig) &&
-      JSON.stringify(config) !== JSON.stringify(initialConfig)
+      Boolean(initialConfig) && !deepEqual(config, initialConfig)
     const hasLibrarySourceChanges = !areLibrarySourcePreferencesEqual(
       librarySourceDraft,
       savedLibrarySourcePreferences,
@@ -1099,8 +1147,10 @@ const ModernConfigForm: React.FC = () => {
       reportSettingsDraft,
       savedReportSettings,
     )
-    const hasPermissionChanges =
-      JSON.stringify(permissionConfig) !== JSON.stringify(savedPermissionConfig)
+    const hasPermissionChanges = !deepEqual(
+      permissionConfig,
+      savedPermissionConfig,
+    )
     const hasNotificationChanges = !areNotificationPreferencesEqual(
       notificationDraft,
       savedNotificationPreferences,
@@ -1109,8 +1159,10 @@ const ModernConfigForm: React.FC = () => {
       oauthDraft,
       savedOAuthSettings,
     )
-    const hasFavoriteChanges =
-      JSON.stringify(favorites) !== JSON.stringify(savedFavorites)
+    const hasFederationChanges =
+      isAdmin &&
+      !areFederationPoliciesEqual(federationPolicyDraft, savedFederationPolicy)
+    const hasFavoriteChanges = !deepEqual(favorites, savedFavorites)
 
     if (
       !hasConfigChanges &&
@@ -1121,6 +1173,7 @@ const ModernConfigForm: React.FC = () => {
       !hasPermissionChanges &&
       !hasNotificationChanges &&
       !hasOAuthChanges &&
+      !hasFederationChanges &&
       !hasFavoriteChanges
     ) {
       notifyDirtyState(false)
@@ -1238,6 +1291,16 @@ const ModernConfigForm: React.FC = () => {
         setSavedOAuthSettings(cloneOAuthSettings(saved))
       }
 
+      if (hasFederationChanges) {
+        await federationApi.updateTrustPolicy(
+          federationPolicyToUpdateRequest(federationPolicyDraft),
+        )
+        setSavedFederationPolicy({ ...federationPolicyDraft })
+        resultMessage = hasConfigChanges
+          ? resultMessage
+          : t.config.federationPolicySaved
+      }
+
       if (hasFavoriteChanges) {
         localStorage.setItem('config_favorites', JSON.stringify(favorites))
         setSavedFavorites([...favorites])
@@ -1312,6 +1375,9 @@ const ModernConfigForm: React.FC = () => {
     savedNotificationPreferences,
     oauthDraft,
     savedOAuthSettings,
+    federationPolicyDraft,
+    savedFederationPolicy,
+    isAdmin,
     favorites,
     savedFavorites,
     user?.id,
@@ -1321,6 +1387,51 @@ const ModernConfigForm: React.FC = () => {
     showMessage,
     t,
   ])
+
+  const defaultAiFieldValue = React.useCallback((key: string) => {
+    if (key === 'model') return 'gemini-3-flash-preview'
+    if (key === 'ai_image_provider') return 'openrouter'
+    if (key === 'ai_image_model') return 'openai/gpt-image-2'
+    if (key === 'ai_image_openai_base_url') return 'https://api.openai.com/v1'
+    if (key === 'ai_image_volcengine_base_url')
+      return 'https://ark.cn-beijing.volces.com/api/v3'
+    if (key === 'lite_enabled') return 'false'
+    if (key === 'lite_provider') return 'openai'
+    if (key === 'lite_openai_model') return 'openai/gpt-oss-20b:free'
+    if (key === 'lite_openai_base_url') return 'https://openrouter.ai/api/v1'
+    if (key === 'lite_gemini_model') return 'gemini-3.5-flash'
+    if (key === 'pro_enabled') return 'false'
+    return ''
+  }, [])
+
+  const defaultUiFieldValue = React.useCallback((key: string) => {
+    if (key === 'wallpaper_url') {
+      return 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809'
+    }
+    if (key === 'wallpaper_blur') return '3'
+    if (key === 'music_enabled') return 'false'
+    if (key === 'music_source') return 'netease'
+    if (key === 'music_playlist_id') return ''
+    if (key === 'proxy_enabled') return 'false'
+    if (key === 'proxy_url') return ''
+    if (key === 'proxy_bypass') return ''
+    if (key === 'gemini_base_url') return ''
+    if (key === 'github_api_base_url') return ''
+    return ''
+  }, [])
+
+  const mapConfigFields = React.useCallback(
+    (
+      fields: ConfigField[],
+      getDefault: (key: string) => string,
+      onlyKeys?: Set<string>,
+    ) =>
+      fields.map((field) => {
+        if (onlyKeys && !onlyKeys.has(field.key)) return field
+        return { ...field, value: getDefault(field.key) }
+      }),
+    [],
+  )
 
   const handleReset = React.useCallback(async () => {
     showMessage(t.config.resettingConfig, 'info', 0)
@@ -1345,39 +1456,17 @@ const ModernConfigForm: React.FC = () => {
           ...data.ai_config,
           enabled: false,
           api_key: '',
-          config_fields: data.ai_config.config_fields.map((field: any) => {
-            let defaultValue = ''
-            if (field.key === 'model') defaultValue = 'gemini-3-flash-preview'
-            else if (field.key === 'ai_image_provider')
-              defaultValue = 'openrouter'
-            else if (field.key === 'ai_image_model')
-              defaultValue = 'openai/gpt-image-2'
-            else if (field.key === 'ai_image_width') defaultValue = '1024'
-            else if (field.key === 'ai_image_height') defaultValue = '1024'
-            else if (field.key === 'ai_image_volcengine_base_url')
-              defaultValue = 'https://ark.cn-beijing.volces.com/api/v3'
-            else if (field.key === 'lite_provider') defaultValue = 'openai'
-            else if (field.key === 'lite_openai_model')
-              defaultValue = 'openai/gpt-oss-20b:free'
-            else if (field.key === 'lite_openai_base_url')
-              defaultValue = 'https://openrouter.ai/api/v1'
-            else if (field.key === 'lite_gemini_model')
-              defaultValue = 'gemini-3.5-flash'
-            return { ...field, value: defaultValue }
-          }),
+          config_fields: data.ai_config.config_fields.map((field: any) => ({
+            ...field,
+            value: defaultAiFieldValue(field.key),
+          })),
         },
         ui_config: {
           ...data.ui_config,
-          config_fields: data.ui_config.config_fields.map((field: any) => {
-            let defaultValue = ''
-            if (field.key === 'wallpaper_url') {
-              defaultValue =
-                'https://images.unsplash.com/photo-1579546929518-9e396f3cc809'
-            } else if (field.key === 'wallpaper_blur') {
-              defaultValue = '3'
-            }
-            return { ...field, value: defaultValue }
-          }),
+          config_fields: data.ui_config.config_fields.map((field: any) => ({
+            ...field,
+            value: defaultUiFieldValue(field.key),
+          })),
         },
       }
 
@@ -1387,10 +1476,8 @@ const ModernConfigForm: React.FC = () => {
 
       showMessage(t.config.savingDefault, 'info', 0)
 
-      // 获取 CSRF Token
       await getCSRFToken(true)
 
-      // updateConfig throws on failure — do not clean dirty / emit success otherwise
       const saveResult = await updateConfig(clearedData)
       if (saveResult?.success === false) {
         throw new Error(saveResult.message || t.config.resetFailed)
@@ -1418,7 +1505,238 @@ const ModernConfigForm: React.FC = () => {
     } finally {
       setSaving(false)
     }
-  }, [showMessage, t])
+  }, [defaultAiFieldValue, defaultUiFieldValue, showMessage, t])
+
+  /** 仅重置当前设置页并立即保存相关部分 */
+  const handleResetCurrentPage = React.useCallback(async () => {
+    if (!config) return
+    const section = activeSection
+    showMessage(t.config.resettingConfig, 'info', 0)
+    setSaving(true)
+
+    try {
+      await getCSRFToken(true)
+
+      if (section === 'platforms') {
+        const next = {
+          ...config,
+          auto_fetch: DEFAULT_AUTO_FETCH_CONFIG,
+          platforms: config.platforms.map((platform) => ({
+            ...platform,
+            enabled: false,
+            has_token: false,
+            config_fields: platform.config_fields.map((field) => ({
+              ...field,
+              value: '',
+            })),
+          })),
+        }
+        const result = await updateConfig(next)
+        if (result?.success === false) {
+          throw new Error(result.message || t.config.resetFailed)
+        }
+        setConfig(next)
+        setInitialConfig(JSON.parse(JSON.stringify(next)))
+        setPlatformFocus(null)
+      } else if (section === 'ai') {
+        const next = {
+          ...config,
+          ai_config: {
+            ...config.ai_config,
+            enabled: false,
+            api_key: '',
+            config_fields: mapConfigFields(
+              config.ai_config.config_fields,
+              defaultAiFieldValue,
+            ),
+          },
+        }
+        const result = await updateConfig(next)
+        if (result?.success === false) {
+          throw new Error(result.message || t.config.resetFailed)
+        }
+        setConfig(next)
+        setInitialConfig(JSON.parse(JSON.stringify(next)))
+      } else if (section === 'ui') {
+        const basicKeys = new Set([
+          'wallpaper_url',
+          'wallpaper_blur',
+          'site_title',
+          'site_description',
+          'site_favicon',
+          'parallax_enabled',
+          'site_url',
+        ])
+        const next = {
+          ...config,
+          ui_config: {
+            ...config.ui_config,
+            config_fields: config.ui_config.config_fields.map((field) =>
+              basicKeys.has(field.key)
+                ? { ...field, value: defaultUiFieldValue(field.key) }
+                : field,
+            ),
+          },
+        }
+        const result = await updateConfig(next)
+        if (result?.success === false) {
+          throw new Error(result.message || t.config.resetFailed)
+        }
+        setConfig(next)
+        setInitialConfig(JSON.parse(JSON.stringify(next)))
+      } else if (section === 'advanced') {
+        const netKeys = new Set([
+          'proxy_enabled',
+          'proxy_url',
+          'proxy_bypass',
+          'gemini_base_url',
+          'github_api_base_url',
+        ])
+        const next = {
+          ...config,
+          ui_config: {
+            ...config.ui_config,
+            config_fields: config.ui_config.config_fields.map((field) =>
+              netKeys.has(field.key)
+                ? { ...field, value: defaultUiFieldValue(field.key) }
+                : field,
+            ),
+          },
+        }
+        const result = await updateConfig(next)
+        if (result?.success === false) {
+          throw new Error(result.message || t.config.resetFailed)
+        }
+        setConfig(next)
+        setInitialConfig(JSON.parse(JSON.stringify(next)))
+      } else if (section === 'modules') {
+        const musicKeys = new Set([
+          'music_enabled',
+          'music_source',
+          'music_playlist_id',
+        ])
+        const nextConfig = {
+          ...config,
+          ui_config: {
+            ...config.ui_config,
+            config_fields: config.ui_config.config_fields.map((field) =>
+              musicKeys.has(field.key)
+                ? { ...field, value: defaultUiFieldValue(field.key) }
+                : field,
+            ),
+          },
+        }
+        const result = await updateConfig(nextConfig)
+        if (result?.success === false) {
+          throw new Error(result.message || t.config.resetFailed)
+        }
+        setConfig(nextConfig)
+        setInitialConfig(JSON.parse(JSON.stringify(nextConfig)))
+
+        const lib = normalizeLibraryPreferences(
+          DEFAULT_LIBRARY_SOURCE_PREFERENCES,
+        )
+        const libSaved =
+          await apiService.put<SaveLibrarySourcePreferencesResponse>(
+            '/library/preferences',
+            lib,
+          )
+        if (!libSaved.success) {
+          throw new Error(libSaved.message || t.config.librarySourceSaveFailed)
+        }
+        const libNorm = normalizeLibraryPreferences(libSaved.preferences)
+        setLibrarySourceDraft(libNorm)
+        setSavedLibrarySourcePreferences(libNorm)
+        setLibrarySourceSaveRevision((r) => r + 1)
+
+        const vis = await updateModuleVisibilityPreferences(
+          DEFAULT_MODULE_VISIBILITY_PREFERENCES,
+        )
+        const visNorm = normalizeModuleVisibilityPreferences(vis)
+        setModuleVisibilityDraft(visNorm)
+        setSavedModuleVisibilityPreferences(visNorm)
+        dispatchModuleVisibilityPreferencesUpdated(visNorm)
+
+        const hitokoto = await updateHitokotoConfig(DEFAULT_HITOKOTO_CONFIG)
+        setHitokotoDraft(hitokoto)
+        setSavedHitokotoConfig(hitokoto)
+
+        const reports = await updateReportSettings(DEFAULT_REPORT_SETTINGS)
+        setReportSettingsDraft(reports)
+        setSavedReportSettings(reports)
+      } else if (section === 'oauth' || section === 'users') {
+        // users 页含注册开关，与 oauth 共用 draft
+        const next =
+          section === 'users'
+            ? {
+                ...oauthDraft,
+                allowLocalRegistration:
+                  DEFAULT_OAUTH_SETTINGS.allowLocalRegistration,
+              }
+            : cloneOAuthSettings(DEFAULT_OAUTH_SETTINGS)
+        const saved = await updateOAuthSettings(next)
+        setOAuthDraft(cloneOAuthSettings(saved))
+        setSavedOAuthSettings(cloneOAuthSettings(saved))
+      } else if (section === 'federation') {
+        if (!isAdmin) throw new Error(t.config.resetFailed)
+        await federationApi.updateTrustPolicy(
+          federationPolicyToUpdateRequest(DEFAULT_FEDERATION_POLICY),
+        )
+        setFederationPolicyDraft({ ...DEFAULT_FEDERATION_POLICY })
+        setSavedFederationPolicy({ ...DEFAULT_FEDERATION_POLICY })
+      } else if (section === 'permissions') {
+        await getCSRFToken(true)
+        const response = await updatePermissionsConfig({
+          ...DEFAULT_PERMISSION_CONFIG,
+        })
+        if (!response.success) {
+          throw new Error(response.message || t.config.permissionsSaveFailed)
+        }
+        setPermissionConfig({ ...DEFAULT_PERMISSION_CONFIG })
+        setSavedPermissionConfig({ ...DEFAULT_PERMISSION_CONFIG })
+        const { TappRuntime } = await import('../tapp/runtime/TappRuntime')
+        await TappRuntime.getInstance().refreshPermissionGrants()
+      } else if (section === 'notifications') {
+        const saved = await notificationPreferencesApi.update(
+          DEFAULT_NOTIFICATION_PREFERENCES,
+          user?.id,
+        )
+        const normalized = cloneNotificationPreferences(saved)
+        setNotificationDraft(normalized)
+        setSavedNotificationPreferences(
+          cloneNotificationPreferences(normalized),
+        )
+      } else {
+        // about / updater 等：无可重置项
+        showMessage(t.config.resetCurrentPageNone ?? '本页无可重置选项', 'info')
+        return
+      }
+
+      notifyDirtyState(false)
+      showMessage(
+        t.config.resetCurrentPageDone ?? '本页设置已重置',
+        'success',
+        3000,
+      )
+    } catch (error) {
+      const errorMsg = `${t.config.resetFailed}${error instanceof Error ? error.message : t.errors.unknown}`
+      showMessage(errorMsg, 'error', 0)
+    } finally {
+      setSaving(false)
+    }
+  }, [
+    activeSection,
+    config,
+    defaultAiFieldValue,
+    defaultUiFieldValue,
+    isAdmin,
+    mapConfigFields,
+    notifyDirtyState,
+    oauthDraft,
+    showMessage,
+    t,
+    user?.id,
+  ])
 
   const loadConfig = React.useCallback(async () => {
     setLoading(true)
@@ -1449,6 +1767,7 @@ const ModernConfigForm: React.FC = () => {
     loadReportSettings()
     loadNotificationSettings()
     loadOAuthSettings()
+    void loadFederationPolicy()
   }, [
     loadConfig,
     loadPermissionConfig,
@@ -1457,6 +1776,7 @@ const ModernConfigForm: React.FC = () => {
     loadReportSettings,
     loadNotificationSettings,
     loadOAuthSettings,
+    loadFederationPolicy,
   ])
 
   // Discord 一键授权回调：/config?section=platforms&discord_oauth=ok|error
@@ -1472,7 +1792,8 @@ const ModernConfigForm: React.FC = () => {
 
     if (oauth === 'ok') {
       showMessage(t.config.discordOAuthSuccess, 'success')
-      setPlatformModalOpen('Discord')
+      setPlatformFocus('Discord')
+      setMobilePane('section')
       void loadConfig()
     } else {
       const reason = params.get('reason') || 'unknown'
@@ -1534,6 +1855,8 @@ const ModernConfigForm: React.FC = () => {
       fieldKey: string,
       value: string,
       providerFieldKey?: string,
+      /** 不标 dirty（如域名即时应用成功后仅同步展示） */
+      options?: { silent?: boolean },
     ) => {
       if (!config) return
 
@@ -1543,17 +1866,7 @@ const ModernConfigForm: React.FC = () => {
       const field = newFields.find((f) => f.key === fieldKey)
 
       if (field) {
-        // 🔒 安全措施：如果新值包含掩码字符，说明用户在掩码上直接输入，需要清除掩码
-        if (
-          isMaskedValue(value) &&
-          value !== '••••••••' &&
-          value !== '********'
-        ) {
-          // 移除所有掩码字符，只保留用户新输入的内容
-          field.value = value.replace(/[•*]+/g, '')
-        } else {
-          field.value = value
-        }
+        field.value = sanitizeMaskedFieldValue(value)
 
         if (providerFieldKey && fieldKey === providerFieldKey) {
           setConfig({
@@ -1570,7 +1883,9 @@ const ModernConfigForm: React.FC = () => {
             [sectionKey]: { ...sectionConfig, config_fields: newFields },
           })
         }
-        notifyDirtyState(true)
+        if (!options?.silent) {
+          notifyDirtyState(true)
+        }
       }
     },
     [config, notifyDirtyState],
@@ -1585,18 +1900,7 @@ const ModernConfigForm: React.FC = () => {
         (f) => f.key === fieldKey,
       )
       if (field) {
-        // 🔒 安全措施：如果新值包含掩码字符，说明用户在掩码上直接输入，需要清除掩码
-        // 检测是否在掩码基础上输入（例如 "a••••••••"）
-        if (
-          isMaskedValue(value) &&
-          value !== '••••••••' &&
-          value !== '********'
-        ) {
-          // 移除所有掩码字符，只保留用户新输入的内容
-          field.value = value.replace(/[•*]+/g, '')
-        } else {
-          field.value = value
-        }
+        field.value = sanitizeMaskedFieldValue(value)
         setConfig({ ...config, platforms: newPlatforms })
         notifyDirtyState(true)
       }
@@ -1612,8 +1916,8 @@ const ModernConfigForm: React.FC = () => {
   )
 
   const updateUiFieldValue = React.useCallback(
-    (fieldKey: string, value: string) => {
-      updateConfigField('ui', fieldKey, value)
+    (fieldKey: string, value: string, options?: { silent?: boolean }) => {
+      updateConfigField('ui', fieldKey, value, undefined, options)
     },
     [updateConfigField],
   )
@@ -1665,7 +1969,7 @@ const ModernConfigForm: React.FC = () => {
 
   const isBaseConfigDirty = useMemo(() => {
     if (!config || !initialConfig) return false
-    return JSON.stringify(config) !== JSON.stringify(initialConfig)
+    return !deepEqual(config, initialConfig)
   }, [config, initialConfig])
 
   const isLibrarySourceDirty = useMemo(
@@ -1697,9 +2001,7 @@ const ModernConfigForm: React.FC = () => {
   )
 
   const isPermissionDirty = useMemo(
-    () =>
-      JSON.stringify(permissionConfig) !==
-      JSON.stringify(savedPermissionConfig),
+    () => !deepEqual(permissionConfig, savedPermissionConfig),
     [permissionConfig, savedPermissionConfig],
   )
 
@@ -1717,8 +2019,15 @@ const ModernConfigForm: React.FC = () => {
     [oauthDraft, savedOAuthSettings],
   )
 
+  const isFederationDirty = useMemo(
+    () =>
+      isAdmin &&
+      !areFederationPoliciesEqual(federationPolicyDraft, savedFederationPolicy),
+    [isAdmin, federationPolicyDraft, savedFederationPolicy],
+  )
+
   const isFavoritesDirty = useMemo(
-    () => JSON.stringify(favorites) !== JSON.stringify(savedFavorites),
+    () => !deepEqual(favorites, savedFavorites),
     [favorites, savedFavorites],
   )
 
@@ -1731,6 +2040,7 @@ const ModernConfigForm: React.FC = () => {
     isPermissionDirty ||
     isNotificationDirty ||
     isOAuthDirty ||
+    isFederationDirty ||
     isFavoritesDirty
 
   useEffect(() => {
@@ -1754,17 +2064,19 @@ const ModernConfigForm: React.FC = () => {
       // 理论上不会发生，因为 activeSection 总是有效的
       return { title: '', icon: null, description: '' }
     }
+    // Header copy always comes from nav (quickAccessItems), never from
+    // searchableContent — search aliases share section ids (music→modules,
+    // network→advanced) and must not override the page description.
     return {
       title: item.label,
       icon: item.icon,
       sectionId: item.id,
-      description:
-        searchableContent.find((c) => c.section === sectionId)?.description ||
-        '',
+      description: item.description,
     }
   }
 
-  const renderActiveSection = () => {
+  /** section 由切换容器传入：退场期间渲染的仍是上一个分类 */
+  const renderActiveSection = (activeSection: string) => {
     if (!config) return null
 
     const props = getSectionProps(activeSection)
@@ -1772,131 +2084,19 @@ const ModernConfigForm: React.FC = () => {
     switch (activeSection) {
       case 'platforms':
         return (
-          <div className="config-section">
-            <div className="section-header">
-              <div className="section-header-left">
-                <span className="section-icon icon-platforms">
-                  {props.icon}
-                </span>
-                <div>
-                  <h2 className="section-title">{props.title}</h2>
-                  <p className="section-description">{props.description}</p>
-                </div>
-              </div>
-            </div>
-
-            <PlatformAutoRefreshSettings
-              value={config.auto_fetch}
-              enabledPlatformCount={
-                config.platforms.filter((platform) => platform.enabled).length
-              }
-              onChange={updateAutoFetchConfig}
-            />
-
-            <div className="platforms-grid">
-              {config.platforms.map((platform, index) =>
-                (() => {
-                  const platformConfigured = isPlatformConfigured(platform)
-                  const toggleTitle = !platformConfigured
-                    ? t.config.notConfigured
-                    : undefined
-
-                  const isDragging = dragIndex === index
-                  const isDragOver =
-                    dragOverIndex === index && dragIndex !== index
-
-                  return (
-                    <div
-                      key={platform.name}
-                      className={`platform-card platform-card-enter${
-                        platform.enabled ? ' platform-card--enabled' : ''
-                      }${isDragging ? ' dragging' : ''}${
-                        isDragOver ? ' drag-over' : ''
-                      }`}
-                      style={{
-                        cursor: 'pointer',
-                        animationDelay: `${0.2 + index * 0.05}s`,
-                      }}
-                      draggable={dragArmedIndex === index}
-                      onClick={() => setPlatformModalOpen(platform.name)}
-                      onDragStart={(e) => {
-                        setDragIndex(index)
-                        e.dataTransfer.effectAllowed = 'move'
-                      }}
-                      onDragOver={(e) => {
-                        if (dragIndex === null) return
-                        e.preventDefault()
-                        e.dataTransfer.dropEffect = 'move'
-                        if (dragOverIndex !== index) setDragOverIndex(index)
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault()
-                        if (dragIndex !== null)
-                          reorderPlatform(dragIndex, index)
-                        setDragIndex(null)
-                        setDragOverIndex(null)
-                        setDragArmedIndex(null)
-                      }}
-                      onDragEnd={() => {
-                        setDragIndex(null)
-                        setDragOverIndex(null)
-                        setDragArmedIndex(null)
-                      }}
-                    >
-                      <div className="platform-header">
-                        <div className="platform-info">
-                          <button
-                            type="button"
-                            className="platform-drag-handle"
-                            aria-label={t.config.dragToReorder}
-                            title={t.config.dragToReorder}
-                            onClick={(e) => e.stopPropagation()}
-                            onPointerDown={() => setDragArmedIndex(index)}
-                            onPointerUp={() => setDragArmedIndex(null)}
-                          >
-                            <span className="platform-order-num">
-                              {index + 1}
-                            </span>
-                            <LuGripVertical className="platform-drag-grip" />
-                          </button>
-                          <div className="platform-icon-wrapper">
-                            <PlatformIcon
-                              platform={platform.name}
-                              className="platform-icon"
-                            />
-                          </div>
-                          <div className="platform-details">
-                            <div className="platform-title-row">
-                              <h3 className="platform-name">{platform.name}</h3>
-                              <span
-                                className={`status-badge ${platformConfigured ? 'configured' : 'unconfigured'}`}
-                              >
-                                {platformConfigured
-                                  ? t.config.configured
-                                  : t.config.notConfigured}
-                              </span>
-                            </div>
-                            <p className="platform-desc">
-                              {getPlatformDescription(platform)}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="platform-actions">
-                          <ToggleSwitch
-                            checked={platform.enabled}
-                            onChange={() => togglePlatform(index)}
-                            disabled={!platformConfigured}
-                            aria-label={`Enable ${platform.name}`}
-                            title={toggleTitle}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })(),
-              )}
-            </div>
-          </div>
+          <PlatformsConfigSection
+            platforms={config.platforms}
+            autoFetch={config.auto_fetch || DEFAULT_AUTO_FETCH_CONFIG}
+            onUpdateField={updateFieldValue}
+            onToggle={togglePlatform}
+            onReorder={reorderPlatform}
+            onAutoFetchChange={updateAutoFetchConfig}
+            showMessage={showMessage}
+            openOAuthSection={() => handleSectionChange('oauth')}
+            focusPlatform={platformFocus}
+            onFocusPlatformConsumed={() => setPlatformFocus(null)}
+            {...props}
+          />
         )
       case 'ai':
         return (
@@ -1929,29 +2129,12 @@ const ModernConfigForm: React.FC = () => {
             {...props}
           />
         )
-      case 'music':
-        return (
-          <MusicConfigSection
-            configFields={config.ui_config.config_fields}
-            updateValue={updateUiFieldValue}
-            onMessage={(msg) => {
-              showMessage(msg, 'success')
-            }}
-            {...props}
-          />
-        )
-      case 'network':
-        return (
-          <NetworkConfigSection
-            configFields={config.ui_config.config_fields}
-            updateValue={updateUiFieldValue}
-            {...props}
-          />
-        )
       case 'federation':
         if (!isAdmin) return null
         return (
           <FederationConfigSection
+            policyDraft={federationPolicyDraft}
+            onPolicyChange={updateFederationPolicy}
             onMessage={(msg, type = 'info') => showMessage(msg, type)}
             {...props}
           />
@@ -1979,6 +2162,8 @@ const ModernConfigForm: React.FC = () => {
             setHitokotoDraft={setHitokotoDraft}
             reportSettingsDraft={reportSettingsDraft}
             setReportSettingsDraft={setReportSettingsDraft}
+            uiConfigFields={config.ui_config.config_fields}
+            updateUiFieldValue={updateUiFieldValue}
             onMessage={handleModuleMessage}
             {...props}
           />
@@ -2013,6 +2198,8 @@ const ModernConfigForm: React.FC = () => {
         return (
           <AdvancedConfigSection
             onReset={handleReset}
+            uiConfigFields={config.ui_config.config_fields}
+            updateUiFieldValue={updateUiFieldValue}
             onMessage={(msg, type = 'info') => showMessage(msg, type)}
             {...props}
           />
@@ -2034,46 +2221,80 @@ const ModernConfigForm: React.FC = () => {
 
   if (!config) {
     return (
-      <div className="modern-config-error">
-        <FaExclamationTriangle className="error-icon" />
-        <p>{t.config.loadConfigFailed}</p>
+      <div
+        className="modern-config-error"
+        role="alert"
+        aria-live="assertive"
+        aria-labelledby="config-load-error-title"
+      >
+        <div className="modern-config-error-card">
+          <div className="modern-config-error-visual" aria-hidden="true">
+            <span className="modern-config-error-icon">
+              <FaExclamationTriangle />
+            </span>
+          </div>
+
+          <div className="modern-config-error-copy">
+            <h2 id="config-load-error-title">{t.config.loadConfigFailed}</h2>
+            <p>{t.config.loadConfigFailedDesc}</p>
+          </div>
+
+          <div className="modern-config-error-actions">
+            <SettingsButton
+              variant="primary"
+              size="md"
+              icon={<LuRefreshCw />}
+              onClick={() => void loadConfig()}
+            >
+              {t.common.retry}
+            </SettingsButton>
+          </div>
+        </div>
       </div>
     )
   }
 
+  const activeSectionMeta = getSectionProps(activeSection)
+
   return (
     <motion.div
       className="modern-config-container"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -20 }}
-      transition={{ duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
+      initial={SETTINGS_PAGE_MOTION.initial}
+      animate={SETTINGS_PAGE_MOTION.animate}
+      exit={SETTINGS_PAGE_MOTION.exit}
+      transition={SETTINGS_PAGE_MOTION.transition}
     >
       {/* 消息提示 */}
       {message && <Toast message={message} type={messageType} />}
 
-      {/* 配置导航卡片 */}
-      <motion.div
-        className="config-nav-card"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1, duration: 0.3 }}
+      <div
+        className="config-shell"
+        data-mobile-pane={isMobileLayout ? mobilePane : 'desktop'}
       >
-        <div className="config-nav-header">
-          <div className="nav-header-left">
+        {/* 分类侧边栏：移动端为一级页；桌面端为粘顶导航 */}
+        {!(isMobileLayout && mobilePane === 'section') ? (
+        <motion.aside
+          className="config-sidebar"
+          aria-label={t.config.title}
+          initial={SETTINGS_SIDEBAR_MOTION.initial}
+          animate={SETTINGS_SIDEBAR_MOTION.animate}
+          transition={SETTINGS_SIDEBAR_MOTION.transition}
+        >
+          <div className="config-sidebar-header">
             <span className="nav-icon">
               <MyriadConfigIcon kind="ui" />
             </span>
-            <div>
+            <div className="config-sidebar-heading">
               <h3 className="nav-title">{t.config.title}</h3>
               <p className="nav-subtitle">{t.config.selectProject}</p>
             </div>
           </div>
-          <div className="nav-header-search">
+
+          <div className="config-sidebar-search">
             <div className="search-input-wrapper">
               <FaSearch className="search-icon" />
               <input
-                type="text"
+                type="search"
                 placeholder={t.config.searchConfig}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -2090,236 +2311,174 @@ const ModernConfigForm: React.FC = () => {
               )}
             </div>
           </div>
-        </div>
 
-        {/* 搜索结果 */}
-        {searchQuery ? (
-          <div className="search-results">
-            <h4 className="search-results-title">
-              {t.config.searchResults} ({filteredContent.length})
-            </h4>
-            <div className="search-results-list">
-              {filteredContent.length > 0 ? (
-                filteredContent.map((item, index) => (
-                  <button
-                    key={index}
-                    onClick={() => {
-                      handleSectionChange(item.section)
-                    }}
-                    className="search-result-item"
-                  >
-                    <div className="search-result-content">
-                      <h4>{item.title}</h4>
-                      <p>{item.description}</p>
-                    </div>
-                    <span className="search-result-arrow">→</span>
-                  </button>
-                ))
-              ) : (
-                <div className="search-no-results">
-                  <p>{t.config.noMatchingConfig}</p>
+          {/* 搜索时侧边栏切换为结果列表，右侧内容保持不变 */}
+          {searchQuery ? (
+            <div className="config-sidebar-results">
+              <div className="config-nav-group sm-stagger">
+                <div className="config-nav-group-title">
+                  {t.config.searchResults} ({filteredContent.length})
                 </div>
-              )}
+                {filteredContent.length > 0 ? (
+                  filteredContent.map((item, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => {
+                        handleSectionChange(item.section)
+                      }}
+                      className="config-nav-result"
+                    >
+                      <span className="config-nav-result-text">
+                        <span className="config-nav-result-title">
+                          {item.title}
+                        </span>
+                        <span className="config-nav-result-desc">
+                          {item.description}
+                        </span>
+                      </span>
+                      <span className="config-nav-result-arrow" aria-hidden>
+                        ›
+                      </span>
+                    </button>
+                  ))
+                ) : (
+                  <p className="config-nav-empty">
+                    {t.config.noMatchingConfig}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="config-nav-content">
-            {/* 收藏夹 */}
-            {favorites.length > 0 && (
-              <div className="nav-section">
-                <div className="nav-section-header">
-                  <FaStar className="nav-section-icon" />
-                  <span className="nav-section-title">
+          ) : (
+            <nav className="config-sidebar-scroll">
+              {/* 收藏夹 */}
+              {favorites.length > 0 && (
+                <div className="config-nav-group config-nav-group--favorites">
+                  <div className="config-nav-group-title">
+                    <FaStar className="config-nav-group-icon" />
                     {t.config.favorites}
-                  </span>
-                </div>
-                <div className="quick-access-grid">
+                  </div>
                   {favorites.map((fav) => {
                     const item = quickAccessItems.find((i) => i.id === fav)
                     return item ? (
-                      <QuickAccessCard
+                      <ConfigNavItem
                         key={item.id}
                         item={item}
                         isActive={activeSection === item.section}
                         isFavorite={true}
-                        onCardClick={handleSectionChange}
+                        group="favorites"
+                        onSelect={handleSectionChange}
                         onToggleFavorite={toggleFavorite}
                       />
                     ) : null
                   })}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* 所有配置 */}
-            <div className="nav-section">
-              <div className="nav-section-header">
-                <span className="nav-section-title">{t.config.allConfig}</span>
-              </div>
-              <div className="quick-access-grid">
+              {/* 所有配置 */}
+              <div className="config-nav-group config-nav-group--all">
+                <div className="config-nav-group-title">
+                  {t.config.allConfig}
+                </div>
                 {quickAccessItems.map((item) => (
-                  <QuickAccessCard
+                  <ConfigNavItem
                     key={item.id}
                     item={item}
                     isActive={activeSection === item.section}
                     isFavorite={favorites.includes(item.id)}
-                    onCardClick={handleSectionChange}
+                    group="all"
+                    onSelect={handleSectionChange}
                     onToggleFavorite={toggleFavorite}
                   />
                 ))}
               </div>
-            </div>
-          </div>
-        )}
-      </motion.div>
+            </nav>
+          )}
+        </motion.aside>
+        ) : null}
 
-      {/* 配置内容区域 */}
-      {!searchQuery && (
-        <div className="config-content">{renderActiveSection()}</div>
-      )}
-
-      {/* 平台配置弹窗 */}
-      {platformModalOpen &&
-        config &&
-        (() => {
-          const platformIndex = config.platforms.findIndex(
-            (p) => p.name === platformModalOpen,
-          )
-          if (platformIndex === -1) return null
-          const platform = config.platforms[platformIndex]
-
-          return (
-            <div
-              className="modal-overlay"
-              onClick={() => setPlatformModalOpen(null)}
-            >
-              <div
-                className="modal-content"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="modal-header">
-                  <div className="modal-title-section">
-                    <div className="platform-icon-wrapper">
-                      <PlatformIcon
-                        platform={platform.name}
-                        className="platform-icon"
-                      />
-                    </div>
-                    <div>
-                      <h3 className="modal-title">{platform.name}</h3>
-                      <p className="modal-subtitle">
-                        {getPlatformDescription(platform)}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setPlatformModalOpen(null)}
-                    className="modal-close-button"
-                    aria-label={t.config.closeLabel}
-                  >
-                    <FaTimes />
-                  </button>
+        {/* 配置内容：移动端二级；平台详情在区块内为三级。
+            一级页卸载内容，避免返回总览后仍停在平台详情。 */}
+        {!(isMobileLayout && mobilePane === 'nav') ? (
+          <div className="config-content">
+            {isMobileLayout ? (
+              <div className="config-mobile-section-bar">
+                <button
+                  type="button"
+                  className="config-mobile-back"
+                  onClick={handleMobileBackToNav}
+                  aria-label={`${t.common.back} · ${t.config.title}`}
+                >
+                  <LuChevronLeft
+                    size={18}
+                    strokeWidth={2.25}
+                    className="config-mobile-back-icon"
+                    aria-hidden
+                  />
+                  <span className="config-mobile-back-label">
+                    {t.config.title}
+                  </span>
+                </button>
+                <div className="config-mobile-section-mid">
+                  {activeSectionMeta.icon ? (
+                    <span className="config-mobile-section-icon">
+                      {activeSectionMeta.icon}
+                    </span>
+                  ) : null}
+                  <span className="config-mobile-section-title">
+                    {activeSectionMeta.title}
+                  </span>
                 </div>
-
-                <div className="modal-body">
-                  {isBangumiPlatform(platform) && (
-                    <div
-                      className={`platform-requirement-hint ${
-                        hasBangumiCredential(platform) ? 'is-ok' : 'is-warning'
-                      }`}
-                    >
-                      {t.config.bangumiCredentialRequirement}
-                    </div>
-                  )}
-
-                  {platform.name.toLowerCase() === 'discord' && (
-                    <div
-                      className="platform-requirement-hint is-ok"
-                      style={{ marginBottom: 12 }}
-                    >
-                      <p style={{ margin: '0 0 10px' }}>
-                        {t.config.discordConnectHint}
-                      </p>
-                      <button
-                        type="button"
-                        className="btn-base btn-primary"
-                        onClick={connectDiscordOAuth}
-                        style={{ width: '100%' }}
-                      >
-                        {platform.has_token
-                          ? t.config.discordReconnect
-                          : t.config.discordConnect}
-                      </button>
-                    </div>
-                  )}
-
-                  {platform.config_fields.map((field) => {
-                    const rawType = field.field_type
-                    const inputType =
-                      rawType === 'password' ||
-                      rawType === 'url' ||
-                      rawType === 'email'
-                        ? rawType
-                        : 'text'
-                    return (
-                      <InputItem
-                        key={field.key}
-                        itemKey={`modal-platform-${platformIndex}-${field.key}`}
-                        label={getPlatformFieldLabel(platform, field)}
-                        value={field.value}
-                        onChange={(value) =>
-                          updateFieldValue(platformIndex, field.key, value)
-                        }
-                        placeholder={getPlatformFieldPlaceholder(
-                          platform,
-                          field,
-                        )}
-                        inputType={inputType}
-                        required={field.required}
-                        layout="vertical"
-                        size="sm"
-                        autoSelectOnMask
-                      />
-                    )
-                  })}
-                </div>
-                <div className="modal-footer">
-                  <button
-                    onClick={() => setPlatformModalOpen(null)}
-                    className="btn-base btn-primary"
-                  >
-                    {t.common.confirm}
-                  </button>
-                </div>
+                <span className="config-mobile-section-trail" aria-hidden />
               </div>
-            </div>
-          )
-        })()}
+            ) : null}
+            <SettingsPageActionsProvider
+              value={{
+                resetCurrentPage: handleResetCurrentPage,
+                canResetCurrentPage:
+                  activeSection !== 'about' && activeSection !== 'updater',
+              }}
+            >
+              <SectionSwitch
+                sectionKey={activeSection}
+                direction={sectionDir}
+                onCommit={scrollSettingsToTop}
+              >
+                {(section) => renderActiveSection(section)}
+              </SectionSwitch>
+            </SettingsPageActionsProvider>
+          </div>
+        ) : null}
+      </div>
 
       {isConfigDirty && (
         <div className="floating-save-container">
-          <button
+          <SettingsButton
+            variant="primary"
+            className="floating-save-btn"
             onClick={handleSave}
-            className="btn-base btn-primary floating-save-btn"
             aria-label={t.config.saveConfigLabel}
             disabled={saving}
+            loading={saving}
+            icon={
+              <svg
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              </svg>
+            }
           >
-            <svg
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              width="20"
-              height="20"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
-            <span>{saving ? t.config.savingConfig : t.config.saveConfig}</span>
-          </button>
+            {saving ? t.config.savingConfig : t.config.saveConfig}
+          </SettingsButton>
         </div>
       )}
     </motion.div>

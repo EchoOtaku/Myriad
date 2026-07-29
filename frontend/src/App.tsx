@@ -42,6 +42,9 @@ import {
 import './styles/fonts.css'
 import './styles/theme.css'
 import './styles/animations.css'
+/* 设置页动效系统：令牌需全局可见——设置原语（SettingItem / ManagedList 等）
+   在设置页之外也会被渲染，令牌缺席会让它们的过渡整条失效 */
+import './components/settings/settings-motion.css'
 import './styles/page-transitions.css'
 import './styles/navigation-island.css'
 import './styles/utility.css'
@@ -60,7 +63,6 @@ const Library = lazy(() => import('./views/Library.tsx'))
 const Brew = lazy(() => import('./views/Brew.tsx'))
 const Reports = lazy(() => import('./views/Reports.tsx'))
 const Config = lazy(() => import('./views/Config.tsx'))
-const DataManagement = lazy(() => import('./views/DataManagement.tsx'))
 const Login = lazy(() => import('./views/Login.tsx'))
 const Register = lazy(() => import('./views/Register.tsx'))
 const Setup = lazy(() => import('./views/Setup.tsx'))
@@ -421,15 +423,10 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
+        {/* Retired standalone page; data management lives under platform detail. */}
         <Route
           path="/data-management"
-          element={
-            <RequireAuth requiresAdmin>
-              <SuspensePage>
-                <DataManagement />
-              </SuspensePage>
-            </RequireAuth>
-          }
+          element={<Navigate to="/config" replace />}
         />
         <Route
           path="/login"

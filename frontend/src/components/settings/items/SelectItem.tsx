@@ -5,6 +5,7 @@
 
 import type { SelectSettingConfig } from '../types'
 import React, { useCallback } from 'react'
+import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { FieldSelect } from './FieldSelect'
 import './SettingItem.css'
 
@@ -16,6 +17,8 @@ export interface SelectItemProps<T = string> extends Omit<
 function SelectItemComponent<T extends string = string>({
   itemKey,
   label,
+  detail,
+  guide,
   description,
   hint,
   value,
@@ -48,6 +51,10 @@ function SelectItemComponent<T extends string = string>({
         <span className="setting-label-text">
           {label}
           {required && <span className="required">*</span>}
+          <SettingTitleGuideEntry
+            title={label}
+            guide={guide ?? detail ?? description}
+          />
         </span>
         {description && layout === 'vertical' && (
           <span className="setting-description">{description}</span>

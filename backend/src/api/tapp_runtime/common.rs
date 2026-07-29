@@ -272,13 +272,11 @@ pub struct AiConfig {
     pub base_url: Option<String>,
 }
 
-/// AI 图片生成配置
+/// AI 图片生成配置（分辨率由调用方决定，不在此配置）
 #[derive(Clone)]
 pub struct AiImageConfig {
     pub provider: String,
     pub model: String,
-    pub width: u32,
-    pub height: u32,
     pub pixai_api_key: Option<String>,
 }
 
@@ -360,8 +358,6 @@ pub async fn get_ai_image_config() -> Result<AiImageConfig, (StatusCode, Json<Va
     let image_config = AiImageConfig {
         provider: config.ai_image_provider.clone(),
         model: config.ai_image_model.clone(),
-        width: config.ai_image_width as u32,
-        height: config.ai_image_height as u32,
         pixai_api_key: config.pixai_api_key.clone(),
     };
 

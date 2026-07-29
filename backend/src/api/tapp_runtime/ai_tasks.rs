@@ -1040,13 +1040,60 @@ fn pixai_image_url(value: &Value) -> Option<String> {
         })
 }
 
+/// 解析图片宽/高：支持 JSON 整数、浮点整数与数字字符串（如 `"768"` / `"768px"`）。
+fn parse_image_dim(value: &Value) -> Option<u32> {
+    if let Some(n) = value.as_u64() {
+        return u32::try_from(n).ok().filter(|&n| n > 0);
+    }
+    if let Some(n) = value.as_i64() {
+        return u32::try_from(n).ok().filter(|&n| n > 0);
+    }
+    if let Some(n) = value.as_f64() {
+        if n.is_finite() && n > 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64 {
+            return Some(n as u32);
+        }
+        return None;
+    }
+    if let Some(s) = value.as_str() {
+        let s = s.trim();
+        let s = s
+            .strip_suffix("px")
+            .or_else(|| s.strip_suffix("PX"))
+            .unwrap_or(s)
+            .trim();
+        return s.parse::<u32>().ok().filter(|&n| n > 0);
+    }
+    None
+}
+
+/// 从任务 input 读取分辨率；未传时用本地默认（不读全局配置）
+fn image_size_from_input(input: &Value) -> (u32, u32) {
+    const DEFAULT_W: u32 = 1024;
+    const DEFAULT_H: u32 = 1024;
+    const MIN: u32 = 256;
+    const MAX: u32 = 2048;
+    let width = input
+        .get("width")
+        .and_then(parse_image_dim)
+        .map(|v| v.clamp(MIN, MAX))
+        .unwrap_or(DEFAULT_W);
+    let height = input
+        .get("height")
+        .and_then(parse_image_dim)
+        .map(|v| v.clamp(MIN, MAX))
+        .unwrap_or(DEFAULT_H);
+    (width, height)
+}
+
 async fn run_image_task(
     config: AiImageConfig,
     prompt: &str,
+    width: u32,
+    height: u32,
     events: &tokio::sync::mpsc::UnboundedSender<TaskBroadcast>,
 ) -> Result<Value, (String, String)> {
-    let width = config.width.clamp(256, 2048);
-    let height = config.height.clamp(256, 2048);
+    let width = width.clamp(256, 2048);
+    let height = height.clamp(256, 2048);
     if config.provider == "pollinations" {
         return Ok(json!({
             "format": "image",
@@ -1291,9 +1338,12 @@ async fn execute_task(execution: AiTaskExecution) {
                 normalize_text_result(&prepared, raw)
                     .map(|value| (value, input_tokens, output_tokens))
             }
-            PreparedModel::Image(config) => run_image_task(config, &prepared.prompt, &events)
-                .await
-                .map(|value| (value, 0, 0)),
+            PreparedModel::Image(config) => {
+                let (width, height) = image_size_from_input(&request.input);
+                run_image_task(config, &prepared.prompt, width, height, &events)
+                    .await
+                    .map(|value| (value, 0, 0))
+            }
         }
     };
 
@@ -2118,7 +2168,10 @@ pub async fn ai_usage(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_operation_prompt, task_id_for_request, validate_idempotency_key};
+    use super::{
+        build_operation_prompt, image_size_from_input, parse_image_dim, task_id_for_request,
+        validate_idempotency_key,
+    };
     use crate::api::tapp_store::TappAiOperation;
     use serde_json::json;
 
@@ -2127,6 +2180,31 @@ mod tests {
         assert!(validate_idempotency_key("refresh:day-2026_07_15"));
         assert!(!validate_idempotency_key(""));
         assert!(!validate_idempotency_key("contains whitespace"));
+    }
+
+    #[test]
+    fn parse_image_dim_accepts_number_and_string() {
+        assert_eq!(parse_image_dim(&json!(768)), Some(768));
+        assert_eq!(parse_image_dim(&json!(768.0)), Some(768));
+        assert_eq!(parse_image_dim(&json!("1024")), Some(1024));
+        assert_eq!(parse_image_dim(&json!(" 768px ")), Some(768));
+        assert_eq!(parse_image_dim(&json!(0)), None);
+        assert_eq!(parse_image_dim(&json!("nope")), None);
+    }
+
+    #[test]
+    fn image_size_from_input_defaults_clamps_and_parses_strings() {
+        assert_eq!(image_size_from_input(&json!({})), (1024, 1024));
+        assert_eq!(
+            image_size_from_input(&json!({ "width": "768", "height": "1024px" })),
+            (768, 1024)
+        );
+        assert_eq!(
+            image_size_from_input(&json!({ "width": 100, "height": 5000 })),
+            (256, 2048)
+        );
+        // plain string prompt has no size keys
+        assert_eq!(image_size_from_input(&json!("a cat")), (1024, 1024));
     }
 
     #[test]

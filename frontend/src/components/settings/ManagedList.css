@@ -14,52 +14,84 @@
   opacity: 0.92;
 }
 
-/* —— Stats chips —— */
+/* —— Stats + action chips (unified top region) —— */
 
 .managed-list-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  align-items: stretch;
+  gap: 0.45rem;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+/*
+ * All interactive chips after metrics (register / query / toolbar / form).
+ * Extra lead-in when metrics sit before actions so data ≠ buttons glued.
+ */
+.managed-list-chip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.45rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.managed-list-stats:has(> .managed-list-stat) > .managed-list-chip-actions {
+  margin-inline-start: 0.2rem;
+  padding-inline-start: 0.45rem;
+  border-inline-start: 1px solid rgb(209 213 219 / 55%);
+}
+
+html.dark
+  .managed-list-stats:has(> .managed-list-stat)
+  > .managed-list-chip-actions {
+  border-inline-start-color: rgb(255 255 255 / 12%);
 }
 
 .managed-list-stat {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   gap: 0.05rem;
   min-width: 3.75rem;
-  padding: 0.4rem 0.65rem;
-  border-radius: 0.6rem;
-  border: 1px solid rgb(229 231 235 / 55%);
-  background: rgb(255 255 255 / 45%);
+  min-height: var(--managed-list-chip-min-h);
+  padding: var(--managed-list-chip-pad-y) var(--managed-list-chip-pad-x);
+  border-radius: var(--managed-list-chip-radius);
+  border: 1px solid var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
   line-height: 1.2;
+  box-sizing: border-box;
 }
 
 html.dark .managed-list-stat {
-  border-color: rgb(255 255 255 / 8%);
-  background: rgb(255 255 255 / 4%);
+  border-color: var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
 }
 
 .managed-list-stat-value {
   font-size: 0.95rem;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
-  color: #111827;
+  color: var(--cfg-text-1);
 }
 
 html.dark .managed-list-stat-value {
-  color: #f3f4f6;
+  color: var(--cfg-text-1);
 }
 
 .managed-list-stat-label {
   font-size: 0.68rem;
   font-weight: 500;
-  color: #6b7280;
+  color: var(--cfg-text-3);
   letter-spacing: 0.01em;
 }
 
 html.dark .managed-list-stat-label {
-  color: #9ca3af;
+  color: var(--cfg-text-3);
 }
 
 .managed-list-stat--active {
@@ -115,16 +147,274 @@ html.dark .managed-list-stat--danger .managed-list-stat-value {
 }
 
 .managed-list-stat--muted .managed-list-stat-value {
-  color: #6b7280;
+  color: var(--cfg-text-3);
 }
 
-/* —— Toolbar —— */
+/* —— Top strip: metrics then all buttons in one region —— */
 
+.managed-list-top {
+  --managed-list-chip-min-h: 2.75rem;
+  --managed-list-chip-pad-y: 0.4rem;
+  --managed-list-chip-pad-x: 0.65rem;
+  --managed-list-chip-radius: 0.6rem;
+
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.45rem;
+  min-width: 0;
+  width: 100%;
+}
+
+/* Equal height only — width hugs content (not unified) */
+.managed-list-top .checkbox-group-card--sm,
+.managed-list-top .checkbox-group-card--stat {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: min(100%, 20rem);
+  min-width: 0;
+  min-height: var(--managed-list-chip-min-h);
+  height: auto;
+  align-self: stretch;
+  padding: var(--managed-list-chip-pad-y) var(--managed-list-chip-pad-x);
+  border-radius: var(--managed-list-chip-radius);
+  box-sizing: border-box;
+  justify-content: center;
+}
+
+.managed-list-chip-actions > .settings-btn,
+.managed-list-chip-actions > .checkbox-group-card {
+  flex: 0 0 auto;
+  width: max-content;
+}
+
+/* SettingsButton (danger/primary bulk) still matches chip height */
+.managed-list-chip-actions > .settings-btn.settings-btn--sm {
+  min-height: var(--managed-list-chip-min-h);
+  height: auto;
+  align-self: stretch;
+  padding-top: var(--managed-list-chip-pad-y);
+  padding-bottom: var(--managed-list-chip-pad-y);
+  border-radius: var(--managed-list-chip-radius);
+  box-sizing: border-box;
+}
+
+/* Legacy class used in form/query panel headers */
 .managed-list-toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: stretch;
   gap: 0.4rem;
+  min-width: 0;
+}
+
+.managed-list-form-header .checkbox-group-card,
+.managed-list-filter-bar-header .checkbox-group-card {
+  flex: 0 0 auto;
+}
+
+/* Plain query: no titled card header */
+.managed-list-filter-bar.is-plain {
+  gap: 0.4rem;
+  padding: 0.45rem 0.55rem;
+}
+
+.managed-list-filter-bar.is-plain .managed-list-filter-groups {
+  flex: 1 1 auto;
+}
+
+.managed-list-query-active-dot {
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-left: 0.35rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.85;
+  vertical-align: middle;
+}
+
+.managed-list-query-active-badge {
+  margin-left: 0.25rem;
+  color: var(--color-primary, #3b82f6);
+  font-weight: 700;
+}
+
+/* —— Search + filter chips (collapsed by default) —— */
+
+.managed-list-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
+  box-sizing: border-box;
+}
+
+html.dark .managed-list-filter-bar {
+  border-color: var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
+}
+
+.managed-list-filter-bar-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.75rem;
+  min-width: 0;
+}
+
+/* Cancel lives on the top chip strip — header is title only */
+.managed-list-filter-bar-header.is-title-only {
+  justify-content: flex-start;
+}
+
+/* Search uses shared InputItem / .field-input (same as settings forms) */
+.managed-list-search {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.managed-list-search-item.setting-item {
+  margin: 0;
+  gap: 0;
+  width: 100%;
+}
+
+/* Label only for a11y — visual is pure field-input */
+.managed-list-search-item .setting-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.managed-list-search-item.setting-vertical .setting-label {
+  margin-bottom: 0;
+}
+
+.managed-list-search-item .setting-control,
+.managed-list-search-item .input-wrapper,
+.managed-list-search-item .field-input {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.managed-list-search-item .field-input[type='search']::-webkit-search-decoration,
+.managed-list-search-item .field-input[type='search']::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+/* Filter groups: one horizontal strip, chips never wrap */
+.managed-list-filter-groups {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.managed-list-filters {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: none;
+  min-width: 0;
+}
+
+/* Segmented chips inside list query: single line only */
+.managed-list-filters.choice-segmented.is-flex {
+  flex-wrap: nowrap;
+  width: max-content;
+  max-width: none;
+}
+
+.managed-list-filters .choice-segmented-item {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* —— Create / add form panel (collapsed by default) —— */
+
+.managed-list-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
+  box-sizing: border-box;
+}
+
+html.dark .managed-list-form {
+  border-color: var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
+}
+
+.managed-list-form-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.75rem;
+  min-width: 0;
+}
+
+/* Cancel lives on the top chip strip — header is title only */
+.managed-list-form-header.is-title-only {
+  justify-content: flex-start;
+}
+
+.managed-list-form-title {
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--cfg-text-2);
+  line-height: 1.3;
+  min-width: 0;
+}
+
+html.dark .managed-list-form-title {
+  color: var(--cfg-text-2);
+}
+
+.managed-list-form-body {
+  min-width: 0;
+}
+
+/* Submit row: primary action flush left under fields */
+.managed-list-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
+/* Tighten setting items nested in the form (no extra outer chrome) */
+.managed-list-form .setting-item {
+  margin: 0;
+}
+
+.managed-list-form .setting-item.setting-vertical .setting-label {
+  margin-bottom: 0.28rem;
 }
 
 /* —— Body / rows —— */
@@ -151,30 +441,84 @@ html.dark .managed-list-stat--danger .managed-list-stat-value {
   padding: 1rem;
   border-radius: 0.75rem;
   border: 1px dashed rgb(209 213 219 / 70%);
-  color: #6b7280;
+  color: var(--cfg-text-3);
   font-size: 0.8125rem;
   text-align: center;
 }
 
 html.dark .managed-list-empty {
   border-color: rgb(255 255 255 / 12%);
-  color: #9ca3af;
+  color: var(--cfg-text-3);
 }
 
 .managed-list-row {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.55rem 0.75rem;
-  padding: 0.65rem 0.75rem;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
   border-radius: 0.7rem;
-  border: 1px solid rgb(229 231 235 / 55%);
-  background: rgb(255 255 255 / 42%);
+  border: 1px solid var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
   transition:
-    opacity 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease;
+    opacity var(--sm-dur-fast) var(--sm-ease-standard),
+    border-color var(--sm-dur-fast) var(--sm-ease-standard),
+    background var(--sm-dur-fast) var(--sm-ease-standard);
+  overflow: hidden;
+}
+
+.managed-list-row-head {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.managed-list-row.is-expanded {
+  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 28%, transparent);
+}
+
+/* Full-row expand hit: avatar + title/meta (not action buttons) */
+.managed-list-row-hit {
+  appearance: none;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.managed-list-row-hit:hover {
+  background: rgb(0 0 0 / 3.5%);
+}
+
+html.dark .managed-list-row-hit:hover {
+  background: rgb(255 255 255 / 4.5%);
+}
+
+.managed-list-row-hit:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px
+    color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
+}
+
+/* Non-expandable rows keep padded head content */
+.managed-list-row:not(.is-expandable) .managed-list-row-head {
+  padding: 0.65rem 0.75rem;
+  gap: 0.55rem 0.75rem;
+  align-items: center;
 }
 
 .managed-list-row-leading {
@@ -182,58 +526,112 @@ html.dark .managed-list-empty {
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none; /* clicks pass to row-hit */
+}
+
+.managed-list-row-leading .managed-list-avatar,
+.managed-list-row-leading img {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  object-fit: cover;
+  display: block;
+}
+
+.managed-list-row-leading .managed-list-avatar-fallback {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 5%);
+  color: var(--cfg-text-3);
+}
+
+html.dark .managed-list-row-leading .managed-list-avatar-fallback {
+  background: rgb(255 255 255 / 8%);
+  color: var(--cfg-text-3);
+}
+
+.managed-list-row-detail {
+  padding: 0.55rem 0.75rem 0.7rem;
+  border-top: 1px solid rgb(229 231 235 / 45%);
+  /* Single surface with the row — no nested fill (host embeds plain content) */
+  background: transparent;
+}
+
+html.dark .managed-list-row-detail {
+  border-top-color: rgb(255 255 255 / 8%);
+  background: transparent;
+}
+
+.managed-list-row-main {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  pointer-events: none; /* whole hit button owns the click */
+}
+
+.managed-list-row:not(.is-expandable) .managed-list-row-main {
+  pointer-events: auto;
 }
 
 .managed-list-row-side {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.4rem;
-  flex: 0 1 auto;
+  gap: 0.55rem 0.75rem;
+  flex: 0 0 auto;
   min-width: 0;
+  padding: 0.55rem 0.75rem 0.55rem 0.25rem;
+  align-self: center;
 }
 
 .managed-list-row-trailing {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.35rem;
+  flex: 0 0 auto;
   min-width: 0;
+  /* Visual separation from actions when both sit on one line */
+  margin-inline-end: 0.15rem;
+  padding-inline-end: 0.55rem;
+  border-inline-end: 1px solid rgb(209 213 219 / 55%);
+}
+
+html.dark .managed-list-row-trailing {
+  border-inline-end-color: rgb(255 255 255 / 12%);
 }
 
 /* Keep FieldSelect compact inside list rows */
 .managed-list-row-trailing .field-select-wrap {
-  min-width: 7.5rem;
-  max-width: 12rem;
+  min-width: 8rem;
+  max-width: 13rem;
 }
 
 html.dark .managed-list-row {
-  border-color: rgb(255 255 255 / 8%);
-  background: rgb(255 255 255 / 3.5%);
+  border-color: var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
 }
 
 .managed-list-row:hover {
-  border-color: rgb(156 163 175 / 45%);
-  background: rgb(255 255 255 / 58%);
+  border-color: var(--cfg-subtle-border-hover);
+  background: var(--cfg-subtle-bg-hover);
 }
 
 html.dark .managed-list-row:hover {
-  border-color: rgb(255 255 255 / 14%);
-  background: rgb(255 255 255 / 6%);
+  border-color: var(--cfg-subtle-border-hover);
+  background: var(--cfg-subtle-bg-hover);
 }
 
 .managed-list-row.is-busy {
   opacity: 0.62;
   pointer-events: none;
-}
-
-.managed-list-row-main {
-  min-width: 0;
-  flex: 1 1 12rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
 }
 
 .managed-list-row-title-line {
@@ -247,46 +645,51 @@ html.dark .managed-list-row:hover {
 .managed-list-row-title {
   font-size: 0.8125rem;
   font-weight: 600;
-  color: #111827;
+  color: var(--cfg-text-1);
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
 html.dark .managed-list-row-title {
-  color: #f3f4f6;
+  color: var(--cfg-text-1);
 }
 
 .managed-list-row-subtitle {
   font-size: 0.75rem;
-  color: #4b5563;
+  color: var(--cfg-text-2);
   overflow-wrap: anywhere;
   word-break: break-word;
   line-height: 1.4;
 }
 
 html.dark .managed-list-row-subtitle {
-  color: #9ca3af;
+  color: var(--cfg-text-2);
 }
 
 .managed-list-row-meta {
   font-size: 0.7rem;
-  color: #9ca3af;
+  color: var(--cfg-text-3);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
   word-break: break-word;
 }
 
 html.dark .managed-list-row-meta {
-  color: #6b7280;
+  color: var(--cfg-text-3);
 }
 
 .managed-list-row-actions {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.3rem;
+  gap: 0.4rem;
   flex: 0 0 auto;
+}
+
+.managed-list-row-actions > .settings-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .managed-list-row-title code {
@@ -314,13 +717,13 @@ html.dark .managed-list-row-title code {
   letter-spacing: 0.01em;
   line-height: 1.35;
   border: 1px solid transparent;
-  background: rgb(107 114 128 / 12%);
-  color: #4b5563;
+  background: var(--cfg-subtle-bg);
+  color: var(--cfg-text-2);
 }
 
 html.dark .managed-list-badge {
-  background: rgb(255 255 255 / 10%);
-  color: #d1d5db;
+  background: var(--cfg-subtle-bg);
+  color: var(--cfg-text-2);
 }
 
 .managed-list-badge--active {
@@ -368,130 +771,26 @@ html.dark .managed-list-badge--danger {
 }
 
 .managed-list-badge--muted {
-  background: rgb(107 114 128 / 10%);
-  color: #6b7280;
+  background: var(--cfg-subtle-bg);
+  color: var(--cfg-text-3);
 }
 
 html.dark .managed-list-badge--muted {
-  color: #9ca3af;
-}
-
-/* —— Buttons —— */
-
-.managed-list-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.3rem;
-  min-height: 1.85rem;
-  padding: 0.3rem 0.7rem;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1.2;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease,
-    opacity 0.15s ease;
-}
-
-.managed-list-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.managed-list-btn--sm {
-  min-height: 1.65rem;
-  padding: 0.22rem 0.55rem;
-  font-size: 0.7rem;
-}
-
-.managed-list-btn--secondary {
-  background: rgb(0 0 0 / 5%);
-  border-color: rgb(0 0 0 / 6%);
-  color: #374151;
-}
-
-.managed-list-btn--secondary:hover:not(:disabled) {
-  background: rgb(0 0 0 / 9%);
-}
-
-html.dark .managed-list-btn--secondary {
-  background: rgb(255 255 255 / 8%);
-  border-color: rgb(255 255 255 / 8%);
-  color: #e5e7eb;
-}
-
-html.dark .managed-list-btn--secondary:hover:not(:disabled) {
-  background: rgb(255 255 255 / 13%);
-}
-
-.managed-list-btn--primary {
-  background: rgb(37 99 235 / 12%);
-  border-color: rgb(37 99 235 / 22%);
-  color: #1d4ed8;
-}
-
-.managed-list-btn--primary:hover:not(:disabled) {
-  background: rgb(37 99 235 / 18%);
-}
-
-html.dark .managed-list-btn--primary {
-  background: rgb(59 130 246 / 20%);
-  border-color: rgb(59 130 246 / 28%);
-  color: #bfdbfe;
-}
-
-.managed-list-btn--danger {
-  background: rgb(244 63 94 / 10%);
-  border-color: rgb(244 63 94 / 18%);
-  color: #be123c;
-}
-
-.managed-list-btn--danger:hover:not(:disabled) {
-  background: rgb(244 63 94 / 16%);
-}
-
-html.dark .managed-list-btn--danger {
-  background: rgb(244 63 94 / 16%);
-  border-color: rgb(244 63 94 / 24%);
-  color: #fecdd3;
-}
-
-.managed-list-btn--ghost {
-  background: transparent;
-  border-color: transparent;
-  color: #6b7280;
-}
-
-.managed-list-btn--ghost:hover:not(:disabled) {
-  background: rgb(0 0 0 / 5%);
-  color: #374151;
-}
-
-html.dark .managed-list-btn--ghost {
-  color: #9ca3af;
-}
-
-html.dark .managed-list-btn--ghost:hover:not(:disabled) {
-  background: rgb(255 255 255 / 8%);
-  color: #e5e7eb;
+  background: var(--cfg-subtle-bg);
+  color: var(--cfg-text-3);
 }
 
 /* —— Footer —— */
+/* Action buttons: SettingsButton size="sm". Toggle chips: CheckboxCard size="sm". */
 
 .managed-list-footer {
   font-size: 0.72rem;
-  color: #9ca3af;
+  color: var(--cfg-text-3);
   padding: 0 0.15rem;
 }
 
 html.dark .managed-list-footer {
-  color: #6b7280;
+  color: var(--cfg-text-3);
 }
 
 /* Domain-specific helpers used inside row title/subtitle slots */
@@ -502,12 +801,12 @@ html.dark .managed-list-footer {
 }
 
 .managed-list-muted {
-  color: #9ca3af;
+  color: var(--cfg-text-3);
   font-weight: 500;
 }
 
 html.dark .managed-list-muted {
-  color: #6b7280;
+  color: var(--cfg-text-3);
 }
 
 .managed-list-error {
@@ -520,14 +819,32 @@ html.dark .managed-list-error {
 }
 
 @media (width <= 520px) {
-  .managed-list-row {
-    flex-direction: column;
-    align-items: stretch;
+  .managed-list-row-head {
+    flex-wrap: wrap;
+  }
+
+  .managed-list-row-hit {
+    flex: 1 1 100%;
   }
 
   .managed-list-row-side {
     width: 100%;
     justify-content: flex-start;
+    gap: 0.5rem;
+    padding: 0 0.75rem 0.55rem;
+  }
+
+  .managed-list-row-trailing {
+    flex: 1 1 auto;
+    margin-inline-end: 0;
+    padding-inline-end: 0;
+    border-inline-end: none;
+    padding-block-end: 0.35rem;
+    border-block-end: 1px solid rgb(209 213 219 / 45%);
+  }
+
+  html.dark .managed-list-row-trailing {
+    border-block-end-color: rgb(255 255 255 / 10%);
   }
 
   .managed-list-row-actions {

@@ -7,19 +7,19 @@ use std::path::Path;
 use crate::db::schema_check::{default_platform_seeds, DefaultPlatformSeed};
 use crate::models::entities::platforms;
 
-/// 平台描述映射（数据库不存储描述，这里提供默认描述）
+/// 平台描述映射（数据库不存储描述，这里提供默认描述；以「能做什么」为中心）
 fn get_platform_description(name: &str) -> &'static str {
     match name {
-        "github" => "Aggregate your repositories, stars, and contributions",
-        "bilibili" => "Track your favorites, bangumi, and viewing history",
-        "steam" => "Sync your game library and wishlist",
-        "netease" | "netease_music" => "Analyze your music taste and playlists",
-        "bangumi" => "Sync your Bangumi collection, ratings, and watching status",
-        "x" => "Sync your X profile and posts; share via Web Intent",
-        "discord" => "Sync your Discord profile, server footprint, and linked accounts",
-        "mal" => "Username required; optional Client ID uses official API (else public load.json)",
-        "xbox" => "Sync your Xbox achievements, Gamerscore, and recently played titles",
-        "psn" => "Sync your PSN trophies, trophy level, and recently played titles",
+        "github" => "Repos, stars, and contributions",
+        "bilibili" => "Favorites, anime, and viewing history",
+        "steam" => "Library, wishlist, and play stats",
+        "netease" | "netease_music" => "Liked songs and music taste",
+        "bangumi" => "Collections, ratings, and watching status",
+        "x" => "Profile and posts, with sharing",
+        "discord" => "Profile, servers, and linked accounts",
+        "mal" => "Anime / manga lists and scores",
+        "xbox" => "Achievements, Gamerscore, and recent games",
+        "psn" => "Trophies, trophy level, and recent games",
         _ => "Connect and sync your data",
     }
 }

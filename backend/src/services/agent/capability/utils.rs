@@ -391,7 +391,7 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "ai.webSearch" => "【必选】联网搜索。查询外部实时信息时使用（新闻、公司、产品、天气等）",
         "ai.recommend" => "智能推荐。用户说'推荐'、'有什么好的'、'建议'时使用",
         "ai.chat" => "普通对话。用户闲聊或问通用问题时使用",
-        "ai.image" => "AI 图片生成。用户说'生成图片'、'画一张'时使用",
+        "ai.image" => "AI 图片生成。用户说'生成图片'、'画一张'时使用；可选 width/height（256–2048，默认1024）指定分辨率，竖图/横图/壁纸时务必传入",
 
         // ============ 平台数据 ============
         "platform.read" => "通用平台数据读取。获取平台缓存数据",
@@ -565,7 +565,7 @@ pub fn get_quick_reference() -> Value {
             },
             "生成AI图片": {
                 "steps": ["prompt.generate → ai.image"],
-                "note": "先用 prompt.generate 生成优化 prompt（description 必须详细），再传给 ai.image"
+                "note": "先用 prompt.generate 生成优化 prompt（description 必须详细），再传给 ai.image；分辨率用 ai.image 的 width/height（256–2048，默认1024），竖图/横图/用户口述尺寸时写入 params，不要写进 prompt"
             },
             "多平台对比": {
                 "steps": ["platform.read(A) + platform.read(B) → ai.analyze"],
@@ -602,7 +602,7 @@ pub fn get_quick_reference() -> Value {
             "ai.summarize": {"content": "文章内容或 contentFrom 引用", "maxLength": 300},
             "ai.analyze": {"content": "待分析文本", "analysisType": "sentiment|trends|custom", "customPrompt": "自定义分析角度"},
             "brew.items": {"limit": 10, "source_id": "可选源ID", "unread_only": true},
-            "router.navigate": {"path": "/library, /brew, /life, /config, /data-management, /tapp"},
+            "router.navigate": {"path": "/library, /brew, /life, /config, /tapp"},
             "music.control": {"action": "play|pause|next|prev|mute|unmute|volume", "volume": 50},
             "scheduler.create": {"tappId": "已安装TappID", "name": "任务名", "scheduleType": "cron", "schedule": {"cron": "*/30 * * * *"}},
             "heartbeat.create": {"name": "Brew早间总结", "schedule": "0 9 * * *", "action": "总结 brew 订阅", "enabled": true}

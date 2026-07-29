@@ -7,9 +7,7 @@
  * GitHub 用 kind="github" 走 GithubProvider（不需要 OIDC discovery）；
  * 其它都是标准 OIDC。
  *
- * **使用方法描述**走 i18n：每个预设的 `hintKey` 指向 `t.config[hintKey]`，
- * 字符串里用反引号 `...` 标记内联代码（URL、路径、占位符），
- * 渲染时会被替换成 <code> 元素。
+ * 配置步骤文案见 oauthSetupGuides.ts + i18n（oauthSetup*）。
  */
 
 import { getOAuthIconAsset } from '../../utils/oauthIcons'
@@ -29,10 +27,8 @@ export interface OAuthPreset {
   scopes: string[]
   /** SVG icon URL；GitHub 留空，前端识别 slug="github" 后用内置 FaGithub */
   icon_url?: string
-  /** 提供方申请 OAuth 应用的文档链接 */
+  /** 提供方申请 OAuth 应用的文档链接（SetupFlow「打开」用） */
   docs_url?: string
-  /** i18n key（位于 t.config.*），渲染时反引号片段会变成 <code> */
-  hintKey?: string
 }
 
 export const OAUTH_PRESETS: OAuthPreset[] = [
@@ -44,7 +40,6 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     scopes: ['read:user', 'user:email'],
     icon_url: undefined,
     docs_url: 'https://github.com/settings/developers',
-    hintKey: 'oauthPresetHintGithub',
   },
   {
     id: 'google',
@@ -56,7 +51,6 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     scopes: ['openid', 'email', 'profile'],
     icon_url: getOAuthIconAsset('google'),
     docs_url: 'https://console.cloud.google.com/apis/credentials',
-    hintKey: 'oauthPresetHintGoogle',
   },
   {
     id: 'microsoft',
@@ -69,7 +63,6 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     icon_url: getOAuthIconAsset('microsoft'),
     docs_url:
       'https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade',
-    hintKey: 'oauthPresetHintMicrosoft',
   },
   {
     id: 'gitlab',
@@ -80,7 +73,6 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     scopes: ['openid', 'email', 'profile'],
     icon_url: getOAuthIconAsset('gitlab'),
     docs_url: 'https://gitlab.com/-/user_settings/applications',
-    hintKey: 'oauthPresetHintGitlab',
   },
   {
     id: 'discord',
@@ -91,7 +83,6 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     scopes: ['openid', 'email', 'identify'],
     icon_url: getOAuthIconAsset('discord'),
     docs_url: 'https://discord.com/developers/applications',
-    hintKey: 'oauthPresetHintDiscord',
   },
   {
     id: 'authentik',
@@ -102,7 +93,6 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     scopes: ['openid', 'email', 'profile'],
     icon_url: getOAuthIconAsset('authentik'),
     docs_url: 'https://goauthentik.io/docs/providers/oauth2',
-    hintKey: 'oauthPresetHintAuthentik',
   },
   {
     id: 'keycloak',
@@ -113,7 +103,6 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     scopes: ['openid', 'email', 'profile'],
     icon_url: getOAuthIconAsset('keycloak'),
     docs_url: 'https://www.keycloak.org/docs/latest/server_admin/index.html',
-    hintKey: 'oauthPresetHintKeycloak',
   },
   {
     id: 'auth0',
@@ -124,7 +113,6 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     scopes: ['openid', 'email', 'profile'],
     icon_url: getOAuthIconAsset('auth0'),
     docs_url: 'https://auth0.com/docs/get-started/applications',
-    hintKey: 'oauthPresetHintAuth0',
   },
   {
     id: 'custom',
@@ -135,7 +123,6 @@ export const OAUTH_PRESETS: OAuthPreset[] = [
     scopes: ['openid', 'email', 'profile'],
     icon_url: undefined,
     docs_url: undefined,
-    hintKey: 'oauthPresetHintCustom',
   },
 ]
 

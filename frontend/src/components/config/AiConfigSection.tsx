@@ -7,6 +7,7 @@ import type { SettingOption } from '../settings/types'
 import {
   FaMicrophone,
   FaVolumeUp,
+  LuLeaf,
   LuPalette,
   LuSparkles,
   LuZap,
@@ -19,14 +20,13 @@ import React, { useCallback, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import {
   ButtonItem,
-  CompactSettingGroup,
   InputItem,
-  NumberItem,
   ProviderItem,
   SelectItem,
   SettingGroup,
   SettingSection,
   SwitchItem,
+  useSettingGuide,
 } from '../settings'
 
 /**
@@ -142,10 +142,19 @@ interface ModelTierGroupProps {
   updateValue: (key: string, value: string) => void
 }
 
-const ModelTierGroup: React.FC<ModelTierGroupProps> = ({
+const ModelTierGroup: React.FC<
+  ModelTierGroupProps & {
+    guide?: React.ReactNode
+    providerGuide?: React.ReactNode
+    fieldGuideFor?: (fieldKey: string) => React.ReactNode
+  }
+> = ({
   title,
   icon,
   description,
+  guide,
+  providerGuide,
+  fieldGuideFor,
   providerItemKey,
   providerLabel,
   provider,
@@ -157,7 +166,12 @@ const ModelTierGroup: React.FC<ModelTierGroupProps> = ({
   onProviderChange,
   updateValue,
 }) => (
-  <SettingGroup title={title} icon={icon} description={description}>
+  <SettingGroup
+    title={title}
+    icon={icon}
+    description={description}
+    guide={guide}
+  >
     {controls}
     {enabled && (
       <>
@@ -168,6 +182,7 @@ const ModelTierGroup: React.FC<ModelTierGroupProps> = ({
           onChange={onProviderChange}
           options={providerOptions}
           hint={providerHint}
+          guide={providerGuide}
           layout="horizontal"
         />
         {fields.map((field) => (
@@ -178,6 +193,7 @@ const ModelTierGroup: React.FC<ModelTierGroupProps> = ({
             required={field.required}
             value={field.value}
             onChange={(value) => updateValue(field.key, value)}
+            guide={fieldGuideFor?.(field.key)}
             placeholder={field.placeholder}
             inputType={field.field_type as 'text' | 'password'}
             autoSelectOnMask
@@ -219,7 +235,24 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   sectionId,
 }) => {
   const { t } = useI18n()
+  const { catalog: g, renderGuide } = useSettingGuide()
   const [speechTesting, setSpeechTesting] = useState(false)
+
+  const fieldGuideFor = useCallback(
+    (fieldKey: string) => {
+      if (fieldKey.includes('api_key') || fieldKey.includes('secret')) {
+        return renderGuide(g.ai.apiKey)
+      }
+      if (fieldKey.includes('base_url')) {
+        return renderGuide(g.ai.baseUrl)
+      }
+      if (fieldKey.includes('model')) {
+        return renderGuide(g.ai.model)
+      }
+      return renderGuide(g.ai.provider)
+    },
+    [g, renderGuide],
+  )
   const [speechTestResult, setSpeechTestResult] = useState<{
     success: boolean
     message: string
@@ -240,13 +273,19 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     return resolveProvider(raw, getFieldValue('openai_base_url'))
   }, [getFieldValue])
 
+  // Lite 模型是否启用（关闭时回退 Standard）
+  const liteEnabled = useMemo(() => {
+    const val = getFieldValue('lite_enabled', 'false')
+    return val === 'true' || val === '1'
+  }, [getFieldValue])
+
   const currentLiteProvider = useMemo(() => {
     const raw = getFieldValue('lite_provider')
     if (!raw) return 'openrouter'
     return resolveProvider(raw, getFieldValue('lite_openai_base_url'))
   }, [getFieldValue])
 
-  // Pro 模型是否启用
+  // Pro 模型是否启用（关闭时回退 Standard）
   const proEnabled = useMemo(() => {
     const val = getFieldValue('pro_enabled', 'false')
     return val === 'true' || val === '1'
@@ -295,6 +334,17 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     [getFieldValue],
   )
 
+  // 与上方 AI 设置共用同一套字段文案（OpenAI API Key / Base URL / Model Name）
+  const openaiFieldLabels = useMemo(() => {
+    const byKey = (key: string, fallback: string) =>
+      configFields.find((f) => f.key === key)?.label || fallback
+    return {
+      apiKey: byKey('openai_api_key', 'OpenAI API Key'),
+      baseUrl: byKey('openai_base_url', 'OpenAI Base URL'),
+      model: byKey('openai_model', 'OpenAI Model Name'),
+    }
+  }, [configFields])
+
   // AI Provider 选项。OpenRouter 默认在前，其次 OpenAI 兼容，最后 Gemini
   const aiProviderOptions: SettingOption<string>[] = useMemo(
     () => [
@@ -305,12 +355,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     [t.config.openaiCompatible],
   )
 
-  // 图片生成 Provider 选项
+  // 图片生成 Provider 选项（OpenAI 兼容复用文本侧同名文案）
   const imageProviderOptions: SettingOption<string>[] = useMemo(
     () => [
       {
         value: 'openai',
-        label: 'OpenAI',
+        label: t.config.openaiCompatible,
         icon: <SiOpenai />,
         badge: 'GPT Image',
       },
@@ -330,10 +380,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         value: 'pixai',
         label: 'PixAI',
         icon: <PixAIIcon />,
-        badge: '不用于 Life',
       },
     ],
-    [],
+    [t.config.openaiCompatible],
   )
 
   const handleImageProviderChange = useCallback(
@@ -408,47 +457,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       sectionId={sectionId}
     >
       <ModelTierGroup
-        title="Lite 模型"
-        icon={<LuSparkles />}
-        description="高频、低成本层，负责角色对话、自主决策与轻量整理；与 Standard、Pro 使用完全相同的 Provider 配置结构。"
-        providerItemKey="lite_ai_provider"
-        providerLabel={t.config.aiProvider}
-        provider={currentLiteProvider}
-        providerOptions={aiProviderOptions}
-        providerHint="可单独配置，留空的凭据会按同一 Provider 复用 Standard。"
-        fields={liteProviderFields}
-        onProviderChange={(provider) =>
-          handleProviderChange(
-            'lite_provider',
-            'lite_openai_base_url',
-            'lite_openai_model',
-            OPENROUTER_MODEL_LITE,
-            provider,
-          )
-        }
-        updateValue={updateValue}
-      />
-
-      <ModelTierGroup
         title={t.config.aiStandardModelTitle}
         icon={<LuSparkles />}
-        description={
-          <>
-            {t.config.aiStandardModelDesc}
-            {' · '}Standard 负责常规分析与中等复杂度任务。
-            {' · '}
-            Gemini {t.config.geminiDescription}{' '}
-            <a
-              href="https://makersuite.google.com/app/apikey"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t.config.getApiKey}
-            </a>
-            {' · '}
-            {t.config.openaiCompatible}：{t.config.openaiDescription}
-          </>
-        }
+        description={t.config.aiStandardModelDesc}
+        guide={renderGuide(g.ai.standard)}
+        providerGuide={renderGuide(g.ai.provider)}
+        fieldGuideFor={fieldGuideFor}
         providerItemKey="ai_provider"
         providerLabel={t.config.aiProvider}
         provider={currentProvider}
@@ -468,9 +482,51 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       />
 
       <ModelTierGroup
+        title={t.config.aiLiteModelTitle}
+        icon={<LuLeaf />}
+        description={t.config.aiLiteModelDesc}
+        guide={renderGuide(g.ai.lite)}
+        providerGuide={renderGuide(g.ai.provider)}
+        fieldGuideFor={fieldGuideFor}
+        providerItemKey="lite_ai_provider"
+        providerLabel={t.config.aiProvider}
+        provider={currentLiteProvider}
+        providerOptions={aiProviderOptions}
+        providerHint={t.config.aiLiteProviderHint}
+        fields={liteProviderFields}
+        enabled={liteEnabled}
+        controls={
+          <SwitchItem
+            itemKey="lite_enabled"
+            label={t.config.aiLiteEnable}
+            description={t.config.aiLiteEnableDesc}
+            guide={renderGuide(g.ai.liteEnable)}
+            value={liteEnabled}
+            onChange={(value: boolean) =>
+              updateValue('lite_enabled', value ? 'true' : 'false')
+            }
+            layout="horizontal"
+          />
+        }
+        onProviderChange={(provider) =>
+          handleProviderChange(
+            'lite_provider',
+            'lite_openai_base_url',
+            'lite_openai_model',
+            OPENROUTER_MODEL_LITE,
+            provider,
+          )
+        }
+        updateValue={updateValue}
+      />
+
+      <ModelTierGroup
         title={t.config.aiProModelTitle}
         icon={<LuZap />}
-        description={`${t.config.aiProModelDesc} · Digital Life 的 DNA 语义归纳、人物设定与最终绘图提示词固定使用 Pro。`}
+        description={t.config.aiProModelDesc}
+        guide={renderGuide(g.ai.pro)}
+        providerGuide={renderGuide(g.ai.provider)}
+        fieldGuideFor={fieldGuideFor}
         providerItemKey="pro_ai_provider"
         providerLabel={t.config.aiProvider}
         provider={currentProProvider}
@@ -483,6 +539,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             itemKey="pro_enabled"
             label={t.config.aiProEnable}
             description={t.config.aiProEnableDesc}
+            guide={renderGuide(g.ai.proEnable)}
             value={proEnabled}
             onChange={(value: boolean) =>
               updateValue('pro_enabled', value ? 'true' : 'false')
@@ -502,15 +559,17 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         updateValue={updateValue}
       />
 
-      {/* AI 图片生成配置 */}
+      {/* 图片生成模型 */}
       <SettingGroup
         title={t.config.aiImageTitle}
         icon={<LuPalette />}
         description={t.config.aiImageDesc}
+        guide={renderGuide(g.ai.image)}
       >
         <ProviderItem
           itemKey="image_provider"
-          label={t.config.imageGenService}
+          label={t.config.aiProvider}
+          guide={renderGuide(g.ai.provider)}
           value={currentImageProvider}
           onChange={handleImageProviderChange}
           options={imageProviderOptions}
@@ -518,23 +577,37 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         />
 
         {currentImageProvider === 'openai' && (
-          <InputItem
-            itemKey="ai_image_openai_api_key"
-            label="OpenAI Image API Key"
-            required
-            value={getFieldValue('ai_image_openai_api_key')}
-            onChange={(v) => updateValue('ai_image_openai_api_key', v)}
-            placeholder="sk-..."
-            inputType="password"
-            autoSelectOnMask
-            layout="vertical"
-          />
+          <>
+            <InputItem
+              itemKey="ai_image_openai_api_key"
+              label={openaiFieldLabels.apiKey}
+              required
+              value={getFieldValue('ai_image_openai_api_key')}
+              onChange={(v) => updateValue('ai_image_openai_api_key', v)}
+              placeholder="sk-..."
+              inputType="password"
+              autoSelectOnMask
+              layout="vertical"
+            />
+            <InputItem
+              itemKey="ai_image_openai_base_url"
+              label={openaiFieldLabels.baseUrl}
+              value={getFieldValue(
+                'ai_image_openai_base_url',
+                OPENAI_BASE_URL,
+              )}
+              onChange={(v) => updateValue('ai_image_openai_base_url', v)}
+              placeholder={OPENAI_BASE_URL}
+              inputType="text"
+              layout="vertical"
+            />
+          </>
         )}
 
         {currentImageProvider === 'openrouter' && (
           <InputItem
             itemKey="ai_image_openrouter_api_key"
-            label="OpenRouter Image API Key"
+            label={openaiFieldLabels.apiKey}
             required
             value={getFieldValue('ai_image_openrouter_api_key')}
             onChange={(v) => updateValue('ai_image_openrouter_api_key', v)}
@@ -589,7 +662,11 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
         <InputItem
           itemKey="ai_image_model"
-          label={t.config.aiModel}
+          label={
+            currentImageProvider === 'pixai'
+              ? t.config.pixaiModelId
+              : openaiFieldLabels.model
+          }
           value={getFieldValue('ai_image_model', 'openai/gpt-image-2')}
           onChange={(v) => updateValue('ai_image_model', v)}
           placeholder={
@@ -604,32 +681,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           inputType="text"
           layout="vertical"
         />
-
-        <CompactSettingGroup>
-          <NumberItem
-            itemKey="ai_image_width"
-            label={t.config.width}
-            value={Number.parseInt(getFieldValue('ai_image_width', '1024'), 10)}
-            onChange={(v) => updateValue('ai_image_width', String(v))}
-            min={256}
-            max={3840}
-            step={16}
-            layout="vertical"
-          />
-          <NumberItem
-            itemKey="ai_image_height"
-            label={t.config.height}
-            value={Number.parseInt(
-              getFieldValue('ai_image_height', '1024'),
-              10,
-            )}
-            onChange={(v) => updateValue('ai_image_height', String(v))}
-            min={256}
-            max={3840}
-            step={16}
-            layout="vertical"
-          />
-        </CompactSettingGroup>
       </SettingGroup>
 
       {/* 语音服务配置 */}
@@ -637,6 +688,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         title={t.config.speechServiceTitle}
         icon={<FaMicrophone />}
         description={t.config.speechServiceDesc}
+        guide={renderGuide(g.ai.speech)}
       >
         <InputItem
           itemKey="tencent_secret_id"

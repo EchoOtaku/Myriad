@@ -97,15 +97,27 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "ai.image".to_string(),
         name: "AI 图片生成".to_string(),
-        description: "使用 AI 生成图片".to_string(),
+        description: "使用 AI 生成图片；可选 width/height（像素 256–2048，默认 1024）指定分辨率".to_string(),
         category: CapabilityCategory::AiProcess,
         supported_actions: vec![IntentAction::Create],
         input_schema: json!({
             "type": "object",
             "properties": {
-                "prompt": { "type": "string" },
-                "width": { "type": "integer" },
-                "height": { "type": "integer" },
+                "prompt": { "type": "string", "description": "图片生成提示词" },
+                "width": {
+                    "type": "integer",
+                    "minimum": 256,
+                    "maximum": 2048,
+                    "default": 1024,
+                    "description": "宽度像素；竖图建议 768，横图建议 1024/1344，省略默认 1024"
+                },
+                "height": {
+                    "type": "integer",
+                    "minimum": 256,
+                    "maximum": 2048,
+                    "default": 1024,
+                    "description": "高度像素；竖图建议 1024/1344，横图建议 768，省略默认 1024"
+                },
                 "style": { "type": "string" }
             },
             "required": ["prompt"]

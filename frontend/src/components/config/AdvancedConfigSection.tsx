@@ -1,7 +1,7 @@
 import type { Locale } from '../../i18n'
 import type { SettingsRestorePreview } from '../../lib/api'
 
-import { FaTimes, LuDownload, LuUpload } from '@lib/icons'
+import { FaGlobe, FaSave, FaTimes, LuDownload, LuUpload } from '@lib/icons'
 import React, { useCallback, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import {
@@ -12,7 +12,20 @@ import {
 } from '../../lib/api'
 
 import { getCSRFToken } from '../../utils/csrf'
-import { ButtonItem, SettingGroup, SettingSection } from '../settings'
+import {
+  ButtonItem,
+  InputItem,
+  SettingGroup,
+  SettingSection,
+  SettingsButton,
+  SwitchItem,
+  useSettingGuide,
+} from '../settings'
+
+interface UiConfigField {
+  key: string
+  value: string
+}
 
 interface AdvancedConfigSectionProps {
   onReset: () => void
@@ -20,6 +33,9 @@ interface AdvancedConfigSectionProps {
   icon: React.ReactNode
   description: string
   sectionId?: string
+  /** UI config fields (network proxy / API mirrors). */
+  uiConfigFields: UiConfigField[]
+  updateUiFieldValue: (key: string, value: string) => void
   onMessage?: (
     msg: string,
     type?: 'success' | 'error' | 'warning' | 'info',
@@ -213,9 +229,12 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
   icon,
   description,
   sectionId,
+  uiConfigFields,
+  updateUiFieldValue,
   onMessage,
 }) => {
   const { locale, t } = useI18n()
+  const { catalog: g, renderGuide } = useSettingGuide()
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
   const [importConfirmOpen, setImportConfirmOpen] = useState(false)
   const [pendingImportData, setPendingImportData] = useState<unknown>(null)
@@ -225,6 +244,12 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
     useState<SettingsRestorePreview | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const previewText = IMPORT_PREVIEW_TEXT[locale]
+
+  const getUiFieldValue = useCallback(
+    (key: string) => uiConfigFields.find((f) => f.key === key)?.value || '',
+    [uiConfigFields],
+  )
+  const isProxyEnabled = getUiFieldValue('proxy_enabled') === 'true'
 
   const closeImportConfirm = useCallback(() => {
     setImportConfirmOpen(false)
@@ -342,11 +367,91 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
       description={description}
       sectionId={sectionId}
     >
-      <SettingGroup>
+      {/* 代理 + API 镜像 */}
+      <SettingGroup
+        title={t.config.network}
+        description={t.config.networkDesc}
+        guide={renderGuide(g.advanced.network)}
+        icon={<FaGlobe />}
+      >
+        <SwitchItem
+          itemKey="proxy_enabled"
+          label={t.config.enableProxy || '启用网络代理'}
+          description={
+            t.config.enableProxyHint || '开启后将使用代理访问外部API'
+          }
+          guide={renderGuide(g.advanced.proxyEnable)}
+          value={isProxyEnabled}
+          onChange={(v) => updateUiFieldValue('proxy_enabled', v.toString())}
+          layout="horizontal"
+        />
+        <InputItem
+          itemKey="proxy_url"
+          label={t.config.proxyUrl || '代理地址'}
+          value={getUiFieldValue('proxy_url')}
+          onChange={(v) => updateUiFieldValue('proxy_url', v)}
+          placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
+          hint={
+            isProxyEnabled
+              ? t.config.proxyUrlHint || '支持 HTTP、HTTPS、SOCKS5 代理协议'
+              : t.config.proxyUrlDisabledHint ||
+                '代理已关闭（关闭时不会使用此地址）。可清空以移除保存的代理配置。'
+          }
+          guide={renderGuide(g.advanced.proxyUrl)}
+          layout="vertical"
+        />
+        <InputItem
+          itemKey="proxy_bypass"
+          label={t.config.proxyBypass || '代理绕过列表'}
+          value={getUiFieldValue('proxy_bypass')}
+          onChange={(v) => updateUiFieldValue('proxy_bypass', v)}
+          placeholder="localhost,127.0.0.1,bilibili.com"
+          hint={
+            t.config.proxyBypassHint ||
+            '不使用代理的域名，用逗号分隔。国内服务（如 Bilibili）建议添加到绕过列表'
+          }
+          guide={renderGuide(g.advanced.proxyBypass)}
+          layout="vertical"
+        />
+        <InputItem
+          itemKey="gemini_base_url"
+          label={t.config.geminiBaseUrl || 'Gemini API 基础地址'}
+          value={getUiFieldValue('gemini_base_url')}
+          onChange={(v) => updateUiFieldValue('gemini_base_url', v)}
+          placeholder="https://generativelanguage.googleapis.com"
+          hint={
+            t.config.geminiBaseUrlHint ||
+            '留空使用官方地址，可填写第三方代理服务地址'
+          }
+          guide={renderGuide(g.advanced.geminiBaseUrl)}
+          layout="vertical"
+        />
+        <InputItem
+          itemKey="github_api_base_url"
+          label={t.config.githubApiBaseUrl || 'GitHub API 基础地址'}
+          value={getUiFieldValue('github_api_base_url')}
+          onChange={(v) => updateUiFieldValue('github_api_base_url', v)}
+          placeholder="https://api.github.com"
+          hint={
+            t.config.githubApiBaseUrlHint ||
+            '留空使用官方地址，可填写 GitHub API 镜像地址（注意：OAuth 认证仍需使用官方地址）'
+          }
+          guide={renderGuide(g.advanced.githubApiBaseUrl)}
+          layout="vertical"
+        />
+      </SettingGroup>
+
+      <SettingGroup
+        title={t.config.configBackupTitle}
+        description={t.config.configBackupDesc}
+        guide={renderGuide(g.advanced.backup)}
+        icon={<FaSave />}
+      >
         <ButtonItem
           itemKey="export_config"
           label={t.config.exportConfig}
           description={t.config.exportConfigDesc}
+          guide={renderGuide(g.advanced.exportConfig)}
           buttonText={t.config.exportConfig}
           buttonIcon={<LuDownload size={14} />}
           onClick={handleExport}
@@ -357,6 +462,7 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
           itemKey="import_config"
           label={t.config.importConfig}
           description={t.config.importConfigDesc}
+          guide={renderGuide(g.advanced.importConfig)}
           buttonText={t.config.importConfig}
           buttonIcon={<LuUpload size={14} />}
           onClick={handleImportClick}
@@ -378,6 +484,7 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
             t.config.resetConfigDesc ||
             'Reset all configurations to default values. This action cannot be undone.'
           }
+          guide={renderGuide(g.advanced.resetConfig)}
           buttonText={t.config.resetConfig}
           onClick={() => setResetConfirmOpen(true)}
           variant="danger"
@@ -408,27 +515,27 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
               </button>
             </div>
             <div className="modal-body">
-              <p className="text-base text-gray-600 dark:text-gray-300">
+              <p className="settings-modal-message">
                 {t.config.resetConfirmMessage ||
                   'Are you sure you want to reset all configurations? This action cannot be undone and will restore all settings to their default values.'}
               </p>
             </div>
             <div className="modal-footer">
-              <button
+              <SettingsButton
+                variant="secondary"
                 onClick={() => setResetConfirmOpen(false)}
-                className="btn-base btn-secondary"
               >
                 {t.common.cancel}
-              </button>
-              <button
+              </SettingsButton>
+              <SettingsButton
+                variant="danger"
                 onClick={() => {
                   onReset()
                   setResetConfirmOpen(false)
                 }}
-                className="btn-base btn-danger"
               >
                 {t.common.confirm}
-              </button>
+              </SettingsButton>
             </div>
           </div>
         </div>
@@ -452,25 +559,25 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
               </button>
             </div>
             <div className="modal-body">
-              <p className="text-base text-gray-600 dark:text-gray-300">
+              <p className="settings-modal-message">
                 {t.config.importConfirmMessage}
               </p>
               {restorePreview && (
-                <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-                  <div className="rounded-lg bg-emerald-50 p-2 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <div className="settings-stat-grid">
+                  <div className="settings-stat-chip is-ok">
                     {previewText.restore}: {restorePreview.restore_count}
                   </div>
-                  <div className="rounded-lg bg-blue-50 p-2 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                  <div className="settings-stat-chip is-info">
                     {previewText.preserve}: {restorePreview.preserve_count}
                   </div>
-                  <div className="rounded-lg bg-gray-100 p-2 text-gray-700 dark:bg-white/5 dark:text-gray-300">
+                  <div className="settings-stat-chip is-muted">
                     {previewText.ignored}: {restorePreview.ignored_count}
                   </div>
-                  <div className="rounded-lg bg-violet-50 p-2 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
+                  <div className="settings-stat-chip is-accent">
                     {previewText.migrated}: {restorePreview.migrated_count}
                   </div>
                   {restorePreview.invalid_count > 0 && (
-                    <div className="col-span-2 rounded-lg bg-red-50 p-2 text-red-700 dark:bg-red-500/10 dark:text-red-300">
+                    <div className="settings-stat-chip is-danger is-wide">
                       {previewText.invalid}: {restorePreview.invalid_count}
                     </div>
                   )}
@@ -478,18 +585,12 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
               )}
             </div>
             <div className="modal-footer">
-              <button
-                onClick={closeImportConfirm}
-                className="btn-base btn-secondary"
-              >
+              <SettingsButton variant="secondary" onClick={closeImportConfirm}>
                 {t.common.cancel}
-              </button>
-              <button
-                onClick={handleImportConfirm}
-                className="btn-base btn-primary"
-              >
+              </SettingsButton>
+              <SettingsButton variant="primary" onClick={handleImportConfirm}>
                 {t.common.confirm}
-              </button>
+              </SettingsButton>
             </div>
           </div>
         </div>

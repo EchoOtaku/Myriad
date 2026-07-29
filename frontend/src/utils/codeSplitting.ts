@@ -66,9 +66,6 @@ export const routeComponents = {
   // Config - 配置页
   config: lazyWithPreload(() => import('../views/Config')),
 
-  // DataManagement - 数据管理
-  dataManagement: lazyWithPreload(() => import('../views/DataManagement')),
-
   // Setup - 设置向导
   setup: lazyWithPreload(() => import('../views/Setup')),
 

@@ -15,12 +15,14 @@ import type {
 } from '../../types/federation'
 import type {
   ManagedListAction,
+  ManagedListFilterOption,
   ManagedListItem,
   ManagedListStat,
   ManagedListTone,
 } from '../settings/ManagedList'
 import React, { useCallback, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
+import { FaRedo, FaSearch, FaSyncAlt, FaTrash } from '../../lib/icons'
 import { federationApi } from '../../services/federationApi'
 import {
   isCancelledDeliveryError,
@@ -189,6 +191,9 @@ export const FederationDeliveryQueue: React.FC<
   const [bulkBusy, setBulkBusy] = useState(false)
   const [rowBusy, setRowBusy] = useState<Record<number, string | null>>({})
   const [refreshing, setRefreshing] = useState(false)
+  const [search, setSearch] = useState('')
+  /** all | pending | delivering | delivered | dead */
+  const [statusFilter, setStatusFilter] = useState('all')
 
   const anyBusy = bulkBusy || refreshing
 
@@ -368,6 +373,8 @@ export const FederationDeliveryQueue: React.FC<
       {
         key: 'refresh',
         label: c.federationDeliveryRefresh,
+        description: c.federationDeliveryRefreshDesc,
+        icon: <FaSyncAlt aria-hidden />,
         onClick: () => void handleRefresh(),
         disabled: anyBusy,
         loading: refreshing,
@@ -376,6 +383,8 @@ export const FederationDeliveryQueue: React.FC<
       {
         key: 'retry-failures',
         label: c.federationDeliveryRetryFailures,
+        description: c.federationDeliveryRetryFailuresDesc,
+        icon: <FaRedo aria-hidden />,
         onClick: () => void handleRetryFailures(),
         disabled: anyBusy || !hasFailures,
         loading: bulkBusy,
@@ -385,6 +394,8 @@ export const FederationDeliveryQueue: React.FC<
       {
         key: 'clear',
         label: c.federationDeliveryClear,
+        description: c.federationDeliveryClearDesc,
+        icon: <FaTrash aria-hidden />,
         onClick: () => void handleClear(),
         disabled: anyBusy || !hasClearable,
         loading: bulkBusy,
@@ -404,8 +415,96 @@ export const FederationDeliveryQueue: React.FC<
     handleClear,
   ])
 
+  const statusFilterOptions = useMemo((): ManagedListFilterOption[] => {
+    const counts = {
+      all: items.length,
+      pending: 0,
+      delivering: 0,
+      delivered: 0,
+      dead: 0,
+    }
+    for (const it of items) {
+      if (it.status === 'pending') counts.pending++
+      else if (it.status === 'delivering') counts.delivering++
+      else if (it.status === 'delivered') counts.delivered++
+      else if (it.status === 'dead' || it.status === 'failed') counts.dead++
+    }
+    return [
+      {
+        key: 'all',
+        label: c.federationDeliveryFilterAll,
+        count: counts.all,
+      },
+      {
+        key: 'pending',
+        label: c.federationDeliveryStatusPending,
+        count: counts.pending,
+      },
+      {
+        key: 'delivering',
+        label: c.federationDeliveryStatusDelivering,
+        count: counts.delivering,
+      },
+      {
+        key: 'delivered',
+        label: c.federationDeliveryStatusDelivered,
+        count: counts.delivered,
+      },
+      {
+        key: 'dead',
+        label: c.federationDeliveryStatDead,
+        count: counts.dead,
+      },
+    ]
+  }, [items, c])
+
+  const filteredItems = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return items.filter((item) => {
+      if (statusFilter === 'pending' && item.status !== 'pending') return false
+      if (statusFilter === 'delivering' && item.status !== 'delivering')
+        return false
+      if (statusFilter === 'delivered' && item.status !== 'delivered')
+        return false
+      if (
+        statusFilter === 'dead' &&
+        item.status !== 'dead' &&
+        item.status !== 'failed'
+      ) {
+        return false
+      }
+      if (!q) return true
+      const hay = [
+        String(item.id),
+        item.activity_type,
+        item.target_domain,
+        item.target_inbox,
+        item.error_message,
+        item.status,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return hay.includes(q)
+    })
+  }, [items, search, statusFilter])
+
+  const queryActive = search.trim().length > 0 || statusFilter !== 'all'
+
+  const emptyText =
+    items.length === 0
+      ? c.federationDeliveryEmpty
+      : c.federationDeliveryFilterEmpty
+
+  const footer =
+    queryActive && items.length > 0
+      ? c.federationDeliveryShowing
+          .replace('{shown}', String(filteredItems.length))
+          .replace('{total}', String(items.length))
+      : undefined
+
   const listItems = useMemo((): ManagedListItem[] => {
-    return items.map((item) => {
+    return filteredItems.map((item) => {
       const cancelled = isCancelledItem(item)
       const statusLabel =
         item.status === 'dead' && cancelled
@@ -476,15 +575,33 @@ export const FederationDeliveryQueue: React.FC<
         busy: !!busyAction,
       }
     })
-  }, [items, rowBusy, anyBusy, c, handleRetry, handleRemove])
+  }, [filteredItems, rowBusy, anyBusy, c, handleRetry, handleRemove])
 
   return (
     <ManagedList
       className={className}
       stats={listStats}
       toolbar={toolbar}
+      queryToggleLabel={c.federationListQueryToggle}
+      queryToggleDescription={c.federationListQueryToggleDesc}
+      queryToggleIcon={<FaSearch aria-hidden />}
+      queryCollapseLabel={c.federationListQueryCollapse}
+      queryCollapseDescription={c.federationListQueryCollapseDesc}
+      search={{
+        value: search,
+        onChange: setSearch,
+        placeholder: c.federationDeliverySearchPlaceholder,
+        ariaLabel: c.federationDeliverySearchAria,
+      }}
+      filters={{
+        options: statusFilterOptions,
+        value: statusFilter,
+        onChange: setStatusFilter,
+        ariaLabel: c.federationDeliveryFilterAria,
+      }}
       items={listItems}
-      emptyText={c.federationDeliveryEmpty}
+      emptyText={emptyText}
+      footer={footer}
       working={bulkBusy}
       maxHeight="20rem"
     />

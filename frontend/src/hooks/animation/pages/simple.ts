@@ -1,7 +1,7 @@
 /**
  * 简单页面通用调度器 Hooks
  *
- * 适用于：Config、Login、Setup、DataManagement、Details
+ * 适用于：Config、Login、Setup、Details
  * 这些页面只需要基础的 Timeout 功能（防抖、延迟跳转等）
  *
  * @example
@@ -24,7 +24,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { Feature, hasFeature } from '../pageFeatures'
 
 // 支持的简单页面
-type SimplePageId = 'config' | 'login' | 'setup' | 'data-management'
+type SimplePageId = 'config' | 'login' | 'setup'
 
 // ==================== 页面初始化 ====================
 // 注意：startPage 由 useRouteScheduler 统一调用
@@ -47,11 +47,6 @@ export function useLoginScheduler(): void {
 // Setup 专用
 export function useSetupScheduler(): void {
   // startPage('setup') 由 useRouteScheduler 统一调用
-}
-
-// DataManagement 专用
-export function useDataManagementScheduler(): void {
-  // startPage('data-management') 由 useRouteScheduler 统一调用
 }
 
 // Details 专用

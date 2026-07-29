@@ -1,5 +1,9 @@
 import type { BaseSettingItemConfig } from '../types'
+import type { ReactNode } from 'react'
 import React from 'react'
+import { useSettingsHelp } from '../SettingsHelpContext'
+import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
+import { SettingTitleHelp } from '../SettingTitleHelp'
 import './SettingItem.css'
 
 export interface SettingItemWrapperProps extends Partial<BaseSettingItemConfig> {
@@ -7,10 +11,16 @@ export interface SettingItemWrapperProps extends Partial<BaseSettingItemConfig> 
   className?: string
   id?: string
   contentRight?: boolean
+  /** 覆盖 BaseSettingItemConfig.detail */
+  detail?: ReactNode
+  /** 覆盖 BaseSettingItemConfig.guide */
+  guide?: ReactNode
 }
 
 export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
   label,
+  detail,
+  guide,
   description,
   hint,
   error,
@@ -23,15 +33,36 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
   contentRight = false,
   disabled = false,
 }) => {
+  const expandHelp = Boolean(useSettingsHelp()?.showDetails)
+  const detailText = detail != null && detail !== '' ? detail : null
+  const guideBody = guide ?? detailText ?? description
+  const expandedExtra =
+    expandHelp && detailText ? (
+      <span className="setting-description setting-description--detail">
+        {detailText}
+      </span>
+    ) : null
+
+  const labelText = label && (
+    <span className="setting-label-text">
+      {label}
+      {required && <span className="required">*</span>}
+      {detailText && !expandHelp && (
+        <SettingTitleHelp ariaLabel={`${label} 详细说明`}>
+          {detailText}
+        </SettingTitleHelp>
+      )}
+      <SettingTitleGuideEntry title={label} guide={guideBody} />
+    </span>
+  )
+
   const labelContent = label && (
     <div className="setting-label">
-      <span className="setting-label-text">
-        {label}
-        {required && <span className="required">*</span>}
-      </span>
+      {labelText}
       {description && (
         <span className="setting-description">{description}</span>
       )}
+      {expandedExtra}
     </div>
   )
 
@@ -65,13 +96,11 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
     >
       {label && (
         <label htmlFor={id} className="setting-label">
-          <span className="setting-label-text">
-            {label}
-            {required && <span className="required">*</span>}
-          </span>
+          {labelText}
           {description && (
             <span className="setting-description">{description}</span>
           )}
+          {expandedExtra}
         </label>
       )}
 

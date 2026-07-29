@@ -331,6 +331,15 @@ sequenceDiagram
 interface AITaskRequest {
   version: 2;
   operation: "generate" | "analyze" | "chat" | "image";
+  /**
+   * operation 决定 shape：
+   * - generate: string | { prompt: string }
+   * - analyze: { data: unknown; instruction?: string }
+   * - chat: { message: string }（或等价消息字段）
+   * - image: string | { prompt: string; width?: number; height?: number }
+   *   width/height 为像素，省略默认 1024，服务端 clamp 到 256–2048；
+   *   分辨率由调用方决定，无全局配置兜底。
+   */
   input: unknown;
   context?: AIContextRef[];
   output?: { format: "text" | "json" | "image"; schema?: string };

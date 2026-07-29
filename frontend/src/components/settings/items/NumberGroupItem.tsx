@@ -63,16 +63,22 @@ export const NumberGroupItem = React.memo<NumberGroupItemProps>(
       [onChange, disabled],
     )
 
+    const showLabel = Boolean(label) || Boolean(description)
+
     return (
       <div
         className={`setting-item setting-vertical ${className} ${disabled ? 'disabled' : ''}`}
       >
-        <div className="setting-label">
-          <span className="setting-label-text">{label}</span>
-          {description && (
-            <span className="setting-description">{description}</span>
-          )}
-        </div>
+        {showLabel && (
+          <div className="setting-label">
+            {label ? (
+              <span className="setting-label-text">{label}</span>
+            ) : null}
+            {description && (
+              <span className="setting-description">{description}</span>
+            )}
+          </div>
+        )}
         <div className="number-group-options">
           {options.map((option) => (
             <div key={option.key} className="number-group-card">

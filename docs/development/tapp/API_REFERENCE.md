@@ -376,6 +376,67 @@ const usage = await Tapp.ai.tasks.usage();
 stop();
 ```
 
+### `input` 按 operation
+
+| operation | `input` | 说明 |
+| --------- | ------- | ---- |
+| `generate` | 非空字符串，或 `{ prompt }` | 文本生成 |
+| `analyze` | `{ data, instruction? }` | `data` 必填 |
+| `chat` | `{ message }` 或等价消息字段 | 对话 |
+| `image` | 非空字符串，或 `{ prompt, width?, height? }` | 图片生成；见下表 |
+
+#### `operation: "image"`
+
+分辨率由**调用方**在 `input` 中指定，服务端无全局宽高配置。
+
+| 字段 | 类型 | 默认 | 约束 | 说明 |
+| ---- | ---- | ---- | ---- | ---- |
+| `prompt` | string | — | 非空 | 也可用整段 `input` 字符串代替对象 |
+| `width` | number \| string | `1024` | clamp 到 256–2048 | 宽（像素）；也接受 `"768"` / `"768px"` |
+| `height` | number \| string | `1024` | clamp 到 256–2048 | 高（像素）；也接受 `"1024"` / `"1024px"` |
+
+```javascript
+// 默认 1024×1024
+await Tapp.ai.tasks.create({
+  version: 2,
+  operation: "image",
+  input: { prompt: "a cat sitting on a windowsill, soft light" },
+  output: { format: "image" },
+});
+
+// 竖图（壁纸 / 肖像）
+await Tapp.ai.tasks.create({
+  version: 2,
+  operation: "image",
+  input: {
+    prompt: "portrait of a knight, dramatic lighting",
+    width: 768,
+    height: 1024,
+  },
+  output: { format: "image" },
+});
+
+// 横图
+await Tapp.ai.tasks.create({
+  version: 2,
+  operation: "image",
+  input: { prompt: "wide landscape at dusk", width: 1344, height: 768 },
+  output: { format: "image" },
+});
+```
+
+成功结果大致为：
+
+```json
+{
+  "format": "image",
+  "value": { "url": "https://...", "width": 768, "height": 1024 }
+}
+```
+
+`image` 必须申请 `ai:image`，Manifest `ai.operations` 含 `"image"`，且 `output.format`
+为 `"image"`。供应商与模型由服务端选择；Tapp 只声明 operation 与输入，不指定 provider。
+
 任务绑定当前 Tapp/subject/owner，最多并发 4 个，125 秒执行上限，终态保留 15 分钟。
 并发/保留上限和 `idempotencyKey` 在跨副本事务中原子判定；同一身份重复提交相同请求只返回
 原任务，不会重复调用模型或重复计费。

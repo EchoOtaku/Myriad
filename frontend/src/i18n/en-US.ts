@@ -32,6 +32,8 @@ export const enUS: TranslationKeys = {
     required: 'Required',
     networkError: 'Network error',
     unknownError: 'Unknown error',
+    copy: 'Copy',
+    copied: 'Copied',
   },
 
   // Navigation
@@ -44,7 +46,6 @@ export const enUS: TranslationKeys = {
     login: 'Login',
     logout: 'Logout',
     account: 'Account',
-    dataManagement: 'Data Management',
     federation: 'Federation',
     backToHome: 'Back to Home',
     // Navigation Island
@@ -76,8 +77,8 @@ export const enUS: TranslationKeys = {
     brew: 'Brew',
     brewReading: 'Brew Reader',
     // Agent
-    agent: 'AI Assistant',
-    aiAssistant: 'AI Assistant',
+    agent: 'Arael Agent',
+    aiAssistant: 'Arael Agent',
     // Tapp
     tapp: 'Apps',
     tappStore: 'Tapp Store',
@@ -308,57 +309,61 @@ export const enUS: TranslationKeys = {
     title: 'System Configuration',
     platforms: 'Data Platforms',
     platformsDesc:
-      'Configure access credentials for data source platforms; the order here sets the report card order',
+      'Connect data sources and sync; drag to set report card order',
+    configBackupTitle: 'Backup & restore',
+    configBackupDesc: 'Export or import full settings, or reset to defaults',
     dragToReorder: 'Hold to drag & reorder',
-    autoRefreshTitle: 'Automatic platform refresh',
-    autoRefreshDescription:
-      'The backend Core scheduler refreshes enabled platforms without requiring an open browser.',
-    autoRefreshFrequency: 'Refresh frequency',
+    showHelpDetails: 'Show help',
+    showHelpDetailsDesc: 'Show notes & guides',
+    optionGuide: 'Option guide',
+    optionGuideHeading: '{title} · Guide',
+    openOptionGuide: 'Open guide for “{title}”',
+    optionGuideFooterHint:
+      'These notes explain the option. Save when the page asks you to.',
+    guideSectionWhat: 'What it is',
+    guideSectionChain: 'What it affects',
+    guideSectionFrontend: 'Where you’ll see it',
+    guideSectionNotes: 'Good to know',
+    resetCurrentPage: 'Reset page',
+    resetCurrentPageDesc: 'Restore defaults',
+    resetCurrentPageAction: 'Confirm reset?',
+    resetCurrentPageConfirm: 'Click again',
+    resetCurrentPageDone: 'This page has been reset',
+    resetCurrentPageNone: 'Nothing to reset on this page',
+    autoRefreshTitle: 'Refresh',
+    autoRefreshDescription: 'Schedule fetches for enabled platforms.',
     autoRefreshFrequencyDesc:
       'Platform jobs are staggered to avoid contacting every external service at once.',
     autoRefreshOff: 'Off',
     autoRefreshEveryHours: 'Every {hours} hours',
-    autoRefreshSummary:
-      'Saving will create jobs for {count} enabled platforms and refresh them every {hours} hours.',
-    autoRefreshNoPlatforms:
-      'No data platform is enabled, so no refresh job will be created.',
-    autoRefreshDisabledHint:
-      'Automatic refresh is off. Platform data changes only after a manual refresh.',
+    autoRefreshSummary: 'Now: {count} platforms, every {hours} hours.',
+    autoRefreshNoPlatforms: 'Now: no platforms enabled.',
+    autoRefreshDisabledHint: 'Now: off.',
     ai: 'AI Config',
-    aiDesc: 'Configure AI model and API key',
+    aiDesc: 'Text models by tier, image generation, and speech services',
     basic: 'Basic Config',
-    basicDesc: 'Site URL, background, theme and other basic settings',
+    basicDesc: 'Site URL, wallpaper, theme, and site metadata',
     oauth: 'Third-party login',
-    oauthDesc:
-      'Configure GitHub / Google / Microsoft and other login providers, plus local registration policy',
+    oauthDesc: 'Add and configure GitHub, Google, Microsoft, and other login providers',
     music: 'Music Player',
-    musicDesc: 'Configure playlist playback',
-    network: 'Network Proxy',
-    networkDesc: 'Configure network proxy to access external services',
+    musicDesc: 'Choose a music platform and playlist; disable to hide the player',
+    network: 'Network & API mirrors',
+    networkDesc: 'Outbound proxy and Gemini / GitHub API mirror base URLs',
     federation: 'Federation Management',
     federationDesc:
-      'Trust policy, allowlist, instance blocks, and content filters',
+      'Identity keys, instance policy, known instances, content filters, delivery queue, and inbound rate limits',
     federationPolicySaved: 'Trust policy saved',
     federationLoadFailed: 'Failed to load trust policy',
-    federationSaveFailed: 'Save failed',
     federationUpdateFailed: 'Update failed',
     federationBlockFailed: 'Block action failed',
     federationFilterNameValueRequired: 'Name and value are required',
     federationFilterAdded: 'Filter added',
     federationAddFilterFailed: 'Could not add filter',
-    federationActiveEnforcement: 'Active enforcement',
-    federationBlocklist: 'Blocklist',
     federationAllowlist: 'Allowlist',
-    federationAllowlistOn: 'on ({n} domains)',
-    federationAllowlistOff: 'off (empty = allow all non-blocked)',
     federationMinTrust: 'Min trust',
-    federationMinTrustOn: '≥ {n}',
-    federationMinTrustOff: 'off (0)',
-    federationContentFiltersOn: 'on ({n} enabled)',
-    federationContentFiltersOff: 'off',
-    federationOn: 'on',
-    federationOff: 'off',
     federationInstancePolicy: 'Instance policy',
+    federationInstancePolicyDesc:
+      'Inbound min trust, allowlist, and auto-registration — who may federate with this site',
     federationMinTrustInbound: 'Minimum inbound trust level',
     federationMinTrustInboundDesc:
       'Inbound requests are rejected when the source domain is below this level. The default of 0 disables the trust floor. Raising it requires assigning a sufficient level to peer domains under Known instances.',
@@ -369,12 +374,33 @@ export const enUS: TranslationKeys = {
     federationAutoDiscover: 'Auto-register instances',
     federationAutoDiscoverDesc:
       'When enabled, domains not yet recorded are stored as Discovered (1) on first contact. When disabled they remain Unknown (0). Levels 2 and above are never assigned automatically.',
-    federationSavePolicy: 'Save policy',
     federationKnownInstances: 'Known instances',
     federationKnownInstancesDesc:
       'Manage trust level and block status per domain. Levels 2–4 are set manually; user follow relationships do not change instance trust. Blocked domains are refused for both inbound and outbound delivery.',
     federationNoInstances:
       'No instances recorded. Entries appear after auto-registration or inbound activity.',
+    federationInstanceStatTotal: 'Total',
+    federationInstanceStatActive: 'Active',
+    federationInstanceStatBlocked: 'Blocked',
+    federationInstanceStatTrusted: 'Trusted+',
+    federationListQueryToggle: 'Search & filter',
+    federationListQueryToggleDesc: 'Narrow the list by keyword and filters',
+    federationListQueryCollapse: 'Done',
+    federationListQueryCollapseDesc: 'Close the query bar',
+    federationInstanceSearchPlaceholder: 'Search domain or software…',
+    federationInstanceSearchAria: 'Search known instances',
+    federationInstanceFilterAria: 'Filter by status or trust level',
+    federationInstanceFilterAll: 'All',
+    federationInstanceFilterActive: 'Active',
+    federationInstanceFilterBlocked: 'Blocked',
+    federationInstanceFilterLevel0: '0 Unknown',
+    federationInstanceFilterLevel1: '1 Discovered',
+    federationInstanceFilterLevel2: '2 Associated',
+    federationInstanceFilterLevel3: '3 Trusted',
+    federationInstanceFilterLevel4: '4 Core',
+    federationInstanceFilterEmpty: 'No instances match the current search or filter.',
+    federationInstanceShowing: 'Showing {shown} / {total}',
+    federationInstanceTrustAria: 'Instance trust level',
     federationBlocked: 'blocked',
     federationBlock: 'Block',
     federationUnblock: 'Unblock',
@@ -396,7 +422,13 @@ export const enUS: TranslationKeys = {
     federationFilterDescRequireTrust:
       'Rejects inbound traffic when the source domain trust is below the selected level. Independent of the instance-policy trust floor above; both can apply.',
     federationAddFilter: 'Add filter',
+    federationAddFilterDesc: 'Create a content filter rule',
     federationNoFilters: 'No content filters.',
+    federationFilterSearchPlaceholder: 'Search name, type, or value…',
+    federationFilterSearchAria: 'Search content filters',
+    federationFilterFilterAria: 'Filter by status or type',
+    federationFilterFilterEmpty: 'No filters match the current search or filter.',
+    federationFilterShowing: 'Showing {shown} / {total}',
     federationFilterEnabled: 'On',
     federationFilterDisabled: 'Off',
     federationTrustUnknown: '0 · Unknown (not registered)',
@@ -404,17 +436,12 @@ export const enUS: TranslationKeys = {
     federationTrustFollowed: '2 · Associated (manual)',
     federationTrustTrusted: '3 · Trusted (relaxed rate limit; manual)',
     federationTrustFederated: '4 · Federated core (highest; manual)',
-    federationTrustLevelHelp:
-      'Trust level is evaluated per federation instance domain for inbound access control. It is independent of user follow relationships.',
     federationFilterTypeBlockActivity: 'Block activity type',
     federationFilterTypeBlockKeyword: 'Block keyword',
     federationFilterTypeRequireTrust: 'Require trust level',
-    federationAdvanced: 'Advanced',
+    federationAdvanced: 'Inbound rate limit',
     federationAdvancedDesc:
-      'Operational controls such as inbound rate limits. These stack with instance policy (allowlist, min trust) above. Defaults suit most deployments; overly strict values may reject legitimate federation traffic.',
-    federationRateLimit: 'Inbound rate limit',
-    federationRateLimitDesc:
-      'Limits inbound Activity volume per source domain. Domains with trust level ≥ 3 use the trusted multiplier.',
+      'Cap inbound Activities per source domain; stacks with instance policy above. Defaults suit most deployments; too-strict values may reject legitimate peers.',
     federationRateMaxRequests: 'Max requests per window',
     federationRateMaxRequestsDesc:
       'Maximum inbound activities per source domain within each window (default 100).',
@@ -424,7 +451,6 @@ export const enUS: TranslationKeys = {
     federationRateTrustedMultiplier: 'Trusted domain multiplier',
     federationRateTrustedMultiplierDesc:
       'For trust level ≥ 3, effective limit = max requests × multiplier (default 5).',
-    federationRateResetDefaults: 'Reset rate limit defaults',
     federationKeysIdentity: 'Identity & keys',
     federationKeysIdentityDesc:
       'Your ActivityPub actor and signing key. Rotation replaces the RSA keypair and fans out Update(Person); remote peers must refresh your public key. ensure-keys never rotates silently.',
@@ -440,20 +466,20 @@ export const enUS: TranslationKeys = {
     federationDeliveryQueue: 'Outbound delivery queue',
     federationDeliveryQueueDesc:
       'Pending, in-flight, failed, and cancelled outbound deliveries. Retry real failures; Remove stops and drops a row; Clear cancels in-flight and purges every finished row.',
-    federationDeliveryStatsLine:
-      'pending {pending} · delivering {delivering} · delivered {delivered} · finished {dead}',
     federationDeliveryStatPending: 'Pending',
     federationDeliveryStatDelivering: 'Delivering',
     federationDeliveryStatDelivered: 'Delivered',
     federationDeliveryStatDead: 'Failed / cancelled',
     federationDeliveryEmpty: 'No recent delivery queue rows.',
+    federationDeliverySearchPlaceholder: 'Search ID, domain, type, or error…',
+    federationDeliverySearchAria: 'Search delivery queue',
+    federationDeliveryFilterAria: 'Filter by delivery status',
+    federationDeliveryFilterAll: 'All',
+    federationDeliveryFilterEmpty:
+      'No deliveries match the current search or filter.',
+    federationDeliveryShowing: 'Showing {shown} / {total}',
     federationDeliveryRetry: 'Retry',
     federationDeliveryRemove: 'Remove',
-    federationDeliveryCancel: 'Cancel',
-    federationDeliveryDismiss: 'Dismiss',
-    federationDeliveryPurgeCancelled: 'Clear cancelled',
-    federationDeliveryPurgeCancelledConfirm:
-      'Remove all intentionally cancelled dead deliveries from the queue? This cannot be undone.',
     federationDeliveryStatusCancelled: 'Cancelled',
     federationDeliveryStatusFailed: 'Failed',
     federationDeliveryStatusPending: 'Pending',
@@ -461,20 +487,16 @@ export const enUS: TranslationKeys = {
     federationDeliveryStatusDelivered: 'Delivered',
     federationDeliveryAttempts: 'attempts {attempts}/{max}',
     federationDeliveryRetryFailures: 'Retry failures',
+    federationDeliveryRetryFailuresDesc: 'Re-queue failed deliveries',
     federationDeliveryRetryFailuresConfirm:
       'Re-queue every delivery that failed (not user-cancelled)?',
     federationDeliveryClear: 'Clear',
+    federationDeliveryClearDesc: 'Cancel in-flight and purge dead letters',
     federationDeliveryClearConfirm:
       'Cancel all pending/delivering items and delete every failed or cancelled row from the list? This cannot be undone.',
-    federationDeliveryRetryAllDead: 'Retry failures',
-    federationDeliveryCancelAllPending: 'Clear',
-    federationDeliveryRetryAllConfirm:
-      'Re-queue every delivery that failed (not user-cancelled)?',
-    federationDeliveryCancelAllConfirm:
-      'Cancel all pending/delivering items and delete every failed or cancelled row from the list? This cannot be undone.',
-    federationDeliveryActionOk: 'Delivery queue updated',
     federationDeliveryActionFailed: 'Delivery action failed',
     federationDeliveryRefresh: 'Refresh',
+    federationDeliveryRefreshDesc: 'Reload the delivery queue',
     federationFilterNamePlaceholder: 'e.g. block-announce',
     federationActivityFollow: 'Follow',
     federationActivityAccept: 'Accept',
@@ -502,8 +524,8 @@ export const enUS: TranslationKeys = {
     federationActivityRingLeave: 'Ring leave (MFP)',
     federationActivityFileTransfer: 'File transfer (MFP)',
     federationActivityKeyExchange: 'Key exchange (MFP)',
-    data: 'Data Management',
-    dataDesc: 'Manage cache and platform data',
+    data: 'Data',
+    dataDesc: 'Cache & platform data',
     about: 'About',
     aboutDesc: 'View Myriad version and project information',
     aboutTagline: 'A myriad of lights, in one place.',
@@ -511,18 +533,11 @@ export const enUS: TranslationKeys = {
     aboutLicense: 'License',
     aboutOrganization: 'Organization',
     aboutRepository: 'Repository',
-    aboutDevInfo: 'Development',
     aboutLogoAlt: 'Myriad Logo',
     // User management
     users: 'User Management',
     usersDesc:
-      'Manage admin accounts and registered users: OAuth links, installed apps, online time',
-    usersAdminGroup: 'Administrator Accounts',
-    usersAdminGroupDesc:
-      'Accounts with admin privileges and their sign-in methods',
-    usersRegisteredGroup: 'Registered Users',
-    usersRegisteredGroupDesc:
-      'OAuth status, installed apps and presence of all registered users',
+      'Admins and registered users, local registration toggle; OAuth links, installed apps, and online status',
     usersOnline: 'Online',
     usersOffline: 'Offline',
     usersLastSeen: 'Last active',
@@ -542,7 +557,6 @@ export const enUS: TranslationKeys = {
       'Unlink this OAuth account? The user will no longer be able to sign in with it.',
     usersInstalledTapps: 'Installed apps',
     usersNoTapps: 'No apps installed',
-    usersTappCount: '{count} apps',
     usersRole: 'Role',
     usersRoleAdmin: 'Admin',
     usersRoleUser: 'User',
@@ -566,12 +580,15 @@ export const enUS: TranslationKeys = {
     usersDeleteSuccess: 'User deleted',
     usersEmail: 'Email',
     usersCancel: 'Cancel',
+    usersCancelDesc: 'Discard this draft',
     usersCreateUser: 'New user',
+    usersCreateUserDesc: 'Create a local account',
     usersCreateUsername: 'Username',
     usersCreatePassword: 'Initial password',
     usersCreateIsAdmin: 'Grant admin privileges',
     usersCreateSubmit: 'Create',
     usersRefresh: 'Refresh',
+    usersRefreshDesc: 'Reload the list',
     usersLoadError: 'Failed to load users',
     usersActionError: 'Action failed',
     usersErrorUnlinkLast:
@@ -587,15 +604,11 @@ export const enUS: TranslationKeys = {
     usersEmpty: 'No registered users yet',
     usersSearchLabel: 'Search users',
     usersSearchPlaceholder: 'Search username, display name, email, or OAuth',
-    usersSearchClear: 'Clear search',
     usersFilterRole: 'Role',
     usersFilterStatus: 'Status',
     usersFilterAll: 'All',
-    usersFilterClear: 'Clear filters',
     usersNoMatch: 'No matching users',
     usersResultCount: '{count} results',
-    usersShowDetail: 'Show details',
-    usersHideDetail: 'Hide details',
     usersHours: 'h',
     usersMinutes: 'min',
     // Updater
@@ -623,25 +636,16 @@ export const enUS: TranslationKeys = {
     updaterLastChecked: 'Last checked',
     updaterUnknown: 'unknown',
     updaterCheckNow: 'Check for updates',
-    updaterChecking: 'Checking…',
     updaterRetry: 'Retry connection',
     updaterNoAvailable: 'You are up to date — no updates available.',
-    updaterLoading: 'Loading…',
     updaterCheckStale: 'Check result may be outdated — rechecking…',
     updaterCheckStaleAction: 'Last check is too old — please check again',
     updaterStatusUnconfirmed: 'Unconfirmed',
-    updaterAvailableTitle: 'New version found',
-    updaterAvailableDowngradeTitle: 'Target is older than current (downgrade)',
     updaterReleaseNotes: 'View release notes',
     updaterUpdateNow: 'Update now',
     updaterDowngradeNow: 'Downgrade to {version}',
-    updaterDispatching: 'Starting update…',
     updaterDispatched:
       'Update started (job {jobId}). Progress continues on the maintenance page.',
-    updaterWhatHappensTitle: 'What happens during an update?',
-    updaterWhatHappens1: 'Data is backed up automatically',
-    updaterWhatHappens2: 'Maintenance mode (site briefly unavailable)',
-    updaterWhatHappens3: 'Health check; failure rolls back automatically',
     updaterIrreversibleWarn:
       'This update has irreversible data changes; you cannot simply roll back afterward.',
     updaterFreshnessAhead: '{n} commits newer than current',
@@ -677,7 +681,6 @@ export const enUS: TranslationKeys = {
       'Install new versions automatically; ask first for downgrades, conflicts, or changes that cannot be rolled back.',
     updaterAutoPrefsSaved: 'Auto-update settings saved',
     updaterStepLog: 'Show detailed steps',
-    updaterProcessing: 'Working…',
     updaterProgressOnMaintenance:
       'Once maintenance starts, full progress is on the maintenance page.',
     updaterConfirmUpgrade:
@@ -711,6 +714,7 @@ export const enUS: TranslationKeys = {
     updaterSelfUpdateDispatched:
       'Updater upgrade to {version} started (was {previous}); continue the app update when it finishes.',
     updaterInfraGroupTitle: 'Edge & updater components',
+    updaterInfraUpdateAvailableHint: 'Update available',
     updaterInfraGroupDesc:
       'Updater and reverse proxy (proxy) are not upgraded by the normal app update — trigger them here.',
     updaterInfraUpdaterTitle: 'Updater',
@@ -728,8 +732,6 @@ export const enUS: TranslationKeys = {
       'Upgrade proxy to the current registry tip? Brief edge interruption (usually <10s).',
     updaterInfraProxyDispatched:
       'Proxy upgrade to {version} started (was {previous}); confirming result…',
-    updaterInfraNeedCheck:
-      'Run “Check for updates” first to resolve a target version.',
     updaterInfraSelfLastFailed:
       'Last updater upgrade failed: target {target} (was {previous}). {error}',
     updaterInfraProxyLastFailed:
@@ -838,7 +840,6 @@ export const enUS: TranslationKeys = {
       'Invalid configuration file. Please check the JSON format.',
     importConfirmMessage:
       'Settings will be merged against the current version and the current administrator notification preferences restored. New options are preserved and removed options ignored. Review the preview below.',
-    dangerZone: 'Danger Zone',
     searchConfig: 'Search configurations...',
     searchResults: 'Search Results',
     noMatchingConfig: 'No matching configurations found',
@@ -847,25 +848,19 @@ export const enUS: TranslationKeys = {
     configSaveFailed: 'Failed to save configuration',
     configEmpty: 'Configuration is empty, cannot save',
     loadConfigFailed: 'Failed to load configuration',
+    loadConfigFailedDesc: 'Settings are unavailable. Check the connection and retry.',
     resettingConfig: 'Resetting configuration...',
     configReset: 'Configuration reset and saved!',
-    testConnection: 'Test Connection',
-    testFailed: 'Connection test failed',
-    imageGenService: 'Image Generation Service',
     free: 'Free',
     aiModel: 'AI Model',
-    width: 'Width (px)',
-    height: 'Height (px)',
     enableMusicPlayer: 'Enable Music Player',
-    musicPlayerDesc: 'Show music player in control island',
     musicPlatform: 'Music Platform',
     playlistId: 'Playlist ID',
-    playlistIdHint: 'Numeric ID from playlist URL',
     clearMusicCache: 'Clear Music Cache',
     siteMetadata: 'Site Metadata',
+    siteMetadataDesc: 'Site title, description, and favicon',
     backgroundAndTheme: 'Background and Theme',
-    parallaxHint:
-      'Enable parallax effect on mouse movement / device tilt for 3D depth',
+    backgroundAndThemeDesc: 'Wallpaper, blur, and theme-related appearance',
     // Evocative Wallpaper Effects
     evocativeTitle: 'Evocative Wallpaper Effects',
     evocativeEffects: 'Effect Toggles',
@@ -886,33 +881,35 @@ export const enUS: TranslationKeys = {
     fpsBalanced: 'Balanced',
     fpsSmooth: 'Smooth',
     fieldEvocativeRippleQuality: 'Ripple Quality',
-    fieldEvocativeRippleQualityHint:
-      'Higher quality ripples look better but use more resources',
-    qualityLow: 'Low',
-    qualityMedium: 'Medium',
-    qualityHigh: 'High',
-    qualityUltra: 'Ultra',
+    sliderRippleLow: 'Low · lighter load',
+    sliderRippleUltra: 'Ultra · finer ripples',
+    sliderRecommended: 'Recommended',
     // UI field labels
     fieldWallpaperUrl: 'Wallpaper URL',
-    fieldWallpaperBlur: 'Wallpaper Blur (0-10)',
+    fieldWallpaperBlur: 'Wallpaper Blur',
+    sliderWeak: 'Soft · clearer',
+    sliderStrong: 'Strong · blurrier',
     fieldWallpaperParallax: 'Wallpaper Parallax Effect',
     fieldPetEnabled: 'Enable Pet Mascot',
     fieldPetImageUrl: 'Pet Image URL',
     fieldSiteTitle: 'Site Title',
     fieldSiteDescription: 'Site Description',
-    fieldSiteFavicon: 'Site Favicon URL',
+    fieldSiteFavicon: 'Site Favicon',
+    imageUpload: 'Upload',
+    imageUploadClear: 'Clear',
+    imageUploadLocal: 'Local image uploaded',
+    imageUploadHint:
+      'Enter a URL, or upload a local image (PNG/JPEG/WebP/GIF/SVG/ICO, ≤512KB)',
+    imageUploadTypeError: 'Please select an image file',
+    imageUploadSizeError: 'Image size cannot exceed 512KB',
+    imageUploadReadError: 'Failed to read image',
     fieldMusicEnabled: 'Enable Music Player',
     fieldMusicSource: 'Music Source',
     fieldMusicPlaylistId: 'Playlist ID',
     // Network Proxy Config
-    networkConfigTitle: 'Network Proxy',
-    networkConfigDesc:
-      'Configure network proxy for servers in mainland China to access external APIs',
     advanced: 'Advanced',
-    advancedDesc: 'Advanced system configurations and dangerous operations',
-    networkProxyInfoTitle: 'Proxy Configuration Guide',
-    networkProxyInfo:
-      'If your server is in mainland China, you may need to configure a proxy to access external services like GitHub OAuth and Gemini AI. You can choose:',
+    advancedDesc:
+      'Outbound proxy, API mirrors, settings backup/restore, and dangerous actions',
     enableProxy: 'Enable Network Proxy',
     enableProxyHint:
       'External API requests will be sent through the proxy when enabled',
@@ -923,35 +920,20 @@ export const enUS: TranslationKeys = {
     proxyBypass: 'Proxy Bypass List',
     proxyBypassHint:
       'Domains that should bypass the proxy, separated by commas. Recommended for domestic services like Bilibili',
-    apiMirrorConfig: 'API Mirror Services',
-    apiMirrorConfigHint:
-      'Use third-party API mirror services as an alternative to proxy configuration',
     geminiBaseUrl: 'Gemini API Base URL',
     geminiBaseUrlHint:
       'Leave empty for official endpoint, or enter a third-party proxy service URL',
     githubApiBaseUrl: 'GitHub API Base URL',
     githubApiBaseUrlHint:
       'Leave empty for official endpoint, or enter GitHub API mirror URL (Note: OAuth still requires official endpoint)',
-    proxyOption: 'Proxy',
-    proxyOptionDesc:
-      'Configure proxy server address, all external requests will be sent through the proxy.',
-    mirrorOption: 'Mirror Service',
-    mirrorOptionDesc:
-      'Use third-party API mirror/relay services without configuring a proxy.',
     // UI field placeholders
     placeholderWallpaperUrl: 'URL to wallpaper image or API endpoint',
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteFavicon:
-      '/favicon.webp or https://example.com/icon.png (external links supported)',
+      '/favicon.webp or https://example.com/icon.png',
     placeholderPetImageUrl: 'URL to pet character image',
-    githubOAuthHint: 'How to get GitHub OAuth credentials',
     callbackUrl: 'Callback URL',
-    redirectUrl: 'Redirect URL',
-    aiServiceDesc: 'Supports Google Gemini and OpenAI compatible APIs',
-    getApiKey: 'Get API Key',
-    personaServiceDesc:
-      'AI will generate unique virtual persona based on your data, click avatar on home page to view',
     savingDefault: 'Saving default configuration...',
     resetFailed: 'Failed to reset configuration: ',
     refreshing: 'Refreshing...',
@@ -960,48 +942,30 @@ export const enUS: TranslationKeys = {
     // ConfigForm extended
     configured: 'Configured',
     notConfigured: 'Not Configured',
-    aiConfigTitle: 'AI Configuration',
-    aiConfigDesc: 'Configure AI model and API keys',
-    aiServiceTitle: 'AI Service',
-    aiServiceInfoTitle: 'AI Service Configuration',
-    aiServiceInfo:
-      'Supports Google Gemini and OpenAI compatible APIs.\nGoogle Gemini: Free quota, suitable for personal use.\nOpenAI Compatible: Supports OpenAI API and other compatible services (Azure OpenAI, third-party proxies, etc.)',
     aiProvider: 'AI Provider',
     aiProviderHint:
       'Select AI service provider to show corresponding configuration',
-    aiServiceInfoDescription:
-      'Supports Google Gemini and OpenAI compatible APIs.',
+    aiLiteModelTitle: 'Lite Model',
+    aiLiteModelDesc: 'Low-cost tier for light, high-frequency tasks',
+    aiLiteEnable: 'Enable Lite Model',
+    aiLiteEnableDesc: 'When off, Lite tasks fall back to Standard',
+    aiLiteProviderHint: 'May differ from Standard; empty credentials reuse it',
     aiStandardModelTitle: 'Standard Model',
-    aiStandardModelDesc:
-      'For daily tasks like vocabulary annotation, simple analysis, etc.',
-    aiProModelTitle: 'Pro Model Configuration',
-    aiProModelDesc:
-      'For complex tasks (in-depth analysis, report generation, etc.). Leave API Key empty to automatically reuse standard model config',
+    aiStandardModelDesc: 'Default tier for everyday tasks',
+    aiProModelTitle: 'Pro Model',
+    aiProModelDesc: 'High-quality tier for complex reasoning and writing',
     aiProEnable: 'Enable Pro Model',
-    aiProEnableDesc:
-      'Configure a separate advanced model for complex tasks. When off, all tasks use the standard model',
-    aiProProviderHint:
-      'Select provider for Pro model, can differ from standard model',
-    geminiDescription: 'Free quota, suitable for personal use.',
+    aiProEnableDesc: 'When off, Pro tasks fall back to Standard',
+    aiProProviderHint: 'May differ from Standard; empty credentials reuse it',
     openaiCompatible: 'OpenAI Compatible',
-    openaiDescription:
-      'Supports OpenAI API and other compatible services (Azure OpenAI, third-party proxies, etc.)',
     // AI Image Generation Configuration
-    aiImageTitle: 'AI Image Generation',
-    aiImageDesc:
-      'Unified OpenAI, OpenRouter, Volcengine Seedream, and PixAI image generation',
-    aiImageUsageTitle: 'Usage Guide',
-    enableAiImage: 'Enable AI Image Generation',
-    aiImageHint: 'Enable to use AI image generation in Myriad',
-    pixaiDescription:
-      'Professional anime image generation API with multiple model support (paid, API key required)',
-    pixaiBadge: 'SD/DiT',
+    aiImageTitle: 'Image Generation Model',
+    aiImageDesc: 'Generate images; size is set per request',
     pixaiPlaceholder: 'Get from platform.pixai.art',
     pixaiModelId: 'Model Version ID',
     // Speech service (TTS/ASR) configuration
     speechServiceTitle: 'Speech Service',
-    speechServiceDesc:
-      'Configure Tencent Cloud TTS (Text-to-Speech) and ASR (Speech Recognition)',
+    speechServiceDesc: 'Tencent Cloud TTS readout and ASR recognition',
     tencentSecretId: 'Tencent Cloud Secret ID',
     tencentSecretIdPlaceholder: 'Get from Tencent Cloud Console',
     tencentSecretKey: 'Tencent Cloud Secret Key',
@@ -1016,35 +980,22 @@ export const enUS: TranslationKeys = {
     speechTestAvailability: 'Test Availability',
     speechTestSuccess: 'Speech service connected',
     speechTestFailed: 'Speech service connection failed',
-    speechTestTesting: 'Testing...',
-    speechNotConfigured: 'Please configure Tencent Cloud credentials first',
     // Platform configuration
-    platformsConfigTitle: 'Data Platform Configuration',
-    platformsConfigDesc:
-      'Configure access credentials for data source platforms',
-    platformDescGithub: 'Track repositories, stars, and contributions',
-    platformDescBilibili:
-      'Track your Bilibili favorites, anime, and viewing history',
-    platformDescBangumi:
-      'Sync your Bangumi collections, ratings, and watching status',
-    platformDescSteam: 'Sync your Steam library, wishlist, and gaming stats',
-    platformDescNetease:
-      'Sync your liked songs and music taste from Netease Cloud Music',
-    platformDescX: 'Sync your X profile and posts; share via Web Intent',
-    platformDescDiscord:
-      'Sync your Discord profile, server footprint, and linked accounts (Steam / GitHub…)',
-    platformDescMal:
-      'Username required. Optional Client ID uses the official API; otherwise public load.json',
+    platformDescGithub: 'Repos, stars, and contributions',
+    platformDescBilibili: 'Favorites, anime, and viewing history',
+    platformDescBangumi: 'Collections, ratings, and watching status',
+    platformDescSteam: 'Library, wishlist, and play stats',
+    platformDescNetease: 'Liked songs and music taste',
+    platformDescX: 'Profile and posts, with sharing',
+    platformDescDiscord: 'Profile, servers, and linked accounts',
+    platformDescMal: 'Anime / manga lists and scores',
+    platformDescXbox: 'Achievements, Gamerscore, and recent games',
+    platformDescPsn: 'Trophies, trophy level, and recent games',
     discordConnect: 'Connect with Discord',
-    discordReconnect: 'Reconnect Discord',
-    discordConnectHint:
-      'Recommended: authorize via Discord (configure a Discord app under OAuth Login first, and add the data redirect URI in the Developer Portal). You can also paste an Access Token manually.',
     discordOAuthSuccess:
       'Discord data authorization succeeded. Tokens saved and platform enabled.',
     discordOAuthFailed: 'Discord data authorization failed',
     discordDataCallbackUrl: 'Data platform callback URL (Connect Discord)',
-    bangumiCredentialRequirement:
-      'Enter either Bangumi Username or Access Token. Public profiles can use only Username; private collections should use Access Token.',
     bangumiCredentialMissing:
       'Enter a Bangumi Username or Access Token before enabling and saving Bangumi.',
     bangumiUsernameLabel: 'Bangumi Username',
@@ -1053,72 +1004,85 @@ export const enUS: TranslationKeys = {
     bangumiUsernamePlaceholder: 'your Bangumi username',
     bangumiAccessTokenPlaceholder: 'Bearer token for private collections',
     bangumiUserAgentPlaceholder: 'haru/Myriad',
-    configuredStatus: 'Configured',
-    unconfiguredStatus: 'Not Configured',
-    enablePlatform: 'Enable {platform} platform',
-    testingConnection: 'Testing...',
-    howToGetToken: 'How to get Token?',
-    basicConfigTitle: 'Basic Configuration',
+    platformSetupTitle: 'Setup steps',
+    platformSetupOptional: 'Optional',
+    platformSetupOpen: 'Open',
+    platformSetupFillTitle: 'Fill in here',
+    platformSetupFillDesc:
+      'Paste the values into the form below, save, then enable the platform.',
+    platformSetupGithub1Title: 'Confirm username',
+    platformSetupGithub1Desc: 'Open your GitHub profile and copy the username.',
+    platformSetupGithub2Title: 'Create access token',
+    platformSetupGithub2Desc:
+      'Settings → Developer settings → Personal access tokens. Optional, raises rate limits.',
+    platformSetupBilibili1Title: 'Get UID',
+    platformSetupBilibili1Desc:
+      'Open your space page; the number after space.bilibili.com/ is the UID.',
+    platformSetupSteam1Title: 'Request API key',
+    platformSetupSteam1Desc:
+      'Register a domain on the Steam Web API Key page and copy the key.',
+    platformSetupSteam2Title: 'Get Steam ID',
+    platformSetupSteam2Desc:
+      'Shown on Account Details, or parse the 17-digit SteamID64 from your profile URL.',
+    platformSetupNetease1Title: 'Get user ID',
+    platformSetupNetease1Desc:
+      'Open your Netease profile; the number after /user/home?id= is the ID.',
+    platformSetupBangumi1Title: 'Confirm username',
+    platformSetupBangumi1Desc:
+      'Username on bgm.tv. Public collections need only this field.',
+    platformSetupBangumi2Title: 'Request access token',
+    platformSetupBangumi2Desc:
+      'Recommended for private collections (next.bgm.tv access token).',
+    platformSetupX1Title: 'Confirm username',
+    platformSetupX1Desc: 'Your X handle without @.',
+    platformSetupX2Title: 'Create bearer token',
+    platformSetupX2Desc:
+      'Create an app on developer.x.com and copy a read-only Bearer Token.',
+    platformSetupDiscord1Title: 'Configure Discord app',
+    platformSetupDiscord1Desc:
+      'Add Discord under OAuth login and register the data-platform callback URL.',
+    platformSetupDiscord2Title: 'Authorize',
+    platformSetupDiscord2Desc:
+      'Prefer one-click OAuth; or paste an Access Token manually.',
+    platformSetupDiscord2Action: 'Connect Discord',
+    platformSetupMal1Title: 'Confirm username',
+    platformSetupMal1Desc: 'MyAnimeList username (required).',
+    platformSetupMal2Title: 'Request Client ID',
+    platformSetupMal2Desc:
+      'Create an app at apiconfig. Leave empty to use public load.json.',
+    platformSetupXbox1Title: 'Confirm Gamertag',
+    platformSetupXbox1Desc: 'Your Xbox gamertag (may include #suffix).',
+    platformSetupXbox2Title: 'Get OpenXBL key',
+    platformSetupXbox2Desc: 'Sign up at xbl.io and copy the API key.',
+    platformSetupPsn1Title: 'Confirm Online ID',
+    platformSetupPsn1Desc: 'Your PlayStation Network Online ID.',
+    platformSetupPsn2Title: 'Get NPSSO',
+    platformSetupPsn2Desc:
+      'Sign in to Sony, open the ca.account.sony.com npsso endpoint, copy the 64-char token.',
     siteUrlConfig: 'Site URL',
-    baseUrl: 'Public site URL / BASE_URL',
-    baseUrlPlaceholder:
-      'https://yourdomain.com (for OAuth callback and Cookie settings)',
-    baseUrlHint:
-      'Public site origin (BASE_URL). Saving also updates FRONTEND_URL and CORS_ORIGINS for the same origin (replace the old origin in multi-origin lists or append; never uses *). Used for OAuth callbacks and HTTPS secure cookies.',
-    domainChangeTitle: 'Change domain',
-    domainChangeDesc:
-      'Writes the public site origin to the config DB and .env (BASE_URL / FRONTEND_URL / CORS_ORIGINS). Site access only — does not run federation Move.',
-    domainChangeNewOrigin: 'New public origin',
-    domainChangePlaceholder: 'https://new.example.com',
-    domainChangeHint:
-      'https only (http allowed for localhost), no path. After apply, complete the operator checklist (DNS / TLS / OAuth / restart).',
-    domainChangeAction: 'Apply domain change',
-    domainChangeActionDesc:
-      'Atomically rewrite BASE_URL, FRONTEND_URL, and CORS_ORIGINS, then return the operator checklist.',
-    domainChangeApply: 'Confirm domain change',
-    domainChangeApplying: 'Applying…',
-    domainChangeConfirm:
-      'Change the public site origin to {origin}? This updates BASE_URL, FRONTEND_URL, and CORS_ORIGINS.',
-    domainChangeEmpty: 'Enter the new public origin',
-    domainChangeSuccess: 'Domain updated — finish the operator checklist',
-    domainChangeFailed: 'Domain update failed',
-    domainChecklistTitle: 'Post-change operator checklist',
+    baseUrl: 'URL',
+    baseUrlPlaceholder: 'https://example.com',
+    siteUrlFieldDesc: 'Click to edit; save applies now and returns a checklist.',
+    siteUrlUnset: 'Not set',
+    siteUrlEdit: 'Edit',
+    siteUrlSave: 'Save',
+    siteUrlCancel: 'Cancel',
+    domainChangeConfirm: 'Save as {origin}?',
+    domainChangeEmpty: 'Enter a URL',
+    domainChangeSuccess: 'Updated',
+    domainChangeFailed: 'Update failed',
+    domainChecklistTitle: 'Checklist',
     domainChecklist: {
       dns: 'DNS',
-      tls: 'TLS certificate',
-      reverse_proxy_301: 'Reverse proxy 301',
+      tls: 'TLS',
+      reverse_proxy_301: 'Proxy 301',
       oauth_callbacks: 'OAuth callbacks',
-      federation_move_separate: 'Federation move (separate)',
-      backend_restart_for_cors: 'Restart backend for CORS',
+      federation_move_separate: 'Federation (separate)',
+      backend_restart_for_cors: 'Restart backend (CORS)',
     },
-    domainFederationNote:
-      'For federation migration use federation domain-move (ActivityPub Move); this flow does not rewrite federation_* tables. See docs/deployment/MIGRATION_DOMAIN.md.',
-    basicConfigDesc: 'Site URL, background, theme and interface style',
-    oauthConfigTitle: 'Third-party Login (OAuth)',
-    oauthConfigDesc:
-      'Configure GitHub / Google / Microsoft / etc. as login methods, plus local registration policy.',
-    oauthGuideTitle: 'Getting started',
-    oauthGuideStep1: 'Visit GitHub Developer Settings',
-    oauthGuideStep2: 'Click "New OAuth App" to create new app',
-    oauthGuideStep3: 'Fill in app info, Callback URL:',
-    oauthGuideStep4: 'Copy Client ID and generate Client Secret after creation',
+    domainFederationNote: 'Federation: use federation domain-move separately.',
     currentCallbackUrl: 'Current Callback URL',
-    currentCallbackUrlHint:
-      'Please fill this URL in GitHub OAuth App Authorization callback URL',
     callbackUrlNotConfigured: 'Please set Site URL in "Basic Config" first',
-    githubClientId: 'GitHub Client ID',
-    githubClientIdPlaceholder: 'GitHub OAuth App Client ID',
-    githubClientSecret: 'GitHub Client Secret',
-    githubClientSecretPlaceholder: 'GitHub OAuth App Client Secret',
-    oidcSectionTitle: 'Other OAuth providers (OIDC)',
-    oidcSectionDesc:
-      'Any OpenID Connect-compatible provider works here: Google, Microsoft, Authentik, Keycloak, Auth0…',
-    oidcCallbackTemplate: 'Callback URL pattern:',
-    oidcEmpty: 'No OIDC providers configured yet.',
-    oidcAddProvider: 'Add OIDC provider',
-    oidcSaveConfig: 'Save OAuth settings',
-    oidcSaving: 'Saving…',
-    oidcSaved: 'Saved',
     oidcEnabled: 'Enabled',
     oidcDelete: 'Delete',
     oidcSlugLabel: 'Slug (used in URL path)',
@@ -1137,43 +1101,98 @@ export const enUS: TranslationKeys = {
     oidcIconLabel: 'Icon URL (optional)',
     oidcIconPlaceholder: 'https://...',
     oidcNewProvider: '(new provider)',
-    oauthProvidersTitle: 'Configured login methods',
-    oauthProvidersDesc:
-      'Configure GitHub, Google, Microsoft, GitLab, Discord and more. Each provider has its own client_id / client_secret and callback URL.',
     oauthProvidersEmpty:
       'No login methods configured yet. Click "Add login method" below to pick one from the presets.',
     oauthAddLoginMethod: 'Add login method',
     oauthPickPreset: 'Pick a preset',
     oauthHowToHint:
       'Set the site Base URL in "Basic Config" first — each card below will then show a provider-specific callback URL you can paste into the provider dashboard',
-    oauthOpenDocs: 'Open docs',
     oauthAdvanced: 'Advanced (slug / display name / scopes / icon)',
-    oauthPresetHintGithub:
-      'Navigate: GitHub avatar → `Settings` → `Developer settings` → `OAuth Apps` → `New OAuth App`',
-    oauthPresetHintGoogle:
-      'Navigate: Google Cloud Console → `APIs & Services` → `Credentials` → `Create credentials` → `OAuth client ID`',
-    oauthPresetHintMicrosoft:
-      'Navigate: Azure Portal → `App registrations` → `New registration`. `common` in the Discovery URL accepts any tenant; for single-tenant, replace it with your Tenant ID',
-    oauthPresetHintGitlab:
-      'Navigate: GitLab → `User Settings` → `Applications`. For self-hosted, replace `gitlab.com` with your own domain',
-    oauthPresetHintDiscord:
-      'Navigate: Discord Developer Portal → `Applications` → `New Application` → `OAuth2` → `General`. For data-platform Connect, also add Redirect: `/api/platforms/discord/oauth/callback`',
-    oauthPresetHintAuthentik:
-      'Discovery URL looks like `https://authentik.yourdomain.com/application/o/<slug>/.well-known/openid-configuration`, where `<slug>` is your Application slug',
-    oauthPresetHintKeycloak:
-      'Discovery URL looks like `https://keycloak.yourdomain.com/realms/<realm>/.well-known/openid-configuration`, where `<realm>` is your Realm name',
-    oauthPresetHintAuth0:
-      'Discovery URL looks like `https://<your-tenant>.auth0.com/.well-known/openid-configuration`',
-    oauthPresetHintCustom:
-      'Any OIDC-compliant provider. Fill in `Discovery URL`, `Client ID`, `Client Secret` yourself',
+    oauthSetupTitle: 'Setup steps',
+    oauthSetupCopyCallback: 'Copy callback',
+    oauthSetupFillTitle: 'Fill in here',
+    oauthSetupFillDesc:
+      'Paste Client ID / Secret (and Discovery) into the form below and save.',
+    oauthSetupGithub1Title: 'Open GitHub OAuth Apps',
+    oauthSetupGithub1Desc:
+      'Avatar → Settings → Developer settings → OAuth Apps.',
+    oauthSetupGithub2Title: 'Create app & set callback',
+    oauthSetupGithub2Desc:
+      'New OAuth App; set Authorization callback URL to the callback below.',
+    oauthSetupGithub3Title: 'Copy credentials',
+    oauthSetupGithub3Desc:
+      'Copy Client ID and generate a Client Secret.',
+    oauthSetupGoogle1Title: 'Open Google Cloud credentials',
+    oauthSetupGoogle1Desc:
+      'APIs & Services → Credentials → Create credentials → OAuth client ID.',
+    oauthSetupGoogle2Title: 'Register redirect URI',
+    oauthSetupGoogle2Desc:
+      'Choose Web application; add the callback below under Authorized redirect URIs.',
+    oauthSetupGoogle3Title: 'Copy credentials',
+    oauthSetupGoogle3Desc: 'Copy Client ID and Client Secret after creation.',
+    oauthSetupMicrosoft1Title: 'Open Azure App registrations',
+    oauthSetupMicrosoft1Desc:
+      'Azure Portal → App registrations → New registration.',
+    oauthSetupMicrosoft2Title: 'Register redirect URI',
+    oauthSetupMicrosoft2Desc:
+      'Platform Web; set Redirect URI to the callback below. For single-tenant, replace common with your Tenant ID in Discovery.',
+    oauthSetupMicrosoft3Title: 'Copy credentials',
+    oauthSetupMicrosoft3Desc:
+      'Application (client) ID on Overview; create a secret under Certificates & secrets.',
+    oauthSetupGitlab1Title: 'Open GitLab Applications',
+    oauthSetupGitlab1Desc:
+      'User Settings → Applications (self-hosted: use your own domain).',
+    oauthSetupGitlab2Title: 'Create & set callback',
+    oauthSetupGitlab2Desc:
+      'Set Redirect URI to the callback below; enable openid / email / profile.',
+    oauthSetupGitlab3Title: 'Copy credentials',
+    oauthSetupGitlab3Desc: 'Copy Application ID and Secret after save.',
+    oauthSetupDiscord1Title: 'Open Discord Developer Portal',
+    oauthSetupDiscord1Desc:
+      'Applications → New Application → OAuth2 → General.',
+    oauthSetupDiscord2Title: 'Register redirects',
+    oauthSetupDiscord2Desc:
+      'Add the login callback; for data-platform one-click auth also add /api/platforms/discord/oauth/callback.',
+    oauthSetupDiscord3Title: 'Copy credentials',
+    oauthSetupDiscord3Desc: 'Copy Client ID and Client Secret.',
+    oauthSetupAuthentik1Title: 'Create OAuth2 provider',
+    oauthSetupAuthentik1Desc:
+      'Authentik admin → Providers / Applications → create OAuth2/OpenID provider.',
+    oauthSetupAuthentik2Title: 'Set callback & Discovery',
+    oauthSetupAuthentik2Desc:
+      'Redirect URI = callback below; Discovery like …/application/o/<slug>/.well-known/openid-configuration.',
+    oauthSetupAuthentik3Title: 'Copy credentials',
+    oauthSetupAuthentik3Desc:
+      'Copy Client ID, Client Secret, and full Discovery URL.',
+    oauthSetupKeycloak1Title: 'Open Keycloak Clients',
+    oauthSetupKeycloak1Desc:
+      'Admin Console → target Realm → Clients → Create.',
+    oauthSetupKeycloak2Title: 'Set callback & Discovery',
+    oauthSetupKeycloak2Desc:
+      'Valid redirect URIs = callback below; Discovery like …/realms/<realm>/.well-known/openid-configuration.',
+    oauthSetupKeycloak3Title: 'Copy credentials',
+    oauthSetupKeycloak3Desc: 'Copy Client ID / Secret on Credentials.',
+    oauthSetupAuth0Step1Title: 'Open Auth0 Applications',
+    oauthSetupAuth0Step1Desc:
+      'Dashboard → Applications → Create Application.',
+    oauthSetupAuth0Step2Title: 'Register callback',
+    oauthSetupAuth0Step2Desc:
+      'Allowed Callback URLs = callback below; Discovery like https://<tenant>.auth0.com/.well-known/openid-configuration.',
+    oauthSetupAuth0Step3Title: 'Copy credentials',
+    oauthSetupAuth0Step3Desc:
+      'Copy Client ID and Client Secret on Settings.',
+    oauthSetupCustom1Title: 'Prepare IdP details',
+    oauthSetupCustom1Desc:
+      'Any standard OIDC IdP: Discovery URL, Client ID, Client Secret.',
+    oauthSetupCustom2Title: 'Register callback',
+    oauthSetupCustom2Desc:
+      'Register the callback URL below as an allowed Redirect URI.',
+    oauthSetupCustom3Title: 'Copy credentials',
+    oauthSetupCustom3Desc:
+      'Copy Client ID / Secret and Discovery from your IdP console.',
     allowRegisterTitle: 'Allow public local registration',
     allowRegisterDesc:
       'When enabled, anyone can sign up at /register. When disabled, only admins can create accounts.',
-    musicConfigTitle: 'Music Player',
-    musicConfigDesc: 'Configure playlist playback',
-    musicUsageTitle: 'Music Player Guide',
-    musicUsageInfo:
-      'Play music from specified playlist in control island. Supports NetEase Music and QQ Music. Real-time lyrics display when playing songs with lyrics.',
     neteaseMusic: 'NetEase',
     qqMusic: 'QQ Music',
     neteasePlaylistHint:
@@ -1186,36 +1205,28 @@ export const enUS: TranslationKeys = {
     clearMusicCacheBtn: 'Clear Music Cache',
     musicCacheCleared:
       'Music cache cleared, data will be refetched on next load',
-    wallpaperParallaxHint:
-      'When enabled, wallpaper will shift slightly based on mouse movement/device tilt for a 3D effect',
     neteasePlaylistExample: 'e.g. 2884035',
     qqPlaylistExample: 'e.g. 8039305244',
-    removeFavorite: 'Remove from favorites',
-    addFavorite: 'Add to favorites',
-    resetConfigLabel: 'Reset configuration',
     saveConfigLabel: 'Save configuration',
-    clearSearchLabel: 'Clear search',
-    closeLabel: 'Close',
     // Tapp permission management settings
     permissions: 'Permission Management',
     permissionsDesc:
       'Configure Tapp elevated delegation and AI quotas. Levels: public / basic / elevated (delegable) / privileged (admin only). Report generation is not delegable',
-    permissionsTitle: 'Tapp Permission Management',
-    tappPermissionsInfoTitle: 'Permission Levels',
-    tappPermissionsInfo:
-      'public/basic are open by default; elevated can be delegated here; privileged (including report:write) is admin-only. The AI assistant is force-aligned with these toggles — use Assistant presets above or fine-tune switches (chat needs ai:chat; outbound needs network:fetch).',
-    agentPresetTitle: 'AI Assistant Presets',
+    agentPresetTitle: 'Arael Agent Presets',
     agentPresetDesc:
-      'One-click templates for agent-related elevated toggles; fine-tune below. Does not change media/theme and other unrelated items',
+      'One-click templates for Arael Agent–related elevated toggles; fine-tune below. Does not change media/theme and other unrelated items',
     agentPresetUserHint:
       'Disabled=off AI/outbound; Chat=ai:chat+analyze; Standard=all AI; Elevated=AI+outbound+scheduler',
     agentPresetGuestHint:
-      'Guests have no agent sessions; enabling ai:chat mainly affects entry visibility and Tapp AI. Use with caution',
+      'Guests have no Arael Agent sessions; enabling ai:chat mainly affects entry visibility and Tapp AI. Use with caution',
     agentPresetCustom: 'Custom',
+    agentFineTuneTitle: 'Fine-tune permissions',
+    agentFineTuneDesc:
+      'Adjust elevated toggles on top of Arael Agent presets; changes may show the preset as Custom',
     // User elevated permissions
     userElevatedPermissions: 'User Permission Delegation',
     userElevatedPermissionsDesc:
-      'Grant elevated permissions per toggle; AI/outbound/scheduler can also be set via Assistant presets above',
+      'Grant elevated permissions per toggle; AI/outbound/scheduler can also be set via Arael Agent presets above',
     // Guest elevated permissions
     guestElevatedPermissions: 'Guest Permission Delegation',
     guestElevatedPermissionsDesc:
@@ -1227,13 +1238,10 @@ export const enUS: TranslationKeys = {
     permAiAnalyzeHint: 'Allow Tapp to analyze data with AI',
     permAiChat: 'AI Chat',
     permAiChatHint: 'Allow Tapp to use AI chat features',
-    permReportWrite: 'Generate Reports',
-    permReportWriteHint: 'Allow Tapp to generate and save reports',
     permNetworkFetch: 'Network Requests',
     permNetworkFetchHint:
       'Allow declared outbound requests and loading remote images/media',
     permMediaControl: 'Media Control',
-    permMediaControlHint: 'Allow Tapp to control music player',
     permComponentTheme: 'Register Theme',
     permComponentThemeHint: 'Allow Tapp to register custom themes',
     permShortcutRegister: 'Register Shortcuts',
@@ -1252,10 +1260,10 @@ export const enUS: TranslationKeys = {
       'Allow Tapp to use cloud speech recognition service (ASR)',
     permissionsSaved: 'Permission settings saved',
     permissionsSaveFailed: 'Failed to save permission settings',
-    loadPermissionsFailed: 'Failed to load permission settings',
     // Module settings
     moduleSettings: 'Module Settings',
-    moduleSettingsDesc: 'Manage display and behavior for app modules',
+    moduleSettingsDesc:
+      'Who can see each feature, plus library sources, report expiry, music player, and hitokoto',
     libraryModuleTitle: 'Library',
     libraryModuleDesc: 'Choose which platform sources appear in each category',
     librarySourceVisibleCount:
@@ -1267,21 +1275,14 @@ export const enUS: TranslationKeys = {
     librarySourceLoadFailed: 'Failed to load library source settings',
     moduleVisibilityTitle: 'Page Visibility',
     moduleVisibilityDesc:
-      'Set who can see Library, Brew, Reports, Tapp, and the AI Assistant',
+      'Set who can see Library, Brew Reader, Platform Reports, Tapp Store, and Arael Agent',
     moduleVisibilityAll: 'Everyone',
     moduleVisibilityAuthenticated: 'Signed In',
     moduleVisibilityAdmin: 'Admins',
     moduleVisibilitySaved: 'Page visibility settings saved',
     moduleVisibilityLoadFailed: 'Failed to load page visibility settings',
-    agentUsageTitle: 'AI Assistant Usage',
-    agentUsageDesc:
-      'Moved into Tapp Permission Management as Assistant presets',
     agentUsageGuest: 'Guests',
-    agentUsageGuestHint: 'See Assistant presets under Tapp permissions',
-    agentUsageGuestHidden: 'Hidden',
-    agentUsageGuestVisible: 'Show entry',
     agentUsageUser: 'Regular users',
-    agentUsageUserHint: 'See Assistant presets under Tapp permissions',
     agentUsageNone: 'Disabled',
     agentUsageChat: 'Chat only',
     agentUsageStandard: 'Standard',
@@ -1337,7 +1338,6 @@ export const enUS: TranslationKeys = {
     aiDailyTokensHint: 'Maximum AI tokens per day',
     aiCooldownSeconds: 'Cooldown Time',
     aiCooldownSecondsHint: 'Minimum interval between AI calls (seconds)',
-    aiQuotaAdminNote: 'Admin accounts are not subject to these limits',
     // Site footer and cloud sponsors
     siteFooterTitle: 'Site Footer',
     siteFooterDesc:
@@ -1350,7 +1350,6 @@ export const enUS: TranslationKeys = {
     siteGonganPlaceholder: 'e.g., 京公网安备11010502000001号',
     cloudSponsors: 'Cloud Sponsors',
     cloudSponsorsHint: 'Select cloud provider logos to display in footer',
-    cloudSponsorsPlaceholder: 'e.g., cloudflare,upyun',
     cloudflare: 'Cloudflare',
     edgeone: 'EdgeOne',
     upyun: 'Upyun',
@@ -2116,9 +2115,8 @@ export const enUS: TranslationKeys = {
     changePasswordBtn: 'Change Password',
   },
 
-  // Data management page
+  // Platform detail data management
   dataManagement: {
-    neteaseMusic: 'NetEase Music',
     loadStatusFailed: 'Failed to load status',
     confirmRefreshData: 'Are you sure you want to refresh {platform} raw data?',
     csrfTokenError: 'Unable to get CSRF Token',
@@ -2130,7 +2128,6 @@ export const enUS: TranslationKeys = {
     cacheCleared: '{platform} cache cleared',
     clearCacheFailed: 'Failed to clear {platform} cache',
     unknown: 'Unknown',
-    backToConfig: 'Back to Config',
     refreshData: 'Refresh Data',
     processData: 'Process Data',
     process: 'Process',
@@ -2146,13 +2143,6 @@ export const enUS: TranslationKeys = {
     processing: 'Processing',
     clearing: 'Clearing',
     clear: 'Clear',
-    usageTitle: 'Usage Guide',
-    usageRawData:
-      'Raw Data: Unprocessed data from platform APIs, click refresh to re-fetch',
-    usageSmartFilter:
-      'Smart Filter: AI-processed data, click process to generate cache',
-    usageBackground:
-      'Background Processing: Tasks run asynchronously, check progress at top',
   },
 
   // Quick Stats Widget
@@ -2491,7 +2481,7 @@ export const enUS: TranslationKeys = {
     permMediaRead: 'Read Media Status',
     permMediaAudio: 'Play Audio',
     permRegisterTheme: 'Register Theme',
-    permRegisterAgent: 'Register Agent',
+    permRegisterAgent: 'Register Arael Agent',
     permRegisterShortcut: 'Register Shortcut',
     permPublishEvent: 'Publish Event',
     permSubscribeEvent: 'Subscribe Event',
@@ -2535,7 +2525,7 @@ export const enUS: TranslationKeys = {
     permMediaAudioDesc:
       'Allow playing package/blob/data audio inside the sandbox',
     permRegisterThemeDesc: 'Allow registering custom theme styles',
-    permRegisterAgentDesc: 'Allow registering AI Agent capabilities',
+    permRegisterAgentDesc: 'Allow registering Arael Agent capabilities',
     permRegisterShortcutDesc: 'Allow registering keyboard shortcuts',
     permPublishEventDesc: 'Allow publishing system events',
     permSubscribeEventDesc: 'Allow subscribing to system events',
@@ -3516,7 +3506,6 @@ export const enUS: TranslationKeys = {
         'Arrange the personal world',
       ],
       config: ['Adjust settings?', 'Personalize', 'Optimize experience'],
-      dataManagement: ['Manage data', 'Sync data', 'Clear cache'],
       tapp: ['Discover apps', 'Manage Tapps', 'Run app'],
     },
     generalHints: [

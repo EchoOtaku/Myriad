@@ -1448,6 +1448,32 @@ async fn execute_code_explain(
 // AI 图片生成
 // ============================================================================
 
+/// 解析图片宽/高：支持 JSON 整数、浮点整数与数字字符串（如 `"768"` / `"768px"`）。
+fn parse_image_dim(value: &Value) -> Option<u32> {
+    if let Some(n) = value.as_u64() {
+        return u32::try_from(n).ok().filter(|&n| n > 0);
+    }
+    if let Some(n) = value.as_i64() {
+        return u32::try_from(n).ok().filter(|&n| n > 0);
+    }
+    if let Some(n) = value.as_f64() {
+        if n.is_finite() && n > 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64 {
+            return Some(n as u32);
+        }
+        return None;
+    }
+    if let Some(s) = value.as_str() {
+        let s = s.trim();
+        let s = s
+            .strip_suffix("px")
+            .or_else(|| s.strip_suffix("PX"))
+            .unwrap_or(s)
+            .trim();
+        return s.parse::<u32>().ok().filter(|&n| n > 0);
+    }
+    None
+}
+
 async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, String> {
     // prompt 可能是字符串，也可能是上一步输出的对象（包含 .prompt 字段）
     let prompt_val = params.get("prompt");
@@ -1482,21 +1508,22 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
     let provider = config.ai_image_provider.clone();
     let model = config.ai_image_model.clone();
-    let default_width = config.ai_image_width as u32;
-    let default_height = config.ai_image_height as u32;
     let pixai_api_key = config.pixai_api_key.clone();
     drop(config);
 
+    // 分辨率由调用方（agent 参数）决定；未传时用本地默认，不读全局配置
+    const DEFAULT_IMAGE_WIDTH: u32 = 1024;
+    const DEFAULT_IMAGE_HEIGHT: u32 = 1024;
     let width = params
         .get("width")
-        .and_then(|v| v.as_u64())
-        .map(|v| (v as u32).clamp(256, 2048))
-        .unwrap_or(default_width);
+        .and_then(parse_image_dim)
+        .map(|v| v.clamp(256, 2048))
+        .unwrap_or(DEFAULT_IMAGE_WIDTH);
     let height = params
         .get("height")
-        .and_then(|v| v.as_u64())
-        .map(|v| (v as u32).clamp(256, 2048))
-        .unwrap_or(default_height);
+        .and_then(parse_image_dim)
+        .map(|v| v.clamp(256, 2048))
+        .unwrap_or(DEFAULT_IMAGE_HEIGHT);
 
     match provider.as_str() {
         "pollinations" => {
@@ -1756,6 +1783,16 @@ fn extract_pixai_image_url(task_data: &Value) -> String {
 #[cfg(test)]
 mod steering_tests {
     use super::*;
+
+    #[test]
+    fn parse_image_dim_accepts_number_and_string() {
+        assert_eq!(parse_image_dim(&json!(768)), Some(768));
+        assert_eq!(parse_image_dim(&json!(768.0)), Some(768));
+        assert_eq!(parse_image_dim(&json!("1024")), Some(1024));
+        assert_eq!(parse_image_dim(&json!(" 768px ")), Some(768));
+        assert_eq!(parse_image_dim(&json!(0)), None);
+        assert_eq!(parse_image_dim(&json!("nope")), None);
+    }
 
     #[test]
     fn steering_augments_existing_ai_instruction() {

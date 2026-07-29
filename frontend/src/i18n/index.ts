@@ -33,6 +33,8 @@ export interface TranslationKeys {
     required: string
     networkError: string
     unknownError: string
+    copy: string
+    copied: string
   }
 
   // 导航
@@ -45,7 +47,6 @@ export interface TranslationKeys {
     login: string
     logout: string
     account: string
-    dataManagement: string
     federation: string
     backToHome: string
     // 导航岛
@@ -267,14 +268,31 @@ export interface TranslationKeys {
   }
 
   // 配置
-  config: {
+      config: {
     title: string
     platforms: string
     platformsDesc: string
+    configBackupTitle: string
+    configBackupDesc: string
     dragToReorder: string
+    showHelpDetails: string
+    showHelpDetailsDesc: string
+    optionGuide: string
+    optionGuideHeading: string
+    openOptionGuide: string
+    optionGuideFooterHint: string
+    guideSectionWhat: string
+    guideSectionChain: string
+    guideSectionFrontend: string
+    guideSectionNotes: string
+    resetCurrentPage: string
+    resetCurrentPageDesc: string
+    resetCurrentPageAction: string
+    resetCurrentPageConfirm: string
+    resetCurrentPageDone: string
+    resetCurrentPageNone: string
     autoRefreshTitle: string
     autoRefreshDescription: string
-    autoRefreshFrequency: string
     autoRefreshFrequencyDesc: string
     autoRefreshOff: string
     autoRefreshEveryHours: string
@@ -291,30 +309,19 @@ export interface TranslationKeys {
     musicDesc: string
     network: string
     networkDesc: string
-    /** Admin: federation trust policy section */
     federation: string
     federationDesc: string
     federationPolicySaved: string
     federationLoadFailed: string
-    federationSaveFailed: string
     federationUpdateFailed: string
     federationBlockFailed: string
     federationFilterNameValueRequired: string
     federationFilterAdded: string
     federationAddFilterFailed: string
-    federationActiveEnforcement: string
-    federationBlocklist: string
     federationAllowlist: string
-    federationAllowlistOn: string
-    federationAllowlistOff: string
     federationMinTrust: string
-    federationMinTrustOn: string
-    federationMinTrustOff: string
-    federationContentFiltersOn: string
-    federationContentFiltersOff: string
-    federationOn: string
-    federationOff: string
     federationInstancePolicy: string
+    federationInstancePolicyDesc: string
     federationMinTrustInbound: string
     federationMinTrustInboundDesc: string
     federationAllowlistDomains: string
@@ -322,10 +329,31 @@ export interface TranslationKeys {
     federationAllowlistPlaceholder: string
     federationAutoDiscover: string
     federationAutoDiscoverDesc: string
-    federationSavePolicy: string
     federationKnownInstances: string
     federationKnownInstancesDesc: string
     federationNoInstances: string
+    federationInstanceStatTotal: string
+    federationInstanceStatActive: string
+    federationInstanceStatBlocked: string
+    federationInstanceStatTrusted: string
+    federationListQueryToggle: string
+    federationListQueryToggleDesc: string
+    federationListQueryCollapse: string
+    federationListQueryCollapseDesc: string
+    federationInstanceSearchPlaceholder: string
+    federationInstanceSearchAria: string
+    federationInstanceFilterAria: string
+    federationInstanceFilterAll: string
+    federationInstanceFilterActive: string
+    federationInstanceFilterBlocked: string
+    federationInstanceFilterLevel0: string
+    federationInstanceFilterLevel1: string
+    federationInstanceFilterLevel2: string
+    federationInstanceFilterLevel3: string
+    federationInstanceFilterLevel4: string
+    federationInstanceFilterEmpty: string
+    federationInstanceShowing: string
+    federationInstanceTrustAria: string
     federationBlocked: string
     federationBlock: string
     federationUnblock: string
@@ -334,7 +362,6 @@ export interface TranslationKeys {
     federationFilterName: string
     federationFilterType: string
     federationFilterValue: string
-    /** @deprecated Prefer type-specific placeholders; kept for compatibility */
     federationFilterValuePlaceholder: string
     federationFilterValuePlaceholderKeyword: string
     federationFilterActivityType: string
@@ -343,7 +370,13 @@ export interface TranslationKeys {
     federationFilterDescBlockKeyword: string
     federationFilterDescRequireTrust: string
     federationAddFilter: string
+    federationAddFilterDesc: string
     federationNoFilters: string
+    federationFilterSearchPlaceholder: string
+    federationFilterSearchAria: string
+    federationFilterFilterAria: string
+    federationFilterFilterEmpty: string
+    federationFilterShowing: string
     federationFilterEnabled: string
     federationFilterDisabled: string
     federationTrustUnknown: string
@@ -351,22 +384,17 @@ export interface TranslationKeys {
     federationTrustFollowed: string
     federationTrustTrusted: string
     federationTrustFederated: string
-    federationTrustLevelHelp: string
     federationFilterTypeBlockActivity: string
     federationFilterTypeBlockKeyword: string
     federationFilterTypeRequireTrust: string
     federationAdvanced: string
     federationAdvancedDesc: string
-    federationRateLimit: string
-    federationRateLimitDesc: string
     federationRateMaxRequests: string
     federationRateMaxRequestsDesc: string
     federationRateWindowSeconds: string
     federationRateWindowSecondsDesc: string
     federationRateTrustedMultiplier: string
     federationRateTrustedMultiplierDesc: string
-    federationRateResetDefaults: string
-    /** Local identity + explicit key rotation */
     federationKeysIdentity: string
     federationKeysIdentityDesc: string
     federationIdentityHandle: string
@@ -377,52 +405,37 @@ export interface TranslationKeys {
     federationKeysRotateSuccess: string
     federationKeysRotateFailed: string
     federationKeysNoIdentity: string
-    /** Outbound delivery queue ops */
     federationDeliveryQueue: string
     federationDeliveryQueueDesc: string
-    federationDeliveryStatsLine: string
     federationDeliveryStatPending: string
     federationDeliveryStatDelivering: string
     federationDeliveryStatDelivered: string
     federationDeliveryStatDead: string
     federationDeliveryEmpty: string
+    federationDeliverySearchPlaceholder: string
+    federationDeliverySearchAria: string
+    federationDeliveryFilterAria: string
+    federationDeliveryFilterAll: string
+    federationDeliveryFilterEmpty: string
+    federationDeliveryShowing: string
     federationDeliveryRetry: string
-    /** Unified row action: cancel if active, dismiss if terminal. */
     federationDeliveryRemove: string
-    /** @deprecated Prefer federationDeliveryRemove */
-    federationDeliveryCancel: string
-    /** @deprecated Prefer federationDeliveryRemove */
-    federationDeliveryDismiss: string
-    /** @deprecated Prefer federationDeliveryClear */
-    federationDeliveryPurgeCancelled: string
-    /** @deprecated Prefer federationDeliveryClearConfirm */
-    federationDeliveryPurgeCancelledConfirm: string
     federationDeliveryStatusCancelled: string
     federationDeliveryStatusFailed: string
     federationDeliveryStatusPending: string
     federationDeliveryStatusDelivering: string
     federationDeliveryStatusDelivered: string
     federationDeliveryAttempts: string
-    /** Bulk: re-queue non-cancelled dead/failed only. */
     federationDeliveryRetryFailures: string
+    federationDeliveryRetryFailuresDesc: string
     federationDeliveryRetryFailuresConfirm: string
-    /** Bulk: cancel in-flight + purge all dead (failed + cancelled). */
     federationDeliveryClear: string
+    federationDeliveryClearDesc: string
     federationDeliveryClearConfirm: string
-    /** @deprecated Prefer federationDeliveryRetryFailures */
-    federationDeliveryRetryAllDead: string
-    /** @deprecated Prefer federationDeliveryClear */
-    federationDeliveryCancelAllPending: string
-    /** @deprecated Prefer federationDeliveryRetryFailuresConfirm */
-    federationDeliveryRetryAllConfirm: string
-    /** @deprecated Prefer federationDeliveryClearConfirm */
-    federationDeliveryCancelAllConfirm: string
-    federationDeliveryActionOk: string
     federationDeliveryActionFailed: string
     federationDeliveryRefresh: string
-    /** Placeholder for content-filter rule name */
+    federationDeliveryRefreshDesc: string
     federationFilterNamePlaceholder: string
-    /** Human-readable labels for ActivityPub / MFP activity types (filter dropdown) */
     federationActivityFollow: string
     federationActivityAccept: string
     federationActivityReject: string
@@ -458,15 +471,9 @@ export interface TranslationKeys {
     aboutLicense: string
     aboutOrganization: string
     aboutRepository: string
-    aboutDevInfo: string
     aboutLogoAlt: string
-    // 用户管理区段
     users: string
     usersDesc: string
-    usersAdminGroup: string
-    usersAdminGroupDesc: string
-    usersRegisteredGroup: string
-    usersRegisteredGroupDesc: string
     usersOnline: string
     usersOffline: string
     usersLastSeen: string
@@ -485,7 +492,6 @@ export interface TranslationKeys {
     usersUnlinkConfirm: string
     usersInstalledTapps: string
     usersNoTapps: string
-    usersTappCount: string
     usersRole: string
     usersRoleAdmin: string
     usersRoleUser: string
@@ -493,9 +499,7 @@ export interface TranslationKeys {
     usersRevokeAdmin: string
     usersRevokeAdminConfirm: string
     usersPrimaryAdminOnly: string
-    /** After promoting a user to admin: they must re-login for JWT claim. */
     usersPromoteReLoginNotice: string
-    /** After demoting: admin middleware DB check revokes immediately. */
     usersDemoteImmediateNotice: string
     usersRoleOwner: string
     usersEnableLocalLogin: string
@@ -506,12 +510,15 @@ export interface TranslationKeys {
     usersDeleteSuccess: string
     usersEmail: string
     usersCancel: string
+    usersCancelDesc: string
     usersCreateUser: string
+    usersCreateUserDesc: string
     usersCreateUsername: string
     usersCreatePassword: string
     usersCreateIsAdmin: string
     usersCreateSubmit: string
     usersRefresh: string
+    usersRefreshDesc: string
     usersLoadError: string
     usersActionError: string
     usersErrorUnlinkLast: string
@@ -525,21 +532,15 @@ export interface TranslationKeys {
     usersEmpty: string
     usersSearchLabel: string
     usersSearchPlaceholder: string
-    usersSearchClear: string
     usersFilterRole: string
     usersFilterStatus: string
     usersFilterAll: string
-    usersFilterClear: string
     usersNoMatch: string
-    /** e.g. "{count} results" */
     usersResultCount: string
-    usersShowDetail: string
-    usersHideDetail: string
     usersHours: string
     usersMinutes: string
-    // Updater (admin) — 更新管理
     updaterTitle: string
-    // 状态一句话（hero 主标题）
+    updaterChannel: string
     updaterStatusHealthy: string
     updaterStatusAvailable: string
     updaterStatusDowngrade: string
@@ -548,52 +549,34 @@ export interface TranslationKeys {
     updaterStatusNeedsManual: string
     updaterStatusOffline: string
     updaterStatusFirstRun: string
-    /** Banner when last update failed even if auto-rollback left maintenance idle. */
     updaterLastFailedTitle: string
     updaterLastFailedBody: string
-    // 状态下方的一行人话解释
     updaterHintHealthy: string
     updaterHintUpdating: string
     updaterHintMaintenance: string
     updaterHintNeedsManual: string
     updaterHintOffline: string
     updaterHintFirstRun: string
-    // hero 信息行
     updaterCurrentVersion: string
     updaterChannelLabel: string
     updaterLastChecked: string
     updaterUnknown: string
-    // 主操作
     updaterCheckNow: string
-    updaterChecking: string
     updaterRetry: string
     updaterNoAvailable: string
-    updaterLoading: string
-    /** Stale cache: auto-recheck in progress */
     updaterCheckStale: string
-    /** Stale cache: prompt user to recheck */
     updaterCheckStaleAction: string
-    /** Badge when cached “update available” is not yet revalidated */
     updaterStatusUnconfirmed: string
-    // 新版本卡片
-    updaterAvailableTitle: string
-    updaterAvailableDowngradeTitle: string
     updaterReleaseNotes: string
     updaterUpdateNow: string
     updaterDowngradeNow: string
-    updaterDispatching: string
     updaterDispatched: string
-    updaterWhatHappensTitle: string
-    updaterWhatHappens1: string
-    updaterWhatHappens2: string
-    updaterWhatHappens3: string
     updaterIrreversibleWarn: string
     updaterFreshnessAhead: string
     updaterFreshnessBehind: string
     updaterFreshnessIdentical: string
     updaterFreshnessDiverged: string
     updaterFreshnessUnknown: string
-    // 更新通道（单选卡片，选择即保存）
     updaterChannelGroupTitle: string
     updaterChannelGroupDesc: string
     updaterChannelStable: string
@@ -605,7 +588,6 @@ export interface TranslationKeys {
     updaterChannelBadgeRecommended: string
     updaterChannelBadgeDev: string
     updaterChannelSaved: string
-    // 自动检查 / 自动安装
     updaterCheckInterval: string
     updaterCheckIntervalDesc: string
     updaterCheckIntervalOff: string
@@ -616,20 +598,14 @@ export interface TranslationKeys {
     updaterAutoInstall: string
     updaterAutoInstallDesc: string
     updaterAutoPrefsSaved: string
-    // 频道 / 模式选择（当前内联面板仍在用；commit 仅 preview）
-    updaterChannel: string
-    // 进度卡
     updaterStepLog: string
-    updaterProcessing: string
     updaterProgressOnMaintenance: string
-    // 确认弹窗
     updaterConfirmUpgrade: string
     updaterConfirmDowngrade: string
     updaterConfirmRisk: string
     updaterConfirmRollback: string
     updaterConfirmExitMaintenance: string
     updaterConfirmRescueContinue: string
-    // 维护与恢复（仅出问题时出现）
     updaterMaintenanceGroup: string
     updaterMaintenanceGroupDesc: string
     updaterRescueContinue: string
@@ -641,55 +617,34 @@ export interface TranslationKeys {
     updaterSelfUpdateNeeded: string
     updaterSelfUpdateButton: string
     updaterSelfUpdateConfirm: string
-    /** Confirm when no app tip is cached; backend resolves registry tip. */
     updaterSelfUpdateConfirmAuto: string
-    /** Params: version (new), previous (old). */
     updaterSelfUpdateDispatched: string
-    // 边缘与更新器组件（常驻入口）
     updaterInfraGroupTitle: string
     updaterInfraGroupDesc: string
+    updaterInfraUpdateAvailableHint: string
     updaterInfraUpdaterTitle: string
     updaterInfraUpdaterDesc: string
-    /** Shared "Current version" label for updater / proxy rows. */
     updaterInfraCurrent: string
-    /** Badge when min_updater_version requires self-update first. */
     updaterInfraRequired: string
     updaterInfraProxyTitle: string
     updaterInfraProxyDesc: string
     updaterInfraProxyUpdateButton: string
     updaterInfraProxyConfirm: string
-    /** Confirm when no app tip is cached; backend resolves registry tip. */
     updaterInfraProxyConfirmAuto: string
-    /** Params: version (new), previous (old). Dispatched / in progress. */
     updaterInfraProxyDispatched: string
-    updaterInfraNeedCheck: string
-    /** Params: target, previous, error — last failed self-update. */
     updaterInfraSelfLastFailed: string
-    /** Params: target, previous, error — last failed proxy update. */
     updaterInfraProxyLastFailed: string
-    /** Shown when proxy rolled_back=true after a failed upgrade. */
     updaterInfraProxyRolledBack: string
-    /** Self-update scheduled; waiting for helper result. */
     updaterSelfUpdateWaiting: string
-    /** Self-update: updater briefly unreachable while containers recreate. */
     updaterSelfUpdateReconnecting: string
-    /** Params: error — self-update helper reported failure. */
     updaterSelfUpdateFailed: string
-    /** Self-update helper reported success after poll. */
     updaterSelfUpdateSucceeded: string
-    /** Poll timed out before self_update_last changed. */
     updaterSelfUpdateStillPending: string
-    /** Proxy update in progress; waiting for durable outcome. */
     updaterProxyUpdateWaiting: string
-    /** Proxy recreate: edge briefly unreachable. */
     updaterProxyUpdateReconnecting: string
-    /** Params: version, previous — confirmed via proxy_update_last. */
     updaterProxyUpdateSucceeded: string
-    /** Params: error — durable proxy update failure. */
     updaterProxyUpdateFailed: string
-    /** Poll timed out before proxy_update_last changed. */
     updaterProxyUpdateStillPending: string
-    // 安装指定版本（高级，折叠）
     updaterTargetGroupTitle: string
     updaterTargetGroupDesc: string
     updaterTargetReleaseHead: string
@@ -701,7 +656,6 @@ export interface TranslationKeys {
     updaterCommitPlaceholder: string
     updaterInstallTarget: string
     updaterTargetEmpty: string
-    // 备份与回退（折叠）
     updaterSnapshotGroupTitle: string
     updaterSnapshotGroupDesc: string
     updaterNoSnapshots: string
@@ -714,7 +668,6 @@ export interface TranslationKeys {
     updaterDeleteSnapshotLast: string
     updaterDeleteSnapshotKept: string
     updaterDeleteSnapshotKeptBadge: string
-    // 高级与诊断（折叠）
     updaterGroupAdvanced: string
     updaterGroupAdvancedDesc: string
     updaterUpdaterVersion: string
@@ -727,7 +680,6 @@ export interface TranslationKeys {
     updaterTransportDirectHint: string
     updaterTokenRequiredDirect: string
     updaterRefresh: string
-    // 错误
     updaterErr401: string
     updaterErr401Admin: string
     updaterErr403: string
@@ -739,10 +691,8 @@ export interface TranslationKeys {
     updaterErrServer: string
     updaterErrNotConfigured: string
     updaterErrUpstream: string
-    // 前端版本漂移提示
     updaterDriftWarn: string
     updaterDriftAction: string
-    // 相对时间
     updaterAgoJustNow: string
     updaterAgoMin: string
     updaterAgoHour: string
@@ -764,7 +714,6 @@ export interface TranslationKeys {
     importConfigFailed: string
     importConfigInvalid: string
     importConfirmMessage: string
-    dangerZone: string
     searchConfig: string
     searchResults: string
     noMatchingConfig: string
@@ -773,30 +722,21 @@ export interface TranslationKeys {
     configSaveFailed: string
     configEmpty: string
     loadConfigFailed: string
+    loadConfigFailedDesc: string
     resettingConfig: string
     configReset: string
-    testConnection: string
-    testFailed: string
-    imageGenService: string
     free: string
     aiModel: string
-    width: string
-    height: string
     enableMusicPlayer: string
-    musicPlayerDesc: string
     musicPlatform: string
     playlistId: string
-    playlistIdHint: string
-    cacheManagement: string
     clearMusicCache: string
-    clearMusicCacheDesc: string
-    musicCacheCleared: string
     siteMetadata: string
+    siteMetadataDesc: string
     backgroundAndTheme: string
-    parallaxHint: string
-    // Evocative 壁纸动效
-    evocativeEffects: string
+    backgroundAndThemeDesc: string
     evocativeTitle: string
+    evocativeEffects: string
     evocativeDesc: string
     fieldEvocativeParallax: string
     fieldEvocativeParallaxHint: string
@@ -809,30 +749,31 @@ export interface TranslationKeys {
     fpsBalanced: string
     fpsSmooth: string
     fieldEvocativeRippleQuality: string
-    fieldEvocativeRippleQualityHint: string
-    qualityLow: string
-    qualityMedium: string
-    qualityHigh: string
-    qualityUltra: string
-    // UI 字段标签
+    sliderRippleLow: string
+    sliderRippleUltra: string
+    sliderRecommended: string
     fieldWallpaperUrl: string
     fieldWallpaperBlur: string
+    sliderWeak: string
+    sliderStrong: string
     fieldWallpaperParallax: string
     fieldPetEnabled: string
     fieldPetImageUrl: string
     fieldSiteTitle: string
     fieldSiteDescription: string
     fieldSiteFavicon: string
+    imageUpload: string
+    imageUploadClear: string
+    imageUploadLocal: string
+    imageUploadHint: string
+    imageUploadTypeError: string
+    imageUploadSizeError: string
+    imageUploadReadError: string
     fieldMusicEnabled: string
     fieldMusicSource: string
     fieldMusicPlaylistId: string
-    // 网络代理配置
-    networkConfigTitle: string
-    networkConfigDesc: string
     advanced: string
     advancedDesc: string
-    networkProxyInfoTitle: string
-    networkProxyInfo: string
     enableProxy: string
     enableProxyHint: string
     proxyUrl: string
@@ -840,44 +781,30 @@ export interface TranslationKeys {
     proxyUrlDisabledHint: string
     proxyBypass: string
     proxyBypassHint: string
-    apiMirrorConfig: string
-    apiMirrorConfigHint: string
     geminiBaseUrl: string
     geminiBaseUrlHint: string
     githubApiBaseUrl: string
     githubApiBaseUrlHint: string
-    proxyOption: string
-    proxyOptionDesc: string
-    mirrorOption: string
-    mirrorOptionDesc: string
-    // UI 字段占位符
     placeholderWallpaperUrl: string
     placeholderSiteTitle: string
     placeholderSiteDescription: string
     placeholderSiteFavicon: string
     placeholderPetImageUrl: string
-    githubOAuthHint: string
     callbackUrl: string
-    redirectUrl: string
-    aiServiceDesc: string
-    getApiKey: string
-    personaServiceDesc: string
     savingDefault: string
     resetFailed: string
     refreshing: string
     refreshFailed: string
     savedSuccess: string
-    // ConfigForm 扩展
     configured: string
     notConfigured: string
-    aiConfigTitle: string
-    aiConfigDesc: string
-    aiServiceTitle: string
-    aiServiceInfoTitle: string
-    aiServiceInfo: string
     aiProvider: string
     aiProviderHint: string
-    aiServiceInfoDescription: string
+    aiLiteModelTitle: string
+    aiLiteModelDesc: string
+    aiLiteEnable: string
+    aiLiteEnableDesc: string
+    aiLiteProviderHint: string
     aiStandardModelTitle: string
     aiStandardModelDesc: string
     aiProModelTitle: string
@@ -885,20 +812,11 @@ export interface TranslationKeys {
     aiProEnable: string
     aiProEnableDesc: string
     aiProProviderHint: string
-    geminiDescription: string
     openaiCompatible: string
-    openaiDescription: string
-    // AI Image Generation
     aiImageTitle: string
     aiImageDesc: string
-    aiImageUsageTitle: string
-    enableAiImage: string
-    aiImageHint: string
-    pixaiDescription: string
-    pixaiBadge: string
     pixaiPlaceholder: string
     pixaiModelId: string
-    // Speech service (TTS/ASR) configuration
     speechServiceTitle: string
     speechServiceDesc: string
     tencentSecretId: string
@@ -915,11 +833,6 @@ export interface TranslationKeys {
     speechTestAvailability: string
     speechTestSuccess: string
     speechTestFailed: string
-    speechTestTesting: string
-    speechNotConfigured: string
-    // Platform configuration
-    platformsConfigTitle: string
-    platformsConfigDesc: string
     platformDescGithub: string
     platformDescBilibili: string
     platformDescBangumi: string
@@ -928,13 +841,12 @@ export interface TranslationKeys {
     platformDescX: string
     platformDescDiscord: string
     platformDescMal: string
+    platformDescXbox: string
+    platformDescPsn: string
     discordConnect: string
-    discordReconnect: string
-    discordConnectHint: string
     discordOAuthSuccess: string
     discordOAuthFailed: string
     discordDataCallbackUrl: string
-    bangumiCredentialRequirement: string
     bangumiCredentialMissing: string
     bangumiUsernameLabel: string
     bangumiAccessTokenLabel: string
@@ -942,26 +854,56 @@ export interface TranslationKeys {
     bangumiUsernamePlaceholder: string
     bangumiAccessTokenPlaceholder: string
     bangumiUserAgentPlaceholder: string
-    configuredStatus: string
-    unconfiguredStatus: string
-    enablePlatform: string
-    testingConnection: string
-    howToGetToken: string
-    basicConfigTitle: string
-    basicConfigDesc: string
+    platformSetupTitle: string
+    platformSetupOptional: string
+    platformSetupOpen: string
+    platformSetupFillTitle: string
+    platformSetupFillDesc: string
+    platformSetupGithub1Title: string
+    platformSetupGithub1Desc: string
+    platformSetupGithub2Title: string
+    platformSetupGithub2Desc: string
+    platformSetupBilibili1Title: string
+    platformSetupBilibili1Desc: string
+    platformSetupSteam1Title: string
+    platformSetupSteam1Desc: string
+    platformSetupSteam2Title: string
+    platformSetupSteam2Desc: string
+    platformSetupNetease1Title: string
+    platformSetupNetease1Desc: string
+    platformSetupBangumi1Title: string
+    platformSetupBangumi1Desc: string
+    platformSetupBangumi2Title: string
+    platformSetupBangumi2Desc: string
+    platformSetupX1Title: string
+    platformSetupX1Desc: string
+    platformSetupX2Title: string
+    platformSetupX2Desc: string
+    platformSetupDiscord1Title: string
+    platformSetupDiscord1Desc: string
+    platformSetupDiscord2Title: string
+    platformSetupDiscord2Desc: string
+    platformSetupDiscord2Action: string
+    platformSetupMal1Title: string
+    platformSetupMal1Desc: string
+    platformSetupMal2Title: string
+    platformSetupMal2Desc: string
+    platformSetupXbox1Title: string
+    platformSetupXbox1Desc: string
+    platformSetupXbox2Title: string
+    platformSetupXbox2Desc: string
+    platformSetupPsn1Title: string
+    platformSetupPsn1Desc: string
+    platformSetupPsn2Title: string
+    platformSetupPsn2Desc: string
     siteUrlConfig: string
     baseUrl: string
     baseUrlPlaceholder: string
-    baseUrlHint: string
-    domainChangeTitle: string
-    domainChangeDesc: string
-    domainChangeNewOrigin: string
-    domainChangePlaceholder: string
-    domainChangeHint: string
-    domainChangeAction: string
-    domainChangeActionDesc: string
-    domainChangeApply: string
-    domainChangeApplying: string
+    siteUrlFieldDesc: string
+    siteUrlUnset: string
+    siteUrlEdit: string
+    siteUrlSave: string
+    siteUrlCancel: string
     domainChangeConfirm: string
     domainChangeEmpty: string
     domainChangeSuccess: string
@@ -976,29 +918,8 @@ export interface TranslationKeys {
       backend_restart_for_cors: string
     }
     domainFederationNote: string
-    oauthConfigTitle: string
-    oauthConfigDesc: string
-    oauthGuideTitle: string
-    oauthGuideStep1: string
-    oauthGuideStep2: string
-    oauthGuideStep3: string
-    oauthGuideStep4: string
     currentCallbackUrl: string
-    currentCallbackUrlHint: string
     callbackUrlNotConfigured: string
-    githubClientId: string
-    githubClientIdPlaceholder: string
-    githubClientSecret: string
-    githubClientSecretPlaceholder: string
-    // PR #6: OIDC providers + 本地注册开关
-    oidcSectionTitle: string
-    oidcSectionDesc: string
-    oidcCallbackTemplate: string
-    oidcEmpty: string
-    oidcAddProvider: string
-    oidcSaveConfig: string
-    oidcSaving: string
-    oidcSaved: string
     oidcEnabled: string
     oidcDelete: string
     oidcSlugLabel: string
@@ -1015,49 +936,120 @@ export interface TranslationKeys {
     oidcIconLabel: string
     oidcIconPlaceholder: string
     oidcNewProvider: string
-    // PR #7: preset 流程 + 重排
-    oauthProvidersTitle: string
-    oauthProvidersDesc: string
     oauthProvidersEmpty: string
     oauthAddLoginMethod: string
     oauthPickPreset: string
     oauthHowToHint: string
-    oauthOpenDocs: string
     oauthAdvanced: string
-    // 各 preset 的使用方法描述
-    oauthPresetHintGithub: string
-    oauthPresetHintGoogle: string
-    oauthPresetHintMicrosoft: string
-    oauthPresetHintGitlab: string
-    oauthPresetHintDiscord: string
-    oauthPresetHintAuthentik: string
-    oauthPresetHintKeycloak: string
-    oauthPresetHintAuth0: string
-    oauthPresetHintCustom: string
+    oauthSetupTitle: string
+    oauthSetupCopyCallback: string
+    oauthSetupFillTitle: string
+    oauthSetupFillDesc: string
+    oauthSetupGithub1Title: string
+    oauthSetupGithub1Desc: string
+    oauthSetupGithub2Title: string
+    oauthSetupGithub2Desc: string
+    oauthSetupGithub3Title: string
+    oauthSetupGithub3Desc: string
+    oauthSetupGoogle1Title: string
+    oauthSetupGoogle1Desc: string
+    oauthSetupGoogle2Title: string
+    oauthSetupGoogle2Desc: string
+    oauthSetupGoogle3Title: string
+    oauthSetupGoogle3Desc: string
+    oauthSetupMicrosoft1Title: string
+    oauthSetupMicrosoft1Desc: string
+    oauthSetupMicrosoft2Title: string
+    oauthSetupMicrosoft2Desc: string
+    oauthSetupMicrosoft3Title: string
+    oauthSetupMicrosoft3Desc: string
+    oauthSetupGitlab1Title: string
+    oauthSetupGitlab1Desc: string
+    oauthSetupGitlab2Title: string
+    oauthSetupGitlab2Desc: string
+    oauthSetupGitlab3Title: string
+    oauthSetupGitlab3Desc: string
+    oauthSetupDiscord1Title: string
+    oauthSetupDiscord1Desc: string
+    oauthSetupDiscord2Title: string
+    oauthSetupDiscord2Desc: string
+    oauthSetupDiscord3Title: string
+    oauthSetupDiscord3Desc: string
+    oauthSetupAuthentik1Title: string
+    oauthSetupAuthentik1Desc: string
+    oauthSetupAuthentik2Title: string
+    oauthSetupAuthentik2Desc: string
+    oauthSetupAuthentik3Title: string
+    oauthSetupAuthentik3Desc: string
+    oauthSetupKeycloak1Title: string
+    oauthSetupKeycloak1Desc: string
+    oauthSetupKeycloak2Title: string
+    oauthSetupKeycloak2Desc: string
+    oauthSetupKeycloak3Title: string
+    oauthSetupKeycloak3Desc: string
+    oauthSetupAuth0Step1Title: string
+    oauthSetupAuth0Step1Desc: string
+    oauthSetupAuth0Step2Title: string
+    oauthSetupAuth0Step2Desc: string
+    oauthSetupAuth0Step3Title: string
+    oauthSetupAuth0Step3Desc: string
+    oauthSetupCustom1Title: string
+    oauthSetupCustom1Desc: string
+    oauthSetupCustom2Title: string
+    oauthSetupCustom2Desc: string
+    oauthSetupCustom3Title: string
+    oauthSetupCustom3Desc: string
     allowRegisterTitle: string
     allowRegisterDesc: string
-    musicConfigTitle: string
-    musicConfigDesc: string
-    musicUsageTitle: string
-    musicUsageInfo: string
     neteaseMusic: string
     qqMusic: string
     neteasePlaylistHint: string
     qqPlaylistHint: string
+    cacheManagement: string
+    clearMusicCacheDesc: string
     clearMusicCacheBtn: string
-    wallpaperParallaxHint: string
+    musicCacheCleared: string
     neteasePlaylistExample: string
     qqPlaylistExample: string
-    removeFavorite: string
-    addFavorite: string
-    resetConfigLabel: string
     saveConfigLabel: string
-    clearSearchLabel: string
-    closeLabel: string
-    // Tapp permission delegation settings
     permissions: string
     permissionsDesc: string
-    // Module settings
+    agentPresetTitle: string
+    agentPresetDesc: string
+    agentPresetUserHint: string
+    agentPresetGuestHint: string
+    agentPresetCustom: string
+    agentFineTuneTitle: string
+    agentFineTuneDesc: string
+    userElevatedPermissions: string
+    userElevatedPermissionsDesc: string
+    guestElevatedPermissions: string
+    guestElevatedPermissionsDesc: string
+    permAiGenerate: string
+    permAiGenerateHint: string
+    permAiAnalyze: string
+    permAiAnalyzeHint: string
+    permAiChat: string
+    permAiChatHint: string
+    permNetworkFetch: string
+    permNetworkFetchHint: string
+    permMediaControl: string
+    permComponentTheme: string
+    permComponentThemeHint: string
+    permShortcutRegister: string
+    permShortcutRegisterHint: string
+    permEventPublish: string
+    permEventPublishHint: string
+    permAiImage: string
+    permAiImageHint: string
+    permSchedulerRegister: string
+    permSchedulerRegisterHint: string
+    permSpeechTts: string
+    permSpeechTtsHint: string
+    permSpeechAsr: string
+    permSpeechAsrHint: string
+    permissionsSaved: string
+    permissionsSaveFailed: string
     moduleSettings: string
     moduleSettingsDesc: string
     libraryModuleTitle: string
@@ -1074,23 +1066,12 @@ export interface TranslationKeys {
     moduleVisibilityAdmin: string
     moduleVisibilitySaved: string
     moduleVisibilityLoadFailed: string
-    agentUsageTitle: string
-    agentUsageDesc: string
     agentUsageGuest: string
-    agentUsageGuestHint: string
-    agentUsageGuestHidden: string
-    agentUsageGuestVisible: string
     agentUsageUser: string
-    agentUsageUserHint: string
     agentUsageNone: string
     agentUsageChat: string
     agentUsageStandard: string
     agentUsageElevated: string
-    agentPresetTitle: string
-    agentPresetDesc: string
-    agentPresetUserHint: string
-    agentPresetGuestHint: string
-    agentPresetCustom: string
     hitokotoTitle: string
     hitokotoDesc: string
     hitokotoSourceLabel: string
@@ -1119,46 +1100,6 @@ export interface TranslationKeys {
     reportExpiryDaysHint: string
     reportSettingsSaved: string
     reportSettingsLoadFailed: string
-    permissionsTitle: string
-    tappPermissionsInfoTitle: string
-    tappPermissionsInfo: string
-    // User elevated permissions
-    userElevatedPermissions: string
-    userElevatedPermissionsDesc: string
-    // Guest elevated permissions
-    guestElevatedPermissions: string
-    guestElevatedPermissionsDesc: string
-    // 13 configurable elevated permissions
-    permAiGenerate: string
-    permAiGenerateHint: string
-    permAiAnalyze: string
-    permAiAnalyzeHint: string
-    permAiChat: string
-    permAiChatHint: string
-    permReportWrite: string
-    permReportWriteHint: string
-    permNetworkFetch: string
-    permNetworkFetchHint: string
-    permMediaControl: string
-    permMediaControlHint: string
-    permComponentTheme: string
-    permComponentThemeHint: string
-    permShortcutRegister: string
-    permShortcutRegisterHint: string
-    permEventPublish: string
-    permEventPublishHint: string
-    permAiImage: string
-    permAiImageHint: string
-    permSchedulerRegister: string
-    permSchedulerRegisterHint: string
-    permSpeechTts: string
-    permSpeechTtsHint: string
-    permSpeechAsr: string
-    permSpeechAsrHint: string
-    permissionsSaved: string
-    permissionsSaveFailed: string
-    loadPermissionsFailed: string
-    // AI 使用限额配置
     aiQuotaTitle: string
     aiQuotaDesc: string
     userAiQuota: string
@@ -1171,8 +1112,6 @@ export interface TranslationKeys {
     aiDailyTokensHint: string
     aiCooldownSeconds: string
     aiCooldownSecondsHint: string
-    aiQuotaAdminNote: string
-    // 站点备案和云赞助商
     siteFooterTitle: string
     siteFooterDesc: string
     siteIcp: string
@@ -1183,7 +1122,6 @@ export interface TranslationKeys {
     siteGonganPlaceholder: string
     cloudSponsors: string
     cloudSponsorsHint: string
-    cloudSponsorsPlaceholder: string
     cloudflare: string
     edgeone: string
     upyun: string
@@ -1925,9 +1863,8 @@ export interface TranslationKeys {
     changePasswordBtn: string
   }
 
-  // 数据管理页面
+  // 平台二级页数据管理
   dataManagement: {
-    neteaseMusic: string
     loadStatusFailed: string
     confirmRefreshData: string
     csrfTokenError: string
@@ -1938,7 +1875,6 @@ export interface TranslationKeys {
     cacheCleared: string
     clearCacheFailed: string
     unknown: string
-    backToConfig: string
     refreshData: string
     processData: string
     process: string
@@ -1954,10 +1890,6 @@ export interface TranslationKeys {
     processing: string
     clearing: string
     clear: string
-    usageTitle: string
-    usageRawData: string
-    usageSmartFilter: string
-    usageBackground: string
   }
 
   // 快速统计小组件
@@ -3281,7 +3213,6 @@ export interface TranslationKeys {
       reports: string[]
       life: string[]
       config: string[]
-      dataManagement: string[]
       tapp: string[]
     }
     generalHints: string[]

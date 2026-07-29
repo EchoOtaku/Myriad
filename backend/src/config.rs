@@ -181,6 +181,7 @@ pub struct DynamicConfig {
     pub openai_base_url: String,
     pub openai_max_tokens: i32,
     // AI 配置（Lite 模型）
+    pub lite_enabled: bool,
     pub lite_ai_provider: String,
     pub lite_gemini_api_key: Option<String>,
     pub lite_gemini_model: String,
@@ -289,12 +290,13 @@ pub struct DynamicConfig {
     pub music_source: Option<String>,
     pub music_playlist_id: Option<String>,
 
-    // AI 图片生成配置（统一服务：OpenAI / OpenRouter / Volcengine / PixAI）
+    // AI 图片生成配置（统一服务：OpenAI 兼容 / OpenRouter / Volcengine / PixAI）
+    // 分辨率由调用方（agent / tapp）在请求参数中决定，不设全局配置
     pub ai_image_provider: String,
     pub ai_image_model: String,
-    pub ai_image_width: i32,
-    pub ai_image_height: i32,
     pub ai_image_openai_api_key: Option<String>,
+    /// OpenAI 兼容图片接口 Base URL（如官方 /v1 或第三方代理）
+    pub ai_image_openai_base_url: String,
     pub ai_image_openrouter_api_key: Option<String>,
     pub ai_image_volcengine_api_key: Option<String>,
     pub ai_image_volcengine_base_url: String,
@@ -439,7 +441,8 @@ impl Default for DynamicConfig {
             openai_model: "minimax/minimax-m3".to_string(),
             openai_base_url: "https://openrouter.ai/api/v1".to_string(),
             openai_max_tokens: 2000,
-            // Lite 模型默认配置
+            // Lite 模型默认配置（关闭时 Lite 任务回退 Standard，与 Pro 同协议）
+            lite_enabled: false,
             lite_ai_provider: "openai".to_string(),
             lite_gemini_api_key: None,
             lite_gemini_model: "gemini-3.5-flash".to_string(),
@@ -526,9 +529,8 @@ impl Default for DynamicConfig {
             // AI 图片生成配置
             ai_image_provider: "openrouter".to_string(),
             ai_image_model: "openai/gpt-image-2".to_string(),
-            ai_image_width: 1024,
-            ai_image_height: 1024,
             ai_image_openai_api_key: None,
+            ai_image_openai_base_url: "https://api.openai.com/v1".to_string(),
             ai_image_openrouter_api_key: None,
             ai_image_volcengine_api_key: None,
             ai_image_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
@@ -615,9 +617,9 @@ impl Default for DynamicConfig {
 impl DynamicConfig {
     /// 根据模型层级解析 AI 配置
     ///
-    /// Lite 使用低成本独立配置；Pro 在未启用或未单独配置时回退到 Standard。
+    /// Lite / Pro 仅在对应开关开启时使用独立配置；关闭或字段留空时回退到 Standard。
     pub fn resolve_ai_config(&self, tier: ModelTier) -> ResolvedAiConfig {
-        if tier == ModelTier::Lite {
+        if tier == ModelTier::Lite && self.lite_enabled {
             return self.resolve_secondary_tier(
                 &self.lite_ai_provider,
                 self.lite_gemini_api_key.clone(),
@@ -638,7 +640,7 @@ impl DynamicConfig {
             );
         }
 
-        // 标准层级
+        // 标准层级（含 Lite/Pro 关闭时的回退）
         let provider = &self.ai_provider;
         let (api_key, model, base_url) = if provider == "openai" {
             (
@@ -725,6 +727,7 @@ mod tests {
     #[test]
     fn resolves_lite_with_the_same_provider_contract_as_pro() {
         let config = DynamicConfig {
+            lite_enabled: true,
             lite_ai_provider: "openai".to_string(),
             lite_openai_api_key: Some("lite-key".to_string()),
             lite_openai_model: "cheap/model".to_string(),
@@ -735,5 +738,39 @@ mod tests {
         assert_eq!(resolved.api_key.as_deref(), Some("lite-key"));
         assert_eq!(resolved.model, "cheap/model");
         assert!(resolved.base_url.contains("openrouter.ai"));
+    }
+
+    #[test]
+    fn lite_falls_back_to_standard_when_disabled() {
+        let config = DynamicConfig {
+            lite_enabled: false,
+            lite_openai_api_key: Some("lite-key".to_string()),
+            lite_openai_model: "cheap/model".to_string(),
+            openai_api_key: Some("std-key".to_string()),
+            openai_model: "std/model".to_string(),
+            ..DynamicConfig::default()
+        };
+        let resolved = config.resolve_ai_config(ModelTier::Lite);
+        assert_eq!(resolved.api_key.as_deref(), Some("std-key"));
+        assert_eq!(resolved.model, "std/model");
+    }
+
+    #[test]
+    fn lite_reuses_standard_credentials_when_enabled_and_empty() {
+        let config = DynamicConfig {
+            lite_enabled: true,
+            lite_ai_provider: "openai".to_string(),
+            lite_openai_api_key: None,
+            lite_openai_model: String::new(),
+            lite_openai_base_url: String::new(),
+            openai_api_key: Some("std-key".to_string()),
+            openai_model: "std/model".to_string(),
+            openai_base_url: "https://api.openai.com/v1".to_string(),
+            ..DynamicConfig::default()
+        };
+        let resolved = config.resolve_ai_config(ModelTier::Lite);
+        assert_eq!(resolved.api_key.as_deref(), Some("std-key"));
+        assert_eq!(resolved.model, "std/model");
+        assert_eq!(resolved.base_url, "https://api.openai.com/v1");
     }
 }

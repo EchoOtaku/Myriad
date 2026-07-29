@@ -3,14 +3,18 @@
  */
 
 import type { PermissionItem, QuotaItem } from '../settings'
+import { MyriadConfigIcon } from './MyriadConfigIcon'
+import { FaSlidersH, LuSparkles } from '@lib/icons'
 import React, { useCallback, useMemo } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
 import {
   PermissionGroup,
   QuotaGroup,
+  SegmentedControl,
   SettingGroup,
   SettingSection,
+  useSettingGuide,
 } from '../settings'
 
 /** Agent 相关 elevated 键（预设只改这些，不碰媒体/主题等） */
@@ -94,9 +98,6 @@ function detectAgentPreset(
   return 'custom'
 }
 
-const PRESET_CARD_CLASS =
-  'rounded-lg border border-gray-100 bg-gray-50/80 p-3 dark:border-white/10 dark:bg-white/[0.03]'
-
 export interface PermissionConfigValues extends Record<
   string,
   boolean | number
@@ -160,6 +161,7 @@ export const PermissionsConfigSection: React.FC<
   sectionId,
 }) => {
   const { t } = useI18n()
+  const { catalog: g, renderGuide } = useSettingGuide()
 
   // 定义权限项列表。要求持久登录主体的注册类能力不向游客展示。
   const permissionItems: PermissionItem[] = [
@@ -354,37 +356,18 @@ export const PermissionsConfigSection: React.FC<
     role: 'user' | 'guest',
     current: AgentPermissionPreset | 'custom',
   ) => (
-    <div className="grid grid-cols-2 gap-1 rounded-lg border border-gray-100 bg-gray-50/80 p-1 dark:border-white/10 dark:bg-white/[0.03] sm:grid-cols-4">
-      {AGENT_PRESET_LEVELS.map((level) => {
-        const checked = current === level
-        return (
-          <button
-            key={level}
-            type="button"
-            disabled={loading}
-            aria-pressed={checked}
-            onClick={() => applyAgentPreset(role, level)}
-            className={`min-h-8 rounded-md px-2 text-xs font-medium transition-colors ${
-              checked
-                ? 'text-[var(--color-primary)]'
-                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
-            } disabled:opacity-50`}
-            style={
-              checked
-                ? {
-                    backgroundColor:
-                      'color-mix(in srgb, var(--color-primary, #3b82f6) 12%, transparent)',
-                    boxShadow:
-                      '0 0 0 1px color-mix(in srgb, var(--color-primary, #3b82f6) 18%, transparent)',
-                  }
-                : undefined
-            }
-          >
-            {presetLabels[level]}
-          </button>
-        )
-      })}
-    </div>
+    <SegmentedControl
+      size="sm"
+      columns={4}
+      disabled={loading}
+      value={current === 'custom' ? null : current}
+      options={AGENT_PRESET_LEVELS.map((level) => ({
+        value: level,
+        label: presetLabels[level],
+      }))}
+      onChange={(level) => applyAgentPreset(role, level)}
+      ariaLabel={t.config.agentPresetTitle}
+    />
   )
 
   return (
@@ -394,36 +377,38 @@ export const PermissionsConfigSection: React.FC<
       description={description}
       sectionId={sectionId}
     >
-      {/* Agent 预设：批量开关下方 elevated 项 */}
+      {/* 1. Arael Agent 预设 */}
       <SettingGroup
         title={t.config.agentPresetTitle}
         description={t.config.agentPresetDesc}
+        guide={renderGuide(g.permissions.agentPreset)}
+        icon={<MyriadConfigIcon kind="agent" />}
       >
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className={PRESET_CARD_CLASS}>
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+        <div className="agent-preset-grid">
+          <div className="agent-preset-card">
+            <div className="agent-preset-card-head">
+              <span className="agent-preset-card-title">
                 {t.config.agentUsageUser}
               </span>
-              <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+              <span className="agent-preset-card-badge">
                 {presetLabels[userPreset]}
               </span>
             </div>
-            <p className="mb-2 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+            <p className="agent-preset-card-hint">
               {t.config.agentPresetUserHint}
             </p>
             {renderPresetButtons('user', userPreset)}
           </div>
-          <div className={PRESET_CARD_CLASS}>
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+          <div className="agent-preset-card">
+            <div className="agent-preset-card-head">
+              <span className="agent-preset-card-title">
                 {t.config.agentUsageGuest}
               </span>
-              <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+              <span className="agent-preset-card-badge">
                 {presetLabels[guestPreset]}
               </span>
             </div>
-            <p className="mb-2 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+            <p className="agent-preset-card-hint">
               {t.config.agentPresetGuestHint}
             </p>
             {renderPresetButtons('guest', guestPreset)}
@@ -431,53 +416,63 @@ export const PermissionsConfigSection: React.FC<
         </div>
       </SettingGroup>
 
-      {/* 普通用户权限 */}
-      <PermissionGroup
-        title={t.config.userElevatedPermissions}
-        description={t.config.userElevatedPermissionsDesc}
-        permissions={permissionItems}
-        values={getUserPermValues()}
-        onChange={(key, value) =>
-          updatePermissionConfig(`user_perm_${key}`, value)
-        }
-        loading={loading}
-      />
+      {/* 2. 权限细调（预设后的逐项 elevated）— 线框图标，非彩绘 */}
+      <SettingGroup
+        title={t.config.agentFineTuneTitle}
+        description={t.config.agentFineTuneDesc}
+        guide={renderGuide(g.permissions.fineTune)}
+        icon={<FaSlidersH aria-hidden />}
+      >
+        <PermissionGroup
+          title={t.config.userElevatedPermissions}
+          description={t.config.userElevatedPermissionsDesc}
+          permissions={permissionItems}
+          values={getUserPermValues()}
+          onChange={(key, value) =>
+            updatePermissionConfig(`user_perm_${key}`, value)
+          }
+          loading={loading}
+        />
+        <PermissionGroup
+          title={t.config.guestElevatedPermissions}
+          description={t.config.guestElevatedPermissionsDesc}
+          permissions={guestPermissionItems}
+          values={getGuestPermValues()}
+          onChange={(key, value) =>
+            updatePermissionConfig(`guest_perm_${key}`, value)
+          }
+          loading={loading}
+        />
+      </SettingGroup>
 
-      {/* 游客权限 */}
-      <PermissionGroup
-        title={t.config.guestElevatedPermissions}
-        description={t.config.guestElevatedPermissionsDesc}
-        permissions={guestPermissionItems}
-        values={getGuestPermValues()}
-        onChange={(key, value) =>
-          updatePermissionConfig(`guest_perm_${key}`, value)
-        }
-        loading={loading}
-      />
-
-      {/* 普通用户 AI 配额 */}
-      <QuotaGroup
-        title={t.config.userAiQuota}
-        description={t.config.userAiQuotaDesc}
-        quotas={quotaItems}
-        values={getUserQuotaValues()}
-        onChange={(key, value) =>
-          updatePermissionConfig(`user_ai_${key}`, value)
-        }
-        loading={loading}
-      />
-
-      {/* 游客 AI 配额 */}
-      <QuotaGroup
-        title={t.config.guestAiQuota}
-        description={t.config.guestAiQuotaDesc}
-        quotas={quotaItems}
-        values={getGuestQuotaValues()}
-        onChange={(key, value) =>
-          updatePermissionConfig(`guest_ai_${key}`, value)
-        }
-        loading={loading}
-      />
+      {/* 3. AI 使用限额 — 线框图标，非彩绘 */}
+      <SettingGroup
+        title={t.config.aiQuotaTitle}
+        description={t.config.aiQuotaDesc}
+        guide={renderGuide(g.permissions.aiQuota)}
+        icon={<LuSparkles aria-hidden />}
+      >
+        <QuotaGroup
+          title={t.config.userAiQuota}
+          description={t.config.userAiQuotaDesc}
+          quotas={quotaItems}
+          values={getUserQuotaValues()}
+          onChange={(key, value) =>
+            updatePermissionConfig(`user_ai_${key}`, value)
+          }
+          loading={loading}
+        />
+        <QuotaGroup
+          title={t.config.guestAiQuota}
+          description={t.config.guestAiQuotaDesc}
+          quotas={quotaItems}
+          values={getGuestQuotaValues()}
+          onChange={(key, value) =>
+            updatePermissionConfig(`guest_ai_${key}`, value)
+          }
+          loading={loading}
+        />
+      </SettingGroup>
     </SettingSection>
   )
 }

@@ -13,6 +13,7 @@ export type SettingType =
   | 'switch' // 开关
   | 'input' // 文本输入
   | 'number' // 数字输入
+  | 'slider' // 滑动条
   | 'select' // 下拉选择
   | 'provider' // 服务商选择器（带图标的按钮组）
   | 'button' // 操作按钮
@@ -45,6 +46,17 @@ export interface BaseSettingItemConfig {
   itemKey?: string
   /** 显示标签 */
   label: string
+  /**
+   * 详细说明：默认不展示，标签旁 ⓘ hover 显示 tooltip。
+   * 适合较长帮助文案；短说明仍可用 description。
+   */
+  detail?: ReactNode
+  /**
+   * 选项详细指南（弹窗正文）。
+   * 「显示说明」开启时，标题旁显示指南入口；点击打开弹窗。
+   * 一句话总结请用 description；长文写在 guide。
+   */
+  guide?: ReactNode
   /** 描述说明（显示在标签下方） */
   description?: string
   /** 提示文本（显示在控件下方） */
@@ -83,6 +95,9 @@ export interface CheckboxSettingConfig extends BaseSettingItemConfig {
   checkboxLabel?: string
 }
 
+/** 文本输入展示变体 */
+export type InputItemVariant = 'default' | 'clickToEdit' | 'imageUpload'
+
 /** 文本输入设置项配置 */
 export interface InputSettingConfig extends BaseSettingItemConfig {
   type: 'input'
@@ -93,7 +108,7 @@ export interface InputSettingConfig extends BaseSettingItemConfig {
   /** 占位符 */
   placeholder?: string
   /** 输入类型 */
-  inputType?: 'text' | 'password' | 'url' | 'email'
+  inputType?: 'text' | 'password' | 'url' | 'email' | 'search'
   /** 是否多行 */
   multiline?: boolean
   /** 多行时的行数 */
@@ -106,6 +121,52 @@ export interface InputSettingConfig extends BaseSettingItemConfig {
   validate?: (value: string) => string | null
   /** 复制按钮 */
   copyable?: boolean
+  /**
+   * - default：常规可编辑输入
+   * - clickToEdit：只读展示，点击后编辑；保存走 onCommit（不依赖 onChange 草稿）
+   * - imageUpload：URL 输入 + 本地图片上传（data URL）+ 预览
+   */
+  variant?: InputItemVariant
+  /** clickToEdit：空值展示文案 */
+  emptyLabel?: string
+  /** clickToEdit：展示态操作文案 */
+  editLabel?: string
+  /** clickToEdit：保存按钮文案 */
+  saveLabel?: string
+  /** clickToEdit：取消 aria / title */
+  cancelLabel?: string
+  /**
+   * clickToEdit：提交草稿。返回 Promise 时展示 loading；
+   * resolve 后退出编辑（reject / 抛错则保持编辑态）。
+   */
+  onCommit?: (next: string) => void | Promise<void>
+  /** clickToEdit：进入编辑态 */
+  onEditStart?: () => void
+  /** clickToEdit：取消编辑 */
+  onEditCancel?: () => void
+  /**
+   * imageUpload：file input accept，默认 `image/*`
+   * （如 `image/png,image/jpeg,image/webp,image/gif,image/svg+xml`）
+   */
+  accept?: string
+  /** imageUpload：最大文件字节数，默认 512KB */
+  maxImageBytes?: number
+  /** imageUpload：上传按钮文案 */
+  uploadLabel?: string
+  /** imageUpload：清除按钮 aria / title */
+  clearImageLabel?: string
+  /** imageUpload：本地 data URL 时输入区展示文案 */
+  localImageLabel?: string
+  /** imageUpload：预览 alt */
+  previewAlt?: string
+  /** imageUpload：是否显示清除按钮（有值时），默认 true */
+  clearable?: boolean
+  /** imageUpload：非图片类型错误文案 */
+  imageTypeError?: string
+  /** imageUpload：超限错误文案 */
+  imageSizeError?: string
+  /** imageUpload：读取失败错误文案 */
+  imageReadError?: string
 }
 
 /** 数字输入设置项配置 */
@@ -119,6 +180,46 @@ export interface NumberSettingConfig extends BaseSettingItemConfig {
   step?: number
   /** 单位标签 */
   unit?: string
+}
+
+/** 滑动条设置项配置 */
+export interface SliderSettingConfig extends BaseSettingItemConfig {
+  type: 'slider'
+  value: number
+  onChange: (value: number) => void
+  onBlur?: () => void
+  min?: number
+  max?: number
+  step?: number
+  /** 单位标签（跟在数值后，如 `px`） */
+  unit?: string
+  /** 是否显示当前数值，默认 true */
+  showValue?: boolean
+  /** 自定义数值展示 */
+  formatValue?: (value: number) => string
+  /**
+   * 轨道下方显示两端。默认 false。
+   * 开启后两端始终显示对应数值（min / max）；
+   * 可另传 `startLabel` / `endLabel` 作为数值旁的说明文案。
+   */
+  showRangeLabels?: boolean
+  /**
+   * 左端（min）说明文案，如「弱 · 更清晰」。
+   * 有值时自动显示两端行；数值始终显示。
+   */
+  startLabel?: string
+  /**
+   * 右端（max）说明文案，如「强 · 更模糊」。
+   * 有值时自动显示两端行；数值始终显示。
+   */
+  endLabel?: string
+  /**
+   * 推荐值（与 value 同单位）。在进度条下方对应位置显示标记。
+   * 超出 min/max 时不显示。
+   */
+  recommendedValue?: number
+  /** 推荐标记文案，默认「推荐」类短词；可含数值说明 */
+  recommendedLabel?: string
 }
 
 /** 下拉选择设置项配置 */
@@ -169,6 +270,7 @@ export type SettingItemConfig =
   | CheckboxSettingConfig
   | InputSettingConfig
   | NumberSettingConfig
+  | SliderSettingConfig
   | SelectSettingConfig
   | ProviderSettingConfig
   | ButtonSettingConfig
@@ -178,14 +280,54 @@ export type SettingItemConfig =
 // 分组与区块
 // ==========================================
 
+/** 子分类标题行右侧开关（模块启用等） */
+export interface SettingGroupSwitchConfig {
+  /** 当前是否开启 */
+  checked: boolean
+  /** 开关变化 */
+  onChange: (checked: boolean) => void
+  /** 是否禁用 */
+  disabled?: boolean
+  /** 加载中（等同禁用交互） */
+  loading?: boolean
+  /** 无障碍名；默认使用组 title */
+  ariaLabel?: string
+}
+
 /** 设置组配置 */
 export interface SettingGroupConfig {
   /** 组标题 */
   title?: string
   /** 组图标 */
   icon?: ReactNode | string
-  /** 组描述 */
+  /** 标题旁附加内容（如 SettingTitleTag 跳转标签） */
+  titleExtra?: ReactNode
+  /**
+   * 标题行右侧开关。
+   * 用于「模块总开关」等：标题左侧信息，右侧 ToggleSwitch。
+   */
+  switch?: SettingGroupSwitchConfig
+  /**
+   * 详细说明（推荐）：默认不展示，标题旁 ⓘ hover/focus 显示 tooltip。
+   * 与 description 同时存在时优先使用 detail。
+   */
+  detail?: ReactNode
+  /**
+   * 分组详细指南（弹窗）。「显示说明」开启时标题旁显示入口。
+   */
+  guide?: ReactNode
+  /** tooltip 语气：warning 用于阻断性提示 */
+  detailTone?: 'default' | 'warning' | 'info'
+  /**
+   * 组说明。默认作为 tooltip（与 detail 相同交互）；
+   * 设 descriptionVisible 时额外常显在标题下方。
+   * 用作一句话总结；长文请用 guide。
+   */
   description?: ReactNode
+  /**
+   * 是否在标题下常显 description。默认 false（仅 tooltip）。
+   */
+  descriptionVisible?: boolean
   /** 子项 */
   items?: SettingItemConfig[]
   /** 子元素 */
@@ -206,8 +348,26 @@ export interface SettingSectionConfig {
   title: string
   /** 区块图标 */
   icon?: ReactNode | string
-  /** 区块描述 */
+  /** 标题旁附加（如 SettingTitleTag 跳转 / 操作 chip） */
+  titleExtra?: ReactNode
+  /**
+   * 详细说明：默认不展示，标题旁 ⓘ hover 显示 tooltip。
+   * 优先于 description 作为 tooltip 内容。
+   */
+  detail?: ReactNode
+  /**
+   * 区块详细指南（弹窗）。「显示说明」开启时标题旁显示入口。
+   */
+  guide?: ReactNode
+  /** tooltip 语气 */
+  detailTone?: 'default' | 'warning' | 'info'
+  /**
+   * 区块说明。默认作为 tooltip；
+   * descriptionVisible 时额外常显。
+   */
   description?: string
+  /** 是否常显 description。默认 false */
+  descriptionVisible?: boolean
   /** 子组 */
   groups?: SettingGroupConfig[]
   /** 子元素 */
@@ -289,15 +449,17 @@ export type SettingConfigByType<T extends SettingType> = T extends 'switch'
       ? InputSettingConfig
       : T extends 'number'
         ? NumberSettingConfig
-        : T extends 'select'
-          ? SelectSettingConfig
-          : T extends 'provider'
-            ? ProviderSettingConfig
-            : T extends 'button'
-              ? ButtonSettingConfig
-              : T extends 'custom'
-                ? CustomSettingConfig
-                : never
+        : T extends 'slider'
+          ? SliderSettingConfig
+          : T extends 'select'
+            ? SelectSettingConfig
+            : T extends 'provider'
+              ? ProviderSettingConfig
+              : T extends 'button'
+                ? ButtonSettingConfig
+                : T extends 'custom'
+                  ? CustomSettingConfig
+                  : never
 
 /** 设置值类型映射 */
 export type SettingValueType<T extends SettingType> = T extends
@@ -305,7 +467,7 @@ export type SettingValueType<T extends SettingType> = T extends
   ? boolean
   : T extends 'input'
     ? string
-    : T extends 'number'
+    : T extends 'number' | 'slider'
       ? number
       : T extends 'select' | 'provider'
         ? string

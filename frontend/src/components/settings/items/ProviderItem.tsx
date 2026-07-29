@@ -5,6 +5,7 @@
 
 import type { ProviderSettingConfig, SettingOption } from '../types'
 import React, { useCallback } from 'react'
+import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import './SettingItem.css'
 
 export interface ProviderItemProps<T = string> extends Omit<
@@ -14,6 +15,8 @@ export interface ProviderItemProps<T = string> extends Omit<
 
 function ProviderItemComponent<T extends string = string>({
   label,
+  detail,
+  guide,
   description,
   hint,
   value,
@@ -48,7 +51,13 @@ function ProviderItemComponent<T extends string = string>({
     >
       <div className="setting-item-content">
         <div className="setting-label">
-          <span className="setting-label-text">{label}</span>
+          <span className="setting-label-text">
+            {label}
+            <SettingTitleGuideEntry
+              title={label}
+              guide={guide ?? detail ?? description}
+            />
+          </span>
           {description && (
             <span className="setting-description">{description}</span>
           )}

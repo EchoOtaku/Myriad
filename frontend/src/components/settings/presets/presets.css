@@ -1,16 +1,13 @@
 /**
  * 预设组件样式
+ * 间距：在 .config-form 内由 --settings-gap-group 承接
  */
 
 /* ==========================================
-   权限组样式（基于 CheckboxGroupItem 卡片）
+   权限组样式（CheckboxGroupItem 卡片）
    ========================================== */
 
 .permission-checkbox-group {
-  margin-bottom: 1rem;
-}
-
-.permission-checkbox-group:last-child {
   margin-bottom: 0;
 }
 
@@ -19,9 +16,91 @@
    ========================================== */
 
 .quota-number-group {
-  margin-bottom: 1rem;
+  margin-bottom: 0;
 }
 
-.quota-number-group:last-child {
-  margin-bottom: 0;
+/* 无 .config-form 时相邻预设仍保留组间距 */
+:not(.config-form) > .permission-checkbox-group + .permission-checkbox-group,
+:not(.config-form) > .permission-checkbox-group + .quota-number-group,
+:not(.config-form) > .quota-number-group + .quota-number-group,
+:not(.config-form) > .quota-number-group + .permission-checkbox-group {
+  margin-top: var(--settings-gap-group, 1.25rem);
+}
+
+/* ==========================================
+   Arael Agent 预设卡（用户 / 游客）
+   内层微透：走 --cfg-subtle-* / --cfg-text-*，不再用 Tailwind gray 实底
+   ========================================== */
+
+.agent-preset-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (width >= 768px) {
+  .agent-preset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* 卡面复用全局 .settings-inset-card；此处只补预设专用排版 */
+.agent-preset-card {
+  /* 与 .settings-inset-card 对齐；Permissions 页已加载 ConfigForm.css */
+  padding: 0.75rem;
+  border: 1px solid var(--cfg-subtle-border);
+  border-radius: 0.75rem;
+  background: var(--cfg-subtle-bg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+}
+
+html.dark .agent-preset-card {
+  border-color: var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 18%);
+}
+
+.agent-preset-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.agent-preset-card-title {
+  color: var(--cfg-text-1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.agent-preset-card-badge {
+  flex-shrink: 0;
+  color: var(--cfg-text-3);
+  font-size: 0.6875rem;
+  font-weight: 550;
+  line-height: 1.3;
+}
+
+.agent-preset-card-hint {
+  margin: 0 0 0.5rem;
+  color: var(--cfg-text-3);
+  font-size: 0.6875rem;
+  line-height: 1.55;
+}
+
+/* 预设卡内分段控件铺满，避免两列卡里轨道过窄 */
+.agent-preset-card .choice-segmented {
+  width: 100%;
+  max-width: 100%;
+}
+
+.agent-preset-card .choice-segmented:not(.is-flex) {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.agent-preset-card .choice-segmented-item {
+  width: 100%;
+  max-width: none;
+  justify-content: center;
 }

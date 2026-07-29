@@ -1,0 +1,138 @@
+/**
+ * 标题旁标签提示 — 轻量 chip，可静态展示或点击跳转
+ */
+
+.setting-title-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  margin: 0;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid
+    color-mix(in srgb, var(--color-primary, #3b82f6) 22%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #3b82f6) 10%,
+    transparent
+  );
+  color: var(--color-primary, #3b82f6);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  vertical-align: middle;
+  flex-shrink: 0;
+  user-select: none;
+  font-family: inherit;
+}
+
+.setting-title-tag-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
+  opacity: 0.9;
+}
+
+.setting-title-tag-icon svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.setting-title-tag-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 可点击（跳转 / 操作） */
+button.setting-title-tag {
+  cursor: pointer;
+  transition:
+    background-color var(--sm-dur-fast) var(--sm-ease-standard),
+    border-color var(--sm-dur-fast) var(--sm-ease-standard),
+    color var(--sm-dur-fast) var(--sm-ease-standard),
+    transform var(--sm-dur-fast) var(--sm-ease-standard);
+}
+
+button.setting-title-tag:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #3b82f6) 16%,
+    transparent
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #3b82f6) 36%,
+    transparent
+  );
+}
+
+button.setting-title-tag:active:not(:disabled) {
+  transform: scale(var(--sm-scale-press));
+}
+
+button.setting-title-tag:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--color-primary, #3b82f6) 45%, transparent);
+  outline-offset: 2px;
+}
+
+button.setting-title-tag:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 中性信息标签（非强调操作）→ 微透 */
+.setting-title-tag--muted {
+  border-color: var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
+  color: var(--cfg-text-3);
+}
+
+html.dark .setting-title-tag--muted {
+  border-color: var(--cfg-subtle-border);
+  background: var(--cfg-subtle-bg);
+  color: var(--cfg-text-3);
+}
+
+button.setting-title-tag--muted:hover:not(:disabled) {
+  background: var(--cfg-subtle-bg-hover);
+  border-color: var(--cfg-subtle-border-hover);
+  color: var(--cfg-text-2);
+}
+
+html.dark button.setting-title-tag--muted:hover:not(:disabled) {
+  color: var(--cfg-text-2);
+}
+
+html.dark .setting-title-tag {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #60a5fa) 28%,
+    transparent
+  );
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #60a5fa) 14%,
+    transparent
+  );
+  color: var(--color-primary, #60a5fa);
+}
+
+html.dark button.setting-title-tag:hover:not(:disabled) {
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #60a5fa) 22%,
+    transparent
+  );
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #60a5fa) 42%,
+    transparent
+  );
+}

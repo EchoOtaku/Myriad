@@ -3,12 +3,7 @@
  * 使用通用设置组件重构
  */
 
-import type {
-  ChangeSiteDomainResponse,
-  DomainChecklistItem,
-} from '../../services/siteDomainApi'
 import {
-  FaExchangeAlt,
   FaGlobe,
   FaInfoCircle,
   FaLink,
@@ -16,21 +11,19 @@ import {
   LuPalette,
   SiCloudflare,
 } from '@lib/icons'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
-import { ApiError } from '../../services/api'
 import {
-  changeSiteDomain,
-  checklistItems,
-} from '../../services/siteDomainApi'
-import {
-  ButtonItem,
   CheckboxGroupItem,
   InputItem,
-  SelectItem,
+  SegmentedControl,
   SettingGroup,
   SettingSection,
+  SliderItem,
+  useSettingGuide,
 } from '../settings'
+import { SettingItemWrapper } from '../settings/items/SettingItemWrapper'
+import { SiteUrlField } from './SiteUrlField'
 
 // EdgeOne Logo
 const EdgeOneIcon: React.FC = () => (
@@ -64,8 +57,12 @@ interface ConfigField {
 interface UiConfigSectionProps {
   /** UI 配置字段数组 */
   configFields: ConfigField[]
-  /** 更新配置字段值 */
-  updateValue: (key: string, value: string) => void
+  /** 更新配置字段值（域名应用成功后请用 silent，避免触发统一保存 dirty） */
+  updateValue: (
+    key: string,
+    value: string,
+    options?: { silent?: boolean },
+  ) => void
   /** 获取字段标签（国际化） */
   getFieldLabel: (key: string, originalLabel: string) => string
   /** 获取字段占位符（国际化） */
@@ -87,18 +84,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
   sectionId,
 }) => {
   const { t } = useI18n()
-  const [domainDraft, setDomainDraft] = useState('')
-  const [domainLoading, setDomainLoading] = useState(false)
-  const [domainResult, setDomainResult] = useState<{
-    success: boolean
-    message: string
-  } | null>(null)
-  const [domainChecklist, setDomainChecklist] = useState<
-    DomainChecklistItem[]
-  >([])
-  const [domainApplied, setDomainApplied] = useState<
-    ChangeSiteDomainResponse['applied'] | null
-  >(null)
+  const { catalog: g, renderGuide } = useSettingGuide()
 
   // 辅助函数：获取配置字段值
   const getFieldValue = useCallback(
@@ -108,68 +94,23 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
     [configFields],
   )
 
-  const checklistLabel = useCallback(
-    (key: string) => {
-      const map = t.config.domainChecklist as Record<string, string> | undefined
-      return map?.[key] || key
+  const baseUrlValue = getFieldValue('base_url')
+
+  /** 涟漪画质：配置存 0–1，UI 用 50–100 的整数百分比 */
+  const rippleQualityPercent = useMemo(() => {
+    const raw = Number.parseFloat(
+      getFieldValue('evocative_ripple_quality') || '0.85',
+    )
+    const pct = Math.round((Number.isFinite(raw) ? raw : 0.85) * 100)
+    return Math.min(100, Math.max(50, pct))
+  }, [getFieldValue])
+
+  const handleSiteUrlApplied = useCallback(
+    (url: string) => {
+      updateValue('base_url', url, { silent: true })
     },
-    [t.config.domainChecklist],
+    [updateValue],
   )
-
-  const handleChangeDomain = useCallback(async () => {
-    const next = domainDraft.trim()
-    if (!next) {
-      setDomainResult({
-        success: false,
-        message: t.config.domainChangeEmpty,
-      })
-      return
-    }
-    const current = getFieldValue('base_url').replace(/\/$/, '')
-    if (
-      !window.confirm(
-        t.config.domainChangeConfirm.replace('{origin}', next),
-      )
-    ) {
-      return
-    }
-
-    setDomainLoading(true)
-    setDomainResult(null)
-    setDomainChecklist([])
-    setDomainApplied(null)
-    try {
-      const res = await changeSiteDomain({
-        new_origin: next,
-        previous_origin: current || undefined,
-      })
-      if (res.success && res.applied) {
-        updateValue('base_url', res.applied.base_url)
-        setDomainDraft(res.applied.base_url)
-        setDomainApplied(res.applied)
-        setDomainChecklist(checklistItems(res.checklist))
-        setDomainResult({
-          success: true,
-          message: res.message || t.config.domainChangeSuccess,
-        })
-      } else {
-        setDomainResult({
-          success: false,
-          message: res.message || t.config.domainChangeFailed,
-        })
-      }
-    } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : t.config.domainChangeFailed
-      setDomainResult({ success: false, message })
-    } finally {
-      setDomainLoading(false)
-    }
-  }, [domainDraft, getFieldValue, t, updateValue])
 
   // 站点元数据字段
   const siteMetadataFields = useMemo(
@@ -204,121 +145,67 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       description={description}
       sectionId={sectionId}
     >
-      {/* 站点 URL 配置 */}
-      <SettingGroup title={t.config.siteUrlConfig} icon={<FaLink />}>
-        <InputItem
-          itemKey="base_url"
-          label={t.config.baseUrl}
-          value={getFieldValue('base_url')}
-          onChange={(v) => updateValue('base_url', v)}
-          placeholder={t.config.baseUrlPlaceholder}
-          hint={t.config.baseUrlHint}
-          layout="vertical"
-        />
-      </SettingGroup>
-
-      {/* 更换域名（站点访问身份，非联邦 Move） */}
+      {/* 站点地址：只读 → 点击编辑 → 框内保存（独立 API + 运维清单） */}
       <SettingGroup
-        title={t.config.domainChangeTitle}
-        icon={<FaExchangeAlt />}
-        description={t.config.domainChangeDesc}
+        title={t.config.siteUrlConfig}
+        description={t.config.siteUrlFieldDesc}
+        guide={renderGuide(g.ui.siteUrl)}
+        icon={<FaLink />}
       >
-        <InputItem
-          itemKey="new_site_origin"
-          label={t.config.domainChangeNewOrigin}
-          value={domainDraft}
-          onChange={setDomainDraft}
-          placeholder={t.config.domainChangePlaceholder}
-          hint={t.config.domainChangeHint}
-          layout="vertical"
-        />
-        <ButtonItem
-          label={t.config.domainChangeAction}
-          description={t.config.domainChangeActionDesc}
-          buttonText={
-            domainLoading
-              ? t.config.domainChangeApplying
-              : t.config.domainChangeApply
-          }
-          onClick={() => {
-            void handleChangeDomain()
-          }}
-          variant="primary"
-          disabled={domainLoading || !domainDraft.trim()}
-          loading={domainLoading}
-          result={domainResult}
-          layout="vertical"
-        />
-        {domainApplied && (
-          <div
-            className="setting-item-hint"
-            style={{ marginTop: '0.5rem', fontSize: '0.875rem' }}
-          >
-            <div>
-              <strong>BASE_URL / FRONTEND_URL:</strong>{' '}
-              {domainApplied.base_url}
-            </div>
-            <div>
-              <strong>CORS_ORIGINS:</strong> {domainApplied.cors_origins}
-            </div>
-          </div>
-        )}
-        {domainChecklist.length > 0 && (
-          <div style={{ marginTop: '0.75rem' }}>
-            <div
-              style={{
-                fontWeight: 600,
-                marginBottom: '0.5rem',
-                fontSize: '0.9rem',
-              }}
-            >
-              {t.config.domainChecklistTitle}
-            </div>
-            <ul
-              style={{
-                margin: 0,
-                paddingLeft: '1.25rem',
-                fontSize: '0.875rem',
-                lineHeight: 1.55,
-              }}
-            >
-              {domainChecklist.map((item) => (
-                <li key={item.key} style={{ marginBottom: '0.35rem' }}>
-                  <strong>{checklistLabel(item.key)}</strong>
-                  <span style={{ opacity: 0.75 }}> ({item.status})</span>
-                  <div style={{ opacity: 0.9 }}>{item.summary}</div>
-                </li>
-              ))}
-            </ul>
-            <p
-              style={{
-                marginTop: '0.75rem',
-                fontSize: '0.8125rem',
-                opacity: 0.8,
-              }}
-            >
-              {t.config.domainFederationNote}
-            </p>
-          </div>
-        )}
+        <SiteUrlField value={baseUrlValue} onApplied={handleSiteUrlApplied} />
       </SettingGroup>
 
-      {/* 站点元数据 */}
-      <SettingGroup title={t.config.siteMetadata} icon={<FaGlobe />}>
-        {siteMetadataFields.map((field) => (
-          <InputItem
-            key={field.key}
-            itemKey={field.key}
-            label={getFieldLabel(field.key, field.label)}
-            required={field.required}
-            value={field.value}
-            onChange={(v) => updateValue(field.key, v)}
-            placeholder={getFieldPlaceholder(field.key, field.placeholder)}
-            multiline={field.key === 'site_description'}
-            rows={2}
-            layout="vertical"
-          />
-        ))}
+      <SettingGroup
+        title={t.config.siteMetadata}
+        description={t.config.siteMetadataDesc}
+        guide={renderGuide(g.ui.siteMetadata)}
+        icon={<FaGlobe />}
+      >
+        {siteMetadataFields.map((field) =>
+          field.key === 'site_favicon' ? (
+            <InputItem
+              key={field.key}
+              itemKey={field.key}
+              label={getFieldLabel(field.key, field.label)}
+              required={field.required}
+              value={field.value}
+              onChange={(v) => updateValue(field.key, v)}
+              placeholder={getFieldPlaceholder(field.key, field.placeholder)}
+              inputType="url"
+              variant="imageUpload"
+              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon,.ico"
+              maxImageBytes={512 * 1024}
+              uploadLabel={t.config.imageUpload}
+              clearImageLabel={t.config.imageUploadClear}
+              localImageLabel={t.config.imageUploadLocal}
+              previewAlt={getFieldLabel(field.key, field.label)}
+              imageTypeError={t.config.imageUploadTypeError}
+              imageSizeError={t.config.imageUploadSizeError}
+              imageReadError={t.config.imageUploadReadError}
+              hint={t.config.imageUploadHint}
+              guide={renderGuide(g.ui.siteFavicon)}
+              layout="vertical"
+            />
+          ) : (
+            <InputItem
+              key={field.key}
+              itemKey={field.key}
+              label={getFieldLabel(field.key, field.label)}
+              required={field.required}
+              value={field.value}
+              onChange={(v) => updateValue(field.key, v)}
+              placeholder={getFieldPlaceholder(field.key, field.placeholder)}
+              multiline={field.key === 'site_description'}
+              rows={2}
+              guide={renderGuide(
+                field.key === 'site_title'
+                  ? g.ui.siteTitle
+                  : g.ui.siteDescription,
+              )}
+              layout="vertical"
+            />
+          ),
+        )}
       </SettingGroup>
 
       {/* 站点底部信息（备案和云赞助商） */}
@@ -326,6 +213,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         title={t.config.siteFooterTitle}
         icon={<FaInfoCircle />}
         description={t.config.siteFooterDesc}
+        guide={renderGuide(g.ui.siteFooter)}
       >
         <InputItem
           itemKey="site_icp"
@@ -334,6 +222,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           onChange={(v) => updateValue('site_icp', v)}
           placeholder={t.config.siteIcpPlaceholder}
           hint={t.config.siteIcpHint}
+          guide={renderGuide(g.ui.siteIcp)}
           layout="vertical"
         />
         <InputItem
@@ -343,9 +232,9 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           onChange={(v) => updateValue('site_gongan', v)}
           placeholder={t.config.siteGonganPlaceholder}
           hint={t.config.siteGonganHint}
+          guide={renderGuide(g.ui.siteGongan)}
           layout="vertical"
         />
-        {/* 云赞助商开关 */}
         <CheckboxGroupItem
           label={t.config.cloudSponsors}
           description={t.config.cloudSponsorsHint}
@@ -382,32 +271,56 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         />
       </SettingGroup>
 
-      {/* 背景与主题 */}
-      <SettingGroup title={t.config.backgroundAndTheme} icon={<LuPalette />}>
-        {backgroundFields.map((field) => (
-          <InputItem
-            key={field.key}
-            itemKey={field.key}
-            label={getFieldLabel(field.key, field.label)}
-            required={field.required}
-            value={field.value}
-            onChange={(v) => updateValue(field.key, v)}
-            placeholder={getFieldPlaceholder(field.key, field.placeholder)}
-            inputType={
-              field.field_type as 'text' | 'password' | 'url' | 'email'
-            }
-            layout="vertical"
-          />
-        ))}
+      <SettingGroup
+        title={t.config.backgroundAndTheme}
+        description={t.config.backgroundAndThemeDesc}
+        guide={renderGuide(g.ui.backgroundAndTheme)}
+        icon={<LuPalette />}
+      >
+        {backgroundFields.map((field) =>
+          field.key === 'wallpaper_blur' ? (
+            <SliderItem
+              key={field.key}
+              itemKey={field.key}
+              label={getFieldLabel(field.key, field.label)}
+              required={field.required}
+              value={Number.parseFloat(field.value) || 0}
+              onChange={(v) => updateValue(field.key, String(v))}
+              min={0}
+              max={10}
+              step={1}
+              showValue
+              showRangeLabels
+              startLabel={t.config.sliderWeak}
+              endLabel={t.config.sliderStrong}
+              guide={renderGuide(g.ui.wallpaperBlur)}
+              layout="vertical"
+            />
+          ) : (
+            <InputItem
+              key={field.key}
+              itemKey={field.key}
+              label={getFieldLabel(field.key, field.label)}
+              required={field.required}
+              value={field.value}
+              onChange={(v) => updateValue(field.key, v)}
+              placeholder={getFieldPlaceholder(field.key, field.placeholder)}
+              inputType={
+                field.field_type as 'text' | 'password' | 'url' | 'email'
+              }
+              guide={renderGuide(g.ui.wallpaper)}
+              layout="vertical"
+            />
+          ),
+        )}
       </SettingGroup>
 
-      {/* Evocative 壁纸动效 */}
       <SettingGroup
         title={t.config.evocativeTitle}
         icon={<FaMagic />}
         description={t.config.evocativeDesc}
+        guide={renderGuide(g.ui.evocative)}
       >
-        {/* 微动效果 / 动态模糊 / 涟漪效果 */}
         <CheckboxGroupItem
           label={t.config.evocativeEffects || '动效开关'}
           options={[
@@ -435,33 +348,53 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           }
         />
 
-        {/* 动效帧率 */}
-        <SelectItem
-          itemKey="evocative_fps"
+        <SettingItemWrapper
           label={t.config.fieldEvocativeFps}
-          value={getFieldValue('evocative_fps') || '30'}
-          onChange={(v) => updateValue('evocative_fps', v)}
-          options={[
-            { value: '30', label: `30 FPS (${t.config.fpsBalanced})` },
-            { value: '60', label: `60 FPS (${t.config.fpsSmooth})` },
-          ]}
           hint={t.config.fieldEvocativeFpsHint}
+          guide={renderGuide(g.ui.evocativeFps)}
           layout="vertical"
-        />
+        >
+          <SegmentedControl
+            size="sm"
+            columns={2}
+            value={getFieldValue('evocative_fps') || '30'}
+            options={[
+              {
+                value: '30',
+                label: `30 FPS (${t.config.fpsBalanced})`,
+              },
+              {
+                value: '60',
+                label: `60 FPS (${t.config.fpsSmooth})`,
+              },
+            ]}
+            onChange={(v) => updateValue('evocative_fps', v)}
+            ariaLabel={t.config.fieldEvocativeFps}
+          />
+        </SettingItemWrapper>
 
-        {/* 涟漪画质 */}
-        <SelectItem
+        <SliderItem
           itemKey="evocative_ripple_quality"
           label={t.config.fieldEvocativeRippleQuality}
-          value={getFieldValue('evocative_ripple_quality') || '0.85'}
-          onChange={(v) => updateValue('evocative_ripple_quality', v)}
-          options={[
-            { value: '0.5', label: `50% (${t.config.qualityLow})` },
-            { value: '0.65', label: `65% (${t.config.qualityMedium})` },
-            { value: '0.85', label: `85% (${t.config.qualityHigh})` },
-            { value: '1', label: `100% (${t.config.qualityUltra})` },
-          ]}
-          hint={t.config.fieldEvocativeRippleQualityHint}
+          value={rippleQualityPercent}
+          onChange={(v) => {
+            const q = Math.min(100, Math.max(50, Math.round(v))) / 100
+            updateValue(
+              'evocative_ripple_quality',
+              q === 1 ? '1' : q.toFixed(2),
+            )
+          }}
+          min={50}
+          max={100}
+          step={1}
+          showValue
+          showRangeLabels
+          startLabel={t.config.sliderRippleLow}
+          endLabel={t.config.sliderRippleUltra}
+          formatValue={(v) => `${Math.round(v)}%`}
+          recommendedValue={85}
+          recommendedLabel={t.config.sliderRecommended}
+          guide={renderGuide(g.ui.evocativeRippleQuality)}
           layout="vertical"
         />
       </SettingGroup>

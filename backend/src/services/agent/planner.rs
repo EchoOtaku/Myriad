@@ -688,6 +688,14 @@ const PLANNER_RULES: &str = r#"## 规则
 - 包含场景、氛围、构图
 - 绝不要只写简短标题
 
+**分辨率由 `ai.image` 的 `width` / `height` 决定（像素，256–2048，省略则默认 1024×1024）**：
+- 用户明确给了数字（"512"、"1024x768"、"1920×1080"）→ 按数字填 `width`/`height`
+- 用户要竖图/手机壁纸/肖像 → 建议 `width: 768, height: 1024`（或 768×1344）
+- 用户要横图/桌面壁纸/风景 → 建议 `width: 1024, height: 768`（或 1344×768）
+- 用户要方图/头像/图标，或未提尺寸 → 省略尺寸（走默认 1024）或 `1024, 1024`
+- **不要**把宽高写进 prompt 文本；写在 `ai.image` 的 params 里
+- `width`/`height` 与 `promptFrom` 可同时存在
+
 **当需要引用前置步骤的输出作为描述来源时**，使用 `xxxFrom` 约定：
 - `descriptionFrom: "step_id"` — 从指定步骤的输出中提取文本作为 description
 - `titleFrom: "step_id"` — 从指定步骤的输出中提取文本作为 title
@@ -695,7 +703,7 @@ const PLANNER_RULES: &str = r#"## 规则
 
 典型链式计划（搜索 → 分析 → 生成提示词 → 生成图片）：
 ```
-search(ai.webSearch) → analyze(ai.analyze, dataFrom:"search") → gen_prompt(prompt.generate, descriptionFrom:"analyze") → image(ai.image, promptFrom:"gen_prompt")
+search(ai.webSearch) → analyze(ai.analyze, dataFrom:"search") → gen_prompt(prompt.generate, descriptionFrom:"analyze") → image(ai.image, promptFrom:"gen_prompt", width?, height?)
 ```
 
 ### 输出格式
@@ -740,7 +748,7 @@ search(ai.webSearch) → analyze(ai.analyze, dataFrom:"search") → gen_prompt(p
       "id": "gen_image",
       "capability_id": "ai.image",
       "action": "生成角色图片",
-      "params": { "promptFrom": "gen_prompt" },
+      "params": { "promptFrom": "gen_prompt", "width": 768, "height": 1024 },
       "depends_on": ["gen_prompt"],
       "timeout_ms": 60000
     }

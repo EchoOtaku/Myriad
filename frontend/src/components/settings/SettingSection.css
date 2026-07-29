@@ -8,6 +8,89 @@
   /* 样式继承自 ConfigForm.css 的 .config-section */
 }
 
-/* 子标题样式 */
+/* 右上角：特殊操作 | 分割线 | 常驻（重置 / 说明） */
+.section-header-actions-extra,
+.section-header-actions-pinned {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  flex-shrink: 0;
+}
 
-/* 子标题提示 */
+.section-header-actions-divider {
+  align-self: stretch;
+  width: 1px;
+  min-height: 1.75rem;
+  margin: 0.15rem 0.15rem;
+  flex-shrink: 0;
+  border-radius: 1px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  color: var(--cfg-text-3);
+}
+
+html.dark .section-header-actions-divider {
+  color: var(--cfg-text-3);
+  background: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+/* 右上角特殊操作卡（与重置 / 显示说明同密度） */
+.setting-section-header-action.checkbox-group-card {
+  max-width: min(16rem, 44vw);
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.setting-section-header-action .checkbox-group-card-icon,
+.setting-section-header-action .checkbox-group-card-icon svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.setting-section-header-action .checkbox-group-card-desc {
+  -webkit-line-clamp: 2;
+}
+
+.setting-section-header-action .checkbox-group-card-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 移动端：标题与动作不要横排硬挤。
+ * 动作换到第二行铺满，避免「第三方登录」等标题被按钮挤成竖排一字一列。
+ */
+@media (width < 1024px) {
+  .setting-section > .section-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: 0.55rem;
+  }
+
+  .setting-section > .section-header .section-header-left {
+    flex: 1 1 12rem;
+    min-width: 0;
+  }
+
+  .setting-section > .section-header .section-header-right {
+    flex: 1 1 100%;
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    padding-top: 0;
+  }
+
+  .setting-section-header-action.checkbox-group-card {
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: min(100%, 8.5rem);
+  }
+
+  .setting-section-header-action .checkbox-group-card-desc {
+    display: none;
+  }
+}

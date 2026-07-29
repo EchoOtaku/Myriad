@@ -453,7 +453,7 @@ function deferNonCriticalCssIntegration() {
   const DEFER = [
     { cssPrefix: 'AraelPanel-', jsPrefixes: ['AraelPanel-'] },
     { cssPrefix: 'Config-', jsPrefixes: ['Config-'] },
-    { cssPrefix: 'ConfigForm-', jsPrefixes: ['Config-', 'DataManagement-'] },
+    { cssPrefix: 'ConfigForm-', jsPrefixes: ['Config-'] },
     { cssPrefix: 'Setup-', jsPrefixes: ['Setup-'] },
     { cssPrefix: 'TappPlaygroundPage-', jsPrefixes: ['TappPlaygroundPage-'] },
     // Toast.css 来自 Toast.tsx；ToastContainer 在 AppLayout 同步引用，

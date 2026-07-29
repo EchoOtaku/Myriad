@@ -4,9 +4,7 @@
  */
 
 import type { CheckboxGroupOption } from '../items/CheckboxGroupItem'
-
 import type { PermissionGroupConfig } from '../types'
-
 import React, { useCallback, useMemo } from 'react'
 import { CheckboxGroupItem } from '../items/CheckboxGroupItem'
 import './presets.css'
@@ -20,6 +18,7 @@ export const PermissionGroup: React.FC<PermissionGroupProps> = ({
   values,
   onChange,
   disabled = false,
+  loading = false,
 }) => {
   const handleChange = useCallback(
     (key: string, value: boolean) => {
@@ -47,7 +46,7 @@ export const PermissionGroup: React.FC<PermissionGroupProps> = ({
       description={description}
       options={options}
       onChange={handleChange}
-      disabled={disabled}
+      disabled={disabled || loading}
       className="permission-checkbox-group"
     />
   )

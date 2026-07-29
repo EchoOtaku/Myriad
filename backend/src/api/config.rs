@@ -258,7 +258,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                     .is_some()
                     || std::env::var("GITHUB_TOKEN").is_ok(),
                 icon: "".to_string(),
-                description: "Track repositories, stars, and contributions".to_string(),
+                description: "Repos, stars, and contributions".to_string(),
                 config_fields: vec![
                     ConfigField {
                         key: "username".to_string(),
@@ -293,8 +293,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                     .is_some()
                     || std::env::var("BILIBILI_UID").is_ok(),
                 icon: "".to_string(),
-                description: "Track your Bilibili favorites, anime, and viewing history"
-                    .to_string(),
+                description: "Favorites, anime, and viewing history".to_string(),
                 config_fields: vec![ConfigField {
                     key: "uid".to_string(),
                     label: "User ID (UID)".to_string(),
@@ -316,7 +315,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                     .is_some()
                     || std::env::var("STEAM_API_KEY").is_ok(),
                 icon: "".to_string(),
-                description: "Sync your Steam library, wishlist, and gaming stats".to_string(),
+                description: "Library, wishlist, and play stats".to_string(),
                 config_fields: vec![
                     ConfigField {
                         key: "api_key".to_string(),
@@ -351,8 +350,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                     .is_some()
                     || std::env::var("NETEASE_USER_ID").is_ok(),
                 icon: "".to_string(),
-                description: "Sync your liked songs and music taste from Netease Cloud Music"
-                    .to_string(),
+                description: "Liked songs and music taste".to_string(),
                 config_fields: vec![ConfigField {
                     key: "user_id".to_string(),
                     label: "User ID".to_string(),
@@ -370,8 +368,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                 enabled: bangumi_enabled,
                 has_token: has_bangumi_identity,
                 icon: "".to_string(),
-                description: "Sync your Bangumi collection, ratings, and watching status"
-                    .to_string(),
+                description: "Collections, ratings, and watching status".to_string(),
                 config_fields: vec![
                     ConfigField {
                         key: "username".to_string(),
@@ -417,8 +414,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                 enabled: x_enabled,
                 has_token: has_x_bearer,
                 icon: "".to_string(),
-                description: "Sync your X profile and posts (read-only); share via Web Intent"
-                    .to_string(),
+                description: "Profile and posts, with sharing".to_string(),
                 config_fields: vec![
                     ConfigField {
                         key: "username".to_string(),
@@ -449,9 +445,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                 enabled: discord_enabled,
                 has_token: has_discord_token,
                 icon: "".to_string(),
-                description:
-                    "Sync your Discord profile, server footprint, and linked accounts (Steam/GitHub/…)"
-                        .to_string(),
+                description: "Profile, servers, and linked accounts".to_string(),
                 config_fields: vec![
                     ConfigField {
                         key: "access_token".to_string(),
@@ -499,8 +493,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                 enabled: mal_enabled,
                 has_token: has_mal_username,
                 icon: "".to_string(),
-                description: "Username required; optional Client ID uses official API (else public load.json)"
-                    .to_string(),
+                description: "Anime / manga lists and scores".to_string(),
                 config_fields: vec![
                     ConfigField {
                         key: "username".to_string(),
@@ -533,9 +526,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                 enabled: xbox_enabled,
                 has_token: has_openxbl_key,
                 icon: "".to_string(),
-                description:
-                    "Sync your Xbox achievements, Gamerscore, and recently played titles"
-                        .to_string(),
+                description: "Achievements, Gamerscore, and recent games".to_string(),
                 config_fields: vec![
                     ConfigField {
                         key: "gamertag".to_string(),
@@ -566,8 +557,7 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                 enabled: psn_enabled,
                 has_token: has_psn_npsso,
                 icon: "".to_string(),
-                description: "Sync your PSN trophies, trophy level, and recently played titles"
-                    .to_string(),
+                description: "Trophies, trophy level, and recent games".to_string(),
                 config_fields: vec![
                     ConfigField {
                         key: "online_id".to_string(),
@@ -823,12 +813,13 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                             std::env::var("AI_IMAGE_PROVIDER")
                                 .unwrap_or_else(|_| "openrouter".to_string())
                         }),
-                    placeholder: "openai, openrouter, volcengine, or pixai".to_string(),
+                    placeholder: "openai (compatible), openrouter, volcengine, or pixai"
+                        .to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "ai_image_model".to_string(),
-                    label: "Image Model".to_string(),
+                    label: "OpenAI Model Name".to_string(),
                     field_type: "text".to_string(),
                     value: db_config
                         .as_ref()
@@ -841,34 +832,8 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                     required: false,
                 },
                 ConfigField {
-                    key: "ai_image_width".to_string(),
-                    label: "Image Width".to_string(),
-                    field_type: "number".to_string(),
-                    value: db_config
-                        .as_ref()
-                        .map(|c| c.ai_image_width.to_string())
-                        .unwrap_or_else(|| {
-                            std::env::var("AI_IMAGE_WIDTH").unwrap_or_else(|_| "1024".to_string())
-                        }),
-                    placeholder: "1024".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "ai_image_height".to_string(),
-                    label: "Image Height".to_string(),
-                    field_type: "number".to_string(),
-                    value: db_config
-                        .as_ref()
-                        .map(|c| c.ai_image_height.to_string())
-                        .unwrap_or_else(|| {
-                            std::env::var("AI_IMAGE_HEIGHT").unwrap_or_else(|_| "1024".to_string())
-                        }),
-                    placeholder: "1024".to_string(),
-                    required: false,
-                },
-                ConfigField {
                     key: "ai_image_openai_api_key".to_string(),
-                    label: "OpenAI Image API Key".to_string(),
+                    label: "OpenAI API Key".to_string(),
                     field_type: "password".to_string(),
                     value: mask_sensitive(get_value(
                         db_config
@@ -876,12 +841,26 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                             .and_then(|c| c.ai_image_openai_api_key.clone()),
                         "AI_IMAGE_OPENAI_API_KEY",
                     )),
-                    placeholder: "Falls back to the standard OpenAI key when compatible".to_string(),
+                    placeholder: "Falls back to the standard OpenAI key when empty".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "ai_image_openai_base_url".to_string(),
+                    label: "OpenAI Base URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.ai_image_openai_base_url.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("AI_IMAGE_OPENAI_BASE_URL")
+                                .unwrap_or_else(|_| "https://api.openai.com/v1".to_string())
+                        }),
+                    placeholder: "https://api.openai.com/v1".to_string(),
                     required: false,
                 },
                 ConfigField {
                     key: "ai_image_openrouter_api_key".to_string(),
-                    label: "OpenRouter Image API Key".to_string(),
+                    label: "OpenAI API Key".to_string(),
                     field_type: "password".to_string(),
                     value: mask_sensitive(get_value(
                         db_config
@@ -931,7 +910,18 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                     placeholder: "Get from platform.pixai.art".to_string(),
                     required: false,
                 },
-                // Lite 模型配置（与 Pro 使用同一字段协议）
+                // Lite 模型配置（与 Pro 使用同一字段协议：开关 + 字段留空回退 Standard）
+                ConfigField {
+                    key: "lite_enabled".to_string(),
+                    label: "Enable Lite Model".to_string(),
+                    field_type: "boolean".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.lite_enabled.to_string())
+                        .unwrap_or_else(|| "false".to_string()),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
                 ConfigField {
                     key: "lite_provider".to_string(),
                     label: "【Lite Model】AI Provider".to_string(),
@@ -1592,14 +1582,13 @@ struct SettingDescriptor {
 // 这是配置备份唯一的后端注册表。新增或删除非 ConfigResponse 设置时只需要改这里；
 // 恢复、预检和导出过滤全部从该注册表派生。
 const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
-    "ai_image_height",
     "ai_image_model",
     "ai_image_openai_api_key",
+    "ai_image_openai_base_url",
     "ai_image_openrouter_api_key",
     "ai_image_provider",
     "ai_image_volcengine_api_key",
     "ai_image_volcengine_base_url",
-    "ai_image_width",
     "ai_provider",
     "allow_local_registration",
     "bangumi_access_token",
@@ -1644,6 +1633,7 @@ const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "guest_perm_media_control",
     "guest_perm_network_fetch",
     "lite_ai_provider",
+    "lite_enabled",
     "lite_gemini_api_key",
     "lite_gemini_model",
     "lite_openai_api_key",
@@ -2816,6 +2806,7 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 JsonValue::String(field.value.clone()),
             ),
             // AI Lite 模型配置
+            "lite_enabled" => ("lite_enabled", JsonValue::Bool(field.value == "true")),
             "lite_provider" => ("lite_ai_provider", JsonValue::String(field.value.clone())),
             "lite_gemini_api_key" => (
                 "lite_gemini_api_key",
@@ -2834,22 +2825,12 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
             // AI 图片生成配置
             "ai_image_provider" => ("ai_image_provider", JsonValue::String(field.value.clone())),
             "ai_image_model" => ("ai_image_model", JsonValue::String(field.value.clone())),
-            "ai_image_width" => {
-                if let Ok(n) = field.value.parse::<i64>() {
-                    ("ai_image_width", JsonValue::Number(n.into()))
-                } else {
-                    continue;
-                }
-            }
-            "ai_image_height" => {
-                if let Ok(n) = field.value.parse::<i64>() {
-                    ("ai_image_height", JsonValue::Number(n.into()))
-                } else {
-                    continue;
-                }
-            }
             "ai_image_openai_api_key" => (
                 "ai_image_openai_api_key",
+                JsonValue::String(field.value.clone()),
+            ),
+            "ai_image_openai_base_url" => (
+                "ai_image_openai_base_url",
                 JsonValue::String(field.value.clone()),
             ),
             "ai_image_openrouter_api_key" => (
@@ -3135,13 +3116,14 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             // AI 图片生成配置
             "ai_image_provider" => "AI_IMAGE_PROVIDER",
             "ai_image_model" => "AI_IMAGE_MODEL",
-            "ai_image_width" => "AI_IMAGE_WIDTH",
-            "ai_image_height" => "AI_IMAGE_HEIGHT",
             "ai_image_openai_api_key" => "AI_IMAGE_OPENAI_API_KEY",
+            "ai_image_openai_base_url" => "AI_IMAGE_OPENAI_BASE_URL",
             "ai_image_openrouter_api_key" => "AI_IMAGE_OPENROUTER_API_KEY",
             "ai_image_volcengine_api_key" => "AI_IMAGE_VOLCENGINE_API_KEY",
             "ai_image_volcengine_base_url" => "AI_IMAGE_VOLCENGINE_BASE_URL",
             "pixai_api_key" => "PIXAI_API_KEY",
+            "lite_enabled" => "LITE_ENABLED",
+            "lite_provider" => "LITE_AI_PROVIDER",
             "lite_ai_provider" => "LITE_AI_PROVIDER",
             "lite_gemini_api_key" => "LITE_GEMINI_API_KEY",
             "lite_gemini_model" => "LITE_GEMINI_MODEL",
@@ -3180,10 +3162,6 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "evocative_ripple" => "UI_EVOCATIVE_RIPPLE",
             "evocative_fps" => "UI_EVOCATIVE_FPS",
             "evocative_ripple_quality" => "UI_EVOCATIVE_RIPPLE_QUALITY",
-            "image_gen_enabled" => "IMAGE_GEN_ENABLED",
-            "image_gen_model" => "IMAGE_GEN_MODEL",
-            "image_gen_width" => "IMAGE_GEN_WIDTH",
-            "image_gen_height" => "IMAGE_GEN_HEIGHT",
             "pet_enabled" => "PET_ENABLED",
             "pet_image_url" => "PET_IMAGE_URL",
             "site_title" => "SITE_TITLE",

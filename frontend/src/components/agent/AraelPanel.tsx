@@ -90,7 +90,6 @@ function getSmartGreeting(
     '/brew': arael.pageHints.brew,
     '/reports': arael.pageHints.reports,
     '/config': arael.pageHints.config,
-    '/data-management': arael.pageHints.dataManagement,
     '/tapp': arael.pageHints.tapp,
   }
 

@@ -178,10 +178,9 @@ export {
   useReportsVisibilityInterval,
 } from './pages/reports'
 
-// Simple pages (Config, Login, Setup, DataManagement, Details)
+// Simple pages (Config, Login, Setup, Details)
 export {
   useConfigScheduler,
-  useDataManagementScheduler,
   useDetailsScheduler,
   useLoginScheduler,
   useSetupScheduler,

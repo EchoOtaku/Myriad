@@ -1,13 +1,47 @@
 /**
  * 设置分组样式
+ * 间距：由父级 .config-form 的 --settings-gap-group 排组与组；
+ * 组内由 --settings-gap-item 排设置项，避免 margin 叠 gap。
  */
 
 .setting-group {
-  margin-bottom: 1.25rem;
+  margin-bottom: 0;
 }
 
-.setting-group:last-child {
+/* 无 .config-form 包裹时（零星用法）仍保留组间距。
+ * 网格内的卡片必须排除：间距由 SettingGroupGrid 的 gap 负责，
+ * 这里再补 margin-top 会把「除首张外」的每张卡整体压低一个 gap，
+ * 首行左右卡因此错位（两条规则特异性同为 0,3,0，纯靠加载顺序决胜）。 */
+:not(.config-form)
+  > .setting-group:not(.setting-group--in-grid)
+  + .setting-group:not(.setting-group--in-grid) {
+  margin-top: var(--settings-gap-group, 1.25rem);
+}
+
+/*
+ * 折叠块间距：
+ * - 收起时去掉标题下方空白（原先仍占 item gap）
+ * - 连续收起的折叠块之间用更紧的 collapsed gap（默认 0.2rem）
+ */
+.setting-group.is-collapsible.is-collapsed > .setting-group-header,
+.setting-group.is-collapsible.is-collapsed
+  > .setting-group-header.setting-group-header--with-extra {
   margin-bottom: 0;
+}
+
+.config-form
+  > .setting-group.is-collapsible.is-collapsed
+  + .setting-group.is-collapsible.is-collapsed {
+  margin-top: calc(
+    var(--settings-gap-collapsed, 0.2rem) - var(--settings-gap-group, 1.25rem)
+  );
+}
+
+/* 非 config-form 父级时同样收紧连续折叠块 */
+:not(.config-form)
+  > .setting-group.is-collapsible.is-collapsed
+  + .setting-group.is-collapsible.is-collapsed {
+  margin-top: var(--settings-gap-collapsed, 0.2rem);
 }
 
 /* ==========================================
@@ -18,21 +52,92 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 0.25rem;
-  margin-bottom: 0.625rem;
+  gap: 0.75rem;
+  margin-top: 0;
+  margin-bottom: var(--settings-gap-item, 0.625rem);
   padding-left: 0;
   user-select: none;
 }
 
+.setting-group-header--with-extra {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: var(--settings-gap-item, 0.625rem);
+}
+
+.setting-group-header--with-switch {
+  align-items: center;
+}
+
+/* 标题行右侧模块开关 */
+.setting-group-header-switch {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  align-self: center;
+  padding-top: 0.05rem;
+}
+
+/* 开关关闭时弱化组内内容（交互仍由各控件 disabled 控制）。
+   折叠组的内容多包一层动画容器（.sm-collapse），两条路径都要覆盖 */
+.setting-group.is-switch-off > .setting-group-content,
+.setting-group.is-switch-off
+  > .sm-collapse
+  > .sm-collapse-inner
+  > .setting-group-content {
+  opacity: 0.52;
+}
+
+.setting-group-header-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  padding: 0.5rem;
+  margin: -0.5rem;
+  border-radius: 0.5rem;
+  transition: background-color var(--sm-dur-base);
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+
+.setting-group-header-toggle:hover {
+  background: rgb(0 0 0 / 3%);
+}
+
+html.dark .setting-group-header-toggle:hover {
+  background: rgb(255 255 255 / 3%);
+}
+
+.setting-group-header--with-extra .setting-group-header-toggle {
+  margin-bottom: 0;
+}
+
+.setting-group-title-extra {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-top: 0.15rem;
+}
+
+.setting-group-header-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 兼容旧 class（若外部仍引用 collapsible） */
 .setting-group-header.collapsible {
   cursor: pointer;
   padding: 0.5rem;
   margin: -0.5rem;
-  margin-bottom: 0.25rem;
+  margin-bottom: calc(var(--settings-gap-item, 0.625rem) - 0.25rem);
   border-radius: 0.5rem;
-  transition: background-color 0.2s;
-
-  /* 重置 button 默认样式 */
+  transition: background-color var(--sm-dur-base);
   border: none;
   background: transparent;
   width: calc(100% + 1rem);
@@ -48,18 +153,23 @@ html.dark .setting-group-header.collapsible:hover {
   background: rgb(255 255 255 / 3%);
 }
 
-.setting-group-header-content {
-  flex: 1;
-}
-
 .setting-group-title {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.5rem;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--cfg-text-1);
   margin: 0;
+}
+
+.setting-group-title-text {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.1rem;
+  min-width: 0;
 }
 
 .setting-group-icon {
@@ -68,6 +178,11 @@ html.dark .setting-group-header.collapsible:hover {
   justify-content: center;
   width: 1.75rem;
   height: 1.75rem;
+  /* 防止 flex 按 img 固有尺寸（如 192² webp）把标题行撑高 */
+  min-width: 1.75rem;
+  min-height: 1.75rem;
+  max-width: 1.75rem;
+  max-height: 1.75rem;
   border-radius: 0.5rem;
   background: linear-gradient(
     135deg,
@@ -93,10 +208,19 @@ html.dark .setting-group-header.collapsible:hover {
   opacity: 0.4;
 }
 
-.setting-group-icon svg {
+/* svg / 位图 / 配置图标统一收进盒子，避免 raster 固有宽高泄漏 */
+.setting-group-icon svg,
+.setting-group-icon img,
+.setting-group-icon .myriad-config-icon {
   width: 0.875rem;
   height: 0.875rem;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
   position: relative;
+  z-index: 1;
+  flex-shrink: 0;
 }
 
 html.dark .setting-group-icon {
@@ -109,13 +233,22 @@ html.dark .setting-group-icon {
 }
 
 html.dark .setting-group-title {
-  color: #f3f4f6;
+  color: var(--cfg-text-1);
 }
 
 .setting-group-description {
   font-size: 0.6875rem;
-  color: #6b7280;
+  color: var(--cfg-text-2);
   margin: 0.125rem 0 0;
+  line-height: 1.45;
+}
+
+.setting-group-description.is-warning {
+  color: #b45309;
+}
+
+html.dark .setting-group-description.is-warning {
+  color: #fbbf24;
 }
 
 .setting-group-description a {
@@ -128,7 +261,7 @@ html.dark .setting-group-title {
 }
 
 html.dark .setting-group-description {
-  color: #9ca3af;
+  color: var(--cfg-text-2);
 }
 
 html.dark .setting-group-description a {
@@ -136,13 +269,39 @@ html.dark .setting-group-description a {
 }
 
 /* ==========================================
-   折叠箭头
+   折叠箭头：实心全圆角三角
    ========================================== */
 
 .setting-group-chevron {
-  font-size: 0.625rem;
-  color: #9ca3af;
-  transition: transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 0.85rem;
+  height: 0.85rem;
+  color: var(--cfg-text-3);
+  line-height: 0;
+  transition:
+    transform var(--sm-dur-base) var(--sm-ease-standard),
+    color var(--sm-dur-fast) var(--sm-ease-standard);
+}
+
+.setting-group-chevron-icon {
+  display: block;
+  width: 0.55rem;
+  height: 0.45rem;
+}
+
+.setting-group-header-toggle:hover .setting-group-chevron {
+  color: var(--cfg-text-3);
+}
+
+html.dark .setting-group-chevron {
+  color: var(--cfg-text-3);
+}
+
+html.dark .setting-group-header-toggle:hover .setting-group-chevron {
+  color: var(--cfg-text-3);
 }
 
 .setting-group-chevron.expanded {
@@ -160,18 +319,37 @@ html.dark .setting-group-description a {
 .setting-group-content {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: var(--settings-gap-item, 0.625rem);
 }
 
-/* 带边框的分组样式变体 */
+/* 组内设置项改由 gap 排距，去掉底部 margin 以免叠高 */
+.setting-group-content > .setting-item,
+.setting-group-content > .permission-checkbox-group,
+.setting-group-content > .quota-number-group {
+  margin-bottom: 0;
+  margin-top: 0;
+}
+
+/* 组内自定义堆叠（非 SettingItem 的控件 + 入口） */
+.settings-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--settings-gap-item, 0.625rem);
+}
+
+.settings-stack > .setting-item {
+  margin-bottom: 0;
+}
+
+/* 带边框的分组：内层 → 微透 */
 .setting-group.bordered .setting-group-content {
   padding: 1rem;
-  background: rgb(255 255 255 / 40%);
-  border: 1px solid rgb(229 231 235 / 50%);
+  background: var(--cfg-subtle-bg);
+  border: 1px solid var(--cfg-subtle-border);
   border-radius: 0.75rem;
 }
 
 html.dark .setting-group.bordered .setting-group-content {
-  background: rgb(31 41 55 / 40%);
-  border-color: rgb(55 65 81 / 50%);
+  background: var(--cfg-subtle-bg);
+  border-color: var(--cfg-subtle-border);
 }

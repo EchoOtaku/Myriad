@@ -1819,8 +1819,12 @@ impl Executor {
              11. 后续步骤使用前序输出：在 params 中写 `\"<字段名>From\": \"<step_id>\"`\n\
              12. 引擎自动把 `promptFrom: \"gen_prompt_1\"` 解析为：取 gen_prompt_1 的输出注入到 `prompt` 参数\n\
              13. **严禁** $$variable$$ 语法或模板占位符。params 值要么是具体文本，要么用 xxxFrom 引用\n\n\
+             ## 五、ai.image 分辨率\n\
+             14. 可选 `width`/`height`（整数像素 256–2048，省略默认 1024）。与 `promptFrom` 可同写\n\
+             15. 用户口述尺寸、竖图/横图/壁纸时务必传入；不要把宽高塞进 prompt 文本\n\
+             16. 建议：竖图 768×1024，横图 1024×768，方图省略或 1024×1024\n\n\
              ---\n\n\
-             # 示例（3 张角色图，需要搜索角色信息）\n\n\
+             # 示例（3 张角色图，需要搜索角色信息；竖图）\n\n\
              ```json\n\
              {{\n\
                \"steps\": [\n\
@@ -1828,9 +1832,9 @@ impl Executor {
                  {{\"id\": \"prompt_1\",    \"capability_id\": \"prompt.generate\", \"action\": \"生成变体1提示词\",       \"params\": {{\"description\": \"...\"}},       \"depends_on\": [\"search\"]}},\n\
                  {{\"id\": \"prompt_2\",    \"capability_id\": \"prompt.generate\", \"action\": \"生成变体2提示词\",       \"params\": {{\"description\": \"...\"}},       \"depends_on\": [\"search\"]}},\n\
                  {{\"id\": \"prompt_3\",    \"capability_id\": \"prompt.generate\", \"action\": \"生成变体3提示词\",       \"params\": {{\"description\": \"...\"}},       \"depends_on\": [\"search\"]}},\n\
-                 {{\"id\": \"img_1\",       \"capability_id\": \"ai.image\",        \"action\": \"生成变体1图片\",         \"params\": {{\"promptFrom\": \"prompt_1\"}},   \"depends_on\": [\"prompt_1\"]}},\n\
-                 {{\"id\": \"img_2\",       \"capability_id\": \"ai.image\",        \"action\": \"生成变体2图片\",         \"params\": {{\"promptFrom\": \"prompt_2\"}},   \"depends_on\": [\"prompt_2\"]}},\n\
-                 {{\"id\": \"img_3\",       \"capability_id\": \"ai.image\",        \"action\": \"生成变体3图片\",         \"params\": {{\"promptFrom\": \"prompt_3\"}},   \"depends_on\": [\"prompt_3\"]}}\n\
+                 {{\"id\": \"img_1\",       \"capability_id\": \"ai.image\",        \"action\": \"生成变体1图片\",         \"params\": {{\"promptFrom\": \"prompt_1\", \"width\": 768, \"height\": 1024}},   \"depends_on\": [\"prompt_1\"]}},\n\
+                 {{\"id\": \"img_2\",       \"capability_id\": \"ai.image\",        \"action\": \"生成变体2图片\",         \"params\": {{\"promptFrom\": \"prompt_2\", \"width\": 768, \"height\": 1024}},   \"depends_on\": [\"prompt_2\"]}},\n\
+                 {{\"id\": \"img_3\",       \"capability_id\": \"ai.image\",        \"action\": \"生成变体3图片\",         \"params\": {{\"promptFrom\": \"prompt_3\", \"width\": 768, \"height\": 1024}},   \"depends_on\": [\"prompt_3\"]}}\n\
                ]\n\
              }}\n\
              ```\n\

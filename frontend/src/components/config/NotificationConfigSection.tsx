@@ -11,12 +11,23 @@ import { useI18n } from '../../contexts/I18nContext'
 import { cloneNotificationPreferences } from '../../services/notificationPreferencesApi'
 import { NotificationSourceIcon } from '../notifications/NotificationIcons'
 import {
-  CheckboxGroupItem,
+  SegmentedControl,
   SettingGroup,
+  SettingGroupGrid,
   SettingSection,
   SwitchItem,
+  useSettingGuide,
 } from '../settings'
 import './NotificationConfigSection.css'
+
+type LocationKey = keyof NotificationPreferences['locations'][NotificationSourceKey]
+
+const LOCATION_KEYS: LocationKey[] = [
+  'panel',
+  'toast',
+  'island',
+  'browser',
+]
 
 interface NotificationConfigSectionProps {
   title: string
@@ -219,6 +230,7 @@ const UI_TEXT = {
     browser: '浏览器系统通知',
     browserDesc: '页面位于后台且浏览器已授权时展示',
     sourceEnabled: '允许此来源',
+    sources: '通知来源',
     locations: '显示位置',
     locationsDesc: '与上方全局展示开关共同生效',
     events: '通知事件',
@@ -239,6 +251,7 @@ const UI_TEXT = {
     browser: 'Browser system notifications',
     browserDesc: 'Show while the page is in the background when permitted',
     sourceEnabled: 'Allow this source',
+    sources: 'Notification sources',
     locations: 'Display locations',
     locationsDesc: 'Combined with the global presentation switches above',
     events: 'Notification events',
@@ -258,6 +271,7 @@ const UI_TEXT = {
     browser: 'ブラウザー通知',
     browserDesc: '許可済みでページがバックグラウンドの時に表示',
     sourceEnabled: 'この送信元を許可',
+    sources: '通知の送信元',
     locations: '表示場所',
     locationsDesc: '上部のグローバル表示設定と組み合わせて適用します',
     events: '通知イベント',
@@ -282,9 +296,20 @@ export const NotificationConfigSection: React.FC<
   onChange,
 }) => {
   const { locale } = useI18n()
+  const { catalog: g, renderGuide } = useSettingGuide()
   const sourceText = SOURCE_TEXT[locale]
   const eventText = EVENT_TEXT[locale]
   const ui = UI_TEXT[locale]
+
+  const locationLabels = useMemo<Record<LocationKey, string>>(
+    () => ({
+      panel: ui.panelLocation,
+      toast: ui.toastLocation,
+      island: ui.islandLocation,
+      browser: ui.browserLocation,
+    }),
+    [ui.browserLocation, ui.islandLocation, ui.panelLocation, ui.toastLocation],
+  )
 
   const eventsBySource = useMemo(
     () =>
@@ -315,17 +340,16 @@ export const NotificationConfigSection: React.FC<
           itemKey="notifications-enabled"
           label={ui.master}
           description={ui.masterDesc}
+          guide={renderGuide(g.notifications.master)}
           value={preferences.enabled}
           loading={loading}
           onChange={(value) => update((draft) => void (draft.enabled = value))}
         />
-      </SettingGroup>
-
-      <SettingGroup title={ui.delivery}>
         <SwitchItem
           itemKey="notifications-island"
           label={ui.island}
           description={ui.islandDesc}
+          guide={renderGuide(g.notifications.island)}
           value={preferences.delivery.island}
           disabled={!preferences.enabled}
           loading={loading}
@@ -337,6 +361,7 @@ export const NotificationConfigSection: React.FC<
           itemKey="notifications-toast"
           label={ui.toast}
           description={ui.toastDesc}
+          guide={renderGuide(g.notifications.toast)}
           value={preferences.delivery.toast}
           disabled={!preferences.enabled}
           loading={loading}
@@ -348,6 +373,7 @@ export const NotificationConfigSection: React.FC<
           itemKey="notifications-browser"
           label={ui.browser}
           description={ui.browserDesc}
+          guide={renderGuide(g.notifications.browser)}
           value={preferences.delivery.browser}
           disabled={!preferences.enabled}
           loading={loading}
@@ -357,88 +383,112 @@ export const NotificationConfigSection: React.FC<
         />
       </SettingGroup>
 
-      <div className="notification-source-grid">
+      <SettingGroupGrid
+        columns={2}
+        variant="card"
+        align="stretch"
+        minColumnWidth="18rem"
+        className="notification-source-grid"
+        ariaLabel={ui.sources}
+      >
         {sources.map((source) => (
           <SettingGroup
             key={source}
             title={sourceText[source].title}
             description={sourceText[source].description}
+            guide={renderGuide(g.notifications.source)}
             icon={<NotificationSourceIcon source={source} />}
             className="notification-source-group"
+            switch={{
+              checked: preferences.sources[source],
+              disabled: !preferences.enabled || loading,
+              loading,
+              ariaLabel: ui.sourceEnabled,
+              onChange: (value) =>
+                update((draft) => void (draft.sources[source] = value)),
+            }}
           >
-            <SwitchItem
-              itemKey={`notification-source-${source}`}
-              label={ui.sourceEnabled}
-              value={preferences.sources[source]}
-              disabled={!preferences.enabled}
-              loading={loading}
-              onChange={(value) =>
-                update((draft) => void (draft.sources[source] = value))
-              }
-            />
-            <CheckboxGroupItem
-              label={ui.locations}
-              description={ui.locationsDesc}
-              options={[
-                {
-                  key: 'panel',
-                  label: ui.panelLocation,
-                  value: preferences.locations[source].panel,
-                },
-                {
-                  key: 'toast',
-                  label: ui.toastLocation,
-                  value: preferences.locations[source].toast,
-                },
-                {
-                  key: 'island',
-                  label: ui.islandLocation,
-                  value: preferences.locations[source].island,
-                },
-                {
-                  key: 'browser',
-                  label: ui.browserLocation,
-                  value: preferences.locations[source].browser,
-                },
-              ]}
-              disabled={
+            <div
+              className={`setting-item setting-vertical notification-choice-group${
                 !preferences.enabled ||
                 !preferences.sources[source] ||
                 loading
-              }
-              className="notification-switch-group notification-location-switches"
-              onChange={(key, value) =>
-                update(
-                  (draft) =>
-                    void (draft.locations[source][
-                      key as keyof NotificationPreferences['locations'][NotificationSourceKey]
-                    ] = value),
-                )
-              }
-            />
-            <CheckboxGroupItem
-              label={ui.events}
-              options={eventsBySource[source].map((event) => ({
-                key: event.key,
-                label: eventText[event.key] || event.key,
-                value: preferences.events[event.key],
-              }))}
-              disabled={
+                  ? ' disabled'
+                  : ''
+              }`}
+            >
+              <div className="setting-label">
+                <span className="setting-label-text">{ui.locations}</span>
+                <span className="setting-description">{ui.locationsDesc}</span>
+              </div>
+              <SegmentedControl
+                mode="multi"
+                size="sm"
+                ariaLabel={ui.locations}
+                disabled={
+                  !preferences.enabled ||
+                  !preferences.sources[source] ||
+                  loading
+                }
+                value={LOCATION_KEYS.filter(
+                  (key) => preferences.locations[source][key],
+                )}
+                options={LOCATION_KEYS.map((key) => ({
+                  value: key,
+                  label: locationLabels[key],
+                }))}
+                onChange={(selected) =>
+                  update((draft) => {
+                    const selectedSet = new Set(selected)
+                    for (const key of LOCATION_KEYS) {
+                      draft.locations[source][key] = selectedSet.has(key)
+                    }
+                  })
+                }
+              />
+            </div>
+            <div
+              className={`setting-item setting-vertical notification-choice-group${
                 !preferences.enabled ||
                 !preferences.sources[source] ||
                 loading
-              }
-              className="notification-switch-group notification-event-switches"
-              onChange={(key, value) =>
-                update(
-                  (draft) =>
-                    void (draft.events[key as NotificationEventKey] = value),
-                )
-              }
-            />
+                  ? ' disabled'
+                  : ''
+              }`}
+            >
+              <div className="setting-label">
+                <span className="setting-label-text">{ui.events}</span>
+              </div>
+              <SegmentedControl
+                mode="multi"
+                size="sm"
+                ariaLabel={ui.events}
+                className="notification-event-choices"
+                disabled={
+                  !preferences.enabled ||
+                  !preferences.sources[source] ||
+                  loading
+                }
+                value={eventsBySource[source]
+                  .filter((event) => preferences.events[event.key])
+                  .map((event) => event.key)}
+                options={eventsBySource[source].map((event) => ({
+                  value: event.key,
+                  label: eventText[event.key] || event.key,
+                }))}
+                onChange={(selected) =>
+                  update((draft) => {
+                    const selectedSet = new Set(selected)
+                    for (const event of eventsBySource[source]) {
+                      draft.events[event.key] = selectedSet.has(event.key)
+                    }
+                  })
+                }
+              />
+            </div>
           </SettingGroup>
         ))}
-      </div>
+      </SettingGroupGrid>
     </SettingSection>
   )
 }

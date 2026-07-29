@@ -28,7 +28,10 @@ function RasterNotificationIcon({
       alt=""
       aria-hidden="true"
       className={className}
+      width={16}
+      height={16}
       draggable={false}
+      decoding="async"
     />
   )
 }

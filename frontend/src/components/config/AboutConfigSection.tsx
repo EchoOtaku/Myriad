@@ -8,7 +8,7 @@ import {
   LuUsers,
 } from '../../lib/icons'
 import { getBuildInfo } from '../../utils/buildInfo'
-import { SettingGroup, SettingSection } from '../settings'
+import { SettingGroup, SettingSection, useSettingGuide } from '../settings'
 import { UpdaterInlinePanel } from './UpdaterConfigSection'
 
 interface AboutConfigSectionProps {
@@ -30,6 +30,7 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
   sectionId,
 }) => {
   const { t } = useI18n()
+  const { catalog: g, renderGuide } = useSettingGuide()
   const buildInfo = getBuildInfo()
 
   const devInfo: Array<{
@@ -63,9 +64,12 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
 
   return (
     <SettingSection
+      showResetPage={false}
+      helpToggle={true}
       title={title}
       icon={icon}
       description={description}
+      guide={renderGuide(g.about.section)}
       sectionId={sectionId}
     >
       <SettingGroup>

@@ -4,6 +4,7 @@
 
 import type { NumberSettingConfig } from '../types'
 import React, { useCallback } from 'react'
+import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import './SettingItem.css'
 
 export interface NumberItemProps extends Omit<NumberSettingConfig, 'type'> {}
@@ -12,6 +13,8 @@ export const NumberItem = React.memo<NumberItemProps>(
   ({
     itemKey,
     label,
+    detail,
+    guide,
     description,
     hint,
     value,
@@ -51,6 +54,10 @@ export const NumberItem = React.memo<NumberItemProps>(
             <span className="setting-label-text">
               {label}
               {required && <span className="required">*</span>}
+              <SettingTitleGuideEntry
+                title={label}
+                guide={guide ?? detail ?? description}
+              />
             </span>
             {description && (
               <span className="setting-description">{description}</span>

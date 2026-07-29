@@ -1,8 +1,8 @@
 /**
  * 联邦信任策略管理（管理员）
- * - allowlist / min_trust / auto_discover
- * - 实例列表：信任层级 + 封禁
- * - 内容过滤规则 CRUD
+ * - allowlist / min_trust / auto_discover / rate limit（草稿，随 ConfigForm 统一保存）
+ * - 实例列表：信任层级 + 封禁（即时写入）
+ * - 内容过滤规则 CRUD（即时写入）
  */
 
 import type {
@@ -11,30 +11,117 @@ import type {
   DeliveryStats,
   FederationIdentity,
   FederationInstance,
+  TrustPolicyResponse,
+  UpdateTrustPolicyRequest,
 } from '../../types/federation'
+import type { InfoActionField } from '../settings'
+import type {
+  ManagedListFilterOption,
+  ManagedListItem,
+  ManagedListStat,
+} from '../settings/ManagedList'
+import {
+  FaCog,
+  FaFilter,
+  FaKey,
+  FaPaperPlane,
+  FaPlus,
+  FaSearch,
+  FaServer,
+  LuShieldCheck,
+} from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { federationApi } from '../../services/federationApi'
-import type { ManagedListItem } from '../settings/ManagedList'
 import {
-  ButtonItem,
+  AutoHeight,
   FieldSelect,
+  InfoActionCard,
   InputItem,
   ManagedList,
   NumberItem,
   SelectItem,
   SettingGroup,
+  SettingsButton,
   SettingSection,
   SwitchItem,
+  useSettingGuide,
 } from '../settings'
-import { Spinner } from '../Spinner'
 import { FederationDeliveryQueue } from './FederationDeliveryQueue'
+
+/** Trust / rate-limit policy draft — owned by ConfigForm for unified save. */
+export interface FederationPolicyDraft {
+  minTrust: number
+  allowlistText: string
+  autoDiscover: boolean
+  rateMax: number
+  rateWindow: number
+  rateTrustedMul: number
+}
+
+export const DEFAULT_FEDERATION_POLICY: FederationPolicyDraft = {
+  minTrust: 0,
+  allowlistText: '',
+  autoDiscover: true,
+  rateMax: 100,
+  rateWindow: 60,
+  rateTrustedMul: 5,
+}
+
+export function federationPolicyFromApi(
+  p: TrustPolicyResponse,
+): FederationPolicyDraft {
+  return {
+    minTrust: p.min_trust_level ?? 0,
+    allowlistText: (p.allowed_domains || []).join('\n'),
+    autoDiscover: p.auto_discover !== false,
+    rateMax: p.rate_limit?.max_requests_per_window ?? 100,
+    rateWindow: p.rate_limit?.window_seconds ?? 60,
+    rateTrustedMul: p.rate_limit?.trusted_multiplier ?? 5,
+  }
+}
+
+export function areFederationPoliciesEqual(
+  a: FederationPolicyDraft,
+  b: FederationPolicyDraft,
+): boolean {
+  return (
+    a.minTrust === b.minTrust &&
+    a.allowlistText === b.allowlistText &&
+    a.autoDiscover === b.autoDiscover &&
+    a.rateMax === b.rateMax &&
+    a.rateWindow === b.rateWindow &&
+    a.rateTrustedMul === b.rateTrustedMul
+  )
+}
+
+export function federationPolicyToUpdateRequest(
+  draft: FederationPolicyDraft,
+): UpdateTrustPolicyRequest {
+  const domains = draft.allowlistText
+    .split(/[\n,]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+  return {
+    min_trust_level: draft.minTrust,
+    allowed_domains: domains,
+    auto_discover: draft.autoDiscover,
+    rate_limit: {
+      max_requests_per_window: draft.rateMax,
+      window_seconds: draft.rateWindow,
+      trusted_multiplier: draft.rateTrustedMul,
+    },
+  }
+}
 
 interface FederationConfigSectionProps {
   title: string
   icon: React.ReactNode
   description: string
   sectionId?: string
+  /** Controlled policy draft (ConfigForm unified save). */
+  policyDraft: FederationPolicyDraft
+  onPolicyChange: (patch: Partial<FederationPolicyDraft>) => void
   onMessage?: (
     msg: string,
     type?: 'success' | 'error' | 'warning' | 'info',
@@ -110,11 +197,18 @@ function defaultValueForFilterType(type: FilterType): string {
 
 export const FederationConfigSection: React.FC<
   FederationConfigSectionProps
-> = ({ title, icon, description, sectionId, onMessage }) => {
+> = ({
+  title,
+  icon,
+  description,
+  sectionId,
+  policyDraft,
+  onPolicyChange,
+  onMessage,
+}) => {
   const { t } = useI18n()
   const c = t.config
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
+  const { catalog: g, renderGuide } = useSettingGuide()
   const [instances, setInstances] = useState<FederationInstance[]>([])
   const [filters, setFilters] = useState<ContentFilterItem[]>([])
   const [identity, setIdentity] = useState<FederationIdentity | null>(null)
@@ -122,20 +216,19 @@ export const FederationConfigSection: React.FC<
   const [deliveryStats, setDeliveryStats] = useState<DeliveryStats | null>(null)
   const [deliveryItems, setDeliveryItems] = useState<DeliveryQueueItem[]>([])
 
-  // Policy draft
-  const [minTrust, setMinTrust] = useState(0)
-  const [allowlistText, setAllowlistText] = useState('')
-  const [autoDiscover, setAutoDiscover] = useState(true)
-  // Advanced rate limit (defaults match backend RateLimitPolicy)
-  const [rateMax, setRateMax] = useState(100)
-  const [rateWindow, setRateWindow] = useState(60)
-  const [rateTrustedMul, setRateTrustedMul] = useState(5)
-
   // New filter draft
   const [newFilterName, setNewFilterName] = useState('')
-  const [newFilterType, setNewFilterType] = useState<FilterType>('block_keyword')
+  const [newFilterType, setNewFilterType] =
+    useState<FilterType>('block_keyword')
   const [newFilterValue, setNewFilterValue] = useState('')
+  const [filterFormOpen, setFilterFormOpen] = useState(false)
   const [instanceBusy, setInstanceBusy] = useState<Record<string, boolean>>({})
+  const [instanceSearch, setInstanceSearch] = useState('')
+  /** all | active | blocked | level:0 … level:4 */
+  const [instanceFilter, setInstanceFilter] = useState('all')
+  const [contentFilterSearch, setContentFilterSearch] = useState('')
+  /** all | enabled | disabled | type:<filter_type> */
+  const [contentFilterChip, setContentFilterChip] = useState('all')
   const [filterBusy, setFilterBusy] = useState<
     Record<number, 'toggle' | 'delete' | undefined>
   >({})
@@ -147,6 +240,18 @@ export const FederationConfigSection: React.FC<
       { value: 2, label: c.federationTrustFollowed },
       { value: 3, label: c.federationTrustTrusted },
       { value: 4, label: c.federationTrustFederated },
+    ],
+    [c],
+  )
+
+  /** Short chip labels for trust-level category filters. */
+  const trustFilterLabels = useMemo(
+    () => [
+      { value: 0, label: c.federationInstanceFilterLevel0 },
+      { value: 1, label: c.federationInstanceFilterLevel1 },
+      { value: 2, label: c.federationInstanceFilterLevel2 },
+      { value: 3, label: c.federationInstanceFilterLevel3 },
+      { value: 4, label: c.federationInstanceFilterLevel4 },
     ],
     [c],
   )
@@ -253,22 +358,14 @@ export const FederationConfigSection: React.FC<
   }, [])
 
   const load = useCallback(async () => {
-    setLoading(true)
     try {
-      const [p, inst, f, id] = await Promise.all([
-        federationApi.getTrustPolicy(),
+      const [inst, f, id] = await Promise.all([
         federationApi.getInstances().catch(() => ({ instances: [], total: 0 })),
         federationApi
           .listContentFilters()
           .catch(() => ({ filters: [], total: 0 })),
         federationApi.getIdentity().catch(() => null),
       ])
-      setMinTrust(p.min_trust_level ?? 0)
-      setAllowlistText((p.allowed_domains || []).join('\n'))
-      setAutoDiscover(p.auto_discover !== false)
-      setRateMax(p.rate_limit?.max_requests_per_window ?? 100)
-      setRateWindow(p.rate_limit?.window_seconds ?? 60)
-      setRateTrustedMul(p.rate_limit?.trusted_multiplier ?? 5)
       setInstances(inst.instances || [])
       setFilters(f.filters || [])
       setIdentity(id)
@@ -278,8 +375,6 @@ export const FederationConfigSection: React.FC<
         e instanceof Error ? e.message : c.federationLoadFailed,
         'error',
       )
-    } finally {
-      setLoading(false)
     }
   }, [onMessage, c.federationLoadFailed, loadDelivery])
 
@@ -288,7 +383,6 @@ export const FederationConfigSection: React.FC<
   }, [load])
 
   const rotateKeys = async () => {
-    if (!window.confirm(c.federationKeysRotateConfirm)) return
     setRotatingKeys(true)
     try {
       await federationApi.rotateKeys({ confirm: true })
@@ -305,79 +399,53 @@ export const FederationConfigSection: React.FC<
     }
   }
 
-  const savePolicy = async () => {
-    setSaving(true)
-    try {
-      const domains = allowlistText
-        .split(/[\n,]+/)
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean)
-      await federationApi.updateTrustPolicy({
-        min_trust_level: minTrust,
-        allowed_domains: domains,
-        auto_discover: autoDiscover,
-        rate_limit: {
-          max_requests_per_window: rateMax,
-          window_seconds: rateWindow,
-          trusted_multiplier: rateTrustedMul,
-        },
+  const setInstanceTrust = useCallback(
+    async (domain: string, level: number) => {
+      try {
+        await federationApi.updateInstanceTrust({ domain, trust_level: level })
+        setInstances((prev) =>
+          prev.map((i) =>
+            i.domain === domain ? { ...i, trust_level: level } : i,
+          ),
+        )
+      } catch (e) {
+        onMessage?.(
+          e instanceof Error ? e.message : c.federationUpdateFailed,
+          'error',
+        )
+      }
+    },
+    [onMessage, c.federationUpdateFailed],
+  )
+
+  const toggleBlock = useCallback(
+    async (domain: string, block: boolean) => {
+      let snapshot: FederationInstance[] = []
+      setInstanceBusy((b) => ({ ...b, [domain]: true }))
+      setInstances((prev) => {
+        snapshot = prev
+        return prev.map((i) =>
+          i.domain === domain ? { ...i, blocked: block } : i,
+        )
       })
-      onMessage?.(c.federationPolicySaved, 'success')
-      await load()
-    } catch (e) {
-      onMessage?.(
-        e instanceof Error ? e.message : c.federationSaveFailed,
-        'error',
-      )
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const resetRateDefaults = () => {
-    setRateMax(100)
-    setRateWindow(60)
-    setRateTrustedMul(5)
-  }
-
-  const setInstanceTrust = async (domain: string, level: number) => {
-    try {
-      await federationApi.updateInstanceTrust({ domain, trust_level: level })
-      setInstances((prev) =>
-        prev.map((i) =>
-          i.domain === domain ? { ...i, trust_level: level } : i,
-        ),
-      )
-    } catch (e) {
-      onMessage?.(
-        e instanceof Error ? e.message : c.federationUpdateFailed,
-        'error',
-      )
-    }
-  }
-
-  const toggleBlock = async (domain: string, block: boolean) => {
-    const snapshot = instances
-    setInstanceBusy((b) => ({ ...b, [domain]: true }))
-    setInstances((prev) =>
-      prev.map((i) => (i.domain === domain ? { ...i, blocked: block } : i)),
-    )
-    try {
-      await federationApi.toggleInstanceBlock({ domain, block })
-    } catch (e) {
-      setInstances(snapshot)
-      onMessage?.(
-        e instanceof Error ? e.message : c.federationBlockFailed,
-        'error',
-      )
-    } finally {
-      setInstanceBusy((b) => {
-        const next = { ...b }
-        delete next[domain]
-        return next
-      })
-    }
-  }
+      try {
+        await federationApi.toggleInstanceBlock({ domain, block })
+      } catch (e) {
+        setInstances(snapshot)
+        onMessage?.(
+          e instanceof Error ? e.message : c.federationBlockFailed,
+          'error',
+        )
+      } finally {
+        setInstanceBusy((b) => {
+          const next = { ...b }
+          delete next[domain]
+          return next
+        })
+      }
+    },
+    [onMessage, c.federationBlockFailed],
+  )
 
   const handleFilterTypeChange = (next: string) => {
     const type = next as FilterType
@@ -400,17 +468,6 @@ export const FederationConfigSection: React.FC<
     [trustLevels, resolveActivityTypeLabel],
   )
 
-  const formatFilterSummary = useCallback(
-    (f: ContentFilterItem): string => {
-      const typeLabel =
-        (filterTypeLabels as Record<string, string>)[f.filter_type] ||
-        f.filter_type
-      const valueLabel = formatFilterValue(f.filter_type, f.value)
-      return `${typeLabel} · ${valueLabel}`
-    },
-    [filterTypeLabels, formatFilterValue],
-  )
-
   const addFilter = async () => {
     if (!newFilterName.trim() || !newFilterValue.trim()) {
       onMessage?.(c.federationFilterNameValueRequired, 'warning')
@@ -425,6 +482,7 @@ export const FederationConfigSection: React.FC<
       })
       setNewFilterName('')
       setNewFilterValue(defaultValueForFilterType(newFilterType))
+      setFilterFormOpen(false)
       await load()
       onMessage?.(c.federationFilterAdded, 'success')
     } catch (e) {
@@ -439,9 +497,7 @@ export const FederationConfigSection: React.FC<
     const snapshot = filters
     setFilterBusy((b) => ({ ...b, [f.id]: 'toggle' }))
     setFilters((prev) =>
-      prev.map((x) =>
-        x.id === f.id ? { ...x, enabled: !x.enabled } : x,
-      ),
+      prev.map((x) => (x.id === f.id ? { ...x, enabled: !x.enabled } : x)),
     )
     try {
       await federationApi.updateContentFilter(f.id, { enabled: !f.enabled })
@@ -481,82 +537,321 @@ export const FederationConfigSection: React.FC<
     }
   }
 
-  const instanceListItems: ManagedListItem[] = instances.map((inst) => ({
-    id: inst.domain,
-    title: inst.domain,
-    badge: inst.blocked
-      ? { label: c.federationBlocked, tone: 'danger' }
-      : undefined,
-    busy: !!instanceBusy[inst.domain],
-    trailing: (
-      <FieldSelect
-        size="sm"
-        value={String(inst.trust_level)}
-        options={trustLevels.map((l) => ({
-          value: String(l.value),
-          label: l.label,
-        }))}
-        onChange={(v) => void setInstanceTrust(inst.domain, Number(v))}
-        aria-label={c.federationMinTrustInbound}
-        disabled={!!instanceBusy[inst.domain]}
-      />
-    ),
-    actions: [
+  const instanceStats = useMemo((): ManagedListStat[] => {
+    let active = 0
+    let blocked = 0
+    let trusted = 0
+    for (const inst of instances) {
+      if (inst.blocked) blocked++
+      else active++
+      if (!inst.blocked && (inst.trust_level ?? 0) >= 3) trusted++
+    }
+    return [
       {
-        key: 'block',
-        label: inst.blocked ? c.federationUnblock : c.federationBlock,
-        variant: inst.blocked ? 'primary' : 'danger',
-        onClick: () => void toggleBlock(inst.domain, !inst.blocked),
-        loading: !!instanceBusy[inst.domain],
+        key: 'total',
+        label: c.federationInstanceStatTotal,
+        value: instances.length,
+        tone: instances.length > 0 ? 'active' : 'muted',
       },
+      {
+        key: 'active',
+        label: c.federationInstanceStatActive,
+        value: active,
+        tone: active > 0 ? 'success' : 'muted',
+      },
+      {
+        key: 'blocked',
+        label: c.federationInstanceStatBlocked,
+        value: blocked,
+        tone: blocked > 0 ? 'danger' : 'muted',
+      },
+      {
+        key: 'trusted',
+        label: c.federationInstanceStatTrusted,
+        value: trusted,
+        tone: trusted > 0 ? 'warn' : 'muted',
+      },
+    ]
+  }, [instances, c])
+
+  const instanceFilterCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: instances.length,
+      active: 0,
+      blocked: 0,
+      'level:0': 0,
+      'level:1': 0,
+      'level:2': 0,
+      'level:3': 0,
+      'level:4': 0,
+    }
+    for (const inst of instances) {
+      if (inst.blocked) counts.blocked++
+      else counts.active++
+      const level = Math.min(4, Math.max(0, inst.trust_level ?? 0))
+      counts[`level:${level}`] = (counts[`level:${level}`] ?? 0) + 1
+    }
+    return counts
+  }, [instances])
+
+  const instanceFilterOptions = useMemo((): ManagedListFilterOption[] => {
+    return [
+      {
+        key: 'all',
+        label: c.federationInstanceFilterAll,
+        count: instanceFilterCounts.all,
+      },
+      {
+        key: 'active',
+        label: c.federationInstanceFilterActive,
+        count: instanceFilterCounts.active,
+      },
+      {
+        key: 'blocked',
+        label: c.federationInstanceFilterBlocked,
+        count: instanceFilterCounts.blocked,
+      },
+      ...trustFilterLabels.map((l) => ({
+        key: `level:${l.value}`,
+        label: l.label,
+        count: instanceFilterCounts[`level:${l.value}`] ?? 0,
+      })),
+    ]
+  }, [c, instanceFilterCounts, trustFilterLabels])
+
+  const filteredInstances = useMemo(() => {
+    const q = instanceSearch.trim().toLowerCase()
+    return instances.filter((inst) => {
+      if (instanceFilter === 'active' && inst.blocked) return false
+      if (instanceFilter === 'blocked' && !inst.blocked) return false
+      if (instanceFilter.startsWith('level:')) {
+        const level = Number(instanceFilter.slice('level:'.length))
+        if ((inst.trust_level ?? 0) !== level) return false
+      }
+      if (!q) return true
+      const hay = [inst.domain, inst.software ?? '', inst.version ?? '']
+        .join(' ')
+        .toLowerCase()
+      return hay.includes(q)
+    })
+  }, [instances, instanceSearch, instanceFilter])
+
+  const instanceListItems: ManagedListItem[] = useMemo(
+    () =>
+      filteredInstances.map((inst) => {
+        const softwareMeta =
+          inst.software || inst.version
+            ? [inst.software, inst.version].filter(Boolean).join(' · ')
+            : undefined
+        return {
+          id: inst.domain,
+          title: inst.domain,
+          subtitle: softwareMeta,
+          badge: inst.blocked
+            ? { label: c.federationBlocked, tone: 'danger' as const }
+            : undefined,
+          busy: !!instanceBusy[inst.domain],
+          trailing: (
+            <FieldSelect
+              size="sm"
+              value={String(inst.trust_level)}
+              options={trustLevels.map((l) => ({
+                value: String(l.value),
+                label: l.label,
+              }))}
+              onChange={(v) => void setInstanceTrust(inst.domain, Number(v))}
+              aria-label={c.federationInstanceTrustAria}
+              disabled={!!instanceBusy[inst.domain]}
+            />
+          ),
+          actions: [
+            {
+              key: 'block',
+              label: inst.blocked ? c.federationUnblock : c.federationBlock,
+              variant: (inst.blocked ? 'primary' : 'danger') as
+                'primary' | 'danger',
+              onClick: () => void toggleBlock(inst.domain, !inst.blocked),
+              loading: !!instanceBusy[inst.domain],
+            },
+          ],
+        }
+      }),
+    [
+      filteredInstances,
+      instanceBusy,
+      trustLevels,
+      c.federationBlocked,
+      c.federationUnblock,
+      c.federationBlock,
+      c.federationInstanceTrustAria,
+      setInstanceTrust,
+      toggleBlock,
     ],
-  }))
+  )
 
-  const filterListItems: ManagedListItem[] = filters.map((f) => ({
-    id: f.id,
-    title: f.name,
-    subtitle: formatFilterSummary(f),
-    badge: f.enabled
-      ? { label: c.federationFilterEnabled, tone: 'success' }
-      : { label: c.federationFilterDisabled, tone: 'muted' },
-    busy: !!filterBusy[f.id],
-    actions: [
+  const instanceQueryActive =
+    instanceSearch.trim().length > 0 || instanceFilter !== 'all'
+
+  const instanceEmptyText =
+    instances.length === 0
+      ? c.federationNoInstances
+      : c.federationInstanceFilterEmpty
+
+  const instanceFooter =
+    instanceQueryActive && instances.length > 0
+      ? c.federationInstanceShowing
+          .replace('{shown}', String(filteredInstances.length))
+          .replace('{total}', String(instances.length))
+      : undefined
+
+  const filterStats = useMemo((): ManagedListStat[] => {
+    const enabled = filters.filter((f) => f.enabled).length
+    const disabled = filters.length - enabled
+    return [
       {
-        key: 'toggle',
-        label: f.enabled
-          ? c.federationFilterEnabled
-          : c.federationFilterDisabled,
-        variant: f.enabled ? 'secondary' : 'primary',
-        onClick: () => void toggleFilter(f),
-        loading: filterBusy[f.id] === 'toggle',
+        key: 'total',
+        label: c.federationInstanceStatTotal,
+        value: filters.length,
       },
       {
-        key: 'delete',
-        label: t.common?.delete || 'Delete',
-        variant: 'danger',
-        onClick: () => void deleteFilter(f.id),
-        loading: filterBusy[f.id] === 'delete',
+        key: 'enabled',
+        label: c.federationFilterEnabled,
+        value: enabled,
+        tone: 'success',
       },
-    ],
-  }))
+      {
+        key: 'disabled',
+        label: c.federationFilterDisabled,
+        value: disabled,
+        tone: 'muted',
+      },
+    ]
+  }, [
+    filters,
+    c.federationInstanceStatTotal,
+    c.federationFilterEnabled,
+    c.federationFilterDisabled,
+  ])
 
-  if (loading) {
-    return (
-      <SettingSection
-        title={title}
-        icon={icon}
-        description={description}
-        sectionId={sectionId}
-      >
-        <div className="flex justify-center py-8" role="status">
-          <Spinner size="md" color="primary" />
-        </div>
-      </SettingSection>
-    )
-  }
+  const contentFilterChipOptions = useMemo((): ManagedListFilterOption[] => {
+    const typeCounts: Record<string, number> = {
+      block_activity_type: 0,
+      block_keyword: 0,
+      require_trust_level: 0,
+    }
+    let enabled = 0
+    let disabled = 0
+    for (const f of filters) {
+      if (f.enabled) enabled++
+      else disabled++
+      if (f.filter_type in typeCounts) {
+        typeCounts[f.filter_type]++
+      }
+    }
+    return [
+      {
+        key: 'all',
+        label: c.federationInstanceFilterAll,
+        count: filters.length,
+      },
+      {
+        key: 'enabled',
+        label: c.federationFilterEnabled,
+        count: enabled,
+      },
+      {
+        key: 'disabled',
+        label: c.federationFilterDisabled,
+        count: disabled,
+      },
+      ...filterTypeOptions.map((opt) => ({
+        key: `type:${opt.value}`,
+        label: opt.label,
+        count: typeCounts[opt.value] ?? 0,
+      })),
+    ]
+  }, [
+    filters,
+    filterTypeOptions,
+    c.federationInstanceFilterAll,
+    c.federationFilterEnabled,
+    c.federationFilterDisabled,
+  ])
 
-  const saveButtonText =
-    saving ? '…' : c.federationSavePolicy || t.common?.save || 'Save'
+  const filteredContentFilters = useMemo(() => {
+    const q = contentFilterSearch.trim().toLowerCase()
+    return filters.filter((f) => {
+      if (contentFilterChip === 'enabled' && !f.enabled) return false
+      if (contentFilterChip === 'disabled' && f.enabled) return false
+      if (contentFilterChip.startsWith('type:')) {
+        const type = contentFilterChip.slice('type:'.length)
+        if (f.filter_type !== type) return false
+      }
+      if (!q) return true
+      const typeLabel =
+        (filterTypeLabels as Record<string, string>)[f.filter_type] ||
+        f.filter_type
+      const valueLabel = formatFilterValue(f.filter_type, f.value)
+      const hay = [f.name, f.filter_type, typeLabel, f.value, valueLabel]
+        .join(' ')
+        .toLowerCase()
+      return hay.includes(q)
+    })
+  }, [
+    filters,
+    contentFilterSearch,
+    contentFilterChip,
+    filterTypeLabels,
+    formatFilterValue,
+  ])
+
+  const contentFilterQueryActive =
+    contentFilterSearch.trim().length > 0 || contentFilterChip !== 'all'
+
+  const contentFilterEmptyText =
+    filters.length === 0 ? c.federationNoFilters : c.federationFilterFilterEmpty
+
+  const contentFilterFooter =
+    contentFilterQueryActive && filters.length > 0
+      ? c.federationFilterShowing
+          .replace('{shown}', String(filteredContentFilters.length))
+          .replace('{total}', String(filters.length))
+      : undefined
+
+  const filterListItems: ManagedListItem[] = filteredContentFilters.map((f) => {
+    const typeLabel =
+      (filterTypeLabels as Record<string, string>)[f.filter_type] ||
+      f.filter_type
+    const valueLabel = formatFilterValue(f.filter_type, f.value)
+    return {
+      id: f.id,
+      title: f.name,
+      subtitle: typeLabel,
+      meta: valueLabel,
+      badge: f.enabled
+        ? { label: c.federationFilterEnabled, tone: 'success' }
+        : { label: c.federationFilterDisabled, tone: 'muted' },
+      busy: !!filterBusy[f.id],
+      actions: [
+        {
+          key: 'toggle',
+          label: f.enabled
+            ? c.federationFilterEnabled
+            : c.federationFilterDisabled,
+          variant: f.enabled ? 'secondary' : 'primary',
+          onClick: () => void toggleFilter(f),
+          loading: filterBusy[f.id] === 'toggle',
+        },
+        {
+          key: 'delete',
+          label: t.common?.delete || 'Delete',
+          variant: 'danger',
+          onClick: () => void deleteFilter(f.id),
+          loading: filterBusy[f.id] === 'delete',
+        },
+      ],
+    }
+  })
 
   return (
     <SettingSection
@@ -565,263 +860,328 @@ export const FederationConfigSection: React.FC<
       description={description}
       sectionId={sectionId}
     >
-      <SettingGroup
-        title={c.federationKeysIdentity}
-        description={c.federationKeysIdentityDesc}
-      >
-        {identity ? (
-          <div className="space-y-1.5 text-sm mb-3">
-            <p>
-              <span className="text-gray-500 dark:text-gray-400">
-                {c.federationIdentityHandle}:{' '}
-              </span>
-              <span className="font-medium break-all">
-                {identity.handle || identity.acct || identity.username}
-              </span>
-            </p>
-            <p>
-              <span className="text-gray-500 dark:text-gray-400">
-                {c.federationIdentityActor}:{' '}
-              </span>
-              <span className="font-mono text-xs break-all">
-                {identity.actor_url}
-              </span>
-            </p>
-            {identity.key_id ? (
-              <p>
-                <span className="text-gray-500 dark:text-gray-400">
-                  {c.federationIdentityKeyId}:{' '}
-                </span>
-                <span className="font-mono text-xs break-all">
-                  {identity.key_id}
-                </span>
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-sm text-gray-500 mb-3">{c.federationKeysNoIdentity}</p>
-        )}
-        <ButtonItem
-          label={c.federationKeysIdentity}
-          buttonText={
-            rotatingKeys ? '…' : c.federationKeysRotate
-          }
-          onClick={() => void rotateKeys()}
-          disabled={rotatingKeys || !identity}
-          loading={rotatingKeys}
-          variant="secondary"
-        />
-      </SettingGroup>
-
-      <SettingGroup
-        title={c.federationDeliveryQueue}
-        description={c.federationDeliveryQueueDesc}
-      >
-        <FederationDeliveryQueue
-          stats={deliveryStats}
-          items={deliveryItems}
-          onStatsChange={setDeliveryStats}
-          onItemsChange={setDeliveryItems}
-          onMessage={onMessage}
-          onRefresh={loadDelivery}
-        />
-      </SettingGroup>
-
-      <SettingGroup
-        title={c.federationInstancePolicy}
-        description={c.federationTrustLevelHelp}
-      >
-        <SelectItem
-          itemKey="fed-min-trust"
-          label={c.federationMinTrustInbound}
-          description={c.federationMinTrustInboundDesc}
-          value={String(minTrust)}
-          onChange={(v) => setMinTrust(Number(v))}
-          options={trustLevelOptions}
-          layout="vertical"
-        />
-
-        <InputItem
-          itemKey="fed-allowlist"
-          label={c.federationAllowlistDomains}
-          description={c.federationAllowlistDomainsDesc}
-          value={allowlistText}
-          onChange={setAllowlistText}
-          placeholder={c.federationAllowlistPlaceholder}
-          multiline
-          rows={4}
-          layout="vertical"
-        />
-
-        <SwitchItem
-          itemKey="fed-auto-discover"
-          label={c.federationAutoDiscover}
-          description={c.federationAutoDiscoverDesc}
-          value={autoDiscover}
-          onChange={setAutoDiscover}
-        />
-
-        <ButtonItem
-          label={c.federationInstancePolicy}
-          buttonText={saveButtonText}
-          onClick={() => void savePolicy()}
-          disabled={saving}
-          loading={saving}
-        />
-      </SettingGroup>
-
-      <SettingGroup
-        title={c.federationKnownInstances}
-        description={c.federationKnownInstancesDesc}
-      >
-        <ManagedList
-          items={instanceListItems}
-          emptyText={c.federationNoInstances}
-          maxHeight={null}
-        />
-      </SettingGroup>
-
-      <SettingGroup
-        title={c.federationContentFilters}
-        description={c.federationContentFiltersDesc}
-      >
-        <div className="space-y-1 mb-3">
-          <InputItem
-            itemKey="fed-filter-name"
-            label={c.federationFilterName}
-            value={newFilterName}
-            onChange={setNewFilterName}
-            placeholder={c.federationFilterNamePlaceholder}
-            layout="vertical"
+      <AutoHeight contentKey="ready" className="federation-content-height">
+        {/* 1. 身份 → 2. 策略 → 3. 实例 → 4. 过滤 → 5. 投递队列 → 6. 限流 */}
+        <SettingGroup
+          title={c.federationKeysIdentity}
+          description={c.federationKeysIdentityDesc}
+          guide={renderGuide(g.federation.keys)}
+          icon={<FaKey />}
+        >
+          <InfoActionCard
+            empty={!identity}
+            emptyText={c.federationKeysNoIdentity}
+            copyLabel={t.common?.copy || 'Copy'}
+            copiedLabel={t.common?.copied || 'Copied'}
+            fields={
+              identity
+                ? ([
+                    {
+                      key: 'handle',
+                      label: c.federationIdentityHandle,
+                      value:
+                        identity.handle ||
+                        identity.acct ||
+                        identity.username ||
+                        '—',
+                    },
+                    {
+                      key: 'actor',
+                      label: c.federationIdentityActor,
+                      value: identity.actor_url || '—',
+                      mono: true,
+                    },
+                    ...(identity.key_id
+                      ? [
+                          {
+                            key: 'key',
+                            label: c.federationIdentityKeyId,
+                            value: identity.key_id,
+                            mono: true,
+                          },
+                        ]
+                      : []),
+                  ] satisfies InfoActionField[])
+                : undefined
+            }
+            actions={[
+              {
+                key: 'rotate',
+                label: c.federationKeysRotate,
+                onClick: () => void rotateKeys(),
+                disabled: rotatingKeys || !identity,
+                loading: rotatingKeys,
+                variant: 'secondary',
+                confirm: c.federationKeysRotateConfirm,
+              },
+            ]}
           />
+        </SettingGroup>
 
+        <SettingGroup
+          title={c.federationInstancePolicy}
+          description={c.federationInstancePolicyDesc}
+          guide={renderGuide(g.federation.policy)}
+          icon={<LuShieldCheck />}
+        >
           <SelectItem
-            itemKey="fed-filter-type"
-            label={c.federationFilterType}
-            description={filterTypeHelp[newFilterType]}
-            value={newFilterType}
-            onChange={handleFilterTypeChange}
-            options={filterTypeOptions}
+            itemKey="fed-min-trust"
+            label={c.federationMinTrustInbound}
+            description={c.federationMinTrustInboundDesc}
+            guide={renderGuide(g.federation.minTrust)}
+            value={String(policyDraft.minTrust)}
+            onChange={(v) => onPolicyChange({ minTrust: Number(v) })}
+            options={trustLevelOptions}
             layout="vertical"
           />
 
-          {newFilterType === 'block_activity_type' && (
-            <SelectItem
-              itemKey="fed-filter-activity"
-              label={c.federationFilterActivityType}
-              hint={c.federationFilterDescBlockActivity}
-              value={
-                ACTIVITY_TYPES.includes(
-                  newFilterValue as (typeof ACTIVITY_TYPES)[number],
-                )
-                  ? newFilterValue
-                  : 'Announce'
-              }
-              onChange={setNewFilterValue}
-              options={activityTypeOptions}
-              layout="vertical"
-            />
-          )}
-
-          {newFilterType === 'require_trust_level' && (
-            <SelectItem
-              itemKey="fed-filter-trust"
-              label={c.federationFilterTrustLevel}
-              hint={c.federationFilterDescRequireTrust}
-              value={
-                ['0', '1', '2', '3', '4'].includes(newFilterValue)
-                  ? newFilterValue
-                  : '0'
-              }
-              onChange={setNewFilterValue}
-              options={trustLevelOptions}
-              layout="vertical"
-            />
-          )}
-
-          {newFilterType === 'block_keyword' && (
-            <InputItem
-              itemKey="fed-filter-value"
-              label={c.federationFilterValue}
-              hint={c.federationFilterDescBlockKeyword}
-              value={newFilterValue}
-              onChange={setNewFilterValue}
-              placeholder={c.federationFilterValuePlaceholderKeyword}
-              layout="vertical"
-            />
-          )}
-
-          <ButtonItem
-            label={c.federationContentFilters}
-            buttonText={c.federationAddFilter}
-            onClick={() => void addFilter()}
+          <InputItem
+            itemKey="fed-allowlist"
+            label={c.federationAllowlistDomains}
+            description={c.federationAllowlistDomainsDesc}
+            guide={renderGuide(g.federation.allowlist)}
+            value={policyDraft.allowlistText}
+            onChange={(allowlistText) => onPolicyChange({ allowlistText })}
+            placeholder={c.federationAllowlistPlaceholder}
+            multiline
+            rows={4}
+            layout="vertical"
           />
-        </div>
 
-        <ManagedList
-          items={filterListItems}
-          emptyText={c.federationNoFilters}
-          maxHeight={null}
-        />
-      </SettingGroup>
+          <SwitchItem
+            itemKey="fed-auto-discover"
+            label={c.federationAutoDiscover}
+            description={c.federationAutoDiscoverDesc}
+            guide={renderGuide(g.federation.autoDiscover)}
+            value={policyDraft.autoDiscover}
+            onChange={(autoDiscover) => onPolicyChange({ autoDiscover })}
+          />
+        </SettingGroup>
 
-      <SettingGroup
-        title={c.federationAdvanced}
-        description={c.federationAdvancedDesc}
-        collapsible
-        defaultExpanded={false}
-      >
-        <NumberItem
-          itemKey="fed-rate-max"
-          label={c.federationRateMaxRequests}
-          description={c.federationRateMaxRequestsDesc}
-          value={rateMax}
-          onChange={(v) => setRateMax(Math.max(1, Math.min(1_000_000, v || 1)))}
-          min={1}
-          max={1_000_000}
-          step={1}
-          layout="vertical"
-        />
-        <NumberItem
-          itemKey="fed-rate-window"
-          label={c.federationRateWindowSeconds}
-          description={c.federationRateWindowSecondsDesc}
-          value={rateWindow}
-          onChange={(v) => setRateWindow(Math.max(1, Math.min(86_400, v || 1)))}
-          min={1}
-          max={86_400}
-          step={1}
-          unit="s"
-          layout="vertical"
-        />
-        <NumberItem
-          itemKey="fed-rate-trusted-mul"
-          label={c.federationRateTrustedMultiplier}
-          description={c.federationRateTrustedMultiplierDesc}
-          value={rateTrustedMul}
-          onChange={(v) =>
-            setRateTrustedMul(Math.max(1, Math.min(100, v || 1)))
-          }
-          min={1}
-          max={100}
-          step={1}
-          layout="vertical"
-        />
-        <ButtonItem
-          label={c.federationRateLimit}
-          description={c.federationRateLimitDesc}
-          buttonText={c.federationRateResetDefaults}
-          onClick={resetRateDefaults}
-          variant="secondary"
-        />
-        <ButtonItem
-          label={c.federationAdvanced}
-          buttonText={saveButtonText}
-          onClick={() => void savePolicy()}
-          disabled={saving}
-          loading={saving}
-        />
-      </SettingGroup>
+        <SettingGroup
+          title={c.federationKnownInstances}
+          description={c.federationKnownInstancesDesc}
+          guide={renderGuide(g.federation.knownInstances)}
+          icon={<FaServer />}
+        >
+          <ManagedList
+            stats={instanceStats}
+            queryToggleLabel={c.federationListQueryToggle}
+            queryToggleDescription={c.federationListQueryToggleDesc}
+            queryToggleIcon={<FaSearch aria-hidden />}
+            queryCollapseLabel={c.federationListQueryCollapse}
+            queryCollapseDescription={c.federationListQueryCollapseDesc}
+            search={{
+              value: instanceSearch,
+              onChange: setInstanceSearch,
+              placeholder: c.federationInstanceSearchPlaceholder,
+              ariaLabel: c.federationInstanceSearchAria,
+            }}
+            filters={{
+              options: instanceFilterOptions,
+              value: instanceFilter,
+              onChange: setInstanceFilter,
+              ariaLabel: c.federationInstanceFilterAria,
+            }}
+            items={instanceListItems}
+            emptyText={instanceEmptyText}
+            footer={instanceFooter}
+            maxHeight={instances.length > 8 ? '22rem' : null}
+          />
+        </SettingGroup>
+
+        <SettingGroup
+          title={c.federationContentFilters}
+          description={c.federationContentFiltersDesc}
+          guide={renderGuide(g.federation.contentFilters)}
+          icon={<FaFilter />}
+        >
+          <ManagedList
+            stats={filterStats}
+            queryToggleLabel={c.federationListQueryToggle}
+            queryToggleDescription={c.federationListQueryToggleDesc}
+            queryToggleIcon={<FaSearch aria-hidden />}
+            queryCollapseLabel={c.federationListQueryCollapse}
+            queryCollapseDescription={c.federationListQueryCollapseDesc}
+            search={{
+              value: contentFilterSearch,
+              onChange: setContentFilterSearch,
+              placeholder: c.federationFilterSearchPlaceholder,
+              ariaLabel: c.federationFilterSearchAria,
+            }}
+            filters={{
+              options: contentFilterChipOptions,
+              value: contentFilterChip,
+              onChange: setContentFilterChip,
+              ariaLabel: c.federationFilterFilterAria,
+            }}
+            items={filterListItems}
+            emptyText={contentFilterEmptyText}
+            footer={contentFilterFooter}
+            maxHeight={null}
+            formTitle={c.federationAddFilter}
+            formDescription={c.federationAddFilterDesc}
+            formIcon={<FaPlus aria-hidden />}
+            formCollapseLabel={t.common?.cancel || 'Cancel'}
+            formCollapseDescription={c.federationListQueryCollapseDesc}
+            formOpen={filterFormOpen}
+            onFormOpenChange={setFilterFormOpen}
+            form={
+              <>
+                <InputItem
+                  itemKey="fed-filter-name"
+                  label={c.federationFilterName}
+                  value={newFilterName}
+                  onChange={setNewFilterName}
+                  placeholder={c.federationFilterNamePlaceholder}
+                  layout="vertical"
+                />
+
+                <SelectItem
+                  itemKey="fed-filter-type"
+                  label={c.federationFilterType}
+                  description={filterTypeHelp[newFilterType]}
+                  value={newFilterType}
+                  onChange={handleFilterTypeChange}
+                  options={filterTypeOptions}
+                  layout="vertical"
+                />
+
+                {newFilterType === 'block_activity_type' && (
+                  <SelectItem
+                    itemKey="fed-filter-activity"
+                    label={c.federationFilterActivityType}
+                    hint={c.federationFilterDescBlockActivity}
+                    value={
+                      ACTIVITY_TYPES.includes(
+                        newFilterValue as (typeof ACTIVITY_TYPES)[number],
+                      )
+                        ? newFilterValue
+                        : 'Announce'
+                    }
+                    onChange={setNewFilterValue}
+                    options={activityTypeOptions}
+                    layout="vertical"
+                  />
+                )}
+
+                {newFilterType === 'require_trust_level' && (
+                  <SelectItem
+                    itemKey="fed-filter-trust"
+                    label={c.federationFilterTrustLevel}
+                    hint={c.federationFilterDescRequireTrust}
+                    value={
+                      ['0', '1', '2', '3', '4'].includes(newFilterValue)
+                        ? newFilterValue
+                        : '0'
+                    }
+                    onChange={setNewFilterValue}
+                    options={trustLevelOptions}
+                    layout="vertical"
+                  />
+                )}
+
+                {newFilterType === 'block_keyword' && (
+                  <InputItem
+                    itemKey="fed-filter-value"
+                    label={c.federationFilterValue}
+                    hint={c.federationFilterDescBlockKeyword}
+                    value={newFilterValue}
+                    onChange={setNewFilterValue}
+                    placeholder={c.federationFilterValuePlaceholderKeyword}
+                    layout="vertical"
+                  />
+                )}
+
+                <div className="managed-list-form-actions">
+                  <SettingsButton
+                    variant="primary"
+                    size="sm"
+                    onClick={() => void addFilter()}
+                  >
+                    {c.federationAddFilter}
+                  </SettingsButton>
+                </div>
+              </>
+            }
+          />
+        </SettingGroup>
+
+        <SettingGroup
+          title={c.federationDeliveryQueue}
+          description={c.federationDeliveryQueueDesc}
+          guide={renderGuide(g.federation.deliveryQueue)}
+          icon={<FaPaperPlane />}
+        >
+          <FederationDeliveryQueue
+            stats={deliveryStats}
+            items={deliveryItems}
+            onStatsChange={setDeliveryStats}
+            onItemsChange={setDeliveryItems}
+            onMessage={onMessage}
+            onRefresh={loadDelivery}
+          />
+        </SettingGroup>
+
+        <SettingGroup
+          title={c.federationAdvanced}
+          description={c.federationAdvancedDesc}
+          guide={renderGuide(g.federation.advanced)}
+          icon={<FaCog />}
+          collapsible
+          defaultExpanded={false}
+        >
+          <NumberItem
+            itemKey="fed-rate-max"
+            label={c.federationRateMaxRequests}
+            description={c.federationRateMaxRequestsDesc}
+            guide={renderGuide(g.federation.rateMax)}
+            value={policyDraft.rateMax}
+            onChange={(v) =>
+              onPolicyChange({
+                rateMax: Math.max(1, Math.min(1_000_000, v || 1)),
+              })
+            }
+            min={1}
+            max={1_000_000}
+            step={1}
+            layout="vertical"
+          />
+          <NumberItem
+            itemKey="fed-rate-window"
+            label={c.federationRateWindowSeconds}
+            description={c.federationRateWindowSecondsDesc}
+            guide={renderGuide(g.federation.rateWindow)}
+            value={policyDraft.rateWindow}
+            onChange={(v) =>
+              onPolicyChange({
+                rateWindow: Math.max(1, Math.min(86_400, v || 1)),
+              })
+            }
+            min={1}
+            max={86_400}
+            step={1}
+            unit="s"
+            layout="vertical"
+          />
+          <NumberItem
+            itemKey="fed-rate-trusted-mul"
+            label={c.federationRateTrustedMultiplier}
+            description={c.federationRateTrustedMultiplierDesc}
+            guide={renderGuide(g.federation.rateTrusted)}
+            value={policyDraft.rateTrustedMul}
+            onChange={(v) =>
+              onPolicyChange({
+                rateTrustedMul: Math.max(1, Math.min(100, v || 1)),
+              })
+            }
+            min={1}
+            max={100}
+            step={1}
+            layout="vertical"
+          />
+        </SettingGroup>
+      </AutoHeight>
     </SettingSection>
   )
 }

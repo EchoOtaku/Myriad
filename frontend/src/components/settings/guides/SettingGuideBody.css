@@ -1,0 +1,77 @@
+/* 白话分节：清晰分隔，无花哨彩色 */
+
+.setting-guide-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.setting-guide-block {
+  margin: 0;
+  padding: 0.75rem 0;
+  border: none;
+  background: transparent;
+}
+
+.setting-guide-block + .setting-guide-block {
+  border-top: 1px solid rgb(229 231 235 / 95%);
+}
+
+html.dark .setting-guide-block + .setting-guide-block {
+  border-top-color: rgb(63 63 70 / 75%);
+}
+
+.setting-guide-block:first-child {
+  padding-top: 0;
+}
+
+.setting-guide-block:last-child {
+  padding-bottom: 0;
+}
+
+.setting-guide-block-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--cfg-text-2);
+}
+
+html.dark .setting-guide-block-label {
+  color: var(--cfg-text-2);
+}
+
+.setting-guide-block-text {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--cfg-text-1);
+  white-space: pre-line;
+}
+
+html.dark .setting-guide-block-text {
+  color: var(--cfg-text-1);
+}
+
+/* 步骤列表（由 ① / 1) 等自动拆出） */
+.setting-guide-steps {
+  margin: 0;
+  padding: 0 0 0 1.15rem;
+  list-style: decimal;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--cfg-text-1);
+}
+
+html.dark .setting-guide-steps {
+  color: var(--cfg-text-1);
+}
+
+.setting-guide-step {
+  margin: 0 0 0.35rem;
+  padding-left: 0.15rem;
+}
+
+.setting-guide-step:last-child {
+  margin-bottom: 0;
+}

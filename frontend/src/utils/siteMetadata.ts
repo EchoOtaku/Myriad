@@ -113,72 +113,83 @@ function updateDescription(description: string): void {
 }
 
 /**
- * 更新网站图标（支持站外链接）
+ * 从路径或 data URL 推断 favicon MIME type
+ */
+function inferFaviconType(faviconUrl: string): string | undefined {
+  if (faviconUrl.startsWith('data:image/')) {
+    const match = /^data:(image\/[a-zA-Z0-9.+-]+)/.exec(faviconUrl)
+    return match?.[1]
+  }
+  if (faviconUrl.endsWith('.svg') || faviconUrl.includes('.svg?')) {
+    return 'image/svg+xml'
+  }
+  if (faviconUrl.endsWith('.webp') || faviconUrl.includes('.webp?')) {
+    return 'image/webp'
+  }
+  if (faviconUrl.endsWith('.png') || faviconUrl.includes('.png?')) {
+    return 'image/png'
+  }
+  if (faviconUrl.endsWith('.ico') || faviconUrl.includes('.ico?')) {
+    return 'image/x-icon'
+  }
+  if (
+    faviconUrl.endsWith('.jpg') ||
+    faviconUrl.endsWith('.jpeg') ||
+    faviconUrl.includes('.jpg?') ||
+    faviconUrl.includes('.jpeg?')
+  ) {
+    return 'image/jpeg'
+  }
+  if (faviconUrl.endsWith('.gif') || faviconUrl.includes('.gif?')) {
+    return 'image/gif'
+  }
+  return undefined
+}
+
+/**
+ * 更新网站图标（支持站外链接、相对路径、data URL 本地上传）
  */
 function updateFavicon(faviconUrl: string): void {
-  // 检查是否为有效的URL
   if (!faviconUrl) return
 
   let favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
 
-  // 如果没有找到 favicon 元素，创建一个
   if (!favicon) {
     favicon = document.createElement('link')
     favicon.rel = 'icon'
     document.head.appendChild(favicon)
   }
 
-  // 检查是否为站外链接
+  const isDataUrl = faviconUrl.startsWith('data:')
   const isExternalUrl =
     faviconUrl.startsWith('http://') || faviconUrl.startsWith('https://')
 
-  // 构建完整的 URL（处理相对路径）
-  const fullUrl = isExternalUrl
+  const fullUrl = isDataUrl || isExternalUrl
     ? faviconUrl
     : new URL(faviconUrl, window.location.origin).href
 
-  // 检查 URL 是否真的变化了（避免不必要的更新）
-  if (favicon.href === fullUrl) {
+  // data: 与较长 base64 用字符串比较；避免浏览器规范化差异时重复写
+  if (favicon.getAttribute('href') === fullUrl || favicon.href === fullUrl) {
     return
   }
 
-  if (isExternalUrl) {
-    // 站外链接：设置跨域属性
-    favicon.crossOrigin = 'anonymous'
-    // 根据文件扩展名推断类型
-    if (faviconUrl.endsWith('.svg')) {
-      favicon.type = 'image/svg+xml'
-    } else if (faviconUrl.endsWith('.webp')) {
-      favicon.type = 'image/webp'
-    } else if (faviconUrl.endsWith('.png')) {
-      favicon.type = 'image/png'
-    } else if (faviconUrl.endsWith('.ico')) {
-      favicon.type = 'image/x-icon'
-    } else if (faviconUrl.endsWith('.jpg') || faviconUrl.endsWith('.jpeg')) {
-      favicon.type = 'image/jpeg'
-    } else {
-      // 默认假设是 WebP
-      favicon.type = 'image/webp'
-    }
-  } else {
-    // 站内链接：移除跨域属性
+  if (isDataUrl) {
     favicon.removeAttribute('crossorigin')
-
-    // 根据文件扩展名设置类型
-    if (faviconUrl.endsWith('.svg')) {
-      favicon.type = 'image/svg+xml'
-    } else if (faviconUrl.endsWith('.webp')) {
-      favicon.type = 'image/webp'
-    } else if (faviconUrl.endsWith('.png')) {
-      favicon.type = 'image/png'
-    } else if (faviconUrl.endsWith('.ico')) {
-      favicon.type = 'image/x-icon'
-    } else if (faviconUrl.endsWith('.jpg') || faviconUrl.endsWith('.jpeg')) {
-      favicon.type = 'image/jpeg'
-    }
+  } else if (isExternalUrl) {
+    favicon.crossOrigin = 'anonymous'
+  } else {
+    favicon.removeAttribute('crossorigin')
   }
 
-  // 更新 href
+  const mime = inferFaviconType(faviconUrl)
+  if (mime) {
+    favicon.type = mime
+  } else if (isExternalUrl) {
+    favicon.type = 'image/webp'
+  } else {
+    favicon.removeAttribute('type')
+  }
+
   favicon.href = fullUrl
 }
 

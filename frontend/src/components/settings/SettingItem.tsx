@@ -11,6 +11,7 @@ import { InputItem } from './items/InputItem'
 import { NumberItem } from './items/NumberItem'
 import { ProviderItem } from './items/ProviderItem'
 import { SelectItem } from './items/SelectItem'
+import { SliderItem } from './items/SliderItem'
 import { SwitchItem } from './items/SwitchItem'
 
 export type { SettingItemConfig } from './types'
@@ -28,6 +29,9 @@ export const SettingItem: React.FC<SettingItemConfig> = (props) => {
 
     case 'number':
       return <NumberItem {...props} />
+
+    case 'slider':
+      return <SliderItem {...props} />
 
     case 'select':
       return <SelectItem {...props} />

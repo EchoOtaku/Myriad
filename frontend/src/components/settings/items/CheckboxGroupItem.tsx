@@ -1,10 +1,10 @@
 /**
  * 复选框组设置项组件
- * 将多个复选框选项组合为一组，共享标签和描述
+ * 将多个 CheckboxCard 组合成一组，共享标签和描述（权限下放等同款卡片风格）
  */
 
 import React, { useCallback } from 'react'
-
+import { CheckboxCard } from './CheckboxCard'
 import './SettingItem.css'
 
 export interface CheckboxGroupOption {
@@ -47,51 +47,40 @@ export const CheckboxGroupItem = React.memo<CheckboxGroupItemProps>(
     disabled = false,
     className = '',
   }) => {
-    const handleToggle = useCallback(
-      (key: string, currentValue: boolean) => () => {
-        if (!disabled) {
-          onChange(key, !currentValue)
-        }
+    const handleChange = useCallback(
+      (key: string) => (value: boolean) => {
+        if (!disabled) onChange(key, value)
       },
       [onChange, disabled],
     )
+
+    const showLabel = Boolean(label) || Boolean(description)
 
     return (
       <div
         className={`setting-item setting-vertical ${className} ${disabled ? 'disabled' : ''}`}
       >
-        <div className="setting-label">
-          <span className="setting-label-text">{label}</span>
-          {description && (
-            <span className="setting-description">{description}</span>
-          )}
-        </div>
+        {showLabel && (
+          <div className="setting-label">
+            {label ? (
+              <span className="setting-label-text">{label}</span>
+            ) : null}
+            {description && (
+              <span className="setting-description">{description}</span>
+            )}
+          </div>
+        )}
         <div className="checkbox-group-options">
           {options.map((option) => (
-            <button
+            <CheckboxCard
               key={option.key}
-              type="button"
-              className={`checkbox-group-card${option.value ? ' active' : ''}`}
-              onClick={handleToggle(option.key, option.value)}
+              label={option.label}
+              checked={option.value}
+              onChange={handleChange(option.key)}
+              description={option.description}
+              icon={option.icon}
               disabled={disabled}
-            >
-              <span className="checkbox-group-card-header">
-                <span className="checkbox-group-card-indicator" />
-                {option.icon && (
-                  <span className="checkbox-group-card-icon">
-                    {option.icon}
-                  </span>
-                )}
-                <span className="checkbox-group-card-label">
-                  {option.label}
-                </span>
-              </span>
-              {option.description && (
-                <span className="checkbox-group-card-desc">
-                  {option.description}
-                </span>
-              )}
-            </button>
+            />
           ))}
         </div>
         {hint && <p className="setting-hint">{hint}</p>}
