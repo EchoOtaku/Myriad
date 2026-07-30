@@ -1,7 +1,9 @@
 name: Release
 
 # Triggered by pushing a tag matching v*.
-# Builds all 4 component images, then assembles release.json and publishes a GitHub Release.
+# Builds all 4 component images (backend, frontend, proxy, updater) as multi-arch
+# linux/amd64 + linux/arm64, then assembles release.json and publishes a GitHub Release.
+# Proxy is intentionally release-only (not built on commit/dev packaging).
 
 on:
   push:
@@ -97,6 +99,10 @@ jobs:
             echo "present=false" >>"$GITHUB_OUTPUT"
           fi
 
+      - name: Set up QEMU
+        if: steps.check.outputs.present == 'true'
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Buildx
         if: steps.check.outputs.present == 'true'
         uses: docker/setup-buildx-action@v3
@@ -117,7 +123,7 @@ jobs:
           context: .
           file: ${{ steps.paths.outputs.dockerfile }}
           push: true
-          # Immutable version tag + minor/major aliases. NEVER `latest`.
+          # Immutable version tag. NEVER `latest`.
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/myriad-${{ matrix.component }}:${{ needs.resolve.outputs.version }}
           build-args: |
@@ -125,8 +131,8 @@ jobs:
             MYRIAD_COMMIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.component }}
           cache-to:   type=gha,scope=${{ matrix.component }},mode=max
-          # Keep production release builds aligned with the verified beta image workflow.
-          platforms: linux/amd64
+          # Multi-arch index; digest written to release.json is the manifest list.
+          platforms: linux/amd64,linux/arm64
           provenance: false
 
       - name: Emit digest artifact
