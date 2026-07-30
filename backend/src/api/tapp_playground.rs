@@ -56,7 +56,7 @@ const MAX_REQUEST_BODY_BYTES: usize = 12 * 1024 * 1024;
 const MAX_HISTORY_EXPLANATION_BYTES: usize = 4_000;
 const MAX_HISTORY_ERROR_BYTES: usize = 4_000;
 /// Pro 模型生成完整项目较慢；与前端 `TappPlaygroundService.ts` 的
-/// 超时预算（约 20 分钟）保持一致。
+/// 超时预算（约 30 分钟）保持一致。
 ///
 /// 取消语义：
 /// - 非流式 `/generate`：handler future 随客户端断开被 drop，信号量 permit
@@ -65,7 +65,7 @@ const MAX_HISTORY_ERROR_BYTES: usize = 4_000;
 /// - 流式 `/generate-stream`：SSE 消费端 drop 时将 cancel watch 置位；生成任务
 ///   在下一次 AI 调用前与 `select!` 中止，不再启动后续 attempt。信号量 permit
 ///   同样在任务结束时 Drop 释放。
-const MODEL_REQUEST_TIMEOUT: Duration = Duration::from_secs(720);
+const MODEL_REQUEST_TIMEOUT: Duration = Duration::from_secs(1080);
 
 static PLAYGROUND_AGENT_CONCURRENCY: LazyLock<Semaphore> =
     LazyLock::new(|| Semaphore::new(MAX_CONCURRENT_AGENT_RUNS));
@@ -433,7 +433,7 @@ async fn generate_project(
 /// SSE stream of real agent steps, then a final `done` (or `error`) event.
 ///
 /// Admin-only (same route layer as `/generate`). Timeouts align with the
-/// one-shot path (per-model-call `MODEL_REQUEST_TIMEOUT`, client ~20m).
+/// one-shot path (per-model-call `MODEL_REQUEST_TIMEOUT`, client ~30m).
 /// Client disconnect / AbortController cancel sets the cancel watch so the
 /// worker stops after the current AI HTTP returns (or sooner if reqwest drop
 /// aborts) and does not start the next attempt.

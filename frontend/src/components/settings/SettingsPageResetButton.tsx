@@ -27,11 +27,11 @@ export const SettingsPageResetButton: React.FC<SettingsPageResetButtonProps> = (
   const rootRef = useRef<HTMLDivElement>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const title = t.config.resetCurrentPage ?? '重置本页'
-  const description = t.config.resetCurrentPageDesc ?? '恢复默认'
+  const title = t.config.resetCurrentPage
+  const description = t.config.resetCurrentPageDesc
   const confirmTitle =
-    t.config.resetCurrentPageAction ?? t.config.resetCurrentPage ?? '确认重置？'
-  const confirmDesc = t.config.resetCurrentPageConfirm ?? '再点一次'
+    t.config.resetCurrentPageAction ?? t.config.resetCurrentPage
+  const confirmDesc = t.config.resetCurrentPageConfirm
 
   const clearTimer = useCallback(() => {
     if (timerRef.current) {

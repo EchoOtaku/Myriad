@@ -31,6 +31,7 @@ import {
   InputItem,
   SettingSection,
   SettingsButton,
+  SettingTitleGuideEntry,
   SetupFlow,
   ToggleSwitch,
   useSettingGuide,
@@ -74,7 +75,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
   onProvidersChange,
 }) => {
   const { t } = useI18n()
-  const { catalog: g, renderGuide } = useSettingGuide()
+  const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
 
   const getFieldValue = useCallback(
     (key: string) => {
@@ -167,7 +168,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
           </>
         ) : undefined
       }
-      guide={renderGuide(g.oauth.section)}
+      {...bindGuide('oauth.section', g.oauth.section)}
       detailTone={!baseUrl ? 'warning' : 'default'}
       sectionId={sectionId}
       headerActions={
@@ -249,6 +250,9 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   onRemove,
   t,
 }) => {
+  const { catalog: g, bindGuide } = useSettingGuide()
+  const providerGuideBinding = bindGuide('oauth.provider', g.oauth.provider)
+  const providerGuide = providerGuideBinding.guide
   const [copied, setCopied] = useState(false)
   const [copiedData, setCopiedData] = useState(false)
   const callbackUrl =
@@ -286,12 +290,21 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
   })
 
   return (
-    <div className={`oidc-provider-card${entry.enabled ? '' : ' disabled'}`}>
+    <div
+      data-guide-path="oauth.provider"
+      className={`oidc-provider-card has-guide-anchor${entry.enabled ? '' : ' disabled'}`}
+    >
       <div className="oidc-provider-header">
         <span className="oidc-provider-title">
           <ProviderIcon entry={entry} />
           <span className="oidc-provider-title-text">
             {entry.display_name || entry.slug || t.config.oidcNewProvider}
+            <SettingTitleGuideEntry
+              title={
+                entry.display_name || entry.slug || t.config.oidcNewProvider
+              }
+              guide={providerGuide}
+            />
           </span>
         </span>
         <div className="oidc-provider-actions">
@@ -337,7 +350,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
             type="button"
             className="copy-btn"
             onClick={copy}
-            title={copied ? 'Copied!' : 'Copy'}
+            title={copied ? t.common.copied : t.common.copy}
           >
             {copied ? <FaCheck /> : <FaClipboard />}
           </button>
@@ -356,7 +369,7 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
             type="button"
             className="copy-btn"
             onClick={copyDataCallback}
-            title={copiedData ? 'Copied!' : 'Copy'}
+            title={copiedData ? t.common.copied : t.common.copy}
           >
             {copiedData ? <FaCheck /> : <FaClipboard />}
           </button>
@@ -447,12 +460,17 @@ const AdvancedFields: React.FC<AdvancedFieldsProps> = ({
       <button
         type="button"
         className="oidc-advanced-toggle"
+        aria-expanded={open}
+        aria-controls={`oidc-advanced-${entry.slug}`}
         onClick={() => setOpen((v) => !v)}
       >
         {open ? '▼' : '▶'} {t.config.oauthAdvanced}
       </button>
       {open && (
-        <div className="oidc-advanced-content">
+        <div
+          id={`oidc-advanced-${entry.slug}`}
+          className="oidc-advanced-content"
+        >
           <InputItem
             itemKey={`provider-${entry.slug}-slug`}
             label={t.config.oidcSlugLabel}
@@ -516,7 +534,7 @@ const PresetPicker: React.FC<PresetPickerProps> = ({
           type="button"
           className="oidc-preset-picker-close"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t.common.close}
         >
           ✕
         </button>
@@ -534,7 +552,7 @@ const PresetPicker: React.FC<PresetPickerProps> = ({
             ) : p.icon_url ? (
               <OAuthIconImage
                 src={normalizeOAuthIconUrl(p.icon_url) ?? p.icon_url}
-                size={32}
+                size={20}
                 className="oidc-preset-icon"
                 fetchPriority="low"
               />

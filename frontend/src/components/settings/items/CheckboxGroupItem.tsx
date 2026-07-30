@@ -3,7 +3,10 @@
  * 将多个 CheckboxCard 组合成一组，共享标签和描述（权限下放等同款卡片风格）
  */
 
+import type { ReactNode } from 'react'
 import React, { useCallback } from 'react'
+import { guideDomProps } from '../guides/guideAnchor'
+import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { CheckboxCard } from './CheckboxCard'
 import './SettingItem.css'
 
@@ -25,6 +28,10 @@ export interface CheckboxGroupItemProps {
   label: string
   /** 描述说明 */
   description?: string
+  /** 选项指南 */
+  guide?: ReactNode
+  /** 指南路径（搜索跳转） */
+  guidePath?: string
   /** 提示文本 */
   hint?: string
   /** 选项列表 */
@@ -41,6 +48,8 @@ export const CheckboxGroupItem = React.memo<CheckboxGroupItemProps>(
   ({
     label,
     description,
+    guide,
+    guidePath,
     hint,
     options,
     onChange,
@@ -54,17 +63,24 @@ export const CheckboxGroupItem = React.memo<CheckboxGroupItemProps>(
       [onChange, disabled],
     )
 
-    const showLabel = Boolean(label) || Boolean(description)
+    const showLabel = Boolean(label) || Boolean(description) || Boolean(guide)
+    const anchorProps = guideDomProps(guidePath)
 
     return (
       <div
-        className={`setting-item setting-vertical ${className} ${disabled ? 'disabled' : ''}`}
+        {...anchorProps}
+        className={`setting-item setting-vertical ${className} ${disabled ? 'disabled' : ''}${guidePath ? ' has-guide-anchor' : ''}`}
       >
         {showLabel && (
           <div className="setting-label">
             {label ? (
-              <span className="setting-label-text">{label}</span>
-            ) : null}
+              <span className="setting-label-text">
+                {label}
+                <SettingTitleGuideEntry title={label} guide={guide} />
+              </span>
+            ) : (
+              <SettingTitleGuideEntry title={label} guide={guide} />
+            )}
             {description && (
               <span className="setting-description">{description}</span>
             )}

@@ -543,10 +543,9 @@ async function fetchPlatformUserIds(): Promise<PlatformUserIds> {
       const result: PlatformUserIds = {}
 
       // 从 platforms 数组提取用户ID配置
+      // 只要字段已填即可（与报告页 enabled 开关无关；enabled 仅控制报告卡片展示）
       if (data.platforms && Array.isArray(data.platforms)) {
         for (const platform of data.platforms) {
-          if (!platform.enabled) continue
-
           for (const field of platform.config_fields || []) {
             if (
               platform.name === 'GitHub' &&

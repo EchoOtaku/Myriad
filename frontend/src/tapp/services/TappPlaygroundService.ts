@@ -349,8 +349,8 @@ export async function generatePlaygroundProject(
   const preferStream = opts.preferStream !== false
 
   // Keep equal to PLAYGROUND_PROXY_TIMEOUT_MS in frontend/astro.config.mjs
-  // (planner + up to 3 repairs; each model call may take up to 720s).
-  const { signal, cleanup } = combineAbortSignals(opts.signal, 20 * 60 * 1000)
+  // (planner + up to 3 repairs; each model call may take up to 1080s).
+  const { signal, cleanup } = combineAbortSignals(opts.signal, 30 * 60 * 1000)
   try {
     if (preferStream) {
       try {

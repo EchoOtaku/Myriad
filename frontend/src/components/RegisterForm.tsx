@@ -67,6 +67,13 @@ const RegisterForm: FC = () => {
         throw new Error(t.auth.registerResponseIncomplete)
       }
 
+      try {
+        const { trackEvent } = await import('../utils/siteAnalytics')
+        trackEvent('register_success')
+      } catch {
+        /* ignore */
+      }
+
       setSessionHint()
       window.dispatchEvent(
         new CustomEvent('auth-login-success', {

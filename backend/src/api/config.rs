@@ -113,6 +113,15 @@ fn sort_platforms_by_order(platforms: &mut [PlatformConfig], order: Option<&Vec<
     platforms.sort_by_key(|p| rank(&p.name));
 }
 
+/// DB Option 或 env 是否有非空字符串（空串 / 纯空白不算已配置）
+fn nonempty_db(opt: Option<&String>) -> bool {
+    opt.is_some_and(|s| !s.trim().is_empty())
+}
+
+fn nonempty_env(key: &str) -> bool {
+    std::env::var(key).ok().is_some_and(|s| !s.trim().is_empty())
+}
+
 async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> ConfigResponse {
     let db = db.clone();
     // 优先从数据库读取配置
@@ -123,125 +132,89 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
     // Helper to get string value from database or environment
     let get_value = |db_val: Option<String>, env_key: &str| -> String {
         db_val
-            .filter(|v| !v.is_empty())
+            .filter(|v| !v.trim().is_empty())
             .unwrap_or_else(|| std::env::var(env_key).unwrap_or_default())
     };
 
     // Helper to mask sensitive values (passwords, API keys, tokens)
     // SECURITY: Do not expose any real characters to prevent key type detection
     let mask_sensitive = |value: String| -> String {
-        if value.is_empty() || reveal_sensitive {
-            value
+        if value.trim().is_empty() || reveal_sensitive {
+            if value.trim().is_empty() {
+                String::new()
+            } else {
+                value
+            }
         } else {
             // Show only fixed-length mask without exposing real characters
             "••••••••".to_string()
         }
     };
 
-    let has_bangumi_username = db_config
-        .as_ref()
-        .and_then(|c| c.bangumi_username.as_ref())
-        .is_some()
-        || std::env::var("BANGUMI_USERNAME").is_ok();
-    let has_bangumi_access_token = db_config
-        .as_ref()
-        .and_then(|c| c.bangumi_access_token.as_ref())
-        .is_some()
-        || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok();
+    let has_bangumi_username = nonempty_db(db_config.as_ref().and_then(|c| c.bangumi_username.as_ref()))
+        || nonempty_env("BANGUMI_USERNAME");
+    let has_bangumi_access_token =
+        nonempty_db(db_config.as_ref().and_then(|c| c.bangumi_access_token.as_ref()))
+            || nonempty_env("BANGUMI_ACCESS_TOKEN");
     let has_bangumi_identity = has_bangumi_username || has_bangumi_access_token;
     let github_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.github_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.github_username.as_ref())
-            .is_some()
-            || std::env::var("GITHUB_USERNAME").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.github_username.as_ref()))
+            || nonempty_env("GITHUB_USERNAME"),
     );
     let bilibili_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.bilibili_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.bilibili_uid.as_ref())
-            .is_some()
-            || std::env::var("BILIBILI_UID").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.bilibili_uid.as_ref()))
+            || nonempty_env("BILIBILI_UID"),
     );
     let steam_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.steam_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.steam_api_key.as_ref())
-            .is_some()
-            || std::env::var("STEAM_API_KEY").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.steam_api_key.as_ref()))
+            || nonempty_env("STEAM_API_KEY"),
     );
     let netease_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.netease_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.netease_user_id.as_ref())
-            .is_some()
-            || std::env::var("NETEASE_USER_ID").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.netease_user_id.as_ref()))
+            || nonempty_env("NETEASE_USER_ID"),
     );
     let bangumi_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.bangumi_enabled),
         has_bangumi_identity,
     );
-    let has_x_username = db_config
-        .as_ref()
-        .and_then(|c| c.x_username.as_ref())
-        .is_some()
-        || std::env::var("X_USERNAME").is_ok();
-    let has_x_bearer = db_config
-        .as_ref()
-        .and_then(|c| c.x_bearer_token.as_ref())
-        .is_some()
-        || std::env::var("X_BEARER_TOKEN").is_ok();
+    let has_x_username = nonempty_db(db_config.as_ref().and_then(|c| c.x_username.as_ref()))
+        || nonempty_env("X_USERNAME");
+    let has_x_bearer = nonempty_db(db_config.as_ref().and_then(|c| c.x_bearer_token.as_ref()))
+        || nonempty_env("X_BEARER_TOKEN");
     let x_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.x_enabled),
         has_x_username && has_x_bearer,
     );
-    let has_discord_token = db_config
-        .as_ref()
-        .and_then(|c| c.discord_access_token.as_ref())
-        .is_some()
-        || std::env::var("DISCORD_ACCESS_TOKEN").is_ok();
+    let has_discord_token =
+        nonempty_db(db_config.as_ref().and_then(|c| c.discord_access_token.as_ref()))
+            || nonempty_env("DISCORD_ACCESS_TOKEN");
     let discord_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.discord_enabled),
         has_discord_token,
     );
-    let has_mal_username = db_config
-        .as_ref()
-        .and_then(|c| c.mal_username.as_ref())
-        .is_some()
-        || std::env::var("MAL_USERNAME").is_ok();
+    let has_mal_username = nonempty_db(db_config.as_ref().and_then(|c| c.mal_username.as_ref()))
+        || nonempty_env("MAL_USERNAME");
     let mal_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.mal_enabled),
         has_mal_username,
     );
-    let has_openxbl_key = db_config
-        .as_ref()
-        .and_then(|c| c.openxbl_api_key.as_ref())
-        .is_some()
-        || std::env::var("OPENXBL_API_KEY").is_ok()
-        || std::env::var("XBL_API_KEY").is_ok();
-    let has_xbox_gamertag = db_config
-        .as_ref()
-        .and_then(|c| c.xbox_gamertag.as_ref())
-        .is_some()
-        || std::env::var("XBOX_GAMERTAG").is_ok();
+    let has_openxbl_key = nonempty_db(db_config.as_ref().and_then(|c| c.openxbl_api_key.as_ref()))
+        || nonempty_env("OPENXBL_API_KEY")
+        || nonempty_env("XBL_API_KEY");
+    let has_xbox_gamertag = nonempty_db(db_config.as_ref().and_then(|c| c.xbox_gamertag.as_ref()))
+        || nonempty_env("XBOX_GAMERTAG");
     let xbox_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.xbox_enabled),
         has_openxbl_key && has_xbox_gamertag,
     );
-    let has_psn_npsso = db_config
-        .as_ref()
-        .and_then(|c| c.psn_npsso.as_ref())
-        .is_some()
-        || std::env::var("PSN_NPSSO").is_ok();
-    let has_psn_online_id = db_config
-        .as_ref()
-        .and_then(|c| c.psn_online_id.as_ref())
-        .is_some()
-        || std::env::var("PSN_ONLINE_ID").is_ok();
+    let has_psn_npsso = nonempty_db(db_config.as_ref().and_then(|c| c.psn_npsso.as_ref()))
+        || nonempty_env("PSN_NPSSO");
+    let has_psn_online_id = nonempty_db(db_config.as_ref().and_then(|c| c.psn_online_id.as_ref()))
+        || nonempty_env("PSN_ONLINE_ID");
     let psn_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.psn_enabled),
         has_psn_npsso && has_psn_online_id,
@@ -252,11 +225,8 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
             PlatformConfig {
                 name: "GitHub".to_string(),
                 enabled: github_enabled,
-                has_token: db_config
-                    .as_ref()
-                    .and_then(|c| c.github_token.as_ref())
-                    .is_some()
-                    || std::env::var("GITHUB_TOKEN").is_ok(),
+                has_token: nonempty_db(db_config.as_ref().and_then(|c| c.github_token.as_ref()))
+                    || nonempty_env("GITHUB_TOKEN"),
                 icon: "".to_string(),
                 description: "Repos, stars, and contributions".to_string(),
                 config_fields: vec![
@@ -287,11 +257,8 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
             PlatformConfig {
                 name: "Bilibili".to_string(),
                 enabled: bilibili_enabled,
-                has_token: db_config
-                    .as_ref()
-                    .and_then(|c| c.bilibili_uid.as_ref())
-                    .is_some()
-                    || std::env::var("BILIBILI_UID").is_ok(),
+                has_token: nonempty_db(db_config.as_ref().and_then(|c| c.bilibili_uid.as_ref()))
+                    || nonempty_env("BILIBILI_UID"),
                 icon: "".to_string(),
                 description: "Favorites, anime, and viewing history".to_string(),
                 config_fields: vec![ConfigField {
@@ -309,11 +276,8 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
             PlatformConfig {
                 name: "Steam".to_string(),
                 enabled: steam_enabled,
-                has_token: db_config
-                    .as_ref()
-                    .and_then(|c| c.steam_api_key.as_ref())
-                    .is_some()
-                    || std::env::var("STEAM_API_KEY").is_ok(),
+                has_token: nonempty_db(db_config.as_ref().and_then(|c| c.steam_api_key.as_ref()))
+                    || nonempty_env("STEAM_API_KEY"),
                 icon: "".to_string(),
                 description: "Library, wishlist, and play stats".to_string(),
                 config_fields: vec![
@@ -344,11 +308,8 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
             PlatformConfig {
                 name: "Netease Music".to_string(),
                 enabled: netease_enabled,
-                has_token: db_config
-                    .as_ref()
-                    .and_then(|c| c.netease_user_id.as_ref())
-                    .is_some()
-                    || std::env::var("NETEASE_USER_ID").is_ok(),
+                has_token: nonempty_db(db_config.as_ref().and_then(|c| c.netease_user_id.as_ref()))
+                    || nonempty_env("NETEASE_USER_ID"),
                 icon: "".to_string(),
                 description: "Liked songs and music taste".to_string(),
                 config_fields: vec![ConfigField {
@@ -1323,6 +1284,20 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                     required: false,
                 },
                 ConfigField {
+                    key: "analytics_enabled".to_string(),
+                    label: "Enable visitor analytics".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.analytics_enabled.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("ANALYTICS_ENABLED")
+                                .unwrap_or_else(|_| "true".to_string())
+                        }),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
+                ConfigField {
                     key: "site_title".to_string(),
                     label: "网站标题".to_string(),
                     field_type: "text".to_string(),
@@ -1532,16 +1507,54 @@ pub async fn get_config(crate::extract::Db(db): crate::extract::Db) -> (StatusCo
     (StatusCode::OK, Json(json!(config)))
 }
 
+/// 平台是否已配置好可同步的凭证（与报告页 enabled 开关无关）。
+fn platform_config_is_ready(platform: &PlatformConfig) -> bool {
+    let name = platform.name.trim().to_ascii_lowercase();
+    let field_filled = |key: &str| {
+        platform
+            .config_fields
+            .iter()
+            .find(|f| f.key == key)
+            .is_some_and(|f| !f.value.trim().is_empty())
+    };
+
+    match name.as_str() {
+        // Bangumi：用户名或访问令牌任一即可
+        "bangumi" => field_filled("username") || field_filled("access_token"),
+        // Discord：OAuth 后 has_token，或字段里已有 token
+        "discord" => platform.has_token || field_filled("access_token") || field_filled("token"),
+        _ => {
+            // 所有必填字段均有值（掩码也算已配置）
+            let required: Vec<_> = platform
+                .config_fields
+                .iter()
+                .filter(|f| f.required)
+                .collect();
+            if required.is_empty() {
+                // 无必填时：任意字段有值，或 has_token
+                platform.has_token
+                    || platform
+                        .config_fields
+                        .iter()
+                        .any(|f| !f.value.trim().is_empty())
+            } else {
+                required.iter().all(|f| !f.value.trim().is_empty())
+            }
+        }
+    }
+}
+
 async fn reconcile_platform_auto_refresh_with_config(
     db: &DatabaseConnection,
     config: &ConfigResponse,
 ) -> Result<crate::services::platform_auto_refresh::PlatformAutoRefreshSummary, String> {
     let auto_fetch = config.auto_fetch.clone().unwrap_or_default();
     let user_id = crate::api::profile::site_owner_user_id(db).await?;
+    // 自动刷新覆盖所有「已配置」平台；报告页 enabled 不参与
     let platforms: Vec<String> = config
         .platforms
         .iter()
-        .filter(|platform| platform.enabled)
+        .filter(|platform| platform_config_is_ready(platform))
         .map(|platform| platform.name.clone())
         .collect();
     crate::services::platform_auto_refresh::reconcile_platform_auto_refresh(
@@ -1591,6 +1604,7 @@ const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "ai_image_volcengine_base_url",
     "ai_provider",
     "allow_local_registration",
+    "analytics_enabled",
     "bangumi_access_token",
     "bangumi_enabled",
     "bangumi_user_agent",
@@ -2915,6 +2929,10 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 ("pet_enabled", JsonValue::Bool(enabled))
             }
             "pet_image_url" => ("pet_image_url", JsonValue::String(field.value.clone())),
+            "analytics_enabled" => {
+                let enabled = field.value != "false" && field.value != "0";
+                ("analytics_enabled", JsonValue::Bool(enabled))
+            }
             "site_title" => ("site_title", JsonValue::String(field.value.clone())),
             "site_description" => ("site_description", JsonValue::String(field.value.clone())),
             "site_favicon" => ("site_favicon", JsonValue::String(field.value.clone())),
@@ -3164,6 +3182,7 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "evocative_ripple_quality" => "UI_EVOCATIVE_RIPPLE_QUALITY",
             "pet_enabled" => "PET_ENABLED",
             "pet_image_url" => "PET_IMAGE_URL",
+            "analytics_enabled" => "ANALYTICS_ENABLED",
             "site_title" => "SITE_TITLE",
             "site_description" => "SITE_DESCRIPTION",
             "site_favicon" => "SITE_FAVICON",
@@ -4220,6 +4239,9 @@ pub async fn get_public_ui_config(
         "pet_image_url": get_value(
             db_config.as_ref().and_then(|c| c.pet_image_url.clone()),
             "PET_IMAGE_URL"
+        ),
+        "analytics_enabled": db_config.as_ref().map(|c| c.analytics_enabled).unwrap_or_else(||
+            std::env::var("ANALYTICS_ENABLED").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)
         ),
         "wallpaper_url": get_value(
             db_config.as_ref().and_then(|c| c.ui_wallpaper_url.clone()),

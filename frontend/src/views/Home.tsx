@@ -5,10 +5,11 @@
 
 import type { WidgetConfig, WidgetType } from '../components/WidgetGrid'
 import type { UserInfo } from '../utils/userInfoCache'
-import { FaEdit } from '@lib/icons'
+import { FaCog, FaEdit } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../components/AnimatedView'
 import { TitleFontSelector } from '../components/TitleFontSelector'
 import WidgetGrid from '../components/WidgetGrid'
@@ -39,6 +40,7 @@ export default function Home() {
 
   const { isAuthenticated, hasChecked, checkAuth, isAdmin } = useAuth()
   const { t } = useI18n()
+  const navigate = useNavigate()
   const isPageReady = usePageReady()
   const [widgets, setWidgets] = useState<WidgetConfig[]>([])
   const [isEditMode, setIsEditMode] = useState(false)
@@ -436,6 +438,7 @@ export default function Home() {
                       )}
 
                       <button
+                        type="button"
                         onClick={() => setIsEditMode(!isEditMode)}
                         className={`
                           hidden lg:flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all
@@ -454,6 +457,19 @@ export default function Home() {
                       >
                         <FaEdit size={12} />
                         {isEditMode ? t.common.done : t.common.edit}
+                      </button>
+
+                      {/* 配置入口 - 与编辑同条件：管理员 + 桌面端 */}
+                      <button
+                        type="button"
+                        onClick={() => navigate('/config')}
+                        className="hidden lg:flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
+                        style={{ color: 'var(--color-primary)' }}
+                        title={t.nav.config}
+                        aria-label={t.nav.config}
+                      >
+                        <FaCog size={12} />
+                        {t.nav.config}
                       </button>
                     </>
                   )}

@@ -122,45 +122,174 @@ impl PlatformFetcher {
 
     // ==================== Bilibili API ====================
 
-    /// 获取 Bilibili 用户基本信息
-    pub async fn fetch_bilibili_user(&self, uid: i64) -> Result<BilibiliUserInfo> {
-        // 使用不需要WBI签名的旧API端点
-        let url = format!("https://api.bilibili.com/x/space/acc/info?mid={}", uid);
-
-        // IP 伪装
+    /// 带 IP 伪装的 B 站 GET，返回解析后的 JSON。
+    async fn bilibili_get_json(&self, url: &str, referer: &str) -> Result<serde_json::Value> {
         let client_ip = get_random_china_ip();
         let proxy_ip = get_random_china_ip();
         let forwarded_for = format!("{}, {}", client_ip, proxy_ip);
 
-        let response: serde_json::Value = self
-            .client
-            .get(&url)
+        self.client
+            .get(url)
             .header("User-Agent", get_random_user_agent())
-            .header("Referer", "https://www.bilibili.com")
+            .header("Referer", referer)
             .header("Origin", "https://www.bilibili.com")
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
             .header("Cookie", generate_bilibili_cookie())
-            .header("X-Forwarded-For", forwarded_for)
-            .header("X-Real-IP", client_ip)
+            .header("X-Forwarded-For", &forwarded_for)
+            .header("X-Real-IP", &client_ip)
             .send()
             .await?
             .json()
+            .await
+            .map_err(Into::into)
+    }
+
+    /// 获取 Bilibili 用户基本信息。
+    ///
+    /// 优先 `x/web-interface/card`（含粉丝/关注，且比 space/acc/info 更稳）；
+    /// 失败时回退 `space/acc/info` + `relation/stat`。
+    /// 旧版 `space/acc/info` 在无 WBI / 风控下常返回 -401 / -799，导致整段 user 丢失。
+    pub async fn fetch_bilibili_user(&self, uid: i64) -> Result<BilibiliUserInfo> {
+        match self.fetch_bilibili_user_via_card(uid).await {
+            Ok(info) if !info.name.is_empty() || info.mid != 0 => {
+                // card 有时粉丝为 0（字段缺失）；用 relation/stat 补全
+                if info.follower == 0 && info.following == 0 {
+                    if let Ok((follower, following)) = self.fetch_bilibili_relation_stat(uid).await {
+                        return Ok(BilibiliUserInfo {
+                            follower,
+                            following,
+                            ..info
+                        });
+                    }
+                }
+                return Ok(info);
+            }
+            Ok(_) => {
+                tracing::warn!(
+                    "Bilibili card API returned empty user for mid={}, falling back",
+                    uid
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Bilibili card API failed for mid={}: {}; falling back to acc/info",
+                    uid,
+                    e
+                );
+            }
+        }
+
+        self.fetch_bilibili_user_via_acc_info(uid).await
+    }
+
+    /// 主路径：web-interface/card（name / face / level / fans / attention）
+    async fn fetch_bilibili_user_via_card(&self, uid: i64) -> Result<BilibiliUserInfo> {
+        let url = format!("https://api.bilibili.com/x/web-interface/card?mid={}", uid);
+        let response = self
+            .bilibili_get_json(&url, &format!("https://space.bilibili.com/{}", uid))
             .await?;
 
         if response["code"].as_i64() != Some(0) {
-            return Err(anyhow!("Bilibili API error: {}", response["message"]));
+            return Err(anyhow!(
+                "Bilibili card API error: {}",
+                response["message"].as_str().unwrap_or("unknown")
+            ));
         }
 
         let data = &response["data"];
+        let card = &data["card"];
+        let mid = card["mid"]
+            .as_i64()
+            .or_else(|| {
+                card["mid"]
+                    .as_str()
+                    .and_then(|s| s.parse::<i64>().ok())
+            })
+            .unwrap_or(uid);
+        let level = card
+            .pointer("/level_info/current_level")
+            .and_then(|v| v.as_i64())
+            .or_else(|| card["level"].as_i64())
+            .unwrap_or(0) as i32;
+
+        // 粉丝：data.follower 或 card.fans；关注：card.attention / card.friend
+        let follower = data["follower"]
+            .as_i64()
+            .or_else(|| card["fans"].as_i64())
+            .unwrap_or(0);
+        let following = card["attention"]
+            .as_i64()
+            .or_else(|| card["friend"].as_i64())
+            .or_else(|| data["following"].as_i64())
+            .unwrap_or(0);
+
         Ok(BilibiliUserInfo {
-            mid: data["mid"].as_i64().unwrap_or(0),
+            mid,
+            name: card["name"].as_str().unwrap_or("").to_string(),
+            face: card["face"].as_str().unwrap_or("").to_string(),
+            sign: card["sign"].as_str().unwrap_or("").to_string(),
+            level,
+            following,
+            follower,
+        })
+    }
+
+    /// 关系计数：following / follower（acc/info 里这两项常年是 0 或不存在）
+    async fn fetch_bilibili_relation_stat(&self, uid: i64) -> Result<(i64, i64)> {
+        let url = format!("https://api.bilibili.com/x/relation/stat?vmid={}", uid);
+        let response = self
+            .bilibili_get_json(&url, &format!("https://space.bilibili.com/{}", uid))
+            .await?;
+
+        if response["code"].as_i64() != Some(0) {
+            return Err(anyhow!(
+                "Bilibili relation/stat error: {}",
+                response["message"].as_str().unwrap_or("unknown")
+            ));
+        }
+
+        let data = &response["data"];
+        Ok((
+            data["follower"].as_i64().unwrap_or(0),
+            data["following"].as_i64().unwrap_or(0),
+        ))
+    }
+
+    /// 回退：旧 space/acc/info + relation/stat
+    async fn fetch_bilibili_user_via_acc_info(&self, uid: i64) -> Result<BilibiliUserInfo> {
+        let url = format!("https://api.bilibili.com/x/space/acc/info?mid={}", uid);
+        let response = self
+            .bilibili_get_json(&url, "https://www.bilibili.com")
+            .await?;
+
+        if response["code"].as_i64() != Some(0) {
+            return Err(anyhow!(
+                "Bilibili acc/info error: {}",
+                response["message"].as_str().unwrap_or("unknown")
+            ));
+        }
+
+        let data = &response["data"];
+        let mut follower = data["follower"].as_i64().unwrap_or(0);
+        let mut following = data["following"].as_i64().unwrap_or(0);
+
+        // acc/info 已不再稳定返回粉丝/关注，用 relation/stat 补全
+        if follower == 0 && following == 0 {
+            if let Ok((f, g)) = self.fetch_bilibili_relation_stat(uid).await {
+                follower = f;
+                following = g;
+            }
+        }
+
+        Ok(BilibiliUserInfo {
+            mid: data["mid"].as_i64().unwrap_or(uid),
             name: data["name"].as_str().unwrap_or("").to_string(),
             face: data["face"].as_str().unwrap_or("").to_string(),
             sign: data["sign"].as_str().unwrap_or("").to_string(),
             level: data["level"].as_i64().unwrap_or(0) as i32,
-            following: data["following"].as_i64().unwrap_or(0),
-            follower: data["follower"].as_i64().unwrap_or(0),
+            following,
+            follower,
         })
     }
 

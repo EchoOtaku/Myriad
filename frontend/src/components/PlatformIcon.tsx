@@ -11,50 +11,64 @@ import {
   SiPlaystation,
 } from '@lib/icons'
 
-import React from 'react'
+import React, { useMemo } from 'react'
+import { getPlatformBrandColor } from '../utils/platformBrand'
+import { useThemeMode } from '../utils/themeSubscriber'
 
 interface PlatformIconProps {
   platform: string
   className?: string
   style?: React.CSSProperties
+  /** 为 false 时不套品牌色（由外层完全控制 color） */
+  brandColor?: boolean
 }
 
 /**
- * ✅ PlatformIcon 组件 - 已使用 React.memo 优化
- * 只在 props 变化时重新渲染
+ * 平台图标；默认使用对应品牌色（深色主题自动换浅色变体）。
+ * 传入 style.color 或 brandColor={false} 可覆盖。
  */
 const PlatformIcon: React.FC<PlatformIconProps> = React.memo(
-  ({ platform, className = 'w-6 h-6', style }) => {
+  ({ platform, className = 'w-6 h-6', style, brandColor = true }) => {
+    const isDark = useThemeMode()
+    const mergedStyle = useMemo(() => {
+      if (!brandColor) return style
+      if (style?.color) return style
+      return {
+        ...style,
+        color: getPlatformBrandColor(platform, isDark),
+      }
+    }, [brandColor, isDark, platform, style])
+
     switch (platform.toLowerCase()) {
       case 'github':
-        return <FaGithub className={className} style={style} />
+        return <FaGithub className={className} style={mergedStyle} />
       case 'bilibili':
-        return <SiBilibili className={className} style={style} />
+        return <SiBilibili className={className} style={mergedStyle} />
       case 'steam':
-        return <FaSteam className={className} style={style} />
+        return <FaSteam className={className} style={mergedStyle} />
       case 'netease music':
       case 'netease':
       case '网易云音乐':
-        return <SiNeteasecloudmusic className={className} style={style} />
+        return <SiNeteasecloudmusic className={className} style={mergedStyle} />
       case 'bangumi':
-        return <BangumiIcon className={className} style={style} />
+        return <BangumiIcon className={className} style={mergedStyle} />
       case 'mal':
       case 'myanimelist':
-        return <SiMyanimelist className={className} style={style} />
+        return <SiMyanimelist className={className} style={mergedStyle} />
       case 'x':
       case 'twitter':
       case 'x (twitter)':
-        return <FaXTwitter className={className} style={style} />
+        return <FaXTwitter className={className} style={mergedStyle} />
       case 'discord':
-        return <SiDiscord className={className} style={style} />
+        return <SiDiscord className={className} style={mergedStyle} />
       case 'xbox':
-        return <FaXbox className={className} style={style} />
+        return <FaXbox className={className} style={mergedStyle} />
       case 'psn':
       case 'playstation':
-        return <SiPlaystation className={className} style={style} />
+        return <SiPlaystation className={className} style={mergedStyle} />
       default:
         return (
-          <span className={className} style={style}>
+          <span className={className} style={mergedStyle}>
             ?
           </span>
         )

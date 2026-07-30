@@ -12,6 +12,7 @@
  * @version 3.3
  */
 
+import { syncCfgAccentColor } from './cfgAccent'
 import { coverUrlForColorExtract } from './coverUrlForColorExtract'
 import { imagePool, withPooledCanvas } from './objectPool'
 import { wallpaperState } from './wallpaperState'
@@ -793,6 +794,8 @@ export function applyColorPalette(palette: ColorPalette): void {
   root.style.setProperty('--color-accent', palette.accent)
   root.style.setProperty('--color-light', palette.light)
   root.style.setProperty('--color-dark', palette.dark)
+  // 设置强调色：与 Hero adaptive 同源（对比度可读）
+  syncCfgAccentColor()
 }
 
 /**

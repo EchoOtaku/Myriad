@@ -3,7 +3,10 @@
  * 将多个数字输入选项组合为卡片组，共享标签和描述
  */
 
+import type { ReactNode } from 'react'
 import React, { useCallback } from 'react'
+import { guideDomProps } from '../guides/guideAnchor'
+import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 
 import './SettingItem.css'
 
@@ -31,6 +34,10 @@ export interface NumberGroupItemProps {
   label: string
   /** 描述说明 */
   description?: string
+  /** 选项指南 */
+  guide?: ReactNode
+  /** 指南路径（搜索跳转） */
+  guidePath?: string
   /** 提示文本 */
   hint?: string
   /** 选项列表 */
@@ -47,6 +54,8 @@ export const NumberGroupItem = React.memo<NumberGroupItemProps>(
   ({
     label,
     description,
+    guide,
+    guidePath,
     hint,
     options,
     onChange,
@@ -55,25 +64,37 @@ export const NumberGroupItem = React.memo<NumberGroupItemProps>(
   }) => {
     const handleChange = useCallback(
       (key: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!disabled) {
-          const numValue = Number.parseFloat(e.target.value) || 0
-          onChange(key, numValue)
+        if (disabled) return
+        const raw = e.target.value.trim()
+        // Allow empty while typing; commit 0 only when field is cleared on blur-equivalent empty string
+        if (raw === '') {
+          onChange(key, 0)
+          return
         }
+        const numValue = Number.parseFloat(raw)
+        if (Number.isFinite(numValue)) onChange(key, numValue)
       },
       [onChange, disabled],
     )
 
-    const showLabel = Boolean(label) || Boolean(description)
+    const showLabel = Boolean(label) || Boolean(description) || Boolean(guide)
+    const anchorProps = guideDomProps(guidePath)
 
     return (
       <div
-        className={`setting-item setting-vertical ${className} ${disabled ? 'disabled' : ''}`}
+        {...anchorProps}
+        className={`setting-item setting-vertical ${className} ${disabled ? 'disabled' : ''}${guidePath ? ' has-guide-anchor' : ''}`}
       >
         {showLabel && (
           <div className="setting-label">
             {label ? (
-              <span className="setting-label-text">{label}</span>
-            ) : null}
+              <span className="setting-label-text">
+                {label}
+                <SettingTitleGuideEntry title={label} guide={guide} />
+              </span>
+            ) : (
+              <SettingTitleGuideEntry title={label} guide={guide} />
+            )}
             {description && (
               <span className="setting-description">{description}</span>
             )}

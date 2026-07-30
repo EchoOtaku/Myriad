@@ -4,6 +4,8 @@
 
 import type { SwitchSettingConfig } from '../types'
 import React, { useCallback } from 'react'
+import { useI18n } from '../../../contexts/I18nContext'
+import { guideDomProps } from '../guides/guideAnchor'
 import { useSettingsHelp } from '../SettingsHelpContext'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { SettingTitleHelp } from '../SettingTitleHelp'
@@ -18,6 +20,7 @@ export const SwitchItem = React.memo<SwitchItemProps>(
     label,
     detail,
     guide,
+    guidePath,
     description,
     hint,
     value,
@@ -28,9 +31,10 @@ export const SwitchItem = React.memo<SwitchItemProps>(
     layout = 'horizontal',
     className = '',
   }) => {
+    const { t } = useI18n()
     const expandHelp = Boolean(useSettingsHelp()?.showDetails)
     const detailText = detail != null && detail !== '' ? detail : null
-    const guideBody = guide ?? detailText ?? description
+    const anchorProps = guideDomProps(guidePath)
 
     const handleChange = useCallback(
       (checked: boolean) => {
@@ -45,18 +49,24 @@ export const SwitchItem = React.memo<SwitchItemProps>(
 
     return (
       <div
-        className={`setting-item setting-item-switch setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}`}
+        {...anchorProps}
+        className={`setting-item setting-item-switch setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}${guidePath ? ' has-guide-anchor' : ''}`}
       >
         <div className="setting-item-content">
           <label htmlFor={id} className="setting-label">
             <span className="setting-label-text">
               {label}
               {detailText && !expandHelp && (
-                <SettingTitleHelp ariaLabel={`${label} 详细说明`}>
+                <SettingTitleHelp
+                  ariaLabel={t.config.detailHelpAriaNamed.replace(
+                    '{title}',
+                    label,
+                  )}
+                >
                   {detailText}
                 </SettingTitleHelp>
               )}
-              <SettingTitleGuideEntry title={label} guide={guideBody} />
+              <SettingTitleGuideEntry title={label} guide={guide} />
             </span>
             {description && (
               <span className="setting-description">{description}</span>

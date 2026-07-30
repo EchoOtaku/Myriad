@@ -184,7 +184,11 @@ export const SiteUrlField: React.FC<SiteUrlFieldProps> = ({
                       <span
                         className={`site-url-checklist-item-status ${statusClass}`.trim()}
                       >
-                        {item.status}
+                        {item.status === 'auto'
+                          ? t.config.domainStatusAuto
+                          : item.status === 'manual'
+                            ? t.config.domainStatusManual
+                            : item.status}
                       </span>
                       {item.summary ? (
                         <span className="site-url-checklist-item-summary">

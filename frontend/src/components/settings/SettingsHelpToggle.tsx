@@ -22,8 +22,8 @@ export const SettingsHelpToggle: React.FC<SettingsHelpToggleProps> = ({
   className = '',
 }) => {
   const { t } = useI18n()
-  const title = t.config.showHelpDetails ?? '显示说明'
-  const description = t.config.showHelpDetailsDesc ?? '展开详细说明'
+  const title = t.config.showHelpDetails
+  const description = t.config.showHelpDetailsDesc
 
   return (
     <CheckboxCard

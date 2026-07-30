@@ -14,6 +14,8 @@ export interface QuotaGroupProps extends QuotaGroupConfig {}
 export const QuotaGroup: React.FC<QuotaGroupProps> = ({
   title,
   description,
+  guide,
+  guidePath,
   quotas,
   values,
   onChange,
@@ -46,6 +48,8 @@ export const QuotaGroup: React.FC<QuotaGroupProps> = ({
     <NumberGroupItem
       label={title || ''}
       description={description}
+      guide={guide}
+      guidePath={guidePath}
       options={options}
       onChange={handleChange}
       disabled={disabled || loading}

@@ -19,8 +19,6 @@ mod federation;
 #[path = "006_oauth_identities.rs"]
 mod oauth_identities;
 
-
-
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -37,6 +35,7 @@ impl MigratorTrait for Migrator {
             // notification_preferences / presence / is_owner → 001 + ensure_single_owner
             // approved_permissions → 002 CREATE；缺列靠 get_expected_schema 通用补列
             // 默认平台种子：001 + ensure_default_platforms（持续机制，非过期升级路径）
+            // 访客统计：001 SITE ANALYTICS（page / event / referrer / country）
         ]
     }
 }

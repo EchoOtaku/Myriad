@@ -209,6 +209,7 @@ User → Frontend → Backend API → Database Query
 
 - User data stored locally or in controlled environment
 - No third-party analytics by default
+- Optional **first-party** site analytics (settings → Data & stats): pageviews, engagement, custom events; visitor id stays in the browser; server stores path templates + salted hashes only (no raw IP). Admin/owner sessions are excluded. Calendar “today” follows the **server process local clock** (no product-default +8/+9); set host/`TZ` as you like. Prefer `ANALYTICS_SALT` in production. Admins can **export/import** a JSON backup (`GET/POST /api/analytics/export|import`; default import mode replaces all rows in one DB transaction; merge adds counts then recomputes UV/engaged_views from detail tables).
 - Configurable data retention
 
 ### Network Security

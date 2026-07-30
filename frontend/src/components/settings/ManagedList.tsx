@@ -11,13 +11,15 @@
  */
 
 import type { ReactNode } from 'react'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { useI18n } from '../../contexts/I18nContext'
 import { Spinner } from '../Spinner'
 import { SegmentedControl } from './items/ChoiceControls'
 import { InputItem } from './items/InputItem'
 import type { SettingsButtonVariant } from './items/SettingsButton'
 import { SettingsButton } from './items/SettingsButton'
 import { CheckboxCard } from './items/CheckboxCard'
+import { SettingTitleGuideEntry } from './SettingTitleGuideEntry'
 import './ManagedList.css'
 
 /**
@@ -108,6 +110,13 @@ export interface ManagedListStatSwitch {
   icon?: ReactNode
   /** Native tooltip (optional; defaults not set when description is shown) */
   title?: string
+  /**
+   * Structured option guide (modal only).
+   * 「显示说明」开启时标题旁出现入口；不内联、不进 ⓘ tooltip。
+   */
+  guide?: ReactNode
+  /** 指南路径，供配置搜索跳转 */
+  guidePath?: string
 }
 
 export type ManagedListStat = ManagedListStatMetric | ManagedListStatSwitch
@@ -287,6 +296,20 @@ export interface ManagedListProps {
    * (short settings lists). Default scrolls at 18rem.
    */
   maxHeight?: string | number | null
+  /**
+   * Soft page size when the body is height-constrained.
+   * Avoids painting hundreds of empty-looking shells (delivery queue etc.).
+   * Truncation offers “Show more” to grow the window by this size each click.
+   * - `undefined`: auto — `80` when scrolling, unlimited when not
+   * - `null`: never cap
+   * - number: explicit page size
+   */
+  maxVisibleItems?: number | null
+  /**
+   * Footer when the list is truncated.
+   * Receives (shown, total). Default: i18n `config.managedListShowing`.
+   */
+  truncateFooter?: (shown: number, total: number) => ReactNode
   className?: string
   /** Optional footer (e.g. “showing N of M”). */
   footer?: ReactNode
@@ -361,10 +384,10 @@ export const ManagedList = React.memo(function ManagedList({
   search,
   filters,
   filterGroups,
-  queryToggleLabel = 'Search & filter',
+  queryToggleLabel: queryToggleLabelProp,
   queryToggleDescription,
   queryToggleIcon,
-  queryCollapseLabel = 'Done',
+  queryCollapseLabel: queryCollapseLabelProp,
   queryCollapseDescription,
   queryCollapseIcon,
   queryDefaultOpen = false,
@@ -379,7 +402,7 @@ export const ManagedList = React.memo(function ManagedList({
   formDescription,
   formIcon,
   formOpenTitle,
-  formCollapseLabel = 'Cancel',
+  formCollapseLabel: formCollapseLabelProp,
   formCollapseDescription,
   formCollapseIcon,
   formDefaultOpen = false,
@@ -390,9 +413,18 @@ export const ManagedList = React.memo(function ManagedList({
   loading = false,
   working = false,
   maxHeight = '18rem',
+  maxVisibleItems,
+  truncateFooter,
   className = '',
   footer,
 }: ManagedListProps) {
+  const { t } = useI18n()
+  const queryToggleLabel =
+    queryToggleLabelProp ?? t.config.managedListSearchFilter
+  const queryCollapseLabel =
+    queryCollapseLabelProp ?? t.config.managedListQueryDone
+  const formCollapseLabel =
+    formCollapseLabelProp ?? t.config.managedListFormCancel
   const constrain =
     maxHeight != null && maxHeight !== 'none' && maxHeight !== ''
   const heightStyle = constrain
@@ -400,6 +432,74 @@ export const ManagedList = React.memo(function ManagedList({
       ? `${maxHeight}px`
       : String(maxHeight)
     : undefined
+
+  /**
+   * Page size for scroll bodies; uncapped lists stay unlimited.
+   * “Show more” multiplies this window without remounting the list.
+   */
+  const pageSize = useMemo(() => {
+    if (maxVisibleItems === undefined) return constrain ? 80 : null
+    return maxVisibleItems
+  }, [maxVisibleItems, constrain])
+
+  const totalCount = items.length
+  /** How many pages of `pageSize` are currently visible (1-based growth). */
+  const [visiblePages, setVisiblePages] = useState(1)
+
+  // Reset only when list size / page size changes — not on every new array ref.
+  useEffect(() => {
+    setVisiblePages(1)
+  }, [totalCount, pageSize])
+
+  const softCap =
+    pageSize == null ? null : Math.min(totalCount, pageSize * visiblePages)
+
+  const visibleItems = useMemo(() => {
+    if (softCap == null || totalCount <= softCap) return items
+    return items.slice(0, softCap)
+  }, [items, softCap, totalCount])
+
+  const isTruncated = softCap != null && softCap < totalCount
+  const canShowMore = isTruncated
+
+  const truncateNote =
+    pageSize != null && totalCount > pageSize
+      ? truncateFooter
+        ? truncateFooter(visibleItems.length, totalCount)
+        : t.config.managedListShowing
+            .replace('{shown}', String(visibleItems.length))
+            .replace('{total}', String(totalCount))
+      : null
+
+  const handleShowMore = useCallback(() => {
+    setVisiblePages((p) => p + 1)
+  }, [])
+
+  const resolvedFooter =
+    footer != null || truncateNote != null || canShowMore ? (
+      <>
+        {footer != null ? <div>{footer}</div> : null}
+        {truncateNote != null || canShowMore ? (
+          <div className="managed-list-footer-truncate">
+            {truncateNote != null ? (
+              <span className="managed-list-footer-truncate-text">
+                {truncateNote}
+              </span>
+            ) : null}
+            {canShowMore ? (
+              <SettingsButton
+                variant="ghost"
+                size="sm"
+                className="managed-list-show-more"
+                onClick={handleShowMore}
+              >
+                {t.config.managedListShowMore}
+              </SettingsButton>
+            ) : null}
+          </div>
+        ) : null}
+      </>
+    ) : null
 
   const resolvedFilterGroups = useMemo(() => {
     if (filterGroups && filterGroups.length > 0) return filterGroups
@@ -448,7 +548,9 @@ export const ManagedList = React.memo(function ManagedList({
   )
 
   const expandLabel =
-    formTitle != null && formTitle !== '' ? formTitle : 'Add'
+    formTitle != null && formTitle !== ''
+      ? formTitle
+      : t.config.managedListFormAdd
   const openHeading =
     formOpenTitle != null && formOpenTitle !== ''
       ? formOpenTitle
@@ -469,7 +571,9 @@ export const ManagedList = React.memo(function ManagedList({
         className="managed-list-form"
         role="group"
         aria-label={
-          typeof expandLabel === 'string' ? expandLabel : 'Add form'
+          typeof expandLabel === 'string'
+            ? expandLabel
+            : t.config.managedListFormAdd
         }
       >
         {/* Collapse stays on the top chip strip — no second cancel here */}
@@ -493,7 +597,9 @@ export const ManagedList = React.memo(function ManagedList({
           .join(' ')}
         role="search"
         aria-label={
-          typeof queryToggleLabel === 'string' ? queryToggleLabel : 'Search'
+          typeof queryToggleLabel === 'string'
+            ? queryToggleLabel
+            : t.config.managedListSearchFilter
         }
       >
         {/* Collapse stays on the top chip strip — title-only when panel chrome */}
@@ -511,7 +617,11 @@ export const ManagedList = React.memo(function ManagedList({
           <div className="managed-list-search">
             <InputItem
               itemKey="managed-list-search"
-              label={search.ariaLabel ?? search.placeholder ?? 'Search'}
+              label={
+                search.ariaLabel ??
+                search.placeholder ??
+                t.common.search
+              }
               value={search.value}
               onChange={search.onChange}
               placeholder={search.placeholder}
@@ -531,7 +641,9 @@ export const ManagedList = React.memo(function ManagedList({
                   key={group.ariaLabel ?? `filter-group-${gi}`}
                   size="sm"
                   className="managed-list-filters"
-                  ariaLabel={group.ariaLabel ?? 'Filter'}
+                  ariaLabel={
+                    group.ariaLabel ?? t.config.managedListFilterAria
+                  }
                   value={group.value}
                   options={group.options.map((opt) => ({
                     value: opt.key,
@@ -553,16 +665,16 @@ export const ManagedList = React.memo(function ManagedList({
       style={heightStyle ? { maxHeight: heightStyle } : undefined}
       role="list"
     >
-      {loading && items.length === 0 ? (
+      {loading && totalCount === 0 ? (
         <div className="managed-list-empty" role="status">
           <Spinner size="sm" color="primary" />
         </div>
-      ) : items.length === 0 ? (
+      ) : totalCount === 0 ? (
         <div className="managed-list-empty" role="status">
           {emptyText}
         </div>
       ) : (
-        items.map((item) => {
+        visibleItems.map((item) => {
           const hasActions = !!(item.actions && item.actions.length > 0)
           const hasTrailing = item.trailing != null
           const canExpand = item.expandContent != null
@@ -672,7 +784,7 @@ export const ManagedList = React.memo(function ManagedList({
 
   return (
     <div
-      className={`managed-list${working ? ' is-working' : ''}${className ? ` ${className}` : ''}${queryChrome === 'plain' ? ' has-query-plain' : ''}`}
+      className={`managed-list${working ? ' is-working' : ''}${className ? ` ${className}` : ''}`}
     >
       {/*
         Unified top chip strip (one region, equal height):
@@ -684,7 +796,7 @@ export const ManagedList = React.memo(function ManagedList({
           <div
             className="managed-list-stats"
             role="group"
-            aria-label="stats"
+            aria-label={t.config.managedListStatsAria}
           >
             {/* 1. Numeric metrics */}
             {stats
@@ -705,26 +817,52 @@ export const ManagedList = React.memo(function ManagedList({
               <div
                 className="managed-list-chip-actions"
                 role="toolbar"
-                aria-label="list actions"
+                aria-label={t.config.managedListActionsAria}
               >
                 {stats
                   ?.filter(
                     (s): s is ManagedListStatSwitch => s.kind === 'switch',
                   )
-                  .map((s) => (
-                    <CheckboxCard
-                      key={s.key}
-                      size="sm"
-                      label={s.label}
-                      description={s.description}
-                      icon={s.icon}
-                      checked={s.checked}
-                      onChange={s.onChange}
-                      disabled={s.disabled}
-                      loading={s.loading}
-                      title={s.title}
-                    />
-                  ))}
+                  .map((s) => {
+                    const labelNode =
+                      s.guide != null && s.guide !== false && s.guide !== '' ? (
+                        <>
+                          {s.label}
+                          <SettingTitleGuideEntry
+                            title={String(s.label)}
+                            guide={s.guide}
+                          />
+                        </>
+                      ) : (
+                        s.label
+                      )
+                    const card = (
+                      <CheckboxCard
+                        size="sm"
+                        label={labelNode}
+                        description={s.description}
+                        icon={s.icon}
+                        checked={s.checked}
+                        onChange={s.onChange}
+                        disabled={s.disabled}
+                        loading={s.loading}
+                        title={s.title}
+                      />
+                    )
+                    if (!s.guidePath) {
+                      return <React.Fragment key={s.key}>{card}</React.Fragment>
+                    }
+                    return (
+                      <span
+                        key={s.key}
+                        id={`cfg-g-${s.guidePath.replace(/\./g, '-')}`}
+                        data-guide-path={s.guidePath}
+                        className="has-guide-anchor managed-list-guide-anchor"
+                      >
+                        {card}
+                      </span>
+                    )
+                  })}
                 {showQueryChip && (
                   <ChromeCard
                     label={
@@ -753,7 +891,7 @@ export const ManagedList = React.memo(function ManagedList({
                           ? queryToggleDescription
                           : queryActive &&
                               typeof queryToggleLabel === 'string'
-                            ? `${queryToggleLabel} · active`
+                            ? `${queryToggleLabel} · ${t.config.managedListQueryActive}`
                             : undefined
                     }
                   />
@@ -802,7 +940,9 @@ export const ManagedList = React.memo(function ManagedList({
         </>
       )}
 
-      {footer != null && <div className="managed-list-footer">{footer}</div>}
+      {resolvedFooter != null && (
+        <div className="managed-list-footer">{resolvedFooter}</div>
+      )}
     </div>
   )
 })

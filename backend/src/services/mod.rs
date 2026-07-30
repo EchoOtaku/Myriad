@@ -20,6 +20,7 @@ pub mod oauth; // 🔐 OAuth Provider 抽象（GitHub / OIDC / ...）
 pub mod outbound_security; // 🔒 Outbound URL validation, DNS pinning, and redirect policy
 pub mod permission_service; // ✅ 权限服务（细粒度权限配置）
 pub mod platform_auto_refresh; // Core 平台自动刷新任务（复用 Tapp 调度引擎）
+pub mod server_location; // 🌍 服务器出口位置双源直连审查
 pub mod smart_filter; // ✅ 智能内容过滤器（新版，使用数据库）
 pub mod spoof_utils; // ✅ 请求伪装工具（区域IP/UA伪装，绕过地区限制）
 pub mod tapp_api_service; // ✅ Tapp API 声明执行服务（public/protected 两级权限）

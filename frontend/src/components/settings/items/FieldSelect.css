@@ -64,6 +64,7 @@ html.dark .field-select-trigger:hover .field-select-chevron {
 .field-select-menu {
   position: absolute;
   top: calc(100% + 0.3rem);
+  bottom: auto;
   left: 0;
   right: 0;
   z-index: 50;
@@ -82,6 +83,12 @@ html.dark .field-select-trigger:hover .field-select-chevron {
 
   /* 浮层出现走动效系统统一的 sm-pop-in */
   animation: sm-pop-in var(--sm-dur-base) var(--sm-ease-enter) backwards;
+}
+
+/* 下方空间不足时向上展开 */
+.field-select-wrap.is-up .field-select-menu {
+  top: auto;
+  bottom: calc(100% + 0.3rem);
 }
 
 html.dark .field-select-menu {
@@ -113,13 +120,13 @@ html.dark .field-select-menu {
 .field-select-option:hover:not(:disabled),
 .field-select-option:focus-visible:not(:disabled) {
   outline: none;
-  background: color-mix(in srgb, var(--color-primary, #6366f1) 10%, transparent);
+  background: color-mix(in srgb, var(--cfg-accent, #6366f1) 10%, transparent);
   color: var(--cfg-text-1);
 }
 
 .field-select-option.is-selected {
-  background: color-mix(in srgb, var(--color-primary, #6366f1) 14%, transparent);
-  color: color-mix(in srgb, var(--color-primary) 80%, var(--cfg-text-1));
+  background: color-mix(in srgb, var(--cfg-accent, #6366f1) 14%, transparent);
+  color: color-mix(in srgb, var(--cfg-accent) 80%, var(--cfg-text-1));
   font-weight: 600;
 }
 
@@ -134,13 +141,13 @@ html.dark .field-select-option {
 
 html.dark .field-select-option:hover:not(:disabled),
 html.dark .field-select-option:focus-visible:not(:disabled) {
-  background: color-mix(in srgb, var(--color-primary, #818cf8) 16%, transparent);
+  background: color-mix(in srgb, var(--cfg-accent, #818cf8) 16%, transparent);
   color: var(--cfg-text-1);
 }
 
 html.dark .field-select-option.is-selected {
-  background: color-mix(in srgb, var(--color-primary, #818cf8) 22%, transparent);
-  color: color-mix(in srgb, var(--color-primary, #93c5fd) 70%, var(--cfg-text-1));
+  background: color-mix(in srgb, var(--cfg-accent, #818cf8) 22%, transparent);
+  color: color-mix(in srgb, var(--cfg-accent, #93c5fd) 70%, var(--cfg-text-1));
 }
 
 /* 行内紧凑（联邦实例列表等） */

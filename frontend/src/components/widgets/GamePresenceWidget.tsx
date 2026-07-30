@@ -878,10 +878,11 @@ const GamePresenceWidget = memo(
 
             {showcase.length > 0 ? (
               <>
-                {/* 待播队列：与顶部对齐 */}
+                {/* 待播队列：与顶部对齐。
+                   水平/垂直各留出余量，避免选中 scale(1.1) 时被 overflow 裁掉边缘 */}
                 <div
                   ref={queueRef}
-                  className="scrollbar-hide w-full flex items-center gap-2 overflow-x-auto px-0.5 py-1 shrink-0"
+                  className="scrollbar-hide w-full flex items-center gap-2 overflow-x-auto px-1.5 py-1.5 shrink-0"
                 >
                   {showcase.map((s, i) => (
                     <button

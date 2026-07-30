@@ -194,6 +194,30 @@ pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
             record.count
         };
         (record_count <= 10, 60)
+    } else if path.starts_with("/api/analytics/collect")
+        || path.starts_with("/api/analytics/pageview")
+    {
+        // First-party beacons: allow healthy SPA batching, blunt spam floods.
+        // Per-path key still separates collect vs pageview.
+        let record_count = {
+            let mut records = RATE_LIMITER.records.write().await;
+            let now = std::time::Instant::now();
+            let ip_records = records.entry(ip).or_insert_with(HashMap::new);
+            let record = ip_records
+                .entry("analytics_write".to_string())
+                .or_insert(RequestRecord {
+                    count: 0,
+                    window_start: now,
+                });
+            if now.duration_since(record.window_start) > Duration::from_secs(60) {
+                record.count = 1;
+                record.window_start = now;
+            } else {
+                record.count += 1;
+            }
+            record.count
+        };
+        (record_count <= 40, 60)
     } else {
         // 标准端点：使用默认配置（100次/分钟）
         let allowed = RATE_LIMITER.check_limit(ip, &path).await;

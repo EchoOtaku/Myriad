@@ -560,11 +560,107 @@ CREATE INDEX IF NOT EXISTS idx_activity_events_platform_date
             )
             .await?;
 
+        // ==================== 8. SITE ANALYTICS 表 ====================
+        // 第一方访客统计（page / event / referrer / country）
+        // 与 schema_check::get_expected_schema + ensure_analytics_tables 同结构。
+        // 已跑过旧 001 的库不会重跑本段，靠 ensure_analytics_tables / 补列对齐。
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+CREATE TABLE IF NOT EXISTS analytics_page_daily (
+    day DATE NOT NULL,
+    path TEXT NOT NULL,
+    views BIGINT NOT NULL DEFAULT 0,
+    unique_visitors BIGINT NOT NULL DEFAULT 0,
+    engagement_ms BIGINT NOT NULL DEFAULT 0,
+    engaged_views BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, path)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_page_daily_day
+    ON analytics_page_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_visitor_seen (
+    day DATE NOT NULL,
+    path TEXT NOT NULL,
+    visitor_hash VARCHAR(64) NOT NULL,
+    PRIMARY KEY (day, path, visitor_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_visitor_seen_day
+    ON analytics_visitor_seen (day);
+
+CREATE TABLE IF NOT EXISTS analytics_event_daily (
+    day DATE NOT NULL,
+    event_name TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '',
+    count BIGINT NOT NULL DEFAULT 0,
+    unique_visitors BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, event_name, path)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_event_daily_day
+    ON analytics_event_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_event_visitor (
+    day DATE NOT NULL,
+    event_name TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '',
+    visitor_hash VARCHAR(64) NOT NULL,
+    PRIMARY KEY (day, event_name, path, visitor_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_event_visitor_day
+    ON analytics_event_visitor (day);
+
+CREATE TABLE IF NOT EXISTS analytics_referrer_daily (
+    day DATE NOT NULL,
+    host TEXT NOT NULL,
+    count BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, host)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_referrer_daily_day
+    ON analytics_referrer_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_country_daily (
+    day DATE NOT NULL,
+    country_code VARCHAR(8) NOT NULL,
+    country_name TEXT NOT NULL DEFAULT '',
+    views BIGINT NOT NULL DEFAULT 0,
+    unique_visitors BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, country_code)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_country_daily_day
+    ON analytics_country_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_country_visitor (
+    day DATE NOT NULL,
+    country_code VARCHAR(8) NOT NULL,
+    visitor_hash VARCHAR(64) NOT NULL,
+    PRIMARY KEY (day, country_code, visitor_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_country_visitor_day
+    ON analytics_country_visitor (day);
+"#,
+            )
+            .await?;
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // 删除所有表（按依赖顺序反向）
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+DROP TABLE IF EXISTS analytics_country_visitor;
+DROP TABLE IF EXISTS analytics_country_daily;
+DROP TABLE IF EXISTS analytics_referrer_daily;
+DROP TABLE IF EXISTS analytics_event_visitor;
+DROP TABLE IF EXISTS analytics_event_daily;
+DROP TABLE IF EXISTS analytics_visitor_seen;
+DROP TABLE IF EXISTS analytics_page_daily;
+"#,
+            )
+            .await?;
         manager
             .drop_table(Table::drop().table(PlatformReports::Table).to_owned())
             .await?;

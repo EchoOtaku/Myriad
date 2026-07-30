@@ -8,7 +8,9 @@ import React from 'react'
 import {
   FieldSelect,
   SettingsButton,
+  SettingTitleGuideEntry,
   ToggleSwitch,
+  useSettingGuide,
 } from '../../settings'
 import { Spinner } from '../../Spinner'
 import {
@@ -424,6 +426,18 @@ export function AutoUpdatePrefs({
     auto_install?: boolean
   }) => Promise<void>
 }) {
+  const { catalog: g, bindGuide } = useSettingGuide()
+  const checkIntervalBinding = bindGuide(
+    'updater.checkInterval',
+    g.updater.checkInterval,
+  )
+  const autoInstallBinding = bindGuide(
+    'updater.autoInstall',
+    g.updater.autoInstall,
+  )
+  const checkIntervalGuide = checkIntervalBinding.guide
+  const autoInstallGuide = autoInstallBinding.guide
+
   const effectiveInterval = status?.check_interval_secs ?? 3600
   const known = INTERVAL_OPTIONS.some((o) => o.value === effectiveInterval)
   const intervalValue = known ? effectiveInterval : 3600
@@ -437,9 +451,19 @@ export function AutoUpdatePrefs({
     <div className="updater-hero-auto">
       <div className="updater-auto-prefs">
         {/* 频率行用 div：自定义下拉不能包在 label 里，否则会误触 */}
-        <div className="updater-auto-row updater-auto-frequency">
+        <div
+          id="cfg-g-updater-checkInterval"
+          data-guide-path="updater.checkInterval"
+          className="updater-auto-row updater-auto-frequency has-guide-anchor"
+        >
           <span className="updater-auto-label">
-            <span className="updater-auto-title">{u.updaterCheckInterval}</span>
+            <span className="updater-auto-title">
+              {u.updaterCheckInterval}
+              <SettingTitleGuideEntry
+                title={u.updaterCheckInterval}
+                guide={checkIntervalGuide}
+              />
+            </span>
             <span className="updater-auto-desc">
               {u.updaterCheckIntervalDesc}
             </span>
@@ -456,7 +480,9 @@ export function AutoUpdatePrefs({
           />
         </div>
         <div
-          className="updater-auto-row updater-auto-install"
+          id="cfg-g-updater-autoInstall"
+          data-guide-path="updater.autoInstall"
+          className="updater-auto-row updater-auto-install has-guide-anchor"
           role="presentation"
           onClick={() => {
             if (disabled || !status) return
@@ -464,7 +490,13 @@ export function AutoUpdatePrefs({
           }}
         >
           <span className="updater-auto-label">
-            <span className="updater-auto-title">{u.updaterAutoInstall}</span>
+            <span className="updater-auto-title">
+              {u.updaterAutoInstall}
+              <SettingTitleGuideEntry
+                title={u.updaterAutoInstall}
+                guide={autoInstallGuide}
+              />
+            </span>
             <span className="updater-auto-desc">
               {u.updaterAutoInstallDesc}
             </span>

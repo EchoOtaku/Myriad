@@ -373,13 +373,19 @@ html.dark .sm-pane[data-nav] .platform-card {
 
 /* ==========================================
    折叠区域（CollapseRegion 消费）
-   grid-template-rows 0fr→1fr 是唯一不需要测高的高度动画；
-   展开结束后必须把 overflow 放开，否则组内下拉菜单会被裁掉。
+   grid-template-rows 0fr→1fr：无需测高的高度动画。
+   外部间距由 SettingGroup 固定，不在此改 margin。
+   展开落定后放开 overflow，否则组内下拉 / 气泡被裁。
    ========================================== */
 
 .sm-collapse {
   display: grid;
   grid-template-rows: 0fr;
+  /* 不吃 flex/grid 父级 free space（1fr 轨会跟着长高） */
+  flex: 0 0 auto;
+  align-self: start;
+  width: 100%;
+  min-width: 0;
   opacity: 0;
   transition:
     grid-template-rows var(--sm-dur-slow) var(--sm-ease-standard),
@@ -392,8 +398,14 @@ html.dark .sm-pane[data-nav] .platform-card {
   opacity: 1;
 }
 
+/* 未落定前不接收点击，避免半露控件幽灵命中 */
+.sm-collapse:not([data-state='open']) {
+  pointer-events: none;
+}
+
 .sm-collapse-inner {
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 

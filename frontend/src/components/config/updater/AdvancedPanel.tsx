@@ -9,6 +9,8 @@ import {
   InputItem,
   SegmentedControl,
   SettingsButton,
+  SettingTitleGuideEntry,
+  useSettingGuide,
 } from '../../settings'
 import type { U } from './helpers'
 
@@ -33,6 +35,12 @@ export function AdvancedPanel({
   onTokenChange: (s: string) => void
   onRefresh: () => void
 }) {
+  const { catalog: g, bindGuide } = useSettingGuide()
+  const transportBinding = bindGuide('updater.transport', g.updater.transport)
+  const tokenBinding = bindGuide('updater.token', g.updater.token)
+  const transportGuide = transportBinding.guide
+  const tokenGuide = tokenBinding.guide
+
   return (
     <>
       <dl className="updater-detail-grid">
@@ -62,9 +70,17 @@ export function AdvancedPanel({
         </details>
       )}
 
-      <div className="updater-transport">
+      <div
+        id="cfg-g-updater-transport"
+        data-guide-path="updater.transport"
+        className="updater-transport has-guide-anchor"
+      >
         <div className="updater-transport-label" id="updater-transport-label">
           {u.updaterTransport}
+          <SettingTitleGuideEntry
+            title={u.updaterTransport}
+            guide={transportGuide}
+          />
         </div>
         <SegmentedControl
           size="sm"
@@ -93,6 +109,8 @@ export function AdvancedPanel({
               layout="vertical"
               size="sm"
               className="updater-token-input-item"
+              guide={tokenGuide}
+              guidePath="updater.token"
             />
           </>
         )}

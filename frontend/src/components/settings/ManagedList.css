@@ -39,6 +39,14 @@
   min-width: 0;
 }
 
+/* Guide-path span is a flex item — hug the card, do not grow */
+.managed-list-chip-actions > .managed-list-guide-anchor {
+  display: flex;
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .managed-list-stats:has(> .managed-list-stat) > .managed-list-chip-actions {
   margin-inline-start: 0.2rem;
   padding-inline-start: 0.45rem;
@@ -95,16 +103,16 @@ html.dark .managed-list-stat-label {
 }
 
 .managed-list-stat--active {
-  border-color: rgb(59 130 246 / 28%);
-  background: rgb(59 130 246 / 8%);
+  border-color: color-mix(in srgb, var(--cfg-accent) 28%, transparent);
+  background: color-mix(in srgb, var(--cfg-accent) 8%, transparent);
 }
 
 .managed-list-stat--active .managed-list-stat-value {
-  color: #1d4ed8;
+  color: var(--cfg-accent);
 }
 
 html.dark .managed-list-stat--active .managed-list-stat-value {
-  color: #93c5fd;
+  color: var(--cfg-accent);
 }
 
 .managed-list-stat--success {
@@ -180,7 +188,8 @@ html.dark .managed-list-stat--danger .managed-list-stat-value {
   padding: var(--managed-list-chip-pad-y) var(--managed-list-chip-pad-x);
   border-radius: var(--managed-list-chip-radius);
   box-sizing: border-box;
-  justify-content: center;
+  /* Top-align text stacks so title/desc baselines match across chips */
+  justify-content: flex-start;
 }
 
 .managed-list-chip-actions > .settings-btn,
@@ -198,15 +207,6 @@ html.dark .managed-list-stat--danger .managed-list-stat-value {
   padding-bottom: var(--managed-list-chip-pad-y);
   border-radius: var(--managed-list-chip-radius);
   box-sizing: border-box;
-}
-
-/* Legacy class used in form/query panel headers */
-.managed-list-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 0.4rem;
-  min-width: 0;
 }
 
 .managed-list-form-header .checkbox-group-card,
@@ -237,7 +237,7 @@ html.dark .managed-list-stat--danger .managed-list-stat-value {
 
 .managed-list-query-active-badge {
   margin-left: 0.25rem;
-  color: var(--color-primary, #3b82f6);
+  color: var(--cfg-accent, #3b82f6);
   font-weight: 700;
 }
 
@@ -422,21 +422,36 @@ html.dark .managed-list-form-title {
 .managed-list-body {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.45rem;
+  min-width: 0;
   min-height: 2.5rem;
-  padding: 0.15rem 0.1rem 0.15rem 0;
+  padding: 0.15rem 0.15rem 0.2rem 0;
   margin: 0;
   border-radius: 0.75rem;
+  /* 子行不得被外层 flex 压扁成「空心白线」 */
+  align-items: stretch;
 }
 
 .managed-list-body.is-scroll {
+  overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  /* 只限高，不强制铺满；避免子项被均分高度 */
+  flex: 0 1 auto;
+}
+
+.managed-list-body > .managed-list-row {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 2.85rem;
 }
 
 .managed-list-empty {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex: 0 0 auto;
   min-height: 4.5rem;
   padding: 1rem;
   border-radius: 0.75rem;
@@ -464,20 +479,23 @@ html.dark .managed-list-empty {
     border-color var(--sm-dur-fast) var(--sm-ease-standard),
     background var(--sm-dur-fast) var(--sm-ease-standard);
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .managed-list-row-head {
   display: flex;
   flex-wrap: nowrap;
-  align-items: stretch;
+  align-items: center;
   justify-content: space-between;
   gap: 0;
   min-width: 0;
+  min-height: 2.85rem;
   padding: 0;
+  box-sizing: border-box;
 }
 
 .managed-list-row.is-expanded {
-  border-color: color-mix(in srgb, var(--color-primary, #3b82f6) 28%, transparent);
+  border-color: color-mix(in srgb, var(--cfg-accent, #3b82f6) 28%, transparent);
 }
 
 /* Full-row expand hit: avatar + title/meta (not action buttons) */
@@ -489,6 +507,7 @@ html.dark .managed-list-empty {
   gap: 0.55rem 0.75rem;
   flex: 1 1 auto;
   min-width: 0;
+  min-height: 2.85rem;
   margin: 0;
   padding: 0.65rem 0.75rem;
   border: none;
@@ -498,6 +517,7 @@ html.dark .managed-list-empty {
   font: inherit;
   text-align: left;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .managed-list-row-hit:hover {
@@ -511,7 +531,7 @@ html.dark .managed-list-row-hit:hover {
 .managed-list-row-hit:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px
-    color-mix(in srgb, var(--color-primary, #3b82f6) 40%, transparent);
+    color-mix(in srgb, var(--cfg-accent, #3b82f6) 40%, transparent);
 }
 
 /* Non-expandable rows keep padded head content */
@@ -519,6 +539,7 @@ html.dark .managed-list-row-hit:hover {
   padding: 0.65rem 0.75rem;
   gap: 0.55rem 0.75rem;
   align-items: center;
+  min-height: 2.85rem;
 }
 
 .managed-list-row-leading {
@@ -568,9 +589,11 @@ html.dark .managed-list-row-detail {
 
 .managed-list-row-main {
   min-width: 0;
+  min-height: 1.35rem;
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 0.2rem;
   pointer-events: none; /* whole hit button owns the click */
 }
@@ -645,6 +668,7 @@ html.dark .managed-list-row:hover {
 .managed-list-row-title {
   font-size: 0.8125rem;
   font-weight: 600;
+  line-height: 1.35;
   color: var(--cfg-text-1);
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -727,14 +751,15 @@ html.dark .managed-list-badge {
 }
 
 .managed-list-badge--active {
-  background: rgb(59 130 246 / 14%);
-  color: #1d4ed8;
-  border-color: rgb(59 130 246 / 20%);
+  background: color-mix(in srgb, var(--cfg-accent) 14%, transparent);
+  color: var(--cfg-accent);
+  border-color: color-mix(in srgb, var(--cfg-accent) 22%, transparent);
 }
 
 html.dark .managed-list-badge--active {
-  background: rgb(59 130 246 / 22%);
-  color: #bfdbfe;
+  background: color-mix(in srgb, var(--cfg-accent) 20%, transparent);
+  color: var(--cfg-accent);
+  border-color: color-mix(in srgb, var(--cfg-accent) 28%, transparent);
 }
 
 .managed-list-badge--success {
@@ -784,13 +809,37 @@ html.dark .managed-list-badge--muted {
 /* Action buttons: SettingsButton size="sm". Toggle chips: CheckboxCard size="sm". */
 
 .managed-list-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
   font-size: 0.72rem;
   color: var(--cfg-text-3);
   padding: 0 0.15rem;
 }
 
+.managed-list-footer-truncate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.65rem;
+  font-weight: 550;
+  color: var(--cfg-text-2);
+}
+
+.managed-list-footer-truncate-text {
+  min-width: 0;
+}
+
+.managed-list-show-more {
+  margin: 0;
+}
+
 html.dark .managed-list-footer {
   color: var(--cfg-text-3);
+}
+
+html.dark .managed-list-footer-truncate {
+  color: var(--cfg-text-2);
 }
 
 /* Domain-specific helpers used inside row title/subtitle slots */

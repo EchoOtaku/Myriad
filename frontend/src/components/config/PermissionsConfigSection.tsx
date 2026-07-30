@@ -13,6 +13,7 @@ import {
   QuotaGroup,
   SegmentedControl,
   SettingGroup,
+  SettingGroupGrid,
   SettingSection,
   useSettingGuide,
 } from '../settings'
@@ -161,7 +162,7 @@ export const PermissionsConfigSection: React.FC<
   sectionId,
 }) => {
   const { t } = useI18n()
-  const { catalog: g, renderGuide } = useSettingGuide()
+  const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
 
   // 定义权限项列表。要求持久登录主体的注册类能力不向游客展示。
   const permissionItems: PermissionItem[] = [
@@ -263,7 +264,7 @@ export const PermissionsConfigSection: React.FC<
       hint: t.config.aiCooldownSecondsHint,
       min: 0,
       max: 3600,
-      unit: '秒',
+      unit: t.config.unitSeconds,
     },
   ]
 
@@ -377,55 +378,47 @@ export const PermissionsConfigSection: React.FC<
       description={description}
       sectionId={sectionId}
     >
-      {/* 1. Arael Agent 预设 */}
+      {/* 1. Arael Agent 预设 — 与模块可见性同构：外层 Group + 内层 Grid 卡 */}
       <SettingGroup
         title={t.config.agentPresetTitle}
         description={t.config.agentPresetDesc}
-        guide={renderGuide(g.permissions.agentPreset)}
+        {...bindGuide('permissions.agentPreset', g.permissions.agentPreset)}
         icon={<MyriadConfigIcon kind="agent" />}
       >
-        <div className="agent-preset-grid">
-          <div className="agent-preset-card">
-            <div className="agent-preset-card-head">
-              <span className="agent-preset-card-title">
-                {t.config.agentUsageUser}
-              </span>
-              <span className="agent-preset-card-badge">
-                {presetLabels[userPreset]}
-              </span>
-            </div>
-            <p className="agent-preset-card-hint">
-              {t.config.agentPresetUserHint}
-            </p>
+        <SettingGroupGrid
+          columns={2}
+          variant="card"
+          align="stretch"
+          minColumnWidth="16rem"
+          className="agent-preset-grid"
+          ariaLabel={t.config.agentPresetTitle}
+        >
+          <SettingGroup
+            title={t.config.agentUsageUser}
+            description={t.config.agentPresetUserHint}
+          >
             {renderPresetButtons('user', userPreset)}
-          </div>
-          <div className="agent-preset-card">
-            <div className="agent-preset-card-head">
-              <span className="agent-preset-card-title">
-                {t.config.agentUsageGuest}
-              </span>
-              <span className="agent-preset-card-badge">
-                {presetLabels[guestPreset]}
-              </span>
-            </div>
-            <p className="agent-preset-card-hint">
-              {t.config.agentPresetGuestHint}
-            </p>
+          </SettingGroup>
+          <SettingGroup
+            title={t.config.agentUsageGuest}
+            description={t.config.agentPresetGuestHint}
+          >
             {renderPresetButtons('guest', guestPreset)}
-          </div>
-        </div>
+          </SettingGroup>
+        </SettingGroupGrid>
       </SettingGroup>
 
       {/* 2. 权限细调（预设后的逐项 elevated）— 线框图标，非彩绘 */}
       <SettingGroup
         title={t.config.agentFineTuneTitle}
         description={t.config.agentFineTuneDesc}
-        guide={renderGuide(g.permissions.fineTune)}
+        {...bindGuide('permissions.fineTune', g.permissions.fineTune)}
         icon={<FaSlidersH aria-hidden />}
       >
         <PermissionGroup
           title={t.config.userElevatedPermissions}
           description={t.config.userElevatedPermissionsDesc}
+          {...bindGuide('permissions.userElevated', g.permissions.userElevated)}
           permissions={permissionItems}
           values={getUserPermValues()}
           onChange={(key, value) =>
@@ -436,6 +429,7 @@ export const PermissionsConfigSection: React.FC<
         <PermissionGroup
           title={t.config.guestElevatedPermissions}
           description={t.config.guestElevatedPermissionsDesc}
+          {...bindGuide('permissions.guestElevated', g.permissions.guestElevated)}
           permissions={guestPermissionItems}
           values={getGuestPermValues()}
           onChange={(key, value) =>
@@ -449,12 +443,13 @@ export const PermissionsConfigSection: React.FC<
       <SettingGroup
         title={t.config.aiQuotaTitle}
         description={t.config.aiQuotaDesc}
-        guide={renderGuide(g.permissions.aiQuota)}
+        {...bindGuide('permissions.aiQuota', g.permissions.aiQuota)}
         icon={<LuSparkles aria-hidden />}
       >
         <QuotaGroup
           title={t.config.userAiQuota}
           description={t.config.userAiQuotaDesc}
+          {...bindGuide('permissions.userQuota', g.permissions.userQuota)}
           quotas={quotaItems}
           values={getUserQuotaValues()}
           onChange={(key, value) =>
@@ -465,6 +460,7 @@ export const PermissionsConfigSection: React.FC<
         <QuotaGroup
           title={t.config.guestAiQuota}
           description={t.config.guestAiQuotaDesc}
+          {...bindGuide('permissions.guestQuota', g.permissions.guestQuota)}
           quotas={quotaItems}
           values={getGuestQuotaValues()}
           onChange={(key, value) =>

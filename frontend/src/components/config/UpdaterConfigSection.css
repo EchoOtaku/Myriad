@@ -2,22 +2,22 @@
  * Updater 内联面板 — 重设计版。
  *
  * 层次：状态卡（hero）→ 通道单选卡片 → 折叠的高级区。
- * 表面：嵌在 settings 分区内，统一半透明（外层略糊 / 内层微透）。
+ * 表面：对齐设置页玻璃 token —— 白 / 微白半透明 + blur。
  */
 
 .updater-panel {
   /*
-   * 嵌在分区壳内，不能靠「再叠白半透明」做玻璃（会像实心）。
-   * 浅色：冷灰微膜（对齐 --cfg-fill），透出下层壳；
-   * 深色：白膜微透。两档都不改动外层 config-section。
+   * 嵌在 config-section（已有 frost 白+blur）内：
+   * 再叠白半透明 + blur 会发乳白，无论把 alpha 压多低。
+   * 内层只做微透白底、无二次 blur，对齐 about-card / setting-item。
    */
-  --updater-frost-bg: rgb(116 116 128 / 9%);
-  --updater-frost-border: rgb(60 60 67 / 10%);
+  --updater-frost-bg: var(--cfg-subtle-bg);
+  --updater-frost-border: var(--cfg-subtle-border);
   --updater-frost-filter: none;
-  --updater-subtle-bg: rgb(116 116 128 / 6%);
-  --updater-subtle-bg-hover: rgb(116 116 128 / 10%);
-  --updater-subtle-border: rgb(60 60 67 / 9%);
-  --updater-subtle-border-hover: rgb(60 60 67 / 14%);
+  --updater-subtle-bg: var(--cfg-subtle-bg);
+  --updater-subtle-bg-hover: var(--cfg-subtle-bg-hover);
+  --updater-subtle-border: var(--cfg-subtle-border);
+  --updater-subtle-border-hover: var(--cfg-subtle-border-hover);
   --updater-subtle-filter: none;
 
   display: flex;
@@ -31,15 +31,7 @@
 
 html.dark .updater-panel {
   color-scheme: dark;
-  /* 深色：白膜半透明，避免再叠一层近黑实底 */
-  --updater-frost-bg: rgb(255 255 255 / 8%);
-  --updater-frost-border: rgb(255 255 255 / 12%);
-  --updater-frost-filter: none;
-  --updater-subtle-bg: rgb(255 255 255 / 6%);
-  --updater-subtle-bg-hover: rgb(255 255 255 / 10%);
-  --updater-subtle-border: rgb(255 255 255 / 11%);
-  --updater-subtle-border-hover: rgb(255 255 255 / 17%);
-  --updater-subtle-filter: none;
+  /* token 已在 html.dark 下切换，无需再覆写 */
 }
 
 .updater-panel-heading {
@@ -447,12 +439,12 @@ html.dark .updater-hero-feedback.error {
 .updater-channel-card:hover:not(:disabled) {
   border-color: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 45%,
+    var(--cfg-accent, #3b82f6) 45%,
     transparent
   );
   background: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 6%,
+    var(--cfg-accent, #3b82f6) 6%,
     transparent
   );
 }
@@ -460,12 +452,12 @@ html.dark .updater-hero-feedback.error {
 .updater-channel-card.selected {
   border-color: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 55%,
+    var(--cfg-accent, #3b82f6) 55%,
     transparent
   );
   background: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 10%,
+    var(--cfg-accent, #3b82f6) 10%,
     transparent
   );
 }
@@ -483,12 +475,12 @@ html.dark .updater-channel-card {
 html.dark .updater-channel-card:hover:not(:disabled) {
   border-color: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 50%,
+    var(--cfg-accent, #60a5fa) 50%,
     transparent
   );
   background: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 12%,
+    var(--cfg-accent, #60a5fa) 12%,
     transparent
   );
 }
@@ -496,12 +488,12 @@ html.dark .updater-channel-card:hover:not(:disabled) {
 html.dark .updater-channel-card.selected {
   border-color: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 60%,
+    var(--cfg-accent, #60a5fa) 60%,
     transparent
   );
   background: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 16%,
+    var(--cfg-accent, #60a5fa) 16%,
     transparent
   );
 }
@@ -520,17 +512,17 @@ html.dark .updater-channel-card.selected {
 }
 
 .updater-channel-card.selected .updater-channel-radio {
-  border-color: var(--color-primary, #3b82f6);
+  border-color: var(--cfg-accent, #3b82f6);
   background: radial-gradient(
-    var(--color-primary, #3b82f6) 0 42%,
+    var(--cfg-accent, #3b82f6) 0 42%,
     transparent 46%
   );
 }
 
 html.dark .updater-channel-card.selected .updater-channel-radio {
-  border-color: var(--color-primary, #60a5fa);
+  border-color: var(--cfg-accent, #60a5fa);
   background: radial-gradient(
-    var(--color-primary, #60a5fa) 0 42%,
+    var(--cfg-accent, #60a5fa) 0 42%,
     transparent 46%
   );
 }
@@ -651,9 +643,10 @@ html.dark .updater-commit-list-head {
 
 .updater-commit-item {
   display: grid;
-  grid-template-columns: 4.5rem 1fr auto;
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
   gap: 0.5rem;
   width: 100%;
+  min-width: 0;
   text-align: left;
   padding: 0.45rem 0.85rem;
   border: 0;
@@ -662,12 +655,13 @@ html.dark .updater-commit-list-head {
   color: inherit;
   font-size: 0.78rem;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .updater-commit-item:hover {
   background: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 8%,
+    var(--cfg-accent, #3b82f6) 8%,
     transparent
   );
 }
@@ -675,7 +669,7 @@ html.dark .updater-commit-list-head {
 .updater-commit-item.selected {
   background: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 14%,
+    var(--cfg-accent, #3b82f6) 14%,
     transparent
   );
 }
@@ -1052,10 +1046,11 @@ html.dark .updater-empty {
 /* ===== 高级与诊断 ===== */
 .updater-detail-grid {
   display: grid;
-  grid-template-columns: max-content 1fr;
+  grid-template-columns: max-content minmax(0, 1fr);
   gap: 0.4rem 1rem;
   font-size: 0.82rem;
   padding: 0.5rem 0 0;
+  min-width: 0;
 }
 
 .updater-detail-grid dt {
@@ -1146,11 +1141,11 @@ html.dark .updater-transport-label {
 }
 
 .updater-transport-option.is-selected {
-  border-color: color-mix(in srgb, var(--color-primary, #6366f1) 48%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #6366f1) 12%, transparent);
-  color: var(--color-primary, #4f46e5);
+  border-color: color-mix(in srgb, var(--cfg-accent, #6366f1) 48%, transparent);
+  background: color-mix(in srgb, var(--cfg-accent, #6366f1) 12%, transparent);
+  color: var(--cfg-accent, #4f46e5);
   box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--color-primary, #6366f1) 10%, transparent);
+    color-mix(in srgb, var(--cfg-accent, #6366f1) 10%, transparent);
 }
 
 html.dark .updater-transport-option {
@@ -1166,8 +1161,8 @@ html.dark .updater-transport-option:hover {
 }
 
 html.dark .updater-transport-option.is-selected {
-  border-color: color-mix(in srgb, var(--color-primary, #818cf8) 50%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #818cf8) 16%, transparent);
+  border-color: color-mix(in srgb, var(--cfg-accent, #818cf8) 50%, transparent);
+  background: color-mix(in srgb, var(--cfg-accent, #818cf8) 16%, transparent);
   color: #c7d2fe;
 }
 
@@ -1351,6 +1346,28 @@ html.dark .updater-auto-desc {
   .updater-auto-prefs {
     grid-template-columns: 1fr;
   }
+
+  .updater-commit-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.25rem 0.5rem;
+  }
+
+  .updater-commit-item > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  .updater-detail-grid {
+    grid-template-columns: 1fr;
+    gap: 0.15rem 0;
+  }
+
+  .updater-detail-grid dt {
+    margin-top: 0.35rem;
+  }
+
+  .updater-detail-grid dt:first-child {
+    margin-top: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1444,14 +1461,14 @@ html.dark .updater-infra-last-fail {
   margin: 0;
   padding: 0.45rem 0.55rem;
   border: 1px solid
-    color-mix(in srgb, var(--color-primary, #3b82f6) 28%, transparent);
+    color-mix(in srgb, var(--cfg-accent, #3b82f6) 28%, transparent);
   border-radius: 0.5rem;
   background: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 8%,
+    var(--cfg-accent, #3b82f6) 8%,
     transparent
   );
-  color: color-mix(in srgb, var(--color-primary, #1e40af) 85%, #111827);
+  color: color-mix(in srgb, var(--cfg-accent, #1e40af) 85%, #111827);
   font-size: 0.76rem;
   line-height: 1.45;
 }
@@ -1459,15 +1476,15 @@ html.dark .updater-infra-last-fail {
 html.dark .updater-infra-progress {
   border-color: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 32%,
+    var(--cfg-accent, #60a5fa) 32%,
     transparent
   );
   background: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 14%,
+    var(--cfg-accent, #60a5fa) 14%,
     transparent
   );
-  color: color-mix(in srgb, var(--color-primary) 70%, var(--cfg-text-1));
+  color: color-mix(in srgb, var(--cfg-accent) 70%, var(--cfg-text-1));
 }
 
 .updater-infra-card-actions {
@@ -1488,27 +1505,27 @@ html.dark .updater-infra-progress {
 .updater-infra-card.is-attention.setting-group--in-grid {
   border-color: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 40%,
+    var(--cfg-accent, #3b82f6) 40%,
     var(--updater-subtle-border)
   );
   background: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 8%,
+    var(--cfg-accent, #3b82f6) 8%,
     var(--updater-subtle-bg)
   );
   box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--color-primary, #3b82f6) 45%, transparent);
+    color-mix(in srgb, var(--cfg-accent, #3b82f6) 45%, transparent);
 }
 
 html.dark .updater-infra-card.is-attention.setting-group--in-grid {
   border-color: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 42%,
+    var(--cfg-accent, #60a5fa) 42%,
     var(--updater-subtle-border)
   );
   background: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 10%,
+    var(--cfg-accent, #60a5fa) 10%,
     var(--updater-subtle-bg)
   );
 }
@@ -1517,27 +1534,27 @@ html.dark .updater-infra-card.is-attention.setting-group--in-grid {
 .updater-infra-card.is-update-cue.setting-group--in-grid {
   border-color: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 24%,
+    var(--cfg-accent, #3b82f6) 24%,
     var(--updater-subtle-border)
   );
   background: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 5%,
+    var(--cfg-accent, #3b82f6) 5%,
     var(--updater-subtle-bg)
   );
   box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--color-primary, #3b82f6) 22%, transparent);
+    color-mix(in srgb, var(--cfg-accent, #3b82f6) 22%, transparent);
 }
 
 html.dark .updater-infra-card.is-update-cue.setting-group--in-grid {
   border-color: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 28%,
+    var(--cfg-accent, #60a5fa) 28%,
     var(--updater-subtle-border)
   );
   background: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 7%,
+    var(--cfg-accent, #60a5fa) 7%,
     var(--updater-subtle-bg)
   );
 }

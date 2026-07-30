@@ -5,6 +5,7 @@
 
 import type { SelectSettingConfig } from '../types'
 import React, { useCallback } from 'react'
+import { guideDomProps } from '../guides/guideAnchor'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { FieldSelect } from './FieldSelect'
 import './SettingItem.css'
@@ -19,6 +20,7 @@ function SelectItemComponent<T extends string = string>({
   label,
   detail,
   guide,
+  guidePath,
   description,
   hint,
   value,
@@ -42,19 +44,18 @@ function SelectItemComponent<T extends string = string>({
   )
 
   const id = `setting-select-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`
+  const anchorProps = guideDomProps(guidePath)
 
   return (
     <div
-      className={`setting-item setting-item-select setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}`}
+      {...anchorProps}
+      className={`setting-item setting-item-select setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}${guidePath ? ' has-guide-anchor' : ''}`}
     >
       <label htmlFor={id} className="setting-label">
         <span className="setting-label-text">
           {label}
           {required && <span className="required">*</span>}
-          <SettingTitleGuideEntry
-            title={label}
-            guide={guide ?? detail ?? description}
-          />
+          <SettingTitleGuideEntry title={label} guide={guide} />
         </span>
         {description && layout === 'vertical' && (
           <span className="setting-description">{description}</span>

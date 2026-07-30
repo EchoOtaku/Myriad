@@ -16,7 +16,7 @@ import type {
 } from '../../tapp/services/TappLifecycleApi'
 import type { TappManifestLocales } from '../../tapp/types'
 import type { WidgetComponentProps } from '../WidgetGrid'
-import { FaTimes } from '@lib/icons'
+import { FaTh, FaTimes } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 import {
   memo,
@@ -621,8 +621,11 @@ export const TappShortcutWidget = memo(
             : config.size === '2x1'
               ? 'w-10 h-10'
               : 'w-14 h-14'
-        // 编辑未配置：虚线 +；加载中：通用 Spinner；其余占位不放闪电
+        // 编辑未配置：虚线 +；加载中：Spinner；其余默认空状态：Tapp 网格图标提示
         const spinnerPx =
+          (config.size === '2x2' ? 22 : config.size === '1x1' ? 20 : 18) *
+          fontScale
+        const emptyIconPx =
           (config.size === '2x2' ? 22 : config.size === '1x1' ? 20 : 18) *
           fontScale
         const glyph = isAddState ? (
@@ -638,7 +641,13 @@ export const TappShortcutWidget = memo(
           </span>
         ) : loading ? (
           <Spinner size={spinnerPx} color="primary" />
-        ) : null
+        ) : (
+          <FaTh
+            aria-hidden
+            className="text-gray-400/80 dark:text-gray-500/80"
+            style={{ width: emptyIconPx, height: emptyIconPx }}
+          />
+        )
         const tile = (
           <div
             className={`${tileClass} rounded-2xl flex items-center justify-center shrink-0 ${

@@ -1200,11 +1200,78 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // ==================== 扩展表（与 schema_check ensure_* 同结构）====================
+        // 内容过滤 / 策略单例 / domain Move 别名 / 对象互动
+        let db = manager.get_connection();
+        db.execute_unprepared(
+            r#"
+CREATE TABLE IF NOT EXISTS federation_content_filters (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    filter_type VARCHAR NOT NULL,
+    value TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS federation_policy_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    min_trust_level SMALLINT NOT NULL DEFAULT 0,
+    allowed_domains JSONB NOT NULL DEFAULT '[]'::jsonb,
+    auto_discover BOOLEAN NOT NULL DEFAULT true,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    rate_max_requests BIGINT NOT NULL DEFAULT 100,
+    rate_window_seconds BIGINT NOT NULL DEFAULT 60,
+    rate_trusted_multiplier BIGINT NOT NULL DEFAULT 5
+);
+INSERT INTO federation_policy_settings (id) VALUES (1)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS federation_domain_aliases (
+    id SERIAL PRIMARY KEY,
+    old_base_url TEXT NOT NULL UNIQUE,
+    new_base_url TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_federation_domain_aliases_new
+    ON federation_domain_aliases (new_base_url);
+
+CREATE TABLE IF NOT EXISTS federation_object_interactions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    object_id TEXT NOT NULL,
+    kind VARCHAR(20) NOT NULL,
+    activity_id TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT federation_object_interactions_kind_check
+        CHECK (kind IN ('like', 'bookmark', 'announce')),
+    CONSTRAINT federation_object_interactions_unique
+        UNIQUE (user_id, object_id, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_fed_interactions_object_kind
+    ON federation_object_interactions (object_id, kind);
+CREATE INDEX IF NOT EXISTS idx_fed_interactions_user_kind_created
+    ON federation_object_interactions (user_id, kind, created_at DESC);
+"#,
+        )
+        .await?;
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         // 按依赖顺序反向删除
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+DROP TABLE IF EXISTS federation_object_interactions;
+DROP TABLE IF EXISTS federation_domain_aliases;
+DROP TABLE IF EXISTS federation_policy_settings;
+DROP TABLE IF EXISTS federation_content_filters;
+"#,
+            )
+            .await?;
         manager
             .drop_table(
                 Table::drop()

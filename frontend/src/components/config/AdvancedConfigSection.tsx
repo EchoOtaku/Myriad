@@ -1,8 +1,14 @@
-import type { Locale } from '../../i18n'
 import type { SettingsRestorePreview } from '../../lib/api'
 
-import { FaGlobe, FaSave, FaTimes, LuDownload, LuUpload } from '@lib/icons'
-import React, { useCallback, useRef, useState } from 'react'
+import {
+  FaGlobe,
+  FaSave,
+  FaTimes,
+  LuDownload,
+  LuRefreshCw,
+  LuUpload,
+} from '@lib/icons'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import {
   fetchSettingsBackup,
@@ -12,15 +18,17 @@ import {
 } from '../../lib/api'
 
 import { getCSRFToken } from '../../utils/csrf'
+import { purgeFrontendCachesAndReload } from '../../utils/frontendCachePurge'
 import {
   ButtonItem,
   InputItem,
   SettingGroup,
-  SettingSection,
   SettingsButton,
+  SettingSection,
   SwitchItem,
   useSettingGuide,
 } from '../settings'
+import RuntimeDiagnostics from './RuntimeDiagnostics'
 
 interface UiConfigField {
   key: string
@@ -73,33 +81,6 @@ const CLIENT_PREFERENCE_REGISTRY: ClientPreferenceDescriptor[] = [
   { key: 'brewlia_tts_settings', schemaVersion: 1 },
   { key: 'brew-reader-settings', schemaVersion: 1 },
 ]
-
-const IMPORT_PREVIEW_TEXT: Record<
-  Locale,
-  Record<'restore' | 'preserve' | 'ignored' | 'migrated' | 'invalid', string>
-> = {
-  'zh-CN': {
-    restore: '将恢复',
-    preserve: '保留当前/默认值',
-    ignored: '忽略已废弃项',
-    migrated: '自动迁移',
-    invalid: '无法恢复',
-  },
-  'en-US': {
-    restore: 'Restore',
-    preserve: 'Keep current/default',
-    ignored: 'Ignore removed',
-    migrated: 'Auto-migrate',
-    invalid: 'Cannot restore',
-  },
-  'ja-JP': {
-    restore: '復元',
-    preserve: '現在値/既定値を維持',
-    ignored: '廃止項目を無視',
-    migrated: '自動移行',
-    invalid: '復元不可',
-  },
-}
 
 function collectClientPreferences(): Record<
   string,
@@ -233,9 +214,15 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
   updateUiFieldValue,
   onMessage,
 }) => {
-  const { locale, t } = useI18n()
-  const { catalog: g, renderGuide } = useSettingGuide()
+  const { t } = useI18n()
+  const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  /** 按钮原地二次确认：第一次点亮，第二次执行 */
+  const [cachePurgeArmed, setCachePurgeArmed] = useState(false)
+  const [cachePurgeLoading, setCachePurgeLoading] = useState(false)
+  const cachePurgeArmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
   const [importConfirmOpen, setImportConfirmOpen] = useState(false)
   const [pendingImportData, setPendingImportData] = useState<unknown>(null)
   const [pendingClientRestore, setPendingClientRestore] =
@@ -243,7 +230,13 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
   const [restorePreview, setRestorePreview] =
     useState<SettingsRestorePreview | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const previewText = IMPORT_PREVIEW_TEXT[locale]
+  const previewText = {
+    restore: t.config.importPreviewRestore,
+    preserve: t.config.importPreviewPreserve,
+    ignored: t.config.importPreviewIgnored,
+    migrated: t.config.importPreviewMigrated,
+    invalid: t.config.importPreviewInvalid,
+  }
 
   const getUiFieldValue = useCallback(
     (key: string) => uiConfigFields.find((f) => f.key === key)?.value || '',
@@ -360,6 +353,50 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
     }
   }, [pendingClientRestore, pendingImportData, t, onMessage])
 
+  const clearCachePurgeArmTimer = useCallback(() => {
+    if (cachePurgeArmTimerRef.current != null) {
+      clearTimeout(cachePurgeArmTimerRef.current)
+      cachePurgeArmTimerRef.current = null
+    }
+  }, [])
+
+  useEffect(() => () => clearCachePurgeArmTimer(), [clearCachePurgeArmTimer])
+
+  const handleForceRefreshCacheClick = useCallback(async () => {
+    if (cachePurgeLoading) return
+
+    if (!cachePurgeArmed) {
+      setCachePurgeArmed(true)
+      clearCachePurgeArmTimer()
+      cachePurgeArmTimerRef.current = setTimeout(() => {
+        setCachePurgeArmed(false)
+        cachePurgeArmTimerRef.current = null
+      }, 4000)
+      return
+    }
+
+    clearCachePurgeArmTimer()
+    setCachePurgeArmed(false)
+    setCachePurgeLoading(true)
+    try {
+      await purgeFrontendCachesAndReload(800)
+      onMessage?.(t.config.forceRefreshFrontendCacheSuccess, 'success')
+    } catch (error) {
+      console.error('Frontend cache purge failed:', error)
+      onMessage?.(
+        `${t.config.forceRefreshFrontendCacheFailed}: ${error instanceof Error ? error.message : ''}`,
+        'error',
+      )
+      setCachePurgeLoading(false)
+    }
+  }, [
+    cachePurgeArmed,
+    cachePurgeLoading,
+    clearCachePurgeArmTimer,
+    t,
+    onMessage,
+  ])
+
   return (
     <SettingSection
       title={title}
@@ -367,91 +404,119 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
       description={description}
       sectionId={sectionId}
     >
+      <RuntimeDiagnostics onMessage={onMessage} />
+
       {/* 代理 + API 镜像 */}
       <SettingGroup
         title={t.config.network}
         description={t.config.networkDesc}
-        guide={renderGuide(g.advanced.network)}
+        {...bindGuide('advanced.network', g.advanced.network)}
         icon={<FaGlobe />}
       >
         <SwitchItem
           itemKey="proxy_enabled"
-          label={t.config.enableProxy || '启用网络代理'}
+          label={t.config.enableProxy}
           description={
-            t.config.enableProxyHint || '开启后将使用代理访问外部API'
+            t.config.enableProxyHint
           }
-          guide={renderGuide(g.advanced.proxyEnable)}
+          {...bindGuide('advanced.proxyEnable', g.advanced.proxyEnable)}
           value={isProxyEnabled}
           onChange={(v) => updateUiFieldValue('proxy_enabled', v.toString())}
           layout="horizontal"
         />
         <InputItem
           itemKey="proxy_url"
-          label={t.config.proxyUrl || '代理地址'}
+          label={t.config.proxyUrl}
           value={getUiFieldValue('proxy_url')}
           onChange={(v) => updateUiFieldValue('proxy_url', v)}
           placeholder="http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
           hint={
             isProxyEnabled
-              ? t.config.proxyUrlHint || '支持 HTTP、HTTPS、SOCKS5 代理协议'
-              : t.config.proxyUrlDisabledHint ||
-                '代理已关闭（关闭时不会使用此地址）。可清空以移除保存的代理配置。'
+              ? t.config.proxyUrlHint
+              : t.config.proxyUrlDisabledHint
           }
-          guide={renderGuide(g.advanced.proxyUrl)}
+          {...bindGuide('advanced.proxyUrl', g.advanced.proxyUrl)}
           layout="vertical"
         />
         <InputItem
           itemKey="proxy_bypass"
-          label={t.config.proxyBypass || '代理绕过列表'}
+          label={t.config.proxyBypass}
           value={getUiFieldValue('proxy_bypass')}
           onChange={(v) => updateUiFieldValue('proxy_bypass', v)}
           placeholder="localhost,127.0.0.1,bilibili.com"
           hint={
-            t.config.proxyBypassHint ||
-            '不使用代理的域名，用逗号分隔。国内服务（如 Bilibili）建议添加到绕过列表'
+            t.config.proxyBypassHint
           }
-          guide={renderGuide(g.advanced.proxyBypass)}
+          {...bindGuide('advanced.proxyBypass', g.advanced.proxyBypass)}
           layout="vertical"
         />
         <InputItem
           itemKey="gemini_base_url"
-          label={t.config.geminiBaseUrl || 'Gemini API 基础地址'}
+          label={t.config.geminiBaseUrl}
           value={getUiFieldValue('gemini_base_url')}
           onChange={(v) => updateUiFieldValue('gemini_base_url', v)}
           placeholder="https://generativelanguage.googleapis.com"
           hint={
-            t.config.geminiBaseUrlHint ||
-            '留空使用官方地址，可填写第三方代理服务地址'
+            t.config.geminiBaseUrlHint
           }
-          guide={renderGuide(g.advanced.geminiBaseUrl)}
+          {...bindGuide('advanced.geminiBaseUrl', g.advanced.geminiBaseUrl)}
           layout="vertical"
         />
         <InputItem
           itemKey="github_api_base_url"
-          label={t.config.githubApiBaseUrl || 'GitHub API 基础地址'}
+          label={t.config.githubApiBaseUrl}
           value={getUiFieldValue('github_api_base_url')}
           onChange={(v) => updateUiFieldValue('github_api_base_url', v)}
           placeholder="https://api.github.com"
           hint={
-            t.config.githubApiBaseUrlHint ||
-            '留空使用官方地址，可填写 GitHub API 镜像地址（注意：OAuth 认证仍需使用官方地址）'
+            t.config.githubApiBaseUrlHint
           }
-          guide={renderGuide(g.advanced.githubApiBaseUrl)}
+          {...bindGuide('advanced.githubApiBaseUrl', g.advanced.githubApiBaseUrl)}
           layout="vertical"
+        />
+      </SettingGroup>
+
+      <SettingGroup
+        title={t.config.frontendCacheTitle}
+        description={t.config.frontendCacheDesc}
+        {...bindGuide('advanced.frontendCache', g.advanced.frontendCache)}
+        icon={<LuRefreshCw />}
+      >
+        <ButtonItem
+          itemKey="force_refresh_frontend_cache"
+          label={t.config.forceRefreshFrontendCache}
+          description={t.config.forceRefreshFrontendCacheDesc}
+          {...bindGuide(
+            'advanced.forceRefreshCache',
+            g.advanced.forceRefreshCache,
+          )}
+          buttonText={
+            cachePurgeArmed
+              ? t.config.forceRefreshFrontendCacheConfirm
+              : t.config.forceRefreshFrontendCacheButton
+          }
+          buttonIcon={<LuRefreshCw size={14} />}
+          onClick={() => {
+            void handleForceRefreshCacheClick()
+          }}
+          variant={cachePurgeArmed ? 'danger' : 'secondary'}
+          layout="horizontal"
+          loading={cachePurgeLoading}
+          disabled={cachePurgeLoading}
         />
       </SettingGroup>
 
       <SettingGroup
         title={t.config.configBackupTitle}
         description={t.config.configBackupDesc}
-        guide={renderGuide(g.advanced.backup)}
+        {...bindGuide('advanced.backup', g.advanced.backup)}
         icon={<FaSave />}
       >
         <ButtonItem
           itemKey="export_config"
           label={t.config.exportConfig}
           description={t.config.exportConfigDesc}
-          guide={renderGuide(g.advanced.exportConfig)}
+          {...bindGuide('advanced.exportConfig', g.advanced.exportConfig)}
           buttonText={t.config.exportConfig}
           buttonIcon={<LuDownload size={14} />}
           onClick={handleExport}
@@ -462,7 +527,7 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
           itemKey="import_config"
           label={t.config.importConfig}
           description={t.config.importConfigDesc}
-          guide={renderGuide(g.advanced.importConfig)}
+          {...bindGuide('advanced.importConfig', g.advanced.importConfig)}
           buttonText={t.config.importConfig}
           buttonIcon={<LuUpload size={14} />}
           onClick={handleImportClick}
@@ -481,10 +546,9 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
           itemKey="reset_config"
           label={t.config.resetConfig}
           description={
-            t.config.resetConfigDesc ||
-            'Reset all configurations to default values. This action cannot be undone.'
+            t.config.resetConfigDesc
           }
-          guide={renderGuide(g.advanced.resetConfig)}
+          {...bindGuide('advanced.resetConfig', g.advanced.resetConfig)}
           buttonText={t.config.resetConfig}
           onClick={() => setResetConfirmOpen(true)}
           variant="danger"
@@ -509,15 +573,15 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
               <button
                 onClick={() => setResetConfirmOpen(false)}
                 className="modal-close-button"
-                title="Close"
+                title={t.common.close}
+                aria-label={t.common.close}
               >
                 <FaTimes />
               </button>
             </div>
             <div className="modal-body">
               <p className="settings-modal-message">
-                {t.config.resetConfirmMessage ||
-                  'Are you sure you want to reset all configurations? This action cannot be undone and will restore all settings to their default values.'}
+                {t.config.resetConfirmMessage}
               </p>
             </div>
             <div className="modal-footer">
@@ -553,7 +617,8 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
               <button
                 onClick={closeImportConfirm}
                 className="modal-close-button"
-                title="Close"
+                title={t.common.close}
+                aria-label={t.common.close}
               >
                 <FaTimes />
               </button>

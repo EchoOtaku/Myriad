@@ -128,6 +128,8 @@ services:
       DATA_DIR: /app/data
       CACHE_DIR: /app/cache
       JWT_SECRET: ${JWT_SECRET}
+      # Optional: visitor-hash salt for first-party analytics (recommended in prod).
+      ANALYTICS_SALT: ${ANALYTICS_SALT:-}
       # The bundled proxy replaces client-supplied forwarding headers.
       TRUST_PROXY_HEADERS: "true"
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}

@@ -158,11 +158,19 @@ export const CheckboxCard = React.memo<CheckboxCardProps>(function CheckboxCard(
             {icon}
           </span>
         ) : null}
-        <span className="checkbox-group-card-label">{label}</span>
+        {/*
+          Text column: title + desc share the same start edge (after leading),
+          so multi-line chips align with short action chips like 刷新.
+        */}
+        <span className="checkbox-group-card-text">
+          <span className="checkbox-group-card-label">{label}</span>
+          {description != null &&
+          description !== false &&
+          description !== '' ? (
+            <span className="checkbox-group-card-desc">{description}</span>
+          ) : null}
+        </span>
       </span>
-      {description != null && description !== false && description !== '' ? (
-        <span className="checkbox-group-card-desc">{description}</span>
-      ) : null}
     </button>
   )
 })

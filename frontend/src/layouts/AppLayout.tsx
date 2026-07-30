@@ -26,9 +26,11 @@ import {
 import { useAuthUrlFeedback } from '../hooks/useAuthUrlFeedback'
 import { useEvocativeWallpaper } from '../hooks/useEvocativeWallpaper'
 import { useNavAutoHide } from '../hooks/useNavAutoHide'
+import { usePageViewTracker } from '../hooks/usePageViewTracker'
 import { useScrollOptimization } from '../hooks/useScrollOptimization'
 import { useSystemSetupCheck } from '../hooks/useSystemSetupCheck'
 import { useWallpaper } from '../hooks/useWallpaper'
+import { ensureCfgAccentSync } from '../utils/cfgAccent'
 import {
   applyColorPalette,
   extractColorsFromImage,
@@ -79,6 +81,9 @@ export function AppLayout({ children }: AppLayoutProps) {
   // OAuth account-link success/error query → toast + clean URL
   useAuthUrlFeedback()
 
+  // 站点访客埋点（pathname 变化时上报）
+  usePageViewTracker()
+
   // 🔧 帧率优化：启用滚动优化和 FPS 监控
   useScrollOptimization({ enabled: true })
   useSystemSetupCheck()
@@ -87,6 +92,11 @@ export function AppLayout({ children }: AppLayoutProps) {
   useEffect(() => {
     startFpsMonitor()
     return () => stopFpsMonitor()
+  }, [])
+
+  // 设置强调色 --cfg-accent：与 Hero adaptive 同源，随主题/壁纸重算
+  useEffect(() => {
+    ensureCfgAccentSync()
   }, [])
 
   // 壁纸管理 Hook

@@ -1,6 +1,8 @@
 import type { BaseSettingItemConfig } from '../types'
 import type { ReactNode } from 'react'
 import React from 'react'
+import { useI18n } from '../../../contexts/I18nContext'
+import { guideDomProps } from '../guides/guideAnchor'
 import { useSettingsHelp } from '../SettingsHelpContext'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { SettingTitleHelp } from '../SettingTitleHelp'
@@ -9,6 +11,7 @@ import './SettingItem.css'
 export interface SettingItemWrapperProps extends Partial<BaseSettingItemConfig> {
   children: React.ReactNode
   className?: string
+  /** 表单控件 id（htmlFor）；锚点请用 guidePath */
   id?: string
   contentRight?: boolean
   /** 覆盖 BaseSettingItemConfig.detail */
@@ -21,6 +24,7 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
   label,
   detail,
   guide,
+  guidePath,
   description,
   hint,
   error,
@@ -33,9 +37,11 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
   contentRight = false,
   disabled = false,
 }) => {
+  const anchorProps = guideDomProps(guidePath)
+  const { t } = useI18n()
   const expandHelp = Boolean(useSettingsHelp()?.showDetails)
   const detailText = detail != null && detail !== '' ? detail : null
-  const guideBody = guide ?? detailText ?? description
+  /** 短说明常显；guide 点入口后在标题上方展开 */
   const expandedExtra =
     expandHelp && detailText ? (
       <span className="setting-description setting-description--detail">
@@ -48,11 +54,16 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
       {label}
       {required && <span className="required">*</span>}
       {detailText && !expandHelp && (
-        <SettingTitleHelp ariaLabel={`${label} 详细说明`}>
+        <SettingTitleHelp
+          ariaLabel={t.config.detailHelpAriaNamed.replace(
+            '{title}',
+            String(label),
+          )}
+        >
           {detailText}
         </SettingTitleHelp>
       )}
-      <SettingTitleGuideEntry title={label} guide={guideBody} />
+      <SettingTitleGuideEntry title={label} guide={guide} />
     </span>
   )
 
@@ -69,7 +80,8 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
   if (layout === 'horizontal') {
     return (
       <div
-        className={`setting-item setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}`}
+        {...anchorProps}
+        className={`setting-item setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}${guidePath ? ' has-guide-anchor' : ''}`}
       >
         <div className="setting-item-content">
           {contentRight ? (
@@ -92,7 +104,8 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
 
   return (
     <div
-      className={`setting-item setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}`}
+      {...anchorProps}
+      className={`setting-item setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}${guidePath ? ' has-guide-anchor' : ''}`}
     >
       {label && (
         <label htmlFor={id} className="setting-label">

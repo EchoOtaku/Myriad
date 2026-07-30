@@ -84,7 +84,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
   sectionId,
 }) => {
   const { t } = useI18n()
-  const { catalog: g, renderGuide } = useSettingGuide()
+  const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
 
   // 辅助函数：获取配置字段值
   const getFieldValue = useCallback(
@@ -149,7 +149,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       <SettingGroup
         title={t.config.siteUrlConfig}
         description={t.config.siteUrlFieldDesc}
-        guide={renderGuide(g.ui.siteUrl)}
+        {...bindGuide('ui.siteUrl', g.ui.siteUrl)}
         icon={<FaLink />}
       >
         <SiteUrlField value={baseUrlValue} onApplied={handleSiteUrlApplied} />
@@ -158,7 +158,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       <SettingGroup
         title={t.config.siteMetadata}
         description={t.config.siteMetadataDesc}
-        guide={renderGuide(g.ui.siteMetadata)}
+        {...bindGuide('ui.siteMetadata', g.ui.siteMetadata)}
         icon={<FaGlobe />}
       >
         {siteMetadataFields.map((field) =>
@@ -183,7 +183,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
               imageSizeError={t.config.imageUploadSizeError}
               imageReadError={t.config.imageUploadReadError}
               hint={t.config.imageUploadHint}
-              guide={renderGuide(g.ui.siteFavicon)}
+              {...bindGuide('ui.siteFavicon', g.ui.siteFavicon)}
               layout="vertical"
             />
           ) : (
@@ -197,11 +197,9 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
               placeholder={getFieldPlaceholder(field.key, field.placeholder)}
               multiline={field.key === 'site_description'}
               rows={2}
-              guide={renderGuide(
-                field.key === 'site_title'
-                  ? g.ui.siteTitle
-                  : g.ui.siteDescription,
-              )}
+              {...(field.key === 'site_title'
+                ? bindGuide('ui.siteTitle', g.ui.siteTitle)
+                : bindGuide('ui.siteDescription', g.ui.siteDescription))}
               layout="vertical"
             />
           ),
@@ -213,7 +211,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         title={t.config.siteFooterTitle}
         icon={<FaInfoCircle />}
         description={t.config.siteFooterDesc}
-        guide={renderGuide(g.ui.siteFooter)}
+        {...bindGuide('ui.siteFooter', g.ui.siteFooter)}
       >
         <InputItem
           itemKey="site_icp"
@@ -222,7 +220,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           onChange={(v) => updateValue('site_icp', v)}
           placeholder={t.config.siteIcpPlaceholder}
           hint={t.config.siteIcpHint}
-          guide={renderGuide(g.ui.siteIcp)}
+          {...bindGuide('ui.siteIcp', g.ui.siteIcp)}
           layout="vertical"
         />
         <InputItem
@@ -232,12 +230,13 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           onChange={(v) => updateValue('site_gongan', v)}
           placeholder={t.config.siteGonganPlaceholder}
           hint={t.config.siteGonganHint}
-          guide={renderGuide(g.ui.siteGongan)}
+          {...bindGuide('ui.siteGongan', g.ui.siteGongan)}
           layout="vertical"
         />
         <CheckboxGroupItem
           label={t.config.cloudSponsors}
           description={t.config.cloudSponsorsHint}
+          {...bindGuide('ui.cloudSponsors', g.ui.cloudSponsors)}
           options={[
             {
               key: 'cloudflare',
@@ -274,7 +273,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       <SettingGroup
         title={t.config.backgroundAndTheme}
         description={t.config.backgroundAndThemeDesc}
-        guide={renderGuide(g.ui.backgroundAndTheme)}
+        {...bindGuide('ui.backgroundAndTheme', g.ui.backgroundAndTheme)}
         icon={<LuPalette />}
       >
         {backgroundFields.map((field) =>
@@ -293,7 +292,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
               showRangeLabels
               startLabel={t.config.sliderWeak}
               endLabel={t.config.sliderStrong}
-              guide={renderGuide(g.ui.wallpaperBlur)}
+              {...bindGuide('ui.wallpaperBlur', g.ui.wallpaperBlur)}
               layout="vertical"
             />
           ) : (
@@ -308,7 +307,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
               inputType={
                 field.field_type as 'text' | 'password' | 'url' | 'email'
               }
-              guide={renderGuide(g.ui.wallpaper)}
+              {...bindGuide('ui.wallpaper', g.ui.wallpaper)}
               layout="vertical"
             />
           ),
@@ -319,10 +318,11 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         title={t.config.evocativeTitle}
         icon={<FaMagic />}
         description={t.config.evocativeDesc}
-        guide={renderGuide(g.ui.evocative)}
+        {...bindGuide('ui.evocative', g.ui.evocative)}
       >
         <CheckboxGroupItem
-          label={t.config.evocativeEffects || '动效开关'}
+          label={t.config.evocativeEffects}
+          {...bindGuide('ui.evocativeEffects', g.ui.evocativeEffects)}
           options={[
             {
               key: 'evocative_parallax',
@@ -351,7 +351,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         <SettingItemWrapper
           label={t.config.fieldEvocativeFps}
           hint={t.config.fieldEvocativeFpsHint}
-          guide={renderGuide(g.ui.evocativeFps)}
+          {...bindGuide('ui.evocativeFps', g.ui.evocativeFps)}
           layout="vertical"
         >
           <SegmentedControl
@@ -394,7 +394,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           formatValue={(v) => `${Math.round(v)}%`}
           recommendedValue={85}
           recommendedLabel={t.config.sliderRecommended}
-          guide={renderGuide(g.ui.evocativeRippleQuality)}
+          {...bindGuide('ui.evocativeRippleQuality', g.ui.evocativeRippleQuality)}
           layout="vertical"
         />
       </SettingGroup>

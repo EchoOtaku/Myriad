@@ -203,6 +203,18 @@ impl BackgroundProcessor {
 
         (tasks.len(), pending, processing, completed, failed)
     }
+
+    /// 返回按最近更新时间倒序排列的任务快照，供管理员诊断使用。
+    ///
+    /// 任务错误可能包含平台响应摘要，因此这里只暴露给受管理员权限保护的
+    /// 诊断接口，并由接口进一步限制数量和错误文本长度。
+    pub async fn list_recent_tasks(&self, limit: usize) -> Vec<ProcessingTask> {
+        let tasks = self.tasks.read().await;
+        let mut recent = tasks.values().cloned().collect::<Vec<_>>();
+        recent.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        recent.truncate(limit);
+        recent
+    }
 }
 
 // 全局后台处理器实例

@@ -5,6 +5,7 @@ pub mod admin_users;
 pub mod agent; // 🤖 AI Agent 自然语言任务编排 API
 pub mod ai_recommend; // ✅ AI图标推荐 API
 pub mod analysis;
+pub mod analytics; // 📊 站点访客 / 页面访问统计
 pub mod auth;
 pub mod auth_local;
 pub mod bangumi;
@@ -13,6 +14,7 @@ pub mod brew; // ✅ Brew 阅读 RSS/Atom/JSON Feed 订阅 API
 pub mod brewlia; // ✅ Brewlia AI增强阅读 API
 pub mod cache; // ✅ 缓存管理 API
 pub mod config;
+pub mod diagnostics;
 pub mod discord; // ✅ Discord 数据平台 API
 pub mod game_presence; // ✅ 游戏平台公开状态（Enka / Xbox / PSN，无用户 Cookie）
 pub mod mal; // ✅ MyAnimeList 数据平台 API

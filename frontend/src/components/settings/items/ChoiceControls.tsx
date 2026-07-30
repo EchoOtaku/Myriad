@@ -57,38 +57,35 @@ export function SegmentedControl<T extends string = string>(
     className = '',
   } = props
   const mode = props.mode ?? 'single'
+  const value = props.value
+  const onChange = props.onChange
 
   const isSelected = useCallback(
     (v: T): boolean => {
       if (mode === 'multi') {
-        return (props as { value: T[] }).value.includes(v)
+        return (value as T[]).includes(v)
       }
-      return (props as { value: T | null }).value === v
+      return (value as T | null) === v
     },
-    [mode, props],
+    [mode, value],
   )
 
   const handleSelect = useCallback(
     (next: T, optionDisabled?: boolean) => {
       if (disabled || optionDisabled) return
       if (mode === 'multi') {
-        const multi = props as {
-          value: T[]
-          onChange: (value: T[]) => void
-        }
-        const set = new Set(multi.value)
+        const current = value as T[]
+        const multiOnChange = onChange as (value: T[]) => void
+        const set = new Set(current)
         if (set.has(next)) set.delete(next)
         else set.add(next)
-        multi.onChange(Array.from(set))
+        multiOnChange(Array.from(set))
         return
       }
-      const single = props as {
-        value: T | null
-        onChange: (value: T) => void
-      }
-      if (next !== single.value) single.onChange(next)
+      const singleOnChange = onChange as (value: T) => void
+      if (next !== (value as T | null)) singleOnChange(next)
     },
-    [disabled, mode, props],
+    [disabled, mode, value, onChange],
   )
 
   /**

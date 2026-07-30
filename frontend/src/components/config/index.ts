@@ -34,11 +34,17 @@ export {
   isPlatformConfigured,
   sanitizeMaskedFieldValue,
 } from './PlatformsConfigSection'
+export { default as SiteAnalyticsSection } from './SiteAnalyticsSection'
 export type {
   PlatformConfig,
   PlatformConfigField,
   PlatformsConfigSectionProps,
 } from './PlatformsConfigSection'
+export { ConfigTipsBanner } from './ConfigTipsBanner'
+export type {
+  ConfigTipsBannerProps,
+  GreetingPeriod,
+} from './ConfigTipsBanner'
 export { default as UiConfigSection } from './UiConfigSection'
 export { UpdaterInlinePanel } from './UpdaterConfigSection'
 export { default as UsersConfigSection } from './UsersConfigSection'

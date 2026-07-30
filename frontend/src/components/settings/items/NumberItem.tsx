@@ -4,6 +4,7 @@
 
 import type { NumberSettingConfig } from '../types'
 import React, { useCallback } from 'react'
+import { guideDomProps } from '../guides/guideAnchor'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import './SettingItem.css'
 
@@ -15,6 +16,7 @@ export const NumberItem = React.memo<NumberItemProps>(
     label,
     detail,
     guide,
+    guidePath,
     description,
     hint,
     value,
@@ -44,20 +46,19 @@ export const NumberItem = React.memo<NumberItemProps>(
 
     const id = `setting-number-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`
     const inputName = `myriad-number-${itemKey || label.replace(/\s+/g, '-').toLowerCase()}`
+    const anchorProps = guideDomProps(guidePath)
 
     return (
       <div
-        className={`setting-item setting-item-number setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}`}
+        {...anchorProps}
+        className={`setting-item setting-item-number setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}${guidePath ? ' has-guide-anchor' : ''}`}
       >
         <div className="setting-item-content">
           <label htmlFor={id} className="setting-label">
             <span className="setting-label-text">
               {label}
               {required && <span className="required">*</span>}
-              <SettingTitleGuideEntry
-                title={label}
-                guide={guide ?? detail ?? description}
-              />
+              <SettingTitleGuideEntry title={label} guide={guide} />
             </span>
             {description && (
               <span className="setting-description">{description}</span>

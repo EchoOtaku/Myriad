@@ -78,7 +78,7 @@ export function TargetPicker({
             key: r.tag_name,
             tag: r.tag_name,
             label: r.tag_name,
-            message: `${r.name || r.tag_name}${r.prerelease ? ' (pre)' : ''}`,
+            message: `${r.name || r.tag_name}${r.prerelease ? u.updaterPrereleaseSuffix : ''}`,
             date: null,
             kind: 'release' as const,
           })),
@@ -127,7 +127,7 @@ export function TargetPicker({
             key: `rel-${r.tag_name}`,
             tag: r.tag_name,
             label: r.tag_name,
-            message: `${r.name || r.tag_name}${r.prerelease ? ' (pre)' : ''}`,
+            message: `${r.name || r.tag_name}${r.prerelease ? u.updaterPrereleaseSuffix : ''}`,
             date: null,
             kind: 'release',
           })

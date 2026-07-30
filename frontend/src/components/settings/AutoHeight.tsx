@@ -32,7 +32,6 @@ export class AutoHeight extends React.PureComponent<
   private wrapperRef = React.createRef<HTMLDivElement>()
   private contentRef = React.createRef<HTMLDivElement>()
   private frameId?: number
-  private measureTimerId?: number
   private timerId?: number
 
   getSnapshotBeforeUpdate(previousProps: AutoHeightProps): number | null {
@@ -64,32 +63,26 @@ export class AutoHeight extends React.PureComponent<
         animating: false,
       },
       () => {
-        /*
-         * 新面板挂载后先留一个短暂稳定窗口，让同步 effect、缓存读取和
-         * 本地接口响应有机会把首屏内容撑开，避免测到半成品高度。
-         */
-        this.measureTimerId = window.setTimeout(() => {
-          this.frameId = window.requestAnimationFrame(() => {
-            const targetHeight =
-              this.contentRef.current?.getBoundingClientRect().height
-            if (
-              targetHeight == null ||
-              Math.abs(targetHeight - previousHeight) < 1
-            ) {
-              this.finish()
-              return
-            }
+        this.frameId = window.requestAnimationFrame(() => {
+          const targetHeight =
+            this.contentRef.current?.getBoundingClientRect().height
+          if (
+            targetHeight == null ||
+            Math.abs(targetHeight - previousHeight) < 1
+          ) {
+            this.finish()
+            return
+          }
 
-            this.setState({
-              height: targetHeight,
-              animating: true,
-            })
-            this.timerId = window.setTimeout(
-              this.finish,
-              SETTINGS_DURATION_MS.slow + 80,
-            )
+          this.setState({
+            height: targetHeight,
+            animating: true,
           })
-        }, SETTINGS_DURATION_MS.fast)
+          this.timerId = window.setTimeout(
+            this.finish,
+            SETTINGS_DURATION_MS.slow + 80,
+          )
+        })
       },
     )
   }
@@ -100,7 +93,6 @@ export class AutoHeight extends React.PureComponent<
 
   private clearSchedule = () => {
     window.cancelAnimationFrame(this.frameId ?? 0)
-    window.clearTimeout(this.measureTimerId)
     window.clearTimeout(this.timerId)
   }
 

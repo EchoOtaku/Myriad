@@ -111,12 +111,24 @@
   gap: var(--sg-row-gap);
 }
 
-/* 折叠动画容器要接住 stretch 链（它是这时的 flex 子项） */
+/* 网格内折叠：接住 stretch 链，但 open 时仍按内容高度，勿 1fr 撑满格子 */
 .setting-group-grid--align-stretch
   > .setting-group.setting-group--in-grid
   > .sm-collapse {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
+  align-self: stretch;
+  width: 100%;
   min-height: 0;
+}
+
+.setting-group-grid--align-stretch
+  > .setting-group.setting-group--in-grid
+  > .sm-collapse[data-state='entering'],
+.setting-group-grid--align-stretch
+  > .setting-group.setting-group--in-grid
+  > .sm-collapse[data-state='open'] {
+  /* 覆盖全局 align-self:start，横线仍拉满卡宽 */
+  align-self: stretch;
 }
 
 .setting-group-grid--align-start > .setting-group.setting-group--in-grid {

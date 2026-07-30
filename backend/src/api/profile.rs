@@ -1,11 +1,14 @@
 use crate::services::fetcher::PlatformFetcher;
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
 use chrono::{DateTime, Duration, Utc};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    QueryOrder, Statement,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
@@ -348,6 +351,27 @@ fn platform_data_warning(platform: &str, data: Option<&Value>) -> Option<String>
         }
         "steam" => is_empty_array("games")
             .then(|| "Steam 未返回游戏数据。请确认 API Key、SteamID 正确且个人资料设为公开。".to_string()),
+        "bilibili" => {
+            let no_user = data
+                .get("user")
+                .or_else(|| data.get("user_info"))
+                .filter(|v| !v.is_null())
+                .is_none();
+            let no_content = is_empty_array("favorites") && is_empty_array("bangumi");
+            if no_user && no_content {
+                Some(
+                    "Bilibili 未返回用户与内容数据。请确认 UID 正确；用户接口受风控时请稍后重试。"
+                        .to_string(),
+                )
+            } else if no_user {
+                Some(
+                    "Bilibili 用户信息未取到（追番/收藏可能仍有数据）。常见原因：space/acc/info 风控；请重新刷新。"
+                        .to_string(),
+                )
+            } else {
+                None
+            }
+        }
         "github" => data
             .get("user")
             .filter(|v| !v.is_null())
@@ -491,58 +515,29 @@ async fn fetch_fresh_platform_data(
 
     // 辅助闭包：判断是否应该获取该平台
     let should_fetch = |p: &str| target_platform.is_none() || target_platform == Some(p);
-    let is_platform_enabled = |p: &str| match p {
-        "github" => config
-            .github_enabled
-            .unwrap_or(config.github_username.as_ref().is_some()),
-        "bilibili" => config
-            .bilibili_enabled
-            .unwrap_or(config.bilibili_uid.as_ref().is_some()),
-        "steam" => config
-            .steam_enabled
-            .unwrap_or(config.steam_api_key.as_ref().is_some()),
-        "netease" => config
-            .netease_enabled
-            .unwrap_or(config.netease_user_id.as_ref().is_some()),
-        "bangumi" => config.bangumi_enabled.unwrap_or(
-            config.bangumi_username.as_ref().is_some()
-                || config.bangumi_access_token.as_ref().is_some(),
-        ),
-        "x" => config.x_enabled.unwrap_or(
-            config.x_username.as_ref().is_some() && config.x_bearer_token.as_ref().is_some(),
-        ),
-        "discord" => config
-            .discord_enabled
-            .unwrap_or(config.discord_access_token.as_ref().is_some()),
-        "mal" => config
-            .mal_enabled
-            .unwrap_or(config.mal_username.as_ref().is_some()),
+    // 数据抓取/刷新只要求「已配置」凭证，不要求报告页开关 enabled。
+    // `*_enabled` 仅控制报告页是否展示该平台卡片。
+    let has_cfg = |v: &Option<String>| v.as_ref().is_some_and(|s| !s.trim().is_empty());
+    let is_platform_configured = |p: &str| match p {
+        "github" => has_cfg(&config.github_username),
+        "bilibili" => has_cfg(&config.bilibili_uid),
+        "steam" => has_cfg(&config.steam_api_key) && has_cfg(&config.steam_id),
+        "netease" => has_cfg(&config.netease_user_id),
+        "bangumi" => has_cfg(&config.bangumi_username) || has_cfg(&config.bangumi_access_token),
+        "x" => has_cfg(&config.x_username) && has_cfg(&config.x_bearer_token),
+        "discord" => has_cfg(&config.discord_access_token),
+        "mal" => has_cfg(&config.mal_username),
         "xbox" => {
-            let has_gamertag = config
-                .xbox_gamertag
-                .as_ref()
-                .is_some_and(|s| !s.trim().is_empty())
-                || std::env::var("XBOX_GAMERTAG").is_ok();
-            let has_key = config
-                .openxbl_api_key
-                .as_ref()
-                .is_some_and(|s| !s.trim().is_empty())
+            let has_gamertag = has_cfg(&config.xbox_gamertag) || std::env::var("XBOX_GAMERTAG").is_ok();
+            let has_key = has_cfg(&config.openxbl_api_key)
                 || std::env::var("OPENXBL_API_KEY").is_ok()
                 || std::env::var("XBL_API_KEY").is_ok();
-            config.xbox_enabled.unwrap_or(has_gamertag && has_key)
+            has_gamertag && has_key
         }
         "psn" => {
-            let has_id = config
-                .psn_online_id
-                .as_ref()
-                .is_some_and(|s| !s.trim().is_empty())
-                || std::env::var("PSN_ONLINE_ID").is_ok();
-            let has_npsso = config
-                .psn_npsso
-                .as_ref()
-                .is_some_and(|s| !s.trim().is_empty())
-                || std::env::var("PSN_NPSSO").is_ok();
-            config.psn_enabled.unwrap_or(has_id && has_npsso)
+            let has_id = has_cfg(&config.psn_online_id) || std::env::var("PSN_ONLINE_ID").is_ok();
+            let has_npsso = has_cfg(&config.psn_npsso) || std::env::var("PSN_NPSSO").is_ok();
+            has_id && has_npsso
         }
         _ => false,
     };
@@ -551,7 +546,7 @@ async fn fetch_fresh_platform_data(
     let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
 
     // 获取GitHub数据（包含仓库信息）
-    if should_fetch("github") && is_platform_enabled("github") {
+    if should_fetch("github") && is_platform_configured("github") {
         if let Some(github_username) = &config.github_username {
             let github_token = config.github_token.as_deref();
 
@@ -611,14 +606,21 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取Bilibili数据
-    if should_fetch("bilibili") && is_platform_enabled("bilibili") {
+    if should_fetch("bilibili") && is_platform_configured("bilibili") {
         if let Some(uid_str) = &config.bilibili_uid {
             if let Ok(uid) = uid_str.parse::<i64>() {
                 match fetcher.fetch_bilibili_user(uid).await {
                     Ok(user_data) => {
-                        // 使用 user_info 字段名以匹配 SmartFilter 的期待
-                        all_data["bilibili"]["user_info"] = json!(user_data);
-                        tracing::info!("✓ Bilibili user data fetched");
+                        // 与 Steam/GitHub 一致用 `user`；smart_filter / get_user_info 都读这个键
+                        // （旧版曾写成 user_info，导致过滤与资料页读不到用户信息）
+                        all_data["bilibili"]["user"] = json!(user_data);
+                        tracing::info!(
+                            "✓ Bilibili user data fetched: {} (mid={}, lv{}, {} followers)",
+                            user_data.name,
+                            user_data.mid,
+                            user_data.level,
+                            user_data.follower
+                        );
                     }
                     Err(e) => tracing::warn!("Bilibili user fetch failed: {}", e),
                 }
@@ -658,7 +660,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取Steam数据（只保留游玩时间>=3小时的游戏）
-    if should_fetch("steam") && is_platform_enabled("steam") {
+    if should_fetch("steam") && is_platform_configured("steam") {
         if let (Some(api_key), Some(steam_id)) = (&config.steam_api_key, &config.steam_id) {
             match fetcher.fetch_steam_user(api_key, steam_id).await {
                 Ok(user_data) => {
@@ -699,7 +701,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取网易云音乐数据
-    if should_fetch("netease") && is_platform_enabled("netease") {
+    if should_fetch("netease") && is_platform_configured("netease") {
         tracing::info!("🎵 Should fetch netease: checking config...");
         tracing::info!("🎵 Config netease_user_id: {:?}", config.netease_user_id);
 
@@ -754,7 +756,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取 Bangumi 收藏数据
-    if should_fetch("bangumi") && is_platform_enabled("bangumi") {
+    if should_fetch("bangumi") && is_platform_configured("bangumi") {
         let access_token = config.bangumi_access_token.as_deref();
         let user_agent = config.bangumi_user_agent.as_deref();
         let configured_username = config
@@ -816,7 +818,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取 X (Twitter) 数据
-    if should_fetch("x") && is_platform_enabled("x") {
+    if should_fetch("x") && is_platform_configured("x") {
         if let (Some(username), Some(bearer_token)) = (&config.x_username, &config.x_bearer_token) {
             match fetcher.fetch_x_profile_bundle(username, bearer_token).await {
                 Ok(bundle) => {
@@ -844,7 +846,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取 Discord 数据（用户 OAuth：画像 + 服务器 + 连接）
-    if should_fetch("discord") && is_platform_enabled("discord") {
+    if should_fetch("discord") && is_platform_configured("discord") {
         if let Some(access_token_cfg) = config.discord_access_token.as_deref() {
             let expires_at = config
                 .discord_token_expires_at
@@ -979,7 +981,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取 MyAnimeList 数据（双模式：有 client_id 走官方 API，否则公开 load.json）
-    if should_fetch("mal") && is_platform_enabled("mal") {
+    if should_fetch("mal") && is_platform_configured("mal") {
         if let Some(username) = config
             .mal_username
             .as_ref()
@@ -1031,7 +1033,7 @@ async fn fetch_fresh_platform_data(
 
     // 获取 Xbox 数据（成就向：Gamerscore + 各游戏成就进度）
     // 凭据：DB 优先，env 回退（与 game_presence / 配置页展示一致）
-    if should_fetch("xbox") && is_platform_enabled("xbox") {
+    if should_fetch("xbox") && is_platform_configured("xbox") {
         let gamertag = config
             .xbox_gamertag
             .clone()
@@ -1073,7 +1075,7 @@ async fn fetch_fresh_platform_data(
     }
 
     // 获取 PSN 数据（奖杯向：奖杯等级 + 各游戏奖杯完成度）
-    if should_fetch("psn") && is_platform_enabled("psn") {
+    if should_fetch("psn") && is_platform_configured("psn") {
         let online_id = config
             .psn_online_id
             .clone()
@@ -1779,6 +1781,66 @@ pub async fn get_raw_metadata(
     )
 }
 
+/// 获取单个平台持久化原始数据的状态。
+///
+/// 设置页必须以数据库中的 `platform_metadata` 为准，不能依赖只用于调试的
+/// 全局文件缓存；文件缓存可能在进程启动或轮换期间暂时不存在。
+pub async fn get_platform_metadata_status(
+    Path(platform): Path<String>,
+    crate::extract::Db(db): crate::extract::Db,
+) -> (StatusCode, Json<Value>) {
+    use crate::models::entities::platform_metadata;
+
+    let user_id = match site_owner_user_id(&db).await {
+        Ok(user_id) => user_id,
+        Err(error) => return site_owner_error(error),
+    };
+
+    match platform_metadata::Entity::find()
+        .filter(platform_metadata::Column::UserId.eq(user_id))
+        .filter(platform_metadata::Column::PlatformName.eq(&platform))
+        .order_by_desc(platform_metadata::Column::FetchedAt)
+        .one(&db)
+        .await
+    {
+        Ok(metadata) => {
+            let raw_data_size = metadata
+                .as_ref()
+                .and_then(|item| serde_json::to_vec(&item.raw_data).ok())
+                .map(|bytes| bytes.len())
+                .unwrap_or(0);
+            let raw_fetched_at = metadata
+                .as_ref()
+                .map(|item| item.fetched_at.and_utc().to_rfc3339());
+
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "success": true,
+                    "platform": platform,
+                    "has_raw_data": metadata.is_some(),
+                    "raw_data_size": raw_data_size,
+                    "raw_fetched_at": raw_fetched_at
+                })),
+            )
+        }
+        Err(error) => {
+            tracing::error!(
+                platform = %platform,
+                %error,
+                "Failed to load persisted platform metadata status"
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": "Failed to load platform metadata status"
+                })),
+            )
+        }
+    }
+}
+
 /// 从数据库或缓存中获取用户信息（支持多平台）
 /// 优先从数据库获取，若数据库无数据则从缓存获取
 pub async fn get_user_info(
@@ -1797,9 +1859,12 @@ pub async fn get_user_info(
         Ok(db_data) if !db_data.is_empty() => {
             tracing::info!("📊 Returning user info from database");
 
-            // 优先从 Bilibili 获取
+            // 优先从 Bilibili 获取（兼容旧缓存 user_info）
             if let Some(bilibili_data) = db_data.get("bilibili") {
-                if let Some(bilibili_user) = bilibili_data.get("user") {
+                if let Some(bilibili_user) = bilibili_data
+                    .get("user")
+                    .or_else(|| bilibili_data.get("user_info"))
+                {
                     return (
                         StatusCode::OK,
                         Json(json!({
@@ -1870,8 +1935,10 @@ pub async fn get_user_info(
         tracing::info!("📦 Returning user info from cache file");
         let data = &cache.data;
 
-        // 优先从 Bilibili 获取
-        if let Some(bilibili_user) = data.get("bilibili").and_then(|b| b.get("user")) {
+        // 优先从 Bilibili 获取（兼容旧缓存 user_info）
+        if let Some(bilibili_user) = data.get("bilibili").and_then(|b| {
+            b.get("user").or_else(|| b.get("user_info"))
+        }) {
             return (
                 StatusCode::OK,
                 Json(json!({

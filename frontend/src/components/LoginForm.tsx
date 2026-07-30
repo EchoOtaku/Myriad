@@ -121,6 +121,24 @@ const LoginForm: FC = () => {
       // 用户信息（包括 is_admin）将通过后端 API 实时验证
       setSessionHint()
 
+      // 产品埋点：登录成功（管理员 / 站长自访不计入）
+      try {
+        const { trackEvent, setAnalyticsStaffSession } = await import(
+          '../utils/siteAnalytics'
+        )
+        const isStaff = Boolean(data.user?.is_admin || data.user?.is_owner)
+        if (isStaff) {
+          setAnalyticsStaffSession({
+            isAdmin: Boolean(data.user?.is_admin),
+            isOwner: Boolean(data.user?.is_owner),
+          })
+        } else {
+          trackEvent('login_success')
+        }
+      } catch {
+        /* ignore */
+      }
+
       // 触发自定义事件通知Layout更新用户信息（携带管理员状态）
       window.dispatchEvent(
         new CustomEvent('auth-login-success', {

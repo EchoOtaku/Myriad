@@ -35,6 +35,12 @@ export interface TranslationKeys {
     unknownError: string
     copy: string
     copied: string
+    add: string
+    open: string
+    optional: string
+    expand: string
+    collapse: string
+    details: string
   }
 
   // 导航
@@ -272,6 +278,77 @@ export interface TranslationKeys {
     title: string
     platforms: string
     platformsDesc: string
+    connectedPlatforms: string
+    connectedPlatformsDesc: string
+    analytics: {
+      visitorTitle: string
+      visitorDesc: string
+      enableAria: string
+      disabledBanner: string
+      pagesTitle: string
+      pagesDesc: string
+      eventsTitle: string
+      eventsDesc: string
+      referrersTitle: string
+      referrersDesc: string
+      scopeLabel: string
+      timezoneHint: string
+      rangeAria: string
+      daysN: string
+      refresh: string
+      todayViews: string
+      todayVisitors: string
+      rangeViews: string
+      rangeVisitors: string
+      avgEngagement: string
+      avgEngagementShort: string
+      avgEngagementHint: string
+      approxBounce: string
+      approxBounceHint: string
+      topCountries: string
+      topCountriesHint: string
+      topCountriesEmpty: string
+      countryVisitors: string
+      countryViews: string
+      allTimeViews: string
+      allTimeVisitors: string
+      allTimeVisitorsHint: string
+      dailyAvgViews: string
+      peakViews: string
+      legendViews: string
+      legendVisitors: string
+      viewAria: string
+      viewChart: string
+      viewTable: string
+      tableDay: string
+      tableEngagement: string
+      colPage: string
+      colEvent: string
+      colReferrer: string
+      colViews: string
+      colVisitors: string
+      colCount: string
+      showMoreN: string
+      showLess: string
+      dailyChartAria: string
+      empty: string
+      emptyPages: string
+      emptyEvents: string
+      emptyReferrers: string
+      loadFailed: string
+      exportLabel: string
+      importLabel: string
+      exportTitle: string
+      importTitle: string
+      exportSuccess: string
+      exportFailed: string
+      importSuccess: string
+      importFailed: string
+      importInvalid: string
+      importConfirm: string
+      pageLabels: Record<string, string>
+      eventLabels: Record<string, string>
+    }
     configBackupTitle: string
     configBackupDesc: string
     dragToReorder: string
@@ -280,7 +357,12 @@ export interface TranslationKeys {
     optionGuide: string
     optionGuideHeading: string
     openOptionGuide: string
+    /** 收起已展开的选项指南 */
+    hideOptionGuide: string
+    hideOptionGuideAria: string
     optionGuideFooterHint: string
+    /** 设置页标题右侧：本页子分类快速跳转 */
+    sectionTocAria: string
     guideSectionWhat: string
     guideSectionChain: string
     guideSectionFrontend: string
@@ -379,6 +461,8 @@ export interface TranslationKeys {
     federationFilterShowing: string
     federationFilterEnabled: string
     federationFilterDisabled: string
+    federationFilterEnableAction: string
+    federationFilterDisableAction: string
     federationTrustUnknown: string
     federationTrustDiscovered: string
     federationTrustFollowed: string
@@ -418,6 +502,37 @@ export interface TranslationKeys {
     federationDeliveryFilterAll: string
     federationDeliveryFilterEmpty: string
     federationDeliveryShowing: string
+    /** ManagedList shared: truncate footer “showing n / total” */
+    managedListShowing: string
+    managedListShowMore: string
+    managedListSearchFilter: string
+    managedListQueryDone: string
+    managedListFormAdd: string
+    managedListFormCancel: string
+    managedListStatsAria: string
+    managedListActionsAria: string
+    managedListQueryActive: string
+    managedListFilterAria: string
+    detailHelpAria: string
+    detailHelpAriaNamed: string
+    expandGroupAria: string
+    collapseGroupAria: string
+    importPreviewRestore: string
+    importPreviewPreserve: string
+    importPreviewIgnored: string
+    importPreviewMigrated: string
+    importPreviewInvalid: string
+    volcengineArkApiKey: string
+    volcengineArkBaseUrl: string
+    volcengineArkApiKeyPlaceholder: string
+    openaiApiKeyLabel: string
+    openaiBaseUrlLabel: string
+    openaiModelLabel: string
+    pixaiApiKey: string
+    domainStatusAuto: string
+    domainStatusManual: string
+    updaterMinVersionShort: string
+    updaterPrereleaseSuffix: string
     federationDeliveryRetry: string
     federationDeliveryRemove: string
     federationDeliveryStatusCancelled: string
@@ -537,6 +652,7 @@ export interface TranslationKeys {
     usersFilterAll: string
     usersNoMatch: string
     usersResultCount: string
+    usersShowing: string
     usersHours: string
     usersMinutes: string
     updaterTitle: string
@@ -700,6 +816,22 @@ export interface TranslationKeys {
     selectProject: string
     favorites: string
     allConfig: string
+    /** 侧栏收藏夹上方的横版 banner（按时段问候） */
+    tipsBanner: {
+      label: string
+      greeting: {
+        /** 时段副文案（次级一行） */
+        subtitles: {
+          morning: string
+          forenoon: string
+          noon: string
+          afternoon: string
+          dusk: string
+          evening: string
+          night: string
+        }
+      }
+    }
     saveConfig: string
     resetConfig: string
     resetConfigDesc: string
@@ -714,9 +846,23 @@ export interface TranslationKeys {
     importConfigFailed: string
     importConfigInvalid: string
     importConfirmMessage: string
+    /** 高级：前端缓存组标题 */
+    frontendCacheTitle: string
+    frontendCacheDesc: string
+    forceRefreshFrontendCache: string
+    /** 按钮上的短文案（标题用 forceRefreshFrontendCache） */
+    forceRefreshFrontendCacheButton: string
+    forceRefreshFrontendCacheDesc: string
+    forceRefreshFrontendCacheConfirm: string
+    forceRefreshFrontendCacheSuccess: string
+    forceRefreshFrontendCacheFailed: string
     searchConfig: string
     searchResults: string
     noMatchingConfig: string
+    /** 搜索结果里来自选项指南的条目角标 */
+    searchGuideBadge: string
+    /** 无结果时的简短提示（多词、指南等） */
+    searchEmptyHint: string
     savingConfig: string
     configSaved: string
     configSaveFailed: string
@@ -785,6 +931,52 @@ export interface TranslationKeys {
     geminiBaseUrlHint: string
     githubApiBaseUrl: string
     githubApiBaseUrlHint: string
+    runtimeDiagnosticsTitle: string
+    runtimeDiagnosticsDesc: string
+    runtimeDiagnosticsStatusHealthy: string
+    runtimeDiagnosticsStatusWarning: string
+    runtimeDiagnosticsStatusCritical: string
+    runtimeDiagnosticsStatusUnavailable: string
+    runtimeDiagnosticsCheckHealthy: string
+    runtimeDiagnosticsCheckWarning: string
+    runtimeDiagnosticsCheckCritical: string
+    runtimeDiagnosticsBackend: string
+    runtimeDiagnosticsDatabase: string
+    runtimeDiagnosticsStorage: string
+    runtimeDiagnosticsMigrations: string
+    runtimeDiagnosticsMemory: string
+    runtimeDiagnosticsServerLocation: string
+    runtimeDiagnosticsVersion: string
+    runtimeDiagnosticsStorageWritable: string
+    runtimeDiagnosticsMigrationsApplied: string
+    runtimeDiagnosticsMemoryRss: string
+    /** 角标短词 */
+    runtimeDiagnosticsBadgeWritable: string
+    runtimeDiagnosticsBadgePassed: string
+    runtimeDiagnosticsBadgeMs: string
+    runtimeDiagnosticsBadgeMb: string
+    runtimeDiagnosticsBadgeDevMode: string
+    runtimeDiagnosticsLocationEgress: string
+    runtimeDiagnosticsLocationVerified: string
+    runtimeDiagnosticsLocationSingleSource: string
+    runtimeDiagnosticsLocationConflict: string
+    runtimeDiagnosticsLocationUnavailable: string
+    runtimeDiagnosticsLocationProxyBypassed: string
+    runtimeDiagnosticsVersionMismatch: string
+    runtimeDiagnosticsVersionMatch: string
+    runtimeDiagnosticsVersionDevelopment: string
+    runtimeDiagnosticsLatency: string
+    runtimeDiagnosticsDays: string
+    runtimeDiagnosticsHours: string
+    runtimeDiagnosticsMinutes: string
+    runtimeDiagnosticsLoadFailed: string
+    runtimeDiagnosticsDownload: string
+    runtimeDiagnosticsCopied: string
+    runtimeDiagnosticsCopyFailed: string
+    runtimeDiagnosticsActiveTasks: string
+    runtimeDiagnosticsStuck: string
+    runtimeDiagnosticsRecentFailures: string
+    runtimeDiagnosticsUnknownFailure: string
     placeholderWallpaperUrl: string
     placeholderSiteTitle: string
     placeholderSiteDescription: string
@@ -798,6 +990,10 @@ export interface TranslationKeys {
     savedSuccess: string
     configured: string
     notConfigured: string
+    /** 平台卡状态点 */
+    platformStatusEnabled: string
+    platformStatusConfiguredOff: string
+    platformStatusUnconfigured: string
     aiProvider: string
     aiProviderHint: string
     aiLiteModelTitle: string
@@ -1112,6 +1308,10 @@ export interface TranslationKeys {
     aiDailyTokensHint: string
     aiCooldownSeconds: string
     aiCooldownSecondsHint: string
+    unitSeconds: string
+    platformHelpAria: string
+    platformEnableAria: string
+    platformOpenDetailAria: string
     siteFooterTitle: string
     siteFooterDesc: string
     siteIcp: string
@@ -1866,6 +2066,7 @@ export interface TranslationKeys {
   // 平台二级页数据管理
   dataManagement: {
     loadStatusFailed: string
+    statusUnavailable: string
     confirmRefreshData: string
     csrfTokenError: string
     dataRefreshed: string
@@ -1890,6 +2091,40 @@ export interface TranslationKeys {
     processing: string
     clearing: string
     clear: string
+    /** 二级页数据快照（一次加载） */
+    previewTitle: string
+    previewDesc: string
+    previewEmpty: string
+    previewLoadFailed: string
+    previewUpdatedAt: string
+    playtimeHours: string
+    playtimeMinutes: string
+    previewMetric: {
+      total_content: string
+      follower_count: string
+      following_count: string
+      games_count: string
+      total_playtime_minutes: string
+      public_repos: string
+      gamerscore: string
+      achievement_games: string
+      completed_games: string
+      total_achievements_earned: string
+      total_achievements_available: string
+      average_completion: string
+      hardcore_score: string
+      mean_score: string
+      days_watched: string
+      total_songs: string
+      total_posts: string
+      liked_posts_count: string
+      trophy_level: string
+      trophy_count: string
+      bronze: string
+      silver: string
+      gold: string
+      platinum: string
+    }
   }
 
   // 快速统计小组件
@@ -3389,3 +3624,11 @@ export function saveLocale(locale: Locale): void {
     localStorage.setItem('locale', locale)
   }
 }
+
+// 通知设置文案目录（事件键为域枚举，独立于 TranslationKeys 扁平结构）
+export {
+  getNotificationCopy,
+  type NotificationCopy,
+  type NotificationSourceCopy,
+  type NotificationUiCopy,
+} from './notificationCatalog'

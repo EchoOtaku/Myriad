@@ -1,11 +1,16 @@
 /**
- * 折叠区域：高度从 0 到内容高的动画容器。
+ * 折叠区域：高度 0 ↔ 内容高的动画容器。
  *
- * 用 grid-template-rows 0fr→1fr 做高度动画（不需要测量内容高，
- * 内容变化时也不会失准）。收起播完动画才卸载子节点，
- * 展开落定后把 overflow 放开——组内的下拉菜单 / 气泡要能溢出。
+ * 模型（配合 SettingGroup 折叠组）：
+ * - 外部间距 **永不** 随 open 变化（见 SettingGroup.css）
+ * - 标题→内容 gap 写在子节点顶部 padding 上，随本区域高度一起动画
+ * - grid-template-rows 0fr→1fr：无需测高，内容变高也不失准
+ * - 收起播完再卸载；展开落定后放开 overflow（下拉/气泡可溢出）
  *
- * 状态机：collapsed →(下一帧) entering →(播完) open →(收起) collapsed →(播完) 卸载
+ * 状态机：
+ *   open=true  → mount → collapsed(1帧) → entering → open
+ *   open=false → collapsed →(播完) unmount
+ *   首帧即 open：直接 open，避免整页加载时所有组一起「长出来」
  */
 
 import type { ReactNode } from 'react'
@@ -29,14 +34,18 @@ export const CollapseRegion: React.FC<CollapseRegionProps> = ({
 }) => {
   const [mounted, setMounted] = useState(open)
   const [state, setState] = useState<CollapseState>(open ? 'open' : 'collapsed')
-  /** 首帧就展开时不播入场（整页加载不该看到所有组一起长出来） */
   const isFirstRun = useRef(true)
   const timerRef = useRef<number | undefined>(undefined)
+  const rafOuterRef = useRef<number | undefined>(undefined)
+  const rafInnerRef = useRef<number | undefined>(undefined)
 
   useEffect(() => {
     const first = isFirstRun.current
     isFirstRun.current = false
+
     window.clearTimeout(timerRef.current)
+    if (rafOuterRef.current != null) cancelAnimationFrame(rafOuterRef.current)
+    if (rafInnerRef.current != null) cancelAnimationFrame(rafInnerRef.current)
 
     const settleDelay = prefersReducedMotion() ? 0 : SETTINGS_DURATION_MS.slow
 
@@ -47,19 +56,17 @@ export const CollapseRegion: React.FC<CollapseRegionProps> = ({
         return undefined
       }
 
-      // 先以收起态渲染一帧，下一帧再切展开，否则两次变更合成一帧、不产生过渡
+      // 先以收起态画一帧，再切展开，否则两次 state 合成一帧、无过渡
       setState('collapsed')
-      let inner = 0
-      const outer = requestAnimationFrame(() => {
-        inner = requestAnimationFrame(() => {
+      rafOuterRef.current = requestAnimationFrame(() => {
+        rafInnerRef.current = requestAnimationFrame(() => {
           setState('entering')
-          timerRef.current = window.setTimeout(setState, settleDelay, 'open')
+          timerRef.current = window.setTimeout(() => {
+            setState('open')
+          }, settleDelay)
         })
       })
-      return () => {
-        cancelAnimationFrame(outer)
-        cancelAnimationFrame(inner)
-      }
+      return undefined
     }
 
     setState('collapsed')
@@ -67,17 +74,26 @@ export const CollapseRegion: React.FC<CollapseRegionProps> = ({
       setMounted(false)
       return undefined
     }
-    timerRef.current = window.setTimeout(setMounted, settleDelay, false)
+    timerRef.current = window.setTimeout(() => {
+      setMounted(false)
+    }, settleDelay)
     return undefined
   }, [open])
 
-  useEffect(() => () => window.clearTimeout(timerRef.current), [])
+  useEffect(
+    () => () => {
+      window.clearTimeout(timerRef.current)
+      if (rafOuterRef.current != null) cancelAnimationFrame(rafOuterRef.current)
+      if (rafInnerRef.current != null) cancelAnimationFrame(rafInnerRef.current)
+    },
+    [],
+  )
 
   if (!mounted) return null
 
   return (
     <div
-      className={`sm-collapse ${className}`.trim()}
+      className={`sm-collapse${className ? ` ${className}` : ''}`}
       data-state={state}
       aria-hidden={!open || undefined}
     >

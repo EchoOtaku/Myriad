@@ -517,8 +517,11 @@ impl SmartFilter {
         if let Some(bilibili_data) = all_data.get("bilibili") {
             let mut process_data = serde_json::Map::new();
 
-            // 适配数据结构: user -> user_info
-            if let Some(user) = bilibili_data.get("user") {
+            // 适配: user / user_info（旧缓存）-> user_info
+            if let Some(user) = bilibili_data
+                .get("user")
+                .or_else(|| bilibili_data.get("user_info"))
+            {
                 process_data.insert("user_info".to_string(), user.clone());
             }
 
@@ -772,7 +775,39 @@ impl SmartFilter {
             "follower": 0,
             "following": 0
         });
-        let user_info = data.get("user_info").unwrap_or(&default_user_info);
+        // 兼容 preprocess 后的 user_info，以及未预处理的 user / user_info
+        let user_info = data
+            .get("user_info")
+            .or_else(|| data.get("user"))
+            .unwrap_or(&default_user_info);
+
+        let video_count = data
+            .get("videos")
+            .and_then(|v| v.as_array())
+            .map(|v| v.len())
+            .unwrap_or(0);
+        let bangumi_count = data
+            .get("bangumi")
+            .and_then(|v| v.as_array())
+            .map(|v| v.len())
+            .unwrap_or(0);
+
+        // mid 可能是 number 或 string（card API）
+        let user_id = user_info
+            .get("mid")
+            .and_then(|v| match v {
+                Value::Number(n) => n.as_i64().map(|i| i.to_string()),
+                Value::String(s) => {
+                    let t = s.trim();
+                    if t.is_empty() {
+                        None
+                    } else {
+                        Some(t.to_string())
+                    }
+                }
+                _ => None,
+            })
+            .unwrap_or_default();
 
         // 1. 用户摘要
         let user_summary = UserSummary {
@@ -781,19 +816,26 @@ impl SmartFilter {
                 .and_then(|v| v.as_str())
                 .unwrap_or("未知用户")
                 .to_string(),
-            user_id: user_info
-                .get("mid")
-                .and_then(|v| v.as_i64())
-                .map(|i| i.to_string())
-                .unwrap_or_default(),
+            user_id,
             level: user_info
                 .get("level")
                 .and_then(|v| v.as_i64())
+                .or_else(|| {
+                    user_info
+                        .pointer("/level_info/current_level")
+                        .and_then(|v| v.as_i64())
+                })
                 .map(|l| format!("Lv{}", l)),
             stats: UserStats {
-                follower_count: user_info.get("follower").and_then(|v| v.as_i64()),
-                following_count: user_info.get("following").and_then(|v| v.as_i64()),
-                total_content: 0, // 后续计算
+                follower_count: user_info
+                    .get("follower")
+                    .and_then(|v| v.as_i64())
+                    .or_else(|| user_info.get("fans").and_then(|v| v.as_i64())),
+                following_count: user_info
+                    .get("following")
+                    .and_then(|v| v.as_i64())
+                    .or_else(|| user_info.get("attention").and_then(|v| v.as_i64())),
+                total_content: video_count + bangumi_count,
             },
         };
 
@@ -3011,8 +3053,8 @@ impl SmartFilter {
 
         match platform {
             "bilibili" => {
-                // 适配: user -> user_info
-                if let Some(user) = data.get("user") {
+                // 适配: user / user_info（旧缓存）-> user_info
+                if let Some(user) = data.get("user").or_else(|| data.get("user_info")) {
                     if let Some(obj) = processed.as_object_mut() {
                         obj.insert("user_info".to_string(), user.clone());
                     }
@@ -3279,6 +3321,55 @@ mod tests {
             }
             other => panic!("expected X analysis, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_filter_bilibili_user_key() {
+        // 抓取写入 `user`（与 steam/github 一致）；filter 内部期望 user_info
+        let raw = serde_json::json!({
+            "user": {
+                "mid": 10398973,
+                "name": "染川瞳",
+                "face": "https://example.com/face.jpg",
+                "sign": "",
+                "level": 6,
+                "follower": 251,
+                "following": 56
+            },
+            "videos": [
+                { "title": "视频A", "bvid": "BV1xx", "cover": "https://example.com/a.jpg" }
+            ],
+            "bangumi": [
+                { "title": "名侦探柯南", "season_id": 33378, "cover": "https://example.com/c.jpg", "progress": "", "season_type": 1 }
+            ]
+        });
+
+        let filtered = SmartFilter::filter("bilibili", &raw).expect("filter bilibili");
+        assert_eq!(filtered.user_summary.username, "染川瞳");
+        assert_eq!(filtered.user_summary.user_id, "10398973");
+        assert_eq!(filtered.user_summary.level.as_deref(), Some("Lv6"));
+        assert_eq!(filtered.user_summary.stats.follower_count, Some(251));
+        assert_eq!(filtered.user_summary.stats.following_count, Some(56));
+        assert_eq!(filtered.user_summary.stats.total_content, 2);
+    }
+
+    #[test]
+    fn test_filter_bilibili_legacy_user_info_key() {
+        let raw = serde_json::json!({
+            "user_info": {
+                "mid": "42",
+                "name": "legacy",
+                "level": 3,
+                "follower": 10,
+                "following": 2
+            },
+            "videos": [],
+            "bangumi": []
+        });
+        let filtered = SmartFilter::filter("bilibili", &raw).expect("filter bilibili legacy");
+        assert_eq!(filtered.user_summary.username, "legacy");
+        assert_eq!(filtered.user_summary.user_id, "42");
+        assert_eq!(filtered.user_summary.stats.follower_count, Some(10));
     }
 
     #[test]

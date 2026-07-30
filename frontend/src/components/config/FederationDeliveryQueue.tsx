@@ -496,8 +496,13 @@ export const FederationDeliveryQueue: React.FC<
       ? c.federationDeliveryEmpty
       : c.federationDeliveryFilterEmpty
 
+  /** Soft render cap — keep in sync with ManagedList maxVisibleItems below. */
+  const LIST_CAP = 60
+  const listTruncated = filteredItems.length > LIST_CAP
+
+  // When truncated, ManagedList.truncateFooter owns the count line (avoid double footer).
   const footer =
-    queryActive && items.length > 0
+    queryActive && items.length > 0 && !listTruncated
       ? c.federationDeliveryShowing
           .replace('{shown}', String(filteredItems.length))
           .replace('{total}', String(items.length))
@@ -603,7 +608,14 @@ export const FederationDeliveryQueue: React.FC<
       emptyText={emptyText}
       footer={footer}
       working={bulkBusy}
-      maxHeight="20rem"
+      maxHeight={filteredItems.length > 8 ? '20rem' : null}
+      maxVisibleItems={LIST_CAP}
+      truncateFooter={(shown, total) =>
+        // shown = rendered rows; total = filtered list size (items prop length)
+        c.federationDeliveryShowing
+          .replace('{shown}', String(shown))
+          .replace('{total}', String(total))
+      }
     />
   )
 }

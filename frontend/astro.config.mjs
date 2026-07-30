@@ -76,10 +76,10 @@ function spaFallbackPlugin() {
 const BACKEND_TARGET = 'http://127.0.0.1:1103'
 
 // Must stay >= TappPlaygroundService AbortSignal and cover planner + up to 3
-// repair model calls (each may use backend MODEL_REQUEST_TIMEOUT of 720s).
+// repair model calls (each may use backend MODEL_REQUEST_TIMEOUT of 1080s).
 // Node http.request timeout is socket-idle; playground holds the connection
 // with no response bytes until generation finishes.
-const PLAYGROUND_PROXY_TIMEOUT_MS = 20 * 60 * 1000
+const PLAYGROUND_PROXY_TIMEOUT_MS = 30 * 60 * 1000
 // Federation file-meta downloads / chunk uploads can exceed the default 30s.
 const FEDERATION_TRANSFER_PROXY_TIMEOUT_MS = 10 * 60 * 1000
 // Digital Life onboarding / visuals: a single directional rig is composed

@@ -40,7 +40,7 @@
 | `PlatformAutoRefreshSettings` | 数据平台 · 自动刷新 |
 | `PlatformDataManagement` | 数据平台 · 单平台数据管理（二级页内嵌，非独立路由） |
 
-> 独立路由 `/data-management` 已移除；旧书签应落到 `/config`（App 内 redirect）。
+> 独立路由 `/data-management` 及其兼容重定向均已移除。
 
 `ConfigForm` 本身还负责：导航搜索等壳层 UI、**浮动统一保存**（`handleSave` + dirty 草稿）。数据平台 UI 已拆到 **`PlatformsConfigSection`**（列表拖拽 / 二级凭证 / `PlatformDataManagement` / `AutoHeight`）。
 

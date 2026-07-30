@@ -82,6 +82,7 @@ import {
   AiConfigSection,
   areFederationPoliciesEqual,
   areLibrarySourcePreferencesEqual,
+  ConfigTipsBanner,
   DEFAULT_FEDERATION_POLICY,
   DEFAULT_LIBRARY_SOURCE_PREFERENCES,
   FederationConfigSection,
@@ -109,6 +110,15 @@ import {
   SettingsButton,
   SettingsPageActionsProvider,
 } from './settings'
+import { buildGuideSearchIndex } from './settings/guides/guideSearchIndex'
+import {
+  rankConfigSearch,
+  type ConfigSearchableItem,
+} from './settings/guides/configSearch'
+import {
+  scheduleScrollToSettingGuide,
+  scrollToSettingGuide,
+} from './settings/guides/guideAnchor'
 import { Spinner } from './Spinner'
 import Toast from './Toast'
 import './ConfigForm.css'
@@ -316,7 +326,7 @@ const ConfigNavItem = React.memo<ConfigNavItemProps>(
 ConfigNavItem.displayName = 'ConfigNavItem'
 
 const ModernConfigForm: React.FC = () => {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const { user, isAdmin } = useAuth()
   const [config, setConfig] = useState<Config | null>(null)
   const [initialConfig, setInitialConfig] = useState<Config | null>(null)
@@ -337,6 +347,8 @@ const ModernConfigForm: React.FC = () => {
   /** 外部深链打开某平台二级页（如 Discord OAuth 回调） */
   const [platformFocus, setPlatformFocus] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  /** 搜索点指南后，待滚到的 guidePath（section 切换 commit 后消费） */
+  const pendingGuideScrollRef = React.useRef<string | null>(null)
   const [favorites, setFavorites] = useState<string[]>(loadConfigFavorites)
   const [savedFavorites, setSavedFavorites] =
     useState<string[]>(loadConfigFavorites)
@@ -537,6 +549,7 @@ const ModernConfigForm: React.FC = () => {
         music_enabled: t.config.fieldMusicEnabled,
         music_source: t.config.fieldMusicSource,
         music_playlist_id: t.config.fieldMusicPlaylistId,
+        analytics_enabled: t.config.analytics.visitorTitle,
       }
       return fieldLabels[fieldKey] || originalLabel
     },
@@ -649,17 +662,11 @@ const ModernConfigForm: React.FC = () => {
     [t, isAdmin],
   )
 
-  // 搜索功能
-  const searchableContent = useMemo(() => {
+  // 搜索功能（含选项指南全文）
+  const searchableContent = useMemo((): ConfigSearchableItem[] => {
     if (!config) return []
 
-    const items: Array<{
-      type: string
-      section: string
-      title: string
-      description: string
-      keywords: string[]
-    }> = []
+    const items: ConfigSearchableItem[] = []
 
     // 平台配置 - 区块描述
     items.push({
@@ -668,7 +675,10 @@ const ModernConfigForm: React.FC = () => {
       title: t.config.platforms,
       description: t.config.platformsDesc,
       keywords: [
+        '数据及统计',
+        '数据页',
         '平台',
+        '接入平台',
         '数据源',
         'token',
         'api',
@@ -679,9 +689,56 @@ const ModernConfigForm: React.FC = () => {
         'netease',
         'myanimelist',
         'mal',
+        '访客',
+        '访问',
+        '统计',
+        'analytics',
+        'visitor',
         '数据管理',
         '缓存',
         '刷新',
+      ],
+    })
+
+    items.push({
+      type: 'section',
+      section: 'platforms',
+      title: t.config.connectedPlatforms,
+      description: t.config.connectedPlatformsDesc,
+      keywords: [
+        '接入平台',
+        '数据平台',
+        '自动刷新',
+        '刷新频率',
+        '平台',
+        '数据源',
+        'connected',
+        'platforms',
+      ],
+    })
+
+    // 页内顺序：接入平台 → 访客统计（TOC 与 DOM 一致）
+    items.push({
+      type: 'section',
+      section: 'platforms',
+      title: t.config.analytics.visitorTitle,
+      description: t.config.analytics.visitorDesc,
+      keywords: [
+        '访客',
+        '统计',
+        'PV',
+        'UV',
+        'visitor',
+        'analytics',
+        '页面',
+        '访问分析',
+        'pageview',
+        '事件',
+        '来源',
+        'referrer',
+        '开关',
+        '启用',
+        'analytics_enabled',
       ],
     })
 
@@ -836,6 +893,12 @@ const ModernConfigForm: React.FC = () => {
         '代理',
         '导入',
         '导出',
+        '运行',
+        '诊断',
+        'health',
+        'database',
+        'storage',
+        'task',
       ],
     })
 
@@ -955,20 +1018,56 @@ const ModernConfigForm: React.FC = () => {
       ],
     })
 
+    // 选项指南全文：what / chain / frontend / notes
+    const guideEntries = buildGuideSearchIndex(locale)
+    for (const g of guideEntries) {
+      items.push({
+        type: 'guide',
+        section: g.section,
+        title: g.title,
+        description: g.description,
+        keywords: g.keywords,
+        haystack: g.haystack,
+        guidePath: g.guidePath,
+      })
+    }
+
+    // 分区条目：合并同 section 指南关键词，提升「搜说明词 → 落到整页」
+    const bySection = new Map<string, string[]>()
+    for (const g of guideEntries) {
+      const arr = bySection.get(g.section) ?? []
+      for (const k of g.keywords) {
+        if (k.length >= 2 && k.length <= 12) arr.push(k)
+      }
+      bySection.set(g.section, arr)
+    }
+    for (const item of items) {
+      if (item.type !== 'section' && item.type !== 'alias') continue
+      const extra = bySection.get(item.section)
+      if (!extra?.length) continue
+      const merged = new Set([
+        ...item.keywords.map((k) => k.toLowerCase()),
+        ...extra,
+      ])
+      item.keywords = Array.from(merged)
+      // 轻量 haystack：标题+描述+关键词，便于多词 AND
+      item.haystack = [item.title, item.description, ...item.keywords]
+        .join('\n')
+        .toLowerCase()
+    }
+
     return items
-  }, [config, t])
+  }, [config, t, locale])
 
-  // 使用防抖后的搜索查询优化性能
+  // 防抖查询 → 多词 AND + 字段加权排序 + 每区指南上限
   const filteredContent = useMemo(() => {
-    if (!debouncedSearchQuery.trim()) return searchableContent
-
-    const query = debouncedSearchQuery.toLowerCase()
-    return searchableContent.filter(
-      (item) =>
-        item.title.toLowerCase().includes(query) ||
-        item.description.toLowerCase().includes(query) ||
-        item.keywords.some((k) => k.includes(query)),
-    )
+    if (!debouncedSearchQuery.trim()) return [] as ReturnType<
+      typeof rankConfigSearch
+    >
+    return rankConfigSearch(searchableContent, debouncedSearchQuery, {
+      maxResults: 36,
+      maxGuidesPerSection: 4,
+    })
   }, [debouncedSearchQuery, searchableContent])
 
   // 切换收藏
@@ -992,19 +1091,34 @@ const ModernConfigForm: React.FC = () => {
 
   // 处理节切换
   const handleSectionChange = React.useCallback(
-    (section: string) => {
+    (section: string, options?: { guidePath?: string | null }) => {
       const next = LEGACY_CONFIG_SECTION_MAP[section] ?? section
+      const guidePath = options?.guidePath?.trim() || null
+      pendingGuideScrollRef.current = guidePath
+
       // 切换方向按侧边栏里的先后顺序：往下选 = forward，往上 = back
       const order = quickAccessItems.map((item) => item.section)
       const from = order.indexOf(activeSection)
       const to = order.indexOf(next)
       setSectionDir(from >= 0 && to >= 0 && to < from ? 'back' : 'forward')
 
+      const sameSection = next === activeSection
       setActiveSection(next)
       setSearchQuery('')
       setPlatformFocus(null)
       // 移动端进入二级内容页
       setMobilePane('section')
+
+      // 已在目标分类：SectionSwitch 不会 onCommit，需本地点滚
+      if (sameSection && guidePath) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const path = pendingGuideScrollRef.current
+            pendingGuideScrollRef.current = null
+            if (path) scrollToSettingGuide(path)
+          })
+        })
+      }
     },
     [quickAccessItems, activeSection],
   )
@@ -1014,10 +1128,15 @@ const ModernConfigForm: React.FC = () => {
    * 在新分类换上的那一帧做（旧页已淡出），所以看不到跳动；
    * 不归零的话，从长分类滚到一半切到短分类，粘顶侧栏会突然弹位。
    * 用 'auto' 覆盖全局 scroll-behavior: smooth——切换过程中再来一段平滑滚动只会更乱。
+   * 若来自指南搜索，归零后再滚到对应选项。
    */
   const scrollSettingsToTop = React.useCallback(() => {
     if (typeof window === 'undefined') return
     window.scrollTo({ top: 0, behavior: 'auto' })
+    const path = pendingGuideScrollRef.current
+    if (!path) return
+    pendingGuideScrollRef.current = null
+    scheduleScrollToSettingGuide(path)
   }, [])
 
   const handleMobileBackToNav = React.useCallback(() => {
@@ -1410,6 +1529,7 @@ const ModernConfigForm: React.FC = () => {
     }
     if (key === 'wallpaper_blur') return '3'
     if (key === 'music_enabled') return 'false'
+    if (key === 'analytics_enabled') return 'true'
     if (key === 'music_source') return 'netease'
     if (key === 'music_playlist_id') return ''
     if (key === 'proxy_enabled') return 'false'
@@ -2082,7 +2202,13 @@ const ModernConfigForm: React.FC = () => {
     const props = getSectionProps(activeSection)
 
     switch (activeSection) {
-      case 'platforms':
+      case 'platforms': {
+        const analyticsField = config.ui_config.config_fields.find(
+          (f) => f.key === 'analytics_enabled',
+        )
+        // 缺省 / 非 false 视为开启（与后端默认 true 一致）
+        const analyticsEnabled =
+          !analyticsField || analyticsField.value !== 'false'
         return (
           <PlatformsConfigSection
             platforms={config.platforms}
@@ -2095,9 +2221,17 @@ const ModernConfigForm: React.FC = () => {
             openOAuthSection={() => handleSectionChange('oauth')}
             focusPlatform={platformFocus}
             onFocusPlatformConsumed={() => setPlatformFocus(null)}
+            analyticsEnabled={analyticsEnabled}
+            onAnalyticsEnabledChange={(enabled) =>
+              updateUiFieldValue(
+                'analytics_enabled',
+                enabled ? 'true' : 'false',
+              )
+            }
             {...props}
           />
         )
+      }
       case 'ai':
         return (
           <AiConfigSection
@@ -2322,19 +2456,29 @@ const ModernConfigForm: React.FC = () => {
                 {filteredContent.length > 0 ? (
                   filteredContent.map((item, index) => (
                     <button
-                      key={index}
+                      key={`${item.type}-${item.section}-${item.guidePath ?? item.title}-${index}`}
                       type="button"
                       onClick={() => {
-                        handleSectionChange(item.section)
+                        handleSectionChange(item.section, {
+                          guidePath:
+                            item.type === 'guide' ? item.guidePath : null,
+                        })
                       }}
-                      className="config-nav-result"
+                      className={`config-nav-result${item.type === 'guide' ? ' is-guide' : ''}`}
                     >
                       <span className="config-nav-result-text">
                         <span className="config-nav-result-title">
+                          {item.type === 'guide' ? (
+                            <span className="config-nav-result-badge">
+                              {t.config.searchGuideBadge}
+                            </span>
+                          ) : null}
                           {item.title}
                         </span>
                         <span className="config-nav-result-desc">
-                          {item.description}
+                          {item.matchSnippet && item.type === 'guide'
+                            ? item.matchSnippet
+                            : item.description}
                         </span>
                       </span>
                       <span className="config-nav-result-arrow" aria-hidden>
@@ -2345,12 +2489,18 @@ const ModernConfigForm: React.FC = () => {
                 ) : (
                   <p className="config-nav-empty">
                     {t.config.noMatchingConfig}
+                    <span className="config-nav-empty-hint">
+                      {t.config.searchEmptyHint}
+                    </span>
                   </p>
                 )}
               </div>
             </div>
           ) : (
             <nav className="config-sidebar-scroll">
+              {/* 横版 banner：按时段问候 */}
+              <ConfigTipsBanner />
+
               {/* 收藏夹 */}
               {favorites.length > 0 && (
                 <div className="config-nav-group config-nav-group--favorites">
@@ -2435,8 +2585,14 @@ const ModernConfigForm: React.FC = () => {
             <SettingsPageActionsProvider
               value={{
                 resetCurrentPage: handleResetCurrentPage,
-                canResetCurrentPage:
-                  activeSection !== 'about' && activeSection !== 'updater',
+                canResetCurrentPage: ![
+                  'about',
+                  'updater',
+                  // 数据及统计 / 第三方登录 / 用户管理：不提供「重置本页」
+                  'platforms',
+                  'oauth',
+                  'users',
+                ].includes(activeSection),
               }}
             >
               <SectionSwitch

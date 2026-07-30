@@ -1,8 +1,9 @@
 /**
- * 标题旁「详细说明」：默认不展示，hover / focus 时以 tooltip 显示。
+ * 标题旁短说明 ⓘ：默认 hover / focus 以 tooltip 显示。
  * Tooltip 通过 Portal 挂到 document.body + fixed 定位，避免被 overflow 裁切。
  *
- * 主动弹出已取消；由设置页右上角「显示说明」开关控制常显（见 SettingsHelpContext）。
+ * 仅用于 detail / description 短文案。「显示说明」开启后由父组件改为标题下常显。
+ * 结构化长指南请用 SettingTitleGuideEntry（点击展开），不要塞进本组件。
  */
 
 import type { ReactNode } from 'react'
@@ -16,6 +17,7 @@ import React, {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { LuInfo } from '@lib/icons'
+import { useI18n } from '../../contexts/I18nContext'
 import './SettingTitleHelp.css'
 
 export type SettingTitleHelpTone = 'default' | 'warning' | 'info'
@@ -86,11 +88,13 @@ function computePosition(
 
 export const SettingTitleHelp: React.FC<SettingTitleHelpProps> = ({
   children,
-  ariaLabel = '详细说明',
+  ariaLabel: ariaLabelProp,
   tone = 'default',
   placement = 'bottom',
   className = '',
 }) => {
+  const { t } = useI18n()
+  const ariaLabel = ariaLabelProp ?? t.config.detailHelpAria
   const tooltipId = useId()
   const triggerRef = useRef<HTMLButtonElement>(null)
   const tooltipRef = useRef<HTMLDivElement>(null)

@@ -5,10 +5,10 @@
 
 /* 基础样式继承自 ConfigForm.css */
 
-/* 变体样式 */
+/* 变体样式 — info 跟主题色；语义色保持固定 */
 .info-card-info {
-  background: color-mix(in srgb, #3b82f6 10%, transparent);
-  border-color: color-mix(in srgb, #3b82f6 25%, transparent);
+  background: color-mix(in srgb, var(--cfg-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--cfg-accent) 25%, transparent);
 }
 
 .info-card-warning {
@@ -38,8 +38,8 @@
 
 /* 暗色模式变体 */
 html.dark .info-card-info {
-  background: color-mix(in srgb, #3b82f6 15%, transparent);
-  border-color: color-mix(in srgb, #3b82f6 30%, transparent);
+  background: color-mix(in srgb, var(--cfg-accent) 15%, transparent);
+  border-color: color-mix(in srgb, var(--cfg-accent) 30%, transparent);
 }
 
 html.dark .info-card-warning {

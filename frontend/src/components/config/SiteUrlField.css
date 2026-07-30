@@ -99,10 +99,10 @@ html.dark .site-url-applied-val {
   padding: 0.7rem 0.8rem 0.75rem;
   border-radius: 0.65rem;
   border: 1px solid
-    color-mix(in srgb, var(--color-primary, #3b82f6) 14%, var(--cfg-subtle-border));
+    color-mix(in srgb, var(--cfg-accent, #3b82f6) 14%, var(--cfg-subtle-border));
   background: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 5%,
+    var(--cfg-accent, #3b82f6) 5%,
     var(--cfg-subtle-bg)
   );
 }
@@ -110,12 +110,12 @@ html.dark .site-url-applied-val {
 html.dark .site-url-checklist-wrap {
   border-color: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 18%,
+    var(--cfg-accent, #60a5fa) 18%,
     var(--cfg-subtle-border)
   );
   background: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 8%,
+    var(--cfg-accent, #60a5fa) 8%,
     var(--cfg-subtle-bg)
   );
 }

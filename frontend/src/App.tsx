@@ -423,11 +423,6 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
-        {/* Retired standalone page; data management lives under platform detail. */}
-        <Route
-          path="/data-management"
-          element={<Navigate to="/config" replace />}
-        />
         <Route
           path="/login"
           element={

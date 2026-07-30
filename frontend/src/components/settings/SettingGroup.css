@@ -1,11 +1,27 @@
 /**
  * 设置分组样式
- * 间距：由父级 .config-form 的 --settings-gap-group 排组与组；
- * 组内由 --settings-gap-item 排设置项，避免 margin 叠 gap。
+ *
+ * 间距原则：
+ * - 组与组：父级 .config-form 的 gap（--settings-gap-group）
+ * - 组内项：.setting-group-content 的 gap（--settings-gap-item）
+ * - 折叠块：开合 **不改任何外部 margin**，避免上下元素跳变
+ *   · 标题 → 内容 的间距放在 CollapseRegion 内，随高度动画一起收放
+ *   · 连续折叠组之间用固定略紧间距（与展开/收起无关）
  */
 
 .setting-group {
   margin-bottom: 0;
+}
+
+/* 页内 TOC 跳转时避开粘顶栏 / 移动 section 顶栏 */
+.setting-group.has-toc-anchor {
+  scroll-margin-top: calc(var(--cfg-sticky-top, 5rem) + 0.75rem);
+}
+
+@media (width < 1024px) {
+  .setting-group.has-toc-anchor {
+    scroll-margin-top: calc(var(--cfg-sticky-top, 5rem) + 3.25rem);
+  }
 }
 
 /* 无 .config-form 包裹时（零星用法）仍保留组间距。
@@ -18,30 +34,53 @@
   margin-top: var(--settings-gap-group, 1.25rem);
 }
 
-/*
- * 折叠块间距：
- * - 收起时去掉标题下方空白（原先仍占 item gap）
- * - 连续收起的折叠块之间用更紧的 collapsed gap（默认 0.2rem）
+/* ==========================================
+   折叠组：稳定布局模型
+   ==========================================
+ *
+ * 不在 is-collapsed / is-expanded 上改 margin。
+ * 父级 gap 恒定；连续两个折叠组之间用固定略紧值（状态无关 → 无跳变）。
  */
-.setting-group.is-collapsible.is-collapsed > .setting-group-header,
-.setting-group.is-collapsible.is-collapsed
-  > .setting-group-header.setting-group-header--with-extra {
-  margin-bottom: 0;
+
+.setting-group.is-collapsible {
+  /* 不参与 flex free-space 拉伸，避免 sm-collapse 的 1fr 被撑高 */
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
+/*
+ * 连续折叠组：固定间距（与开合无关）。
+ * net = collapsible-gap；用负 margin 只抵消父级多出来的 group-gap 差额。
+ */
 .config-form
-  > .setting-group.is-collapsible.is-collapsed
-  + .setting-group.is-collapsible.is-collapsed {
+  > .setting-group.is-collapsible
+  + .setting-group.is-collapsible {
   margin-top: calc(
-    var(--settings-gap-collapsed, 0.2rem) - var(--settings-gap-group, 1.25rem)
+    var(--settings-gap-collapsible, 0.1rem) - var(--settings-gap-group, 1.25rem)
   );
 }
 
-/* 非 config-form 父级时同样收紧连续折叠块 */
 :not(.config-form)
-  > .setting-group.is-collapsible.is-collapsed
-  + .setting-group.is-collapsible.is-collapsed {
-  margin-top: var(--settings-gap-collapsed, 0.2rem);
+  > .setting-group.is-collapsible:not(.setting-group--in-grid)
+  + .setting-group.is-collapsible:not(.setting-group--in-grid) {
+  margin-top: var(--settings-gap-collapsible, 0.1rem);
+}
+
+/* 折叠标题：永远不占 header→content 的 item gap（该间距在折叠区内） */
+.setting-group.is-collapsible > .setting-group-header,
+.setting-group.is-collapsible
+  > .setting-group-header.setting-group-header--collapsible {
+  margin-bottom: 0;
+}
+
+/*
+ * 标题 → 内容 间距：写在折叠内容顶部，随 0fr→1fr 一起动画。
+ * 展开时自然出现，收起时自然消失，不会在开合瞬间跳 margin。
+ */
+.setting-group.is-collapsible
+  .sm-collapse-inner
+  > .setting-group-content {
+  padding-top: var(--settings-gap-item, 0.625rem);
 }
 
 /* ==========================================
@@ -64,6 +103,17 @@
   align-items: flex-start;
   gap: 0.5rem;
   margin-bottom: var(--settings-gap-item, 0.625rem);
+}
+
+/* 折叠专用头：间距由 is-collapsible 规则锁死为 0（优先级高于 --with-extra） */
+.setting-group-header--collapsible {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.setting-group.is-collapsible > .setting-group-header--with-extra {
+  margin-bottom: 0;
 }
 
 .setting-group-header--with-switch {
@@ -95,15 +145,21 @@
   justify-content: space-between;
   flex: 1;
   min-width: 0;
+  box-sizing: border-box;
   cursor: pointer;
-  padding: 0.5rem;
-  margin: -0.5rem;
+  /*
+   * 命中区恒定：开合不得改 padding / 纵向 margin。
+   * 仅水平负 margin，让 hover 底略宽于文字。
+   */
+  padding: 0.4rem 0.5rem;
+  margin: 0 -0.5rem;
   border-radius: 0.5rem;
   transition: background-color var(--sm-dur-base);
   border: none;
   background: transparent;
   text-align: left;
   font: inherit;
+  color: inherit;
 }
 
 .setting-group-header-toggle:hover {
@@ -112,10 +168,6 @@
 
 html.dark .setting-group-header-toggle:hover {
   background: rgb(255 255 255 / 3%);
-}
-
-.setting-group-header--with-extra .setting-group-header-toggle {
-  margin-bottom: 0;
 }
 
 .setting-group-title-extra {
@@ -128,29 +180,6 @@ html.dark .setting-group-header-toggle:hover {
 .setting-group-header-content {
   flex: 1;
   min-width: 0;
-}
-
-/* 兼容旧 class（若外部仍引用 collapsible） */
-.setting-group-header.collapsible {
-  cursor: pointer;
-  padding: 0.5rem;
-  margin: -0.5rem;
-  margin-bottom: calc(var(--settings-gap-item, 0.625rem) - 0.25rem);
-  border-radius: 0.5rem;
-  transition: background-color var(--sm-dur-base);
-  border: none;
-  background: transparent;
-  width: calc(100% + 1rem);
-  text-align: left;
-  font: inherit;
-}
-
-.setting-group-header.collapsible:hover {
-  background: rgb(0 0 0 / 3%);
-}
-
-html.dark .setting-group-header.collapsible:hover {
-  background: rgb(255 255 255 / 3%);
 }
 
 .setting-group-title {
@@ -186,10 +215,10 @@ html.dark .setting-group-header.collapsible:hover {
   border-radius: 0.5rem;
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent),
-    color-mix(in srgb, var(--color-primary, #3b82f6) 6%, transparent)
+    color-mix(in srgb, var(--cfg-accent, #3b82f6) 15%, transparent),
+    color-mix(in srgb, var(--cfg-accent, #3b82f6) 6%, transparent)
   );
-  color: var(--color-primary, #3b82f6);
+  color: var(--cfg-accent, #3b82f6);
   font-size: 0.875rem;
   flex-shrink: 0;
   position: relative;
@@ -226,10 +255,10 @@ html.dark .setting-group-header.collapsible:hover {
 html.dark .setting-group-icon {
   background: linear-gradient(
     135deg,
-    color-mix(in srgb, var(--color-primary, #60a5fa) 22%, transparent),
-    color-mix(in srgb, var(--color-primary, #60a5fa) 8%, transparent)
+    color-mix(in srgb, var(--cfg-accent, #60a5fa) 22%, transparent),
+    color-mix(in srgb, var(--cfg-accent, #60a5fa) 8%, transparent)
   );
-  color: var(--color-primary, #60a5fa);
+  color: var(--cfg-accent, #60a5fa);
 }
 
 html.dark .setting-group-title {
@@ -252,7 +281,7 @@ html.dark .setting-group-description.is-warning {
 }
 
 .setting-group-description a {
-  color: #3b82f6;
+  color: var(--cfg-accent);
   text-decoration: none;
 }
 
@@ -265,7 +294,7 @@ html.dark .setting-group-description {
 }
 
 html.dark .setting-group-description a {
-  color: #60a5fa;
+  color: var(--cfg-accent);
 }
 
 /* ==========================================

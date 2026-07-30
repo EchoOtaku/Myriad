@@ -403,10 +403,19 @@ impl ConfigService {
         if let Some(v) = map.get("pet_enabled") {
             if let Some(b) = v.as_bool() {
                 config.pet_enabled = b;
+            } else if let Some(s) = v.as_str() {
+                config.pet_enabled = s == "true";
             }
         }
         if let Some(v) = map.get("pet_image_url") {
             config.pet_image_url = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("analytics_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.analytics_enabled = b;
+            } else if let Some(s) = v.as_str() {
+                config.analytics_enabled = s != "false" && s != "0";
+            }
         }
 
         // AI 图片生成配置

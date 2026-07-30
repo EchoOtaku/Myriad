@@ -52,11 +52,17 @@ export interface BaseSettingItemConfig {
    */
   detail?: ReactNode
   /**
-   * 选项详细指南（弹窗正文）。
-   * 「显示说明」开启时，标题旁显示指南入口；点击打开弹窗。
-   * 一句话总结请用 description；长文写在 guide。
+   * 选项详细指南。
+   * 「显示说明」开启时标题旁出现入口；点击后以浮窗展示（优先上方，不够则左侧）。
+   * 一句话总结请用 description；中等说明用 detail；长文用 guide。
    */
   guide?: ReactNode
+  /**
+   * 指南目录路径（如 advanced.proxyEnable）。
+   * 写入 DOM 锚点，供配置搜索「点指南 → 滚到选项」。
+   * 推荐用 useSettingGuide().bindGuide(path, entry) 一并传入。
+   */
+  guidePath?: string
   /** 描述说明（显示在标签下方） */
   description?: string
   /** 提示文本（显示在控件下方） */
@@ -298,6 +304,16 @@ export interface SettingGroupSwitchConfig {
 export interface SettingGroupConfig {
   /** 组标题 */
   title?: string
+  /**
+   * 锚点 id（页内快速跳转）。缺省时由 title 生成 `sg-…`。
+   * 网格内嵌套 Group 不会进入 TOC。
+   */
+  id?: string
+  /**
+   * 是否进入页内 TOC。默认 true；设 false 可隐藏。
+   * 仅顶层（非 SettingGroupGrid 内）且有 title 时生效。
+   */
+  toc?: boolean
   /** 组图标 */
   icon?: ReactNode | string
   /** 标题旁附加内容（如 SettingTitleTag 跳转标签） */
@@ -313,9 +329,14 @@ export interface SettingGroupConfig {
    */
   detail?: ReactNode
   /**
-   * 分组详细指南（弹窗）。「显示说明」开启时标题旁显示入口。
+   * 分组详细指南。「显示说明」开启时标题旁入口；点击后浮窗展示。
    */
   guide?: ReactNode
+  /**
+   * 指南目录路径（如 advanced.network）。
+   * 优先于 title 生成稳定锚点 id，供搜索跳转。
+   */
+  guidePath?: string
   /** tooltip 语气：warning 用于阻断性提示 */
   detailTone?: 'default' | 'warning' | 'info'
   /**
@@ -356,9 +377,11 @@ export interface SettingSectionConfig {
    */
   detail?: ReactNode
   /**
-   * 区块详细指南（弹窗）。「显示说明」开启时标题旁显示入口。
+   * 区块详细指南。「显示说明」开启时标题旁入口；点击后浮窗展示。
    */
   guide?: ReactNode
+  /** 指南路径，供搜索跳转锚点 */
+  guidePath?: string
   /** tooltip 语气 */
   detailTone?: 'default' | 'warning' | 'info'
   /**
@@ -394,6 +417,10 @@ export interface PermissionItem {
 export interface PermissionGroupConfig {
   title: string
   description?: string
+  /** 选项指南（标题旁 ⓘ / 显示说明入口） */
+  guide?: ReactNode
+  /** 指南路径，供搜索跳转锚点 */
+  guidePath?: string
   permissions: PermissionItem[]
   values: Record<string, boolean>
   onChange: (key: string, value: boolean) => void
@@ -416,6 +443,10 @@ export interface QuotaItem {
 export interface QuotaGroupConfig {
   title: string
   description?: string
+  /** 选项指南（标题旁 ⓘ / 显示说明入口） */
+  guide?: ReactNode
+  /** 指南路径，供搜索跳转锚点 */
+  guidePath?: string
   quotas: QuotaItem[]
   values: Record<string, number>
   onChange: (key: string, value: number) => void

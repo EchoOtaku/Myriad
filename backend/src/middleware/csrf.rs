@@ -220,8 +220,11 @@ fn is_csrf_exempt(path: &str) -> bool {
         || path.starts_with("/api/proxy/") // 图片代理等公开接口
         || path.starts_with("/api/ai/") // AI 推荐等公开接口
         || path.starts_with("/api/agent/") // Agent API - 已有 JWT 认证保护
-                                           // 注意: /api/tapps/ 和 /api/tapp/ 不在豁免列表
-                                           // 已登录用户需要 CSRF 保护，游客通过上面的 session 检查自动跳过
+        // 仅公开写入埋点；export/import/summary 需会话 + CSRF（admin）
+        || path.starts_with("/api/analytics/collect")
+        || path.starts_with("/api/analytics/pageview")
+    // 注意: /api/tapps/ 和 /api/tapp/ 不在豁免列表
+    // 已登录用户需要 CSRF 保护，游客通过上面的 session 检查自动跳过
 }
 
 /// 生成并返回 CSRF Token 的接口
@@ -355,6 +358,11 @@ mod tests {
         assert!(is_csrf_exempt("/api/setup/init-database"));
         assert!(is_csrf_exempt("/health"));
         assert!(is_csrf_exempt("/api/proxy/image"));
+        assert!(is_csrf_exempt("/api/analytics/collect"));
+        assert!(is_csrf_exempt("/api/analytics/pageview"));
+        assert!(!is_csrf_exempt("/api/analytics/summary"));
+        assert!(!is_csrf_exempt("/api/analytics/export"));
+        assert!(!is_csrf_exempt("/api/analytics/import"));
 
         // Tapp API 不在豁免列表（通过 session 检查决定是否需要 CSRF）
         assert!(!is_csrf_exempt("/api/auth/oauth/github/callback"));

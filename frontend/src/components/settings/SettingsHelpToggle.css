@@ -18,9 +18,12 @@
   -webkit-line-clamp: 2;
 }
 
-@media (width <= 640px) {
+/* 与 SettingSection 移动头同断点（<1024）：描述收起，芯片可撑满一行 */
+@media (width < 1024px) {
   .settings-help-toggle.checkbox-group-card {
-    max-width: min(11rem, 40vw);
+    max-width: none;
+    flex: 1 1 auto;
+    min-width: min(100%, 8.5rem);
   }
 
   .settings-help-toggle .checkbox-group-card-desc {

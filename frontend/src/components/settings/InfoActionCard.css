@@ -38,8 +38,8 @@ html.dark .info-action-card.is-embedded {
 /* —— Tones —— */
 
 .info-action-card--info {
-  border-color: rgb(59 130 246 / 28%);
-  background: rgb(59 130 246 / 7%);
+  border-color: color-mix(in srgb, var(--cfg-accent) 28%, transparent);
+  background: color-mix(in srgb, var(--cfg-accent) 7%, transparent);
 }
 
 .info-action-card--success {
@@ -62,8 +62,8 @@ html.dark .info-action-card.is-embedded {
 }
 
 html.dark .info-action-card--info {
-  border-color: rgb(59 130 246 / 32%);
-  background: rgb(59 130 246 / 10%);
+  border-color: color-mix(in srgb, var(--cfg-accent) 32%, transparent);
+  background: color-mix(in srgb, var(--cfg-accent) 10%, transparent);
 }
 
 html.dark .info-action-card--success {
@@ -111,6 +111,8 @@ html.dark .info-action-card-icon {
   letter-spacing: 0.01em;
   color: var(--cfg-text-1);
   line-height: 1.3;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 html.dark .info-action-card-title {
@@ -223,14 +225,14 @@ html.dark .info-action-card-field-value {
 }
 
 .info-action-card-copy:hover {
-  color: var(--color-primary, #3b82f6);
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 10%, transparent);
+  color: var(--cfg-accent, #3b82f6);
+  background: color-mix(in srgb, var(--cfg-accent, #3b82f6) 10%, transparent);
 }
 
 .info-action-card-copy:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary, #3b82f6) 35%, transparent);
-  color: var(--color-primary, #3b82f6);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--cfg-accent, #3b82f6) 35%, transparent);
+  color: var(--cfg-accent, #3b82f6);
 }
 
 .info-action-card-copy.is-copied {
@@ -242,8 +244,8 @@ html.dark .info-action-card-copy {
 }
 
 html.dark .info-action-card-copy:hover {
-  color: var(--color-primary, #60a5fa);
-  background: color-mix(in srgb, var(--color-primary, #60a5fa) 14%, transparent);
+  color: var(--cfg-accent, #60a5fa);
+  background: color-mix(in srgb, var(--cfg-accent, #60a5fa) 14%, transparent);
 }
 
 html.dark .info-action-card-copy.is-copied {
@@ -259,19 +261,29 @@ html.dark .info-action-card-copy.is-copied {
 
 .info-action-card-actions {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
   min-width: 0;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
   padding-top: 0.1rem;
+  padding-bottom: 0.05rem;
 }
 
 .info-action-card-actions > .settings-btn {
   flex: 0 0 auto;
   white-space: nowrap;
+}
+
+@media (width <= 420px) {
+  .info-action-card-actions {
+    flex-wrap: wrap;
+  }
+
+  .info-action-card-actions > .settings-btn {
+    flex: 1 1 auto;
+    min-width: min(100%, 6.5rem);
+    justify-content: center;
+  }
 }
 
 .info-action-card-footer {

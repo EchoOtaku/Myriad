@@ -72,7 +72,7 @@ export async function fetchPlatformUserIds(): Promise<Record<string, string>> {
       const data = await getPublicConfigDeduped()
       if (Array.isArray(data.platforms)) {
         for (const p of data.platforms) {
-          if (!p.enabled) continue
+          // 只要字段有值即可；enabled 只控制报告页卡片是否展示，不挡读配置
           const entry = Object.entries(PLATFORM_SOCIAL).find(
             ([, s]) => s.publicName === p.name,
           )

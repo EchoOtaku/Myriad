@@ -120,8 +120,8 @@ events / agent / dataExchange 等 Manifest 扩展（见
 - **优先** stream，不可用时回退 one-shot。
 - Composer 忙碌态展示最新 step `summary` 与耗时。
 - **取消**：`AbortController`；取消为**软提示**（状态带失败 / 可重试），不损坏已有 revision。
-- 客户端总超时与 dev proxy：约 **20 分钟**（`20 * 60 * 1000` ms）。
-- 单次模型 HTTP：后端 **720s**。
+- 客户端总超时与 dev proxy：约 **30 分钟**（`30 * 60 * 1000` ms）。
+- 单次模型 HTTP：后端 **1080s**。
 - 并发 Agent 运行：全进程信号量 **2**。
 
 ### 校验与规范化

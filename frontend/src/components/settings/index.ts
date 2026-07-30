@@ -80,6 +80,12 @@ export { ToggleSwitch } from './items/ToggleSwitch'
 export { PermissionGroup, QuotaGroup } from './presets'
 export { SettingGroup } from './SettingGroup'
 export type { SettingGroupProps } from './SettingGroup'
+export {
+  SettingsTocProvider,
+  useSettingsToc,
+  slugifySettingGroupId,
+} from './SettingsTocContext'
+export type { SettingsTocItem } from './SettingsTocContext'
 export { SettingGroupGrid, useSettingGroupGrid } from './SettingGroupGrid'
 export type {
   SettingGroupGridAlign,
@@ -99,26 +105,26 @@ export type {
 } from './SettingTitleHelp'
 export { SettingTitleGuideEntry } from './SettingTitleGuideEntry'
 export type { SettingTitleGuideEntryProps } from './SettingTitleGuideEntry'
-export { SettingsGuideModal } from './SettingsGuideModal'
-export type { SettingsGuideModalProps } from './SettingsGuideModal'
 export {
   getSettingGuidesCatalog,
   SettingGuideBody,
   useSettingGuide,
+  guideAnchorId,
+  guideDomProps,
+  scrollToSettingGuide,
+  scheduleScrollToSettingGuide,
 } from './guides'
 export type {
   GuideSectionLabels,
   SettingGuideEntry,
   SettingGuidesCatalog,
+  GuideBinding,
 } from './guides'
 export {
   SettingsHelpProvider,
   useSettingsHelp,
 } from './SettingsHelpContext'
-export type {
-  SettingsGuidePayload,
-  SettingsHelpContextValue,
-} from './SettingsHelpContext'
+export type { SettingsHelpContextValue } from './SettingsHelpContext'
 export { SettingsHelpToggle } from './SettingsHelpToggle'
 export type { SettingsHelpToggleProps } from './SettingsHelpToggle'
 export {

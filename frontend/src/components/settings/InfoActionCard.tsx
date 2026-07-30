@@ -10,6 +10,7 @@
 import type { ReactNode } from 'react'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { FaCheck, FaCopy } from '@lib/icons'
+import { useI18n } from '../../contexts/I18nContext'
 import type { SettingsButtonVariant } from './items/SettingsButton'
 import { SettingsButton } from './items/SettingsButton'
 import './InfoActionCard.css'
@@ -211,11 +212,14 @@ export const InfoActionCard = React.memo(function InfoActionCard({
   footer,
   tone = 'default',
   copyable = true,
-  copyLabel = 'Copy',
-  copiedLabel = 'Copied',
+  copyLabel: copyLabelProp,
+  copiedLabel: copiedLabelProp,
   embedded = false,
   className = '',
 }: InfoActionCardProps) {
+  const { t } = useI18n()
+  const copyLabel = copyLabelProp ?? t.common.copy
+  const copiedLabel = copiedLabelProp ?? t.common.copied
   const hasFields = !!(fields && fields.length > 0)
   const showEmpty =
     empty || (!children && !hasFields && emptyText != null && emptyText !== '')

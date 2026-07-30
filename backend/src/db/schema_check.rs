@@ -15,25 +15,28 @@ use std::collections::HashSet;
 /// 格式建议：YYYY.MM.DD 或语义版本 X.Y.Z
 ///
 /// 变更日志：
-/// - 2026.07.27.3: federation_* 外键 heal（默认只报告；MYRIAD_FEDERATION_APPLY_FKS=1 且孤儿=0 才 ADD；永不删数据）
+///
+/// **分工**：数字系列 `migrations/001`–`006` 是新库权威建表，必须完整。
+/// 本文件 `ensure_*` / 近期 `TableDef` 只覆盖**近一个月新功能**的旧库补齐，
+/// 不要求与整份历史 schema 做全量镜像对齐。
+///
+/// - 2026.07.30.4: 近月新表对齐——001 analytics / 004 heartbeat / 005 federation 扩展
+///   进入数字系列；schema_check 补 policy / domain_aliases / object_interactions 期望结构
+/// - 2026.07.30.3: analytics 并入 001 + get_expected_schema（含 country）
+/// - 2026.07.30.2: analytics 增强（engagement / events / referrers）
+/// - 2026.07.30.1: analytics_page_daily / analytics_visitor_seen
+/// - 2026.07.27.3: federation_* 外键 heal
 /// - 2026.07.27.2: 删除历史 comprehensive 报告行（platform = 'all'）
-/// - 2026.07.27.1: federation_room_members.last_read_at（群侧栏未读已读光标）
-/// - 2026.07.21.1: federation_domain_aliases（ActivityPub domain Move old→new bases）
-/// - 2026.07.20.6: federation_object_interactions（like/bookmark/announce）
-/// - 2026.07.20.5: heartbeat_claims（多副本 heartbeat 分钟桶认领）
-/// - 2026.07.20.4: federation_policy_settings（allowlist / min_trust / auto_discover）
-/// - 2026.07.20.3: room membership_status（邀请 pending/active）+ federation_content_filters
-/// - 2026.07.20.2: idx_file_transfers_room（群文件列表按 room_id 查 transfer）
-/// - 2026.07.20.1: federation_file_transfers.room_id + owner_user_id（群聊分块传输）
-/// - 2026.07.19.3: 删掉过期升级补齐（approved_permissions heal、整表 create 兜底）；只留权威结构列表 + 持续机制
-/// - 2026.07.19.2: 去掉 approved_permissions 专用 ADD COLUMN；缺列走 get_expected_schema
-/// - 2026.07.19.1: 退休 007–011 薄 ALTER 迁移；列并入 001/002 CREATE
-/// - 2026.07.18.2: owner implies admin（ensure_single_owner）
-/// - 2026.07.18.1: users.is_owner 站点 owner 标记
-/// - 2026.07.17.1: tapp_ai_cost_ledger 表与索引
-/// - 2026.07.11.1: Discord 数据平台种子
-/// - 2026.07.10.1: 默认平台种子同步（含 X）
-const SCHEMA_VERSION: &str = "2026.07.27.3";
+/// - 2026.07.27.1: federation_room_members.last_read_at
+/// - 2026.07.21.1: federation_domain_aliases
+/// - 2026.07.20.6: federation_object_interactions
+/// - 2026.07.20.5: heartbeat_claims
+/// - 2026.07.20.4: federation_policy_settings
+/// - 2026.07.20.3: room membership_status + federation_content_filters
+/// - 2026.07.20.2: idx_file_transfers_room
+/// - 2026.07.20.1: federation_file_transfers.room_id + owner_user_id
+/// - 2026.07.19.x … 更早：历史结构基线（见 git）
+const SCHEMA_VERSION: &str = "2026.07.30.4";
 
 /// 内置平台种子定义（与 migrations/001_initial_schema.rs 中 INSERT 保持同步）
 ///
@@ -3475,6 +3478,7 @@ fn get_expected_schema() -> Vec<TableDef> {
             ],
         },
         // ==================== federation_content_filters 表 ====================
+        // 与 migrations/005 扩展段 / ensure_federation_content_filters_table 同结构
         TableDef {
             name: "federation_content_filters".to_string(),
             columns: vec![
@@ -3513,6 +3517,133 @@ fn get_expected_schema() -> Vec<TableDef> {
                     data_type: "timestamp with time zone".into(),
                     is_nullable: false,
                     default_value: Some("now()".into()),
+                },
+            ],
+        },
+        // ==================== federation_policy_settings（近月）====================
+        // 与 migrations/005 扩展段 / ensure_federation_policy_settings_table 同结构
+        TableDef {
+            name: "federation_policy_settings".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: Some("1".into()),
+                },
+                ColumnDef {
+                    name: "min_trust_level".into(),
+                    data_type: "smallint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "allowed_domains".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: false,
+                    default_value: Some("'[]'".into()),
+                },
+                ColumnDef {
+                    name: "auto_discover".into(),
+                    data_type: "boolean".into(),
+                    is_nullable: false,
+                    default_value: Some("true".into()),
+                },
+                ColumnDef {
+                    name: "updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("now()".into()),
+                },
+                ColumnDef {
+                    name: "rate_max_requests".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("100".into()),
+                },
+                ColumnDef {
+                    name: "rate_window_seconds".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("60".into()),
+                },
+                ColumnDef {
+                    name: "rate_trusted_multiplier".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("5".into()),
+                },
+            ],
+        },
+        // ==================== federation_domain_aliases（近月）====================
+        TableDef {
+            name: "federation_domain_aliases".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "old_base_url".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "new_base_url".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
+                },
+            ],
+        },
+        // ==================== federation_object_interactions（近月）====================
+        TableDef {
+            name: "federation_object_interactions".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "user_id".into(),
+                    data_type: "integer".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "object_id".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "kind".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "activity_id".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "created_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: false,
+                    default_value: Some("CURRENT_TIMESTAMP".into()),
                 },
             ],
         },
@@ -3875,6 +4006,217 @@ fn get_expected_schema() -> Vec<TableDef> {
                     name: "completed_at".into(),
                     data_type: "timestamp with time zone".into(),
                     is_nullable: true,
+                    default_value: None,
+                },
+            ],
+        },
+        // ==================== 001 SITE ANALYTICS ====================
+        // 与 migrations/001_initial_schema.rs §8 / ensure_analytics_tables 同结构
+        TableDef {
+            name: "analytics_page_daily".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "day".into(),
+                    data_type: "date".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "path".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "views".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "unique_visitors".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "engagement_ms".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "engaged_views".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+            ],
+        },
+        TableDef {
+            name: "analytics_visitor_seen".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "day".into(),
+                    data_type: "date".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "path".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "visitor_hash".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+            ],
+        },
+        TableDef {
+            name: "analytics_event_daily".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "day".into(),
+                    data_type: "date".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "event_name".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "path".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: Some("''".into()),
+                },
+                ColumnDef {
+                    name: "count".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "unique_visitors".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+            ],
+        },
+        TableDef {
+            name: "analytics_event_visitor".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "day".into(),
+                    data_type: "date".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "event_name".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "path".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: Some("''".into()),
+                },
+                ColumnDef {
+                    name: "visitor_hash".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+            ],
+        },
+        TableDef {
+            name: "analytics_referrer_daily".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "day".into(),
+                    data_type: "date".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "host".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "count".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+            ],
+        },
+        TableDef {
+            name: "analytics_country_daily".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "day".into(),
+                    data_type: "date".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "country_code".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "country_name".into(),
+                    data_type: "text".into(),
+                    is_nullable: false,
+                    default_value: Some("''".into()),
+                },
+                ColumnDef {
+                    name: "views".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+                ColumnDef {
+                    name: "unique_visitors".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
+            ],
+        },
+        TableDef {
+            name: "analytics_country_visitor".to_string(),
+            columns: vec![
+                ColumnDef {
+                    name: "day".into(),
+                    data_type: "date".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "country_code".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "visitor_hash".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
                     default_value: None,
                 },
             ],
@@ -4461,6 +4803,73 @@ fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["user_id".into(), "received_at".into()],
             is_unique: false,
         },
+        // ==================== 近月新功能索引（001 analytics / 004 heartbeat / 005 fed 扩展）====================
+        IndexDef {
+            name: "idx_analytics_page_daily_day".into(),
+            table: "analytics_page_daily".into(),
+            columns: vec!["day".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_analytics_visitor_seen_day".into(),
+            table: "analytics_visitor_seen".into(),
+            columns: vec!["day".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_analytics_event_daily_day".into(),
+            table: "analytics_event_daily".into(),
+            columns: vec!["day".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_analytics_event_visitor_day".into(),
+            table: "analytics_event_visitor".into(),
+            columns: vec!["day".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_analytics_referrer_daily_day".into(),
+            table: "analytics_referrer_daily".into(),
+            columns: vec!["day".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_analytics_country_daily_day".into(),
+            table: "analytics_country_daily".into(),
+            columns: vec!["day".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_analytics_country_visitor_day".into(),
+            table: "analytics_country_visitor".into(),
+            columns: vec!["day".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_heartbeat_claims_claimed_at".into(),
+            table: "heartbeat_claims".into(),
+            columns: vec!["claimed_at".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_federation_domain_aliases_new".into(),
+            table: "federation_domain_aliases".into(),
+            columns: vec!["new_base_url".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_fed_interactions_object_kind".into(),
+            table: "federation_object_interactions".into(),
+            columns: vec!["object_id".into(), "kind".into()],
+            is_unique: false,
+        },
+        IndexDef {
+            name: "idx_fed_interactions_user_kind_created".into(),
+            table: "federation_object_interactions".into(),
+            columns: vec!["user_id".into(), "kind".into(), "created_at".into()],
+            is_unique: false,
+        },
     ]
 }
 
@@ -4469,10 +4878,10 @@ fn get_expected_indexes() -> Vec<IndexDef> {
 /// 函数使用 `CREATE OR REPLACE` 保持逻辑最新；触发器仅在缺失时创建，
 /// 避免每次启动都重建对象。
 ///
-/// Whole-table CREATE fallbacks were removed (2026.07.19.3). Tables come from
-/// Migrator 001–006; schema_check only reconciles missing columns/indexes on
-/// tables that already exist, plus ongoing data/object heals.
-/// Create federation_content_filters if missing (new table beyond Migrator 005).
+/// Whole-table CREATE for greenfield: Migrator 001–006（数字系列必须完整）。
+/// schema_check：对已存在表补列/索引 + **近月新功能** 的 `ensure_*` 幂等建表
+/// （旧库曾跑过不含该段的 001/004/005 时兜底）。
+/// 旧库补齐：`migrations/005` 扩展段已有同结构 CREATE（近月功能）。
 async fn ensure_federation_content_filters_table(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
@@ -4490,7 +4899,7 @@ CREATE TABLE IF NOT EXISTS federation_content_filters (
     Ok(())
 }
 
-/// Singleton policy row: min_trust / allowlist / auto_discover / rate limit.
+/// 旧库补齐：`migrations/005` 扩展段已有同结构 CREATE（近月功能）。
 async fn ensure_federation_policy_settings_table(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
@@ -4517,7 +4926,7 @@ ON CONFLICT (id) DO NOTHING;
     Ok(())
 }
 
-/// Multi-replica heartbeat minute-bucket claims (beyond Migrator 004).
+/// 旧库补齐：`migrations/004` 已有同结构 CREATE（近月功能）。
 async fn ensure_heartbeat_claims_table(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
@@ -4534,6 +4943,98 @@ CREATE INDEX IF NOT EXISTS idx_heartbeat_claims_claimed_at
 "#,
     )
     .await?;
+    Ok(())
+}
+
+/// First-party site analytics tables.
+///
+/// **权威建表**：`migrations/001_initial_schema.rs` §8（新库 Migrator）。
+/// 本函数与 001 的 SQL **逐字同构**，仅作「已应用旧 001、无 analytics 表」部署的
+/// 幂等兜底；列缺失仍由 `get_expected_schema` 通用 ADD 补齐。
+async fn ensure_analytics_tables(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // 须与 migrations/001_initial_schema.rs §8 SITE ANALYTICS 保持同步
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS analytics_page_daily (
+    day DATE NOT NULL,
+    path TEXT NOT NULL,
+    views BIGINT NOT NULL DEFAULT 0,
+    unique_visitors BIGINT NOT NULL DEFAULT 0,
+    engagement_ms BIGINT NOT NULL DEFAULT 0,
+    engaged_views BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, path)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_page_daily_day
+    ON analytics_page_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_visitor_seen (
+    day DATE NOT NULL,
+    path TEXT NOT NULL,
+    visitor_hash VARCHAR(64) NOT NULL,
+    PRIMARY KEY (day, path, visitor_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_visitor_seen_day
+    ON analytics_visitor_seen (day);
+
+CREATE TABLE IF NOT EXISTS analytics_event_daily (
+    day DATE NOT NULL,
+    event_name TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '',
+    count BIGINT NOT NULL DEFAULT 0,
+    unique_visitors BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, event_name, path)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_event_daily_day
+    ON analytics_event_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_event_visitor (
+    day DATE NOT NULL,
+    event_name TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '',
+    visitor_hash VARCHAR(64) NOT NULL,
+    PRIMARY KEY (day, event_name, path, visitor_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_event_visitor_day
+    ON analytics_event_visitor (day);
+
+CREATE TABLE IF NOT EXISTS analytics_referrer_daily (
+    day DATE NOT NULL,
+    host TEXT NOT NULL,
+    count BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, host)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_referrer_daily_day
+    ON analytics_referrer_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_country_daily (
+    day DATE NOT NULL,
+    country_code VARCHAR(8) NOT NULL,
+    country_name TEXT NOT NULL DEFAULT '',
+    views BIGINT NOT NULL DEFAULT 0,
+    unique_visitors BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, country_code)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_country_daily_day
+    ON analytics_country_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_country_visitor (
+    day DATE NOT NULL,
+    country_code VARCHAR(8) NOT NULL,
+    visitor_hash VARCHAR(64) NOT NULL,
+    PRIMARY KEY (day, country_code, visitor_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_country_visitor_day
+    ON analytics_country_visitor (day);
+"#,
+    )
+    .await?;
+    // 极旧 ensure 可能只建了 page 表、无 engagement 列
+    for stmt in [
+        "ALTER TABLE analytics_page_daily ADD COLUMN IF NOT EXISTS engagement_ms BIGINT NOT NULL DEFAULT 0",
+        "ALTER TABLE analytics_page_daily ADD COLUMN IF NOT EXISTS engaged_views BIGINT NOT NULL DEFAULT 0",
+    ] {
+        db.execute_unprepared(stmt).await?;
+    }
     Ok(())
 }
 
@@ -4950,7 +5451,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_user_activity
     Ok(())
 }
 
-/// Domain migration aliases for ActivityPub Move (alsoKnownAs / movedTo on actors).
+/// 旧库补齐：`migrations/005` 扩展段已有同结构 CREATE（近月功能）。
 async fn ensure_federation_domain_aliases_table(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
@@ -4994,7 +5495,7 @@ DELETE FROM platform_reports WHERE platform = 'all';
     Ok(())
 }
 
-/// Local Like / Bookmark / Announce records (Aro feed interactions).
+/// 旧库补齐：`migrations/005` 扩展段已有同结构 CREATE（近月功能）。
 async fn ensure_federation_object_interactions_table(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
@@ -5483,6 +5984,9 @@ async fn do_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     if let Err(e) = ensure_heartbeat_claims_table(db).await {
         tracing::warn!("heartbeat_claims table ensure warning: {}", e);
     }
+    if let Err(e) = ensure_analytics_tables(db).await {
+        tracing::warn!("analytics tables ensure warning: {}", e);
+    }
     if let Err(e) = ensure_federation_domain_aliases_table(db).await {
         tracing::warn!("federation_domain_aliases table ensure warning: {}", e);
     }
@@ -5657,6 +6161,9 @@ async fn do_force_schema_check(db: &DatabaseConnection) -> Result<(), DbErr> {
     if let Err(e) = ensure_heartbeat_claims_table(db).await {
         tracing::warn!("Force check: heartbeat_claims table ensure warning: {}", e);
     }
+    if let Err(e) = ensure_analytics_tables(db).await {
+        tracing::warn!("Force check: analytics tables ensure warning: {}", e);
+    }
     if let Err(e) = ensure_federation_domain_aliases_table(db).await {
         tracing::warn!(
             "Force check: federation_domain_aliases table ensure warning: {}",
@@ -5702,6 +6209,88 @@ mod tests {
         assert!(table_names.contains(&"users"));
         assert!(table_names.contains(&"configurations"));
         assert!(table_names.contains(&"platforms"));
+    }
+
+    /// 近一个月新功能：须在 get_expected_schema / indexes 有完整条目
+    /// （数字系列 001/004/005 已 CREATE；本列表只校验 schema_check 侧期望）。
+    #[test]
+    fn test_recent_month_features_in_expected_schema() {
+        let tables = get_expected_schema();
+        let names: Vec<&str> = tables.iter().map(|t| t.name.as_str()).collect();
+        for required in [
+            // 001 SITE ANALYTICS
+            "analytics_page_daily",
+            "analytics_visitor_seen",
+            "analytics_event_daily",
+            "analytics_event_visitor",
+            "analytics_referrer_daily",
+            "analytics_country_daily",
+            "analytics_country_visitor",
+            // 004
+            "heartbeat_claims",
+            // 005 扩展
+            "federation_content_filters",
+            "federation_policy_settings",
+            "federation_domain_aliases",
+            "federation_object_interactions",
+        ] {
+            assert!(
+                names.contains(&required),
+                "missing recent-feature table in get_expected_schema: {required}"
+            );
+        }
+
+        let page = tables
+            .iter()
+            .find(|t| t.name == "analytics_page_daily")
+            .expect("analytics_page_daily");
+        for col in [
+            "day",
+            "path",
+            "views",
+            "unique_visitors",
+            "engagement_ms",
+            "engaged_views",
+        ] {
+            assert!(
+                page.columns.iter().any(|c| c.name == col),
+                "analytics_page_daily missing column {col}"
+            );
+        }
+
+        let policy = tables
+            .iter()
+            .find(|t| t.name == "federation_policy_settings")
+            .expect("federation_policy_settings");
+        for col in [
+            "min_trust_level",
+            "allowed_domains",
+            "auto_discover",
+            "rate_max_requests",
+            "rate_window_seconds",
+            "rate_trusted_multiplier",
+        ] {
+            assert!(
+                policy.columns.iter().any(|c| c.name == col),
+                "federation_policy_settings missing column {col}"
+            );
+        }
+
+        let indexes = get_expected_indexes();
+        let idx_names: Vec<&str> = indexes.iter().map(|i| i.name.as_str()).collect();
+        for required in [
+            "idx_analytics_page_daily_day",
+            "idx_analytics_country_daily_day",
+            "idx_heartbeat_claims_claimed_at",
+            "idx_federation_domain_aliases_new",
+            "idx_fed_interactions_object_kind",
+            "idx_fed_interactions_user_kind_created",
+        ] {
+            assert!(
+                idx_names.contains(&required),
+                "missing recent-feature index in get_expected_indexes: {required}"
+            );
+        }
     }
 
     #[test]

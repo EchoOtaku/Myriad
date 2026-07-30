@@ -16,6 +16,8 @@ import {
   LuCheck,
 } from '@lib/icons'
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useI18n } from '../../../contexts/I18nContext'
+import { guideDomProps } from '../guides/guideAnchor'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { SettingsButton } from './SettingsButton'
 import './SettingItem.css'
@@ -34,6 +36,7 @@ export const InputItem = React.memo<InputItemProps>(
     label,
     detail,
     guide,
+    guidePath,
     description,
     hint,
     value,
@@ -73,6 +76,7 @@ export const InputItem = React.memo<InputItemProps>(
     imageSizeError,
     imageReadError,
   }) => {
+    const { t } = useI18n()
     const [isCopied, setIsCopied] = useState(false)
     const [editing, setEditing] = useState(false)
     const [draft, setDraft] = useState(value)
@@ -197,13 +201,16 @@ export const InputItem = React.memo<InputItemProps>(
         if (!file || disabled || busy) return
 
         if (!file.type.startsWith('image/')) {
-          setUploadError(imageTypeError || 'Please select an image file')
+          setUploadError(
+            imageTypeError || t.config.imageUploadTypeError,
+          )
           return
         }
         if (file.size > maxImageBytes) {
           const kb = Math.round(maxImageBytes / 1024)
           setUploadError(
-            imageSizeError || `Image size cannot exceed ${kb}KB`,
+            imageSizeError ||
+              t.config.imageUploadSizeError.replace('{kb}', String(kb)),
           )
           return
         }
@@ -215,11 +222,11 @@ export const InputItem = React.memo<InputItemProps>(
             setUploadError(undefined)
             onChange(result)
           } else {
-            setUploadError(imageReadError || 'Failed to read image')
+            setUploadError(imageReadError || t.config.imageUploadReadError)
           }
         }
         reader.onerror = () => {
-          setUploadError(imageReadError || 'Failed to read image')
+          setUploadError(imageReadError || t.config.imageUploadReadError)
         }
         reader.readAsDataURL(file)
       },
@@ -231,6 +238,9 @@ export const InputItem = React.memo<InputItemProps>(
         imageTypeError,
         maxImageBytes,
         onChange,
+        t.config.imageUploadReadError,
+        t.config.imageUploadSizeError,
+        t.config.imageUploadTypeError,
       ],
     )
 
@@ -290,7 +300,7 @@ export const InputItem = React.memo<InputItemProps>(
             type="button"
             className="copy-btn"
             onClick={handleCopy}
-            title={isCopied ? 'Copied!' : 'Copy'}
+            title={isCopied ? t.common.copied : t.common.copy}
           >
             {isCopied ? <FaCheck /> : <FaCopy />}
           </button>
@@ -315,7 +325,7 @@ export const InputItem = React.memo<InputItemProps>(
             </span>
             <span className="field-input-static-action" aria-hidden>
               <FaEdit />
-              {editLabel || 'Edit'}
+              {editLabel || t.common.edit}
             </span>
           </button>
         )
@@ -351,7 +361,7 @@ export const InputItem = React.memo<InputItemProps>(
               icon={<LuCheck size={14} aria-hidden />}
               onClick={() => void commitEdit()}
             >
-              {saveLabel || 'Save'}
+              {saveLabel || t.common.save}
             </SettingsButton>
             <SettingsButton
               variant="ghost"
@@ -360,7 +370,7 @@ export const InputItem = React.memo<InputItemProps>(
               disabled={busy}
               icon={<FaTimes size={12} aria-hidden />}
               onClick={cancelEdit}
-              aria-label={cancelLabel || 'Cancel'}
+              aria-label={cancelLabel || t.common.cancel}
             />
           </div>
         </div>
@@ -398,9 +408,9 @@ export const InputItem = React.memo<InputItemProps>(
             <span
               id={id}
               className="field-input-local-label"
-              title={localImageLabel || 'Local image uploaded'}
+              title={localImageLabel || t.config.imageUploadLocal}
             >
-              {localImageLabel || 'Local image uploaded'}
+              {localImageLabel || t.config.imageUploadLocal}
             </span>
           ) : (
             <input
@@ -442,9 +452,9 @@ export const InputItem = React.memo<InputItemProps>(
               loading={busy}
               icon={<FaUpload size={12} aria-hidden />}
               onClick={triggerUpload}
-              aria-label={uploadLabel || 'Upload'}
+              aria-label={uploadLabel || t.config.imageUpload}
             >
-              {uploadLabel || 'Upload'}
+              {uploadLabel || t.config.imageUpload}
             </SettingsButton>
             {hasValue && clearable && (
               <SettingsButton
@@ -454,8 +464,8 @@ export const InputItem = React.memo<InputItemProps>(
                 disabled={disabled || busy}
                 icon={<FaTimes size={12} aria-hidden />}
                 onClick={clearImage}
-                aria-label={clearImageLabel || 'Clear'}
-                title={clearImageLabel || 'Clear'}
+                aria-label={clearImageLabel || t.config.imageUploadClear}
+                title={clearImageLabel || t.config.imageUploadClear}
               />
             )}
           </div>
@@ -469,9 +479,12 @@ export const InputItem = React.memo<InputItemProps>(
         ? renderImageUploadControl()
         : renderDefaultControl()
 
+    const anchorProps = guideDomProps(guidePath)
+
     return (
       <div
-        className={`setting-item setting-item-input setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}`}
+        {...anchorProps}
+        className={`setting-item setting-item-input setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}${guidePath ? ' has-guide-anchor' : ''}`}
       >
         <label
           htmlFor={isClickToEdit && editing ? undefined : id}
@@ -480,10 +493,7 @@ export const InputItem = React.memo<InputItemProps>(
           <span className="setting-label-text">
             {label}
             {required && <span className="required">*</span>}
-            <SettingTitleGuideEntry
-              title={label}
-              guide={guide ?? detail ?? description}
-            />
+            <SettingTitleGuideEntry title={label} guide={guide} />
           </span>
           {description && layout === 'vertical' && (
             <span className="setting-description">{description}</span>

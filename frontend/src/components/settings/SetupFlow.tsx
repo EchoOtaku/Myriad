@@ -8,6 +8,7 @@
 import type { ReactNode } from 'react'
 import React from 'react'
 import { FaExternalLinkAlt } from '@lib/icons'
+import { useI18n } from '../../contexts/I18nContext'
 import { SettingsButton } from './items/SettingsButton'
 import './SetupFlow.css'
 
@@ -47,10 +48,13 @@ export interface SetupFlowProps {
 export const SetupFlow: React.FC<SetupFlowProps> = ({
   steps,
   title,
-  optionalLabel = '可选',
+  optionalLabel: optionalLabelProp,
   className = '',
   orientation = 'auto',
 }) => {
+  const { t } = useI18n()
+  const optionalLabel = optionalLabelProp ?? t.common.optional
+  const defaultActionLabel = t.common.open
   if (!steps.length) return null
 
   const orientClass =
@@ -118,7 +122,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                           window.open(step.href, '_blank', 'noopener,noreferrer')
                         }
                       >
-                        {actionLabel ?? '打开'}
+                        {actionLabel ?? defaultActionLabel}
                       </SettingsButton>
                     ) : (
                       <SettingsButton
@@ -126,7 +130,7 @@ export const SetupFlow: React.FC<SetupFlowProps> = ({
                         size="sm"
                         onClick={() => step.onAction?.()}
                       >
-                        {actionLabel ?? '打开'}
+                        {actionLabel ?? defaultActionLabel}
                       </SettingsButton>
                     )}
                   </div>

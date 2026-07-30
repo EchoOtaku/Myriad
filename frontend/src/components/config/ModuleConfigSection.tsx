@@ -32,6 +32,7 @@ import {
   SettingGroup,
   SettingGroupGrid,
   SettingSection,
+  SettingTitleGuideEntry,
   SwitchItem,
   useSettingGuide,
 } from '../settings'
@@ -104,7 +105,7 @@ const LIBRARY_ITEM_TYPES: LibraryItemType[] = [
 ]
 
 const MODULE_SETTING_TITLE_ICON_CLASS =
-  'h-3.5 w-3.5 shrink-0 text-[var(--color-primary)]'
+  'h-3.5 w-3.5 shrink-0 text-[var(--cfg-accent)]'
 
 function LibrarySubtitleIcon({ className }: { className?: string }) {
   return (
@@ -354,7 +355,8 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
   onMessage,
 }) => {
   const { t } = useI18n()
-  const { catalog: g, renderGuide } = useSettingGuide()
+  const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
+  const hitokotoSourceGuide = renderGuide(g.modules.hitokotoSource)
   const [loading, setLoading] = useState(true)
 
   const getUiFieldValue = useCallback(
@@ -588,7 +590,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       <SettingGroup
         title={t.config.moduleVisibilityTitle}
         description={t.config.moduleVisibilityDesc}
-        guide={renderGuide(g.modules.visibility)}
+        {...bindGuide('modules.visibility', g.modules.visibility)}
         icon={<LuEye size={15} />}
       >
         <SettingGroupGrid
@@ -605,12 +607,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                 key={moduleKey}
                 title={moduleLabels[moduleKey]}
                 icon={moduleIcons[moduleKey]}
-                guide={renderGuide(g.modules.visibilityItem)}
-                titleExtra={
-                  <span className="settings-text-3 text-[11px] font-medium">
-                    {visibilityLabels[selectedVisibility]}
-                  </span>
-                }
+                {...bindGuide('modules.visibilityItem', g.modules.visibilityItem)}
               >
                 <SegmentedControl
                   size="sm"
@@ -634,7 +631,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       <SettingGroup
         title={t.config.libraryModuleTitle}
         description={t.config.libraryModuleDesc}
-        guide={renderGuide(g.modules.library)}
+        {...bindGuide('modules.library', g.modules.library)}
         icon={<LibrarySubtitleIcon />}
       >
         <div className="settings-text-3 text-xs">
@@ -665,7 +662,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                 key={type}
                 title={typeLabels[type]}
                 icon={typeIcons[type]}
-                guide={renderGuide(g.modules.libraryType)}
+                {...bindGuide('modules.libraryType', g.modules.libraryType)}
               >
                 <SegmentedControl
                   mode="multi"
@@ -702,7 +699,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       <SettingGroup
         title={t.config.reportSettingsTitle}
         description={t.config.reportSettingsDesc}
-        guide={renderGuide(g.modules.report)}
+        {...bindGuide('modules.report', g.modules.report)}
         icon={<ReportsTitleIcon className="h-3.5 w-3.5" />}
       >
         <div className="space-y-3">
@@ -710,7 +707,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
             itemKey="report-expiry-enabled"
             label={t.config.reportExpiryEnabled}
             description={t.config.reportExpiryEnabledDesc}
-            guide={renderGuide(g.modules.reportExpiry)}
+            {...bindGuide('modules.reportExpiry', g.modules.reportExpiry)}
             value={reportSettingsDraft.expiryEnabled}
             onChange={(value) => updateReportSettings({ expiryEnabled: value })}
           />
@@ -718,7 +715,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
             itemKey="report-auto-regenerate"
             label={t.config.reportAutoRegenerate}
             description={t.config.reportAutoRegenerateDesc}
-            guide={renderGuide(g.modules.reportAutoRegen)}
+            {...bindGuide('modules.reportAutoRegen', g.modules.reportAutoRegen)}
             value={reportSettingsDraft.autoRegenerate}
             onChange={(value) =>
               updateReportSettings({ autoRegenerate: value })
@@ -729,7 +726,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
             itemKey="report-expiry-days"
             label={t.config.reportExpiryDays}
             description={t.config.reportExpiryDaysHint}
-            guide={renderGuide(g.modules.reportExpiryDays)}
+            {...bindGuide('modules.reportExpiryDays', g.modules.reportExpiryDays)}
             value={reportSettingsDraft.expiryDays}
             onChange={(value) => {
               if (Number.isFinite(value)) {
@@ -759,7 +756,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       <SettingGroup
         title={t.config.music}
         description={t.config.musicDesc}
-        guide={renderGuide(g.modules.music)}
+        {...bindGuide('modules.music', g.modules.music)}
         icon={
           <LibraryTypeIcon
             type="music"
@@ -775,7 +772,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
         <ProviderItem
           itemKey="music_source"
           label={t.config.musicPlatform}
-          guide={renderGuide(g.modules.musicPlatform)}
+          {...bindGuide('modules.musicPlatform', g.modules.musicPlatform)}
           value={musicSource}
           onChange={(v) => updateUiFieldValue('music_source', v)}
           options={[
@@ -809,7 +806,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
               ? t.config.neteasePlaylistHint
               : t.config.qqPlaylistHint
           }
-          guide={renderGuide(g.modules.musicPlaylist)}
+          {...bindGuide('modules.musicPlaylist', g.modules.musicPlaylist)}
           layout="vertical"
           disabled={!musicEnabled}
         />
@@ -817,7 +814,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
           itemKey="clear_music_cache"
           label={t.config.cacheManagement}
           description={t.config.clearMusicCacheDesc}
-          guide={renderGuide(g.modules.musicCache)}
+          {...bindGuide('modules.musicCache', g.modules.musicCache)}
           buttonText={t.config.clearMusicCacheBtn}
           buttonIcon={<FaTrash />}
           variant="secondary"
@@ -830,23 +827,35 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       <SettingGroup
         title={t.config.hitokotoTitle}
         description={t.config.hitokotoDesc}
-        guide={renderGuide(g.modules.hitokoto)}
+        {...bindGuide('modules.hitokoto', g.modules.hitokoto)}
         icon={<QuoteTitleIcon className="h-3.5 w-3.5" />}
       >
         <div className="space-y-3">
-          <div className="settings-text-2 text-xs font-medium">
-            {t.config.hitokotoSourceLabel}
+          <div
+            id="cfg-g-modules-hitokotoSource"
+            data-guide-path="modules.hitokotoSource"
+            className="setting-item setting-vertical has-guide-anchor"
+          >
+            <div className="setting-label">
+              <span className="setting-label-text">
+                {t.config.hitokotoSourceLabel}
+                <SettingTitleGuideEntry
+                  title={t.config.hitokotoSourceLabel}
+                  guide={hitokotoSourceGuide}
+                />
+              </span>
+            </div>
+            <SegmentedControl
+              size="sm"
+              value={hitokotoDraft.sourceId}
+              options={HITOKOTO_SOURCE_IDS.map((sourceId) => ({
+                value: sourceId,
+                label: hitokotoSourceLabels[sourceId],
+              }))}
+              onChange={(sourceId) => updateHitokotoConfig({ sourceId })}
+              ariaLabel={t.config.hitokotoSourceLabel}
+            />
           </div>
-          <SegmentedControl
-            size="sm"
-            value={hitokotoDraft.sourceId}
-            options={HITOKOTO_SOURCE_IDS.map((sourceId) => ({
-              value: sourceId,
-              label: hitokotoSourceLabels[sourceId],
-            }))}
-            onChange={(sourceId) => updateHitokotoConfig({ sourceId })}
-            ariaLabel={t.config.hitokotoSourceLabel}
-          />
 
           {hitokotoDraft.sourceId === 'custom' && (
             <div className="settings-inset-card space-y-1">
@@ -854,7 +863,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                 itemKey="hitokoto-custom-url"
                 label={t.config.hitokotoCustomUrl}
                 hint={t.config.hitokotoCustomUrlHint}
-                guide={renderGuide(g.modules.hitokotoCustomUrl)}
+                {...bindGuide('modules.hitokotoCustomUrl', g.modules.hitokotoCustomUrl)}
                 value={hitokotoDraft.customUrl ?? ''}
                 onChange={(customUrl) => updateHitokotoConfig({ customUrl })}
                 placeholder={t.config.hitokotoCustomUrlPlaceholder}
@@ -867,7 +876,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                   itemKey="hitokoto-text-field"
                   label={t.config.hitokotoTextField}
                   hint={t.config.hitokotoTextFieldHint}
-                  guide={renderGuide(g.modules.hitokotoTextField)}
+                  {...bindGuide('modules.hitokotoTextField', g.modules.hitokotoTextField)}
                   value={hitokotoDraft.customTextField ?? ''}
                   onChange={(customTextField) =>
                     updateHitokotoConfig({ customTextField })
@@ -881,7 +890,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                   itemKey="hitokoto-author-field"
                   label={t.config.hitokotoAuthorField}
                   hint={t.config.hitokotoAuthorFieldHint}
-                  guide={renderGuide(g.modules.hitokotoAuthorField)}
+                  {...bindGuide('modules.hitokotoAuthorField', g.modules.hitokotoAuthorField)}
                   value={hitokotoDraft.customAuthorField ?? ''}
                   onChange={(customAuthorField) =>
                     updateHitokotoConfig({ customAuthorField })

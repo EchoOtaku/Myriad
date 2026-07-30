@@ -1,6 +1,6 @@
 /**
- * 结构化选项指南正文（是什么 / 会牵连什么 / 哪里能看见 / 要注意）
- * 支持多行步骤（① / 1) 开头）自动拆成列表，更易扫读。
+ * 结构化选项指南正文（概述 / 关联 / 位置 / 提示）
+ * 支持多行步骤（① / 1) 开头）自动拆成 1 2 3 列表。
  */
 
 import type { GuideSectionLabels, SettingGuideEntry } from './types'
@@ -32,7 +32,12 @@ function renderText(text: string) {
     <ol className="setting-guide-steps">
       {lines.map((line, i) => (
         <li key={i} className="setting-guide-step">
-          {line.replace(STEP_LINE, '')}
+          <span className="setting-guide-step-num" aria-hidden>
+            {i + 1}
+          </span>
+          <span className="setting-guide-step-text">
+            {line.replace(STEP_LINE, '')}
+          </span>
         </li>
       ))}
     </ol>

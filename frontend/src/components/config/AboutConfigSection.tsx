@@ -30,7 +30,7 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
   sectionId,
 }) => {
   const { t } = useI18n()
-  const { catalog: g, renderGuide } = useSettingGuide()
+  const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
   const buildInfo = getBuildInfo()
 
   const devInfo: Array<{
@@ -69,7 +69,7 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
       title={title}
       icon={icon}
       description={description}
-      guide={renderGuide(g.about.section)}
+      {...bindGuide('about.section', g.about.section)}
       sectionId={sectionId}
     >
       <SettingGroup>

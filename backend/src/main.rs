@@ -3342,6 +3342,35 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/metrics",
             get(api::metrics::get_metrics).route_layer(from_fn(middleware::auth::admin_middleware)),
         )
+        // 📊 站点访客统计：collect/pageview 公开写入；summary 仅管理员
+        .route(
+            "/api/analytics/collect",
+            post(api::analytics::collect),
+        )
+        .route(
+            "/api/analytics/pageview",
+            post(api::analytics::record_pageview),
+        )
+        .route(
+            "/api/analytics/summary",
+            get(api::analytics::get_summary)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
+        .route(
+            "/api/analytics/export",
+            get(api::analytics::export_analytics)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
+        .route(
+            "/api/analytics/import",
+            post(api::analytics::import_analytics)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
+        .route(
+            "/api/admin/diagnostics",
+            get(api::diagnostics::runtime_diagnostics)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
         // Authentication routes (use wrapper for dynamic DB access)
         .route("/api/auth/login", post(api::auth_local::local_login))
         .route("/api/auth/me", get(api::auth::get_current_user))
@@ -3524,6 +3553,11 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
 
     let mut api_router = api_router
         .route("/api/profile/metadata", get(api::profile::get_raw_metadata))
+        .route(
+            "/api/profile/metadata/status/{platform}",
+            get(api::profile::get_platform_metadata_status)
+                .route_layer(from_fn(middleware::auth::admin_middleware)),
+        )
         // ==================== Federation (MFP) 公开端点 ====================
         // Layer 1: 发现（无需认证）
         .route(
@@ -3666,6 +3700,16 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route(
                 "/api/cache/status/{platform}",
                 get(api::cache::get_platform_cache_status)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/cache/previews",
+                get(api::cache::get_all_platform_cache_previews)
+                    .route_layer(from_fn(middleware::auth::auth_middleware)),
+            )
+            .route(
+                "/api/cache/preview/{platform}",
+                get(api::cache::get_platform_cache_preview)
                     .route_layer(from_fn(middleware::auth::auth_middleware)),
             )
             .route(

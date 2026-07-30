@@ -208,7 +208,7 @@ export const FederationConfigSection: React.FC<
 }) => {
   const { t } = useI18n()
   const c = t.config
-  const { catalog: g, renderGuide } = useSettingGuide()
+  const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
   const [instances, setInstances] = useState<FederationInstance[]>([])
   const [filters, setFilters] = useState<ContentFilterItem[]>([])
   const [identity, setIdentity] = useState<FederationIdentity | null>(null)
@@ -697,8 +697,12 @@ export const FederationConfigSection: React.FC<
       ? c.federationNoInstances
       : c.federationInstanceFilterEmpty
 
+  const INSTANCE_LIST_CAP = 60
+  const instanceListTruncated =
+    instances.length > 8 && filteredInstances.length > INSTANCE_LIST_CAP
+
   const instanceFooter =
-    instanceQueryActive && instances.length > 0
+    instanceQueryActive && instances.length > 0 && !instanceListTruncated
       ? c.federationInstanceShowing
           .replace('{shown}', String(filteredInstances.length))
           .replace('{total}', String(instances.length))
@@ -818,40 +822,57 @@ export const FederationConfigSection: React.FC<
           .replace('{total}', String(filters.length))
       : undefined
 
-  const filterListItems: ManagedListItem[] = filteredContentFilters.map((f) => {
-    const typeLabel =
-      (filterTypeLabels as Record<string, string>)[f.filter_type] ||
-      f.filter_type
-    const valueLabel = formatFilterValue(f.filter_type, f.value)
-    return {
-      id: f.id,
-      title: f.name,
-      subtitle: typeLabel,
-      meta: valueLabel,
-      badge: f.enabled
-        ? { label: c.federationFilterEnabled, tone: 'success' }
-        : { label: c.federationFilterDisabled, tone: 'muted' },
-      busy: !!filterBusy[f.id],
-      actions: [
-        {
-          key: 'toggle',
-          label: f.enabled
-            ? c.federationFilterEnabled
-            : c.federationFilterDisabled,
-          variant: f.enabled ? 'secondary' : 'primary',
-          onClick: () => void toggleFilter(f),
-          loading: filterBusy[f.id] === 'toggle',
-        },
-        {
-          key: 'delete',
-          label: t.common?.delete || 'Delete',
-          variant: 'danger',
-          onClick: () => void deleteFilter(f.id),
-          loading: filterBusy[f.id] === 'delete',
-        },
-      ],
-    }
-  })
+  const filterListItems: ManagedListItem[] = useMemo(
+    () =>
+      filteredContentFilters.map((f) => {
+        const typeLabel =
+          (filterTypeLabels as Record<string, string>)[f.filter_type] ||
+          f.filter_type
+        const valueLabel = formatFilterValue(f.filter_type, f.value)
+        return {
+          id: f.id,
+          title: f.name,
+          subtitle: typeLabel,
+          meta: valueLabel,
+          badge: f.enabled
+            ? { label: c.federationFilterEnabled, tone: 'success' }
+            : { label: c.federationFilterDisabled, tone: 'muted' },
+          busy: !!filterBusy[f.id],
+          actions: [
+            {
+              key: 'toggle',
+              /* badge 用 On/Off 状态；按钮用动词 */
+              label: f.enabled
+                ? c.federationFilterDisableAction
+                : c.federationFilterEnableAction,
+              variant: f.enabled ? 'secondary' : 'primary',
+              onClick: () => void toggleFilter(f),
+              loading: filterBusy[f.id] === 'toggle',
+            },
+            {
+              key: 'delete',
+              label: t.common.delete,
+              variant: 'danger',
+              onClick: () => void deleteFilter(f.id),
+              loading: filterBusy[f.id] === 'delete',
+            },
+          ],
+        }
+      }),
+    [
+      filteredContentFilters,
+      filterTypeLabels,
+      formatFilterValue,
+      filterBusy,
+      c.federationFilterEnabled,
+      c.federationFilterDisabled,
+      c.federationFilterDisableAction,
+      c.federationFilterEnableAction,
+      t.common.delete,
+      toggleFilter,
+      deleteFilter,
+    ],
+  )
 
   return (
     <SettingSection
@@ -860,19 +881,22 @@ export const FederationConfigSection: React.FC<
       description={description}
       sectionId={sectionId}
     >
-      <AutoHeight contentKey="ready" className="federation-content-height">
+      <AutoHeight
+        contentKey={`${identity?.actor_url ?? 'none'}-${instances.length}-${filters.length}`}
+        className="federation-content-height"
+      >
         {/* 1. 身份 → 2. 策略 → 3. 实例 → 4. 过滤 → 5. 投递队列 → 6. 限流 */}
         <SettingGroup
           title={c.federationKeysIdentity}
           description={c.federationKeysIdentityDesc}
-          guide={renderGuide(g.federation.keys)}
+          {...bindGuide('federation.keys', g.federation.keys)}
           icon={<FaKey />}
         >
           <InfoActionCard
             empty={!identity}
             emptyText={c.federationKeysNoIdentity}
-            copyLabel={t.common?.copy || 'Copy'}
-            copiedLabel={t.common?.copied || 'Copied'}
+            copyLabel={t.common.copy}
+            copiedLabel={t.common.copied}
             fields={
               identity
                 ? ([
@@ -913,22 +937,29 @@ export const FederationConfigSection: React.FC<
                 loading: rotatingKeys,
                 variant: 'secondary',
                 confirm: c.federationKeysRotateConfirm,
+                title: g.federation.rotateKeys.what,
               },
             ]}
+            footer={
+              <span className="setting-description">
+                {g.federation.rotateKeys.notes}
+              </span>
+            }
           />
+          {/* 轮换完整指南挂在分组 guide 已有 keys；动作补充 title + 底部 notes */}
         </SettingGroup>
 
         <SettingGroup
           title={c.federationInstancePolicy}
           description={c.federationInstancePolicyDesc}
-          guide={renderGuide(g.federation.policy)}
+          {...bindGuide('federation.policy', g.federation.policy)}
           icon={<LuShieldCheck />}
         >
           <SelectItem
             itemKey="fed-min-trust"
             label={c.federationMinTrustInbound}
             description={c.federationMinTrustInboundDesc}
-            guide={renderGuide(g.federation.minTrust)}
+            {...bindGuide('federation.minTrust', g.federation.minTrust)}
             value={String(policyDraft.minTrust)}
             onChange={(v) => onPolicyChange({ minTrust: Number(v) })}
             options={trustLevelOptions}
@@ -939,7 +970,7 @@ export const FederationConfigSection: React.FC<
             itemKey="fed-allowlist"
             label={c.federationAllowlistDomains}
             description={c.federationAllowlistDomainsDesc}
-            guide={renderGuide(g.federation.allowlist)}
+            {...bindGuide('federation.allowlist', g.federation.allowlist)}
             value={policyDraft.allowlistText}
             onChange={(allowlistText) => onPolicyChange({ allowlistText })}
             placeholder={c.federationAllowlistPlaceholder}
@@ -952,7 +983,7 @@ export const FederationConfigSection: React.FC<
             itemKey="fed-auto-discover"
             label={c.federationAutoDiscover}
             description={c.federationAutoDiscoverDesc}
-            guide={renderGuide(g.federation.autoDiscover)}
+            {...bindGuide('federation.autoDiscover', g.federation.autoDiscover)}
             value={policyDraft.autoDiscover}
             onChange={(autoDiscover) => onPolicyChange({ autoDiscover })}
           />
@@ -961,7 +992,7 @@ export const FederationConfigSection: React.FC<
         <SettingGroup
           title={c.federationKnownInstances}
           description={c.federationKnownInstancesDesc}
-          guide={renderGuide(g.federation.knownInstances)}
+          {...bindGuide('federation.knownInstances', g.federation.knownInstances)}
           icon={<FaServer />}
         >
           <ManagedList
@@ -987,13 +1018,21 @@ export const FederationConfigSection: React.FC<
             emptyText={instanceEmptyText}
             footer={instanceFooter}
             maxHeight={instances.length > 8 ? '22rem' : null}
+            maxVisibleItems={
+              instances.length > 8 ? INSTANCE_LIST_CAP : null
+            }
+            truncateFooter={(shown, total) =>
+              c.federationInstanceShowing
+                .replace('{shown}', String(shown))
+                .replace('{total}', String(total))
+            }
           />
         </SettingGroup>
 
         <SettingGroup
           title={c.federationContentFilters}
           description={c.federationContentFiltersDesc}
-          guide={renderGuide(g.federation.contentFilters)}
+          {...bindGuide('federation.contentFilters', g.federation.contentFilters)}
           icon={<FaFilter />}
         >
           <ManagedList
@@ -1022,7 +1061,7 @@ export const FederationConfigSection: React.FC<
             formTitle={c.federationAddFilter}
             formDescription={c.federationAddFilterDesc}
             formIcon={<FaPlus aria-hidden />}
-            formCollapseLabel={t.common?.cancel || 'Cancel'}
+            formCollapseLabel={t.common.cancel}
             formCollapseDescription={c.federationListQueryCollapseDesc}
             formOpen={filterFormOpen}
             onFormOpenChange={setFilterFormOpen}
@@ -1110,7 +1149,7 @@ export const FederationConfigSection: React.FC<
         <SettingGroup
           title={c.federationDeliveryQueue}
           description={c.federationDeliveryQueueDesc}
-          guide={renderGuide(g.federation.deliveryQueue)}
+          {...bindGuide('federation.deliveryQueue', g.federation.deliveryQueue)}
           icon={<FaPaperPlane />}
         >
           <FederationDeliveryQueue
@@ -1126,7 +1165,7 @@ export const FederationConfigSection: React.FC<
         <SettingGroup
           title={c.federationAdvanced}
           description={c.federationAdvancedDesc}
-          guide={renderGuide(g.federation.advanced)}
+          {...bindGuide('federation.advanced', g.federation.advanced)}
           icon={<FaCog />}
           collapsible
           defaultExpanded={false}
@@ -1135,7 +1174,7 @@ export const FederationConfigSection: React.FC<
             itemKey="fed-rate-max"
             label={c.federationRateMaxRequests}
             description={c.federationRateMaxRequestsDesc}
-            guide={renderGuide(g.federation.rateMax)}
+            {...bindGuide('federation.rateMax', g.federation.rateMax)}
             value={policyDraft.rateMax}
             onChange={(v) =>
               onPolicyChange({
@@ -1151,7 +1190,7 @@ export const FederationConfigSection: React.FC<
             itemKey="fed-rate-window"
             label={c.federationRateWindowSeconds}
             description={c.federationRateWindowSecondsDesc}
-            guide={renderGuide(g.federation.rateWindow)}
+            {...bindGuide('federation.rateWindow', g.federation.rateWindow)}
             value={policyDraft.rateWindow}
             onChange={(v) =>
               onPolicyChange({
@@ -1168,7 +1207,7 @@ export const FederationConfigSection: React.FC<
             itemKey="fed-rate-trusted-mul"
             label={c.federationRateTrustedMultiplier}
             description={c.federationRateTrustedMultiplierDesc}
-            guide={renderGuide(g.federation.rateTrusted)}
+            {...bindGuide('federation.rateTrusted', g.federation.rateTrusted)}
             value={policyDraft.rateTrustedMul}
             onChange={(v) =>
               onPolicyChange({

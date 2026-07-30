@@ -6,6 +6,7 @@
 
 import type { Task } from '../components/TaskStatus'
 import { useCallback, useState } from 'react'
+import { fetchJson } from '../utils/apiHelper'
 import { getCSRFToken } from '../utils/csrf'
 
 interface SubmitTaskResponse {
@@ -167,15 +168,11 @@ export function useBackgroundTasks() {
   const getPlatformCacheStatus = useCallback(
     async (platform: string): Promise<CacheInfo | null> => {
       try {
-        const response = await fetch(`/api/cache/status/${platform}`, {
-          credentials: 'include',
-        })
-
-        const data: CacheStatusResponse = await response.json()
-
-        if (!response.ok || !data.success) {
-          throw new Error(data.error || `HTTP ${response.status}`)
-        }
+        const data = await fetchJson<CacheStatusResponse>(
+          `/api/cache/status/${platform}`,
+          undefined,
+          'Failed to fetch platform cache status',
+        )
 
         return data.cache || null
       } catch (err) {

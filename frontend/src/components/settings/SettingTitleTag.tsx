@@ -67,7 +67,7 @@ export const SettingTitleTag: React.FC<SettingTitleTagProps> = ({
       )}
       <span className="setting-title-tag-label">{children}</span>
       {detail != null && detail !== '' && (
-        <SettingTitleHelp ariaLabel="详细说明">{detail}</SettingTitleHelp>
+        <SettingTitleHelp>{detail}</SettingTitleHelp>
       )}
     </>
   )

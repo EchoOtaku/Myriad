@@ -302,11 +302,25 @@ globalThis.addEventListener('message', (event) => {
     event.waitUntil(
       caches
         .keys()
-        .then((keys) => {
-          return Promise.all(keys.map((key) => caches.delete(key)))
-        })
+        .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+        .then(() => caches.keys())
+        // 二次确认：尽量清空所有 Cache Storage 桶
+        .then((remaining) =>
+          Promise.all(remaining.map((key) => caches.delete(key))),
+        )
         .then(() => {
-          event.ports[0].postMessage({ success: true })
+          try {
+            event.ports?.[0]?.postMessage({ success: true })
+          } catch {
+            // port 可能已关闭
+          }
+        })
+        .catch(() => {
+          try {
+            event.ports?.[0]?.postMessage({ success: false })
+          } catch {
+            // ignore
+          }
         }),
     )
   }

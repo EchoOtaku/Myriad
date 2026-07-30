@@ -5,6 +5,7 @@
 
 import type { ProviderSettingConfig, SettingOption } from '../types'
 import React, { useCallback } from 'react'
+import { guideDomProps } from '../guides/guideAnchor'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import './SettingItem.css'
 
@@ -17,6 +18,7 @@ function ProviderItemComponent<T extends string = string>({
   label,
   detail,
   guide,
+  guidePath,
   description,
   hint,
   value,
@@ -45,18 +47,18 @@ function ProviderItemComponent<T extends string = string>({
     return <span className="provider-icon">{icon}</span>
   }
 
+  const anchorProps = guideDomProps(guidePath)
+
   return (
     <div
-      className={`setting-item setting-item-provider setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}`}
+      {...anchorProps}
+      className={`setting-item setting-item-provider setting-${layout} setting-${size} ${className} ${disabled ? 'disabled' : ''}${guidePath ? ' has-guide-anchor' : ''}`}
     >
       <div className="setting-item-content">
         <div className="setting-label">
           <span className="setting-label-text">
             {label}
-            <SettingTitleGuideEntry
-              title={label}
-              guide={guide ?? detail ?? description}
-            />
+            <SettingTitleGuideEntry title={label} guide={guide} />
           </span>
           {description && (
             <span className="setting-description">{description}</span>

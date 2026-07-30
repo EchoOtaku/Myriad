@@ -145,15 +145,21 @@ interface ModelTierGroupProps {
 const ModelTierGroup: React.FC<
   ModelTierGroupProps & {
     guide?: React.ReactNode
+    guidePath?: string
     providerGuide?: React.ReactNode
-    fieldGuideFor?: (fieldKey: string) => React.ReactNode
+    providerGuidePath?: string
+    fieldGuideFor?: (
+      fieldKey: string,
+    ) => { guide?: React.ReactNode; guidePath?: string } | undefined
   }
 > = ({
   title,
   icon,
   description,
   guide,
+  guidePath,
   providerGuide,
+  providerGuidePath,
   fieldGuideFor,
   providerItemKey,
   providerLabel,
@@ -171,6 +177,7 @@ const ModelTierGroup: React.FC<
     icon={icon}
     description={description}
     guide={guide}
+    guidePath={guidePath}
   >
     {controls}
     {enabled && (
@@ -183,23 +190,28 @@ const ModelTierGroup: React.FC<
           options={providerOptions}
           hint={providerHint}
           guide={providerGuide}
+          guidePath={providerGuidePath}
           layout="horizontal"
         />
-        {fields.map((field) => (
-          <InputItem
-            key={field.key}
-            itemKey={field.key}
-            label={field.label}
-            required={field.required}
-            value={field.value}
-            onChange={(value) => updateValue(field.key, value)}
-            guide={fieldGuideFor?.(field.key)}
-            placeholder={field.placeholder}
-            inputType={field.field_type as 'text' | 'password'}
-            autoSelectOnMask
-            layout="vertical"
-          />
-        ))}
+        {fields.map((field) => {
+          const fieldGuide = fieldGuideFor?.(field.key)
+          return (
+            <InputItem
+              key={field.key}
+              itemKey={field.key}
+              label={field.label}
+              required={field.required}
+              value={field.value}
+              onChange={(value) => updateValue(field.key, value)}
+              guide={fieldGuide?.guide}
+              guidePath={fieldGuide?.guidePath}
+              placeholder={field.placeholder}
+              inputType={field.field_type as 'text' | 'password'}
+              autoSelectOnMask
+              layout="vertical"
+            />
+          )
+        })}
       </>
     )}
   </SettingGroup>
@@ -235,24 +247,26 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   sectionId,
 }) => {
   const { t } = useI18n()
-  const { catalog: g, renderGuide } = useSettingGuide()
+  const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
   const [speechTesting, setSpeechTesting] = useState(false)
 
   const fieldGuideFor = useCallback(
     (fieldKey: string) => {
       if (fieldKey.includes('api_key') || fieldKey.includes('secret')) {
-        return renderGuide(g.ai.apiKey)
+        return bindGuide('ai.apiKey', g.ai.apiKey)
       }
       if (fieldKey.includes('base_url')) {
-        return renderGuide(g.ai.baseUrl)
+        return bindGuide('ai.baseUrl', g.ai.baseUrl)
       }
       if (fieldKey.includes('model')) {
-        return renderGuide(g.ai.model)
+        return bindGuide('ai.model', g.ai.model)
       }
-      return renderGuide(g.ai.provider)
+      return bindGuide('ai.provider', g.ai.provider)
     },
-    [g, renderGuide],
+    [g, bindGuide],
   )
+
+  const providerGuideBinding = bindGuide('ai.provider', g.ai.provider)
   const [speechTestResult, setSpeechTestResult] = useState<{
     success: boolean
     message: string
@@ -334,16 +348,21 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     [getFieldValue],
   )
 
-  // 与上方 AI 设置共用同一套字段文案（OpenAI API Key / Base URL / Model Name）
+  // 与上方 AI 设置共用同一套字段文案（优先后端 label，否则 i18n）
   const openaiFieldLabels = useMemo(() => {
     const byKey = (key: string, fallback: string) =>
       configFields.find((f) => f.key === key)?.label || fallback
     return {
-      apiKey: byKey('openai_api_key', 'OpenAI API Key'),
-      baseUrl: byKey('openai_base_url', 'OpenAI Base URL'),
-      model: byKey('openai_model', 'OpenAI Model Name'),
+      apiKey: byKey('openai_api_key', t.config.openaiApiKeyLabel),
+      baseUrl: byKey('openai_base_url', t.config.openaiBaseUrlLabel),
+      model: byKey('openai_model', t.config.openaiModelLabel),
     }
-  }, [configFields])
+  }, [
+    configFields,
+    t.config.openaiApiKeyLabel,
+    t.config.openaiBaseUrlLabel,
+    t.config.openaiModelLabel,
+  ])
 
   // AI Provider 选项。OpenRouter 默认在前，其次 OpenAI 兼容，最后 Gemini
   const aiProviderOptions: SettingOption<string>[] = useMemo(
@@ -442,12 +461,13 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     } catch (error) {
       setSpeechTestResult({
         success: false,
-        message: error instanceof Error ? error.message : 'Test failed',
+        message:
+          error instanceof Error ? error.message : t.config.speechTestFailed,
       })
     } finally {
       setSpeechTesting(false)
     }
-  }, [onSpeechTest])
+  }, [onSpeechTest, t.config.speechTestFailed])
 
   return (
     <SettingSection
@@ -460,8 +480,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         title={t.config.aiStandardModelTitle}
         icon={<LuSparkles />}
         description={t.config.aiStandardModelDesc}
-        guide={renderGuide(g.ai.standard)}
-        providerGuide={renderGuide(g.ai.provider)}
+        {...bindGuide('ai.standard', g.ai.standard)}
+        providerGuide={providerGuideBinding.guide}
+        providerGuidePath={providerGuideBinding.guidePath}
         fieldGuideFor={fieldGuideFor}
         providerItemKey="ai_provider"
         providerLabel={t.config.aiProvider}
@@ -485,8 +506,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         title={t.config.aiLiteModelTitle}
         icon={<LuLeaf />}
         description={t.config.aiLiteModelDesc}
-        guide={renderGuide(g.ai.lite)}
-        providerGuide={renderGuide(g.ai.provider)}
+        {...bindGuide('ai.lite', g.ai.lite)}
+        providerGuide={providerGuideBinding.guide}
+        providerGuidePath={providerGuideBinding.guidePath}
         fieldGuideFor={fieldGuideFor}
         providerItemKey="lite_ai_provider"
         providerLabel={t.config.aiProvider}
@@ -500,7 +522,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             itemKey="lite_enabled"
             label={t.config.aiLiteEnable}
             description={t.config.aiLiteEnableDesc}
-            guide={renderGuide(g.ai.liteEnable)}
+            {...bindGuide('ai.liteEnable', g.ai.liteEnable)}
             value={liteEnabled}
             onChange={(value: boolean) =>
               updateValue('lite_enabled', value ? 'true' : 'false')
@@ -524,8 +546,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         title={t.config.aiProModelTitle}
         icon={<LuZap />}
         description={t.config.aiProModelDesc}
-        guide={renderGuide(g.ai.pro)}
-        providerGuide={renderGuide(g.ai.provider)}
+        {...bindGuide('ai.pro', g.ai.pro)}
+        providerGuide={providerGuideBinding.guide}
+        providerGuidePath={providerGuideBinding.guidePath}
         fieldGuideFor={fieldGuideFor}
         providerItemKey="pro_ai_provider"
         providerLabel={t.config.aiProvider}
@@ -539,7 +562,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             itemKey="pro_enabled"
             label={t.config.aiProEnable}
             description={t.config.aiProEnableDesc}
-            guide={renderGuide(g.ai.proEnable)}
+            {...bindGuide('ai.proEnable', g.ai.proEnable)}
             value={proEnabled}
             onChange={(value: boolean) =>
               updateValue('pro_enabled', value ? 'true' : 'false')
@@ -564,12 +587,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         title={t.config.aiImageTitle}
         icon={<LuPalette />}
         description={t.config.aiImageDesc}
-        guide={renderGuide(g.ai.image)}
+        {...bindGuide('ai.image', g.ai.image)}
       >
         <ProviderItem
           itemKey="image_provider"
           label={t.config.aiProvider}
-          guide={renderGuide(g.ai.provider)}
+          {...bindGuide('ai.provider', g.ai.provider)}
           value={currentImageProvider}
           onChange={handleImageProviderChange}
           options={imageProviderOptions}
@@ -587,6 +610,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               placeholder="sk-..."
               inputType="password"
               autoSelectOnMask
+              {...bindGuide('ai.apiKey', g.ai.apiKey)}
               layout="vertical"
             />
             <InputItem
@@ -599,6 +623,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               onChange={(v) => updateValue('ai_image_openai_base_url', v)}
               placeholder={OPENAI_BASE_URL}
               inputType="text"
+              {...bindGuide('ai.baseUrl', g.ai.baseUrl)}
               layout="vertical"
             />
           </>
@@ -614,6 +639,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             placeholder="sk-or-v1-..."
             inputType="password"
             autoSelectOnMask
+            {...bindGuide('ai.apiKey', g.ai.apiKey)}
             layout="vertical"
           />
         )}
@@ -622,18 +648,19 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           <>
             <InputItem
               itemKey="ai_image_volcengine_api_key"
-              label="Volcengine Ark API Key"
+              label={t.config.volcengineArkApiKey}
               required
               value={getFieldValue('ai_image_volcengine_api_key')}
               onChange={(v) => updateValue('ai_image_volcengine_api_key', v)}
-              placeholder="Ark API Key"
+              placeholder={t.config.volcengineArkApiKeyPlaceholder}
               inputType="password"
               autoSelectOnMask
+              {...bindGuide('ai.apiKey', g.ai.apiKey)}
               layout="vertical"
             />
             <InputItem
               itemKey="ai_image_volcengine_base_url"
-              label="Ark Base URL"
+              label={t.config.volcengineArkBaseUrl}
               value={getFieldValue(
                 'ai_image_volcengine_base_url',
                 'https://ark.cn-beijing.volces.com/api/v3',
@@ -641,6 +668,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               onChange={(v) => updateValue('ai_image_volcengine_base_url', v)}
               placeholder="https://ark.cn-beijing.volces.com/api/v3"
               inputType="text"
+              {...bindGuide('ai.baseUrl', g.ai.baseUrl)}
               layout="vertical"
             />
           </>
@@ -649,13 +677,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         {currentImageProvider === 'pixai' && (
           <InputItem
             itemKey="pixai_api_key"
-            label="PixAI API Key"
+            label={t.config.pixaiApiKey}
             required
             value={getFieldValue('pixai_api_key')}
             onChange={(v) => updateValue('pixai_api_key', v)}
             placeholder={t.config.pixaiPlaceholder}
             inputType="password"
             autoSelectOnMask
+            {...bindGuide('ai.apiKey', g.ai.apiKey)}
             layout="vertical"
           />
         )}
@@ -688,7 +717,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         title={t.config.speechServiceTitle}
         icon={<FaMicrophone />}
         description={t.config.speechServiceDesc}
-        guide={renderGuide(g.ai.speech)}
+        {...bindGuide('ai.speech', g.ai.speech)}
       >
         <InputItem
           itemKey="tencent_secret_id"

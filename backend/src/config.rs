@@ -277,6 +277,9 @@ pub struct DynamicConfig {
     pub pet_enabled: bool,
     pub pet_image_url: Option<String>,
 
+    /// 第一方访客统计（pageview / engagement / event）是否开启；关闭后服务端拒绝采集
+    pub analytics_enabled: bool,
+
     // 站点元数据
     pub site_title: Option<String>,
     pub site_description: Option<String>,
@@ -514,6 +517,8 @@ impl Default for DynamicConfig {
             ui_secondary_color: None,
             pet_enabled: true,
             pet_image_url: None,
+
+            analytics_enabled: true,
 
             site_title: None,
             site_description: None,

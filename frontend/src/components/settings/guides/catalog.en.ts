@@ -253,35 +253,107 @@ export const en: SettingGuidesCatalog = {
 
   platforms: {
     list: {
-      what: 'Connect external accounts like GitHub, Steam, or Bilibili and sync their data into this site.',
+      what: 'Data & stats overview: connected platforms and visitor stats (pages / events / referrers).',
       chain:
-        '1) Open a platform card → follow the steps to fill account/keys → enable.\n2) After a successful sync, the library, reports, and some home cards can use that data.\n3) Drag cards left/right to set card order on the report page.\n4) “Refresh” auto-syncs on the schedule you set; each platform detail page shows and manages its data cache.\n5) If the server needs a proxy for the open internet, enable it under “Advanced,” or foreign platforms often fail.',
+        '1) Under Connected platforms, link GitHub, Steam, Bilibili, etc. and set auto-refresh.\n2) Under Visitor stats, review KPIs, trends, and page/event/referrer sections.\n3) Card switches only control report-page visibility; auto-refresh syncs configured platforms.',
       frontend:
-        'Library entries, report material, widgets that depend on platforms, and the data management area on each platform detail page.\nAfter enable and sync, open the library and check whether that source appears.',
-      notes: 'Enabling without keys set up usually won’t sync. Fill the fields first, then flip the switch.',
+        'Settings → Data & stats. Platform data feeds library and reports; visitor stats fill in as people browse.',
+      notes: 'Visitor stats do not store raw IPs; keep platform secrets private.',
+    },
+    visitorStats: {
+      what: 'Site-wide views, unique visitors, top countries, plus page / event / referrer sections in the same subcategory.',
+      chain:
+        '1) Title-row switch controls collection (on by default; when off the server rejects new beacons).\n2) The client beacons on page open (batched / idle).\n3) The server aggregates PV/UV by server-local calendar day; egress IP may resolve top countries.\n4) Switch 7/14/30 days for trends shared by all sections below.\n5) Nested sections each have their own option guide: pages, events, referrers.',
+      frontend: 'Data & stats → Visitor stats subcategory (KPIs including countries, chart, nested lists).',
+      notes: 'Historical data remains readable when collection is off. Admin and site-owner sessions are excluded. Same visitor counts once per day for UV (hashed; no raw IP). Country tiles can be empty when geo lookup fails.',
+    },
+    pageAnalytics: {
+      what: 'Traffic by route in the selected range.',
+      chain:
+        '1) Same source and range as visitor stats.\n2) Aggregated by path.\n3) Dynamic routes collapse to templates (e.g. /tapp/:id).',
+      frontend: 'Data & stats → Visitor stats → Page analytics section.',
+      notes: 'Unknown paths bucket as Other to limit cardinality.',
+    },
+    eventAnalytics: {
+      what: 'How often product events fire in the selected range, and how many visitors hit them.',
+      chain:
+        '1) Shares the visitor-stats collection switch, date range, and exclusions (admin/owner not counted).\n2) Count = sum in range; visitors = distinct people who fired the event.\n3) Built-ins include login success; site code can add names via trackEvent.\n4) Turning collection off stops new writes; history stays readable.',
+      frontend: 'Data & stats → Visitor stats → Events section (beside Referrers).',
+      notes: 'Keep custom event names stable and short; noisy high-frequency events crowd the ranking. Export/import backups include event aggregates.',
+    },
+    referrerAnalytics: {
+      what: 'Which external sites sent traffic here (views by referrer hostname).',
+      chain:
+        '1) Same range as visitor stats.\n2) Only external Referer hostnames; in-site navigation is ignored.\n3) Missing or unparsable Referer does not appear in this list.\n4) Disabling collection only affects new visits.',
+      frontend: 'Data & stats → Visitor stats → Referrers section.',
+      notes: 'Private mode, cross-site HTTPS, and in-app browsers often strip referrers. Ranking is by views, not unique visitors.',
+    },
+    connected: {
+      what: 'Connect external accounts and configure auto-refresh for configured platforms.',
+      chain:
+        '1) Open a platform card → fill account/keys and save (configured is enough to sync).\n2) The card switch only controls whether that platform appears on the reports page — not refresh or read.\n3) Auto-refresh below schedules sync for all configured platforms.\n4) Drag cards left/right to set report-page card order.',
+      frontend:
+        'Library entries, report material (when enabled), platform-dependent widgets, and each platform’s data management area.',
+      notes: 'Fill required fields before syncing; the switch only toggles report-page visibility.',
     },
     autoRefresh: {
-      what: 'How often to auto-pull data for platforms that are already on.',
+      what: 'How often to auto-pull data for platforms that are already configured.',
       chain:
-        '1) Turn on and pick an interval.\n2) Background syncs enabled platforms on schedule (staggered so they don’t all hit the other side at once).\n3) Library and reports look “fresher” next time you open them.\n4) With no platforms enabled, auto refresh has nothing useful to do.\n5) Too short an interval may get you temporarily limited by the other platform.',
+        '1) Turn on and pick an interval.\n2) Background syncs all configured platforms on schedule (independent of the report-page switch; staggered to avoid bursting APIs).\n3) Library and reports look fresher next time you open them.\n4) With no platforms configured, auto refresh has nothing useful to do.\n5) Too short an interval may get you temporarily limited by the other platform.',
       frontend:
-        'How fresh the data feels; nav layout doesn’t change. Check update times on the corresponding platform detail page or in the library.',
-      notes: 'Manual sync still works alongside this. Don’t set production intervals too short.',
+        'Data & stats → Connected platforms → “Refresh frequency”. Check update times on the platform detail page or in the library.',
+      notes: 'Manual sync on the detail page still works alongside this. Don’t set production intervals too short.',
     },
     platformCard: {
-      what: 'Whether to enable this platform, and open it to fill connection details.',
+      what: 'Connection fields plus the report-page visibility switch; open for config and data ops.',
       chain:
-        '1) Fill fields first, then enable — only then does it truly join sync.\n2) Once enabled it appears in library source options and report material.\n3) After turning off, that source usually stops auto-updating (whether existing data vanishes right away depends on each module’s filters).',
-      frontend: 'Whether that platform joins library/report data. After enable and sync, confirm in the library.',
-      notes: 'Grayed out / can’t enable usually means required fields aren’t complete yet.',
+        '1) Required fields must be filled before the switch can turn on.\n2) Once configured you can refresh/process on the detail page and join auto-refresh.\n3) The switch only shows/hides the reports-page card; turning it off does not stop data sync.\n4) Drag order affects report-page card order.',
+      frontend:
+        'Data & stats → Connected platforms list cards; switch on the card, click to open detail and data management.',
+      notes: 'Grayed-out switch usually means required fields are incomplete.',
     },
     platformFields: {
       what: 'Username, secret keys, and other connection details.',
       chain:
-        '1) Follow on-page steps to copy keys from the official site → paste here → save/enable.\n2) Successful sync → downstream modules have data; wrong or expired → sync fails, library/reports may stay old or empty.\n3) Some platforms also relate to “third-party login” — the steps will say so.',
+        '1) Follow on-page steps to copy keys from the official site → paste here → save.\n2) Once configured you can sync without turning on the report-page switch.\n3) Successful sync → downstream modules have data; wrong or expired → sync fails, library/reports may stay old or empty.\n4) Some platforms also relate to third-party login — the steps will say so.',
       frontend:
         'Indirect: whether data appears and whether errors show. After sync, check the library or this platform’s data management area.',
-      notes: 'Don’t share secret keys with others; after rotating a key, come back and update it here.',
+      notes: 'Don’t share secret keys; after rotating a key, come back and update it here.',
+    },
+    dataPreview: {
+      what: 'A snapshot of what this platform already has in the smart-filter cache: account, key numbers, a few samples.',
+      chain:
+        '1) Loaded once when you open the detail page — not polled in the background.\n2) Comes from smart-filter output, not a live call to the remote platform.\n3) After refresh raw or reprocess, the snapshot reloads once.\n4) Empty until you sync and process.',
+      frontend: 'Platform detail “Current data” group.',
+      notes: 'Preview only — full lists live in the library.',
+    },
+    dataManagement: {
+      what: 'Data already synced for this platform: pull again, reprocess, or clear local cache.',
+      chain:
+        '1) Needs connection fields above to work.\n2) Refresh: fetch raw data from the remote platform again.\n3) Reprocess: re-run local parsing on existing raw data without re-fetching.\n4) Clear cache: drop this site’s cached copy for display/speed — not the remote account.\n5) Library and reports pick up results next time they load.',
+      frontend: 'Status rows and buttons under “Data management” on the platform detail page.',
+      notes: 'Clearing cache cannot undo the local copy; confirm sync works before destructive ops.',
+    },
+    dataRefresh: {
+      what: 'Fetch raw data from the external platform again.',
+      chain:
+        '1) Click refresh → background task queues.\n2) On success this site has a new raw snapshot; on failure check the task error.\n3) Library/reports can update only after that.\n4) Too frequent pulls may rate-limit you.',
+      frontend: '“Raw data” row and refresh button in data management; task progress may show.',
+      notes: 'Wrong secrets or network/proxy issues cause failure.',
+    },
+    dataReprocess: {
+      what: 'Re-parse existing raw data on this site without asking the remote again.',
+      chain:
+        '1) Useful when parsing/mapping changed but remote data did not.\n2) Usually fails or is disabled with no raw data.\n3) Faster and hits the remote less than a full refresh.',
+      frontend: 'Reprocess-style button in data management.',
+      notes: 'If raw data itself is stale, refresh first instead of only reprocessing.',
+    },
+    dataClearCache: {
+      what: 'Clear this site’s cache copy for the platform.',
+      chain:
+        '1) Only local cache — not the remote account.\n2) Next display or sync may rebuild cache.\n3) Use when config changed but old lists/cards still show.',
+      frontend: 'Clear-cache button; status row shows whether cache exists.',
+      notes: 'Asks for confirmation; load may be slower briefly after.',
     },
   },
 
@@ -368,11 +440,11 @@ export const en: SettingGuidesCatalog = {
       notes: 'Enable only when needed; not every task needs this tier.',
     },
     proEnable: {
-      what: 'Whether to enable the high-quality tier.',
+      what: 'Whether to enable the high-quality model tier.',
       chain:
-        '1) Off → related tasks use Standard.\n2) On → they use the high-quality setup.\n3) Turning the switch off does not delete secret keys.',
-      frontend: 'Whether a stronger model may be used.',
-      notes: 'If cost matters, leave it off.',
+        '1) Off → hard tasks also fall back to Standard.\n2) On → hard tasks may use the high-quality provider/model.\n3) Still limited by permissions and quota; turning off does not delete keys.',
+      frontend: 'Quality on hard assistant/report tasks. Ask the same hard question before/after.',
+      notes: 'Keep off if cost-sensitive or Standard is enough.',
     },
     image: {
       what: 'Which service is used to generate images.',
@@ -422,17 +494,17 @@ export const en: SettingGuidesCatalog = {
     section: {
       what: 'Let visitors sign in to this site with one click using GitHub, Google, and similar accounts.',
       chain:
-        '1) First fill a correct site address under “Basic configuration” so return addresses are right.\n2) Add a login method here and follow the steps to fill the ID and secret from both sides’ dashboards.\n3) Login page shows a button → user signs in at the other site → then returns here.\n4) Whether first-time visitors auto-register is controlled by the registration-related switch.\n5) After changing the site domain, also update the return address registered at the other side’s dashboard.',
+        '1) First fill a correct site address under “Basic configuration” so return addresses are right.\n2) Add a login method here and follow the steps to fill the ID and secret from both sides’ dashboards.\n3) Login page shows a button → user signs in at the other site → then returns here.\n4) Open local password registration is controlled under “Users,” not this section.\n5) After changing the site domain, also update the return address registered at the other side’s dashboard.',
       frontend:
         'Third-party buttons on the login / register page.\nA full login attempt in a private window is the best verification.',
       notes: 'If the site address isn’t set up, you’ll see a strong warning — fix basic configuration first. Don’t leak secrets.',
     },
     allowRegister: {
-      what: 'On first third-party login, whether to automatically create a new account on this site.',
+      what: '(Legacy key) Whether first third-party login auto-creates an account. For public local password registration, see Users → allow public registration.',
       chain:
-        '1) On: newcomers can enter.\n2) Off: only people already linked can sign in via third party.\n3) Separate path from manually creating accounts under “User management.”',
-      frontend: 'After a new visitor clicks third-party login: do they enter the site, or get refused / asked for an existing account?',
-      notes: 'Turn off if you don’t want open sign-ups; you can allow only accounts you create by hand.',
+        '1) Corrected meaning: open /register local sign-up is not configured on this page.\n2) Toggle public local registration under “Users.”\n3) Whether third-party buttons appear still depends on providers configured here.',
+      frontend: 'Third-party buttons (this section); local register link under Users and the login page.',
+      notes: 'Prefer users.allowLocalRegister.',
     },
     provider: {
       what: 'The concrete fill-in fields for one third-party login method.',
@@ -488,35 +560,42 @@ export const en: SettingGuidesCatalog = {
       notes: '0 or extremely low is effectively almost disabled (depending on implementation).',
     },
     guestQuota: {
-      what: 'Usage cap for guests.',
+      what: 'AI usage cap for guests (signed-out).',
       chain:
-        '1) First gate against unsigned visitors flooding the site.\n2) Works together with guest permissions.\n3) When full, guest smart features are unavailable.',
-      frontend: 'Messages related to the guest trial budget.',
-      notes: 'Keep it fairly low.',
+        '1) First gate against unsigned visitors flooding the site.\n2) Works together with guest permissions.\n3) When full, guest smart features are unavailable.\n4) 0 usually means guests cannot use smart features (see actual errors).',
+      frontend: 'Guest trial budget messages; try a private window until over quota.',
+      notes: 'Keep clearly lower than signed-in users; prefer low in production.',
     },
   },
 
   users: {
     section: {
-      what: 'Manage who can sign in to this site and who is an admin.',
+      what: 'Manage who can sign in, who is an admin, and whether visitors may self-register a local username/password.',
       chain:
-        '1) Create or adjust accounts here.\n2) They sign in with username/password (or linked third-party accounts).\n3) Admins can open system configuration; ordinary users still follow module visibility, permissions, and quotas.\n4) Deleting an account mainly affects login — it usually does not wipe display data synced from platforms.',
-      frontend: 'Who can sign in, and whether admin menus are available. Logging in with a new account is the clearest check.',
-      notes: 'Only admins can open this page; create few admins.',
+        '1) Create or adjust accounts here; the top switch controls public local registration.\n2) People sign in with username/password (or third-party methods from “Sign-in methods”).\n3) Admins open system configuration; ordinary users still follow module visibility, permissions, and quotas.\n4) Deleting an account mainly affects login — synced platform display data usually remains.\n5) When public registration is on, guests can open /register to create their own account.',
+      frontend: 'Who can sign in, admin menus, and whether the login page shows “Register.” Verify with a new account or private window.',
+      notes: 'Only admins open this page; create few admins. Be careful enabling public registration on public sites.',
     },
     create: {
       what: 'Create a new local account; optionally mark as admin.',
       chain:
-        '1) Fill username and password → create.\n2) Usually can sign in right away.\n3) Checking admin grants configuration powers — use carefully.',
-      frontend: 'New users see different entries after login. Sign in with the new account immediately to check.',
-      notes: 'Use a strong enough password; double-check before ticking admin.',
+        '1) Open “Add user,” fill username and password → create.\n2) Usually can sign in right away.\n3) Admin grants configuration powers — use carefully.\n4) Separate path from public self-registration: here an admin creates the account.',
+      frontend: 'New row in the list; new account sees different entries after login.',
+      notes: 'Use a strong password; double-check before ticking admin.',
     },
     list: {
-      what: 'View, search, and manage existing users.',
+      what: 'View, search, and filter users; expand a row to adjust roles or login methods.',
       chain:
-        '1) Search/filter to find people.\n2) Changing roles or handling accounts affects their powers on next login.\n3) Dangerous actions (delete, and so on) are hard to undo.',
-      frontend: 'Who can sign in and who is an admin. After changes, have them sign in again to verify.',
-      notes: 'Don’t accidentally delete the only admin account.',
+        '1) Search or filter by role / online status.\n2) Expand for bindings, disabling local password, and so on.\n3) Role changes apply on next login.\n4) Delete and similar actions are hard to undo.',
+      frontend: 'User list and filters; after changes have them sign in again.',
+      notes: 'Don’t delete the only admin account.',
+    },
+    allowLocalRegister: {
+      what: 'Whether visitors may create a local username/password account on the Register page.',
+      chain:
+        '1) On: unsigned visitors can open /register and sign up.\n2) Off: local accounts only via admin create on this page.\n3) Not the same as third-party login (GitHub/Google) — that is under Sign-in methods.\n4) Usually takes effect for visitors after config is saved.',
+      frontend: '“Allow public local registration” switch at the top of Users; whether login shows “Register.” Try /register in a private window.',
+      notes: 'Be careful on public sites (bulk sign-ups). Safer: keep off + admin-created accounts, or trusted third-party login only.',
     },
   },
 
@@ -550,11 +629,11 @@ export const en: SettingGuidesCatalog = {
       notes: 'Separate multiple entries with commas; can include local addresses.',
     },
     geminiBaseUrl: {
-      what: 'Access address for one kind of smart service (most people can leave empty).',
+      what: 'Root URL for Google Gemini API calls (most people leave empty).',
       chain:
-        '1) Only used when you actually use that service.\n2) Empty = official address.\n3) Random fill can take related AI fully offline.',
-      frontend: 'Whether related smart calls succeed.',
-      notes: 'Leave empty if you don’t understand it.',
+        '1) Used when AI config selects Gemini-related models.\n2) Empty = official URL.\n3) Fill only for your own proxy/mirror; wrong values break Gemini calls.\n4) Separate from per-provider Base URL fields on the AI page — this is the advanced global default.',
+      frontend: 'Whether Gemini chat/generation fails to connect. Theme unchanged.',
+      notes: 'Leave empty if you don’t use Gemini. Don’t confuse with GitHub API or site URL.',
     },
     githubApiBaseUrl: {
       what: 'Address used when pulling GitHub data (a mirror is allowed).',
@@ -591,6 +670,27 @@ export const en: SettingGuidesCatalog = {
       frontend: 'Look and features feel like a fresh install.',
       notes: 'Extremely careful in production; export first.',
     },
+    runtimeDiagnostics: {
+      what: 'Run a read-only health check of this backend and produce a credential-free diagnostics report.',
+      chain:
+        '1) Loads once when you open Advanced settings; refresh re-runs the suite.\n2) Checks DB connectivity, storage writability, migrations/schema, process memory, egress location, and frontend/backend version match.\n3) Status is healthy / attention / critical; copy or download JSON for maintainers.\n4) Does not change config, restart services, or write business data.',
+      frontend: 'Settings → Advanced → top “Runtime diagnostics” card and check grid.',
+      notes: 'Egress location needs outbound probes; proxy/firewall may show unavailable without meaning the site is broken. Reports omit passwords and API keys — still avoid pasting internal IPs publicly.',
+    },
+    frontendCache: {
+      what: 'Local advanced tools for troubleshooting (not server config).',
+      chain:
+        '1) Sits above Backup & restore so you can clear caches before import/reset.\n2) Currently offers force-refresh of frontend caches and similar maintenance.\n3) Does not sign you out or change theme/language.',
+      frontend: 'The “Advanced tools” group under Advanced settings.',
+      notes: 'Actions only affect this browser.',
+    },
+    forceRefreshCache: {
+      what: 'One-click clear of frontend caches and reload.',
+      chain:
+        '1) In-place double confirm: first click arms the button, second click runs.\n2) Wipes each cache layer, then full reload.\n3) Good when “I changed config / upgraded, but the browser still uses the old stuff.”',
+      frontend: 'Button label switches to confirm state; reverts if not clicked again within ~4s.',
+      notes: 'Only this browser; other devices are unaffected.',
+    },
   },
 
   federation: {
@@ -600,6 +700,13 @@ export const en: SettingGuidesCatalog = {
         '1) Used to prove “this post really came from this site,” and to recognize others.\n2) The identity address is bound to the site domain — an unstable domain causes trouble.\n3) After rotating keys, others may fail verification for a short time.',
       frontend: 'Whether following other sites and sending/receiving posts goes smoothly.',
       notes: 'Think carefully before rotating keys; don’t casually click rotate day to day.',
+    },
+    rotateKeys: {
+      what: 'Replace this site’s signing key pair used for federation.',
+      chain:
+        '1) Generates new keys and tries to notify related sites.\n2) Peers may fail verification briefly until they refresh your public key.\n3) Daily ensure-keys never rotates silently — only after you confirm.\n4) Don’t rotate if the domain is unstable.',
+      frontend: 'Rotate button on the federation identity & keys card.',
+      notes: 'Rarely needed in production; a mis-click can briefly break federation.',
     },
     policy: {
       what: 'What kind of content from outside sites you’re willing to accept.',
@@ -730,22 +837,50 @@ export const en: SettingGuidesCatalog = {
       frontend: 'After rollback, content and settings return to the backup point.',
       notes: 'Before important upgrades, confirm a fresh snapshot exists.',
     },
-    advanced: {
-      what: 'How often to check for updates, whether to auto-install, and similar.',
+    checkInterval: {
+      what: 'How often the background checks for a new version.',
       chain:
-        '1) Scheduled checks will hint when a new version exists.\n2) If auto-install is on, upgrade and maintenance may start while you’re not watching.\n3) Some connection methods need an extra passphrase — fill as instructed.',
-      frontend: 'Background checks; with auto-install, maintenance may appear suddenly.',
-      notes: 'Be careful with auto-install in production.',
+        '1) Changing the interval in the status card is remembered immediately.\n2) On schedule it checks the current update channel.\n3) Found updates are announced; auto-install decides whether they install alone.\n4) Interval off = no automatic checks; manual check still works.',
+      frontend: '“Check frequency” dropdown on the About/Updater status card. No full-page save needed.',
+      notes: '12h or 24h is fine in production; very short intervals only add noise.',
+    },
+    autoInstall: {
+      what: 'When a suitable new version appears, whether to upgrade without someone watching.',
+      chain:
+        '1) On: a suitable version may auto-start upgrade → maintenance → switch version.\n2) Snapshots are usually taken first; failures can use maintenance rescue.\n3) Off: only notify; you click install.',
+      frontend: '“Auto-install” switch on the status card. On may suddenly show the maintenance page.',
+      notes: 'Strongly recommended off for public production; preview/private nets only if you accept risk.',
+    },
+    transport: {
+      what: 'Whether update checks/downloads go through this site’s backend proxy or direct from the browser.',
+      chain:
+        '1) Default “backend”: the server talks to update sources; visitor browsers do not.\n2) “Direct”: the browser uses an ops token to call update APIs — special deployments only.\n3) Unrelated to check frequency / auto-install — only how you connect.',
+      frontend: 'Transport segmented control under Advanced & diagnostics.',
+      notes: 'If unsure, keep backend; direct needs deployment knowledge and a token.',
+    },
+    token: {
+      what: 'Ops passphrase (UPDATE_TOKEN) for direct-mode update APIs.',
+      chain:
+        '1) Only required in direct mode.\n2) Wrong or empty values fail check/upgrade.\n3) Session/local input only — never post publicly.',
+      frontend: 'UPDATE_TOKEN password field under direct transport.',
+      notes: 'Not your login password; fill from deployment docs.',
+    },
+    advanced: {
+      what: 'How the updater connects, plus ops diagnostics.',
+      chain:
+        '1) Default path uses this site’s backend to proxy update APIs.\n2) “Direct” mode may need UPDATE_TOKEN — only if you understand the deployment.\n3) Shows updater version, channel, in-flight jobs, and image digests.\n4) Check frequency / auto-install live in the status card above, not this panel.',
+      frontend: '“Advanced & diagnostics” collapsible panel.',
+      notes: 'Don’t share the token; if connection fails, confirm whether direct mode is allowed.',
     },
   },
 
   about: {
     section: {
-      what: 'View current version and project info; some environments also embed an update entry.',
+      what: 'View current version and project info; this page usually also embeds the system updater.',
       chain:
-        '1) Mainly read-only information here.\n2) If an updater panel is embedded, the upgrade flow is the same as under “Updater” settings.\n3) When reporting errors, sending the version number to maintainers is very useful.',
-      frontend: 'About page text and version number.',
-      notes: 'Usually does not change your business settings.',
+        '1) Upper area is read-only version and project info.\n2) Lower updater: channel, check frequency, auto-install, maintenance rescue, snapshots, and advanced diagnostics.\n3) When reporting errors, send the version number to maintainers.',
+      frontend: 'About text, version number, and the same-page updater status card and groups.',
+      notes: 'Reading version does not change business settings; starting an upgrade enters maintenance.',
     },
   },
 }

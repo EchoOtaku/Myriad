@@ -14,6 +14,8 @@ export interface PermissionGroupProps extends PermissionGroupConfig {}
 export const PermissionGroup: React.FC<PermissionGroupProps> = ({
   title,
   description,
+  guide,
+  guidePath,
   permissions,
   values,
   onChange,
@@ -44,6 +46,8 @@ export const PermissionGroup: React.FC<PermissionGroupProps> = ({
     <CheckboxGroupItem
       label={title || ''}
       description={description}
+      guide={guide}
+      guidePath={guidePath}
       options={options}
       onChange={handleChange}
       disabled={disabled || loading}

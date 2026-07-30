@@ -431,10 +431,34 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
+        // ==================== HEARTBEAT_CLAIMS ====================
+        // 多副本 heartbeat 分钟桶认领；与 schema_check::ensure_heartbeat_claims_table 同结构
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+CREATE TABLE IF NOT EXISTS heartbeat_claims (
+    task_id VARCHAR(128) NOT NULL,
+    minute_bucket BIGINT NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'running',
+    claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    PRIMARY KEY (task_id, minute_bucket)
+);
+CREATE INDEX IF NOT EXISTS idx_heartbeat_claims_claimed_at
+    ON heartbeat_claims (claimed_at);
+"#,
+            )
+            .await?;
+
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .get_connection()
+            .execute_unprepared("DROP TABLE IF EXISTS heartbeat_claims;")
+            .await?;
         manager
             .drop_table(Table::drop().table(AgentNotifications::Table).to_owned())
             .await?;

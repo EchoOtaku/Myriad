@@ -30,9 +30,37 @@
 
 .users-managed-list .managed-list-chip-actions {
   gap: 0.45rem;
+  /* pack after metrics; do not stretch empty space across the row */
+  flex: 0 1 auto;
 }
 
-/* Chip width follows content — no forced equal widths */
+/*
+ * Register switch only — keep title + desc, but don't let the long desc
+ * drive max-content width (looked like a gap before 刷新/新建).
+ * Other chips (refresh / create) keep default ManagedList sizing.
+ */
+.users-managed-list
+  .managed-list-chip-actions
+  > .managed-list-guide-anchor[data-guide-path='users.allowLocalRegister'] {
+  flex: 0 0 auto;
+  width: max-content;
+  max-width: min(100%, 12.5rem);
+}
+
+.users-managed-list
+  .managed-list-chip-actions
+  > .managed-list-guide-anchor[data-guide-path='users.allowLocalRegister']
+  > .checkbox-group-card {
+  max-width: 100%;
+}
+
+.users-managed-list
+  .managed-list-chip-actions
+  > .managed-list-guide-anchor[data-guide-path='users.allowLocalRegister']
+  .checkbox-group-card-desc {
+  width: 0;
+  min-width: 100%;
+}
 
 /* Neutral stat chips — default sizes, no rainbow */
 .users-managed-list .managed-list-stat {
@@ -71,14 +99,14 @@ html.dark .users-managed-list .managed-list-stat-label {
   color: var(--cfg-text-3);
 }
 
-/* Role badges: monochrome */
+/* Role badges: monochrome via settings surface tokens */
 .users-managed-list .managed-list-badge,
 .users-managed-list .managed-list-badge--muted,
 .users-managed-list .managed-list-badge--active,
 .users-managed-list .managed-list-badge--warn,
 .users-managed-list .managed-list-badge--success {
-  background: rgb(120 120 128 / 10%);
-  border-color: rgb(120 120 128 / 16%);
+  background: var(--cfg-subtle-bg);
+  border-color: var(--cfg-subtle-border);
   color: var(--cfg-text-3);
 }
 
@@ -87,8 +115,8 @@ html.dark .users-managed-list .managed-list-badge--muted,
 html.dark .users-managed-list .managed-list-badge--active,
 html.dark .users-managed-list .managed-list-badge--warn,
 html.dark .users-managed-list .managed-list-badge--success {
-  background: rgb(255 255 255 / 6%);
-  border-color: rgb(255 255 255 / 10%);
+  background: var(--cfg-subtle-bg);
+  border-color: var(--cfg-subtle-border);
   color: var(--cfg-text-3);
 }
 
@@ -167,14 +195,14 @@ html.dark .users-managed-list .managed-list-filter-bar.is-plain {
   width: 0.55rem;
   height: 0.55rem;
   border-radius: 999px;
-  border: 2px solid #fff;
-  background: #94a3b8;
+  border: 2px solid var(--cfg-frost-elevated-bg);
+  background: var(--cfg-text-3);
   box-sizing: border-box;
 }
 
 html.dark .users-presence-dot {
-  border-color: #1a1a1a;
-  background: #71717a;
+  border-color: var(--cfg-frost-elevated-bg);
+  background: var(--cfg-text-3);
 }
 
 .users-avatar-wrap.is-online .users-presence-dot {
@@ -223,16 +251,16 @@ html.dark .users-handle {
   flex: 0 0 auto;
   width: 0.9rem;
   height: 0.9rem;
-  color: color-mix(in srgb, var(--color-primary, #3b82f6) 78%, #64748b);
+  color: color-mix(in srgb, var(--cfg-accent) 72%, var(--cfg-text-2));
   align-self: center;
 }
 
 .users-row.is-self .users-display-name {
-  color: color-mix(in srgb, var(--color-primary, #3b82f6) 45%, #111827);
+  color: color-mix(in srgb, var(--cfg-accent) 42%, var(--cfg-text-1));
 }
 
 html.dark .users-row.is-self .users-display-name {
-  color: color-mix(in srgb, var(--color-primary) 40%, var(--cfg-text-1));
+  color: color-mix(in srgb, var(--cfg-accent) 40%, var(--cfg-text-1));
 }
 
 .users-row-meta-inline {
@@ -358,7 +386,7 @@ html.dark .users-identity-item {
 }
 
 .users-provider-badge.primary {
-  color: color-mix(in srgb, var(--color-primary, #3b82f6) 70%, #334155);
+  color: color-mix(in srgb, var(--cfg-accent) 70%, var(--cfg-text-1));
 }
 
 html.dark .users-provider-badge {
@@ -366,7 +394,7 @@ html.dark .users-provider-badge {
 }
 
 html.dark .users-provider-badge.primary {
-  color: color-mix(in srgb, var(--color-primary, #60a5fa) 75%, #e2e8f0);
+  color: color-mix(in srgb, var(--cfg-accent) 75%, var(--cfg-text-1));
 }
 
 .users-provider-name {

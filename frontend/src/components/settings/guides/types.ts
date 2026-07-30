@@ -54,9 +54,29 @@ export interface SettingGuidesCatalog {
   }
   platforms: {
     list: SettingGuideEntry
+    /** 数据及统计：访客统计子分类 */
+    visitorStats: SettingGuideEntry
+    /** 数据及统计：页面访问分析（访客统计组内分区） */
+    pageAnalytics: SettingGuideEntry
+    /** 数据及统计：事件埋点（访客统计组内分区） */
+    eventAnalytics: SettingGuideEntry
+    /** 数据及统计：来源站点（访客统计组内分区） */
+    referrerAnalytics: SettingGuideEntry
+    /** 数据及统计：接入平台子分类 */
+    connected: SettingGuideEntry
     autoRefresh: SettingGuideEntry
     platformCard: SettingGuideEntry
     platformFields: SettingGuideEntry
+    /** 平台二级页：当前数据快照（一次加载） */
+    dataPreview: SettingGuideEntry
+    /** 平台二级页：数据管理整组 */
+    dataManagement: SettingGuideEntry
+    /** 拉取/刷新原始数据 */
+    dataRefresh: SettingGuideEntry
+    /** 重新处理已有原始数据 */
+    dataReprocess: SettingGuideEntry
+    /** 清空本站缓存 */
+    dataClearCache: SettingGuideEntry
   }
   notifications: {
     master: SettingGuideEntry
@@ -82,6 +102,7 @@ export interface SettingGuidesCatalog {
   }
   oauth: {
     section: SettingGuideEntry
+    /** @deprecated 语义已纠正为第三方；本地公开注册见 users.allowLocalRegister */
     allowRegister: SettingGuideEntry
     provider: SettingGuideEntry
   }
@@ -98,6 +119,8 @@ export interface SettingGuidesCatalog {
     section: SettingGuideEntry
     create: SettingGuideEntry
     list: SettingGuideEntry
+    /** 公开本地用户名密码注册（/register） */
+    allowLocalRegister: SettingGuideEntry
   }
   advanced: {
     network: SettingGuideEntry
@@ -110,9 +133,16 @@ export interface SettingGuidesCatalog {
     exportConfig: SettingGuideEntry
     importConfig: SettingGuideEntry
     resetConfig: SettingGuideEntry
+    /** 前端缓存强制刷新 */
+    frontendCache: SettingGuideEntry
+    forceRefreshCache: SettingGuideEntry
+    /** 运行与诊断：DB / 存储 / 出口 / 版本等只读检查 */
+    runtimeDiagnostics: SettingGuideEntry
   }
   federation: {
     keys: SettingGuideEntry
+    /** 轮换签名密钥 */
+    rotateKeys: SettingGuideEntry
     policy: SettingGuideEntry
     minTrust: SettingGuideEntry
     allowlist: SettingGuideEntry
@@ -133,7 +163,13 @@ export interface SettingGuidesCatalog {
     infra: SettingGuideEntry
     target: SettingGuideEntry
     snapshot: SettingGuideEntry
+    /** 检查频率 / 自动安装（状态区） */
+    checkInterval: SettingGuideEntry
+    autoInstall: SettingGuideEntry
+    /** 连接方式、口令、诊断（折叠高级面板） */
     advanced: SettingGuideEntry
+    transport: SettingGuideEntry
+    token: SettingGuideEntry
   }
   about: {
     section: SettingGuideEntry

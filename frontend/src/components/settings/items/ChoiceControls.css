@@ -29,9 +29,10 @@
   line-height: 1.25;
 }
 
+/* 计数徽章跟字色，不跟壁纸强调色（强调色只用于 focus 等交互态） */
 .choice-segmented-item.is-selected .choice-option-count {
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 14%, transparent);
-  color: var(--color-primary, #3b82f6);
+  background: color-mix(in srgb, var(--cfg-text-1) 8%, transparent);
+  color: var(--cfg-text-2);
   opacity: 1;
 }
 
@@ -160,8 +161,9 @@ html.dark .choice-segmented-item:hover:not(:disabled):not(.is-selected) {
     inset 0 1px 0 rgb(255 255 255 / 90%);
 }
 
+/* 选中文案用中性主色，不混壁纸 --cfg-accent（否则随壁纸变色） */
 .choice-segmented-item.is-selected .choice-option-label {
-  color: color-mix(in srgb, var(--color-primary) 72%, var(--cfg-text-1));
+  color: var(--cfg-text-1);
 }
 
 html.dark .choice-segmented-item.is-selected {
@@ -175,7 +177,7 @@ html.dark .choice-segmented-item.is-selected {
 }
 
 html.dark .choice-segmented-item.is-selected .choice-option-label {
-  color: color-mix(in srgb, var(--color-primary, #93c5fd) 55%, var(--cfg-text-1));
+  color: var(--cfg-text-1);
 }
 
 .choice-segmented-item:active:not(:disabled):not(.is-selected) {
@@ -198,13 +200,13 @@ html.dark .choice-segmented-item.is-selected .choice-option-label {
   outline: none;
   box-shadow:
     0 0 0 2px rgb(255 255 255 / 90%),
-    0 0 0 4px color-mix(in srgb, var(--color-primary, #3b82f6) 45%, transparent);
+    0 0 0 4px color-mix(in srgb, var(--cfg-accent, #3b82f6) 45%, transparent);
 }
 
 html.dark .choice-segmented-item:focus-visible {
   box-shadow:
     0 0 0 2px rgb(0 0 0 / 70%),
-    0 0 0 4px color-mix(in srgb, var(--color-primary, #3b82f6) 50%, transparent);
+    0 0 0 4px color-mix(in srgb, var(--cfg-accent, #3b82f6) 50%, transparent);
 }
 
 .choice-segmented-item.is-selected:focus-visible {
@@ -212,7 +214,7 @@ html.dark .choice-segmented-item:focus-visible {
     0 1px 2px rgb(0 0 0 / 6%),
     0 2px 6px -2px rgb(0 0 0 / 8%),
     0 0 0 2px rgb(255 255 255 / 90%),
-    0 0 0 4px color-mix(in srgb, var(--color-primary, #3b82f6) 45%, transparent);
+    0 0 0 4px color-mix(in srgb, var(--cfg-accent, #3b82f6) 45%, transparent);
 }
 
 html.dark .choice-segmented-item.is-selected:focus-visible {
@@ -220,7 +222,7 @@ html.dark .choice-segmented-item.is-selected:focus-visible {
     0 1px 2px rgb(0 0 0 / 35%),
     0 3px 8px -2px rgb(0 0 0 / 40%),
     0 0 0 2px rgb(0 0 0 / 70%),
-    0 0 0 4px color-mix(in srgb, var(--color-primary, #3b82f6) 50%, transparent);
+    0 0 0 4px color-mix(in srgb, var(--cfg-accent, #3b82f6) 50%, transparent);
 }
 
 .choice-segmented--sm {

@@ -99,7 +99,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
 }) => {
   const { t } = useI18n()
   const u = t.config
-  const { catalog: g, renderGuide } = useSettingGuide()
+  const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
 
   const [transport, setTransport] = useState<TransportMode>('backend')
   const [token, setToken] = useState('')
@@ -1079,7 +1079,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         <SettingGroup
           title={u.updaterChannelGroupTitle}
           description={u.updaterChannelGroupDesc}
-          guide={renderGuide(g.updater.channel)}
+          {...bindGuide('updater.channel', g.updater.channel)}
           icon={<FaRocket />}
         >
           <div className="updater-channels" role="radiogroup">
@@ -1123,7 +1123,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         <SettingGroup
           title={u.updaterMaintenanceGroup}
           description={u.updaterMaintenanceGroupDesc}
-          guide={renderGuide(g.updater.maintenance)}
+          {...bindGuide('updater.maintenance', g.updater.maintenance)}
           icon={<FaTools />}
         >
           {mood === 'needsManual' && status?.rescue_snapshot_id && (
@@ -1135,7 +1135,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                   ? `${u.updaterRescueContinueDesc} · ${status.rescue_source_version}`
                   : u.updaterRescueContinueDesc
               }
-              guide={renderGuide(g.updater.rescue)}
+              {...bindGuide('updater.rescue', g.updater.rescue)}
               buttonText={u.updaterRescueContinue}
               loading={busy === 'rescue-continue'}
               onClick={rescueContinue}
@@ -1148,7 +1148,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
             itemKey="exit_maintenance"
             label={u.updaterForceExit}
             description={u.updaterForceExitDesc}
-            guide={renderGuide(g.updater.forceExit)}
+            {...bindGuide('updater.forceExit', g.updater.forceExit)}
             buttonText={u.updaterForceExit}
             loading={busy === 'exit-maintenance'}
             onClick={exitMaintenance}
@@ -1163,7 +1163,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       {!showProgress && (
         <SettingGroup
           title={u.updaterInfraGroupTitle}
-          guide={renderGuide(g.updater.infra)}
+          {...bindGuide('updater.infra', g.updater.infra)}
           description={
             requiresSelfUpdate
               ? `${u.updaterInfraGroupDesc} ${format(u.updaterSelfUpdateNeeded, {
@@ -1226,7 +1226,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                   {status?.latest_available?.min_updater_version && (
                     <>
                       {' '}
-                      · min{' '}
+                      · {u.updaterMinVersionShort}{' '}
                       <code>{status.latest_available.min_updater_version}</code>
                     </>
                   )}
@@ -1331,7 +1331,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         <SettingGroup
           title={u.updaterTargetGroupTitle}
           description={u.updaterTargetGroupDesc}
-          guide={renderGuide(g.updater.target)}
+          {...bindGuide('updater.target', g.updater.target)}
           icon={<LuDownload />}
           collapsible
           defaultExpanded={false}
@@ -1357,7 +1357,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       <SettingGroup
         title={u.updaterSnapshotGroupTitle}
         description={u.updaterSnapshotGroupDesc}
-        guide={renderGuide(g.updater.snapshot)}
+        {...bindGuide('updater.snapshot', g.updater.snapshot)}
         icon={<FaHistory />}
         collapsible
         defaultExpanded={false}
@@ -1418,7 +1418,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       <SettingGroup
         title={u.updaterGroupAdvanced}
         description={u.updaterGroupAdvancedDesc}
-        guide={renderGuide(g.updater.advanced)}
+        {...bindGuide('updater.advanced', g.updater.advanced)}
         icon={<FaCog />}
         collapsible
         defaultExpanded={false}

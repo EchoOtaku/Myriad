@@ -97,7 +97,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "ai.image".to_string(),
         name: "AI 图片生成".to_string(),
-        description: "使用 AI 生成图片；可选 width/height（像素 256–2048，默认 1024）指定分辨率".to_string(),
+        description: "使用 AI 生成图片；可选 width/height（像素 256–2048，默认 1024）指定分辨率"
+            .to_string(),
         category: CapabilityCategory::AiProcess,
         supported_actions: vec![IntentAction::Create],
         input_schema: json!({

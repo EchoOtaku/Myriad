@@ -71,7 +71,11 @@ html.dark .setup-flow-title {
 .setup-flow.is-auto .setup-flow-connector-line {
   flex: 1 1 auto;
   height: 1px;
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 28%, #d1d5db);
+  background: color-mix(
+    in srgb,
+    var(--cfg-accent) 28%,
+    var(--cfg-subtle-border)
+  );
 }
 
 .setup-flow.is-horizontal .setup-flow-connector-arrow,
@@ -81,7 +85,7 @@ html.dark .setup-flow-title {
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   border-left: 5px solid
-    color-mix(in srgb, var(--color-primary, #3b82f6) 45%, #9ca3af);
+    color-mix(in srgb, var(--cfg-accent) 45%, var(--cfg-text-3));
 }
 
 /* —— 竖排 —— */
@@ -108,7 +112,11 @@ html.dark .setup-flow-title {
 .setup-flow.is-vertical .setup-flow-connector-line {
   flex: 1 1 auto;
   width: 1px;
-  background: color-mix(in srgb, var(--color-primary, #3b82f6) 28%, #d1d5db);
+  background: color-mix(
+    in srgb,
+    var(--cfg-accent) 28%,
+    var(--cfg-subtle-border)
+  );
 }
 
 .setup-flow.is-vertical .setup-flow-connector-arrow {
@@ -117,10 +125,11 @@ html.dark .setup-flow-title {
   border-left: 4px solid transparent;
   border-right: 4px solid transparent;
   border-top: 5px solid
-    color-mix(in srgb, var(--color-primary, #3b82f6) 45%, #9ca3af);
+    color-mix(in srgb, var(--cfg-accent) 45%, var(--cfg-text-3));
 }
 
-@media (width <= 720px) {
+/* is-auto：与设置页移动分层同断点（<1024）竖排，避免配置窄栏内横滑小卡 */
+@media (width < 1024px) {
   .setup-flow.is-auto .setup-flow-track {
     flex-direction: column;
     overflow-x: visible;
@@ -144,14 +153,18 @@ html.dark .setup-flow-title {
     flex: 1 1 auto;
     width: 1px;
     height: auto;
-    background: color-mix(in srgb, var(--color-primary, #3b82f6) 28%, #d1d5db);
+    background: color-mix(
+      in srgb,
+      var(--cfg-accent) 28%,
+      var(--cfg-subtle-border)
+    );
   }
 
   .setup-flow.is-auto .setup-flow-connector-arrow {
     width: 0;
     height: 0;
     border-top: 5px solid
-      color-mix(in srgb, var(--color-primary, #3b82f6) 45%, #9ca3af);
+      color-mix(in srgb, var(--cfg-accent) 45%, var(--cfg-text-3));
     border-left: 4px solid transparent;
     border-right: 4px solid transparent;
     border-bottom: none;
@@ -180,23 +193,20 @@ html.dark .setup-flow-step-card {
 }
 
 .setup-flow-step.is-done .setup-flow-step-card {
-  border-color: color-mix(
-    in srgb,
-    var(--color-primary, #3b82f6) 35%,
-    transparent
-  );
+  border-color: color-mix(in srgb, var(--cfg-accent) 35%, transparent);
   background: color-mix(
     in srgb,
-    var(--color-primary, #3b82f6) 7%,
-    rgb(255 255 255 / 50%)
+    var(--cfg-accent) 8%,
+    var(--cfg-subtle-bg)
   );
 }
 
 html.dark .setup-flow-step.is-done .setup-flow-step-card {
+  border-color: color-mix(in srgb, var(--cfg-accent) 38%, transparent);
   background: color-mix(
     in srgb,
-    var(--color-primary, #60a5fa) 12%,
-    transparent
+    var(--cfg-accent) 12%,
+    var(--cfg-subtle-bg)
   );
 }
 
@@ -218,14 +228,9 @@ html.dark .setup-flow-step.is-done .setup-flow-step-card {
   font-size: 0.68rem;
   font-weight: 700;
   line-height: 1;
-  color: var(--color-primary, #2563eb);
-  background: color-mix(
-    in srgb,
-    var(--color-primary, #3b82f6) 14%,
-    transparent
-  );
-  border: 1px solid
-    color-mix(in srgb, var(--color-primary, #3b82f6) 28%, transparent);
+  color: var(--cfg-accent);
+  background: color-mix(in srgb, var(--cfg-accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cfg-accent) 28%, transparent);
 }
 
 .setup-flow-step-index svg {
@@ -235,7 +240,7 @@ html.dark .setup-flow-step.is-done .setup-flow-step-card {
 
 .setup-flow-step.is-done .setup-flow-step-index {
   color: #fff;
-  background: var(--color-primary, #3b82f6);
+  background: var(--cfg-accent);
   border-color: transparent;
 }
 

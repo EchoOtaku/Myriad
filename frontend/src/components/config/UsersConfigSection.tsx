@@ -38,10 +38,12 @@ import { messageForAdminUserError } from '../../utils/authErrorMessages'
 import { getOAuthIconAsset } from '../../utils/oauthIcons'
 import OAuthIconImage from '../OAuthIconImage'
 import {
+  guideDomProps,
   InfoActionCard,
   InputItem,
   ManagedList,
   SettingSection,
+  SettingTitleGuideEntry,
   SettingsButton,
   ToggleSwitch,
   useSettingGuide,
@@ -129,7 +131,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
 }) => {
   const { t } = useI18n()
   const c = t.config
-  const { catalog: g, renderGuide } = useSettingGuide()
+  const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
   const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -396,6 +398,8 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
         disabled: allowRegisterLoading,
         loading: allowRegisterLoading,
         title: c.allowRegisterDesc,
+        guide: renderGuide(g.users.allowLocalRegister),
+        guidePath: 'users.allowLocalRegister',
       },
     ]
   }, [
@@ -408,6 +412,8 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
     c.usersFilterAll,
     c.usersRoleAdmin,
     c.usersOnline,
+    g.users.allowLocalRegister,
+    renderGuide,
   ])
 
   const roleFilterOptions = useMemo((): ManagedListFilterOption[] => {
@@ -590,8 +596,8 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
             embedded
             className="users-detail-card"
             fields={fields}
-            copyLabel={t.common?.copy || 'Copy'}
-            copiedLabel={t.common?.copied || 'Copied'}
+            copyLabel={t.common.copy}
+            copiedLabel={t.common.copied}
             actions={actions.map((a) => ({
               key: a.key,
               label: a.label,
@@ -739,8 +745,12 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
         ? c.usersNoMatch
         : c.usersEmpty
 
+  const USERS_LIST_CAP = 80
+  const usersListTruncated =
+    filteredUsers.length > 12 && filteredUsers.length > USERS_LIST_CAP
+
   const footer =
-    hasActiveFilter && users.length > 0
+    hasActiveFilter && users.length > 0 && !usersListTruncated
       ? c.usersResultCount.replace(
           '{count}',
           String(filteredUsers.length),
@@ -752,128 +762,170 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
       title={title}
       icon={icon}
       description={description}
-      guide={renderGuide(g.users.section)}
+      {...bindGuide('users.section', g.users.section)}
       sectionId={sectionId}
     >
-      <ManagedList
-        className="users-managed-list"
-        stats={listStats}
-        loading={loading}
-        working={busy}
-        maxHeight={filteredUsers.length > 12 ? '28rem' : null}
-        emptyText={emptyText}
-        footer={footer}
-        queryDefaultOpen
-        queryChrome="plain"
-        queryCollapsible={false}
-        queryToggleLabel={c.federationListQueryToggle || 'Search & filter'}
-        queryToggleDescription={c.federationListQueryToggleDesc}
-        queryToggleIcon={<FaSearch aria-hidden />}
-        queryCollapseLabel={c.federationListQueryCollapse}
-        queryCollapseDescription={c.federationListQueryCollapseDesc}
-        search={{
-          value: searchQuery,
-          onChange: setSearchQuery,
-          placeholder: c.usersSearchPlaceholder,
-          ariaLabel: c.usersSearchLabel,
-        }}
-        filterGroups={[
-          {
-            options: roleFilterOptions,
-            value: roleFilter,
-            onChange: (k) => setRoleFilter(k as RoleFilter),
-            ariaLabel: c.usersFilterRole,
-          },
-          {
-            options: onlineFilterOptions,
-            value: onlineFilter,
-            onChange: (k) => setOnlineFilter(k as OnlineFilter),
-            ariaLabel: c.usersFilterStatus,
-          },
-        ]}
-        toolbar={toolbar}
-        formTitle={c.usersCreateUser}
-        formDescription={c.usersCreateUserDesc}
-        formIcon={<FaPlus aria-hidden />}
-        formCollapseLabel={c.usersCancel}
-        formCollapseDescription={c.usersCancelDesc}
-        formOpen={formOpen}
-        onFormOpenChange={setFormOpen}
-        form={
-          <>
-            <InputItem
-              itemKey="users-create-username"
-              label={c.usersCreateUsername}
-              value={createDraft.username}
-              onChange={(username) =>
-                setCreateDraft((d) => ({ ...d, username }))
-              }
-              inputType="text"
-              autoComplete="off"
-              layout="vertical"
-              size="sm"
-              required
-            />
-            <InputItem
-              itemKey="users-create-password"
-              label={c.usersCreatePassword}
-              value={createDraft.password}
-              onChange={(password) =>
-                setCreateDraft((d) => ({ ...d, password }))
-              }
-              inputType="password"
-              autoComplete="new-password"
-              layout="vertical"
-              size="sm"
-              required
-            />
-            <InputItem
-              itemKey="users-create-email"
-              label={c.usersEmail}
-              value={createDraft.email}
-              onChange={(email) => setCreateDraft((d) => ({ ...d, email }))}
-              inputType="email"
-              autoComplete="off"
-              layout="vertical"
-              size="sm"
-            />
-            {isPrimaryAdmin && (
+      <div
+        className="users-managed-list-host"
+        {...guideDomProps('users.list')}
+      >
+        <ManagedList
+          className="users-managed-list"
+          stats={listStats}
+          loading={loading}
+          working={busy}
+          /* 展开详情时取消 body 高度上限，避免嵌套滚动裁切 InfoActionCard */
+          maxHeight={
+            expandedId != null
+              ? null
+              : filteredUsers.length > 12
+                ? '28rem'
+                : null
+          }
+          maxVisibleItems={
+            expandedId != null
+              ? null
+              : filteredUsers.length > 12
+                ? USERS_LIST_CAP
+                : null
+          }
+          truncateFooter={(shown, total) =>
+            c.usersShowing
+              .replace('{shown}', String(shown))
+              .replace('{total}', String(total))
+          }
+          emptyText={emptyText}
+          footer={footer}
+          queryDefaultOpen
+          queryChrome="plain"
+          queryCollapsible={false}
+          queryToggleLabel={c.federationListQueryToggle}
+          queryToggleDescription={c.federationListQueryToggleDesc}
+          queryToggleIcon={<FaSearch aria-hidden />}
+          queryCollapseLabel={c.federationListQueryCollapse}
+          queryCollapseDescription={c.federationListQueryCollapseDesc}
+          search={{
+            value: searchQuery,
+            onChange: setSearchQuery,
+            placeholder: c.usersSearchPlaceholder,
+            ariaLabel: c.usersSearchLabel,
+          }}
+          filterGroups={[
+            {
+              options: roleFilterOptions,
+              value: roleFilter,
+              onChange: (k) => setRoleFilter(k as RoleFilter),
+              ariaLabel: c.usersFilterRole,
+            },
+            {
+              options: onlineFilterOptions,
+              value: onlineFilter,
+              onChange: (k) => setOnlineFilter(k as OnlineFilter),
+              ariaLabel: c.usersFilterStatus,
+            },
+          ]}
+          toolbar={toolbar}
+          formTitle={c.usersCreateUser}
+          formDescription={c.usersCreateUserDesc}
+          formIcon={<FaPlus aria-hidden />}
+          formCollapseLabel={c.usersCancel}
+          formCollapseDescription={c.usersCancelDesc}
+          formOpen={formOpen}
+          onFormOpenChange={setFormOpen}
+          formOpenTitle={
+            <span className="managed-list-form-title-with-guide">
+              <span>{c.usersCreateUser}</span>
+              <SettingTitleGuideEntry
+                title={c.usersCreateUser}
+                guide={renderGuide(g.users.create)}
+              />
+            </span>
+          }
+          form={
+            <>
               <div
-                className="users-create-admin-row"
-                role="presentation"
-                onClick={() =>
-                  setCreateDraft((d) => ({ ...d, is_admin: !d.is_admin }))
+                id="cfg-g-users-create"
+                data-guide-path="users.create"
+                className="has-guide-anchor managed-list-guide-anchor"
+                hidden
+                aria-hidden
+              />
+              <InputItem
+                itemKey="users-create-username"
+                label={c.usersCreateUsername}
+                value={createDraft.username}
+                onChange={(username) =>
+                  setCreateDraft((d) => ({ ...d, username }))
                 }
-              >
-                <span className="setting-label-text">
-                  {c.usersCreateIsAdmin}
-                </span>
-                <ToggleSwitch
-                  checked={createDraft.is_admin}
-                  onChange={(is_admin) =>
-                    setCreateDraft((d) => ({ ...d, is_admin }))
-                  }
-                  aria-label={c.usersCreateIsAdmin}
-                />
-              </div>
-            )}
-            <div className="managed-list-form-actions">
-              <SettingsButton
+                inputType="text"
+                autoComplete="off"
+                layout="vertical"
                 size="sm"
-                variant="primary"
-                disabled={
-                  busy || !createDraft.username.trim() || !createDraft.password
+                required
+              />
+              <InputItem
+                itemKey="users-create-password"
+                label={c.usersCreatePassword}
+                value={createDraft.password}
+                onChange={(password) =>
+                  setCreateDraft((d) => ({ ...d, password }))
                 }
-                loading={busy && formOpen}
-                onClick={() => void handleCreate()}
-              >
-                {c.usersCreateSubmit}
-              </SettingsButton>
-            </div>
-          </>
-        }
-        items={listItems}
-      />
+                inputType="password"
+                autoComplete="new-password"
+                layout="vertical"
+                size="sm"
+                required
+              />
+              <InputItem
+                itemKey="users-create-email"
+                label={c.usersEmail}
+                value={createDraft.email}
+                onChange={(email) => setCreateDraft((d) => ({ ...d, email }))}
+                inputType="email"
+                autoComplete="off"
+                layout="vertical"
+                size="sm"
+              />
+              {isPrimaryAdmin && (
+                <div
+                  className="users-create-admin-row"
+                  role="presentation"
+                  onClick={() =>
+                    setCreateDraft((d) => ({ ...d, is_admin: !d.is_admin }))
+                  }
+                >
+                  <span className="setting-label-text">
+                    {c.usersCreateIsAdmin}
+                  </span>
+                  <ToggleSwitch
+                    checked={createDraft.is_admin}
+                    onChange={(is_admin) =>
+                      setCreateDraft((d) => ({ ...d, is_admin }))
+                    }
+                    aria-label={c.usersCreateIsAdmin}
+                  />
+                </div>
+              )}
+              <div className="managed-list-form-actions">
+                <SettingsButton
+                  size="sm"
+                  variant="primary"
+                  disabled={
+                    busy ||
+                    !createDraft.username.trim() ||
+                    !createDraft.password
+                  }
+                  loading={busy && formOpen}
+                  onClick={() => void handleCreate()}
+                >
+                  {c.usersCreateSubmit}
+                </SettingsButton>
+              </div>
+            </>
+          }
+          items={listItems}
+        />
+      </div>
     </SettingSection>
   )
 }
