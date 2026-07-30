@@ -900,6 +900,16 @@ export const jaJP: TranslationKeys = {
       '更新前に自動バックアップ。問題時はここから戻す。',
     updaterNoSnapshots:
       'バックアップはまだありません。初回更新後に作成されます。',
+    updaterSnapshotLimitEnabled: 'バックアップ上限',
+    updaterSnapshotLimitEnabledDescOn:
+      '最新 {n} 件だけ自動保持。24 時間以内と「保持」指定は削除しません',
+    updaterSnapshotLimitEnabledDescOff:
+      'オフ：件数での自動整理なし。手動削除は可能です',
+    updaterSnapshotLimitCount: '保持数',
+    updaterSnapshotLimitOption: '最新 {n} 件',
+    updaterSnapshotLimitSaved: 'バックアップ上限を保存しました',
+    updaterSnapshotLimitSavedPruned:
+      'バックアップ上限を保存し、古いバックアップを {n} 件削除しました',
     updaterRollback: 'このバージョンに戻す',
     updaterRollbackDispatched: '巻き戻しを開始しました',
     updaterDeleteSnapshot: '削除',
@@ -951,17 +961,8 @@ export const jaJP: TranslationKeys = {
     allConfig: 'すべての設定',
     tipsBanner: {
       label: 'あいさつ',
-      greeting: {
-        subtitles: {
-          morning: '静かに始めよう',
-          forenoon: '自分のペースで',
-          noon: 'ひと息ついて',
-          afternoon: '着実に進めよう',
-          dusk: 'きれいに締めくくろう',
-          evening: '無理しなくていい',
-          night: '保存したら休んで',
-        },
-      },
+      lastLogin: '前回ログイン {time}',
+      lastLoginNever: '前回ログイン —',
     },
     saveConfig: '設定を保存',
     resetConfig: '設定をリセット',
@@ -1045,9 +1046,6 @@ export const jaJP: TranslationKeys = {
     fieldWallpaperBlur: '壁紙ぼかし度',
     sliderWeak: '弱 · くっきり',
     sliderStrong: '強 · ぼかし強め',
-    fieldWallpaperParallax: '壁紙パララックス効果',
-    fieldPetEnabled: 'ペットを有効化',
-    fieldPetImageUrl: 'ペット画像URL',
     fieldSiteTitle: 'サイトタイトル',
     fieldSiteDescription: 'サイト説明',
     fieldSiteFavicon: 'サイトアイコン',
@@ -1142,7 +1140,6 @@ export const jaJP: TranslationKeys = {
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteFavicon:
       '/favicon.webp または https://example.com/icon.png',
-    placeholderPetImageUrl: 'ペットキャラクター画像のURL',
     callbackUrl: 'コールバックURL',
     savingDefault: 'デフォルト設定を保存中...',
     resetFailed: '設定のリセットに失敗：',
@@ -1199,6 +1196,7 @@ export const jaJP: TranslationKeys = {
     platformDescBilibili: 'お気に入り、アニメ、視聴履歴',
     platformDescBangumi: 'コレクション、評価、視聴状態',
     platformDescSteam: 'ライブラリ、ウィッシュリスト、プレイ統計',
+    platformDescYoutube: '公開チャンネルの統計と最近のアップロード',
     platformDescNetease: 'お気に入りの曲と音楽の好み',
     platformDescX: 'プロフィールと投稿、共有対応',
     platformDescDiscord: 'プロフィール、サーバー、連携アカウント',
@@ -1238,6 +1236,12 @@ export const jaJP: TranslationKeys = {
     platformSetupSteam2Title: 'Steam ID を取得',
     platformSetupSteam2Desc:
       'アカウント詳細、またはプロフィール URL から 17 桁の SteamID64。',
+    platformSetupYoutube1Title: 'YouTube Data API キーを作成',
+    platformSetupYoutube1Desc:
+      'Google Cloud で YouTube Data API v3 を有効化し、API キーを作成（この API に制限推奨）。',
+    platformSetupYoutube2Title: 'チャンネル ID または @handle',
+    platformSetupYoutube2Desc:
+      '詳細設定のチャンネル ID（UCxxxx）、または公開 @handle。公開データのみ — Google OAuth 不要。',
     platformSetupNetease1Title: 'ユーザー ID を取得',
     platformSetupNetease1Desc:
       'NetEase プロフィールを開き、/user/home?id= の後の数字。',
@@ -1579,6 +1583,7 @@ export const jaJP: TranslationKeys = {
     reportBilibili: 'Bilibiliレポート',
     reportSteam: 'Steamレポート',
     reportGithub: 'GitHubレポート',
+    reportYoutube: 'YouTubeレポート',
     reportNetease: 'NetEase Musicレポート',
     reportBangumi: 'Bangumiレポート',
     reportMal: 'MyAnimeListレポート',
@@ -1589,6 +1594,7 @@ export const jaJP: TranslationKeys = {
     socialNetwork: 'ソーシャルネットワーク',
     tappShortcut: 'Tapp ショートカット',
     gamePresence: 'miHoYoゲームカード',
+    visitorStats: 'アクセス解析',
     library: 'ライブラリ',
     dataReport: 'プラットフォームレポート',
     digitalLife: 'デジタルライフ',
@@ -2409,6 +2415,25 @@ export const jaJP: TranslationKeys = {
     loadCacheFailed: 'キャッシュの読み込みに失敗しました',
     saveCacheFailed: 'キャッシュの保存に失敗しました',
     fetchStatsFailed: 'ライブラリ統計の取得に失敗しました',
+  },
+
+  // アクセス解析ウィジェット
+  visitorStats: {
+    widgetTitle: 'アクセス解析',
+    daysN: '{n}日',
+    ordinalLead: 'あなたは今日',
+    ordinalTrail: '人目の訪問者',
+    staffNotCounted: '管理者のアクセスは集計対象外',
+    ordinalPending: '今回のアクセスを記録中…',
+    todayVisitors: '今日の訪問者',
+    todayVisitorsShort: '今日',
+    todayViewsShort: '閲覧',
+    allTimeViewsShort: '累計',
+    allTimeVisitorsShort: '訪問者',
+    chartAria: '直近{n}日の閲覧数とユニーク訪問者の推移',
+    collectionOff: 'アクセス解析は無効です',
+    loadFailed: '読み込みに失敗しました',
+    empty: 'アクセスデータがありません',
   },
 
   // 最近のアクティビティウィジェット

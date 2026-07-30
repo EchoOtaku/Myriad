@@ -461,6 +461,19 @@ impl MetadataService {
                     "timestamp": chrono::Utc::now().to_rfc3339(),
                 })
             }
+            "youtube" => {
+                json!({
+                    "_type": "change_summary",
+                    "_note": "Lightweight summary - full data in platform_metadata table",
+                    "changed_fields_count": changed_fields.len(),
+                    "videos_sample_count": data.get("videos")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| arr.len())
+                        .unwrap_or(0),
+                    "channel_id": data.pointer("/channel/id").cloned().unwrap_or(Value::Null),
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                })
+            }
             "x" => {
                 json!({
                     "_type": "change_summary",

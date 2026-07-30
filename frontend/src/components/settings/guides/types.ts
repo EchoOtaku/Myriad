@@ -163,6 +163,8 @@ export interface SettingGuidesCatalog {
     infra: SettingGuideEntry
     target: SettingGuideEntry
     snapshot: SettingGuideEntry
+    /** 备份数量上限（备份与回退区） */
+    snapshotLimit: SettingGuideEntry
     /** 检查频率 / 自动安装（状态区） */
     checkInterval: SettingGuideEntry
     autoInstall: SettingGuideEntry

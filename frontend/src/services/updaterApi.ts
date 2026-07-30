@@ -105,6 +105,13 @@ export interface UpdaterStatus {
   check_interval_secs_pref?: number | null
   /** Auto-install clear upgrades on the current channel. Default false. */
   auto_install?: boolean
+  /**
+   * Auto-prune older pgdata backups so only the latest N non-keep entries
+   * (older than 24h, not in use) are retained. Default true.
+   */
+  snapshot_limit_enabled?: boolean
+  /** Max older non-keep backups when limit is enabled (1–20). Default 3. */
+  snapshot_limit?: number
   maintenance_active: boolean
   maintenance_phase: string
   job_in_flight: string | null
@@ -146,6 +153,13 @@ export const CHECK_INTERVAL_PRESETS = [
   0, 3600, 21600, 43200, 86400,
 ] as const
 export type CheckIntervalSecs = (typeof CHECK_INTERVAL_PRESETS)[number]
+
+/** Snapshot retention limit presets (count of older non-keep backups kept). */
+export const SNAPSHOT_LIMIT_PRESETS = [1, 2, 3, 5, 10] as const
+export type SnapshotLimitPreset = (typeof SNAPSHOT_LIMIT_PRESETS)[number]
+export const SNAPSHOT_LIMIT_DEFAULT = 3
+export const SNAPSHOT_LIMIT_MIN = 1
+export const SNAPSHOT_LIMIT_MAX = 20
 
 /** Shared shape for self-update / proxy-update durable last outcome. */
 export interface InfraUpdateLastStatus {
@@ -403,6 +417,8 @@ export function makeUpdaterApi(
       mode?: UpdateMode
       check_interval_secs?: number | null
       auto_install?: boolean
+      snapshot_limit_enabled?: boolean
+      snapshot_limit?: number
     }) =>
       wrap<{
         ok: boolean
@@ -411,6 +427,9 @@ export function makeUpdaterApi(
         check_interval_secs?: number
         check_interval_secs_pref?: number | null
         auto_install?: boolean
+        snapshot_limit_enabled?: boolean
+        snapshot_limit?: number
+        pruned_snapshot_ids?: string[]
       }>('POST', '/prefs', prefs),
     commits: (opts?: { branch?: string; limit?: number }) => {
       const q = new URLSearchParams()

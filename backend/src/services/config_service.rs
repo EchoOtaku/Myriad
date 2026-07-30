@@ -213,6 +213,22 @@ impl ConfigService {
             config.steam_id = v.as_str().map(|s| s.to_string());
         }
 
+        if let Some(v) = map.get("youtube_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.youtube_enabled = Some(b);
+            } else if let Some(s) = v.as_str() {
+                config.youtube_enabled = Some(s == "true");
+            }
+        }
+
+        if let Some(v) = map.get("youtube_api_key") {
+            config.youtube_api_key = v.as_str().map(|s| s.to_string());
+        }
+
+        if let Some(v) = map.get("youtube_channel_id") {
+            config.youtube_channel_id = v.as_str().map(|s| s.to_string());
+        }
+
         if let Some(v) = map.get("netease_enabled") {
             if let Some(b) = v.as_bool() {
                 config.netease_enabled = Some(b);

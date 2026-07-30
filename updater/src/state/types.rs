@@ -38,6 +38,17 @@ pub struct UpdaterStateFile {
     #[serde(default)]
     pub auto_install: bool,
 
+    /// When true, successful updates auto-prune pgdata snapshots so that, among
+    /// non-`keep` backups older than 24h (and not in use), only the most recent
+    /// [`Self::snapshot_limit`] are retained. Default ON (historical `prune(3)`).
+    #[serde(default = "default_true")]
+    pub snapshot_limit_enabled: bool,
+
+    /// Max number of auto-retained older snapshots when
+    /// [`Self::snapshot_limit_enabled`] is true. Default 3; valid range 1..=20.
+    #[serde(default = "default_snapshot_limit")]
+    pub snapshot_limit: u32,
+
     #[serde(default)]
     pub last_failed_update: Option<FailedUpdate>,
 
@@ -52,6 +63,19 @@ pub struct UpdaterStateFile {
     pub rollback_version: Option<DeployTag>,
 }
 
+fn default_true() -> bool {
+    true
+}
+
+/// Matches the historical hard-coded `prune(3)` retention count.
+pub const SNAPSHOT_LIMIT_DEFAULT: u32 = 3;
+pub const SNAPSHOT_LIMIT_MIN: u32 = 1;
+pub const SNAPSHOT_LIMIT_MAX: u32 = 20;
+
+fn default_snapshot_limit() -> u32 {
+    SNAPSHOT_LIMIT_DEFAULT
+}
+
 impl Default for UpdaterStateFile {
     fn default() -> Self {
         Self {
@@ -64,6 +88,8 @@ impl Default for UpdaterStateFile {
             update_mode: UpdateMode::Release,
             check_interval_secs: None,
             auto_install: false,
+            snapshot_limit_enabled: true,
+            snapshot_limit: SNAPSHOT_LIMIT_DEFAULT,
             last_failed_update: None,
             latest_available: None,
             rollback_version: None,

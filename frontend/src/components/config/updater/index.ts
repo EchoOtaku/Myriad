@@ -33,5 +33,6 @@ export type {
   Tone,
   U,
 } from './helpers'
+export { SnapshotLimitPrefs } from './SnapshotLimitPrefs'
 export { AutoUpdatePrefs, ProgressCard, StatusHero } from './StatusHero'
 export { TargetPicker } from './TargetPicker'

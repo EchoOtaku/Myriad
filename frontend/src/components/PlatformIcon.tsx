@@ -9,6 +9,7 @@ import {
   SiMyanimelist,
   SiNeteasecloudmusic,
   SiPlaystation,
+  SiYoutube,
 } from '@lib/icons'
 
 import React, { useMemo } from 'react'
@@ -46,6 +47,9 @@ const PlatformIcon: React.FC<PlatformIconProps> = React.memo(
         return <SiBilibili className={className} style={mergedStyle} />
       case 'steam':
         return <FaSteam className={className} style={mergedStyle} />
+      case 'youtube':
+      case 'yt':
+        return <SiYoutube className={className} style={mergedStyle} />
       case 'netease music':
       case 'netease':
       case '网易云音乐':

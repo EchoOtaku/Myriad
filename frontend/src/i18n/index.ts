@@ -775,6 +775,15 @@ export interface TranslationKeys {
     updaterSnapshotGroupTitle: string
     updaterSnapshotGroupDesc: string
     updaterNoSnapshots: string
+    updaterSnapshotLimitEnabled: string
+    /** Dynamic: when limit is on — includes `{n}`. */
+    updaterSnapshotLimitEnabledDescOn: string
+    /** When limit is off. */
+    updaterSnapshotLimitEnabledDescOff: string
+    updaterSnapshotLimitCount: string
+    updaterSnapshotLimitOption: string
+    updaterSnapshotLimitSaved: string
+    updaterSnapshotLimitSavedPruned: string
     updaterRollback: string
     updaterRollbackDispatched: string
     updaterDeleteSnapshot: string
@@ -816,21 +825,13 @@ export interface TranslationKeys {
     selectProject: string
     favorites: string
     allConfig: string
-    /** 侧栏收藏夹上方的横版 banner（按时段问候） */
+    /** 侧栏收藏夹上方的横版 banner（按时段问候 + 上次登录时间） */
     tipsBanner: {
       label: string
-      greeting: {
-        /** 时段副文案（次级一行） */
-        subtitles: {
-          morning: string
-          forenoon: string
-          noon: string
-          afternoon: string
-          dusk: string
-          evening: string
-          night: string
-        }
-      }
+      /** 次行：上次登录，`{time}` 为格式化时间 */
+      lastLogin: string
+      /** 已登录但无 last_login_at 时的占位 */
+      lastLoginNever: string
     }
     saveConfig: string
     resetConfig: string
@@ -902,9 +903,6 @@ export interface TranslationKeys {
     fieldWallpaperBlur: string
     sliderWeak: string
     sliderStrong: string
-    fieldWallpaperParallax: string
-    fieldPetEnabled: string
-    fieldPetImageUrl: string
     fieldSiteTitle: string
     fieldSiteDescription: string
     fieldSiteFavicon: string
@@ -981,7 +979,6 @@ export interface TranslationKeys {
     placeholderSiteTitle: string
     placeholderSiteDescription: string
     placeholderSiteFavicon: string
-    placeholderPetImageUrl: string
     callbackUrl: string
     savingDefault: string
     resetFailed: string
@@ -1033,6 +1030,7 @@ export interface TranslationKeys {
     platformDescBilibili: string
     platformDescBangumi: string
     platformDescSteam: string
+    platformDescYoutube: string
     platformDescNetease: string
     platformDescX: string
     platformDescDiscord: string
@@ -1065,6 +1063,10 @@ export interface TranslationKeys {
     platformSetupSteam1Desc: string
     platformSetupSteam2Title: string
     platformSetupSteam2Desc: string
+    platformSetupYoutube1Title: string
+    platformSetupYoutube1Desc: string
+    platformSetupYoutube2Title: string
+    platformSetupYoutube2Desc: string
     platformSetupNetease1Title: string
     platformSetupNetease1Desc: string
     platformSetupBangumi1Title: string
@@ -1339,6 +1341,7 @@ export interface TranslationKeys {
     reportBilibili: string
     reportSteam: string
     reportGithub: string
+    reportYoutube: string
     reportNetease: string
     reportBangumi: string
     reportMal: string
@@ -1349,6 +1352,7 @@ export interface TranslationKeys {
     socialNetwork: string
     tappShortcut: string
     gamePresence: string
+    visitorStats: string
     library: string
     dataReport: string
     digitalLife: string
@@ -2139,6 +2143,29 @@ export interface TranslationKeys {
     loadCacheFailed: string
     saveCacheFailed: string
     fetchStatsFailed: string
+  }
+
+  // 访客统计小组件（访客视角：你是今天第 N 位访客）
+  visitorStats: {
+    widgetTitle: string
+    daysN: string
+    /** 序号前缀，数字前 */
+    ordinalLead: string
+    /** 序号后缀，数字后 */
+    ordinalTrail: string
+    /** 本次访问还没落库，序号暂缺 */
+    ordinalPending: string
+    /** 管理员流量不计入统计，站长没有序号 */
+    staffNotCounted: string
+    todayVisitors: string
+    todayVisitorsShort: string
+    todayViewsShort: string
+    allTimeViewsShort: string
+    allTimeVisitorsShort: string
+    chartAria: string
+    collectionOff: string
+    loadFailed: string
+    empty: string
   }
 
   // 最近活动小组件

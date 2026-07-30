@@ -86,6 +86,7 @@ import {
   type Mood,
   type Toast,
 } from './updater/helpers'
+import { SnapshotLimitPrefs } from './updater/SnapshotLimitPrefs'
 import { ProgressCard, StatusHero } from './updater/StatusHero'
 import { TargetPicker } from './updater/TargetPicker'
 import './UpdaterConfigSection.css'
@@ -909,6 +910,40 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     ],
   )
 
+  /** Persist backup retention prefs; prune may free older snapshots immediately. */
+  const saveSnapshotLimitPrefs = useCallback(
+    async (prefs: {
+      snapshot_limit_enabled?: boolean
+      snapshot_limit?: number
+    }) => {
+      if (tokenRequired) {
+        setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
+        return
+      }
+      setBusy('snapshot-limit')
+      setToast(null)
+      try {
+        const res = await api.setPrefs(prefs)
+        const pruned = res.pruned_snapshot_ids?.length ?? 0
+        setToast({
+          kind: 'ok',
+          text:
+            pruned > 0
+              ? format(u.updaterSnapshotLimitSavedPruned, {
+                  n: String(pruned),
+                })
+              : u.updaterSnapshotLimitSaved,
+        })
+        await refresh()
+      } catch (e) {
+        setToast({ kind: 'error', text: explain(e) })
+      } finally {
+        setBusy(null)
+      }
+    },
+    [api, refresh, tokenRequired, explain, u],
+  )
+
   const exitMaintenance = useCallback(async () => {
     if (tokenRequired) {
       setToast({ kind: 'error', text: u.updaterTokenRequiredDirect })
@@ -1362,56 +1397,65 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         collapsible
         defaultExpanded={false}
       >
-        <ManagedList
-          className="updater-snapshot-managed"
-          emptyText={u.updaterNoSnapshots}
-          maxHeight={null}
-          items={snapshots.map((s): ManagedListItem => {
-            const deleteReason = snapshotDeleteBlockReason(s, {
-              rescueSnapshotId: status?.rescue_snapshot_id,
-              totalSnapshots: snapshots.length,
-              u,
-            })
-            const rowBusy =
-              busy === `rollback-${s.id}` || busy === `delete-${s.id}`
-            return {
-              id: s.id,
-              title: s.source_version ? (
-                <code>{s.source_version}</code>
-              ) : (
-                <span className="managed-list-muted">—</span>
-              ),
-              badge: s.keep
-                ? {
-                    label: u.updaterDeleteSnapshotKeptBadge,
-                    tone: 'warn',
-                  }
-                : undefined,
-              subtitle: `${new Date(s.created_at).toLocaleString()} · ${formatBytes(s.size_bytes)}`,
-              meta: deleteReason || undefined,
-              busy: rowBusy,
-              actions: [
-                {
-                  key: 'rollback',
-                  label: u.updaterRollback,
-                  variant: 'secondary',
-                  onClick: () => void rollbackTo(s),
-                  disabled: tokenRequired,
-                  loading: busy === `rollback-${s.id}`,
-                },
-                {
-                  key: 'delete',
-                  label: u.updaterDeleteSnapshot,
-                  variant: 'danger',
-                  onClick: () => void deleteSnapshot(s),
-                  disabled: tokenRequired || !!deleteReason,
-                  loading: busy === `delete-${s.id}`,
-                  title: deleteReason ?? u.updaterDeleteSnapshot,
-                },
-              ],
-            }
-          })}
-        />
+        <div className="updater-snapshot-section">
+          <SnapshotLimitPrefs
+            status={status}
+            disabled={!!busy || tokenRequired}
+            saving={busy === 'snapshot-limit'}
+            u={u}
+            onSave={saveSnapshotLimitPrefs}
+          />
+          <ManagedList
+            className="updater-snapshot-managed"
+            emptyText={u.updaterNoSnapshots}
+            maxHeight={null}
+            items={snapshots.map((s): ManagedListItem => {
+              const deleteReason = snapshotDeleteBlockReason(s, {
+                rescueSnapshotId: status?.rescue_snapshot_id,
+                totalSnapshots: snapshots.length,
+                u,
+              })
+              const rowBusy =
+                busy === `rollback-${s.id}` || busy === `delete-${s.id}`
+              return {
+                id: s.id,
+                title: s.source_version ? (
+                  <code>{s.source_version}</code>
+                ) : (
+                  <span className="managed-list-muted">—</span>
+                ),
+                badge: s.keep
+                  ? {
+                      label: u.updaterDeleteSnapshotKeptBadge,
+                      tone: 'warn',
+                    }
+                  : undefined,
+                subtitle: `${new Date(s.created_at).toLocaleString()} · ${formatBytes(s.size_bytes)}`,
+                meta: deleteReason || undefined,
+                busy: rowBusy,
+                actions: [
+                  {
+                    key: 'rollback',
+                    label: u.updaterRollback,
+                    variant: 'secondary',
+                    onClick: () => void rollbackTo(s),
+                    disabled: tokenRequired,
+                    loading: busy === `rollback-${s.id}`,
+                  },
+                  {
+                    key: 'delete',
+                    label: u.updaterDeleteSnapshot,
+                    variant: 'danger',
+                    onClick: () => void deleteSnapshot(s),
+                    disabled: tokenRequired || !!deleteReason,
+                    loading: busy === `delete-${s.id}`,
+                    title: deleteReason ?? u.updaterDeleteSnapshot,
+                  },
+                ],
+              }
+            })}
+          />
+        </div>
       </SettingGroup>
 
       {/* ===== 高级与诊断（折叠）===== */}

@@ -44,6 +44,8 @@ export interface User {
   avatar_url?: string
   bio?: string
   has_password?: boolean
+  /** ISO-8601 last successful login (from /api/auth/me) */
+  last_login_at?: string | null
   /** Linked OAuth providers (GitHub + generic OIDC slugs) */
   identities?: AuthIdentity[]
 }
@@ -151,6 +153,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               avatar_url: u.avatar_url,
               bio: u.bio,
               has_password: u.has_password,
+              last_login_at:
+                typeof u.last_login_at === 'string' ? u.last_login_at : null,
               identities,
             })
             setIsAuthenticated(true)

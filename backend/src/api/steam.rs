@@ -57,11 +57,14 @@ impl From<SteamUserInfo> for SteamPresenceResponse {
         Self {
             steamid: info.steamid,
             personaname: info.personaname,
-            // 用高清头像（184px），前端头像框放大后不糊
-            avatar: if info.avatarfull.trim().is_empty() {
-                info.avatar
-            } else {
-                info.avatarfull
+            // 用高清头像（184px），前端头像框放大后不糊；steamstatic/akamai 走站内代理防盗链
+            avatar: {
+                let raw = if info.avatarfull.trim().is_empty() {
+                    info.avatar.as_str()
+                } else {
+                    info.avatarfull.as_str()
+                };
+                crate::api::profile::proxy_image_url(raw)
             },
             profileurl: info.profileurl,
             personastate: info.personastate,

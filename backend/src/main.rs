@@ -3351,6 +3351,12 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             "/api/analytics/pageview",
             post(api::analytics::record_pageview),
         )
+        // 公开访客卡片：只有站点总量 + 7 日趋势 + 调用者自己的到达序号，
+        // 页面 / 来源 / 国家 / 停留等细分仍然只走下面的 admin summary
+        .route(
+            "/api/analytics/visitor",
+            get(api::analytics::get_visitor_card),
+        )
         .route(
             "/api/analytics/summary",
             get(api::analytics::get_summary)
@@ -3539,7 +3545,7 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
         )
         .route("/api/config/metadata", get(api::config::get_site_metadata)) // 🔓 公开端点：网站元数据
         .route("/api/config/public", get(api::config::get_public_config)) // 🔓 公开端点：平台公开信息（用于社交链接）
-        .route("/api/config/ui", get(api::config::get_public_ui_config)) // 🔓 公开端点：UI配置（萌宠、壁纸等）
+        .route("/api/config/ui", get(api::config::get_public_ui_config)) // 🔓 公开端点：UI 运行时（壁纸/动效/音乐/站点展示）
         // ✅ 安全修复 P0: CSRF Token 获取端点
         .route("/api/csrf-token", get(middleware::csrf::get_csrf_token))
         // AI推荐API - 🔓 公开端点：图标推荐服务
@@ -4184,6 +4190,15 @@ async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
             .route(
                 "/api/bangumi/collections/{username}",
                 get(api::bangumi::get_bangumi_collections),
+            )
+            // YouTube Data API v3 (public, API key only — no OAuth)
+            .route(
+                "/api/youtube/channel",
+                get(api::youtube::get_youtube_channel),
+            )
+            .route(
+                "/api/youtube/bundle",
+                get(api::youtube::get_youtube_bundle),
             )
             // Steam API routes
             .route("/api/steam/presence", get(api::steam::get_steam_presence))

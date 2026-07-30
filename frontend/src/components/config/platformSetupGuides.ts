@@ -26,6 +26,11 @@ export interface PlatformSetupI18n {
   platformSetupSteam2Title: string
   platformSetupSteam2Desc: string
 
+  platformSetupYoutube1Title: string
+  platformSetupYoutube1Desc: string
+  platformSetupYoutube2Title: string
+  platformSetupYoutube2Desc: string
+
   platformSetupNetease1Title: string
   platformSetupNetease1Desc: string
 
@@ -165,6 +170,29 @@ export function getPlatformSetupGuide(
             title: t.platformSetupSteam2Title,
             description: t.platformSetupSteam2Desc,
             href: 'https://store.steampowered.com/account/',
+            actionLabel: open,
+          },
+          fill,
+        ],
+      }
+
+    case 'youtube':
+      return {
+        title: t.platformSetupTitle,
+        optionalLabel: t.platformSetupOptional,
+        steps: [
+          {
+            key: 'apikey',
+            title: t.platformSetupYoutube1Title,
+            description: t.platformSetupYoutube1Desc,
+            href: 'https://console.cloud.google.com/apis/library/youtube.googleapis.com',
+            actionLabel: open,
+          },
+          {
+            key: 'channel',
+            title: t.platformSetupYoutube2Title,
+            description: t.platformSetupYoutube2Desc,
+            href: 'https://www.youtube.com/account_advanced',
             actionLabel: open,
           },
           fill,

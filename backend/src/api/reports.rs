@@ -356,6 +356,75 @@ async fn generate_platform_reports_internal(
                 }
             }
 
+            // 6b. YouTube — 公开频道统计 + 最近上传轮播（0 视频仍是合法成功）
+            if platform == "youtube" {
+                if !card_visuals.is_object() {
+                    card_visuals = json!({});
+                }
+                if let crate::services::smart_filter::ContentAnalysis::YouTube(analysis) =
+                    &metadata.content_analysis
+                {
+                    let is_empty_channel =
+                        analysis.video_count == 0 && analysis.recent_videos.is_empty();
+                    if let Some(obj) = card_visuals.as_object_mut() {
+                        obj.insert(
+                            "subscriber_count".to_string(),
+                            json!(analysis.subscriber_count),
+                        );
+                        obj.insert("view_count".to_string(), json!(analysis.view_count));
+                        obj.insert("video_count".to_string(), json!(analysis.video_count));
+                        obj.insert(
+                            "video_summary".to_string(),
+                            json!(analysis.video_summary),
+                        );
+                        obj.insert("is_empty_channel".to_string(), json!(is_empty_channel));
+                        if let Some(ref avatar) = analysis.avatar {
+                            obj.insert("avatar".to_string(), json!(avatar));
+                        }
+                        if let Some(ref url) = analysis.channel_url {
+                            obj.insert("channel_url".to_string(), json!(url));
+                        }
+                        if let Some(ref cu) = analysis.custom_url {
+                            obj.insert("custom_url".to_string(), json!(cu));
+                        }
+                        let library_items: Vec<Value> = analysis
+                            .recent_videos
+                            .iter()
+                            .take(12)
+                            .map(|v| {
+                                json!({
+                                    "title": v.title,
+                                    "type": "video",
+                                    "image": v.cover,
+                                    "cover": v.cover,
+                                    "url": v.url,
+                                    "video_id": v.video_id,
+                                    "view_count": v.view_count,
+                                    "like_count": v.like_count,
+                                    "published_at": v.published_at,
+                                })
+                            })
+                            .collect();
+                        obj.insert("library_items".to_string(), json!(library_items));
+                        obj.insert(
+                            "recent_videos".to_string(),
+                            json!(analysis.recent_videos),
+                        );
+                    }
+                }
+                // user_summary username for face header
+                if let Some(obj) = card_visuals.as_object_mut() {
+                    obj.insert(
+                        "channel_title".to_string(),
+                        json!(metadata.user_summary.username),
+                    );
+                    obj.insert(
+                        "channel_id".to_string(),
+                        json!(metadata.user_summary.user_id),
+                    );
+                }
+            }
+
             // 7. 对于bilibili平台，额外添加用户统计数据到card_visuals
             if platform == "bilibili" {
                 // 确保 card_visuals 是对象类型
@@ -490,10 +559,9 @@ async fn generate_platform_reports_internal(
                     card_visuals = json!({});
                 }
 
-                // pbs.twimg.com 头像统一处理：升到 _400x400（头像墙/详情面共用），走站内代理
-                fn proxied_x_avatar(url: &str) -> String {
-                    let upscaled = url.replace("_normal.", "_400x400.");
-                    format!("/api/proxy/image?url={}", urlencoding::encode(&upscaled))
+                // pbs.twimg.com：升到 _400x400；代理交给出口 normalize_json_media_urls
+                fn upscale_x_avatar(url: &str) -> String {
+                    url.replace("_normal.", "_400x400.")
                 }
 
                 if let crate::services::smart_filter::ContentAnalysis::X(analysis) =
@@ -523,7 +591,7 @@ async fn generate_platform_reports_internal(
                         }
                         // 账号本人资料（概览卡 header）
                         let own_avatar =
-                            analysis.user_avatar.as_deref().map(proxied_x_avatar);
+                            analysis.user_avatar.as_deref().map(upscale_x_avatar);
                         obj.insert(
                             "profile".to_string(),
                             json!({
@@ -555,7 +623,7 @@ async fn generate_platform_reports_internal(
                                     let avatar = item
                                         .profile_image_url
                                         .as_deref()
-                                        .map(proxied_x_avatar);
+                                        .map(upscale_x_avatar);
                                     json!({
                                         "username": item.username,
                                         "name": item.name,
@@ -978,6 +1046,16 @@ async fn generate_platform_reports_internal(
                             insights.push(format!("主要语言：{}", lang));
                         }
                     }
+                    crate::services::smart_filter::ContentAnalysis::YouTube(analysis) => {
+                        insights.push(analysis.video_summary.clone());
+                        insights.push(format!(
+                            "订阅 {} · 观看 {} · 视频 {}",
+                            analysis.subscriber_count, analysis.view_count, analysis.video_count
+                        ));
+                        if let Some(v) = analysis.recent_videos.first() {
+                            insights.push(format!("最近上传：{}", v.title));
+                        }
+                    }
                     crate::services::smart_filter::ContentAnalysis::Netease(analysis) => {
                         insights.push(analysis.music_summary.clone());
                         if !analysis.artist_analysis.favorite_artists.is_empty() {
@@ -1065,12 +1143,15 @@ async fn generate_platform_reports_internal(
                 }
             }
 
+            // 出口统一媒体规范化（防盗链代理）；各平台分支可写原始 CDN
+            crate::api::profile::normalize_json_media_urls(&mut card_visuals);
+
             let report = PlatformReport {
                 platform: platform.clone(),
                 metadata: metadata.clone(),
                 summary,
                 insights,
-                card_visuals: card_visuals.clone(),
+                card_visuals,
                 created_at: chrono::Utc::now().to_rfc3339(),
             };
 
@@ -1220,6 +1301,13 @@ pub async fn generate_all_reports(
             config
                 .github_enabled
                 .unwrap_or(config.github_username.as_ref().is_some()),
+        ),
+        (
+            "youtube",
+            config.youtube_enabled.unwrap_or(
+                config.youtube_api_key.as_ref().is_some()
+                    && config.youtube_channel_id.as_ref().is_some(),
+            ),
         ),
         (
             "netease",
@@ -1406,8 +1494,14 @@ fn finalize_public_platform_report(platform: &str, report: Value) -> Value {
         }
         let normalized_visuals = match obj.get("card_visuals") {
             Some(v) if v.is_object() => {
-                // Unwrap double-nested card_visuals: { card_visuals: { …stats } }
-                v.get("card_visuals").filter(|i| i.is_object()).cloned()
+                // 双层嵌套 { card_visuals: { …stats } } 时剥一层；否则用对象本身
+                // （旧逻辑只返回内层，导致普通对象走 None、读路径从不 normalize）
+                Some(
+                    v.get("card_visuals")
+                        .filter(|inner| inner.is_object())
+                        .cloned()
+                        .unwrap_or_else(|| v.clone()),
+                )
             }
             Some(v) if v.is_string() => {
                 let raw = v.as_str().unwrap_or("").to_string();
@@ -1420,7 +1514,9 @@ fn finalize_public_platform_report(platform: &str, report: Value) -> Value {
             }
             _ => Some(json!({})),
         };
-        if let Some(visuals) = normalized_visuals {
+        if let Some(mut visuals) = normalized_visuals {
+            // 旧库直链 + 生成后漏代理：读出时统一再规范化
+            crate::api::profile::normalize_json_media_urls(&mut visuals);
             obj.insert("card_visuals".to_string(), visuals);
         }
     }
@@ -1450,6 +1546,7 @@ fn enrich_stored_platform_report(mut report: Value) -> Value {
 
     let normalize_field = |v: &mut Value, xbox: bool| {
         if let Some(s) = v.as_str() {
+            // 仅 https / xbox SSL 规范化；防盗链代理交给 finalize 的 normalize_json_media_urls
             *v = json!(if xbox {
                 SmartFilter::normalize_xbox_media_url(s)
             } else {
@@ -2225,6 +2322,72 @@ fn generate_mock_report(
                 }),
             )
         }
+        crate::services::smart_filter::ContentAnalysis::YouTube(analysis) => {
+            let library_items: Vec<Value> = analysis
+                .recent_videos
+                .iter()
+                .take(12)
+                .map(|v| {
+                    json!({
+                        "title": v.title,
+                        "type": "video",
+                        "image": v.cover,
+                        "cover": v.cover,
+                        "url": v.url,
+                        "video_id": v.video_id,
+                        "view_count": v.view_count,
+                    })
+                })
+                .collect();
+            let is_empty_channel = analysis.video_count == 0 && analysis.recent_videos.is_empty();
+            let summary = if is_empty_channel {
+                format!(
+                    "频道「{}」已连接：公开区暂无视频（0 订阅 / 0 观看）。空频道也算成功同步。",
+                    metadata.user_summary.username
+                )
+            } else {
+                format!(
+                    "频道扫描完成：{} · {} 订阅 · {} 视频。",
+                    metadata.user_summary.username,
+                    analysis.subscriber_count,
+                    analysis.video_count
+                )
+            };
+            let insights = if is_empty_channel {
+                vec![
+                    analysis.video_summary.clone(),
+                    "这不是抓取失败：API 已解析到频道资料，只是公开上传列表为空。".to_string(),
+                    "上传公开视频或换有内容的频道后，再同步即可看到样本与指标。".to_string(),
+                ]
+            } else {
+                vec![
+                    analysis.video_summary.clone(),
+                    format!("累计观看：{}", analysis.view_count),
+                    analysis
+                        .recent_videos
+                        .first()
+                        .map(|v| format!("最近上传：{}", v.title))
+                        .unwrap_or_else(|| "暂无上传样本".to_string()),
+                ]
+            };
+            (
+                summary,
+                insights,
+                json!({
+                    "subscriber_count": analysis.subscriber_count,
+                    "view_count": analysis.view_count,
+                    "video_count": analysis.video_count,
+                    "video_summary": analysis.video_summary,
+                    "channel_title": metadata.user_summary.username,
+                    "channel_id": metadata.user_summary.user_id,
+                    "avatar": analysis.avatar,
+                    "channel_url": analysis.channel_url,
+                    "is_empty_channel": is_empty_channel,
+                    "library_items": library_items,
+                    "recent_videos": analysis.recent_videos,
+                }),
+            )
+        }
         crate::services::smart_filter::ContentAnalysis::Netease(analysis) => {
             // 根据歌曲数量估算等级（1-10）
             let song_count = analysis.recent_songs.len();
@@ -2823,9 +2986,8 @@ async fn extract_bilibili_library_items(
                 let cover = bangumi_map
                     .get(example_title.as_str())
                     .map(|url| {
-                        let proxy_url = crate::api::profile::proxy_image_url(url);
-                        println!("  - Anime '{}': {} -> {}", example_title, url, proxy_url);
-                        proxy_url
+                        println!("  - Anime '{}': {}", example_title, url);
+                        url.clone()
                     })
                     .unwrap_or_else(|| {
                         println!("  - Anime '{}': No cover found", example_title);
@@ -2892,9 +3054,8 @@ async fn extract_bilibili_library_items(
             let cover = video_map
                 .get(&video.title)
                 .map(|url| {
-                    let proxy_url = crate::api::profile::proxy_image_url(url);
-                    println!("    ✓ Found cover: {} -> {}", url, proxy_url);
-                    proxy_url
+                    println!("    ✓ Found cover: {}", url);
+                    url.clone()
                 })
                 .unwrap_or_else(|| {
                     println!("    ✗ No cover found in video_map");
@@ -2959,7 +3120,7 @@ async fn extract_steam_library_items(metadata: &SmartFilteredData) -> Result<Vec
                                 item.get("name").and_then(|v| v.as_str()),
                                 item.get("appid").and_then(|v| v.as_u64()),
                             ) {
-                                // Steam游戏封面URL格式
+                                // Steam 游戏封面；代理交给 card_visuals 出口 normalize
                                 let cover = format!(
                                     "https://cdn.cloudflare.steamstatic.com/steam/apps/{}/header.jpg",
                                     appid
@@ -3107,10 +3268,7 @@ async fn extract_netease_library_items(metadata: &SmartFilteredData) -> Result<V
                             ) {
                                 song_map.insert(
                                     name.to_string(),
-                                    (
-                                        crate::api::profile::proxy_image_url(cover),
-                                        artists.to_string(),
-                                    ),
+                                    (cover.to_string(), artists.to_string()),
                                 );
                             }
                         }
@@ -3374,7 +3532,7 @@ async fn extract_bangumi_library_items(metadata: &SmartFilteredData) -> Result<V
         for item in candidates.into_iter().take(10) {
             library_items.push(json!({
                 "title": item.title,
-                "cover": item.cover.map(|cover| crate::api::profile::proxy_image_url(&cover)).unwrap_or_default(),
+                "cover": item.cover.unwrap_or_default(),
                 "type": match item.subject_type.as_str() {
                     "book" => "book",
                     "anime" => "anime",
@@ -3442,7 +3600,7 @@ async fn extract_mal_library_items(metadata: &SmartFilteredData) -> Result<Vec<V
             };
             library_items.push(json!({
                 "title": item.title,
-                "cover": item.cover.map(|cover| crate::api::profile::proxy_image_url(&cover)).unwrap_or_default(),
+                "cover": item.cover.unwrap_or_default(),
                 "type": match item.subject_type.as_str() {
                     "manga" => "book",
                     "anime" => "anime",
@@ -3624,5 +3782,58 @@ mod discord_guild_takes_tests {
         assert_eq!(takes[0]["name"], "Real Guild");
         assert_eq!(takes[0]["id"], "1");
         assert_eq!(takes[0]["take"], "千人圈里摸鱼");
+    }
+}
+
+#[cfg(test)]
+mod finalize_public_report_media_tests {
+    use super::*;
+
+    #[test]
+    fn normalizes_plain_card_visuals_object_on_read() {
+        // 常见落库形态：card_visuals 直接是 stats 对象（非双层嵌套）
+        let raw = json!({
+            "platform": "bilibili",
+            "summary": "x",
+            "insights": [],
+            "card_visuals": {
+                "avatar": "https://i0.hdslb.com/bfs/face/a.jpg",
+                "library_items": [
+                    { "title": "v", "cover": "https://i0.hdslb.com/bfs/archive/c.jpg" }
+                ]
+            }
+        });
+        let out = finalize_public_platform_report("bilibili", raw);
+        let avatar = out["card_visuals"]["avatar"].as_str().unwrap_or("");
+        let cover = out["card_visuals"]["library_items"][0]["cover"]
+            .as_str()
+            .unwrap_or("");
+        assert!(
+            avatar.starts_with("/api/proxy/image?url="),
+            "plain object avatar not proxied: {avatar}"
+        );
+        assert!(
+            cover.starts_with("/api/proxy/image?url="),
+            "plain object cover not proxied: {cover}"
+        );
+    }
+
+    #[test]
+    fn normalizes_double_nested_card_visuals() {
+        let raw = json!({
+            "card_visuals": {
+                "card_visuals": {
+                    "avatar": "https://avatars.steamstatic.com/x_full.jpg"
+                }
+            }
+        });
+        let out = finalize_public_platform_report("steam", raw);
+        let avatar = out["card_visuals"]["avatar"].as_str().unwrap_or("");
+        assert!(
+            avatar.starts_with("/api/proxy/image?url="),
+            "nested avatar not proxied: {avatar}"
+        );
+        // 应已剥掉内层 card_visuals 键
+        assert!(out["card_visuals"].get("card_visuals").is_none());
     }
 }

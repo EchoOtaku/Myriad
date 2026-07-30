@@ -2531,6 +2531,236 @@ impl PlatformFetcher {
             "trophy_titles": trophy_titles,
         }))
     }
+
+    // ==================== YouTube Data API v3 (API key, public only) ====================
+
+    /// Resolve channel + recent public uploads (+ stats). No OAuth / mine flows.
+    ///
+    /// `channel_identity` accepts UC… id, `@handle`, or bare handle / customUrl.
+    /// Uses channels.list → uploads playlist → playlistItems → videos.list (never search.list).
+    pub async fn fetch_youtube_channel_bundle(
+        &self,
+        api_key: &str,
+        channel_identity: &str,
+    ) -> Result<serde_json::Value> {
+        let key = api_key.trim();
+        let identity = channel_identity.trim();
+        if key.is_empty() {
+            return Err(anyhow!("YouTube API key is required"));
+        }
+        if identity.is_empty() {
+            return Err(anyhow!("YouTube channel id or handle is required"));
+        }
+
+        let channel = self
+            .fetch_youtube_channel(key, identity)
+            .await?;
+        let channel_id = channel
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if channel_id.is_empty() {
+            return Err(anyhow!("YouTube channel response missing id"));
+        }
+
+        let uploads_playlist = channel
+            .pointer("/contentDetails/relatedPlaylists/uploads")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let mut playlist_items: Vec<serde_json::Value> = Vec::new();
+        let mut video_ids: Vec<String> = Vec::new();
+        if !uploads_playlist.is_empty() {
+            playlist_items = self
+                .fetch_youtube_playlist_items(key, &uploads_playlist, 12)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!("YouTube playlistItems failed: {}", e);
+                    Vec::new()
+                });
+            for item in &playlist_items {
+                if let Some(vid) = item
+                    .pointer("/contentDetails/videoId")
+                    .or_else(|| item.pointer("/snippet/resourceId/videoId"))
+                    .and_then(|v| v.as_str())
+                {
+                    if !vid.is_empty() && !video_ids.iter().any(|x| x == vid) {
+                        video_ids.push(vid.to_string());
+                    }
+                }
+            }
+        }
+
+        let videos = if video_ids.is_empty() {
+            Vec::new()
+        } else {
+            self.fetch_youtube_videos(key, &video_ids)
+                .await
+                .unwrap_or_else(|e| {
+                    tracing::warn!("YouTube videos.list failed: {}", e);
+                    Vec::new()
+                })
+        };
+
+        Ok(serde_json::json!({
+            "channel": channel,
+            "uploads_playlist_id": uploads_playlist,
+            "playlist_items": playlist_items,
+            "videos": videos,
+        }))
+    }
+
+    /// channels.list by id / forHandle / forUsername
+    pub async fn fetch_youtube_channel(
+        &self,
+        api_key: &str,
+        channel_identity: &str,
+    ) -> Result<serde_json::Value> {
+        let base = "https://www.googleapis.com/youtube/v3/channels";
+        let part = "snippet,statistics,contentDetails,brandingSettings";
+        let identity = channel_identity.trim();
+
+        let url = if identity.starts_with("UC") && identity.len() >= 20 && !identity.contains(' ') {
+            format!(
+                "{base}?part={part}&id={}&key={}",
+                urlencoding_lite(identity),
+                urlencoding_lite(api_key)
+            )
+        } else {
+            let handle = identity.trim_start_matches('@');
+            // Prefer forHandle (modern); fall back to forUsername for legacy names
+            format!(
+                "{base}?part={part}&forHandle={}&key={}",
+                urlencoding_lite(handle),
+                urlencoding_lite(api_key)
+            )
+        };
+
+        let resp = self.client.get(&url).send().await?;
+        let status = resp.status();
+        let body: serde_json::Value = resp.json().await?;
+        if !status.is_success() {
+            let msg = body
+                .pointer("/error/message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("YouTube channels.list failed");
+            return Err(anyhow!("{} (HTTP {})", msg, status.as_u16()));
+        }
+
+        if let Some(item) = body
+            .get("items")
+            .and_then(|v| v.as_array())
+            .and_then(|a| a.first())
+        {
+            return Ok(item.clone());
+        }
+
+        // Handle lookup failed — try forUsername once for bare custom names
+        if !(identity.starts_with("UC") && identity.len() >= 20) {
+            let handle = identity.trim_start_matches('@');
+            let url2 = format!(
+                "{base}?part={part}&forUsername={}&key={}",
+                urlencoding_lite(handle),
+                urlencoding_lite(api_key)
+            );
+            let resp2 = self.client.get(&url2).send().await?;
+            let status2 = resp2.status();
+            let body2: serde_json::Value = resp2.json().await?;
+            if status2.is_success() {
+                if let Some(item) = body2
+                    .get("items")
+                    .and_then(|v| v.as_array())
+                    .and_then(|a| a.first())
+                {
+                    return Ok(item.clone());
+                }
+            }
+        }
+
+        Err(anyhow!(
+            "YouTube channel not found for identity '{}'",
+            identity
+        ))
+    }
+
+    pub async fn fetch_youtube_playlist_items(
+        &self,
+        api_key: &str,
+        playlist_id: &str,
+        max_results: u32,
+    ) -> Result<Vec<serde_json::Value>> {
+        let max = max_results.clamp(1, 50);
+        let url = format!(
+            "https://www.googleapis.com/youtube/v3/playlistItems?part=snippet,contentDetails&playlistId={}&maxResults={}&key={}",
+            urlencoding_lite(playlist_id),
+            max,
+            urlencoding_lite(api_key)
+        );
+        let resp = self.client.get(&url).send().await?;
+        let status = resp.status();
+        let body: serde_json::Value = resp.json().await?;
+        if !status.is_success() {
+            let msg = body
+                .pointer("/error/message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("YouTube playlistItems.list failed");
+            return Err(anyhow!("{} (HTTP {})", msg, status.as_u16()));
+        }
+        Ok(body
+            .get("items")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default())
+    }
+
+    pub async fn fetch_youtube_videos(
+        &self,
+        api_key: &str,
+        video_ids: &[String],
+    ) -> Result<Vec<serde_json::Value>> {
+        if video_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        // API allows up to 50 ids per call
+        let chunk: Vec<&str> = video_ids.iter().take(50).map(|s| s.as_str()).collect();
+        let ids = chunk.join(",");
+        let url = format!(
+            "https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id={}&key={}",
+            urlencoding_lite(&ids),
+            urlencoding_lite(api_key)
+        );
+        let resp = self.client.get(&url).send().await?;
+        let status = resp.status();
+        let body: serde_json::Value = resp.json().await?;
+        if !status.is_success() {
+            let msg = body
+                .pointer("/error/message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("YouTube videos.list failed");
+            return Err(anyhow!("{} (HTTP {})", msg, status.as_u16()));
+        }
+        Ok(body
+            .get("items")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default())
+    }
+}
+
+/// Minimal query-value encoding (letters, digits, -_.~ pass through).
+fn urlencoding_lite(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 2);
+    for b in s.as_bytes() {
+        match *b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(*b as char);
+            }
+            _ => out.push_str(&format!("%{:02X}", b)),
+        }
+    }
+    out
 }
 
 // ==================== X 分享文案工具（无网络） ====================

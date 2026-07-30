@@ -38,6 +38,9 @@ import SiteAnalyticsSection from './SiteAnalyticsSection'
 import { getPlatformSetupGuide } from './platformSetupGuides'
 import './PlatformCardSnapshot.css'
 
+/** @deprecated 从 uiBagOwnership 导入；此处 re-export 保持兼容 */
+export { PLATFORMS_UI_RESET_KEYS } from './uiBagOwnership'
+
 export interface PlatformConfigField {
   key: string
   label: string
@@ -406,6 +409,7 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
         bilibili: t.config.platformDescBilibili,
         bangumi: t.config.platformDescBangumi,
         steam: t.config.platformDescSteam,
+        youtube: t.config.platformDescYoutube,
         'netease music': t.config.platformDescNetease,
         netease: t.config.platformDescNetease,
         x: t.config.platformDescX,

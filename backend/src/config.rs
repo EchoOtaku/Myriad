@@ -207,6 +207,12 @@ pub struct DynamicConfig {
     pub steam_enabled: Option<bool>,
     pub steam_api_key: Option<String>,
     pub steam_id: Option<String>,
+    /// YouTube Data API v3（公开频道；API key only，无 OAuth）
+    pub youtube_enabled: Option<bool>,
+    /// Google Cloud YouTube Data API key
+    pub youtube_api_key: Option<String>,
+    /// 频道身份：UC… channel id、@handle、或 customUrl（不含 OAuth mine）
+    pub youtube_channel_id: Option<String>,
     pub netease_enabled: Option<bool>,
     pub netease_user_id: Option<String>,
     pub bangumi_enabled: Option<bool>,
@@ -470,6 +476,9 @@ impl Default for DynamicConfig {
             steam_enabled: None,
             steam_api_key: None,
             steam_id: None,
+            youtube_enabled: None,
+            youtube_api_key: None,
+            youtube_channel_id: None,
             netease_enabled: None,
             netease_user_id: None,
             bangumi_enabled: None,

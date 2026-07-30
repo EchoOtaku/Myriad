@@ -92,7 +92,7 @@ fn get_domain_key(url: &str) -> String {
         return "hdslb.com".to_string();
     } else if url.contains("bilibili.com") {
         return "bilibili.com".to_string();
-    } else if url.contains("steamstatic.com") {
+    } else if url.contains("steamstatic.com") || url.contains("akamaihd.net") {
         return "steamstatic.com".to_string();
     } else if url.contains("bgm.tv") || url.contains("bangumi.tv") || url.contains("chii.in") {
         return "bangumi".to_string();
@@ -102,6 +102,18 @@ fn get_domain_key(url: &str) -> String {
         return "discord".to_string();
     } else if url.contains("myanimelist.net") {
         return "mal".to_string();
+    } else if url.contains("twimg.com") {
+        return "x".to_string();
+    } else if url.contains("ytimg.com") || url.contains("ggpht.com") {
+        return "youtube".to_string();
+    } else if url.contains("xboxlive.com") {
+        return "xbox".to_string();
+    } else if url.contains("playstation.net") {
+        return "psn".to_string();
+    } else if url.contains("enka.network") {
+        return "enka".to_string();
+    } else if url.contains("githubusercontent.com") {
+        return "github".to_string();
     }
     "other".to_string()
 }
@@ -349,19 +361,24 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
 /// 检查URL是否来自允许的域名
 fn is_allowed_domain(url: &str) -> bool {
     // 核心平台白名单（需要特殊 Referer 处理的）
+    // 允许被代理拉取的域名（宽）：含 RSS / 手动代理场景。
+    // 自动改写出口见 profile::needs_image_proxy（窄，勿把两者当成同一张表）。
     let core_domains = [
         "hdslb.com",                  // Bilibili CDN
         "bilibili.com",               // Bilibili
         "steamstatic.com",            // Steam CDN
         "cloudflare.steamstatic.com", // Steam Cloudflare CDN
+        "akamaihd.net",               // Steam legacy avatar CDN
         "bgm.tv",                     // Bangumi
         "bangumi.tv",                 // Bangumi legacy domain
         "chii.in",                    // Bangumi legacy CDN/domain
         "music.126.net",              // 网易云音乐 CDN
-        "cdn.discordapp.com",         // Discord CDN (avatars/icons)
-        "media.discordapp.net",       // Discord media proxy
-        "myanimelist.net",            // MyAnimeList CDN / images
-        "pbs.twimg.com",              // X (Twitter) 头像/媒体 CDN
+        "music.163.com",              // 网易云
+        "cdn.discordapp.com",         // Discord CDN（允许代理，但不自动改写）
+        "media.discordapp.net",
+        "myanimelist.net",            // MyAnimeList
+        "pbs.twimg.com",              // X 头像/媒体
+        "twimg.com",
     ];
 
     // 如果是核心平台，直接允许
@@ -403,14 +420,28 @@ fn is_allowed_domain(url: &str) -> bool {
 fn get_referer_for_url(url: &str) -> &'static str {
     if url.contains("hdslb.com") || url.contains("bilibili.com") {
         "https://www.bilibili.com/"
-    } else if url.contains("steamstatic.com") {
+    } else if url.contains("steamstatic.com") || url.contains("akamaihd.net") {
         "https://store.steampowered.com/"
     } else if url.contains("bgm.tv") || url.contains("bangumi.tv") || url.contains("chii.in") {
         "https://bgm.tv/"
-    } else if url.contains("music.126.net") {
+    } else if url.contains("music.126.net") || url.contains("music.163.com") {
         "https://music.163.com/"
     } else if url.contains("myanimelist.net") {
         "https://myanimelist.net/"
+    } else if url.contains("twimg.com") {
+        "https://x.com/"
+    } else if url.contains("discordapp.com") || url.contains("discordapp.net") {
+        "https://discord.com/"
+    } else if url.contains("ytimg.com") || url.contains("ggpht.com") {
+        "https://www.youtube.com/"
+    } else if url.contains("xboxlive.com") {
+        "https://www.xbox.com/"
+    } else if url.contains("playstation.net") {
+        "https://www.playstation.com/"
+    } else if url.contains("enka.network") {
+        "https://enka.network/"
+    } else if url.contains("githubusercontent.com") {
+        "https://github.com/"
     } else {
         "https://www.google.com/"
     }

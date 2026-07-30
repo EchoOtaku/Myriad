@@ -2089,6 +2089,39 @@ fn extract_platform_items(platform: &str, data: &Value) -> Vec<Value> {
             }
             items
         }
+        // Filtered YouTube cache: content_analysis.recent_videos (public uploads)
+        "youtube" => {
+            let mut items = Vec::new();
+            if let Some(videos) = data
+                .get("content_analysis")
+                .and_then(|v| v.get("recent_videos"))
+                .and_then(|v| v.as_array())
+            {
+                for video in videos {
+                    let video_id = video
+                        .get("video_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    items.push(json!({
+                        "type": "video",
+                        "title": video.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled"),
+                        "video_id": video_id,
+                        "cover": video.get("cover"),
+                        "view_count": video.get("view_count"),
+                        "like_count": video.get("like_count"),
+                        "published_at": video.get("published_at"),
+                        "url": video.get("url").cloned().unwrap_or_else(|| {
+                            if video_id.is_empty() {
+                                Value::Null
+                            } else {
+                                json!(format!("https://www.youtube.com/watch?v={video_id}"))
+                            }
+                        }),
+                    }));
+                }
+            }
+            items
+        }
         "netease" => {
             let mut items = Vec::new();
             if let Some(artists) = data
@@ -2146,6 +2179,65 @@ fn extract_platform_items(platform: &str, data: &Value) -> Vec<Value> {
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default(),
+    }
+}
+
+#[cfg(test)]
+mod extract_platform_items_tests {
+    use super::extract_platform_items;
+    use serde_json::json;
+
+    #[test]
+    fn youtube_extracts_recent_videos_from_filtered_cache_shape() {
+        // Shape matches SmartFilter youtube_filtered.json (untagged YouTubeAnalysis)
+        let data = json!({
+            "platform": "youtube",
+            "user_summary": {
+                "username": "Google for Developers",
+                "user_id": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+                "level": "@GoogleDevelopers",
+                "stats": { "follower_count": 2300000, "total_content": 5800 }
+            },
+            "content_analysis": {
+                "video_summary": "sample",
+                "subscriber_count": 2300000,
+                "view_count": 250000000,
+                "video_count": 5800,
+                "recent_videos": [
+                    {
+                        "title": "Sample Upload One",
+                        "video_id": "dQw4w9WgXcQ",
+                        "cover": "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg",
+                        "view_count": 1000,
+                        "like_count": 50,
+                        "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+                    },
+                    {
+                        "title": "Sample Upload Two",
+                        "video_id": "abc123xyz",
+                        "cover": "https://i.ytimg.com/vi/abc123xyz/mqdefault.jpg",
+                        "view_count": 200
+                    }
+                ]
+            }
+        });
+
+        let items = extract_platform_items("youtube", &data);
+        assert_eq!(items.len(), 2, "youtube must surface recent_videos items");
+        assert_eq!(items[0]["type"], "video");
+        assert_eq!(items[0]["video_id"], "dQw4w9WgXcQ");
+        assert_eq!(items[0]["title"], "Sample Upload One");
+        assert_eq!(items[0]["view_count"], 1000);
+        assert!(
+            items[0]["url"]
+                .as_str()
+                .unwrap_or("")
+                .contains("dQw4w9WgXcQ"),
+            "url should point at watch page"
+        );
+        // Fallback path without youtube branch would return []
+        let empty = extract_platform_items("unknown-platform", &data);
+        assert!(empty.is_empty());
     }
 }
 
@@ -4742,6 +4834,20 @@ fn extract_platform_items_for_random(platform: &str, data: &Value) -> Vec<Value>
             .and_then(|v| v.as_array())
             .cloned()
             .unwrap_or_default(),
+        "youtube" => {
+            // Prefer raw fetch `videos`; fall back to filtered recent_videos
+            let from_raw = data
+                .get("videos")
+                .or(data.get("items"))
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if !from_raw.is_empty() {
+                from_raw
+            } else {
+                extract_platform_items("youtube", data)
+            }
+        }
         "netease" => data
             .get("songs")
             .or(data.get("items"))

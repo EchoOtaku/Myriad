@@ -11,7 +11,21 @@
 import { API_URL } from '../config'
 import { getUIConfigDeduped } from './requestDedup'
 
+/**
+ * Fired after a pageview batch was handed off successfully — `sendBeacon`
+ * accepted it for delivery, or the `fetch` fallback returned 2xx.
+ *
+ * A first-time visitor is only counted once that beacon lands, and it is
+ * idle-scheduled up to {@link FLUSH_INTERVAL_MS} later, so the visitor card
+ * mounts before its own "you are today's Nth visitor" exists. Listeners use
+ * this to fetch once more instead of polling. Note `sendBeacon` only confirms
+ * queueing, so listeners should still allow the write a moment to land.
+ */
+export const ANALYTICS_PAGEVIEW_FLUSHED_EVENT = 'myriad:analytics-pageview-flushed'
+
 const VID_KEY = 'myriad_vid'
+/** Must stay in sync with the server's `is_valid_vid` (analytics.rs). */
+const VID_PATTERN = /^[\w-]{16,64}$/
 const OPT_OUT_KEY = 'myriad_analytics_optout'
 const SESSION_LAST_KEY = 'myriad_pv_last'
 const SESSION_PATH_TTL_MS = 2500
@@ -227,10 +241,28 @@ function pathAllowed(pathname: string): boolean {
   )
 }
 
+/**
+ * Existing visitor id, or null — never mints one.
+ *
+ * The visitor card reads this to ask the server "what is *my* ordinal today".
+ * A reader must not create identity as a side effect: someone opted out (or a
+ * bot) never gets counted, so minting a vid for them would write to storage to
+ * answer a question whose answer is always "no number".
+ */
+export function peekVisitorId(): string | null {
+  try {
+    const existing = localStorage.getItem(VID_KEY)
+    if (existing && VID_PATTERN.test(existing)) return existing
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
 export function getOrCreateVisitorId(): string {
   try {
     const existing = localStorage.getItem(VID_KEY)
-    if (existing && /^[a-zA-Z0-9_-]{16,64}$/.test(existing)) return existing
+    if (existing && VID_PATTERN.test(existing)) return existing
   } catch {
     /* ignore */
   }
@@ -372,6 +404,13 @@ async function flushQueue() {
     queue = items.concat(queue).slice(0, MAX_QUEUE)
   } else if (ok) {
     flushRetriesLeft = MAX_FLUSH_RETRIES
+    if (items.some((i) => i.type === 'pageview')) {
+      try {
+        window.dispatchEvent(new Event(ANALYTICS_PAGEVIEW_FLUSHED_EVENT))
+      } catch {
+        /* ignore */
+      }
+    }
   }
   // if !ok and no retries: drop items (avoid unbounded memory)
 

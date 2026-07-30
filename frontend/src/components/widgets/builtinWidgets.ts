@@ -58,6 +58,10 @@ const TappShortcutWidget = lazyWidget(
   () => import('./TappShortcutWidget'),
   'TappShortcutWidget',
 )
+const VisitorStatsWidget = lazyWidget(
+  () => import('./VisitorStatsWidget'),
+  'VisitorStatsWidget',
+)
 const WeatherWidget = lazyWidget(
   () => import('./WeatherWidget'),
   'WeatherWidget',
@@ -121,6 +125,11 @@ export const BUILTIN_WIDGET_BASE_CONFIG = {
     component: ReportCardHost,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
+  'report-youtube': {
+    defaultSize: '4x2' as WidgetSize,
+    component: ReportCardHost,
+    supportedSizes: ['4x2'] as WidgetSize[],
+  },
   'report-netease': {
     defaultSize: '4x2' as WidgetSize,
     component: ReportCardHost,
@@ -171,6 +180,11 @@ export const BUILTIN_WIDGET_BASE_CONFIG = {
     component: GamePresenceWidget,
     supportedSizes: ['4x2'] as WidgetSize[],
   },
+  'visitor-stats': {
+    defaultSize: '4x2' as WidgetSize,
+    component: VisitorStatsWidget,
+    supportedSizes: ['2x2', '4x2'] as WidgetSize[],
+  },
 } as const
 
 export type BuiltinWidgetId = keyof typeof BUILTIN_WIDGET_BASE_CONFIG
@@ -187,6 +201,7 @@ const BUILTIN_WIDGET_ORDER: BuiltinWidgetId[] = [
   'report-bilibili',
   'report-steam',
   'report-github',
+  'report-youtube',
   'report-netease',
   'report-bangumi',
   'report-mal',
@@ -197,6 +212,7 @@ const BUILTIN_WIDGET_ORDER: BuiltinWidgetId[] = [
   'social-network',
   'tapp-shortcut',
   'game-presence',
+  'visitor-stats',
 ]
 
 /** Map widget id → t.widgets key */
@@ -211,6 +227,7 @@ const WIDGET_NAME_KEY: Record<BuiltinWidgetId, keyof WidgetsI18n> = {
   'report-bilibili': 'reportBilibili',
   'report-steam': 'reportSteam',
   'report-github': 'reportGithub',
+  'report-youtube': 'reportYoutube',
   'report-netease': 'reportNetease',
   'report-bangumi': 'reportBangumi',
   'report-mal': 'reportMal',
@@ -221,6 +238,7 @@ const WIDGET_NAME_KEY: Record<BuiltinWidgetId, keyof WidgetsI18n> = {
   'social-network': 'socialNetwork',
   'tapp-shortcut': 'tappShortcut',
   'game-presence': 'gamePresence',
+  'visitor-stats': 'visitorStats',
 }
 
 /**

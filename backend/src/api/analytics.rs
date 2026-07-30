@@ -2,6 +2,7 @@
 //!
 //! - POST `/api/analytics/collect`  — batched, preferred (pageview / engagement / event)
 //! - POST `/api/analytics/pageview` — legacy single pageview (still supported)
+//! - GET  `/api/analytics/visitor`  — public visitor card (own ordinal + site totals)
 //! - GET  `/api/analytics/summary`  — admin only
 //! - GET  `/api/analytics/export`   — admin: full JSON backup
 //! - POST `/api/analytics/import`   — admin: restore / merge backup
@@ -65,6 +66,10 @@ static VIEW_DEDUPE: once_cell::sync::Lazy<Arc<Mutex<HashMap<String, Instant>>>> 
 static SUMMARY_CACHE: once_cell::sync::Lazy<Arc<Mutex<HashMap<i64, (Instant, Value)>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 const SUMMARY_CACHE_TTL: StdDuration = StdDuration::from_secs(45);
+/// Public visitor-card aggregate (today / all-time / trend). The per-visitor
+/// ordinal is **never** cached here — it is looked up per request.
+static VISITOR_CARD_CACHE: once_cell::sync::Lazy<Arc<Mutex<Option<(Instant, Value)>>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
 /// IP → country (code, name) cache for analytics intake.
 static COUNTRY_CACHE: once_cell::sync::Lazy<
     Arc<Mutex<HashMap<String, (Instant, CountryInfo)>>>,
@@ -77,6 +82,7 @@ struct CountryInfo {
 }
 
 async fn invalidate_summary_cache() {
+    *VISITOR_CARD_CACHE.lock().await = None;
     SUMMARY_CACHE.lock().await.clear();
 }
 
@@ -589,30 +595,90 @@ ON CONFLICT (day, path) DO UPDATE SET
     Ok(())
 }
 
+/// Stored arrival ordinal for a visitor on `day` ("you are today's Nth visitor").
+///
+/// `0` means unknown — rows written before the column existed, or non-site paths
+/// which never get an ordinal. Callers treat unknown as "no number to show"
+/// rather than "visitor #0".
+async fn read_visitor_ordinal(
+    db: &DatabaseConnection,
+    day: NaiveDate,
+    visitor: &str,
+) -> Result<Option<i64>, sea_orm::DbErr> {
+    let row = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+SELECT ordinal FROM analytics_visitor_seen
+WHERE day = $1 AND path = $2 AND visitor_hash = $3
+"#,
+            [
+                SeaValue::from(day),
+                SeaValue::from(SITE_PATH.to_string()),
+                SeaValue::from(visitor.to_string()),
+            ],
+        ))
+        .await?;
+    Ok(row
+        .and_then(|r| r.try_get::<i64>("", "ordinal").ok())
+        .filter(|n| *n > 0))
+}
+
+/// Counts the visitor as a site-unique for `day` and returns their arrival
+/// ordinal, or `None` when it cannot be determined.
+///
+/// The ordinal has to be **persisted**, not derived: the number a visitor is
+/// shown must not move for the rest of the day, and any rank computed from the
+/// hash set drifts upward as later visitors arrive. So the post-increment
+/// `unique_visitors` value — which *is* the arrival position — is captured with
+/// `RETURNING` and written onto the visitor's row. `RETURNING` on the single
+/// counter row is atomic per statement, so concurrent first-visits can never
+/// come away holding the same number.
 async fn record_site_unique(
     db: &DatabaseConnection,
     day: NaiveDate,
     visitor: &str,
-) -> Result<(), sea_orm::DbErr> {
+) -> Result<Option<i64>, sea_orm::DbErr> {
     let is_new = mark_visitor_seen(db, day, SITE_PATH, visitor).await?;
     if !is_new {
-        return Ok(());
+        return read_visitor_ordinal(db, day, visitor).await;
     }
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        r#"
+    let ordinal = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
 INSERT INTO analytics_page_daily (day, path, views, unique_visitors, engagement_ms, engaged_views)
 VALUES ($1, $2, 0, 1, 0, 0)
 ON CONFLICT (day, path) DO UPDATE SET
   unique_visitors = analytics_page_daily.unique_visitors + 1
+RETURNING unique_visitors
 "#,
-        [
-            SeaValue::from(day),
-            SeaValue::from(SITE_PATH.to_string()),
-        ],
-    ))
-    .await?;
-    Ok(())
+            [
+                SeaValue::from(day),
+                SeaValue::from(SITE_PATH.to_string()),
+            ],
+        ))
+        .await?
+        .and_then(|r| r.try_get::<i64>("", "unique_visitors").ok())
+        .filter(|n| *n > 0);
+
+    if let Some(n) = ordinal {
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE analytics_visitor_seen SET ordinal = $4
+WHERE day = $1 AND path = $2 AND visitor_hash = $3
+"#,
+            [
+                SeaValue::from(day),
+                SeaValue::from(SITE_PATH.to_string()),
+                SeaValue::from(visitor.to_string()),
+                SeaValue::from(n),
+            ],
+        ))
+        .await?;
+    }
+    Ok(ordinal)
 }
 
 /// Internal event name: marks "this visitor already contributed engaged_views
@@ -1544,6 +1610,171 @@ FROM analytics_page_daily WHERE path <> $1
     (StatusCode::OK, Json(body))
 }
 
+// ── Public visitor card ────────────────────────────────────────────────────
+
+/// Trend window on the public card (kept small — it is a widget, not a report).
+const VISITOR_CARD_DAYS: i64 = 5;
+
+/// `vid` out of the raw query string.
+///
+/// A valid vid is `[A-Za-z0-9_-]{16,64}` (see [`is_valid_vid`]), so there is
+/// nothing to percent-decode; anything that needed decoding would fail
+/// validation anyway and fall through to the ip+ua fingerprint.
+fn vid_from_query(uri: &axum::http::Uri) -> Option<String> {
+    uri.query()?.split('&').find_map(|kv| {
+        let (k, v) = kv.split_once('=')?;
+        (k == "vid").then(|| v.to_string())
+    })
+}
+
+/// Today / all-time / trend, shared by every visitor and cached briefly.
+async fn visitor_card_aggregate(db: &DatabaseConnection) -> Value {
+    {
+        let cache = VISITOR_CARD_CACHE.lock().await;
+        if let Some((at, body)) = cache.as_ref() {
+            if at.elapsed() < SUMMARY_CACHE_TTL {
+                return body.clone();
+            }
+        }
+    }
+
+    let today = analytics_today();
+    let from = today - Duration::days(VISITOR_CARD_DAYS - 1);
+    let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap_or(from);
+
+    let daily_rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+SELECT day::text AS day,
+       COALESCE(SUM(CASE WHEN path <> $3 THEN views ELSE 0 END), 0)::bigint AS views,
+       COALESCE(MAX(CASE WHEN path = $3 THEN unique_visitors ELSE 0 END), 0)::bigint AS unique_visitors
+FROM analytics_page_daily
+WHERE day >= $1 AND day <= $2
+GROUP BY day
+ORDER BY day ASC
+"#,
+            [
+                SeaValue::from(from),
+                SeaValue::from(today),
+                SeaValue::from(SITE_PATH.to_string()),
+            ],
+        ))
+        .await
+        .unwrap_or_default();
+
+    let mut by_day: HashMap<String, (i64, i64)> = HashMap::new();
+    for row in &daily_rows {
+        let day: String = row.try_get("", "day").unwrap_or_default();
+        let views: i64 = row.try_get("", "views").unwrap_or(0);
+        let uv: i64 = row.try_get("", "unique_visitors").unwrap_or(0);
+        by_day.insert(day, (views, uv));
+    }
+
+    // Gap-fill so the sparkline always has one column per day in the window.
+    let mut daily = Vec::new();
+    let mut cursor = from;
+    while cursor <= today {
+        let key = cursor.format("%Y-%m-%d").to_string();
+        let (views, uv) = by_day.get(&key).copied().unwrap_or((0, 0));
+        daily.push(json!({ "day": key, "views": views, "unique_visitors": uv }));
+        cursor += Duration::days(1);
+    }
+
+    let (today_views, today_uv) = by_day
+        .get(&today.format("%Y-%m-%d").to_string())
+        .copied()
+        .unwrap_or((0, 0));
+
+    let all_time_views = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+SELECT COALESCE(SUM(views), 0)::bigint AS views
+FROM analytics_page_daily WHERE path <> $1
+"#,
+            [SeaValue::from(SITE_PATH.to_string())],
+        ))
+        .await
+        .ok()
+        .flatten()
+        .and_then(|r| r.try_get::<i64>("", "views").ok())
+        .unwrap_or(0);
+    let all_time_uv = count_distinct_site(db, epoch, today).await;
+
+    let body = json!({
+        "days": VISITOR_CARD_DAYS,
+        "from": from.format("%Y-%m-%d").to_string(),
+        "to": today.format("%Y-%m-%d").to_string(),
+        "timezone": analytics_tz_label(),
+        "today": { "views": today_views, "unique_visitors": today_uv },
+        "all_time": {
+            "views": all_time_views,
+            "unique_visitors": all_time_uv,
+            "unique_visitors_note": "bounded_by_visitor_seen_retention",
+        },
+        "daily": daily,
+    });
+
+    *VISITOR_CARD_CACHE.lock().await = Some((Instant::now(), body.clone()));
+    body
+}
+
+/// GET `/api/analytics/visitor?vid=…` — **public** visitor card.
+///
+/// Deliberately narrower than the admin summary: site-wide totals, a 7-day
+/// trend, and the caller's own arrival ordinal. Per-page, per-referrer,
+/// per-country and engagement breakdowns stay admin-only.
+///
+/// Read-only — it never creates a visitor row, so polling this endpoint cannot
+/// inflate the counters. `your_ordinal_today` is therefore null until the
+/// visitor's own pageview beacon has landed.
+pub async fn get_visitor_card(
+    crate::extract::Db(db): crate::extract::Db,
+    ConnectInfo(_peer): ConnectInfo<SocketAddr>,
+    request: Request,
+) -> (StatusCode, Json<Value>) {
+    if !analytics_collection_enabled().await {
+        return (
+            StatusCode::OK,
+            Json(json!({ "success": true, "enabled": false })),
+        );
+    }
+
+    // Admin sessions are never recorded (see `collect`), so the site owner has
+    // no ordinal of their own. Report that rather than showing a blank slot.
+    let is_admin = crate::middleware::auth::extract_optional_claims(request.headers())
+        .map(|c| c.is_admin)
+        .unwrap_or(false);
+    let ip = crate::middleware::client_ip::extract_client_ip(&request);
+    let ua = request
+        .headers()
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    let vid = vid_from_query(request.uri());
+
+    let mut body = visitor_card_aggregate(&db).await;
+
+    let ordinal = if is_admin {
+        None
+    } else {
+        let visitor = resolve_visitor_hash(vid.as_deref(), ip, &ua);
+        read_visitor_ordinal(&db, analytics_today(), &visitor)
+            .await
+            .unwrap_or(None)
+    };
+
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert("success".into(), json!(true));
+        obj.insert("enabled".into(), json!(true));
+        obj.insert("your_ordinal_today".into(), json!(ordinal));
+        obj.insert("counted".into(), json!(!is_admin));
+    }
+    (StatusCode::OK, Json(body))
+}
+
 // ── Export / import (admin backup) ─────────────────────────────────────────
 
 fn parse_day_str(raw: &str) -> Option<NaiveDate> {
@@ -1610,7 +1841,7 @@ ORDER BY day ASC, path ASC
         .query_all(Statement::from_string(
             DatabaseBackend::Postgres,
             r#"
-SELECT day::text AS day, path, visitor_hash
+SELECT day::text AS day, path, visitor_hash, ordinal
 FROM analytics_visitor_seen
 ORDER BY day ASC, path ASC, visitor_hash ASC
 "#
@@ -1625,6 +1856,7 @@ ORDER BY day ASC, path ASC, visitor_hash ASC
                     "day": row.try_get::<String>("", "day").unwrap_or_default(),
                     "path": row.try_get::<String>("", "path").unwrap_or_default(),
                     "visitor_hash": row.try_get::<String>("", "visitor_hash").unwrap_or_default(),
+                    "ordinal": row.try_get::<i64>("", "ordinal").unwrap_or(0),
                 })
             })
             .collect::<Vec<_>>(),
@@ -2142,14 +2374,16 @@ ON CONFLICT (day, path) DO UPDATE SET
             .execute(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"
-INSERT INTO analytics_visitor_seen (day, path, visitor_hash)
-VALUES ($1, $2, $3)
+INSERT INTO analytics_visitor_seen (day, path, visitor_hash, ordinal)
+VALUES ($1, $2, $3, $4)
 ON CONFLICT (day, path, visitor_hash) DO NOTHING
 "#,
                 [
                     SeaValue::from(day),
                     SeaValue::from(path),
                     SeaValue::from(hash.to_string()),
+                    // 老备份没有 ordinal 字段 → 0（序号未知），不影响其余统计
+                    SeaValue::from(i64_nonneg(row.get("ordinal")).unwrap_or(0)),
                 ],
             ))
             .await
@@ -2520,6 +2754,28 @@ mod tests {
             "reserved internal names rejected"
         );
         assert!(normalize_event_name("__custom").is_none());
+    }
+
+    #[test]
+    fn parses_vid_from_query() {
+        let uri = |s: &str| s.parse::<axum::http::Uri>().unwrap();
+        assert_eq!(
+            vid_from_query(&uri("/api/analytics/visitor?vid=0123456789abcdef")).as_deref(),
+            Some("0123456789abcdef")
+        );
+        // 位置无关，且不会被前缀相同的键骗到
+        assert_eq!(
+            vid_from_query(&uri("/x?days=7&vid=abcdefghijklmnop&z=1")).as_deref(),
+            Some("abcdefghijklmnop")
+        );
+        assert_eq!(vid_from_query(&uri("/x?myvid=nope")), None);
+        assert_eq!(vid_from_query(&uri("/x")), None);
+        assert_eq!(vid_from_query(&uri("/x?vid")), None);
+        // 取到的值仍要过 is_valid_vid，垃圾输入会退回 ip+ua 指纹
+        assert!(
+            !is_valid_vid(&vid_from_query(&uri("/x?vid=short")).unwrap()),
+            "too-short vid must not pass validation"
+        );
     }
 
     #[test]

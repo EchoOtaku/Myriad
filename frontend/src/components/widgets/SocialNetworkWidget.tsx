@@ -22,6 +22,7 @@ import {
   SiBilibili,
   SiMyanimelist,
   SiNeteasecloudmusic,
+  SiYoutube,
 } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
@@ -194,6 +195,21 @@ const PLATFORMS: readonly PlatformInfo[] = Object.freeze([
     configKey: 'github_username',
   },
   {
+    id: 'youtube',
+    name: 'YouTube',
+    icon: <SiYoutube aria-hidden="true" />,
+    color: '#FF0000',
+    darkColor: '#ff4d4d',
+    getUserUrl: (channelId: string) => {
+      const id = String(channelId).trim()
+      if (id.startsWith('UC') && id.length >= 20) {
+        return `https://www.youtube.com/channel/${id}`
+      }
+      return `https://www.youtube.com/@${id.replace(/^@/, '')}`
+    },
+    configKey: 'youtube_channel_id',
+  },
+  {
     id: 'netease',
     name: 'NetEase Music', // Will be translated in component
     icon: <SiNeteasecloudmusic aria-hidden="true" />,
@@ -239,10 +255,11 @@ const PLATFORM_INDEX_MAP: Record<string, number> = {
   bilibili: 0,
   steam: 1,
   github: 2,
-  netease: 3,
-  bangumi: 4,
-  mal: 5,
-  x: 6,
+  youtube: 3,
+  netease: 4,
+  bangumi: 5,
+  mal: 6,
+  x: 7,
 }
 
 // 静态动画配置常量 - 避免每次渲染创建新对象
@@ -513,6 +530,7 @@ interface PlatformUserIds {
   bilibili_uid?: string
   steam_id?: string
   github_username?: string
+  youtube_channel_id?: string
   netease_user_id?: string
   bangumi_username?: string
   mal_username?: string
@@ -565,6 +583,12 @@ async function fetchPlatformUserIds(): Promise<PlatformUserIds> {
               field.value
             ) {
               result.steam_id = field.value
+            } else if (
+              platform.name === 'YouTube' &&
+              field.key === 'channel_id' &&
+              field.value
+            ) {
+              result.youtube_channel_id = field.value
             } else if (
               platform.name === 'Netease Music' &&
               field.key === 'user_id' &&

@@ -534,6 +534,12 @@ pub struct PrefsBody {
     pub check_interval_secs: Option<serde_json::Value>,
     #[serde(default)]
     pub auto_install: Option<bool>,
+    /// Toggle auto-prune of older pgdata backups (updater snapshot retention).
+    #[serde(default)]
+    pub snapshot_limit_enabled: Option<bool>,
+    /// Max older non-keep backups when limit is enabled (1..=20).
+    #[serde(default)]
+    pub snapshot_limit: Option<u32>,
 }
 
 pub async fn set_prefs(Json(body): Json<PrefsBody>) -> Response {
@@ -553,6 +559,12 @@ pub async fn set_prefs(Json(body): Json<PrefsBody>) -> Response {
     }
     if let Some(ai) = body.auto_install {
         payload["auto_install"] = json!(ai);
+    }
+    if let Some(enabled) = body.snapshot_limit_enabled {
+        payload["snapshot_limit_enabled"] = json!(enabled);
+    }
+    if let Some(limit) = body.snapshot_limit {
+        payload["snapshot_limit"] = json!(limit);
     }
     match c.post_json("/prefs", Some(&payload), None).await {
         Ok(v) => Json(v).into_response(),

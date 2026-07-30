@@ -11,6 +11,7 @@
 // ============================================
 
 import { API_URL } from '../config'
+import { normalizeJsonMediaUrls } from './proxyImageUrl'
 
 const pendingRequests = new Map<string, Promise<any>>()
 
@@ -259,6 +260,7 @@ export async function getSetupStatusDeduped(): Promise<any> {
 /**
  * 获取库数据（去重）
  * 缓存 2 分钟（数据量大，减少请求）
+ * 入口统一 normalizeJsonMediaUrls，封面与报告卡同一套防盗链规则。
  */
 export async function getLibraryDataDeduped(): Promise<any> {
   return dedupedFetch(
@@ -269,7 +271,8 @@ export async function getLibraryDataDeduped(): Promise<any> {
         signal: AbortSignal.timeout(30000), // 30秒超时（数据量大）
       })
       if (!response.ok) throw new Error('Failed to fetch library data')
-      return response.json()
+      const data = await response.json()
+      return normalizeJsonMediaUrls(data)
     },
     { cacheTTL: 2 * 60 * 1000 }, // 2分钟
   )

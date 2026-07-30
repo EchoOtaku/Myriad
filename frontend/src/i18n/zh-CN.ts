@@ -864,6 +864,14 @@ export const zhCN: TranslationKeys = {
     updaterSnapshotGroupTitle: '备份与回退',
     updaterSnapshotGroupDesc: '更新前自动备份；出问题可从这里回退。',
     updaterNoSnapshots: '还没有备份。第一次更新后会出现。',
+    updaterSnapshotLimitEnabled: '备份上限',
+    updaterSnapshotLimitEnabledDescOn:
+      '自动只保留最新 {n} 份；24 小时内与「保留」标记不会自动删',
+    updaterSnapshotLimitEnabledDescOff: '关闭后不再按数量自动清理，仍可手动删除',
+    updaterSnapshotLimitCount: '保留数量',
+    updaterSnapshotLimitOption: '最新 {n} 份',
+    updaterSnapshotLimitSaved: '备份上限已保存',
+    updaterSnapshotLimitSavedPruned: '备份上限已保存，并清理了 {n} 份旧备份',
     updaterRollback: '回退到此版本',
     updaterRollbackDispatched: '回退已开始',
     updaterDeleteSnapshot: '删除',
@@ -911,17 +919,8 @@ export const zhCN: TranslationKeys = {
     allConfig: '所有配置',
     tipsBanner: {
       label: '问候',
-      greeting: {
-        subtitles: {
-          morning: '新的一天，慢慢开始',
-          forenoon: '思路正好，不急不躁',
-          noon: '午间小憩，松一松',
-          afternoon: '稳住节奏，继续推进',
-          dusk: '收个干净利落的尾',
-          evening: '轻装上阵也没关系',
-          night: '改完记得早点休息',
-        },
-      },
+      lastLogin: '上次登录 {time}',
+      lastLoginNever: '上次登录 —',
     },
     saveConfig: '保存配置',
     resetConfig: '重置配置',
@@ -999,9 +998,6 @@ export const zhCN: TranslationKeys = {
     fieldWallpaperBlur: '壁纸模糊度',
     sliderWeak: '弱 · 更清晰',
     sliderStrong: '强 · 更模糊',
-    fieldWallpaperParallax: '壁纸视差效果',
-    fieldPetEnabled: '启用萌宠',
-    fieldPetImageUrl: '萌宠图片链接',
     fieldSiteTitle: '网站标题',
     fieldSiteDescription: '网站描述',
     fieldSiteFavicon: '网站图标',
@@ -1084,7 +1080,7 @@ export const zhCN: TranslationKeys = {
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteFavicon:
       '/favicon.webp 或 https://example.com/icon.png',
-    placeholderPetImageUrl: '萌宠角色图片的 URL',
+
     callbackUrl: '回调地址',
     savingDefault: '正在保存默认配置...',
     resetFailed: '重置配置失败：',
@@ -1140,6 +1136,7 @@ export const zhCN: TranslationKeys = {
     platformDescBilibili: '收藏、追番与观看历史',
     platformDescBangumi: '收藏、评分与追看状态',
     platformDescSteam: '游戏库、愿望单与游玩统计',
+    platformDescYoutube: '公开频道数据与最近上传',
     platformDescNetease: '喜欢的歌曲与音乐品味',
     platformDescX: '资料与帖子，支持分享',
     platformDescDiscord: '画像、服务器与绑定账号',
@@ -1175,6 +1172,12 @@ export const zhCN: TranslationKeys = {
     platformSetupSteam2Title: '获取 Steam ID',
     platformSetupSteam2Desc:
       '账户详情页可见；也可从个人资料链接解析 17 位 SteamID64。',
+    platformSetupYoutube1Title: '创建 YouTube Data API 密钥',
+    platformSetupYoutube1Desc:
+      'Google Cloud 控制台启用 YouTube Data API v3，创建 API 密钥并限制到该 API。',
+    platformSetupYoutube2Title: '频道 ID 或 @handle',
+    platformSetupYoutube2Desc:
+      '高级功能页的频道 ID（UCxxxx），或公开 @handle。仅公开数据，无需 Google OAuth。',
     platformSetupNetease1Title: '获取用户 ID',
     platformSetupNetease1Desc:
       '打开网易云个人主页，地址中 /user/home?id= 后的数字。',
@@ -1496,6 +1499,7 @@ export const zhCN: TranslationKeys = {
     reportBilibili: 'Bilibili报告',
     reportSteam: 'Steam报告',
     reportGithub: 'GitHub报告',
+    reportYoutube: 'YouTube报告',
     reportNetease: '网易云报告',
     reportBangumi: 'Bangumi报告',
     reportMal: 'MyAnimeList报告',
@@ -1506,6 +1510,7 @@ export const zhCN: TranslationKeys = {
     socialNetwork: '社交网络',
     tappShortcut: 'Tapp 快捷方式',
     gamePresence: '米哈游游戏卡片',
+    visitorStats: '访客统计',
     library: '资料库',
     dataReport: '平台报告',
     digitalLife: '数字生命',
@@ -2299,6 +2304,25 @@ export const zhCN: TranslationKeys = {
     loadCacheFailed: '加载缓存失败',
     saveCacheFailed: '保存缓存失败',
     fetchStatsFailed: '获取资料库统计失败',
+  },
+
+  // 访客统计小组件
+  visitorStats: {
+    widgetTitle: '访客统计',
+    daysN: '{n} 天',
+    ordinalLead: '你是今天第',
+    ordinalTrail: '位访客',
+    staffNotCounted: '管理员流量不计入统计',
+    ordinalPending: '正在记录本次访问…',
+    todayVisitors: '今日访客',
+    todayVisitorsShort: '今日访客',
+    todayViewsShort: '浏览',
+    allTimeViewsShort: '累计浏览',
+    allTimeVisitorsShort: '访客',
+    chartAria: '近 {n} 日浏览量与独立访客趋势',
+    collectionOff: '站长已关闭访客统计',
+    loadFailed: '加载失败',
+    empty: '暂无访问数据',
   },
 
   // 最近活动小组件

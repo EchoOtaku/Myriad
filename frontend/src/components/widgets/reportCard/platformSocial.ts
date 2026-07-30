@@ -20,6 +20,18 @@ export const PLATFORM_SOCIAL: Record<
     fieldKey: 'username',
     getUserUrl: (u) => `https://github.com/${u}`,
   },
+  youtube: {
+    publicName: 'YouTube',
+    fieldKey: 'channel_id',
+    getUserUrl: (u) => {
+      const id = String(u).trim()
+      if (id.startsWith('UC') && id.length >= 20) {
+        return `https://www.youtube.com/channel/${id}`
+      }
+      const handle = id.replace(/^@/, '')
+      return `https://www.youtube.com/@${handle}`
+    },
+  },
   netease: {
     publicName: 'Netease Music',
     fieldKey: 'user_id',

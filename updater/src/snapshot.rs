@@ -19,7 +19,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 use tokio::process::Command;
 use tracing::{info, warn};
@@ -276,19 +276,37 @@ impl<'a> SnapshotManager<'a> {
     }
 
     /// Apply the keep-N retention policy described in spec §9.3.
+    ///
+    /// Always retained:
+    /// - `keep=true` (operator permanent pin)
+    /// - created within the last 24 hours
+    /// - currently referenced by an in-flight job or rescue / needs_manual recovery
+    ///
+    /// Among the remaining entries, keep the most recent `keep_n` and delete the rest.
+    /// `keep_n == 0` deletes all eligible older non-keep snapshots (used only when callers
+    /// intentionally pass zero; the prefs path clamps to ≥1).
     pub fn prune(&self, keep_n: usize) -> Result<Vec<String>> {
         let mut sf = self.state.read_snapshots()?;
         let cutoff = Utc::now() - chrono::Duration::hours(24);
+
+        // Collect ids that must never be auto-deleted (in-use / rescue).
+        let mut protected: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for m in &sf.items {
+            if self.in_use_reason(&m.id)?.is_some() {
+                protected.insert(m.id.clone());
+            }
+        }
+
         let mut keepers: Vec<&SnapshotMeta> = sf
             .items
             .iter()
-            .filter(|m| m.keep || m.created_at >= cutoff)
+            .filter(|m| m.keep || m.created_at >= cutoff || protected.contains(&m.id))
             .collect();
         // Among the rest, keep the most recent N.
         let mut others: Vec<&SnapshotMeta> = sf
             .items
             .iter()
-            .filter(|m| !m.keep && m.created_at < cutoff)
+            .filter(|m| !m.keep && m.created_at < cutoff && !protected.contains(&m.id))
             .collect();
         others.sort_by_key(|m| std::cmp::Reverse(m.created_at));
         keepers.extend(others.iter().take(keep_n));
@@ -306,7 +324,14 @@ impl<'a> SnapshotManager<'a> {
                 false
             }
         });
-        self.state.write_snapshots(&sf)?;
+        if !removed.is_empty() {
+            self.state.write_snapshots(&sf)?;
+            info!(
+                keep_n,
+                removed = removed.len(),
+                "snapshot prune removed older backups"
+            );
+        }
         Ok(removed)
     }
 
@@ -811,5 +836,58 @@ mod tests {
         assert!(err.to_string().contains("keep=true"));
         assert!(state.snapshots_dir().join("snap-kept").exists());
         assert_eq!(state.read_snapshots().unwrap().items.len(), 2);
+    }
+
+    fn plant_snapshot_meta_at(state: &StateDir, id: &str, created_at: DateTime<Utc>, keep: bool) {
+        std::fs::create_dir_all(state.snapshots_dir().join(id)).unwrap();
+        std::fs::write(state.snapshots_dir().join(id).join("marker"), b"x").unwrap();
+        let mut sf = state.read_snapshots().unwrap();
+        sf.items.push(SnapshotMeta {
+            id: id.to_string(),
+            created_at,
+            source_version: None,
+            size_bytes: 1,
+            file_count: 1,
+            keep,
+            sample_sha256: None,
+        });
+        state.write_snapshots(&sf).unwrap();
+    }
+
+    #[test]
+    fn prune_keeps_recent_n_among_old_and_protects_keep() {
+        let dir = tempdir().unwrap();
+        let state = StateDir::open(&dir.path().join("state")).unwrap();
+        let old = Utc::now() - chrono::Duration::hours(48);
+        // 5 old non-keep snapshots; keep only the 2 newest among them.
+        plant_snapshot_meta_at(&state, "old-a", old - chrono::Duration::hours(4), false);
+        plant_snapshot_meta_at(&state, "old-b", old - chrono::Duration::hours(3), false);
+        plant_snapshot_meta_at(&state, "old-c", old - chrono::Duration::hours(2), false);
+        plant_snapshot_meta_at(&state, "old-d", old - chrono::Duration::hours(1), false);
+        plant_snapshot_meta_at(&state, "old-e", old, false);
+        // Permanent keep + fresh (<24h) must survive regardless of keep_n.
+        plant_snapshot_meta_at(&state, "kept-forever", old - chrono::Duration::hours(10), true);
+        plant_snapshot_meta_at(&state, "fresh", Utc::now() - chrono::Duration::hours(1), false);
+
+        let mgr = SnapshotManager {
+            state: &state,
+            pgdata: dir.path().join("pgdata"),
+        };
+        let removed = mgr.prune(2).unwrap();
+        assert_eq!(removed.len(), 3);
+        let ids: std::collections::HashSet<_> = state
+            .read_snapshots()
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        assert!(ids.contains("old-d"));
+        assert!(ids.contains("old-e"));
+        assert!(ids.contains("kept-forever"));
+        assert!(ids.contains("fresh"));
+        assert!(!ids.contains("old-a"));
+        assert!(!ids.contains("old-b"));
+        assert!(!ids.contains("old-c"));
     }
 }

@@ -377,7 +377,14 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
             transition={{ duration: 0.6, ease: 'easeOut' }}
           >
             <img
-              src={item.avatar.replace(/_(normal|bigger)\./, '_400x400.')}
+              src={
+                String(item.avatar).includes('/api/proxy/image')
+                  ? item.avatar
+                  : String(item.avatar).replace(
+                      /_(normal|bigger)\./,
+                      '_400x400.',
+                    )
+              }
               alt={item.name || item.username}
               className="w-full h-full object-cover translate-x-[6%] scale-110"
               loading="lazy"

@@ -1233,6 +1233,72 @@ html.dark .updater-hero-auto {
   gap: 0.6rem;
 }
 
+/* ===== 备份区：上限 prefs + 列表 ===== */
+.updater-snapshot-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+/* Plain row: label left, select + switch right. No card / hover. */
+.updater-snapshot-limit {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+  padding: 0.15rem 0 0.35rem;
+}
+
+.updater-snapshot-limit:has(.field-select-wrap.is-open) {
+  z-index: 8;
+}
+
+.updater-snapshot-limit-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.updater-snapshot-limit-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: var(--cfg-text-1);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.updater-snapshot-limit-desc {
+  color: var(--cfg-text-2);
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+
+.updater-snapshot-limit-controls {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.updater-snapshot-limit-controls .field-select-wrap {
+  flex-shrink: 0;
+  min-width: 7.2rem;
+  max-width: 10.5rem;
+}
+
+@media (width <= 680px) {
+  .updater-snapshot-limit {
+    align-items: flex-start;
+  }
+}
+
 .updater-auto-row {
   display: flex;
   align-items: center;
@@ -1243,27 +1309,12 @@ html.dark .updater-hero-auto {
   border: 1px solid var(--updater-subtle-border);
   border-radius: 0.75rem;
   background: var(--updater-subtle-bg);
-  backdrop-filter: var(--updater-subtle-filter);
-  -webkit-backdrop-filter: var(--updater-subtle-filter);
   cursor: pointer;
-  transition:
-    border-color var(--sm-dur-fast) var(--sm-ease-standard),
-    background-color var(--sm-dur-fast) var(--sm-ease-standard);
-}
-
-.updater-auto-row:hover {
-  border-color: rgb(var(--updater-accent) / 22%);
-  background: var(--updater-subtle-bg-hover);
 }
 
 html.dark .updater-auto-row {
   border-color: var(--updater-subtle-border);
   background: var(--updater-subtle-bg);
-}
-
-html.dark .updater-auto-row:hover {
-  border-color: rgb(var(--updater-accent) / 28%);
-  background: var(--updater-subtle-bg-hover);
 }
 
 .updater-auto-label {
@@ -1373,8 +1424,7 @@ html.dark .updater-auto-desc {
 @media (prefers-reduced-motion: reduce) {
   .updater-hero,
   .updater-hero-action .btn-base,
-  .updater-hero-recheck,
-  .updater-auto-row {
+  .updater-hero-recheck {
     transition: none;
   }
 

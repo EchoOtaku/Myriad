@@ -833,9 +833,16 @@ export const en: SettingGuidesCatalog = {
     snapshot: {
       what: 'List of automatic backups taken before upgrades.',
       chain:
-        '1) Auto backup before upgrade.\n2) On problems you can roll back or rescue from here.\n3) How many you can keep depends on disk space.',
+        '1) Auto backup before upgrade.\n2) On problems you can roll back or rescue from here.\n3) How many you can keep depends on disk space; enable Backup limit to keep only the newest few.',
       frontend: 'After rollback, content and settings return to the backup point.',
       notes: 'Before important upgrades, confirm a fresh snapshot exists.',
+    },
+    snapshotLimit: {
+      what: 'Auto-prune older backups so only the newest few remain.',
+      chain:
+        '1) When on, pick “Latest N” on the right; older backups beyond that are removed after a successful update or when you change this setting.\n2) Kept pins, backups under 24h, and backups in use by recovery are never auto-deleted.\n3) Off = no count-based auto-prune (manual delete still works).',
+      frontend: 'Top of Backups & rollback: label left, keep-count + switch right.',
+      notes: 'Default on, keep 3. Use 1–2 when disk is tight; raise for a longer rollback window.',
     },
     checkInterval: {
       what: 'How often the background checks for a new version.',

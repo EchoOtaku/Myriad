@@ -2168,7 +2168,7 @@ dependencies = [
 
 [[package]]
 name = "migration"
-version = "0.3.17"
+version = "0.3.18"
 dependencies = [
  "sea-orm",
  "sea-orm-migration",

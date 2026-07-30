@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { getCSRFToken } from '../../utils/csrf'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
+import { proxyImageUrl } from '../../utils/proxyImageUrl'
 import {
   clearAllUserCache,
   invalidateUserInfoCache,
@@ -100,7 +101,7 @@ export const UserSection: React.FC<UserSectionProps> = memo(
           session.username ||
           t.userModal.unknownUser
         const avatar =
-          session.avatar_url ||
+          proxyImageUrl(session.avatar_url) ||
           `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`
         const bio = session.bio || t.userModal.defaultBio
         const platform =
@@ -159,7 +160,9 @@ export const UserSection: React.FC<UserSectionProps> = memo(
               if (profileData.success && profileData.user_info) {
                 setUserInfo({
                   name: profileData.user_info.name || t.userModal.unknownUser,
-                  avatar: profileData.user_info.avatar || '',
+                  avatar:
+                    proxyImageUrl(profileData.user_info.avatar) ||
+                    `https://ui-avatars.com/api/?name=${encodeURIComponent(profileData.user_info.name || t.userModal.unknownUser)}&background=random`,
                   bio: profileData.user_info.bio || t.userModal.defaultBio,
                   platform:
                     profileData.user_info.platform ||

@@ -1,6 +1,6 @@
 /**
  * 配置侧栏横版 banner（收藏夹上方）。
- * 按时段问候；多 slide 时自动轮播（悬停/聚焦暂停）。
+ * 按时段问候 + 上次登录；多 slide 时自动轮播（悬停/聚焦暂停）。
  */
 
 import React, { useEffect, useId, useMemo, useState } from 'react'
@@ -65,26 +65,36 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
-/** 主：问候 · 次：时间 + 时段文案 */
+/** Compact local datetime for the narrow sidebar meta line. */
+function formatLastLogin(iso: string, locale: string): string | null {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleString(locale, {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/** 主：问候 · 次：上次登录 */
 function buildGreetingHtml(opts: {
   period: GreetingPeriod
   text: string
-  time: string
-  subtitle: string
+  lastLoginLine: string | null
   iconSrc: string
 }): string {
-  const { period, text, time, subtitle, iconSrc } = opts
+  const { period, text, lastLoginLine, iconSrc } = opts
+  const metaHtml = lastLoginLine
+    ? `<p class="gb-meta"><span class="gb-sub">${escapeHtml(lastLoginLine)}</span></p>`
+    : ''
   return `
 <div class="gb" data-period="${period}">
   <div class="gb-main">
     <img class="gb-icon" src="${escapeHtml(iconSrc)}" alt="" draggable="false" decoding="async" />
     <div class="gb-copy">
       <p class="gb-hello">${escapeHtml(text)}</p>
-      <p class="gb-meta">
-        <span class="gb-time">${escapeHtml(time)}</span>
-        <span class="gb-sep" aria-hidden="true">·</span>
-        <span class="gb-sub">${escapeHtml(subtitle)}</span>
-      </p>
+      ${metaHtml}
     </div>
   </div>
 </div>`.trim()
@@ -120,9 +130,21 @@ export const ConfigTipsBanner: React.FC<ConfigTipsBannerProps> = ({
       },
       locale,
     )
-    const subtitles = t.config.tipsBanner?.greeting?.subtitles
-    const subtitle =
-      subtitles?.[period] ?? subtitles?.afternoon ?? ''
+
+    const tpl =
+      t.config.tipsBanner?.lastLogin ?? '上次登录 {time}'
+    const neverLabel =
+      t.config.tipsBanner?.lastLoginNever ?? '上次登录 —'
+    let lastLoginLine: string | null = null
+    if (user?.last_login_at) {
+      const formatted = formatLastLogin(user.last_login_at, locale)
+      if (formatted) {
+        lastLoginLine = tpl.replace('{time}', formatted)
+      }
+    } else if (user) {
+      // Logged in but no timestamp (legacy row / never set)
+      lastLoginLine = neverLabel
+    }
 
     return {
       id: `greeting-${period}`,
@@ -130,12 +152,11 @@ export const ConfigTipsBanner: React.FC<ConfigTipsBannerProps> = ({
       html: buildGreetingHtml({
         period,
         text: greeting.text,
-        time: greeting.time,
-        subtitle,
+        lastLoginLine,
         iconSrc: GREETING_ICON_SRC[greeting.icon],
       }),
     }
-  }, [now, t, locale, user?.username])
+  }, [now, t, locale, user?.username, user?.last_login_at, user])
 
   // 后续可在此追加 slide；>1 时自动轮播
   const slides = useMemo<BannerSlide[]>(

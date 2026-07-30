@@ -401,6 +401,15 @@ export default function Home() {
                           src={userInfo.avatar}
                           alt={userInfo.name}
                           className="w-full h-full object-cover"
+                          // 代理图同源；缺省 referrer 可避免部分 CDN 二次校验异常
+                          referrerPolicy="no-referrer"
+                          decoding="async"
+                          onError={(e) => {
+                            const el = e.currentTarget
+                            if (el.dataset.fallback === '1') return
+                            el.dataset.fallback = '1'
+                            el.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name || 'User')}&background=random`
+                          }}
                         />
                       </div>
                       <div className="flex flex-col justify-center">

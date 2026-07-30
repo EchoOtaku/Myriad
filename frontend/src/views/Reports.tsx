@@ -14,6 +14,7 @@ import {
   SiMyanimelist,
   SiNeteasecloudmusic,
   SiPlaystation,
+  SiYoutube,
 } from '@lib/icons'
 
 import {
@@ -134,6 +135,16 @@ const PLATFORMS = [
     text: 'text-gray-600 dark:text-gray-400',
     border: 'border-gray-200/20 dark:border-neutral-700/20',
     widgetType: 'terminal',
+  },
+  {
+    id: 'youtube',
+    name: 'YouTube',
+    icon: <SiYoutube />,
+    color: 'from-red-500 to-red-700',
+    bg: 'bg-red-50/10 dark:bg-red-900/10',
+    text: 'text-red-600 dark:text-red-400',
+    border: 'border-red-200/20 dark:border-red-800/20',
+    widgetType: 'video',
   },
   {
     id: 'netease',
@@ -748,12 +759,18 @@ export default function Reports() {
   }, [])
 
   // 生成单个平台报告 - 性能优化：使用 useCallback
+  // 失败路径必须 toast（勿只 console）：用户点「点击生成」后 spinner 消失且无反馈即「静默失败」
   const generatePlatformReport = useCallback(
     async (platformId: string) => {
       setLoadingPlatform(platformId)
+      const platformName =
+        translatedPlatforms.find((p) => p.id === platformId)?.name || platformId
       try {
         const csrfToken = await getCSRFToken(true)
-        if (!csrfToken) return
+        if (!csrfToken) {
+          showToastMessage(t.reportsPage.getTokenFailed, 'error')
+          return
+        }
 
         // 1. 先刷新该平台的数据
         let fetchWarning: string | null = null
@@ -775,13 +792,20 @@ export default function Reports() {
           const fetchBody = await fetchResponse.json().catch(() => null)
           if (!fetchResponse.ok || fetchBody?.success === false) {
             fetchWarning =
-              fetchBody?.message ||
-              `刷新 ${platformId} 数据失败，尝试使用现有数据生成报告`
+              (typeof fetchBody?.message === 'string' && fetchBody.message) ||
+              t.reportsPage.refreshReportFailed.replace(
+                '{platform}',
+                platformName,
+              )
             console.warn(fetchWarning)
           } else {
             notifyRecentActivityUpdated()
           }
         } catch (fetchErr) {
+          fetchWarning = t.reportsPage.refreshReportFailed.replace(
+            '{platform}',
+            platformName,
+          )
           console.warn(`刷新 ${platformId} 数据请求出错:`, fetchErr)
         }
 
@@ -796,42 +820,67 @@ export default function Reports() {
           body: JSON.stringify({ platforms: [platformId] }),
         })
 
-        if (!response.ok) throw new Error(t.reportsPage.generateFailed)
+        const genBody = await response.json().catch(() => null)
+        if (!response.ok) {
+          const msg =
+            (typeof genBody?.message === 'string' && genBody.message) ||
+            t.reportsPage.generateFailed
+          throw new Error(msg)
+        }
+
+        if (!genBody) {
+          showToastMessage(t.reportsPage.generateFailed, 'error')
+          return
+        }
 
         // 解析生成结果，把后端给出的跳过原因透出给用户
-        const genBody = await response.json().catch(() => null)
-        if (genBody && genBody.success === false) {
+        if (genBody.success === false) {
           showToastMessage(
             genBody.message || fetchWarning || t.reportsPage.generateFailed,
             'error',
           )
           return
         }
-        const skippedReason = Array.isArray(genBody?.skipped)
+        const skippedReason = Array.isArray(genBody.skipped)
           ? genBody.skipped.find((s: any) => s?.platform === platformId)?.reason
           : null
         if (skippedReason) {
-          showToastMessage(skippedReason, 'error')
+          showToastMessage(String(skippedReason), 'error')
           return
         }
 
         // 3. 局部 merge 生成结果，避免整表替换其它平台报告
         const updated: PlatformReport | undefined = Array.isArray(
-          genBody?.reports,
+          genBody.reports,
         )
           ? genBody.reports.find((r: PlatformReport) => r.platform === platformId)
           : undefined
         if (updated) {
           invalidateLatestReportCache()
           mergePlatformReport(updated)
+          // 抓取失败但用缓存生成成功时，仍提示抓取问题，避免「半失败」无感
+          if (fetchWarning) {
+            showToastMessage(fetchWarning, 'warning')
+          }
+        } else {
+          showToastMessage(
+            fetchWarning || t.reportsPage.reportRefreshNoData,
+            'error',
+          )
         }
       } catch (err) {
         console.error('Generate platform report failed:', err)
+        showToastMessage(
+          err instanceof Error && err.message
+            ? err.message
+            : t.reportsPage.generateFailedRetry,
+          'error',
+        )
       } finally {
         setLoadingPlatform(null)
       }
     },
-    [t.reportsPage.generateFailed, mergePlatformReport, showToastMessage],
+    [t.reportsPage, translatedPlatforms, mergePlatformReport, showToastMessage],
   )
 
   return (

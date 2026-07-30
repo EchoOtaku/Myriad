@@ -772,6 +772,7 @@ const GamePresenceWidget = memo(
             src={s.icon}
             alt={s.name}
             className="rounded-full object-cover"
+            referrerPolicy="no-referrer"
             style={{
               width: `${size * fontScale}px`,
               height: `${size * fontScale}px`,
@@ -825,6 +826,7 @@ const GamePresenceWidget = memo(
                         : ''}`}
                       style={{ objectPosition: meta.artPos }}
                       loading="lazy"
+                      referrerPolicy="no-referrer"
                     />
                   ) : (
                     <div

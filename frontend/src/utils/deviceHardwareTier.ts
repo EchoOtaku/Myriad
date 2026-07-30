@@ -45,76 +45,142 @@ export interface HardwareTierResult {
   reason: string
 }
 
+// —— Apple Silicon 探测（WebGL 最多一次）————————————————————————
+
 /**
- * 判断 macOS 是否为 Apple Silicon。
- * 优先 userAgentData architecture；回退 WebGL UNMASKED_RENDERER。
+ * 最终结果缓存。
+ * - `undefined`：尚未得出结论（Chromium 可能在等 async architecture）
+ * - `null`：已尽力探测仍无法判断（不再开 WebGL）
+ * - `true` / `false`：已确认
+ */
+let cachedAppleSilicon: boolean | null | undefined
+/** 本页是否已创建过 WebGL 探测上下文 */
+let webglProbeDone = false
+
+function loseWebGlContext(gl: WebGLRenderingContext | WebGL2RenderingContext) {
+  try {
+    const lose = gl.getExtension('WEBGL_lose_context') as {
+      loseContext?: () => void
+    } | null
+    lose?.loseContext?.()
+  } catch {
+    /* ignore */
+  }
+}
+
+function hasHighEntropyArchitectureApi(nav: Navigator): boolean {
+  const uaData = (
+    nav as Navigator & {
+      userAgentData?: {
+        getHighEntropyValues?: (hints: string[]) => Promise<unknown>
+      }
+    }
+  ).userAgentData
+  return typeof uaData?.getHighEntropyValues === 'function'
+}
+
+/** 本页最多创建一次 WebGL；结果写入 `cachedAppleSilicon`。 */
+function probeWebGlOnce(): boolean | null {
+  if (cachedAppleSilicon !== undefined) return cachedAppleSilicon
+  if (webglProbeDone) {
+    cachedAppleSilicon = null
+    return null
+  }
+  webglProbeDone = true
+
+  try {
+    if (
+      typeof document === 'undefined' ||
+      typeof WebGLRenderingContext === 'undefined'
+    ) {
+      cachedAppleSilicon = null
+      return null
+    }
+    const canvas = document.createElement('canvas')
+    const gl = canvas.getContext('webgl', {
+      failIfMajorPerformanceCaveat: false,
+      powerPreference: 'low-power',
+    }) as WebGLRenderingContext | null
+    if (!gl || typeof gl.getExtension !== 'function') {
+      cachedAppleSilicon = null
+      return null
+    }
+    try {
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info')
+      if (dbg) {
+        const renderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) as string
+        if (typeof renderer === 'string' && renderer) {
+          if (/Apple\s+M\d/i.test(renderer) || /Apple GPU/i.test(renderer)) {
+            cachedAppleSilicon = true
+            return true
+          }
+          if (/Intel|AMD|NVIDIA/i.test(renderer) && !/Apple/i.test(renderer)) {
+            cachedAppleSilicon = false
+            return false
+          }
+          if (/Apple/i.test(renderer) && !/Intel/i.test(renderer)) {
+            cachedAppleSilicon = true
+            return true
+          }
+        }
+      }
+    } finally {
+      loseWebGlContext(gl)
+      canvas.width = 0
+      canvas.height = 0
+    }
+  } catch {
+    /* ignore */
+  }
+
+  cachedAppleSilicon = null
+  return null
+}
+
+/**
+ * 同步探测。
+ * - 已有结论 → 直接返回
+ * - UA 明确 arm64 → true
+ * - Chromium（有 high-entropy API）→ **不**开 WebGL，返回 null，等 async
+ * - 其余（Safari 等）→ 最多一次 WebGL
  */
 export function detectAppleSilicon(
   nav: Navigator | null = typeof navigator !== 'undefined' ? navigator : null,
 ): boolean | null {
   if (!nav) return null
+  if (cachedAppleSilicon !== undefined) return cachedAppleSilicon
 
-  // Chromium：getHighEntropyValues 异步，同步路径用 ua 提示或 WebGL
-  const uaData = (
-    nav as Navigator & {
-      userAgentData?: {
-        platform?: string
-        getHighEntropyValues?: (hints: string[]) => Promise<{
-          architecture?: string
-          bitness?: string
-          model?: string
-        }>
-      }
-    }
-  ).userAgentData
-
-  // 部分环境在 brands 旁暴露 platform；architecture 需异步，这里先 WebGL
-  try {
-    if (typeof document !== 'undefined') {
-      const canvas = document.createElement('canvas')
-      const gl =
-        canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
-      if (gl && 'getExtension' in gl) {
-        const dbg = (
-          gl as WebGLRenderingContext
-        ).getExtension('WEBGL_debug_renderer_info')
-        if (dbg) {
-          const renderer = (
-            gl as WebGLRenderingContext
-          ).getParameter(dbg.UNMASKED_RENDERER_WEBGL) as string
-          if (typeof renderer === 'string' && renderer) {
-            // "Apple M1", "Apple M2 Pro", "Apple GPU" on Apple Silicon
-            if (/Apple\s+M\d/i.test(renderer) || /Apple GPU/i.test(renderer)) {
-              return true
-            }
-            // Intel Iris / AMD on Mac → Intel / discrete, not M-series SoC
-            if (/Intel|AMD|NVIDIA/i.test(renderer) && !/Apple/i.test(renderer)) {
-              return false
-            }
-            if (/Apple/i.test(renderer) && !/Intel/i.test(renderer)) {
-              return true
-            }
-          }
-        }
-      }
-    }
-  } catch {
-    /* ignore WebGL probe failures */
+  const ua = typeof nav.userAgent === 'string' ? nav.userAgent : ''
+  if (/\b(Mac OS X|Macintosh).*\b(ARM64|arm64)\b/i.test(ua)) {
+    cachedAppleSilicon = true
+    return true
   }
 
-  // UA 极少直接写 arm；若 platform 为 MacIntel 不能当 Intel 芯片
-  void uaData
-  return null
+  // 同步路径不创建 WebGL；architecture 交给 detectAppleSiliconAsync
+  if (hasHighEntropyArchitectureApi(nav)) {
+    return null
+  }
+
+  return probeWebGlOnce()
+}
+
+/** 测试用：清空探测状态 */
+export function resetAppleSiliconCache(): void {
+  cachedAppleSilicon = undefined
+  webglProbeDone = false
 }
 
 /**
- * 异步补全 Apple Silicon（Chrome high-entropy architecture）。
- * 调用方可选：结果变化时刷新缓存。
+ * 异步补全：Chromium architecture 优先；失败再 **一次** WebGL 兜底。
  */
 export async function detectAppleSiliconAsync(
   nav: Navigator | null = typeof navigator !== 'undefined' ? navigator : null,
 ): Promise<boolean | null> {
   if (!nav) return null
+  if (cachedAppleSilicon === true || cachedAppleSilicon === false) {
+    return cachedAppleSilicon
+  }
+
   const uaData = (
     nav as Navigator & {
       userAgentData?: {
@@ -125,24 +191,32 @@ export async function detectAppleSiliconAsync(
       }
     }
   ).userAgentData
-  if (!uaData?.getHighEntropyValues) {
-    return detectAppleSilicon(nav)
-  }
-  try {
-    const values = await uaData.getHighEntropyValues([
-      'architecture',
-      'platform',
-    ])
-    const arch = (values.architecture || '').toLowerCase()
-    const platform = (values.platform || '').toLowerCase()
-    if (platform === 'macos' || platform === '') {
-      if (arch === 'arm' || arch === 'arm64') return true
-      if (arch === 'x86' || arch === 'x86_64') return false
+
+  if (uaData?.getHighEntropyValues) {
+    try {
+      const values = await uaData.getHighEntropyValues([
+        'architecture',
+        'platform',
+      ])
+      const arch = (values.architecture || '').toLowerCase()
+      const platform = (values.platform || '').toLowerCase()
+      if (platform === 'macos' || platform === '') {
+        if (arch === 'arm' || arch === 'arm64') {
+          cachedAppleSilicon = true
+          return true
+        }
+        if (arch === 'x86' || arch === 'x86_64') {
+          cachedAppleSilicon = false
+          return false
+        }
+      }
+    } catch {
+      /* fall through */
     }
-  } catch {
-    /* ignore */
   }
-  return detectAppleSilicon(nav)
+
+  // architecture 不可用：允许一次 WebGL（含 Chromium 失败路径）
+  return probeWebGlOnce()
 }
 
 // —— 分平台规则 ————————————————————————————————————————————————
@@ -195,7 +269,6 @@ export function evaluateHighHardware(
 
   switch (os) {
     case 'android': {
-      // 8G 以上 + 8 核级以上
       const memOk = memoryGiB != null && memoryGiB >= 8
       const cpuOk = cores != null && cores >= 8
       if (memOk && cpuOk) {
@@ -213,7 +286,6 @@ export function evaluateHighHardware(
     }
 
     case 'ios': {
-      // 18 / 26 / 27…：主版本 ≥ 18 为高；以下为低
       if (iosMajor == null) {
         return {
           highHardware: false,
@@ -236,7 +308,6 @@ export function evaluateHighHardware(
     }
 
     case 'macos': {
-      // M 系列高，Intel 低
       if (appleSilicon === true) {
         return {
           highHardware: true,
@@ -251,7 +322,6 @@ export function evaluateHighHardware(
           reason: 'macos low: Intel',
         }
       }
-      // 无法识别：保守当低（避免 Intel 误开 standard 重特效）
       return {
         highHardware: false,
         signals,
@@ -261,10 +331,8 @@ export function evaluateHighHardware(
 
     case 'windows':
     case 'linux': {
-      // 12G 以上（deviceMemory 分桶 ≥8）+ 6 核级以上
       const memOk = memoryGiB != null && memoryGiB >= 8
       const cpuOk = cores != null && cores >= 6
-      // 无 memory API 时：仅 cores ≥ 6 不够稳妥，要求 cores ≥ 8 才给高
       if (memoryGiB == null) {
         if (cores != null && cores >= 8) {
           return {
@@ -294,7 +362,6 @@ export function evaluateHighHardware(
     }
 
     default: {
-      // 未知平台：双高才给高
       if (
         memoryGiB != null &&
         memoryGiB >= 8 &&

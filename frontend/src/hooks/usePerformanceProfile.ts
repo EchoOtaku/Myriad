@@ -122,7 +122,15 @@ function readViewportFlags() {
 }
 
 export function usePerformanceProfile(): PerformanceProfile {
-  const [profile, setProfile] = useState<PerformanceProfile>(DEFAULT_PROFILE)
+  // 首帧用同步探测，避免 DEFAULT highHardware:true 闪一下再降档
+  const [profile, setProfile] = useState<PerformanceProfile>(() => {
+    if (typeof window === 'undefined') return DEFAULT_PROFILE
+    try {
+      return detectPerformanceProfile()
+    } catch {
+      return DEFAULT_PROFILE
+    }
+  })
   const hasInitialized = useRef(false)
 
   useEffect(() => {
@@ -143,16 +151,23 @@ export function usePerformanceProfile(): PerformanceProfile {
     syncHardwareToDocument(detected)
     setProfile(detected)
 
-    // macOS：同步路径可能认不出芯片（保守 low）。异步 architecture 确认后再升/降。
-    // 先保持 conservative 结果，避免 Intel 误开 standard。
+    // macOS：同步可能认不出芯片（保守 low）。async architecture / 单次 WebGL 后再升/降。
+    // 用 highHardware 是否变化判断，勿用 appleSilicon ===（async 已写缓存时恒等）。
     if (detected.os === 'macos') {
       void detectAppleSiliconAsync().then((appleSilicon) => {
         if (cancelled || appleSilicon == null) return
         const signals = collectHardwareSignals()
-        if (signals.appleSilicon === appleSilicon) return
         signals.appleSilicon = appleSilicon
         const { isMobile, reduceMotion } = readViewportFlags()
-        apply(buildProfile(signals, reduceMotion, isMobile))
+        const next = buildProfile(signals, reduceMotion, isMobile)
+        if (
+          cachedProfile &&
+          cachedProfile.highHardware === next.highHardware &&
+          cachedProfile.os === next.os
+        ) {
+          return
+        }
+        apply(next)
       })
     }
 

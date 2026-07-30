@@ -5,6 +5,7 @@
 import { API_URL } from '../config'
 import { isUserInChinaMainland } from './geoLocation'
 import { shouldPreserveNativeAudioOutput } from './platformDetect'
+import { proxyImageUrlOr } from './proxyImageUrl'
 
 export { shouldPreserveNativeAudioOutput }
 
@@ -409,6 +410,14 @@ export function parseKrc(krcText: string): WordLyricLine[] {
   return result.sort((a, b) => a.time - b.time)
 }
 
+/** 读缓存时再规范化封面（兼容会话里旧的 126.net 直链） */
+function normalizeSongCovers(songs: Song[]): Song[] {
+  return songs.map((s) => ({
+    ...s,
+    cover: proxyImageUrlOr(s.cover),
+  }))
+}
+
 /**
  * 从缓存获取歌单
  */
@@ -421,7 +430,7 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
   ) {
     // 刷新 LRU 顺序，避免常用歌单被优先淘汰。
     setPlaylistMemoryCache(cacheKey, memoryCache)
-    return memoryCache.data
+    return normalizeSongCovers(memoryCache.data)
   }
   if (memoryCache) playlistMemoryCache.delete(cacheKey)
 
@@ -438,7 +447,7 @@ function getPlaylistFromCache(cacheKey: string): Song[] | null {
       if (cached && Date.now() - cached.timestamp < PLAYLIST_CACHE_DURATION) {
         // 恢复到内存缓存
         setPlaylistMemoryCache(cacheKey, cached)
-        return cached.data
+        return normalizeSongCovers(cached.data)
       }
     }
   } catch (_error) {
@@ -595,7 +604,8 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
         name: track.name,
         artist: artists.map((a: any) => a.name).join(', ') || 'Unknown',
         album: album.name || '',
-        cover: album.picUrl || album.blurPicUrl || '',
+        // 126.net 封面常有防盗链；与报告卡同一套 proxyImageUrl
+        cover: proxyImageUrlOr(album.picUrl || album.blurPicUrl || ''),
         url: audioUrl,
         duration: Math.floor(duration / 1000),
         source: 'netease' as MusicSource,

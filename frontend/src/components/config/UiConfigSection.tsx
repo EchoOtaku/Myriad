@@ -54,6 +54,9 @@ interface ConfigField {
   required: boolean
 }
 
+/** @deprecated 从 uiBagOwnership 导入；此处 re-export 保持兼容 */
+export { UI_RESET_KEYS } from './uiBagOwnership'
+
 interface UiConfigSectionProps {
   /** UI 配置字段数组 */
   configFields: ConfigField[]
@@ -63,10 +66,6 @@ interface UiConfigSectionProps {
     value: string,
     options?: { silent?: boolean },
   ) => void
-  /** 获取字段标签（国际化） */
-  getFieldLabel: (key: string, originalLabel: string) => string
-  /** 获取字段占位符（国际化） */
-  getFieldPlaceholder: (key: string, originalPlaceholder: string) => string
   title: string
   icon: React.ReactNode
   description: string
@@ -76,8 +75,6 @@ interface UiConfigSectionProps {
 export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
   configFields,
   updateValue,
-  getFieldLabel,
-  getFieldPlaceholder,
   title,
   icon,
   description,
@@ -85,6 +82,34 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
 }) => {
   const { t } = useI18n()
   const { catalog: g, renderGuide, bindGuide } = useSettingGuide()
+
+  // 标签归属本 Section，壳层不再维护死字段 label map
+  const getFieldLabel = useCallback(
+    (fieldKey: string, originalLabel: string): string => {
+      const labels: Record<string, string> = {
+        wallpaper_url: t.config.fieldWallpaperUrl,
+        wallpaper_blur: t.config.fieldWallpaperBlur,
+        site_title: t.config.fieldSiteTitle,
+        site_description: t.config.fieldSiteDescription,
+        site_favicon: t.config.fieldSiteFavicon,
+      }
+      return labels[fieldKey] || originalLabel
+    },
+    [t],
+  )
+
+  const getFieldPlaceholder = useCallback(
+    (fieldKey: string, originalPlaceholder: string): string => {
+      const placeholders: Record<string, string> = {
+        wallpaper_url: t.config.placeholderWallpaperUrl,
+        site_title: t.config.placeholderSiteTitle,
+        site_description: t.config.placeholderSiteDescription,
+        site_favicon: t.config.placeholderSiteFavicon,
+      }
+      return placeholders[fieldKey] || originalPlaceholder
+    },
+    [t],
+  )
 
   // 辅助函数：获取配置字段值
   const getFieldValue = useCallback(
@@ -121,22 +146,15 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
     [configFields],
   )
 
-  // 背景主题字段（排除特定前缀和字段）
-  const backgroundFields = useMemo(
-    () =>
-      configFields.filter(
-        (f) =>
-          !f.key.startsWith('pet_') &&
-          !f.key.startsWith('github_') &&
-          !f.key.startsWith('music_') &&
-          !f.key.startsWith('proxy_') &&
-          !f.key.startsWith('evocative_') &&
-          !f.key.startsWith('site_') &&
-          !f.key.endsWith('_base_url') &&
-          !['base_url', 'wallpaper_parallax', 'cloud_sponsors'].includes(f.key),
-      ),
-    [configFields],
-  )
+  // 背景主题：只认明确属于本组的字段（勿用排除法——ui_config 是跨页共用的大袋子）
+  const backgroundFields = useMemo(() => {
+    const order = ['wallpaper_url', 'wallpaper_blur'] as const
+    const byKey = new Map(configFields.map((f) => [f.key, f]))
+    return order.flatMap((key) => {
+      const field = byKey.get(key)
+      return field ? [field] : []
+    })
+  }, [configFields])
 
   return (
     <SettingSection

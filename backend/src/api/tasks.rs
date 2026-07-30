@@ -12,6 +12,16 @@ use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+/// Platforms accepted by POST /api/tasks reprocess (must match smart_filter / seeds).
+const TASK_SUPPORTED_PLATFORMS: &[&str] = &[
+    "netease", "bilibili", "github", "steam", "youtube", "bangumi", "x", "discord", "mal", "xbox",
+    "psn",
+];
+
+fn is_task_supported_platform(platform: &str) -> bool {
+    TASK_SUPPORTED_PLATFORMS.contains(&platform)
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SubmitTaskRequest {
     pub platform: String,
@@ -40,15 +50,15 @@ pub async fn submit_task(
     let platform = payload.platform.to_lowercase();
 
     // 验证平台名称
-    let valid_platforms = [
-        "netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal", "xbox", "psn",
-    ];
-    if !valid_platforms.contains(&platform.as_str()) {
+    if !is_task_supported_platform(&platform) {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "success": false,
-                "error": format!("Invalid platform. Supported: {}", valid_platforms.join(", "))
+                "error": format!(
+                    "Invalid platform. Supported: {}",
+                    TASK_SUPPORTED_PLATFORMS.join(", ")
+                )
             })),
         );
     }
@@ -172,9 +182,23 @@ pub async fn list_tasks(State(_db): State<DatabaseConnection>) -> (StatusCode, J
         Json(json!({
             "success": true,
             "message": "Use GET /api/tasks/platform/{platform} to check specific platform tasks",
-            "supported_platforms": ["netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal", "xbox", "psn"]
+            "supported_platforms": TASK_SUPPORTED_PLATFORMS
         })),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_supported_platforms_include_youtube_and_peers() {
+        assert!(is_task_supported_platform("youtube"));
+        assert!(is_task_supported_platform("steam"));
+        assert!(is_task_supported_platform("github"));
+        assert!(!is_task_supported_platform("not-a-platform"));
+        assert!(TASK_SUPPORTED_PLATFORMS.contains(&"youtube"));
+    }
 }
 
 /// 后台处理函数

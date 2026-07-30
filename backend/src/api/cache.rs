@@ -31,7 +31,8 @@ pub struct ClearCacheRequest {
 /// GET /api/cache/status
 pub async fn get_cache_status(State(_db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     let platforms = vec![
-        "netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal", "xbox", "psn",
+        "netease", "bilibili", "github", "steam", "youtube", "bangumi", "x", "discord", "mal",
+        "xbox", "psn",
     ];
     let mut cache_info = Vec::new();
 
@@ -97,7 +98,8 @@ pub async fn get_all_platform_cache_previews(
     State(_db): State<DatabaseConnection>,
 ) -> (StatusCode, Json<Value>) {
     let platforms = [
-        "netease", "bilibili", "github", "steam", "bangumi", "x", "discord", "mal", "xbox", "psn",
+        "netease", "bilibili", "github", "steam", "youtube", "bangumi", "x", "discord", "mal",
+        "xbox", "psn",
     ];
     let mut previews = serde_json::Map::new();
     for platform in platforms {
@@ -331,6 +333,9 @@ fn extract_preview_metrics(data: &Value, analysis: &Value) -> Vec<Value> {
         "games_count",
         "total_playtime_minutes",
         "public_repos",
+        "subscriber_count",
+        "view_count",
+        "video_count",
         "gamerscore",
         "achievement_games",
         "completed_games",
@@ -582,6 +587,7 @@ pub async fn clear_caches(
             "bilibili".to_string(),
             "github".to_string(),
             "steam".to_string(),
+            "youtube".to_string(),
             "bangumi".to_string(),
             "x".to_string(),
             "discord".to_string(),

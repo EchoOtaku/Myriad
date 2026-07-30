@@ -23,6 +23,7 @@ type FaceModuleKey =
   | 'bilibili'
   | 'gaming'
   | 'github'
+  | 'youtube'
   | 'netease'
   | 'social'
 
@@ -32,6 +33,7 @@ const PLATFORM_MODULE: Record<string, FaceModuleKey> = {
   xbox: 'gaming',
   psn: 'gaming',
   github: 'github',
+  youtube: 'youtube',
   netease: 'netease',
   bangumi: 'anime',
   mal: 'anime',
@@ -60,6 +62,11 @@ async function loadFaceModule(key: FaceModuleKey): Promise<void> {
       case 'github': {
         const m = await import('./platforms/github')
         registry.set('github', m.GithubWidget as PlatformFaceComponent)
+        break
+      }
+      case 'youtube': {
+        const m = await import('./platforms/youtube')
+        registry.set('youtube', m.YoutubeWidget as PlatformFaceComponent)
         break
       }
       case 'netease': {

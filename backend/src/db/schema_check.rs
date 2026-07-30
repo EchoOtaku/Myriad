@@ -20,6 +20,7 @@ use std::collections::HashSet;
 /// 本文件 `ensure_*` / 近期 `TableDef` 只覆盖**近一个月新功能**的旧库补齐，
 /// 不要求与整份历史 schema 做全量镜像对齐。
 ///
+/// - 2026.07.30.5: analytics_visitor_seen.ordinal（访客到达序号，公开访客卡片用）
 /// - 2026.07.30.4: 近月新表对齐——001 analytics / 004 heartbeat / 005 federation 扩展
 ///   进入数字系列；schema_check 补 policy / domain_aliases / object_interactions 期望结构
 /// - 2026.07.30.3: analytics 并入 001 + get_expected_schema（含 country）
@@ -36,7 +37,7 @@ use std::collections::HashSet;
 /// - 2026.07.20.2: idx_file_transfers_room
 /// - 2026.07.20.1: federation_file_transfers.room_id + owner_user_id
 /// - 2026.07.19.x … 更早：历史结构基线（见 git）
-const SCHEMA_VERSION: &str = "2026.07.30.4";
+const SCHEMA_VERSION: &str = "2026.07.30.5";
 
 /// 内置平台种子定义（与 migrations/001_initial_schema.rs 中 INSERT 保持同步）
 ///
@@ -82,6 +83,14 @@ pub fn default_platform_seeds() -> &'static [DefaultPlatformSeed] {
             display_name: "Steam",
             icon: "steam",
             api_endpoint: "https://api.steampowered.com",
+            auth_type: "api_key",
+            enabled: false,
+        },
+        DefaultPlatformSeed {
+            name: "youtube",
+            display_name: "YouTube",
+            icon: "youtube",
+            api_endpoint: "https://www.googleapis.com/youtube/v3",
             auth_type: "api_key",
             enabled: false,
         },
@@ -4074,6 +4083,12 @@ fn get_expected_schema() -> Vec<TableDef> {
                     is_nullable: false,
                     default_value: None,
                 },
+                ColumnDef {
+                    name: "ordinal".into(),
+                    data_type: "bigint".into(),
+                    is_nullable: false,
+                    default_value: Some("0".into()),
+                },
             ],
         },
         TableDef {
@@ -4971,6 +4986,7 @@ CREATE TABLE IF NOT EXISTS analytics_visitor_seen (
     day DATE NOT NULL,
     path TEXT NOT NULL,
     visitor_hash VARCHAR(64) NOT NULL,
+    ordinal BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (day, path, visitor_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_analytics_visitor_seen_day
@@ -5032,6 +5048,9 @@ CREATE INDEX IF NOT EXISTS idx_analytics_country_visitor_day
     for stmt in [
         "ALTER TABLE analytics_page_daily ADD COLUMN IF NOT EXISTS engagement_ms BIGINT NOT NULL DEFAULT 0",
         "ALTER TABLE analytics_page_daily ADD COLUMN IF NOT EXISTS engaged_views BIGINT NOT NULL DEFAULT 0",
+        // 访客到达序号：已建表的部署补列。历史行留 0 = 序号未知，
+        // 访客卡片在这种情况下退化为只显示今日访客数。
+        "ALTER TABLE analytics_visitor_seen ADD COLUMN IF NOT EXISTS ordinal BIGINT NOT NULL DEFAULT 0",
     ] {
         db.execute_unprepared(stmt).await?;
     }
@@ -6314,6 +6333,7 @@ mod tests {
             "github",
             "bilibili",
             "steam",
+            "youtube",
             "netease_music",
             "bangumi",
             "x",

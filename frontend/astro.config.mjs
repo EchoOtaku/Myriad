@@ -702,6 +702,8 @@ export default defineConfig({
         '@layouts': path.resolve(__dirname, './src/layouts'),
         '@lib': path.resolve(__dirname, './src/lib'),
         '@config': path.resolve(__dirname, './src/config.ts'),
+        // 与后端共用的静态契约（image_proxy_hosts.json 等）
+        '@shared': path.resolve(__dirname, '../shared'),
       },
     },
     // Astro 6 / Vite 7: 客户端 Rollup 输出配置迁移到 environments.client

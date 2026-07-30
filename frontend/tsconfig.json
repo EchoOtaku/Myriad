@@ -37,7 +37,8 @@
   },
   "include": [
     ".astro/types.d.ts",
-    "src/**/*"
+    "src/**/*",
+    "../shared/**/*.json"
   ],
   "exclude": [
     "node_modules",

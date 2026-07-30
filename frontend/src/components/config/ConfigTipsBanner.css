@@ -109,13 +109,12 @@ html.dark .config-tips-banner-card {
   white-space: nowrap;
 }
 
-/* 次：时间 · 文案 */
+/* 次：上次登录 */
 .config-tips-banner-body .gb-meta {
   margin: 0;
   display: flex;
   align-items: baseline;
   flex-wrap: nowrap;
-  gap: 0.28rem;
   min-width: 0;
   overflow: hidden;
   font-size: 0.6875rem;
@@ -123,23 +122,12 @@ html.dark .config-tips-banner-card {
   color: var(--gb-muted);
 }
 
-.config-tips-banner-body .gb-time {
-  flex: 0 0 auto;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  color: color-mix(in srgb, var(--gb-a) 28%, var(--gb-ink));
-}
-
-.config-tips-banner-body .gb-sep {
-  flex: 0 0 auto;
-  opacity: 0.4;
-}
-
 .config-tips-banner-body .gb-sub {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .config-tips-banner-sr {

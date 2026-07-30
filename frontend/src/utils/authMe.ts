@@ -18,6 +18,8 @@ export interface AuthMeUser {
   avatar_url?: string
   bio?: string
   has_password?: boolean
+  /** ISO-8601 last successful login when provided by server */
+  last_login_at?: string | null
   /** Linked OAuth/OIDC rows when server includes them */
   identities?: Array<{
     id?: number

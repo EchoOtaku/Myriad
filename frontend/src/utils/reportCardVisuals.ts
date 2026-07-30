@@ -5,6 +5,9 @@
  * to the correct platform report + card_visuals payload. These pure helpers
  * are unit-tested so field-mapping regressions surface as test failures.
  *
+ * Media URLs in card_visuals are normalized once here (`normalizeJsonMediaUrls`);
+ * platform faces should not re-wrap with resolveMediaUrl.
+ *
  * API shape (GET /api/reports/latest):
  * ```
  * {
@@ -25,6 +28,8 @@
  * Widget path: resolve platformId → pickPlatformCardVisuals → platform branch render.
  */
 
+import { normalizeJsonMediaUrls } from './proxyImageUrl'
+
 /** Structural input for report-card platform resolution (accepts WidgetConfig). */
 export interface WidgetConfigLike {
   type?: string
@@ -38,6 +43,7 @@ export const REPORT_PLATFORM_IDS = [
   'bilibili',
   'steam',
   'github',
+  'youtube',
   'netease',
   'bangumi',
   'mal',
@@ -135,7 +141,7 @@ export function extractCardVisuals(
           !Array.isArray(parsed) &&
           Object.keys(parsed as object).length > 0
         ) {
-          return parsed as Record<string, unknown>
+          return normalizeJsonMediaUrls(parsed as Record<string, unknown>)
         }
       } catch {
         // ignore malformed string
@@ -148,7 +154,7 @@ export function extractCardVisuals(
       !Array.isArray(raw) &&
       Object.keys(raw as object).length > 0
     ) {
-      return raw as Record<string, unknown>
+      return normalizeJsonMediaUrls(raw as Record<string, unknown>)
     }
   }
 
@@ -174,7 +180,7 @@ export function extractCardVisuals(
     r.repos_count != null ||
     r.trophy_level != null
   if (looksLikeVisuals && r.summary == null && r.insights == null) {
-    return r
+    return normalizeJsonMediaUrls(r)
   }
 
   return null

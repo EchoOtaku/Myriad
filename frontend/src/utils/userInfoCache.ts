@@ -11,6 +11,17 @@
 import { API_URL } from '../config'
 import { parseAuthMeResponse } from './authMe'
 import { parseCsrfTokenResponse } from './csrf'
+import { proxyImageUrl } from './proxyImageUrl'
+
+/**
+ * 站长头像等可能来自防盗链 CDN（hdslb / steamstatic…）。
+ * 与后端 `proxy_image_url` 对齐；读取旧 localStorage 时再规范化，避免缓存直链。
+ */
+export function normalizeProfileAvatarUrl(
+  url: string | null | undefined,
+): string | undefined {
+  return proxyImageUrl(url)
+}
 
 // 缓存key - 仅用于展示信息（公开资料）
 const USER_INFO_CACHE_KEY = 'myriad_profile_display_cache'
@@ -134,7 +145,11 @@ async function getProfileInfoWithCache(): Promise<ProfileDisplayInfo | null> {
   )
 
   if (cached !== null) {
-    return cached
+    // 旧缓存可能仍是 bilibili 直链；读出时再规范化一次
+    return {
+      ...cached,
+      avatar: normalizeProfileAvatarUrl(cached.avatar) ?? cached.avatar,
+    }
   }
 
   // 从后端获取
@@ -145,7 +160,7 @@ async function getProfileInfoWithCache(): Promise<ProfileDisplayInfo | null> {
       if (data.success && data.user_info) {
         const result: ProfileDisplayInfo = {
           name: data.user_info.name,
-          avatar: data.user_info.avatar,
+          avatar: normalizeProfileAvatarUrl(data.user_info.avatar),
           bio: data.user_info.bio,
           platform: data.user_info.platform,
         }
@@ -232,7 +247,8 @@ export async function getUserInfoWithCache(
   // 3. 如果有公开资料，优先使用（站长展示）
   if (profileInfo) {
     if (profileInfo.name) userInfo.name = profileInfo.name
-    if (profileInfo.avatar) userInfo.avatar = profileInfo.avatar
+    const avatar = normalizeProfileAvatarUrl(profileInfo.avatar)
+    if (avatar) userInfo.avatar = avatar
     if (profileInfo.bio) userInfo.bio = profileInfo.bio
     if (profileInfo.platform) userInfo.platform = profileInfo.platform
   }

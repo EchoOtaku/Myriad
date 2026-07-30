@@ -268,6 +268,28 @@ fn try_spend_credential_call(platform: Platform) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// Media normalize at response edge (identity with profile::proxy_image_url)
+// ---------------------------------------------------------------------------
+// Enka / Xbox / PSN 当前不在 needs_image_proxy 窄名单内，多为恒等变换；
+// 保留出口统一处理，避免日后某 CDN 变防盗链时漏改。
+
+fn proxy_presence_media(mut data: GamePresenceData) -> GamePresenceData {
+    use crate::api::profile::proxy_image_url;
+    if let Some(av) = data.identity.avatar.take() {
+        data.identity.avatar = Some(proxy_image_url(&av));
+    }
+    for item in &mut data.showcase {
+        if let Some(icon) = item.icon.take() {
+            item.icon = Some(proxy_image_url(&icon));
+        }
+        if let Some(art) = item.art.take() {
+            item.art = Some(proxy_image_url(&art));
+        }
+    }
+    data
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
@@ -319,7 +341,8 @@ pub async fn get_game_presence(
             return Ok(Json(match cached {
                 CachedResult::Ok(data) => ApiResponse {
                     success: true,
-                    data: Some(*data),
+                    // 缓存里存原始 URL；出口统一代理，兼容旧缓存直链
+                    data: Some(proxy_presence_media(*data)),
                     message: "ok (cache)".to_string(),
                 },
                 CachedResult::Err(msg) => ApiResponse {
@@ -344,7 +367,7 @@ pub async fn get_game_presence(
             }
             return Ok(Json(ApiResponse {
                 success: true,
-                data: Some(*data),
+                data: Some(proxy_presence_media(*data)),
                 message: "ok (cache+presence)".to_string(),
             }));
         }
@@ -360,10 +383,11 @@ pub async fn get_game_presence(
 
     match result {
         Ok(data) => {
+            // 缓存存未代理 URL，避免代理路径随部署 base 变化后失效
             store_cache(&key, CachedResult::Ok(Box::new(data.clone())));
             Ok(Json(ApiResponse {
                 success: true,
-                data: Some(data),
+                data: Some(proxy_presence_media(data)),
                 message: "ok".to_string(),
             }))
         }

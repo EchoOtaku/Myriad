@@ -100,6 +100,10 @@ pub enum Command {
         mode: Option<UpdateMode>,
         check_interval_secs: Option<Option<u64>>,
         auto_install: Option<bool>,
+        /// Toggle auto-prune of older pgdata snapshots.
+        snapshot_limit_enabled: Option<bool>,
+        /// Max older non-keep snapshots to retain when limit is enabled (1..=20).
+        snapshot_limit: Option<u32>,
         reply: tokio::sync::oneshot::Sender<Result<Prefs>>,
     },
     SelfUpdate {
@@ -147,6 +151,13 @@ pub struct Prefs {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub check_interval_secs_pref: Option<u64>,
     pub auto_install: bool,
+    /// Auto-prune older backups to a max count (see [`Prefs::snapshot_limit`]).
+    pub snapshot_limit_enabled: bool,
+    /// Max older non-keep snapshots retained when limit is enabled.
+    pub snapshot_limit: u32,
+    /// Ids removed when prefs change triggered an immediate prune (empty otherwise).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pruned_snapshot_ids: Vec<String>,
 }
 
 /// Allowed UI values for the check-interval preference (seconds).
@@ -159,6 +170,17 @@ pub fn validate_check_interval_secs(secs: u64) -> Result<u64> {
     } else {
         Err(UpdaterError::InvalidInput(format!(
             "check_interval_secs must be one of {CHECK_INTERVAL_PRESETS:?}, got {secs}"
+        )))
+    }
+}
+
+pub fn validate_snapshot_limit(n: u32) -> Result<u32> {
+    use crate::state::{SNAPSHOT_LIMIT_MAX, SNAPSHOT_LIMIT_MIN};
+    if (SNAPSHOT_LIMIT_MIN..=SNAPSHOT_LIMIT_MAX).contains(&n) {
+        Ok(n)
+    } else {
+        Err(UpdaterError::InvalidInput(format!(
+            "snapshot_limit must be {SNAPSHOT_LIMIT_MIN}..={SNAPSHOT_LIMIT_MAX}, got {n}"
         )))
     }
 }
@@ -949,11 +971,20 @@ impl Worker {
                     mode,
                     check_interval_secs,
                     auto_install,
+                    snapshot_limit_enabled,
+                    snapshot_limit,
                     reply,
                 } => {
                     let res = self
                         .clone()
-                        .handle_set_prefs(channel, mode, check_interval_secs, auto_install)
+                        .handle_set_prefs(
+                            channel,
+                            mode,
+                            check_interval_secs,
+                            auto_install,
+                            snapshot_limit_enabled,
+                            snapshot_limit,
+                        )
                         .await;
                     let _ = reply.send(res);
                 }
@@ -1006,6 +1037,30 @@ impl Worker {
             .ok()
             .map(|s| s.auto_install)
             .unwrap_or(false)
+    }
+
+    /// Effective snapshot retention: `Some(keep_n)` when limit is enabled, else `None`
+    /// (auto-prune disabled). Falls back to historical default of 3 when enabled.
+    pub fn effective_snapshot_limit(&self) -> Option<usize> {
+        let st = self.state.read_updater().ok()?;
+        if !st.snapshot_limit_enabled {
+            return None;
+        }
+        let n = validate_snapshot_limit(st.snapshot_limit)
+            .unwrap_or(crate::state::SNAPSHOT_LIMIT_DEFAULT);
+        Some(n as usize)
+    }
+
+    /// Best-effort prune using current prefs. No-op when limit disabled.
+    pub fn maybe_prune_snapshots(&self) -> Result<Vec<String>> {
+        let Some(keep_n) = self.effective_snapshot_limit() else {
+            return Ok(Vec::new());
+        };
+        let snap = crate::snapshot::SnapshotManager {
+            state: &self.state,
+            pgdata: self.cli.pgdata.clone(),
+        };
+        snap.prune(keep_n)
     }
 
     /// Shared safety gate for auto-install: only clear upgrades on the current
@@ -1303,9 +1358,12 @@ impl Worker {
         mode: Option<UpdateMode>,
         check_interval_secs: Option<Option<u64>>,
         auto_install: Option<bool>,
+        snapshot_limit_enabled: Option<bool>,
+        snapshot_limit: Option<u32>,
     ) -> Result<Prefs> {
         let mut st = self.state.read_updater()?;
         let mut channel_or_mode_changed = false;
+        let mut retention_changed = false;
         if let Some(ch) = channel {
             let ch = ch.trim().to_ascii_lowercase();
             let mode_now = mode.unwrap_or(st.update_mode);
@@ -1340,11 +1398,55 @@ impl Worker {
         if let Some(ai) = auto_install {
             st.auto_install = ai;
         }
+        if let Some(enabled) = snapshot_limit_enabled {
+            if st.snapshot_limit_enabled != enabled {
+                retention_changed = true;
+            }
+            st.snapshot_limit_enabled = enabled;
+        }
+        if let Some(limit) = snapshot_limit {
+            let limit = validate_snapshot_limit(limit)?;
+            if st.snapshot_limit != limit {
+                retention_changed = true;
+            }
+            st.snapshot_limit = limit;
+        }
         // Clear stale availability cache when channel/mode change.
         if channel_or_mode_changed {
             st.latest_available = None;
         }
         self.state.write_updater(&st)?;
+
+        // When retention is enabled or tightened, prune immediately so disk frees
+        // without waiting for the next successful update.
+        let pruned_snapshot_ids = if st.snapshot_limit_enabled
+            && (retention_changed || snapshot_limit_enabled.is_some() || snapshot_limit.is_some())
+        {
+            match self.maybe_prune_snapshots() {
+                Ok(ids) => {
+                    if !ids.is_empty() {
+                        let _ = self.state.append_history(&format!(
+                            "prefs: snapshot prune removed {} ({})",
+                            ids.len(),
+                            ids.join(",")
+                        ));
+                        let _ = self.state.append_audit(&format!(
+                            "audit: snapshot_prune count={} ids={}",
+                            ids.len(),
+                            ids.join(",")
+                        ));
+                    }
+                    ids
+                }
+                Err(e) => {
+                    warn!(err = %e, "snapshot prune after prefs change failed");
+                    Vec::new()
+                }
+            }
+        } else {
+            Vec::new()
+        };
+
         let prefs = Prefs {
             channel: st.channel.clone(),
             mode: st.update_mode,
@@ -1353,10 +1455,19 @@ impl Worker {
                 .unwrap_or(self.config.check_interval_secs),
             check_interval_secs_pref: st.check_interval_secs,
             auto_install: st.auto_install,
+            snapshot_limit_enabled: st.snapshot_limit_enabled,
+            snapshot_limit: st.snapshot_limit,
+            pruned_snapshot_ids,
         };
         self.state.append_history(&format!(
-            "prefs: channel={} mode={} check_interval_secs={:?} auto_install={}",
-            prefs.channel, prefs.mode, prefs.check_interval_secs_pref, prefs.auto_install
+            "prefs: channel={} mode={} check_interval_secs={:?} auto_install={} \
+             snapshot_limit_enabled={} snapshot_limit={}",
+            prefs.channel,
+            prefs.mode,
+            prefs.check_interval_secs_pref,
+            prefs.auto_install,
+            prefs.snapshot_limit_enabled,
+            prefs.snapshot_limit
         ))?;
         Ok(prefs)
     }

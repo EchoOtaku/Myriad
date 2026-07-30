@@ -88,6 +88,14 @@ impl MigrationTrait for Migration {
                         false.into(),
                     ])
                     .values_panic([
+                        "youtube".into(),
+                        "YouTube".into(),
+                        "youtube".into(),
+                        "https://www.googleapis.com/youtube/v3".into(),
+                        "api_key".into(),
+                        false.into(),
+                    ])
+                    .values_panic([
                         "netease_music".into(),
                         "Netease Music".into(),
                         "netease".into(),
@@ -584,6 +592,9 @@ CREATE TABLE IF NOT EXISTS analytics_visitor_seen (
     day DATE NOT NULL,
     path TEXT NOT NULL,
     visitor_hash VARCHAR(64) NOT NULL,
+    -- 到达序号（"你是今天第 N 位访客"）。仅 path = '__site__' 的行有意义；
+    -- 0 = 未知（该功能上线前的历史行）。
+    ordinal BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (day, path, visitor_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_analytics_visitor_seen_day

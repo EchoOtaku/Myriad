@@ -2,6 +2,22 @@
 
 `ConfigForm` 的各配置区块已拆到 `components/config/*ConfigSection.tsx`，并优先复用 `components/settings/` 统一原语。
 
+壳层逻辑在 `components/config/form/`：
+
+| 模块 | 职责 |
+| ---- | ---- |
+| `useConfigBagState` | bag 主状态、字段更新、loadConfig |
+| `useConfigSideDrafts` | 旁路 draft（OAuth / 权限 / 联邦 / 库 / 一言…） |
+| `useConfigDirty` | 多源 dirty + beforeunload |
+| `useConfigSave` | 两阶段原子保存 + 按需硬刷 |
+| `useConfigReset` | 全量 / 本页重置 |
+| `useConfigSearch` | 搜索索引 + 防抖 rank |
+| `useConfigNavigation` | 侧栏、移动分层、收藏、section 切换 |
+| `buildSearchableContent` | 纯函数搜索索引 |
+| `uiBagOwnership` | bag 归属 key / hard-reload 判定 |
+
+`ConfigForm.tsx` 只做编排与 JSX 壳。
+
 ## 设置原语（必读）
 
 详见 [`../settings/README.md`](../settings/README.md)。
@@ -63,6 +79,44 @@
 | 模块 | 可见性 → 媒体库 → 报告 → 一言 → 音乐 |
 | 高级 | 网络代理 → API 镜像 → 备份与恢复 |
 | 关于 | 开发信息 + 更新器内联 |
+
+## `ui_config` bag 字段归属
+
+`GET /api/config` 的 `ui_config.config_fields` 仍是跨页共享大袋子；**保存只读 bag**。按 Section 所有权消费与重置（Section 导出 `*_RESET_KEYS`）：
+
+| Section | bag keys | 导出常量 |
+| ------- | -------- | -------- |
+| **UI**（基础） | `wallpaper_url` `wallpaper_blur` · `site_title` `site_description` `site_favicon` · `site_icp` `site_gongan` `cloud_sponsors` · `evocative_*` | `UI_RESET_KEYS`（**不含** `base_url`：域名走 `SiteUrlField` 独立 API） |
+| **Platforms** | `analytics_enabled` | `PLATFORMS_UI_RESET_KEYS` |
+| **Modules** | `music_enabled` `music_source` `music_playlist_id` | `MODULE_UI_RESET_KEYS` |
+| **Advanced** | `proxy_enabled` `proxy_url` `proxy_bypass` `gemini_base_url` `github_api_base_url` | `ADVANCED_RESET_KEYS` |
+| **OAuth** | 只读 `base_url`（编辑走独立 API） | — |
+
+**勿再 emit 到 admin bag 的死字段**（DB / 公开 API / legacy 保存 match 可保留）：
+
+- `pet_enabled` `pet_image_url`
+- `wallpaper_parallax`（已被 evocative 动效替代）
+- `github_client_id` `github_client_secret`（OAuth 专用端点 + legacy 平铺字段）
+
+新增 bag 字段时：在后端 `build_config` 注明归属 Section，并同步对应 `*_RESET_KEYS` 与默认值。
+
+### 保存语义（踩坑）
+
+- **可清空非敏感串**必须在 `collect_database_updates` 里 early-insert（空串也写库）：`site_*` / `wallpaper_url` / `music_playlist_id` / `proxy_*` / `*_base_url` 镜像等。默认路径 `if !value.is_empty()` 会吞掉「重置本页」写的空串。
+- **`base_url` 空串不得覆盖**已生效域名（改域名走 `SiteUrlField` 独立 API）。
+- **`silent` 更新 bag**（旁路 API 已落库）必须同步 patch `initialConfig`，否则 `deepEqual(config, initialConfig)` 仍会点亮浮动保存。
+- **多 draft 统一保存**：阶段 1 全部写库 → 阶段 2 再 mark clean（`setInitialConfig` / 各 `setSaved*`）。禁止中途 clean，避免 OAuth 失败后 bag 已 clean 的状态分裂。
+- **按需硬刷新**：`configChangesNeedHardReload`（平台 / AI / 自动刷新 / 代理镜像）才 `reloadSystemConfig` + `location.reload`；纯 UI bag 只 toast。
+- **全量重置 bag**：只用 `ALL_OWNED_UI_BAG_KEYS`（见 `uiBagOwnership.ts`），勿重置 `base_url`。
+
+### 管理端 vs 公开 API
+
+| 端点 | 形状 |
+| ---- | ---- |
+| `GET /api/config` · `ui_config` | **仅** `config_fields` bag（无 typed 镜像） |
+| `GET /api/config/ui` | 公开运行时扁平 JSON；已去掉 `pet_*` / `wallpaper_parallax` |
+
+备份 registry 仍可含 legacy 键（`pet_*` 等），用于还原旧备份；**勿再 emit 到 admin bag**。
 
 ## 新增设置时的约定
 

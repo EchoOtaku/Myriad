@@ -43,6 +43,9 @@ interface UiConfigField {
   value: string
 }
 
+/** @deprecated 从 uiBagOwnership 导入；此处 re-export 保持兼容 */
+export { MODULE_UI_RESET_KEYS } from './uiBagOwnership'
+
 export type LibraryItemType =
   'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'
 

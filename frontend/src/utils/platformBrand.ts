@@ -12,6 +12,7 @@ const PLATFORM_BRANDS: Record<string, PlatformBrandTheme> = {
   github: { color: '#24292f', darkColor: '#e6edf3' },
   bilibili: { color: '#00A1D6', darkColor: '#00A1D6' },
   steam: { color: '#1b2838', darkColor: '#66c0f4' },
+  youtube: { color: '#FF0000', darkColor: '#ff4d4d' },
   netease: { color: '#e60026', darkColor: '#ff4d67' },
   'netease music': { color: '#e60026', darkColor: '#ff4d67' },
   netease_music: { color: '#e60026', darkColor: '#ff4d67' },

@@ -69,29 +69,12 @@ pub struct ReportConfig {
     pub config_fields: Vec<ConfigField>,
 }
 
+/// 管理端 `ui_config`：**只暴露 bag**（`config_fields`）。
+/// 历史 typed 镜像字段（wallpaper/pet/theme/proxy…）已废弃——保存只读 bag，
+/// 公开运行时配置走 `GET /api/config/ui`。
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UiConfig {
-    pub wallpaper_url: String,
-    pub wallpaper_blur: u32,
-    pub wallpaper_parallax: bool,
-    // Evocative 壁纸动效
-    pub evocative_parallax: bool,
-    pub evocative_dynamic_blur: bool,
-    pub evocative_ripple: bool,
-    pub evocative_fps: u32,
-    pub evocative_ripple_quality: f64,
-    pub theme: String,
-    pub primary_color: String,
-    pub secondary_color: String,
-    pub pet_enabled: bool,
-    pub pet_image_url: String,
-    // 网络代理配置
-    pub proxy_enabled: bool,
-    pub proxy_url: String,
-    pub proxy_bypass: String,
-    pub gemini_base_url: String,
-    pub github_api_base_url: String,
     pub config_fields: Vec<ConfigField>,
 }
 
@@ -171,6 +154,15 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
         db_config.as_ref().and_then(|c| c.steam_enabled),
         nonempty_db(db_config.as_ref().and_then(|c| c.steam_api_key.as_ref()))
             || nonempty_env("STEAM_API_KEY"),
+    );
+    let has_youtube_key = nonempty_db(db_config.as_ref().and_then(|c| c.youtube_api_key.as_ref()))
+        || nonempty_env("YOUTUBE_API_KEY");
+    let has_youtube_channel =
+        nonempty_db(db_config.as_ref().and_then(|c| c.youtube_channel_id.as_ref()))
+            || nonempty_env("YOUTUBE_CHANNEL_ID");
+    let youtube_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.youtube_enabled),
+        has_youtube_key && has_youtube_channel,
     );
     let netease_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.netease_enabled),
@@ -301,6 +293,37 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                             "STEAM_ID",
                         ),
                         placeholder: "76561198XXXXXXXXX".to_string(),
+                        required: true,
+                    },
+                ],
+            },
+            PlatformConfig {
+                name: "YouTube".to_string(),
+                enabled: youtube_enabled,
+                has_token: has_youtube_key,
+                icon: "".to_string(),
+                description: "Public channel stats and recent uploads".to_string(),
+                config_fields: vec![
+                    ConfigField {
+                        key: "api_key".to_string(),
+                        label: "YouTube Data API Key".to_string(),
+                        field_type: "password".to_string(),
+                        value: mask_sensitive(get_value(
+                            db_config.as_ref().and_then(|c| c.youtube_api_key.clone()),
+                            "YOUTUBE_API_KEY",
+                        )),
+                        placeholder: "Google Cloud → YouTube Data API v3 key".to_string(),
+                        required: true,
+                    },
+                    ConfigField {
+                        key: "channel_id".to_string(),
+                        label: "Channel ID or @handle".to_string(),
+                        field_type: "text".to_string(),
+                        value: get_value(
+                            db_config.as_ref().and_then(|c| c.youtube_channel_id.clone()),
+                            "YOUTUBE_CHANNEL_ID",
+                        ),
+                        placeholder: "UCxxxxx or @GoogleDevelopers".to_string(),
                         required: true,
                     },
                 ],
@@ -1032,124 +1055,18 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                 required: true,
             }],
         },
+        // 管理端 ui_config 仅 bag；typed 镜像已删除（见 UiConfig 注释）
         ui_config: UiConfig {
-            wallpaper_url: get_value(
-                db_config.as_ref().and_then(|c| c.ui_wallpaper_url.clone()),
-                "UI_WALLPAPER_URL",
-            ),
-            wallpaper_blur: db_config
-                .as_ref()
-                .map(|c| c.ui_wallpaper_blur as u32)
-                .unwrap_or_else(|| {
-                    std::env::var("UI_WALLPAPER_BLUR")
-                        .unwrap_or_else(|_| "3".to_string())
-                        .parse::<u32>()
-                        .unwrap_or(3)
-                }),
-            wallpaper_parallax: db_config
-                .as_ref()
-                .map(|c| c.ui_wallpaper_parallax)
-                .unwrap_or_else(|| {
-                    std::env::var("UI_WALLPAPER_PARALLAX")
-                        .unwrap_or_else(|_| "true".to_string())
-                        .parse()
-                        .unwrap_or(true)
-                }),
-            // Evocative 壁纸动效
-            evocative_parallax: db_config
-                .as_ref()
-                .map(|c| c.ui_evocative_parallax)
-                .unwrap_or_else(|| {
-                    std::env::var("UI_EVOCATIVE_PARALLAX")
-                        .unwrap_or_else(|_| "true".to_string())
-                        .parse()
-                        .unwrap_or(true)
-                }),
-            evocative_dynamic_blur: db_config
-                .as_ref()
-                .map(|c| c.ui_evocative_dynamic_blur)
-                .unwrap_or_else(|| {
-                    std::env::var("UI_EVOCATIVE_DYNAMIC_BLUR")
-                        .unwrap_or_else(|_| "false".to_string())
-                        .parse()
-                        .unwrap_or(false)
-                }),
-            evocative_ripple: db_config
-                .as_ref()
-                .map(|c| c.ui_evocative_ripple)
-                .unwrap_or_else(|| {
-                    std::env::var("UI_EVOCATIVE_RIPPLE")
-                        .unwrap_or_else(|_| "false".to_string())
-                        .parse()
-                        .unwrap_or(false)
-                }),
-            evocative_fps: db_config
-                .as_ref()
-                .map(|c| c.ui_evocative_fps as u32)
-                .unwrap_or_else(|| {
-                    std::env::var("UI_EVOCATIVE_FPS")
-                        .unwrap_or_else(|_| "30".to_string())
-                        .parse()
-                        .unwrap_or(30)
-                }),
-            evocative_ripple_quality: db_config
-                .as_ref()
-                .map(|c| c.ui_evocative_ripple_quality)
-                .unwrap_or_else(|| {
-                    std::env::var("UI_EVOCATIVE_RIPPLE_QUALITY")
-                        .unwrap_or_else(|_| "0.85".to_string())
-                        .parse()
-                        .unwrap_or(0.85)
-                }),
-            theme: db_config
-                .as_ref()
-                .and_then(|c| c.ui_theme.clone())
-                .unwrap_or_else(|| {
-                    std::env::var("UI_THEME").unwrap_or_else(|_| "dark".to_string())
-                }),
-            primary_color: db_config
-                .as_ref()
-                .and_then(|c| c.ui_primary_color.clone())
-                .unwrap_or_else(|| {
-                    std::env::var("UI_PRIMARY_COLOR").unwrap_or_else(|_| "#6366f1".to_string())
-                }),
-            secondary_color: db_config
-                .as_ref()
-                .and_then(|c| c.ui_secondary_color.clone())
-                .unwrap_or_else(|| {
-                    std::env::var("UI_SECONDARY_COLOR").unwrap_or_else(|_| "#8b5cf6".to_string())
-                }),
-            pet_enabled: db_config
-                .as_ref()
-                .map(|c| c.pet_enabled)
-                .unwrap_or_else(|| {
-                    std::env::var("PET_ENABLED")
-                        .unwrap_or_else(|_| "true".to_string())
-                        .parse()
-                        .unwrap_or(true)
-                }),
-            pet_image_url: get_value(
-                db_config.as_ref().and_then(|c| c.pet_image_url.clone()),
-                "PET_IMAGE_URL",
-            ),
-            // 网络代理配置
-            proxy_enabled: db_config.as_ref().map(|c| c.proxy_enabled).unwrap_or(false),
-            proxy_url: db_config
-                .as_ref()
-                .and_then(|c| c.proxy_url.clone())
-                .unwrap_or_default(),
-            proxy_bypass: db_config
-                .as_ref()
-                .and_then(|c| c.proxy_bypass.clone())
-                .unwrap_or_default(),
-            gemini_base_url: db_config
-                .as_ref()
-                .and_then(|c| c.gemini_base_url.clone())
-                .unwrap_or_default(),
-            github_api_base_url: db_config
-                .as_ref()
-                .and_then(|c| c.github_api_base_url.clone())
-                .unwrap_or_default(),
+            // ui_config.config_fields 跨页共享大袋子；按设置 Section 归属 emit。
+            // 死字段（无设置页入口）勿再 emit：
+            //   pet_*、wallpaper_parallax（legacy 仅 DB；公开 API 亦不再返回）
+            //   github_client_*（走 OAuth 专用端点 + legacy 平铺字段，勿进 admin bag）
+            // 归属：
+            //   UI        → wallpaper_*, evocative_*, site_*, cloud_sponsors, base_url
+            //   Platforms → analytics_enabled
+            //   Modules   → music_*
+            //   Advanced  → proxy_*, gemini_base_url, github_api_base_url
+            //   OAuth     → 只读 base_url（编辑走 SiteUrlField 独立 API）
             config_fields: vec![
                 ConfigField {
                     key: "wallpaper_url".to_string(),
@@ -1173,20 +1090,6 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                             std::env::var("UI_WALLPAPER_BLUR").unwrap_or_else(|_| "3".to_string())
                         }),
                     placeholder: "3".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "wallpaper_parallax".to_string(),
-                    label: "壁纸视差效果".to_string(),
-                    field_type: "checkbox".to_string(),
-                    value: db_config
-                        .as_ref()
-                        .map(|c| c.ui_wallpaper_parallax.to_string())
-                        .unwrap_or_else(|| {
-                            std::env::var("UI_WALLPAPER_PARALLAX")
-                                .unwrap_or_else(|_| "true".to_string())
-                        }),
-                    placeholder: "true".to_string(),
                     required: false,
                 },
                 // Evocative 壁纸动效配置
@@ -1257,30 +1160,6 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                                 .unwrap_or_else(|_| "0.85".to_string())
                         }),
                     placeholder: "0.85".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "pet_enabled".to_string(),
-                    label: "Enable Pet Mascot".to_string(),
-                    field_type: "checkbox".to_string(),
-                    value: db_config
-                        .as_ref()
-                        .map(|c| c.pet_enabled.to_string())
-                        .unwrap_or_else(|| {
-                            std::env::var("PET_ENABLED").unwrap_or_else(|_| "true".to_string())
-                        }),
-                    placeholder: "true".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "pet_image_url".to_string(),
-                    label: "Pet Image URL".to_string(),
-                    field_type: "text".to_string(),
-                    value: get_value(
-                        db_config.as_ref().and_then(|c| c.pet_image_url.clone()),
-                        "PET_IMAGE_URL",
-                    ),
-                    placeholder: "URL to pet character image".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -1362,30 +1241,6 @@ async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> Config
                         .and_then(|c| c.cloud_sponsors.clone())
                         .unwrap_or_default(),
                     placeholder: "cloudflare,edgeone,upyun（多个用逗号分隔）".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "github_client_id".to_string(),
-                    label: "GitHub OAuth Client ID".to_string(),
-                    field_type: "text".to_string(),
-                    value: get_value(
-                        db_config.as_ref().and_then(|c| c.github_client_id.clone()),
-                        "GITHUB_CLIENT_ID",
-                    ),
-                    placeholder: "GitHub OAuth Application Client ID".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "github_client_secret".to_string(),
-                    label: "GitHub OAuth Client Secret".to_string(),
-                    field_type: "password".to_string(),
-                    value: mask_sensitive(get_value(
-                        db_config
-                            .as_ref()
-                            .and_then(|c| c.github_client_secret.clone()),
-                        "GITHUB_CLIENT_SECRET",
-                    )),
-                    placeholder: "GitHub OAuth Application Client Secret".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -1594,6 +1449,8 @@ struct SettingDescriptor {
 
 // 这是配置备份唯一的后端注册表。新增或删除非 ConfigResponse 设置时只需要改这里；
 // 恢复、预检和导出过滤全部从该注册表派生。
+/// 备份/恢复 registry：含 legacy 键（`pet_*` / `ui_wallpaper_parallax` / `github_client_*` 等）。
+/// 这些键仍可从旧备份还原到 DB，但**不再**进入管理端 `ui_config.config_fields` emit。
 const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "ai_image_model",
     "ai_image_openai_api_key",
@@ -1701,6 +1558,9 @@ const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "steam_api_key",
     "steam_enabled",
     "steam_id",
+    "youtube_api_key",
+    "youtube_channel_id",
+    "youtube_enabled",
     "tapp_window_schemes",
     "tencent_region",
     "tencent_secret_id",
@@ -2502,6 +2362,38 @@ mod settings_backup_tests {
             Some(&json!("real-secret"))
         );
     }
+
+    #[test]
+    fn ui_clearable_fields_persist_empty_strings() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![
+            ui_field("site_title", ""),
+            ui_field("site_description", ""),
+            ui_field("site_favicon", ""),
+            ui_field("wallpaper_url", ""),
+            ui_field("music_playlist_id", ""),
+            ui_field("site_icp", ""),
+        ];
+        let updates = collect_database_updates(&config);
+        assert_eq!(updates.get("site_title"), Some(&json!("")));
+        assert_eq!(updates.get("site_description"), Some(&json!("")));
+        assert_eq!(updates.get("site_favicon"), Some(&json!("")));
+        assert_eq!(updates.get("ui_wallpaper_url"), Some(&json!("")));
+        assert_eq!(updates.get("music_playlist_id"), Some(&json!("")));
+        assert_eq!(updates.get("site_icp"), Some(&json!("")));
+    }
+
+    #[test]
+    fn ui_empty_base_url_does_not_overwrite() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![ui_field("base_url", "")];
+        let updates = collect_database_updates(&config);
+        assert!(!updates.contains_key("base_url"));
+
+        config.ui_config.config_fields = vec![ui_field("base_url", "https://example.com")];
+        let updates = collect_database_updates(&config);
+        assert_eq!(updates.get("base_url"), Some(&json!("https://example.com")));
+    }
 }
 
 pub async fn update_config(
@@ -2679,6 +2571,22 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                         _ => continue,
                     };
                     // 🔒 忽略屏蔽值（前端返回的掩码）
+                    if !field.value.is_empty() && !is_masked(&field.value) {
+                        updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
+                    }
+                }
+            }
+            "YouTube" => {
+                updates.insert(
+                    "youtube_enabled".to_string(),
+                    JsonValue::Bool(platform.enabled),
+                );
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "api_key" => "youtube_api_key",
+                        "channel_id" => "youtube_channel_id",
+                        _ => continue,
+                    };
                     if !field.value.is_empty() && !is_masked(&field.value) {
                         updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
                     }
@@ -2885,7 +2793,20 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
     // 保存 UI 配置
     for field in &config.ui_config.config_fields {
         let (key, json_value) = match field.key.as_str() {
-            "wallpaper_url" => ("ui_wallpaper_url", JsonValue::String(field.value.clone())),
+            // 可清空非敏感串：空串也写库，否则「重置本页」会被下方 is_empty 守卫吞掉
+            "wallpaper_url" => {
+                updates.insert(
+                    "ui_wallpaper_url".to_string(),
+                    JsonValue::String(field.value.clone()),
+                );
+                continue;
+            }
+            "site_title" | "site_description" | "site_favicon" | "music_source"
+            | "music_playlist_id" | "site_icp" | "site_gongan" | "cloud_sponsors" | "proxy_url"
+            | "proxy_bypass" | "gemini_base_url" | "github_api_base_url" => {
+                updates.insert(field.key.clone(), JsonValue::String(field.value.clone()));
+                continue;
+            }
             "wallpaper_blur" => {
                 if let Ok(n) = field.value.parse::<i64>() {
                     ("ui_wallpaper_blur", JsonValue::Number(n.into()))
@@ -2893,6 +2814,7 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                     continue;
                 }
             }
+            // legacy：已不再 emit，保留写入兼容旧客户端 payload
             "wallpaper_parallax" => {
                 let enabled = field.value == "true";
                 ("ui_wallpaper_parallax", JsonValue::Bool(enabled))
@@ -2924,6 +2846,7 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                     continue;
                 }
             }
+            // legacy：pet_* 已不再 emit
             "pet_enabled" => {
                 let enabled = field.value == "true";
                 ("pet_enabled", JsonValue::Bool(enabled))
@@ -2933,40 +2856,31 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 let enabled = field.value != "false" && field.value != "0";
                 ("analytics_enabled", JsonValue::Bool(enabled))
             }
-            "site_title" => ("site_title", JsonValue::String(field.value.clone())),
-            "site_description" => ("site_description", JsonValue::String(field.value.clone())),
-            "site_favicon" => ("site_favicon", JsonValue::String(field.value.clone())),
+            // legacy：github OAuth 凭证走专用端点；bag 写入仍兼容
             "github_client_id" => ("github_client_id", JsonValue::String(field.value.clone())),
             "github_client_secret" => (
                 "github_client_secret",
                 JsonValue::String(field.value.clone()),
             ),
-            "base_url" => ("base_url", JsonValue::String(field.value.clone())),
+            // base_url 经独立域名 API 改写；bag 若带空串勿覆盖已生效域名
+            "base_url" => {
+                if field.value.trim().is_empty() {
+                    continue;
+                }
+                ("base_url", JsonValue::String(field.value.clone()))
+            }
             "music_enabled" => {
                 let enabled = field.value == "true";
                 ("music_enabled", JsonValue::Bool(enabled))
             }
-            "music_source" => ("music_source", JsonValue::String(field.value.clone())),
-            "music_playlist_id" => ("music_playlist_id", JsonValue::String(field.value.clone())),
-            // 网络代理配置
             "proxy_enabled" => {
                 let enabled = field.value == "true";
                 ("proxy_enabled", JsonValue::Bool(enabled))
             }
-            // 代理 URL / 绕过列表 / API 镜像（允许清空以恢复默认）
-            "proxy_url" | "proxy_bypass" | "gemini_base_url" | "github_api_base_url" => {
-                updates.insert(field.key.clone(), JsonValue::String(field.value.clone()));
-                continue;
-            }
-            // 站点备案和云赞助商（允许清空）
-            "site_icp" | "site_gongan" | "cloud_sponsors" => {
-                updates.insert(field.key.clone(), JsonValue::String(field.value.clone()));
-                continue;
-            }
             _ => continue,
         };
         // 🔒 忽略屏蔽值（前端返回的掩码）与空敏感字段，避免覆盖已保存的密钥
-        // 非敏感字符串若需允许清空，应在上方 match 中 early-insert（见 proxy_* / site_icp）
+        // 非敏感字符串若需允许清空，应在上方 match 中 early-insert（见 proxy_* / site_*）
         if !field.value.is_empty() && !is_masked(&field.value) {
             updates.insert(key.to_string(), json_value);
         }
@@ -3024,6 +2938,22 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
                         "steam_id" => "STEAM_ID",
                         _ => continue,
                     };
+                    env_content = update_env_var(&env_content, key, &field.value);
+                }
+            }
+            "YouTube" => {
+                for field in &platform.config_fields {
+                    let key = match field.key.as_str() {
+                        "api_key" => "YOUTUBE_API_KEY",
+                        "channel_id" => "YOUTUBE_CHANNEL_ID",
+                        _ => continue,
+                    };
+                    if field.value.is_empty()
+                        || field.value.starts_with('•')
+                        || field.value.starts_with('*')
+                    {
+                        continue;
+                    }
                     env_content = update_env_var(&env_content, key, &field.value);
                 }
             }
@@ -3414,6 +3344,74 @@ pub async fn test_platform(
                     Json(json!({
                         "success": false,
                         "message": format!("✗ Failed to verify Steam: {}", e)
+                    })),
+                ),
+            }
+        }
+        "YouTube" => {
+            let api_key = config["api_key"].as_str().unwrap_or("").trim();
+            let channel_id = config["channel_id"].as_str().unwrap_or("").trim();
+            if api_key.is_empty() || channel_id.is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": "API Key and Channel ID / @handle are required"
+                    })),
+                );
+            }
+            // Masked secrets from form: fall back to stored config
+            let cfg = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+            let resolved_key = if api_key.contains('•') || api_key.contains('*') {
+                cfg.youtube_api_key.clone().unwrap_or_default()
+            } else {
+                api_key.to_string()
+            };
+            drop(cfg);
+            if resolved_key.trim().is_empty() {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": "YouTube API key is required (re-enter after save)"
+                    })),
+                );
+            }
+
+            let fetcher = crate::services::fetcher::PlatformFetcher::new().await;
+            match fetcher
+                .fetch_youtube_channel(resolved_key.trim(), channel_id)
+                .await
+            {
+                Ok(channel) => {
+                    let title = channel
+                        .pointer("/snippet/title")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(channel_id);
+                    let subs = channel
+                        .pointer("/statistics/subscriberCount")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    let vids = channel
+                        .pointer("/statistics/videoCount")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    (
+                        StatusCode::OK,
+                        Json(json!({
+                            "success": true,
+                            "message": format!(
+                                "✓ YouTube channel '{}' verified. {} subscribers, {} videos",
+                                title, subs, vids
+                            )
+                        })),
+                    )
+                }
+                Err(e) => (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "success": false,
+                        "message": format!("✗ Failed to verify YouTube channel: {}", e)
                     })),
                 ),
             }
@@ -3941,6 +3939,19 @@ pub async fn get_public_config(
             .is_some()
             || std::env::var("STEAM_ID").is_ok(),
     );
+    let youtube_enabled = resolve_platform_enabled(
+        db_config.as_ref().and_then(|c| c.youtube_enabled),
+        (db_config
+            .as_ref()
+            .and_then(|c| c.youtube_channel_id.as_ref())
+            .is_some()
+            || std::env::var("YOUTUBE_CHANNEL_ID").is_ok())
+            && (db_config
+                .as_ref()
+                .and_then(|c| c.youtube_api_key.as_ref())
+                .is_some()
+                || std::env::var("YOUTUBE_API_KEY").is_ok()),
+    );
     let netease_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.netease_enabled),
         db_config
@@ -4070,6 +4081,24 @@ pub async fn get_public_config(
                 value: get_value(
                     db_config.as_ref().and_then(|c| c.steam_id.clone()),
                     "STEAM_ID",
+                ),
+                placeholder: "".to_string(),
+                required: false,
+            }],
+        },
+        PlatformConfig {
+            name: "YouTube".to_string(),
+            enabled: youtube_enabled,
+            has_token: false,
+            icon: "".to_string(),
+            description: "".to_string(),
+            config_fields: vec![ConfigField {
+                key: "channel_id".to_string(),
+                label: "".to_string(),
+                field_type: "text".to_string(),
+                value: get_value(
+                    db_config.as_ref().and_then(|c| c.youtube_channel_id.clone()),
+                    "YOUTUBE_CHANNEL_ID",
                 ),
                 placeholder: "".to_string(),
                 required: false,
@@ -4217,8 +4246,9 @@ pub async fn get_public_config(
     (StatusCode::OK, Json(response))
 }
 
-/// 获取公开的 UI 配置（萌宠、虚拟人设等）
+/// 获取公开的 UI 运行时配置（壁纸 / 动效 / 音乐 / 站点展示等）
 /// 🔓 公开端点 - 不需要认证
+/// 已剥离无前端消费的死字段：`pet_*`、`wallpaper_parallax`（动效改走 evocative_*）
 pub async fn get_public_ui_config(
     crate::extract::Db(db): crate::extract::Db,
 ) -> (StatusCode, Json<Value>) {
@@ -4233,13 +4263,6 @@ pub async fn get_public_ui_config(
     };
 
     let ui_config = json!({
-        "pet_enabled": db_config.as_ref().map(|c| c.pet_enabled).unwrap_or_else(||
-            std::env::var("PET_ENABLED").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)
-        ),
-        "pet_image_url": get_value(
-            db_config.as_ref().and_then(|c| c.pet_image_url.clone()),
-            "PET_IMAGE_URL"
-        ),
         "analytics_enabled": db_config.as_ref().map(|c| c.analytics_enabled).unwrap_or_else(||
             std::env::var("ANALYTICS_ENABLED").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)
         ),
@@ -4249,9 +4272,6 @@ pub async fn get_public_ui_config(
         ),
         "wallpaper_blur": db_config.as_ref().map(|c| c.ui_wallpaper_blur as u32).unwrap_or_else(||
             std::env::var("UI_WALLPAPER_BLUR").unwrap_or_else(|_| "3".to_string()).parse::<u32>().unwrap_or(3)
-        ),
-        "wallpaper_parallax": db_config.as_ref().map(|c| c.ui_wallpaper_parallax).unwrap_or_else(||
-            std::env::var("UI_WALLPAPER_PARALLAX").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)
         ),
         // Evocative 壁纸动效
         "evocative_parallax": db_config.as_ref().map(|c| c.ui_evocative_parallax).unwrap_or_else(||

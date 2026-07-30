@@ -36,6 +36,7 @@ pub fn normalize_platform_name(name: &str) -> Option<&'static str> {
         "github" => Some("github"),
         "bilibili" => Some("bilibili"),
         "steam" => Some("steam"),
+        "youtube" | "yt" => Some("youtube"),
         "netease" | "netease music" | "netease_music" => Some("netease"),
         "bangumi" => Some("bangumi"),
         "x" | "twitter" => Some("x"),
@@ -235,6 +236,8 @@ mod tests {
         assert_eq!(normalize_platform_name("Netease Music"), Some("netease"));
         assert_eq!(normalize_platform_name("MyAnimeList"), Some("mal"));
         assert_eq!(normalize_platform_name("PlayStation"), Some("psn"));
+        assert_eq!(normalize_platform_name("YouTube"), Some("youtube"));
+        assert_eq!(normalize_platform_name("yt"), Some("youtube"));
         assert_eq!(normalize_platform_name("unknown"), None);
     }
 

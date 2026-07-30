@@ -909,6 +909,16 @@ export const enUS: TranslationKeys = {
     updaterSnapshotGroupDesc:
       'Auto-backup before updates; roll back here if needed.',
     updaterNoSnapshots: 'No backups yet. One appears after the first update.',
+    updaterSnapshotLimitEnabled: 'Backup limit',
+    updaterSnapshotLimitEnabledDescOn:
+      'Keep only the latest {n}; kept pins and backups under 24h are never auto-deleted',
+    updaterSnapshotLimitEnabledDescOff:
+      'Off: no count-based auto-prune; manual delete still works',
+    updaterSnapshotLimitCount: 'Keep count',
+    updaterSnapshotLimitOption: 'Latest {n}',
+    updaterSnapshotLimitSaved: 'Backup limit saved',
+    updaterSnapshotLimitSavedPruned:
+      'Backup limit saved; removed {n} older backup(s)',
     updaterRollback: 'Roll back to this version',
     updaterRollbackDispatched: 'Rollback started',
     updaterDeleteSnapshot: 'Delete',
@@ -960,17 +970,8 @@ export const enUS: TranslationKeys = {
     allConfig: 'All Configurations',
     tipsBanner: {
       label: 'Greeting',
-      greeting: {
-        subtitles: {
-          morning: 'A quiet start',
-          forenoon: 'At your own pace',
-          noon: 'Time for a short pause',
-          afternoon: 'Steady beats rushed',
-          dusk: 'One clean finish',
-          evening: 'No need to force it',
-          night: 'Save, then rest',
-        },
-      },
+      lastLogin: 'Last login {time}',
+      lastLoginNever: 'Last login —',
     },
     saveConfig: 'Save Config',
     resetConfig: 'Reset Config',
@@ -1055,9 +1056,6 @@ export const enUS: TranslationKeys = {
     fieldWallpaperBlur: 'Wallpaper Blur',
     sliderWeak: 'Soft · clearer',
     sliderStrong: 'Strong · blurrier',
-    fieldWallpaperParallax: 'Wallpaper Parallax Effect',
-    fieldPetEnabled: 'Enable Pet Mascot',
-    fieldPetImageUrl: 'Pet Image URL',
     fieldSiteTitle: 'Site Title',
     fieldSiteDescription: 'Site Description',
     fieldSiteFavicon: 'Site Favicon',
@@ -1151,7 +1149,6 @@ export const enUS: TranslationKeys = {
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteFavicon:
       '/favicon.webp or https://example.com/icon.png',
-    placeholderPetImageUrl: 'URL to pet character image',
     callbackUrl: 'Callback URL',
     savingDefault: 'Saving default configuration...',
     resetFailed: 'Failed to reset configuration: ',
@@ -1208,6 +1205,7 @@ export const enUS: TranslationKeys = {
     platformDescBilibili: 'Favorites, anime, and viewing history',
     platformDescBangumi: 'Collections, ratings, and watching status',
     platformDescSteam: 'Library, wishlist, and play stats',
+    platformDescYoutube: 'Public channel stats and recent uploads',
     platformDescNetease: 'Liked songs and music taste',
     platformDescX: 'Profile and posts, with sharing',
     platformDescDiscord: 'Profile, servers, and linked accounts',
@@ -1247,6 +1245,12 @@ export const enUS: TranslationKeys = {
     platformSetupSteam2Title: 'Get Steam ID',
     platformSetupSteam2Desc:
       'Shown on Account Details, or parse the 17-digit SteamID64 from your profile URL.',
+    platformSetupYoutube1Title: 'Create YouTube Data API key',
+    platformSetupYoutube1Desc:
+      'Google Cloud Console → enable YouTube Data API v3 → create an API key (restrict to this API).',
+    platformSetupYoutube2Title: 'Channel ID or @handle',
+    platformSetupYoutube2Desc:
+      'Channel ID (UCxxxx) from YouTube Advanced settings, or public @handle. Public data only — no Google OAuth.',
     platformSetupNetease1Title: 'Get user ID',
     platformSetupNetease1Desc:
       'Open your Netease profile; the number after /user/home?id= is the ID.',
@@ -1594,6 +1598,7 @@ export const enUS: TranslationKeys = {
     reportBilibili: 'Bilibili Report',
     reportSteam: 'Steam Report',
     reportGithub: 'GitHub Report',
+    reportYoutube: 'YouTube Report',
     reportNetease: 'NetEase Report',
     reportBangumi: 'Bangumi Report',
     reportMal: 'MyAnimeList Report',
@@ -1604,6 +1609,7 @@ export const enUS: TranslationKeys = {
     socialNetwork: 'Social Network',
     tappShortcut: 'Tapp Shortcut',
     gamePresence: 'HoYoverse Game Card',
+    visitorStats: 'Visitor Stats',
     library: 'Library',
     dataReport: 'Platform Reports',
     digitalLife: 'Digital Life',
@@ -2418,6 +2424,25 @@ export const enUS: TranslationKeys = {
     loadCacheFailed: 'Failed to load cache',
     saveCacheFailed: 'Failed to save cache',
     fetchStatsFailed: 'Failed to fetch library stats',
+  },
+
+  // Visitor Stats Widget
+  visitorStats: {
+    widgetTitle: 'Visitor Stats',
+    daysN: '{n}d',
+    ordinalLead: "You're today's",
+    ordinalTrail: 'visitor',
+    staffNotCounted: 'Admin traffic is never counted',
+    ordinalPending: 'Recording this visit…',
+    todayVisitors: 'Visitors today',
+    todayVisitorsShort: 'Today',
+    todayViewsShort: 'views',
+    allTimeViewsShort: 'All-time',
+    allTimeVisitorsShort: 'visitors',
+    chartAria: 'Views and unique visitors over the last {n} days',
+    collectionOff: 'Visitor stats are turned off',
+    loadFailed: 'Failed to load',
+    empty: 'No visits yet',
   },
 
   // Recent Activity Widget

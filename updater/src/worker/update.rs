@@ -481,7 +481,9 @@ async fn run_update_body(
 
     let _ = rec.enter(Phase::Finalize, "updater.phase.finalize");
     let _ = rec.finish_step_ok();
-    let _ = snap.prune(3);
+    if let Err(e) = worker.maybe_prune_snapshots() {
+        warn!(err = %e, "snapshot prune after successful update failed");
+    }
     // After health OK we NEVER return Err: stack is live on the new tag.
     // Bookkeeping failures are logged; job is forced Succeeded and maintenance cleared.
     if let Err(e) = rec.finalize(JobStatus::Succeeded) {
@@ -835,7 +837,9 @@ async fn finish_with_rollback(
                     let _ = rec.finish_step_ok();
                     let _ = rec.enter(Phase::Finalize, "updater.phase.finalize");
                     let _ = rec.finish_step_ok();
-                    let _ = snap.prune(3);
+                    if let Err(e) = worker.maybe_prune_snapshots() {
+                        warn!(err = %e, "snapshot prune after health recheck success failed");
+                    }
                     let _ = rec.finalize(JobStatus::Succeeded);
                     let _ = crate::worker::machine::clear_maintenance(worker.state());
                     let _ = worker.state().append_history(&format!(

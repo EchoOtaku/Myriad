@@ -46,5 +46,14 @@ export type {
   GreetingPeriod,
 } from './ConfigTipsBanner'
 export { default as UiConfigSection } from './UiConfigSection'
+export {
+  ADVANCED_RESET_KEYS,
+  ALL_OWNED_UI_BAG_KEYS,
+  configChangesNeedHardReload,
+  MODULE_UI_RESET_KEYS,
+  PLATFORMS_UI_RESET_KEYS,
+  RUNTIME_RELOAD_UI_BAG_KEYS,
+  UI_RESET_KEYS,
+} from './uiBagOwnership'
 export { UpdaterInlinePanel } from './UpdaterConfigSection'
 export { default as UsersConfigSection } from './UsersConfigSection'

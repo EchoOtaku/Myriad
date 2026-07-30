@@ -25,6 +25,7 @@ import {
 } from '../animations'
 import { formatCompactNumber } from '../format'
 import { useCountUp, useLibraryItemRotation } from '../hooks'
+import { proxyImageUrl } from '../../../../utils/proxyImageUrl'
 import { normalizeHttpsMediaUrl, normalizeXboxMediaUrl } from '../media'
 import { fetchPlatformUserIds } from '../platformSocial'
 
@@ -377,19 +378,27 @@ export const SteamStatsWidget = memo(({ data }: any) => {
   const avatarUrl = useMemo(() => {
     const raw = presence?.avatar?.trim()
     if (!raw) return null
+    // presence 走独立 API，不在 card_visuals 入口；此处补代理 + 相对路径
+    if (raw.includes('/api/proxy/image')) return proxyImageUrl(raw) ?? raw
     // Steam 同一 hash 有 无后缀(32) / _medium(64) / _full(184) 三种尺寸，
     // 统一升到 _full，避免拿到小图放大发糊
-    return raw.replace(/(_full|_medium)?\.(jpg|png)(\?.*)?$/i, '_full.$2$3')
+    const full = raw.replace(
+      /(_full|_medium)?\.(jpg|png)(\?.*)?$/i,
+      '_full.$2$3',
+    )
+    return proxyImageUrl(full) ?? full
   }, [presence])
   const isLive = Boolean(presence?.is_online || presence?.is_in_game)
   const nowPlaying =
     presence?.is_in_game && presence?.gameextrainfo
       ? presence.gameextrainfo
       : null
-  // 正在玩的游戏图标：用 appid 取 Steam 商店头图（方形裁切），无 appid 时回退到 Steam 图标
+  // 前端拼的商店头图（不在 card_visuals）：本地包代理
   const gameIconUrl =
     nowPlaying && presence?.gameid
-      ? `https://cdn.cloudflare.steamstatic.com/steam/apps/${presence.gameid}/header.jpg`
+      ? proxyImageUrl(
+          `https://cdn.cloudflare.steamstatic.com/steam/apps/${presence.gameid}/header.jpg`,
+        )
       : null
   // 近两周游玩时长（小时），无数据时不显示该项
   const recent2wHours = useMemo(() => {
@@ -670,6 +679,7 @@ export const SteamWidget = memo(({ data, showOverview, onContentChange }: any) =
                 alt={currentItem.title}
                 className="w-full h-full object-cover"
                 loading="lazy"
+                referrerPolicy="no-referrer"
               />
               <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-transparent" />
             </div>
@@ -1066,7 +1076,11 @@ export const XboxStatsWidget = memo(({ data }: any) => {
   }, [gamertag])
 
   const displayName = livePresence?.gamertag || gamertag || 'Xbox'
-  const avatarUrl = livePresence?.avatar || fallbackAvatar
+  // live presence 独立 API（非 card_visuals 入口）
+  const avatarUrl =
+    proxyImageUrl(livePresence?.avatar) ||
+    livePresence?.avatar ||
+    fallbackAvatar
   const isLive = Boolean(livePresence?.is_online || livePresence?.is_in_game)
   const nowPlaying =
     livePresence?.is_in_game && livePresence?.game_title
@@ -1615,10 +1629,7 @@ export const PsnStatsWidget = memo(({ data }: any) => {
     [data],
   )
   const fallbackAvatar = useMemo(
-    () =>
-      typeof data?.avatar === 'string'
-        ? normalizeHttpsMediaUrl(data.avatar)
-        : null,
+    () => (typeof data?.avatar === 'string' ? data.avatar : null),
     [data],
   )
   const score = useMemo(() => {
@@ -1715,8 +1726,11 @@ export const PsnStatsWidget = memo(({ data }: any) => {
   }, [onlineId])
 
   const displayName = livePresence?.online_id || onlineId || 'PlayStation'
+  // live presence 独立 API：仅补 https / 代理
   const avatarUrl =
-    normalizeHttpsMediaUrl(livePresence?.avatar) || fallbackAvatar
+    proxyImageUrl(livePresence?.avatar) ||
+    normalizeHttpsMediaUrl(livePresence?.avatar) ||
+    fallbackAvatar
   const isLive = Boolean(livePresence?.is_online || livePresence?.is_in_game)
   const nowPlaying =
     livePresence?.is_in_game && livePresence?.game_title

@@ -77,9 +77,14 @@ pub struct UserStats {
     pub total_content: usize,
 }
 
+/// Untagged: order matters. Prefer variants with distinctive required fields.
+/// YouTube before Bilibili — both have `video_summary` + `recent_videos`; Bilibili
+/// also needs `anime_analysis`, but unknown fields are ignored so a YouTube blob
+/// must not be attempted as Bilibili first in edge cases.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ContentAnalysis {
+    YouTube(YouTubeAnalysis),
     Bilibili(BilibiliAnalysis),
     Steam(SteamAnalysis),
     GitHub(GitHubAnalysis),
@@ -90,6 +95,52 @@ pub enum ContentAnalysis {
     Mal(MalAnalysis),
     Xbox(XboxAnalysis),
     Psn(PsnAnalysis),
+}
+
+/// YouTube public-channel analysis (Data API v3, API key only).
+///
+/// `deny_unknown_fields` keeps untagged `ContentAnalysis` from accepting a
+/// Bilibili blob (which also has `video_summary` + `recent_videos` plus
+/// `anime_analysis`) as YouTube.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct YouTubeAnalysis {
+    pub video_summary: String,
+    #[serde(default)]
+    pub subscriber_count: i64,
+    #[serde(default)]
+    pub view_count: i64,
+    #[serde(default)]
+    pub video_count: i64,
+    pub recent_videos: Vec<YouTubeVideoItem>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YouTubeVideoItem {
+    pub title: String,
+    pub video_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cover: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view_count: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub like_count: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment_count: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub published_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
 }
 
 /// Xbox 成就分析（Xbox Live 无游玩时长，走成就向叙事）
@@ -343,6 +394,7 @@ pub struct XPostItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BilibiliAnalysis {
     pub video_summary: String,
     pub anime_analysis: Vec<super::content_databases::anime_database::CategoryAnalysis>,
@@ -713,6 +765,16 @@ impl SmartFilter {
             }
         }
 
+        if let Some(youtube_data) = all_data.get("youtube") {
+            match SmartFilter::filter("youtube", youtube_data) {
+                Ok(result) => {
+                    Self::save_platform_cache_atomic("youtube", &result)?;
+                    processed_count += 1;
+                }
+                Err(e) => tracing::warn!("YouTube filter failed: {}", e),
+            }
+        }
+
         tracing::info!(
             "✓ Smart filtered data saved to {} platform files in cache/platforms/",
             processed_count
@@ -754,6 +816,7 @@ impl SmartFilter {
             "bilibili" => Self::filter_bilibili(raw_data),
             "steam" => Self::filter_steam(raw_data),
             "github" => Self::filter_github(raw_data),
+            "youtube" => Self::filter_youtube(raw_data),
             "netease" => Self::filter_netease(raw_data),
             "bangumi" => Self::filter_bangumi(raw_data),
             "x" => Self::filter_x(raw_data),
@@ -763,6 +826,193 @@ impl SmartFilter {
             "psn" => Self::filter_psn(raw_data),
             _ => Err(format!("Unsupported platform: {}", platform)),
         }
+    }
+
+    /// YouTube public channel + uploads sample (API key raw shape from fetcher)
+    fn filter_youtube(data: &Value) -> Result<SmartFilteredData, String> {
+        let channel = data
+            .get("channel")
+            .or_else(|| data.get("user"))
+            .ok_or_else(|| "YouTube raw data missing channel".to_string())?;
+
+        let channel_id = channel
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let title = channel
+            .pointer("/snippet/title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("YouTube channel")
+            .to_string();
+        let custom_url = channel
+            .pointer("/snippet/customUrl")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let description = channel
+            .pointer("/snippet/description")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let avatar = channel
+            .pointer("/snippet/thumbnails/high/url")
+            .or_else(|| channel.pointer("/snippet/thumbnails/medium/url"))
+            .or_else(|| channel.pointer("/snippet/thumbnails/default/url"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let subscriber_count = channel
+            .pointer("/statistics/subscriberCount")
+            .and_then(json_nonneg_i64)
+            .unwrap_or(0);
+        let view_count = channel
+            .pointer("/statistics/viewCount")
+            .and_then(json_nonneg_i64)
+            .unwrap_or(0);
+        let video_count = channel
+            .pointer("/statistics/videoCount")
+            .and_then(json_nonneg_i64)
+            .unwrap_or(0);
+
+        let channel_url = if let Some(ref cu) = custom_url {
+            let handle = cu.trim_start_matches('@');
+            Some(format!("https://www.youtube.com/@{handle}"))
+        } else if !channel_id.is_empty() {
+            Some(format!("https://www.youtube.com/channel/{channel_id}"))
+        } else {
+            None
+        };
+
+        // Prefer videos[] with statistics; fall back to playlist_items snippet only
+        let mut recent_videos: Vec<YouTubeVideoItem> = Vec::new();
+        if let Some(videos) = data.get("videos").and_then(|v| v.as_array()) {
+            for v in videos {
+                let video_id = v.get("id").and_then(|x| x.as_str()).unwrap_or("").to_string();
+                if video_id.is_empty() {
+                    continue;
+                }
+                let vtitle = v
+                    .pointer("/snippet/title")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("Untitled")
+                    .to_string();
+                let cover = v
+                    .pointer("/snippet/thumbnails/medium/url")
+                    .or_else(|| v.pointer("/snippet/thumbnails/high/url"))
+                    .or_else(|| v.pointer("/snippet/thumbnails/default/url"))
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.to_string());
+                recent_videos.push(YouTubeVideoItem {
+                    title: vtitle,
+                    video_id: video_id.clone(),
+                    cover,
+                    view_count: v
+                        .pointer("/statistics/viewCount")
+                        .and_then(json_nonneg_i64),
+                    like_count: v
+                        .pointer("/statistics/likeCount")
+                        .and_then(json_nonneg_i64),
+                    comment_count: v
+                        .pointer("/statistics/commentCount")
+                        .and_then(json_nonneg_i64),
+                    published_at: v
+                        .pointer("/snippet/publishedAt")
+                        .and_then(|x| x.as_str())
+                        .map(|s| s.to_string()),
+                    duration: v
+                        .pointer("/contentDetails/duration")
+                        .and_then(|x| x.as_str())
+                        .map(|s| s.to_string()),
+                    url: Some(format!("https://www.youtube.com/watch?v={video_id}")),
+                });
+            }
+        } else if let Some(items) = data.get("playlist_items").and_then(|v| v.as_array()) {
+            for item in items {
+                let video_id = item
+                    .pointer("/contentDetails/videoId")
+                    .or_else(|| item.pointer("/snippet/resourceId/videoId"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if video_id.is_empty() {
+                    continue;
+                }
+                let vtitle = item
+                    .pointer("/snippet/title")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("Untitled")
+                    .to_string();
+                let cover = item
+                    .pointer("/snippet/thumbnails/medium/url")
+                    .or_else(|| item.pointer("/snippet/thumbnails/high/url"))
+                    .or_else(|| item.pointer("/snippet/thumbnails/default/url"))
+                    .and_then(|x| x.as_str())
+                    .map(|s| s.to_string());
+                recent_videos.push(YouTubeVideoItem {
+                    title: vtitle,
+                    video_id: video_id.clone(),
+                    cover,
+                    view_count: None,
+                    like_count: None,
+                    comment_count: None,
+                    published_at: item
+                        .pointer("/snippet/publishedAt")
+                        .or_else(|| item.pointer("/contentDetails/videoPublishedAt"))
+                        .and_then(|x| x.as_str())
+                        .map(|s| s.to_string()),
+                    duration: None,
+                    url: Some(format!("https://www.youtube.com/watch?v={video_id}")),
+                });
+            }
+        }
+
+        // Cap sample size for filtered cache
+        if recent_videos.len() > 24 {
+            recent_videos.truncate(24);
+        }
+
+        let sample_n = recent_videos.len();
+        // Empty public channel is a valid success (not a fetch failure).
+        let video_summary = if video_count == 0 && sample_n == 0 {
+            format!(
+                "公开频道已解析，但暂无上传视频（订阅 {}，观看 {}）。空频道仍可生成报告。",
+                subscriber_count, view_count
+            )
+        } else {
+            format!(
+                "{} 个公开视频，{} 位订阅者，累计 {} 次观看；已采样最近 {} 条上传",
+                video_count, subscriber_count, view_count, sample_n
+            )
+        };
+
+        let user_summary = UserSummary {
+            username: title,
+            user_id: channel_id,
+            level: custom_url.clone(),
+            stats: UserStats {
+                follower_count: Some(subscriber_count),
+                following_count: None,
+                total_content: video_count.max(0) as usize,
+            },
+        };
+
+        let content_analysis = ContentAnalysis::YouTube(YouTubeAnalysis {
+            video_summary,
+            subscriber_count,
+            view_count,
+            video_count,
+            recent_videos,
+            custom_url,
+            avatar,
+            channel_url,
+            description,
+        });
+
+        Ok(SmartFilteredData {
+            platform: "youtube".to_string(),
+            user_summary,
+            content_analysis,
+            raw_unknown_content: vec![],
+        })
     }
 
     /// Bilibili 智能过滤
@@ -3110,6 +3360,9 @@ impl SmartFilter {
             "github" => {
                 // GitHub 数据通常不需要特殊预处理
             }
+            "youtube" => {
+                // YouTube 数据已按 { channel, videos, playlist_items } 保存
+            }
             "bangumi" => {
                 // Bangumi 数据已按 { user, collections } 保存，不需要特殊预处理
             }
@@ -3323,6 +3576,143 @@ mod tests {
         }
     }
 
+    /// Fixture shaped like Data API v3 `channels` + `videos` (public, no OAuth).
+    #[test]
+    fn filter_youtube_channel_and_videos() {
+        let raw = serde_json::json!({
+            "channel": {
+                "id": "UC_x5XG1OV2P6uZZ5FSM9Ttw",
+                "snippet": {
+                    "title": "Google for Developers",
+                    "customUrl": "@GoogleDevelopers",
+                    "description": "Subscribe to join a community of creative developers!",
+                    "thumbnails": {
+                        "high": { "url": "https://example.com/avatar.jpg" }
+                    }
+                },
+                "statistics": {
+                    "viewCount": "250000000",
+                    "subscriberCount": "2300000",
+                    "videoCount": "5800"
+                },
+                "contentDetails": {
+                    "relatedPlaylists": { "uploads": "UU_x5XG1OV2P6uZZ5FSM9Ttw" }
+                }
+            },
+            "uploads_playlist_id": "UU_x5XG1OV2P6uZZ5FSM9Ttw",
+            "playlist_items": [],
+            "videos": [
+                {
+                    "id": "dQw4w9WgXcQ",
+                    "snippet": {
+                        "title": "Sample Upload One",
+                        "publishedAt": "2026-01-01T12:00:00Z",
+                        "thumbnails": {
+                            "medium": { "url": "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg" }
+                        }
+                    },
+                    "statistics": {
+                        "viewCount": "1000",
+                        "likeCount": "50",
+                        "commentCount": "5"
+                    },
+                    "contentDetails": { "duration": "PT3M33S" }
+                },
+                {
+                    "id": "abc123xyz",
+                    "snippet": {
+                        "title": "Sample Upload Two",
+                        "publishedAt": "2026-01-02T12:00:00Z",
+                        "thumbnails": {
+                            "medium": { "url": "https://i.ytimg.com/vi/abc123xyz/mqdefault.jpg" }
+                        }
+                    },
+                    "statistics": {
+                        "viewCount": "200",
+                        "likeCount": "10",
+                        "commentCount": "1"
+                    },
+                    "contentDetails": { "duration": "PT10M" }
+                }
+            ]
+        });
+
+        let filtered = SmartFilter::filter("youtube", &raw).expect("filter youtube");
+        assert_eq!(filtered.platform, "youtube");
+        assert_eq!(filtered.user_summary.username, "Google for Developers");
+        assert_eq!(
+            filtered.user_summary.user_id,
+            "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+        );
+        assert_eq!(filtered.user_summary.stats.follower_count, Some(2_300_000));
+        assert_eq!(filtered.user_summary.stats.total_content, 5800);
+
+        match &filtered.content_analysis {
+            ContentAnalysis::YouTube(analysis) => {
+                assert_eq!(analysis.subscriber_count, 2_300_000);
+                assert_eq!(analysis.view_count, 250_000_000);
+                assert_eq!(analysis.video_count, 5800);
+                assert_eq!(analysis.recent_videos.len(), 2);
+                assert_eq!(analysis.recent_videos[0].video_id, "dQw4w9WgXcQ");
+                assert_eq!(analysis.recent_videos[0].view_count, Some(1000));
+                assert!(analysis.recent_videos[0].cover.is_some());
+                assert!(analysis
+                    .channel_url
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("GoogleDevelopers"));
+                assert!(analysis.video_summary.contains("订阅"));
+            }
+            other => panic!("expected YouTube analysis, got {:?}", other),
+        }
+        // Round-trip through SmartFilteredData JSON (cache shape)
+        let as_json = serde_json::to_value(&filtered).expect("serialize");
+        assert_eq!(as_json["platform"], "youtube");
+        assert!(as_json["content_analysis"]["recent_videos"].is_array());
+        assert_eq!(as_json["content_analysis"]["subscriber_count"], 2_300_000);
+    }
+
+    /// Empty public channel (0 videos) is a valid success — not a filter/fetch error.
+    #[test]
+    fn filter_youtube_empty_channel_is_valid() {
+        let raw = serde_json::json!({
+            "channel": {
+                "id": "UCempty00000000000000000",
+                "snippet": {
+                    "title": "Empty Channel",
+                    "customUrl": "@empty",
+                    "thumbnails": { "high": { "url": "https://example.com/a.jpg" } }
+                },
+                "statistics": {
+                    "viewCount": "0",
+                    "subscriberCount": "0",
+                    "videoCount": "0"
+                },
+                "contentDetails": {
+                    "relatedPlaylists": { "uploads": "UUempty" }
+                }
+            },
+            "uploads_playlist_id": "UUempty",
+            "playlist_items": [],
+            "videos": []
+        });
+        let filtered = SmartFilter::filter("youtube", &raw).expect("empty youtube ok");
+        assert_eq!(filtered.platform, "youtube");
+        assert_eq!(filtered.user_summary.username, "Empty Channel");
+        match &filtered.content_analysis {
+            ContentAnalysis::YouTube(a) => {
+                assert_eq!(a.video_count, 0);
+                assert!(a.recent_videos.is_empty());
+                assert!(
+                    a.video_summary.contains("暂无上传") || a.video_summary.contains("空频道"),
+                    "summary should say empty is ok: {}",
+                    a.video_summary
+                );
+            }
+            other => panic!("expected YouTube, got {other:?}"),
+        }
+    }
+
     #[test]
     fn test_filter_bilibili_user_key() {
         // 抓取写入 `user`（与 steam/github 一致）；filter 内部期望 user_info
@@ -3507,5 +3897,37 @@ mod tests {
         assert!(manage.contains(&"MANAGE_GUILD".to_string()));
         assert!(manage.contains(&"MANAGE_CHANNELS".to_string()));
         assert!(!manage.contains(&"ADMINISTRATOR".to_string()));
+    }
+
+    #[test]
+    fn load_youtube_filtered_cache_from_disk_if_present() {
+        // Drives SmartFilter::load_platform_cache against real on-disk shape
+        // (backend/cache/platforms/youtube_filtered.json). Skip if missing.
+        let path = std::path::Path::new("cache/platforms/youtube_filtered.json");
+        if !path.exists() {
+            eprintln!("skip: no on-disk youtube_filtered.json");
+            return;
+        }
+        let data = SmartFilter::load_platform_cache("youtube")
+            .unwrap_or_else(|e| panic!("load youtube cache failed: {e}"));
+        assert_eq!(data.platform, "youtube");
+        match data.content_analysis {
+            ContentAnalysis::YouTube(ref a) => {
+                assert!(
+                    !a.video_summary.is_empty(),
+                    "expected video_summary on youtube analysis"
+                );
+            }
+            other => panic!("expected ContentAnalysis::YouTube, got {other:?}"),
+        }
+        // Round-trip used by report DB save path
+        let v = serde_json::to_value(&data).expect("serialize");
+        let back: SmartFilteredData =
+            serde_json::from_value(v).expect("deserialize SmartFilteredData after save shape");
+        assert_eq!(back.platform, "youtube");
+        assert!(matches!(
+            back.content_analysis,
+            ContentAnalysis::YouTube(_)
+        ));
     }
 }

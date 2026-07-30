@@ -10,6 +10,7 @@ import {
   SiMyanimelist,
   SiNeteasecloudmusic,
   SiPlaystation,
+  SiYoutube,
 } from '@lib/icons'
 
 export const PLATFORM_CONFIG: Record<
@@ -46,6 +47,14 @@ export const PLATFORM_CONFIG: Record<
     borderColor: 'rgba(36, 41, 46, 0.3)',
     label: 'GitHub',
     textColor: 'text-gray-900 dark:text-gray-100',
+  },
+  youtube: {
+    icon: <SiYoutube />,
+    color: '#FF0000',
+    bgColor: 'rgba(255, 0, 0, 0.12)',
+    borderColor: 'rgba(255, 0, 0, 0.3)',
+    label: 'YouTube',
+    textColor: 'text-red-600 dark:text-red-400',
   },
   netease: {
     icon: <SiNeteasecloudmusic />,

@@ -131,6 +131,7 @@ pub fn platform_label(platform: &str) -> &str {
         "steam" => "Steam",
         "github" => "GitHub",
         "bilibili" => "Bilibili",
+        "youtube" => "YouTube",
         "netease" | "netease_music" => "NetEase Cloud Music",
         "bangumi" => "Bangumi",
         "x" => "X",

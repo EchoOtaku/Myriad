@@ -86,6 +86,10 @@ struct StatusResp {
     check_interval_secs_pref: Option<u64>,
     /// Auto-install clear upgrades on the current channel. Default false.
     auto_install: bool,
+    /// Auto-prune older pgdata backups to a max count. Default true.
+    snapshot_limit_enabled: bool,
+    /// Max older non-keep backups retained when limit is enabled (1..=20). Default 3.
+    snapshot_limit: u32,
     maintenance_active: bool,
     maintenance_phase: Phase,
     job_in_flight: Option<String>,
@@ -171,6 +175,8 @@ async fn status(State(st): State<ApiState>) -> Result<Json<StatusResp>, ApiError
         check_interval_secs: st.worker.effective_check_interval_secs(),
         check_interval_secs_pref: u.check_interval_secs,
         auto_install: u.auto_install,
+        snapshot_limit_enabled: u.snapshot_limit_enabled,
+        snapshot_limit: u.snapshot_limit,
         maintenance_active: m.active,
         maintenance_phase: m.phase,
         job_in_flight: job,
@@ -711,6 +717,12 @@ struct PrefsBody {
     check_interval_secs: Option<Option<u64>>,
     #[serde(default)]
     auto_install: Option<bool>,
+    /// Toggle auto-prune of older pgdata backups.
+    #[serde(default)]
+    snapshot_limit_enabled: Option<bool>,
+    /// Max older non-keep backups when limit enabled (1..=20).
+    #[serde(default)]
+    snapshot_limit: Option<u32>,
 }
 
 /// Distinguishes "field omitted" (None) from "field set to null" (Some(None)).
@@ -729,10 +741,14 @@ async fn set_prefs(
         && body.mode.is_none()
         && body.check_interval_secs.is_none()
         && body.auto_install.is_none()
+        && body.snapshot_limit_enabled.is_none()
+        && body.snapshot_limit.is_none()
     {
         return Err(ApiError(
             StatusCode::BAD_REQUEST,
-            "provide channel, mode, check_interval_secs, and/or auto_install".into(),
+            "provide channel, mode, check_interval_secs, auto_install, \
+             snapshot_limit_enabled, and/or snapshot_limit"
+                .into(),
         ));
     }
     let mode = body
@@ -749,6 +765,8 @@ async fn set_prefs(
             mode,
             check_interval_secs: body.check_interval_secs,
             auto_install: body.auto_install,
+            snapshot_limit_enabled: body.snapshot_limit_enabled,
+            snapshot_limit: body.snapshot_limit,
             reply: tx,
         })
         .await
@@ -763,6 +781,9 @@ async fn set_prefs(
         "check_interval_secs": prefs.check_interval_secs,
         "check_interval_secs_pref": prefs.check_interval_secs_pref,
         "auto_install": prefs.auto_install,
+        "snapshot_limit_enabled": prefs.snapshot_limit_enabled,
+        "snapshot_limit": prefs.snapshot_limit,
+        "pruned_snapshot_ids": prefs.pruned_snapshot_ids,
     })))
 }
 
