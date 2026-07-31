@@ -178,7 +178,7 @@ export function useConfigNavigation(isAdmin: boolean, t: NavI18n) {
     [quickAccessItems, activeSection, isAdmin],
   )
 
-  // Deep link: /config?section=about|advanced|… (updater→about, mcp→notifications via LEGACY map)
+  // Deep link: /config?section=about|advanced|… (updater/mcp→about via LEGACY map)
   useEffect(() => {
     if (typeof window === 'undefined') return
     const applySectionFromUrl = () => {
@@ -189,7 +189,14 @@ export function useConfigNavigation(isAdmin: boolean, t: NavI18n) {
       const known = quickAccessItems.some((item) => item.section === next)
       if (!known) return
       setActiveSection(next)
-      setPlatformFocus(null)
+      // Preserve platform focus after Discord OAuth / ?platform=discord
+      // (clearing here races ConfigForm oauth effect and drops the highlight)
+      const platformQ = params.get('platform')
+      if (platformQ === 'discord' || params.get('discord_oauth')) {
+        setPlatformFocus('Discord')
+      } else {
+        setPlatformFocus(null)
+      }
       setMobilePane('section')
     }
     applySectionFromUrl()

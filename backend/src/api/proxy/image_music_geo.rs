@@ -406,6 +406,13 @@ fn is_allowed_domain(url: &str) -> bool {
         "myanimelist.net",            // MyAnimeList
         "pbs.twimg.com",              // X 头像/媒体
         "twimg.com",
+        // Extensionless avatar CDNs (u/1?v=4, s88-c-k-c0x00ffffff-no-rj, …)
+        "avatars.githubusercontent.com",
+        "githubusercontent.com",
+        "yt3.ggpht.com",
+        "ggpht.com",
+        "ytimg.com",
+        "googleusercontent.com",
     ];
 
     // 如果是核心平台，直接允许
@@ -538,6 +545,13 @@ mod image_proxy_tests {
         ));
         assert!(!is_allowed_domain("ftp://evil.example/x.png"));
         assert!(!is_allowed_domain("https://evil.example/page.html"));
+        // Extensionless avatar CDNs (core allowlist)
+        assert!(is_allowed_domain(
+            "https://avatars.githubusercontent.com/u/1?v=4"
+        ));
+        assert!(is_allowed_domain(
+            "https://yt3.ggpht.com/ytc/AIdro_test=s88-c-k-c0x00ffffff-no-rj"
+        ));
     }
 
     #[test]
@@ -580,6 +594,15 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
                 .into_response();
         }
     };
+
+    // Align with QQ playlist: surface 429 + Retry-After for FE toast
+    let cache_key = format!("netease_playlist:{}", playlist_id);
+    {
+        let mut limiter = RATE_LIMITER.write().await;
+        if !limiter.check_rate_limit(&cache_key) {
+            return music_rate_limited_response(&format!("Netease playlist: {}", playlist_id));
+        }
+    }
 
     let service = NeteaseService::new();
     match service.fetch_playlist(playlist_id_i64, true).await {
@@ -863,6 +886,15 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
             return (StatusCode::BAD_REQUEST, "Invalid song ID").into_response();
         }
     };
+
+    // Align with QQ /audio: music-layer Retry-After (not only play-url)
+    let cache_key = format!("netease_audio:{}", song_id);
+    {
+        let mut limiter = RATE_LIMITER.write().await;
+        if !limiter.check_rate_limit(&cache_key) {
+            return music_rate_limited_response(&format!("Netease audio: {}", song_id));
+        }
+    }
 
     let service = NeteaseService::new();
     match service.fetch_audio_url(song_id_i64).await {

@@ -51,6 +51,7 @@ pub use agent_footer::{
     cleanup_expired_confirmations,
     ensure_agent_usage_allowed,
     get_capabilities_summary,
+    get_capabilities_summary_for_user,
     get_user_permissions,
     init_task_store,
     parse_pre_param_question_id,

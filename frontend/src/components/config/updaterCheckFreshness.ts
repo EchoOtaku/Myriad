@@ -125,11 +125,9 @@ function isReleaseTag(tag: string): boolean {
 }
 
 function modeForTarget(target: string, fallback: UpdateMode): UpdateMode {
-  return isReleaseTag(target)
-    ? 'release'
-    : fallback === 'commit'
-      ? 'commit'
-      : 'release'
+  if (isReleaseTag(target)) return 'release'
+  if (fallback === 'commit') return 'commit'
+  return 'commit'
 }
 
 function normalizeVersion(v: string): string {

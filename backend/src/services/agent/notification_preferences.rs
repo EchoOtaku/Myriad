@@ -144,17 +144,19 @@ pub const EVENT_DEFINITIONS: [NotificationEventDefinition; 32] = [
         key: "system.info",
         source: "system",
     },
+    // skill.* is Arael skill lifecycle — same source as agent so FE prefs
+    // (system on / agent off) cannot swallow skill notifications.
     NotificationEventDefinition {
         key: "skill.pruned",
-        source: "system",
+        source: "agent",
     },
     NotificationEventDefinition {
         key: "skill.improved",
-        source: "system",
+        source: "agent",
     },
     NotificationEventDefinition {
         key: "skill.changed",
-        source: "system",
+        source: "agent",
     },
 ];
 

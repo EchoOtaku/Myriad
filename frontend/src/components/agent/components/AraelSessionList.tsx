@@ -11,6 +11,7 @@
 
 import type { ChatSession } from '../types'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useAuth } from '../../../contexts/AuthContext'
 import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
 import { Spinner } from '../../Spinner'
@@ -55,8 +56,15 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const { t, format } = useI18n()
+  const { isAuthenticated } = useAuth()
 
   const loadSessions = useCallback(async () => {
+    // JWT-only endpoint — guests must not hit /api/agent/sessions
+    if (!isAuthenticated) {
+      setSessions([])
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       const list = await agentService.listSessions(1, 50)
@@ -74,7 +82,7 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [isAuthenticated])
 
   useEffect(() => {
     loadSessions()

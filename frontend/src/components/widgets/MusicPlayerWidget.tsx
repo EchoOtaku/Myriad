@@ -668,7 +668,7 @@ const AlbumCover = memo(
         transition={ALBUM_COVER_TRANSITION}
       >
         <div
-          className="rounded-md overflow-hidden shadow-lg ring-2 ring-white/20 dark:ring-white/10 backdrop-blur-sm"
+          className="rounded-lg overflow-hidden shadow-lg ring-2 ring-white/20 dark:ring-white/10 backdrop-blur-sm"
           style={{ width: `${48 * scale}px`, height: `${48 * scale}px` }}
         >
           {cover ? (
@@ -1141,7 +1141,7 @@ export const MusicPlayerWidget = memo(
                   isPlaying={isPlaying}
                   themeColor={themeColor}
                   scale={scale * 1.35} // 放大封面
-                  className="relative z-10 shadow-xl rounded-md"
+                  className="relative z-10 shadow-xl rounded-lg"
                   style={{}}
                   anim={anim}
                 />

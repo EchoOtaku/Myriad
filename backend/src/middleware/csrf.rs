@@ -301,12 +301,16 @@ pub async fn get_csrf_token(headers: HeaderMap) -> impl IntoResponse {
         let tokens = CSRF_TOKENS.read().await;
         if let Some(existing) = tokens.get(&session_id) {
             // 如果 Token 未过期（还有超过 5 分钟有效期），复用现有 Token
-            if Instant::now().duration_since(existing.created_at) < Duration::from_secs(3300) {
+            let age = Instant::now().duration_since(existing.created_at);
+            if age < Duration::from_secs(3300) {
+                let remaining = 3600u64.saturating_sub(age.as_secs());
                 tracing::debug!("✅ Reusing existing CSRF token for session");
                 return (
                     StatusCode::OK,
                     Json(json!({
-                        "csrf_token": existing.token.clone()
+                        "csrf_token": existing.token.clone(),
+                        // Remaining BE lifetime so FE does not reset client TTL past hard expiry
+                        "expires_in": remaining
                     })),
                 )
                     .into_response();
@@ -345,7 +349,8 @@ pub async fn get_csrf_token(headers: HeaderMap) -> impl IntoResponse {
     (
         StatusCode::OK,
         Json(json!({
-            "csrf_token": token
+            "csrf_token": token,
+            "expires_in": 3600
         })),
     )
         .into_response()

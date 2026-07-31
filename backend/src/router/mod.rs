@@ -43,6 +43,10 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
         axum::http::header::HeaderName::from_static("x-csrf-token"),
         axum::http::header::HeaderName::from_static("x-tapp-runtime-grant"),
         axum::http::header::HeaderName::from_static("x-requested-with"),
+        // Setup wizard (already-configured instance re-init) + host locale/TZ for Tapp context.
+        axum::http::header::HeaderName::from_static("x-bootstrap-token"),
+        axum::http::header::HeaderName::from_static("x-myriad-locale"),
+        axum::http::header::HeaderName::from_static("x-myriad-timezone"),
     ];
 
     let cors = CorsLayer::new()

@@ -513,7 +513,18 @@ export const TappWidgetSandbox = memo(
 
       // 注册处理器（Widget 只需要基础 API）
       registerLifecycleHandlers(bridge, currentTappInstance, handleReady)
-      registerUIHandlers(bridge, currentTappInstance)
+      registerUIHandlers(bridge, currentTappInstance, () => {
+        try {
+          return (
+            localStorage.getItem('locale') ||
+            document.documentElement.lang ||
+            navigator.language ||
+            'en-US'
+          )
+        } catch {
+          return 'en-US'
+        }
+      })
       registerStorageHandlers(bridge, currentTappInstance.id)
       registerUserHandlers(bridge, currentTappInstance)
       bridge.registerHandler(

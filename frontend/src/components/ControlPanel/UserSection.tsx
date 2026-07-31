@@ -149,8 +149,8 @@ export const UserSection: React.FC<UserSectionProps> = memo(
           return
         }
 
-        // 管理员默认站长资料（公开站点形象）
-        if (authUser.is_admin) {
+        // 站长默认公开站点形象（is_owner，非 is_admin：管理员≠站长）
+        if (authUser.is_owner === true) {
           try {
             const profileResponse = await fetch(
               `${API_URL}/api/profile/user-info`,
@@ -173,7 +173,7 @@ export const UserSection: React.FC<UserSectionProps> = memo(
             }
           } catch (_error) {
             console.debug(
-              '[UserSection] Failed to fetch admin profile, using authUser info',
+              '[UserSection] Failed to fetch owner profile, using authUser info',
             )
           }
         }

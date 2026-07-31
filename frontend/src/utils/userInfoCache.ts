@@ -10,7 +10,6 @@
 
 import { API_URL } from '../config'
 import { parseAuthMeResponse } from './authMe'
-import { parseCsrfTokenResponse } from './csrf'
 import { proxyImageUrl } from './proxyImageUrl'
 
 /**

@@ -381,10 +381,32 @@ export const SteamStatsWidget = memo(({ data }: any) => {
   const fallbackPresence = useMemo(() => getSteamPresenceFromData(data), [data])
   const [livePresence, setLivePresence] = useState<SteamPresence | null>(null)
   const score = useMemo(() => data?.hardcore_score || 0, [data])
-  const type = useMemo(
-    () => data?.player_type || t.reportCard.casualPlayer,
-    [data, t.reportCard.casualPlayer],
-  )
+  const type = useMemo(() => {
+    const raw = String(data?.player_type || '')
+      .trim()
+      .toLowerCase()
+    // Enum keys + legacy Chinese labels from older reports
+    if (
+      raw === 'hardcore' ||
+      raw.includes('硬核') ||
+      raw.includes('hardcore')
+    ) {
+      return t.reportCardWidget.hardcorePlayer || t.reportCard.hardcorePlayer
+    }
+    if (
+      raw === 'casual' ||
+      raw.includes('休闲') ||
+      raw.includes('casual')
+    ) {
+      return t.reportCard.casualPlayer
+    }
+    if (raw === 'balanced' || raw.includes('均衡')) {
+      return t.reportCardWidget.balancedPlayer || t.reportCard.casualPlayer
+    }
+    // Unknown string: show as-is only if non-empty, else casual default
+    if (raw) return String(data.player_type)
+    return t.reportCard.casualPlayer
+  }, [data, t])
   const gamesCount = useMemo(() => {
     const n = Number(data?.games_count)
     if (!Number.isFinite(n) || n < 0) return 0
@@ -540,12 +562,12 @@ export const SteamStatsWidget = memo(({ data }: any) => {
               <img
                 src={avatarUrl}
                 alt={presence?.personaname || 'Steam'}
-                className="h-11 w-11 rounded-xl object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
+                className="h-11 w-11 rounded-lg object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
                 loading="lazy"
                 decoding="async"
               />
             ) : (
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gray-200/70 ring-1 ring-black/10 dark:bg-white/10 dark:ring-white/15">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-gray-200/70 ring-1 ring-black/10 dark:bg-white/10 dark:ring-white/15">
                 <FaSteam className="h-5 w-5 text-gray-400 dark:text-gray-500" />
               </div>
             )}
@@ -614,7 +636,7 @@ export const SteamStatsWidget = memo(({ data }: any) => {
                 // 正在玩卡：满宽封面横幅 + 压暗渐变 + 播放角标/游戏名
                 <motion.div
                   key="playing"
-                  className="absolute inset-0 overflow-hidden rounded-xl shadow-sm ring-1 ring-black/10 dark:ring-white/15"
+                  className="absolute inset-0 overflow-hidden rounded-lg shadow-sm ring-1 ring-black/10 dark:ring-white/15"
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -12 }}
@@ -647,7 +669,7 @@ export const SteamStatsWidget = memo(({ data }: any) => {
                 // 评分卡：类型 + 分数进度条（横向卡片专属，取代圆环）
                 <motion.div
                   key="score"
-                  className="absolute inset-0 flex flex-col justify-center gap-1 rounded-xl bg-white/45 px-3.5 ring-1 ring-black/5 backdrop-blur-md dark:bg-white/8 dark:ring-white/10"
+                  className="absolute inset-0 flex flex-col justify-center gap-1 rounded-lg bg-white/45 px-3.5 ring-1 ring-black/5 backdrop-blur-md dark:bg-white/8 dark:ring-white/10"
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -12 }}
@@ -701,7 +723,7 @@ export const SteamWidget = memo(({ data, showOverview, onContentChange }: any) =
           transition={{ duration: 0.5 }}
           className="h-full w-full p-1.5"
         >
-          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
+          <div className="relative h-full w-full rounded-lg overflow-hidden shadow-lg bg-white dark:bg-black/90">
             <div className="absolute inset-0">
               <img
                 src={
@@ -1243,12 +1265,12 @@ export const XboxStatsWidget = memo(({ data }: any) => {
               <img
                 src={safeAvatarUrl}
                 alt={displayName}
-                className="h-11 w-11 rounded-xl object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
+                className="h-11 w-11 rounded-lg object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
                 loading="lazy"
                 decoding="async"
               />
             ) : (
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#107C10]/15 ring-1 ring-black/10 dark:bg-[#107C10]/25 dark:ring-white/15">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#107C10]/15 ring-1 ring-black/10 dark:bg-[#107C10]/25 dark:ring-white/15">
                 <FaXbox className="h-5 w-5 text-[#107C10]" />
               </div>
             )}
@@ -1311,7 +1333,7 @@ export const XboxStatsWidget = memo(({ data }: any) => {
               {showNowPlaying ? (
                 <motion.div
                   key="playing"
-                  className="absolute inset-0 overflow-hidden rounded-xl shadow-sm ring-1 ring-black/10 dark:ring-white/15"
+                  className="absolute inset-0 overflow-hidden rounded-lg shadow-sm ring-1 ring-black/10 dark:ring-white/15"
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -12 }}
@@ -1332,7 +1354,7 @@ export const XboxStatsWidget = memo(({ data }: any) => {
               ) : (
                 <motion.div
                   key="score"
-                  className="absolute inset-0 flex flex-col justify-center gap-1 rounded-xl bg-white/45 px-3.5 ring-1 ring-black/5 backdrop-blur-md dark:bg-white/8 dark:ring-white/10"
+                  className="absolute inset-0 flex flex-col justify-center gap-1 rounded-lg bg-white/45 px-3.5 ring-1 ring-black/5 backdrop-blur-md dark:bg-white/8 dark:ring-white/10"
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -12 }}
@@ -1407,7 +1429,9 @@ async function fetchPsnPresence(
           (status.includes('available') && !status.includes('unavailable')) ||
           status === 'away' ||
           status === 'busy'
-      const isInGame = !degraded && Boolean(title)
+      // Align with Xbox: require online for "playing" (stale title while offline is common)
+      const isInGame =
+        !degraded && isOnline && Boolean(title && title !== 'Home')
       const lvRaw = d?.score?.value
       const lv =
         typeof lvRaw === 'string' || typeof lvRaw === 'number'
@@ -1512,7 +1536,7 @@ export const XboxWidget = memo(({ data, showOverview, onContentChange }: any) =>
           transition={{ duration: 0.5 }}
           className="h-full w-full p-1.5"
         >
-          <div className="relative h-full w-full overflow-hidden rounded-xl bg-white shadow-lg dark:bg-black/90">
+          <div className="relative h-full w-full overflow-hidden rounded-lg bg-white shadow-lg dark:bg-black/90">
             <div className="absolute inset-0">
               {currentItem.cover ? (
                 <img
@@ -1930,13 +1954,13 @@ export const PsnStatsWidget = memo(({ data }: any) => {
               <img
                 src={avatarUrl}
                 alt={displayName}
-                className="h-11 w-11 rounded-xl object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
+                className="h-11 w-11 rounded-lg object-cover shadow-md ring-1 ring-black/10 dark:ring-white/15"
                 loading="lazy"
                 decoding="async"
                 referrerPolicy="no-referrer"
               />
             ) : (
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#0070D1]/15 ring-1 ring-black/10 dark:bg-[#0070D1]/25 dark:ring-white/15">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#0070D1]/15 ring-1 ring-black/10 dark:bg-[#0070D1]/25 dark:ring-white/15">
                 <SiPlaystation className="h-5 w-5 text-[#0070D1]" />
               </div>
             )}
@@ -1997,7 +2021,7 @@ export const PsnStatsWidget = memo(({ data }: any) => {
               {showNowPlaying ? (
                 <motion.div
                   key="playing"
-                  className="absolute inset-0 overflow-hidden rounded-xl shadow-sm ring-1 ring-black/10 dark:ring-white/15"
+                  className="absolute inset-0 overflow-hidden rounded-lg shadow-sm ring-1 ring-black/10 dark:ring-white/15"
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -12 }}
@@ -2018,7 +2042,7 @@ export const PsnStatsWidget = memo(({ data }: any) => {
               ) : (
                 <motion.div
                   key="score"
-                  className="absolute inset-0 flex flex-col justify-center gap-1 rounded-xl bg-white/45 px-3.5 ring-1 ring-black/5 backdrop-blur-md dark:bg-white/8 dark:ring-white/10"
+                  className="absolute inset-0 flex flex-col justify-center gap-1 rounded-lg bg-white/45 px-3.5 ring-1 ring-black/5 backdrop-blur-md dark:bg-white/8 dark:ring-white/10"
                   initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -12 }}
@@ -2095,7 +2119,7 @@ export const PsnWidget = memo(({ data, showOverview, onContentChange }: any) => 
           transition={{ duration: 0.5 }}
           className="h-full w-full p-1.5"
         >
-          <div className="relative h-full w-full overflow-hidden rounded-xl bg-white shadow-lg dark:bg-black/90">
+          <div className="relative h-full w-full overflow-hidden rounded-lg bg-white shadow-lg dark:bg-black/90">
             <div className="absolute inset-0">
               {currentItem.cover ? (
                 <img

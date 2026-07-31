@@ -1018,10 +1018,23 @@ fn parse_psn_legacy_presence(profile: &Value) -> (Option<String>, Option<String>
         .get("presences")
         .and_then(|v| v.as_array())
         .and_then(|a| a.first());
+    // Prefer onlineStatus; fall back to availableToPlay-style availability fields
     let status = pres
-        .and_then(|p| p.get("onlineStatus"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
+        .and_then(|p| {
+            p.get("onlineStatus")
+                .and_then(|v| v.as_str())
+                .or_else(|| p.get("availability").and_then(|v| v.as_str()))
+                .or_else(|| {
+                    // Some legacy payloads use primaryOnlineStatus on profile root
+                    None
+                })
+        })
+        .or_else(|| {
+            profile
+                .get("primaryOnlineStatus")
+                .and_then(|v| v.as_str())
+        })
+        .map(|s| normalize_psn_online_status(s));
     let title = pres
         .and_then(|p| p.get("titleName"))
         .and_then(|v| v.as_str())

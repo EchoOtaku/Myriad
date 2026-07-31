@@ -1236,7 +1236,9 @@ export function generateWidgetSDK(
 
   var currentLocale = typeof window._TAPP_LOCALE === 'string'
     ? window._TAPP_LOCALE
-    : 'zh-CN';
+    : (typeof document !== 'undefined' && document.documentElement.lang)
+      || (typeof navigator !== 'undefined' && navigator.language)
+      || 'en-US';
   function translate(key, variables) {
     variables = variables || {};
     var all = window._TAPP_I18N && typeof window._TAPP_I18N === 'object'

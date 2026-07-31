@@ -485,7 +485,8 @@ pub(super) fn build_authenticated_router(
             .route("/api/proxy/client-geo", get(api::proxy::get_client_geo))
             // Hitokoto proxy route
             .route("/api/proxy/hitokoto", get(api::proxy::proxy_hitokoto))
-            // Web content fetch proxy (open egress) — require auth; rate-limited as compute-intensive
+            // Deprecated orphan: no first-party FE caller (reader abandoned "load original").
+            // Kept for admin/tools + brew experiments; auth + compute rate-limit required.
             .route(
                 "/api/proxy/fetch-content",
                 get(api::proxy::fetch_web_content)
@@ -541,23 +542,41 @@ pub(super) fn build_authenticated_router(
                 "/api/proxy/music/kugou/lyrics-verbatim",
                 get(api::proxy::proxy_kugou_lyrics_verbatim),
             )
-            // Bilibili API routes
-            .route("/api/bilibili/user", get(api::bilibili::get_bilibili_user))
+            // Bilibili debug/live-fetch routes — admin only (not public cache)
+            .route(
+                "/api/bilibili/user",
+                get(api::bilibili::get_bilibili_user).route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
+            )
             .route(
                 "/api/bilibili/user/{uid}",
-                get(api::bilibili::get_bilibili_user_info),
+                get(api::bilibili::get_bilibili_user_info).route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
             )
             .route(
                 "/api/bilibili/favorites/{uid}",
-                get(api::bilibili::get_bilibili_favorites),
+                get(api::bilibili::get_bilibili_favorites).route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
             )
             .route(
                 "/api/bilibili/bangumi/{uid}",
-                get(api::bilibili::get_bilibili_bangumi),
+                get(api::bilibili::get_bilibili_bangumi).route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
             )
             .route(
                 "/api/bilibili/bangumi/all/{uid}",
-                get(api::bilibili::get_all_bilibili_bangumi),
+                get(api::bilibili::get_all_bilibili_bangumi).route_layer(from_fn_with_state(
+                    app_state.clone(),
+                    middleware::auth::admin_middleware,
+                )),
             )
             // Bangumi debug routes — admin only; tokens from server config (not query)
             .route(

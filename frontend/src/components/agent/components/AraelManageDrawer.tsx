@@ -23,6 +23,8 @@ type ManageTab = 'heartbeat' | 'skills' | 'memory'
 export interface AraelManageDrawerProps {
   /** BE heartbeat/skill writes require admin; hide write UI for non-admin */
   isAdmin?: boolean
+  /** Agent manage APIs are JWT-only — guests must not call them */
+  isAuthenticated?: boolean
 }
 
 /** Cron -> human readable */
@@ -145,6 +147,7 @@ const MemoryEditInput: React.FC<{
 
 export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = ({
   isAdmin = false,
+  isAuthenticated = false,
 }) => {
   const { t: i18n, format } = useI18n()
   const [tab, setTab] = useState<ManageTab>('heartbeat')
@@ -194,11 +197,27 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = ({
 
   const loadTabData = useCallback(
     async (currentTab: ManageTab) => {
+      // All manage endpoints require JWT — skip for guests (no 401 spam)
+      if (!isAuthenticated) {
+        setHeartbeatTasks([])
+        setSkills([])
+        setMemories([])
+        setError(i18n.arael.loginRequiredHint ?? i18n.arael.manageLoadError)
+        setLoading(false)
+        return
+      }
       setLoading(true)
       setError(null)
       try {
         switch (currentTab) {
           case 'heartbeat': {
+            // GET /api/agent/heartbeat is admin-only on BE — skip for non-admin
+            // so the drawer does not spam 403 noise.
+            if (!isAdmin) {
+              setHeartbeatTasks([])
+              setError(i18n.arael.manageAdminOnly)
+              break
+            }
             const tasks = await agentService.getHeartbeatTasks()
             setHeartbeatTasks(tasks)
             break
@@ -222,7 +241,13 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = ({
         setLoading(false)
       }
     },
-    [i18n.arael.manageLoadError],
+    [
+      isAdmin,
+      isAuthenticated,
+      i18n.arael.manageLoadError,
+      i18n.arael.manageAdminOnly,
+      i18n.arael.loginRequiredHint,
+    ],
   )
 
   useEffect(() => {

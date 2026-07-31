@@ -1230,7 +1230,7 @@ fn clean_platform_data(data: &mut Value) {
                     songs_array.truncate(MAX_SONGS_TO_CLEAN);
                 }
 
-                // 原地清洗每首歌曲，只保留必要字段
+                // 原地清洗每首歌曲，只保留必要字段（含 fee/isVip 供资料库 VIP 角标）
                 for song in songs_array.iter_mut() {
                     if let Some(obj) = song.as_object_mut() {
                         // 保留的字段
@@ -1241,6 +1241,15 @@ fn clean_platform_data(data: &mut Value) {
                         let al = obj.get("al").cloned();
                         let pic_url = obj.get("picUrl").cloned();
                         let dt = obj.get("dt").cloned();
+                        let fee = obj.get("fee").cloned().or_else(|| {
+                            obj.get("privilege")
+                                .and_then(|p| p.get("fee"))
+                                .cloned()
+                        });
+                        let is_vip = obj
+                            .get("isVip")
+                            .or_else(|| obj.get("is_vip"))
+                            .cloned();
 
                         // 清空对象并只保留必要字段
                         obj.clear();
@@ -1283,6 +1292,17 @@ fn clean_platform_data(data: &mut Value) {
                         }
                         if let Some(v) = dt {
                             obj.insert("dt".to_string(), v);
+                        }
+                        if let Some(v) = fee {
+                            let fee_n = v.as_i64().unwrap_or(0);
+                            obj.insert("fee".to_string(), v);
+                            let vip = is_vip
+                                .as_ref()
+                                .and_then(|b| b.as_bool())
+                                .unwrap_or(fee_n == 1 || fee_n == 4);
+                            obj.insert("isVip".to_string(), json!(vip));
+                        } else if let Some(v) = is_vip {
+                            obj.insert("isVip".to_string(), v);
                         }
                     }
                 }

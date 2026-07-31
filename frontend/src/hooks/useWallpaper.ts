@@ -11,6 +11,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { API_URL } from '../config'
 import { fetchJsonWithRetry } from '../utils/apiRetry'
 import { loadImagePooled } from '../utils/objectPool'
+import { proxyImageUrl } from '../utils/proxyImageUrl'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { getCacheInfo } from '../utils/wallpaperColorCache'
 import {
@@ -27,15 +28,37 @@ export { areUrlsEquivalent, normalizeWallpaperUrl }
 // 类型定义
 // ============================================================================
 
+/** 公开 API 应为 boolean；兼容网关/旧缓存把 true/false 序列化成字符串的情况 */
+function asConfigBool(value: unknown, defaultValue: boolean): boolean {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') return value !== 0
+  if (typeof value === 'string') {
+    const s = value.trim().toLowerCase()
+    if (s === 'true' || s === '1' || s === 'yes') return true
+    if (s === 'false' || s === '0' || s === 'no' || s === '') return false
+  }
+  if (value == null) return defaultValue
+  return defaultValue
+}
+
+function asConfigNumber(value: unknown, defaultValue: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value)
+    if (Number.isFinite(n)) return n
+  }
+  return defaultValue
+}
+
 interface WallpaperConfig {
   wallpaper_url: string
   wallpaper_blur: number
   // Evocative 壁纸动效配置
-  evocative_parallax?: boolean
-  evocative_dynamic_blur?: boolean
-  evocative_ripple?: boolean
-  evocative_fps?: number
-  evocative_ripple_quality?: number
+  evocative_parallax: boolean
+  evocative_dynamic_blur: boolean
+  evocative_ripple: boolean
+  evocative_fps: number
+  evocative_ripple_quality: number
 }
 
 interface LoadWallpaperResult {
@@ -294,7 +317,8 @@ async function resolveImageUrl(
         try {
           const data = JSON.parse(text)
           const extracted = extractImageUrlFromJson(data)
-          if (extracted) return extracted
+          // JSON endpoints often return CDN URLs that need hotlink proxy
+          if (extracted) return proxyImageUrl(extracted) || extracted
         } catch {
           // not JSON — fall through
         }
@@ -318,7 +342,7 @@ async function resolveImageUrl(
       try {
         const data = JSON.parse(text)
         const extracted = extractImageUrlFromJson(data)
-        if (extracted) return extracted
+        if (extracted) return proxyImageUrl(extracted) || extracted
       } catch {
         /* ignore */
       }
@@ -493,32 +517,35 @@ async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
       }),
     )
 
+    const evocative = {
+      evocative_parallax: asConfigBool(data.evocative_parallax, true),
+      evocative_dynamic_blur: asConfigBool(data.evocative_dynamic_blur, false),
+      evocative_ripple: asConfigBool(data.evocative_ripple, false),
+      evocative_fps: asConfigNumber(data.evocative_fps, 30),
+      evocative_ripple_quality: asConfigNumber(
+        data.evocative_ripple_quality,
+        0.85,
+      ),
+    }
+
     console.debug('[Wallpaper] Config received:', {
       wallpaper_url: data.wallpaper_url,
       blur: data.wallpaper_blur,
       evocative: {
-        parallax: data.evocative_parallax,
-        dynamicBlur: data.evocative_dynamic_blur,
-        ripple: data.evocative_ripple,
-        fps: data.evocative_fps,
-        rippleQuality: data.evocative_ripple_quality,
+        parallax: evocative.evocative_parallax,
+        dynamicBlur: evocative.evocative_dynamic_blur,
+        ripple: evocative.evocative_ripple,
+        fps: evocative.evocative_fps,
+        rippleQuality: evocative.evocative_ripple_quality,
       },
     })
 
-    if (data.wallpaper_url) {
-      return {
-        wallpaper_url: data.wallpaper_url,
-        wallpaper_blur: data.wallpaper_blur ?? 3,
-        // Evocative 壁纸动效配置
-        evocative_parallax: data.evocative_parallax ?? true,
-        evocative_dynamic_blur: data.evocative_dynamic_blur ?? false,
-        evocative_ripple: data.evocative_ripple ?? false,
-        evocative_fps: data.evocative_fps ?? 30,
-        evocative_ripple_quality: data.evocative_ripple_quality ?? 0.85,
-      }
+    // 即使没有壁纸 URL，也返回动效开关（避免图挂了/URL 空时整条 evocative 被丢掉）
+    return {
+      wallpaper_url: typeof data.wallpaper_url === 'string' ? data.wallpaper_url : '',
+      wallpaper_blur: asConfigNumber(data.wallpaper_blur, 3),
+      ...evocative,
     }
-    console.debug('[Wallpaper] No wallpaper_url in config')
-    return null
   } catch (error) {
     console.error('壁纸配置获取失败:', error)
     return null
@@ -602,11 +629,45 @@ export function useWallpaper() {
             return null
           }
 
+          const evocative = {
+            parallax: config.evocative_parallax,
+            dynamicBlur: config.evocative_dynamic_blur,
+            ripple: config.evocative_ripple,
+            fps: config.evocative_fps,
+            rippleQuality: config.evocative_ripple_quality,
+          }
+
+          // 动效开关与壁纸图解耦：图失败时仍要把 evocative 交给 AppLayout
+          const buildResult = (
+            actualUrl: string,
+            verified: boolean,
+          ): LoadWallpaperResult => ({
+            actualUrl,
+            blur: config.wallpaper_blur,
+            verified,
+            parallaxEnabled: evocative.parallax,
+            evocative,
+          })
+
+          if (!config.wallpaper_url) {
+            const result = buildResult('', false)
+            lastLoadResult = result
+            lastLoadTimestamp = Date.now()
+            setBlur(config.wallpaper_blur)
+            setCanRefresh(false)
+            return result
+          }
+
           const actualUrl = await resolveImageUrl(config.wallpaper_url)
 
           // 验证URL有效性
           if (!actualUrl || actualUrl.includes('/api/proxy/music/')) {
-            return null
+            const result = buildResult('', false)
+            lastLoadResult = result
+            lastLoadTimestamp = Date.now()
+            setBlur(config.wallpaper_blur)
+            setCanRefresh(false)
+            return result
           }
 
           // 应用到DOM并验证
@@ -616,24 +677,18 @@ export function useWallpaper() {
           )
 
           if (!verifiedUrl) {
-            return null
+            const result = buildResult(actualUrl, false)
+            lastLoadResult = result
+            lastLoadTimestamp = Date.now()
+            setBlur(config.wallpaper_blur)
+            setCanRefresh(!isStaticImageUrl(config.wallpaper_url))
+            return result
           }
 
-          const result: LoadWallpaperResult = {
-            actualUrl: verifiedUrl,
-            blur: config.wallpaper_blur,
-            verified: areUrlsEquivalent(verifiedUrl, actualUrl),
-            // 兼容旧配置
-            parallaxEnabled: config.evocative_parallax ?? true,
-            // 新的 Evocative 配置
-            evocative: {
-              parallax: config.evocative_parallax ?? true,
-              dynamicBlur: config.evocative_dynamic_blur ?? false,
-              ripple: config.evocative_ripple ?? false,
-              fps: config.evocative_fps ?? 30,
-              rippleQuality: config.evocative_ripple_quality ?? 0.85,
-            },
-          }
+          const result = buildResult(
+            verifiedUrl,
+            areUrlsEquivalent(verifiedUrl, actualUrl),
+          )
 
           // 缓存结果
           lastLoadResult = result

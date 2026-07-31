@@ -844,6 +844,9 @@ async fn execute_brew_sources(
             "unreadCount": s.unread_count,
             "icon": s.icon,
             "description": s.description,
+            // Prefer success timestamp for "latest update" (not last_fetched_at failures)
+            "lastSuccessAt": s.last_success_at.map(|t| t.timestamp_millis()),
+            "lastFetchedAt": s.last_fetched_at.map(|t| t.timestamp_millis()),
         });
         if let Some(kind) = match_kind {
             obj.as_object_mut()

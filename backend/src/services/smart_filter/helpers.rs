@@ -362,7 +362,9 @@ pub struct XFollowingItem {
     pub username: String,
     pub name: String,
     pub description: String,
-    pub follower_count: i64,
+    /// None when public_metrics missing — do not treat as 0 for ranking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub follower_count: Option<i64>,
     pub verified: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_image_url: Option<String>,
@@ -478,6 +480,11 @@ pub struct SongItem {
     /// Album name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub album: Option<String>,
+    /// VIP-only when fee is 1 or 4 (or explicit isVip).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_vip: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fee: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

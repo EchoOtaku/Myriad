@@ -24,7 +24,13 @@ interface UseWindowAgentHandlerOptions {
   /** 当前活跃窗口 ID 的 ref */
   activeWindowIdRef: React.RefObject<string | null>
   /** 打开一个 Tapp 窗口 */
-  openTappWindow: (tappId: string) => Promise<void>
+  openTappWindow: (
+    tappId: string,
+    opts?: {
+      size?: { width?: number; height?: number }
+      position?: { x?: number; y?: number }
+    },
+  ) => Promise<void>
   /** 关闭窗口 */
   closeWindow: (windowId: string) => void
   /** 聚焦窗口 */
@@ -69,7 +75,13 @@ export function useWindowAgentHandler({
         (data?.tappId as string | undefined) ||
         (data?.tapp_id as string | undefined)
       if (!tappId) return false
-      await openTappWindow(tappId)
+      const size =
+        action.size ||
+        (data?.size as { width?: number; height?: number } | undefined)
+      const position =
+        action.position ||
+        (data?.position as { x?: number; y?: number } | undefined)
+      await openTappWindow(tappId, { size, position })
       return true
     }
 

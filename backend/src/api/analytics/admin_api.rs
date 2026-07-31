@@ -947,6 +947,8 @@ ORDER BY day ASC, country_code ASC, visitor_hash ASC
         }
     };
 
+    let bucket_today = analytics_today().format("%Y-%m-%d").to_string();
+
     (
         StatusCode::OK,
         Json(json!({
@@ -955,6 +957,10 @@ ORDER BY day ASC, country_code ASC, visitor_hash ASC
             "version": ANALYTICS_BACKUP_VERSION,
             "exported_at": Utc::now().to_rfc3339(),
             "timezone": analytics_tz_label(),
+            // Process-local calendar day used by analytics_today buckets.
+            // FE backup filenames prefer this over max(day) in payload tables
+            // (max day can lag when today's rows are still empty).
+            "bucket_today": bucket_today,
             "counts": {
                 "page_daily": page_daily.len(),
                 "visitor_seen": visitor_seen.len(),

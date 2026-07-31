@@ -18,11 +18,26 @@ const pendingRequests = new Map<string, Promise<any>>()
 // 已完成请求的结果缓存
 const resultCache = new Map<string, { data: any; timestamp: number }>()
 
+/**
+ * 每 key 代际：clearDedupCache 后 +1。
+ * 防止「清缓存时仍在飞的旧请求完成时把过期数据写回 resultCache」
+ * （保存壁纸/Evocative 后软刷新若撞上启动期的 config/ui 飞行请求，会读回旧开关）
+ */
+const cacheGeneration = new Map<string, number>()
+
 // 🔧 性能优化：LRU 缓存最大容量
 const MAX_CACHE_SIZE = 50
 
 // 默认缓存时间（毫秒）
 const DEFAULT_CACHE_TTL = 30 * 1000 // 30秒
+
+function generationOf(key: string): number {
+  return cacheGeneration.get(key) ?? 0
+}
+
+function bumpGeneration(key: string): void {
+  cacheGeneration.set(key, generationOf(key) + 1)
+}
 
 /**
  * 🔧 LRU 缓存清理 - 删除最早的条目直到缓存大小正常
@@ -114,17 +129,21 @@ export async function dedupedFetch<T>(
     return pending as Promise<T>
   }
 
-  // 3. 发起新请求
+  // 3. 发起新请求（记录代际，避免 clear 后旧响应污染缓存）
+  const genAtStart = generationOf(cacheKey)
   const requestPromise = fetchFn()
     .then((data) => {
-      // 🔧 缓存结果前检查容量
-      ensureCacheSize()
-      resultCache.set(cacheKey, { data, timestamp: Date.now() })
+      if (generationOf(cacheKey) === genAtStart) {
+        ensureCacheSize()
+        resultCache.set(cacheKey, { data, timestamp: Date.now() })
+      }
       return data
     })
     .finally(() => {
-      // 请求完成后从 pending 中移除
-      pendingRequests.delete(cacheKey)
+      // 仅清除「自己」登记的 pending，避免清缓存后新请求被误删
+      if (pendingRequests.get(cacheKey) === requestPromise) {
+        pendingRequests.delete(cacheKey)
+      }
     })
 
   // 4. 记录进行中的请求
@@ -138,9 +157,12 @@ export async function dedupedFetch<T>(
  */
 export function clearDedupCache(url?: string): void {
   if (url) {
+    bumpGeneration(url)
     resultCache.delete(url)
     pendingRequests.delete(url)
   } else {
+    for (const key of resultCache.keys()) bumpGeneration(key)
+    for (const key of pendingRequests.keys()) bumpGeneration(key)
     resultCache.clear()
     pendingRequests.clear()
   }

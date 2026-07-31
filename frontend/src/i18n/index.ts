@@ -2176,8 +2176,6 @@ export interface TranslationKeys {
     ordinalTrail: string
     /** 本次访问还没落库，序号暂缺 */
     ordinalPending: string
-    /** 管理员流量不计入统计，站长没有序号 */
-    staffNotCounted: string
     todayVisitors: string
     todayVisitorsShort: string
     todayViewsShort: string
@@ -2306,11 +2304,13 @@ export interface TranslationKeys {
     bilibili: string
     neteaseMusic: string
     beginnerDev: string
+    activeDev: string
     intermediateDev: string
     seniorDev: string
     veteranDev: string
     legendaryDev: string
     hardcorePlayer: string
+    balancedPlayer: string
     happyMood: string
     sadMood: string
     passionateMood: string

@@ -55,11 +55,11 @@ export function isReleaseTag(tag: string): boolean {
 }
 
 export function modeForTarget(target: string, fallback: UpdateMode): UpdateMode {
-  return isReleaseTag(target)
-    ? 'release'
-    : fallback === 'commit'
-      ? 'commit'
-      : 'release'
+  // Non-semver targets must never be forced to release mode (BE 400).
+  if (isReleaseTag(target)) return 'release'
+  if (fallback === 'commit') return 'commit'
+  // Default non-tag → commit (sha / branch / free text)
+  return 'commit'
 }
 
 export function format(template: string, params: Record<string, string>): string {

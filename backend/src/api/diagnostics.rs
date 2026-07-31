@@ -153,7 +153,11 @@ pub async fn runtime_diagnostics(
         json!({
             "id": "memory",
             "status": memory_status,
-            "detail": Value::Null,
+            // Surface RSS so the Advanced Settings panel can show process memory
+            // without a second /api/metrics call.
+            "detail": rss_mb.map(|mb| format!("rss_mb={mb}")),
+            "rss_mb": rss_mb,
+            "rss_kb": memory.get("rss_kb").cloned().unwrap_or(Value::Null),
         }),
         json!({
             "id": "location",

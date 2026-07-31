@@ -75,7 +75,8 @@ export const DEFAULT_MODULE_VISIBILITY_PREFERENCES: ModuleVisibilityPreferences 
       library: 'all',
       brew: 'all',
       reports: 'all',
-      life: 'all',
+      // Retired SPA route (/life); keep key for API compatibility, hide from guests
+      life: 'admin',
       tapp: 'all',
       agent: 'all',
     },

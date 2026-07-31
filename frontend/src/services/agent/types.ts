@@ -445,6 +445,9 @@ export interface FrontendAction {
   interactionId?: string
   script?: string
   timestamp: number
+  /** Multi-window geometry (ignored by single-window navigate fallback) */
+  size?: { width?: number; height?: number }
+  position?: { x?: number; y?: number }
   /** 操作数据 */
   data?: Record<string, unknown>
   /** 导航路径 */

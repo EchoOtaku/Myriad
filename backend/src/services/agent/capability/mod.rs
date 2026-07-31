@@ -98,7 +98,14 @@ pub async fn capability_requires_confirmation_async(
 /// - `capabilities[]`：扁平列表（id/name/description/category/actions/requiresAi）
 /// - `total` / `totalCount`：数量
 /// - `byCategory` / `quickReference`：AI 提示用紧凑视图（保留兼容）
+///
+/// When `include_admin` is false, capabilities that require `system:admin`
+/// (e.g. system.metrics) are omitted from discovery — execute-time still gates.
 pub async fn get_capability_summary() -> Value {
+    get_capability_summary_filtered(true).await
+}
+
+pub async fn get_capability_summary_filtered(include_admin: bool) -> Value {
     let registry = get_registry().await;
     let all = registry.get_all();
 
@@ -107,6 +114,14 @@ pub async fn get_capability_summary() -> Value {
     let mut capabilities: Vec<Value> = Vec::with_capacity(all.len());
 
     for cap in all {
+        if !include_admin
+            && cap
+                .required_permissions
+                .iter()
+                .any(|p| p == "system:admin")
+        {
+            continue;
+        }
         let usage_hint = get_capability_usage_hint(&cap.id);
         let category = get_capability_category_name(&cap.category);
 
@@ -121,12 +136,39 @@ pub async fn get_capability_summary() -> Value {
             .or_default()
             .push(cap_info);
 
+        // FE Capability.actions is string[]; IntentAction unit variants already
+        // serde as snake_case strings — project explicitly so newtype variants
+        // never leak as objects into the public list.
+        let mut actions: Vec<String> = cap
+            .supported_actions
+            .iter()
+            .filter_map(|a| {
+                let v = serde_json::to_value(a).ok()?;
+                if let Some(s) = v.as_str() {
+                    return Some(s.to_string());
+                }
+                // e.g. Unknown("x") → {"unknown":"x"}
+                v.as_object().and_then(|o| {
+                    let (k, val) = o.iter().next()?;
+                    match val {
+                        serde_json::Value::String(s) if !s.is_empty() => {
+                            Some(format!("{k}:{s}"))
+                        }
+                        _ => Some(k.clone()),
+                    }
+                })
+            })
+            .collect();
+        // Stable order for clients/tests
+        actions.sort();
+        actions.dedup();
+
         capabilities.push(json!({
             "id": cap.id,
             "name": cap.name,
             "description": cap.description,
             "category": category,
-            "actions": cap.supported_actions,
+            "actions": actions,
             "requiresAi": cap.requires_ai,
         }));
     }

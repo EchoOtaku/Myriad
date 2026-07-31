@@ -303,10 +303,10 @@ const TappWidgetPreview = memo(
         <div
           className={`${iconBgClass} flex items-center justify-center text-white shadow-lg relative overflow-hidden shrink-0 ${
             isCompact
-              ? 'w-8 h-8 rounded-lg'
+              ? 'w-8 h-8 rounded-md'
               : isLarge
-                ? 'w-14 h-14 rounded-xl mb-3'
-                : 'w-10 h-10 rounded-xl mb-2'
+                ? 'w-14 h-14 rounded-lg mb-3'
+                : 'w-10 h-10 rounded-lg mb-2'
           }`}
           style={iconBgStyle}
         >
@@ -849,7 +849,7 @@ function TappWidgetRuntime({
       >
         {/* 图标 */}
         <div
-          className={`w-12 h-12 ${iconBgClass} rounded-xl flex items-center justify-center text-white shadow-lg relative overflow-hidden mb-3`}
+          className={`w-12 h-12 ${iconBgClass} rounded-lg flex items-center justify-center text-white shadow-lg relative overflow-hidden mb-3`}
           style={iconBgStyle}
         >
           <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />

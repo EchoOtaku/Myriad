@@ -68,7 +68,19 @@ export function registerUIHandlers(
   })
 
   bridge.registerHandler('ui.getLocale', async () => {
-    return { success: true, data: getLocale?.() || 'zh-CN' }
+    // Prefer host locale; fall back to document/html lang, then en-US (not zh-CN).
+    let locale = getLocale?.()
+    if (!locale) {
+      try {
+        locale =
+          document.documentElement.lang ||
+          (typeof navigator !== 'undefined' ? navigator.language : '') ||
+          ''
+      } catch {
+        locale = ''
+      }
+    }
+    return { success: true, data: locale || 'en-US' }
   })
 
   if (!options.headless) {

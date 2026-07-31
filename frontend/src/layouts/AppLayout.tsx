@@ -113,27 +113,36 @@ export function AppLayout({ children }: AppLayoutProps) {
   })
 
   // 🎨 Evocative 壁纸动效统一 Hook
-  // ⚠️ 低性能模式下强制禁用所有动效
-  const isLowPerformance = isReducedAnimation(anim)
+  // 仅 exlight / prefers-reduced-motion 强制关；light 档仍尊重用户开关
+  const evocativeForceOff = isExlight(anim)
   useEvocativeWallpaper('wallpaper', {
     parallax: {
-      enabled: evocativeConfig.parallax && !isLowPerformance,
+      enabled: evocativeConfig.parallax && !evocativeForceOff,
       enableGyroscope: true,
       enableMouse: true,
       maxOffset: 8,
       scale: 1.02,
     },
     dynamicBlur: {
-      enabled: evocativeConfig.dynamicBlur && !isLowPerformance,
+      enabled: evocativeConfig.dynamicBlur && !evocativeForceOff,
       baseBlur: evocativeConfig.blur,
       unblurZone: 0.4,
       blurZone: 0.6,
     },
     ripple: {
-      enabled: evocativeConfig.ripple && !isLowPerformance,
+      enabled: evocativeConfig.ripple && !evocativeForceOff,
     },
-    fps: evocativeConfig.fps,
-    rippleQuality: evocativeConfig.rippleQuality,
+    // light 档略降帧率/画质，减轻中档机负担但仍可感知动效
+    fps: evocativeForceOff
+      ? 30
+      : isReducedAnimation(anim)
+        ? Math.min(evocativeConfig.fps, 30)
+        : evocativeConfig.fps,
+    rippleQuality: evocativeForceOff
+      ? 0.5
+      : isReducedAnimation(anim)
+        ? Math.min(evocativeConfig.rippleQuality, 0.7)
+        : evocativeConfig.rippleQuality,
   })
 
   // 🎨 壁纸颜色提取 —— 缓存 → 验证 → 提取 → 应用
@@ -169,25 +178,20 @@ export function AppLayout({ children }: AppLayoutProps) {
     const wallpaperResult = await loadWallpaperFromHook()
     if (!wallpaperResult) return
 
-    // 更新 Evocative 动效配置（单次 setState 替代 6 次）
-    if (wallpaperResult.evocative) {
-      setEvocativeConfig({
-        parallax: wallpaperResult.evocative.parallax,
-        dynamicBlur: wallpaperResult.evocative.dynamicBlur,
-        ripple: wallpaperResult.evocative.ripple,
-        fps: wallpaperResult.evocative.fps,
-        rippleQuality: wallpaperResult.evocative.rippleQuality,
-        blur: wallpaperResult.blur,
-      })
-    } else {
-      setEvocativeConfig((prev) => ({
-        ...prev,
-        parallax: wallpaperResult.evocative.parallax,
-        blur: wallpaperResult.blur,
-      }))
-    }
+    // 更新 Evocative 动效配置（与壁纸图是否加载成功解耦）
+    const ev = wallpaperResult.evocative
+    setEvocativeConfig({
+      parallax: ev?.parallax ?? true,
+      dynamicBlur: ev?.dynamicBlur ?? false,
+      ripple: ev?.ripple ?? false,
+      fps: ev?.fps ?? 30,
+      rippleQuality: ev?.rippleQuality ?? 0.85,
+      blur: wallpaperResult.blur,
+    })
 
-    await extractAndApplyColors(wallpaperResult.actualUrl)
+    if (wallpaperResult.actualUrl) {
+      await extractAndApplyColors(wallpaperResult.actualUrl)
+    }
   }, [loadWallpaperFromHook, extractAndApplyColors])
 
   // 检查后端连接状态 - 使用 useIdleInterval 降低主线程占用

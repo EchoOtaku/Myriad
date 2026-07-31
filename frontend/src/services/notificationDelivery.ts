@@ -17,6 +17,9 @@ export function notificationSourceFor(
   const eventKey = notification.metadata?.event_key
   if (typeof eventKey === 'string') {
     const source = eventKey.split('.')[0]
+    // skill.* events are Arael skill lifecycle (pruned/improved/changed) —
+    // no dedicated source icon; fold into agent.
+    if (source === 'skill') return 'agent'
     if (
       source === 'agent' ||
       source === 'heartbeat' ||

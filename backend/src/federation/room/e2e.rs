@@ -264,6 +264,10 @@ pub async fn initiate_e2e_key_exchange(
     if shared["e2e"].get("published_keys").is_none() {
         shared["e2e"]["published_keys"] = json!({});
     }
+    let already_published = shared["e2e"]["published_keys"]
+        .get(&local_actor)
+        .and_then(|v| v.as_str())
+        == Some(public_key.as_str());
     shared["e2e"]["published_keys"][&local_actor] = json!(public_key);
     shared["e2e"]["algorithm"] = json!(crate::federation::e2e::E2E_ALGORITHM);
 
@@ -279,6 +283,23 @@ pub async fn initiate_e2e_key_exchange(
     ))
     .await
     .map_err(db_err)?;
+
+    // Skip KeyExchange fan-out when this actor already published the same key
+    // (re-initiate must not double-send to remotes / WS).
+    if already_published {
+        tracing::debug!(
+            "[Room] E2E key already published for {} in room {} — skip fan-out",
+            username,
+            room_id
+        );
+        return Ok(RoomE2eKeyExchangeResponse {
+            success: true,
+            room_id: room_id.to_string(),
+            public_key,
+            algorithm: crate::federation::e2e::E2E_ALGORITHM.to_string(),
+            published_key_count,
+        });
+    }
 
     // 3) Fan-out KeyExchange activity
     let activity_id = generate_activity_id(&base_url);

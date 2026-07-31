@@ -544,7 +544,9 @@ pub(crate) async fn sync_states(
                     active.starred_at = Set(Some(now.into()));
                 }
             }
-            if let Some(progress) = state_item.read_progress {
+            if let Some(progress) =
+                brew_user_states::normalize_read_progress(state_item.read_progress)
+            {
                 active.read_progress = Set(Some(progress));
             }
             active.updated_at = Set(now.into());
@@ -573,7 +575,9 @@ pub(crate) async fn sync_states(
                 item_id: Set(state_item.item_id),
                 is_read: Set(is_read),
                 is_starred: Set(state_item.is_starred.unwrap_or(false)),
-                read_progress: Set(state_item.read_progress),
+                read_progress: Set(brew_user_states::normalize_read_progress(
+                    state_item.read_progress,
+                )),
                 read_at: Set(if is_read { Some(now.into()) } else { None }),
                 starred_at: Set(if state_item.is_starred == Some(true) {
                     Some(now.into())

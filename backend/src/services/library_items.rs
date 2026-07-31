@@ -189,24 +189,44 @@ pub fn apply_library_source_preferences(
         .collect()
 }
 
+/// Canonical library type for Bangumi subject type codes.
+/// Type 6 ("real"/实景) → tv_series when platform looks like TV drama, else video.
+/// Shared by Library, report cards, and platform_items normalize.
 pub fn bangumi_library_item_type(subject_type: i64, platform: Option<&str>) -> &'static str {
     match subject_type {
         1 => "book",
         2 => "anime",
         3 => "music",
         4 => "game",
-        6 => {
-            let platform = platform.unwrap_or_default();
-            if platform.contains("TV")
-                || platform.contains("剧")
-                || platform.contains("Drama")
-                || platform.contains("电视剧")
-            {
-                "tv_series"
-            } else {
-                "video"
-            }
-        }
+        6 => bangumi_real_item_type(platform),
+        _ => "video",
+    }
+}
+
+/// Map Bangumi "real" / type-6 to library vocabulary (tv_series | video).
+pub fn bangumi_real_item_type(platform: Option<&str>) -> &'static str {
+    let platform = platform.unwrap_or_default();
+    if platform.contains("TV")
+        || platform.contains("剧")
+        || platform.contains("Drama")
+        || platform.contains("电视剧")
+        || platform.eq_ignore_ascii_case("tv")
+    {
+        "tv_series"
+    } else {
+        "video"
+    }
+}
+
+/// Map smart_filter label (`real` / `anime` / …) to library item type.
+pub fn bangumi_label_to_library_type(label: &str, platform: Option<&str>) -> &'static str {
+    match label.trim().to_ascii_lowercase().as_str() {
+        "book" => "book",
+        "anime" => "anime",
+        "music" => "music",
+        "game" => "game",
+        "real" | "tv_series" | "tv" => bangumi_real_item_type(platform),
+        "video" => "video",
         _ => "video",
     }
 }

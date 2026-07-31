@@ -31,6 +31,7 @@ describe('parseAuthMeResponse', () => {
       id: 7,
       username: 'alice',
       is_admin: true,
+      is_owner: true,
       display_name: 'Alice',
     })
     assert.equal(parsed.authenticated, true)
@@ -38,7 +39,22 @@ describe('parseAuthMeResponse', () => {
       assert.equal(parsed.user.id, 7)
       assert.equal(parsed.user.username, 'alice')
       assert.equal(parsed.user.is_admin, true)
+      assert.equal(parsed.user.is_owner, true)
       assert.equal(parsed.user.authenticated, true)
+    }
+  })
+
+  it('coerces missing is_owner to false (not admin-implied)', () => {
+    const parsed = parseAuthMeResponse({
+      authenticated: true,
+      id: 2,
+      username: 'mod',
+      is_admin: true,
+    })
+    assert.equal(parsed.authenticated, true)
+    if (parsed.authenticated) {
+      assert.equal(parsed.user.is_admin, true)
+      assert.equal(parsed.user.is_owner, false)
     }
   })
 

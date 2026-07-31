@@ -555,14 +555,26 @@ fn validate_username(username: &str) -> Result<(), HttpError> {
     Ok(())
 }
 
-/// Validate password strength
+/// Validate password strength.
+/// Length is **Unicode scalar count** (`chars().count()`), matching FE
+/// `password.length` for BMP/emoji better than UTF-8 byte `len()`.
 fn validate_password(password: &str) -> Result<(), HttpError> {
-    if password.len() < 8 {
+    let char_len = password.chars().count();
+    if char_len < 8 {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Invalid password",
                 "message": "Password must be at least 8 characters long"
+            })),
+        )));
+    }
+    if char_len > 128 {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Invalid password",
+                "message": "Password must be at most 128 characters long"
             })),
         )));
     }

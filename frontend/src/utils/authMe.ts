@@ -74,6 +74,8 @@ export function parseAuthMeResponse(data: unknown): AuthMeResult {
       id: numericId,
       username,
       is_admin: body.is_admin === true,
+      // Contract: always boolean when authenticated (BE sends COALESCE is_owner)
+      is_owner: body.is_owner === true,
       authenticated: true,
     },
   }

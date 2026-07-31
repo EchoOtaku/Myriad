@@ -186,7 +186,7 @@ export const MusicStatsWidget = memo(
               </span>
             </motion.div>
             <motion.div
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-lg bg-white/90 dark:bg-black/90 border border-white/30 dark:border-white/10"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg backdrop-blur-md shadow-lg bg-white/90 dark:bg-black/90 border border-white/30 dark:border-white/10"
               initial={{ scale: 0.8, opacity: 0, x: 20 }}
               animate={{ scale: 1, opacity: 1, x: 0 }}
               transition={{ duration: 0.4, delay: 0.2 }}
@@ -350,7 +350,7 @@ export const NeteaseWidget = memo(
             <div className="h-full w-full flex gap-1.5">
               {currentItems.map((item: any, idx: number) => (
                 <div key={idx} className="flex-1 h-full">
-                  <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
+                  <div className="relative h-full w-full rounded-lg overflow-hidden shadow-lg bg-white dark:bg-black/90">
                     <div className="absolute inset-0">
                       <img
                         src={

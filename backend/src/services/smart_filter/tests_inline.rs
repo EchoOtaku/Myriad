@@ -119,7 +119,8 @@ fn filter_x_builds_engagement_summary() {
 
     match filtered.content_analysis {
         ContentAnalysis::X(analysis) => {
-            assert_eq!(analysis.engagement_stats.total_posts, 2);
+            // Profile public_metrics.tweet_count (50), not scraped list length (2)
+            assert_eq!(analysis.engagement_stats.total_posts, 50);
             assert_eq!(analysis.engagement_stats.total_likes_received, 55);
             assert_eq!(analysis.top_posts[0].id, "2");
             assert!(analysis.post_summary.contains("@demo"));

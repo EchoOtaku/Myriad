@@ -848,16 +848,46 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     }
   }, [initialTappId])
 
-  // 打开新的 Tapp 窗口
+  // 打开新的 Tapp 窗口（opts.size/position from Agent open_window when provided）
   const openTappWindow = useCallback(
-    async (tappId: string) => {
+    async (
+      tappId: string,
+      opts?: {
+        size?: { width?: number; height?: number }
+        position?: { x?: number; y?: number }
+      },
+    ) => {
       if (windows.length >= MAX_WINDOWS) {
         console.warn('Maximum window limit reached')
         return
       }
 
       const windowId = generateWindowId()
-      const position = getInitialPosition(windows.length)
+      const basePos = getInitialPosition(windows.length)
+      const position = {
+        x:
+          typeof opts?.position?.x === 'number' && Number.isFinite(opts.position.x)
+            ? opts.position.x
+            : basePos.x,
+        y:
+          typeof opts?.position?.y === 'number' && Number.isFinite(opts.position.y)
+            ? opts.position.y
+            : basePos.y,
+      }
+      const size = {
+        width:
+          typeof opts?.size?.width === 'number' &&
+          Number.isFinite(opts.size.width) &&
+          opts.size.width > 0
+            ? opts.size.width
+            : DEFAULT_WINDOW_SIZE.width,
+        height:
+          typeof opts?.size?.height === 'number' &&
+          Number.isFinite(opts.size.height) &&
+          opts.size.height > 0
+            ? opts.size.height
+            : DEFAULT_WINDOW_SIZE.height,
+      }
 
       // 创建初始窗口状态
       const newWindow: TappWindow = {
@@ -868,7 +898,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         loading: true,
         error: null,
         position,
-        size: { ...DEFAULT_WINDOW_SIZE },
+        size,
         isMaximized: false,
         zIndex: nextZIndex,
       }

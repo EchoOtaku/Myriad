@@ -38,10 +38,52 @@ export const GithubStatsWidget = memo(({ data }: any) => {
       return segment
     })
   }, [langs])
-  const level = useMemo(
-    () => data?.contribution_level || t.reportCard.beginnerDev,
-    [data?.contribution_level, t.reportCard.beginnerDev],
-  )
+  /** BE enum: legendary|veteran|active|emerging (+ legacy Chinese normalized on read). */
+  const levelKey = useMemo((): 'legendary' | 'veteran' | 'active' | 'emerging' => {
+    const raw = String(data?.contribution_level || '')
+      .trim()
+      .toLowerCase()
+    if (
+      raw === 'legendary' ||
+      raw.includes('传奇') ||
+      raw.includes('legendary')
+    ) {
+      return 'legendary'
+    }
+    if (
+      raw === 'veteran' ||
+      raw.includes('资深工程') ||
+      raw.includes('资深开发') ||
+      raw.includes('veteran')
+    ) {
+      return 'veteran'
+    }
+    if (
+      raw === 'active' ||
+      raw.includes('活跃') ||
+      raw.includes('高级') ||
+      raw.includes('中级') ||
+      raw.includes('senior') ||
+      raw.includes('intermediate')
+    ) {
+      return 'active'
+    }
+    return 'emerging'
+  }, [data?.contribution_level])
+
+  const levelLabel = useMemo(() => {
+    switch (levelKey) {
+      case 'legendary':
+        return t.reportCardWidget.legendaryDev
+      case 'veteran':
+        return t.reportCardWidget.veteranDev
+      case 'active':
+        return t.reportCardWidget.activeDev
+      default:
+        return t.reportCardWidget.beginnerDev
+    }
+  }, [levelKey, t])
+
   const safeNonNegInt = (v: unknown): number => {
     const n = Number(v)
     if (!Number.isFinite(n) || n < 0) return 0
@@ -65,17 +107,22 @@ export const GithubStatsWidget = memo(({ data }: any) => {
   )
 
   const levelColor = useMemo(() => {
-    const colorMap: { [key: string]: string } = {
-      [t.reportCardWidget.beginnerDev]: '#22c55e',
-      [t.reportCardWidget.intermediateDev]: '#3b82f6',
-      [t.reportCardWidget.seniorDev]: '#a855f7',
-      [t.reportCardWidget.veteranDev]: '#f97316',
-      [t.reportCardWidget.legendaryDev]: '#ef4444',
+    const colorMap: Record<string, string> = {
+      emerging: '#22c55e',
+      active: '#3b82f6',
+      veteran: '#f97316',
+      legendary: '#ef4444',
     }
-    return colorMap[level] || '#6b7280'
-  }, [level, t])
+    return colorMap[levelKey] || '#6b7280'
+  }, [levelKey])
 
+  /**
+   * GitHub-style week columns (Sun–Sat rows) for the last N complete weeks.
+   * When calendar data is missing, show empty cells (no random fake counts).
+   */
   const generateHeatmapGrid = () => {
+    const WEEKS = 12
+    const DAYS = 7
     const grid: Array<{
       week: number
       day: number
@@ -83,32 +130,46 @@ export const GithubStatsWidget = memo(({ data }: any) => {
       count: number
     }> = []
 
+    const byDate = new Map<string, number>()
     if (contributionCalendar && Array.isArray(contributionCalendar)) {
-      const recentDays = contributionCalendar.slice(-60)
-      const maxCount = Math.max(...recentDays.map((d: any) => d.count || 0), 1)
-
-      for (let week = 0; week < 12; week++) {
-        for (let day = 0; day < 5; day++) {
-          const index = week * 5 + day
-          const dayData = recentDays[index]
-          const count = dayData?.count || 0
-          const opacity =
-            count > 0 ? Math.min((count / maxCount) * 0.85 + 0.15, 1) : 0.12
-          grid.push({ week, day, opacity, count })
-        }
+      for (const d of contributionCalendar) {
+        const date =
+          typeof d?.date === 'string'
+            ? d.date.slice(0, 10)
+            : typeof d?.day === 'string'
+              ? d.day.slice(0, 10)
+              : ''
+        if (!date) continue
+        byDate.set(date, Number(d?.count) || 0)
       }
-    } else {
-      const avgPerDay = contributions / 365
-      for (let week = 0; week < 12; week++) {
-        for (let day = 0; day < 5; day++) {
-          const lambda = avgPerDay * (0.5 + Math.random())
-          const count = Math.floor(-Math.log(1 - Math.random()) * lambda)
-          const opacity =
-            count > 0
-              ? Math.min((count / (avgPerDay * 2)) * 0.7 + 0.15, 1)
+    }
+
+    const maxCount = Math.max(1, ...Array.from(byDate.values()), 1)
+    // End on most recent Sunday-aligned week ending today (UTC date string)
+    const today = new Date()
+    const end = new Date(
+      Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()),
+    )
+    // Align end to end of current week (Saturday = 6 in UTC getUTCDay)
+    const endDow = end.getUTCDay() // 0 Sun … 6 Sat
+    // Grid: columns = weeks, rows = Sun(0)…Sat(6)
+    const totalCells = WEEKS * DAYS
+    const start = new Date(end)
+    start.setUTCDate(start.getUTCDate() - (totalCells - 1) + (6 - endDow))
+
+    for (let week = 0; week < WEEKS; week++) {
+      for (let day = 0; day < DAYS; day++) {
+        const cellDate = new Date(start)
+        cellDate.setUTCDate(start.getUTCDate() + week * 7 + day)
+        const key = cellDate.toISOString().slice(0, 10)
+        const count = byDate.get(key) ?? 0
+        const opacity =
+          byDate.size === 0
+            ? 0.08
+            : count > 0
+              ? Math.min((count / maxCount) * 0.85 + 0.15, 1)
               : 0.12
-          grid.push({ week, day, opacity, count })
-        }
+        grid.push({ week, day, opacity, count })
       }
     }
     return grid
@@ -116,7 +177,7 @@ export const GithubStatsWidget = memo(({ data }: any) => {
 
   const heatmapData = useMemo(
     () => generateHeatmapGrid(),
-    [contributionCalendar, contributions],
+    [contributionCalendar],
   )
 
   const getLanguageColor = (lang: string) => {
@@ -153,7 +214,7 @@ export const GithubStatsWidget = memo(({ data }: any) => {
                 transition={{ duration: 0.3, delay: 0.2 }}
               >
                 <span className="text-[7px]">●</span>
-                <span>{level}</span>
+                <span>{levelLabel}</span>
               </motion.div>
               <div className="flex flex-col gap-1.5">
                 <motion.div
@@ -189,12 +250,12 @@ export const GithubStatsWidget = memo(({ data }: any) => {
                 {HEATMAP_WEEKS.map((week) => (
                   <div key={week} className="flex flex-col gap-[2.5px]">
                     {HEATMAP_DAYS.map((day) => {
-                      // heatmapData 按 week*5+day 顺序生成，直接下标取，避免 O(n²) find
-                      const cell = heatmapData[week * 5 + day]
+                      // heatmapData: week*7+day (Sun–Sat), real calendar not random
+                      const cell = heatmapData[week * 7 + day]
                       return (
                         <motion.div
                           key={`${week}-${day}`}
-                          className="w-2.5 h-2.5 rounded-0.5"
+                          className="w-2 h-2 rounded-0.5"
                           style={{
                             backgroundColor: levelColor,
                             opacity: cell?.opacity || 0.15,
@@ -203,7 +264,7 @@ export const GithubStatsWidget = memo(({ data }: any) => {
                           animate={{ scale: 1, opacity: cell?.opacity || 0.15 }}
                           transition={{
                             duration: 0.2,
-                            delay: (week * 5 + day) * 0.004,
+                            delay: (week * 7 + day) * 0.003,
                           }}
                         />
                       )
@@ -327,7 +388,7 @@ export const GithubWidget = memo(({ data, showOverview, onContentChange }: any) 
           transition={{ duration: 0.5 }}
           className="h-full w-full p-1.5"
         >
-          <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
+          <div className="relative h-full w-full rounded-lg overflow-hidden shadow-lg bg-white dark:bg-black/90">
             <div className="absolute inset-0 bg-linear-to-br from-gray-800 to-gray-900 dark:from-black dark:to-black/90">
               <div className="absolute inset-0 flex flex-col p-2.5 pb-[20%]">
                 <div className="flex items-center gap-2.5 mb-2">

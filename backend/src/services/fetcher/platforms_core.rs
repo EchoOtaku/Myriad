@@ -684,15 +684,31 @@ impl PlatformFetcher {
             html.len()
         );
 
-        // 解析 SVG 中的 <rect> 或 <td> 标签提取贡献数据
-        // GitHub 可能使用 rect 或 table 格式
+        // Prefer real counts: data-count attr, or <tool-tip> "N contributions on …".
+        // data-level is only intensity 0–4 — never treat it as contribution count.
         let mut contributions = Vec::new();
 
-        // 使用更稳健的解析策略：先匹配标签，再提取属性
-        // 这样可以忽略属性顺序和中间的其他属性
         let tag_re = regex::Regex::new(r#"<(?:rect|td)([^>]+)>"#)?;
         let date_re = regex::Regex::new(r#"data-date="([0-9]{4}-[0-9]{2}-[0-9]{2})""#)?;
         let level_re = regex::Regex::new(r#"data-level="(\d+)""#)?;
+        let count_attr_re = regex::Regex::new(r#"data-count="(\d+)""#)?;
+        let id_attr_re = regex::Regex::new(r#"\bid="([^"]+)""#)?;
+        // tool-tip body: "12 contributions on January 15th." / "No contributions on …"
+        let tip_for_re = regex::Regex::new(
+            r#"(?is)<tool-tip[^>]*\bfor="([^"]+)"[^>]*>(?:\s*No\s+contributions|\s*(\d+)\s+contributions?)\s+on[^<]*</tool-tip>"#,
+        )?;
+        let mut tip_by_id: std::collections::HashMap<String, i64> =
+            std::collections::HashMap::new();
+        for cap in tip_for_re.captures_iter(&html) {
+            let id = cap.get(1).map(|m| m.as_str()).unwrap_or("").to_string();
+            let count = cap
+                .get(2)
+                .and_then(|m| m.as_str().parse::<i64>().ok())
+                .unwrap_or(0);
+            if !id.is_empty() {
+                tip_by_id.insert(id, count);
+            }
+        }
 
         for cap in tag_re.captures_iter(&html) {
             let attrs = cap.get(1).map(|m| m.as_str()).unwrap_or("");
@@ -707,18 +723,25 @@ impl PlatformFetcher {
                     .and_then(|m| m.as_str().parse::<i64>().ok())
                     .unwrap_or(0);
 
-                // 将 level (0-4) 转换为近似的贡献数
-                let count = match level {
-                    0 => 0,
-                    1 => 2,
-                    2 => 5,
-                    3 => 8,
-                    _ => 12,
-                };
+                let id = id_attr_re
+                    .captures(attrs)
+                    .and_then(|c| c.get(1).map(|m| m.as_str().to_string()));
+
+                let count = count_attr_re
+                    .captures(attrs)
+                    .and_then(|c| c.get(1))
+                    .and_then(|m| m.as_str().parse::<i64>().ok())
+                    .or_else(|| id.as_ref().and_then(|i| tip_by_id.get(i).copied()))
+                    .unwrap_or_else(|| {
+                        // Last resort: level as intensity 0–4 (not true commits).
+                        // Conservative so total_contributions is not inflated.
+                        level.clamp(0, 4)
+                    });
 
                 contributions.push(serde_json::json!({
                     "date": date,
-                    "count": count
+                    "count": count,
+                    "level": level
                 }));
             }
         }

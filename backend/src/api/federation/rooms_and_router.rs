@@ -611,24 +611,31 @@ mod query_parse_tests {
     fn limit_query_falls_back_instead_of_rejecting() {
         let malformed = LimitQuery {
             limit: Some("abc".into()),
+            status: None,
         };
         assert_eq!(malformed.or(50), 50);
 
         let empty = LimitQuery {
             limit: Some(String::new()),
+            status: None,
         };
         assert_eq!(empty.or(100), 100);
 
-        let absent = LimitQuery { limit: None };
+        let absent = LimitQuery {
+            limit: None,
+            status: None,
+        };
         assert_eq!(absent.or(7), 7);
 
         let valid = LimitQuery {
             limit: Some("25".into()),
+            status: None,
         };
         assert_eq!(valid.or(50), 25);
 
         let negative = LimitQuery {
             limit: Some("-1".into()),
+            status: None,
         };
         assert_eq!(negative.or(50), -1);
     }

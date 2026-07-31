@@ -240,15 +240,19 @@ const ModernConfigForm: React.FC = () => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const oauth = params.get('discord_oauth')
-    if (!oauth) return
+    const platformQ = params.get('platform')
+    if (!oauth && platformQ !== 'discord') return
+
+    setMobilePane('section')
+    setActiveSection('platforms')
+    if (platformQ === 'discord' || oauth) {
+      setPlatformFocus('Discord')
+    }
 
     if (oauth === 'ok') {
       showMessage(t.config.discordOAuthSuccess, 'success')
-      setPlatformFocus('Discord')
-      setMobilePane('section')
-      setActiveSection('platforms')
       void loadConfig()
-    } else {
+    } else if (oauth === 'error' || (oauth && oauth !== 'ok')) {
       const reason = params.get('reason') || 'unknown'
       showMessage(
         `${t.config.discordOAuthFailed}${reason !== 'unknown' ? ` (${reason})` : ''}`,
@@ -258,6 +262,7 @@ const ModernConfigForm: React.FC = () => {
 
     params.delete('discord_oauth')
     params.delete('reason')
+    params.delete('platform')
     const qs = params.toString()
     const next = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash}`
     window.history.replaceState({}, '', next)

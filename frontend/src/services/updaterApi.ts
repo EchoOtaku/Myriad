@@ -154,12 +154,31 @@ export const CHECK_INTERVAL_PRESETS = [
 ] as const
 export type CheckIntervalSecs = (typeof CHECK_INTERVAL_PRESETS)[number]
 
-/** Snapshot retention limit presets (count of older non-keep backups kept). */
-export const SNAPSHOT_LIMIT_PRESETS = [1, 2, 3, 5, 10] as const
+/**
+ * Snapshot retention limit presets (count of older non-keep backups kept).
+ * BE accepts 1–20; presets cover common values and the max.
+ */
+export const SNAPSHOT_LIMIT_PRESETS = [1, 2, 3, 5, 10, 15, 20] as const
 export type SnapshotLimitPreset = (typeof SNAPSHOT_LIMIT_PRESETS)[number]
 export const SNAPSHOT_LIMIT_DEFAULT = 3
 export const SNAPSHOT_LIMIT_MIN = 1
 export const SNAPSHOT_LIMIT_MAX = 20
+
+/** Clamp a raw snapshot_limit into the documented 1–20 range. */
+export function clampSnapshotLimit(raw: number): number {
+  if (!Number.isFinite(raw)) return SNAPSHOT_LIMIT_DEFAULT
+  return Math.min(
+    SNAPSHOT_LIMIT_MAX,
+    Math.max(SNAPSHOT_LIMIT_MIN, Math.round(raw)),
+  )
+}
+
+/** True when n is an integer in SNAPSHOT_LIMIT_MIN..=SNAPSHOT_LIMIT_MAX. */
+export function isValidSnapshotLimit(n: number): boolean {
+  return (
+    Number.isInteger(n) && n >= SNAPSHOT_LIMIT_MIN && n <= SNAPSHOT_LIMIT_MAX
+  )
+}
 
 /** Shared shape for self-update / proxy-update durable last outcome. */
 export interface InfraUpdateLastStatus {

@@ -41,14 +41,15 @@ export function retryAfterSecondsFromBody(data: unknown): number | null {
   return null
 }
 
-/** Prefer BE `message`, then localized template. */
+/**
+ * Prefer i18n template with Retry-After seconds.
+ * BE English boilerplate ("Rate limit exceeded. Please try again in N seconds.")
+ * must not override the UI locale.
+ */
 export function formatRateLimitMessage(
   seconds: number,
   serverMessage?: string | null,
 ): string {
-  if (serverMessage && serverMessage.trim()) {
-    return serverMessage.trim()
-  }
   let locale = 'en-US'
   try {
     const saved = localStorage.getItem('locale')
@@ -56,13 +57,22 @@ export function formatRateLimitMessage(
   } catch {
     /* ignore */
   }
+  const sec = Number.isFinite(seconds) && seconds > 0 ? Math.ceil(seconds) : 60
   if (locale.startsWith('zh')) {
-    return `请求过于频繁，请 ${seconds} 秒后重试`
+    return `请求过于频繁，请 ${sec} 秒后重试`
   }
   if (locale.startsWith('ja')) {
-    return `リクエストが多すぎます。${seconds}秒後に再試行してください`
+    return `リクエストが多すぎます。${sec}秒後に再試行してください`
   }
-  return `Too many requests. Retry in ${seconds}s`
+  // en: only use a non-boilerplate server message if provided and not English RL text
+  const msg = serverMessage?.trim() ?? ''
+  if (
+    msg &&
+    !/rate limit exceeded|too many requests|please try again/i.test(msg)
+  ) {
+    return msg
+  }
+  return `Too many requests. Retry in ${sec}s`
 }
 
 /**

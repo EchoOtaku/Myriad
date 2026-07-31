@@ -14,7 +14,6 @@ import { analyzeBeatGrid } from '../../../../utils/beatAnalyzer'
 import {
   getLyricsWithVerbatim,
   getNeteaseAudioUrl,
-  getQQAudioUrl,
 } from '../../../../utils/musicPlayer'
 import * as TappApiService from '../../../services/TappApiService'
 import {
@@ -526,7 +525,11 @@ export function registerMediaHandlers(
           // Geo-aware: CN → play-url CDN; overseas → full audio proxy
           url = await getNeteaseAudioUrl(id)
         } else if (source === 'qq') {
-          url = getQQAudioUrl(id)
+          // Same geo split as main-site musicPlayer (play-url vs /audio/)
+          const { getQQAudioUrlForGeo } = await import(
+            '../../../../utils/musicPlayer'
+          )
+          url = await getQQAudioUrlForGeo(id)
         }
       }
       const song = {
@@ -1272,6 +1275,16 @@ export function registerContextHandlers(
         )
         const snap = await fetchSessionUserSnapshot()
         if (snap) {
+          // Match host UI locale/TZ (same as TappHttpClient headers) —
+          // never hard-code zh-CN / Asia/Shanghai after the user switches language.
+          const { getDefaultLocale } = await import('../../../../i18n')
+          let timezone = 'UTC'
+          try {
+            timezone =
+              Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+          } catch {
+            /* ignore */
+          }
           return {
             success: true,
             data: {
@@ -1285,8 +1298,8 @@ export function registerContextHandlers(
               authenticated: snap.authenticated,
               connectedPlatforms: [],
               preferences: {
-                language: 'zh-CN',
-                timezone: 'Asia/Shanghai',
+                language: getDefaultLocale(),
+                timezone,
               },
             },
           }

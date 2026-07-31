@@ -36,6 +36,102 @@ export function shortDay(day: string): string {
   return day.length > 5 ? day.slice(5) : day
 }
 
+/**
+ * Calendar day label for analytics backup download filenames.
+ *
+ * BE day buckets use the process local calendar (`analytics_today` / TZ).
+ * Order: (1) `bucket_today` from BE (authoritative), (2) `exported_at` in
+ * `backup.timezone`, (3) max `day` key in payload tables only as last resort
+ * when timestamp invalid. Never prefer max day over today — empty today
+ * buckets would pin filenames to yesterday.
+ */
+export function analyticsBackupFilenameDay(backup: {
+  timezone?: unknown
+  exported_at?: unknown
+  bucket_today?: unknown
+  page_daily?: unknown
+  event_daily?: unknown
+  visitor_seen?: unknown
+}): string {
+  const bucketToday =
+    typeof backup.bucket_today === 'string'
+      ? backup.bucket_today.trim().slice(0, 10)
+      : ''
+  if (/^\d{4}-\d{2}-\d{2}$/.test(bucketToday)) {
+    return bucketToday
+  }
+
+  const exportedAt =
+    typeof backup.exported_at === 'string' ? backup.exported_at : null
+  const tz =
+    typeof backup.timezone === 'string' ? backup.timezone.trim() : ''
+  const instant = exportedAt ? new Date(exportedAt) : new Date()
+
+  if (Number.isFinite(instant.getTime())) {
+    // `UTC+8` / `UTC-5` from analytics_tz_label when TZ env unset
+    const offsetMatch = /^UTC([+-]\d+)$/i.exec(tz)
+    if (offsetMatch) {
+      const hours = Number(offsetMatch[1])
+      if (Number.isFinite(hours)) {
+        const shifted = new Date(instant.getTime() + hours * 3_600_000)
+        return shifted.toISOString().slice(0, 10)
+      }
+    }
+
+    // Bare UTC, or BE "local" when process offset hours==0 (UTC container, no TZ).
+    // Must NOT use the browser's local calendar — that drifts from analytics_today.
+    if (!tz || tz === 'local' || /^UTC$/i.test(tz)) {
+      return instant.toISOString().slice(0, 10)
+    }
+
+    // IANA zone (e.g. Asia/Shanghai) when TZ env is set
+    try {
+      // en-CA → YYYY-MM-DD
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(instant)
+    } catch {
+      /* invalid IANA — fall through to max payload day / UTC */
+    }
+  }
+
+  // Timestamp missing/invalid: fall back to latest day key in tables
+  const payloadDay = maxAnalyticsPayloadDay(backup)
+  if (payloadDay) return payloadDay
+
+  // Absolute last resort: UTC calendar of "now" (still not browser-local)
+  return new Date().toISOString().slice(0, 10)
+}
+
+/** Latest YYYY-MM-DD among analytics table rows in a backup payload. */
+function maxAnalyticsPayloadDay(backup: {
+  page_daily?: unknown
+  event_daily?: unknown
+  visitor_seen?: unknown
+}): string | null {
+  const days: string[] = []
+  for (const key of ['page_daily', 'event_daily', 'visitor_seen'] as const) {
+    const arr = backup[key]
+    if (!Array.isArray(arr)) continue
+    for (const row of arr) {
+      if (
+        row &&
+        typeof row === 'object' &&
+        typeof (row as { day?: unknown }).day === 'string'
+      ) {
+        const d = String((row as { day: string }).day).slice(0, 10)
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d)) days.push(d)
+      }
+    }
+  }
+  if (days.length === 0) return null
+  days.sort()
+  return days[days.length - 1]!
+}
+
 const NICE_STEPS = [1, 2, 5, 10]
 
 /** 把一格的粗略高度吸附到 1/2/5/10×10ⁿ 的整数刻度 */

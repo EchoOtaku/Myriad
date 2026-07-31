@@ -1558,6 +1558,8 @@ export const SocialNetworkWidget = memo(
           return platformUserIds.steam_id
         case 'github':
           return platformUserIds.github_username
+        case 'youtube':
+          return platformUserIds.youtube_channel_id
         case 'netease':
           return platformUserIds.netease_user_id
         case 'bangumi':

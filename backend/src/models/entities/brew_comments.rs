@@ -153,4 +153,7 @@ pub struct CreateCommentRequest {
 pub struct UpdateCommentRequest {
     pub comment: Option<String>,
     pub color: Option<String>,
+    /// Optional visibility toggle (aligned with create; ignored when absent).
+    #[serde(default)]
+    pub is_public: Option<bool>,
 }

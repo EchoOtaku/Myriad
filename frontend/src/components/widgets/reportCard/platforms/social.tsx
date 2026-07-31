@@ -132,8 +132,26 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
   const [slideIndex, setSlideIndex] = useState(0)
   // 头像主色缓存（username → hex），用于详情面的氛围光
   const [tints, setTints] = useState<Record<string, string>>({})
-  // 翻面只轮播关注亮点（标题由左下角 logo 药丸承载，卡片内不再放标题）
-  const flipItems = highlights
+  // 推文列表：flip gate 使用 library_items/top_posts 时详情面可轮播文本
+  const tweetItems = useMemo(() => {
+    const fromLib = Array.isArray(data?.library_items) ? data.library_items : []
+    const fromTop = Array.isArray(data?.top_posts) ? data.top_posts : []
+    const raw = fromLib.length > 0 ? fromLib : fromTop
+    return raw
+      .filter((p: any) => p?.title || p?.text)
+      .slice(0, 8)
+      .map((p: any) => ({
+        kind: 'tweet' as const,
+        title: String(p.title || p.text || '').slice(0, 120),
+        text: String(p.text || p.title || ''),
+        like_count: p.like_count,
+        retweet_count: p.retweet_count,
+      }))
+  }, [data?.library_items, data?.top_posts])
+  // Prefer following highlights; fall back to tweets when flip uses posts only
+  const flipMode: 'following' | 'tweets' =
+    highlights.length > 0 ? 'following' : tweetItems.length > 0 ? 'tweets' : 'following'
+  const flipItems = flipMode === 'tweets' ? tweetItems : highlights
 
   useEffect(() => {
     if (!showOverview && flipItems.length > 1) {
@@ -144,13 +162,19 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
     }
   }, [showOverview, flipItems.length])
 
-  // 概览态药丸保持纯图标（与其他卡片一致）；详情态由药丸承载账号名/@username
+  // 概览态药丸保持纯图标（与其他卡片一致）；详情态由药丸承载账号名/@username 或推文摘要
   useEffect(() => {
     if (!showOverview && flipItems[slideIndex % flipItems.length]) {
-      const item = flipItems[slideIndex % flipItems.length]
-      const titles = [String(item.name || item.username || '')]
-      if (item.username) titles.push(`@${item.username}`)
-      onContentChange?.({ titles })
+      const item = flipItems[slideIndex % flipItems.length] as any
+      if (item.kind === 'tweet') {
+        onContentChange?.({
+          title: String(item.title || '').slice(0, 40),
+        })
+      } else {
+        const titles = [String(item.name || item.username || '')]
+        if (item.username) titles.push(`@${item.username}`)
+        onContentChange?.({ titles })
+      }
     } else {
       onContentChange?.(null)
     }
@@ -340,9 +364,58 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
     )
   }
 
+  // Tweet carousel when flip gate uses library_items/top_posts (no following graph)
+  if ((item as any).kind === 'tweet') {
+    const tweet = item as {
+      title: string
+      text: string
+      like_count?: number
+      retweet_count?: number
+    }
+    return (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`tw-${slideIndex % flipItems.length}`}
+          initial={CONTENT_FADE_INITIAL}
+          animate={CONTENT_FADE_ANIMATE}
+          exit={CONTENT_FADE_EXIT}
+          transition={CONTENT_FADE_TRANSITION}
+          className="relative h-full w-full overflow-hidden p-3 pb-10 flex flex-col"
+        >
+          <div className="absolute inset-0 bg-linear-to-br from-gray-200/40 to-transparent dark:from-white/[0.05] dark:to-transparent" />
+          <p className="relative z-10 text-[12px] font-semibold leading-snug text-gray-900 dark:text-gray-100 line-clamp-5">
+            {tweet.text || tweet.title}
+          </p>
+          <div className="relative z-10 mt-auto flex items-center gap-3 text-[9px] font-medium text-gray-500 dark:text-gray-400">
+            {tweet.like_count != null && (
+              <span>♥ {formatCompactNumber(tweet.like_count)}</span>
+            )}
+            {tweet.retweet_count != null && (
+              <span>↻ {formatCompactNumber(tweet.retweet_count)}</span>
+            )}
+          </div>
+          {flipItems.length > 1 && (
+            <div className="absolute bottom-3 right-3 z-10 flex gap-1">
+              {flipItems.map((_: any, i: number) => (
+                <span
+                  key={i}
+                  className={`w-1 h-1 rounded-full transition-colors ${
+                    i === slideIndex % flipItems.length
+                      ? 'bg-gray-800 dark:bg-white/90'
+                      : 'bg-gray-400/60 dark:bg-white/30'
+                  }`}
+                />
+              ))}
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
+    )
+  }
+
   // 关注亮点轮播：账号名/@username 由左下角 logo 药丸展示；
   // 标签（AI 评语）是主角，头像缩小为径向渐隐的背景图，主色氛围光衔接卡片背景
-  const tint = tints[String(item.username || '')]
+  const tint = tints[String((item as any).username || '')]
   return (
     <AnimatePresence mode="wait">
       <motion.div
@@ -363,7 +436,7 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
           />
         )}
         {/* 头像：贴住右缘完整显示，向卡片内部径向渐隐（模糊半圆） */}
-        {item.avatar && (
+        {(item as any).avatar && (
           <motion.div
             className="absolute inset-y-0 right-0 w-[58%]"
             style={{
@@ -378,19 +451,19 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
           >
             <img
               src={
-                String(item.avatar).includes('/api/proxy/image')
-                  ? item.avatar
-                  : String(item.avatar).replace(
+                String((item as any).avatar).includes('/api/proxy/image')
+                  ? (item as any).avatar
+                  : String((item as any).avatar).replace(
                       /_(normal|bigger)\./,
                       '_400x400.',
                     )
               }
-              alt={item.name || item.username}
+              alt={(item as any).name || (item as any).username}
               className="w-full h-full object-cover translate-x-[6%] scale-110"
               loading="lazy"
               referrerPolicy="no-referrer"
               onLoad={(e) => {
-                const username = String(item.username || '')
+                const username = String((item as any).username || '')
                 if (!username || tints[username]) return
                 try {
                   const palette = extractColorsFromLoadedImage(e.currentTarget)
@@ -409,7 +482,7 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
         )}
         {/* 前景：标签是主角，粉丝量降为统计行 */}
         <div className="relative z-10 h-full p-3 pb-12 flex flex-col">
-          {item.tag && (
+          {(item as any).tag && (
             <motion.div
               className="min-w-0 max-w-[70%]"
               initial={{ y: 8, opacity: 0 }}
@@ -417,26 +490,26 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
               transition={{ duration: 0.4, delay: 0.1 }}
             >
               <span className="block text-base font-black text-gray-900 dark:text-gray-100 leading-tight truncate">
-                {item.tag}
+                {(item as any).tag}
               </span>
             </motion.div>
           )}
-          {item.follower_count != null && (
+          {(item as any).follower_count != null && (
             <motion.div
               className="mt-0.5 text-[10px] font-medium text-gray-500 dark:text-gray-400"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.4, delay: 0.2 }}
             >
-              {formatCompactNumber(item.follower_count)}{' '}
+              {formatCompactNumber((item as any).follower_count)}{' '}
               {t.reportCardWidget.xFollowers}
             </motion.div>
           )}
           {/* 简介最多两行，收在 overflow-hidden 容器里，不侵入底部药丸区 */}
-          {item.description && (
+          {(item as any).description && (
             <div className="mt-1.5 flex-1 min-h-0 overflow-hidden max-w-[58%]">
               <p className="text-[9px] leading-relaxed text-gray-600 dark:text-gray-400 line-clamp-2">
-                {item.description}
+                {(item as any).description}
               </p>
             </div>
           )}
@@ -544,10 +617,26 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
   const { t } = useI18n()
   const profile = data?.profile || {}
   const stats = data?.stats || {}
-  const guilds = useMemo(
-    () => (Array.isArray(data?.library_items) ? data.library_items : []),
-    [data?.library_items],
-  )
+  // Single guild list: prefer library_items; fall back to guilds_preview for older rows
+  const guilds = useMemo(() => {
+    if (Array.isArray(data?.library_items) && data.library_items.length > 0) {
+      return data.library_items
+    }
+    if (Array.isArray(data?.guilds_preview) && data.guilds_preview.length > 0) {
+      return data.guilds_preview.map((g: any) => ({
+        id: g.id,
+        title: g.name || g.title,
+        name: g.name || g.title,
+        icon: g.icon || g.icon_url,
+        owner: g.owner,
+        permissions: g.permissions || g.permissions_highlight,
+        member_count: g.member_count,
+        presence_count: g.presence_count,
+        features: g.features || g.feature_highlight,
+      }))
+    }
+    return []
+  }, [data?.library_items, data?.guilds_preview])
   const badges: string[] = useMemo(
     () => (Array.isArray(profile.badges) ? profile.badges.slice(0, 3) : []),
     [profile.badges],
@@ -619,10 +708,17 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
   if (showOverview || flipItems.length === 0) {
     const displayName =
       profile.display_name || profile.username || 'Discord'
-    // 概览小统计：服务器数 + 绑定数（触达 member_reach 对用户无意义，不展示）
+    // 概览小统计：服务器数 + 绑定数（member_reach 常为 0，不展示）
+    // guild_count 回退：stats 为 0 时用 library 列表长度
+    const guildCount =
+      Number(stats.guilds) > 0
+        ? Number(stats.guilds)
+        : guilds.length > 0
+          ? guilds.length
+          : 0
     const statsParts = (
       [
-        [Number(stats.guilds) || 0, t.reportCardWidget.discordGuilds],
+        [guildCount, t.reportCardWidget.discordGuilds],
         [Number(stats.connections) || 0, t.reportCardWidget.discordConnections],
       ] as [number, string][]
     ).filter(([value]) => value > 0)
@@ -645,7 +741,7 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
               {iconWall.map((g: any, i: number) => (
                 <motion.div
                   key={g.id || i}
-                  className="w-10 h-10 shrink-0 -ml-2 rounded-2xl overflow-hidden shadow-md ring-2 ring-white/80 dark:ring-black/60"
+                  className="w-10 h-10 shrink-0 -ml-2 rounded-lg overflow-hidden shadow-md ring-2 ring-white/80 dark:ring-black/60"
                   style={{ y: i % 2 === 0 ? -9 : 11 }}
                   initial={{ x: 40, opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
@@ -833,7 +929,7 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, ease: 'easeOut' }}
         >
-          <div className="h-[52%] max-h-28 aspect-square rounded-3xl overflow-hidden shadow-xl">
+          <div className="h-[52%] max-h-28 aspect-square rounded-lg overflow-hidden shadow-xl">
             <DiscordGuildIcon icon={item.icon} name={guildName} size={96} />
           </div>
         </motion.div>

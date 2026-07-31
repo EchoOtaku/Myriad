@@ -167,17 +167,21 @@ fn no_store_redirect(url: &str) -> Response {
     response
 }
 
-/// Redirect back to config platforms section. `reason` is a fixed token we control.
+/// Redirect back to settings → platforms with Discord focus.
+/// Uses path `/config` (admin SPA) + section + platform query so FE
+/// `useConfigNavigation` / ConfigForm can open Platforms and highlight Discord.
+/// Never sends users to login OAuth callback (`/api/auth/oauth/...`).
 fn config_redirect(frontend_base: &str, ok: bool, reason: &str) -> Response {
+    let base = frontend_base.trim_end_matches('/');
     let url = if ok {
         format!(
-            "{}/config?section=platforms&discord_oauth=ok",
-            frontend_base.trim_end_matches('/')
+            "{}/config?section=platforms&platform=discord&discord_oauth=ok",
+            base
         )
     } else {
         format!(
-            "{}/config?section=platforms&discord_oauth=error&reason={}",
-            frontend_base.trim_end_matches('/'),
+            "{}/config?section=platforms&platform=discord&discord_oauth=error&reason={}",
+            base,
             urlencoding::encode(reason)
         )
     };

@@ -825,8 +825,7 @@ impl SmartFilter {
                     .collect(),
                 follower_count: account
                     .pointer("/public_metrics/followers_count")
-                    .and_then(|v| v.as_i64())
-                    .unwrap_or(0),
+                    .and_then(|v| v.as_i64()),
                 verified: account
                     .get("verified")
                     .and_then(|v| v.as_bool())
@@ -838,7 +837,13 @@ impl SmartFilter {
                     .map(str::to_string),
             })
             .collect();
-        following_sample.sort_by_key(|b| Reverse(b.follower_count));
+        // Known follower counts first (desc); missing metrics last (not fake 0)
+        following_sample.sort_by(|a, b| match (a.follower_count, b.follower_count) {
+            (Some(x), Some(y)) => y.cmp(&x),
+            (Some(_), None) => std::cmp::Ordering::Less,
+            (None, Some(_)) => std::cmp::Ordering::Greater,
+            (None, None) => std::cmp::Ordering::Equal,
+        });
         following_sample.truncate(MAX_FOLLOWING_SAMPLE);
 
         let following_summary = if following_fetched > 0 {
@@ -882,7 +887,12 @@ impl SmartFilter {
                 following_summary,
                 following_sample,
                 engagement_stats: XEngagementStats {
-                    total_posts: fetched_count,
+                    // Profile tweet_count when present; else scraped sample size
+                    total_posts: if tweet_count_metric > 0 {
+                        tweet_count_metric as usize
+                    } else {
+                        fetched_count
+                    },
                     total_likes_received: total_likes,
                     total_retweets_received: total_retweets,
                     total_replies_received: total_replies,

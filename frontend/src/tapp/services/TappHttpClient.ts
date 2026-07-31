@@ -1,11 +1,35 @@
 import { API_URL } from '../../config'
 import { getDefaultLocale } from '../../i18n'
 import { getCSRFToken } from '../../utils/csrf'
-import { notifyHttpRateLimit } from '../../utils/httpRateLimitToast'
+import {
+  notifyHttpRateLimit,
+  parseRetryAfterSeconds,
+  retryAfterSecondsFromBody,
+} from '../../utils/httpRateLimitToast'
 
 export interface ApiRequestOptions extends RequestInit {
   /** Host-only runtime identity; never exposed to sandbox code. */
   runtimeGrant?: string
+}
+
+/** Structured HTTP error so callers keep status / Retry-After (not plain Error). */
+export class TappHttpError extends Error {
+  readonly status: number
+  /** Seconds until retry when 429 (from header or body). */
+  readonly retryAfter?: number
+  readonly body?: unknown
+
+  constructor(
+    message: string,
+    status: number,
+    opts?: { retryAfter?: number; body?: unknown },
+  ) {
+    super(message)
+    this.name = 'TappHttpError'
+    this.status = status
+    this.retryAfter = opts?.retryAfter
+    this.body = opts?.body
+  }
 }
 
 function hostLocaleHeaders(): Record<string, string> {
@@ -55,8 +79,10 @@ export async function apiRequest<T>(
   })
 
   if (!response.ok) {
-    notifyHttpRateLimit(response)
     const errorData = await response.json().catch(() => ({}))
+    if (response.status === 429) {
+      notifyHttpRateLimit(response, errorData)
+    }
     if (
       response.status === 403 &&
       retryOnCsrf &&
@@ -87,7 +113,16 @@ export async function apiRequest<T>(
 
     const detail =
       errorData.message || errorData.error || response.statusText || 'unknown'
-    throw new Error(`API Error: ${response.status} ${detail}`)
+    const retryAfter =
+      response.status === 429
+        ? (parseRetryAfterSeconds(response) ??
+          retryAfterSecondsFromBody(errorData) ??
+          undefined)
+        : undefined
+    throw new TappHttpError(`API Error: ${response.status} ${detail}`, response.status, {
+      retryAfter,
+      body: errorData,
+    })
   }
 
   const result = await response.json()

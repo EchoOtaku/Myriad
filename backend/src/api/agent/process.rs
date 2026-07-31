@@ -901,9 +901,13 @@ pub async fn list_traces(
 /// 获取系统能力列表
 /// GET /api/agent/capabilities
 pub async fn list_capabilities(
-    Extension(_claims): Extension<Claims>,
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
 ) -> Result<Json<Value>, HttpError> {
-    let capabilities = crate::services::agent::get_capabilities_summary().await;
+    let user_id = parse_user_id(&claims)?;
+    let is_admin = crate::services::agent::user_is_current_admin(&db, user_id).await;
+    let capabilities =
+        crate::services::agent::get_capabilities_summary_for_user(is_admin).await;
 
     Ok(Json(json!({
         "success": true,

@@ -634,6 +634,8 @@ export interface CreateCommentRequest {
 export interface UpdateCommentRequest {
   comment?: string
   color?: string
+  /** Visibility toggle (aligned with create). */
+  is_public?: boolean
 }
 
 /**
@@ -714,12 +716,16 @@ export async function getCommentReplies(
 
 /**
  * 创建评论回复
+ *
+ * Color / is_public are optional — when omitted, BE inherits from the parent
+ * comment so replies match the highlight thread.
  */
 export async function createReply(
   itemId: number,
   parentId: number,
   comment: string,
   attributionHeaders?: BrewAttributionHeaders,
+  opts?: { color?: string; is_public?: boolean },
 ): Promise<{ success: boolean; comment: CommentItem; error?: string }> {
   return request(`/items/${itemId}/comments`, {
     method: 'POST',
@@ -727,6 +733,10 @@ export async function createReply(
       selected_text: '', // 回复不需要选中文本
       comment,
       parent_id: parentId,
+      ...(opts?.color ? { color: opts.color } : {}),
+      ...(typeof opts?.is_public === 'boolean'
+        ? { is_public: opts.is_public }
+        : {}),
     }),
     headers: attributionHeaders,
   })

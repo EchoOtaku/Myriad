@@ -29,6 +29,31 @@ import { apiService } from '../api'
 import { abortSseSubscriptions, executeSSERequest } from './sseTransport'
 
 /**
+ * BE IntentAction serializes as snake_case unit strings (`"query"`).
+ * Unknown/newtype variants may appear as objects; coerce to stable strings.
+ */
+export function normalizeCapabilityActions(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  for (const item of raw) {
+    if (typeof item === 'string' && item.trim()) {
+      out.push(item.trim())
+      continue
+    }
+    if (item && typeof item === 'object') {
+      // serde newtype: { "unknown": "foo" } or tagged forms
+      const entries = Object.entries(item as Record<string, unknown>)
+      if (entries.length === 1) {
+        const [k, v] = entries[0]
+        out.push(typeof v === 'string' && v ? `${k}:${v}` : k)
+        continue
+      }
+    }
+  }
+  return out
+}
+
+/**
  * Agent 服务类
  *
  * 负责与后端 Agent API 通信
@@ -249,7 +274,16 @@ class AgentService {
     const response = await apiService.get<{
       success: boolean
       capabilities: {
-        capabilities?: Capability[]
+        capabilities?: Array<{
+          id: string
+          name: string
+          description?: string
+          category?: string
+          /** BE IntentAction[] serializes as snake_case strings; tolerate objects */
+          actions?: unknown
+          requiresAi?: boolean
+          requires_ai?: boolean
+        }>
         totalCount?: number
         total?: number
         byCategory?: Record<
@@ -260,7 +294,14 @@ class AgentService {
     }>(`${this.baseUrl}/capabilities`)
     const body = response.capabilities
     if (Array.isArray(body?.capabilities)) {
-      return body.capabilities
+      return body.capabilities.map((cap) => ({
+        id: cap.id,
+        name: cap.name,
+        description: cap.description || '',
+        category: cap.category || '',
+        actions: normalizeCapabilityActions(cap.actions),
+        requiresAi: Boolean(cap.requiresAi ?? cap.requires_ai),
+      }))
     }
     // Legacy: flatten byCategory summary if flat list missing
     const byCat = body?.byCategory
@@ -553,6 +594,37 @@ class AgentService {
       `${this.baseUrl}/memory/${encodeURIComponent(memoryId)}`,
       { content },
     )
+  }
+
+  // ============ MCP ============
+
+  /** Admin: MCP server connection status */
+  async getMcpStatus(): Promise<{
+    servers: Array<Record<string, unknown>>
+    tool_count: number
+  }> {
+    const response = await apiService.get<{
+      servers?: Array<Record<string, unknown>>
+      tool_count?: number
+    }>(`${this.baseUrl}/mcp/status`)
+    return {
+      servers: Array.isArray(response.servers) ? response.servers : [],
+      tool_count:
+        typeof response.tool_count === 'number' ? response.tool_count : 0,
+    }
+  }
+
+  /** Admin: hot-reload mcp_servers.json */
+  async reloadMcp(): Promise<{ reloaded: boolean; tool_count: number }> {
+    const response = await apiService.post<{
+      reloaded?: boolean
+      tool_count?: number
+    }>(`${this.baseUrl}/mcp/reload`, {})
+    return {
+      reloaded: response.reloaded === true,
+      tool_count:
+        typeof response.tool_count === 'number' ? response.tool_count : 0,
+    }
   }
 
   // ============ 技能 (Phase 2B) ============

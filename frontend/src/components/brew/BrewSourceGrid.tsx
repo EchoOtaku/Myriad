@@ -214,13 +214,14 @@ export default function BrewSourceGrid({
 
     switch (sortMode) {
       case 'update':
-        // 按最新文章发布时间排序（最新的在前）
+        // 按最新成功更新 / 文章时间排序（最新的在前）。
+        // Never fall back to last_fetched_at — failed fetches update it and
+        // would surface broken sources as "recently updated".
         return result.sort((a, b) => {
-          // 获取每个订阅源最新文章的发布时间
           const latestA =
-            a.recent_items?.[0]?.published_at || a.last_fetched_at || 0
+            a.recent_items?.[0]?.published_at || a.last_success_at || 0
           const latestB =
-            b.recent_items?.[0]?.published_at || b.last_fetched_at || 0
+            b.recent_items?.[0]?.published_at || b.last_success_at || 0
           return latestB - latestA
         })
 

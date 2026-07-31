@@ -45,7 +45,12 @@ import {
   useSettingsHelp,
 } from '../settings'
 import { EmptyCard } from './analytics/EmptyCard'
-import { formatCount, formatDuration, shortDay } from './analytics/format'
+import {
+  analyticsBackupFilenameDay,
+  formatCount,
+  formatDuration,
+  shortDay,
+} from './analytics/format'
 import { RankList } from './analytics/RankList'
 import { TrendChart } from './analytics/TrendChart'
 import './SiteAnalyticsSection.css'
@@ -393,9 +398,9 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
       const url = URL.createObjectURL(blob)
       const el = document.createElement('a')
       el.href = url
-      el.download = `myriad-analytics-backup-${new Date()
-        .toISOString()
-        .slice(0, 10)}.json`
+      // Day label from BE timezone / exported_at (matches analytics day buckets)
+      const day = analyticsBackupFilenameDay(backup)
+      el.download = `myriad-analytics-backup-${day}.json`
       document.body.appendChild(el)
       el.click()
       document.body.removeChild(el)

@@ -65,6 +65,8 @@ fn normalize_item_type(raw: &str, platform: &str) -> String {
         "music" | "song" | "songs" => "music".into(),
         "book" | "manga" | "novel" => "book".into(),
         "tv" | "tv_series" | "series" => "tv_series".into(),
+        // Bangumi smart_filter label for subject type 6
+        "real" => crate::services::library_items::bangumi_real_item_type(None).into(),
         "repo" | "repos" | "repository" => "repo".into(),
         "" if platform.eq_ignore_ascii_case("steam") => "game".into(),
         "" if platform.eq_ignore_ascii_case("bilibili") => "video".into(),
@@ -354,9 +356,9 @@ fn set_item_image_if_empty(item: &mut Value, url: &str) {
 
 /// Netease: fill album cover + song id from liked_songs (filtered only keeps title/artist).
 fn enrich_netease_items(items: &mut [Value], raw: &Value) {
-    // title|artist → (id, picUrl, album)
-    let mut by_key: HashMap<String, (String, String, String)> = HashMap::new();
-    let mut by_title: HashMap<String, (String, String, String)> = HashMap::new();
+    // title|artist → (id, picUrl, album, fee, is_vip)
+    let mut by_key: HashMap<String, (String, String, String, Option<i64>, bool)> = HashMap::new();
+    let mut by_title: HashMap<String, (String, String, String, Option<i64>, bool)> = HashMap::new();
 
     let songs = raw
         .get("liked_songs")
@@ -403,7 +405,20 @@ fn enrich_netease_items(items: &mut [Value], raw: &Value) {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let entry = (id, pic, album);
+        let fee = s
+            .get("fee")
+            .and_then(|v| v.as_i64())
+            .or_else(|| {
+                s.get("privilege")
+                    .and_then(|p| p.get("fee"))
+                    .and_then(|v| v.as_i64())
+            });
+        let is_vip = s
+            .get("isVip")
+            .and_then(|v| v.as_bool())
+            .or_else(|| s.get("is_vip").and_then(|v| v.as_bool()))
+            .unwrap_or_else(|| fee.map(|f| f == 1 || f == 4).unwrap_or(false));
+        let entry = (id, pic, album, fee, is_vip);
         by_key.insert(format!("{title}|{artist}"), entry.clone());
         by_title.entry(title).or_insert(entry);
     }
@@ -437,7 +452,7 @@ fn enrich_netease_items(items: &mut [Value], raw: &Value) {
         let hit = by_key
             .get(&format!("{title}|{artist_key}"))
             .or_else(|| by_title.get(&title));
-        let Some((id, pic, album)) = hit else {
+        let Some((id, pic, album, fee, is_vip)) = hit else {
             continue;
         };
 
@@ -460,6 +475,10 @@ fn enrich_netease_items(items: &mut [Value], raw: &Value) {
                 meta.entry("album".to_string())
                     .or_insert_with(|| json!(album));
             }
+            if let Some(f) = fee {
+                meta.insert("fee".to_string(), json!(f));
+            }
+            meta.insert("isVip".to_string(), json!(is_vip));
         }
     }
 }

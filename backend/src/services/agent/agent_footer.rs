@@ -164,6 +164,11 @@ pub async fn get_capabilities_summary() -> serde_json::Value {
     capability::get_capability_summary().await
 }
 
+/// Discovery list filtered by admin (hides system:admin caps for non-admin).
+pub async fn get_capabilities_summary_for_user(is_admin: bool) -> serde_json::Value {
+    capability::get_capability_summary_filtered(is_admin).await
+}
+
 /// Query the current database role. Agent recipes can execute long after a
 /// token was issued, so a hard-coded "first user is admin" rule is unsafe.
 pub async fn user_is_current_admin(db: &sea_orm::DatabaseConnection, user_id: i32) -> bool {

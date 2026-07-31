@@ -148,7 +148,8 @@ pub(crate) async fn extract_netease_library_items(metadata: &SmartFilteredData) 
         let raw_cache_path = crate::services::data_paths::paths()
             .cache_raw
             .join("netease.json");
-        let mut song_map: std::collections::HashMap<String, (String, String)> =
+        // title → (cover, artist, fee, is_vip)
+        let mut song_map: std::collections::HashMap<String, (String, String, Option<i64>, bool)> =
             std::collections::HashMap::new();
 
         if raw_cache_path.exists() {
@@ -175,9 +176,10 @@ pub(crate) async fn extract_netease_library_items(metadata: &SmartFilteredData) 
                                     })
                                     .unwrap_or("未知艺术家"),
                             ) {
+                                let (fee, is_vip) = netease_song_fee_flags(item);
                                 song_map.insert(
                                     name.to_string(),
-                                    (cover.to_string(), artists.to_string()),
+                                    (cover.to_string(), artists.to_string(), fee, is_vip),
                                 );
                             }
                         }
@@ -191,7 +193,7 @@ pub(crate) async fn extract_netease_library_items(metadata: &SmartFilteredData) 
                         let sample: Vec<_> = song_map.iter().take(3).collect();
                         if !sample.is_empty() {
                             println!("  - song_map样本(前3个):");
-                            for (song_title, (_, artist)) in sample {
+                            for (song_title, (_, artist, _, _)) in sample {
                                 println!("    '{}'  by  '{}'", song_title, artist);
                             }
                         }
@@ -219,9 +221,17 @@ pub(crate) async fn extract_netease_library_items(metadata: &SmartFilteredData) 
         if song_map.is_empty() {
             println!("  ⚠️ song_map为空,从recent_songs构建基础map");
             for song in &analysis.recent_songs {
+                let is_vip = song
+                    .is_vip
+                    .unwrap_or_else(|| song.fee.map(|f| netease_fee_is_vip(f)).unwrap_or(false));
                 song_map.insert(
                     song.title.clone(),
-                    (String::new(), song.artist.clone()), // 封面为空
+                    (
+                        song.cover.clone().unwrap_or_default(),
+                        song.artist.clone(),
+                        song.fee,
+                        is_vip,
+                    ),
                 );
             }
             println!("  - 从recent_songs构建了{}首歌曲的map", song_map.len());
@@ -242,7 +252,7 @@ pub(crate) async fn extract_netease_library_items(metadata: &SmartFilteredData) 
             println!("  - 正在处理艺术家: '{}'", artist_name);
 
             // 在song_map中查找该艺术家的歌曲
-            for (song_name, (cover, song_artist)) in &song_map {
+            for (song_name, (cover, song_artist, fee, is_vip)) in &song_map {
                 // 检查是否已经添加过这首歌
                 let already_added = library_items.iter().any(|item: &Value| {
                     item.get("title")
@@ -271,12 +281,17 @@ pub(crate) async fn extract_netease_library_items(metadata: &SmartFilteredData) 
                         artist_name, song_artist, song_name
                     );
 
-                    library_items.push(json!({
+                    let mut item = json!({
                         "title": song_name,
                         "cover": cover,
                         "artist": song_artist,  // 使用原始艺术家名
-                        "type": "music"
-                    }));
+                        "type": "music",
+                        "isVip": is_vip,
+                    });
+                    if let Some(f) = fee {
+                        item["fee"] = json!(f);
+                    }
+                    library_items.push(item);
 
                     artist_song_count += 1;
 
@@ -318,7 +333,7 @@ pub(crate) async fn extract_netease_library_items(metadata: &SmartFilteredData) 
             }
 
             // 从song_map中补充，避免单个艺术家过多
-            for (song_name, (cover, artist)) in song_map.iter() {
+            for (song_name, (cover, artist, fee, is_vip)) in song_map.iter() {
                 if library_items.len() >= 10 {
                     break;
                 }
@@ -348,12 +363,17 @@ pub(crate) async fn extract_netease_library_items(metadata: &SmartFilteredData) 
 
                 println!("    + 补充: {} - {}", artist, song_name);
 
-                library_items.push(json!({
+                let mut item = json!({
                     "title": song_name,
                     "cover": cover,
                     "artist": artist,
-                    "type": "music"
-                }));
+                    "type": "music",
+                    "isVip": is_vip,
+                });
+                if let Some(f) = fee {
+                    item["fee"] = json!(f);
+                }
+                library_items.push(item);
 
                 *artist_count_map.entry(artist.to_string()).or_insert(0) += 1;
             }
@@ -365,12 +385,20 @@ pub(crate) async fn extract_netease_library_items(metadata: &SmartFilteredData) 
         // 使用智能过滤结果中的 recent_songs 构建基础的 library_items（无封面时前端会自动回退头像）。
         if library_items.is_empty() {
             for song in &analysis.recent_songs {
-                library_items.push(json!({
+                let is_vip = song
+                    .is_vip
+                    .unwrap_or_else(|| song.fee.map(netease_fee_is_vip).unwrap_or(false));
+                let mut item = json!({
                     "title": song.title,
-                    "cover": "",
+                    "cover": song.cover.clone().unwrap_or_default(),
                     "artist": song.artist,
-                    "type": "music"
-                }));
+                    "type": "music",
+                    "isVip": is_vip,
+                });
+                if let Some(f) = song.fee {
+                    item["fee"] = json!(f);
+                }
+                library_items.push(item);
                 if library_items.len() >= 10 {
                     break;
                 }
@@ -443,17 +471,14 @@ pub(crate) async fn extract_bangumi_library_items(metadata: &SmartFilteredData) 
         }
 
         for item in candidates.into_iter().take(10) {
+            let item_type = crate::services::library_items::bangumi_label_to_library_type(
+                &item.subject_type,
+                None,
+            );
             library_items.push(json!({
                 "title": item.title,
                 "cover": item.cover.unwrap_or_default(),
-                "type": match item.subject_type.as_str() {
-                    "book" => "book",
-                    "anime" => "anime",
-                    "game" => "game",
-                    "music" => "music",
-                    "real" => "tv_series",
-                    _ => "video",
-                },
+                "type": item_type,
                 "platform": "bangumi",
                 "rate": item.rate,
                 "url": format!("https://bgm.tv/subject/{}", item.subject_id)
@@ -543,49 +568,81 @@ pub(crate) struct NeteaseUserStats {
     // level 字段移除，改由 AI 生成
 }
 
+/// Parse Bilibili user stats from a raw JSON object (`user` or `user_info` key).
+pub(crate) fn bilibili_stats_from_raw_json(raw_json: &Value) -> Option<BilibiliUserStats> {
+    let user_info = raw_json
+        .get("user")
+        .or_else(|| raw_json.get("user_info"))?;
+    let level = user_info
+        .get("level")
+        .or_else(|| user_info.get("level_info").and_then(|l| l.get("current_level")))
+        .cloned()
+        .unwrap_or(json!(0));
+    let follower_count = user_info
+        .get("follower")
+        .or_else(|| user_info.get("fans"))
+        .cloned()
+        .unwrap_or(json!(0));
+    let following_count = user_info
+        .get("following")
+        .or_else(|| user_info.get("friend"))
+        .cloned()
+        .unwrap_or(json!(0));
+    let stats = BilibiliUserStats {
+        level,
+        follower_count,
+        following_count,
+    };
+    let has_data = stats.level.as_i64().unwrap_or(0) > 0
+        || stats.follower_count.as_i64().unwrap_or(0) > 0
+        || stats.following_count.as_i64().unwrap_or(0) > 0;
+    if has_data {
+        Some(stats)
+    } else {
+        None
+    }
+}
+
 /// 提取哔哩哔哩用户统计数据
+///
+/// Accepts raw cache keys `user` or `user_info`; falls back to smart_filter
+/// `user_summary.stats` when the raw file is missing or incomplete.
 pub(crate) async fn extract_bilibili_user_stats(
-    _metadata: &SmartFilteredData,
+    metadata: &SmartFilteredData,
 ) -> Result<BilibiliUserStats, String> {
     use std::fs;
     use std::path::PathBuf;
 
-    // 先尝试从原始B站缓存文件中读取
     let raw_cache_path = PathBuf::from("./cache/raw/bilibili.json");
-
-    if !raw_cache_path.exists() {
-        return Err("Bilibili raw cache not found".to_string());
+    if raw_cache_path.exists() {
+        if let Ok(content) = fs::read_to_string(&raw_cache_path) {
+            if let Ok(raw_json) = serde_json::from_str::<Value>(&content) {
+                if let Some(stats) = bilibili_stats_from_raw_json(&raw_json) {
+                    return Ok(stats);
+                }
+            }
+        }
     }
 
-    let content = fs::read_to_string(&raw_cache_path)
-        .map_err(|e| format!("Failed to read bilibili cache: {}", e))?;
-
-    let raw_json: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse bilibili cache: {}", e))?;
-
-    // 从 user_info 获取用户信息
-    let user_info = raw_json.get("user_info");
-
-    if let Some(user_info) = user_info {
-        // 提取统计数据
-        let level = user_info.get("level").cloned().unwrap_or(json!(0));
-        let follower_count = user_info.get("follower").cloned().unwrap_or(json!(0));
-        let following_count = user_info.get("following").cloned().unwrap_or(json!(0));
-
-        Ok(BilibiliUserStats {
-            level,
-            follower_count,
-            following_count,
-        })
-    } else {
-        Err("Bilibili user_info not found in raw cache".to_string())
+    // smart_filter summary (followers filled when profile synced)
+    let followers = metadata.user_summary.stats.follower_count.unwrap_or(0);
+    let following = metadata.user_summary.stats.following_count.unwrap_or(0);
+    if followers > 0 || following > 0 {
+        return Ok(BilibiliUserStats {
+            level: json!(0),
+            follower_count: json!(followers),
+            following_count: json!(following),
+        });
     }
+
+    Err("Bilibili user stats not found (raw user/user_info and user_summary empty)".to_string())
 }
 
 /// 提取网易云音乐用户统计数据
 ///
-/// Prefer `metadata.user_summary.stats` (smart_filter already filled followeds /
-/// playlistCount). Fill gaps from `paths().cache_raw/netease.json` profile.
+/// Prefer raw `profile.playlistCount` when present (true playlist count); fall
+/// back to `user_summary.stats.total_content` only when raw is missing.
+/// Followers: summary first, then raw `followeds`.
 pub(crate) async fn extract_netease_user_stats(
     metadata: &SmartFilteredData,
 ) -> Result<NeteaseUserStats, String> {
@@ -595,31 +652,33 @@ pub(crate) async fn extract_netease_user_stats(
     let summary_playlists = metadata.user_summary.stats.total_content;
 
     let mut follower_count = summary_followers.map(|n| json!(n));
-    let mut playlist_count = if summary_playlists > 0 {
-        Some(json!(summary_playlists as i64))
-    } else {
-        None
-    };
+    // Prefer raw playlistCount (filled below); summary total_content is last resort
+    let mut playlist_count: Option<Value> = None;
 
-    // Fill missing fields from raw profile when available
-    if follower_count.is_none() || playlist_count.is_none() {
-        let raw_cache_path = crate::services::data_paths::paths()
-            .cache_raw
-            .join("netease.json");
-        if raw_cache_path.exists() {
-            if let Ok(content) = fs::read_to_string(&raw_cache_path) {
-                if let Ok(raw_json) = serde_json::from_str::<Value>(&content) {
-                    if let Some(profile) = raw_json.get("profile") {
-                        if follower_count.is_none() {
-                            follower_count = profile.get("followeds").cloned();
-                        }
-                        if playlist_count.is_none() {
-                            playlist_count = profile.get("playlistCount").cloned();
+    let raw_cache_path = crate::services::data_paths::paths()
+        .cache_raw
+        .join("netease.json");
+    if raw_cache_path.exists() {
+        if let Ok(content) = fs::read_to_string(&raw_cache_path) {
+            if let Ok(raw_json) = serde_json::from_str::<Value>(&content) {
+                if let Some(profile) = raw_json.get("profile") {
+                    if follower_count.is_none() {
+                        follower_count = profile.get("followeds").cloned();
+                    }
+                    // Prefer raw playlistCount even when total_content is non-zero
+                    // (total_content may later be song-count or playlists-array len).
+                    if let Some(pc) = profile.get("playlistCount").cloned() {
+                        if pc.as_i64().unwrap_or(-1) >= 0 {
+                            playlist_count = Some(pc);
                         }
                     }
                 }
             }
         }
+    }
+
+    if playlist_count.is_none() && summary_playlists > 0 {
+        playlist_count = Some(json!(summary_playlists as i64));
     }
 
     if follower_count.is_none() && playlist_count.is_none() {
@@ -632,6 +691,33 @@ pub(crate) async fn extract_netease_user_stats(
         follower_count: follower_count.unwrap_or(json!(0)),
         playlist_count: playlist_count.unwrap_or(json!(0)),
     })
+}
+
+/// Pure helper: netease song fee → isVip (fee 1 or 4 = VIP-only).
+pub(crate) fn netease_fee_is_vip(fee: i64) -> bool {
+    fee == 1 || fee == 4
+}
+
+/// Pure helper: extract (fee, isVip) pair from a raw song object.
+pub(crate) fn netease_song_fee_flags(song: &Value) -> (Option<i64>, bool) {
+    let fee = song
+        .get("fee")
+        .and_then(|v| v.as_i64())
+        .or_else(|| {
+            song.get("privilege")
+                .and_then(|p| p.get("fee"))
+                .and_then(|v| v.as_i64())
+        });
+    let explicit_vip = song
+        .get("isVip")
+        .and_then(|v| v.as_bool())
+        .or_else(|| song.get("is_vip").and_then(|v| v.as_bool()));
+    match (fee, explicit_vip) {
+        (Some(f), Some(v)) => (Some(f), v || netease_fee_is_vip(f)),
+        (Some(f), None) => (Some(f), netease_fee_is_vip(f)),
+        (None, Some(v)) => (None, v),
+        (None, None) => (None, false),
+    }
 }
 
 pub(crate) fn discord_fallback_guild_take(g: &crate::services::smart_filter::DiscordGuildItem) -> String {
@@ -883,6 +969,56 @@ pub(crate) async fn extract_bilibili_library_items(
             }
         }
 
+        // Pad with unknown bangumi (DB-unmatched) so 未知追番 still surfaces on the card
+        if library_items.len() < 10 {
+            let seen: std::collections::HashSet<String> = library_items
+                .iter()
+                .filter_map(|i| i.get("title").and_then(|t| t.as_str()).map(str::to_string))
+                .collect();
+            for unknown in &metadata.raw_unknown_content {
+                if library_items.len() >= 10 {
+                    break;
+                }
+                if unknown.content_type != "anime" {
+                    continue;
+                }
+                if seen.contains(&unknown.title) {
+                    continue;
+                }
+                let meta = &unknown.metadata;
+                let cover = meta.get("cover").cloned().unwrap_or_default();
+                // Prefer bangumi_map when title matched raw scrape
+                let (cover, progress, season_id) = bangumi_map
+                    .get(&unknown.title)
+                    .map(|(c, p, s)| (c.clone(), p.clone(), s.clone()))
+                    .unwrap_or_else(|| {
+                        let progress = meta
+                            .get("progress")
+                            .cloned()
+                            .filter(|s| !s.is_empty());
+                        let season_id = meta
+                            .get("season_id")
+                            .cloned()
+                            .filter(|s| !s.is_empty());
+                        (cover, progress, season_id)
+                    });
+                let mut item = json!({
+                    "title": unknown.title,
+                    "cover": cover,
+                    "type": "anime",
+                });
+                if let Some(obj) = item.as_object_mut() {
+                    if let Some(p) = progress {
+                        obj.insert("progress".to_string(), json!(p));
+                    }
+                    if let Some(sid) = season_id {
+                        obj.insert("season_id".to_string(), json!(sid));
+                    }
+                }
+                library_items.push(item);
+            }
+        }
+
         // 从原始数据中提取视频封面信息（从收藏夹中读取）
         let mut video_map: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
@@ -968,6 +1104,73 @@ pub(crate) async fn extract_bilibili_library_items(
     Ok(library_items)
 }
 
+
+#[cfg(test)]
+mod bilibili_stats_dual_read_tests {
+    use super::*;
+
+    #[test]
+    fn reads_user_key() {
+        let raw = json!({
+            "user": { "level": 5, "follower": 100, "following": 20 }
+        });
+        let s = bilibili_stats_from_raw_json(&raw).expect("user");
+        assert_eq!(s.level, json!(5));
+        assert_eq!(s.follower_count, json!(100));
+        assert_eq!(s.following_count, json!(20));
+    }
+
+    #[test]
+    fn reads_user_info_legacy_key() {
+        let raw = json!({
+            "user_info": { "level": 3, "follower": 9, "following": 1 }
+        });
+        let s = bilibili_stats_from_raw_json(&raw).expect("user_info");
+        assert_eq!(s.level, json!(3));
+        assert_eq!(s.follower_count, json!(9));
+    }
+
+    #[test]
+    fn prefers_user_over_user_info() {
+        let raw = json!({
+            "user": { "level": 6, "follower": 50, "following": 5 },
+            "user_info": { "level": 1, "follower": 1, "following": 1 }
+        });
+        let s = bilibili_stats_from_raw_json(&raw).expect("prefer user");
+        assert_eq!(s.level, json!(6));
+        assert_eq!(s.follower_count, json!(50));
+    }
+}
+
+#[cfg(test)]
+mod netease_fee_flag_tests {
+    use super::*;
+
+    #[test]
+    fn fee_1_and_4_are_vip() {
+        assert!(netease_fee_is_vip(1));
+        assert!(netease_fee_is_vip(4));
+        assert!(!netease_fee_is_vip(0));
+        assert!(!netease_fee_is_vip(8));
+    }
+
+    #[test]
+    fn song_fee_from_top_level_and_privilege() {
+        let (fee, vip) = netease_song_fee_flags(&json!({"fee": 1}));
+        assert_eq!(fee, Some(1));
+        assert!(vip);
+
+        let (fee2, vip2) = netease_song_fee_flags(&json!({
+            "privilege": { "fee": 4 }
+        }));
+        assert_eq!(fee2, Some(4));
+        assert!(vip2);
+
+        let (fee3, vip3) = netease_song_fee_flags(&json!({"isVip": true}));
+        assert_eq!(fee3, None);
+        assert!(vip3);
+    }
+}
 
 #[cfg(test)]
 mod discord_guild_takes_tests {

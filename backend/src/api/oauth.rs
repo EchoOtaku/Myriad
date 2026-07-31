@@ -361,10 +361,13 @@ pub async fn provider_callback(
                 "PlatformData OAuth state for '{}' hit login callback; redirecting",
                 platform
             );
-            // Match platforms/discord config_redirect: land on platforms section
+            // Platform OAuth used wrong redirect_uri (login callback). Send admin
+            // to platforms settings with Discord focus — never leave them on /login.
+            let platform = platform.to_ascii_lowercase();
             let url = format!(
-                "{}/config?section=platforms&discord_oauth=error&reason={}",
+                "{}/config?section=platforms&platform={}&discord_oauth=error&reason={}",
                 frontend_base.trim_end_matches('/'),
+                urlencoding::encode(&platform),
                 urlencoding::encode("wrong_callback")
             );
             Ok(no_store_redirect(&url))
@@ -407,9 +410,11 @@ async fn handle_callback_replay(
                 "PlatformData OAuth state replay for '{}' hit login callback",
                 platform
             );
+            let platform = platform.to_ascii_lowercase();
             let url = format!(
-                "{}/config?section=platforms&discord_oauth=error&reason={}",
+                "{}/config?section=platforms&platform={}&discord_oauth=error&reason={}",
                 frontend_base.trim_end_matches('/'),
+                urlencoding::encode(&platform),
                 urlencoding::encode("wrong_callback")
             );
             Ok(no_store_redirect(&url))

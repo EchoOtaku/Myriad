@@ -1041,6 +1041,9 @@ export function useEvocativeWallpaper(
     maxOffset,
     unblurZone,
     elementId,
+    // 配置保存改 FPS / 涟漪画质后需重绑（不改动效算法，只重挂监听）
+    frameMs,
+    rippleScale,
   ])
 }
 

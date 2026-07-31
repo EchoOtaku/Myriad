@@ -605,6 +605,13 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
       `${API_URL}/api/proxy/music/netease/playlist/${playlistId}`,
     )
 
+    if (response.status === 429) {
+      const body = await response.json().catch(() => null)
+      const { notifyHttpRateLimit } = await import('./httpRateLimitToast')
+      notifyHttpRateLimit(response, body)
+      throw new Error('Rate limited')
+    }
+
     if (!response.ok) {
       throw new Error('Failed to fetch playlist')
     }
@@ -703,6 +710,13 @@ export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
       `${API_URL}/api/proxy/music/qq/playlist/${playlistId}`,
     )
 
+    if (response.status === 429) {
+      const body = await response.json().catch(() => null)
+      const { notifyHttpRateLimit } = await import('./httpRateLimitToast')
+      notifyHttpRateLimit(response, body)
+      throw new Error('Rate limited')
+    }
+
     if (!response.ok) {
       throw new Error('Failed to fetch playlist')
     }
@@ -779,6 +793,12 @@ export async function getNeteaseLyrics(songId: string): Promise<LyricLine[]> {
       `${API_URL}/api/proxy/music/netease/lyrics/${songId}`,
     )
 
+    if (response.status === 429) {
+      const { notifyHttpRateLimit } = await import('./httpRateLimitToast')
+      notifyHttpRateLimit(response)
+      return []
+    }
+
     if (!response.ok) {
       throw new Error('Failed to fetch lyrics')
     }
@@ -819,6 +839,12 @@ export async function getNeteaseVerbatimLyrics(
       `${API_URL}/api/proxy/music/netease/lyrics-verbatim/${songId}`,
     )
 
+    if (response.status === 429) {
+      const { notifyHttpRateLimit } = await import('./httpRateLimitToast')
+      notifyHttpRateLimit(response)
+      return { lines: [], verbatim: [], translation: [] }
+    }
+
     if (!response.ok) {
       throw new Error('Failed to fetch verbatim lyrics')
     }
@@ -841,7 +867,7 @@ export async function getNeteaseVerbatimLyrics(
 
     const result: VerbatimLyricsResult = { lines, verbatim, translation }
 
-    // LRU：超上限删最旧
+    // LRU：超上限删最旧 — 缓存保留 translation（lines/verbatim 已挂载）
     if (verbatimLyricsCache.size >= MAX_LYRICS_CACHE_SIZE) {
       const firstKey = verbatimLyricsCache.keys().next().value
       if (firstKey) verbatimLyricsCache.delete(firstKey)
@@ -961,6 +987,11 @@ export async function getKugouVerbatimLyrics(
     const response = await fetch(
       `${API_URL}/api/proxy/music/kugou/lyrics-verbatim?${params.toString()}`,
     )
+    if (response.status === 429) {
+      const { notifyHttpRateLimit } = await import('./httpRateLimitToast')
+      notifyHttpRateLimit(response)
+      return []
+    }
     if (!response.ok) throw new Error('Failed to fetch kugou verbatim lyrics')
 
     const data = await response.json()
@@ -995,12 +1026,13 @@ export async function getQQLyricsWithTranslation(
 ): Promise<{ lines: LyricLine[]; translation: LyricLine[] }> {
   const cacheKey = `qq-${songId}`
 
-  // 检查缓存（含翻译的完整行）
+  // 检查缓存：lines 上已挂 translation 字段，可从中还原 translation 数组
   if (lyricsCache.has(cacheKey)) {
-    return {
-      lines: lyricsCache.get(cacheKey)!,
-      translation: [],
-    }
+    const lines = lyricsCache.get(cacheKey)!
+    const translation: LyricLine[] = lines
+      .filter((l) => typeof l.translation === 'string' && l.translation)
+      .map((l) => ({ time: l.time, text: l.translation as string }))
+    return { lines, translation }
   }
 
   try {
@@ -1008,7 +1040,26 @@ export async function getQQLyricsWithTranslation(
       `${API_URL}/api/proxy/music/qq/lyrics/${songId}`,
     )
 
+    // 429 → Retry-After toast (same as netease / brew native-fetch paths)
+    if (response.status === 429) {
+      const { notifyHttpRateLimit } = await import('./httpRateLimitToast')
+      notifyHttpRateLimit(response)
+      return { lines: [], translation: [] }
+    }
+
     if (!response.ok) {
+      // BE returns 404 + { retcode: -1 } on normalize failure — treat as empty
+      try {
+        const errBody = await response.json()
+        if (
+          typeof errBody?.retcode === 'number' &&
+          errBody.retcode !== 0
+        ) {
+          return { lines: [], translation: [] }
+        }
+      } catch {
+        /* ignore body parse */
+      }
       throw new Error('Failed to fetch lyrics')
     }
 
@@ -1037,6 +1088,7 @@ export async function getQQLyricsWithTranslation(
       attachLyricTranslation(lines, translation)
     }
 
+    // Cache lines with translation attached so cache hits keep 译
     addToLyricsCache(cacheKey, lines)
     return { lines, translation }
   } catch (error) {

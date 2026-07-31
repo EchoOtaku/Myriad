@@ -19,6 +19,49 @@ const previewCover = (letter: string, bg: string, w = 160, h = 200) => {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
 
+// YouTube: channel stats + recent uploads (matches generate.rs card_visuals)
+if (platformId === 'youtube') {
+  const thumb = (letter: string, bg: string) =>
+    previewCover(letter, bg, 320, 180)
+  return {
+    channel_title: 'Preview Channel',
+    username: 'Preview Channel',
+    subscriber_count: 128_000,
+    view_count: 4_200_000,
+    video_count: 86,
+    is_empty_channel: false,
+    video_summary: 'Public channel with recent uploads',
+    avatar: previewAvatar('Y', '#FF0000'),
+    library_items: [
+      {
+        title: 'Sample Upload One',
+        type: 'video',
+        image: thumb('1', '#FF0000'),
+        cover: thumb('1', '#FF0000'),
+        view_count: 52_000,
+      },
+      {
+        title: 'Sample Upload Two',
+        type: 'video',
+        image: thumb('2', '#b91c1c'),
+        cover: thumb('2', '#b91c1c'),
+        view_count: 31_000,
+      },
+      {
+        title: 'Sample Upload Three',
+        type: 'video',
+        image: thumb('3', '#7f1d1d'),
+        cover: thumb('3', '#7f1d1d'),
+        view_count: 18_400,
+      },
+    ],
+    recent_videos: [
+      { title: 'Sample Upload One', view_count: 52_000 },
+      { title: 'Sample Upload Two', view_count: 31_000 },
+    ],
+  }
+}
+
 // Discord 卡片字段结构与其他平台差异较大（profile/stats/library_items
 // 形状不同），单独给一份预览数据，避免与通用预览字段互相污染。
 if (platformId === 'discord') {
@@ -141,7 +184,8 @@ const animeTypeDistribution = isMal
 return {
   // —— 通用评分 / 身份标签 ——
   hardcore_score: 85,
-  player_type: t.reportCardWidget.hardcorePlayer,
+  // Stable enum key (FE maps via i18n); not a localized string
+  player_type: 'hardcore',
   gamer_type: t.reportCardWidget.xboxGamerDefault,
   hunter_type: t.reportCardWidget.psnHunterDefault,
   contribution_level: t.reportCardWidget.seniorDev,
@@ -199,7 +243,12 @@ return {
   danmaku: t.reportCard.danmakuDefault as unknown as string[],
 
   // —— Bangumi / MAL 收藏结构 ——
-  status_counts: { done: 128, doing: 12, wish: 45 },
+  // Widget overview only shows done / doing / wish
+  status_counts: {
+    done: 128,
+    doing: 12,
+    wish: 45,
+  },
   subject_type_distribution: animeTypeDistribution,
 
   // —— 详情轮播 / 海报墙（多平台共用，字段取并集） ——

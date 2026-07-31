@@ -235,13 +235,14 @@ export const FederationDeliveryQueue: React.FC<
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
-      await onRefresh()
+      // Keep status filter (tab change path already passes it)
+      await onRefresh(statusFilter === 'all' ? undefined : statusFilter)
     } catch (e) {
       fail(e)
     } finally {
       setRefreshing(false)
     }
-  }, [onRefresh, fail])
+  }, [onRefresh, fail, statusFilter])
 
   const handleRetry = useCallback(
     async (item: DeliveryQueueItem) => {

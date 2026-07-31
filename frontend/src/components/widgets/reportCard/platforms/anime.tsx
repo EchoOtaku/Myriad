@@ -35,8 +35,6 @@ interface AnimeListLabels {
   done: string
   doing: string
   wish: string
-  onHold: string
-  dropped: string
   /** subject_type key → localized name for the composition bar legend. */
   typeLabels: Record<string, string>
 }
@@ -80,8 +78,6 @@ export const ANIME_THEMES: Record<'bangumi' | 'mal', AnimeListTheme> = {
       done: t.reportsPage.bangumiDone,
       doing: t.reportsPage.bangumiDoing,
       wish: t.reportsPage.bangumiWish,
-      onHold: t.reportsPage.bangumiOnHold,
-      dropped: t.reportsPage.bangumiDropped,
       typeLabels: {
         book: t.library.book,
         anime: t.library.anime,
@@ -109,8 +105,6 @@ export const ANIME_THEMES: Record<'bangumi' | 'mal', AnimeListTheme> = {
       done: t.reportsPage.malDone,
       doing: t.reportsPage.malDoing,
       wish: t.reportsPage.malWish,
-      onHold: t.reportsPage.malOnHold,
-      dropped: t.reportsPage.malDropped,
       typeLabels: {
         anime: t.library.anime,
         manga: t.library.book,
@@ -142,8 +136,6 @@ const AnimeListFace = memo(
     const done = statusCounts.done || 0
     const doing = statusCounts.doing || 0
     const wish = statusCounts.wish || 0
-    const onHold = statusCounts.on_hold || statusCounts.onHold || 0
-    const dropped = statusCounts.dropped || 0
     const typeDist = useMemo(
       () =>
         Object.entries(data?.subject_type_distribution || {})
@@ -250,7 +242,7 @@ const AnimeListFace = memo(
                     {wallCovers.map((item: any, i: number) => (
                       <motion.div
                         key={`${item.title}-${i}`}
-                        className="w-14 shrink-0 aspect-[3/4] rounded-md overflow-hidden shadow-md ring-1 ring-black/10 dark:ring-white/10"
+                        className="w-14 shrink-0 aspect-[3/4] rounded-lg overflow-hidden shadow-md ring-1 ring-black/10 dark:ring-white/10"
                         initial={{
                           x: 60,
                           opacity: 0,
@@ -319,13 +311,11 @@ const AnimeListFace = memo(
                         {labels.done}
                       </span>
                     </motion.div>
-                    <div className="flex flex-wrap gap-3">
+                    <div className="flex gap-3">
                       {(
                         [
                           [doing, labels.doing],
                           [wish, labels.wish],
-                          [onHold, labels.onHold],
-                          [dropped, labels.dropped],
                         ] as const
                       ).map(([count, label], i) => (
                         <motion.div
@@ -411,7 +401,7 @@ const AnimeListFace = memo(
             <div className="h-full w-full flex gap-1.5">
               {currentItems.map((item: any, idx: number) => (
                 <div key={idx} className="flex-1 h-full">
-                  <div className="relative h-full w-full rounded-xl overflow-hidden shadow-lg bg-white dark:bg-black/90">
+                  <div className="relative h-full w-full rounded-lg overflow-hidden shadow-lg bg-white dark:bg-black/90">
                     <div className="absolute inset-0">
                       {item.cover ? (
                         <img

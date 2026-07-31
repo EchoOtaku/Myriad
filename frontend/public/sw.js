@@ -2,7 +2,9 @@
 // 性能优化版 - 缓存策略 + 安全过滤 + 206 响应处理
 // 当前缓存策略不缓存壁纸图片，避免跨域问题
 
-const CACHE_VERSION = 'myriad-v2.3'
+// v2.4: 壁纸 CDN / 跨域图片不再被 SW 用 mode:cors 劫持（无 ACAO 时生产会拿到空 blob，
+// 开发环境无 SW 则正常 —— 表现为「仅生产壁纸/动效异常」）
+const CACHE_VERSION = 'myriad-v2.4'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`
 const IMAGE_CACHE = `${CACHE_VERSION}-images`
@@ -160,32 +162,23 @@ globalThis.addEventListener('fetch', (event) => {
   }
 
   // 图片请求 - 缓存优先策略(带过期检查)
-  // ⚠️ 壁纸图片不缓存，避免跨域问题
+  // ⚠️ 壁纸 CDN：完全不拦截，交给浏览器（CSS background 可用 no-cors 显示）
   if (
     request.destination === 'image' ||
     /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(url.pathname)
   ) {
-    // 检查是否为壁纸 CDN 图片
     const isWallpaperCDN = WALLPAPER_CDN_DOMAINS.some((domain) =>
       url.hostname.includes(domain),
     )
 
-    // 壁纸图片不走缓存，直接网络请求（避免跨域缓存问题）
+    // 壁纸 CDN 不接管：强制 cors 会在无 ACAO 时失败并用空 blob「顶替」，
+    // 仅生产注册 SW，开发无此问题。
     if (isWallpaperCDN) {
-      event.respondWith(
-        fetch(request, { mode: 'cors', credentials: 'omit' }).catch((error) => {
-          console.warn(
-            '[SW] Wallpaper fetch failed:',
-            request.url.slice(0, 80),
-            error,
-          )
-          // 返回透明占位
-          return new Response(new Blob([]), {
-            status: 200,
-            headers: { 'Content-Type': 'image/svg+xml' },
-          })
-        }),
-      )
+      return
+    }
+
+    // 跨域图片且浏览器以 no-cors 发起时，不要改 mode（改 cors 会同样失败）
+    if (request.mode === 'no-cors') {
       return
     }
 
@@ -199,10 +192,8 @@ globalThis.addEventListener('fetch', (event) => {
         }
 
         try {
-          const response = await fetch(request, {
-            mode: 'cors',
-            credentials: 'omit',
-          })
+          // 保持原始 request（含 mode / credentials），勿强制 cors
+          const response = await fetch(request)
 
           if (response.ok && response.status !== 206) {
             const responseClone = response.clone()
@@ -220,10 +211,8 @@ globalThis.addEventListener('fetch', (event) => {
             return cachedResponse
           }
           console.warn('[SW] Image fetch failed:', request.url, error)
-          return new Response(new Blob([]), {
-            status: 200,
-            headers: { 'Content-Type': 'image/svg+xml' },
-          })
+          // 勿返回空 200 blob（会掩盖失败并搞坏 background-image）
+          return Response.error()
         }
       }),
     )

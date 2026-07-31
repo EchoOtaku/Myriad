@@ -163,6 +163,7 @@ export function extractCardVisuals(
     r.hardcore_score != null ||
     r.danmaku != null ||
     r.library_items != null ||
+    r.recent_videos != null ||
     r.profile != null ||
     r.player_type != null ||
     r.contribution_level != null ||
@@ -171,6 +172,9 @@ export function extractCardVisuals(
     r.games_count != null ||
     r.gamerscore != null ||
     r.total_contributions != null ||
+    r.total_stars != null ||
+    r.contribution_calendar != null ||
+    r.languages != null ||
     r.stats != null ||
     r.gamer_type != null ||
     r.hunter_type != null ||
@@ -178,7 +182,14 @@ export function extractCardVisuals(
     r.gamertag != null ||
     r.total_playtime != null ||
     r.repos_count != null ||
-    r.trophy_level != null
+    r.trophy_level != null ||
+    r.subscriber_count != null ||
+    r.video_count != null ||
+    r.view_count != null ||
+    r.channel_title != null ||
+    r.is_empty_channel != null ||
+    r.video_summary != null ||
+    r.status_counts != null
   if (looksLikeVisuals && r.summary == null && r.insights == null) {
     return normalizeJsonMediaUrls(r)
   }
@@ -212,7 +223,11 @@ export function hasReportDetailContent(
   return (
     nonEmpty('library_items') ||
     nonEmpty('following_highlights') ||
-    nonEmpty('following_sample')
+    nonEmpty('following_sample') ||
+    nonEmpty('recent_videos') ||
+    nonEmpty('guilds_preview') ||
+    nonEmpty('top_posts') ||
+    nonEmpty('recent_posts')
   )
 }
 
@@ -331,6 +346,8 @@ export function coerceReportVisuals(
   const merged: Record<string, unknown> = { ...visuals }
   for (const key of [
     'library_items',
+    'recent_videos',
+    'guilds_preview',
     'following_highlights',
     'following_sample',
     'interest_circles',
@@ -341,6 +358,25 @@ export function coerceReportVisuals(
     'personaname',
     'gamertag',
     'online_id',
+    'subscriber_count',
+    'view_count',
+    'video_count',
+    'channel_title',
+    'is_empty_channel',
+    'video_summary',
+    'status_counts',
+    // GitHub flat stats (often siblings of empty card_visuals)
+    'total_contributions',
+    'repos_count',
+    'total_stars',
+    'contribution_level',
+    'contribution_calendar',
+    'languages',
+    // Bilibili / gaming flat stats
+    'hardcore_score',
+    'danmaku',
+    'games_count',
+    'player_type',
   ] as const) {
     if (merged[key] == null && root[key] != null) {
       merged[key] = root[key]

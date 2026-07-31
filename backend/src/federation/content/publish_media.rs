@@ -45,6 +45,7 @@ pub struct CreateNoteRequest {
 pub struct NoteAttachmentInput {
     pub url: String,
     /// MIME type，如 image/jpeg / video/mp4
+    #[serde(alias = "mediaType")]
     pub media_type: String,
     #[serde(default)]
     pub name: Option<String>,

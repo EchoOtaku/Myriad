@@ -705,7 +705,7 @@ const GamePresenceWidget = memo(
         <img
           src={meta.appIcon}
           alt={tw[game]}
-          className="rounded-xl object-cover shrink-0 shadow-sm"
+          className="rounded-lg object-cover shrink-0 shadow-sm"
           style={{ width: `${size * fontScale}px`, height: `${size * fontScale}px` }}
           loading="lazy"
         />
@@ -802,7 +802,7 @@ const GamePresenceWidget = memo(
           {/* 左：角色聚焦面板（1/3 宽、占满全高、大幅立绘 + 底部渐变信息条） */}
           {showcase.length > 0 && focused && (
             <div
-              className="relative w-[34%] shrink-0 h-full rounded-xl overflow-hidden"
+              className="relative w-[34%] shrink-0 h-full rounded-lg overflow-hidden"
               style={{
                 background: theme.softBgStrong,
                 boxShadow: `inset 0 0 0 1.5px ${theme.border}`,

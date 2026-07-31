@@ -124,7 +124,7 @@ const IconTile = memo(
   }) => {
     return (
       <div
-        className={`${tileClass} rounded-2xl flex items-center justify-center overflow-hidden shrink-0 ${
+        className={`${tileClass} rounded-lg flex items-center justify-center overflow-hidden shrink-0 ${
           color === null ? 'bg-black/5 dark:bg-white/10' : ''
         }`}
         style={color === null ? undefined : appIconFill(color)}
@@ -650,7 +650,7 @@ export const TappShortcutWidget = memo(
         )
         const tile = (
           <div
-            className={`${tileClass} rounded-2xl flex items-center justify-center shrink-0 ${
+            className={`${tileClass} rounded-lg flex items-center justify-center shrink-0 ${
               isAddState
                 ? 'border-2 border-dashed border-black/15 dark:border-white/20'
                 : 'bg-black/5 dark:bg-white/10'

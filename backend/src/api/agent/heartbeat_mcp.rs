@@ -446,11 +446,16 @@ pub(crate) async fn interrupt_session(
 
     let new_agent = Agent::new(db).await;
     match new_agent.process(request).await {
-        Ok(response) => Ok(Json(json!({
-            "success": true,
-            "cancelled_tasks": cancelled_count,
-            "response": response,
-        }))),
+        Ok(response) => {
+            // Same camelCase agent wire shape as POST /process (ApiResponse::from).
+            let api_response: crate::api::agent::types::ApiResponse = response.into();
+            Ok(Json(json!({
+                "success": true,
+                "cancelledTasks": cancelled_count,
+                "cancelled_tasks": cancelled_count,
+                "response": api_response,
+            })))
+        }
         Err(e) => Err(HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "error": e })),

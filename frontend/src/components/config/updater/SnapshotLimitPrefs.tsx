@@ -6,6 +6,7 @@
 import type { UpdaterStatus } from '../../../services/updaterApi'
 import React, { useMemo } from 'react'
 import {
+  clampSnapshotLimit,
   SNAPSHOT_LIMIT_DEFAULT,
   SNAPSHOT_LIMIT_PRESETS,
 } from '../../../services/updaterApi'
@@ -44,19 +45,29 @@ export const SnapshotLimitPrefs: React.FC<SnapshotLimitPrefsProps> = ({
   // Default ON when field omitted (older updaters / historical prune(3)).
   const limitEnabled = status?.snapshot_limit_enabled !== false
   const rawLimit = status?.snapshot_limit ?? SNAPSHOT_LIMIT_DEFAULT
+  // Show any in-range value (1–20), not only presets — BE may store 4, 7, …
+  const limitValue = clampSnapshotLimit(rawLimit)
   const knownLimit = (SNAPSHOT_LIMIT_PRESETS as readonly number[]).includes(
-    rawLimit,
+    limitValue as (typeof SNAPSHOT_LIMIT_PRESETS)[number],
   )
-  const limitValue = knownLimit ? rawLimit : SNAPSHOT_LIMIT_DEFAULT
 
-  const limitOptions = useMemo(
-    () =>
-      SNAPSHOT_LIMIT_PRESETS.map((n) => ({
-        value: String(n),
-        label: format(u.updaterSnapshotLimitOption, { n: String(n) }),
-      })),
-    [u.updaterSnapshotLimitOption],
-  )
+  const limitOptions = useMemo(() => {
+    const base = SNAPSHOT_LIMIT_PRESETS.map((n) => ({
+      value: String(n),
+      label: format(u.updaterSnapshotLimitOption, { n: String(n) }),
+    }))
+    // Surface non-preset current values so the select stays controlled.
+    if (!knownLimit) {
+      base.push({
+        value: String(limitValue),
+        label: format(u.updaterSnapshotLimitOption, {
+          n: String(limitValue),
+        }),
+      })
+      base.sort((a, b) => Number(a.value) - Number(b.value))
+    }
+    return base
+  }, [knownLimit, limitValue, u.updaterSnapshotLimitOption])
 
   const inactive = disabled || !status || saving
   const desc = limitEnabled
@@ -90,7 +101,7 @@ export const SnapshotLimitPrefs: React.FC<SnapshotLimitPrefsProps> = ({
             aria-label={u.updaterSnapshotLimitCount}
             size="sm"
             onChange={(v) => {
-              void onSave({ snapshot_limit: Number(v) })
+              void onSave({ snapshot_limit: clampSnapshotLimit(Number(v)) })
             }}
           />
         )}

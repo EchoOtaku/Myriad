@@ -386,7 +386,7 @@ export const FriendLinksWidget = memo(
           }
         >
           {loading ? (
-            <span className="absolute inset-0 animate-pulse rounded-xl bg-black/4 dark:bg-white/5" />
+            <span className="absolute inset-0 animate-pulse rounded-lg bg-black/4 dark:bg-white/5" />
           ) : failed ? (
             <span className="absolute inset-0 flex items-center justify-center truncate px-3 text-[10px] text-gray-400 dark:text-gray-500">
               {t.friendLinksWidget.loadFailed}
@@ -396,7 +396,7 @@ export const FriendLinksWidget = memo(
               type="button"
               onClick={openBrew}
               disabled={isEditMode || isPreview}
-              className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-black/8 px-3 text-[10px] text-gray-400 disabled:cursor-default dark:border-white/10 dark:text-gray-500"
+              className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-black/8 px-3 text-[10px] text-gray-400 disabled:cursor-default dark:border-white/10 dark:text-gray-500"
             >
               {t.friendLinksWidget.emptyTitle}
             </button>
@@ -443,7 +443,7 @@ export const FriendLinksWidget = memo(
                       disabled={
                         layer.incoming || isEditMode || isPreview || !entry.url
                       }
-                      className="friend-links-entry friend-links-spotlight group/link relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 overflow-hidden rounded-xl bg-black/3 px-3 text-left transition-colors hover:bg-black/5 disabled:cursor-default dark:bg-white/4 dark:hover:bg-white/7"
+                      className="friend-links-entry friend-links-spotlight group/link relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 overflow-hidden rounded-lg bg-black/3 px-3 text-left transition-colors hover:bg-black/5 disabled:cursor-default dark:bg-white/4 dark:hover:bg-white/7"
                       aria-label={t.friendLinksWidget.visitSite.replace(
                         '{name}',
                         entry.name,
@@ -452,7 +452,7 @@ export const FriendLinksWidget = memo(
                       <FriendLinkIcon
                         icon={entry.icon}
                         color={entry.color}
-                        className="relative z-10 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl"
+                        className="relative z-10 flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md"
                         iconClassName="h-5 w-5"
                       />
                       <span className="relative z-10 min-w-0 flex-1">
@@ -510,7 +510,7 @@ export const FriendLinksWidget = memo(
           }
         >
           {loading ? (
-            <span className="absolute inset-0 animate-pulse rounded-2xl bg-black/4 dark:bg-white/5" />
+            <span className="absolute inset-0 animate-pulse rounded-lg bg-black/4 dark:bg-white/5" />
           ) : failed ? (
             <span className="absolute inset-0 flex items-center justify-center px-4 text-center text-[10px] text-gray-400 dark:text-gray-500">
               {t.friendLinksWidget.loadFailed}
@@ -520,7 +520,7 @@ export const FriendLinksWidget = memo(
               type="button"
               onClick={openBrew}
               disabled={isEditMode || isPreview}
-              className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-black/8 px-4 text-center disabled:cursor-default dark:border-white/10"
+              className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-black/8 px-4 text-center disabled:cursor-default dark:border-white/10"
             >
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {t.friendLinksWidget.emptyTitle}
@@ -581,7 +581,7 @@ export const FriendLinksWidget = memo(
                       <FriendLinkIcon
                         icon={entry.icon}
                         color={entry.color}
-                        className="relative z-10 flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl"
+                        className="relative z-10 flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg"
                         iconClassName="h-6 w-6"
                       />
                       <span
@@ -737,7 +737,7 @@ export const FriendLinksWidget = memo(
                       <FriendLinkIcon
                         icon={entry.icon}
                         color={entry.color}
-                        className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-lg"
+                        className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md"
                         iconClassName="h-3.5 w-3.5"
                       />
                       <span className="min-w-0 flex-1">

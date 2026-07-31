@@ -3459,119 +3459,72 @@ pub async fn get_public_config(
             .unwrap_or_else(|| std::env::var(env_key).unwrap_or_default())
     };
 
+    // Match build_config: empty compose `${VAR:-}` still sets the key — gate on nonempty.
     let github_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.github_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.github_username.as_ref())
-            .is_some()
-            || std::env::var("GITHUB_USERNAME").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.github_username.as_ref()))
+            || nonempty_env("GITHUB_USERNAME"),
     );
     let bilibili_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.bilibili_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.bilibili_uid.as_ref())
-            .is_some()
-            || std::env::var("BILIBILI_UID").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.bilibili_uid.as_ref()))
+            || nonempty_env("BILIBILI_UID"),
     );
     let steam_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.steam_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.steam_id.as_ref())
-            .is_some()
-            || std::env::var("STEAM_ID").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.steam_id.as_ref()))
+            || nonempty_env("STEAM_ID"),
     );
     let youtube_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.youtube_enabled),
-        (db_config
-            .as_ref()
-            .and_then(|c| c.youtube_channel_id.as_ref())
-            .is_some()
-            || std::env::var("YOUTUBE_CHANNEL_ID").is_ok())
-            && (db_config
-                .as_ref()
-                .and_then(|c| c.youtube_api_key.as_ref())
-                .is_some()
-                || std::env::var("YOUTUBE_API_KEY").is_ok()),
+        (nonempty_db(db_config.as_ref().and_then(|c| c.youtube_channel_id.as_ref()))
+            || nonempty_env("YOUTUBE_CHANNEL_ID"))
+            && (nonempty_db(db_config.as_ref().and_then(|c| c.youtube_api_key.as_ref()))
+                || nonempty_env("YOUTUBE_API_KEY")),
     );
     let netease_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.netease_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.netease_user_id.as_ref())
-            .is_some()
-            || std::env::var("NETEASE_USER_ID").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.netease_user_id.as_ref()))
+            || nonempty_env("NETEASE_USER_ID"),
     );
     let bangumi_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.bangumi_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.bangumi_username.as_ref())
-            .is_some()
-            || db_config
-                .as_ref()
-                .and_then(|c| c.bangumi_access_token.as_ref())
-                .is_some()
-            || std::env::var("BANGUMI_USERNAME").is_ok()
-            || std::env::var("BANGUMI_ACCESS_TOKEN").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.bangumi_username.as_ref()))
+            || nonempty_db(db_config.as_ref().and_then(|c| c.bangumi_access_token.as_ref()))
+            || nonempty_env("BANGUMI_USERNAME")
+            || nonempty_env("BANGUMI_ACCESS_TOKEN"),
     );
     let x_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.x_enabled),
-        (db_config
-            .as_ref()
-            .and_then(|c| c.x_username.as_ref())
-            .is_some()
-            || std::env::var("X_USERNAME").is_ok())
-            && (db_config
-                .as_ref()
-                .and_then(|c| c.x_bearer_token.as_ref())
-                .is_some()
-                || std::env::var("X_BEARER_TOKEN").is_ok()),
+        (nonempty_db(db_config.as_ref().and_then(|c| c.x_username.as_ref()))
+            || nonempty_env("X_USERNAME"))
+            && (nonempty_db(db_config.as_ref().and_then(|c| c.x_bearer_token.as_ref()))
+                || nonempty_env("X_BEARER_TOKEN")),
     );
     let discord_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.discord_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.discord_access_token.as_ref())
-            .is_some()
-            || std::env::var("DISCORD_ACCESS_TOKEN").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.discord_access_token.as_ref()))
+            || nonempty_env("DISCORD_ACCESS_TOKEN"),
     );
     let mal_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.mal_enabled),
-        db_config
-            .as_ref()
-            .and_then(|c| c.mal_username.as_ref())
-            .is_some()
-            || std::env::var("MAL_USERNAME").is_ok(),
+        nonempty_db(db_config.as_ref().and_then(|c| c.mal_username.as_ref()))
+            || nonempty_env("MAL_USERNAME"),
     );
     let xbox_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.xbox_enabled),
-        (db_config
-            .as_ref()
-            .and_then(|c| c.xbox_gamertag.as_ref())
-            .is_some()
-            || std::env::var("XBOX_GAMERTAG").is_ok())
-            && (db_config
-                .as_ref()
-                .and_then(|c| c.openxbl_api_key.as_ref())
-                .is_some()
-                || std::env::var("OPENXBL_API_KEY").is_ok()
-                || std::env::var("XBL_API_KEY").is_ok()),
+        (nonempty_db(db_config.as_ref().and_then(|c| c.xbox_gamertag.as_ref()))
+            || nonempty_env("XBOX_GAMERTAG"))
+            && (nonempty_db(db_config.as_ref().and_then(|c| c.openxbl_api_key.as_ref()))
+                || nonempty_env("OPENXBL_API_KEY")
+                || nonempty_env("XBL_API_KEY")),
     );
     let psn_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.psn_enabled),
-        (db_config
-            .as_ref()
-            .and_then(|c| c.psn_online_id.as_ref())
-            .is_some()
-            || std::env::var("PSN_ONLINE_ID").is_ok())
-            && (db_config
-                .as_ref()
-                .and_then(|c| c.psn_npsso.as_ref())
-                .is_some()
-                || std::env::var("PSN_NPSSO").is_ok()),
+        (nonempty_db(db_config.as_ref().and_then(|c| c.psn_online_id.as_ref()))
+            || nonempty_env("PSN_ONLINE_ID"))
+            && (nonempty_db(db_config.as_ref().and_then(|c| c.psn_npsso.as_ref()))
+                || nonempty_env("PSN_NPSSO")),
     );
 
     // 只返回公开可见的平台配置字段（不包含 API 密钥等敏感信息）

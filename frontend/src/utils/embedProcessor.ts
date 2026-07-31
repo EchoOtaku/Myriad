@@ -623,22 +623,22 @@ async function loadSteamGameData(container: HTMLElement): Promise<void> {
       card.setAttribute('data-loaded', 'loading')
 
       try {
-        // 检查缓存
-        const cacheKey = `steam:${appId}`
+        // Locale-aware cache key (name/desc differ by Steam `l=` / Accept-Language)
+        let steamLang = 'english'
+        try {
+          const locale =
+            localStorage.getItem('locale') ||
+            (typeof navigator !== 'undefined' ? navigator.language : '') ||
+            'en'
+          steamLang = locale
+        } catch {
+          /* ignore */
+        }
+        const cacheKey = `steam:${appId}:${steamLang}`
         let gameData = getCached<any>(cacheKey)
 
         if (!gameData) {
           // 使用后端代理API获取游戏详情（按站点 locale / Accept-Language 选 l=）
-          let steamLang = 'english'
-          try {
-            const locale =
-              localStorage.getItem('locale') ||
-              (typeof navigator !== 'undefined' ? navigator.language : '') ||
-              'en'
-            steamLang = locale
-          } catch {
-            /* ignore */
-          }
           const response = await fetch(
             `/api/steam/game/${appId}?lang=${encodeURIComponent(steamLang)}`,
             {

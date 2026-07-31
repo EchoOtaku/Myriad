@@ -37,6 +37,47 @@ fn site_owner_error(error: String) -> (StatusCode, Json<Value>) {
     )
 }
 
+/// Extract public profile fields from YouTube channel payload.
+/// Stored shape is Data API `channels.list` item (`snippet.*`); also accept flat
+/// smart_filter / legacy keys.
+fn youtube_user_info_fields(yt_user: &Value) -> Option<(Option<&Value>, Option<String>, &str)> {
+    let snip = yt_user.get("snippet");
+    let name = snip
+        .and_then(|s| s.get("title"))
+        .or_else(|| yt_user.get("title"))
+        .or_else(|| yt_user.get("name"))
+        .or_else(|| snip.and_then(|s| s.get("customUrl")))
+        .or_else(|| yt_user.get("customUrl"));
+    let avatar = snip
+        .and_then(|s| {
+            s.pointer("/thumbnails/high/url")
+                .or_else(|| s.pointer("/thumbnails/medium/url"))
+                .or_else(|| s.pointer("/thumbnails/default/url"))
+        })
+        .or_else(|| {
+            yt_user
+                .get("thumbnails")
+                .and_then(|t| t.get("high").or_else(|| t.get("default")))
+                .and_then(|t| t.get("url"))
+        })
+        .or_else(|| yt_user.get("avatar"))
+        .or_else(|| yt_user.get("face"))
+        .and_then(|v| v.as_str())
+        .map(proxy_image_url);
+    let bio = snip
+        .and_then(|s| s.get("description"))
+        .or_else(|| yt_user.get("description"))
+        .or_else(|| yt_user.get("bio"))
+        .and_then(|b| b.as_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("");
+    if name.is_some() || avatar.is_some() {
+        Some((name, avatar, bio))
+    } else {
+        None
+    }
+}
+
 pub async fn fetch_all_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     tracing::info!("Starting fetch all data...");
 
@@ -377,6 +418,31 @@ pub async fn get_user_info(
                 }
             }
 
+            // YouTube channel (when SocialNetwork / report card has YT linked)
+            if let Some(yt_data) = db_data.get("youtube") {
+                if let Some(yt_user) = yt_data
+                    .get("user")
+                    .or_else(|| yt_data.get("channel"))
+                    .or_else(|| yt_data.get("user_info"))
+                {
+                    if let Some((name, avatar, bio)) = youtube_user_info_fields(yt_user) {
+                        return (
+                            StatusCode::OK,
+                            Json(json!({
+                                "success": true,
+                                "user_info": {
+                                    "name": name,
+                                    "avatar": avatar,
+                                    "bio": if bio.is_empty() { "YouTube" } else { bio },
+                                    "platform": "YouTube"
+                                },
+                                "source": "database"
+                            })),
+                        );
+                    }
+                }
+            }
+
             // 最后从 Steam 获取
             if let Some(steam_data) = db_data.get("steam") {
                 if let Some(steam_user) = steam_data.get("user") {
@@ -457,6 +523,29 @@ pub async fn get_user_info(
                     "source": "cache"
                 })),
             );
+        }
+
+        // YouTube channel (cache path — same snippet.* shape as DB)
+        if let Some(yt_user) = data.get("youtube").and_then(|y| {
+            y.get("user")
+                .or_else(|| y.get("channel"))
+                .or_else(|| y.get("user_info"))
+        }) {
+            if let Some((name, avatar, bio)) = youtube_user_info_fields(yt_user) {
+                return (
+                    StatusCode::OK,
+                    Json(json!({
+                        "success": true,
+                        "user_info": {
+                            "name": name,
+                            "avatar": avatar,
+                            "bio": if bio.is_empty() { "YouTube" } else { bio },
+                            "platform": "YouTube"
+                        },
+                        "source": "cache"
+                    })),
+                );
+            }
         }
 
         // 最后从 Steam 获取

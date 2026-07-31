@@ -8,7 +8,7 @@
  * 到达序号。页面 / 来源 / 国家 / 停留等细分仍然只在设置页的 admin summary 里。
  *
  * 序号缺席有两种情况，文案要分开讲清楚，不能都显示成空白：
- * - `counted === false`：管理员流量从不计入统计，站长自己永远没有序号
+ * - `counted === false`：管理员会话无到达序号（小组件不展示说明文案）
  * - `counted === true` 但序号还是 null：本次访问的 beacon 还没落库
  *   （批处理最长 4s + sendBeacon 只保证入队），等 flush 事件再取一次
  */
@@ -425,8 +425,6 @@ export const VisitorStatsWidget = memo(
       data.your_ordinal_today > 0
         ? data.your_ordinal_today
         : null
-    /** 站长自己从不计入统计，没序号是设计如此，不是加载中 */
-    const notCounted = data?.counted === false
     /** BE disabled payload is only `{success,enabled:false}` — no today/all_time. */
     const collectionOff = data?.enabled === false
 
@@ -525,12 +523,16 @@ export const VisitorStatsWidget = memo(
           >
             {count(data?.today?.unique_visitors ?? 0)}
           </span>
-          <span
-            className="truncate text-gray-400 dark:text-gray-500"
-            style={{ fontSize: `${8 * fontScale}px` }}
-          >
-            {notCounted ? v.staffNotCounted : v.ordinalPending}
-          </span>
+          {/* No ordinal yet (beacon pending). Staff also have no ordinal by design —
+              do not surface “admin not counted” on the public widget. */}
+          {data?.counted !== false ? (
+            <span
+              className="truncate text-gray-400 dark:text-gray-500"
+              style={{ fontSize: `${8 * fontScale}px` }}
+            >
+              {v.ordinalPending}
+            </span>
+          ) : null}
         </div>
       )
 

@@ -159,35 +159,42 @@ pub(crate) async fn create_comment(
         )));
     }
 
-    // 如果是回复，验证父评论属于同一用户、同一文章
+    // 如果是回复，验证父评论属于同一用户、同一文章；继承 color / is_public
+    // when the client omits them (FE createReply only sends comment + parent_id).
+    let mut inherited_color: Option<String> = None;
+    let mut inherited_is_public: Option<bool> = None;
     if let Some(parent_id) = req.parent_id {
-        let parent_exists = brew_comments::Entity::find_by_id(parent_id)
+        let parent = brew_comments::Entity::find_by_id(parent_id)
             .filter(brew_comments::Column::ItemId.eq(item_id))
             .filter(brew_comments::Column::UserId.eq(user_id))
             .one(&db)
             .await
             .ok()
-            .flatten()
-            .is_some();
+            .flatten();
 
-        if !parent_exists {
+        let Some(parent) = parent else {
             return Err(HttpError::from((
                 StatusCode::NOT_FOUND,
                 Json(json!({ "success": false, "error": "Parent comment not found" })),
             )));
-        }
+        };
+        inherited_color = parent.color.clone();
+        inherited_is_public = Some(parent.is_public);
     }
 
     // 验证 color 格式（仅允许十六进制颜色）
-    let validated_color = req.color.and_then(|c| {
-        let color_regex =
-            regex::Regex::new(r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$").ok()?;
-        if color_regex.is_match(&c) {
-            Some(c)
-        } else {
-            None
-        }
-    });
+    let validated_color = req
+        .color
+        .and_then(|c| {
+            let color_regex =
+                regex::Regex::new(r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$").ok()?;
+            if color_regex.is_match(&c) {
+                Some(c)
+            } else {
+                None
+            }
+        })
+        .or(inherited_color);
 
     // 验证输入长度限制
     if req.comment.len() > 2000 {
@@ -214,7 +221,11 @@ pub(crate) async fn create_comment(
         context_before: Set(req.context_before),
         context_after: Set(req.context_after),
         color: Set(validated_color),
-        is_public: Set(req.is_public.unwrap_or(false)),
+        // Explicit body wins; replies inherit parent visibility when omitted.
+        is_public: Set(req
+            .is_public
+            .or(inherited_is_public)
+            .unwrap_or(false)),
         parent_id: Set(req.parent_id),
         created_at: Set(now.into()),
         updated_at: Set(now.into()),
@@ -291,6 +302,9 @@ pub(crate) async fn update_comment(
                     active.color = Set(Some(color));
                 }
             }
+            if let Some(is_public) = req.is_public {
+                active.is_public = Set(is_public);
+            }
             active.updated_at = Set(Utc::now().into());
 
             match active.update(&db).await {
@@ -355,6 +369,18 @@ pub(crate) async fn delete_comment(
 
     match comment {
         Ok(Some(_)) => {
+            // Cascade nested replies first (no DB self-FK on parent_id)
+            if let Err(e) = brew_comments::Entity::delete_many()
+                .filter(brew_comments::Column::ParentId.eq(comment_id))
+                .exec(&db)
+                .await
+            {
+                tracing::error!(error = %e, "Failed to delete nested brew replies");
+                return Err(brew_http_err(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Database error",
+                ));
+            }
             match brew_comments::Entity::delete_by_id(comment_id)
                 .exec(&db)
                 .await

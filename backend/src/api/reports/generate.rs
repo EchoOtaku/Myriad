@@ -236,6 +236,17 @@ pub(crate) async fn generate_platform_reports_internal(
                             .unwrap_or(50)
                             .clamp(0, 100);
                         obj.insert("hardcore_score".to_string(), json!(score));
+                        // player_type: stable enum for FE i18n (legacy Chinese → key)
+                        if let Some(raw) = obj
+                            .get("player_type")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                        {
+                            obj.insert(
+                                "player_type".to_string(),
+                                json!(normalize_steam_player_type(&raw)),
+                            );
+                        }
                         tracing::info!(
                             "✅ Steam card_visuals: games={}, playtime_h={} (from {} min)",
                             games_count,
@@ -290,21 +301,12 @@ pub(crate) async fn generate_platform_reports_internal(
                             .filter_map(|repo| repo.stars.map(|s| s.max(0)))
                             .sum();
 
-                        // 根据真实数据计算贡献等级（star 数作为独立的晋级通道）
-                        let contribution_level = if (total_contributions > 1000
-                            && repos_count > 20)
-                            || total_stars >= 1000
-                        {
-                            "传奇开发者"
-                        } else if (total_contributions > 500 && repos_count > 10)
-                            || total_stars >= 200
-                        {
-                            "资深工程师"
-                        } else if total_contributions > 200 || repos_count > 5 || total_stars >= 50 {
-                            "活跃开发者"
-                        } else {
-                            "新兴贡献者"
-                        };
+                        // Stable non-locale tier keys; FE maps via i18n.
+                        let contribution_level = github_contribution_level(
+                            total_contributions,
+                            repos_count,
+                            total_stars,
+                        );
 
                         // 语言占比：用实测 language_distribution，不用 AI 百分比
                         let total_lang: usize =
@@ -497,10 +499,10 @@ pub(crate) async fn generate_platform_reports_internal(
                             "collection_type_distribution".to_string(),
                             json!(analysis.collection_type_distribution),
                         );
-                        // 与 MAL 对齐：卡片优先读 status_counts，回退 collection_type_distribution
+                        // 与 MAL 对齐：卡片优先读 status_counts（五态齐全，缺项补 0）
                         obj.insert(
                             "status_counts".to_string(),
-                            json!(analysis.collection_type_distribution),
+                            anime_status_counts_five(&analysis.collection_type_distribution),
                         );
                         obj.insert(
                             "favorite_tags".to_string(),
@@ -540,7 +542,7 @@ pub(crate) async fn generate_platform_reports_internal(
                         );
                         obj.insert(
                             "status_counts".to_string(),
-                            json!(analysis.collection_type_distribution),
+                            anime_status_counts_five(&analysis.collection_type_distribution),
                         );
                         obj.insert(
                             "favorite_tags".to_string(),
@@ -607,11 +609,12 @@ pub(crate) async fn generate_platform_reports_internal(
                                 "avatar": own_avatar,
                             }),
                         );
+                        // Prefer Option null over forcing 0 for missing follow counts
                         obj.insert(
                             "stats".to_string(),
                             json!({
-                                "followers": metadata.user_summary.stats.follower_count.unwrap_or(0),
-                                "following": metadata.user_summary.stats.following_count.unwrap_or(0),
+                                "followers": metadata.user_summary.stats.follower_count,
+                                "following": metadata.user_summary.stats.following_count,
                                 "posts": analysis.engagement_stats.total_posts,
                                 "likes_received": analysis.engagement_stats.total_likes_received,
                                 "retweets_received": analysis.engagement_stats.total_retweets_received,
@@ -687,44 +690,8 @@ pub(crate) async fn generate_platform_reports_internal(
                         // 账号画像（概览卡 header）—— 全部实测，覆盖 AI 幻觉
                         obj.insert("profile".to_string(), json!(analysis.profile));
 
-                        obj.insert(
-                            "stats".to_string(),
-                            json!({
-                                "guilds": analysis.guild_stats.guild_count,
-                                "owned_guilds": analysis.guild_stats.owned_guild_count,
-                                "admin_guilds": analysis.guild_stats.admin_guild_count,
-                                "manage_guilds": analysis.guild_stats.manage_guild_count,
-                                "connections": analysis.connections.len(),
-                                "member_reach": analysis.guild_stats.total_member_reach,
-                                "online_reach": analysis.guild_stats.total_online_reach,
-                            }),
-                        );
-                        obj.insert(
-                            "guild_stats".to_string(),
-                            json!(analysis.guild_stats),
-                        );
-                        obj.insert(
-                            "identity_graph".to_string(),
-                            json!(analysis.identity_graph),
-                        );
-                        // 仅展示 visibility!=0 的连接名称；仍保留 type 列表
-                        let public_connections: Vec<Value> = analysis
-                            .connections
-                            .iter()
-                            .filter(|c| c.visibility != 0)
-                            .map(|c| {
-                                json!({
-                                    "type": c.r#type,
-                                    "name": c.name,
-                                    "verified": c.verified,
-                                })
-                            })
-                            .collect();
-                        obj.insert("connections".to_string(), json!(public_connections));
-                        obj.insert(
-                            "linked_platforms".to_string(),
-                            json!(analysis.identity_graph.linked_platforms),
-                        );
+                        // Single guild list for FE (library_items); guild_count falls back to list len
+                        // when member_reach is dead / OAuth omits approximate counts.
                         let library_items: Vec<Value> = analysis
                             .guilds_preview
                             .iter()
@@ -743,11 +710,70 @@ pub(crate) async fn generate_platform_reports_internal(
                                 })
                             })
                             .collect();
-                        obj.insert("library_items".to_string(), json!(library_items));
+                        let guild_count = if analysis.guild_stats.guild_count > 0 {
+                            analysis.guild_stats.guild_count
+                        } else {
+                            analysis
+                                .guilds_preview
+                                .len()
+                                .max(library_items.len())
+                        };
+
                         obj.insert(
-                            "guilds_preview".to_string(),
-                            json!(analysis.guilds_preview),
+                            "stats".to_string(),
+                            json!({
+                                "guilds": guild_count,
+                                "owned_guilds": analysis.guild_stats.owned_guild_count,
+                                "admin_guilds": analysis.guild_stats.admin_guild_count,
+                                "manage_guilds": analysis.guild_stats.manage_guild_count,
+                                // connections count filled after public filter below
+                                "connections": 0,
+                                "member_reach": analysis.guild_stats.total_member_reach,
+                                "online_reach": analysis.guild_stats.total_online_reach,
+                            }),
                         );
+                        obj.insert(
+                            "guild_stats".to_string(),
+                            json!(analysis.guild_stats),
+                        );
+                        obj.insert(
+                            "identity_graph".to_string(),
+                            json!(analysis.identity_graph),
+                        );
+                        // 仅展示 visibility!=0 的连接；stats.connections 与数组口径一致
+                        let public_connections: Vec<Value> = analysis
+                            .connections
+                            .iter()
+                            .filter(|c| c.visibility != 0)
+                            .map(|c| {
+                                json!({
+                                    "type": c.r#type,
+                                    "name": c.name,
+                                    "verified": c.verified,
+                                })
+                            })
+                            .collect();
+                        if let Some(stats_obj) = obj.get_mut("stats").and_then(|v| v.as_object_mut())
+                        {
+                            stats_obj.insert(
+                                "connections".to_string(),
+                                json!(public_connections.len()),
+                            );
+                            // Omit zero reach (no approximate_* without privileged intents)
+                            if analysis.guild_stats.total_member_reach == 0 {
+                                stats_obj.remove("member_reach");
+                            }
+                            if analysis.guild_stats.total_online_reach == 0 {
+                                stats_obj.remove("online_reach");
+                            }
+                        }
+                        obj.insert("connections".to_string(), json!(public_connections));
+                        obj.insert(
+                            "linked_platforms".to_string(),
+                            json!(analysis.identity_graph.linked_platforms),
+                        );
+                        // Single list: library_items only (do not dual-write guilds_preview)
+                        obj.insert("library_items".to_string(), json!(library_items));
                     }
                 }
             }
@@ -1821,6 +1847,33 @@ pub(crate) fn finalize_public_platform_report(platform: &str, report: Value) -> 
         if let Some(mut visuals) = normalized_visuals {
             // 旧库直链 + 生成后漏代理：读出时统一再规范化
             crate::api::profile::normalize_json_media_urls(&mut visuals);
+            // GitHub / Steam: legacy Chinese labels → stable enums for FE i18n
+            if let Some(vobj) = visuals.as_object_mut() {
+                if platform.eq_ignore_ascii_case("github") {
+                    if let Some(raw) = vobj
+                        .get("contribution_level")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                    {
+                        vobj.insert(
+                            "contribution_level".to_string(),
+                            json!(normalize_github_contribution_level(&raw)),
+                        );
+                    }
+                }
+                if platform.eq_ignore_ascii_case("steam") {
+                    if let Some(raw) = vobj
+                        .get("player_type")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                    {
+                        vobj.insert(
+                            "player_type".to_string(),
+                            json!(normalize_steam_player_type(&raw)),
+                        );
+                    }
+                }
+            }
             obj.insert("card_visuals".to_string(), visuals);
         }
     }
@@ -1955,12 +2008,12 @@ async fn generate_ai_report(
         "steam" => (
             "你是一个硬核游戏玩家，看重'肝度'、'全成就'和'喜加一'。",
             "用硬核玩家的口吻，分析用户的游戏品味、游玩时长和'剁手'习惯。",
-            "card_visuals必须包含 'player_type' (字符串), 'hardcore_score' (0-100数字), 'games_count' (数字，游戏总数量), 'total_playtime' (数字，总游戏时长小时数)。"
+            "card_visuals必须包含 'player_type' (稳定枚举: hardcore|casual|balanced，勿写中文玩家类型), 'hardcore_score' (0-100数字), 'games_count' (数字，游戏总数量), 'total_playtime' (数字，总游戏时长小时数)。"
         ),
         "github" => (
             "你是一个极客技术大佬，崇尚开源精神，说话严谨但带有技术幽默。",
             "用技术大佬的口吻，综合评估用户的代码贡献、技术栈深度和开源影响力。特别强调：仓库获得的 star 数量是衡量开发者水平和开源影响力的重要因素，高 star 项目往往代表更强的技术实力和社区认可度，评价时务必重点参考。",
-            "card_visuals必须包含 'contribution_level' (字符串，如'传奇开发者'、'资深工程师'、'活跃开发者'), 'languages' (对象数组 {name, percentage})。在判定 contribution_level 时，除了贡献数和仓库数量，务必重点权衡仓库获得的 star 总数——star 越高代表开源影响力越强，应对应更高的等级。注意：不要生成 'total_contributions'、'repos_count' 和 'contribution_calendar' 字段，这些将由系统自动计算。"
+            "card_visuals必须包含 'contribution_level' (稳定枚举: legendary|veteran|active|emerging，勿写中文等级名), 'languages' (对象数组 {name, percentage})。在判定 contribution_level 时，除了贡献数和仓库数量，务必重点权衡仓库获得的 star 总数——star 越高代表开源影响力越强，应对应更高的等级。注意：不要生成 'total_contributions'、'repos_count' 和 'contribution_calendar' 字段，这些将由系统自动计算。"
         ),
         "netease" => (
             "你是一个文艺青年/乐评人，感性细腻，喜欢用歌词或诗意的语言表达。",
@@ -2142,7 +2195,8 @@ fn generate_mock_report(
                     "G胖的微笑由你守护".to_string(),
                 ],
                 json!({
-                    "player_type": "硬核玩家",
+                    // Stable enum for FE i18n (hardcore/casual/balanced)
+                    "player_type": "hardcore",
                     "hardcore_score": 85,
                     "games_count": games_count,
                     "total_playtime": total_playtime_hours,
@@ -2178,18 +2232,11 @@ fn generate_mock_report(
                 .unwrap_or(0)
                 .max(analysis.recent_repos.len());
 
-            // 根据真实贡献数、仓库数量和 star 数确定贡献等级（star 作为独立晋级通道）
-            let contribution_level = if (total_contributions > 1000 && repos_count > 20)
-                || total_stars >= 1000
-            {
-                "传奇开发者"
-            } else if (total_contributions > 500 && repos_count > 10) || total_stars >= 200 {
-                "资深工程师"
-            } else if total_contributions > 200 || repos_count > 5 || total_stars >= 50 {
-                "活跃开发者"
-            } else {
-                "新兴贡献者"
-            };
+            let contribution_level = github_contribution_level(
+                total_contributions,
+                repos_count,
+                total_stars,
+            );
 
             // 计算语言百分比（按仓库数排序，百分比 clamp）
             let total_lang_count: usize = analysis.language_distribution.values().sum();
@@ -2380,7 +2427,7 @@ fn generate_mock_report(
                 ],
                 json!({
                     "taste_profile": "细腻的 ACG 收藏家",
-                    "status_counts": analysis.collection_type_distribution,
+                    "status_counts": anime_status_counts_five(&analysis.collection_type_distribution),
                     "subject_type_distribution": analysis.subject_type_distribution,
                     "favorite_tags": favorite_tags,
                     "top_subjects": analysis.top_rated_subjects.iter().take(5).collect::<Vec<_>>()
@@ -2422,7 +2469,7 @@ fn generate_mock_report(
                 ],
                 json!({
                     "taste_profile": "MAL 列表收藏家",
-                    "status_counts": analysis.collection_type_distribution,
+                    "status_counts": anime_status_counts_five(&analysis.collection_type_distribution),
                     "collection_type_distribution": analysis.collection_type_distribution,
                     "subject_type_distribution": analysis.subject_type_distribution,
                     "favorite_tags": favorite_tags,
@@ -2463,12 +2510,16 @@ fn generate_mock_report(
                     },
                     "signature_topics": ["互联网", "日常", "观点"],
                     "stats": {
-                        "followers": metadata.user_summary.stats.follower_count.unwrap_or(0),
-                        "following": metadata.user_summary.stats.following_count.unwrap_or(0),
+                        "followers": metadata.user_summary.stats.follower_count,
+                        "following": metadata.user_summary.stats.following_count,
                         "posts": analysis.engagement_stats.total_posts,
                         "likes_received": analysis.engagement_stats.total_likes_received,
                     },
                     "top_posts": analysis.top_posts.iter().take(5).collect::<Vec<_>>(),
+                    "library_items": analysis.top_posts.iter().take(8).map(|p| json!({
+                        "title": p.text.chars().take(80).collect::<String>(),
+                        "type": "post",
+                    })).collect::<Vec<_>>(),
                 }),
             )
         }
@@ -2712,11 +2763,143 @@ fn generate_mock_report(
     Ok((summary, insights, visuals))
 }
 
-/// 从bilibili平台数据中提取资料库内容（基于报告中提到的作品）
-/// Discord 服务器锐评兜底：按角色 / 规模 / 特性生成短句，≤16 字左右
+/// Bangumi/MAL `status_counts`: always emit five keys (0 when absent).
+pub(crate) fn anime_status_counts_five(
+    dist: &std::collections::HashMap<String, usize>,
+) -> Value {
+    let get = |k: &str| dist.get(k).copied().unwrap_or(0);
+    json!({
+        "done": get("done"),
+        "doing": get("doing"),
+        "wish": get("wish"),
+        "on_hold": get("on_hold"),
+        "dropped": get("dropped"),
+    })
+}
+
+/// Steam `player_type` → stable enum for FE i18n.
+pub(crate) fn normalize_steam_player_type(raw: &str) -> &'static str {
+    let t = raw.trim();
+    let lower = t.to_ascii_lowercase();
+    if lower == "hardcore"
+        || t.contains("硬核")
+        || lower.contains("hardcore")
+        || t.contains("肝帝")
+    {
+        return "hardcore";
+    }
+    if lower == "casual"
+        || t.contains("休闲")
+        || lower.contains("casual")
+        || t.contains("佛系")
+    {
+        return "casual";
+    }
+    if lower == "balanced" || t.contains("均衡") || lower.contains("balanced") {
+        return "balanced";
+    }
+    // Unknown free-text from older AI: default balanced (not casual)
+    if t.is_empty() {
+        "casual"
+    } else {
+        "balanced"
+    }
+}
+
+/// GitHub contribution tier for `card_visuals.contribution_level`.
+/// Stable English enum keys only — FE maps to locale labels / badge colors.
+/// Thresholds match the historical Chinese tiering (star as independent path).
+pub(crate) fn github_contribution_level(
+    total_contributions: i64,
+    repos_count: usize,
+    total_stars: i64,
+) -> &'static str {
+    if (total_contributions > 1000 && repos_count > 20) || total_stars >= 1000 {
+        "legendary"
+    } else if (total_contributions > 500 && repos_count > 10) || total_stars >= 200 {
+        "veteran"
+    } else if total_contributions > 200 || repos_count > 5 || total_stars >= 50 {
+        "active"
+    } else {
+        "emerging"
+    }
+}
+
+/// Map legacy Chinese / alternate labels to enum keys (stored reports).
+pub(crate) fn normalize_github_contribution_level(raw: &str) -> &'static str {
+    match raw.trim() {
+        "legendary" | "传奇开发者" | "Legendary" | "Legendary Dev" | "Legendary Developer" => {
+            "legendary"
+        }
+        "veteran" | "资深工程师" | "资深开发者" | "Veteran" | "Veteran Developer" => "veteran",
+        "active" | "活跃开发者" | "高级开发者" | "中级开发者" | "Senior" | "Senior Dev"
+        | "Senior Developer" | "Intermediate Developer" => "active",
+        "emerging" | "新兴贡献者" | "初级开发者" | "Beginner" | "Beginner Dev"
+        | "Beginner Developer" => "emerging",
+        other => {
+            let lower = other.to_ascii_lowercase();
+            match lower.as_str() {
+                "legendary" | "veteran" | "active" | "emerging" => {
+                    // re-borrow static
+                    match lower.as_str() {
+                        "legendary" => "legendary",
+                        "veteran" => "veteran",
+                        "active" => "active",
+                        _ => "emerging",
+                    }
+                }
+                _ => "emerging",
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod finalize_public_report_media_tests {
     use super::*;
+
+    #[test]
+    fn github_contribution_level_thresholds() {
+        assert_eq!(github_contribution_level(50, 2, 0), "emerging");
+        assert_eq!(github_contribution_level(250, 3, 0), "active");
+        assert_eq!(github_contribution_level(600, 12, 0), "veteran");
+        assert_eq!(github_contribution_level(1200, 25, 0), "legendary");
+        // star-only paths
+        assert_eq!(github_contribution_level(0, 0, 50), "active");
+        assert_eq!(github_contribution_level(0, 0, 200), "veteran");
+        assert_eq!(github_contribution_level(0, 0, 1000), "legendary");
+    }
+
+    #[test]
+    fn normalize_github_contribution_level_maps_legacy_chinese() {
+        assert_eq!(normalize_github_contribution_level("传奇开发者"), "legendary");
+        assert_eq!(normalize_github_contribution_level("资深工程师"), "veteran");
+        assert_eq!(normalize_github_contribution_level("活跃开发者"), "active");
+        assert_eq!(normalize_github_contribution_level("新兴贡献者"), "emerging");
+        assert_eq!(normalize_github_contribution_level("veteran"), "veteran");
+    }
+
+    #[test]
+    fn normalize_steam_player_type_maps_legacy_and_enum() {
+        assert_eq!(normalize_steam_player_type("硬核玩家"), "hardcore");
+        assert_eq!(normalize_steam_player_type("hardcore"), "hardcore");
+        assert_eq!(normalize_steam_player_type("休闲玩家"), "casual");
+        assert_eq!(normalize_steam_player_type("balanced"), "balanced");
+        assert_eq!(normalize_steam_player_type("均衡型"), "balanced");
+    }
+
+    #[test]
+    fn anime_status_counts_five_fills_zeros() {
+        let mut m = std::collections::HashMap::new();
+        m.insert("done".to_string(), 10usize);
+        m.insert("doing".to_string(), 2usize);
+        let v = anime_status_counts_five(&m);
+        assert_eq!(v["done"], 10);
+        assert_eq!(v["doing"], 2);
+        assert_eq!(v["wish"], 0);
+        assert_eq!(v["on_hold"], 0);
+        assert_eq!(v["dropped"], 0);
+    }
 
     #[test]
     fn normalizes_plain_card_visuals_object_on_read() {

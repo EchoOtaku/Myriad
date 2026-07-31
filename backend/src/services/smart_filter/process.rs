@@ -1041,7 +1041,8 @@ impl SmartFilter {
                 following_count: profile
                     .and_then(|p| p.get("follows"))
                     .and_then(|v| v.as_i64()),
-                // playlistCount on profile; fall back to playlists array length later if 0
+                // playlistCount on profile only — never use synthetic playlists.len()
+                // (liked_songs are wrapped as a single fake playlist for track extraction).
                 total_content: profile
                     .and_then(|p| p.get("playlistCount"))
                     .and_then(|v| v.as_i64())
@@ -1052,9 +1053,13 @@ impl SmartFilter {
 
         // 2. 收集所有歌曲信息（支持多种数据结构）
         let playlists = data.get("playlists").and_then(|v| v.as_array());
+        // Only count real playlist arrays when profile.playlistCount missing AND
+        // playlists look like a multi-list catalog (not a single synthetic shell).
         if user_summary.stats.total_content == 0 {
             if let Some(lists) = playlists {
-                user_summary.stats.total_content = lists.len();
+                if lists.len() > 1 {
+                    user_summary.stats.total_content = lists.len();
+                }
             }
         }
         let mut song_list = Vec::new();
@@ -1115,6 +1120,20 @@ impl SmartFilter {
                                 .or_else(|| track.get("picUrl").and_then(|v| v.as_str()))
                                 .map(|s| s.trim().to_string())
                                 .filter(|s| !s.is_empty());
+                            let fee = track
+                                .get("fee")
+                                .and_then(|v| v.as_i64())
+                                .or_else(|| {
+                                    track
+                                        .get("privilege")
+                                        .and_then(|p| p.get("fee"))
+                                        .and_then(|v| v.as_i64())
+                                });
+                            let is_vip = track
+                                .get("isVip")
+                                .and_then(|v| v.as_bool())
+                                .or_else(|| track.get("is_vip").and_then(|v| v.as_bool()))
+                                .or_else(|| fee.map(|f| f == 1 || f == 4));
 
                             recent_songs.push(SongItem {
                                 title: name.to_string(),
@@ -1122,6 +1141,8 @@ impl SmartFilter {
                                 id: song_id,
                                 cover,
                                 album,
+                                is_vip,
+                                fee,
                             });
                         }
                     }

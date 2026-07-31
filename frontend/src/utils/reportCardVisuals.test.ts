@@ -330,6 +330,27 @@ describe('hasReportDetailContent', () => {
     )
   })
 
+  it('is true for YouTube recent_videos when library_items empty', () => {
+    assert.equal(
+      hasReportDetailContent({
+        subscriber_count: 100,
+        library_items: [],
+        recent_videos: [{ title: 'v1' }],
+      }),
+      true,
+    )
+  })
+
+  it('is true for Discord guilds_preview fallback list', () => {
+    assert.equal(
+      hasReportDetailContent({
+        guilds_preview: [{ name: 'Server' }],
+        library_items: [],
+      }),
+      true,
+    )
+  })
+
   it('is false when only overview stats exist', () => {
     assert.equal(
       hasReportDetailContent({
