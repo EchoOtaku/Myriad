@@ -114,7 +114,6 @@ docs/
 Myriad/
 ├── README.md                    # Project overview
 ├── LICENSE                      # GPL-3.0 license
-├── Makefile                     # Quick commands (Linux/Mac)
 ├── docker-compose.yml           # Production proxy + updater stack
 ├── docker-compose.dev.yml       # Development PostgreSQL only
 ├── .env.production.example      # Production environment template
@@ -257,18 +256,16 @@ docs/
 ./scripts/dev/dev.sh stop frontend
 ```
 
-### Makefile Commands (Linux/Mac)
+### Docker Deploy Commands
 
 ```bash
-make deploy      # Bootstrap and start through scripts/docker/deploy.sh
-make start       # Start through scripts/docker/deploy.sh
-make stop        # Stop containers, preserving volumes
-make restart     # Restart the stack
-make logs        # View stack logs
-make status      # View status and image versions
-make build       # Build all component images locally
-make clean       # Full cleanup, including pgdata/state/backups
-make backup      # Backup PostgreSQL into ./backups
+bash scripts/docker/deploy.sh up        # Bootstrap and start
+bash scripts/docker/deploy.sh down      # Stop containers, preserving volumes
+bash scripts/docker/deploy.sh restart   # Restart the stack
+bash scripts/docker/deploy.sh logs      # View stack logs
+bash scripts/docker/deploy.sh status    # View status and image versions
+bash scripts/docker/deploy.sh upgrade   # Pull and recreate after editing .env tags
+bash scripts/docker/build-and-push.sh --all   # Build component images locally
 ```
 
 ---

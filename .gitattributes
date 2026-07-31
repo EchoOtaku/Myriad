@@ -19,7 +19,6 @@
 
 # Shell scripts should use LF
 *.sh text eol=lf
-Makefile text eol=lf
 
 # PowerShell scripts should use CRLF
 *.ps1 text eol=crlf
