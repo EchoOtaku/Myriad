@@ -20,6 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};
+use myriad_error::{redact_secrets, AppError};
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Client, Method, StatusCode};
 use serde::Serialize;
@@ -55,14 +56,10 @@ impl std::fmt::Display for UpdaterClientError {
         match self {
             Self::NotConfigured => f.write_str("updater not configured (set MYRIAD_UPDATER_URL)"),
             Self::Upstream(s, body) => {
-                write!(
-                    f,
-                    "upstream {s}: {}",
-                    crate::util::redact::redact_secrets(body)
-                )
+                write!(f, "upstream {s}: {}", redact_secrets(body))
             }
             Self::Transport(e) => {
-                write!(f, "transport: {}", crate::util::redact::redact_secrets(e))
+                write!(f, "transport: {}", redact_secrets(e))
             }
         }
     }
@@ -77,6 +74,27 @@ impl UpdaterClientError {
             Self::Upstream(s, _) => *s,
             Self::Transport(_) => StatusCode::BAD_GATEWAY,
         }
+    }
+
+    /// Map into the shared [`AppError`] used by HTTP adapters.
+    pub fn into_app_error(self) -> AppError {
+        match self {
+            Self::NotConfigured => AppError::service_unavailable(
+                "updater not configured (set MYRIAD_UPDATER_URL)",
+            ),
+            Self::Upstream(status, body) => AppError::from_status_u16(
+                status.as_u16(),
+                format!("updater upstream {status}"),
+            )
+            .with_message(body),
+            Self::Transport(e) => AppError::bad_gateway("updater transport error").with_message(e),
+        }
+    }
+}
+
+impl From<UpdaterClientError> for AppError {
+    fn from(e: UpdaterClientError) -> Self {
+        e.into_app_error()
     }
 }
 
@@ -221,16 +239,18 @@ impl UpdaterClient {
             req = req.json(b);
         }
 
-        let resp = req.send().await.map_err(|e| {
-            UpdaterClientError::Transport(crate::util::redact::redact_secrets(&e.to_string()))
-        })?;
+        let resp = req
+            .send()
+            .await
+            .map_err(|e| UpdaterClientError::Transport(redact_secrets(&e.to_string())))?;
         let status = resp.status();
-        let bytes = resp.bytes().await.map_err(|e| {
-            UpdaterClientError::Transport(crate::util::redact::redact_secrets(&e.to_string()))
-        })?;
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| UpdaterClientError::Transport(redact_secrets(&e.to_string())))?;
 
         if !status.is_success() {
-            let detail = crate::util::redact::redact_secrets(&String::from_utf8_lossy(&bytes));
+            let detail = redact_secrets(&String::from_utf8_lossy(&bytes));
             return Err(UpdaterClientError::Upstream(status, detail));
         }
 
@@ -238,9 +258,7 @@ impl UpdaterClient {
             return Ok(serde_json::Value::Null);
         }
         serde_json::from_slice(&bytes).map_err(|e| {
-            UpdaterClientError::Transport(crate::util::redact::redact_secrets(&format!(
-                "decode json: {e}"
-            )))
+            UpdaterClientError::Transport(redact_secrets(&format!("decode json: {e}")))
         })
     }
 
@@ -276,5 +294,39 @@ fn default_container_updater_url() -> Option<String> {
         Some("http://updater-gateway:1104".to_string())
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn into_app_error_not_configured_is_503() {
+        let e = UpdaterClientError::NotConfigured.into_app_error();
+        assert_eq!(e.status_u16(), 503);
+        assert!(e.error_label().contains("not configured"));
+    }
+
+    #[test]
+    fn into_app_error_transport_is_502_and_redacts() {
+        let e = UpdaterClientError::Transport(
+            "connect failed Authorization: Bearer supersecrettoken99".into(),
+        )
+        .into_app_error();
+        assert_eq!(e.status_u16(), 502);
+        let json = e.to_json().to_string();
+        assert!(!json.contains("supersecrettoken99"), "leaked: {json}");
+        assert!(
+            json.contains("[REDACTED]") || json.contains("transport"),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn into_app_error_upstream_preserves_status() {
+        let e = UpdaterClientError::Upstream(StatusCode::CONFLICT, "busy".into()).into_app_error();
+        assert_eq!(e.status_u16(), 409);
+        assert_eq!(e.to_json()["message"], "busy");
     }
 }

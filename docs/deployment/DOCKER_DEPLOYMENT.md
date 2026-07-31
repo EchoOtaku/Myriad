@@ -75,7 +75,6 @@ Networks:
 | `docs/deployment/PORTS.md` | Development and production port map |
 | `docs/deployment/EXTERNAL_POSTGRES.md` | External / 1Panel Postgres: `MYRIAD_DB_MODE=external`, no local pgdata |
 | `docs/deployment/MIGRATION_V2_TO_V3.md` | Chinese v2→v3 migration (sock → guard + gateway + three nets) |
-| `docs/deployment/examples/v3-docker-compose.yml` | Documented v3 compose snapshot (matches root topology) |
 | `docs/deployment/examples/v3.env.example` | Redacted v3 `.env` example (kiseki.blog operator shape) |
 | `docs/deployment/examples/docker-compose.external-db.example.yml` | Compose without `postgres`; external `DATABASE_URL` |
 | `docs/deployment/MIGRATION_DOCKER_GUARD.md` | Migrate from updater+sock to docker-guard dual-net |
@@ -113,7 +112,7 @@ Open `http://localhost` or the port configured by `HTTP_PORT`.
 | `JWT_SECRET` | yes | JWT signing secret; set this yourself before first start |
 | `ANALYTICS_SALT` | recommended | Salt for first-party visitor hashes on Data & stats. Generate with `openssl rand -hex 32`. If unset, a built-in default is used (fine for single-instance personal sites; set it for any shared/production deploy). |
 | `TZ` | optional | Process timezone for container local time (and thus Data-page “today” / daily buckets). Analytics does **not** hard-code an offset; it uses whatever the backend process sees as local time. Compose examples may set `Asia/Shanghai` for convenience — change to match your host. Keep the host/container clock correct. |
-| `CORS_ORIGINS` | yes | Public frontend origins |
+| `CORS_ORIGINS` | yes (prod) | Comma-separated public frontend origin(s). Required when `ENVIRONMENT=production` (startup panics if empty). Never `*`. |
 | `BASE_URL` | no | Public HTTPS origin used for federation Actor URLs and OAuth fallback; required for federation |
 | `FRONTEND_URL` | no | Public frontend origin for redirects/profile links; usually the same as `BASE_URL` |
 | `MYRIAD_TAG` | yes | Backend/frontend image tag, maintained by updater |
@@ -129,6 +128,8 @@ Open `http://localhost` or the port configured by `HTTP_PORT`.
 | `MYRIAD_ADMIN_NETWORK` | no | Admin plane network override, default `myriad-admin-net` |
 | `MYRIAD_DOCKER_GUARD_NETWORK` | no | Internal updater/guard network override, default `myriad-docker-guard-net` |
 | `PROXY_TRUSTED_UPSTREAMS` | no | Comma-separated IP/CIDR allowlist for outer proxies; empty = auto-trust private/loopback peers only (Docker host reverse-proxy). Never `0.0.0.0/0` |
+| `TRUST_PROXY_HEADERS` | no | Backend: honor `X-Forwarded-For` / `X-Real-IP` when the TCP peer is on `TRUST_PROXY_PEERS` (compose default `true` behind bundled proxy) |
+| `TRUST_PROXY_PEERS` | no | Backend: CIDR/IP allowlist of reverse-proxy peers. **Empty = never trust forwarded headers** (fail-closed), even if `TRUST_PROXY_HEADERS=true`. Compose defaults to full RFC1918 (`10/8`, `172.16/12`, `192.168/16`) so stock Docker works; **production must tighten** to the reverse-proxy Docker network only (e.g. `172.18.0.0/16` from `docker network inspect`). Backend warns at startup when peers look overly broad. |
 | `PROXY_ALLOW_DIRECT_UPDATER` | no | Enables `/_updater/*` rescue path, default `false` |
 | `COSIGN_VERIFY` | no | Release signature policy: `strict` (default), `soft`, or `off` |
 | `UPDATER_ALLOW_INSECURE_COSIGN` | no | Required dual key when `COSIGN_VERIFY=off` (`true` / alias `COSIGN_INSECURE_OK`) |

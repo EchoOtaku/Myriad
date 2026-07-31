@@ -326,12 +326,35 @@ export const FriendLinksWidget = memo(
     )
 
     const openBrew = useCallback(() => {
-      if (!isEditMode && !isPreview) navigate('/brew?category=friends')
+      if (!isEditMode && !isPreview) {
+        void import('../../utils/analyticsEvents').then(
+          ({ trackProductEvent, AnalyticsEvents }) => {
+            trackProductEvent(AnalyticsEvents.FRIEND_LINKS_BREW, {
+              throttleMs: 3000,
+            })
+          },
+        )
+        navigate('/brew?category=friends')
+      }
     }, [isEditMode, isPreview, navigate])
 
     const openFriendLink = useCallback(
       (entry: FriendLinkEntry) => {
         if (isEditMode || isPreview || !entry.url) return
+        void import('../../utils/analyticsEvents').then(
+          ({ trackProductEvent, AnalyticsEvents }) => {
+            let host = ''
+            try {
+              host = new URL(entry.url).hostname
+            } catch {
+              host = entry.name || 'link'
+            }
+            trackProductEvent(AnalyticsEvents.FRIEND_LINK_CLICK, {
+              target: host,
+              throttleMs: 2000,
+            })
+          },
+        )
         window.open(entry.url, '_blank', 'noopener,noreferrer')
       },
       [isEditMode, isPreview],

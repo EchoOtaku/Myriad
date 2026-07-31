@@ -1,44 +1,23 @@
 //! UI 控制能力处理器
 //!
-//! 处理 tapp.ui, tapp.interact, router.navigate 等 UI 控制类能力
-//! 包含完整的 Tapp UI 分析、交互和多窗口管理功能
+//! 处理 tapp.ui, tapp.interact, router.navigate 等 UI 控制类能力。
+//! HTML/JS 解析、路由/窗口/音乐纯规则见 [`crate::services::agent::ui_analysis`]。
 
 use super::HandlerContext;
 use crate::models::entities::{
     tapp_scheduled_tasks, tapp_storage, tapp_task_executions, tapp_widgets, tapps,
 };
-use once_cell::sync::Lazy;
-use regex::Regex;
+use crate::services::agent::ui_analysis::{
+    build_breadcrumb, build_navigate_full_path, detect_page_type, extract_json_from_response,
+    extract_route_context, generate_suggested_actions, get_page_name, is_safe_agent_tapp_id,
+    is_valid_page_interact_action, is_valid_router_path, normalize_music_control,
+    parse_html_elements, parse_html_structure, parse_i18n, parse_js_events, parse_js_functions,
+    parse_playlist_id_param, resolve_window_close_target, resolve_window_focus_target,
+    router_can_go_back,
+};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-
-// HTML element parsing regexes (compiled once)
-static RE_BUTTON: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"<button[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:class=[\"']([^\"']*)[\"'])?[^>]*(?:title=[\"']([^\"']*)[\"'])?[^>]*>([^<]*)"#).unwrap()
-});
-static RE_INPUT: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"<(?:input|textarea)[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:type=[\"']([^\"']*)[\"'])?[^>]*(?:placeholder=[\"']([^\"']*)[\"'])?[^>]*"#).unwrap()
-});
-static RE_FORM: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"<form[^>]*(?:id=[\"']([^\"']*)[\"'])?[^>]*(?:action=[\"']([^\"']*)[\"'])?[^>]*"#)
-        .unwrap()
-});
-static RE_LINK: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"<a[^>]*href=[\"']([^\"']*)[\"'][^>]*>([^<]*)"#).unwrap());
-static RE_ONCLICK: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r#"<(\w+)[^>]*onclick=[\"']([^\"']*)[\"'][^>]*(?:id=[\"']([^\"']*)[\"'])?"#).unwrap()
-});
-
-// JS analysis regexes (compiled once)
-static RE_JS_FUNC: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"(?:async\s+)?function\s+(\w+)\s*\([^)]*\)"#).unwrap());
-static RE_TAPP_API: Lazy<Regex> = Lazy::new(|| Regex::new(r#"Tapp\.(\w+)\.(\w+)"#).unwrap());
-static RE_ADDEVENT: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\.addEventListener\(['\"](\w+)['\"]"#).unwrap());
-static RE_ON_PROP: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\.on(\w+)\s*="#).unwrap());
-static RE_I18N_KEY: Lazy<Regex> = Lazy::new(|| Regex::new(r#"t\(['\"]([^'\"]+)['\"]\)"#).unwrap());
-static RE_FUNC_NAME: Lazy<Regex> = Lazy::new(|| Regex::new(r#"(\w+)\s*\("#).unwrap());
 
 /// 执行 UI 控制能力
 pub async fn execute(
@@ -91,12 +70,8 @@ async fn execute_tapp_ui_analysis(
         .and_then(|v| v.as_str())
         .unwrap_or("interactive");
 
-    // 验证 tapp_id 安全性，防止路径穿越
-    if tapp_id.contains("..")
-        || tapp_id.contains('/')
-        || tapp_id.contains('\\')
-        || tapp_id.contains('\0')
-    {
+    // 验证 tapp_id 安全性，防止路径穿越（domain）
+    if !is_safe_agent_tapp_id(tapp_id) {
         return Err("无效的 tappId".to_string());
     }
 
@@ -280,7 +255,7 @@ async fn execute_tapp_interact(
         .cloned()
         .ok_or("Missing input parameter")?;
     let task_id = ctx.task_id.clone();
-    let interaction = crate::api::tapp_runtime::create_agent_interaction_internal(
+    let interaction = crate::services::agent_interaction::create_agent_interaction_internal(
         ctx.db,
         ctx.user_id,
         tapp_id,
@@ -312,16 +287,9 @@ async fn find_accessible_tapp(
     ctx: &HandlerContext<'_>,
     tapp_id: &str,
 ) -> Result<tapps::Model, String> {
-    crate::api::tapp_runtime::common::verify_tapp_ownership(ctx.db, ctx.user_id, tapp_id)
+    crate::services::tapp_ownership::verify_tapp_ownership(ctx.db, ctx.user_id, tapp_id)
         .await
-        .map_err(|(_, body)| {
-            body.0
-                .get("message")
-                .or_else(|| body.0.get("error"))
-                .and_then(Value::as_str)
-                .unwrap_or("Tapp access denied")
-                .to_string()
-        })?;
+        .map_err(|err| err.to_string())?;
 
     if let Some(tapp) = tapps::Entity::find()
         .filter(tapps::Column::TappId.eq(tapp_id))
@@ -335,15 +303,9 @@ async fn find_accessible_tapp(
 
     let mut query = tapps::Entity::find().filter(tapps::Column::TappId.eq(tapp_id));
     if !crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await {
-        let admin_id = crate::api::tapp_runtime::common::get_admin_user_id(ctx.db)
+        let admin_id = crate::services::tapp_ownership::get_admin_user_id(ctx.db)
             .await
-            .map_err(|(_, body)| {
-                body.0
-                    .get("error")
-                    .and_then(Value::as_str)
-                    .unwrap_or("Failed to resolve administrator")
-                    .to_string()
-            })?;
+            .map_err(|err| err.to_string())?;
         query = query.filter(tapps::Column::UserId.eq(admin_id));
     }
 
@@ -377,15 +339,9 @@ pub(super) async fn execute_tapp_page_content(
         "apps" => {
             // 应用列表层级
             let mut query = tapps::Entity::find();
-            let admin_id = crate::api::tapp_runtime::common::get_admin_user_id(ctx.db)
+            let admin_id = crate::services::tapp_ownership::get_admin_user_id(ctx.db)
                 .await
-                .map_err(|(_, body)| {
-                    body.0
-                        .get("error")
-                        .and_then(Value::as_str)
-                        .unwrap_or("Failed to resolve administrator")
-                        .to_string()
-                })?;
+                .map_err(|err| err.to_string())?;
             if !crate::services::agent::user_is_current_admin(ctx.db, user_id).await {
                 query = query.filter(
                     tapps::Column::UserId
@@ -910,14 +866,20 @@ async fn execute_tapp_window_open(
             .filter(tapps::Column::UserId.eq(ctx.user_id))
             .one(ctx.db)
             .await
-            .map_err(|e| format!("Database error: {}", e))?
+            .map_err(|e| {
+                tracing::error!(error = %e, "Agent ui_control database error");
+                "Database error".to_string()
+            })?
     } else if let Some(name) = tapp_name {
         tapps::Entity::find()
             .filter(tapps::Column::UserId.eq(ctx.user_id))
             .filter(tapps::Column::Name.contains(name))
             .one(ctx.db)
             .await
-            .map_err(|e| format!("Database error: {}", e))?
+            .map_err(|e| {
+                tracing::error!(error = %e, "Agent ui_control database error");
+                "Database error".to_string()
+            })?
     } else {
         return Err("Missing tappId or tappName parameter".to_string());
     };
@@ -959,15 +921,7 @@ async fn execute_tapp_window_close(
     let tapp_id = params.get("tappId").and_then(|v| v.as_str());
     let position = params.get("position").and_then(|v| v.as_str());
 
-    let close_target = if let Some(wid) = window_id {
-        json!({ "windowId": wid })
-    } else if let Some(tid) = tapp_id {
-        json!({ "tappId": tid })
-    } else if let Some(pos) = position {
-        json!({ "position": pos })
-    } else {
-        return Err("Must specify windowId, tappId, or position".to_string());
-    };
+    let close_target = resolve_window_close_target(window_id, tapp_id, position)?;
 
     Ok(json!({
         "success": true,
@@ -986,17 +940,7 @@ async fn execute_tapp_window_focus(params: &HashMap<String, Value>) -> Result<Va
     let tapp_name = params.get("tappName").and_then(|v| v.as_str());
     let position = params.get("position").and_then(|v| v.as_str());
 
-    let focus_target = if let Some(wid) = window_id {
-        json!({ "windowId": wid })
-    } else if let Some(tid) = tapp_id {
-        json!({ "tappId": tid })
-    } else if let Some(name) = tapp_name {
-        json!({ "tappName": name })
-    } else if let Some(pos) = position {
-        json!({ "position": pos })
-    } else {
-        return Err("Must specify windowId, tappId, tappName, or position".to_string());
-    };
+    let focus_target = resolve_window_focus_target(window_id, tapp_id, tapp_name, position)?;
 
     Ok(json!({
         "success": true,
@@ -1024,37 +968,10 @@ async fn execute_router_navigate(params: &HashMap<String, Value>) -> Result<Valu
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    // 验证路由路径
-    let valid_prefixes = [
-        "/",
-        "/home",
-        "/brew",
-        "/platform",
-        "/tapp",
-        "/report",
-        "/settings",
-        "/profile",
-        "/agent",
-    ];
-    let is_valid = valid_prefixes
-        .iter()
-        .any(|prefix| path.starts_with(prefix) || path == *prefix);
-
-    if !is_valid {
+    if !is_valid_router_path(path) {
         return Err(format!("Invalid route path: {}", path));
     }
-
-    // 构建完整 URL
-    let mut full_path = path.to_string();
-    if let Some(query_obj) = query_params.as_object() {
-        if !query_obj.is_empty() {
-            let query_string: Vec<String> = query_obj
-                .iter()
-                .map(|(k, v)| format!("{}={}", k, v.as_str().unwrap_or(&v.to_string())))
-                .collect();
-            full_path = format!("{}?{}", path, query_string.join("&"));
-        }
-    }
+    let full_path = build_navigate_full_path(path, &query_params);
 
     Ok(json!({
         "success": true,
@@ -1079,10 +996,7 @@ async fn execute_page_interact(params: &HashMap<String, Value>) -> Result<Value,
     let target = params.get("target").ok_or("Missing target parameter")?;
     let value = params.get("value").and_then(|v| v.as_str());
 
-    let valid_actions = [
-        "click", "hover", "focus", "scroll", "select", "toggle", "expand", "collapse",
-    ];
-    if !valid_actions.contains(&action) {
+    if !is_valid_page_interact_action(action) {
         return Err(format!("Invalid action: {}", action));
     }
 
@@ -1147,505 +1061,6 @@ async fn execute_page_understand(
 }
 
 // ============================================================================
-// 辅助函数
-// ============================================================================
-
-/// 解析 HTML 结构概览
-fn parse_html_structure(html: &str) -> Value {
-    let has_background =
-        html.contains("id=\"tapp-background\"") || html.contains("id='tapp-background'");
-    let has_content = html.contains("id=\"tapp-content\"") || html.contains("id='tapp-content'");
-
-    let mut sections = vec![];
-    for tag in [
-        "header", "main", "footer", "nav", "aside", "article", "section", "form",
-    ] {
-        if html.contains(&format!("<{}", tag)) {
-            sections.push(tag);
-        }
-    }
-
-    json!({
-        "hasBackground": has_background,
-        "hasContent": has_content,
-        "sections": sections,
-        "estimatedComplexity": if html.len() > 5000 { "complex" } else if html.len() > 1000 { "moderate" } else { "simple" }
-    })
-}
-
-/// 解析 HTML 元素
-fn parse_html_elements(html: &str, filter: &str) -> Value {
-    let mut buttons = vec![];
-    let mut inputs = vec![];
-    let mut forms = vec![];
-    let mut links = vec![];
-    let mut interactive = vec![];
-
-    // 解析按钮
-    for cap in RE_BUTTON.captures_iter(html) {
-        let id = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        let class = cap.get(2).map(|m| m.as_str()).unwrap_or("");
-        let title = cap.get(3).map(|m| m.as_str()).unwrap_or("");
-        let text = cap.get(4).map(|m| m.as_str()).unwrap_or("").trim();
-
-        buttons.push(json!({
-            "type": "button", "id": id, "class": class, "title": if !title.is_empty() { title } else { text }, "text": text,
-            "action": infer_button_action(id, class, title, text)
-        }));
-    }
-
-    // 解析输入框
-    for cap in RE_INPUT.captures_iter(html) {
-        let id = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        let input_type = cap.get(2).map(|m| m.as_str()).unwrap_or("text");
-        let placeholder = cap.get(3).map(|m| m.as_str()).unwrap_or("");
-
-        inputs.push(json!({
-            "type": "input", "inputType": input_type, "id": id, "placeholder": placeholder,
-            "purpose": infer_input_purpose(id, input_type, placeholder)
-        }));
-    }
-
-    // 解析表单
-    for cap in RE_FORM.captures_iter(html) {
-        let id = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        let action = cap.get(2).map(|m| m.as_str()).unwrap_or("");
-        forms.push(json!({ "type": "form", "id": id, "action": action }));
-    }
-
-    // 解析链接
-    for cap in RE_LINK.captures_iter(html) {
-        let href = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        let text = cap.get(2).map(|m| m.as_str()).unwrap_or("").trim();
-        links.push(json!({ "type": "link", "href": href, "text": text }));
-    }
-
-    // 解析其他可交互元素
-    for cap in RE_ONCLICK.captures_iter(html) {
-        let tag = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        let onclick = cap.get(2).map(|m| m.as_str()).unwrap_or("");
-        let id = cap.get(3).map(|m| m.as_str()).unwrap_or("");
-
-        if tag != "button" && tag != "a" {
-            interactive.push(json!({
-                "type": tag, "id": id, "onclick": onclick, "action": extract_function_name(onclick)
-            }));
-        }
-    }
-
-    match filter {
-        "buttons" => json!({ "buttons": buttons }),
-        "inputs" => json!({ "inputs": inputs }),
-        "forms" => json!({ "forms": forms }),
-        "interactive" => {
-            json!({ "buttons": buttons, "inputs": inputs, "interactive": interactive })
-        }
-        _ => json!({
-            "buttons": buttons, "inputs": inputs, "forms": forms, "links": links, "interactive": interactive,
-            "summary": { "totalButtons": buttons.len(), "totalInputs": inputs.len(), "totalForms": forms.len(), "totalLinks": links.len() }
-        }),
-    }
-}
-
-/// 从按钮属性推断操作
-fn infer_button_action(id: &str, class: &str, title: &str, text: &str) -> String {
-    let combined = format!("{} {} {} {}", id, class, title, text).to_lowercase();
-
-    if combined.contains("send") || combined.contains("submit") || combined.contains("发送") {
-        "submit".to_string()
-    } else if combined.contains("add") || combined.contains("新增") || combined.contains("添加")
-    {
-        "add".to_string()
-    } else if combined.contains("delete")
-        || combined.contains("remove")
-        || combined.contains("删除")
-    {
-        "delete".to_string()
-    } else if combined.contains("search") || combined.contains("搜索") {
-        "search".to_string()
-    } else if combined.contains("edit") || combined.contains("编辑") {
-        "edit".to_string()
-    } else if combined.contains("save") || combined.contains("保存") {
-        "save".to_string()
-    } else if combined.contains("cancel") || combined.contains("取消") {
-        "cancel".to_string()
-    } else if combined.contains("close") || combined.contains("关闭") {
-        "close".to_string()
-    } else {
-        "click".to_string()
-    }
-}
-
-/// 从输入框属性推断用途
-fn infer_input_purpose(id: &str, input_type: &str, placeholder: &str) -> String {
-    let combined = format!("{} {} {}", id, input_type, placeholder).to_lowercase();
-
-    if combined.contains("search") || combined.contains("搜索") {
-        "search".to_string()
-    } else if combined.contains("password") || combined.contains("密码") {
-        "password".to_string()
-    } else if combined.contains("email") || combined.contains("邮箱") {
-        "email".to_string()
-    } else if combined.contains("name") || combined.contains("姓名") {
-        "name".to_string()
-    } else if combined.contains("note") || combined.contains("笔记") {
-        "note".to_string()
-    } else {
-        "text".to_string()
-    }
-}
-
-/// 解析 JS 函数
-fn parse_js_functions(js: &str) -> Vec<Value> {
-    let mut functions = vec![];
-
-    for cap in RE_JS_FUNC.captures_iter(js) {
-        let name = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        if !name.is_empty() && !name.starts_with('_') {
-            functions.push(json!({ "name": name, "type": "function", "purpose": infer_function_purpose(name) }));
-        }
-    }
-
-    let mut tapp_apis: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for cap in RE_TAPP_API.captures_iter(js) {
-        let module = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        let method = cap.get(2).map(|m| m.as_str()).unwrap_or("");
-        tapp_apis.insert(format!("Tapp.{}.{}", module, method));
-    }
-
-    for api in tapp_apis {
-        functions.push(json!({ "name": api.clone(), "type": "tapp_api", "purpose": infer_tapp_api_purpose(&api) }));
-    }
-
-    functions
-}
-
-/// 解析 JS 事件绑定
-fn parse_js_events(js: &str) -> Vec<Value> {
-    let mut events = vec![];
-
-    let event_re = &*RE_ADDEVENT;
-    for cap in event_re.captures_iter(js) {
-        let event_type = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        events.push(json!({ "type": event_type, "binding": "addEventListener" }));
-    }
-
-    let on_re = &*RE_ON_PROP;
-    for cap in on_re.captures_iter(js) {
-        let event_type = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        events.push(json!({ "type": event_type, "binding": "property" }));
-    }
-
-    events
-}
-
-/// 解析 i18n 配置
-fn parse_i18n(js: &str) -> Value {
-    let mut languages = vec![];
-    let mut sample_keys = vec![];
-
-    // 检测支持的语言
-    if js.contains("'zh-CN'") || js.contains("\"zh-CN\"") {
-        languages.push("zh-CN");
-    }
-    if js.contains("'en-US'") || js.contains("\"en-US\"") {
-        languages.push("en-US");
-    }
-    if js.contains("'ja-JP'") || js.contains("\"ja-JP\"") {
-        languages.push("ja-JP");
-    }
-
-    // 提取一些 i18n 键名
-    for (i, cap) in RE_I18N_KEY.captures_iter(js).enumerate() {
-        if i >= 10 {
-            break;
-        } // 只取前 10 个
-        let key = cap.get(1).map(|m| m.as_str()).unwrap_or("");
-        if !key.is_empty() {
-            sample_keys.push(key.to_string());
-        }
-    }
-
-    json!({
-        "supported": !languages.is_empty(),
-        "languages": languages,
-        "sampleKeys": sample_keys
-    })
-}
-
-fn infer_function_purpose(name: &str) -> String {
-    let lower = name.to_lowercase();
-    if lower.contains("init") {
-        "initialization".to_string()
-    } else if lower.contains("render") {
-        "rendering".to_string()
-    } else if lower.contains("update") {
-        "update".to_string()
-    } else if lower.contains("add") {
-        "add_item".to_string()
-    } else if lower.contains("delete") {
-        "delete_item".to_string()
-    } else if lower.contains("save") {
-        "save_data".to_string()
-    } else if lower.contains("load") {
-        "load_data".to_string()
-    } else {
-        "utility".to_string()
-    }
-}
-
-fn infer_tapp_api_purpose(api: &str) -> String {
-    if api.contains("storage") {
-        "data_persistence".to_string()
-    } else if api.contains("ui") {
-        "user_interface".to_string()
-    } else if api.contains("lifecycle") {
-        "lifecycle_management".to_string()
-    } else {
-        "api_call".to_string()
-    }
-}
-
-fn extract_function_name(onclick: &str) -> String {
-    RE_FUNC_NAME
-        .captures(onclick)
-        .and_then(|c| c.get(1))
-        .map(|m| m.as_str().to_string())
-        .unwrap_or_else(|| "inline".to_string())
-}
-
-/// 生成建议操作
-fn generate_suggested_actions(elements: &Value, _functions: &[Value]) -> Vec<Value> {
-    let mut actions = vec![];
-
-    if let Some(buttons) = elements.get("buttons").and_then(|b| b.as_array()) {
-        for btn in buttons {
-            let id = btn.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let action = btn
-                .get("action")
-                .and_then(|v| v.as_str())
-                .unwrap_or("click");
-            let title = btn.get("title").and_then(|v| v.as_str()).unwrap_or("");
-
-            if !id.is_empty() {
-                actions.push(json!({
-                    "action": format!("click_{}", action),
-                    "target": id,
-                    "description": format!("点击 {} 按钮", if !title.is_empty() { title } else { id }),
-                    "command": format!("document.getElementById('{}').click()", id)
-                }));
-            }
-        }
-    }
-
-    if let Some(inputs) = elements.get("inputs").and_then(|i| i.as_array()) {
-        for input in inputs {
-            let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            let purpose = input
-                .get("purpose")
-                .and_then(|v| v.as_str())
-                .unwrap_or("text");
-
-            if !id.is_empty() {
-                actions.push(json!({
-                    "action": format!("input_{}", purpose),
-                    "target": id,
-                    "description": format!("在 {} 中输入内容", id),
-                    "command": format!("document.getElementById('{}').value = '{{text}}'", id)
-                }));
-            }
-        }
-    }
-
-    actions
-}
-
-/// 从 AI 响应中提取 JSON
-fn extract_json_from_response(response: &str) -> Option<String> {
-    if let Some(start) = response.find("```json") {
-        if let Some(end) = response[start..]
-            .find("```\n")
-            .or_else(|| response[start..].rfind("```"))
-        {
-            let json_start = start + 7;
-            let json_content = &response[json_start..start + end];
-            return Some(json_content.trim().to_string());
-        }
-    }
-
-    if response.trim().starts_with('{') {
-        return Some(response.trim().to_string());
-    }
-
-    if let (Some(start), Some(end)) = (response.find('{'), response.rfind('}')) {
-        if end > start {
-            return Some(response[start..=end].to_string());
-        }
-    }
-
-    None
-}
-
-/// 检测页面类型
-fn detect_page_type(path: &str) -> &'static str {
-    let path_lower = path.to_lowercase();
-
-    if path_lower == "/" || path_lower == "/home" {
-        "home"
-    } else if path_lower.starts_with("/platform")
-        || path_lower.starts_with("/bilibili")
-        || path_lower.starts_with("/steam")
-        || path_lower.starts_with("/github")
-        || path_lower.starts_with("/netease")
-    {
-        "platform"
-    } else if path_lower.starts_with("/brew") {
-        "brew"
-    } else if path_lower.starts_with("/tapp") {
-        "tapp"
-    } else if path_lower.starts_with("/report") {
-        "report"
-    } else if path_lower.starts_with("/settings") || path_lower.starts_with("/config") {
-        "settings"
-    } else if path_lower.starts_with("/profile") || path_lower.starts_with("/user") {
-        "profile"
-    } else {
-        "other"
-    }
-}
-
-/// 获取页面名称
-fn get_page_name(path: &str, page_type: &str) -> String {
-    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-
-    match page_type {
-        "home" => "首页".to_string(),
-        "platform" => {
-            if let Some(platform) = segments.get(1).or(segments.first()) {
-                match platform.to_lowercase().as_str() {
-                    "bilibili" | "bili" => "哔哩哔哩".to_string(),
-                    "steam" => "Steam 游戏".to_string(),
-                    "github" => "GitHub 活动".to_string(),
-                    "netease" => "网易云音乐".to_string(),
-                    _ => format!("{} 数据", platform),
-                }
-            } else {
-                "平台数据".to_string()
-            }
-        }
-        "brew" => {
-            if segments.len() > 1 {
-                "订阅详情".to_string()
-            } else {
-                "信息聚合".to_string()
-            }
-        }
-        "tapp" => {
-            if segments.len() > 1 {
-                "Tapp 详情".to_string()
-            } else {
-                "Tapp 工坊".to_string()
-            }
-        }
-        "report" => "数据报告".to_string(),
-        "settings" => "系统设置".to_string(),
-        "profile" => "个人中心".to_string(),
-        _ => "页面".to_string(),
-    }
-}
-
-/// 从路由中提取上下文信息
-fn extract_route_context(path: &str, params: &HashMap<String, Value>) -> Value {
-    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-    let page_type = detect_page_type(path);
-
-    let mut context = json!({
-        "platform": null,
-        "itemId": null,
-        "viewMode": "list",
-        "filters": {}
-    });
-
-    // 提取平台信息
-    if page_type == "platform" {
-        if let Some(platform) = segments.get(1).or(segments.first()) {
-            let platform_lower = platform.to_lowercase();
-            if [
-                "bilibili",
-                "bangumi",
-                "steam",
-                "github",
-                "netease",
-                "mal",
-                "x",
-                "discord",
-                "xbox",
-                "psn",
-                "playstation",
-            ]
-            .contains(&platform_lower.as_str())
-            {
-                context["platform"] = json!(platform_lower);
-            }
-        }
-
-        // 检查是否有详情页 ID
-        if let Some(item_id) = segments.get(2) {
-            context["itemId"] = json!(item_id);
-            context["viewMode"] = json!("detail");
-        }
-    }
-
-    // 从参数中提取视图模式
-    if let Some(view_mode) = params.get("viewMode").and_then(|v| v.as_str()) {
-        context["viewMode"] = json!(view_mode);
-    }
-
-    // 从参数中提取筛选条件
-    if let Some(filters) = params.get("filters") {
-        context["filters"] = filters.clone();
-    }
-
-    context
-}
-
-/// 构建面包屑导航
-fn build_breadcrumb(path: &str) -> Vec<String> {
-    let mut breadcrumb = vec!["首页".to_string()];
-    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
-
-    for (i, segment) in segments.iter().enumerate() {
-        let name = match segment.to_lowercase().as_str() {
-            "platform" | "platforms" => "平台数据".to_string(),
-            "bilibili" | "bili" => "哔哩哔哩".to_string(),
-            "steam" => "Steam".to_string(),
-            "github" => "GitHub".to_string(),
-            "netease" => "网易云音乐".to_string(),
-            "brew" => "信息聚合".to_string(),
-            "tapp" | "tapps" => "Tapp 工坊".to_string(),
-            "report" | "reports" => "数据报告".to_string(),
-            "settings" => "设置".to_string(),
-            "profile" => "个人中心".to_string(),
-            "detail" | "details" => "详情".to_string(),
-            _ => {
-                // 如果是 ID 或其他内容，检查是否是最后一个
-                if i == segments.len() - 1 && segment.len() > 8 {
-                    "详情".to_string()
-                } else {
-                    segment.to_string()
-                }
-            }
-        };
-
-        if name != "首页" {
-            breadcrumb.push(name);
-        }
-    }
-
-    breadcrumb
-}
-
-// ============================================================================
 // 路由状态和音乐控制
 // ============================================================================
 
@@ -1671,7 +1086,7 @@ async fn execute_router_state(params: &HashMap<String, Value>) -> Result<Value, 
         "pageType": page_type,
         "context": context,
         "breadcrumb": breadcrumb,
-        "canGoBack": current_path != "/" && current_path != "/home",
+        "canGoBack": router_can_go_back(current_path),
         "timestamp": chrono::Utc::now().to_rfc3339()
     }))
 }
@@ -1683,91 +1098,25 @@ async fn execute_music_control(params: &HashMap<String, Value>) -> Result<Value,
         .and_then(|v| v.as_str())
         .ok_or("缺少 action 参数（play/pause/next/previous/volume/mute/unmute）")?;
 
+    let volume = params.get("volume").and_then(|v| v.as_f64());
+    let position = params.get("position").and_then(|v| v.as_f64());
+    let normalized = normalize_music_control(action, volume, position)?;
     let timestamp = chrono::Utc::now().timestamp_millis();
 
-    let frontend_action = match action {
-        "play" | "pause" | "toggle" => {
-            json!({
-                "type": "music_control",
-                "action": if action == "toggle" { "toggle-play-pause" } else { action },
-                "timestamp": timestamp
-            })
-        }
-        "next" => {
-            json!({
-                "type": "music_control",
-                "action": "next",
-                "timestamp": timestamp
-            })
-        }
-        "previous" => {
-            json!({
-                "type": "music_control",
-                "action": "previous",
-                "timestamp": timestamp
-            })
-        }
-        "volume" => {
-            let volume = params
-                .get("volume")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(50.0);
-            json!({
-                "type": "music_control",
-                "action": "volume",
-                "value": volume / 100.0,
-                "timestamp": timestamp
-            })
-        }
-        "mute" => {
-            json!({
-                "type": "music_control",
-                "action": "mute",
-                "value": true,
-                "timestamp": timestamp
-            })
-        }
-        "unmute" => {
-            json!({
-                "type": "music_control",
-                "action": "mute",
-                "value": false,
-                "timestamp": timestamp
-            })
-        }
-        "seek" => {
-            let position = params
-                .get("position")
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
-            json!({
-                "type": "music_control",
-                "action": "seek",
-                "value": position,
-                "timestamp": timestamp
-            })
-        }
-        _ => {
-            return Err(format!("Unknown music control action: {}", action));
-        }
-    };
+    let mut frontend_action = json!({
+        "type": "music_control",
+        "action": normalized.action,
+        "timestamp": timestamp
+    });
+    if let Some(value) = normalized.value {
+        frontend_action["value"] = value;
+    }
 
     Ok(json!({
         "success": true,
         "action": action,
         "frontendAction": frontend_action,
-        "message": match action {
-            "play" => "正在播放音乐",
-            "pause" => "已暂停播放",
-            "toggle" => "切换播放状态",
-            "next" => "切换到下一首",
-            "previous" => "切换到上一首",
-            "volume" => "已调节音量",
-            "mute" => "已静音",
-            "unmute" => "已取消静音",
-            "seek" => "已跳转播放位置",
-            _ => "操作完成"
-        }
+        "message": normalized.message
     }))
 }
 
@@ -1786,20 +1135,9 @@ async fn execute_music_status() -> Result<Value, String> {
 
 /// 加载并播放歌单
 async fn execute_music_playlist(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let playlist_id = params.get("playlistId").and_then(|v| {
-        if let Some(s) = v.as_str() {
-            if !s.is_empty() {
-                Some(s.to_string())
-            } else {
-                None
-            }
-        } else if let Some(n) = v.as_i64() {
-            Some(n.to_string())
-        } else {
-            v.as_u64().map(|n| n.to_string())
-        }
-    });
-
+    let playlist_id = params
+        .get("playlistId")
+        .and_then(parse_playlist_id_param);
     let playlist_id = match playlist_id {
         Some(id) => id,
         None => {

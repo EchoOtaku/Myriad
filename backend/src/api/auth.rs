@@ -2,6 +2,7 @@
 //!
 //! GitHub/OIDC login is handled by `api::oauth` via `/api/auth/oauth/:slug/*`.
 
+use crate::error::HttpError;
 use axum::{
     http::{header, HeaderMap, HeaderValue, StatusCode},
     response::IntoResponse,
@@ -52,7 +53,7 @@ fn extract_auth_token(headers: &HeaderMap) -> Option<&str> {
 pub async fn get_current_user(
     crate::extract::Db(db): crate::extract::Db,
     headers: HeaderMap,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     let Some(token) = extract_auth_token(&headers) else {
         return Ok(Json(unauthenticated_me_body()));
     };
@@ -122,10 +123,10 @@ pub async fn get_current_user(
     {
         Ok(row) => row,
         Err(_) => {
-            return Err((
+            return Err(HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Database error"})),
-            ));
+            )));
         }
     };
 
@@ -197,15 +198,28 @@ pub async fn get_current_user(
     })))
 }
 
+/// Build the Set-Cookie value that clears `auth_token`.
+///
+/// Must match issuance attributes (`auth_local` / OAuth): `SameSite=Lax`,
+/// `Path=/`, `HttpOnly`, and `Secure` when production — mismatched attributes
+/// prevent browsers from clearing the session cookie.
+pub fn logout_clear_cookie_value(is_production: bool) -> String {
+    format!(
+        "auth_token=deleted; Path=/; HttpOnly; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT{}",
+        if is_production { "; Secure" } else { "" }
+    )
+}
+
 /// `POST /api/auth/logout`
 pub async fn logout() -> impl IntoResponse {
     tracing::info!("🚪 User logout - clearing auth cookie");
-    const COOKIE_VALUE: &str = "auth_token=deleted; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    let is_production = crate::oauth_url_builder::SiteConfig::is_production().await;
+    let cookie_value = logout_clear_cookie_value(is_production);
     let mut response =
         Json(json!({"success": true, "message": "Logged out successfully"})).into_response();
-    response
-        .headers_mut()
-        .insert(header::SET_COOKIE, HeaderValue::from_static(COOKIE_VALUE));
+    if let Ok(value) = HeaderValue::from_str(&cookie_value) {
+        response.headers_mut().insert(header::SET_COOKIE, value);
+    }
     response
 }
 
@@ -239,5 +253,22 @@ mod auth_me_probe_tests {
             HeaderValue::from_static("other=1; auth_token=cookie.jwt.sig; x=y"),
         );
         assert_eq!(extract_auth_token(&cookie_only), Some("cookie.jwt.sig"));
+    }
+
+    #[test]
+    fn logout_clear_cookie_matches_issuance_samesite_lax_and_secure_flag() {
+        let dev = logout_clear_cookie_value(false);
+        assert!(dev.contains("auth_token=deleted"));
+        assert!(dev.contains("Path=/"));
+        assert!(dev.contains("HttpOnly"));
+        assert!(dev.contains("SameSite=Lax"));
+        assert!(dev.contains("Max-Age=0"));
+        assert!(!dev.contains("Secure"));
+        assert!(!dev.contains("SameSite=Strict"));
+
+        let prod = logout_clear_cookie_value(true);
+        assert!(prod.contains("SameSite=Lax"));
+        assert!(prod.contains("; Secure"));
+        assert!(!prod.contains("SameSite=Strict"));
     }
 }

@@ -333,24 +333,15 @@ impl TencentSpeechService {
         })
     }
 
-    /// 创建HTTP客户端
-    fn create_client(proxy_config: &ProxyConfig) -> Result<Client, TencentSpeechError> {
-        let mut builder = Client::builder()
+    /// 创建HTTP客户端（含 proxy + NoProxy bypass，与全局 HTTP 客户端一致）
+    pub(crate) fn create_client(proxy_config: &ProxyConfig) -> Result<Client, TencentSpeechError> {
+        let builder = Client::builder()
             .timeout(Duration::from_secs(60))
             .connect_timeout(Duration::from_secs(30))
             .user_agent("Myriad/1.0");
 
-        if proxy_config.should_use_proxy() {
-            if let Some(proxy_url) = &proxy_config.proxy_url {
-                builder = builder.proxy(
-                    reqwest::Proxy::all(proxy_url)
-                        .map_err(|e| TencentSpeechError::NetworkError(e.to_string()))?,
-                );
-            }
-        }
-
-        builder
-            .build()
+        crate::services::http_client::apply_proxy(builder, proxy_config)
+            .and_then(|b| b.build())
             .map_err(|e| TencentSpeechError::NetworkError(e.to_string()))
     }
 
@@ -783,5 +774,23 @@ mod tests {
         assert_eq!(request.eng_ser_vice_type, "16k_zh");
         assert_eq!(request.source_type, 1);
         assert_eq!(request.voice_format, "wav");
+    }
+
+    #[test]
+    fn create_client_honors_proxy_and_noproxy_bypass() {
+        let config = ProxyConfig {
+            enabled: true,
+            proxy_url: Some("http://127.0.0.1:9".to_string()),
+            bypass_list: vec!["localhost".into(), "127.0.0.1".into(), "tencentcloudapi.com".into()],
+        };
+        TencentSpeechService::create_client(&config).expect("proxy client with NoProxy");
+        let direct = ProxyConfig { enabled: false, proxy_url: None, bypass_list: vec![] };
+        TencentSpeechService::create_client(&direct).expect("direct client");
+    }
+
+    #[test]
+    fn analyzer_and_tencent_source_wire_apply_proxy() {
+        assert!(include_str!("analyzer.rs").contains("apply_proxy"));
+        assert!(include_str!("tencent_speech_service.rs").contains("apply_proxy"));
     }
 }

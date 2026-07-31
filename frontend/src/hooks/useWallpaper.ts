@@ -191,7 +191,71 @@ function isStaticImageUrl(url: string): boolean {
 }
 
 /**
- * 获取实际的图片URL（处理重定向）
+ * 从常见图床 / 随机图 API 的 JSON 中抽出图片 URL。
+ * 支持：url / image / img / src / pic / data.url / images[0].url 等。
+ */
+function extractImageUrlFromJson(data: unknown): string | null {
+  if (!data || typeof data !== 'object') return null
+  const obj = data as Record<string, unknown>
+
+  const tryString = (v: unknown): string | null => {
+    if (typeof v !== 'string') return null
+    const s = v.trim()
+    if (!s) return null
+    if (
+      s.startsWith('http://') ||
+      s.startsWith('https://') ||
+      s.startsWith('//') ||
+      s.startsWith('data:image/')
+    ) {
+      return s.startsWith('//') ? `https:${s}` : s
+    }
+    return null
+  }
+
+  for (const key of [
+    'url',
+    'image',
+    'img',
+    'src',
+    'pic',
+    'photo',
+    'image_url',
+    'imgurl',
+    'img_url',
+  ]) {
+    const hit = tryString(obj[key])
+    if (hit) return hit
+  }
+
+  // nested: data.url / data.image / result.url
+  for (const nestKey of ['data', 'result', 'payload', 'images']) {
+    const nested = obj[nestKey]
+    if (Array.isArray(nested) && nested.length > 0) {
+      const first = nested[0]
+      if (typeof first === 'string') {
+        const hit = tryString(first)
+        if (hit) return hit
+      }
+      if (first && typeof first === 'object') {
+        const fromFirst = extractImageUrlFromJson(first)
+        if (fromFirst) return fromFirst
+      }
+    }
+    if (nested && typeof nested === 'object') {
+      const fromNest = extractImageUrlFromJson(nested)
+      if (fromNest) return fromNest
+    }
+  }
+
+  return null
+}
+
+/**
+ * 获取实际的图片 URL：
+ * 1) HEAD 跟随 302 重定向
+ * 2) 若响应像 JSON 图床 API，GET 并解析常见字段（url/image/img/...）
+ * 3) 失败则回退原始 URL
  */
 async function resolveImageUrl(
   apiUrl: string,
@@ -204,12 +268,67 @@ async function resolveImageUrl(
     : apiUrl
 
   try {
-    const response = await fetch(url, { method: 'HEAD' })
-    return response.url
+    // Prefer HEAD for pure redirect chains (cheap).
+    const head = await fetch(url, { method: 'HEAD', redirect: 'follow' })
+    const contentType = head.headers.get('content-type') || ''
+    if (contentType.includes('image/')) {
+      return head.url || url
+    }
+    // 非图片：可能是 JSON 图床或 text；改 GET 解析
+    if (
+      contentType.includes('json') ||
+      contentType.includes('text/') ||
+      !contentType
+    ) {
+      const getResp = await fetch(url, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: { Accept: 'application/json, image/*, */*' },
+      })
+      const getType = getResp.headers.get('content-type') || ''
+      if (getType.includes('image/')) {
+        return getResp.url || url
+      }
+      if (getType.includes('json') || getType.includes('text/')) {
+        const text = await getResp.text()
+        try {
+          const data = JSON.parse(text)
+          const extracted = extractImageUrlFromJson(data)
+          if (extracted) return extracted
+        } catch {
+          // not JSON — fall through
+        }
+      }
+      // HEAD 已跟随重定向到最终 URL 时可用
+      if (head.url && head.url !== url) return head.url
+    } else if (head.url) {
+      return head.url
+    }
   } catch {
-    // 如果HEAD请求失败，返回原始URL
-    return url
+    // HEAD 失败：尝试 GET JSON
+    try {
+      const getResp = await fetch(url, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: { Accept: 'application/json, image/*, */*' },
+      })
+      const getType = getResp.headers.get('content-type') || ''
+      if (getType.includes('image/')) return getResp.url || url
+      const text = await getResp.text()
+      try {
+        const data = JSON.parse(text)
+        const extracted = extractImageUrlFromJson(data)
+        if (extracted) return extracted
+      } catch {
+        /* ignore */
+      }
+      if (getResp.url) return getResp.url
+    } catch {
+      /* ignore */
+    }
   }
+
+  return url
 }
 
 /**
@@ -418,6 +537,13 @@ let pendingLoadWallpaper: Promise<LoadWallpaperResult | null> | null = null
 let lastLoadTimestamp = 0
 const LOAD_DEBOUNCE_MS = 1000 // 1秒内的重复调用直接返回上次结果
 let lastLoadResult: LoadWallpaperResult | null = null
+
+/** Drop debounce cache so config save → wallpaperConfigChanged always reloads. */
+export function invalidateWallpaperLoadCache(): void {
+  lastLoadResult = null
+  lastLoadTimestamp = 0
+  pendingLoadWallpaper = null
+}
 
 /**
  * 壁纸管理 Hook

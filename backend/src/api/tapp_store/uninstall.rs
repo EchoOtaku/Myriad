@@ -6,7 +6,6 @@ use super::{
 };
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     Extension, Json,
 };
 use sea_orm::{
@@ -14,11 +13,18 @@ use sea_orm::{
     Statement, TransactionTrait,
 };
 use serde::Deserialize;
-use std::path::PathBuf;
 use tokio::fs;
 
 use crate::middleware::auth::Claims;
 use crate::models::entities::{tapp_storage, tapp_widgets, tapps};
+use crate::services::tapp_lifecycle::{
+    select_uninstall_target, uninstall_quarantine_dir_name, UninstallTarget,
+};
+use crate::error::HttpError;
+use myriad_error::AppError;
+
+// Path-stable re-export for handlers + manifest_tests / parent crate test imports.
+pub(super) use crate::services::tapp_lifecycle::uninstall_post_commit_cleanup_path;
 
 /// 卸载 Tapp 查询参数
 #[derive(Debug, Deserialize)]
@@ -44,9 +50,9 @@ pub(super) async fn uninstall_tapp(
     Extension(claims): Extension<Claims>,
     Path(tapp_id): Path<String>,
     Query(query): Query<UninstallTappQuery>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-    validate_tapp_id(&tapp_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<Json<ApiResponse<()>>, HttpError> {
+    let user_id: i32 = claims.sub.parse().map_err(|_| HttpError(AppError::unauthorized("Unauthorized")))?;
+    validate_tapp_id(&tapp_id).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
     let keep_data = query.keep_data;
 
     // 1. Prefer the caller's own install (private or site-owner public under their id).
@@ -55,46 +61,38 @@ pub(super) async fn uninstall_tapp(
         .filter(tapps::Column::TappId.eq(&tapp_id))
         .one(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if let Some(tapp) = own_tapp {
-        return do_uninstall_tapp(&db, &tapp, keep_data).await;
-    }
+        .map_err(|_| HttpError(AppError::internal("Database error")))?;
 
-    // 2. Site-owner public install only (other admins may remove it; non-admins get 403).
-    if let Some(site_owner_id) = find_admin_user_id(&db).await? {
-        if site_owner_id != user_id {
-            let public_tapp = tapps::Entity::find()
-                .filter(tapps::Column::UserId.eq(site_owner_id))
-                .filter(tapps::Column::TappId.eq(&tapp_id))
-                .one(&db)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            if let Some(tapp) = public_tapp {
-                require_current_admin(&claims).await?;
-                return do_uninstall_tapp(&db, &tapp, keep_data).await;
+    // 2. Site-owner public install only when own row is missing (other admins may
+    // remove it; non-admins get 403 after target resolution).
+    let public_tapp = if own_tapp.is_none() {
+        if let Some(site_owner_id) = find_admin_user_id(&db).await? {
+            if site_owner_id != user_id {
+                tapps::Entity::find()
+                    .filter(tapps::Column::UserId.eq(site_owner_id))
+                    .filter(tapps::Column::TappId.eq(&tapp_id))
+                    .one(&db)
+                    .await
+                    .map_err(|_| HttpError(AppError::internal("Database error")))?
+            } else {
+                None
             }
+        } else {
+            None
         }
-    }
-
-    // 3. Nothing to uninstall.
-    Err(StatusCode::NOT_FOUND)
-}
-
-/// After a successful uninstall DB commit, choose which filesystem path to delete.
-///
-/// Prefer the quarantine directory when rename succeeded; otherwise fall back to
-/// the live install dir so a failed rename never blocks uninstall completion.
-pub(super) fn uninstall_post_commit_cleanup_path(
-    quarantined_dir: Option<PathBuf>,
-    live_tapp_dir: PathBuf,
-    live_dir_exists: bool,
-) -> Option<PathBuf> {
-    if let Some(quarantine) = quarantined_dir {
-        Some(quarantine)
-    } else if live_dir_exists {
-        Some(live_tapp_dir)
     } else {
         None
+    };
+
+    match select_uninstall_target(own_tapp.is_some(), public_tapp.is_some()) {
+        UninstallTarget::OwnInstall => {
+            do_uninstall_tapp(&db, &own_tapp.expect("own install"), keep_data).await
+        }
+        UninstallTarget::PublicRequiresAdmin => {
+            require_current_admin(&claims, &db).await?;
+            do_uninstall_tapp(&db, &public_tapp.expect("public install"), keep_data).await
+        }
+        UninstallTarget::NotFound => Err(HttpError(AppError::not_found("Not found"))),
     }
 }
 
@@ -110,18 +108,18 @@ async fn do_uninstall_tapp(
     db: &DatabaseConnection,
     tapp: &tapps::Model,
     keep_data: bool,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
+) -> Result<Json<ApiResponse<()>>, HttpError> {
     let user_id = tapp.user_id;
     let tapp_id = &tapp.tapp_id;
     let is_public_install = find_admin_user_id(db).await? == Some(user_id);
 
     let txn = db.begin().await.map_err(|error| {
         tracing::error!(tapp_id, user_id, %error, "Failed to begin uninstall transaction");
-        StatusCode::INTERNAL_SERVER_ERROR
+        HttpError(AppError::internal("Database error"))
     })?;
     lock_tapp_lifecycle(&txn, tapp_id).await.map_err(|error| {
         tracing::error!(tapp_id, user_id, %error, "Failed to acquire tapp lifecycle lock");
-        StatusCode::INTERNAL_SERVER_ERROR
+        HttpError(AppError::internal("Database error"))
     })?;
     let still_installed = tapps::Entity::find_by_id(tapp.id)
         .filter(tapps::Column::UserId.eq(user_id))
@@ -130,28 +128,27 @@ async fn do_uninstall_tapp(
         .await
         .map_err(|error| {
             tracing::error!(tapp_id, user_id, %error, "Failed to re-check tapp install under lock");
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError(AppError::internal("Database error"))
         })?
         .is_some();
     if !still_installed {
         txn.rollback().await.ok();
-        return Err(StatusCode::NOT_FOUND);
+        return Err(HttpError(AppError::not_found("Not found")));
     }
 
-    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(tapp_id).await;
+    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(db, tapp_id).await;
 
     // Prefer moving files out of the live path so a failed DB cleanup can restore
     // them. Rename failures (permissions, busy mount, EXDEV) must not abort
     // uninstall — DB cleanup still proceeds and post-commit best-effort deletes
     // either the quarantine path or the live directory.
-    let tapp_dir = tapp_dir_for(user_id, tapp_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let tapp_dir = tapp_dir_for(user_id, tapp_id).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
     let quarantined_dir = if !tapp_dir.exists() {
         None
     } else if let Some(parent) = tapp_dir.parent() {
-        let quarantine = parent.join(format!(
-            ".{}.uninstall-{}",
+        let quarantine = parent.join(uninstall_quarantine_dir_name(
             tapp_id,
-            uuid::Uuid::new_v4().simple()
+            &uuid::Uuid::new_v4().simple().to_string(),
         ));
         match fs::rename(&tapp_dir, &quarantine).await {
             Ok(()) => Some(quarantine),
@@ -177,7 +174,7 @@ async fn do_uninstall_tapp(
         None
     };
 
-    let cleanup_result: Result<(), StatusCode> = async {
+    let cleanup_result: Result<(), HttpError> = async {
         if is_public_install {
             txn.execute(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -206,7 +203,7 @@ async fn do_uninstall_tapp(
             .await
             .map_err(|error| {
                 tracing::error!(tapp_id, user_id, %error, "Failed to delete public-install widgets on uninstall");
-                StatusCode::INTERNAL_SERVER_ERROR
+                HttpError(AppError::internal("Database error"))
             })?;
         } else {
             tapp_widgets::Entity::delete_many()
@@ -216,7 +213,7 @@ async fn do_uninstall_tapp(
                 .await
                 .map_err(|error| {
                     tracing::error!(tapp_id, user_id, %error, "Failed to delete private-install widgets on uninstall");
-                    StatusCode::INTERNAL_SERVER_ERROR
+                    HttpError(AppError::internal("Database error"))
                 })?;
         }
 
@@ -228,7 +225,7 @@ async fn do_uninstall_tapp(
                 .await
                 .map_err(|error| {
                     tracing::error!(tapp_id, user_id, %error, "Failed to delete tapp storage on uninstall");
-                    StatusCode::INTERNAL_SERVER_ERROR
+                    HttpError(AppError::internal("Database error"))
                 })?;
         }
 
@@ -250,7 +247,7 @@ async fn do_uninstall_tapp(
         .await
         .map_err(|error| {
             tracing::error!(tapp_id, user_id, %error, "Failed to delete task executions on uninstall");
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError(AppError::internal("Database error"))
         })?;
         txn.execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -260,14 +257,14 @@ async fn do_uninstall_tapp(
         .await
         .map_err(|error| {
             tracing::error!(tapp_id, user_id, %error, "Failed to delete scheduled tasks on uninstall");
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError(AppError::internal("Database error"))
         })?;
         tapps::Entity::delete_by_id(tapp.id)
             .exec(&txn)
             .await
             .map_err(|error| {
                 tracing::error!(tapp_id, user_id, tapp_row_id = tapp.id, %error, "Failed to delete tapp install row on uninstall");
-                StatusCode::INTERNAL_SERVER_ERROR
+                HttpError(AppError::internal("Database error"))
             })?;
         txn.execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -283,7 +280,7 @@ async fn do_uninstall_tapp(
         .await
         .map_err(|error| {
             tracing::error!(tapp_id, user_id, %error, "Failed to prune orphan activities on uninstall");
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError(AppError::internal("Database error"))
         })?;
         Ok(())
     }
@@ -319,7 +316,7 @@ async fn do_uninstall_tapp(
                 );
             }
         }
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        return Err(HttpError(AppError::internal("Database error")));
     }
 
     // Install row is gone. Best-effort filesystem cleanup must not fail uninstall.
@@ -395,11 +392,11 @@ async fn do_uninstall_tapp(
 pub(super) async fn cleanup_temporary_tapps(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
-) -> Result<Json<ApiResponse<i32>>, StatusCode> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
+) -> Result<Json<ApiResponse<i32>>, HttpError> {
+    let user_id: i32 = claims.sub.parse().map_err(|_| HttpError(AppError::unauthorized("Unauthorized")))?;
     // Current administrators operate the canonical public namespace and never
     // receive session-temporary installations.
-    if current_is_admin(&claims).await {
+    if current_is_admin(&claims, &db).await {
         return Ok(Json(ApiResponse::success(0)));
     }
 
@@ -408,7 +405,7 @@ pub(super) async fn cleanup_temporary_tapps(
         .filter(tapps::Column::UserId.eq(user_id))
         .all(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| HttpError(AppError::internal("Database error")))?;
 
     // 删除每个 Tapp（临时 Tapp 不保留数据）
     let mut deleted = 0;

@@ -604,9 +604,11 @@ CREATE TABLE IF NOT EXISTS analytics_event_daily (
     day DATE NOT NULL,
     event_name TEXT NOT NULL,
     path TEXT NOT NULL DEFAULT '',
+    -- 事件维度：tapp id / 平台 slug / 音乐源 / Brew 源 id 等；无维度时 ''
+    target TEXT NOT NULL DEFAULT '',
     count BIGINT NOT NULL DEFAULT 0,
     unique_visitors BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (day, event_name, path)
+    PRIMARY KEY (day, event_name, path, target)
 );
 CREATE INDEX IF NOT EXISTS idx_analytics_event_daily_day
     ON analytics_event_daily (day);
@@ -615,8 +617,9 @@ CREATE TABLE IF NOT EXISTS analytics_event_visitor (
     day DATE NOT NULL,
     event_name TEXT NOT NULL,
     path TEXT NOT NULL DEFAULT '',
+    target TEXT NOT NULL DEFAULT '',
     visitor_hash VARCHAR(64) NOT NULL,
-    PRIMARY KEY (day, event_name, path, visitor_hash)
+    PRIMARY KEY (day, event_name, path, target, visitor_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_analytics_event_visitor_day
     ON analytics_event_visitor (day);

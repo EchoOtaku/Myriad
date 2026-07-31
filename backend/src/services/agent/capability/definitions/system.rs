@@ -97,6 +97,9 @@ pub fn register(registry: &mut CapabilityRegistry) {
         required_permissions: vec!["scheduler:write".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(300),
+        requires_confirmation: true,
+        confirmation_message: Some("即将创建 Tapp 定时任务".to_string()),
+        risk_level: RiskLevel::Medium,
         ..Default::default()
     });
 
@@ -154,6 +157,9 @@ pub fn register(registry: &mut CapabilityRegistry) {
         required_permissions: vec!["scheduler:write".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(1000),
+        requires_confirmation: true,
+        confirmation_message: Some("即将立即触发 Tapp 定时任务".to_string()),
+        risk_level: RiskLevel::Medium,
         ..Default::default()
     });
 
@@ -324,7 +330,8 @@ pub fn register(registry: &mut CapabilityRegistry) {
                 "scope": { "type": "string" }
             }
         }),
-        required_permissions: vec!["system:read".to_string()],
+        // Align with HTTP GET /api/metrics (admin_middleware): process metrics are ops-sensitive.
+        required_permissions: vec!["system:admin".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(100),
         ..Default::default()
@@ -619,6 +626,9 @@ pub fn register(registry: &mut CapabilityRegistry) {
         required_permissions: vec!["task:write".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(100),
+        requires_confirmation: true,
+        confirmation_message: Some("即将提交后台平台数据处理任务".to_string()),
+        risk_level: RiskLevel::Medium,
         ..Default::default()
     });
 

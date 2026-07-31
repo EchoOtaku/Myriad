@@ -10,9 +10,14 @@ const TASKS_CRITICAL: usize = 100; // 任务数超过100时严重告警
 
 /// 获取系统指标（内存、CPU、连接等）
 /// 用于监控和告警
-pub async fn get_metrics() -> impl IntoResponse {
+///
+/// Mounted only under full-mode `AppState` routes. Presence of this handler
+/// implies the process has a wired DB (request State / process registry).
+pub async fn get_metrics(
+    _db: crate::extract::Db,
+) -> impl IntoResponse {
     // 1. 内存使用情况
-    let memory_info = get_memory_info();
+    let memory_info = process_memory_info();
 
     // 2. 后台任务统计
     let task_stats = get_task_stats().await;
@@ -23,8 +28,8 @@ pub async fn get_metrics() -> impl IntoResponse {
     // 4. 配置模式状态
     let config_mode = crate::CONFIG_MODE.load(Ordering::Relaxed);
 
-    // 5. 数据库连接状态
-    let db_connected = crate::DB_CONNECTION.read().await.is_some();
+    // 5. 数据库连接状态 — extract::Db succeeded ⇒ connected for this router.
+    let db_connected = true;
 
     // 6. 告警检查
     let alerts = check_alerts(&memory_info, &task_stats);
@@ -101,94 +106,8 @@ fn check_alerts(
 
 /// Process memory info (cross-platform, best-effort).
 /// Public for agent `system.metrics` and HTTP `/api/metrics`.
-pub fn process_memory_info() -> serde_json::Value {
-    get_memory_info()
-}
-
-/// 获取内存信息（跨平台）
-fn get_memory_info() -> serde_json::Value {
-    #[cfg(target_os = "linux")]
-    {
-        use std::fs;
-
-        // Linux: 读取 /proc/self/status
-        if let Ok(status) = fs::read_to_string("/proc/self/status") {
-            let mut vm_rss = 0u64;
-            let mut vm_size = 0u64;
-
-            for line in status.lines() {
-                if line.starts_with("VmRSS:") {
-                    vm_rss = line
-                        .split_whitespace()
-                        .nth(1)
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(0);
-                } else if line.starts_with("VmSize:") {
-                    vm_size = line
-                        .split_whitespace()
-                        .nth(1)
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(0);
-                }
-            }
-
-            json!({
-                "rss_kb": vm_rss,
-                "rss_mb": vm_rss / 1024,
-                "virtual_kb": vm_size,
-                "virtual_mb": vm_size / 1024,
-                "platform": "linux",
-            })
-        } else {
-            json!({
-                "platform": "linux",
-                "note": "Unable to read /proc/self/status"
-            })
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // Windows: 使用 GetProcessMemoryInfo (需要 winapi crate)
-        // 简化版本：返回基础信息
-        json!({
-            "platform": "windows",
-            "note": "Detailed memory metrics require additional dependencies"
-        })
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        // Cheap RSS via `ps` (KB). Honest limited metric — not full host monitoring.
-        let pid = std::process::id();
-        if let Ok(output) = std::process::Command::new("ps")
-            .args(["-o", "rss=", "-p", &pid.to_string()])
-            .output()
-        {
-            if let Ok(s) = String::from_utf8(output.stdout) {
-                if let Ok(rss_kb) = s.trim().parse::<u64>() {
-                    return json!({
-                        "rss_kb": rss_kb,
-                        "rss_mb": rss_kb / 1024,
-                        "platform": "macos",
-                    });
-                }
-            }
-        }
-        json!({
-            "platform": "macos",
-            "note": "Unable to read process RSS via ps"
-        })
-    }
-
-    #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
-    {
-        json!({
-            "platform": "unknown",
-            "note": "Memory metrics not available"
-        })
-    }
-}
+/// Implementation: workspace crate `myriad-process-info`.
+pub use myriad_process_info::process_memory_info;
 
 /// 获取后台任务统计
 async fn get_task_stats() -> serde_json::Value {

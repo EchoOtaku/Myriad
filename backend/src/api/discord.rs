@@ -7,6 +7,7 @@
 // 复用 OAuth 登录里配置的 Discord Application（client_id/secret），
 // 但 redirect_uri 与 scope 独立，需在 Discord Developer Portal 额外登记 callback。
 
+use crate::error::HttpError;
 use axum::{
     extract::Query,
     http::{header, HeaderMap, HeaderValue, StatusCode},
@@ -26,7 +27,6 @@ use crate::services::fetcher::PlatformFetcher;
 use crate::services::oauth::state::{
     consume_state, issue_state, ConsumeStateError, OAuthPurpose, StoredState,
 };
-use crate::GLOBAL_DYNAMIC_CONFIG;
 
 const DISCORD_AUTHORIZE_URL: &str = "https://discord.com/api/oauth2/authorize";
 const DISCORD_TOKEN_URL: &str = "https://discord.com/api/oauth2/token";
@@ -34,9 +34,45 @@ const DISCORD_TOKEN_URL: &str = "https://discord.com/api/oauth2/token";
 const DISCORD_DATA_SCOPES: &str = "identify guilds connections";
 const PLATFORM_STATE_SLUG: &str = "discord-platform";
 
-#[derive(Debug, Deserialize)]
+/// Query for debug read endpoints. `access_token` must not be supplied (Steam/Bangumi style);
+/// handlers use the server-stored platform token from OAuth.
+#[derive(Debug, Deserialize, Default)]
 pub struct DiscordTokenQuery {
-    pub access_token: String,
+    /// Forbidden in query — leaks into logs/Referer. Use Connect Discord OAuth instead.
+    pub access_token: Option<String>,
+}
+
+/// Reject client-supplied Discord tokens in the query string.
+pub(crate) fn reject_query_access_token(access_token: &Option<String>) -> Result<(), HttpError> {
+    if access_token.as_ref().is_some_and(|k| !k.trim().is_empty()) {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "success": false,
+                "error": "access_token_not_allowed",
+                "message": "Do not pass Discord access tokens in the query string; connect Discord via OAuth so the server stores discord_access_token"
+            })),
+        )));
+    }
+    Ok(())
+}
+
+async fn server_discord_access_token() -> Result<String, HttpError> {
+    let cfg = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+    cfg.discord_access_token
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            HttpError::from((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "success": false,
+                    "error": "discord_token_not_configured",
+                    "message": "Discord platform token not configured. Use Connect Discord (OAuth) in settings."
+                })),
+            ))
+        })
 }
 
 #[derive(Debug, Serialize)]
@@ -96,15 +132,18 @@ fn resolve_discord_oauth_app(config: &DynamicConfig) -> Result<(String, String),
     )
 }
 
-async fn reload_global_config(db: &DatabaseConnection) {
+async fn reload_global_config(
+    db: &DatabaseConnection,
+    dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
+) {
     let svc = ConfigService::new(db.clone());
     match svc.load_config().await {
         Ok(cfg) => {
-            *GLOBAL_DYNAMIC_CONFIG.write().await = cfg;
+            *dynamic_config.write().await = cfg;
         }
         Err(e) => {
             tracing::warn!(
-                "Failed to reload GLOBAL_DYNAMIC_CONFIG after Discord OAuth: {}",
+                "Failed to reload dynamic config after Discord OAuth: {}",
                 e
             );
         }
@@ -148,20 +187,16 @@ fn config_redirect(frontend_base: &str, ok: bool, reason: &str) -> Response {
 // ---------- 调试 / 状态 ----------
 
 /// 获取 Discord 完整资料包（画像 + 服务器 + 连接）
+///
+/// Token 仅来自服务端 OAuth 落库的 `discord_access_token`；query 传 token 一律 400。
 pub async fn get_discord_profile(
     Query(params): Query<DiscordTokenQuery>,
-) -> Result<Json<ApiResponse<DiscordUserResponse>>, StatusCode> {
-    let access_token = params.access_token.trim();
-    if access_token.is_empty() {
-        return Ok(Json(ApiResponse {
-            success: false,
-            data: None,
-            message: "access_token 为必填".to_string(),
-        }));
-    }
+) -> Result<Json<ApiResponse<DiscordUserResponse>>, HttpError> {
+    reject_query_access_token(&params.access_token)?;
+    let access_token = server_discord_access_token().await?;
 
     let fetcher = PlatformFetcher::new().await;
-    match fetcher.fetch_discord_profile_bundle(access_token).await {
+    match fetcher.fetch_discord_profile_bundle(&access_token).await {
         Ok(bundle) => {
             let user = bundle.get("user").cloned().unwrap_or(Value::Null);
             let guilds = bundle
@@ -204,21 +239,17 @@ pub async fn get_discord_profile(
     }
 }
 
-/// 仅验证 token 并返回 /users/@me
+/// 仅验证服务端已存 token 并返回 /users/@me
+///
+/// Token 仅来自 `discord_access_token`；query 传 token 一律 400。
 pub async fn get_discord_me(
     Query(params): Query<DiscordTokenQuery>,
-) -> Result<Json<ApiResponse<Value>>, StatusCode> {
-    let access_token = params.access_token.trim();
-    if access_token.is_empty() {
-        return Ok(Json(ApiResponse {
-            success: false,
-            data: None,
-            message: "access_token 为必填".to_string(),
-        }));
-    }
+) -> Result<Json<ApiResponse<Value>>, HttpError> {
+    reject_query_access_token(&params.access_token)?;
+    let access_token = server_discord_access_token().await?;
 
     let fetcher = PlatformFetcher::new().await;
-    match fetcher.fetch_discord_me(access_token).await {
+    match fetcher.fetch_discord_me(&access_token).await {
         Ok(user) => {
             let display = user
                 .get("global_name")
@@ -241,9 +272,13 @@ pub async fn get_discord_me(
 }
 
 /// 说明端点：数据平台所需 scope、一键授权 URL、需登记的 redirect_uri
-pub async fn discord_status() -> Json<Value> {
+pub async fn discord_status(
+    axum::extract::State(dynamic_config): axum::extract::State<
+        std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
+    >,
+) -> Json<Value> {
     let redirect_uri = platform_redirect_uri().await;
-    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    let config = dynamic_config.read().await;
     let app_configured = resolve_discord_oauth_app(&config).is_ok();
     let has_token = config
         .discord_access_token
@@ -263,8 +298,12 @@ pub async fn discord_status() -> Json<Value> {
             "hint": "Add redirect_uri to Discord Developer Portal → OAuth2 → Redirects (in addition to login callback)."
         },
         "endpoints": {
-            "me": "GET /api/discord/me?access_token=...",
-            "profile": "GET /api/discord/profile?access_token=...",
+            "me": "GET /api/discord/me (uses server discord_access_token; query tokens rejected)",
+            "profile": "GET /api/discord/profile (uses server discord_access_token; query tokens rejected)",
+        },
+        "security": {
+            "query_access_token": "rejected",
+            "token_source": "discord_access_token from OAuth Connect Discord",
         },
     }))
 }
@@ -272,8 +311,14 @@ pub async fn discord_status() -> Json<Value> {
 // ---------- 一键授权 ----------
 
 /// 管理员发起 Discord 数据平台授权
-pub async fn oauth_start(headers: HeaderMap) -> Result<Response, (StatusCode, Json<Value>)> {
-    let claims = verify_current_admin_from_headers(&headers).await?;
+pub async fn oauth_start(
+    headers: HeaderMap,
+    crate::extract::Db(db): crate::extract::Db,
+    axum::extract::State(dynamic_config): axum::extract::State<
+        std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
+    >,
+) -> Result<Response, HttpError> {
+    let claims = verify_current_admin_from_headers(&headers, &db).await?;
     let user_id: i32 = claims.sub.parse().map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
@@ -281,7 +326,7 @@ pub async fn oauth_start(headers: HeaderMap) -> Result<Response, (StatusCode, Js
         )
     })?;
 
-    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    let config = dynamic_config.read().await;
     let (client_id, _client_secret) = resolve_discord_oauth_app(&config).map_err(|msg| {
         (
             StatusCode::BAD_REQUEST,
@@ -331,8 +376,11 @@ pub async fn oauth_start(headers: HeaderMap) -> Result<Response, (StatusCode, Js
 /// Discord 数据平台 OAuth 回调：交换 token → 写入配置 → 回配置页
 pub async fn oauth_callback(
     crate::extract::Db(db): crate::extract::Db,
+    axum::extract::State(dynamic_config): axum::extract::State<
+        std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
+    >,
     Query(params): Query<OAuthCallbackQuery>,
-) -> Result<Response, (StatusCode, Json<Value>)> {
+) -> Result<Response, HttpError> {
     let frontend_base = SiteConfig::get_base_url().await;
 
     if let Some(err) = params.error.as_ref() {
@@ -394,7 +442,7 @@ pub async fn oauth_callback(
     // Browser double-load / retry: never re-exchange the one-time code.
     // Soft-success if platform tokens were already persisted by the first request.
     if outcome.is_replay() {
-        let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+        let config = dynamic_config.read().await;
         let has_token = config
             .discord_access_token
             .as_ref()
@@ -416,7 +464,7 @@ pub async fn oauth_callback(
         ));
     }
 
-    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    let config = dynamic_config.read().await;
     let (client_id, client_secret) = match resolve_discord_oauth_app(&config) {
         Ok(v) => v,
         Err(msg) => {
@@ -496,7 +544,8 @@ pub async fn oauth_callback(
         return Ok(config_redirect(&frontend_base, false, "save_failed"));
     }
 
-    reload_global_config(&db).await;
+    // Same Arc as AppState.dynamic_config (from_shared); write via State handle.
+    reload_global_config(&db, &dynamic_config).await;
 
     tracing::info!("✓ Discord platform OAuth tokens saved and platform enabled");
     Ok(config_redirect(&frontend_base, true, "ok"))
@@ -533,4 +582,35 @@ async fn exchange_discord_code(
         ));
     }
     serde_json::from_str(&body).map_err(|e| format!("token JSON parse: {e}"))
+}
+
+#[cfg(test)]
+mod discord_secret_gate_tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    #[tokio::test]
+    async fn reject_query_access_token_blocks_nonempty() {
+        let err = reject_query_access_token(&Some("ODM.secret".into())).unwrap_err();
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .expect("body");
+        let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(v["error"], "access_token_not_allowed");
+        assert!(
+            v.get("message")
+                .and_then(|m| m.as_str())
+                .is_some_and(|m| m.to_ascii_lowercase().contains("query")),
+            "message should mention query restriction: {v}"
+        );
+    }
+
+    #[test]
+    fn reject_query_access_token_allows_absent_or_blank() {
+        assert!(reject_query_access_token(&None).is_ok());
+        assert!(reject_query_access_token(&Some(String::new())).is_ok());
+        assert!(reject_query_access_token(&Some(" \t ".into())).is_ok());
+    }
 }

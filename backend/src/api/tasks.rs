@@ -187,20 +187,6 @@ pub async fn list_tasks(State(_db): State<DatabaseConnection>) -> (StatusCode, J
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn task_supported_platforms_include_youtube_and_peers() {
-        assert!(is_task_supported_platform("youtube"));
-        assert!(is_task_supported_platform("steam"));
-        assert!(is_task_supported_platform("github"));
-        assert!(!is_task_supported_platform("not-a-platform"));
-        assert!(TASK_SUPPORTED_PLATFORMS.contains(&"youtube"));
-    }
-}
-
 /// 后台处理函数
 async fn process_platform_task(task_id: String, platform: String) {
     let task_id = task_id.as_str();
@@ -273,5 +259,19 @@ async fn process_platform_task(task_id: String, platform: String) {
             tracing::error!("❌ {}", error);
             BACKGROUND_PROCESSOR.fail_task(task_id, error).await;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_supported_platforms_include_youtube_and_peers() {
+        assert!(is_task_supported_platform("youtube"));
+        assert!(is_task_supported_platform("steam"));
+        assert!(is_task_supported_platform("github"));
+        assert!(!is_task_supported_platform("not-a-platform"));
+        assert!(TASK_SUPPORTED_PLATFORMS.contains(&"youtube"));
     }
 }

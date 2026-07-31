@@ -1,19 +1,31 @@
 //! 系统操作能力处理器
 //!
-//! 处理 data.transform, scheduler.create, cache.status 等系统操作类能力
+//! 处理 data.transform, scheduler.create, cache.status 等系统操作类能力。
+//! 纯参数投影见 [`crate::services::agent::system_op_pure`]；
+//! data.transform 管道复用 [`crate::services::tapp_data_transform`]。
 
 use super::HandlerContext;
-use crate::api::tapp_runtime::common::verify_tapp_ownership;
 use crate::models::entities::tapp_scheduled_tasks::{
     ExecutionTarget, MissedPolicy, ScheduleType, TaskScope,
 };
 use crate::services::agent::executor::utils::{
     is_valid_platform as validate_platform_name, VALID_PLATFORMS,
 };
+use crate::services::agent::system_op_pure::{
+    build_schedule_config, extract_legacy_cron, extract_raw_backend_actions, heartbeat_task_id,
+    heartbeat_update_has_fields, parse_brew_schedule_action, parse_execution_target,
+    parse_schedule_type, AgentExecutionTarget, AgentScheduleType, BrewScheduleAction,
+};
 use crate::services::background_processor::BACKGROUND_PROCESSOR;
 use crate::services::brew_scheduler::get_brew_scheduler;
 use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
-use crate::services::tapp_scheduler::{backend_action_permissions, normalize_backend_actions};
+use crate::services::tapp_data_transform::{
+    apply_pipeline, items_from_agent_input, parse_pipeline_steps_lenient, DataTransformError,
+};
+use crate::services::tapp_ownership::verify_tapp_ownership;
+use crate::services::tapp_scheduler::{
+    backend_action_permissions, normalize_backend_actions, scheduler_engine,
+};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -51,81 +63,22 @@ pub async fn execute(
 
 async fn execute_data_transform(params: &HashMap<String, Value>) -> Result<Value, String> {
     let input = params.get("input").cloned().unwrap_or(json!([]));
-    let pipeline = params
+    let pipeline_json = params
         .get("pipeline")
         .and_then(|v| v.as_array())
         .cloned()
         .unwrap_or_default();
 
-    // 限制 pipeline 步骤数，防止算法复杂度攻击
-    if pipeline.len() > 20 {
-        return Err("管道步骤数不能超过 20".to_string());
-    }
-
-    let mut items: Vec<Value> = match input {
-        Value::Array(arr) => arr,
-        Value::Object(obj) => obj
-            .get("items")
-            .and_then(|v| v.as_array())
-            .cloned()
-            .unwrap_or_default(),
-        _ => vec![],
-    };
-
-    for step in pipeline {
-        let step_type = step.get("type").and_then(|v| v.as_str()).unwrap_or("");
-
-        match step_type {
-            "filter" => {
-                let field = step.get("field").and_then(|v| v.as_str()).unwrap_or("");
-                let op = step
-                    .get("operator")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("eq");
-                let value = step.get("value").cloned().unwrap_or(json!(null));
-
-                items.retain(|item| {
-                    let item_value = item.get(field);
-                    match op {
-                        "eq" => item_value == Some(&value),
-                        "ne" => item_value != Some(&value),
-                        "contains" => item_value
-                            .and_then(|v| v.as_str())
-                            .map(|s| value.as_str().map(|v| s.contains(v)).unwrap_or(false))
-                            .unwrap_or(false),
-                        _ => true,
-                    }
-                });
-            }
-            "sort" => {
-                let field = step.get("field").and_then(|v| v.as_str()).unwrap_or("");
-                let order = step.get("order").and_then(|v| v.as_str()).unwrap_or("asc");
-
-                items.sort_by(|a, b| {
-                    let va = a.get(field);
-                    let vb = b.get(field);
-                    let cmp = match (va, vb) {
-                        (Some(Value::String(a)), Some(Value::String(b))) => a.cmp(b),
-                        (Some(Value::Number(a)), Some(Value::Number(b))) => a
-                            .as_f64()
-                            .partial_cmp(&b.as_f64())
-                            .unwrap_or(std::cmp::Ordering::Equal),
-                        _ => std::cmp::Ordering::Equal,
-                    };
-                    if order == "desc" {
-                        cmp.reverse()
-                    } else {
-                        cmp
-                    }
-                });
-            }
-            "limit" => {
-                let count = step.get("count").and_then(|v| v.as_u64()).unwrap_or(100);
-                items.truncate(count as usize);
-            }
-            _ => {}
+    let steps = parse_pipeline_steps_lenient(&pipeline_json).map_err(|err| match err {
+        DataTransformError::TooManySteps => "管道步骤数不能超过 20".to_string(),
+        other => other.message().to_string(),
+    })?;
+    let items = apply_pipeline(items_from_agent_input(input), steps).map_err(|err| {
+        match err {
+            DataTransformError::TooManySteps => "管道步骤数不能超过 20".to_string(),
+            other => other.message().to_string(),
         }
-    }
+    })?;
 
     let count = items.len();
     Ok(json!({
@@ -162,98 +115,51 @@ async fn execute_scheduler_create(
 
     verify_tapp_ownership(ctx.db, ctx.user_id, tapp_id)
         .await
-        .map_err(|(_, body)| {
-            body.0
-                .get("message")
-                .or_else(|| body.0.get("error"))
-                .and_then(Value::as_str)
-                .unwrap_or("Tapp access denied")
-                .to_string()
-        })?;
+        .map_err(|err| err.to_string())?;
 
     // Accept the old cronExpression form while steering new plans to the same
     // schedule object used by the Tapp SDK.
-    let legacy_cron = params
-        .get("cronExpression")
-        .or_else(|| params.get("cron"))
-        .or_else(|| params.get("schedule").filter(|value| value.is_string()))
-        .and_then(Value::as_str);
+    let legacy_cron = extract_legacy_cron(params);
     let schedule_type_name = params
         .get("scheduleType")
         .or_else(|| params.get("schedule_type"))
-        .and_then(Value::as_str)
-        .or_else(|| legacy_cron.map(|_| "cron"))
-        .ok_or("Missing scheduleType parameter")?;
-    let schedule_type = match schedule_type_name.to_ascii_lowercase().as_str() {
-        "cron" => ScheduleType::Cron,
-        "interval" => ScheduleType::Interval,
-        "once" => ScheduleType::Once,
-        "daily" => ScheduleType::Daily,
-        _ => return Err(format!("Invalid scheduleType: {schedule_type_name}")),
+        .and_then(Value::as_str);
+    let agent_schedule =
+        parse_schedule_type(schedule_type_name, legacy_cron.is_some())?;
+    let schedule_type = match agent_schedule {
+        AgentScheduleType::Cron => ScheduleType::Cron,
+        AgentScheduleType::Interval => ScheduleType::Interval,
+        AgentScheduleType::Once => ScheduleType::Once,
+        AgentScheduleType::Daily => ScheduleType::Daily,
     };
 
-    let schedule_config = match params.get("schedule") {
-        Some(value) if value.is_object() => value.clone(),
-        _ => match schedule_type {
-            ScheduleType::Cron => json!({
-                "cron": legacy_cron.ok_or("Missing cron schedule")?
-            }),
-            ScheduleType::Interval => json!({
-                "interval": params
-                    .get("interval")
-                    .and_then(Value::as_i64)
-                    .ok_or("Missing interval schedule")?
-            }),
-            ScheduleType::Once => json!({
-                "at": params
-                    .get("at")
-                    .and_then(Value::as_i64)
-                    .ok_or("Missing at schedule")?
-            }),
-            ScheduleType::Daily => json!({
-                "time": params
-                    .get("time")
-                    .and_then(Value::as_str)
-                    .ok_or("Missing daily time schedule")?
-            }),
-        },
-    };
+    let schedule_config = build_schedule_config(
+        agent_schedule,
+        params.get("schedule"),
+        legacy_cron,
+        params.get("interval").and_then(Value::as_i64),
+        params.get("at").and_then(Value::as_i64),
+        params.get("time").and_then(Value::as_str),
+    )?;
 
-    let raw_backend_actions = params
-        .get("backendActions")
-        .or_else(|| params.get("backend_actions"))
-        .cloned()
-        .or_else(|| {
-            params.get("action").cloned().map(|action| match action {
-                Value::Array(_) => action,
-                _ => Value::Array(vec![action]),
-            })
-        });
+    let raw_backend_actions = extract_raw_backend_actions(params);
     let backend_actions = normalize_backend_actions(raw_backend_actions)?;
     let execution_target_name = params
         .get("executionTarget")
         .or_else(|| params.get("execution_target"))
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| {
-            if backend_actions.is_some() {
-                "backend"
-            } else {
-                "frontend"
-            }
-        });
-    let execution_target = match execution_target_name.to_ascii_lowercase().as_str() {
-        "backend" => ExecutionTarget::Backend,
-        "frontend" => ExecutionTarget::Frontend,
-        "both" => ExecutionTarget::Both,
-        _ => return Err(format!("Invalid executionTarget: {execution_target_name}")),
+        .and_then(Value::as_str);
+    let agent_target =
+        parse_execution_target(execution_target_name, backend_actions.is_some())?;
+    let execution_target = match agent_target {
+        AgentExecutionTarget::Backend => ExecutionTarget::Backend,
+        AgentExecutionTarget::Frontend => ExecutionTarget::Frontend,
+        AgentExecutionTarget::Both => ExecutionTarget::Both,
     };
-    if matches!(
-        execution_target,
-        ExecutionTarget::Backend | ExecutionTarget::Both
-    ) && backend_actions
-        .as_ref()
-        .and_then(Value::as_array)
-        .is_none_or(Vec::is_empty)
+    if agent_target.requires_backend_actions()
+        && backend_actions
+            .as_ref()
+            .and_then(Value::as_array)
+            .is_none_or(Vec::is_empty)
     {
         return Err(
             "backendActions are required when executionTarget is backend or both".to_string(),
@@ -313,7 +219,7 @@ async fn execute_scheduler_create(
         .unwrap_or_else(|| format!("agent_{}", uuid::Uuid::new_v4().simple()));
     let payload = params.get("payload").cloned();
 
-    let scheduler = crate::api::tapp_scheduler::scheduler_engine()?;
+    let scheduler = scheduler_engine()?;
     let scheduler = scheduler.read().await;
     let task = scheduler
         .register_task(
@@ -345,14 +251,14 @@ async fn execute_scheduler_create(
         "taskId": task.task_id,
         "tappId": task.tapp_id,
         "name": task.name,
-        "scheduleType": schedule_type_name,
+        "scheduleType": agent_schedule.as_str(),
         "schedule": schedule_config,
         "nextRun": task.next_run_at.map(|value| value.to_rfc3339()),
         "frontendAction": {
             "type": "show_notification",
             "params": {
                 "title": crate::services::agent::response_agent::scheduled_task_created(name),
-                "message": format!("{} / {}", tapp_id, schedule_type_name),
+                "message": format!("{} / {}", tapp_id, agent_schedule.as_str()),
                 "taskId": task_id
             },
             "timestamp": now.timestamp_millis()
@@ -374,7 +280,7 @@ async fn execute_scheduler_trigger(
         .or_else(|| params.get("tapp_id"))
         .and_then(Value::as_str);
 
-    let scheduler = crate::api::tapp_scheduler::scheduler_engine()?;
+    let scheduler = scheduler_engine()?;
     let scheduler = scheduler.read().await;
     let tapp_id = if let Some(tapp_id) = requested_tapp_id {
         tapp_id.to_string()
@@ -452,12 +358,7 @@ async fn execute_heartbeat_create(
         .get("enabled")
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    let id = params
-        .get("id")
-        .or_else(|| params.get("taskId"))
-        .or_else(|| params.get("task_id"))
-        .and_then(Value::as_str)
-        .map(ToOwned::to_owned);
+    let id = heartbeat_task_id(params).map(ToOwned::to_owned);
 
     let manager = heartbeat_manager()?;
     let task = manager
@@ -485,12 +386,7 @@ async fn execute_heartbeat_update(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     require_heartbeat_admin(ctx).await?;
-    let task_id = params
-        .get("id")
-        .or_else(|| params.get("taskId"))
-        .or_else(|| params.get("task_id"))
-        .and_then(Value::as_str)
-        .ok_or("Missing id parameter")?;
+    let task_id = heartbeat_task_id(params).ok_or("Missing id parameter")?;
 
     let name = params
         .get("name")
@@ -507,7 +403,12 @@ async fn execute_heartbeat_update(
         .map(ToOwned::to_owned);
     let enabled = params.get("enabled").and_then(Value::as_bool);
 
-    if name.is_none() && schedule.is_none() && action.is_none() && enabled.is_none() {
+    if !heartbeat_update_has_fields(
+        name.as_deref(),
+        schedule.as_deref(),
+        action.as_deref(),
+        enabled,
+    ) {
         return Err("Provide at least one of name/schedule/action/enabled".to_string());
     }
 
@@ -528,12 +429,7 @@ async fn execute_heartbeat_delete(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     require_heartbeat_admin(ctx).await?;
-    let task_id = params
-        .get("id")
-        .or_else(|| params.get("taskId"))
-        .or_else(|| params.get("task_id"))
-        .and_then(Value::as_str)
-        .ok_or("Missing id parameter")?;
+    let task_id = heartbeat_task_id(params).ok_or("Missing id parameter")?;
 
     let manager = heartbeat_manager()?;
     manager.delete_task(task_id).await?;
@@ -550,12 +446,7 @@ async fn execute_heartbeat_toggle(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     require_heartbeat_admin(ctx).await?;
-    let task_id = params
-        .get("id")
-        .or_else(|| params.get("taskId"))
-        .or_else(|| params.get("task_id"))
-        .and_then(Value::as_str)
-        .ok_or("Missing id parameter")?;
+    let task_id = heartbeat_task_id(params).ok_or("Missing id parameter")?;
 
     let manager = heartbeat_manager()?;
     match manager.toggle_task(task_id).await {
@@ -574,11 +465,11 @@ async fn execute_heartbeat_toggle(
 
 async fn execute_system_metrics() -> Result<Value, String> {
     // Process-level metrics only — honest limited payload, not full host monitoring.
-    let memory = crate::api::metrics::process_memory_info();
-    let uptime_seconds = crate::api::process_uptime_seconds();
-    let version = crate::api::build_version();
+    let memory = myriad_process_info::process_memory_info();
+    let uptime_seconds = myriad_process_info::process_uptime_seconds();
+    let version = myriad_process_info::build_version();
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
-    let db_connected = crate::DB_CONNECTION.read().await.is_some();
+    let db_connected = !crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
 
     let (bg_total, bg_pending, bg_processing, bg_completed, bg_failed) =
         BACKGROUND_PROCESSOR.get_task_stats().await;
@@ -983,14 +874,11 @@ async fn execute_task_submit(params: &HashMap<String, Value>) -> Result<Value, S
 }
 
 async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let action = params
-        .get("action")
-        .and_then(|v| v.as_str())
-        .unwrap_or("status");
+    let action = parse_brew_schedule_action(params.get("action").and_then(|v| v.as_str()))?;
     let source_id = params.get("sourceId").and_then(|v| v.as_i64());
 
     match action {
-        "start" => {
+        BrewScheduleAction::Start => {
             if let Some(scheduler) = get_brew_scheduler() {
                 scheduler.start().await;
                 Ok(json!({
@@ -1003,7 +891,7 @@ async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value,
                 Err("Brew scheduler not initialized".to_string())
             }
         }
-        "stop" => {
+        BrewScheduleAction::Stop => {
             if let Some(scheduler) = get_brew_scheduler() {
                 scheduler.stop().await;
                 Ok(json!({
@@ -1016,7 +904,7 @@ async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value,
                 Err("Brew scheduler not initialized".to_string())
             }
         }
-        "refresh" => {
+        BrewScheduleAction::Refresh => {
             if let Some(scheduler) = get_brew_scheduler() {
                 if let Some(sid) = source_id {
                     match scheduler.refresh_source(sid as i32).await {
@@ -1042,7 +930,7 @@ async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value,
                 Err("Brew scheduler not initialized".to_string())
             }
         }
-        "status" => {
+        BrewScheduleAction::Status => {
             let scheduler_active = get_brew_scheduler().is_some();
             Ok(json!({
                 "action": "status",
@@ -1051,12 +939,12 @@ async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value,
                 "checkedAt": chrono::Utc::now().to_rfc3339()
             }))
         }
-        _ => Err(format!("Unknown brew schedule action: {}", action)),
     }
 }
 
 async fn execute_setup_status() -> Result<Value, String> {
-    let has_database = crate::DB_CONNECTION.read().await.is_some();
+    let has_database = !crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed)
+        && std::env::var("DATABASE_URL").is_ok();
 
     let mut missing_configs = Vec::new();
 

@@ -1028,6 +1028,14 @@ const GlobalControlPanel: React.FC = () => {
         : next === 'dark'
     // isDark 状态由 useThemeMode() hook 自动响应 class 变化，无需手动 setIsDark
     applyThemeClass(dark)
+    void import('../utils/analyticsEvents').then(
+      ({ trackProductEvent, AnalyticsEvents }) => {
+        trackProductEvent(AnalyticsEvents.THEME_SWITCH, {
+          target: next,
+          throttleMs: 2000,
+        })
+      },
+    )
   }, [themePreference])
 
   // 动画期间给智能岛挂 gcp-animating 类：移动端 Chrome 的 backdrop-filter 元素
@@ -1145,6 +1153,13 @@ const GlobalControlPanel: React.FC = () => {
       handleClosePanel()
     } else {
       expandPanel()
+      void import('../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.CONTROL_PANEL_OPEN, {
+            throttleMs: 5000,
+          })
+        },
+      )
     }
   }, [isExpanded, handleClosePanel, expandPanel])
 
@@ -1188,10 +1203,17 @@ const GlobalControlPanel: React.FC = () => {
     [handleClosePanel],
   )
 
-  const handleOpenAraelManage = useCallback(() => {
-    handleClosePanel()
-    window.dispatchEvent(new CustomEvent('arael-open-manage'))
-  }, [handleClosePanel])
+  const handleOpenAraelManage = useCallback(
+    (tab?: 'heartbeat' | 'skills' | 'memory') => {
+      handleClosePanel()
+      window.dispatchEvent(
+        new CustomEvent('arael-open-manage', {
+          detail: tab ? { tab } : {},
+        }),
+      )
+    },
+    [handleClosePanel],
+  )
 
   // 监听打开控制面板事件（来自音乐小组件等点击）
   useEffect(() => {
@@ -1618,7 +1640,16 @@ const GlobalControlPanel: React.FC = () => {
                   role="tab"
                   aria-selected={panelTab === 'notifications'}
                   className={`notif-tab ${panelTab === 'notifications' ? 'active' : ''}`}
-                  onClick={() => setPanelTab('notifications')}
+                  onClick={() => {
+                    setPanelTab('notifications')
+                    void import('../utils/analyticsEvents').then(
+                      ({ trackProductEvent, AnalyticsEvents }) => {
+                        trackProductEvent(AnalyticsEvents.NOTIFICATION_OPEN, {
+                          throttleMs: 5000,
+                        })
+                      },
+                    )
+                  }}
                 >
                   {t.notificationCenter.title}
                   {notifCount > 0 && (

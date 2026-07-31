@@ -152,6 +152,11 @@ export function useVoiceRecording(
     if (isRecordingRef.current || recorderRef.current) return
 
     try {
+      void import('../../../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.AGENT_VOICE, { throttleMs: 5000 })
+        },
+      )
       const status = await getSpeechStatus()
       if (!status.available || !status.asr_enabled) return
 

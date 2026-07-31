@@ -32,8 +32,11 @@ LICENSE
 Thumbs.db
 desktop.ini
 
-# Backend specific
+# Rust build artifacts (never needed in image context)
+/target/
 backend/target/
+proxy/target/
+updater/target/
 backend/.env
 backend/.env.*
 

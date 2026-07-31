@@ -16,8 +16,22 @@ ENV MYRIAD_VERSION=${MYRIAD_VERSION}
 ARG MYRIAD_COMMIT_SHA=unknown
 ENV MYRIAD_COMMIT_SHA=${MYRIAD_COMMIT_SHA}
 
+# `release` = full LTO (local/default). `ci-release` = thin LTO for image CI.
+ARG CARGO_PROFILE=release
+
 WORKDIR /work/updater
-RUN cargo build --release --bins
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/work/updater/target,sharing=locked \
+    cargo build --profile="${CARGO_PROFILE}" --bins \
+    && mkdir -p /out \
+    && cp "target/${CARGO_PROFILE}/myriad-updater" \
+          "target/${CARGO_PROFILE}/myriad-rescue" \
+          "target/${CARGO_PROFILE}/myriad-docker-guard" \
+          "target/${CARGO_PROFILE}/myriad-tcb-self-update" \
+          "target/${CARGO_PROFILE}/myriad-updater-gateway" \
+          /out/ \
+    && strip /out/*
 
 # ---------- runtime ----------
 FROM debian:bookworm-slim AS runtime
@@ -44,11 +58,11 @@ RUN set -eux; \
     apt-get purge -y gnupg; apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /work/updater/target/release/myriad-updater /usr/local/bin/myriad-updater
-COPY --from=builder /work/updater/target/release/myriad-rescue  /usr/local/bin/myriad-rescue
-COPY --from=builder /work/updater/target/release/myriad-docker-guard /usr/local/bin/myriad-docker-guard
-COPY --from=builder /work/updater/target/release/myriad-tcb-self-update /usr/local/bin/myriad-tcb-self-update
-COPY --from=builder /work/updater/target/release/myriad-updater-gateway /usr/local/bin/myriad-updater-gateway
+COPY --from=builder /out/myriad-updater /usr/local/bin/myriad-updater
+COPY --from=builder /out/myriad-rescue  /usr/local/bin/myriad-rescue
+COPY --from=builder /out/myriad-docker-guard /usr/local/bin/myriad-docker-guard
+COPY --from=builder /out/myriad-tcb-self-update /usr/local/bin/myriad-tcb-self-update
+COPY --from=builder /out/myriad-updater-gateway /usr/local/bin/myriad-updater-gateway
 
 # cosign CLI for release.json signature verification (M2). Single static binary, ~50 MB.
 ARG COSIGN_VERSION=v2.4.1

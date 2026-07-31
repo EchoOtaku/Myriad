@@ -737,10 +737,26 @@ export function TappListPage() {
   }
 
   const handleOpen = (tappId: string) => {
+    void import('../../utils/analyticsEvents').then(
+      ({ trackProductEvent, AnalyticsEvents }) => {
+        trackProductEvent(AnalyticsEvents.TAPP_RUN, {
+          target: tappId,
+          throttleMs: 2000,
+        })
+      },
+    )
     navigate(`/tapp/run/${tappId}`)
   }
 
   const handleConfigure = (tappId: string) => {
+    void import('../../utils/analyticsEvents').then(
+      ({ trackProductEvent, AnalyticsEvents }) => {
+        trackProductEvent(AnalyticsEvents.TAPP_OPEN_DETAIL, {
+          target: tappId,
+          throttleMs: 2000,
+        })
+      },
+    )
     navigate(`/tapp/detail/${tappId}`)
   }
 
@@ -792,7 +808,16 @@ export function TappListPage() {
                 <div className="hidden sm:flex items-center gap-2">
                   {isAdmin && (
                     <button
-                      onClick={() => navigate('/tapp/playground')}
+                      onClick={() => {
+                        void import('../../utils/analyticsEvents').then(
+                          ({ trackProductEvent, AnalyticsEvents }) => {
+                            trackProductEvent(AnalyticsEvents.TAPP_PLAYGROUND, {
+                              throttleMs: 5000,
+                            })
+                          },
+                        )
+                        navigate('/tapp/playground')
+                      }}
                       className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
                       style={{ color: 'var(--color-primary)' }}
                       title={t.tapp.playgroundTitle}
@@ -908,7 +933,16 @@ export function TappListPage() {
                   </motion.button>
                   {!isMobile && isAdmin && (
                     <motion.button
-                      onClick={() => navigate('/tapp/playground')}
+                      onClick={() => {
+                        void import('../../utils/analyticsEvents').then(
+                          ({ trackProductEvent, AnalyticsEvents }) => {
+                            trackProductEvent(AnalyticsEvents.TAPP_PLAYGROUND, {
+                              throttleMs: 5000,
+                            })
+                          },
+                        )
+                        navigate('/tapp/playground')
+                      }}
                       className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15"
                       style={{ color: 'var(--color-primary)' }}
                       whileHover={{ scale: 1.02, y: -1 }}

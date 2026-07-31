@@ -343,10 +343,12 @@ export const FederationConfigSection: React.FC<
    * Only apply successful responses — never replace a good optimistic list
    * with `[]` / null when one endpoint blips.
    */
-  const loadDelivery = useCallback(async () => {
+  const loadDelivery = useCallback(async (status?: string) => {
+    const statusParam =
+      status && status !== 'all' ? status : undefined
     const [statsResult, listResult] = await Promise.allSettled([
       federationApi.getDeliveryStats(),
-      federationApi.listDelivery(25),
+      federationApi.listDelivery(25, undefined, statusParam),
     ])
     if (statsResult.status === 'fulfilled' && statsResult.value) {
       setDeliveryStats(statsResult.value)

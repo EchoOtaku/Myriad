@@ -93,7 +93,7 @@ type NotifTarget =
       taskId?: string
     }
   | { kind: 'route'; path: string }
-  | { kind: 'arael_manage' }
+  | { kind: 'arael_manage'; tab?: 'heartbeat' | 'skills' | 'memory' }
   | null
 
 /** 解析点击落点：任务类通知带 session_id 时跳回对应 Arael 会话（可带 run/task 以 reattach） */
@@ -119,7 +119,12 @@ function resolveTarget(n: AppNotification): NotifTarget {
     return { kind: 'route', path: route }
   }
   if (n.metadata?.action === 'open_arael_manage') {
-    return { kind: 'arael_manage' }
+    const rawTab = n.metadata?.tab
+    const tab =
+      rawTab === 'skills' || rawTab === 'memory' || rawTab === 'heartbeat'
+        ? rawTab
+        : undefined
+    return { kind: 'arael_manage', tab }
   }
   return null
 }
@@ -135,8 +140,8 @@ interface Props {
   ) => void
   /** 打开普通应用路由（如 Brew 新内容） */
   onNavigate?: (path: string) => void
-  /** 打开 Arael 管理面板（Heartbeat 通知） */
-  onOpenAraelManage?: () => void
+  /** 打开 Arael 管理面板（Heartbeat / Skills 通知；可选初始 tab） */
+  onOpenAraelManage?: (tab?: 'heartbeat' | 'skills' | 'memory') => void
   /** 当前用户是否允许浏览器系统通知。 */
   browserNotificationsEnabled?: boolean
 }
@@ -225,7 +230,7 @@ function NotificationPanelList({
         return
       }
       if (target?.kind === 'arael_manage' && onOpenAraelManage) {
-        onOpenAraelManage()
+        onOpenAraelManage(target.tab)
         return
       }
       // 无落点：展开/收起详情

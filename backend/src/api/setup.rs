@@ -1,4 +1,4 @@
-﻿use axum::{
+use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
@@ -10,6 +10,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use url::Url;
+use crate::error::{status_json_to_http, HttpError};
 
 /// Setup status response
 #[derive(Debug, Serialize, Deserialize)]
@@ -24,7 +25,7 @@ pub struct SetupStatus {
 /// Check if initial setup is required
 pub async fn check_setup_status(
     crate::extract::Db(db): crate::extract::Db,
-) -> Result<Json<SetupStatus>, (StatusCode, Json<Value>)> {
+) -> Result<Json<SetupStatus>, HttpError> {
     tracing::info!("Checking setup status");
 
     // Check if database tables exist
@@ -64,8 +65,13 @@ pub async fn check_setup_status(
 
 /// GET /api/setup/config
 /// Get safe configuration info (no secrets)
-pub async fn get_setup_config() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    let config_guard = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+///
+/// Registered on both config-mode (no `AppState`) and full-mode routers, so this
+/// reads the process-shared Arc. Same handle as `AppState.dynamic_config` after
+/// `from_shared`.
+pub async fn get_setup_config() -> Result<Json<Value>, HttpError> {
+    // bootstrap-global: no AppState on config-mode setup router
+    let config_guard = crate::state::shared_dynamic_config().read().await;
 
     let config = json!({
         "database_url_set": env::var("DATABASE_URL").is_ok(),
@@ -166,7 +172,7 @@ async fn check_admin_user_exists(db: &DatabaseConnection) -> bool {
 /// Run non-destructive database migrations during initial configuration.
 pub async fn init_database(
     crate::extract::Db(db): crate::extract::Db,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     // Setup switches out of CONFIG_MODE as soon as the database can be reached.
     // Keep the recovery migration available until the installation is claimed,
     // then lock it permanently once an administrator exists.
@@ -176,13 +182,13 @@ pub async fn init_database(
         tracing::error!(
             "🚨 Database initialization REJECTED: Admin user already exists (setup completed)"
         );
-        return Err((
+        return Err(status_json_to_http((
             StatusCode::FORBIDDEN,
             Json(json!({
                 "error": "Setup already completed",
                 "message": "Database has been initialized and an admin user exists. Use the authenticated administration workflow for maintenance."
             })),
-        ));
+        )));
     }
 
     tracing::info!("Running database migrations");
@@ -229,6 +235,23 @@ pub async fn init_database(
     match Migrator::up(&db, None).await {
         Ok(_) => {
             tracing::info!("✅ Database migrations completed successfully");
+
+            // Migrator = greenfield CREATE SoT; schema_check heals seeds / owner /
+            // recent columns so first-boot does not wait for a process restart.
+            if let Err(e) = crate::db::schema_check::ensure_schema(&db).await {
+                tracing::error!("Schema ensure after Migrator::up failed: {}", e);
+                return Err(status_json_to_http((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({
+                        "error": "Schema ensure failed",
+                        "message": format!(
+                            "Migrations applied but schema check/heals failed: {}",
+                            e
+                        )
+                    })),
+                )));
+            }
+            tracing::info!("✅ Schema check/heals completed after setup migrations");
 
             // List all tables in the database
             let tables_result = db
@@ -298,13 +321,13 @@ pub async fn init_database(
         }
         Err(e) => {
             tracing::error!("❌ Database migration failed: {:?}", e);
-            Err((
+            Err(status_json_to_http((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Database migration failed",
                     "message": "数据库迁移失败，请检查数据库连接和权限设置"
                 })),
-            ))
+            )))
         }
     }
 }
@@ -315,8 +338,9 @@ pub async fn init_database(
 /// 保护：CONFIG_MODE + 引导令牌（实例此前已配置过时）。
 pub async fn initialize_env_file(
     headers: HeaderMap,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    crate::api::setup_bootstrap::require_bootstrap(&headers)?;
+) -> Result<Json<Value>, HttpError> {
+    crate::api::setup_bootstrap::require_bootstrap(&headers)
+        .map_err(HttpError)?;
 
     // ✅ SECURITY CHECK: Only allow in CONFIG_MODE
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
@@ -325,13 +349,13 @@ pub async fn initialize_env_file(
         tracing::error!(
             "🚨 Environment file initialization REJECTED: Not in CONFIG_MODE (security protection)"
         );
-        return Err((
+        return Err(status_json_to_http((
             StatusCode::FORBIDDEN,
             Json(json!({
                 "error": "Operation not allowed",
                 "message": "Environment file initialization is only allowed in CONFIG_MODE. Please restart the application with CONFIG_MODE=true."
             })),
-        ));
+        )));
     }
 
     tracing::info!("Initializing .env file from .env.example");
@@ -341,24 +365,24 @@ pub async fn initialize_env_file(
 
     // Check if .env already exists
     if env_path.exists() {
-        return Err((
+        return Err(status_json_to_http((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": ".env file already exists",
                 "message": "Please use the update endpoint to modify existing configuration"
             })),
-        ));
+        )));
     }
 
     // Check if .env.example exists
     if !env_example_path.exists() {
-        return Err((
+        return Err(status_json_to_http((
             StatusCode::NOT_FOUND,
             Json(json!({
                 "error": ".env.example not found",
                 "message": "Template file is missing"
             })),
-        ));
+        )));
     }
 
     // Copy .env.example to .env
@@ -372,13 +396,13 @@ pub async fn initialize_env_file(
         }
         Err(e) => {
             tracing::error!("Failed to create .env file: {:?}", e);
-            Err((
+            Err(status_json_to_http((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Failed to create .env file",
                     "message": "无法创建配置文件，请检查文件系统权限"
                 })),
-            ))
+            )))
         }
     }
 }
@@ -422,8 +446,9 @@ pub struct EnvUpdateRequest {
 pub async fn update_env_file(
     headers: HeaderMap,
     Json(config): Json<EnvUpdateRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    crate::api::setup_bootstrap::require_bootstrap(&headers)?;
+) -> Result<Json<Value>, HttpError> {
+    crate::api::setup_bootstrap::require_bootstrap(&headers)
+        .map_err(HttpError)?;
 
     // ✅ SECURITY CHECK: Only allow in CONFIG_MODE
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
@@ -432,13 +457,13 @@ pub async fn update_env_file(
         tracing::error!(
             "🚨 Environment file update REJECTED: Not in CONFIG_MODE (security protection)"
         );
-        return Err((
+        return Err(status_json_to_http((
             StatusCode::FORBIDDEN,
             Json(json!({
                 "error": "Operation not allowed",
                 "message": "Environment file updates are only allowed in CONFIG_MODE. Please restart the application with CONFIG_MODE=true to modify configuration."
             })),
-        ));
+        )));
     }
 
     tracing::info!("Updating .env file configuration");
@@ -447,13 +472,13 @@ pub async fn update_env_file(
 
     // Check if .env exists
     if !env_path.exists() {
-        return Err((
+        return Err(status_json_to_http((
             StatusCode::NOT_FOUND,
             Json(json!({
                 "error": ".env file not found",
                 "message": "Please initialize the configuration first"
             })),
-        ));
+        )));
     }
 
     // Read current .env file
@@ -461,13 +486,13 @@ pub async fn update_env_file(
         Ok(c) => c,
         Err(e) => {
             tracing::error!("Failed to read .env file: {:?}", e);
-            return Err((
+            return Err(status_json_to_http((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Failed to read .env file",
                     "message": "无法读取配置文件，请检查文件是否存在及权限设置"
                 })),
-            ));
+            )));
         }
     };
 
@@ -511,12 +536,12 @@ pub async fn update_env_file(
             tracing::info!(".env file updated successfully");
 
             // If database is available, save application configs there
-            if let Some(db) = crate::DB_CONNECTION.read().await.as_ref() {
+            if let Ok(db) = crate::services::tapp_registry::database().await {
                 use crate::services::config_service::ConfigService;
                 use serde_json::json;
                 use std::collections::HashMap;
 
-                let config_service = ConfigService::new(db.clone());
+                let config_service = ConfigService::new(db);
                 let mut db_updates = HashMap::new();
 
                 // Map application configs to database
@@ -573,9 +598,10 @@ pub async fn update_env_file(
                     if let Err(e) = config_service.update_configs(db_updates).await {
                         tracing::warn!("Failed to update database configs: {}", e);
                     } else {
-                        // Reload dynamic config
+                        // Reload dynamic config (CONFIG_MODE only — no AppState)
                         if let Ok(new_config) = config_service.load_config().await {
-                            *crate::GLOBAL_DYNAMIC_CONFIG.write().await = new_config;
+                            // bootstrap-global: no AppState on config-mode setup router
+                            crate::state::replace_shared_dynamic_config(new_config).await;
                             crate::services::oauth::registry::REGISTRY.reload().await;
                             tracing::info!("Dynamic configuration reloaded");
                         }
@@ -619,13 +645,13 @@ pub async fn update_env_file(
         }
         Err(e) => {
             tracing::error!("Failed to write .env file: {:?}", e);
-            Err((
+            Err(status_json_to_http((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Failed to write .env file",
                     "message": "无法保存配置文件，请检查文件系统权限"
                 })),
-            ))
+            )))
         }
     }
 }
@@ -681,11 +707,12 @@ fn build_database_url(config: &DatabaseConfigRequest) -> Result<String, String> 
 pub async fn save_database_config(
     headers: HeaderMap,
     Json(config): Json<DatabaseConfigRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     // 这是最危险的端点：它能把实例重新指向任意 PostgreSQL。
     // CONFIG_MODE 本身会因为数据库故障自动开启，所以它不足以作为唯一门槛 ——
-    // 已配置过的实例还必须提供启动日志里的引导令牌。
-    crate::api::setup_bootstrap::require_bootstrap(&headers)?;
+    // 已配置过的实例还必须提供 .bootstrap-token / MYRIAD_BOOTSTRAP_TOKEN。
+    crate::api::setup_bootstrap::require_bootstrap(&headers)
+        .map_err(HttpError)?;
 
     // ✅ P0 安全修复：强制要求 CONFIG_MODE
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
@@ -696,7 +723,7 @@ pub async fn save_database_config(
              This is a critical security protection. Database configuration can only be \n\
              modified during initial setup with CONFIG_MODE=true."
         );
-        return Err((
+        return Err(status_json_to_http((
             StatusCode::FORBIDDEN,
             Json(json!({
                 "error": "Operation not allowed",
@@ -704,7 +731,7 @@ pub async fn save_database_config(
                 "reason": "Security protection: Database configuration is locked after initial setup",
                 "hint": "Restart with CONFIG_MODE=true environment variable if you need to reconfigure the database"
             })),
-        ));
+        )));
     }
 
     tracing::info!("Saving database configuration (CONFIG_MODE verified)");
@@ -732,26 +759,26 @@ pub async fn save_database_config(
             tracing::info!(".env not found, creating from .env.example");
             if let Err(e) = fs::copy(&env_example_path, &env_path) {
                 tracing::error!("Failed to create .env from template: {:?}", e);
-                return Err((
+                return Err(status_json_to_http((
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
                         "error": "Failed to create configuration file",
                         "message": "无法创建配置文件，请检查文件系统权限"
                     })),
-                ));
+                )));
             }
         } else {
             // Create a minimal .env file with just the database URL
             tracing::info!(".env.example not found, creating minimal .env");
             if let Err(e) = fs::write(&env_path, format!("DATABASE_URL={}\n", database_url)) {
                 tracing::error!("Failed to create .env file: {:?}", e);
-                return Err((
+                return Err(status_json_to_http((
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(json!({
                         "error": "Failed to create configuration file",
                         "message": "无法创建配置文件，请检查文件系统权限"
                     })),
-                ));
+                )));
             }
 
             schedule_setup_restart();
@@ -773,13 +800,13 @@ pub async fn save_database_config(
         Ok(c) => c,
         Err(e) => {
             tracing::error!("Failed to read .env file: {:?}", e);
-            return Err((
+            return Err(status_json_to_http((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Failed to read configuration file",
                     "message": "无法读取配置文件，请检查文件系统权限"
                 })),
-            ));
+            )));
         }
     };
 
@@ -805,25 +832,28 @@ pub async fn save_database_config(
         }
         Err(e) => {
             tracing::error!("Failed to write .env file: {:?}", e);
-            Err((
+            Err(status_json_to_http((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "error": "Failed to save configuration",
                     "message": "无法保存配置文件，请检查文件系统权限"
                 })),
-            ))
+            )))
         }
     }
 }
 
-fn schedule_setup_restart() {
+/// Exit so the supervisor cold-starts with the full route table + workers.
+/// Used after setup DB save and when CONFIG_MODE reload obtains a DB while
+/// still serving the setup-only router.
+pub(crate) fn schedule_setup_restart() {
     tracing::info!(
-        "🔁 Database config saved in CONFIG_MODE; exiting shortly so the supervisor can restart with the full route table"
+        "🔁 Exiting shortly so the supervisor can restart with the full route table"
     );
 
     tokio::spawn(async {
         tokio::time::sleep(std::time::Duration::from_millis(750)).await;
-        tracing::info!("🔁 Exiting for setup restart");
+        tracing::info!("🔁 Exiting for full-mode restart");
         std::process::exit(0);
     });
 }

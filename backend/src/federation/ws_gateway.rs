@@ -12,10 +12,12 @@
 
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
-    extract::{Extension, Query},
+    extract::{Extension, Query, State},
+    http::HeaderMap,
     response::IntoResponse,
     response::Response,
 };
+use sea_orm::DatabaseConnection;
 use futures::{SinkExt, StreamExt};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
@@ -24,17 +26,38 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 
-use crate::api::tapp_runtime::{consume_ws_ticket, ConsumedWsTicket, WsTicketKind};
 use crate::middleware::auth::Claims;
+use crate::middleware::ws_origin::{
+    allowed_origins_from_global_config, assert_ws_origin_for_cookie_session,
+};
+use crate::services::tapp_ws_ticket::{
+    self, ConsumedWsTicket, WsTicketError, WsTicketKind, TAPP_WS_TICKET_QUERY,
+};
 
 use crate::federation::types::get_base_url;
 
 /// Optional one-time Tapp WS ticket query param name:
-/// [`crate::api::tapp_runtime::TAPP_WS_TICKET_QUERY`] (`tapp_ws_ticket`).
+/// [`TAPP_WS_TICKET_QUERY`] (`tapp_ws_ticket`).
 #[derive(Debug, Default, Deserialize)]
 pub struct FederationWsQuery {
     #[serde(default)]
     pub tapp_ws_ticket: Option<String>,
+}
+
+const _: &str = TAPP_WS_TICKET_QUERY;
+
+fn ws_ticket_http_error(
+    err: WsTicketError,
+) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+    let status = axum::http::StatusCode::from_u16(err.status_hint())
+        .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+    (
+        status,
+        axum::Json(json!({
+            "error": err.message(),
+            "code": err.code(),
+        })),
+    )
 }
 
 // ==================== 连接管理 ====================
@@ -142,12 +165,20 @@ async fn cleanup_room(room_id: &str) {
 /// - Ticket present: validate+consume; attribute as Tapp runtime; reject bad tickets.
 /// - Ticket absent: host UI path (Claims only).
 pub async fn channel_websocket(
+    State(db): State<DatabaseConnection>,
     ws: WebSocketUpgrade,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     axum::extract::Path(channel_id): axum::extract::Path<String>,
     Query(query): Query<FederationWsQuery>,
 ) -> Response {
+    let allowed = allowed_origins_from_global_config().await;
+    if let Err(err) = assert_ws_origin_for_cookie_session(&headers, &allowed) {
+        return err.into_response();
+    }
+
     let tapp_attr = match resolve_ws_ticket(
+        &db,
         query.tapp_ws_ticket.as_deref(),
         &claims,
         WsTicketKind::Channel,
@@ -163,12 +194,13 @@ pub async fn channel_websocket(
     let username = claims.username.clone();
 
     ws.on_upgrade(move |socket| {
-        handle_channel_socket(socket, user_id, username, channel_id, tapp_attr)
+        handle_channel_socket(socket, db, user_id, username, channel_id, tapp_attr)
     })
     .into_response()
 }
 
 async fn resolve_ws_ticket(
+    db: &DatabaseConnection,
     ticket: Option<&str>,
     claims: &Claims,
     kind: WsTicketKind,
@@ -178,13 +210,21 @@ async fn resolve_ws_ticket(
         return Ok(None);
     };
     // Fail closed: never fall open to host identity when a ticket was supplied.
-    let consumed = consume_ws_ticket(ticket, claims, kind, resource_id).await?;
+    let subject_id: i32 = claims
+        .sub
+        .parse()
+        .map_err(|_| ws_ticket_http_error(WsTicketError::InvalidSubject))?;
+    let consumed =
+        tapp_ws_ticket::consume_ws_ticket(db, ticket, subject_id, kind, resource_id)
+            .await
+            .map_err(ws_ticket_http_error)?;
     Ok(Some(consumed))
 }
 
 /// 处理单个 WebSocket 连接
 async fn handle_channel_socket(
     socket: WebSocket,
+    db: DatabaseConnection,
     user_id: i32,
     username: String,
     channel_id: String,
@@ -213,15 +253,6 @@ async fn handle_channel_socket(
     }
 
     // 验证用户拥有该 Channel
-    let db_opt = crate::DB_CONNECTION.read().await;
-    let db = match db_opt.as_ref() {
-        Some(db) => db,
-        None => {
-            tracing::error!("[WS] Database not available");
-            return;
-        }
-    };
-
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
     let owns_channel = db
         .query_one(Statement::from_sql_and_values(
@@ -233,9 +264,6 @@ async fn handle_channel_socket(
         .ok()
         .flatten()
         .is_some();
-
-    // 释放 DB 锁
-    drop(db_opt);
 
     if !owns_channel {
         tracing::warn!("[WS] User {} does not own channel {}", user_id, channel_id);
@@ -307,6 +335,7 @@ async fn handle_channel_socket(
                         // 解析客户端发来的消息
                         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
                             if let Some(direct_reply) = handle_ws_client_message(
+                                &db,
                                 user_id,
                                 &username,
                                 &channel_id,
@@ -348,12 +377,20 @@ async fn handle_channel_socket(
 /// GET /api/federation/rooms/{room_id}/ws
 /// GET /api/federation/rooms/{room_id}/ws?tapp_ws_ticket=...
 pub async fn room_websocket(
+    State(db): State<DatabaseConnection>,
     ws: WebSocketUpgrade,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     axum::extract::Path(room_id): axum::extract::Path<String>,
     Query(query): Query<FederationWsQuery>,
 ) -> Response {
+    let allowed = allowed_origins_from_global_config().await;
+    if let Err(err) = assert_ws_origin_for_cookie_session(&headers, &allowed) {
+        return err.into_response();
+    }
+
     let tapp_attr = match resolve_ws_ticket(
+        &db,
         query.tapp_ws_ticket.as_deref(),
         &claims,
         WsTicketKind::Room,
@@ -367,13 +404,16 @@ pub async fn room_websocket(
 
     let user_id: i32 = claims.sub.parse().unwrap_or(-1);
     let username = claims.username.clone();
-    ws.on_upgrade(move |socket| handle_room_socket(socket, user_id, username, room_id, tapp_attr))
-        .into_response()
+    ws.on_upgrade(move |socket| {
+        handle_room_socket(socket, db, user_id, username, room_id, tapp_attr)
+    })
+    .into_response()
 }
 
 /// 处理单个 Room WebSocket 连接
 async fn handle_room_socket(
     socket: WebSocket,
+    db: DatabaseConnection,
     user_id: i32,
     username: String,
     room_id: String,
@@ -405,15 +445,6 @@ async fn handle_room_socket(
     let local_actor = crate::federation::types::actor_url(&base_url, &username);
 
     // 验证用户是该 Room 的成员
-    let db_opt = crate::DB_CONNECTION.read().await;
-    let db = match db_opt.as_ref() {
-        Some(db) => db,
-        None => {
-            tracing::error!("[WS] Database not available");
-            return;
-        }
-    };
-
     use sea_orm::{ConnectionTrait as _, DatabaseBackend, Statement};
     let is_member = db
         .query_one(Statement::from_sql_and_values(
@@ -425,8 +456,6 @@ async fn handle_room_socket(
         .ok()
         .flatten()
         .is_some();
-
-    drop(db_opt);
 
     if !is_member {
         tracing::warn!("[WS] User {} is not a member of room {}", user_id, room_id);
@@ -485,7 +514,7 @@ async fn handle_room_socket(
                     Some(Ok(Message::Text(text))) => {
                         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&text) {
                             if let Some(direct_reply) = handle_ws_room_client_message(
-                                user_id, &username, &room_id, &parsed, &tx,
+                                &db, user_id, &username, &room_id, &parsed, &tx,
                             ).await {
                                 // 直接回复给发送者（错误/pong 等），不广播
                                 if ws_sender.send(Message::Text(direct_reply.into())).await.is_err() {
@@ -514,6 +543,7 @@ async fn handle_room_socket(
 ///
 /// 返回 Some(msg) 表示需要直接回复给发送者（不广播）
 async fn handle_ws_room_client_message(
+    db: &DatabaseConnection,
     user_id: i32,
     username: &str,
     room_id: &str,
@@ -528,30 +558,27 @@ async fn handle_ws_room_client_message(
             let thread_id = msg.get("thread_id").and_then(|v| v.as_str());
             let reply_to = msg.get("reply_to").and_then(|v| v.as_str());
 
-            let db_opt = crate::DB_CONNECTION.read().await;
-            if let Some(db) = db_opt.as_ref() {
-                let req = crate::federation::room::SendRoomMessageRequest {
-                    message_type: msg
-                        .get("message_type")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    payload,
-                    thread_id: thread_id.map(|s| s.to_string()),
-                    reply_to: reply_to.map(|s| s.to_string()),
-                    encrypt: msg.get("encrypt").and_then(|v| v.as_bool()),
-                };
-                if let Err((status, json_err)) =
-                    crate::federation::room::send_room_message(user_id, username, room_id, db, &req)
-                        .await
-                {
-                    // 错误仅回复给发送者，不广播给其他人
-                    let err_msg = json!({
-                        "type": "error",
-                        "status": status.as_u16(),
-                        "error": json_err.0
-                    });
-                    return Some(serde_json::to_string(&err_msg).unwrap_or_default());
-                }
+            let req = crate::federation::room::SendRoomMessageRequest {
+                message_type: msg
+                    .get("message_type")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                payload,
+                thread_id: thread_id.map(|s| s.to_string()),
+                reply_to: reply_to.map(|s| s.to_string()),
+                encrypt: msg.get("encrypt").and_then(|v| v.as_bool()),
+            };
+            if let Err((status, json_err)) =
+                crate::federation::room::send_room_message(user_id, username, room_id, db, &req)
+                    .await
+            {
+                // 错误仅回复给发送者，不广播给其他人
+                let err_msg = json!({
+                    "type": "error",
+                    "status": status.as_u16(),
+                    "error": json_err.0
+                });
+                return Some(serde_json::to_string(&err_msg).unwrap_or_default());
             }
             None
         }
@@ -585,6 +612,7 @@ async fn handle_ws_room_client_message(
 ///
 /// 返回 Some(msg) 表示需要直接回复给发送者（不广播）
 async fn handle_ws_client_message(
+    db: &DatabaseConnection,
     user_id: i32,
     username: &str,
     channel_id: &str,
@@ -599,34 +627,31 @@ async fn handle_ws_client_message(
             let payload = msg.get("payload").cloned().unwrap_or(json!(null));
             let reply_to = msg.get("reply_to").and_then(|v| v.as_str());
 
-            let db_opt = crate::DB_CONNECTION.read().await;
-            if let Some(db) = db_opt.as_ref() {
-                let req = crate::federation::channel::SendMessageRequest {
-                    message_type: msg
-                        .get("message_type")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string()),
-                    payload,
-                    reply_to: reply_to.map(|s| s.to_string()),
-                    encrypt: msg.get("encrypt").and_then(|v| v.as_bool()),
-                };
-                match crate::federation::channel::send_message(
-                    user_id, username, channel_id, db, &req,
-                )
-                .await
-                {
-                    Ok(_resp) => {
-                        // send_message 内部已经调用了 broadcast_to_channel
-                    }
-                    Err((status, json_err)) => {
-                        // 错误仅回复给发送者，不广播给其他人
-                        let err_msg = json!({
-                            "type": "error",
-                            "status": status.as_u16(),
-                            "error": json_err.0
-                        });
-                        return Some(serde_json::to_string(&err_msg).unwrap_or_default());
-                    }
+            let req = crate::federation::channel::SendMessageRequest {
+                message_type: msg
+                    .get("message_type")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                payload,
+                reply_to: reply_to.map(|s| s.to_string()),
+                encrypt: msg.get("encrypt").and_then(|v| v.as_bool()),
+            };
+            match crate::federation::channel::send_message(
+                user_id, username, channel_id, db, &req,
+            )
+            .await
+            {
+                Ok(_resp) => {
+                    // send_message 内部已经调用了 broadcast_to_channel
+                }
+                Err((status, json_err)) => {
+                    // 错误仅回复给发送者，不广播给其他人
+                    let err_msg = json!({
+                        "type": "error",
+                        "status": status.as_u16(),
+                        "error": json_err.0
+                    });
+                    return Some(serde_json::to_string(&err_msg).unwrap_or_default());
                 }
             }
             None

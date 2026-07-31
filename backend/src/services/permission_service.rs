@@ -158,14 +158,17 @@ impl TappPermission {
     /// Capabilities whose real backend routes require an authenticated,
     /// durable application user. Guest Runtime Grants must not advertise these
     /// even when their broad level is basic/elevated.
+    /// Capabilities whose HTTP boundary still requires a durable logged-in user.
+    ///
+    /// Guest-safe basic capabilities (private storage under signed guest session
+    /// id, public platform cache reads) are intentionally **not** listed here so
+    /// Runtime Grants can include them for guest widgets.
     fn requires_authenticated_subject(&self) -> bool {
         matches!(
             self,
-            TappPermission::PlatformRead
-                | TappPermission::BrewWrite
+            TappPermission::BrewWrite
                 | TappPermission::BrewComment
                 | TappPermission::ReportRead
-                | TappPermission::Storage
                 | TappPermission::UiNotification
                 | TappPermission::ComponentTheme
                 | TappPermission::ShortcutRegister
@@ -411,9 +414,9 @@ impl TappPermissionService {
             return true;
         }
 
-        // Guests do not have a durable application user row. Never issue a
-        // capability whose real route is behind mandatory authentication;
+        // Never issue a capability whose real route is behind mandatory auth;
         // Runtime Grant metadata must match the executable HTTP boundary.
+        // (Storage + platform:read are guest-safe and use optional_auth.)
         if role == UserRole::Guest && permission.requires_authenticated_subject() {
             return false;
         }
@@ -706,21 +709,30 @@ mod tests {
             &requested,
         );
 
+        // Guest-safe: platform:read + storage (optional_auth + grant subject).
+        // Still excluded: brew:write, report:read, notifications, speech, etc.
         assert_eq!(
             granted,
             vec![
+                "platform:read",
                 "media:read",
                 "media:control",
                 "event:subscribe",
+                "storage",
                 "tappList:read",
                 "brew:read",
                 "federation:read"
             ]
         );
-        assert!(!TappPermissionService::check(
+        assert!(TappPermissionService::check(
             &config,
             UserRole::Guest,
             TappPermission::Storage
+        ));
+        assert!(TappPermissionService::check(
+            &config,
+            UserRole::Guest,
+            TappPermission::PlatformRead
         ));
 
         let effective = TappPermissionService::get_permission_config(&config);
@@ -822,7 +834,7 @@ mod tests {
                 UserRole::Guest,
                 &requested,
             ),
-            vec!["ui:theme"]
+            vec!["storage", "ui:theme"]
         );
     }
 

@@ -1,7 +1,7 @@
 // Bilibili API routes
+use crate::error::HttpError;
 use axum::{
     extract::{Path, Query},
-    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ pub struct ApiResponse<T> {
 /// 获取 Bilibili 用户完整信息
 pub async fn get_bilibili_user(
     Query(params): Query<BilibiliQuery>,
-) -> Result<Json<ApiResponse<BilibiliUserResponse>>, StatusCode> {
+) -> Result<Json<ApiResponse<BilibiliUserResponse>>, HttpError> {
     let fetcher = PlatformFetcher::new().await;
     let uid = params.uid;
 
@@ -85,7 +85,7 @@ pub async fn get_bilibili_user(
 /// 获取 Bilibili 用户基本信息
 pub async fn get_bilibili_user_info(
     Path(uid): Path<i64>,
-) -> Result<Json<ApiResponse<serde_json::Value>>, StatusCode> {
+) -> Result<Json<ApiResponse<serde_json::Value>>, HttpError> {
     let fetcher = PlatformFetcher::new().await;
 
     match fetcher.fetch_bilibili_user(uid).await {
@@ -111,7 +111,7 @@ pub async fn get_bilibili_user_info(
 /// 获取 Bilibili 收藏夹
 pub async fn get_bilibili_favorites(
     Path(uid): Path<i64>,
-) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, HttpError> {
     let fetcher = PlatformFetcher::new().await;
 
     match fetcher.fetch_bilibili_favorites(uid).await {
@@ -143,7 +143,7 @@ pub async fn get_bilibili_favorites(
 pub async fn get_bilibili_bangumi(
     Path(uid): Path<i64>,
     Query(params): Query<BanguminQuery>,
-) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, HttpError> {
     let fetcher = PlatformFetcher::new().await;
     let bangumi_type = params.bangumi_type.unwrap_or(1); // 默认获取动画
 
@@ -189,7 +189,7 @@ pub struct BanguminQuery {
 /// 获取所有 Bilibili 追番/追剧
 pub async fn get_all_bilibili_bangumi(
     Path(uid): Path<i64>,
-) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, HttpError> {
     let fetcher = PlatformFetcher::new().await;
 
     match fetcher.fetch_all_bilibili_bangumi(uid).await {

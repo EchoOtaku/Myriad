@@ -93,6 +93,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Serialize concurrent checkAuth calls. Wait for any in-flight check, then
   // always run a fresh /auth/me — login after page-load check must not no-op.
   const checkAuthInflight = useRef<Promise<void> | null>(null)
+  /** Monotonic generation so a stale probe cannot clear a fresher login hint. */
+  const checkAuthGeneration = useRef(0)
 
   const checkAuth = useCallback(async () => {
     while (checkAuthInflight.current) {
@@ -103,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    const generation = ++checkAuthGeneration.current
     setIsLoading(true)
     // Holder so the async body can compare against the same Promise without
     // TS "used before assigned" / ESLint prefer-const friction.
@@ -114,10 +117,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           signal: AbortSignal.timeout(5000),
         })
 
+        // Superseded by a newer checkAuth (e.g. login right after mount probe)
+        if (generation !== checkAuthGeneration.current) return
+
         // Durable contract: guest/expired session → HTTP 200 + authenticated:false
         // (never 401). Parse body; do not treat status alone as "logged in".
         if (isAuthMeHttpOk(response.status)) {
           const parsed = parseAuthMeResponse(await response.json())
+          if (generation !== checkAuthGeneration.current) return
           if (parsed.authenticated) {
             const u = parsed.user
             setSessionHint()
@@ -161,20 +168,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setIsAdmin(u.is_admin || false)
             return
           }
+          // Definitive guest body — only then drop the session hint
+          clearSessionHint()
+          setUser(null)
+          setIsAuthenticated(false)
+          setIsAdmin(false)
+          return
         }
 
-        clearSessionHint()
-        setUser(null)
-        setIsAuthenticated(false)
-        setIsAdmin(false)
+        // 5xx / unexpected: keep session hint so a post-login probe can recover
+        if (response.status === 401 || response.status === 403) {
+          clearSessionHint()
+          setUser(null)
+          setIsAuthenticated(false)
+          setIsAdmin(false)
+        }
       } catch (_error) {
-        // 网络错误时静默处理
+        // Network/timeout: do NOT clear session hint (login race / blip)
+        if (generation !== checkAuthGeneration.current) return
         setUser(null)
         setIsAuthenticated(false)
         setIsAdmin(false)
       } finally {
-        setIsLoading(false)
-        setHasChecked(true)
+        if (generation === checkAuthGeneration.current) {
+          setIsLoading(false)
+          setHasChecked(true)
+        }
         if (checkAuthInflight.current === inflight.current) {
           checkAuthInflight.current = null
         }
@@ -215,6 +234,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Strip only auth=success; leave link=* for the feedback toast hook
       if (authSuccess) {
+        // Product event: OAuth login completed (staff excluded by client+server)
+        void import('../utils/analyticsEvents').then(
+          ({ trackProductEvent, AnalyticsEvents }) => {
+            trackProductEvent(AnalyticsEvents.LOGIN_OAUTH_SUCCESS, {
+              flush: true,
+            })
+          },
+        )
         urlParams.delete('auth')
         const next = urlParams.toString()
         const path = window.location.pathname

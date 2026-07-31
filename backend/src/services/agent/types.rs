@@ -556,13 +556,17 @@ pub struct PlannerDecisionInfo {
     /// 置信度
     pub confidence: f32,
     /// 计划的步骤摘要
+    #[serde(rename = "plannedSteps", alias = "planned_steps")]
     pub planned_steps: Vec<PlannerStepSummary>,
 }
 
 /// Planner 规划的单步摘要
+///
+/// Field names use camelCase for SSE / FE debug panels (`capabilityId`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlannerStepSummary {
     pub id: String,
+    #[serde(rename = "capabilityId", alias = "capability_id")]
     pub capability_id: String,
     pub action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

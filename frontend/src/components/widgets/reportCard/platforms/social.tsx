@@ -866,17 +866,30 @@ export const DiscordWidget = memo(({ data, showOverview, onContentChange }: any)
               {detailHeadline}
             </span>
           </motion.div>
-          {Number(item.member_count) > 0 && (
+          {(Number(item.member_count) > 0 ||
+            Number(item.presence_count) > 0) && (
             <motion.div
-              className="mt-1 flex items-baseline gap-2 text-[10px] text-gray-500 dark:text-gray-400"
+              className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[10px] text-gray-500 dark:text-gray-400"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.4, delay: 0.22 }}
             >
-              <span className="font-bold text-gray-700 dark:text-gray-200 tabular-nums">
-                {formatCompactNumber(Number(item.member_count))}
-              </span>
-              <span>{t.reportCardWidget.discordMembers}</span>
+              {Number(item.member_count) > 0 && (
+                <span className="inline-flex items-baseline gap-1">
+                  <span className="font-bold text-gray-700 dark:text-gray-200 tabular-nums">
+                    {formatCompactNumber(Number(item.member_count))}
+                  </span>
+                  <span>{t.reportCardWidget.discordMembers}</span>
+                </span>
+              )}
+              {Number(item.presence_count) > 0 && (
+                <span className="inline-flex items-baseline gap-1">
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                    {formatCompactNumber(Number(item.presence_count))}
+                  </span>
+                  <span>{t.reportCardWidget.discordOnline}</span>
+                </span>
+              )}
             </motion.div>
           )}
         </div>

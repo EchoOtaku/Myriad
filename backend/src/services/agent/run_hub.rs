@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::sync::{broadcast, Mutex, RwLock};
 
-use crate::api::tapp_runtime::shared_registry;
+use crate::services::tapp_registry as shared_registry;
 
 use super::notifications::get_notification_manager;
 use super::AgentProgressEvent;

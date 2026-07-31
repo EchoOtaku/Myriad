@@ -163,13 +163,31 @@ export async function fetchWithRetry(
         // 判断是否应该重试
         if (attempt < maxRetries && shouldRetry(error, attempt)) {
           lastError = error
-          const delay = calculateDelay(
+          let delay = calculateDelay(
             attempt,
             initialDelay,
             maxDelay,
             exponentialBackoff,
             backoffMultiplier,
           )
+          // Honor Retry-After on 429 (seconds or HTTP-date) without exceeding maxDelay
+          if (response.status === 429) {
+            const ra = response.headers.get('Retry-After')
+            if (ra) {
+              const asInt = Number.parseInt(ra, 10)
+              if (Number.isFinite(asInt) && asInt >= 0) {
+                delay = Math.min(asInt * 1000, maxDelay)
+              } else {
+                const when = Date.parse(ra)
+                if (Number.isFinite(when)) {
+                  delay = Math.min(
+                    Math.max(0, when - Date.now()),
+                    maxDelay,
+                  )
+                }
+              }
+            }
+          }
 
           if (onRetry) {
             onRetry(error, attempt + 1, delay)

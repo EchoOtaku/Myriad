@@ -366,15 +366,20 @@ impl Default for AgentRouter {
 // ============ 任务分配结果 ============
 
 /// 任务分配结果（可序列化，用于 SSE 和 API）
+///
+/// Field names use camelCase for FE (`totalAgents`, `isMultiAgent`, …).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskAssignment {
     /// 参与的 Agent 列表
     pub agents: Vec<AgentAssignment>,
     /// 参与的 Agent 数量
+    #[serde(rename = "totalAgents", alias = "total_agents")]
     pub total_agents: usize,
     /// 是否多 Agent 协作
+    #[serde(rename = "isMultiAgent", alias = "is_multi_agent")]
     pub is_multi_agent: bool,
     /// Tier 分布: "pro" | "standard" | "mixed"
+    #[serde(rename = "tierMix", alias = "tier_mix")]
     pub tier_mix: String,
 }
 
@@ -384,8 +389,10 @@ pub struct AgentAssignment {
     /// Agent 角色
     pub role: AgentRole,
     /// Agent ID
+    #[serde(rename = "agentId", alias = "agent_id")]
     pub agent_id: String,
     /// 显示名称
+    #[serde(rename = "displayName", alias = "display_name")]
     pub display_name: String,
     /// 图标
     pub icon: String,

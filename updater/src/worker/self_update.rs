@@ -132,11 +132,17 @@ async fn try_self_update_from_github(worker: &Worker) -> Result<Option<SelfUpdat
     let cfg = worker.config();
     let ch_name = crate::version::release_channel_name_for_self_update(&worker.effective_channel());
     let ch: crate::config::Channel = ch_name.parse().unwrap_or(cfg.channel);
-    info!(channel = %ch, "self-update: looking up latest GitHub release for channel");
+    // proxy/updater ship on an independent cadence and may be omitted from a
+    // given app release.json — walk recent channel releases for the newest that
+    // still lists `images.updater`, then fall back to Docker Hub.
+    info!(
+        channel = %ch,
+        "self-update: looking up GitHub releases for channel (may skip releases without images.updater)"
+    );
 
-    let rel = match gh.latest_for_channel(ch).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
+    let releases = match gh.list_releases_for_channel(ch, 20).await {
+        Ok(r) if !r.is_empty() => r,
+        Ok(_) => {
             warn!(channel = %ch, "self-update: channel has no GitHub releases");
             return Ok(None);
         }
@@ -147,32 +153,41 @@ async fn try_self_update_from_github(worker: &Worker) -> Result<Option<SelfUpdat
         Err(e) => return Err(e),
     };
 
-    let manifest = match gh.fetch_manifest(&rel.tag_name).await {
-        Ok(m) => m,
-        Err(e) if GithubClient::is_release_json_unavailable(&e) => {
-            warn!(
-                err = %e,
+    for rel in releases {
+        let manifest = match gh.fetch_manifest(&rel.tag_name).await {
+            Ok(m) => m,
+            Err(e) if GithubClient::is_release_json_unavailable(&e) => {
+                warn!(
+                    err = %e,
+                    tag = %rel.tag_name,
+                    "self-update: GitHub release.json unavailable; trying older release"
+                );
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
+
+        let Some(updater_img) = manifest.image("updater") else {
+            info!(
                 tag = %rel.tag_name,
-                "self-update: GitHub release.json unavailable"
+                "self-update: release omits images.updater; trying older release"
             );
-            return Ok(None);
-        }
-        Err(e) => return Err(e),
-    };
+            continue;
+        };
 
-    let updater_img = manifest.image("updater").ok_or_else(|| {
-        UpdaterError::Precondition(format!(
-            "release {} has no `updater` image in the manifest",
-            rel.tag_name
-        ))
-    })?;
+        return Ok(Some(SelfUpdateTarget {
+            tag: manifest.version.as_str().to_string(),
+            image_ref: updater_img.r#ref.clone(),
+            expected_digest: Some(updater_img.digest.clone()),
+            source: "github",
+        }));
+    }
 
-    Ok(Some(SelfUpdateTarget {
-        tag: manifest.version.as_str().to_string(),
-        image_ref: updater_img.r#ref.clone(),
-        expected_digest: Some(updater_img.digest.clone()),
-        source: "github",
-    }))
+    warn!(
+        channel = %ch,
+        "self-update: no recent GitHub release lists images.updater"
+    );
+    Ok(None)
 }
 
 async fn resolve_self_update_via_dockerhub(worker: &Worker) -> Result<SelfUpdateTarget> {

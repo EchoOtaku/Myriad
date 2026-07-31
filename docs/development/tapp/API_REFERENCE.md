@@ -1283,7 +1283,7 @@ const unsubscribe = Tapp.scheduler.onTask("refresh", async (payload) => {
 | `cron`     | `cron`     | `'0 9 * * 1'` - 每周一上午 9 点 |
 | `interval` | `interval` | `300000` - 每 5 分钟            |
 | `once`     | `at`       | 时间戳（毫秒）                  |
-| `daily`    | `time`     | `'09:00'` - 每天上午 9 点       |
+| `daily`    | `time` (+ 可选 `timezone`) | `'09:00'` — **墙钟**本地「上午 9 点」（默认 `timezone: 'local'` = 进程 `TZ` / 容器时区；可设 `UTC` 或 `+08:00`） |
 
 ### 后端操作类型
 

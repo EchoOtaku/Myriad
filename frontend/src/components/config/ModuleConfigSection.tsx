@@ -22,6 +22,7 @@ import {
   normalizeModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
+import { normalizeMusicPlaylistId } from '../../utils/musicPlaylistId'
 import PlatformIcon from '../PlatformIcon'
 import {
   ButtonItem,
@@ -440,6 +441,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       library: t.nav.library,
       brew: t.nav.brewReading,
       reports: t.nav.reports,
+      life: t.nav.life,
       tapp: t.nav.tappStore,
       agent: t.nav.agent,
     }),
@@ -453,6 +455,12 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       ),
       brew: <BrewTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       reports: <ReportsTitleIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
+      life: (
+        <MyriadConfigIcon
+          kind="agent"
+          className={MODULE_SETTING_TITLE_ICON_CLASS}
+        />
+      ),
       tapp: <MyriadStoreIcon className={MODULE_SETTING_TITLE_ICON_CLASS} />,
       agent: (
         <MyriadConfigIcon
@@ -798,7 +806,14 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
           label={t.config.playlistId}
           required
           value={playlistId}
-          onChange={(v) => updateUiFieldValue('music_playlist_id', v)}
+          onChange={(v) => {
+            // Paste full NetEase/QQ URL → extract numeric id (matches backend normalize)
+            const next =
+              v.includes('://') || v.includes('id=') || v.includes('/playlist/')
+                ? normalizeMusicPlaylistId(v)
+                : v
+            updateUiFieldValue('music_playlist_id', next)
+          }}
           placeholder={
             musicSource === 'netease'
               ? t.config.neteasePlaylistExample

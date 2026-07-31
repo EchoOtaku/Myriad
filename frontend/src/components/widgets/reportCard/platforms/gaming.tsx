@@ -45,15 +45,25 @@ async function fetchSteamPresence(
       const res = await fetch(`${API_URL}/api/steam/presence`, {
         signal: AbortSignal.timeout(10000),
       })
-      if (!res.ok) return null
+      if (!res.ok) {
+        // Drop stale cache so UI does not keep "online" after a failed poll
+        cachedSteamPresence = null
+        cachedSteamPresenceAt = 0
+        return null
+      }
       const body = await res.json()
       if (body?.success && body?.data) {
         cachedSteamPresence = body.data as SteamPresence
         cachedSteamPresenceAt = Date.now()
         return cachedSteamPresence
       }
+      cachedSteamPresence = null
+      cachedSteamPresenceAt = 0
     } catch {
-      // Steam 状态属于增强信息，失败时保留报告卡片原内容。
+      // Failure: clear module cache so the next refresh does not re-serve
+      // a prior online snapshot after TTL (假在线).
+      cachedSteamPresence = null
+      cachedSteamPresenceAt = 0
     } finally {
       steamPresencePromise = null
     }
@@ -72,6 +82,9 @@ interface XboxPresence {
   game_title?: string | null
   status?: string | null
   gamerscore?: number | null
+  /** Server returned identity-only payload (no API key) */
+  degraded?: boolean
+  degrade_reason?: string | null
 }
 
 const xboxPresenceCache = new Map<string, { data: XboxPresence; at: number }>()
@@ -98,15 +111,26 @@ async function fetchXboxPresence(
         `${API_URL}/api/game/presence?${params.toString()}`,
         { signal: AbortSignal.timeout(12000) },
       )
-      if (!res.ok) return null
+      if (!res.ok) {
+        xboxPresenceCache.delete(key)
+        return null
+      }
       const body = await res.json()
       const d = body?.data
-      if (!body?.success || !d) return null
+      // success:true + degraded:true is valid (identity-only when API key missing)
+      if (!body?.success || !d) {
+        xboxPresenceCache.delete(key)
+        return null
+      }
+      const degraded = Boolean(d.degraded)
       const status = String(d?.presence?.status || '').toLowerCase()
       const title = d?.presence?.title ? String(d.presence.title) : null
-      const isOnline =
-        status === 'online' || status === 'away' || status === 'busy'
-      const isInGame = Boolean(title && title !== 'Home')
+      const isOnline = degraded
+        ? false
+        : status === 'online' || status === 'away' || status === 'busy'
+      // Offline payloads may still carry a stale title — require online for "playing"
+      const isInGame =
+        !degraded && isOnline && Boolean(title && title !== 'Home')
       const gsRaw = d?.score?.value
       const gs =
         typeof gsRaw === 'string' || typeof gsRaw === 'number'
@@ -118,12 +142,19 @@ async function fetchXboxPresence(
         is_online: isOnline,
         is_in_game: isInGame,
         game_title: isInGame ? title : null,
-        status: d?.presence?.status || null,
+        status: degraded
+          ? 'degraded'
+          : d?.presence?.status || null,
         gamerscore: Number.isFinite(gs as number) ? (gs as number) : null,
+        degraded,
+        degrade_reason: d.degrade_reason
+          ? String(d.degrade_reason)
+          : null,
       }
       xboxPresenceCache.set(key, { data: presence, at: Date.now() })
       return presence
     } catch {
+      xboxPresenceCache.delete(key)
       return null
     } finally {
       xboxPresenceInflight.delete(key)
@@ -463,9 +494,10 @@ export const SteamStatsWidget = memo(({ data }: any) => {
       // 后台标签页跳过请求，回到前台后由下一个 interval tick 恢复
       if (document.hidden) return
       const nextPresence = await fetchSteamPresence()
-      if (!cancelled && nextPresence) {
-        setLivePresence(nextPresence)
-      }
+      if (cancelled) return
+      // null = poll failed or offline payload: clear live state (fall back to
+      // report-card snapshot) so a prior "online" does not stick forever.
+      setLivePresence(nextPresence)
     }
 
     refreshPresence()
@@ -1050,7 +1082,7 @@ export const XboxStatsWidget = memo(({ data }: any) => {
     const refresh = async () => {
       if (document.hidden) return
       const next = await fetchXboxPresence(gamertag)
-      if (!cancelled && next) setLivePresence(next)
+      if (!cancelled) setLivePresence(next)
     }
     refresh()
     const intervalId = window.setInterval(refresh, 120 * 1000)
@@ -1067,7 +1099,7 @@ export const XboxStatsWidget = memo(({ data }: any) => {
     fetchPlatformUserIds().then((ids) => {
       if (cancelled || !ids.xbox) return
       fetchXboxPresence(ids.xbox).then((next) => {
-        if (!cancelled && next) setLivePresence(next)
+        if (!cancelled) setLivePresence(next)
       })
     })
     return () => {
@@ -1081,16 +1113,21 @@ export const XboxStatsWidget = memo(({ data }: any) => {
     proxyImageUrl(livePresence?.avatar) ||
     livePresence?.avatar ||
     fallbackAvatar
-  const isLive = Boolean(livePresence?.is_online || livePresence?.is_in_game)
+  const isDegraded = Boolean(livePresence?.degraded)
+  const isLive = Boolean(
+    !isDegraded && (livePresence?.is_online || livePresence?.is_in_game),
+  )
   const nowPlaying =
-    livePresence?.is_in_game && livePresence?.game_title
+    !isDegraded && livePresence?.is_in_game && livePresence?.game_title
       ? livePresence.game_title
       : null
-  const presenceColor = livePresence?.is_in_game
-    ? XBOX_ACCENT_SOFT
-    : livePresence?.is_online
-      ? '#22c55e'
-      : '#9ca3af'
+  const presenceColor = isDegraded
+    ? '#f59e0b' // amber: limited / no API key — not offline
+    : livePresence?.is_in_game
+      ? XBOX_ACCENT_SOFT
+      : livePresence?.is_online
+        ? '#22c55e'
+        : '#9ca3af'
   const liveGs =
     livePresence?.gamerscore != null && livePresence.gamerscore > 0
       ? livePresence.gamerscore
@@ -1194,7 +1231,12 @@ export const XboxStatsWidget = memo(({ data }: any) => {
                 : { duration: 0.35, delay: 0.1 }
             }
             title={
-              livePresence?.status ? String(livePresence.status) : undefined
+              livePresence?.degraded
+                ? livePresence.degrade_reason ||
+                  t.reportCardWidget.presenceDegraded
+                : livePresence?.status
+                  ? String(livePresence.status)
+                  : undefined
             }
           >
             {safeAvatarUrl ? (
@@ -1210,7 +1252,7 @@ export const XboxStatsWidget = memo(({ data }: any) => {
                 <FaXbox className="h-5 w-5 text-[#107C10]" />
               </div>
             )}
-            {/* 在线状态点 */}
+            {/* 在线状态点（amber = degraded / missing server key） */}
             {livePresence && (
               <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3">
                 {isLive && anim.loop && (
@@ -1318,6 +1360,8 @@ interface PsnPresence {
   status?: string | null
   trophy_level?: number | null
   platinum?: number | null
+  degraded?: boolean
+  degrade_reason?: string | null
 }
 
 const psnPresenceCache = new Map<string, { data: PsnPresence; at: number }>()
@@ -1341,18 +1385,29 @@ async function fetchPsnPresence(
         `${API_URL}/api/game/presence?${params.toString()}`,
         { signal: AbortSignal.timeout(12000) },
       )
-      if (!res.ok) return null
+      if (!res.ok) {
+        psnPresenceCache.delete(key)
+        return null
+      }
       const body = await res.json()
       const d = body?.data
-      if (!body?.success || !d) return null
+      if (!body?.success || !d) {
+        psnPresenceCache.delete(key)
+        return null
+      }
+      const degraded = Boolean(d.degraded)
       const status = String(d?.presence?.status || '').toLowerCase()
       const title = d?.presence?.title ? String(d.presence.title) : null
-      const isOnline =
-        status.includes('online') ||
-        status === 'available' ||
-        status === 'away' ||
-        status === 'busy'
-      const isInGame = Boolean(title)
+      // BE may still emit availableToPlay before normalize; accept available*
+      const isOnline = degraded
+        ? false
+        : status.includes('online') ||
+          status === 'available' ||
+          status === 'availabletoplay' ||
+          (status.includes('available') && !status.includes('unavailable')) ||
+          status === 'away' ||
+          status === 'busy'
+      const isInGame = !degraded && Boolean(title)
       const lvRaw = d?.score?.value
       const lv =
         typeof lvRaw === 'string' || typeof lvRaw === 'number'
@@ -1373,13 +1428,18 @@ async function fetchPsnPresence(
         is_online: isOnline,
         is_in_game: isInGame,
         game_title: isInGame ? title : null,
-        status: d?.presence?.status || null,
+        status: degraded ? 'degraded' : d?.presence?.status || null,
         trophy_level: Number.isFinite(lv as number) ? (lv as number) : null,
         platinum: Number.isFinite(plat as number) ? (plat as number) : null,
+        degraded,
+        degrade_reason: d.degrade_reason
+          ? String(d.degrade_reason)
+          : null,
       }
       psnPresenceCache.set(key, { data: presence, at: Date.now() })
       return presence
     } catch {
+      psnPresenceCache.delete(key)
       return null
     } finally {
       psnPresenceInflight.delete(key)
@@ -1701,7 +1761,7 @@ export const PsnStatsWidget = memo(({ data }: any) => {
     const refresh = async () => {
       if (document.hidden) return
       const next = await fetchPsnPresence(onlineId)
-      if (!cancelled && next) setLivePresence(next)
+      if (!cancelled) setLivePresence(next)
     }
     refresh()
     const intervalId = window.setInterval(refresh, 120 * 1000)
@@ -1717,7 +1777,7 @@ export const PsnStatsWidget = memo(({ data }: any) => {
     fetchPlatformUserIds().then((ids) => {
       if (cancelled || !ids.psn) return
       fetchPsnPresence(ids.psn).then((next) => {
-        if (!cancelled && next) setLivePresence(next)
+        if (!cancelled) setLivePresence(next)
       })
     })
     return () => {
@@ -1731,16 +1791,21 @@ export const PsnStatsWidget = memo(({ data }: any) => {
     proxyImageUrl(livePresence?.avatar) ||
     normalizeHttpsMediaUrl(livePresence?.avatar) ||
     fallbackAvatar
-  const isLive = Boolean(livePresence?.is_online || livePresence?.is_in_game)
+  const isDegraded = Boolean(livePresence?.degraded)
+  const isLive = Boolean(
+    !isDegraded && (livePresence?.is_online || livePresence?.is_in_game),
+  )
   const nowPlaying =
-    livePresence?.is_in_game && livePresence?.game_title
+    !isDegraded && livePresence?.is_in_game && livePresence?.game_title
       ? livePresence.game_title
       : null
-  const presenceColor = livePresence?.is_in_game
-    ? PSN_ACCENT_SOFT
-    : livePresence?.is_online
-      ? '#22c55e'
-      : '#9ca3af'
+  const presenceColor = isDegraded
+    ? '#f59e0b'
+    : livePresence?.is_in_game
+      ? PSN_ACCENT_SOFT
+      : livePresence?.is_online
+        ? '#22c55e'
+        : '#9ca3af'
   const liveLevel =
     livePresence?.trophy_level != null && livePresence.trophy_level > 0
       ? livePresence.trophy_level
@@ -1853,7 +1918,12 @@ export const PsnStatsWidget = memo(({ data }: any) => {
                 : { duration: 0.35, delay: 0.1 }
             }
             title={
-              livePresence?.status ? String(livePresence.status) : undefined
+              livePresence?.degraded
+                ? livePresence.degrade_reason ||
+                  t.reportCardWidget.presenceDegraded
+                : livePresence?.status
+                  ? String(livePresence.status)
+                  : undefined
             }
           >
             {avatarUrl ? (

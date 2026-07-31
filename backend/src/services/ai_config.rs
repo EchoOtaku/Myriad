@@ -1,0 +1,188 @@
+//! Cached AI provider configuration for Tapp / Agent governed calls.
+//!
+//! Lives in services so AI task execution does not reach through HTTP-layer
+//! `tapp_runtime::common` for dynamic config resolution.
+
+use once_cell::sync::Lazy;
+use std::time::{Duration, Instant};
+use tokio::sync::RwLock;
+
+use crate::config::ModelTier;
+use crate::services::analyzer::AiProvider;
+use crate::GLOBAL_DYNAMIC_CONFIG;
+
+/// Text-generation AI provider config (key material included; never log).
+#[derive(Clone)]
+pub struct AiConfig {
+    pub provider: AiProvider,
+    pub api_key: String,
+    pub model: String,
+    pub base_url: Option<String>,
+}
+
+/// Image-generation AI config (resolution chosen by callers).
+#[derive(Clone)]
+pub struct AiImageConfig {
+    pub provider: String,
+    pub model: String,
+    pub pixai_api_key: Option<String>,
+}
+
+/// Domain error when no usable provider is configured.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AiConfigError {
+    NotConfigured,
+}
+
+impl AiConfigError {
+    pub fn message(&self) -> &'static str {
+        match self {
+            Self::NotConfigured => "No AI provider configured",
+        }
+    }
+}
+
+impl std::fmt::Display for AiConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.message())
+    }
+}
+
+impl std::error::Error for AiConfigError {}
+
+struct SingleCache<V: Clone> {
+    value: Option<V>,
+    cached_at: Option<Instant>,
+    ttl: Duration,
+}
+
+impl<V: Clone> SingleCache<V> {
+    fn new(ttl: Duration) -> Self {
+        Self {
+            value: None,
+            cached_at: None,
+            ttl,
+        }
+    }
+
+    fn get(&self) -> Option<V> {
+        if let (Some(value), Some(cached_at)) = (&self.value, self.cached_at) {
+            if cached_at.elapsed() < self.ttl {
+                return Some(value.clone());
+            }
+        }
+        None
+    }
+
+    fn set(&mut self, value: V) {
+        self.value = Some(value);
+        self.cached_at = Some(Instant::now());
+    }
+}
+
+static AI_CONFIG_CACHE: Lazy<RwLock<SingleCache<AiConfig>>> =
+    Lazy::new(|| RwLock::new(SingleCache::new(Duration::from_secs(300))));
+static AI_PRO_CONFIG_CACHE: Lazy<RwLock<SingleCache<AiConfig>>> =
+    Lazy::new(|| RwLock::new(SingleCache::new(Duration::from_secs(300))));
+static AI_LITE_CONFIG_CACHE: Lazy<RwLock<SingleCache<AiConfig>>> =
+    Lazy::new(|| RwLock::new(SingleCache::new(Duration::from_secs(300))));
+static AI_IMAGE_CONFIG_CACHE: Lazy<RwLock<SingleCache<AiImageConfig>>> =
+    Lazy::new(|| RwLock::new(SingleCache::new(Duration::from_secs(300))));
+
+fn cache_for_tier(tier: ModelTier) -> &'static RwLock<SingleCache<AiConfig>> {
+    match tier {
+        ModelTier::Lite => &AI_LITE_CONFIG_CACHE,
+        ModelTier::Standard => &AI_CONFIG_CACHE,
+        ModelTier::Pro => &AI_PRO_CONFIG_CACHE,
+    }
+}
+
+/// Resolve text AI config for a model tier (5-minute process cache).
+pub async fn get_ai_config_for_tier(tier: ModelTier) -> Result<AiConfig, AiConfigError> {
+    let cache_ref = cache_for_tier(tier);
+    {
+        let cache = cache_ref.read().await;
+        if let Some(config) = cache.get() {
+            return Ok(config);
+        }
+    }
+
+    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    let resolved = config.resolve_ai_config(tier);
+    let api_key = resolved.api_key.filter(|k| !k.is_empty());
+    let ai_config = api_key.map(|key| {
+        let provider = AiProvider::from_str(&resolved.provider);
+        let base_url = if resolved.base_url.is_empty() {
+            None
+        } else {
+            Some(resolved.base_url.clone())
+        };
+        AiConfig {
+            provider,
+            api_key: key,
+            model: resolved.model.clone(),
+            base_url,
+        }
+    });
+
+    match ai_config {
+        Some(cfg) => {
+            let mut cache = cache_ref.write().await;
+            cache.set(cfg.clone());
+            Ok(cfg)
+        }
+        None => Err(AiConfigError::NotConfigured),
+    }
+}
+
+/// Resolve image AI config (5-minute process cache).
+pub async fn get_ai_image_config() -> Result<AiImageConfig, AiConfigError> {
+    {
+        let cache = AI_IMAGE_CONFIG_CACHE.read().await;
+        if let Some(config) = cache.get() {
+            return Ok(config);
+        }
+    }
+
+    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    // Image path may still be partially configured; callers decide usability.
+    if config.ai_image_provider.is_empty() && config.ai_image_model.is_empty() {
+        // Preserve prior HTTP behavior: always return a snapshot (keys may be empty).
+        // Callers check keys before use. Do not treat empty as NotConfigured here.
+    }
+    let image_config = AiImageConfig {
+        provider: config.ai_image_provider.clone(),
+        model: config.ai_image_model.clone(),
+        pixai_api_key: config.pixai_api_key.clone(),
+    };
+
+    let mut cache = AI_IMAGE_CONFIG_CACHE.write().await;
+    cache.set(image_config.clone());
+    Ok(image_config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn not_configured_message_is_stable() {
+        assert_eq!(
+            AiConfigError::NotConfigured.message(),
+            "No AI provider configured"
+        );
+        assert_eq!(
+            AiConfigError::NotConfigured.to_string(),
+            "No AI provider configured"
+        );
+    }
+
+    #[test]
+    fn single_cache_expires_after_ttl() {
+        let mut cache = SingleCache::new(Duration::from_millis(5));
+        cache.set(42);
+        assert_eq!(cache.get(), Some(42));
+        std::thread::sleep(Duration::from_millis(10));
+        assert_eq!(cache.get(), None);
+    }
+}

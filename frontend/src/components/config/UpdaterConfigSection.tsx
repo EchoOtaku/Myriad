@@ -848,8 +848,10 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       }
       setBusy(`rollback-${snap.id}`)
       try {
-        await api.rollback(snap.id)
+        const r = await api.rollback(snap.id)
         setToast({ kind: 'ok', text: u.updaterRollbackDispatched })
+        // Same as upgrade: watch job_id immediately for maintenance redirect
+        beginMaintWatch(r.job_id)
         await refresh()
       } catch (e) {
         setToast({ kind: 'error', text: explain(e) })
@@ -857,7 +859,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         setBusy(null)
       }
     },
-    [api, refresh, tokenRequired, explain, u],
+    [api, refresh, tokenRequired, explain, u, beginMaintWatch],
   )
 
   const deleteSnapshot = useCallback(
@@ -986,13 +988,15 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         kind: 'ok',
         text: `${u.updaterRescueContinueDispatched} · ${res.job_id.slice(0, 8)}`,
       })
+      // Same as upgrade: watch job_id immediately for maintenance redirect
+      beginMaintWatch(res.job_id)
       await refresh()
     } catch (e) {
       setToast({ kind: 'error', text: explain(e) })
     } finally {
       setBusy(null)
     }
-  }, [api, refresh, tokenRequired, explain, u, status])
+  }, [api, refresh, tokenRequired, explain, u, status, beginMaintWatch])
 
   // ===== 渲染 =====
 

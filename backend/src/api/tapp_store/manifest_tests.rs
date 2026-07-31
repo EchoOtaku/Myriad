@@ -28,23 +28,7 @@ fn permission_errors_return_actionable_service_unavailable() {
     assert!(message.contains("ownership/permissions"));
 }
 
-/// Pure mirror of `uninstall_tapp` branch order (own → public+admin → not found).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum UninstallTarget {
-    OwnInstall,
-    PublicRequiresAdmin,
-    NotFound,
-}
-
-fn select_uninstall_target(has_own_install: bool, has_public_install: bool) -> UninstallTarget {
-    if has_own_install {
-        UninstallTarget::OwnInstall
-    } else if has_public_install {
-        UninstallTarget::PublicRequiresAdmin
-    } else {
-        UninstallTarget::NotFound
-    }
-}
+use crate::services::tapp_lifecycle::{select_uninstall_target, UninstallTarget};
 
 #[test]
 fn every_admin_operates_the_canonical_public_owner_namespace() {

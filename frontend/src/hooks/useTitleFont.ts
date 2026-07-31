@@ -261,9 +261,15 @@ function updateGlobalState(updates: Partial<TitleStyle>) {
   notifyListeners()
 }
 
-// 防抖保存
+// 防抖保存：合并 500ms 窗口内的多次字段修改，避免后写整包冲掉前写
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
 const SAVE_DEBOUNCE_MS = 500
+let pendingSave: Partial<{
+  title_font: string
+  title_font_size: number
+  title_color: string
+}> = {}
+let pendingCsrfToken = ''
 
 async function debouncedSave(
   csrfToken: string,
@@ -273,20 +279,29 @@ async function debouncedSave(
     title_color: string
   }>,
 ) {
+  pendingSave = { ...pendingSave, ...settings }
+  pendingCsrfToken = csrfToken || pendingCsrfToken
+
   if (saveTimeout) {
     clearTimeout(saveTimeout)
   }
 
   saveTimeout = setTimeout(async () => {
+    const payload = { ...pendingSave }
+    const token = pendingCsrfToken
+    pendingSave = {}
+    pendingCsrfToken = ''
+    saveTimeout = null
+    if (Object.keys(payload).length === 0) return
     try {
       await fetch(`${API_URL}/api/config/dashboard`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
+          'X-CSRF-Token': token,
         },
         credentials: 'include',
-        body: JSON.stringify(settings),
+        body: JSON.stringify(payload),
       })
     } catch (err) {
       console.error('保存标题样式失败:', err)

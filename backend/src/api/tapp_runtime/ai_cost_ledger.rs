@@ -1,10 +1,7 @@
-//! Append-only per-call AI cost ledger.
+//! HTTP surface for the append-only AI cost ledger.
 //!
-//! `tapp_quota_usage` answers "how much budget is left today"; this ledger
-//! answers "which Tapp spent what, when, on which provider/model". Entries are
-//! written for every governed AI call (completed, failed or cancelled) and are
-//! never reset. Token counts are the same length/4 estimates the quota system
-//! uses; `cost_micro_usd` stays NULL until a pricing source exists.
+//! Write path lives in [`crate::services::ai_cost_ledger`]; this module only
+//! serves the host UI journal endpoint.
 
 use axum::{
     extract::{Query, State},
@@ -15,64 +12,10 @@ use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value a
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 
 use super::common::parse_user_id;
-
-pub(crate) struct AiCostLedgerEntry<'a> {
-    pub subject_id: i32,
-    pub owner_id: i32,
-    pub tapp_id: &'a str,
-    pub task_id: &'a str,
-    /// "runtime" for sandbox-created AI Tasks, "internal:<caller>" for
-    /// governed host adapters (scheduler, declared builtins, ...).
-    pub source: &'a str,
-    pub operation: &'a str,
-    pub provider: &'a str,
-    pub model: &'a str,
-    pub input_tokens: i32,
-    pub output_tokens: i32,
-    pub status: &'a str,
-    pub error_code: Option<&'a str>,
-}
-
-/// Best-effort insert: the ledger must never fail the AI task itself.
-pub(crate) async fn record_ai_cost(db: &DatabaseConnection, entry: AiCostLedgerEntry<'_>) {
-    let result = db
-        .execute(Statement::from_sql_and_values(
-            DbBackend::Postgres,
-            r#"
-                INSERT INTO tapp_ai_cost_ledger
-                    (subject_id, owner_id, tapp_id, task_id, source, operation,
-                     provider, model, input_tokens, output_tokens,
-                     tokens_estimated, status, error_code)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE, $11, $12)
-            "#,
-            vec![
-                SeaValue::Int(Some(entry.subject_id)),
-                SeaValue::Int(Some(entry.owner_id)),
-                SeaValue::String(Some(Box::new(entry.tapp_id.to_string()))),
-                SeaValue::String(Some(Box::new(entry.task_id.to_string()))),
-                SeaValue::String(Some(Box::new(entry.source.to_string()))),
-                SeaValue::String(Some(Box::new(entry.operation.to_string()))),
-                SeaValue::String(Some(Box::new(entry.provider.to_string()))),
-                SeaValue::String(Some(Box::new(entry.model.to_string()))),
-                SeaValue::Int(Some(entry.input_tokens.max(0))),
-                SeaValue::Int(Some(entry.output_tokens.max(0))),
-                SeaValue::String(Some(Box::new(entry.status.to_string()))),
-                SeaValue::String(entry.error_code.map(|code| Box::new(code.to_string()))),
-            ],
-        ))
-        .await;
-    if let Err(error) = result {
-        tracing::error!(
-            %error,
-            tapp_id = entry.tapp_id,
-            task_id = entry.task_id,
-            "[TAPP] Failed to append AI cost ledger entry"
-        );
-    }
-}
 
 #[derive(Debug, Deserialize)]
 pub struct LedgerQuery {
@@ -91,7 +34,7 @@ pub async fn ai_cost_ledger(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Query(query): Query<LedgerQuery>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     let subject_id = parse_user_id(&claims)?;
     let limit = i64::from(query.limit.unwrap_or(50).clamp(1, 200));
 

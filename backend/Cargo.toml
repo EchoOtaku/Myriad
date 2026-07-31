@@ -1,6 +1,6 @@
 [package]
 name = "myriad-backend"
-version = "0.3.18"
+version = "0.3.20"
 edition = "2021"
 authors = ["Myriad Contributors"]
 description = "Backend service for Myriad — a myriad of lights, in one place."
@@ -42,6 +42,17 @@ migration = { path = "migrations" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 myriad-tapp-contract = { path = "../crates/tapp-contract" }
+myriad-error = { path = "../crates/myriad-error" }
+myriad-data-key = { path = "../crates/myriad-data-key" }
+myriad-image-proxy = { path = "../crates/myriad-image-proxy" }
+myriad-json-schema = { path = "../crates/myriad-json-schema" }
+myriad-outbound = { path = "../crates/myriad-outbound" }
+myriad-platform-utils = { path = "../crates/myriad-platform-utils" }
+myriad-tapp-registry = { path = "../crates/myriad-tapp-registry" }
+myriad-prompt-security = { path = "../crates/myriad-prompt-security" }
+myriad-module-visibility = { path = "../crates/myriad-module-visibility" }
+myriad-process-info = { path = "../crates/myriad-process-info" }
+myriad-psn-auth = { path = "../crates/myriad-psn-auth" }
 semver = "1.0"
 schemars = { version = "1.0", optional = true }
 
@@ -89,6 +100,7 @@ uuid = { version = "1.24", features = ["v4", "serde"] }
 rand = "0.10"
 lazy_static = "1.5"
 once_cell = "1.21"
+ipnet = "2"                                             # TRUST_PROXY_PEERS CIDR allowlist
 futures = "0.3"
 async-stream = "0.3"
 tokio-stream = "0.1"                                    # For SSE streaming
@@ -101,8 +113,4 @@ scraper = "0.27"                                        # HTML parsing for web.s
 [dev-dependencies]
 mockall = "0.15"
 
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1
-strip = true
+# release profile lives in the root workspace Cargo.toml

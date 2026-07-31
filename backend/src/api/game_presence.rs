@@ -7,13 +7,15 @@
 //!
 //! 标识符存在前端小组件 config 中，不在全局配置页新增设置项。
 
-use axum::{extract::Query, http::StatusCode, Json};
+use crate::config::DynamicConfig;
+use crate::error::HttpError;
+use axum::{extract::Query, extract::State, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use url::Url;
+use tokio::sync::RwLock;
 
 use crate::services::outbound_security::build_public_http_client;
 
@@ -294,8 +296,9 @@ fn proxy_presence_media(mut data: GamePresenceData) -> GamePresenceData {
 // ---------------------------------------------------------------------------
 
 pub async fn get_game_presence(
+    State(dynamic_config): State<Arc<RwLock<DynamicConfig>>>,
     Query(q): Query<PresenceQuery>,
-) -> Result<Json<ApiResponse<GamePresenceData>>, StatusCode> {
+) -> Result<Json<ApiResponse<GamePresenceData>>, HttpError> {
     let platform = q.platform.trim().to_ascii_lowercase();
     let account_id = q.id.trim().to_string();
     let game = q
@@ -354,8 +357,8 @@ pub async fn get_game_presence(
         }
         CacheLookup::RefreshPresence(mut data) => {
             let refreshed = match platform.as_str() {
-                "xbox" => refresh_xbox_presence(&data).await,
-                _ => refresh_psn_presence(&data).await,
+                "xbox" => refresh_xbox_presence(&data, &dynamic_config).await,
+                _ => refresh_psn_presence(&data, &dynamic_config).await,
             };
             match refreshed {
                 Ok(presence) => {
@@ -376,8 +379,8 @@ pub async fn get_game_presence(
 
     let result = match platform.as_str() {
         "hoyolab" | "hoyoverse" | "miyoushe" | "enka" => fetch_enka(&account_id, &game, lang).await,
-        "xbox" => fetch_xbox(&account_id).await,
-        "psn" | "playstation" => fetch_psn(&account_id).await,
+        "xbox" => fetch_xbox(&account_id, &dynamic_config).await,
+        "psn" | "playstation" => fetch_psn(&account_id, &dynamic_config).await,
         _ => Err(format!("Unsupported platform: {platform}")),
     };
 
@@ -713,8 +716,8 @@ async fn parse_enka_zzz(uid: &str, lang: &str, body: &Value) -> Result<GamePrese
 // ---------------------------------------------------------------------------
 
 /// 优先读 DB 配置（配置页保存后即时生效），env 作为回退
-async fn xbox_api_key() -> String {
-    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+async fn xbox_api_key(dynamic_config: &Arc<RwLock<DynamicConfig>>) -> String {
+    let config = dynamic_config.read().await;
     config
         .openxbl_api_key
         .clone()
@@ -768,13 +771,16 @@ fn parse_xbox_presence(pres_raw: Value) -> (Option<String>, Option<String>) {
 }
 
 /// 仅刷新 Xbox live presence：1 次上游调用，身份 / GS 沿用 6h 快照
-async fn refresh_xbox_presence(data: &GamePresenceData) -> Result<GamePresenceInfo, String> {
+async fn refresh_xbox_presence(
+    data: &GamePresenceData,
+    dynamic_config: &Arc<RwLock<DynamicConfig>>,
+) -> Result<GamePresenceInfo, String> {
     let xuid = data.identity.id.trim();
     // 快照没解析出 xuid 时 identity.id 是 gamertag，无法走 presence 端点
     if xuid.is_empty() || !xuid.chars().all(|c| c.is_ascii_digit()) {
         return Err("no xuid in cached snapshot".to_string());
     }
-    let api_key = xbox_api_key().await;
+    let api_key = xbox_api_key(dynamic_config).await;
     if api_key.trim().is_empty() {
         return Err("OPENXBL_API_KEY not configured".to_string());
     }
@@ -796,8 +802,11 @@ async fn refresh_xbox_presence(data: &GamePresenceData) -> Result<GamePresenceIn
     })
 }
 
-async fn fetch_xbox(gamertag: &str) -> Result<GamePresenceData, String> {
-    let api_key = xbox_api_key().await;
+async fn fetch_xbox(
+    gamertag: &str,
+    dynamic_config: &Arc<RwLock<DynamicConfig>>,
+) -> Result<GamePresenceData, String> {
+    let api_key = xbox_api_key(dynamic_config).await;
 
     if api_key.trim().is_empty() {
         // 降级：仅返回标识 + 公开主页链接
@@ -993,8 +1002,8 @@ async fn fetch_xbox(gamertag: &str) -> Result<GamePresenceData, String> {
 // ---------------------------------------------------------------------------
 
 /// 优先读 DB 配置（配置页保存后即时生效），env 作为回退
-async fn psn_npsso() -> String {
-    let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+async fn psn_npsso(dynamic_config: &Arc<RwLock<DynamicConfig>>) -> String {
+    let config = dynamic_config.read().await;
     config
         .psn_npsso
         .clone()
@@ -1020,6 +1029,20 @@ fn parse_psn_legacy_presence(profile: &Value) -> (Option<String>, Option<String>
     (status, title)
 }
 
+/// Map PSN availability / onlineStatus strings to FE-friendly status labels.
+/// `availableToPlay` is online but not always mirrored under primaryPlatformInfo.onlineStatus.
+fn normalize_psn_online_status(raw: &str) -> String {
+    let lower = raw.trim().to_ascii_lowercase();
+    // availableToPlay / available — treat as online for presence widgets
+    if lower == "availabletoplay"
+        || lower == "available"
+        || (lower.contains("available") && !lower.contains("unavailable"))
+    {
+        return "online".to_string();
+    }
+    raw.to_string()
+}
+
 /// basicPresences 响应 → (onlineStatus, titleName)
 fn parse_psn_basic_presence(pres: &Value) -> (Option<String>, Option<String>) {
     let Some(bp) = pres.get("basicPresence") else {
@@ -1029,12 +1052,15 @@ fn parse_psn_basic_presence(pres: &Value) -> (Option<String>, Option<String>) {
         .get("primaryPlatformInfo")
         .and_then(|p| p.get("onlineStatus"))
         .and_then(|v| v.as_str())
+        // Some payloads put onlineStatus on basicPresence itself
+        .or_else(|| bp.get("onlineStatus").and_then(|v| v.as_str()))
         .map(|s| s.to_string())
         .or_else(|| {
             bp.get("availability")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string())
-        });
+        })
+        .map(|s| normalize_psn_online_status(&s));
     let title = bp
         .get("gameTitleInfoList")
         .and_then(|v| v.as_array())
@@ -1046,8 +1072,11 @@ fn parse_psn_basic_presence(pres: &Value) -> (Option<String>, Option<String>) {
 }
 
 /// 仅刷新 PSN live presence：1 次上游调用，奖杯 / 头像沿用 6h 快照
-async fn refresh_psn_presence(data: &GamePresenceData) -> Result<GamePresenceInfo, String> {
-    let npsso = psn_npsso().await;
+async fn refresh_psn_presence(
+    data: &GamePresenceData,
+    dynamic_config: &Arc<RwLock<DynamicConfig>>,
+) -> Result<GamePresenceInfo, String> {
+    let npsso = psn_npsso(dynamic_config).await;
     if npsso.trim().is_empty() {
         return Err("PSN_NPSSO not configured".to_string());
     }
@@ -1100,8 +1129,11 @@ async fn refresh_psn_presence(data: &GamePresenceData) -> Result<GamePresenceInf
     })
 }
 
-async fn fetch_psn(online_id: &str) -> Result<GamePresenceData, String> {
-    let npsso = psn_npsso().await;
+async fn fetch_psn(
+    online_id: &str,
+    dynamic_config: &Arc<RwLock<DynamicConfig>>,
+) -> Result<GamePresenceData, String> {
+    let npsso = psn_npsso(dynamic_config).await;
 
     if npsso.trim().is_empty() {
         return Ok(GamePresenceData {
@@ -1309,143 +1341,14 @@ async fn fetch_psn(online_id: &str) -> Result<GamePresenceData, String> {
 }
 
 // ---------------------------------------------------------------------------
-// PSN access token cache
+// PSN access token — workspace crate `myriad-psn-auth` (shared with fetcher).
 // ---------------------------------------------------------------------------
 //
-// Sony 的 mobile access token 一般有效期在 1 小时左右。之前每次 120s 数据缓存 miss
-// 都会重新跑一遍 NPSSO → code → token 的完整 OAuth 流程，相当于把"偶尔换一次 token"
-// 变成了固定节奏高频换 token，对同一个 NPSSO 会话来说既浪费也容易被 Sony 判定为异常。
-// 这里把 token 单独缓存，和数据缓存的 TTL 解耦。
+// Sony 的 mobile access token 一般有效期在 1 小时左右；crate 内做 ~50min 缓存，
+// 并按 NPSSO fingerprint 隔离，避免换 cookie 后复用旧 token。
 
-struct PsnTokenEntry {
-    access_token: String,
-    fetched_at: Instant,
-}
-
-static PSN_TOKEN_CACHE: OnceLock<Mutex<Option<PsnTokenEntry>>> = OnceLock::new();
-
-/// 留出安全余量，早于 token 实际过期时间刷新。
-const PSN_TOKEN_TTL: Duration = Duration::from_secs(50 * 60);
-
-fn psn_token_cache() -> &'static Mutex<Option<PsnTokenEntry>> {
-    PSN_TOKEN_CACHE.get_or_init(|| Mutex::new(None))
-}
-
-pub async fn get_psn_access_token(npsso: &str) -> Result<String, String> {
-    if let Ok(guard) = psn_token_cache().lock() {
-        if let Some(entry) = guard.as_ref() {
-            if entry.fetched_at.elapsed() < PSN_TOKEN_TTL {
-                return Ok(entry.access_token.clone());
-            }
-        }
-    }
-
-    let access_token = psn_exchange_npsso(npsso).await?;
-
-    if let Ok(mut guard) = psn_token_cache().lock() {
-        *guard = Some(PsnTokenEntry {
-            access_token: access_token.clone(),
-            fetched_at: Instant::now(),
-        });
-    }
-
-    Ok(access_token)
-}
-
-/// Exchange NPSSO cookie value for an access token.
-/// Uses the same public client id employed by community PSN tools.
-async fn psn_exchange_npsso(npsso: &str) -> Result<String, String> {
-    // Step 1: NPSSO → authorization code
-    let auth_url = "https://ca.account.sony.com/api/authz/v3/oauth/authorize?access_type=offline&client_id=09515159-7237-4370-9b40-3806e67c0891&redirect_uri=com.scee.psxandroid.scecompcall://redirect&response_type=code&scope=psn:mobile.v2.core psn:clientapp";
-
-    let (_, client) = build_public_http_client(
-        auth_url,
-        Duration::from_secs(20),
-        Some("Myriad/1.0 (game-presence)"),
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let resp = client
-        .get(auth_url)
-        .header("Cookie", format!("npsso={npsso}"))
-        .send()
-        .await
-        .map_err(|e| format!("PSN authorize request failed: {e}"))?;
-
-    // With redirects disabled, Location holds the code
-    let location = resp
-        .headers()
-        .get("location")
-        .or_else(|| resp.headers().get("Location"))
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("")
-        .to_string();
-
-    let code = extract_query_param(&location, "code").ok_or_else(|| {
-        format!(
-            "PSN NPSSO exchange failed (status {}). Cookie may be expired.",
-            resp.status()
-        )
-    })?;
-
-    // Step 2: code → access token
-    let token_url = "https://ca.account.sony.com/api/authz/v3/oauth/token";
-    let (_, token_client) = build_public_http_client(
-        token_url,
-        Duration::from_secs(20),
-        Some("Myriad/1.0 (game-presence)"),
-    )
-    .await
-    .map_err(|e| e.to_string())?;
-
-    let form = [
-        ("code", code.as_str()),
-        ("redirect_uri", "com.scee.psxandroid.scecompcall://redirect"),
-        ("grant_type", "authorization_code"),
-        ("token_format", "jwt"),
-    ];
-
-    let token_resp = token_client
-        .post(token_url)
-        .header(
-            "Authorization",
-            "Basic MDk1MTUxNTktNzIzNy00MzcwLTliNDAtMzgwNmU2N2MwODkxOnVjUGprYTV0bnRCMktxc1A=",
-        )
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .form(&form)
-        .send()
-        .await
-        .map_err(|e| format!("PSN token request failed: {e}"))?;
-
-    if !token_resp.status().is_success() {
-        return Err(format!("PSN token exchange HTTP {}", token_resp.status()));
-    }
-
-    let token_json: Value = token_resp
-        .json()
-        .await
-        .map_err(|e| format!("PSN token parse failed: {e}"))?;
-
-    token_json
-        .get("access_token")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| "PSN token response missing access_token".to_string())
-}
-
-/// 解析回调 URL 的 query 参数，走标准 percent-decoding。
-/// 之前是手写按 `&`/`=` 切字符串，Sony 如果把 code 里的字符做了 percent-encode
-/// （比如包含 `+`/`/` 这类需要转义的字符），拿到的就是没解码的原始 `%XX`，
-/// 直接塞进 token 请求会导致换 token 失败。
-fn extract_query_param(url: &str, key: &str) -> Option<String> {
-    let parsed = Url::parse(url).ok()?;
-    parsed
-        .query_pairs()
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.into_owned())
-        .filter(|v| !v.is_empty())
-}
+/// Re-export for game_presence handlers; fetcher should call the crate directly.
+pub use myriad_psn_auth::get_psn_access_token;
 
 // ---------------------------------------------------------------------------
 // HTTP helpers
@@ -1514,9 +1417,13 @@ fn urlencoding_simple(s: &str) -> String {
 }
 
 /// Lightweight health/capabilities for the widget settings UI
-pub async fn get_game_presence_capabilities() -> Json<Value> {
+pub async fn get_game_presence_capabilities(
+    axum::extract::State(dynamic_config): axum::extract::State<
+        std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
+    >,
+) -> Json<Value> {
     let (db_openxbl, db_psn) = {
-        let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+        let config = dynamic_config.read().await;
         (
             config
                 .openxbl_api_key

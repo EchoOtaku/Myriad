@@ -148,6 +148,10 @@ export function useConfigNavigation(isAdmin: boolean, t: NavI18n) {
   const handleSectionChange = useCallback(
     (section: string, options?: { guidePath?: string | null }) => {
       const next = LEGACY_CONFIG_SECTION_MAP[section] ?? section
+      // Non-admin must not land on federation (nav item is admin-only)
+      if (next === 'federation' && !isAdmin) {
+        return
+      }
       const guidePath = options?.guidePath?.trim() || null
       pendingGuideScrollRef.current = guidePath
 
@@ -171,8 +175,27 @@ export function useConfigNavigation(isAdmin: boolean, t: NavI18n) {
         })
       }
     },
-    [quickAccessItems, activeSection],
+    [quickAccessItems, activeSection, isAdmin],
   )
+
+  // Deep link: /config?section=about|advanced|… (updater→about, mcp→notifications via LEGACY map)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const applySectionFromUrl = () => {
+      const params = new URLSearchParams(window.location.search)
+      const raw = params.get('section')
+      if (!raw) return
+      const next = LEGACY_CONFIG_SECTION_MAP[raw] ?? raw
+      const known = quickAccessItems.some((item) => item.section === next)
+      if (!known) return
+      setActiveSection(next)
+      setPlatformFocus(null)
+      setMobilePane('section')
+    }
+    applySectionFromUrl()
+    window.addEventListener('popstate', applySectionFromUrl)
+    return () => window.removeEventListener('popstate', applySectionFromUrl)
+  }, [quickAccessItems])
 
   const scrollSettingsToTop = useCallback(() => {
     if (typeof window === 'undefined') return

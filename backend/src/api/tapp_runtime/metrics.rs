@@ -1,37 +1,31 @@
 //! Tapp 运行状态与速率限制 API
 
-use axum::{extract::Path, http::StatusCode, Extension, Json};
+use axum::{extract::{Path, State}, http::StatusCode, Extension, Json};
+use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 
-use crate::middleware::auth::{ensure_current_admin, Claims};
+use crate::error::HttpError;
+use crate::middleware::auth::{ensure_current_admin_on, Claims};
 use crate::services::tapp_scheduler::{
     active_frontend_subject_count, scheduler_counters, scheduler_mailbox_depth,
 };
 
 use super::common::{
-    get_rate_limit_config, get_rate_limit_status_for, get_rate_limiter_active_count, PLATFORM_CACHE,
+    get_rate_limit_config, get_rate_limit_status_for, get_rate_limiter_active_count,
 };
-use super::{runtime_grant, shared_registry};
+use super::runtime_grant;
 
 /// GET /api/tapp/metrics
 pub async fn get_tapp_metrics(
+    State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
-    ensure_current_admin(&claims).await?;
+) -> Result<Json<Value>, HttpError> {
+    ensure_current_admin_on(&claims, &db).await?;
 
-    let active_limits = get_rate_limiter_active_count().await?;
+    let active_limits = get_rate_limiter_active_count(&db).await?;
 
-    let platform_cache = PLATFORM_CACHE.read().await;
-    let cached_platforms = platform_cache.len();
-    drop(platform_cache);
-
-    let db = shared_registry::database().await.map_err(|error| {
-        tracing::error!(%error, "[TAPP] Metrics database unavailable");
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({ "error": "Tapp metrics database unavailable" })),
-        )
-    })?;
+    let cached_platforms =
+        crate::services::platform_cache::platform_cache_entry_count().await;
     let active_scheduler_subjects = active_frontend_subject_count(&db).await.map_err(|error| {
         tracing::error!(%error, "[TAPP] Failed to collect scheduler metrics");
         (
@@ -71,9 +65,10 @@ pub async fn get_tapp_metrics(
 
 /// GET /api/tapp/rate-limit/{tapp_id}
 pub async fn get_rate_limit_status(
+    State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Path(tapp_id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     let user_id: i32 = claims.sub.parse().map_err(|_| {
         (
             StatusCode::UNAUTHORIZED,
@@ -86,7 +81,8 @@ pub async fn get_rate_limit_status(
 
     for op in operations {
         let (limit, _window_secs) = get_rate_limit_config(op);
-        let (used, remaining, reset_in) = get_rate_limit_status_for(user_id, &tapp_id, op).await?;
+        let (used, remaining, reset_in) =
+            get_rate_limit_status_for(&db, user_id, &tapp_id, op).await?;
 
         limits.push(json!({
             "operation": op,

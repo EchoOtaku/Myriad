@@ -809,6 +809,32 @@ html.dark .site-analytics-country-tip {
   white-space: nowrap;
 }
 
+.site-analytics-rank-item {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.site-analytics-rank-item + .site-analytics-rank-item {
+  border-top: 1px solid var(--sa-table-divider);
+}
+
+.site-analytics-rank-sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0.15rem 0.65rem;
+}
+
+.site-analytics-rank-row--sub {
+  opacity: 0.88;
+}
+
+.site-analytics-rank-row--sub .site-analytics-rank-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78em;
+  font-weight: 500;
+}
+
 .site-analytics-rank-list {
   display: flex;
   flex-direction: column;

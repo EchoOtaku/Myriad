@@ -286,7 +286,7 @@ mod rejection_tests {
         async fn handler(payload: Result<Json<P>, JsonRejection>) -> axum::response::Response {
             match payload {
                 Ok(_) => "ok".into_response(),
-                Err(e) => crate::json_rejection_response(e, Some("use chunked transfer")),
+                Err(e) => crate::api::federation::json_rejection_response(e, Some("use chunked transfer")),
             }
         }
         use axum::response::IntoResponse;

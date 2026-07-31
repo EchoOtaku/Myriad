@@ -9,15 +9,25 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
+use myriad_error::AppError;
 use regex::Regex;
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::env;
 
-use crate::middleware::auth::ensure_current_admin;
+use crate::error::HttpError;
+use crate::middleware::auth::ensure_current_admin_on;
 
 use super::auth::Claims;
+
+/// Postgres advisory-lock key for setup `create-admin`.
+///
+/// Multi-admin is allowed *after* setup via admin user-management, so we cannot
+/// put a partial unique index on `is_admin`. Concurrent first-time setup must
+/// still serialize on a single gate — `pg_advisory_xact_lock` does that without
+/// blocking other user inserts.
+pub(crate) const CREATE_ADMIN_ADVISORY_LOCK_KEY: i64 = 0x4D59_5249_4144_0001; // MYRIAD\0\1
 
 /// Request to create admin account
 #[derive(Debug, Deserialize)]
@@ -46,33 +56,91 @@ pub struct AuthResponse {
     pub user: UserInfo,
 }
 
-/// User information
+/// User information (login / session mint — aligned with `/api/auth/me` staff fields)
 #[derive(Debug, Serialize)]
 pub struct UserInfo {
     pub id: i32,
     pub username: String,
     pub is_admin: bool,
+    /// Durable site owner; LoginForm uses this with `is_admin` for analytics staff.
+    pub is_owner: bool,
     pub auth_provider: String,
 }
 
+/// Stable 409 body when setup has already minted an admin.
+pub(crate) fn admin_already_exists_error() -> AppError {
+    AppError::conflict("Admin account already exists").with_message(
+        "Setup has already been completed. Sign in as an existing admin to create more accounts.",
+    )
+}
+
+/// Gate used inside the create-admin transaction after the advisory lock is held.
+pub(crate) fn create_admin_gate(admin_exists: bool) -> Result<(), AppError> {
+    if admin_exists {
+        Err(admin_already_exists_error())
+    } else {
+        Ok(())
+    }
+}
+
+/// Classify Postgres / SeaORM insert failures for setup create-admin.
+///
+/// Unique violations (username, single-owner) become 409 so a race that slips
+/// past the EXISTS check still returns a coherent client error — never 500.
+pub(crate) fn map_create_admin_insert_error(err: &dyn std::fmt::Display) -> AppError {
+    let s = err.to_string();
+    let lower = s.to_ascii_lowercase();
+    if lower.contains("23505")
+        || lower.contains("unique")
+        || lower.contains("duplicate key")
+        || lower.contains("idx_users_username")
+        || lower.contains("idx_users_single_owner")
+    {
+        // Prefer the setup-specific message: unique on owner/username during
+        // first-admin race almost always means setup already completed.
+        return admin_already_exists_error();
+    }
+    AppError::internal("Failed to create admin account").with_message(s)
+}
+
 /// POST /api/setup/create-admin
-/// Create the local administrator account (only during setup)
-/// ✅ PROTECTION: Checks if admin already exists and prevents duplicate creation
+/// Create the local administrator account (only during setup).
+///
+/// Concurrency: transaction + `pg_advisory_xact_lock` serializes first-admin
+/// creation so two concurrent setup requests cannot both pass EXISTS then INSERT.
 pub async fn create_admin(
     crate::extract::Db(db): crate::extract::Db,
     Json(request): Json<CreateAdminRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     tracing::info!("Creating local admin account: {}", request.username);
 
-    // Validate username
     validate_username(&request.username)?;
-
-    // Validate password
     validate_password(&request.password)?;
 
-    // ✅ SECURITY CHECK: setup-only — 拒绝若已经存在任意 admin（不再限于 local）
-    // PR #4: 改成"检查任意 admin"，因为现在 admin 不再强制 local provider
-    let admin_exists_result = db
+    // Hash outside the transaction — Argon2 is slow; do not hold the advisory lock.
+    let password_hash = hash_password(&request.password).await?;
+
+    use sea_orm::Value as SeaValue;
+
+    let txn = db.begin().await.map_err(|e| {
+        tracing::error!("create-admin begin transaction failed: {:?}", e);
+        HttpError(AppError::internal("Database error").with_message(e.to_string()))
+    })?;
+
+    // Serialize concurrent setup; released automatically on commit/rollback.
+    txn.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT pg_advisory_xact_lock($1)",
+        [CREATE_ADMIN_ADVISORY_LOCK_KEY.into()],
+    ))
+    .await
+    .map_err(|e| {
+        tracing::error!("create-admin advisory lock failed: {:?}", e);
+        HttpError(AppError::internal("Database error").with_message(e.to_string()))
+    })?;
+
+    // Setup-only: reject if any admin already exists (any auth_provider).
+    let admin_exists_result = txn
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT EXISTS (SELECT 1 FROM users WHERE is_admin = true) as exists",
@@ -81,34 +149,20 @@ pub async fn create_admin(
         .await
         .map_err(|e| {
             tracing::error!("Failed to check existing admin: {:?}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
-            )
+            HttpError(AppError::internal("Database error").with_message(e.to_string()))
         })?;
 
     let admin_exists: bool = admin_exists_result
         .and_then(|row| row.try_get("", "exists").ok())
         .unwrap_or(false);
 
-    if admin_exists {
+    if let Err(err) = create_admin_gate(admin_exists) {
         tracing::error!(
             "🚨 setup/create-admin REJECTED: an admin already exists (use admin user-management instead)"
         );
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": "Admin account already exists",
-                "message": "Setup has already been completed. Sign in as an existing admin to create more accounts."
-            })),
-        ));
+        let _ = txn.rollback().await;
+        return Err(HttpError(err));
     }
-
-    // Hash password using Argon2id
-    let password_hash = hash_password(&request.password).await?;
-
-    // Insert admin user
-    use sea_orm::Value as SeaValue;
 
     // First setup admin is also the durable site owner (`is_owner`).
     // Column may be missing on very old DBs mid-migration; fall back without it.
@@ -145,7 +199,7 @@ pub async fn create_admin(
         ))),
     ];
 
-    let user_result = match db
+    let user_result = match txn
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             insert_with_owner,
@@ -155,36 +209,48 @@ pub async fn create_admin(
     {
         Ok(row) => row,
         Err(e) => {
-            // Pre-migration DBs without is_owner: retry without the column.
+            // Unique / owner races → 409; missing is_owner column → legacy insert.
+            let mapped = map_create_admin_insert_error(&e);
+            if mapped.status_u16() == 409 {
+                tracing::error!("create-admin insert conflict: {:?}", e);
+                let _ = txn.rollback().await;
+                return Err(HttpError(mapped));
+            }
             tracing::warn!(
                 "create-admin with is_owner failed ({:?}); retrying without is_owner",
                 e
             );
-            db.query_one(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                insert_legacy,
-                insert_params,
-            ))
-            .await
-            .map_err(|e2| {
-                tracing::error!("Failed to create admin user: {:?}", e2);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Failed to create admin account"})),
-                )
-            })?
+            match txn
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    insert_legacy,
+                    insert_params,
+                ))
+                .await
+            {
+                Ok(row) => row,
+                Err(e2) => {
+                    tracing::error!("Failed to create admin user: {:?}", e2);
+                    let _ = txn.rollback().await;
+                    return Err(HttpError(map_create_admin_insert_error(&e2)));
+                }
+            }
         }
     };
 
-    let user_id: i32 = user_result
-        .and_then(|row| row.try_get("", "id").ok())
-        .ok_or_else(|| {
-            tracing::error!("Failed to get user ID");
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to create admin account"})),
-            )
-        })?;
+    let user_id: i32 = match user_result.and_then(|row| row.try_get("", "id").ok()) {
+        Some(id) => id,
+        None => {
+            tracing::error!("Failed to get user ID after create-admin insert");
+            let _ = txn.rollback().await;
+            return Err(HttpError(AppError::internal("Failed to create admin account")));
+        }
+    };
+
+    txn.commit().await.map_err(|e| {
+        tracing::error!("create-admin commit failed: {:?}", e);
+        HttpError(map_create_admin_insert_error(&e))
+    })?;
 
     tracing::info!(
         "✅ Local admin account created: {} (ID: {}, is_owner=true)",
@@ -204,7 +270,7 @@ pub async fn create_admin(
 pub async fn local_login(
     crate::extract::Db(db): crate::extract::Db,
     Json(request): Json<LocalLoginRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
+) -> Result<impl IntoResponse, HttpError> {
     tracing::info!("Local login attempt: {}", request.username);
 
     // Query user by username
@@ -212,7 +278,9 @@ pub async fn local_login(
     // 这样 GitHub-注册用户走 /api/auth/me/set-password 后也能用 username 登录。
     use sea_orm::Value as SeaValue;
 
-    let query = "SELECT id, username, password_hash, is_admin, auth_provider, local_login_disabled
+    let query = "SELECT id, username, password_hash, is_admin,
+                        COALESCE(is_owner, false) AS is_owner,
+                        auth_provider, local_login_disabled
                  FROM users
                  WHERE LOWER(username) = LOWER($1) AND password_hash IS NOT NULL";
 
@@ -223,13 +291,10 @@ pub async fn local_login(
             vec![SeaValue::String(Some(Box::new(request.username.clone())))],
         ))
         .await
-        .map_err(|e| {
-            tracing::error!("Database error: {:?}", e);
-            (
+        .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Database error"})),
-            )
-        })?;
+            )))?;
 
     let user_row = match user_result {
         Some(row) => row,
@@ -238,39 +303,34 @@ pub async fn local_login(
             let dummy_hash = "$argon2id$v=19$m=19456,t=2,p=1$dW5rbm93bnNhbHQ$dW5rbm93bmhhc2g";
             let _ = verify_password(&request.password, dummy_hash).await;
             tracing::warn!("User not found: {}", request.username);
-            return Err((
+            return Err(HttpError::from((
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
                     "error": "Invalid credentials",
                     "message": "Username or password is incorrect"
                 })),
-            ));
+            )));
         }
     };
 
     // Extract user data
-    let user_id: i32 = user_row.try_get("", "id").map_err(|_| {
-        (
+    let user_id: i32 = user_row.try_get("", "id").map_err(|_| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to read user data"})),
-        )
-    })?;
+        )))?;
 
-    let username: String = user_row.try_get("", "username").map_err(|_| {
-        (
+    let username: String = user_row.try_get("", "username").map_err(|_| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to read user data"})),
-        )
-    })?;
+        )))?;
 
-    let password_hash: String = user_row.try_get("", "password_hash").map_err(|_| {
-        (
+    let password_hash: String = user_row.try_get("", "password_hash").map_err(|_| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to read user data"})),
-        )
-    })?;
+        )))?;
 
     let is_admin: bool = user_row.try_get("", "is_admin").unwrap_or(false);
+    let is_owner: bool = user_row.try_get("", "is_owner").unwrap_or(false);
 
     let local_login_disabled: bool = user_row
         .try_get("", "local_login_disabled")
@@ -278,13 +338,13 @@ pub async fn local_login(
 
     // Check if local login is disabled
     if local_login_disabled {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::FORBIDDEN,
             Json(json!({
                 "error": "Local login disabled",
                 "message": "This account has been linked to GitHub. Please use GitHub OAuth to login."
             })),
-        ));
+        )));
     }
 
     // Verify password
@@ -300,18 +360,16 @@ pub async fn local_login(
         .await;
 
     // Generate JWT token
-    let jwt_secret = env::var("JWT_SECRET").map_err(|_| {
-        tracing::error!("JWT_SECRET not set");
-        (
+    let jwt_secret = env::var("JWT_SECRET").map_err(|_| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Server configuration error"})),
-        )
-    })?;
+        )))?;
 
     let claims = Claims {
         sub: user_id.to_string(),
         username: username.clone(),
         is_admin, // ✅ 安全修复 P0: 从数据库读取 is_admin
+        is_owner,
         exp: (Utc::now() + Duration::days(30)).timestamp(),
         iat: Utc::now().timestamp(),
     };
@@ -321,13 +379,10 @@ pub async fn local_login(
         &claims,
         &EncodingKey::from_secret(jwt_secret.as_bytes()),
     )
-    .map_err(|e| {
-        tracing::error!("Failed to create JWT: {:?}", e);
-        (
+    .map_err(|_e| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to create session token"})),
-        )
-    })?;
+        )))?;
 
     tracing::info!("✅ Local login successful: {}", username);
 
@@ -347,6 +402,7 @@ pub async fn local_login(
             id: user_id,
             username,
             is_admin,
+            is_owner,
             auth_provider: "local".to_string(),
         },
     });
@@ -366,22 +422,18 @@ pub async fn change_password(
     crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
     Json(request): Json<ChangePasswordRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     // 提取并校验 JWT：支持 Authorization 头与 HttpOnly Cookie（与 set_password 一致）
     // 浏览器端仅携带 HttpOnly Cookie，无法附加 Bearer 头
-    let claims = crate::middleware::auth::verify_jwt_token(&headers).map_err(|_| {
-        (
+    let claims = crate::middleware::auth::verify_jwt_token(&headers).map_err(|_| HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Unauthorized", "message": "Invalid or missing token"})),
-        )
-    })?;
+        )))?;
 
-    let user_id = claims.sub.parse::<i32>().map_err(|_| {
-        (
+    let user_id = claims.sub.parse::<i32>().map_err(|_| HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Invalid user ID"})),
-        )
-    })?;
+        )))?;
 
     tracing::info!("Password change request for user ID: {}", user_id);
 
@@ -402,35 +454,28 @@ pub async fn change_password(
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|e| {
-            tracing::error!("Database error: {:?}", e);
-            (
+        .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Database error"})),
-            )
-        })?;
+            )))?;
 
     let user_row = user_result.ok_or_else(|| {
-        tracing::warn!("User not found: {}", user_id);
-        (
+            tracing::warn!("User not found: {}", user_id);
+            HttpError::from((
             StatusCode::NOT_FOUND,
             Json(json!({"error": "User not found"})),
-        )
-    })?;
+        ))
+        })?;
 
-    let username: String = user_row.try_get("", "username").map_err(|_| {
-        (
+    let username: String = user_row.try_get("", "username").map_err(|_| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to read user data"})),
-        )
-    })?;
+        )))?;
 
-    let auth_provider: String = user_row.try_get("", "auth_provider").map_err(|_| {
-        (
+    let auth_provider: String = user_row.try_get("", "auth_provider").map_err(|_| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to read user data"})),
-        )
-    })?;
+        )))?;
 
     // PR #4: 任何拥有 password_hash 的账户都能改密码（不再要求 auth_provider='local'）
     // 没有密码的账户（纯 OAuth）应走 /api/auth/me/set-password 后补密码。
@@ -440,13 +485,13 @@ pub async fn change_password(
     let current_password_hash = match current_password_hash {
         Some(h) => h,
         None => {
-            return Err((
+            return Err(HttpError::from((
                 StatusCode::BAD_REQUEST,
                 Json(json!({
                     "error": "No password set",
                     "message": "This account has no password yet. Use /api/auth/me/set-password instead."
                 })),
-            ));
+            )));
         }
     };
 
@@ -469,13 +514,10 @@ pub async fn change_password(
         ],
     ))
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to update password: {:?}", e);
-        (
+    .map_err(|_e| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to update password"})),
-        )
-    })?;
+        )))?;
 
     tracing::info!("✅ Password changed successfully for user: {}", username);
 
@@ -488,41 +530,41 @@ pub async fn change_password(
 // Helper functions
 
 /// Validate username format
-fn validate_username(username: &str) -> Result<(), (StatusCode, Json<Value>)> {
+fn validate_username(username: &str) -> Result<(), HttpError> {
     if username.len() < 3 || username.len() > 20 {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Invalid username",
                 "message": "Username must be between 3 and 20 characters"
             })),
-        ));
+        )));
     }
 
     let regex = Regex::new(r"^[a-zA-Z0-9_]+$").unwrap();
     if !regex.is_match(username) {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Invalid username",
                 "message": "Username can only contain letters, numbers, and underscores"
             })),
-        ));
+        )));
     }
 
     Ok(())
 }
 
 /// Validate password strength
-fn validate_password(password: &str) -> Result<(), (StatusCode, Json<Value>)> {
+fn validate_password(password: &str) -> Result<(), HttpError> {
     if password.len() < 8 {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Invalid password",
                 "message": "Password must be at least 8 characters long"
             })),
-        ));
+        )));
     }
 
     // Check password complexity: must contain both letters and numbers
@@ -530,13 +572,13 @@ fn validate_password(password: &str) -> Result<(), (StatusCode, Json<Value>)> {
     let has_digit = password.chars().any(|c| c.is_numeric());
 
     if !has_letter || !has_digit {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(json!({
                 "error": "Invalid password",
                 "message": "Password must contain both letters and numbers for security"
             })),
-        ));
+        )));
     }
 
     Ok(())
@@ -547,16 +589,16 @@ fn validate_password(password: &str) -> Result<(), (StatusCode, Json<Value>)> {
 /// 直接在 async handler 里同步跑，等于在 Tokio worker 线程上阻塞几十毫秒 ——
 /// 登录和注册都是公开端点，并发请求足以让整个 runtime 的调度停摆，连不相关
 /// 的请求也被拖住。所有 Argon2 计算都必须挪到 blocking 线程池。
-fn blocking_pool_error<T>(e: tokio::task::JoinError) -> Result<T, (StatusCode, Json<Value>)> {
+fn blocking_pool_error<T>(e: tokio::task::JoinError) -> Result<T, HttpError> {
     tracing::error!("Password hashing task failed: {:?}", e);
-    Err((
+    Err(HttpError::from((
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(json!({"error": "Failed to process password"})),
-    ))
+    )))
 }
 
 /// Hash password using Argon2id (on the blocking pool)
-async fn hash_password(password: &str) -> Result<String, (StatusCode, Json<Value>)> {
+async fn hash_password(password: &str) -> Result<String, HttpError> {
     let password = password.to_owned();
     let joined = tokio::task::spawn_blocking(move || {
         let salt = SaltString::generate(&mut OsRng);
@@ -571,47 +613,54 @@ async fn hash_password(password: &str) -> Result<String, (StatusCode, Json<Value
         Ok(Ok(hash)) => Ok(hash),
         Ok(Err(e)) => {
             tracing::error!("Failed to hash password: {:?}", e);
-            Err((
+            Err(HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Failed to process password"})),
-            ))
+            )))
         }
         Err(e) => blocking_pool_error(e),
     }
 }
 
 /// Verify password against hash (on the blocking pool)
-async fn verify_password(password: &str, hash: &str) -> Result<(), (StatusCode, Json<Value>)> {
+async fn verify_password(password: &str, hash: &str) -> Result<(), HttpError> {
     let password = password.to_owned();
     let hash = hash.to_owned();
+
+    // Discriminate auth failure vs hash-parse failure without pattern-matching HttpError.
+    #[derive(Clone, Copy)]
+    enum VerifyFail {
+        Unauthorized,
+        Internal,
+    }
 
     let joined = tokio::task::spawn_blocking(move || {
         let parsed_hash = PasswordHash::new(&hash).map_err(|e| {
             tracing::error!("Failed to parse password hash: {:?}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            VerifyFail::Internal
         })?;
         Argon2::default()
             .verify_password(password.as_bytes(), &parsed_hash)
-            .map_err(|_| StatusCode::UNAUTHORIZED)
+            .map_err(|_| VerifyFail::Unauthorized)
     })
     .await;
 
     match joined {
         Ok(Ok(())) => Ok(()),
-        Ok(Err(StatusCode::UNAUTHORIZED)) => {
+        Ok(Err(VerifyFail::Unauthorized)) => {
             tracing::warn!("Password verification failed");
-            Err((
+            Err(HttpError::from((
                 StatusCode::UNAUTHORIZED,
                 Json(json!({
                     "error": "Invalid credentials",
                     "message": "Username or password is incorrect"
                 })),
-            ))
+            )))
         }
-        Ok(Err(_)) => Err((
+        Ok(Err(VerifyFail::Internal)) => Err(HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to verify password"})),
-        )),
+        ))),
         Err(e) => blocking_pool_error(e),
     }
 }
@@ -633,19 +682,22 @@ pub struct RegisterRequest {
 
 pub async fn register(
     crate::extract::Db(db): crate::extract::Db,
+    axum::extract::State(dynamic_config): axum::extract::State<
+        std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
+    >,
     Json(req): Json<RegisterRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<Value>)> {
-    // 开关检查
+) -> Result<impl IntoResponse, HttpError> {
+    // 开关检查（AppState.dynamic_config，与 GLOBAL_* 同 Arc）
     {
-        let cfg = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+        let cfg = dynamic_config.read().await;
         if !cfg.allow_local_registration {
-            return Err((
+            return Err(HttpError::from((
                 StatusCode::FORBIDDEN,
                 Json(json!({
                     "error": "Registration disabled",
                     "message": "Public registration is disabled. Ask an administrator to create an account."
                 })),
-            ));
+            )));
         }
     }
 
@@ -662,21 +714,18 @@ pub async fn register(
             vec![SeaValue::String(Some(Box::new(req.username.clone())))],
         ))
         .await
-        .map_err(|e| {
-            tracing::error!("Database error: {:?}", e);
-            (
+        .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Database error"})),
-            )
-        })?;
+            )))?;
     if dup.is_some() {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "Username taken",
                 "message": "This username is already in use"
             })),
-        ));
+        )));
     }
 
     let password_hash = hash_password(&req.password).await?;
@@ -701,31 +750,24 @@ pub async fn register(
             ],
         ))
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to insert user: {:?}", e);
-            (
+        .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Failed to create account"})),
-            )
-        })?
-        .ok_or_else(|| {
-            (
+            )))?
+        .ok_or_else(|| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Insert returned no row"})),
-            )
-        })?;
+            )))?;
 
-    let user_id: i32 = insert.try_get("", "id").map_err(|_| {
-        (
+    let user_id: i32 = insert.try_get("", "id").map_err(|_| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to read new user id"})),
-        )
-    })?;
+        )))?;
 
     tracing::info!("✅ Public registration: {} (id={})", req.username, user_id);
 
     // 注册即登录：颁发 JWT + cookie
-    issue_session_cookie(user_id, &req.username, false).await
+    issue_session_cookie(user_id, &req.username, false, false).await
 }
 
 /// POST /api/auth/me/set-password —— GitHub-only 用户后补密码
@@ -740,22 +782,18 @@ pub async fn set_password(
     crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
     Json(req): Json<SetPasswordRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     use crate::middleware::auth::verify_jwt_token;
     use sea_orm::Value as SeaValue;
 
-    let claims = verify_jwt_token(&headers).map_err(|_| {
-        (
+    let claims = verify_jwt_token(&headers).map_err(|_| HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Unauthorized"})),
-        )
-    })?;
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
+        )))?;
+    let user_id: i32 = claims.sub.parse().map_err(|_| HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Invalid user id"})),
-        )
-    })?;
+        )))?;
 
     validate_password(&req.new_password)?;
 
@@ -767,28 +805,23 @@ pub async fn set_password(
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|e| {
-            tracing::error!("DB error: {:?}", e);
-            (
+        .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Database error"})),
-            )
-        })?
-        .ok_or_else(|| {
-            (
+            )))?
+        .ok_or_else(|| HttpError::from((
                 StatusCode::NOT_FOUND,
                 Json(json!({"error": "User not found"})),
-            )
-        })?;
+            )))?;
     let has_password: bool = row.try_get("", "has_password").unwrap_or(false);
     if has_password {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "Password already set",
                 "message": "Use POST /api/auth/change-password to change an existing password."
             })),
-        ));
+        )));
     }
 
     let hash = hash_password(&req.new_password).await?;
@@ -802,13 +835,10 @@ pub async fn set_password(
         ],
     ))
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to set password: {:?}", e);
-        (
+    .map_err(|_e| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to set password"})),
-        )
-    })?;
+        )))?;
 
     Ok(Json(json!({"success": true})))
 }
@@ -826,22 +856,18 @@ pub async fn toggle_local_login(
     crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
     Json(req): Json<LocalLoginToggleRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     use crate::middleware::auth::verify_jwt_token;
     use sea_orm::Value as SeaValue;
 
-    let claims = verify_jwt_token(&headers).map_err(|_| {
-        (
+    let claims = verify_jwt_token(&headers).map_err(|_| HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Unauthorized"})),
-        )
-    })?;
-    let user_id: i32 = claims.sub.parse().map_err(|_| {
-        (
+        )))?;
+    let user_id: i32 = claims.sub.parse().map_err(|_| HttpError::from((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Invalid user id"})),
-        )
-    })?;
+        )))?;
 
     // 取当前状态
     let row = db
@@ -853,19 +879,14 @@ pub async fn toggle_local_login(
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|e| {
-            tracing::error!("DB error: {:?}", e);
-            (
+        .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Database error"})),
-            )
-        })?
-        .ok_or_else(|| {
-            (
+            )))?
+        .ok_or_else(|| HttpError::from((
                 StatusCode::NOT_FOUND,
                 Json(json!({"error": "User not found"})),
-            )
-        })?;
+            )))?;
 
     let has_password: bool = row.try_get("", "has_password").unwrap_or(false);
     let identity_count: i64 = row.try_get("", "identity_count").unwrap_or(0);
@@ -873,22 +894,22 @@ pub async fn toggle_local_login(
     // 前置检查
     if req.enabled {
         if !has_password {
-            return Err((
+            return Err(HttpError::from((
                 StatusCode::CONFLICT,
                 Json(json!({
                     "error": "No password set",
                     "message": "Set a password via /api/auth/me/set-password before enabling local login."
                 })),
-            ));
+            )));
         }
     } else if identity_count == 0 {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "Cannot disable last login method",
                 "message": "Link at least one OAuth provider before disabling local login."
             })),
-        ));
+        )));
     }
 
     let disabled = !req.enabled;
@@ -898,13 +919,10 @@ pub async fn toggle_local_login(
         vec![SeaValue::Bool(Some(disabled)), SeaValue::Int(Some(user_id))],
     ))
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to update local_login_disabled: {:?}", e);
-        (
+    .map_err(|_e| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to update"})),
-        )
-    })?;
+        )))?;
 
     Ok(Json(json!({"success": true, "enabled": req.enabled})))
 }
@@ -914,17 +932,17 @@ async fn issue_session_cookie(
     user_id: i32,
     username: &str,
     is_admin: bool,
-) -> Result<axum::response::Response, (StatusCode, Json<Value>)> {
-    let jwt_secret = env::var("JWT_SECRET").map_err(|_| {
-        (
+    is_owner: bool,
+) -> Result<axum::response::Response, HttpError> {
+    let jwt_secret = env::var("JWT_SECRET").map_err(|_| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "JWT_SECRET not configured"})),
-        )
-    })?;
+        )))?;
     let claims = Claims {
         sub: user_id.to_string(),
         username: username.to_string(),
         is_admin,
+        is_owner,
         exp: (Utc::now() + Duration::days(30)).timestamp(),
         iat: Utc::now().timestamp(),
     };
@@ -933,13 +951,10 @@ async fn issue_session_cookie(
         &claims,
         &EncodingKey::from_secret(jwt_secret.as_bytes()),
     )
-    .map_err(|e| {
-        tracing::error!("JWT encode failed: {:?}", e);
-        (
+    .map_err(|_e| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to create session token"})),
-        )
-    })?;
+        )))?;
 
     use crate::oauth_url_builder::SiteConfig;
     let is_production = SiteConfig::is_production().await;
@@ -954,6 +969,7 @@ async fn issue_session_cookie(
             id: user_id,
             username: username.to_string(),
             is_admin,
+            is_owner,
             auth_provider: "local".to_string(),
         },
     });
@@ -983,16 +999,14 @@ pub async fn admin_create_user(
     crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
     Json(req): Json<AdminCreateUserRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     use crate::middleware::auth::verify_jwt_token;
 
-    let claims = verify_jwt_token(&headers).map_err(|_| {
-        (
+    let claims = verify_jwt_token(&headers).map_err(|_| HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Unauthorized"})),
-        )
-    })?;
-    ensure_current_admin(&claims).await?;
+        )))?;
+    ensure_current_admin_on(&claims, &db).await?;
 
     let actor_id: i32 = claims.sub.parse().unwrap_or(0);
     // 仅站点 owner 可创建带 is_admin=true 的账号（was: actor id=1）
@@ -1000,7 +1014,7 @@ pub async fn admin_create_user(
     if let Some(msg) =
         crate::api::admin_users::non_owner_grant_admin_on_create_error(actor_is_owner, req.is_admin)
     {
-        return Err((StatusCode::FORBIDDEN, Json(json!({"error": msg}))));
+        return Err(HttpError::from((StatusCode::FORBIDDEN, Json(json!({"error": msg})))));
     }
 
     validate_username(&req.username)?;
@@ -1015,21 +1029,18 @@ pub async fn admin_create_user(
             vec![SeaValue::String(Some(Box::new(req.username.clone())))],
         ))
         .await
-        .map_err(|e| {
-            tracing::error!("DB error: {:?}", e);
-            (
+        .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Database error"})),
-            )
-        })?;
+            )))?;
     if dup.is_some() {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "Username taken",
                 "message": "This username is already in use"
             })),
-        ));
+        )));
     }
 
     let password_hash = hash_password(&req.password).await?;
@@ -1058,26 +1069,19 @@ pub async fn admin_create_user(
             ],
         ))
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to create user: {:?}", e);
-            (
+        .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Failed to create account"})),
-            )
-        })?
-        .ok_or_else(|| {
-            (
+            )))?
+        .ok_or_else(|| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": "Insert returned no row"})),
-            )
-        })?;
+            )))?;
 
-    let user_id: i32 = insert.try_get("", "id").map_err(|_| {
-        (
+    let user_id: i32 = insert.try_get("", "id").map_err(|_| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"error": "Failed to read new id"})),
-        )
-    })?;
+        )))?;
 
     tracing::info!(
         "✅ Admin {} created account: {} (id={}, is_admin={})",
@@ -1104,7 +1108,14 @@ pub async fn admin_create_user(
 
 #[cfg(test)]
 mod tests {
-    use super::{AuthResponse, UserInfo};
+    use super::{
+        admin_already_exists_error, create_admin_gate, map_create_admin_insert_error,
+        AuthResponse, UserInfo, CREATE_ADMIN_ADVISORY_LOCK_KEY,
+    };
+    use crate::error::{app_error_response, HttpError};
+    use axum::body::to_bytes;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
 
     #[test]
     fn auth_response_never_serializes_the_jwt() {
@@ -1113,6 +1124,7 @@ mod tests {
                 id: 7,
                 username: "alice".to_string(),
                 is_admin: false,
+                is_owner: true,
                 auth_provider: "local".to_string(),
             },
         };
@@ -1120,5 +1132,89 @@ mod tests {
 
         assert!(serialized.get("token").is_none());
         assert_eq!(serialized["user"]["id"], 7);
+        assert_eq!(serialized["user"]["is_owner"], true);
+        assert_eq!(serialized["user"]["is_admin"], false);
+    }
+
+    #[test]
+    fn create_admin_gate_rejects_when_admin_exists() {
+        let err = create_admin_gate(true).expect_err("must reject");
+        assert_eq!(err.status_u16(), 409);
+        assert_eq!(err.error_label(), "Admin account already exists");
+        let json = err.to_json();
+        assert!(
+            json["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("Setup has already been completed"),
+            "{json}"
+        );
+    }
+
+    #[test]
+    fn create_admin_gate_allows_first_admin() {
+        assert!(create_admin_gate(false).is_ok());
+    }
+
+    #[test]
+    fn admin_already_exists_error_is_stable_conflict() {
+        let e = admin_already_exists_error();
+        assert_eq!(e.status_u16(), 409);
+        assert_eq!(e.error_label(), "Admin account already exists");
+        // Two constructions must yield identical public JSON (client contract).
+        assert_eq!(
+            e.to_json(),
+            admin_already_exists_error().to_json()
+        );
+    }
+
+    #[test]
+    fn map_insert_error_unique_violation_is_409() {
+        let cases = [
+            "error returned from database: 23505 duplicate key value violates unique constraint \"idx_users_username_unique\"",
+            "duplicate key value violates unique constraint \"idx_users_single_owner\"",
+            "UNIQUE constraint failed: users.username",
+        ];
+        for msg in cases {
+            let e = map_create_admin_insert_error(&msg);
+            assert_eq!(e.status_u16(), 409, "msg={msg}");
+            assert_eq!(e.error_label(), "Admin account already exists");
+        }
+    }
+
+    #[test]
+    fn map_insert_error_other_is_500() {
+        let e = map_create_admin_insert_error(&"connection reset by peer");
+        assert_eq!(e.status_u16(), 500);
+        assert_eq!(e.error_label(), "Failed to create admin account");
+    }
+
+    #[test]
+    fn advisory_lock_key_is_stable_nonzero() {
+        // Changing this key would allow concurrent create-admin across deploys
+        // that disagree on the constant — pin it.
+        assert_eq!(CREATE_ADMIN_ADVISORY_LOCK_KEY, 0x4D59_5249_4144_0001);
+        assert_ne!(CREATE_ADMIN_ADVISORY_LOCK_KEY, 0);
+    }
+
+    #[tokio::test]
+    async fn create_admin_conflict_http_response_is_409_json() {
+        let resp = HttpError(admin_already_exists_error()).into_response();
+        assert_eq!(resp.status(), StatusCode::CONFLICT);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .expect("body");
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        assert_eq!(v["error"], "Admin account already exists");
+        assert!(v["message"].as_str().unwrap().contains("Setup has already"));
+    }
+
+    #[tokio::test]
+    async fn app_error_response_matches_http_error_for_conflict() {
+        let err = admin_already_exists_error();
+        let a = app_error_response(err.clone());
+        let b = HttpError(err).into_response();
+        assert_eq!(a.status(), b.status());
+        assert_eq!(a.status(), StatusCode::CONFLICT);
     }
 }

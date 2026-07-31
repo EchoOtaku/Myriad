@@ -323,7 +323,8 @@ export const AraelDebugPanel: React.FC<AraelDebugPanelProps> = ({
                   (
                     s: {
                       id: string
-                      capabilityId: string
+                      capabilityId?: string
+                      capability_id?: string
                       action: string
                       params?: Record<string, unknown>
                     },
@@ -331,7 +332,9 @@ export const AraelDebugPanel: React.FC<AraelDebugPanelProps> = ({
                   ) => (
                     <div key={s.id} className="adb-planner-step-row">
                       <span className="adb-ps-idx">{i + 1}.</span>
-                      <span className="adb-ps-cap">{s.capabilityId}</span>
+                      <span className="adb-ps-cap">
+                        {s.capabilityId ?? s.capability_id ?? ''}
+                      </span>
                       <span className="adb-ps-action">{s.action}</span>
                       {s.params && <JsonBlock label="params" data={s.params} />}
                     </div>

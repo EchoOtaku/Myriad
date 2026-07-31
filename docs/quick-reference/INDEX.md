@@ -40,6 +40,12 @@ docs/
 │   ├── LIBRARY.md           # Library feature guide
 │   └── TAPP_FILE_FORMAT.md  # Tapp ZIP package format
 │
+├── design/                   # UI / asset design notes
+│   ├── icon-inventory.md    # Icon paths and naming
+│   └── theme-system.md      # Widget / page theme tokens
+│
+├── notification-catalog.md   # Notification kinds & icons
+│
 ├── guides/                   # User Guides
 │   └── SECURITY_HEADERS.md  # Security configuration
 │
@@ -119,20 +125,19 @@ Myriad/
 
 ```
 scripts/
-├── docker/                      # Docker Deployment Scripts
-│   ├── deploy.ps1              # Unified deployment (Windows)
-│   ├── deploy.sh               # Unified deployment (Linux/Mac)
-│   ├── build-and-push.ps1      # Build & push images to registry (Windows)
-│   └── build-and-push.sh       # Build & push images to registry (Linux/Mac)
-│
-└── dev/                         # Development Scripts
-    ├── dev.ps1                 # Unified dev tool (Windows)
-    ├── dev.sh                  # Unified dev tool (Linux/Mac)
-    └── build.sh                # Build backend (Linux/Mac)
+├── docker/                         # Production / image packaging
+│   ├── deploy.sh / deploy.ps1      # Bootstrap & manage compose stack
+│   └── build-and-push.sh / .ps1    # Local component image build/push
+├── dev/                            # Local development
+│   ├── dev.sh / dev.ps1            # Start/stop backend, frontend, DB
+│   ├── build.sh / build.ps1        # Release-style local cargo + pnpm build
+│   ├── federation-multi-instance-suite.sh
+│   └── federation-fk-orphan-report.sql
+├── security/
+│   └── docker-audit-example.sh     # Optional host audit (deploy doctor --host)
+├── test-updater-smoke.sh           # Updater contract smoke
+└── test-updater-e2e.sh             # Updater + proxy local e2e harness
 ```
-
-**Core Scripts Listed:** 7 (4 Docker + 3 Development). Updater smoke/e2e test scripts
-also live directly under `scripts/`.
 
 ### Backend Structure
 
@@ -235,7 +240,7 @@ docs/
 | **Restart Services**   | `.\scripts\dev\dev.ps1 restart` | `./scripts/dev/dev.sh restart` |
 | **Clean Everything**   | `.\scripts\dev\dev.ps1 clean`   | `./scripts/dev/dev.sh clean`   |
 | **View Status**        | `.\scripts\dev\dev.ps1 status`  | `./scripts/dev/dev.sh status`  |
-| **Build Backend**      | N/A                             | `./scripts/dev/build.sh`       |
+| **Build Backend**      | `.\scripts\dev\build.ps1`       | `./scripts/dev/build.sh`       |
 
 **Advanced Options:**
 
@@ -308,6 +313,14 @@ make backup      # Backup PostgreSQL into ./backups
 | Document                                             | Description                | Audience      |
 | ---------------------------------------------------- | -------------------------- | ------------- |
 | [SECURITY_HEADERS.md](../guides/SECURITY_HEADERS.md) | Security configuration     | System Admins |
+
+### 🎨 Design & UI
+
+| Document | Description | Audience |
+| -------- | ----------- | -------- |
+| [icon-inventory.md](../design/icon-inventory.md) | Icon paths and naming inventory | Frontend |
+| [theme-system.md](../design/theme-system.md) | Widget / page theme tokens | Frontend |
+| [notification-catalog.md](../notification-catalog.md) | Notification kinds and icons | Frontend, Product |
 
 ### 📝 Reference
 

@@ -63,39 +63,27 @@ fn generate_csrf_token() -> String {
 
 /// 从请求中提取会话标识符（用于关联 CSRF Token）
 fn extract_session_id(headers: &HeaderMap) -> Option<String> {
-    fn jwt_signature(token: &str) -> Option<String> {
-        let mut segments = token.split('.');
-        let header = segments.next()?;
-        let payload = segments.next()?;
-        let signature = segments.next()?;
-        if header.is_empty()
-            || payload.is_empty()
-            || signature.is_empty()
-            || segments.next().is_some()
-        {
-            return None;
-        }
-        Some(signature.to_string())
-    }
-
-    // 优先从 Authorization header 提取 JWT
-    if let Some(auth_header) = headers.get("Authorization") {
-        if let Ok(auth_str) = auth_header.to_str() {
-            if let Some(token) = auth_str.strip_prefix("Bearer ") {
-                return jwt_signature(token);
-            }
-        }
-    }
-
-    // 回退到 Cookie
+    // Prefer cookie when present so store key matches browser session even if
+    // a stale Authorization header is also sent.
     if let Some(cookie_header) = headers.get(header::COOKIE) {
         if let Ok(cookies) = cookie_header.to_str() {
             for cookie in cookies.split(';') {
                 if let Some((name, value)) = cookie.trim().split_once('=') {
-                    if name == "auth_token" {
-                        return jwt_signature(value);
+                    if name == AUTH_TOKEN_COOKIE {
+                        if let Some(sig) = jwt_signature_segment(value) {
+                            return Some(sig);
+                        }
                     }
                 }
+            }
+        }
+    }
+
+    // 回退到 Authorization Bearer（纯 API 客户端）
+    if let Some(auth_header) = headers.get("Authorization") {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if let Some(token) = auth_str.strip_prefix("Bearer ") {
+                return jwt_signature_segment(token);
             }
         }
     }
@@ -103,42 +91,100 @@ fn extract_session_id(headers: &HeaderMap) -> Option<String> {
     None
 }
 
-/// CSRF 防护中间件
-/// ✅ 安全修复 P0: 验证所有状态变更请求的 CSRF Token
-///
-/// 安全策略：
-/// - 对于已认证用户：必须提供有效的 CSRF Token
-/// - 对于未认证用户（游客）：跳过 CSRF 验证（CSRF 攻击对游客无意义，因为没有 session 可劫持）
-/// - 某些公开 API 直接豁免（如登录、健康检查等）
-pub async fn csrf_middleware(req: Request, next: Next) -> Response {
-    let method = req.method();
-    let path = req.uri().path();
-
-    // 只对状态变更操作（POST/PUT/PATCH/DELETE）进行 CSRF 检查
-    if !matches!(
+/// True for methods that can mutate server state (CSRF surface).
+pub(crate) fn is_state_changing_method(method: &Method) -> bool {
+    matches!(
         method,
         &Method::POST | &Method::PUT | &Method::PATCH | &Method::DELETE
-    ) {
-        return next.run(req).await;
-    }
+    )
+}
 
-    // 排除不需要 CSRF 保护的端点（登录、公开接口等）
+/// Cookie name used for browser JWT sessions (`auth_local` / OAuth).
+pub(crate) const AUTH_TOKEN_COOKIE: &str = "auth_token";
+
+/// True when the request carries an `auth_token` cookie (browser session).
+///
+/// Browsers auto-attach cookies on cross-site navigations/forms; that is the
+/// classic CSRF risk. Pure `Authorization: Bearer` clients do not auto-send
+/// cookies and are not the same attack surface.
+pub(crate) fn has_auth_token_cookie(headers: &HeaderMap) -> bool {
+    let Some(cookie_header) = headers.get(header::COOKIE).and_then(|v| v.to_str().ok()) else {
+        return false;
+    };
+    for cookie in cookie_header.split(';') {
+        if let Some((name, value)) = cookie.trim().split_once('=') {
+            if name == AUTH_TOKEN_COOKIE {
+                let value = value.trim();
+                // Require JWT-shaped value so an empty/deleted cookie does not
+                // force CSRF on guests clearing session.
+                return jwt_signature_segment(value).is_some();
+            }
+        }
+    }
+    false
+}
+
+fn jwt_signature_segment(token: &str) -> Option<String> {
+    let mut segments = token.split('.');
+    let header = segments.next()?;
+    let payload = segments.next()?;
+    let signature = segments.next()?;
+    if header.is_empty() || payload.is_empty() || signature.is_empty() || segments.next().is_some()
+    {
+        return None;
+    }
+    Some(signature.to_string())
+}
+
+/// Whether CSRF validation must run for this request.
+///
+/// Policy (defense in depth for Cookie JWT):
+/// 1. Only state-changing methods
+/// 2. Path not on the hard exempt list
+/// 3. Request has an `auth_token` **cookie** (browser session)
+///
+/// Agent routes are **not** path-exempt: cookie sessions must present
+/// `X-CSRF-Token`. Bearer-only callers skip CSRF (no auto cookie attach).
+pub(crate) fn csrf_check_needed(path: &str, method: &Method, headers: &HeaderMap) -> bool {
+    if !is_state_changing_method(method) {
+        return false;
+    }
     if is_csrf_exempt(path) {
-        return next.run(req).await;
+        return false;
     }
+    has_auth_token_cookie(headers)
+}
 
+/// CSRF 防护中间件
+/// ✅ 安全修复 P0: Cookie 会话的状态变更必须带有效 CSRF Token
+///
+/// 安全策略：
+/// - Cookie JWT 用户：状态变更必须提供有效的 CSRF Token（含 `/api/agent/*`）
+/// - 纯 Bearer / 游客：跳过 CSRF（无 cookie 自动附带）
+/// - 登录、健康检查、公开 proxy 等路径硬豁免
+pub async fn csrf_middleware(req: Request, next: Next) -> Response {
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
     let headers = req.headers();
 
-    // 如果没有 session（游客），跳过 CSRF 验证
-    // 理由：CSRF 攻击的目的是劫持已登录用户的 session 执行操作
-    // 游客没有 session，无法被 CSRF 攻击利用
-    // 后端 API 会通过权限下放配置决定游客能访问什么
-    let Some(session_id) = extract_session_id(headers) else {
-        tracing::debug!(
-            "⏭️ CSRF check skipped: No session (guest user) for {}",
-            path
-        );
+    if !csrf_check_needed(&path, &method, headers) {
         return next.run(req).await;
+    }
+
+    // Cookie session present — bind CSRF store key to the same JWT signature
+    // used elsewhere (cookie preferred when present for session continuity).
+    let Some(session_id) = extract_session_id(headers) else {
+        // Cookie parse edge case: has_auth_token_cookie true but signature
+        // extract failed — fail closed.
+        tracing::warn!("🚨 CSRF check failed: auth cookie present but session id missing");
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "CSRF token not found",
+                "message": "No CSRF token found for this session. Please refresh the page."
+            })),
+        )
+            .into_response();
     };
 
     // 从请求头获取 CSRF Token
@@ -148,7 +194,7 @@ pub async fn csrf_middleware(req: Request, next: Next) -> Response {
         .unwrap_or("");
 
     if client_token.is_empty() {
-        tracing::warn!("🚨 CSRF check failed: Missing X-CSRF-Token header");
+        tracing::warn!("🚨 CSRF check failed: Missing X-CSRF-Token header on {}", path);
         return (
             StatusCode::FORBIDDEN,
             Json(json!({
@@ -210,8 +256,11 @@ pub async fn csrf_middleware(req: Request, next: Next) -> Response {
     }
 }
 
-/// 检查路径是否不需要 CSRF 保护
-fn is_csrf_exempt(path: &str) -> bool {
+/// 检查路径是否不需要 CSRF 保护（硬豁免，与认证方式无关）。
+///
+/// **Agent is not exempt** — cookie sessions must send `X-CSRF-Token`.
+/// Frontend `agent/sseTransport` already attaches CSRF on POST.
+pub(crate) fn is_csrf_exempt(path: &str) -> bool {
     // 公开接口、登录接口、健康检查等不需要 CSRF 保护
     path.starts_with("/api/auth/login")
         || path.starts_with("/api/auth/logout") // 退出登录不需要 CSRF（已经在退出了）
@@ -219,12 +268,11 @@ fn is_csrf_exempt(path: &str) -> bool {
         || path.starts_with("/health")
         || path.starts_with("/api/proxy/") // 图片代理等公开接口
         || path.starts_with("/api/ai/") // AI 推荐等公开接口
-        || path.starts_with("/api/agent/") // Agent API - 已有 JWT 认证保护
         // 仅公开写入埋点；export/import/summary 需会话 + CSRF（admin）
         || path.starts_with("/api/analytics/collect")
         || path.starts_with("/api/analytics/pageview")
-    // 注意: /api/tapps/ 和 /api/tapp/ 不在豁免列表
-    // 已登录用户需要 CSRF 保护，游客通过上面的 session 检查自动跳过
+    // 注意: /api/agent/、/api/tapps/、/api/tapp/ 不在豁免列表
+    // Cookie 会话必须带 CSRF；纯 Bearer / 游客由 csrf_check_needed 跳过
 }
 
 /// 生成并返回 CSRF Token 的接口
@@ -372,5 +420,121 @@ mod tests {
 
         assert!(!is_csrf_exempt("/api/config"));
         assert!(!is_csrf_exempt("/api/auth/change-password"));
+
+        // Agent is NOT path-exempt (cookie sessions need CSRF).
+        assert!(!is_csrf_exempt("/api/agent/process"));
+        assert!(!is_csrf_exempt("/api/agent/process/stream"));
+        assert!(!is_csrf_exempt("/api/agent/confirm"));
+        assert!(!is_csrf_exempt("/api/agent/presets"));
+    }
+
+    fn cookie_headers(jwt: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(
+            header::COOKIE,
+            format!("{AUTH_TOKEN_COOKIE}={jwt}").parse().unwrap(),
+        );
+        h
+    }
+
+    fn bearer_headers(jwt: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(
+            "Authorization",
+            format!("Bearer {jwt}").parse().unwrap(),
+        );
+        h
+    }
+
+    #[test]
+    fn has_auth_token_cookie_detects_jwt_shaped_cookie() {
+        let jwt = "aaa.bbb.signaturecookie";
+        assert!(has_auth_token_cookie(&cookie_headers(jwt)));
+        assert!(!has_auth_token_cookie(&bearer_headers(jwt)));
+        assert!(!has_auth_token_cookie(&HeaderMap::new()));
+        // Deleted / empty cookie must not force CSRF.
+        let mut empty = HeaderMap::new();
+        empty.insert(
+            header::COOKIE,
+            format!("{AUTH_TOKEN_COOKIE}=deleted").parse().unwrap(),
+        );
+        assert!(!has_auth_token_cookie(&empty));
+    }
+
+    #[test]
+    fn csrf_check_needed_cookie_session_on_agent_post() {
+        let jwt = "hdr.pay.sig-agent";
+        let headers = cookie_headers(jwt);
+        assert!(csrf_check_needed(
+            "/api/agent/process",
+            &Method::POST,
+            &headers
+        ));
+        assert!(csrf_check_needed(
+            "/api/agent/confirm/stream",
+            &Method::POST,
+            &headers
+        ));
+        // GET never needs CSRF
+        assert!(!csrf_check_needed(
+            "/api/agent/sessions",
+            &Method::GET,
+            &headers
+        ));
+    }
+
+    #[test]
+    fn csrf_check_needed_bearer_only_skips_even_on_agent() {
+        let jwt = "hdr.pay.sig-bearer";
+        let headers = bearer_headers(jwt);
+        assert!(!csrf_check_needed(
+            "/api/agent/process",
+            &Method::POST,
+            &headers
+        ));
+        assert!(!csrf_check_needed(
+            "/api/config",
+            &Method::PUT,
+            &headers
+        ));
+    }
+
+    #[test]
+    fn csrf_check_needed_guest_and_exempt_paths() {
+        let empty = HeaderMap::new();
+        assert!(!csrf_check_needed(
+            "/api/agent/process",
+            &Method::POST,
+            &empty
+        ));
+        let jwt = "hdr.pay.sig";
+        let cookie = cookie_headers(jwt);
+        // Hard exempt still wins even with cookie
+        assert!(!csrf_check_needed(
+            "/api/auth/login",
+            &Method::POST,
+            &cookie
+        ));
+        assert!(!csrf_check_needed(
+            "/api/proxy/image",
+            &Method::POST,
+            &cookie
+        ));
+    }
+
+    #[test]
+    fn extract_session_id_prefers_cookie_over_bearer() {
+        let mut h = HeaderMap::new();
+        h.insert(
+            header::COOKIE,
+            format!("{AUTH_TOKEN_COOKIE}=aaa.bbb.cookie-sig")
+                .parse()
+                .unwrap(),
+        );
+        h.insert(
+            "Authorization",
+            "Bearer aaa.bbb.bearer-sig".parse().unwrap(),
+        );
+        assert_eq!(extract_session_id(&h).as_deref(), Some("cookie-sig"));
     }
 }

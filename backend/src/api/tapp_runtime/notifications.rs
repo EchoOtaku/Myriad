@@ -1,7 +1,9 @@
 //! Tapp 通知 API。
 //!
-//! 前台与后台 Tapp 通知统一进入 `NotificationManager`；客户端不再直接维护
-//! 一套 TappToast，通知面板、Toast、智能岛和系统通知都消费同一个事件。
+//! Domain enqueue lives in [`crate::services::tapp_notification`]. This module
+//! owns grant/permission checks and Axum DTO mapping. Foreground and background
+//! Tapp notifications enter the shared `NotificationManager`; clients consume
+//! the same events for toast / island / system surfaces.
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use sea_orm::DatabaseConnection;
@@ -9,8 +11,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::middleware::auth::Claims;
-use crate::services::agent::notifications::get_notification_manager;
 use crate::services::permission_service::TappPermission;
+use crate::services::tapp_notification::{self, TappNotificationError};
+use crate::error::HttpError;
 
 use super::common::authorize_tapp_permission;
 use super::runtime_grant::RuntimeGrantContext;
@@ -29,13 +32,28 @@ fn default_notification_type() -> String {
     "info".to_string()
 }
 
+fn notification_http_error(err: TappNotificationError) -> (StatusCode, Json<Value>) {
+    let status =
+        StatusCode::from_u16(err.status_hint()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    (
+        status,
+        Json(json!({
+            "error": err.message(),
+            // Keep prior body shape (message only) while adding a stable code
+            // for clients that opt in.
+            "code": err.code(),
+        })),
+    )
+}
+
 /// POST /api/tapp/notifications
 pub async fn create_tapp_notification(
     State(db): State<DatabaseConnection>,
+    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(request): Json<TappNotificationRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&request.tapp_id)?;
     runtime_grant.require(TappPermission::UiNotification)?;
     let user_id = authorize_tapp_permission(
@@ -43,31 +61,18 @@ pub async fn create_tapp_notification(
         &claims,
         &request.tapp_id,
         TappPermission::UiNotification,
-    )
-    .await?;
+        &dynamic_config).await?;
 
-    let notification_type = match request.notification_type.as_str() {
-        "success" | "warning" | "error" | "danger" | "info" => request.notification_type.as_str(),
-        _ => "info",
-    };
-    let manager = get_notification_manager().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({ "error": "Notification system not initialized" })),
-    ))?;
-    let title = request
-        .title
-        .as_deref()
-        .map(|value| value.chars().take(200).collect::<String>());
-    let message = request.message.chars().take(4000).collect::<String>();
-    let notification_id = manager
-        .notify_tapp(
-            user_id,
-            &request.tapp_id,
-            title.as_deref(),
-            &message,
-            notification_type,
-        )
-        .await;
+    let notification_id = tapp_notification::create_tapp_notification(
+        user_id,
+        &request.tapp_id,
+        request.title.as_deref(),
+        &request.message,
+        &request.notification_type,
+    )
+    .await
+    .map_err(notification_http_error)?;
+
     Ok(Json(json!({
         "success": true,
         "notification_id": notification_id

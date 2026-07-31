@@ -18,10 +18,10 @@
 
 | 文件 | 用途 |
 | --- | --- |
-| [examples/v3-docker-compose.yml](./examples/v3-docker-compose.yml) | 与仓库根 `docker-compose.yml` 一致的 v3 拓扑快照（中文运维头注释） |
-| [examples/v3.env.example](./examples/v3.env.example) | 按 kiseki.blog 运维形状脱敏的 `.env` 示例（`v0.3.18` 统一 tag / preview / `HTTP_PORT=8080`） |
+| 仓库根 [`docker-compose.yml`](../../docker-compose.yml) | 当前 v3 生产拓扑（权威 compose） |
+| [examples/v3.env.example](./examples/v3.env.example) | 按 kiseki.blog 运维形状脱敏的 `.env` 示例（`v0.3.20` 统一 tag / preview / `HTTP_PORT=8080`） |
 
-复制 compose 时可用仓库根文件，也可用 `examples/v3-docker-compose.yml`（内容对齐当前根文件）。
+复制 compose 时使用仓库根 `docker-compose.yml`。
 
 ## v2 → v3 差异一览
 
@@ -96,8 +96,7 @@ cp -a .env "backups/env.pre-v3.$(date +%Y%m%d_%H%M%S)"
    # 或: bash scripts/docker/deploy.sh down
    ```
 
-2. **更新部署文件**到含 v3 拓扑的版本（根 `docker-compose.yml` 或复制
-   [examples/v3-docker-compose.yml](./examples/v3-docker-compose.yml)）：
+2. **更新部署文件**到含 v3 拓扑的版本（仓库根 `docker-compose.yml`）：
    - 服务：`docker-guard`、`updater-gateway`
    - updater：`DOCKER_HOST=tcp://docker-guard:2375`，**无** raw sock 挂载
    - backend：`MYRIAD_UPDATER_URL=http://updater-gateway:1104` +
@@ -120,7 +119,7 @@ cp -a .env "backups/env.pre-v3.$(date +%Y%m%d_%H%M%S)"
 
    可选对照 [examples/v3.env.example](./examples/v3.env.example) 补注释项
    （`PROXY_TRUSTED_UPSTREAMS`、三网名、`CHANNEL` / `UPDATE_MODE` 等）。  
-   示例中的 `MYRIAD_TAG` / `PROXY_TAG` / `UPDATER_TAG=v0.3.18`、`CHANNEL=preview`、
+   示例中的 `MYRIAD_TAG` / `PROXY_TAG` / `UPDATER_TAG=v0.3.20`、`CHANNEL=preview`、
    `UPDATE_MODE=commit`、`HTTP_PORT=8080`、`https://kiseki.blog` 仅为运维形状参考，
    **请改成你的实际值**。
 

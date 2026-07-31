@@ -427,104 +427,8 @@ export const VisitorStatsWidget = memo(
         : null
     /** 站长自己从不计入统计，没序号是设计如此，不是加载中 */
     const notCounted = data?.counted === false
+    /** BE disabled payload is only `{success,enabled:false}` — no today/all_time. */
     const collectionOff = data?.enabled === false
-
-    const heroBlock = ordinal != null ? (
-      // 访客视角的重心：先说「你」，数字最大，单位收尾
-      <div
-        className="flex min-w-0 flex-col justify-center"
-        style={{ gap: `${3 * scale}px` }}
-      >
-        <span
-          className="truncate font-medium tracking-wide text-gray-500 dark:text-gray-400"
-          style={{ fontSize: `${(compact ? 9 : 10) * fontScale}px` }}
-        >
-          {v.ordinalLead}
-        </span>
-        <span
-          className="flex min-w-0 items-baseline"
-          style={{ gap: `${5 * scale}px` }}
-        >
-          {/*
-            同理不做入场动画：`initial={{ opacity: 0 }}` 会在 motion 缺席时
-            把这张卡最重要的那个数字永久藏起来。卡片级入场由 WidgetGrid 负责。
-          */}
-          <span
-            className="font-black leading-none tracking-tight text-gray-900 tabular-nums dark:text-white"
-            style={{
-              fontSize: `${(compact ? 30 : 36) * fontScale}px`,
-              letterSpacing: '-0.03em',
-            }}
-          >
-            {formatOrdinal(ordinal, numberLocale)}
-          </span>
-          <span
-            className="shrink-0 font-medium text-gray-500 dark:text-gray-400"
-            style={{
-              fontSize: `${(compact ? 10 : 11) * fontScale}px`,
-              paddingBottom: `${1 * scale}px`,
-            }}
-          >
-            {v.ordinalTrail}
-          </span>
-        </span>
-      </div>
-    ) : (
-      // 没有序号时退成今日访客数，并说明原因
-      <div
-        className="flex min-w-0 flex-col justify-center"
-        style={{ gap: `${2 * scale}px` }}
-      >
-        <span
-          className="flex items-center truncate font-medium text-gray-500 dark:text-gray-400"
-          style={{
-            fontSize: `${(compact ? 9 : 10) * fontScale}px`,
-            gap: `${4 * scale}px`,
-          }}
-        >
-          <LuUsers size={Math.round(11 * scale)} aria-hidden />
-          {v.todayVisitors}
-        </span>
-        <span
-          className="font-black leading-none tracking-tight text-gray-900 tabular-nums dark:text-white"
-          style={{
-            fontSize: `${(compact ? 30 : 36) * fontScale}px`,
-            letterSpacing: '-0.03em',
-          }}
-        >
-          {count(data?.today.unique_visitors ?? 0)}
-        </span>
-        <span
-          className="truncate text-gray-400 dark:text-gray-500"
-          style={{ fontSize: `${8 * fontScale}px` }}
-        >
-          {notCounted ? v.staffNotCounted : v.ordinalPending}
-        </span>
-      </div>
-    )
-
-    const iconPx = Math.max(10, Math.round(11 * scale))
-    const statRows = (
-      <div
-        className="flex min-w-0 shrink-0 items-stretch"
-        style={{ gap: `${(compact ? 8 : 12) * scale}px` }}
-      >
-        <StatCell
-          icon={<LuEye size={iconPx} strokeWidth={2} />}
-          label={v.allTimeViewsShort}
-          value={count(data?.all_time.views ?? 0)}
-          fontScale={fontScale}
-          scale={scale}
-        />
-        <StatCell
-          icon={<LuUsers size={iconPx} strokeWidth={2} />}
-          label={v.allTimeVisitorsShort}
-          value={count(data?.all_time.unique_visitors ?? 0)}
-          fontScale={fontScale}
-          scale={scale}
-        />
-      </div>
-    )
 
     const body = (() => {
       if (loading && !data) {
@@ -554,6 +458,104 @@ export const VisitorStatsWidget = memo(
           </div>
         )
       }
+
+      // Build hero/stats only after enabled checks — disabled card has no today/all_time.
+      const heroBlock = ordinal != null ? (
+        // 访客视角的重心：先说「你」，数字最大，单位收尾
+        <div
+          className="flex min-w-0 flex-col justify-center"
+          style={{ gap: `${3 * scale}px` }}
+        >
+          <span
+            className="truncate font-medium tracking-wide text-gray-500 dark:text-gray-400"
+            style={{ fontSize: `${(compact ? 9 : 10) * fontScale}px` }}
+          >
+            {v.ordinalLead}
+          </span>
+          <span
+            className="flex min-w-0 items-baseline"
+            style={{ gap: `${5 * scale}px` }}
+          >
+            {/*
+              同理不做入场动画：`initial={{ opacity: 0 }}` 会在 motion 缺席时
+              把这张卡最重要的那个数字永久藏起来。卡片级入场由 WidgetGrid 负责。
+            */}
+            <span
+              className="font-black leading-none tracking-tight text-gray-900 tabular-nums dark:text-white"
+              style={{
+                fontSize: `${(compact ? 30 : 36) * fontScale}px`,
+                letterSpacing: '-0.03em',
+              }}
+            >
+              {formatOrdinal(ordinal, numberLocale)}
+            </span>
+            <span
+              className="shrink-0 font-medium text-gray-500 dark:text-gray-400"
+              style={{
+                fontSize: `${(compact ? 10 : 11) * fontScale}px`,
+                paddingBottom: `${1 * scale}px`,
+              }}
+            >
+              {v.ordinalTrail}
+            </span>
+          </span>
+        </div>
+      ) : (
+        // 没有序号时退成今日访客数，并说明原因
+        <div
+          className="flex min-w-0 flex-col justify-center"
+          style={{ gap: `${2 * scale}px` }}
+        >
+          <span
+            className="flex items-center truncate font-medium text-gray-500 dark:text-gray-400"
+            style={{
+              fontSize: `${(compact ? 9 : 10) * fontScale}px`,
+              gap: `${4 * scale}px`,
+            }}
+          >
+            <LuUsers size={Math.round(11 * scale)} aria-hidden />
+            {v.todayVisitors}
+          </span>
+          <span
+            className="font-black leading-none tracking-tight text-gray-900 tabular-nums dark:text-white"
+            style={{
+              fontSize: `${(compact ? 30 : 36) * fontScale}px`,
+              letterSpacing: '-0.03em',
+            }}
+          >
+            {count(data?.today?.unique_visitors ?? 0)}
+          </span>
+          <span
+            className="truncate text-gray-400 dark:text-gray-500"
+            style={{ fontSize: `${8 * fontScale}px` }}
+          >
+            {notCounted ? v.staffNotCounted : v.ordinalPending}
+          </span>
+        </div>
+      )
+
+      const iconPx = Math.max(10, Math.round(11 * scale))
+      const statRows = (
+        <div
+          className="flex min-w-0 shrink-0 items-stretch"
+          style={{ gap: `${(compact ? 8 : 12) * scale}px` }}
+        >
+          <StatCell
+            icon={<LuEye size={iconPx} strokeWidth={2} />}
+            label={v.allTimeViewsShort}
+            value={count(data?.all_time?.views ?? 0)}
+            fontScale={fontScale}
+            scale={scale}
+          />
+          <StatCell
+            icon={<LuUsers size={iconPx} strokeWidth={2} />}
+            label={v.allTimeVisitorsShort}
+            value={count(data?.all_time?.unique_visitors ?? 0)}
+            fontScale={fontScale}
+            scale={scale}
+          />
+        </div>
+      )
 
       // 主行：序号在左 · 趋势在右（宽收窄、左右拉开；高度约主行 3/4）
       const chartBox = hasTrend ? (

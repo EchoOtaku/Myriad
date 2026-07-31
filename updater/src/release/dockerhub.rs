@@ -149,16 +149,37 @@ impl TagResult {
     }
 
     fn preferred_digest(&self) -> Option<String> {
+        self.preferred_digest_for_arch(host_docker_arch())
+    }
+
+    /// Prefer tag-level digest (usually the multi-arch index), else the linux
+    /// image matching `arch` (Docker Hub arch names: amd64 / arm64 / …).
+    fn preferred_digest_for_arch(&self, arch: &str) -> Option<String> {
         self.digest.clone().or_else(|| {
             self.images
                 .iter()
                 .find(|image| {
                     image.os.as_deref() == Some("linux")
-                        && image.architecture.as_deref() == Some("amd64")
+                        && image.architecture.as_deref() == Some(arch)
+                })
+                .or_else(|| {
+                    self.images
+                        .iter()
+                        .find(|image| image.os.as_deref() == Some("linux"))
                 })
                 .or_else(|| self.images.first())
                 .and_then(|image| image.digest.clone())
         })
+    }
+}
+
+/// Map rustc `std::env::consts::ARCH` to Docker Hub / OCI architecture names.
+fn host_docker_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "aarch64" => "arm64",
+        "arm" => "arm",
+        other => other,
     }
 }
 
@@ -528,6 +549,45 @@ mod tests {
             tag_last_pushed: None,
             images: Vec::new(),
         }
+    }
+
+    #[test]
+    fn preferred_digest_prefers_host_arch_when_tag_digest_missing() {
+        let tag = TagResult {
+            name: "v0.3.0".into(),
+            digest: None,
+            last_updated: None,
+            tag_last_pushed: None,
+            images: vec![
+                TagImage {
+                    architecture: Some("amd64".into()),
+                    os: Some("linux".into()),
+                    digest: Some("sha256:amd64".into()),
+                },
+                TagImage {
+                    architecture: Some("arm64".into()),
+                    os: Some("linux".into()),
+                    digest: Some("sha256:arm64".into()),
+                },
+            ],
+        };
+        assert_eq!(
+            tag.preferred_digest_for_arch("arm64").as_deref(),
+            Some("sha256:arm64")
+        );
+        assert_eq!(
+            tag.preferred_digest_for_arch("amd64").as_deref(),
+            Some("sha256:amd64")
+        );
+        // Tag-level digest wins over per-arch images (manifest list).
+        let with_index = TagResult {
+            digest: Some("sha256:index".into()),
+            ..tag
+        };
+        assert_eq!(
+            with_index.preferred_digest_for_arch("arm64").as_deref(),
+            Some("sha256:index")
+        );
     }
 
     #[test]

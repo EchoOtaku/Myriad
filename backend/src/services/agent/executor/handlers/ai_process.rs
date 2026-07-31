@@ -1,9 +1,18 @@
 //! AI 处理能力处理器
 //!
-//! 处理 ai.summarize, ai.analyze, ai.chat, ai.groundingSearch 等 AI 类能力
+//! 处理 ai.summarize, ai.analyze, ai.chat, ai.groundingSearch 等 AI 类能力。
+//! 纯 prompt/steering/image 规则见 [`crate::services::agent::ai_process_pure`]。
 
 use super::HandlerContext;
 use crate::models::entities::brew_items;
+use crate::services::agent::ai_process_pure::{
+    append_memory_to_system_prompt, capability_needs_conversation_context, capability_needs_memory,
+    extract_pixai_image_url, extract_semantic_text, inject_directive_to_params,
+    inject_steering_to_params, merge_system_prompt, resolve_image_dimensions,
+    resolve_image_prompt, resolve_negative_prompt, sanitize_prompt_input,
+    take_recent_conversation_messages, with_system_guidance,
+};
+use crate::services::agent::data_read_pure::extract_json_array_from_ai_response;
 use crate::GLOBAL_DYNAMIC_CONFIG;
 use sea_orm::EntityTrait;
 use serde_json::{json, Value};
@@ -33,56 +42,37 @@ fn inject_role_identity(
                 .get("systemPrompt")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let enhanced = if existing.is_empty() {
-                role_identity.clone()
-            } else {
-                format!("{}\n\n{}", role_identity, existing)
-            };
-            params.insert("systemPrompt".to_string(), Value::String(enhanced));
+            params.insert(
+                "systemPrompt".to_string(),
+                Value::String(merge_system_prompt(existing, role_identity)),
+            );
         }
     }
 
     // 2. 注入记忆上下文（对话/分析/推荐类能力，帮助 AI 基于用户历史偏好生成回复）
-    let needs_memory = matches!(
-        capability_id,
-        "ai.chat" | "ai.analyze" | "ai.recommend" | "compare.content" | "prompt.generate"
-    );
-    if needs_memory {
+    if capability_needs_memory(capability_id) {
         if let Some(ref mem_ctx) = exec_ctx.memory_context {
             let existing = params
                 .get("systemPrompt")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            let with_memory = if existing.is_empty() {
-                format!("参考记忆（仅供参考，不要照搬）：\n{}", mem_ctx)
-            } else {
-                format!(
-                    "{}\n\n参考记忆（仅供参考，不要照搬）：\n{}",
-                    existing, mem_ctx
-                )
-            };
-            params.insert("systemPrompt".to_string(), Value::String(with_memory));
+            params.insert(
+                "systemPrompt".to_string(),
+                Value::String(append_memory_to_system_prompt(existing, mem_ctx)),
+            );
         }
     }
 
     // 3. 注入对话历史（仅对话/分析类能力需要，纯处理类不注入）
-    let needs_context = matches!(
-        capability_id,
-        "ai.chat" | "ai.analyze" | "ai.recommend" | "compare.content"
-    );
-    if needs_context && !params.contains_key("context") {
+    if capability_needs_conversation_context(capability_id) && !params.contains_key("context") {
         if let Some(ref history) = exec_ctx.conversation_context {
             if !history.is_empty() {
                 // 限制最近 20 条，与 Planner 保持一致
-                let ctx_array: Vec<Value> = history
+                let recent = take_recent_conversation_messages(history, 20);
+                let ctx_array: Vec<Value> = recent
                     .iter()
-                    .rev()
-                    .take(20)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
                     .map(|msg| {
-                        serde_json::json!({
+                        json!({
                             "role": msg.role,
                             "content": msg.content,
                         })
@@ -155,133 +145,6 @@ pub async fn execute(
             "Unknown AI capability: {} (action: {})",
             capability_id, action
         )),
-    }
-}
-
-fn append_instruction(params: &mut HashMap<String, Value>, key: &str, instruction: &str) {
-    let existing = params.get(key).and_then(Value::as_str).unwrap_or_default();
-    let combined = if existing.is_empty() {
-        instruction.to_string()
-    } else {
-        format!(
-            "{}\n\n用户最新转向指令（优先遵循）：{}",
-            existing, instruction
-        )
-    };
-    params.insert(key.to_string(), Value::String(combined));
-}
-
-/// Prepend systemPrompt (role/memory/steer fallback) to a freeform model prompt.
-/// Handlers that already consume systemPrompt as a first-class channel (e.g. ai.chat)
-/// should not call this to avoid double-application.
-fn with_system_guidance(params: &HashMap<String, Value>, prompt: String) -> String {
-    match params
-        .get("systemPrompt")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-    {
-        Some(sys) => format!("【补充指令 / 上下文（优先遵循）】\n{}\n\n{}", sys, prompt),
-        None => prompt,
-    }
-}
-
-/// Steering is newer than the Planner output, so it must augment existing
-/// parameters rather than only filling empty fields.
-///
-/// Prefer the field each handler already reads. Always also leave a trail on
-/// `systemPrompt` so handlers that only build freeform prompts still honor
-/// steer via [`with_system_guidance`].
-fn inject_steering_to_params(
-    capability_id: &str,
-    instruction: &str,
-    params: &mut HashMap<String, Value>,
-) {
-    // Shared channel: consumed by ai.chat natively and by with_system_guidance.
-    append_instruction(params, "systemPrompt", instruction);
-
-    match capability_id {
-        "ai.summarize" => append_instruction(params, "focus", instruction),
-        "ai.analyze" | "compare.content" => append_instruction(params, "instruction", instruction),
-        "ai.chat" => append_instruction(params, "message", instruction),
-        "ai.webSearch" | "ai.groundingSearch" => append_instruction(params, "query", instruction),
-        "prompt.generate" => append_instruction(params, "description", instruction),
-        "ai.image" => append_instruction(params, "prompt", instruction),
-        "translate.text" | "code.explain" | "ai.recommend" | "smart.filter"
-        | "brewlia.annotate" | "brewlia.podcast" => {
-            // systemPrompt trail + with_system_guidance in the handler is enough.
-        }
-        _ => {}
-    }
-}
-
-/// 将主 Agent 的 directive 注入到对应 handler 的参数中
-///
-/// 这解决了核心问题：Planner（主 Agent）通过 step.action 给出的具体指令
-/// 之前从未传递给实际执行 handler，导致子 Agent 自行发挥不听主 Agent。
-fn inject_directive_to_params(
-    capability_id: &str,
-    directive: &str,
-    user_request: Option<&str>,
-    params: &mut HashMap<String, Value>,
-) {
-    if directive.is_empty() {
-        return;
-    }
-
-    match capability_id {
-        // ai.analyze: 把主 Agent 的指令作为 instruction（如果没有手动设置）
-        "ai.analyze" | "compare.content" => {
-            if !params.contains_key("instruction") {
-                let full_instruction = if let Some(req) = user_request {
-                    format!("用户请求：{}\n具体任务：{}", req, directive)
-                } else {
-                    directive.to_string()
-                };
-                params.insert("instruction".to_string(), Value::String(full_instruction));
-            }
-        }
-        // ai.chat: 如果没有 message，用 directive 作为 message
-        "ai.chat" => {
-            if !params.contains_key("message") {
-                let msg = if let Some(req) = user_request {
-                    format!("{}（用户原始请求：{}）", directive, req)
-                } else {
-                    directive.to_string()
-                };
-                params.insert("message".to_string(), Value::String(msg));
-            }
-        }
-        // ai.summarize: 把 directive 的具体指示加入参数
-        "ai.summarize" => {
-            if !params.contains_key("focus") {
-                params.insert("focus".to_string(), Value::String(directive.to_string()));
-            }
-        }
-        // prompt.generate: directive 是 planner 的元指令（如"根据角色特征生成提示词"），
-        // 不是画面内容。真正的内容通过 titleFrom/descriptionFrom 传入。
-        // 仅当没有任何内容参数时才用 directive 兜底。
-        "prompt.generate" => {
-            let has_content = params
-                .get("title")
-                .and_then(|v| v.as_str())
-                .is_some_and(|s| !s.is_empty())
-                || params
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.is_empty())
-                || params
-                    .get("summary")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|s| !s.is_empty());
-            if !has_content {
-                params.insert(
-                    "description".to_string(),
-                    Value::String(directive.to_string()),
-                );
-            }
-        }
-        _ => {}
     }
 }
 
@@ -490,7 +353,7 @@ async fn execute_ai_recommend(
 
     // 尝试解析 JSON 数组，否则回退到文本
     let recommendations: Value = {
-        let arr = extract_json_array_from_text(&result);
+        let arr = extract_json_array_from_ai_response(&result);
         if arr.is_empty() {
             json!(result)
         } else {
@@ -586,122 +449,6 @@ async fn execute_gemini_grounding_search_wrapper(
     }))
 }
 
-/// 从步骤输出中智能提取语义文本，避免把原始 JSON 数组丢给 AI
-///
-/// 优先级：aiSummary > analysis > reply > summary > description，
-/// 若都没有则 fallback 到 JSON stringify
-fn extract_semantic_text(value: &Value) -> String {
-    // 纯字符串直接返回
-    if let Some(s) = value.as_str() {
-        return s.to_string();
-    }
-
-    // 对象：提取有语义的文本字段
-    if let Some(obj) = value.as_object() {
-        let text_keys = [
-            "aiSummary",
-            "analysis",
-            "reply",
-            "summary",
-            "description",
-            "message",
-            "content",
-        ];
-        let mut parts: Vec<String> = Vec::new();
-
-        for key in &text_keys {
-            if let Some(text) = obj.get(*key).and_then(|v| v.as_str()) {
-                if !text.is_empty() {
-                    parts.push(text.to_string());
-                }
-            }
-        }
-
-        // 搜索结果数组：提取文本摘要而非原始 JSON
-        if let Some(results) = obj.get("results").and_then(|v| v.as_array()) {
-            for item in results.iter().take(10) {
-                let mut item_parts: Vec<String> = Vec::new();
-                for key in &["name", "title"] {
-                    if let Some(v) = item
-                        .get(key)
-                        .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty())
-                    {
-                        item_parts.push(v.to_string());
-                    }
-                }
-                for key in &[
-                    "description",
-                    "snippet",
-                    "status",
-                    "reason",
-                    "source",
-                    "expectation",
-                ] {
-                    if let Some(v) = item
-                        .get(key)
-                        .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty())
-                    {
-                        item_parts.push(v.to_string());
-                    }
-                }
-                // 嵌套数组（rankings、hot_topics、anticipated_characters 等）
-                for arr_key in &["rankings", "hot_topics", "anticipated_characters"] {
-                    if let Some(arr) = item.get(arr_key).and_then(|v| v.as_array()) {
-                        for entry in arr.iter().take(10) {
-                            let name = entry
-                                .get("name")
-                                .or_else(|| entry.get("character"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
-                            let desc = entry
-                                .get("status")
-                                .or_else(|| entry.get("reason"))
-                                .or_else(|| entry.get("expectation"))
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("");
-                            let src = entry.get("source").and_then(|v| v.as_str()).unwrap_or("");
-                            if !name.is_empty() {
-                                if !src.is_empty() {
-                                    item_parts.push(format!("{} ({}): {}", name, src, desc));
-                                } else {
-                                    item_parts.push(format!("{}: {}", name, desc));
-                                }
-                            }
-                        }
-                    }
-                }
-                if !item_parts.is_empty() {
-                    parts.push(item_parts.join(" | "));
-                }
-            }
-        }
-
-        if !parts.is_empty() {
-            return parts.join("\n\n");
-        }
-    }
-
-    // 最后手段：JSON stringify
-    serde_json::to_string_pretty(value).unwrap_or_default()
-}
-
-/// 清洗用户输入，防止 Prompt Injection
-///
-/// - 移除 ASCII 控制字符（换行除外，保留可读性）
-/// - 限制最大长度为 1000 字符
-/// - 去除首尾空白
-fn sanitize_prompt_input(input: &str) -> String {
-    input
-        .chars()
-        .filter(|c| !c.is_control() || *c == '\n')
-        .take(1000)
-        .collect::<String>()
-        .trim()
-        .to_string()
-}
-
 /// 验证平台名称白名单，防止路径穿越
 use crate::services::agent::executor::utils::validate_platform_name;
 
@@ -785,6 +532,7 @@ async fn execute_gemini_grounding_search(
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
@@ -802,15 +550,22 @@ async fn execute_gemini_grounding_search(
         .await
         .map_err(|e| format!("Gemini API request failed: {}", e))?;
 
+    const GEMINI_MAX_BODY: usize = 2 * 1024 * 1024;
     if !response.status().is_success() {
         let status = response.status();
-        let error_text = response.text().await.unwrap_or_default();
+        let error_bytes =
+            crate::services::outbound_security::read_limited_body(response, 64 * 1024)
+                .await
+                .unwrap_or_default();
+        let error_text = String::from_utf8_lossy(&error_bytes);
         return Err(format!("Gemini API error {}: {}", status, error_text));
     }
 
-    let response_json: Value = response
-        .json()
-        .await
+    let body_bytes =
+        crate::services::outbound_security::read_limited_body(response, GEMINI_MAX_BODY)
+            .await
+            .map_err(|e| format!("Failed to read Gemini response: {e}"))?;
+    let response_json: Value = serde_json::from_slice(&body_bytes)
         .map_err(|e| format!("Failed to parse Gemini response: {}", e))?;
 
     // 提取 AI 回复内容
@@ -825,7 +580,7 @@ async fn execute_gemini_grounding_search(
         .unwrap_or("");
 
     // 尝试从回复中提取 JSON 数组
-    let mut results = extract_json_array_from_text(ai_text);
+    let mut results = extract_json_array_from_ai_response(ai_text);
 
     // 提取 grounding 元数据中的搜索结果
     if let Some(grounding_metadata) = response_json
@@ -867,36 +622,6 @@ async fn execute_gemini_grounding_search(
     Ok((ai_text.to_string(), results))
 }
 
-/// 从文本中提取 JSON 数组
-fn extract_json_array_from_text(text: &str) -> Vec<Value> {
-    // 尝试找到 JSON 数组
-    let json_start = text.find('[');
-    let json_end = text.rfind(']');
-
-    if let (Some(start), Some(end)) = (json_start, json_end) {
-        if end > start {
-            let json_str = &text[start..=end];
-            if let Ok(arr) = serde_json::from_str::<Vec<Value>>(json_str) {
-                return arr;
-            }
-        }
-    }
-
-    // 尝试解析 markdown 代码块中的 JSON
-    if text.contains("```json") {
-        let parts: Vec<&str> = text.split("```json").collect();
-        if parts.len() > 1 {
-            if let Some(json_part) = parts[1].split("```").next() {
-                if let Ok(arr) = serde_json::from_str::<Vec<Value>>(json_part.trim()) {
-                    return arr;
-                }
-            }
-        }
-    }
-
-    vec![]
-}
-
 // ============================================================================
 // Brewlia 能力
 // ============================================================================
@@ -915,7 +640,10 @@ async fn execute_brewlia_annotate(
     let item = brew_items::Entity::find_by_id(item_id as i32)
         .one(ctx.db)
         .await
-        .map_err(|e| format!("Database error: {}", e))?
+        .map_err(|e| {
+            tracing::error!(error = %e, "Agent ai_process database error");
+            "Database error".to_string()
+        })?
         .ok_or_else(|| format!("Article with ID {} not found", item_id))?;
 
     let title = &item.title;
@@ -946,7 +674,7 @@ async fn execute_brewlia_annotate(
         .map_err(|e| format!("Annotation generation failed: {}", e))?;
 
     let annotations: Value = {
-        let arr = extract_json_array_from_text(&result);
+        let arr = extract_json_array_from_ai_response(&result);
         if arr.is_empty() {
             json!([{
                 "type": "note",
@@ -984,7 +712,10 @@ async fn execute_brewlia_podcast(
     let item = brew_items::Entity::find_by_id(item_id as i32)
         .one(ctx.db)
         .await
-        .map_err(|e| format!("Database error: {}", e))?
+        .map_err(|e| {
+            tracing::error!(error = %e, "Agent ai_process database error");
+            "Database error".to_string()
+        })?
         .ok_or_else(|| format!("Article with ID {} not found", item_id))?;
 
     let title = &item.title;
@@ -1039,7 +770,7 @@ async fn execute_brewlia_podcast(
 // ============================================================================
 
 async fn execute_speech_tts(params: &HashMap<String, Value>) -> Result<Value, String> {
-    use crate::api::speech::{synthesize_standalone_tts, TtsApiRequest};
+    use crate::services::standalone_tts::{synthesize_standalone_tts, TtsApiRequest};
 
     let text = params
         .get("text")
@@ -1091,6 +822,12 @@ async fn execute_speech_tts(params: &HashMap<String, Value>) -> Result<Value, St
         .and_then(|v| v.as_str())
         .map(|s| s.to_string());
 
+    let force_regenerate = params
+        .get("force_regenerate")
+        .or_else(|| params.get("forceRegenerate"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
     let request = TtsApiRequest {
         text: text.to_string(),
         voice_type,
@@ -1099,6 +836,7 @@ async fn execute_speech_tts(params: &HashMap<String, Value>) -> Result<Value, St
         codec: codec.clone(),
         sample_rate,
         emotion,
+        force_regenerate,
     };
 
     let response = synthesize_standalone_tts(&request).await?;
@@ -1448,62 +1186,10 @@ async fn execute_code_explain(
 // AI 图片生成
 // ============================================================================
 
-/// 解析图片宽/高：支持 JSON 整数、浮点整数与数字字符串（如 `"768"` / `"768px"`）。
-fn parse_image_dim(value: &Value) -> Option<u32> {
-    if let Some(n) = value.as_u64() {
-        return u32::try_from(n).ok().filter(|&n| n > 0);
-    }
-    if let Some(n) = value.as_i64() {
-        return u32::try_from(n).ok().filter(|&n| n > 0);
-    }
-    if let Some(n) = value.as_f64() {
-        if n.is_finite() && n > 0.0 && n.fract() == 0.0 && n <= u32::MAX as f64 {
-            return Some(n as u32);
-        }
-        return None;
-    }
-    if let Some(s) = value.as_str() {
-        let s = s.trim();
-        let s = s
-            .strip_suffix("px")
-            .or_else(|| s.strip_suffix("PX"))
-            .unwrap_or(s)
-            .trim();
-        return s.parse::<u32>().ok().filter(|&n| n > 0);
-    }
-    None
-}
-
 async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, String> {
-    // prompt 可能是字符串，也可能是上一步输出的对象（包含 .prompt 字段）
-    let prompt_val = params.get("prompt");
-    let prompt = prompt_val
-        .and_then(|v| {
-            v.as_str().map(|s| s.to_string()).or_else(|| {
-                // 如果是对象（如 prompt.generate 的输出），尝试提取 .prompt 字段
-                v.get("prompt")
-                    .and_then(|inner| inner.as_str())
-                    .map(|s| s.to_string())
-            })
-        })
-        .ok_or("Missing prompt parameter")?;
+    let prompt = resolve_image_prompt(params)?;
     let prompt = prompt.as_str();
-
-    // negativePrompt：优先从 params 直接取，其次从 prompt.generate 的输出对象中提取
-    let negative_prompt = params
-        .get("negativePrompt")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .or_else(|| {
-            prompt_val
-                .and_then(|v| v.get("negativePrompt"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        });
-
-    if prompt.len() > 1000 {
-        return Err("Prompt too long (max 1000 characters)".to_string());
-    }
+    let negative_prompt = resolve_negative_prompt(params);
 
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
     let provider = config.ai_image_provider.clone();
@@ -1511,19 +1197,7 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
     let pixai_api_key = config.pixai_api_key.clone();
     drop(config);
 
-    // 分辨率由调用方（agent 参数）决定；未传时用本地默认，不读全局配置
-    const DEFAULT_IMAGE_WIDTH: u32 = 1024;
-    const DEFAULT_IMAGE_HEIGHT: u32 = 1024;
-    let width = params
-        .get("width")
-        .and_then(parse_image_dim)
-        .map(|v| v.clamp(256, 2048))
-        .unwrap_or(DEFAULT_IMAGE_WIDTH);
-    let height = params
-        .get("height")
-        .and_then(parse_image_dim)
-        .map(|v| v.clamp(256, 2048))
-        .unwrap_or(DEFAULT_IMAGE_HEIGHT);
+    let (width, height) = resolve_image_dimensions(params);
 
     match provider.as_str() {
         "pollinations" => {
@@ -1547,6 +1221,7 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
 
             let client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(30))
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .map_err(|e| format!("HTTP client error: {}", e))?;
 
@@ -1580,9 +1255,11 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
                 return Err(format!("PixAI API error: {}", status));
             }
 
-            let raw_result: Value = response
-                .json()
-                .await
+            let pixai_bytes =
+                crate::services::outbound_security::read_limited_body(response, 1024 * 1024)
+                    .await
+                    .map_err(|e| format!("Failed to read PixAI response: {e}"))?;
+            let raw_result: Value = serde_json::from_slice(&pixai_bytes)
                 .map_err(|e| format!("Failed to parse PixAI response: {}", e))?;
 
             tracing::info!(
@@ -1645,9 +1322,16 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
                     continue;
                 }
 
-                let raw_data: Value = match status_resp.json().await {
-                    Ok(v) => v,
-                    Err(_) => continue,
+                let raw_data: Value = match crate::services::outbound_security::read_limited_body(
+                    status_resp,
+                    512 * 1024,
+                )
+                .await
+                .ok()
+                .and_then(|b| serde_json::from_slice(&b).ok())
+                {
+                    Some(v) => v,
+                    None => continue,
                 };
 
                 // PixAI 可能返回 GraphQL 格式 {"data": {...}} 或直接 REST 格式 {...}
@@ -1721,139 +1405,5 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
             Err("PixAI image generation timed out (120s)".to_string())
         }
         _ => Err(format!("Unknown image provider: {}", provider)),
-    }
-}
-
-/// 从 PixAI 任务响应中提取图片 URL
-///
-/// PixAI 实际返回格式：
-/// ```json
-/// {
-///   "outputs": {
-///     "mediaUrls": ["https://d2doj8oszwtcqy.cloudfront.net/images/temp/..."],
-///     "mediaIds": ["700145165991970298"]
-///   }
-/// }
-/// ```
-fn extract_pixai_image_url(task_data: &Value) -> String {
-    let outputs = match task_data.get("outputs") {
-        Some(o) => o,
-        None => return String::new(),
-    };
-
-    // 主路径: outputs.mediaUrls[0]（PixAI 实际格式：签名 CloudFront CDN URL）
-    if let Some(url) = outputs
-        .get("mediaUrls")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|v| v.as_str())
-    {
-        return url.to_string();
-    }
-
-    // 备用路径: outputs.mediaIds[0] → API 下载链接
-    if let Some(mid) = outputs
-        .get("mediaIds")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-    {
-        let mid_str = match mid {
-            Value::String(s) => s.clone(),
-            Value::Number(n) => n.to_string(),
-            _ => return String::new(),
-        };
-        return format!("https://api.pixai.art/v1/media/{}/download", mid_str);
-    }
-
-    // 兼容旧格式: outputs 是数组 [{"url": "..."} 或 {"mediaId": "..."}]
-    if let Some(arr) = outputs.as_array() {
-        if let Some(first) = arr.first() {
-            if let Some(url) = first.get("url").and_then(|v| v.as_str()) {
-                return url.to_string();
-            }
-            if let Some(url) = first.get("mediaUrl").and_then(|v| v.as_str()) {
-                return url.to_string();
-            }
-        }
-    }
-
-    String::new()
-}
-
-#[cfg(test)]
-mod steering_tests {
-    use super::*;
-
-    #[test]
-    fn parse_image_dim_accepts_number_and_string() {
-        assert_eq!(parse_image_dim(&json!(768)), Some(768));
-        assert_eq!(parse_image_dim(&json!(768.0)), Some(768));
-        assert_eq!(parse_image_dim(&json!("1024")), Some(1024));
-        assert_eq!(parse_image_dim(&json!(" 768px ")), Some(768));
-        assert_eq!(parse_image_dim(&json!(0)), None);
-        assert_eq!(parse_image_dim(&json!("nope")), None);
-    }
-
-    #[test]
-    fn steering_augments_existing_ai_instruction() {
-        let mut params = HashMap::from([(
-            "instruction".to_string(),
-            Value::String("旧计划".to_string()),
-        )]);
-        inject_steering_to_params("ai.analyze", "只看最近数据", &mut params);
-        let instruction = params["instruction"].as_str().unwrap();
-        assert!(instruction.contains("旧计划"));
-        assert!(instruction.contains("只看最近数据"));
-        assert!(params["systemPrompt"]
-            .as_str()
-            .unwrap()
-            .contains("只看最近数据"));
-    }
-
-    #[test]
-    fn steering_updates_search_query() {
-        let mut params = HashMap::new();
-        inject_steering_to_params("ai.webSearch", "改查官方文档", &mut params);
-        assert_eq!(params["query"], json!("改查官方文档"));
-    }
-
-    #[test]
-    fn steering_injects_into_prompt_generate_description() {
-        let mut params = HashMap::from([(
-            "description".to_string(),
-            Value::String("a cat".to_string()),
-        )]);
-        inject_steering_to_params("prompt.generate", "水彩风格", &mut params);
-        let description = params["description"].as_str().unwrap();
-        assert!(description.contains("a cat"));
-        assert!(description.contains("水彩风格"));
-    }
-
-    #[test]
-    fn steering_injects_into_ai_image_prompt() {
-        let mut params =
-            HashMap::from([("prompt".to_string(), Value::String("sunset".to_string()))]);
-        inject_steering_to_params("ai.image", "更暗", &mut params);
-        let prompt = params["prompt"].as_str().unwrap();
-        assert!(prompt.contains("sunset"));
-        assert!(prompt.contains("更暗"));
-    }
-
-    #[test]
-    fn with_system_guidance_prepends_system_prompt() {
-        let params = HashMap::from([(
-            "systemPrompt".to_string(),
-            Value::String("改成简短要点".to_string()),
-        )]);
-        let out = with_system_guidance(&params, "原文提示".to_string());
-        assert!(out.contains("改成简短要点"));
-        assert!(out.contains("原文提示"));
-        assert!(out.find("改成简短要点").unwrap() < out.find("原文提示").unwrap());
-    }
-
-    #[test]
-    fn with_system_guidance_noop_when_absent() {
-        let params = HashMap::new();
-        assert_eq!(with_system_guidance(&params, "only".to_string()), "only");
     }
 }

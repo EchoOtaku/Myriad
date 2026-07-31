@@ -221,6 +221,19 @@ export default function Library() {
     }
   }, [setExpanded])
 
+  // Filter chip engagement (not a new pageview — SPA stays on /library)
+  useEffect(() => {
+    if (!activeId || activeId === 'all') return
+    void import('../utils/analyticsEvents').then(
+      ({ trackProductEvent, AnalyticsEvents }) => {
+        trackProductEvent(AnalyticsEvents.LIBRARY_FILTER, {
+          target: activeId,
+          throttleMs: 2000,
+        })
+      },
+    )
+  }, [activeId])
+
   return (
     <AnimatedView className="min-h-screen px-3 xs:px-4 sm:px-6 pt-20 pb-28 sm:pb-24 md:pb-12">
       <div className="max-w-7xl mx-auto w-full">

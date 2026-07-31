@@ -1,6 +1,6 @@
 // AI analysis service using Google Gemini API or OpenAI-compatible API
 use anyhow::{Context, Result};
-use reqwest::{Client, Proxy};
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -290,6 +290,25 @@ fn openai_chat_completions_url(base_url: Option<&str>) -> String {
 }
 
 impl AiAnalyzer {
+    /// Cap Gemini response bodies (success + error) to avoid unbounded buffers.
+    async fn read_limited_json<T: serde::de::DeserializeOwned>(
+        response: reqwest::Response,
+        max_bytes: usize,
+    ) -> anyhow::Result<T> {
+        let bytes = crate::services::outbound_security::read_limited_body(response, max_bytes)
+            .await
+            .map_err(|e| anyhow::anyhow!(e))?;
+        serde_json::from_slice(&bytes).context("Failed to parse Gemini JSON")
+    }
+
+    async fn read_limited_error_text(response: reqwest::Response) -> String {
+        crate::services::outbound_security::read_limited_body(response, 64 * 1024)
+            .await
+            .map(|b| String::from_utf8_lossy(&b).to_string())
+            .unwrap_or_else(|_| "Unknown error".to_string())
+    }
+
+
     pub async fn new(
         provider: AiProvider,
         api_key: String,
@@ -310,20 +329,22 @@ impl AiAnalyzer {
     ) -> Self {
         let proxy_config = ProxyConfig::from_dynamic_config().await;
 
-        let mut builder = Client::builder()
+        let builder = Client::builder()
             .timeout(request_timeout)
             .connect_timeout(Duration::from_secs(30))
             .user_agent("Myriad/1.0");
 
-        if proxy_config.should_use_proxy() {
-            if let Some(proxy_url) = proxy_config.proxy_url.as_deref() {
-                if let Ok(proxy) = Proxy::all(proxy_url) {
-                    builder = builder.proxy(proxy);
-                }
-            }
-        }
-
-        let client = builder.build().unwrap_or_else(|_| Client::new());
+        let client = crate::services::http_client::apply_proxy(builder, &proxy_config)
+            .and_then(|b| b.build())
+            .unwrap_or_else(|e| {
+                tracing::error!(%e, "AiAnalyzer proxy client build failed; using direct client");
+                Client::builder()
+                    .timeout(request_timeout)
+                    .connect_timeout(Duration::from_secs(30))
+                    .user_agent("Myriad/1.0")
+                    .build()
+                    .unwrap_or_else(|_| Client::new())
+            });
         Self {
             client,
             provider,
@@ -373,7 +394,7 @@ impl AiAnalyzer {
         let response = self
             .client
             .post(&url)
-            .query(&[("key", &self.api_key)])
+            .header("x-goog-api-key", &self.api_key)
             .json(&request_body)
             .send()
             .await
@@ -381,10 +402,7 @@ impl AiAnalyzer {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = Self::read_limited_error_text(response).await;
             return Err(anyhow::anyhow!(
                 "Gemini API error {}: {}",
                 status,
@@ -392,10 +410,7 @@ impl AiAnalyzer {
             ));
         }
 
-        let gemini_response: GeminiResponse = response
-            .json()
-            .await
-            .context("Failed to parse Gemini API response")?;
+        let gemini_response: GeminiResponse = Self::read_limited_json(response, 2 * 1024 * 1024).await?;
 
         // 检测 prompt 级别的安全过滤
         if let Some(ref feedback) = gemini_response.prompt_feedback {
@@ -480,10 +495,7 @@ impl AiAnalyzer {
 
         if !response.status().is_success() {
             let status = response.status();
-            let error_text = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Unknown error".to_string());
+            let error_text = Self::read_limited_error_text(response).await;
             return Err(anyhow::anyhow!(format_openai_compatible_http_error(
                 status,
                 &url,
@@ -492,10 +504,8 @@ impl AiAnalyzer {
             )));
         }
 
-        let openai_response: OpenAIResponse = response
-            .json()
-            .await
-            .context("Failed to parse OpenAI-compatible API response")?;
+        let openai_response: OpenAIResponse =
+            Self::read_limited_json(response, 2 * 1024 * 1024).await?;
 
         extract_openai_completion_text(&openai_response)
     }
@@ -572,10 +582,7 @@ impl AiAnalyzer {
 
                 if !response.status().is_success() {
                     let status = response.status();
-                    let error_text = response
-                        .text()
-                        .await
-                        .unwrap_or_else(|_| "Unknown error".to_string());
+                    let error_text = Self::read_limited_error_text(response).await;
                     return Err(anyhow::anyhow!(format_openai_compatible_http_error(
                         status,
                         &url,
@@ -584,10 +591,8 @@ impl AiAnalyzer {
                     )));
                 }
 
-                let openai_response: OpenAIResponse = response
-                    .json()
-                    .await
-                    .context("Failed to parse OpenAI-compatible API response")?;
+                let openai_response: OpenAIResponse =
+                    Self::read_limited_json(response, 2 * 1024 * 1024).await?;
 
                 extract_openai_completion_text(&openai_response)
             }
@@ -626,7 +631,7 @@ impl AiAnalyzer {
                 let mut response = self
                     .client
                     .post(&url)
-                    .query(&[("key", &self.api_key)])
+                    .header("x-goog-api-key", &self.api_key)
                     .json(&request_body)
                     .send()
                     .await
@@ -634,7 +639,7 @@ impl AiAnalyzer {
 
                 if !response.status().is_success() {
                     let status = response.status();
-                    let error_text = response.text().await.unwrap_or_default();
+                    let error_text = Self::read_limited_error_text(response).await;
                     return Err(anyhow::anyhow!(
                         "Gemini streaming API error {}: {}",
                         status,
@@ -711,7 +716,7 @@ impl AiAnalyzer {
 
                 if !response.status().is_success() {
                     let status = response.status();
-                    let error_text = response.text().await.unwrap_or_default();
+                    let error_text = Self::read_limited_error_text(response).await;
                     return Err(anyhow::anyhow!(format_openai_compatible_http_error(
                         status,
                         &url,

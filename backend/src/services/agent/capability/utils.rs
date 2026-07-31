@@ -306,6 +306,18 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
         ("此操作将取消订阅并删除相关数据", RiskLevel::High),
     );
     map.insert(
+        "brew.subscribe",
+        ("此操作将添加新的 RSS/Atom 订阅源", RiskLevel::Medium),
+    );
+    map.insert(
+        "brew.schedule",
+        ("此操作将控制 Brew 订阅调度器（启动/停止/刷新）", RiskLevel::Medium),
+    );
+    map.insert(
+        "http.fetch",
+        ("此操作将向外部 URL 发起 HTTP 请求（出站网络）", RiskLevel::Medium),
+    );
+    map.insert(
         "tapp.delete",
         ("此操作将删除 Tapp 及其所有数据", RiskLevel::High),
     );
@@ -357,6 +369,13 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
     map.insert(
         "platform.refresh",
         ("此操作将刷新平台数据，可能消耗 API 配额", RiskLevel::Medium),
+    );
+    map.insert(
+        "task.submit",
+        (
+            "此操作将提交后台平台数据处理任务",
+            RiskLevel::Medium,
+        ),
     );
 
     // 低风险 - 可逆操作
@@ -608,4 +627,30 @@ pub fn get_quick_reference() -> Value {
             "heartbeat.create": {"name": "Brew早间总结", "schedule": "0 9 * * *", "action": "总结 brew 订阅", "enabled": true}
         }
     })
+}
+
+#[cfg(test)]
+mod sensitive_caps_tests {
+    use super::get_sensitive_capabilities;
+    use crate::services::agent::types::RiskLevel;
+
+    #[test]
+    fn network_and_brew_writes_require_confirmation() {
+        let map = get_sensitive_capabilities();
+        for id in ["brew.subscribe", "brew.schedule", "http.fetch", "task.submit"] {
+            let (msg, risk) = map.get(id).unwrap_or_else(|| panic!("missing {id}"));
+            assert!(!msg.is_empty(), "{id} message");
+            assert!(
+                matches!(risk, RiskLevel::Medium | RiskLevel::High | RiskLevel::Critical),
+                "{id} risk {risk:?}"
+            );
+        }
+        // Already-gated scheduler writes stay present
+        assert!(map.contains_key("scheduler.create"));
+        assert!(map.contains_key("scheduler.trigger"));
+        assert_eq!(
+            map.get("task.submit").map(|(_, r)| *r),
+            Some(RiskLevel::Medium)
+        );
+    }
 }

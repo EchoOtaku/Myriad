@@ -37,6 +37,7 @@ import Toast from '../components/Toast'
 import { preloadPlatformFaces } from '../components/widgets/reportCard/platformFaceLoaders'
 import { ReportCardWidget } from '../components/widgets/ReportCardWidget'
 import { API_URL } from '../config'
+import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import {
@@ -408,6 +409,14 @@ export default function Reports() {
           card_visuals: platformReport.card_visuals,
         })
         setIsStageMode(true)
+        void import('../utils/analyticsEvents').then(
+          ({ trackProductEvent, AnalyticsEvents }) => {
+            trackProductEvent(AnalyticsEvents.REPORT_STAGE_OPEN, {
+              target: platformId,
+              throttleMs: 3000,
+            })
+          },
+        )
       }
     },
     [platformReportsMap],
@@ -469,6 +478,14 @@ export default function Reports() {
     setPlayAllQueue(remainingPlatforms)
     setPlayAllMode(true)
     setIsStageMode(true)
+    void import('../utils/analyticsEvents').then(
+      ({ trackProductEvent, AnalyticsEvents }) => {
+        trackProductEvent(AnalyticsEvents.REPORT_PLAY_ALL, {
+          target: firstPlatformId,
+          throttleMs: 5000,
+        })
+      },
+    )
 
     const platformReport = platformReportsMap.get(firstPlatformId)
     if (platformReport) {
@@ -584,6 +601,7 @@ export default function Reports() {
             body: JSON.stringify({ platform: platformId }),
           },
         )
+        notifyHttpRateLimit(fetchResponse)
         const fetchBody = await fetchResponse.json().catch(() => null)
         if (fetchResponse.ok && fetchBody?.success !== false) {
           notifyRecentActivityUpdated()
@@ -603,6 +621,7 @@ export default function Reports() {
         body: JSON.stringify({ platforms: [platformId] }),
       })
 
+      notifyHttpRateLimit(response)
       if (!response.ok) throw new Error(t.reportsPage.generateFailed)
 
       // 解析生成结果，透出后端给出的跳过原因（数据未抓取/为空等）
@@ -787,6 +806,7 @@ export default function Reports() {
               body: JSON.stringify({ platform: platformId }),
             },
           )
+          notifyHttpRateLimit(fetchResponse)
 
           // 后端现在会在数据为空时返回 success:false + 可读原因
           const fetchBody = await fetchResponse.json().catch(() => null)
@@ -819,6 +839,7 @@ export default function Reports() {
           credentials: 'include',
           body: JSON.stringify({ platforms: [platformId] }),
         })
+        notifyHttpRateLimit(response)
 
         const genBody = await response.json().catch(() => null)
         if (!response.ok) {

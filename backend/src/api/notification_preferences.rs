@@ -1,5 +1,6 @@
 //! 当前用户的通知策略 API。
 
+use crate::error::HttpError;
 use axum::{http::StatusCode, Extension, Json};
 use serde_json::{json, Value};
 
@@ -9,23 +10,25 @@ use crate::services::agent::notification_preferences::{
 };
 use crate::services::agent::notifications::get_notification_manager;
 
-fn user_id(claims: &Claims) -> Result<i32, (StatusCode, Json<Value>)> {
+fn user_id(claims: &Claims) -> Result<i32, HttpError> {
     claims.sub.parse::<i32>().map_err(|_| {
-        (
+        HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Invalid authenticated user"})),
-        )
+        ))
     })
 }
 
 pub async fn get_notification_preferences(
     Extension(claims): Extension<Claims>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     let user_id = user_id(&claims)?;
-    let manager = get_notification_manager().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "Notification system not initialized"})),
-    ))?;
+    let manager = get_notification_manager().ok_or_else(|| {
+        HttpError::from((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Notification system not initialized"})),
+        ))
+    })?;
     let preferences = manager.notification_preferences(user_id).await;
     Ok(Json(json!({
         "success": true,
@@ -40,12 +43,14 @@ pub async fn get_notification_preferences(
 pub async fn update_notification_preferences(
     Extension(claims): Extension<Claims>,
     Json(payload): Json<NotificationPreferences>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     let user_id = user_id(&claims)?;
-    let manager = get_notification_manager().ok_or((
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(json!({"error": "Notification system not initialized"})),
-    ))?;
+    let manager = get_notification_manager().ok_or_else(|| {
+        HttpError::from((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({"error": "Notification system not initialized"})),
+        ))
+    })?;
     let preferences = manager
         .update_notification_preferences(user_id, payload)
         .await
@@ -69,6 +74,7 @@ mod tests {
             sub: user_id.to_string(),
             username: format!("user-{user_id}"),
             is_admin: false,
+            is_owner: false,
             exp: i64::MAX,
             iat: 0,
         }

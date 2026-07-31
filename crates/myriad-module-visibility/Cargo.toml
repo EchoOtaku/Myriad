@@ -1,0 +1,18 @@
+[package]
+name = "myriad-module-visibility"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Module page visibility preferences (types, normalize, DB load) for Myriad."
+authors = ["Myriad Contributors"]
+
+[dependencies]
+sea-orm = { version = "1.1", default-features = false, features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-json",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"

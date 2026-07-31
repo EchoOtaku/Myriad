@@ -1,8 +1,14 @@
 //! 外部集成能力处理器
 //!
-//! 处理 http.fetch, hitokoto.get, weather.get 等外部 API 集成类能力
+//! 处理 http.fetch, hitokoto.get, weather.get 等外部 API 集成类能力。
+//! 纯参数/体积分/MCP 过滤见 [`crate::services::agent::external_pure`]。
 
 use super::HandlerContext;
+use crate::services::agent::external_pure::{
+    compress_and_truncate_text, hitokoto_type, http_body_size_error, http_fetch_method,
+    mcp_arguments, optional_string_param, parse_http_body_value, parse_mcp_capability_id,
+    scrape_max_length, scrape_selector, scrape_should_skip_tag,
+};
 use crate::services::fetcher::PlatformFetcher;
 use crate::services::outbound_security;
 use serde_json::{json, Value};
@@ -21,6 +27,33 @@ async fn public_client(
     outbound_security::build_public_http_client(url, timeout, Some(user_agent))
         .await
         .map_err(|e| format!("URL 安全校验失败（SSRF 防护）: {e}"))
+}
+
+/// Fixed-host public APIs: no redirects, short timeout (not for user-supplied URLs).
+fn fixed_host_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))
+}
+
+/// Default success body cap for fixed-host JSON APIs (hitokoto / weather / etc.).
+const FIXED_HOST_JSON_MAX: usize = 512 * 1024;
+const FIXED_HOST_ERR_MAX: usize = 64 * 1024;
+
+async fn limited_json(response: reqwest::Response, max: usize) -> Result<Value, String> {
+    let bytes = outbound_security::read_limited_body(response, max)
+        .await
+        .map_err(|e| format!("Failed to read response: {e}"))?;
+    serde_json::from_slice(&bytes).map_err(|e| format!("Failed to parse JSON: {e}"))
+}
+
+async fn limited_error_text(response: reqwest::Response) -> String {
+    outbound_security::read_limited_body(response, FIXED_HOST_ERR_MAX)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default()
 }
 
 /// 执行外部集成能力
@@ -59,10 +92,7 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
         .and_then(|v| v.as_str())
         .ok_or("Missing URL parameter")?;
 
-    let method = params
-        .get("method")
-        .and_then(|v| v.as_str())
-        .unwrap_or("GET");
+    let method = http_fetch_method(params);
 
     let (target_url, client) =
         public_client(url, Duration::from_secs(30), FETCH_USER_AGENT).await?;
@@ -84,26 +114,19 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
     };
 
     let status = response.status().as_u16();
-    // 预检查 Content-Length，防止分配超大内存
-    if let Some(content_length) = response.content_length() {
-        if content_length > 10 * 1024 * 1024 {
-            return Err(format!(
-                "Response Content-Length ({} bytes) exceeds 10MB limit",
-                content_length
-            ));
-        }
-    }
-    // 限制响应体大小，防止 OOM
-    let body_bytes = response
-        .bytes()
+    // Stream-capped read: no full buffer when Content-Length is absent.
+    let max = crate::services::agent::external_pure::HTTP_FETCH_MAX_BODY_BYTES as usize;
+    let body_bytes = outbound_security::read_limited_body(response, max)
         .await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
-    if body_bytes.len() > 10 * 1024 * 1024 {
-        return Err("Response body exceeds 10MB limit".to_string());
-    }
+        .map_err(|e| {
+            if e.contains("exceeds") {
+                http_body_size_error()
+            } else {
+                format!("Failed to read response: {e}")
+            }
+        })?;
     let body = String::from_utf8_lossy(&body_bytes).to_string();
-
-    let data: Value = serde_json::from_str(&body).unwrap_or(json!(body));
+    let data = parse_http_body_value(&body);
 
     Ok(json!({
         "status": status,
@@ -116,7 +139,7 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
 // ============================================================================
 
 async fn execute_hitokoto_get(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let hitokoto_type = params.get("type").and_then(|v| v.as_str());
+    let hitokoto_type = hitokoto_type(params);
 
     let url = match hitokoto_type {
         Some(t) => {
@@ -126,17 +149,14 @@ async fn execute_hitokoto_get(params: &HashMap<String, Value>) -> Result<Value, 
         None => "https://v1.hitokoto.cn/".to_string(),
     };
 
-    let client = reqwest::Client::new();
+    let client = fixed_host_client()?;
     let response = client
         .get(&url)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch hitokoto: {}", e))?;
 
-    let data: Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse hitokoto response: {}", e))?;
+    let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
     Ok(json!({
         "content": data.get("hitokoto").and_then(|v| v.as_str()).unwrap_or(""),
@@ -160,7 +180,7 @@ async fn execute_notion_query(params: &HashMap<String, Value>) -> Result<Value, 
         .ok_or("Missing database_id parameter")?;
     let filter = params.get("filter").cloned().unwrap_or(json!({}));
 
-    let client = reqwest::Client::new();
+    let client = fixed_host_client()?;
     let url = format!("https://api.notion.com/v1/databases/{}/query", database_id);
 
     let response = client
@@ -175,14 +195,11 @@ async fn execute_notion_query(params: &HashMap<String, Value>) -> Result<Value, 
 
     if !response.status().is_success() {
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
+        let body = limited_error_text(response).await;
         return Err(format!("Notion API 返回错误 {}: {}", status, body));
     }
 
-    let data: Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Notion 响应解析失败: {}", e))?;
+    let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
     let results_count = data
         .get("results")
@@ -210,7 +227,7 @@ async fn execute_bilibili_user(params: &HashMap<String, Value>) -> Result<Value,
         .ok_or("Missing uid parameter")?;
 
     let url = format!("https://api.bilibili.com/x/space/acc/info?mid={}", uid);
-    let client = reqwest::Client::new();
+    let client = fixed_host_client()?;
 
     let response = client
         .get(&url)
@@ -219,10 +236,7 @@ async fn execute_bilibili_user(params: &HashMap<String, Value>) -> Result<Value,
         .await
         .map_err(|e| format!("Failed to fetch Bilibili user: {}", e))?;
 
-    let data: Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
     if data.get("code").and_then(|v| v.as_i64()) == Some(0) {
         let user_data = data.get("data").cloned().unwrap_or(json!({}));
@@ -255,7 +269,7 @@ async fn execute_bilibili_video(params: &HashMap<String, Value>) -> Result<Value
         return Err("Missing bvid or aid parameter".to_string());
     };
 
-    let client = reqwest::Client::new();
+    let client = fixed_host_client()?;
     let response = client
         .get(&url)
         .header("User-Agent", "Mozilla/5.0")
@@ -263,10 +277,7 @@ async fn execute_bilibili_video(params: &HashMap<String, Value>) -> Result<Value
         .await
         .map_err(|e| format!("Failed to fetch Bilibili video: {}", e))?;
 
-    let data: Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {}", e))?;
+    let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
     if data.get("code").and_then(|v| v.as_i64()) == Some(0) {
         let video = data.get("data").cloned().unwrap_or(json!({}));
@@ -288,15 +299,6 @@ async fn execute_bilibili_video(params: &HashMap<String, Value>) -> Result<Value
 // ============================================================================
 // Bangumi
 // ============================================================================
-
-fn optional_string_param(params: &HashMap<String, Value>, key: &str) -> Option<String> {
-    params
-        .get(key)
-        .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
 
 async fn execute_bangumi_user(params: &HashMap<String, Value>) -> Result<Value, String> {
     let username = optional_string_param(params, "username").ok_or("Missing username parameter")?;
@@ -401,7 +403,7 @@ async fn execute_weather_get(params: &HashMap<String, Value>) -> Result<Value, S
         .unwrap_or("北京");
 
     let url = format!("https://wttr.in/{}?format=j1", urlencoding::encode(city));
-    let client = reqwest::Client::new();
+    let client = fixed_host_client()?;
 
     let response = client
         .get(&url)
@@ -410,10 +412,7 @@ async fn execute_weather_get(params: &HashMap<String, Value>) -> Result<Value, S
         .await
         .map_err(|e| format!("Weather API error: {}", e))?;
 
-    let data: Value = response
-        .json()
-        .await
-        .map_err(|_| "Failed to parse weather data".to_string())?;
+    let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
     let current = data
         .get("current_condition")
@@ -451,7 +450,7 @@ async fn execute_netease_song(params: &HashMap<String, Value>) -> Result<Value, 
         .unwrap_or(false);
 
     let url = format!("https://music.163.com/api/song/detail?ids=[{}]", song_id);
-    let client = reqwest::Client::new();
+    let client = fixed_host_client()?;
 
     let response = client
         .get(&url)
@@ -461,10 +460,7 @@ async fn execute_netease_song(params: &HashMap<String, Value>) -> Result<Value, 
         .await
         .map_err(|e| format!("Netease API error: {}", e))?;
 
-    let data: Value = response
-        .json()
-        .await
-        .map_err(|_| "Failed to fetch song details".to_string())?;
+    let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
     let song = data
         .get("songs")
@@ -504,7 +500,7 @@ async fn execute_netease_playlist_detail(params: &HashMap<String, Value>) -> Res
         "https://music.163.com/api/playlist/detail?id={}",
         playlist_id
     );
-    let client = reqwest::Client::new();
+    let client = fixed_host_client()?;
 
     let response = client
         .get(&url)
@@ -514,10 +510,7 @@ async fn execute_netease_playlist_detail(params: &HashMap<String, Value>) -> Res
         .await
         .map_err(|e| format!("Netease API error: {}", e))?;
 
-    let data: Value = response
-        .json()
-        .await
-        .map_err(|_| "Failed to fetch playlist details".to_string())?;
+    let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
     let result = data.get("result").cloned().unwrap_or(json!({}));
 
@@ -548,11 +541,11 @@ async fn execute_steam_game(params: &HashMap<String, Value>) -> Result<Value, St
         "https://store.steampowered.com/api/appdetails?appids={}",
         app_id
     );
-    let client = reqwest::Client::new();
+    let client = fixed_host_client()?;
 
     match client.get(&url).send().await {
         Ok(response) => {
-            if let Ok(data) = response.json::<Value>().await {
+            if let Ok(data) = limited_json(response, FIXED_HOST_JSON_MAX).await {
                 let app_data = data
                     .get(app_id.to_string())
                     .and_then(|v| v.get("data"))
@@ -595,14 +588,8 @@ async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, St
     let (target_url, client) =
         public_client(url, Duration::from_secs(15), SCRAPE_USER_AGENT).await?;
 
-    let selector_str = params
-        .get("selector")
-        .and_then(|v| v.as_str())
-        .unwrap_or("body");
-    let max_length = params
-        .get("max_length")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(5000) as usize;
+    let selector_str = scrape_selector(params);
+    let max_length = scrape_max_length(params);
 
     let response = client
         .get(target_url)
@@ -616,15 +603,18 @@ async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, St
         return Err(format!("HTTP {}: {}", status, url));
     }
 
-    let html = response
-        .text()
+    // Stream-capped (do not `.text()` then reject — still OOMs on huge pages).
+    let max_html = crate::services::agent::external_pure::WEB_SCRAPE_MAX_HTML_BYTES;
+    let html_bytes = outbound_security::read_limited_body(response, max_html)
         .await
-        .map_err(|e| format!("Read failed: {}", e))?;
-
-    // 限制原始 HTML 大小
-    if html.len() > 5 * 1024 * 1024 {
-        return Err("Page too large (>5MB)".to_string());
-    }
+        .map_err(|e| {
+            if e.contains("exceeds") {
+                "Page too large (>5MB)".to_string()
+            } else {
+                format!("Read failed: {e}")
+            }
+        })?;
+    let html = String::from_utf8_lossy(&html_bytes).to_string();
 
     let document = scraper::Html::parse_document(&html);
 
@@ -638,8 +628,6 @@ async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, St
     let sel = scraper::Selector::parse(selector_str)
         .map_err(|_| format!("Invalid CSS selector: {}", selector_str))?;
 
-    let skip_tags = ["script", "style", "noscript", "svg", "iframe"];
-
     let text: String = document
         .select(&sel)
         .flat_map(|el| {
@@ -652,7 +640,7 @@ async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, St
                             .and_then(|p| p.value().as_element())
                             .map(|e| e.name());
                         if let Some(tag) = parent_tag {
-                            if skip_tags.contains(&tag) {
+                            if scrape_should_skip_tag(tag) {
                                 return None;
                             }
                         }
@@ -670,10 +658,7 @@ async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, St
         .collect::<Vec<_>>()
         .join(" ");
 
-    // 压缩连续空白
-    let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    let truncated = text.len() > max_length;
-    let text: String = text.chars().take(max_length).collect();
+    let (text, truncated) = compress_and_truncate_text(&text, max_length);
 
     // 提取 meta description 作为额外上下文
     let description = scraper::Selector::parse("meta[name=description]")
@@ -702,12 +687,7 @@ async fn execute_mcp_tool(
     params: &HashMap<String, Value>,
 ) -> Result<Value, String> {
     // capability_id 格式: "mcp.{server_id}.{tool_name}"
-    let rest = capability_id
-        .strip_prefix("mcp.")
-        .ok_or("Invalid MCP capability ID")?;
-    let (server_id, tool_name) = rest
-        .split_once('.')
-        .ok_or("MCP capability ID must include server and tool names")?;
+    let (server_id, tool_name) = parse_mcp_capability_id(capability_id)?;
 
     let manager =
         crate::services::agent::mcp::get_mcp_manager().ok_or("MCP manager not initialized")?;
@@ -718,28 +698,3 @@ async fn execute_mcp_tool(
     manager.call_tool(server_id, tool_name, args).await
 }
 
-fn mcp_arguments(params: &HashMap<String, Value>) -> Value {
-    Value::Object(
-        params
-            .iter()
-            .filter(|(key, _)| !key.starts_with("__"))
-            .map(|(key, value)| (key.clone(), value.clone()))
-            .collect(),
-    )
-}
-
-#[cfg(test)]
-mod mcp_tests {
-    use super::*;
-
-    #[test]
-    fn internal_executor_context_is_not_sent_to_mcp() {
-        let params = HashMap::from([
-            ("query".to_string(), json!("myriad")),
-            ("__directive".to_string(), json!("internal")),
-            ("__user_request".to_string(), json!("private")),
-            ("__steering".to_string(), json!("new direction")),
-        ]);
-        assert_eq!(mcp_arguments(&params), json!({ "query": "myriad" }));
-    }
-}

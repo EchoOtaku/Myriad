@@ -3,7 +3,8 @@
 //! WebFinger (RFC 7033) + NodeInfo 2.1 端点
 //! 这些端点不需要认证，是联邦互通的入口。
 
-use axum::{extract::Query, http::StatusCode, Json};
+use axum::{extract::{Query, State}, http::StatusCode, Json};
+use sea_orm::DatabaseConnection;
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde::Deserialize;
 use serde_json::json;
@@ -21,6 +22,7 @@ pub struct WebFingerQuery {
 /// RFC 7033 WebFinger 端点 — AP 联邦发现的入口
 #[allow(clippy::type_complexity)]
 pub async fn webfinger(
+    State(db): State<DatabaseConnection>,
     Query(query): Query<WebFingerQuery>,
 ) -> Result<
     (
@@ -52,10 +54,7 @@ pub async fn webfinger(
         ));
     }
 
-    // 查询本地用户是否存在
-    let db = get_db()
-        .await
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
+    // db from AppState (no process-global fallback)
 
     let user_exists = db
         .query_one(Statement::from_sql_and_values(
@@ -134,10 +133,8 @@ pub async fn nodeinfo_wellknown() -> (StatusCode, Json<serde_json::Value>) {
 ///
 /// NodeInfo 2.1 实例信息 — 公开实例的基本统计和能力
 pub async fn nodeinfo(
+    State(db): State<DatabaseConnection>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db()
-        .await
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
 
     // 查询用户统计
     let (total_users, active_month) = get_user_stats(&db).await.unwrap_or((0, 0));
@@ -205,14 +202,6 @@ async fn get_frontend_url() -> String {
             .unwrap_or_else(|| format!("http://{}:{}", config.server_host, config.server_port))
     });
     frontend_url.trim_end_matches('/').to_string()
-}
-
-/// 获取数据库连接
-async fn get_db() -> Result<sea_orm::DatabaseConnection, String> {
-    let db_opt = crate::DB_CONNECTION.read().await;
-    db_opt
-        .clone()
-        .ok_or_else(|| "Database not connected".to_string())
 }
 
 /// 查询用户统计

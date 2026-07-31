@@ -266,20 +266,97 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`
 }
 
-/** 问题输入组件 — 选项按钮 + 自由文本输入 */
+function remainingConfirmSeconds(
+  pendingQuestion: NonNullable<ChatMessage['pendingQuestion']>,
+): number | null {
+  const ttl = pendingQuestion.expiresInSeconds
+  const received = pendingQuestion.receivedAtMs
+  if (
+    typeof ttl !== 'number' ||
+    ttl <= 0 ||
+    typeof received !== 'number' ||
+    !pendingQuestion.confirmationId
+  ) {
+    return null
+  }
+  return Math.max(0, ttl - Math.floor((Date.now() - received) / 1000))
+}
+
+function riskLevelClass(level?: string): string {
+  const n = (level || '').toLowerCase()
+  if (n.includes('critical')) return 'arael-risk-critical'
+  if (n.includes('high')) return 'arael-risk-high'
+  if (n.includes('medium')) return 'arael-risk-medium'
+  if (n.includes('low')) return 'arael-risk-low'
+  return 'arael-risk-unknown'
+}
+
+/** 问题输入组件 — 选项按钮 + 自由文本输入；敏感确认展示风险与倒计时 */
 const QuestionInput: React.FC<{
   messageId: string
   pendingQuestion: NonNullable<ChatMessage['pendingQuestion']>
   selectedAnswer?: string
   onAnswer: (messageId: string, answer: string) => void
 }> = ({ messageId, pendingQuestion, selectedAnswer, onAnswer }) => {
+  const { t, format } = useI18n()
   const hasOptions =
     pendingQuestion.options && pendingQuestion.options.length > 0
   const isLocked = !!selectedAnswer
+  const [remaining, setRemaining] = React.useState<number | null>(() =>
+    remainingConfirmSeconds(pendingQuestion),
+  )
+
+  React.useEffect(() => {
+    const initial = remainingConfirmSeconds(pendingQuestion)
+    setRemaining(initial)
+    if (initial === null) return
+    const id = window.setInterval(() => {
+      setRemaining(remainingConfirmSeconds(pendingQuestion))
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [
+    pendingQuestion.confirmationId,
+    pendingQuestion.expiresInSeconds,
+    pendingQuestion.receivedAtMs,
+  ])
+
+  const isExpired = remaining === 0
+  const showConfirmMeta =
+    !!pendingQuestion.confirmationId &&
+    (!!pendingQuestion.riskLevel || remaining !== null)
 
   return (
     <div className="arael-question-input-area">
       <div className="arael-question-text">{pendingQuestion.question}</div>
+      {showConfirmMeta && (
+        <div className="arael-confirm-meta">
+          {pendingQuestion.riskLevel && (
+            <span
+              className={`arael-risk-badge ${riskLevelClass(pendingQuestion.riskLevel)}`}
+            >
+              {format(t.arael.confirmRisk, {
+                level: pendingQuestion.riskLevel,
+              })}
+            </span>
+          )}
+          {remaining !== null && (
+            <span
+              className={`arael-confirm-ttl${isExpired ? ' arael-confirm-ttl-expired' : ''}`}
+            >
+              {isExpired
+                ? t.arael.confirmExpired
+                : format(t.arael.confirmExpiresIn, {
+                    seconds: String(remaining),
+                  })}
+            </span>
+          )}
+        </div>
+      )}
+      {isExpired && (
+        <div className="arael-confirm-expired-hint">
+          {t.arael.confirmExpiredHint}
+        </div>
+      )}
       {pendingQuestion.context && (
         <div className="arael-question-context">{pendingQuestion.context}</div>
       )}
@@ -289,13 +366,20 @@ const QuestionInput: React.FC<{
             const isSelected = selectedAnswer === option.value
             // 已选中时只显示被选中的那个
             if (isLocked && !isSelected) return null
+            const isConfirm = option.value === 'confirm'
+            const disabled =
+              isLocked || (isExpired && isConfirm && !isSelected)
             return (
               <button
                 key={idx}
-                className={`arael-option-btn${isSelected ? ' arael-option-btn-selected' : ''}`}
-                onClick={() => !isLocked && onAnswer(messageId, option.value)}
-                title={option.description}
-                disabled={isLocked}
+                className={`arael-option-btn${isSelected ? ' arael-option-btn-selected' : ''}${disabled && !isSelected ? ' arael-option-btn-disabled' : ''}`}
+                onClick={() => !disabled && onAnswer(messageId, option.value)}
+                title={
+                  disabled && isConfirm && isExpired
+                    ? t.arael.confirmExpired
+                    : option.description
+                }
+                disabled={disabled}
               >
                 {isSelected && (
                   <svg

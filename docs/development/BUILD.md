@@ -19,34 +19,63 @@ This document provides detailed build and compilation instructions for the Myria
 
 ## Backend Build
 
+Myriad uses a **Cargo workspace** at the repo root for packages that share path
+dependencies (see [Cargo Workspaces](https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html)):
+
+| Member | Crate name |
+|--------|------------|
+| `backend/` | `myriad-backend` |
+| `backend/migrations/` | `migration` |
+| `crates/myriad-error/` | `myriad-error` (shared `AppError` + redact) |
+| `crates/myriad-data-key/` | `myriad-data-key` (config/federation AES-GCM key) |
+| `crates/myriad-outbound/` | `myriad-outbound` (SSRF-safe HTTP egress) |
+| `crates/myriad-module-visibility/` | `myriad-module-visibility` (page visibility prefs) |
+| `crates/myriad-process-info/` | `myriad-process-info` (memory/uptime/version) |
+| `crates/myriad-prompt-security/` | `myriad-prompt-security` (prompt injection heuristics) |
+| `crates/myriad-psn-auth/` | `myriad-psn-auth` (PSN NPSSO→token) |
+| `crates/myriad-tapp-registry/` | `myriad-tapp-registry` (runtime registry/mailbox) |
+| `crates/tapp-contract/` | `myriad-tapp-contract` |
+
+Shared artifacts: root `Cargo.lock` and root `target/`.  
+`proxy/`, `updater/`, and `tools/tapp-contract-export/` are listed in
+`workspace.exclude` — independent packages with their own lock + `target`.
+
+From any directory under the workspace, Cargo still finds the root. Preferred
+commands from the repo root:
+
+```bash
+cargo build -p myriad-backend
+cargo run -p myriad-backend
+cargo test -p myriad-backend
+cargo check -p myriad-backend --all-targets
+```
+
+`cd backend && cargo run` continues to work (package in cwd is selected).
+
 ### Development Build
 
 ```powershell
-cd backend
-
-# First time setup - download dependencies
+# From repo root (preferred)
 cargo fetch
+cargo build -p myriad-backend
+cargo run -p myriad-backend
 
-# Build in debug mode (faster compilation, slower runtime)
-cargo build
-
-# Run directly
+# Or from backend/ (same workspace)
+cd backend
 cargo run
 
-# Or run the built binary
-.\target\debug\myriad-backend.exe
+# Binary path is always the workspace target/
+#   Unix:    ./target/debug/myriad-backend
+#   Windows: .\target\debug\myriad-backend.exe
 ```
 
 ### Release Build
 
 ```powershell
-cd backend
+# From repo root
+cargo build -p myriad-backend --release
 
-# Build with optimizations (slower compilation, faster runtime)
-cargo build --release
-
-# Run the optimized binary
-.\target\release\myriad-backend.exe
+# Binary: target/release/myriad-backend[.exe]
 ```
 
 ### Build Options
@@ -164,7 +193,7 @@ Build the frontend and backend separately:
 This creates:
 
 1. `frontend/dist/` for the frontend static build.
-2. `backend/target/release/myriad-backend` for the backend binary.
+2. `target/release/myriad-backend` for the backend binary (workspace root `target/`).
 
 The default production deployment does not run these artifacts directly. It uses
 versioned Docker images through `docker-compose.yml` and `scripts/docker/deploy.sh`.
@@ -219,15 +248,28 @@ Production releases should normally be built by GitHub Actions `release.yml`
 after pushing a `v*` tag. That workflow builds backend/frontend/proxy/updater
 images, generates `release.json`, signs it, and publishes a GitHub Release.
 
+Dev images (`docker-publish.yml`, commit title contains `-p`) and releases use
+**native multi-arch** builders — `ubuntu-latest` for `linux/amd64` and
+`ubuntu-24.04-arm` for `linux/arm64` — then merge digests into a manifest list.
+QEMU is not used. Frontend static assets are built once on amd64 and reused by
+both runtime images. Rust image builds pass `CARGO_PROFILE=ci-release` (thin
+LTO); local `cargo build --release` / default Docker builds keep full LTO.
+
+`proxy` / `updater` ship on an **independent cadence**: only built when their
+trees changed, or when forced via commit title `-full` / dispatch `force_infra`.
+Unchanged infra is omitted from a release (not retagged to the app version).
+
+Dev packaging commit-title flags: `-p` (package) · `-full` (package + force infra).
+
 ### Multi-stage Build Details
 
 **Backend Dockerfile:**
-- Stage 1: Build Rust binary
+- Stage 1: Build Rust binary (BuildKit cargo registry/git/target cache mounts)
 - Stage 2: Minimal runtime image with Debian slim
 
 **Frontend Dockerfile:**
-- Stage 1: Build static site with Node.js
-- Stage 2: Serve with lightweight Node.js
+- Stage 1: Build static site with Node.js (`builder` / `assets` / `export`)
+- Stage 2: Serve with lightweight Node.js (`runtime`; CI may inject prebuilt `assets`)
 
 ### Docker Build Options
 
@@ -302,31 +344,23 @@ docker build -f docker/Dockerfile.backend -t myriad-backend .
 
 ## CI/CD Considerations
 
-### GitHub Actions Example
+| Workflow | Trigger | What it builds |
+|----------|---------|----------------|
+| `ci.yml` | PR / push | Tests & lint (amd64 only, no images) |
+| `docker-publish.yml` | push with `-p` in title, or `workflow_dispatch` | Dev multi-arch images |
+| `release.yml` | `v*` tag | Release multi-arch images + `release.json` |
 
-```yaml
-name: Build
+Image packaging matrix: **component × platform**, each on a native runner, then
+`docker buildx imagetools create` publishes the shared tags / version tag.
 
-on: [push, pull_request]
+```bash
+# Faster image profile (used by CI Docker builds)
+docker build -f docker/Dockerfile.backend \
+  --build-arg CARGO_PROFILE=ci-release \
+  -t myriad-backend .
 
-jobs:
-  backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - run: cd backend && cargo build --release
-
-  frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 25
-      - run: cd frontend && corepack enable && pnpm install --frozen-lockfile && pnpm run build
+# Default full-LTO release profile
+docker build -f docker/Dockerfile.backend -t myriad-backend .
 ```
 
 ## Troubleshooting

@@ -13,6 +13,50 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use crate::models::entities::rsshub_instances::{self, HealthStatus, Model as InstanceModel};
+
+/// Pure: path + query from an RSSHub-style URL (no host/fragment).
+///
+/// Used by [`RsshubService::extract_route`] and unit-tested without a DB.
+pub fn extract_rsshub_route_path_and_query(url: &str) -> Option<String> {
+    fn path_and_query(parsed: &Url) -> Option<String> {
+        let path = parsed.path();
+        if path.is_empty() || path == "/" {
+            return None;
+        }
+        match parsed.query() {
+            Some(q) if !q.is_empty() => Some(format!("{path}?{q}")),
+            _ => Some(path.to_string()),
+        }
+    }
+
+    let rsshub_patterns = [
+        "rsshub.app",
+        "rsshub.rssforever.com",
+        "hub.slarker.me",
+        "rsshub.feeded.xyz",
+        "rsshub.ktachibana.party",
+    ];
+
+    for pattern in &rsshub_patterns {
+        if url.contains(pattern) {
+            if let Ok(parsed) = Url::parse(url) {
+                if let Some(route) = path_and_query(&parsed) {
+                    return Some(route);
+                }
+            }
+        }
+    }
+
+    if url.to_lowercase().contains("rsshub") {
+        if let Ok(parsed) = Url::parse(url) {
+            if let Some(route) = path_and_query(&parsed) {
+                return Some(route);
+            }
+        }
+    }
+
+    None
+}
 use crate::services::brew_parser::{FeedParser, ParsedFeed};
 
 /// RSSHub 服务配置
@@ -178,39 +222,12 @@ impl RsshubService {
         url
     }
 
-    /// 从完整 URL 解析出路由
+    /// 从完整 URL 解析出路由（**path + query**，不含 fragment / host）。
+    ///
+    /// RSSHub 路由常带 `?limit=` / `?mode=` 等查询参数；只保留 path 会在实例
+    /// 切换刷新时丢掉这些参数。
     pub fn extract_route(&self, url: &str) -> Option<String> {
-        // 尝试匹配常见的 RSSHub 实例域名
-        let rsshub_patterns = [
-            "rsshub.app",
-            "rsshub.rssforever.com",
-            "hub.slarker.me",
-            "rsshub.feeded.xyz",
-            "rsshub.ktachibana.party",
-        ];
-
-        for pattern in &rsshub_patterns {
-            if url.contains(pattern) {
-                if let Ok(parsed) = Url::parse(url) {
-                    let path = parsed.path();
-                    if !path.is_empty() && path != "/" {
-                        return Some(path.to_string());
-                    }
-                }
-            }
-        }
-
-        // 如果 URL 中包含 rsshub，尝试解析
-        if url.to_lowercase().contains("rsshub") {
-            if let Ok(parsed) = Url::parse(url) {
-                let path = parsed.path();
-                if !path.is_empty() && path != "/" {
-                    return Some(path.to_string());
-                }
-            }
-        }
-
-        None
+        extract_rsshub_route_path_and_query(url)
     }
 
     /// 抓取 RSSHub 订阅（带故障转移）
@@ -563,5 +580,36 @@ impl RsshubService {
             .map_err(|e| format!("Failed to reset instance: {}", e))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod extract_route_tests {
+    use super::extract_rsshub_route_path_and_query;
+
+    #[test]
+    fn preserves_query_params_on_refresh_route() {
+        let route = extract_rsshub_route_path_and_query(
+            "https://rsshub.app/bilibili/user/video/1?limit=20&mode=full",
+        )
+        .expect("route");
+        assert_eq!(route, "/bilibili/user/video/1?limit=20&mode=full");
+    }
+
+    #[test]
+    fn path_only_when_no_query() {
+        let route =
+            extract_rsshub_route_path_and_query("https://rsshub.rssforever.com/github/issue/x/y")
+                .expect("route");
+        assert_eq!(route, "/github/issue/x/y");
+    }
+
+    #[test]
+    fn drops_fragment_keeps_query() {
+        let route = extract_rsshub_route_path_and_query(
+            "https://hub.slarker.me/twitter/user/a?limit=5#frag",
+        )
+        .expect("route");
+        assert_eq!(route, "/twitter/user/a?limit=5");
     }
 }

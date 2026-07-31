@@ -1,9 +1,26 @@
 import { API_URL } from '../../config'
+import { getDefaultLocale } from '../../i18n'
 import { getCSRFToken } from '../../utils/csrf'
+import { notifyHttpRateLimit } from '../../utils/httpRateLimitToast'
 
 export interface ApiRequestOptions extends RequestInit {
   /** Host-only runtime identity; never exposed to sandbox code. */
   runtimeGrant?: string
+}
+
+function hostLocaleHeaders(): Record<string, string> {
+  const locale = getDefaultLocale()
+  let timezone = 'UTC'
+  try {
+    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
+  } catch {
+    /* ignore */
+  }
+  return {
+    'X-Myriad-Locale': locale,
+    'X-Myriad-Timezone': timezone,
+    'Accept-Language': locale,
+  }
 }
 
 /**
@@ -24,6 +41,7 @@ export async function apiRequest<T>(
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    ...hostLocaleHeaders(),
     ...(options.headers as Record<string, string>),
   }
 
@@ -37,6 +55,7 @@ export async function apiRequest<T>(
   })
 
   if (!response.ok) {
+    notifyHttpRateLimit(response)
     const errorData = await response.json().catch(() => ({}))
     if (
       response.status === 403 &&

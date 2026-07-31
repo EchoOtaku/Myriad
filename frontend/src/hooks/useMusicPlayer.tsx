@@ -33,9 +33,11 @@ import {
   getNeteasePlaylist,
   getNeteaseProxyFallbackUrl,
   getQQPlaylist,
+  getQQProxyFallbackUrl,
   shouldPreserveNativeAudioOutput,
   throttle,
 } from '../utils/musicPlayer'
+import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { parseCssColor } from '../utils/readableColor'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { loadResource } from '../utils/resourceLoader'
@@ -590,9 +592,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           }
 
           const handleError = () => {
-            // 方案 C：预加载直连失败 → 再试一次全量代理
-            if (!usedFallback && nextSong.source === 'netease') {
-              const fallback = getNeteaseProxyFallbackUrl(nextSong)
+            // 方案 C：预加载直连失败 → 再试一次全量代理（网易 / QQ）
+            if (!usedFallback) {
+              const fallback =
+                nextSong.source === 'netease'
+                  ? getNeteaseProxyFallbackUrl(nextSong)
+                  : nextSong.source === 'qq'
+                    ? getQQProxyFallbackUrl(nextSong)
+                    : null
               if (fallback) {
                 usedFallback = true
                 neteaseProxyFallbackTriedRef.current.add(nextSong.id)
@@ -601,7 +608,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
                 )
                 setPlaylist((prev) =>
                   prev.map((s) =>
-                    s.id === nextSong.id && s.source === 'netease'
+                    s.id === nextSong.id &&
+                    (s.source === 'netease' || s.source === 'qq')
                       ? { ...s, url: fallback }
                       : s,
                   ),
@@ -1273,6 +1281,15 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
               ? await getNeteasePlaylist(plistId)
               : await getQQPlaylist(plistId)
 
+          void import('../utils/analyticsEvents').then(
+            ({ trackProductEvent, AnalyticsEvents }) => {
+              trackProductEvent(AnalyticsEvents.MUSIC_SOURCE_SWITCH, {
+                target: source,
+                throttleMs: 10_000,
+              })
+            },
+          )
+
           setPlaylist(songs)
 
           if (songs.length > 0) {
@@ -1317,7 +1334,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
       const enabled = data.music_enabled === 'true'
       const source = data.music_source || 'netease'
-      const plistId = data.music_playlist_id || ''
+      const { normalizeMusicPlaylistId } = await import('../utils/musicPlaylistId')
+      const plistId = normalizeMusicPlaylistId(data.music_playlist_id || '')
 
       setMusicEnabled(enabled)
       setMusicSource(source as MusicSource)
@@ -1342,6 +1360,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       audioRef.current.pause()
       setIsPlaying(false)
       audioManager.setPlaybackState('paused')
+      void import('../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.MUSIC_PAUSE, {
+            target: currentSong.source || musicSource,
+            throttleMs: 3000,
+          })
+        },
+      )
     } else {
       userWantsPlayingRef.current = true
       const maxRetries = 3
@@ -1352,6 +1378,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           await audioRef.current.play()
           setIsPlaying(true)
           audioManager.setPlaybackState('playing')
+          void import('../utils/analyticsEvents').then(
+            ({ trackProductEvent, AnalyticsEvents }) => {
+              trackProductEvent(AnalyticsEvents.MUSIC_PLAY, {
+                target: currentSong.source || musicSource,
+                throttleMs: 3000,
+              })
+            },
+          )
           break
         } catch (error) {
           retries++
@@ -1372,7 +1406,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     // 不在此处调用 broadcastStateChange()：
     // 闭包捕获的是旧 isPlaying 值，await audio.play() 后执行会覆盖
     // useEffect 已在 isPlaying 变化时自动广播正确状态（line ~1513）
-  }, [isPlaying, currentSong])
+  }, [isPlaying, currentSong, musicSource])
 
   // 上一首
   const playPrevious = useCallback(() => {
@@ -1404,12 +1438,21 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     // 乐观推进 ref，使紧随其后的 next/prev 基于最新位置
     currentSongIndexRef.current = newIndex
     selectSong(playlist[newIndex], newIndex, true)
+    void import('../utils/analyticsEvents').then(
+      ({ trackProductEvent, AnalyticsEvents }) => {
+        trackProductEvent(AnalyticsEvents.MUSIC_PREV, {
+          target: musicSource,
+          throttleMs: 2000,
+        })
+      },
+    )
   }, [
     playlist,
     selectSong,
     excludeVipSongs,
     playMode,
     generateNextShuffleIndex,
+    musicSource,
   ])
 
   // 下一首
@@ -1447,12 +1490,21 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
     // 乐观推进 ref，使紧随其后的 next/prev 基于最新位置
     currentSongIndexRef.current = newIndex
     selectSong(playlist[newIndex], newIndex, true)
+    void import('../utils/analyticsEvents').then(
+      ({ trackProductEvent, AnalyticsEvents }) => {
+        trackProductEvent(AnalyticsEvents.MUSIC_NEXT, {
+          target: musicSource,
+          throttleMs: 2000,
+        })
+      },
+    )
   }, [
     playlist,
     selectSong,
     excludeVipSongs,
     playMode,
     generateNextShuffleIndex,
+    musicSource,
   ])
 
   // 调整音量
@@ -1701,14 +1753,39 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         return
       }
 
-      // 方案 C：网易直连（play-url / CDN）失败 → 同一首切全量代理再试一次
-      if (song.source === 'netease') {
-        const fallback = getNeteaseProxyFallbackUrl(song)
+      // Media element errors hide HTTP status; re-probe proxy URLs for 429 toast
+      const probeUrl = song.url || ''
+      if (
+        probeUrl.includes('/api/proxy/music/') ||
+        probeUrl.includes('/proxy/music/')
+      ) {
+        void fetch(probeUrl, { method: 'GET', cache: 'no-store' })
+          .then(async (res) => {
+            if (res.status !== 429) return
+            let body: unknown
+            try {
+              body = await res.clone().json()
+            } catch {
+              body = undefined
+            }
+            notifyHttpRateLimit(res, body)
+          })
+          .catch(() => {
+            /* ignore probe failures */
+          })
+      }
+
+      // 方案 C：网易/QQ 直连（play-url / CDN）失败 → 同一首切全量代理再试一次
+      if (song.source === 'netease' || song.source === 'qq') {
+        const fallback =
+          song.source === 'netease'
+            ? getNeteaseProxyFallbackUrl(song)
+            : getQQProxyFallbackUrl(song)
         const tried = neteaseProxyFallbackTriedRef.current
         if (fallback && !tried.has(song.id)) {
           tried.add(song.id)
           console.warn(
-            `[MusicPlayer] 网易直连失败，降级全量代理: ${song.name} (${song.id})`,
+            `[MusicPlayer] ${song.source} 直连失败，降级全量代理: ${song.name} (${song.id})`,
           )
 
           const updated: Song = { ...song, url: fallback }
@@ -1716,7 +1793,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           setCurrentSong(updated)
           setPlaylist((prev) =>
             prev.map((s) =>
-              s.id === song.id && s.source === 'netease' ? updated : s,
+              s.id === song.id && s.source === song.source ? updated : s,
             ),
           )
 

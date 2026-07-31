@@ -74,16 +74,16 @@ pub struct AppConfig {
 
 impl Default for AppConfig {
     fn default() -> Self {
+        // Development-oriented scaffolding defaults (tests / first boot).
+        // Production loads via `from_env`, which keeps CORS empty when unset so
+        // the router panic path fires — never silently inject localhost there.
         Self {
             database_url: String::new(),
             server_host: "127.0.0.1".to_string(),
             server_port: 1103,
             frontend_dist_path: "../frontend/dist".to_string(),
             jwt_secret: String::new(),
-            cors_origins: vec![
-                "http://localhost:1102".to_string(),
-                "http://localhost:1103".to_string(),
-            ],
+            cors_origins: Self::default_cors_origins_for_env(false),
             base_url: None,
             frontend_url: None,
         }
@@ -91,6 +91,28 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
+    /// Same production gate as router CORS: `ENVIRONMENT=production`.
+    pub fn is_production_environment() -> bool {
+        env::var("ENVIRONMENT")
+            .map(|s| s.trim() == "production")
+            .unwrap_or(false)
+    }
+
+    /// Default CORS origins when `CORS_ORIGINS` is unset.
+    ///
+    /// - **Production**: empty (router panics if still empty — fail closed).
+    /// - **Development**: localhost SPA/API ports only.
+    pub fn default_cors_origins_for_env(is_production: bool) -> Vec<String> {
+        if is_production {
+            Vec::new()
+        } else {
+            vec![
+                "http://localhost:1102".to_string(),
+                "http://localhost:1103".to_string(),
+            ]
+        }
+    }
+
     /// 从环境变量加载配置
     pub fn from_env() -> anyhow::Result<Self> {
         let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| String::new());
@@ -98,6 +120,32 @@ impl AppConfig {
         // Validate JWT secret strength in production
         if !jwt_secret.is_empty() {
             Self::validate_jwt_secret(&jwt_secret)?;
+        }
+
+        let production = Self::is_production_environment();
+        // Unset → env-aware defaults. Explicit empty string is treated like unset
+        // for the purpose of recovering FRONTEND_URL/BASE_URL below.
+        let mut cors_origins: Vec<String> = match env::var("CORS_ORIGINS") {
+            Ok(s) if !s.trim().is_empty() => s
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            _ => Self::default_cors_origins_for_env(production),
+        };
+
+        // Production with empty CORS (unset / blank): fall back to FRONTEND_URL
+        // then BASE_URL so compose can boot without a hard panic when operators
+        // only configured the public site URL.
+        if production && cors_origins.is_empty() {
+            for key in ["FRONTEND_URL", "BASE_URL"] {
+                if let Ok(raw) = env::var(key) {
+                    let origin = raw.trim().trim_end_matches('/').to_string();
+                    if !origin.is_empty() && !cors_origins.iter().any(|o| o == &origin) {
+                        cors_origins.push(origin);
+                    }
+                }
+            }
         }
 
         Ok(Self {
@@ -111,12 +159,7 @@ impl AppConfig {
             frontend_dist_path: env::var("FRONTEND_DIST_PATH")
                 .unwrap_or_else(|_| "../frontend/dist".to_string()),
             jwt_secret,
-            cors_origins: env::var("CORS_ORIGINS")
-                .unwrap_or_else(|_| "http://localhost:1102,http://localhost:1103".to_string())
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect(),
+            cors_origins,
             base_url: env::var("BASE_URL").ok().filter(|s| !s.is_empty()),
             frontend_url: env::var("FRONTEND_URL").ok().filter(|s| !s.is_empty()),
         })
@@ -736,6 +779,22 @@ mod tests {
             Some(v) => std::env::set_var("DATABASE_URL", v),
             None => std::env::remove_var("DATABASE_URL"),
         }
+    }
+
+    #[test]
+    fn default_cors_origins_empty_in_production_localhost_in_dev() {
+        assert!(AppConfig::default_cors_origins_for_env(true).is_empty());
+        let dev = AppConfig::default_cors_origins_for_env(false);
+        assert!(dev.iter().any(|o| o.contains("localhost:1102")));
+        assert!(dev.iter().any(|o| o.contains("localhost:1103")));
+    }
+
+    #[test]
+    fn app_config_default_still_has_dev_cors() {
+        // Default is development-oriented (tests / local scaffolding).
+        let cfg = AppConfig::default();
+        assert!(!cfg.cors_origins.is_empty());
+        assert!(cfg.cors_origins.iter().all(|o| o.contains("localhost")));
     }
 
     #[test]

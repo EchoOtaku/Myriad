@@ -273,6 +273,14 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
         await runtime.stopTapp(tappId)
       } else {
         await runtime.startTapp(tappId)
+        void import('../../utils/analyticsEvents').then(
+          ({ trackProductEvent, AnalyticsEvents }) => {
+            trackProductEvent(AnalyticsEvents.TAPP_RUN, {
+              target: tappId,
+              throttleMs: 2000,
+            })
+          },
+        )
         navigate(`/tapp/run/${tappId}`)
       }
     } catch (err) {

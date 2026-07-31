@@ -1,23 +1,29 @@
 //! 数据转换处理 API
+//!
+//! Pure pipeline evaluation: [`crate::services::tapp_data_transform`].
+//! Storage IO/validation: [`crate::services::tapp_storage`].
+//! Platform cache IO: [`crate::services::platform_cache`].
+//! This module owns grant/permission checks and Axum DTOs.
 
 use axum::{extract::State, http::StatusCode, Extension, Json};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 
 use crate::middleware::auth::Claims;
 use crate::services::permission_service::TappPermission;
+use crate::services::platform_cache::{
+    acquire_platform_lock, get_cached_platform_data, validate_platform_name, write_filtered_document,
+};
+use crate::services::tapp_data_transform::{self, DataTransformError, ProcessStep};
+use crate::error::HttpError;
+use crate::services::tapp_storage::{
+    self, read_storage_value, validate_sandbox_storage_key, validate_storage_value_size,
+    write_storage_value, TappStorageError,
+};
 
-use super::common::{
-    acquire_platform_lock, authorize_tapp_permissions, get_cached_platform_data, parse_user_id,
-    update_cached_platform_data, validate_platform_name, verify_tapp_ownership,
-};
+use super::common::{authorize_tapp_permissions, parse_user_id, verify_tapp_ownership};
 use super::runtime_grant::RuntimeGrantContext;
-use crate::api::tapp_store::{
-    read_storage_value, validate_sandbox_storage_key, validate_storage_value_size,
-    write_storage_value, TappStorageAccess,
-};
 
 #[derive(Debug, Deserialize)]
 pub struct DataTransformRequest {
@@ -47,93 +53,70 @@ pub enum DataOutput {
     Storage { key: String },
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type")]
-pub enum ProcessStep {
-    #[serde(rename = "filter")]
-    Filter {
-        field: String,
-        operator: String,
-        value: Value,
-    },
-    #[serde(rename = "sort")]
-    Sort {
-        field: String,
-        order: Option<String>,
-    },
-    #[serde(rename = "limit")]
-    Limit { count: usize },
-    #[serde(rename = "offset")]
-    Offset { count: usize },
-    #[serde(rename = "select")]
-    Select { fields: Vec<String> },
-    #[serde(rename = "group")]
-    Group { by: String },
-    #[serde(rename = "aggregate")]
-    Aggregate {
-        operation: String,
-        field: Option<String>,
-    },
-    #[serde(rename = "dedupe")]
-    Dedupe { key: String },
-    #[serde(rename = "map")]
-    Map { operations: Vec<MapOp> },
+fn transform_http_error(err: DataTransformError) -> (StatusCode, Json<Value>) {
+    let status =
+        StatusCode::from_u16(err.status_hint()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    (status, Json(json!({ "error": err.message() })))
 }
 
-/// 声明式字段映射操作（纯数据驱动，无表达式求值，杜绝注入风险）
-#[derive(Debug, Deserialize)]
-#[serde(tag = "op")]
-pub enum MapOp {
-    /// 重命名字段：`{ "op": "rename", "from": "old", "to": "new" }`
-    #[serde(rename = "rename")]
-    Rename { from: String, to: String },
-    /// 删除字段：`{ "op": "remove", "field": "name" }`
-    #[serde(rename = "remove")]
-    Remove { field: String },
-    /// 设置静态值：`{ "op": "set", "field": "status", "value": "active" }`
-    #[serde(rename = "set")]
-    Set { field: String, value: Value },
-    /// 复制字段：`{ "op": "copy", "from": "title", "to": "name" }`
-    #[serde(rename = "copy")]
-    Copy { from: String, to: String },
-    /// 模板插值：`{ "op": "template", "field": "label", "template": "{title} - {artist}" }`
-    /// 仅支持 `{fieldName}` 占位符，不执行任何表达式
-    #[serde(rename = "template")]
-    Template { field: String, template: String },
-    /// 转小写：`{ "op": "lower", "field": "name" }`
-    #[serde(rename = "lower")]
-    Lower { field: String },
-    /// 转大写：`{ "op": "upper", "field": "name" }`
-    #[serde(rename = "upper")]
-    Upper { field: String },
-    /// 转字符串：`{ "op": "to_string", "field": "count" }`
-    #[serde(rename = "to_string")]
-    ToString { field: String },
-    /// 转数字：`{ "op": "to_number", "field": "score" }`
-    #[serde(rename = "to_number")]
-    ToNumber { field: String },
-    /// 取默认值：`{ "op": "default", "field": "cover", "value": "/placeholder.png" }`
-    #[serde(rename = "default")]
-    Default { field: String, value: Value },
-    /// 字段拼接：`{ "op": "concat", "fields": ["first", "last"], "separator": " ", "to": "name" }`
-    #[serde(rename = "concat")]
-    Concat {
-        fields: Vec<String>,
-        separator: Option<String>,
-        to: String,
-    },
-    /// 多字段取优先非空值：`{ "op": "coalesce", "fields": ["name_cn", "name_en", "id"], "to": "display_name" }`
-    #[serde(rename = "coalesce")]
-    Coalesce { fields: Vec<String>, to: String },
+fn storage_http_error(err: TappStorageError) -> (StatusCode, Json<Value>) {
+    // Preserve historical transform error strings for storage I/O.
+    match err {
+        TappStorageError::InvalidKey(reason) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": reason })),
+        ),
+        TappStorageError::TooLarge => (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(json!({ "error": "Storage value too large" })),
+        ),
+        TappStorageError::Database => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to read storage" })),
+        ),
+    }
+}
+
+fn storage_write_http_error(err: TappStorageError) -> (StatusCode, Json<Value>) {
+    match err {
+        TappStorageError::TooLarge => (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(json!({ "error": "Storage value too large" })),
+        ),
+        TappStorageError::InvalidKey(reason) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": reason })),
+        ),
+        TappStorageError::Database => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Failed to save storage" })),
+        ),
+    }
+}
+
+/// Resolve subject namespace for sandbox storage: grant subject must match JWT.
+fn storage_subject_id(
+    claims: &Claims,
+    runtime_grant: &RuntimeGrantContext,
+) -> Result<i32, HttpError> {
+    let subject_id = parse_user_id(claims)?;
+    if runtime_grant.subject_id() != subject_id {
+        return Err(HttpError::from((
+            StatusCode::FORBIDDEN,
+            Json(json!({ "error": "Invalid runtime grant subject" })),
+        )));
+    }
+    Ok(subject_id)
 }
 
 /// POST /api/tapp/data/transform
 pub async fn data_transform(
     State(db): State<DatabaseConnection>,
+    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(req): Json<DataTransformRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     let mut required_permissions = Vec::with_capacity(2);
     match &req.input {
@@ -166,18 +149,12 @@ pub async fn data_transform(
         let user_id = parse_user_id(&claims)?;
         verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
     } else {
-        authorize_tapp_permissions(&db, &claims, &req.tapp_id, &required_permissions).await?;
+        authorize_tapp_permissions(&db, &claims, &req.tapp_id, &required_permissions, &dynamic_config).await?;
     }
-    let storage_access =
-        TappStorageAccess::from_runtime_grant(&runtime_grant, &claims).map_err(|status| {
-            (
-                status,
-                Json(json!({ "error": "Invalid runtime grant subject" })),
-            )
-        })?;
+
     // Storage I/O always follows the current runtime subject, including when a
     // public installation is owned by the site administrator.
-    let storage_subject_id = storage_access.private_storage_namespace();
+    let storage_subject_id = storage_subject_id(&claims, &runtime_grant)?;
 
     tracing::debug!(
         "[TAPP] data_transform - User: {}, Tapp: {}, Steps: {}",
@@ -185,13 +162,6 @@ pub async fn data_transform(
         req.tapp_id,
         req.pipeline.len()
     );
-
-    if req.pipeline.len() > 20 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "Too many pipeline steps (max 20)" })),
-        ));
-    }
 
     // 1. 获取输入数据
     let mut items: Vec<Value> = match req.input {
@@ -210,21 +180,15 @@ pub async fn data_transform(
         DataInput::Storage { key } => {
             let value = read_storage_value(&db, storage_subject_id, &req.tapp_id, &key)
                 .await
-                .map_err(|_| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({ "error": "Failed to read storage" })),
-                    )
-                })?;
+                .map_err(storage_http_error)?;
             value.as_array().cloned().unwrap_or_default()
         }
-        DataInput::Inline { data } => data.as_array().cloned().unwrap_or_else(|| vec![data]),
+        DataInput::Inline { data } => tapp_data_transform::items_from_value(data),
     };
 
-    // 2. 执行处理管道
-    for step in req.pipeline {
-        items = apply_process_step(items, step)?;
-    }
+    // 2. 执行处理管道（pure domain）
+    items =
+        tapp_data_transform::apply_pipeline(items, req.pipeline).map_err(transform_http_error)?;
 
     // 3. 输出结果
     if let Some(output) = req.output {
@@ -235,52 +199,24 @@ pub async fn data_transform(
                 let _platform_guard = acquire_platform_lock(&platform)
                     .await
                     .map_err(|e| (StatusCode::BAD_REQUEST, Json(json!({ "error": e }))))?;
-                let cache_dir = std::path::Path::new("cache/platforms");
-                let cache_file =
-                    cache_dir.join(format!("{}_filtered.json", platform.to_lowercase()));
+                // Replace the filtered document items array (historical transform semantics).
                 let data = json!({ "items": items });
-                tokio::fs::create_dir_all(cache_dir).await.map_err(|_| {
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({ "error": "Failed to create platform cache directory" })),
-                    )
-                })?;
-                let tmp_file =
-                    cache_file.with_extension(format!("json.{}.tmp", uuid::Uuid::new_v4()));
-                tokio::fs::write(&tmp_file, serde_json::to_vec_pretty(&data).unwrap())
-                    .await
-                    .map_err(|_| {
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(json!({ "error": "Failed to write platform data" })),
-                        )
-                    })?;
-                if tokio::fs::rename(&tmp_file, &cache_file).await.is_err() {
-                    let _ = tokio::fs::remove_file(&tmp_file).await;
-                    return Err((
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({ "error": "Failed to commit platform data" })),
-                    ));
-                }
-                update_cached_platform_data(&platform, data)
+                write_filtered_document(&platform, &data)
                     .await
                     .map_err(|error| {
                         (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(json!({ "error": error })),
+                            StatusCode::from_u16(error.status_hint())
+                                .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                            Json(json!({ "error": error.message() })),
                         )
                     })?;
             }
             DataOutput::Storage { key } => {
                 let storage_value = json!(items);
-                validate_storage_value_size(&storage_value).map_err(|status| {
-                    (status, Json(json!({ "error": "Storage value too large" })))
-                })?;
+                validate_storage_value_size(&storage_value).map_err(storage_write_http_error)?;
                 write_storage_value(&db, storage_subject_id, &req.tapp_id, &key, storage_value)
                     .await
-                    .map_err(|status| {
-                        (status, Json(json!({ "error": "Failed to save storage" })))
-                    })?;
+                    .map_err(storage_write_http_error)?;
             }
         }
     }
@@ -292,287 +228,5 @@ pub async fn data_transform(
     })))
 }
 
-fn apply_process_step(
-    mut items: Vec<Value>,
-    step: ProcessStep,
-) -> Result<Vec<Value>, (StatusCode, Json<Value>)> {
-    match step {
-        ProcessStep::Filter {
-            field,
-            operator,
-            value,
-        } => {
-            items.retain(|item| {
-                let item_value = item.get(&field);
-                match operator.as_str() {
-                    "eq" => item_value == Some(&value),
-                    "ne" => item_value != Some(&value),
-                    "gt" => matches!((item_value.and_then(|v| v.as_f64()), value.as_f64()), (Some(a), Some(b)) if a > b),
-                    "gte" => matches!((item_value.and_then(|v| v.as_f64()), value.as_f64()), (Some(a), Some(b)) if a >= b),
-                    "lt" => matches!((item_value.and_then(|v| v.as_f64()), value.as_f64()), (Some(a), Some(b)) if a < b),
-                    "lte" => matches!((item_value.and_then(|v| v.as_f64()), value.as_f64()), (Some(a), Some(b)) if a <= b),
-                    "contains" => matches!((item_value.and_then(|v| v.as_str()), value.as_str()), (Some(a), Some(b)) if a.contains(b)),
-                    "in" => value.as_array().map(|arr| item_value.map(|v| arr.contains(v)).unwrap_or(false)).unwrap_or(false),
-                    "exists" => item_value.is_some() && !item_value.unwrap().is_null(),
-                    _ => true,
-                }
-            });
-        }
-        ProcessStep::Sort { field, order } => {
-            let desc = order.as_deref() == Some("desc");
-            items.sort_by(|a, b| {
-                let va = a.get(&field);
-                let vb = b.get(&field);
-                let cmp = match (va, vb) {
-                    (Some(Value::Number(a)), Some(Value::Number(b))) => a
-                        .as_f64()
-                        .partial_cmp(&b.as_f64())
-                        .unwrap_or(std::cmp::Ordering::Equal),
-                    (Some(Value::String(a)), Some(Value::String(b))) => a.cmp(b),
-                    _ => std::cmp::Ordering::Equal,
-                };
-                if desc {
-                    cmp.reverse()
-                } else {
-                    cmp
-                }
-            });
-        }
-        ProcessStep::Limit { count } => {
-            items.truncate(count);
-        }
-        ProcessStep::Offset { count } => {
-            items = items.into_iter().skip(count).collect();
-        }
-        ProcessStep::Select { fields } => {
-            items = items
-                .into_iter()
-                .map(|item| {
-                    let mut new_item = json!({});
-                    if let Some(obj) = item.as_object() {
-                        for field in &fields {
-                            if let Some(value) = obj.get(field) {
-                                new_item[field] = value.clone();
-                            }
-                        }
-                    }
-                    new_item
-                })
-                .collect();
-        }
-        ProcessStep::Group { by } => {
-            let mut groups: HashMap<String, Vec<Value>> = HashMap::new();
-            for item in items {
-                let key = item
-                    .get(&by)
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("_unknown")
-                    .to_string();
-                groups.entry(key).or_default().push(item);
-            }
-            items = groups
-                .into_iter()
-                .map(|(key, values)| json!({ "key": key, "items": values, "count": values.len() }))
-                .collect();
-        }
-        ProcessStep::Aggregate { operation, field } => {
-            let result = match operation.as_str() {
-                "count" => json!({ "count": items.len() }),
-                "sum" => {
-                    let sum: f64 = items
-                        .iter()
-                        .filter_map(|i| {
-                            field
-                                .as_ref()
-                                .and_then(|f| i.get(f))
-                                .and_then(|v| v.as_f64())
-                        })
-                        .sum();
-                    json!({ "sum": sum })
-                }
-                "avg" => {
-                    let values: Vec<f64> = items
-                        .iter()
-                        .filter_map(|i| {
-                            field
-                                .as_ref()
-                                .and_then(|f| i.get(f))
-                                .and_then(|v| v.as_f64())
-                        })
-                        .collect();
-                    let avg = if values.is_empty() {
-                        0.0
-                    } else {
-                        values.iter().sum::<f64>() / values.len() as f64
-                    };
-                    json!({ "avg": avg })
-                }
-                "min" => {
-                    let min = items
-                        .iter()
-                        .filter_map(|i| {
-                            field
-                                .as_ref()
-                                .and_then(|f| i.get(f))
-                                .and_then(|v| v.as_f64())
-                        })
-                        .fold(f64::INFINITY, f64::min);
-                    json!({ "min": if min.is_infinite() { Value::Null } else { json!(min) } })
-                }
-                "max" => {
-                    let max = items
-                        .iter()
-                        .filter_map(|i| {
-                            field
-                                .as_ref()
-                                .and_then(|f| i.get(f))
-                                .and_then(|v| v.as_f64())
-                        })
-                        .fold(f64::NEG_INFINITY, f64::max);
-                    json!({ "max": if max.is_infinite() { Value::Null } else { json!(max) } })
-                }
-                _ => json!({ "error": "Unknown aggregation" }),
-            };
-            items = vec![result];
-        }
-        ProcessStep::Dedupe { key } => {
-            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-            items.retain(|item| {
-                let k = item.get(&key).map(|v| v.to_string()).unwrap_or_default();
-                seen.insert(k)
-            });
-        }
-        ProcessStep::Map { operations } => {
-            if operations.len() > 50 {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({ "error": "Too many map operations (max 50)" })),
-                ));
-            }
-            items = items
-                .into_iter()
-                .map(|mut item| {
-                    for op in &operations {
-                        apply_map_op(&mut item, op);
-                    }
-                    item
-                })
-                .collect();
-        }
-    }
-    Ok(items)
-}
-
-/// 对单个 item 执行一个声明式映射操作
-fn apply_map_op(item: &mut Value, op: &MapOp) {
-    let obj = match item.as_object_mut() {
-        Some(o) => o,
-        None => return,
-    };
-
-    match op {
-        MapOp::Rename { from, to } => {
-            if let Some(val) = obj.remove(from.as_str()) {
-                obj.insert(to.clone(), val);
-            }
-        }
-        MapOp::Remove { field } => {
-            obj.remove(field.as_str());
-        }
-        MapOp::Set { field, value } => {
-            obj.insert(field.clone(), value.clone());
-        }
-        MapOp::Copy { from, to } => {
-            if let Some(val) = obj.get(from.as_str()).cloned() {
-                obj.insert(to.clone(), val);
-            }
-        }
-        MapOp::Template { field, template } => {
-            // 安全模板：仅支持 {fieldName} 占位符，不做嵌套/递归
-            let mut result = template.clone();
-            for (k, v) in obj.iter() {
-                let placeholder = format!("{{{}}}", k);
-                if result.contains(&placeholder) {
-                    let replacement = match v {
-                        Value::String(s) => s.clone(),
-                        Value::Null => String::new(),
-                        other => other.to_string(),
-                    };
-                    result = result.replace(&placeholder, &replacement);
-                }
-            }
-            obj.insert(field.clone(), json!(result));
-        }
-        MapOp::Lower { field } => {
-            if let Some(Value::String(s)) = obj.get(field.as_str()) {
-                let lowered = s.to_lowercase();
-                obj.insert(field.clone(), json!(lowered));
-            }
-        }
-        MapOp::Upper { field } => {
-            if let Some(Value::String(s)) = obj.get(field.as_str()) {
-                let uppered = s.to_uppercase();
-                obj.insert(field.clone(), json!(uppered));
-            }
-        }
-        MapOp::ToString { field } => {
-            if let Some(val) = obj.get(field.as_str()) {
-                let s = match val {
-                    Value::String(_) => return, // 已经是字符串
-                    Value::Null => "".to_string(),
-                    other => other.to_string(),
-                };
-                obj.insert(field.clone(), json!(s));
-            }
-        }
-        MapOp::ToNumber { field } => {
-            if let Some(Value::String(s)) = obj.get(field.as_str()) {
-                if let Ok(n) = s.parse::<f64>() {
-                    obj.insert(field.clone(), json!(n));
-                }
-            }
-        }
-        MapOp::Default { field, value } => {
-            let needs_default = match obj.get(field.as_str()) {
-                None | Some(Value::Null) => true,
-                Some(Value::String(s)) if s.is_empty() => true,
-                _ => false,
-            };
-            if needs_default {
-                obj.insert(field.clone(), value.clone());
-            }
-        }
-        MapOp::Concat {
-            fields,
-            separator,
-            to,
-        } => {
-            let sep = separator.as_deref().unwrap_or("");
-            let parts: Vec<String> = fields
-                .iter()
-                .filter_map(|f| {
-                    obj.get(f.as_str()).and_then(|v| match v {
-                        Value::String(s) => Some(s.clone()),
-                        Value::Null => None,
-                        other => Some(other.to_string()),
-                    })
-                })
-                .collect();
-            if !parts.is_empty() {
-                obj.insert(to.clone(), json!(parts.join(sep)));
-            }
-        }
-        MapOp::Coalesce { fields, to } => {
-            for f in fields {
-                match obj.get(f.as_str()) {
-                    Some(Value::Null) | None => continue,
-                    Some(Value::String(s)) if s.is_empty() => continue,
-                    Some(val) => {
-                        obj.insert(to.clone(), val.clone());
-                        break;
-                    }
-                }
-            }
-        }
-    }
-}
+// Keep services module linked for quota constant visibility in docs/tests.
+const _: i64 = tapp_storage::TAPP_STORAGE_QUOTA_BYTES;

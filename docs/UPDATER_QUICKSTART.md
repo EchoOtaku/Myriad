@@ -307,9 +307,19 @@ git push origin v0.2.0
 
 流程：
 
-1. 4 个组件镜像 (backend/frontend/proxy/updater) build & push 到 docker.io
-2. 自动生成 `release.json`，包含精确 `commit_sha` 以及每个镜像的 immutable tag + digest
-3. 发布 GitHub Release，附 `release.json` + `SHA256SUMS`
+1. `backend` / `frontend` 始终在原生 runner 上编 `linux/amd64` + `linux/arm64`（无 QEMU），再 `imagetools create` 合成 multi-arch tag
+2. `proxy` / `updater` **独立节奏**：相对上一 tag 无代码变动则本次不编、不进 `release.json`（也不对齐 app 版本号）；有变动、或 tagged commit 标题含 `-full` / dispatch `force_infra` 才一并 ship
+3. 前端静态产物只在 amd64 编一次，两平台 runtime 复用
+4. 生成 `release.json`（`images` 至少含 backend/frontend；infra 可选）+ cosign 签名后发 GitHub Release
+
+开发镜像打包（commit 标题）：
+
+| 标志 | 效果 |
+|------|------|
+| `-p` | 打包 backend/frontend；proxy/updater 仅路径变动时加入 |
+| `-full` | 打包，并强制编 proxy/updater |
+
+部署机：业务更新只看 backend/frontend；proxy/updater 自更新会在 channel 内查找最近仍带 `images.proxy` / `images.updater` 的 release，否则回退 Docker Hub tip。
 
 tag 命名约定：
 

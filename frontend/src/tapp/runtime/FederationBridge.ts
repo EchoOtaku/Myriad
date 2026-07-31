@@ -22,6 +22,7 @@
 import type { ComposeXShareRequest } from '../../services/xShareApi'
 import type { TappInstance, TappMessage } from '../types'
 import type { TappBridge } from './TappBridge'
+import { ApiError } from '../../services/api'
 import { federationApi } from '../../services/federationApi'
 import { xShareApi } from '../../services/xShareApi'
 import { getFederationFeed } from '../services/TappApiService'
@@ -29,6 +30,25 @@ import {
   federationMediaUrlRejectionReason,
   isValidFederationMediaUrl,
 } from '../utils/federationMediaUrl'
+
+/** Map API failures for Tapp sandbox — preserve ROOM_INVITE_PENDING etc. */
+function federationFail(error: unknown, fallback: string) {
+  if (error instanceof ApiError) {
+    return {
+      success: false as const,
+      error: error.message || fallback,
+      code: error.code,
+      status: error.status,
+      // Pending invite: Aro can show accept/reject instead of generic 403
+      membership_status:
+        error.code === 'ROOM_INVITE_PENDING' ? ('pending' as const) : undefined,
+    }
+  }
+  return {
+    success: false as const,
+    error: error instanceof Error ? error.message : fallback,
+  }
+}
 
 /** Convert a data URL or raw base64 string to a Blob for multipart upload. */
 function dataUrlOrBase64ToBlob(data: string, fallbackMime: string): Blob {
@@ -73,6 +93,15 @@ export function registerFederationHandlers(
     roomSockets.clear()
   }
 
+  /** Normalize WS/HTTP publicKey vs public_key for E2E consumers. */
+  const pickPublicKey = (data: Record<string, unknown>): string | undefined => {
+    const camel = data.publicKey
+    const snake = data.public_key
+    if (typeof camel === 'string' && camel) return camel
+    if (typeof snake === 'string' && snake) return snake
+    return undefined
+  }
+
   const attachChannelWs = (channelId: string, ws: WebSocket): void => {
     ws.addEventListener('message', (ev) => {
       if (channelSockets.get(channelId) !== ws) return
@@ -94,6 +123,19 @@ export function registerFederationHandlers(
             bridge.emit('federation:channelUpdate', {
               channelId,
               event: 'accepted',
+            })
+          } else if (data.type === 'key_exchange') {
+            // Typed E2E key fan-out (WS uses publicKey; HTTP uses public_key).
+            const publicKey = pickPublicKey(data as Record<string, unknown>)
+            bridge.emit('federation:channelUpdate', {
+              channelId,
+              event: 'key_exchange',
+              from: data.from,
+              publicKey,
+              public_key: publicKey,
+              algorithm: data.algorithm,
+              established: data.established,
+              direction: data.direction,
             })
           }
         }
@@ -136,6 +178,19 @@ export function registerFederationHandlers(
             bridge.emit('federation:roomUpdate', {
               roomId,
               event: 'deleted',
+            })
+          } else if (data.type === 'key_exchange') {
+            // Room E2E: refresh published_keys via typed roomUpdate (not raw message only).
+            const publicKey = pickPublicKey(data as Record<string, unknown>)
+            bridge.emit('federation:roomUpdate', {
+              roomId,
+              event: 'key_exchange',
+              from: data.from,
+              publicKey,
+              public_key: publicKey,
+              algorithm: data.algorithm,
+              published_key_count: data.published_key_count,
+              direction: data.direction,
             })
           } else if (
             data.event === 'member_joined' ||
@@ -382,8 +437,26 @@ export function registerFederationHandlers(
         return { success: false, error: 'Create note request is required' }
       try {
         const noteReq = req as Parameters<typeof federationApi.createNote>[0]
+        // Align with backend federation/limits.rs hard caps (fail early)
+        const NOTE_TEXT_CHAR_LIMIT = 100_000
+        const NOTE_ATTACHMENT_COUNT_LIMIT = 32
+        const text = typeof noteReq.text === 'string' ? noteReq.text : ''
+        if ([...text].length > NOTE_TEXT_CHAR_LIMIT) {
+          return {
+            success: false,
+            error: `Note text too long (max ${NOTE_TEXT_CHAR_LIMIT} chars)`,
+            max_text_chars: NOTE_TEXT_CHAR_LIMIT,
+          }
+        }
         const atts = noteReq.attachments
         if (Array.isArray(atts)) {
+          if (atts.length > NOTE_ATTACHMENT_COUNT_LIMIT) {
+            return {
+              success: false,
+              error: `Too many attachments (max ${NOTE_ATTACHMENT_COUNT_LIMIT})`,
+              max_attachments: NOTE_ATTACHMENT_COUNT_LIMIT,
+            }
+          }
           for (const att of atts) {
             const url =
               att && typeof att === 'object'
@@ -1120,7 +1193,21 @@ export function registerFederationHandlers(
           channelId,
           runtimeGrant,
         )
-        return { success: true, data }
+        // HTTP uses public_key; dual-emit camelCase + typed channelUpdate for UI refresh.
+        const publicKey =
+          (data as { public_key?: string; publicKey?: string }).public_key ||
+          (data as { publicKey?: string }).publicKey
+        const normalized = { ...data, publicKey, public_key: publicKey }
+        bridge.emit('federation:channelUpdate', {
+          channelId,
+          event: 'key_exchange',
+          publicKey,
+          public_key: publicKey,
+          algorithm: data.algorithm,
+          established: data.established,
+          direction: 'outbound',
+        })
+        return { success: true, data: normalized }
       } catch (error) {
         return {
           success: false,
@@ -1139,12 +1226,23 @@ export function registerFederationHandlers(
       try {
         const runtimeGrant = await bridge.getRuntimeGrant()
         const data = await federationApi.initiateRoomE2e(roomId, runtimeGrant)
-        return { success: true, data }
+        // HTTP snake_case → dual publicKey; typed roomUpdate so UI can refresh published_keys.
+        const publicKey =
+          (data as { public_key?: string; publicKey?: string }).public_key ||
+          (data as { publicKey?: string }).publicKey
+        const normalized = { ...data, publicKey, public_key: publicKey }
+        bridge.emit('federation:roomUpdate', {
+          roomId,
+          event: 'key_exchange',
+          publicKey,
+          public_key: publicKey,
+          algorithm: data.algorithm,
+          published_key_count: data.published_key_count,
+          direction: 'outbound',
+        })
+        return { success: true, data: normalized }
       } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed',
-        }
+        return federationFail(error, 'Failed to initiate room E2E')
       }
     },
   )
@@ -1239,10 +1337,7 @@ export function registerFederationHandlers(
         )
         return { success: true, data }
       } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed',
-        }
+        return federationFail(error, 'Failed to load room messages')
       }
     },
   )
@@ -1262,10 +1357,7 @@ export function registerFederationHandlers(
         )
         return { success: true, data }
       } catch (error) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : 'Failed',
-        }
+        return federationFail(error, 'Failed to send room message')
       }
     },
   )

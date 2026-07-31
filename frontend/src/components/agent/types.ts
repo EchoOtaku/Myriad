@@ -74,6 +74,12 @@ export interface PendingQuestion {
   options?: Array<{ value: string; label: string; description?: string }>
   required?: boolean
   defaultValue?: string
+  /** 敏感确认：风险等级（BE riskLevel） */
+  riskLevel?: string
+  /** 敏感确认：服务端给出的有效期（秒） */
+  expiresInSeconds?: number
+  /** 客户端收到确认时的 epoch ms，用于倒计时 */
+  receivedAtMs?: number
 }
 
 /** 执行追踪汇总 */

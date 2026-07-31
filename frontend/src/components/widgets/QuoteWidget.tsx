@@ -12,7 +12,10 @@ import { useI18n } from '../../contexts/I18nContext'
 import { useHomeVisibilityInterval } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
-import { getRandomQuote } from '../../utils/dynamicContent'
+import {
+  getRandomQuote,
+  HITOKOTO_CONFIG_UPDATED_EVENT,
+} from '../../utils/dynamicContent'
 import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
@@ -34,7 +37,7 @@ export const QuoteWidget = memo(
       isPreview ? 1 : undefined,
     )
     const anim = useAnimationLevel()
-    const { t } = useI18n()
+    const { t, locale } = useI18n()
     const [quoteData, setQuoteData] = useState<QuoteData | null>(null)
     const [loading, setLoading] = useState(true)
     const [themeColor, setThemeColor] = useState('#a855f7')
@@ -76,7 +79,8 @@ export const QuoteWidget = memo(
 
     const fetchQuote = useCallback(async () => {
       try {
-        const quote = await getRandomQuote()
+        // Pass host UI locale so local fallback + source pick match language
+        const quote = await getRandomQuote(locale)
         if (quote) {
           setQuoteData(quote)
           saveToCache(quote)
@@ -86,7 +90,7 @@ export const QuoteWidget = memo(
       } finally {
         setLoading(false)
       }
-    }, [saveToCache, t])
+    }, [saveToCache, t, locale])
 
     useEffect(() => {
       if (isPreview) {
@@ -113,6 +117,29 @@ export const QuoteWidget = memo(
       t.quoteWidget.defaultQuote,
       t.quoteWidget.anonymous,
     ])
+
+    // Config save (hitokoto source change) → drop local caches and refetch
+    useEffect(() => {
+      if (isPreview) return
+      const onConfigUpdated = () => {
+        try {
+          localStorage.removeItem(CACHE_KEY)
+          localStorage.removeItem('quote_cache')
+          localStorage.removeItem('quote_cache_time')
+          localStorage.removeItem('quote_cache_source')
+        } catch {
+          /* ignore */
+        }
+        void fetchQuote()
+      }
+      window.addEventListener(HITOKOTO_CONFIG_UPDATED_EVENT, onConfigUpdated)
+      return () => {
+        window.removeEventListener(
+          HITOKOTO_CONFIG_UPDATED_EVENT,
+          onConfigUpdated,
+        )
+      }
+    }, [fetchQuote, isPreview])
 
     // 🔧 使用首页原子化可见性感知定时器，页面隐藏时自动暂停
     useHomeVisibilityInterval(fetchQuote, CACHE_DURATION, !isPreview)

@@ -3,6 +3,11 @@
 //! 管理任务状态的内存存储和数据库持久化
 
 use crate::models::entities::agent_tasks;
+use crate::services::agent::task_store_pure::{
+    self, is_terminal_past_retention, is_waiting_input_timed_out, lane_id_from_user_session,
+    status_counts_from_iter, task_status_from_db_str, task_status_to_db_str,
+    WAITING_INPUT_TIMEOUT_ERROR,
+};
 use crate::services::agent::types::*;
 use chrono::Utc;
 use once_cell::sync::Lazy;
@@ -38,11 +43,11 @@ pub async fn enqueue_steering(
     // One shared record per instruction prevents concurrent writers on
     // different replicas from overwriting each other.
     let record_id = format!("steer_{}", uuid::Uuid::new_v4().simple());
-    crate::api::tapp_runtime::shared_registry::put(
+    crate::services::tapp_registry::put(
         db,
         STEERING_REGISTRY_NAMESPACE,
         &record_id,
-        crate::api::tapp_runtime::shared_registry::RegistryIdentity {
+        crate::services::tapp_registry::RegistryIdentity {
             subject_id: None,
             owner_id: None,
             tapp_id: None,
@@ -57,7 +62,7 @@ pub async fn enqueue_steering(
 }
 
 pub async fn take_steering(db: &DatabaseConnection, task_id: &str) -> Vec<String> {
-    match crate::api::tapp_runtime::shared_registry::take_all_for_runtime::<String>(
+    match crate::services::tapp_registry::take_all_for_runtime::<String>(
         db,
         STEERING_REGISTRY_NAMESPACE,
         task_id,
@@ -154,31 +159,7 @@ impl TaskStore {
 
     /// In-memory task counts by status (process-local; not cross-replica).
     pub fn status_counts(&self) -> (usize, usize, usize, usize, usize, usize, usize) {
-        let mut pending = 0usize;
-        let mut running = 0usize;
-        let mut waiting = 0usize;
-        let mut completed = 0usize;
-        let mut failed = 0usize;
-        let mut cancelled = 0usize;
-        for task in self.tasks.values() {
-            match task.status {
-                TaskStatus::Pending => pending += 1,
-                TaskStatus::Running => running += 1,
-                TaskStatus::WaitingForInput | TaskStatus::Paused => waiting += 1,
-                TaskStatus::Completed => completed += 1,
-                TaskStatus::Failed => failed += 1,
-                TaskStatus::Cancelled => cancelled += 1,
-            }
-        }
-        (
-            self.tasks.len(),
-            pending,
-            running,
-            waiting,
-            completed,
-            failed,
-            cancelled,
-        )
+        status_counts_from_iter(self.tasks.values().map(|t| &t.status))
     }
 
     /// 清理过期任务
@@ -191,29 +172,29 @@ impl TaskStore {
         let mut timed_out: Vec<(i32, TaskState)> = Vec::new();
 
         for (id, task) in &mut self.tasks {
-            // 已完成的任务：24小时后清理
+            // 已完成的任务：终态保留窗口后清理
             if let Some(completed_at) = &task.completed_at {
-                if (now - *completed_at).num_hours() > 24 {
+                if is_terminal_past_retention(*completed_at, now) {
                     expired_ids.push(id.clone());
                 }
             }
-            // WaitingForInput 任务：2小时未响应则标记为超时
-            else if task.status == TaskStatus::WaitingForInput {
+            // WaitingForInput 任务：超时未响应则标记为失败终态（本轮不删除）
+            else if task.status == TaskStatus::WaitingForInput
+                && is_waiting_input_timed_out(task.started_at, now)
+            {
                 let age_hours = (now - task.started_at).num_hours();
-                if age_hours > 2 {
-                    tracing::info!(
-                        task_id = %id,
-                        age_hours = age_hours,
-                        "[TaskStore] Expiring abandoned WaitingForInput task"
-                    );
-                    task.status = TaskStatus::Failed;
-                    task.error = Some("任务等待用户输入超时（2小时），已自动取消".to_string());
-                    task.completed_at = Some(now);
-                    if let Some(user_id) = self.user_tasks.iter().find_map(|(user_id, ids)| {
-                        ids.iter().any(|task_id| task_id == id).then_some(*user_id)
-                    }) {
-                        timed_out.push((user_id, task.clone()));
-                    }
+                tracing::info!(
+                    task_id = %id,
+                    age_hours = age_hours,
+                    "[TaskStore] Expiring abandoned WaitingForInput task"
+                );
+                task.status = TaskStatus::Failed;
+                task.error = Some(WAITING_INPUT_TIMEOUT_ERROR.to_string());
+                task.completed_at = Some(now);
+                if let Some(user_id) = self.user_tasks.iter().find_map(|(user_id, ids)| {
+                    ids.iter().any(|task_id| task_id == id).then_some(*user_id)
+                }) {
+                    timed_out.push((user_id, task.clone()));
                 }
             }
         }
@@ -323,15 +304,7 @@ WHERE status IN ('pending', 'running')
 }
 
 /// Statuses that interrupt/cancel should target (public for API alignment tests).
-pub fn is_cancellable_task_status(status: &TaskStatus) -> bool {
-    matches!(
-        status,
-        TaskStatus::Pending
-            | TaskStatus::Running
-            | TaskStatus::WaitingForInput
-            | TaskStatus::Paused
-    )
-}
+pub use task_store_pure::is_cancellable_task_status;
 
 /// Snapshot of waiting tasks currently in memory (after boot load).
 /// Used to re-create run hubs + WAITING_TASKS loops.
@@ -352,16 +325,7 @@ pub async fn list_waiting_tasks_snapshot() -> Vec<(i32, TaskState)> {
 
 /// 将数据库模型转换为任务状态
 fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> {
-    let status = match model.status.as_str() {
-        "pending" => TaskStatus::Pending,
-        "running" => TaskStatus::Running,
-        "waiting_for_input" => TaskStatus::WaitingForInput,
-        "paused" => TaskStatus::Paused,
-        "completed" => TaskStatus::Completed,
-        "failed" => TaskStatus::Failed,
-        "cancelled" => TaskStatus::Cancelled,
-        _ => TaskStatus::Pending,
-    };
+    let status = task_status_from_db_str(&model.status);
 
     let step_results: HashMap<String, StepResult> =
         serde_json::from_value(model.step_results.clone()).unwrap_or_default();
@@ -389,8 +353,7 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
         model
             .session_id
             .as_ref()
-            .filter(|s| !s.is_empty())
-            .map(|sid| format!("user:{}:session:{}", model.user_id, sid))
+            .and_then(|sid| lane_id_from_user_session(model.user_id, sid))
     });
 
     Ok(TaskState {
@@ -412,27 +375,14 @@ fn task_model_to_state(model: &agent_tasks::Model) -> Result<TaskState, String> 
 }
 
 /// Session id embedded in `user:{id}:session:{session_id}` lane keys.
-pub fn session_id_from_lane_id(lane_id: Option<&str>) -> Option<String> {
-    lane_id
-        .and_then(|lane| lane.split_once(":session:"))
-        .map(|(_, session_id)| session_id.to_string())
-        .filter(|s| !s.is_empty())
-}
+pub use task_store_pure::session_id_from_lane_id;
 
 /// 保存任务到数据库
 pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), String> {
     let db_guard = DB_FOR_TASKS.read().await;
     let db = db_guard.as_ref().ok_or("数据库连接未初始化")?;
 
-    let status_str = match task.status {
-        TaskStatus::Pending => "pending",
-        TaskStatus::Running => "running",
-        TaskStatus::WaitingForInput => "waiting_for_input",
-        TaskStatus::Paused => "paused",
-        TaskStatus::Completed => "completed",
-        TaskStatus::Failed => "failed",
-        TaskStatus::Cancelled => "cancelled",
-    };
+    let status_str = task_status_to_db_str(&task.status);
 
     // 检查任务是否已存在（使用 id 字段，它存储的是 task_id）
     let existing = agent_tasks::Entity::find_by_id(&task.task_id)
@@ -764,14 +714,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cancellable_statuses_include_waiting_and_paused() {
-        assert!(is_cancellable_task_status(&TaskStatus::Running));
+    fn cancellable_statuses_reexport_matches_domain() {
+        // Adapter re-exports domain rule; keep smoke coverage on the public path.
         assert!(is_cancellable_task_status(&TaskStatus::WaitingForInput));
-        assert!(is_cancellable_task_status(&TaskStatus::Paused));
-        assert!(is_cancellable_task_status(&TaskStatus::Pending));
         assert!(!is_cancellable_task_status(&TaskStatus::Completed));
-        assert!(!is_cancellable_task_status(&TaskStatus::Failed));
-        assert!(!is_cancellable_task_status(&TaskStatus::Cancelled));
     }
 
     #[test]

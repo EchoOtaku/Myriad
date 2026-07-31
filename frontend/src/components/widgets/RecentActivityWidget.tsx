@@ -192,8 +192,40 @@ function formatChange(change: ActivityChange, t: TranslationKeys): string {
   return `${prefix}${metric}`
 }
 
+/** Parse BE change_date / occurred_at (RFC3339 or chrono Display with offset). */
+function parseActivityDate(dateString: string): Date | null {
+  const raw = dateString.trim()
+  if (!raw) return null
+  // ISO / RFC3339
+  let d = new Date(raw)
+  if (!Number.isNaN(d.getTime())) return d
+  // chrono::DateTime Display: "2024-01-15 12:34:56.123456 +00:00"
+  // or "2024-01-15 12:34:56 UTC"
+  let normalized = raw.replace(' ', 'T')
+  // Drop remaining spaces before timezone ( "T12:34:56.1 +00:00" → "…56.1+00:00" )
+  normalized = normalized.replace(/ (\+|-)(\d{2}):?(\d{2})?$/, '$1$2:$3')
+  normalized = normalized.replace(/ Z$/, 'Z').replace(/ UTC$/i, 'Z')
+  // Fix incomplete tz like "+00:" from optional minutes group
+  normalized = normalized.replace(/([+-]\d{2}):$/, '$1:00')
+  d = new Date(normalized)
+  if (!Number.isNaN(d.getTime())) return d
+  // Last resort: take leading "YYYY-MM-DDTHH:MM:SS" or space form
+  const m = raw.match(
+    /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/,
+  )
+  if (m) {
+    d = new Date(`${m[1]}T${m[2]}Z`)
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  return null
+}
+
 function formatTimeAgo(dateString: string, t: TranslationKeys): string {
-  const date = new Date(dateString.replace(' ', 'T'))
+  const date = parseActivityDate(dateString)
+  if (!date) {
+    // Unparseable → do not claim "just now"
+    return dateString.slice(0, 16) || t.recentActivity.justNow
+  }
   const diff = Math.max(0, Date.now() - date.getTime())
   const hours = Math.floor(diff / 3600000)
   const days = Math.floor(hours / 24)

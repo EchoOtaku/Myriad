@@ -143,6 +143,9 @@ pub struct CreateCommentRequest {
     pub color: Option<String>,
     /// 父评论 ID（回复时指定）
     pub parent_id: Option<i32>,
+    /// 是否公开批注（默认 false；与 FE CreateCommentRequest.is_public 对齐）
+    #[serde(default)]
+    pub is_public: Option<bool>,
 }
 
 /// 更新评论请求

@@ -45,14 +45,14 @@ use storage::{
     clear_storage, delete_storage, get_storage, get_storage_usage, get_tapp_setting,
     get_tapp_settings, list_storage_entries, list_storage_keys, set_storage, set_tapp_setting,
 };
-pub(crate) use storage::{
-    read_storage_value, validate_sandbox_storage_key, validate_storage_key,
-    validate_storage_value_size, write_storage_value,
-};
+// Path-stable for manifest_tests / handlers that import via `super::`.
+pub(crate) use storage::validate_sandbox_storage_key;
+
+
 #[cfg(test)]
 use store_package::validate_store_manifest_category;
 pub use store_sources::*;
-use types::api_error;
+use types::{api_error, api_http_error, api_response_err};
 pub use types::{ApiResponse, TappDetail, TappListItem};
 #[cfg(test)]
 use uninstall::uninstall_post_commit_cleanup_path;
@@ -65,24 +65,24 @@ pub type RegisterWidgetRequest = widgets::RegisterWidgetRequest;
 use widgets::{list_all_widgets, reconcile_manifest_widgets, register_widget, unregister_widget};
 
 use axum::{
-    middleware::from_fn_with_state,
     routing::{delete, get, post},
     Router,
 };
-use sea_orm::DatabaseConnection;
 
 use crate::middleware::auth::{auth_middleware, optional_auth_middleware};
-use crate::services::permission_service::TappPermission;
 
 /// 创建 Tapp 路由
 ///
 /// 路由分为三类：
 /// - 公开路由（游客可访问）：list_tapps, get_tapp, get_tapp_code, list_all_widgets, list_store_sources
-/// - 认证路由（需要登录）：install, uninstall, start, stop, register_widget, storage 等
-/// - 管理员路由（仅管理员）：add_store_source, update_store_source, delete_store_source
-pub fn create_tapp_routes() -> Router<DatabaseConnection> {
-    // 需要认证的路由
-    let authenticated_routes = Router::new()
+/// - 可选主体（JWT 或游客 cookie + Runtime Grant）：runtime-grants, storage/*
+/// - 认证路由（需要登录）：install, uninstall, start, stop, register_widget, settings 等
+pub fn create_tapp_routes(
+    app_state: crate::state::AppState,
+) -> Router<crate::state::AppState> {
+    use axum::middleware::from_fn_with_state;
+    // 需要登录的路由（安装/启停/设置/商店源；不含 storage）
+    let authenticated_routes = Router::<crate::state::AppState>::new()
         .route("/install", post(install_tapp))
         .route("/install-file", post(install_tapp_file))
         .route("/cleanup-temporary", post(cleanup_temporary_tapps))
@@ -95,23 +95,17 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/{tapp_id}/settings", get(get_tapp_settings))
         .route("/{tapp_id}/settings/{key}", get(get_tapp_setting))
         .route("/{tapp_id}/settings/{key}", post(set_tapp_setting))
-        .route("/{tapp_id}/storage", get(list_storage_keys))
-        .route("/{tapp_id}/storage", delete(clear_storage))
-        .route("/{tapp_id}/storage/entries", get(list_storage_entries))
-        .route("/{tapp_id}/storage/usage", get(get_storage_usage))
-        .route("/{tapp_id}/storage/{key}", get(get_storage))
-        .route("/{tapp_id}/storage/{key}", post(set_storage))
-        .route("/{tapp_id}/storage/{key}", delete(delete_storage))
         // 商店源管理（需要认证，API 内部检查管理员权限）
         .route("/store/sources", post(add_store_source))
         .route("/store/sources/{source_id}", post(update_store_source))
         .route("/store/sources/{source_id}", delete(delete_store_source))
-        .route_layer(from_fn_with_state((), |req, next| async {
-            auth_middleware(req, next).await
-        }));
+        .route_layer(from_fn_with_state(
+            app_state.clone(),
+            auth_middleware,
+        ));
 
     // 公开路由（支持可选认证）
-    let public_routes = Router::new()
+    let public_routes = Router::<crate::state::AppState>::new()
         .route("/", get(list_tapps))
         .route("/details", get(list_tapp_details))
         .route("/widgets", get(list_all_widgets))
@@ -122,9 +116,9 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
         .route("/{tapp_id}/asset", get(get_tapp_asset))
         .route("/{tapp_id}/export", get(export_tapp));
 
-    // These routes need a stable subject but also support guests. The optional
-    // auth layer always injects a real or stable guest Claims value.
-    let optional_subject_routes = Router::new()
+    // Stable subject (JWT or signed guest cookie) + Runtime Grant for sandbox
+    // storage. Guests keep private storage under their negative session id.
+    let optional_subject_routes = Router::<crate::state::AppState>::new()
         .route("/recent", get(get_recent_tapps))
         .route(
             "/{tapp_id}/runtime-grants",
@@ -138,9 +132,17 @@ pub fn create_tapp_routes() -> Router<DatabaseConnection> {
             "/{tapp_id}/runtime-grants/{runtime_id}",
             delete(crate::api::tapp_runtime::revoke_runtime_grant),
         )
-        .route_layer(from_fn_with_state((), |req, next| async {
-            optional_auth_middleware(req, next).await
-        }));
+        .route("/{tapp_id}/storage", get(list_storage_keys))
+        .route("/{tapp_id}/storage", delete(clear_storage))
+        .route("/{tapp_id}/storage/entries", get(list_storage_entries))
+        .route("/{tapp_id}/storage/usage", get(get_storage_usage))
+        .route("/{tapp_id}/storage/{key}", get(get_storage))
+        .route("/{tapp_id}/storage/{key}", post(set_storage))
+        .route("/{tapp_id}/storage/{key}", delete(delete_storage))
+        .route_layer(from_fn_with_state(
+            app_state.clone(),
+            optional_auth_middleware,
+        ));
 
     // 合并路由
     public_routes

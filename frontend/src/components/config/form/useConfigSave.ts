@@ -53,7 +53,10 @@ import {
   isBangumiPlatform,
 } from '../PlatformsConfigSection'
 import type { PermissionConfigValues } from '../PermissionsConfigSection'
-import { configChangesNeedHardReload } from '../uiBagOwnership'
+import {
+  configChangesNeedHardReload,
+  configChangesNeedWallpaperReload,
+} from '../uiBagOwnership'
 import type {
   Config,
   SaveLibrarySourcePreferencesResponse,
@@ -66,6 +69,8 @@ type ConfigI18n = {
   bangumiCredentialMissing: string
   savingConfig: string
   configSaveFailed: string
+  /** When some sections already committed before a later step failed */
+  partialSaveWarning: string
   librarySourceSaveFailed: string
   librarySourceSaved: string
   moduleVisibilitySaved: string
@@ -265,10 +270,11 @@ export function useConfigSave(args: {
     showMessage(t.config.savingConfig, 'info', 0)
     setSaving(true)
 
+    type PendingClean = () => void | Promise<void>
+    const pendingClean: PendingClean[] = []
+
     try {
       let resultMessage = t.config.configSaved
-      type PendingClean = () => void | Promise<void>
-      const pendingClean: PendingClean[] = []
 
       if (hasConfigChanges) {
         await getCSRFToken(true)
@@ -414,6 +420,19 @@ export function useConfigSave(args: {
         configChangesNeedHardReload(config, initialConfig!, deepEqual)
 
       if (!needHardReload) {
+        // Evocative / wallpaper bag saves without hard reload: drop 30s UI cache
+        // and notify AppLayout to re-run loadWallpaper (mount-only by default).
+        if (
+          initialConfig &&
+          configChangesNeedWallpaperReload(config, initialConfig)
+        ) {
+          clearDedupCache(`${API_URL}/api/config/ui`)
+          // Bust 1s lastLoadResult debounce so soft reload is not a no-op
+          void import('../../../hooks/useWallpaper').then((m) => {
+            m.invalidateWallpaperLoadCache()
+            window.dispatchEvent(new CustomEvent('wallpaperConfigChanged'))
+          })
+        }
         showMessage(t.config.savedSuccess, 'success', 3000)
         return
       }
@@ -438,11 +457,30 @@ export function useConfigSave(args: {
         }, 2000)
       }
     } catch (error) {
-      const errorMsg = `${t.config.configSaveFailed}: ${error instanceof Error ? error.message : t.errors.networkError}`
-      showMessage(errorMsg, 'error', 0)
+      // Some sections may already have succeeded (pendingClean filled).
+      // Commit those so UI dirty flags only reflect remaining unsaved drafts.
+      const applied: PendingClean[] = []
+      for (const apply of pendingClean) {
+        try {
+          await apply()
+          applied.push(apply)
+        } catch {
+          /* best-effort */
+        }
+      }
+      const partial = applied.length > 0
+      const detail = error instanceof Error ? error.message : t.errors.networkError
+      const errorMsg = partial
+        ? `${t.config.partialSaveWarning}: ${detail}`
+        : `${t.config.configSaveFailed}: ${detail}`
+      showMessage(errorMsg, partial ? 'warning' : 'error', 0)
       window.dispatchEvent(
         new CustomEvent('config-save-result', {
-          detail: { success: false, message: errorMsg },
+          detail: {
+            success: false,
+            partial,
+            message: errorMsg,
+          },
         }),
       )
     } finally {

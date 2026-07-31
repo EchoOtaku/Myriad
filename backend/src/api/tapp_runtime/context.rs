@@ -1,44 +1,104 @@
 //! 运行上下文 API
+//!
+//! Domain payload builders live in [`crate::services::tapp_context`]. This
+//! module only resolves Claims, DB profile rows, platform lists, and filesystem
+//! cache mtimes before calling pure builders.
 
-use axum::{extract::State, http::StatusCode, Extension, Json};
+use axum::{
+    extract::State,
+    http::{header, HeaderMap, StatusCode},
+    Extension, Json,
+};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
-use crate::middleware::auth::{ensure_current_admin, Claims};
+use crate::config::DynamicConfig;
+use crate::error::HttpError;
+use crate::middleware::auth::{ensure_current_admin_on, Claims};
 use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
-use crate::GLOBAL_DYNAMIC_CONFIG;
+use crate::services::tapp_context::{
+    context_app_payload, context_system_payload, context_user_payload, idle_navigation_context,
+    idle_player_context,
+};
 
 use super::common::get_available_platforms;
 use super::runtime_grant::RuntimeGrantContext;
 
+/// Host UI locale from `X-Myriad-Locale` or `Accept-Language` (not hard-coded zh-CN).
+fn locale_from_headers(headers: &HeaderMap) -> String {
+    if let Some(v) = headers
+        .get("x-myriad-locale")
+        .and_then(|h| h.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.len() <= 32)
+    {
+        return v.to_string();
+    }
+    if let Some(al) = headers
+        .get(header::ACCEPT_LANGUAGE)
+        .and_then(|h| h.to_str().ok())
+    {
+        // Take first tag: "en-US,en;q=0.9" → "en-US"
+        let tag = al
+            .split(',')
+            .next()
+            .unwrap_or("")
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim();
+        if !tag.is_empty() && tag.len() <= 32 {
+            return tag.to_string();
+        }
+    }
+    "en-US".to_string()
+}
+
+/// Host timezone from `X-Myriad-Timezone` (IANA), default UTC.
+fn timezone_from_headers(headers: &HeaderMap) -> String {
+    if let Some(v) = headers
+        .get("x-myriad-timezone")
+        .and_then(|h| h.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && s.len() <= 64 && !s.contains(['\n', '\r', ' ']))
+    {
+        return v.to_string();
+    }
+    "UTC".to_string()
+}
+
 /// GET /api/tapp/context/app
 pub async fn get_context_app(
+    State(dynamic_config): State<Arc<RwLock<DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     _runtime_grant: RuntimeGrantContext,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     tracing::debug!("[TAPP] get_context_app - User: {}", claims.username);
 
-    let config = GLOBAL_DYNAMIC_CONFIG.read().await;
+    let config = dynamic_config.read().await;
     let platforms = get_available_platforms().await;
+    let ai_enabled = config.gemini_api_key.is_some() || config.openai_api_key.is_some();
+    drop(config);
 
-    Ok(Json(json!({
-        "version": env!("CARGO_PKG_VERSION"),
-        "locale": "zh-CN",
-        "theme": "system",
-        "features": {
-            "aiEnabled": config.gemini_api_key.is_some() || config.openai_api_key.is_some(),
-            "platforms": platforms
-        }
-    })))
+    Ok(Json(context_app_payload(
+        env!("CARGO_PKG_VERSION"),
+        ai_enabled,
+        &platforms,
+        &locale_from_headers(&headers),
+    )))
 }
 
 /// GET /api/tapp/context/user
 pub async fn get_context_user(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    headers: HeaderMap,
     _runtime_grant: RuntimeGrantContext,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     tracing::debug!("[TAPP] get_context_user - User: {}", claims.username);
 
     let user_id: i32 = claims.sub.parse().map_err(|_| {
@@ -49,15 +109,7 @@ pub async fn get_context_user(
     })?;
 
     let connected_platforms = get_available_platforms().await;
-    let is_current_admin = claims.is_admin && ensure_current_admin(&claims).await.is_ok();
-    // Guest sessions use negative subject ids — never report them as "user".
-    let role = if is_current_admin {
-        "admin"
-    } else if user_id <= 0 {
-        "guest"
-    } else {
-        "user"
-    };
+    let is_current_admin = claims.is_admin && ensure_current_admin_on(&claims, &db).await.is_ok();
     let mut display_name: Option<String> = None;
     let mut avatar_url: Option<String> = None;
 
@@ -99,64 +151,34 @@ pub async fn get_context_user(
         }
     }
 
-    Ok(Json(json!({
-        "id": format!("user_{}", user_id),
-        "username": claims.username,
-        "display_name": display_name,
-        "avatar": avatar_url.clone(),
-        "avatar_url": avatar_url,
-        "isAdmin": is_current_admin,
-        "role": role,
-        // Aro / soft-guest paths treat this as a strong "not guest" signal.
-        "authenticated": user_id > 0,
-        "connectedPlatforms": connected_platforms,
-        "preferences": {
-            "language": "zh-CN",
-            "timezone": "Asia/Shanghai"
-        }
-    })))
+    Ok(Json(context_user_payload(
+        user_id,
+        &claims.username,
+        display_name,
+        avatar_url,
+        is_current_admin,
+        &connected_platforms,
+        &locale_from_headers(&headers),
+        &timezone_from_headers(&headers),
+    )))
 }
 
 /// GET /api/tapp/context/player
 pub async fn get_context_player(
     Extension(claims): Extension<Claims>,
     _runtime_grant: RuntimeGrantContext,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     tracing::debug!("[TAPP] get_context_player - User: {}", claims.username);
-
-    Ok(Json(json!({
-        "isPlaying": false,
-        "isPaused": false,
-        "currentTrack": null,
-        "progress": { "current": 0, "duration": 0, "percentage": 0 },
-        "playlist": null,
-        "mode": "sequence",
-        "volume": 80,
-        "muted": false,
-        "_note": "Real-time player state is provided via TappBridge events"
-    })))
+    Ok(Json(idle_player_context()))
 }
 
 /// GET /api/tapp/context/navigation
 pub async fn get_context_navigation(
     Extension(claims): Extension<Claims>,
     _runtime_grant: RuntimeGrantContext,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     tracing::debug!("[TAPP] get_context_navigation - User: {}", claims.username);
-
-    Ok(Json(json!({
-        "currentPath": "/",
-        "previousPath": null,
-        "history": [],
-        "availableRoutes": [
-            { "path": "/", "name": "home", "icon": "home" },
-            { "path": "/library", "name": "library", "icon": "book" },
-            { "path": "/life", "name": "life", "icon": "heart" },
-            { "path": "/settings", "name": "settings", "icon": "settings" }
-        ],
-        "tappPages": [],
-        "_note": "Real-time navigation state is provided via TappBridge events"
-    })))
+    Ok(Json(idle_navigation_context()))
 }
 
 /// GET /api/tapp/context/system
@@ -164,13 +186,10 @@ pub async fn get_context_system(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     _runtime_grant: RuntimeGrantContext,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     tracing::debug!("[TAPP] get_context_system - User: {}", claims.username);
 
     let db_connected = db.ping().await.is_ok();
-    let background_tasks: Vec<Value> = Vec::new();
-
-    // 并行获取平台和文件元数据
     let platforms = get_available_platforms().await;
     let cache_dir = std::path::Path::new("cache/platforms");
 
@@ -198,13 +217,11 @@ pub async fn get_context_system(
         last_fetch.insert(platform.to_string(), result);
     }
 
-    Ok(Json(json!({
-        "online": true,
-        "serverConnected": db_connected,
-        "version": env!("CARGO_PKG_VERSION"),
-        "backgroundTasks": background_tasks,
-        "lastFetch": last_fetch
-    })))
+    Ok(Json(context_system_payload(
+        db_connected,
+        env!("CARGO_PKG_VERSION"),
+        &last_fetch,
+    )))
 }
 
 /// GET /api/tapp/context/geo
@@ -212,7 +229,7 @@ pub async fn get_context_geo(
     _runtime_grant: RuntimeGrantContext,
     headers: axum::http::HeaderMap,
     axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     use crate::api::tapp_store::{TappApiAccess, TappApiDef};
 
     let client_ip = crate::middleware::client_ip::client_ip_from_parts(
@@ -256,9 +273,9 @@ pub async fn get_context_geo(
             json!({ "success": true, "data": result.data, "cached": result.cached }),
         ))
     } else {
-        Err((
+        Err(HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({ "success": false, "error": result.error })),
-        ))
+        )))
     }
 }

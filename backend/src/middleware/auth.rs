@@ -1,5 +1,5 @@
 use axum::{
-    extract::Request,
+    extract::{Request, State},
     http::{header, HeaderMap, HeaderValue, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
@@ -8,7 +8,7 @@ use axum::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use hmac::{Hmac, Mac};
 use jsonwebtoken::{decode, DecodingKey, Validation};
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -25,18 +25,27 @@ pub struct Claims {
     pub sub: String,      // User ID
     pub username: String, // Username
     pub is_admin: bool,   // ✅ 安全修复 P0: Admin status
+    /// Durable site owner (`users.is_owner`). Defaults false for older tokens.
+    #[serde(default)]
+    pub is_owner: bool,
     pub exp: i64,         // Expiration time
     pub iat: i64,         // Issued at
 }
 
 /// Authentication middleware - verifies JWT token
 /// Returns 401 if token is missing or invalid
-pub async fn auth_middleware(req: Request, next: Next) -> Response {
+///
+/// Requires `Router<AppState>` so `State<DatabaseConnection>` resolves via FromRef.
+pub async fn auth_middleware(
+    State(db): State<DatabaseConnection>,
+    req: Request,
+    next: Next,
+) -> Response {
     let headers = req.headers();
 
     match verify_jwt_token(headers) {
         Ok(claims) => {
-            record_user_presence(&claims);
+            record_user_presence(&claims, db);
             // Token is valid, inject claims into request extensions
             let mut req = req;
             req.extensions_mut().insert(claims);
@@ -70,8 +79,8 @@ fn presence_write_due(user_id: i32) -> bool {
 }
 
 /// 节流更新 users.last_seen_at / online_seconds（异步、尽力而为）。
-/// 游客（负数 ID）不记录。
-pub fn record_user_presence(claims: &Claims) {
+/// 游客（负数 ID）不记录。DB 由 middleware `State` 注入。
+pub fn record_user_presence(claims: &Claims, db: DatabaseConnection) {
     let Ok(user_id) = claims.sub.parse::<i32>() else {
         return;
     };
@@ -79,10 +88,6 @@ pub fn record_user_presence(claims: &Claims) {
         return;
     }
     tokio::spawn(async move {
-        let db_guard = crate::DB_CONNECTION.read().await;
-        let Some(db) = db_guard.as_ref() else {
-            return;
-        };
         let result = db
             .execute(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -107,13 +112,17 @@ pub fn record_user_presence(claims: &Claims) {
 ///
 /// ✅ SECURITY: Checks both the signed claim and the current database role.
 /// Used for dangerous operations like deleting all reports
-pub async fn admin_middleware(req: Request, next: Next) -> Response {
+pub async fn admin_middleware(
+    State(db): State<DatabaseConnection>,
+    req: Request,
+    next: Next,
+) -> Response {
     let headers = req.headers();
 
     match verify_jwt_token(headers) {
         Ok(claims) => {
-            record_user_presence(&claims);
-            if let Err((status, body)) = ensure_current_admin(&claims).await {
+            record_user_presence(&claims, db.clone());
+            if let Err((status, body)) = ensure_current_admin_on(&claims, &db).await {
                 tracing::warn!(
                     "⚠️  User {} (is_admin={}) attempted to access admin-only endpoint (Forbidden)",
                     claims.username,
@@ -141,8 +150,10 @@ pub async fn admin_middleware(req: Request, next: Next) -> Response {
 ///
 /// This prevents a demoted admin from keeping admin access until the old JWT
 /// expires.
-pub async fn ensure_current_admin(
+/// Preferred: verify admin with an explicit DB handle (handlers / middleware State).
+pub async fn ensure_current_admin_on(
     claims: &Claims,
+    db: &DatabaseConnection,
 ) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
     if !claims.is_admin {
         return Err(admin_forbidden());
@@ -154,17 +165,6 @@ pub async fn ensure_current_admin(
             Json(json!({
                 "error": "Unauthorized",
                 "message": "Invalid user ID in authorization token."
-            })),
-        )
-    })?;
-
-    let db_guard = crate::DB_CONNECTION.read().await;
-    let db = db_guard.as_ref().ok_or_else(|| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(json!({
-                "error": "Database not connected",
-                "message": "Administrator status cannot be verified."
             })),
         )
     })?;
@@ -198,9 +198,10 @@ pub async fn ensure_current_admin(
     }
 }
 
-/// Verify JWT headers and re-check the admin flag against the current database.
+/// Verify JWT headers and re-check the admin flag against the request DB.
 pub async fn verify_current_admin_from_headers(
     headers: &HeaderMap,
+    db: &DatabaseConnection,
 ) -> Result<Claims, (StatusCode, Json<serde_json::Value>)> {
     let claims = verify_jwt_token(headers).map_err(|_| {
         (
@@ -212,7 +213,7 @@ pub async fn verify_current_admin_from_headers(
         )
     })?;
 
-    ensure_current_admin(&claims).await?;
+    ensure_current_admin_on(&claims, db).await?;
     Ok(claims)
 }
 
@@ -287,12 +288,16 @@ fn guest_id(session_id: &str) -> i32 {
 /// 安全说明：
 /// - 游客 Claims 的 is_admin 为 false
 /// - API 端点需要自行检查权限（通过 TappPermissionService）
-pub async fn optional_auth_middleware(req: Request, next: Next) -> Response {
+pub async fn optional_auth_middleware(
+    State(db): State<DatabaseConnection>,
+    req: Request,
+    next: Next,
+) -> Response {
     let headers = req.headers();
     let mut set_guest_cookie = None;
     let claims = match verify_jwt_token(headers) {
         Ok(claims) => {
-            record_user_presence(&claims);
+            record_user_presence(&claims, db);
             claims
         }
         Err(_) => {
@@ -320,6 +325,7 @@ pub async fn optional_auth_middleware(req: Request, next: Next) -> Response {
                 sub: guest_id.to_string(),
                 username: format!("guest:{}", &session_id[..8]),
                 is_admin: false,
+                is_owner: false,
                 exp: chrono::Utc::now().timestamp() + GUEST_SESSION_MAX_AGE,
                 iat: chrono::Utc::now().timestamp(),
             }

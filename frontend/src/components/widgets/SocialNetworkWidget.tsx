@@ -36,7 +36,9 @@ import { useI18n } from '../../contexts/I18nContext'
 import { useLoopAnimation } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
+import { getCSRFToken } from '../../utils/csrf'
 import {
+  clearDedupCache,
   getPublicConfigDeduped,
   getUIConfigDeduped,
 } from '../../utils/requestDedup'
@@ -368,19 +370,48 @@ async function loadCustomPlatformsAsync(): Promise<CustomPlatformData[]> {
   return customPlatformsData
 }
 
-// 保存自定义平台 - 通过全局事件通知父组件保存到后端
+// 保存自定义平台：必须真正 POST 到后端并校验 response.ok。
+// 历史上只 dispatchEvent + Home 空 CSRF 头 → 内存有、刷新丢。
 async function saveCustomPlatforms(platforms: CustomPlatformData[]) {
+  const previous = customPlatformsData
   customPlatformsData = platforms
   customPlatformsLoaded = true
-  // 清除所有 PlatformInfo 缓存，因为数据已更新
   platformInfoCache.clear()
 
-  // 发送自定义事件，让 Home.tsx 处理实际的保存
-  window.dispatchEvent(
-    new CustomEvent('custom-platforms-update', {
-      detail: { platforms },
-    }),
-  )
+  try {
+    const csrfToken = await getCSRFToken(true)
+    if (!csrfToken) {
+      throw new Error('CSRF token unavailable')
+    }
+    const response = await fetch(`${API_URL}/api/config/dashboard`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken,
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        custom_platforms: JSON.stringify(platforms),
+      }),
+    })
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      throw new Error(text || `HTTP ${response.status}`)
+    }
+    // Drop 30s UI config cache so refresh / other widgets see new list
+    clearDedupCache(`${API_URL}/api/config/ui`)
+    window.dispatchEvent(
+      new CustomEvent('custom-platforms-update', {
+        detail: { platforms, persisted: true },
+      }),
+    )
+  } catch (err) {
+    // Roll back in-memory state so UI matches server
+    customPlatformsData = previous
+    platformInfoCache.clear()
+    console.error('Failed to persist custom platforms:', err)
+    throw err
+  }
 }
 
 // 添加自定义平台

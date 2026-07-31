@@ -170,7 +170,8 @@ export interface FederationDeliveryQueueProps {
   onStatsChange: (s: DeliveryStats | null) => void
   onItemsChange: (items: DeliveryQueueItem[]) => void
   onMessage?: Msg
-  onRefresh: () => Promise<void>
+  /** Optional status scopes server query (delivered tab needs this). */
+  onRefresh: (status?: string) => Promise<void>
   className?: string
 }
 
@@ -210,11 +211,16 @@ export const FederationDeliveryQueue: React.FC<
 
   const quietRefresh = useCallback(async () => {
     try {
-      await onRefresh()
+      await onRefresh(statusFilter === 'all' ? undefined : statusFilter)
     } catch {
       /* keep optimistic state */
     }
-  }, [onRefresh])
+  }, [onRefresh, statusFilter])
+
+  // Server-side status filter when tab changes (default list prioritizes dead)
+  React.useEffect(() => {
+    void onRefresh(statusFilter === 'all' ? undefined : statusFilter)
+  }, [statusFilter, onRefresh])
 
   const fail = useCallback(
     (e: unknown) => {

@@ -1,7 +1,7 @@
 //! Admin 用户管理 API（设置页「用户管理」模块）。
 //!
 //! 所有路由要求管理员：main.rs 挂 `admin_middleware`，handler 内再复核一次
-//! `ensure_current_admin`（与 auth_local.rs 既有做法一致，防止 wrapper 绕过）。
+//! `ensure_current_admin_on`（与 auth_local.rs 既有做法一致，防止 wrapper 绕过）。
 //!
 //! - GET    /api/admin/users                              用户列表（含 OAuth identities、tapp 数、在线状态）
 //! - GET    /api/admin/users/{id}                         用户详情（identities + 已安装 tapp）
@@ -118,14 +118,17 @@ pub async fn actor_is_owner(db: &DatabaseConnection, actor_id: i32) -> Result<bo
     load_is_owner(db, actor_id).await
 }
 
-async fn require_admin(headers: &axum::http::HeaderMap) -> Result<Claims, ApiError> {
+async fn require_admin(
+    headers: &axum::http::HeaderMap,
+    db: &DatabaseConnection,
+) -> Result<Claims, ApiError> {
     let claims = verify_jwt_token(headers).map_err(|_| {
         (
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Unauthorized"})),
         )
     })?;
-    crate::middleware::auth::ensure_current_admin(&claims).await?;
+    crate::middleware::auth::ensure_current_admin_on(&claims, db).await?;
     Ok(claims)
 }
 
@@ -190,7 +193,7 @@ pub async fn list_users(
     crate::extract::Db(db): crate::extract::Db,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
-    require_admin(&headers).await?;
+    require_admin(&headers, &db).await?;
 
     let user_rows = db
         .query_all(Statement::from_sql_and_values(
@@ -239,7 +242,7 @@ pub async fn get_user(
     Path(user_id): Path<i32>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
-    require_admin(&headers).await?;
+    require_admin(&headers, &db).await?;
 
     let user_row = db
         .query_one(Statement::from_sql_and_values(
@@ -314,7 +317,7 @@ pub async fn update_user(
     headers: axum::http::HeaderMap,
     Json(req): Json<UpdateUserRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    let claims = require_admin(&headers).await?;
+    let claims = require_admin(&headers, &db).await?;
     let self_id: i32 = claims.sub.parse().unwrap_or(0);
     let actor_is_owner = load_is_owner(&db, self_id).await?;
 
@@ -459,7 +462,7 @@ pub async fn unlink_identity(
     Path((user_id, identity_id)): Path<(i32, i32)>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
-    let claims = require_admin(&headers).await?;
+    let claims = require_admin(&headers, &db).await?;
 
     let info = db
         .query_one(Statement::from_sql_and_values(
@@ -595,7 +598,7 @@ pub async fn delete_user(
     Path(user_id): Path<i32>,
     headers: axum::http::HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
-    let claims = require_admin(&headers).await?;
+    let claims = require_admin(&headers, &db).await?;
     let self_id: i32 = claims.sub.parse().unwrap_or(0);
     let actor_is_owner = load_is_owner(&db, self_id).await?;
 

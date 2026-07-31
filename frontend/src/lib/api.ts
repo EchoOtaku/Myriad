@@ -3,6 +3,10 @@ import axios from 'axios'
 
 import { API_URL } from '../config'
 import { clearCSRFToken, getCSRFHeaderName, getCSRFToken } from '../utils/csrf'
+import {
+  formatRateLimitMessage,
+  retryAfterSecondsFromBody,
+} from '../utils/httpRateLimitToast'
 import { checkRateLimit, RateLimitError } from '../utils/rateLimiter'
 import TokenManager from '../utils/tokenManager'
 
@@ -160,13 +164,65 @@ api.interceptors.request.use(
   },
 )
 
-// Response interceptor: CSRF retry (fulfilled path) + 401/429 handling (rejected path).
-// Note: validateStatus treats status < 500 as success, so 403 CSRF errors land here
-// in the fulfilled branch — not the error branch.
+/** Parse HTTP Retry-After (seconds, or HTTP-date) into milliseconds for RateLimitError. */
+function retryAfterHeaderToMs(header: unknown, fallbackSeconds = 60): number {
+  if (header == null || header === '') {
+    return fallbackSeconds * 1000
+  }
+  const raw = String(header).trim()
+  const asInt = Number.parseInt(raw, 10)
+  // Numeric Retry-After is seconds (RFC 9110); treat reasonable values as seconds.
+  if (Number.isFinite(asInt) && String(asInt) === raw) {
+    return Math.max(1, asInt) * 1000
+  }
+  const when = Date.parse(raw)
+  if (Number.isFinite(when)) {
+    return Math.max(1000, when - Date.now())
+  }
+  return fallbackSeconds * 1000
+}
+
+/** Prefer Retry-After header, then body.retry_after, then 60s. */
+function waitMsFrom429(
+  headers: Record<string, unknown> | undefined,
+  data: unknown,
+  fallbackSeconds = 60,
+): number {
+  const header = headers?.['retry-after']
+  if (header != null && header !== '') {
+    return retryAfterHeaderToMs(header, fallbackSeconds)
+  }
+  const bodySec = retryAfterSecondsFromBody(data)
+  if (bodySec != null) {
+    return Math.max(1, bodySec) * 1000
+  }
+  return fallbackSeconds * 1000
+}
+
+function rateLimitErrorFromAxios(headers: unknown, data: unknown): RateLimitError {
+  const hdrs = (headers || {}) as Record<string, unknown>
+  const waitMs = waitMsFrom429(hdrs, data, 60)
+  const waitSec = Math.ceil(waitMs / 1000)
+  const serverMsg =
+    data && typeof data === 'object' && typeof (data as { message?: unknown }).message === 'string'
+      ? String((data as { message: string }).message)
+      : null
+  return new RateLimitError(formatRateLimitMessage(waitSec, serverMsg), waitMs)
+}
+
+// Response interceptor: CSRF + 429 on fulfilled path (validateStatus: status < 500),
+// 401/network on rejected path.
 api.interceptors.response.use(
   async (response) => {
     const config = response.config as CsrfRetryableConfig
     const method = config.method?.toLowerCase() ?? 'get'
+
+    // 429 is "success" under validateStatus — handle here, not only in error branch.
+    if (response.status === 429) {
+      return Promise.reject(
+        rateLimitErrorFromAxios(response.headers as Record<string, unknown>, response.data),
+      )
+    }
 
     if (
       MUTATING_METHODS.has(method) &&
@@ -212,12 +268,13 @@ api.interceptors.response.use(
       )
     }
 
-    // 处理 429 Too Many Requests
+    // 429 can still land here if validateStatus is overridden on a call.
     if (error.response?.status === 429) {
-      const retryAfter = error.response.headers['retry-after']
-      const message = `请求过于频繁，请在 ${retryAfter || 60} 秒后重试`
       return Promise.reject(
-        new RateLimitError(message, Number.parseInt(retryAfter || '60000')),
+        rateLimitErrorFromAxios(
+          error.response.headers as Record<string, unknown>,
+          error.response.data,
+        ),
       )
     }
 

@@ -177,9 +177,12 @@ pub struct ScheduleConfig {
     /// 执行时间戳（type=once 时）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub at: Option<i64>,
-    /// 每日时间 HH:mm（type=daily 时）
+    /// 每日时间 HH:mm（type=daily 时，墙钟；见 timezone）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub time: Option<String>,
+    /// 墙钟时区：`local`（默认，进程 TZ）| `UTC` | 固定偏移 `+08:00` / `-05:00`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timezone: Option<String>,
 }
 
 /// 重试配置结构

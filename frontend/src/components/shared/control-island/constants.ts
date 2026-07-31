@@ -126,10 +126,12 @@ export const ISLAND_SELECT = [
 export const API_URL = CONFIG_API_URL
 
 /**
- * 处理图标 URL - 确保正确的完整路径
+ * 处理图标 URL - 确保正确的完整路径；已代理 URL 不再二次 encode。
  */
 export function getIconUrl(iconUrl: string | null | undefined): string | null {
   if (!iconUrl) return null
+  if (iconUrl.startsWith(`${API_URL}/api/`)) return iconUrl
+  if (iconUrl.includes('/api/proxy/image')) return iconUrl
   if (iconUrl.startsWith('/api/')) {
     return `${API_URL}${iconUrl}`
   }

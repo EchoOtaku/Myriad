@@ -4,6 +4,7 @@ FROM rust:1.90-bookworm AS builder
 WORKDIR /work
 
 COPY proxy/Cargo.toml proxy/Cargo.toml
+COPY proxy/Cargo.lock proxy/Cargo.lock
 COPY proxy/src proxy/src
 
 ARG MYRIAD_VERSION=v0.0.0-dev
@@ -11,8 +12,16 @@ ENV MYRIAD_VERSION=${MYRIAD_VERSION}
 ARG MYRIAD_COMMIT_SHA=unknown
 ENV MYRIAD_COMMIT_SHA=${MYRIAD_COMMIT_SHA}
 
+# `release` = full LTO (local/default). `ci-release` = thin LTO for image CI.
+ARG CARGO_PROFILE=release
+
 WORKDIR /work/proxy
-RUN cargo build --release --bin myriad-proxy
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/work/proxy/target,sharing=locked \
+    cargo build --profile="${CARGO_PROFILE}" --bin myriad-proxy \
+    && cp "target/${CARGO_PROFILE}/myriad-proxy" /usr/local/bin/myriad-proxy \
+    && strip /usr/local/bin/myriad-proxy
 
 FROM debian:bookworm-slim AS runtime
 ARG MYRIAD_COMMIT_SHA=unknown
@@ -21,7 +30,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates tini \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /work/proxy/target/release/myriad-proxy /usr/local/bin/myriad-proxy
+COPY --from=builder /usr/local/bin/myriad-proxy /usr/local/bin/myriad-proxy
 
 ENV PROXY_LISTEN=0.0.0.0:80 \
     PROXY_STATE_FILE=/state/maintenance.json \

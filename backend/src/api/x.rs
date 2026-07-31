@@ -1,4 +1,5 @@
 // X (Twitter) API routes — 读数据 + Intent 分享（不走 OAuth / 不代发帖）
+use crate::error::HttpError;
 use axum::{extract::Query, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -7,10 +8,15 @@ use crate::services::fetcher::{
     build_x_intent_url, compose_x_share_text, PlatformFetcher, X_SHARE_DEFAULT_MAX_LEN,
 };
 
-#[derive(Debug, Deserialize)]
+/// Query for X debug/read endpoints.
+///
+/// `bearer_token` must **not** be supplied (logs/Referer leak). Handlers use
+/// server-stored `x_bearer_token`. Optional `username` overrides `x_username`.
+#[derive(Debug, Deserialize, Default)]
 pub struct XQuery {
-    pub username: String,
-    pub bearer_token: String,
+    pub username: Option<String>,
+    /// Forbidden in query — configure `x_bearer_token` server-side.
+    pub bearer_token: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -29,23 +35,79 @@ pub struct ApiResponse<T> {
     pub message: String,
 }
 
+/// Reject client-supplied X bearer tokens in the query string.
+pub(crate) fn reject_query_bearer_token(bearer_token: &Option<String>) -> Result<(), HttpError> {
+    if bearer_token.as_ref().is_some_and(|k| !k.trim().is_empty()) {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "success": false,
+                "error": "bearer_token_not_allowed",
+                "message": "Do not pass X bearer tokens in the query string; configure x_bearer_token server-side"
+            })),
+        )));
+    }
+    Ok(())
+}
+
+/// Server credentials: optional username query override + required server bearer.
+async fn server_x_credentials(
+    username_override: Option<String>,
+) -> Result<(String, String), HttpError> {
+    let cfg = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+    let bearer = cfg
+        .x_bearer_token
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| {
+            HttpError::from((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "success": false,
+                    "error": "x_bearer_not_configured",
+                    "message": "X bearer token not configured. Set x_bearer_token in platform settings."
+                })),
+            ))
+        })?;
+
+    let username = username_override
+        .map(|s| s.trim().trim_start_matches('@').to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            cfg.x_username
+                .as_ref()
+                .map(|s| s.trim().trim_start_matches('@').to_string())
+                .filter(|s| !s.is_empty())
+        })
+        .ok_or_else(|| {
+            HttpError::from((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "success": false,
+                    "error": "x_username_required",
+                    "message": "username required (query or server x_username config)"
+                })),
+            ))
+        })?;
+
+    Ok((username, bearer))
+}
+
 /// 获取 X 用户完整信息（资料 + 时间线）
+///
+/// Bearer 仅来自服务端配置；query `bearer_token` 一律 400。
 pub async fn get_x_user(
     Query(params): Query<XQuery>,
-) -> Result<Json<ApiResponse<XUserResponse>>, StatusCode> {
-    let username = params.username.trim().trim_start_matches('@');
-    let bearer_token = params.bearer_token.trim();
-
-    if username.is_empty() || bearer_token.is_empty() {
-        return Ok(Json(ApiResponse {
-            success: false,
-            data: None,
-            message: "username 和 bearer_token 均为必填".to_string(),
-        }));
-    }
+) -> Result<Json<ApiResponse<XUserResponse>>, HttpError> {
+    reject_query_bearer_token(&params.bearer_token)?;
+    let (username, bearer_token) = server_x_credentials(params.username).await?;
 
     let fetcher = PlatformFetcher::new().await;
-    match fetcher.fetch_x_profile_bundle(username, bearer_token).await {
+    match fetcher
+        .fetch_x_profile_bundle(&username, &bearer_token)
+        .await
+    {
         Ok(bundle) => {
             let tweets = bundle
                 .get("tweets")
@@ -62,7 +124,7 @@ pub async fn get_x_user(
                 .get("name")
                 .and_then(|v| v.as_str())
                 .or_else(|| user.get("username").and_then(|v| v.as_str()))
-                .unwrap_or(username)
+                .unwrap_or(username.as_str())
                 .to_string();
 
             Ok(Json(ApiResponse {
@@ -88,24 +150,16 @@ pub async fn get_x_user(
     }
 }
 
-/// 仅验证用户名 + Bearer Token 是否有效
+/// 仅验证服务端配置的用户名 + Bearer 是否有效
 pub async fn get_x_user_info(
     Query(params): Query<XQuery>,
-) -> Result<Json<ApiResponse<serde_json::Value>>, StatusCode> {
-    let username = params.username.trim().trim_start_matches('@');
-    let bearer_token = params.bearer_token.trim();
-
-    if username.is_empty() || bearer_token.is_empty() {
-        return Ok(Json(ApiResponse {
-            success: false,
-            data: None,
-            message: "username 和 bearer_token 均为必填".to_string(),
-        }));
-    }
+) -> Result<Json<ApiResponse<serde_json::Value>>, HttpError> {
+    reject_query_bearer_token(&params.bearer_token)?;
+    let (username, bearer_token) = server_x_credentials(params.username).await?;
 
     let fetcher = PlatformFetcher::new().await;
     match fetcher
-        .fetch_x_user_by_username(username, bearer_token)
+        .fetch_x_user_by_username(&username, &bearer_token)
         .await
     {
         Ok(user) => Ok(Json(ApiResponse {
@@ -201,4 +255,35 @@ pub async fn share_to_x(Json(req): Json<ShareToXRequest>) -> (StatusCode, Json<V
             "message": "已生成 X 分享链接，请在浏览器打开 intent_url 完成发布",
         })),
     )
+}
+
+#[cfg(test)]
+mod x_secret_gate_tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    #[tokio::test]
+    async fn reject_query_bearer_token_blocks_nonempty() {
+        let err = reject_query_bearer_token(&Some("AAAA-secret".into())).unwrap_err();
+        let resp = err.into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .expect("body");
+        let v: serde_json::Value = serde_json::from_slice(&body).expect("json");
+        assert_eq!(v["error"], "bearer_token_not_allowed");
+        assert!(
+            v.get("message")
+                .and_then(|m| m.as_str())
+                .is_some_and(|m| m.to_ascii_lowercase().contains("query")),
+            "message should mention query restriction: {v}"
+        );
+    }
+
+    #[test]
+    fn reject_query_bearer_token_allows_absent_or_blank() {
+        assert!(reject_query_bearer_token(&None).is_ok());
+        assert!(reject_query_bearer_token(&Some(String::new())).is_ok());
+        assert!(reject_query_bearer_token(&Some("   ".into())).is_ok());
+    }
 }

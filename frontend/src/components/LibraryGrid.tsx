@@ -6,7 +6,6 @@ import type { Song } from '../utils/musicPlayer'
 
 import { FaBook, FaGamepad, FaMusic, FaVideo } from '@lib/icons'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 import { useMusicPlayerControl } from '../contexts/MusicPlayerContext'
 import { useLibraryIntersectionObserver } from '../hooks/animation'
@@ -16,6 +15,7 @@ import {
   formatWatchStatusLabel,
   getWatchProgress,
 } from '../utils/libraryWatchProgress'
+import { getNeteaseAudioUrl } from '../utils/musicPlayer'
 import { getLibraryDataDeduped } from '../utils/requestDedup'
 import { showInfo } from '../utils/toastManager'
 import PlatformIcon from './PlatformIcon'
@@ -952,7 +952,48 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   )
 
   const handlePlayMusic = useCallback(
-    (item: LibraryItem) => {
+    async (item: LibraryItem) => {
+      // Bangumi subject_type=3 → music, but id is bangumi_subject_* — not Netease
+      if (
+        isBangumiPlatform(item.platform) ||
+        item.id.startsWith('bangumi_subject_')
+      ) {
+        const subjectId = item.id.startsWith('bangumi_subject_')
+          ? item.id.slice('bangumi_subject_'.length)
+          : String(item.metadata?.id || item.metadata?.subject_id || '')
+        const url =
+          (typeof item.metadata?.url === 'string' && item.metadata.url) ||
+          (subjectId ? `https://bgm.tv/subject/${subjectId}` : '')
+        if (url) {
+          window.open(url, '_blank', 'noopener,noreferrer')
+          showInfo(t.library.openExternal.replace('{name}', item.title || ''))
+        } else {
+          showInfo(t.library.playbackNotSupported)
+        }
+        return
+      }
+
+      const platformKey = item.platform.toLowerCase()
+      const isNetease =
+        platformKey.includes('netease') ||
+        platformKey.includes('网易') ||
+        item.id.startsWith('netease_') ||
+        item.id.startsWith('netease_song_')
+
+      if (!isNetease) {
+        const ext =
+          typeof item.metadata?.url === 'string' ? item.metadata.url : ''
+        if (ext) {
+          window.open(ext, '_blank', 'noopener,noreferrer')
+          showInfo(
+            t.library.openExternal.replace('{name}', item.title || ''),
+          )
+        } else {
+          showInfo(t.library.playbackNotSupported)
+        }
+        return
+      }
+
       const songId = (
         item.metadata.id || item.id.replace('netease_song_', '')
       ).toString()
@@ -998,13 +1039,16 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
           ? item.metadata.duration
           : 0
 
+      // Geo-aware: CN play-url CDN; overseas full audio proxy
+      const url = await getNeteaseAudioUrl(songId)
+
       const song: Song = {
         id: songId.toString(),
         name,
         artist,
         album,
         cover,
-        url: `${API_URL}/api/proxy/music/netease/audio/${songId}`,
+        url,
         duration,
         source: 'netease',
         isVip: false,
@@ -1013,6 +1057,14 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       playSongRef.current(song)
       window.dispatchEvent(new CustomEvent('open-control-panel'))
       showInfo(t.library.nowPlaying.replace('{name}', name))
+      void import('../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.MUSIC_LIBRARY_PLAY, {
+            target: songId,
+            throttleMs: 3000,
+          })
+        },
+      )
     },
     [t],
   )

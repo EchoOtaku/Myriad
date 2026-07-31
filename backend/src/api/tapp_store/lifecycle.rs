@@ -1,10 +1,14 @@
+//! Start / stop / recent-activity handlers.
+//!
+//! Branch selection and list projection live in
+//! [`crate::services::tapp_lifecycle`]. This module owns Claims, DB mutations,
+//! activity upserts, and grant revocation.
+
 use super::{
-    current_is_admin, find_admin_user_id, get_admin_user_id, types::manifest_locales,
-    validate_tapp_id, ApiResponse,
+    current_is_admin, find_admin_user_id, get_admin_user_id, validate_tapp_id, ApiResponse,
 };
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     Extension, Json,
 };
 use chrono::Utc;
@@ -12,10 +16,16 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
     EntityTrait, QueryFilter, QueryOrder, Set, Statement,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::middleware::auth::Claims;
 use crate::models::entities::{tapp_user_activities, tapps};
+use crate::services::tapp_lifecycle::{
+    clamp_recent_limit, recent_tapp_item, resolve_start_outcome, resolve_stop_outcome,
+    RecentTappItem, StartOutcome, StopOutcome,
+};
+use crate::error::HttpError;
+use myriad_error::AppError;
 
 /// 启动 Tapp
 ///
@@ -29,23 +39,47 @@ pub(super) async fn start_tapp(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Path(tapp_id): Path<String>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-    validate_tapp_id(&tapp_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<Json<ApiResponse<()>>, HttpError> {
+    let user_id: i32 = claims.sub.parse().map_err(|_| HttpError(AppError::unauthorized("Unauthorized")))?;
+    validate_tapp_id(&tapp_id).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
     let admin_id = find_admin_user_id(&db).await?;
     let now = Utc::now().fixed_offset();
-    let is_current_admin = current_is_admin(&claims).await;
+    let is_current_admin = current_is_admin(&claims, &db).await;
 
-    // Prefer the subject's private install when both private and public copies exist.
-    if admin_id != Some(user_id) {
-        let user_tapp = tapps::Entity::find()
+    let private_tapp = if admin_id != Some(user_id) {
+        tapps::Entity::find()
             .filter(tapps::Column::UserId.eq(user_id))
             .filter(tapps::Column::TappId.eq(&tapp_id))
             .one(&db)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|_| HttpError(AppError::internal("Database error")))?
+    } else {
+        None
+    };
 
-        if let Some(tapp) = user_tapp {
+    let public_tapp = if let Some(admin_id) = admin_id {
+        tapps::Entity::find()
+            .filter(tapps::Column::UserId.eq(admin_id))
+            .filter(tapps::Column::TappId.eq(&tapp_id))
+            .one(&db)
+            .await
+            .map_err(|_| HttpError(AppError::internal("Database error")))?
+    } else {
+        None
+    };
+
+    let public_is_running = public_tapp
+        .as_ref()
+        .is_some_and(|tapp| matches!(tapp.status, tapps::TappStatus::Running));
+
+    match resolve_start_outcome(
+        private_tapp.is_some(),
+        public_tapp.is_some(),
+        is_current_admin,
+        public_is_running,
+    ) {
+        StartOutcome::MutatePrivate => {
+            let tapp = private_tapp.expect("has_private");
             let mut active: tapps::ActiveModel = tapp.into();
             active.status = Set(tapps::TappStatus::Running);
             active.last_run_at = Set(Some(now));
@@ -53,46 +87,30 @@ pub(super) async fn start_tapp(
             active
                 .update(&db)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .map_err(|_| HttpError(AppError::internal("Database error")))?;
             record_user_activity(&db, user_id, &tapp_id, now).await?;
-            return Ok(Json(ApiResponse::success(())));
+            Ok(Json(ApiResponse::success(())))
         }
-    }
-
-    // Pure-public session: non-owners may start without mutating the public row.
-    if let Some(admin_id) = admin_id {
-        let admin_tapp = tapps::Entity::find()
-            .filter(tapps::Column::UserId.eq(admin_id))
-            .filter(tapps::Column::TappId.eq(&tapp_id))
-            .one(&db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        if let Some(tapp) = admin_tapp {
-            if is_current_admin {
-                let mut active: tapps::ActiveModel = tapp.into();
-                active.status = Set(tapps::TappStatus::Running);
-                active.last_run_at = Set(Some(now));
-                active.updated_at = Set(now);
-                active
-                    .update(&db)
-                    .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-                record_user_activity(&db, user_id, &tapp_id, now).await?;
-                return Ok(Json(ApiResponse::success(())));
-            }
-
-            // Non-admin viewing the site-public install: do not allow "start" to
-            // imply a session run of a stopped Tapp. Idempotent if already running.
-            if matches!(tapp.status, tapps::TappStatus::Running) {
-                record_user_activity(&db, user_id, &tapp_id, now).await?;
-                return Ok(Json(ApiResponse::success(())));
-            }
-            return Err(StatusCode::FORBIDDEN);
+        StartOutcome::MutatePublic => {
+            let tapp = public_tapp.expect("has_public");
+            let mut active: tapps::ActiveModel = tapp.into();
+            active.status = Set(tapps::TappStatus::Running);
+            active.last_run_at = Set(Some(now));
+            active.updated_at = Set(now);
+            active
+                .update(&db)
+                .await
+                .map_err(|_| HttpError(AppError::internal("Database error")))?;
+            record_user_activity(&db, user_id, &tapp_id, now).await?;
+            Ok(Json(ApiResponse::success(())))
         }
+        StartOutcome::RecordActivityOnly => {
+            record_user_activity(&db, user_id, &tapp_id, now).await?;
+            Ok(Json(ApiResponse::success(())))
+        }
+        StartOutcome::Forbidden => Err(HttpError(AppError::forbidden("Forbidden"))),
+        StartOutcome::NotFound => Err(HttpError(AppError::not_found("Not found"))),
     }
-
-    Err(StatusCode::NOT_FOUND)
 }
 
 /// 记录用户 Tapp 使用活动
@@ -103,7 +121,7 @@ async fn record_user_activity(
     user_id: i32,
     tapp_id: &str,
     now: chrono::DateTime<chrono::FixedOffset>,
-) -> Result<(), StatusCode> {
+) -> Result<(), HttpError> {
     // One atomic upsert avoids duplicate-key failures when the same Tapp is
     // started concurrently from multiple tabs or backend replicas.
     db.execute(Statement::from_sql_and_values(
@@ -117,7 +135,7 @@ async fn record_user_activity(
         vec![user_id.into(), tapp_id.into(), now.into()],
     ))
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|_| HttpError(AppError::internal("Database error")))?;
     Ok(())
 }
 
@@ -131,22 +149,41 @@ pub(super) async fn stop_tapp(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Path(tapp_id): Path<String>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-    validate_tapp_id(&tapp_id).map_err(|_| StatusCode::BAD_REQUEST)?;
+) -> Result<Json<ApiResponse<()>>, HttpError> {
+    let user_id: i32 = claims.sub.parse().map_err(|_| HttpError(AppError::unauthorized("Unauthorized")))?;
+    validate_tapp_id(&tapp_id).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
     let admin_id = find_admin_user_id(&db).await?;
-    let is_current_admin = current_is_admin(&claims).await;
+    let is_current_admin = current_is_admin(&claims, &db).await;
 
-    // Prefer the subject's private install when both private and public copies exist.
-    if admin_id != Some(user_id) {
-        let user_tapp = tapps::Entity::find()
+    let private_tapp = if admin_id != Some(user_id) {
+        tapps::Entity::find()
             .filter(tapps::Column::UserId.eq(user_id))
             .filter(tapps::Column::TappId.eq(&tapp_id))
             .one(&db)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(|_| HttpError(AppError::internal("Database error")))?
+    } else {
+        None
+    };
 
-        if let Some(tapp) = user_tapp {
+    let public_tapp = if let Some(admin_id) = admin_id {
+        tapps::Entity::find()
+            .filter(tapps::Column::UserId.eq(admin_id))
+            .filter(tapps::Column::TappId.eq(&tapp_id))
+            .one(&db)
+            .await
+            .map_err(|_| HttpError(AppError::internal("Database error")))?
+    } else {
+        None
+    };
+
+    match resolve_stop_outcome(
+        private_tapp.is_some(),
+        public_tapp.is_some(),
+        is_current_admin,
+    ) {
+        StopOutcome::MutatePrivate => {
+            let tapp = private_tapp.expect("has_private");
             let now = Utc::now().fixed_offset();
             let mut active: tapps::ActiveModel = tapp.into();
             active.status = Set(tapps::TappStatus::Installed);
@@ -154,54 +191,29 @@ pub(super) async fn stop_tapp(
             active
                 .update(&db)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            crate::api::tapp_runtime::revoke_tapp_runtime_grants(user_id, &tapp_id).await;
-            return Ok(Json(ApiResponse::success(())));
+                .map_err(|_| HttpError(AppError::internal("Database error")))?;
+            crate::api::tapp_runtime::revoke_tapp_runtime_grants(&db, user_id, &tapp_id).await;
+            Ok(Json(ApiResponse::success(())))
         }
-    }
-
-    // Pure-public session: non-owners stop without mutating the public row.
-    if let Some(admin_id) = admin_id {
-        let admin_tapp = tapps::Entity::find()
-            .filter(tapps::Column::UserId.eq(admin_id))
-            .filter(tapps::Column::TappId.eq(&tapp_id))
-            .one(&db)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        if let Some(tapp) = admin_tapp {
-            if is_current_admin {
-                let now = Utc::now().fixed_offset();
-                let mut active: tapps::ActiveModel = tapp.into();
-                active.status = Set(tapps::TappStatus::Installed);
-                active.updated_at = Set(now);
-                active
-                    .update(&db)
-                    .await
-                    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            }
-            crate::api::tapp_runtime::revoke_tapp_runtime_grants(user_id, &tapp_id).await;
-            return Ok(Json(ApiResponse::success(())));
+        StopOutcome::MutatePublic => {
+            let tapp = public_tapp.expect("has_public");
+            let now = Utc::now().fixed_offset();
+            let mut active: tapps::ActiveModel = tapp.into();
+            active.status = Set(tapps::TappStatus::Installed);
+            active.updated_at = Set(now);
+            active
+                .update(&db)
+                .await
+                .map_err(|_| HttpError(AppError::internal("Database error")))?;
+            crate::api::tapp_runtime::revoke_tapp_runtime_grants(&db, user_id, &tapp_id).await;
+            Ok(Json(ApiResponse::success(())))
         }
+        StopOutcome::RevokeOnly => {
+            crate::api::tapp_runtime::revoke_tapp_runtime_grants(&db, user_id, &tapp_id).await;
+            Ok(Json(ApiResponse::success(())))
+        }
+        StopOutcome::NotFound => Err(HttpError(AppError::not_found("Not found"))),
     }
-
-    Err(StatusCode::NOT_FOUND)
-}
-
-/// 最近使用的 Tapp 响应项
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(super) struct RecentTappItem {
-    pub id: String,
-    pub name: String,
-    pub icon: Option<String>,
-    pub icon_svg: Option<String>,
-    pub theme_color: Option<String>,
-    /// manifest.locales 透传：语言标签 → { name?, description? }
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub locales: Option<serde_json::Value>,
-    pub last_run_at: String,
-    pub run_count: i32,
 }
 
 /// 获取最近使用的 Tapp 查询参数
@@ -223,9 +235,9 @@ pub(super) async fn get_recent_tapps(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Query(query): Query<GetRecentTappsQuery>,
-) -> Result<Json<ApiResponse<Vec<RecentTappItem>>>, StatusCode> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| StatusCode::UNAUTHORIZED)?;
-    let limit = query.limit.clamp(1, 50) as u64; // 限制在 1-50 之间
+) -> Result<Json<ApiResponse<Vec<RecentTappItem>>>, HttpError> {
+    let user_id: i32 = claims.sub.parse().map_err(|_| HttpError(AppError::unauthorized("Unauthorized")))?;
+    let limit = clamp_recent_limit(query.limit);
 
     // 获取用户活动记录
     let activities = tapp_user_activities::Entity::find()
@@ -233,7 +245,7 @@ pub(super) async fn get_recent_tapps(
         .order_by_desc(tapp_user_activities::Column::LastRunAt)
         .all(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| HttpError(AppError::internal("Database error")))?;
 
     // Guests cannot start a Tapp and therefore have no activity rows. Return
     // an honest empty result without requiring a configured site owner.
@@ -248,7 +260,7 @@ pub(super) async fn get_recent_tapps(
         .filter(tapps::Column::UserId.eq(admin_id))
         .all(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| HttpError(AppError::internal("Database error")))?;
 
     // 获取用户自己的临时 Tapp
     let user_tapps = if user_id != admin_id {
@@ -256,12 +268,12 @@ pub(super) async fn get_recent_tapps(
             .filter(tapps::Column::UserId.eq(user_id))
             .all(&db)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            .map_err(|_| HttpError(AppError::internal("Database error")))?
     } else {
         Vec::new()
     };
 
-    // 合并 Tapp 列表，建立 tapp_id -> tapp 映射
+    // 合并 Tapp 列表，建立 tapp_id -> tapp 映射（private wins for same id）
     let mut tapp_map: std::collections::HashMap<String, &tapps::Model> =
         std::collections::HashMap::new();
     for tapp in &admin_tapps {
@@ -274,29 +286,20 @@ pub(super) async fn get_recent_tapps(
     // 构建响应
     let mut result: Vec<RecentTappItem> = Vec::new();
     for activity in activities {
-        if result.len() >= limit as usize {
+        if result.len() >= limit {
             break;
         }
 
-        // 查找对应的 Tapp 详情
         if let Some(tapp) = tapp_map.get(&activity.tapp_id) {
-            // 从 manifest 中提取 iconSvg
-            let icon_svg = tapp
-                .manifest
-                .get("iconSvg")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-
-            result.push(RecentTappItem {
-                id: activity.tapp_id.clone(),
-                name: tapp.name.clone(),
-                icon: tapp.icon.clone(),
-                icon_svg,
-                theme_color: tapp.theme_color.clone(),
-                locales: manifest_locales(&tapp.manifest),
-                last_run_at: activity.last_run_at.to_rfc3339(),
-                run_count: activity.run_count,
-            });
+            result.push(recent_tapp_item(
+                &activity.tapp_id,
+                &tapp.name,
+                tapp.icon.clone(),
+                tapp.theme_color.clone(),
+                &tapp.manifest,
+                activity.last_run_at.to_rfc3339(),
+                activity.run_count,
+            ));
         }
         // 如果 Tapp 已被卸载，跳过该记录
     }

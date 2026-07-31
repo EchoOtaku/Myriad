@@ -1025,7 +1025,9 @@ export const federationApi = {
   ): Promise<{
     success: boolean
     channel_id: string
+    /** Wire: HTTP snake_case; WS/bridge also expose publicKey */
     public_key: string
+    publicKey?: string
     algorithm: string
     established: boolean
   }> {
@@ -1043,7 +1045,9 @@ export const federationApi = {
   ): Promise<{
     success: boolean
     room_id: string
+    /** Wire: HTTP snake_case; WS/bridge also expose publicKey */
     public_key: string
+    publicKey?: string
     algorithm: string
     published_key_count: number
   }> {
@@ -1128,15 +1132,18 @@ export const federationApi = {
     )
   },
 
-  /** Recent delivery queue rows (dead first) */
+  /** Recent delivery queue rows (dead first). Optional status scopes the page. */
   listDelivery(
     limit?: number,
     runtimeGrant?: string,
+    status?: string,
   ): Promise<import('../types/federation').DeliveryListResponse> {
-    const qs =
-      limit != null ? `?limit=${encodeURIComponent(String(limit))}` : ''
+    const params = new URLSearchParams()
+    if (limit != null) params.set('limit', String(limit))
+    if (status) params.set('status', status)
+    const qs = params.toString()
     return apiService.get<import('../types/federation').DeliveryListResponse>(
-      `${PREFIX}/delivery${qs}`,
+      `${PREFIX}/delivery${qs ? `?${qs}` : ''}`,
       attributionOptions(runtimeGrant),
     )
   },

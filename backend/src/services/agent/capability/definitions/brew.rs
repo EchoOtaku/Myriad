@@ -247,6 +247,9 @@ pub fn register(registry: &mut CapabilityRegistry) {
         required_permissions: vec!["brew:write".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(5000),
+        requires_confirmation: true,
+        confirmation_message: Some("即将添加新的 RSS/Atom 订阅源".to_string()),
+        risk_level: RiskLevel::Medium,
         ..Default::default()
     });
 
@@ -420,6 +423,9 @@ pub fn register(registry: &mut CapabilityRegistry) {
         required_permissions: vec!["brew:admin".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(1000),
+        requires_confirmation: true,
+        confirmation_message: Some("即将控制 Brew 订阅调度器（启动/停止/刷新）".to_string()),
+        risk_level: RiskLevel::Medium,
         ..Default::default()
     });
 }

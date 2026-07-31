@@ -11,7 +11,11 @@
 
 param(
     [Parameter(Position = 0)]
-    [string]$Command = "up"
+    [string]$Command = "up",
+
+    # Remaining args (e.g. doctor --host). Avoids clash with automatic $Host.
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Rest = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,25 +34,28 @@ function Show-Usage {
 Usage: deploy.ps1 [command]
 
 Commands:
-  up        (default) Initialise .env / pgdata if needed, then `docker compose up -d`
+  up        (default) Initialise .env / pgdata if needed, then docker compose up -d
   down      Stop and remove containers (volumes preserved)
   restart   docker compose restart
   pull      Pull images pinned by .env tags
   logs      docker compose logs -f
   status    docker compose ps + image versions
   doctor    Read-only topology / security checks (docker-guard, sock mounts, cosign)
+            Optional: doctor --host  (non-fatal privileged / docker.sock scan)
   upgrade   Pull images pinned by .env tags + recreate
   help      Show this help
 
 Notes:
-  - Optional host audit (privileged / docker.sock binds):
+  - Optional host audit script tip:
       bash scripts/security/docker-audit-example.sh scan
+  - Or: .\deploy.ps1 doctor --host
 
 Examples:
   .\deploy.ps1                 # Bootstrap + start
   .\deploy.ps1 down            # Stop
   .\deploy.ps1 status          # See running versions
   .\deploy.ps1 doctor          # Topology security checks
+  .\deploy.ps1 doctor --host   # + non-fatal host privilege scan
 "@ | Write-Host
 }
 
@@ -137,11 +144,14 @@ function Ensure-Env {
 function Ensure-CurrentLayout {
     Write-Info "==> Ensuring current proxy + updater layout"
     New-Item -ItemType Directory -Force -Path pgdata, state, state/snapshots, state/cache, backups | Out-Null
-    Ensure-Key "MYRIAD_TAG" "v0.3.18"
-    Ensure-Key "PROXY_TAG" "v0.3.18"
-    Ensure-Key "UPDATER_TAG" "v0.3.18"
+    Ensure-Key "MYRIAD_TAG" "v0.3.20"
+    Ensure-Key "PROXY_TAG" "v0.3.20"
+    Ensure-Key "UPDATER_TAG" "v0.3.20"
+    Ensure-Key "BACKEND_IMAGE" "docker.io/somekawahitomi/myriad-backend"
+    Ensure-Key "FRONTEND_IMAGE" "docker.io/somekawahitomi/myriad-frontend"
     Ensure-Key "COMPOSE_PROJECT_NAME" "myriad"
     Ensure-Key "CHANNEL" "stable"
+    Ensure-Key "UPDATE_MODE" "release"
     Ensure-Key "MYRIAD_GITHUB_REPO" "Myriad-You/Myriad"
     Ensure-Key "CHECK_INTERVAL_SECS" "3600"
     Ensure-Key "PROXY_ALLOW_DIRECT_UPDATER" "false"
@@ -202,31 +212,8 @@ function Cmd-SoftDoctor {
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     try {
-        # Mirror critical doctor checks without exiting the process on FAIL.
-        $fail = 0
-        $skip = 0
-        if (Test-ContainerExists "myriad-docker-guard") {
-            if (-not (Test-ContainerMountsSock "myriad-docker-guard")) { $fail++ }
-        } else {
-            $fail++
-        }
-        if (Test-ContainerExists "myriad-updater") {
-            if (Test-ContainerMountsSock "myriad-updater") { $fail++ }
-        } else {
-            $skip++
-        }
-        if (-not (Test-ContainerExists "myriad-updater-gateway")) {
-            $fail++
-        } elseif (Test-ContainerMountsSock "myriad-updater-gateway") {
-            $fail++
-        }
-        if (Test-ContainerExists "myriad-backend") {
-            if (Test-ContainerEnvHas "myriad-backend" "UPDATE_TOKEN=") { $fail++ }
-        }
-        if ($fail -gt 0) {
+        if (-not (Cmd-Doctor -Soft)) {
             Write-Warn "Topology soft-check reported issues; run: .\deploy.ps1 doctor  for details"
-        } else {
-            Write-Ok "Topology soft-check passed (skip=$skip)."
         }
     } finally {
         $ErrorActionPreference = $prevEap
@@ -311,7 +298,13 @@ function Test-EnvTruthy([string]$Key) {
 }
 
 # Read-only topology checks. Does not migrate or restart services.
+# Returns $true on pass, $false on fail. Use -Soft to avoid exit (for post-up check).
+# Use -HostScan (or remaining arg --host) for non-fatal privileged/sock scan.
 function Cmd-Doctor {
+    param(
+        [switch]$Soft,
+        [switch]$HostScan
+    )
     $fail = 0
     $skip = 0
     $adminNet = Get-EnvValue "MYRIAD_ADMIN_NETWORK"
@@ -482,6 +475,19 @@ function Cmd-Doctor {
         } else {
             Write-Warn "WARN  backend MYRIAD_UPDATER_URL=$upUrl (expected updater-gateway)"
         }
+        # Soft reachability: gateway /healthz when exec works
+        $probeUrl = if ($upUrl) { "$($upUrl.TrimEnd('/'))/healthz" } else { "http://updater-gateway:1104/healthz" }
+        docker exec myriad-backend wget --spider -q "http://updater-gateway:1104/healthz" 2>$null | Out-Null
+        $probeOk = ($LASTEXITCODE -eq 0)
+        if (-not $probeOk) {
+            docker exec myriad-backend wget --spider -q $probeUrl 2>$null | Out-Null
+            $probeOk = ($LASTEXITCODE -eq 0)
+        }
+        if ($probeOk) {
+            Write-Ok "PASS  backend can reach updater-gateway /healthz (soft)"
+        } else {
+            Write-Warn "WARN  backend cannot probe updater-gateway /healthz (soft; stack may still be starting)"
+        }
     } else {
         Write-Warn "SKIP  myriad-backend not running"
         $skip++
@@ -539,13 +545,54 @@ function Cmd-Doctor {
     if (Test-Path "scripts/security/docker-audit-example.sh") {
         Write-Info "  path: scripts/security/docker-audit-example.sh"
         Write-Info "  run:  bash scripts/security/docker-audit-example.sh scan"
+        Write-Info "  or:   .\deploy.ps1 doctor --host   (non-fatal privileged / docker.sock scan)"
     } else {
         Write-Info "  scripts/security/docker-audit-example.sh not present in this tree"
     }
+
+    if ($HostScan) {
+        Write-Host ""
+        Write-Info "==> Optional host privilege scan (non-fatal; warn only)"
+        $foundPriv = 0
+        $foundSock = 0
+        $ids = docker ps -aq 2>$null
+        if ($LASTEXITCODE -eq 0 -and $ids) {
+            foreach ($id in @($ids -split "`n" | Where-Object { $_ })) {
+                $priv = (docker inspect -f '{{.HostConfig.Privileged}}' $id 2>$null)
+                $name = (docker inspect -f '{{.Name}}' $id 2>$null)
+                if ($name) { $name = $name.TrimStart('/') }
+                if ($priv -eq "true") {
+                    Write-Warn "WARN  privileged container: $(if ($name) { $name } else { $id })"
+                    $foundPriv++
+                }
+                if (Test-ContainerMountsSock $id) {
+                    switch ($name) {
+                        { $_ -in @("myriad-docker-guard", "myriad-docker-guard-dev") } {
+                            Write-Ok "PASS  docker.sock bind expected on $name"
+                        }
+                        default {
+                            Write-Warn "WARN  docker.sock bind on unexpected container: $(if ($name) { $name } else { $id })"
+                            $foundSock++
+                        }
+                    }
+                }
+            }
+            if ($foundPriv -eq 0) {
+                Write-Ok "PASS  no Privileged=true containers found (scan)"
+            }
+            if ($foundSock -eq 0) {
+                Write-Ok "PASS  no unexpected docker.sock binds (scan)"
+            }
+        } else {
+            Write-Warn "SKIP  docker CLI unavailable for host scan"
+            $skip++
+        }
+    }
+
     Write-Host ""
     if ($fail -gt 0) {
         Write-Err "Doctor: $fail check(s) failed (skip=$skip). Fix topology; this command does not auto-migrate."
-        exit 1
+        return $false
     }
     Write-Ok "Doctor: all checks passed (skip=$skip)."
     # Soft operator red lines (never fail doctor). Full list:
@@ -557,6 +604,7 @@ function Cmd-Doctor {
     Write-Info "  3. Keep PROXY_ALLOW_DIRECT_UPDATER=false except temporary rescue"
     Write-Info "  4. Keep COSIGN_VERIFY=strict unless intentional dual-key off"
     Write-Info "  5. Do not publish updater/gateway/guard ports on the host"
+    return $true
 }
 
 function Cmd-Upgrade {
@@ -570,6 +618,13 @@ function Cmd-Upgrade {
     Cmd-SoftDoctor
 }
 
+$hostScan = $false
+foreach ($a in @($Rest)) {
+    if ($a -eq "--host" -or $a -eq "-Host" -or $a -eq "-host") {
+        $hostScan = $true
+    }
+}
+
 switch ($Command.ToLower()) {
     "up"      { Cmd-Up }
     "down"    { Cmd-Down }
@@ -577,7 +632,9 @@ switch ($Command.ToLower()) {
     "pull"    { Cmd-Pull }
     "logs"    { Cmd-Logs }
     "status"  { Cmd-Status }
-    "doctor"  { Cmd-Doctor }
+    "doctor"  {
+        if (-not (Cmd-Doctor -HostScan:$hostScan)) { exit 1 }
+    }
     "upgrade" { Cmd-Upgrade }
     "help"    { Show-Usage }
     "-h"      { Show-Usage }

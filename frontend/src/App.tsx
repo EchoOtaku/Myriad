@@ -16,6 +16,7 @@ import {
   Route,
   Routes,
   useLocation,
+  useNavigate,
 } from 'react-router-dom'
 import CustomScrollbar from './components/CustomScrollbar'
 import RouteLoader from './components/RouteLoader'
@@ -167,6 +168,51 @@ function ModuleVisibilityGuard({
  * 无权限时直接不渲染面板。
  * 门禁：页面可见性 + Tapp ai:chat（与权限页 Agent 预设同一真相源）。
  */
+/**
+ * Global Agent open_window fallback when multi-window is not mounted.
+ * Typed handlers (TappWindowManager) take priority via registerActionHandler(type, …);
+ * this global handler covers open_window from Arael on any route.
+ */
+function GlobalAgentWindowHandler() {
+  const navigate = useNavigate()
+  useEffect(() => {
+    let cancelled = false
+    let unregister: (() => void) | undefined
+    void import('./services/agent').then(
+      ({ registerActionHandler, unregisterActionHandler }) => {
+        if (cancelled) return
+        const handler = async (action: {
+          type: string
+          tappId?: string
+          data?: Record<string, unknown>
+        }) => {
+          if (
+            action.type !== 'open_window' &&
+            action.type !== 'agent_interaction'
+          ) {
+            return false
+          }
+          const data = action.data
+          const id =
+            action.tappId ||
+            (typeof data?.tappId === 'string' ? data.tappId : undefined) ||
+            (typeof data?.tapp_id === 'string' ? data.tapp_id : undefined)
+          if (!id) return false
+          navigate(`/tapp/run/${encodeURIComponent(id)}`)
+          return true
+        }
+        registerActionHandler(handler as never)
+        unregister = () => unregisterActionHandler(handler as never)
+      },
+    )
+    return () => {
+      cancelled = true
+      unregister?.()
+    }
+  }, [navigate])
+  return null
+}
+
 function AgentAccessGate({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isAdmin, hasChecked } = useAuth()
   const { preferences, isLoading } = useModuleVisibilityPreferences()
@@ -586,6 +632,8 @@ export function App() {
                   <ReadingListProvider>
                     {/* Agent 全局动作处理器 - 处理路由导航和页面元素交互 */}
                     <AgentGlobalActions />
+                    {/* open_window 全局回退（多窗挂载时由 typed handler 覆盖） */}
+                    <GlobalAgentWindowHandler />
                     {/* Arael AI 助手浮动面板 - 长按触发 */}
                     <AgentAccessGate>
                       <Suspense fallback={null}>

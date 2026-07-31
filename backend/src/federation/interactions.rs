@@ -65,7 +65,7 @@ fn db_err(e: impl std::fmt::Display) -> (StatusCode, Json<serde_json::Value>) {
     tracing::error!("[interactions] DB error: {}", e);
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": format!("Database error: {}", e)})),
+        Json(json!({"error": "Database error"})),
     )
 }
 
@@ -221,7 +221,7 @@ pub async fn interaction_stats_for_objects(
             [object_ids.to_vec().into()],
         ))
         .await
-        .map_err(|e| format!("DB error: {}", e))?;
+        .map_err(|e| { tracing::error!("DB error: {}", e); "Database error".to_string() })?;
 
     for r in rows {
         let oid: String = r.try_get("", "object_id").unwrap_or_default();
@@ -280,7 +280,7 @@ pub async fn interaction_stats_for_objects(
             [object_ids.to_vec().into()],
         ))
         .await
-        .map_err(|e| format!("DB error: {}", e))?;
+        .map_err(|e| { tracing::error!("DB error: {}", e); "Database error".to_string() })?;
 
     for r in remote_likes {
         let oid: String = r.try_get("", "object_id").unwrap_or_default();
@@ -317,7 +317,7 @@ pub async fn interaction_stats_for_objects(
             [object_ids.to_vec().into()],
         ))
         .await
-        .map_err(|e| format!("DB error: {}", e))?;
+        .map_err(|e| { tracing::error!("DB error: {}", e); "Database error".to_string() })?;
 
     for r in remote_ann {
         let oid: String = r.try_get("", "object_id").unwrap_or_default();
@@ -349,7 +349,7 @@ pub async fn interaction_stats_for_objects(
             [object_ids.to_vec().into()],
         ))
         .await
-        .map_err(|e| format!("DB error: {}", e))?;
+        .map_err(|e| { tracing::error!("DB error: {}", e); "Database error".to_string() })?;
 
     for r in replies {
         let oid: String = r.try_get("", "parent_id").unwrap_or_default();

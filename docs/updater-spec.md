@@ -67,8 +67,8 @@ tag，而不是并行保留 A/B 两套在线分区。
 |---|---|---|
 | backend 镜像 | `<registry>/myriad-backend` | `v1.2.3`、`v1.2`、`stable`（**不用 latest**） |
 | frontend 镜像 | `<registry>/myriad-frontend` | 同上 |
-| proxy 镜像 | `<registry>/myriad-proxy` | 独立节奏，多数版本不动 |
-| updater 镜像 | `<registry>/myriad-updater` | 独立节奏 |
+| proxy 镜像 | `<registry>/myriad-proxy` | **独立节奏**：仅自身有改动时才编进该次 release；不对齐 app 版本号 |
+| updater 镜像 | `<registry>/myriad-updater` | **独立节奏**：同上；多数 app release 的 `images` 可省略二者 |
 | `release.json` | GitHub Release asset | 一个 release 一份 |
 | `SHA256SUMS` | GitHub Release asset | release 资产校验 |
 
@@ -122,33 +122,60 @@ updater 唯一权威数据源。完整 JSON Schema 见 [release/release-schema.j
 - `postgres.min_pg_version`：唯一有效的 PostgreSQL 兼容边界；不设置上限。
 - `postgres.max_pg_version`：仅为兼容旧 updater 保留，可省略；`unbounded` 明确表示无上限。
 - `signature`：M2 启用 cosign 签名，M1 留 null。
+- `images.backend` / `images.frontend`：**必填**。`images.proxy` / `images.updater`：**可选**；infra 无变动的 app release 应省略二者（不对齐版本、不 retag）。
 - 未知字段：updater 必须忽略不报错（向前兼容）。
 
 ## 4. GitHub Actions 流水线
 
 ### 4.1 release.yml（push tag `v*` 触发）
 
+原生多架构构建（**不用 QEMU**）：`linux/amd64` 跑在 `ubuntu-latest`，
+`linux/arm64` 跑在 `ubuntu-24.04-arm`；按 digest 推送后再合成 manifest list。
+
+相对上一 `v*` tag：`backend` / `frontend` **始终**编；`proxy` / `updater`
+仅当 `proxy/`、`updater/` 有变动（或 tagged commit 标题含 `-full` / dispatch
+`force_infra`）时编进本次 release，并写入 `release.json.images`。无变动则
+**完全省略**（不 retag、不对齐 app 版本）。
+
 ```
 jobs:
-  build-images:
-    strategy.matrix.component: [backend, frontend, proxy, updater]
+  resolve:                  # 算 version + build_components（含 infra 变动检测）
+  frontend-assets:          # 静态产物只编一次（amd64），两平台 runtime 复用
+  build:
+    strategy.matrix:
+      component: ${{ build_components }}   # 至少 backend,frontend
+      platform:  [linux/amd64, linux/arm64]
+    runs-on: native runner for platform
     steps:
-      - build & push <registry>/myriad-<comp>:<tag>
-      - 输出 digest 到 artifact
-  publish-release:
-    needs: build-images
+      - build & push-by-digest <registry>/myriad-<comp>
+      - 输出 per-arch digest artifact
+  merge:
+    strategy.matrix.component: ${{ build_components }}
     steps:
-      - 拼 release.json (读 artifact 的 digest)
-      - 生成 SHA256SUMS
+      - docker buildx imagetools create → :<version> manifest list
+      - 输出 manifest-list digest（写入 release.json 的正是这个）
+  publish:
+    needs: merge
+    steps:
+      - 拼 release.json（只含本次 ship 的 images）
+      - cosign sign-blob + 生成 SHA256SUMS
       - gh release create
 ```
 
+镜像 CI 使用 `CARGO_PROFILE=ci-release`（thin LTO）；本地 `cargo build --release`
+与默认 Docker 构建仍为全量 LTO。消费侧只认 tag + manifest-list digest，无需区分。
+
+自更新 / proxy 更新：读 channel 内最近若干份 `release.json`，取**仍列出**
+`images.updater` / `images.proxy` 的最新一份；都没有则回退 Docker Hub tip。
+
 ### 4.2 docker-publish.yml（push 条件打包 + workflow_dispatch）
 
-- push 到 `main` / `preview` / `beta`：仅当**提交标题（第一行）包含子串 `-p`** 时才打包；否则跳过 build
-- 也可在 Actions 中 `workflow_dispatch` 手动触发（可选 `tag`、`components` 参数）
+- push 到 `main` / `preview` / `beta`：提交标题含 `-p` 或 `-full` 才打包；否则跳过
+  - `-p`：编 backend/frontend，infra 仅路径有变动时加入
+  - `-full`：同上，并**强制**编 proxy/updater（即使无变动）
+- 也可在 Actions 中 `workflow_dispatch` 手动触发（可选 `tag`、`components`、`force_infra`）
 - 仅推开发镜像，tag 使用 `dev-<sha>`、分支名，或输入的 `tag` 覆盖
-- 默认组件：`backend` / `frontend` / `proxy`（**不含 updater**；updater 仅 release.yml 打 tag 时打包，或手动传入 `components` 包含 updater）
+- 构建方式与 §4.1 相同：原生双架构 + frontend assets 单编 + imagetools 合成
 - **禁止再推 latest 到生产仓库**
 
 ### 4.3 PR check
@@ -379,9 +406,10 @@ updater 会先从 `*:myriad-rollback` 重新创建原版本 tag，再交给 Comp
 
 ### 8.2 镜像拉取
 
-- 通过 docker 调用 `pull` (bollard)
-- pull 前 `manifest inspect` 校验 digest 与 release.json 一致
+- 通过 docker 调用 `pull` (bollard)；**不钉死 platform**，由引擎按宿主机选 amd64/arm64
+- **pull 后**读取 `RepoDigests`，与 `release.json` 中的 manifest-list digest 对账（相等或 `ends_with`）
 - 支持 `REGISTRY_MIRROR` env：retag 后 pull，digest 校验保持
+- Docker Hub tip / 列表回退路径不做 digest 对账（只按 tag pull）
 - 失败分类：401/403 token 错误；404 版本失效；5xx/网络 重试
 
 ### 8.3 代理与时钟

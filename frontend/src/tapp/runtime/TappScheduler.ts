@@ -38,8 +38,16 @@ export interface ScheduleConfig {
   interval?: number
   /** 执行时间戳（type=once 时） */
   at?: number
-  /** 每日时间 HH:mm（type=daily 时） */
+  /**
+   * 每日时间 HH:mm（type=daily 时）。
+   * 按 timezone 墙钟解释；默认 process local（容器 `TZ` / 主机时区），不是 UTC。
+   */
   time?: string
+  /**
+   * 墙钟时区：`local`（默认）| `UTC` | 固定偏移如 `+08:00`。
+   * 未设 IANA 名（无 chrono-tz）；部署用 `TZ=Asia/Shanghai` 即可让 local=站点墙钟。
+   */
+  timezone?: string
 }
 
 /** 重试配置 */
@@ -50,10 +58,11 @@ export interface RetryConfig {
   retryDelay?: number
 }
 
-/** 后端操作定义 */
+/** 后端操作定义（与 BE BackendAction / 文档对齐；SDK 用 type，落库前 normalize 为 action） */
 export type BackendAction =
   | { type: 'platform.sync'; platform: string }
   | { type: 'storage.set'; key: string; value: unknown }
+  | { type: 'storage.get'; key: string }
   | { type: 'storage.delete'; key: string }
   | { type: 'ai.generate'; prompt: string }
   | {
@@ -68,6 +77,12 @@ export type BackendAction =
       title?: string
       message: string
       notificationType?: string
+    }
+  | {
+      type: 'transform'
+      input: string
+      extract?: string
+      template?: string
     }
 
 /** 任务注册选项 */
@@ -127,6 +142,13 @@ export interface TaskExecutionEvent {
     taskId: string
     tappId: string
     userId: number
+    scope?: string
+    /** RFC3339 (aligned with outer scheduledAt) */
+    scheduledAt?: string
+    /** RFC3339 */
+    executedAt?: string
+    isCompensation?: boolean
+    payload?: unknown
   }
   payload?: unknown
   scheduledAt: string

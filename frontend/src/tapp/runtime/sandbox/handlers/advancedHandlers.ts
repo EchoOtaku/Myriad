@@ -11,8 +11,17 @@ import type { AnimationConfigRef } from '../types'
 import { isExlight } from '../../../../hooks/useAnimationLevel'
 import { getDynamicContentProvider } from '../../../../services/DynamicContentProvider'
 import { analyzeBeatGrid } from '../../../../utils/beatAnalyzer'
-import { getLyricsWithVerbatim } from '../../../../utils/musicPlayer'
+import {
+  getLyricsWithVerbatim,
+  getNeteaseAudioUrl,
+  getQQAudioUrl,
+} from '../../../../utils/musicPlayer'
 import * as TappApiService from '../../../services/TappApiService'
+import {
+  hostBindShortcut,
+  hostUnbindAllForTapp,
+  hostUnbindShortcut,
+} from '../../HostShortcutManager'
 import { getTappRuntime } from '../../TappRuntime'
 
 /**
@@ -511,17 +520,22 @@ export function registerMediaHandlers(
     if (songIn && (songIn.id || songIn.trackId)) {
       const id = String(songIn.id || songIn.trackId || '')
       const source = String(songIn.source || 'netease')
+      let url = String(songIn.url || '')
+      if (!url) {
+        if (source === 'netease') {
+          // Geo-aware: CN → play-url CDN; overseas → full audio proxy
+          url = await getNeteaseAudioUrl(id)
+        } else if (source === 'qq') {
+          url = getQQAudioUrl(id)
+        }
+      }
       const song = {
         id,
         name: String(songIn.name || songIn.title || `Track #${id}`),
         artist: String(songIn.artist || ''),
         album: String(songIn.album || ''),
         cover: String(songIn.cover || songIn.image || ''),
-        url:
-          String(songIn.url || '') ||
-          (source === 'netease'
-            ? `/api/proxy/music/netease/audio/${encodeURIComponent(id)}`
-            : ''),
+        url,
         duration:
           typeof songIn.duration === 'number' && isFinite(songIn.duration)
             ? songIn.duration
@@ -1054,7 +1068,7 @@ export function registerDynamicContentHandlers(
 export function registerAdvancedHandlers(
   bridge: TappBridge,
   tappInstance: TappInstance,
-): void {
+): () => void {
   // Component handlers
   bridge.registerHandler('component.registerTheme', async (message) => {
     const [config] = (message.payload as { args: unknown[] }).args || []
@@ -1127,15 +1141,49 @@ export function registerAdvancedHandlers(
     }
   })
 
-  // Shortcut handlers
+  // Shortcut handlers — persist via API then bind host keydown so chords fire
+  void (async () => {
+    try {
+      const listed = await TappApiService.listShortcuts(
+        tappInstance.id,
+        await bridge.getRuntimeGrant(),
+      )
+      const shortcuts = listed?.shortcuts
+      if (!Array.isArray(shortcuts)) return
+      for (const sc of shortcuts) {
+        if (sc && typeof sc.id === 'string' && typeof sc.keys === 'string') {
+          hostBindShortcut({
+            tappId: tappInstance.id,
+            shortcutId: sc.id,
+            keys: sc.keys,
+            action: String(sc.action || ''),
+            scope: sc.scope,
+            bridge,
+          })
+        }
+      }
+    } catch {
+      /* list may fail without permission — ignore */
+    }
+  })()
+
   bridge.registerHandler('shortcut.register', async (message) => {
     const [config] = (message.payload as { args: unknown[] }).args || []
     try {
+      const cfg = config as TappApiService.ShortcutConfig
       const result = await TappApiService.registerShortcut(
         tappInstance.id,
-        config as TappApiService.ShortcutConfig,
+        cfg,
         await bridge.getRuntimeGrant(),
       )
+      hostBindShortcut({
+        tappId: tappInstance.id,
+        shortcutId: cfg.id,
+        keys: cfg.keys,
+        action: cfg.action || '',
+        scope: cfg.scope,
+        bridge,
+      })
       return { success: true, data: result }
     } catch (error) {
       return {
@@ -1153,6 +1201,7 @@ export function registerAdvancedHandlers(
         id as string,
         await bridge.getRuntimeGrant(),
       )
+      hostUnbindShortcut(tappInstance.id, id as string)
       return { success: true, data: result }
     } catch (error) {
       return {
@@ -1176,6 +1225,10 @@ export function registerAdvancedHandlers(
       }
     }
   })
+
+  return () => {
+    hostUnbindAllForTapp(tappInstance.id)
+  }
 }
 
 /**

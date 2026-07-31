@@ -30,16 +30,22 @@ use crate::services::data_paths::paths;
 
 /// 验证是否是管理员（用于生成/编辑操作）
 #[allow(clippy::result_large_err)]
-async fn verify_admin(headers: &axum::http::HeaderMap) -> Result<(), axum::response::Response> {
-    verify_current_admin_from_headers(headers)
+async fn verify_admin(
+    headers: &axum::http::HeaderMap,
+    db: &sea_orm::DatabaseConnection,
+) -> Result<(), axum::response::Response> {
+    verify_current_admin_from_headers(headers, db)
         .await
         .map(|_| ())
         .map_err(|(status, body)| (status, body).into_response())
 }
 
 /// 创建 Brewlia API 路由
-pub fn create_brewlia_routes() -> Router<DatabaseConnection> {
-    Router::new()
+pub fn create_brewlia_routes(
+    _app_state: crate::state::AppState,
+) -> Router<crate::state::AppState> {
+    
+    Router::<crate::state::AppState>::new()
         // 获取文章注释（优先从数据库，不存在则生成）
         .route("/items/{item_id}/annotations", get(get_annotations))
         // 重新生成注释
@@ -166,7 +172,7 @@ async fn get_annotations(
     }
 
     // 数据库没有缓存，检查是否是管理员（只有管理员可以生成新注释）
-    if verify_admin(&headers).await.is_err() {
+    if verify_admin(&headers, &db).await.is_err() {
         // 非管理员返回空数组（不生成新内容）
         return (
             StatusCode::OK,
@@ -192,9 +198,10 @@ async fn get_annotations(
                 .into_response();
         }
         Err(e) => {
+            tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": format!("Database error: {}", e) })),
+                Json(json!({ "success": false, "error": "Database error" })),
             )
                 .into_response();
         }
@@ -222,7 +229,7 @@ async fn regenerate_annotations(
     Path(item_id): Path<i32>,
 ) -> impl IntoResponse {
     // 验证管理员身份
-    if let Err(e) = verify_admin(&headers).await {
+    if let Err(e) = verify_admin(&headers, &db).await {
         return e.into_response();
     }
 
@@ -244,9 +251,10 @@ async fn regenerate_annotations(
                 .into_response();
         }
         Err(e) => {
+            tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": format!("Database error: {}", e) })),
+                Json(json!({ "success": false, "error": "Database error" })),
             )
                 .into_response();
         }
@@ -793,7 +801,7 @@ async fn get_podcast_script(
     }
 
     // 没有缓存时，验证管理员身份才能生成
-    if verify_admin(&headers).await.is_err() {
+    if verify_admin(&headers, &db).await.is_err() {
         // 非管理员返回空结果而不是错误
         return (
             StatusCode::OK,
@@ -818,9 +826,10 @@ async fn get_podcast_script(
                 .into_response();
         }
         Err(e) => {
+            tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": format!("Database error: {}", e) })),
+                Json(json!({ "success": false, "error": "Database error" })),
             )
                 .into_response();
         }
@@ -939,7 +948,7 @@ async fn regenerate_podcast_script(
     Path(item_id): Path<i32>,
 ) -> axum::response::Response {
     // 验证管理员身份
-    if let Err(e) = verify_admin(&headers).await {
+    if let Err(e) = verify_admin(&headers, &db).await {
         return e.into_response();
     }
 
@@ -955,9 +964,10 @@ async fn regenerate_podcast_script(
                 .into_response();
         }
         Err(e) => {
+            tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": format!("Database error: {}", e) })),
+                Json(json!({ "success": false, "error": "Database error" })),
             )
                 .into_response();
         }
@@ -1203,7 +1213,7 @@ async fn generate_style_tags(
     Path(source_id): Path<i32>,
 ) -> impl IntoResponse {
     // 验证管理员身份
-    if let Err(e) = verify_admin(&headers).await {
+    if let Err(e) = verify_admin(&headers, &db).await {
         return e.into_response();
     }
 
@@ -1218,9 +1228,10 @@ async fn generate_style_tags(
                 .into_response();
         }
         Err(e) => {
+            tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": format!("Database error: {}", e) })),
+                Json(json!({ "success": false, "error": "Database error" })),
             )
                 .into_response();
         }
@@ -1237,9 +1248,10 @@ async fn generate_style_tags(
     {
         Ok(items) => items,
         Err(e) => {
+            tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": format!("Database error: {}", e) })),
+                Json(json!({ "success": false, "error": "Database error" })),
             )
                 .into_response();
         }

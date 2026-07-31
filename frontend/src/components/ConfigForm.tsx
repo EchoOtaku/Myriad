@@ -104,6 +104,7 @@ const ModernConfigForm: React.FC = () => {
     config,
     t,
     locale,
+    isAdmin,
   )
 
   const handleSectionChange = useCallback(
@@ -234,21 +235,18 @@ const ModernConfigForm: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Discord 一键授权回调
+  // Discord 一键授权回调（section 深链由 useConfigNavigation 统一处理）
   useEffect(() => {
     if (typeof window === 'undefined') return
     const params = new URLSearchParams(window.location.search)
     const oauth = params.get('discord_oauth')
     if (!oauth) return
 
-    if (params.get('section') === 'platforms') {
-      setActiveSection('platforms')
-    }
-
     if (oauth === 'ok') {
       showMessage(t.config.discordOAuthSuccess, 'success')
       setPlatformFocus('Discord')
       setMobilePane('section')
+      setActiveSection('platforms')
       void loadConfig()
     } else {
       const reason = params.get('reason') || 'unknown'

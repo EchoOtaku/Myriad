@@ -38,7 +38,8 @@ import {
   motionShim as motion,
 } from '@lib/motionShim'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
 import { agentService, executeFrontendAction } from '../../services/agent'
@@ -117,6 +118,8 @@ interface DebugLogEntry {
 export const AraelPanel: React.FC = () => {
   const location = useLocation()
   const { t, format, locale } = useI18n()
+  const { isAuthenticated, isAdmin } = useAuth()
+  const navigate = useNavigate()
 
   // 页面内容上下文
   const pageContentContext = usePageContentOptional()
@@ -180,7 +183,17 @@ export const AraelPanel: React.FC = () => {
   // 长按检测（提取到 useLongPress hook）
   const { indicator: longPressIndicator } = useLongPress(
     LONG_PRESS_DURATION,
-    useCallback(() => setVisibility('visible'), []),
+    useCallback(() => {
+      setVisibility('visible')
+      void import('../../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.AGENT_OPEN, {
+            target: 'fab',
+            throttleMs: 5000,
+          })
+        },
+      )
+    }, []),
     visibility === 'hidden',
   )
 
@@ -586,6 +599,14 @@ export const AraelPanel: React.FC = () => {
       const sid = detail?.sessionId
       if (typeof sid !== 'string' || !sid) return
       setVisibility('visible')
+      void import('../../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.AGENT_OPEN, {
+            target: 'session',
+            throttleMs: 5000,
+          })
+        },
+      )
       void loadSession(
         {
           id: sid,
@@ -608,6 +629,15 @@ export const AraelPanel: React.FC = () => {
     const handleOpenManage = () => {
       setVisibility('visible')
       setPanelView('manage')
+      void import('../../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.AGENT_OPEN, {
+            target: 'manage',
+            throttleMs: 5000,
+          })
+        },
+      )
+      // Tab (skills/heartbeat/memory) is applied by AraelManageDrawer
     }
     window.addEventListener('arael-open-manage', handleOpenManage)
     return () =>
@@ -1038,6 +1068,37 @@ export const AraelPanel: React.FC = () => {
       const messageText = text || input.trim()
       if (!messageText) return
 
+      void import('../../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.AGENT_SEND, {
+            target: location.pathname.split('/').filter(Boolean)[0] || 'home',
+            throttleMs: 2000,
+          })
+        },
+      )
+
+      // 游客可开面板（guest visible / guest_perm_ai_chat），但 BE Agent 全线要 JWT。
+      // 发消息前引导登录，避免必 401。
+      if (!isAuthenticated) {
+        const loginHint = t.arael.loginRequiredHint
+        setLastError(loginHint)
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg_guest_hint_${Date.now()}`,
+            sessionId: sessionId || '',
+            role: 'assistant',
+            content: loginHint,
+            createdAt: new Date(),
+          },
+        ])
+        setInput('')
+        window.setTimeout(() => {
+          navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)
+        }, 600)
+        return
+      }
+
       // 如果有待回答的问题，将输入路由到 answerQuestion（即使 isLoading 也允许）
       if (pendingAnswerMsg && answerQuestionRef.current) {
         setInput('')
@@ -1209,6 +1270,10 @@ export const AraelPanel: React.FC = () => {
       updateMessage,
       pushDebugLog,
       pendingAnswerMsg,
+      isAuthenticated,
+      navigate,
+      t,
+      format,
     ],
   )
 
@@ -1246,6 +1311,9 @@ export const AraelPanel: React.FC = () => {
             { value: 'cancel', label: t.common.cancel },
           ],
           required: true,
+          riskLevel: confirmation.riskLevel,
+          expiresInSeconds: confirmation.expiresInSeconds,
+          receivedAtMs: Date.now(),
         }
       }
       const taskId = taskData?.taskId as string | undefined
@@ -1546,6 +1614,27 @@ export const AraelPanel: React.FC = () => {
       const msg = messages.find((m) => m.id === messageId)
       if (!msg?.taskExecution?.taskId || !msg.pendingQuestion) return
 
+      // 敏感确认过期后禁止 Confirm（Cancel 仍可关卡）
+      const pq = msg.pendingQuestion
+      if (
+        answer === 'confirm' &&
+        pq.confirmationId &&
+        typeof pq.expiresInSeconds === 'number' &&
+        pq.expiresInSeconds > 0 &&
+        typeof pq.receivedAtMs === 'number'
+      ) {
+        const remaining =
+          pq.expiresInSeconds -
+          Math.floor((Date.now() - pq.receivedAtMs) / 1000)
+        if (remaining <= 0) {
+          updateMessage(messageId, {
+            content: t.arael.confirmExpiredHint,
+          })
+          updateMessageExecution(messageId, { status: 'error' })
+          return
+        }
+      }
+
       // 保留 pendingQuestion 以显示选中状态，同时用 selectedAnswer 锁定
       updateMessage(messageId, {
         selectedAnswer: answer,
@@ -1587,7 +1676,16 @@ export const AraelPanel: React.FC = () => {
         }
       }
     },
-    [messages, updateMessage, updateMessageExecution, createProgressHandler],
+    [
+      messages,
+      updateMessage,
+      updateMessageExecution,
+      createProgressHandler,
+      t.arael.confirmExpiredHint,
+      t.arael.unknownError,
+      t.arael.answerFailed,
+      format,
+    ],
   )
 
   useEffect(() => {
@@ -1711,6 +1809,7 @@ export const AraelPanel: React.FC = () => {
                         setPanelView(panelView === 'manage' ? 'chat' : 'manage')
                       }
                       title={t.arael.manage}
+                      // Guests can open manage for read-only; write UI gated inside drawer
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -1745,7 +1844,9 @@ export const AraelPanel: React.FC = () => {
                   />
                 )}
 
-                {panelView === 'manage' && <AraelManageDrawer />}
+                {panelView === 'manage' && (
+                  <AraelManageDrawer isAdmin={isAdmin} />
+                )}
 
                 {panelView === 'chat' && (
                   <div className="arael-msg-list" ref={messagesListRef}>

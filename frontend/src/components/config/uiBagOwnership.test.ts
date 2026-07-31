@@ -3,6 +3,7 @@ import {
   ALL_OWNED_UI_BAG_KEYS,
   bagFieldValue,
   configChangesNeedHardReload,
+  configChangesNeedWallpaperReload,
   RUNTIME_RELOAD_UI_BAG_KEYS,
 } from './uiBagOwnership'
 
@@ -37,6 +38,20 @@ describe('uiBagOwnership', () => {
       { key: 'wallpaper_url', value: 'https://b' },
     ])
     expect(configChangesNeedHardReload(next, prev, deepEqual)).toBe(false)
+  })
+
+  it('soft-reloads wallpaper / evocative without hard reload', () => {
+    const prev = cfg([
+      { key: 'evocative_parallax', value: 'true' },
+      { key: 'wallpaper_blur', value: '3' },
+    ])
+    const next = cfg([
+      { key: 'evocative_parallax', value: 'false' },
+      { key: 'wallpaper_blur', value: '3' },
+    ])
+    expect(configChangesNeedHardReload(next, prev, deepEqual)).toBe(false)
+    expect(configChangesNeedWallpaperReload(next, prev)).toBe(true)
+    expect(configChangesNeedWallpaperReload(prev, prev)).toBe(false)
   })
 
   it('hard-reloads when proxy / platforms / ai change', () => {

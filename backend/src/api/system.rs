@@ -1,4 +1,5 @@
-use axum::{http::StatusCode, Json};
+use crate::error::HttpError;
+use axum::Json;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -18,7 +19,7 @@ pub fn reset_config_reload_flag() {
 /// POST /api/system/reload-config
 /// Reload runtime configuration without restarting the server.
 /// This does not rebuild the startup route table.
-pub async fn reload_config() -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+pub async fn reload_config() -> Result<Json<Value>, HttpError> {
     tracing::info!("🔄 Configuration reload requested via API");
 
     // Set config reload flag

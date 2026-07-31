@@ -709,7 +709,14 @@ export default function Brew() {
         }
 
         setTotal(data.total)
-        setHasMore(data.items.length >= 20)
+        // Prefer server total — `items.length >= per_page` is wrong when total
+        // is an exact multiple of the page size (would keep requesting empty pages).
+        const perPage = data.per_page > 0 ? data.per_page : 20
+        if (typeof data.total === 'number' && data.total >= 0) {
+          setHasMore(currentPage * perPage < data.total)
+        } else {
+          setHasMore(data.items.length >= perPage)
+        }
       } catch (err) {
         // 忽略过期请求的错误
         if (requestId !== loadRequestIdRef.current) {
@@ -737,6 +744,53 @@ export default function Brew() {
     init()
   }, [loadSources, loadStats])
 
+  // 登录用户：订阅 Brew WS（新文章/源错误等），避免 createBrewWebSocket 零调用
+  const brewWsRefreshRef = useRef<() => void>(() => {})
+  brewWsRefreshRef.current = () => {
+    void loadSources()
+    void loadStats()
+  }
+  useEffect(() => {
+    if (!isAuthenticated) return
+    let closed = false
+    let ws: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+    const connect = () => {
+      if (closed) return
+      try {
+        ws = brewApi.createBrewWebSocket(
+          (notification) => {
+            console.debug('[Brew] WS notification', notification)
+            brewWsRefreshRef.current()
+          },
+          () => {
+            if (closed) return
+            reconnectTimer = setTimeout(connect, 5000)
+          },
+        )
+        ws.onclose = () => {
+          if (closed) return
+          reconnectTimer = setTimeout(connect, 5000)
+        }
+      } catch (err) {
+        console.warn('[Brew] WS connect failed', err)
+        reconnectTimer = setTimeout(connect, 8000)
+      }
+    }
+    connect()
+
+    return () => {
+      closed = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      try {
+        ws?.close()
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [isAuthenticated])
+
   // 当进入文章视图时加载文章
   useEffect(() => {
     if (viewMode === 'items' && selectedSource) {
@@ -762,6 +816,14 @@ export default function Brew() {
     // 设置新源和视图模式
     setSelectedSource(source)
     setViewMode('items')
+    void import('../utils/analyticsEvents').then(
+      ({ trackProductEvent, AnalyticsEvents }) => {
+        trackProductEvent(AnalyticsEvents.BREW_OPEN_SOURCE, {
+          target: source.id,
+          throttleMs: 2000,
+        })
+      },
+    )
   }, [])
 
   // 处理订阅源更新（如卡片尺寸变更）
@@ -789,6 +851,14 @@ export default function Brew() {
 
   // 处理文章选择
   const handleItemSelect = async (item: BrewItem) => {
+    void import('../utils/analyticsEvents').then(
+      ({ trackProductEvent, AnalyticsEvents }) => {
+        trackProductEvent(AnalyticsEvents.BREW_OPEN_ITEM, {
+          target: item.source_id || item.id,
+          throttleMs: 1500,
+        })
+      },
+    )
     // 如果未读，自动标记为已读
     if (!item.is_read) {
       // 先更新为已读状态再显示
@@ -901,8 +971,24 @@ export default function Brew() {
     try {
       if (item.is_starred) {
         await brewApi.unstarItem(item.id)
+        void import('../utils/analyticsEvents').then(
+          ({ trackProductEvent, AnalyticsEvents }) => {
+            trackProductEvent(AnalyticsEvents.BREW_UNSTAR, {
+              target: item.source_id || item.id,
+              throttleMs: 1000,
+            })
+          },
+        )
       } else {
         await brewApi.starItem(item.id)
+        void import('../utils/analyticsEvents').then(
+          ({ trackProductEvent, AnalyticsEvents }) => {
+            trackProductEvent(AnalyticsEvents.BREW_STAR, {
+              target: item.source_id || item.id,
+              throttleMs: 1000,
+            })
+          },
+        )
       }
 
       setItems((prev) =>

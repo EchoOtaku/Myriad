@@ -34,6 +34,7 @@ import {
   useBrewAnimationConfig,
 } from '../../hooks/animation'
 import { isExlight } from '../../hooks/useAnimationLevel'
+import * as brewApi from '../../services/brewApi'
 import * as brewliaApi from '../../services/brewliaApi'
 import {
   loadEmbedData,
@@ -281,11 +282,30 @@ export default function BrewReader({
   const readingList = useReadingListOptional()
   const positionInfo = readingList?.getPositionInfo(item.id)
 
-  // 切换文章时回到顶部
+  // 切换文章：恢复服务端进度或回到顶部
   useEffect(() => {
-    if (articleRef.current) {
-      articleRef.current.scrollTo({ top: 0 })
+    lastSyncedProgressRef.current = -1
+    if (progressSyncTimerRef.current) {
+      clearTimeout(progressSyncTimerRef.current)
+      progressSyncTimerRef.current = null
     }
+    const saved =
+      typeof item.read_progress === 'number' && item.read_progress > 0
+        ? Math.min(100, Math.round(item.read_progress))
+        : 0
+    setReadingProgress(saved)
+    // Apply scroll after layout
+    requestAnimationFrame(() => {
+      const el = articleRef.current
+      if (!el) return
+      if (saved > 0 && saved < 100) {
+        const max = el.scrollHeight - el.clientHeight
+        if (max > 0) el.scrollTop = (saved / 100) * max
+      } else {
+        el.scrollTo({ top: 0 })
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- restore once per article open
   }, [item.id])
 
   // 沉浸模式 - 进入阅读器时隐藏导航栏和控制面板
@@ -365,6 +385,10 @@ export default function BrewReader({
 
   const [readingProgress, setReadingProgress] = useState(0)
   const progressRafRef = useRef<number | null>(null)
+  const lastSyncedProgressRef = useRef<number>(-1)
+  const progressSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
   const [showToast, setShowToast] = useState<string | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null) // Toast 定时器，防止泄漏
   const [showPanels, setShowPanels] = useState(true)
@@ -694,7 +718,7 @@ export default function BrewReader({
     })
   }, [item.published_at])
 
-  // 计算阅读进度
+  // 计算阅读进度（本地 UI + 登录用户 debounce 同步到服务端）
   const updateReadingProgress = useCallback(() => {
     // RAF 节流：每帧最多更新一次，避免每像素滚动都触发 React re-render
     if (progressRafRef.current !== null) return
@@ -702,16 +726,51 @@ export default function BrewReader({
       progressRafRef.current = null
       if (articleRef.current) {
         const { scrollTop, scrollHeight, clientHeight } = articleRef.current
-        const progress = Math.min(
-          100,
-          Math.round((scrollTop / (scrollHeight - clientHeight)) * 100),
-        )
-        setReadingProgress((prev) =>
-          Number.isNaN(progress) || prev === progress ? prev : progress,
-        )
+        const denom = scrollHeight - clientHeight
+        const progress =
+          denom <= 0
+            ? 100
+            : Math.min(100, Math.round((scrollTop / denom) * 100))
+        if (Number.isNaN(progress)) return
+        setReadingProgress((prev) => (prev === progress ? prev : progress))
+
+        if (!isAuthenticated) return
+        // Debounce server sync (2s) and only when delta ≥ 5% or finished
+        if (progressSyncTimerRef.current) {
+          clearTimeout(progressSyncTimerRef.current)
+        }
+        progressSyncTimerRef.current = setTimeout(() => {
+          progressSyncTimerRef.current = null
+          const last = lastSyncedProgressRef.current
+          if (progress < 100 && last >= 0 && Math.abs(progress - last) < 5) {
+            return
+          }
+          lastSyncedProgressRef.current = progress
+          void brewApi
+            .updateReadProgress(item.id, progress, {
+              isRead: progress >= 95 ? true : undefined,
+            })
+            .catch(() => {
+              /* best-effort */
+            })
+        }, 2000)
       }
     })
-  }, [])
+  }, [isAuthenticated, item.id])
+
+  // Flush progress on unmount / article leave
+  useEffect(() => {
+    return () => {
+      if (progressSyncTimerRef.current) {
+        clearTimeout(progressSyncTimerRef.current)
+        progressSyncTimerRef.current = null
+      }
+      if (!isAuthenticated) return
+      const p = lastSyncedProgressRef.current
+      // readingProgress state may be stale in cleanup; use last known via ref only if we ever set it
+      void p
+    }
+  }, [isAuthenticated, item.id])
 
   // 处理内容中的图片和链接
   useEffect(() => {

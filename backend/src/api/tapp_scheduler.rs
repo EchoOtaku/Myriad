@@ -23,58 +23,47 @@ use crate::api::tapp_runtime::common::{
     verify_tapp_ownership,
 };
 use crate::api::tapp_runtime::RuntimeGrantContext;
-use crate::middleware::auth::{ensure_current_admin, Claims};
+use crate::error::HttpError;
+use crate::middleware::auth::{ensure_current_admin_on, Claims};
 use crate::models::entities::tapp_scheduled_tasks::{
     ExecutionTarget, MissedPolicy, ScheduleType, TaskScope,
 };
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_scheduler::{
     backend_action_permissions, drain_frontend_messages, normalize_backend_actions,
-    register_frontend_connection, requeue_frontend_message, unregister_frontend_connection,
-    validate_backend_action_declarations, TappSchedulerEngine, MAX_SCHEDULER_RETRIES,
-    MAX_SCHEDULER_RETRY_DELAY_MS, SCHEDULER_MAILBOX_POLL_MILLIS,
-    SCHEDULER_PRESENCE_REFRESH_SECONDS,
+    register_frontend_connection, requeue_frontend_message, scheduler_engine as service_scheduler,
+    try_scheduler_engine, unregister_frontend_connection, validate_backend_action_declarations,
+    TappSchedulerEngine, MAX_SCHEDULER_RETRIES, MAX_SCHEDULER_RETRY_DELAY_MS,
+    SCHEDULER_MAILBOX_POLL_MILLIS, SCHEDULER_PRESENCE_REFRESH_SECONDS,
 };
 use uuid::Uuid;
 
-/// 全局调度器引擎
-static SCHEDULER_ENGINE: once_cell::sync::OnceCell<Arc<RwLock<TappSchedulerEngine>>> =
-    once_cell::sync::OnceCell::new();
-
-/// 初始化调度器引擎
+/// Initialize the process-wide scheduler engine (owned by services).
 pub async fn init_scheduler(db: DatabaseConnection) {
-    let engine = TappSchedulerEngine::new(db);
-    engine.start().await;
-    let _ = SCHEDULER_ENGINE.set(Arc::new(RwLock::new(engine)));
-    tracing::info!("[TappScheduler] Scheduler initialized");
+    crate::services::tapp_scheduler::init_scheduler(db).await;
 }
 
-/// 关闭调度器引擎
+/// Shut down the process-wide scheduler engine.
 pub async fn shutdown_scheduler() {
-    if let Some(scheduler) = SCHEDULER_ENGINE.get() {
-        let engine = scheduler.read().await;
-        engine.stop().await;
-        tracing::info!("[TappScheduler] Scheduler shutdown");
-    }
+    crate::services::tapp_scheduler::shutdown_scheduler().await;
 }
 
-/// 获取调度器引擎
-fn get_scheduler() -> Result<Arc<RwLock<TappSchedulerEngine>>, (StatusCode, Json<Value>)> {
-    SCHEDULER_ENGINE.get().cloned().ok_or_else(|| {
-        (
+/// Public re-export for agent/system handlers.
+pub fn scheduler_engine() -> Result<std::sync::Arc<tokio::sync::RwLock<crate::services::tapp_scheduler::TappSchedulerEngine>>, String> {
+    crate::services::tapp_scheduler::scheduler_engine()
+}
+
+
+
+
+/// HTTP-facing handle: 503 when the engine has not been started.
+fn get_scheduler() -> Result<Arc<RwLock<TappSchedulerEngine>>, HttpError> {
+    service_scheduler().map_err(|_| {
+        HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({ "error": "Scheduler not initialized" })),
-        )
+        ))
     })
-}
-
-/// Internal entry point used by the Agent planner so it creates real Tapp
-/// scheduler rows instead of maintaining a second, inert schedule store.
-pub(crate) fn scheduler_engine() -> Result<Arc<RwLock<TappSchedulerEngine>>, String> {
-    SCHEDULER_ENGINE
-        .get()
-        .cloned()
-        .ok_or_else(|| "Scheduler not initialized".to_string())
 }
 
 // ============ 请求/响应类型 ============
@@ -122,6 +111,9 @@ pub struct ScheduleConfigRequest {
     pub at: Option<i64>,
     #[serde(default)]
     pub time: Option<String>,
+    /// Wall-clock TZ for daily: `local` (process TZ) | `UTC` | `+08:00`
+    #[serde(default)]
+    pub timezone: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -161,59 +153,47 @@ pub struct TaskResponse {
 
 // ============ 辅助函数 ============
 
-fn parse_schedule_type(s: &str) -> Result<ScheduleType, (StatusCode, Json<Value>)> {
+fn parse_schedule_type(s: &str) -> Result<ScheduleType, HttpError> {
     match s.to_lowercase().as_str() {
         "cron" => Ok(ScheduleType::Cron),
         "interval" => Ok(ScheduleType::Interval),
         "once" => Ok(ScheduleType::Once),
         "daily" => Ok(ScheduleType::Daily),
-        _ => Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": format!("Invalid schedule type: {}", s) })),
-        )),
+        _ => Err(bad_request(format!("Invalid schedule type: {s}"))),
     }
 }
 
-fn parse_execution_target(s: &str) -> Result<ExecutionTarget, (StatusCode, Json<Value>)> {
+fn parse_execution_target(s: &str) -> Result<ExecutionTarget, HttpError> {
     match s.to_lowercase().as_str() {
         "backend" => Ok(ExecutionTarget::Backend),
         "frontend" => Ok(ExecutionTarget::Frontend),
         "both" => Ok(ExecutionTarget::Both),
-        _ => Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": format!("Invalid execution target: {}", s) })),
-        )),
+        _ => Err(bad_request(format!("Invalid execution target: {s}"))),
     }
 }
 
-fn parse_missed_policy(s: &str) -> Result<MissedPolicy, (StatusCode, Json<Value>)> {
+fn parse_missed_policy(s: &str) -> Result<MissedPolicy, HttpError> {
     match s.to_lowercase().as_str() {
         "skip" => Ok(MissedPolicy::Skip),
         "run-once" | "runonce" => Ok(MissedPolicy::RunOnce),
         "run-all" | "runall" => Ok(MissedPolicy::RunAll),
-        _ => Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": format!("Invalid missed policy: {}", s) })),
-        )),
+        _ => Err(bad_request(format!("Invalid missed policy: {s}"))),
     }
 }
 
-fn parse_scope(s: &str) -> Result<TaskScope, (StatusCode, Json<Value>)> {
+fn parse_scope(s: &str) -> Result<TaskScope, HttpError> {
     match s.to_lowercase().as_str() {
         "user" => Ok(TaskScope::User),
         "tapp" => Ok(TaskScope::Tapp),
         "tapp-per-user" | "tapp_per_user" => Ok(TaskScope::TappPerUser),
         "global" => Ok(TaskScope::Global),
-        _ => Err((
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": format!("Invalid scope: {}", s) })),
-        )),
+        _ => Err(bad_request(format!("Invalid scope: {s}"))),
     }
 }
 
 fn normalize_retry_config(
     retry: Option<RetryConfigRequest>,
-) -> Result<Option<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Option<Value>, HttpError> {
     let Some(retry) = retry else {
         return Ok(None);
     };
@@ -233,19 +213,21 @@ fn normalize_retry_config(
     })))
 }
 
-fn bad_request(message: impl Into<String>) -> (StatusCode, Json<Value>) {
-    (
+fn bad_request(message: impl Into<String>) -> HttpError {
+    HttpError::from((
         StatusCode::BAD_REQUEST,
         Json(json!({ "error": message.into() })),
-    )
+    ))
 }
 
 async fn check_backend_action_permissions(
+    db: &DatabaseConnection,
     claims: &Claims,
     actions: &Option<Value>,
-) -> Result<(), (StatusCode, Json<Value>)> {
+    dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
+) -> Result<(), HttpError> {
     for permission in backend_action_permissions(actions).map_err(bad_request)? {
-        check_tapp_permission(claims, permission).await?;
+        check_tapp_permission(db, claims, permission, dynamic_config).await?;
     }
     Ok(())
 }
@@ -284,12 +266,12 @@ fn task_scope_name(value: &TaskScope) -> &'static str {
     }
 }
 
-fn parse_user_id(claims: &Claims) -> Result<i32, (StatusCode, Json<Value>)> {
+fn parse_user_id(claims: &Claims) -> Result<i32, HttpError> {
     claims.sub.parse().map_err(|_| {
-        (
+        HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(json!({ "error": "Invalid user ID" })),
-        )
+        ))
     })
 }
 
@@ -306,11 +288,21 @@ fn task_to_response(task: &crate::models::entities::tapp_scheduled_tasks::Model)
         enabled: task.enabled,
         missed_policy: missed_policy_name(&task.missed_policy).to_string(),
         scope: task_scope_name(&task.scope).to_string(),
-        next_run_at: task.next_run_at.map(|t| t.to_string()),
-        last_run_at: task.last_run_at.map(|t| t.to_string()),
+        // RFC3339 for Safari/FE Date parsing (not chrono Display).
+        next_run_at: task.next_run_at.map(|t| {
+            let dt: chrono::DateTime<chrono::Utc> = t.into();
+            dt.to_rfc3339()
+        }),
+        last_run_at: task.last_run_at.map(|t| {
+            let dt: chrono::DateTime<chrono::Utc> = t.into();
+            dt.to_rfc3339()
+        }),
         last_run_result: task.last_run_result.clone(),
         stats: task.stats.clone(),
-        created_at: task.created_at.to_string(),
+        created_at: {
+            let dt: chrono::DateTime<chrono::Utc> = task.created_at.into();
+            dt.to_rfc3339()
+        },
     }
 }
 
@@ -320,14 +312,15 @@ fn task_to_response(task: &crate::models::entities::tapp_scheduled_tasks::Model)
 /// POST /api/tapp/scheduler/tasks
 pub async fn register_task(
     State(db): State<DatabaseConnection>,
+    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Json(req): Json<RegisterTaskRequest>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&req.tapp_id)?;
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
-    check_tapp_permission(&claims, TappPermission::SchedulerRegister).await?;
+    check_tapp_permission(&db, &claims, TappPermission::SchedulerRegister, &dynamic_config).await?;
     verify_tapp_ownership(&db, user_id, &req.tapp_id).await?;
 
     let schedule_type = parse_schedule_type(&req.schedule_type)?;
@@ -337,7 +330,7 @@ pub async fn register_task(
 
     // 跨全局用户执行只允许当前仍为管理员的账号创建，不能信任旧 JWT 中的角色。
     if matches!(scope, TaskScope::Global) {
-        ensure_current_admin(&claims).await?;
+        ensure_current_admin_on(&claims, &db).await?;
     }
 
     let backend_actions = normalize_backend_actions(req.backend_actions).map_err(bad_request)?;
@@ -353,7 +346,7 @@ pub async fn register_task(
             "backendActions are required when executionTarget is backend or both",
         ));
     }
-    check_backend_action_permissions(&claims, &backend_actions).await?;
+    check_backend_action_permissions(&db, &claims, &backend_actions, &dynamic_config).await?;
     let action_permissions = backend_action_permissions(&backend_actions).map_err(bad_request)?;
     for permission in &action_permissions {
         runtime_grant.require(*permission)?;
@@ -363,13 +356,13 @@ pub async fn register_task(
     verify_tapp_approved_permissions(&db, user_id, &req.tapp_id, &installed_permissions).await?;
     let tapp = resolve_accessible_tapp(&db, user_id, &req.tapp_id).await?;
     if tapp.user_id != runtime_grant.owner_id() {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::FORBIDDEN,
             Json(json!({
                 "error": "Runtime grant installation mismatch",
                 "code": "RUNTIME_GRANT_OWNER_MISMATCH"
             })),
-        ));
+        )));
     }
     validate_backend_action_declarations(&tapp.manifest, &backend_actions).map_err(bad_request)?;
 
@@ -421,7 +414,7 @@ pub async fn unregister_task(
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, task_id)): Path<(String, String)>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
@@ -450,7 +443,7 @@ pub async fn list_tasks(
     State(_db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Query(query): Query<ListTasksQuery>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     let user_id = parse_user_id(&claims)?;
     let scheduler = get_scheduler()?;
     let scheduler = scheduler.read().await;
@@ -481,7 +474,7 @@ pub async fn list_tapp_tasks(
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
@@ -515,7 +508,7 @@ pub async fn get_task(
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, task_id)): Path<(String, String)>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
@@ -551,7 +544,7 @@ pub async fn enable_task(
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, task_id)): Path<(String, String)>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
@@ -581,7 +574,7 @@ pub async fn disable_task(
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, task_id)): Path<(String, String)>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
@@ -611,7 +604,7 @@ pub async fn trigger_task(
     Extension(claims): Extension<Claims>,
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, task_id)): Path<(String, String)>,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     runtime_grant.require_tapp_id(&tapp_id)?;
     runtime_grant.require(TappPermission::SchedulerRegister)?;
     let user_id = parse_user_id(&claims)?;
@@ -640,16 +633,24 @@ pub async fn scheduler_websocket(
     State(db): State<DatabaseConnection>,
     ws: WebSocketUpgrade,
     Extension(claims): Extension<Claims>,
+    headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
+    let allowed = crate::middleware::ws_origin::allowed_origins_from_global_config().await;
+    if let Err(err) =
+        crate::middleware::ws_origin::assert_ws_origin_for_cookie_session(&headers, &allowed)
+    {
+        return err.into_response();
+    }
     let user_id: i32 = claims.sub.parse().unwrap_or(-1);
     ws.on_upgrade(move |socket| handle_scheduler_socket(socket, user_id, db))
+        .into_response()
 }
 
 async fn handle_scheduler_socket(socket: WebSocket, user_id: i32, db: DatabaseConnection) {
     tracing::info!("[TappScheduler] WebSocket connected for user {}", user_id);
 
-    let scheduler = match SCHEDULER_ENGINE.get() {
-        Some(s) => s.clone(),
+    let scheduler = match try_scheduler_engine() {
+        Some(s) => s,
         None => {
             tracing::error!("[TappScheduler] Scheduler not initialized");
             return;

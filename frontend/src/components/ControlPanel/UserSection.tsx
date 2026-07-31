@@ -196,6 +196,13 @@ export const UserSection: React.FC<UserSectionProps> = memo(
     const openModal = useCallback(() => {
       if (modalState === 'closed') {
         setModalState('mounting')
+        void import('../../utils/analyticsEvents').then(
+          ({ trackProductEvent, AnalyticsEvents }) => {
+            trackProductEvent(AnalyticsEvents.USER_MODAL_OPEN, {
+              throttleMs: 5000,
+            })
+          },
+        )
       }
     }, [modalState])
 
@@ -247,6 +254,12 @@ export const UserSection: React.FC<UserSectionProps> = memo(
     // 处理退出登录
     const handleLogout = useCallback(async () => {
       onClosePanel()
+
+      void import('../../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.LOGOUT, { flush: true })
+        },
+      )
 
       // 触发认证状态变化事件
       window.dispatchEvent(

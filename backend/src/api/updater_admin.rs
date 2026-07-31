@@ -20,6 +20,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::services::updater_client::{UpdaterClient, UpdaterClientError};
+use myriad_error::AppError;
 
 fn authenticated_user_id(headers: &HeaderMap) -> Option<i32> {
     crate::middleware::auth::verify_jwt_token(headers)
@@ -166,24 +167,20 @@ fn client() -> Option<&'static UpdaterClient> {
 }
 
 fn err_to_response(e: UpdaterClientError) -> Response {
-    let status = e.status();
-    // Display already redacts secrets; double-check for JSON bodies.
-    let msg = crate::util::redact::redact_secrets(&e.to_string());
-    let body = Json(json!({ "error": msg }));
-    (status, body).into_response()
+    // Shared AppError → local HttpError (orphan-safe Axum adapter).
+    crate::error::HttpError(AppError::from(e)).into_response()
 }
 
 fn require() -> Result<&'static UpdaterClient, Box<Response>> {
     client().ok_or_else(|| {
         Box::new(
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({
-                    "error": "updater service is not configured on this backend",
-                    "hint": "set MYRIAD_UPDATER_URL and UPDATER_GATEWAY_SECRET (production gateway hop)"
-                })),
+            crate::error::HttpError(
+                AppError::service_unavailable("updater service is not configured on this backend")
+                    .with_hint(
+                        "set MYRIAD_UPDATER_URL and UPDATER_GATEWAY_SECRET (production gateway hop)",
+                    ),
             )
-                .into_response(),
+            .into_response(),
         )
     })
 }

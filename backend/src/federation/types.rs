@@ -853,6 +853,8 @@ mod tests {
         // Serialize env mutation against other lab-flag tests in this crate.
         let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
         let prev = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
+        let prev_env = std::env::var("ENVIRONMENT").ok();
+        std::env::remove_var("ENVIRONMENT"); // lab only outside production
         std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
         assert!(is_internal_url("http://127.0.0.1:18080/users/a"));
         assert!(is_internal_url("http://localhost:18081/inbox"));
@@ -864,9 +866,16 @@ mod tests {
         // Still reject non-http
         assert!(is_internal_url("ftp://127.0.0.1/x"));
         assert!(is_internal_url("not-a-url"));
+        // Production ignores lab flag
+        std::env::set_var("ENVIRONMENT", "production");
+        assert!(is_internal_url("http://127.0.0.1:18081/users/bob/inbox"));
         match prev {
             Some(v) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", v),
             None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+        }
+        match prev_env {
+            Some(v) => std::env::set_var("ENVIRONMENT", v),
+            None => std::env::remove_var("ENVIRONMENT"),
         }
     }
 

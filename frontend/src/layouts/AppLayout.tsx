@@ -266,7 +266,27 @@ export function AppLayout({ children }: AppLayoutProps) {
     return () => {
       window.removeEventListener('wallpaperChanged', handleWallpaperChanged)
     }
-  }, [])
+  }, [extractAndApplyColors])
+
+  // 配置页保存壁纸 / Evocative 后：清缓存并重新 loadWallpaper（非硬刷）
+  useEffect(() => {
+    const handleConfigWallpaperReload = () => {
+      void import('../hooks/useWallpaper').then((m) => {
+        m.invalidateWallpaperLoadCache()
+        void loadWallpaper()
+      })
+    }
+    window.addEventListener(
+      'wallpaperConfigChanged',
+      handleConfigWallpaperReload,
+    )
+    return () => {
+      window.removeEventListener(
+        'wallpaperConfigChanged',
+        handleConfigWallpaperReload,
+      )
+    }
+  }, [loadWallpaper])
 
   // 导航岛自动隐藏
   useNavAutoHide()

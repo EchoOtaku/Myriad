@@ -3,18 +3,18 @@
 //! 提供腾讯云 TTS（文本转语音）和 ASR（语音转文本）的 HTTP API 接口
 
 use axum::{
-    extract::Query,
+    extract::{Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
 };
+use sea_orm::DatabaseConnection;
 
 use crate::middleware::auth::verify_current_admin_from_headers;
 use crate::services::data_paths::paths;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -27,19 +27,22 @@ const TTS_SUBDIR: &str = "tts";
 
 /// 验证当前管理员身份
 #[allow(clippy::result_large_err)]
-async fn verify_admin(headers: &axum::http::HeaderMap) -> Result<(), axum::response::Response> {
-    verify_current_admin_from_headers(headers)
+async fn verify_admin(
+    headers: &axum::http::HeaderMap,
+    db: &sea_orm::DatabaseConnection,
+) -> Result<(), axum::response::Response> {
+    verify_current_admin_from_headers(headers, db)
         .await
         .map(|_| ())
         .map_err(|(status, body)| (status, body).into_response())
 }
 
 /// 创建语音服务 API 路由
-pub fn create_speech_routes<S>() -> Router<S>
-where
-    S: Clone + Send + Sync + 'static,
-{
-    Router::new()
+pub fn create_speech_routes(
+    app_state: crate::state::AppState,
+) -> Router<crate::state::AppState> {
+    use axum::middleware::from_fn_with_state;
+    Router::<crate::state::AppState>::new()
         // TTS 文本转语音
         .route("/tts", post(text_to_speech))
         // 批量 TTS（用于播客）
@@ -56,58 +59,21 @@ where
         .route("/cache/article", get(get_article_cache_info))
         .route("/cache/article/voice", delete(clear_article_voice_cache))
         // Tapp 运行时携带 Grant 头时做服务端归因与权限强制（在认证之后执行）
-        .route_layer(axum::middleware::from_fn(
+        .route_layer(from_fn_with_state(
+            app_state.clone(),
             crate::api::tapp_runtime::speech_host_attribution,
         ))
         // 🔒 TTS/ASR 端点需要认证（调用付费 API）
-        .route_layer(axum::middleware::from_fn(
+        .route_layer(from_fn_with_state(
+            app_state,
             crate::middleware::auth::auth_middleware,
         ))
 }
 
-/// TTS 请求体
-#[derive(Debug, Deserialize)]
-pub struct TtsApiRequest {
-    /// 要转换的文本（中文最大150字，英文最大500字母）
-    pub text: String,
-    /// 音色ID（可选，默认10510000-晓晓）
-    #[serde(default)]
-    pub voice_type: Option<i32>,
-    /// 语速 [-2, 6]，默认0
-    #[serde(default)]
-    pub speed: Option<f32>,
-    /// 音量 [-10, 10]，默认0
-    #[serde(default)]
-    pub volume: Option<f32>,
-    /// 返回格式: wav, mp3, pcm，默认mp3
-    #[serde(default)]
-    pub codec: Option<String>,
-    /// 采样率: 8000, 16000, 24000，默认16000
-    #[serde(default)]
-    pub sample_rate: Option<i32>,
-    /// 情感类别（仅多情感音色支持）
-    #[serde(default)]
-    pub emotion: Option<String>,
-}
-
-/// TTS 响应体
-#[derive(Debug, Serialize)]
-pub struct TtsApiResponse {
-    /// 是否成功
-    pub success: bool,
-    /// Base64编码的音频数据
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub audio: Option<String>,
-    /// 会话ID
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session_id: Option<String>,
-    /// 是否来自缓存
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cached: Option<bool>,
-    /// 错误信息
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
+// Standalone TTS DTO + synthesis live in services so agent does not depend on this API module.
+pub use crate::services::standalone_tts::{
+    synthesize_standalone_tts, TtsApiRequest, TtsApiResponse,
+};
 
 /// 批量 TTS 请求体（用于播客）
 #[derive(Debug, Deserialize)]
@@ -198,18 +164,6 @@ pub struct BatchTtsError {
     pub error: String,
 }
 
-/// 生成文本哈希（用于标识对话）
-fn generate_text_hash(text: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(text.as_bytes());
-    hex::encode(hasher.finalize())
-}
-
-/// 生成音频文件名（voice_speed_samplerate.codec）
-fn generate_audio_filename(voice_type: i32, speed: f32, sample_rate: i32, codec: &str) -> String {
-    format!("{}_{}_{}.{}", voice_type, speed as i32, sample_rate, codec)
-}
-
 /// 根据说话者获取默认音色
 fn get_default_voice_for_speaker(speaker: &str) -> i32 {
     use crate::services::tencent_speech_service::voice_types;
@@ -243,100 +197,6 @@ async fn read_tts_file(path: &PathBuf) -> Option<String> {
         }
         Err(_) => None,
     }
-}
-
-// ==================== 独立 TTS 缓存（不绑定文章） ====================
-// 用于单条 TTS API，存储在 data/brew/standalone_tts/{text_hash}/
-
-/// 独立 TTS 子目录
-const STANDALONE_TTS_SUBDIR: &str = "standalone_tts";
-
-/// 获取独立 TTS 目录路径
-fn get_standalone_tts_dir(text_hash: &str) -> PathBuf {
-    paths().brew.join(STANDALONE_TTS_SUBDIR).join(text_hash)
-}
-
-/// 获取独立 TTS 文件路径
-fn get_standalone_tts_file_path(
-    text_hash: &str,
-    voice_type: i32,
-    speed: f32,
-    sample_rate: i32,
-    codec: &str,
-) -> PathBuf {
-    get_standalone_tts_dir(text_hash).join(generate_audio_filename(
-        voice_type,
-        speed,
-        sample_rate,
-        codec,
-    ))
-}
-
-/// 查找独立 TTS 精确缓存
-async fn find_exact_tts(
-    text_hash: &str,
-    voice_type: i32,
-    speed: f32,
-    sample_rate: i32,
-    codec: &str,
-) -> Option<String> {
-    let path = get_standalone_tts_file_path(text_hash, voice_type, speed, sample_rate, codec);
-    if let Some(audio) = read_tts_file(&path).await {
-        tracing::info!("Standalone TTS exact match: {}", path.display());
-        return Some(audio);
-    }
-    None
-}
-
-/// 查找独立 TTS 任意音色缓存
-async fn find_any_tts(text_hash: &str, codec: &str) -> Option<String> {
-    let tts_dir = get_standalone_tts_dir(text_hash);
-
-    let mut entries = match fs::read_dir(&tts_dir).await {
-        Ok(entries) => entries,
-        Err(_) => return None,
-    };
-
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        let file_name = entry.file_name();
-        let file_name_str = file_name.to_string_lossy();
-
-        if file_name_str.ends_with(&format!(".{}", codec)) {
-            if let Some(audio) = read_tts_file(&entry.path()).await {
-                tracing::info!("Standalone TTS any-voice match: {}", entry.path().display());
-                return Some(audio);
-            }
-        }
-    }
-
-    None
-}
-
-/// 写入独立 TTS 文件
-async fn write_tts_file(
-    text_hash: &str,
-    voice_type: i32,
-    speed: f32,
-    sample_rate: i32,
-    codec: &str,
-    audio_base64: &str,
-) -> Result<(), std::io::Error> {
-    let tts_dir = get_standalone_tts_dir(text_hash);
-    fs::create_dir_all(&tts_dir).await?;
-
-    let audio_data = BASE64
-        .decode(audio_base64)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-
-    let file_path = get_standalone_tts_file_path(text_hash, voice_type, speed, sample_rate, codec);
-    fs::write(&file_path, &audio_data).await?;
-
-    tracing::info!(
-        "Standalone TTS file written: {} ({} bytes)",
-        file_path.display(),
-        audio_data.len()
-    );
-    Ok(())
 }
 
 // ==================== 文章 TTS 缓存 ====================
@@ -522,87 +382,6 @@ fn speech_error_to_response(error: TencentSpeechError) -> (StatusCode, String) {
     }
 }
 
-/// Shared standalone TTS synthesis used by HTTP `/api/speech/tts` and agent `speech.tts`.
-///
-/// Returns the same cache + Tencent path as the product API (base64 audio when successful).
-pub async fn synthesize_standalone_tts(request: &TtsApiRequest) -> Result<TtsApiResponse, String> {
-    if request.text.trim().is_empty() {
-        return Err("文本不能为空".to_string());
-    }
-
-    let codec = request.codec.as_deref().unwrap_or("mp3");
-    let voice_type = request.voice_type.unwrap_or(10510000);
-    let speed = request.speed.unwrap_or(0.0);
-    let sample_rate = request.sample_rate.unwrap_or(16000);
-    let text_hash = generate_text_hash(&request.text);
-
-    if let Some(cached_audio) =
-        find_exact_tts(&text_hash, voice_type, speed, sample_rate, codec).await
-    {
-        return Ok(TtsApiResponse {
-            success: true,
-            audio: Some(cached_audio),
-            session_id: Some(format!("cached-{}", &text_hash[..8])),
-            cached: Some(true),
-            error: None,
-        });
-    }
-
-    if let Some(cached_audio) = find_any_tts(&text_hash, codec).await {
-        return Ok(TtsApiResponse {
-            success: true,
-            audio: Some(cached_audio),
-            session_id: Some(format!("cached-any-{}", &text_hash[..8])),
-            cached: Some(true),
-            error: None,
-        });
-    }
-
-    let service = TencentSpeechService::new().await.map_err(|e| match e {
-        TencentSpeechError::ApiKeyNotConfigured => {
-            crate::services::agent::response_agent::tts_not_configured()
-        }
-        other => {
-            let (_, msg) = speech_error_to_response(other);
-            msg
-        }
-    })?;
-
-    let tts_request = TtsRequest {
-        text: request.text.clone(),
-        voice_type: request.voice_type,
-        speed: request.speed,
-        volume: request.volume,
-        codec: Some(codec.to_string()),
-        sample_rate: request.sample_rate,
-        emotion_category: request.emotion.clone(),
-        ..Default::default()
-    };
-
-    match service.text_to_speech(tts_request).await {
-        Ok(response) => {
-            if let Some(ref audio) = response.audio {
-                if let Err(e) =
-                    write_tts_file(&text_hash, voice_type, speed, sample_rate, codec, audio).await
-                {
-                    tracing::warn!("Failed to write TTS file: {}", e);
-                }
-            }
-            Ok(TtsApiResponse {
-                success: true,
-                audio: response.audio,
-                session_id: response.session_id,
-                cached: Some(false),
-                error: None,
-            })
-        }
-        Err(e) => {
-            let (_, msg) = speech_error_to_response(e);
-            Err(msg)
-        }
-    }
-}
-
 /// 文本转语音 API
 ///
 /// POST /api/speech/tts
@@ -705,30 +484,30 @@ pub async fn batch_text_to_speech(Json(request): Json<BatchTtsApiRequest>) -> im
             codec
         );
 
-        // 1. 首先检查精确缓存（按音色分文件夹 data/brew/{source_id}/{article_id}/tts/{voice_type}/{index}.mp3）
-        if let Some(cached_audio) = find_article_exact_tts(
-            request.source_id,
-            request.article_id,
-            voice_type,
-            dialogue.index,
-            codec,
-        )
-        .await
-        {
-            tracing::info!("TTS exact cache hit for index {}", dialogue.index);
-            audios.push(BatchTtsAudioItem {
-                index: dialogue.index,
-                speaker: dialogue.speaker.clone(),
-                audio: cached_audio,
-                cached: true,
-            });
-            cache_hits += 1;
-            continue;
-        }
-
-        // 2. 查找任意音色的缓存（只要该对话有任何缓存就用）
-        // 如果 force_regenerate 为 true，则跳过此步骤，强制使用指定音色生成
+        // force_regenerate：跳过 exact + any-voice 缓存，强制按指定音色重新合成
         if !request.force_regenerate {
+            // 1. 精确缓存（音色分文件夹 data/brew/.../tts/{voice_type}/{index}.mp3）
+            if let Some(cached_audio) = find_article_exact_tts(
+                request.source_id,
+                request.article_id,
+                voice_type,
+                dialogue.index,
+                codec,
+            )
+            .await
+            {
+                tracing::info!("TTS exact cache hit for index {}", dialogue.index);
+                audios.push(BatchTtsAudioItem {
+                    index: dialogue.index,
+                    speaker: dialogue.speaker.clone(),
+                    audio: cached_audio,
+                    cached: true,
+                });
+                cache_hits += 1;
+                continue;
+            }
+
+            // 2. 任意音色缓存（只要该对话有任何缓存就用）
             if let Some(cached_audio) =
                 find_article_any_tts(request.source_id, request.article_id, dialogue.index, codec)
                     .await
@@ -1629,11 +1408,12 @@ pub struct ClearArticleVoiceCacheQuery {
 ///
 /// DELETE /api/speech/cache/article/voice?source_id=1&article_id=2&voice_id=502007
 pub async fn clear_article_voice_cache(
+    State(db): State<DatabaseConnection>,
     headers: axum::http::HeaderMap,
     Query(query): Query<ClearArticleVoiceCacheQuery>,
 ) -> impl IntoResponse {
     // 验证管理员身份
-    if let Err(e) = verify_admin(&headers).await {
+    if let Err(e) = verify_admin(&headers, &db).await {
         return e;
     }
 

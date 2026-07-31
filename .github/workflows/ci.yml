@@ -50,10 +50,10 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            backend
-            crates/tapp-contract
+          # Virtual workspace at repo root (backend + migrations + tapp-contract)
+          workspaces: .
       - name: Check all targets
+        # cwd=backend still resolves the root workspace; package defaults to myriad-backend
         run: cargo check --all-targets
       # Runs the whole suite, not just `cargo test tapp`. None of these tests
       # need a database — they were simply never wired into CI, so ~900 of them
@@ -121,7 +121,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: backend
+          workspaces: .
       - name: Assert migrations leave no schema drift
         env:
           MYRIAD_SCHEMA_DRIFT_DB: postgres://myriad:myriad_ci@127.0.0.1:5432/myriad_drift
@@ -136,15 +136,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            backend
+            .
             updater
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
       # Advisories move independently of our code, so a fresh advisory can turn
       # a previously green commit red. That is the point — but it means this job
       # reports rather than hard-blocks unrelated PRs.
-      - name: Audit backend crates
-        working-directory: backend
+      - name: Audit backend workspace
+        # Workspace lockfile lives at repo root
         run: cargo audit --deny warnings
         continue-on-error: true
       - name: Audit updater crates

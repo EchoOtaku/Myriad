@@ -1,0 +1,20 @@
+[package]
+name = "myriad-data-key"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "AES-GCM data encryption key for Myriad config secrets and federation key envelopes."
+authors = ["Myriad Contributors"]
+
+[dependencies]
+aes-gcm = "0.10"
+anyhow = "1"
+base64 = "0.22"
+hex = "0.4"
+rand = "0.10"
+serde_json = "1"
+sha2 = "0.10"
+tracing = "0.1"
+
+[dev-dependencies]
+uuid = { version = "1", features = ["v4"] }

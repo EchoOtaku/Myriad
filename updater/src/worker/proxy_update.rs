@@ -342,9 +342,9 @@ async fn resolve_proxy_target(
 /// Attempt to resolve proxy from GitHub.
 ///
 /// - `Ok(Some)` — manifest with proxy image
-/// - `Ok(None)` — GitHub unavailable / no matching release; caller may fall back
-/// - `Err` — hard failure (cosign, invalid manifest with present asset, missing proxy image
-///   when release.json *was* successfully fetched)
+/// - `Ok(None)` — GitHub unavailable / no matching release / release omits
+///   `images.proxy` (independent cadence); caller may fall back to Docker Hub
+/// - `Err` — hard failure (cosign, invalid manifest with present asset)
 async fn try_proxy_from_github(
     worker: &Worker,
     explicit_tag: Option<&str>,
@@ -370,58 +370,85 @@ async fn try_proxy_from_github(
         }
     };
 
-    let (tag, manifest) = if let Some(tag) = explicit_tag {
-        match gh.fetch_manifest(tag).await {
-            Ok(m) => (tag.to_string(), m),
+    if let Some(tag) = explicit_tag {
+        let manifest = match gh.fetch_manifest(tag).await {
+            Ok(m) => m,
             Err(e) if GithubClient::is_release_json_unavailable(&e) => {
                 warn!(err = %e, tag = %tag, "proxy-update: GitHub release.json unavailable");
                 return Ok(None);
             }
             Err(e) => return Err(e),
-        }
-    } else {
-        let cfg = worker.config();
-        let ch_name =
-            crate::version::release_channel_name_for_self_update(&worker.effective_channel());
-        let ch: crate::config::Channel = ch_name.parse().unwrap_or(cfg.channel);
-        info!(channel = %ch, "proxy-update: looking up latest GitHub release for channel");
-        let rel = match gh.latest_for_channel(ch).await {
-            Ok(Some(r)) => r,
-            Ok(None) => {
-                warn!(channel = %ch, "proxy-update: channel has no GitHub releases");
-                return Ok(None);
-            }
-            Err(e) if GithubClient::is_release_json_unavailable(&e) => {
-                warn!(err = %e, "proxy-update: GitHub list releases failed");
-                return Ok(None);
-            }
-            Err(e) => return Err(e),
         };
-        match gh.fetch_manifest(&rel.tag_name).await {
-            Ok(m) => (rel.tag_name, m),
+        let Some(proxy) = manifest.image("proxy") else {
+            warn!(
+                tag = %tag,
+                "proxy-update: release omits images.proxy; falling back to Docker Hub"
+            );
+            return Ok(None);
+        };
+        return Ok(Some(ProxyTarget {
+            tag: manifest.version.as_str().to_string(),
+            image_ref: proxy.r#ref.clone(),
+            expected_digest: Some(proxy.digest.clone()),
+            source: "github",
+        }));
+    }
+
+    let cfg = worker.config();
+    let ch_name =
+        crate::version::release_channel_name_for_self_update(&worker.effective_channel());
+    let ch: crate::config::Channel = ch_name.parse().unwrap_or(cfg.channel);
+    // Walk recent channel releases — app tags often omit proxy when unchanged.
+    info!(
+        channel = %ch,
+        "proxy-update: looking up GitHub releases for channel (may skip releases without images.proxy)"
+    );
+    let releases = match gh.list_releases_for_channel(ch, 20).await {
+        Ok(r) if !r.is_empty() => r,
+        Ok(_) => {
+            warn!(channel = %ch, "proxy-update: channel has no GitHub releases");
+            return Ok(None);
+        }
+        Err(e) if GithubClient::is_release_json_unavailable(&e) => {
+            warn!(err = %e, "proxy-update: GitHub list releases failed");
+            return Ok(None);
+        }
+        Err(e) => return Err(e),
+    };
+
+    for rel in releases {
+        let manifest = match gh.fetch_manifest(&rel.tag_name).await {
+            Ok(m) => m,
             Err(e) if GithubClient::is_release_json_unavailable(&e) => {
                 warn!(
                     err = %e,
                     tag = %rel.tag_name,
-                    "proxy-update: GitHub release.json unavailable"
+                    "proxy-update: GitHub release.json unavailable; trying older release"
                 );
-                return Ok(None);
+                continue;
             }
             Err(e) => return Err(e),
-        }
-    };
+        };
+        let Some(proxy) = manifest.image("proxy") else {
+            info!(
+                tag = %rel.tag_name,
+                "proxy-update: release omits images.proxy; trying older release"
+            );
+            continue;
+        };
+        return Ok(Some(ProxyTarget {
+            tag: manifest.version.as_str().to_string(),
+            image_ref: proxy.r#ref.clone(),
+            expected_digest: Some(proxy.digest.clone()),
+            source: "github",
+        }));
+    }
 
-    let proxy = manifest.image("proxy").ok_or_else(|| {
-        UpdaterError::Precondition(format!(
-            "release {tag} has no `proxy` image in the manifest"
-        ))
-    })?;
-    Ok(Some(ProxyTarget {
-        tag: manifest.version.as_str().to_string(),
-        image_ref: proxy.r#ref.clone(),
-        expected_digest: Some(proxy.digest.clone()),
-        source: "github",
-    }))
+    warn!(
+        channel = %ch,
+        "proxy-update: no recent GitHub release lists images.proxy"
+    );
+    Ok(None)
 }
 
 async fn resolve_proxy_via_dockerhub(

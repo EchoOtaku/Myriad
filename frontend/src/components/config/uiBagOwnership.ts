@@ -54,11 +54,38 @@ export const RUNTIME_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
   ...ADVANCED_RESET_KEYS,
 ])
 
+/**
+ * 壁纸 / Evocative 动效：不必整页硬刷，但要清 UI 配置缓存并 `loadWallpaper`
+ *（AppLayout 默认只在 mount 读一次）。
+ */
+export const WALLPAPER_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
+  'wallpaper_url',
+  'wallpaper_blur',
+  'evocative_parallax',
+  'evocative_dynamic_blur',
+  'evocative_ripple',
+  'evocative_fps',
+  'evocative_ripple_quality',
+])
+
 export function bagFieldValue(
   fields: Array<{ key: string; value: string }> | undefined,
   key: string,
 ): string | undefined {
   return fields?.find((f) => f.key === key)?.value
+}
+
+function bagKeysChanged(
+  nextFields: Array<{ key: string; value: string }> | undefined,
+  prevFields: Array<{ key: string; value: string }> | undefined,
+  keys: readonly string[],
+): boolean {
+  for (const key of keys) {
+    if (bagFieldValue(nextFields, key) !== bagFieldValue(prevFields, key)) {
+      return true
+    }
+  }
+  return false
 }
 
 /**
@@ -84,12 +111,25 @@ export function configChangesNeedHardReload(
   if (!deepEqual(next.auto_fetch, prev.auto_fetch)) return true
   if (!deepEqual(next.ai_config, prev.ai_config)) return true
 
-  const nextFields = next.ui_config?.config_fields
-  const prevFields = prev.ui_config?.config_fields
-  for (const key of RUNTIME_RELOAD_UI_BAG_KEYS) {
-    if (bagFieldValue(nextFields, key) !== bagFieldValue(prevFields, key)) {
-      return true
-    }
-  }
-  return false
+  return bagKeysChanged(
+    next.ui_config?.config_fields,
+    prev.ui_config?.config_fields,
+    RUNTIME_RELOAD_UI_BAG_KEYS,
+  )
+}
+
+/** 壁纸 URL / 模糊 / Evocative 开关变更 → 软刷新壁纸层（非 hard reload） */
+export function configChangesNeedWallpaperReload(
+  next: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+  prev: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+): boolean {
+  return bagKeysChanged(
+    next.ui_config?.config_fields,
+    prev.ui_config?.config_fields,
+    WALLPAPER_SOFT_RELOAD_UI_BAG_KEYS,
+  )
 }

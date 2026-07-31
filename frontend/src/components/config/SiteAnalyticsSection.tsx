@@ -117,10 +117,18 @@ interface PageRow {
   avg_engagement_ms?: number
 }
 
+interface EventTargetRow {
+  target: string
+  count: number
+  unique_visitors: number
+}
+
 interface EventRow {
   name: string
   count: number
   unique_visitors: number
+  /** Per-entity breakdown (tapp id, platform, source, …) */
+  targets?: EventTargetRow[]
 }
 
 interface ReferrerRow {
@@ -303,13 +311,24 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
 
   const eventRows = useMemo<RankRow[]>(
     () =>
-      (data?.events ?? []).map((ev) => ({
-        key: ev.name,
-        name: eventLabels[ev.name] || ev.name,
-        meta: eventLabels[ev.name] ? ev.name : undefined,
-        value: ev.count,
-        secondary: count(ev.unique_visitors),
-      })),
+      (data?.events ?? []).map((ev) => {
+        const targets = (ev.targets ?? [])
+          .filter((t) => t.target && t.count > 0)
+          .slice(0, 12)
+        return {
+          key: ev.name,
+          name: eventLabels[ev.name] || ev.name,
+          meta: eventLabels[ev.name] ? ev.name : undefined,
+          value: ev.count,
+          secondary: count(ev.unique_visitors),
+          subRows: targets.map((t) => ({
+            key: `${ev.name}:${t.target}`,
+            name: t.target,
+            value: t.count,
+            secondary: count(t.unique_visitors),
+          })),
+        }
+      }),
     [data, eventLabels, count],
   )
 

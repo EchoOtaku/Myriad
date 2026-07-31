@@ -6,6 +6,7 @@
 
 import { API_URL } from '../config'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
+import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 
 const API_BASE = `${API_URL}/api/speech`
 
@@ -54,6 +55,8 @@ export interface TTSRequest {
   sample_rate?: number
   /** 情感类别（仅多情感音色支持） */
   emotion?: string
+  /** 强制重新合成（跳过缓存；与 batch 语义对齐） */
+  force_regenerate?: boolean
 }
 
 /**
@@ -188,12 +191,18 @@ async function request<T>(
 
   console.log(`[SpeechAPI] Response status: ${response.status}`)
 
-  // 处理 CSRF 错误
+  notifyHttpRateLimit(response)
+
+  // 处理 CSRF 错误 — forceRefresh 避免 inflight 把旧 token 再喂回去
   if (response.status === 403 && retryOnCSRFError) {
     const text = await response.text()
     console.log(`[SpeechAPI] 403 response:`, text)
     if (text.includes('CSRF') || text.includes('csrf')) {
       clearCSRFToken()
+      const fresh = await getCSRFToken(true)
+      if (!fresh) {
+        throw new Error(text || 'CSRF token refresh failed')
+      }
       return request<T>(endpoint, options, false)
     }
     throw new Error(text || '请求被拒绝')

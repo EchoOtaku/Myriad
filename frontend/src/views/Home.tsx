@@ -29,10 +29,7 @@ import {
 import { ensureMotionReady } from '../lib/lazyMotion'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
-import {
-  getCsrfTokenWithCache,
-  getUserInfoWithCache,
-} from '../utils/userInfoCache'
+import { getUserInfoWithCache } from '../utils/userInfoCache'
 
 export default function Home() {
   // 🆕 初始化首页调度器（Visibility + Resize + RAF + Idle）
@@ -122,12 +119,15 @@ export default function Home() {
     fetchUserInfo()
   }, [t])
 
-  // 登录后获取 CSRF Token
+  // 登录后获取 CSRF Token（强制从服务器拉，避免与 axios 轮换后的双缓存脱节）
   useEffect(() => {
     async function fetchCsrfToken() {
       if (isAuthenticated && hasChecked) {
         try {
-          const token = await getCsrfTokenWithCache()
+          const { getCSRFToken } = await import('../utils/csrf')
+          const { invalidateCsrfCache } = await import('../utils/userInfoCache')
+          invalidateCsrfCache()
+          const token = await getCSRFToken(true)
           if (token) {
             setCsrfToken(token)
           }
@@ -237,29 +237,39 @@ export default function Home() {
 
   // 保存小组件配置到后端
   const handleWidgetsChange = async (newWidgets: WidgetConfig[]) => {
-    // 过滤掉未注册的小组件（已丢失/删除的组件，包括 Tapp 小组件）
+    // 过滤未注册类型；Tapp catalog 仍 loading 时不要滤掉已存 Tapp 布局并 POST
     const registeredWidgetIds = new Set(ALL_AVAILABLE_WIDGETS.map((w) => w.id))
-    const validWidgets = newWidgets.filter((w) =>
-      registeredWidgetIds.has(w.type),
-    )
+    const validWidgets = isTappWidgetsLoading
+      ? newWidgets
+      : newWidgets.filter((w) => registeredWidgetIds.has(w.type))
 
     setWidgets(validWidgets)
 
-    // 只有管理员可以保存
-    if (!isAdmin) return
+    // 只有管理员可以保存；catalog 未就绪时不写回，避免清空 Tapp 类型
+    if (!isAdmin || isTappWidgetsLoading) return
 
     try {
-      await fetch(`${API_URL}/api/config/dashboard`, {
+      const { getCSRFToken } = await import('../utils/csrf')
+      const token = (await getCSRFToken(true)) || csrfToken
+      if (!token) {
+        console.error('保存小组件配置失败: missing CSRF token')
+        return
+      }
+      if (token !== csrfToken) setCsrfToken(token)
+      const res = await fetch(`${API_URL}/api/config/dashboard`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
+          'X-CSRF-Token': token,
         },
         credentials: 'include',
         body: JSON.stringify({
           layout: JSON.stringify(validWidgets), // 序列化为字符串存储
         }),
       })
+      if (!res.ok) {
+        console.error('保存小组件配置失败:', res.status)
+      }
     } catch (err) {
       console.error('保存小组件配置失败:', err)
     }
@@ -273,41 +283,71 @@ export default function Home() {
     if (!isAdmin) return
 
     try {
-      await fetch(`${API_URL}/api/config/dashboard`, {
+      const { getCSRFToken } = await import('../utils/csrf')
+      const token = (await getCSRFToken(true)) || csrfToken
+      if (!token) {
+        console.error('保存标题失败: missing CSRF token')
+        return
+      }
+      if (token !== csrfToken) setCsrfToken(token)
+      const res = await fetch(`${API_URL}/api/config/dashboard`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
+          'X-CSRF-Token': token,
         },
         credentials: 'include',
         body: JSON.stringify({
           title: newTitle,
         }),
       })
+      if (!res.ok) {
+        console.error('保存标题失败:', res.status)
+      }
     } catch (err) {
       console.error('保存标题失败:', err)
     }
   }
 
-  // 监听自定义平台更新事件
+  // SocialNetworkWidget now persists custom platforms itself (with CSRF + ok check).
+  // Keep a hardened fallback for any other publisher that only dispatches the event.
   useEffect(() => {
     const handleCustomPlatformsUpdate = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ platforms: any[] }>
-      // 只有管理员可以保存
+      const customEvent = event as CustomEvent<{
+        platforms: unknown[]
+        persisted?: boolean
+      }>
+      if (customEvent.detail?.persisted) return
       if (!isAdmin) return
 
       try {
-        await fetch(`${API_URL}/api/config/dashboard`, {
+        const { getCSRFToken } = await import('../utils/csrf')
+        const { clearDedupCache } = await import('../utils/requestDedup')
+        const token = (await getCSRFToken(true)) || csrfToken
+        if (!token) {
+          console.error('保存自定义平台失败: missing CSRF token')
+          return
+        }
+        const response = await fetch(`${API_URL}/api/config/dashboard`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-Token': csrfToken,
+            'X-CSRF-Token': token,
           },
           credentials: 'include',
           body: JSON.stringify({
             custom_platforms: JSON.stringify(customEvent.detail.platforms),
           }),
         })
+        if (!response.ok) {
+          console.error(
+            '保存自定义平台失败:',
+            response.status,
+            await response.text().catch(() => ''),
+          )
+          return
+        }
+        clearDedupCache(`${API_URL}/api/config/ui`)
       } catch (err) {
         console.error('保存自定义平台失败:', err)
       }

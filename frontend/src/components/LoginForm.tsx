@@ -123,8 +123,11 @@ const LoginForm: FC = () => {
 
       // 产品埋点：登录成功（管理员 / 站长自访不计入）
       try {
-        const { trackEvent, setAnalyticsStaffSession } = await import(
+        const { setAnalyticsStaffSession } = await import(
           '../utils/siteAnalytics'
+        )
+        const { trackProductEvent, AnalyticsEvents } = await import(
+          '../utils/analyticsEvents'
         )
         const isStaff = Boolean(data.user?.is_admin || data.user?.is_owner)
         if (isStaff) {
@@ -133,7 +136,8 @@ const LoginForm: FC = () => {
             isOwner: Boolean(data.user?.is_owner),
           })
         } else {
-          trackEvent('login_success')
+          // Sync enqueue + immediate flush: hard redirect below is ~100ms
+          trackProductEvent(AnalyticsEvents.LOGIN_SUCCESS, { flush: true })
         }
       } catch {
         /* ignore */
@@ -266,6 +270,16 @@ const LoginForm: FC = () => {
                 <a
                   key={p.slug}
                   href={`${API_URL}/api/auth/oauth/${p.slug}/login`}
+                  onClick={() => {
+                    void import('../utils/analyticsEvents').then(
+                      ({ trackProductEvent, AnalyticsEvents }) => {
+                        trackProductEvent(AnalyticsEvents.LOGIN_OAUTH_CLICK, {
+                          target: p.slug,
+                          flush: true,
+                        })
+                      },
+                    )
+                  }}
                   className={
                     p.slug === 'github'
                       ? 'oauth-provider-btn oauth-provider-btn-github'

@@ -274,37 +274,51 @@ export function clearAllUserCache(): void {
 /**
  * 获取 CSRF Token（带内存缓存）
  * ✅ 安全：CSRF Token 存内存不存 localStorage，刷新即失效
+ * 与 csrf.ts sessionStorage 对齐：session 被 clearCSRFToken 清掉后，
+ * 内存缓存也必须失效（监听 csrf-token-cleared）。
  */
 let csrfTokenCache: { token: string; timestamp: number } | null = null
 const CSRF_CACHE_DURATION = 10 * 60 * 1000 // CSRF Token 缓存 10 分钟
 
-export async function getCsrfTokenWithCache(): Promise<string> {
-  // 检查内存缓存
+if (typeof window !== 'undefined') {
+  window.addEventListener('csrf-token-cleared', () => {
+    csrfTokenCache = null
+  })
+}
+
+export async function getCsrfTokenWithCache(
+  forceRefresh = false,
+): Promise<string> {
+  // Prefer sessionStorage if present and matches memory (post-axios-rotate)
+  let sessionToken: string | null = null
+  try {
+    sessionToken = sessionStorage.getItem('csrf_token')
+  } catch {
+    /* ignore */
+  }
+
   if (
+    !forceRefresh &&
     csrfTokenCache &&
     Date.now() - csrfTokenCache.timestamp < CSRF_CACHE_DURATION
   ) {
-    return csrfTokenCache.token
+    // Stale if sessionStorage was rotated/cleared to a different value
+    if (!sessionToken || sessionToken === csrfTokenCache.token) {
+      if (sessionToken) return csrfTokenCache.token
+    }
+    csrfTokenCache = null
   }
 
   try {
-    const response = await fetch(`${API_URL}/api/csrf-token`, {
-      credentials: 'include',
-    })
-    // Contract: guest → 200 + csrf_token:null (not 401)
-    if (response.ok) {
-      const token = parseCsrfTokenResponse(await response.json())
-      if (token) {
-        csrfTokenCache = {
-          token,
-          timestamp: Date.now(),
-        }
-        return token
-      }
-      // null token = guest — clear any stale cache, return empty
-      csrfTokenCache = null
-      return ''
+    // Use shared getCSRFToken so sessionStorage + server stay one source of truth
+    const { getCSRFToken } = await import('./csrf')
+    const token = await getCSRFToken(forceRefresh || !sessionToken)
+    if (token) {
+      csrfTokenCache = { token, timestamp: Date.now() }
+      return token
     }
+    csrfTokenCache = null
+    return ''
   } catch (e) {
     console.warn('获取 CSRF Token 失败:', e)
   }
@@ -313,7 +327,7 @@ export async function getCsrfTokenWithCache(): Promise<string> {
 }
 
 /**
- * 清除 CSRF Token 缓存
+ * 清除 CSRF Token 内存缓存（sessionStorage 由 clearCSRFToken 负责）
  */
 export function invalidateCsrfCache(): void {
   csrfTokenCache = null

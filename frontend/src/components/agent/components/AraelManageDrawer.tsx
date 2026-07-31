@@ -20,7 +20,10 @@ import { Spinner } from '../../Spinner'
 
 type ManageTab = 'heartbeat' | 'skills' | 'memory'
 
-export interface AraelManageDrawerProps {}
+export interface AraelManageDrawerProps {
+  /** BE heartbeat/skill writes require admin; hide write UI for non-admin */
+  isAdmin?: boolean
+}
 
 /** Cron -> human readable */
 function humanizeCron(
@@ -140,9 +143,23 @@ const MemoryEditInput: React.FC<{
   )
 }
 
-export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
+export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = ({
+  isAdmin = false,
+}) => {
   const { t: i18n, format } = useI18n()
   const [tab, setTab] = useState<ManageTab>('heartbeat')
+
+  // Skill/heartbeat notifications pass tab via arael-open-manage detail
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const raw = (e as CustomEvent<{ tab?: string }>).detail?.tab
+      if (raw === 'skills' || raw === 'memory' || raw === 'heartbeat') {
+        setTab(raw)
+      }
+    }
+    window.addEventListener('arael-open-manage', onOpen)
+    return () => window.removeEventListener('arael-open-manage', onOpen)
+  }, [])
 
   const tabLabels: Record<ManageTab, string> = {
     heartbeat: i18n.arael.tabHeartbeat,
@@ -453,6 +470,11 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
       {/* Right content */}
       <div className="arael-manage-main">
         <div className="arael-manage-main-content">
+          {!isAdmin && (
+            <div className="arael-manage-error" role="status">
+              {i18n.arael.manageAdminOnly}
+            </div>
+          )}
           {loading && (
             <div className="arael-manage-loading">
               <Spinner size="xs" color="primary" />
@@ -475,18 +497,20 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
           {/* Heartbeat */}
           {!loading && !error && tab === 'heartbeat' && (
             <div className="arael-manage-section">
-              <div className="arael-hb-toolbar">
-                <button
-                  type="button"
-                  className="arael-hb-create-btn"
-                  disabled={creatingHb || hbSaving}
-                  onClick={startCreateHeartbeat}
-                >
-                  {i18n.arael.createHeartbeat}
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="arael-hb-toolbar">
+                  <button
+                    type="button"
+                    className="arael-hb-create-btn"
+                    disabled={creatingHb || hbSaving}
+                    onClick={startCreateHeartbeat}
+                  >
+                    {i18n.arael.createHeartbeat}
+                  </button>
+                </div>
+              )}
 
-              {creatingHb && (
+              {isAdmin && creatingHb && (
                 <div className="arael-hb-item arael-hb-create-form">
                   <div className="arael-hb-edit">
                     <label className="arael-hb-edit-field">
@@ -662,45 +686,47 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
                             </div>
                           )}
                         </div>
-                        <div className="arael-hb-actions">
-                          <button
-                            type="button"
-                            className="arael-hb-edit-btn"
-                            onClick={() => startEditHeartbeat(task)}
-                            title={i18n.arael.editHeartbeat}
-                          >
-                            {i18n.arael.editHeartbeat}
-                          </button>
-                          <button
-                            type="button"
-                            className={`arael-hb-toggle ${task.enabled ? 'on' : 'off'}`}
-                            onClick={() => handleToggleHeartbeat(task.id)}
-                          >
-                            {task.enabled
-                              ? i18n.arael.toggleOn
-                              : i18n.arael.toggleOff}
-                          </button>
-                          <button
-                            type="button"
-                            className="arael-manage-delete-btn"
-                            onClick={() => void handleDeleteHeartbeat(task)}
-                            title={i18n.arael.deleteHeartbeat}
-                          >
-                            <svg
-                              width="12"
-                              height="12"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                        {isAdmin && (
+                          <div className="arael-hb-actions">
+                            <button
+                              type="button"
+                              className="arael-hb-edit-btn"
+                              onClick={() => startEditHeartbeat(task)}
+                              title={i18n.arael.editHeartbeat}
                             >
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            </svg>
-                          </button>
-                        </div>
+                              {i18n.arael.editHeartbeat}
+                            </button>
+                            <button
+                              type="button"
+                              className={`arael-hb-toggle ${task.enabled ? 'on' : 'off'}`}
+                              onClick={() => handleToggleHeartbeat(task.id)}
+                            >
+                              {task.enabled
+                                ? i18n.arael.toggleOn
+                                : i18n.arael.toggleOff}
+                            </button>
+                            <button
+                              type="button"
+                              className="arael-manage-delete-btn"
+                              onClick={() => void handleDeleteHeartbeat(task)}
+                              title={i18n.arael.deleteHeartbeat}
+                            >
+                              <svg
+                                width="12"
+                                height="12"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="3 6 5 6 21 6" />
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -731,7 +757,7 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = () => {
                               ? i18n.arael.originAuto
                               : i18n.arael.originImproved}
                         </span>
-                        {skill.origin !== 'manual' && (
+                        {isAdmin && skill.origin !== 'manual' && (
                           <button
                             className="arael-manage-delete-btn"
                             onClick={() => handleDeleteSkill(skill.id)}

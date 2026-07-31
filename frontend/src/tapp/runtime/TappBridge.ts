@@ -326,11 +326,11 @@ export class TappBridge {
           }
         }
       } else if (msg.action === 'federation.uploadMedia') {
-        // Backend: image 10 MiB, video 50 MiB, route body 55 MiB.
-        // Bridge carries data URL / base64 (~4/3 raw) + small JSON envelope.
-        const MAX_MEDIA_RAW_BYTES = 50 * 1024 * 1024
-        const MAX_MEDIA_DATA_CHARS =
-          Math.ceil((MAX_MEDIA_RAW_BYTES * 4) / 3) + 256 // base64 + data-URL header
+        // Align with backend federation::limits::{NOTE_IMAGE_LIMIT, NOTE_VIDEO_LIMIT}
+        // image 32 MiB / video 256 MiB. Uniform 50 MiB was wrong both ways:
+        // large images passed FE then 413'd; mid videos were rejected early.
+        const MAX_IMAGE_RAW_BYTES = 32 * 1024 * 1024
+        const MAX_VIDEO_RAW_BYTES = 256 * 1024 * 1024
         const args = (msg.payload as { args?: unknown[] }).args
         const options = args?.[0] as Record<string, unknown> | undefined
         if (!options || typeof options !== 'object' || Array.isArray(options)) {
@@ -346,10 +346,33 @@ export class TappBridge {
               'Invalid federation.uploadMedia payload: data must be a string',
           }
         }
-        if (options.data.length > MAX_MEDIA_DATA_CHARS) {
+        const mimeHint = String(
+          options.mime || options.media_type || '',
+        ).toLowerCase()
+        const isVideo =
+          mimeHint.startsWith('video/') ||
+          mimeHint.includes('video') ||
+          /\.(mp4|webm|mov|m4v)(\?|$)/i.test(String(options.name || ''))
+        const isImage =
+          mimeHint.startsWith('image/') ||
+          mimeHint.includes('image') ||
+          /\.(jpe?g|png|gif|webp|avif|svg)(\?|$)/i.test(
+            String(options.name || ''),
+          )
+        // Unknown type: allow up to video cap (BE still enforces by actual MIME)
+        const maxRaw = isImage
+          ? MAX_IMAGE_RAW_BYTES
+          : isVideo
+            ? MAX_VIDEO_RAW_BYTES
+            : MAX_VIDEO_RAW_BYTES
+        // Bridge carries data URL / base64 (~4/3 raw) + small JSON envelope.
+        const maxDataChars = Math.ceil((maxRaw * 4) / 3) + 256
+        if (options.data.length > maxDataChars) {
           return {
             valid: false,
-            error: `Media data too large (max ${MAX_MEDIA_RAW_BYTES} bytes raw / ~${MAX_MEDIA_DATA_CHARS} chars base64)`,
+            error: `Media data too large (max ${maxRaw} bytes raw for ${
+              isImage ? 'image' : isVideo ? 'video' : 'media'
+            } / ~${maxDataChars} chars base64)`,
           }
         }
         if (

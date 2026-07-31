@@ -14,6 +14,13 @@ import { useI18n } from '../../../contexts/I18nContext'
 import { SettingsButton } from '../../settings'
 import { EmptyCard } from './EmptyCard'
 
+export interface RankSubRow {
+  key: string
+  name: string
+  value: number
+  secondary?: string
+}
+
 export interface RankRow {
   key: string
   /** 主标题（本地化后的名称） */
@@ -26,6 +33,8 @@ export interface RankRow {
   secondary?: string
   /** 已格式化的第三列（如均停），无数据传 undefined */
   tertiary?: string
+  /** 事件维度 breakdown（如各 tapp / 平台） */
+  subRows?: RankSubRow[]
 }
 
 interface RankListProps {
@@ -115,40 +124,81 @@ export const RankList: React.FC<RankListProps> = ({
           ]
             .filter(Boolean)
             .join(' · ')
+          const sub = row.subRows?.filter((s) => s.value > 0) ?? []
           return (
-            <li
-              key={row.key}
-              className="site-analytics-rank-row"
-              aria-label={aria}
-            >
-              <div className="site-analytics-rank-label">
-                <span className="site-analytics-rank-name">{row.name}</span>
-                {row.meta ? (
-                  <span className="site-analytics-rank-meta" title={row.meta}>
-                    {row.meta}
+            <li key={row.key} className="site-analytics-rank-item">
+              <div
+                className="site-analytics-rank-row"
+                aria-label={aria}
+              >
+                <div className="site-analytics-rank-label">
+                  <span className="site-analytics-rank-name">{row.name}</span>
+                  {row.meta ? (
+                    <span className="site-analytics-rank-meta" title={row.meta}>
+                      {row.meta}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className="site-analytics-rank-track" aria-hidden>
+                  <div
+                    className="site-analytics-rank-bar"
+                    style={{
+                      width: `${Math.max(1.5, (row.value / max) * 100)}%`,
+                    }}
+                  />
+                </div>
+
+                <span className="site-analytics-rank-value">{main}</span>
+                {hasSecondary ? (
+                  <span className="site-analytics-rank-second">
+                    {row.secondary ?? '—'}
+                  </span>
+                ) : null}
+                {hasTertiary ? (
+                  <span className="site-analytics-rank-third">
+                    {row.tertiary ?? '—'}
                   </span>
                 ) : null}
               </div>
-
-              <div className="site-analytics-rank-track" aria-hidden>
-                <div
-                  className="site-analytics-rank-bar"
-                  style={{
-                    width: `${Math.max(1.5, (row.value / max) * 100)}%`,
-                  }}
-                />
-              </div>
-
-              <span className="site-analytics-rank-value">{main}</span>
-              {hasSecondary ? (
-                <span className="site-analytics-rank-second">
-                  {row.secondary ?? '—'}
-                </span>
-              ) : null}
-              {hasTertiary ? (
-                <span className="site-analytics-rank-third">
-                  {row.tertiary ?? '—'}
-                </span>
+              {sub.length > 0 ? (
+                <ul className="site-analytics-rank-sublist">
+                  {sub.map((s) => {
+                    const sMain = formatValue(s.value)
+                    return (
+                      <li
+                        key={s.key}
+                        className="site-analytics-rank-row site-analytics-rank-row--sub"
+                        aria-label={`${row.name} · ${s.name} · ${sMain}`}
+                      >
+                        <div className="site-analytics-rank-label">
+                          <span className="site-analytics-rank-name">
+                            {s.name}
+                          </span>
+                        </div>
+                        <div className="site-analytics-rank-track" aria-hidden>
+                          <div
+                            className="site-analytics-rank-bar"
+                            style={{
+                              width: `${Math.max(1.5, (s.value / max) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                        <span className="site-analytics-rank-value">
+                          {sMain}
+                        </span>
+                        {hasSecondary ? (
+                          <span className="site-analytics-rank-second">
+                            {s.secondary ?? '—'}
+                          </span>
+                        ) : null}
+                        {hasTertiary ? (
+                          <span className="site-analytics-rank-third">—</span>
+                        ) : null}
+                      </li>
+                    )
+                  })}
+                </ul>
               ) : null}
             </li>
           )

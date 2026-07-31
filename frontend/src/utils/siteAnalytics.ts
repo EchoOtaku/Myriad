@@ -47,6 +47,8 @@ interface CollectItem {
   referrer?: string
   ms?: number
   name?: string
+  /** Event dimension (tapp id, platform, brew source, …); server-normalized. */
+  target?: string
 }
 
 let excludeStaffSelf = false
@@ -369,34 +371,33 @@ async function flushQueue() {
   })
   const url = collectUrl()
 
+  // Prefer fetch so we observe HTTP status. sendBeacon only tells us the browser
+  // accepted the payload — a 503 (e.g. analytics_unavailable) still returns true
+  // and would false-fire ANALYTICS_PAGEVIEW_FLUSHED_EVENT.
   let ok = false
   try {
-    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      try {
-        ok = navigator.sendBeacon(
-          url,
-          new Blob([body], { type: 'application/json' }),
-        )
-      } catch {
-        ok = false
-      }
-    }
-    if (!ok) {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        credentials: 'same-origin',
-        keepalive: true,
-      })
-      // 2xx and "skipped" staff/bot are fine; 429/5xx → retry once
-      ok = res.ok || res.status === 204
-      if (res.status === 429 || res.status >= 500) {
-        ok = false
-      }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      credentials: 'same-origin',
+      keepalive: true,
+    })
+    // 2xx and "skipped" staff/bot are fine; 429/5xx → retry once
+    ok = res.ok || res.status === 204
+    if (res.status === 429 || res.status >= 500) {
+      ok = false
     }
   } catch {
     ok = false
+    // Page unload / network dead: best-effort beacon without claiming flush success.
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      try {
+        navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }))
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   if (!ok && flushRetriesLeft > 0) {
@@ -549,11 +550,32 @@ export function trackPageview(path?: string) {
   })
 }
 
+/** Sanitize event target dim (mirror of BE `normalize_target`). */
+export function sanitizeAnalyticsTarget(raw?: string | null): string | undefined {
+  if (raw == null) return undefined
+  const s = String(raw)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._:@+-]/g, '')
+    .slice(0, 64)
+  return s.length >= 1 ? s : undefined
+}
+
 /**
  * Custom event 埋点.
  * Name: 2–48 chars, `[a-z0-9_-]` (no leading `_` / reserved `__*`).
+ *
+ * Events enqueue **synchronously** (unlike pageviews, which wait for idle).
+ * Login/register hard-navigate ~100ms later; idle deferral was dropping
+ * `login_success` / `register_success` before they ever hit the queue.
+ * Pass `flush: true` to also kick an immediate network flush (still best-effort
+ * under unload — `pagehide` + keepalive cover the rest).
+ * Pass `target` for per-entity breakdown (tapp id, platform, source, …).
  */
-export function trackEvent(name: string, opts?: { path?: string }) {
+export function trackEvent(
+  name: string,
+  opts?: { path?: string; flush?: boolean; target?: string },
+) {
   if (typeof window === 'undefined') return
   if (!baseAllowed()) return
   const n = name.trim().toLowerCase()
@@ -564,11 +586,18 @@ export function trackEvent(name: string, opts?: { path?: string }) {
   const path = opts?.path || location.pathname || '/'
   if (!pathAllowed(path)) return
 
+  const target = sanitizeAnalyticsTarget(opts?.target)
+
   ensureLifecycleListeners()
-  runWhenIdle(() => {
-    if (!baseAllowed()) return
-    enqueue({ type: 'event', name: n, path })
+  enqueue({
+    type: 'event',
+    name: n,
+    path,
+    ...(target ? { target } : {}),
   })
+  if (opts?.flush) {
+    scheduleFlush(true)
+  }
 }
 
 export function flushAnalyticsNow() {

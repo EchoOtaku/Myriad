@@ -82,11 +82,11 @@ export const en: SettingGuidesCatalog = {
       notes: 'A busy or very blurry image makes text hard to read. If the site stutters, turn a few items off in the effects group first.',
     },
     wallpaper: {
-      what: 'Which image is used as the background (paste an image address).',
+      what: 'Background image (direct URL, 302 redirect, or JSON image API with url/image).',
       chain:
-        '1) Paste an address that opens the image → save.\n2) Used as wallpaper across the site.\n3) Parallax and click ripples also act on this image — if the image isn’t set, motion has nothing to ride on.',
+        '1) Paste a direct image URL or common JSON image host → save.\n2) Used as wallpaper across the site.\n3) Parallax and click ripples also act on this image — if the image isn’t set, motion has nothing to ride on.',
       frontend: 'Atmosphere image behind almost every page. Open a fresh home page side by side to compare.',
-      notes: 'Smaller images run more smoothly; a broken link shows blank or a broken image.',
+      notes: 'Smaller images run more smoothly; a broken link shows blank or a broken image. JSON needs fields like url/image/img.',
     },
     wallpaperBlur: {
       what: 'How soft versus sharp the background is.',
@@ -277,7 +277,7 @@ export const en: SettingGuidesCatalog = {
     eventAnalytics: {
       what: 'How often product events fire in the selected range, and how many visitors hit them.',
       chain:
-        '1) Shares the visitor-stats collection switch, date range, and exclusions (admin/owner not counted).\n2) Count = sum in range; visitors = distinct people who fired the event.\n3) Built-ins include login success; site code can add names via trackEvent.\n4) Turning collection off stops new writes; history stays readable.',
+        '1) Shares the visitor-stats collection switch, date range, and exclusions (admin/owner not counted).\n2) Count = sum in range; visitors = distinct people who fired the event.\n3) Built-ins cover login/OAuth, music, library, Brew, report stage, Arael, Tapp, friend links, theme/locale/control panel; pass target for per-entity split (tapp id, platform slug, …).\n4) Main row = event total; sub-rows = target breakdown (up to ~20).\n5) Turning collection off stops new writes; history stays readable.',
       frontend: 'Data & stats → Visitor stats → Events section (beside Referrers).',
       notes: 'Keep custom event names stable and short; noisy high-frequency events crowd the ranking. Export/import backups include event aggregates.',
     },

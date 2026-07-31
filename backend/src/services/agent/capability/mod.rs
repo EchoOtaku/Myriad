@@ -92,14 +92,21 @@ pub async fn capability_requires_confirmation_async(
         .map(|(msg, risk)| (msg.to_string(), *risk))
 }
 
-/// 获取能力摘要（用于 AI 提示）
+/// 获取能力摘要（用于 AI 提示 + GET /api/agent/capabilities）
+///
+/// 契约（FE agentApi.getCapabilities 依赖）：
+/// - `capabilities[]`：扁平列表（id/name/description/category/actions/requiresAi）
+/// - `total` / `totalCount`：数量
+/// - `byCategory` / `quickReference`：AI 提示用紧凑视图（保留兼容）
 pub async fn get_capability_summary() -> Value {
     let registry = get_registry().await;
+    let all = registry.get_all();
 
     let mut by_category: std::collections::HashMap<String, Vec<Value>> =
         std::collections::HashMap::new();
+    let mut capabilities: Vec<Value> = Vec::with_capacity(all.len());
 
-    for cap in registry.get_all() {
+    for cap in all {
         let usage_hint = get_capability_usage_hint(&cap.id);
         let category = get_capability_category_name(&cap.category);
 
@@ -109,12 +116,26 @@ pub async fn get_capability_summary() -> Value {
             "hint": usage_hint,
             "ai": cap.requires_ai
         });
+        by_category
+            .entry(category.clone())
+            .or_default()
+            .push(cap_info);
 
-        by_category.entry(category).or_default().push(cap_info);
+        capabilities.push(json!({
+            "id": cap.id,
+            "name": cap.name,
+            "description": cap.description,
+            "category": category,
+            "actions": cap.supported_actions,
+            "requiresAi": cap.requires_ai,
+        }));
     }
 
+    let total = capabilities.len();
     json!({
-        "total": registry.get_all().len(),
+        "total": total,
+        "totalCount": total,
+        "capabilities": capabilities,
         "byCategory": by_category,
         "quickReference": get_quick_reference()
     })

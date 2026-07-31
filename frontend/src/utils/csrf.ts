@@ -119,10 +119,16 @@ export function isValidCSRFToken(token: string): boolean {
 }
 
 /**
- * 清除 CSRF Token（登出时调用）
+ * 清除 CSRF Token（登出 / 403 轮换时调用）。
+ * 广播 `csrf-token-cleared` 让 userInfoCache 等内存缓存一并失效，
+ * 避免 axios 轮换 sessionStorage 后 Home 仍用旧 getCsrfTokenWithCache 值。
  */
 export function clearCSRFToken(): void {
   sessionStorage.removeItem(CSRF_TOKEN_KEY)
+  inflight = null
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('csrf-token-cleared'))
+  }
 }
 
 /**

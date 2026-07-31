@@ -1,4 +1,8 @@
-# General / Root
+# =============================================================================
+# Myriad root .gitignore
+# =============================================================================
+
+# --- Editor / OS ---
 .idea/
 *.swp
 *.swo
@@ -19,37 +23,49 @@ $RECYCLE.BIN/
 .LSOverride
 nul
 
-# Docker
-docker-compose.override.yml
-docker/data/
-docker/logs/
-docker/volumes/
-docker/nginx/certs/*
-!docker/nginx/certs/.gitkeep
-docker/nginx/logs/*.log
-docker/nginx/conf.d/*
-!docker/nginx/conf.d/.gitkeep
+# --- Local AI / tooling ---
+# Keep /.claude/ ignored; settings.local.json must never be tracked.
+/.claude/
+.claude/settings.local.json
 
-# Logs (General)
+# --- Secrets / env ---
+.env
+/backend/data/.secret-key
+/backend/.regen-token
+
+# --- Dependencies (never commit accidental root installs) ---
+/node_modules/
+/.pnpm-store
+/tools/tapp-cli/node_modules/
+
+# --- Logs / temp ---
 *.log
 logs/
-
-# Build Artifacts (General)
-/dist/
-/build/
-out/
-*.build
-*.pid
-
-# Temporary
 *.tmp
 *.temp
 *.bak
 *.backup
 *.old
 *.cache
+*.pid
+/tmp
 
-# Database
+# --- Generic build outputs ---
+/dist/
+/build/
+out/
+*.build
+/.astro
+/tools/tapp-cli/dist/
+/.verify-tapp-audit
+
+# --- Docker local overrides / volumes ---
+docker-compose.override.yml
+docker/data/
+docker/logs/
+docker/volumes/
+
+# --- Database files / local PG data ---
 *.db
 *.db-shm
 *.db-wal
@@ -58,46 +74,39 @@ out/
 /database/
 /postgres-data/
 
-# Claude AI
-/.claude/
-.claude/settings.local.json
+# --- Rust targets & nested lockfiles ---
+# Workspace root target (backend + migrations + crates)
+/target/
+# Legacy nested target from pre-workspace backend builds
+/backend/target/
+# Independent crates (not workspace members)
+/proxy/target/
+/updater/target/
+/tools/tapp-contract-export/target/
+/crates/tapp-contract/target/
+# Nested lockfiles must not reappear under workspace members / tools
+/backend/Cargo.lock
+/backend/migrations/Cargo.lock
+/tools/tapp-contract-export/Cargo.lock
+/crates/tapp-contract/Cargo.lock
+
+# --- Backend runtime data (seeded skills/*.md remain tracked) ---
 /backend/data/brew
-# data_key master secret + local debug JWT (never commit)
-/backend/data/.secret-key
-/backend/.regen-token
-.env
-/.astro
-/.claude
 /backend/data/agent/memory
-# Agent skill runtime artifacts (seeded manual skills under skills/*.md are tracked)
 /backend/data/agent/skills/_stats.json
 /backend/data/agent/skills/_gaps.json
 /backend/data/agent/skills/_auto_*.md
 /backend/data/agent/skills/.tmp_*
-# Rust build artifacts for updater/proxy crates
-/proxy/target/
-/updater/target/
+/backend/data/digital-life
 
-# Tapp CLI / contract export (local deps & build trees)
-/tools/tapp-cli/node_modules/
-/tools/tapp-cli/dist/
-/tools/tapp-contract-export/target/
-/crates/tapp-contract/Cargo.lock
-/crates/tapp-contract/target/
+# --- Frontend generated / local media ---
+/frontend/public/digital-life
 
-# Updater state (per-host runtime data, never in git)
+# --- Updater / deploy host runtime (never in git) ---
 /state/
 /backups/
 /pgdata/
 /.dev-updater/
-/.pnpm-store
-/backend/data/digital-life
-/backend/data/digital-life/assets
-/backend/data/digital-life/assets
-/frontend/public/digital-life/animation-study
-/frontend/public/digital-life/animation-study
-/.verify-tapp-audit
-/frontend/public/digital-life
-/tmp
-/data/federation
+
+# --- Misc local data trees ---
 /data

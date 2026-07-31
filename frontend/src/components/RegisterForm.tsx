@@ -40,7 +40,12 @@ const RegisterForm: FC = () => {
       setError(t.auth.usernameFormatError)
       return
     }
-    if (formData.password.length < 8) {
+    // Align with backend validate_password + SetupWizard: ≥8 + Unicode letter + digit
+    if (
+      formData.password.length < 8 ||
+      !/\p{L}/u.test(formData.password) ||
+      !/\p{N}/u.test(formData.password)
+    ) {
       setError(t.auth.passwordRule)
       return
     }
@@ -68,8 +73,11 @@ const RegisterForm: FC = () => {
       }
 
       try {
-        const { trackEvent } = await import('../utils/siteAnalytics')
-        trackEvent('register_success')
+        const { trackProductEvent, AnalyticsEvents } = await import(
+          '../utils/analyticsEvents'
+        )
+        // Sync enqueue + immediate flush before hard redirect (~100ms)
+        trackProductEvent(AnalyticsEvents.REGISTER_SUCCESS, { flush: true })
       } catch {
         /* ignore */
       }

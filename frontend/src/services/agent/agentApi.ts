@@ -248,9 +248,35 @@ class AgentService {
   async getCapabilities(): Promise<Capability[]> {
     const response = await apiService.get<{
       success: boolean
-      capabilities: { capabilities: Capability[]; totalCount: number }
+      capabilities: {
+        capabilities?: Capability[]
+        totalCount?: number
+        total?: number
+        byCategory?: Record<
+          string,
+          Array<{ id: string; name: string; hint?: string; ai?: boolean }>
+        >
+      }
     }>(`${this.baseUrl}/capabilities`)
-    return response.capabilities.capabilities
+    const body = response.capabilities
+    if (Array.isArray(body?.capabilities)) {
+      return body.capabilities
+    }
+    // Legacy: flatten byCategory summary if flat list missing
+    const byCat = body?.byCategory
+    if (byCat && typeof byCat === 'object') {
+      return Object.entries(byCat).flatMap(([category, items]) =>
+        (items || []).map((item) => ({
+          id: item.id,
+          name: item.name,
+          description: item.hint || '',
+          category,
+          actions: [],
+          requiresAi: Boolean(item.ai),
+        })),
+      )
+    }
+    return []
   }
 
   /**

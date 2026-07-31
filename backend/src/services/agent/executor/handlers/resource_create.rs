@@ -1,9 +1,18 @@
 //! 资源创建能力处理器
 //!
-//! 处理 tapp.generate, report.create, reminder.create 等资源创建类能力
+//! 处理 tapp.generate, report.create, reminder.create 等资源创建类能力。
+//! 纯投影见 [`crate::services::agent::resource_create_pure`]。
 
 use super::HandlerContext;
 use crate::models::entities::{tapp_storage, tapps};
+use crate::services::agent::resource_create_pure::{
+    extract_html_title, extract_note_content, extract_string_tags, format_bookmark_id,
+    format_note_id, format_reminder_id, format_report_id, generated_tapp_fallback,
+    limit_html_for_title, manifest_permission_strings, normalize_agent_tapp_manifest,
+    note_auto_title, parse_generated_tapp_json, reminder_repeat_or_default, render_report_content,
+    require_nonempty_code, resolve_bookmark_title, truncate_json_for_prompt,
+    AGENT_BOOKMARKS_TAPP_ID, AGENT_NOTES_TAPP_ID, AGENT_REMINDERS_TAPP_ID, AGENT_REPORTS_TAPP_ID,
+};
 use crate::services::data_paths::paths;
 use crate::services::permission_service::{TappPermissionService, UserRole};
 use crate::GLOBAL_DYNAMIC_CONFIG;
@@ -11,14 +20,6 @@ use chrono::Utc;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-
-/// 简易 HTML 转义
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-}
 
 /// 执行资源创建能力
 pub async fn execute(
@@ -44,57 +45,24 @@ pub async fn execute(
 // Tapp 生成
 // ============================================================================
 
-fn parse_generated_tapp_json(raw: &str) -> Option<Value> {
-    serde_json::from_str(raw).ok().or_else(|| {
-        let start = raw.find('{')?;
-        let end = raw.rfind('}')?;
-        serde_json::from_str(&raw[start..=end]).ok()
-    })
-}
-
 async fn persist_agent_tapp(
     ctx: &HandlerContext<'_>,
     tapp_id: &str,
     name: &str,
     description: Option<String>,
     code: &str,
-    mut manifest: Value,
+    manifest: Value,
     author: Value,
 ) -> Result<chrono::DateTime<Utc>, String> {
-    if code.trim().is_empty() {
-        return Err("Generated Tapp code is empty".to_string());
-    }
-
-    let manifest_object = manifest
-        .as_object_mut()
-        .ok_or("Tapp manifest must be an object")?;
-    manifest_object.insert("id".to_string(), json!(tapp_id));
-    manifest_object.insert("name".to_string(), json!(name));
-    manifest_object
-        .entry("version".to_string())
-        .or_insert_with(|| json!("1.0.0"));
-    manifest_object.insert("main".to_string(), json!("main.js"));
-    manifest_object
-        .entry("permissions".to_string())
-        .or_insert_with(|| json!([]));
-    if let Some(description) = &description {
-        manifest_object.insert("description".to_string(), json!(description));
-    }
-    manifest_object
-        .entry("author".to_string())
-        .or_insert_with(|| author.clone());
-
-    let requested_permissions: Vec<String> = manifest_object
-        .get("permissions")
-        .and_then(Value::as_array)
-        .map(|permissions| {
-            permissions
-                .iter()
-                .filter_map(Value::as_str)
-                .map(ToOwned::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
+    require_nonempty_code(code)?;
+    let manifest = normalize_agent_tapp_manifest(
+        manifest,
+        tapp_id,
+        name,
+        description.as_deref(),
+        &author,
+    )?;
+    let requested_permissions = manifest_permission_strings(&manifest);
     let role = if crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await {
         UserRole::Admin
     } else {
@@ -178,11 +146,7 @@ async fn execute_tapp_generate(
         .unwrap_or("一个简单的 Tapp 应用");
     let input_data = params.get("input").or_else(|| params.get("data"));
     let input_context = if let Some(data) = input_data {
-        let truncated = serde_json::to_string(data)
-            .unwrap_or_default()
-            .chars()
-            .take(4000)
-            .collect::<String>();
+        let truncated = truncate_json_for_prompt(data, 4000);
         format!(
             "\n\n以下是需要可视化/展示的数据（来自上游步骤的输出）：\n```json\n{}\n```\n\n请基于这些数据生成可视化看板或交互界面。",
             truncated
@@ -220,16 +184,8 @@ async fn execute_tapp_generate(
         .analyze(&prompt)
         .await
         .map_err(|e| format!("Tapp generation failed: {e}"))?;
-    let parsed = parse_generated_tapp_json(&result).unwrap_or_else(|| {
-        json!({
-            "code": result,
-            "manifest": {
-                "name": "Generated Tapp",
-                "version": "1.0.0",
-                "permissions": []
-            }
-        })
-    });
+    let parsed =
+        parse_generated_tapp_json(&result).unwrap_or_else(|| generated_tapp_fallback(&result));
 
     let tapp_id = format!("agent.generated.{}", uuid::Uuid::new_v4().simple());
     let manifest = parsed.get("manifest").cloned().unwrap_or_else(|| json!({}));
@@ -351,29 +307,16 @@ async fn execute_report_create(
         .and_then(|v| v.as_str())
         .unwrap_or("markdown");
 
-    let content = match format {
-        "markdown" => format!(
-            "# {}\n\n生成时间：{}\n\n## 分析结果\n\n{}",
-            title,
-            Utc::now().format("%Y-%m-%d %H:%M:%S"),
-            serde_json::to_string_pretty(&analysis).unwrap_or_default()
-        ),
-        "html" => format!(
-            "<h1>{}</h1><p>生成时间：{}</p><pre>{}</pre>",
-            escape_html(title),
-            Utc::now().format("%Y-%m-%d %H:%M:%S"),
-            escape_html(&serde_json::to_string_pretty(&analysis).unwrap_or_default())
-        ),
-        _ => serde_json::to_string_pretty(&json!({
-            "title": title,
-            "generatedAt": Utc::now().to_rfc3339(),
-            "analysis": analysis
-        }))
-        .unwrap_or_default(),
-    };
-
-    let report_id = format!("report_{}", Utc::now().timestamp_millis());
     let now = Utc::now();
+    let content = render_report_content(
+        title,
+        format,
+        &analysis,
+        &now.format("%Y-%m-%d %H:%M:%S").to_string(),
+        &now.to_rfc3339(),
+    );
+
+    let report_id = format_report_id(now.timestamp_millis());
 
     // 持久化到 tapp_storage
     let report_data = json!({
@@ -386,7 +329,7 @@ async fn execute_report_create(
     });
 
     let new_record = tapp_storage::ActiveModel {
-        tapp_id: Set("agent_reports".to_string()),
+        tapp_id: Set(AGENT_REPORTS_TAPP_ID.to_string()),
         user_id: Set(ctx.user_id),
         key: Set(report_id.clone()),
         value: Set(report_data),
@@ -435,13 +378,10 @@ async fn execute_reminder_create(
         .get("datetime")
         .and_then(|v| v.as_str())
         .ok_or("Missing datetime")?;
-    let repeat = params
-        .get("repeat")
-        .and_then(|v| v.as_str())
-        .unwrap_or("none");
+    let repeat = reminder_repeat_or_default(params.get("repeat").and_then(|v| v.as_str()));
 
-    let reminder_id = format!("reminder_{}", Utc::now().timestamp_millis());
     let now = Utc::now();
+    let reminder_id = format_reminder_id(now.timestamp_millis());
 
     let reminder_data = json!({
         "id": reminder_id,
@@ -453,7 +393,7 @@ async fn execute_reminder_create(
     });
 
     let new_record = tapp_storage::ActiveModel {
-        tapp_id: Set("agent_reminders".to_string()),
+        tapp_id: Set(AGENT_REMINDERS_TAPP_ID.to_string()),
         user_id: Set(ctx.user_id),
         key: Set(reminder_id.clone()),
         value: Set(reminder_data),
@@ -489,36 +429,13 @@ async fn execute_note_create(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
-    // 支持从上游步骤通过 inputFrom 解析后注入的内容
-    let content_str = params
-        .get("content")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let content = if let Some(s) = content_str {
-        s
-    } else if let Some(input) = params.get("input").or_else(|| params.get("data")) {
-        // 上游步骤的输出作为笔记内容
-        match input.as_str() {
-            Some(s) => s.to_string(),
-            None => serde_json::to_string_pretty(input).unwrap_or_default(),
-        }
-    } else {
-        return Err("Missing content".to_string());
-    };
-
+    let content = extract_note_content(params)?;
     let title = params.get("title").and_then(|v| v.as_str());
-    let tags = params
-        .get("tags")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-        .unwrap_or_default();
+    let tags = extract_string_tags(params, "tags");
 
-    let note_id = format!("note_{}", Utc::now().timestamp_millis());
     let now = Utc::now();
-
-    let auto_title = title
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| content.chars().take(30).collect::<String>());
+    let note_id = format_note_id(now.timestamp_millis());
+    let auto_title = note_auto_title(title, &content, 30);
 
     let note_data = json!({
         "id": note_id,
@@ -530,7 +447,7 @@ async fn execute_note_create(
     });
 
     let new_record = tapp_storage::ActiveModel {
-        tapp_id: Set("agent_notes".to_string()),
+        tapp_id: Set(AGENT_NOTES_TAPP_ID.to_string()),
         user_id: Set(ctx.user_id),
         key: Set(note_id.clone()),
         value: Set(note_data),
@@ -571,14 +488,10 @@ async fn execute_bookmark_save(
         .ok_or("Missing url")?;
     let title = params.get("title").and_then(|v| v.as_str());
     let description = params.get("description").and_then(|v| v.as_str());
-    let tags = params
-        .get("tags")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-        .unwrap_or_default();
+    let tags = extract_string_tags(params, "tags");
 
-    let bookmark_id = format!("bookmark_{}", Utc::now().timestamp_millis());
     let now = Utc::now();
+    let bookmark_id = format_bookmark_id(now.timestamp_millis());
 
     // 尝试获取网页标题（SSRF：outbound_security 公网 DNS 钉扎、禁止重定向）
     let fetched_title = if title.is_none() {
@@ -591,17 +504,15 @@ async fn execute_bookmark_save(
         {
             Ok((target_url, client)) => {
                 if let Ok(resp) = client.get(target_url).send().await {
-                    if let Ok(body) = resp.text().await {
-                        let body_limited: String = body.chars().take(100_000).collect();
-                        if let Some(start) = body_limited.find("<title>") {
-                            body_limited[start..]
-                                .find("</title>")
-                                .map(|end| body_limited[start + 7..start + end].to_string())
-                        } else {
-                            None
+                    match crate::services::outbound_security::read_limited_body(resp, 256 * 1024)
+                        .await
+                    {
+                        Ok(bytes) => {
+                            let body = String::from_utf8_lossy(&bytes);
+                            let body_limited = limit_html_for_title(&body);
+                            extract_html_title(&body_limited)
                         }
-                    } else {
-                        None
+                        Err(_) => None,
                     }
                 } else {
                     None
@@ -616,7 +527,7 @@ async fn execute_bookmark_save(
         None
     };
 
-    let final_title = title.or(fetched_title.as_deref()).unwrap_or("Untitled");
+    let final_title = resolve_bookmark_title(title, fetched_title.as_deref());
 
     let bookmark_data = json!({
         "id": bookmark_id,
@@ -628,7 +539,7 @@ async fn execute_bookmark_save(
     });
 
     let new_record = tapp_storage::ActiveModel {
-        tapp_id: Set("agent_bookmarks".to_string()),
+        tapp_id: Set(AGENT_BOOKMARKS_TAPP_ID.to_string()),
         user_id: Set(ctx.user_id),
         key: Set(bookmark_id.clone()),
         value: Set(bookmark_data),
@@ -661,18 +572,4 @@ async fn execute_bookmark_save(
     }))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::parse_generated_tapp_json;
 
-    #[test]
-    fn parses_json_from_a_markdown_fence() {
-        let parsed = parse_generated_tapp_json(
-            "```json\n{\"manifest\":{\"name\":\"Demo\"},\"code\":\"console.log(1)\"}\n```",
-        )
-        .expect("fenced JSON should parse");
-
-        assert_eq!(parsed["manifest"]["name"], "Demo");
-        assert_eq!(parsed["code"], "console.log(1)");
-    }
-}

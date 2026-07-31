@@ -6,6 +6,7 @@
 
 import { API_URL } from '../config'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
+import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 
 const API_BASE = `${API_URL}/api`
 
@@ -118,6 +119,7 @@ async function request<T>(
     clearTimeout(timeoutId)
 
     if (!response.ok) {
+      notifyHttpRateLimit(response)
       let errorMessage = `API Error: ${response.status}`
       let errorCode: string | undefined
       let errorDetails: unknown

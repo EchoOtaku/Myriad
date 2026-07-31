@@ -1,0 +1,46 @@
+# Virtual workspace for packages that share path deps and a single lockfile.
+# See: https://doc.rust-lang.org/book/ch14-03-cargo-workspaces.html
+#
+# Members = the connected graph only (backend ↔ migrations ↔ tapp-contract).
+# proxy / updater stay independent trees (own lock + deploy lifecycle).
+[workspace]
+resolver = "2"
+members = [
+    "backend",
+    "backend/migrations",
+    "crates/myriad-data-key",
+    "crates/myriad-error",
+    "crates/myriad-image-proxy",
+    "crates/myriad-json-schema",
+    "crates/myriad-outbound",
+    "crates/myriad-platform-utils",
+    "crates/myriad-module-visibility",
+    "crates/myriad-process-info",
+    "crates/myriad-prompt-security",
+    "crates/myriad-psn-auth",
+    "crates/myriad-tapp-registry",
+    "crates/tapp-contract",
+]
+# Independent deploy trees / tooling: own Cargo.lock, not part of this graph.
+# Without exclude, `cd proxy && cargo build` fails with "believes it's in a workspace".
+exclude = [
+    "proxy",
+    "updater",
+    "tools/tapp-contract-export",
+]
+default-members = ["backend"]
+
+# Workspace-level release profile (Cargo prefers this over per-member profiles).
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+# Docker/CI image builds: thin LTO + parallel codegen. Local/production
+# `cargo build --release` keeps full LTO above; image workflows pass
+# `--build-arg CARGO_PROFILE=ci-release`.
+[profile.ci-release]
+inherits = "release"
+lto = "thin"
+codegen-units = 16

@@ -6,10 +6,10 @@
 
 param(
     [Parameter(Position = 0, Mandatory = $false)]
-    [ValidateSet("start", "stop", "restart", "clean", "status", "logs", "help")]
+    [ValidateSet("start", "stop", "restart", "clean", "status", "logs", "help", "menu")]
     [string]$Command = "help",
     
-    [ValidateSet("backend", "frontend", "updater", "all", "all-updater")]
+    [ValidateSet("backend", "frontend", "updater", "database", "all", "all-updater")]
     [string]$Service = "all",
     
     [switch]$Force
@@ -17,12 +17,30 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Get project root
-$projectRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+# Get project root (scripts/dev -> repo root)
+$projectRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $devUpdaterDir = Join-Path $projectRoot ".dev-updater"
 $devUpdaterTokenDefault = "9xQ3vN8mP2rT5wY7zA1bC4dF6hJ8kL0n"
+$devUpdaterGatewaySecretDefault = "dev-updater-gateway-secret-32chars!!"
 
 # Helper functions
+function Show-Logo {
+    $logo = Join-Path $projectRoot "shared\logo-ansi.txt"
+    if (-not (Test-Path $logo)) { return }
+    # Truecolor half-block art (UTF-8). No wordmark — character only.
+    $prevOut = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+        $raw = [System.IO.File]::ReadAllText($logo, [System.Text.UTF8Encoding]::new($false))
+        [Console]::Out.Write($raw)
+        if (-not $raw.EndsWith("`n")) { [Console]::Out.WriteLine() }
+        [Console]::Out.WriteLine()
+    }
+    finally {
+        [Console]::OutputEncoding = $prevOut
+    }
+}
+
 function Write-Header {
     param([string]$Title)
     Write-Host "`n================================" -ForegroundColor Cyan
@@ -125,6 +143,80 @@ function Get-DevUpdaterToken {
         return $env:MYRIAD_DEV_UPDATE_TOKEN
     }
     return $devUpdaterTokenDefault
+}
+
+function Get-DevUpdaterGatewaySecret {
+    if ($env:MYRIAD_DEV_UPDATER_GATEWAY_SECRET) {
+        return $env:MYRIAD_DEV_UPDATER_GATEWAY_SECRET
+    }
+    return $devUpdaterGatewaySecretDefault
+}
+
+function Test-DatabaseRunning {
+    $running = docker ps --filter "name=myriad-postgres-dev" --format "{{.Names}}" 2>$null
+    return $running -match "myriad-postgres-dev"
+}
+
+function Start-Database {
+    Write-Info "Starting PostgreSQL database..."
+    if (Test-DatabaseRunning) {
+        Write-Host "Database is already running" -ForegroundColor Yellow
+        return $true
+    }
+    $composeFile = Join-Path $projectRoot "docker-compose.dev.yml"
+    if (-not (Test-Path $composeFile)) {
+        Write-Error "docker-compose.dev.yml not found"
+        return $false
+    }
+    Push-Location $projectRoot
+    try {
+        docker compose -f docker-compose.dev.yml up -d postgres
+    }
+    finally {
+        Pop-Location
+    }
+    Start-Sleep -Seconds 3
+    if (Test-DatabaseRunning) {
+        Write-Success "Database started"
+        return $true
+    }
+    Write-Error "Failed to start database"
+    return $false
+}
+
+function Stop-Database {
+    Write-Info "Stopping PostgreSQL database..."
+    Push-Location $projectRoot
+    try {
+        docker compose -f docker-compose.dev.yml stop postgres 2>$null | Out-Null
+        docker compose -f docker-compose.dev.yml rm -f postgres 2>$null | Out-Null
+    }
+    finally {
+        Pop-Location
+    }
+    Write-Success "Database stopped"
+}
+
+function Clear-ListenPort {
+    param([int]$Port)
+    try {
+        $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+    }
+    catch {
+        return
+    }
+    foreach ($c in @($conns)) {
+        $procId = $c.OwningProcess
+        if ($procId -and $procId -ne 0) {
+            try {
+                Stop-Process -Id $procId -Force -ErrorAction Stop
+                Write-Info "Freed port $Port (PID $procId)"
+            }
+            catch {
+                Write-Host "  Could not free port $Port PID ${procId}: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
+        }
+    }
 }
 
 function Test-UpdaterHealth {
@@ -241,9 +333,22 @@ function Stop-Updater {
 function Start-Services {
     Write-Header "Starting Myriad Services"
 
+    if ($Service -eq "database") {
+        Start-Database | Out-Null
+        return
+    }
+
+    $startDatabase = $Service -eq "all" -or $Service -eq "all-updater"
     $startUpdater = $Service -eq "updater" -or $Service -eq "all-updater"
     $startBackend = $Service -eq "backend" -or $Service -eq "all" -or $Service -eq "all-updater"
     $startFrontend = $Service -eq "frontend" -or $Service -eq "all" -or $Service -eq "all-updater"
+
+    if ($startDatabase) {
+        if (-not (Start-Database)) {
+            Write-Error "Database failed to start; aborting."
+            return
+        }
+    }
 
     if ($startUpdater) {
         $ok = Start-Updater
@@ -259,6 +364,7 @@ function Start-Services {
     if ($Service -eq "all-updater" -and $existingBackend) {
         Write-Info "Restarting backend so it picks up updater dev environment..."
         Stop-ProjectProcesses -Processes $existingBackend | Out-Null
+        Clear-ListenPort -Port 1103
         Start-Sleep -Seconds 1
         $existingBackend = @()
     }
@@ -267,7 +373,7 @@ function Start-Services {
         ($existingFrontend -and $startFrontend -and $Service -ne "all-updater")) {
         
         if (-not $Force) {
-            Write-Host "⚠️  Warning: Some services are already running" -ForegroundColor Yellow
+            Write-Host "Warning: Some services are already running" -ForegroundColor Yellow
             Write-Host "Use -Force to stop and restart them" -ForegroundColor Yellow
             return
         }
@@ -285,12 +391,15 @@ function Start-Services {
         }
         else {
             Write-Info "Starting Backend..."
+            Clear-ListenPort -Port 1103
             $backendPath = Join-Path $projectRoot "backend"
-            $backendCommand = "Write-Host '🦀 Myriad Backend' -ForegroundColor Cyan; Write-Host ''; Set-Location '$backendPath'; "
+            $backendCommand = "Write-Host 'Myriad Backend' -ForegroundColor Cyan; Write-Host ''; Set-Location '$backendPath'; "
             if (Test-UpdaterRunning) {
                 Ensure-DevUpdaterFiles
+                $gwSecret = Get-DevUpdaterGatewaySecret
                 $backendCommand += "`$env:MYRIAD_UPDATER_URL='http://127.0.0.1:1104'; "
-                Write-Info "Backend updater proxy via gateway: http://127.0.0.1:1104 (no UPDATE_TOKEN in backend)"
+                $backendCommand += "`$env:UPDATER_GATEWAY_SECRET='$gwSecret'; "
+                Write-Info "Backend updater proxy via gateway: http://127.0.0.1:1104 (UPDATER_GATEWAY_SECRET set; no UPDATE_TOKEN)"
             }
             $backendCommand += "cargo run"
 
@@ -316,11 +425,12 @@ function Start-Services {
     # Start Frontend
     if ($startFrontend) {
         Write-Info "Starting Frontend..."
+        Clear-ListenPort -Port 1102
         $frontendPath = Join-Path $projectRoot "frontend"
         
         Start-Process powershell -ArgumentList `
             "-NoExit", "-NoProfile", "-Command", `
-            "Write-Host '⚡ Myriad Frontend' -ForegroundColor Cyan; Write-Host ''; Set-Location '$frontendPath'; pnpm run dev" `
+            "Write-Host 'Myriad Frontend' -ForegroundColor Cyan; Write-Host ''; Set-Location '$frontendPath'; pnpm run dev" `
             -WindowStyle Normal -WorkingDirectory $frontendPath
         
         Write-Success "Frontend starting in new window"
@@ -334,6 +444,7 @@ function Start-Services {
     Write-Host "  Health:   http://localhost:1103/health" -ForegroundColor White
     if (Test-UpdaterRunning) {
         Write-Host "  Updater:  http://127.0.0.1:1101" -ForegroundColor White
+        Write-Host "  Gateway:  http://127.0.0.1:1104" -ForegroundColor White
     }
     Write-Host ""
 }
@@ -343,11 +454,17 @@ function Start-Services {
 # ====================
 function Stop-Services {
     Write-Header "Stopping Myriad Services"
+
+    if ($Service -eq "database") {
+        Stop-Database
+        return
+    }
     
     $stoppedCount = 0
     $stopUpdater = $Service -eq "updater" -or $Service -eq "all" -or $Service -eq "all-updater"
     $stopBackend = $Service -eq "backend" -or $Service -eq "all" -or $Service -eq "all-updater"
     $stopFrontend = $Service -eq "frontend" -or $Service -eq "all" -or $Service -eq "all-updater"
+    $stopDatabase = $Service -eq "all" -or $Service -eq "all-updater"
 
     # Stop Backend
     if ($stopBackend) {
@@ -355,6 +472,7 @@ function Stop-Services {
         
         $backendProcesses = @(Get-ProjectBackendProcesses)
         $stoppedCount += Stop-ProjectProcesses -Processes $backendProcesses
+        Clear-ListenPort -Port 1103
         
         Write-Success "Backend stopped"
     }
@@ -365,6 +483,7 @@ function Stop-Services {
         
         $nodeProcesses = @(Get-ProjectFrontendProcesses)
         $stoppedCount += Stop-ProjectProcesses -Processes $nodeProcesses
+        Clear-ListenPort -Port 1102
         
         Write-Success "Frontend stopped"
     }
@@ -373,12 +492,16 @@ function Stop-Services {
         Stop-Updater
     }
 
+    if ($stopDatabase) {
+        Stop-Database
+    }
+
     Write-Host ""
     if ($stoppedCount -gt 0) {
         Write-Success "Stopped $stoppedCount process(es)"
     }
     else {
-        Write-Host "No services were running" -ForegroundColor Gray
+        Write-Host "No host services were running" -ForegroundColor Gray
     }
     Write-Host ""
 }
@@ -403,11 +526,12 @@ function Clear-Project {
     Write-Header "Myriad Clean Tool"
     
     Write-Host "WARNING: This will delete:" -ForegroundColor Yellow
-    Write-Host "  - Database data (drop all tables)" -ForegroundColor Yellow
-    Write-Host "  - Backend build files (target/)" -ForegroundColor Yellow
-    Write-Host "  - Frontend build files (frontend/dist/)" -ForegroundColor Yellow
-    Write-Host "  - Cache files (backend/cache/)" -ForegroundColor Yellow
-    Write-Host "  - Environment config (backend/.env)" -ForegroundColor Yellow
+    Write-Host "  - Database tables (myriad-postgres-dev)" -ForegroundColor Yellow
+    Write-Host "  - Workspace + backend build (target/)" -ForegroundColor Yellow
+    Write-Host "  - Frontend build (frontend/dist, frontend/.astro)" -ForegroundColor Yellow
+    Write-Host "  - Cache files (backend/cache/*.json)" -ForegroundColor Yellow
+    Write-Host "  - Log files (backend.log, frontend.log)" -ForegroundColor Yellow
+    Write-Host "  (Does NOT delete backend/.env — same as dev.sh)" -ForegroundColor Gray
     Write-Host ""
     
     if (-not $Force) {
@@ -420,10 +544,9 @@ function Clear-Project {
     
     Write-Host "`nStarting cleanup..." -ForegroundColor Cyan
 
-    # 1. Clear database
+    # 1. Clear database (dev compose container name)
     Write-Info "[1/5] Clearing database..."
-    $dbRunning = docker ps --filter "name=myriad-postgres" --format "{{.Names}}" 2>$null
-    if ($dbRunning -eq "myriad-postgres") {
+    if (Test-DatabaseRunning) {
         $dropSQL = @"
 DO `$`$ DECLARE r RECORD;
 BEGIN
@@ -432,33 +555,31 @@ BEGIN
     END LOOP;
 END `$`$;
 "@
-        docker exec myriad-postgres psql -U myriad -d myriad -c $dropSQL 2>&1 | Out-Null
+        docker exec myriad-postgres-dev psql -U myriad -d myriad -c $dropSQL 2>&1 | Out-Null
         Write-Success "Database tables dropped"
     }
     else {
         Write-Host "  Database not running" -ForegroundColor Gray
     }
 
-    # 2. Delete backend build files
-    Write-Info "[2/5] Deleting backend build files..."
-    $backendTarget = Join-Path $projectRoot "backend\target"
-    if (Test-Path $backendTarget) {
-        Remove-Item -Path $backendTarget -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Success "Backend build files deleted"
-    }
-    else {
-        Write-Host "  No backend build files" -ForegroundColor Gray
+    # 2. Delete Rust build artifacts (workspace root + legacy nested)
+    Write-Info "[2/5] Deleting Rust build files..."
+    foreach ($rel in @("target", "backend\target")) {
+        $p = Join-Path $projectRoot $rel
+        if (Test-Path $p) {
+            Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Success "Deleted $rel"
+        }
     }
 
     # 3. Delete frontend build files
     Write-Info "[3/5] Deleting frontend build files..."
-    $frontendDist = Join-Path $projectRoot "frontend\dist"
-    if (Test-Path $frontendDist) {
-        Remove-Item -Path $frontendDist -Recurse -Force
-        Write-Success "Frontend build files deleted"
-    }
-    else {
-        Write-Host "  No frontend build files" -ForegroundColor Gray
+    foreach ($rel in @("frontend\dist", "frontend\.astro")) {
+        $p = Join-Path $projectRoot $rel
+        if (Test-Path $p) {
+            Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Success "Deleted $rel"
+        }
     }
 
     # 4. Delete cache files
@@ -472,15 +593,14 @@ END `$`$;
         Write-Host "  No cache files" -ForegroundColor Gray
     }
 
-    # 5. Delete environment config
-    Write-Info "[5/5] Deleting environment config..."
-    $envFile = Join-Path $projectRoot "backend\.env"
-    if (Test-Path $envFile) {
-        Remove-Item -Path $envFile -Force
-        Write-Success ".env file deleted"
-    }
-    else {
-        Write-Host "  No .env file" -ForegroundColor Gray
+    # 5. Delete log files (do not touch backend/.env)
+    Write-Info "[5/5] Deleting log files..."
+    foreach ($rel in @("backend.log", "frontend.log")) {
+        $p = Join-Path $projectRoot $rel
+        if (Test-Path $p) {
+            Remove-Item -Path $p -Force -ErrorAction SilentlyContinue
+            Write-Success "Deleted $rel"
+        }
     }
 
     Write-Host ""
@@ -496,25 +616,37 @@ END `$`$;
 # ====================
 function Show-Status {
     Write-Header "Myriad Services Status"
+
+    if (Test-DatabaseRunning) {
+        Write-Host "Database: " -NoNewline
+        Write-Host "RUNNING" -ForegroundColor Green
+        Write-Host "  Container: myriad-postgres-dev" -ForegroundColor Gray
+    }
+    else {
+        Write-Host "Database: " -NoNewline
+        Write-Host "STOPPED" -ForegroundColor Red
+    }
     
-    # Backend status
     $backendProcesses = @(Get-ProjectBackendProcesses)
-    if ($backendProcesses) {
+    if ($backendProcesses -or (Test-BackendHealth)) {
         Write-Host "Backend:  " -NoNewline
         Write-Host "RUNNING" -ForegroundColor Green
-        Write-Host "  Processes: $($backendProcesses.Count)" -ForegroundColor Gray
+        if ($backendProcesses) {
+            Write-Host "  Processes: $($backendProcesses.Count)" -ForegroundColor Gray
+        }
+        Write-Host "  URL: http://localhost:1103" -ForegroundColor Gray
     }
     else {
         Write-Host "Backend:  " -NoNewline
         Write-Host "STOPPED" -ForegroundColor Red
     }
     
-    # Frontend status
     $frontendProcesses = @(Get-ProjectFrontendProcesses)
     if ($frontendProcesses) {
         Write-Host "Frontend: " -NoNewline
         Write-Host "RUNNING" -ForegroundColor Green
         Write-Host "  Processes: $($frontendProcesses.Count)" -ForegroundColor Gray
+        Write-Host "  URL: http://localhost:1102" -ForegroundColor Gray
     }
     else {
         Write-Host "Frontend: " -NoNewline
@@ -524,7 +656,7 @@ function Show-Status {
     if (Test-UpdaterRunning) {
         Write-Host "Updater:  " -NoNewline
         Write-Host "RUNNING" -ForegroundColor Green
-        Write-Host "  URL: http://127.0.0.1:1101" -ForegroundColor Gray
+        Write-Host "  URL: http://127.0.0.1:1101 (gateway :1104)" -ForegroundColor Gray
     }
     else {
         Write-Host "Updater:  " -NoNewline
@@ -561,17 +693,18 @@ function Show-Help {
     Write-Host "  logs                         - Show logs info" -ForegroundColor White
     Write-Host "  help                         - Show this help" -ForegroundColor White
     Write-Host ""
-    Write-Host "Services: backend, frontend, updater, all, all-updater (default: all)" -ForegroundColor Yellow
+    Write-Host "Services: backend, frontend, updater, database, all, all-updater (default: all)" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Examples:" -ForegroundColor Yellow
-    Write-Host "  .\dev.ps1 start                    # Start all services" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 start -Service all-updater # Start dev stack with updater harness" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 start -Service updater   # Start updater harness only" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 start -Service backend   # Start backend only" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 stop                     # Stop all services" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 restart -Service frontend # Restart frontend" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 clean -Force             # Clean without prompt" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 status                   # Show status" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 start                      # Start DB + backend + frontend" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 start -Service all-updater # Start stack with updater harness" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 start -Service database    # Start postgres only" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 start -Service updater     # Start updater harness only" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 start -Service backend     # Start backend only" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 stop                       # Stop all (incl. DB)" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 restart -Service frontend  # Restart frontend" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 clean -Force               # Clean without prompt" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 status                     # Show status" -ForegroundColor Gray
     Write-Host ""
 }
 
@@ -581,24 +714,22 @@ function Show-Help {
 function Show-InteractiveMenu {
     while ($true) {
         Write-Host ""
-        Write-Host "================================" -ForegroundColor Cyan
-        Write-Host "  Myriad Development Menu" -ForegroundColor Cyan
-        Write-Host "================================" -ForegroundColor Cyan
-        Write-Host ""
-        Write-Host "1. Start all services" -ForegroundColor White
+        Show-Logo
+        Write-Host "1. Start all services (DB + backend + frontend)" -ForegroundColor White
         Write-Host "2. Start all services + updater harness" -ForegroundColor White
-        Write-Host "3. Start backend only" -ForegroundColor White
-        Write-Host "4. Start frontend only" -ForegroundColor White
-        Write-Host "5. Start updater harness only" -ForegroundColor White
-        Write-Host "6. Stop all services" -ForegroundColor White
-        Write-Host "7. Restart all services" -ForegroundColor White
-        Write-Host "8. Show status" -ForegroundColor White
-        Write-Host "9. Clean project" -ForegroundColor White
-        Write-Host "10. Show logs info" -ForegroundColor White
+        Write-Host "3. Start database only" -ForegroundColor White
+        Write-Host "4. Start backend only" -ForegroundColor White
+        Write-Host "5. Start frontend only" -ForegroundColor White
+        Write-Host "6. Start updater harness only" -ForegroundColor White
+        Write-Host "7. Stop all services" -ForegroundColor White
+        Write-Host "8. Restart all services" -ForegroundColor White
+        Write-Host "9. Show status" -ForegroundColor White
+        Write-Host "10. Clean project" -ForegroundColor White
+        Write-Host "11. Show logs info" -ForegroundColor White
         Write-Host "0. Exit" -ForegroundColor Gray
         Write-Host ""
         
-        $choice = Read-Host "Select an option (0-10)"
+        $choice = Read-Host "Select an option (0-11)"
         
         switch ($choice) {
             "1" {
@@ -610,42 +741,46 @@ function Show-InteractiveMenu {
                 Start-Services
             }
             "3" {
-                $script:Service = "backend"
+                $script:Service = "database"
                 Start-Services
             }
             "4" {
-                $script:Service = "frontend"
+                $script:Service = "backend"
                 Start-Services
             }
             "5" {
-                $script:Service = "updater"
+                $script:Service = "frontend"
                 Start-Services
             }
             "6" {
-                $script:Service = "all"
-                Stop-Services
+                $script:Service = "updater"
+                Start-Services
             }
             "7" {
                 $script:Service = "all"
-                Restart-Services
+                Stop-Services
             }
             "8" {
-                Show-Status
+                $script:Service = "all"
+                Restart-Services
             }
             "9" {
-                Clear-Project
+                Show-Status
             }
             "10" {
+                Clear-Project
+            }
+            "11" {
                 Show-Logs
             }
             "0" {
                 Write-Host ""
-                Write-Host "Goodbye! 👋" -ForegroundColor Cyan
+                Write-Host "Goodbye!" -ForegroundColor Cyan
                 return
             }
             default {
                 Write-Host ""
-                Write-Host "Invalid option. Please select 0-10" -ForegroundColor Red
+                Write-Host "Invalid option. Please select 0-11" -ForegroundColor Red
             }
         }
         
@@ -664,8 +799,8 @@ function Show-InteractiveMenu {
 # Main Execution
 # ====================
 
-# If no command provided or help requested, show interactive menu
-if ($Command -eq "help" -and $PSBoundParameters.Count -eq 0) {
+# If no command provided, show interactive menu
+if (($Command -eq "help" -and $PSBoundParameters.Count -eq 0) -or $Command -eq "menu") {
     Show-InteractiveMenu
 }
 else {

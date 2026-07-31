@@ -1,5 +1,8 @@
+use axum::http::StatusCode;
 use axum::Json;
 use serde::Serialize;
+
+use crate::error::HttpError;
 
 /// API 响应
 #[derive(Debug, Serialize)]
@@ -21,10 +24,8 @@ impl<T: Serialize> ApiResponse<T> {
     }
 }
 
-/// 从 manifest JSON 提取 locales 对象（非对象值视为缺失）
-pub(super) fn manifest_locales(manifest: &serde_json::Value) -> Option<serde_json::Value> {
-    manifest.get("locales").filter(|v| v.is_object()).cloned()
-}
+/// Domain catalog DTOs (path-stable re-export for handlers / public API).
+pub use crate::services::tapp_catalog::{TappDetail, TappListItem};
 
 /// 错误响应便捷函数
 pub(super) fn api_error(message: impl Into<String>) -> Json<ApiResponse<()>> {
@@ -35,52 +36,18 @@ pub(super) fn api_error(message: impl Into<String>) -> Json<ApiResponse<()>> {
     })
 }
 
-/// Tapp 列表项
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TappListItem {
-    pub id: String,
-    pub name: String,
-    pub version: String,
-    pub description: Option<String>,
-    pub icon: Option<String>,
-    /// 内联 SVG 图标代码（优先于 icon）
-    pub icon_svg: Option<String>,
-    /// manifest.locales 透传：语言标签 → { name?, description? }，供前端按语言解析
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub locales: Option<serde_json::Value>,
-    pub status: String,
-    pub installed_at: String,
-    pub last_run_at: Option<String>,
-    /// 是否为临时安装（普通用户安装的 Tapp）
-    #[serde(default)]
-    pub is_temporary: bool,
-    /// 是否为管理员的 Tapp（对所有用户可见）
-    #[serde(default)]
-    pub is_admin_tapp: bool,
+/// Map store envelope errors onto [`HttpError`] (same status + `error` string).
+pub(super) fn api_http_error(status: StatusCode, message: impl Into<String>) -> HttpError {
+    HttpError::from((
+        status,
+        Json(serde_json::json!({ "error": message.into() })),
+    ))
 }
 
-/// Tapp 详情
-#[derive(Debug, Serialize)]
-pub struct TappDetail {
-    pub id: String,
-    pub name: String,
-    pub version: String,
-    pub description: Option<String>,
-    pub author: Option<serde_json::Value>,
-    pub icon: Option<String>,
-    pub theme_color: Option<String>,
-    pub manifest: serde_json::Value,
-    pub status: String,
-    pub granted_permissions: Vec<String>,
-    pub installed_at: String,
-    pub last_run_at: Option<String>,
-    /// 当前用户角色: "guest" | "user" | "admin"
-    pub user_role: String,
-    /// 是否为临时安装
-    #[serde(default)]
-    pub is_temporary: bool,
-    /// 是否为管理员的 Tapp
-    #[serde(default)]
-    pub is_admin_tapp: bool,
+/// Convert legacy `(StatusCode, Json<ApiResponse<()>>)` to [`HttpError`].
+pub(super) fn api_response_err(
+    err: (StatusCode, Json<ApiResponse<()>>),
+) -> HttpError {
+    let (status, Json(body)) = err;
+    api_http_error(status, body.error.unwrap_or_else(|| "error".into()))
 }

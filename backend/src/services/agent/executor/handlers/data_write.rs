@@ -1,95 +1,48 @@
 //! 数据写入能力处理器
 //!
-//! 处理 platform.write, brew.subscribe, brew.mark 等写入类能力
+//! 处理 platform.write, brew.subscribe, brew.mark 等写入类能力。
+//! 纯 URL/名称/feed 优先级规则见 [`crate::services::agent::data_write_pure`]。
 
 use super::HandlerContext;
 use crate::models::entities::{brew_items, brew_sources, brew_user_states, tapp_storage};
+use crate::services::agent::data_write_pure::{
+    clamp_update_interval_minutes, collect_subscribe_url_candidates,
+    is_disallowed_subscribe_ip, platform_write_cap_error, platform_write_items_over_cap,
+    sanitize_feed_name, take_feed_urls_to_try, validate_subscribe_url_policy,
+};
 use crate::services::agent::executor::utils::VALID_PLATFORMS;
+use crate::services::agent::executor::utils::validate_platform_name;
 use crate::services::brew_parser::FeedParser;
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
 };
 use serde_json::{json, Value};
-use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::net::ToSocketAddrs;
 
-/// 订阅源名称最大长度
-const MAX_FEED_NAME_LEN: usize = 255;
-
-/// 清洗并验证用户提供的订阅源名称
-///
-/// - 限制最大长度
-/// - 去除首尾空白
-/// - 拒绝纯空白字符串
-fn sanitize_feed_name(name: &str) -> Result<String, String> {
-    let trimmed: String = name.chars().take(MAX_FEED_NAME_LEN).collect();
-    let trimmed = trimmed.trim().to_string();
-    if trimmed.is_empty() {
-        return Err("订阅源名称不能为空".to_string());
-    }
-    Ok(trimmed)
-}
-
-/// 验证平台名称白名单，防止路径穿越
-use crate::services::agent::executor::utils::validate_platform_name;
-
-/// 订阅 URL 最大尝试数
-const MAX_FEED_URLS: usize = 10;
-/// platform.write 单次最大写入条目数
-const MAX_PLATFORM_WRITE_ITEMS: usize = 500;
-/// update_interval 最小值（分钟）
-const MIN_UPDATE_INTERVAL: i32 = 5;
-/// update_interval 最大值（分钟）
-const MAX_UPDATE_INTERVAL: i32 = 1440;
-
-/// 验证订阅 URL 安全性，防止 SSRF
-/// - 仅允许 http/https scheme
-/// - 阻止内网 IP 地址
+/// 验证订阅 URL 安全性，防止 SSRF（纯策略 + DNS 解析检查）。
 fn validate_subscribe_url(url: &str) -> Result<(), String> {
-    let parsed = url::Url::parse(url).map_err(|_| format!("无效的 URL: {}", url))?;
-
-    // 只允许 http/https
-    match parsed.scheme() {
-        "http" | "https" => {}
-        scheme => return Err(format!("不允许的 URL scheme: {}", scheme)),
-    }
-
+    validate_subscribe_url_policy(url)?;
+    let parsed = url::Url::parse(url).map_err(|_| format!("无效的 URL: {url}"))?;
     let host = parsed.host_str().ok_or("URL 缺少 host")?;
-
-    // 阻止明显的内网主机名
-    if host == "localhost" || host.ends_with(".local") || host.ends_with(".internal") {
-        return Err("不允许访问内网地址".to_string());
-    }
-
-    // 解析 IP 并阻止内网地址
-    let port = parsed
-        .port()
-        .unwrap_or(if parsed.scheme() == "https" { 443 } else { 80 });
-    let addr_str = format!("{}:{}", host, port);
-    if let Ok(addrs) = addr_str.to_socket_addrs() {
-        for addr in addrs {
-            let ip = addr.ip();
-            if ip.is_loopback() || ip.is_unspecified() {
-                return Err("不允许访问回环/未指定地址".to_string());
-            }
-            match ip {
-                std::net::IpAddr::V4(v4) => {
-                    if v4.is_private() || v4.is_link_local() || v4.octets()[0] == 169 {
-                        return Err("不允许访问内网地址".to_string());
-                    }
-                }
-                std::net::IpAddr::V6(v6) => {
-                    // 阻止 IPv6 回环和链路本地
-                    if v6.is_loopback() || (v6.segments()[0] & 0xffc0) == 0xfe80 {
-                        return Err("不允许访问内网 IPv6 地址".to_string());
-                    }
+    // Hostname path: resolve and reject private IPs (IO).
+    if host.parse::<std::net::IpAddr>().is_err() {
+        let port = parsed
+            .port()
+            .unwrap_or(if parsed.scheme() == "https" { 443 } else { 80 });
+        let addr_str = format!("{host}:{port}");
+        if let Ok(addrs) = addr_str.to_socket_addrs() {
+            for addr in addrs {
+                if is_disallowed_subscribe_ip(addr.ip()) {
+                    return Err(match addr.ip() {
+                        std::net::IpAddr::V6(_) => "不允许访问内网 IPv6 地址".to_string(),
+                        _ => "不允许访问内网地址".to_string(),
+                    });
                 }
             }
         }
     }
-
     Ok(())
 }
 
@@ -128,8 +81,8 @@ async fn execute_platform_write(params: &HashMap<String, Value>) -> Result<Value
 
     // 限制单次写入条目数量
     if let Some(arr) = items.as_array() {
-        if arr.len() > MAX_PLATFORM_WRITE_ITEMS {
-            return Err(format!("单次最多写入 {} 条数据", MAX_PLATFORM_WRITE_ITEMS));
+        if platform_write_items_over_cap(arr.len()) {
+            return Err(platform_write_cap_error());
         }
     }
 
@@ -243,7 +196,10 @@ async fn execute_storage_set(
         .filter(tapp_storage::Column::UserId.eq(user_id))
         .one(ctx.db)
         .await
-        .map_err(|e| format!("Database error: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write database error");
+            "Database error".to_string()
+        })?;
 
     if let Some(record) = existing {
         let mut active: tapp_storage::ActiveModel = record.into();
@@ -252,7 +208,10 @@ async fn execute_storage_set(
         active
             .update(ctx.db)
             .await
-            .map_err(|e| format!("Failed to update storage: {}", e))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Agent data_write: failed to update storage");
+                "Database error".to_string()
+            })?;
     } else {
         let new_record = tapp_storage::ActiveModel {
             tapp_id: Set(namespace.to_string()),
@@ -266,7 +225,10 @@ async fn execute_storage_set(
         new_record
             .insert(ctx.db)
             .await
-            .map_err(|e| format!("Failed to insert storage: {}", e))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Agent data_write: failed to insert storage");
+                "Database error".to_string()
+            })?;
     }
 
     Ok(json!({
@@ -302,7 +264,10 @@ async fn execute_tapp_storage(
                     .filter(tapp_storage::Column::UserId.eq(user_id))
                     .one(ctx.db)
                     .await
-                    .map_err(|e| format!("Database error: {}", e))?;
+                    .map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write database error");
+            "Database error".to_string()
+        })?;
 
                 Ok(json!({
                     "success": true,
@@ -315,7 +280,10 @@ async fn execute_tapp_storage(
                     .filter(tapp_storage::Column::UserId.eq(user_id))
                     .all(ctx.db)
                     .await
-                    .map_err(|e| format!("Database error: {}", e))?;
+                    .map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write database error");
+            "Database error".to_string()
+        })?;
 
                 let data: HashMap<String, Value> =
                     results.into_iter().map(|r| (r.key, r.value)).collect();
@@ -337,7 +305,10 @@ async fn execute_tapp_storage(
                 .filter(tapp_storage::Column::UserId.eq(user_id))
                 .one(ctx.db)
                 .await
-                .map_err(|e| format!("Database error: {}", e))?;
+                .map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write database error");
+            "Database error".to_string()
+        })?;
 
             if let Some(record) = existing {
                 let mut active: tapp_storage::ActiveModel = record.into();
@@ -346,7 +317,10 @@ async fn execute_tapp_storage(
                 active
                     .update(ctx.db)
                     .await
-                    .map_err(|e| format!("Failed to update storage: {}", e))?;
+                    .map_err(|e| {
+                tracing::error!(error = %e, "Agent data_write: failed to update storage");
+                "Database error".to_string()
+            })?;
             } else {
                 let new_record = tapp_storage::ActiveModel {
                     tapp_id: Set(tapp_id.to_string()),
@@ -360,7 +334,10 @@ async fn execute_tapp_storage(
                 new_record
                     .insert(ctx.db)
                     .await
-                    .map_err(|e| format!("Failed to insert storage: {}", e))?;
+                    .map_err(|e| {
+                tracing::error!(error = %e, "Agent data_write: failed to insert storage");
+                "Database error".to_string()
+            })?;
             }
 
             Ok(json!({
@@ -378,7 +355,10 @@ async fn execute_tapp_storage(
                 .filter(tapp_storage::Column::UserId.eq(user_id))
                 .exec(ctx.db)
                 .await
-                .map_err(|e| format!("Database error: {}", e))?;
+                .map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write database error");
+            "Database error".to_string()
+        })?;
 
             Ok(json!({
                 "success": true,
@@ -415,29 +395,25 @@ async fn execute_brew_subscribe(
         .map(sanitize_feed_name)
         .transpose()?;
     let category = params.get("category").and_then(|v| v.as_str());
-    let update_interval = params
-        .get("updateInterval")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(30) as i32;
-    let update_interval = update_interval.clamp(MIN_UPDATE_INTERVAL, MAX_UPDATE_INTERVAL);
+    let update_interval = clamp_update_interval_minutes(
+        params
+            .get("updateInterval")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(30) as i32,
+    );
 
     // 收集要尝试的 URL 列表
-    let urls_to_try: Vec<(String, Option<String>)> = if let Some(feeds) = params.get("feeds") {
-        tracing::debug!(feeds = ?feeds, "[Brew Subscribe] 从 feeds 参数提取 URL");
-        // 从 feeds 数组中提取 URL，按优先级排序
-        extract_and_prioritize_feeds(feeds)
+    if params.get("feeds").is_some() {
+        tracing::debug!(feeds = ?params.get("feeds"), "[Brew Subscribe] 从 feeds 参数提取 URL");
     } else if let Some(url) = params.get("url").and_then(|v| v.as_str()) {
         tracing::debug!(url = %url, "[Brew Subscribe] 使用单个 URL");
-        // 单个 URL
-        vec![(url.to_string(), None)]
     } else {
         tracing::warn!("[Brew Subscribe] 缺少 url 和 feeds 参数");
-        return Err("缺少 url 或 feeds 参数".to_string());
-    };
-
-    if urls_to_try.is_empty() {
-        return Err("没有可用的订阅源 URL".to_string());
     }
+    let urls_to_try = collect_subscribe_url_candidates(
+        params.get("feeds"),
+        params.get("url").and_then(|v| v.as_str()),
+    )?;
 
     tracing::info!(
         count = urls_to_try.len(),
@@ -450,7 +426,7 @@ async fn execute_brew_subscribe(
     let mut tried_urls = Vec::new();
 
     // 遍历尝试每个 URL（限制最多尝试数量）
-    for (url, feed_name) in urls_to_try.into_iter().take(MAX_FEED_URLS) {
+    for (url, feed_name) in take_feed_urls_to_try(urls_to_try) {
         // SSRF 防护：校验 URL 安全性
         if let Err(e) = validate_subscribe_url(&url) {
             tracing::warn!(url = %url, error = %e, "[Brew] URL 安全校验失败，跳过");
@@ -634,60 +610,6 @@ async fn execute_brew_subscribe(
     Err(crate::services::agent::response_agent::subscribe_all_failed(tried_urls.len(), &last_error))
 }
 
-/// 从 feeds 数组中提取并排序 URL
-/// 优先级：已验证 > 官方源 > HTTPS > HTTP
-fn extract_and_prioritize_feeds(feeds: &Value) -> Vec<(String, Option<String>)> {
-    let Some(feeds_arr) = feeds.as_array() else {
-        return vec![];
-    };
-
-    let mut result: Vec<(String, Option<String>, i32)> = feeds_arr
-        .iter()
-        .filter_map(|f| {
-            let url = f.get("url")?.as_str()?.to_string();
-            let name = f
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let verified = f.get("verified").and_then(|v| v.as_bool()).unwrap_or(false);
-            let source = f.get("source").and_then(|v| v.as_str()).unwrap_or("");
-
-            // 计算优先级分数（越高越优先）
-            let mut score = 0;
-            if verified {
-                score += 100;
-            }
-            // 官方源优先
-            if source.contains("official") || url.contains("zhihu.com") {
-                score += 50;
-            }
-            // HTTPS 优先
-            if url.starts_with("https://") {
-                score += 20;
-            }
-            // 知名服务优先
-            if url.contains("feedx.net") || url.contains("feedburner") {
-                score += 30;
-            }
-            // RSSHub 可能不稳定，降低优先级
-            if url.contains("rsshub") {
-                score -= 10;
-            }
-
-            Some((url, name, score))
-        })
-        .collect();
-
-    // 按分数降序排序
-    result.sort_by_key(|b| Reverse(b.2));
-
-    // 返回 URL 和名称
-    result
-        .into_iter()
-        .map(|(url, name, _)| (url, name))
-        .collect()
-}
-
 async fn execute_brew_mark(
     params: &HashMap<String, Value>,
     ctx: &HandlerContext<'_>,
@@ -708,7 +630,10 @@ async fn execute_brew_mark(
     let item = brew_items::Entity::find_by_id(item_id)
         .one(ctx.db)
         .await
-        .map_err(|e| format!("Database error: {}", e))?
+        .map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write database error");
+            "Database error".to_string()
+        })?
         .ok_or("Article not found")?;
 
     // 验证文章所属 source 归当前用户所有，防止越权操作
@@ -716,7 +641,10 @@ async fn execute_brew_mark(
         .filter(brew_sources::Column::UserId.eq(user_id))
         .one(ctx.db)
         .await
-        .map_err(|e| format!("Database error: {}", e))?
+        .map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write database error");
+            "Database error".to_string()
+        })?
         .ok_or("无权操作该文章")?;
 
     // 查找或创建用户状态
@@ -725,7 +653,10 @@ async fn execute_brew_mark(
         .filter(brew_user_states::Column::ItemId.eq(item_id))
         .one(ctx.db)
         .await
-        .map_err(|e| format!("Database error: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write database error");
+            "Database error".to_string()
+        })?;
 
     let (is_read, is_starred) = match action {
         "read" => (Some(true), None),
@@ -756,7 +687,10 @@ async fn execute_brew_mark(
         active
             .update(ctx.db)
             .await
-            .map_err(|e| format!("Failed to update state: {}", e))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Agent data_write: failed to update state");
+                "Database error".to_string()
+            })?;
     } else {
         let new_state = brew_user_states::ActiveModel {
             user_id: Set(user_id),
@@ -779,7 +713,10 @@ async fn execute_brew_mark(
         new_state
             .insert(ctx.db)
             .await
-            .map_err(|e| format!("Failed to create state: {}", e))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Agent data_write: failed to create state");
+                "Database error".to_string()
+            })?;
     }
 
     // 更新 source 的 unread_count（附带 user_id 条件，确保仅修改自己的 source）
@@ -863,7 +800,10 @@ async fn execute_content_write(
     new_record
         .insert(ctx.db)
         .await
-        .map_err(|e| format!("Failed to save content: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write: failed to save content");
+            "Database error".to_string()
+        })?;
 
     Ok(json!({
         "success": true,

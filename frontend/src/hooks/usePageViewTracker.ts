@@ -13,6 +13,10 @@ import {
   setAnalyticsStaffSession,
   setAnalyticsAdminSession,
 } from '../utils/siteAnalytics'
+import {
+  trackProductEvent,
+  AnalyticsEvents,
+} from '../utils/analyticsEvents'
 
 export {
   getOrCreateVisitorId,
@@ -20,6 +24,8 @@ export {
   trackPageview,
   setAnalyticsStaffSession,
   setAnalyticsAdminSession,
+  trackProductEvent,
+  AnalyticsEvents,
 }
 
 export function usePageViewTracker() {

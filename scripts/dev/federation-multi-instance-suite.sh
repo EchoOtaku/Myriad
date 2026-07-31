@@ -1359,11 +1359,13 @@ case_deploy_keys_rotate() {
 
 case_deploy_ssrf_lab_flag_off() {
   # Deploy safety: without lab flag, private inbox delivery must be refused.
-  # cargo test accepts a single filter; run two shipped unit tests.
-  (cd "$BACKEND" && cargo test lab_flag_allows_loopback -- --nocapture) \
+  # Tests live in workspace crate `myriad-outbound` (shared SSRF egress policy).
+  local root
+  root="$(cd "$BACKEND/.." && pwd)"
+  (cd "$root" && cargo test -p myriad-outbound lab_flag_allows_loopback -- --nocapture) \
     >"$SCRATCH_DIR/deploy-ssrf-unit.log" 2>&1 \
     || die "ssrf lab_flag unit failed (see deploy-ssrf-unit.log)"
-  (cd "$BACKEND" && cargo test refuses_literal -- --nocapture) \
+  (cd "$root" && cargo test -p myriad-outbound refuses_literal -- --nocapture) \
     >>"$SCRATCH_DIR/deploy-ssrf-unit.log" 2>&1 \
     || die "ssrf refuses_literal unit failed (see deploy-ssrf-unit.log)"
   grep -q "test result: ok" "$SCRATCH_DIR/deploy-ssrf-unit.log" \

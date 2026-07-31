@@ -32,13 +32,31 @@ export const API_URL = CONFIG_API_URL
 
 // ==================== 工具函数 ====================
 
+function isAlreadyProxiedImageUrl(url: string): boolean {
+  // Avoid /api/proxy/image?url=…/api/proxy/image?url=… double-encoding
+  if (url.includes('/api/proxy/image')) return true
+  try {
+    const u = new URL(url, typeof window !== 'undefined' ? window.location.origin : 'http://local')
+    return u.pathname.includes('/api/proxy/image')
+  } catch {
+    return false
+  }
+}
+
 /**
  * 处理图标 URL - 如果是外部 URL 则通过代理访问
  */
 export function getIconUrl(iconUrl: string | null): string | null {
   if (!iconUrl) return null
+  // Already absolute API path (including proxy) — don't re-wrap
+  if (iconUrl.startsWith(`${API_URL}/api/`)) {
+    return iconUrl
+  }
   if (iconUrl.startsWith('/api/')) {
     return `${API_URL}${iconUrl}`
+  }
+  if (isAlreadyProxiedImageUrl(iconUrl)) {
+    return iconUrl
   }
   if (iconUrl.startsWith('http://') || iconUrl.startsWith('https://')) {
     return `${API_URL}/api/proxy/image?url=${encodeURIComponent(iconUrl)}`
@@ -51,8 +69,14 @@ export function getIconUrl(iconUrl: string | null): string | null {
  */
 export function getImageUrl(imageUrl: string | null): string | null {
   if (!imageUrl) return null
-  if (imageUrl.startsWith('/api/') || imageUrl.startsWith(`${API_URL}/api/`)) {
-    return imageUrl.startsWith('/api/') ? `${API_URL}${imageUrl}` : imageUrl
+  if (imageUrl.startsWith(`${API_URL}/api/`)) {
+    return imageUrl
+  }
+  if (imageUrl.startsWith('/api/')) {
+    return `${API_URL}${imageUrl}`
+  }
+  if (isAlreadyProxiedImageUrl(imageUrl)) {
+    return imageUrl
   }
   if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
     return `${API_URL}/api/proxy/image?url=${encodeURIComponent(imageUrl)}`
@@ -121,13 +145,30 @@ export function getShortContentText(
 }
 
 /**
+ * Normalize theme_color to #rrggbb so `${color}30` alpha suffixes stay valid CSS.
+ * Non-hex values (named colors, rgb()) break card gradients/shadows.
+ */
+export function normalizeThemeColor(
+  color: string | null | undefined,
+  fallback = DEFAULT_THEME_COLOR,
+): string {
+  if (!color || typeof color !== 'string') return fallback
+  const t = color.trim()
+  if (/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(t)) {
+    if (t.length === 4) {
+      // #rgb → #rrggbb
+      return `#${t[1]}${t[1]}${t[2]}${t[2]}${t[3]}${t[3]}`.toLowerCase()
+    }
+    return t.slice(0, 7).toLowerCase() // drop alpha nibble if #rrggbbaa
+  }
+  return fallback
+}
+
+/**
  * 获取源的主题色 - 优先使用数据库中存储的 theme_color
  */
 export function getSourceColor(source: {
   theme_color?: string | null
 }): string {
-  if (source.theme_color) {
-    return source.theme_color
-  }
-  return DEFAULT_THEME_COLOR
+  return normalizeThemeColor(source.theme_color, DEFAULT_THEME_COLOR)
 }

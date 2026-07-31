@@ -1,11 +1,9 @@
 //! Filesystem staging, recovery, package resources and archive boundaries.
 
+use crate::error::HttpError;
+use myriad_error::AppError;
 use super::{
-    decode_asset_base64, is_safe_path_component, lock_tapp_lifecycle, validate_asset_path,
-    validate_inline_data_schema, validate_resource_path, validate_tapp_id, TappManifest,
-    MAX_AGENT_SCHEMA_RESOURCE_BYTES, MAX_TAPP_ARCHIVE_FILES, MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES,
-    MAX_TAPP_ASSETS_TOTAL_BYTES, MAX_TAPP_ASSET_BYTES, MAX_TAPP_I18N_FILES,
-    MAX_TAPP_I18N_RESOURCE_BYTES, MAX_TAPP_RESOURCE_BYTES,
+    decode_asset_base64, lock_tapp_lifecycle, validate_asset_path, validate_tapp_id, TappManifest,
 };
 use axum::http::StatusCode;
 use sea_orm::{ColumnTrait, DatabaseConnection, DbErr, EntityTrait, QueryFilter, TransactionTrait};
@@ -14,6 +12,21 @@ use tokio::fs;
 
 use crate::models::entities::tapps;
 use crate::services::data_paths::paths;
+use crate::services::tapp_package_fs::{
+    archive_entry_relative_path, filesystem_error_message, filesystem_error_status_hint,
+    install_generation_matches_micros, install_generation_payload, is_lifecycle_artifact_filename,
+    lifecycle_artifact_dir_name, looks_like_tapp_installation_from_markers,
+    orphan_tapp_key_if_unowned, parse_tapp_owner_dir_name, plan_tapp_directory_recovery,
+    preferred_code_path_candidates, recovery_artifacts_to_remove_after_promote,
+    recovery_discard_artifact_name, recovery_plan_mutates_live, resource_relative_path,
+    sandbox_path_matches_relative, should_log_filesystem_permission_context,
+    should_preserve_orphan_path, sort_recovery_artifact_paths, RecoveryPlan,
+};
+
+// Path-stable re-exports for manifest_tests / parent imports.
+pub(crate) use crate::services::tapp_package_fs::{
+    has_reinstall_orphan_state, MANIFEST_JSON, TAPP_INSTALL_STATE_FILE,
+};
 
 pub(crate) fn tapp_dir_for(user_id: i32, tapp_id: &str) -> Result<PathBuf, String> {
     validate_tapp_id(tapp_id)?;
@@ -37,7 +50,11 @@ impl TappDirStage {
             .file_name()
             .and_then(|value| value.to_str())
             .unwrap_or("tapp");
-        let path = parent.join(format!(".{name}.staging-{}", uuid::Uuid::new_v4().simple()));
+        let path = parent.join(lifecycle_artifact_dir_name(
+            name,
+            "staging",
+            &uuid::Uuid::new_v4().simple().to_string(),
+        ));
         fs::create_dir(&path).await?;
         Ok(Self { path })
     }
@@ -75,7 +92,11 @@ impl TappDirStage {
                 .file_name()
                 .and_then(|value| value.to_str())
                 .unwrap_or("tapp");
-            let backup = parent.join(format!(".{name}.backup-{}", uuid::Uuid::new_v4().simple()));
+            let backup = parent.join(lifecycle_artifact_dir_name(
+                name,
+                "backup",
+                &uuid::Uuid::new_v4().simple().to_string(),
+            ));
             match fs::rename(final_path, &backup).await {
                 Ok(()) => Some(backup),
                 Err(rename_error) => {
@@ -174,8 +195,6 @@ pub(crate) struct ActivatedTappDir {
     pub(super) backup_path: Option<PathBuf>,
 }
 
-pub(crate) const TAPP_INSTALL_STATE_FILE: &str = ".myriad-install-state.json";
-
 impl ActivatedTappDir {
     pub(super) async fn commit(mut self) {
         if let Some(backup) = self.backup_path.take() {
@@ -194,7 +213,7 @@ impl ActivatedTappDir {
 }
 
 pub(crate) fn directory_manifest_matches(directory: &FsPath, expected: &serde_json::Value) -> bool {
-    let Ok(content) = std::fs::read_to_string(directory.join("manifest.json")) else {
+    let Ok(content) = std::fs::read_to_string(directory.join(MANIFEST_JSON)) else {
         return false;
     };
     serde_json::from_str::<serde_json::Value>(&content).is_ok_and(|value| value == *expected)
@@ -204,7 +223,7 @@ pub(crate) fn write_install_generation(
     directory: &FsPath,
     updated_at: chrono::DateTime<chrono::FixedOffset>,
 ) -> Result<(), std::io::Error> {
-    let value = serde_json::json!({ "updatedAtMicros": updated_at.timestamp_micros() });
+    let value = install_generation_payload(updated_at.timestamp_micros());
     let encoded = serde_json::to_vec(&value)
         .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
     std::fs::write(directory.join(TAPP_INSTALL_STATE_FILE), encoded)
@@ -220,12 +239,9 @@ pub(crate) fn directory_generation_matches(
         return std::fs::read(state_path)
             .ok()
             .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-            .and_then(|value| {
-                value
-                    .get("updatedAtMicros")
-                    .and_then(serde_json::Value::as_i64)
-            })
-            == Some(expected_updated_at.timestamp_micros());
+            .is_some_and(|value| {
+                install_generation_matches_micros(&value, expected_updated_at.timestamp_micros())
+            });
     }
     // Compatibility for installations created before generation markers.
     directory_manifest_matches(directory, expected_manifest)
@@ -240,12 +256,6 @@ pub(crate) fn lifecycle_artifact_directories(
     let Some(name) = final_path.file_name().and_then(|value| value.to_str()) else {
         return Ok(Vec::new());
     };
-    let prefixes = [
-        format!(".{name}.staging-"),
-        format!(".{name}.backup-"),
-        format!(".{name}.uninstall-"),
-        format!(".{name}.recovery-discard-"),
-    ];
     let mut artifacts = Vec::new();
     if !parent.is_dir() {
         return Ok(artifacts);
@@ -260,7 +270,7 @@ pub(crate) fn lifecycle_artifact_directories(
         let Some(filename) = filename.to_str() else {
             continue;
         };
-        if prefixes.iter().any(|prefix| filename.starts_with(prefix)) {
+        if is_lifecycle_artifact_filename(filename, name) {
             artifacts.push(entry.path());
         }
     }
@@ -270,7 +280,8 @@ pub(crate) fn lifecycle_artifact_directories(
 /// Live install dir and lifecycle artifacts that should not remain when the DB
 /// has no row for this owner/tapp_id (post-uninstall orphans, partial activate).
 ///
-/// Pure path-selection helper used by reinstall cleanup and unit tests.
+/// Path-selection helper used by reinstall cleanup and unit tests (prefix rules
+/// in services::tapp_package_fs).
 pub(crate) fn reinstall_orphan_paths(final_path: &FsPath) -> Result<Vec<PathBuf>, std::io::Error> {
     let mut paths = Vec::new();
     match std::fs::symlink_metadata(final_path) {
@@ -280,11 +291,6 @@ pub(crate) fn reinstall_orphan_paths(final_path: &FsPath) -> Result<Vec<PathBuf>
     }
     paths.extend(lifecycle_artifact_directories(final_path)?);
     Ok(paths)
-}
-
-/// Whether `paths` from [`reinstall_orphan_paths`] indicate orphan filesystem state.
-pub(crate) fn has_reinstall_orphan_state(paths: &[PathBuf]) -> bool {
-    !paths.is_empty()
 }
 
 /// Best-effort remove leftover live dir and lifecycle artifacts before install
@@ -330,7 +336,7 @@ pub(crate) fn cleanup_reinstall_orphans(
     );
     let mut removed = 0;
     for path in candidates {
-        if preserve.is_some_and(|keep| keep == path.as_path()) {
+        if should_preserve_orphan_path(&path, preserve) {
             continue;
         }
         match std::fs::remove_dir_all(&path) {
@@ -404,29 +410,17 @@ pub(crate) fn log_install_failure(
 }
 
 pub(crate) fn tapp_filesystem_error_status(error: &std::io::Error) -> StatusCode {
-    match error.kind() {
-        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem => {
-            StatusCode::SERVICE_UNAVAILABLE
-        }
-        _ => StatusCode::INTERNAL_SERVER_ERROR,
-    }
+    StatusCode::from_u16(filesystem_error_status_hint(error.kind()))
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 pub(crate) fn tapp_filesystem_error_message(action: &str, error: &std::io::Error) -> String {
-    match error.kind() {
-        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem => format!(
-            "Tapp storage is not writable by the backend service account; repair the backend data volume ownership/permissions and retry ({action}: {error})"
-        ),
-        _ => format!("{action}: {error}"),
-    }
+    filesystem_error_message(action, error.kind(), &error.to_string())
 }
 
 /// Add owner/mode context for storage failures without following symlinks.
 pub(crate) fn log_tapp_filesystem_access(path: &FsPath, error: &std::io::Error) {
-    if !matches!(
-        error.kind(),
-        std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem
-    ) {
+    if !should_log_filesystem_permission_context(error.kind()) {
         return;
     }
     for candidate in [Some(path), path.parent()].into_iter().flatten() {
@@ -462,6 +456,9 @@ pub(crate) fn log_tapp_filesystem_access(path: &FsPath, error: &std::io::Error) 
 
 /// Reconcile one live resource directory with the database Manifest after an
 /// interrupted install/update/uninstall lifecycle transaction.
+///
+/// Decision table lives in [`plan_tapp_directory_recovery`]; this function only
+/// probes generations and performs renames/deletes.
 pub(crate) fn recover_tapp_directory(
     final_path: &FsPath,
     expected_manifest: &serde_json::Value,
@@ -470,71 +467,60 @@ pub(crate) fn recover_tapp_directory(
     let mut artifacts = lifecycle_artifact_directories(final_path)?;
     // A backup/uninstall quarantine is the authoritative pre-transaction
     // generation. Consider staging only after those recovery sources.
-    artifacts.sort_by_key(|path| {
-        path.file_name()
-            .and_then(|value| value.to_str())
-            .is_some_and(|name| name.contains(".staging-"))
-    });
-    if directory_generation_matches(final_path, expected_manifest, expected_updated_at) {
-        for artifact in artifacts {
-            std::fs::remove_dir_all(artifact)?;
-        }
-        return Ok(false);
-    }
+    sort_recovery_artifact_paths(&mut artifacts);
 
-    let Some(recovery_source) = artifacts
+    let live_matches =
+        directory_generation_matches(final_path, expected_manifest, expected_updated_at);
+    let artifact_matches: Vec<bool> = artifacts
         .iter()
-        .find(|path| directory_generation_matches(path, expected_manifest, expected_updated_at))
-        .cloned()
-    else {
-        return Ok(false);
-    };
+        .map(|path| directory_generation_matches(path, expected_manifest, expected_updated_at))
+        .collect();
 
-    let discard_path = final_path.with_file_name(format!(
-        ".{}.recovery-discard-{}",
-        final_path
-            .file_name()
-            .and_then(|value| value.to_str())
-            .unwrap_or("tapp"),
-        uuid::Uuid::new_v4().simple()
-    ));
-    let had_live_path = final_path.exists();
-    if had_live_path {
-        std::fs::rename(final_path, &discard_path)?;
-    }
-    if let Err(error) = std::fs::rename(&recovery_source, final_path) {
-        if had_live_path {
-            let _ = std::fs::rename(&discard_path, final_path);
+    let plan = plan_tapp_directory_recovery(live_matches, &artifact_matches);
+    match plan {
+        RecoveryPlan::DiscardArtifactsOnly => {
+            for artifact in artifacts {
+                std::fs::remove_dir_all(artifact)?;
+            }
+            Ok(recovery_plan_mutates_live(plan))
         }
-        return Err(error);
-    }
-    if had_live_path {
-        let _ = std::fs::remove_dir_all(&discard_path);
-    }
-    for artifact in artifacts {
-        if artifact != recovery_source {
-            let _ = std::fs::remove_dir_all(artifact);
+        RecoveryPlan::NoOp => Ok(recovery_plan_mutates_live(plan)),
+        RecoveryPlan::PromoteArtifact { source_index } => {
+            let recovery_source = artifacts[source_index].clone();
+            let discard_name = recovery_discard_artifact_name(
+                final_path
+                    .file_name()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("tapp"),
+                &uuid::Uuid::new_v4().simple().to_string(),
+            );
+            let discard_path = final_path.with_file_name(discard_name);
+            let had_live_path = final_path.exists();
+            if had_live_path {
+                std::fs::rename(final_path, &discard_path)?;
+            }
+            if let Err(error) = std::fs::rename(&recovery_source, final_path) {
+                if had_live_path {
+                    let _ = std::fs::rename(&discard_path, final_path);
+                }
+                return Err(error);
+            }
+            if had_live_path {
+                let _ = std::fs::remove_dir_all(&discard_path);
+            }
+            for artifact in recovery_artifacts_to_remove_after_promote(&artifacts, &recovery_source)
+            {
+                let _ = std::fs::remove_dir_all(artifact);
+            }
+            Ok(recovery_plan_mutates_live(plan))
         }
     }
-    Ok(true)
-}
-
-pub(crate) fn lifecycle_artifact_tapp_id(filename: &str) -> Option<&str> {
-    let stem = filename.strip_prefix('.')?;
-    let (prefix, nonce) = stem.rsplit_once('-')?;
-    if nonce.len() != 32 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return None;
-    }
-    [".staging", ".backup", ".uninstall", ".recovery-discard"]
-        .into_iter()
-        .find_map(|kind| prefix.strip_suffix(kind))
-        .filter(|tapp_id| validate_tapp_id(tapp_id).is_ok())
 }
 
 pub(crate) fn looks_like_tapp_installation(directory: &FsPath) -> bool {
-    ["manifest.json", TAPP_INSTALL_STATE_FILE]
-        .into_iter()
-        .any(|name| std::fs::symlink_metadata(directory.join(name)).is_ok())
+    looks_like_tapp_installation_from_markers(|name| {
+        std::fs::symlink_metadata(directory.join(name)).is_ok()
+    })
 }
 
 /// Remove filesystem generations that cannot belong to any database row.
@@ -555,15 +541,13 @@ pub(crate) fn orphaned_tapp_directories(
         if !owner_type.is_dir() || owner_type.is_symlink() {
             continue;
         }
-        let Some(owner_name) = owner_entry.file_name().to_str().map(String::from) else {
+        let owner_name = owner_entry.file_name();
+        let Some(owner_name) = owner_name.to_str() else {
             continue;
         };
-        let Ok(owner_id) = owner_name.parse::<i32>() else {
+        let Some(owner_id) = parse_tapp_owner_dir_name(owner_name) else {
             continue;
         };
-        if owner_id < 0 || owner_id.to_string() != owner_name {
-            continue;
-        }
         for entry in std::fs::read_dir(owner_entry.path())? {
             let entry = entry?;
             let file_type = entry.file_type()?;
@@ -573,21 +557,12 @@ pub(crate) fn orphaned_tapp_directories(
             let Some(filename) = entry.file_name().to_str().map(String::from) else {
                 continue;
             };
-            let tapp_id = lifecycle_artifact_tapp_id(&filename).map(String::from);
-            let live_tapp_id = if tapp_id.is_none()
-                && validate_tapp_id(&filename).is_ok()
-                && looks_like_tapp_installation(&entry.path())
-            {
-                Some(filename.clone())
-            } else {
-                None
-            };
-            let Some(tapp_id) = tapp_id.or(live_tapp_id) else {
+            let looks_like = looks_like_tapp_installation(&entry.path());
+            let Some((owner_id, tapp_id)) =
+                orphan_tapp_key_if_unowned(owner_id, &filename, looks_like, installed)
+            else {
                 continue;
             };
-            if installed.contains(&(owner_id, tapp_id.clone())) {
-                continue;
-            }
             candidates.push((owner_id, tapp_id, entry.path()));
         }
     }
@@ -678,32 +653,25 @@ pub(crate) async fn recover_tapp_filesystem_state(db: &DatabaseConnection) -> Re
     Ok(recovered)
 }
 
-pub(crate) fn installed_tapp_dir(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
-    tapp_dir_for(tapp.user_id, &tapp.tapp_id).map_err(|_| StatusCode::BAD_REQUEST)
+pub(crate) fn installed_tapp_dir(tapp: &tapps::Model) -> Result<PathBuf, HttpError> {
+    tapp_dir_for(tapp.user_id, &tapp.tapp_id).map_err(|_| HttpError(AppError::bad_request("Bad request")))
 }
 
-pub(crate) fn installed_code_path(tapp: &tapps::Model) -> Result<PathBuf, StatusCode> {
+pub(crate) fn installed_code_path(tapp: &tapps::Model) -> Result<PathBuf, HttpError> {
     // 新安装遵循 Manifest 的 main。旧安装可能曾把任意入口统一写为根目录
     // main.js/index.js，因此仅在 Manifest 路径不存在时回退持久化元数据。
-    if let Some(main) = tapp.manifest.get("main").and_then(|value| value.as_str()) {
-        if let Some(path) = regular_resource_path(&installed_tapp_dir(tapp)?, main) {
+    let root = installed_tapp_dir(tapp)?;
+    let manifest_main = tapp.manifest.get("main").and_then(|value| value.as_str());
+    for relative in preferred_code_path_candidates(manifest_main, &tapp.code_path) {
+        if let Some(path) = regular_resource_path(&root, &relative) {
             return Ok(path);
         }
     }
-
-    let stored_code_path = PathBuf::from(&tapp.code_path);
-    let filename = stored_code_path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .filter(|value| matches!(*value, "main.js" | "index.js"))
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-    regular_resource_path(&installed_tapp_dir(tapp)?, filename)
-        .ok_or(StatusCode::INTERNAL_SERVER_ERROR)
+    Err(HttpError(AppError::internal("Database error")))
 }
 
 pub(crate) fn resource_path(tapp_dir: &FsPath, relative: &str) -> Option<PathBuf> {
-    validate_resource_path(relative).ok()?;
-    Some(tapp_dir.join(relative))
+    resource_relative_path(tapp_dir, relative).ok()
 }
 
 /// Resolve an installed resource only when every path component remains under
@@ -713,7 +681,7 @@ pub(crate) fn regular_resource_path(tapp_dir: &FsPath, relative: &str) -> Option
     let joined = resource_path(tapp_dir, relative)?;
     let canonical_root = std::fs::canonicalize(tapp_dir).ok()?;
     let canonical_path = std::fs::canonicalize(joined).ok()?;
-    if canonical_path != canonical_root.join(relative) {
+    if !sandbox_path_matches_relative(&canonical_root, &canonical_path, relative) {
         return None;
     }
     let metadata = std::fs::symlink_metadata(&canonical_path).ok()?;
@@ -724,7 +692,7 @@ pub(crate) fn regular_resource_directory(tapp_dir: &FsPath, relative: &str) -> O
     let joined = resource_path(tapp_dir, relative)?;
     let canonical_root = std::fs::canonicalize(tapp_dir).ok()?;
     let canonical_path = std::fs::canonicalize(joined).ok()?;
-    if canonical_path != canonical_root.join(relative) {
+    if !sandbox_path_matches_relative(&canonical_root, &canonical_path, relative) {
         return None;
     }
     let metadata = std::fs::symlink_metadata(&canonical_path).ok()?;
@@ -768,37 +736,16 @@ pub(crate) async fn write_install_assets(
     manifest: &TappManifest,
     assets: &std::collections::HashMap<String, String>,
 ) -> Result<(), String> {
-    let declared: std::collections::HashSet<&str> = manifest
-        .assets
-        .as_ref()
-        .map(|list| list.iter().map(String::as_str).collect())
-        .unwrap_or_default();
-    if declared.is_empty() && !assets.is_empty() {
-        return Err("assets payload requires manifest.assets declarations".to_string());
-    }
+    use crate::services::tapp_install_resources::{
+        validate_asset_resource_bytes, validate_write_assets_declaration,
+    };
+
+    validate_write_assets_declaration(manifest.assets.as_deref(), assets.keys())?;
     let mut total: u64 = 0;
     for (relative, encoded) in assets {
         validate_asset_path(relative)?;
-        if !declared.contains(relative.as_str()) {
-            return Err(format!(
-                "Asset path is not declared in manifest.assets: {relative}"
-            ));
-        }
         let bytes = decode_asset_base64(encoded)?;
-        let size = bytes.len() as u64;
-        if size > MAX_TAPP_ASSET_BYTES {
-            return Err(format!(
-                "Tapp asset exceeds {MAX_TAPP_ASSET_BYTES} bytes: {relative}"
-            ));
-        }
-        total = total
-            .checked_add(size)
-            .ok_or_else(|| "Tapp assets total size overflow".to_string())?;
-        if total > MAX_TAPP_ASSETS_TOTAL_BYTES {
-            return Err(format!(
-                "Tapp assets total size exceeds {MAX_TAPP_ASSETS_TOTAL_BYTES} bytes"
-            ));
-        }
+        total = validate_asset_resource_bytes(relative, bytes.len() as u64, total)?;
         write_tapp_resource(tapp_dir, relative, &bytes)
             .await
             .map_err(|_| format!("Failed to save asset: {relative}"))?;
@@ -806,155 +753,71 @@ pub(crate) async fn write_install_assets(
     Ok(())
 }
 
-pub(crate) type WidgetTemplateContents =
-    std::collections::HashMap<String, std::collections::HashMap<String, String>>;
+// Domain: services::tapp_prepared_package (path-stable re-export).
+pub(crate) use crate::services::tapp_prepared_package::{
+    validate_widget_template_contents, widget_template_path, WidgetTemplateContents,
+};
 
-pub(crate) fn widget_template_path<'a>(
-    manifest: &'a TappManifest,
-    widget_id: &str,
-    size: &str,
-) -> Option<&'a str> {
-    manifest
-        .widgets
-        .as_ref()
-        .into_iter()
-        .flatten()
-        .find(|widget| widget.id == widget_id)
-        .and_then(|widget| widget.templates.as_ref())
-        .and_then(|templates| templates.get(size))
-        .map(String::as_str)
-}
-
-pub(crate) fn validate_widget_template_contents(
-    manifest: &TappManifest,
-    contents: &WidgetTemplateContents,
-) -> Result<(), String> {
-    for (widget_id, templates) in contents {
-        let widget = manifest
-            .widgets
-            .as_ref()
-            .and_then(|widgets| widgets.iter().find(|widget| widget.id == *widget_id))
-            .ok_or_else(|| format!("Widget template references unknown Widget: {widget_id}"))?;
-        for size in templates.keys() {
-            if !widget.sizes.contains(size)
-                || widget_template_path(manifest, widget_id, size).is_none()
-            {
-                return Err(format!(
-                    "Widget template content has no matching Manifest path: {widget_id}/{size}"
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
+/// Post-stage check: every declared resource is a regular in-sandbox file with
+/// valid content. Domain path collection + content rules live in
+/// [`crate::services::tapp_install_resources`].
 pub(crate) fn validate_installed_resources(
     manifest: &TappManifest,
     tapp_dir: &FsPath,
 ) -> Result<(), String> {
-    let mut resources = vec![manifest.main.as_str()];
-    resources.extend(
-        [
-            manifest.styles.as_deref(),
-            manifest.widget_styles.as_deref(),
-            manifest.page_styles.as_deref(),
-            manifest.page_template.as_deref(),
-        ]
-        .into_iter()
-        .flatten(),
-    );
-    if let Some(widgets) = &manifest.widgets {
-        for widget in widgets {
-            if let Some(templates) = &widget.templates {
-                resources.extend(templates.values().map(String::as_str));
+    use crate::services::tapp_install_resources::{
+        agent_schema_not_found, agent_schema_not_regular, asset_not_found, asset_not_regular,
+        collect_declared_install_resources, invalid_declared_path, missing_after_install,
+        not_regular_file, not_regular_in_sandbox, resource_not_found, validate_agent_schema_bytes,
+        validate_asset_resource_bytes, validate_text_resource_bytes, DeclaredResourceKind,
+    };
+
+    let mut asset_total: u64 = 0;
+    for declared in collect_declared_install_resources(manifest) {
+        let relative = declared.relative.as_str();
+        match declared.kind {
+            DeclaredResourceKind::Text => {
+                let joined = resource_path(tapp_dir, relative)
+                    .ok_or_else(|| invalid_declared_path(relative))?;
+                if !joined.is_file() {
+                    return Err(missing_after_install(relative));
+                }
+                let path = regular_resource_path(tapp_dir, relative)
+                    .ok_or_else(|| not_regular_in_sandbox(relative))?;
+                let bytes = std::fs::read(path).map_err(|_| resource_not_found(relative))?;
+                validate_text_resource_bytes(relative, &bytes)?;
+            }
+            DeclaredResourceKind::PageModule => {
+                let path = regular_resource_path(tapp_dir, relative)
+                    .ok_or_else(|| not_regular_file(relative))?;
+                let bytes = std::fs::read(path).map_err(|_| resource_not_found(relative))?;
+                validate_text_resource_bytes(relative, &bytes)?;
+            }
+            DeclaredResourceKind::AgentSchema => {
+                let path = regular_resource_path(tapp_dir, relative)
+                    .ok_or_else(|| agent_schema_not_regular(relative))?;
+                let bytes = std::fs::read(path).map_err(|_| agent_schema_not_found(relative))?;
+                validate_agent_schema_bytes(relative, &bytes)?;
+            }
+            DeclaredResourceKind::Asset => {
+                let path = regular_resource_path(tapp_dir, relative)
+                    .ok_or_else(|| asset_not_regular(relative))?;
+                let bytes = std::fs::read(&path).map_err(|_| asset_not_found(relative))?;
+                asset_total =
+                    validate_asset_resource_bytes(relative, bytes.len() as u64, asset_total)?;
             }
         }
-    }
-    for relative in resources {
-        let joined = resource_path(tapp_dir, relative)
-            .ok_or_else(|| format!("Declared Tapp resource has invalid path: {relative}"))?;
-        if !joined.is_file() {
-            return Err(format!(
-                "Declared Tapp resource is missing after install (expected regular file): {relative}. \
-If this is page.css, the install payload likely omitted pageStyles/pageCss content for cssMode=separated."
-            ));
-        }
-        let path = regular_resource_path(tapp_dir, relative).ok_or_else(|| {
-            format!("Declared Tapp resource is not a regular in-sandbox file: {relative}")
-        })?;
-        let bytes = std::fs::read(path)
-            .map_err(|_| format!("Declared Tapp resource not found: {relative}"))?;
-        std::str::from_utf8(&bytes)
-            .map_err(|_| format!("Declared Tapp resource is not UTF-8 text: {relative}"))?;
     }
 
-    if let Some(modules) = &manifest.page_modules {
-        for module in modules {
-            let relative = format!("page/{module}");
-            let path = regular_resource_path(tapp_dir, &relative).ok_or_else(|| {
-                format!("Declared Tapp resource is not a regular file: {relative}")
-            })?;
-            let bytes = std::fs::read(path)
-                .map_err(|_| format!("Declared Tapp resource not found: {relative}"))?;
-            std::str::from_utf8(&bytes)
-                .map_err(|_| format!("Declared Tapp resource is not UTF-8 text: {relative}"))?;
-        }
-    }
-    if let Some(agent) = &manifest.agent {
-        for interaction in &agent.interactions {
-            for relative in [
-                interaction.input_schema.as_deref(),
-                interaction.result_schema.as_deref(),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                let path = regular_resource_path(tapp_dir, relative).ok_or_else(|| {
-                    format!("Declared Agent schema is not a regular file: {relative}")
-                })?;
-                let bytes = std::fs::read(path)
-                    .map_err(|_| format!("Declared Agent schema not found: {relative}"))?;
-                if bytes.len() > MAX_AGENT_SCHEMA_RESOURCE_BYTES {
-                    return Err(format!(
-                        "Agent schema exceeds {MAX_AGENT_SCHEMA_RESOURCE_BYTES} bytes: {relative}"
-                    ));
-                }
-                let schema = serde_json::from_slice::<serde_json::Value>(&bytes)
-                    .map_err(|_| format!("Agent schema is not valid JSON: {relative}"))?;
-                validate_inline_data_schema(&schema)
-                    .map_err(|error| format!("Invalid Agent schema {relative}: {error}"))?;
-            }
-        }
-    }
-    if let Some(assets) = &manifest.assets {
-        let mut total: u64 = 0;
-        for relative in assets {
-            validate_asset_path(relative)?;
-            let path = regular_resource_path(tapp_dir, relative)
-                .ok_or_else(|| format!("Declared Tapp asset is not a regular file: {relative}"))?;
-            let bytes = std::fs::read(&path)
-                .map_err(|_| format!("Declared Tapp asset not found: {relative}"))?;
-            let size = bytes.len() as u64;
-            if size > MAX_TAPP_ASSET_BYTES {
-                return Err(format!(
-                    "Tapp asset exceeds {MAX_TAPP_ASSET_BYTES} bytes: {relative}"
-                ));
-            }
-            total = total
-                .checked_add(size)
-                .ok_or_else(|| "Tapp assets total size overflow".to_string())?;
-            if total > MAX_TAPP_ASSETS_TOTAL_BYTES {
-                return Err(format!(
-                    "Tapp assets total size exceeds {MAX_TAPP_ASSETS_TOTAL_BYTES} bytes"
-                ));
-            }
-        }
-    }
     validate_installed_i18n_resources(tapp_dir)?;
     Ok(())
 }
 
 pub(crate) fn validate_installed_i18n_resources(tapp_dir: &FsPath) -> Result<(), String> {
+    use crate::services::tapp_install_resources::{
+        validate_i18n_file_bytes, validate_i18n_file_count, validate_i18n_filename,
+    };
+
     let joined = tapp_dir.join("i18n");
     let metadata = match std::fs::symlink_metadata(&joined) {
         Ok(metadata) => metadata,
@@ -970,11 +833,7 @@ pub(crate) fn validate_installed_i18n_resources(tapp_dir: &FsPath) -> Result<(),
         .map_err(|_| "Failed to read Tapp i18n directory".to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| "Failed to read Tapp i18n directory".to_string())?;
-    if entries.len() > MAX_TAPP_I18N_FILES {
-        return Err(format!(
-            "Tapp i18n accepts at most {MAX_TAPP_I18N_FILES} locale files"
-        ));
-    }
+    validate_i18n_file_count(entries.len())?;
     for entry in entries {
         let file_type = entry
             .file_type()
@@ -983,16 +842,8 @@ pub(crate) fn validate_installed_i18n_resources(tapp_dir: &FsPath) -> Result<(),
             .file_name()
             .into_string()
             .map_err(|_| "Tapp i18n filename must be UTF-8".to_string())?;
-        let Some(locale) = filename.strip_suffix(".json") else {
-            return Err(format!(
-                "Tapp i18n resource must be a JSON file: {filename}"
-            ));
-        };
-        if !file_type.is_file()
-            || file_type.is_symlink()
-            || !is_safe_path_component(&filename)
-            || !is_safe_path_component(locale)
-        {
+        validate_i18n_filename(&filename)?;
+        if !file_type.is_file() || file_type.is_symlink() {
             return Err(format!("Invalid Tapp i18n resource: {filename}"));
         }
         let relative = format!("i18n/{filename}");
@@ -1000,36 +851,23 @@ pub(crate) fn validate_installed_i18n_resources(tapp_dir: &FsPath) -> Result<(),
             .ok_or_else(|| format!("Invalid Tapp i18n resource: {filename}"))?;
         let bytes = std::fs::read(path)
             .map_err(|_| format!("Failed to read Tapp i18n resource: {filename}"))?;
-        if bytes.len() > MAX_TAPP_I18N_RESOURCE_BYTES {
-            return Err(format!(
-                "Tapp i18n resource exceeds {MAX_TAPP_I18N_RESOURCE_BYTES} bytes: {filename}"
-            ));
-        }
-        let value = serde_json::from_slice::<serde_json::Value>(&bytes)
-            .map_err(|_| format!("Tapp i18n resource is not valid JSON: {filename}"))?;
-        if !value.is_object() {
-            return Err(format!(
-                "Tapp i18n locale must contain a JSON object: {filename}"
-            ));
-        }
+        validate_i18n_file_bytes(&filename, &bytes)?;
     }
     Ok(())
 }
 
 pub(crate) fn archive_entry_path(tapp_dir: &FsPath, entry_name: &str) -> Result<PathBuf, String> {
-    let relative = entry_name.trim_end_matches('/');
-    validate_resource_path(relative)?;
-    Ok(tapp_dir.join(relative))
+    archive_entry_relative_path(tapp_dir, entry_name)
 }
 
 pub(crate) fn validate_tapp_archive<R: std::io::Read + std::io::Seek>(
     archive: &mut zip::ZipArchive<R>,
 ) -> Result<(), String> {
-    if archive.len() > MAX_TAPP_ARCHIVE_FILES {
-        return Err(format!(
-            "Tapp archive contains too many entries (max {MAX_TAPP_ARCHIVE_FILES})"
-        ));
-    }
+    use crate::services::tapp_install_resources::{
+        validate_archive_entry, validate_archive_entry_count,
+    };
+
+    validate_archive_entry_count(archive.len())?;
 
     let mut total_size = 0_u64;
     let mut paths = std::collections::HashSet::new();
@@ -1038,26 +876,13 @@ pub(crate) fn validate_tapp_archive<R: std::io::Read + std::io::Seek>(
             .by_index(index)
             .map_err(|error| format!("Invalid Tapp archive entry: {error}"))?;
         let name = file.name().trim_end_matches('/');
-        validate_resource_path(name)?;
-        if !paths.insert(name.to_string()) {
-            return Err(format!("Duplicate Tapp archive entry: {name}"));
-        }
-        if file.is_dir() {
-            continue;
-        }
-        if file.size() > MAX_TAPP_RESOURCE_BYTES {
-            return Err(format!(
-                "Tapp archive entry is too large: {name} (max {MAX_TAPP_RESOURCE_BYTES} bytes)"
-            ));
-        }
-        total_size = total_size
-            .checked_add(file.size())
-            .ok_or_else(|| "Tapp archive size overflow".to_string())?;
-        if total_size > MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES {
-            return Err(format!(
-                "Tapp archive expands beyond {MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES} bytes"
-            ));
-        }
+        total_size = validate_archive_entry(
+            name,
+            file.is_dir(),
+            file.size(),
+            &mut paths,
+            total_size,
+        )?;
     }
 
     Ok(())

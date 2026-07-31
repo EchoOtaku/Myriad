@@ -1,4 +1,8 @@
 //! Store source administration endpoints.
+//!
+//! Domain projection and official-source policy live in
+//! [`crate::services::tapp_store_sources`]. This module keeps Claims/DB and
+//! maps policy errors to HTTP status codes.
 
 use super::{require_current_admin, ApiResponse};
 use axum::{
@@ -8,25 +12,21 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, DatabaseConnection, EntityTrait,
-    QueryFilter, Set,
+    ActiveModelTrait, ActiveValue::NotSet, DatabaseConnection, EntityTrait, Set,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::middleware::auth::Claims;
 use crate::models::entities::tapp_store_sources;
+use crate::services::tapp_store_sources::{
+    default_store_source_enabled, may_change_store_source_url, may_delete_store_source,
+    store_source_urls_conflict, validate_store_source_url, StoreSourcePolicyError, StoreSourceView,
+};
+use crate::error::HttpError;
+use myriad_error::AppError;
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StoreSourceResponse {
-    pub id: i32,
-    pub name: String,
-    pub description: Option<String>,
-    pub url: String,
-    pub enabled: bool,
-    pub official: bool,
-    pub icon: Option<String>,
-}
+/// Path-stable public response DTO (serde camelCase via domain).
+pub type StoreSourceResponse = StoreSourceView;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,27 +48,31 @@ pub struct UpdateStoreSourceRequest {
     pub icon: Option<String>,
 }
 
+fn policy_status(err: StoreSourcePolicyError) -> StatusCode {
+    StatusCode::from_u16(err.status_hint()).unwrap_or(StatusCode::BAD_REQUEST)
+}
+
+fn model_to_view(source: tapp_store_sources::Model) -> StoreSourceView {
+    StoreSourceView::new(
+        source.id,
+        source.name,
+        source.description,
+        source.url,
+        source.enabled,
+        source.official,
+        source.icon,
+    )
+}
+
 pub(super) async fn list_store_sources(
     State(db): State<DatabaseConnection>,
-) -> Result<Json<ApiResponse<Vec<StoreSourceResponse>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<StoreSourceResponse>>>, HttpError> {
     let sources = tapp_store_sources::Entity::find()
         .all(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| HttpError(AppError::internal("Database error")))?;
 
-    let items = sources
-        .into_iter()
-        .map(|source| StoreSourceResponse {
-            id: source.id,
-            name: source.name,
-            description: source.description,
-            url: source.url,
-            enabled: source.enabled,
-            official: source.official,
-            icon: source.icon,
-        })
-        .collect();
-
+    let items = sources.into_iter().map(model_to_view).collect();
     Ok(Json(ApiResponse::success(items)))
 }
 
@@ -76,16 +80,19 @@ pub(super) async fn add_store_source(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Json(request): Json<AddStoreSourceRequest>,
-) -> Result<Json<ApiResponse<StoreSourceResponse>>, StatusCode> {
-    require_current_admin(&claims).await?;
+) -> Result<Json<ApiResponse<StoreSourceResponse>>, HttpError> {
+    require_current_admin(&claims, &db).await?;
+    validate_store_source_url(&request.url).map_err(policy_status)?;
 
     let existing = tapp_store_sources::Entity::find()
-        .filter(tapp_store_sources::Column::Url.eq(&request.url))
-        .one(&db)
+        .all(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    if existing.is_some() {
-        return Err(StatusCode::CONFLICT);
+        .map_err(|_| HttpError(AppError::internal("Database error")))?;
+    if existing
+        .iter()
+        .any(|source| store_source_urls_conflict(&source.url, &request.url))
+    {
+        return Err(HttpError(AppError::conflict("Conflict")));
     }
 
     let now = Utc::now().fixed_offset();
@@ -94,7 +101,7 @@ pub(super) async fn add_store_source(
         name: Set(request.name),
         description: Set(request.description),
         url: Set(request.url),
-        enabled: Set(request.enabled.unwrap_or(true)),
+        enabled: Set(default_store_source_enabled(request.enabled)),
         official: Set(false),
         icon: Set(request.icon),
         created_at: Set(now),
@@ -103,17 +110,9 @@ pub(super) async fn add_store_source(
     let result = source
         .insert(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| HttpError(AppError::internal("Database error")))?;
 
-    Ok(Json(ApiResponse::success(StoreSourceResponse {
-        id: result.id,
-        name: result.name,
-        description: result.description,
-        url: result.url,
-        enabled: result.enabled,
-        official: result.official,
-        icon: result.icon,
-    })))
+    Ok(Json(ApiResponse::success(model_to_view(result))))
 }
 
 pub(super) async fn update_store_source(
@@ -121,16 +120,26 @@ pub(super) async fn update_store_source(
     Extension(claims): Extension<Claims>,
     Path(source_id): Path<i32>,
     Json(request): Json<UpdateStoreSourceRequest>,
-) -> Result<Json<ApiResponse<StoreSourceResponse>>, StatusCode> {
-    require_current_admin(&claims).await?;
+) -> Result<Json<ApiResponse<StoreSourceResponse>>, HttpError> {
+    require_current_admin(&claims, &db).await?;
 
     let source = tapp_store_sources::Entity::find_by_id(source_id)
         .one(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
-    if source.official && request.url.is_some() {
-        return Err(StatusCode::FORBIDDEN);
+        .map_err(|_| HttpError(AppError::internal("Database error")))?
+        .ok_or_else(|| HttpError(AppError::not_found("Not found")))?;
+    may_change_store_source_url(source.official, request.url.as_deref()).map_err(policy_status)?;
+    if let Some(url) = request.url.as_deref() {
+        validate_store_source_url(url).map_err(policy_status)?;
+        let others = tapp_store_sources::Entity::find()
+            .all(&db)
+            .await
+            .map_err(|_| HttpError(AppError::internal("Database error")))?;
+        if others.iter().any(|other| {
+            other.id != source_id && store_source_urls_conflict(&other.url, url)
+        }) {
+            return Err(HttpError(AppError::conflict("Conflict")));
+        }
     }
 
     let now = Utc::now().fixed_offset();
@@ -155,39 +164,29 @@ pub(super) async fn update_store_source(
     let result = active
         .update(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| HttpError(AppError::internal("Database error")))?;
 
-    Ok(Json(ApiResponse::success(StoreSourceResponse {
-        id: result.id,
-        name: result.name,
-        description: result.description,
-        url: result.url,
-        enabled: result.enabled,
-        official: result.official,
-        icon: result.icon,
-    })))
+    Ok(Json(ApiResponse::success(model_to_view(result))))
 }
 
 pub(super) async fn delete_store_source(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Path(source_id): Path<i32>,
-) -> Result<Json<ApiResponse<()>>, StatusCode> {
-    require_current_admin(&claims).await?;
+) -> Result<Json<ApiResponse<()>>, HttpError> {
+    require_current_admin(&claims, &db).await?;
 
     let source = tapp_store_sources::Entity::find_by_id(source_id)
         .one(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
-    if source.official {
-        return Err(StatusCode::FORBIDDEN);
-    }
+        .map_err(|_| HttpError(AppError::internal("Database error")))?
+        .ok_or_else(|| HttpError(AppError::not_found("Not found")))?;
+    may_delete_store_source(source.official).map_err(policy_status)?;
 
     tapp_store_sources::Entity::delete_by_id(source_id)
         .exec(&db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| HttpError(AppError::internal("Database error")))?;
 
     Ok(Json(ApiResponse::success(())))
 }

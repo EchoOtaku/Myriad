@@ -127,8 +127,14 @@ async function request<T>(
     if (response.status === 403 && retryOnCSRFError && needsCSRF) {
       const errorMsg = data.error || ''
       if (errorMsg.includes('CSRF') || errorMsg.includes('csrf')) {
-        console.warn('CSRF token invalid, refreshing and retrying...')
+        console.warn(
+          '[BrewliaAPI] CSRF rejection — force-refreshing token and retrying once',
+        )
         clearCSRFToken()
+        const fresh = await getCSRFToken(true)
+        if (!fresh) {
+          throw new Error(data.error || 'CSRF token refresh failed')
+        }
         return request<T>(endpoint, options, false)
       }
     }

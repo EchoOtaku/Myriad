@@ -118,6 +118,8 @@ function extractSteamAppId(url: string): string | null {
  * 从 Bilibili 链接/嵌入/纯文本提取视频 ID
  * 支持格式：
  * - https://www.bilibili.com/video/BV1xx411c7XW
+ * - https://m.bilibili.com/video/BV1xx411c7XW
+ * - https://b23.tv/xxxxx（短链，需 BV/av 已在 URL 或展开后）
  * - https://player.bilibili.com/player.html?bvid=BV1xx411c7XW
  * - https://www.bilibili.com/blackboard/html5mobileplayer.html?bvid=BV1xx411c7XW
  * - av号：https://www.bilibili.com/video/av170001 或 aid=170001
@@ -414,14 +416,26 @@ export function processEmbeds(content: string, isDark: boolean): string {
   // 3. Bilibili 处理：不再处理官方 iframe，只把 AV/BV 号和链接转为官方 iframe
 
   // 3.1 处理 Bilibili 视频链接 -> 转为官方 iframe
+  // www / m / b23.tv 短链（路径里带 BV/av 时）
   const bilibiliLinkRegex =
-    /<a[^>]*href=["'](https?:\/\/(?:www\.)?bilibili\.com\/video\/(?:BV[a-z0-9]|av\d)[^"']*)["'][^>]*>[\s\S]*?<\/a>/gi
+    /<a[^>]*href=["'](https?:\/\/(?:(?:www|m)\.)?bilibili\.com\/video\/(?:BV[a-z0-9]+|av\d+)[^"']*|https?:\/\/b23\.tv\/[^"']+)["'][^>]*>[\s\S]*?<\/a>/gi
   result = result.replace(bilibiliLinkRegex, (match, url) => {
     const videoId = extractBilibiliVideoId(url)
     if (videoId) {
       return generateBilibiliIframe(videoId)
     }
     return match
+  })
+
+  // 3.1b 纯文本 URL（非 <a>）：m.bilibili / www / b23.tv
+  const bilibiliBareUrlRegex =
+    /(?<!["'=])(https?:\/\/(?:(?:www|m)\.)?bilibili\.com\/video\/(?:BV[a-z0-9]+|av\d+)[^\s<]*|https?:\/\/b23\.tv\/[A-Za-z0-9]+)/gi
+  result = result.replace(bilibiliBareUrlRegex, (url) => {
+    const videoId = extractBilibiliVideoId(url)
+    if (videoId) {
+      return generateBilibiliIframe(videoId)
+    }
+    return url
   })
 
   // 3.2 处理纯文本中的 BV 号或 AV 号（不在链接内的）-> 转为官方 iframe
@@ -614,8 +628,25 @@ async function loadSteamGameData(container: HTMLElement): Promise<void> {
         let gameData = getCached<any>(cacheKey)
 
         if (!gameData) {
-          // 使用后端代理API获取游戏详情
-          const response = await fetch(`/api/steam/game/${appId}`)
+          // 使用后端代理API获取游戏详情（按站点 locale / Accept-Language 选 l=）
+          let steamLang = 'english'
+          try {
+            const locale =
+              localStorage.getItem('locale') ||
+              (typeof navigator !== 'undefined' ? navigator.language : '') ||
+              'en'
+            steamLang = locale
+          } catch {
+            /* ignore */
+          }
+          const response = await fetch(
+            `/api/steam/game/${appId}?lang=${encodeURIComponent(steamLang)}`,
+            {
+              headers: {
+                'Accept-Language': steamLang,
+              },
+            },
+          )
           if (!response.ok) {
             card.setAttribute('data-loaded', 'true')
             return

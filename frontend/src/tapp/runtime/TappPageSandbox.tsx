@@ -68,6 +68,7 @@ import { createTappBridge } from './TappBridge'
 import { TappRuntimeGrant } from './TappRuntimeGrant'
 import { useSandboxSubscriptions } from './useSandboxSubscriptions'
 import { onTappStorageChange } from './WidgetRuntimeSignals'
+import { onSpaNavigation } from './spaNavigation'
 
 // 核心模块
 
@@ -712,7 +713,10 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         currentTappInstance,
       )
       if (!headless) registerDynamicContentHandlers(bridge, currentTappInstance)
-      registerAdvancedHandlers(bridge, currentTappInstance)
+      const closeAdvanced = registerAdvancedHandlers(
+        bridge,
+        currentTappInstance,
+      )
       const closeFederationSockets = registerFederationHandlers(
         bridge,
         currentTappInstance,
@@ -731,6 +735,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         currentTappInstance,
       )
       cleanups.push(
+        closeAdvanced,
         closeFederationSockets,
         closeScheduler,
         closeDataExchange,
@@ -812,6 +817,45 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     previewMode,
     subjectEpoch,
   ])
+
+  // When already open (Aro etc.), React Router query changes must refresh
+  // launchParams — they are baked into srcdoc only at iframe create time.
+  useEffect(() => {
+    if (!isReady || headless) return
+
+    const syncLaunchParams = () => {
+      const iframe = iframeRef.current
+      const bridge = bridgeRef.current
+      if (!iframe?.contentWindow) return
+
+      const launchParams: Record<string, string> = {}
+      try {
+        const sp = new URLSearchParams(window.location.search)
+        sp.forEach((v, k) => {
+          launchParams[k] = v
+        })
+      } catch {
+        return
+      }
+
+      try {
+        // srcdoc sandbox is same-document accessible for this assignment
+        ;(
+          iframe.contentWindow as Window & {
+            _TAPP_LAUNCH_PARAMS?: Record<string, string>
+          }
+        )._TAPP_LAUNCH_PARAMS = launchParams
+      } catch {
+        /* ignore */
+      }
+
+      // Event name matches host→sandbox convention (camelCase event action)
+      bridge?.emit('launchParamsChange', launchParams)
+    }
+
+    syncLaunchParams()
+    return onSpaNavigation(syncLaunchParams)
+  }, [isReady, headless])
 
   return (
     <div

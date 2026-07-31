@@ -416,19 +416,42 @@ export default function BrewSourceGrid({
         // 播放 FLIP 动画
         setTimeout(playFlipAnimations, 0)
 
-        // 保存交换后的排序到数据库
+        // 保存交换后的排序到数据库；失败则回滚 order + toast
         if (newFromIndex !== -1 && newToIndex !== -1) {
+          const fromId = draggingSourceId
+          const toId = dragOverSourceId
           try {
             await Promise.all([
-              brewApi.updateSource(draggingSourceId, {
+              brewApi.updateSource(fromId, {
                 sort_order: newToIndex,
               }),
-              brewApi.updateSource(dragOverSourceId, {
+              brewApi.updateSource(toId, {
                 sort_order: newFromIndex,
               }),
             ])
           } catch (err) {
             console.error('Failed to save sort order:', err)
+            // Roll back local order swap
+            setCustomOrder((prev) => {
+              const rolled = [...prev]
+              const a = rolled.indexOf(fromId)
+              const b = rolled.indexOf(toId)
+              if (a !== -1 && b !== -1) {
+                rolled[a] = toId
+                rolled[b] = fromId
+              }
+              return rolled
+            })
+            setTimeout(playFlipAnimations, 0)
+            try {
+              const { showToast } = await import('../../utils/toastManager')
+              showToast({
+                message: t.common.error || 'Failed to save sort order',
+                type: 'error',
+              })
+            } catch {
+              /* toast optional */
+            }
           }
         }
       }

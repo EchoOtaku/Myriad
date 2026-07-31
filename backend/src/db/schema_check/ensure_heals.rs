@@ -1,0 +1,742 @@
+//! Runtime schema heal helpers (CREATE IF NOT EXISTS / structural ALTER).
+//!
+//! **Support floor: product ≥ 0.3.10.** Field-level alignment for older trees
+//! (thin ADD COLUMN one-shots, intermediate half-built tables) is not kept;
+//! missing columns go through `get_expected_schema` + generic DDL.
+//! Heals here are: near-term CREATE IF NOT EXISTS, unique-index data cleanup,
+//! analytics `target` PK expansion, federation FK report/apply, seeds.
+use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr};
+
+/// 近月功能表兜底（`migrations/005` 已 CREATE）。
+pub(crate) async fn ensure_federation_content_filters_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS federation_content_filters (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    filter_type VARCHAR NOT NULL,
+    value TEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
+/// 近月功能表兜底（`migrations/005` 已 CREATE）。缺列由 `get_expected_schema` 通用 ADD。
+/// 字段级对齐不再为 <0.3.10 单独维护。
+pub(crate) async fn ensure_federation_policy_settings_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS federation_policy_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    min_trust_level SMALLINT NOT NULL DEFAULT 0,
+    allowed_domains JSONB NOT NULL DEFAULT '[]'::jsonb,
+    auto_discover BOOLEAN NOT NULL DEFAULT true,
+    rate_max_requests BIGINT NOT NULL DEFAULT 100,
+    rate_window_seconds BIGINT NOT NULL DEFAULT 60,
+    rate_trusted_multiplier BIGINT NOT NULL DEFAULT 5,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO federation_policy_settings (id) VALUES (1)
+ON CONFLICT (id) DO NOTHING;
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
+/// 近月功能表兜底（`migrations/004` 已 CREATE）。
+pub(crate) async fn ensure_heartbeat_claims_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS heartbeat_claims (
+    task_id VARCHAR(128) NOT NULL,
+    minute_bucket BIGINT NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'running',
+    claimed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    PRIMARY KEY (task_id, minute_bucket)
+);
+CREATE INDEX IF NOT EXISTS idx_heartbeat_claims_claimed_at
+    ON heartbeat_claims (claimed_at);
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
+/// First-party site analytics tables.
+///
+/// **权威建表**：`migrations/001_initial_schema.rs` §8（新库 Migrator）。
+/// 本函数与 001 的 SQL **逐字同构**，作「表尚不存在」的幂等 CREATE 兜底。
+/// 普通缺列（engagement / ordinal 等）走 `get_expected_schema` 通用 ADD，
+/// 不再为 <0.3.10 或中间过渡形态维护逐列 ALTER。
+///
+/// 仅保留 **event `target` 维度** 的列补齐 + PK 重建（通用 ADD 无法改主键）。
+pub(crate) async fn ensure_analytics_tables(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // 须与 migrations/001_initial_schema.rs §8 SITE ANALYTICS 保持同步
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS analytics_page_daily (
+    day DATE NOT NULL,
+    path TEXT NOT NULL,
+    views BIGINT NOT NULL DEFAULT 0,
+    unique_visitors BIGINT NOT NULL DEFAULT 0,
+    engagement_ms BIGINT NOT NULL DEFAULT 0,
+    engaged_views BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, path)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_page_daily_day
+    ON analytics_page_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_visitor_seen (
+    day DATE NOT NULL,
+    path TEXT NOT NULL,
+    visitor_hash VARCHAR(64) NOT NULL,
+    ordinal BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, path, visitor_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_visitor_seen_day
+    ON analytics_visitor_seen (day);
+
+CREATE TABLE IF NOT EXISTS analytics_event_daily (
+    day DATE NOT NULL,
+    event_name TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '',
+    target TEXT NOT NULL DEFAULT '',
+    count BIGINT NOT NULL DEFAULT 0,
+    unique_visitors BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, event_name, path, target)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_event_daily_day
+    ON analytics_event_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_event_visitor (
+    day DATE NOT NULL,
+    event_name TEXT NOT NULL,
+    path TEXT NOT NULL DEFAULT '',
+    target TEXT NOT NULL DEFAULT '',
+    visitor_hash VARCHAR(64) NOT NULL,
+    PRIMARY KEY (day, event_name, path, target, visitor_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_event_visitor_day
+    ON analytics_event_visitor (day);
+
+CREATE TABLE IF NOT EXISTS analytics_referrer_daily (
+    day DATE NOT NULL,
+    host TEXT NOT NULL,
+    count BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, host)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_referrer_daily_day
+    ON analytics_referrer_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_country_daily (
+    day DATE NOT NULL,
+    country_code VARCHAR(8) NOT NULL,
+    country_name TEXT NOT NULL DEFAULT '',
+    views BIGINT NOT NULL DEFAULT 0,
+    unique_visitors BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, country_code)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_country_daily_day
+    ON analytics_country_daily (day);
+
+CREATE TABLE IF NOT EXISTS analytics_country_visitor (
+    day DATE NOT NULL,
+    country_code VARCHAR(8) NOT NULL,
+    visitor_hash VARCHAR(64) NOT NULL,
+    PRIMARY KEY (day, country_code, visitor_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_country_visitor_day
+    ON analytics_country_visitor (day);
+"#,
+    )
+    .await?;
+    // target 列（post-0.3.10）：缺列时通用 ADD 也会补，但 PK 扩维必须显式 heal。
+    for stmt in [
+        "ALTER TABLE analytics_event_daily ADD COLUMN IF NOT EXISTS target TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE analytics_event_visitor ADD COLUMN IF NOT EXISTS target TEXT NOT NULL DEFAULT ''",
+    ] {
+        db.execute_unprepared(stmt).await?;
+    }
+    // 旧 PK (day, event_name, path) → 含 target。新建表已是新 PK；失败则忽略。
+    for stmt in [
+        r#"
+DO $heal$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'analytics_event_daily_pkey'
+      AND conrelid = 'analytics_event_daily'::regclass
+  ) THEN
+    ALTER TABLE analytics_event_daily DROP CONSTRAINT analytics_event_daily_pkey;
+  END IF;
+  ALTER TABLE analytics_event_daily
+    ADD CONSTRAINT analytics_event_daily_pkey
+    PRIMARY KEY (day, event_name, path, target);
+EXCEPTION
+  WHEN duplicate_object OR invalid_table_definition OR unique_violation THEN
+    NULL;
+END
+$heal$;
+"#,
+        r#"
+DO $heal$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'analytics_event_visitor_pkey'
+      AND conrelid = 'analytics_event_visitor'::regclass
+  ) THEN
+    ALTER TABLE analytics_event_visitor DROP CONSTRAINT analytics_event_visitor_pkey;
+  END IF;
+  ALTER TABLE analytics_event_visitor
+    ADD CONSTRAINT analytics_event_visitor_pkey
+    PRIMARY KEY (day, event_name, path, target, visitor_hash);
+EXCEPTION
+  WHEN duplicate_object OR invalid_table_definition OR unique_violation THEN
+    NULL;
+END
+$heal$;
+"#,
+    ] {
+        if let Err(e) = db.execute_unprepared(stmt).await {
+            tracing::warn!("analytics event target PK heal: {}", e);
+        }
+    }
+    Ok(())
+}
+
+/// 投递队列去重：`(activity_id, target_inbox)` 唯一索引。
+///
+/// # 为什么需要
+///
+/// 25 个入队点（room/channel/ring/follow/content/inbox/file_transfer/interactions）
+/// 原本都是裸 `INSERT`，没有任何约束阻止同一条活动向同一个 inbox 重复排队。
+/// `interactions.rs` 曾用 `WHERE NOT EXISTS` 自己去重 —— 那是先查后插，两个
+/// 并发请求可以同时通过检查再双双插入。
+///
+/// 重复投递的后果是远端收到两次同一条活动（重复通知、重复计数）。
+///
+/// # 为什么是 heal 而不是纯 migration
+///
+/// 已有部署的表里可能**已经**存在重复行，直接 `CREATE UNIQUE INDEX` 会失败。
+/// 所以先按 `(activity_id, target_inbox)` 保留 id 最小的一行、删掉其余，再建索引。
+/// 幂等：没有重复行时 DELETE 影响 0 行，索引已存在时 IF NOT EXISTS 跳过。
+pub(crate) async fn ensure_delivery_queue_unique(db: &DatabaseConnection) -> Result<(), DbErr> {
+    // 1) 清理历史重复（保留最早入队的那条 —— 它的 attempts/status 最有参考价值）
+    let removed = db
+        .execute_unprepared(
+            r#"
+DELETE FROM federation_delivery_queue a
+USING federation_delivery_queue b
+WHERE a.activity_id = b.activity_id
+  AND a.target_inbox = b.target_inbox
+  AND a.id > b.id;
+"#,
+        )
+        .await?;
+    if removed.rows_affected() > 0 {
+        tracing::info!(
+            "🧹 Removed {} duplicate delivery-queue row(s) before adding the unique index",
+            removed.rows_affected()
+        );
+    }
+
+    // 2) 建唯一索引 —— 之后 25 个入队点的 ON CONFLICT DO NOTHING 才真正生效
+    db.execute_unprepared(
+        r#"
+CREATE UNIQUE INDEX IF NOT EXISTS idx_delivery_queue_activity_target
+    ON federation_delivery_queue (activity_id, target_inbox);
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
+/// Federation foreign keys — **conservative by default**.
+///
+/// # Policy (strict, no data mutation)
+///
+/// 005 migration created federation tables **without** FKs. Adding constraints
+/// on a live DB fails if orphan rows exist. Cleaning orphans means DELETE or
+/// SET NULL — **never automated here**.
+///
+/// **Default (`MYRIAD_FEDERATION_APPLY_FKS` unset/false): report-only.**
+/// For each candidate FK, count orphans and log whether the constraint is
+/// missing. No `ALTER TABLE`. Safe for every production boot.
+///
+/// **Opt-in apply (`MYRIAD_FEDERATION_APPLY_FKS=1` or `true`):**
+/// 1. Skip if the constraint already exists.
+/// 2. Count orphans (SELECT only).
+/// 3. If orphans > 0 → warn and **skip** (still no DELETE / SET NULL).
+/// 4. If orphans = 0 → `ALTER TABLE … ADD CONSTRAINT`.
+///
+/// Operators: run `scripts/dev/federation-fk-orphan-report.sql` on a replica
+/// first. If orphans > 0, decide manually — preferred conservative remediations:
+/// - nullable columns → `SET NULL` (keeps the row)
+/// - dead rows with no business value → `DELETE` only after explicit review
+/// - unsure → leave unconstrained
+///
+/// # Not constrained (by design)
+///
+/// - `federation_timeline.activity_id` → activities (inbound feed often has no local activity row)
+/// - `federation_remote_actors.domain` → instances (soft discovery cache)
+/// - `federation_file_transfers.channel_id` → channels (room transfers use `''` channel_id)
+pub(crate) async fn ensure_federation_foreign_keys(db: &DatabaseConnection) -> Result<(), DbErr> {
+    /// One candidate FK. `orphan_sql` must return a single bigint column `orphans`.
+    struct FedFk {
+        name: &'static str,
+        orphan_sql: &'static str,
+        add_sql: &'static str,
+    }
+
+    let apply = matches!(
+        std::env::var("MYRIAD_FEDERATION_APPLY_FKS")
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+            .as_str(),
+        "1" | "true" | "yes" | "on"
+    );
+    if !apply {
+        tracing::info!(
+            "Federation FK heal is report-only \
+             (set MYRIAD_FEDERATION_APPLY_FKS=1 to add constraints when orphan-free). \
+             See scripts/dev/federation-fk-orphan-report.sql"
+        );
+    }
+
+    // ON DELETE:
+    // - CASCADE for ownership / membership / messages when parent is gone
+    // - SET NULL for optional references (nullable columns)
+    const FKS: &[FedFk] = &[
+        FedFk {
+            name: "fk_fed_keys_user",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_keys k
+WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = k.user_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_keys
+  ADD CONSTRAINT fk_fed_keys_user
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_follows_user",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_follows f
+WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = f.user_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_follows
+  ADD CONSTRAINT fk_fed_follows_user
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_follows_remote_actor",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_follows f
+WHERE NOT EXISTS (SELECT 1 FROM federation_remote_actors r WHERE r.id = f.remote_actor_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_follows
+  ADD CONSTRAINT fk_fed_follows_remote_actor
+  FOREIGN KEY (remote_actor_id) REFERENCES federation_remote_actors(id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_activities_user",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_activities a
+WHERE a.user_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = a.user_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_activities
+  ADD CONSTRAINT fk_fed_activities_user
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL"#,
+        },
+        FedFk {
+            name: "fk_fed_activities_remote_actor",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_activities a
+WHERE a.remote_actor_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM federation_remote_actors r WHERE r.id = a.remote_actor_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_activities
+  ADD CONSTRAINT fk_fed_activities_remote_actor
+  FOREIGN KEY (remote_actor_id) REFERENCES federation_remote_actors(id) ON DELETE SET NULL"#,
+        },
+        FedFk {
+            name: "fk_fed_delivery_activity",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_delivery_queue d
+WHERE NOT EXISTS (SELECT 1 FROM federation_activities a WHERE a.id = d.activity_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_delivery_queue
+  ADD CONSTRAINT fk_fed_delivery_activity
+  FOREIGN KEY (activity_id) REFERENCES federation_activities(id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_channels_user",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_channels c
+WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = c.user_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_channels
+  ADD CONSTRAINT fk_fed_channels_user
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_channels_remote_actor",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_channels c
+WHERE NOT EXISTS (SELECT 1 FROM federation_remote_actors r WHERE r.id = c.remote_actor_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_channels
+  ADD CONSTRAINT fk_fed_channels_remote_actor
+  FOREIGN KEY (remote_actor_id) REFERENCES federation_remote_actors(id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_channel_messages_channel",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_channel_messages m
+WHERE NOT EXISTS (SELECT 1 FROM federation_channels c WHERE c.channel_id = m.channel_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_channel_messages
+  ADD CONSTRAINT fk_fed_channel_messages_channel
+  FOREIGN KEY (channel_id) REFERENCES federation_channels(channel_id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_room_members_room",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_room_members m
+WHERE NOT EXISTS (SELECT 1 FROM federation_rooms r WHERE r.room_id = m.room_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_room_members
+  ADD CONSTRAINT fk_fed_room_members_room
+  FOREIGN KEY (room_id) REFERENCES federation_rooms(room_id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_room_members_local_user",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_room_members m
+WHERE m.local_user_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = m.local_user_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_room_members
+  ADD CONSTRAINT fk_fed_room_members_local_user
+  FOREIGN KEY (local_user_id) REFERENCES users(id) ON DELETE SET NULL"#,
+        },
+        FedFk {
+            name: "fk_fed_room_messages_room",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_room_messages m
+WHERE NOT EXISTS (SELECT 1 FROM federation_rooms r WHERE r.room_id = m.room_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_room_messages
+  ADD CONSTRAINT fk_fed_room_messages_room
+  FOREIGN KEY (room_id) REFERENCES federation_rooms(room_id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_published_user",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_published_content p
+WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = p.user_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_published_content
+  ADD CONSTRAINT fk_fed_published_user
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_published_activity",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_published_content p
+WHERE NOT EXISTS (SELECT 1 FROM federation_activities a WHERE a.activity_id = p.activity_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_published_content
+  ADD CONSTRAINT fk_fed_published_activity
+  FOREIGN KEY (activity_id) REFERENCES federation_activities(activity_id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_timeline_user",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_timeline t
+WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.id = t.user_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_timeline
+  ADD CONSTRAINT fk_fed_timeline_user
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE"#,
+        },
+        FedFk {
+            name: "fk_fed_timeline_remote_actor",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_timeline t
+WHERE t.remote_actor_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM federation_remote_actors r WHERE r.id = t.remote_actor_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_timeline
+  ADD CONSTRAINT fk_fed_timeline_remote_actor
+  FOREIGN KEY (remote_actor_id) REFERENCES federation_remote_actors(id) ON DELETE SET NULL"#,
+        },
+        FedFk {
+            name: "fk_fed_file_transfers_owner",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_file_transfers f
+WHERE f.owner_user_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = f.owner_user_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_file_transfers
+  ADD CONSTRAINT fk_fed_file_transfers_owner
+  FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE SET NULL"#,
+        },
+        FedFk {
+            name: "fk_fed_file_transfers_room",
+            orphan_sql: r#"
+SELECT COUNT(*)::bigint AS orphans FROM federation_file_transfers f
+WHERE f.room_id IS NOT NULL AND btrim(f.room_id) <> ''
+  AND NOT EXISTS (SELECT 1 FROM federation_rooms r WHERE r.room_id = f.room_id)"#,
+            add_sql: r#"
+ALTER TABLE federation_file_transfers
+  ADD CONSTRAINT fk_fed_file_transfers_room
+  FOREIGN KEY (room_id) REFERENCES federation_rooms(room_id) ON DELETE SET NULL"#,
+        },
+    ];
+
+    let mut missing_clean: u32 = 0;
+    let mut missing_orphans: u32 = 0;
+    let mut present: u32 = 0;
+
+    for fk in FKS {
+        let exists = db
+            .query_one(sea_orm::Statement::from_sql_and_values(
+                sea_orm::DatabaseBackend::Postgres,
+                r#"
+SELECT 1 AS ok
+FROM information_schema.table_constraints
+WHERE table_schema = 'public'
+  AND constraint_type = 'FOREIGN KEY'
+  AND constraint_name = $1
+LIMIT 1
+"#,
+                vec![fk.name.into()],
+            ))
+            .await?;
+        if exists.is_some() {
+            present += 1;
+            continue;
+        }
+
+        let orphan_row = db
+            .query_one(sea_orm::Statement::from_string(
+                sea_orm::DatabaseBackend::Postgres,
+                fk.orphan_sql.to_string(),
+            ))
+            .await?;
+        let orphans: i64 = orphan_row
+            .as_ref()
+            .and_then(|r| r.try_get::<i64>("", "orphans").ok())
+            .unwrap_or(0);
+
+        if orphans > 0 {
+            missing_orphans += 1;
+            tracing::warn!(
+                constraint = fk.name,
+                orphans,
+                "Federation FK missing and has orphan rows — not applying \
+                 (heal never deletes). Run scripts/dev/federation-fk-orphan-report.sql; \
+                 prefer SET NULL on nullable columns over DELETE"
+            );
+            continue;
+        }
+
+        missing_clean += 1;
+        if !apply {
+            tracing::info!(
+                constraint = fk.name,
+                "Federation FK missing, orphan-free — ready to add when \
+                 MYRIAD_FEDERATION_APPLY_FKS=1"
+            );
+            continue;
+        }
+
+        match db.execute_unprepared(fk.add_sql).await {
+            Ok(_) => {
+                tracing::info!(constraint = fk.name, "✅ Added federation foreign key");
+            }
+            Err(e) => {
+                // Race with another replica, or unexpected schema: do not fail boot.
+                tracing::warn!(
+                    constraint = fk.name,
+                    error = %e,
+                    "Could not add federation FK (will retry next boot if APPLY still set)"
+                );
+            }
+        }
+    }
+
+    tracing::info!(
+        present,
+        missing_clean,
+        missing_orphans,
+        apply,
+        "Federation FK heal summary (conservative: no orphan cleanup)"
+    );
+
+    Ok(())
+}
+
+/// 时间线去重：`(user_id, activity_id)` 唯一索引。
+///
+/// 6 个写入点原先各自用 `WHERE NOT EXISTS` 去重 —— 先查后插，同一条活动
+/// 并发送达（例如远端重投 + 扇出同时发生）时两个请求可以同时通过检查，
+/// 用户首页出现重复条目。
+///
+/// 语义与原 `NOT EXISTS` 完全一致（同一用户同一 activity_id 只留一条），
+/// 只是把检查从应用层挪到数据库、变成原子操作。
+///
+/// 同样先去重再建索引：已有部署可能已经积累了重复行。
+pub(crate) async fn ensure_timeline_unique(db: &DatabaseConnection) -> Result<(), DbErr> {
+    let removed = db
+        .execute_unprepared(
+            r#"
+DELETE FROM federation_timeline a
+USING federation_timeline b
+WHERE a.user_id = b.user_id
+  AND a.activity_id = b.activity_id
+  AND a.id > b.id;
+"#,
+        )
+        .await?;
+    if removed.rows_affected() > 0 {
+        tracing::info!(
+            "🧹 Removed {} duplicate timeline row(s) before adding the unique index",
+            removed.rows_affected()
+        );
+    }
+
+    db.execute_unprepared(
+        r#"
+CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_user_activity
+    ON federation_timeline (user_id, activity_id);
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
+/// 近月功能表兜底（`migrations/005` 已 CREATE）。
+pub(crate) async fn ensure_federation_domain_aliases_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS federation_domain_aliases (
+    id SERIAL PRIMARY KEY,
+    old_base_url TEXT NOT NULL UNIQUE,
+    new_base_url TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_federation_domain_aliases_new
+    ON federation_domain_aliases (new_base_url);
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
+/// 退休跨平台综合报告：历史行 `platform = 'all'` 已无生成/读取产品路径。
+///
+/// API 侧已用 `platform.ne("all")` 过滤，这里做一次幂等物理清理，避免库内残留
+/// 被 federation content 导出或手工 SQL 重新暴露。
+pub(crate) async fn cleanup_retired_comprehensive_reports(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+DELETE FROM platform_reports WHERE platform = 'all';
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
+/// 近月功能表兜底（`migrations/005` 已 CREATE）。
+pub(crate) async fn ensure_federation_object_interactions_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE TABLE IF NOT EXISTS federation_object_interactions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    object_id TEXT NOT NULL,
+    kind VARCHAR(20) NOT NULL,
+    activity_id TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT federation_object_interactions_kind_check
+        CHECK (kind IN ('like', 'bookmark', 'announce')),
+    CONSTRAINT federation_object_interactions_unique
+        UNIQUE (user_id, object_id, kind)
+);
+CREATE INDEX IF NOT EXISTS idx_fed_interactions_object_kind
+    ON federation_object_interactions (object_id, kind);
+CREATE INDEX IF NOT EXISTS idx_fed_interactions_user_kind_created
+    ON federation_object_interactions (user_id, kind, created_at DESC);
+"#,
+    )
+    .await?;
+    Ok(())
+}
+
+pub(crate) async fn ensure_tapp_storage_quota(db: &DatabaseConnection) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+CREATE OR REPLACE FUNCTION enforce_tapp_storage_quota()
+RETURNS TRIGGER AS $$
+DECLARE
+    current_bytes BIGINT;
+    projected_bytes BIGINT;
+BEGIN
+    PERFORM pg_advisory_xact_lock(
+        hashtextextended('tapp-storage:' || NEW.user_id::text || ':' || NEW.tapp_id, 0)
+    );
+
+    IF TG_OP = 'UPDATE' THEN
+        SELECT COALESCE(SUM(octet_length(key) + octet_length(value::text)), 0)::BIGINT
+          INTO current_bytes
+          FROM tapp_storage
+         WHERE user_id = NEW.user_id
+           AND tapp_id = NEW.tapp_id
+           AND id <> OLD.id;
+    ELSE
+        SELECT COALESCE(SUM(octet_length(key) + octet_length(value::text)), 0)::BIGINT
+          INTO current_bytes
+          FROM tapp_storage
+         WHERE user_id = NEW.user_id
+           AND tapp_id = NEW.tapp_id;
+    END IF;
+
+    projected_bytes := current_bytes
+        + octet_length(NEW.key)
+        + octet_length(NEW.value::text);
+    IF projected_bytes > 5242880 THEN
+        RAISE EXCEPTION 'Tapp storage quota exceeded: % bytes', projected_bytes
+            USING ERRCODE = '54000';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_trigger
+         WHERE tgname = 'trg_tapp_storage_quota'
+           AND NOT tgisinternal
+    ) THEN
+        CREATE TRIGGER trg_tapp_storage_quota
+        BEFORE INSERT OR UPDATE OF key, value, user_id, tapp_id ON tapp_storage
+        FOR EACH ROW EXECUTE FUNCTION enforce_tapp_storage_quota();
+    END IF;
+END $$;
+"#,
+    )
+    .await?;
+
+    Ok(())
+}

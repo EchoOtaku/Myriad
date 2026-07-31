@@ -11,6 +11,7 @@
 //!   GET    /api/auth/identities                   当前用户所有 identities
 //!   POST   /api/auth/identities/:id/primary       设为画像源（is_primary + 同步头像等）
 
+use crate::error::HttpError;
 use axum::{
     extract::{Path, Query},
     http::{header, HeaderMap, HeaderValue, StatusCode},
@@ -44,17 +45,17 @@ async fn build_redirect_uri(slug: &str) -> String {
     format!("{}/api/auth/oauth/{}/callback", base, slug)
 }
 
-fn err_500(msg: impl Into<String>) -> (StatusCode, Json<Value>) {
-    (
+fn err_500(msg: impl Into<String>) -> HttpError {
+    HttpError::from((
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(json!({"error": msg.into()})),
-    )
+    ))
 }
-fn err_400(msg: impl Into<String>) -> (StatusCode, Json<Value>) {
-    (StatusCode::BAD_REQUEST, Json(json!({"error": msg.into()})))
+fn err_400(msg: impl Into<String>) -> HttpError {
+    HttpError::from((StatusCode::BAD_REQUEST, Json(json!({"error": msg.into()}))))
 }
-fn err_404(msg: impl Into<String>) -> (StatusCode, Json<Value>) {
-    (StatusCode::NOT_FOUND, Json(json!({"error": msg.into()})))
+fn err_404(msg: impl Into<String>) -> HttpError {
+    HttpError::from((StatusCode::NOT_FOUND, Json(json!({"error": msg.into()}))))
 }
 
 /// Attach anti-caching headers so OAuth redirects / callbacks are never stored by browsers or CDNs.
@@ -155,7 +156,7 @@ pub async fn list_providers() -> Json<Value> {
 
 pub async fn provider_login(
     Path(slug): Path<String>,
-) -> Result<Response, (StatusCode, Json<Value>)> {
+) -> Result<Response, HttpError> {
     let provider = REGISTRY
         .get(&slug)
         .await
@@ -182,15 +183,13 @@ pub async fn provider_login(
 pub async fn provider_link(
     Path(slug): Path<String>,
     headers: HeaderMap,
-) -> Result<Response, (StatusCode, Json<Value>)> {
+) -> Result<Response, HttpError> {
     use crate::middleware::auth::verify_jwt_token;
 
-    let claims = verify_jwt_token(&headers).map_err(|_| {
-        (
+    let claims = verify_jwt_token(&headers).map_err(|_| HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Unauthorized"})),
-        )
-    })?;
+        )))?;
 
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
     if user_id <= 0 {
@@ -235,7 +234,7 @@ pub async fn provider_callback(
     Path(slug): Path<String>,
     Query(params): Query<CallbackQuery>,
     crate::extract::Db(db): crate::extract::Db,
-) -> Result<Response, (StatusCode, Json<Value>)> {
+) -> Result<Response, HttpError> {
     let frontend_base = SiteConfig::get_base_url().await;
 
     // provider 报错路径：直接重定向到登录页，带 error 信息
@@ -346,12 +345,12 @@ pub async fn provider_callback(
         }
         OAuthPurpose::Login => match handle_login(&db, &slug, &profile).await {
             Ok(resp) => Ok(resp),
-            Err((status, body)) => {
+            Err(err) => {
                 tracing::error!(
                     "OAuth login failed for provider '{}' (status={}): {:?}",
                     slug,
-                    status,
-                    body
+                    err.0.status_u16(),
+                    err.0
                 );
                 // Prefer a stable browser redirect over opaque JSON 5xx for callbacks
                 Ok(oauth_client_error_redirect(&frontend_base, "login_failed"))
@@ -362,8 +361,9 @@ pub async fn provider_callback(
                 "PlatformData OAuth state for '{}' hit login callback; redirecting",
                 platform
             );
+            // Match platforms/discord config_redirect: land on platforms section
             let url = format!(
-                "{}/config?discord_oauth=error&reason={}",
+                "{}/config?section=platforms&discord_oauth=error&reason={}",
                 frontend_base.trim_end_matches('/'),
                 urlencoding::encode("wrong_callback")
             );
@@ -386,7 +386,7 @@ async fn handle_callback_replay(
     slug: &str,
     stored: &StoredState,
     frontend_base: &str,
-) -> Result<Response, (StatusCode, Json<Value>)> {
+) -> Result<Response, HttpError> {
     match &stored.purpose {
         OAuthPurpose::LinkAccount(link_user_id) => {
             handle_link_replay(db, slug, *link_user_id, frontend_base).await
@@ -408,7 +408,7 @@ async fn handle_callback_replay(
                 platform
             );
             let url = format!(
-                "{}/config?discord_oauth=error&reason={}",
+                "{}/config?section=platforms&discord_oauth=error&reason={}",
                 frontend_base.trim_end_matches('/'),
                 urlencoding::encode("wrong_callback")
             );
@@ -426,7 +426,7 @@ async fn handle_link_replay(
     slug: &str,
     link_user_id: i32,
     frontend_url: &str,
-) -> Result<Response, (StatusCode, Json<Value>)> {
+) -> Result<Response, HttpError> {
     let existing = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -439,7 +439,7 @@ async fn handle_link_replay(
             ],
         ))
         .await
-        .map_err(|e| err_500(format!("DB error: {e}")))?;
+        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?;
 
     if let Some(row) = existing {
         let username: Option<String> = row.try_get("", "provider_username").ok().flatten();
@@ -486,7 +486,7 @@ async fn handle_link(
     link_user_id: i32,
     profile: &NormalizedProfile,
     frontend_url: &str,
-) -> Result<Response, (StatusCode, Json<Value>)> {
+) -> Result<Response, HttpError> {
     // 验证发起绑定的用户仍然存在
     let user = db
         .query_one(Statement::from_sql_and_values(
@@ -495,7 +495,7 @@ async fn handle_link(
             vec![SeaValue::Int(Some(link_user_id))],
         ))
         .await
-        .map_err(|e| err_500(format!("DB error: {e}")))?;
+        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?;
 
     if user.is_none() {
         let url = format!(
@@ -517,12 +517,15 @@ async fn handle_link(
             ],
         ))
         .await
-        .map_err(|e| err_500(format!("DB error: {e}")))?;
+        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?;
 
     if let Some(row) = existing {
         let owner_id: i32 = row
             .try_get("", "user_id")
-            .map_err(|e| err_500(format!("failed to read user_id: {e}")))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "OAuth: failed to read user_id");
+                err_500("Database error")
+            })?;
         if owner_id != link_user_id {
             let url = format!(
                 "{}/?link=error&reason=already_linked",
@@ -550,21 +553,22 @@ async fn handle_login(
     db: &DatabaseConnection,
     slug: &str,
     profile: &NormalizedProfile,
-) -> Result<Response, (StatusCode, Json<Value>)> {
+) -> Result<Response, HttpError> {
     let user_id = find_or_create_user(db, slug, profile).await?;
 
     // 查 is_admin
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT is_admin, username FROM users WHERE id = $1",
+            "SELECT is_admin, username, COALESCE(is_owner, false) AS is_owner FROM users WHERE id = $1",
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|e| err_500(format!("DB error: {e}")))?
+        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?
         .ok_or_else(|| err_500("User vanished after create"))?;
 
     let is_admin: bool = row.try_get("", "is_admin").unwrap_or(false);
+    let is_owner: bool = row.try_get("", "is_owner").unwrap_or(false);
     let username: String = row.try_get("", "username").unwrap_or_default();
 
     // 生成 JWT
@@ -573,6 +577,7 @@ async fn handle_login(
         sub: user_id.to_string(),
         username: username.clone(),
         is_admin,
+        is_owner,
         exp: (Utc::now() + Duration::days(30)).timestamp(),
         iat: Utc::now().timestamp(),
     };
@@ -581,7 +586,10 @@ async fn handle_login(
         &claims,
         &EncodingKey::from_secret(jwt_secret.as_bytes()),
     )
-    .map_err(|e| err_500(format!("JWT encode failed: {e}")))?;
+    .map_err(|e| {
+        tracing::error!(error = %e, "OAuth: JWT encode failed");
+        err_500("Internal error")
+    })?;
 
     // Set-Cookie + HTML 重定向
     // 注意：使用相对路径，避免把管理员可控的 base_url 注入到 <meta refresh> / <script>
@@ -598,7 +606,10 @@ async fn handle_login(
 
     let mut response = axum::response::Html(html).into_response();
     let set_cookie = HeaderValue::from_str(&cookie_value)
-        .map_err(|e| err_500(format!("invalid auth cookie header: {e}")))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "OAuth: invalid auth cookie header");
+            err_500("Internal error")
+        })?;
     response
         .headers_mut()
         .insert(header::SET_COOKIE, set_cookie);
@@ -612,7 +623,7 @@ async fn find_or_create_user(
     db: &DatabaseConnection,
     slug: &str,
     profile: &NormalizedProfile,
-) -> Result<i32, (StatusCode, Json<Value>)> {
+) -> Result<i32, HttpError> {
     // 1. identity 命中 → 直接登录
     if let Some(row) = db
         .query_one(Statement::from_sql_and_values(
@@ -625,11 +636,14 @@ async fn find_or_create_user(
             ],
         ))
         .await
-        .map_err(|e| err_500(format!("DB error: {e}")))?
+        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?
     {
         let uid: i32 = row
             .try_get("", "user_id")
-            .map_err(|e| err_500(format!("failed to read user_id: {e}")))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "OAuth: failed to read user_id");
+                err_500("Database error")
+            })?;
         // 更新 identity 的 last_login_at + 档案字段
         let _ = db
             .execute(Statement::from_sql_and_values(
@@ -683,11 +697,14 @@ async fn find_or_create_user(
                     vec![SeaValue::String(Some(Box::new(email.clone())))],
                 ))
                 .await
-                .map_err(|e| err_500(format!("DB error: {e}")))?
+                .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?
             {
                 let uid: i32 = row
                     .try_get("", "id")
-                    .map_err(|e| err_500(format!("failed to read id: {e}")))?;
+                    .map_err(|e| {
+                        tracing::error!(error = %e, "OAuth: failed to read id");
+                        err_500("Database error")
+                    })?;
                 upsert_identity(db, slug, uid, profile).await?;
                 sync_user_oauth_profile_snapshot(db, uid, slug, profile).await;
                 return Ok(uid);
@@ -744,7 +761,10 @@ async fn find_or_create_user(
             ],
         ))
         .await
-        .map_err(|e| err_500(format!("INSERT user failed: {e}")))?
+        .map_err(|e| {
+            tracing::error!(error = %e, "OAuth: INSERT user failed");
+            err_500("Database error")
+        })?
         .ok_or_else(|| err_500("INSERT user returned no row"))?;
 
     let new_id: i32 = insert
@@ -761,7 +781,7 @@ async fn upsert_identity(
     slug: &str,
     user_id: i32,
     profile: &NormalizedProfile,
-) -> Result<(), (StatusCode, Json<Value>)> {
+) -> Result<(), HttpError> {
     db.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "INSERT INTO user_identities ( \
@@ -806,7 +826,10 @@ async fn upsert_identity(
         ],
     ))
     .await
-    .map_err(|e| err_500(format!("upsert identity failed: {e}")))?;
+    .map_err(|e| {
+        tracing::error!(error = %e, "OAuth: upsert identity failed");
+        err_500("Database error")
+    })?;
     Ok(())
 }
 
@@ -814,7 +837,7 @@ async fn upsert_identity(
 async fn ensure_unique_username(
     db: &DatabaseConnection,
     base: &str,
-) -> Result<String, (StatusCode, Json<Value>)> {
+) -> Result<String, HttpError> {
     let mut candidate = base.to_string();
     for n in 0..100u32 {
         let hit = db
@@ -824,7 +847,7 @@ async fn ensure_unique_username(
                 vec![SeaValue::String(Some(Box::new(candidate.clone())))],
             ))
             .await
-            .map_err(|e| err_500(format!("DB error: {e}")))?;
+            .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?;
         if hit.is_none() {
             return Ok(candidate);
         }
@@ -841,14 +864,12 @@ pub async fn provider_unlink(
     Path((slug, identity_id)): Path<(String, i32)>,
     crate::extract::Db(db): crate::extract::Db,
     headers: HeaderMap,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     use crate::middleware::auth::verify_jwt_token;
-    let claims = verify_jwt_token(&headers).map_err(|_| {
-        (
+    let claims = verify_jwt_token(&headers).map_err(|_| HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Unauthorized"})),
-        )
-    })?;
+        )))?;
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
 
     // 确认 identity 属于当前用户
@@ -863,7 +884,7 @@ pub async fn provider_unlink(
             ],
         ))
         .await
-        .map_err(|e| err_500(format!("DB error: {e}")))?;
+        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?;
 
     if row.is_none() {
         return Err(err_404("identity not found or not yours"));
@@ -879,20 +900,20 @@ pub async fn provider_unlink(
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|e| err_500(format!("DB error: {e}")))?
+        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?
         .ok_or_else(|| err_500("user not found"))?;
 
     let has_password: bool = summary.try_get("", "has_password").unwrap_or(false);
     let identity_count: i64 = summary.try_get("", "identity_count").unwrap_or(0);
 
     if !has_password && identity_count <= 1 {
-        return Err((
+        return Err(HttpError::from((
             StatusCode::CONFLICT,
             Json(json!({
                 "error": "Cannot unlink last identity",
                 "message": "Please set a local password first, or link another provider."
             })),
-        ));
+        )));
     }
 
     db.execute(Statement::from_sql_and_values(
@@ -901,7 +922,10 @@ pub async fn provider_unlink(
         vec![SeaValue::Int(Some(identity_id))],
     ))
     .await
-    .map_err(|e| err_500(format!("DELETE failed: {e}")))?;
+    .map_err(|e| {
+        tracing::error!(error = %e, "OAuth: DELETE identity failed");
+        err_500("Database error")
+    })?;
 
     // 兼容层：解绑 GitHub 时清掉 users.linked_github_id（若仍持有该 id）
     if slug == "github" {
@@ -922,14 +946,12 @@ pub async fn provider_unlink(
 pub async fn list_my_identities(
     crate::extract::Db(db): crate::extract::Db,
     headers: HeaderMap,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     use crate::middleware::auth::verify_jwt_token;
-    let claims = verify_jwt_token(&headers).map_err(|_| {
-        (
+    let claims = verify_jwt_token(&headers).map_err(|_| HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Unauthorized"})),
-        )
-    })?;
+        )))?;
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
 
     let rows = db
@@ -941,7 +963,7 @@ pub async fn list_my_identities(
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|e| err_500(format!("DB error: {e}")))?;
+        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?;
 
     let identities: Vec<Value> = rows
         .into_iter()
@@ -971,20 +993,21 @@ pub async fn set_primary_identity(
     Path(identity_id): Path<i32>,
     crate::extract::Db(db): crate::extract::Db,
     headers: HeaderMap,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     use crate::middleware::auth::verify_jwt_token;
-    let claims = verify_jwt_token(&headers).map_err(|_| {
-        (
+    let claims = verify_jwt_token(&headers).map_err(|_| HttpError::from((
             StatusCode::UNAUTHORIZED,
             Json(json!({"error": "Unauthorized"})),
-        )
-    })?;
+        )))?;
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
 
     let txn = db
         .begin()
         .await
-        .map_err(|e| err_500(format!("Failed to begin transaction: {e}")))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "OAuth: failed to begin transaction");
+            err_500("Database error")
+        })?;
 
     let row = match txn
         .query_one(Statement::from_sql_and_values(
@@ -1001,16 +1024,16 @@ pub async fn set_primary_identity(
         Ok(r) => r,
         Err(e) => {
             let _ = txn.rollback().await;
-            return Err(err_500(format!("DB error: {e}")));
+            { tracing::error!("OAuth DB error: {e}"); return Err(err_500("Database error")); }
         }
     };
 
     let Some(row) = row else {
         let _ = txn.rollback().await;
-        return Err((
+        return Err(HttpError::from((
             StatusCode::NOT_FOUND,
             Json(json!({"error": "Identity not found"})),
-        ));
+        )));
     };
 
     let provider: String = row.try_get("", "provider").unwrap_or_default();
@@ -1026,7 +1049,7 @@ pub async fn set_primary_identity(
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|e| err_500(format!("DB error: {e}")))?;
+        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?;
 
         txn.execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -1037,7 +1060,7 @@ pub async fn set_primary_identity(
             ],
         ))
         .await
-        .map_err(|e| err_500(format!("DB error: {e}")))?;
+        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?;
 
         // Apply profile snapshot onto users (avatar; GitHub linked id when applicable)
         let avatar_trim = avatar_url
@@ -1064,7 +1087,10 @@ pub async fn set_primary_identity(
                     ],
                 ))
                 .await
-                .map_err(|e| err_500(format!("Failed to apply profile: {e}")))?;
+                .map_err(|e| {
+                    tracing::error!(error = %e, "OAuth: failed to apply profile");
+                    err_500("Database error")
+                })?;
             } else if github_id.is_some() {
                 txn.execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
@@ -1075,7 +1101,10 @@ pub async fn set_primary_identity(
                     vec![SeaValue::BigInt(github_id), SeaValue::Int(Some(user_id))],
                 ))
                 .await
-                .map_err(|e| err_500(format!("Failed to apply profile: {e}")))?;
+                .map_err(|e| {
+                    tracing::error!(error = %e, "OAuth: failed to apply profile");
+                    err_500("Database error")
+                })?;
             }
         } else if let Some(avatar) = avatar_trim {
             txn.execute(Statement::from_sql_and_values(
@@ -1087,7 +1116,10 @@ pub async fn set_primary_identity(
                 ],
             ))
             .await
-            .map_err(|e| err_500(format!("Failed to apply avatar: {e}")))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "OAuth: failed to apply avatar");
+                err_500("Database error")
+            })?;
         }
 
         // Prefer provider display username when present (does not change login username)
@@ -1103,11 +1135,14 @@ pub async fn set_primary_identity(
                     ],
                 ))
                 .await
-                .map_err(|e| err_500(format!("Failed to apply display_name: {e}")))?;
+                .map_err(|e| {
+                    tracing::error!(error = %e, "OAuth: failed to apply display_name");
+                    err_500("Database error")
+                })?;
             }
         }
 
-        Ok::<(), (StatusCode, Json<Value>)>(())
+        Ok::<(), HttpError>(())
     }
     .await;
 
@@ -1115,7 +1150,10 @@ pub async fn set_primary_identity(
         Ok(()) => {
             txn.commit()
                 .await
-                .map_err(|e| err_500(format!("Failed to commit transaction: {e}")))?;
+                .map_err(|e| {
+                    tracing::error!(error = %e, "OAuth: failed to commit transaction");
+                    err_500("Database error")
+                })?;
             Ok(Json(json!({
                 "success": true,
                 "identity_id": identity_id,

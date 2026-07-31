@@ -3,6 +3,7 @@ import type { TappBridge } from './TappBridge'
 import { getDefaultLocale } from '../../i18n'
 import { subscribeToTheme } from '../../utils/themeSubscriber'
 import * as TappApiService from '../services/TappApiService'
+import { onSpaNavigation } from './spaNavigation'
 
 const RECONNECT_DELAY_MS = 500
 
@@ -95,19 +96,24 @@ export function registerEventHandlers(
     )
   }
   if (subscriptions.has('system.navigation.changed')) {
-    const onNavigation = () =>
+    let lastKey = ''
+    const onNavigation = () => {
+      const key = `${location.pathname}${location.search}${location.hash}`
+      // Always emit on first call; skip exact duplicates from multi-sources
+      if (key === lastKey && lastKey !== '') return
+      lastKey = key
       emitSystem('system.navigation.changed', {
         pathname: location.pathname,
         search: location.search,
         hash: location.hash,
       })
-    window.addEventListener('popstate', onNavigation)
-    window.addEventListener('hashchange', onNavigation)
+    }
+    // pushState/replaceState (React Router) + popstate/hash via shared helper
+    const unsubSpa = onSpaNavigation(onNavigation)
     document.addEventListener('astro:page-load', onNavigation)
     onNavigation()
     cleanupSystemProducers.push(() => {
-      window.removeEventListener('popstate', onNavigation)
-      window.removeEventListener('hashchange', onNavigation)
+      unsubSpa()
       document.removeEventListener('astro:page-load', onNavigation)
     })
   }

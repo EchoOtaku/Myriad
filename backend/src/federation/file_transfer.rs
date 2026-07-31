@@ -85,7 +85,7 @@ pub struct TransferDetail {
     pub completed_at: Option<String>,
 }
 
-/// 默认块大小: 1 MiB raw（base64 后约 1.37 MiB，远低于联邦 inbox 40 MiB 上限）
+/// 默认块大小: 1 MiB raw（base64 后约 1.37 MiB，远低于联邦 INBOX_BODY_LIMIT 上限）
 use crate::federation::limits::TRANSFER_CHUNK_SIZE as DEFAULT_CHUNK_SIZE;
 
 /// 最大文件大小: 5GB

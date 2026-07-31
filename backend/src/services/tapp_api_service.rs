@@ -18,10 +18,10 @@ use std::str::FromStr;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
-use crate::api::tapp_runtime::common::HTTP_CLIENT;
-use crate::api::tapp_store::{TappAiOperation, TappApiAccess, TappApiDef};
+use crate::services::http_client::TAPP_HTTP_CLIENT;
 use crate::services::permission_service::UserRole;
 use crate::services::spoof_utils::{generate_spoof_headers, SpoofConfig};
+use myriad_tapp_contract::manifest::{TappAiOperation, TappApiAccess, TappApiDef};
 
 // 预编译模板变量正则，避免每次调用都重新编译
 static TEMPLATE_RE: Lazy<regex::Regex> =
@@ -329,7 +329,7 @@ impl TappApiService {
 
         let target_ip = if is_local {
             // 获取服务器公网 IP
-            if let Ok(resp) = HTTP_CLIENT
+            if let Ok(resp) = TAPP_HTTP_CLIENT
                 .get("https://api.ipify.org?format=json")
                 .send()
                 .await
@@ -356,7 +356,7 @@ impl TappApiService {
             if target_ip == "auto" { "" } else { &target_ip }
         );
 
-        if let Ok(resp) = HTTP_CLIENT.get(&url).send().await {
+        if let Ok(resp) = TAPP_HTTP_CLIENT.get(&url).send().await {
             if let Ok(data) = resp.json::<Value>().await {
                 if data.get("status").and_then(|s| s.as_str()) == Some("success") {
                     let geo = GeoInfo {
@@ -535,7 +535,7 @@ impl TappApiService {
                     return Err("AI chat messages are too large".to_string());
                 }
                 if let Some(reason) =
-                    crate::api::tapp_runtime::common::validate_prompt_security(&prompt)
+                    myriad_prompt_security::validate_prompt_security(&prompt)
                 {
                     return Err(format!("AI chat contains disallowed content: {reason}"));
                 }
@@ -569,7 +569,7 @@ impl TappApiService {
                     return Err("Prompt too long (max 2000 characters)".to_string());
                 }
                 if let Some(reason) =
-                    crate::api::tapp_runtime::common::validate_prompt_security(prompt)
+                    myriad_prompt_security::validate_prompt_security(prompt)
                 {
                     return Err(format!("Prompt contains disallowed content: {reason}"));
                 }
@@ -594,7 +594,7 @@ impl TappApiService {
         system_prompt: &str,
         prompt: &str,
     ) -> Result<String, String> {
-        let db = crate::api::tapp_runtime::shared_registry::database()
+        let db = crate::services::tapp_registry::database()
             .await
             .map_err(|error| format!("AI_TASK_REGISTRY_UNAVAILABLE: {error}"))?;
         let role = if context.is_admin {
@@ -604,19 +604,19 @@ impl TappApiService {
         } else {
             UserRole::User
         };
-        crate::api::tapp_runtime::execute_governed_text(
+        crate::services::governed_text::execute_governed_text(
             &db,
-            crate::api::tapp_runtime::GovernedTextRequest {
+            crate::services::governed_text::GovernedTextRequest {
                 role,
                 subject_id: context.user_id,
                 owner_id: context.owner_id,
-                tapp_id,
-                source: "declared-api",
+                tapp_id: tapp_id.to_string(),
+                source: "declared-api".to_string(),
                 operation,
                 tier: context.ai_model_tier.unwrap_or_default(),
-                system_prompt,
-                prompt,
-                client_ip: context.client_ip.as_deref(),
+                system_prompt: system_prompt.to_string(),
+                prompt: prompt.to_string(),
+                client_ip: context.client_ip.clone(),
             },
         )
         .await

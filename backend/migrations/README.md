@@ -5,10 +5,11 @@ Run database migrations for Myriad backend.
 ## Usage
 
 ```bash
-# From backend directory
-cd backend
+# From repo root (workspace member `migration`)
+cargo run -p migration
 
-# Run all pending migrations
+# Or from backend/
+cd backend
 cargo run --manifest-path migrations/Cargo.toml
 
 # Or create a new migration
@@ -35,7 +36,13 @@ Thin ALTER-only migrations that only added columns or healed data were retired:
 Whole tables are created by Migrator (001–006) — the numbered series is the
 **complete greenfield source of truth**. Runtime `schema_check` only heals
 **recent (~1 month) features** plus ongoing data/object jobs (platform seeds,
-single owner, storage-quota trigger). Recent tables:
+single owner, storage-quota trigger).
+
+**Setup path:** `api/setup::init_database` runs `Migrator::up` then
+`schema_check::ensure_schema` so first-boot seeds/heals do not require a
+process restart (same order as `main` after DB connect).
+
+Recent tables:
 
 | Feature | Migration | schema_check |
 |---------|-----------|--------------|

@@ -271,6 +271,11 @@ export interface TranslationKeys {
     saveHint: string
     atLeast8Chars: string
     enterPasswordAgain: string
+    bootstrapToken: string
+    bootstrapTokenOptional: string
+    bootstrapTokenPlaceholder: string
+    bootstrapTokenHint: string
+    bootstrapTokenRequired: string
   }
 
   // 配置
@@ -867,6 +872,7 @@ export interface TranslationKeys {
     savingConfig: string
     configSaved: string
     configSaveFailed: string
+    partialSaveWarning: string
     configEmpty: string
     loadConfigFailed: string
     loadConfigFailedDesc: string
@@ -945,6 +951,15 @@ export interface TranslationKeys {
     runtimeDiagnosticsMemory: string
     runtimeDiagnosticsServerLocation: string
     runtimeDiagnosticsVersion: string
+    runtimeDiagnosticsSystem: string
+    runtimeDiagnosticsSystemDetail: string
+    runtimeDiagnosticsOsLinux: string
+    runtimeDiagnosticsOsMacos: string
+    runtimeDiagnosticsOsWindows: string
+    runtimeDiagnosticsArchX86_64: string
+    runtimeDiagnosticsArchAarch64: string
+    runtimeDiagnosticsArchArm: string
+    runtimeDiagnosticsPointerWidth: string
     runtimeDiagnosticsStorageWritable: string
     runtimeDiagnosticsMigrationsApplied: string
     runtimeDiagnosticsMemoryRss: string
@@ -1453,6 +1468,8 @@ export interface TranslationKeys {
     alreadyPlaying: string
     vipSongWarning: string
     nowPlaying: string
+    openExternal: string
+    playbackNotSupported: string
     // 空状态
     emptyLibrary: string
     emptyCategory: string
@@ -2031,9 +2048,13 @@ export interface TranslationKeys {
     bangumiDone: string
     bangumiDoing: string
     bangumiWish: string
+    bangumiOnHold: string
+    bangumiDropped: string
     malDone: string
     malDoing: string
     malWish: string
+    malOnHold: string
+    malDropped: string
   }
 
   // 账户页面
@@ -2310,6 +2331,7 @@ export interface TranslationKeys {
     fetchReportFailed: string
     steamOnline: string
     steamOffline: string
+    presenceDegraded: string
     steamBusy: string
     steamAway: string
     steamSnooze: string
@@ -2348,6 +2370,7 @@ export interface TranslationKeys {
     discordReach: string
     discordConnections: string
     discordMembers: string
+    discordOnline: string
     discordRoleOwner: string
     discordRoleAdmin: string
     discordRoleMod: string
@@ -3510,6 +3533,8 @@ export interface TranslationKeys {
     emptyMemory: string
     manageLoadError: string
     manageActionError: string
+    loginRequiredHint: string
+    manageAdminOnly: string
     editHeartbeat: string
     saveHeartbeat: string
     createHeartbeat: string
@@ -3559,6 +3584,11 @@ export interface TranslationKeys {
     partialComplete: string
     failReason: string
     answerFailed: string
+    /** Sensitive confirmation: risk badge */
+    confirmRisk: string
+    confirmExpiresIn: string
+    confirmExpired: string
+    confirmExpiredHint: string
     // 思考面板
     thinking: string
     completed: string

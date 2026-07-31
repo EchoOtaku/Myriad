@@ -26,8 +26,7 @@ pub struct DataPaths {
     /// 规范路径；部分历史调用仍写相对字面量 `cache/platforms`
     #[allow(dead_code)]
     pub cache_platforms: PathBuf,
-    /// 原始数据缓存目录（默认: "cache/raw"）
-    #[allow(dead_code)]
+    /// 原始数据缓存目录（默认: "cache/raw"；可用 `CACHE_DIR` 覆盖根）
     pub cache_raw: PathBuf,
     /// 图片缓存目录（默认: "cache/images"）
     pub cache_images: PathBuf,

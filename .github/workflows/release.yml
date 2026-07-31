@@ -1,9 +1,13 @@
 name: Release
 
 # Triggered by pushing a tag matching v*.
-# Builds all 4 component images (backend, frontend, proxy, updater) as multi-arch
-# linux/amd64 + linux/arm64, then assembles release.json and publishes a GitHub Release.
-# Proxy is intentionally release-only (not built on commit/dev packaging).
+# Builds component images as multi-arch linux/amd64 + linux/arm64 on native
+# runners (no QEMU), then assembles release.json and publishes a GitHub Release.
+#
+# backend/frontend always ship with the app tag. proxy/updater keep an independent
+# cadence: built and listed in release.json only when their trees changed since
+# the previous v* tag (no retag / no version alignment). Force-include via
+# commit title `-full` on the tagged commit, or workflow_dispatch force_infra.
 
 on:
   push:
@@ -20,25 +24,39 @@ on:
         default: "stable"
         type: choice
         options: [stable, beta, nightly]
+      force_infra:
+        description: "Also ship proxy/updater even if unchanged since previous tag"
+        required: false
+        type: boolean
+        default: false
 
 env:
   REGISTRY: docker.io
   # Docker Hub namespace = DOCKERHUB_USERNAME secret. Forks set their own
   # DOCKERHUB_USERNAME / DOCKERHUB_TOKEN; nothing in this file is hardcoded.
   IMAGE_NAMESPACE: ${{ secrets.DOCKERHUB_USERNAME }}
-  COMPONENTS: backend frontend proxy updater
 
 jobs:
   resolve:
-    name: Resolve version & channel
+    name: Resolve version & components
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.out.outputs.version }}
       channel: ${{ steps.out.outputs.channel }}
       prerelease: ${{ steps.out.outputs.prerelease }}
+      build_components: ${{ steps.out.outputs.build_components }}
+      previous_version: ${{ steps.out.outputs.previous_version }}
+      has_frontend: ${{ steps.out.outputs.has_frontend }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - id: out
+        env:
+          DISPATCH_FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_infra || false }}
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             VERSION="${{ inputs.version }}"
             CHANNEL="${{ inputs.channel }}"
@@ -56,26 +74,127 @@ jobs:
             exit 1
           fi
           [ "$CHANNEL" = "stable" ] && PRERELEASE=false || PRERELEASE=true
+
+          # Force infra: dispatch checkbox, or tagged commit title contains `-full`.
+          FORCE_INFRA=false
+          if [ "$DISPATCH_FORCE" = "true" ]; then
+            FORCE_INFRA=true
+          fi
+          TITLE=$(git log -1 --format=%s HEAD 2>/dev/null || true)
+          if printf '%s\n' "$TITLE" | grep -qF -- '-full'; then
+            FORCE_INFRA=true
+            echo "Tagged commit title contains -full — forcing proxy/updater"
+          fi
+          echo "Commit title: ${TITLE:-n/a}"
+
+          git fetch --tags --force origin 2>/dev/null || true
+          PREV=$(git tag -l 'v*' --sort=-v:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z0-9.]+)?$' \
+            | grep -vxF "$VERSION" \
+            | head -1 || true)
+
+          # App images always ship. Infra images only when their tree changed
+          # (or first release / -full / force_infra) — omitted from release.json otherwise.
+          BUILD_JSON='["backend","frontend"]'
+          SKIPPED=''
+
+          for comp in proxy updater; do
+            ship=false
+            if [ "$FORCE_INFRA" = "true" ]; then
+              ship=true
+              echo "$comp: force_infra/-full — will ship"
+            elif [ -z "$PREV" ]; then
+              ship=true
+              echo "$comp: no previous tag — will ship"
+            elif git diff --name-only "$PREV" HEAD -- "$comp/" | grep -q .; then
+              ship=true
+              echo "$comp: changed since $PREV — will ship"
+              git diff --name-only "$PREV" HEAD -- "$comp/" | head -n 20
+            else
+              echo "$comp: unchanged since $PREV — omit from this release"
+              SKIPPED="${SKIPPED}${SKIPPED:+,}${comp}"
+            fi
+            if [ "$ship" = "true" ]; then
+              BUILD_JSON=$(echo "$BUILD_JSON" | jq -c --arg c "$comp" '. + [$c]')
+            fi
+          done
+
+          HAS_FRONTEND=false
+          echo "$BUILD_JSON" | jq -e 'index("frontend") != null' >/dev/null && HAS_FRONTEND=true
+
           {
             echo "version=$VERSION"
             echo "channel=$CHANNEL"
             echo "prerelease=$PRERELEASE"
+            echo "build_components=$BUILD_JSON"
+            echo "previous_version=$PREV"
+            echo "has_frontend=$HAS_FRONTEND"
           } >>"$GITHUB_OUTPUT"
 
-  build:
-    name: Build ${{ matrix.component }}
+          {
+            echo "## Release plan \`$VERSION\`"
+            echo ""
+            echo "- Channel: \`$CHANNEL\`"
+            echo "- Previous tag: \`${PREV:-none}\`"
+            echo "- Ship images: \`$BUILD_JSON\`"
+            echo "- Omitted (unchanged infra): \`${SKIPPED:-none}\`"
+            echo "- force_infra (-full): \`$FORCE_INFRA\`"
+            echo "- Commit title: \`${TITLE:-n/a}\`"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  # Arch-independent frontend dist — built once, reused by both platform runtimes.
+  frontend-assets:
+    name: Build frontend assets
     needs: resolve
+    if: needs.resolve.outputs.has_frontend == 'true'
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Export frontend dist
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.frontend
+          target: export
+          outputs: type=local,dest=frontend-export
+          build-args: |
+            MYRIAD_VERSION=${{ needs.resolve.outputs.version }}
+            MYRIAD_COMMIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=frontend-assets
+          cache-to: type=gha,scope=frontend-assets,mode=max
+          provenance: false
+
+      - name: Upload frontend export
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-export
+          path: frontend-export
+          if-no-files-found: error
+          retention-days: 1
+
+  build:
+    name: ${{ matrix.component }} (${{ matrix.platform }})
+    needs: [resolve, frontend-assets]
+    if: |
+      always()
+      && needs.resolve.result == 'success'
+      && needs.resolve.outputs.build_components != '[]'
+      && (needs.frontend-assets.result == 'success' || needs.frontend-assets.result == 'skipped')
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write
     strategy:
       fail-fast: false
       matrix:
-        component: [backend, frontend, proxy, updater]
-    outputs:
-      # Per-matrix outputs are not directly addressable; we write digests to artifacts instead.
-      _: ""
+        component: ${{ fromJson(needs.resolve.outputs.build_components) }}
+        platform: [linux/amd64, linux/arm64]
+    env:
+      REGISTRY_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/myriad-${{ matrix.component }}
     steps:
       - uses: actions/checkout@v4
 
@@ -88,6 +207,8 @@ jobs:
             proxy)    echo "dockerfile=proxy/Dockerfile"           >>"$GITHUB_OUTPUT" ;;
             updater)  echo "dockerfile=updater/Dockerfile"         >>"$GITHUB_OUTPUT" ;;
           esac
+          platform="${{ matrix.platform }}"
+          echo "platform_pair=${platform//\//-}" >>"$GITHUB_OUTPUT"
 
       - name: Check Dockerfile presence
         id: check
@@ -99,9 +220,12 @@ jobs:
             echo "present=false" >>"$GITHUB_OUTPUT"
           fi
 
-      - name: Set up QEMU
-        if: steps.check.outputs.present == 'true'
-        uses: docker/setup-qemu-action@v3
+      - name: Download frontend assets
+        if: steps.check.outputs.present == 'true' && matrix.component == 'frontend'
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-export
+          path: frontend-export
 
       - name: Set up Buildx
         if: steps.check.outputs.present == 'true'
@@ -115,38 +239,142 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build & push
+      - name: Build & push by digest
         if: steps.check.outputs.present == 'true'
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ steps.paths.outputs.dockerfile }}
-          push: true
-          # Immutable version tag. NEVER `latest`.
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/myriad-${{ matrix.component }}:${{ needs.resolve.outputs.version }}
+          platforms: ${{ matrix.platform }}
+          target: runtime
+          build-contexts: ${{ matrix.component == 'frontend' && 'assets=./frontend-export' || '' }}
           build-args: |
             MYRIAD_VERSION=${{ needs.resolve.outputs.version }}
             MYRIAD_COMMIT_SHA=${{ github.sha }}
-          cache-from: type=gha,scope=${{ matrix.component }}
-          cache-to:   type=gha,scope=${{ matrix.component }},mode=max
-          # Multi-arch index; digest written to release.json is the manifest list.
-          platforms: linux/amd64,linux/arm64
+            CARGO_PROFILE=ci-release
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.component }}-${{ steps.paths.outputs.platform_pair }}
+          cache-to: type=gha,scope=${{ matrix.component }}-${{ steps.paths.outputs.platform_pair }},mode=max
           provenance: false
 
-      - name: Emit digest artifact
+      - name: Export digest
         if: steps.check.outputs.present == 'true'
         run: |
-          mkdir -p _digests
-          echo "${{ steps.build.outputs.digest }}" >"_digests/${{ matrix.component }}.digest"
-          echo "${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/myriad-${{ matrix.component }}:${{ needs.resolve.outputs.version }}" >"_digests/${{ matrix.component }}.ref"
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        if: steps.check.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.component }}-${{ steps.paths.outputs.platform_pair }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Emit absent marker
         if: steps.check.outputs.present != 'true'
         run: |
-          mkdir -p _digests
-          : >"_digests/${{ matrix.component }}.absent"
+          mkdir -p /tmp/digests
+          : >"/tmp/digests/ABSENT"
+
+      - name: Upload absent marker
+        if: steps.check.outputs.present != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.component }}-${{ steps.paths.outputs.platform_pair }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 7
+
+  merge:
+    name: Manifest ${{ matrix.component }}
+    needs: [resolve, build]
+    if: |
+      always()
+      && needs.resolve.result == 'success'
+      && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJson(needs.resolve.outputs.build_components) }}
+    env:
+      REGISTRY_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/myriad-${{ matrix.component }}
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.component }}-*
+          merge-multiple: true
+
+      - name: Skip if Dockerfile was absent
+        id: gate
+        run: |
+          if [ -f /tmp/digests/ABSENT ]; then
+            echo "present=false" >>"$GITHUB_OUTPUT"
+            echo "::warning::Skipping manifest for ${{ matrix.component }} (Dockerfile absent)"
+            mkdir -p _digests
+            : >"_digests/${{ matrix.component }}.absent"
+          else
+            echo "present=true" >>"$GITHUB_OUTPUT"
+            ls -1 /tmp/digests
+          fi
+
+      - name: Set up Buildx
+        if: steps.gate.outputs.present == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: steps.gate.outputs.present == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        if: steps.gate.outputs.present == 'true'
+        id: manifest
+        working-directory: /tmp/digests
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="${{ env.REGISTRY_IMAGE }}:${VERSION}"
+          # Only digest filenames (64 hex chars); ignore markers like ABSENT.
+          set --
+          for f in *; do
+            if printf '%s' "$f" | grep -Eq '^[0-9a-f]{64}$'; then
+              set -- "$@" "$f"
+            fi
+          done
+          if [ "$#" -lt 1 ]; then
+            echo "::error::No per-arch digests found for ${{ matrix.component }}"
+            exit 1
+          fi
+          # shellcheck disable=SC2046
+          docker buildx imagetools create -t "$TAG" \
+            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' "$@")
+          # Resolve manifest-list digest for release.json (not a single-arch image).
+          DIGEST=$(docker buildx imagetools inspect "$TAG" --format '{{.Manifest.Digest}}')
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "<nil>" ]; then
+            DIGEST=$(docker buildx imagetools inspect "$TAG" --format '{{.Image.Digest}}')
+          fi
+          if [ -z "$DIGEST" ] || [ "$DIGEST" = "<nil>" ]; then
+            echo "::error::Could not resolve manifest digest for $TAG"
+            exit 1
+          fi
+          echo "digest=$DIGEST" >>"$GITHUB_OUTPUT"
+          mkdir -p "$GITHUB_WORKSPACE/_digests"
+          echo "$DIGEST" >"$GITHUB_WORKSPACE/_digests/${{ matrix.component }}.digest"
+          echo "$TAG" >"$GITHUB_WORKSPACE/_digests/${{ matrix.component }}.ref"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -157,7 +385,7 @@ jobs:
 
   publish:
     name: Publish GitHub Release
-    needs: [resolve, build]
+    needs: [resolve, merge]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -189,11 +417,15 @@ jobs:
           REG="${{ env.REGISTRY }}"
           REPO="${{ github.repository }}"
 
-          # Build images map dynamically based on which digests are present.
+          # Only components shipped this release (proxy/updater may be omitted).
           IMAGES=$(jq -n '{}')
           for comp in backend frontend proxy updater; do
             if [ -f "_digests/${comp}.absent" ]; then
               echo "Skipping $comp (no Dockerfile this release)"
+              continue
+            fi
+            if [ ! -f "_digests/${comp}.digest" ]; then
+              echo "Omitting $comp (not shipped this release — independent cadence)"
               continue
             fi
             digest=$(cat "_digests/${comp}.digest")
@@ -201,6 +433,8 @@ jobs:
             IMAGES=$(echo "$IMAGES" | jq --arg c "$comp" --arg r "$ref" --arg d "$digest" \
               '.[$c] = {ref: $r, digest: $d}')
           done
+          # backend + frontend are mandatory for a business release.
+          echo "$IMAGES" | jq -e 'has("backend") and has("frontend")' >/dev/null
 
           NOTES_URL="https://github.com/${REPO}/releases/tag/${VERSION}"
 

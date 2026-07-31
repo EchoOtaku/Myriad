@@ -7,19 +7,16 @@
 //!
 //! ```ignore
 //! async fn get_config_wrapper() -> Response {
-//!     let db_opt = DB_CONNECTION.read().await;
-//!     match db_opt.as_ref() {
-//!         Some(db) => api::config::get_config(State(db.clone())).await.into_response(),
-//!         None => (SERVICE_UNAVAILABLE, Json(json!({"error": "Database not connected"}))).into_response(),
-//!     }
+//!     // (historical) wrappers used to pull a process-global DB here
 //! }
 //! ```
 //!
-//! 「从全局取 DB，取不到就 503」正是提取器的职责。把它写成 `FromRequestParts`
+//! 「从路由 State 取 DB，取不到就 503」正是提取器的职责。把它写成 `FromRequestParts`
 //! 之后，路由可以直接指向 `api::` 里的处理函数，样板整体消失。
 //!
-//! 数据库连接之所以放在全局 `RwLock` 而不是 axum `State`，是因为进程可能先以
-//! CONFIG_MODE 启动（没有数据库），稍后才接上 —— 路由表在那之前就已经装好了。
+//! 优先从 `AppState` / `DatabaseConnection` 路由状态取 DB。
+//! `FromRequestParts<()>` **hard-503s** — there is no process-global DB fallback
+//! (CONFIG_MODE setup routes must not use `extract::Db`).
 
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
@@ -36,24 +33,50 @@ use crate::middleware::auth::Claims;
 #[derive(Debug)]
 pub struct Db(pub DatabaseConnection);
 
-impl<S: Send + Sync> FromRequestParts<S> for Db {
+fn db_unavailable() -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({
+            "error": "Database not connected",
+            "message": "数据库未连接"
+        })),
+    )
+}
+
+impl FromRequestParts<crate::state::AppState> for Db {
     type Rejection = (StatusCode, Json<Value>);
 
-    async fn from_request_parts(_parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        crate::DB_CONNECTION
-            .read()
-            .await
-            .clone()
-            .map(Db)
-            .ok_or_else(|| {
-                (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    Json(json!({
-                        "error": "Database not connected",
-                        "message": "数据库未连接"
-                    })),
-                )
-            })
+    async fn from_request_parts(
+        _parts: &mut Parts,
+        state: &crate::state::AppState,
+    ) -> Result<Self, Self::Rejection> {
+        // Shared slot with process registry — reconnect updates AppState in place.
+        state.db().map(Db).ok_or_else(db_unavailable)
+    }
+}
+
+impl FromRequestParts<DatabaseConnection> for Db {
+    type Rejection = (StatusCode, Json<Value>);
+
+    async fn from_request_parts(
+        _parts: &mut Parts,
+        state: &DatabaseConnection,
+    ) -> Result<Self, Self::Rejection> {
+        Ok(Db(state.clone()))
+    }
+}
+
+/// Stateless routers must not pull a process DB — that hid missing `AppState`
+/// wiring. Config-mode setup routes use handlers that do not take `extract::Db`.
+/// Full-mode routes are always registered under `Router<AppState>`.
+///
+/// This impl remains so unit tests can assert a clean 503 when state is `()`,
+/// without reading process globals.
+impl FromRequestParts<()> for Db {
+    type Rejection = (StatusCode, Json<Value>);
+
+    async fn from_request_parts(_parts: &mut Parts, _state: &()) -> Result<Self, Self::Rejection> {
+        Err(db_unavailable())
     }
 }
 
@@ -98,18 +121,52 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthedClaims {
 ///   而悄悄丢掉（这个仓库刚出过同类问题：inbox 白名单加了、分派没加）。
 /// - 与 `admin_middleware` 叠加时是幂等的，重复检查只是多一次数据库查询。
 ///
-/// `ensure_current_admin` 不只看 JWT 里的 `is_admin`，还会回查数据库确认账号
+/// `ensure_current_admin_on` 不只看 JWT 里的 `is_admin`，还会回查数据库确认账号
 /// **当前**仍是管理员 —— 防的是「降权之后旧 token 仍然生效」。
 #[derive(Debug)]
 pub struct AdminClaims(pub Claims);
 
-impl<S: Send + Sync> FromRequestParts<S> for AdminClaims {
+/// Full-mode: admin check uses AppState DB (no process global).
+impl FromRequestParts<crate::state::AppState> for AdminClaims {
     type Rejection = (StatusCode, Json<Value>);
 
-    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &crate::state::AppState,
+    ) -> Result<Self, Self::Rejection> {
         let AuthedClaims(claims) = AuthedClaims::from_request_parts(parts, state).await?;
-        crate::middleware::auth::ensure_current_admin(&claims).await?;
+        let db = state.db().ok_or_else(db_unavailable)?;
+        crate::middleware::auth::ensure_current_admin_on(&claims, &db).await?;
         Ok(AdminClaims(claims))
+    }
+}
+
+/// Stateless / unit tests: no process-DB fallback.
+///
+/// `is_admin=false` still fails closed before any DB (same as production).
+/// `is_admin=true` cannot re-verify without AppState → 503.
+impl FromRequestParts<()> for AdminClaims {
+    type Rejection = (StatusCode, Json<Value>);
+
+    async fn from_request_parts(parts: &mut Parts, state: &()) -> Result<Self, Self::Rejection> {
+        let AuthedClaims(claims) = AuthedClaims::from_request_parts(parts, state).await?;
+        if !claims.is_admin {
+            return Err((
+                StatusCode::FORBIDDEN,
+                Json(json!({
+                    "error": "Forbidden",
+                    "message": "Administrator access required. Only current admin users can perform this action."
+                })),
+            ));
+        }
+        let _ = state;
+        Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Database not connected",
+                "message": "Administrator status cannot be verified without AppState."
+            })),
+        ))
     }
 }
 
@@ -131,6 +188,7 @@ mod tests {
             sub: sub.to_string(),
             username: "tester".into(),
             is_admin: false,
+            is_owner: false,
             exp: 0,
             iat: 0,
         }
@@ -156,8 +214,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn db_extractor_503s_when_disconnected() {
-        // 全局连接在单测里始终是 None（没有启动过服务）
+    async fn db_extractor_503s_without_app_state() {
+        // No AppState / no DatabaseConnection state → hard 503.
+        // Must not fall back to process-global DB.
         let mut parts = parts_with::<Claims>(None);
         let err = Db::from_request_parts(&mut parts, &()).await.unwrap_err();
         assert_eq!(err.0, StatusCode::SERVICE_UNAVAILABLE);
@@ -192,7 +251,9 @@ mod tests {
     /// 降级成 `AuthedClaims` 会把这些能力开放给任何登录用户。
     #[test]
     fn admin_endpoints_keep_the_admin_extractor() {
-        let src = include_str!("main.rs");
+        // Federation HTTP handlers live under api/federation; site admin wrappers
+        // remain in main.rs after the P0 relocate.
+        let src = [include_str!("main.rs"), concat!(include_str!("api/federation/mod.rs"), include_str!("api/federation/social.rs"), include_str!("api/federation/rooms_and_router.rs"))].concat();
         for handler in [
             // 路由只有 auth_middleware —— AdminClaims 是唯一防线
             "federation_create_ring",

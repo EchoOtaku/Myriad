@@ -1,6 +1,6 @@
 [package]
 name = "myriad-updater"
-version = "0.3.18"
+version = "0.3.20"
 edition = "2021"
 authors = ["Myriad Contributors"]
 description = "Self-update daemon for Myriad: maintenance-mode + single-slot updates with file-level pgdata snapshots."
@@ -13,6 +13,10 @@ path = "src/bin/updater.rs"
 [[bin]]
 name = "myriad-rescue"
 path = "src/bin/rescue.rs"
+
+[[bin]]
+name = "myriad-docker-guard"
+path = "src/bin/myriad-docker-guard.rs"
 
 [[bin]]
 name = "myriad-tcb-self-update"
@@ -89,3 +93,9 @@ lto = true
 codegen-units = 1
 strip = "symbols"
 panic = "abort"
+
+# Docker/CI image builds (see root Cargo.toml for rationale).
+[profile.ci-release]
+inherits = "release"
+lto = "thin"
+codegen-units = 16

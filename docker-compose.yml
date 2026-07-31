@@ -128,10 +128,23 @@ services:
       DATA_DIR: /app/data
       CACHE_DIR: /app/cache
       JWT_SECRET: ${JWT_SECRET}
-      # Optional: visitor-hash salt for first-party analytics (recommended in prod).
+      # Visitor-hash salt for first-party analytics. Prefer a dedicated random value
+      # (openssl rand -hex 32). When empty, backend derives from JWT_SECRET so
+      # collect does not 503 on stock compose (ENVIRONMENT=production).
       ANALYTICS_SALT: ${ANALYTICS_SALT:-}
       # The bundled proxy replaces client-supplied forwarding headers.
       TRUST_PROXY_HEADERS: "true"
+      # TCP peers allowed to supply X-Forwarded-For / X-Real-IP.
+      # Empty = never trust forwarded headers (fail-closed), even if HEADERS=true.
+      #
+      # Default is full RFC1918 so stock Docker works. That is convenient but wide:
+      # any host on those ranges that can reach backend could forge client IP.
+      # Production: set TRUST_PROXY_PEERS to the *proxy service network only*
+      # (inspect with: docker network inspect <project>_default — use that subnet,
+      # e.g. 172.18.0.0/16). Backend logs a warning when peers look overly broad.
+      TRUST_PROXY_PEERS: ${TRUST_PROXY_PEERS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
+      # Public frontend origin(s), comma-separated. Production requires this
+      # (backend panics if empty when ENVIRONMENT=production). Never use *.
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-'self' https:}
       ENVIRONMENT: ${ENVIRONMENT:-production}

@@ -1,6 +1,6 @@
-use axum::{http::StatusCode, Json};
+use crate::error::HttpError;
+use axum::Json;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::services::ai::create_ai_analyzer;
 
@@ -20,7 +20,7 @@ pub struct GeneratePromptResponse {
 /// 生成图片生成提示词的 API 端点
 pub async fn generate_prompt(
     Json(payload): Json<GeneratePromptRequest>,
-) -> Result<Json<GeneratePromptResponse>, (StatusCode, Json<Value>)> {
+) -> Result<Json<GeneratePromptResponse>, HttpError> {
     tracing::info!("Generating prompt for: {}", payload.title);
 
     let system_prompt = r#"You are a professional prompt engineer for AI image generation.

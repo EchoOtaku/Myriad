@@ -17,6 +17,7 @@ import type {
 } from '../types/brew'
 import { API_URL } from '../config'
 import { getCSRFToken } from '../utils/csrf'
+import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { requestCache } from '../utils/requestCache'
 
 const API_BASE = `${API_URL}/api/brew`
@@ -58,6 +59,10 @@ async function request<T>(
     headers,
     credentials: 'include',
   })
+
+  if (!response.ok) {
+    notifyHttpRateLimit(response)
+  }
 
   const data = await response.json()
 
@@ -461,10 +466,74 @@ export async function getStats(
   return requestCache.fetch('brew:stats', fetchStats, CACHE_TTL.STATS)
 }
 
+// ==================== 阅读进度同步 ====================
+
+export interface BrewSyncStateItem {
+  item_id: number
+  is_read?: boolean
+  is_starred?: boolean
+  /** 0–100 scroll progress */
+  read_progress?: number
+  /** client epoch ms */
+  updated_at: number
+}
+
+export interface BrewSyncStatesResponse {
+  synced: number
+  conflicts: Array<{
+    item_id: number
+    server_updated_at: number
+    client_updated_at: number
+  }>
+}
+
+/**
+ * 批量同步阅读状态 / 进度（对应 POST /api/brew/sync-states）
+ */
+export async function syncReadingStates(
+  states: BrewSyncStateItem[],
+  attributionHeaders?: BrewAttributionHeaders,
+): Promise<BrewSyncStatesResponse> {
+  if (states.length === 0) {
+    return { synced: 0, conflicts: [] }
+  }
+  return request<BrewSyncStatesResponse>('/sync-states', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...attributionHeaders,
+    },
+    body: JSON.stringify({ states }),
+  })
+}
+
+/**
+ * 上报单篇阅读进度（包装 sync-states）
+ */
+export async function updateReadProgress(
+  itemId: number,
+  progress: number,
+  opts?: { isRead?: boolean; attributionHeaders?: BrewAttributionHeaders },
+): Promise<void> {
+  const clamped = Math.max(0, Math.min(100, Math.round(progress)))
+  await syncReadingStates(
+    [
+      {
+        item_id: itemId,
+        read_progress: clamped,
+        is_read: opts?.isRead,
+        updated_at: Date.now(),
+      },
+    ],
+    opts?.attributionHeaders,
+  )
+  invalidateItemCache(itemId)
+}
+
 // ==================== WebSocket ====================
 
 /**
- * 创建 WebSocket 连接
+ * 创建 WebSocket 连接（登录用户：新源/新文章推送）
  */
 export function createBrewWebSocket(
   onMessage: (notification: any) => void,

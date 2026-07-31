@@ -1,14 +1,19 @@
 //! Tapp installation lifecycle: store fetch, direct/file install and transactional updates.
+//!
+//! Pure install decisions (source mode, direct CSS channels, approved-permission
+//! selection, owner/conflict namespaces) live in
+//! [`crate::services::tapp_install`] and [`crate::services::tapp_ownership`].
+//! This module keeps Claims/DB/FS and role-config permission filtering.
 
 use super::prepared_package::{PackageStageContext, PreparedTappPackage, PreparedTappResources};
 use super::store_package::fetch_from_store;
 use super::{
-    api_error, canonical_installation_owner_id, cleanup_reinstall_orphans, current_user_role,
-    filter_install_permissions, get_admin_user_id, installation_conflict_owner_ids,
-    lock_tapp_lifecycle, log_install_failure, log_tapp_filesystem_access,
-    reconcile_manifest_widgets, tapp_dir_for, tapp_filesystem_error_message,
-    tapp_filesystem_error_status, validate_tapp_id, ApiResponse, TappDirStage, TappListItem,
-    TappManifest, WidgetTemplateContents, MAX_TAPP_ARCHIVE_BYTES,
+    api_http_error, api_response_err, canonical_installation_owner_id,
+    cleanup_reinstall_orphans, current_user_role, filter_install_permissions, get_admin_user_id,
+    installation_conflict_owner_ids, lock_tapp_lifecycle, log_install_failure,
+    log_tapp_filesystem_access, reconcile_manifest_widgets, tapp_dir_for,
+    tapp_filesystem_error_message, tapp_filesystem_error_status, validate_tapp_id, ApiResponse,
+    TappDirStage, TappListItem, TappManifest, WidgetTemplateContents, MAX_TAPP_ARCHIVE_BYTES,
 };
 use axum::{
     extract::{Path, State},
@@ -22,10 +27,21 @@ use sea_orm::{
     QueryFilter, Set, TransactionTrait,
 };
 use serde::Deserialize;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
+use crate::config::DynamicConfig;
+use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::models::entities::tapps;
 use crate::services::permission_service::UserRole;
+use crate::services::tapp_install::{
+    archive_upload_too_large_message, archive_upload_would_exceed, build_new_install_persist,
+    build_update_install_persist, classify_install_multipart_field,
+    is_public_installation_namespace, map_direct_css_channels, parse_install_source,
+    select_install_approved_permissions, select_update_approved_permissions, InstallMultipartField,
+    InstallSource,
+};
 
 /// 统一安装 Tapp 的请求体
 ///
@@ -78,14 +94,15 @@ pub(super) struct InstallTappRequest {
 /// - store: 从远程商店下载
 pub(super) async fn install_tapp(
     State(db): State<DatabaseConnection>,
+    State(dynamic_config): State<Arc<RwLock<DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     Json(req): Json<InstallTappRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ApiResponse<()>>)> {
+) -> Result<impl IntoResponse, HttpError> {
     let user_id: i32 = claims
         .sub
         .parse()
-        .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
-    let role = current_user_role(&claims).await;
+        .map_err(|_| api_http_error(StatusCode::UNAUTHORIZED, "Invalid user"))?;
+    let role = current_user_role(&claims, &db).await;
     let is_current_admin = role == UserRole::Admin;
     let InstallTappRequest {
         source,
@@ -104,34 +121,29 @@ pub(super) async fn install_tapp(
         permissions,
     } = req;
 
-    let package = match source.as_str() {
-        "direct" => {
+    let package = match parse_install_source(&source)
+        .map_err(|err| api_http_error(StatusCode::BAD_REQUEST, err.message()))?
+    {
+        InstallSource::Direct => {
             let manifest = request_manifest.ok_or_else(|| {
-                (
+                api_http_error(
                     StatusCode::BAD_REQUEST,
-                    api_error("manifest is required for direct install"),
+                    "manifest is required for direct install",
                 )
             })?;
             let code = request_code.ok_or_else(|| {
-                (
+                api_http_error(
                     StatusCode::BAD_REQUEST,
-                    api_error("code is required for direct install"),
+                    "code is required for direct install",
                 )
             })?;
-            // Prefer declared manifest paths: if pageStyles/widgetStyles are set,
-            // request pageCss/widgetCss fill those channels (cssMode=separated apps).
-            // Otherwise treat them as generated page.css / widget.css sidecars.
-            // Mapping by declared fields is more robust than cssMode string alone.
-            let (widget_styles, generated_widget_css) = if manifest.widget_styles.is_some() {
-                (widget_css, None)
-            } else {
-                (None, widget_css)
-            };
-            let (page_styles, generated_page_css) = if manifest.page_styles.is_some() {
-                (page_css, None)
-            } else {
-                (None, page_css)
-            };
+            // Prefer declared manifest paths over cssMode string alone.
+            let css = map_direct_css_channels(
+                manifest.widget_styles.is_some(),
+                manifest.page_styles.is_some(),
+                widget_css,
+                page_css,
+            );
             PreparedTappPackage::from_resources(
                 manifest,
                 PreparedTappResources {
@@ -139,44 +151,39 @@ pub(super) async fn install_tapp(
                     styles,
                     page_template,
                     widget_templates,
-                    widget_styles,
-                    page_styles,
-                    generated_widget_css,
-                    generated_page_css,
+                    widget_styles: css.widget_styles,
+                    page_styles: css.page_styles,
+                    generated_widget_css: css.generated_widget_css,
+                    generated_page_css: css.generated_page_css,
                     i18n,
                     page_modules,
                     assets,
                 },
             )
         }
-        "store" => {
+        InstallSource::Store => {
             let store_source = store_source.ok_or_else(|| {
-                (
+                api_http_error(
                     StatusCode::BAD_REQUEST,
-                    api_error("storeSource is required for store install"),
+                    "storeSource is required for store install",
                 )
             })?;
             let tapp_id = tapp_id.ok_or_else(|| {
-                (
+                api_http_error(
                     StatusCode::BAD_REQUEST,
-                    api_error("tappId is required for store install"),
+                    "tappId is required for store install",
                 )
             })?;
             validate_tapp_id(&tapp_id)
-                .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+                .map_err(|error| api_http_error(StatusCode::BAD_REQUEST, error))?;
             let mut package = fetch_from_store(&db, &store_source, &tapp_id).await?;
             package.apply_resource_overrides(i18n, page_modules, assets);
             package
         }
-        _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                api_error("Invalid source, must be 'direct' or 'store'"),
-            ));
-        }
     };
     install_prepared_package(
         &db,
+        &dynamic_config,
         user_id,
         role,
         is_current_admin,
@@ -188,22 +195,18 @@ pub(super) async fn install_tapp(
 
 async fn install_prepared_package(
     db: &DatabaseConnection,
+    dynamic_config: &RwLock<DynamicConfig>,
     user_id: i32,
     role: UserRole,
     is_current_admin: bool,
     package: PreparedTappPackage,
     permissions: Vec<String>,
-) -> Result<Json<ApiResponse<TappListItem>>, (StatusCode, Json<ApiResponse<()>>)> {
-    package.validate(None)?;
+) -> Result<Json<ApiResponse<TappListItem>>, HttpError> {
+    package.validate_for_http(None).map_err(api_response_err)?;
     let manifest = package.manifest.clone();
 
     // 检查是否已安装
-    let admin_id = get_admin_user_id(db).await.map_err(|status| {
-        (
-            status,
-            api_error("Failed to resolve administrator namespace"),
-        )
-    })?;
+    let admin_id = get_admin_user_id(db).await?;
     // Every current administrator operates the one canonical public namespace;
     // the actor account is not used as a second public installation owner.
     let installation_owner_id = canonical_installation_owner_id(role, user_id, admin_id);
@@ -220,19 +223,19 @@ async fn install_prepared_package(
             None,
             &error,
         );
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            api_error(format!("Database error: {error}")),
-        )
+        api_http_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error")
     })?;
 
     if existing.is_some() {
-        return Err((StatusCode::CONFLICT, api_error("Tapp already installed")));
+        return Err(api_http_error(
+            StatusCode::CONFLICT,
+            "Tapp already installed",
+        ));
     }
 
     // 所有资源先写入同文件系统的 staging 目录；校验通过后再原子切换。
     let final_tapp_dir = tapp_dir_for(installation_owner_id, &manifest.id)
-        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+        .map_err(|error| api_http_error(StatusCode::BAD_REQUEST, error))?;
     // DB has no conflict row, but uninstall can leave a live dir or lifecycle
     // artifacts that make activate rename fail with a bare 500.
     cleanup_reinstall_orphans(
@@ -254,12 +257,9 @@ async fn install_prepared_package(
                 Some(&final_tapp_dir),
                 &error,
             );
-            (
+            api_http_error(
                 tapp_filesystem_error_status(&error),
-                api_error(tapp_filesystem_error_message(
-                    "Failed to create Tapp staging directory",
-                    &error,
-                )),
+                tapp_filesystem_error_message("Failed to create Tapp staging directory", &error),
             )
         })?;
     let tapp_dir = stage.path();
@@ -273,20 +273,11 @@ async fn install_prepared_package(
                 installation_owner_id,
             },
         )
-        .await?;
-    // 确定授权的权限
-    let requested_permissions: Vec<String> = if permissions.is_empty() {
-        manifest.permissions.clone()
-    } else {
-        manifest
-            .permissions
-            .iter()
-            .filter(|p| permissions.contains(p))
-            .cloned()
-            .collect()
-    };
-    let approved = requested_permissions;
-    let granted = filter_install_permissions(role, approved.clone()).await;
+        .await
+        .map_err(api_response_err)?;
+    // Approved = pure domain selection; granted = role-config filter (async).
+    let approved = select_install_approved_permissions(&manifest.permissions, &permissions);
+    let granted = filter_install_permissions(dynamic_config, role, approved.clone()).await;
 
     let txn = db.begin().await.map_err(|error| {
         log_install_failure(
@@ -297,10 +288,7 @@ async fn install_prepared_package(
             None,
             &error,
         );
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            api_error(format!("Failed to begin install transaction: {error}")),
-        )
+        api_http_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error")
     })?;
     lock_tapp_lifecycle(&txn, &manifest.id)
         .await
@@ -313,10 +301,7 @@ async fn install_prepared_package(
                 None,
                 &error,
             );
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                api_error(format!("Failed to lock Tapp lifecycle: {error}")),
-            )
+            api_http_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error")
         })?;
     let conflict_query = tapps::Entity::find()
         .filter(tapps::Column::TappId.eq(&manifest.id))
@@ -333,15 +318,15 @@ async fn install_prepared_package(
                 None,
                 &error,
             );
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                api_error(format!("Database error: {error}")),
-            )
+            api_http_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error")
         })?
         .is_some()
     {
         txn.rollback().await.ok();
-        return Err((StatusCode::CONFLICT, api_error("Tapp already installed")));
+        return Err(api_http_error(
+            StatusCode::CONFLICT,
+            "Tapp already installed",
+        ));
     }
 
     // Re-clean under the lifecycle lock so a leftover live path cannot race
@@ -367,44 +352,47 @@ async fn install_prepared_package(
                 Some(&final_tapp_dir),
                 &error,
             );
-            return Err((
+            return Err(api_http_error(
                 tapp_filesystem_error_status(&error),
-                api_error(tapp_filesystem_error_message(
-                    "Failed to activate staged Tapp",
-                    &error,
-                )),
+                tapp_filesystem_error_message("Failed to activate staged Tapp", &error),
             ));
         }
     };
-    let manifest_path = final_tapp_dir.join("manifest.json");
-    let code_path = final_tapp_dir.join(&manifest.main);
 
-    // 保存到数据库
+    // Column projection (paths, Running default, permission JSON) is pure domain.
+    let persist = build_new_install_persist(
+        &manifest,
+        installation_owner_id,
+        &granted,
+        &approved,
+        &final_tapp_dir,
+        now,
+    )
+    .map_err(|error| api_http_error(StatusCode::INTERNAL_SERVER_ERROR, error))?;
     let tapp = tapps::ActiveModel {
         id: NotSet,
-        tapp_id: Set(manifest.id.clone()),
-        user_id: Set(installation_owner_id),
-        name: Set(manifest.name.clone()),
-        version: Set(manifest.version.clone()),
-        description: Set(manifest.description.clone()),
-        author: Set(manifest
-            .author
-            .as_ref()
-            .map(|a| serde_json::to_value(a).unwrap())),
-        icon: Set(manifest.icon.clone()),
-        theme_color: Set(manifest.theme_color.clone()),
-        manifest: Set(serde_json::to_value(&manifest).unwrap()),
-        // Default to Running so dashboard widgets for public (admin) installs
-        // render immediately for visitors/non-admin without a manual Start click.
-        // Operators can still Stop from the Tapp list UI.
-        status: Set(tapps::TappStatus::Running),
-        granted_permissions: Set(serde_json::to_value(&granted).unwrap()),
-        approved_permissions: Set(serde_json::to_value(&approved).unwrap()),
-        file_path: Set(manifest_path.to_string_lossy().to_string()),
-        code_path: Set(code_path.to_string_lossy().to_string()),
-        installed_at: Set(now),
-        last_run_at: Set(Some(now)),
-        updated_at: Set(now),
+        tapp_id: Set(persist.tapp_id),
+        user_id: Set(persist.user_id),
+        name: Set(persist.name),
+        version: Set(persist.version),
+        description: Set(persist.description),
+        author: Set(persist.author),
+        icon: Set(persist.icon),
+        theme_color: Set(persist.theme_color),
+        manifest: Set(persist.manifest),
+        // start_running is always true for new installs (public widgets render immediately).
+        status: Set(if persist.start_running {
+            tapps::TappStatus::Running
+        } else {
+            tapps::TappStatus::Installed
+        }),
+        granted_permissions: Set(persist.granted_permissions),
+        approved_permissions: Set(persist.approved_permissions),
+        file_path: Set(persist.file_path),
+        code_path: Set(persist.code_path),
+        installed_at: Set(persist.installed_at),
+        last_run_at: Set(Some(persist.last_run_at)),
+        updated_at: Set(persist.updated_at),
         error_message: Set(None),
     };
 
@@ -421,13 +409,13 @@ async fn install_prepared_package(
                 Some(&final_tapp_dir),
                 &error,
             );
-            return Err((
+            return Err(api_http_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                api_error(format!("Database error: {error}")),
+                "Database error",
             ));
         }
     };
-    if let Err(status) =
+    if let Err(err) =
         reconcile_manifest_widgets(&txn, installation_owner_id, &manifest.id, &manifest, None).await
     {
         txn.rollback().await.ok();
@@ -438,14 +426,9 @@ async fn install_prepared_package(
             user_id,
             installation_owner_id,
             Some(&final_tapp_dir),
-            &format!("status={status}"),
+            &format!("status={}", err.0.status_u16()),
         );
-        return Err((
-            status,
-            api_error(format!(
-                "Failed to register manifest Widgets (status {status})"
-            )),
-        ));
+        return Err(err);
     }
     if let Err(error) = txn.commit().await {
         activated.rollback().await;
@@ -457,43 +440,23 @@ async fn install_prepared_package(
             Some(&final_tapp_dir),
             &error,
         );
-        return Err((
+        return Err(api_http_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            api_error(format!("Failed to commit Tapp installation: {error}")),
+            "Database error",
         ));
     }
     activated.commit().await;
     // A newly published installation can immediately shadow an existing
     // private copy with the same ID. No grant or declared-API cache produced
     // from the formerly visible installation may survive that ownership swap.
-    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(&manifest.id).await;
+    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(db, &manifest.id).await;
     crate::api::tapp_runtime::invalidate_tapp_apis_cache(&manifest.id).await;
 
     // Only the deterministic site-owner namespace is public and persistent.
-    let is_temporary = !is_current_admin;
-
-    // 从 manifest 中提取 iconSvg
-    let icon_svg = result
-        .manifest
-        .get("iconSvg")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let locales = super::types::manifest_locales(&result.manifest);
-
-    Ok(Json(ApiResponse::success(TappListItem {
-        id: result.tapp_id,
-        name: result.name,
-        version: result.version,
-        description: result.description,
-        icon: result.icon,
-        icon_svg,
-        locales,
-        status: "installed".to_string(),
-        installed_at: result.installed_at.to_rfc3339(),
-        last_run_at: None,
-        is_temporary,
-        is_admin_tapp: is_current_admin,
-    })))
+    // List projection: services::tapp_catalog (install contract forces status=installed).
+    Ok(Json(ApiResponse::success(
+        crate::services::tapp_catalog::install_response_list_item(result, is_current_admin),
+    )))
 }
 
 /// 安装 Tapp（上传 .tapp 文件）
@@ -501,61 +464,71 @@ async fn install_prepared_package(
 /// 接收 multipart 文件上传，解压 ZIP 文件后安装
 pub(super) async fn install_tapp_file(
     State(db): State<DatabaseConnection>,
+    State(dynamic_config): State<Arc<RwLock<DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     mut multipart: axum::extract::Multipart,
-) -> Result<impl IntoResponse, (StatusCode, Json<ApiResponse<()>>)> {
+) -> Result<impl IntoResponse, HttpError> {
     let user_id: i32 = claims
         .sub
         .parse()
-        .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
-    let role = current_user_role(&claims).await;
+        .map_err(|_| api_http_error(StatusCode::UNAUTHORIZED, "Invalid user"))?;
+    let role = current_user_role(&claims, &db).await;
     let is_current_admin = role == UserRole::Admin;
     // 读取上传的文件
     let mut file_data: Option<Vec<u8>> = None;
     let mut permissions: Vec<String> = Vec::new();
 
-    while let Some(mut field) = multipart.next_field().await.map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            api_error("Failed to read multipart"),
-        )
-    })? {
+    while let Some(mut field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| api_http_error(StatusCode::BAD_REQUEST, "Failed to read multipart"))?
+    {
         let name = field.name().unwrap_or("").to_string();
-
-        if name == "file" {
-            let mut bytes = Vec::new();
-            while let Some(chunk) = field
-                .chunk()
-                .await
-                .map_err(|_| (StatusCode::BAD_REQUEST, api_error("Failed to read file")))?
-            {
-                if bytes.len().saturating_add(chunk.len()) > MAX_TAPP_ARCHIVE_BYTES {
-                    return Err((
-                        StatusCode::PAYLOAD_TOO_LARGE,
-                        api_error(format!(".tapp file exceeds {MAX_TAPP_ARCHIVE_BYTES} bytes")),
-                    ));
+        match classify_install_multipart_field(&name) {
+            InstallMultipartField::File => {
+                let mut bytes = Vec::new();
+                while let Some(chunk) = field
+                    .chunk()
+                    .await
+                    .map_err(|_| api_http_error(StatusCode::BAD_REQUEST, "Failed to read file"))?
+                {
+                    if archive_upload_would_exceed(bytes.len(), chunk.len(), MAX_TAPP_ARCHIVE_BYTES)
+                    {
+                        return Err(api_http_error(
+                            StatusCode::PAYLOAD_TOO_LARGE,
+                            archive_upload_too_large_message(MAX_TAPP_ARCHIVE_BYTES),
+                        ));
+                    }
+                    bytes.extend_from_slice(&chunk);
                 }
-                bytes.extend_from_slice(&chunk);
+                file_data = Some(bytes);
             }
-            file_data = Some(bytes);
-        } else if name == "permissions" {
-            let text = field.text().await.map_err(|_| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    api_error("Failed to read permissions"),
-                )
-            })?;
-            if let Ok(parsed) = serde_json::from_str::<Vec<String>>(&text) {
-                permissions = parsed;
+            InstallMultipartField::Permissions => {
+                let text = field.text().await.map_err(|_| {
+                    api_http_error(StatusCode::BAD_REQUEST, "Failed to read permissions")
+                })?;
+                if let Ok(parsed) = serde_json::from_str::<Vec<String>>(&text) {
+                    permissions = parsed;
+                }
             }
+            InstallMultipartField::Ignore => {}
         }
     }
 
     let file_data =
-        file_data.ok_or_else(|| (StatusCode::BAD_REQUEST, api_error("No file uploaded")))?;
+        file_data.ok_or_else(|| api_http_error(StatusCode::BAD_REQUEST, "No file uploaded"))?;
 
-    let package = PreparedTappPackage::from_archive(file_data)?;
-    install_prepared_package(&db, user_id, role, is_current_admin, package, permissions).await
+    let package = PreparedTappPackage::from_archive(file_data).map_err(api_response_err)?;
+    install_prepared_package(
+        &db,
+        &dynamic_config,
+        user_id,
+        role,
+        is_current_admin,
+        package,
+        permissions,
+    )
+    .await
 }
 
 /// 更新 Tapp 的请求体
@@ -602,24 +575,20 @@ pub(super) struct UpdateTappRequest {
 /// - 普通用户可以更新自己临时安装的 Tapp
 pub(super) async fn update_tapp(
     State(db): State<DatabaseConnection>,
+    State(dynamic_config): State<Arc<RwLock<DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
     Path(tapp_id): Path<String>,
     Json(req): Json<UpdateTappRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ApiResponse<()>>)> {
+) -> Result<impl IntoResponse, HttpError> {
     let user_id: i32 = claims
         .sub
         .parse()
-        .map_err(|_| (StatusCode::UNAUTHORIZED, api_error("Invalid user")))?;
-    let role = current_user_role(&claims).await;
-    validate_tapp_id(&tapp_id).map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
-    let admin_id = get_admin_user_id(&db).await.map_err(|status| {
-        (
-            status,
-            api_error("Failed to resolve administrator namespace"),
-        )
-    })?;
+        .map_err(|_| api_http_error(StatusCode::UNAUTHORIZED, "Invalid user"))?;
+    let role = current_user_role(&claims, &db).await;
+    validate_tapp_id(&tapp_id).map_err(|error| api_http_error(StatusCode::BAD_REQUEST, error))?;
+    let admin_id = get_admin_user_id(&db).await?;
     let target_owner_id = canonical_installation_owner_id(role, user_id, admin_id);
-    let is_site_owner = target_owner_id == admin_id;
+    let is_site_owner = is_public_installation_namespace(target_owner_id, admin_id);
 
     let UpdateTappRequest {
         source,
@@ -644,39 +613,31 @@ pub(super) async fn update_tapp(
         .filter(tapps::Column::TappId.eq(&tapp_id))
         .one(&db)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                api_error("Database error"),
-            )
-        })?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, api_error("Tapp not installed")))?;
+        .map_err(|_| api_http_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .ok_or_else(|| api_http_error(StatusCode::NOT_FOUND, "Tapp not installed"))?;
 
-    let package = match source.as_str() {
-        "direct" => {
+    let package = match parse_install_source(&source)
+        .map_err(|err| api_http_error(StatusCode::BAD_REQUEST, err.message()))?
+    {
+        InstallSource::Direct => {
             let manifest = req_manifest.ok_or_else(|| {
-                (
+                api_http_error(
                     StatusCode::BAD_REQUEST,
-                    api_error("manifest is required for direct update"),
+                    "manifest is required for direct update",
                 )
             })?;
             let code = req_code.ok_or_else(|| {
-                (
+                api_http_error(
                     StatusCode::BAD_REQUEST,
-                    api_error("code is required for direct update"),
+                    "code is required for direct update",
                 )
             })?;
-            // Prefer declared pageStyles/widgetStyles over cssMode string alone.
-            let (widget_styles, generated_widget_css) = if manifest.widget_styles.is_some() {
-                (req_widget_css, None)
-            } else {
-                (None, req_widget_css)
-            };
-            let (page_styles, generated_page_css) = if manifest.page_styles.is_some() {
-                (req_page_css, None)
-            } else {
-                (None, req_page_css)
-            };
+            let css = map_direct_css_channels(
+                manifest.widget_styles.is_some(),
+                manifest.page_styles.is_some(),
+                req_widget_css,
+                req_page_css,
+            );
             PreparedTappPackage::from_resources(
                 manifest,
                 PreparedTappResources {
@@ -684,39 +645,35 @@ pub(super) async fn update_tapp(
                     styles: req_styles,
                     page_template: req_page_template,
                     widget_templates: req_widget_templates,
-                    widget_styles,
-                    page_styles,
-                    generated_widget_css,
-                    generated_page_css,
+                    widget_styles: css.widget_styles,
+                    page_styles: css.page_styles,
+                    generated_widget_css: css.generated_widget_css,
+                    generated_page_css: css.generated_page_css,
                     i18n: req_i18n,
                     page_modules: req_page_modules,
                     assets: req_assets,
                 },
             )
         }
-        "store" => {
+        InstallSource::Store => {
             let store_source = store_source.ok_or_else(|| {
-                (
+                api_http_error(
                     StatusCode::BAD_REQUEST,
-                    api_error("storeSource is required for store update"),
+                    "storeSource is required for store update",
                 )
             })?;
             let mut package = fetch_from_store(&db, &store_source, &tapp_id).await?;
             package.apply_resource_overrides(None, None, req_assets);
             package
         }
-        _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                api_error("Invalid source, must be 'direct' or 'store'"),
-            ));
-        }
     };
-    package.validate(Some(&tapp_id))?;
+    package
+        .validate_for_http(Some(&tapp_id))
+        .map_err(api_response_err)?;
     let manifest = package.manifest.clone();
 
     let final_tapp_dir = tapp_dir_for(target_owner_id, &tapp_id)
-        .map_err(|error| (StatusCode::BAD_REQUEST, api_error(error)))?;
+        .map_err(|error| api_http_error(StatusCode::BAD_REQUEST, error))?;
     let stage = TappDirStage::create(&final_tapp_dir)
         .await
         .map_err(|error| {
@@ -729,12 +686,12 @@ pub(super) async fn update_tapp(
                 Some(&final_tapp_dir),
                 &error,
             );
-            (
+            api_http_error(
                 tapp_filesystem_error_status(&error),
-                api_error(tapp_filesystem_error_message(
+                tapp_filesystem_error_message(
                     "Failed to create Tapp update staging directory",
                     &error,
-                )),
+                ),
             )
         })?;
     let tapp_dir = stage.path();
@@ -748,17 +705,18 @@ pub(super) async fn update_tapp(
                 installation_owner_id: target_owner_id,
             },
         )
-        .await?;
+        .await
+        .map_err(api_response_err)?;
     let txn = db.begin().await.map_err(|_| {
-        (
+        api_http_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            api_error("Failed to begin update transaction"),
+            "Failed to begin update transaction",
         )
     })?;
     lock_tapp_lifecycle(&txn, &tapp_id).await.map_err(|_| {
-        (
+        api_http_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            api_error("Failed to lock Tapp lifecycle"),
+            "Failed to lock Tapp lifecycle",
         )
     })?;
     let existing_tapp = tapps::Entity::find_by_id(existing_tapp.id)
@@ -766,39 +724,18 @@ pub(super) async fn update_tapp(
         .filter(tapps::Column::TappId.eq(&tapp_id))
         .one(&txn)
         .await
-        .map_err(|_| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                api_error("Database error"),
-            )
-        })?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, api_error("Tapp not installed")))?;
+        .map_err(|_| api_http_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?
+        .ok_or_else(|| api_http_error(StatusCode::NOT_FOUND, "Tapp not installed"))?;
 
-    // 确定授权的权限（保留原有权限或使用新权限）
-    let requested_permissions: Vec<String> = if let Some(perms) = permissions {
-        if perms.is_empty() {
-            manifest.permissions.clone()
-        } else {
-            manifest
-                .permissions
-                .iter()
-                .filter(|p| perms.contains(p))
-                .cloned()
-                .collect()
-        }
-    } else {
-        // 保留原有已授权的权限，同时过滤掉新版本不再需要的权限
-        let original_perms: Vec<String> =
-            serde_json::from_value(existing_tapp.approved_permissions.clone()).unwrap_or_default();
-        manifest
-            .permissions
-            .iter()
-            .filter(|p| original_perms.contains(p))
-            .cloned()
-            .collect()
-    };
-    let approved = requested_permissions;
-    let granted = filter_install_permissions(role, approved.clone()).await;
+    // Approved = pure domain selection; granted = role-config filter (async).
+    let previous_approved: Vec<String> =
+        serde_json::from_value(existing_tapp.approved_permissions.clone()).unwrap_or_default();
+    let approved = select_update_approved_permissions(
+        &manifest.permissions,
+        permissions.as_deref(),
+        &previous_approved,
+    );
+    let granted = filter_install_permissions(&dynamic_config, role, approved.clone()).await;
 
     let activated = match stage.activate(&final_tapp_dir).await {
         Ok(activated) => activated,
@@ -815,46 +752,42 @@ pub(super) async fn update_tapp(
                 %error,
                 "Tapp update activate failed"
             );
-            return Err((
+            return Err(api_http_error(
                 tapp_filesystem_error_status(&error),
-                api_error(tapp_filesystem_error_message(
-                    "Failed to activate staged Tapp update",
-                    &error,
-                )),
+                tapp_filesystem_error_message("Failed to activate staged Tapp update", &error),
             ));
         }
     };
-    let code_path = final_tapp_dir.join(&manifest.main);
-
-    // 更新数据库记录
+    // Column projection is pure domain; ActiveModel mapping stays here.
+    let persist =
+        build_update_install_persist(&manifest, &granted, &approved, &final_tapp_dir, now)
+            .map_err(|error| api_http_error(StatusCode::INTERNAL_SERVER_ERROR, error))?;
     let mut active: tapps::ActiveModel = existing_tapp.clone().into();
-    active.name = Set(manifest.name.clone());
-    active.version = Set(manifest.version.clone());
-    active.description = Set(manifest.description.clone());
-    active.author = Set(manifest
-        .author
-        .as_ref()
-        .map(|a| serde_json::to_value(a).unwrap()));
-    active.icon = Set(manifest.icon.clone());
-    active.theme_color = Set(manifest.theme_color.clone());
-    active.manifest = Set(serde_json::to_value(&manifest).unwrap());
-    active.granted_permissions = Set(serde_json::to_value(&granted).unwrap());
-    active.approved_permissions = Set(serde_json::to_value(&approved).unwrap());
-    active.code_path = Set(code_path.to_string_lossy().to_string());
-    active.updated_at = Set(now);
+    active.name = Set(persist.name);
+    active.version = Set(persist.version);
+    active.description = Set(persist.description);
+    active.author = Set(persist.author);
+    active.icon = Set(persist.icon);
+    active.theme_color = Set(persist.theme_color);
+    active.manifest = Set(persist.manifest);
+    active.granted_permissions = Set(persist.granted_permissions);
+    active.approved_permissions = Set(persist.approved_permissions);
+    active.code_path = Set(persist.code_path);
+    active.updated_at = Set(persist.updated_at);
 
     let result = match active.update(&txn).await {
         Ok(result) => result,
         Err(error) => {
             txn.rollback().await.ok();
             activated.rollback().await;
-            return Err((
+            tracing::error!(error = %error, "Tapp update database error");
+            return Err(api_http_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
-                api_error(format!("Database error: {error}")),
+                "Database error",
             ));
         }
     };
-    if let Err(status) = reconcile_manifest_widgets(
+    if let Err(err) = reconcile_manifest_widgets(
         &txn,
         target_owner_id,
         &tapp_id,
@@ -865,25 +798,22 @@ pub(super) async fn update_tapp(
     {
         txn.rollback().await.ok();
         activated.rollback().await;
-        return Err((status, api_error("Failed to reconcile manifest Widgets")));
+        return Err(err);
     }
     if txn.commit().await.is_err() {
         activated.rollback().await;
-        return Err((
+        return Err(api_http_error(
             StatusCode::INTERNAL_SERVER_ERROR,
-            api_error("Failed to commit Tapp update"),
+            "Failed to commit Tapp update",
         ));
     }
     activated.commit().await;
 
     // Code or permissions may have changed; existing grants must not survive the update.
-    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(&tapp_id).await;
+    crate::api::tapp_runtime::revoke_all_tapp_runtime_grants(&db, &tapp_id).await;
 
     // manifest 已更新，清除 API 解析缓存
     crate::api::tapp_runtime::invalidate_tapp_apis_cache(&tapp_id).await;
-
-    // Only the deterministic site-owner namespace is public and persistent.
-    let is_temporary = !is_site_owner;
 
     tracing::info!(
         "[TAPP] Updated Tapp {} from {} to {} for user {}",
@@ -893,26 +823,9 @@ pub(super) async fn update_tapp(
         user_id
     );
 
-    // 从 manifest 中提取 iconSvg
-    let icon_svg = result
-        .manifest
-        .get("iconSvg")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-    let locales = super::types::manifest_locales(&result.manifest);
-
-    Ok(Json(ApiResponse::success(TappListItem {
-        id: result.tapp_id,
-        name: result.name,
-        version: result.version,
-        description: result.description,
-        icon: result.icon,
-        icon_svg,
-        locales,
-        status: format!("{:?}", result.status).to_lowercase(),
-        installed_at: result.installed_at.to_rfc3339(),
-        last_run_at: result.last_run_at.map(|dt| dt.to_rfc3339()),
-        is_temporary,
-        is_admin_tapp: is_site_owner,
-    })))
+    // Only the deterministic site-owner namespace is public and persistent.
+    // List projection: services::tapp_catalog (preserves live status/last_run_at).
+    Ok(Json(ApiResponse::success(
+        crate::services::tapp_catalog::update_response_list_item(result, is_site_owner),
+    )))
 }

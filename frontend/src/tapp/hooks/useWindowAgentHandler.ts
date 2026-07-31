@@ -50,7 +50,9 @@ function resolveWindowTarget(
 }
 
 /**
- * 注册 Agent 前端操作处理器，在卸载时自动注销
+ * 注册 Agent 前端操作处理器（typed），在卸载时自动注销。
+ * Typed 优先于全局 fallback（App GlobalAgentWindowHandler），
+ * 多窗挂载时接管 open_window；卸载后全局 navigate 回退生效。
  */
 export function useWindowAgentHandler({
   windowsRef,
@@ -60,85 +62,69 @@ export function useWindowAgentHandler({
   focusWindow,
 }: UseWindowAgentHandlerOptions): void {
   useEffect(() => {
-    const handleAgentAction = async (
-      action: FrontendAction,
-    ): Promise<unknown> => {
-      try {
-        switch (action.type) {
-          case 'open_window': {
-            const data = action.data as Record<string, unknown> | undefined
-            const tappId =
-              action.tappId ||
-              (data?.tappId as string | undefined) ||
-              (data?.tapp_id as string | undefined)
-            if (tappId) {
-              await openTappWindow(tappId)
-              return true
-            }
-            return false
-          }
-
-          case 'close_window': {
-            const target = action.target as WindowTarget | undefined
-            if (target) {
-              const windowId = resolveWindowTarget(
-                target,
-                windowsRef,
-                activeWindowIdRef,
-              )
-              if (windowId) {
-                closeWindow(windowId)
-                return true
-              }
-            }
-            return false
-          }
-
-          case 'focus_window': {
-            const target = action.target as WindowTarget | undefined
-            if (target) {
-              const windowId = resolveWindowTarget(
-                target,
-                windowsRef,
-                activeWindowIdRef,
-              )
-              if (windowId) {
-                focusWindow(windowId)
-                return true
-              }
-            }
-            return false
-          }
-
-          case 'agent_interaction': {
-            if (!action.tappId || !action.interactionId) return false
-            // The backend already created and schema-validated the interaction.
-            // Opening the Tapp establishes its host-owned SSE stream; pending
-            // interactions are replayed from the short-lived registry.
-            await openTappWindow(action.tappId)
-            return true
-          }
-
-          case 'query_windows':
-            return {
-              windows: windowsRef.current ?? [],
-              activeWindowId: activeWindowIdRef.current,
-              windowCount: windowsRef.current?.length ?? 0,
-            }
-
-          default:
-            console.warn('Unknown agent action:', action.type)
-            return false
-        }
-      } catch (error) {
-        console.error('Failed to execute agent action:', error)
-        return false
-      }
+    const openWindow = async (action: FrontendAction): Promise<unknown> => {
+      const data = action.data as Record<string, unknown> | undefined
+      const tappId =
+        action.tappId ||
+        (data?.tappId as string | undefined) ||
+        (data?.tapp_id as string | undefined)
+      if (!tappId) return false
+      await openTappWindow(tappId)
+      return true
     }
 
-    registerActionHandler(handleAgentAction)
+    const closeWin = async (action: FrontendAction): Promise<unknown> => {
+      const target = action.target as WindowTarget | undefined
+      if (!target) return false
+      const windowId = resolveWindowTarget(
+        target,
+        windowsRef,
+        activeWindowIdRef,
+      )
+      if (!windowId) return false
+      closeWindow(windowId)
+      return true
+    }
+
+    const focusWin = async (action: FrontendAction): Promise<unknown> => {
+      const target = action.target as WindowTarget | undefined
+      if (!target) return false
+      const windowId = resolveWindowTarget(
+        target,
+        windowsRef,
+        activeWindowIdRef,
+      )
+      if (!windowId) return false
+      focusWindow(windowId)
+      return true
+    }
+
+    const agentInteraction = async (
+      action: FrontendAction,
+    ): Promise<unknown> => {
+      if (!action.tappId || !action.interactionId) return false
+      await openTappWindow(action.tappId)
+      return true
+    }
+
+    const queryWindows = async (): Promise<unknown> => ({
+      windows: windowsRef.current ?? [],
+      activeWindowId: activeWindowIdRef.current,
+      windowCount: windowsRef.current?.length ?? 0,
+    })
+
+    registerActionHandler('open_window', openWindow)
+    registerActionHandler('close_window', closeWin)
+    registerActionHandler('focus_window', focusWin)
+    registerActionHandler('agent_interaction', agentInteraction)
+    registerActionHandler('query_windows', queryWindows)
+
     return () => {
-      unregisterActionHandler(handleAgentAction)
+      unregisterActionHandler('open_window')
+      unregisterActionHandler('close_window')
+      unregisterActionHandler('focus_window')
+      unregisterActionHandler('agent_interaction')
+      unregisterActionHandler('query_windows')
     }
   }, [windowsRef, activeWindowIdRef, openTappWindow, closeWindow, focusWindow])
 }

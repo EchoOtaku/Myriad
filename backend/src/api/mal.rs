@@ -1,7 +1,7 @@
 // MyAnimeList API routes — dual-mode: load.json (username) or official API (optional client_id)
+use crate::error::HttpError;
 use axum::{
     extract::{Path, Query},
-    http::StatusCode,
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -50,7 +50,7 @@ fn optional_client_id(raw: Option<&str>) -> Option<&str> {
 /// 获取 MyAnimeList 用户完整信息（资料 + 动画/漫画列表）
 pub async fn get_mal_user(
     Query(params): Query<MalQuery>,
-) -> Result<Json<ApiResponse<MalUserResponse>>, StatusCode> {
+) -> Result<Json<ApiResponse<MalUserResponse>>, HttpError> {
     let username = clean(&params.username);
     let client_id = optional_client_id(params.client_id.as_deref());
 
@@ -117,7 +117,7 @@ pub async fn get_mal_user(
 pub async fn get_mal_user_info(
     Path(username): Path<String>,
     Query(params): Query<MalOptionalClientQuery>,
-) -> Result<Json<ApiResponse<serde_json::Value>>, StatusCode> {
+) -> Result<Json<ApiResponse<serde_json::Value>>, HttpError> {
     let username = clean(&username);
     let client_id = optional_client_id(params.client_id.as_deref());
 
@@ -148,7 +148,7 @@ pub async fn get_mal_user_info(
 pub async fn get_mal_anime_list(
     Path(username): Path<String>,
     Query(params): Query<MalOptionalClientQuery>,
-) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, HttpError> {
     let username = clean(&username);
     let client_id = optional_client_id(params.client_id.as_deref());
 
@@ -185,7 +185,7 @@ pub async fn get_mal_anime_list(
 pub async fn get_mal_manga_list(
     Path(username): Path<String>,
     Query(params): Query<MalOptionalClientQuery>,
-) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, StatusCode> {
+) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, HttpError> {
     let username = clean(&username);
     let client_id = optional_client_id(params.client_id.as_deref());
 

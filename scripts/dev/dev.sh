@@ -60,7 +60,10 @@ ICON_SPARKLE="✨"
 # ==================== Helper Functions ====================
 
 clear_screen() {
-    printf "\033[2J\033[H"
+    # Erase display + scrollback, then home. Avoids a tall blank region
+    # above the logo when scrolling up after clear (some terminals keep
+    # cleared rows in scrollback when only CSI 2J is used).
+    printf "\033[H\033[2J\033[3J"
 }
 
 hide_cursor() { printf "\033[?25l"; }
@@ -360,18 +363,12 @@ print_step() { echo -e "${MAGENTA}${ICON_ARROW}${NC} $1"; }
 # ==================== Logo & Banner ====================
 
 show_logo() {
-    echo -e "${BRIGHT_CYAN}"
-    cat << 'EOF'
-    __  ___           _           __
-   /  |/  /_  _______(_)___ _____/ /
-  / /|_/ / / / / ___/ / __ `/ __  / 
- / /  / / /_/ / /  / / /_/ / /_/ /  
-/_/  /_/\__, /_/  /_/\__,_/\__,_/   
-       /____/                        
-EOF
-    echo -e "${NC}"
-    echo -e "${DIM}${ICON_SPARKLE} Multi-platform Personal Information Aggregation ${ICON_SPARKLE}${NC}"
-    echo ""
+    local logo="$PROJECT_ROOT/shared/logo-ansi.txt"
+    if [[ -f "$logo" ]]; then
+        # Truecolor half-block art (UTF-8). No wordmark — character only.
+        cat "$logo"
+        echo ""
+    fi
 }
 
 show_mini_logo() {
@@ -851,6 +848,8 @@ END \$\$;" > /dev/null 2>&1 || true
     sleep 0.3
     
     ((current++)); progress_bar $current $total 40 "Cleaning"
+    # Workspace target is at repo root; also drop legacy nested backend/target
+    rm -rf "$PROJECT_ROOT/target" 2>/dev/null || true
     rm -rf "$PROJECT_ROOT/backend/target" 2>/dev/null || true
     sleep 0.3
     

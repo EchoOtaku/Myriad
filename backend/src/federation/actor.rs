@@ -3,7 +3,7 @@
 //! 本地用户的 ActivityPub Actor 表示，以及远程 Actor 获取/缓存。
 
 use axum::{
-    extract::Path,
+    extract::{Path, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -24,12 +24,10 @@ use crate::services::image_cache::ImageCacheService;
 /// is served as the old actor with `movedTo`. On the configured (new) base,
 /// `alsoKnownAs` lists previous actor ids from `federation_domain_aliases`.
 pub async fn get_actor(
+    State(db): State<DatabaseConnection>,
     Path(username): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db()
-        .await
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
 
     let configured_base = get_base_url().await;
     let aliases = crate::federation::move_actor::load_domain_aliases(&db).await;
@@ -189,14 +187,10 @@ pub async fn get_actor(
 ///
 /// Proxies the local user's avatar so federated instances only see this Myriad
 /// instance URL, not the upstream OAuth/provider avatar URL.
-pub async fn get_avatar(Path(username): Path<String>) -> Response {
-    let db = match get_db().await {
-        Ok(db) => db,
-        Err(e) => {
-            return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))).into_response()
-        }
-    };
-
+pub async fn get_avatar(
+    State(db): State<DatabaseConnection>,
+    Path(username): Path<String>,
+) -> Response {
     let avatar_url = match get_local_avatar_url(&db, &username).await {
         Ok(Some(url)) => url,
         Ok(None) => return (StatusCode::NOT_FOUND, "Avatar not found").into_response(),
@@ -262,12 +256,10 @@ pub async fn get_avatar(Path(username): Path<String>) -> Response {
 ///
 /// Followers Collection
 pub async fn get_followers(
+    State(db): State<DatabaseConnection>,
     Path(username): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db()
-        .await
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
     let base_url = get_base_url().await;
 
     // 验证用户存在
@@ -310,12 +302,10 @@ pub async fn get_followers(
 ///
 /// Following Collection
 pub async fn get_following(
+    State(db): State<DatabaseConnection>,
     Path(username): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db()
-        .await
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
     let base_url = get_base_url().await;
 
     let user = get_local_user(&db, &username).await?;
@@ -389,7 +379,7 @@ async fn fetch_remote_actor_inner(
                 [actor_url_str.into()],
             ))
             .await
-            .map_err(|e| format!("DB error: {}", e))?;
+            .map_err(|e| { tracing::error!("DB error: {}", e); "Database error".to_string() })?;
 
         if let Some(row) = cached {
             let last_fetched: Option<chrono::DateTime<chrono::FixedOffset>> =
@@ -624,7 +614,7 @@ async fn upsert_local_actor_as_remote(
             [username.into()],
         ))
         .await
-        .map_err(|e| format!("DB error: {}", e))?
+        .map_err(|e| { tracing::error!("DB error: {}", e); "Database error".to_string() })?
         .ok_or_else(|| format!("Local user not found: {}", username))?;
 
     let display_name: Option<String> = user_row
@@ -789,7 +779,10 @@ pub struct LocalFederationIdentity {
 /// Also ensures federation keys exist so Aro opening federation settings (or any
 /// client calling `GET /api/federation/identity`) initializes signing material
 /// before the first outbound delivery.
-pub async fn get_local_identity(username: &str) -> LocalFederationIdentity {
+pub async fn get_local_identity(
+    db: &DatabaseConnection,
+    username: &str,
+) -> LocalFederationIdentity {
     let base_url = get_base_url().await;
     let frontend_url = get_frontend_url().await;
     let domain = extract_domain(&base_url).unwrap_or_else(|| base_url.clone());
@@ -797,51 +790,49 @@ pub async fn get_local_identity(username: &str) -> LocalFederationIdentity {
     let mut display_name: Option<String> = None;
     let mut avatar_url: Option<String> = None;
 
-    if let Ok(db) = get_db().await {
-        if let Ok(Some(row)) = db
-            .query_one(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"SELECT id, display_name,
-                          COALESCE(
-                              NULLIF(
-                                  CASE
-                                      WHEN avatar_url LIKE 'https://ui-avatars.com/%'
-                                           OR avatar_url LIKE 'http://ui-avatars.com/%'
-                                      THEN NULL
-                                      ELSE avatar_url
-                                  END,
-                                  ''
-                              ),
-                              (
-                                  SELECT NULLIF(ui.avatar_url, '')
-                                  FROM user_identities ui
-                                  WHERE ui.user_id = users.id
-                                    AND ui.avatar_url IS NOT NULL
-                                    AND ui.avatar_url <> ''
-                                  ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
-                                  LIMIT 1
-                              ),
-                              NULLIF(avatar_url, '')
-                          ) AS avatar_url
-                   FROM users
-                   WHERE username = $1
-                   LIMIT 1"#,
-                [username.to_string().into()],
-            ))
-            .await
-        {
-            let user_id: i32 = row.try_get("", "id").unwrap_or(0);
-            display_name = row.try_get("", "display_name").ok();
-            avatar_url = row.try_get("", "avatar_url").ok();
-            if user_id > 0 {
-                if let Err(e) = ensure_user_federation_keys(&db, user_id, username).await {
-                    tracing::warn!(
-                        user_id = user_id,
-                        username = %username,
-                        error = %e,
-                        "Failed to ensure federation keys on identity lookup"
-                    );
-                }
+    if let Ok(Some(row)) = db
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT id, display_name,
+                      COALESCE(
+                          NULLIF(
+                              CASE
+                                  WHEN avatar_url LIKE 'https://ui-avatars.com/%'
+                                       OR avatar_url LIKE 'http://ui-avatars.com/%'
+                                  THEN NULL
+                                  ELSE avatar_url
+                              END,
+                              ''
+                          ),
+                          (
+                              SELECT NULLIF(ui.avatar_url, '')
+                              FROM user_identities ui
+                              WHERE ui.user_id = users.id
+                                AND ui.avatar_url IS NOT NULL
+                                AND ui.avatar_url <> ''
+                              ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
+                              LIMIT 1
+                          ),
+                          NULLIF(avatar_url, '')
+                      ) AS avatar_url
+               FROM users
+               WHERE username = $1
+               LIMIT 1"#,
+            [username.to_string().into()],
+        ))
+        .await
+    {
+        let user_id: i32 = row.try_get("", "id").unwrap_or(0);
+        display_name = row.try_get("", "display_name").ok();
+        avatar_url = row.try_get("", "avatar_url").ok();
+        if user_id > 0 {
+            if let Err(e) = ensure_user_federation_keys(db, user_id, username).await {
+                tracing::warn!(
+                    user_id = user_id,
+                    username = %username,
+                    error = %e,
+                    "Failed to ensure federation keys on identity lookup"
+                );
             }
         }
     }
@@ -1149,7 +1140,7 @@ async fn load_stored_federation_keys(
             [user_id.into()],
         ))
         .await
-        .map_err(|e| format!("DB error loading federation keys: {}", e))?;
+        .map_err(|e| { tracing::error!("DB error loading federation keys: {}", e); "Database error".to_string() })?;
 
     Ok(row.map(|r| {
         let pub_pem: String = r.try_get("", "public_key_pem").unwrap_or_default();
@@ -1277,12 +1268,6 @@ async fn get_frontend_url() -> String {
     frontend_url.trim_end_matches('/').to_string()
 }
 
-async fn get_db() -> Result<DatabaseConnection, String> {
-    let db_opt = crate::DB_CONNECTION.read().await;
-    db_opt
-        .clone()
-        .ok_or_else(|| "Database not connected".to_string())
-}
 
 /// Shared confirm gate for POST /api/federation/keys/rotate (and unit tests).
 ///

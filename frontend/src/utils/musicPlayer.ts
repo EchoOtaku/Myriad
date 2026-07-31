@@ -89,13 +89,70 @@ export async function getNeteaseAudioUrl(
 }
 
 /**
- * 获取 QQ 音乐音频 URL（经后端解析 vkey 并代理）
- *
- * 旧直连 `ws.stream.qqmusic.qq.com/{songmid}.m4a?fromtag=46` 已失效（403）。
- * 统一走后端 `/api/proxy/music/qq/audio/{songmid}`，按需取临时播放链。
+ * QQ「仅解析播放链」：后端 302 到 HTTPS CDN，音频字节仍直连 QQ。
+ * 与网易 play-url 对称；国内优先，海外降级全量代理。
+ */
+export function getQQPlayUrl(songMid: string): string {
+  return `${API_URL}/api/proxy/music/qq/play-url/${songMid}`
+}
+
+/**
+ * QQ 全量音频代理（字节经本机回传）。海外 / 需 CORS / 直连失败降级时使用。
+ */
+export function getQQProxyAudioUrl(songMid: string): string {
+  return `${API_URL}/api/proxy/music/qq/audio/${songMid}`
+}
+
+/**
+ * @deprecated 使用 getQQProxyAudioUrl；保留别名避免外部引用断裂。
  */
 export function getQQAudioUrl(songMid: string): string {
-  return `${API_URL}/api/proxy/music/qq/audio/${songMid}`
+  return getQQProxyAudioUrl(songMid)
+}
+
+/**
+ * 是否为 QQ「直连」播放地址（play-url / 已解析 CDN）。
+ * 已是全量代理 `/audio/` 时返回 false，避免降级死循环。
+ */
+export function isQQDirectPlayUrl(url: string): boolean {
+  if (!url) return false
+  if (url.includes('/api/proxy/music/qq/audio/')) return false
+  if (url.includes('/api/proxy/music/qq/play-url/')) return true
+  if (
+    url.includes('stream.qqmusic.qq.com') ||
+    url.includes('dl.stream.qqmusic.qq.com') ||
+    url.includes('qqmusic.qq.com/')
+  ) {
+    return true
+  }
+  return false
+}
+
+/**
+ * 直连失败时的全量代理 URL。非 QQ 或已是代理地址时返回 null。
+ */
+export function getQQProxyFallbackUrl(
+  song: Pick<Song, 'id' | 'source' | 'url'>,
+): string | null {
+  if (song.source !== 'qq') return null
+  if (!isQQDirectPlayUrl(song.url)) return null
+  return getQQProxyAudioUrl(song.id)
+}
+
+/**
+ * 获取 QQ 音乐音频 URL
+ * - 国内：play-url 302 到 HTTPS CDN（直连 QQ）
+ * - 海外：全量代理拉流
+ */
+export async function getQQAudioUrlForGeo(
+  songMid: string,
+  useProxy?: boolean,
+): Promise<string> {
+  if (useProxy !== undefined) {
+    return useProxy ? getQQProxyAudioUrl(songMid) : getQQPlayUrl(songMid)
+  }
+  const inChina = await isUserInChinaMainland()
+  return inChina ? getQQPlayUrl(songMid) : getQQProxyAudioUrl(songMid)
 }
 
 /**
@@ -638,6 +695,9 @@ export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
   }
 
   try {
+    // 预先检测地理位置（并行，不阻塞歌单）
+    const geoPromise = isUserInChinaMainland()
+
     // 通过后端代理访问QQ音乐API
     const response = await fetch(
       `${API_URL}/api/proxy/music/qq/playlist/${playlistId}`,
@@ -655,6 +715,11 @@ export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
 
     const playlist = data.cdlist[0]
     const songlist = playlist.songlist || []
+
+    const inChina = await geoPromise
+    console.log(
+      `[MusicPlayer] QQ 歌单加载完成，用户在中国大陆: ${inChina}，${inChina ? 'play-url 直连 CDN' : '全量代理'}`,
+    )
 
     const songs = songlist
       .map((song: any) => {
@@ -676,8 +741,10 @@ export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
           cover: song.albummid
             ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.albummid}.jpg`
             : '',
-          // 经后端 GetEVkey 解析临时播放链；旧 fromtag=46 直连已 403
-          url: getQQAudioUrl(songMid),
+          // 国内 play-url 302 CDN；海外全量代理（对齐网易）
+          url: inChina
+            ? getQQPlayUrl(songMid)
+            : getQQProxyAudioUrl(songMid),
           duration: song.interval || 0,
           source: 'qq' as MusicSource,
           // 后端会补 isVip；无字段时默认 false
@@ -913,14 +980,27 @@ export async function getKugouVerbatimLyrics(
 }
 
 /**
- * 获取QQ音乐歌词
+ * 获取QQ音乐歌词（含可选翻译层）
+ *
+ * BE 已规范化：retcode 校验 + HTML 实体 unescape + `trans` 字段。
+ * 返回 lines；翻译挂到 line.translation（与网易 attachLyricTranslation 一致）。
  */
 export async function getQQLyrics(songId: string): Promise<LyricLine[]> {
+  const result = await getQQLyricsWithTranslation(songId)
+  return result.lines
+}
+
+export async function getQQLyricsWithTranslation(
+  songId: string,
+): Promise<{ lines: LyricLine[]; translation: LyricLine[] }> {
   const cacheKey = `qq-${songId}`
 
-  // 检查缓存
+  // 检查缓存（含翻译的完整行）
   if (lyricsCache.has(cacheKey)) {
-    return lyricsCache.get(cacheKey)!
+    return {
+      lines: lyricsCache.get(cacheKey)!,
+      translation: [],
+    }
   }
 
   try {
@@ -934,17 +1014,49 @@ export async function getQQLyrics(songId: string): Promise<LyricLine[]> {
 
     const data = await response.json()
 
-    if (data.lyric) {
-      const lyrics = parseLyrics(data.lyric)
-      addToLyricsCache(cacheKey, lyrics)
-      return lyrics
+    // 规范化契约：retcode === 0 且有 lyric
+    const retcode =
+      typeof data.retcode === 'number'
+        ? data.retcode
+        : typeof data.code === 'number'
+          ? data.code
+          : -1
+    if (retcode !== 0 || !data.lyric) {
+      return { lines: [], translation: [] }
     }
 
-    return []
+    // FE 侧再做一次实体 unescape（BE 已做；兼容旧缓存/直连）
+    const lyricText = unescapeQQLyricText(String(data.lyric))
+    const transText = data.trans
+      ? unescapeQQLyricText(String(data.trans))
+      : ''
+
+    const lines = parseLyrics(lyricText)
+    const translation = transText ? parseLyrics(transText) : []
+    if (translation.length > 0) {
+      attachLyricTranslation(lines, translation)
+    }
+
+    addToLyricsCache(cacheKey, lines)
+    return { lines, translation }
   } catch (error) {
     console.error('Error fetching QQ lyrics:', error)
-    return []
+    return { lines: [], translation: [] }
   }
+}
+
+/** QQ 歌词 HTML 实体（nobase64=1 仍会转义） */
+export function unescapeQQLyricText(s: string): string {
+  return s
+    .replace(/&apos;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&#34;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#10;/g, '\n')
+    .replace(/&#13;/g, '\r')
 }
 
 /**
@@ -962,7 +1074,9 @@ export async function getLyricsWithVerbatim(
   let translation: LyricLine[] = []
 
   if (song.source === 'qq') {
-    lines = await getQQLyrics(song.id)
+    const qq = await getQQLyricsWithTranslation(song.id)
+    lines = qq.lines
+    translation = qq.translation
   } else {
     const result = await getNeteaseVerbatimLyrics(song.id)
     lines = result.lines

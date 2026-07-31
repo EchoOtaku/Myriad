@@ -160,16 +160,21 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
 
     const handleWidgetsChange = useCallback(
       (newWidgets: WidgetConfig[]) => {
-        // Drop unregistered types so saved layout stays valid
+        // Drop unregistered types so saved layout stays valid — but only after
+        // Tapp catalog has finished loading. While loading, CONTROL_PANEL_WIDGETS
+        // is builtins-only; filtering would strip stored Tapp widgets and POST
+        // an emptied layout.
         const registeredIds = new Set(CONTROL_PANEL_WIDGETS.map((w) => w.id))
-        const validWidgets = newWidgets.filter((w) =>
-          registeredIds.has(w.type),
-        )
+        const validWidgets = isTappWidgetsLoading
+          ? newWidgets
+          : newWidgets.filter((w) => registeredIds.has(w.type))
         setWidgets(validWidgets)
         setRawLayoutData(validWidgets)
-        saveToBackend(validWidgets, gridRows)
+        if (!isTappWidgetsLoading) {
+          saveToBackend(validWidgets, gridRows)
+        }
       },
-      [gridRows, saveToBackend, CONTROL_PANEL_WIDGETS],
+      [gridRows, saveToBackend, CONTROL_PANEL_WIDGETS, isTappWidgetsLoading],
     )
 
     const handleRowsChange = useCallback(
@@ -192,14 +197,16 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
                   position: { x: w.position.x, y: 0 },
                 }
               }
+              // Keep unknown types (e.g. Tapp still loading) so we don't drop them
+              if (!widgetType && isTappWidgetsLoading) return w
               return w
             })
             .filter((w) => {
-              // 过滤掉不支持 4x1 的小组件
               const widgetType = CONTROL_PANEL_WIDGETS.find(
                 (wt) => wt.id === w.type,
               )
-              return widgetType?.supportedSizes?.includes('4x1')
+              if (!widgetType) return isTappWidgetsLoading
+              return widgetType.supportedSizes?.includes('4x1')
             })
         } else {
           // 切换回 2 行模式时，恢复为 2x2 尺寸
@@ -217,9 +224,12 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
 
         setWidgets(updatedWidgets)
         setRawLayoutData(updatedWidgets)
-        saveToBackend(updatedWidgets, rows)
+        // Avoid persisting a layout filtered without Tapp catalog
+        if (!isTappWidgetsLoading) {
+          saveToBackend(updatedWidgets, rows)
+        }
       },
-      [widgets, saveToBackend, CONTROL_PANEL_WIDGETS],
+      [widgets, saveToBackend, CONTROL_PANEL_WIDGETS, isTappWidgetsLoading],
     )
 
     // 🆕 使用首页原子化 ResizeObserver

@@ -15,13 +15,15 @@ export function useConfigSearch(
   config: Config | null,
   t: ConfigSearchI18n,
   locale: Locale,
+  isAdmin = true,
 ) {
   const [searchQuery, setSearchQuery] = useState('')
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
 
   const searchableContent = useMemo(
-    (): ConfigSearchableItem[] => buildSearchableContent(config, t, locale),
-    [config, t, locale],
+    (): ConfigSearchableItem[] =>
+      buildSearchableContent(config, t, locale, { isAdmin }),
+    [config, t, locale, isAdmin],
   )
 
   const filteredContent = useMemo(() => {

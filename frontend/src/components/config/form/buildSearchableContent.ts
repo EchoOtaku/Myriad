@@ -53,8 +53,10 @@ export function buildSearchableContent(
   config: Config | null,
   t: ConfigSearchI18n,
   locale: Locale,
+  options?: { isAdmin?: boolean },
 ): ConfigSearchableItem[] {
   if (!config) return []
+  const isAdmin = options?.isAdmin !== false // default include; pass false to filter
 
   const items: ConfigSearchableItem[] = []
 
@@ -330,26 +332,30 @@ export function buildSearchableContent(
     ],
   })
 
-  items.push({
-    type: 'section',
-    section: 'federation',
-    title: t.config.federation,
-    description: t.config.federationDesc,
-    keywords: [
-      'federation',
-      '联邦',
-      'trust',
-      '信任',
-      'allowlist',
-      '白名单',
-      'block',
-      '封禁',
-      'filter',
-      '过滤',
-      'mfp',
-      'aro',
-    ],
-  })
+  // Federation settings are admin-only in the nav; hide from search for non-admin
+  // so users are not dropped into an empty section.
+  if (isAdmin) {
+    items.push({
+      type: 'section',
+      section: 'federation',
+      title: t.config.federation,
+      description: t.config.federationDesc,
+      keywords: [
+        'federation',
+        '联邦',
+        'trust',
+        '信任',
+        'allowlist',
+        '白名单',
+        'block',
+        '封禁',
+        'filter',
+        '过滤',
+        'mfp',
+        'aro',
+      ],
+    })
+  }
 
   items.push({
     type: 'section',

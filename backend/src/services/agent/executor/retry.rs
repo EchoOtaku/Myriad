@@ -2,12 +2,16 @@
 //!
 //! 提取自 execute / DAG streaming / resume_with_answer 三条路径中
 //! 重复的重试循环（错误分析 → 参数修复 → 前置步骤注入 → 退避 → 重试）。
+//! 纯决策（是否重试、延迟、默认次数）见 [`crate::services::agent::retry_pure`]。
 
-use super::error_analyzer::ErrorAnalyzer;
 use super::handlers::HandlerContext;
-use super::utils::truncate_str;
 use super::Executor;
 use crate::config::ModelTier;
+use crate::services::agent::error_analyzer_pure::{analyze_error, apply_param_fixes};
+use crate::services::agent::retry_pure::{
+    compute_retry_delay_ms, default_max_retries as pure_default_max_retries,
+    format_retry_final_error, prepend_step_id, should_retry_step, step_retry_delay_config,
+};
 use crate::services::agent::types::*;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -149,14 +153,16 @@ impl Executor {
                     retry_count += 1;
                     retry_errors.push(e.clone());
 
-                    // 智能错误分析
+                    // 智能错误分析（纯域规则，无 I/O）
                     let effective_params = retry_params_override.as_ref().unwrap_or(&step.params);
-                    let analysis =
-                        ErrorAnalyzer::analyze(&e, &step.capability_id, effective_params);
+                    let analysis = analyze_error(&e, &step.capability_id, effective_params);
 
-                    let should_retry = retry_count < config.max_attempts
-                        && config.global_budget > 0
-                        && analysis.retryable;
+                    let should_retry = should_retry_step(
+                        retry_count,
+                        config.max_attempts,
+                        config.global_budget,
+                        analysis.retryable,
+                    );
 
                     if should_retry {
                         config.global_budget -= 1;
@@ -164,9 +170,9 @@ impl Executor {
                         // 回滚 context 到重试前快照
                         *context = ctx_snapshot;
 
-                        // 应用参数修复
+                        // 应用参数修复（纯域投影）
                         if !analysis.param_fixes.is_empty() {
-                            let fixed = ErrorAnalyzer::apply_fixes(
+                            let fixed = apply_param_fixes(
                                 retry_params_override.as_ref().unwrap_or(&step.params),
                                 &analysis.param_fixes,
                             );
@@ -189,7 +195,7 @@ impl Executor {
                                 prepend_cap
                             );
                             prepend_steps.push(RecipeStep {
-                                id: format!("{}_prepend_{}", step.id, retry_count),
+                                id: prepend_step_id(&step.id, retry_count),
                                 order: step.order.saturating_sub(1),
                                 capability_id: prepend_cap.clone(),
                                 action: "execute".to_string(),
@@ -216,23 +222,14 @@ impl Executor {
                                 .await;
                         }
 
-                        // 退避延迟
-                        let base_delay = step
-                            .retry
-                            .as_ref()
-                            .map(|r| r.delay_ms.max(100))
-                            .unwrap_or(500);
-                        let use_backoff = step
-                            .retry
-                            .as_ref()
-                            .map(|r| r.exponential_backoff)
-                            .unwrap_or(true);
-                        let delay = if use_backoff {
-                            base_delay * 2u64.pow(retry_count - 1)
-                        } else {
-                            base_delay
-                        };
-                        let adjusted = (delay as f64 * analysis.delay_multiplier) as u64;
+                        // 退避延迟（纯 domain 计算）
+                        let (base_delay, use_backoff) = step_retry_delay_config(step);
+                        let adjusted = compute_retry_delay_ms(
+                            base_delay,
+                            use_backoff,
+                            retry_count,
+                            analysis.delay_multiplier,
+                        );
                         tracing::warn!(
                             step_id = %step.id,
                             retry = retry_count,
@@ -246,8 +243,7 @@ impl Executor {
                             retry_count,
                             config.max_attempts
                         );
-                        tokio::time::sleep(std::time::Duration::from_millis(adjusted.min(30_000)))
-                            .await;
+                        tokio::time::sleep(std::time::Duration::from_millis(adjusted)).await;
 
                         continue; // 重试
                     }
@@ -260,20 +256,7 @@ impl Executor {
                         "[Executor] Step failed (no more retries)"
                     );
 
-                    let final_error = if retry_errors.len() > 1 {
-                        let previous: Vec<_> = retry_errors[..retry_errors.len() - 1]
-                            .iter()
-                            .map(|e| truncate_str(e, 120).to_string())
-                            .collect();
-                        format!(
-                            "{} (previous {} attempts: {})",
-                            e,
-                            previous.len(),
-                            previous.join("; ")
-                        )
-                    } else {
-                        e
-                    };
+                    let final_error = format_retry_final_error(&retry_errors, &e);
 
                     return StepRetryOutcome {
                         success: false,
@@ -291,18 +274,7 @@ impl Executor {
 
     /// 计算步骤的最大重试次数（三条路径共用的默认逻辑）
     pub fn default_max_retries(step: &RecipeStep) -> u32 {
-        step.retry
-            .as_ref()
-            .map(|r| r.max_attempts.min(3))
-            .unwrap_or_else(|| {
-                if step.capability_id.starts_with("ai.")
-                    || step.capability_id.starts_with("skill:")
-                    || step.capability_id == "prompt.generate"
-                {
-                    2
-                } else {
-                    1
-                }
-            })
+        pure_default_max_retries(step)
     }
 }
+

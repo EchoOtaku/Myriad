@@ -83,15 +83,16 @@ function generateDynamicTips(
     })
   }
 
-  // 找出最近更新的源（1小时内）
+  // 找出最近成功更新的源（1小时内）
+  // last_fetched_at is written even on failure; tip must use last_success_at.
   const recentlyUpdated = sources
     .filter(
       (s) =>
         s.source_type !== 'link' &&
-        s.last_fetched_at &&
-        now - s.last_fetched_at * 1000 < 3600000,
+        s.last_success_at &&
+        now - s.last_success_at < 3600000,
     )
-    .sort((a, b) => (b.last_fetched_at || 0) - (a.last_fetched_at || 0))
+    .sort((a, b) => (b.last_success_at || 0) - (a.last_success_at || 0))
 
   if (recentlyUpdated.length > 0) {
     const source = recentlyUpdated[0]

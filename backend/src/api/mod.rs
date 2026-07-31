@@ -15,7 +15,8 @@ pub mod brewlia; // ✅ Brewlia AI增强阅读 API
 pub mod cache; // ✅ 缓存管理 API
 pub mod config;
 pub mod diagnostics;
-pub mod discord; // ✅ Discord 数据平台 API
+pub mod discord;
+pub mod federation; // 联邦 HTTP 适配层（自 main 迁出） // ✅ Discord 数据平台 API
 pub mod game_presence; // ✅ 游戏平台公开状态（Enka / Xbox / PSN，无用户 Cookie）
 pub mod mal; // ✅ MyAnimeList 数据平台 API
 pub mod metrics; // ✅ 系统监控指标 API (P2优化)
@@ -41,26 +42,14 @@ pub mod updater_admin; // 🚀 Updater admin proxy
 pub mod x; // ✅ X (Twitter) 平台 API
 pub mod youtube; // ✅ YouTube Data API v3（公开频道，API key only）
 
-// Process start time for uptime reporting in /health.
-static STARTED_AT: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+// Process / build identity: workspace crate `myriad-process-info` (agent + /health).
+// Binary package version is injected at startup so fallback is myriad-backend's, not the helper crate's.
+pub use myriad_process_info::{build_commit_sha, build_version, process_uptime_seconds};
 
-pub fn mark_startup() {
-    let _ = STARTED_AT.set(std::time::Instant::now());
-}
-
-/// Process uptime in seconds since `mark_startup` (0 if not marked).
-pub fn process_uptime_seconds() -> u64 {
-    STARTED_AT.get().map(|t| t.elapsed().as_secs()).unwrap_or(0)
-}
-
-pub fn build_version() -> &'static str {
-    option_env!("MYRIAD_VERSION").unwrap_or(concat!("v", env!("CARGO_PKG_VERSION")))
-}
-
-pub fn build_commit_sha() -> Option<&'static str> {
-    option_env!("MYRIAD_COMMIT_SHA")
-        .map(str::trim)
-        .filter(|sha| sha.len() == 40 && sha.bytes().all(|b| b.is_ascii_hexdigit()))
+/// Call once from binary main after logging is ready.
+pub fn init_process_identity() {
+    myriad_process_info::set_package_version_fallback(concat!("v", env!("CARGO_PKG_VERSION")));
+    myriad_process_info::mark_startup();
 }
 
 /// `/health` endpoint consumed by the Myriad updater health probe.
@@ -84,10 +73,12 @@ pub async fn health() -> (StatusCode, Json<Value>) {
     use std::sync::atomic::Ordering;
 
     let config_mode = crate::CONFIG_MODE.load(Ordering::Relaxed);
-    let db_connected = !config_mode;
-    // Once the backend has left config mode, migrations have been verified by the startup
-    // schema check (see backend/src/db/schema_check.rs). So in full mode this is true.
-    let migrations_applied = db_connected;
+    // Process DB handle (may exist while still on setup-only route table until restart).
+    let db_connected = crate::services::tapp_registry::database().await.is_ok();
+    // Route table is fixed at process start: config-mode router vs full router.
+    // Do not equate CONFIG_MODE=false with "full APIs" without a cold start.
+    let routes_full = !config_mode && db_connected;
+    let migrations_applied = routes_full;
 
     // Build-time version injected via `MYRIAD_VERSION` env var (set by Dockerfile build-arg).
     // Falls back to crate version so local `cargo run` still works.
@@ -105,13 +96,18 @@ pub async fn health() -> (StatusCode, Json<Value>) {
             "commit_sha": commit_sha,
             "db_connected": db_connected,
             "migrations_applied": migrations_applied,
+            "routes_full": routes_full,
             // Reaching the server implies the startup storage write preflight passed.
             "storage_writable": true,
             "uptime_seconds": uptime,
 
             // backwards-compatible fields
             "service": "myriad-backend",
-            "mode": if config_mode { "configuration" } else { "full" },
+            "mode": if config_mode || !routes_full {
+                "configuration"
+            } else {
+                "full"
+            },
             "database_connected": db_connected,
         })),
     )

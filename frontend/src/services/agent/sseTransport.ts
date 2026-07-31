@@ -14,7 +14,7 @@ import type {
   TaskInfo,
 } from './types'
 
-import { getCSRFToken } from '../../utils/csrf'
+import { clearCSRFToken, getCSRFToken } from '../../utils/csrf'
 
 /** Why a stream AbortController was aborted. */
 export type StreamAbortIntent = 'user' | 'replace' | 'timeout'
@@ -95,7 +95,9 @@ export async function executeSSERequest({
 }: ExecuteSseOptions): Promise<AgentResponse> {
   if (abortPrevious) abortSseSubscriptions(activeControllers, 'replace')
 
-  const csrfToken = method === 'POST' ? await getCSRFToken() : null
+  // Cookie sessions need CSRF on POST; match lib/api — refresh once on 403 CSRF.
+  let csrfToken = method === 'POST' ? await getCSRFToken() : null
+  let csrfRetried = false
 
   return new Promise((resolve, reject) => {
     const controller = new AbortController()
@@ -111,18 +113,47 @@ export async function executeSSERequest({
     const readAbortIntent = (): StreamAbortIntent | null =>
       controllerIntents.get(controller) ?? null
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+    const buildHeaders = (): Record<string, string> => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (csrfToken) headers['X-CSRF-Token'] = csrfToken
+      return headers
     }
-    if (csrfToken) headers['X-CSRF-Token'] = csrfToken
 
-    fetch(url, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-      credentials: 'include',
-    })
+    const startFetch = (): Promise<Response> =>
+      fetch(url, {
+        method,
+        headers: buildHeaders(),
+        body: body ? JSON.stringify(body) : undefined,
+        signal: controller.signal,
+        credentials: 'include',
+      })
+
+    const isCsrfBody = (status: number, text: string): boolean => {
+      if (status !== 403) return false
+      return text.toLowerCase().includes('csrf')
+    }
+
+    startFetch()
+      .then(async (response) => {
+        if (
+          method === 'POST' &&
+          !csrfRetried &&
+          isCsrfBody(response.status, await response.clone().text())
+        ) {
+          console.warn(
+            '[Agent SSE] CSRF rejection — refreshing token and retrying once',
+          )
+          clearCSRFToken()
+          csrfToken = await getCSRFToken(true)
+          csrfRetried = true
+          if (csrfToken) {
+            return startFetch()
+          }
+        }
+        return response
+      })
       .then(async (response) => {
         if (!response.ok) {
           const text = await response.text()

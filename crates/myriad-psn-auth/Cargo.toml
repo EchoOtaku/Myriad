@@ -1,0 +1,15 @@
+[package]
+name = "myriad-psn-auth"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "PlayStation Network NPSSO → access_token exchange with TTL cache (shared by fetcher + game presence)."
+authors = ["Myriad Contributors"]
+
+[dependencies]
+myriad-outbound = { path = "../myriad-outbound" }
+serde_json = "1"
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

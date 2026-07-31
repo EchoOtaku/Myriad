@@ -47,6 +47,10 @@ export const LEGACY_CONFIG_SECTION_MAP: Record<string, string> = {
   /** Standalone data-management page removed; alias lands on platforms list. */
   data: 'platforms',
   network: 'advanced',
+  /** Updater panel lives under About (no standalone nav section). */
+  updater: 'about',
+  /** MCP / agent prefs surface under notifications (Arael / brew / tapp keywords). */
+  mcp: 'notifications',
 }
 
 export function loadConfigFavorites(): string[] {

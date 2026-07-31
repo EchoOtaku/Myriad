@@ -23,25 +23,22 @@ fn limited_detail(detail: impl AsRef<str>) -> String {
 /// Runs bounded, side-effect-free or self-cleaning checks used by the Advanced
 /// Settings diagnostics panel. The storage probe creates a unique file and
 /// removes it immediately, matching the startup storage preflight.
-pub async fn runtime_diagnostics() -> (StatusCode, Json<Value>) {
+pub async fn runtime_diagnostics(
+    crate::extract::Db(db): crate::extract::Db,
+) -> (StatusCode, Json<Value>) {
     let generated_at = Utc::now();
     let config_mode = crate::CONFIG_MODE.load(Ordering::Relaxed);
     let server_location_task =
         tokio::spawn(crate::services::server_location::inspect_server_location());
 
     let database_started = Instant::now();
-    let database_result = match crate::DB_CONNECTION.read().await.clone() {
-        Some(db) => db
-            .query_one(Statement::from_string(
-                db.get_database_backend(),
-                "SELECT 1 AS diagnostic_probe".to_owned(),
-            ))
-            .await
-            .map(|_| ()),
-        None => Err(sea_orm::DbErr::Custom(
-            "Database connection is not initialized".to_string(),
-        )),
-    };
+    let database_result = db
+        .query_one(Statement::from_string(
+            db.get_database_backend(),
+            "SELECT 1 AS diagnostic_probe".to_owned(),
+        ))
+        .await
+        .map(|_| ());
     let database_latency_ms = database_started.elapsed().as_millis() as u64;
 
     let storage_started = Instant::now();
@@ -165,6 +162,10 @@ pub async fn runtime_diagnostics() -> (StatusCode, Json<Value>) {
         }),
     ];
 
+    // Process target OS/arch (Docker guest or bare metal — not host under
+    // cross-arch emulation).
+    let platform = myriad_process_info::process_platform_info();
+
     (
         StatusCode::OK,
         Json(json!({
@@ -176,6 +177,13 @@ pub async fn runtime_diagnostics() -> (StatusCode, Json<Value>) {
                 "commit_sha": crate::api::build_commit_sha(),
                 "uptime_seconds": crate::api::process_uptime_seconds(),
                 "config_mode": config_mode,
+                "os": platform.get("os").cloned().unwrap_or(Value::Null),
+                "arch": platform.get("arch").cloned().unwrap_or(Value::Null),
+                "family": platform.get("family").cloned().unwrap_or(Value::Null),
+                "pointer_width": platform
+                    .get("pointer_width")
+                    .cloned()
+                    .unwrap_or(Value::Null),
             },
             "checks": checks,
             "memory": memory,

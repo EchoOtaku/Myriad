@@ -16,7 +16,7 @@
 
 mod agent_interactions;
 mod ai_cost_ledger;
-mod ai_quota;
+// AI quota domain: `crate::services::ai_quota` (reserve/settle/release/usage).
 mod ai_tasks;
 pub mod common;
 mod components;
@@ -46,15 +46,16 @@ pub use platform::{
 };
 
 // AI API
-pub use agent_interactions::create_agent_interaction_internal;
 pub use agent_interactions::{
-    accept_agent_interaction, get_agent_interaction, reject_agent_interaction,
-    request_agent_intent, spawn_agent_interaction_expiry_worker, stream_agent_interactions,
-    submit_agent_interaction_result,
+    accept_agent_interaction, get_agent_interaction, install_agent_interaction_executor,
+    reject_agent_interaction, request_agent_intent, spawn_agent_interaction_expiry_worker,
+    stream_agent_interactions, submit_agent_interaction_result,
 };
 pub use ai_cost_ledger::ai_cost_ledger;
-pub use ai_tasks::{ai_usage, cancel_ai_task, create_ai_task, get_ai_task, stream_ai_task_events};
-pub(crate) use ai_tasks::{execute_governed_text, GovernedTextRequest};
+pub use ai_tasks::{
+    ai_usage, cancel_ai_task, create_ai_task, get_ai_task, install_governed_text_executor,
+    stream_ai_task_events,
+};
 
 // Reports API
 pub use reports::{
@@ -73,7 +74,10 @@ pub use runtime_grant::{
     revoke_runtime_grant, revoke_tapp_runtime_grants, RuntimeGrantContext,
 };
 
-// Federation WebSocket one-time tickets (browser WS cannot carry grant headers)
+// Federation WebSocket one-time tickets (browser WS cannot carry grant headers).
+// Domain: `services::tapp_ws_ticket`. Federation gateway consumes via services;
+// mint routes stay here. Re-exports preserve `api::tapp_runtime::*` path stability.
+#[allow(unused_imports)]
 pub use ws_ticket::{
     consume_ws_ticket, mint_channel_ws_ticket, mint_room_ws_ticket, ConsumedWsTicket, WsTicketKind,
     TAPP_WS_TICKET_QUERY,

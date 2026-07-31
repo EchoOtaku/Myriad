@@ -33,6 +33,9 @@ pub fn register(registry: &mut CapabilityRegistry) {
         required_permissions: vec!["http:fetch".to_string()],
         requires_ai: false,
         estimated_duration_ms: Some(2000),
+        requires_confirmation: true,
+        confirmation_message: Some("即将向外部 URL 发起 HTTP 请求".to_string()),
+        risk_level: RiskLevel::Medium,
         ..Default::default()
     });
 

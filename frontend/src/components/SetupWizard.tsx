@@ -58,6 +58,8 @@ const SetupWizard: React.FC = () => {
     username: 'postgres',
     password: '',
   })
+  /** 已配置实例恢复时需要；对应 BE X-Bootstrap-Token / .bootstrap-token */
+  const [bootstrapToken, setBootstrapToken] = useState('')
   const [savingDb, setSavingDb] = useState(false)
   const [migratingDb, setMigratingDb] = useState(false)
   const [dbConfigured, setDbConfigured] = useState(false)
@@ -103,17 +105,17 @@ const SetupWizard: React.FC = () => {
       // 如果数据库已连接,检查详细的设置状态
       const response = await fetch(`${API_URL}/api/setup/status`)
       if (!response.ok) {
-        // 如果是 503，说明某些功能还未就绪，但不是连接问题
+        // 503: PG may be connected while tables are not migrated yet.
+        // Never treat database_connected as has_database (tables ready).
         if (response.status === 503) {
-          // 使用健康检查数据创建基本状态
           setStatus({
             is_setup_required: true,
-            has_database: healthData.database_connected,
+            has_database: false,
             has_admin_user: false,
-            missing_configs: ['Checking configuration...'],
+            missing_configs: ['Database tables not initialized'],
           })
-          // 数据库已连接，应该显示下一步
-          setDbConfigured(true)
+          // Connection works → show the DB-configured column; init-database still required
+          setDbConfigured(Boolean(healthData.database_connected))
           setAdminCreated(false)
           setLoading(false)
           return
@@ -122,9 +124,9 @@ const SetupWizard: React.FC = () => {
       }
       const data = await response.json()
       setStatus(data)
-      // 数据库连接成功就算配置完成，即使表还没初始化
-      // 因为用户接下来就要初始化数据库
-      setDbConfigured(healthData.database_connected)
+      // Connection ≠ tables: only mark DB configured when health says connected.
+      // Admin form still gated on data.has_database (tables initialized).
+      setDbConfigured(Boolean(healthData.database_connected))
       setAdminCreated(data.has_admin_user)
       if (!data.is_setup_required) {
         sessionStorage.removeItem('myriad-setup-started')
@@ -171,10 +173,17 @@ const SetupWizard: React.FC = () => {
     setSavingDb(true)
 
     try {
-      // 使用新的数据库配置 API
+      // 使用新的数据库配置 API（已配置实例需 X-Bootstrap-Token）
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      const token = bootstrapToken.trim()
+      if (token) {
+        headers['X-Bootstrap-Token'] = token
+      }
       const response = await fetch(`${API_URL}/api/setup/database-config`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           host: dbConfig.host,
           port,
@@ -185,6 +194,9 @@ const SetupWizard: React.FC = () => {
       })
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error(t.setup.bootstrapTokenRequired)
+        }
         throw new Error(
           await getResponseError(response, t.setup.saveConfigFailed),
         )
@@ -667,6 +679,25 @@ const SetupWizard: React.FC = () => {
                             placeholder={t.auth.enterPassword}
                             autoComplete="off"
                           />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            {t.setup.bootstrapToken}
+                            <span className="ml-1 font-normal text-gray-400">
+                              ({t.setup.bootstrapTokenOptional})
+                            </span>
+                          </label>
+                          <input
+                            type="password"
+                            value={bootstrapToken}
+                            onChange={(e) => setBootstrapToken(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono"
+                            placeholder={t.setup.bootstrapTokenPlaceholder}
+                            autoComplete="off"
+                          />
+                          <p className="mt-1 text-[11px] text-gray-500 leading-snug">
+                            {t.setup.bootstrapTokenHint}
+                          </p>
                         </div>
                       </div>
                     </div>

@@ -16,20 +16,22 @@
 //! - **已配置过的实例** —— `.env` 里有真实 `DATABASE_URL`，说明这台实例此前跑起来
 //!   过，现在只是数据库不可达。此时 setup **不该**重新开放。
 //!
-//! 第二种情形下，进程会生成一次性引导令牌，写进日志和一个仅属主可读的文件；
-//! 改写配置的 setup 端点必须携带 `X-Bootstrap-Token` 才会执行。运维能从容器日志
-//! 或宿主文件系统拿到它，网络上的攻击者拿不到。
+//! 第二种情形下，进程会生成一次性引导令牌，写入**仅属主可读的文件**（可选由
+//! `MYRIAD_BOOTSTRAP_TOKEN` 预置）。改写配置的 setup 端点必须携带
+//! `X-Bootstrap-Token` 才会执行。
 //!
-//! 这与 Jenkins 的 `initialAdminPassword` 是同一个模式：不牺牲可恢复性，但把
-//! 「能改配置」从「能连到端口」收紧为「能读到宿主的日志/文件」。
+//! **令牌绝不明文写入常规日志**（集中式日志/容器 stdout 等于二次泄露面）。
+//! 日志只提示文件路径与 header 名；运维从宿主文件或 k8s Secret 取令牌。
+//!
+//! 这与 Jenkins 的 `initialAdminPassword` 同一模式：不牺牲可恢复性，但把
+//! 「能改配置」从「能连到端口」收紧为「能读到宿主文件 / 预置 Secret」。
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-use axum::http::{HeaderMap, StatusCode};
-use axum::Json;
+use axum::http::HeaderMap;
+use myriad_error::AppError;
 use rand::{distr::Alphanumeric, RngExt};
-use serde_json::{json, Value};
 use subtle::ConstantTimeEq;
 
 /// 请求头名称。
@@ -117,7 +119,7 @@ fn generate_token() -> String {
 
 /// 把令牌写到仅属主可读的文件。
 ///
-/// 写失败不是致命错误 —— 日志里那份仍然可用，所以只记 warn。
+/// 写失败会记 warn（不含令牌正文）—— 运维仍可用 `MYRIAD_BOOTSTRAP_TOKEN` 预置。
 fn persist_token(path: &Path, token: &str) {
     if let Err(e) = std::fs::write(path, format!("{token}\n")) {
         tracing::warn!(path = %path.display(), "Failed to write bootstrap token file: {e}");
@@ -130,6 +132,47 @@ fn persist_token(path: &Path, token: &str) {
             tracing::warn!(path = %path.display(), "Failed to chmod bootstrap token file: {e}");
         }
     }
+}
+
+/// Operator-facing startup notice when a bootstrap token is required.
+///
+/// **Contract:** the returned string must never embed the secret token itself —
+/// only the file path and how to present the header. This is what goes into
+/// `tracing` so centralized logs cannot become a second leak channel.
+pub(crate) fn bootstrap_required_notice(token_file: &Path) -> String {
+    format!(
+        "🔐 This instance is already configured but the database is unreachable.\n\
+         Setup endpoints that modify configuration now REQUIRE a bootstrap token.\n\
+         Token is written ONLY to: {path}\n\
+         (not echoed in logs — read that file, or set MYRIAD_BOOTSTRAP_TOKEN).\n\
+         Send it as the `{header}` header.",
+        path = token_file.display(),
+        header = BOOTSTRAP_TOKEN_HEADER,
+    )
+}
+
+/// True if `notice` accidentally contains the live token (defensive test/assert).
+pub(crate) fn notice_leaks_token(notice: &str, token: &str) -> bool {
+    let token = token.trim();
+    token.len() >= 8 && notice.contains(token)
+}
+
+/// Stable 401 when setup is locked and the client omitted/forged the token.
+pub(crate) fn bootstrap_token_required_error() -> AppError {
+    AppError::unauthorized("Bootstrap token required")
+        .with_message(
+            "该实例此前已完成配置。修改配置需要提供引导令牌（见 .bootstrap-token 文件或 MYRIAD_BOOTSTRAP_TOKEN，不会打印在启动日志中）。",
+        )
+        .with_hint(format!("Send the `{BOOTSTRAP_TOKEN_HEADER}` header"))
+}
+
+/// Constant-time compare of provided header value against expected token.
+///
+/// Pure (no global state) so unit tests can exercise accept/reject without
+/// initializing process-wide `OnceLock`.
+pub(crate) fn bootstrap_token_matches(expected: &str, provided: &str) -> bool {
+    let provided = provided.trim();
+    provided.len() == expected.len() && provided.as_bytes().ct_eq(expected.as_bytes()).into()
 }
 
 /// 进入 CONFIG_MODE 时调用一次，决定本进程是否需要引导令牌。
@@ -156,14 +199,12 @@ pub fn init_for_config_mode(env_path: &Path) -> Option<&'static str> {
             let path = token_file_path(env_path);
             persist_token(&path, &token);
 
-            tracing::warn!(
-                "🔐 This instance is already configured but the database is unreachable.\n\
-                 Setup endpoints that modify configuration now REQUIRE a bootstrap token.\n\
-                 Token: {token}\n\
-                 Also written to: {}\n\
-                 Send it as the `{BOOTSTRAP_TOKEN_HEADER}` header.",
-                path.display()
+            let notice = bootstrap_required_notice(&path);
+            debug_assert!(
+                !notice_leaks_token(&notice, &token),
+                "bootstrap_required_notice must never embed the token"
             );
+            tracing::warn!("{notice}");
 
             Some(token)
         })
@@ -172,8 +213,8 @@ pub fn init_for_config_mode(env_path: &Path) -> Option<&'static str> {
 
 /// 校验请求携带的引导令牌。
 ///
-/// 首次安装（无令牌要求）直接放行。
-pub fn require_bootstrap(headers: &HeaderMap) -> Result<(), (StatusCode, Json<Value>)> {
+/// 首次安装（无令牌要求）直接放行。失败返回共享 [`AppError`]（401）。
+pub fn require_bootstrap(headers: &HeaderMap) -> Result<(), AppError> {
     let Some(Some(expected)) = BOOTSTRAP_TOKEN.get() else {
         // 未初始化或首次安装 —— 无需令牌。
         return Ok(());
@@ -182,31 +223,19 @@ pub fn require_bootstrap(headers: &HeaderMap) -> Result<(), (StatusCode, Json<Va
     let provided = headers
         .get(BOOTSTRAP_TOKEN_HEADER)
         .and_then(|v| v.to_str().ok())
-        .map(str::trim)
         .unwrap_or("");
 
-    // 长度先比，避免把长度差异也交给常数时间比较（长度本身不是秘密）。
-    let ok =
-        provided.len() == expected.len() && provided.as_bytes().ct_eq(expected.as_bytes()).into();
-
-    if ok {
+    if bootstrap_token_matches(expected, provided) {
         return Ok(());
     }
 
     tracing::warn!(
         "🚨 Setup request REJECTED: missing or invalid {} header. \
          This instance is already configured; reconfiguring requires the bootstrap \
-         token printed in the startup logs.",
+         token from the .bootstrap-token file (not startup logs).",
         BOOTSTRAP_TOKEN_HEADER
     );
-    Err((
-        StatusCode::UNAUTHORIZED,
-        Json(json!({
-            "error": "Bootstrap token required",
-            "message": "该实例此前已完成配置。修改配置需要提供启动日志中打印的引导令牌。",
-            "header": BOOTSTRAP_TOKEN_HEADER,
-        })),
-    ))
+    Err(bootstrap_token_required_error())
 }
 
 /// 校验单个 `.env` 值是否可以安全写入。
@@ -311,5 +340,104 @@ mod tests {
         assert_eq!(a.len(), 48);
         assert_ne!(a, b);
         assert!(a.chars().all(|c| c.is_ascii_alphanumeric()));
+    }
+
+    #[test]
+    fn bootstrap_required_notice_never_embeds_token() {
+        let token = "SuperSecretBootstrapTokenValueABCDEF1234567890XYZ";
+        let path = Path::new("/var/lib/myriad/.bootstrap-token");
+        let notice = bootstrap_required_notice(path);
+        assert!(
+            !notice_leaks_token(&notice, token),
+            "notice must not contain token, got:\n{notice}"
+        );
+        // Must not use the old "Token: {value}" pattern either.
+        assert!(
+            !notice.to_ascii_lowercase().contains("token: s")
+                && !notice.contains("Token: SuperSecret"),
+            "must not echo Token: <secret>: {notice}"
+        );
+        assert!(
+            notice.contains(".bootstrap-token") || notice.contains(path.to_str().unwrap()),
+            "must point at file path: {notice}"
+        );
+        assert!(
+            notice.contains(BOOTSTRAP_TOKEN_HEADER),
+            "must name the header: {notice}"
+        );
+        assert!(
+            notice.contains("not echoed in logs") || notice.contains("MYRIAD_BOOTSTRAP_TOKEN"),
+            "must tell ops where to get the secret: {notice}"
+        );
+    }
+
+    #[test]
+    fn notice_leaks_token_detects_embedded_secret() {
+        let token = "abcdefghijklmnop";
+        assert!(notice_leaks_token(&format!("Token: {token}"), token));
+        assert!(!notice_leaks_token("no secrets here", token));
+        assert!(!notice_leaks_token("short", "ab")); // below min length
+    }
+
+    #[test]
+    fn bootstrap_token_matches_accepts_exact_and_rejects_wrong() {
+        let expected = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKL";
+        assert_eq!(expected.len(), 48);
+        assert!(bootstrap_token_matches(expected, expected));
+        assert!(bootstrap_token_matches(expected, &format!("  {expected}  ")));
+        // Same length, one flipped byte — must reject (constant-time path).
+        let mut wrong = expected.as_bytes().to_vec();
+        wrong[0] ^= 0x01;
+        let wrong_s = String::from_utf8(wrong).expect("ascii");
+        assert!(!bootstrap_token_matches(expected, &wrong_s));
+        assert!(!bootstrap_token_matches(expected, ""));
+        assert!(!bootstrap_token_matches(
+            expected,
+            &expected[..expected.len() - 1]
+        ));
+    }
+
+    #[test]
+    fn bootstrap_token_required_error_is_401_without_secret() {
+        let e = bootstrap_token_required_error();
+        assert_eq!(e.status_u16(), 401);
+        assert_eq!(e.error_label(), "Bootstrap token required");
+        let json = e.to_json();
+        let s = json.to_string();
+        assert!(!s.contains("Token:"), "{s}");
+        assert!(
+            json["message"]
+                .as_str()
+                .unwrap_or("")
+                .contains("bootstrap-token")
+                || json["message"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("MYRIAD_BOOTSTRAP_TOKEN"),
+            "{json}"
+        );
+        assert!(
+            json["hint"]
+                .as_str()
+                .unwrap_or("")
+                .contains(BOOTSTRAP_TOKEN_HEADER),
+            "{json}"
+        );
+    }
+
+    #[tokio::test]
+    async fn bootstrap_token_required_http_response_is_401_json() {
+        use crate::error::HttpError;
+        use axum::body::to_bytes;
+        use axum::http::StatusCode;
+        use axum::response::IntoResponse;
+
+        let resp = HttpError(bootstrap_token_required_error()).into_response();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let bytes = to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .expect("body");
+        let v: serde_json::Value = serde_json::from_slice(&bytes).expect("json");
+        assert_eq!(v["error"], "Bootstrap token required");
     }
 }

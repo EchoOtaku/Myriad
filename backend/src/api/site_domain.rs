@@ -199,9 +199,9 @@ pub fn build_domain_migration_checklist() -> DomainMigrationChecklist {
         },
         backend_restart_for_cors: ChecklistItem {
             key: "backend_restart_for_cors",
-            status: "manual",
+            status: "auto",
             summary:
-                "Restart backend (or full compose stack) so the HTTP CorsLayer reloads CORS_ORIGINS from env",
+                "HTTP CorsLayer allowlist is hot-reloaded after domain change; also persisted under DATA_DIR/site_public.env when DATA_DIR is set. Update host compose .env for cold starts that inject CORS_ORIGINS",
         },
     }
 }
@@ -281,19 +281,111 @@ pub fn apply_site_domain_to_env_content(
     Ok((content, normalized))
 }
 
+/// Paths that receive domain-related env rewrites.
+///
+/// Prefer `DATA_DIR/site_public.env` when `DATA_DIR` is set (Docker volume —
+/// survives recreate). Also write cwd `.env` for non-container / bind-mounted
+/// deploys. Compose-injected env is overridden at runtime via dotenvy + CORS
+/// hot-reload; host `.env` still needs an operator update for next cold start
+/// unless `DATA_DIR/site_public.env` is loaded at boot.
+fn env_write_paths() -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(data) = std::env::var("DATA_DIR") {
+        let dir = Path::new(&data);
+        if dir.is_dir() || dir.parent().map(|p| p.exists()).unwrap_or(false) {
+            paths.push(dir.join("site_public.env"));
+        }
+    }
+    if let Ok(explicit) = std::env::var("MYRIAD_ENV_FILE") {
+        let p = Path::new(&explicit).to_path_buf();
+        if !paths.iter().any(|x| x == &p) {
+            paths.push(p);
+        }
+    }
+    paths.push(Path::new(".env").to_path_buf());
+    paths
+}
+
 fn env_path() -> std::path::PathBuf {
-    Path::new(".env").to_path_buf()
+    env_write_paths()
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| Path::new(".env").to_path_buf())
+}
+
+/// Load durable site public origin overrides (DATA_DIR) after process dotenv.
+/// Call once at startup so Docker volume outlives compose-injected CORS/BASE_URL.
+pub fn load_durable_site_public_env() {
+    if let Ok(data) = std::env::var("DATA_DIR") {
+        let path = Path::new(&data).join("site_public.env");
+        if path.is_file() {
+            match dotenvy::from_path_override(&path) {
+                Ok(_) => {
+                    tracing::info!(
+                        path = %path.display(),
+                        "♻️ Loaded durable site public env (BASE_URL / FRONTEND_URL / CORS_ORIGINS)"
+                    );
+                    if let Ok(cors) = std::env::var("CORS_ORIGINS") {
+                        crate::middleware::cors_runtime::set_cors_origins_csv(&cors);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        error = %e,
+                        "Failed to load durable site_public.env"
+                    );
+                }
+            }
+        }
+    }
 }
 
 fn write_and_reload_env(content: &str) -> Result<(), String> {
-    let path = env_path();
     let normalized = content.replace("\r\n", "\n");
-    fs::write(&path, normalized.as_bytes()).map_err(|e| format!("Failed to write .env: {e}"))?;
+    let paths = env_write_paths();
+    let mut wrote_any = false;
+    let mut last_err = None;
+    for path in &paths {
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() && !parent.exists() {
+                if let Err(e) = fs::create_dir_all(parent) {
+                    last_err = Some(format!("Failed to create {}: {e}", parent.display()));
+                    continue;
+                }
+            }
+        }
+        match fs::write(path, normalized.as_bytes()) {
+            Ok(()) => {
+                tracing::info!(path = %path.display(), "Wrote site domain env keys");
+                wrote_any = true;
+            }
+            Err(e) => {
+                last_err = Some(format!("Failed to write {}: {e}", path.display()));
+            }
+        }
+    }
+    if !wrote_any {
+        return Err(last_err.unwrap_or_else(|| "Failed to write any env path".into()));
+    }
 
-    if let Err(e) = dotenvy::from_path_override(&path) {
-        tracing::warn!("⚠️ Failed to reload .env after site domain change: {e}");
-    } else {
-        tracing::info!("♻️ Environment variables reloaded after site domain change");
+    // Reload from the durable path first, then cwd .env (order: last wins).
+    for path in paths.iter().rev() {
+        if path.is_file() {
+            if let Err(e) = dotenvy::from_path_override(path) {
+                tracing::warn!(
+                    path = %path.display(),
+                    error = %e,
+                    "⚠️ Failed to reload env after site domain change"
+                );
+            }
+        }
+    }
+    tracing::info!("♻️ Environment variables reloaded after site domain change");
+
+    // Hot-update HTTP CorsLayer allowlist (no restart required for CORS).
+    if let Ok(cors) = std::env::var("CORS_ORIGINS") {
+        crate::middleware::cors_runtime::set_cors_origins_csv(&cors);
     }
 
     crate::api::system::CONFIG_RELOAD_REQUESTED.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -303,6 +395,7 @@ fn write_and_reload_env(content: &str) -> Result<(), String> {
 /// `POST /api/admin/site/domain` — atomically update site public origin + env trio.
 pub async fn change_site_domain(
     State(db): State<DatabaseConnection>,
+    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Json(payload): Json<ChangeSiteDomainRequest>,
 ) -> (StatusCode, Json<Value>) {
     let normalized = match validate_and_normalize_origin(&payload.new_origin) {
@@ -338,22 +431,26 @@ pub async fn change_site_domain(
         .or(db_previous)
         .or_else(|| std::env::var("BASE_URL").ok().filter(|s| !s.is_empty()));
 
-    // 1) Persist base_url in configurations DB.
-    if let Err(e) = config_service
-        .update_config("base_url", json!(normalized.clone()))
-        .await
+    // 1) Persist domain keys in configurations DB (survives container recreate).
     {
-        tracing::error!("Failed to save base_url to database: {e}");
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({
-                "success": false,
-                "message": format!("Failed to save base_url to database: {e}"),
-            })),
-        );
+        let mut bag = std::collections::HashMap::new();
+        bag.insert("base_url".to_string(), json!(normalized.clone()));
+        // frontend_url / cors_origins may not be loaded into DynamicConfig yet;
+        // still store for operators and future loaders.
+        bag.insert("frontend_url".to_string(), json!(normalized.clone()));
+        if let Err(e) = config_service.update_configs(bag).await {
+            tracing::error!("Failed to save domain keys to database: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "success": false,
+                    "message": format!("Failed to save domain keys to database: {e}"),
+                })),
+            );
+        }
     }
 
-    // 2) Rewrite .env keys.
+    // 2) Rewrite env files (DATA_DIR durable + cwd .env).
     let path = env_path();
     let existing = if path.exists() {
         match fs::read_to_string(&path) {
@@ -375,7 +472,16 @@ pub async fn change_site_domain(
             }
         }
     } else {
-        String::new()
+        // Prefer merging onto process env snapshot of the three keys.
+        let mut seed = String::new();
+        for key in ["BASE_URL", "FRONTEND_URL", "CORS_ORIGINS"] {
+            if let Ok(v) = std::env::var(key) {
+                if !v.is_empty() {
+                    seed.push_str(&format!("{key}={v}\n"));
+                }
+            }
+        }
+        seed
     };
 
     let (updated, applied_origin) =
@@ -405,10 +511,21 @@ pub async fn change_site_domain(
         );
     }
 
-    // 3) Refresh dynamic config cache (base_url used by OAuth URL builder etc.).
+    // 3) Persist merged CORS in DB after env rewrite (cors_value known).
+    if !cors_value.is_empty() {
+        if let Err(e) = config_service
+            .update_config("cors_origins", json!(cors_value.clone()))
+            .await
+        {
+            tracing::warn!("Failed to save cors_origins to database: {e}");
+        }
+    }
+
+    // 4) Refresh dynamic config cache (base_url used by OAuth URL builder etc.).
+    // Same Arc as AppState.dynamic_config after from_shared — write via State.
     match config_service.load_config().await {
-        Ok(dynamic_config) => {
-            *crate::GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
+        Ok(new_config) => {
+            *dynamic_config.write().await = new_config;
             tracing::info!("✅ Global dynamic configuration cache updated after domain change");
         }
         Err(e) => {
@@ -422,14 +539,14 @@ pub async fn change_site_domain(
         new_origin = %applied_origin,
         previous = ?previous,
         cors = %cors_value,
-        "🌐 Site public domain updated (BASE_URL / FRONTEND_URL / CORS_ORIGINS)"
+        "🌐 Site public domain updated (BASE_URL / FRONTEND_URL / CORS_ORIGINS; CORS layer hot-reloaded)"
     );
 
     (
         StatusCode::OK,
         Json(json!({
             "success": true,
-            "message": "Site domain updated. BASE_URL, FRONTEND_URL, and CORS_ORIGINS rewritten. Complete the operator checklist (DNS/TLS/OAuth/restart).",
+            "message": "Site domain updated. BASE_URL, FRONTEND_URL, and CORS_ORIGINS rewritten; HTTP CORS allowlist hot-reloaded. Complete the operator checklist (DNS/TLS/OAuth). Host compose .env should still be updated for cold starts if not using DATA_DIR/site_public.env.",
             "applied": {
                 "base_url": applied_origin,
                 "frontend_url": applied_origin,
@@ -437,6 +554,7 @@ pub async fn change_site_domain(
                 "previous_origin": previous,
             },
             "checklist": checklist,
+            "cors_hot_reloaded": true,
         })),
     )
 }

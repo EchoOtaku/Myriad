@@ -229,7 +229,13 @@ export function registerReportHandlers(
         tappInstance.id,
         await bridge.getRuntimeGrant(),
       )
-      return { success: true, data: result }
+      // SDK / docs treat data as the reports array (not { success, reports })
+      const reports = Array.isArray(result)
+        ? result
+        : Array.isArray(result?.reports)
+          ? result.reports
+          : []
+      return { success: true, data: reports }
     } catch (error) {
       return {
         success: false,

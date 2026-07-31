@@ -26,7 +26,7 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Spinner } from '../../components/Spinner'
@@ -36,6 +36,7 @@ import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { TappIcon } from '../components/TappIcon'
 import { TappWindowManager } from '../components/TappWindowManager'
+import { useWindowAgentHandler } from '../hooks/useWindowAgentHandler'
 import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
 import { isWebKit, TappPageSandbox } from '../runtime/TappPageSandbox'
@@ -53,9 +54,21 @@ interface TappRunPageProps {
 export function TappRunPage({ tappId }: TappRunPageProps) {
   const [searchParams] = useSearchParams()
   const { isMobile } = useBreakpoints()
-  // 多窗口模式仅限平板和PC端，Safari/WebKit 不支持多窗口
-  const isMultiWindow =
-    searchParams.get('multi') === 'true' && !isMobile && !isWebKit
+  const multiParam = searchParams.get('multi') === 'true' && !isWebKit
+  // Once multi successfully mounted on a wide viewport, keep the multi tree
+  // mounted when the window shrinks to mobile — swapping components would
+  // destroy all iframes and lose Tapp state.
+  const [multiSessionActive, setMultiSessionActive] = useState(false)
+  useEffect(() => {
+    if (multiParam && !isMobile) {
+      setMultiSessionActive(true)
+    }
+    if (!multiParam) {
+      setMultiSessionActive(false)
+    }
+  }, [multiParam, isMobile])
+
+  const isMultiWindow = multiParam && (!isMobile || multiSessionActive)
   const navigate = useNavigate()
 
   // 多窗口模式
@@ -83,6 +96,33 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const navigate = useNavigate()
   const { t, locale } = useI18n()
   const { setImmersiveMode } = useNavigation()
+
+  // Agent ui.open / open_window: multi-window registers via TappWindowManager;
+  // single-window must still handle open_window (navigate to /tapp/run/:id).
+  const windowsRef = useRef<Array<{ windowId: string; tappId: string }>>([])
+  const activeWindowIdRef = useRef<string | null>(null)
+  const openTappWindow = useCallback(
+    async (id: string) => {
+      navigate(`/tapp/run/${encodeURIComponent(id)}`)
+    },
+    [navigate],
+  )
+  const closeWindow = useCallback(() => {
+    navigate('/tapp')
+  }, [navigate])
+  const focusWindow = useCallback(
+    (_windowId: string) => {
+      /* single-window: already focused */
+    },
+    [],
+  )
+  useWindowAgentHandler({
+    windowsRef,
+    activeWindowIdRef,
+    openTappWindow,
+    closeWindow,
+    focusWindow,
+  })
 
   // 动画配置
   const animConfig = useAnimationLevel()

@@ -47,7 +47,16 @@ impl SiteConfig {
         "http://localhost:1102".to_string()
     }
 
-    /// 判断是否为生产环境（HTTPS）
+    /// Whether Cookie `Secure` (and similar) should be set.
+    ///
+    /// Driven by the **public site URL**, not `ENVIRONMENT` alone:
+    /// - `true` only when `base_url` is `https://` (real TLS to the browser).
+    /// - Compose often sets `ENVIRONMENT=production` while still serving
+    ///   `http://host:port` during bring-up; marking cookies Secure there makes
+    ///   the browser drop login/guest cookies and drifts Tapp grant subjects.
+    ///
+    /// Other production gates (CORS, analytics salt) still use
+    /// [`AppConfig::is_production_environment`].
     pub async fn is_production() -> bool {
         let base_url = Self::get_base_url().await;
         base_url.starts_with("https://")

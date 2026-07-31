@@ -1,6 +1,8 @@
-use axum::{http::StatusCode, Json};
+use axum::Json;
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
+
+use crate::error::HttpError;
 
 #[derive(Debug, Deserialize)]
 pub struct IconRecommendRequest {
@@ -23,7 +25,7 @@ pub struct IconRecommendResponse {
 /// 优先级：react-icons/si (品牌图标) > react-icons/fa (Font Awesome) > 外部URL
 pub async fn recommend_icon(
     Json(payload): Json<IconRecommendRequest>,
-) -> Result<Json<IconRecommendResponse>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<IconRecommendResponse>, HttpError> {
     let platform_name = payload.platform_name.to_lowercase();
 
     // 简单的规则匹配 - 可以替换为真正的AI调用

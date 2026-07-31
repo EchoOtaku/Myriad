@@ -8,6 +8,21 @@ use reqwest::{Client, Proxy};
 use std::sync::RwLock;
 use std::time::Duration;
 
+/// Shared Tapp outbound HTTP client (pooled, fixed timeouts, no dynamic proxy).
+///
+/// Used by declared-API / geo helpers and AI image fetch paths. Lives in services
+/// so `tapp_api_service` does not import `crate::api::tapp_runtime`.
+pub static TAPP_HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        .pool_max_idle_per_host(10)
+        .pool_idle_timeout(Duration::from_secs(90))
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .user_agent("Myriad-Tapp/1.0")
+        .build()
+        .expect("Failed to create Tapp HTTP client")
+});
+
 /// 全局 HTTP 客户端（带代理支持）
 static GLOBAL_HTTP_CLIENT: Lazy<RwLock<Option<Client>>> = Lazy::new(|| RwLock::new(None));
 
@@ -57,24 +72,33 @@ impl ProxyConfig {
     }
 }
 
-/// 创建带代理支持的 HTTP 客户端
-pub fn create_client_with_proxy(proxy_config: &ProxyConfig) -> Result<Client, reqwest::Error> {
-    let mut builder = Client::builder()
-        .timeout(Duration::from_secs(30))
-        .connect_timeout(Duration::from_secs(10))
-        .user_agent("Myriad/1.0");
-
-    // 仅当启用代理且配置了代理 URL 时才配置代理
+/// Apply dynamic proxy config (URL + NO_PROXY-style bypass) onto a client builder.
+///
+/// Shared by the global client factory, long-running clients, AiAnalyzer, and
+/// Tencent speech so bypass list behavior stays consistent.
+pub fn apply_proxy(
+    mut builder: reqwest::ClientBuilder,
+    proxy_config: &ProxyConfig,
+) -> Result<reqwest::ClientBuilder, reqwest::Error> {
     if proxy_config.should_use_proxy() {
         if let Some(proxy_url) = &proxy_config.proxy_url {
             tracing::info!("🌐 Configuring HTTP proxy: {}", proxy_url);
 
-            let proxy = Proxy::all(proxy_url)?;
+            let mut proxy = Proxy::all(proxy_url)?;
 
-            // 添加 bypass 规则
+            // Wire NO_PROXY-style bypass into reqwest (was log-only before).
             if !proxy_config.bypass_list.is_empty() {
-                let bypass_str = proxy_config.bypass_list.join(",");
+                let bypass_str = proxy_config
+                    .bypass_list
+                    .iter()
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(",");
                 tracing::debug!("🚫 Proxy bypass list: {}", bypass_str);
+                if let Some(no_proxy) = reqwest::NoProxy::from_string(&bypass_str) {
+                    proxy = proxy.no_proxy(Some(no_proxy));
+                }
             }
 
             builder = builder.proxy(proxy);
@@ -82,8 +106,17 @@ pub fn create_client_with_proxy(proxy_config: &ProxyConfig) -> Result<Client, re
     } else {
         tracing::debug!("🔒 Proxy disabled, using direct connection");
     }
+    Ok(builder)
+}
 
-    builder.build()
+/// 创建带代理支持的 HTTP 客户端
+pub fn create_client_with_proxy(proxy_config: &ProxyConfig) -> Result<Client, reqwest::Error> {
+    let builder = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .user_agent("Myriad/1.0");
+
+    apply_proxy(builder, proxy_config)?.build()
 }
 
 /// 创建不使用代理的 HTTP 客户端
@@ -138,17 +171,17 @@ pub async fn get_long_running_client() -> Client {
     // Image + long LLM-backed image APIs regularly exceed 2–3 minutes.
     let request_timeout = Duration::from_secs(360);
     let proxy_config = ProxyConfig::from_dynamic_config().await;
-    let mut builder = Client::builder()
+    let builder = Client::builder()
         .timeout(request_timeout)
         .connect_timeout(Duration::from_secs(15))
         .user_agent("Myriad-ImageGeneration/1.0");
-    if proxy_config.should_use_proxy() {
-        if let Some(proxy_url) = proxy_config.proxy_url {
-            if let Ok(proxy) = Proxy::all(&proxy_url) {
-                builder = builder.proxy(proxy);
-            }
-        }
-    }
+    let builder = apply_proxy(builder, &proxy_config).unwrap_or_else(|error| {
+        tracing::error!(%error, "Failed to apply proxy to long-running HTTP client");
+        Client::builder()
+            .timeout(request_timeout)
+            .connect_timeout(Duration::from_secs(15))
+            .user_agent("Myriad-ImageGeneration/1.0")
+    });
     builder.build().unwrap_or_else(|error| {
         tracing::error!(%error, "Failed to create long-running HTTP client");
         Client::builder()
@@ -278,6 +311,52 @@ mod tests {
         assert!(config.should_bypass("http://127.0.0.1:8080"));
         assert!(!config.should_bypass("https://api.github.com"));
         assert!(!config.should_bypass("https://api.openai.com"));
+    }
+
+    #[test]
+    fn create_client_with_proxy_accepts_bypass_list() {
+        let config = ProxyConfig {
+            enabled: true,
+            proxy_url: Some("http://127.0.0.1:9".to_string()),
+            bypass_list: vec!["localhost".into(), "127.0.0.1".into(), "bilibili.com".into()],
+        };
+        // Must not ignore bypass: building with NoProxy must succeed.
+        create_client_with_proxy(&config).expect("client with proxy + bypass");
+    }
+
+    #[test]
+    fn apply_proxy_disabled_and_missing_url_stay_direct() {
+        let disabled = ProxyConfig {
+            enabled: false,
+            proxy_url: Some("http://127.0.0.1:9".to_string()),
+            bypass_list: vec![],
+        };
+        assert!(!disabled.should_use_proxy());
+        apply_proxy(reqwest::Client::builder(), &disabled)
+            .expect("disabled")
+            .build()
+            .expect("build");
+        let no_url = ProxyConfig {
+            enabled: true,
+            proxy_url: None,
+            bypass_list: vec!["localhost".into()],
+        };
+        assert!(!no_url.should_use_proxy());
+        apply_proxy(reqwest::Client::builder(), &no_url)
+            .expect("no url")
+            .build()
+            .expect("build");
+    }
+
+    #[test]
+    fn apply_proxy_rejects_invalid_proxy_url() {
+        let bad = ProxyConfig {
+            enabled: true,
+            proxy_url: Some("not a valid proxy url".to_string()),
+            bypass_list: vec![],
+        };
+        assert!(bad.should_use_proxy());
+        assert!(apply_proxy(reqwest::Client::builder(), &bad).is_err());
     }
 
     #[tokio::test]

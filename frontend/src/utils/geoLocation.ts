@@ -264,7 +264,8 @@ async function getClientGeoFromBackend(): Promise<GeoLocationData | null> {
       longitude: data.lon!,
       city: data.city || data.regionName || data.country || '未知',
       country: data.country,
-      countryCode: data.countryCode,
+      // Backend may send camelCase (ip-api) or snake_case (ipapi.co alias).
+      countryCode: data.countryCode || data.country_code,
       region: data.regionName,
       ip: data.ip,
     }

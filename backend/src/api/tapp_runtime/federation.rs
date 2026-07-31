@@ -1,18 +1,24 @@
 //! Role-aware federation feed exposed only through a Tapp runtime grant.
-
-use std::collections::HashSet;
+//!
+//! Merge/dedupe and item projection live in
+//! [`crate::services::tapp_federation_feed`]. This module keeps SQL loaders,
+//! interaction enrichment, and HTTP grant checks.
 
 use axum::{extract::State, http::StatusCode, Json};
+use crate::error::HttpError;
 use chrono::{DateTime, FixedOffset};
 use sea_orm::{DatabaseBackend, DatabaseConnection, FromQueryResult, Statement};
 use serde_json::{json, Value};
 
 use crate::services::permission_service::TappPermission;
+use crate::services::tapp_federation_feed::{
+    federation_feed_includes_personal, federation_feed_item, merge_federation_feed,
+    FederationFeedRowView,
+};
 
 use super::RuntimeGrantContext;
 
 const AP_PUBLIC: &str = "https://www.w3.org/ns/activitystreams#Public";
-const FEED_LIMIT: usize = 100;
 
 #[derive(Debug, FromQueryResult)]
 struct FeedRow {
@@ -31,11 +37,11 @@ struct FeedRow {
     is_local: Option<bool>,
 }
 
-fn db_unavailable() -> (StatusCode, Json<Value>) {
-    (
+fn db_unavailable() -> HttpError {
+    HttpError::from((
         StatusCode::SERVICE_UNAVAILABLE,
         Json(json!({"error": "Federation feed is unavailable"})),
-    )
+    ))
 }
 
 fn feed_item(row: FeedRow) -> Value {
@@ -44,25 +50,21 @@ fn feed_item(row: FeedRow) -> Value {
         .content_json
         .as_ref()
         .and_then(crate::federation::interactions::extract_object_id);
-    json!({
-        "activity_id": row.activity_id,
-        "activity_type": row.activity_type,
-        "object_type": row.object_type,
-        "content_preview": row.content_preview,
-        "content_json": row.content_json,
-        "object_id": object_id,
-        "is_read": false,
-        "created_at": timestamp,
-        "received_at": timestamp,
-        "scope": row.scope,
-        "actor": {
-            "actor_url": row.actor_url,
-            "username": row.username,
-            "domain": row.domain,
-            "display_name": row.display_name,
-            "avatar_url": row.avatar_url,
-            "is_local": row.is_local.unwrap_or(false),
-        },
+    federation_feed_item(FederationFeedRowView {
+        activity_id: &row.activity_id,
+        activity_type: row.activity_type.as_deref().unwrap_or(""),
+        object_type: row.object_type.as_deref(),
+        content_preview: row.content_preview.as_deref(),
+        content_json: row.content_json.as_ref(),
+        object_id: object_id.as_deref(),
+        received_at_rfc3339: &timestamp,
+        scope: &row.scope,
+        actor_url: row.actor_url.as_deref(),
+        username: row.username.as_deref(),
+        domain: row.domain.as_deref(),
+        display_name: row.display_name.as_deref(),
+        avatar_url: row.avatar_url.as_deref(),
+        is_local: row.is_local.unwrap_or(false),
     })
 }
 
@@ -137,7 +139,7 @@ fn local_user_avatar_expr(alias: &str) -> String {
 async fn load_personal_feed(
     db: &DatabaseConnection,
     user_id: i32,
-) -> Result<Vec<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Vec<Value>, HttpError> {
     let base_url = crate::federation::types::get_base_url().await;
     let base = base_url.trim_end_matches('/').to_string();
     let domain = crate::federation::types::extract_domain(&base_url).unwrap_or_default();
@@ -229,7 +231,7 @@ async fn load_personal_feed(
 
 async fn load_public_feed(
     db: &DatabaseConnection,
-) -> Result<Vec<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Vec<Value>, HttpError> {
     let rows = FeedRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"WITH public_items AS (
@@ -293,36 +295,6 @@ async fn load_public_feed(
     Ok(rows.into_iter().map(feed_item).collect())
 }
 
-fn merge_feed(mut personal: Vec<Value>, public: Vec<Value>) -> Vec<Value> {
-    let mut seen = HashSet::new();
-    personal.retain(|item| {
-        item.get("activity_id")
-            .and_then(Value::as_str)
-            .is_some_and(|id| seen.insert(id.to_string()))
-    });
-    for item in public {
-        let Some(id) = item.get("activity_id").and_then(Value::as_str) else {
-            continue;
-        };
-        if seen.insert(id.to_string()) {
-            personal.push(item);
-        }
-    }
-    personal.sort_by(|left, right| {
-        let left_time = left
-            .get("received_at")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        let right_time = right
-            .get("received_at")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        right_time.cmp(left_time)
-    });
-    personal.truncate(FEED_LIMIT);
-    personal
-}
-
 /// GET /api/tapp/federation/feed
 ///
 /// Guests receive public activities only. Authenticated users receive their
@@ -330,19 +302,19 @@ fn merge_feed(mut personal: Vec<Value>, public: Vec<Value>) -> Vec<Value> {
 pub async fn get_federation_feed(
     State(db): State<DatabaseConnection>,
     runtime_grant: RuntimeGrantContext,
-) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+) -> Result<Json<Value>, HttpError> {
     runtime_grant.require(TappPermission::FederationRead)?;
 
     let public = load_public_feed(&db).await?;
-    let is_guest = runtime_grant.subject_id() < 0;
-    let personal = if is_guest {
-        Vec::new()
-    } else {
+    let include_personal = federation_feed_includes_personal(runtime_grant.subject_id());
+    let personal = if include_personal {
         load_personal_feed(&db, runtime_grant.subject_id()).await?
+    } else {
+        Vec::new()
     };
-    let mut items = merge_feed(personal, public);
+    let mut items = merge_federation_feed(personal, public);
     // Re-enrich after merge so public-only rows also get counts / me-flags.
-    if !is_guest {
+    if include_personal {
         enrich_feed_items(&db, runtime_grant.subject_id(), &mut items).await;
     }
     let total = items.len();
@@ -350,18 +322,18 @@ pub async fn get_federation_feed(
     Ok(Json(json!({
         "items": items,
         "total": total,
-        "audience": if is_guest { "public" } else { "public+personal" },
+        "audience": if include_personal { "public+personal" } else { "public" },
     })))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::merge_feed;
+    use crate::services::tapp_federation_feed::merge_federation_feed;
     use serde_json::json;
 
     #[test]
     fn personal_copy_wins_when_public_feed_contains_same_activity() {
-        let merged = merge_feed(
+        let merged = merge_federation_feed(
             vec![json!({
                 "activity_id": "same",
                 "received_at": "2026-07-15T10:00:00+00:00",
@@ -380,7 +352,7 @@ mod tests {
 
     #[test]
     fn merged_feed_is_newest_first() {
-        let merged = merge_feed(
+        let merged = merge_federation_feed(
             vec![json!({
                 "activity_id": "older",
                 "received_at": "2026-07-14T10:00:00+00:00"

@@ -248,4 +248,4 @@ Schema migration 仍由 **backend 启动路径** 负责（与默认部署相同�
 - [UPDATER_QUICKSTART.md](../UPDATER_QUICKSTART.md) — 更新 / 回滚 / 救援  
 - [updater-spec.md](../updater-spec.md) — updater 协议与快照设计（本地 pgdata）  
 - [examples/docker-compose.external-db.example.yml](./examples/docker-compose.external-db.example.yml) — 外部 DB compose 示例  
-- [examples/v3-docker-compose.yml](./examples/v3-docker-compose.yml) — 默认栈内 Postgres 拓扑快照  
+- 仓库根 [`docker-compose.yml`](../../docker-compose.yml) — 默认栈内 Postgres 拓扑  

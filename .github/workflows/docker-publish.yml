@@ -1,15 +1,18 @@
 name: Build and Push Development Images
 
 # Dev/commit image packaging:
-# - push to main/preview/beta: only builds when the commit title contains `-p`
-# - workflow_dispatch: always builds (optional tag / components inputs)
+# - push to main/preview/beta: builds when the commit title contains `-p` or `-full`
+# - `-full` also forces proxy/updater even if unchanged (same as force_infra)
+# - workflow_dispatch: always builds (optional tag / components / force_infra)
 # Production releases are owned by release.yml on tag push.
 #
-# Components: backend + frontend only. Proxy and updater ship on release tags
-# (release.yml). Pass them explicitly via workflow_dispatch `components` when
-# a dev image is needed (e.g. `backend,frontend,proxy`).
+# Components: backend + frontend by default. proxy/updater are auto-included only
+# when their trees changed in the push (or `-full` / force_infra). They keep
+# an independent cadence and are not required to match app tags.
 #
-# Platforms: multi-arch linux/amd64 + linux/arm64 (QEMU + Buildx).
+# Platforms: native multi-arch — linux/amd64 on ubuntu-latest, linux/arm64 on
+# ubuntu-24.04-arm (no QEMU). Per-arch digests are merged into a manifest list.
+# Frontend static assets are built once on amd64 and reused by both runtimes.
 #
 # NOTE: This workflow MUST NOT push the `latest` tag — the updater relies on
 # immutable version tags to roll back reliably.
@@ -26,14 +29,17 @@ on:
         description: "Override docker image tag (optional)"
         required: false
       components:
-        description: "Comma-separated components (default: backend,frontend; pass proxy/updater to include them)"
+        description: "Comma-separated base components (default: backend,frontend)"
         required: false
         default: "backend,frontend"
+      force_infra:
+        description: "Also build proxy/updater even if unchanged"
+        required: false
+        type: boolean
+        default: false
 
 env:
   REGISTRY: docker.io
-  # Proxy + updater are release-only by default (release.yml on tag push).
-  # Include via `components` input when a dev image is needed.
   DEFAULT_COMPONENTS: backend,frontend
 
 jobs:
@@ -43,6 +49,7 @@ jobs:
     outputs:
       should_build: ${{ steps.check.outputs.should_build }}
       skip_reason: ${{ steps.check.outputs.skip_reason }}
+      force_infra: ${{ steps.check.outputs.force_infra }}
     steps:
       - id: check
         env:
@@ -50,22 +57,38 @@ jobs:
           COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            FORCE="${{ inputs.force_infra }}"
             echo "should_build=true" >>"$GITHUB_OUTPUT"
             echo "skip_reason=" >>"$GITHUB_OUTPUT"
-            echo "Manual dispatch — will package"
+            echo "force_infra=${FORCE:-false}" >>"$GITHUB_OUTPUT"
+            echo "Manual dispatch — will package (force_infra=${FORCE:-false})"
             exit 0
           fi
-          # Match rule: commit title (first line) contains substring `-p`.
+          # Title flags:
+          #   -p     → package backend/frontend (+ infra if paths changed)
+          #   -full  → package and force proxy/updater even if unchanged
           TITLE=$(printf '%s\n' "$COMMIT_MSG" | head -n1)
           echo "Commit title: $TITLE"
-          if printf '%s\n' "$TITLE" | grep -qF -- '-p'; then
+          HAS_P=false
+          HAS_FULL=false
+          printf '%s\n' "$TITLE" | grep -qF -- '-p' && HAS_P=true
+          printf '%s\n' "$TITLE" | grep -qF -- '-full' && HAS_FULL=true
+
+          if [ "$HAS_P" = "true" ] || [ "$HAS_FULL" = "true" ]; then
             echo "should_build=true" >>"$GITHUB_OUTPUT"
             echo "skip_reason=" >>"$GITHUB_OUTPUT"
-            echo "Title contains -p — will package"
+            if [ "$HAS_FULL" = "true" ]; then
+              echo "force_infra=true" >>"$GITHUB_OUTPUT"
+              echo "Title contains -full — will package with forced proxy/updater"
+            else
+              echo "force_infra=false" >>"$GITHUB_OUTPUT"
+              echo "Title contains -p — will package"
+            fi
           else
             echo "should_build=false" >>"$GITHUB_OUTPUT"
-            echo "skip_reason=commit title has no -p" >>"$GITHUB_OUTPUT"
-            echo "Title has no -p — skip package"
+            echo "skip_reason=commit title has no -p or -full" >>"$GITHUB_OUTPUT"
+            echo "force_infra=false" >>"$GITHUB_OUTPUT"
+            echo "Title has no -p/-full — skip package"
           fi
 
   # Always runs so GitHub UI shows an explicit skip (not a quiet green empty workflow).
@@ -78,6 +101,7 @@ jobs:
         env:
           SHOULD_BUILD: ${{ needs.should-build.outputs.should_build }}
           SKIP_REASON: ${{ needs.should-build.outputs.skip_reason }}
+          FORCE_INFRA: ${{ needs.should-build.outputs.force_infra }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           {
@@ -88,26 +112,28 @@ jobs:
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             echo "Packaging will run: workflow_dispatch"
             {
-              echo "**Result:** packaging **will run** (manual \`workflow_dispatch\`)."
+              echo "**Result:** packaging **will run** (manual \`workflow_dispatch\`, force_infra=\`$FORCE_INFRA\`)."
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
           if [ "$SHOULD_BUILD" = "true" ]; then
-            echo "Packaging will run: commit title contains -p"
+            echo "Packaging will run (force_infra=$FORCE_INFRA)"
             {
-              echo "**Result:** packaging **will run** (commit title contains \`-p\`)."
+              echo "**Result:** packaging **will run** (commit title flag; force_infra=\`$FORCE_INFRA\`)."
+              echo ""
+              echo "Flags: \`-p\` package · \`-full\` package + force proxy/updater"
             } >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 
-          REASON="${SKIP_REASON:-commit title has no -p}"
+          REASON="${SKIP_REASON:-commit title has no -p or -full}"
           echo "Packaging skipped: $REASON"
           {
             echo "**Result:** packaging **skipped** — $REASON"
             echo ""
             echo "No Docker images were built or pushed."
-            echo "To package on push, include \`-p\` in the **commit title**, or run this workflow via **workflow_dispatch**."
+            echo "To package on push, include \`-p\` or \`-full\` in the **commit title**, or run this workflow via **workflow_dispatch**."
           } >> "$GITHUB_STEP_SUMMARY"
 
   resolve:
@@ -117,28 +143,134 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
+      has_frontend: ${{ steps.gen.outputs.has_frontend }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - id: gen
+        env:
+          FORCE_INFRA: ${{ needs.should-build.outputs.force_infra }}
+          BEFORE: ${{ github.event.before }}
         run: |
-          # Push defaults to backend/frontend. Proxy + updater package on
-          # release tags (release.yml); workflow_dispatch may pass either.
+          set -euo pipefail
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             INPUT="${{ inputs.components }}"
             INPUT="${INPUT:-$DEFAULT_COMPONENTS}"
           else
             INPUT="$DEFAULT_COMPONENTS"
           fi
-          # Convert "backend,frontend" to JSON array.
-          MATRIX=$(echo "$INPUT" | tr ',' '\n' | sed 's/[[:space:]]//g' | grep -v '^$' \
-            | jq -R . | jq -s -c .)
-          echo "matrix=$MATRIX" >>"$GITHUB_OUTPUT"
-          echo "Building: $MATRIX"
 
-  build-and-push:
-    name: Build ${{ matrix.component }}
+          # Base list from input/default (proxy/updater here are treated as requests
+          # but still gated by path changes unless force_infra / -full).
+          BASE=$(echo "$INPUT" | tr ',' '\n' | sed 's/[[:space:]]//g' | grep -v '^$' || true)
+          MATRIX='[]'
+          while IFS= read -r c; do
+            [ -z "$c" ] && continue
+            case "$c" in
+              proxy|updater) continue ;; # handled below
+              *) MATRIX=$(echo "$MATRIX" | jq -c --arg c "$c" '. + [$c]') ;;
+            esac
+          done <<<"$BASE"
+
+          # Diff range for path detection.
+          if [ "${{ github.event_name }}" = "push" ] \
+            && [ -n "$BEFORE" ] \
+            && ! echo "$BEFORE" | grep -Eq '^0+$'; then
+            DIFF_RANGE="${BEFORE}...${{ github.sha }}"
+          else
+            DIFF_RANGE="HEAD~1...HEAD"
+            git rev-parse --verify HEAD~1 >/dev/null 2>&1 || DIFF_RANGE=""
+          fi
+
+          path_changed() {
+            local path="$1"
+            if [ "$FORCE_INFRA" = "true" ]; then
+              return 0
+            fi
+            if [ -z "$DIFF_RANGE" ]; then
+              # Shallow / first commit: treat as changed so infra can ship.
+              return 0
+            fi
+            git diff --name-only "$DIFF_RANGE" -- "$path" | grep -q .
+          }
+
+          # Auto-include infra only when its tree changed (or -full / force_infra).
+          for comp in proxy updater; do
+            if path_changed "$comp/"; then
+              MATRIX=$(echo "$MATRIX" | jq -c --arg c "$comp" '. + [$c]')
+              echo "Including $comp (changed or force_infra/-full)"
+            else
+              echo "Skipping $comp — no path changes"
+            fi
+          done
+
+          # Deduplicate while preserving order.
+          MATRIX=$(echo "$MATRIX" | jq -c 'unique')
+
+          echo "matrix=$MATRIX" >>"$GITHUB_OUTPUT"
+          if echo "$MATRIX" | jq -e 'index("frontend") != null' >/dev/null; then
+            echo "has_frontend=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "has_frontend=false" >>"$GITHUB_OUTPUT"
+          fi
+          echo "Building: $MATRIX"
+          {
+            echo "## Dev packaging components"
+            echo ""
+            echo "- Diff: \`${DIFF_RANGE:-n/a}\`"
+            echo "- force_infra (-full): \`$FORCE_INFRA\`"
+            echo "- Matrix: \`$MATRIX\`"
+          } >>"$GITHUB_STEP_SUMMARY"
+
+  # Arch-independent frontend dist — built once, reused by both platform runtimes.
+  frontend-assets:
+    name: Build frontend assets
     needs: [should-build, resolve]
-    if: needs.should-build.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch'
+    if: |
+      (needs.should-build.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch')
+      && needs.resolve.outputs.has_frontend == 'true'
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Export frontend dist
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.frontend
+          target: export
+          outputs: type=local,dest=frontend-export
+          build-args: |
+            PNPM_VERSION=10.28.2
+            MYRIAD_VERSION=dev-${{ github.sha }}
+            MYRIAD_COMMIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=frontend-assets
+          cache-to: type=gha,scope=frontend-assets,mode=max
+          provenance: false
+
+      - name: Upload frontend export
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-export
+          path: frontend-export
+          if-no-files-found: error
+          retention-days: 1
+
+  build:
+    name: ${{ matrix.component }} (${{ matrix.platform }})
+    needs: [should-build, resolve, frontend-assets]
+    if: |
+      always()
+      && (needs.should-build.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch')
+      && needs.resolve.result == 'success'
+      && (needs.frontend-assets.result == 'success' || needs.frontend-assets.result == 'skipped')
+    runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write
@@ -146,6 +278,9 @@ jobs:
       fail-fast: false
       matrix:
         component: ${{ fromJson(needs.resolve.outputs.matrix) }}
+        platform: [linux/amd64, linux/arm64]
+    env:
+      REGISTRY_IMAGE: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -160,6 +295,8 @@ jobs:
             updater)  echo "dockerfile=updater/Dockerfile"         >>"$GITHUB_OUTPUT" ;;
             *)        echo "::error::unknown component: ${{ matrix.component }}"; exit 1 ;;
           esac
+          platform="${{ matrix.platform }}"
+          echo "platform_pair=${platform//\//-}" >>"$GITHUB_OUTPUT"
 
       - name: Check Dockerfile presence
         id: check
@@ -171,9 +308,12 @@ jobs:
             echo "present=false" >>"$GITHUB_OUTPUT"
           fi
 
-      - name: Set up QEMU
-        if: steps.check.outputs.present == 'true'
-        uses: docker/setup-qemu-action@v3
+      - name: Download frontend assets
+        if: steps.check.outputs.present == 'true' && matrix.component == 'frontend'
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-export
+          path: frontend-export
 
       - name: Set up Docker Buildx
         if: steps.check.outputs.present == 'true'
@@ -187,38 +327,147 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata
+      - name: Build and push by digest
         if: steps.check.outputs.present == 'true'
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ steps.paths.outputs.dockerfile }}
+          platforms: ${{ matrix.platform }}
+          target: runtime
+          build-contexts: ${{ matrix.component == 'frontend' && 'assets=./frontend-export' || '' }}
+          build-args: |
+            PNPM_VERSION=10.28.2
+            MYRIAD_VERSION=dev-${{ github.sha }}
+            MYRIAD_COMMIT_SHA=${{ github.sha }}
+            CARGO_PROFILE=ci-release
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.component }}-${{ steps.paths.outputs.platform_pair }}
+          cache-to: type=gha,scope=${{ matrix.component }}-${{ steps.paths.outputs.platform_pair }},mode=max
+          provenance: false
+
+      - name: Export digest
+        if: steps.check.outputs.present == 'true'
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        if: steps.check.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.component }}-${{ steps.paths.outputs.platform_pair }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Emit absent marker
+        if: steps.check.outputs.present != 'true'
+        run: |
+          mkdir -p /tmp/digests
+          : >"/tmp/digests/ABSENT"
+
+      - name: Upload absent marker
+        if: steps.check.outputs.present != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.component }}-${{ steps.paths.outputs.platform_pair }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Manifest ${{ matrix.component }}
+    needs: [should-build, resolve, build]
+    if: |
+      always()
+      && (needs.should-build.outputs.should_build == 'true' || github.event_name == 'workflow_dispatch')
+      && needs.resolve.result == 'success'
+      && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJson(needs.resolve.outputs.matrix) }}
+    env:
+      REGISTRY_IMAGE: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.component }}-*
+          merge-multiple: true
+
+      - name: Skip if Dockerfile was absent
+        id: gate
+        run: |
+          if [ -f /tmp/digests/ABSENT ]; then
+            echo "present=false" >>"$GITHUB_OUTPUT"
+            echo "::warning::Skipping manifest for ${{ matrix.component }} (Dockerfile absent)"
+          else
+            echo "present=true" >>"$GITHUB_OUTPUT"
+            ls -1 /tmp/digests
+          fi
+
+      - name: Set up Docker Buildx
+        if: steps.gate.outputs.present == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: steps.gate.outputs.present == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        if: steps.gate.outputs.present == 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
+          images: ${{ env.REGISTRY_IMAGE }}
           tags: |
             type=ref,event=branch
             type=sha,prefix=dev-,format=short
             type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
           # `latest` intentionally omitted; release.yml owns release tags.
 
-      - name: Build and push
-        if: steps.check.outputs.present == 'true'
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ${{ steps.paths.outputs.dockerfile }}
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            PNPM_VERSION=10.28.2
-            MYRIAD_VERSION=dev-${{ github.sha }}
-            MYRIAD_COMMIT_SHA=${{ github.sha }}
-          cache-from: type=gha,scope=${{ matrix.component }}
-          cache-to: type=gha,scope=${{ matrix.component }},mode=max
-          platforms: linux/amd64,linux/arm64
-          provenance: false
+      - name: Create manifest list and push
+        if: steps.gate.outputs.present == 'true'
+        working-directory: /tmp/digests
+        env:
+          META_JSON: ${{ steps.meta.outputs.json }}
+        run: |
+          set -euo pipefail
+          TAG_ARGS=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<<"$META_JSON")
+          if [ -z "$TAG_ARGS" ]; then
+            echo "::error::No tags from metadata-action"
+            exit 1
+          fi
+          # Only digest filenames (64 hex chars); ignore markers like ABSENT.
+          set --
+          for f in *; do
+            if printf '%s' "$f" | grep -Eq '^[0-9a-f]{64}$'; then
+              set -- "$@" "$f"
+            fi
+          done
+          if [ "$#" -lt 1 ]; then
+            echo "::error::No per-arch digests found for ${{ matrix.component }}"
+            exit 1
+          fi
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $TAG_ARGS \
+            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' "$@")
 
       - name: Summary
-        if: steps.check.outputs.present == 'true'
+        if: steps.gate.outputs.present == 'true'
         run: |
           {
             echo "## ${{ matrix.component }} dev image pushed"
@@ -227,8 +476,8 @@ jobs:
             echo "${{ steps.meta.outputs.tags }}"
             echo '```'
             echo ""
-            echo "Platforms: \`linux/amd64\`, \`linux/arm64\`"
+            echo "Platforms: native \`linux/amd64\` + \`linux/arm64\` (no QEMU)"
             echo ""
             echo "> Production releases use \`release.yml\` (push a \`v*\` tag)."
-            echo "> Proxy is release-only; pass it via workflow_dispatch \`components\` if needed."
+            echo "> proxy/updater: path change, commit title \`-full\`, or dispatch \`force_infra\`."
           } >> "$GITHUB_STEP_SUMMARY"

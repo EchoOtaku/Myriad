@@ -1233,10 +1233,110 @@ html.dark .arael-question-text {
   color: rgb(0 0 0 / 50%);
   margin-bottom: 8px;
   line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 html.dark .arael-question-context {
   color: rgb(255 255 255 / 45%);
+}
+
+.arael-confirm-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.arael-risk-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.arael-risk-low {
+  color: #047857;
+  background: rgb(16 185 129 / 12%);
+  border-color: rgb(16 185 129 / 25%);
+}
+
+.arael-risk-medium {
+  color: #b45309;
+  background: rgb(245 158 11 / 14%);
+  border-color: rgb(245 158 11 / 30%);
+}
+
+.arael-risk-high,
+.arael-risk-critical {
+  color: #b91c1c;
+  background: rgb(239 68 68 / 12%);
+  border-color: rgb(239 68 68 / 28%);
+}
+
+.arael-risk-unknown {
+  color: rgb(0 0 0 / 55%);
+  background: rgb(0 0 0 / 6%);
+  border-color: rgb(0 0 0 / 10%);
+}
+
+html.dark .arael-risk-low {
+  color: #6ee7b7;
+}
+
+html.dark .arael-risk-medium {
+  color: #fcd34d;
+}
+
+html.dark .arael-risk-high,
+html.dark .arael-risk-critical {
+  color: #fca5a5;
+}
+
+html.dark .arael-risk-unknown {
+  color: rgb(255 255 255 / 55%);
+  background: rgb(255 255 255 / 8%);
+  border-color: rgb(255 255 255 / 12%);
+}
+
+.arael-confirm-ttl {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: rgb(0 0 0 / 50%);
+}
+
+html.dark .arael-confirm-ttl {
+  color: rgb(255 255 255 / 45%);
+}
+
+.arael-confirm-ttl-expired {
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+html.dark .arael-confirm-ttl-expired {
+  color: #fca5a5;
+}
+
+.arael-confirm-expired-hint {
+  font-size: 12px;
+  color: #b91c1c;
+  margin-bottom: 8px;
+  line-height: 1.45;
+}
+
+html.dark .arael-confirm-expired-hint {
+  color: #fca5a5;
+}
+
+.arael-option-btn-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .arael-question-input {

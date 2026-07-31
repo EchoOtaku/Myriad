@@ -6,6 +6,7 @@ import {
   LuCheckCircle,
   LuClock,
   LuCopy,
+  LuCpu,
   LuDatabase,
   LuDownload,
   LuGauge,
@@ -61,6 +62,12 @@ interface RuntimeDiagnosticsResponse {
     commit_sha: string | null
     uptime_seconds: number
     config_mode: boolean
+    /** Process target OS (`linux` / `macos` / `windows`) */
+    os?: string
+    /** Process CPU architecture (`x86_64` / `aarch64` / …) */
+    arch?: string
+    family?: string
+    pointer_width?: string
   }
   checks: DiagnosticCheck[]
   memory: {
@@ -190,7 +197,9 @@ export default function RuntimeDiagnostics({
     return t.config.runtimeDiagnosticsCheckCritical
   }
 
-  const checkLabel = (id: DiagnosticCheck['id'] | 'backend' | 'version') => {
+  const checkLabel = (
+    id: DiagnosticCheck['id'] | 'backend' | 'version' | 'system',
+  ) => {
     const labels = {
       backend: t.config.runtimeDiagnosticsBackend,
       database: t.config.runtimeDiagnosticsDatabase,
@@ -199,8 +208,52 @@ export default function RuntimeDiagnostics({
       memory: t.config.runtimeDiagnosticsMemory,
       location: t.config.runtimeDiagnosticsServerLocation,
       version: t.config.runtimeDiagnosticsVersion,
+      system: t.config.runtimeDiagnosticsSystem,
     }
     return labels[id]
+  }
+
+  const formatOsLabel = (os: string | undefined) => {
+    if (!os) return t.config.runtimeDiagnosticsStatusUnavailable
+    if (os === 'linux') return t.config.runtimeDiagnosticsOsLinux
+    if (os === 'macos') return t.config.runtimeDiagnosticsOsMacos
+    if (os === 'windows') return t.config.runtimeDiagnosticsOsWindows
+    return os
+  }
+
+  const formatArchLabel = (arch: string | undefined) => {
+    if (!arch) return t.config.runtimeDiagnosticsStatusUnavailable
+    if (arch === 'x86_64' || arch === 'amd64')
+      return t.config.runtimeDiagnosticsArchX86_64
+    if (arch === 'aarch64' || arch === 'arm64')
+      return t.config.runtimeDiagnosticsArchAarch64
+    if (arch === 'arm') return t.config.runtimeDiagnosticsArchArm
+    return arch
+  }
+
+  const systemBadge = () => {
+    const arch = data?.runtime.arch
+    if (!arch) return checkStatusLabel('ok')
+    return formatArchLabel(arch)
+  }
+
+  const systemDetail = () => {
+    const runtime = data?.runtime
+    if (!runtime?.os && !runtime?.arch) {
+      return t.config.runtimeDiagnosticsStatusUnavailable
+    }
+    const parts = [
+      formatOsLabel(runtime.os),
+      formatArchLabel(runtime.arch),
+      runtime.pointer_width
+        ? format(t.config.runtimeDiagnosticsPointerWidth, {
+            n: runtime.pointer_width,
+          })
+        : null,
+    ].filter((part): part is string => Boolean(part))
+    return format(t.config.runtimeDiagnosticsSystemDetail, {
+      detail: parts.join(' · '),
+    })
   }
 
   const formatDuration = (seconds: number) => {
@@ -292,10 +345,13 @@ export default function RuntimeDiagnostics({
 
   /** 角标：短词，不要长句；位置/开发模式即使非 ok 也优先写具体信息 */
   const checkBadge = (
-    id: DiagnosticCheck['id'] | 'backend' | 'version',
+    id: DiagnosticCheck['id'] | 'backend' | 'version' | 'system',
     status: DiagnosticStatus,
     latencyMs?: number,
   ): string => {
+    if (id === 'system') {
+      return systemBadge()
+    }
     if (id === 'location') {
       const location = data?.server_location
       if (!location || location.reason === 'unavailable') {
@@ -401,6 +457,13 @@ export default function RuntimeDiagnostics({
             n: requestLatency ?? 0,
           })} · ${formatDuration(data.runtime.uptime_seconds)}`,
           icon: <LuServer />,
+        },
+        {
+          id: 'system' as const,
+          status: 'ok' as DiagnosticStatus,
+          badge: checkBadge('system', 'ok'),
+          detail: systemDetail(),
+          icon: <LuCpu />,
         },
         ...data.checks.map((check) => ({
           id: check.id,

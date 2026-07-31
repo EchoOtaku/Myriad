@@ -5,12 +5,12 @@
 //! `GET /users/{username}/outbox?page=N` 返回 OrderedCollectionPage
 
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::Response,
     Json,
 };
-use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -93,13 +93,11 @@ fn encode_cursor(published_us: i64, id: i32) -> String {
 /// keyset 用 `(published_at, id)` 作游标：每页代价恒定，且新内容只会出现在
 /// 游标之前，不会挪动已经翻过的窗口。
 pub async fn get_outbox(
+    State(db): State<DatabaseConnection>,
     Path(username): Path<String>,
     Query(query): Query<OutboxQuery>,
     headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db()
-        .await
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
     let base_url = get_base_url().await;
 
     let (user_id, _) = get_local_user(&db, &username).await?;
@@ -241,12 +239,10 @@ pub async fn get_outbox(
 /// 可见性规则与 Outbox 完全一致（同一个投影），所以这里不会成为绕过
 /// Outbox 过滤的旁路。
 pub async fn get_activity(
+    State(db): State<DatabaseConnection>,
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, (StatusCode, Json<serde_json::Value>)> {
-    let db = get_db()
-        .await
-        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": e}))))?;
     let base_url = get_base_url().await;
 
     let activity_id = format!("{}/activities/{}", base_url.trim_end_matches('/'), id);
@@ -288,13 +284,6 @@ pub async fn get_activity(
 
 async fn get_base_url() -> String {
     crate::federation::types::get_base_url().await
-}
-
-async fn get_db() -> Result<sea_orm::DatabaseConnection, String> {
-    let db_opt = crate::DB_CONNECTION.read().await;
-    db_opt
-        .clone()
-        .ok_or_else(|| "Database not connected".to_string())
 }
 
 async fn get_local_user(

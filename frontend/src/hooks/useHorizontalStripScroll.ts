@@ -3,6 +3,10 @@
  *
  * Native overflow-x only handles trackpad / shift+wheel / touch. Desktop mouse
  * users need explicit mapping and drag-to-scroll for a usable carousel.
+ *
+ * Important: do **not** `setPointerCapture` on pointerdown. Capturing the strip
+ * retargets the subsequent click to the strip, so child card `onClick` (e.g.
+ * report stage mode) never fires. Capture only after the drag threshold.
  */
 
 import type {
@@ -12,7 +16,7 @@ import type {
   WheelEvent as ReactWheelEvent,
   RefObject,
 } from 'react'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const DRAG_THRESHOLD_PX = 6
 
@@ -41,35 +45,81 @@ export function useHorizontalStripScroll(): HorizontalStripScrollBind {
     startScrollLeft: 0,
     moved: false,
     active: false,
+    /** True once setPointerCapture succeeded for this gesture. */
+    captured: false,
   })
   /** After a drag, suppress the synthetic click that would open a card. */
   const suppressClickRef = useRef(false)
+  /** Window listeners while a gesture is active but not yet captured. */
+  const winListenersRef = useRef<(() => void) | null>(null)
 
-  const endDrag = useCallback((el: HTMLDivElement | null, pointerId: number) => {
+  const removeWinListeners = useCallback(() => {
+    winListenersRef.current?.()
+    winListenersRef.current = null
+  }, [])
+
+  const endDrag = useCallback(
+    (el: HTMLDivElement | null, pointerId: number) => {
+      const state = dragRef.current
+      if (!state.active) return
+
+      if (state.moved) {
+        suppressClickRef.current = true
+      }
+
+      removeWinListeners()
+
+      if (
+        el &&
+        state.captured &&
+        state.pointerId === pointerId &&
+        el.hasPointerCapture?.(pointerId)
+      ) {
+        try {
+          el.releasePointerCapture(pointerId)
+        } catch {
+          /* already released */
+        }
+      }
+
+      state.active = false
+      state.moved = false
+      state.captured = false
+      state.pointerId = -1
+      setIsDragging(false)
+    },
+    [removeWinListeners],
+  )
+
+  // Unmount: drop window listeners / drag state
+  useEffect(() => () => removeWinListeners(), [removeWinListeners])
+
+  const applyDragScroll = useCallback((clientX: number) => {
     const state = dragRef.current
-    if (!state.active) return
+    const el = ref.current
+    if (!el || !state.active) return
 
-    if (state.moved) {
-      suppressClickRef.current = true
-    }
-
-    if (
-      el &&
-      state.pointerId === pointerId &&
-      el.hasPointerCapture?.(pointerId)
-    ) {
+    const dx = clientX - state.startX
+    if (!state.moved) {
+      if (Math.abs(dx) < DRAG_THRESHOLD_PX) return
+      state.moved = true
+      setIsDragging(true)
+      // Capture only after threshold so a plain click still targets the card.
       try {
-        el.releasePointerCapture(pointerId)
+        el.setPointerCapture(state.pointerId)
+        state.captured = true
+        removeWinListeners()
       } catch {
-        /* already released */
+        /* ignore */
       }
     }
 
-    state.active = false
-    state.moved = false
-    state.pointerId = -1
-    setIsDragging(false)
-  }, [])
+    const maxScrollLeft = el.scrollWidth - el.clientWidth
+    el.scrollLeft = Math.max(
+      0,
+      Math.min(maxScrollLeft, state.startScrollLeft - dx),
+    )
+  }, [removeWinListeners])
 
   const onWheel = useCallback((e: ReactWheelEvent<HTMLDivElement>) => {
     // Same rule as WidgetGrid: only pure vertical wheel; leave trackpad
@@ -85,56 +135,69 @@ export function useHorizontalStripScroll(): HorizontalStripScrollBind {
     )
   }, [])
 
-  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    // Mouse primary button only; touch/pen keep native pan via touch-action.
-    if (e.pointerType !== 'mouse' || e.button !== 0) return
-    // Interactive controls inside the strip should not start a drag.
-    const target = e.target as HTMLElement | null
-    if (target?.closest('button, a, input, textarea, select, [role="button"]')) {
-      return
-    }
+  const onPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      // Mouse primary button only; touch/pen keep native pan via touch-action.
+      if (e.pointerType !== 'mouse' || e.button !== 0) return
+      // Interactive controls inside the strip should not start a drag.
+      const target = e.target as HTMLElement | null
+      if (
+        target?.closest('button, a, input, textarea, select, [role="button"]')
+      ) {
+        return
+      }
 
-    const el = e.currentTarget
-    ref.current = el
-    const maxScrollLeft = el.scrollWidth - el.clientWidth
-    if (maxScrollLeft <= 0) return
+      const el = e.currentTarget
+      ref.current = el
+      const maxScrollLeft = el.scrollWidth - el.clientWidth
+      if (maxScrollLeft <= 0) return
 
-    dragRef.current = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startScrollLeft: el.scrollLeft,
-      moved: false,
-      active: true,
-    }
-    // Capture early so pointerup still hits the strip if the cursor leaves.
-    try {
-      el.setPointerCapture(e.pointerId)
-    } catch {
-      /* ignore */
-    }
-  }, [])
+      // End any prior incomplete gesture
+      removeWinListeners()
 
-  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    const state = dragRef.current
-    if (!state.active || state.pointerId !== e.pointerId) return
+      dragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startScrollLeft: el.scrollLeft,
+        moved: false,
+        active: true,
+        captured: false,
+      }
 
-    const el = e.currentTarget
-    ref.current = el
+      // Before capture, track pointer on window so drag still works if the
+      // cursor leaves the strip; also ensures pointerup always ends the gesture.
+      const pointerId = e.pointerId
+      const onWinMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return
+        if (ev.cancelable) ev.preventDefault()
+        applyDragScroll(ev.clientX)
+      }
+      const onWinUp = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return
+        endDrag(ref.current, pointerId)
+      }
+      window.addEventListener('pointermove', onWinMove)
+      window.addEventListener('pointerup', onWinUp)
+      window.addEventListener('pointercancel', onWinUp)
+      winListenersRef.current = () => {
+        window.removeEventListener('pointermove', onWinMove)
+        window.removeEventListener('pointerup', onWinUp)
+        window.removeEventListener('pointercancel', onWinUp)
+      }
+    },
+    [applyDragScroll, endDrag, removeWinListeners],
+  )
 
-    const dx = e.clientX - state.startX
-    if (!state.moved) {
-      if (Math.abs(dx) < DRAG_THRESHOLD_PX) return
-      state.moved = true
-      setIsDragging(true)
-    }
-
-    e.preventDefault()
-    const maxScrollLeft = el.scrollWidth - el.clientWidth
-    el.scrollLeft = Math.max(
-      0,
-      Math.min(maxScrollLeft, state.startScrollLeft - dx),
-    )
-  }, [])
+  const onPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const state = dragRef.current
+      if (!state.active || state.pointerId !== e.pointerId) return
+      ref.current = e.currentTarget
+      if (state.moved && e.cancelable) e.preventDefault()
+      applyDragScroll(e.clientX)
+    },
+    [applyDragScroll],
+  )
 
   const onPointerUp = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
