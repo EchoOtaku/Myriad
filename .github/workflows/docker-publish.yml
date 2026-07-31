@@ -145,7 +145,7 @@ jobs:
       matrix: ${{ steps.gen.outputs.matrix }}
       has_frontend: ${{ steps.gen.outputs.has_frontend }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -234,7 +234,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -255,7 +255,7 @@ jobs:
           provenance: false
 
       - name: Upload frontend export
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-export
           path: frontend-export
@@ -284,7 +284,7 @@ jobs:
       REGISTRY_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Compute dockerfile path
         id: paths
@@ -311,7 +311,7 @@ jobs:
 
       - name: Download frontend assets
         if: steps.check.outputs.present == 'true' && matrix.component == 'frontend'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-export
           path: frontend-export
@@ -357,7 +357,7 @@ jobs:
 
       - name: Upload digest
         if: steps.check.outputs.present == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digests-${{ matrix.component }}-${{ steps.paths.outputs.platform_pair }}
           path: /tmp/digests/*
@@ -372,7 +372,7 @@ jobs:
 
       - name: Upload absent marker
         if: steps.check.outputs.present != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: digests-${{ matrix.component }}-${{ steps.paths.outputs.platform_pair }}
           path: /tmp/digests/*
@@ -400,7 +400,7 @@ jobs:
       REGISTRY_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: digests-${{ matrix.component }}-*
