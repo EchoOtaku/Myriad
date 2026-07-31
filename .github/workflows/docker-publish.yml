@@ -280,7 +280,8 @@ jobs:
         component: ${{ fromJson(needs.resolve.outputs.matrix) }}
         platform: [linux/amd64, linux/arm64]
     env:
-      REGISTRY_IMAGE: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
+      # Job-level env cannot reference the env context; use a literal registry host.
+      REGISTRY_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -395,7 +396,8 @@ jobs:
       matrix:
         component: ${{ fromJson(needs.resolve.outputs.matrix) }}
     env:
-      REGISTRY_IMAGE: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
+      # Job-level env cannot reference the env context; use a literal registry host.
+      REGISTRY_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4

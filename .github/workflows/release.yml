@@ -194,7 +194,8 @@ jobs:
         component: ${{ fromJson(needs.resolve.outputs.build_components) }}
         platform: [linux/amd64, linux/arm64]
     env:
-      REGISTRY_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/myriad-${{ matrix.component }}
+      # Job-level env cannot reference the env context; use secrets + literal host.
+      REGISTRY_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
     steps:
       - uses: actions/checkout@v4
 
@@ -305,7 +306,8 @@ jobs:
       matrix:
         component: ${{ fromJson(needs.resolve.outputs.build_components) }}
     env:
-      REGISTRY_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAMESPACE }}/myriad-${{ matrix.component }}
+      # Job-level env cannot reference the env context; use secrets + literal host.
+      REGISTRY_IMAGE: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/myriad-${{ matrix.component }}
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
