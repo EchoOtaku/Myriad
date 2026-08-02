@@ -1,12 +1,10 @@
 /** App Store style list row. */
 
-import type { useAnimationLevel } from '../../../hooks/useAnimationLevel'
+import type { CSSProperties } from 'react'
 import type { UnifiedAppItem } from './types'
-import { motionShim as motion } from '@lib/motionShim'
 import { forwardRef, useMemo } from 'react'
 import { Spinner } from '../../../components/Spinner'
 import { useI18n } from '../../../contexts/I18nContext'
-import { isExlight } from '../../../hooks/useAnimationLevel'
 import {
   compareVersions,
   packageProgressLabel,
@@ -37,7 +35,7 @@ export const UnifiedAppCard = forwardRef<
     installPhase?: string | null
     installDetail?: string | null
     updating?: boolean
-    animConfig?: ReturnType<typeof useAnimationLevel>
+    /** Stagger index for CSS enter animation (`--as-enter-i`). */
     index?: number
   }
 >(
@@ -56,12 +54,11 @@ export const UnifiedAppCard = forwardRef<
       installPhase,
       installDetail,
       updating,
-      animConfig,
       index = 0,
     },
     ref,
   ) => {
-    const { t, locale } = useI18n()
+    const { t, format } = useI18n()
     const busy = installing || updating
     const busyProgress = installPercent != null && busy
     const hasUpdate =
@@ -69,43 +66,35 @@ export const UnifiedAppCard = forwardRef<
       !!installedVersion &&
       compareVersions(app.version, installedVersion) > 0
 
-    // initial:false — motionShim 未就绪时若写 opacity:0 会卡死不可见
-    // （列表壳层 viewMotionProps 同样策略）
-    const animProps = useMemo(() => {
-      if (!animConfig || isExlight(animConfig)) {
-        return {
-          initial: false as const,
-          animate: undefined,
-          transition: undefined,
-        }
-      }
-      const delay = Math.min(index, 12) * 0.028 * animConfig.durationScale
-      return {
-        initial: false as const,
-        animate: { opacity: 1, y: 0 },
-        transition: {
-          delay,
-          duration: 0.32 * animConfig.durationScale,
-          ease: [0.22, 1, 0.36, 1] as const,
-        },
-      }
-    }, [animConfig, index])
-
     const iconStyle = getAppIconStyle(app)
     const subtitle = app.description || app.author.name
-    const dateValue = date ? new Date(date) : null
-    const dateLabel =
-      dateValue && !Number.isNaN(dateValue.getTime())
-        ? dateValue.toLocaleDateString(locale)
-        : null
+    const dateLabel = useMemo(() => {
+      if (!date) return null
+      const dateValue = new Date(date)
+      if (Number.isNaN(dateValue.getTime())) return null
+
+      const now = new Date()
+      const startOfDay = (d: Date) =>
+        new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+      const dayDiff = Math.floor(
+        (startOfDay(now) - startOfDay(dateValue)) / 86_400_000,
+      )
+
+      // 今日 →「今日更新」；否则「更新于 n 天前」（不写具体日期）
+      if (dayDiff <= 0) return t.tapp.storeUpdatedToday
+      return format(t.tapp.storeUpdatedDaysAgo, { n: dayDiff })
+    }, [date, t.tapp.storeUpdatedToday, t.tapp.storeUpdatedDaysAgo, format])
+
+    // CSS enter stagger (see TappStore.css). Cap keeps long lists cheap.
+    const enterStyle = {
+      ['--as-enter-i' as string]: Math.min(index, 14),
+    } as CSSProperties
 
     return (
-      <motion.div
+      <div
         ref={ref}
-        initial={animProps.initial}
-        animate={animProps.animate}
-        transition={animProps.transition}
         className="as-store-row"
+        style={enterStyle}
         role="button"
         tabIndex={0}
         title={t.tapp.viewDetails}
@@ -209,7 +198,7 @@ export const UnifiedAppCard = forwardRef<
             <i style={{ width: `${Math.max(2, installPercent!)}%` }} />
           </div>
         )}
-      </motion.div>
+      </div>
     )
   },
 )

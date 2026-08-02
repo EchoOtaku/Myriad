@@ -14,6 +14,7 @@ export const enUS: TranslationKeys = {
     edit: 'Edit',
     done: 'Done',
     loading: 'Loading...',
+    loadingSlow: 'Still loading — please wait…',
     error: 'Error',
     success: 'Success',
     retry: 'Retry',
@@ -85,10 +86,9 @@ export const enUS: TranslationKeys = {
     // Agent
     agent: 'Arael Agent',
     aiAssistant: 'Arael Agent',
-    // Tapp
-    tapp: 'Apps',
-    tappStore: 'Tapp Store',
-    openTappStore: 'Open Tapp Store',
+    // Tapp (primary nav /tapp = installed apps list)
+    tapp: 'Tapp Apps',
+    openTapp: 'Open Tapp Apps',
   },
 
   // Greetings
@@ -406,8 +406,6 @@ export const enUS: TranslationKeys = {
       colViews: 'Views',
       colVisitors: 'Visitors',
       colCount: 'Count',
-      showMoreN: 'Show {n} more',
-      showLess: 'Show less',
       dailyChartAria: 'Daily page views and unique visitors',
       empty: 'No visits in this range',
       emptyPages: 'No page data in this range',
@@ -1187,7 +1185,7 @@ export const enUS: TranslationKeys = {
     sliderStrong: 'Strong · blurrier',
     fieldSiteTitle: 'Site Title',
     fieldSiteDescription: 'Site Description',
-    fieldSiteFavicon: 'Site Favicon',
+    fieldSiteFavicon: 'Site Favicon (also used for PWA install icons)',
     fieldSiteKeywords: 'SEO Keywords',
     fieldSiteKeywordsHint:
       'Comma-separated keywords written to the page meta keywords tag',
@@ -2438,8 +2436,9 @@ export const enUS: TranslationKeys = {
   // Widget Grid
   widgetGrid: {
     widgetLibrary: 'Widget Library',
-    undo: 'Undo',
-    redo: 'Redo',
+    searchWidgets: 'Search widgets…',
+    clearSearch: 'Clear search',
+    noSearchResults: 'No matching widgets',
     deleteWidget: 'Delete widget',
     positionConflict: '✖ Position conflict',
     canPlace: 'Can place',
@@ -2769,6 +2768,7 @@ export const enUS: TranslationKeys = {
     initialImport: 'Initial import',
     itemAdded: 'Added {subject}',
     itemRemoved: 'Removed {subject}',
+    loadedLimitHint: 'Only the latest {count} are loaded',
     moreActivities: '{count} more',
     minutes: '{minutes} min',
     hoursMinutes: '{hours} hr {minutes} min',
@@ -3380,6 +3380,8 @@ export const enUS: TranslationKeys = {
     storeFeatured: 'Editor’s Choice',
     storeFeaturedEyebrow: 'Recommended',
     storeLatest: 'New',
+    storeUpdatedToday: 'Updated today',
+    storeUpdatedDaysAgo: 'Updated {n} days ago',
     storeBrowse: 'Browse',
     storeLibrary: 'Library',
     storeSourceSettings: 'Store source settings',

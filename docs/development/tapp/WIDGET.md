@@ -3,6 +3,8 @@
 本文档基于 Myriad 系统内置小组件的实际实现，提供完整的风格规范和开发指南。
 
 > 📌 本文档内容参考系统小组件：QuickStatsWidget、WeatherWidget、WelcomeWidget、QuoteWidget、MusicPlayerWidget 等。
+>
+> 📌 **加载态**：Dashboard 第三方 Widget 的整卡 loading 由宿主 `WidgetSkeleton` 统一处理（见 [宿主加载骨架](#宿主加载骨架widget-skeleton)）；内置小组件也复用同一组件。
 
 > **✨ 样式推荐**：虽然小组件完全支持 Tailwind CSS，但我们**强烈建议使用语义化的原生 CSS**：
 >
@@ -65,6 +67,68 @@ Manifest 顶层 `settings` 由整个 Tapp 共享；`widgets[].settings` 则为�
 **数据怎么进 Widget、怎么更新**：推荐用声明式 `Tapp.api` + 共享 `Tapp.storage` +
 宿主 `refreshPolicy`（默认 storage 变更即刷）。详见下方
 [数据加载与更新](#数据加载与更新)。
+
+**加载态由宿主统一处理**（第三方勿再画整卡 Spinner）：见
+[宿主加载骨架](#宿主加载骨架widget-skeleton)。
+
+---
+
+## 宿主加载骨架（Widget Skeleton）
+
+Dashboard 上**所有第三方 Tapp 小组件**默认接入宿主通用骨架
+（`frontend/src/components/widgets/shared/WidgetSkeleton`），内置系统小组件也复用同一套。
+
+### 设计原则（最高效默认）
+
+| 原则 | 说明 |
+| --- | --- |
+| **宿主兜底** | chunk 懒加载、runtime 同步、iframe `tapp.ready` 前、屏外占位均由宿主画骨架；Tapp 作者**不要**再实现整卡 loading 闪屏 |
+| **单骨 block** | Tapp 外壳默认 `preset="block"`（一块 shimmer），避免复杂多块布局增加 DOM/合成成本 |
+| **延迟绘制 `deferMs=100`** | 用于 **Suspense / sandbox / 库预览**；&lt;100ms 完成则不画 shimmer。chunk 已解析后的 runtime `loading` 用 **`deferMs=0`**，避免「Suspense 结束后再空 100ms」 |
+| **屏外 hold** | 未进视口：`hold` 模式 = **零 bone DOM** + soft 底 + `content-visibility: auto`，**无 shimmer**（多卡零持续 GPU） |
+| **Shimmer 实现** | bone 用 `::after` + `translate3d` 扫光（合成层友好），不用 `background-position` 动画 |
+| **染色** | accent 优先 `manifest.themeColor` 字符串；回退用 CSS `var(--color-primary)`，**禁止**在 render 里 `getComputedStyle` 读色 |
+| **一层一阶段** | 同一阶段不要叠多层动画骨架（Suspense → runtime → sandbox 是串联替换，不是并行叠三层 shimmer） |
+| **ready 超时** | iframe 超过 `readyTimeoutMs`（默认 12s）仍未 ready：骨架底部显示 `common.loadingSlow`（优于无限无反馈） |
+| **尽快 ready** | Widget HTML 应尽早发 `tapp.ready`（或走宿主 bridge 的 ready 路径），缩短骨架可见时间 |
+| **退出动画** | 用 `WidgetSkeletonCover`（`active` 驱动）：ready/数据到位后 **280ms** 淡出 + 微放大溶解，内容在下方露出；禁止 `{cond && <WidgetSkeleton />}` 瞬切 |
+
+### 链路（宿主侧）
+
+```
+useTappWidgets
+  Suspense fallback → WidgetSkeleton(block, deferMs=100, themeColor)
+        │  chunk resolve
+        ▼
+TappWidgetRuntime
+  loading → WidgetSkeleton(block, deferMs=0)     // 接上一段，不再二次 defer
+  未进视口 → WidgetSkeleton(hold)                // 零 bone / 无动画
+  已运行 + 视口内 → TappWidgetSandbox
+        │
+        ▼
+TappWidgetSandbox
+  WidgetSkeletonCover active={!isReady}  // ready 后 280ms 淡出
+  !isReady && >12s → stallMessage (loadingSlow)
+  isReady  → cover 退出动画 → unmount
+```
+
+宿主内置小组件数据加载同理：内容先挂好，`WidgetSkeletonCover active={loading}` 盖在上面再淡出。
+
+**未运行**的 Tapp 仍显示「启动 / 详情」Glass 卡，**不用**骨架冒充加载。
+
+### 作者侧约定
+
+1. **不要**在 `render` 里再铺全屏 Spinner 盖住宿主骨架；若需局部数据 loading，用卡片**内部**小块即可。
+2. 首帧尽快完成 DOM 并触发 **`Tapp.lifecycle.onReady` / 宿主 ready**，以便骨架收起。
+3. 主题色写在 `manifest.themeColor`，加载染色更准。
+4. 需要自定义宿主骨架形状时（仅内置小组件）：`WidgetSkeleton` 的 `preset` /
+   `SkeletonBone` / `accent`；Tapp 作者无此 API，宿主已默认最优路径。
+
+实现参考：
+
+- `frontend/src/components/widgets/shared/WidgetSkeleton.tsx`（`TAPP_WIDGET_SKELETON`）
+- `frontend/src/hooks/useTappWidgets.ts`（Suspense 包装）
+- `frontend/src/tapp/runtime/TappWidgetSandbox.tsx`（ready 前遮罩）
 
 ---
 

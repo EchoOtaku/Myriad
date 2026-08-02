@@ -40,16 +40,20 @@ export function preloadRoutes(routes: string[]): void {
     return
   }
 
-  // 使用requestIdleCallback在空闲时预加载
-  if ('requestIdleCallback' in window) {
-    requestIdleCallback(() => {
-      routes.forEach((route) => {
-        const component = routeComponents[route as keyof typeof routeComponents]
-        if (component && (component as any).preload) {
-          ;(component as any).preload()
-        }
-      })
+  const run = () => {
+    routes.forEach((route) => {
+      const component = routeComponents[route as keyof typeof routeComponents]
+      if (component && (component as any).preload) {
+        ;(component as any).preload()
+      }
     })
+  }
+
+  // 空闲时预加载；无 requestIdleCallback 时退回 macrotask（否则 hover 预取永不执行）
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(run)
+  } else {
+    setTimeout(run, 0)
   }
 }
 
@@ -71,14 +75,26 @@ export const routeComponents = {
 
   // Login - 登录页
   login: lazyWithPreload(() => import('../views/Login')),
+
+  // Tapp 主路径（列表 / 商店 / 详情 / 运行）— 须与 App.tsx lazy() 的 import 路径一致，
+  // 否则 Vite 会拆成另一份 chunk，预取无效。
+  tapp: lazyWithPreload(() => import('../tapp/pages/TappListPage.tsx')),
+  tappStore: lazyWithPreload(() => import('../tapp/pages/TappStorePage.tsx')),
+  tappDetail: lazyWithPreload(() => import('../views/TappDetailView.tsx')),
+  tappRun: lazyWithPreload(() => import('../views/TappRunView.tsx')),
 }
 
 /**
  * 预加载关键路由
  */
 export function preloadCriticalRoutes(): void {
-  // 首页加载后预加载Library和Config
-  preloadRoutes(['library', 'config'])
+  // 首页加载后预加载常用模块（含 Tapp：用户常从导航岛直达）
+  preloadRoutes(['library', 'config', 'tapp', 'tappStore', 'tappDetail', 'tappRun'])
+}
+
+/** Prefetch Tapp chunks on intent (nav hover / focus). */
+export function preloadTappRoutes(): void {
+  preloadRoutes(['tapp', 'tappStore', 'tappDetail', 'tappRun'])
 }
 
 /**

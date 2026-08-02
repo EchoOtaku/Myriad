@@ -147,26 +147,33 @@ runtime 中选择提供方，不会为没有后台实例的 Tapp 隐式启动完
 
 ## 设置 API
 
-**权限**: `storage`
-
-访客不会获得 `storage`，因此只使用 Manifest 中的默认设置；以下读写 API 仅在已登录
-用户的 Tapp runtime 中可用。
+**权限**: `storage`（宿主 gate；与私有 `Tapp.storage` 共用权限位，但**数据命名空间不同**）
 
 ```javascript
-// 获取设置项
+// 获取设置项（未保存时回落 Manifest defaultValue）
 const refreshInterval = await Tapp.settings.get("refreshInterval");
 
-// 设置设置项
+// 设置设置项（仅安装 owner / 管理员；游客会失败）
 await Tapp.settings.set("refreshInterval", 60);
 
-// 获取所有设置
+// 获取所有已保存声明键
 const allSettings = await Tapp.settings.getAll();
 // 返回: { refreshInterval: 60, showDetails: true, ... }
 ```
 
-设置是 Manifest 声明的安装级配置。安装 owner 或管理员可修改；运行该安装的其他已登录用户
-只读。`getAll()` 使用独立 settings 端点一次读取全部已保存值，不会枚举当前用户的私有
-`Tapp.storage`。
+设置是 Manifest 声明的 **installation owner** 级配置，不是当前用户的私有 storage：
+
+| 操作 | 游客（公开安装） | 已登录运行者 | 安装 owner / 管理员 |
+| ---- | ---------------- | ------------ | ------------------- |
+| `get` / `getAll` | ✅ 可读站主已写入的值；未写入用 default | ✅ 只读 | ✅ |
+| `set` | ❌ | ❌（非 owner） | ✅ |
+
+- `get` / `getAll` 走宿主 settings REST（**optional_auth**）：游客运行公开 Tapp 时也能读到
+  安装 owner 已保存的配置，避免后台公开应用（如 Aro）因 401 打空控制台、又读不到站主配置。
+- `set` 要求持久登录，且仅 owner / 当前管理员；值按 type / options / min-max 校验。
+- `getAll()` **不会**枚举私有 `Tapp.storage`；两者键空间独立，不能用 `_settings.*` 经
+  storage API 读写。
+- 不要在 settings 里存放密钥或仅管理员应知的敏感串：凡能打开该公开安装的 visitor 均可读。
 
 ---
 
@@ -724,10 +731,29 @@ const grid = await Tapp.media.getBeatGrid();
 // available=false 或 confidence 低时应回退到实时频谱检测
 // 注意：首次调用会触发全曲下载+分析（约 1-3s），结果按歌缓存
 
-// VIP 歌曲开关（读 media:read / 写 media:control）
+// VIP 歌曲开关（与系统音乐播放器「显示/隐藏 VIP」同一状态）
+// 读 media:read / 写 media:control
 const { skipVip } = await Tapp.media.getSkipVip();
-await Tapp.media.setSkipVip(true); // true=跳过VIP歌曲
+// skipVip === true  → 列表与自动切歌跳过 VIP 曲（系统默认）
+// skipVip === false → 打开 VIP：队列中保留 VIP 曲，允许选中/切到 VIP
+
+// 打开 VIP（显示并参与排队；不等于网易会员已开通）
+await Tapp.media.setSkipVip(false);
+
+// 关闭 VIP（跳过/隐藏 VIP 曲，与播放器「隐藏 VIP 歌曲」一致）
+await Tapp.media.setSkipVip(true);
 ```
+
+**VIP 语义（务必分清两层）**
+
+| 概念 | 含义 |
+| ---- | ---- |
+| **宿主开关 `skipVip`** | 是否从播放队列/自动下一首中排除标记为 VIP 的曲目。默认 **`true`（跳过）**；`setSkipVip(false)` 即用户侧「打开/显示 VIP 歌曲」。 |
+| **平台会员** | 网易云等对 VIP 曲可能仍无完整播放权。即使 `skipVip === false`，无会员/无试听时播放会失败（UI 有 `vipPlayFailed` 类提示），Tapp 应处理 `onStateChange` / 错误而不是假定一定可播。 |
+
+- `getSkipVip` / `setSkipVip` 读写的是主应用 `excludeVipSongs`（`true` ⇔ `skipVip`）。  
+- 资料库等入口的**显式临时点播**可能绕过「跳过 VIP」过滤，与自动连播策略不同。  
+- 需要改开关时申请 `media:control`；只展示当前策略用 `media:read`。
 
 ---
 
@@ -809,6 +835,11 @@ Runtime Grant 中。
 
 游客不会取得 `federation:write`、`federation:message` 或 `federation:files`。Tapp 应使用
 `Tapp.user.getRole()` 调整界面，不要向游客展示关注、发布、私聊、Room 或文件传输操作。
+
+**Channel 列表与游客**：`GET /api/federation/channels` 需要登录。宿主对
+`Tapp.federation.getChannels()` 在**无登录会话**时直接返回
+`{ channels: [], total: 0 }`，不发网络请求（避免控制台 401）；过期会话 401/403 同样降级
+为空列表。Tapp 应在 `getRole() === "guest"` 时隐藏私信/Channel UI，不要依赖错误字符串。
 
 Playground **临时预览不注册** federation handlers、也不签发 Runtime Grant；下列 API 仅在
 正式安装运行后可用。权限映射与 REST 对照见

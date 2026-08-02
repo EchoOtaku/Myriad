@@ -5,13 +5,18 @@
  * - 条只是量级速读，每行数值都直接可见（不靠悬停、不靠配色）
  * - 列头与数据行同一套 CSS Grid 模板，数字列天然对齐
  * - 窄容器（两列半幅 / 小屏）用 container query 叠成「名称 → 条 + 数字」
+ * - 视口大约只露 8 行（CSS max-height）；DOM 先挂 30 条，滚到尾再挂剩余
  */
 
-import type { ReactNode } from 'react'
-import { LuChevronDown, LuChevronUp } from '@lib/icons'
-import React, { useMemo, useState } from 'react'
-import { useI18n } from '../../../contexts/I18nContext'
-import { SettingsButton } from '../../settings'
+import type { ReactNode, UIEvent } from 'react'
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { EmptyCard } from './EmptyCard'
 
 export interface RankSubRow {
@@ -52,11 +57,48 @@ interface RankListProps {
   emptyIcon?: ReactNode
   loading?: boolean
   refreshing?: boolean
-  /** 默认展示行数，超出折叠 */
+  /**
+   * 首批挂载行数（默认 30）。视口仍只约显示 8 行；
+   * 滚到列表尾部后再挂上剩余全部行。
+   */
   initialCount?: number
 }
 
-const DEFAULT_VISIBLE = 8
+/** 首批 DOM 行数：可滚动窗口里大约只看见 8 行 */
+export const DEFAULT_RANK_LOAD_COUNT = 30
+/** 距底部多少 px 视为「滚到尾」 */
+const SCROLL_LOAD_THRESHOLD_PX = 32
+
+/**
+ * 滚动触底后的下一可见行数：直接拉满 total（剩余一次挂完）。
+ * 纯函数便于单测。
+ */
+export function nextRankVisibleCount(
+  current: number,
+  total: number,
+): number {
+  if (total <= 0) return 0
+  if (current >= total) return total
+  return total
+}
+
+/** 首批挂载上限（非法 initialCount 时回退默认 30） */
+export function clampRankInitialLoad(
+  initialCount: unknown,
+  total: number,
+): number {
+  const raw = Math.floor(Number(initialCount))
+  const page =
+    Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_RANK_LOAD_COUNT
+  if (total <= 0) return 0
+  return Math.min(total, page)
+}
+
+/** 列表数据签名：条数 + 首尾 key，用于重置可见窗口（刷新后不沿用旧的「已加载到 N」）。 */
+function rowsWindowKey(rows: RankRow[]): string {
+  if (rows.length === 0) return '0'
+  return `${rows.length}:${rows[0]?.key ?? ''}:${rows[rows.length - 1]?.key ?? ''}`
+}
 
 export const RankList: React.FC<RankListProps> = ({
   rows,
@@ -66,18 +108,53 @@ export const RankList: React.FC<RankListProps> = ({
   emptyIcon,
   loading = false,
   refreshing = false,
-  initialCount = DEFAULT_VISIBLE,
+  initialCount = DEFAULT_RANK_LOAD_COUNT,
 }) => {
-  const { t } = useI18n()
-  const a = t.config.analytics
-  const [expanded, setExpanded] = useState(false)
+  const listRef = useRef<HTMLUListElement>(null)
+  const windowKey = rowsWindowKey(rows)
+  const [visibleCount, setVisibleCount] = useState(() =>
+    clampRankInitialLoad(initialCount, rows.length),
+  )
+
+  // 数据窗口变化时回到首批 30（区间切换 / 刷新）
+  useEffect(() => {
+    setVisibleCount(clampRankInitialLoad(initialCount, rows.length))
+  }, [windowKey, initialCount, rows.length])
 
   const max = useMemo(
     () => Math.max(1, ...rows.map((r) => r.value)),
     [rows],
   )
-  const visible = expanded ? rows : rows.slice(0, initialCount)
-  const hidden = rows.length - visible.length
+  const visible = rows.slice(0, visibleCount)
+  const hasMore = visibleCount < rows.length
+
+  const loadRemaining = useCallback(() => {
+    setVisibleCount((cur) => nextRankVisibleCount(cur, rows.length))
+  }, [rows.length])
+
+  const onListScroll = useCallback(
+    (event: UIEvent<HTMLUListElement>) => {
+      if (!hasMore) return
+      const el = event.currentTarget
+      if (
+        el.scrollTop + el.clientHeight >=
+        el.scrollHeight - SCROLL_LOAD_THRESHOLD_PX
+      ) {
+        loadRemaining()
+      }
+    },
+    [hasMore, loadRemaining],
+  )
+
+  // 首批撑不满滚动区时直接挂剩余（否则无法滚到尾）
+  useLayoutEffect(() => {
+    if (!hasMore) return
+    const el = listRef.current
+    if (!el) return
+    if (el.scrollHeight <= el.clientHeight + 1) {
+      loadRemaining()
+    }
+  }, [hasMore, visibleCount, loadRemaining])
 
   if (rows.length === 0) {
     return <EmptyCard text={emptyText} icon={emptyIcon} loading={loading} />
@@ -109,7 +186,11 @@ export const RankList: React.FC<RankListProps> = ({
         ) : null}
       </div>
 
-      <ul className="site-analytics-rank-list">
+      <ul
+        ref={listRef}
+        className="site-analytics-rank-list"
+        onScroll={onListScroll}
+      >
         {visible.map((row) => {
           const main = formatValue(row.value)
           const aria = [
@@ -127,10 +208,7 @@ export const RankList: React.FC<RankListProps> = ({
           const sub = row.subRows?.filter((s) => s.value > 0) ?? []
           return (
             <li key={row.key} className="site-analytics-rank-item">
-              <div
-                className="site-analytics-rank-row"
-                aria-label={aria}
-              >
+              <div className="site-analytics-rank-row" aria-label={aria}>
                 <div className="site-analytics-rank-label">
                   <span className="site-analytics-rank-name">{row.name}</span>
                   {row.meta ? (
@@ -204,23 +282,6 @@ export const RankList: React.FC<RankListProps> = ({
           )
         })}
       </ul>
-
-      {hidden > 0 || expanded ? (
-        <div className="site-analytics-rank-more">
-          <SettingsButton
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpanded((v) => !v)}
-            icon={
-              expanded ? <LuChevronUp size={13} /> : <LuChevronDown size={13} />
-            }
-          >
-            {expanded
-              ? a.showLess
-              : a.showMoreN.replace('{n}', String(hidden))}
-          </SettingsButton>
-        </div>
-      ) : null}
     </div>
   )
 }

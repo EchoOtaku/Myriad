@@ -8,6 +8,17 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import {
+  absolutizeManifestUrls,
+  clampPwaLogoScale,
+  computeContainedLogoRect,
+  DEFAULT_PWA_LOGO_SCALE,
+  PWA_ICON_BACKGROUND,
+  PWA_LOGO_SCALE_MAX,
+  PWA_LOGO_SCALE_MIN,
+  resolveManifestUrl,
+  resolvePwaIconSourceUrl,
+} from './pwa'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -45,5 +56,102 @@ describe('PWA assets', () => {
         `${icon!.src} should exist and be non-empty`,
       )
     }
+  })
+})
+
+describe('blob manifest URL absolutization', () => {
+  const origin = 'https://kiseki.blog'
+
+  it('resolves relative paths against site origin', () => {
+    assert.equal(resolveManifestUrl('/', origin), 'https://kiseki.blog/')
+    assert.equal(
+      resolveManifestUrl('/icons/pwa/icon-192.png', origin),
+      'https://kiseki.blog/icons/pwa/icon-192.png',
+    )
+    assert.equal(
+      resolveManifestUrl('https://cdn.example/icon.png', origin),
+      'https://cdn.example/icon.png',
+    )
+    assert.equal(resolveManifestUrl('', origin), undefined)
+    assert.equal(resolveManifestUrl(null, origin), undefined)
+  })
+
+  it('rewrites start_url, scope, id, and icon src for blob-served manifests', () => {
+    const manifestPath = resolve(here, '../../public/manifest.webmanifest')
+    const base = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<
+      string,
+      unknown
+    >
+    const next = absolutizeManifestUrls(
+      { ...base, name: 'Kiseki', short_name: 'Kiseki' },
+      origin,
+    )
+
+    assert.equal(next.start_url, 'https://kiseki.blog/')
+    assert.equal(next.scope, 'https://kiseki.blog/')
+    assert.equal(next.id, 'https://kiseki.blog/')
+    assert.equal(next.name, 'Kiseki')
+
+    const icons = next.icons as Array<{ src: string }>
+    assert.ok(icons.length >= 2)
+    for (const icon of icons) {
+      assert.match(icon.src, /^https:\/\/kiseki\.blog\//)
+    }
+  })
+})
+
+describe('PWA logo compositing geometry', () => {
+  it('uses white as the default icon background for transparent logos', () => {
+    assert.equal(PWA_ICON_BACKGROUND, '#ffffff')
+  })
+
+  it('clamps logo scale into a safe range', () => {
+    assert.equal(clampPwaLogoScale(undefined), DEFAULT_PWA_LOGO_SCALE)
+    assert.equal(clampPwaLogoScale('nope'), DEFAULT_PWA_LOGO_SCALE)
+    assert.equal(clampPwaLogoScale(0), PWA_LOGO_SCALE_MIN)
+    assert.equal(clampPwaLogoScale(2), PWA_LOGO_SCALE_MAX)
+    assert.equal(clampPwaLogoScale(0.5), 0.5)
+  })
+
+  it('contain-fits a wide logo centered with padding from logoScale', () => {
+    const rect = computeContainedLogoRect(200, 100, 512, 0.8)
+    assert.ok(Math.abs(rect.width - 512 * 0.8) < 0.001)
+    assert.ok(Math.abs(rect.height - (512 * 0.8) / 2) < 0.001)
+    assert.ok(Math.abs(rect.x - (512 - rect.width) / 2) < 0.001)
+    assert.ok(Math.abs(rect.y - (512 - rect.height) / 2) < 0.001)
+  })
+
+  it('contain-fits a tall logo without overflowing the canvas', () => {
+    const rect = computeContainedLogoRect(100, 200, 192, 1)
+    assert.ok(rect.height <= 192)
+    assert.ok(rect.width <= 192)
+    assert.equal(rect.height, 192)
+    assert.ok(Math.abs(rect.width - 96) < 0.001)
+  })
+
+  it('proxies external icon sources for canvas CORS; keeps same-origin raw', () => {
+    const origin = 'https://kiseki.blog'
+    assert.equal(
+      resolvePwaIconSourceUrl('/favicon.webp', origin),
+      'https://kiseki.blog/favicon.webp',
+    )
+    assert.equal(
+      resolvePwaIconSourceUrl('data:image/png;base64,abc', origin),
+      'data:image/png;base64,abc',
+    )
+    assert.equal(
+      resolvePwaIconSourceUrl('https://cdn.example/logo.png', origin, ''),
+      '/api/proxy/image?url=' +
+        encodeURIComponent('https://cdn.example/logo.png'),
+    )
+    assert.equal(
+      resolvePwaIconSourceUrl(
+        'https://cdn.example/logo.png',
+        origin,
+        'https://api.example',
+      ),
+      'https://api.example/api/proxy/image?url=' +
+        encodeURIComponent('https://cdn.example/logo.png'),
+    )
   })
 })

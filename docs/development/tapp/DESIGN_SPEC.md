@@ -9,6 +9,10 @@ agent 的系统提示。完整细节见同目录 `STYLING.md`。改动本文档�
 - **壁纸主色驱动**：全局强调色来自用户壁纸，随主题变化。任何强调色都用
   `var(--tapp-primary)`，透明度变体用 `rgba(var(--tapp-primary-rgb), α)`。
   **不要硬编码品牌色**（indigo/violet/fuchsia 等 Tailwind 色相不能当强调色）。
+- **加载骨架由宿主兜底**：Dashboard 第三方 Widget 在 chunk / runtime / iframe ready
+  前使用宿主 `WidgetSkeleton`（block、可 `themeColor` 染色、默认 defer 100ms、
+  屏外静态）。Tapp **不要**再做整卡 Spinner 闪屏；尽快 `onReady`。详见
+  [WIDGET.md · 宿主加载骨架](WIDGET.md#宿主加载骨架widget-skeleton)。
 - **Glass 毛玻璃**：容器用半透明背景 + `backdrop-filter: blur(10px)` + 细边框。
   沙箱**不内置** `.glass` 工具类，需要在 `styles.css` 中自己定义：
 

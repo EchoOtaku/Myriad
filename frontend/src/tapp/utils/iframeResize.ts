@@ -24,6 +24,7 @@ import {
   isPageVisible,
   observeResizeAtomic as observeResize,
 } from '../../hooks/animation'
+import { STANDARD_CELL_SIZE } from '../../hooks/useWidgetSize'
 
 /** iframe 容器尺寸信息 */
 export interface IframeDimensions {
@@ -48,8 +49,8 @@ export interface IframeDimensions {
 /** 尺寸变化回调 */
 export type OnResizeCallback = (dimensions: IframeDimensions) => void
 
-/** 标准单元格尺寸常量 */
-const BASE_CELL_SIZE = 90
+/** 与 useWidgetSize 同一基准，保证库预览 / 网格实装比例一致 */
+const BASE_CELL_SIZE = STANDARD_CELL_SIZE
 
 /**
  * 尺寸变化阈值（像素）

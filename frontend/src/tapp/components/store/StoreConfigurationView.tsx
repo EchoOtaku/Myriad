@@ -9,7 +9,10 @@ import {
   FaTimesCircle,
   FaTrash,
 } from '@lib/icons'
-import { motionShim as motion } from '@lib/motionShim'
+import {
+  AnimatePresenceShim as AnimatePresence,
+  motionShim as motion,
+} from '@lib/motionShim'
 import { useState } from 'react'
 import {
   InputItem,
@@ -181,64 +184,82 @@ export function StoreConfigurationView({
         }
         className="as-store-configuration__group"
       >
-        {isAdmin && formMode !== 'closed' && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="managed-list-form as-store-configuration__form"
-          >
-            <div className="managed-list-form-body settings-stack">
-              <p className="settings-text-3" style={{ margin: 0 }}>
-                {formMode === 'edit' ? t.tapp.editSource : t.tapp.addSource}
-              </p>
-              <InputItem
-                itemKey="tapp-store-source-name"
-                label={t.tapp.sourceName}
-                value={draft.name}
-                onChange={(value) => {
-                  setDraft((prev) => ({ ...prev, name: value }))
-                  setFormError('')
-                }}
-                placeholder={t.tapp.sourceName}
-                autoComplete="off"
-              />
-              <InputItem
-                itemKey="tapp-store-source-url"
-                label={t.tapp.sourceUrl}
-                value={draft.url}
-                onChange={(value) => {
-                  setDraft((prev) => ({ ...prev, url: value }))
-                  setFormError('')
-                }}
-                placeholder={t.tapp.sourceUrl}
-                inputType="url"
-                autoComplete="off"
-                error={formError || undefined}
-              />
-              <div className="managed-list-form-actions">
-                <SettingsButton
-                  variant="primary"
-                  size="sm"
-                  icon={formMode === 'edit' ? <FaEdit /> : <FaPlus />}
-                  loading={saving}
-                  disabled={saving}
-                  onClick={() => void handleSubmit()}
-                >
-                  {formMode === 'edit' ? t.tapp.saveSource : t.tapp.addSource}
-                </SettingsButton>
-                <SettingsButton
-                  variant="secondary"
-                  size="sm"
-                  disabled={saving}
-                  onClick={closeForm}
-                >
-                  {t.tapp.cancel}
-                </SettingsButton>
+        <AnimatePresence initial={false}>
+          {isAdmin && formMode !== 'closed' && (
+            <motion.div
+              key="store-source-form"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{
+                opacity: 1,
+                height: 'auto',
+                transition: {
+                  height: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
+                  opacity: { duration: 0.2 },
+                },
+              }}
+              exit={{
+                opacity: 0,
+                height: 0,
+                transition: {
+                  height: { duration: 0.22, ease: [0.4, 0, 1, 1] },
+                  opacity: { duration: 0.14 },
+                },
+              }}
+              className="managed-list-form as-store-configuration__form"
+              style={{ overflow: 'hidden' }}
+            >
+              <div className="managed-list-form-body settings-stack">
+                <p className="settings-text-3" style={{ margin: 0 }}>
+                  {formMode === 'edit' ? t.tapp.editSource : t.tapp.addSource}
+                </p>
+                <InputItem
+                  itemKey="tapp-store-source-name"
+                  label={t.tapp.sourceName}
+                  value={draft.name}
+                  onChange={(value) => {
+                    setDraft((prev) => ({ ...prev, name: value }))
+                    setFormError('')
+                  }}
+                  placeholder={t.tapp.sourceName}
+                  autoComplete="off"
+                />
+                <InputItem
+                  itemKey="tapp-store-source-url"
+                  label={t.tapp.sourceUrl}
+                  value={draft.url}
+                  onChange={(value) => {
+                    setDraft((prev) => ({ ...prev, url: value }))
+                    setFormError('')
+                  }}
+                  placeholder={t.tapp.sourceUrl}
+                  inputType="url"
+                  autoComplete="off"
+                  error={formError || undefined}
+                />
+                <div className="managed-list-form-actions">
+                  <SettingsButton
+                    variant="primary"
+                    size="sm"
+                    icon={formMode === 'edit' ? <FaEdit /> : <FaPlus />}
+                    loading={saving}
+                    disabled={saving}
+                    onClick={() => void handleSubmit()}
+                  >
+                    {formMode === 'edit' ? t.tapp.saveSource : t.tapp.addSource}
+                  </SettingsButton>
+                  <SettingsButton
+                    variant="secondary"
+                    size="sm"
+                    disabled={saving}
+                    onClick={closeForm}
+                  >
+                    {t.tapp.cancel}
+                  </SettingsButton>
+                </div>
               </div>
-            </div>
-          </motion.div>
-        )}
+            </motion.div>
+          )}
+        </AnimatePresence>
         <ManagedList
           className="as-store-configuration__list"
           maxHeight={null}
@@ -296,13 +317,26 @@ export function StoreConfigurationView({
         />
       </SettingGroup>
 
-      {pendingDelete && (
-        <div
-          className="as-store-configuration__confirm"
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="as-store-delete-source-title"
-        >
+      <AnimatePresence initial={false}>
+        {pendingDelete && (
+          <motion.div
+            key="store-delete-confirm"
+            className="as-store-configuration__confirm"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="as-store-delete-source-title"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
+            }}
+            exit={{
+              opacity: 0,
+              y: 8,
+              transition: { duration: 0.16, ease: [0.4, 0, 1, 1] },
+            }}
+          >
           <div className="as-store-configuration__confirm-card glass glass-liquid">
             <h4 id="as-store-delete-source-title" className="as-detail__h">
               {t.tapp.deleteSource}
@@ -343,8 +377,9 @@ export function StoreConfigurationView({
               </SettingsButton>
             </div>
           </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

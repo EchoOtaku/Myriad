@@ -388,6 +388,21 @@ const fixedPageVariants = {
   },
 }
 
+/** Group SPA keys so sibling routes swap without exit→wait→enter blank frames. */
+function animationKeyForPath(pathname: string): string {
+  if (pathname.startsWith('/brew')) return '/brew'
+  // Full-screen Tapp shells keep their own key (fixed chrome, no shared list shell).
+  if (pathname.startsWith('/tapp/run')) return pathname
+  if (pathname === '/tapp/store' || pathname === '/tapp/playground') {
+    return pathname
+  }
+  // /tapp ↔ /tapp/detail/:id share the list shell — skip page-level remount wait.
+  if (pathname === '/tapp' || pathname.startsWith('/tapp/detail')) {
+    return '/tapp'
+  }
+  return pathname
+}
+
 /**
  * 路由内容组件
  */
@@ -404,10 +419,7 @@ function AppRoutes() {
       : 'normal'
 
   // 🎯 动画分组 key：同组路由之间不触发 exit/enter 动画，避免白屏间隙。
-  // Brew 文章路径与列表同属一组，避免 /brew ↔ /brew/item/* 动画重挂载。
-  const animationKey = location.pathname.startsWith('/brew')
-    ? '/brew'
-    : location.pathname
+  const animationKey = animationKeyForPath(location.pathname)
 
   // 🔧 原子化调度器：在路由变化时自动管理页面生命周期
   // 这会在路由切换时清理旧页面的订阅并初始化新页面
@@ -580,7 +592,6 @@ function AppRoutes() {
  * 主应用组件
  */
 export function App() {
-  console.debug('[App] App component rendering...')
   const [_isLayoutReady, setIsLayoutReady] = useState(false)
 
   // 后台 Tapp 宿主延后到首屏渲染 + 入场动画之后再挂载：
@@ -608,7 +619,6 @@ export function App() {
   // 在 React 应用挂载完成后标记就绪状态
   // 注意：这只是通知基本框架已加载，各个组件会独立控制自己的淡入显示
   useEffect(() => {
-    console.debug('[App] App useEffect running...')
     // 使用双帧延迟确保基础布局已渲染
     let innerRafId: number | null = null
     const rafId = requestAnimationFrame(() => {

@@ -24,6 +24,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useNavigation } from '../contexts/NavigationContext'
+import { preloadTappRoutes } from '../utils/codeSplitting'
 import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
@@ -636,9 +637,16 @@ export function NavigationIsland() {
     [handleTransition],
   )
 
+  const handlePrefetchPath = useCallback((path: string) => {
+    if (path === '/tapp' || path.startsWith('/tapp/')) {
+      preloadTappRoutes()
+    }
+  }, [])
+
   // 导航到页面并展开二级导航
   const handleNavToPage = useCallback(
     (path: string) => {
+      handlePrefetchPath(path)
       if (location.pathname === path) {
         // 已在目标页面
         if (secondaryNav?.routePath === path) {
@@ -662,7 +670,7 @@ export function NavigationIsland() {
         }, 150)
       }
     },
-    [location.pathname, secondaryNav, handleExpand, navigate],
+    [location.pathname, secondaryNav, handleExpand, navigate, handlePrefetchPath],
   )
 
   // 进入动画
@@ -901,8 +909,9 @@ export function NavigationIsland() {
           id: 'tapp',
           path: '/tapp',
           icon: <MyriadStoreIcon className="w-5 h-5" />,
-          tooltip: t.nav.tappStore,
-          ariaLabel: t.nav.openTappStore,
+          // /tapp 是已安装应用列表，商店在 /tapp/store — tip 勿用 tappStore
+          tooltip: t.nav.tapp,
+          ariaLabel: t.nav.openTapp,
           matchPrefix: true,
           asAnchor: true,
           moduleKey: 'tapp',
@@ -1094,8 +1103,11 @@ export function NavigationIsland() {
                         data-tooltip={item.tooltip}
                         aria-label={item.ariaLabel}
                         aria-current={ariaCurrent}
+                        onPointerEnter={() => handlePrefetchPath(item.path)}
+                        onFocus={() => handlePrefetchPath(item.path)}
                         onClick={(e) => {
                           e.preventDefault()
+                          handlePrefetchPath(item.path)
                           navigate(item.path)
                         }}
                       >
@@ -1107,6 +1119,8 @@ export function NavigationIsland() {
                         data-tooltip={item.tooltip}
                         aria-label={item.ariaLabel}
                         aria-current={ariaCurrent}
+                        onPointerEnter={() => handlePrefetchPath(item.path)}
+                        onFocus={() => handlePrefetchPath(item.path)}
                         onClick={() => handleNavToPage(item.path)}
                       >
                         {item.icon}

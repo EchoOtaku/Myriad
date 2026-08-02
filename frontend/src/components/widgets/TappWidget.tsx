@@ -29,9 +29,13 @@ import { getTappRuntime } from '../../tapp/runtime/TappRuntime'
 import { TappWidgetSandbox } from '../../tapp/runtime/TappWidgetSandbox'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
 import { getTappIconStyle } from '../../tapp/utils/tappColors'
-import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
+import {
+  TAPP_WIDGET_SKELETON,
+  WidgetSkeleton,
+  WidgetSkeletonCover,
+} from './shared/WidgetSkeleton'
 
 export interface TappWidgetProps extends WidgetComponentProps {
   /** Tapp Widget 完整 ID (tapp.{tappId}.{widgetId}) */
@@ -124,6 +128,10 @@ const TappWidgetPreview = memo(
       code: TappCodeStructure
       widget: RegisteredWidget
     } | null>(null)
+    /** loading → sandbox | static */
+    const [previewPhase, setPreviewPhase] = useState<'loading' | 'static'>(
+      'loading',
+    )
 
     // 获取预览信息（用于回退显示）
     const previewInfo = useMemo(
@@ -142,6 +150,7 @@ const TappWidgetPreview = memo(
         prevTappWidgetIdRef.current = tappWidgetId
         loadedRef.current = false
         setPreviewData(null)
+        setPreviewPhase('loading')
       }
     }, [config?.size, tappWidgetId])
 
@@ -162,18 +171,21 @@ const TappWidgetPreview = memo(
           const widgets = runtime.getRegisteredWidgets()
           const widget = widgets.find((w) => w.id === tappWidgetId)
           if (!widget) {
+            if (!cancelled) setPreviewPhase('static')
             return
           }
 
           // 获取 Tapp 实例
           const tapp = runtime.getTapp(widget.tappId)
           if (!tapp) {
+            if (!cancelled) setPreviewPhase('static')
             return
           }
 
           // 检查 Tapp 是否运行中
           const running = runtime.isRunning(widget.tappId)
           if (!running) {
+            if (!cancelled) setPreviewPhase('static')
             return
           }
 
@@ -201,10 +213,10 @@ const TappWidgetPreview = memo(
               setPreviewData({ tappInstance: tapp, code: tappCode, widget })
             }
           } catch {
-            // 静态预览已经显示，无需额外失败状态。
+            if (!cancelled) setPreviewPhase('static')
           }
         } catch {
-          // 静态预览已经显示，无需额外失败状态。
+          if (!cancelled) setPreviewPhase('static')
         }
       }
 
@@ -256,14 +268,12 @@ const TappWidgetPreview = memo(
       )
     }
 
-    // 回退：显示静态预览
-    // 获取主题色
+    // Prefer CSS var — avoid getComputedStyle in render.
     const themeColor =
-      previewInfo?.themeColor ||
-      getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-primary')
-        .trim() ||
-      '#8b5cf6'
+      previewInfo?.themeColor?.trim() || 'var(--color-primary, #6366f1)'
+
+    // 加载中 / 退出淡出：盖在静态预览或空白上
+    // 回退：显示静态预览
 
     // 根据尺寸判断布局
     const isCompact = config.size === '1x1' || config.size === '2x1'
@@ -277,6 +287,7 @@ const TappWidgetPreview = memo(
     })
 
     return (
+      <div className="relative h-full w-full overflow-hidden rounded-xl">
       <WidgetShell
         padding={12}
         style={{ pointerEvents: 'none' }}
@@ -344,6 +355,13 @@ const TappWidgetPreview = memo(
           </div>
         )}
       </WidgetShell>
+      <WidgetSkeletonCover
+        active={previewPhase === 'loading' && !previewData}
+        preset={TAPP_WIDGET_SKELETON.preset}
+        deferMs={TAPP_WIDGET_SKELETON.deferMs}
+        accent={themeColor}
+      />
+      </div>
     )
   },
 )
@@ -368,7 +386,7 @@ function TappWidgetRuntime({
   const runtime = getTappRuntime()
   const containerRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
-  const { locale } = useI18n()
+  const { locale, t } = useI18n()
   const [widget, setWidget] = useState<RegisteredWidget | null>(null)
   const [tappInstance, setTappInstance] = useState<TappInstance | null>(null)
   const [code, setCode] = useState<TappCodeStructure | null>(null)
@@ -772,15 +790,26 @@ function TappWidgetRuntime({
   const pointerEventsStyle =
     isEditMode || isPreview ? { pointerEvents: 'none' as const } : {}
 
-  // 加载中
+  // Prefer CSS var — avoid getComputedStyle on loading path.
+  const shellThemeColor =
+    tappInstance?.manifest?.themeColor?.trim() ||
+    'var(--color-primary, #6366f1)'
+
+  // 加载中：整卡骨架（chunk 已过 Suspense；defer=0 接上一段）
   if (loading) {
     return (
       <div
         ref={containerRef}
-        className="w-full h-full flex items-center justify-center bg-white/50 dark:bg-neutral-900/50 rounded-xl"
+        className="relative w-full h-full rounded-xl overflow-hidden"
         style={pointerEventsStyle}
       >
-        <Spinner size="md" />
+        <WidgetSkeletonCover
+          active
+          preset={TAPP_WIDGET_SKELETON.preset}
+          deferMs={0}
+          accent={shellThemeColor}
+          label={t.common.loading}
+        />
       </div>
     )
   }
@@ -802,13 +831,9 @@ function TappWidgetRuntime({
 
   // Tapp 未运行 - 显示启动提示（使用 Glass 风格）
   if (!isRunning || !code) {
-    // 获取主题色
     const themeColor =
-      tappInstance.manifest.themeColor ||
-      getComputedStyle(document.documentElement)
-        .getPropertyValue('--color-primary')
-        .trim() ||
-      '#8b5cf6'
+      tappInstance.manifest.themeColor?.trim() ||
+      'var(--color-primary, #6366f1)'
 
     const stoppedIconStyle = getTappIconStyle({
       icon: widget.config.icon || tappInstance.manifest.icon,
@@ -892,6 +917,11 @@ function TappWidgetRuntime({
     )
   }
 
+  // Prefer CSS var over getComputedStyle (avoids forced style recalc on render).
+  const runningThemeColor =
+    tappInstance.manifest.themeColor?.trim() ||
+    'var(--color-primary, #6366f1)'
+
   return (
     <div
       ref={containerRef}
@@ -901,7 +931,7 @@ function TappWidgetRuntime({
     >
       {/* sandboxHostRef 常驻挂载作为视口观察目标；沙箱本身按 inViewport 挂/卸 */}
       <div ref={sandboxHostRef} className="w-full h-full">
-        {inViewport && (
+        {inViewport ? (
           <TappWidgetSandbox
             key={refreshGeneration}
             tappInstance={tappInstance}
@@ -914,6 +944,13 @@ function TappWidgetRuntime({
             onInstanceSettingsChange={handleInstanceSettingsChange}
             onInvalidate={requestRefresh}
             className="w-full h-full"
+          />
+        ) : (
+          // 屏外 hold：无 bone DOM、无动画、content-visibility（多卡零 shimmer 成本）
+          <WidgetSkeleton
+            hold
+            accent={runningThemeColor}
+            label={t.common.loading}
           />
         )}
       </div>

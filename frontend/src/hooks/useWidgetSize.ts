@@ -29,26 +29,66 @@ import { getCachedSize } from './animation'
 import { useHomeResizeObserver } from './animation/pages/home'
 import { isReducedAnimation, useAnimationLevel } from './useAnimationLevel'
 
-// 标准尺寸映射 (像素值基于假设的标准单元格大小)
-// 调整基准：从 120px 降至 80px，以适应 1366px/1440px 等主流笔记本屏幕
-// 在 1920px 屏幕上，单元格约 110px，scale 会被限制在 1
-// 在 1366px 屏幕上，单元格约 75px，scale 约 0.93，接近 1
+/**
+ * Design-time cell size for widget content scale (useWidgetSize).
+ * Library previews and Tapp iframe scaling should use the same baseline so
+ * preview layout matches on-grid rendering at scale=1.
+ *
+ * History: 120 → 80 for common 1366/1440 laptop viewports.
+ * On ~1920px, real cells ≈110px (scale capped at 1.1).
+ * On ~1366px, real cells ≈75px (scale ≈0.93).
+ */
+export const STANDARD_CELL_SIZE = 80
+
+/** Grid span (cols × rows) for each WidgetSize — single source for pixel math. */
+const SIZE_SPANS: Record<WidgetSize, { cols: number; rows: number }> = {
+  '1x1': { cols: 1, rows: 1 },
+  '2x1': { cols: 2, rows: 1 },
+  '4x1': { cols: 4, rows: 1 },
+  '1x2': { cols: 1, rows: 2 },
+  '2x2': { cols: 2, rows: 2 },
+  '2x3': { cols: 2, rows: 3 },
+  '3x2': { cols: 3, rows: 2 },
+  '3x3': { cols: 3, rows: 3 },
+  '2x4': { cols: 2, rows: 4 },
+  '4x2': { cols: 4, rows: 2 },
+  '4x4': { cols: 4, rows: 4 },
+}
+
+/** Standard pixel box at design scale=1 for a widget size. */
+export function getStandardWidgetDimensions(widgetSize: WidgetSize): {
+  width: number
+  height: number
+} {
+  const span = SIZE_SPANS[widgetSize] ?? { cols: 1, rows: 1 }
+  return {
+    width: span.cols * STANDARD_CELL_SIZE,
+    height: span.rows * STANDARD_CELL_SIZE,
+  }
+}
+
 const STANDARD_DIMENSIONS: Record<
   WidgetSize,
   { width: number; height: number }
 > = {
-  '1x1': { width: 80, height: 80 },
-  '2x1': { width: 160, height: 80 },
-  '4x1': { width: 320, height: 80 },
-  '1x2': { width: 80, height: 160 },
-  '2x2': { width: 160, height: 160 },
-  '2x3': { width: 160, height: 240 },
-  '3x2': { width: 240, height: 160 },
-  '3x3': { width: 240, height: 240 },
-  '2x4': { width: 160, height: 320 },
-  '4x2': { width: 320, height: 160 },
-  '4x4': { width: 320, height: 320 },
+  '1x1': getStandardWidgetDimensions('1x1'),
+  '2x1': getStandardWidgetDimensions('2x1'),
+  '4x1': getStandardWidgetDimensions('4x1'),
+  '1x2': getStandardWidgetDimensions('1x2'),
+  '2x2': getStandardWidgetDimensions('2x2'),
+  '2x3': getStandardWidgetDimensions('2x3'),
+  '3x2': getStandardWidgetDimensions('3x2'),
+  '3x3': getStandardWidgetDimensions('3x3'),
+  '2x4': getStandardWidgetDimensions('2x4'),
+  '4x2': getStandardWidgetDimensions('4x2'),
+  '4x4': getStandardWidgetDimensions('4x4'),
 }
+
+/**
+ * Library strip only: shrink the already-standard-sized preview so many
+ * widgets fit. Content still renders at STANDARD_CELL_SIZE (forceScale=1).
+ */
+export const LIBRARY_PREVIEW_DISPLAY_SCALE = 0.65
 
 export interface WidgetSizeInfo {
   /** 缩放比例 0-1, 1为标准尺寸 */

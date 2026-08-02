@@ -3,6 +3,30 @@ use axum::{http::StatusCode, Json};
 use serde_json::{json, Value};
 
 use super::{form_secret_if_plaintext, is_masked_secret_value};
+use crate::services::platform_refresh::humanize_platform_fetch_error;
+
+/// Map UI platform label → internal platform id for error humanization.
+fn test_platform_id(ui_label: &str) -> &'static str {
+    match ui_label {
+        "GitHub" => "github",
+        "Bilibili" => "bilibili",
+        "Steam" => "steam",
+        "YouTube" => "youtube",
+        "Netease Music" | "Netease" => "netease",
+        "Bangumi" => "bangumi",
+        "Discord" => "discord",
+        "X" => "x",
+        "MyAnimeList" => "mal",
+        "Xbox" => "xbox",
+        "PSN" | "PlayStation" => "psn",
+        _ => "platform",
+    }
+}
+
+fn test_fail_message(ui_label: &str, err: impl ToString) -> String {
+    let detail = humanize_platform_fetch_error(test_platform_id(ui_label), &err.to_string());
+    format!("✗ Failed to verify {ui_label}: {detail}")
+}
 
 pub async fn test_platform(
     crate::extract::Db(_db): crate::extract::Db,
@@ -45,7 +69,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify GitHub user: {}", e)
+                        "message": test_fail_message("GitHub", e)
                     })),
                 ),
             }
@@ -84,7 +108,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify Bilibili UID: {}", e)
+                        "message": test_fail_message("Bilibili", e)
                     })),
                 ),
             }
@@ -113,7 +137,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify Steam: {}", e)
+                        "message": test_fail_message("Steam", e)
                     })),
                 ),
             }
@@ -181,7 +205,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify YouTube channel: {}", e)
+                        "message": test_fail_message("YouTube", e)
                     })),
                 ),
             }
@@ -227,7 +251,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify Netease Music user: {}", e)
+                        "message": test_fail_message("Netease Music", e)
                     })),
                 ),
             }
@@ -276,7 +300,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify Bangumi user: {}", e)
+                        "message": test_fail_message("Bangumi", e)
                     })),
                 ),
             }
@@ -327,7 +351,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify Discord token: {}", e)
+                        "message": test_fail_message("Discord", e)
                     })),
                 ),
             }
@@ -398,9 +422,9 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify X user: {}", e)
+                        "message": test_fail_message("X", e)
                     })),
-                ),
+                )
             }
         }
         "MyAnimeList" => {
@@ -457,7 +481,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify MyAnimeList user: {}", e)
+                        "message": test_fail_message("MyAnimeList", e)
                     })),
                 ),
             }
@@ -531,7 +555,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify Xbox player: {}", e)
+                        "message": test_fail_message("Xbox", e)
                     })),
                 ),
             }
@@ -611,7 +635,7 @@ pub async fn test_platform(
                     StatusCode::BAD_REQUEST,
                     Json(json!({
                         "success": false,
-                        "message": format!("✗ Failed to verify PSN player: {}", e)
+                        "message": test_fail_message("PlayStation", e)
                     })),
                 ),
             }

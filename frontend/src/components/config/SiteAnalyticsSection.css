@@ -949,8 +949,16 @@ html.dark .site-analytics-compare[data-palette='red-up'].is-down {
   padding: 0;
   list-style: none;
   background: transparent;
-  /* 展开「显示更多」或带子行时内部滚动，表头/按钮留在外不跟着滚 */
-  max-height: min(20rem, 45vh);
+  /*
+   * 视口大约 8 行（单行 ~2.05rem：上下 padding + 文案行高）。
+   * DOM 可先挂 30 条，滚到尾再挂剩余；表头在外不跟着滚。
+   */
+  --sa-rank-visible-rows: 8;
+  --sa-rank-row-est: 2.05rem;
+  max-height: min(
+    calc(var(--sa-rank-visible-rows) * var(--sa-rank-row-est)),
+    45vh
+  );
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1041,14 +1049,6 @@ html.dark .site-analytics-compare[data-palette='red-up'].is-down {
 .site-analytics-rank-third {
   font-size: 0.72rem;
   color: var(--cfg-text-3);
-}
-
-.site-analytics-rank-more {
-  display: flex;
-  justify-content: center;
-  padding: 0.25rem var(--sa-table-pad-x) 0.35rem;
-  border-top: 1px solid var(--sa-table-divider);
-  background: var(--sa-table-bg);
 }
 
 /*

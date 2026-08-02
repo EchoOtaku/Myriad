@@ -15,6 +15,11 @@ import type { TappCodeStructure, TappInstance } from '../types'
 import type { WidgetRenderProps } from './sandbox'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  TAPP_WIDGET_SKELETON,
+  WidgetSkeletonCover,
+} from '../../components/widgets/shared/WidgetSkeleton'
+import { useI18n } from '../../contexts/I18nContext'
+import {
   buildTappMediaState,
   mergeMusicPlayerEventDetail,
 } from '../../utils/musicPlayerState'
@@ -273,10 +278,13 @@ export const TappWidgetSandbox = memo(
     className,
     style,
   }: TappWidgetSandboxProps) => {
+    const { t } = useI18n()
     const { containerRef, dimensions } = useIframeResize<HTMLDivElement>()
     const iframeRef = useRef<HTMLIFrameElement>(null)
     const bridgeRef = useRef<TappBridge | null>(null)
     const [isReady, setIsReady] = useState(false)
+    /** iframe 长时间不 ready 时展示 stall 文案（优于无限骨架） */
+    const [readyStalled, setReadyStalled] = useState(false)
     /** Bumps when host identity settles after login/logout so iframe remounts. */
     const [subjectEpoch, setSubjectEpoch] = useState(0)
 
@@ -286,6 +294,18 @@ export const TappWidgetSandbox = memo(
       return () =>
         window.removeEventListener('tapp-subject-ready', onSubjectReady)
     }, [])
+
+    useEffect(() => {
+      if (isReady) {
+        setReadyStalled(false)
+        return
+      }
+      setReadyStalled(false)
+      const id = window.setTimeout(() => {
+        setReadyStalled(true)
+      }, TAPP_WIDGET_SKELETON.readyTimeoutMs)
+      return () => window.clearTimeout(id)
+    }, [isReady, tappInstance.id, widgetId, subjectEpoch])
 
     // 🎯 性能优化：使用 ref 存储对象引用，避免依赖变化触发 iframe 重建
     // 这些对象的内容变化通过 ID 来追踪，而不是对象引用
@@ -663,6 +683,11 @@ export const TappWidgetSandbox = memo(
       sendResizeMessage(iframeRef.current, widgetDims)
     }, [isReady, dimensions, stableWidgetProps.size])
 
+    const themeAccent =
+      tappInstance.manifest.themeColor?.trim() ||
+      widgetProps.primaryColor ||
+      'var(--color-primary, #6366f1)'
+
     return (
       <div
         ref={containerRef}
@@ -675,7 +700,15 @@ export const TappWidgetSandbox = memo(
           ...style,
         }}
       >
-        {/* iframe 在 useEffect 中 imperatively 创建，确保 srcdoc 在 DOM 插入前设置（Safari 兼容） */}
+        {/* iframe 由 effect 创建；ready 前骨架盖住，ready 后淡出（内容在下） */}
+        <WidgetSkeletonCover
+          active={!isReady}
+          preset={TAPP_WIDGET_SKELETON.preset}
+          deferMs={TAPP_WIDGET_SKELETON.deferMs}
+          exitMs={TAPP_WIDGET_SKELETON.exitMs}
+          accent={themeAccent}
+          stallMessage={readyStalled ? t.common.loadingSlow : undefined}
+        />
       </div>
     )
   },

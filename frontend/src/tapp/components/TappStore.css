@@ -16,6 +16,11 @@
   --as-fill: color-mix(in srgb, var(--as-label) 6%, transparent);
   --as-fill-strong: color-mix(in srgb, var(--as-label) 10%, transparent);
   --as-sep: color-mix(in srgb, var(--as-label) 5%, transparent);
+  /* Set from TappStore via style; 1 = standard, ~0.6 light, ~0.4 exlight */
+  --as-dur-scale: 1;
+  --as-enter-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --as-enter-dur: calc(0.3s * var(--as-dur-scale));
+  --as-stagger-step: calc(0.022s * var(--as-dur-scale));
 
   width: 100%;
   height: 100%;
@@ -29,6 +34,194 @@
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   text-size-adjust: 100%;
+}
+
+/* Catalog / row / feature enter — CSS-only so motionShim 不能卡死透明度 */
+@keyframes as-store-fade-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes as-store-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes as-store-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes as-store-slide-down {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes as-store-progress-in {
+  from {
+    opacity: 0;
+    transform: scaleX(0.35);
+  }
+
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes as-store-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes as-store-label-swap {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* fill-mode: backwards only — free transform/opacity after enter for hover/press */
+.as-store[data-store-anim='on'] .as-store-row {
+  animation: as-store-fade-up var(--as-enter-dur) var(--as-enter-ease) backwards;
+  animation-delay: calc(
+    min(var(--as-enter-i, 0), 14) * var(--as-stagger-step)
+  );
+}
+
+.as-store[data-store-anim='on'] .as-store__feature-card {
+  animation: as-store-fade-up var(--as-enter-dur) var(--as-enter-ease) backwards;
+  animation-delay: calc(
+    min(var(--as-enter-i, 0), 4) * calc(var(--as-stagger-step) * 1.6)
+  );
+}
+
+/* Page title cross-swap when category / search context changes */
+.as-store[data-store-anim='on'] .as-store__page-title {
+  animation: as-store-fade-up
+    calc(0.26s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+}
+
+/* Empty / loading / error center state */
+.as-store[data-store-anim='on'] .as-store__state {
+  animation: as-store-fade-up
+    calc(0.32s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+}
+
+.as-store[data-store-anim='on'] .as-store__error-banner {
+  animation: as-store-slide-down
+    calc(0.28s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+}
+
+/* Search clear pop-in */
+.as-store[data-store-anim='on'] .as-store__search-clear {
+  animation: as-store-pop-in
+    calc(0.2s * var(--as-dur-scale)) cubic-bezier(0.34, 1.4, 0.64, 1) backwards;
+}
+
+/* Install progress rails */
+.as-store[data-store-anim='on'] .as-store-row__progress {
+  animation: as-store-progress-in
+    calc(0.28s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+  transform-origin: left center;
+}
+
+.as-store[data-store-anim='on'] .as-detail__progress {
+  animation: as-store-fade-up
+    calc(0.28s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+}
+
+/* Detail page staggered content */
+.as-store[data-store-anim='on'] .as-detail__hero {
+  animation: as-store-fade-up
+    calc(0.32s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+}
+
+.as-store[data-store-anim='on'] .as-detail__icon {
+  animation: as-store-pop-in
+    calc(0.34s * var(--as-dur-scale)) cubic-bezier(0.34, 1.25, 0.64, 1)
+    backwards;
+}
+
+.as-store[data-store-anim='on'] .as-detail__perm-card {
+  animation: as-store-fade-up
+    calc(0.26s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+  animation-delay: calc(
+    (0.1s + 0.025s * var(--as-enter-i, 0)) * var(--as-dur-scale)
+  );
+}
+
+@media (hover: hover) {
+  .as-store-row:hover .as-store-row__icon {
+    transform: scale(1.04);
+  }
+
+  .as-store-row__icon {
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
+
+.as-store[data-store-anim='on'] .as-detail__block {
+  animation: as-store-fade-up
+    calc(0.3s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+  animation-delay: calc(
+    (0.08s + 0.04s * var(--as-block-i, 0)) * var(--as-dur-scale)
+  );
+}
+
+/* Get button label swap */
+.as-store[data-store-anim='on'] .as-get__label {
+  animation: as-store-label-swap
+    calc(0.2s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+}
+
+/* Config confirm + form enter */
+.as-store[data-store-anim='on'] .as-store-configuration__confirm-card {
+  animation: as-store-fade-up
+    calc(0.28s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+}
+
+/* Optional spin host (Spinner already has global spin; use for FaSync when needed) */
+.as-store[data-store-anim='on'] .as-store__spin {
+  animation: as-store-spin calc(0.75s * var(--as-dur-scale, 1)) linear infinite;
+}
+
+/* Section titles on catalog remount */
+.as-store[data-store-anim='on'] .as-store__section-title {
+  animation: as-store-fade-up
+    calc(0.26s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
 }
 
 /*
@@ -416,8 +609,13 @@ html.dark .as-store__search-shell:focus-within {
   border: 0;
   border-radius: 0.42rem;
   transition:
-    background 140ms ease,
-    color 140ms ease;
+    background 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 160ms ease,
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.as-store__nav-item:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .as-store__nav-item > svg {
@@ -561,9 +759,9 @@ html.dark .as-store__search-shell:focus-within {
   border: 0;
   border-radius: 999px;
   transition:
-    color 150ms ease,
-    background 150ms ease,
-    transform 140ms ease;
+    color 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .as-store__cat:active {
@@ -619,6 +817,10 @@ html.dark .as-store__search-shell:focus-within {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.as-store__catalog-body {
+  min-width: 0;
 }
 
 .as-store__scroll {
@@ -731,7 +933,7 @@ html.dark .as-store__search-shell:focus-within {
 
 .as-store__see-all {
   margin: 0;
-  padding: 0;
+  padding: 0.15rem 0.2rem;
   color: var(--as-blue, #0a84ff);
   font-size: 0.75rem;
   font-weight: 620;
@@ -741,15 +943,20 @@ html.dark .as-store__search-shell:focus-within {
   background: transparent;
   border: 0;
   border-radius: 0.25rem;
-  transition: opacity 140ms ease;
+  transition:
+    opacity 140ms ease,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 140ms ease;
 }
 
 .as-store__see-all:hover {
-  opacity: 0.78;
+  opacity: 0.88;
+  transform: translateX(2px);
 }
 
 .as-store__see-all:active {
   opacity: 0.62;
+  transform: translateX(3px) scale(0.98);
 }
 
 .as-store__see-all:focus-visible {
@@ -766,6 +973,8 @@ html.dark .as-store__search-shell:focus-within {
 }
 
 .as-store__sort-option {
+  position: relative;
+  z-index: 0;
   min-height: 1.55rem;
   padding: 0 0.65rem;
   color: var(--as-secondary);
@@ -778,9 +987,10 @@ html.dark .as-store__search-shell:focus-within {
   border: 0;
   border-radius: 0.34rem;
   transition:
-    color 140ms ease,
-    background 140ms ease,
-    box-shadow 140ms ease;
+    color 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .as-store__sort-option[data-active='true'] {
@@ -792,7 +1002,7 @@ html.dark .as-store__search-shell:focus-within {
 }
 
 .as-store__sort-option:active {
-  opacity: 0.72;
+  transform: scale(0.96);
 }
 
 .as-store__featured {
@@ -821,8 +1031,8 @@ html.dark .as-store__search-shell:focus-within {
     0 0.5px 0 rgb(255 255 255 / 25%) inset,
     0 8px 24px rgb(0 0 0 / 12%);
   transition:
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    box-shadow 220ms ease;
+    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 240ms ease;
 }
 
 .as-store__feature-card:first-child {
@@ -983,11 +1193,22 @@ html.dark .as-store__search-shell:focus-within {
   cursor: pointer;
   background: transparent;
   border: 0;
-  transition: opacity 140ms ease;
+  border-radius: 0.55rem;
+  transition:
+    opacity 140ms ease,
+    background 160ms ease,
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .as-store-row:active {
-  opacity: 0.68;
+  opacity: 0.78;
+  transform: scale(0.992);
+}
+
+@media (hover: hover) {
+  .as-store-row:hover {
+    background: color-mix(in srgb, var(--as-label) 3.5%, transparent);
+  }
 }
 
 .as-store-row__icon {
@@ -1152,6 +1373,7 @@ html.dark .as-store__search-shell:focus-within {
   min-width: 4rem;
   height: 1.65rem;
   padding: 0 0.75rem;
+  overflow: hidden;
   color: #fff;
   font-size: 0.75rem;
   font-weight: 720;
@@ -1164,14 +1386,39 @@ html.dark .as-store__search-shell:focus-within {
   border: 0;
   border-radius: 999px;
   transition:
-    transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 140ms ease,
-    background 140ms ease,
-    color 140ms ease;
+    background 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    color 180ms ease,
+    filter 160ms ease,
+    min-width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms ease;
+}
+
+.as-get__label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+@media (hover: hover) {
+  .as-get:hover:not(:disabled) {
+    filter: brightness(1.06);
+    transform: translateY(-0.5px);
+  }
+
+  .as-get--open:hover:not(:disabled),
+  .as-get--busy:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--as-blue) 20%, transparent);
+    filter: none;
+  }
 }
 
 .as-get:active:not(:disabled) {
   transform: scale(0.93);
+  filter: brightness(1.04);
 }
 
 .as-get:disabled {
@@ -1203,6 +1450,7 @@ html.dark .as-store__search-shell:focus-within {
   height: 2px;
   overflow: hidden;
   background: var(--as-fill);
+  border-radius: 999px;
 }
 
 .as-store-row__progress > i {
@@ -1241,6 +1489,18 @@ html.dark .as-store__search-shell:focus-within {
   background: var(--as-blue);
   border: 0;
   border-radius: 999px;
+  transition:
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 160ms ease,
+    opacity 140ms ease;
+}
+
+.as-store__retry:hover {
+  filter: brightness(1.06);
+}
+
+.as-store__retry:active {
+  transform: scale(0.96);
 }
 
 /* Partial catalog failure: keep list, surface error + retry */
@@ -1560,6 +1820,19 @@ html.dark .as-store__search-shell:focus-within {
   color: #ff453a;
   background: rgb(255 69 58 / 12%);
   border: 0;
+  transition:
+    opacity 140ms ease,
+    transform 140ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 180ms ease;
+}
+
+.as-detail__link--danger:hover {
+  background: rgb(255 69 58 / 18%);
+}
+
+.as-detail__link--danger:active {
+  transform: scale(0.97);
+  opacity: 0.85;
 }
 
 .as-detail__progress {
@@ -1634,6 +1907,14 @@ html.dark .as-store__search-shell:focus-within {
   text-align: center;
 }
 
+.as-store[data-store-anim='on'] .as-detail__fact {
+  animation: as-store-fade-up
+    calc(0.28s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+  animation-delay: calc(
+    (0.06s + 0.03s * var(--as-enter-i, 0)) * var(--as-dur-scale)
+  );
+}
+
 .as-detail__fact-label {
   color: color-mix(in srgb, var(--as-secondary) 78%, transparent);
   font-size: 0.6875rem;
@@ -1693,6 +1974,16 @@ html.dark .as-store__search-shell:focus-within {
   box-shadow:
     0 1px 2px rgb(0 0 0 / 6%),
     0 10px 28px rgb(0 0 0 / 10%);
+}
+
+.as-store[data-store-anim='on'] .as-detail__preview-frame {
+  animation: as-store-fade-in
+    calc(0.35s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
+}
+
+.as-store[data-store-anim='on'] .as-detail__preview-loading {
+  animation: as-store-fade-in
+    calc(0.25s * var(--as-dur-scale)) var(--as-enter-ease) backwards;
 }
 
 .as-detail__preview-frame iframe {
@@ -2587,6 +2878,10 @@ html.dark .as-detail__perm-card--privileged.checkbox-group-card {
 
 /* Coarse pointer: drop hover-only affordances that feel sticky on touch. */
 @media (hover: none) and (pointer: coarse) {
+  .as-store-row:hover {
+    background: transparent;
+  }
+
   .as-store-row:hover .as-store-row__name {
     color: var(--as-label);
   }
@@ -2595,6 +2890,19 @@ html.dark .as-detail__perm-card--privileged.checkbox-group-card {
     box-shadow:
       0 0.5px 0 rgb(255 255 255 / 25%) inset,
       0 8px 24px rgb(0 0 0 / 12%);
+    transform: none;
+  }
+
+  .as-get:hover:not(:disabled) {
+    filter: none;
+    transform: none;
+  }
+
+  .as-store-row:hover .as-store-row__icon {
+    transform: none;
+  }
+
+  .as-store__see-all:hover {
     transform: none;
   }
 

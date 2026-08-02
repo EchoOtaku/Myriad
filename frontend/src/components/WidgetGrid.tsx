@@ -5,7 +5,7 @@
 
 import type { TappSettingItem } from '../tapp/types'
 
-import { FaChevronRight, FaCog, FaTimes } from '@lib/icons'
+import { FaChevronRight, FaCog, FaSearch, FaTimes } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
@@ -29,6 +29,11 @@ import {
 } from '../hooks/useAnimationLevel'
 import { getPerformanceProfileSync } from '../hooks/usePerformanceProfile'
 import { useDebouncedWindowSize } from '../hooks/useSharedEventListener'
+import {
+  getStandardWidgetDimensions,
+  LIBRARY_PREVIEW_DISPLAY_SCALE,
+} from '../hooks/useWidgetSize'
+import { widgetTypeMatchesLibrarySearch } from './widgetLibrarySearch'
 import { preloadBuiltinWidgets } from './widgets/builtinWidgets'
 import './WidgetGrid.css'
 
@@ -548,6 +553,30 @@ function getWidgetTranslationKey(id: string): string {
   return id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase())
 }
 
+/** Optional display label when host i18n has a key; never required for search. */
+function getWidgetDisplayLabel(
+  widgetType: WidgetType,
+  widgetsI18n: Record<string, unknown>,
+): string {
+  const key = getWidgetTranslationKey(widgetType.id)
+  const translated = widgetsI18n[key]
+  return typeof translated === 'string' && translated.trim()
+    ? translated
+    : widgetType.name
+}
+
+/** Free-form extras from third-party / Tapp widgets when present. */
+function getWidgetSearchExtras(
+  widgetType: WidgetType,
+): Array<string | null | undefined> {
+  const extra = widgetType as WidgetType & {
+    category?: string
+    tappId?: string
+    description?: string
+  }
+  return [extra.category, extra.tappId, extra.description]
+}
+
 interface WidgetGridProps {
   widgets: WidgetConfig[]
   availableWidgets: WidgetType[]
@@ -772,6 +801,12 @@ export default function WidgetGrid({
   // 小组件库横向滚动 - ref 本身不触发重渲染，滚动状态由独立子组件管理，
   // 避免每次滚动都重渲染整个小组件库（含所有预览小组件）导致卡顿
   const libraryScrollRef = useRef<HTMLDivElement>(null)
+  const [librarySearchQuery, setLibrarySearchQuery] = useState('')
+
+  // 离开编辑模式时清空搜索，避免下次进入带着旧筛选
+  useEffect(() => {
+    if (!isEditMode) setLibrarySearchQuery('')
+  }, [isEditMode])
 
   // 进入编辑模式：预热目录内全部类型（含报告壳 + 全 report-* 对应 face）
   useEffect(() => {
@@ -780,6 +815,27 @@ export default function WidgetGrid({
       () => {},
     )
   }, [isEditMode, availableWidgets])
+
+  // 按运行时元数据过滤（内置 + 第三方 Tapp 同一路径，不依赖预置名单）
+  const libraryWidgets = useMemo(() => {
+    const widgetsI18n = t.widgets as Record<string, unknown>
+    return availableWidgets.filter((widgetType) =>
+      widgetTypeMatchesLibrarySearch(librarySearchQuery, {
+        id: widgetType.id,
+        name: widgetType.name,
+        label: getWidgetDisplayLabel(widgetType, widgetsI18n),
+        extras: getWidgetSearchExtras(widgetType),
+      }),
+    )
+  }, [availableWidgets, librarySearchQuery, t.widgets])
+
+  // 搜索结果变化时滚回列表起点，避免停在空区域
+  useEffect(() => {
+    const el = libraryScrollRef.current
+    if (!el) return
+    el.scrollLeft = 0
+    el.scrollTop = 0
+  }, [librarySearchQuery])
 
   // RAF ref for drag handling
   const rafRef = useRef<number | null>(null)
@@ -1456,41 +1512,50 @@ export default function WidgetGrid({
       style={libraryStyle}
     >
       <div className="w-full max-w-480 mx-auto">
-        {/* 控制栏 */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200/30 dark:border-white/5">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100">
-              <img
-                src="/icons/widgets/library.webp"
-                alt=""
-                aria-hidden="true"
-                className="h-5 w-5 object-contain"
-                draggable={false}
-                decoding="async"
-              />
-              <span className="font-bold">{t.widgetGrid.widgetLibrary}</span>
-            </div>
+        {/* 控制栏：标题 → 搜索 */}
+        <div className="flex flex-wrap items-center gap-3 px-4 sm:px-6 py-3 border-b border-gray-200/30 dark:border-white/5">
+          <div className="flex items-center gap-2 text-gray-800 dark:text-gray-100 shrink-0">
+            <img
+              src="/icons/widgets/library.webp"
+              alt=""
+              aria-hidden="true"
+              className="h-5 w-5 object-contain"
+              draggable={false}
+              decoding="async"
+            />
+            <span className="font-bold">{t.widgetGrid.widgetLibrary}</span>
+          </div>
 
-            <div className="h-5 w-px bg-gray-300 dark:bg-white/10 mx-2" />
-
-            <div className="flex items-center gap-1">
+          <div
+            className="relative w-44 sm:w-52 min-w-0"
+            onMouseDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+          >
+            <FaSearch
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-white/40"
+              size={12}
+              aria-hidden
+            />
+            <input
+              type="search"
+              value={librarySearchQuery}
+              onChange={(e) => setLibrarySearchQuery(e.target.value)}
+              placeholder={t.widgetGrid.searchWidgets}
+              aria-label={t.widgetGrid.searchWidgets}
+              autoComplete="off"
+              className="widget-library-search-input w-full rounded-lg border border-gray-200/70 dark:border-white/10 bg-white/70 dark:bg-white/5 py-1.5 pl-8 pr-8 text-sm text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-white/35 outline-none focus:border-blue-400/60 focus:ring-2 focus:ring-blue-400/20 transition-[border-color,box-shadow]"
+            />
+            {librarySearchQuery ? (
               <button
-                onClick={handleUndo}
-                disabled={historyIndex <= 0}
-                className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                data-undo="true"
+                type="button"
+                onClick={() => setLibrarySearchQuery('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-400 hover:text-gray-700 dark:hover:text-white/80 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                title={t.widgetGrid.clearSearch}
+                aria-label={t.widgetGrid.clearSearch}
               >
-                <span className="text-sm font-bold">↶</span>
+                <FaTimes size={10} />
               </button>
-              <button
-                onClick={handleRedo}
-                disabled={historyIndex >= widgetHistory.length - 1}
-                className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-black/5 dark:hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                data-redo="true"
-              >
-                <span className="text-sm font-bold">↷</span>
-              </button>
-            </div>
+            ) : null}
           </div>
         </div>
 
@@ -1518,22 +1583,23 @@ export default function WidgetGrid({
               )
             }}
           >
-            {availableWidgets.map((widgetType) => {
+            {libraryWidgets.length === 0 ? (
+              <div className="flex w-full min-h-28 items-center justify-center px-4 text-sm text-gray-500 dark:text-white/50">
+                {t.widgetGrid.noSearchResults}
+              </div>
+            ) : (
+              libraryWidgets.map((widgetType) => {
               const WidgetComponent = widgetType.component
-              const dim = SIZE_TO_DIMENSIONS[widgetType.defaultSize]
-
-              // 预览缩放比例
-              const scale = 0.65
-              // 模拟的标准单元格大小 (px)
-              const baseSize = 90
-
-              // 实际渲染尺寸
-              const renderWidth = dim.w * baseSize
-              const renderHeight = dim.h * baseSize
-
-              // 占位尺寸 (缩小后)
-              const wrapperWidth = renderWidth * scale
-              const wrapperHeight = renderHeight * scale
+              // 与 useWidgetSize 标准尺寸同步：内部按 scale=1 设计稿渲染，
+              // 外层仅用 LIBRARY_PREVIEW_DISPLAY_SCALE 压缩条带展示。
+              const standard = getStandardWidgetDimensions(
+                widgetType.defaultSize,
+              )
+              const renderWidth = standard.width
+              const renderHeight = standard.height
+              const displayScale = LIBRARY_PREVIEW_DISPLAY_SCALE
+              const wrapperWidth = renderWidth * displayScale
+              const wrapperHeight = renderHeight * displayScale
 
               // 构造预览配置
               const previewConfig: WidgetConfig = {
@@ -1548,9 +1614,10 @@ export default function WidgetGrid({
                     : undefined,
               }
 
-              const libraryLabel =
-                (t.widgets as any)[getWidgetTranslationKey(widgetType.id)] ||
-                widgetType.name
+              const libraryLabel = getWidgetDisplayLabel(
+                widgetType,
+                t.widgets as Record<string, unknown>,
+              )
               const isLibrary1x1 = widgetType.defaultSize === '1x1'
 
               return (
@@ -1590,7 +1657,7 @@ export default function WidgetGrid({
                           style={{
                             width: renderWidth,
                             height: renderHeight,
-                            transform: `scale(${scale})`,
+                            transform: `scale(${displayScale})`,
                           }}
                         >
                           <Suspense fallback={null}>
@@ -1618,7 +1685,7 @@ export default function WidgetGrid({
                         style={{
                           width: renderWidth,
                           height: renderHeight,
-                          transform: `scale(${scale})`,
+                          transform: `scale(${displayScale})`,
                         }}
                       >
                         <Suspense fallback={null}>
@@ -1641,16 +1708,19 @@ export default function WidgetGrid({
                   )}
                 </motion.div>
               )
-            })}
+            })
+            )}
 
             {/* 占位符，确保最后一个元素右侧有间距 */}
-            <div className="w-2 shrink-0" />
+            {libraryWidgets.length > 0 ? (
+              <div className="w-2 shrink-0" />
+            ) : null}
           </div>
 
           {/* 右侧提示：还有更多小组件可滚动查看，一旦手动滑动过就不再出现 */}
           <LibraryScrollHint
             scrollRef={libraryScrollRef}
-            availableWidgets={availableWidgets}
+            availableWidgets={libraryWidgets}
           />
         </div>
       </div>
@@ -1703,7 +1773,7 @@ export default function WidgetGrid({
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ type: 'spring', stiffness: 500, damping: 35 }}
-              className={`absolute z-20 rounded-xl transition-all pointer-events-none ${
+              className={`absolute z-20 overflow-visible rounded-xl transition-all pointer-events-none ${
                 dragPreview.hasCollision
                   ? 'bg-red-500/10 ring-2 ring-red-500/50'
                   : 'bg-blue-500/10 ring-2 ring-blue-500/50'
@@ -1715,10 +1785,14 @@ export default function WidgetGrid({
                 height: `${(dragPreview.size.h / currentGridHeight) * 100}%`,
               }}
             >
-              {/* 状态提示 */}
-              <div className="absolute inset-0 flex items-center justify-center">
+              {/* 状态提示：1x1 格子窄，强制单行并允许溢出，避免「位置冲突」折行 */}
+              <div className="absolute inset-0 flex items-center justify-center overflow-visible">
                 <div
-                  className={`px-3 py-1 rounded-full text-xs font-bold shadow-lg backdrop-blur-sm ${
+                  className={`rounded-full font-bold shadow-lg backdrop-blur-sm whitespace-nowrap ${
+                    dragPreview.size.w === 1 && dragPreview.size.h === 1
+                      ? 'px-1.5 py-0.5 text-[9px] leading-none'
+                      : 'px-3 py-1 text-xs'
+                  } ${
                     dragPreview.hasCollision
                       ? 'bg-red-500/90 text-white'
                       : 'bg-blue-500/90 text-white'

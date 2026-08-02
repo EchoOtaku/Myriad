@@ -5,12 +5,7 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import {
-
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { isExlight, useAnimationLevel } from '../../../hooks/useAnimationLevel'
 
 /** App Store 风格分类芯片 */
@@ -36,7 +31,15 @@ export function CategoryPill({
   )
 }
 
-/** 获取 / 打开 / 更新 胶囊按钮 */
+/** Stable key for label swap animation (string | number | fallback). */
+function labelKey(label: ReactNode, kind: string): string {
+  if (typeof label === 'string' || typeof label === 'number') {
+    return `${kind}:${label}`
+  }
+  return kind
+}
+
+/** 获取 / 打开 / 更新 胶囊按钮 — kind / 文案切换带轻量 swap */
 export function StoreGetButton({
   kind,
   label,
@@ -50,15 +53,19 @@ export function StoreGetButton({
   onClick?: (e: MouseEvent<HTMLButtonElement>) => void
   title?: string
 }) {
+  const key = labelKey(label, kind)
   return (
     <button
       type="button"
       className={`as-get as-get--${kind}`}
+      data-kind={kind}
       disabled={disabled}
       onClick={onClick}
       title={title}
     >
-      {label}
+      <span key={key} className="as-get__label">
+        {label}
+      </span>
     </button>
   )
 }
@@ -122,12 +129,12 @@ export function RotatingDetailSubtitle({ lines }: { lines: string[] }) {
             <motion.span
               key={active}
               className="as-detail__subtitle-line"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              initial={{ opacity: 0, y: 3 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -3 }}
               transition={{
-                duration: 0.35 * animConfig.durationScale,
-                ease: 'easeInOut',
+                duration: 0.32 * animConfig.durationScale,
+                ease: [0.22, 1, 0.36, 1],
               }}
             >
               {active}

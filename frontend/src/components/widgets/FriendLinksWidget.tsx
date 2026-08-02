@@ -26,8 +26,8 @@ import {
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { getSources } from '../../services/brewApi'
 import { getIconUrl } from '../brew/constants'
-import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
+import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
 import './FriendLinksWidget.css'
 
 const FRIEND_LINK_CATEGORY = '友情链接'
@@ -360,10 +360,16 @@ export const FriendLinksWidget = memo(
       [isEditMode, isPreview],
     )
 
-    // 编辑/预览时禁用指针事件，让父级 WidgetGrid 可以拖拽
-    const pointerEventsStyle =
-      isEditMode || isPreview ? { pointerEvents: 'none' as const } : {}
+    // 编辑/预览时禁用指针事件，让父级 WidgetGrid 可以拖拽。
+    // 不要用 native disabled：全局 button:disabled { opacity: 0.5 } 会把预览整片洗灰。
+    const interactionLocked = isEditMode || isPreview
+    const pointerEventsStyle = interactionLocked
+      ? { pointerEvents: 'none' as const }
+      : {}
     const shellClassName = isEditMode ? 'cursor-grab' : undefined
+    // 仅真实无跳转链接在可交互模式下才标 disabled（空 url / 过渡层用 class 挡点击）
+    const entryDisabled = (entryUrl: string, incoming: boolean) =>
+      !interactionLocked && (incoming || !entryUrl)
 
     if (isStrip) {
       return (
@@ -374,29 +380,16 @@ export const FriendLinksWidget = memo(
           className={shellClassName}
           style={pointerEventsStyle}
           contentClassName="relative min-h-0 overflow-hidden"
-          background={
-            <GlowBackground
-              color={visibleEntries[0]?.color || '#f97316'}
-              animLevel={anim.level}
-              shouldAnimate={false}
-              variant="single-left"
-              size="sm"
-              opacity={0.24}
-            />
-          }
         >
-          {loading ? (
-            <span className="absolute inset-0 animate-pulse rounded-lg bg-black/4 dark:bg-white/5" />
-          ) : failed ? (
+          {failed ? (
             <span className="absolute inset-0 flex items-center justify-center truncate px-3 text-[10px] text-gray-400 dark:text-gray-500">
               {t.friendLinksWidget.loadFailed}
             </span>
-          ) : visibleEntries.length === 0 ? (
+          ) : !loading && visibleEntries.length === 0 ? (
             <button
               type="button"
               onClick={openBrew}
-              disabled={isEditMode || isPreview}
-              className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-black/8 px-3 text-[10px] text-gray-400 disabled:cursor-default dark:border-white/10 dark:text-gray-500"
+              className="absolute inset-0 flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-black/8 px-3 text-[10px] text-gray-400 dark:border-white/10 dark:text-gray-500"
             >
               {t.friendLinksWidget.emptyTitle}
             </button>
@@ -422,7 +415,7 @@ export const FriendLinksWidget = memo(
                   key={layer.id}
                   className={`absolute inset-0 flex ${
                     layer.incoming
-                      ? 'friend-links-batch-enter'
+                      ? 'friend-links-batch-enter pointer-events-none'
                       : incomingBatchIndex === null
                         ? ''
                         : 'friend-links-batch-exit'
@@ -436,14 +429,11 @@ export const FriendLinksWidget = memo(
                       style={
                         {
                           '--friend-links-entry-index': entryIndex,
-                          '--friend-links-accent': entry.color,
                         } as CSSProperties
                       }
                       onClick={() => openFriendLink(entry)}
-                      disabled={
-                        layer.incoming || isEditMode || isPreview || !entry.url
-                      }
-                      className="friend-links-entry friend-links-spotlight group/link relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 overflow-hidden rounded-lg bg-black/3 px-3 text-left transition-colors hover:bg-black/5 disabled:cursor-default dark:bg-white/4 dark:hover:bg-white/7"
+                      disabled={entryDisabled(entry.url, layer.incoming)}
+                      className="friend-links-entry group/link relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 overflow-hidden rounded-lg px-3 text-left disabled:cursor-default disabled:opacity-100"
                       aria-label={t.friendLinksWidget.visitSite.replace(
                         '{name}',
                         entry.name,
@@ -474,13 +464,19 @@ export const FriendLinksWidget = memo(
                           </span>
                         )}
                       </span>
-                      <ExternalLink className="relative z-10 h-3.5 w-3.5 shrink-0 text-gray-300 transition-all group-hover/link:-translate-y-0.5 group-hover/link:translate-x-0.5 group-hover/link:text-gray-500 dark:text-gray-600 dark:group-hover/link:text-gray-400" />
+                      <ExternalLink className="relative z-10 h-3.5 w-3.5 shrink-0 text-gray-300 dark:text-gray-600" />
                     </button>
                   ))}
                 </div>
               ))}
             </>
           )}
+          <WidgetSkeletonCover
+            active={loading}
+            preset="media-row"
+            accent="#f97316"
+            label={t.common.loading}
+          />
         </WidgetShell>
       )
     }
@@ -494,33 +490,16 @@ export const FriendLinksWidget = memo(
           className={shellClassName}
           style={pointerEventsStyle}
           contentClassName="relative min-h-0 overflow-hidden"
-          background={
-            <span
-              className="friend-links-square-gradient absolute inset-0"
-              style={
-                {
-                  '--friend-links-gradient-color':
-                    incomingEntries[0]?.color ||
-                    visibleEntries[0]?.color ||
-                    '#f97316',
-                } as CSSProperties
-              }
-              aria-hidden="true"
-            />
-          }
         >
-          {loading ? (
-            <span className="absolute inset-0 animate-pulse rounded-lg bg-black/4 dark:bg-white/5" />
-          ) : failed ? (
+          {failed ? (
             <span className="absolute inset-0 flex items-center justify-center px-4 text-center text-[10px] text-gray-400 dark:text-gray-500">
               {t.friendLinksWidget.loadFailed}
             </span>
-          ) : visibleEntries.length === 0 ? (
+          ) : !loading && visibleEntries.length === 0 ? (
             <button
               type="button"
               onClick={openBrew}
-              disabled={isEditMode || isPreview}
-              className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-black/8 px-4 text-center disabled:cursor-default dark:border-white/10"
+              className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-black/8 px-4 text-center dark:border-white/10"
             >
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {t.friendLinksWidget.emptyTitle}
@@ -551,7 +530,7 @@ export const FriendLinksWidget = memo(
                   key={layer.id}
                   className={`absolute inset-0 flex ${
                     layer.incoming
-                      ? 'friend-links-batch-enter'
+                      ? 'friend-links-batch-enter pointer-events-none'
                       : incomingBatchIndex === null
                         ? ''
                         : 'friend-links-batch-exit'
@@ -565,14 +544,11 @@ export const FriendLinksWidget = memo(
                       style={
                         {
                           '--friend-links-entry-index': entryIndex,
-                          '--friend-links-accent': entry.color,
                         } as CSSProperties
                       }
                       onClick={() => openFriendLink(entry)}
-                      disabled={
-                        layer.incoming || isEditMode || isPreview || !entry.url
-                      }
-                      className="friend-links-entry group/link relative flex min-h-0 min-w-0 flex-1 cursor-pointer flex-col items-center justify-center overflow-hidden p-3 text-center disabled:cursor-default"
+                      disabled={entryDisabled(entry.url, layer.incoming)}
+                      className="friend-links-entry group/link relative flex min-h-0 min-w-0 flex-1 cursor-pointer flex-col items-center justify-center overflow-hidden p-3 text-center disabled:cursor-default disabled:opacity-100"
                       aria-label={t.friendLinksWidget.visitSite.replace(
                         '{name}',
                         entry.name,
@@ -604,6 +580,12 @@ export const FriendLinksWidget = memo(
               ))}
             </>
           )}
+          <WidgetSkeletonCover
+            active={loading}
+            preset="media-row"
+            accent="#f97316"
+            label={t.common.loading}
+          />
         </WidgetShell>
       )
     }
@@ -616,22 +598,11 @@ export const FriendLinksWidget = memo(
         className={shellClassName}
         style={pointerEventsStyle}
         contentClassName="flex min-h-0 flex-col"
-        background={
-          <GlowBackground
-            color="#f97316"
-            animLevel={anim.level}
-            shouldAnimate={anim.loop && !isEditMode}
-            variant="dual"
-            size="md"
-            opacity={0.18}
-          />
-        }
       >
         <button
           type="button"
           onClick={openBrew}
-          disabled={isEditMode || isPreview}
-          className="group/header flex w-full shrink-0 cursor-pointer items-center gap-2 text-left disabled:cursor-default"
+          className="group/header flex w-full shrink-0 cursor-pointer items-center gap-2 text-left"
           aria-label={t.friendLinksWidget.openBrew}
         >
           <span
@@ -655,27 +626,15 @@ export const FriendLinksWidget = memo(
         </button>
 
         <div className="relative mt-2 min-h-0 flex-1 overflow-hidden">
-          {loading ? (
-            <div
-              className={`absolute inset-0 grid gap-1.5 ${isWide ? 'grid-cols-2' : 'grid-cols-1'}`}
-            >
-              {Array.from({ length: batchSize }, (_, index) => (
-                <div
-                  key={index}
-                  className="min-h-0 animate-pulse rounded-lg bg-black/4 dark:bg-white/5"
-                />
-              ))}
-            </div>
-          ) : failed ? (
+          {failed ? (
             <div className="absolute inset-0 flex items-center justify-center text-center text-xs text-gray-400 dark:text-gray-500">
               {t.friendLinksWidget.loadFailed}
             </div>
-          ) : visibleEntries.length === 0 ? (
+          ) : !loading && visibleEntries.length === 0 ? (
             <button
               type="button"
               onClick={openBrew}
-              disabled={isEditMode || isPreview}
-              className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-black/8 px-3 text-center disabled:cursor-default dark:border-white/10"
+              className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-black/8 px-3 text-center dark:border-white/10"
             >
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
                 {t.friendLinksWidget.emptyTitle}
@@ -708,7 +667,7 @@ export const FriendLinksWidget = memo(
                     isWide ? 'grid-cols-2' : 'grid-cols-1'
                   } ${
                     layer.incoming
-                      ? 'friend-links-batch-enter'
+                      ? 'friend-links-batch-enter pointer-events-none'
                       : incomingBatchIndex === null
                         ? ''
                         : 'friend-links-batch-exit'
@@ -725,10 +684,8 @@ export const FriendLinksWidget = memo(
                         } as CSSProperties
                       }
                       onClick={() => openFriendLink(entry)}
-                      disabled={
-                        layer.incoming || isEditMode || isPreview || !entry.url
-                      }
-                      className="friend-links-entry group/link flex min-h-0 cursor-pointer items-center gap-2 overflow-hidden rounded-lg bg-black/3 px-2 text-left transition-colors hover:bg-black/6 disabled:cursor-default dark:bg-white/4 dark:hover:bg-white/8"
+                      disabled={entryDisabled(entry.url, layer.incoming)}
+                      className="friend-links-entry group/link flex min-h-0 cursor-pointer items-center gap-2 overflow-hidden rounded-lg bg-black/3 px-2 text-left transition-colors hover:bg-black/6 disabled:cursor-default disabled:opacity-100 dark:bg-white/4 dark:hover:bg-white/8"
                       aria-label={t.friendLinksWidget.visitSite.replace(
                         '{name}',
                         entry.name,
@@ -763,6 +720,13 @@ export const FriendLinksWidget = memo(
               ))}
             </>
           )}
+          <WidgetSkeletonCover
+            active={loading}
+            preset="list"
+            rows={batchSize}
+            accent="#f97316"
+            label={t.common.loading}
+          />
         </div>
       </WidgetShell>
     )

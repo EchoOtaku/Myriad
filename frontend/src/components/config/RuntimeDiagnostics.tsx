@@ -14,7 +14,14 @@ import {
   LuRefreshCw,
   LuServer,
 } from '@lib/icons'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { fetchJson } from '../../utils/apiHelper'
 import { getBuildInfo } from '../../utils/buildInfo'
@@ -24,6 +31,7 @@ import {
   SettingsButton,
   useSettingGuide,
 } from '../settings'
+import { truncateVersionTag } from './runtimeDiagnosticsVersion'
 import './RuntimeDiagnostics.css'
 
 type DiagnosticStatus = 'ok' | 'warning' | 'error'
@@ -394,7 +402,10 @@ export default function RuntimeDiagnostics({
       if (status !== 'ok' || versionMismatch) {
         return checkStatusLabel('warning')
       }
-      return data?.runtime.version ?? checkStatusLabel(status)
+      const version = data?.runtime.version
+      return version
+        ? truncateVersionTag(version)
+        : checkStatusLabel(status)
     }
 
     if (status !== 'ok') return checkStatusLabel(status)
@@ -468,11 +479,50 @@ export default function RuntimeDiagnostics({
     URL.revokeObjectURL(url)
   }, [makeReport])
 
-  const checks = data
+  const backendVersion = data?.runtime.version ?? ''
+  const frontendVersion = buildInfo.version
+  const versionDetailFull = !data
+    ? ''
+    : developmentBuild
+      ? format(t.config.runtimeDiagnosticsVersionDevelopment, {
+          version: backendVersion,
+        })
+      : versionMismatch
+        ? format(t.config.runtimeDiagnosticsVersionMismatch, {
+            frontend: frontendVersion,
+            backend: backendVersion,
+          })
+        : format(t.config.runtimeDiagnosticsVersionMatch, {
+            version: backendVersion,
+          })
+  const versionDetailDisplay = !data
+    ? ''
+    : developmentBuild
+      ? format(t.config.runtimeDiagnosticsVersionDevelopment, {
+          version: truncateVersionTag(backendVersion),
+        })
+      : versionMismatch
+        ? format(t.config.runtimeDiagnosticsVersionMismatch, {
+            frontend: truncateVersionTag(frontendVersion),
+            backend: truncateVersionTag(backendVersion),
+          })
+        : format(t.config.runtimeDiagnosticsVersionMatch, {
+            version: truncateVersionTag(backendVersion),
+          })
+
+  const checks: Array<{
+    id: DiagnosticCheck['id'] | 'backend' | 'version' | 'system'
+    status: DiagnosticStatus
+    badge: string
+    detail: string
+    /** Optional full tooltip when `detail` is truncated for display. */
+    title?: string
+    icon: ReactNode
+  }> = data
     ? [
         {
-          id: 'backend' as const,
-          status: 'ok' as DiagnosticStatus,
+          id: 'backend',
+          status: 'ok',
           badge: checkBadge('backend', 'ok', requestLatency ?? 0),
           detail: format(t.config.runtimeDiagnosticsLatency, {
             n: requestLatency ?? 0,
@@ -480,8 +530,8 @@ export default function RuntimeDiagnostics({
           icon: <LuServer />,
         },
         {
-          id: 'system' as const,
-          status: 'ok' as DiagnosticStatus,
+          id: 'system',
+          status: 'ok',
           badge: checkBadge('system', 'ok'),
           detail: systemDetail(),
           icon: <LuCpu />,
@@ -514,18 +564,8 @@ export default function RuntimeDiagnostics({
             'version',
             versionMismatch ? 'warning' : 'ok',
           ),
-          detail: developmentBuild
-            ? format(t.config.runtimeDiagnosticsVersionDevelopment, {
-                version: data.runtime.version,
-              })
-            : versionMismatch
-              ? format(t.config.runtimeDiagnosticsVersionMismatch, {
-                  frontend: buildInfo.version,
-                  backend: data.runtime.version,
-                })
-              : format(t.config.runtimeDiagnosticsVersionMatch, {
-                  version: data.runtime.version,
-                }),
+          detail: versionDetailDisplay,
+          title: versionDetailFull,
           icon: <LuActivity />,
         },
       ]
@@ -646,7 +686,7 @@ export default function RuntimeDiagnostics({
                   check.badge ? (
                     <span
                       className="runtime-diagnostics-check-status"
-                      title={check.detail || undefined}
+                      title={check.title || check.detail || undefined}
                     >
                       {check.badge}
                     </span>

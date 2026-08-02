@@ -442,7 +442,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
       brew: t.nav.brewReading,
       reports: t.nav.reports,
       life: t.nav.life,
-      tapp: t.nav.tappStore,
+      tapp: t.nav.tapp,
       agent: t.nav.agent,
     }),
     [t],

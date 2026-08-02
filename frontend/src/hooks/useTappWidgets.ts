@@ -12,20 +12,38 @@ import type { RegisteredWidget } from '../tapp/types'
 import {
   createElement,
   lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from 'react'
+import {
+  TAPP_WIDGET_SKELETON,
+  WidgetSkeleton,
+} from '../components/widgets/shared/WidgetSkeleton'
 
 // TappWidget 与其背后的整个 tapp runtime / 沙箱体系（生产 ~300KB）按需加载：
 // 布局中没有 Tapp 小组件时，Home 首屏不需要执行这部分代码。
-// 渲染点的 Suspense 由 WidgetGrid 提供。
+// 渲染点的 Suspense 由 WidgetGrid 提供；此处再包一层带主题色的通用骨架。
 const TappWidgetComponent = lazy(() =>
   import('../components/widgets/TappWidget').then((m) => ({
     default: m.TappWidgetComponent,
   })),
 )
+
+/** Default loading surface for every third-party Tapp widget (chunk + runtime). */
+function TappDefaultSkeleton({ accent }: { accent?: string }) {
+  return createElement(
+    'div',
+    { className: 'h-full w-full overflow-hidden rounded-xl' },
+    createElement(WidgetSkeleton, {
+      preset: TAPP_WIDGET_SKELETON.preset,
+      deferMs: TAPP_WIDGET_SKELETON.deferMs,
+      accent: accent || 'var(--color-primary, #6366f1)',
+    }),
+  )
+}
 
 type TappRuntimeModule = typeof import('../tapp/runtime')
 
@@ -79,17 +97,46 @@ export interface TappWidgetType extends WidgetType {
 }
 
 /**
- * Tapp Widget 到 WidgetType 的适配器
+ * Resolve brand accent for skeleton tint (manifest themeColor when known).
  */
-function createTappWidgetType(widget: RegisteredWidget): TappWidgetType {
-  const config = widget.config || {}
+function resolveTappAccent(
+  widget: RegisteredWidget,
+  runtime?: { getTapp?: (id: string) => { manifest?: { themeColor?: string } } | undefined },
+): string | undefined {
+  try {
+    const fromManifest = runtime
+      ?.getTapp?.(widget.tappId)
+      ?.manifest?.themeColor?.trim()
+    if (fromManifest) return fromManifest
+  } catch {
+    // runtime may not be ready during early map
+  }
+  return undefined
+}
 
-  // 创建一个包装组件 - 使用 createElement 而不是 JSX
+/**
+ * Tapp Widget 到 WidgetType 的适配器
+ * 默认 Suspense 兜底 = 通用 WidgetSkeleton（可按 themeColor 染色）
+ */
+function createTappWidgetType(
+  widget: RegisteredWidget,
+  runtime?: {
+    getTapp?: (id: string) => { manifest?: { themeColor?: string } } | undefined
+  },
+): TappWidgetType {
+  const config = widget.config || {}
+  const accent = resolveTappAccent(widget, runtime)
+
+  // 包装：懒加载 chunk + 统一骨架（所有第三方 Tapp 默认接上）
   const WrappedComponent = (props: WidgetComponentProps) =>
-    createElement(TappWidgetComponent, {
-      ...props,
-      tappWidgetId: widget.id,
-    })
+    createElement(
+      Suspense,
+      { fallback: createElement(TappDefaultSkeleton, { accent }) },
+      createElement(TappWidgetComponent, {
+        ...props,
+        tappWidgetId: widget.id,
+      }),
+    )
   WrappedComponent.displayName = `TappWidget_${widget.id}`
 
   return {
@@ -134,7 +181,9 @@ export function useTappWidgets(): {
       await runtime.waitForSync()
 
       const registeredWidgets = runtime.getRegisteredWidgets()
-      const widgetTypes = registeredWidgets.map(createTappWidgetType)
+      const widgetTypes = registeredWidgets.map((w) =>
+        createTappWidgetType(w, runtime),
+      )
       // 有注册的 Tapp 小组件时提前预热组件模块，避免渲染时才拉 chunk
       if (widgetTypes.length > 0) {
         void import('../components/widgets/TappWidget').catch(() => {})
@@ -168,7 +217,9 @@ export function useTappWidgets(): {
         const reloadSync = () => {
           try {
             const registeredWidgets = runtime.getRegisteredWidgets()
-            setTappWidgets(registeredWidgets.map(createTappWidgetType))
+            setTappWidgets(
+              registeredWidgets.map((w) => createTappWidgetType(w, runtime)),
+            )
             setError(null)
           } catch (err) {
             console.error('[useTappWidgets] Failed to load widgets:', err)

@@ -27,9 +27,9 @@ import {
   peekVisitorId,
 } from '../../utils/siteAnalytics'
 import { formatCount } from '../config/analytics/format'
-import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
+import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
 
 const CACHE_KEY = 'visitor_card_cache_v1'
 const CACHE_DURATION = 60 * 1000
@@ -430,11 +430,7 @@ export const VisitorStatsWidget = memo(
 
     const body = (() => {
       if (loading && !data) {
-        return (
-          <div className="flex h-full items-center justify-center" role="status">
-            <Spinner size="sm" color="primary" />
-          </div>
-        )
+        return null
       }
       if (collectionOff) {
         return (
@@ -613,7 +609,7 @@ export const VisitorStatsWidget = memo(
         containerRef={containerRef}
         scale={scale}
         padding={compact ? 11 : 13}
-        contentClassName="flex min-h-0 flex-col"
+        contentClassName="relative flex min-h-0 flex-col"
         background={
           <GlowBackground
             color="var(--color-primary)"
@@ -640,7 +636,15 @@ export const VisitorStatsWidget = memo(
           </h3>
         </div>
 
-        {body}
+        <div className="relative min-h-0 flex-1">
+          {body}
+          <WidgetSkeletonCover
+            active={Boolean(loading && !data)}
+            preset="hero"
+            accent="var(--color-primary)"
+            label={t.common.loading}
+          />
+        </div>
       </WidgetShell>
     )
   },

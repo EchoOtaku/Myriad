@@ -14,6 +14,7 @@ export const zhCN: TranslationKeys = {
     edit: '编辑',
     done: '完成',
     loading: '加载中...',
+    loadingSlow: '加载时间较长，请稍候…',
     error: '错误',
     success: '成功',
     retry: '重试',
@@ -85,10 +86,9 @@ export const zhCN: TranslationKeys = {
     // Agent
     agent: 'Arael Agent',
     aiAssistant: 'Arael Agent',
-    // Tapp
-    tapp: '应用',
-    tappStore: 'Tapp 应用商店',
-    openTappStore: '打开 Tapp 应用商店',
+    // Tapp（主导航 /tapp = 已装应用列表）
+    tapp: 'Tapp 应用',
+    openTapp: '打开 Tapp 应用',
   },
 
   // 问候语
@@ -376,8 +376,6 @@ export const zhCN: TranslationKeys = {
       colViews: '浏览量',
       colVisitors: '访客',
       colCount: '次数',
-      showMoreN: '展开其余 {n} 项',
-      showLess: '收起',
       dailyChartAria: '每日浏览量与独立访客趋势图',
       empty: '所选范围内暂无访问',
       emptyPages: '所选范围内暂无页面数据',
@@ -1118,7 +1116,7 @@ export const zhCN: TranslationKeys = {
     sliderStrong: '强 · 更模糊',
     fieldSiteTitle: '网站标题',
     fieldSiteDescription: '网站描述',
-    fieldSiteFavicon: '网站图标',
+    fieldSiteFavicon: '网站图标（同时用于 PWA 安装图标）',
     fieldSiteKeywords: 'SEO 关键词',
     fieldSiteKeywordsHint: '多个关键词用英文逗号分隔；会写入页面 meta keywords',
     fieldSiteOgImage: '分享预览图',
@@ -2307,8 +2305,9 @@ export const zhCN: TranslationKeys = {
   // 小组件网格
   widgetGrid: {
     widgetLibrary: '小组件库',
-    undo: '撤销',
-    redo: '重做',
+    searchWidgets: '搜索小组件…',
+    clearSearch: '清除搜索',
+    noSearchResults: '没有匹配的小组件',
     deleteWidget: '删除小组件',
     positionConflict: '✖ 位置冲突',
     canPlace: '可以放置',
@@ -2636,6 +2635,7 @@ export const zhCN: TranslationKeys = {
     initialImport: '初次导入',
     itemAdded: '新增 {subject}',
     itemRemoved: '移除 {subject}',
+    loadedLimitHint: '只加载最近 {count} 个',
     moreActivities: '还有 {count} 条',
     minutes: '{minutes} 分钟',
     hoursMinutes: '{hours} 小时 {minutes} 分钟',
@@ -3218,6 +3218,8 @@ export const zhCN: TranslationKeys = {
     storeFeatured: '编辑精选',
     storeFeaturedEyebrow: '推荐',
     storeLatest: '最新',
+    storeUpdatedToday: '今日更新',
+    storeUpdatedDaysAgo: '更新于 {n} 天前',
     storeBrowse: '浏览',
     storeLibrary: '资料库',
     storeSourceSettings: '商店源设置',

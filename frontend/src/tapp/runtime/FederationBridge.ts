@@ -739,10 +739,34 @@ export function registerFederationHandlers(
 
   bridge.registerHandler('federation.getChannels', async () => {
     try {
+      // Channels require a durable user session. Guests/anonymous viewers would
+      // only get HTTP 401 console noise — return empty without hitting the API.
+      // Prefer live auth when available; fall back to session hint (boot race).
+      let mayHaveUserSession = false
+      try {
+        const { hasSessionHint } = await import('../../utils/sessionDetection')
+        mayHaveUserSession = hasSessionHint()
+      } catch {
+        mayHaveUserSession = false
+      }
+      if (!mayHaveUserSession) {
+        return { success: true, data: { channels: [], total: 0 } }
+      }
       const runtimeGrant = await bridge.getRuntimeGrant()
       const data = await federationApi.getChannels(runtimeGrant)
       return { success: true, data }
     } catch (error) {
+      // Expired JWT with a stale session hint still 401s — treat as empty for guests.
+      const status =
+        error &&
+        typeof error === 'object' &&
+        'status' in error &&
+        typeof (error as { status: unknown }).status === 'number'
+          ? (error as { status: number }).status
+          : undefined
+      if (status === 401 || status === 403) {
+        return { success: true, data: { channels: [], total: 0 } }
+      }
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed',

@@ -17,6 +17,18 @@ Tapp 代码不会进入 Myriad 主页面的 JavaScript 上下文，而是在 `sr
 
 前端沙箱是纵深防御的一层，不是后端授权的替代品。
 
+## Widget 加载与宿主骨架
+
+Dashboard 上的 Widget 沙箱在 **iframe 发出 ready（`tapp.ready` / lifecycle ready）之前**，
+宿主会盖一层通用 **Widget Skeleton**（`preset=block`，默认延迟 100ms 再绘制 shimmer，
+避免极快路径闪屏；`manifest.themeColor` 用于染色）。
+
+- 骨架由宿主绘制，不进入 Tapp JS 上下文，也不占用沙箱权限。
+- Tapp 侧应尽快 ready；超过默认 **12s** 仍未 ready 时，骨架底部显示「加载较慢」提示
+  （`common.loadingSlow`），仍优于永久空白。
+- 屏外 Dashboard 卡使用 **hold** 面（无 bone、无动画），不在屏外空转 shimmer。
+- 完整规范见 [小组件开发指南 · 宿主加载骨架](WIDGET.md#宿主加载骨架widget-skeleton)。
+
 ## iframe 属性
 
 当前宿主实际设置：
@@ -69,6 +81,9 @@ manifest-src 'none'
   `network:fetch`。
 - Manifest 不能覆盖这份 CSP；如果确实需要新的资源能力，应修改并审计宿主策略，而不是让
   单个 Tapp 放宽隔离。
+- 不要在沙箱 HTML 里追加浏览器未实现或已废弃的指令（如 `navigate-to`、`prefetch-src`）：
+  只会在控制台产生 `Unrecognized Content-Security-Policy directive` 噪音，不提高安全性。
+  导航与表单已由 `sandbox` 属性 + `form-action 'none'` + 禁用 `window.open` 约束。
 
 轻量游戏 / Canvas / 包内资源约定见 [图形与轻量游戏](GRAPHICS.md)。
 
@@ -199,9 +214,12 @@ container.textContent = userInput;
 
 持久 storage 命名空间跟随**当前登录用户**（Runtime Grant 的 subject），即使运行的是站点
 公开安装也不会读取安装 owner 的 storage。每个已登录用户都可以读写自己的 `user_id + tapp_id`
-空间。`_settings.`、`_component:`、`_shortcut:`、`_report:` 是宿主保留前缀，不能通过
-`Tapp.storage` 读取、写入、列举或清除。Manifest 设置由安装 owner 或管理员写入，其他已登录
-运行者只能通过 `Tapp.settings` 读取声明过的设置项。
+空间；游客无 `storage` 权限、无持久 storage。`_settings.`、`_component:`、`_shortcut:`、
+`_report:` 是宿主保留前缀，不能通过 `Tapp.storage` 读取、写入、列举或清除。
+
+Manifest **安装级 settings** 由 owner / 管理员写入 installation owner 命名空间；通过
+`Tapp.settings` 读取时，凡能打开该安装的 viewer（**含游客打开公开安装**）都能读到已保存
+值。这与 storage 的 subject 隔离不同——公开 Tapp 的配置对访客可见是预期行为。
 
 ## 开发检查清单
 

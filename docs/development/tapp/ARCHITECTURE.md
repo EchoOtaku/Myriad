@@ -24,6 +24,10 @@ Tapp 不是把第三方脚本直接加载到 Myriad 页面中，而是：
 序列化器；Tapp JavaScript 源码必须转义 HTML 的 `</script` 终止序列。直接把字符串插入
 `<script>` 会让合法名称、设置值或代码静默截断整个沙箱。
 
+Dashboard Widget 在懒加载、runtime 同步与 iframe ready 前由宿主绘制统一骨架（见
+[WIDGET.md · 宿主加载骨架](WIDGET.md#宿主加载骨架widget-skeleton)）；Tapp 应尽快
+`onReady`，不要再实现整卡 Spinner。
+
 ```mermaid
 flowchart LR
   Store["远程商店 / .tapp / 直接安装"] --> Install["/api/tapps 安装与更新"]
@@ -49,6 +53,7 @@ flowchart LR
 | 宿主状态   | `frontend/src/tapp/runtime/TappRuntime.ts`                 | 已安装/运行状态缓存、Widget 注册、后台需求         |
 | 资源加载   | `frontend/src/tapp/runtime/sandbox/resourceLoader.ts`      | 获取、拆分、缓存代码/CSS/HTML/i18n/Page 模块       |
 | 沙箱宿主   | `TappPageSandbox.tsx`、`TappWidgetSandbox.tsx`             | 创建 iframe、生成 HTML、注册对应 handler、清理实例 |
+| Widget 加载面 | `widgets/shared/WidgetSkeleton.tsx`、`hooks/useTappWidgets.ts` | Dashboard 第三方 Widget 默认骨架（defer / 屏外静态 / themeColor） |
 | 后台宿主   | `frontend/src/tapp/components/TappBackgroundRunner.tsx`    | 为需要常驻的运行中 Tapp 拉起 headless core         |
 | SDK/Bridge | `runtime/sandbox/sdkGenerator.ts`、`runtime/TappBridge.ts` | 生成沙箱 SDK、验证消息、权限预检、分发 handler     |
 | 前端 API facade | `frontend/src/tapp/services/TappApiService.ts`        | 领域 API 聚合导出与默认对象装配                    |
@@ -190,11 +195,15 @@ SDK 的 `lifecycle.onDestroy` 同时监听 `pagehide` 与 `beforeunload`，并�
 单个生命周期回调抛错不能阻断其他回调。宿主资源释放仍由 iframe 外部 cleanup 负责，不能把
 授权撤销或服务端取消只寄托在浏览器卸载回调上。
 
-沙箱内设置仍使用带 Runtime Grant 的 storage，并以 `_settings.` 作为保留前缀；该持久能力
-只签发给已登录用户。访客不获得 `storage`，只使用 Manifest 默认设置。详情页的宿主设置
-编辑器属于控制面：访客不显示、不发请求；已登录用户只可通过专用 settings 路由读写当前
-Manifest 声明的 key，写值还必须符合类型、选项与数值范围。它不能伪装成 Page runtime，
-也不能获得任意 storage 绕过。
+**Storage 与 Settings 分离**：
+
+- 私有 `Tapp.storage` 经 Runtime Grant 挂在 **subject** 命名空间；`_settings.` 等为宿主
+  保留前缀，storage API 不可访问。访客 Grant 不含 `storage`，无持久 storage。
+- 安装级 `Tapp.settings` 走专用 REST：`GET` 在 **optional_auth** 上（游客打开公开安装可读
+  installation owner 已保存值；未写入回落 Manifest 默认）；`POST` 仅登录且 owner/管理员，
+  并校验类型/选项/数值范围。详情页宿主设置**编辑器**仍是控制面：访客不展示写 UI。
+- 两者都不能互相伪装：settings 路由不能当任意 storage 用，storage 也不能读写安装设置。
+
 storage 批量读取使用 `storage.getAll` 对应的单次数据库查询，不能退回 `keys + N 次 get`。
 
 停止会清除动态与 Manifest 后台需求并卸载 headless 实例。卸载还会清理资源缓存、

@@ -379,8 +379,12 @@ export function AppDetailView({
       )}
 
       <div className="as-detail__facts">
-        {factItems.map((item) => (
-          <div key={item.label} className="as-detail__fact">
+        {factItems.map((item, index) => (
+          <div
+            key={item.label}
+            className="as-detail__fact"
+            style={{ ['--as-enter-i' as string]: index }}
+          >
             <span className="as-detail__fact-label">{item.label}</span>
             <strong className="as-detail__fact-value" title={item.value}>
               {item.value}
@@ -391,7 +395,10 @@ export function AppDetailView({
 
       <div className="as-detail__content-grid">
         {(previewLoading || previewDocument || previewFallback) && (
-          <section className="as-detail__block as-detail__block--preview">
+          <section
+            className="as-detail__block as-detail__block--preview"
+            style={{ ['--as-block-i' as string]: 0 }}
+          >
             <h4 className="sr-only">{t.tapp.storePreview}</h4>
             {previewDocument ? (
               <StaticTappPreview
@@ -410,13 +417,19 @@ export function AppDetailView({
         )}
 
         {description && (
-          <section className="as-detail__block as-detail__block--about">
+          <section
+            className="as-detail__block as-detail__block--about"
+            style={{ ['--as-block-i' as string]: 1 }}
+          >
             <h4 className="as-detail__h">{t.tapp.appDescription}</h4>
             <p className="as-detail__desc">{description}</p>
           </section>
         )}
 
-        <section className="as-detail__block as-detail__block--permissions">
+        <section
+          className="as-detail__block as-detail__block--permissions"
+          style={{ ['--as-block-i' as string]: 2 }}
+        >
           <h4 className="as-detail__h">{t.tapp.permissions}</h4>
           <SettingGroup toc={false}>
             {permissionsByLevel.length > 0 ? (
@@ -438,7 +451,10 @@ export function AppDetailView({
           </SettingGroup>
         </section>
 
-        <section className="as-detail__block as-detail__block--info">
+        <section
+          className="as-detail__block as-detail__block--info"
+          style={{ ['--as-block-i' as string]: 3 }}
+        >
           <h4 className="as-detail__h">{t.tapp.detailInfo}</h4>
           <SettingGroup toc={false}>
             <InfoActionCard
@@ -472,7 +488,7 @@ export function PermissionLevelGroup({
       className={`as-detail__perm-group as-detail__perm-group--${level}`}
     >
       <div className="as-detail__perm-cards checkbox-group-options">
-        {permissions.map((permission) => {
+        {permissions.map((permission, index) => {
           const config = PERMISSION_CONFIG[permission as TappPermission]
           const Icon = config?.icon ?? FaLock
           const label = config
@@ -486,6 +502,7 @@ export function PermissionLevelGroup({
             <div
               key={permission}
               className={`as-detail__perm-card as-detail__perm-card--${level} checkbox-group-card has-icon no-indicator`}
+              style={{ ['--as-enter-i' as string]: index }}
               role="group"
               aria-label={`${label} · ${tappStrings[LEVEL_LABEL_KEYS[level]]}`}
             >

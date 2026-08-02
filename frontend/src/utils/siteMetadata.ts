@@ -425,12 +425,14 @@ function applyMetadata(metadata: SiteMetadata): void {
   applyEffectiveSeo()
   configureGoogleAnalytics(baseMetadata.ga_measurement_id)
   configureUmami(baseMetadata.umami_website_id, baseMetadata.umami_script_url)
-  // Keep installable PWA name in sync with site title when PWA is enabled.
+  // Keep installable PWA name + icons in sync with site branding when PWA is on.
+  // Icons are composed from site_favicon (white fill for transparency, scaled logo).
   void import('./pwa')
     .then((m) => {
       m.updateManifestBranding({
         name: baseMetadata.site_title,
         description: baseMetadata.site_description,
+        iconUrl: baseMetadata.site_favicon,
       })
     })
     .catch(() => {

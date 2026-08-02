@@ -92,8 +92,7 @@ pub fn create_tapp_routes(
         .route("/{tapp_id}/stop", post(stop_tapp))
         .route("/{tapp_id}/widgets", post(register_widget))
         .route("/{tapp_id}/widgets/{widget_id}", delete(unregister_widget))
-        .route("/{tapp_id}/settings", get(get_tapp_settings))
-        .route("/{tapp_id}/settings/{key}", get(get_tapp_setting))
+        // Settings write stays authenticated; GET is optional-auth (public install read).
         .route("/{tapp_id}/settings/{key}", post(set_tapp_setting))
         .route("/{tapp_id}/visibility", post(set_tapp_visibility))
         // 商店源管理（需要认证，API 内部检查管理员权限）
@@ -119,6 +118,8 @@ pub fn create_tapp_routes(
 
     // Stable subject (JWT or signed guest cookie) + Runtime Grant for sandbox
     // storage. Guests keep private storage under their negative session id.
+    // Host settings GET is here so public-running Tapps (e.g. Aro) can read
+    // installation settings without 401 noise for anonymous viewers.
     let optional_subject_routes = Router::<crate::state::AppState>::new()
         .route("/recent", get(get_recent_tapps))
         .route(
@@ -133,6 +134,8 @@ pub fn create_tapp_routes(
             "/{tapp_id}/runtime-grants/{runtime_id}",
             delete(crate::api::tapp_runtime::revoke_runtime_grant),
         )
+        .route("/{tapp_id}/settings", get(get_tapp_settings))
+        .route("/{tapp_id}/settings/{key}", get(get_tapp_setting))
         .route("/{tapp_id}/storage", get(list_storage_keys))
         .route("/{tapp_id}/storage", delete(clear_storage))
         .route("/{tapp_id}/storage/entries", get(list_storage_entries))

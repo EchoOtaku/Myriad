@@ -33,7 +33,15 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ensureMotionReady, isMotionReady } from '../../lib/lazyMotion'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Spinner } from '../../components/Spinner'
 import { useAuth } from '../../contexts/AuthContext'
@@ -123,6 +131,18 @@ export function TappStore({
 
   // 动画配置
   const animConfig = useAnimationLevel()
+  // motionShim 在 framer 未就绪时会把 initial 当静态样式；enter 动画仅在就绪后开启
+  const [motionReady, setMotionReady] = useState(isMotionReady)
+  useEffect(() => {
+    if (motionReady) return
+    let cancelled = false
+    void ensureMotionReady().then(() => {
+      if (!cancelled) setMotionReady(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [motionReady])
 
   // 远程应用列表
   const [remoteApps, setRemoteApps] = useState<
@@ -940,34 +960,42 @@ export function TappStore({
     [navigate],
   )
 
-  // 切换动效：进入详情向左滑（详情从右侧进入），返回反向
+  // 切换动效：进入详情从右侧入，返回反向。仅在 motion 就绪时用 initial，
+  // 避免 motionShim 把 opacity:0 固化成静态样式导致「空白卡死」。
   const viewMotionProps = useCallback(
-    (dir: 1 | -1) =>
-      isExlight(animConfig)
-        ? { initial: false as const }
-        : {
-            // motionShim may mount before the global coordinator starts. Keeping
-            // the committed first frame visible prevents the store from getting
-            // stranded at opacity: 0 while still allowing later route exits.
-            initial: false as const,
-            animate: {
-              opacity: 1,
-              x: 0,
-              transition: {
-                duration: 0.28 * animConfig.durationScale,
-                ease: [0.22, 1, 0.36, 1] as const,
-              },
-            },
-            exit: {
-              opacity: 0,
-              x: -18 * dir,
-              transition: {
-                duration: 0.2 * animConfig.durationScale,
-                ease: [0.4, 0, 1, 1] as const,
-              },
-            },
+    (dir: 1 | -1) => {
+      if (isExlight(animConfig) || !motionReady) {
+        return { initial: false as const }
+      }
+      const scale = animConfig.durationScale
+      const enterX = 18 * dir
+      return {
+        initial: { opacity: 0, x: enterX },
+        animate: {
+          opacity: 1,
+          x: 0,
+          transition: {
+            duration: 0.3 * scale,
+            ease: [0.22, 1, 0.36, 1] as const,
           },
-    [animConfig],
+        },
+        exit: {
+          opacity: 0,
+          x: -14 * dir,
+          transition: {
+            duration: 0.18 * scale,
+            ease: [0.4, 0, 1, 1] as const,
+          },
+        },
+      }
+    },
+    [animConfig, motionReady],
+  )
+
+  const catalogMotionKey = useMemo(
+    () =>
+      `${selectedCategory ?? 'discover'}|${searchQuery.trim().toLowerCase()}`,
+    [selectedCategory, searchQuery],
   )
 
   const isDiscoverView = !searchQuery && selectedCategory === null
@@ -1043,7 +1071,6 @@ export function TappStore({
         installPhase={installProgressById.get(app.id)?.phase ?? null}
         installDetail={installProgressById.get(app.id)?.detail ?? null}
         updating={updatingIds.has(app.id)}
-        animConfig={animConfig}
         index={index}
       />
     )
@@ -1056,6 +1083,12 @@ export function TappStore({
       data-store-compact={compact ? 'true' : undefined}
       data-embedded={embeddedChrome ? 'true' : undefined}
       data-fullscreen={fullscreen ? 'true' : undefined}
+      data-store-anim={isExlight(animConfig) ? 'off' : 'on'}
+      style={
+        {
+          ['--as-dur-scale' as string]: String(animConfig.durationScale),
+        } as CSSProperties
+      }
     >
       <div className="as-store__workspace">
         <aside
@@ -1408,7 +1441,10 @@ export function TappStore({
                             </button>
                           </div>
                         </div>
-                        <div className="as-store__list">
+                        <div
+                          key={categorySortOrder}
+                          className="as-store__list"
+                        >
                           {allAppsCatalogSorted.map((app, index) =>
                             renderAppCard(app, index),
                           )}
@@ -1430,30 +1466,37 @@ export function TappStore({
                     }`}
                   >
                     <header className="as-store__page-head">
-                      <h2 className="as-store__page-title">{sectionTitle}</h2>
+                      <h2 key={sectionTitle} className="as-store__page-title">
+                        {sectionTitle}
+                      </h2>
                     </header>
-                    <StoreCatalogView
-                      loading={loading}
-                      error={error}
-                      remoteEmpty={remoteApps.length === 0}
-                      filteredApps={filteredApps}
-                      featuredApps={featuredApps}
-                      latestApps={latestApps}
-                      selectedCategory={selectedCategory}
-                      isDiscoverView={isDiscoverView}
-                      sectionTitle={sectionTitle}
-                      installedSortOrder={installedSortOrder}
-                      categorySortOrder={categorySortOrder}
-                      setInstalledSortOrder={setInstalledSortOrder}
-                      setCategorySortOrder={setCategorySortOrder}
-                      sortedAvailableUpdates={sortedAvailableUpdates}
-                      installedCurrentApps={installedCurrentApps}
-                      installedTapps={installedTapps}
-                      onRetry={() => loadRemoteApps(true)}
-                      onOpenDetail={openDetail}
-                      onSeeAllApps={openAllAppsPage}
-                      renderAppCard={renderAppCard}
-                    />
+                    <div
+                      key={catalogMotionKey}
+                      className="as-store__catalog-body"
+                    >
+                      <StoreCatalogView
+                        loading={loading}
+                        error={error}
+                        remoteEmpty={remoteApps.length === 0}
+                        filteredApps={filteredApps}
+                        featuredApps={featuredApps}
+                        latestApps={latestApps}
+                        selectedCategory={selectedCategory}
+                        isDiscoverView={isDiscoverView}
+                        sectionTitle={sectionTitle}
+                        installedSortOrder={installedSortOrder}
+                        categorySortOrder={categorySortOrder}
+                        setInstalledSortOrder={setInstalledSortOrder}
+                        setCategorySortOrder={setCategorySortOrder}
+                        sortedAvailableUpdates={sortedAvailableUpdates}
+                        installedCurrentApps={installedCurrentApps}
+                        installedTapps={installedTapps}
+                        onRetry={() => loadRemoteApps(true)}
+                        onOpenDetail={openDetail}
+                        onSeeAllApps={openAllAppsPage}
+                        renderAppCard={renderAppCard}
+                      />
+                    </div>
                   </div>
                 </motion.div>
               )}

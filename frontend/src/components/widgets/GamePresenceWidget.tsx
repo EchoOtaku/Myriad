@@ -22,10 +22,10 @@ import { useVisibilityInterval } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { useThemeMode } from '../../utils/themeSubscriber'
-import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetLongPressHint } from './shared/WidgetLongPressHint'
 import { WidgetShell } from './shared/WidgetShell'
+import { WidgetSkeleton } from './shared/WidgetSkeleton'
 import './GamePresenceWidget.css'
 
 // ---------------------------------------------------------------------------
@@ -735,9 +735,11 @@ const GamePresenceWidget = memo(
 
       if (loading && !data) {
         return (
-          <div className="h-full w-full flex items-center justify-center">
-            <Spinner size="lg" color={theme.primary} className="opacity-50" />
-          </div>
+          <WidgetSkeleton
+            preset="media-row"
+            accent={theme.primary}
+            label={t.common.loading}
+          />
         )
       }
 

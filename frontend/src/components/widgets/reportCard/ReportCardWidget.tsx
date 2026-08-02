@@ -15,10 +15,10 @@ import {
   resolveReportPlatformId,
 } from '../../../utils/reportCardVisuals'
 import { getLatestReportDeduped } from '../../../utils/requestDedup'
-import { Spinner } from '../../Spinner'
 import { GlowBackground } from '../shared/GlowBackground'
 import { WidgetLongPressHint } from '../shared/WidgetLongPressHint'
 import { WidgetShell } from '../shared/WidgetShell'
+import { WidgetSkeletonCover } from '../shared/WidgetSkeleton'
 import { CardLogoPill } from './CardLogoPill'
 import { PLATFORM_CONFIG } from './platformConfig'
 import { PlatformFace } from './PlatformFace'
@@ -299,23 +299,16 @@ export const ReportCardWidget = memo(
       handlePressEnd()
     }, [handlePressEnd])
 
-    if (loading) {
-      return (
-        <div className="h-full w-full flex items-center justify-center">
-          <Spinner size="lg" color="primary" />
-        </div>
-      )
-    }
-    if (!reportData) {
+    const platformConfig =
+      PLATFORM_CONFIG[platformId] || PLATFORM_CONFIG.bilibili
+
+    if (!loading && !reportData) {
       return (
         <div className="h-full w-full flex items-center justify-center text-gray-400 text-sm">
           <span>{t.reportCard.noReportData}</span>
         </div>
       )
     }
-
-    const platformConfig =
-      PLATFORM_CONFIG[platformId] || PLATFORM_CONFIG.bilibili
 
     return (
       <WidgetShell
@@ -341,7 +334,9 @@ export const ReportCardWidget = memo(
             <GlowBackground
               color={platformConfig.color}
               animLevel={animLevel.level}
-              shouldAnimate={animLevel.loop && animLevel.widgetGlow}
+              shouldAnimate={
+                !loading && animLevel.loop && animLevel.widgetGlow
+              }
               variant="single"
               size="lg"
             />
@@ -349,17 +344,31 @@ export const ReportCardWidget = memo(
         }
       >
         {/* 主内容区：fill the shell root so h-full platform widgets paint */}
-        <div className="absolute inset-0 z-10 flex min-h-0 flex-col">
-          <PlatformFace
-            platformId={platformId}
-            data={reportData}
-            showOverview={showOverview}
-            onContentChange={handleContentChange}
-            allowLoop={animLevel.loop}
-          />
-        </div>
+        {reportData ? (
+          <div className="absolute inset-0 z-10 flex min-h-0 flex-col">
+            <PlatformFace
+              platformId={platformId}
+              data={reportData}
+              showOverview={showOverview}
+              onContentChange={handleContentChange}
+              allowLoop={animLevel.loop}
+            />
+          </div>
+        ) : null}
 
-        <CardLogoPill platformId={platformId} cardContent={cardContent} />
+        {reportData ? (
+          <CardLogoPill platformId={platformId} cardContent={cardContent} />
+        ) : null}
+
+        <WidgetSkeletonCover
+          active={loading}
+          preset="report"
+          accent={{
+            color: platformConfig.color,
+            soft: platformConfig.bgColor,
+          }}
+          label={t.common.loading}
+        />
 
         <WidgetLongPressHint
           visible={interactive && isEditMode}

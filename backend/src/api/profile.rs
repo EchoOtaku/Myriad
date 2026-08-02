@@ -17,7 +17,7 @@ use std::path::PathBuf;
 // Platform refresh / site owner live in services (scheduler must not depend on HTTP).
 use crate::services::platform_refresh::{
     fetch_fresh_platform_data, load_platform_data_cache, platform_data_warning,
-    save_platform_data_cache, PLATFORM_CACHE_HOURS,
+    resolve_platform_fetch_message, save_platform_data_cache, PLATFORM_CACHE_HOURS,
 };
 pub use crate::services::site_owner::site_owner_user_id;
 
@@ -99,18 +99,28 @@ pub async fn fetch_all_data(State(db): State<DatabaseConnection>) -> (StatusCode
     // 缓存不存在或已过期，重新获取
     tracing::info!("🔄 Fetching fresh platform data...");
     match fetch_fresh_platform_data(&db, None).await {
-        Ok(data) => {
+        Ok(outcome) => {
             // 保存到缓存
-            if let Err(e) = save_platform_data_cache(&data) {
+            if let Err(e) = save_platform_data_cache(&outcome.data) {
                 tracing::error!("Failed to save platform cache: {}", e);
             }
+
+            let message = if outcome.errors.is_empty() {
+                "Data fetched successfully".to_string()
+            } else {
+                format!(
+                    "Data fetched with {} platform error(s)",
+                    outcome.errors.len()
+                )
+            };
 
             (
                 StatusCode::OK,
                 Json(json!({
                     "success": true,
-                    "message": "Data fetched successfully",
-                    "data": data,
+                    "message": message,
+                    "data": outcome.data,
+                    "errors": outcome.errors,
                     "fetched_at": chrono::Utc::now().to_rfc3339(),
                     "from_cache": false
                 })),
@@ -161,18 +171,28 @@ pub async fn refresh_platform_data(
 
     tracing::info!("🔄 Force refreshing platform data...");
     match fetch_fresh_platform_data(&db, None).await {
-        Ok(data) => {
+        Ok(outcome) => {
             // 保存到缓存
-            if let Err(e) = save_platform_data_cache(&data) {
+            if let Err(e) = save_platform_data_cache(&outcome.data) {
                 tracing::error!("Failed to save platform cache: {}", e);
             }
+
+            let message = if outcome.errors.is_empty() {
+                "Data refreshed successfully".to_string()
+            } else {
+                format!(
+                    "Data refreshed with {} platform error(s)",
+                    outcome.errors.len()
+                )
+            };
 
             (
                 StatusCode::OK,
                 Json(json!({
                     "success": true,
-                    "message": "Data refreshed successfully",
-                    "data": data,
+                    "message": message,
+                    "data": outcome.data,
+                    "errors": outcome.errors,
                     "fetched_at": chrono::Utc::now().to_rfc3339()
                 })),
             )
@@ -199,9 +219,9 @@ pub async fn fetch_single_platform_data(
     tracing::info!("🔄 Fetching data for platform: {}...", req.platform);
 
     match fetch_fresh_platform_data(&db, Some(&req.platform)).await {
-        Ok(data) => {
+        Ok(outcome) => {
             // 只保存请求的平台数据，而不是所有平台
-            if let Some(platform_data) = data.get(&req.platform) {
+            if let Some(platform_data) = outcome.data.get(&req.platform) {
                 let single_platform_data = json!({
                     &req.platform: platform_data
                 });
@@ -210,20 +230,28 @@ pub async fn fetch_single_platform_data(
                 }
             }
 
-            // 检测该平台是否真的取到可用数据，空数据不再伪装成成功
-            let warning = platform_data_warning(&req.platform, data.get(&req.platform));
-            if let Some(warning) = warning {
+            let remote_err = outcome.errors.get(&req.platform).map(String::as_str);
+            // 远程失败或数据为空：优先透传真实错误（如 X 402 额度耗尽）
+            if let Some(message) = resolve_platform_fetch_message(
+                &req.platform,
+                outcome.data.get(&req.platform),
+                remote_err,
+            ) {
+                let empty = platform_data_warning(&req.platform, outcome.data.get(&req.platform))
+                    .is_some();
                 tracing::warn!(
-                    "⚠️ {} fetched but data looks empty: {}",
+                    "⚠️ {} fetch issue (empty={}): {}",
                     req.platform,
-                    warning
+                    empty,
+                    message
                 );
                 return (
                     StatusCode::OK,
                     Json(json!({
                         "success": false,
-                        "message": warning,
-                        "data": data,
+                        "message": message,
+                        "data": outcome.data,
+                        "error": remote_err,
                         "fetched_at": chrono::Utc::now().to_rfc3339()
                     })),
                 );
@@ -234,7 +262,7 @@ pub async fn fetch_single_platform_data(
                 Json(json!({
                     "success": true,
                     "message": format!("Data for {} fetched successfully", req.platform),
-                    "data": data,
+                    "data": outcome.data,
                     "fetched_at": chrono::Utc::now().to_rfc3339()
                 })),
             )

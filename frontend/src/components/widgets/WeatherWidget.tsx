@@ -25,9 +25,9 @@ import {
   WEATHER_DETAIL_ICON_ASSETS,
   WEATHER_ICON_ASSETS,
 } from '../../utils/dynamicContent'
-import { Spinner } from '../Spinner'
 import { WeatherAssetIcon } from '../weather/WeatherAssetIcon'
 import { FitText } from './shared/FitText'
+import { WidgetSkeleton } from './shared/WidgetSkeleton'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 
@@ -243,8 +243,12 @@ export const WeatherWidget = memo(
 
     if (loading) {
       return (
-        <div className="h-full w-full flex items-center justify-center">
-          <Spinner size="lg" color="primary" />
+        <div className="h-full w-full p-3">
+          <WidgetSkeleton
+            preset="hero"
+            accent="var(--color-primary)"
+            label={t.common.loading}
+          />
         </div>
       )
     }

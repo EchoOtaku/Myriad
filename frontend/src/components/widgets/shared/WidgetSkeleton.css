@@ -1,0 +1,344 @@
+/**
+ * Widget skeleton — shared loading surface for home widgets.
+ * Accent: --ws-accent / --ws-soft / --ws-shine (see WidgetSkeleton.tsx).
+ *
+ * Perf:
+ * - contain limits invalidation
+ * - shimmer via transform translateX (compositor-friendly)
+ * - --static / --hold / --placeholder skip animation
+ * - deferMs in TS avoids sub-100ms paint flash
+ * - exit: opacity + scale on .widget-skeleton-cover (GPU)
+ */
+
+/* —— enter / exit cover (content underneath, skeleton on top) —— */
+.widget-skeleton-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  transition:
+    opacity var(--ws-exit-ms, 280ms) cubic-bezier(0.22, 1, 0.36, 1),
+    transform var(--ws-exit-ms, 280ms) cubic-bezier(0.22, 1, 0.36, 1);
+  /* will-change only while exiting — avoid permanent layer promotion */
+}
+
+.widget-skeleton-cover--fill {
+  /* same as default absolute inset */
+}
+
+.widget-skeleton-cover--shown {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+/* Soft dissolve: slight zoom + fade so content appears under */
+.widget-skeleton-cover--exit {
+  opacity: 0;
+  transform: translate3d(0, 0, 0) scale(1.03);
+  will-change: opacity, transform;
+}
+
+.widget-skeleton-cover--exit .widget-skeleton-bone::after {
+  animation: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.widget-skeleton-cover--exit .widget-skeleton-stall {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .widget-skeleton-cover {
+    transition-duration: 0.01ms;
+  }
+}
+
+html[data-perf-mode='exlight'] .widget-skeleton-cover {
+  transition-duration: 0.01ms;
+}
+
+.widget-skeleton {
+  --ws-accent: var(--color-primary, #6366f1);
+  --ws-soft: color-mix(in srgb, var(--ws-accent) 12%, transparent);
+  --ws-shine: color-mix(in srgb, var(--ws-accent) 28%, transparent);
+  --ws-muted: color-mix(in srgb, var(--ws-accent) 7%, transparent);
+  position: relative;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  width: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout style paint;
+}
+
+/* deferMs arming: zero bones */
+.widget-skeleton--placeholder {
+  background: transparent;
+}
+
+/* Off-viewport / cheap hold: one paint layer, no bone DOM, no animation */
+.widget-skeleton--hold {
+  background: var(--ws-soft);
+  /* Allow browser to skip work when tile is far off-screen */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 8rem;
+}
+
+.widget-skeleton-bone {
+  position: relative;
+  display: block;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--ws-soft);
+}
+
+.widget-skeleton-bone--muted {
+  background: var(--ws-muted);
+}
+
+/* GPU-friendly sweep (transform) instead of animating background-position */
+.widget-skeleton-bone::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--ws-shine) 50%,
+    transparent 100%
+  );
+  transform: translate3d(-100%, 0, 0);
+  animation: widget-skeleton-sweep 1.45s ease-in-out infinite;
+  will-change: transform;
+  pointer-events: none;
+}
+
+.widget-skeleton-bone--muted::after {
+  opacity: 0.85;
+}
+
+/* Static / hold: no sweep */
+.widget-skeleton--static .widget-skeleton-bone::after,
+.widget-skeleton--hold .widget-skeleton-bone::after {
+  display: none;
+}
+
+@keyframes widget-skeleton-sweep {
+  0% {
+    transform: translate3d(-100%, 0, 0);
+  }
+  100% {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+/* —— presets —— */
+
+.widget-skeleton--block {
+  justify-content: stretch;
+}
+
+.widget-skeleton--block > .widget-skeleton-bone {
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  border-radius: 0.75rem;
+}
+
+.widget-skeleton--lines {
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.5rem;
+}
+
+.widget-skeleton--media-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.35rem 0.15rem;
+}
+
+.widget-skeleton--media-row .ws-avatar {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.5rem;
+}
+
+.widget-skeleton--media-row .ws-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.widget-skeleton--media-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--ws-cols, 2), minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0.15rem;
+  flex: 1;
+  align-content: start;
+}
+
+.widget-skeleton--media-grid .ws-tile {
+  aspect-ratio: 4 / 3;
+  min-height: 3.25rem;
+  border-radius: 0.75rem;
+}
+
+.widget-skeleton--list {
+  gap: 0.4rem;
+  padding: 0.15rem;
+  flex: 1;
+  justify-content: flex-start;
+}
+
+.widget-skeleton--list .ws-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 1.75rem;
+}
+
+.widget-skeleton--list .ws-row-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+}
+
+.widget-skeleton--list .ws-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+}
+
+.widget-skeleton--hero {
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.75rem;
+}
+
+.widget-skeleton--hero .ws-hero-main {
+  width: 42%;
+  height: 1.65rem;
+  border-radius: 0.5rem;
+}
+
+.widget-skeleton--hero .ws-hero-sub {
+  width: 58%;
+  height: 0.65rem;
+  border-radius: 0.35rem;
+}
+
+.widget-skeleton--hero .ws-hero-meta {
+  width: 34%;
+  height: 0.55rem;
+  border-radius: 0.3rem;
+  margin-top: 0.25rem;
+}
+
+.widget-skeleton--stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+  padding: 0.25rem;
+  flex: 1;
+}
+
+.widget-skeleton--stats-grid .ws-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 2.5rem;
+  padding: 0.45rem;
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--ws-accent) 6%, transparent);
+}
+
+.widget-skeleton--report {
+  position: absolute;
+  inset: 0;
+  padding: 0.75rem;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.widget-skeleton--report .ws-report-wash {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    circle at 78% 18%,
+    color-mix(in srgb, var(--ws-accent) 18%, transparent) 0%,
+    transparent 55%
+  );
+}
+
+.widget-skeleton--report .ws-report-body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: 100%;
+  max-width: 72%;
+}
+
+.widget-skeleton--report .ws-logo {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 1;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--ws-accent) 28%, transparent);
+  background: color-mix(in srgb, var(--ws-accent) 14%, transparent);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--ws-accent) 12%, transparent);
+}
+
+/* Sandbox stall footer (ready timeout) */
+.widget-skeleton-stall {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 0.4rem 0.55rem;
+  text-align: center;
+  font-size: 0.65rem;
+  line-height: 1.3;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--ws-accent) 85%, #111);
+  background: color-mix(in srgb, var(--ws-soft) 70%, transparent);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+html.dark .widget-skeleton-stall {
+  color: color-mix(in srgb, var(--ws-accent) 70%, #fff);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .widget-skeleton-bone::after {
+    animation: none;
+    display: none;
+  }
+}
+
+html[data-perf-mode='exlight'] .widget-skeleton-bone::after {
+  animation: none;
+  display: none;
+}

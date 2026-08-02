@@ -137,7 +137,10 @@ export function StoreCatalogView({
                   key={`feat-${app.id}`}
                   className={`as-store__feature-card ${style.className}`}
                   data-feature-index={index}
-                  style={style.style}
+                  style={{
+                    ...style.style,
+                    ['--as-enter-i' as string]: index,
+                  }}
                 >
                   <FeaturedTappPreview app={app} />
                   <span className="as-store__feature-eyebrow">
@@ -221,7 +224,7 @@ export function StoreCatalogView({
                 </button>
               </div>
             </div>
-            <div className="as-store__list">
+            <div key={installedSortOrder} className="as-store__list">
               {installedCurrentApps.map((app, index) =>
                 renderAppCard(
                   app,
@@ -279,7 +282,10 @@ export function StoreCatalogView({
               </button>
             )}
           </div>
-          <div className="as-store__list">
+          <div
+            key={selectedCategory ? categorySortOrder : 'preview'}
+            className="as-store__list"
+          >
             {discoverPreviewApps.map((app, index) =>
               renderAppCard(app, index),
             )}

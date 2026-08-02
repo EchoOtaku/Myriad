@@ -129,8 +129,10 @@ Page、Widget 和 headless core 是运行形态，由 `hasPage`、`widgets` 和
 - **Storage 与 Settings 不同命名空间**：
   - `Tapp.storage` 的持久主体是 Runtime Grant **subject**（`user_id + tapp_id`）。打开
     公开安装时，每个已登录用户仍读写自己的私有 storage，不会读取站点 owner 的数据。
-  - Manifest 声明的安装级设置（含沙箱 `_settings.*` 与宿主 settings 路由）挂在
-    **installation owner** 命名空间：owner 或管理员可写，其他已登录运行者只读声明过的键。
+    游客 Grant 不含 `storage`，无持久 storage。
+  - Manifest 声明的安装级设置（宿主 `Tapp.settings` / REST `GET|POST …/settings`）挂在
+    **installation owner** 命名空间：owner 或管理员可**写**；凡能解析到该安装的运行者
+    （含**游客打开公开安装**）可**读**已保存的声明键。未写入时回落 `defaultValue`。
   - 不要笼统说“用户 storage/settings 按用户 + 稳定 Tapp ID 连续保留并在公/私同 ID 间复用”；
     storage 随 subject 私有，settings 随安装 owner，两者不可混为一谈。
 - 安装/更新采用 staging 校验和原子目录切换，失败不会把半份 Manifest 或资源留在在线目录。
@@ -445,8 +447,10 @@ const refreshInterval = await Tapp.settings.get("refreshInterval");
 const allSettings = await Tapp.settings.getAll();
 ```
 
-Manifest 设置属于安装级配置：安装 owner 或管理员可修改，运行该安装的已登录用户可以读取。
-`Tapp.storage` 是当前用户的私有空间，不能使用 `_settings.` 等宿主保留前缀访问安装级设置。
+Manifest 设置属于安装级配置：安装 owner 或管理员可修改；能打开该安装的运行者（含游客打开
+**公开**安装）可通过 `Tapp.settings.get` / `getAll` 读取已保存值，未保存则用上表
+`defaultValue`。`Tapp.storage` 是当前登录用户的私有空间，不能使用 `_settings.` 等宿主保留
+前缀访问安装级设置。公开安装请勿把密钥写入 settings。
 
 ---
 

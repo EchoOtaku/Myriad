@@ -13,6 +13,9 @@ pub struct ActivityChange {
     pub subject_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub subject_title: Option<String>,
+    /// Cover / icon / avatar URL when the platform snapshot has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subject_image: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metric: Option<String>,
     #[serde(rename = "old", skip_serializing_if = "Option::is_none")]
@@ -75,6 +78,7 @@ pub fn build_activity_payload(
             subject_type: Some("platform".to_string()),
             subject_id: None,
             subject_title: None,
+            subject_image: account_image(platform, new_data),
             metric: Some("data_changes".to_string()),
             old_value: None,
             new_value: Some(json!(raw_change_count)),
@@ -165,6 +169,21 @@ pub fn public_activity_changes(changes: &Value) -> Value {
                         public.insert(key.to_string(), Value::String(value.to_string()));
                     }
                 }
+                // Only public http(s) media URLs — never leak relative paths or data URIs.
+                if let Some(image) = change
+                    .get("subject_image")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|url| {
+                        let lower = url.to_ascii_lowercase();
+                        lower.starts_with("https://") || lower.starts_with("http://")
+                    })
+                {
+                    public.insert(
+                        "subject_image".to_string(),
+                        Value::String(image.to_string()),
+                    );
+                }
                 for key in ["old", "new", "delta"] {
                     if let Some(value) = change.get(key).filter(|value| {
                         value.is_null()
@@ -215,6 +234,7 @@ fn baseline_changes(platform: &str, data: &Value) -> Vec<ActivityChange> {
         )],
     };
 
+    let avatar = account_image(platform, data);
     counts
         .into_iter()
         .filter(|(_, count)| *count > 0)
@@ -223,6 +243,7 @@ fn baseline_changes(platform: &str, data: &Value) -> Vec<ActivityChange> {
             subject_type: Some("platform".to_string()),
             subject_id: None,
             subject_title: None,
+            subject_image: avatar.clone(),
             metric: Some(metric.to_string()),
             old_value: None,
             new_value: Some(json!(count)),
@@ -234,6 +255,7 @@ fn baseline_changes(platform: &str, data: &Value) -> Vec<ActivityChange> {
 
 fn steam_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
     let mut changes = Vec::new();
+    // Steam owned-games payload has no cover URLs; derive capsule from appid.
     diff_items(
         &mut changes,
         old,
@@ -242,6 +264,8 @@ fn steam_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         "/appid",
         "game",
         &["/name"],
+        &[],
+        ImageSource::SteamAppId,
         &[("playtime_minutes", "/playtime_forever", 90)],
     );
     changes
@@ -257,6 +281,8 @@ fn bangumi_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         "/subject_id",
         "media",
         &["/subject/name_cn", "/subject/name"],
+        &["/subject/images"],
+        ImageSource::Pointers,
         &[
             ("rating", "/rate", 95),
             ("episodes_progress", "/ep_status", 100),
@@ -269,6 +295,8 @@ fn bangumi_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
 
 fn github_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
     let mut changes = Vec::new();
+    let avatar = account_image("github", new).or_else(|| account_image("github", old));
+    // Repos rarely ship a dedicated image; owner avatar still reads better than a blank tile.
     diff_items(
         &mut changes,
         old,
@@ -277,6 +305,8 @@ fn github_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         "/name",
         "repository",
         &["/name"],
+        &["/owner/avatar_url"],
+        ImageSource::Pointers,
         &[
             ("stars", "/stargazers_count", 95),
             ("forks", "/forks_count", 75),
@@ -284,11 +314,20 @@ fn github_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
             ("open_issues", "/open_issues_count", 55),
         ],
     );
+    // If repo items lack owner avatars, fall back to the authenticated user avatar.
+    if let Some(avatar) = avatar.clone() {
+        for change in &mut changes {
+            if change.subject_image.is_none() {
+                change.subject_image = Some(avatar.clone());
+            }
+        }
+    }
     push_metric(
         &mut changes,
         "account",
         None,
         None,
+        avatar.clone(),
         "followers",
         old.pointer("/user/followers"),
         new.pointer("/user/followers"),
@@ -299,6 +338,7 @@ fn github_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         "account",
         None,
         None,
+        avatar.clone(),
         "repositories_count",
         old.pointer("/user/public_repos"),
         new.pointer("/user/public_repos"),
@@ -312,6 +352,7 @@ fn github_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         "account",
         None,
         None,
+        avatar,
         "contributions",
         old_contributions.map(|value| json!(value)),
         new_contributions.map(|value| json!(value)),
@@ -330,6 +371,8 @@ fn bilibili_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         "/season_id",
         "subscription",
         &["/title"],
+        &["/cover"],
+        ImageSource::Pointers,
         &[("progress", "/progress", 90)],
     );
     diff_items(
@@ -340,6 +383,8 @@ fn bilibili_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         "/id",
         "collection",
         &["/title"],
+        &["/cover"],
+        ImageSource::Pointers,
         &[("media_count", "/media_count", 70)],
     );
     changes
@@ -347,9 +392,11 @@ fn bilibili_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
 
 fn netease_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
     let mut changes = Vec::new();
+    let avatar = account_image("netease", new).or_else(|| account_image("netease", old));
     push_count_metric(
         &mut changes,
         "account",
+        avatar.clone(),
         "liked_songs_count",
         array_len(old, "/liked_songs"),
         array_len(new, "/liked_songs"),
@@ -363,6 +410,8 @@ fn netease_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         "/id",
         "song",
         &["/name"],
+        &["/al/picUrl", "/album/picUrl"],
+        ImageSource::Pointers,
         &[],
     );
     for (metric, pointer, importance) in [
@@ -376,6 +425,7 @@ fn netease_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
             "account",
             None,
             None,
+            avatar.clone(),
             metric,
             old.pointer(pointer),
             new.pointer(pointer),
@@ -387,6 +437,7 @@ fn netease_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
 
 fn x_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
     let mut changes = Vec::new();
+    let avatar = account_image("x", new).or_else(|| account_image("x", old));
     // Deliberately ignore metrics of accounts the user follows. Those values
     // caused the old widget to be dominated by unrelated follower-count noise.
     for (metric, pointer, importance) in [
@@ -405,6 +456,7 @@ fn x_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
             "account",
             None,
             None,
+            avatar.clone(),
             metric,
             old.pointer(pointer),
             new.pointer(pointer),
@@ -424,6 +476,8 @@ fn xbox_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         "/titleId",
         "game",
         &["/name"],
+        &["/displayImage"],
+        ImageSource::Pointers,
         &[
             ("achievements_count", "/achievement/currentAchievements", 95),
             ("gamerscore", "/achievement/currentGamerscore", 90),
@@ -447,6 +501,8 @@ fn mal_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
             "/node/id",
             subject_type,
             &["/node/title"],
+            &["/node/main_picture"],
+            ImageSource::Pointers,
             &[
                 ("progress", progress_pointer, 100),
                 ("rating", "/list_status/score", 90),
@@ -462,6 +518,7 @@ fn discord_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
     push_count_metric(
         &mut changes,
         "account",
+        None,
         "servers_count",
         array_len(old, "/guilds"),
         array_len(new, "/guilds"),
@@ -470,6 +527,7 @@ fn discord_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
     push_count_metric(
         &mut changes,
         "account",
+        None,
         "connections_count",
         array_len(old, "/connections"),
         array_len(new, "/connections"),
@@ -488,6 +546,8 @@ fn psn_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         "/npCommunicationId",
         "game",
         &["/trophyTitleName"],
+        &["/trophyTitleIconUrl"],
+        ImageSource::Pointers,
         &[("progress_percent", "/progress", 85)],
     );
     for (metric, pointer, importance) in [
@@ -499,6 +559,7 @@ fn psn_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
             "account",
             None,
             None,
+            None,
             metric,
             old.pointer(pointer),
             new.pointer(pointer),
@@ -506,6 +567,14 @@ fn psn_changes(old: &Value, new: &Value) -> Vec<ActivityChange> {
         );
     }
     changes
+}
+
+#[derive(Clone, Copy)]
+enum ImageSource {
+    /// Use JSON pointers on the item (string URL or image-size map).
+    Pointers,
+    /// Steam library art derived from numeric/string appid.
+    SteamAppId,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -517,6 +586,8 @@ fn diff_items(
     id_pointer: &str,
     subject_type: &str,
     title_pointers: &[&str],
+    image_pointers: &[&str],
+    image_source: ImageSource,
     metrics: &[(&str, &str, i16)],
 ) {
     let old_items = index_items(old_data, array_pointer, id_pointer);
@@ -528,31 +599,42 @@ fn diff_items(
 
     for id in ids {
         match (old_items.get(&id), new_items.get(&id)) {
-            (None, Some(new_item)) => push_item_change(
-                changes,
-                "item_added",
-                subject_type,
-                &id,
-                item_title(new_item, title_pointers),
-                75,
-            ),
-            (Some(old_item), None) => push_item_change(
-                changes,
-                "item_removed",
-                subject_type,
-                &id,
-                item_title(old_item, title_pointers),
-                45,
-            ),
+            (None, Some(new_item)) => {
+                let image = resolve_item_image(image_source, &id, new_item, image_pointers);
+                push_item_change(
+                    changes,
+                    "item_added",
+                    subject_type,
+                    &id,
+                    item_title(new_item, title_pointers),
+                    image,
+                    75,
+                );
+            }
+            (Some(old_item), None) => {
+                let image = resolve_item_image(image_source, &id, old_item, image_pointers);
+                push_item_change(
+                    changes,
+                    "item_removed",
+                    subject_type,
+                    &id,
+                    item_title(old_item, title_pointers),
+                    image,
+                    45,
+                );
+            }
             (Some(old_item), Some(new_item)) => {
                 let title = item_title(new_item, title_pointers)
                     .or_else(|| item_title(old_item, title_pointers));
+                let image = resolve_item_image(image_source, &id, new_item, image_pointers)
+                    .or_else(|| resolve_item_image(image_source, &id, old_item, image_pointers));
                 for (metric, pointer, importance) in metrics {
                     push_metric(
                         changes,
                         subject_type,
                         Some(id.clone()),
                         title.clone(),
+                        image.clone(),
                         metric,
                         old_item.pointer(pointer),
                         new_item.pointer(pointer),
@@ -571,6 +653,7 @@ fn push_item_change(
     subject_type: &str,
     subject_id: &str,
     subject_title: Option<String>,
+    subject_image: Option<String>,
     importance: i16,
 ) {
     changes.push(ActivityChange {
@@ -578,6 +661,7 @@ fn push_item_change(
         subject_type: Some(subject_type.to_string()),
         subject_id: Some(subject_id.to_string()),
         subject_title,
+        subject_image,
         metric: None,
         old_value: None,
         new_value: None,
@@ -592,6 +676,7 @@ fn push_metric(
     subject_type: &str,
     subject_id: Option<String>,
     subject_title: Option<String>,
+    subject_image: Option<String>,
     metric: &str,
     old_value: Option<&Value>,
     new_value: Option<&Value>,
@@ -602,6 +687,7 @@ fn push_metric(
         subject_type,
         subject_id,
         subject_title,
+        subject_image,
         metric,
         old_value.cloned(),
         new_value.cloned(),
@@ -615,6 +701,7 @@ fn push_owned_metric(
     subject_type: &str,
     subject_id: Option<String>,
     subject_title: Option<String>,
+    subject_image: Option<String>,
     metric: &str,
     old_value: Option<Value>,
     new_value: Option<Value>,
@@ -634,6 +721,7 @@ fn push_owned_metric(
         subject_type: Some(subject_type.to_string()),
         subject_id,
         subject_title,
+        subject_image,
         metric: Some(metric.to_string()),
         old_value,
         new_value,
@@ -645,6 +733,7 @@ fn push_owned_metric(
 fn push_count_metric(
     changes: &mut Vec<ActivityChange>,
     subject_type: &str,
+    subject_image: Option<String>,
     metric: &str,
     old_count: usize,
     new_count: usize,
@@ -655,6 +744,7 @@ fn push_count_metric(
         subject_type,
         None,
         None,
+        subject_image,
         metric,
         Some(json!(old_count)),
         Some(json!(new_count)),
@@ -727,6 +817,109 @@ fn item_title(item: &Value, pointers: &[&str]) -> Option<String> {
     })
 }
 
+fn resolve_item_image(
+    source: ImageSource,
+    id: &str,
+    item: &Value,
+    image_pointers: &[&str],
+) -> Option<String> {
+    match source {
+        ImageSource::SteamAppId => steam_app_image(id),
+        ImageSource::Pointers => image_pointers
+            .iter()
+            .find_map(|pointer| item.pointer(pointer).and_then(http_url_from_value)),
+    }
+}
+
+fn steam_app_image(appid: &str) -> Option<String> {
+    let appid = appid.trim();
+    if appid.is_empty() || !appid.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    // Portrait library art crops cleanly in a square/rounded tile.
+    Some(format!(
+        "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900.jpg"
+    ))
+}
+
+fn account_image(platform: &str, data: &Value) -> Option<String> {
+    let pointers: &[&str] = match platform {
+        "steam" => &["/user/avatarfull", "/user/avatar"],
+        "github" => &["/user/avatar_url"],
+        "bangumi" => &[
+            "/user/avatar/large",
+            "/user/avatar/medium",
+            "/user/avatar/small",
+        ],
+        "bilibili" => &["/user/face"],
+        "netease" | "netease_music" => &["/profile/avatarUrl"],
+        "x" => &["/user/profile_image_url"],
+        "xbox" => &["/profile/displayPicRaw", "/profile/gamerpic"],
+        "mal" | "myanimelist" => &["/user/picture"],
+        "psn" | "playstation" => &["/profile/avatarUrl", "/profile/avatar"],
+        _ => &[],
+    };
+    pointers
+        .iter()
+        .find_map(|pointer| data.pointer(pointer).and_then(http_url_from_value))
+        .map(|url| {
+            // X serves `_normal` 48px thumbs by default; prefer a larger crop when present.
+            if platform == "x" {
+                url.replacen("_normal.", ".", 1)
+            } else {
+                url
+            }
+        })
+}
+
+fn http_url_from_value(value: &Value) -> Option<String> {
+    match value {
+        Value::String(raw) => sanitize_http_url(raw),
+        Value::Object(map) => {
+            // Bangumi / MAL style size maps: prefer compact tiles for the activity list.
+            for key in [
+                "grid", "medium", "common", "small", "large", "url", "default",
+            ] {
+                if let Some(url) = map.get(key).and_then(Value::as_str).and_then(sanitize_http_url)
+                {
+                    return Some(url);
+                }
+            }
+            // Nested thumbnail maps (YouTube-style { medium: { url } }).
+            for key in ["medium", "default", "high", "standard"] {
+                if let Some(url) = map
+                    .get(key)
+                    .and_then(|entry| entry.get("url"))
+                    .and_then(Value::as_str)
+                    .and_then(sanitize_http_url)
+                {
+                    return Some(url);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn sanitize_http_url(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let candidate = if let Some(rest) = trimmed.strip_prefix("//") {
+        format!("https://{rest}")
+    } else {
+        trimmed.to_string()
+    };
+    let lower = candidate.to_ascii_lowercase();
+    if lower.starts_with("https://") || lower.starts_with("http://") {
+        Some(candidate)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -744,6 +937,10 @@ mod tests {
             Some("playtime_minutes")
         );
         assert_eq!(payload.changes[0].delta, Some(json!(75)));
+        assert_eq!(
+            payload.changes[0].subject_image.as_deref(),
+            Some("https://cdn.cloudflare.steamstatic.com/steam/apps/10/library_600x900.jpg")
+        );
     }
 
     #[test]
@@ -777,6 +974,39 @@ mod tests {
         let payload = build_activity_payload("bangumi", Some(&old), &new, 1);
 
         assert_eq!(payload.event_type, "suppressed");
+    }
+
+    #[test]
+    fn bangumi_progress_carries_cover_image() {
+        let old = json!({"collections": [{
+            "subject_id": 1,
+            "ep_status": 1,
+            "subject": {
+                "name": "Example",
+                "images": {
+                    "grid": "https://lain.bgm.tv/r/100/pic/cover/l/example.jpg",
+                    "large": "https://lain.bgm.tv/pic/cover/l/example.jpg"
+                }
+            }
+        }]});
+        let new = json!({"collections": [{
+            "subject_id": 1,
+            "ep_status": 2,
+            "subject": {
+                "name": "Example",
+                "images": {
+                    "grid": "https://lain.bgm.tv/r/100/pic/cover/l/example.jpg",
+                    "large": "https://lain.bgm.tv/pic/cover/l/example.jpg"
+                }
+            }
+        }]});
+        let payload = build_activity_payload("bangumi", Some(&old), &new, 1);
+
+        assert_eq!(payload.event_type, "updated");
+        assert_eq!(
+            payload.changes[0].subject_image.as_deref(),
+            Some("https://lain.bgm.tv/r/100/pic/cover/l/example.jpg")
+        );
     }
 
     #[test]
@@ -824,6 +1054,41 @@ mod tests {
             }, {
                 "kind": "metric_changed",
                 "metric": "data_changes"
+            }])
+        );
+    }
+
+    #[test]
+    fn public_changes_keep_http_subject_images_only() {
+        let stored = json!([{
+            "kind": "metric_changed",
+            "subject_title": "Example",
+            "subject_image": "https://cdn.example/cover.jpg",
+            "metric": "stars",
+            "old": 1,
+            "new": 2,
+            "delta": 1
+        }, {
+            "kind": "metric_changed",
+            "subject_image": "javascript:alert(1)",
+            "metric": "stars",
+            "new": 1
+        }]);
+
+        assert_eq!(
+            public_activity_changes(&stored),
+            json!([{
+                "kind": "metric_changed",
+                "subject_title": "Example",
+                "subject_image": "https://cdn.example/cover.jpg",
+                "metric": "stars",
+                "old": 1,
+                "new": 2,
+                "delta": 1
+            }, {
+                "kind": "metric_changed",
+                "metric": "stars",
+                "new": 1
             }])
         );
     }

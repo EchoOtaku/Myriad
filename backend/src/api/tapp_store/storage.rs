@@ -72,7 +72,44 @@ pub(crate) async fn write_storage_value(
         .map_err(|e| HttpError::from(storage_status(e)))
 }
 
+/// Subject for settings read: real users **and** signed guests (negative ids).
+/// Public installs resolve to the site-owner namespace so guests can read host
+/// settings without a login 401.
+fn settings_subject_id(claims: &Claims) -> Result<i32, HttpError> {
+    claims
+        .sub
+        .parse::<i32>()
+        .map_err(|_| HttpError(AppError::unauthorized("Unauthorized")))
+}
+
 async fn authorize_tapp_settings(
+    db: &DatabaseConnection,
+    claims: &Claims,
+    tapp_id: &str,
+) -> Result<(TappStorageAccess, Vec<TappSettingDef>), HttpError> {
+    validate_tapp_id(tapp_id).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
+    let subject_id = settings_subject_id(claims)?;
+    let tapp = tapp_common::resolve_accessible_tapp(db, subject_id, tapp_id).await?;
+    let settings = tapp
+        .manifest
+        .get("settings")
+        .and_then(serde_json::Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|setting| {
+            serde_json::from_value(setting)
+                .map_err(|_| HttpError(AppError::internal("Database error")))
+        })
+        .collect::<Result<Vec<TappSettingDef>, HttpError>>()?;
+    Ok((
+        TappStorageAccess::from_owner_and_subject(tapp.user_id, subject_id),
+        settings,
+    ))
+}
+
+/// Write path: durable authenticated users only (not guests).
+async fn authorize_tapp_settings_write(
     db: &DatabaseConnection,
     claims: &Claims,
     tapp_id: &str,
@@ -107,6 +144,21 @@ async fn authorize_tapp_setting(
 ) -> Result<(TappStorageAccess, String, TappSettingDef), HttpError> {
     validate_storage_key(key).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
     let (access, settings) = authorize_tapp_settings(db, claims, tapp_id).await?;
+    let setting = settings
+        .into_iter()
+        .find(|setting| setting.key == key)
+        .ok_or_else(|| HttpError(AppError::not_found("Not found")))?;
+    Ok((access, format!("_settings.{key}"), setting))
+}
+
+async fn authorize_tapp_setting_write(
+    db: &DatabaseConnection,
+    claims: &Claims,
+    tapp_id: &str,
+    key: &str,
+) -> Result<(TappStorageAccess, String, TappSettingDef), HttpError> {
+    validate_storage_key(key).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
+    let (access, settings) = authorize_tapp_settings_write(db, claims, tapp_id).await?;
     let setting = settings
         .into_iter()
         .find(|setting| setting.key == key)
@@ -156,7 +208,7 @@ pub(super) async fn set_tapp_setting(
 ) -> Result<Json<ApiResponse<()>>, HttpError> {
     validate_storage_value_size(&value)?;
     let (access, storage_key, setting) =
-        authorize_tapp_setting(&db, &claims, &tapp_id, &key).await?;
+        authorize_tapp_setting_write(&db, &claims, &tapp_id, &key).await?;
     if !can_write_installation_settings(access, current_is_admin(&claims, &db).await) {
         return Err(HttpError(AppError::forbidden("Forbidden")));
     }

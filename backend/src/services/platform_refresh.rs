@@ -153,6 +153,128 @@ pub fn save_split_raw_data(all_data: &Value) -> Result<(), Box<dyn std::error::E
     Ok(())
 }
 
+/// 一次抓取的结果：合并后的平台数据 + 各平台远程错误（保留旧缓存时也会记录）。
+#[derive(Debug, Clone)]
+pub struct FreshPlatformData {
+    pub data: Value,
+    /// platform id → raw error string from the remote fetcher
+    pub errors: std::collections::HashMap<String, String>,
+}
+
+/// 记录某平台抓取错误（主/副接口均可）；同平台多次失败会拼接，避免覆盖。
+fn note_fetch_error(
+    errors: &mut std::collections::HashMap<String, String>,
+    platform: &str,
+    stage: &str,
+    error: impl ToString,
+) {
+    let detail = {
+        let raw = error.to_string();
+        if stage.is_empty() {
+            raw
+        } else {
+            format!("{stage}: {raw}")
+        }
+    };
+    errors
+        .entry(platform.to_string())
+        .and_modify(|existing| {
+            if !existing.contains(&detail) {
+                existing.push_str("; ");
+                existing.push_str(&detail);
+            }
+        })
+        .or_insert(detail);
+}
+
+/// 将底层抓取错误转成面向用户的说明（含 X 402、通用鉴权/限流等）。
+pub fn humanize_platform_fetch_error(platform: &str, error: &str) -> String {
+    let lower = error.to_ascii_lowercase();
+    let label = match platform {
+        "github" => "GitHub",
+        "bilibili" => "Bilibili",
+        "steam" => "Steam",
+        "netease" => "网易云音乐",
+        "bangumi" => "Bangumi",
+        "x" => "X",
+        "discord" => "Discord",
+        "mal" => "MyAnimeList",
+        "xbox" => "Xbox",
+        "psn" => "PSN",
+        "youtube" => "YouTube",
+        other => other,
+    };
+
+    // X 按量计费额度
+    if platform.eq_ignore_ascii_case("x")
+        && (lower.contains("402")
+            || lower.contains("credits depleted")
+            || lower.contains("payment required")
+            || lower.contains("creditsdepleted"))
+    {
+        return "X API 额度已耗尽（HTTP 402 Credits Depleted）。请到 developer.x.com 充值/开通按量计费后再刷新；Bearer Token 本身可能仍有效。".to_string();
+    }
+
+    if lower.contains("429")
+        || lower.contains("rate limit")
+        || lower.contains("too many requests")
+        || lower.contains("quota")
+    {
+        return format!(
+            "{label} 请求过于频繁或额度/配额不足：{error}。请稍后再试，或检查 API 配额。"
+        );
+    }
+
+    if lower.contains("401")
+        || lower.contains("unauthorized")
+        || lower.contains("invalid token")
+        || lower.contains("bad credentials")
+        || lower.contains("invalid_grant")
+    {
+        return format!(
+            "{label} 鉴权失败：{error}。请检查 Token / API Key / Cookie 是否有效或已过期。"
+        );
+    }
+
+    if lower.contains("403") || lower.contains("forbidden") || lower.contains("access denied") {
+        return format!(
+            "{label} 拒绝访问（403）：{error}。常见原因：资料未公开、权限 scope 不足、或 IP/风控拦截。"
+        );
+    }
+
+    if lower.contains("404") || lower.contains("not found") {
+        return format!("{label} 未找到目标资源：{error}。请确认用户名 / ID 配置正确。");
+    }
+
+    if lower.contains("timeout") || lower.contains("timed out") || lower.contains("connect") {
+        return format!("{label} 网络/超时：{error}。请稍后重试。");
+    }
+
+    format!("{label} 抓取失败：{error}")
+}
+
+/// 综合「远程错误」与「数据是否为空」给出最终用户提示。
+/// - 远程失败且无可用数据 → 优先展示真实错误（如 402）
+/// - 远程部分失败但仍有可用数据 → 提示失败点，并说明仍有可用数据
+/// - 无远程错误但数据空 → 原有 platform_data_warning
+pub fn resolve_platform_fetch_message(
+    platform: &str,
+    data: Option<&Value>,
+    remote_error: Option<&str>,
+) -> Option<String> {
+    let has_usable = platform_data_warning(platform, data).is_none();
+
+    match (remote_error, has_usable) {
+        (Some(err), false) => Some(humanize_platform_fetch_error(platform, err)),
+        (Some(err), true) => Some(format!(
+            "{}（仍有部分可用数据，请查看详情后重试失败项）",
+            humanize_platform_fetch_error(platform, err)
+        )),
+        (None, false) => platform_data_warning(platform, data),
+        (None, true) => None,
+    }
+}
+
 /// 一键获取所有平台数据（带缓存）
 
 pub fn platform_data_warning(platform: &str, data: Option<&Value>) -> Option<String> {
@@ -245,6 +367,13 @@ pub fn platform_data_warning(platform: &str, data: Option<&Value>) -> Option<Str
                 "YouTube 未返回频道数据。请确认 API Key 有效，且 Channel ID / @handle 正确。"
                     .to_string()
             }),
+        "netease" => data
+            .get("profile")
+            .filter(|v| !v.is_null())
+            .is_none()
+            .then(|| {
+                "网易云未返回用户资料。请确认用户 ID 正确；接口受风控时请稍后重试。".to_string()
+            }),
         _ => None,
     }
 }
@@ -255,24 +384,39 @@ pub async fn refresh_platform_for_scheduler(
     db: &DatabaseConnection,
     platform: &str,
 ) -> Result<Value, String> {
-    let data = fetch_fresh_platform_data(db, Some(platform))
+    let outcome = fetch_fresh_platform_data(db, Some(platform))
         .await
         .map_err(|error| error.to_string())?;
-    if let Some(platform_data) = data.get(platform) {
+    if let Some(platform_data) = outcome.data.get(platform) {
         save_platform_data_cache(&json!({ (platform): platform_data }))
             .map_err(|error| error.to_string())?;
     }
-    if let Some(warning) = platform_data_warning(platform, data.get(platform)) {
-        return Err(warning);
+    let remote_err = outcome.errors.get(platform).map(String::as_str);
+    if let Some(msg) =
+        resolve_platform_fetch_message(platform, outcome.data.get(platform), remote_err)
+    {
+        // 无可用数据时调度器记失败；有旧数据则仅告警并继续返回
+        if platform_data_warning(platform, outcome.data.get(platform)).is_some() {
+            return Err(msg);
+        }
+        tracing::warn!(
+            "Platform {} refresh warning (stale kept): {}",
+            platform,
+            msg
+        );
     }
-    Ok(data.get(platform).cloned().unwrap_or(Value::Null))
+    Ok(outcome
+        .data
+        .get(platform)
+        .cloned()
+        .unwrap_or(Value::Null))
 }
 
 
 pub async fn fetch_fresh_platform_data(
     db: &DatabaseConnection,
     target_platform: Option<&str>,
-) -> Result<Value, Box<dyn std::error::Error>> {
+) -> Result<FreshPlatformData, Box<dyn std::error::Error>> {
     tracing::info!(
         "Starting fetch platform data (target: {:?})...",
         target_platform
@@ -294,6 +438,8 @@ pub async fn fetch_fresh_platform_data(
     } else {
         json!({})
     };
+    let mut fetch_errors: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
 
     // 辅助闭包：判断是否应该获取该平台
     let should_fetch = |p: &str| target_platform.is_none() || target_platform == Some(p);
@@ -342,7 +488,10 @@ pub async fn fetch_fresh_platform_data(
                     all_data["github"]["user"] = user_data;
                     tracing::info!("✓ GitHub user data fetched");
                 }
-                Err(e) => tracing::warn!("GitHub user fetch failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("GitHub user fetch failed: {}", e);
+                    note_fetch_error(&mut fetch_errors, "github", "user", e);
+                }
             }
 
             // 获取仓库列表
@@ -354,7 +503,10 @@ pub async fn fetch_fresh_platform_data(
                     all_data["github"]["repos"] = json!(repos);
                     tracing::info!("✓ GitHub repos fetched: {} repositories", repos.len());
                 }
-                Err(e) => tracing::warn!("GitHub repos fetch failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("GitHub repos fetch failed: {}", e);
+                    note_fetch_error(&mut fetch_errors, "github", "repos", e);
+                }
             }
 
             // 获取贡献历史
@@ -373,7 +525,10 @@ pub async fn fetch_fresh_platform_data(
                     }
                     all_data["github"]["contribution_calendar"] = json!(contributions);
                 }
-                Err(e) => tracing::warn!("⚠ GitHub contributions fetch failed: {}", e),
+                Err(e) => {
+                    // 贡献图为增强项：失败不阻断刷新成功，仅记日志
+                    tracing::warn!("⚠ GitHub contributions fetch failed: {}", e);
+                }
             }
 
             // 保存GitHub数据到数据库
@@ -405,7 +560,10 @@ pub async fn fetch_fresh_platform_data(
                             user_data.follower
                         );
                     }
-                    Err(e) => tracing::warn!("Bilibili user fetch failed: {}", e),
+                    Err(e) => {
+                        tracing::warn!("Bilibili user fetch failed: {}", e);
+                        note_fetch_error(&mut fetch_errors, "bilibili", "user", e);
+                    }
                 }
 
                 // 获取追番/追剧数据
@@ -417,7 +575,10 @@ pub async fn fetch_fresh_platform_data(
                             bangumi_data.len()
                         );
                     }
-                    Err(e) => tracing::warn!("Bilibili bangumi fetch failed: {}", e),
+                    Err(e) => {
+                        tracing::warn!("Bilibili bangumi fetch failed: {}", e);
+                        note_fetch_error(&mut fetch_errors, "bilibili", "bangumi", e);
+                    }
                 }
 
                 // 获取收藏夹
@@ -426,7 +587,10 @@ pub async fn fetch_fresh_platform_data(
                         all_data["bilibili"]["favorites"] = json!(favorites);
                         tracing::info!("✓ Bilibili favorites fetched: {} items", favorites.len());
                     }
-                    Err(e) => tracing::warn!("Bilibili favorites fetch failed: {}", e),
+                    Err(e) => {
+                        tracing::warn!("Bilibili favorites fetch failed: {}", e);
+                        note_fetch_error(&mut fetch_errors, "bilibili", "favorites", e);
+                    }
                 }
 
                 // 保存Bilibili数据到数据库
@@ -450,7 +614,10 @@ pub async fn fetch_fresh_platform_data(
                     all_data["steam"]["user"] = json!(user_data);
                     tracing::info!("✓ Steam user data fetched");
                 }
-                Err(e) => tracing::warn!("Steam user fetch failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("Steam user fetch failed: {}", e);
+                    note_fetch_error(&mut fetch_errors, "steam", "user", e);
+                }
             }
 
             match fetcher.fetch_steam_games(api_key, steam_id).await {
@@ -468,7 +635,10 @@ pub async fn fetch_fresh_platform_data(
                         total_count
                     );
                 }
-                Err(e) => tracing::warn!("Steam games fetch failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("Steam games fetch failed: {}", e);
+                    note_fetch_error(&mut fetch_errors, "steam", "games", e);
+                }
             }
 
             // 保存Steam数据到数据库
@@ -505,7 +675,10 @@ pub async fn fetch_fresh_platform_data(
                             tracing::warn!("⚠️ Netease API response missing 'profile' field, using full response");
                         }
                     }
-                    Err(e) => tracing::warn!("Netease user fetch failed: {}", e),
+                    Err(e) => {
+                        tracing::warn!("Netease user fetch failed: {}", e);
+                        note_fetch_error(&mut fetch_errors, "netease", "user", e);
+                    }
                 }
 
                 // 获取喜欢的歌曲（分批处理，避免内存占用过大）
@@ -522,7 +695,10 @@ pub async fn fetch_fresh_platform_data(
                             total_songs
                         );
                     }
-                    Err(e) => tracing::warn!("Netease Cloud Music fetch failed: {}", e),
+                    Err(e) => {
+                        tracing::warn!("Netease Cloud Music fetch failed: {}", e);
+                        note_fetch_error(&mut fetch_errors, "netease", "liked_songs", e);
+                    }
                 }
 
                 // 保存网易云音乐数据到数据库
@@ -579,15 +755,27 @@ pub async fn fetch_fresh_platform_data(
                             all_data["bangumi"]["collections"] = json!(collections);
                             tracing::info!("✓ Bangumi collections fetched: {} items", total_count);
                         }
-                        Err(e) => tracing::warn!("Bangumi collections fetch failed: {}", e),
+                        Err(e) => {
+                            tracing::warn!("Bangumi collections fetch failed: {}", e);
+                            note_fetch_error(&mut fetch_errors, "bangumi", "collections", e);
+                        }
                     }
                 } else {
                     tracing::warn!(
                         "Bangumi user data did not include username; skipping collections"
                     );
+                    note_fetch_error(
+                        &mut fetch_errors,
+                        "bangumi",
+                        "collections",
+                        "user data missing username",
+                    );
                 }
             }
-            Err(e) => tracing::warn!("Bangumi user fetch failed: {}", e),
+            Err(e) => {
+                tracing::warn!("Bangumi user fetch failed: {}", e);
+                note_fetch_error(&mut fetch_errors, "bangumi", "user", e);
+            }
         }
 
         if !all_data["bangumi"].is_null() {
@@ -612,7 +800,10 @@ pub async fn fetch_fresh_platform_data(
                         .unwrap_or(0);
                     tracing::info!("✓ X data fetched: {} tweets", tweet_count);
                 }
-                Err(e) => tracing::warn!("X fetch failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("X fetch failed: {}", e);
+                    note_fetch_error(&mut fetch_errors, "x", "", e);
+                }
             }
 
             if !all_data["x"].is_null() {
@@ -747,7 +938,10 @@ pub async fn fetch_fresh_platform_data(
                         conn_count
                     );
                 }
-                Err(e) => tracing::warn!("Discord fetch failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("Discord fetch failed: {}", e);
+                    note_fetch_error(&mut fetch_errors, "discord", "", e);
+                }
             }
 
             if !all_data["discord"].is_null() {
@@ -798,7 +992,10 @@ pub async fn fetch_fresh_platform_data(
                         }
                     );
                 }
-                Err(e) => tracing::warn!("MyAnimeList fetch failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("MyAnimeList fetch failed: {}", e);
+                    note_fetch_error(&mut fetch_errors, "mal", "", e);
+                }
             }
 
             if !all_data["mal"].is_null() {
@@ -841,7 +1038,10 @@ pub async fn fetch_fresh_platform_data(
                         .unwrap_or(0);
                     tracing::info!("✓ Xbox data fetched: {} titles", titles_count);
                 }
-                Err(e) => tracing::warn!("Xbox fetch failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("Xbox fetch failed: {}", e);
+                    note_fetch_error(&mut fetch_errors, "xbox", "", e);
+                }
             }
 
             if !all_data["xbox"].is_null() {
@@ -882,7 +1082,10 @@ pub async fn fetch_fresh_platform_data(
                         .unwrap_or(0);
                     tracing::info!("✓ PSN data fetched: {} trophy titles", titles_count);
                 }
-                Err(e) => tracing::warn!("PSN fetch failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("PSN fetch failed: {}", e);
+                    note_fetch_error(&mut fetch_errors, "psn", "", e);
+                }
             }
 
             if !all_data["psn"].is_null() {
@@ -915,7 +1118,10 @@ pub async fn fetch_fresh_platform_data(
                         .unwrap_or(0);
                     tracing::info!("✓ YouTube channel data fetched: {} sample videos", video_n);
                 }
-                Err(e) => tracing::warn!("YouTube fetch failed: {}", e),
+                Err(e) => {
+                    tracing::warn!("YouTube fetch failed: {}", e);
+                    note_fetch_error(&mut fetch_errors, "youtube", "", e);
+                }
             }
 
             if !all_data["youtube"].is_null() {
@@ -957,7 +1163,10 @@ pub async fn fetch_fresh_platform_data(
         tracing::error!("Failed to update smart filter cache: {}", e);
     }
 
-    Ok(all_data)
+    Ok(FreshPlatformData {
+        data: all_data,
+        errors: fetch_errors,
+    })
 }
 
 /// 清洗平台数据，只保留核心信息（符合5W1H原则）
@@ -1585,6 +1794,58 @@ fn clean_platform_data(data: &mut Value) {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn humanize_x_402_credits_depleted() {
+        let msg = humanize_platform_fetch_error(
+            "x",
+            "X API error (402 Payment Required): credits depleted",
+        );
+        assert!(msg.contains("额度"), "{msg}");
+        assert!(msg.contains("402") || msg.contains("Credits"), "{msg}");
+    }
+
+    #[test]
+    fn resolve_prefers_remote_error_when_empty() {
+        let msg = resolve_platform_fetch_message(
+            "x",
+            None,
+            Some("X API error (402 Payment Required): credits depleted"),
+        )
+        .unwrap();
+        assert!(msg.contains("额度"), "{msg}");
+        assert!(!msg.contains("未返回任何数据"), "{msg}");
+    }
+
+    #[test]
+    fn resolve_keeps_usable_note_when_data_present() {
+        let data = json!({"user": {"id": "1", "username": "hitomi"}, "tweets": []});
+        let msg = resolve_platform_fetch_message(
+            "x",
+            Some(&data),
+            Some("X API error (402 Payment Required): credits depleted"),
+        )
+        .unwrap();
+        assert!(msg.contains("可用数据"), "{msg}");
+    }
+
+    #[test]
+    fn humanize_rate_limit_and_auth_generic() {
+        let r = humanize_platform_fetch_error("steam", "HTTP 429 Too Many Requests");
+        assert!(r.contains("频繁") || r.contains("配额"), "{r}");
+        let a = humanize_platform_fetch_error("github", "401 Unauthorized: Bad credentials");
+        assert!(a.contains("鉴权"), "{a}");
+    }
+
+    #[test]
+    fn note_fetch_error_appends_stages() {
+        let mut map = std::collections::HashMap::new();
+        note_fetch_error(&mut map, "steam", "user", "boom");
+        note_fetch_error(&mut map, "steam", "games", "nope");
+        let v = map.get("steam").unwrap();
+        assert!(v.contains("user: boom"), "{v}");
+        assert!(v.contains("games: nope"), "{v}");
+    }
 
     #[test]
     fn platform_data_warning_none_when_payload_present() {

@@ -218,6 +218,87 @@ export async function fetchModuleVisibilityPreferences() {
   return normalizeModuleVisibilityPreferences(response.preferences)
 }
 
+/**
+ * Session-level cache for module visibility.
+ *
+ * ModuleVisibilityGuard mounts on every guarded route change. Without a shared
+ * cache each mount starts with isLoading=true and returns null until
+ * /config/module-visibility returns (~300ms+ on production) — that blank gap
+ * stacks with AnimatePresence mode="wait" and feels like severe route lag.
+ */
+let sessionPreferences: ModuleVisibilityPreferences | null = null
+let sessionLoadedAt = 0
+let sessionInflight: Promise<ModuleVisibilityPreferences> | null = null
+/** Bumps on every new network load so a superseded in-flight response cannot
+ *  clobber a newer force-refresh (or clear the wrong inflight slot). */
+let sessionLoadGeneration = 0
+
+/** Soft TTL: remounts reuse cache; background refresh after this age. */
+const SESSION_PREFERENCES_TTL_MS = 60_000
+
+function rememberSessionPreferences(
+  preferences: ModuleVisibilityPreferences,
+): ModuleVisibilityPreferences {
+  sessionPreferences = preferences
+  sessionLoadedAt = Date.now()
+  return preferences
+}
+
+export function getCachedModuleVisibilityPreferences(): ModuleVisibilityPreferences | null {
+  return sessionPreferences
+}
+
+/**
+ * Load preferences once per session window; concurrent soft callers share one
+ * flight. Force refreshes start a new request; older responses are ignored via
+ * generation so they cannot overwrite newer data or null the new inflight.
+ *
+ * @param force - bypass soft TTL (stale remount / explicit reload)
+ */
+export async function ensureModuleVisibilityPreferences(
+  force = false,
+): Promise<ModuleVisibilityPreferences> {
+  const age = Date.now() - sessionLoadedAt
+  if (
+    !force &&
+    sessionPreferences &&
+    age < SESSION_PREFERENCES_TTL_MS
+  ) {
+    return sessionPreferences
+  }
+  // Soft loads coalesce on the in-flight request (whether soft or force).
+  if (!force && sessionInflight) {
+    return sessionInflight
+  }
+
+  const generation = ++sessionLoadGeneration
+  const flight = fetchModuleVisibilityPreferences()
+    .then((prefs) => {
+      if (generation !== sessionLoadGeneration) {
+        return sessionPreferences ?? prefs
+      }
+      return rememberSessionPreferences(prefs)
+    })
+    .catch(() => {
+      if (generation !== sessionLoadGeneration) {
+        return (
+          sessionPreferences ?? DEFAULT_MODULE_VISIBILITY_PREFERENCES
+        )
+      }
+      if (sessionPreferences) return sessionPreferences
+      return rememberSessionPreferences(DEFAULT_MODULE_VISIBILITY_PREFERENCES)
+    })
+    .finally(() => {
+      // Only the active flight may clear the slot.
+      if (sessionInflight === flight) {
+        sessionInflight = null
+      }
+    })
+
+  sessionInflight = flight
+  return flight
+}
+
 export async function updateModuleVisibilityPreferences(
   preferences: ModuleVisibilityPreferences,
 ) {
@@ -229,43 +310,64 @@ export async function updateModuleVisibilityPreferences(
   if (!response.success) {
     throw new Error(response.message || 'Failed to save module visibility')
   }
-  return normalizeModuleVisibilityPreferences(response.preferences)
+  const next = normalizeModuleVisibilityPreferences(response.preferences)
+  rememberSessionPreferences(next)
+  return next
 }
 
 export function dispatchModuleVisibilityPreferencesUpdated(
   preferences: ModuleVisibilityPreferences,
 ) {
+  const normalized = normalizeModuleVisibilityPreferences(preferences)
+  rememberSessionPreferences(normalized)
+  if (typeof window === 'undefined') return
   window.dispatchEvent(
     new CustomEvent(MODULE_VISIBILITY_UPDATED_EVENT, {
-      detail: normalizeModuleVisibilityPreferences(preferences),
+      detail: normalized,
     }),
   )
 }
 
 export function useModuleVisibilityPreferences() {
   const [preferences, setPreferences] = useState<ModuleVisibilityPreferences>(
-    DEFAULT_MODULE_VISIBILITY_PREFERENCES,
+    () => sessionPreferences ?? DEFAULT_MODULE_VISIBILITY_PREFERENCES,
   )
-  const [isLoading, setIsLoading] = useState(true)
+  // Only block first paint until the session has resolved once.
+  const [isLoading, setIsLoading] = useState(() => sessionPreferences === null)
 
-  const reload = useCallback(async () => {
-    try {
+  const reload = useCallback(async (force = true) => {
+    // Never flip isLoading back to true when we already have session data —
+    // that blanks ModuleVisibilityGuard on every route remount.
+    if (sessionPreferences === null) {
       setIsLoading(true)
-      const nextPreferences = await fetchModuleVisibilityPreferences()
+    }
+    try {
+      const nextPreferences = await ensureModuleVisibilityPreferences(force)
       setPreferences(nextPreferences)
     } catch {
-      setPreferences(DEFAULT_MODULE_VISIBILITY_PREFERENCES)
+      const fallback =
+        sessionPreferences ?? DEFAULT_MODULE_VISIBILITY_PREFERENCES
+      setPreferences(fallback)
     } finally {
       setIsLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    reload()
+    // Soft reuse: if session cache is warm, paint immediately; refresh only when stale.
+    const age = Date.now() - sessionLoadedAt
+    if (sessionPreferences && age < SESSION_PREFERENCES_TTL_MS) {
+      setPreferences(sessionPreferences)
+      setIsLoading(false)
+    } else {
+      void reload(sessionPreferences === null ? false : true)
+    }
 
     const handleUpdated = (event: Event) => {
       const detail = (event as CustomEvent<ModuleVisibilityPreferences>).detail
-      setPreferences(normalizeModuleVisibilityPreferences(detail))
+      const next = normalizeModuleVisibilityPreferences(detail)
+      rememberSessionPreferences(next)
+      setPreferences(next)
       setIsLoading(false)
     }
 

@@ -5,8 +5,8 @@
 权限预检和错误解包。
 
 架构与安全边界见 [Tapp 架构](ARCHITECTURE.md)。路由权威来源是
-`backend/src/main.rs`、`backend/src/api/tapp_store.rs` 和
-`backend/src/api/tapp_scheduler.rs`。
+`backend/src/router/authenticated.rs`（及同目录 router 组装）、
+`backend/src/api/tapp_store.rs` 和 `backend/src/api/tapp_scheduler.rs`。
 
 ## 请求约定
 
@@ -108,6 +108,8 @@ interface TappResources {
 | 方法 | 路径                                 | 说明 |
 | ---- | ------------------------------------ | ---- |
 | GET  | `/api/tapps/recent?limit=10`         | 可选认证：按 **当前 subject**（`tapp_user_activities.user_id`）返回最近运行；`limit` 默认 10（1–50）。游客 subject 无 start 活动，结果为 `[]`。 |
+| GET  | `/api/tapps/{tappId}/settings`       | **读**安装级 Manifest 设置（见下节「Settings 读/写」） |
+| GET  | `/api/tapps/{tappId}/settings/{key}` | **读**单个声明键 |
 
 ### 需要登录的变更路由
 
@@ -187,13 +189,41 @@ Grant 才返回 `INVALID_RUNTIME_GRANT`。
 每次使用 Grant 时还会重新核对当前可见安装 owner，并以当前角色、动态权限配置和安装授权
 收缩权限；owner 改变的旧 Grant 会返回 `INVALID_RUNTIME_GRANT`，由宿主执行一次重签重试。
 
-### 设置、Widget 与存储
+### Settings 读/写（安装级）
+
+Settings 是 **installation owner** 命名空间上的 Manifest 声明配置，与 subject 私有
+`Tapp.storage` 分离。宿主 `Tapp.settings` 走下列 REST（不接受用 Runtime Grant 顶替
+会话身份，也不能用 storage key 读写 settings）。
+
+| 方法 | 路径 | 认证层 | 说明 |
+| ---- | ---- | ------ | ---- |
+| GET | `/api/tapps/{tappId}/settings` | **optional_auth** | 一次读取全部已保存的声明键 |
+| GET | `/api/tapps/{tappId}/settings/{key}` | **optional_auth** | 读取单个声明键 |
+| POST | `/api/tapps/{tappId}/settings/{key}` | **auth（登录）** | 写入声明键 |
+
+**读（GET）**
+
+- 真实用户与稳定 **guest Claims** 均可调用（与 Runtime Grant / storage 同一 optional_auth
+  层）。
+- 解析与运行态一致：有私有安装优先私有；否则可读当前 viewer 可见的**公开安装**，返回
+  **installation owner** 命名空间下已保存的值。
+- 仅接受当前 Manifest 真实声明的 key；未保存的键由 SDK 侧回落到 Manifest `defaultValue`。
+- 游客运行公开 Tapp（如后台 Aro）时，应能读到站主已写入的安装设置，而不是一律 401。
+- 对 viewer 不可见的安装（例如 `visibility: admin` 对游客）返回 **403**，不是静默空对象。
+
+**写（POST）**
+
+- 仅已登录会话；游客 subject 拒绝。
+- 仅安装 owner 或当前管理员可写；值须符合 type / select options / number min-max。
+- 写入方法是 `POST`，不是旧文档中的 `PUT`。
+
+不要把 secrets 放进 host settings：公开安装的 GET 对所有能打开该安装的 visitor（含游客）
+可读。
+
+### Widget 与存储
 
 | 方法   | 路径                                     | 说明                                        |
 | ------ | ---------------------------------------- | ------------------------------------------- |
-| GET    | `/api/tapps/{tappId}/settings/{key}`     | 登录宿主读取 Manifest 声明的设置            |
-| POST   | `/api/tapps/{tappId}/settings/{key}`     | 登录宿主写入 Manifest 声明的设置            |
-| GET    | `/api/tapps/{tappId}/settings`           | 一次读取全部已保存的 Manifest 声明设置       |
 | POST   | `/api/tapps/{tappId}/widgets`            | 管理员以 Runtime Grant 注册/更新动态 Widget |
 | DELETE | `/api/tapps/{tappId}/widgets/{widgetId}` | 管理员以 Runtime Grant 注销动态 Widget      |
 | GET    | `/api/tapps/{tappId}/storage`            | 列出 key                                    |
@@ -204,11 +234,7 @@ Grant 才返回 `INVALID_RUNTIME_GRANT`。
 | POST   | `/api/tapps/{tappId}/storage/{key}`      | 写入值                                      |
 | DELETE | `/api/tapps/{tappId}/storage/{key}`      | 删除值                                      |
 
-settings 路由是安装级配置控制面，只接受已登录会话与当前 Manifest 的真实 key，不接受
-`X-Tapp-Runtime-Grant` 代替登录，也不能访问任意 storage key。读取允许当前安装的已登录
-运行者；写入仅允许安装 owner 或当前管理员，且值必须符合声明的 type、select options 与
-number min/max；游客只使用 Manifest 默认值。
-`storage` 路由同样要求登录身份和 Runtime Grant；访客 Grant 不包含 `storage`，因此沙箱内
+`storage` 路由要求 optional_auth + Runtime Grant；访客 Grant 不包含 `storage`，因此沙箱内
 的 `Tapp.storage` 不能为访客创建持久数据。通用 storage 使用当前 subject 命名空间，并拒绝
 访问 `_settings.`、`_component:`、`_shortcut:`、`_report:` 等宿主保留键。
 同理，平台数据、报告读取、统一通知、组件/快捷键注册、scheduler、语音服务和 Brew 写入/评论
@@ -220,7 +246,6 @@ Widget 和所有主体为该公共安装创建的 scheduler 任务。
 普通用户安装带 Widget 声明的 Tapp 时不会被拒绝；权限过滤只移除其管理员专属的
 `widget:register` 能力，应用其余部分继续安装并运行。
 
-注意写入方法是 `POST`，不是旧文档中的 `PUT`。
 Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外，还可包含
 `settings` 与 `refresh_policy`；后端会执行与 Manifest 相同的字段、类型、范围和刷新间隔
 校验，并将其保存到 Widget 注册记录。

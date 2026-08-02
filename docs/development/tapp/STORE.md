@@ -163,10 +163,32 @@ flowchart TB
 | `featured` / `verified` | ❌ | UI 徽章 |
 | `created_at` / `updated_at` | ❌ | ISO 时间 |
 
-### 静态预览 `preview`
+### 静态预览 `preview`（商店 merchandising 快照）
 
-`preview` 由应用在目录条目中可选声明，只用于商店精选卡与详情页。宿主优先加载声明的
-HTML/CSS；未声明时回退到清洗后的 `download.page_template`，仍不可用时显示主题色占位。
+商店 UI（精选卡背景、应用详情大图）使用 **静态 HTML/CSS 快照**，**不是** 正式
+`TappPageSandbox` 运行时，也 **不会** 重渲染用户本机已安装包的 Page（旧路径会把
+动态壳洗成白屏）。
+
+实现入口：
+
+| 模块 | 职责 |
+| ---- | ---- |
+| `storePreview.ts` → `parseStorePreview` | 解析目录 `preview` 字段；非法声明静默忽略 |
+| `RemoteStoreService.downloadAppPreview` | 按路径拉取 HTML/CSS（单文件 ≤ 512 KiB） |
+| `sanitizeTappPreview.ts` → `buildSanitizedTappPreview` | 去脚本/外链/危险属性 + 预览用 CSP |
+| `tappStorePreview.ts` | 画布尺寸、cover/contain 变换、是否「适合作预览」 |
+| `StorePreviews.tsx` | 精选 `FeaturedTappPreview` / 详情 `StaticTappPreview` |
+
+#### 加载优先级
+
+1. **显式 `preview` 快照**（`preview.html` + `preview.styles[]` 路径）— 推荐  
+2. 否则 **`download.page_template`**（+ `styles` / `page_styles`）  
+3. 再否则（仅已安装本地项且无远程模板）用本地 `pageHtml` 壳  
+4. 仍不可用 / 清洗失败 / 详情页布局极端溢出 → **主题色 + 图标占位**（`TappPreviewPlaceholder`）
+
+预览失败 **永不阻断** 浏览与安装。
+
+#### 目录字段
 
 ~~~json
 {
@@ -188,17 +210,49 @@ HTML/CSS；未声明时回退到清洗后的 `download.page_template`，仍不�
 
 | 字段 | 约束 |
 | ---- | ---- |
-| `version` / `type` | 当前固定为 `1` / `"snapshot"` |
-| `html` | 必需；相对 `base_url` 的静态 HTML |
-| `styles` | 最多 8 个静态 CSS 路径；按声明顺序合并 |
-| `viewport` | 宽 `1280..3840`、高 `720..2160`；宿主不会使用低分辨率画布 |
-| `fit` | `cover`（默认）或 `contain` |
-| `focus` | 裁切焦点，`x` / `y` 均为 `0..1` |
-| `theme` | `auto`（默认）、`light` 或 `dark` |
+| `version` / `type` | 当前固定为 `1` / `"snapshot"`；其它值整段忽略 |
+| `html` | 必需；**资源路径**（相对 `base_url` 或 `http(s)://`），**不是** 内联 HTML 文本 |
+| `styles` | 最多 8 条 CSS **路径**；按顺序合并；同样禁止内联大段 CSS |
+| `viewport` | 宽 `1280..3840`、高 `720..2160`（缺省 1280×720；宿主会 clamp） |
+| `fit` | `cover`（默认，裁切填满）或 `contain` |
+| `focus` | 裁切焦点 `x`/`y` ∈ `[0,1]`，默认居中 |
+| `theme` | `auto`（默认）、`light`、`dark` — 写入预览根节点 class / `data-theme` |
 
-预览必须只包含公开、虚构或脱敏数据，并优先复用正式页面的结构与样式。商店会再次删除
-脚本、链接、外部资源和事件；显式快照中的表单控件只保留静态外观，并用禁止网络、导航、
-提交和指针交互的 iframe 渲染。预览错误只影响展示，**不得阻断安装**。
+路径校验（`isStorePreviewResourcePath`）：禁止 `<>`、换行、空白；禁止非 http(s) 的
+`scheme:`（如 `javascript:`）。把 `apps/foo/preview.html` 误写成内联 markup 会解析失败
+或渲染空白。
+
+#### 宿主清洗与 iframe
+
+`buildSanitizedTappPreview` 会：
+
+- 删除 `script` / `iframe` / `object` / `link` / `meta` 等危险节点与 `on*` 事件  
+- 剥离 URL 属性（`href`/`src`/…）；CSS 中仅保留 `data:image/`、`blob:` 的 `url()`  
+- 去掉 `@import` 与危险 expression  
+- 注入严格 CSP：`default-src 'none'`；`img-src`/`media-src` 仅 `data:`/`blob:`；
+  `style-src 'unsafe-inline'`；`form-action 'none'`；`base-uri 'none'`  
+  （**不含** 浏览器未实现的 `navigate-to`）  
+- 若壳几乎全是空挂载点 + 被剥节点（运行时依赖壳），返回 `null` → 占位  
+- **显式 `preview` 快照**：`preserveControls=true`，表单控件可留作静态外观（`tabindex=-1`）  
+- **page_template 回退**：控件一并剥掉，避免像可点 UI  
+
+渲染：`iframe` + `sandbox="allow-same-origin"`（无 scripts/forms/popups 能力）、
+`referrerPolicy="no-referrer"`、宿主侧禁止指针交互。
+
+| 场景 | 组件 | 就绪策略 |
+| ---- | ---- | -------- |
+| 精选卡背景 | `FeaturedTappPreview` | 懒加载（IntersectionObserver）；load/超时 (~2.8s) 后显示 |
+| 详情大图 | `StaticTappPreview` | load 后跑 `isRenderedPreviewAdapted`；极端横向溢出 → 占位；超时仍尽量显示 |
+
+画布按 `viewport` 固定像素，再按宿主容器 `scale` + `focus` 平移（cover/contain）。
+
+#### 作者建议
+
+- 用**静态**结构与样式：字、色块、内联 SVG/`data:` 图；不要依赖 JS、外链图、字体 CDN。  
+- 优先单独 `preview.html` + 共享/专用 CSS，比把整页 runtime 壳当预览更稳。  
+- 内容必须是公开、虚构或脱敏数据。  
+- 视口按桌面画布设计（≥1280×720）；过矮会被抬到下限。  
+- 本地自测：路径可从 `base_url` fetch、无脚本、清洗后仍有可见文本或背景。
 
 ### `download` 路径表
 

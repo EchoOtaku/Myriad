@@ -32,8 +32,32 @@ const DOCS_TAPP = join(REPO, 'docs/development/tapp')
 const DOCS_INDEX = join(REPO, 'docs/development/TAPP_DEVELOPMENT.md')
 const FIXTURES = join(DOCS_TAPP, 'fixtures')
 const TAPP_STORE_RS = join(REPO, 'backend/src/api/tapp_store.rs')
-const MAIN_RS = join(REPO, 'backend/src/main.rs')
+/** Router assembly (routes moved out of main.rs into router/*). */
+const ROUTER_DIR = join(REPO, 'backend/src/router')
 const CONTRACT_RULES = join(REPO, 'crates/tapp-contract/src/contract_rules.rs')
+
+function collectRustRoutePathLiterals(dir: string): Set<string> {
+  const paths = new Set<string>()
+  if (!existsSync(dir)) return paths
+  const walk = (d: string) => {
+    for (const name of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, name.name)
+      if (name.isDirectory()) {
+        walk(p)
+        continue
+      }
+      if (!name.name.endsWith('.rs')) continue
+      const text = read(p)
+      for (const m of text.matchAll(/"(\/api\/tapp(?:\/[^"]*)?)"/g)) {
+        if (!m[1].startsWith('/api/tapps')) {
+          paths.add(m[1].replace(/\{[^}]+\}/g, '{}'))
+        }
+      }
+    }
+  }
+  walk(dir)
+  return paths
+}
 
 function read(path: string): string {
   return readFileSync(path, 'utf8')
@@ -153,21 +177,10 @@ describe('Tapp docs gating consistency', () => {
     )
   })
 
-  it('REST_API documented /api/tapp method+path pairs exist as .route in main.rs', () => {
+  it('REST_API documented /api/tapp method+path pairs exist in backend router modules', () => {
     const rest = read(join(DOCS_TAPP, 'REST_API.md'))
-    const main = read(MAIN_RS)
-    // Collect path strings registered under /api/tapp (not /api/tapps)
-    const registeredPaths = new Set(
-      [...main.matchAll(/"(\/api\/tapp\/[^"]+)"/g)].map((m) =>
-        m[1].replace(/\{[^}]+\}/g, '{}'),
-      ),
-    )
-    // Also scheduler/ws and bare patterns
-    for (const m of main.matchAll(/"(\/api\/tapp(?:\/[^"]*)?)"/g)) {
-      if (!m[1].startsWith('/api/tapps')) {
-        registeredPaths.add(m[1].replace(/\{[^}]+\}/g, '{}'))
-      }
-    }
+    // Routes live under backend/src/router/* (not main.rs).
+    const registeredPaths = collectRustRoutePathLiterals(ROUTER_DIR)
 
     const missing: string[] = []
     for (const m of rest.matchAll(
@@ -182,7 +195,7 @@ describe('Tapp docs gating consistency', () => {
     assert.deepEqual(
       missing,
       [],
-      `REST_API /api/tapp paths missing from main.rs route strings:\n${missing.join('\n')}`,
+      `REST_API /api/tapp paths missing from backend/src/router:\n${missing.join('\n')}`,
     )
   })
 

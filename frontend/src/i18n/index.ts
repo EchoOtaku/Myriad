@@ -15,6 +15,8 @@ export interface TranslationKeys {
     edit: string
     done: string
     loading: string
+    /** Shown when a host load surface stalls (e.g. Tapp iframe past ready timeout). */
+    loadingSlow: string
     error: string
     success: string
     retry: string
@@ -86,10 +88,9 @@ export interface TranslationKeys {
     // Agent
     agent: string
     aiAssistant: string
-    // Tapp
+    // Tapp（主导航 /tapp = 已装应用列表）
     tapp: string
-    tappStore: string
-    openTappStore: string
+    openTapp: string
   }
 
   // 问候语
@@ -366,8 +367,6 @@ export interface TranslationKeys {
       colViews: string
       colVisitors: string
       colCount: string
-      showMoreN: string
-      showLess: string
       dailyChartAria: string
       empty: string
       emptyPages: string
@@ -2111,8 +2110,9 @@ export interface TranslationKeys {
   // 小组件网格
   widgetGrid: {
     widgetLibrary: string
-    undo: string
-    redo: string
+    searchWidgets: string
+    clearSearch: string
+    noSearchResults: string
     deleteWidget: string
     positionConflict: string
     canPlace: string
@@ -2442,6 +2442,8 @@ export interface TranslationKeys {
     initialImport: string
     itemAdded: string
     itemRemoved: string
+    /** Footer under the grid, e.g. “Only the latest 8 are loaded”. */
+    loadedLimitHint: string
     moreActivities: string
     minutes: string
     hoursMinutes: string
@@ -3028,6 +3030,10 @@ export interface TranslationKeys {
     storeFeaturedEyebrow: string
     /** Discover: newest apps section */
     storeLatest: string
+    /** Store card: updated today (no concrete date) */
+    storeUpdatedToday: string
+    /** Store card: updated n days ago — {n} */
+    storeUpdatedDaysAgo: string
     storeBrowse: string
     storeLibrary: string
     storeSourceSettings: string

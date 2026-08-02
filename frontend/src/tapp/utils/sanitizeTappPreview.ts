@@ -167,7 +167,7 @@ export function buildSanitizedTappPreview(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; media-src data: blob:; font-src data:; style-src 'unsafe-inline'; form-action 'none'; navigate-to 'none';">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: blob:; media-src data: blob:; font-src data:; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none';">
   <style>
     :root { color-scheme: ${colorScheme}; }
     *, *::before, *::after { box-sizing: border-box; }

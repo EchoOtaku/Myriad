@@ -14,6 +14,7 @@ export const jaJP: TranslationKeys = {
     edit: '編集',
     done: '完了',
     loading: '読み込み中...',
+    loadingSlow: '読み込みに時間がかかっています…',
     error: 'エラー',
     success: '成功',
     retry: '再試行',
@@ -85,10 +86,9 @@ export const jaJP: TranslationKeys = {
     // Agent
     agent: 'Arael Agent',
     aiAssistant: 'Arael Agent',
-    // Tapp
-    tapp: 'アプリ',
-    tappStore: 'Tapp ストア',
-    openTappStore: 'Tapp ストアを開く',
+    // Tapp（主導航 /tapp = インストール済み一覧）
+    tapp: 'Tapp アプリ',
+    openTapp: 'Tapp アプリを開く',
   },
 
   // 挨拶
@@ -397,8 +397,6 @@ export const jaJP: TranslationKeys = {
       colViews: '閲覧',
       colVisitors: '訪問者',
       colCount: '回数',
-      showMoreN: '残り {n} 件を表示',
-      showLess: '折りたたむ',
       dailyChartAria: '日次の閲覧数とユニーク訪問者の推移',
       empty: 'この期間の訪問はありません',
       emptyPages: 'この期間のページデータはありません',
@@ -1173,7 +1171,7 @@ export const jaJP: TranslationKeys = {
     sliderStrong: '強 · ぼかし強め',
     fieldSiteTitle: 'サイトタイトル',
     fieldSiteDescription: 'サイト説明',
-    fieldSiteFavicon: 'サイトアイコン',
+    fieldSiteFavicon: 'サイトアイコン（PWA インストールアイコンにも使用）',
     fieldSiteKeywords: 'SEO キーワード',
     fieldSiteKeywordsHint:
       'カンマ区切り。ページの meta keywords に書き込まれます',
@@ -2424,8 +2422,9 @@ export const jaJP: TranslationKeys = {
   // ウィジェットグリッド
   widgetGrid: {
     widgetLibrary: 'ウィジェットライブラリ',
-    undo: '元に戻す',
-    redo: 'やり直す',
+    searchWidgets: 'ウィジェットを検索…',
+    clearSearch: '検索をクリア',
+    noSearchResults: '一致するウィジェットがありません',
     deleteWidget: 'ウィジェットを削除',
     positionConflict: '✖ 位置競合',
     canPlace: '配置可能',
@@ -2758,6 +2757,7 @@ export const jaJP: TranslationKeys = {
     initialImport: '初回インポート',
     itemAdded: '{subject} を追加',
     itemRemoved: '{subject} を削除',
+    loadedLimitHint: '最新 {count} 件のみ読み込み',
     moreActivities: '他 {count} 件',
     minutes: '{minutes} 分',
     hoursMinutes: '{hours} 時間 {minutes} 分',
@@ -3370,6 +3370,8 @@ export const jaJP: TranslationKeys = {
     storeFeatured: 'エディターのおすすめ',
     storeFeaturedEyebrow: 'おすすめ',
     storeLatest: '最新',
+    storeUpdatedToday: '今日更新',
+    storeUpdatedDaysAgo: '{n}日前に更新',
     storeBrowse: 'ブラウズ',
     storeLibrary: 'ライブラリ',
     storeSourceSettings: 'ストアソース設定',

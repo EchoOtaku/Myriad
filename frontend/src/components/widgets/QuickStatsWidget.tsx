@@ -12,6 +12,7 @@ import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { getLibraryDataDeduped } from '../../utils/requestDedup'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
+import { WidgetSkeletonCover } from './shared/WidgetSkeleton'
 
 // 缓存配置
 const CACHE_KEY = 'library_stats_cache'
@@ -360,75 +361,85 @@ export const QuickStatsWidget = memo(
           />
         }
       >
-        {/* 顶部：标题 + 总数 */}
-        <div
-          className="flex items-start justify-between mb-2 ml-1.5"
-          style={{
-            marginBottom: `${8 * scale}px`,
-            marginLeft: `${6 * scale}px`,
-          }}
-        >
-          <div>
-            <h3
-              className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold mb-0.5"
-              style={{
-                fontSize: `${12 * fontScale}px`,
-                marginBottom: `${2 * scale}px`,
-              }}
-            >
-              {t.quickStats.widgetTitle}
-            </h3>
-            <motion.div
-              className="flex items-baseline gap-1"
-              style={{ gap: `${4 * scale}px` }}
-              initial={{ scale: 0.8, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.4, delay: 0.1 }}
-            >
-              <span
-                className="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none"
-                style={{ fontSize: `${30 * fontScale}px` }}
-              >
-                {loading ? '---' : stats.total}
-              </span>
-              <span
-                className="text-xs text-gray-500 dark:text-gray-400 font-bold mb-0.5"
+        <div className="relative flex min-h-0 flex-1 flex-col">
+          {/* 顶部：标题 + 总数 */}
+          <div
+            className="flex items-start justify-between mb-2 ml-1.5"
+            style={{
+              marginBottom: `${8 * scale}px`,
+              marginLeft: `${6 * scale}px`,
+            }}
+          >
+            <div>
+              <h3
+                className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wider font-bold mb-0.5"
                 style={{
                   fontSize: `${12 * fontScale}px`,
                   marginBottom: `${2 * scale}px`,
                 }}
               >
-                ITEMS
-              </span>
-            </motion.div>
+                {t.quickStats.widgetTitle}
+              </h3>
+              <motion.div
+                className="flex items-baseline gap-1"
+                style={{ gap: `${4 * scale}px` }}
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.4, delay: 0.1 }}
+              >
+                <span
+                  className="text-3xl font-black text-gray-800 dark:text-gray-100 leading-none"
+                  style={{ fontSize: `${30 * fontScale}px` }}
+                >
+                  {stats.total}
+                </span>
+                <span
+                  className="text-xs text-gray-500 dark:text-gray-400 font-bold mb-0.5"
+                  style={{
+                    fontSize: `${12 * fontScale}px`,
+                    marginBottom: `${2 * scale}px`,
+                  }}
+                >
+                  ITEMS
+                </span>
+              </motion.div>
+            </div>
           </div>
-        </div>
 
-        {/* 分类统计 */}
-        <div
-          className="flex-1 grid gap-1.5"
-          style={{
-            gap: `${6 * scale}px`,
-            gridTemplateColumns: `repeat(${visibleCategories.length}, minmax(0, 1fr))`,
-          }}
-        >
-          {visibleCategories.map((cat, index) => (
-            <motion.div
-              key={cat.key}
-              initial={{ y: 10, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.3, delay: 0.2 + index * 0.05 }}
-            >
-              <StatCard
-                cat={cat}
-                value={(stats as any)[cat.key]}
-                loading={loading}
-                index={index}
-                scale={scale}
-                fontScale={fontScale}
-              />
-            </motion.div>
-          ))}
+          {/* 分类统计 */}
+          <div
+            className="flex-1 grid gap-1.5"
+            style={{
+              gap: `${6 * scale}px`,
+              gridTemplateColumns: `repeat(${visibleCategories.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {visibleCategories.map((cat, index) => (
+              <motion.div
+                key={cat.key}
+                initial={{ y: 10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.3, delay: 0.2 + index * 0.05 }}
+              >
+                <StatCard
+                  cat={cat}
+                  value={(stats as any)[cat.key]}
+                  loading={false}
+                  index={index}
+                  scale={scale}
+                  fontScale={fontScale}
+                />
+              </motion.div>
+            ))}
+          </div>
+
+          <WidgetSkeletonCover
+            active={loading}
+            preset="stats-grid"
+            count={4}
+            accent="var(--color-primary)"
+            label={t.common.loading}
+          />
         </div>
       </WidgetShell>
     )
