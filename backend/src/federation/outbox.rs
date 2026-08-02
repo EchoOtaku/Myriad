@@ -88,7 +88,7 @@ fn encode_cursor(published_us: i64, id: i32) -> String {
 ///
 /// - 代价随历史增长线性上升，翻到第 N 页要扫过前 N×20 行；
 /// - **翻页不稳定** —— 爬取过程中有新内容发布，后续页的 OFFSET 会整体位移，
-///   远端要么漏掉条目、要么重复收到。
+/// 远端要么漏掉条目、要么重复收到。
 ///
 /// keyset 用 `(published_at, id)` 作游标：每页代价恒定，且新内容只会出现在
 /// 游标之前，不会挪动已经翻过的窗口。
@@ -280,7 +280,7 @@ pub async fn get_activity(
     ))
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 async fn get_base_url() -> String {
     crate::federation::types::get_base_url().await

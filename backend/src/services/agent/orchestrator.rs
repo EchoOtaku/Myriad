@@ -5,11 +5,11 @@
 //!
 //! ```text
 //! Recipe (N steps)
-//!     ↓ group_by_role()
+//! ↓ group_by_role()
 //! RoleGroup { DataWorker: [s1,s3], ContentWorker: [s2], CreativeWorker: [s4] }
-//!     ↓ execute_groups()
+//! ↓ execute_groups()
 //! 独立组并行 → 有依赖组串行
-//!     ↓ 统一执行进度与结果
+//! ↓ 统一执行进度与结果
 //! ```
 
 use std::collections::HashMap;

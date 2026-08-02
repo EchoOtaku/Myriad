@@ -12,8 +12,8 @@ use serde_json::json;
 ///
 /// - **Allowlisted Origin** (CORS / site origins): ok
 /// - **Missing Origin**: allow only when this looks like a non-browser client
-///   (no `Sec-Fetch-Mode: websocket` / no cookie-style `Cookie` header is too
-///   weak). We require Origin when a `Cookie` header is present.
+/// (no `Sec-Fetch-Mode: websocket` / no cookie-style `Cookie` header is too
+/// weak). We require Origin when a `Cookie` header is present.
 /// - **Disallowed Origin**: 403
 pub fn assert_ws_origin_for_cookie_session(
     headers: &HeaderMap,

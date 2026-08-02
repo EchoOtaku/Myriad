@@ -143,7 +143,7 @@ pub async fn get_platform_distribution(
     })))
 }
 
-// ============ Platform Write API ============
+// Platform Write API
 
 #[derive(Debug, Deserialize)]
 pub struct AddPlatformItemRequest {

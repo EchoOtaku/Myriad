@@ -42,6 +42,7 @@ docs/
 │   ├── LIBRARY.md
 │   └── TAPP_FILE_FORMAT.md
 ├── design/
+│   ├── digital-life-3d-pipeline.md   # Tripo 3D 管线
 │   ├── icon-inventory.md
 │   └── theme-system.md
 ├── guides/
@@ -96,6 +97,7 @@ Myriad/
 | --- | --- |
 | [LIBRARY.md](../features/LIBRARY.md) | 资料库 |
 | [TAPP_FILE_FORMAT.md](../features/TAPP_FILE_FORMAT.md) | `.tapp` 包格式 |
+| [digital-life-3d-pipeline.md](../design/digital-life-3d-pipeline.md) | Digital Life / Tripo 3D 管线 |
 | [theme-system.md](../design/theme-system.md) | Surface / Glow |
 | [icon-inventory.md](../design/icon-inventory.md) | 图标规范 |
 | [notification-catalog.md](../notification-catalog.md) | 通知目录 |

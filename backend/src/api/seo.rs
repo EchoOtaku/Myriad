@@ -5,7 +5,7 @@
 //! - Module visibility = `all` (`tapp` / `brew`)
 //! - Tapp: site-owner public install with `visibility = all`
 //! - Brew: only sources categorized as site-owner original content (`我`);
-//!   never index friend-links or third-party RSS items
+//! never index friend-links or third-party RSS items
 //!
 //! Humans keep using the SPA via the reverse proxy; only known crawler UAs
 //! (and direct API clients) hit HTML shells on `/tapp/run/{id}` and

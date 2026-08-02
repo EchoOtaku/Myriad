@@ -11,9 +11,9 @@ use super::helpers::*;
 
 impl SmartFilter {
     /// 处理所有平台数据并分别保存到各平台缓存文件
-    /// 🚀 优化：分平台保存，减少不必要的克隆，添加数据量限制
+    /// 优化：分平台保存，减少不必要的克隆，添加数据量限制
     pub fn process_and_save_all(all_data: &Value) -> Result<(), Box<dyn std::error::Error>> {
-        // 🚀 数据量限制常量
+        // 数据量限制常量
         const MAX_VIDEOS_FOR_FILTER: usize = 200;
         const MAX_SONGS_FOR_FILTER: usize = 3000;
 
@@ -104,7 +104,7 @@ impl SmartFilter {
 
             // 适配数据结构: liked_songs -> playlists[0].tracks（添加数量限制）
             if let Some(liked_songs) = netease_data.get("liked_songs") {
-                // 🚀 限制歌曲数量避免内存问题
+                // 限制歌曲数量避免内存问题
                 let limited_songs = if let Some(songs_array) = liked_songs.as_array() {
                     if songs_array.len() > MAX_SONGS_FOR_FILTER {
                         tracing::debug!(
@@ -239,7 +239,7 @@ impl SmartFilter {
         Ok(())
     }
 
-    /// 🚀 原子性保存平台缓存（使用临时文件+重命名）
+    /// 原子性保存平台缓存（使用临时文件+重命名）
     pub(crate) fn save_platform_cache_atomic(
         platform: &str,
         data: &SmartFilteredData,

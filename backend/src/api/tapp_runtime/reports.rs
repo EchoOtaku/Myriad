@@ -132,7 +132,7 @@ pub async fn get_runtime_platform_report(
     ))
 }
 
-// ============ Report CRUD ============
+// Report CRUD
 
 #[derive(Debug, Deserialize)]
 pub struct CreateReportRequest {

@@ -38,9 +38,7 @@ pub struct Model {
     pub is_public: bool,
     /// 父评论 ID（用于嵌套回复，NULL 表示顶级评论）
     pub parent_id: Option<i32>,
-    /// 创建时间
     pub created_at: DateTimeWithTimeZone,
-    /// 更新时间
     pub updated_at: DateTimeWithTimeZone,
 }
 

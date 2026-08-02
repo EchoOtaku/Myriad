@@ -368,7 +368,7 @@ pub async fn local_login(
     let claims = Claims {
         sub: user_id.to_string(),
         username: username.clone(),
-        is_admin, // ✅ 安全修复 P0: 从数据库读取 is_admin
+        is_admin, // 从数据库读取 is_admin
         is_owner,
         exp: (Utc::now() + Duration::days(30)).timestamp(),
         iat: Utc::now().timestamp(),
@@ -677,9 +677,7 @@ async fn verify_password(password: &str, hash: &str) -> Result<(), HttpError> {
     }
 }
 
-// ============================================================================
 // PR #4 新增端点：公开注册 + 后补密码 + 本地登录开关
-// ============================================================================
 // 详见 docs/development/OAUTH.md
 
 /// POST /api/auth/register —— 公开本地账号注册
@@ -991,9 +989,7 @@ async fn issue_session_cookie(
     Ok(resp)
 }
 
-// ============================================================================
 // PR #6: Admin 后台建本地账号
-// ============================================================================
 // 详见 docs/development/OAUTH.md
 //
 // 不受 allow_local_registration 开关限制；is_admin=true 仅站点 owner 可设。

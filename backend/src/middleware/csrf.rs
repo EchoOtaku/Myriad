@@ -156,7 +156,7 @@ pub(crate) fn csrf_check_needed(path: &str, method: &Method, headers: &HeaderMap
 }
 
 /// CSRF 防护中间件
-/// ✅ 安全修复 P0: Cookie 会话的状态变更必须带有效 CSRF Token
+/// Cookie 会话的状态变更必须带有效 CSRF Token
 ///
 /// 安全策略：
 /// - Cookie JWT 用户：状态变更必须提供有效的 CSRF Token（含 `/api/agent/*`）

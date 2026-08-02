@@ -9,7 +9,7 @@ use super::e2e::decrypt_room_payload_for_local_ws;
 use super::helpers::*;
 use super::stickers::{parse_room_stickers, stickers_to_json};
 
-// ==================== Inbox 处理（远程 Room 事件）====================
+// Inbox 处理（远程 Room 事件）
 
 /// 处理远程 RoomInvite
 pub async fn handle_room_invite(

@@ -199,9 +199,9 @@ pub fn tapp_id_from_dir_entry_class(class: &TappDirEntryClass) -> &str {
 
 /// Relative code-path candidates for runtime open, in preference order.
 ///
-/// 1. Manifest `main` when present  
+/// 1. Manifest `main` when present
 /// 2. Legacy stored basename only when it is exactly `main.js` or `index.js`
-///    (and not already covered by `main`)
+/// (and not already covered by `main`)
 pub fn preferred_code_path_candidates(
     manifest_main: Option<&str>,
     stored_code_path: &str,

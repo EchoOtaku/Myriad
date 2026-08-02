@@ -2,7 +2,7 @@
 use super::*;
 use crate::error::HttpError;
 
-// ============ 任务预设 API ============
+// 任务预设 API
 
 /// 获取任务预设列表
 /// GET /api/agent/presets
@@ -413,7 +413,7 @@ pub async fn execute_preset(
                 Json(json!({ "error": "Preset has no saved recipe, please run the task first" })),
             )))?;
 
-    // 🔑 重要：清除保存的 page_context，让步骤重新执行获取最新数据
+    // 重要：清除保存的 page_context，让步骤重新执行获取最新数据
     // 这确保 "获取最新文章 → AI总结" 这样的流程会获取当时的最新内容
     // 而不是使用保存时的旧数据
     recipe.page_context = None;

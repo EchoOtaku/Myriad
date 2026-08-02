@@ -26,7 +26,7 @@ use crate::models::entities::brew_annotations::{self, AnnotationType};
 use crate::services::ai::create_ai_analyzer_for_tier;
 use crate::services::data_paths::paths;
 
-// ==================== 权限验证辅助函数 ====================
+// 权限验证辅助函数
 
 /// 验证是否是管理员（用于生成/编辑操作）
 #[allow(clippy::result_large_err)]
@@ -64,7 +64,7 @@ pub fn create_brewlia_routes(
         .route("/sources/{source_id}/style-tags", post(generate_style_tags))
 }
 
-// ==================== 注释类型 ====================
+// 注释类型
 
 /// 注释项（API 响应）
 #[derive(Debug, Serialize, Clone)]
@@ -95,7 +95,7 @@ pub struct AnnotationsResponse {
     pub detected_language: Option<String>,
 }
 
-// ==================== 播客类型 ====================
+// 播客类型
 
 /// 播客对话项
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -120,7 +120,7 @@ pub struct PodcastResponse {
     pub estimated_duration: i32,
 }
 
-// ==================== 获取注释 ====================
+// 获取注释
 
 /// 获取文章注释
 ///
@@ -394,7 +394,7 @@ async fn generate_and_save_annotations(
     }
 }
 
-// ==================== AI 提示词 ====================
+// AI 提示词
 
 /// 构建阅读辅助注释提示词
 fn build_annotation_prompt(content: &str) -> String {
@@ -468,7 +468,7 @@ For English articles, annotations would look like:
     )
 }
 
-// ==================== 解析逻辑 ====================
+// 解析逻辑
 
 /// 解析 AI 返回的注释
 fn parse_annotations(response: &str) -> Result<(Vec<AnnotationItem>, Option<String>), String> {
@@ -776,7 +776,7 @@ fn extract_language_field(json_str: &str) -> Option<String> {
     }
 }
 
-// ==================== AI 播客功能 ====================
+// AI 播客功能
 
 use crate::models::entities::brew_podcasts;
 
@@ -1189,7 +1189,7 @@ fn fix_incomplete_podcast_json(json_str: &str) -> Result<String, String> {
     Ok(fixed)
 }
 
-// ==================== AI 风格标签功能 ====================
+// AI 风格标签功能
 
 use crate::models::entities::brew_sources;
 

@@ -88,7 +88,7 @@ pub fn map_direct_css_channels(
 ///
 /// - Empty / omitted `requested` → **all** `manifest_permissions` (default full grant).
 /// - Non-empty → intersection of manifest declarations with the request
-///   (unknown / undeclared names are dropped).
+/// (unknown / undeclared names are dropped).
 pub fn select_install_approved_permissions(
     manifest_permissions: &[String],
     requested: &[String],
@@ -107,9 +107,9 @@ pub fn select_install_approved_permissions(
 /// Select approved permissions for an **update**.
 ///
 /// - `requested == None` → keep previous approvals that still exist in the new
-///   manifest (drop permissions the new version no longer declares).
+/// manifest (drop permissions the new version no longer declares).
 /// - `requested == Some([])` → **all** new manifest permissions (default full grant,
-///   same empty-list product semantics as install).
+/// same empty-list product semantics as install).
 /// - `requested == Some(list)` → intersection with the new manifest.
 pub fn select_update_approved_permissions(
     manifest_permissions: &[String],

@@ -275,9 +275,10 @@ html[data-perf-mode='exlight'] .widget-skeleton-cover {
 .widget-skeleton--report {
   position: absolute;
   inset: 0;
+  /* top: line bones · bottom: logo row (same corner as CardLogoPill) */
   padding: 0.75rem;
-  justify-content: flex-end;
-  gap: 0.5rem;
+  justify-content: space-between;
+  gap: 0.65rem;
 }
 
 .widget-skeleton--report .ws-report-wash {
@@ -297,14 +298,24 @@ html[data-perf-mode='exlight'] .widget-skeleton-cover {
   flex-direction: column;
   gap: 0.4rem;
   width: 100%;
-  max-width: 72%;
+  max-width: 78%;
+  /* keep bones away from the bottom-left logo strip */
+  padding-bottom: 0.15rem;
+  margin-top: 0.1rem;
+}
+
+.widget-skeleton--report .ws-report-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  min-height: 2rem;
+  flex-shrink: 0;
 }
 
 .widget-skeleton--report .ws-logo {
-  position: absolute;
-  left: 0.75rem;
-  bottom: 0.75rem;
-  z-index: 1;
+  display: block;
   width: 2rem;
   height: 2rem;
   border-radius: 0.5rem;

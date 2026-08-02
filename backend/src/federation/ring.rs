@@ -81,7 +81,7 @@ async fn resolve_user_id(
     }
 }
 
-// ==================== 请求/响应类型 ====================
+// 请求/响应类型
 
 /// 创建 / 加入 Ring 请求
 #[derive(Debug, Deserialize)]
@@ -152,7 +152,7 @@ pub struct AddPeerRequest {
     pub peer: String,
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 fn validate_ring_type(rt: &str) -> bool {
     [
@@ -194,7 +194,7 @@ pub fn source_matches_any_category(source_category: Option<&str>, categories: &[
 /// Max brew items to push per brew-recommend ring sync.
 const BREW_RING_ITEM_LIMIT: u64 = 40;
 
-// ==================== Ring CRUD ====================
+// Ring CRUD
 
 /// 创建新 Ring（本地节点作为创建者）
 pub async fn create_ring(
@@ -452,7 +452,7 @@ pub async fn leave_ring(
     Ok(json!({"success": true, "ring_id": ring_id}))
 }
 
-// ==================== Peer 管理 ====================
+// Peer 管理
 
 /// 获取 Ring 的 Peer 列表
 pub async fn get_peers(
@@ -701,7 +701,7 @@ pub async fn remove_peer(
     Ok(json!({"success": true, "ring_id": ring_id, "removed_peer": peer_url}))
 }
 
-// ==================== Gossip 同步 ====================
+// Gossip 同步
 
 /// 触发 Gossip 同步：向随机 fanout 个 peer 推送本地数据
 pub async fn trigger_sync(
@@ -1352,7 +1352,7 @@ async fn collect_sync_entries(
     }
 }
 
-// ==================== Inbox 处理（远程 Ring 事件） ====================
+// Inbox 处理（远程 Ring 事件）
 
 /// 处理收到的 RingJoin Activity（远程实例请求加入我们的 Ring 或通知我们加入他们的）
 pub async fn handle_ring_join(
@@ -1714,7 +1714,7 @@ pub async fn handle_ring_leave(
     Ok(())
 }
 
-// ==================== Tests ====================
+// Tests
 
 #[cfg(test)]
 mod tests {

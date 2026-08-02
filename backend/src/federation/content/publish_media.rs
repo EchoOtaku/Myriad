@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use crate::federation::audience::{FanOutScope, Visibility};
 use crate::federation::types::*;
 
-// ==================== 请求/响应类型 ====================
+// 请求/响应类型
 
 /// 发布内容请求
 #[derive(Debug, Deserialize)]
@@ -122,14 +122,14 @@ pub struct MediaUploadResponse {
     pub attachment_type: String,
 }
 
-// ==================== 媒体限制 ====================
+// 媒体限制
 
 use crate::federation::limits::NOTE_ATTACHMENT_COUNT_LIMIT as MAX_NOTE_ATTACHMENTS;
 use crate::federation::limits::NOTE_IMAGE_LIMIT as MAX_IMAGE_BYTES;
 use crate::federation::limits::NOTE_TEXT_CHAR_LIMIT as MAX_NOTE_TEXT_CHARS;
 use crate::federation::limits::NOTE_VIDEO_LIMIT as MAX_VIDEO_BYTES;
 
-// ==================== 核心发布功能 ====================
+// 核心发布功能
 
 /// 发布本地内容到联邦网络
 ///
@@ -650,7 +650,7 @@ pub async fn list_published(
     Ok(items)
 }
 
-// ==================== 媒体上传 ====================
+// 媒体上传
 
 /// 保存联邦媒体附件，返回可被 AP attachment 引用的公开 URL。
 pub async fn store_federation_media(
@@ -827,7 +827,7 @@ fn attachment_url_rejection_reason(
     None
 }
 
-// ==================== 内容 → AP 对象转换 ====================
+// 内容 → AP 对象转换
 
 /// 根据内容类型构建对应的 AP 对象
 #[allow(clippy::too_many_arguments)]
@@ -978,7 +978,7 @@ async fn build_ap_object(
             let content_text = extract_report_summary(&report_json);
 
             // Snapshot field contract (Aro chat + federation consumers):
-            //   report_id, summary, platform, content_preview
+            // report_id, summary, platform, content_preview
             // Also expose mfp:* for ActivityPub-style clients. Do not send full report JSON.
             Ok(json!({
                 "type": "Article",
@@ -1195,7 +1195,7 @@ async fn build_ap_object(
     }
 }
 
-// ==================== Fan-out / Timeline ====================
+// Fan-out / Timeline
 
 /// Enqueue Activity delivery to all accepted incoming followers (fan-out on send).
 ///
@@ -1577,7 +1577,7 @@ async fn ensure_remote_actor_stub(
         .ok_or_else(|| "Failed to upsert remote actor stub".into())
 }
 
-// ===== merged from timeline_helpers.rs =====
+// merged from timeline_helpers.rs
 
 /// Insert Create into the author's local timeline so freeform posts show up immediately.
 async fn insert_author_timeline(
@@ -1791,7 +1791,7 @@ fn strip_tags_preview(s: &str, max_chars: usize) -> String {
     trimmed.chars().take(max_chars).collect()
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 /// 解析观众列表。
 ///

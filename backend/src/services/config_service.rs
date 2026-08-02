@@ -703,7 +703,7 @@ impl ConfigService {
             config.music_playlist_id = v.as_str().map(|s| s.to_string());
         }
 
-        // ========== Tapp 权限下放配置 ==========
+        // Tapp 权限下放配置
         // 普通用户可下放的 elevated 权限（13 项）
         if let Some(v) = map.get("user_perm_ai_generate") {
             if let Some(b) = v.as_bool() {
@@ -838,7 +838,7 @@ impl ConfigService {
             }
         }
 
-        // ========== 网络代理配置 ==========
+        // 网络代理配置
         if let Some(v) = map.get("proxy_enabled") {
             if let Some(b) = v.as_bool() {
                 config.proxy_enabled = b;

@@ -22,7 +22,7 @@ use tokio::{
 use crate::federation::types::*;
 use crate::services::data_paths::paths;
 
-// ==================== 请求/响应类型 ====================
+// 请求/响应类型
 
 /// 发起文件传输请求
 #[derive(Debug, Deserialize)]
@@ -91,7 +91,7 @@ use crate::federation::limits::TRANSFER_CHUNK_SIZE as DEFAULT_CHUNK_SIZE;
 /// 最大文件大小: 5GB
 use crate::federation::limits::MAX_FILE_SIZE;
 
-// ==================== 存储辅助 ====================
+// 存储辅助
 
 fn storage_root() -> PathBuf {
     paths().root.join("federation").join("transfers")
@@ -222,7 +222,7 @@ async fn write_chunk_to_part(
     Ok(())
 }
 
-// ==================== 文件传输功能 ====================
+// 文件传输功能
 
 /// 在 Channel 上发起文件传输
 ///
@@ -1341,7 +1341,7 @@ pub async fn cancel_transfer(
     }))
 }
 
-// ==================== Inbox 处理 ====================
+// Inbox 处理
 
 /// 处理收到的文件传输 Activity（从远程实例）
 pub async fn handle_file_transfer(

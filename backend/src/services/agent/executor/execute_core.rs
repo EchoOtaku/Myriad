@@ -242,7 +242,7 @@ impl Executor {
         // SSE 事件发送器
         let emitter = events::StepEventEmitter::new(progress_tx.clone());
 
-        // 🛡️ 全局已执行步骤计数器（防止动态步骤导致无限执行）
+        // 全局已执行步骤计数器（防止动态步骤导致无限执行）
         let mut total_executed_steps: usize = 0;
         const MAX_TOTAL_STEPS: usize = 15;
 
@@ -277,7 +277,7 @@ impl Executor {
             || context.has_pending_steps()
             || dag_scheduler.as_ref().is_some_and(|d| d.has_remaining())
         {
-            // 🔴 检查任务是否被取消
+            // 检查任务是否被取消
             if is_cancelled(&task_state.task_id).await {
                 tracing::info!(
                     task_id = %task_state.task_id,
@@ -314,7 +314,7 @@ impl Executor {
                 return Ok(task_state);
             }
 
-            // 🛡️ 全局步骤上限检查
+            // 全局步骤上限检查
             if total_executed_steps >= MAX_TOTAL_STEPS {
                 tracing::warn!(
                     task_id = %task_state.task_id,
@@ -344,7 +344,7 @@ impl Executor {
                 if ready.is_empty() {
                     break;
                 } else if ready.len() > 1 {
-                    // ====== 流式 DAG 并行执行 ======
+                    // 流式 DAG 并行执行
                     // 使用 FuturesUnordered：任何步骤完成时立即检查并启动新就绪步骤
                     // 避免 join_all 的波次阻塞（慢步骤不阻塞快步骤的后续依赖）
                     use futures::stream::{FuturesUnordered, StreamExt};
@@ -561,7 +561,7 @@ impl Executor {
                                 let pre_dynamic_count = context.pending_dynamic_steps.len();
 
                                 // 动态步骤生成器：处理 ConditionalBranch / AiGenerated
-                                // 🛡️ DAG注入的动态步骤不触发生成器，防止链式爆炸
+                                // DAG注入的动态步骤不触发生成器，防止链式爆炸
                                 if !is_injected {
                                     if let Some(ref gen) = step.generator {
                                         if let Some(ref output_val) = task_state
@@ -648,7 +648,7 @@ impl Executor {
                                 });
 
                                 // 动态分析：检查是否需要用户输入
-                                // 🛡️ DAG注入的动态步骤不触发分析，防止链式膨胀
+                                // DAG注入的动态步骤不触发分析，防止链式膨胀
                                 if !is_injected {
                                     if let Some(ref output_val) = task_state
                                         .step_results
@@ -867,8 +867,8 @@ impl Executor {
                         }
                     } // end streaming loop
 
-                    // ====== 流式 DAG 后处理：暂停等待用户输入 ======
-                    // 🛡️ 如果已取消，跳过 WaitingForInput 和重试
+                    // 流式 DAG 后处理：暂停等待用户输入
+                    // 如果已取消，跳过 WaitingForInput 和重试
                     let dag_cancelled = task_state.status == TaskStatus::Failed
                         && task_state.error.as_deref() == Some("用户取消了任务");
                     if !dag_cancelled && !pending_questions_from_dag.is_empty() {
@@ -904,8 +904,8 @@ impl Executor {
                         return Ok(task_state);
                     } // end !dag_cancelled guard
 
-                    // ====== 流式DAG后的串行重试（复用 retry.rs 统一逻辑）======
-                    // 🛡️ 如果已取消，跳过所有重试
+                    // 流式DAG后的串行重试（复用 retry.rs 统一逻辑）
+                    // 如果已取消，跳过所有重试
                     let retry_list = if dag_cancelled {
                         Vec::new()
                     } else {
@@ -1054,7 +1054,7 @@ impl Executor {
                 break;
             };
 
-            // ====== 顺序执行路径（单步） ======
+            // 顺序执行路径（单步）
             let step = match step {
                 Some(s) => s,
                 None => continue,

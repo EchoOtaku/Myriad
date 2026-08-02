@@ -1,7 +1,7 @@
 //! Agent API — boot
 use super::*;
 
-// ============ Boot recovery for waiting tasks ============
+// Boot recovery for waiting tasks
 
 /// After process restart, re-create run hubs and wait-loops for
 /// `waiting_for_input` tasks so answer/subscribe keep working and notifications

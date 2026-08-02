@@ -60,7 +60,7 @@ fn ws_ticket_http_error(
     )
 }
 
-// ==================== 连接管理 ====================
+// 连接管理
 
 /// 每个 Channel 的广播通道
 struct ChannelBroadcast {
@@ -114,7 +114,7 @@ async fn cleanup_channel(channel_id: &str) {
     }
 }
 
-// ==================== Room 广播 ====================
+// Room 广播
 
 /// 获取或创建 Room 的广播通道
 async fn get_or_create_room_tx(room_id: &str) -> broadcast::Sender<String> {
@@ -152,7 +152,7 @@ async fn cleanup_room(room_id: &str) {
     }
 }
 
-// ==================== WebSocket 处理器 ====================
+// WebSocket 处理器
 
 /// WebSocket 升级端点
 ///
@@ -370,7 +370,7 @@ async fn handle_channel_socket(
     cleanup_channel(&channel_id_clone).await;
 }
 
-// ==================== Room WebSocket 处理器 ====================
+// Room WebSocket 处理器
 
 /// Room WebSocket 升级端点
 ///

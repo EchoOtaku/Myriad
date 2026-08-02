@@ -4,8 +4,8 @@
 // 远好于网易云 yrc。作为逐字歌词的补充第三方源：网易云 yrc 缺失时回退到此。
 //
 // 流程（仅 2 次请求）：
-//   1. 歌词搜索  krcs.kugou.com/search?keyword=&duration=&man=yes  -> {id, accesskey}
-//   2. 歌词下载  lyrics.kugou.com/download?id=&accesskey=&fmt=krc  -> base64(KRC)
+// 1. 歌词搜索  krcs.kugou.com/search?keyword=&duration=&man=yes  -> {id, accesskey}
+// 2. 歌词下载  lyrics.kugou.com/download?id=&accesskey=&fmt=krc  -> base64(KRC)
 // KRC 解码：base64 -> 去掉前 4 字节 "krc1" 头 -> 逐字节 XOR 固定 key -> zlib inflate
 
 use anyhow::{anyhow, Result};

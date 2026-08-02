@@ -3,13 +3,13 @@
 //! 详见 docs/development/OAUTH.md
 //!
 //! 端点：
-//!   GET    /api/auth/oauth/providers              列出 enabled providers
-//!   GET    /api/auth/oauth/:slug/login            重定向到授权页
-//!   GET    /api/auth/oauth/:slug/callback         交换 code + 登录/创建用户
-//!   GET    /api/auth/oauth/:slug/link             绑定 (需 JWT + is_admin)
-//!   DELETE /api/auth/oauth/:slug/unlink/:id       解绑
-//!   GET    /api/auth/identities                   当前用户所有 identities
-//!   POST   /api/auth/identities/:id/primary       设为画像源（is_primary + 同步头像等）
+//! GET    /api/auth/oauth/providers              列出 enabled providers
+//! GET    /api/auth/oauth/:slug/login            重定向到授权页
+//! GET    /api/auth/oauth/:slug/callback         交换 code + 登录/创建用户
+//! GET    /api/auth/oauth/:slug/link             绑定 (需 JWT + is_admin)
+//! DELETE /api/auth/oauth/:slug/unlink/:id       解绑
+//! GET    /api/auth/identities                   当前用户所有 identities
+//! POST   /api/auth/identities/:id/primary       设为画像源（is_primary + 同步头像等）
 
 use crate::error::HttpError;
 use axum::{
@@ -38,7 +38,7 @@ use crate::services::oauth::{
     NormalizedProfile,
 };
 
-// ---------- 工具函数 ----------
+// 工具函数
 
 async fn build_redirect_uri(slug: &str) -> String {
     let base = SiteConfig::get_base_url().await;
@@ -145,14 +145,14 @@ async fn sync_user_oauth_profile_snapshot(
     }
 }
 
-// ---------- GET /api/auth/oauth/providers ----------
+// GET /api/auth/oauth/providers
 
 pub async fn list_providers() -> Json<Value> {
     let providers = REGISTRY.list().await;
     Json(json!({ "providers": providers }))
 }
 
-// ---------- GET /api/auth/oauth/:slug/login ----------
+// GET /api/auth/oauth/:slug/login
 
 pub async fn provider_login(
     Path(slug): Path<String>,
@@ -178,7 +178,7 @@ pub async fn provider_login(
     Ok(no_store_redirect(&auth_url))
 }
 
-// ---------- GET /api/auth/oauth/:slug/link  (任何已登录用户) ----------
+// GET /api/auth/oauth/:slug/link  (任何已登录用户)
 
 pub async fn provider_link(
     Path(slug): Path<String>,
@@ -217,7 +217,7 @@ pub async fn provider_link(
     Ok(no_store_redirect(&auth_url))
 }
 
-// ---------- GET /api/auth/oauth/:slug/callback ----------
+// GET /api/auth/oauth/:slug/callback
 
 /// OAuth 回调参数 — `code` 和 `state` 在成功路径必需，但 provider 报错时
 /// （用户拒绝授权 / 配置错误等）会以 `?error=...&error_description=...` 形式回调，
@@ -483,7 +483,7 @@ async fn handle_link_replay(
     ))
 }
 
-// ---------- 内部：LinkAccount 流程 ----------
+// 内部：LinkAccount 流程
 
 async fn handle_link(
     db: &DatabaseConnection,
@@ -552,7 +552,7 @@ async fn handle_link(
     Ok(no_store_redirect(&url))
 }
 
-// ---------- 内部：Login 流程 ----------
+// 内部：Login 流程
 
 async fn handle_login(
     db: &DatabaseConnection,
@@ -622,7 +622,7 @@ async fn handle_login(
     Ok(response)
 }
 
-// ---------- 内部：账户匹配策略 ----------
+// 内部：账户匹配策略
 
 async fn find_or_create_user(
     db: &DatabaseConnection,
@@ -863,7 +863,7 @@ async fn ensure_unique_username(
     ))
 }
 
-// ---------- DELETE /api/auth/oauth/:slug/unlink/:identity_id ----------
+// DELETE /api/auth/oauth/:slug/unlink/:identity_id
 
 pub async fn provider_unlink(
     Path((slug, identity_id)): Path<(String, i32)>,
@@ -946,7 +946,7 @@ pub async fn provider_unlink(
     Ok(Json(json!({"success": true})))
 }
 
-// ---------- GET /api/auth/identities ----------
+// GET /api/auth/identities
 
 pub async fn list_my_identities(
     crate::extract::Db(db): crate::extract::Db,
@@ -990,7 +990,7 @@ pub async fn list_my_identities(
     Ok(Json(json!({ "identities": identities })))
 }
 
-// ---------- POST /api/auth/identities/{identity_id}/primary ----------
+// POST /api/auth/identities/{identity_id}/primary
 // 将指定 OAuth/OIDC identity 设为画像源（is_primary），并同步 avatar 等到 users 表。
 // 全部写操作在同一事务内，避免清 primary 后中途失败导致无 primary。
 

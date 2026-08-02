@@ -6,7 +6,7 @@
 
 use serde::{Deserialize, Serialize};
 
-// ==================== ActivityPub 标准上下文 ====================
+// ActivityPub 标准上下文
 
 /// ActivityStreams 2.0 标准上下文 URL
 pub const AS_CONTEXT: &str = "https://www.w3.org/ns/activitystreams";
@@ -21,7 +21,7 @@ pub const AP_CONTENT_TYPE: &str = "application/activity+json";
 pub const LD_CONTENT_TYPE: &str =
     "application/ld+json; profile=\"https://www.w3.org/ns/activitystreams\"";
 
-// ==================== Actor 相关类型 ====================
+// Actor 相关类型
 
 /// ActivityPub Actor 对象（AP 兼容 + MFP 扩展）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,7 +119,7 @@ pub struct TappCapability {
     pub channel_types: Option<Vec<String>>,
 }
 
-// ==================== Activity 相关类型 ====================
+// Activity 相关类型
 
 /// ActivityPub Activity（通用）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -181,7 +181,7 @@ pub struct OrderedCollectionPage {
     pub prev: Option<String>,
 }
 
-// ==================== WebFinger ====================
+// WebFinger
 
 /// WebFinger 响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,7 +204,7 @@ pub struct WebFingerLink {
     pub template: Option<String>,
 }
 
-// ==================== NodeInfo ====================
+// NodeInfo
 
 /// NodeInfo 2.1 响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -275,7 +275,7 @@ pub struct NodeInfoWellKnownLink {
     pub href: String,
 }
 
-// ==================== MFP Channel 协议类型 ====================
+// MFP Channel 协议类型
 
 /// Channel 状态
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -362,7 +362,7 @@ pub struct ChannelMessage {
     pub signature: Option<String>,
 }
 
-// ==================== MFP Room 协议类型 ====================
+// MFP Room 协议类型
 
 /// Room 治理类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -400,7 +400,7 @@ pub enum DistributionStrategy {
     Mesh,
 }
 
-// ==================== MFP Ring 协议类型 ====================
+// MFP Ring 协议类型
 
 /// Ring 类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -420,7 +420,7 @@ pub struct GossipConfig {
     pub interval: u64, // 秒
 }
 
-// ==================== 实例信任层级 ====================
+// 实例信任层级
 
 /// 实例信任层级
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -446,7 +446,7 @@ impl TrustLevel {
     }
 }
 
-// ==================== 联邦内容发布可见性 ====================
+// 联邦内容发布可见性
 
 /// 内容发布可见性
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -470,7 +470,7 @@ pub enum FederatedContentType {
     Dashboard,
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 /// 构造标准 ActivityPub + MFP 三重上下文
 pub fn build_context() -> serde_json::Value {

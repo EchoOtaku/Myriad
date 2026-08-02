@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use crate::federation::types::*;
 
-// ==================== Early channel activity buffer ====================
+// Early channel activity buffer
 //
 // ChannelOpen can race with ChannelMessage / KeyExchange: the latter may arrive
 // before the channel row exists. Buffer briefly; on ChannelOpen flush in order.
@@ -137,7 +137,7 @@ async fn flush_early_channel_messages(db: &DatabaseConnection, channel_id: &str)
     }
 }
 
-// ==================== 请求/响应类型 ====================
+// 请求/响应类型
 
 /// 创建 Channel 请求
 #[derive(Debug, Deserialize)]
@@ -235,7 +235,7 @@ pub struct E2eKeyExchangeResponse {
     pub established: bool,
 }
 
-// ==================== Channel CRUD 功能 ====================
+// Channel CRUD 功能
 
 /// 创建（或打开）一个新 Channel
 ///
@@ -766,7 +766,7 @@ pub async fn delete_channel(
     }))
 }
 
-// ==================== 消息功能 ====================
+// 消息功能
 
 /// 最大消息载荷大小（JSON 序列化后字符串长度）。
 /// 取值与上限链的单一事实源见 [`crate::federation::limits`]。
@@ -1131,7 +1131,7 @@ pub async fn get_messages(
     Ok(messages)
 }
 
-// ==================== Inbox 处理（远程 Channel 事件）====================
+// Inbox 处理（远程 Channel 事件）
 
 /// 处理收到的 ChannelOpen Activity
 pub async fn handle_channel_open(
@@ -1542,9 +1542,9 @@ pub async fn handle_channel_close(
     Ok(())
 }
 
-// --- E2E helpers (from accept_e2e) ---
+// E2E helpers (from accept_e2e)
 
-// ==================== E2E 会话辅助 ====================
+// E2E 会话辅助
 
 pub(crate) async fn jwt_secret_for_channel_e2e() -> String {
     let config = crate::GLOBAL_CONFIG.read().await;
@@ -1728,7 +1728,7 @@ pub async fn handle_key_exchange(
     Ok(())
 }
 
-// --- accept / initiate e2e (merged) ---
+// accept / initiate e2e (merged)
 
 /// 接受 Channel（本地用户确认）
 pub async fn accept_channel(

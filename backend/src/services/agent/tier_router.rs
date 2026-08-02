@@ -47,17 +47,17 @@ impl TierRouter {
     /// 根据能力 ID 推断任务复杂度
     pub fn assess_complexity(capability_id: &str) -> TaskComplexity {
         match capability_id {
-            // ===== Critical：强制 Pro =====
+            // Critical：强制 Pro
             // 复杂分析和对比类
             "ai.analyze" | "compare.content" | "ai.recommend" => TaskComplexity::Critical,
 
-            // ===== Complex：Pro =====
+            // Complex：Pro
             // 创造性生成
             "ai.chat" | "prompt.generate" | "tapp.generate" => TaskComplexity::Complex,
             // 代码理解
             "code.explain" => TaskComplexity::Complex,
 
-            // ===== Medium：Standard (可升级 Pro) =====
+            // Medium：Standard (可升级 Pro)
             // 总结和注释类（定式化 AI 任务）
             "ai.summarize" | "brewlia.annotate" | "brewlia.podcast" | "translate.text" => {
                 TaskComplexity::Medium
@@ -67,7 +67,7 @@ impl TierRouter {
             // 图标推荐
             "icon.recommend" => TaskComplexity::Medium,
 
-            // ===== Simple：Standard =====
+            // Simple：Standard
             // 所有 platform 数据读取
             id if id.starts_with("platform.") => TaskComplexity::Simple,
             // 所有 brew 数据读取（brew.discover 除外）
@@ -172,7 +172,7 @@ impl TierRouter {
     }
 }
 
-// ==================== 熔断器 ====================
+// 熔断器
 
 /// 熔断器状态
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -24,7 +24,7 @@ use uuid::Uuid;
 pub struct Claims {
     pub sub: String,      // User ID
     pub username: String, // Username
-    pub is_admin: bool,   // ✅ 安全修复 P0: Admin status
+    pub is_admin: bool, // Admin status
     /// Durable site owner (`users.is_owner`). Defaults false for older tokens.
     #[serde(default)]
     pub is_owner: bool,
@@ -110,7 +110,7 @@ pub fn record_user_presence(claims: &Claims, db: DatabaseConnection) {
 /// Admin-only middleware - verifies JWT token and checks admin status
 /// Returns 403 if user is not an admin
 ///
-/// ✅ SECURITY: Checks both the signed claim and the current database role.
+/// Checks both the signed claim and the current database role.
 /// Used for dangerous operations like deleting all reports
 pub async fn admin_middleware(
     State(db): State<DatabaseConnection>,
@@ -136,7 +136,7 @@ pub async fn admin_middleware(
                 claims.username
             );
 
-            // ✅ 关键修复: 将 claims 注入到 request extensions 中
+            // 关键修复: 将 claims 注入到 request extensions 中
             // 这样后续的 Extension(claims) 提取器才能正常工作
             let mut req = req;
             req.extensions_mut().insert(claims);

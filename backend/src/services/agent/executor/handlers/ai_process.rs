@@ -103,7 +103,7 @@ pub async fn execute(
     // 注入角色身份上下文到 systemPrompt（如果 Orchestrator 提供了角色 identity）
     let mut params = inject_role_identity(capability_id, params, ctx);
 
-    // 🔑 从 __directive (Planner 主 Agent 的具体指令) 和 __user_request 提取上下文
+    // 从 __directive (Planner 主 Agent 的具体指令) 和 __user_request 提取上下文
     // 用于补充 AI handler 缺失的具体指令
     let directive = params
         .remove("__directive")
@@ -148,9 +148,7 @@ pub async fn execute(
     }
 }
 
-// ============================================================================
 // AI 核心能力
-// ============================================================================
 
 async fn execute_ai_summarize(
     params: &HashMap<String, Value>,
@@ -622,9 +620,7 @@ async fn execute_gemini_grounding_search(
     Ok((ai_text.to_string(), results))
 }
 
-// ============================================================================
 // Brewlia 能力
-// ============================================================================
 
 async fn execute_brewlia_annotate(
     params: &HashMap<String, Value>,
@@ -765,9 +761,7 @@ async fn execute_brewlia_podcast(
     }))
 }
 
-// ============================================================================
 // 其他 AI 能力
-// ============================================================================
 
 async fn execute_speech_tts(params: &HashMap<String, Value>) -> Result<Value, String> {
     use crate::services::standalone_tts::{synthesize_standalone_tts, TtsApiRequest};
@@ -1182,9 +1176,7 @@ async fn execute_code_explain(
     }))
 }
 
-// ============================================================================
 // AI 图片生成
-// ============================================================================
 
 async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, String> {
     let prompt = resolve_image_prompt(params)?;

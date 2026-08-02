@@ -635,7 +635,7 @@ mod tests {
         assert!(system.contains("keep it tasteful"));
     }
 
-    // ======== 收窄后的 Content Policy 测试 ========
+    // 收窄后的 Content Policy 测试
 
     #[test]
     fn test_content_policy_narrowed_blocked() {

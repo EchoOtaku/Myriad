@@ -123,7 +123,7 @@ pub fn json_rejection_response(
 
 pub(crate) const FEDERATION_SMALL_BODY_LIMIT: usize = federation::limits::SMALL_CONTROL_BODY_LIMIT;
 
-// ==================== Federation Wrappers ====================
+// Federation Wrappers
 
 /// POST /api/admin/federation/domain-move
 ///
@@ -300,7 +300,7 @@ pub(crate) async fn federation_timeline(
     }
 }
 
-// ==================== Phase 2: Content Publishing Wrappers ====================
+// Phase 2: Content Publishing Wrappers
 
 /// POST /api/federation/publish — 发布内容到联邦网络
 /// 路由已挂 auth_middleware；claims / body / db 走提取器。
@@ -577,7 +577,7 @@ pub(crate) async fn federation_published_list(
     }
 }
 
-// ==================== Phase 3: Channel Wrapper Functions ====================
+// Phase 3: Channel Wrapper Functions
 
 /// 路由已挂 auth_middleware；body 上限仍由路由的 DefaultBodyLimit 决定。
 pub(crate) async fn federation_create_channel(
@@ -734,7 +734,7 @@ pub(crate) async fn federation_get_messages(
     }
 }
 
-// ==================== Phase 4: Room 多方通信 Wrapper ====================
+// Phase 4: Room 多方通信 Wrapper
 
 /// 路由通过 `DefaultBodyLimit::max(FEDERATION_SMALL_BODY_LIMIT)` 保留原有的
 /// 64 KiB 上限 —— 换成 Json 提取器后若不显式加这层，端点会退回到
@@ -1104,7 +1104,7 @@ pub(crate) async fn federation_pin_room_message(
     }
 }
 
-// ==================== Phase 5: Ring 去中心化环网 ====================
+// Phase 5: Ring 去中心化环网
 
 /// `AdminClaims` 取代函数体里的 `federation_admin_required` —— 这些 ring 端点的
 /// 路由只有 router 级 `auth_middleware`（普通登录），管理员校验必须留在这里。
@@ -1210,7 +1210,7 @@ pub(crate) async fn federation_trigger_ring_sync(
     }
 }
 
-// ==================== Phase 5 补全: Trust 策略管理 ====================
+// Phase 5 补全: Trust 策略管理
 
 /// GET /api/federation/delivery/stats — user delivery queue counters
 /// 路由已挂 auth_middleware；claims 由 AuthedClaims 提取。
@@ -1582,7 +1582,7 @@ pub(crate) async fn federation_toggle_instance_block(
     }
 }
 
-// ==================== Phase 5 补全: 文件传输 ====================
+// Phase 5 补全: 文件传输
 
 /// 路由已声明该路径参数并挂了 auth_middleware；
 /// body 上限由路由的 `FEDERATION_SMALL_BODY_LIMIT` 层提供（原为内联 64 KiB）。

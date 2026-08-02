@@ -25,11 +25,9 @@ pub struct Model {
     #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub name: String,
 
-    /// 描述
     #[sea_orm(column_type = "Text", nullable)]
     pub description: Option<String>,
 
-    /// 图标
     #[sea_orm(column_type = "Text", nullable)]
     pub icon: Option<String>,
 

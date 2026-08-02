@@ -6,7 +6,7 @@ pub(super) fn build_authenticated_router(
 ) -> Router<crate::state::AppState> {
         use axum::middleware::from_fn_with_state;
         Router::<crate::state::AppState>::new()
-            // 单平台 Insights 生成 - 🔒 REQUIRE AUTHENTICATION
+            // 单平台 Insights 生成 -  REQUIRE AUTHENTICATION
             .route(
                 "/api/reports/platform",
                 post(api::reports::generate_platform_reports)
@@ -33,13 +33,13 @@ pub(super) fn build_authenticated_router(
                     .post(api::analysis::trigger_analysis)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
             )
-            // Prompt generation - 🔒 REQUIRE AUTHENTICATION
+            // Prompt generation -  REQUIRE AUTHENTICATION
             .route(
                 "/api/prompt/generate",
                 post(api::prompt::generate_prompt)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
             )
-            // 后台任务管理 API - 🔒 REQUIRE AUTHENTICATION
+            // 后台任务管理 API -  REQUIRE AUTHENTICATION
             .route(
                 "/api/tasks",
                 post(api::tasks::submit_task)
@@ -140,37 +140,37 @@ pub(super) fn build_authenticated_router(
                 get(api::tapp_runtime::list_reports)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
             )
-            // ============ Tapp 应用管理 API ============
+            // Tapp 应用管理 API
             // 部分公开访问（游客可查看管理员的 Tapp），部分需要认证（在路由内部处理）
             .nest("/api/tapps", api::tapp_store::create_tapp_routes(app_state.clone()))
-            // ============ Tapp Playground（管理员 + Pro 模型）============
+            // Tapp Playground（管理员 + Pro 模型）
             .nest(
                 "/api/tapp-playground",
                 api::tapp_playground::create_playground_routes(app_state.clone()),
             )
-            // ============ Agent AI 任务编排 API ============
+            // Agent AI 任务编排 API
             // 自然语言任务分解、执行和监控
             .nest("/api/agent", api::agent::create_agent_routes(app_state.clone()))
-            // ============ Digital Life 3D ============
+            // Digital Life 3D
             // Provider operations are admin-only; content-addressed GLB assets
             // remain public so guest home scenes can render them.
             .nest(
                 "/api/digital-life/3d",
                 api::digital_life_3d::create_routes(app_state.clone()),
             )
-            // ============ Brew 阅读 API ============
+            // Brew 阅读 API
             // RSS/Atom 订阅管理、文章获取、阅读状态同步
             .nest("/api/brew", api::brew::create_brew_routes(app_state.clone()))
-            // ============ Brewlia AI 增强 API ============
+            // Brewlia AI 增强 API
             // AI 词汇注释、内容摘要等增强阅读功能
             .nest("/api/brewlia", api::brewlia::create_brewlia_routes(app_state.clone()))
-            // ============ 语音服务 API ============
+            // 语音服务 API
             // 腾讯云 TTS 文本转语音、ASR 语音转文本
             .nest(
                 "/api/speech",
                 api::speech::create_speech_routes(app_state.clone()),
             )
-            // ============ Tapp API ============
+            // Tapp API
             // Platform reads: public site cache + Runtime Grant (guest widgets OK).
             // Platform writes still require a logged-in user.
             .route(
@@ -226,7 +226,7 @@ pub(super) fn build_authenticated_router(
                 get(api::tapp_runtime::ai_cost_ledger)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
             )
-            // ============ Tapp P0 扩展 API ============
+            // Tapp P0 扩展 API
             // Data Processing: inline transforms support guests; platform/storage
             // inputs and outputs are still denied without their Runtime Grant permissions.
             .route(
@@ -256,7 +256,7 @@ pub(super) fn build_authenticated_router(
                 post(api::tapp_runtime::consume_data_exchange)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::optional_auth_middleware)),
             )
-            // Context API - 🔓 支持权限下放（公开信息）
+            // Context API -  支持权限下放（公开信息）
             .route(
                 "/api/tapp/context/app",
                 get(api::tapp_runtime::get_context_app)
@@ -288,8 +288,8 @@ pub(super) fn build_authenticated_router(
                 get(api::tapp_runtime::get_federation_feed)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::optional_auth_middleware)),
             )
-            // ============ Tapp P1 扩展 API ============
-            // Report CRUD - 🔒 REQUIRE AUTHENTICATION
+            // Tapp P1 扩展 API
+            // Report CRUD -  REQUIRE AUTHENTICATION
             .route(
                 "/api/tapp/reports",
                 post(api::tapp_runtime::create_report)
@@ -322,7 +322,7 @@ pub(super) fn build_authenticated_router(
                     .delete(api::tapp_runtime::delete_tapp_report)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
             )
-            // Media Control - 🔓 支持权限下放
+            // Media Control -  支持权限下放
             .route(
                 "/api/tapp/media/control",
                 post(api::tapp_runtime::media_control)
@@ -339,7 +339,7 @@ pub(super) fn build_authenticated_router(
                 post(api::tapp_runtime::create_tapp_notification)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
             )
-            // P2: Component Registration
+            // Component Registration
             .route(
                 "/api/tapp/components/register",
                 post(api::tapp_runtime::register_component)
@@ -360,7 +360,7 @@ pub(super) fn build_authenticated_router(
                 get(api::tapp_runtime::list_all_components_by_type)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
             )
-            // P2: Shortcut Registration
+            // Shortcut Registration
             .route(
                 "/api/tapp/shortcuts/register",
                 post(api::tapp_runtime::register_shortcut)
@@ -428,8 +428,8 @@ pub(super) fn build_authenticated_router(
                 get(api::tapp_runtime::get_rate_limit_status)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
             )
-            // ============ Tapp 定时任务 API ============
-            // Scheduler - 🔒 REQUIRE AUTHENTICATION
+            // Tapp 定时任务 API
+            // Scheduler -  REQUIRE AUTHENTICATION
             .route(
                 "/api/tapp/scheduler/tasks",
                 get(api::tapp_scheduler::list_tasks)
@@ -467,7 +467,7 @@ pub(super) fn build_authenticated_router(
                 get(api::tapp_scheduler::scheduler_websocket)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
             )
-            // ============ Tapp API 声明系统 ============
+            // Tapp API 声明系统
             // API Execute - 支持 public 和 protected 两级权限
             .route(
                 "/api/tapp/{tapp_id}/api/{api_name}",

@@ -48,7 +48,6 @@ pub struct Model {
     /// 相关上下文（用于指代类型）
     #[sea_orm(column_type = "Text", nullable)]
     pub context_hint: Option<String>,
-    /// 创建时间
     pub created_at: DateTimeWithTimeZone,
 }
 

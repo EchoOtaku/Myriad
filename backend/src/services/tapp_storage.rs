@@ -46,7 +46,7 @@ impl std::fmt::Display for TappStorageError {
 
 impl std::error::Error for TappStorageError {}
 
-// ============ Storage access identities (install owner vs subject) ============
+// Storage access identities (install owner vs subject)
 
 /// Resolve the two storage identities attached to a Tapp runtime.
 ///

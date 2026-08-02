@@ -1275,14 +1275,14 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
         ui_config: UiConfig {
             // ui_config.config_fields 跨页共享大袋子；按设置 Section 归属 emit。
             // 死字段（无设置页入口）勿再 emit：
-            //   pet_*、wallpaper_parallax（legacy 仅 DB；公开 API 亦不再返回）
-            //   github_client_*（走 OAuth 专用端点 + legacy 平铺字段，勿进 admin bag）
+            // pet_*、wallpaper_parallax（legacy 仅 DB；公开 API 亦不再返回）
+            // github_client_*（走 OAuth 专用端点 + legacy 平铺字段，勿进 admin bag）
             // 归属：
-            //   UI        → wallpaper_*, evocative_*, site_*, cloud_sponsors, pwa_enabled, base_url
-            //   Platforms → analytics_enabled
-            //   Modules   → music_*
-            //   Advanced  → proxy_*, gemini_base_url, github_api_base_url
-            //   OAuth     → 只读 base_url（编辑走 SiteUrlField 独立 API）
+            // UI        → wallpaper_*, evocative_*, site_*, cloud_sponsors, pwa_enabled, base_url
+            // Platforms → analytics_enabled
+            // Modules   → music_*
+            // Advanced  → proxy_*, gemini_base_url, github_api_base_url
+            // OAuth     → 只读 base_url（编辑走 SiteUrlField 独立 API）
             config_fields: vec![
                 ConfigField {
                     key: "wallpaper_url".to_string(),
@@ -2194,7 +2194,7 @@ pub(crate) fn build_settings_restore_plan(backup: &SettingsBackup) -> SettingsRe
     SettingsRestorePlan { entries, preview }
 }
 
-// ===== merged from settings.rs =====
+// merged from settings.rs
 
 pub async fn export_settings(
     State(db): State<DatabaseConnection>,
@@ -2854,7 +2854,7 @@ mod settings_backup_tests {
     }
 }
 
-// ===== merged from save.rs =====
+// merged from save.rs
 
 pub async fn update_config(
     State(db): State<DatabaseConnection>,
@@ -2998,7 +2998,7 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                         "token" => "github_token",
                         _ => continue,
                     };
-                    // 🔒 忽略屏蔽值（前端返回的掩码）
+                    // 忽略屏蔽值（前端返回的掩码）
                     if !field.value.is_empty() && !is_masked(&field.value) {
                         updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
                     }
@@ -3029,7 +3029,7 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                         "steam_id" => "steam_id",
                         _ => continue,
                     };
-                    // 🔒 忽略屏蔽值（前端返回的掩码）
+                    // 忽略屏蔽值（前端返回的掩码）
                     if !field.value.is_empty() && !is_masked(&field.value) {
                         updates.insert(key.to_string(), JsonValue::String(field.value.clone()));
                     }
@@ -3233,7 +3233,7 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
             "tencent_region" => ("tencent_region", JsonValue::String(field.value.clone())),
             _ => continue,
         };
-        // 🔒 忽略屏蔽值（前端返回的掩码）- 保持数据库原值不变
+        // 忽略屏蔽值（前端返回的掩码）- 保持数据库原值不变
         if !field.value.is_empty() && !is_masked(&field.value) {
             updates.insert(key.to_string(), json_value);
         }
@@ -3412,7 +3412,7 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
             }
             _ => continue,
         };
-        // 🔒 忽略屏蔽值（前端返回的掩码）与空敏感字段，避免覆盖已保存的密钥
+        // 忽略屏蔽值（前端返回的掩码）与空敏感字段，避免覆盖已保存的密钥
         // 非敏感字符串若需允许清空，应在上方 match 中 early-insert（见 proxy_* / site_*）
         if !field.value.is_empty() && !is_masked(&field.value) {
             updates.insert(key.to_string(), json_value);
@@ -3823,7 +3823,7 @@ pub fn update_env_var(content: &str, key: &str, value: &str) -> String {
     lines.join("\n") + "\n"
 }
 
-// ===== merged from public_ui.rs =====
+// merged from public_ui.rs
 
 /// 获取公开的网站元数据（不需要认证）
 /// 直接从环境变量读取（配置保存时已经写入 .env 并重新加载）
@@ -3901,7 +3901,7 @@ pub async fn get_site_metadata(
 }
 
 /// 获取公开的平台配置（不包含敏感信息，仅用于社交链接显示）
-/// 🔓 公开端点 - 不需要认证
+/// 公开端点 - 不需要认证
 pub async fn get_public_config(
     crate::extract::Db(db): crate::extract::Db,
 ) -> (StatusCode, Json<Value>) {
@@ -4201,7 +4201,7 @@ pub async fn get_public_config(
 }
 
 /// 获取公开的 UI 运行时配置（壁纸 / 动效 / 音乐 / 站点展示等）
-/// 🔓 公开端点 - 不需要认证
+/// 公开端点 - 不需要认证
 /// 已剥离无前端消费的死字段：`pet_*`、`wallpaper_parallax`（动效改走 evocative_*）
 pub async fn get_public_ui_config(
     crate::extract::Db(db): crate::extract::Db,
@@ -4388,7 +4388,7 @@ pub async fn update_control_panel_config(
     )
 }
 
-// ========== Tapp 窗口方案 API ==========
+// Tapp 窗口方案 API
 
 #[derive(Debug, Deserialize)]
 pub struct TappWindowSchemesPayload {
@@ -4621,7 +4621,7 @@ pub async fn update_module_visibility_preferences(
     }
 }
 
-// ========== 一言（Hitokoto）配置 API ==========
+// 一言（Hitokoto）配置 API
 
 const HITOKOTO_CONFIG_KEY: &str = "hitokoto_config";
 /// Config UI source ids — keep in sync with frontend `BUILTIN_HITOKOTO_SOURCES`
@@ -4760,7 +4760,7 @@ pub async fn update_hitokoto_config(
     }
 }
 
-// ========== 报告过期设置 ==========
+// 报告过期设置
 
 const REPORT_SETTINGS_KEY: &str = "report_settings";
 

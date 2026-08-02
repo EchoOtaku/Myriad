@@ -42,7 +42,7 @@ fn music_rate_limited_response(context: &str) -> Response {
         .into_response()
 }
 
-// ===== 简单的令牌桶限流器 =====
+// 简单的令牌桶限流器
 struct TokenBucket {
     tokens: f64,
     last_refill: Instant,
@@ -242,13 +242,13 @@ fn soft_fail_placeholder(reason: &str, url: &str) -> Response {
 pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
     let url = params.url;
 
-    // ✅ P2 安全增强：检查 URL 长度，防止恶意超长 URL
+    // P2 安全增强：检查 URL 长度，防止恶意超长 URL
     if url.len() > 2048 {
         tracing::warn!("🚨 Rejected proxy request: URL too long ({})", url.len());
         return (StatusCode::BAD_REQUEST, "URL too long").into_response();
     }
 
-    // ✅ 检查URL是否来自支持的域名（白名单保护）
+    // 检查URL是否来自支持的域名（白名单保护）
     if !is_allowed_domain(&url) {
         tracing::warn!(
             "🚨 Rejected proxy request: Domain not whitelisted - {}",
@@ -261,7 +261,7 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
             .into_response();
     }
 
-    // ✅ SSRF 防护：阻止请求内网地址
+    // SSRF 防护：阻止请求内网地址
     if crate::federation::types::is_internal_url(&url) {
         tracing::warn!(
             "🚨 Rejected proxy request: SSRF attempt to internal URL - {}",
@@ -270,7 +270,7 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
         return (StatusCode::FORBIDDEN, "Cannot proxy internal URLs").into_response();
     }
 
-    // ✅ 限流保护：等待获取令牌
+    // 限流保护：等待获取令牌
     if wait_for_proxy_permit(&url).await.is_err() {
         tracing::warn!("🚨 Proxy rate limit exceeded (timeout) for URL: {}", url);
         return (
@@ -336,7 +336,7 @@ pub async fn proxy_image(Query(params): Query<ImageProxyQuery>) -> Response {
         .unwrap_or("image/jpeg")
         .to_string();
 
-    // ✅ P2 安全增强：验证是否为图片类型（非图片 → soft-fail, not 400 red console）
+    // P2 安全增强：验证是否为图片类型（非图片 → soft-fail, not 400 red console）
     if !content_type.starts_with("image/") {
         tracing::debug!(%url, %content_type, "Image proxy rejected non-image content");
         return soft_fail_placeholder("non-image content-type", &url);
@@ -626,10 +626,10 @@ pub async fn proxy_netease_playlist(Path(playlist_id): Path<String>) -> Response
     }
 }
 
-// ===== 网易云音乐相关函数 =====
-// ✅ proxy_netease_playlist 已简化，使用统一服务层
-// ✅ generate_device_id, get_random_china_ip, get_random_user_agent 已移至 netease_utils.rs
-// ⚠️ proxy_netease_lyrics 和 proxy_netease_audio 仍需简化（见下方）
+// 网易云音乐相关函数
+// proxy_netease_playlist 已简化，使用统一服务层
+// generate_device_id, get_random_china_ip, get_random_user_agent 已移至 netease_utils.rs
+// proxy_netease_lyrics 和 proxy_netease_audio 仍需简化（见下方）
 
 /// 代理网易云音乐歌词请求 - 使用统一服务层
 pub async fn proxy_netease_lyrics(Path(song_id): Path<String>) -> Response {
@@ -965,7 +965,7 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
     }
 }
 
-// ===== QQ音乐相关函数 =====
+// QQ音乐相关函数
 
 /// 校验 QQ 音乐 songmid（字母数字，长度通常 14）
 fn is_valid_qq_songmid(song_mid: &str) -> bool {
@@ -1309,7 +1309,7 @@ pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
     }
 
     // 检查缓存（歌单缓存1小时）
-    // ⚠️ 临时禁用缓存以确保包含新的isVip字段
+    // 临时禁用缓存以确保包含新的isVip字段
     let use_cache = false;
     if use_cache {
         let cache = MUSIC_CACHE.read().await;
@@ -1848,4 +1848,4 @@ pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
     }
 }
 
-// ===== 所有旧的网易云音乐函数已删除，使用统一服务层 =====
+// 所有旧的网易云音乐函数已删除，使用统一服务层

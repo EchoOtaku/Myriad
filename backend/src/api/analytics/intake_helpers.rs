@@ -195,9 +195,9 @@ pub(crate) fn is_production_environment() -> bool {
 ///
 /// - Explicit non-empty `ANALYTICS_SALT` always wins.
 /// - Without salt: prefer `JWT_SECRET`-derived material when present (instance-
-///   unique; works for compose `ENVIRONMENT=production` + empty ANALYTICS_SALT).
+/// unique; works for compose `ENVIRONMENT=production` + empty ANALYTICS_SALT).
 /// - **Production** with neither salt nor JWT → `Err` (never use the shared
-///   built-in default in production).
+/// built-in default in production).
 /// - **Development** with neither → built-in default.
 pub(crate) fn resolve_analytics_salt(
     env_salt: Option<&str>,

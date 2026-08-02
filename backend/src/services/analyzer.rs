@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::services::http_client::{GeminiApiUrl, ProxyConfig};
 
-// ============= Gemini API Structures =============
+// Gemini API Structures
 #[derive(Debug, Serialize)]
 struct GeminiRequest {
     contents: Vec<GeminiContent>,
@@ -55,7 +55,7 @@ struct GeminiResponsePart {
     text: String,
 }
 
-// ============= OpenAI-compatible API Structures =============
+// OpenAI-compatible API Structures
 #[derive(Debug, Serialize)]
 struct OpenAIRequest {
     model: String,
@@ -223,7 +223,7 @@ fn extract_openai_completion_text(response: &OpenAIResponse) -> Result<String> {
     ))
 }
 
-// ============= AI Provider Enum =============
+// AI Provider Enum
 #[derive(Debug, Clone, PartialEq)]
 pub enum AiProvider {
     Gemini,

@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 
 use crate::federation::types::TrustLevel;
 
-// ==================== 类型定义 ====================
+// 类型定义
 
 /// 实例策略（allowlist / min_trust / auto_discover + 入站限流）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,7 +87,6 @@ pub struct ContentFilterRule {
     pub filter_type: String,
     /// 过滤值（Activity 类型名、关键词、或信任层级数字）
     pub value: String,
-    /// 是否启用
     pub enabled: bool,
 }
 
@@ -108,14 +107,14 @@ pub struct PolicyCheckResult {
     pub trust_level: Option<i16>,
 }
 
-// ==================== 实例策略执行 ====================
+// 实例策略执行
 
 /// 检查实例是否被允许与本实例联邦
 ///
 /// 优先级：blocked_domains > allowed_domains > min_trust_level
 ///
 /// `enforce_inbound` 会在 DB 黑名单与速率限制之后调用本函数
-///（blocked_domains 字段通常为空，DB `is_blocked` 已先检查）。
+/// （blocked_domains 字段通常为空，DB `is_blocked` 已先检查）。
 pub async fn check_instance_policy(
     db: &DatabaseConnection,
     domain: &str,
@@ -231,7 +230,7 @@ async fn ensure_instance_discovered(
     Ok(())
 }
 
-// ==================== 联邦速率限制 ====================
+// 联邦速率限制
 
 /// Process-local per-domain window counter (no Redis).
 /// Complements DB counts: Follow / MFP paths may never insert `federation_activities`.
@@ -356,7 +355,7 @@ pub async fn check_rate_limit(
     }
 }
 
-// ==================== 内容过滤 ====================
+// 内容过滤
 
 /// 对入站 Activity 执行内容过滤规则
 ///
@@ -420,7 +419,7 @@ pub fn apply_content_filters(
     FilterVerdict::Allow
 }
 
-// ==================== API 端点 ====================
+// API 端点
 
 /// 获取当前 *有效* 实例策略（管理员）
 pub async fn get_policy(
@@ -795,7 +794,7 @@ pub async fn list_instances(
     }))
 }
 
-// ==================== Enforcement (inbox / delivery 调用入口) ====================
+// Enforcement (inbox / delivery 调用入口)
 
 /// 检查域名是否被封禁
 async fn is_domain_blocked(db: &DatabaseConnection, domain: &str) -> bool {

@@ -74,7 +74,6 @@ pub struct HeartbeatTask {
     pub schedule: String,
     /// 要执行的自然语言指令
     pub action: String,
-    /// 是否启用
     #[serde(default = "default_true")]
     pub enabled: bool,
     /// 上次**完成**执行时间（运行时状态，不从文件加载；序列化为 lastRun 供前端展示）
@@ -535,7 +534,7 @@ impl HeartbeatManager {
 
     /// 将认领标记为终态。
     ///
-    /// - `done`：成功完成，同分钟桶不可再认领  
+    /// - `done`：成功完成，同分钟桶不可再认领
     /// - `failed`：超时/失败，允许后续重认领（见 try_claim）
     pub async fn complete_claim(
         db: &DatabaseConnection,
@@ -589,7 +588,7 @@ impl HeartbeatManager {
     }
 }
 
-// ==================== ID / slug ====================
+// ID / slug
 
 /// 从字符串生成 URL-safe id（小写、非字母数字替换为 `-`）
 fn slugify_id(raw: &str) -> String {
@@ -633,7 +632,7 @@ fn unique_slug_from_name(name: &str, existing: &[HeartbeatTask]) -> String {
     format!("{base}-{}", Utc::now().timestamp())
 }
 
-// ==================== Cron 匹配 ====================
+// Cron 匹配
 
 /// 校验 5 字段 cron 表达式语法（不求值）
 fn is_valid_cron_expr(expr: &str) -> bool {
@@ -747,7 +746,7 @@ fn cron_item_matches(item: &str, value: u32) -> bool {
     }
 }
 
-// ==================== 全局实例 ====================
+// 全局实例
 
 /// 全局 Heartbeat 管理器
 static HEARTBEAT_MANAGER: once_cell::sync::OnceCell<Arc<HeartbeatManager>> =

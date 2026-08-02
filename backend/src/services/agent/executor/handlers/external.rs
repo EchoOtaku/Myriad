@@ -82,9 +82,7 @@ pub async fn execute(
     }
 }
 
-// ============================================================================
 // HTTP 通用
-// ============================================================================
 
 async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, String> {
     let url = params
@@ -134,9 +132,7 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
     }))
 }
 
-// ============================================================================
 // 一言
-// ============================================================================
 
 async fn execute_hitokoto_get(params: &HashMap<String, Value>) -> Result<Value, String> {
     let hitokoto_type = hitokoto_type(params);
@@ -166,9 +162,7 @@ async fn execute_hitokoto_get(params: &HashMap<String, Value>) -> Result<Value, 
     }))
 }
 
-// ============================================================================
 // Notion
-// ============================================================================
 
 async fn execute_notion_query(params: &HashMap<String, Value>) -> Result<Value, String> {
     let api_key = std::env::var("NOTION_API_KEY")
@@ -216,9 +210,7 @@ async fn execute_notion_query(params: &HashMap<String, Value>) -> Result<Value, 
     }))
 }
 
-// ============================================================================
 // Bilibili
-// ============================================================================
 
 async fn execute_bilibili_user(params: &HashMap<String, Value>) -> Result<Value, String> {
     let uid = params
@@ -296,9 +288,7 @@ async fn execute_bilibili_video(params: &HashMap<String, Value>) -> Result<Value
     }
 }
 
-// ============================================================================
 // Bangumi
-// ============================================================================
 
 async fn execute_bangumi_user(params: &HashMap<String, Value>) -> Result<Value, String> {
     let username = optional_string_param(params, "username").ok_or("Missing username parameter")?;
@@ -339,9 +329,7 @@ async fn execute_bangumi_collections(params: &HashMap<String, Value>) -> Result<
     }))
 }
 
-// ============================================================================
 // Steam
-// ============================================================================
 
 async fn execute_steam_user(params: &HashMap<String, Value>) -> Result<Value, String> {
     let steam_id = params
@@ -367,9 +355,7 @@ async fn execute_steam_user(params: &HashMap<String, Value>) -> Result<Value, St
     }))
 }
 
-// ============================================================================
 // 图片代理
-// ============================================================================
 
 async fn execute_proxy_image(params: &HashMap<String, Value>) -> Result<Value, String> {
     let url = params
@@ -392,9 +378,7 @@ async fn execute_proxy_image(params: &HashMap<String, Value>) -> Result<Value, S
     }))
 }
 
-// ============================================================================
 // 天气
-// ============================================================================
 
 async fn execute_weather_get(params: &HashMap<String, Value>) -> Result<Value, String> {
     let city = params
@@ -435,9 +419,7 @@ async fn execute_weather_get(params: &HashMap<String, Value>) -> Result<Value, S
     }))
 }
 
-// ============================================================================
 // 网易云音乐
-// ============================================================================
 
 async fn execute_netease_song(params: &HashMap<String, Value>) -> Result<Value, String> {
     let song_id = params
@@ -526,9 +508,7 @@ async fn execute_netease_playlist_detail(params: &HashMap<String, Value>) -> Res
     }))
 }
 
-// ============================================================================
 // Steam 游戏详情
-// ============================================================================
 
 /// Steam 游戏详情查询
 async fn execute_steam_game(params: &HashMap<String, Value>) -> Result<Value, String> {
@@ -573,9 +553,7 @@ async fn execute_steam_game(params: &HashMap<String, Value>) -> Result<Value, St
     }
 }
 
-// ============================================================================
 // Web Scrape
-// ============================================================================
 
 /// 抓取外部网页并提取可读文本内容
 async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, String> {
@@ -677,9 +655,7 @@ async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, St
     }))
 }
 
-// ============================================================================
 // MCP Tool Dispatch
-// ============================================================================
 
 /// 调用 MCP 服务器工具
 async fn execute_mcp_tool(

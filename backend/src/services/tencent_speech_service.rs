@@ -52,7 +52,7 @@ impl std::fmt::Display for TencentSpeechError {
 
 impl std::error::Error for TencentSpeechError {}
 
-// ==================== TTS 文本转语音 ====================
+// TTS 文本转语音
 
 /// TTS 请求参数
 #[derive(Debug, Clone, Serialize)]
@@ -150,7 +150,7 @@ pub struct TtsResponse {
     pub request_id: Option<String>,
 }
 
-// ==================== ASR 语音转文本 ====================
+// ASR 语音转文本
 
 /// ASR 一句话识别请求参数
 #[derive(Debug, Clone, Serialize)]
@@ -249,7 +249,7 @@ pub struct AsrResponse {
     pub request_id: Option<String>,
 }
 
-// ==================== 腾讯云API通用响应 ====================
+// 腾讯云API通用响应
 
 /// 腾讯云API错误
 #[derive(Debug, Deserialize)]
@@ -277,7 +277,7 @@ struct ResponseWithError<T> {
     request_id: Option<String>,
 }
 
-// ==================== 腾讯云语音服务 ====================
+// 腾讯云语音服务
 
 /// 腾讯云语音服务
 pub struct TencentSpeechService {
@@ -482,7 +482,7 @@ impl TencentSpeechService {
         Ok(api_response.response.data)
     }
 
-    // ==================== TTS 文本转语音 ====================
+    // TTS 文本转语音
 
     /// 文本转语音
     ///
@@ -496,8 +496,8 @@ impl TencentSpeechService {
     /// ```ignore
     /// let service = TencentSpeechService::new().await?;
     /// let request = TtsRequest {
-    ///     text: "你好，世界".to_string(),
-    ///     ..Default::default()
+    /// text: "你好，世界".to_string(),
+    /// ..Default::default()
     /// };
     /// let response = service.text_to_speech(request).await?;
     /// let audio_bytes = base64::decode(&response.audio.unwrap())?;
@@ -519,7 +519,7 @@ impl TencentSpeechService {
             .await
     }
 
-    // ==================== ASR 语音转文本 ====================
+    // ASR 语音转文本
 
     /// 一句话语音识别
     ///
@@ -534,9 +534,9 @@ impl TencentSpeechService {
     /// let service = TencentSpeechService::new().await?;
     /// let audio_data = std::fs::read("audio.wav")?;
     /// let request = AsrRequest {
-    ///     data: Some(base64::encode(&audio_data)),
-    ///     data_len: Some(audio_data.len() as i32),
-    ///     ..Default::default()
+    /// data: Some(base64::encode(&audio_data)),
+    /// data_len: Some(audio_data.len() as i32),
+    /// ..Default::default()
     /// };
     /// let response = service.speech_to_text(request).await?;
     /// println!("识别结果: {}", response.result.unwrap());
@@ -565,12 +565,12 @@ impl TencentSpeechService {
     }
 }
 
-// ==================== 音色ID定义 ====================
+// 音色ID定义
 
 /// 腾讯云TTS音色分类
 #[allow(dead_code)]
 pub mod voice_types {
-    // ==================== 超自然大模型音色 (最高品质) ====================
+    // 超自然大模型音色 (最高品质)
     /// 智小虎 - 聊天童声 (超自然大模型)
     pub const ZHI_XIAO_HU: i32 = 502007;
     /// 智小悟 - 聊天男声 (超自然大模型)
@@ -602,7 +602,7 @@ pub mod voice_types {
     /// 爱小悠 - 聊天女声 (超自然大模型)
     pub const AI_XIAO_YOU: i32 = 602003;
 
-    // ==================== 大模型音色 (高品质) ====================
+    // 大模型音色 (高品质)
     /// 智斌 - 阅读男声 (大模型)
     pub const ZHI_BIN: i32 = 501000;
     /// 智兰 - 资讯女声 (大模型)
@@ -656,7 +656,7 @@ pub mod voice_types {
     /// 爱小童 - 男童声 (大模型，多情感)
     pub const AI_XIAO_TONG: i32 = 601015;
 
-    // ==================== 精品音色 (中等品质) ====================
+    // 精品音色 (中等品质)
     /// 智云 - 通用男声 (精品)
     pub const ZHI_YUN: i32 = 101004;
     /// 智瑜 - 情感女声 (精品)
@@ -688,7 +688,7 @@ pub mod voice_types {
     /// 爱小静 - 对话女声 (精品)
     pub const AI_XIAO_JING_PREMIUM: i32 = 301037;
 
-    // ==================== 旧版兼容（保留）====================
+    // 旧版兼容（保留）
     /// 精品女声 - 晓晓 (通用场景) - 已废弃，请使用新版音色
     #[deprecated(note = "使用新版大模型音色如 AI_XIAO_XI")]
     pub const XIAOXIAO: i32 = 10510000;

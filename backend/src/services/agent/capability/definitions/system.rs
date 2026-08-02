@@ -163,7 +163,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
         ..Default::default()
     });
 
-    // ============ Agent Heartbeat（HEARTBEAT.md，与 Tapp scheduler 无关）============
+    // Agent Heartbeat（HEARTBEAT.md，与 Tapp scheduler 无关）
 
     registry.register(Capability {
         id: "heartbeat.list".to_string(),

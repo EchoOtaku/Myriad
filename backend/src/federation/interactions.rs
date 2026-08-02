@@ -12,7 +12,7 @@ use serde_json::json;
 use crate::federation::content;
 use crate::federation::types::*;
 
-// ==================== Request / response ====================
+// Request / response
 
 #[derive(Debug, Deserialize)]
 pub struct ObjectIdRequest {
@@ -59,7 +59,7 @@ pub struct BookmarkListResponse {
     pub total: usize,
 }
 
-// ==================== Helpers ====================
+// Helpers
 
 fn db_err(e: impl std::fmt::Display) -> (StatusCode, Json<serde_json::Value>) {
     tracing::error!("[interactions] DB error: {}", e);
@@ -192,7 +192,7 @@ async fn resolve_object_author(db: &DatabaseConnection, object_id: &str) -> Opti
     None
 }
 
-// ==================== Counts / state ====================
+// Counts / state
 
 /// Batch interaction stats for a list of object ids (for timeline enrichment).
 pub async fn interaction_stats_for_objects(
@@ -381,7 +381,7 @@ async fn stats_for_one(db: &DatabaseConnection, user_id: i32, object_id: &str) -
         .unwrap_or_default()
 }
 
-// ==================== Like ====================
+// Like
 
 /// POST /api/federation/like
 pub async fn like_object(
@@ -572,7 +572,7 @@ pub async fn unlike_object(
     })
 }
 
-// ==================== Bookmark (local-first) ====================
+// Bookmark (local-first)
 
 /// POST /api/federation/bookmark
 pub async fn bookmark_object(
@@ -858,7 +858,7 @@ pub async fn list_bookmarks(
     Ok(BookmarkListResponse { items, total })
 }
 
-// ==================== Announce (quote-repost) ====================
+// Announce (quote-repost)
 
 fn escape_html_lite(s: &str) -> String {
     s.replace('&', "&amp;")
@@ -1411,7 +1411,7 @@ pub async fn unannounce_object(
     })
 }
 
-// ==================== Delivery helpers ====================
+// Delivery helpers
 
 async fn deliver_like_or_announce(
     db: &DatabaseConnection,
@@ -1492,7 +1492,7 @@ async fn deliver_to_object_author(
     let _ = activity_json; // activity already stored by caller
 }
 
-// ==================== Inbound handling ====================
+// Inbound handling
 
 /// Record inbound Like without polluting the home timeline.
 /// Call after federation_activities insert.
@@ -1568,7 +1568,7 @@ pub async fn handle_inbound_undo_interaction(
     }
 }
 
-// ==================== Object detail (quote click-through) ====================
+// Object detail (quote click-through)
 
 /// Query for GET /api/federation/objects?id=
 #[derive(Debug, Deserialize)]

@@ -2,7 +2,7 @@
 use super::*;
 use crate::error::HttpError;
 
-// ============ 会话管理 API ============
+// 会话管理 API
 
 /// 创建会话
 /// POST /api/agent/sessions

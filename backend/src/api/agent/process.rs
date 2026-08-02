@@ -2,7 +2,7 @@
 use super::*;
 use crate::error::HttpError;
 
-// ============ API 端点 ============
+// API 端点
 
 /// 处理自然语言请求
 /// POST /api/agent/process

@@ -108,7 +108,7 @@ pub fn peer_in_proxy_allowlist(peer: IpAddr, allowlist: &[ipnet::IpNet]) -> bool
 /// either:
 /// - `allowlist` is non-empty and the TCP peer is on it, or
 /// - `allowlist` is empty and the TCP peer is private/loopback/link-local
-///   (aligned with proxy empty `PROXY_TRUSTED_UPSTREAMS`).
+/// (aligned with proxy empty `PROXY_TRUSTED_UPSTREAMS`).
 pub fn should_trust_proxy_headers(
     peer_ip: Option<IpAddr>,
     trust_proxy_headers: bool,

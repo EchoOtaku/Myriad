@@ -9,7 +9,7 @@ use super::e2e::{collect_room_e2e_recipients, load_member_e2e_keys};
 use super::helpers::*;
 use super::types::*;
 
-// ==================== 消息功能 ====================
+// 消息功能
 
 /// 最大消息载荷大小（与 channel 共用同一常量，见 [`crate::federation::limits`]）
 use crate::federation::limits::MESSAGE_PAYLOAD_LIMIT as MAX_ROOM_MESSAGE_PAYLOAD;

@@ -52,8 +52,8 @@ impl SiteConfig {
     /// Driven by the **public site URL**, not `ENVIRONMENT` alone:
     /// - `true` only when `base_url` is `https://` (real TLS to the browser).
     /// - Compose often sets `ENVIRONMENT=production` while still serving
-    ///   `http://host:port` during bring-up; marking cookies Secure there makes
-    ///   the browser drop login/guest cookies and drifts Tapp grant subjects.
+    /// `http://host:port` during bring-up; marking cookies Secure there makes
+    /// the browser drop login/guest cookies and drifts Tapp grant subjects.
     ///
     /// Other production gates (CORS, analytics salt) still use
     /// [`AppConfig::is_production_environment`].

@@ -131,7 +131,7 @@ pub(crate) async fn fetch_fulltext(
     )))
 }
 
-// ==================== 阅读状态 ====================
+// 阅读状态
 
 pub(crate) async fn mark_read(
     State(db): State<DatabaseConnection>,
@@ -465,7 +465,7 @@ pub(crate) async fn mark_all_read(
     Ok(Json(json!({ "success": true, "marked": marked })))
 }
 
-// ==================== 离线同步 ====================
+// 离线同步
 
 pub(crate) async fn sync_states(
     State(db): State<DatabaseConnection>,
@@ -610,7 +610,7 @@ pub(crate) async fn sync_states(
     })))
 }
 
-// ==================== 统计信息 ====================
+// 统计信息
 
 /// 获取统计信息（游客可访问）
 /// 游客不计算已读/收藏统计以节约计算
@@ -692,7 +692,7 @@ pub(crate) async fn get_stats(
     })))
 }
 
-// ==================== WebSocket ====================
+// WebSocket
 
 pub(crate) async fn brew_websocket(
     ws: axum::extract::ws::WebSocketUpgrade,

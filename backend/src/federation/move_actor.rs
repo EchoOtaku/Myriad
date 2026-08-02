@@ -2,13 +2,13 @@
 //! **E** local URL rewrite, **G** shared RSA keys.
 //!
 //! ## Admin job order (`domain_move_all_users`)
-//! 1. Validate old/new base URLs  
-//! 2. dry_run counts (users, keys, rewrite rows)  
-//! 3. **B** — store domain alias so actor docs expose `alsoKnownAs` / `movedTo`  
-//! 4. **G** — retarget `federation_keys.key_id` to new host; **same PEM** (no new keypair)  
-//! 5. **C** — enqueue Move to followers  
-//! 6. **E** — rewrite this instance’s stored absolute URLs (whitelist only; never third-party)  
-//! 7. Full report  
+//! 1. Validate old/new base URLs
+//! 2. dry_run counts (users, keys, rewrite rows)
+//! 3. **B** — store domain alias so actor docs expose `alsoKnownAs` / `movedTo`
+//! 4. **G** — retarget `federation_keys.key_id` to new host; **same PEM** (no new keypair)
+//! 5. **C** — enqueue Move to followers
+//! 6. **E** — rewrite this instance’s stored absolute URLs (whitelist only; never third-party)
+//! 7. Full report
 //!
 //! ## Receive (D)
 //! Fail-closed: HTTP Signature, actor/object, old `movedTo`, new `alsoKnownAs`.
@@ -23,7 +23,7 @@ use crate::federation::actor::fetch_remote_actor;
 use crate::federation::content::fan_out_to_followers;
 use crate::federation::types::*;
 
-// ==================== Types ====================
+// Types
 
 /// Admin request body for domain-wide Move fan-out.
 #[derive(Debug, Clone, Deserialize)]
@@ -133,7 +133,7 @@ pub const LOCAL_URL_REWRITE_WHITELIST: &[(&str, &str)] = &[
     ("federation_delivery_queue", "target_inbox"),
 ];
 
-// ==================== Actor document fields ====================
+// Actor document fields
 
 /// Normalize a base URL: trim, strip trailing slash, require http(s).
 /// Host is lowercased by the URL parser (RFC 3986).
@@ -157,7 +157,7 @@ pub fn normalize_base_url(raw: &str) -> Result<String, String> {
     Ok(format!("{}://{}{}", parsed.scheme(), host, port))
 }
 
-// ==================== E — pure local URL rewrite helpers ====================
+// E — pure local URL rewrite helpers
 
 /// True if `url` is an absolute URL under `base` (same origin prefix).
 ///
@@ -332,7 +332,7 @@ pub fn resolve_serve_base(
     configured_base.trim_end_matches('/').to_string()
 }
 
-// ==================== Move Activity construction ====================
+// Move Activity construction
 
 /// Build a protocol-correct Move Activity JSON.
 pub fn build_move_activity(
@@ -359,7 +359,7 @@ fn followers_collection_hint(actor: &str) -> String {
     format!("{}/followers", trimmed)
 }
 
-// ==================== Verification (receive path, pure + fetch) ====================
+// Verification (receive path, pure + fetch)
 
 /// Extract string id from activity field that may be a string or `{ "id": "…" }`.
 pub fn activity_id_string(value: &serde_json::Value) -> Option<String> {
@@ -491,7 +491,7 @@ pub fn verify_new_actor_also_known_as(
     Ok(())
 }
 
-// ==================== Fetch actor document (fresh) ====================
+// Fetch actor document (fresh)
 
 /// Fetch an ActivityPub actor document as JSON (fresh HTTP, or local build).
 pub async fn fetch_actor_document(
@@ -637,7 +637,7 @@ async fn local_actor_document_for_base(
     serde_json::to_value(actor).map_err(|e| e.to_string())
 }
 
-// ==================== Follow graph migration ====================
+// Follow graph migration
 
 /// Pure decision for one follow row when re-pointing old → new remote actor.
 ///
@@ -817,7 +817,7 @@ pub async fn migrate_follows_old_to_new(
     Ok(migrated)
 }
 
-// ==================== Send path + B / G / E job ====================
+// Send path + B / G / E job
 
 /// Persist domain alias (upsert by old_base_url). **B** — enables actor `alsoKnownAs` / `movedTo`.
 pub async fn store_domain_alias(
@@ -1354,7 +1354,7 @@ pub async fn domain_move_all_users(
     })
 }
 
-// ==================== Tests ====================
+// Tests
 
 #[cfg(test)]
 mod tests {

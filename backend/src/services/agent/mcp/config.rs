@@ -26,7 +26,6 @@ pub struct McpServerConfig {
     /// 额外环境变量
     #[serde(default)]
     pub env: HashMap<String, String>,
-    /// 是否启用
     #[serde(default = "default_true")]
     pub enabled: bool,
     /// 崩溃后自动重启

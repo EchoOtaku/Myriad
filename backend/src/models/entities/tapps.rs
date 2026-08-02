@@ -41,7 +41,6 @@ pub struct Model {
     #[sea_orm(column_type = "String(StringLen::N(50))")]
     pub version: String,
 
-    /// 描述
     #[sea_orm(column_type = "Text", nullable)]
     pub description: Option<String>,
 
@@ -87,7 +86,6 @@ pub struct Model {
     #[sea_orm(nullable)]
     pub last_run_at: Option<DateTimeWithTimeZone>,
 
-    /// 更新时间
     pub updated_at: DateTimeWithTimeZone,
 
     /// 错误信息

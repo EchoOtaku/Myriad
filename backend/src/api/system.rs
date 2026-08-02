@@ -33,7 +33,7 @@ pub async fn reload_config() -> Result<Json<Value>, HttpError> {
 
 /// GET /api/system/status
 /// Get system status and uptime
-/// ⚠️ P2: This endpoint is public for monitoring purposes
+/// P2: This endpoint is public for monitoring purposes
 /// Consider removing sensitive information if needed
 pub async fn system_status() -> Json<Value> {
     use std::time::SystemTime;
@@ -43,7 +43,7 @@ pub async fn system_status() -> Json<Value> {
         .unwrap()
         .as_secs();
 
-    // ✅ 返回基本状态信息，适用于健康检查和监控
+    // 返回基本状态信息，适用于健康检查和监控
     // 注意：config_mode 信息保留用于前端判断系统状态
     Json(json!({
         "status": "running",

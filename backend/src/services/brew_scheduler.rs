@@ -21,7 +21,7 @@ use crate::services::brew_parser::{calculate_reading_stats, FeedParser, ParsedFe
 use crate::services::notion_service::{NotionConfig, NotionService};
 use crate::services::rsshub_service::RsshubService;
 
-// ==================== 调度器常量 ====================
+// 调度器常量
 
 /// 每轮 tick 最多处理的订阅源数量
 /// 防止宕机恢复后一次性堆积大量请求
@@ -55,7 +55,6 @@ pub struct NewItemsNotification {
     pub new_count: i32,
     /// 新文章标题列表（最多 5 个）
     pub titles: Vec<String>,
-    /// 时间戳
     pub timestamp: i64,
 }
 

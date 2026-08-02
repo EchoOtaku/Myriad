@@ -541,9 +541,9 @@ impl Agent {
         }
 
         // 4. 检查敏感操作（单步/多步共用：依赖 capability 元数据 requires_confirmation/risk，
-        //    不能只靠 capability_id 字符串启发式，否则 tapp.interact / page.interact / MCP 会直通）
-        //    P1: gates run before fast path so sensitive/missing-param never bypass.
-        //    P2: carry session_id so confirm resume stays on the same conversation.
+        // 不能只靠 capability_id 字符串启发式，否则 tapp.interact / page.interact / MCP 会直通）
+        // gates run before fast path so sensitive/missing-param never bypass.
+        // carry session_id so confirm resume stays on the same conversation.
         let sensitive_steps = self.check_sensitive_steps(&recipe).await;
         if !sensitive_steps.is_empty() {
             match Self::system_sensitive_gate(user_id, &sensitive_steps) {
@@ -579,7 +579,7 @@ impl Agent {
             return Ok(missing_response);
         }
 
-        // ========== 快速路径：仅安全的单步且参数齐全时走 ==========
+        // 快速路径：仅安全的单步且参数齐全时走
         if recipe.steps.len() == 1 {
             tracing::debug!(
                 recipe_id = %recipe.id,
@@ -599,7 +599,7 @@ impl Agent {
                 )
                 .await;
         }
-        // ========== 快速路径结束 ==========
+        // 快速路径结束
 
         // 发送任务创建事件（多步骤任务，附带步骤描述供前端展示执行计划）
         // task_id 必须等于 TaskState.task_id（= recipe.id），前端用此 id 做 cancel/steer

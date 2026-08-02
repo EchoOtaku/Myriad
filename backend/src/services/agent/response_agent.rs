@@ -539,10 +539,10 @@ async fn ai_summarize(
 /// 后续步骤已经消化了前面步骤的输出。因此只取最有语义的一段文本避免冗余拼接。
 fn smart_fallback(step_outputs: &[StepOutput<'_>]) -> String {
     // 1. 优先查找 ai.analyze / ai.chat 等 AI 处理步骤的输出（这些是最终语义内容）
-    //    跳过搜索原始数据和中间产物。
+    // 跳过搜索原始数据和中间产物。
     //
-    //    注意：step_outputs 按 step_id 字母序排列，不是执行顺序，
-    //    所以不能依赖 .rev() 来获取"最后一步"。改用语义优先级筛选。
+    // 注意：step_outputs 按 step_id 字母序排列，不是执行顺序，
+    // 所以不能依赖 .rev() 来获取"最后一步"。改用语义优先级筛选。
     let mut best_text: Option<String> = None;
 
     // 第一轮：找 analysis（ai.analyze 产出的深度分析/介绍）

@@ -141,7 +141,7 @@ pub fn create_brew_routes(app_state: crate::state::AppState) -> Router<crate::st
         ))
 }
 
-// ==================== 订阅源管理 ====================
+// 订阅源管理
 
 /// 最新文章预览
 #[derive(Clone, Debug, serde::Serialize)]
@@ -902,7 +902,7 @@ pub(crate) async fn discover_source(
     )))
 }
 
-// ==================== OPML 导入导出 ====================
+// OPML 导入导出
 
 /// 导入 OPML
 #[derive(Debug, Deserialize)]
@@ -1018,7 +1018,7 @@ pub(crate) async fn export_opml(
     }
 }
 
-// ==================== 分类管理 ====================
+// 分类管理
 
 /// 获取分类列表（游客可访问）
 pub(crate) async fn list_categories(
@@ -1167,7 +1167,7 @@ pub(crate) async fn delete_category(
     }
 }
 
-// ==================== 文章获取 ====================
+// 文章获取
 
 /// 获取文章列表（游客可访问）
 /// 游客不计算已读/收藏状态以节约计算

@@ -63,7 +63,7 @@ impl MetadataService {
 
                 tracing::info!("   Detected {} field changes", changed_fields.len());
 
-                // 🚀 更新现有记录（使用截断后的数据）
+                // 更新现有记录（使用截断后的数据）
                 let mut active_model: platform_metadata::ActiveModel = old_metadata.clone().into();
                 active_model.raw_data = Set(data_to_save.clone());
                 active_model.fetched_at = Set(now);
@@ -87,7 +87,7 @@ impl MetadataService {
                 Ok(metadata_id)
             }
             None => {
-                // 🚀 创建新记录（使用截断后的数据）
+                // 创建新记录（使用截断后的数据）
                 let new_metadata = platform_metadata::ActiveModel {
                     user_id: Set(user_id),
                     platform_name: Set(platform_name.to_string()),
@@ -124,11 +124,11 @@ impl MetadataService {
 
     /// 检测两个JSON对象之间的变化
     /// 对于大型数据结构，使用迭代而非递归以避免栈溢出
-    /// 🚀 优化：对超大数组（如歌曲列表）只检测数量变化，避免逐项比较导致OOM
+    /// 优化：对超大数组（如歌曲列表）只检测数量变化，避免逐项比较导致OOM
     fn detect_changes(&self, old_data: &Value, new_data: &Value) -> Vec<String> {
         let mut changed_fields = Vec::new();
 
-        // 🚀 内存保护：限制变化检测的总迭代次数
+        // 内存保护：限制变化检测的总迭代次数
         const MAX_ITERATIONS: usize = 10000;
 
         // 使用栈模拟递归，避免栈溢出
@@ -258,7 +258,7 @@ impl MetadataService {
     }
 
     /// 记录元数据变化历史
-    /// 🚀 彻底优化：历史记录只保存变化字段列表和摘要，不保存完整数据
+    /// 彻底优化：历史记录只保存变化字段列表和摘要，不保存完整数据
     ///
     /// 设计理念：
     /// - metadata_history 用于记录"什么字段变化了"，而不是"完整的数据是什么"
@@ -273,7 +273,7 @@ impl MetadataService {
         old_data: Option<Value>,
         new_data: Value,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // 🚀 彻底方案：默认不保存完整数据，只保存变化摘要
+        // 彻底方案：默认不保存完整数据，只保存变化摘要
         const MAX_SUMMARY_SIZE: usize = 50_000; // 50KB 摘要限制(远小于原来的256KB)
 
         let now = Utc::now().naive_utc();
@@ -284,7 +284,7 @@ impl MetadataService {
             changed_fields.len(),
         );
 
-        // 🚀 智能摘要策略：
+        // 智能摘要策略：
         // 1. 对于小数据(<50KB)：保存完整数据
         // 2. 对于大数据(>=50KB)：只保存变化摘要，不保存完整JSON
         let new_data_size = Self::estimate_json_size(&new_data);
@@ -374,7 +374,7 @@ impl MetadataService {
                     if i > 0 {
                         size += 1; // 逗号
                     }
-                    // 🚀 优化：对超大数组(>100元素)进行采样估算，避免遍历全部
+                    // 优化：对超大数组(>100元素)进行采样估算，避免遍历全部
                     if i < 100 {
                         size += Self::estimate_json_size_recursive(item, depth + 1, max_depth);
                     } else {
@@ -401,7 +401,7 @@ impl MetadataService {
     }
 
     /// 创建轻量级变化摘要（只包含统计信息，不包含完整数据）
-    /// 🚀 这是最彻底的方案：只记录"变化了什么"，而不是"数据是什么"
+    /// 这是最彻底的方案：只记录"变化了什么"，而不是"数据是什么"
     fn create_change_summary(
         data: &Value,
         platform_name: &str,
@@ -558,7 +558,7 @@ impl MetadataService {
             }
         }
 
-        // 🚀 合并分片数据到主记录
+        // 合并分片数据到主记录
         for (platform, chunks) in chunk_data {
             if let Some(main_data) = result.get_mut(&platform) {
                 // 检查主记录是否标记为分片

@@ -33,7 +33,6 @@ pub struct Model {
     pub dialogues: Json,
     /// 预计时长（秒）
     pub estimated_duration: Option<i32>,
-    /// 创建时间
     pub created_at: DateTimeWithTimeZone,
 }
 

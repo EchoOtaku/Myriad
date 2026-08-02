@@ -15,7 +15,7 @@ pub const DEBUG_PARAM_MAX_CHARS: usize = 500;
 ///
 /// Aligns with [`Agent::system_sensitive_gate`]:
 /// - **System / heartbeat** (`SYSTEM_USER_ID`): Medium auto-runs (same as plan-time
-///   gate); High / Critical hard-block with a clear error (not silent skip).
+/// gate); High / Critical hard-block with a clear error (not silent skip).
 /// - **Interactive users**: Medium and above block until confirmed.
 ///
 /// Only Low may auto-run for normal users without an extra confirmation gate.

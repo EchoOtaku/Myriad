@@ -66,7 +66,7 @@ fn get_scheduler() -> Result<Arc<RwLock<TappSchedulerEngine>>, HttpError> {
     })
 }
 
-// ============ 请求/响应类型 ============
+// 请求/响应类型
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterTaskRequest {
@@ -151,7 +151,7 @@ pub struct TaskResponse {
     pub created_at: String,
 }
 
-// ============ 辅助函数 ============
+// 辅助函数
 
 fn parse_schedule_type(s: &str) -> Result<ScheduleType, HttpError> {
     match s.to_lowercase().as_str() {
@@ -306,7 +306,7 @@ fn task_to_response(task: &crate::models::entities::tapp_scheduled_tasks::Model)
     }
 }
 
-// ============ API 端点 ============
+// API 端点
 
 /// 注册定时任务
 /// POST /api/tapp/scheduler/tasks

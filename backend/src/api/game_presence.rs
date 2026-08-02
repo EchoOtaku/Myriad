@@ -19,9 +19,7 @@ use tokio::sync::RwLock;
 
 use crate::services::outbound_security::build_public_http_client;
 
-// ---------------------------------------------------------------------------
 // Response types
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ApiResponse<T> {
@@ -82,9 +80,7 @@ pub struct ShowcaseItem {
     pub rarity: Option<i64>,
 }
 
-// ---------------------------------------------------------------------------
 // Query
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Deserialize)]
 pub struct PresenceQuery {
@@ -98,9 +94,7 @@ pub struct PresenceQuery {
     pub lang: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
 // Cache (per platform+id+game, stale-while-revalidate style)
-// ---------------------------------------------------------------------------
 
 #[derive(Clone)]
 enum CachedResult {
@@ -212,9 +206,7 @@ fn store_cache(key: &str, result: CachedResult) {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Credential-spend guard (Xbox OpenXBL / PSN NPSSO)
-// ---------------------------------------------------------------------------
 //
 // 这个接口本身必须公开（无 Cookie 的展示型小组件，访客不登录也要能看到），
 // 不能像 /api/x/user 那样直接挂 auth_middleware。但 Xbox / PSN 分支花的是
@@ -269,9 +261,7 @@ fn try_spend_credential_call(platform: Platform) -> bool {
     }
 }
 
-// ---------------------------------------------------------------------------
 // Media normalize at response edge (identity with profile::proxy_image_url)
-// ---------------------------------------------------------------------------
 // Enka / Xbox / PSN 当前不在 needs_image_proxy 窄名单内，多为恒等变换；
 // 保留出口统一处理，避免日后某 CDN 变防盗链时漏改。
 
@@ -291,9 +281,7 @@ fn proxy_presence_media(mut data: GamePresenceData) -> GamePresenceData {
     data
 }
 
-// ---------------------------------------------------------------------------
 // Handler
-// ---------------------------------------------------------------------------
 
 pub async fn get_game_presence(
     State(dynamic_config): State<Arc<RwLock<DynamicConfig>>>,
@@ -406,9 +394,7 @@ pub async fn get_game_presence(
     }
 }
 
-// ---------------------------------------------------------------------------
 // Enka.Network (Hoyoverse showcase)
-// ---------------------------------------------------------------------------
 
 /// 展柜条目上限（前端 3x2 网格）
 const SHOWCASE_LIMIT: usize = 6;
@@ -711,9 +697,7 @@ async fn parse_enka_zzz(uid: &str, lang: &str, body: &Value) -> Result<GamePrese
     })
 }
 
-// ---------------------------------------------------------------------------
 // Xbox via OpenXBL
-// ---------------------------------------------------------------------------
 
 /// 优先读 DB 配置（配置页保存后即时生效），env 作为回退
 async fn xbox_api_key(dynamic_config: &Arc<RwLock<DynamicConfig>>) -> String {
@@ -997,9 +981,7 @@ async fn fetch_xbox(
     })
 }
 
-// ---------------------------------------------------------------------------
 // PlayStation (optional server NPSSO)
-// ---------------------------------------------------------------------------
 
 /// 优先读 DB 配置（配置页保存后即时生效），env 作为回退
 async fn psn_npsso(dynamic_config: &Arc<RwLock<DynamicConfig>>) -> String {
@@ -1349,9 +1331,7 @@ async fn fetch_psn(
     })
 }
 
-// ---------------------------------------------------------------------------
 // PSN access token — workspace crate `myriad-psn-auth` (shared with fetcher).
-// ---------------------------------------------------------------------------
 //
 // Sony 的 mobile access token 一般有效期在 1 小时左右；crate 内做 ~50min 缓存，
 // 并按 NPSSO fingerprint 隔离，避免换 cookie 后复用旧 token。
@@ -1359,9 +1339,7 @@ async fn fetch_psn(
 /// Re-export for game_presence handlers; fetcher should call the crate directly.
 pub use myriad_psn_auth::get_psn_access_token;
 
-// ---------------------------------------------------------------------------
 // HTTP helpers
-// ---------------------------------------------------------------------------
 
 /// OpenXBL 统一把业务载荷包在 `{ content: {...}, code: 200 }` 里；没有 content 时原样返回。
 fn openxbl_unwrap_content(body: Value) -> Value {

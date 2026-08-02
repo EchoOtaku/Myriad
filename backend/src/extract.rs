@@ -7,7 +7,7 @@
 //!
 //! ```ignore
 //! async fn get_config_wrapper() -> Response {
-//!     // (historical) wrappers used to pull a process-global DB here
+//! // (historical) wrappers used to pull a process-global DB here
 //! }
 //! ```
 //!
@@ -118,7 +118,7 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthedClaims {
 /// 把检查搬进提取器同时解决两件事：
 ///
 /// - 样板消失，且**要求写在函数签名里**，不会因为路由被挪动、重挂中间件
-///   而悄悄丢掉（这个仓库刚出过同类问题：inbox 白名单加了、分派没加）。
+/// 而悄悄丢掉（这个仓库刚出过同类问题：inbox 白名单加了、分派没加）。
 /// - 与 `admin_middleware` 叠加时是幂等的，重复检查只是多一次数据库查询。
 ///
 /// `ensure_current_admin_on` 不只看 JWT 里的 `is_admin`，还会回查数据库确认账号

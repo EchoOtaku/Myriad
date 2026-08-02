@@ -563,7 +563,7 @@ impl Agent {
             }
         }
 
-        // ⭐ 多步骤结果汇总：交给 response_agent AI 流式生成
+        // 多步骤结果汇总：交给 response_agent AI 流式生成
         let successful_results: Vec<_> = {
             let mut r: Vec<_> = task_state
                 .step_results
@@ -1115,7 +1115,7 @@ impl Agent {
                 }));
         }
 
-        // ⭐ 关键改进：收集所有步骤中的 frontendAction 和 action
+        // 关键改进：收集所有步骤中的 frontendAction 和 action
         let mut all_frontend_actions: Vec<Value> = Vec::new();
         for result in &results {
             if let Some(output) = &result.output {
@@ -1128,7 +1128,7 @@ impl Agent {
                         "[Agent] Collected frontendAction from step"
                     );
                 }
-                // 🔴 也检查 action 字段（兼容 brew.generateReadingList 等）
+                // 也检查 action 字段（兼容 brew.generateReadingList 等）
                 if let Some(action) = output.get("action") {
                     all_frontend_actions.push(action.clone());
                     tracing::info!(
@@ -1181,7 +1181,7 @@ impl Agent {
                         combined["sources"] = json!(sources);
                     }
 
-                    // ⭐ 添加所有收集到的 frontendActions
+                    // 添加所有收集到的 frontendActions
                     if !all_frontend_actions.is_empty() {
                         combined["frontendActions"] = json!(all_frontend_actions);
                     }
@@ -1194,7 +1194,7 @@ impl Agent {
             if let Some(summary) = last.get("summary").and_then(|s| s.as_str()) {
                 if !summary.is_empty() {
                     let mut result = last.clone();
-                    // ⭐ 添加所有收集到的 frontendActions
+                    // 添加所有收集到的 frontendActions
                     if !all_frontend_actions.is_empty() {
                         result["frontendActions"] = json!(all_frontend_actions);
                         tracing::info!(
@@ -1217,7 +1217,7 @@ impl Agent {
                 "progress": task_state.progress
             }));
 
-        // ⭐ 添加所有收集到的 frontendActions
+        // 添加所有收集到的 frontendActions
         if !all_frontend_actions.is_empty() {
             final_result["frontendActions"] = json!(all_frontend_actions);
             tracing::info!(
@@ -1240,7 +1240,7 @@ impl Agent {
             tracing::warn!(action = %action, "[Agent] frontendAction is missing type");
         }
 
-        // 🔴 也检查 "action" 字段（兼容 brew.generateReadingList 等返回格式）
+        // 也检查 "action" 字段（兼容 brew.generateReadingList 等返回格式）
         if let Some(action) = result.get("action") {
             tracing::debug!(
                 action = %action,

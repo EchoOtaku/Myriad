@@ -8,7 +8,7 @@ use crate::federation::types::*;
 use super::helpers::*;
 use super::types::*;
 
-// ==================== Room CRUD ====================
+// Room CRUD
 
 /// 创建新 Room
 pub async fn create_room(

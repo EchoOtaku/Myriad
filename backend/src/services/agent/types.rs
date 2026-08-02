@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-// ============ 意图分析相关类型 ============
+// 意图分析相关类型
 
 /// 用户原始请求
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,7 +52,6 @@ pub struct ConversationMessage {
     pub role: String,
     /// 消息内容
     pub content: String,
-    /// 创建时间
     #[serde(default)]
     pub created_at: Option<String>,
 }
@@ -99,11 +98,8 @@ pub enum IntentAction {
     Analyze,
     /// 监控/追踪
     Monitor,
-    /// 创建/生成
     Create,
-    /// 更新/修改
     Update,
-    /// 删除
     Delete,
     /// 比较
     Compare,
@@ -198,7 +194,7 @@ pub enum OutputFormat {
     Chart,
 }
 
-// ============ 能力注册相关类型 ============
+// 能力注册相关类型
 
 /// 系统能力定义
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -271,7 +267,7 @@ pub enum CapabilityCategory {
     UiControl,
 }
 
-// ============ 方案（Recipe）相关类型 ============
+// 方案（Recipe）相关类型
 
 /// 执行方案
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -290,9 +286,7 @@ pub struct Recipe {
     pub expected_output: OutputFormat,
     /// 估计总时长（毫秒）
     pub estimated_duration_ms: u64,
-    /// 创建时间
     pub created_at: chrono::DateTime<chrono::Utc>,
-    /// 元数据
     #[serde(default)]
     pub metadata: HashMap<String, Value>,
     /// 页面上下文（当前阅读的文章等）
@@ -376,7 +370,7 @@ pub struct RetryConfig {
     pub exponential_backoff: bool,
 }
 
-// ============ AI Recipe 生成相关类型 ============
+// AI Recipe 生成相关类型
 
 /// LLM 生成的单个 recipe 步骤
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -432,7 +426,7 @@ impl AiRecipeStep {
     }
 }
 
-// ============ Planner 输出类型 ============
+// Planner 输出类型
 
 /// Planner 输出（合并意图分析 + Recipe 生成为单次 Pro AI 调用）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -487,7 +481,7 @@ pub struct PlannerClarification {
     pub options: Vec<String>,
 }
 
-// ============ 执行状态相关类型 ============
+// 执行状态相关类型
 
 /// 任务执行状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -503,7 +497,6 @@ pub struct TaskState {
     /// 步骤执行结果
     #[serde(default)]
     pub step_results: HashMap<String, StepResult>,
-    /// 开始时间
     pub started_at: chrono::DateTime<chrono::Utc>,
     /// 完成时间
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -616,9 +609,7 @@ pub struct UserQuestion {
     pub required: bool,
     /// 默认值
     pub default_value: Option<String>,
-    /// 创建时间
     pub created_at: chrono::DateTime<chrono::Utc>,
-    /// 过期时间
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -720,7 +711,7 @@ pub struct StepResult {
     pub retry_count: u32,
 }
 
-// ============ Agent 响应类型 ============
+// Agent 响应类型
 
 /// Agent 响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -871,7 +862,6 @@ pub struct ConfirmationRequest {
     pub recipe_id: String,
     /// 需要确认的步骤
     pub pending_steps: Vec<PendingConfirmation>,
-    /// 过期时间
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -908,7 +898,7 @@ pub struct UserConfirmation {
     pub user_id: i32,
 }
 
-// ============ 辅助 trait ============
+// 辅助 trait
 
 #[allow(deprecated)]
 impl Default for ParsedIntent {
@@ -1022,7 +1012,7 @@ impl TaskState {
     }
 }
 
-// ============ 动态任务更新机制 ============
+// 动态任务更新机制
 
 /// 步骤生成器类型
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1146,7 +1136,6 @@ pub struct Uncertainty {
     pub id: String,
     /// 不确定性类型
     pub uncertainty_type: UncertaintyType,
-    /// 描述
     pub description: String,
     /// 可能的选项
     pub possible_values: Vec<String>,
@@ -1588,7 +1577,7 @@ impl QuestionOption {
     }
 }
 
-// ============ SSE 进度事件 ============
+// SSE 进度事件
 
 /// Agent 进度事件（用于 SSE 实时推送）
 ///

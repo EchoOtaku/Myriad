@@ -49,7 +49,7 @@ impl ProviderRegistry {
     /// 装载顺序：
     /// 1. `oauth_providers` 列表（kind="github" / "oidc"），优先
     /// 2. legacy `github_client_id`/`github_client_secret` 平铺字段（向后兼容；
-    ///    若 (1) 中已经有 slug="github" 则跳过）
+    /// 若 (1) 中已经有 slug="github" 则跳过）
     pub async fn reload(&self) {
         use crate::GLOBAL_DYNAMIC_CONFIG;
 

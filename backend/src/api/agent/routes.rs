@@ -1,7 +1,7 @@
 //! Agent API — routes
 use super::*;
 
-// ============ 路由构建 ============
+// 路由构建
 
 use axum::routing::{delete, get, post, put};
 use axum::Router;
@@ -143,7 +143,7 @@ pub fn create_agent_routes(
             "/session/steer",
             post(steer_session).route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
         )
-        // ============ 会话管理路由 ============
+        // 会话管理路由
         // 创建会话
         .route(
             "/sessions",
@@ -176,7 +176,7 @@ pub fn create_agent_routes(
             "/sessions/{session_id}/generate-title",
             post(generate_session_title).route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
         )
-        // ============ 任务预设路由 ============
+        // 任务预设路由
         // 预设列表（需要认证）
         .route(
             "/presets",
@@ -208,7 +208,7 @@ pub fn create_agent_routes(
             "/presets/{preset_id}/execute",
             post(execute_preset).route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
         )
-        // ============ 技能/记忆路由 ============
+        // 技能/记忆路由
         // 技能列表（需要认证）
         .route(
             "/skills",
@@ -236,7 +236,7 @@ pub fn create_agent_routes(
             "/gaps",
             get(list_capability_gaps).route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
         )
-        // ============ 通知路由 ============
+        // 通知路由
         // 通知 SSE 流
         .route(
             "/notifications/stream",

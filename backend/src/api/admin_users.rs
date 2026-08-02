@@ -524,7 +524,7 @@ pub async fn unlink_identity(
 /// - `brew_sources` 删除会 CASCADE 到 `brew_items` 及其下游。
 /// - `federation_room_members.local_user_id` 可空：置 NULL，保留房间成员记录。
 /// - 磁盘上的 Tapp 安装目录等文件资源不在此清理（与卸载路径不同）；DB 行删除后
-///   对应目录成为孤立文件，可后续由运维/GC 处理。
+/// 对应目录成为孤立文件，可后续由运维/GC 处理。
 async fn cleanup_user_related_data(
     txn: &impl ConnectionTrait,
     user_id: i32,

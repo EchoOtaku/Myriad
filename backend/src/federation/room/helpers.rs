@@ -5,7 +5,7 @@ use serde_json::json;
 
 use crate::federation::types::*;
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 /// Structured 403 when the actor is not an *active* member.
 /// Pending invitees get `code: ROOM_INVITE_PENDING` so clients can show accept/reject UI

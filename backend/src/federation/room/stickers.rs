@@ -13,7 +13,7 @@ use super::types::*;
 pub(crate) const ROOM_STICKER_MAX_COUNT: usize = 50;
 pub(crate) const ROOM_STICKER_MAX_DATA_LEN: usize = 120_000;
 
-// ==================== Room shared stickers ====================
+// Room shared stickers
 
 pub(crate) fn parse_room_stickers(shared: &serde_json::Value) -> Vec<RoomStickerItem> {
     shared

@@ -15,7 +15,7 @@ pub(crate) const DEDUP_SIMILARITY_THRESHOLD: f32 = 0.85;
 /// 合并——TF-IDF 相似度超过此值认为可合并
 pub(crate) const MERGE_SIMILARITY_THRESHOLD: f32 = 0.70;
 
-// ==================== 类型定义 ====================
+// 类型定义
 
 /// 记忆条目
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,7 +40,6 @@ pub struct MemoryEntry {
     /// 访问次数
     #[serde(default)]
     pub access_count: u32,
-    /// 创建时间
     pub created_at: String,
     /// 最后访问时间
     #[serde(default)]
@@ -128,7 +127,7 @@ pub struct MemoryExtractionResult {
     pub memories: Vec<ExtractedMemory>,
 }
 
-// ==================== TF-IDF 搜索索引 ====================
+// TF-IDF 搜索索引
 
 /// 轻量级 TF-IDF 索引
 ///
@@ -360,7 +359,7 @@ pub(crate) fn is_cjk(ch: char) -> bool {
     )
 }
 
-// ==================== 复合评分 ====================
+// 复合评分
 
 /// 召回查询参数
 pub struct RecallQuery {
@@ -403,7 +402,7 @@ pub(crate) fn recency_score(created_at: &str) -> f32 {
     1.0 / (1.0 + hours_ago / 24.0)
 }
 
-// ==================== AgentMemory 主结构 ====================
+// AgentMemory 主结构
 
 /// Agent 记忆管理器 (v3 — 智能记忆)
 pub struct AgentMemory {

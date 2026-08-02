@@ -907,7 +907,7 @@ async fn get_local_avatar_url(
     Ok(row.and_then(|r| r.try_get::<Option<String>>("", "avatar_url").ok().flatten()))
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 /// Whether stored public key material is missing or empty and needs generation.
 ///

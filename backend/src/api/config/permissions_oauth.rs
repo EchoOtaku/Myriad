@@ -1,4 +1,4 @@
-// ========== 权限配置 API ==========
+// 权限配置 API
 
 use crate::middleware::auth::extract_optional_claims;
 use crate::services::permission_service::{TappPermissionService, UserRole};
@@ -281,9 +281,7 @@ pub async fn update_permissions(
     )
 }
 
-// ============================================================================
 // PR #6: OAuth Providers + 本地注册开关 — 专用端点
-// ============================================================================
 // 详见 docs/development/OAUTH.md
 //
 // GitHub 可以作为 kind="github" 的 provider entry 配置；旧的

@@ -76,7 +76,7 @@ impl StdioTransport {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped()); // stderr 用于服务器日志
 
-        // ⚠️ env_clear 必须在任何 cmd.env() 之前。
+        // env_clear 必须在任何 cmd.env() 之前。
         //
         // Command 默认**继承父进程的整个环境**。之前这里只是"再设一遍"
         // PATH/HOME，看着像白名单，实际上每个 MCP server 子进程都拿到了

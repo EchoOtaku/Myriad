@@ -290,7 +290,7 @@ pub async fn post_shared_inbox(
 /// 1. Local usernames in `to` / `cc` (string or first array element; also arrays)
 /// 2. For **Accept**: owner of the outgoing Follow cited by object id (never guess)
 /// 3. Single local user instance fallback only when not Accept (avoids wrong-user
-///    Accept on multi-user hosts)
+/// Accept on multi-user hosts)
 async fn resolve_shared_inbox_local_user(
     db: &DatabaseConnection,
     activity_type: &str,
@@ -350,9 +350,9 @@ async fn resolve_shared_inbox_local_user(
     }
 
     // 3) Single-tenant convenience fallback (not for Accept).
-    //    Only when the instance genuinely has exactly one user. The previous
-    //    `ORDER BY id LIMIT 1` silently handed unaddressed activities to the
-    //    oldest account on multi-user hosts.
+    // Only when the instance genuinely has exactly one user. The previous
+    // `ORDER BY id LIMIT 1` silently handed unaddressed activities to the
+    // oldest account on multi-user hosts.
     if let Ok(rows) = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -394,7 +394,7 @@ async fn local_user_id_from_actorish_url(db: &DatabaseConnection, url: &str) -> 
     None
 }
 
-// ==================== Activity 处理器 ====================
+// Activity 处理器
 
 /// Handle ActivityPub Move (domain / account migration).
 ///
@@ -873,8 +873,8 @@ fn same_host_username_compatible(accept_actor: &str, remote: &str) -> bool {
 /// Matching order (safe, no silent multi-pick):
 /// 1. Normalized `activity_id` + Accept.actor is remote peer (`same_actor_or_user`)
 /// 2. Unique normalized `activity_id` + **same host + username-compatible**
-///    (path/alias drift only — never cross-user on the same host, never
-///    cross-host username-only)
+/// (path/alias drift only — never cross-user on the same host, never
+/// cross-host username-only)
 /// 3. Exactly one **pending** outgoing to Accept.actor via `same_actor_or_user`
 ///
 /// Already-`accepted` rows only yield idempotent success when matched by id
@@ -974,7 +974,7 @@ async fn handle_follow_accept(
     // - all pending outgoing for this user (usually few)
     // - accepted rows matching activity_id variants (idempotent re-Accept)
     // - recent accepted (last 40) so normalized id compare can still hit after
-    //   query/host-case drift without scanning all history
+    // query/host-case drift without scanning all history
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -1150,7 +1150,7 @@ async fn handle_content_activity(
     //
     // Create/Update：attributedTo 必须是签名 Actor，对象 id 必须同源。
     // Delete：对象通常已压缩成裸 IRI，只能做同源判断，真正的所有权在下面的
-    //         SQL 里用 remote_actor_id 再收一次。
+    // SQL 里用 remote_actor_id 再收一次。
     // Announce/Like：对象本来就是别人的，不适用。
     let ownership = match activity_type {
         "Create" | "Update" => Some(crate::federation::audience::verify_object_ownership(
@@ -1335,7 +1335,7 @@ async fn distribute_to_followers(
     Ok(())
 }
 
-// ==================== HTTP Signature 验证 ====================
+// HTTP Signature 验证
 
 /// 解析请求体**之前**必须通过的检查。
 ///
@@ -1424,7 +1424,7 @@ fn verify_preparse_gate(
     Ok(())
 }
 
-// ===== merged from handlers.rs =====
+// merged from handlers.rs
 
 /// 验证请求的 HTTP Signature
 async fn verify_request_signature(
@@ -1599,7 +1599,7 @@ async fn verify_request_signature(
     Ok(())
 }
 
-// ==================== 投递入队 ====================
+// 投递入队
 
 /// 将 Activity 入库并加入投递队列。
 ///
@@ -1642,7 +1642,7 @@ async fn enqueue_delivery(
 
     // Same-instance inbox → handle directly (Follow / Accept / Undo / …).
     // Box::pin breaks the async recursion cycle:
-    //   deliver_activity_locally → handle_follow → enqueue_delivery → …
+    // deliver_activity_locally → handle_follow → enqueue_delivery → …
     if let Some(local_username) = local_username_from_inbox_url(&base_url, target_inbox) {
         match Box::pin(deliver_activity_locally(
             db,
@@ -1760,7 +1760,7 @@ pub async fn deliver_activity_locally(
     })
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 /// Prefer shared async helper — never `blocking_read` inside the tokio runtime
 /// (panics with "Cannot block the current thread from within a runtime").
@@ -1815,7 +1815,7 @@ async fn get_username_by_id(
     Ok(row.try_get("", "username").unwrap_or_default())
 }
 
-// ==================== MFP Activity 处理器 ====================
+// MFP Activity 处理器
 
 /// 处理 MFP 扩展 Activity（myriad:ChannelOpen, myriad:ChannelMessage, myriad:ChannelClose 等）
 async fn handle_mfp_activity(

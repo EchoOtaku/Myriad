@@ -342,7 +342,7 @@ pub async fn initialize_env_file(
     crate::api::setup_bootstrap::require_bootstrap(&headers)
         .map_err(HttpError)?;
 
-    // ✅ SECURITY CHECK: Only allow in CONFIG_MODE
+    // Only allow in CONFIG_MODE
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
 
     if !config_mode {
@@ -450,7 +450,7 @@ pub async fn update_env_file(
     crate::api::setup_bootstrap::require_bootstrap(&headers)
         .map_err(HttpError)?;
 
-    // ✅ SECURITY CHECK: Only allow in CONFIG_MODE
+    // Only allow in CONFIG_MODE
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
 
     if !config_mode {
@@ -703,7 +703,7 @@ fn build_database_url(config: &DatabaseConfigRequest) -> Result<String, String> 
 
 /// POST /api/setup/database-config
 /// Save database configuration to .env file (专门用于配置数据库)
-/// 🔒 安全保护：只能在 CONFIG_MODE 下修改数据库配置
+/// 安全保护：只能在 CONFIG_MODE 下修改数据库配置
 pub async fn save_database_config(
     headers: HeaderMap,
     Json(config): Json<DatabaseConfigRequest>,
@@ -714,7 +714,7 @@ pub async fn save_database_config(
     crate::api::setup_bootstrap::require_bootstrap(&headers)
         .map_err(HttpError)?;
 
-    // ✅ P0 安全修复：强制要求 CONFIG_MODE
+    // P0 安全修复：强制要求 CONFIG_MODE
     let config_mode = crate::CONFIG_MODE.load(std::sync::atomic::Ordering::Relaxed);
 
     if !config_mode {

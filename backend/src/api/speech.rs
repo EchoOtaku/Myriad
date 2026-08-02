@@ -63,7 +63,7 @@ pub fn create_speech_routes(
             app_state.clone(),
             crate::api::tapp_runtime::speech_host_attribution,
         ))
-        // 🔒 TTS/ASR 端点需要认证（调用付费 API）
+        // TTS/ASR 端点需要认证（调用付费 API）
         .route_layer(from_fn_with_state(
             app_state,
             crate::middleware::auth::auth_middleware,
@@ -199,7 +199,7 @@ async fn read_tts_file(path: &PathBuf) -> Option<String> {
     }
 }
 
-// ==================== 文章 TTS 缓存 ====================
+// 文章 TTS 缓存
 
 /// 精确查找文章对话 TTS 缓存（指定音色+对话索引）
 async fn find_article_exact_tts(
@@ -789,7 +789,7 @@ pub async fn get_voice_list() -> impl IntoResponse {
 
     Json(VoiceListResponse {
         voices: vec![
-            // ==================== 超自然大模型音色 ====================
+            // 超自然大模型音色
             VoiceInfo {
                 id: voice_types::ZHI_XIAO_WU,
                 name: "智小悟".to_string(),
@@ -889,7 +889,7 @@ pub async fn get_voice_list() -> impl IntoResponse {
                 voice_type: "ultra_natural".to_string(),
                 emotion_support: false,
             },
-            // ==================== 大模型音色 ====================
+            // 大模型音色
             VoiceInfo {
                 id: voice_types::ZHI_BIN,
                 name: "智斌".to_string(),
@@ -1052,7 +1052,7 @@ pub async fn get_voice_list() -> impl IntoResponse {
                 voice_type: "llm".to_string(),
                 emotion_support: false,
             },
-            // ==================== 精品音色 ====================
+            // 精品音色
             VoiceInfo {
                 id: voice_types::ZHI_YUN,
                 name: "智云".to_string(),
@@ -1231,7 +1231,7 @@ pub struct ClearCacheResponse {
     pub error: Option<String>,
 }
 
-// ==================== 文章缓存管理 API ====================
+// 文章缓存管理 API
 
 /// 文章缓存信息请求
 #[derive(Debug, Deserialize)]

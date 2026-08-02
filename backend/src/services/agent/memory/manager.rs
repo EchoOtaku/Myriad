@@ -47,7 +47,7 @@ impl AgentMemory {
         manager
     }
 
-    // ==================== 写入 ====================
+    // 写入
 
     /// 记住一条记忆
     pub async fn remember(&self, content: &str, memory_type: MemoryType, user_id: i32) {
@@ -153,7 +153,7 @@ impl AgentMemory {
         self.save_all().await;
     }
 
-    // ==================== AI 驱动的智能记忆提取 ====================
+    // AI 驱动的智能记忆提取
 
     /// 从执行结果中 AI 提取有价值的记忆
     ///
@@ -460,7 +460,7 @@ impl AgentMemory {
         }
     }
 
-    // ==================== 去重与合并 ====================
+    // 去重与合并
 
     /// 检查是否应该去重或合并（返回 true 表示跳过写入）
     ///
@@ -580,7 +580,7 @@ impl AgentMemory {
         false
     }
 
-    // ==================== 容量管理 ====================
+    // 容量管理
 
     /// 强制容量上限，淘汰低价值记忆
     ///
@@ -949,7 +949,7 @@ impl AgentMemory {
         promoted
     }
 
-    // ==================== 列举 ====================
+    // 列举
 
     /// 列出最近的记忆条目（按创建时间降序，排除 ShortTerm，按用户隔离）
     pub async fn list_recent(&self, limit: usize, user_id: i32) -> Vec<MemoryEntry> {
@@ -963,7 +963,7 @@ impl AgentMemory {
         recent.into_iter().cloned().collect()
     }
 
-    // ==================== 管理操作 ====================
+    // 管理操作
 
     /// 删除指定 ID 的记忆条目（仅所有者或系统用户）
     ///
@@ -1046,7 +1046,7 @@ impl AgentMemory {
         true
     }
 
-    // ==================== 搜索 ====================
+    // 搜索
 
     /// 召回相关记忆（完整参数）
     pub async fn recall_with_params(&self, params: RecallQuery) -> Vec<MemoryEntry> {
@@ -1191,7 +1191,7 @@ impl AgentMemory {
         self.save_all().await;
     }
 
-    // ==================== 清理 ====================
+    // 清理
 
     /// 清理旧日志（保留最近 N 天）
     pub async fn cleanup_old_logs(&self, keep_days: i64) {
@@ -1249,7 +1249,7 @@ impl AgentMemory {
         count
     }
 
-    // ==================== 持久化 ====================
+    // 持久化
 
     /// 生成确定性 ID（纯内容 hash，相同内容产生相同 ID，支持幂等去重）
     fn make_id(content: &str) -> String {
@@ -1427,7 +1427,7 @@ impl AgentMemory {
     }
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 /// 解析 AI 返回的记忆提取结果
 fn parse_extraction_result(response: &str) -> Option<MemoryExtractionResult> {
@@ -1474,7 +1474,7 @@ pub fn summarize_value_for_memory(value: &Value) -> String {
     }
 }
 
-// ==================== 全局实例 ====================
+// 全局实例
 
 static AGENT_MEMORY: once_cell::sync::OnceCell<Arc<AgentMemory>> = once_cell::sync::OnceCell::new();
 
@@ -1511,7 +1511,7 @@ pub fn get_memory() -> Option<&'static Arc<AgentMemory>> {
 mod tests {
     use super::*;
 
-    // ======== TF-IDF 分词测试 ========
+    // TF-IDF 分词测试
 
     #[test]
     fn test_tokenize_english() {
@@ -1573,7 +1573,7 @@ mod tests {
         assert!(bigrams.is_empty());
     }
 
-    // ======== TF-IDF 检索测试 ========
+    // TF-IDF 检索测试
 
     #[test]
     fn test_tfidf_similarity_basic() {
@@ -1597,7 +1597,7 @@ mod tests {
         );
     }
 
-    // ======== 重要性衰减测试 ========
+    // 重要性衰减测试
 
     #[test]
     fn test_importance_decay_formula() {

@@ -7,15 +7,15 @@
 //! # Globals policy
 //!
 //! - **HTTP handlers**: obtain DB via `extract::Db` or `State<DatabaseConnection>`
-//!   (FromRef from `AppState`). Do not call process DB helpers on request paths
-//!   when a connection is already available from State.
+//! (FromRef from `AppState`). Do not call process DB helpers on request paths
+//! when a connection is already available from State.
 //! - **`extract::Db` on `()`**: always 503 — no process-DB fallback.
 //! - **Shared DB slot**: [`AppState::db_slot`] is the **same** `Arc` as
-//!   [`crate::services::tapp_registry::shared_database_slot`]. Reload/health
-//!   reconnect via `set_process_database` updates HTTP extractors and background
-//!   readers together — no dual live pools.
+//! [`crate::services::tapp_registry::shared_database_slot`]. Reload/health
+//! reconnect via `set_process_database` updates HTTP extractors and background
+//! readers together — no dual live pools.
 //! - **Background services**: may use `services::tapp_registry::database()` when
-//!   no request State is available (wired at bootstrap / reload).
+//! no request State is available (wired at bootstrap / reload).
 //! - **`GLOBAL_*` config**: shared Arcs also held on `AppState` via `from_shared`.
 
 use std::sync::{Arc, RwLock};

@@ -93,7 +93,7 @@ pub(crate) fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["category".into()],
             is_unique: false,
         },
-        // ==================== 002_tapp_system.rs 索引 ====================
+        // 002_tapp_system.rs 索引
         // tapps 索引
         IndexDef {
             name: "idx_tapps_user_tapp_id".into(),
@@ -259,7 +259,7 @@ pub(crate) fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["user_id".into(), "last_run_at".into()],
             is_unique: false,
         },
-        // ==================== 003_brew_system.rs 索引 ====================
+        // 003_brew_system.rs 索引
         // brew_sources 索引
         IndexDef {
             name: "idx_brew_sources_user_id".into(),
@@ -447,7 +447,7 @@ pub(crate) fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["last_used_at".into()],
             is_unique: false,
         },
-        // ==================== federation 索引 ====================
+        // federation 索引
         IndexDef {
             name: "idx_remote_actors_domain".into(),
             table: "federation_remote_actors".into(),
@@ -579,7 +579,7 @@ pub(crate) fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["user_id".into(), "received_at".into()],
             is_unique: false,
         },
-        // ==================== 近月新功能索引（001 analytics / 004 heartbeat / 005 fed 扩展）====================
+        // 近月新功能索引（001 analytics / 004 heartbeat / 005 fed 扩展）
         IndexDef {
             name: "idx_analytics_page_daily_day".into(),
             table: "analytics_page_daily".into(),

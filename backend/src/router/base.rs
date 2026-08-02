@@ -61,20 +61,20 @@ pub(super) fn build_base_api_router(
             post(api::auth_local::create_admin),
         )
         // System management routes
-        // ⚠️ P2: system/status 暴露了一些系统信息，但为了监控保持公开（考虑移除敏感字段）
+        // P2: system/status 暴露了一些系统信息，但为了监控保持公开（考虑移除敏感字段）
         .route("/api/system/status", get(api::system::system_status))
         .route(
             "/api/system/reload-config",
             post(api::system::reload_config)
-                // ✅ P1 修复：配置重载应该只有 admin 可以触发
+                // P1 修复：配置重载应该只有 admin 可以触发
                 .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
         )
-        // ✅ P2: 系统监控指标端点（内存、任务、连接等）- 🔒 需要管理员权限
+        // 系统监控指标端点（内存、任务、连接等）-  需要管理员权限
         .route(
             "/api/metrics",
             get(api::metrics::get_metrics).route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
         )
-        // 📊 站点访客统计：collect/pageview 公开写入；summary 仅管理员
+        // 站点访客统计：collect/pageview 公开写入；summary 仅管理员
         .route(
             "/api/analytics/collect",
             post(api::analytics::collect),
@@ -263,11 +263,11 @@ pub(super) fn build_base_api_router(
                 .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
         )
         // 权限配置 API
-        .route("/api/config/permissions", get(api::config::get_permissions)) // 🔓 公开端点：获取当前用户权限
+        .route("/api/config/permissions", get(api::config::get_permissions)) // 公开端点：获取当前用户权限
         .route(
             "/api/config/permissions",
             post(api::config::update_permissions)
-                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)), // 🔒 仅管理员
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)), // 仅管理员
         )
         // PR #6: OAuth providers + 本地注册开关（仅管理员可读写）
         .route(
@@ -281,10 +281,10 @@ pub(super) fn build_base_api_router(
             post(api::config::test_platform)
                 .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
         )
-        .route("/api/config/metadata", get(api::config::get_site_metadata)) // 🔓 公开端点：网站元数据
-        .route("/api/config/public", get(api::config::get_public_config)) // 🔓 公开端点：平台公开信息（用于社交链接）
-        .route("/api/config/ui", get(api::config::get_public_ui_config)) // 🔓 公开端点：UI 运行时（壁纸/动效/音乐/站点展示）
-        // 🔓 SEO：sitemap / robots / 公开 Tapp·Brew 摘要与爬虫 HTML 壳
+.route("/api/config/metadata", get(api::config::get_site_metadata)) // 公开端点：网站元数据
+            .route("/api/config/public", get(api::config::get_public_config)) // 公开端点：平台公开信息（用于社交链接）
+            .route("/api/config/ui", get(api::config::get_public_ui_config)) // 公开端点：UI 运行时（壁纸/动效/音乐/站点展示）
+        // SEO：sitemap / robots / 公开 Tapp·Brew 摘要与爬虫 HTML 壳
         .route("/sitemap.xml", get(api::seo::sitemap_xml))
         .route("/api/seo/sitemap.xml", get(api::seo::sitemap_xml))
         .route("/robots.txt", get(api::seo::robots_txt))
@@ -304,16 +304,16 @@ pub(super) fn build_base_api_router(
             "/brew/item/{item_id}",
             get(api::seo::brew_item_seo_html),
         )
-        // ✅ 安全修复 P0: CSRF Token 获取端点
+        // CSRF Token 获取端点
         .route("/api/csrf-token", get(middleware::csrf::get_csrf_token))
-        // AI推荐API - 🔓 公开端点：图标推荐服务
+        // AI推荐API -  公开端点：图标推荐服务
         .route(
             "/api/ai/recommend-icon",
             post(api::ai_recommend::recommend_icon),
         )
         // Profile routes (use wrapper for dynamic DB access) - ALWAYS REGISTERED
         .route("/api/profile/user-info", get(api::profile::get_user_info))
-        .route("/api/profile/batch", get(api::profile::get_batch_user_info)); // 🚀 性能优化：批量API
+        .route("/api/profile/batch", get(api::profile::get_batch_user_info)); // 批量 API
 
     // /api/profile/metadata (raw cache dump) is admin-only — registered on authenticated router.
     
@@ -323,7 +323,7 @@ pub(super) fn build_base_api_router(
             get(api::profile::get_platform_metadata_status)
                 .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
         )
-        // ==================== Federation (MFP) 公开端点 ====================
+        // Federation (MFP) 公开端点
         // Layer 1: 发现（无需认证）
         .route(
             "/.well-known/webfinger",
@@ -398,7 +398,7 @@ pub(super) fn build_base_api_router(
                     federation::limits::INBOX_BODY_LIMIT,
                 )),
         )
-        // ==================== Federation API（需认证）====================
+        // Federation API（需认证）
         // Tapp 宿主归因与认证在 api::federation::router() 内按 Router 级统一挂载。
         .merge(api::federation::router(app_state.clone()))
 }

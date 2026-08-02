@@ -57,9 +57,7 @@ pub async fn execute(
     }
 }
 
-// ============================================================================
 // 数据转换
-// ============================================================================
 
 async fn execute_data_transform(params: &HashMap<String, Value>) -> Result<Value, String> {
     let input = params.get("input").cloned().unwrap_or(json!([]));
@@ -95,9 +93,7 @@ async fn execute_data_transform(params: &HashMap<String, Value>) -> Result<Value
     }))
 }
 
-// ============================================================================
 // 调度器
-// ============================================================================
 
 async fn execute_scheduler_create(
     params: &HashMap<String, Value>,
@@ -315,9 +311,7 @@ async fn execute_scheduler_trigger(
     }))
 }
 
-// ============================================================================
 // Agent Heartbeat（HEARTBEAT.md，非 Tapp scheduler）
-// ============================================================================
 
 async fn require_heartbeat_admin(ctx: &HandlerContext<'_>) -> Result<(), String> {
     if crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await {
@@ -459,9 +453,7 @@ async fn execute_heartbeat_toggle(
     }
 }
 
-// ============================================================================
 // 系统状态
-// ============================================================================
 
 async fn execute_system_metrics() -> Result<Value, String> {
     // Process-level metrics only — honest limited payload, not full host monitoring.
@@ -603,9 +595,7 @@ async fn execute_cache_clear(params: &HashMap<String, Value>) -> Result<Value, S
     }
 }
 
-// ============================================================================
 // 健康检查
-// ============================================================================
 
 async fn execute_rsshub_healthcheck(
     params: &HashMap<String, Value>,
@@ -699,9 +689,7 @@ async fn execute_rsshub_healthcheck(
     }))
 }
 
-// ============================================================================
 // 图片缓存
-// ============================================================================
 
 async fn execute_image_cache(params: &HashMap<String, Value>) -> Result<Value, String> {
     let action = params
@@ -759,9 +747,7 @@ async fn execute_image_cache(params: &HashMap<String, Value>) -> Result<Value, S
     }
 }
 
-// ============================================================================
 // 数据导出
-// ============================================================================
 
 async fn execute_export_data(params: &HashMap<String, Value>) -> Result<Value, String> {
     let format = params
@@ -849,9 +835,7 @@ async fn execute_export_data(params: &HashMap<String, Value>) -> Result<Value, S
     }))
 }
 
-// ============================================================================
 // 后台任务
-// ============================================================================
 
 async fn execute_task_submit(params: &HashMap<String, Value>) -> Result<Value, String> {
     let platform = params

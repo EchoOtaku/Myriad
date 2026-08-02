@@ -177,7 +177,7 @@ pub async fn nodeinfo(
     ))
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 /// 解析 acct:user@domain 格式
 fn parse_acct_uri(resource: &str) -> Option<(String, String)> {

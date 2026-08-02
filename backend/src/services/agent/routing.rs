@@ -4,15 +4,15 @@
 //!
 //! ```text
 //! 用户请求 → Orchestrator (Pro) → 分析意图、拆解子任务
-//!                                      ↓
-//!              ┌───────────────────────┼───────────────────────┐
-//!              ↓                       ↓                       ↓
-//!        DataWorker (Std)       ContentWorker (Std)      CreativeWorker (Pro)
-//!        数据获取/转换           总结/分析/过滤            创作/推理/生成
-//!              ↓                       ↓                       ↓
-//!              └───────────────────────┼───────────────────────┘
-//!                                      ↓
-//!                            Orchestrator → 汇总 → 最终响应
+//! ↓
+//! ┌───────────────────────┼───────────────────────┐
+//! ↓                       ↓                       ↓
+//! DataWorker (Std)       ContentWorker (Std)      CreativeWorker (Pro)
+//! 数据获取/转换           总结/分析/过滤            创作/推理/生成
+//! ↓                       ↓                       ↓
+//! └───────────────────────┼───────────────────────┘
+//! ↓
+//! Orchestrator → 汇总 → 最终响应
 //! ```
 //!
 //! 所有 Worker 共享同一进程，通过 tokio channel 通信，零网络延迟。
@@ -22,7 +22,7 @@ use crate::config::ModelTier;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-// ============ Agent Profile ============
+// Agent Profile
 
 /// Agent 角色类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -92,7 +92,7 @@ pub struct AgentProfile {
     pub description: String,
 }
 
-// ============ Agent Router ============
+// Agent Router
 
 /// 多 Agent 路由器
 ///
@@ -363,7 +363,7 @@ impl Default for AgentRouter {
     }
 }
 
-// ============ 任务分配结果 ============
+// 任务分配结果
 
 /// 任务分配结果（可序列化，用于 SSE 和 API）
 ///
@@ -388,13 +388,11 @@ pub struct TaskAssignment {
 pub struct AgentAssignment {
     /// Agent 角色
     pub role: AgentRole,
-    /// Agent ID
     #[serde(rename = "agentId", alias = "agent_id")]
     pub agent_id: String,
     /// 显示名称
     #[serde(rename = "displayName", alias = "display_name")]
     pub display_name: String,
-    /// 图标
     pub icon: String,
     /// 使用的模型层级
     pub tier: ModelTier,
@@ -402,7 +400,7 @@ pub struct AgentAssignment {
     pub capabilities: Vec<String>,
 }
 
-// ============ 全局路由器 ============
+// 全局路由器
 
 use once_cell::sync::Lazy;
 
@@ -413,7 +411,7 @@ pub fn get_router() -> &'static AgentRouter {
     &AGENT_ROUTER
 }
 
-// ============ Tests ============
+// Tests
 
 #[cfg(test)]
 mod tests {

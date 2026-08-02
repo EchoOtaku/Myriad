@@ -34,7 +34,6 @@ pub struct Model {
     /// 用户 ID
     pub user_id: i32,
 
-    /// Tapp ID
     #[sea_orm(column_type = "String(StringLen::N(255))")]
     pub tapp_id: String,
 

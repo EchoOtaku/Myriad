@@ -14,9 +14,9 @@ use super::netease_utils::{
     get_random_user_agent,
 };
 
-// 🚀 内存保护：限制单个歌单最大处理数量（避免 OOM）
+// 内存保护：限制单个歌单最大处理数量（避免 OOM）
 const MAX_TRACKS_LIMIT: usize = 5000;
-// 🚀 内存保护：限制缓存最大条目数
+// 内存保护：限制缓存最大条目数
 const MAX_CACHE_ENTRIES: usize = 50;
 
 // 缓存结构
@@ -199,9 +199,9 @@ impl NeteaseService {
                     }
 
                     // 处理大歌单（超过1000首）- 使用串行批量获取
-                    // 🚀 优化：改为串行处理，减少内存峰值和 OOM 风险
+                    // 优化：改为串行处理，减少内存峰值和 OOM 风险
                     if track_count > loaded_tracks && loaded_tracks >= 1000 {
-                        // 🚀 内存保护：限制最大获取数量，避免 OOM
+                        // 内存保护：限制最大获取数量，避免 OOM
                         let effective_track_count = std::cmp::min(track_count, MAX_TRACKS_LIMIT);
 
                         tracing::info!(
@@ -212,7 +212,7 @@ impl NeteaseService {
                         );
 
                         if let Some(track_ids_array) = track_ids {
-                            // 🚀 改进：不再克隆 tracks_array，直接收集新歌曲
+                            // 改进：不再克隆 tracks_array，直接收集新歌曲
                             let batch_size = 200; // 批次大小
                             let target_count =
                                 std::cmp::min(track_ids_array.len(), effective_track_count);
@@ -247,7 +247,7 @@ impl NeteaseService {
                                     continue;
                                 }
 
-                                // 🚀 添加延迟，减轻服务器压力
+                                // 添加延迟，减轻服务器压力
                                 let delay = 150 + (rand::random::<u64>() % 150);
                                 tokio::time::sleep(Duration::from_millis(delay)).await;
 
@@ -291,7 +291,7 @@ impl NeteaseService {
                                                 if batch_data.get("code").and_then(|c| c.as_i64()) == Some(200) {
                                                     if let Some(songs) = batch_data.get("songs").and_then(|s| s.as_array()) {
                                                         for song in songs {
-                                                            // 🚀 只提取必要字段，减少内存
+                                                            // 只提取必要字段，减少内存
                                                             let fee = song.get("fee").and_then(|f| f.as_i64()).unwrap_or(0);
                                                             let is_vip = fee == 1 || fee == 4;
                                                             if is_vip {
@@ -360,7 +360,7 @@ impl NeteaseService {
             }
         }
 
-        // 🚀 存入缓存（添加缓存清理和内存保护）
+        // 存入缓存（添加缓存清理和内存保护）
         {
             let mut cache = MUSIC_CACHE.write().await;
 

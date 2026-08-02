@@ -35,10 +35,8 @@ pub struct Model {
     #[sea_orm(column_type = "String(StringLen::N(64))", nullable)]
     pub binding_fingerprint: Option<String>,
 
-    /// 创建时间
     pub created_at: DateTimeWithTimeZone,
 
-    /// 更新时间
     pub updated_at: DateTimeWithTimeZone,
 }
 

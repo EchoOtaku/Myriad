@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 /// 对外算法标识（Activity / 信封字段）
 pub const E2E_ALGORITHM: &str = "x25519-aes256gcm";
 
-// ==================== 类型定义 ====================
+// 类型定义
 
 /// E2E 密钥对（X25519）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,7 +101,7 @@ pub struct EncryptionSession {
     pub established: bool,
 }
 
-// ==================== 密钥生成 ====================
+// 密钥生成
 
 /// 生成 X25519 密钥对
 ///
@@ -128,7 +128,7 @@ pub fn compute_shared_secret(local_private: &[u8; 32], remote_public: &[u8; 32])
     *secret.diffie_hellman(&public).as_bytes()
 }
 
-// ==================== AES-256-GCM 对称加密（HKDF 派生）====================
+// AES-256-GCM 对称加密（HKDF 派生）
 
 /// 使用共享密钥加密消息（AES-256-GCM AEAD）
 ///
@@ -205,7 +205,7 @@ pub fn decrypt_message(
         .map_err(|e| format!("Decryption failed: {}", e))
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 /// HKDF-SHA256 简化实现（Extract + Expand 单步）
 fn hkdf_derive(ikm: &[u8], info: &[u8]) -> [u8; 32] {
@@ -243,7 +243,7 @@ fn base64_decode(s: &str) -> Result<Vec<u8>, base64::DecodeError> {
     base64::engine::general_purpose::STANDARD.decode(s)
 }
 
-// ==================== 会话管理 API ====================
+// 会话管理 API
 
 /// 创建新的加密会话（生成密钥对）
 pub fn create_session(target_id: &str) -> EncryptionSession {
@@ -415,7 +415,7 @@ pub fn decrypt_json_payload(
     serde_json::from_slice(&plain).map_err(|e| format!("plaintext json parse: {e}"))
 }
 
-// ==================== Room 多方加密（content-key + 按成员 key-wrap）====================
+// Room 多方加密（content-key + 按成员 key-wrap）
 
 /// 发给某一收件人的 content-key 包装
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -575,7 +575,7 @@ pub fn decrypt_json_for_recipient(
     serde_json::from_slice(&plain).map_err(|e| format!("plaintext json parse: {e}"))
 }
 
-// ==================== At-rest private key sealing ====================
+// At-rest private key sealing
 // AES-256-GCM with key = SHA-256("myriad-e2e-key-seal:" || jwt_secret)
 // Stored form: "sealed:v1:" + base64(nonce || ciphertext)
 // Legacy plaintext base64 private keys still load for one-release migration.

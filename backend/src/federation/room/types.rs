@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 
 
-// ==================== 请求/响应类型 ====================
+// 请求/响应类型
 
 /// 创建 Room 请求
 #[derive(Debug, Deserialize)]

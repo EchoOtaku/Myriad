@@ -8,7 +8,7 @@ use crate::federation::types::*;
 use super::helpers::*;
 use super::types::*;
 
-// ==================== Room E2E 多方加密 ====================
+// Room E2E 多方加密
 
 pub(crate) async fn jwt_secret_for_e2e_seal() -> String {
     let config = crate::GLOBAL_CONFIG.read().await;

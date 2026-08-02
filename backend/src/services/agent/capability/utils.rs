@@ -390,7 +390,7 @@ pub fn get_sensitive_capabilities() -> HashMap<&'static str, (&'static str, Risk
 /// 这是 AI 选择正确能力的关键参考，必须全面覆盖所有能力
 pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
     match capability_id {
-        // ============ Brew 订阅系统 ============
+        // Brew 订阅系统
         "brew.items" => "获取文章。用户说'看看订阅'、'最新文章'、'打开文章'、'总结文章'、'看看 X'时用这个。优先 sourceId；也可用 sourceName 宽松匹配。本地有文章时不要 webSearch",
         "brew.article" => {
             "【内部能力】根据已知ID获取文章详情。不要直接选择，由系统在已知文章ID时自动调用"
@@ -404,7 +404,7 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "brew.schedule" => "Brew 调度控制。控制订阅调度器的启动/停止/刷新",
         "brew.generateReadingList" => "【推荐】生成阅读列表。用户说'给我推荐几篇文章'、'找些关于xx的文章'、'生成阅读列表'、'有什么值得看的'时使用",
 
-        // ============ AI 智能处理 ============
+        // AI 智能处理
         "ai.summarize" => "【必选】总结内容。用户说'总结'、'概括'、'讲讲大意'时必须使用",
         "ai.analyze" => "【必选】深度分析。用户说'分析'、'研究'、'评估'时必须使用",
         "ai.webSearch" => "【必选】联网搜索。查询外部实时信息时使用（新闻、公司、产品、天气等）",
@@ -412,7 +412,7 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "ai.chat" => "普通对话。用户闲聊或问通用问题时使用",
         "ai.image" => "AI 图片生成。用户说'生成图片'、'画一张'时使用；可选 width/height（256–2048，默认1024）指定分辨率，竖图/横图/壁纸时务必传入",
 
-        // ============ 平台数据 ============
+        // 平台数据
         "platform.read" => "通用平台数据读取。获取平台缓存数据",
         "platform.stats" => "平台统计数据。获取平台数据的统计信息",
         "platform.write" => "平台数据写入。向平台缓存写入数据",
@@ -424,13 +424,13 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "netease.playlist" => "网易云歌单。获取用户网易云歌单和听歌记录",
         "github.repos" => "GitHub 仓库查询。查询 GitHub 仓库、贡献和活动",
 
-        // ============ 音乐播放器 ============
+        // 音乐播放器
         "music.control" => "【播放器控制】直接控制音乐播放器的当前状态。仅用于纯播放器操作：播放/暂停/下一首/上一首/静音/调音量。注意：用户说'放点音乐'、'找点音乐听'、'播放ACG音乐'等要求搜索音乐内容的，不要用这个，应该用 netease.searchPlaylist + music.playlist",
         "music.status" => "播放状态查询。用户问'现在放的什么歌'、'当前播放'时使用",
         "music.playlist" => "根据歌单ID加载并播放指定歌单。需要先通过 netease.searchPlaylist 获取歌单ID，然后用本能力加载。不要单独使用",
         "netease.searchPlaylist" => "搜索网易云歌单。用户说'放点音乐'、'找点音乐听'、'播放ACG音乐'、'推荐个歌单'时，先用这个搜索，然后配合 music.playlist 播放",
 
-        // ============ Tapp 应用系统 ============
+        // Tapp 应用系统
         "tapp.list" => "Tapp 应用列表。用户说'有哪些应用'、'应用列表'时使用",
         "tapp.page" => "Tapp 页面内容。获取应用列表/详情/组件/存储数据等",
         "tapp.generate" => "Tapp 生成。根据描述生成 Tapp 应用代码",
@@ -443,24 +443,24 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "tapp.window.close" => "关闭窗口。关闭指定的 Tapp 窗口",
         "tapp.window.focus" => "聚焦窗口。将指定窗口置为活跃状态",
 
-        // ============ 报告系统 ============
+        // 报告系统
         "report.create" => "生成报告。用户说'生成报告'、'做个总结报告'时使用",
         "report.list" => "报告列表。用户说'历史报告'时使用",
 
-        // ============ 路由导航 ============
+        // 路由导航
         "router.state" => "路由状态。获取当前页面路由状态，了解用户在哪个页面",
         "router.navigate" => "【导航】路由导航。用户说'打开'、'跳转'、'去xx页面'时使用",
 
-        // ============ 页面交互 ============
+        // 页面交互
         "page.interact" => "页面元素交互。点击按钮、链接、标签页、菜单项等",
         "page.understand" => "页面 UI 智能理解。AI 分析当前页面 UI 并生成操作指令",
         "page.content" => "页面内容。读取当前页面显示的实际内容",
 
-        // ============ 搜索 ============
+        // 搜索
         "search.global" => "全局搜索。跨平台搜索内容",
         "search.fuzzy" => "模糊搜索。Brew 源匹配名称/category/site_url；查询'友情链接'可命中友链分类源",
 
-        // ============ 系统操作 ============
+        // 系统操作
         "system.metrics" => "系统监控。本进程内存/uptime/任务计数（非完整主机监控）",
         "cache.status" => "缓存状态。获取各平台缓存状态",
         "cache.clear" => "清除缓存。清除指定平台的缓存数据",
@@ -471,37 +471,37 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "image.cache" => "图片缓存。缓存外部图片到本地",
         "proxy.image" => "图片代理。代理获取外链图片",
 
-        // ============ Tapp 定时任务（tapp_scheduled_tasks）============
+        // Tapp 定时任务（tapp_scheduled_tasks）
         "scheduler.create" => "创建 Tapp 定时任务（需 tappId）。仅用于已安装 Tapp 的调度，不是 Agent 心跳",
         "scheduler.list" => "Tapp 定时任务列表。获取当前用户的 Tapp 调度任务（非 HEARTBEAT.md）",
         "scheduler.trigger" => "立即触发 Tapp 定时任务",
 
-        // ============ Agent Heartbeat（HEARTBEAT.md，自然语言指令）============
+        // Agent Heartbeat（HEARTBEAT.md，自然语言指令）
         "heartbeat.list" => "【推荐·心跳列表】列出 Agent 心跳任务。用户问「有哪些定时任务」「心跳任务」时优先用这个（非 platform 自动刷新、非 Tapp scheduler）",
         "heartbeat.create" => "【推荐·创建心跳】创建 Agent 心跳任务。用户说「定时」「每天」「每隔」「心跳」「帮我每小时检查」「每天早上总结」时必须用这个。params: name, schedule(5字段cron), action(自然语言指令), enabled默认true。例: schedule=\"0 * * * *\" action=\"检查 akiday 有没有更新\"。不要用 scheduler.create",
         "heartbeat.update" => "更新心跳任务。按 id 修改 name/schedule/action/enabled",
         "heartbeat.delete" => "删除心跳任务。按 id 删除 HEARTBEAT.md 中的任务",
         "heartbeat.toggle" => "切换心跳任务启停。按 id 启用或禁用",
 
-        // ============ 后台任务 ============
+        // 后台任务
         "task.submit" => "提交后台任务。提交平台数据处理任务",
         "task.status" => "任务状态查询。按 taskId 查 agent 任务，或列出最近任务",
 
-        // ============ 数据处理 ============
+        // 数据处理
         "data.transform" => "数据转换。对数据进行过滤、排序、聚合等操作",
         "smart.filter" => "智能内容过滤。对原始数据进行智能分类和过滤",
         "compare.content" => "内容比较。比较不同时间点的平台数据变化",
 
-        // ============ 数据库查询 ============
+        // 数据库查询
         "database.anime" => "番剧数据库查询。查询预置番剧/电视剧/电影数据库",
         "database.game" => "游戏数据库查询。查询预置游戏数据库",
         "database.artist" => "艺术家数据库查询。查询预置歌手/艺术家数据库",
         "metadata.history" => "元数据历史。查询平台元数据变化历史",
 
-        // ============ 用户画像 ============
+        // 用户画像
         "profile.summary" => "用户画像。获取用户跨平台综合画像",
 
-        // ============ 外部集成 ============
+        // 外部集成
         "http.fetch" => "HTTP 请求。发起外部 HTTP 请求",
         "notion.query" => "Notion 数据查询。查询 Notion 数据库内容",
         "rsshub.instances" => "RSSHub 实例列表。读取 Brew 已配置实例及健康状态",
@@ -510,17 +510,17 @@ pub fn get_capability_usage_hint(capability_id: &str) -> &'static str {
         "weather.get" => "获取天气。获取天气信息",
         "time.info" => "时间信息。获取当前时间和日期信息",
 
-        // ============ AI 增强阅读 ============
+        // AI 增强阅读
         "brewlia.annotate" => "AI 文章注释。为文章生成 AI 智能注释和解读",
         "brewlia.podcast" => "AI 播客生成。将文章转换为对话式播客文稿",
 
-        // ============ 语音服务 ============
+        // 语音服务
         "speech.tts" => "文字转语音。与 /api/speech/tts 相同路径，返回 base64 音频",
 
-        // ============ 存储 ============
+        // 存储
         "storage.set" => "存储数据。保存数据到 Tapp 存储",
 
-        // ============ 其他 ============
+        // 其他
         "icon.recommend" => "图标推荐。根据平台名称推荐合适的图标",
         "prompt.generate" => "提示词生成。为图片生成提供优化的提示词。必须在 description 参数中传入角色/场景的详细描述（角色全名、来源作品、外貌特征含发型发色瞳色服装等、场景、画风）。你应该利用自己的知识补充角色细节",
         "random.content" => "随机内容。获取随机推荐内容",

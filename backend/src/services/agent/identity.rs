@@ -108,7 +108,7 @@ impl IdentityManager {
 
     /// 获取所有角色的简短描述（用于 Planner 注入上下文）
     ///
-    /// 返回格式：`"📊 Data Worker: <第一行>\n📝 Content Worker: <第一行>"`
+    /// 返回格式：`" Data Worker: <第一行>\n Content Worker: <第一行>"`
     pub async fn get_role_summaries(&self) -> String {
         let roles = self.role_identities.read().await;
         let mut summaries = Vec::new();

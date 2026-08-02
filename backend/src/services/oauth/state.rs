@@ -8,11 +8,11 @@
 //! (provider authorization codes remain one-time).
 //!
 //! Token format (URL-safe):
-//!   `base64url(payload_json) + '.' + base64url(hmac_sha256)`
+//! `base64url(payload_json) + '.' + base64url(hmac_sha256)`
 //!
 //! Payload fields:
-//!   `v` (version), `n` (nonce hex), `s` (slug), `p` (login|link|platform),
-//!   `uid?`, `plat?`, `exp` (unix seconds)
+//! `v` (version), `n` (nonce hex), `s` (slug), `p` (login|link|platform),
+//! `uid?`, `plat?`, `exp` (unix seconds)
 //!
 //! Secret: `OAUTH_STATE_SECRET` if set, else `JWT_SECRET`.
 
@@ -291,7 +291,7 @@ pub async fn issue_state(stored: StoredState) -> Result<String, String> {
 /// 2. Check `exp` → [`ConsumeStateError::Expired`]
 /// 3. Parse payload → [`StoredState`]
 /// 4. If nonce already used in this process → [`ConsumeOutcome::Replay`]
-///    (payload still returned so handlers can soft-recover; CSRF stays intact)
+/// (payload still returned so handlers can soft-recover; CSRF stays intact)
 /// 5. Else mark nonce used → [`ConsumeOutcome::Fresh`]
 ///
 /// After process restart the used-nonce map is empty; a still-valid signature is

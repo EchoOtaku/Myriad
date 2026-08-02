@@ -44,7 +44,6 @@ pub struct Model {
     pub last_error: Option<String>,
     /// 连续错误次数
     pub error_count: i32,
-    /// 是否启用
     pub enabled: bool,
     /// 文章总数缓存
     pub item_count: i32,
@@ -70,9 +69,7 @@ pub struct Model {
     /// 仅管理员可见（非管理员用户无法看到此订阅源）
     #[sea_orm(default_value = false)]
     pub admin_only: bool,
-    /// 创建时间
     pub created_at: DateTimeWithTimeZone,
-    /// 更新时间
     pub updated_at: DateTimeWithTimeZone,
 }
 

@@ -146,7 +146,7 @@ impl SkillEvolution {
         engine
     }
 
-    // ==================== 统计文件持久化 ====================
+    // 统计文件持久化
 
     /// 从文件加载统计
     async fn load_stats_from_file(skills_dir: &Path) -> HashMap<String, SkillStats> {
@@ -230,7 +230,7 @@ impl SkillEvolution {
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
-    // ==================== 核心回调 ====================
+    // 核心回调
 
     /// 执行后回调：记录成功/失败，触发进化动作
     ///
@@ -379,7 +379,7 @@ impl SkillEvolution {
         }
     }
 
-    // ==================== AI 抽象化创建 ====================
+    // AI 抽象化创建
 
     /// AI 驱动的 Skill 抽象化创建
     ///
@@ -524,7 +524,7 @@ impl SkillEvolution {
         .await
     }
 
-    // ==================== AI 驱动的改进 ====================
+    // AI 驱动的改进
 
     /// 使用 AI 生成改进后的 Skill 指令
     async fn ai_improve_skill(
@@ -577,7 +577,7 @@ impl SkillEvolution {
         Ok(())
     }
 
-    // ==================== 自动创建 ====================
+    // 自动创建
 
     /// 自动创建 Skill（带参数声明）
     #[allow(clippy::too_many_arguments)]
@@ -788,7 +788,7 @@ origin: agent_generated
         Ok(skill)
     }
 
-    // ==================== 改进 ====================
+    // 改进
 
     /// 改进 Skill：更新指令内容（仅限 Agent 生成的 Skill），带冷却检查
     pub async fn improve_skill(
@@ -897,7 +897,7 @@ origin: agent_generated
         Ok(())
     }
 
-    // ==================== 能力缺口检测 ====================
+    // 能力缺口检测
 
     /// 能力缺口检测：当用户请求无法被任何能力/Skill 满足时
     ///
@@ -954,7 +954,7 @@ origin: agent_generated
         gap
     }
 
-    // ==================== 淘汰 ====================
+    // 淘汰
 
     /// 淘汰低质量 Skill（失败率 > 70%，或连续 5 次失败）
     ///
@@ -1048,7 +1048,7 @@ origin: agent_generated
         }
     }
 
-    // ==================== 查询 ====================
+    // 查询
 
     /// 获取所有统计（用于调试/API）
     pub async fn get_all_stats(&self) -> HashMap<String, SkillStats> {
@@ -1098,7 +1098,7 @@ origin: agent_generated
         Ok(())
     }
 
-    // ==================== 内部方法 ====================
+    // 内部方法
 
     /// 验证所需能力是否全部存在
     async fn validate_capabilities(&self, required: &[String]) -> Result<(), String> {

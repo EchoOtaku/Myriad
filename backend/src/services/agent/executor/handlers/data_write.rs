@@ -68,9 +68,7 @@ pub async fn execute(
     }
 }
 
-// ============================================================================
 // Platform 相关
-// ============================================================================
 
 async fn execute_platform_write(params: &HashMap<String, Value>) -> Result<Value, String> {
     let platform_raw = params
@@ -169,9 +167,7 @@ async fn execute_platform_refresh(params: &HashMap<String, Value>) -> Result<Val
     }))
 }
 
-// ============================================================================
 // Storage 相关
-// ============================================================================
 
 async fn execute_storage_set(
     params: &HashMap<String, Value>,
@@ -287,9 +283,7 @@ async fn execute_tapp_storage(
     }
 }
 
-// ============================================================================
 // Brew 相关
-// ============================================================================
 
 /// 执行订阅源添加 - 支持智能尝试多个源
 async fn execute_brew_subscribe(
@@ -663,9 +657,7 @@ async fn execute_brew_mark(
     }))
 }
 
-// ============================================================================
 // Content 相关
-// ============================================================================
 
 async fn execute_content_write(
     params: &HashMap<String, Value>,

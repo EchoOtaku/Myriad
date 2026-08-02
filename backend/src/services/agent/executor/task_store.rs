@@ -233,7 +233,7 @@ impl Default for TaskStore {
     }
 }
 
-// ============ 数据库操作 ============
+// 数据库操作
 
 /// 初始化任务存储的数据库连接
 pub async fn init_task_store_db(db: DatabaseConnection) {
@@ -475,7 +475,7 @@ pub fn persist_task_async(user_id: i32, task: TaskState) {
     });
 }
 
-// ============ 公共 API ============
+// 公共 API
 
 /// 获取任务状态（带所有权校验）
 ///

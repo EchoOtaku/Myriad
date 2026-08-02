@@ -175,7 +175,7 @@ pub async fn get_x_user_info(
     }
 }
 
-// ==================== 分享到 X（仅 Intent，无 OAuth / 无代发帖） ====================
+// 分享到 X（仅 Intent，无 OAuth / 无代发帖）
 
 /// POST /api/x/share
 ///

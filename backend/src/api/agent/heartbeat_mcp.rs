@@ -2,7 +2,7 @@
 use super::*;
 use crate::error::HttpError;
 
-// ============ 队列状态 ============
+// 队列状态
 
 /// 获取 Lane Queue 状态
 pub(crate) async fn queue_status() -> Json<Value> {
@@ -15,7 +15,7 @@ pub(crate) async fn queue_status() -> Json<Value> {
     }))
 }
 
-// ============ Heartbeat ============
+// Heartbeat
 
 /// 获取所有 Heartbeat 任务状态
 pub(crate) async fn heartbeat_tasks(
@@ -292,7 +292,7 @@ pub(crate) async fn mcp_put_config(
     }
 }
 
-// ============ Skills & Memory ============
+// Skills & Memory
 
 /// 获取可用技能列表
 pub(crate) async fn list_skills() -> Result<Json<Value>, HttpError> {
@@ -451,7 +451,7 @@ pub(crate) async fn list_capability_gaps(
     })))
 }
 
-// ============ Multi-Agent Routing ============
+// Multi-Agent Routing
 
 /// 获取所有 Agent 配置信息
 pub(crate) async fn list_agents() -> Json<Value> {
@@ -474,7 +474,7 @@ pub(crate) async fn list_agents() -> Json<Value> {
     Json(json!({ "agents": profiles }))
 }
 
-// ============ Session Control (Steer / Interrupt) ============
+// Session Control (Steer / Interrupt)
 
 /// 中断当前正在执行的任务并替换为新请求
 pub(crate) async fn interrupt_session(

@@ -39,7 +39,6 @@ pub struct ParsedFeed {
 pub struct ParsedItem {
     /// 唯一标识 (guid/id)
     pub guid: String,
-    /// 标题
     pub title: String,
     /// 链接
     pub link: String,
@@ -61,7 +60,6 @@ pub struct ParsedItem {
     pub categories: Vec<String>,
     /// 发布时间
     pub published_at: Option<DateTime<Utc>>,
-    /// 更新时间
     pub updated_at: Option<DateTime<Utc>>,
     /// 内容格式（html/markdown/text）
     pub content_format: ContentFormat,

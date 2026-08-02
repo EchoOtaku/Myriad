@@ -37,7 +37,7 @@ pub(crate) mod shared_registry;
 mod shortcuts;
 mod ws_ticket;
 
-// ============ 公开 re-export（保持 api::tapp::* 路径兼容） ============
+// 公开 re-export（保持 api::tapp::* 路径兼容）
 
 // Platform API
 pub use platform::{

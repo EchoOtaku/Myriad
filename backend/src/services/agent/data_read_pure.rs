@@ -1121,8 +1121,8 @@ pub fn parse_rsshub_radar_rules(content: &str) -> Value {
 
     // radar-rules.js 的格式大致为:
     // module.exports = {
-    //     'zhihu.com': { _name: '知乎', daily: [{ title: '日报', ... }] },
-    //     ...
+    // 'zhihu.com': { _name: '知乎', daily: [{ title: '日报', ... }] },
+    // ...
     // }
 
     // 使用正则提取域名和路由信息

@@ -21,7 +21,6 @@ pub struct Model {
     pub access_key: Option<String>,
     /// 优先级（数字越小优先级越高）
     pub priority: i32,
-    /// 是否启用
     pub enabled: bool,
     /// 健康状态: healthy, degraded, unhealthy, unknown
     pub health_status: HealthStatus,
@@ -35,9 +34,7 @@ pub struct Model {
     pub total_requests: i32,
     /// 成功请求次数
     pub success_requests: i32,
-    /// 创建时间
     pub created_at: DateTimeWithTimeZone,
-    /// 更新时间
     pub updated_at: DateTimeWithTimeZone,
 }
 

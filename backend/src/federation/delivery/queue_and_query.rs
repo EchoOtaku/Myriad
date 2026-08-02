@@ -429,7 +429,7 @@ pub fn spawn_delivery_worker(db: DatabaseConnection) {
     });
 }
 
-// ==================== Query API (user observability) ====================
+// Query API (user observability)
 
 /// Per-user delivery queue summary.
 pub async fn delivery_stats_for_user(
@@ -1060,7 +1060,7 @@ pub async fn cancel_all_pending_for_user(
     }))
 }
 
-// ==================== 实际投递 ====================
+// 实际投递
 
 /// 投递 Activity 到目标 inbox
 ///
@@ -1178,7 +1178,7 @@ pub(crate) fn retry_backoff_secs(attempts: i32) -> i64 {
     (base + jitter).clamp(1, 86_400)
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 /// Choose base URL + username for HTTP Signature keyId.
 ///

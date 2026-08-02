@@ -165,11 +165,11 @@ fn print_startup_logo() {
 /// Cache-Control for statically served frontend assets. `ServeDir` emits only
 /// `Last-Modified`, so without this every asset forces a revalidation round-trip
 /// per navigation (dozens of unhashed icons ⇒ dozens of conditional GETs). Tiers:
-///   - `/assets/*`  content-hashed by Astro → immutable, cache for a year.
-///   - media/fonts  unhashed but rarely change → week-long TTL, revalidate in
-///     the background while serving the stale copy.
-///   - `/sw.js` + HTML  must always revalidate so a new deploy (and its fresh
-///     hashed-asset references) lands immediately.
+/// - `/assets/*`  content-hashed by Astro → immutable, cache for a year.
+/// - media/fonts  unhashed but rarely change → week-long TTL, revalidate in
+/// the background while serving the stale copy.
+/// - `/sw.js` + HTML  must always revalidate so a new deploy (and its fresh
+/// hashed-asset references) lands immediately.
 fn static_asset_cache_control(path: &str) -> &'static str {
     if path.starts_with("/assets/") {
         return "public, max-age=31536000, immutable";
@@ -215,7 +215,7 @@ async fn run_server() -> anyhow::Result<()> {
     *GLOBAL_CONFIG.write().await = config.clone();
     tracing::info!("✅ Configuration loaded and cached globally");
 
-    // ✅ 安全修复: 验证 JWT 密钥强度
+    // 验证 JWT 密钥强度
     match std::env::var("JWT_SECRET") {
         Ok(secret) => {
             if secret.len() < 32 {
@@ -310,7 +310,7 @@ async fn run_server() -> anyhow::Result<()> {
                     tracing::debug!("ℹ️  GitHub OAuth status: {}", e);
                 }
 
-                // 🔐 Load OAuth provider registry (GitHub + future OIDC providers)
+                // Load OAuth provider registry (GitHub + future OIDC providers)
                 services::oauth::registry::init().await;
                 tracing::info!(
                     "✅ OAuth providers loaded: {}",

@@ -54,7 +54,7 @@ pub(super) struct InstallTappRequest {
     /// 安装来源: "direct" | "store"
     source: String,
 
-    // ===== direct 模式需要的字段 =====
+    // direct 模式需要的字段
     /// Tapp 清单（direct 模式必需）
     manifest: Option<TappManifest>,
     /// 主代码（direct 模式必需）
@@ -76,13 +76,13 @@ pub(super) struct InstallTappRequest {
     /// Package assets (optional, relative path → base64 or data-URL base64)
     assets: Option<std::collections::HashMap<String, String>>,
 
-    // ===== store 模式需要的字段 =====
+    // store 模式需要的字段
     /// 商店源 URL 或 ID（store 模式必需）
     store_source: Option<String>,
     /// Tapp ID（store 模式必需）
     tapp_id: Option<String>,
 
-    // ===== 通用字段 =====
+    // 通用字段
     /// 授权的权限列表（可选，默认全部授权）
     permissions: Option<Vec<String>>,
 }
@@ -539,7 +539,7 @@ pub(super) async fn install_tapp_file(
 pub(super) struct UpdateTappRequest {
     /// 更新来源: "store" | "direct"
     source: String,
-    // ===== direct 模式需要的字段 =====
+    // direct 模式需要的字段
     /// Tapp 清单（direct 模式必需）
     manifest: Option<TappManifest>,
     /// 主代码（direct 模式必需）
@@ -561,7 +561,7 @@ pub(super) struct UpdateTappRequest {
     /// Package assets (optional, relative path → base64 or data-URL base64)
     assets: Option<std::collections::HashMap<String, String>>,
 
-    // ===== store 模式需要的字段 =====
+    // store 模式需要的字段
     /// 商店源 URL 或 ID
     store_source: Option<String>,
     /// 授权的权限列表（可选，保留原有权限）

@@ -7,7 +7,7 @@
 //!
 //! - `evaluator` — 活跃：ResultEvaluator 被 Agent 的 should_escalate / build_escalation_hint 使用
 //! - `capability_mapping` / `strategy` — 已移除：v3 Planner 直接通过 AI 决定升级路径，
-//!   静态映射表不再被消费。如未来需要恢复，可从 git 历史中找回。
+//! 静态映射表不再被消费。如未来需要恢复，可从 git 历史中找回。
 
 mod evaluator;
 

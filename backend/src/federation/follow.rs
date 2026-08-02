@@ -485,7 +485,7 @@ fn build_webfinger_url(acct: &str) -> Result<String, (StatusCode, Json<serde_jso
     })
 }
 
-// ==================== 辅助函数 ====================
+// 辅助函数
 
 async fn get_base_url() -> String {
     crate::federation::types::get_base_url().await

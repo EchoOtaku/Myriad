@@ -145,7 +145,7 @@ pub async fn get_latest_user_platform_report(
         .map_err(|_| ReportCatalogError::Database)
 }
 
-// ============ Custom Tapp report CRUD (tapp_storage) ============
+// Custom Tapp report CRUD (tapp_storage)
 
 /// Domain errors for subject-scoped custom report CRUD.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -53,11 +53,11 @@ const MAX_HISTORY_ERROR_BYTES: usize = 4_000;
 ///
 /// 取消语义：
 /// - 非流式 `/generate`：handler future 随客户端断开被 drop，信号量 permit
-///   随 `_agent_permit` Drop 释放；进行中的 reqwest future 一并 drop，尽量中止
-///   当前 HTTP（底层连接关闭）。
+/// 随 `_agent_permit` Drop 释放；进行中的 reqwest future 一并 drop，尽量中止
+/// 当前 HTTP（底层连接关闭）。
 /// - 流式 `/generate-stream`：SSE 消费端 drop 时将 cancel watch 置位；生成任务
-///   在下一次 AI 调用前与 `select!` 中止，不再启动后续 attempt。信号量 permit
-///   同样在任务结束时 Drop 释放。
+/// 在下一次 AI 调用前与 `select!` 中止，不再启动后续 attempt。信号量 permit
+/// 同样在任务结束时 Drop 释放。
 const MODEL_REQUEST_TIMEOUT: Duration = Duration::from_secs(1080);
 
 static PLAYGROUND_AGENT_CONCURRENCY: LazyLock<Semaphore> =
@@ -1278,11 +1278,11 @@ fn successful_turn_keeps_full_project(success_index: usize, successful_count: us
 ///
 /// Adaptive wire format (anti context blow-up):
 /// - Last [`FULL_PROJECT_HISTORY_TURNS`] successful turns: full project JSON
-///   in user/assistant turns (previous behavior).
+/// in user/assistant turns (previous behavior).
 /// - Older successful turns: instruction + explanation + compact summary only
-///   (no full source).
+/// (no full source).
 /// - Failed tail: error + instruction; compact project context at most once
-///   (full CURRENT project is always on the final user message).
+/// (full CURRENT project is always on the final user message).
 /// - `final_user_content` always carries the full current project.
 fn build_codegen_messages(
     history: &[PlaygroundHistoryTurn],

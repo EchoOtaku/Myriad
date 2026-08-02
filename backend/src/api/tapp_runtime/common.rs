@@ -21,11 +21,11 @@ use crate::services::permission_service::{TappPermission, TappPermissionService,
 use crate::services::tapp_ownership::{self, TappAccessError};
 use crate::services::tapp_rate_limit::{self, RateLimitError};
 
-// ============ 全局 HTTP Client ============
+// 全局 HTTP Client
 // Outbound Tapp HTTP client: `services::http_client::TAPP_HTTP_CLIENT`
 // (declared-API, AI image providers). Not re-exported here.
 
-// ============ 平台数据缓存 ============
+// 平台数据缓存
 // Domain implementation: `services::platform_cache`.
 
 pub use crate::services::platform_cache::{
@@ -34,11 +34,11 @@ pub use crate::services::platform_cache::{
 // acquire_platform_lock / update_cached_platform_data: import from services::platform_cache
 // (write paths use platform_cache::append/write_filtered_document).
 
-// ============ AI 配置缓存 ============
+// AI 配置缓存
 // Domain implementation: `services::ai_config` (used by ai_tasks / governed text).
 // Types and getters are not re-exported here; import from services directly.
 
-// ============ 速率限制器 ============
+// 速率限制器
 // Domain implementation: `services::tapp_rate_limit`. This module only adapts
 // errors to [`HttpError`] for HTTP handlers.
 
@@ -114,7 +114,7 @@ pub async fn get_rate_limiter_active_count(
         .map_err(rate_limit_http_error)
 }
 
-// ============ 安全验证 ============
+// 安全验证
 // Domain logic lives in `services::tapp_ownership`. This module only adapts
 // errors to [`HttpError`] for HTTP handlers.
 
@@ -304,7 +304,7 @@ pub async fn current_tapp_user_role(db: &DatabaseConnection, claims: &Claims) ->
     }
 }
 
-// ============ Prompt 安全验证 ============
+// Prompt 安全验证
 // Implementation lives in workspace crate `myriad-prompt-security` so services
 // can share the same heuristics without depending on this API module.
 

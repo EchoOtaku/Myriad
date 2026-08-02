@@ -197,7 +197,7 @@ pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
     let path = req.uri().path().to_string();
 
     // 1) Per-IP aggregate hard ceiling across all endpoints (before path buckets).
-    //    If exceeded, reject immediately without counting path-specific keys.
+    // If exceeded, reject immediately without counting path-specific keys.
     if !RATE_LIMITER.check_ip_hard_cap(ip).await {
         let retry_after = IP_HARD_CAP_WINDOW.as_secs();
         tracing::warn!(
@@ -222,7 +222,7 @@ pub async fn rate_limit_middleware(req: Request, next: Next) -> Response {
     }
 
     // 2) Path-specific buckets (sensitive / admin / image / compute / analytics / default)
-    // ✅ 安全修复 P0: 使用全局单例，确保限流计数器跨请求持久化
+    // 使用全局单例，确保限流计数器跨请求持久化
     // 不同类型的端点使用不同的路径前缀来区分限流规则
     let (allowed, retry_after) = if is_sensitive_endpoint(&path) {
         // 敏感端点：5次请求/5分钟

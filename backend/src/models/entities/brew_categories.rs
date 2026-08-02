@@ -20,7 +20,6 @@ pub struct Model {
     pub color: Option<String>,
     /// 排序顺序
     pub sort_order: i32,
-    /// 创建时间
     pub created_at: DateTimeWithTimeZone,
 }
 

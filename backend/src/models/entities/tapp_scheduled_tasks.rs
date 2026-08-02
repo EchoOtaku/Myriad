@@ -114,7 +114,6 @@ pub struct Model {
     #[sea_orm(column_type = "Json", nullable)]
     pub backend_actions: Option<serde_json::Value>,
 
-    /// 是否启用
     pub enabled: bool,
 
     /// 错过执行策略
@@ -144,10 +143,8 @@ pub struct Model {
     #[sea_orm(column_type = "Json")]
     pub stats: serde_json::Value,
 
-    /// 创建时间
     pub created_at: DateTimeWithTimeZone,
 
-    /// 更新时间
     pub updated_at: DateTimeWithTimeZone,
 }
 

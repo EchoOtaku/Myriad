@@ -21,16 +21,16 @@ pub struct HitokotoQuery {
 /// # Auth policy (product decision)
 /// Remains **unauthenticated** for home-page widgets. Mitigation =
 /// 1. **Host policy** — custom `url` goes through
-///    `outbound_security::build_public_http_client` (public-routable only, DNS pin,
-///    no redirects). This is **not** the image-proxy `shared/image_proxy_hosts.json`
-///    list (that file is for media CDN rewrite only).
+/// `outbound_security::build_public_http_client` (public-routable only, DNS pin,
+/// no redirects). This is **not** the image-proxy `shared/image_proxy_hosts.json`
+/// list (that file is for media CDN rewrite only).
 /// 2. **Per-IP quota** — `PUBLIC_HITOKOTO_IP_HITS` / compute-intensive rate limit.
 /// Prefer tightening quota / outbound policy over mandatory JWT.
 ///
 /// Catalog alignment (do not drift):
 /// - Source ids: `api/config/public_ui::HITOKOTO_SOURCE_IDS` ↔ FE `quote.ts`
 /// - Builtin hosts: `HITOKOTO_BUILTIN_HOSTS` (`v1.hitokoto.cn`, `api.quotable.io`,
-///   `meigen.doodlenote.net`)
+/// `meigen.doodlenote.net`)
 /// The proxy still accepts any **SSRF-safe** public URL so `custom` sources work;
 /// product security is outbound policy + rate limit, not a host-only allowlist.
 ///
@@ -48,9 +48,9 @@ pub async fn proxy_hitokoto(Query(params): Query<HitokotoQuery>) -> Response {
 
     // 这是一个**未认证**的任意 URL 出站端点。以前只用 `is_internal_url` 做
     // 字符串/字面 IP 检查，然后交给默认 reqwest client —— 于是：
-    //   1. 主机名解析到 169.254.169.254 / 10.x 照样放行（DNS 重绑定）
-    //   2. 默认跟随 10 次重定向，第一跳合法即可跳进内网
-    //   3. `resp.json()` 先把整个响应缓冲进内存，没有上限
+    // 1. 主机名解析到 169.254.169.254 / 10.x 照样放行（DNS 重绑定）
+    // 2. 默认跟随 10 次重定向，第一跳合法即可跳进内网
+    // 3. `resp.json()` 先把整个响应缓冲进内存，没有上限
     // 改用集中式安全客户端：解析后逐个地址校验公网可路由、把 DNS 结果 pin 住、
     // 禁用重定向；响应体流式读取并限长。
     let (parsed, client) = match crate::services::outbound_security::build_public_http_client(
@@ -128,9 +128,7 @@ pub async fn proxy_hitokoto(Query(params): Query<HitokotoQuery>) -> Response {
     }
 }
 
-// ============================================================================
 // 网页内容抓取代理
-// ============================================================================
 
 #[derive(Debug, Deserialize)]
 pub struct FetchWebContentQuery {

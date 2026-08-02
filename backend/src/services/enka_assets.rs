@@ -4,9 +4,9 @@
 //! 数据源（GitHub raw，磁盘缓存 + 内存缓存，7 天过期）：
 //! - 原神：EnkaNetwork/API-docs `store/characters.json` + `store/loc.json`
 //! - 星铁：EnkaNetwork/API-docs `store/hsr/honker_characters.json`
-//!   （名字哈希在该文件里精度已损坏，改用 Mar-7th/StarRailRes 的 `index_min/{lang}/characters.json`）
+//! （名字哈希在该文件里精度已损坏，改用 Mar-7th/StarRailRes 的 `index_min/{lang}/characters.json`）
 //! - 绝区零：EnkaNetwork/API-docs `store/zzz/avatars.json` + `store/zzz/locs.json`
-//!   （avatars 的 `Name` 是代号，locs 里用代号做 key 换取本地化名）
+//! （avatars 的 `Name` 是代号，locs 里用代号做 key 换取本地化名）
 //!
 //! 图标直接用 Enka 的 UI CDN（`https://enka.network/ui/...`），前端 <img> 可直载。
 

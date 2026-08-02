@@ -3,12 +3,12 @@
 //! 这里集中三件在审计中被发现分散/缺失的判断：
 //!
 //! 1. **本地发布的 visibility** —— 只有明确建模过的 visibility 才允许发布。
-//!    历史实现里 `resolve_audience` 对未知值返回空 `to`/`cc`，但调用方仍然
-//!    无条件 fan-out，于是 `direct` 变成"没有收件人却发给所有粉丝"。
+//! 历史实现里 `resolve_audience` 对未知值返回空 `to`/`cc`，但调用方仍然
+//! 无条件 fan-out，于是 `direct` 变成"没有收件人却发给所有粉丝"。
 //! 2. **入站 sharedInbox 的定向** —— 只有寻址到 Public 或该 Actor 自己的
-//!    followers collection 的活动才可以进入粉丝的首页时间线。
+//! followers collection 的活动才可以进入粉丝的首页时间线。
 //! 3. **对象归属** —— 签名只证明"某个 key 签了这个请求"，还需要证明
-//!    签名 Actor 有权创建/修改/删除该对象。
+//! 签名 Actor 有权创建/修改/删除该对象。
 //!
 //! 放在独立模块而不是 `types.rs`/`inbox.rs`，是为了让这些不变量能被单测
 //! 直接覆盖，不必启动数据库。

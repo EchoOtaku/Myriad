@@ -14,7 +14,7 @@ impl PlatformFetcher {
         }
     }
 
-    // ==================== Bilibili API ====================
+    // Bilibili API
 
     /// 带 IP 伪装的 B 站 GET，返回解析后的 JSON。
     async fn bilibili_get_json(&self, url: &str, referer: &str) -> Result<serde_json::Value> {
@@ -433,7 +433,7 @@ impl PlatformFetcher {
         Ok(all_bangumi)
     }
 
-    // ==================== Steam API ====================
+    // Steam API
 
     /// 获取 Steam 用户信息
     pub async fn fetch_steam_user(&self, api_key: &str, steam_id: &str) -> Result<SteamUserInfo> {
@@ -577,7 +577,7 @@ impl PlatformFetcher {
         Ok(wishlist)
     }
 
-    // ==================== GitHub API ====================
+    // GitHub API
 
     /// 获取 GitHub 用户信息（包含粉丝数、仓库数等）
     pub async fn fetch_github_user(
@@ -764,7 +764,7 @@ impl PlatformFetcher {
             return Err(anyhow!("No contribution data found in HTML"));
         }
 
-        // ✅ 返回完整的贡献历史数据（365天），而非截断
+        // 返回完整的贡献历史数据（365天），而非截断
         // 前端会在显示热力图时只取最近60天，但计算总贡献数需要完整数据
         let total_days = contributions.len();
         let total_contributions: i64 = contributions
@@ -780,8 +780,8 @@ impl PlatformFetcher {
         Ok(contributions)
     }
 
-    // ==================== Netease Cloud Music API ====================
-    // ✅ 已重构：使用统一的 NeteaseService 服务层
+    // Netease Cloud Music API
+    // 已重构：使用统一的 NeteaseService 服务层
     // - 自动享受防封技术（IP伪装、随机User-Agent）
     // - 支持大歌单（1000+首歌曲）
     // - VIP歌曲检测
@@ -799,7 +799,7 @@ impl PlatformFetcher {
         netease_service.fetch_user_info(user_id).await
     }
 
-    // ==================== Bangumi API ====================
+    // Bangumi API
 
     pub(crate) fn bangumi_user_agent(user_agent: Option<&str>) -> &str {
         user_agent
@@ -920,7 +920,7 @@ impl PlatformFetcher {
         Ok(collections)
     }
 
-    // ==================== X (Twitter) API v2 ====================
+    // X (Twitter) API v2
 
     const X_API_BASE: &'static str = "https://api.x.com/2";
 
@@ -1197,7 +1197,7 @@ impl PlatformFetcher {
         }))
     }
 
-    // ==================== Discord API v10 (user OAuth) ====================
+    // Discord API v10 (user OAuth)
 
     const DISCORD_API_BASE: &'static str = "https://discord.com/api/v10";
     const DISCORD_TOKEN_URL: &'static str = "https://discord.com/api/oauth2/token";

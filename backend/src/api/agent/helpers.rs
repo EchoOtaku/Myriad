@@ -2,7 +2,7 @@
 use super::*;
 use crate::error::HttpError;
 
-// ============ 辅助函数 ============
+// 辅助函数
 
 /// 输入限制常量
 pub(crate) const MAX_INPUT_LEN: usize = 2000;

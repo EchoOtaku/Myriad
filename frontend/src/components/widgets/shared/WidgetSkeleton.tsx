@@ -239,6 +239,8 @@ function StatsGridLayout({ count }: { count: number }) {
 }
 
 function ReportLayout() {
+  // Lines sit top/mid; logo owns the bottom-left row (matches CardLogoPill).
+  // Avoid stacking body bones on the logo — they used to collide at bottom.
   return (
     <>
       <span className="ws-report-wash" aria-hidden />
@@ -247,7 +249,9 @@ function ReportLayout() {
         <SkeletonBone h={0.55} w="90%" rounded="sm" muted />
         <SkeletonBone h={0.55} w="55%" rounded="sm" muted />
       </div>
-      <span className="ws-logo" aria-hidden />
+      <div className="ws-report-footer" aria-hidden>
+        <span className="ws-logo" />
+      </div>
     </>
   )
 }

@@ -67,7 +67,7 @@ impl Default for CapabilityRegistry {
     }
 }
 
-// ============ 公共 API ============
+// 公共 API
 
 /// 获取全局能力注册表（只读）
 pub async fn get_registry() -> tokio::sync::RwLockReadGuard<'static, CapabilityRegistry> {

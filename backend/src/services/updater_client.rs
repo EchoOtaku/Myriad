@@ -5,12 +5,12 @@
 //! and to anyone who can MITM the proxy.
 //!
 //! With this client (recommended production path):
-//!   - Backend talks to `updater-gateway` via `MYRIAD_UPDATER_URL` only.
-//!   - Backend holds `UPDATER_GATEWAY_SECRET` (not `UPDATE_TOKEN`) and sends
-//!     `X-Updater-Gateway-Secret` on every hop.
-//!   - Gateway injects `X-Update-Token` server-side toward updater.
-//!   - Admin-gated `/api/admin/updater/*` routes proxy requests through here.
-//!   - `UPDATE_TOKEN` never crosses the user→backend boundary and is not in the fat process.
+//! - Backend talks to `updater-gateway` via `MYRIAD_UPDATER_URL` only.
+//! - Backend holds `UPDATER_GATEWAY_SECRET` (not `UPDATE_TOKEN`) and sends
+//! `X-Updater-Gateway-Secret` on every hop.
+//! - Gateway injects `X-Update-Token` server-side toward updater.
+//! - Admin-gated `/api/admin/updater/*` routes proxy requests through here.
+//! - `UPDATE_TOKEN` never crosses the user→backend boundary and is not in the fat process.
 //!
 //! Optional legacy/dev: set `UPDATE_TOKEN` when talking **directly** to updater (no gateway).
 //!

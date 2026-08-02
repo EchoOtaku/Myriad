@@ -112,7 +112,7 @@ impl Executor {
         let (mut resolved_params, unresolved) =
             self.resolve_params(&step.params, &context.step_outputs);
 
-        // 🔑 注入主 Agent 的具体指令：step.action 是 Planner 对这个子步骤的直接命令
+        // 注入主 Agent 的具体指令：step.action 是 Planner 对这个子步骤的直接命令
         // 让 AI handler 知道「主 Agent 要求我做什么」，而不是自行发挥
         if !step.action.is_empty() && !resolved_params.contains_key("__directive") {
             resolved_params.insert("__directive".to_string(), json!(step.action));
@@ -539,7 +539,7 @@ impl Executor {
         let mut skipped_ai_ids: std::collections::HashSet<String> =
             std::collections::HashSet::new();
 
-        // ===== 第一遍：验证 capability_id + 建立完整 id_map =====
+        // 第一遍：验证 capability_id + 建立完整 id_map
         for (i, planned) in planned_steps.iter().enumerate() {
             let cap_id = planned
                 .get("capability_id")
@@ -603,7 +603,7 @@ impl Executor {
             }
         }
 
-        // ===== 第二遍：解析引用 + 构建动态步骤 =====
+        // 第二遍：解析引用 + 构建动态步骤
         let mut dynamic_steps = Vec::with_capacity(planned_steps.len());
 
         for (i, planned) in planned_steps.iter().enumerate() {
@@ -1024,7 +1024,5 @@ impl Executor {
         Some(current.clone())
     }
 
-    // ========================================================================
     // 动态步骤生成系统
-    // ========================================================================
 }

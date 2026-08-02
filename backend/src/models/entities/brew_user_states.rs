@@ -27,7 +27,6 @@ pub struct Model {
     /// 用户笔记
     #[sea_orm(column_type = "Text", nullable)]
     pub notes: Option<String>,
-    /// 更新时间
     pub updated_at: DateTimeWithTimeZone,
 }
 

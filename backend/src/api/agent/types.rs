@@ -1,7 +1,7 @@
 //! Agent API — types
 use super::*;
 
-// ============ 请求/响应类型 ============
+// 请求/响应类型
 
 /// 处理请求
 #[derive(Debug, Deserialize)]
@@ -37,7 +37,6 @@ pub struct ConversationMessageApi {
     pub role: String,
     /// 消息内容
     pub content: String,
-    /// 创建时间
     pub created_at: Option<String>,
 }
 
@@ -49,9 +48,7 @@ pub struct ApiResponse {
     /// 响应类型
     #[serde(rename = "responseType")]
     pub response_type: String,
-    /// 消息
     pub message: String,
-    /// 数据
     pub data: Option<Value>,
     /// 数据展示类型提示
     #[serde(rename = "dataDisplay", skip_serializing_if = "Option::is_none")]
@@ -98,7 +95,6 @@ pub enum DataDisplayHintApi {
         #[serde(rename = "imageField", skip_serializing_if = "Option::is_none")]
         image_field: Option<String>,
     },
-    /// Markdown
     Markdown,
     /// 键值对
     KeyValue,
@@ -161,7 +157,6 @@ pub struct TaskInfo {
     /// 任务 ID
     #[serde(rename = "taskId")]
     pub task_id: String,
-    /// 状态
     pub status: String,
     /// 进度 (0-100)
     pub progress: u8,
@@ -201,7 +196,6 @@ pub struct StepInfo {
     pub capability_name: String,
     /// 步骤描述
     pub description: String,
-    /// 开始时间
     #[serde(rename = "startedAt")]
     pub started_at: String,
 }
@@ -268,12 +262,12 @@ pub struct QuestionOptionApi {
     pub description: Option<String>,
 }
 
-// ============ SSE 进度事件类型 ============
+// SSE 进度事件类型
 
 /// SSE 进度事件（使用 service 层统一类型）
 pub type ProgressEvent = AgentProgressEvent;
 
-// ============ 任务预设 API 类型 ============
+// 任务预设 API 类型
 
 /// 对话消息（用于 conversation_data）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -285,7 +279,6 @@ pub struct ConversationMessage {
     /// 消息元数据
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
-    /// 创建时间
     #[serde(rename = "createdAt")]
     pub created_at: String,
 }
@@ -312,7 +305,6 @@ pub struct TaskPresetResponse {
     /// 使用次数
     #[serde(rename = "useCount")]
     pub use_count: i32,
-    /// 创建时间
     #[serde(rename = "createdAt")]
     pub created_at: String,
     /// 对话标题

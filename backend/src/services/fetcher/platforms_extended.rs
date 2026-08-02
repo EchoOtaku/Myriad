@@ -37,13 +37,13 @@ impl PlatformFetcher {
         }))
     }
 
-    // ==================== MyAnimeList dual-mode ====================
+    // MyAnimeList dual-mode
     //
     // Mode A (default / easy): public load.json — username only (Sakurairo-style)
-    //   GET https://myanimelist.net/animelist/{username}/load.json?status=7&order=5
-    //   GET https://myanimelist.net/mangalist/{username}/load.json?status=7&order=5
+    // GET https://myanimelist.net/animelist/{username}/load.json?status=7&order=5
+    // GET https://myanimelist.net/mangalist/{username}/load.json?status=7&order=5
     // Mode B (optional enhance): official API v2 + X-MAL-CLIENT-ID
-    //   Prefer Mode B when client_id is present and non-empty.
+    // Prefer Mode B when client_id is present and non-empty.
     // load.json entries are normalized to official node + list_status shape.
 
     const MAL_API_BASE: &'static str = "https://api.myanimelist.net/v2";
@@ -476,7 +476,7 @@ impl PlatformFetcher {
         user
     }
 
-    // ---------- Mode B: official API v2 ----------
+    // Mode B: official API v2
 
     /// 官方 API：获取 MAL 用户资料（公开字段 + 动画/漫画统计）
     async fn fetch_mal_user_official(
@@ -648,7 +648,7 @@ impl PlatformFetcher {
         }))
     }
 
-    // ---------- Mode A: public load.json ----------
+    // Mode A: public load.json
 
     /// load.json：验证用户名可访问（探测公开动画列表第一页）
     async fn fetch_mal_user_public(&self, username: &str) -> Result<serde_json::Value> {
@@ -728,7 +728,7 @@ impl PlatformFetcher {
         }))
     }
 
-    // ---------- Dual-mode public API ----------
+    // Dual-mode public API
     // client_id present → official API; else load.json (username only).
 
     /// 验证用户（有 Client ID 走官方 API，否则探测 load.json）
@@ -791,7 +791,7 @@ impl PlatformFetcher {
         self.fetch_mal_profile_bundle_public(username).await
     }
 
-    // ==================== Xbox (OpenXBL) ====================
+    // Xbox (OpenXBL)
     //
     // Xbox Live 不提供游玩时长，报告走"成就向"叙事：
     // Gamerscore、每个游戏的成就进度、最近游玩的作品。
@@ -885,7 +885,7 @@ impl PlatformFetcher {
         }))
     }
 
-    // ==================== PlayStation (PSN) ====================
+    // PlayStation (PSN)
     //
     // 同样没有时长数据，报告走"奖杯向"叙事：
     // 奖杯等级、白金数、每个游戏的奖杯完成度、最近有奖杯动态的作品。
@@ -1027,7 +1027,7 @@ impl PlatformFetcher {
         }))
     }
 
-    // ==================== YouTube Data API v3 (API key, public only) ====================
+    // YouTube Data API v3 (API key, public only)
 
     /// Resolve channel + recent public uploads (+ stats). No OAuth / mine flows.
     ///

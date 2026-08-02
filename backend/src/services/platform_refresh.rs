@@ -90,7 +90,7 @@ pub fn save_platform_data_cache(data: &Value) -> Result<(), Box<dyn std::error::
 }
 
 /// 保存分平台的原始数据（避免读取大文件）
-/// 🚀 优化：添加错误容错和大文件分块写入
+/// 优化：添加错误容错和大文件分块写入
 pub fn save_split_raw_data(all_data: &Value) -> Result<(), Box<dyn std::error::Error>> {
     let raw_dir = PathBuf::from("./cache/raw");
     if !raw_dir.exists() {
@@ -102,7 +102,7 @@ pub fn save_split_raw_data(all_data: &Value) -> Result<(), Box<dyn std::error::E
             // 保存所有平台的数据，不仅仅是主要平台
             let file_path = raw_dir.join(format!("{}.json", platform));
 
-            // 🚀 优化：先写入临时文件，然后原子性重命名，避免写入中断导致文件损坏
+            // 优化：先写入临时文件，然后原子性重命名，避免写入中断导致文件损坏
             let temp_path = raw_dir.join(format!("{}.json.tmp", platform));
 
             match std::fs::File::create(&temp_path) {
@@ -1173,10 +1173,10 @@ pub async fn fetch_fresh_platform_data(
 }
 
 /// 清洗平台数据，只保留核心信息（符合5W1H原则）
-/// 🚀 优化：原地修改减少内存峰值，添加数据量限制
+/// 优化：原地修改减少内存峰值，添加数据量限制
 
 fn clean_platform_data(data: &mut Value) {
-    // 🚀 内存保护：各平台最大数据量限制
+    // 内存保护：各平台最大数据量限制
     const MAX_GITHUB_REPOS: usize = 200;
     const MAX_STEAM_GAMES: usize = 500;
     const MAX_BILIBILI_VIDEOS: usize = 100;
@@ -1187,7 +1187,7 @@ fn clean_platform_data(data: &mut Value) {
 
     // 清洗 GitHub 仓库数据 - 原地修改
     if let Some(repos) = data["github"]["repos"].as_array_mut() {
-        // 🚀 限制仓库数量
+        // 限制仓库数量
         if repos.len() > MAX_GITHUB_REPOS {
             tracing::warn!(
                 "⚠️ Truncating GitHub repos from {} to {}",
@@ -1297,7 +1297,7 @@ fn clean_platform_data(data: &mut Value) {
 
     // 清洗 Steam 游戏数据 - 原地修改
     if let Some(games) = data["steam"]["games"].as_array_mut() {
-        // 🚀 限制游戏数量
+        // 限制游戏数量
         if games.len() > MAX_STEAM_GAMES {
             tracing::warn!(
                 "⚠️ Truncating Steam games from {} to {}",
@@ -1426,13 +1426,13 @@ fn clean_platform_data(data: &mut Value) {
 
     // 清洗网易云音乐数据 - 保留核心字段（优化内存使用）
     if let Some(netease) = data.get_mut("netease") {
-        // 🚀 优化：原地修改而不是创建新数组，减少内存峰值
+        // 优化：原地修改而不是创建新数组，减少内存峰值
         if let Some(songs_value) = netease.get_mut("liked_songs") {
             if let Some(songs_array) = songs_value.as_array_mut() {
                 let total_songs = songs_array.len();
                 tracing::debug!("🧹 Cleaning {} netease songs in-place...", total_songs);
 
-                // 🚀 限制歌曲数量，避免处理过多数据
+                // 限制歌曲数量，避免处理过多数据
                 if songs_array.len() > MAX_SONGS_TO_CLEAN {
                     tracing::warn!(
                         "⚠️ Truncating songs from {} to {} to prevent memory issues",

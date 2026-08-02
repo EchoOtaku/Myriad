@@ -2,7 +2,7 @@
 use super::*;
 use crate::error::HttpError;
 
-// ============ 通知 API ============
+// 通知 API
 
 /// 通知 SSE 流
 pub(crate) async fn notification_stream(

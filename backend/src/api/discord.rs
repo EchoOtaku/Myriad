@@ -1,8 +1,8 @@
 // Discord 数据平台 API — 用户 OAuth token（identify / guilds / connections）
 //
 // 一键授权（与登录 OAuth 分离）：
-//   GET /api/platforms/discord/oauth/start     管理员发起，跳转 Discord
-//   GET /api/platforms/discord/oauth/callback  写回 platform tokens，回配置页
+// GET /api/platforms/discord/oauth/start     管理员发起，跳转 Discord
+// GET /api/platforms/discord/oauth/callback  写回 platform tokens，回配置页
 //
 // 复用 OAuth 登录里配置的 Discord Application（client_id/secret），
 // 但 redirect_uri 与 scope 独立，需在 Discord Developer Portal 额外登记 callback。
@@ -188,7 +188,7 @@ fn config_redirect(frontend_base: &str, ok: bool, reason: &str) -> Response {
     no_store_redirect(&url)
 }
 
-// ---------- 调试 / 状态 ----------
+// 调试 / 状态
 
 /// 获取 Discord 完整资料包（画像 + 服务器 + 连接）
 ///
@@ -312,7 +312,7 @@ pub async fn discord_status(
     }))
 }
 
-// ---------- 一键授权 ----------
+// 一键授权
 
 /// 管理员发起 Discord 数据平台授权
 pub async fn oauth_start(

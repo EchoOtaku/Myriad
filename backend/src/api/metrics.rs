@@ -2,7 +2,7 @@ use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde_json::json;
 use std::sync::atomic::Ordering;
 
-// ⚠️ 告警阈值配置 (P2优化)
+// 告警阈值配置 (P2优化)
 const MEMORY_WARNING_MB: u64 = 500; // 内存使用超过500MB时警告
 const MEMORY_CRITICAL_MB: u64 = 1000; // 内存使用超过1GB时严重告警
 const TASKS_WARNING: usize = 50; // 任务数超过50时警告

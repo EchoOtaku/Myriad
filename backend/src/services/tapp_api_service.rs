@@ -39,7 +39,7 @@ static GEO_CACHE: Lazy<RwLock<HashMap<String, (GeoInfo, Instant)>>> =
 const GEO_CACHE_TTL: Duration = Duration::from_secs(600);
 const MAX_GEO_CACHE_ENTRIES: usize = 2048;
 
-// ============ API 响应缓存 ============
+// API 响应缓存
 
 struct CacheEntry {
     data: Value,
@@ -52,7 +52,7 @@ static API_CACHE: Lazy<RwLock<HashMap<String, CacheEntry>>> =
 const MAX_API_CACHE_ENTRIES: usize = 2048;
 const MAX_TAPP_HTTP_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
-// ============ 上下文类型 ============
+// 上下文类型
 
 /// API 执行上下文
 #[derive(Debug, Clone)]
@@ -94,7 +94,7 @@ pub struct ApiExecutionResult {
     pub cached: bool,
 }
 
-// ============ Tapp API 服务 ============
+// Tapp API 服务
 
 pub struct TappApiService;
 

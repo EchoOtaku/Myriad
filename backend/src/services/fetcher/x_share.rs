@@ -13,7 +13,7 @@ pub(crate) fn urlencoding_lite(s: &str) -> String {
     out
 }
 
-// ==================== X 分享文案工具（无网络） ====================
+// X 分享文案工具（无网络）
 
 /// 免费账号常用上限；Premium 可更长，这里作为默认安全截断阈值
 pub const X_SHARE_DEFAULT_MAX_LEN: usize = 280;

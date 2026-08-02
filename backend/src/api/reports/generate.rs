@@ -275,7 +275,7 @@ pub(crate) async fn generate_platform_reports_internal(
                         card_visuals = json!({});
                     }
                     if let Some(obj) = card_visuals.as_object_mut() {
-                        // ✅ 使用真实数据强制覆盖关键字段
+                        // 使用真实数据强制覆盖关键字段
                         let total_contributions = analysis
                             .contribution_calendar
                             .as_ref()
@@ -294,7 +294,7 @@ pub(crate) async fn generate_platform_reports_internal(
                             .unwrap_or(0)
                             .max(analysis.recent_repos.len());
 
-                        // ⭐ star 总数是衡量开发者影响力的重要因素
+                        // star 总数是衡量开发者影响力的重要因素
                         let total_stars: i64 = analysis
                             .recent_repos
                             .iter()
@@ -1882,7 +1882,7 @@ pub(crate) fn finalize_public_platform_report(platform: &str, report: Value) -> 
     body
 }
 
-// --- moved from latest_and_list (AI + platform data) ---
+// moved from latest_and_list (AI + platform data)
 async fn get_platform_data(
     platform: &str,
     db: &DatabaseConnection,
@@ -2232,7 +2232,7 @@ fn generate_mock_report(
             )
         }
         crate::services::smart_filter::ContentAnalysis::GitHub(analysis) => {
-            // ✅ 使用完整的贡献日历数据计算总提交数（365天的真实数据）
+            // 使用完整的贡献日历数据计算总提交数（365天的真实数据）
             let total_contributions = analysis
                 .contribution_calendar
                 .as_ref()
@@ -2247,7 +2247,7 @@ fn generate_mock_report(
                 })
                 .unwrap_or(0);
 
-            // ⭐ star 总数是衡量开发者影响力的重要因素
+            // star 总数是衡量开发者影响力的重要因素
             let total_stars: i64 = analysis
                 .recent_repos
                 .iter()

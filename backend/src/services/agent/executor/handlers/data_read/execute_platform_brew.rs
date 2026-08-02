@@ -69,9 +69,7 @@ pub async fn execute(
     }
 }
 
-// ============================================================================
 // Platform 相关
-// ============================================================================
 
 async fn execute_platform_read(params: &HashMap<String, Value>) -> Result<Value, String> {
     let platform_raw = params
@@ -428,9 +426,7 @@ fn analyze_steam_stats(data: &Value) -> Result<Value, String> {
     }))
 }
 
-// ============================================================================
 // Brew 相关
-// ============================================================================
 
 /// Opt-in flag for external/web search fallback (brew.generateReadingList).
 /// Accepts allowWebSearch / useWebSearch / webSearch / allowExternal / external.
@@ -1463,7 +1459,7 @@ async fn execute_brew_stats(
     }))
 }
 
-// ===== merged from brew_generate_extract.rs =====
+// merged from brew_generate_extract.rs
 
 /// AI 生成阅读列表
 /// 根据用户需求筛选并生成符合条件的阅读列表
@@ -1962,9 +1958,7 @@ async fn execute_brew_generate_reading_list(
     }))
 }
 
-// ============================================================================
 // Config / Auth / Time
-// ============================================================================
 
 async fn execute_config_get(params: &HashMap<String, Value>) -> Result<Value, String> {
     let section = params
@@ -2036,9 +2030,7 @@ async fn execute_auth_status(_params: &HashMap<String, Value>) -> Result<Value, 
     }))
 }
 
-// ============================================================================
 // 辅助函数
-// ============================================================================
 
 /// 从平台数据中提取标准化的 items
 fn extract_platform_items(platform: &str, data: &Value) -> Vec<Value> {
@@ -2362,9 +2354,7 @@ fn extract_plain_text(html: &str) -> String {
     RE_WHITESPACE.replace_all(&text, " ").trim().to_string()
 }
 
-// ============================================================================
 // 模糊搜索
-// ============================================================================
 
 async fn execute_fuzzy_search(
     params: &HashMap<String, Value>,
@@ -2649,9 +2639,7 @@ fn calculate_fuzzy_score(query: &str, target: &str) -> f64 {
     0.0
 }
 
-// ============================================================================
 // Brew 发现
-// ============================================================================
 
 async fn execute_brew_discover(
     params: &HashMap<String, Value>,
@@ -2887,7 +2875,7 @@ async fn try_parse_feed(url: &str) -> Result<Value, String> {
     }))
 }
 
-// ===== merged from rsshub_pages.rs =====
+// merged from rsshub_pages.rs
 
 /// 查询 RSSHub 路由 - 支持缓存和远程获取
 async fn query_rsshub_routes(query: &str) -> Result<Vec<Value>, String> {
@@ -3099,8 +3087,8 @@ fn parse_rsshub_radar_rules(content: &str) -> Value {
 
     // radar-rules.js 的格式大致为:
     // module.exports = {
-    //     'zhihu.com': { _name: '知乎', daily: [{ title: '日报', ... }] },
-    //     ...
+    // 'zhihu.com': { _name: '知乎', daily: [{ title: '日报', ... }] },
+    // ...
     // }
 
     // 使用正则提取域名和路由信息
@@ -3273,9 +3261,7 @@ async fn discover_rss_from_website(url: &str) -> Result<Vec<Value>, String> {
     Ok(feeds)
 }
 
-// ============================================================================
 // Brew 页面内容
-// ============================================================================
 
 async fn execute_brew_page_content(
     params: &HashMap<String, Value>,
@@ -3562,9 +3548,7 @@ async fn execute_brew_page_content(
     }
 }
 
-// ============================================================================
 // Tapp 页面内容
-// ============================================================================
 
 async fn execute_tapp_page_content(
     params: &HashMap<String, Value>,
@@ -3573,9 +3557,7 @@ async fn execute_tapp_page_content(
     super::super::ui_control::execute_tapp_page_content(params, ctx).await
 }
 
-// ============================================================================
 // 音乐平台相关
-// ============================================================================
 
 /// 读取网易云歌单数据
 async fn execute_netease_playlist(params: &HashMap<String, Value>) -> Result<Value, String> {
@@ -3824,9 +3806,7 @@ async fn execute_github_repos(params: &HashMap<String, Value>) -> Result<Value, 
     Err("Failed to read GitHub data".to_string())
 }
 
-// ============================================================================
 // 辅助函数
-// ============================================================================
 
 /// 映射关键词到网易云分类
 fn map_keyword_to_netease_category(keyword: &str) -> String {
@@ -4023,9 +4003,7 @@ async fn ai_understand_music_intent(
     }
 }
 
-// ============================================================================
 // 追加的数据读取能力
-// ============================================================================
 
 /// 获取 B 站追番列表
 async fn execute_bilibili_bangumi(params: &HashMap<String, Value>) -> Result<Value, String> {
@@ -4340,7 +4318,7 @@ async fn execute_profile_summary(params: &HashMap<String, Value>) -> Result<Valu
     }))
 }
 
-// ===== merged from catalog_query.rs =====
+// merged from catalog_query.rs
 
 /// 全局搜索
 async fn execute_search_global(params: &HashMap<String, Value>) -> Result<Value, String> {
@@ -4767,9 +4745,7 @@ async fn execute_context_reference(_params: &HashMap<String, Value>) -> Result<V
     Err("context.reference 不应被直接调用。请使用 xxxFrom 参数引用上游步骤的输出。".to_string())
 }
 
-// ============================================================================
 // 补充能力
-// ============================================================================
 
 /// 数据库查询 (anime/game/artist)
 async fn execute_database_query(
@@ -4997,9 +4973,7 @@ async fn execute_report_list(params: &HashMap<String, Value>) -> Result<Value, S
     }))
 }
 
-// ============================================================================
 // AI 联网搜索辅助函数
-// ============================================================================
 
 /// 为阅读列表触发 AI 联网搜索
 /// 当数据库中找不到相关内容时，使用 Gemini Grounding Search 搜索网络

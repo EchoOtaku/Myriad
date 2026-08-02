@@ -45,9 +45,7 @@ pub async fn execute(
     }
 }
 
-// ============================================================================
 // Tapp UI 相关
-// ============================================================================
 
 /// 执行 Tapp UI 结构解析
 async fn execute_tapp_ui_analysis(
@@ -278,9 +276,7 @@ async fn execute_tapp_interact(
     }))
 }
 
-// ============================================================================
 // Tapp 页面内容层级展示
-// ============================================================================
 
 async fn find_accessible_tapp(
     ctx: &HandlerContext<'_>,
@@ -788,9 +784,7 @@ pub(super) async fn execute_tapp_page_content(
     }
 }
 
-// ============================================================================
 // Tapp 多窗口管理
-// ============================================================================
 
 /// 查询当前打开的窗口状态
 async fn execute_tapp_windows_query(
@@ -952,9 +946,7 @@ async fn execute_tapp_window_focus(params: &HashMap<String, Value>) -> Result<Va
     }))
 }
 
-// ============================================================================
 // 路由和页面交互
-// ============================================================================
 
 async fn execute_router_navigate(params: &HashMap<String, Value>) -> Result<Value, String> {
     let path = params
@@ -1060,9 +1052,7 @@ async fn execute_page_understand(
     }))
 }
 
-// ============================================================================
 // 路由状态和音乐控制
-// ============================================================================
 
 /// 获取当前路由状态
 async fn execute_router_state(params: &HashMap<String, Value>) -> Result<Value, String> {
@@ -1181,9 +1171,7 @@ async fn execute_music_playlist(params: &HashMap<String, Value>) -> Result<Value
     }))
 }
 
-// ============================================================================
 // 页面内容
-// ============================================================================
 
 /// 读取当前页面内容
 async fn execute_page_content(params: &HashMap<String, Value>) -> Result<Value, String> {

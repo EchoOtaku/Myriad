@@ -8,7 +8,7 @@ use crate::federation::types::*;
 use super::helpers::*;
 use super::types::*;
 
-// ==================== 成员管理 ====================
+// 成员管理
 
 /// 邀请成员加入 Room
 pub async fn invite_member(

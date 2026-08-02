@@ -27,7 +27,6 @@ pub struct OAuthProviderEntry {
     pub kind: String,
     /// UI 展示名
     pub display_name: String,
-    /// 是否启用
     pub enabled: bool,
     pub client_id: String,
     pub client_secret: String,
@@ -295,7 +294,6 @@ pub struct DynamicConfig {
     pub openxbl_api_key: Option<String>,
     /// PlayStation 数据平台（奖杯向报告）
     pub psn_enabled: Option<bool>,
-    /// PSN Online ID
     pub psn_online_id: Option<String>,
     /// PSN NPSSO cookie（ca.account.sony.com 获取，服务端凭据）
     pub psn_npsso: Option<String>,
@@ -418,13 +416,13 @@ pub struct DynamicConfig {
     // Tapp 多窗口方案配置
     pub tapp_window_schemes: Option<String>, // 窗口方案数据 (JSON)
 
-    // ========== Tapp 权限下放配置 ==========
+    // Tapp 权限下放配置
     // 基于 Tapp 系统的 elevated 级别权限（13 项可配置下放）
     // 这些权限默认只有管理员可用，可以配置下放给普通用户或游客
     // 注意：basic 级别权限默认可授予所有用户
     // 注意：privileged 级别权限始终只限管理员
 
-    // ===== 普通用户可使用的 elevated 权限（13 项） =====
+    // 普通用户可使用的 elevated 权限（13 项）
     /// ai:generate - AI 生成内容
     pub user_perm_ai_generate: bool,
     /// ai:analyze - AI 分析数据
@@ -452,7 +450,7 @@ pub struct DynamicConfig {
     /// speech:asr - 语音转文本
     pub user_perm_speech_asr: bool,
 
-    // ===== 游客可使用的 elevated 权限（13 项） =====
+    // 游客可使用的 elevated 权限（13 项）
     /// ai:generate - AI 生成内容（游客）
     pub guest_perm_ai_generate: bool,
     /// ai:analyze - AI 分析数据（游客）
@@ -480,7 +478,7 @@ pub struct DynamicConfig {
     /// speech:asr - 语音转文本（游客）
     pub guest_perm_speech_asr: bool,
 
-    // ===== AI 使用限额配置（当权限已下放时生效） =====
+    // AI 使用限额配置（当权限已下放时生效）
     // 这些限额只对非管理员用户生效，管理员无限制
     /// 普通用户每日 AI 调用次数限制（所有 AI 权限共享）
     pub user_ai_daily_calls: i32,
@@ -496,7 +494,7 @@ pub struct DynamicConfig {
     /// 游客 AI 调用冷却时间（秒）
     pub guest_ai_cooldown_seconds: i32,
 
-    // ===== 网络代理配置（用于中国大陆服务器访问外部API） =====
+    // 网络代理配置（用于中国大陆服务器访问外部API）
     /// 是否启用网络代理
     pub proxy_enabled: bool,
     /// HTTP/HTTPS 代理地址（如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080）
@@ -663,7 +661,7 @@ impl Default for DynamicConfig {
 
             tapp_window_schemes: None,
 
-            // ===== 普通用户 elevated 权限默认值（13 项） =====
+            // 普通用户 elevated 权限默认值（13 项）
             // 默认全部关闭，管理员可选择性开放
             user_perm_ai_generate: false,
             user_perm_ai_analyze: false,
@@ -679,7 +677,7 @@ impl Default for DynamicConfig {
             user_perm_speech_tts: false,
             user_perm_speech_asr: false,
 
-            // ===== 游客 elevated 权限默认值 =====
+            // 游客 elevated 权限默认值
             // 默认全部关闭
             guest_perm_ai_generate: false,
             guest_perm_ai_analyze: false,
@@ -695,7 +693,7 @@ impl Default for DynamicConfig {
             guest_perm_speech_tts: false,
             guest_perm_speech_asr: false,
 
-            // ===== AI 使用限额默认值 =====
+            // AI 使用限额默认值
             // 普通用户: 每日 50 次调用, 20000 tokens, 5 秒冷却
             user_ai_daily_calls: 50,
             user_ai_daily_tokens: 20000,
@@ -706,7 +704,7 @@ impl Default for DynamicConfig {
             guest_ai_daily_tokens: 5000,
             guest_ai_cooldown_seconds: 10,
 
-            // ===== 网络代理配置默认值 =====
+            // 网络代理配置默认值
             proxy_enabled: false, // 默认关闭代理
             proxy_url: None,
             proxy_bypass: None,

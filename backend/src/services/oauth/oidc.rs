@@ -2,11 +2,11 @@
 //!
 //! 设计：
 //! - **Discovery**: 启动时从 `discovery_url` 拉 `.well-known/openid-configuration`，
-//!   缓存 24h（lazy 刷新）。
+//! 缓存 24h（lazy 刷新）。
 //! - **Token 交换**: 标准 OAuth2 `authorization_code` flow，POST 到 `token_endpoint`。
 //! - **Profile**: 优先解析 `id_token` 的 claims；缺失字段再去 `userinfo_endpoint` 拉。
 //! - **id_token 验证**: 通过 discovery 的 `jwks_uri` 拉取 JWKS，校验签名、
-//!   `iss`、`aud`、`exp`、`sub` 和 `azp`。
+//! `iss`、`aud`、`exp`、`sub` 和 `azp`。
 //!
 //! 详见 docs/development/OAUTH.md
 

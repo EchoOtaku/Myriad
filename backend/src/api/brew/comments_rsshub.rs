@@ -22,7 +22,7 @@ use super::helpers::{
     get_user_id_from_headers,
 };
 
-// ==================== 用户评论（批注）====================
+// 用户评论（批注）
 
 /// 获取文章的用户评论列表
 /// 登录用户可以看到自己的评论
@@ -486,7 +486,7 @@ pub(crate) async fn list_comment_replies(
     }
 }
 
-// ==================== RSSHub 实例管理 ====================
+// RSSHub 实例管理
 
 /// 获取 RSSHub 实例列表
 pub(crate) async fn list_rsshub_instances(

@@ -11,9 +11,9 @@
 //!
 //! ```text
 //! 用户提交 payload  ──►  活动 = payload + 信封
-//!                          │
-//!                          ├─► 本地路由 DefaultBodyLimit   （我们控制）
-//!                          └─► 对端 inbox DefaultBodyLimit （对方控制）
+//! │
+//! ├─► 本地路由 DefaultBodyLimit   （我们控制）
+//! └─► 对端 inbox DefaultBodyLimit （对方控制）
 //! ```
 //!
 //! 实际可用体积 = 链上的**最小值**。所以 [`INBOX_BODY_LIMIT`] 必须显著大于
@@ -83,7 +83,7 @@ pub const NOTE_ATTACHMENT_COUNT_LIMIT: usize = 32;
 /// 单条 Note 的正文字符数上限。
 pub const NOTE_TEXT_CHAR_LIMIT: usize = 100_000;
 
-// ==================== 编译期不变量 ====================
+// 编译期不变量
 //
 // 这些关系是常量之间的，没有理由等到跑测试才发现 —— 违反它们直接编译失败。
 // 想调大某个上限时，这里会先把连带约束顶出来。
@@ -245,8 +245,8 @@ mod optional_json_tests {
         assert_eq!(ok.status(), StatusCode::OK);
 
         // 3) 畸形 JSON → 这里与原实现**有差异**：原来 unwrap_or_default() 静默
-        //    回落，现在 axum 会拒绝。对一个"加入房间"的请求，显式报错比静默
-        //    忽略用户传错的 home_server 更好，所以接受这个变化并在此记录。
+        // 回落，现在 axum 会拒绝。对一个"加入房间"的请求，显式报错比静默
+        // 忽略用户传错的 home_server 更好，所以接受这个变化并在此记录。
         let malformed = app
             .oneshot(
                 Request::post("/j")

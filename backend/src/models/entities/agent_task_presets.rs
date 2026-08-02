@@ -32,7 +32,6 @@ pub struct Model {
     pub last_used_at: DateTimeWithTimeZone,
     /// 使用次数
     pub use_count: i32,
-    /// 创建时间
     pub created_at: DateTimeWithTimeZone,
     /// 对话标题（自动生成或用户设置）
     #[sea_orm(column_type = "String(StringLen::N(255))", nullable)]

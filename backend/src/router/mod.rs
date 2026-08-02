@@ -88,7 +88,7 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
     // Apply middleware and layers
     let api_router = api_router
         .layer(from_fn(config_mode_middleware))
-        .layer(from_fn(middleware::csrf::csrf_middleware)) // ✅ 安全修复 P0: CSRF 防护
+        .layer(from_fn(middleware::csrf::csrf_middleware)) // CSRF 防护
         .layer(from_fn(middleware::rate_limit::rate_limit_middleware)) // Rate limiting
         // Apply security headers after the complete route graph is assembled.
         .layer(from_fn(middleware::security::security_headers_middleware))
@@ -247,7 +247,7 @@ pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()
                                         }
                                     }
 
-                                    // 🔐 Reload OAuth provider registry from new dynamic config
+                                    // Reload OAuth provider registry from new dynamic config
                                     services::oauth::registry::REGISTRY.reload().await;
 
                                     // Route table + full-mode workers are built only at process
