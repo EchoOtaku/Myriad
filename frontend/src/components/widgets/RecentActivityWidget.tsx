@@ -524,7 +524,7 @@ const ActivityCardBackdrop = memo(
             onError={() => setBroken(true)}
           />
           <div
-            className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/15 to-black/55"
+            className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/15 to-transparent"
             aria-hidden
           />
         </>
@@ -651,7 +651,7 @@ const ActivityItem = memo(
                 hasCover
                   ? 'text-white drop-shadow-sm'
                   : 'text-gray-800 dark:text-gray-100'
-              } ${compact ? 'text-[9px]' : 'text-[10px]'}`}
+              } ${compact ? 'text-[11px]' : 'text-xs'}`}
             >
               {changeLines[0] || activity.title}
             </div>
@@ -661,7 +661,7 @@ const ActivityItem = memo(
                   hasCover
                     ? 'text-white/85'
                     : 'text-gray-500 dark:text-gray-400'
-                } ${compact ? 'text-[7px]' : 'text-[8px]'}`}
+                } ${compact ? 'text-[9px]' : 'text-[10px]'}`}
               >
                 {isImported && (
                   <span

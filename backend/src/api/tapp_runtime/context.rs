@@ -250,6 +250,7 @@ pub async fn get_context_geo(
         client_ip: Some(client_ip),
         granted_permissions: vec![],
         ai_model_tier: None,
+        credential: None,
     };
 
     let geo_api = TappApiDef {
@@ -258,6 +259,8 @@ pub async fn get_context_geo(
         endpoint: None,
         method: "GET".to_string(),
         headers: None,
+        credential: None,
+        body_mode: myriad_tapp_contract::manifest::TappHttpBodyMode::Json,
         body: None,
         builtin: Some("geo".to_string()),
         inject: None,

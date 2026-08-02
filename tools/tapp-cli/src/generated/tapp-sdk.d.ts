@@ -243,6 +243,7 @@ export interface TappSdk {
     acceptChannel(...args: unknown[]): Promise<unknown> // permission: federation:write
     acceptRoomInvite(...args: unknown[]): Promise<unknown> // permission: federation:write
     addPeer(...args: unknown[]): Promise<unknown> // permission: federation:write
+    addRoomSticker(...args: unknown[]): Promise<unknown> // permission: federation:write
     announce(...args: unknown[]): Promise<unknown> // permission: federation:write
     bookmark(...args: unknown[]): Promise<unknown> // permission: federation:write
     cancelAllPendingDelivery(...args: unknown[]): Promise<unknown> // permission: federation:write
@@ -270,6 +271,7 @@ export interface TappSdk {
     getIdentity(...args: unknown[]): Promise<unknown> // permission: federation:read
     getInstances(...args: unknown[]): Promise<unknown> // permission: federation:trust
     getMessages(...args: unknown[]): Promise<unknown> // permission: federation:read
+    getObject(...args: unknown[]): Promise<unknown> // permission: federation:read
     getPublished(...args: unknown[]): Promise<unknown> // permission: federation:read
     getRing(...args: unknown[]): Promise<unknown> // permission: federation:read
     getRingPeers(...args: unknown[]): Promise<unknown> // permission: federation:read
@@ -279,7 +281,6 @@ export interface TappSdk {
     getRoomMessages(...args: unknown[]): Promise<unknown> // permission: federation:read
     getRooms(...args: unknown[]): Promise<unknown> // permission: federation:read
     getTimeline(...args: unknown[]): Promise<unknown> // permission: federation:read
-    getObject(...args: unknown[]): Promise<unknown> // permission: federation:read
     getTransfer(...args: unknown[]): Promise<unknown> // permission: federation:files
     getTrustPolicy(...args: unknown[]): Promise<unknown> // permission: federation:trust
     initiateChannelE2e(...args: unknown[]): Promise<unknown> // permission: federation:write
@@ -301,11 +302,13 @@ export interface TappSdk {
     rejectRoomInvite(...args: unknown[]): Promise<unknown> // permission: federation:write
     removeMember(...args: unknown[]): Promise<unknown> // permission: federation:write
     removePeer(...args: unknown[]): Promise<unknown> // permission: federation:write
+    removeRoomSticker(...args: unknown[]): Promise<unknown> // permission: federation:write
     retryAllDeadDelivery(...args: unknown[]): Promise<unknown> // permission: federation:write
     retryDelivery(...args: unknown[]): Promise<unknown> // permission: federation:write
     rotateKeys(...args: unknown[]): Promise<unknown> // permission: federation:write
     sendMessage(...args: unknown[]): Promise<unknown> // permission: federation:message
     sendRoomMessage(...args: unknown[]): Promise<unknown> // permission: federation:message
+    setMemberRole(...args: unknown[]): Promise<unknown> // permission: federation:write
     subscribeChannel(...args: unknown[]): Promise<unknown> // permission: federation:message
     subscribeRoom(...args: unknown[]): Promise<unknown> // permission: federation:message
     toggleInstanceBlock(...args: unknown[]): Promise<unknown> // permission: federation:trust

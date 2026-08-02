@@ -12,6 +12,7 @@
 
 mod access;
 mod catalog;
+mod credentials;
 mod installation;
 mod lifecycle;
 mod package_api;
@@ -36,6 +37,9 @@ pub(crate) use access::{installation_write_forbidden_error, TappStorageAccess};
 #[cfg(test)]
 use catalog::tapp_detail_from_model;
 use catalog::{get_tapp, list_tapp_details, list_tapps, set_tapp_visibility};
+use credentials::{
+    delete_tapp_credential, list_tapp_credential_statuses, put_tapp_credential,
+};
 use installation::{install_tapp, install_tapp_file, update_tapp};
 use lifecycle::{get_recent_tapps, start_tapp, stop_tapp};
 pub use myriad_tapp_contract::manifest::*;
@@ -94,6 +98,10 @@ pub fn create_tapp_routes(
         .route("/{tapp_id}/widgets/{widget_id}", delete(unregister_widget))
         // Settings write stays authenticated; GET is optional-auth (public install read).
         .route("/{tapp_id}/settings/{key}", post(set_tapp_setting))
+        // Credential values are write-only and installation-manager scoped.
+        .route("/{tapp_id}/credentials", get(list_tapp_credential_statuses))
+        .route("/{tapp_id}/credentials/{key}", post(put_tapp_credential))
+        .route("/{tapp_id}/credentials/{key}", delete(delete_tapp_credential))
         .route("/{tapp_id}/visibility", post(set_tapp_visibility))
         // 商店源管理（需要认证，API 内部检查管理员权限）
         .route("/store/sources", post(add_store_source))

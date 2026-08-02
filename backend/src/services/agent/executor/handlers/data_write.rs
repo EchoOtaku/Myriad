@@ -6,13 +6,17 @@
 use super::HandlerContext;
 use crate::models::entities::{brew_items, brew_sources, brew_user_states, tapp_storage};
 use crate::services::agent::data_write_pure::{
-    clamp_update_interval_minutes, collect_subscribe_url_candidates,
-    is_disallowed_subscribe_ip, platform_write_cap_error, platform_write_items_over_cap,
-    sanitize_feed_name, take_feed_urls_to_try, validate_subscribe_url_policy,
+    clamp_update_interval_minutes, collect_subscribe_url_candidates, is_disallowed_subscribe_ip,
+    platform_write_cap_error, platform_write_items_over_cap, sanitize_feed_name,
+    take_feed_urls_to_try, validate_subscribe_url_policy,
 };
-use crate::services::agent::executor::utils::VALID_PLATFORMS;
 use crate::services::agent::executor::utils::validate_platform_name;
+use crate::services::agent::executor::utils::VALID_PLATFORMS;
 use crate::services::brew_parser::FeedParser;
+use crate::services::tapp_storage::{
+    read_storage_value, sandbox_storage_entries, validate_sandbox_storage_key,
+    validate_storage_value_size, write_storage_value,
+};
 use chrono::Utc;
 use sea_orm::{
     ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
@@ -185,51 +189,12 @@ async fn execute_storage_set(
         .get("namespace")
         .and_then(|v| v.as_str())
         .unwrap_or("agent_storage");
-
-    let now = Utc::now();
     let user_id = ctx.user_id;
-
-    // Upsert: check if key exists, update or insert
-    let existing = tapp_storage::Entity::find()
-        .filter(tapp_storage::Column::TappId.eq(namespace))
-        .filter(tapp_storage::Column::Key.eq(key))
-        .filter(tapp_storage::Column::UserId.eq(user_id))
-        .one(ctx.db)
+    validate_sandbox_storage_key(key).map_err(str::to_string)?;
+    validate_storage_value_size(&value).map_err(|error| error.to_string())?;
+    write_storage_value(ctx.db, user_id, namespace, key, value.clone())
         .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write database error");
-            "Database error".to_string()
-        })?;
-
-    if let Some(record) = existing {
-        let mut active: tapp_storage::ActiveModel = record.into();
-        active.value = Set(value.clone());
-        active.updated_at = Set(now.into());
-        active
-            .update(ctx.db)
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Agent data_write: failed to update storage");
-                "Database error".to_string()
-            })?;
-    } else {
-        let new_record = tapp_storage::ActiveModel {
-            tapp_id: Set(namespace.to_string()),
-            user_id: Set(user_id),
-            key: Set(key.to_string()),
-            value: Set(value.clone()),
-            created_at: Set(now.into()),
-            updated_at: Set(now.into()),
-            ..Default::default()
-        };
-        new_record
-            .insert(ctx.db)
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Agent data_write: failed to insert storage");
-                "Database error".to_string()
-            })?;
-    }
+        .map_err(|error| error.to_string())?;
 
     Ok(json!({
         "success": true,
@@ -254,36 +219,26 @@ async fn execute_tapp_storage(
     let key = params.get("key").and_then(|v| v.as_str());
     let value = params.get("value");
     let user_id = ctx.user_id;
+    if let Some(key) = key {
+        validate_sandbox_storage_key(key).map_err(str::to_string)?;
+    }
 
     match action {
         "get" => {
             if let Some(key) = key {
-                let result = tapp_storage::Entity::find()
-                    .filter(tapp_storage::Column::TappId.eq(tapp_id))
-                    .filter(tapp_storage::Column::Key.eq(key))
-                    .filter(tapp_storage::Column::UserId.eq(user_id))
-                    .one(ctx.db)
+                let value = read_storage_value(ctx.db, user_id, tapp_id, key)
                     .await
-                    .map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write database error");
-            "Database error".to_string()
-        })?;
+                    .map_err(|error| error.to_string())?;
 
                 Ok(json!({
                     "success": true,
                     "key": key,
-                    "value": result.map(|r| r.value)
+                    "value": value
                 }))
             } else {
-                let results = tapp_storage::Entity::find()
-                    .filter(tapp_storage::Column::TappId.eq(tapp_id))
-                    .filter(tapp_storage::Column::UserId.eq(user_id))
-                    .all(ctx.db)
+                let results = sandbox_storage_entries(ctx.db, user_id, tapp_id)
                     .await
-                    .map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write database error");
-            "Database error".to_string()
-        })?;
+                    .map_err(|error| error.to_string())?;
 
                 let data: HashMap<String, Value> =
                     results.into_iter().map(|r| (r.key, r.value)).collect();
@@ -297,48 +252,10 @@ async fn execute_tapp_storage(
         "set" => {
             let key = key.ok_or("Missing key for set action")?;
             let value = value.ok_or("Missing value for set action")?.clone();
-            let now = Utc::now();
-
-            let existing = tapp_storage::Entity::find()
-                .filter(tapp_storage::Column::TappId.eq(tapp_id))
-                .filter(tapp_storage::Column::Key.eq(key))
-                .filter(tapp_storage::Column::UserId.eq(user_id))
-                .one(ctx.db)
+            validate_storage_value_size(&value).map_err(|error| error.to_string())?;
+            write_storage_value(ctx.db, user_id, tapp_id, key, value.clone())
                 .await
-                .map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write database error");
-            "Database error".to_string()
-        })?;
-
-            if let Some(record) = existing {
-                let mut active: tapp_storage::ActiveModel = record.into();
-                active.value = Set(value.clone());
-                active.updated_at = Set(now.into());
-                active
-                    .update(ctx.db)
-                    .await
-                    .map_err(|e| {
-                tracing::error!(error = %e, "Agent data_write: failed to update storage");
-                "Database error".to_string()
-            })?;
-            } else {
-                let new_record = tapp_storage::ActiveModel {
-                    tapp_id: Set(tapp_id.to_string()),
-                    user_id: Set(user_id),
-                    key: Set(key.to_string()),
-                    value: Set(value.clone()),
-                    created_at: Set(now.into()),
-                    updated_at: Set(now.into()),
-                    ..Default::default()
-                };
-                new_record
-                    .insert(ctx.db)
-                    .await
-                    .map_err(|e| {
-                tracing::error!(error = %e, "Agent data_write: failed to insert storage");
-                "Database error".to_string()
-            })?;
-            }
+                .map_err(|error| error.to_string())?;
 
             Ok(json!({
                 "success": true,
@@ -356,9 +273,9 @@ async fn execute_tapp_storage(
                 .exec(ctx.db)
                 .await
                 .map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write database error");
-            "Database error".to_string()
-        })?;
+                    tracing::error!(error = %e, "Agent data_write database error");
+                    "Database error".to_string()
+                })?;
 
             Ok(json!({
                 "success": true,
@@ -684,13 +601,10 @@ async fn execute_brew_mark(
             }
         }
         active.updated_at = Set(now.into());
-        active
-            .update(ctx.db)
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Agent data_write: failed to update state");
-                "Database error".to_string()
-            })?;
+        active.update(ctx.db).await.map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write: failed to update state");
+            "Database error".to_string()
+        })?;
     } else {
         let new_state = brew_user_states::ActiveModel {
             user_id: Set(user_id),
@@ -710,13 +624,10 @@ async fn execute_brew_mark(
             updated_at: Set(now.into()),
             ..Default::default()
         };
-        new_state
-            .insert(ctx.db)
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Agent data_write: failed to create state");
-                "Database error".to_string()
-            })?;
+        new_state.insert(ctx.db).await.map_err(|e| {
+            tracing::error!(error = %e, "Agent data_write: failed to create state");
+            "Database error".to_string()
+        })?;
     }
 
     // 更新 source 的 unread_count（附带 user_id 条件，确保仅修改自己的 source）
@@ -797,13 +708,10 @@ async fn execute_content_write(
         updated_at: Set(now.into()),
         ..Default::default()
     };
-    new_record
-        .insert(ctx.db)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write: failed to save content");
-            "Database error".to_string()
-        })?;
+    new_record.insert(ctx.db).await.map_err(|e| {
+        tracing::error!(error = %e, "Agent data_write: failed to save content");
+        "Database error".to_string()
+    })?;
 
     Ok(json!({
         "success": true,

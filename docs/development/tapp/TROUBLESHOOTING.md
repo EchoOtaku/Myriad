@@ -69,16 +69,16 @@ Unrecognized Content-Security-Policy directive 'navigate-to'.
 
 **常见原因与处理**：
 
-1. **`preview.html` 写成了内联 HTML**  
+1. **`preview.html` 写成了内联 HTML**
    `preview.html` / `styles[]` 必须是相对 `base_url` 的**路径**（或 https URL），不能是
    markup 字符串。见 [STORE · 静态预览](STORE.md#静态预览-preview商店-merchandising-快照)。
-2. **页面依赖 JS / 外链图**  
+2. **页面依赖 JS / 外链图**
    宿主会剥脚本与非 `data:`/`blob:` 的 `url()`；应用只剩空挂载点会被判定为运行时壳而丢弃。
    请提供纯静态快照，或确保 page_template 回退后仍有可见文本/背景。
-3. **详情页横向溢出过大**  
+3. **详情页横向溢出过大**
    `isRenderedPreviewAdapted` 在文档宽远超 viewport 时会 fallback；检查预览 CSS 是否把
    布局撑到极宽。
-4. **路径 404**  
+4. **路径 404**
    `downloadAppPreview` 失败只打 warn，不阻断安装；核对 `base_url` + 路径。
 
 精选卡约 2.8s 超时后仍会尽量显示已清洗内容；详情对「不适配」更严。
@@ -113,11 +113,11 @@ Failed to load resource: the server responded with a status of 401 ()
 
 **两层问题不要混**：
 
-1. **宿主「跳过 VIP」开关**（默认开启）  
-   - `getSkipVip()` → `{ skipVip: true }` 时自动切歌会跳过 VIP 曲。  
-   - **打开 VIP 显示/入队**：`await Tapp.media.setSkipVip(false)`（需 `media:control`）。  
+1. **宿主「跳过 VIP」开关**（默认开启）
+   - `getSkipVip()` → `{ skipVip: true }` 时自动切歌会跳过 VIP 曲。
+   - **打开 VIP 显示/入队**：`await Tapp.media.setSkipVip(false)`（需 `media:control`）。
    - 与系统音乐播放器「显示 VIP 歌曲」为同一状态。
-2. **平台会员/试听**  
+2. **平台会员/试听**
    - 即使 `skipVip === false`，网易云等仍可能对 VIP 曲返回不可播；这是源站策略，不是
      Tapp SDK 开关能绕过的。应提示用户或换曲，不要死循环 `next()`。
 
@@ -414,8 +414,9 @@ const data = await Tapp.api("data", {});
 **原因**：
 
 1. 未在 manifest 的 `apis` 中声明对应名称
-2. 任意 `type: "http"` API（含 `public` 与 `protected`）未授予 `network:fetch`
+2. 任意 `type: "http"` API（含 `public`、`protected` 与 `manager`）未授予 `network:fetch`
 3. 后端出站安全或参数模板校验拒绝了请求
+4. 游客调用 `access: "public"` API，但站点的游客 `network:fetch` 策略未开启（默认关闭）
 
 **解决方案**：
 
@@ -438,7 +439,24 @@ HTTP 声明式 API 都需要，不只是 `protected`）：
 ```
 
 如果 API 确实可匿名调用，可把 `access` 明确设为 `public`；这只改变调用者范围，
-不会免除 `network:fetch`，并且仍会经过共享限流、Manifest 与后端出站安全校验。
+不会免除 `network:fetch`。管理员还须在权限设置中开启游客 `network:fetch`，安装时批准该权限；
+调用仍会经过共享限流、Manifest 与后端出站安全校验。
+
+### ❌ 凭据 API 返回“未配置”或“需要重新授权”
+
+**症状**：绑定了 `apis.*.credential`，但执行具名 API 时提示 credential 未配置，或管理页显示
+需要重新授权。
+
+**原因与处理**：
+
+- 新安装尚未由 installation owner / 当前管理员输入值：在 Tapp 详情页配置；SDK 与普通 viewer
+  没有读取或写入凭据的接口。
+- endpoint、credential header/prefix、`access` 或同一凭据绑定的其他 API 定义发生变化：这是
+  授权指纹变化，必须由 owner 重新输入，不会自动沿用旧授权。
+- 从 settings 迁移：先在第三方服务轮换已可能暴露的旧 Key，再配置 credential；不要复制旧
+  settings 值继续使用。
+- CLI 报 fixed HTTPS、undeclared、forbidden header、duplicate header 或 unbound：按提示修复
+  Manifest。凭据只能绑定固定绝对 HTTPS origin 的具名 HTTP API，每个声明都必须至少绑定一次。
 
 ---
 

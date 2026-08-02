@@ -239,6 +239,18 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     default_value: None,
                 },
                 ColumnDef {
+                    name: "encrypted_value".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "binding_fingerprint".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
                     name: "created_at".into(),
                     data_type: "timestamp with time zone".into(),
                     is_nullable: false,

@@ -1,4 +1,8 @@
 import type {
+  LibraryItemType,
+  LibrarySourcePreferences,
+} from '../../utils/librarySourcePreferences'
+import type {
   ModuleVisibilityKey,
   ModuleVisibilityLevel,
   ModuleVisibilityPreferences,
@@ -12,10 +16,14 @@ import {
   SiNeteasecloudmusic,
   SiQqmusic,
 } from '@lib/icons'
-import { MyriadConfigIcon } from './MyriadConfigIcon'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import apiService from '../../services/api'
+import {
+  DEFAULT_LIBRARY_SOURCE_PREFERENCES,
+  LIBRARY_ITEM_TYPES,
+  normalizeLibraryPreferences,
+} from '../../utils/librarySourcePreferences'
 import {
   MODULE_VISIBILITY_KEYS,
   MODULE_VISIBILITY_LEVELS,
@@ -38,26 +46,26 @@ import {
   useSettingGuide,
 } from '../settings'
 import { Spinner } from '../Spinner'
+import { MyriadConfigIcon } from './MyriadConfigIcon'
 
 interface UiConfigField {
   key: string
   value: string
 }
 
-/** @deprecated 从 uiBagOwnership 导入；此处 re-export 保持兼容 */
-export { MODULE_UI_RESET_KEYS } from './uiBagOwnership'
-
-export type LibraryItemType =
-  'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'
-
 export interface LibrarySourceOption {
   source: string
   count: number
 }
 
-export interface LibrarySourcePreferences {
-  categories: Record<LibraryItemType, string[]>
-}
+export type { LibraryItemType, LibrarySourcePreferences }
+export {
+  areLibrarySourcePreferencesEqual,
+  DEFAULT_LIBRARY_SOURCE_PREFERENCES,
+  normalizeLibraryPreferences,
+} from '../../utils/librarySourcePreferences'
+/** @deprecated 从 uiBagOwnership 导入；此处 re-export 保持兼容 */
+export { MODULE_UI_RESET_KEYS } from './uiBagOwnership'
 
 interface LibraryResponse {
   success: boolean
@@ -99,15 +107,6 @@ interface ModuleConfigSectionProps {
   onMessage?: (message: string, type?: 'success' | 'error' | 'info') => void
 }
 
-const LIBRARY_ITEM_TYPES: LibraryItemType[] = [
-  'game',
-  'video',
-  'music',
-  'anime',
-  'tv_series',
-  'book',
-]
-
 const MODULE_SETTING_TITLE_ICON_CLASS =
   'h-3.5 w-3.5 shrink-0 text-[var(--cfg-accent)]'
 
@@ -125,6 +124,37 @@ function LibrarySubtitleIcon({ className }: { className?: string }) {
         strokeWidth="2"
         d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
       />
+    </svg>
+  )
+}
+
+function LibraryListLayoutIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="5" rx="1.5" strokeWidth="1.8" />
+      <rect x="3" y="14" width="18" height="5" rx="1.5" strokeWidth="1.8" />
+    </svg>
+  )
+}
+
+function LibraryCanvasLayoutIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="3" strokeWidth="1.8" />
+      <rect x="8" y="8" width="8" height="8" rx="1.5" strokeWidth="1.8" />
+      <path d="M12 3v5m0 8v5M3 12h5m8 0h5" strokeWidth="1.8" />
     </svg>
   )
 }
@@ -294,48 +324,6 @@ function LibraryTypeIcon({
         </svg>
       )
   }
-}
-
-export const DEFAULT_LIBRARY_SOURCE_PREFERENCES: LibrarySourcePreferences = {
-  categories: {
-    game: ['Steam', 'Bangumi'],
-    video: ['Bilibili', 'Bangumi'],
-    music: ['Netease', 'Bangumi'],
-    anime: ['Bangumi', 'Bilibili', 'MyAnimeList'],
-    tv_series: ['Bangumi', 'Bilibili'],
-    book: ['Bangumi', 'MyAnimeList'],
-  },
-}
-
-export function normalizeLibraryPreferences(
-  preferences?: LibrarySourcePreferences,
-): LibrarySourcePreferences {
-  return {
-    categories: LIBRARY_ITEM_TYPES.reduce(
-      (acc, type) => {
-        acc[type] = [
-          ...(preferences?.categories?.[type] ??
-            DEFAULT_LIBRARY_SOURCE_PREFERENCES.categories[type]),
-        ]
-        return acc
-      },
-      {} as Record<LibraryItemType, string[]>,
-    ),
-  }
-}
-
-export function areLibrarySourcePreferencesEqual(
-  left: LibrarySourcePreferences,
-  right: LibrarySourcePreferences,
-) {
-  return LIBRARY_ITEM_TYPES.every((type) => {
-    const leftSources = left.categories[type] ?? []
-    const rightSources = right.categories[type] ?? []
-    return (
-      leftSources.length === rightSources.length &&
-      leftSources.every((source, index) => source === rightSources[index])
-    )
-  })
 }
 
 export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
@@ -618,7 +606,10 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                 key={moduleKey}
                 title={moduleLabels[moduleKey]}
                 icon={moduleIcons[moduleKey]}
-                {...bindGuide('modules.visibilityItem', g.modules.visibilityItem)}
+                {...bindGuide(
+                  'modules.visibilityItem',
+                  g.modules.visibilityItem,
+                )}
               >
                 <SegmentedControl
                   size="sm"
@@ -645,6 +636,32 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
         {...bindGuide('modules.library', g.modules.library)}
         icon={<LibrarySubtitleIcon />}
       >
+        <SettingGroup
+          title={t.config.libraryLayout}
+          description={t.config.libraryLayoutDesc}
+        >
+          <SegmentedControl
+            value={sourceDraft.layout}
+            options={[
+              {
+                value: 'list',
+                label: t.config.libraryLayoutList,
+                icon: <LibraryListLayoutIcon className="h-3.5 w-3.5" />,
+              },
+              {
+                value: 'canvas',
+                label: t.config.libraryLayoutCanvas,
+                icon: <LibraryCanvasLayoutIcon className="h-3.5 w-3.5" />,
+              },
+            ]}
+            onChange={(layout) =>
+              setSourceDraft((prev) => ({ ...prev, layout }))
+            }
+            columns={2}
+            ariaLabel={t.config.libraryLayout}
+          />
+        </SettingGroup>
+
         <div className="settings-text-3 text-xs">
           {rawTotal > 0 ? (
             t.config.librarySourceVisibleCount
@@ -737,7 +754,10 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
             itemKey="report-expiry-days"
             label={t.config.reportExpiryDays}
             description={t.config.reportExpiryDaysHint}
-            {...bindGuide('modules.reportExpiryDays', g.modules.reportExpiryDays)}
+            {...bindGuide(
+              'modules.reportExpiryDays',
+              g.modules.reportExpiryDays,
+            )}
             value={reportSettingsDraft.expiryDays}
             onChange={(value) => {
               if (Number.isFinite(value)) {
@@ -881,7 +901,10 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                 itemKey="hitokoto-custom-url"
                 label={t.config.hitokotoCustomUrl}
                 hint={t.config.hitokotoCustomUrlHint}
-                {...bindGuide('modules.hitokotoCustomUrl', g.modules.hitokotoCustomUrl)}
+                {...bindGuide(
+                  'modules.hitokotoCustomUrl',
+                  g.modules.hitokotoCustomUrl,
+                )}
                 value={hitokotoDraft.customUrl ?? ''}
                 onChange={(customUrl) => updateHitokotoConfig({ customUrl })}
                 placeholder={t.config.hitokotoCustomUrlPlaceholder}
@@ -894,7 +917,10 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                   itemKey="hitokoto-text-field"
                   label={t.config.hitokotoTextField}
                   hint={t.config.hitokotoTextFieldHint}
-                  {...bindGuide('modules.hitokotoTextField', g.modules.hitokotoTextField)}
+                  {...bindGuide(
+                    'modules.hitokotoTextField',
+                    g.modules.hitokotoTextField,
+                  )}
                   value={hitokotoDraft.customTextField ?? ''}
                   onChange={(customTextField) =>
                     updateHitokotoConfig({ customTextField })
@@ -908,7 +934,10 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
                   itemKey="hitokoto-author-field"
                   label={t.config.hitokotoAuthorField}
                   hint={t.config.hitokotoAuthorFieldHint}
-                  {...bindGuide('modules.hitokotoAuthorField', g.modules.hitokotoAuthorField)}
+                  {...bindGuide(
+                    'modules.hitokotoAuthorField',
+                    g.modules.hitokotoAuthorField,
+                  )}
                   value={hitokotoDraft.customAuthorField ?? ''}
                   onChange={(customAuthorField) =>
                     updateHitokotoConfig({ customAuthorField })

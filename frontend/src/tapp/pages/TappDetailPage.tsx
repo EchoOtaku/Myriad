@@ -5,12 +5,14 @@
 
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { ToastType } from '../../components/Toast'
+import type { TappCredentialStatus } from '../services/TappCredentialApi'
 import type { TappVisibility } from '../services/TappLifecycleApi'
 import type { TappInstance, TappPermission, TappSettingItem } from '../types'
 import {
   FaCog,
   FaDownload,
   FaExclamationTriangle,
+  FaKey,
   FaLock,
   FaPause,
   FaPlay,
@@ -89,6 +91,10 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     {},
   )
   const [settingsSaving, setSettingsSaving] = useState<string | null>(null)
+  const [credentialStatuses, setCredentialStatuses] = useState<
+    Record<string, TappCredentialStatus>
+  >({})
+  const [credentialSaving, setCredentialSaving] = useState<string | null>(null)
   /** 本地输入缓存，避免中文输入被打断 */
   const [localInputValues, setLocalInputValues] = useState<
     Record<string, string>
@@ -145,6 +151,50 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
       }
     },
     [tappId],
+  )
+
+  const loadCredentialStatuses = useCallback(async () => {
+    const statuses = await TappApiService.getTappCredentialStatuses(tappId)
+    setCredentialStatuses(
+      Object.fromEntries(statuses.map((status) => [status.key, status])),
+    )
+  }, [tappId])
+
+  const saveCredential = useCallback(
+    async (key: string, value: string) => {
+      if (!value.trim()) throw new Error('Credential is required')
+      setCredentialSaving(key)
+      try {
+        await TappApiService.setTappCredential(tappId, key, value)
+        await loadCredentialStatuses()
+        showToastMessage(t.tapp.credentialSaved, 'success')
+      } catch (err) {
+        console.error('Failed to save Tapp credential:', err)
+        showToastMessage(t.tapp.credentialSaveFailed, 'error')
+        throw err
+      } finally {
+        setCredentialSaving(null)
+      }
+    },
+    [loadCredentialStatuses, showToastMessage, t, tappId],
+  )
+
+  const removeCredential = useCallback(
+    async (key: string) => {
+      if (!window.confirm(t.tapp.credentialRemoveConfirm)) return
+      setCredentialSaving(key)
+      try {
+        await TappApiService.removeTappCredential(tappId, key)
+        await loadCredentialStatuses()
+        showToastMessage(t.tapp.credentialRemoved, 'success')
+      } catch (err) {
+        console.error('Failed to remove Tapp credential:', err)
+        showToastMessage(t.tapp.credentialRemoveFailed, 'error')
+      } finally {
+        setCredentialSaving(null)
+      }
+    },
+    [loadCredentialStatuses, showToastMessage, t, tappId],
   )
 
   const saveSetting = useCallback(
@@ -264,7 +314,17 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
 
         // 设置属于已登录查看者的控制面数据；访客只使用 manifest 默认值。
         if (hasChecked && isAuthenticated) {
-          await loadSettings(instance.manifest)
+          const mayManageInstallation =
+            instance.userRole === 'admin' ||
+            (instance.userRole === 'user' && instance.isTemporary === true)
+          await Promise.all([
+            loadSettings(instance.manifest),
+            instance.manifest.credentials?.length && mayManageInstallation
+              ? loadCredentialStatuses().catch((err) => {
+                  console.error('Failed to load Tapp credential status:', err)
+                })
+              : Promise.resolve(),
+          ])
         }
 
         setLoading(false)
@@ -287,7 +347,15 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
       unsubStarted()
       unsubStopped()
     }
-  }, [tappId, runtime, hasChecked, isAuthenticated, loadSettings, t])
+  }, [
+    tappId,
+    runtime,
+    hasChecked,
+    isAuthenticated,
+    loadSettings,
+    loadCredentialStatuses,
+    t,
+  ])
 
   const goBack = useCallback(() => {
     navigate('/tapp')
@@ -436,6 +504,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
 
   const iconStyle = getTappIconStyle(manifest)
   const hasManifestSettings = Boolean(manifest.settings?.length)
+  const hasManifestCredentials = Boolean(manifest.credentials?.length)
   /** 已登录用户始终展示应用设置组（含空态 / 只读说明） */
   const showSettingsGroup = isAuthenticated
 
@@ -843,6 +912,76 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
                     {t.tapp.noSettingsAvailable}
                   </p>
                 )}
+          </SettingGroup>
+        )}
+
+        {canManageSettings && hasManifestCredentials && (
+          <SettingGroup
+            id="tapp-api-credentials"
+            title={t.tapp.apiCredentials}
+            description={t.tapp.apiCredentialsDesc}
+            icon={<FaKey />}
+          >
+            {manifest.credentials!.map((credential) => {
+              const status = credentialStatuses[credential.key]
+              const busy = credentialSaving === credential.key
+              const destination = status?.origins.length
+                ? format(t.tapp.credentialOrigins, {
+                    origins: status.origins.join(', '),
+                  })
+                : ''
+              const description = [
+                credential.description,
+                destination,
+                status?.needsReauthorization
+                  ? t.tapp.credentialReauthorizationRequired
+                  : undefined,
+              ]
+                .filter(Boolean)
+                .join(' · ')
+
+              return (
+                <div className="tapp-detail-credential" key={credential.key}>
+                  <InputItem
+                    itemKey={`credential-${credential.key}`}
+                    label={credential.label}
+                    description={description}
+                    value=""
+                    onChange={() => undefined}
+                    variant="clickToEdit"
+                    inputType="password"
+                    autoComplete="new-password"
+                    placeholder={credential.placeholder}
+                    emptyLabel={
+                      status?.configured
+                        ? t.tapp.credentialConfigured
+                        : t.tapp.credentialNotConfigured
+                    }
+                    editLabel={
+                      status?.configured
+                        ? t.tapp.credentialReplace
+                        : t.tapp.credentialConfigure
+                    }
+                    saveLabel={t.common.save}
+                    disabled={busy}
+                    loading={busy}
+                    onCommit={(value) => saveCredential(credential.key, value)}
+                  />
+                  {status?.configured && (
+                    <div className="tapp-detail-credential-actions">
+                      <SettingsButton
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => void removeCredential(credential.key)}
+                      >
+                        {t.tapp.credentialRemove}
+                      </SettingsButton>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </SettingGroup>
         )}
 

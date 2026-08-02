@@ -70,6 +70,10 @@ pub struct TappManifest {
     #[serde(default)]
     pub background_requirements: Option<Vec<String>>,
     pub settings: Option<Vec<TappSettingDef>>,
+    /// Installation-level write-only credentials. Values are stored by the host
+    /// and may only be attached to explicitly bound declared HTTP APIs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<Vec<TappCredentialDef>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub category: Option<TappCategory>,
     #[serde(default)]
@@ -252,6 +256,36 @@ pub enum TappApiAccess {
     Public,
     #[default]
     Protected,
+    Manager,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "tapp-contract-schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappApiCredentialBinding {
+    /// Key from top-level `manifest.credentials`.
+    pub key: String,
+    /// Fixed outbound request header that receives the credential.
+    pub header: String,
+    /// Optional literal prefix such as `Bearer `.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "tapp-contract-schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum TappHttpBodyMode {
+    #[default]
+    Json,
+    Raw,
+    Form,
+}
+
+impl TappHttpBodyMode {
+    fn is_json(&self) -> bool {
+        matches!(self, Self::Json)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,6 +304,16 @@ pub struct TappApiDef {
     )]
     pub method: String,
     pub headers: Option<HashMap<String, String>>,
+    /// Host-only credential binding. The value is never added to the template
+    /// context or returned to sandbox JavaScript.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credential: Option<TappApiCredentialBinding>,
+    #[serde(default, skip_serializing_if = "TappHttpBodyMode::is_json")]
+    #[cfg_attr(
+        feature = "tapp-contract-schema",
+        schemars(extend("default" = "json"))
+    )]
+    pub body_mode: TappHttpBodyMode,
     pub body: Option<serde_json::Value>,
     pub builtin: Option<String>,
     pub inject: Option<HashMap<String, String>>,
@@ -378,6 +422,18 @@ pub struct TappSettingDef {
     pub min: Option<f64>,
     pub max: Option<f64>,
     pub step: Option<f64>,
+    pub placeholder: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "tapp-contract-schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappCredentialDef {
+    pub key: String,
+    pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placeholder: Option<String>,
 }
 

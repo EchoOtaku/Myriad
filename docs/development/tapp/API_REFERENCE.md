@@ -174,6 +174,9 @@ const allSettings = await Tapp.settings.getAll();
 - `getAll()` **不会**枚举私有 `Tapp.storage`；两者键空间独立，不能用 `_settings.*` 经
   storage API 读写。
 - 不要在 settings 里存放密钥或仅管理员应知的敏感串：凡能打开该公开安装的 visitor 均可读。
+- 公开 Tapp 需要代站主调用第三方 API 时，在 Manifest 使用顶层 `credentials` 和
+  `apis.*.credential` 固定 HTTPS 请求头绑定。凭据只有安装管理界面的写入/删除/状态接口，
+  不进入 `Tapp.settings`、模板上下文或任何沙箱读取 API。
 
 ---
 
@@ -751,8 +754,8 @@ await Tapp.media.setSkipVip(true);
 | **宿主开关 `skipVip`** | 是否从播放队列/自动下一首中排除标记为 VIP 的曲目。默认 **`true`（跳过）**；`setSkipVip(false)` 即用户侧「打开/显示 VIP 歌曲」。 |
 | **平台会员** | 网易云等对 VIP 曲可能仍无完整播放权。即使 `skipVip === false`，无会员/无试听时播放会失败（UI 有 `vipPlayFailed` 类提示），Tapp 应处理 `onStateChange` / 错误而不是假定一定可播。 |
 
-- `getSkipVip` / `setSkipVip` 读写的是主应用 `excludeVipSongs`（`true` ⇔ `skipVip`）。  
-- 资料库等入口的**显式临时点播**可能绕过「跳过 VIP」过滤，与自动连播策略不同。  
+- `getSkipVip` / `setSkipVip` 读写的是主应用 `excludeVipSongs`（`true` ⇔ `skipVip`）。
+- 资料库等入口的**显式临时点播**可能绕过「跳过 VIP」过滤，与自动连播策略不同。
 - 需要改开关时申请 `media:control`；只展示当前策略用 `media:read`。
 
 ---
@@ -978,7 +981,7 @@ const detail = await Tapp.federation.getRoom(roomId);
 // detail.shared_data_config?.e2e?.published_keys — 仅公钥，无私钥材料
 ```
 
-**公开群 REST（无 Tapp Grant、无需登录）**：`GET /api/federation/public/rooms/{room_id}`  
+**公开群 REST（无 Tapp Grant、无需登录）**：`GET /api/federation/public/rooms/{room_id}`
 仅当 `is_public = true` 时返回卡片（name、owner、home_server、member_count 等）。跨实例
 `joinRoom` 会向该端点拉元数据并物化本地行；**不可**用任意 `home_server` 把本机私有群改成公开。
 
@@ -1380,9 +1383,16 @@ const declaredApis = await Tapp.api.list();
 }
 ```
 
-- 所有 `type: "http"` API 都要求 `network:fetch`；`public`/`protected` 只控制调用者范围。
+- 所有 `type: "http"` API 都要求 `network:fetch`；`public`/`protected`/`manager` 只控制调用者范围。
+  `public` 不会绕过权限求交：游客还须由站点开启游客 `network:fetch`（默认关闭），安装也须批准该权限。
 - 后端按当前用户与 Tapp owner 重新加载 Manifest，并执行模板参数、频率和出站安全校验。
+- HTTP 请求体可通过 Manifest `bodyMode` 选择 `json`（默认）、UTF-8 `raw` 或
+  `application/x-www-form-urlencoded` 的 `form`；`raw`/`form` 最终序列化字节上限为 1 MiB。
+  `form` 字段顺序不属于契约；需要固定顺序或按最终字节签名时应使用 `raw`。
 - Tapp 不能传入任意 URL，也不能使用历史文档中的 `Tapp.http.request()`。
+- 安装级第三方 Key 使用 Manifest `credentials` + `apis.*.credential`；SDK 只能执行绑定的具名
+  API，不能读取凭据。声明、固定 HTTPS origin、请求头和重新授权规则见
+  [Manifest · 安装级 API 凭据](MANIFEST.md#安装级-api-凭据-credentials)。
 - 详细 Manifest 字段和 REST 链路见 [Manifest](MANIFEST.md#api-声明-apis) 与
   [REST API](REST_API.md#manifest-声明-api)。
 

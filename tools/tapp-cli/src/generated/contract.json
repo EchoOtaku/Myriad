@@ -23,6 +23,9 @@
     "assetsTotalBytes": 20971520,
     "authorEmailLength": 320,
     "backgroundRequirements": 16,
+    "credentialHeaderPrefixLength": 256,
+    "credentialKeyLength": 128,
+    "credentialValueLength": 16384,
     "dataExchangeDeclarations": 32,
     "dataExchangeDescriptionLength": 500,
     "dataExchangeIdLength": 128,
@@ -44,12 +47,14 @@
     "settingOptions": 100,
     "storageKeyLength": 256,
     "tappApis": 64,
+    "tappCredentials": 16,
     "tappDescriptionLength": 2000,
     "tappIconLength": 2048,
     "tappIconSvgBytes": 65536,
     "tappIdLength": 128,
     "tappLocales": 32,
     "tappNameLength": 255,
+    "tappNonJsonHttpRequestBytes": 1048576,
     "tappPermissions": 64,
     "tappSettings": 64,
     "widgetRefreshIntervalMaxSeconds": 86400,
@@ -140,6 +145,7 @@
       "imports": "import"
     },
     "defaultApiType": "http",
+    "defaultHttpBodyMode": "json",
     "defaultHttpMethod": "GET",
     "eventPermissionRules": {
       "publish": "event:publish",
@@ -158,8 +164,25 @@
         "system."
       ]
     },
+    "forbiddenOutboundHeaders": [
+      "host",
+      "connection",
+      "content-length",
+      "transfer-encoding",
+      "upgrade",
+      "proxy-authorization",
+      "proxy-connection",
+      "te",
+      "trailer"
+    ],
     "httpApiPermission": "network:fetch",
     "httpApiType": "http",
+    "httpBodyMethods": [
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE"
+    ],
     "httpMethods": [
       "GET",
       "HEAD",
@@ -174,9 +197,11 @@
     "httpOnlyApiFields": [
       "endpoint",
       "headers",
+      "bodyMode",
       "body",
       "spoof",
-      "inject"
+      "inject",
+      "credential"
     ],
     "httpUrlSchemes": [
       "http",
@@ -446,9 +471,35 @@
       "TappApiAccess": {
         "enum": [
           "public",
-          "protected"
+          "protected",
+          "manager"
         ],
         "type": "string"
+      },
+      "TappApiCredentialBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "header": {
+            "description": "Fixed outbound request header that receives the credential.",
+            "type": "string"
+          },
+          "key": {
+            "description": "Key from top-level `manifest.credentials`.",
+            "type": "string"
+          },
+          "prefix": {
+            "description": "Optional literal prefix such as `Bearer `.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "header"
+        ],
+        "type": "object"
       },
       "TappApiDef": {
         "additionalProperties": false,
@@ -458,6 +509,10 @@
             "default": "protected"
           },
           "body": true,
+          "bodyMode": {
+            "$ref": "#/$defs/TappHttpBodyMode",
+            "default": "json"
+          },
           "builtin": {
             "type": [
               "string",
@@ -469,6 +524,17 @@
             "format": "uint32",
             "minimum": 0,
             "type": "integer"
+          },
+          "credential": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/TappApiCredentialBinding"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Host-only credential binding. The value is never added to the template\ncontext or returned to sandbox JavaScript."
           },
           "description": {
             "type": [
@@ -565,6 +631,34 @@
         ],
         "type": "string"
       },
+      "TappCredentialDef": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "key",
+          "label"
+        ],
+        "type": "object"
+      },
       "TappDataExchangeManifest": {
         "additionalProperties": false,
         "properties": {
@@ -658,6 +752,14 @@
           }
         },
         "type": "object"
+      },
+      "TappHttpBodyMode": {
+        "enum": [
+          "json",
+          "raw",
+          "form"
+        ],
+        "type": "string"
       },
       "TappManifestLocaleEntry": {
         "additionalProperties": false,
@@ -948,6 +1050,16 @@
           {
             "type": "null"
           }
+        ]
+      },
+      "credentials": {
+        "description": "Installation-level write-only credentials. Values are stored by the host\nand may only be attached to explicitly bound declared HTTP APIs.",
+        "items": {
+          "$ref": "#/$defs/TappCredentialDef"
+        },
+        "type": [
+          "array",
+          "null"
         ]
       },
       "cssMode": {
@@ -1316,6 +1428,7 @@
       "federation.rotateKeys": "federation:write",
       "federation.getFeed": "federation:read",
       "federation.getTimeline": "federation:read",
+      "federation.getObject": "federation:read",
       "federation.getFollowing": "federation:read",
       "federation.getFollowers": "federation:read",
       "federation.getPublished": "federation:read",
@@ -1355,10 +1468,13 @@
       "federation.acceptRoomInvite": "federation:write",
       "federation.rejectRoomInvite": "federation:write",
       "federation.removeMember": "federation:write",
+      "federation.setMemberRole": "federation:write",
       "federation.leaveRoom": "federation:write",
       "federation.transferRoomOwnership": "federation:write",
       "federation.initiateChannelE2e": "federation:write",
       "federation.initiateRoomE2e": "federation:write",
+      "federation.addRoomSticker": "federation:write",
+      "federation.removeRoomSticker": "federation:write",
       "federation.pinRoomMessage": "federation:write",
       "federation.createRing": "federation:write",
       "federation.leaveRing": "federation:write",

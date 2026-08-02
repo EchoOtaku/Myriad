@@ -77,6 +77,28 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [hasEverConnected, setHasEverConnected] = useState(false)
   // ℹ️ 性能优化: 移动端/低端设备禁用背景动画
   const anim = useAnimationLevel()
+  const [libraryCanvasActive, setLibraryCanvasActive] = useState(false)
+
+  useEffect(() => {
+    const syncLibraryCanvasMode = () => {
+      setLibraryCanvasActive(
+        location.pathname === '/library' &&
+          document.documentElement.dataset.libraryCanvas === 'active',
+      )
+    }
+
+    window.addEventListener(
+      'libraryCanvasModeChanged',
+      syncLibraryCanvasMode,
+    )
+    syncLibraryCanvasMode()
+    return () => {
+      window.removeEventListener(
+        'libraryCanvasModeChanged',
+        syncLibraryCanvasMode,
+      )
+    }
+  }, [location.pathname])
 
   // OAuth account-link success/error query → toast + clean URL
   useAuthUrlFeedback()
@@ -114,7 +136,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   // 🎨 Evocative 壁纸动效统一 Hook
   // 仅 exlight / prefers-reduced-motion 强制关；light 档仍尊重用户开关
-  const evocativeForceOff = isExlight(anim)
+  const evocativeForceOff = isExlight(anim) || libraryCanvasActive
   useEvocativeWallpaper('wallpaper', {
     parallax: {
       enabled: evocativeConfig.parallax && !evocativeForceOff,

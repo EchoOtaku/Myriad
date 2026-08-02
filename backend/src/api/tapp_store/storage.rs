@@ -9,23 +9,31 @@ use super::{
     TappSettingDef, TappStorageAccess,
 };
 use crate::api::tapp_runtime::{common as tapp_common, RuntimeGrantContext};
+use crate::error::HttpError;
 use crate::middleware::auth::Claims;
 use crate::models::entities::tapp_storage as tapp_storage_entity;
 use crate::services::tapp_storage::{
-    self as storage_svc, is_host_storage_key, TappStorageError, TAPP_STORAGE_QUOTA_BYTES,
+    self as storage_svc, TappStorageError, TAPP_STORAGE_QUOTA_BYTES,
 };
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     Extension, Json,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use myriad_error::AppError;
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, FromQueryResult, QueryFilter, QuerySelect,
+};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashSet};
-use crate::error::HttpError;
-use myriad_error::AppError;
 
 pub(crate) use storage_svc::{validate_sandbox_storage_key, validate_storage_key};
+
+#[derive(FromQueryResult)]
+struct StorageKeyValueRow {
+    key: String,
+    value: serde_json::Value,
+}
 
 fn storage_status(err: TappStorageError) -> StatusCode {
     match err {
@@ -174,9 +182,13 @@ pub(super) async fn get_tapp_settings(
     let (access, settings) = authorize_tapp_settings(&db, &claims, &tapp_id).await?;
     let declared_keys: HashSet<String> = settings.into_iter().map(|setting| setting.key).collect();
     let values = tapp_storage_entity::Entity::find()
+        .select_only()
+        .column(tapp_storage_entity::Column::Key)
+        .column(tapp_storage_entity::Column::Value)
         .filter(tapp_storage_entity::Column::UserId.eq(access.installation_namespace()))
         .filter(tapp_storage_entity::Column::TappId.eq(&tapp_id))
         .filter(tapp_storage_entity::Column::Key.starts_with("_settings."))
+        .into_model::<StorageKeyValueRow>()
         .all(&db)
         .await
         .map_err(|_| HttpError(AppError::internal("Database error")))?
@@ -233,18 +245,15 @@ pub(super) async fn list_storage_keys(
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<Vec<String>>>, HttpError> {
-    let access = authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
-    let items = tapp_storage_entity::Entity::find()
-        .filter(tapp_storage_entity::Column::UserId.eq(access.private_storage_namespace()))
-        .filter(tapp_storage_entity::Column::TappId.eq(&tapp_id))
-        .all(&db)
-        .await
-        .map_err(|_| HttpError(AppError::internal("Database error")))?;
-    let keys = items
-        .into_iter()
-        .filter(|item| !is_host_storage_key(&item.key))
-        .map(|item| item.key)
-        .collect();
+    let access =
+        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    let keys =
+        storage_svc::sandbox_storage_entries(&db, access.private_storage_namespace(), &tapp_id)
+            .await
+            .map_err(|error| HttpError::from(storage_status(error)))?
+            .into_iter()
+            .map(|item| item.key)
+            .collect();
     Ok(Json(ApiResponse::success(keys)))
 }
 
@@ -255,17 +264,15 @@ pub(super) async fn list_storage_entries(
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<BTreeMap<String, serde_json::Value>>>, HttpError> {
-    let access = authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
-    let entries = tapp_storage_entity::Entity::find()
-        .filter(tapp_storage_entity::Column::UserId.eq(access.private_storage_namespace()))
-        .filter(tapp_storage_entity::Column::TappId.eq(&tapp_id))
-        .all(&db)
-        .await
-        .map_err(|_| HttpError(AppError::internal("Database error")))?
-        .into_iter()
-        .filter(|item| !is_host_storage_key(&item.key))
-        .map(|item| (item.key, item.value))
-        .collect();
+    let access =
+        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    let entries =
+        storage_svc::sandbox_storage_entries(&db, access.private_storage_namespace(), &tapp_id)
+            .await
+            .map_err(|error| HttpError::from(storage_status(error)))?
+            .into_iter()
+            .map(|item| (item.key, item.value))
+            .collect();
     Ok(Json(ApiResponse::success(entries)))
 }
 
@@ -282,7 +289,8 @@ pub(super) async fn get_storage_usage(
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<TappStorageUsage>>, HttpError> {
-    let access = authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    let access =
+        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
     let used = storage_bytes(&db, access.private_storage_namespace(), &tapp_id).await? as usize;
     Ok(Json(ApiResponse::success(TappStorageUsage {
         used,
@@ -297,8 +305,10 @@ pub(super) async fn get_storage(
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, key)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<serde_json::Value>>, HttpError> {
-    validate_sandbox_storage_key(&key).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
-    let access = authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    validate_sandbox_storage_key(&key)
+        .map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
+    let access =
+        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
     let value = read_storage_value(&db, access.private_storage_namespace(), &tapp_id, &key).await?;
     Ok(Json(ApiResponse::success(value)))
 }
@@ -311,9 +321,11 @@ pub(super) async fn set_storage(
     Path((tapp_id, key)): Path<(String, String)>,
     Json(value): Json<serde_json::Value>,
 ) -> Result<Json<ApiResponse<()>>, HttpError> {
-    validate_sandbox_storage_key(&key).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
+    validate_sandbox_storage_key(&key)
+        .map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
     validate_storage_value_size(&value)?;
-    let access = authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    let access =
+        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
     write_storage_value(
         &db,
         access.private_storage_namespace(),
@@ -332,8 +344,10 @@ pub(super) async fn delete_storage(
     runtime_grant: RuntimeGrantContext,
     Path((tapp_id, key)): Path<(String, String)>,
 ) -> Result<Json<ApiResponse<()>>, HttpError> {
-    validate_sandbox_storage_key(&key).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
-    let access = authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    validate_sandbox_storage_key(&key)
+        .map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
+    let access =
+        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
     tapp_storage_entity::Entity::delete_many()
         .filter(tapp_storage_entity::Column::UserId.eq(access.private_storage_namespace()))
         .filter(tapp_storage_entity::Column::TappId.eq(&tapp_id))
@@ -351,23 +365,10 @@ pub(super) async fn clear_storage(
     runtime_grant: RuntimeGrantContext,
     Path(tapp_id): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, HttpError> {
-    let access = authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
-    let clearable_ids: Vec<i32> = tapp_storage_entity::Entity::find()
-        .filter(tapp_storage_entity::Column::UserId.eq(access.private_storage_namespace()))
-        .filter(tapp_storage_entity::Column::TappId.eq(&tapp_id))
-        .all(&db)
+    let access =
+        authorize_runtime_storage(&db, &claims, &runtime_grant, &tapp_id, &dynamic_config).await?;
+    storage_svc::clear_sandbox_storage(&db, access.private_storage_namespace(), &tapp_id)
         .await
-        .map_err(|_| HttpError(AppError::internal("Database error")))?
-        .into_iter()
-        .filter(|item| !is_host_storage_key(&item.key))
-        .map(|item| item.id)
-        .collect();
-    if !clearable_ids.is_empty() {
-        tapp_storage_entity::Entity::delete_many()
-            .filter(tapp_storage_entity::Column::Id.is_in(clearable_ids))
-            .exec(&db)
-            .await
-            .map_err(|_| HttpError(AppError::internal("Database error")))?;
-    }
+        .map_err(|error| HttpError::from(storage_status(error)))?;
     Ok(Json(ApiResponse::success(())))
 }

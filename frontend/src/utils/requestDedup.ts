@@ -168,6 +168,28 @@ export function clearDedupCache(url?: string): void {
   }
 }
 
+/** 清除同一端点的所有分页/筛选变体，并使仍在飞行的旧请求失效。 */
+export function clearDedupCacheByPrefix(prefix: string): void {
+  const keys = new Set<string>()
+  for (const key of resultCache.keys()) {
+    if (key.startsWith(prefix)) keys.add(key)
+  }
+  for (const key of pendingRequests.keys()) {
+    if (key.startsWith(prefix)) keys.add(key)
+  }
+  for (const key of keys) {
+    bumpGeneration(key)
+    resultCache.delete(key)
+    pendingRequests.delete(key)
+  }
+}
+
+export function clearLibraryDataCache(): void {
+  const endpoint = `${API_URL}/api/library`
+  clearDedupCache(endpoint)
+  clearDedupCacheByPrefix(`${endpoint}?`)
+}
+
 /**
  * 预热缓存（后台预加载）
  */
@@ -297,5 +319,37 @@ export async function getLibraryDataDeduped(): Promise<any> {
       return normalizeJsonMediaUrls(data)
     },
     { cacheTTL: 2 * 60 * 1000 }, // 2分钟
+  )
+}
+
+/**
+ * 分批获取资料库数据。每个 offset 使用独立去重键，画布可以按需扩展，
+ * 同时保留 getLibraryDataDeduped() 的全量兼容语义给统计组件。
+ */
+export async function getLibraryDataPageDeduped(
+  offset: number,
+  limit: number,
+  itemType?: string,
+): Promise<any> {
+  const safeOffset = Math.max(0, Math.floor(offset))
+  const safeLimit = Math.min(200, Math.max(1, Math.floor(limit)))
+  const params = new URLSearchParams({
+    offset: String(safeOffset),
+    limit: String(safeLimit),
+  })
+  if (itemType && itemType !== 'all') params.set('type', itemType)
+  const url = `${API_URL}/api/library?${params.toString()}`
+  return dedupedFetch(
+    url,
+    async () => {
+      const response = await fetch(url, {
+        credentials: 'include',
+        signal: AbortSignal.timeout(30000),
+      })
+      if (!response.ok) throw new Error('Failed to fetch library data')
+      const data = await response.json()
+      return normalizeJsonMediaUrls(data)
+    },
+    { cacheTTL: 2 * 60 * 1000 },
   )
 }

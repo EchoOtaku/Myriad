@@ -220,6 +220,22 @@ Settings 是 **installation owner** 命名空间上的 Manifest 声明配置，�
 不要把 secrets 放进 host settings：公开安装的 GET 对所有能打开该安装的 visitor（含游客）
 可读。
 
+### API 凭据（安装级，只写）
+
+| 方法 | 路径 | 认证层 | 说明 |
+| ---- | ---- | ------ | ---- |
+| GET | `/api/tapps/{tappId}/credentials` | **auth + owner/admin** | 仅返回配置状态、重新授权状态和目标 origins |
+| POST | `/api/tapps/{tappId}/credentials/{key}` | **auth + owner/admin** | body 为 `{ "value": "..." }`；加密写入，不回显 |
+| DELETE | `/api/tapps/{tappId}/credentials/{key}` | **auth + owner/admin** | 删除凭据，不回显 |
+
+这些路由不接受游客、普通 viewer 或 Runtime Grant 顶替管理身份。`key` 必须由当前 Manifest 的
+`credentials` 声明并绑定到至少一个具名 HTTP API。值只在后端执行绑定 API 时加入固定请求头；
+Manifest 绑定变化后状态会标记需重新授权，运行调用会拒绝使用旧值。
+底层复用 installation owner 的 `tapp_storage` 行和现有唯一索引；`_credentials.` 是宿主保留
+前缀，密文位于专用字段。通用 storage REST 在 SQL 层排除宿主记录且不查询密文字段，完整
+storage entity 也不会序列化密文；数据库约束只允许 `_credentials.*` 行持有凭据密文和授权
+指纹，因此通用 storage REST 无法读取、列举、覆盖或清除。
+
 ### Widget 与存储
 
 | 方法   | 路径                                     | 说明                                        |

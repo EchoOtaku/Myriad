@@ -113,6 +113,10 @@ await Tapp.storage.clear();
 生成安装后才有意义的能力时：
 
 - 可在 Manifest 声明真实权限与正式运行时代码（见 [API_REFERENCE](./API_REFERENCE.md)）；
+- 声明式 HTTP API 必须申请 `network:fetch`。请求体默认使用 `bodyMode: "json"`；纯文本、XML
+  或依赖最终字节签名的接口使用 UTF-8 `raw`，表单接口使用 `form`。`raw`/`form` 仅允许
+  `POST`、`PUT`、`PATCH`、`DELETE`，且临时预览不会实际执行 `Tapp.api`；完整字段规则见
+  [MANIFEST · API 声明](./MANIFEST.md#api-声明-apis)。
 - 预览只验证 UI、生命周期、主题、`code.i18n`、`manifest.locales` 与内存 storage；
 - **不要**臆造预览 mock 联邦 / Brew / platform API。
 - 若生成 **正式运行后** 调用 `Tapp.tappList.install` 的商店安装代码，必须使用合法 SDK 形状

@@ -266,6 +266,8 @@ pub async fn create_tapp_report(
         user_id: Set(user_id),
         key: Set(storage_key),
         value: Set(report_data.clone()),
+        encrypted_value: NotSet,
+        binding_fingerprint: NotSet,
         created_at: Set(now),
         updated_at: Set(now),
     };

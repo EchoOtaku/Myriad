@@ -34,6 +34,11 @@ const THRESHOLD = 0.05 // 静止检测阈值
 const PARALLAX_SCALE = 1.02
 const PARALLAX_MAX_OFFSET = 8
 const GYRO_SENS = 0.5
+/** 特效从全关恢复 / 关停时的 scale·位移过渡（资料库画布等场景避免硬切） */
+const EFFECT_EDGE_MS = 420
+const EFFECT_EDGE_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
+const EFFECT_EDGE_TRANSITION = `transform ${EFFECT_EDGE_MS}ms ${EFFECT_EDGE_EASE}`
+const IDENTITY_TF = 'scale(1) translate3d(0,0,0)'
 
 // 预计算的静态 transform 字符串
 const STATIC_TF_PREFIX = `scale(${PARALLAX_SCALE}) translate3d(`
@@ -490,6 +495,10 @@ export function useEvocativeWallpaper(
     rippleIsFadingOut: false,
   })
 
+  // 是否正处于开启态；是否曾经开启过（仅「曾开启 → 全关 → 再开」才 soft-restore，避免首屏缩放）
+  const wasAnyEnabledRef = useRef(false)
+  const everEnabledRef = useRef(false)
+
   // 当 baseBlur 变化时更新状态
   useEffect(() => {
     const s = stateRef.current
@@ -508,11 +517,20 @@ export function useEvocativeWallpaper(
     if (!anyEnabled) {
       const el = document.getElementById(elementId)
       if (el) {
-        el.style.transform = ''
-        el.style.transformOrigin = ''
+        // 进画布：CSS 缓入静止；把 inline 写成 none，这样离场摘掉 CSS 时不会弹回旧位移。
+        const libraryCanvasHoldsWallpaper =
+          document.documentElement.dataset.libraryCanvas === 'active'
+        if (libraryCanvasHoldsWallpaper) {
+          el.style.transform = 'none'
+        } else {
+          el.style.transition = ''
+          el.style.transform = ''
+          el.style.transformOrigin = ''
+        }
         el.style.willChange = ''
         // 注意：不清除 filter，因为基础模糊由 useWallpaper 管理
       }
+      wasAnyEnabledRef.current = false
       return
     }
 
@@ -521,6 +539,10 @@ export function useEvocativeWallpaper(
       console.warn('[EvocativeWallpaper] Element not found:', elementId)
       return
     }
+
+    const softRestore = everEnabledRef.current && !wasAnyEnabledRef.current
+    wasAnyEnabledRef.current = true
+    everEnabledRef.current = true
 
     // 初始化共享状态
     s.active = true
@@ -562,8 +584,33 @@ export function useEvocativeWallpaper(
     if (enableDynamicBlur) willChangeProps.push('filter')
     el.style.willChange = willChangeProps.join(', ')
 
+    let softRestoreTimer: ReturnType<typeof setTimeout> | null = null
+    let softRestoreRaf1 = 0
+    let softRestoreRaf2 = 0
+    /** soft-restore 期间禁止交互改 transform，避免与 CSS 过渡互抢 */
+    let interactionReady = !softRestore || !enableParallax
+
     if (enableParallax) {
-      el.style.transform = IDLE_TF
+      if (softRestore) {
+        el.style.transition = EFFECT_EDGE_TRANSITION
+        el.style.transform = IDENTITY_TF
+        // 双 rAF：先提交 identity，再过渡到 idle scale，保证浏览器能插值
+        softRestoreRaf1 = requestAnimationFrame(() => {
+          softRestoreRaf2 = requestAnimationFrame(() => {
+            if (!s.active || s.el !== el) return
+            el.style.transform = IDLE_TF
+          })
+        })
+        softRestoreTimer = setTimeout(() => {
+          if (!s.active || s.el !== el) return
+          el.style.transition = ''
+          interactionReady = true
+          softRestoreTimer = null
+        }, EFFECT_EDGE_MS)
+      } else {
+        el.style.transition = ''
+        el.style.transform = IDLE_TF
+      }
     }
     if (enableDynamicBlur) {
       el.style.filter = `${BLUR_PREFIX}${effectiveWallpaperBlur(baseBlur)}${BLUR_SUFFIX}`
@@ -836,7 +883,7 @@ export function useEvocativeWallpaper(
     // ==================== 鼠标事件 ====================
     let lastMouseTime = 0
     const onMouseMove = (e: MouseEvent) => {
-      if (!s.pageVisible) return
+      if (!s.pageVisible || !interactionReady) return
       if (s.gyroEnabled) return
 
       const now = performance.now()
@@ -865,6 +912,7 @@ export function useEvocativeWallpaper(
     }
 
     const onMouseLeave = () => {
+      if (!interactionReady) return
       s.returning = true
 
       if (enableParallax && !s.gyroEnabled) {
@@ -880,7 +928,13 @@ export function useEvocativeWallpaper(
 
     // ==================== 点击涟漪 ====================
     const onClick = (e: MouseEvent) => {
-      if (!enableRipple || !s.rippleCanvas || !s.pageVisible) return
+      if (
+        !enableRipple ||
+        !s.rippleCanvas ||
+        !s.pageVisible ||
+        !interactionReady
+      )
+        return
 
       const normalizedY = e.clientY / window.innerHeight
       if (normalizedY > unblurZone) return
@@ -918,6 +972,7 @@ export function useEvocativeWallpaper(
     // ==================== 陀螺仪 ====================
     let lastGyroTime = 0
     const onGyro = (e: DeviceOrientationEvent) => {
+      if (!interactionReady) return
       const beta = e.beta
       const gamma = e.gamma
       if (beta == null || gamma == null) return
@@ -1007,6 +1062,9 @@ export function useEvocativeWallpaper(
       if (s.raf) cancelAnimationFrame(s.raf)
       if (s.rippleRaf) cancelAnimationFrame(s.rippleRaf)
       if (s.rippleFadeoutTimer) clearTimeout(s.rippleFadeoutTimer)
+      if (softRestoreTimer) clearTimeout(softRestoreTimer)
+      if (softRestoreRaf1) cancelAnimationFrame(softRestoreRaf1)
+      if (softRestoreRaf2) cancelAnimationFrame(softRestoreRaf2)
 
       unsubscribeVisibility()
 
@@ -1027,9 +1085,20 @@ export function useEvocativeWallpaper(
         s.rippleCtx = null
       }
 
-      el.style.transform = ''
-      el.style.transformOrigin = ''
-      el.style.willChange = ''
+      // 资料库画布激活时：CSS 正缓入静止；inline 写成 none，离场时不会弹回旧 parallax 位移。
+      const libraryCanvasHoldsWallpaper =
+        typeof document !== 'undefined' &&
+        document.documentElement.dataset.libraryCanvas === 'active'
+      if (libraryCanvasHoldsWallpaper) {
+        el.style.transform = 'none'
+        el.style.willChange = ''
+      } else {
+        // 重绑 / 卸载时清掉 soft-restore 的 transition，避免残留影响下一次
+        el.style.transition = ''
+        el.style.transform = ''
+        el.style.transformOrigin = ''
+        el.style.willChange = ''
+      }
       // 注意：不清除 filter，因为基础模糊由 useWallpaper 管理
     }
   }, [

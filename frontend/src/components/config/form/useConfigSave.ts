@@ -37,7 +37,11 @@ import {
   updateReportSettings,
   type ReportSettings,
 } from '../../../utils/reportSettings'
-import { clearDedupCache } from '../../../utils/requestDedup'
+import { dispatchLibraryPreferencesUpdated } from '../../../utils/libraryPreferences'
+import {
+  clearDedupCache,
+  clearLibraryDataCache,
+} from '../../../utils/requestDedup'
 import {
   areFederationPoliciesEqual,
   federationPolicyToUpdateRequest,
@@ -111,7 +115,9 @@ export function useConfigSave(args: {
   setLibrarySourceSaveRevision: Dispatch<SetStateAction<number>>
   moduleVisibilityDraft: ModuleVisibilityPreferences
   savedModuleVisibilityPreferences: ModuleVisibilityPreferences
-  setModuleVisibilityDraft: Dispatch<SetStateAction<ModuleVisibilityPreferences>>
+  setModuleVisibilityDraft: Dispatch<
+    SetStateAction<ModuleVisibilityPreferences>
+  >
   setSavedModuleVisibilityPreferences: Dispatch<
     SetStateAction<ModuleVisibilityPreferences>
   >
@@ -310,7 +316,11 @@ export function useConfigSave(args: {
           setLibrarySourceDraft(preferences)
           setSavedLibrarySourcePreferences(preferences)
           setLibrarySourceSaveRevision((revision) => revision + 1)
-          clearDedupCache(`${API_URL}/api/library`)
+          clearLibraryDataCache()
+          dispatchLibraryPreferencesUpdated({
+            categories: preferences.categories,
+            layout: preferences.layout,
+          })
         })
         if (!hasConfigChanges) resultMessage = t.config.librarySourceSaved
       }
@@ -360,9 +370,8 @@ export function useConfigSave(args: {
         const nextPerm = { ...permissionConfig }
         pendingClean.push(async () => {
           setSavedPermissionConfig(nextPerm)
-          const { TappRuntime } = await import(
-            '../../../tapp/runtime/TappRuntime'
-          )
+          const { TappRuntime } =
+            await import('../../../tapp/runtime/TappRuntime')
           await TappRuntime.getInstance().refreshPermissionGrants()
         })
         if (!hasConfigChanges) resultMessage = t.config.permissionsSaved
@@ -480,7 +489,7 @@ export function useConfigSave(args: {
         })
       }
       if (needPlatformsCachePurge) {
-        clearDedupCache(`${API_URL}/api/library`)
+        clearLibraryDataCache()
       }
 
       // Proxy / API mirrors: backend hot-reload only — no location.reload.
@@ -529,7 +538,8 @@ export function useConfigSave(args: {
         }
       }
       const partial = applied.length > 0
-      const detail = error instanceof Error ? error.message : t.errors.networkError
+      const detail =
+        error instanceof Error ? error.message : t.errors.networkError
       const errorMsg = partial
         ? `${t.config.partialSaveWarning}: ${detail}`
         : `${t.config.configSaveFailed}: ${detail}`

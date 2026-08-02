@@ -8,7 +8,9 @@
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbErr};
 
 /// 近月功能表兜底（`migrations/005` 已 CREATE）。
-pub(crate) async fn ensure_federation_content_filters_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+pub(crate) async fn ensure_federation_content_filters_table(
+    db: &DatabaseConnection,
+) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
 CREATE TABLE IF NOT EXISTS federation_content_filters (
@@ -27,7 +29,9 @@ CREATE TABLE IF NOT EXISTS federation_content_filters (
 
 /// 近月功能表兜底（`migrations/005` 已 CREATE）。缺列由 `get_expected_schema` 通用 ADD。
 /// 字段级对齐不再为 <0.3.10 单独维护。
-pub(crate) async fn ensure_federation_policy_settings_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+pub(crate) async fn ensure_federation_policy_settings_table(
+    db: &DatabaseConnection,
+) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
 CREATE TABLE IF NOT EXISTS federation_policy_settings (
@@ -625,7 +629,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_user_activity
 }
 
 /// 近月功能表兜底（`migrations/005` 已 CREATE）。
-pub(crate) async fn ensure_federation_domain_aliases_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+pub(crate) async fn ensure_federation_domain_aliases_table(
+    db: &DatabaseConnection,
+) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
 CREATE TABLE IF NOT EXISTS federation_domain_aliases (
@@ -646,7 +652,9 @@ CREATE INDEX IF NOT EXISTS idx_federation_domain_aliases_new
 ///
 /// API 侧已用 `platform.ne("all")` 过滤，这里做一次幂等物理清理，避免库内残留
 /// 被 federation content 导出或手工 SQL 重新暴露。
-pub(crate) async fn cleanup_retired_comprehensive_reports(db: &DatabaseConnection) -> Result<(), DbErr> {
+pub(crate) async fn cleanup_retired_comprehensive_reports(
+    db: &DatabaseConnection,
+) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
 DELETE FROM platform_reports WHERE platform = 'all';
@@ -657,7 +665,9 @@ DELETE FROM platform_reports WHERE platform = 'all';
 }
 
 /// 近月功能表兜底（`migrations/005` 已 CREATE）。
-pub(crate) async fn ensure_federation_object_interactions_table(db: &DatabaseConnection) -> Result<(), DbErr> {
+pub(crate) async fn ensure_federation_object_interactions_table(
+    db: &DatabaseConnection,
+) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
 CREATE TABLE IF NOT EXISTS federation_object_interactions (
@@ -696,14 +706,22 @@ BEGIN
     );
 
     IF TG_OP = 'UPDATE' THEN
-        SELECT COALESCE(SUM(octet_length(key) + octet_length(value::text)), 0)::BIGINT
+        SELECT COALESCE(SUM(
+                   octet_length(key)
+                   + octet_length(value::text)
+                   + COALESCE(octet_length(encrypted_value), 0)
+               ), 0)::BIGINT
           INTO current_bytes
           FROM tapp_storage
          WHERE user_id = NEW.user_id
            AND tapp_id = NEW.tapp_id
            AND id <> OLD.id;
     ELSE
-        SELECT COALESCE(SUM(octet_length(key) + octet_length(value::text)), 0)::BIGINT
+        SELECT COALESCE(SUM(
+                   octet_length(key)
+                   + octet_length(value::text)
+                   + COALESCE(octet_length(encrypted_value), 0)
+               ), 0)::BIGINT
           INTO current_bytes
           FROM tapp_storage
          WHERE user_id = NEW.user_id
@@ -712,7 +730,8 @@ BEGIN
 
     projected_bytes := current_bytes
         + octet_length(NEW.key)
-        + octet_length(NEW.value::text);
+        + octet_length(NEW.value::text)
+        + COALESCE(octet_length(NEW.encrypted_value), 0);
     IF projected_bytes > 5242880 THEN
         RAISE EXCEPTION 'Tapp storage quota exceeded: % bytes', projected_bytes
             USING ERRCODE = '54000';
@@ -730,7 +749,7 @@ BEGIN
            AND NOT tgisinternal
     ) THEN
         CREATE TRIGGER trg_tapp_storage_quota
-        BEFORE INSERT OR UPDATE OF key, value, user_id, tapp_id ON tapp_storage
+        BEFORE INSERT OR UPDATE OF key, value, encrypted_value, user_id, tapp_id ON tapp_storage
         FOR EACH ROW EXECUTE FUNCTION enforce_tapp_storage_quota();
     END IF;
 END $$;
@@ -738,5 +757,41 @@ END $$;
     )
     .await?;
 
+    Ok(())
+}
+
+/// Keep host-only credential columns structurally bound to the reserved key
+/// namespace even though credentials intentionally reuse `tapp_storage`.
+pub(crate) async fn ensure_tapp_storage_credential_constraint(
+    db: &DatabaseConnection,
+) -> Result<(), DbErr> {
+    db.execute_unprepared(
+        r#"
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+          FROM pg_constraint
+         WHERE conname = 'tapp_storage_credential_fields_check'
+           AND conrelid = 'tapp_storage'::regclass
+    ) THEN
+        ALTER TABLE tapp_storage
+            ADD CONSTRAINT tapp_storage_credential_fields_check
+            CHECK (
+                (encrypted_value IS NULL AND binding_fingerprint IS NULL)
+                OR (
+                    starts_with(key, '_credentials.')
+                    AND encrypted_value IS NOT NULL
+                    AND binding_fingerprint IS NOT NULL
+                )
+            ) NOT VALID;
+    END IF;
+END $$;
+
+ALTER TABLE tapp_storage
+    VALIDATE CONSTRAINT tapp_storage_credential_fields_check;
+"#,
+    )
+    .await?;
     Ok(())
 }

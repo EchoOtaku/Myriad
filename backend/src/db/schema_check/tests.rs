@@ -1,11 +1,10 @@
 //! schema_check unit tests
-use super::orchestrator::*;
-use super::expected_schema::get_expected_schema;
 use super::expected_indexes::get_expected_indexes;
+use super::expected_schema::get_expected_schema;
 use super::introspect::*;
-use super::types::*;
+use super::orchestrator::*;
 use super::seeds::*;
-
+use super::types::*;
 
 use super::*;
 
@@ -162,6 +161,27 @@ fn test_tapps_schema_includes_approved_permissions() {
 }
 
 #[test]
+fn test_tapp_storage_schema_includes_credential_fields() {
+    let tables = get_expected_schema();
+    let storage = tables
+        .iter()
+        .find(|table| table.name == "tapp_storage")
+        .expect("tapp_storage table");
+    for (name, data_type) in [
+        ("encrypted_value", "text"),
+        ("binding_fingerprint", "character varying"),
+    ] {
+        let column = storage
+            .columns
+            .iter()
+            .find(|column| column.name == name)
+            .unwrap_or_else(|| panic!("tapp_storage.{name} must be field-healed"));
+        assert_eq!(column.data_type, data_type);
+        assert!(column.is_nullable);
+    }
+}
+
+#[test]
 fn test_generate_add_column_ddl() {
     let col = ColumnDef {
         name: "test_col".into(),
@@ -229,4 +249,81 @@ async fn migrations_leave_no_schema_drift() {
         drift.len(),
         drift.summary()
     );
+
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+    let invalid = db
+        .execute(Statement::from_string(
+            DatabaseBackend::Postgres,
+            r#"
+INSERT INTO tapp_storage
+    (user_id, tapp_id, key, value, encrypted_value, created_at, updated_at)
+VALUES
+    (2147483647, 'schema.constraint.test', 'ordinary', '{}'::jsonb, 'ciphertext', NOW(), NOW())
+"#
+            .to_string(),
+        ))
+        .await;
+    assert!(
+        invalid.is_err(),
+        "tapp_storage must reject encrypted payloads outside _credentials.*"
+    );
+}
+
+#[tokio::test]
+async fn tapp_storage_upgrade_heals_and_enforces_credential_constraint() {
+    let Ok(url) = std::env::var("MYRIAD_TAPP_STORAGE_UPGRADE_DB") else {
+        eprintln!("skipping: set MYRIAD_TAPP_STORAGE_UPGRADE_DB for the upgrade guard test");
+        return;
+    };
+    use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement};
+
+    let db = Database::connect(&url)
+        .await
+        .expect("connect to upgrade guard database");
+    db.execute_unprepared(
+        r#"
+CREATE TABLE tapp_storage (
+    id SERIAL PRIMARY KEY,
+    tapp_id VARCHAR(255) NOT NULL,
+    user_id INTEGER NOT NULL,
+    key VARCHAR(255) NOT NULL,
+    value JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO tapp_storage (tapp_id, user_id, key, value)
+VALUES ('upgrade.test', 1, 'ordinary', '{}'::jsonb);
+ALTER TABLE tapp_storage ADD COLUMN encrypted_value TEXT;
+ALTER TABLE tapp_storage ADD COLUMN binding_fingerprint VARCHAR(64);
+"#,
+    )
+    .await
+    .expect("create pre-credential storage shape");
+
+    super::ensure_heals::ensure_tapp_storage_credential_constraint(&db)
+        .await
+        .expect("upgrade helper must add and validate the constraint");
+
+    let invalid = db
+        .execute(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "UPDATE tapp_storage SET encrypted_value = 'ciphertext' WHERE key = 'ordinary'"
+                .to_string(),
+        ))
+        .await;
+    assert!(
+        invalid.is_err(),
+        "healed constraint must reject invalid updates"
+    );
+
+    db.execute_unprepared(
+        r#"
+INSERT INTO tapp_storage
+    (tapp_id, user_id, key, value, encrypted_value, binding_fingerprint)
+VALUES
+    ('upgrade.test', 1, '_credentials.api', '{}', 'ciphertext', repeat('f', 64));
+"#,
+    )
+    .await
+    .expect("healed constraint must accept a complete credential row");
 }

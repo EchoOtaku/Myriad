@@ -16,6 +16,7 @@ use serde_json::{json, Value};
 use crate::middleware::auth::{ensure_current_admin_on, Claims};
 use crate::services::permission_service::{TappPermission, UserRole};
 use crate::services::tapp_api_service::{ApiExecutionContext, TappApiService};
+use crate::services::tapp_credentials::{self, TappCredentialError};
 use crate::services::tapp_declared_api::{self, DeclaredApiError};
 use crate::services::tapp_ownership::TappAccessError;
 use crate::error::HttpError;
@@ -67,6 +68,23 @@ fn declared_http_error(err: DeclaredApiError) -> (StatusCode, Json<Value>) {
             Json(json!({ "error": err.message() })),
         ),
     }
+}
+
+fn credential_http_error(error: TappCredentialError) -> HttpError {
+    use myriad_error::AppError;
+
+    let status = match error {
+        TappCredentialError::InvalidDefinition(_) | TappCredentialError::InvalidValue => {
+            StatusCode::BAD_REQUEST
+        }
+        TappCredentialError::Missing | TappCredentialError::ReauthorizationRequired => {
+            StatusCode::CONFLICT
+        }
+        TappCredentialError::Encryption | TappCredentialError::Database => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    };
+    HttpError(AppError::new(status, error.code()).with_message(error.message()))
 }
 
 /// Tapp 更新/卸载时使缓存失效（path-stable re-export of services domain).
@@ -156,6 +174,24 @@ pub async fn execute_tapp_api(
     let granted_permissions =
         tapp_declared_api::filter_granted_permissions(installed_permissions, role).await;
 
+    // Resolve host-only credential material only after determining that this
+    // caller is part of the API's declared audience. This avoids turning
+    // missing/re-authorization errors into a credential-state oracle.
+    let caller_may_invoke = match api_def.access {
+        crate::api::tapp_store::TappApiAccess::Public => true,
+        crate::api::tapp_store::TappApiAccess::Protected => user_id >= 0,
+        crate::api::tapp_store::TappApiAccess::Manager => {
+            user_id == tapp.user_id || is_current_admin
+        }
+    };
+    let credential = if caller_may_invoke {
+        tapp_credentials::resolve_api_credential(&db, &tapp, api_def)
+            .await
+            .map_err(credential_http_error)?
+    } else {
+        None
+    };
+
     // 6. 构建执行上下文
     let context = ApiExecutionContext {
         user_id,
@@ -165,6 +201,7 @@ pub async fn execute_tapp_api(
         client_ip,
         granted_permissions,
         ai_model_tier: tapp_declared_api::ai_model_tier_from_manifest(&tapp.manifest),
+        credential,
     };
 
     // 7. 执行 API

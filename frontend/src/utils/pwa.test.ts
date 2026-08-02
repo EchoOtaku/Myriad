@@ -20,6 +20,10 @@ import {
   resolvePwaIconSourceUrl,
 } from './pwa'
 
+/** Minimal 1×1 PNG data URL used in install-icon tests. */
+const TINY_PNG_DATA_URL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+
 const here = dirname(fileURLToPath(import.meta.url))
 
 describe('PWA assets', () => {
@@ -76,6 +80,14 @@ describe('blob manifest URL absolutization', () => {
     assert.equal(resolveManifestUrl(null, origin), undefined)
   })
 
+  it('preserves data: and blob: icon URLs (installable composed icons)', () => {
+    assert.equal(resolveManifestUrl(TINY_PNG_DATA_URL, origin), TINY_PNG_DATA_URL)
+    assert.equal(
+      resolveManifestUrl('blob:https://kiseki.blog/uuid-here', origin),
+      'blob:https://kiseki.blog/uuid-here',
+    )
+  })
+
   it('rewrites start_url, scope, id, and icon src for blob-served manifests', () => {
     const manifestPath = resolve(here, '../../public/manifest.webmanifest')
     const base = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<
@@ -96,6 +108,43 @@ describe('blob manifest URL absolutization', () => {
     assert.ok(icons.length >= 2)
     for (const icon of icons) {
       assert.match(icon.src, /^https:\/\/kiseki\.blog\//)
+    }
+  })
+
+  it('keeps composed data: PNG icons while absolutizing other fields', () => {
+    const next = absolutizeManifestUrls(
+      {
+        name: 'Love on the page',
+        short_name: 'Love on the',
+        start_url: '/',
+        scope: '/',
+        id: '/',
+        display: 'standalone',
+        icons: [
+          {
+            src: TINY_PNG_DATA_URL,
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: TINY_PNG_DATA_URL,
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+        ],
+      },
+      origin,
+    )
+
+    assert.equal(next.start_url, 'https://kiseki.blog/')
+    assert.equal(next.scope, 'https://kiseki.blog/')
+    const icons = next.icons as Array<{ src: string; sizes: string }>
+    assert.equal(icons.length, 2)
+    for (const icon of icons) {
+      assert.equal(icon.src, TINY_PNG_DATA_URL)
+      assert.match(icon.src, /^data:image\/png/)
     }
   })
 })

@@ -2433,6 +2433,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "myriad-tapp-contract-export"
+version = "0.1.0"
+dependencies = [
+ "myriad-tapp-contract",
+ "serde_json",
+]
+
+[[package]]
 name = "myriad-tapp-registry"
 version = "0.1.0"
 dependencies = [

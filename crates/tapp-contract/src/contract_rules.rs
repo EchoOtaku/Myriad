@@ -30,12 +30,17 @@ pub const MAX_TAPP_PERMISSIONS: usize = 64;
 pub const MAX_PAGE_MODULES: usize = 64;
 pub const MAX_BACKGROUND_REQUIREMENTS: usize = 16;
 pub const MAX_TAPP_SETTINGS: usize = 64;
+pub const MAX_TAPP_CREDENTIALS: usize = 16;
+pub const MAX_CREDENTIAL_KEY_LEN: usize = 128;
+pub const MAX_CREDENTIAL_VALUE_LEN: usize = 16 * 1024;
+pub const MAX_CREDENTIAL_HEADER_PREFIX_LEN: usize = 256;
 pub const MAX_SETTING_LABEL_LEN: usize = 255;
 pub const MAX_SETTING_OPTIONS: usize = 100;
 pub const MAX_SETTING_OPTION_VALUE_LEN: usize = 255;
 pub const MAX_WIDGET_SIZES: usize = 10;
 pub const MAX_TAPP_APIS: usize = 64;
 pub const MAX_API_CACHE_TTL_SECONDS: u32 = 86_400;
+pub const MAX_TAPP_NON_JSON_HTTP_REQUEST_BYTES: usize = 1024 * 1024;
 pub const MAX_API_INJECT_ALIASES: usize = 32;
 pub const MAX_API_INJECT_TEMPLATE_LEN: usize = 2_048;
 pub const MAX_DATA_EXCHANGE_DESCRIPTION_LEN: usize = 500;
@@ -70,12 +75,28 @@ pub const HTTP_API_TYPE: &str = "http";
 pub const BUILTIN_API_TYPE: &str = "builtin";
 pub const DEFAULT_API_TYPE: &str = "http";
 pub const DEFAULT_HTTP_METHOD: &str = "GET";
+pub const DEFAULT_HTTP_BODY_MODE: &str = "json";
 pub const CSS_MODES: &[&str] = &["unified", "separated"];
 pub const HTTP_URL_SCHEMES: &[&str] = &["http", "https"];
 /// Fixed allow-list enforced identically by the backend installer and the
 /// offline CLI, so `check` results cannot drift from install validation.
 pub const HTTP_METHODS: &[&str] = &[
     "GET", "HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH",
+];
+pub const HTTP_BODY_METHODS: &[&str] = &["POST", "PUT", "PATCH", "DELETE"];
+/// Outbound routing and hop-by-hop headers that Tapp declarations may not set.
+/// Keep this list aligned with `myriad_outbound::validate_outbound_header`;
+/// the CLI consumes it through the generated contract.
+pub const FORBIDDEN_OUTBOUND_HEADERS: &[&str] = &[
+    "host",
+    "connection",
+    "content-length",
+    "transfer-encoding",
+    "upgrade",
+    "proxy-authorization",
+    "proxy-connection",
+    "te",
+    "trailer",
 ];
 pub const RESOURCE_EXTENSIONS: &[(&str, &str)] = &[
     ("main", ".js"),
@@ -147,7 +168,15 @@ pub const API_BUILTIN_AI_OPERATIONS: &[(&str, &str)] =
     &[("ai:chat", "chat"), ("ai:generate", "generate")];
 pub const API_BUILTIN_PERMISSIONS: &[(&str, &str)] =
     &[("ai:chat", "ai:chat"), ("ai:generate", "ai:generate")];
-pub const HTTP_ONLY_API_FIELDS: &[&str] = &["endpoint", "headers", "body", "spoof", "inject"];
+pub const HTTP_ONLY_API_FIELDS: &[&str] = &[
+    "endpoint",
+    "headers",
+    "bodyMode",
+    "body",
+    "spoof",
+    "inject",
+    "credential",
+];
 pub const API_INJECT_RESERVED_PREFIXES: &[&str] = &["user.", "geo.", "secrets.", "params."];
 pub const EVENT_SUBSCRIBE_PREFIXES: &[&str] = &["tapp.", "system."];
 pub const ASSET_LITERAL_METHODS: &[&str] = &["get", "getUrl", "getArrayBuffer"];

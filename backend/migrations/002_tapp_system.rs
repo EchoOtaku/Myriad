@@ -233,6 +233,8 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(TappStorage::UserId).integer().not_null())
                     .col(ColumnDef::new(TappStorage::Key).string_len(255).not_null())
                     .col(ColumnDef::new(TappStorage::Value).json().not_null())
+                    .col(ColumnDef::new(TappStorage::EncryptedValue).text())
+                    .col(ColumnDef::new(TappStorage::BindingFingerprint).string_len(64))
                     .col(
                         ColumnDef::new(TappStorage::CreatedAt)
                             .timestamp_with_time_zone()
@@ -246,6 +248,27 @@ impl MigrationTrait for Migration {
                             .default(Expr::current_timestamp()),
                     )
                     .to_owned(),
+            )
+            .await?;
+
+        // Host-only credential payloads share tapp_storage by design, but the
+        // database still enforces that sensitive columns can only appear on
+        // reserved credential records.
+        manager
+            .get_connection()
+            .execute_unprepared(
+                r#"
+ALTER TABLE tapp_storage
+    ADD CONSTRAINT tapp_storage_credential_fields_check
+    CHECK (
+        (encrypted_value IS NULL AND binding_fingerprint IS NULL)
+        OR (
+            starts_with(key, '_credentials.')
+            AND encrypted_value IS NOT NULL
+            AND binding_fingerprint IS NOT NULL
+        )
+    );
+"#,
             )
             .await?;
 
@@ -882,14 +905,22 @@ BEGIN
     );
 
     IF TG_OP = 'UPDATE' THEN
-        SELECT COALESCE(SUM(octet_length(key) + octet_length(value::text)), 0)::BIGINT
+        SELECT COALESCE(SUM(
+                   octet_length(key)
+                   + octet_length(value::text)
+                   + COALESCE(octet_length(encrypted_value), 0)
+               ), 0)::BIGINT
           INTO current_bytes
           FROM tapp_storage
          WHERE user_id = NEW.user_id
            AND tapp_id = NEW.tapp_id
            AND id <> OLD.id;
     ELSE
-        SELECT COALESCE(SUM(octet_length(key) + octet_length(value::text)), 0)::BIGINT
+        SELECT COALESCE(SUM(
+                   octet_length(key)
+                   + octet_length(value::text)
+                   + COALESCE(octet_length(encrypted_value), 0)
+               ), 0)::BIGINT
           INTO current_bytes
           FROM tapp_storage
          WHERE user_id = NEW.user_id
@@ -898,7 +929,8 @@ BEGIN
 
     projected_bytes := current_bytes
         + octet_length(NEW.key)
-        + octet_length(NEW.value::text);
+        + octet_length(NEW.value::text)
+        + COALESCE(octet_length(NEW.encrypted_value), 0);
     IF projected_bytes > 5242880 THEN
         RAISE EXCEPTION 'Tapp storage quota exceeded: % bytes', projected_bytes
             USING ERRCODE = '54000';
@@ -909,7 +941,7 @@ $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_tapp_storage_quota ON tapp_storage;
 CREATE TRIGGER trg_tapp_storage_quota
-BEFORE INSERT OR UPDATE OF key, value, user_id, tapp_id ON tapp_storage
+BEFORE INSERT OR UPDATE OF key, value, encrypted_value, user_id, tapp_id ON tapp_storage
 FOR EACH ROW EXECUTE FUNCTION enforce_tapp_storage_quota();
 "#,
             )
@@ -1006,6 +1038,8 @@ enum TappStorage {
     UserId,
     Key,
     Value,
+    EncryptedValue,
+    BindingFingerprint,
     CreatedAt,
     UpdatedAt,
 }

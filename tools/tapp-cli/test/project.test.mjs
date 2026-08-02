@@ -15,10 +15,13 @@ import {
 } from '../src/project.mjs'
 import { listZipEntries } from '../src/zip.mjs'
 import { parseCapabilitySource } from '../scripts/capability-source.mjs'
+import { findMyriadRepoRoot } from '../scripts/myriad-source.mjs'
 import { parsePermissionSource } from '../scripts/permission-source.mjs'
 
 const directories = []
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const myriadRoot = findMyriadRepoRoot(packageRoot)
+const upstreamIt = myriadRoot ? it : it.skip
 const execFileAsync = promisify(execFile)
 
 async function temporaryDirectory(name) {
@@ -38,8 +41,8 @@ describe('Tapp project core', () => {
     assert.ok(Object.keys(catalog.permissionLevels).length > 30)
   })
 
-  it('keeps the generated contract aligned with the backend exporter', async () => {
-    const manifestPath = resolve(packageRoot, '../tapp-contract-export/Cargo.toml')
+  upstreamIt('keeps the generated contract aligned with the backend exporter', async () => {
+    const manifestPath = resolve(myriadRoot, 'tools/tapp-contract-export/Cargo.toml')
     const { stdout } = await execFileAsync(
       'cargo',
       ['run', '--quiet', '--locked', '--manifest-path', manifestPath],
@@ -53,9 +56,9 @@ describe('Tapp project core', () => {
     assert.deepEqual(current.patterns, backendContract.patterns)
   })
 
-  it('keeps the generated catalog aligned with permissionConfig', async () => {
+  upstreamIt('keeps the generated catalog aligned with permissionConfig', async () => {
     const source = await readFile(
-      resolve(packageRoot, '../../frontend/src/tapp/runtime/permissionConfig.ts'),
+      resolve(myriadRoot, 'frontend/src/tapp/runtime/permissionConfig.ts'),
       'utf8',
     )
     const { permissionLevels, actions } = parsePermissionSource(source)
@@ -63,11 +66,11 @@ describe('Tapp project core', () => {
     assert.deepEqual(permissionCatalog().actions, actions)
   })
 
-  it('keeps capability profiles aligned with capabilityProfiles.ts', async () => {
+  upstreamIt('keeps capability profiles aligned with capabilityProfiles.ts', async () => {
     const source = await readFile(
       resolve(
-        packageRoot,
-        '../../frontend/src/tapp/runtime/sandbox/capabilityProfiles.ts',
+        myriadRoot,
+        'frontend/src/tapp/runtime/sandbox/capabilityProfiles.ts',
       ),
       'utf8',
     )
@@ -96,17 +99,28 @@ describe('Tapp project core', () => {
       schema.description,
       'Generated from backend TappManifest schema. Semantic limits and permission rules live in contract.json.',
     )
+    assert.equal(schema.$defs.TappApiDef.properties.bodyMode.default, 'json')
+    assert.equal(generatedContract().limits.tappNonJsonHttpRequestBytes, 1024 * 1024)
+    assert.ok(generatedContract().rules.httpOnlyApiFields.includes('bodyMode'))
+    assert.ok(schema.properties.credentials)
+    assert.ok(schema.$defs.TappApiDef.properties.credential)
+    assert.ok(schema.$defs.TappApiAccess.enum.includes('manager'))
+    assert.equal(generatedContract().limits.tappCredentials, 16)
+    assert.equal(generatedContract().limits.credentialValueLength, 16 * 1024)
+    assert.ok(generatedContract().rules.httpOnlyApiFields.includes('credential'))
+    assert.ok(generatedContract().rules.forbiddenOutboundHeaders.includes('host'))
+    assert.ok(generatedContract().rules.forbiddenOutboundHeaders.includes('content-length'))
   })
 
-  it('parses contract sources independently of quote style', async () => {
+  upstreamIt('parses contract sources independently of quote style', async () => {
     const permissionSource = await readFile(
-      resolve(packageRoot, '../../frontend/src/tapp/runtime/permissionConfig.ts'),
+      resolve(myriadRoot, 'frontend/src/tapp/runtime/permissionConfig.ts'),
       'utf8',
     )
     const capabilitySource = await readFile(
       resolve(
-        packageRoot,
-        '../../frontend/src/tapp/runtime/sandbox/capabilityProfiles.ts',
+        myriadRoot,
+        'frontend/src/tapp/runtime/sandbox/capabilityProfiles.ts',
       ),
       'utf8',
     )
@@ -130,15 +144,15 @@ describe('Tapp project core', () => {
     )
   })
 
-  it('rejects contract sources with syntax errors', async () => {
+  upstreamIt('rejects contract sources with syntax errors', async () => {
     const permissionSource = await readFile(
-      resolve(packageRoot, '../../frontend/src/tapp/runtime/permissionConfig.ts'),
+      resolve(myriadRoot, 'frontend/src/tapp/runtime/permissionConfig.ts'),
       'utf8',
     )
     const capabilitySource = await readFile(
       resolve(
-        packageRoot,
-        '../../frontend/src/tapp/runtime/sandbox/capabilityProfiles.ts',
+        myriadRoot,
+        'frontend/src/tapp/runtime/sandbox/capabilityProfiles.ts',
       ),
       'utf8',
     )
@@ -390,6 +404,234 @@ Tapp.storage.get(key)
     const invalidApis = report.diagnostics.filter(({ code }) => code === 'invalid-api')
     assert.equal(invalidApis.length, 1)
     assert.match(invalidApis[0].message, /API rejected HTTP method/)
+  })
+
+  it('accepts raw and form declared API body modes', async () => {
+    const root = await temporaryDirectory('http-body-modes')
+    await createProject(root, { type: 'page' })
+    const manifestPath = join(root, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.permissions.push('network:fetch')
+    manifest.apis = {
+      submit: {
+        type: 'http',
+        endpoint: 'https://example.com/submit',
+        method: 'POST',
+        bodyMode: 'raw',
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: '{{params.body}}',
+      },
+      token: {
+        type: 'http',
+        endpoint: 'https://example.com/oauth/token',
+        method: 'POST',
+        bodyMode: 'form',
+        body: { grant_type: 'client_credentials', scope: '{{params.scope}}' },
+      },
+    }
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const report = await inspectProject(root)
+    assert.deepEqual(
+      report.diagnostics.filter(({ code }) => code === 'invalid-api'),
+      [],
+    )
+  })
+
+  it('accepts write-only credentials bound to a fixed HTTPS API origin', async () => {
+    const root = await temporaryDirectory('api-credential')
+    await createProject(root, { type: 'page' })
+    const manifestPath = join(root, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.permissions.push('network:fetch')
+    manifest.credentials = [{ key: 'wegame', label: 'WeGame API Key' }]
+    manifest.apis = {
+      games: {
+        type: 'http',
+        access: 'public',
+        endpoint: 'https://api.example.com/games/{{params.id}}',
+        credential: {
+          key: 'wegame',
+          header: 'Authorization',
+          prefix: 'Bearer ',
+        },
+      },
+    }
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const report = await inspectProject(root)
+    assert.deepEqual(
+      report.diagnostics.filter(({ code }) => code.includes('credential')),
+      [],
+    )
+  })
+
+  it('rejects credential bindings with a templated destination host', async () => {
+    const root = await temporaryDirectory('api-credential-host')
+    await createProject(root, { type: 'page' })
+    const manifestPath = join(root, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.permissions.push('network:fetch')
+    manifest.credentials = [{ key: 'wegame', label: 'WeGame API Key' }]
+    manifest.apis = {
+      games: {
+        type: 'http',
+        endpoint: 'https://{{params.host}}/games',
+        credential: { key: 'wegame', header: 'X-Api-Key' },
+      },
+    }
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const report = await inspectProject(root)
+    assert.ok(
+      report.diagnostics.some(
+        ({ code, message }) =>
+          code === 'invalid-api-credential' && message.includes('fixed absolute HTTPS'),
+      ),
+    )
+  })
+
+  it('rejects credentials that reuse a public setting key', async () => {
+    const root = await temporaryDirectory('credential-setting-conflict')
+    await createProject(root, { type: 'page' })
+    const manifestPath = join(root, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.permissions.push('network:fetch')
+    manifest.settings = [{ key: 'wegame', label: 'Legacy public key', type: 'input' }]
+    manifest.credentials = [{ key: 'wegame', label: 'WeGame API Key' }]
+    manifest.apis = {
+      games: {
+        type: 'http',
+        endpoint: 'https://api.example.com/games',
+        credential: { key: 'wegame', header: 'X-Api-Key' },
+      },
+    }
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const report = await inspectProject(root)
+    assert.ok(
+      report.diagnostics.some(
+        ({ code }) => code === 'credential-setting-conflict',
+      ),
+    )
+  })
+
+  it('aligns credential binding diagnostics with installer constraints', async () => {
+    const root = await temporaryDirectory('api-credential-constraints')
+    await createProject(root, { type: 'page' })
+    const manifestPath = join(root, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.permissions.push('network:fetch')
+    manifest.credentials = [
+      { key: 'wegame', label: 'WeGame API Key' },
+      { key: 'unused', label: 'Unused Key' },
+      { key: 'unicodePrefix', label: 'Unicode Prefix' },
+    ]
+    manifest.apis = {
+      duplicate: {
+        type: 'http',
+        endpoint: 'https://api.example.com/games',
+        headers: { authorization: 'literal' },
+        credential: { key: 'wegame', header: 'Authorization' },
+      },
+      forbidden: {
+        type: 'http',
+        endpoint: 'https://api.example.com/games',
+        credential: { key: 'missing', header: 'Host' },
+      },
+      oversizedPrefix: {
+        type: 'http',
+        endpoint: 'https://api.example.com/games',
+        credential: {
+          key: 'unicodePrefix',
+          header: 'X-Api-Key',
+          prefix: '密'.repeat(100),
+        },
+      },
+    }
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const report = await inspectProject(root)
+    const messages = report.diagnostics
+      .filter(({ code }) => code.includes('credential'))
+      .map(({ message }) => message)
+      .join('\n')
+    assert.match(messages, /declares its credential header twice/)
+    assert.match(messages, /references an undeclared credential/)
+    assert.match(messages, /credential header is invalid or forbidden/)
+    assert.match(messages, /credential prefix is invalid/)
+    assert.match(messages, /Credential unused must be bound/)
+  })
+
+  it('rejects invalid declared API body mode shapes', async () => {
+    const root = await temporaryDirectory('invalid-http-body-modes')
+    await createProject(root, { type: 'page' })
+    const manifestPath = join(root, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.permissions.push('network:fetch')
+    manifest.apis = {
+      unknown: {
+        type: 'http',
+        endpoint: 'https://example.com/unknown',
+        method: 'POST',
+        bodyMode: 'binary',
+        body: 'payload',
+      },
+      rawGet: {
+        type: 'http',
+        endpoint: 'https://example.com/raw',
+        method: 'GET',
+        bodyMode: 'raw',
+        body: 'payload',
+      },
+      rawObject: {
+        type: 'http',
+        endpoint: 'https://example.com/raw',
+        method: 'POST',
+        bodyMode: 'raw',
+        body: { payload: true },
+      },
+      formNested: {
+        type: 'http',
+        endpoint: 'https://example.com/form',
+        method: 'POST',
+        bodyMode: 'form',
+        body: { scopes: ['read', 'write'] },
+      },
+    }
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const report = await inspectProject(root)
+    const messages = report.diagnostics
+      .filter(({ code }) => code === 'invalid-api')
+      .map(({ message }) => message)
+      .join('\n')
+    assert.match(messages, /API unknown bodyMode/)
+    assert.match(messages, /API rawGet bodyMode raw requires/)
+    assert.match(messages, /API rawObject raw body must be a string/)
+    assert.match(messages, /API formNested form body fields must be scalar/)
+  })
+
+  it('treats bodyMode as HTTP-only for builtin APIs', async () => {
+    const root = await temporaryDirectory('builtin-http-body-mode')
+    await createProject(root, { type: 'page' })
+    const manifestPath = join(root, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.apis = {
+      geo: {
+        type: 'builtin',
+        builtin: 'geo',
+        bodyMode: 'json',
+      },
+    }
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const report = await inspectProject(root)
+    const messages = report.diagnostics
+      .filter(({ code }) => code === 'invalid-api')
+      .map(({ message }) => message)
+      .join('\n')
+    assert.match(messages, /Builtin API geo contains HTTP-only fields/)
   })
 
   it('rejects manifests over the manifest byte limit', async () => {

@@ -131,9 +131,35 @@
     "TappApiAccess": {
       "enum": [
         "public",
-        "protected"
+        "protected",
+        "manager"
       ],
       "type": "string"
+    },
+    "TappApiCredentialBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "header": {
+          "description": "Fixed outbound request header that receives the credential.",
+          "type": "string"
+        },
+        "key": {
+          "description": "Key from top-level `manifest.credentials`.",
+          "type": "string"
+        },
+        "prefix": {
+          "description": "Optional literal prefix such as `Bearer `.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "header"
+      ],
+      "type": "object"
     },
     "TappApiDef": {
       "additionalProperties": false,
@@ -143,6 +169,10 @@
           "default": "protected"
         },
         "body": true,
+        "bodyMode": {
+          "$ref": "#/$defs/TappHttpBodyMode",
+          "default": "json"
+        },
         "builtin": {
           "type": [
             "string",
@@ -154,6 +184,17 @@
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
+        },
+        "credential": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TappApiCredentialBinding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Host-only credential binding. The value is never added to the template\ncontext or returned to sandbox JavaScript."
         },
         "description": {
           "type": [
@@ -250,6 +291,34 @@
       ],
       "type": "string"
     },
+    "TappCredentialDef": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "placeholder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "key",
+        "label"
+      ],
+      "type": "object"
+    },
     "TappDataExchangeManifest": {
       "additionalProperties": false,
       "properties": {
@@ -343,6 +412,14 @@
         }
       },
       "type": "object"
+    },
+    "TappHttpBodyMode": {
+      "enum": [
+        "json",
+        "raw",
+        "form"
+      ],
+      "type": "string"
     },
     "TappManifestLocaleEntry": {
       "additionalProperties": false,
@@ -633,6 +710,16 @@
         {
           "type": "null"
         }
+      ]
+    },
+    "credentials": {
+      "description": "Installation-level write-only credentials. Values are stored by the host\nand may only be attached to explicitly bound declared HTTP APIs.",
+      "items": {
+        "$ref": "#/$defs/TappCredentialDef"
+      },
+      "type": [
+        "array",
+        "null"
       ]
     },
     "cssMode": {

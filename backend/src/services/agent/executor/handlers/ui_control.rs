@@ -4,9 +4,7 @@
 //! HTML/JS 解析、路由/窗口/音乐纯规则见 [`crate::services::agent::ui_analysis`]。
 
 use super::HandlerContext;
-use crate::models::entities::{
-    tapp_scheduled_tasks, tapp_storage, tapp_task_executions, tapp_widgets, tapps,
-};
+use crate::models::entities::{tapp_scheduled_tasks, tapp_task_executions, tapp_widgets, tapps};
 use crate::services::agent::ui_analysis::{
     build_breadcrumb, build_navigate_full_path, detect_page_type, extract_json_from_response,
     extract_route_context, generate_suggested_actions, get_page_name, is_safe_agent_tapp_id,
@@ -15,6 +13,7 @@ use crate::services::agent::ui_analysis::{
     parse_playlist_id_param, resolve_window_close_target, resolve_window_focus_target,
     router_can_go_back,
 };
+use crate::services::tapp_storage::{sandbox_storage_count, sandbox_storage_entries};
 use sea_orm::{ColumnTrait, EntityTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -342,8 +341,7 @@ pub(super) async fn execute_tapp_page_content(
             let admin_id = crate::services::tapp_ownership::get_admin_user_id(ctx.db)
                 .await
                 .map_err(|err| err.to_string())?;
-            let is_admin =
-                crate::services::agent::user_is_current_admin(ctx.db, user_id).await;
+            let is_admin = crate::services::agent::user_is_current_admin(ctx.db, user_id).await;
             if !is_admin {
                 query = query.filter(
                     tapps::Column::UserId
@@ -445,10 +443,7 @@ pub(super) async fn execute_tapp_page_content(
                 .unwrap_or(0);
 
             // 获取存储数量
-            let storage_count = tapp_storage::Entity::find()
-                .filter(tapp_storage::Column::TappId.eq(tapp_id_str))
-                .filter(tapp_storage::Column::UserId.eq(user_id))
-                .count(ctx.db)
+            let storage_count = sandbox_storage_count(ctx.db, user_id, tapp_id_str)
                 .await
                 .unwrap_or(0);
 
@@ -567,15 +562,10 @@ pub(super) async fn execute_tapp_page_content(
             let tapp_id_str = tapp_id.ok_or("Missing tappId for storage level")?;
             find_accessible_tapp(ctx, tapp_id_str).await?;
 
-            let mut query =
-                tapp_storage::Entity::find().filter(tapp_storage::Column::TappId.eq(tapp_id_str));
-            query = query.filter(tapp_storage::Column::UserId.eq(user_id));
-
-            let storage_items = query
-                .order_by_desc(tapp_storage::Column::UpdatedAt)
-                .all(ctx.db)
+            let mut storage_items = sandbox_storage_entries(ctx.db, user_id, tapp_id_str)
                 .await
                 .map_err(|e| format!("Failed to fetch storage: {}", e))?;
+            storage_items.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
 
             let storage_list: Vec<Value> = storage_items
                 .iter()
@@ -1145,9 +1135,7 @@ async fn execute_music_status() -> Result<Value, String> {
 
 /// 加载并播放歌单
 async fn execute_music_playlist(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let playlist_id = params
-        .get("playlistId")
-        .and_then(parse_playlist_id_param);
+    let playlist_id = params.get("playlistId").and_then(parse_playlist_id_param);
     let playlist_id = match playlist_id {
         Some(id) => id,
         None => {

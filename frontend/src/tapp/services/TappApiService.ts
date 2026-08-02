@@ -82,6 +82,7 @@ import {
 
 export * from './TappAiApi'
 export * from './TappContextApi'
+export * from './TappCredentialApi'
 export * from './TappHostIntegrationApi'
 export * from './TappInstallationApi'
 export * from './TappInteractionApi'

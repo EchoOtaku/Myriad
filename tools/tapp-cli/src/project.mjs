@@ -49,6 +49,7 @@ const AI_MODEL_TIERS = new Set(schemaEnum('TappAiModelTier'))
 const AI_CONTEXT_SOURCES = new Set(schemaEnum('TappAiContextSource'))
 const AI_OUTPUT_FORMATS = new Set(schemaEnum('TappAiOutputFormat'))
 const API_ACCESS_LEVELS = new Set(schemaEnum('TappApiAccess'))
+const HTTP_BODY_MODES = new Set(schemaEnum('TappHttpBodyMode'))
 const API_PUBLIC_ACCESS = schemaEnum('TappApiAccess').find((value) => value === 'public')
 const API_BUILTINS = new Set(contract.rules.apiBuiltins)
 const API_TYPES = new Set(contract.rules.apiTypes)
@@ -66,6 +67,7 @@ const DEFAULT_API_TYPE = contract.rules.defaultApiType
 const HTTP_API_TYPE = contract.rules.httpApiType
 const BUILTIN_API_TYPE = contract.rules.builtinApiType
 const DEFAULT_HTTP_METHOD = contract.rules.defaultHttpMethod
+const DEFAULT_HTTP_BODY_MODE = contract.rules.defaultHttpBodyMode
 const WIDGET_REFRESH_EVENT_MODE = contract.rules.widgetRefreshModes.event
 const WIDGET_REFRESH_INTERVAL_MODE = contract.rules.widgetRefreshModes.interval
 
@@ -77,6 +79,9 @@ const STORAGE_KEY = new RegExp(contract.patterns.storageKey)
 const THEME_COLOR = new RegExp(contract.patterns.themeColor)
 // Fixed allow-list enforced identically by the backend installer.
 const HTTP_METHODS = new Set(contract.rules.httpMethods)
+const HTTP_BODY_METHODS = new Set(contract.rules.httpBodyMethods)
+const FORBIDDEN_OUTBOUND_HEADERS = new Set(contract.rules.forbiddenOutboundHeaders)
+const HTTP_HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/
 const REQUIRED_MANIFEST_FIELDS = new Set([
   ...contract.schema.required,
   ...contract.rules.requiredManifestFields,
@@ -693,6 +698,53 @@ function validateManifest(manifest, diagnostics, requiredPermissions) {
   }
 
   if (manifest.settings !== undefined) validateSettings(manifest.settings, 'settings', diagnostics)
+  const settingKeys = new Set(
+    Array.isArray(manifest.settings)
+      ? manifest.settings
+          .map((setting) => setting?.key)
+          .filter((key) => typeof key === 'string')
+      : [],
+  )
+
+  const credentialKeys = new Set()
+  const boundCredentialKeys = new Set()
+  if (manifest.credentials !== undefined) {
+    if (!Array.isArray(manifest.credentials)) {
+      diagnostics.push(diagnostic('error', 'invalid-credentials', 'credentials must be an array'))
+    } else {
+      if (manifest.credentials.length > contract.limits.tappCredentials) {
+        diagnostics.push(diagnostic('error', 'invalid-credentials', `credentials accepts at most ${contract.limits.tappCredentials} entries`))
+      }
+      for (const [index, credential] of manifest.credentials.entries()) {
+        const path = `credentials[${index}]`
+        if (!validateFields(credential, schemaFields('TappCredentialDef'), path, diagnostics)) {
+          diagnostics.push(diagnostic('error', 'invalid-credential', `${path} must be an object`))
+          continue
+        }
+        if (
+          !isNamedValue(credential.key) ||
+          credential.key.length > contract.limits.credentialKeyLength ||
+          credentialKeys.has(credential.key)
+        ) {
+          diagnostics.push(diagnostic('error', 'invalid-credential', `${path}.key is invalid or duplicated`))
+        } else {
+          credentialKeys.add(credential.key)
+        }
+        if (settingKeys.has(credential.key)) {
+          diagnostics.push(diagnostic('error', 'credential-setting-conflict', `${path}.key conflicts with public settings`))
+        }
+        if (typeof credential.label !== 'string' || !credential.label.trim() || Buffer.byteLength(credential.label) > contract.limits.settingLabelLength) {
+          diagnostics.push(diagnostic('error', 'invalid-credential', `${path}.label is invalid`))
+        }
+        if (credential.description !== undefined && (typeof credential.description !== 'string' || Buffer.byteLength(credential.description) > contract.limits.tappDescriptionLength)) {
+          diagnostics.push(diagnostic('error', 'invalid-credential', `${path}.description is invalid`))
+        }
+        if (credential.placeholder !== undefined && (typeof credential.placeholder !== 'string' || Buffer.byteLength(credential.placeholder) > contract.limits.settingLabelLength)) {
+          diagnostics.push(diagnostic('error', 'invalid-credential', `${path}.placeholder is invalid`))
+        }
+      }
+    }
+  }
 
   if (manifest.pageModules !== undefined) {
     if (
@@ -803,6 +855,10 @@ function validateManifest(manifest, diagnostics, requiredPermissions) {
       if (typeof method !== 'string' || !HTTP_METHODS.has(method)) {
         diagnostics.push(diagnostic('error', 'invalid-api', `API ${name} HTTP method must be one of: ${contract.rules.httpMethods.join(', ')}`))
       }
+      const bodyMode = definition.bodyMode || DEFAULT_HTTP_BODY_MODE
+      if (typeof bodyMode !== 'string' || !HTTP_BODY_MODES.has(bodyMode)) {
+        diagnostics.push(diagnostic('error', 'invalid-api', `API ${name} bodyMode must be one of: ${[...HTTP_BODY_MODES].join(', ')}`))
+      }
       if (definition.inject !== undefined && !isObject(definition.inject)) {
         diagnostics.push(diagnostic('error', 'invalid-api', `API ${name} inject must be an object`))
       } else if (definition.inject) {
@@ -840,6 +896,50 @@ function validateManifest(manifest, diagnostics, requiredPermissions) {
         if (definition.builtin !== undefined) {
           diagnostics.push(diagnostic('error', 'invalid-api', `HTTP API ${name} cannot declare builtin`))
         }
+        if (definition.credential !== undefined) {
+          const bindingPath = `apis.${name}.credential`
+          if (!validateFields(definition.credential, schemaFields('TappApiCredentialBinding'), bindingPath, diagnostics)) {
+            diagnostics.push(diagnostic('error', 'invalid-api-credential', `${bindingPath} must be an object`))
+          } else {
+            const binding = definition.credential
+            if (typeof binding.key !== 'string' || !credentialKeys.has(binding.key)) {
+              diagnostics.push(diagnostic('error', 'invalid-api-credential', `API ${name} references an undeclared credential`))
+            } else {
+              boundCredentialKeys.add(binding.key)
+            }
+            const header = typeof binding.header === 'string' ? binding.header.toLowerCase() : ''
+            if (!HTTP_HEADER_NAME.test(binding.header || '') || FORBIDDEN_OUTBOUND_HEADERS.has(header)) {
+              diagnostics.push(diagnostic('error', 'invalid-api-credential', `API ${name} credential header is invalid or forbidden`))
+            }
+            if (binding.prefix !== undefined && (typeof binding.prefix !== 'string' || Buffer.byteLength(binding.prefix) > contract.limits.credentialHeaderPrefixLength)) {
+              diagnostics.push(diagnostic('error', 'invalid-api-credential', `API ${name} credential prefix is invalid`))
+            }
+            if (isObject(definition.headers) && Object.keys(definition.headers).some((declared) => declared.toLowerCase() === header)) {
+              diagnostics.push(diagnostic('error', 'invalid-api-credential', `API ${name} declares its credential header twice`))
+            }
+            try {
+              const endpoint = new URL(definition.endpoint)
+              if (endpoint.protocol !== 'https:' || !endpoint.hostname || endpoint.username || endpoint.password || endpoint.hostname.includes('{') || endpoint.hostname.includes('}')) {
+                throw new Error('invalid credential origin')
+              }
+            } catch {
+              diagnostics.push(diagnostic('error', 'invalid-api-credential', `API ${name} credential requires a fixed absolute HTTPS origin`))
+            }
+          }
+        }
+        if (bodyMode === 'raw' || bodyMode === 'form') {
+          if (!HTTP_BODY_METHODS.has(method)) {
+            diagnostics.push(diagnostic('error', 'invalid-api', `HTTP API ${name} bodyMode ${bodyMode} requires one of: ${contract.rules.httpBodyMethods.join(', ')}`))
+          }
+          if (bodyMode === 'raw' && typeof definition.body !== 'string') {
+            diagnostics.push(diagnostic('error', 'invalid-api', `HTTP API ${name} raw body must be a string template`))
+          }
+          if (bodyMode === 'form' && !isObject(definition.body)) {
+            diagnostics.push(diagnostic('error', 'invalid-api', `HTTP API ${name} form body must be an object`))
+          } else if (bodyMode === 'form' && Object.values(definition.body).some((value) => value !== null && !['string', 'number', 'boolean'].includes(typeof value))) {
+            diagnostics.push(diagnostic('error', 'invalid-api', `HTTP API ${name} form body fields must be scalar values`))
+          }
+        }
       } else if (type === BUILTIN_API_TYPE) {
         if (!API_BUILTINS.has(definition.builtin)) {
           diagnostics.push(
@@ -865,6 +965,12 @@ function validateManifest(manifest, diagnostics, requiredPermissions) {
           diagnostic('error', 'invalid-api', `API ${name} type must be one of: ${contract.rules.apiTypes.join(', ')}`),
         )
       }
+    }
+  }
+
+  for (const key of credentialKeys) {
+    if (!boundCredentialKeys.has(key)) {
+      diagnostics.push(diagnostic('error', 'invalid-credential', `Credential ${key} must be bound to at least one declared HTTP API`))
     }
   }
 

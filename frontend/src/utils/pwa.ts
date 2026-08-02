@@ -6,7 +6,9 @@
  *
  * Install icons are composed at runtime from `site_favicon` (site logo):
  * white canvas background (transparent logos), contained logo with controllable
- * scale, 192/512 + maskable PNGs as blob URLs.
+ * scale, 192/512 + maskable PNGs as **data:** URLs (not blob:). Chrome's
+ * installability pipeline cannot fetch page-scoped blob: icon URLs, which made
+ * the install affordance appear then vanish after branding.
  */
 
 import { API_URL } from '../config'
@@ -32,9 +34,7 @@ const MASKABLE_SAFE_ZONE = 0.8
 let lastAppliedEnabled: boolean | null = null
 let applyInFlight: Promise<void> | null = null
 let brandingGeneration = 0
-/** Blob URLs created for composed icons; revoked on next rebrand. */
-let brandedIconBlobUrls: string[] = []
-/** Last composed apple-touch href (blob or static); kept across SW re-apply. */
+/** Last composed apple-touch href (data: or static); kept across SW re-apply. */
 let lastAppleTouchHref: string | null = null
 /** Last branding payload so re-enabling PWA can rebuild icons without a full reload. */
 let lastBrandingOptions: {
@@ -173,14 +173,21 @@ function setInstallAppTitle(title: string): void {
  * Resolve a manifest URL field against the document origin.
  * Blob-served manifests treat relative paths as invalid (they resolve against
  * `blob:https://host/uuid` rather than the site origin).
+ *
+ * `data:` and `blob:` icons are already absolute — leave them unchanged.
+ * Prefer `data:` for install icons; `blob:` icons break Chrome installability.
  */
 export function resolveManifestUrl(
   value: unknown,
   origin: string,
 ): string | undefined {
   if (typeof value !== 'string' || !value.trim()) return undefined
+  const trimmed = value.trim()
+  if (trimmed.startsWith('data:') || trimmed.startsWith('blob:')) {
+    return trimmed
+  }
   try {
-    return new URL(value, origin).href
+    return new URL(trimmed, origin).href
   } catch {
     return undefined
   }
@@ -306,35 +313,165 @@ export function resolvePwaIconSourceUrl(
   }
 }
 
-function loadImageForCanvas(src: string): Promise<HTMLImageElement> {
+type DrawableImage = CanvasImageSource & {
+  width: number
+  height: number
+}
+
+/**
+ * Load a logo for canvas draw. Prefer fetch + createImageBitmap (better ICO /
+ * odd MIME handling); fall back to HTMLImageElement.
+ */
+async function loadImageForCanvas(src: string): Promise<DrawableImage> {
+  const fail = (reason: string) =>
+    new Error(`[PWA] failed to load icon source (${reason}): ${src.slice(0, 120)}`)
+
+  // Same-origin proxy / data: — fetch avoids partial Image() ICO failures.
+  if (!src.startsWith('blob:')) {
+    try {
+      const response = await fetch(src, {
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'force-cache',
+      })
+      if (!response.ok) {
+        throw fail(`HTTP ${response.status}`)
+      }
+      const blob = await response.blob()
+      if (blob.size < 16) {
+        throw fail('empty body')
+      }
+      if (typeof createImageBitmap === 'function') {
+        try {
+          const bitmap = await createImageBitmap(blob)
+          if (bitmap.width > 0 && bitmap.height > 0) {
+            return bitmap
+          }
+          bitmap.close()
+        } catch {
+          /* try Image() below with object URL */
+        }
+      }
+      const objectUrl = URL.createObjectURL(blob)
+      try {
+        return await loadHtmlImage(objectUrl)
+      } finally {
+        try {
+          URL.revokeObjectURL(objectUrl)
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch (error) {
+      // Fall through to direct Image() for data: or when fetch is blocked.
+      if (src.startsWith('data:')) {
+        return loadHtmlImage(src)
+      }
+      // Last attempt: Image with crossOrigin (proxy may still work).
+      try {
+        return await loadHtmlImage(src, true)
+      } catch {
+        throw error instanceof Error ? error : fail(String(error))
+      }
+    }
+  }
+
+  return loadHtmlImage(src, !src.startsWith('data:'))
+}
+
+function loadHtmlImage(
+  src: string,
+  crossOrigin = false,
+): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image()
-    // Needed so canvas is not tainted for same-origin proxy / cross-origin CORS.
-    if (!src.startsWith('data:')) {
+    if (crossOrigin && !src.startsWith('data:')) {
       img.crossOrigin = 'anonymous'
     }
-    img.onload = () => resolve(img)
+    img.onload = () => {
+      if ((img.naturalWidth || img.width) <= 0) {
+        reject(new Error('[PWA] icon decoded with zero size'))
+        return
+      }
+      resolve(img)
+    }
     img.onerror = () =>
-      reject(new Error(`[PWA] failed to load icon source: ${src.slice(0, 120)}`))
+      reject(
+        new Error(`[PWA] failed to load icon source: ${src.slice(0, 120)}`),
+      )
     img.src = src
   })
 }
 
-function canvasToPngBlobUrl(canvas: HTMLCanvasElement): Promise<string> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => {
-      if (!blob) {
-        reject(new Error('[PWA] canvas.toBlob returned null'))
-        return
-      }
-      resolve(URL.createObjectURL(blob))
-    }, 'image/png')
-  })
+function sourcePixelSize(img: DrawableImage): { width: number; height: number } {
+  if (img instanceof HTMLImageElement) {
+    return {
+      width: img.naturalWidth || img.width,
+      height: img.naturalHeight || img.height,
+    }
+  }
+  return { width: img.width, height: img.height }
+}
+
+/**
+ * Export canvas as a PNG data URL for web-app-manifest icons.
+ * data: is self-contained and installable; blob: is not (out-of-process fetch).
+ */
+export function canvasToPngDataUrl(canvas: HTMLCanvasElement): string {
+  let dataUrl: string
+  try {
+    dataUrl = canvas.toDataURL('image/png')
+  } catch (error) {
+    throw new Error(
+      `[PWA] canvas.toDataURL failed (tainted canvas?): ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    )
+  }
+  if (!dataUrl.startsWith('data:image/png')) {
+    throw new Error('[PWA] canvas.toDataURL did not return image/png data URL')
+  }
+  // Reject near-empty exports (encode failure / fully transparent glitch).
+  if (dataUrl.length < 64) {
+    throw new Error('[PWA] composed PNG data URL is too small')
+  }
+  return dataUrl
+}
+
+/**
+ * Draw a loaded logo onto a square canvas and export PNG data URL.
+ */
+function renderLogoToPngDataUrl(
+  img: DrawableImage,
+  size: number,
+  logoScale: number,
+  background: string,
+): string {
+  const canvasSize = Math.max(16, Math.floor(size))
+  const canvas = document.createElement('canvas')
+  canvas.width = canvasSize
+  canvas.height = canvasSize
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('[PWA] 2d context unavailable')
+
+  ctx.fillStyle = background.trim() || PWA_ICON_BACKGROUND
+  ctx.fillRect(0, 0, canvasSize, canvasSize)
+
+  const pixels = sourcePixelSize(img)
+  const rect = computeContainedLogoRect(
+    pixels.width,
+    pixels.height,
+    canvasSize,
+    logoScale,
+  )
+  ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height)
+
+  return canvasToPngDataUrl(canvas)
 }
 
 /**
  * Compose one square PWA PNG: solid background + contained site logo.
- * Returns a blob: URL (caller owns revoke).
+ * Returns a data:image/png URL safe for web app manifest installability.
  */
 export async function composePwaIconPng(options: {
   sourceUrl: string
@@ -346,7 +483,6 @@ export async function composePwaIconPng(options: {
   origin?: string
   apiBase?: string
 }): Promise<string> {
-  const size = Math.max(16, Math.floor(options.size))
   const origin =
     options.origin ||
     (typeof window !== 'undefined' ? window.location.origin : 'http://localhost')
@@ -356,35 +492,18 @@ export async function composePwaIconPng(options: {
     options.apiBase ?? API_URL ?? '',
   )
   const img = await loadImageForCanvas(fetchUrl)
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('[PWA] 2d context unavailable')
-
-  ctx.fillStyle = options.background?.trim() || PWA_ICON_BACKGROUND
-  ctx.fillRect(0, 0, size, size)
-
-  const rect = computeContainedLogoRect(
-    img.naturalWidth || img.width,
-    img.naturalHeight || img.height,
-    size,
-    options.logoScale ?? DEFAULT_PWA_LOGO_SCALE,
-  )
-  ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height)
-
-  return canvasToPngBlobUrl(canvas)
-}
-
-function revokeBrandedIconBlobs(): void {
-  for (const url of brandedIconBlobUrls) {
-    try {
-      URL.revokeObjectURL(url)
-    } catch {
-      /* ignore */
+  try {
+    return renderLogoToPngDataUrl(
+      img,
+      options.size,
+      options.logoScale ?? DEFAULT_PWA_LOGO_SCALE,
+      options.background?.trim() || PWA_ICON_BACKGROUND,
+    )
+  } finally {
+    if (typeof ImageBitmap !== 'undefined' && img instanceof ImageBitmap) {
+      img.close()
     }
   }
-  brandedIconBlobUrls = []
 }
 
 async function composeBrandedIconSet(options: {
@@ -395,31 +514,31 @@ async function composeBrandedIconSet(options: {
 }): Promise<{
   icons: ManifestIcon[]
   appleTouch: string
-  blobUrls: string[]
 } | null> {
+  let img: DrawableImage | null = null
   try {
     const scale = clampPwaLogoScale(options.logoScale)
     const maskableScale = clampPwaLogoScale(scale * MASKABLE_SAFE_ZONE)
     const bg = options.background.trim() || PWA_ICON_BACKGROUND
-    const common = {
-      sourceUrl: options.iconUrl,
-      background: bg,
-      origin: options.origin,
-      apiBase: API_URL || '',
+    const fetchUrl = resolvePwaIconSourceUrl(
+      options.iconUrl,
+      options.origin,
+      API_URL || '',
+    )
+    // Decode once — reuse for 192 / 512 / maskable (ICO + proxy more reliable).
+    img = await loadImageForCanvas(fetchUrl)
+
+    const icon192 = renderLogoToPngDataUrl(img, 192, scale, bg)
+    const icon512 = renderLogoToPngDataUrl(img, 512, scale, bg)
+    const maskable512 = renderLogoToPngDataUrl(img, 512, maskableScale, bg)
+
+    for (const src of [icon192, icon512, maskable512]) {
+      if (!src.startsWith('data:image/png')) {
+        throw new Error('[PWA] composed icon is not a PNG data URL')
+      }
     }
 
-    const [icon192, icon512, maskable512] = await Promise.all([
-      composePwaIconPng({ ...common, size: 192, logoScale: scale }),
-      composePwaIconPng({ ...common, size: 512, logoScale: scale }),
-      composePwaIconPng({
-        ...common,
-        size: 512,
-        logoScale: maskableScale,
-      }),
-    ])
-
     return {
-      blobUrls: [icon192, icon512, maskable512],
       appleTouch: icon192,
       icons: [
         {
@@ -445,18 +564,24 @@ async function composeBrandedIconSet(options: {
   } catch (error) {
     console.warn('[PWA] site logo icon compose failed; using static icons', error)
     return null
+  } finally {
+    if (
+      img &&
+      typeof ImageBitmap !== 'undefined' &&
+      img instanceof ImageBitmap
+    ) {
+      img.close()
+    }
   }
 }
 
 /**
  * Update manifest name/short_name/icons from site branding when possible.
- * Uses a blob URL so we don't need a dynamic backend endpoint.
+ * Manifest document is served as a blob: URL (no backend endpoint). Icons use
+ * **data:** PNG URLs so Chrome installability still holds after branding.
  *
- * Important: all URL fields must be absolute — relative paths are invalid when
- * the manifest is loaded from `blob:https://host/uuid`.
- *
- * Icons: when `iconUrl` (site favicon/logo) is set, compose 192/512 PNGs on a
- * white background with controllable `logoScale` (default 0.8).
+ * Relative start_url / scope / id / static icon paths are absolutized — blob
+ * manifests resolve relative URLs against `blob:https://host/uuid`.
  */
 export function updateManifestBranding(options: {
   name?: string
@@ -514,7 +639,6 @@ export function updateManifestBranding(options: {
           : {}),
       }
 
-      let composedBlobs: string[] = []
       if (iconUrl) {
         const composed = await composeBrandedIconSet({
           iconUrl,
@@ -522,27 +646,14 @@ export function updateManifestBranding(options: {
           background: iconBackground,
           origin,
         })
-        if (gen !== brandingGeneration) {
-          // Superseded — drop any blobs we just made.
-          if (composed) {
-            for (const u of composed.blobUrls) {
-              try {
-                URL.revokeObjectURL(u)
-              } catch {
-                /* ignore */
-              }
-            }
-          }
-          return
-        }
+        if (gen !== brandingGeneration) return
         if (composed) {
           branded.icons = composed.icons
-          composedBlobs = composed.blobUrls
           setAppleTouchIconHref(composed.appleTouch)
         }
       }
 
-      // Blob icon src is already absolute; still normalize start_url/scope/id.
+      // data: icons pass through; HTTPS static icons are absolutized.
       const next = absolutizeManifestUrls(branded, origin)
       const blob = new Blob([JSON.stringify(next)], {
         type: 'application/manifest+json',
@@ -563,10 +674,6 @@ export function updateManifestBranding(options: {
           /* ignore */
         }
       }
-
-      // Replace tracked icon blobs after the new manifest is linked.
-      revokeBrandedIconBlobs()
-      brandedIconBlobUrls = composedBlobs
     } catch {
       /* keep static manifest */
     }
@@ -653,7 +760,6 @@ export async function applyPwaEnabled(enabled: boolean): Promise<void> {
     } else {
       await unregisterAllServiceWorkers()
       await clearMyriadCaches()
-      revokeBrandedIconBlobs()
       lastAppleTouchHref = null
     }
   }

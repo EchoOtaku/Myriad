@@ -1,10 +1,13 @@
-//! Pure library item models and platform list builders used by profile HTTP.
+//! Library item models, paging, platform builders, and short-lived assembly cache.
 //!
-//! Keep DB I/O in the API layer; this module only shapes JSON → LibraryItem.
+//! Keep DB I/O in the API layer; this module shapes and caches LibraryItem values.
 
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 use crate::services::image_proxy_urls::proxy_image_url;
 
@@ -19,12 +22,62 @@ pub struct LibraryItem {
     pub metadata: Value,
 }
 
+pub type CachedLibraryItems = Arc<Vec<LibraryItem>>;
+
+struct LibraryAssemblyCache {
+    user_id: i32,
+    cached_at: Instant,
+    items: CachedLibraryItems,
+}
+
+static LIBRARY_ASSEMBLY_CACHE: Lazy<RwLock<Option<LibraryAssemblyCache>>> =
+    Lazy::new(|| RwLock::new(None));
+const LIBRARY_ASSEMBLY_CACHE_TTL: Duration = Duration::from_secs(30);
+
+pub fn cached_library_items(user_id: i32) -> Option<CachedLibraryItems> {
+    let cache = LIBRARY_ASSEMBLY_CACHE
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    cache.as_ref().and_then(|entry| {
+        (entry.user_id == user_id && entry.cached_at.elapsed() < LIBRARY_ASSEMBLY_CACHE_TTL)
+            .then(|| Arc::clone(&entry.items))
+    })
+}
+
+pub fn store_library_items(user_id: i32, items: Vec<LibraryItem>) -> CachedLibraryItems {
+    let items = Arc::new(items);
+    *LIBRARY_ASSEMBLY_CACHE
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(LibraryAssemblyCache {
+        user_id,
+        cached_at: Instant::now(),
+        items: Arc::clone(&items),
+    });
+    items
+}
+
+pub fn invalidate_library_assembly_cache() {
+    *LIBRARY_ASSEMBLY_CACHE
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+}
+
 pub const LIBRARY_SOURCE_PREFERENCES_KEY: &str = "library_source_preferences";
 pub const LIBRARY_ITEM_TYPES: [&str; 6] = ["game", "video", "music", "anime", "tv_series", "book"];
 pub const LIBRARY_PLATFORMS: [&str; 5] = ["Steam", "Bilibili", "Bangumi", "Netease", "MyAnimeList"];
 
+#[derive(Debug, Default, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LibraryLayout {
+    #[default]
+    List,
+    Canvas,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LibrarySourcePreferences {
+    #[serde(default)]
+    pub layout: LibraryLayout,
     #[serde(default = "default_library_source_categories")]
     pub categories: HashMap<String, Vec<String>>,
 }
@@ -71,6 +124,7 @@ pub fn default_library_source_categories() -> HashMap<String, Vec<String>> {
 impl Default for LibrarySourcePreferences {
     fn default() -> Self {
         Self {
+            layout: LibraryLayout::default(),
             categories: default_library_source_categories(),
         }
     }
@@ -187,6 +241,71 @@ pub fn apply_library_source_preferences(
         .into_iter()
         .filter(|item| preferences.source_enabled(&item.item_type, &item.platform))
         .collect()
+}
+
+#[derive(Debug)]
+pub struct LibraryPage {
+    pub items: Vec<LibraryItem>,
+    pub total: usize,
+    pub returned: usize,
+    pub offset: usize,
+    pub limit: Option<usize>,
+    pub has_more: bool,
+    pub next_offset: Option<usize>,
+}
+
+/// Filter by item type before slicing, so a typed page can never become a false empty state.
+pub fn paginate_library_items(
+    items: &[LibraryItem],
+    preferences: Option<&LibrarySourcePreferences>,
+    item_type: Option<&str>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+) -> Result<LibraryPage, &'static str> {
+    if let Some(item_type) = item_type {
+        if !LIBRARY_ITEM_TYPES.contains(&item_type) {
+            return Err("Invalid library item type");
+        }
+    }
+
+    let filtered = items
+        .iter()
+        .filter(|item| {
+            preferences
+                .map(|preferences| preferences.source_enabled(&item.item_type, &item.platform))
+                .unwrap_or(true)
+        })
+        .filter(|item| {
+            item_type
+                .map(|item_type| item.item_type == item_type)
+                .unwrap_or(true)
+        })
+        .collect::<Vec<_>>();
+    let total = filtered.len();
+    let offset = offset.unwrap_or(0).min(total);
+    let limit = limit.map(|limit| limit.clamp(1, 200));
+    let items: Vec<LibraryItem> = match limit {
+        Some(limit) => filtered
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .cloned()
+            .collect(),
+        None => filtered.into_iter().cloned().collect(),
+    };
+    let returned = items.len();
+    let next = offset + returned;
+    let has_more = limit.is_some() && next < total;
+
+    Ok(LibraryPage {
+        items,
+        total,
+        returned,
+        offset,
+        limit,
+        has_more,
+        next_offset: has_more.then_some(next),
+    })
 }
 
 /// Canonical library type for Bangumi subject type codes.
@@ -488,10 +607,69 @@ mod tests {
         ];
         let prefs = LibrarySourcePreferences {
             categories: HashMap::from([("game".into(), vec!["Steam".into()])]),
+            ..LibrarySourcePreferences::default()
         }
         .normalized();
         let filtered = apply_library_source_preferences(items, &prefs);
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].id, "1");
+    }
+
+    #[test]
+    fn typed_pagination_filters_before_slicing() {
+        let items: Vec<LibraryItem> = (0..500)
+            .map(|index| LibraryItem {
+                id: index.to_string(),
+                item_type: if index >= 470 { "music" } else { "game" }.into(),
+                title: index.to_string(),
+                cover: None,
+                platform: "Test".into(),
+                metadata: json!({}),
+            })
+            .collect();
+
+        let page = paginate_library_items(&items, None, Some("music"), Some(0), Some(20)).unwrap();
+        assert_eq!(page.total, 30);
+        assert_eq!(page.returned, 20);
+        assert!(page.items.iter().all(|item| item.item_type == "music"));
+        assert!(page.has_more);
+        assert_eq!(page.next_offset, Some(20));
+    }
+
+    #[test]
+    fn pagination_clamps_limit_and_rejects_unknown_type() {
+        let item = LibraryItem {
+            id: "1".into(),
+            item_type: "game".into(),
+            title: "A".into(),
+            cover: None,
+            platform: "Steam".into(),
+            metadata: json!({}),
+        };
+        let items = vec![item.clone()];
+        let page = paginate_library_items(&items, None, None, None, Some(999)).unwrap();
+        assert_eq!(page.limit, Some(200));
+        assert!(paginate_library_items(&[item], None, Some("unknown"), None, None).is_err());
+    }
+
+    #[test]
+    fn assembly_cache_reuses_arc_and_invalidates() {
+        invalidate_library_assembly_cache();
+        let cached = store_library_items(
+            42,
+            vec![LibraryItem {
+                id: "1".into(),
+                item_type: "game".into(),
+                title: "A".into(),
+                cover: None,
+                platform: "Steam".into(),
+                metadata: json!({}),
+            }],
+        );
+        let hit = cached_library_items(42).expect("cache hit");
+        assert!(Arc::ptr_eq(&cached, &hit));
+        assert!(cached_library_items(7).is_none());
+        invalidate_library_assembly_cache();
+        assert!(cached_library_items(42).is_none());
     }
 }

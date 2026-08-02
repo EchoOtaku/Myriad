@@ -4,18 +4,21 @@
 //! `crate::api::tapp_store`. HTTP handlers map [`TappStorageError`] to status codes.
 
 use sea_orm::{
-    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
-    FromQueryResult, QueryFilter, Statement, TransactionTrait,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, FromQueryResult, Statement,
+    TransactionTrait,
 };
 use serde_json::Value;
-
-use crate::models::entities::tapp_storage;
 
 /// Per-install soft quota for sandbox + host-managed keys combined.
 pub const TAPP_STORAGE_QUOTA_BYTES: i64 = 5 * 1024 * 1024;
 
-const HOST_STORAGE_KEY_PREFIXES: [&str; 4] =
-    ["_settings.", "_component:", "_shortcut:", "_report:"];
+const HOST_STORAGE_KEY_PREFIXES: [&str; 5] = [
+    "_settings.",
+    "_credentials.",
+    "_component:",
+    "_shortcut:",
+    "_report:",
+];
 
 /// Domain errors for storage validation and IO.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -195,9 +198,7 @@ pub fn validate_sandbox_storage_key(key: &str) -> Result<(), &'static str> {
         return Err("Key prefix is reserved for host-managed Tapp data");
     }
     if is_reserved_storage_route_key(key) {
-        return Err(
-            "Key is reserved for storage API routes (entries, usage); choose another name",
-        );
+        return Err("Key is reserved for storage API routes (entries, usage); choose another name");
     }
     Ok(())
 }
@@ -217,6 +218,90 @@ struct StorageBytesRow {
     bytes: i64,
 }
 
+#[derive(Debug, FromQueryResult)]
+pub struct SandboxStorageEntry {
+    pub id: i32,
+    pub key: String,
+    pub value: Value,
+    pub created_at: sea_orm::prelude::DateTimeWithTimeZone,
+    pub updated_at: sea_orm::prelude::DateTimeWithTimeZone,
+}
+
+/// SQL-level boundary for subject-private sandbox storage. Queries using this
+/// predicate never load host-managed records or their encrypted columns into
+/// the generic storage response path.
+const SANDBOX_STORAGE_PREDICATE_SQL: &str = r#"
+key <> '_settings'
+AND NOT starts_with(key, '_settings.')
+AND NOT starts_with(key, '_credentials.')
+AND NOT starts_with(key, '_component:')
+AND NOT starts_with(key, '_shortcut:')
+AND NOT starts_with(key, '_report:')
+"#;
+
+pub async fn sandbox_storage_entries(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    tapp_id: &str,
+) -> Result<Vec<SandboxStorageEntry>, TappStorageError> {
+    let sql = format!(
+        "SELECT id, key, value, created_at, updated_at FROM tapp_storage \
+         WHERE user_id = $1 AND tapp_id = $2 AND ({SANDBOX_STORAGE_PREDICATE_SQL}) \
+         ORDER BY id"
+    );
+    SandboxStorageEntry::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        sql,
+        vec![user_id.into(), tapp_id.into()],
+    ))
+    .all(db)
+    .await
+    .map_err(|_| TappStorageError::Database)
+}
+
+pub async fn sandbox_storage_count(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    tapp_id: &str,
+) -> Result<u64, TappStorageError> {
+    #[derive(FromQueryResult)]
+    struct CountRow {
+        count: i64,
+    }
+    let sql = format!(
+        "SELECT COUNT(*)::BIGINT AS count FROM tapp_storage \
+         WHERE user_id = $1 AND tapp_id = $2 AND ({SANDBOX_STORAGE_PREDICATE_SQL})"
+    );
+    CountRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        sql,
+        vec![user_id.into(), tapp_id.into()],
+    ))
+    .one(db)
+    .await
+    .map_err(|_| TappStorageError::Database)
+    .map(|row| row.map_or(0, |row| row.count.max(0) as u64))
+}
+
+pub async fn clear_sandbox_storage(
+    db: &impl ConnectionTrait,
+    user_id: i32,
+    tapp_id: &str,
+) -> Result<(), TappStorageError> {
+    let sql = format!(
+        "DELETE FROM tapp_storage \
+         WHERE user_id = $1 AND tapp_id = $2 AND ({SANDBOX_STORAGE_PREDICATE_SQL})"
+    );
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        sql,
+        vec![user_id.into(), tapp_id.into()],
+    ))
+    .await
+    .map_err(|_| TappStorageError::Database)?;
+    Ok(())
+}
+
 pub async fn storage_bytes(
     db: &impl ConnectionTrait,
     user_id: i32,
@@ -224,7 +309,11 @@ pub async fn storage_bytes(
 ) -> Result<i64, TappStorageError> {
     StorageBytesRow::find_by_statement(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        r#"SELECT COALESCE(SUM(octet_length(key) + octet_length(value::text)), 0)::BIGINT AS bytes
+        r#"SELECT COALESCE(SUM(
+               octet_length(key)
+               + octet_length(value::text)
+               + COALESCE(octet_length(encrypted_value), 0)
+           ), 0)::BIGINT AS bytes
            FROM tapp_storage WHERE user_id = $1 AND tapp_id = $2"#,
         vec![user_id.into(), tapp_id.into()],
     ))
@@ -240,13 +329,18 @@ pub async fn read_storage_value(
     tapp_id: &str,
     key: &str,
 ) -> Result<Value, TappStorageError> {
-    let item = tapp_storage::Entity::find()
-        .filter(tapp_storage::Column::UserId.eq(user_id))
-        .filter(tapp_storage::Column::TappId.eq(tapp_id))
-        .filter(tapp_storage::Column::Key.eq(key))
-        .one(db)
-        .await
-        .map_err(|_| TappStorageError::Database)?;
+    #[derive(FromQueryResult)]
+    struct StorageValueRow {
+        value: Value,
+    }
+    let item = StorageValueRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT value FROM tapp_storage WHERE user_id = $1 AND tapp_id = $2 AND key = $3",
+        vec![user_id.into(), tapp_id.into(), key.into()],
+    ))
+    .one(db)
+    .await
+    .map_err(|_| TappStorageError::Database)?;
     Ok(item.map_or(Value::Null, |item| item.value))
 }
 
@@ -257,10 +351,7 @@ pub async fn write_storage_value(
     key: &str,
     value: Value,
 ) -> Result<(), TappStorageError> {
-    let txn = db
-        .begin()
-        .await
-        .map_err(|_| TappStorageError::Database)?;
+    let txn = db.begin().await.map_err(|_| TappStorageError::Database)?;
     txn.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
@@ -277,7 +368,11 @@ pub async fn write_storage_value(
         DatabaseBackend::Postgres,
         r#"
 SELECT (
-    COALESCE(SUM(octet_length(key) + octet_length(value::text))
+    COALESCE(SUM(
+        octet_length(key)
+        + octet_length(value::text)
+        + COALESCE(octet_length(encrypted_value), 0)
+    )
         FILTER (WHERE key <> $3), 0)
     + octet_length($3)
     + octet_length($4::jsonb::text)
@@ -313,9 +408,7 @@ ON CONFLICT (user_id, tapp_id, key) DO UPDATE SET
     ))
     .await
     .map_err(|_| TappStorageError::Database)?;
-    txn.commit()
-        .await
-        .map_err(|_| TappStorageError::Database)?;
+    txn.commit().await.map_err(|_| TappStorageError::Database)?;
     Ok(())
 }
 
@@ -324,7 +417,7 @@ mod tests {
     use super::{
         can_write_installation_settings, is_host_storage_key, validate_sandbox_storage_key,
         validate_storage_key, validate_storage_value_size, TappStorageAccess,
-        TappStorageAccessError,
+        TappStorageAccessError, SANDBOX_STORAGE_PREDICATE_SQL,
     };
     use serde_json::json;
 
@@ -333,6 +426,7 @@ mod tests {
         for key in [
             "_settings",
             "_settings.theme",
+            "_credentials.wegame",
             "_component:x",
             "_shortcut:y",
             "_report:z",
@@ -342,6 +436,18 @@ mod tests {
         }
         assert!(validate_sandbox_storage_key("user.preferences").is_ok());
         assert!(validate_storage_key("user.preferences").is_ok());
+    }
+
+    #[test]
+    fn sandbox_query_predicate_covers_every_host_storage_prefix() {
+        assert!(SANDBOX_STORAGE_PREDICATE_SQL.contains("key <> '_settings'"));
+        for prefix in super::HOST_STORAGE_KEY_PREFIXES {
+            assert!(
+                SANDBOX_STORAGE_PREDICATE_SQL.contains(&format!("starts_with(key, '{prefix}')")),
+                "missing SQL exclusion for {prefix}"
+            );
+        }
+        assert!(!SANDBOX_STORAGE_PREDICATE_SQL.contains("encrypted_value"));
     }
 
     #[test]
@@ -367,6 +473,76 @@ mod tests {
         let big = json!("x".repeat(1024 * 1024 + 8));
         assert!(validate_storage_value_size(&big).is_err());
         assert!(validate_storage_value_size(&json!({"ok": true})).is_ok());
+    }
+
+    #[tokio::test]
+    async fn postgres_sandbox_queries_exclude_and_preserve_host_rows() {
+        let Ok(url) = std::env::var("MYRIAD_TAPP_STORAGE_GUARD_DB") else {
+            eprintln!("skipping: set MYRIAD_TAPP_STORAGE_GUARD_DB for the PostgreSQL guard test");
+            return;
+        };
+        use sea_orm::{ConnectionTrait, Database, DatabaseBackend, Statement};
+
+        let db = Database::connect(&url)
+            .await
+            .expect("connect guard database");
+        let user_id = 2_147_483_600_i32;
+        let tapp_id = "codex.storage.guard";
+        let delete_rows = || {
+            Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "DELETE FROM tapp_storage WHERE user_id = $1 AND tapp_id = $2",
+                vec![user_id.into(), tapp_id.into()],
+            )
+        };
+        db.execute(delete_rows()).await.expect("clean guard rows");
+        db.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+INSERT INTO tapp_storage
+    (user_id, tapp_id, key, value, encrypted_value, binding_fingerprint, created_at, updated_at)
+VALUES
+    ($1, $2, 'ordinary.one', '{"visible":1}'::jsonb, NULL, NULL, NOW(), NOW()),
+    ($1, $2, 'ordinary.two', '{"visible":2}'::jsonb, NULL, NULL, NOW(), NOW()),
+    ($1, $2, '_settings.theme', '"dark"'::jsonb, NULL, NULL, NOW(), NOW()),
+    ($1, $2, '_credentials.api', '{"kind":"credential","version":1}'::jsonb,
+        'ciphertext-must-stay-host-only', $3, NOW(), NOW())
+"#,
+            vec![user_id.into(), tapp_id.into(), "f".repeat(64).into()],
+        ))
+        .await
+        .expect("insert guard rows");
+
+        let entries = super::sandbox_storage_entries(&db, user_id, tapp_id)
+            .await
+            .expect("list sandbox rows");
+        let keys: Vec<_> = entries.iter().map(|entry| entry.key.as_str()).collect();
+        assert_eq!(keys, vec!["ordinary.one", "ordinary.two"]);
+        assert_eq!(
+            super::sandbox_storage_count(&db, user_id, tapp_id)
+                .await
+                .expect("count sandbox rows"),
+            2
+        );
+
+        super::clear_sandbox_storage(&db, user_id, tapp_id)
+            .await
+            .expect("clear sandbox rows");
+        let remaining = db
+            .query_all(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "SELECT key FROM tapp_storage WHERE user_id = $1 AND tapp_id = $2 ORDER BY key",
+                vec![user_id.into(), tapp_id.into()],
+            ))
+            .await
+            .expect("read remaining host rows");
+        let remaining: Vec<String> = remaining
+            .into_iter()
+            .map(|row| row.try_get("", "key").expect("key"))
+            .collect();
+        assert_eq!(remaining, vec!["_credentials.api", "_settings.theme"]);
+
+        db.execute(delete_rows()).await.expect("remove guard rows");
     }
 
     #[test]

@@ -4,12 +4,19 @@ import { dirname, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { parseCapabilitySource } from './capability-source.mjs'
+import { findMyriadRepoRoot } from './myriad-source.mjs'
 import { parsePermissionSource } from './permission-source.mjs'
 import { generateTappSdkDts } from './sdk-dts.mjs'
 
 const execFileAsync = promisify(execFile)
 const here = dirname(fileURLToPath(import.meta.url))
-const repoRoot = resolve(here, '../../..')
+const packageRoot = resolve(here, '..')
+const repoRoot = findMyriadRepoRoot(packageRoot)
+if (!repoRoot) {
+  throw new Error(
+    'Unable to locate the Myriad source tree; set MYRIAD_REPO_ROOT before syncing the generated contract',
+  )
+}
 const permissionSourcePath = resolve(
   repoRoot,
   'frontend/src/tapp/runtime/permissionConfig.ts',

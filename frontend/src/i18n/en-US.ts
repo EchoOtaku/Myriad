@@ -1733,7 +1733,13 @@ export const enUS: TranslationKeys = {
     moduleSettingsDesc:
       'Who can see each feature, plus library sources, report expiry, music player, and hitokoto',
     libraryModuleTitle: 'Library',
-    libraryModuleDesc: 'Choose which platform sources appear in each category',
+    libraryModuleDesc:
+      'Set the card layout and choose which platform sources appear in each category',
+    libraryLayout: 'Card layout',
+    libraryLayoutDesc:
+      'Choose the regular list or a draggable canvas extending from the center',
+    libraryLayoutList: 'List',
+    libraryLayoutCanvas: 'Infinite canvas',
     librarySourceVisibleCount:
       'Showing {shown} items from {total} before filtering',
     librarySourceNoData:
@@ -1973,6 +1979,13 @@ export const enUS: TranslationKeys = {
     emptyLibrary:
       'Library is empty, please fetch platform data in config page first',
     emptyCategory: 'No content in this category, try switching to another',
+    canvasPanHint:
+      'Drag cards or empty space · Arrow keys pan · + / - zoom · 0 resets',
+    canvasDismissHint: 'Hide canvas tips for this session',
+    canvasResetView: 'Return to center',
+    canvasZoomIn: 'Zoom in',
+    canvasZoomOut: 'Zoom out',
+    canvasAriaLabel: 'Library infinite canvas',
     // Content types
     anime: 'Anime',
     tvSeries: 'TV Series',
@@ -3365,6 +3378,23 @@ export const enUS: TranslationKeys = {
     loading: 'Loading...',
     settingSaved: 'Settings saved',
     settingSaveFailed: 'Save failed',
+    apiCredentials: 'API Credentials',
+    apiCredentialsDesc:
+      'Encrypted by the host and sent only to fixed HTTPS services declared in the manifest; apps and visitors cannot read the value',
+    credentialConfigured: 'Configured (value cannot be read)',
+    credentialNotConfigured: 'Not configured',
+    credentialConfigure: 'Configure',
+    credentialReplace: 'Replace',
+    credentialRemove: 'Remove credential',
+    credentialRemoveConfirm:
+      'APIs that depend on this credential will stop working. Continue?',
+    credentialOrigins: 'Sent to: {origins}',
+    credentialReauthorizationRequired:
+      'The manifest target or permission changed; enter the credential again to authorize it',
+    credentialSaved: 'Credential saved securely',
+    credentialSaveFailed: 'Failed to save credential',
+    credentialRemoved: 'Credential removed',
+    credentialRemoveFailed: 'Failed to remove credential',
 
     // AI quota
     aiQuota: 'AI Quota',

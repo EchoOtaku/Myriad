@@ -199,6 +199,8 @@ pub async fn register_shortcut(
             user_id: Set(owner_id),
             key: Set(storage_key),
             value: Set(shortcut_data.clone()),
+            encrypted_value: NotSet,
+            binding_fingerprint: NotSet,
             created_at: Set(now),
             updated_at: Set(now),
         };

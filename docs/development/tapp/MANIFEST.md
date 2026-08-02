@@ -71,6 +71,21 @@ Manifest 采用严格字段校验：未声明字段、拼写错误以及已经�
 }
 ```
 
+`credentials` 最多声明 16 项。每项字段为：
+
+| 字段 | 类型 | 必填 | 限制 / 说明 |
+| ---- | ---- | ---- | ----------- |
+| `key` | string | ✅ | 最长 128；使用字母、数字、`.`、`_`、`-`，不能以 `.` 开头/结尾或连续使用 `.` |
+| `label` | string | ✅ | 非空，最长 255；仅用于宿主管理界面 |
+| `description` | string | ❌ | 最长 2000；仅用于宿主管理界面 |
+| `placeholder` | string | ❌ | 最长 255；仅用于输入提示，不是默认值 |
+
+`apis.*.credential` 必须包含已声明的 `key` 与合法固定请求头 `header`；可选 `prefix` 最长
+256 字节（例如 `"Bearer "`）。不能选择 `Host`、`Content-Length`、`Connection`、
+`Transfer-Encoding`、`Upgrade`、代理或其他 hop-by-hop 头，也不能在同一 API 的普通
+`headers` 中再次声明同名头。凭据值最长 16 KiB；该限制由管理 API 与宿主界面执行，值不写入
+Manifest 或 `.tapp` 包。
+
 - 键必须是 BCP-47 语言标签（如 `zh-CN`、`en-US`、`ja-JP`），最多 32 个语言；
   值中 `name`（1-255 字符）与 `description`（≤ 2000 字符）均可选。
 - 解析回退链：精确匹配（忽略大小写）→ 语言前缀匹配（`zh-CN` ↔ `zh`）→ 顶层
@@ -452,6 +467,59 @@ Manifest 设置属于安装级配置：安装 owner 或管理员可修改；能�
 `defaultValue`。`Tapp.storage` 是当前登录用户的私有空间，不能使用 `_settings.` 等宿主保留
 前缀访问安装级设置。公开安装请勿把密钥写入 settings。
 
+### 安装级 API 凭据 (`credentials`)
+
+需要由公开 Tapp 代站主调用第三方 API 时，使用只写 `credentials`，不要使用 `settings`：
+
+```json
+{
+  "permissions": ["network:fetch"],
+  "credentials": [
+    {
+      "key": "wegame",
+      "label": "WeGame API Key",
+      "description": "用于同步站点游戏资料"
+    }
+  ],
+  "apis": {
+    "wegameSync": {
+      "type": "http",
+      "access": "public",
+      "endpoint": "https://api.example.com/games/{{params.userId}}",
+      "credential": {
+        "key": "wegame",
+        "header": "Authorization",
+        "prefix": "Bearer "
+      }
+    }
+  }
+}
+```
+
+凭据值由安装 owner / 当前管理员在 Tapp 详情页输入。宿主复用安装 owner 的 `tapp_storage`
+记录，但只把密文放入专用 `encrypted_value` 字段，并使用宿主保留的 `_credentials.` key；
+沙箱 storage API 无法读取、列举、覆盖或清除此类记录。
+读取接口只返回 `configured`、需否重新授权和固定目标 origin，永远不返回明文或密文；沙箱没有
+credential 读取 API。宿主仅在执行绑定的具名 HTTP API 时把值附加到声明的固定请求头。
+
+绑定凭据的 endpoint 必须使用固定绝对 HTTPS origin，host 不能模板化；凭据也不能出现在
+endpoint、headers、body 或 `inject` 模板中。凭据声明及所有使用它的 API 定义共同参与授权
+指纹：endpoint、header、prefix、`access` 等发生变化后，旧凭据停止使用，owner 必须重新输入。
+一个凭据必须至少绑定一个 HTTP API。目标服务本身会收到凭据，因此 owner 只应授权可信 origin；
+第三方返回内容仍按不可信输入处理。宿主会在响应进入缓存或返回沙箱前，对原样凭据回显执行
+文本层和解析后 JSON 字符串/键双重脱敏（包括 JSON 转义后的值）；无法通用识别第三方主动生成的
+哈希、Base64 等派生表示，因此这不能替代可信目标与最小权限的 API Key。
+
+`credentials[].key` 不得与 `settings[].key` 重名，避免同一名称同时存在公开可读值和宿主私密值。
+
+`access: "public"` 只表示 API 可由游客调用，不自动授予游客出站权限。Manifest 仍须申请
+`network:fetch`，安装时须批准，而且站点的游客 `network:fetch` 策略也须开启（默认关闭）；
+否则公开安装中的游客调用会被拒绝。已登录用户同样受其角色权限策略与安装批准集约束。
+
+从旧 settings 迁移时，先删除 Manifest 中旧 settings 声明并发布更新，再在第三方后台轮换已经
+暴露的 Key，最后写入同名 credential。保存新凭据时，宿主会在同一事务中删除遗留数据库里的
+`_settings.{key}` 值，但不会自动沿用可能已泄露的旧值。
+
 ---
 
 ## API 声明 (`apis`)
@@ -487,16 +555,53 @@ Manifest 设置属于安装级配置：安装 owner 或管理员可修改；能�
 | 字段          | 类型   | 必填 | 说明                                              |
 | ------------- | ------ | ---- | ------------------------------------------------- |
 | `type`        | string | ❌   | `http`（默认）或 `builtin`                        |
-| `access`      | string | ❌   | 调用者范围：`protected`（默认，需登录）或 `public`（游客也可调用）；**不**表示可否免 `network:fetch` |
+| `access`      | string | ❌   | 调用者范围：`protected`（默认，需登录）、`public`（游客也可调用）或 `manager`（仅安装 owner / 当前管理员）；**不**表示可否免 `network:fetch` |
 | `endpoint`    | string | HTTP | HTTP URL，可使用 `{{params.*}}` 等模板            |
 | `method`      | string | ❌   | HTTP 方法，默认 `GET`；仅接受大写的 `GET`/`HEAD`/`POST`/`PUT`/`DELETE`/`CONNECT`/`OPTIONS`/`TRACE`/`PATCH` |
 | `headers`     | object | ❌   | 请求头模板                                        |
-| `body`        | object | ❌   | JSON 请求体模板                                   |
+| `credential`  | object | ❌   | 安装级凭据绑定 `{key, header, prefix?}`；仅用于 HTTP |
+| `bodyMode`    | string | ❌   | `json`（默认）、`raw` 或 `form`                   |
+| `body`        | any    | ❌   | 按 `bodyMode` 解析的请求体模板                    |
 | `builtin`     | string | 内置 | `geo`、`ai:chat` 或 `ai:generate`                 |
 | `inject`      | object | ❌   | 将宿主模板值映射为可复用别名                      |
 | `cacheTtl`    | number | ❌   | 响应缓存秒数；缓存按 Tapp、用户、客户端上下文隔离 |
 | `spoof`       | string | ❌   | 区域伪装：`china`/`japan`/`us`/`korea`/`taiwan`/`hongkong`（及别名，见下表） |
 | `description` | string | ❌   | API 描述                                          |
+
+`bodyMode` 控制模板解析后的最终请求体字节：
+
+- `json`：默认模式，接受任意 JSON 值；未声明 `Content-Type` 时使用
+  `application/json`，与旧版行为一致。
+- `raw`：Manifest 中的 `body` 和运行时模板解析结果都必须是字符串。宿主直接发送
+  字符串的 UTF-8 字节，不增加 JSON 引号、转义或末尾换行，也不自动设置
+  `Content-Type`；模板外的空格和换行原样保留，无法解析的模板会直接报错。这适用于纯文本、XML、Webhook，
+  以及需要对最终 payload 字节计算摘要或签名的接口。
+- `form`：`body` 必须是对象，字段值只能是字符串、数字、布尔值、`null` 或最终解析为这些类型的模板；
+  `null` 编码为空字符串。宿主使用 `application/x-www-form-urlencoded` 编码，未声明
+  `Content-Type` 时自动设置相应请求头。字段顺序不属于 Manifest 契约，接收方应将表单视为无序键值集合；
+  如果目标接口的签名或摘要依赖固定字段顺序，请改用 `raw` 明确提供最终请求体。
+
+`raw` 和 `form` 只允许 `POST`、`PUT`、`PATCH`、`DELETE`，并在序列化完成后按
+UTF-8/编码后的实际字节检查 1 MiB 请求体上限；默认 `json` 模式不新增这一兼容性限制。Manifest 已声明的 `headers.Content-Type`
+始终保留；它不会改变 `bodyMode` 的序列化规则。`raw` 是精确 UTF-8 文本模式，不用于发送任意二进制字节。
+
+```json
+{
+  "apis": {
+    "submitUrls": {
+      "type": "http",
+      "access": "protected",
+      "endpoint": "https://example.com/api",
+      "method": "POST",
+      "bodyMode": "raw",
+      "headers": {
+        "Content-Type": "text/plain; charset=utf-8"
+      },
+      "body": "{{params.body}}"
+    }
+  }
+}
+```
 
 `inject` 的键是新别名，值是宿主上下文模板。例如
 `{"city":"{{geo.city}}"}` 会创建 `{{city}}`，供 `endpoint`、`headers` 或 `body`
@@ -543,6 +648,7 @@ const summary = await Tapp.api("summarize", { prompt: "总结这些数据" });
 >
 > 所有 `type: http` 的声明 API 都需要安装已授予 `network:fetch`；`access: public` 只放宽
 > 调用者范围（游客可调），**不能**代替 `network:fetch`。`access: protected` 额外要求登录主体。
+> `access: manager` 只允许安装 owner 或当前站点管理员调用。
 
 ---
 

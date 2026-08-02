@@ -1309,6 +1309,101 @@ fn validates_declared_api_shape_and_inject_aliases() {
     }))
     .unwrap();
     validate_tapp_manifest(&valid).unwrap();
+    assert_eq!(
+        valid
+            .apis
+            .as_ref()
+            .unwrap()
+            .get("weather.current")
+            .unwrap()
+            .body_mode,
+        super::TappHttpBodyMode::Json
+    );
+    assert!(serde_json::to_value(&valid).unwrap()["apis"]["weather.current"]
+        .get("bodyMode")
+        .is_none());
+
+    let body_modes: TappManifest = serde_json::from_value(json!({
+        "id": "com.example.api-body-modes",
+        "name": "API body modes",
+        "version": "1.0.0",
+        "main": "main.js",
+        "category": "developer",
+        "permissions": ["network:fetch"],
+        "apis": {
+            "submit.raw": {
+                "type": "http",
+                "endpoint": "https://example.com/raw",
+                "method": "POST",
+                "bodyMode": "raw",
+                "headers": { "Content-Type": "text/plain; charset=utf-8" },
+                "body": "{{params.body}}"
+            },
+            "token.form": {
+                "type": "http",
+                "endpoint": "https://example.com/oauth/token",
+                "method": "POST",
+                "bodyMode": "form",
+                "body": {
+                    "grant_type": "client_credentials",
+                    "scope": "{{params.scope}}"
+                }
+            }
+        }
+    }))
+    .unwrap();
+    validate_tapp_manifest(&body_modes).unwrap();
+    assert_eq!(
+        serde_json::to_value(&body_modes).unwrap()["apis"]["submit.raw"]["bodyMode"],
+        "raw"
+    );
+
+    let unknown_body_mode = serde_json::from_value::<TappManifest>(json!({
+        "id": "com.example.api-unknown-body-mode",
+        "name": "Unknown API body mode",
+        "version": "1.0.0",
+        "main": "main.js",
+        "permissions": ["network:fetch"],
+        "apis": {
+            "submit": {
+                "endpoint": "https://example.com/raw",
+                "method": "POST",
+                "bodyMode": "binary",
+                "body": "payload"
+            }
+        }
+    }));
+    assert!(unknown_body_mode.is_err());
+
+    let mut invalid_raw_method = body_modes.clone();
+    invalid_raw_method
+        .apis
+        .as_mut()
+        .unwrap()
+        .get_mut("submit.raw")
+        .unwrap()
+        .method = "GET".to_string();
+    assert!(validate_tapp_manifest(&invalid_raw_method).is_err());
+
+    let mut invalid_raw_body = body_modes.clone();
+    invalid_raw_body
+        .apis
+        .as_mut()
+        .unwrap()
+        .get_mut("submit.raw")
+        .unwrap()
+        .body = Some(json!({ "not": "raw" }));
+    assert!(validate_tapp_manifest(&invalid_raw_body).is_err());
+
+    let mut invalid_form_body = body_modes.clone();
+    invalid_form_body
+        .apis
+        .as_mut()
+        .unwrap()
+        .get_mut("token.form")
+        .unwrap()
+        .body = Some(json!({ "scope": ["read", "write"] }));
+    assert!(validate_tapp_manifest(&invalid_form_body).is_err());
 
     let mut public_without_network = valid.clone();
     public_without_network.permissions.clear();

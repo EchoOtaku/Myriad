@@ -9,20 +9,23 @@ use std::path::{Component, Path as FsPath};
 
 use myriad_tapp_contract::manifest::{
     valid_agent_name, valid_event_topic, TappAiContextSource, TappAiOperation, TappAiOutputFormat,
-    TappManifest, TappSettingDef, TappWidgetRefreshMode, TappWidgetRefreshPolicy,
+    TappHttpBodyMode, TappManifest, TappSettingDef, TappWidgetRefreshMode, TappWidgetRefreshPolicy,
 };
+use reqwest::header::HeaderName;
+use std::str::FromStr;
 
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_storage::validate_storage_key;
 
 // Single source of truth shared with the offline CLI contract exporter.
 pub use myriad_tapp_contract::contract_rules::{
-    HTTP_METHODS, MAX_AGENT_SCHEMA_RESOURCE_BYTES, MAX_DATA_EXCHANGE_DECLARATIONS,
+    FORBIDDEN_OUTBOUND_HEADERS, HTTP_BODY_METHODS, HTTP_METHODS, MAX_AGENT_SCHEMA_RESOURCE_BYTES,
+    MAX_CREDENTIAL_HEADER_PREFIX_LEN, MAX_CREDENTIAL_KEY_LEN, MAX_DATA_EXCHANGE_DECLARATIONS,
     MAX_DATA_EXCHANGE_ID_LEN, MAX_DATA_EXCHANGE_RESPONSE_BYTES, MAX_DATA_EXCHANGE_SCHEMA_BYTES,
     MAX_RESOURCE_PATH_LEN, MAX_TAPP_ARCHIVE_BYTES, MAX_TAPP_ARCHIVE_FILES,
     MAX_TAPP_ARCHIVE_UNCOMPRESSED_BYTES, MAX_TAPP_ASSETS, MAX_TAPP_ASSETS_TOTAL_BYTES,
-    MAX_TAPP_ASSET_BYTES, MAX_TAPP_I18N_FILES, MAX_TAPP_I18N_RESOURCE_BYTES, MAX_TAPP_ID_LEN,
-    MAX_TAPP_MANIFEST_BYTES, MAX_TAPP_RESOURCE_BYTES, MAX_WIDGETS_PER_TAPP,
+    MAX_TAPP_ASSET_BYTES, MAX_TAPP_CREDENTIALS, MAX_TAPP_I18N_FILES, MAX_TAPP_I18N_RESOURCE_BYTES,
+    MAX_TAPP_ID_LEN, MAX_TAPP_MANIFEST_BYTES, MAX_TAPP_RESOURCE_BYTES, MAX_WIDGETS_PER_TAPP,
 };
 
 pub fn valid_data_exchange_id(value: &str) -> bool {
@@ -283,11 +286,7 @@ pub fn validate_http_url(value: &str, field: &str) -> Result<(), String> {
     Ok(())
 }
 
-pub fn validate_resource_extension(
-    path: &str,
-    extension: &str,
-    field: &str,
-) -> Result<(), String> {
+pub fn validate_resource_extension(path: &str, extension: &str, field: &str) -> Result<(), String> {
     if !path.ends_with(extension) {
         return Err(format!("Tapp {field} must reference a {extension} file"));
     }
@@ -542,6 +541,59 @@ pub fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
     if let Some(settings) = &manifest.settings {
         validate_tapp_settings(settings, "Tapp")?;
     }
+    let setting_keys: std::collections::HashSet<&str> = manifest
+        .settings
+        .iter()
+        .flat_map(|settings| settings.iter())
+        .map(|setting| setting.key.as_str())
+        .collect();
+
+    let mut credential_keys = std::collections::HashSet::new();
+    if let Some(credentials) = &manifest.credentials {
+        if credentials.len() > MAX_TAPP_CREDENTIALS {
+            return Err(format!(
+                "Tapp credentials accepts at most {MAX_TAPP_CREDENTIALS} entries"
+            ));
+        }
+        for credential in credentials {
+            if credential.key.is_empty()
+                || credential.key.len() > MAX_CREDENTIAL_KEY_LEN
+                || !valid_agent_name(&credential.key)
+                || !credential_keys.insert(credential.key.as_str())
+            {
+                return Err(format!(
+                    "Invalid or duplicate Tapp credential key: {}",
+                    credential.key
+                ));
+            }
+            if setting_keys.contains(credential.key.as_str()) {
+                return Err(format!(
+                    "Tapp credential key conflicts with public setting key: {}",
+                    credential.key
+                ));
+            }
+            if credential.label.trim().is_empty() || credential.label.len() > 255 {
+                return Err(format!(
+                    "Invalid label for Tapp credential: {}",
+                    credential.key
+                ));
+            }
+            if credential
+                .description
+                .as_ref()
+                .is_some_and(|value| value.len() > 2_000)
+                || credential
+                    .placeholder
+                    .as_ref()
+                    .is_some_and(|value| value.len() > 255)
+            {
+                return Err(format!(
+                    "Tapp credential metadata is too long: {}",
+                    credential.key
+                ));
+            }
+        }
+    }
 
     if let Some(assets) = &manifest.assets {
         if assets.len() > MAX_TAPP_ASSETS {
@@ -604,6 +656,7 @@ pub fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
         }
     }
 
+    let mut bound_credential_keys = std::collections::HashSet::new();
     if let Some(apis) = &manifest.apis {
         if apis.len() > 64 {
             return Err("Tapp apis accepts at most 64 entries".to_string());
@@ -637,6 +690,97 @@ pub fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
                     {
                         return Err(format!("HTTP Tapp API {name} requires network:fetch"));
                     }
+                    if let Some(binding) = &api.credential {
+                        if !credential_keys.contains(binding.key.as_str()) {
+                            return Err(format!(
+                                "Tapp API {name} references undeclared credential: {}",
+                                binding.key
+                            ));
+                        }
+                        let endpoint = api.endpoint.as_deref().expect("checked endpoint");
+                        let parsed = url::Url::parse(endpoint).map_err(|_| {
+                            format!(
+                                "Credential-bound Tapp API {name} requires a fixed absolute HTTPS endpoint"
+                            )
+                        })?;
+                        if parsed.scheme() != "https"
+                            || parsed.host_str().is_none()
+                            || !parsed.username().is_empty()
+                            || parsed.password().is_some()
+                            || parsed
+                                .host_str()
+                                .is_some_and(|host| host.contains('{') || host.contains('}'))
+                        {
+                            return Err(format!(
+                                "Credential-bound Tapp API {name} requires a fixed absolute HTTPS origin"
+                            ));
+                        }
+                        let header = HeaderName::from_str(&binding.header).map_err(|_| {
+                            format!("Invalid credential header for Tapp API {name}")
+                        })?;
+                        crate::services::outbound_security::validate_outbound_header(&header)
+                            .map_err(|_| {
+                                format!("Forbidden credential header for Tapp API {name}")
+                            })?;
+                        if binding
+                            .prefix
+                            .as_ref()
+                            .is_some_and(|prefix| prefix.len() > MAX_CREDENTIAL_HEADER_PREFIX_LEN)
+                        {
+                            return Err(format!(
+                                "Credential header prefix is too long for Tapp API {name}"
+                            ));
+                        }
+                        if api.headers.as_ref().is_some_and(|headers| {
+                            headers
+                                .keys()
+                                .any(|name| name.eq_ignore_ascii_case(binding.header.as_str()))
+                        }) {
+                            return Err(format!(
+                                "Tapp API {name} declares the credential header twice"
+                            ));
+                        }
+                        bound_credential_keys.insert(binding.key.as_str());
+                    }
+                    match api.body_mode {
+                        TappHttpBodyMode::Json => {}
+                        TappHttpBodyMode::Raw => {
+                            if !HTTP_BODY_METHODS.contains(&api.method.as_str()) {
+                                return Err(format!(
+                                    "HTTP Tapp API {name} bodyMode raw requires one of: {}",
+                                    HTTP_BODY_METHODS.join(", ")
+                                ));
+                            }
+                            if !matches!(api.body, Some(serde_json::Value::String(_))) {
+                                return Err(format!(
+                                    "HTTP Tapp API {name} raw body must be a string template"
+                                ));
+                            }
+                        }
+                        TappHttpBodyMode::Form => {
+                            if !HTTP_BODY_METHODS.contains(&api.method.as_str()) {
+                                return Err(format!(
+                                    "HTTP Tapp API {name} bodyMode form requires one of: {}",
+                                    HTTP_BODY_METHODS.join(", ")
+                                ));
+                            }
+                            let Some(serde_json::Value::Object(fields)) = &api.body else {
+                                return Err(format!(
+                                    "HTTP Tapp API {name} form body must be an object"
+                                ));
+                            };
+                            if fields.values().any(|value| {
+                                matches!(
+                                    value,
+                                    serde_json::Value::Array(_) | serde_json::Value::Object(_)
+                                )
+                            }) {
+                                return Err(format!(
+                                    "HTTP Tapp API {name} form body fields must be scalar values"
+                                ));
+                            }
+                        }
+                    }
                 }
                 "builtin" => {
                     let Some(builtin) = api.builtin.as_deref() else {
@@ -648,8 +792,10 @@ pub fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
                     if api.endpoint.is_some()
                         || api.headers.is_some()
                         || api.body.is_some()
+                        || api.body_mode != TappHttpBodyMode::Json
                         || api.spoof.is_some()
                         || api.inject.is_some()
+                        || api.credential.is_some()
                     {
                         return Err(format!("Builtin Tapp API {name} contains HTTP-only fields"));
                     }
@@ -719,6 +865,13 @@ pub fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
                     }
                 }
             }
+        }
+    }
+    for key in credential_keys {
+        if !bound_credential_keys.contains(key) {
+            return Err(format!(
+                "Tapp credential '{key}' must be bound to at least one declared HTTP API"
+            ));
         }
     }
 
@@ -947,7 +1100,7 @@ pub fn validate_named_resource_keys<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use myriad_tapp_contract::manifest::{TappSettingDef, TappSettingOption};
+    use myriad_tapp_contract::manifest::{TappManifest, TappSettingDef, TappSettingOption};
     use serde_json::json;
 
     #[test]
@@ -958,6 +1111,73 @@ mod tests {
         assert!(validate_tapp_id("a/b").is_err());
         assert!(validate_tapp_id("../x").is_err());
         assert!(validate_tapp_id(&"a".repeat(MAX_TAPP_ID_LEN + 1)).is_err());
+    }
+
+    fn credential_manifest(endpoint: &str) -> TappManifest {
+        serde_json::from_value(json!({
+            "id": "com.example.credential",
+            "name": "Credential test",
+            "version": "1.0.0",
+            "main": "main.js",
+            "category": "utility",
+            "permissions": ["network:fetch"],
+            "credentials": [{ "key": "wegame", "label": "WeGame API Key" }],
+            "apis": {
+                "games": {
+                    "type": "http",
+                    "access": "public",
+                    "endpoint": endpoint,
+                    "credential": {
+                        "key": "wegame",
+                        "header": "Authorization",
+                        "prefix": "Bearer "
+                    }
+                }
+            }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn credential_binding_accepts_fixed_https_origin() {
+        assert!(validate_tapp_manifest(&credential_manifest(
+            "https://api.example.com/games/{{params.id}}"
+        ))
+        .is_ok());
+    }
+
+    #[test]
+    fn credential_binding_rejects_templated_destination_host() {
+        let error = validate_tapp_manifest(&credential_manifest("https://{{params.host}}/games"))
+            .unwrap_err();
+        assert!(error.contains("fixed absolute HTTPS"));
+    }
+
+    #[test]
+    fn credential_key_cannot_overlap_public_setting_key() {
+        let mut manifest = credential_manifest("https://api.example.com/games");
+        manifest.settings = Some(
+            serde_json::from_value(json!([{
+                "key": "wegame",
+                "label": "Legacy public key",
+                "type": "input"
+            }]))
+            .unwrap(),
+        );
+
+        let error = validate_tapp_manifest(&manifest).unwrap_err();
+        assert!(error.contains("conflicts with public setting key"));
+    }
+
+    #[test]
+    fn generated_contract_forbidden_headers_match_outbound_guard() {
+        for value in FORBIDDEN_OUTBOUND_HEADERS {
+            let header = HeaderName::from_str(value).expect("contract header name must be valid");
+            assert!(
+                crate::services::outbound_security::validate_outbound_header(&header).is_err(),
+                "generated CLI contract allows backend-forbidden header: {value}"
+            );
+        }
     }
 
     #[test]
@@ -993,15 +1213,17 @@ mod tests {
         assert_eq!(guess_asset_mime_type("a.webp"), "image/webp");
         assert_eq!(guess_asset_mime_type("a.wav"), "audio/wav");
         assert_eq!(guess_asset_mime_type("a.wasm"), "application/wasm");
-        assert_eq!(guess_asset_mime_type("a.unknown"), "application/octet-stream");
+        assert_eq!(
+            guess_asset_mime_type("a.unknown"),
+            "application/octet-stream"
+        );
     }
 
     #[test]
     fn decode_asset_base64_accepts_raw_and_data_url() {
         let raw = decode_asset_base64("aGVsbG8=").expect("raw");
         assert_eq!(raw, b"hello");
-        let data_url =
-            decode_asset_base64("data:image/png;base64,aGVsbG8=").expect("data url");
+        let data_url = decode_asset_base64("data:image/png;base64,aGVsbG8=").expect("data url");
         assert_eq!(data_url, b"hello");
         assert!(decode_asset_base64("!!!").is_err());
     }
@@ -1028,7 +1250,9 @@ mod tests {
 
         assert!(validate_http_url("https://example.com/x", "homepage").is_ok());
         assert!(validate_http_url("ftp://example.com", "homepage").is_err());
-        assert!(validate_http_url(&format!("https://x/{}", "a".repeat(3_000)), "homepage").is_err());
+        assert!(
+            validate_http_url(&format!("https://x/{}", "a".repeat(3_000)), "homepage").is_err()
+        );
     }
 
     #[test]
@@ -1083,11 +1307,10 @@ mod tests {
 
     #[test]
     fn named_resource_keys_require_safe_components() {
-        assert!(validate_named_resource_keys(
-            [&"page".to_string(), &"schemas".to_string()],
-            "dir"
-        )
-        .is_ok());
+        assert!(
+            validate_named_resource_keys([&"page".to_string(), &"schemas".to_string()], "dir")
+                .is_ok()
+        );
         assert!(validate_named_resource_keys([&"../x".to_string()], "dir").is_err());
     }
 }

@@ -1,5 +1,4 @@
 import { useCallback, useState } from 'react'
-import { API_URL } from '../../../config'
 import {
   fetchPermissionsConfig,
   updatePermissionsConfig,
@@ -40,7 +39,8 @@ import {
   updateReportSettings,
   type ReportSettings,
 } from '../../../utils/reportSettings'
-import { clearDedupCache } from '../../../utils/requestDedup'
+import { dispatchLibraryPreferencesUpdated } from '../../../utils/libraryPreferences'
+import { clearLibraryDataCache } from '../../../utils/requestDedup'
 import {
   DEFAULT_FEDERATION_POLICY,
   federationPolicyFromApi,
@@ -53,10 +53,7 @@ import {
 } from '../ModuleConfigSection'
 import type { PermissionConfigValues } from '../PermissionsConfigSection'
 import { DEFAULT_PERMISSION_CONFIG } from './defaults'
-import type {
-  SaveLibrarySourcePreferencesResponse,
-  ShowMessage,
-} from './types'
+import type { SaveLibrarySourcePreferencesResponse, ShowMessage } from './types'
 
 export function useConfigSideDrafts(
   isAdmin: boolean,
@@ -304,7 +301,11 @@ export function useConfigSideDrafts(
       setLibrarySourceDraft(preferences)
       setSavedLibrarySourcePreferences(preferences)
       setLibrarySourceSaveRevision((r) => r + 1)
-      clearDedupCache(`${API_URL}/api/library`)
+      clearLibraryDataCache()
+      dispatchLibraryPreferencesUpdated({
+        categories: preferences.categories,
+        layout: preferences.layout,
+      })
     },
     [],
   )

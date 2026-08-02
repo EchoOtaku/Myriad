@@ -223,6 +223,7 @@ pub fn list_api_summaries(apis: &HashMap<String, TappApiDef>) -> Vec<Value> {
                 "access": match def.access {
                     TappApiAccess::Public => "public",
                     TappApiAccess::Protected => "protected",
+                    TappApiAccess::Manager => "manager",
                 },
                 "type": def.api_type,
                 "description": def.description,
@@ -336,6 +337,8 @@ mod tests {
                 endpoint: None,
                 method: "GET".into(),
                 headers: None,
+                credential: None,
+                body_mode: myriad_tapp_contract::manifest::TappHttpBodyMode::Json,
                 body: None,
                 builtin: None,
                 inject: None,

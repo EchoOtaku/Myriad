@@ -613,6 +613,7 @@ pub async fn delete_platform_cache(
     State(_db): State<DatabaseConnection>,
 ) -> (StatusCode, Json<Value>) {
     tracing::info!("🗑️ Deleting platform data cache...");
+    invalidate_library_assembly_cache();
 
     let mut success = true;
     let mut messages = Vec::new();
@@ -660,8 +661,9 @@ pub use crate::services::image_proxy_urls::{
 // Library item shaping (pure) — DB I/O stays in this module.
 pub use crate::services::library_items::{
     append_bangumi_library_items, append_mal_library_items, apply_library_source_preferences,
-    collect_library_source_options, LibraryItem, LibrarySourcePreferences,
-    LIBRARY_SOURCE_PREFERENCES_KEY,
+    cached_library_items, collect_library_source_options, invalidate_library_assembly_cache,
+    paginate_library_items, store_library_items, CachedLibraryItems, LibraryItem,
+    LibrarySourcePreferences, LIBRARY_SOURCE_PREFERENCES_KEY,
 };
 async fn load_library_source_preferences(db: &DatabaseConnection) -> LibrarySourcePreferences {
     let sql = "SELECT value FROM configurations WHERE key = $1";
@@ -742,13 +744,91 @@ pub async fn update_library_source_preferences(
 }
 
 /// 获取资料库数据（游戏、视频、音乐）
-pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
+#[derive(Debug, Default, Deserialize)]
+pub struct LibraryPageQuery {
+    offset: Option<usize>,
+    limit: Option<usize>,
+    #[serde(rename = "type")]
+    item_type: Option<String>,
+}
+
+async fn library_page_response(
+    db: &DatabaseConnection,
+    raw_items: CachedLibraryItems,
+    query: LibraryPageQuery,
+    user_id: i32,
+) -> (StatusCode, Json<Value>) {
+    let preferences = load_library_source_preferences(db).await;
+    let raw_total = raw_items.len();
+    let available_sources = collect_library_source_options(&raw_items);
+    let page = match paginate_library_items(
+        raw_items.as_slice(),
+        Some(&preferences),
+        query.item_type.as_deref(),
+        query.offset,
+        query.limit,
+    ) {
+        Ok(page) => page,
+        Err(message) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "success": false, "message": message })),
+            )
+        }
+    };
+
+    if page.total == 0 {
+        tracing::info!("📚 Library empty for user {user_id} — returning 200 + []");
+    } else {
+        tracing::info!(
+            "✅ Returning {} of {} library items ({} raw before source filtering)",
+            page.returned,
+            page.total,
+            raw_total
+        );
+    }
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "items": page.items,
+            "total": page.total,
+            "returned": page.returned,
+            "offset": page.offset,
+            "limit": page.limit,
+            "type": query.item_type,
+            "has_more": page.has_more,
+            "next_offset": page.next_offset,
+            "raw_total": raw_total,
+            "preferences": preferences,
+            "available_sources": available_sources,
+            "empty": page.total == 0,
+            "message": if page.total == 0 {
+                "No library data yet. Fetch platform data when ready."
+            } else {
+                ""
+            }
+        })),
+    )
+}
+
+pub async fn get_library_data(
+    State(db): State<DatabaseConnection>,
+    Query(query): Query<LibraryPageQuery>,
+) -> (StatusCode, Json<Value>) {
     let user_id = match site_owner_user_id(&db).await {
         Ok(user_id) => user_id,
         Err(error) => return site_owner_error(error),
     };
 
     tracing::info!("📚 Fetching library data for user: {}", user_id);
+
+    // Consecutive typed/page requests reuse the assembled library; preferences and
+    // pagination are still reapplied per request, and refresh paths invalidate it.
+    if let Some(items) = cached_library_items(user_id) {
+        return library_page_response(&db, items, query, user_id).await;
+    }
 
     // 创建元数据服务
     let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
@@ -1155,40 +1235,10 @@ pub async fn get_library_data(State(db): State<DatabaseConnection>) -> (StatusCo
         }
     }
 
-    // Empty library is a valid state (no platforms linked / not fetched yet).
-    // Always 200 + [] so FE does not treat "no data" as a hard failure.
-    let preferences = load_library_source_preferences(&db).await;
-    let raw_total = library_items.len();
-    let available_sources = collect_library_source_options(&library_items);
-    let library_items = apply_library_source_preferences(library_items, &preferences);
-
-    if library_items.is_empty() {
-        tracing::info!("📚 Library empty for user {user_id} — returning 200 + []");
-    } else {
-        tracing::info!(
-            "✅ Loaded {} library items in total ({} raw before source filtering)",
-            library_items.len(),
-            raw_total
-        );
-    }
-
-    (
-        StatusCode::OK,
-        Json(json!({
-            "success": true,
-            "items": library_items,
-            "total": library_items.len(),
-            "raw_total": raw_total,
-            "preferences": preferences,
-            "available_sources": available_sources,
-            "empty": library_items.is_empty(),
-            "message": if library_items.is_empty() {
-                "No library data yet. Fetch platform data when ready."
-            } else {
-                ""
-            }
-        })),
-    )
+    // Empty library is valid. Cache the assembled shape, then reapply current
+    // preferences/type/pagination for every response.
+    let library_items = store_library_items(user_id, library_items);
+    library_page_response(&db, library_items, query, user_id).await
 }
 
 /// 批量获取用户信息 - 优化性能，减少前端API调用次数

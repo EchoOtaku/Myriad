@@ -3,13 +3,13 @@
 //! 负责：
 //! 1. 解析 Tapp manifest 中的 API 声明
 //! 2. 执行 API 调用（HTTP 或内置）
-//! 3. 自动注入上下文（geo、user、secrets）
-//! 4. 权限检查（public vs protected）
+//! 3. 自动注入非敏感上下文（geo、user）
+//! 4. 权限检查（public / protected / manager）
 //! 5. 响应缓存
 //! 6. 区域伪装（绕过地区限制）
 
 use once_cell::sync::Lazy;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -21,7 +21,12 @@ use tokio::sync::RwLock;
 use crate::services::http_client::TAPP_HTTP_CLIENT;
 use crate::services::permission_service::UserRole;
 use crate::services::spoof_utils::{generate_spoof_headers, SpoofConfig};
-use myriad_tapp_contract::manifest::{TappAiOperation, TappApiAccess, TappApiDef};
+use myriad_tapp_contract::contract_rules::{
+    HTTP_BODY_METHODS, MAX_TAPP_NON_JSON_HTTP_REQUEST_BYTES,
+};
+use myriad_tapp_contract::manifest::{
+    TappAiOperation, TappApiAccess, TappApiDef, TappHttpBodyMode,
+};
 
 // 预编译模板变量正则，避免每次调用都重新编译
 static TEMPLATE_RE: Lazy<regex::Regex> =
@@ -66,6 +71,8 @@ pub struct ApiExecutionContext {
     pub granted_permissions: Vec<String>,
     /// Manifest AI model tier used by governed builtin adapters.
     pub ai_model_tier: Option<crate::config::ModelTier>,
+    /// Host-only material resolved after install/runtime binding checks.
+    pub credential: Option<crate::services::tapp_credentials::ResolvedApiCredential>,
 }
 
 /// 地理位置信息
@@ -90,6 +97,12 @@ pub struct ApiExecutionResult {
 // ============ Tapp API 服务 ============
 
 pub struct TappApiService;
+
+#[derive(Debug)]
+struct EncodedHttpBody {
+    bytes: Vec<u8>,
+    default_content_type: Option<&'static str>,
+}
 
 impl TappApiService {
     /// 执行 Tapp API 调用
@@ -158,7 +171,14 @@ impl TappApiService {
 
         // 5. 执行 API
         let result = match api_def.api_type.as_str() {
-            "http" => Self::execute_http_api(api_def, &full_context).await,
+            "http" => {
+                Self::execute_http_api_with_credential(
+                    api_def,
+                    &full_context,
+                    context.credential.as_ref(),
+                )
+                .await
+            }
             "builtin" => Self::execute_builtin_api(tapp_id, api_def, &full_context, context).await,
             _ => Err(format!("Unknown API type: {}", api_def.api_type)),
         };
@@ -202,6 +222,14 @@ impl TappApiService {
 
         if api_def.access == TappApiAccess::Protected && context.user_id < 0 {
             return Err("Protected API requires login".to_string());
+        }
+        if api_def.access == TappApiAccess::Manager
+            && context.user_id != context.owner_id
+            && !context.is_admin
+        {
+            return Err(
+                "Manager API requires the installation owner or an administrator".to_string(),
+            );
         }
 
         Ok(())
@@ -389,10 +417,21 @@ impl TappApiService {
         api_def: &TappApiDef,
         context: &HashMap<String, Value>,
     ) -> Result<Value, String> {
+        Self::execute_http_api_with_credential(api_def, context, None).await
+    }
+
+    async fn execute_http_api_with_credential(
+        api_def: &TappApiDef,
+        context: &HashMap<String, Value>,
+        credential: Option<&crate::services::tapp_credentials::ResolvedApiCredential>,
+    ) -> Result<Value, String> {
         let base_url = api_def
             .endpoint
             .as_ref()
             .ok_or("HTTP API requires endpoint")?;
+        // Reject invalid body-mode/method combinations and serialize the final
+        // bytes before any DNS resolution or outbound client construction.
+        let encoded_body = Self::encode_http_body(api_def, context)?;
 
         // 解析模板变量
         let url = Self::resolve_template(base_url, context);
@@ -441,10 +480,34 @@ impl TappApiService {
             }
         }
 
-        // 添加请求体
-        if let Some(body) = &api_def.body {
-            let resolved_body = Self::resolve_json_templates(body, context);
-            request = request.json(&resolved_body);
+        if let Some(binding) = &api_def.credential {
+            let credential = credential.ok_or_else(|| {
+                "Required Tapp credential was not resolved by the host".to_string()
+            })?;
+            let name = HeaderName::from_str(&binding.header)
+                .map_err(|_| "Invalid credential header".to_string())?;
+            crate::services::outbound_security::validate_outbound_header(&name)?;
+            let mut secret_header = binding.prefix.clone().unwrap_or_default();
+            secret_header.push_str(credential.value());
+            let value = HeaderValue::from_str(&secret_header)
+                .map_err(|_| "Invalid credential header value".to_string())?;
+            request = request.header(name, value);
+        }
+
+        // Serialize once, enforce the cap on the final bytes, and send those exact
+        // bytes. This keeps payload hashing/signing aligned with the wire body.
+        if let Some(encoded) = encoded_body {
+            let has_declared_content_type = api_def.headers.as_ref().is_some_and(|headers| {
+                headers
+                    .keys()
+                    .any(|name| name.eq_ignore_ascii_case(CONTENT_TYPE.as_str()))
+            });
+            if !has_declared_content_type {
+                if let Some(content_type) = encoded.default_content_type {
+                    request = request.header(CONTENT_TYPE, content_type);
+                }
+            }
+            request = request.body(encoded.bytes);
         }
 
         // 发送请求
@@ -459,15 +522,57 @@ impl TappApiService {
             MAX_TAPP_HTTP_RESPONSE_BYTES,
         )
         .await?;
-        let body = String::from_utf8_lossy(&body).into_owned();
+        let mut body = String::from_utf8_lossy(&body).into_owned();
+        if let Some(credential) = credential {
+            if !credential.value().is_empty() {
+                body = body.replace(credential.value(), "[REDACTED]");
+            }
+        }
 
-        // 尝试解析为 JSON
-        let data = serde_json::from_str::<Value>(&body).unwrap_or_else(|_| json!({ "text": body }));
+        // Parse after the raw-text pass, then redact the parsed tree as well.
+        // JSON escaping can hide the literal byte sequence (for example a
+        // quote in the secret becomes `\"` on the wire), so text replacement
+        // alone is not a complete exact-secret reflection guard.
+        let parsed = serde_json::from_str::<Value>(&body);
+        let is_json = parsed.is_ok();
+        let mut data = parsed.unwrap_or_else(|_| json!({ "text": body }));
+        if let Some(credential) = credential {
+            Self::redact_secret_from_json(&mut data, credential.value());
+        }
 
         if status.is_success() {
             Ok(data)
         } else {
-            Err(format!("HTTP {} - {}", status.as_u16(), body))
+            let safe_body = if is_json {
+                serde_json::to_string(&data).unwrap_or_else(|_| "[REDACTED]".to_string())
+            } else {
+                body
+            };
+            Err(format!("HTTP {} - {}", status.as_u16(), safe_body))
+        }
+    }
+
+    fn redact_secret_from_json(value: &mut Value, secret: &str) {
+        if secret.is_empty() {
+            return;
+        }
+        match value {
+            Value::String(text) => {
+                *text = text.replace(secret, "[REDACTED]");
+            }
+            Value::Array(items) => {
+                for item in items {
+                    Self::redact_secret_from_json(item, secret);
+                }
+            }
+            Value::Object(fields) => {
+                let original = std::mem::take(fields);
+                for (key, mut nested) in original {
+                    Self::redact_secret_from_json(&mut nested, secret);
+                    fields.insert(key.replace(secret, "[REDACTED]"), nested);
+                }
+            }
+            Value::Null | Value::Bool(_) | Value::Number(_) => {}
         }
     }
 
@@ -519,9 +624,7 @@ impl TappApiService {
                 if prompt.len() > 20_000 {
                     return Err("AI chat messages are too large".to_string());
                 }
-                if let Some(reason) =
-                    myriad_prompt_security::validate_prompt_security(&prompt)
-                {
+                if let Some(reason) = myriad_prompt_security::validate_prompt_security(&prompt) {
                     return Err(format!("AI chat contains disallowed content: {reason}"));
                 }
                 Self::execute_builtin_ai(
@@ -553,9 +656,7 @@ impl TappApiService {
                 if prompt.len() > 2000 {
                     return Err("Prompt too long (max 2000 characters)".to_string());
                 }
-                if let Some(reason) =
-                    myriad_prompt_security::validate_prompt_security(prompt)
-                {
+                if let Some(reason) = myriad_prompt_security::validate_prompt_security(prompt) {
                     return Err(format!("Prompt contains disallowed content: {reason}"));
                 }
                 Self::execute_builtin_ai(
@@ -624,6 +725,47 @@ impl TappApiService {
             .to_string()
     }
 
+    /// Resolve a raw body without normalizing or trimming any literal bytes.
+    /// A body that is exactly one template must resolve to a string; templates
+    /// embedded in a larger string stringify scalar/JSON values in place.
+    fn resolve_raw_template(
+        template: &str,
+        context: &HashMap<String, Value>,
+    ) -> Result<String, String> {
+        if let Some(captures) = TEMPLATE_RE.captures(template) {
+            let whole = captures.get(0).expect("template regex has a full match");
+            if whole.start() == 0 && whole.end() == template.len() {
+                let path = captures.get(1).map_or("", |value| value.as_str()).trim();
+                let value = context
+                    .get(path)
+                    .ok_or_else(|| format!("raw body template is unresolved: {path}"))?;
+                return value
+                    .as_str()
+                    .map(str::to_owned)
+                    .ok_or_else(|| "raw body must resolve to a string".to_string());
+            }
+        }
+
+        let mut resolved = String::with_capacity(template.len());
+        let mut previous_end = 0;
+        for captures in TEMPLATE_RE.captures_iter(template) {
+            let whole = captures.get(0).expect("template regex has a full match");
+            resolved.push_str(&template[previous_end..whole.start()]);
+            let path = captures.get(1).map_or("", |value| value.as_str()).trim();
+            let value = context
+                .get(path)
+                .ok_or_else(|| format!("raw body template is unresolved: {path}"))?;
+            match value {
+                Value::String(value) => resolved.push_str(value),
+                Value::Null => {}
+                other => resolved.push_str(&other.to_string()),
+            }
+            previous_end = whole.end();
+        }
+        resolved.push_str(&template[previous_end..]);
+        Ok(resolved)
+    }
+
     /// 解析 JSON 中的模板变量
     fn resolve_json_templates(value: &Value, context: &HashMap<String, Value>) -> Value {
         match value {
@@ -656,6 +798,88 @@ impl TappApiService {
         }
     }
 
+    fn encode_http_body(
+        api_def: &TappApiDef,
+        context: &HashMap<String, Value>,
+    ) -> Result<Option<EncodedHttpBody>, String> {
+        if api_def.body_mode != TappHttpBodyMode::Json
+            && !HTTP_BODY_METHODS.contains(&api_def.method.as_str())
+        {
+            return Err(format!(
+                "HTTP bodyMode {} requires one of: {}",
+                match api_def.body_mode {
+                    TappHttpBodyMode::Json => unreachable!("checked above"),
+                    TappHttpBodyMode::Raw => "raw",
+                    TappHttpBodyMode::Form => "form",
+                },
+                HTTP_BODY_METHODS.join(", ")
+            ));
+        }
+
+        let Some(body) = &api_def.body else {
+            return match api_def.body_mode {
+                TappHttpBodyMode::Json => Ok(None),
+                TappHttpBodyMode::Raw => Err("raw body must be declared".to_string()),
+                TappHttpBodyMode::Form => Err("form body must be declared".to_string()),
+            };
+        };
+        let (bytes, default_content_type) = match api_def.body_mode {
+            TappHttpBodyMode::Json => {
+                let resolved_body = Self::resolve_json_templates(body, context);
+                (
+                    serde_json::to_vec(&resolved_body)
+                        .map_err(|error| format!("Failed to serialize JSON body: {error}"))?,
+                    Some("application/json"),
+                )
+            }
+            TappHttpBodyMode::Raw => {
+                let template = body
+                    .as_str()
+                    .ok_or_else(|| "raw body must be declared as a string".to_string())?;
+                let value = Self::resolve_raw_template(template, context)?;
+                (value.as_bytes().to_vec(), None)
+            }
+            TappHttpBodyMode::Form => {
+                let resolved_body = Self::resolve_json_templates(body, context);
+                let fields = resolved_body
+                    .as_object()
+                    .ok_or_else(|| "form body must resolve to an object".to_string())?;
+                let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+                for (name, value) in fields {
+                    let value = match value {
+                        Value::String(value) => value.clone(),
+                        Value::Number(value) => value.to_string(),
+                        Value::Bool(value) => value.to_string(),
+                        Value::Null => String::new(),
+                        Value::Array(_) | Value::Object(_) => {
+                            return Err(format!(
+                                "form body field {name} must resolve to a scalar value"
+                            ));
+                        }
+                    };
+                    serializer.append_pair(name, &value);
+                }
+                (
+                    serializer.finish().into_bytes(),
+                    Some("application/x-www-form-urlencoded"),
+                )
+            }
+        };
+
+        if api_def.body_mode != TappHttpBodyMode::Json
+            && bytes.len() > MAX_TAPP_NON_JSON_HTTP_REQUEST_BYTES
+        {
+            return Err(format!(
+                "non-JSON HTTP request body exceeds {MAX_TAPP_NON_JSON_HTTP_REQUEST_BYTES} bytes"
+            ));
+        }
+
+        Ok(Some(EncodedHttpBody {
+            bytes,
+            default_content_type,
+        }))
+    }
+
     /// 生成缓存 key
     fn generate_cache_key(
         tapp_id: &str,
@@ -676,8 +900,13 @@ impl TappApiService {
         let username_hash = format!("{:x}", Sha256::digest(context.username.as_bytes()));
         let definition = serde_json::to_vec(api_def).unwrap_or_default();
         let definition_hash = format!("{:x}", Sha256::digest(definition));
+        let credential_revision = context
+            .credential
+            .as_ref()
+            .map(|credential| credential.revision())
+            .unwrap_or("none");
         format!(
-            "tapp_api:{}:{}:{}:{}:{}:{}:{}:{}:{}",
+            "tapp_api:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
             tapp_id,
             context.owner_id,
             context.user_id,
@@ -686,6 +915,7 @@ impl TappApiService {
             ip_hash,
             api_name,
             definition_hash,
+            credential_revision,
             params_hash
         )
     }
@@ -739,6 +969,8 @@ mod tests {
             endpoint: Some("https://example.com".to_string()),
             method: "GET".to_string(),
             headers: None,
+            credential: None,
+            body_mode: TappHttpBodyMode::Json,
             body: None,
             builtin: None,
             inject: None,
@@ -757,6 +989,7 @@ mod tests {
             client_ip: Some(ip.to_string()),
             granted_permissions: Vec::new(),
             ai_model_tier: None,
+            credential: None,
         }
     }
 
@@ -856,6 +1089,30 @@ mod tests {
     }
 
     #[test]
+    fn credential_redaction_handles_json_escaped_values_keys_and_nesting() {
+        let secret = "top\"secret\\tail";
+        let mut fields = serde_json::Map::new();
+        fields.insert(
+            format!("header-{secret}"),
+            json!({ "nested": [format!("before-{secret}-after")] }),
+        );
+        let wire_body = Value::Object(fields).to_string();
+        assert!(
+            !wire_body.contains(secret),
+            "the regression requires JSON escaping to hide the raw sequence"
+        );
+
+        let mut parsed: Value = serde_json::from_str(&wire_body).unwrap();
+        TappApiService::redact_secret_from_json(&mut parsed, secret);
+
+        assert_eq!(
+            parsed["header-[REDACTED]"]["nested"][0],
+            "before-[REDACTED]-after"
+        );
+        assert!(!parsed.to_string().contains("top\\\"secret"));
+    }
+
+    #[test]
     fn declared_api_inject_aliases_preserve_host_value_types() {
         let mut values = HashMap::from([
             ("geo.city".to_string(), json!("Tokyo")),
@@ -890,5 +1147,340 @@ mod tests {
         assert!(TappApiService::api_uses_template_prefix(&api, "{{geo."));
         assert!(TappApiService::api_uses_template_prefix(&api, "{{secrets."));
         assert!(!TappApiService::api_uses_template_prefix(&api, "{{user."));
+    }
+
+    #[test]
+    fn json_body_mode_preserves_existing_serialization() {
+        let mut api = api_def();
+        api.method = "POST".to_string();
+        api.body = Some(json!({ "message": "hello\n世界" }));
+
+        let encoded = TappApiService::encode_http_body(&api, &HashMap::new())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            encoded.bytes,
+            serde_json::to_vec(api.body.as_ref().unwrap()).unwrap()
+        );
+        assert_eq!(encoded.default_content_type, Some("application/json"));
+    }
+
+    #[test]
+    fn raw_body_mode_preserves_exact_utf8_bytes() {
+        let mut api = api_def();
+        api.method = "POST".to_string();
+        api.body_mode = TappHttpBodyMode::Raw;
+        api.body = Some(json!("{{params.body}}"));
+        let raw = "中文\n<InvalidationBatch>&\"\\</InvalidationBatch>";
+        let context = HashMap::from([("params.body".to_string(), json!(raw))]);
+
+        let encoded = TappApiService::encode_http_body(&api, &context)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(encoded.bytes, raw.as_bytes());
+        assert!(!encoded.bytes.ends_with(b"\n"));
+        assert_eq!(encoded.default_content_type, None);
+        assert_eq!(
+            format!("{:x}", Sha256::digest(&encoded.bytes)),
+            format!("{:x}", Sha256::digest(raw.as_bytes()))
+        );
+    }
+
+    #[test]
+    fn raw_body_mode_preserves_literal_whitespace_around_templates() {
+        let mut api = api_def();
+        api.method = "POST".to_string();
+        api.body_mode = TappHttpBodyMode::Raw;
+        api.body = Some(json!(" \n{{params.body}}\n "));
+        let context = HashMap::from([("params.body".to_string(), json!("payload"))]);
+
+        let encoded = TappApiService::encode_http_body(&api, &context)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(encoded.bytes, b" \npayload\n ");
+    }
+
+    #[test]
+    fn raw_body_mode_rejects_unresolved_templates() {
+        let mut api = api_def();
+        api.method = "POST".to_string();
+        api.body_mode = TappHttpBodyMode::Raw;
+        api.body = Some(json!("prefix={{params.missing}}"));
+
+        let error = TappApiService::encode_http_body(&api, &HashMap::new()).unwrap_err();
+
+        assert_eq!(error, "raw body template is unresolved: params.missing");
+    }
+
+    #[tokio::test]
+    async fn runtime_rejects_non_json_body_modes_on_unsupported_methods_before_outbound() {
+        for body_mode in [TappHttpBodyMode::Raw, TappHttpBodyMode::Form] {
+            let mut api = api_def();
+            api.endpoint = Some("https://invalid.invalid/should-not-resolve".to_string());
+            api.method = "GET".to_string();
+            api.body_mode = body_mode;
+            api.body = Some(json!("payload"));
+
+            let error = TappApiService::execute_http_api(&api, &HashMap::new())
+                .await
+                .unwrap_err();
+
+            assert!(error.starts_with("HTTP bodyMode "));
+            assert!(error.contains("requires one of: POST, PUT, PATCH, DELETE"));
+        }
+    }
+
+    #[tokio::test]
+    async fn credential_is_attached_only_as_host_header_and_redacted_from_response() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
+        let previous_environment = std::env::var("ENVIRONMENT").ok();
+        let previous_lab_flag = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
+        std::env::remove_var("ENVIRONMENT");
+        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 4096];
+            loop {
+                let read = stream.read(&mut chunk).await.unwrap();
+                assert!(read > 0);
+                request.extend_from_slice(&chunk[..read]);
+                if request.windows(4).any(|part| part == b"\r\n\r\n") {
+                    break;
+                }
+            }
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 21\r\nConnection: close\r\n\r\n{\"echo\":\"top-secret\"}",
+                )
+                .await
+                .unwrap();
+            String::from_utf8_lossy(&request).into_owned()
+        });
+
+        let mut api = api_def();
+        api.endpoint = Some(format!("http://{address}/credential"));
+        api.credential = Some(myriad_tapp_contract::manifest::TappApiCredentialBinding {
+            key: "wegame".into(),
+            header: "Authorization".into(),
+            prefix: Some("Bearer ".into()),
+        });
+        let credential =
+            crate::services::tapp_credentials::ResolvedApiCredential::for_test("top-secret");
+
+        let response = TappApiService::execute_http_api_with_credential(
+            &api,
+            &HashMap::new(),
+            Some(&credential),
+        )
+        .await
+        .unwrap();
+        let request = server.await.unwrap();
+
+        assert!(request
+            .to_ascii_lowercase()
+            .contains("authorization: bearer top-secret"));
+        assert_eq!(response, json!({ "echo": "[REDACTED]" }));
+
+        match previous_environment {
+            Some(value) => std::env::set_var("ENVIRONMENT", value),
+            None => std::env::remove_var("ENVIRONMENT"),
+        }
+        match previous_lab_flag {
+            Some(value) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value),
+            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+        }
+    }
+
+    #[tokio::test]
+    async fn raw_body_mode_sends_exact_bytes_on_the_wire() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
+        let previous_environment = std::env::var("ENVIRONMENT").ok();
+        let previous_lab_flag = std::env::var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND").ok();
+        std::env::remove_var("ENVIRONMENT");
+        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0_u8; 4096];
+            loop {
+                let read = stream.read(&mut chunk).await.unwrap();
+                assert!(read > 0, "connection closed before request body completed");
+                request.extend_from_slice(&chunk[..read]);
+                let Some(header_end) = request.windows(4).position(|part| part == b"\r\n\r\n")
+                else {
+                    continue;
+                };
+                let header_end = header_end + 4;
+                let headers = String::from_utf8_lossy(&request[..header_end]);
+                let content_length = headers
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap();
+                if request.len() >= header_end + content_length {
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                        )
+                        .await
+                        .unwrap();
+                    return (
+                        headers.into_owned(),
+                        request[header_end..header_end + content_length].to_vec(),
+                    );
+                }
+            }
+        });
+
+        let raw = "第一行\n中文 & <xml attr=\"value\">\\结束</xml>";
+        let mut api = api_def();
+        api.endpoint = Some(format!("http://{address}/submit"));
+        api.method = "POST".to_string();
+        api.body_mode = TappHttpBodyMode::Raw;
+        api.headers = Some(HashMap::from([(
+            "Content-Type".to_string(),
+            "text/plain; charset=utf-8".to_string(),
+        )]));
+        api.body = Some(json!("{{params.body}}"));
+        let context = HashMap::from([("params.body".to_string(), json!(raw))]);
+
+        let result = TappApiService::execute_http_api(&api, &context).await;
+
+        match previous_environment {
+            Some(value) => std::env::set_var("ENVIRONMENT", value),
+            None => std::env::remove_var("ENVIRONMENT"),
+        }
+        match previous_lab_flag {
+            Some(value) => std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", value),
+            None => std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND"),
+        }
+
+        if let Err(error) = result {
+            server.abort();
+            panic!("raw request failed: {error}");
+        }
+        let (headers, body) = server.await.unwrap();
+        assert!(headers
+            .lines()
+            .any(|line| line.eq_ignore_ascii_case("content-type: text/plain; charset=utf-8")));
+        assert_eq!(body, raw.as_bytes());
+        assert!(!body.ends_with(b"\n"));
+    }
+
+    #[test]
+    fn raw_body_mode_rejects_non_string_resolution() {
+        let mut api = api_def();
+        api.method = "POST".to_string();
+        api.body_mode = TappHttpBodyMode::Raw;
+        api.body = Some(json!("{{params.body}}"));
+        let context = HashMap::from([("params.body".to_string(), json!({ "not": "raw" }))]);
+
+        let error = TappApiService::encode_http_body(&api, &context).unwrap_err();
+
+        assert_eq!(error, "raw body must resolve to a string");
+    }
+
+    #[test]
+    fn form_body_mode_url_encodes_scalar_fields() {
+        let mut api = api_def();
+        api.method = "POST".to_string();
+        api.body_mode = TappHttpBodyMode::Form;
+        api.body = Some(json!({
+            "grant_type": "client_credentials",
+            "scope": "read write/中文",
+            "enabled": true,
+            "empty": null
+        }));
+
+        let encoded = TappApiService::encode_http_body(&api, &HashMap::new())
+            .unwrap()
+            .unwrap();
+        let body = String::from_utf8(encoded.bytes).unwrap();
+        let decoded: HashMap<String, String> = url::form_urlencoded::parse(body.as_bytes())
+            .into_owned()
+            .collect();
+
+        assert_eq!(
+            decoded.get("grant_type").map(String::as_str),
+            Some("client_credentials")
+        );
+        assert_eq!(
+            decoded.get("scope").map(String::as_str),
+            Some("read write/中文")
+        );
+        assert_eq!(decoded.get("enabled").map(String::as_str), Some("true"));
+        assert_eq!(decoded.get("empty").map(String::as_str), Some(""));
+        assert!(body.contains("scope=read+write%2F"));
+        assert_eq!(
+            encoded.default_content_type,
+            Some("application/x-www-form-urlencoded")
+        );
+    }
+
+    #[test]
+    fn form_body_mode_rejects_nested_values_after_resolution() {
+        let mut api = api_def();
+        api.method = "POST".to_string();
+        api.body_mode = TappHttpBodyMode::Form;
+        api.body = Some(json!({ "scope": "{{params.scope}}" }));
+        let context = HashMap::from([("params.scope".to_string(), json!(["read", "write"]))]);
+
+        let error = TappApiService::encode_http_body(&api, &context).unwrap_err();
+
+        assert_eq!(
+            error,
+            "form body field scope must resolve to a scalar value"
+        );
+    }
+
+    #[test]
+    fn serialized_http_body_enforces_byte_limit() {
+        let mut api = api_def();
+        api.method = "POST".to_string();
+        api.body_mode = TappHttpBodyMode::Raw;
+        api.body = Some(json!("{{params.body}}"));
+        let oversized = "界".repeat(MAX_TAPP_NON_JSON_HTTP_REQUEST_BYTES / 3 + 1);
+        let context = HashMap::from([("params.body".to_string(), json!(oversized))]);
+
+        let error = TappApiService::encode_http_body(&api, &context).unwrap_err();
+
+        assert_eq!(
+            error,
+            format!(
+                "non-JSON HTTP request body exceeds {MAX_TAPP_NON_JSON_HTTP_REQUEST_BYTES} bytes"
+            )
+        );
+    }
+
+    #[test]
+    fn json_body_mode_remains_compatible_above_non_json_limit() {
+        let mut api = api_def();
+        api.method = "POST".to_string();
+        api.body = Some(json!({
+            "payload": "a".repeat(MAX_TAPP_NON_JSON_HTTP_REQUEST_BYTES + 1)
+        }));
+
+        let encoded = TappApiService::encode_http_body(&api, &HashMap::new())
+            .unwrap()
+            .unwrap();
+
+        assert!(encoded.bytes.len() > MAX_TAPP_NON_JSON_HTTP_REQUEST_BYTES);
     }
 }

@@ -3,6 +3,7 @@
 //! Extracted from `api::profile` so `services::tapp_scheduler` does not depend on the HTTP layer.
 
 use crate::services::fetcher::PlatformFetcher;
+use crate::services::library_items::invalidate_library_assembly_cache;
 use crate::services::site_owner::site_owner_user_id;
 use chrono::{DateTime, Duration, Utc};
 use sea_orm::DatabaseConnection;
@@ -83,7 +84,9 @@ pub fn load_platform_data_cache() -> Option<PlatformDataCache> {
 /// 保存平台数据缓存到磁盘（优化：只保存分平台数据，不再保存完整大文件）
 pub fn save_platform_data_cache(data: &Value) -> Result<(), Box<dyn std::error::Error>> {
     // 保存分平台的原始数据
-    save_split_raw_data(data)
+    save_split_raw_data(data)?;
+    invalidate_library_assembly_cache();
+    Ok(())
 }
 
 /// 保存分平台的原始数据（避免读取大文件）

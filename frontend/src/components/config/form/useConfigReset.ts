@@ -34,6 +34,8 @@ import {
   updateReportSettings,
   type ReportSettings,
 } from '../../../utils/reportSettings'
+import { dispatchLibraryPreferencesUpdated } from '../../../utils/libraryPreferences'
+import { clearLibraryDataCache } from '../../../utils/requestDedup'
 import {
   DEFAULT_FEDERATION_POLICY,
   federationPolicyToUpdateRequest,
@@ -57,7 +59,10 @@ import {
   defaultUiFieldValue,
   mapConfigFields,
 } from './defaultFieldValues'
-import { DEFAULT_AUTO_FETCH_CONFIG, DEFAULT_PERMISSION_CONFIG } from './defaults'
+import {
+  DEFAULT_AUTO_FETCH_CONFIG,
+  DEFAULT_PERMISSION_CONFIG,
+} from './defaults'
 import type { Config, ConfigField, ShowMessage } from './types'
 
 type ResetI18n = {
@@ -137,15 +142,17 @@ export function useConfigReset(args: {
       const clearedData = {
         ...data,
         auto_fetch: DEFAULT_AUTO_FETCH_CONFIG,
-        platforms: data.platforms.map((platform: Config['platforms'][number]) => ({
-          ...platform,
-          enabled: false,
-          has_token: false,
-          config_fields: platform.config_fields.map((field) => ({
-            ...field,
-            value: '',
-          })),
-        })),
+        platforms: data.platforms.map(
+          (platform: Config['platforms'][number]) => ({
+            ...platform,
+            enabled: false,
+            has_token: false,
+            config_fields: platform.config_fields.map((field) => ({
+              ...field,
+              value: '',
+            })),
+          }),
+        ),
         ai_config: {
           ...data.ai_config,
           enabled: false,
@@ -327,10 +334,17 @@ export function useConfigReset(args: {
         if (!libSaved.success) {
           throw new Error(libSaved.message || t.config.librarySourceSaveFailed)
         }
-        const libNorm = normalizeLibraryPreferences(libSaved.preferences as never)
+        const libNorm = normalizeLibraryPreferences(
+          libSaved.preferences as never,
+        )
         side.setLibrarySourceDraft(libNorm)
         side.setSavedLibrarySourcePreferences(libNorm)
         side.setLibrarySourceSaveRevision((r) => r + 1)
+        clearLibraryDataCache()
+        dispatchLibraryPreferencesUpdated({
+          categories: libNorm.categories,
+          layout: libNorm.layout,
+        })
 
         const vis = await updateModuleVisibilityPreferences(
           DEFAULT_MODULE_VISIBILITY_PREFERENCES,
@@ -376,9 +390,8 @@ export function useConfigReset(args: {
         }
         side.setPermissionConfig({ ...DEFAULT_PERMISSION_CONFIG })
         side.setSavedPermissionConfig({ ...DEFAULT_PERMISSION_CONFIG })
-        const { TappRuntime } = await import(
-          '../../../tapp/runtime/TappRuntime'
-        )
+        const { TappRuntime } =
+          await import('../../../tapp/runtime/TappRuntime')
         await TappRuntime.getInstance().refreshPermissionGrants()
       } else if (section === 'notifications') {
         const saved = await notificationPreferencesApi.update(

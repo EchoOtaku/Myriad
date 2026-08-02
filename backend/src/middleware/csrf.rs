@@ -194,7 +194,10 @@ pub async fn csrf_middleware(req: Request, next: Next) -> Response {
         .unwrap_or("");
 
     if client_token.is_empty() {
-        tracing::warn!("🚨 CSRF check failed: Missing X-CSRF-Token header on {}", path);
+        tracing::warn!(
+            "🚨 CSRF check failed: Missing X-CSRF-Token header on {}",
+            path
+        );
         return (
             StatusCode::FORBIDDEN,
             Json(json!({
@@ -422,6 +425,7 @@ mod tests {
         assert!(!is_csrf_exempt("/api/tapp/ai/v2/tasks"));
         assert!(!is_csrf_exempt("/api/tapps/install"));
         assert!(!is_csrf_exempt("/api/tapps/my-app/start"));
+        assert!(!is_csrf_exempt("/api/tapps/my-app/credentials/wegame"));
 
         assert!(!is_csrf_exempt("/api/config"));
         assert!(!is_csrf_exempt("/api/auth/change-password"));
@@ -444,10 +448,7 @@ mod tests {
 
     fn bearer_headers(jwt: &str) -> HeaderMap {
         let mut h = HeaderMap::new();
-        h.insert(
-            "Authorization",
-            format!("Bearer {jwt}").parse().unwrap(),
-        );
+        h.insert("Authorization", format!("Bearer {jwt}").parse().unwrap());
         h
     }
 
@@ -497,11 +498,7 @@ mod tests {
             &Method::POST,
             &headers
         ));
-        assert!(!csrf_check_needed(
-            "/api/config",
-            &Method::PUT,
-            &headers
-        ));
+        assert!(!csrf_check_needed("/api/config", &Method::PUT, &headers));
     }
 
     #[test]

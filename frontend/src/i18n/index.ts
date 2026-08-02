@@ -1456,6 +1456,10 @@ export interface TranslationKeys {
     moduleSettingsDesc: string
     libraryModuleTitle: string
     libraryModuleDesc: string
+    libraryLayout: string
+    libraryLayoutDesc: string
+    libraryLayoutList: string
+    libraryLayoutCanvas: string
     librarySourceVisibleCount: string
     librarySourceNoData: string
     librarySourceSaved: string
@@ -1675,6 +1679,12 @@ export interface TranslationKeys {
     // 空状态
     emptyLibrary: string
     emptyCategory: string
+    canvasPanHint: string
+    canvasDismissHint: string
+    canvasResetView: string
+    canvasZoomIn: string
+    canvasZoomOut: string
+    canvasAriaLabel: string
     // 内容类型
     anime: string
     tvSeries: string
@@ -3014,6 +3024,20 @@ export interface TranslationKeys {
     loading: string
     settingSaved: string
     settingSaveFailed: string
+    apiCredentials: string
+    apiCredentialsDesc: string
+    credentialConfigured: string
+    credentialNotConfigured: string
+    credentialConfigure: string
+    credentialReplace: string
+    credentialRemove: string
+    credentialRemoveConfirm: string
+    credentialOrigins: string
+    credentialReauthorizationRequired: string
+    credentialSaved: string
+    credentialSaveFailed: string
+    credentialRemoved: string
+    credentialRemoveFailed: string
 
     // AI 配额
     aiQuota: string

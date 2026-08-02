@@ -1718,7 +1718,12 @@ export const jaJP: TranslationKeys = {
     moduleSettingsDesc:
       '各機能の表示範囲と、ライブラリソース・レポート期限・音楽プレイヤー・一言',
     libraryModuleTitle: 'ライブラリ',
-    libraryModuleDesc: 'カテゴリごとに表示するプラットフォームソースを選択',
+    libraryModuleDesc: 'カード配置を設定し、カテゴリごとに表示するソースを選択',
+    libraryLayout: 'カード配置',
+    libraryLayoutDesc:
+      '通常リスト、または中央から広がるドラッグ可能なキャンバスを選択します',
+    libraryLayoutList: 'リスト',
+    libraryLayoutCanvas: '無限キャンバス',
     librarySourceVisibleCount:
       '現在 {shown} 件を表示中（フィルター前 {total} 件）',
     librarySourceNoData:
@@ -1956,6 +1961,13 @@ export const jaJP: TranslationKeys = {
       'ライブラリが空です。設定ページでプラットフォームデータを取得してください',
     emptyCategory:
       'このカテゴリにはコンテンツがありません。他のカテゴリをお試しください',
+    canvasPanHint:
+      'カードまたは余白をドラッグ · 矢印キーで移動 · + / - でズーム · 0 でリセット',
+    canvasDismissHint: 'このセッションでは操作ヒントを表示しない',
+    canvasResetView: '中央に戻す',
+    canvasZoomIn: 'ズームイン',
+    canvasZoomOut: 'ズームアウト',
+    canvasAriaLabel: 'ライブラリ無限キャンバス',
     // コンテンツタイプ
     anime: 'アニメ',
     tvSeries: 'ドラマ',
@@ -3355,6 +3367,23 @@ export const jaJP: TranslationKeys = {
     loading: '読み込み中...',
     settingSaved: '設定を保存しました',
     settingSaveFailed: '保存に失敗しました',
+    apiCredentials: 'API 認証情報',
+    apiCredentialsDesc:
+      'ホストが暗号化して保存し、マニフェストで宣言された固定 HTTPS サービスにのみ送信します。アプリや訪問者は値を読み取れません',
+    credentialConfigured: '設定済み（値は読み取れません）',
+    credentialNotConfigured: '未設定',
+    credentialConfigure: '設定',
+    credentialReplace: '置き換え',
+    credentialRemove: '認証情報を削除',
+    credentialRemoveConfirm:
+      'この認証情報を使用する API は動作しなくなります。続行しますか？',
+    credentialOrigins: '送信先：{origins}',
+    credentialReauthorizationRequired:
+      'マニフェストの送信先または権限が変更されました。再入力して承認してください',
+    credentialSaved: '認証情報を安全に保存しました',
+    credentialSaveFailed: '認証情報の保存に失敗しました',
+    credentialRemoved: '認証情報を削除しました',
+    credentialRemoveFailed: '認証情報の削除に失敗しました',
 
     // AI クォータ
     aiQuota: 'AI クォータ',

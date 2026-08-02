@@ -1,3 +1,6 @@
+import type { CSSProperties, ReactNode, SyntheticEvent } from 'react'
+import type { LibraryCanvasLayout } from '../utils/libraryCanvas'
+import type { LibraryPreferencesUpdatedDetail } from '../utils/libraryPreferences'
 import type {
   WatchProgress,
   WatchProgressLabels,
@@ -5,22 +8,20 @@ import type {
 import type { Song } from '../utils/musicPlayer'
 
 import { FaBook, FaGamepad, FaMusic, FaVideo } from '@lib/icons'
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-  type SyntheticEvent,
-} from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
 import { useMusicLyricsSlice } from '../contexts/MusicPlayerContext'
 import { useLibraryIntersectionObserver } from '../hooks/animation'
-import { LyricWaveScroll } from './shared/LyricWaveScroll'
+import { useLibraryCanvasControls } from '../hooks/useLibraryCanvasControls'
 import { useSharedResize } from '../hooks/useSharedEventListener'
+import {
+  buildCenterOutCanvasLayout,
+  getLibraryCanvasFocusScale,
+  getLibraryCanvasViewportBounds,
+  libraryCanvasLayoutIntersects,
+  LIBRARY_CANVAS_STRIDE,
+} from '../utils/libraryCanvas'
+import { LIBRARY_PREFERENCES_UPDATED_EVENT } from '../utils/libraryPreferences'
 import {
   formatWatchProgressText,
   formatWatchStatusLabel,
@@ -32,9 +33,11 @@ import {
   isNeteaseVipFromMeta,
 } from '../utils/musicPlayer'
 import { proxyImageUrlOr } from '../utils/proxyImageUrl'
-import { getLibraryDataDeduped } from '../utils/requestDedup'
+import { getLibraryDataPageDeduped } from '../utils/requestDedup'
 import { showInfo } from '../utils/toastManager'
+import { LibraryCanvasChrome } from './library/LibraryCanvasChrome'
 import PlatformIcon from './PlatformIcon'
+import { LyricWaveScroll } from './shared/LyricWaveScroll'
 import { QuickTransition } from './SkeletonTransition'
 import { Spinner } from './Spinner'
 
@@ -53,7 +56,9 @@ const LIBRARY_LIVE_MS = {
 
 // 注入 / 热更新资料库网格样式（HMR 时覆写 textContent）
 if (typeof document !== 'undefined') {
-  let style = document.getElementById('library-grid-styles') as HTMLStyleElement | null
+  let style = document.getElementById(
+    'library-grid-styles',
+  ) as HTMLStyleElement | null
   if (!style) {
     style = document.createElement('style')
     style.id = 'library-grid-styles'
@@ -74,6 +79,48 @@ if (typeof document !== 'undefined') {
 
         .library-card-container {
             animation: fadeInUp 0.35s ease-out backwards;
+        }
+
+        /* 画布虚拟化会按视口装卸卡片；禁用重复入场，拖拽时保持空间连续。 */
+        .library-canvas-world .library-card-container {
+            animation: none;
+            transition: transform 120ms ease-out;
+            will-change: transform;
+        }
+
+        [data-library-canvas-surface='true'][data-dragging='true'] {
+            cursor: grabbing;
+        }
+
+        [data-library-canvas-surface='true'],
+        [data-library-canvas-surface='true'] .library-card-container {
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        [data-library-canvas-surface='true'] .library-card-container img {
+            -webkit-user-drag: none;
+            user-select: none;
+        }
+
+        /*
+         * 无限画布本身已响应指针；背景强制静止，避免双重位移与点击涟漪干扰。
+         * transform 用过渡缓入静止（勿 transition:none），退出画布后由 evocative soft-restore 缓回 scale。
+         */
+        html[data-library-canvas='active'] #wallpaper {
+            animation: none !important;
+            transform: none !important;
+            transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1) !important;
+        }
+
+        html[data-library-canvas='active'] #wallpaper-ripple-canvas {
+            /* 长时画布会话用 display 省合成；恢复时 canvas 会重建并从 opacity 0 淡入 */
+            display: none !important;
+        }
+
+        html[data-library-canvas='active'] #wallpaper-awaiting-fx,
+        html[data-library-canvas='active'] #wallpaper-awaiting-fx::after {
+            animation: none !important;
         }
 
         /*
@@ -877,7 +924,8 @@ function resolveLibraryItemUrl(item: {
   item_type: string
   metadata: any
 }): string | null {
-  const m = item.metadata && typeof item.metadata === 'object' ? item.metadata : {}
+  const m =
+    item.metadata && typeof item.metadata === 'object' ? item.metadata : {}
   const asHttp = (v: unknown): string | null => {
     if (typeof v !== 'string') return null
     const s = v.trim()
@@ -911,7 +959,11 @@ function resolveLibraryItemUrl(item: {
   }
 
   // Bilibili
-  if (platform.includes('bilibili') || platform.includes('bili') || id.startsWith('bilibili_')) {
+  if (
+    platform.includes('bilibili') ||
+    platform.includes('bili') ||
+    id.startsWith('bilibili_')
+  ) {
     if (m.season_id != null) {
       return `https://www.bilibili.com/bangumi/play/ss${m.season_id}`
     }
@@ -924,7 +976,11 @@ function resolveLibraryItemUrl(item: {
   }
 
   // Bangumi
-  if (platform.includes('bangumi') || platform.includes('bgm') || id.startsWith('bangumi_')) {
+  if (
+    platform.includes('bangumi') ||
+    platform.includes('bgm') ||
+    id.startsWith('bangumi_')
+  ) {
     const sid =
       m.subject_id ??
       m.subject?.id ??
@@ -944,7 +1000,8 @@ function resolveLibraryItemUrl(item: {
   ) {
     const mal = id.match(/^mal_(anime|manga)_(\d+)$/i)
     if (mal) return `https://myanimelist.net/${mal[1].toLowerCase()}/${mal[2]}`
-    const kind = m.media_type === 'manga' || item.item_type === 'book' ? 'manga' : 'anime'
+    const kind =
+      m.media_type === 'manga' || item.item_type === 'book' ? 'manga' : 'anime'
     const mid = m.id ?? m.node?.id
     if (mid != null) return `https://myanimelist.net/${kind}/${mid}`
   }
@@ -1023,9 +1080,7 @@ function pointOnRoundedRect(
   const sh = Math.max(0, h - 2 * ay)
   // 四分椭圆弧长（Ramanujan 近似）
   const arc =
-    (Math.PI *
-      (3 * (ax + ay) - Math.sqrt((3 * ax + ay) * (ax + 3 * ay)))) /
-    8
+    (Math.PI * (3 * (ax + ay) - Math.sqrt((3 * ax + ay) * (ax + 3 * ay)))) / 8
   const segs = [sw, arc, sh, arc, sw, arc, sh, arc]
   const total = segs.reduce((a, b) => a + b, 0) || 1
   let dist = (((t % 1) + 1) % 1) * total
@@ -1084,7 +1139,13 @@ function pointOnRoundedRect(
     return { x: 0, y: h - ay - u * sh, nx: 1, ny: 0 }
   }
   dist -= segs[6]
-  return onArc(ax, ay, Math.PI, (Math.PI * 3) / 2, dist / Math.max(segs[7], 1e-6))
+  return onArc(
+    ax,
+    ay,
+    Math.PI,
+    (Math.PI * 3) / 2,
+    dist / Math.max(segs[7], 1e-6),
+  )
 }
 
 function sampleBand(bands: number[], t: number): number {
@@ -1162,11 +1223,9 @@ function buildSpectrumWavePath(
   // 底环：安静薄、响乐厚（始终外侧有光，但不锁死固定厚度）
   const basePx = (2.2 + energy * 5.5 + bass * 4.2 + mid * 1.6) * p
   // 频谱沿边起伏幅度（主动态来源）
-  const flowAmp =
-    (3.5 + energy * 7 + treble * 6 + flux * 4 + onset * 3.5) * p
+  const flowAmp = (3.5 + energy * 7 + treble * 6 + flux * 4 + onset * 3.5) * p
   // 高峰额外鼓出
-  const peakAmp =
-    (5 + energy * 6 + treble * 10 + onset * 8 + bass * 2) * p
+  const peakAmp = (5 + energy * 6 + treble * 10 + onset * 8 + bass * 2) * p
 
   // 峰宽：跟 peakW + 频谱（低音宽、高频尖）
   const sig1 = Math.max(
@@ -1263,9 +1322,7 @@ function cornerWeight(
   const sw = Math.max(0, w - 2 * ax)
   const sh = Math.max(0, h - 2 * ay)
   const arc =
-    (Math.PI *
-      (3 * (ax + ay) - Math.sqrt((3 * ax + ay) * (ax + 3 * ay)))) /
-    8
+    (Math.PI * (3 * (ax + ay) - Math.sqrt((3 * ax + ay) * (ax + 3 * ay)))) / 8
   const segs = [sw, arc, sh, arc, sw, arc, sh, arc]
   const total = segs.reduce((a, b) => a + b, 0) || 1
   let dist = (((t % 1) + 1) % 1) * total
@@ -1323,7 +1380,8 @@ function ouStep(
   noise: number,
   dt: number,
 ): number {
-  const n = (Math.random() * 2 - 1) * noise * Math.sqrt(Math.max(0.001, dt) * 30)
+  const n =
+    (Math.random() * 2 - 1) * noise * Math.sqrt(Math.max(0.001, dt) * 30)
   return value + (mean - value) * reversion * dt * 30 + n
 }
 
@@ -1413,7 +1471,9 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
       bodySmoothRef.current = 0
       enterKickRef.current = 1
       // 给一点初始环，避免首帧全空
-      residualBandsRef.current = residualBandsRef.current.map(() => 0.18 + Math.random() * 0.12)
+      residualBandsRef.current = residualBandsRef.current.map(
+        () => 0.18 + Math.random() * 0.12,
+      )
     }
 
     const audio = audioManager.getCurrentAudio()
@@ -1553,7 +1613,8 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
             raw = audioManager.getSpectrumBands()
             // 缓存末帧，供退场残留
             for (let i = 0; i < 8; i++) {
-              residualBandsRef.current[i] = raw[i] ?? residualBandsRef.current[i]
+              residualBandsRef.current[i] =
+                raw[i] ?? residualBandsRef.current[i]
             }
           } else {
             // 退场：残留频谱缓衰减，保持环形态再收
@@ -1595,10 +1656,7 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
           const avgE =
             hist.reduce((a, b) => a + b, 0) / Math.max(1, hist.length)
           const onsetRaw = Math.max(0, (energy - avgE * 1.05) * 2.8)
-          const onset = Math.min(
-            1,
-            onsetRaw + (playing ? kick * 0.55 : 0),
-          )
+          const onset = Math.min(1, onsetRaw + (playing ? kick * 0.55 : 0))
 
           timeAccRef.current += dt * (playing ? 1 : Math.max(0.15, presence))
 
@@ -1676,9 +1734,15 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
             Math.max(0.08, smooth[4] + smooth[5] + smooth[6] + smooth[7])
           // 映射到周长，并加相位，避免钉死在固定边
           const spin = (wavePhaseRef.current * 0.02) % 1
-          anchor1Ref.current = (bassFocus * 0.35 + spin + hBias1Ref.current * 0.08 + 1) % 1
+          anchor1Ref.current =
+            (bassFocus * 0.35 + spin + hBias1Ref.current * 0.08 + 1) % 1
           anchor2Ref.current =
-            (trebFocus * 0.35 + 0.5 + spin * 1.3 + hBias2Ref.current * 0.08 + 1) % 1
+            (trebFocus * 0.35 +
+              0.5 +
+              spin * 1.3 +
+              hBias2Ref.current * 0.08 +
+              1) %
+            1
 
           peak1TRef.current = circLerp(
             peak1TRef.current,
@@ -1718,10 +1782,7 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
             v2Ref.current += (Math.random() - 0.5) * 0.012
             noiseSpeedRef.current = 0.02 + Math.random() * 0.06
             nextReseedAtRef.current =
-              timeAccRef.current +
-              1.1 +
-              Math.random() * 2.4 +
-              (1 - onset) * 1.2
+              timeAccRef.current + 1.1 + Math.random() * 2.4 + (1 - onset) * 1.2
           }
 
           // 峰高：可很低可很高 — 频谱主导 + 大随机偏置
@@ -1750,19 +1811,11 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
           peak2HRef.current = lerp(peak2HRef.current, h2Target, 0.15)
           const w1Target = Math.max(
             0.3,
-            0.4 +
-              bass * 0.55 -
-              treble * 0.25 +
-              midF * 0.15 +
-              wBias1Ref.current,
+            0.4 + bass * 0.55 - treble * 0.25 + midF * 0.15 + wBias1Ref.current,
           )
           const w2Target = Math.max(
             0.28,
-            0.35 +
-              midF * 0.3 +
-              treble * 0.45 -
-              bass * 0.12 +
-              wBias2Ref.current,
+            0.35 + midF * 0.3 + treble * 0.45 - bass * 0.12 + wBias2Ref.current,
           )
           peak1WRef.current = lerp(peak1WRef.current, w1Target, 0.1)
           peak2WRef.current = lerp(peak2WRef.current, w2Target, 0.11)
@@ -1815,11 +1868,7 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
           const body = bodySmoothRef.current
           const opTarget =
             opacityPresence *
-            (0.28 +
-              energy * 0.35 +
-              body * 0.4 +
-              onset * 0.15 +
-              kick * 0.38)
+            (0.28 + energy * 0.35 + body * 0.4 + onset * 0.15 + kick * 0.38)
           // 退场透明度跟得更快，出场略柔
           opacitySmoothRef.current = lerp(
             opacitySmoothRef.current,
@@ -2066,9 +2115,9 @@ const LibraryCardShell = memo(function LibraryCardShell({
   const hasCover = Boolean(cover)
   const [mediaReady, setMediaReady] = useState(!hasCover)
   /** off | breathing | exiting — 退场播完再卸类，避免硬切 */
-  const [breathPhase, setBreathPhase] = useState<'off' | 'breathing' | 'exiting'>(
-    coverBreathing ? 'breathing' : 'off',
-  )
+  const [breathPhase, setBreathPhase] = useState<
+    'off' | 'breathing' | 'exiting'
+  >(coverBreathing ? 'breathing' : 'off')
   const imgRef = useRef<HTMLImageElement>(null)
 
   const clearCoverInline = useCallback(() => {
@@ -2109,16 +2158,14 @@ const LibraryCardShell = memo(function LibraryCardShell({
     const matrix = window.getComputedStyle(img).transform
     img.style.animation = 'none'
     img.style.transition = 'none'
-    img.style.transform =
-      matrix && matrix !== 'none' ? matrix : 'scale(1.018)'
+    img.style.transform = matrix && matrix !== 'none' ? matrix : 'scale(1.018)'
     // 强制提交 frozen 帧
     void img.offsetWidth
 
     let raf2 = 0
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
-        img.style.transition =
-          'transform 0.58s cubic-bezier(0.22, 1, 0.36, 1)'
+        img.style.transition = 'transform 0.58s cubic-bezier(0.22, 1, 0.36, 1)'
         img.style.transform = 'scale(1)'
       })
     })
@@ -2184,6 +2231,7 @@ const LibraryCardShell = memo(function LibraryCardShell({
             className={`library-card-media__img${mediaReady ? ' is-loaded' : ''}${imgClassName ? ` ${imgClassName}` : ''}`}
             loading="lazy"
             decoding="async"
+            draggable={false}
             onLoad={markReady}
             onError={handleError}
           />
@@ -2200,18 +2248,14 @@ interface LibraryResponse {
   success: boolean
   items: LibraryItem[]
   total: number
+  has_more?: boolean
+  next_offset?: number | null
+  preferences?: {
+    layout?: 'list' | 'canvas'
+  }
 }
 
-interface CardLayout {
-  left: number
-  top: number
-  width: number
-  height: number
-  gridX: number
-  gridY: number
-  gridW: number
-  gridH: number
-}
+type CardLayout = LibraryCanvasLayout
 
 interface LibraryGridProps {
   filter: 'all' | 'game' | 'video' | 'music' | 'anime' | 'tv_series' | 'book'
@@ -2242,49 +2286,49 @@ function getRatingBadgeStyle(rate: number) {
       box: 'w-10 h-10 text-xl bg-linear-to-br from-amber-300 via-yellow-400 to-orange-500 text-white ring-2 ring-amber-200/80 ring-offset-1 ring-offset-amber-500/30 shadow-amber-400/60',
       gloss: true,
     }
-}
+  }
   // 神作（9）：金色渐变 + 光晕
   if (rate >= 9) {
     return {
       box: 'w-9 h-9 text-lg bg-linear-to-br from-amber-300 to-orange-500 text-white ring-2 ring-amber-200/70 shadow-amber-500/50',
       gloss: true,
     }
-}
+  }
   // 力荐（8）
   if (rate >= 8) {
     return {
       box: 'w-8 h-8 text-base bg-emerald-500 text-white ring-1 ring-emerald-300/50 shadow-emerald-500/40',
       gloss: false,
     }
-}
+  }
   // 推荐（7）
   if (rate >= 7) {
     return {
       box: 'w-8 h-8 text-base bg-green-500 text-white shadow-green-500/30',
       gloss: false,
     }
-}
+  }
   // 还行（6）
   if (rate >= 6) {
     return {
       box: 'w-7 h-7 text-sm bg-lime-500 text-white',
       gloss: false,
     }
-}
+  }
   // 不过不失（5）
   if (rate >= 5) {
     return {
       box: 'w-7 h-7 text-sm bg-amber-500 text-white',
       gloss: false,
     }
-}
+  }
   // 较差（3-4）
   if (rate >= 3) {
     return {
       box: 'w-7 h-7 text-sm bg-orange-500 text-white',
       gloss: false,
     }
-}
+  }
   // 差评（1-2）
   return {
     box: 'w-7 h-7 text-sm bg-rose-500 text-white',
@@ -2310,6 +2354,43 @@ function getItemGridSize(type: string, platform: string) {
   }
 }
 
+const CANVAS_STRIDE = LIBRARY_CANVAS_STRIDE
+const CANVAS_DEFAULT_SCALE = 0.75
+const CANVAS_MIN_SCALE = 0.45
+const CANVAS_MAX_SCALE = 1.6
+const CANVAS_SPATIAL_BIN_SIZE = CANVAS_STRIDE * 4
+const LIBRARY_PAGE_SIZE = 120
+
+function balancedShuffleLibraryItems(items: LibraryItem[]): LibraryItem[] {
+  const groups: Record<string, LibraryItem[]> = {
+    game: [],
+    video: [],
+    music: [],
+    anime: [],
+    tv_series: [],
+    book: [],
+  }
+  items.forEach((item) => groups[item.item_type]?.push(item))
+  Object.values(groups).forEach((group) =>
+    group.sort(() => Math.random() - 0.5),
+  )
+
+  const result: LibraryItem[] = []
+  const maxLength = Math.max(
+    0,
+    ...Object.values(groups).map((group) => group.length),
+  )
+  for (let index = 0; index < maxLength; index++) {
+    Object.keys(groups)
+      .sort(() => Math.random() - 0.5)
+      .forEach((type) => {
+        const item = groups[type][index]
+        if (item) result.push(item)
+      })
+  }
+  return result
+}
+
 export default function LibraryGrid({ filter }: LibraryGridProps) {
   const [allItems, setAllItems] = useState<LibraryItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -2322,11 +2403,59 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
   // 布局状态
   const [layouts, setLayouts] = useState<Map<string, CardLayout>>(new Map())
+  const [layoutMode, setLayoutMode] = useState<'list' | 'canvas'>('list')
   const [visibleCount, setVisibleCount] = useState(20) // 初始显示数量
-
+  const [libraryHasMore, setLibraryHasMore] = useState(false)
+  const nextLibraryOffsetRef = useRef<number | null>(null)
+  const libraryPageLoadingRef = useRef(false)
+  const libraryFetchGenerationRef = useRef(0)
+  const loadNextLibraryPageRef = useRef<() => Promise<void>>(async () => {})
   const containerRef = useRef<HTMLDivElement>(null)
+  const {
+    atMaxZoom: canvasAtMaxZoom,
+    atMinZoom: canvasAtMinZoom,
+    finishPointer: finishCanvasPointer,
+    focusTransform: canvasFocusTransform,
+    handleBlur: handleCanvasBlur,
+    handleClickCapture: handleCanvasClickCapture,
+    handleKeyDown: handleCanvasKeyDown,
+    handleKeyUp: handleCanvasKeyUp,
+    handlePointerDown: handleCanvasPointerDown,
+    handlePointerMove: handleCanvasPointerMove,
+    isDefault: canvasViewIsDefault,
+    reset: resetCanvasView,
+    transform: canvasTransform,
+    zoom: zoomCanvas,
+    zoomPercent: canvasZoomPercent,
+  } = useLibraryCanvasControls({
+    active: layoutMode === 'canvas',
+    defaultScale: CANVAS_DEFAULT_SCALE,
+    maxScale: CANVAS_MAX_SCALE,
+    minScale: CANVAS_MIN_SCALE,
+    surfaceRef: containerRef,
+  })
+  const [canvasViewport, setCanvasViewport] = useState({
+    width: 0,
+    height: 0,
+  })
+
+  useEffect(() => {
+    const root = document.documentElement
+    const active = layoutMode === 'canvas'
+    if (active) root.dataset.libraryCanvas = 'active'
+    else delete root.dataset.libraryCanvas
+    window.dispatchEvent(new Event('libraryCanvasModeChanged'))
+
+    return () => {
+      if (active && root.dataset.libraryCanvas === 'active') {
+        delete root.dataset.libraryCanvas
+        window.dispatchEvent(new Event('libraryCanvasModeChanged'))
+      }
+    }
+  }, [layoutMode])
+
   const containerWidthRef = useRef<number>(0) // 🔧 缓存容器宽度，避免重复读取
-    // 父级只跟 songId / isPlaying / musicColor，切句不重渲染整表
+  // 父级只跟 songId / isPlaying / musicColor，切句不重渲染整表
   const {
     songId: liveSongId,
     isPlaying: globalIsPlaying,
@@ -2369,6 +2498,22 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   // 核心布局算法：完全避免空隙
   const computeLayout = useCallback(() => {
     if (!containerRef.current || filteredAllItems.length === 0) return
+
+    if (layoutMode === 'canvas') {
+      const width = containerRef.current.offsetWidth
+      const height = containerRef.current.offsetHeight
+      setCanvasViewport((current) =>
+        current.width === width && current.height === height
+          ? current
+          : { width, height },
+      )
+      setLayouts(
+        buildCenterOutCanvasLayout(filteredAllItems, (item) =>
+          getItemGridSize(item.item_type, item.platform),
+        ),
+      )
+      return
+    }
 
     // 🔧 使用缓存的容器宽度，避免强制重排
     // 只有缓存无效时才读取
@@ -2571,7 +2716,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     }
 
     setLayouts(newLayouts)
-  }, [filteredAllItems, filter])
+  }, [filteredAllItems, filter, layoutMode])
 
   // 使用共享的 resize 监听器
   useSharedResize(
@@ -2579,6 +2724,12 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       // 🔧 resize 时刷新容器宽度缓存
       if (containerRef.current) {
         containerWidthRef.current = containerRef.current.offsetWidth
+        if (layoutMode === 'canvas') {
+          setCanvasViewport({
+            width: containerRef.current.offsetWidth,
+            height: containerRef.current.offsetHeight,
+          })
+        }
       }
       computeLayout()
     },
@@ -2595,10 +2746,16 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   const loadMore = useCallback(() => {
     if (loadMoreRef.current) return // 防止重复触发
     loadMoreRef.current = requestAnimationFrame(() => {
-      setVisibleCount((prev) => Math.min(prev + 20, filteredAllItems.length))
+      if (visibleCount < filteredAllItems.length) {
+        setVisibleCount((prev) => Math.min(prev + 20, filteredAllItems.length))
+      } else if (libraryHasMore) {
+        void loadNextLibraryPageRef.current().then(() => {
+          setVisibleCount((prev) => prev + 20)
+        })
+      }
       loadMoreRef.current = null
     })
-  }, [filteredAllItems.length])
+  }, [filteredAllItems.length, libraryHasMore, visibleCount])
 
   // 清理 RAF
   useEffect(() => {
@@ -2609,7 +2766,9 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     }
   }, [])
 
-  const hasMore = visibleCount < filteredAllItems.length
+  const hasMore =
+    layoutMode === 'list' &&
+    (visibleCount < filteredAllItems.length || libraryHasMore)
 
   // 🆕 使用资料库原子化 IntersectionObserver
   const { observeLibraryIntersection, unobserveLibraryIntersection } =
@@ -2617,6 +2776,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   const observerTarget = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    if (layoutMode !== 'list') return
     const target = observerTarget.current
     if (!target) return
 
@@ -2629,20 +2789,99 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     return () => unobserveLibraryIntersection(target)
   }, [
     hasMore,
+    layoutMode,
     loadMore,
     observeLibraryIntersection,
     unobserveLibraryIntersection,
   ])
 
+  const laidOutItems = useMemo(
+    () => filteredAllItems.filter((item) => layouts.has(item.id)),
+    [filteredAllItems, layouts],
+  )
+
+  // 画布空间索引只在数据或布局变化时重建；拖拽时仅查询视口附近的分桶。
+  const canvasSpatialIndex = useMemo(() => {
+    const bins = new Map<string, LibraryItem[]>()
+    const order = new Map<string, number>()
+    if (layoutMode !== 'canvas') return { bins, order }
+
+    laidOutItems.forEach((item, index) => {
+      const layout = layouts.get(item.id)
+      if (!layout) return
+      order.set(item.id, index)
+      const minBinX = Math.floor(layout.left / CANVAS_SPATIAL_BIN_SIZE)
+      const maxBinX = Math.floor(
+        (layout.left + layout.width) / CANVAS_SPATIAL_BIN_SIZE,
+      )
+      const minBinY = Math.floor(layout.top / CANVAS_SPATIAL_BIN_SIZE)
+      const maxBinY = Math.floor(
+        (layout.top + layout.height) / CANVAS_SPATIAL_BIN_SIZE,
+      )
+
+      for (let binX = minBinX; binX <= maxBinX; binX++) {
+        for (let binY = minBinY; binY <= maxBinY; binY++) {
+          const key = `${binX},${binY}`
+          const bin = bins.get(key)
+          if (bin) bin.push(item)
+          else bins.set(key, [item])
+        }
+      }
+    })
+
+    return { bins, order }
+  }, [laidOutItems, layoutMode, layouts])
+
   // 排序后的可见项目
   const visibleItems = useMemo(() => {
     if (layouts.size === 0) return []
 
-    // 获取所有已布局的项目
-    const laidOutItems = filteredAllItems.filter((item) => layouts.has(item.id))
+    if (layoutMode === 'canvas') {
+      if (canvasViewport.width === 0 || canvasViewport.height === 0) {
+        return laidOutItems.slice(0, 30)
+      }
+      const { minX, maxX, minY, maxY } = getLibraryCanvasViewportBounds(
+        canvasTransform,
+        canvasViewport,
+      )
+      const minBinX = Math.floor(minX / CANVAS_SPATIAL_BIN_SIZE)
+      const maxBinX = Math.floor(maxX / CANVAS_SPATIAL_BIN_SIZE)
+      const minBinY = Math.floor(minY / CANVAS_SPATIAL_BIN_SIZE)
+      const maxBinY = Math.floor(maxY / CANVAS_SPATIAL_BIN_SIZE)
+      const candidates: LibraryItem[] = []
+      const seen = new Set<string>()
+
+      for (let binX = minBinX; binX <= maxBinX; binX++) {
+        for (let binY = minBinY; binY <= maxBinY; binY++) {
+          const bin = canvasSpatialIndex.bins.get(`${binX},${binY}`)
+          if (!bin) continue
+          bin.forEach((item) => {
+            if (seen.has(item.id)) return
+            seen.add(item.id)
+            const layout = layouts.get(item.id)!
+            if (
+              libraryCanvasLayoutIntersects(layout, {
+                minX,
+                maxX,
+                minY,
+                maxY,
+              })
+            ) {
+              candidates.push(item)
+            }
+          })
+        }
+      }
+
+      return candidates.sort(
+        (a, b) =>
+          (canvasSpatialIndex.order.get(a.id) ?? 0) -
+          (canvasSpatialIndex.order.get(b.id) ?? 0),
+      )
+    }
 
     // 按布局位置排序 (top, then left) - 实际上布局算法已经大致按顺序了，但为了确保渲染顺序
-    laidOutItems.sort((a, b) => {
+    const sortedItems = [...laidOutItems].sort((a, b) => {
       const layoutA = layouts.get(a.id)!
       const layoutB = layouts.get(b.id)!
       if (Math.abs(layoutA.top - layoutB.top) > 10)
@@ -2650,11 +2889,20 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       return layoutA.left - layoutB.left
     })
 
-    return laidOutItems.slice(0, visibleCount)
-  }, [filteredAllItems, layouts, visibleCount])
+    return sortedItems.slice(0, visibleCount)
+  }, [
+    canvasSpatialIndex,
+    canvasTransform,
+    canvasViewport,
+    laidOutItems,
+    layoutMode,
+    layouts,
+    visibleCount,
+  ])
 
   // 动态计算容器高度
   const containerHeight = useMemo(() => {
+    if (layoutMode === 'canvas') return 0
     if (visibleItems.length === 0) return 400
     let maxBottom = 0
     visibleItems.forEach((item) => {
@@ -2665,81 +2913,150 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       }
     })
     return maxBottom + 20
-  }, [visibleItems, layouts])
+  }, [layoutMode, visibleItems, layouts])
 
-  useEffect(() => {
-    fetchLibraryData()
-  }, [])
-
-  const fetchLibraryData = async () => {
+  const fetchLibraryData = useCallback(async () => {
+    const generation = ++libraryFetchGenerationRef.current
     try {
       setLoading(true)
-      // 使用去重版本，避免多组件同时请求
-      const data: LibraryResponse = await getLibraryDataDeduped()
+      setError(null)
+      setAllItems([])
+      nextLibraryOffsetRef.current = null
+      libraryPageLoadingRef.current = false
+      setLibraryHasMore(false)
+      // 首屏只取一批；无限画布在接近已加载边界时继续扩展。
+      const data: LibraryResponse = await getLibraryDataPageDeduped(
+        0,
+        LIBRARY_PAGE_SIZE,
+        filter,
+      )
+      if (generation !== libraryFetchGenerationRef.current) return
 
       if (data.success) {
-        const balanced = balancedShuffle(data.items)
+        const balanced = balancedShuffleLibraryItems(data.items)
+        setLayoutMode(data.preferences?.layout === 'canvas' ? 'canvas' : 'list')
         setAllItems(balanced)
+        nextLibraryOffsetRef.current = data.next_offset ?? null
+        setLibraryHasMore(Boolean(data.has_more && data.next_offset != null))
         setLoading(false)
       } else {
         throw new Error('No library data available')
       }
     } catch (err) {
+      if (generation !== libraryFetchGenerationRef.current) return
       const message = err instanceof Error ? err.message : 'Unknown error'
       setError(message)
       setLoading(false)
     }
-  }
+  }, [filter])
 
-  const balancedShuffle = (items: LibraryItem[]): LibraryItem[] => {
-    const groups: Record<string, LibraryItem[]> = {
-      game: [],
-      video: [],
-      music: [],
-      anime: [],
-      tv_series: [],
-      book: [],
+  useEffect(() => {
+    void fetchLibraryData()
+  }, [fetchLibraryData])
+
+  useEffect(() => {
+    const handlePreferencesUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<LibraryPreferencesUpdatedDetail>)
+        .detail
+      if (detail?.layout) setLayoutMode(detail.layout)
+      void fetchLibraryData()
+    }
+    window.addEventListener(
+      LIBRARY_PREFERENCES_UPDATED_EVENT,
+      handlePreferencesUpdated,
+    )
+    return () =>
+      window.removeEventListener(
+        LIBRARY_PREFERENCES_UPDATED_EVENT,
+        handlePreferencesUpdated,
+      )
+  }, [fetchLibraryData])
+
+  const loadNextLibraryPage = useCallback(async () => {
+    const offset = nextLibraryOffsetRef.current
+    if (offset == null || libraryPageLoadingRef.current) return
+
+    const generation = libraryFetchGenerationRef.current
+    libraryPageLoadingRef.current = true
+    try {
+      const data: LibraryResponse = await getLibraryDataPageDeduped(
+        offset,
+        LIBRARY_PAGE_SIZE,
+        filter,
+      )
+      if (generation !== libraryFetchGenerationRef.current) return
+      if (!data.success) throw new Error('No library data available')
+
+      const incoming = balancedShuffleLibraryItems(data.items)
+      setAllItems((current) => {
+        if (incoming.length === 0) return current
+        const known = new Set(current.map((item) => item.id))
+        const unique = incoming.filter((item) => !known.has(item.id))
+        return unique.length > 0 ? [...current, ...unique] : current
+      })
+      nextLibraryOffsetRef.current = data.next_offset ?? null
+      setLibraryHasMore(Boolean(data.has_more && data.next_offset != null))
+    } catch (err) {
+      if (err instanceof Error && err.name !== 'AbortError') {
+        console.error('Failed to load the next library page:', err)
+      }
+    } finally {
+      if (generation === libraryFetchGenerationRef.current) {
+        libraryPageLoadingRef.current = false
+      }
+    }
+  }, [filter])
+
+  loadNextLibraryPageRef.current = loadNextLibraryPage
+
+  const canvasLoadedRadius = useMemo(() => {
+    let radius = 0
+    layouts.forEach((layout) => {
+      const centerX = layout.left + layout.width / 2
+      const centerY = layout.top + layout.height / 2
+      const cardRadius = Math.hypot(layout.width, layout.height) / 2
+      radius = Math.max(radius, Math.hypot(centerX, centerY) + cardRadius)
+    })
+    return radius
+  }, [layouts])
+
+  useEffect(() => {
+    if (
+      layoutMode !== 'canvas' ||
+      !libraryHasMore ||
+      canvasLoadedRadius <= 0 ||
+      canvasViewport.width <= 0 ||
+      canvasViewport.height <= 0
+    ) {
+      return
     }
 
-    items.forEach((item) => {
-      const type = item.item_type
-      if (groups[type]) {
-        groups[type].push(item)
-      }
-    })
-
-    Object.keys(groups).forEach((key) => {
-      groups[key].sort(() => Math.random() - 0.5)
-    })
-
-    const result: LibraryItem[] = []
-    const maxLength = Math.max(
-      groups.game.length,
-      groups.video.length,
-      groups.music.length,
-      groups.anime.length,
-      groups.tv_series.length,
-      groups.book.length,
+    const worldCenterX = -canvasTransform.x / canvasTransform.scale
+    const worldCenterY = -canvasTransform.y / canvasTransform.scale
+    const viewportRadius =
+      Math.hypot(canvasViewport.width, canvasViewport.height) /
+      2 /
+      canvasTransform.scale
+    const preloadBoundary = Math.max(
+      0,
+      canvasLoadedRadius - viewportRadius * 1.25,
     )
 
-    for (let i = 0; i < maxLength; i++) {
-      const typeOrder = [
-        'game',
-        'video',
-        'music',
-        'anime',
-        'tv_series',
-        'book',
-      ].sort(() => Math.random() - 0.5)
-      typeOrder.forEach((type) => {
-        if (groups[type][i]) {
-          result.push(groups[type][i])
-        }
-      })
+    if (Math.hypot(worldCenterX, worldCenterY) >= preloadBoundary) {
+      void loadNextLibraryPage()
     }
+  }, [
+    canvasLoadedRadius,
+    canvasTransform,
+    canvasViewport,
+    layoutMode,
+    libraryHasMore,
+    loadNextLibraryPage,
+  ])
 
-    return result
-  }
+  useEffect(() => {
+    if (layoutMode === 'canvas') resetCanvasView()
+  }, [filter, layoutMode, resetCanvasView])
 
   // 空状态图标
   const emptyIcon = useMemo(
@@ -2853,10 +3170,12 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
           isBangumiPlatform(item.platform) ||
           item.id.startsWith('bangumi_subject_')
         ) {
-          const rate =
-            Number(item.metadata.rate ?? item.metadata.score) || 0
+          const rate = Number(item.metadata.rate ?? item.metadata.score) || 0
           if (rate > 0) return `★ ${rate}`
-          if (typeof item.metadata.artist === 'string' && item.metadata.artist) {
+          if (
+            typeof item.metadata.artist === 'string' &&
+            item.metadata.artist
+          ) {
             return item.metadata.artist
           }
           return null
@@ -2885,10 +3204,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
   /** Progress row + thin bar for anime/book vertical title plates. */
   const renderWatchProgressPanel = useCallback(
-    (
-      item: LibraryItem,
-      opts?: { dark?: boolean },
-    ): React.ReactNode => {
+    (item: LibraryItem, opts?: { dark?: boolean }): React.ReactNode => {
       const progress = resolveWatchProgress(item)
       if (!progress) return null
       const text = formatWatchProgressText(progress, watchProgressLabels)
@@ -2981,9 +3297,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
           typeof item.metadata?.url === 'string' ? item.metadata.url : ''
         if (ext) {
           window.open(ext, '_blank', 'noopener,noreferrer')
-          showInfo(
-            t.library.openExternal.replace('{name}', item.title || ''),
-          )
+          showInfo(t.library.openExternal.replace('{name}', item.title || ''))
         } else {
           showInfo(t.library.playbackNotSupported)
         }
@@ -3135,327 +3449,422 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
           </div>
         </div>
       ) : (
-        <div className="space-y-8">
+        <div className={layoutMode === 'canvas' ? '' : 'space-y-8'}>
           <QuickTransition transitioning={isTransitioning}>
             <div
               ref={containerRef}
-              className="relative w-full"
-              style={{
-                height: `${containerHeight}px`,
-                minHeight: '400px',
-                transition: 'height 0.4s ease-out',
-              }}
+              className={
+                layoutMode === 'canvas'
+                  ? 'fixed inset-0 z-0 h-dvh w-dvw overflow-hidden touch-none cursor-grab bg-white/5 dark:bg-black/5'
+                  : 'relative w-full'
+              }
+              style={
+                layoutMode === 'canvas'
+                  ? {
+                      height: '100dvh',
+                      backgroundImage:
+                        'radial-gradient(circle, color-mix(in srgb, var(--text-color, currentColor) 18%, transparent) 1px, transparent 1.2px)',
+                      backgroundSize: `${28 * canvasTransform.scale}px ${28 * canvasTransform.scale}px`,
+                      backgroundPosition: `calc(50% + ${canvasTransform.x}px) calc(50% + ${canvasTransform.y}px)`,
+                    }
+                  : {
+                      height: `${containerHeight}px`,
+                      minHeight: '400px',
+                      transition: 'height 0.4s ease-out',
+                    }
+              }
+              onPointerDown={
+                layoutMode === 'canvas' ? handleCanvasPointerDown : undefined
+              }
+              onPointerMove={
+                layoutMode === 'canvas' ? handleCanvasPointerMove : undefined
+              }
+              onPointerUp={
+                layoutMode === 'canvas' ? finishCanvasPointer : undefined
+              }
+              onPointerCancel={
+                layoutMode === 'canvas' ? finishCanvasPointer : undefined
+              }
+              onClickCapture={
+                layoutMode === 'canvas' ? handleCanvasClickCapture : undefined
+              }
+              onKeyDown={
+                layoutMode === 'canvas' ? handleCanvasKeyDown : undefined
+              }
+              onKeyUp={layoutMode === 'canvas' ? handleCanvasKeyUp : undefined}
+              onBlur={layoutMode === 'canvas' ? handleCanvasBlur : undefined}
+              tabIndex={layoutMode === 'canvas' ? 0 : undefined}
+              data-library-canvas-surface={
+                layoutMode === 'canvas' ? 'true' : undefined
+              }
+              aria-label={
+                layoutMode === 'canvas' ? t.library.canvasAriaLabel : undefined
+              }
             >
-              {visibleItems.map((item) => {
-                const layout = layouts.get(item.id)
-                if (!layout) return null
+              {layoutMode === 'canvas' && (
+                <LibraryCanvasChrome
+                  ariaLabel={t.library.canvasAriaLabel}
+                  atMaxZoom={canvasAtMaxZoom}
+                  atMinZoom={canvasAtMinZoom}
+                  dismissHintLabel={t.library.canvasDismissHint}
+                  hint={t.library.canvasPanHint}
+                  isDefault={canvasViewIsDefault}
+                  onReset={resetCanvasView}
+                  onZoom={zoomCanvas}
+                  resetLabel={t.library.canvasResetView}
+                  zoomInLabel={t.library.canvasZoomIn}
+                  zoomOutLabel={t.library.canvasZoomOut}
+                  zoomPercent={canvasZoomPercent}
+                />
+              )}
+              <div
+                className={
+                  layoutMode === 'canvas'
+                    ? 'library-canvas-world absolute left-1/2 top-1/2'
+                    : 'contents'
+                }
+                style={
+                  layoutMode === 'canvas'
+                    ? {
+                        transform: `translate3d(${canvasTransform.x}px, ${canvasTransform.y}px, 0) scale(${canvasTransform.scale})`,
+                        transformOrigin: '0 0',
+                      }
+                    : undefined
+                }
+              >
+                {visibleItems.map((item, itemIndex) => {
+                  const layout = layouts.get(item.id)
+                  if (!layout) return null
+                  const canvasFocusScale =
+                    layoutMode === 'canvas'
+                      ? getLibraryCanvasFocusScale(
+                          layout,
+                          canvasFocusTransform,
+                          canvasViewport,
+                        )
+                      : 1
 
-                const platformColor = getPlatformColor(item.platform)
-                // VIP badge is Netease-only (fee/isVip); Bangumi music has no fee model
-                const isNeteaseMusic =
-                  item.item_type === 'music' &&
-                  !isBangumiPlatform(item.platform) &&
-                  (item.platform.toLowerCase().includes('netease') ||
-                    item.platform.toLowerCase().includes('网易') ||
-                    item.id.startsWith('netease_'))
-                const isVip =
-                  isNeteaseMusic && isNeteaseVipFromMeta(item.metadata)
-                const currentSongId = (
-                  item.metadata.id || item.id.replace('netease_song_', '')
-                ).toString()
+                  const platformColor = getPlatformColor(item.platform)
+                  // VIP badge is Netease-only (fee/isVip); Bangumi music has no fee model
+                  const isNeteaseMusic =
+                    item.item_type === 'music' &&
+                    !isBangumiPlatform(item.platform) &&
+                    (item.platform.toLowerCase().includes('netease') ||
+                      item.platform.toLowerCase().includes('网易') ||
+                      item.id.startsWith('netease_'))
+                  const isVip =
+                    isNeteaseMusic && isNeteaseVipFromMeta(item.metadata)
+                  const currentSongId = (
+                    item.metadata.id || item.id.replace('netease_song_', '')
+                  ).toString()
 
-                // 轻量身份：切句不刷整表；换歌离场保留短窗口
-                const isCurrentSong = liveSongId === currentSongId
-                const isLeavingSong = leavingSongId === currentSongId
-                const showMusicLive = isCurrentSong || isLeavingSong
-                const isPlaying = Boolean(isCurrentSong && globalIsPlaying)
-                // 播放中 + 退场窗口：锁 hover，避免中途放大/藏词打断动画
-                const hoverLocked = isPlaying || isLeavingSong
+                  // 轻量身份：切句不刷整表；换歌离场保留短窗口
+                  const isCurrentSong = liveSongId === currentSongId
+                  const isLeavingSong = leavingSongId === currentSongId
+                  const showMusicLive = isCurrentSong || isLeavingSong
+                  const isPlaying = Boolean(isCurrentSong && globalIsPlaying)
+                  // 播放中 + 退场窗口：锁 hover，避免中途放大/藏词打断动画
+                  const hoverLocked = isPlaying || isLeavingSong
 
-                const rowIndex = Math.floor(layout.top / 300)
-                const animationDelay = rowIndex * 0.05
+                  const rowIndex = Math.floor(layout.top / 300)
+                  const animationDelay =
+                    layoutMode === 'canvas'
+                      ? Math.min(itemIndex * 0.025, 0.4)
+                      : rowIndex * 0.05
 
-                // Bangumi / MAL 用户评分（0 表示未评分），显示在卡片左上角
-                const isBangumi = isBangumiPlatform(item.platform)
-                const userRate = hasUserRatingBadge(item.platform)
-                  ? Number(
-                      item.metadata.rate ??
-                        item.metadata?.list_status?.score,
-                    ) || 0
-                  : 0
-                // Bangumi 游戏使用竖版，渲染为封面卡片
-                const isBangumiGame =
-                  isBangumi && item.item_type === 'game'
+                  // Bangumi / MAL 用户评分（0 表示未评分），显示在卡片左上角
+                  const isBangumi = isBangumiPlatform(item.platform)
+                  const userRate = hasUserRatingBadge(item.platform)
+                    ? Number(
+                        item.metadata.rate ?? item.metadata?.list_status?.score,
+                      ) || 0
+                    : 0
+                  // Bangumi 游戏使用竖版，渲染为封面卡片
+                  const isBangumiGame = isBangumi && item.item_type === 'game'
 
-                const ratingBadge =
-                  userRate > 0
-                    ? (() => {
-                        const rs = getRatingBadgeStyle(userRate)
-                        const animClass = rs.gloss
-                          ? userRate >= 10
-                            ? 'rating-badge-anim-max'
-                            : 'rating-badge-anim'
-                          : ''
-                        return (
+                  const ratingBadge =
+                    userRate > 0
+                      ? (() => {
+                          const rs = getRatingBadgeStyle(userRate)
+                          const animClass = rs.gloss
+                            ? userRate >= 10
+                              ? 'rating-badge-anim-max'
+                              : 'rating-badge-anim'
+                            : ''
+                          return (
+                            <div
+                              className={`library-card-chrome absolute top-2.5 left-2.5 z-20 flex items-center justify-center overflow-hidden rounded-lg font-extrabold leading-none shadow-lg pointer-events-none ${rs.box} ${animClass}`}
+                            >
+                              {rs.gloss && (
+                                <>
+                                  <span className="absolute inset-x-0 top-0 h-1/2 bg-linear-to-b from-white/45 to-transparent" />
+                                  <span className="rating-badge-shine" />
+                                </>
+                              )}
+                              <span className="relative">{userRate}</span>
+                            </div>
+                          )
+                        })()
+                      : null
+
+                  const platformCorner = (
+                    <div className="absolute top-3 right-3 z-10 group/platform">
+                      <div className="platform-icon-bg">
+                        <PlatformIcon
+                          platform={item.platform}
+                          className="w-3.5 h-3.5"
+                        />
+                      </div>
+                      <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
+                        {item.platform}
+                      </div>
+                    </div>
+                  )
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`absolute group library-card-container${hoverLocked ? ' is-hover-locked' : ''}`}
+                      style={
+                        {
+                          left: `${layout.left}px`,
+                          top: `${layout.top}px`,
+                          width: `${layout.width}px`,
+                          height: `${layout.height}px`,
+                          '--platform-color': platformColor,
+                          animationDelay: `${animationDelay}s`,
+                          transform:
+                            layoutMode === 'canvas'
+                              ? `scale(${canvasFocusScale})`
+                              : undefined,
+                          transformOrigin: 'center center',
+                          zIndex:
+                            layoutMode === 'canvas'
+                              ? Math.round(canvasFocusScale * 100)
+                              : undefined,
+                        } as CSSProperties
+                      }
+                      // 入场动画播放一次后移除，避免卡片滚出/滚入视口时
+                      // 浏览器重建绘制层导致 fadeInUp 重播（表现为瞬间透明再恢复）
+                      onAnimationEnd={(e) => {
+                        if (e.target === e.currentTarget) {
+                          ;(e.currentTarget as HTMLElement).style.animation =
+                            'none'
+                        }
+                      }}
+                    >
+                      {item.item_type === 'music' ? (
+                        <LibraryCardShell
+                          cover={item.cover}
+                          title={item.title}
+                          coverBreathing={Boolean(isPlaying)}
+                          className={
+                            hoverLocked
+                              ? 'bg-white rounded-xl shadow-md transition-shadow duration-300'
+                              : 'bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02]'
+                          }
+                          placeholder={
+                            <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-pink-400 to-pink-500">
+                              <span className="text-6xl">
+                                {getTypeIcon(item.item_type)}
+                              </span>
+                            </div>
+                          }
+                        >
                           <div
-                            className={`library-card-chrome absolute top-2.5 left-2.5 z-20 flex items-center justify-center overflow-hidden rounded-lg font-extrabold leading-none shadow-lg pointer-events-none ${rs.box} ${animClass}`}
+                            className="absolute inset-0 z-[1] cursor-pointer"
+                            data-canvas-card-action
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              handlePlayMusic(item)
+                            }}
                           >
-                            {rs.gloss && (
+                            {showMusicLive && (
                               <>
-                                <span className="absolute inset-x-0 top-0 h-1/2 bg-linear-to-b from-white/45 to-transparent" />
-                                <span className="rating-badge-shine" />
+                                <LibraryPlayingWaveBorder
+                                  musicColor={musicColor}
+                                  active={isPlaying}
+                                />
+                                {/* active=当前曲（含暂停）；换歌时 false 走退场 */}
+                                <LibraryCardLyrics
+                                  active={isCurrentSong}
+                                  musicColor={musicColor}
+                                />
                               </>
                             )}
-                            <span className="relative">{userRate}</span>
-                          </div>
-                        )
-                      })()
-                    : null
 
-                const platformCorner = (
-                  <div className="absolute top-3 right-3 z-10 group/platform">
-                    <div className="platform-icon-bg">
-                      <PlatformIcon
-                        platform={item.platform}
-                        className="w-3.5 h-3.5"
-                      />
-                    </div>
-                    <div className="absolute top-full right-0 mt-2 bg-black/90 backdrop-blur-sm text-white text-xs px-2.5 py-1 rounded-md opacity-0 group-hover/platform:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none">
-                      {item.platform}
-                    </div>
-                  </div>
-                )
-
-                return (
-                  <div
-                    key={item.id}
-                    className={`absolute group library-card-container${hoverLocked ? ' is-hover-locked' : ''}`}
-                    style={
-                      {
-                        left: `${layout.left}px`,
-                        top: `${layout.top}px`,
-                        width: `${layout.width}px`,
-                        height: `${layout.height}px`,
-                        '--platform-color': platformColor,
-                        animationDelay: `${animationDelay}s`,
-                      } as CSSProperties
-                    }
-                    // 入场动画播放一次后移除，避免卡片滚出/滚入视口时
-                    // 浏览器重建绘制层导致 fadeInUp 重播（表现为瞬间透明再恢复）
-                    onAnimationEnd={(e) => {
-                      if (e.target === e.currentTarget) {
-                        ;(e.currentTarget as HTMLElement).style.animation =
-                          'none'
-                      }
-                    }}
-                  >
-                    {item.item_type === 'music' ? (
-                      <LibraryCardShell
-                        cover={item.cover}
-                        title={item.title}
-                        coverBreathing={Boolean(isPlaying)}
-                        className={
-                          hoverLocked
-                            ? 'bg-white rounded-xl shadow-md transition-shadow duration-300'
-                            : 'bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02]'
-                        }
-                        placeholder={
-                          <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-pink-400 to-pink-500">
-                            <span className="text-6xl">
-                              {getTypeIcon(item.item_type)}
-                            </span>
-                          </div>
-                        }
-                      >
-                        <div
-                          className="absolute inset-0 z-[1] cursor-pointer"
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            handlePlayMusic(item)
-                          }}
-                        >
-                          {showMusicLive && (
-                            <>
-                              <LibraryPlayingWaveBorder
-                                musicColor={musicColor}
-                                active={isPlaying}
-                              />
-                              {/* active=当前曲（含暂停）；换歌时 false 走退场 */}
-                              <LibraryCardLyrics
-                                active={isCurrentSong}
-                                musicColor={musicColor}
-                              />
-                            </>
-                          )}
-
-                          <div className="library-card-chrome library-card-hover-chrome absolute inset-0 bg-linear-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3">
-                            <div>
-                              <div className="flex items-start gap-1">
-                                <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 mb-1 flex-1">
-                                  {item.title}
-                                </h3>
-                                {isVip && (
-                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-linear-to-r from-yellow-500 to-amber-600 text-[10px] font-semibold text-white shadow-md select-none">
-                                    VIP
-                                  </span>
-                                )}
+                            <div className="library-card-chrome library-card-hover-chrome absolute inset-0 bg-linear-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3">
+                              <div>
+                                <div className="flex items-start gap-1">
+                                  <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 mb-1 flex-1">
+                                    {item.title}
+                                  </h3>
+                                  {isVip && (
+                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-linear-to-r from-yellow-500 to-amber-600 text-[10px] font-semibold text-white shadow-md select-none">
+                                      VIP
+                                    </span>
+                                  )}
+                                </div>
+                                {renderWatchProgressPanel(item, {
+                                  dark: true,
+                                }) ??
+                                  (getExtraInfo(item) && (
+                                    <p className="text-[10px] text-white/75 line-clamp-1">
+                                      {getExtraInfo(item)}
+                                    </p>
+                                  ))}
                               </div>
-                              {renderWatchProgressPanel(item, {
-                                dark: true,
-                              }) ??
-                                (getExtraInfo(item) && (
-                                  <p className="text-[10px] text-white/75 line-clamp-1">
-                                    {getExtraInfo(item)}
-                                  </p>
-                                ))}
                             </div>
                           </div>
-                        </div>
 
-                        {platformCorner}
-                        {ratingBadge}
-                      </LibraryCardShell>
-                    ) : item.item_type === 'anime' ||
-                      item.item_type === 'tv_series' ||
-                      item.item_type === 'book' ||
-                      isBangumiGame ? (
-                      <LibraryCardShell
-                        cover={item.cover}
-                        title={item.title}
-                        className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
-                        placeholder={
-                          <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-pink-400 to-purple-500">
-                            <span className="text-6xl">
-                              <FaVideo />
-                            </span>
-                          </div>
-                        }
-                      >
-                        <button
-                          type="button"
-                          className="absolute inset-0 z-[1] cursor-pointer text-left bg-transparent border-0 p-0"
-                          aria-label={item.title}
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            openLibraryItemExternal(item)
-                          }}
+                          {platformCorner}
+                          {ratingBadge}
+                        </LibraryCardShell>
+                      ) : item.item_type === 'anime' ||
+                        item.item_type === 'tv_series' ||
+                        item.item_type === 'book' ||
+                        isBangumiGame ? (
+                        <LibraryCardShell
+                          cover={item.cover}
+                          title={item.title}
+                          className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
+                          placeholder={
+                            <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-pink-400 to-purple-500">
+                              <span className="text-6xl">
+                                <FaVideo />
+                              </span>
+                            </div>
+                          }
                         >
-                          <div className="absolute bottom-3 left-3 right-3 z-[1] flex justify-start pointer-events-none">
-                            <div className="library-card-caption">
-                              <div className="library-card-caption__row">
-                                <h3 className="library-card-caption__title line-clamp-1">
-                                  {item.title}
-                                </h3>
-                                <span
-                                  className={`library-card-caption__type ${
-                                    item.item_type === 'anime'
-                                      ? 'library-card-caption__type--anime'
+                          <button
+                            type="button"
+                            className="absolute inset-0 z-[1] cursor-pointer text-left bg-transparent border-0 p-0"
+                            data-canvas-card-action
+                            aria-label={item.title}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              openLibraryItemExternal(item)
+                            }}
+                          >
+                            <div className="absolute bottom-3 left-3 right-3 z-[1] flex justify-start pointer-events-none">
+                              <div className="library-card-caption">
+                                <div className="library-card-caption__row">
+                                  <h3 className="library-card-caption__title line-clamp-1">
+                                    {item.title}
+                                  </h3>
+                                  <span
+                                    className={`library-card-caption__type ${
+                                      item.item_type === 'anime'
+                                        ? 'library-card-caption__type--anime'
+                                        : item.item_type === 'book'
+                                          ? 'library-card-caption__type--book'
+                                          : item.item_type === 'game'
+                                            ? 'library-card-caption__type--game'
+                                            : 'library-card-caption__type--tv'
+                                    }`}
+                                  >
+                                    {item.item_type === 'anime'
+                                      ? t.library.anime
                                       : item.item_type === 'book'
-                                        ? 'library-card-caption__type--book'
+                                        ? t.library.book
                                         : item.item_type === 'game'
-                                          ? 'library-card-caption__type--game'
-                                          : 'library-card-caption__type--tv'
-                                  }`}
-                                >
-                                  {item.item_type === 'anime'
-                                    ? t.library.anime
-                                    : item.item_type === 'book'
-                                      ? t.library.book
-                                      : item.item_type === 'game'
-                                        ? t.library.game
-                                        : t.library.tvSeries}
-                                </span>
+                                          ? t.library.game
+                                          : t.library.tvSeries}
+                                  </span>
+                                </div>
+                                {renderWatchProgressPanel(item)}
                               </div>
-                              {renderWatchProgressPanel(item)}
                             </div>
-                          </div>
-                        </button>
-                        {platformCorner}
-                        {ratingBadge}
-                      </LibraryCardShell>
-                    ) : item.item_type === 'video' ? (
-                      <LibraryCardShell
-                        cover={item.cover}
-                        title={item.title}
-                        className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
-                        placeholder={
-                          <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-blue-400 to-blue-500">
-                            <span className="text-6xl">
-                              {getTypeIcon(item.item_type)}
-                            </span>
-                          </div>
-                        }
-                      >
-                        <button
-                          type="button"
-                          className="absolute inset-0 z-[1] cursor-pointer text-left bg-transparent border-0 p-0"
-                          aria-label={item.title}
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            openLibraryItemExternal(item)
-                          }}
+                          </button>
+                          {platformCorner}
+                          {ratingBadge}
+                        </LibraryCardShell>
+                      ) : item.item_type === 'video' ? (
+                        <LibraryCardShell
+                          cover={item.cover}
+                          title={item.title}
+                          className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
+                          placeholder={
+                            <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-blue-400 to-blue-500">
+                              <span className="text-6xl">
+                                {getTypeIcon(item.item_type)}
+                              </span>
+                            </div>
+                          }
                         >
-                          <div className="absolute bottom-3 left-3 right-3 z-[1] flex justify-start pointer-events-none">
-                            <div className="library-card-caption">
-                              <h3 className="library-card-caption__title line-clamp-2">
-                                {item.title}
-                              </h3>
-                              {renderWatchProgressPanel(item) ??
-                                (getExtraInfo(item) && (
-                                  <p className="library-card-caption__meta">
-                                    {getExtraInfo(item)}
-                                  </p>
-                                ))}
+                          <button
+                            type="button"
+                            className="absolute inset-0 z-[1] cursor-pointer text-left bg-transparent border-0 p-0"
+                            data-canvas-card-action
+                            aria-label={item.title}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              openLibraryItemExternal(item)
+                            }}
+                          >
+                            <div className="absolute bottom-3 left-3 right-3 z-[1] flex justify-start pointer-events-none">
+                              <div className="library-card-caption">
+                                <h3 className="library-card-caption__title line-clamp-2">
+                                  {item.title}
+                                </h3>
+                                {renderWatchProgressPanel(item) ??
+                                  (getExtraInfo(item) && (
+                                    <p className="library-card-caption__meta">
+                                      {getExtraInfo(item)}
+                                    </p>
+                                  ))}
+                              </div>
                             </div>
+                          </button>
+                          {platformCorner}
+                          {ratingBadge}
+                        </LibraryCardShell>
+                      ) : (
+                        <LibraryCardShell
+                          cover={item.cover}
+                          title={item.title}
+                          className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
+                          placeholder={
+                            <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-purple-400 to-pink-500">
+                              <span className="text-6xl">
+                                {getTypeIcon(item.item_type)}
+                              </span>
+                            </div>
+                          }
+                        >
+                          <button
+                            type="button"
+                            className="absolute inset-0 z-[1] cursor-pointer bg-transparent border-0 p-0"
+                            data-canvas-card-action
+                            aria-label={item.title}
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              openLibraryItemExternal(item)
+                            }}
+                          />
+                          <div className="library-card-chrome absolute inset-0 z-[1] bg-linear-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
+                            <h3 className="font-bold text-white text-base line-clamp-2 leading-snug mb-1">
+                              {item.title}
+                            </h3>
+                            {renderWatchProgressPanel(item, { dark: true }) ??
+                              (getExtraInfo(item) && (
+                                <p className="text-sm text-white/80">
+                                  {getExtraInfo(item)}
+                                </p>
+                              ))}
                           </div>
-                        </button>
-                        {platformCorner}
-                        {ratingBadge}
-                      </LibraryCardShell>
-                    ) : (
-                      <LibraryCardShell
-                        cover={item.cover}
-                        title={item.title}
-                        className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
-                        placeholder={
-                          <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-purple-400 to-pink-500">
-                            <span className="text-6xl">
-                              {getTypeIcon(item.item_type)}
-                            </span>
-                          </div>
-                        }
-                      >
-                        <button
-                          type="button"
-                          className="absolute inset-0 z-[1] cursor-pointer bg-transparent border-0 p-0"
-                          aria-label={item.title}
-                          onClick={(e) => {
-                            e.preventDefault()
-                            e.stopPropagation()
-                            openLibraryItemExternal(item)
-                          }}
-                        />
-                        <div className="library-card-chrome absolute inset-0 z-[1] bg-linear-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-4 pointer-events-none">
-                          <h3 className="font-bold text-white text-base line-clamp-2 leading-snug mb-1">
-                            {item.title}
-                          </h3>
-                          {renderWatchProgressPanel(item, { dark: true }) ??
-                            (getExtraInfo(item) && (
-                              <p className="text-sm text-white/80">
-                                {getExtraInfo(item)}
-                              </p>
-                            ))}
-                        </div>
-                        {platformCorner}
-                        {ratingBadge}
-                      </LibraryCardShell>
-                    )}
-                  </div>
-                )
-              })}
+                          {platformCorner}
+                          {ratingBadge}
+                        </LibraryCardShell>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           </QuickTransition>
 

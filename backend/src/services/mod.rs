@@ -29,6 +29,7 @@ pub mod tapp_declared_api; // 📜 Manifest declared-API catalog + parse cache
 pub mod tapp_events; // 📣 Manifest-scoped at-most-once event broker
 pub mod tapp_components; // 🧩 Host-managed component registry (_component:)
 pub mod tapp_context; // 🧭 Runtime context payloads + subject role projection
+pub mod tapp_credentials; // 🔐 Installation-scoped write-only credential bindings
 pub mod tapp_catalog; // 🗂️ Catalog/detail list projection (role-filtered)
 pub mod tapp_lifecycle; // ♻️ Start/stop/uninstall decisions + recent/widget pure rules
 pub mod tapp_validation; // ✅ Manifest/package pure validators (id/path/settings/…)

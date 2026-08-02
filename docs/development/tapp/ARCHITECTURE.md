@@ -492,8 +492,14 @@ DNS 结果钉扎到本次客户端并禁止自动重定向；URL credentials、�
 按 chunk 读取且最多 2 MiB。旧的字符串级私网判断已删除，避免 DNS rebinding、重定向 SSRF 和
 无界响应内存占用。
 宿主配置密钥不进入 Tapp 模板上下文；`{{secrets.*}}` 在 Manifest 校验和运行时都 fail closed。
-若未来需要第三方凭据，应设计绑定 provider、目标域名与用途的专用 credential capability，不能
-恢复任意 endpoint 可引用的全局 secret map。
+第三方凭据使用安装级只写 credential capability：Manifest 声明描述项，并把每个凭据绑定到
+具名 HTTP API 的固定 HTTPS origin 与固定请求头；复用 `tapp_storage` 的宿主保留记录，在
+`encrypted_value` / `binding_fingerprint` 字段保存密文和授权指纹，状态 API 不返回值。
+完整 storage entity 的序列化会跳过这两个宿主字段；普通 storage 列表、entries、单键读取与
+clear 只投影公开列并在 SQL 层排除所有宿主 key。数据库 CHECK 进一步限制只有
+`_credentials.*` 行可以同时持有密文与授权指纹，因此安全边界不依赖单个 handler 记得过滤。
+凭据定义与所有消费 API 共同形成授权指纹，endpoint/header/access 等变化后必须由 owner 重新授权。
+这不是任意 endpoint 可引用的全局 secret map。
 
 当前 Tapp storage 按 **当前 subject** 的 `user_id + tapp_id` 隔离，单值上限 1 MiB，总量
 上限 5 MiB；写入在同一事务内加 subject/Tapp advisory lock、计算替换后的 JSONB 字节并

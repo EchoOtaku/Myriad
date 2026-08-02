@@ -116,6 +116,8 @@ in automation to keep the selected binary explicit.
 - permission names and permissions inferred from static `Tapp.*` calls;
 - `Tapp.api("name")` declarations, the fixed HTTP method allow-list, and
   HTTP/builtin API permissions;
+- write-only `credentials` declarations and bindings: limits, declared/bound keys,
+  fixed absolute HTTPS origins, fixed non-routing headers, and duplicate headers;
 - literal `Tapp.assets.*("path")` references;
 - runtime surface consistency (`hasPage` resources, widgets ↔ `widget:register`);
 - headless capability profile: actions denied in background core;

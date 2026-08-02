@@ -240,6 +240,8 @@ pub async fn register_component(
             user_id: Set(owner_id),
             key: Set(storage_key),
             value: Set(component_data),
+            encrypted_value: NotSet,
+            binding_fingerprint: NotSet,
             created_at: Set(now),
             updated_at: Set(now),
         };

@@ -181,9 +181,9 @@ flowchart TB
 
 #### 加载优先级
 
-1. **显式 `preview` 快照**（`preview.html` + `preview.styles[]` 路径）— 推荐  
-2. 否则 **`download.page_template`**（+ `styles` / `page_styles`）  
-3. 再否则（仅已安装本地项且无远程模板）用本地 `pageHtml` 壳  
+1. **显式 `preview` 快照**（`preview.html` + `preview.styles[]` 路径）— 推荐
+2. 否则 **`download.page_template`**（+ `styles` / `page_styles`）
+3. 再否则（仅已安装本地项且无远程模板）用本地 `pageHtml` 壳
 4. 仍不可用 / 清洗失败 / 详情页布局极端溢出 → **主题色 + 图标占位**（`TappPreviewPlaceholder`）
 
 预览失败 **永不阻断** 浏览与安装。
@@ -226,15 +226,15 @@ flowchart TB
 
 `buildSanitizedTappPreview` 会：
 
-- 删除 `script` / `iframe` / `object` / `link` / `meta` 等危险节点与 `on*` 事件  
-- 剥离 URL 属性（`href`/`src`/…）；CSS 中仅保留 `data:image/`、`blob:` 的 `url()`  
-- 去掉 `@import` 与危险 expression  
+- 删除 `script` / `iframe` / `object` / `link` / `meta` 等危险节点与 `on*` 事件
+- 剥离 URL 属性（`href`/`src`/…）；CSS 中仅保留 `data:image/`、`blob:` 的 `url()`
+- 去掉 `@import` 与危险 expression
 - 注入严格 CSP：`default-src 'none'`；`img-src`/`media-src` 仅 `data:`/`blob:`；
-  `style-src 'unsafe-inline'`；`form-action 'none'`；`base-uri 'none'`  
-  （**不含** 浏览器未实现的 `navigate-to`）  
-- 若壳几乎全是空挂载点 + 被剥节点（运行时依赖壳），返回 `null` → 占位  
-- **显式 `preview` 快照**：`preserveControls=true`，表单控件可留作静态外观（`tabindex=-1`）  
-- **page_template 回退**：控件一并剥掉，避免像可点 UI  
+  `style-src 'unsafe-inline'`；`form-action 'none'`；`base-uri 'none'`
+  （**不含** 浏览器未实现的 `navigate-to`）
+- 若壳几乎全是空挂载点 + 被剥节点（运行时依赖壳），返回 `null` → 占位
+- **显式 `preview` 快照**：`preserveControls=true`，表单控件可留作静态外观（`tabindex=-1`）
+- **page_template 回退**：控件一并剥掉，避免像可点 UI
 
 渲染：`iframe` + `sandbox="allow-same-origin"`（无 scripts/forms/popups 能力）、
 `referrerPolicy="no-referrer"`、宿主侧禁止指针交互。
@@ -248,10 +248,10 @@ flowchart TB
 
 #### 作者建议
 
-- 用**静态**结构与样式：字、色块、内联 SVG/`data:` 图；不要依赖 JS、外链图、字体 CDN。  
-- 优先单独 `preview.html` + 共享/专用 CSS，比把整页 runtime 壳当预览更稳。  
-- 内容必须是公开、虚构或脱敏数据。  
-- 视口按桌面画布设计（≥1280×720）；过矮会被抬到下限。  
+- 用**静态**结构与样式：字、色块、内联 SVG/`data:` 图；不要依赖 JS、外链图、字体 CDN。
+- 优先单独 `preview.html` + 共享/专用 CSS，比把整页 runtime 壳当预览更稳。
+- 内容必须是公开、虚构或脱敏数据。
+- 视口按桌面画布设计（≥1280×720）；过矮会被抬到下限。
 - 本地自测：路径可从 `base_url` fetch、无脚本、清洗后仍有可见文本或背景。
 
 ### `download` 路径表

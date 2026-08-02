@@ -157,6 +157,9 @@ export interface TappManifest {
   /** 设置项定义 */
   settings?: TappSettingItem[]
 
+  /** 安装级只写凭据；值仅由宿主绑定到声明式 HTTP API。 */
+  credentials?: TappCredentialItem[]
+
   /** 命名 API 声明；由后端执行并统一实施权限、缓存与出站访问控制 */
   apis?: Record<string, TappApiDefinition>
 
@@ -266,10 +269,11 @@ export interface TappDataImport {
 /** Manifest 中的命名 API 声明 */
 export interface TappApiDefinition {
   /**
-   * 调用者范围：`public` 允许游客；`protected`（默认）要求登录主体。
+   * 调用者范围：`public` 允许游客；`protected`（默认）要求登录主体；
+   * `manager` 仅允许安装 owner 或当前管理员。
    * 与 `network:fetch` 无关——所有 `type: http` 声明 API 仍必须获得 `network:fetch`。
    */
-  access?: 'public' | 'protected'
+  access?: 'public' | 'protected' | 'manager'
   /** HTTP 代理或平台内置能力 */
   type?: 'http' | 'builtin'
   /** HTTP 端点；支持后端模板变量 */
@@ -277,6 +281,14 @@ export interface TappApiDefinition {
   /** HTTP 方法，默认 GET */
   method?: string
   headers?: Record<string, string>
+  /** 宿主凭据到固定请求头的绑定；密钥不会进入模板上下文。 */
+  credential?: {
+    key: string
+    header: string
+    prefix?: string
+  }
+  /** 请求体序列化模式，默认 json */
+  bodyMode?: 'json' | 'raw' | 'form'
   body?: unknown
   /** type=builtin 时的能力名，例如 geo、ai:chat、ai:generate */
   builtin?: string
@@ -287,6 +299,13 @@ export interface TappApiDefinition {
   /** 区域伪装配置 */
   spoof?: string
   description?: string
+}
+
+export interface TappCredentialItem {
+  key: string
+  label: string
+  description?: string
+  placeholder?: string
 }
 
 /**
