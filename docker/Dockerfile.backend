@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y \
 # /build/backend/src/... with docs at /build/docs/...
 #
 # Cargo workspace root is /build (virtual workspace); members:
-#   backend, backend/migrations, crates/*
+#   backend, backend/migrations, crates/*, tools/tapp-contract-export
+# Cargo loads every member manifest even for `cargo build -p myriad-backend`.
 WORKDIR /build
 
 # Build-time version stamp consumed by /health (see api/mod.rs).
@@ -34,6 +35,8 @@ COPY Cargo.toml Cargo.lock ./
 COPY backend/Cargo.toml ./backend/
 COPY backend/migrations ./backend/migrations
 COPY crates ./crates
+# Workspace member (export CLI); not linked into backend, but manifest must exist.
+COPY tools/tapp-contract-export ./tools/tapp-contract-export
 
 # Copy actual source code early to avoid dummy build issues
 COPY backend/src ./backend/src
