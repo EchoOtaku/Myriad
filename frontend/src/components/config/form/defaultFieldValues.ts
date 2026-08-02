@@ -16,6 +16,17 @@ export function defaultAiFieldValue(key: string): string {
   return ''
 }
 
+export function defaultTripoFieldValue(key: string): string {
+  if (key === 'tripo_enabled') return 'false'
+  if (key === 'tripo_base_url') return 'https://openapi.tripo3d.ai/v3'
+  if (key === 'tripo_model') return 'P1-20260311'
+  if (key === 'tripo_face_limit') return '5000'
+  if (key === 'tripo_poll_interval_seconds') return '2'
+  if (key === 'tripo_task_timeout_seconds') return '900'
+  if (key === 'tripo_max_download_mb') return '64'
+  return ''
+}
+
 export function defaultUiFieldValue(key: string): string {
   if (key === 'wallpaper_url') {
     return 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809'

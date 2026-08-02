@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(
   readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
 )
-const APP_VERSION = pkg.version || '0.3.22'
+const APP_VERSION = pkg.version || '0.3.23'
 
 /**
  * 自定义 Vite 插件：SPA 路由回退
@@ -112,6 +112,7 @@ function isFederationTransferContentPath(urlPath) {
 
 function isDigitalLifeApiPath(urlPath) {
   const path = (urlPath || '').split('?')[0] || ''
+  return path.startsWith('/api/digital-life/')
 }
 
 /** Long-running federation transfer REST (initiate / list / chunk / cancel / get). */

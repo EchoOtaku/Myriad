@@ -7,9 +7,66 @@
   appearance: none;
 }
 
-/* 16x4 网格布局 */
+/* 网格容器：高度由 inline height / aspect-ratio 驱动 */
 .widget-grid-container {
+  /* fallback before JS height style lands */
   aspect-ratio: 4 / 1;
+}
+
+/*
+ * 同档内（仅窗口微调）才缓动高度。
+ * 跨 4/8/16 档由 data-band-switch 淡入淡出 + 硬切，勿 height 插值。
+ */
+.widget-grid-container--layout-motion:not([data-band-switch]) {
+  transition: height 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/*
+ * 跨列档 crossfade：淡出 → 硬切坐标系 → 淡入。
+ * 禁止 left/top 在 compact 装箱与桌面保存坐标之间插值（会产生「乱飞」中间态）。
+ */
+.widget-grid-container[data-band-switch='out'],
+.widget-grid-container[data-band-switch='in'] {
+  pointer-events: none;
+  transition: opacity 0.16s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.widget-grid-container[data-band-switch='out'] {
+  opacity: 0;
+}
+
+.widget-grid-container[data-band-switch='in'] {
+  opacity: 1;
+  transition: opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1) !important;
+}
+
+/*
+ * 同档几何过渡：只动 left/top/width/height。
+ * 跨档时不挂 --layout-motion，避免与硬切叠出中间态。
+ */
+.widget-grid-item--layout-motion {
+  transition:
+    left 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+    top 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+    width 0.45s cubic-bezier(0.25, 1, 0.5, 1),
+    height 0.45s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .widget-grid-item--layout-motion,
+  .widget-grid-container--layout-motion:not([data-band-switch]),
+  .widget-grid-container[data-band-switch='out'],
+  .widget-grid-container[data-band-switch='in'] {
+    transition: none !important;
+  }
+
+  .widget-grid-container[data-band-switch='out'] {
+    opacity: 0;
+  }
+
+  .widget-grid-container[data-band-switch='in'] {
+    opacity: 1;
+  }
 }
 
 /* 网格背景 */

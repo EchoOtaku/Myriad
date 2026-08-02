@@ -3,6 +3,7 @@ import React from 'react'
 export type MyriadConfigIconKind =
   | 'platforms'
   | 'ai'
+  | 'tripo'
   | 'basic'
   | 'music'
   | 'oauth'
@@ -25,6 +26,7 @@ const SHARED_CONFIG_ICON_ASSETS: Partial<Record<MyriadConfigIconKind, string>> =
   {
     basic: '/icons/control-panel/config.webp',
     music: '/icons/dynamic/music.webp',
+    tripo: '/icons/config/tripo.svg',
     // Same icon as notification center federation source
     federation: '/icons/notifications/aro.webp',
     // Same icon as notification center Arael / agent source
@@ -32,7 +34,7 @@ const SHARED_CONFIG_ICON_ASSETS: Partial<Record<MyriadConfigIconKind, string>> =
   }
 
 /**
- * Myriad 设置页专用彩绘 PNG 图标。
+ * Myriad 设置页专用品牌图标资产。
  * 同一资产会在分类导航和分类标题中按容器尺寸显示。
  */
 export const MyriadConfigIcon = React.memo<MyriadConfigIconProps>(
@@ -41,7 +43,7 @@ export const MyriadConfigIcon = React.memo<MyriadConfigIconProps>(
 
     return (
       <img
-        className={`myriad-config-icon ${className}`.trim()}
+        className={`myriad-config-icon myriad-config-icon--${kind} ${className}`.trim()}
         src={src}
         alt=""
         aria-hidden="true"

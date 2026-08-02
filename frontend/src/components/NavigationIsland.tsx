@@ -17,6 +17,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 
 import { createPortal } from 'react-dom'
@@ -29,6 +30,19 @@ import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
 } from '../utils/moduleVisibility'
+import {
+  applyNavLayoutToDocument,
+  getNavLayoutSnapshot,
+  getServerNavLayoutSnapshot,
+  isDesktopNavLayout,
+  NAV_CHROME_SETTLED_EVENT,
+  subscribeNavLayout,
+  type NavLayout,
+} from '../utils/navLayout'
+
+/** Bottom ↔ rail crossfade timings (ms). Position only swaps while opacity≈0. */
+const NAV_CHROME_OUT_MS = 200
+const NAV_CHROME_IN_MS = 280
 
 interface ModeMetrics {
   height?: number
@@ -137,10 +151,10 @@ const IconReports = (
 /**
  * 设备感知的动画时序配置
  * 桌面端：从容优雅，给用户充分感知动画层次
- * 移动端：敏捷紧凑，触控反馈要快
+ * 移动端 / 触控平板：敏捷紧凑，触控反馈要快
  */
-function getAnimationTiming() {
-  const isMobile = window.innerWidth < 768
+function getAnimationTiming(layout: NavLayout = getNavLayoutSnapshot()) {
+  const isMobile = layout === 'mobile'
   return {
     exitStagger: isMobile ? 25 : 40,
     exitDuration: isMobile ? 240 : 380,
@@ -149,8 +163,23 @@ function getAnimationTiming() {
   }
 }
 
-const getVariant = () => (window.innerWidth >= 768 ? 'desktop' : 'mobile')
-const isDesktop = () => window.innerWidth >= 768
+const getVariant = (): NavLayout => getNavLayoutSnapshot()
+const isDesktop = () => isDesktopNavLayout()
+
+/** Clear inline size leftovers when mobile ↔ desktop chrome swaps. */
+function resetIslandChromeForLayout(
+  island: HTMLElement,
+  layout: NavLayout,
+): void {
+  if (layout === 'desktop') {
+    // Desktop rail is fixed-width via CSS; never keep mobile measured width.
+    island.style.removeProperty('width')
+  } else {
+    // Mobile bottom bar sizes to content; never keep desktop measured height.
+    island.style.removeProperty('width')
+    island.style.removeProperty('height')
+  }
+}
 
 function validateHeight(height: number | null | undefined): number | null {
   if (height === null || height === undefined || !Number.isFinite(height))
@@ -292,7 +321,7 @@ const NavIslandTooltip = memo(
 
     if (!tooltip) return null
 
-    const mobile = !isDesktop()
+    const mobile = !isDesktopNavLayout()
     const style: React.CSSProperties = {
       position: 'fixed',
       zIndex: 9999,
@@ -348,9 +377,44 @@ export function NavigationIsland() {
     immersiveMode,
   } = useNavigation()
 
+  /**
+   * Subscribe so this component re-renders when the store flips; morph runner
+   * still owns chrome via subscribeNavLayout(tryMorph). Snapshot seeds state.
+   */
+  useSyncExternalStore(
+    subscribeNavLayout,
+    getNavLayoutSnapshot,
+    getServerNavLayoutSnapshot,
+  )
+  /**
+   * Applied chrome layout (drives data-nav-layout + island CSS).
+   * Lags desired during bottom↔rail crossfade so the island fades out at the
+   * old anchor, swaps position while invisible, then fades in.
+   */
+  const [chromeLayout, setChromeLayout] = useState<NavLayout>(() =>
+    getNavLayoutSnapshot(),
+  )
+  const [chromeSwitch, setChromeSwitch] = useState<'out' | 'in' | null>(null)
+  const chromeLayoutRef = useRef<NavLayout>(chromeLayout)
+  chromeLayoutRef.current = chromeLayout
+  const chromeSwitchingRef = useRef(false)
+  const chromeTimersRef = useRef<{ out?: number; in?: number }>({})
+  /** Keep latest helpers for morph timers (avoid effect re-entry cancel). */
+  const chromeHelpersRef = useRef<{
+    getCachedPadding: (island: HTMLElement) => number
+    updateModeMetrics: (
+      mode: 'normal' | 'secondary',
+      metrics: ModeMetrics,
+    ) => void
+  }>({
+    getCachedPadding: () => 0,
+    updateModeMetrics: () => {},
+  })
+
   const navContentRef = useRef<HTMLDivElement>(null)
   const navContainerRef = useRef<HTMLElement>(null)
   const lastModeRef = useRef<'normal' | 'secondary'>('normal')
+  const lastNavLayoutRef = useRef<NavLayout>(chromeLayout)
   const islandMetricsRef = useRef<Record<string, ModeMetrics>>({})
   const prevPathnameRef = useRef(location.pathname)
   // 缓存 padding 值，避免每次动画都触发 getComputedStyle
@@ -404,6 +468,8 @@ export function NavigationIsland() {
     },
     [buildMetricsKey],
   )
+
+  chromeHelpersRef.current = { getCachedPadding, updateModeMetrics }
 
   const applyModeMetrics = useCallback(
     (mode: 'normal' | 'secondary', island: HTMLElement) => {
@@ -812,39 +878,135 @@ export function NavigationIsland() {
   // 正常模式高度：挂载后 + 一级导航可见项变化时重算（见下方 primaryNavItems 之后的 effect）。
   // 不可只在 mount 量一次：鉴权/模块可见性异步生效后项数会变，否则岛高度会偏大。
 
-  // 窗口大小变化时更新尺寸 - 使用防抖避免频繁更新
+  // Apply chrome layout to <html> (section padding etc.)
+  useLayoutEffect(() => {
+    applyNavLayoutToDocument(chromeLayout)
+  }, [chromeLayout])
+
+  /**
+   * Bottom bar ↔ side rail crossfade (single owner).
+   * - Fade out at old anchor
+   * - Swap data-nav-layout while opacity≈0
+   * - Fade in at new anchor
+   * Never interpolate translateX(-50%) ↔ translateY(-50%).
+   * Mid-morph desire changes are ignored until settle, then re-checked.
+   */
+  useEffect(() => {
+    const clearTimers = () => {
+      if (chromeTimersRef.current.out) {
+        clearTimeout(chromeTimersRef.current.out)
+        chromeTimersRef.current.out = undefined
+      }
+      if (chromeTimersRef.current.in) {
+        clearTimeout(chromeTimersRef.current.in)
+        chromeTimersRef.current.in = undefined
+      }
+    }
+
+    const remeasureFor = (target: NavLayout) => {
+      const content = navContentRef.current
+      const island = content?.closest('.dynamic-island') as HTMLElement | null
+      if (!island) return
+      const { getCachedPadding: pad, updateModeMetrics: metrics } =
+        chromeHelpersRef.current
+      cachedPaddingRef.current = null
+      island.removeAttribute('data-transitioning')
+      island.removeAttribute('data-entering')
+      resetIslandChromeForLayout(island, target)
+      if (target === 'desktop' && content) {
+        void island.offsetWidth
+        const padding = pad(island)
+        const height = content.scrollHeight + padding
+        if (safeSetHeight(island, height)) {
+          metrics(lastModeRef.current, { height })
+        }
+      }
+    }
+
+    const tryMorph = () => {
+      const desired = getNavLayoutSnapshot()
+      if (desired === chromeLayoutRef.current) return
+      if (chromeSwitchingRef.current) return
+
+      const nav = navContainerRef.current
+      chromeSwitchingRef.current = true
+      setChromeSwitch('out')
+
+      if (nav) {
+        // Let CSS data-nav-switch own opacity/transform for this sequence.
+        nav.style.removeProperty('opacity')
+        nav.style.removeProperty('transform')
+        nav.style.removeProperty('pointer-events')
+        nav.style.removeProperty('transition')
+      }
+
+      clearTimers()
+      chromeTimersRef.current.out = window.setTimeout(() => {
+        const target = getNavLayoutSnapshot()
+        chromeLayoutRef.current = target
+        setChromeLayout(target)
+        lastNavLayoutRef.current = target
+        applyNavLayoutToDocument(target)
+        remeasureFor(target)
+
+        setChromeSwitch('in')
+        chromeTimersRef.current.in = window.setTimeout(() => {
+          setChromeSwitch(null)
+          chromeSwitchingRef.current = false
+          if (nav) {
+            nav.dispatchEvent(new Event(NAV_CHROME_SETTLED_EVENT))
+          }
+          // Chain if desire moved during the morph.
+          requestAnimationFrame(() => tryMorph())
+        }, NAV_CHROME_IN_MS)
+      }, NAV_CHROME_OUT_MS)
+    }
+
+    tryMorph()
+    const unsub = subscribeNavLayout(tryMorph)
+
+    return () => {
+      unsub()
+      clearTimers()
+      chromeSwitchingRef.current = false
+    }
+  }, [])
+
+  // Chrome settled / first desktop paint: lock height for secondary transitions
+  useLayoutEffect(() => {
+    if (chromeSwitch !== null) return
+    lastNavLayoutRef.current = chromeLayout
+    const content = navContentRef.current
+    const island = content?.closest('.dynamic-island') as HTMLElement | null
+    if (!island || !content) return
+    if (chromeLayout === 'desktop') {
+      resetIslandChromeForLayout(island, 'desktop')
+      void island.offsetWidth
+      const padding = getCachedPadding(island)
+      const height = content.scrollHeight + padding
+      if (safeSetHeight(island, height)) {
+        updateModeMetrics(lastModeRef.current, { height })
+      }
+    }
+  }, [chromeLayout, chromeSwitch, getCachedPadding, updateModeMetrics])
+
+  // 窗口大小变化时更新尺寸 - 同布局内；跨布局由 crossfade 处理
   useEffect(() => {
     let timeoutId: number | null = null
-    let lastWidth = window.innerWidth
 
     const handleResize = () => {
       if (timeoutId) {
         clearTimeout(timeoutId)
       }
       timeoutId = window.setTimeout(() => {
+        if (chromeSwitchingRef.current) return
         const content = navContentRef.current
         const island = content?.closest('.dynamic-island') as HTMLElement | null
         if (!island) return
+        if (getNavLayoutSnapshot() !== chromeLayoutRef.current) return
 
-        const currentWidth = window.innerWidth
-        const crossedBreakpoint = lastWidth >= 768 !== currentWidth >= 768
-        lastWidth = currentWidth
-
-        if (crossedBreakpoint) {
-          // 跨断点时重置 padding 缓存（padding 可能不同）
-          cachedPaddingRef.current = null
-          if (currentWidth >= 768 && content) {
-            const padding = getCachedPadding(island)
-            const height = content.scrollHeight + padding
-            safeSetHeight(island, height)
-          } else {
-            island.style.removeProperty('width')
-            island.style.removeProperty('height')
-          }
-        } else {
-          // 未跨越断点，应用缓存的 metrics
-          applyModeMetrics(lastModeRef.current, island)
-        }
+        resetIslandChromeForLayout(island, chromeLayoutRef.current)
+        applyModeMetrics(lastModeRef.current, island)
       }, 100)
     }
 
@@ -1009,21 +1171,25 @@ export function NavigationIsland() {
     <nav
       ref={navContainerRef}
       className={`nav-container ${immersiveMode ? 'immersive' : ''}`}
+      data-nav-layout={chromeLayout}
+      data-nav-switch={chromeSwitch ?? undefined}
       aria-label={t.nav.mainNavigation}
       {...(immersiveMode && { 'aria-hidden': 'true' })}
+      {...(chromeSwitch ? { 'aria-busy': 'true' } : {})}
     >
       <div className="dynamic-island">
         {/*
           nav-island-scroll：移动端横向滚动放在内层，外层 dynamic-island 只做
           毛玻璃 + overflow:hidden。若把 overflow-x:auto 直接加在带
           backdrop-filter 的岛上，二级菜单项较多时滑动会产生残影。
+          方向由 data-nav-layout 驱动 CSS（勿用 md:，否则平板触控带会错用侧轨样式）。
         */}
-        <div className="nav-island-scroll flex flex-row md:flex-col items-center gap-1 relative">
+        <div className="nav-island-scroll flex items-center gap-1 relative">
           {currentRenderMode === 'secondary' && secondaryNav ? (
             /* 二级导航模式 */
             <div
               ref={navContentRef}
-              className="nav-island-content flex flex-row md:flex-col items-center gap-1"
+              className="nav-island-content flex items-center gap-1"
               key="secondary-mode"
               role="toolbar"
               aria-label={secondaryNav.expandHint || t.nav.mainNavigation}
@@ -1040,9 +1206,9 @@ export function NavigationIsland() {
                 </button>
               </div>
 
-              {/* 分隔符 */}
+              {/* 分隔符 — 横/竖由 .nav-island-divider + data-nav-layout 切换 */}
               <div className="nav-group nav-group-spaced" data-group="divider">
-                <div className="w-px h-6 bg-gray-300/50 dark:bg-neutral-700/50 md:w-6 md:h-px md:my-0"></div>
+                <div className="nav-island-divider bg-gray-300/50 dark:bg-neutral-700/50"></div>
               </div>
 
               {/* 二级导航项 */}
@@ -1078,7 +1244,7 @@ export function NavigationIsland() {
             /* 一级导航模式 */
             <div
               ref={navContentRef}
-              className="nav-island-content flex flex-row md:flex-col items-center gap-1"
+              className="nav-island-content flex items-center gap-1"
               key="primary-mode"
               role="toolbar"
               aria-label={t.nav.mainNavigation}

@@ -462,6 +462,25 @@ export interface TranslationKeys {
     autoRefreshDisabledHint: string
     ai: string
     aiDesc: string
+    tripo: string
+    tripoDesc: string
+    tripoConnection: string
+    tripoConnectionDesc: string
+    tripoEnabled: string
+    tripoEnabledDesc: string
+    tripoApiKey: string
+    tripoApiKeyDesc: string
+    tripoBaseUrl: string
+    tripoWebBudget: string
+    tripoWebBudgetDesc: string
+    tripoModel: string
+    tripoFaceLimit: string
+    tripoFaceLimitDesc: string
+    tripoMaxDownload: string
+    tripoTaskControl: string
+    tripoTaskControlDesc: string
+    tripoPollInterval: string
+    tripoTaskTimeout: string
     basic: string
     basicDesc: string
     oauth: string
@@ -1680,6 +1699,8 @@ export interface TranslationKeys {
     emptyLibrary: string
     emptyCategory: string
     canvasPanHint: string
+    /** Touch-first short copy for narrow viewports */
+    canvasPanHintMobile: string
     canvasDismissHint: string
     canvasResetView: string
     canvasZoomIn: string

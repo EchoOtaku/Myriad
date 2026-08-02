@@ -28,6 +28,12 @@ export interface AiConfig {
   config_fields: ConfigField[]
 }
 
+export interface TripoConfig {
+  enabled: boolean
+  configured: boolean
+  config_fields: ConfigField[]
+}
+
 export interface ReportConfig {
   topic_style: string
   config_fields: ConfigField[]
@@ -42,6 +48,7 @@ export interface Config {
   platforms: PlatformConfig[]
   auto_fetch: PlatformAutoFetchConfig
   ai_config: AiConfig
+  tripo_config: TripoConfig
   report_config: ReportConfig
   ui_config: UiConfig
 }

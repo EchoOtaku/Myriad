@@ -57,7 +57,7 @@ export interface PlatformConfig {
 /**
  * Report carousel card width — matches home WidgetGrid 4x2 at all breakpoints.
  *
- * Home columns: <640 → 4 cols (4x2 = 100%), <1024 → 8 cols (4x2 = 50%), else 16 cols (4x2 = 25%).
+ * Home columns (viewportBands): ≤767 → 4 cols, ≤1077 → 8 cols, ≥1078 → 16 cols.
  * Home shell: max-w-7xl (80rem) + p-2 (−1rem total) inside page padding.
  * --report-visible-cards is 1 / sm:2 / lg:4 (no md:3; tablet stays 50% like home).
  * gap-4 is spacing only and must not be baked into card width.

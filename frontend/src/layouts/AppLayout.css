@@ -15,6 +15,17 @@
     box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/*
+ * 底栏↔侧轨 crossfade 期间：关掉岛内 width/height 弹性过渡。
+ * 布局已在 opacity≈0 时切完，尺寸弹跳只会在淡入时露馅。
+ */
+.nav-container[data-nav-switch] .dynamic-island {
+  transition:
+    background 0.3s ease,
+    border-color 0.3s ease,
+    box-shadow 0.3s ease !important;
+}
+
 /* 仅在动画过渡时启用 will-change，避免常驻占用合成层 */
 .dynamic-island[data-transitioning='true'] {
   will-change: height, width;
@@ -26,80 +37,146 @@
   transition: none !important;
 }
 
-/* 移动端横向布局时调整宽度
+/* 移动端 / 触控底栏横向布局
  *
  * 残影修复：backdrop-filter 与 overflow 滚动不能落在同一元素上。
  * 外层 .dynamic-island 只负责毛玻璃 + 圆角裁剪（overflow: hidden），
  * 内层 .nav-island-scroll 承担横向滚动。
  *
- * 裁切注意：scrollport 的 overflow-y 实际会变成 auto（与 overflow-x
- * 非 visible 时规范行为），选中指示点（bottom: -6px）和阴影会落在
- * 内容盒外。必须用内边距把装饰画进 clip 区域，并抬高 min-height。
+ * 权威选择器：html[data-nav-layout=mobile]（平板触控 768–1023 也走底栏）。
+ * width media 仅作 FOUC 回退。
  */
 @media (width <= 767px) {
   .dynamic-island {
     width: auto;
     height: auto;
-
-    /* 44px 图标 + 上下内边距 + 底部指示点/阴影余量 */
     min-height: 72px;
     max-width: calc(100vw - 2rem);
     box-sizing: border-box;
-
-    /* 仅裁剪，不滚动 — 避免 backdrop-filter 随 scroll 重采样 */
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: flex-start;
-
-    /* 独立合成层：毛玻璃静态贴在岛上，不与内部滚动层纠缠 */
     transform: translateZ(0);
     backface-visibility: hidden;
     isolation: isolate;
   }
 
-  /* 内层滚动轨道：无 backdrop-filter，可安全横向滑动 */
   .nav-island-scroll {
     flex: 1 1 auto;
-    min-width: 0; /* flex 子项允许收缩，才能形成 scrollport */
+    min-width: 0;
     max-width: 100%;
     overflow: auto hidden;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x;
-    scrollbar-width: none; /* Firefox */
-    -ms-overflow-style: none; /* IE 10+ */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
     box-sizing: border-box;
     display: flex;
+    flex-direction: row;
     align-items: center;
-
-    /*
-     * 上下/左右内边距把 active 指示点、box-shadow、:active scale
-     * 收进 clip 区，避免被 overflow 裁成半截按钮。
-     */
     padding: 6px 10px 10px;
   }
 
   .nav-island-scroll::-webkit-scrollbar {
-    display: none; /* Chrome/Safari */
+    display: none;
   }
 
   .nav-island-content {
     flex-direction: row;
     width: max-content;
     align-items: center;
-
-    /* 首尾项再留一点，避免贴圆角边缘被裁 */
     padding-inline: 2px;
   }
 
-  /* 防止图标被压缩 */
   .nav-group {
     flex-shrink: 0;
   }
 }
 
-/* 导航岛内容容器 - Apple 风格动画 */
+/* 平板触控等：强制底栏样式（覆盖桌面 FOUC / 残留）
+ * 勿对 width/height 用 !important：二级导航宽度过渡依赖 inline width。
+ * 布局切换时由 JS resetIslandChromeForLayout 清掉错误侧的 inline 尺寸。 */
+html[data-nav-layout='mobile'] .dynamic-island {
+  width: auto;
+  height: auto;
+  min-height: 72px;
+  max-width: calc(100vw - 2rem);
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  isolation: isolate;
+}
+
+html[data-nav-layout='mobile'] .nav-island-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: auto hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  padding: 6px 10px 10px;
+}
+
+html[data-nav-layout='mobile'] .nav-island-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+html[data-nav-layout='mobile'] .nav-island-content {
+  flex-direction: row;
+  width: max-content;
+  align-items: center;
+  padding-inline: 2px;
+}
+
+html[data-nav-layout='mobile'] .nav-group {
+  flex-shrink: 0;
+}
+
+/* 桌面侧轨：清掉底栏滚动/flex 残留，恢复固定轨宽 */
+html[data-nav-layout='desktop'] .dynamic-island {
+  width: 65px;
+  min-height: 0;
+  max-width: none;
+  display: block;
+  transform: none;
+  backface-visibility: visible;
+  isolation: auto;
+  justify-content: unset;
+}
+
+html[data-nav-layout='desktop'] .nav-island-scroll {
+  flex: none;
+  min-width: 0;
+  max-width: none;
+  overflow: visible;
+  overscroll-behavior-x: auto;
+  touch-action: auto;
+  padding: 0;
+  display: block;
+  flex-direction: unset;
+}
+
+html[data-nav-layout='desktop'] .nav-island-content {
+  flex-direction: column;
+  width: 100%;
+  padding-inline: 0;
+}
+
+/* 导航岛内容容器 - Apple 风格动画
+ * 默认列（桌面侧轨）；底栏由 data-nav-layout=mobile / 窄屏 media 改行 */
 .nav-island-content {
   position: relative;
   transform-origin: center;
@@ -113,9 +190,15 @@
   min-height: 36px;
 }
 
-/* 移动端横向布局 */
+.nav-island-scroll {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 @media (width <= 767px) {
-  .nav-island-content {
+  .nav-island-content,
+  .nav-island-scroll {
     flex-direction: row;
   }
 }
@@ -139,9 +222,10 @@
   }
 }
 
-/* 导航项组间距 */
+/* 导航项组间距 — 默认底栏横排；侧轨改纵向 */
 .nav-group-spaced {
   margin-left: 8px;
+  margin-top: 0;
 }
 
 @media (width >= 768px) {
@@ -151,7 +235,6 @@
   }
 }
 
-/* 移动端横向排布时收紧组间距（自 astro 页面级样式迁移；须位于顶层 8px 声明之后） */
 @media (width <= 767px) {
   .nav-group-spaced {
     margin-top: 0;
@@ -161,6 +244,22 @@
 
 @media (width <= 480px) {
   .nav-group-spaced {
+    margin-left: 4px;
+  }
+}
+
+html[data-nav-layout='mobile'] .nav-group-spaced {
+  margin-top: 0;
+  margin-left: 6px;
+}
+
+html[data-nav-layout='desktop'] .nav-group-spaced {
+  margin-left: 0;
+  margin-top: 8px;
+}
+
+@media (width <= 480px) {
+  html[data-nav-layout='mobile'] .nav-group-spaced {
     margin-left: 4px;
   }
 }
@@ -246,7 +345,7 @@
     transform 0.35s cubic-bezier(0.4, 0, 1, 1);
 }
 
-/* --- 移动端覆盖：敏捷紧凑的节奏，水平方向 --- */
+/* --- 底栏（mobile / 触控平板）覆盖：敏捷紧凑，水平进出场 --- */
 @media (width <= 767px) {
   /*
    * 空闲态不写 translateZ：常驻合成层会在横向滚动时留下图层残影。
@@ -285,10 +384,56 @@
       transform 0.22s cubic-bezier(0.4, 0, 1, 1);
   }
 
-  /* 移动端呼吸动画更紧凑 */
   .dynamic-island[data-transitioning='true'] .nav-island-content {
     animation: breathe 0.3s cubic-bezier(0.25, 1.3, 0.5, 1);
   }
+}
+
+html[data-nav-layout='mobile'] .nav-group {
+  transform: none;
+  backface-visibility: visible;
+}
+
+html[data-nav-layout='mobile'] .nav-group:not([data-animation]) {
+  transition:
+    opacity 0.2s cubic-bezier(0.25, 1.2, 0.5, 1),
+    transform 0.28s cubic-bezier(0.25, 1.2, 0.5, 1);
+}
+
+html[data-nav-layout='mobile'] .nav-group[data-animation='enter-initial'] {
+  transform: scale(0.92) translateX(6px);
+  backface-visibility: hidden;
+  transition:
+    opacity 0.2s cubic-bezier(0.25, 1.2, 0.5, 1),
+    transform 0.28s cubic-bezier(0.25, 1.2, 0.5, 1);
+}
+
+html[data-nav-layout='mobile'] .nav-group[data-animation='exit'] {
+  transform: scale(0.92) translateX(-6px);
+  backface-visibility: hidden;
+  transition:
+    opacity 0.15s cubic-bezier(0.4, 0, 1, 1),
+    transform 0.2s cubic-bezier(0.4, 0, 1, 1);
+}
+
+html[data-nav-layout='mobile']
+  .dynamic-island[data-transitioning='true']
+  .nav-island-content {
+  animation: breathe 0.3s cubic-bezier(0.25, 1.3, 0.5, 1);
+}
+
+/* 侧轨：恢复纵向进出场（清掉底栏 translateX 残留） */
+html[data-nav-layout='desktop'] .nav-group {
+  transform: scale(1) translateY(0) translateZ(0);
+  backface-visibility: hidden;
+}
+
+html[data-nav-layout='desktop'] .nav-group[data-animation='enter-initial'] {
+  transform: scale(0.88) translateY(8px) translateZ(0);
+}
+
+html[data-nav-layout='desktop'] .nav-group[data-animation='exit'] {
+  transform: scale(0.88) translateY(8px) translateZ(0);
 }
 
 /* 二级导航激活状态 - 补充 navigation-island.css 中 [aria-current] 未覆盖的场景 */
@@ -306,12 +451,17 @@ html.dark .nav-item.active-secondary {
     inset 0 1px 0 0 rgb(255 255 255 / 10%);
 }
 
-/* 移动端安全区域适配：页面内容底部留出刘海屏指示条空间（自 astro 迁移） */
+/* 底栏模式：页面内容底部留出导航岛 + 安全区（自 astro 迁移）
+ * 含平板触控 data-nav-layout=mobile（宽度可能 >767） */
 @supports (padding: env(safe-area-inset-bottom)) {
   @media (width <= 767px) {
     section {
       padding-bottom: max(7rem, calc(7rem + env(safe-area-inset-bottom)));
     }
+  }
+
+  html[data-nav-layout='mobile'] section {
+    padding-bottom: max(7rem, calc(7rem + env(safe-area-inset-bottom)));
   }
 }
 

@@ -371,6 +371,16 @@ pub struct DynamicConfig {
     pub ai_image_volcengine_base_url: String,
     pub pixai_api_key: Option<String>,
 
+    // 3D 模型生成配置（独立于 AI 图片 Provider）
+    pub tripo_enabled: bool,
+    pub tripo_api_key: Option<String>,
+    pub tripo_base_url: String,
+    pub tripo_model: String,
+    pub tripo_face_limit: i32,
+    pub tripo_poll_interval_seconds: i32,
+    pub tripo_task_timeout_seconds: i32,
+    pub tripo_max_download_mb: i32,
+
     // 自动数据获取配置
     pub enable_auto_fetch: bool,
     pub fetch_interval_hours: i32,
@@ -618,6 +628,15 @@ impl Default for DynamicConfig {
             ai_image_volcengine_api_key: None,
             ai_image_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
             pixai_api_key: None,
+            // Tripo 3D（低模 Web 角色默认预算）
+            tripo_enabled: false,
+            tripo_api_key: None,
+            tripo_base_url: "https://openapi.tripo3d.ai/v3".to_string(),
+            tripo_model: "P1-20260311".to_string(),
+            tripo_face_limit: 5_000,
+            tripo_poll_interval_seconds: 2,
+            tripo_task_timeout_seconds: 900,
+            tripo_max_download_mb: 64,
             enable_auto_fetch: false,
             fetch_interval_hours: 24,
 

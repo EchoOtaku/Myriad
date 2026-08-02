@@ -26,6 +26,7 @@ import {
   OAuthConfigSection,
   PermissionsConfigSection,
   PlatformsConfigSection,
+  TripoConfigSection,
   UiConfigSection,
   UsersConfigSection,
 } from './config'
@@ -72,6 +73,7 @@ const ModernConfigForm: React.FC = () => {
     loadConfig,
     updateFieldValue,
     updateAiFieldValue,
+    updateTripoFieldValue,
     updateUiFieldValue,
     togglePlatform,
     updateAutoFetchConfig,
@@ -353,6 +355,14 @@ const ModernConfigForm: React.FC = () => {
             configFields={config.ai_config.config_fields}
             updateValue={updateAiFieldValue}
             onSpeechTest={handleSpeechTest}
+            {...props}
+          />
+        )
+      case 'tripo':
+        return (
+          <TripoConfigSection
+            configFields={config.tripo_config.config_fields}
+            updateValue={updateTripoFieldValue}
             {...props}
           />
         )

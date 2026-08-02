@@ -1,23 +1,129 @@
 /* ============================================
    导航岛样式 (Dynamic Island)
    从 index.astro 提取
+
+   布局由 html[data-nav-layout="mobile|desktop"] 驱动（见 utils/navLayout.ts）。
+   宽度 media 仅作 FOUC 回退；平板触控段 (768–1023) 以 data 属性为准，
+   避免 iPad 竖屏被错判成桌面侧轨。
    ============================================ */
 
-/* 导航容器 */
+/* 导航容器 — 默认底栏（mobile-first） */
 .nav-container {
   position: fixed;
   bottom: 1rem;
   left: 50%;
+  top: auto;
+  right: auto;
   transform: translateX(-50%);
   z-index: 50;
 }
 
+/* FOUC：宽屏先按侧轨摆，等 data-nav-layout 校正平板触控 */
 @media (width >= 768px) {
   .nav-container {
     left: 1.5rem;
     top: 50%;
     bottom: auto;
     transform: translateY(-50%);
+  }
+}
+
+/* 权威：JS 写入的 layout token（覆盖 media，修平板/切换残留） */
+html[data-nav-layout='mobile'] .nav-container {
+  inset: auto auto 1rem 50%;
+  left: 50%;
+  top: auto;
+  bottom: 1rem;
+  right: auto;
+  transform: translateX(-50%);
+}
+
+html[data-nav-layout='desktop'] .nav-container {
+  inset: auto auto auto 1.5rem;
+  left: 1.5rem;
+  top: 50%;
+  bottom: auto;
+  right: auto;
+  transform: translateY(-50%);
+}
+
+/*
+ * Bottom ↔ rail crossfade (NavigationIsland data-nav-switch).
+ * Do NOT transition left/top/bottom between anchors — that flies the island
+ * diagonally. Fade out with a short tuck, swap layout while invisible, fade in.
+ */
+.nav-container[data-nav-switch='out'],
+.nav-container[data-nav-switch='in'] {
+  pointer-events: none !important;
+  /* Override auto-hide inline transition during morph */
+  transition:
+    opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    transform 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.nav-container[data-nav-switch='out'] {
+  opacity: 0 !important;
+}
+
+/* Tuck toward the edge that owns the chrome (still on OLD layout token) */
+html[data-nav-layout='mobile'] .nav-container[data-nav-switch='out'] {
+  transform: translateX(-50%) translateY(14px) scale(0.96) !important;
+}
+
+html[data-nav-layout='desktop'] .nav-container[data-nav-switch='out'] {
+  transform: translateY(-50%) translateX(-14px) scale(0.96) !important;
+}
+
+.nav-container[data-nav-switch='in'] {
+  opacity: 1 !important;
+}
+
+html[data-nav-layout='mobile'] .nav-container[data-nav-switch='in'] {
+  animation: nav-chrome-in-mobile 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+html[data-nav-layout='desktop'] .nav-container[data-nav-switch='in'] {
+  animation: nav-chrome-in-desktop 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes nav-chrome-in-mobile {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(12px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes nav-chrome-in-desktop {
+  from {
+    opacity: 0;
+    transform: translateY(-50%) translateX(-12px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0) scale(1);
+  }
+}
+
+/* Prefer reduced motion: snap without multi-phase morph length */
+@media (prefers-reduced-motion: reduce) {
+  .nav-container[data-nav-switch='out'],
+  .nav-container[data-nav-switch='in'] {
+    transition: opacity 0.01ms !important;
+    animation: none !important;
+  }
+
+  .nav-container[data-nav-switch='out'] {
+    opacity: 0 !important;
+  }
+
+  .nav-container[data-nav-switch='in'] {
+    opacity: 1 !important;
   }
 }
 
@@ -99,11 +205,19 @@ html.dark .dynamic-island:hover {
   }
 }
 
-/* 桌面端纵向岛限高（自 astro 迁移；padding/max-width 由上方基础规则统一） */
+/* 桌面端纵向岛限高 */
 @media (width >= 768px) {
   .dynamic-island {
     max-height: 85vh;
   }
+}
+
+html[data-nav-layout='desktop'] .dynamic-island {
+  max-height: 85vh;
+}
+
+html[data-nav-layout='mobile'] .dynamic-island {
+  max-height: none;
 }
 
 /* 折叠状态 */
@@ -185,7 +299,7 @@ html.dark .nav-item:active {
   border-radius: 18px;
 }
 
-/* 选中状态 */
+/* 选中状态 — 默认桌面：左侧圆点 */
 [aria-current='page'].nav-item {
   color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 15%, white);
@@ -209,12 +323,37 @@ html.dark [aria-current='page'].nav-item::after {
   position: absolute;
   left: -8px;
   top: 50%;
+  bottom: auto;
   transform: translateY(-50%);
   width: 5px;
   height: 5px;
   background: var(--color-primary);
   border-radius: 50%;
   box-shadow: 0 0 8px color-mix(in srgb, var(--color-primary) 60%, transparent);
+}
+
+/* 移动底栏：选中点在下方 */
+@media (width <= 767px) {
+  [aria-current='page'].nav-item::after {
+    left: 50%;
+    top: auto;
+    bottom: -4px;
+    transform: translateX(-50%);
+  }
+}
+
+html[data-nav-layout='mobile'] [aria-current='page'].nav-item::after {
+  left: 50%;
+  top: auto;
+  bottom: -4px;
+  transform: translateX(-50%);
+}
+
+html[data-nav-layout='desktop'] [aria-current='page'].nav-item::after {
+  left: -8px;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
 }
 
 /* 导航组 */
@@ -230,13 +369,42 @@ html.dark [aria-current='page'].nav-item::after {
   }
 }
 
-/* 移动端优化 */
-@media (width <= 767px) {
-  .nav-container {
-    inset: auto auto 1rem 50% !important;
-    transform: translateX(-50%) !important;
-  }
+html[data-nav-layout='mobile'] .nav-group {
+  flex-direction: row;
+}
 
+html[data-nav-layout='desktop'] .nav-group {
+  flex-direction: column;
+}
+
+/* 一二级分隔线：底栏竖线 / 侧轨横线 */
+.nav-island-divider {
+  width: 1px;
+  height: 1.5rem;
+  flex-shrink: 0;
+  border-radius: 1px;
+}
+
+@media (width >= 768px) {
+  .nav-island-divider {
+    width: 1.5rem;
+    height: 1px;
+    margin-block: 0;
+  }
+}
+
+html[data-nav-layout='mobile'] .nav-island-divider {
+  width: 1px;
+  height: 1.5rem;
+}
+
+html[data-nav-layout='desktop'] .nav-island-divider {
+  width: 1.5rem;
+  height: 1px;
+}
+
+/* 移动端 / 触控底栏外观 */
+@media (width <= 767px) {
   .dynamic-island {
     /* 外层只留薄边；垂直呼吸空间交给 .nav-island-scroll 内边距 */
     padding: 4px 6px;
@@ -248,16 +416,6 @@ html.dark [aria-current='page'].nav-item::after {
     /* 圆角裁剪与毛玻璃同层；滚动见 .nav-island-scroll（AppLayout.css） */
     overflow: hidden;
   }
-
-  /* 选中点：仍在按钮下方，但由 scroll 内边距承接，避免被 overflow 裁掉 */
-  [aria-current='page'].nav-item::after {
-    left: 50% !important;
-    top: auto !important;
-    bottom: -4px !important;
-    transform: translateX(-50%) !important;
-  }
-
-  /* 以下均自 astro 页面级样式迁移（原双份声明已删） */
 
   /* 渐变边框动画降档：省电，静态呈现 */
   .dynamic-island::before {
@@ -279,6 +437,47 @@ html.dark [aria-current='page'].nav-item::after {
   }
 }
 
+/* 平板触控等：data=mobile 时强制底栏 chrome（覆盖 ≥768 的 FOUC 桌面规则） */
+html[data-nav-layout='mobile'] .dynamic-island {
+  padding: 4px 6px;
+  max-width: calc(100vw - 2rem);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  overflow: hidden;
+}
+
+html[data-nav-layout='mobile'] .dynamic-island::before {
+  animation: none;
+  opacity: 0.6;
+}
+
+html[data-nav-layout='mobile'] .dynamic-island > .nav-island-scroll {
+  gap: 6px;
+}
+
+html[data-nav-layout='mobile'] .dynamic-island,
+html[data-nav-layout='mobile'] .nav-item,
+html[data-nav-layout='mobile'] .nav-container button {
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 桌面侧轨：恢复常规内边距（清掉 mobile padding 残留） */
+html[data-nav-layout='desktop'] .dynamic-island {
+  padding: 10px;
+  max-width: 95vw;
+  display: block;
+  flex-direction: unset;
+  /* width 由 AppLayout.css 的 65px 控制；勿在此写 auto */
+  overflow: hidden;
+}
+
+html[data-nav-layout='desktop'] .dynamic-island::before {
+  animation: border-flow 8s linear infinite;
+  opacity: 0.8;
+}
+
 /* 小屏收紧（自 astro 迁移） */
 @media (width <= 480px) {
   .dynamic-island > .nav-island-scroll {
@@ -291,12 +490,31 @@ html.dark [aria-current='page'].nav-item::after {
   }
 }
 
-/* 安全区域适配（刘海屏/底部指示条；须位于上方 inset !important 之后才能生效） */
+@media (width <= 480px) {
+  html[data-nav-layout='mobile'] .dynamic-island > .nav-island-scroll {
+    gap: 4px;
+  }
+
+  html[data-nav-layout='mobile'] .nav-item svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* 安全区域适配（刘海屏/底部指示条） */
 @supports (padding: env(safe-area-inset-bottom)) {
   @media (width <= 767px) {
     .nav-container {
-      bottom: max(1rem, env(safe-area-inset-bottom)) !important;
+      bottom: max(1rem, env(safe-area-inset-bottom));
     }
+  }
+
+  html[data-nav-layout='mobile'] .nav-container {
+    bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  html[data-nav-layout='desktop'] .nav-container {
+    bottom: auto;
   }
 }
 
@@ -316,6 +534,11 @@ html.dark [aria-current='page'].nav-item::after {
   /* 触摸反馈（自 astro 迁移） */
   .dynamic-island:active {
     transform: scale(0.98);
+  }
+
+  /* 桌面侧轨在触控大屏上：勿给整个岛 scale（会与 translateY 定位打架） */
+  html[data-nav-layout='desktop'] .dynamic-island:active {
+    transform: none;
   }
 }
 

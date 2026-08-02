@@ -21,6 +21,7 @@ import {
   libraryCanvasLayoutIntersects,
   LIBRARY_CANVAS_STRIDE,
 } from '../utils/libraryCanvas'
+import { isMobileNavLayout } from '../utils/navLayout'
 import { LIBRARY_PREFERENCES_UPDATED_EVENT } from '../utils/libraryPreferences'
 import {
   formatWatchProgressText,
@@ -105,12 +106,12 @@ if (typeof document !== 'undefined') {
 
         /*
          * 无限画布本身已响应指针；背景强制静止，避免双重位移与点击涟漪干扰。
-         * transform 用过渡缓入静止（勿 transition:none），退出画布后由 evocative soft-restore 缓回 scale。
+         * transform 由 useEvocativeWallpaper soft-lock 缓入 identity（勿在此 !important 写死
+         * transform，否则各端过渡插值会被掐断）；退出画布后 soft-restore 缓回 scale。
          */
         html[data-library-canvas='active'] #wallpaper {
             animation: none !important;
-            transform: none !important;
-            transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1) !important;
+            transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1) !important;
         }
 
         html[data-library-canvas='active'] #wallpaper-ripple-canvas {
@@ -2355,11 +2356,25 @@ function getItemGridSize(type: string, platform: string) {
 }
 
 const CANVAS_STRIDE = LIBRARY_CANVAS_STRIDE
-const CANVAS_DEFAULT_SCALE = 0.75
+/** Desktop default zoom; mobile uses a tighter fit so cards aren't huge on first open. */
+const CANVAS_DEFAULT_SCALE_DESKTOP = 0.75
+const CANVAS_DEFAULT_SCALE_MOBILE = 0.5
 const CANVAS_MIN_SCALE = 0.45
 const CANVAS_MAX_SCALE = 1.6
 const CANVAS_SPATIAL_BIN_SIZE = CANVAS_STRIDE * 4
 const LIBRARY_PAGE_SIZE = 120
+
+function readCanvasDefaultScale(): number {
+  // Align with nav island: touch tablets in 768–1023 use compact chrome too.
+  if (typeof window === 'undefined') return CANVAS_DEFAULT_SCALE_DESKTOP
+  try {
+    return isMobileNavLayout()
+      ? CANVAS_DEFAULT_SCALE_MOBILE
+      : CANVAS_DEFAULT_SCALE_DESKTOP
+  } catch {
+    return CANVAS_DEFAULT_SCALE_DESKTOP
+  }
+}
 
 function balancedShuffleLibraryItems(items: LibraryItem[]): LibraryItem[] {
   const groups: Record<string, LibraryItem[]> = {
@@ -2411,6 +2426,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   const libraryFetchGenerationRef = useRef(0)
   const loadNextLibraryPageRef = useRef<() => Promise<void>>(async () => {})
   const containerRef = useRef<HTMLDivElement>(null)
+  // Mount-time only: avoid flipping scale when rotating/resizing mid-session.
+  const canvasDefaultScaleRef = useRef(readCanvasDefaultScale())
   const {
     atMaxZoom: canvasAtMaxZoom,
     atMinZoom: canvasAtMinZoom,
@@ -2429,7 +2446,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     zoomPercent: canvasZoomPercent,
   } = useLibraryCanvasControls({
     active: layoutMode === 'canvas',
-    defaultScale: CANVAS_DEFAULT_SCALE,
+    defaultScale: canvasDefaultScaleRef.current,
     maxScale: CANVAS_MAX_SCALE,
     minScale: CANVAS_MIN_SCALE,
     surfaceRef: containerRef,
@@ -3508,6 +3525,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                   atMinZoom={canvasAtMinZoom}
                   dismissHintLabel={t.library.canvasDismissHint}
                   hint={t.library.canvasPanHint}
+                  mobileHint={t.library.canvasPanHintMobile}
                   isDefault={canvasViewIsDefault}
                   onReset={resetCanvasView}
                   onZoom={zoomCanvas}

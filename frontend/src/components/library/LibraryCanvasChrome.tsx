@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { createPortal } from 'react-dom'
+import {
+  getNavLayoutSnapshot,
+  getServerNavLayoutSnapshot,
+  subscribeNavLayout,
+} from '../../utils/navLayout'
 
 const CANVAS_HINT_SESSION_KEY = 'library-canvas-hint-dismissed'
 
@@ -8,6 +14,8 @@ interface LibraryCanvasChromeProps {
   atMinZoom: boolean
   dismissHintLabel: string
   hint: string
+  /** Shorter touch-first copy; falls back to `hint` when omitted. */
+  mobileHint?: string
   isDefault: boolean
   onReset: () => void
   onZoom: (factor: number) => void
@@ -23,6 +31,7 @@ export function LibraryCanvasChrome({
   atMinZoom,
   dismissHintLabel,
   hint,
+  mobileHint,
   isDefault,
   onReset,
   onZoom,
@@ -31,7 +40,15 @@ export function LibraryCanvasChrome({
   zoomOutLabel,
   zoomPercent,
 }: LibraryCanvasChromeProps) {
-  const [showHint, setShowHint] = useState(true)
+  // null until we read sessionStorage — avoids a false flash of dismissed state
+  // and ensures the first paint can still show the tip on fresh sessions.
+  const [showHint, setShowHint] = useState<boolean | null>(null)
+  const navLayout = useSyncExternalStore(
+    subscribeNavLayout,
+    getNavLayoutSnapshot,
+    getServerNavLayoutSnapshot,
+  )
+  const isMobile = navLayout === 'mobile'
 
   useEffect(() => {
     try {
@@ -39,7 +56,7 @@ export function LibraryCanvasChrome({
         window.sessionStorage.getItem(CANVAS_HINT_SESSION_KEY) !== '1',
       )
     } catch {
-      // Storage can be disabled; keep the hint dismissible for this mount.
+      setShowHint(true)
     }
   }, [])
 
@@ -52,12 +69,24 @@ export function LibraryCanvasChrome({
     }
   }, [])
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  const hintText =
+    isMobile && mobileHint && mobileHint.trim().length > 0 ? mobileHint : hint
+
+  // Portal out of the z-0 canvas surface so chrome isn't trapped under host
+  // nav (z-50) / GCP stacking, and isn't covered by the transformed card world.
+  return createPortal(
     <>
-      {showHint && (
-        <div className="pointer-events-none absolute inset-x-0 top-3 z-40 flex justify-center px-24 sm:px-40">
-          <div className="pointer-events-auto glass flex items-center gap-1 rounded-full py-1 pr-1 pl-3 text-[10px] text-gray-600 shadow-sm dark:text-gray-300">
-            <span>{hint}</span>
+      {showHint === true && (
+        <div
+          className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-3 sm:px-16 md:px-24"
+          style={{
+            top: 'max(0.75rem, env(safe-area-inset-top, 0px))',
+          }}
+        >
+          <div className="pointer-events-auto glass flex max-w-[min(100%,28rem)] items-center gap-1 rounded-full py-1 pr-1 pl-3 text-[10px] leading-snug text-gray-600 shadow-sm dark:text-gray-300 sm:max-w-none sm:text-[11px]">
+            <span className="min-w-0">{hintText}</span>
             <button
               type="button"
               className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-black/5 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-white"
@@ -83,7 +112,13 @@ export function LibraryCanvasChrome({
         </div>
       )}
       <div
-        className="absolute bottom-[calc(env(safe-area-inset-bottom)+5.75rem)] left-1/2 z-50 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-white/35 glass p-1 shadow-xl md:bottom-[calc(env(safe-area-inset-bottom)+1.5rem)] dark:border-white/10"
+        className="fixed left-1/2 z-40 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-white/35 glass p-1 shadow-xl dark:border-white/10"
+        style={{
+          // Bottom island needs clearance; side rail can sit lower.
+          bottom: isMobile
+            ? 'calc(env(safe-area-inset-bottom, 0px) + 5.75rem)'
+            : 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)',
+        }}
         role="toolbar"
         aria-label={ariaLabel}
       >
@@ -158,6 +193,7 @@ export function LibraryCanvasChrome({
           <span className="hidden sm:inline">{resetLabel}</span>
         </button>
       </div>
-    </>
+    </>,
+    document.body,
   )
 }

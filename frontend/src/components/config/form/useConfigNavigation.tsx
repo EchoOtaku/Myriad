@@ -21,6 +21,8 @@ type NavI18n = {
     platformsDesc: string
     ai: string
     aiDesc: string
+    tripo: string
+    tripoDesc: string
     basic: string
     basicDesc: string
     oauth: string
@@ -94,6 +96,13 @@ export function useConfigNavigation(isAdmin: boolean, t: NavI18n) {
         description: t.config.aiDesc,
         icon: <MyriadConfigIcon kind="ai" />,
         section: 'ai',
+      },
+      {
+        id: 'tripo',
+        label: t.config.tripo,
+        description: t.config.tripoDesc,
+        icon: <MyriadConfigIcon kind="tripo" />,
+        section: 'tripo',
       },
       {
         id: 'basic',

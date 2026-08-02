@@ -15,6 +15,7 @@ pub mod brewlia; // ✅ Brewlia AI增强阅读 API
 pub mod cache; // ✅ 缓存管理 API
 pub mod config;
 pub mod diagnostics;
+pub mod digital_life_3d; // 🧊 Tripo-backed 3D generation and persisted Web GLBs
 pub mod discord;
 pub mod federation; // 联邦 HTTP 适配层（自 main 迁出） // ✅ Discord 数据平台 API
 pub mod game_presence; // ✅ 游戏平台公开状态（Enka / Xbox / PSN，无用户 Cookie）

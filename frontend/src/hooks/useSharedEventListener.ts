@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { rafThrottle } from '../utils/performance'
+import { VIEWPORT_MQ } from '../utils/viewportBands'
 
 import { isPageVisible, onVisibility } from './animation/core'
 
@@ -354,11 +355,12 @@ export function useMediaQuery(query: string): boolean {
 
 /**
  * 预定义的响应式断点 Hook
+ * 阈值与 utils/viewportBands 一致（phone≤767 / tablet … / desktop≥1078）
  */
 export function useBreakpoints() {
-  const isMobile = useMediaQuery('(max-width: 767px)')
-  const isTablet = useMediaQuery('(min-width: 768px) and (max-width: 1023px)')
-  const isDesktop = useMediaQuery('(min-width: 1024px)')
+  const isMobile = useMediaQuery(VIEWPORT_MQ.phone)
+  const isTablet = useMediaQuery(VIEWPORT_MQ.tablet)
+  const isDesktop = useMediaQuery(VIEWPORT_MQ.desktop)
   const isLargeDesktop = useMediaQuery('(min-width: 1280px)')
 
   return useMemo(

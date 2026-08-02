@@ -43,13 +43,14 @@ export function useConfigBagState(
 
   const updateConfigField = useCallback(
     (
-      section: 'ai' | 'ui',
+      section: 'ai' | 'tripo' | 'ui',
       fieldKey: string,
       value: string,
       providerFieldKey?: string,
       options?: { silent?: boolean },
     ) => {
-      const sectionKey = `${section}_config` as 'ai_config' | 'ui_config'
+      const sectionKey = `${section}_config` as
+        'ai_config' | 'tripo_config' | 'ui_config'
       const sanitized = sanitizeMaskedFieldValue(value)
       // 用 ref 在同步 updater 内标记是否真正改到字段（避免闭包依赖 config）
       let applied = false
@@ -69,7 +70,11 @@ export function useConfigBagState(
         )
         const nextSection =
           providerFieldKey && fieldKey === providerFieldKey
-            ? { ...sectionConfig, provider: sanitized, config_fields: newFields }
+            ? {
+                ...sectionConfig,
+                provider: sanitized,
+                config_fields: newFields,
+              }
             : { ...sectionConfig, config_fields: newFields }
         return { ...prev, [sectionKey]: nextSection }
       })
@@ -133,6 +138,13 @@ export function useConfigBagState(
     [updateConfigField],
   )
 
+  const updateTripoFieldValue = useCallback(
+    (fieldKey: string, value: string) => {
+      updateConfigField('tripo', fieldKey, value)
+    },
+    [updateConfigField],
+  )
+
   const togglePlatform = useCallback(
     (platformIndex: number) => {
       if (!config) return
@@ -186,6 +198,7 @@ export function useConfigBagState(
     loadConfig,
     updateFieldValue,
     updateAiFieldValue,
+    updateTripoFieldValue,
     updateUiFieldValue,
     togglePlatform,
     updateAutoFetchConfig,

@@ -11,6 +11,7 @@ export const CONFIG_NAV_STORAGE_KEY = 'myriad_config_nav_v1'
 export const CONFIG_NAV_SECTIONS = [
   'platforms',
   'ai',
+  'tripo',
   'basic',
   'oauth',
   'federation',

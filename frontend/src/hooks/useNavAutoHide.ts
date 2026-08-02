@@ -1,9 +1,21 @@
 /**
  * 导航岛自动隐藏 Hook
  * 管理滚动隐藏、鼠标边缘唤回、无操作超时、响应式断点等行为
+ *
+ * 布局（底栏 / 侧轨）与 utils/navLayout 一致，勿用纯 width≥768：
+ * 平板触控 768–1023 为 mobile 底栏，若写 desktop 的 translateY 会盖住 CSS。
+ *
+ * 底栏↔侧轨切换时由 NavigationIsland 做 crossfade（data-nav-switch）；
+ * 此期间不写 inline transform/opacity，避免与淡出/淡入抢控制权。
  */
 
 import { useEffect } from 'react'
+import {
+  getNavLayoutSnapshot,
+  NAV_CHROME_SETTLED_EVENT,
+  subscribeNavLayout,
+  type NavLayout,
+} from '../utils/navLayout'
 
 const INACTIVITY_DELAY = 5000
 const SCROLL_THRESHOLD = 50
@@ -14,6 +26,15 @@ const TRANSFORM_SHOW_DESKTOP = 'translateY(-50%)'
 const TRANSFORM_SHOW_MOBILE = 'translateX(-50%)'
 const TRANSFORM_HIDE_DESKTOP = 'translateY(-50%) translateX(-20px)'
 const TRANSFORM_HIDE_MOBILE = 'translateX(-50%) translateY(20px)'
+
+const TRANSITION_VISIBILITY = 'opacity 0.3s ease, transform 0.3s ease'
+/** Layout morph: never interpolate translateX(-50%) ↔ translateY(-50%). */
+const TRANSITION_OPACITY_ONLY = 'opacity 0.3s ease'
+
+function isChromeSwitching(nav: HTMLElement): boolean {
+  const phase = nav.dataset.navSwitch
+  return phase === 'out' || phase === 'in'
+}
 
 export function useNavAutoHide(selector = '.nav-container') {
   useEffect(() => {
@@ -27,25 +48,40 @@ export function useNavAutoHide(selector = '.nav-container') {
     let isHovering = false
     let isNavVisible = true
     let hiddenByScroll = false
-    let cachedIsDesktop = window.innerWidth >= 768
+    let cachedLayout: NavLayout = getNavLayoutSnapshot()
     let cachedWindowHeight = window.innerHeight
 
-    // ===== CSS 样式应用 =====
-    // transition 只设一次，后续切换只修改变化的属性，避免 cssText 全量重写触发样式重算
-    navContainer.style.transition = 'opacity 0.3s ease, transform 0.3s ease'
+    navContainer.style.transition = TRANSITION_VISIBILITY
 
     const applyVisibility = (visible: boolean) => {
+      // Crossfade owns opacity/transform while data-nav-switch is set.
+      if (isChromeSwitching(navContainer)) return
+
+      const desktop = cachedLayout === 'desktop'
       const transform = visible
-        ? cachedIsDesktop
+        ? desktop
           ? TRANSFORM_SHOW_DESKTOP
           : TRANSFORM_SHOW_MOBILE
-        : cachedIsDesktop
+        : desktop
           ? TRANSFORM_HIDE_DESKTOP
           : TRANSFORM_HIDE_MOBILE
 
       navContainer.style.opacity = visible ? '1' : '0'
       navContainer.style.transform = transform
       navContainer.style.pointerEvents = visible ? 'auto' : 'none'
+    }
+
+    /** After layout morph: snap transform without animating old→new axes. */
+    const snapVisibilityForLayout = (visible: boolean) => {
+      if (isChromeSwitching(navContainer)) return
+      navContainer.style.transition = TRANSITION_OPACITY_ONLY
+      applyVisibility(visible)
+      // Restore hide/show transform transition on next frame
+      requestAnimationFrame(() => {
+        if (!isChromeSwitching(navContainer)) {
+          navContainer.style.transition = TRANSITION_VISIBILITY
+        }
+      })
     }
 
     // ===== 核心显示/隐藏 =====
@@ -79,13 +115,17 @@ export function useNavAutoHide(selector = '.nav-container') {
 
     const startInactivityTimer = () => {
       clearInactivityTimer()
-      if (isNavVisible) {
+      if (isNavVisible && !isChromeSwitching(navContainer)) {
         inactivityTimeoutId = window.setTimeout(hideNav, INACTIVITY_DELAY)
       }
     }
 
     // ===== 滚动处理 =====
     const processScroll = () => {
+      if (isChromeSwitching(navContainer)) {
+        rafId = 0
+        return
+      }
       const currentScrollY = window.scrollY
       const delta = currentScrollY - lastScrollY
       const isDown = delta > 0
@@ -121,10 +161,13 @@ export function useNavAutoHide(selector = '.nav-container') {
       const e = pendingMouseMove
       pendingMouseMove = null
       mouseRafId = 0
+      if (isChromeSwitching(navContainer)) return
 
-      const isNearEdge = cachedIsDesktop
-        ? e.clientX < EDGE_THRESHOLD
-        : e.clientY > cachedWindowHeight - EDGE_THRESHOLD
+      // 侧轨：靠左缘唤回；底栏：靠底缘唤回
+      const isNearEdge =
+        cachedLayout === 'desktop'
+          ? e.clientX < EDGE_THRESHOLD
+          : e.clientY > cachedWindowHeight - EDGE_THRESHOLD
 
       if (isNearEdge) {
         showNav()
@@ -141,6 +184,7 @@ export function useNavAutoHide(selector = '.nav-container') {
 
     // ===== 交互处理 =====
     const handleInteraction = () => {
+      if (isChromeSwitching(navContainer)) return
       if (!hiddenByScroll) {
         showNav()
         startInactivityTimer()
@@ -149,6 +193,7 @@ export function useNavAutoHide(selector = '.nav-container') {
 
     // ===== 导航岛悬停 =====
     const handleNavEnter = () => {
+      if (isChromeSwitching(navContainer)) return
       isHovering = true
       clearInactivityTimer()
       showNav()
@@ -159,13 +204,23 @@ export function useNavAutoHide(selector = '.nav-container') {
       startInactivityTimer()
     }
 
-    // ===== 响应式处理 =====
-    const mediaQuery = window.matchMedia('(min-width: 768px)')
-    const handleMediaChange = (e: MediaQueryListEvent | MediaQueryList) => {
-      cachedIsDesktop = e.matches
-      if (isNavVisible) {
-        applyVisibility(true)
-      }
+    // Desired layout changed (store). Chrome may still be crossfading — only
+    // cache the token; transform snap happens on NAV_CHROME_SETTLED_EVENT.
+    const handleLayoutDesire = () => {
+      cachedLayout = getNavLayoutSnapshot()
+    }
+
+    const handleChromeSettled = () => {
+      cachedLayout = getNavLayoutSnapshot()
+      isNavVisible = true
+      hiddenByScroll = false
+      clearInactivityTimer()
+      // Clear any residual inline from before switch, then snap show pose.
+      navContainer.style.removeProperty('opacity')
+      navContainer.style.removeProperty('transform')
+      navContainer.style.removeProperty('pointer-events')
+      snapVisibilityForLayout(true)
+      startInactivityTimer()
     }
 
     const handleResize = () => {
@@ -187,13 +242,16 @@ export function useNavAutoHide(selector = '.nav-container') {
     window.addEventListener('resize', handleResize, passive)
     navContainer.addEventListener('mouseenter', handleNavEnter, { signal })
     navContainer.addEventListener('mouseleave', handleNavLeave, { signal })
-    mediaQuery.addEventListener('change', handleMediaChange, { signal })
+    navContainer.addEventListener(NAV_CHROME_SETTLED_EVENT, handleChromeSettled, {
+      signal,
+    })
 
-    handleMediaChange(mediaQuery)
+    const unsubscribeLayout = subscribeNavLayout(handleLayoutDesire)
     startInactivityTimer()
 
     return () => {
       controller.abort()
+      unsubscribeLayout()
       if (rafId) cancelAnimationFrame(rafId)
       if (mouseRafId) cancelAnimationFrame(mouseRafId)
       clearInactivityTimer()

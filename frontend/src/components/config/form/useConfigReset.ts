@@ -56,6 +56,7 @@ import {
 } from '../uiBagOwnership'
 import {
   defaultAiFieldValue,
+  defaultTripoFieldValue,
   defaultUiFieldValue,
   mapConfigFields,
 } from './defaultFieldValues'
@@ -164,6 +165,17 @@ export function useConfigReset(args: {
             }),
           ),
         },
+        tripo_config: {
+          ...data.tripo_config,
+          enabled: false,
+          configured: false,
+          config_fields: data.tripo_config.config_fields.map(
+            (field: ConfigField) => ({
+              ...field,
+              value: defaultTripoFieldValue(field.key),
+            }),
+          ),
+        },
         ui_config: {
           ...data.ui_config,
           config_fields: mapConfigFields(
@@ -255,6 +267,25 @@ export function useConfigReset(args: {
             config_fields: mapConfigFields(
               config.ai_config.config_fields,
               defaultAiFieldValue,
+            ),
+          },
+        }
+        const result = await updateConfig(next)
+        if (result?.success === false) {
+          throw new Error(result.message || t.config.resetFailed)
+        }
+        setConfig(next)
+        setInitialConfig(JSON.parse(JSON.stringify(next)))
+      } else if (section === 'tripo') {
+        const next = {
+          ...config,
+          tripo_config: {
+            ...config.tripo_config,
+            enabled: false,
+            configured: false,
+            config_fields: mapConfigFields(
+              config.tripo_config.config_fields,
+              defaultTripoFieldValue,
             ),
           },
         }

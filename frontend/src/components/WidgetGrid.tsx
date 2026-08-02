@@ -33,6 +33,7 @@ import {
   getStandardWidgetDimensions,
   LIBRARY_PREVIEW_DISPLAY_SCALE,
 } from '../hooks/useWidgetSize'
+import { resolveHomeGridColumns } from '../utils/viewportBands'
 import { widgetTypeMatchesLibrarySearch } from './widgetLibrarySearch'
 import { preloadBuiltinWidgets } from './widgets/builtinWidgets'
 import './WidgetGrid.css'
@@ -85,10 +86,23 @@ export interface WidgetComponentProps {
   onConfigChange?: (newConfig: any) => void
 }
 
-// 网格尺寸常量
+// 网格尺寸常量（列数阈值见 utils/viewportBands.ts，与主页壳 / Tailwind lg 统一）
 const GRID_WIDTH = 16
 const GRID_HEIGHT = 4
-// 移除 MOBILE_GRID_WIDTH，改为动态计算
+
+/**
+ * Cross-band (tablet↔desktop) layout morph: never lerp left/top between compact
+ * packing and desktop saved coords — fade out → hard swap → fade in.
+ * Phone band always hard-cuts (DevTools mobile preview must not flash 16-col).
+ */
+const GRID_BAND_OUT_MS = 160
+const GRID_BAND_IN_MS = 220
+
+function readInitialHomeGridColumns(custom?: number): number {
+  if (custom) return custom
+  if (typeof window === 'undefined') return GRID_WIDTH
+  return resolveHomeGridColumns(window.innerWidth, 0)
+}
 
 // 尺寸到宽高的映射
 const SIZE_TO_DIMENSIONS: Record<WidgetSize, { w: number; h: number }> = {
@@ -248,10 +262,9 @@ const WidgetGridItem = React.memo(
     onResizeStart,
     gridWidth,
     gridHeight,
-    cellWidth,
-    cellHeight,
     onConfigChange,
     index = 0,
+    layoutMotion = true,
   }: {
     widget: WidgetConfig
     widgetType: WidgetType
@@ -268,11 +281,11 @@ const WidgetGridItem = React.memo(
     ) => void
     gridWidth?: number
     gridHeight?: number
-    cellWidth?: number
-    cellHeight?: number
     onConfigChange?: (newConfig: any) => void
     /** 组件索引，用于计算递增延迟 */
     index?: number
+    /** Geometry (left/top/w/h) CSS transition for band reflow */
+    layoutMotion?: boolean
   }) => {
     const anim = useAnimationLevel()
     const { t } = useI18n()
@@ -295,25 +308,16 @@ const WidgetGridItem = React.memo(
     const gw = gridWidth || GRID_WIDTH
     const gh = gridHeight || GRID_HEIGHT
 
-    // 如果有像素级尺寸，优先使用
-    const style: React.CSSProperties =
-      cellWidth && cellHeight
-        ? {
-            left: widget.position.x * cellWidth,
-            top: widget.position.y * cellHeight,
-            width: dim.w * cellWidth,
-            height: dim.h * cellHeight,
-            zIndex: isHovered ? 20 : 10,
-            willChange: isEditMode ? 'transform, left, top' : 'auto',
-          }
-        : {
-            left: `${(widget.position.x / gw) * 100}%`,
-            top: `${(widget.position.y / gh) * 100}%`,
-            width: `${(dim.w / gw) * 100}%`,
-            height: `${(dim.h / gh) * 100}%`,
-            zIndex: isHovered ? 20 : 10,
-            willChange: isEditMode ? 'transform, left, top' : 'auto',
-          }
+    // Always % geometry: tablet compact reflow and desktop 16-col share one unit
+    // system so left/top/width/height can interpolate across band changes.
+    const style: React.CSSProperties = {
+      left: `${(widget.position.x / gw) * 100}%`,
+      top: `${(widget.position.y / gh) * 100}%`,
+      width: `${(dim.w / gw) * 100}%`,
+      height: `${(dim.h / gh) * 100}%`,
+      zIndex: isHovered ? 20 : 10,
+      willChange: isEditMode ? 'transform, left, top' : 'auto',
+    }
 
     // 检查是否支持调整大小
     const canResize =
@@ -325,8 +329,10 @@ const WidgetGridItem = React.memo(
 
     return (
       <motion.div
-        className={`absolute ease-[cubic-bezier(0.25,1,0.5,1)] ${
-          animationsEnabled ? 'transition-all duration-500' : 'transition-none'
+        className={`widget-grid-item absolute ${
+          layoutMotion && animationsEnabled
+            ? 'widget-grid-item--layout-motion'
+            : ''
         }`}
         style={style}
         initial={animationsEnabled ? { opacity: 0, scale: 0.9, y: 12 } : false}
@@ -448,8 +454,7 @@ const WidgetGridItem = React.memo(
       prev.widgetType === next.widgetType &&
       prev.gridWidth === next.gridWidth &&
       prev.gridHeight === next.gridHeight &&
-      prev.cellWidth === next.cellWidth &&
-      prev.cellHeight === next.cellHeight &&
+      prev.layoutMotion === next.layoutMotion &&
       prev.index === next.index
     )
   },
@@ -652,15 +657,34 @@ export default function WidgetGrid({
   autoHeight,
 }: WidgetGridProps) {
   const { t } = useI18n()
-  const [gridColumns, setGridColumns] = useState(
-    customGridColumns || GRID_WIDTH,
+  // Seed from real viewport immediately — never paint desktop 16-col on a
+  // phone-width DevTools session then “morph” into 4-col (looks broken).
+  const [gridColumns, setGridColumns] = useState(() =>
+    readInitialHomeGridColumns(customGridColumns),
   )
   // Only enable compact mode (auto-layout) if we are in responsive mode (no custom columns) AND width is small
   const isCompact = !customGridColumns && gridColumns < GRID_WIDTH
-  const [containerWidth, setContainerWidth] = useState(0)
   const containerRef = useRef<HTMLDivElement | null>(null)
   // 🔧 性能优化：缓存 gridRect 避免频繁调用 getBoundingClientRect
   const gridRectRef = useRef<DOMRect | null>(null)
+  /** Container width for height = width * rows/cols (not for item geometry). */
+  const [containerWidth, setContainerWidth] = useState(0)
+  /** Track applied column band for hysteresis + morph. */
+  const prevColumnsRef = useRef(gridColumns)
+  const bandSwitchingRef = useRef(false)
+  /** After first successful apply; only then allow tablet↔desktop fade. */
+  const bandSettledOnceRef = useRef(false)
+  const bandTimersRef = useRef<{ out?: number; in?: number }>({})
+  /**
+   * null = settled; 'out' | 'in' = cross-band fade (no geometry lerp).
+   */
+  const [bandSwitch, setBandSwitch] = useState<'out' | 'in' | null>(null)
+  const anim = useAnimationLevel()
+  /**
+   * Same-band only: drag/resize polish. Cross-band uses opacity crossfade —
+   * never interpolate compact packing ↔ desktop saved coords.
+   */
+  const geometryMotion = !isExlight(anim) && bandSwitch === null
 
   // 计算内容高度 (用于 autoHeight)
   const contentHeight = useMemo(() => {
@@ -673,23 +697,100 @@ export default function WidgetGrid({
     return maxY
   }, [widgets, autoHeight])
 
-  // 响应式布局检测 - 使用共享的防抖窗口尺寸
+  // 响应式列档：防抖宽度 + 迟滞；tablet↔desktop 可淡入淡出；含 phone 则硬切
   const { width: windowWidth } = useDebouncedWindowSize(150)
+  const animHardCut = isExlight(anim)
 
   useEffect(() => {
+    const clearBandTimers = () => {
+      if (bandTimersRef.current.out) {
+        clearTimeout(bandTimersRef.current.out)
+        bandTimersRef.current.out = undefined
+      }
+      if (bandTimersRef.current.in) {
+        clearTimeout(bandTimersRef.current.in)
+        bandTimersRef.current.in = undefined
+      }
+    }
+
     if (customGridColumns) {
+      clearBandTimers()
+      bandSwitchingRef.current = false
+      setBandSwitch(null)
       setGridColumns(customGridColumns)
+      prevColumnsRef.current = customGridColumns
+      bandSettledOnceRef.current = true
       return
     }
 
-    if (windowWidth < 640) {
-      setGridColumns(4) // 手机
-    } else if (windowWidth < 1024) {
-      setGridColumns(8) // 平板
-    } else {
-      setGridColumns(16) // 桌面
+    const readDesired = () =>
+      resolveHomeGridColumns(
+        typeof window !== 'undefined' ? window.innerWidth : windowWidth,
+        prevColumnsRef.current,
+      )
+
+    const hardApply = (cols: number) => {
+      clearBandTimers()
+      bandSwitchingRef.current = false
+      setBandSwitch(null)
+      prevColumnsRef.current = cols
+      setGridColumns(cols)
+      bandSettledOnceRef.current = true
     }
-  }, [windowWidth, customGridColumns])
+
+    const tryBandMorph = () => {
+      const desired = readDesired()
+      if (desired === prevColumnsRef.current) {
+        bandSettledOnceRef.current = true
+        return
+      }
+      if (bandSwitchingRef.current) return
+
+      const from = prevColumnsRef.current
+      // Snap without fade: first paint, exlight, or any transition involving phone
+      // (DevTools mobile width must never sit on a half-faded 16-col layout).
+      const mustHardCut =
+        animHardCut ||
+        !bandSettledOnceRef.current ||
+        from === 4 ||
+        desired === 4
+
+      if (mustHardCut) {
+        hardApply(desired)
+        return
+      }
+
+      // tablet (8) ↔ desktop (16) only: short opacity crossfade
+      bandSwitchingRef.current = true
+      setBandSwitch('out')
+      clearBandTimers()
+
+      bandTimersRef.current.out = window.setTimeout(() => {
+        const target = readDesired()
+        prevColumnsRef.current = target
+        setGridColumns(target)
+        setBandSwitch('in')
+
+        bandTimersRef.current.in = window.setTimeout(() => {
+          setBandSwitch(null)
+          bandSwitchingRef.current = false
+          bandSettledOnceRef.current = true
+          requestAnimationFrame(() => tryBandMorph())
+        }, GRID_BAND_IN_MS)
+      }, GRID_BAND_OUT_MS)
+    }
+
+    tryBandMorph()
+  }, [windowWidth, customGridColumns, animHardCut])
+
+  // Unmount only: drop pending band morph timers
+  useEffect(() => {
+    return () => {
+      if (bandTimersRef.current.out) clearTimeout(bandTimersRef.current.out)
+      if (bandTimersRef.current.in) clearTimeout(bandTimersRef.current.in)
+      bandSwitchingRef.current = false
+    }
+  }, [])
 
   // 紧凑模式布局计算 (自动重排)
   const compactLayout = useMemo(() => {
@@ -767,12 +868,12 @@ export default function WidgetGrid({
         ? Math.max(customGridRows || 0, contentHeight)
         : customGridRows || GRID_HEIGHT
 
-  // 计算像素级单元格尺寸 (仅在紧凑模式下使用)
-  const cellWidth =
-    isCompact && containerWidth ? containerWidth / gridColumns : undefined
-  const cellHeight = cellWidth // 正方形单元格
-  const totalPixelHeight =
-    isCompact && cellHeight ? currentGridHeight * cellHeight : undefined
+  // Explicit height from cols/rows. Cross-band: snap (no height transition).
+  // Same-band resize: optional height transition via CSS when geometryMotion.
+  const gridPixelHeight =
+    containerWidth > 0
+      ? (containerWidth * currentGridHeight) / currentGridWidth
+      : undefined
 
   const [draggedWidget, setDraggedWidget] = useState<{
     type: 'existing' | 'new'
@@ -866,7 +967,7 @@ export default function WidgetGrid({
   // 🆕 使用首页原子化 ResizeObserver
   const { observeHomeResize, unobserveHomeResize } = useHomeResizeObserver()
 
-  // 计算网格单元格尺寸 - 使用 ResizeObserver 的 contentRect 避免强制重排
+  // 监听网格容器尺寸（拖拽 hit-test 用）；布局不再依赖像素 cell 宽高
   const gridRef = useCallback(
     (node: HTMLDivElement | null) => {
       // 清理旧的 observer
@@ -876,13 +977,12 @@ export default function WidgetGrid({
 
       containerRef.current = node
       if (node) {
-        // 使用首页原子化 ResizeObserver 监听宽度变化
         observeHomeResize(node, (entry) => {
-          // 直接使用 contentRect.width，避免调用 getBoundingClientRect
           setContainerWidth(entry.contentRect.width)
-          // 🔧 同时更新 gridRect 缓存（需要完整 rect）
           gridRectRef.current = node.getBoundingClientRect()
         })
+        // Seed width immediately so first paint has height
+        setContainerWidth(node.getBoundingClientRect().width)
       }
     },
     [observeHomeResize, unobserveHomeResize],
@@ -1728,7 +1828,14 @@ export default function WidgetGrid({
   )
 
   return (
-    <div className={`flex flex-col gap-2 ${isCompact ? 'h-auto' : 'h-full'}`}>
+    <div
+      className={`widget-grid-root flex flex-col gap-2 min-h-0 ${
+        isCompact ? 'h-auto flex-none' : 'h-full flex-1'
+      }`}
+      data-grid-cols={currentGridWidth}
+      data-grid-compact={isCompact ? 'true' : 'false'}
+      data-band-switch={bandSwitch ?? undefined}
+    >
       {/* 编辑模式：小组件库（顶部悬浮） */}
       {libraryContainerClassName ? (
         createPortal(
@@ -1745,20 +1852,22 @@ export default function WidgetGrid({
 
       {/* 网格区域 */}
       <div
-        className={`relative w-full flex flex-col ${isCompact ? 'justify-start pb-20' : 'flex-1 justify-end min-h-0'}`}
+        className={`relative w-full flex flex-col min-h-0 ${
+          isCompact ? 'justify-start pb-20' : 'flex-1 justify-end'
+        }`}
       >
         {/* 插入 children (InfoBar) */}
         {children}
 
         <div
           ref={gridRef}
-          className={`widget-grid-container relative w-full rounded-xl transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)] ${isEditMode ? 'edit-mode' : ''}`}
+          className={`widget-grid-container relative w-full rounded-xl ${
+            geometryMotion ? 'widget-grid-container--layout-motion' : ''
+          } ${isEditMode ? 'edit-mode' : ''}`}
+          data-band-switch={bandSwitch ?? undefined}
           style={
-            isCompact && totalPixelHeight
-              ? {
-                  height: totalPixelHeight,
-                  // 移除 aspectRatio，使用固定高度
-                }
+            gridPixelHeight
+              ? { height: gridPixelHeight }
               : {
                   aspectRatio: `${currentGridWidth} / ${currentGridHeight}`,
                 }
@@ -1838,10 +1947,9 @@ export default function WidgetGrid({
                   onResizeStart={handleResizeStart}
                   gridWidth={currentGridWidth}
                   gridHeight={currentGridHeight}
-                  cellWidth={cellWidth}
-                  cellHeight={cellHeight}
                   onConfigChange={handleConfigChange}
                   index={index}
+                  layoutMotion={geometryMotion}
                 />
               )
             })}

@@ -1431,6 +1431,12 @@ html.dark .config-nav-result-badge {
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 12%));
 }
 
+/* Tripo 官方标铺满画布，视觉上偏大，统一缩到约 74%。 */
+.myriad-config-icon--tripo {
+  transform: scale(0.74);
+  transform-origin: center;
+}
+
 .section-icon .myriad-config-icon {
   position: relative;
   width: 2.75rem;
@@ -1447,6 +1453,12 @@ html.dark .config-nav-result-badge {
   .config-nav-item.is-active .myriad-config-icon,
   .section-icon:hover .myriad-config-icon {
     transform: scale(1.07);
+  }
+
+  .config-nav-item:hover .myriad-config-icon--tripo,
+  .config-nav-item.is-active .myriad-config-icon--tripo,
+  .section-icon:hover .myriad-config-icon--tripo {
+    transform: scale(0.79);
   }
 }
 

@@ -476,6 +476,45 @@ impl ConfigService {
         if let Some(v) = map.get("pixai_api_key") {
             config.pixai_api_key = v.as_str().map(|s| s.to_string());
         }
+
+        // Tripo 3D 独立配置
+        if let Some(v) = map.get("tripo_enabled") {
+            config.tripo_enabled = v
+                .as_bool()
+                .or_else(|| v.as_str().map(|s| s == "true"))
+                .unwrap_or(config.tripo_enabled);
+        }
+        if let Some(v) = map.get("tripo_api_key") {
+            config.tripo_api_key = v.as_str().map(str::to_string);
+        }
+        if let Some(v) = map.get("tripo_base_url").and_then(|v| v.as_str()) {
+            if !v.trim().is_empty() {
+                config.tripo_base_url = v.to_string();
+            }
+        }
+        if let Some(v) = map.get("tripo_model").and_then(|v| v.as_str()) {
+            if !v.trim().is_empty() {
+                config.tripo_model = v.to_string();
+            }
+        }
+        if let Some(v) = map.get("tripo_face_limit").and_then(|v| v.as_i64()) {
+            config.tripo_face_limit = v as i32;
+        }
+        if let Some(v) = map
+            .get("tripo_poll_interval_seconds")
+            .and_then(|v| v.as_i64())
+        {
+            config.tripo_poll_interval_seconds = v as i32;
+        }
+        if let Some(v) = map
+            .get("tripo_task_timeout_seconds")
+            .and_then(|v| v.as_i64())
+        {
+            config.tripo_task_timeout_seconds = v as i32;
+        }
+        if let Some(v) = map.get("tripo_max_download_mb").and_then(|v| v.as_i64()) {
+            config.tripo_max_download_mb = v as i32;
+        }
         // 腾讯云语音服务配置 (TTS/ASR)
         if let Some(v) = map.get("tencent_secret_id") {
             config.tencent_secret_id = v.as_str().map(|s| s.to_string());

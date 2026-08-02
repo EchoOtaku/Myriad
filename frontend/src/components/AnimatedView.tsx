@@ -11,18 +11,20 @@
  * - 页面就绪状态管理
  */
 
+import type { HTMLAttributes, ReactNode } from 'react'
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { usePageTransition } from '../hooks/animation/usePageTransition'
 
-interface AnimatedViewProps {
-  children: React.ReactNode
+interface AnimatedViewProps extends HTMLAttributes<HTMLDivElement> {
+  children: ReactNode
   className?: string
 }
 
 export default function AnimatedView({
   children,
   className = '',
+  ...rest
 }: AnimatedViewProps) {
   const location = useLocation()
   const pageId = location.pathname.replace(/\//g, '-') || 'home'
@@ -52,6 +54,8 @@ export default function AnimatedView({
   }, [location.pathname, onEnterComplete])
 
   return (
-    <div className={`animated-view-container ${className}`}>{children}</div>
+    <div className={`animated-view-container ${className}`} {...rest}>
+      {children}
+    </div>
   )
 }

@@ -14,6 +14,8 @@ export type ConfigSearchI18n = {
     dataDesc: string
     ai: string
     aiDesc: string
+    tripo: string
+    tripoDesc: string
     basic: string
     basicDesc: string
     oauth: string
@@ -186,6 +188,26 @@ export function buildSearchableContent(
       '图片',
       '生成',
       'image',
+    ],
+  })
+
+  items.push({
+    type: 'section',
+    section: 'tripo',
+    title: t.config.tripo,
+    description: t.config.tripoDesc,
+    keywords: [
+      'tripo',
+      '3d',
+      'glb',
+      'gltf',
+      'low poly',
+      'rig',
+      'animation',
+      '低模',
+      '骨骼',
+      '动作',
+      '模型',
     ],
   })
 

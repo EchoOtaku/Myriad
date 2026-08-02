@@ -41,11 +41,9 @@ export type {
   PlatformsConfigSectionProps,
 } from './PlatformsConfigSection'
 export { ConfigTipsBanner } from './ConfigTipsBanner'
-export type {
-  ConfigTipsBannerProps,
-  GreetingPeriod,
-} from './ConfigTipsBanner'
+export type { ConfigTipsBannerProps, GreetingPeriod } from './ConfigTipsBanner'
 export { default as UiConfigSection } from './UiConfigSection'
+export { default as TripoConfigSection } from './TripoConfigSection'
 export {
   ADVANCED_RESET_KEYS,
   ALL_OWNED_UI_BAG_KEYS,

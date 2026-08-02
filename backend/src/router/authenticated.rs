@@ -151,6 +151,13 @@ pub(super) fn build_authenticated_router(
             // ============ Agent AI 任务编排 API ============
             // 自然语言任务分解、执行和监控
             .nest("/api/agent", api::agent::create_agent_routes(app_state.clone()))
+            // ============ Digital Life 3D ============
+            // Provider operations are admin-only; content-addressed GLB assets
+            // remain public so guest home scenes can render them.
+            .nest(
+                "/api/digital-life/3d",
+                api::digital_life_3d::create_routes(app_state.clone()),
+            )
             // ============ Brew 阅读 API ============
             // RSS/Atom 订阅管理、文章获取、阅读状态同步
             .nest("/api/brew", api::brew::create_brew_routes(app_state.clone()))

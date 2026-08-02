@@ -3,7 +3,15 @@
  * 包含导航栏、背景、全局控制面板
  */
 
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLocation } from 'react-router-dom'
 import GlobalControlPanel from '../components/GlobalControlPanel'
@@ -14,6 +22,12 @@ import { ToastContainer } from '../components/ToastContainer'
 
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
+import {
+  applyNavLayoutToDocument,
+  getNavLayoutSnapshot,
+} from '../utils/navLayout'
+// Live <html data-nav-layout> after first paint is owned by NavigationIsland
+// crossfade (chromeLayout). AppLayout only seeds FOUC once.
 import {
   useIdleEffect,
   useVisibilityInterval,
@@ -78,6 +92,12 @@ export function AppLayout({ children }: AppLayoutProps) {
   // ℹ️ 性能优化: 移动端/低端设备禁用背景动画
   const anim = useAnimationLevel()
   const [libraryCanvasActive, setLibraryCanvasActive] = useState(false)
+
+  // Seed <html data-nav-layout> once for FOUC; subsequent flips mid-crossfade
+  // by NavigationIsland so the island never teleports while still opaque.
+  useLayoutEffect(() => {
+    applyNavLayoutToDocument(getNavLayoutSnapshot())
+  }, [])
 
   useEffect(() => {
     const syncLibraryCanvasMode = () => {

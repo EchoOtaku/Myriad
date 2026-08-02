@@ -542,6 +542,31 @@ export const jaJP: TranslationKeys = {
     autoRefreshDisabledHint: '現在：オフ。',
     ai: 'AI設定',
     aiDesc: '階層別テキストモデル、画像生成、音声サービスを設定',
+    tripo: '3D と Tripo',
+    tripoDesc: 'ローポリ生成、リギング、アニメーション、Web アセット処理',
+    tripoConnection: 'Tripo 接続',
+    tripoConnectionDesc:
+      '画像 AI とは独立し、参照画像は 3D パイプラインの入力として扱います。',
+    tripoEnabled: 'Tripo 3D を有効化',
+    tripoEnabledDesc:
+      '有効時のみ、Tripo credits を消費するタスクを作成できます。',
+    tripoApiKey: 'Tripo API Key',
+    tripoApiKeyDesc:
+      'バックエンドのみに保存し、ブラウザやモデルファイルには渡しません。',
+    tripoBaseUrl: 'API Base URL',
+    tripoWebBudget: 'Web モデル予算',
+    tripoWebBudgetDesc:
+      '単一キャラクターの WebGL シーン向け既定値。結果は再検査します。',
+    tripoModel: '既定ローポリモデル',
+    tripoFaceLimit: '既定面数上限',
+    tripoFaceLimitDesc:
+      '推奨は 4,000–8,000。既定 5,000 で見た目とモバイル性能を両立します。',
+    tripoMaxDownload: 'モデル保存上限（MB）',
+    tripoTaskControl: 'タスク制御',
+    tripoTaskControlDesc:
+      '上流のレート制限を守り、一時 URL の失効前に保存します。',
+    tripoPollInterval: 'ポーリング間隔（秒）',
+    tripoTaskTimeout: 'タスクタイムアウト（秒）',
     basic: '基本設定',
     basicDesc: 'サイト URL、壁紙、テーマ、サイトメタデータ',
     oauth: 'サードパーティログイン',
@@ -1963,6 +1988,8 @@ export const jaJP: TranslationKeys = {
       'このカテゴリにはコンテンツがありません。他のカテゴリをお試しください',
     canvasPanHint:
       'カードまたは余白をドラッグ · 矢印キーで移動 · + / - でズーム · 0 でリセット',
+    canvasPanHintMobile:
+      'カードまたは余白をドラッグ · 下部ボタンでズームとリセット',
     canvasDismissHint: 'このセッションでは操作ヒントを表示しない',
     canvasResetView: '中央に戻す',
     canvasZoomIn: 'ズームイン',

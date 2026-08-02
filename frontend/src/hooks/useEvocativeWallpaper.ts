@@ -40,6 +40,32 @@ const EFFECT_EDGE_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
 const EFFECT_EDGE_TRANSITION = `transform ${EFFECT_EDGE_MS}ms ${EFFECT_EDGE_EASE}`
 const IDENTITY_TF = 'scale(1) translate3d(0,0,0)'
 
+/**
+ * Soft-lock wallpaper to identity (all clients).
+ * Capture the current computed transform as the from-value, then transition to
+ * identity so entering library canvas doesn't hard-cut parallax scale/offset.
+ * Leaves transform at IDENTITY_TF so removing data-library-canvas later won't
+ * snap back to a stale parallax matrix.
+ */
+function softLockWallpaperTransform(el: HTMLElement): void {
+  let computed = 'none'
+  try {
+    computed = getComputedStyle(el).transform
+  } catch {
+    // getComputedStyle can throw in detached documents
+  }
+  const from =
+    !computed || computed === 'none' ? IDENTITY_TF : computed
+
+  // Establish the start frame without transitioning, then animate to identity.
+  el.style.transition = 'none'
+  el.style.transform = from
+  // Force style flush so the browser registers the from value before to-value.
+  void el.offsetWidth
+  el.style.transition = EFFECT_EDGE_TRANSITION
+  el.style.transform = IDENTITY_TF
+}
+
 // 预计算的静态 transform 字符串
 const STATIC_TF_PREFIX = `scale(${PARALLAX_SCALE}) translate3d(`
 const STATIC_TF_SUFFIX = ',0)'
@@ -517,11 +543,12 @@ export function useEvocativeWallpaper(
     if (!anyEnabled) {
       const el = document.getElementById(elementId)
       if (el) {
-        // 进画布：CSS 缓入静止；把 inline 写成 none，这样离场摘掉 CSS 时不会弹回旧位移。
+        // 进画布：各端 soft-lock 缓入 identity；inline 固定为 identity，
+        // 离场摘掉 CSS 时不会弹回旧 parallax 位移。
         const libraryCanvasHoldsWallpaper =
           document.documentElement.dataset.libraryCanvas === 'active'
         if (libraryCanvasHoldsWallpaper) {
-          el.style.transform = 'none'
+          softLockWallpaperTransform(el)
         } else {
           el.style.transition = ''
           el.style.transform = ''
@@ -1085,12 +1112,12 @@ export function useEvocativeWallpaper(
         s.rippleCtx = null
       }
 
-      // 资料库画布激活时：CSS 正缓入静止；inline 写成 none，离场时不会弹回旧 parallax 位移。
+      // 资料库画布激活时：各端 soft-lock 缓入 identity；离场时不会弹回旧 parallax 位移。
       const libraryCanvasHoldsWallpaper =
         typeof document !== 'undefined' &&
         document.documentElement.dataset.libraryCanvas === 'active'
       if (libraryCanvasHoldsWallpaper) {
-        el.style.transform = 'none'
+        softLockWallpaperTransform(el)
         el.style.willChange = ''
       } else {
         // 重绑 / 卸载时清掉 soft-restore 的 transition，避免残留影响下一次

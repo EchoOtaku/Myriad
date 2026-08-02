@@ -91,6 +91,7 @@ pub struct ConfigResponse {
     pub platforms: Vec<PlatformConfig>,
     pub auto_fetch: Option<PlatformAutoFetchConfig>,
     pub ai_config: AiConfig,
+    pub tripo_config: TripoConfig,
     pub report_config: ReportConfig,
     pub ui_config: UiConfig,
 }
@@ -142,6 +143,15 @@ pub struct AiConfig {
     pub enabled: bool,
     // AI 图片生成配置
     pub image_provider: String,
+    pub config_fields: Vec<ConfigField>,
+}
+
+/// 独立的 3D 生成配置。它不属于图片生成 provider；图片只作为 3D 管线输入。
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TripoConfig {
+    pub enabled: bool,
+    pub configured: bool,
     pub config_fields: Vec<ConfigField>,
 }
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -1115,6 +1125,131 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                         .unwrap_or_else(|_| "openrouter".to_string())
                 }),
         },
+        tripo_config: TripoConfig {
+            enabled: db_config
+                .as_ref()
+                .map(|c| c.tripo_enabled)
+                .unwrap_or_else(|| {
+                    std::env::var("TRIPO_ENABLED")
+                        .ok()
+                        .is_some_and(|v| v == "true" || v == "1")
+                }),
+            configured: nonempty_db(
+                db_config.as_ref().and_then(|c| c.tripo_api_key.as_ref()),
+            ) || nonempty_env("TRIPO_API_KEY"),
+            config_fields: vec![
+                ConfigField {
+                    key: "tripo_enabled".to_string(),
+                    label: "Enable Tripo 3D".to_string(),
+                    field_type: "boolean".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.tripo_enabled.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("TRIPO_ENABLED")
+                                .unwrap_or_else(|_| "false".to_string())
+                        }),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "tripo_api_key".to_string(),
+                    label: "Tripo API Key".to_string(),
+                    field_type: "password".to_string(),
+                    value: mask_sensitive(get_value(
+                        db_config.as_ref().and_then(|c| c.tripo_api_key.clone()),
+                        "TRIPO_API_KEY",
+                    )),
+                    placeholder: "Get from platform.tripo3d.ai".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "tripo_base_url".to_string(),
+                    label: "Tripo API Base URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.tripo_base_url.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("TRIPO_BASE_URL").unwrap_or_else(|_| {
+                                "https://openapi.tripo3d.ai/v3".to_string()
+                            })
+                        }),
+                    placeholder: "https://openapi.tripo3d.ai/v3".to_string(),
+                    required: true,
+                },
+                ConfigField {
+                    key: "tripo_model".to_string(),
+                    label: "Default low-poly model".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.tripo_model.clone())
+                        .unwrap_or_else(|| {
+                            std::env::var("TRIPO_MODEL")
+                                .unwrap_or_else(|_| "P1-20260311".to_string())
+                        }),
+                    placeholder: "P1-20260311".to_string(),
+                    required: true,
+                },
+                ConfigField {
+                    key: "tripo_face_limit".to_string(),
+                    label: "Default face limit".to_string(),
+                    field_type: "number".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.tripo_face_limit.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("TRIPO_FACE_LIMIT")
+                                .unwrap_or_else(|_| "5000".to_string())
+                        }),
+                    placeholder: "5000".to_string(),
+                    required: true,
+                },
+                ConfigField {
+                    key: "tripo_poll_interval_seconds".to_string(),
+                    label: "Polling interval (seconds)".to_string(),
+                    field_type: "number".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.tripo_poll_interval_seconds.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("TRIPO_POLL_INTERVAL_SECONDS")
+                                .unwrap_or_else(|_| "2".to_string())
+                        }),
+                    placeholder: "2".to_string(),
+                    required: true,
+                },
+                ConfigField {
+                    key: "tripo_task_timeout_seconds".to_string(),
+                    label: "Task timeout (seconds)".to_string(),
+                    field_type: "number".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.tripo_task_timeout_seconds.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("TRIPO_TASK_TIMEOUT_SECONDS")
+                                .unwrap_or_else(|_| "900".to_string())
+                        }),
+                    placeholder: "900".to_string(),
+                    required: true,
+                },
+                ConfigField {
+                    key: "tripo_max_download_mb".to_string(),
+                    label: "Maximum stored model size (MB)".to_string(),
+                    field_type: "number".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.tripo_max_download_mb.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("TRIPO_MAX_DOWNLOAD_MB")
+                                .unwrap_or_else(|_| "64".to_string())
+                        }),
+                    placeholder: "64".to_string(),
+                    required: true,
+                },
+            ],
+        },
         report_config: ReportConfig {
             topic_style: db_config
                 .as_ref()
@@ -1782,6 +1917,14 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "title_font",
     "title_font_size",
     "topic_style",
+    "tripo_api_key",
+    "tripo_base_url",
+    "tripo_enabled",
+    "tripo_face_limit",
+    "tripo_max_download_mb",
+    "tripo_model",
+    "tripo_poll_interval_seconds",
+    "tripo_task_timeout_seconds",
     "ui_evocative_dynamic_blur",
     "ui_evocative_fps",
     "ui_evocative_parallax",
@@ -2512,6 +2655,35 @@ mod settings_backup_tests {
     }
 
     #[test]
+    fn tripo_config_is_independent_clamped_and_keeps_masked_key() {
+        let mut config = empty_config();
+        config.tripo_config.config_fields = vec![
+            ui_field("tripo_enabled", "true"),
+            ui_field("tripo_api_key", "••••••••"),
+            ui_field("tripo_model", "P1-20260311"),
+            ui_field("tripo_face_limit", "99999"),
+            ui_field("tripo_poll_interval_seconds", "1"),
+            ui_field("tripo_task_timeout_seconds", "99999"),
+            ui_field("tripo_max_download_mb", "999"),
+        ];
+
+        let updates = collect_database_updates(&config);
+        assert_eq!(updates.get("tripo_enabled"), Some(&json!(true)));
+        assert!(!updates.contains_key("tripo_api_key"));
+        assert_eq!(updates.get("tripo_model"), Some(&json!("P1-20260311")));
+        assert_eq!(updates.get("tripo_face_limit"), Some(&json!(20_000)));
+        assert_eq!(
+            updates.get("tripo_poll_interval_seconds"),
+            Some(&json!(2))
+        );
+        assert_eq!(
+            updates.get("tripo_task_timeout_seconds"),
+            Some(&json!(3_600))
+        );
+        assert_eq!(updates.get("tripo_max_download_mb"), Some(&json!(150)));
+    }
+
+    #[test]
     fn ui_network_proxy_and_mirror_fields_can_be_cleared() {
         let mut config = empty_config();
         config.ui_config.config_fields = vec![
@@ -3067,6 +3239,61 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
         }
     }
 
+    // 保存独立 Tripo 3D 配置。密钥掩码必须保留库中原值。
+    for field in &config.tripo_config.config_fields {
+        let value = field.value.trim();
+        match field.key.as_str() {
+            "tripo_enabled" => {
+                updates.insert(
+                    "tripo_enabled".to_string(),
+                    JsonValue::Bool(value == "true" || value == "1"),
+                );
+            }
+            "tripo_api_key" if !value.is_empty() && !is_masked(value) => {
+                updates.insert(
+                    "tripo_api_key".to_string(),
+                    JsonValue::String(value.to_string()),
+                );
+            }
+            "tripo_base_url" | "tripo_model" if !value.is_empty() => {
+                updates.insert(field.key.clone(), JsonValue::String(value.to_string()));
+            }
+            "tripo_face_limit" => {
+                if let Ok(parsed) = value.parse::<i64>() {
+                    updates.insert(
+                        field.key.clone(),
+                        JsonValue::Number(parsed.clamp(50, 20_000).into()),
+                    );
+                }
+            }
+            "tripo_poll_interval_seconds" => {
+                if let Ok(parsed) = value.parse::<i64>() {
+                    updates.insert(
+                        field.key.clone(),
+                        JsonValue::Number(parsed.clamp(2, 60).into()),
+                    );
+                }
+            }
+            "tripo_task_timeout_seconds" => {
+                if let Ok(parsed) = value.parse::<i64>() {
+                    updates.insert(
+                        field.key.clone(),
+                        JsonValue::Number(parsed.clamp(60, 3_600).into()),
+                    );
+                }
+            }
+            "tripo_max_download_mb" => {
+                if let Ok(parsed) = value.parse::<i64>() {
+                    updates.insert(
+                        field.key.clone(),
+                        JsonValue::Number(parsed.clamp(1, 150).into()),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
     // 保存报告配置
     for field in &config.report_config.config_fields {
         if field.key == "topic_style" && !field.value.is_empty() {
@@ -3398,6 +3625,25 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "lite_openai_api_key" => "LITE_OPENAI_API_KEY",
             "lite_openai_model" => "LITE_OPENAI_MODEL",
             "lite_openai_base_url" => "LITE_OPENAI_BASE_URL",
+            _ => continue,
+        };
+        if !should_write_env_field(&field.key, &field.value) {
+            continue;
+        }
+        env_content = update_env_var(&env_content, key, &field.value);
+    }
+
+    // Tripo 3D uses its own configuration namespace.
+    for field in &config.tripo_config.config_fields {
+        let key = match field.key.as_str() {
+            "tripo_enabled" => "TRIPO_ENABLED",
+            "tripo_api_key" => "TRIPO_API_KEY",
+            "tripo_base_url" => "TRIPO_BASE_URL",
+            "tripo_model" => "TRIPO_MODEL",
+            "tripo_face_limit" => "TRIPO_FACE_LIMIT",
+            "tripo_poll_interval_seconds" => "TRIPO_POLL_INTERVAL_SECONDS",
+            "tripo_task_timeout_seconds" => "TRIPO_TASK_TIMEOUT_SECONDS",
+            "tripo_max_download_mb" => "TRIPO_MAX_DOWNLOAD_MB",
             _ => continue,
         };
         if !should_write_env_field(&field.key, &field.value) {
@@ -4666,5 +4912,3 @@ mod hitokoto_catalog_tests {
         }
     }
 }
-
-

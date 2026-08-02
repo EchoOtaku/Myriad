@@ -76,6 +76,7 @@ pub mod tapp_scheduler; // ✅ Tapp 定时任务调度引擎
 pub mod tapp_storage; // 📦 Tapp sandbox storage validators + IO
 pub mod standalone_tts; // 🎙️ Standalone TTS (cache + Tencent) for HTTP + agent
 pub mod tencent_speech_service; // 🎙️ 腾讯云语音服务（TTS/ASR）
+pub mod tripo; // 🧊 Tripo v3 3D generation + Web GLB persistence/inspection
 pub mod updater_client; // 🚀 Updater HTTP client (admin proxy)
 
 // Brew 阅读系统

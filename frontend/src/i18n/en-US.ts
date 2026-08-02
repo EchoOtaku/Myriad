@@ -551,6 +551,32 @@ export const enUS: TranslationKeys = {
     autoRefreshDisabledHint: 'Now: off.',
     ai: 'AI Config',
     aiDesc: 'Text models by tier, image generation, and speech services',
+    tripo: '3D & Tripo',
+    tripoDesc:
+      'Low-poly generation, rigging, animation, and Web asset processing',
+    tripoConnection: 'Tripo connection',
+    tripoConnectionDesc:
+      'Independent from image AI; reference images are inputs to the 3D pipeline.',
+    tripoEnabled: 'Enable Tripo 3D',
+    tripoEnabledDesc:
+      'Only enabled installations may create tasks that consume Tripo credits.',
+    tripoApiKey: 'Tripo API Key',
+    tripoApiKeyDesc:
+      'Stored only by the backend; never sent to browsers or embedded in models.',
+    tripoBaseUrl: 'API Base URL',
+    tripoWebBudget: 'Web model budget',
+    tripoWebBudgetDesc:
+      'Defaults target one-character WebGL scenes; every result is inspected again.',
+    tripoModel: 'Default low-poly model',
+    tripoFaceLimit: 'Default face limit',
+    tripoFaceLimitDesc:
+      '4,000–8,000 is recommended; 5,000 balances appearance and mobile performance.',
+    tripoMaxDownload: 'Maximum model size (MB)',
+    tripoTaskControl: 'Task control',
+    tripoTaskControlDesc:
+      'Respects provider rate limits and persists expiring result URLs in time.',
+    tripoPollInterval: 'Polling interval (seconds)',
+    tripoTaskTimeout: 'Task timeout (seconds)',
     basic: 'Basic Config',
     basicDesc: 'Site URL, wallpaper, theme, and site metadata',
     oauth: 'Third-party login',
@@ -1981,6 +2007,8 @@ export const enUS: TranslationKeys = {
     emptyCategory: 'No content in this category, try switching to another',
     canvasPanHint:
       'Drag cards or empty space · Arrow keys pan · + / - zoom · 0 resets',
+    canvasPanHintMobile:
+      'Drag cards or empty space · Use the bottom buttons to zoom and reset',
     canvasDismissHint: 'Hide canvas tips for this session',
     canvasResetView: 'Return to center',
     canvasZoomIn: 'Zoom in',

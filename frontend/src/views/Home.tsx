@@ -22,6 +22,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useHomeScheduler, usePageReady } from '../hooks/animation'
 import { usePageSeo } from '../hooks/usePageSeo'
+import { useBreakpoints } from '../hooks/useSharedEventListener'
 import { useTappWidgets } from '../hooks/useTappWidgets'
 import {
   useResolvedTitleColor,
@@ -41,6 +42,9 @@ export default function Home() {
   const { t } = useI18n()
   const navigate = useNavigate()
   const isPageReady = usePageReady()
+  // 与 WidgetGrid 列档同一套 viewportBands（phone≤767 / tablet / desktop≥1078）
+  const { isMobile: isPhoneBand, isDesktop: isDesktopBand } = useBreakpoints()
+  const isNotPhoneBand = !isPhoneBand
 
   // 站级 title/description；固定 canonical 为 /
   usePageSeo(useMemo(() => buildHomePageSeo(), []))
@@ -371,9 +375,16 @@ export default function Home() {
   }, [isAdmin, csrfToken])
 
   return (
-    <AnimatedView className="min-h-screen lg:h-screen lg:overflow-hidden">
-      <div className="h-full flex flex-col pt-20 pb-6 px-3 xs:px-4 sm:px-6">
-        <div className="flex-1 max-w-7xl mx-auto w-full flex flex-col gap-4 p-2 relative min-h-0">
+    <AnimatedView
+      className={`home-shell min-h-screen ${
+        isDesktopBand ? 'h-screen overflow-hidden' : ''
+      }`}
+      data-home-band={
+        isDesktopBand ? 'desktop' : isPhoneBand ? 'phone' : 'tablet'
+      }
+    >
+      <div className="home-shell__inner h-full flex flex-col pt-20 pb-6 px-3 xs:px-4 sm:px-6">
+        <div className="home-shell__stage flex-1 max-w-7xl mx-auto w-full flex flex-col gap-4 p-2 relative min-h-0">
           {/* 小组件网格区域 - 占满整个可用空间 */}
           <WidgetGrid
             widgets={widgets}
@@ -385,14 +396,16 @@ export default function Home() {
             {/* 顶部信息条 - 作为 children 传入 WidgetGrid */}
             <div className="relative h-15 shrink-0 z-10 mb-2 p-1">
               <h1 className="sr-only">{dashboardTitle}</h1>
-              {/* 背景标题 */}
+              {/* 背景标题：phone 隐藏；tablet+desktop 显示（与 viewportBands 一致，非 Tailwind md 硬编码） */}
               {isEditMode ? (
                 <input
                   type="text"
                   aria-label="Dashboard Title"
                   value={dashboardTitle}
                   onChange={(e) => handleTitleChange(e.target.value)}
-                  className="absolute left-1 whitespace-nowrap z-0 hidden md:block bg-transparent border-none outline-none p-0 m-0 w-full"
+                  className={`absolute left-1 whitespace-nowrap z-0 bg-transparent border-none outline-none p-0 m-0 w-full ${
+                    isNotPhoneBand ? 'block' : 'hidden'
+                  }`}
                   style={{
                     top: `calc(30px - ${7.5 * titleFontSize}rem)`,
                     fontSize: `${6 * titleFontSize}rem`,
@@ -405,7 +418,9 @@ export default function Home() {
                 />
               ) : (
                 <div
-                  className="absolute left-1 whitespace-nowrap pointer-events-none z-0 hidden md:block transition-opacity duration-300"
+                  className={`absolute left-1 whitespace-nowrap pointer-events-none z-0 transition-opacity duration-300 ${
+                    isNotPhoneBand ? 'block' : 'hidden'
+                  }`}
                   style={{
                     top: `calc(30px - ${7.5 * titleFontSize}rem)`,
                     fontSize: `${6 * titleFontSize}rem`,
@@ -478,24 +493,21 @@ export default function Home() {
                     </div>
                   )}
 
-                  {/* 编辑按钮 - 仅管理员可见，且仅在桌面端显示 */}
-                  {isAdmin && (
+                  {/* 编辑按钮 - 管理员 + desktop 档（≥1078，与 16 列网格同阈值） */}
+                  {isAdmin && isDesktopBand && (
                     <>
-                      <div className="hidden lg:block h-6 w-px bg-gray-200 dark:bg-white/10 mx-1" />
+                      <div className="h-6 w-px bg-gray-200 dark:bg-white/10 mx-1" />
 
                       {/* 字体选择器 - 仅在编辑模式下显示 */}
                       {isEditMode && (
-                        <TitleFontSelector
-                          csrfToken={csrfToken}
-                          className="hidden lg:block"
-                        />
+                        <TitleFontSelector csrfToken={csrfToken} />
                       )}
 
                       <button
                         type="button"
                         onClick={() => setIsEditMode(!isEditMode)}
                         className={`
-                          hidden lg:flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all
+                          flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all
                           ${
                             isEditMode
                               ? 'text-white shadow-md hover:opacity-90'
@@ -513,11 +525,11 @@ export default function Home() {
                         {isEditMode ? t.common.done : t.common.edit}
                       </button>
 
-                      {/* 配置入口 - 与编辑同条件：管理员 + 桌面端 */}
+                      {/* 配置入口 - 与编辑同条件：管理员 + desktop 档 */}
                       <button
                         type="button"
                         onClick={() => navigate('/config')}
-                        className="hidden lg:flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
+                        className="flex px-4 py-1.5 rounded-lg text-xs font-bold items-center gap-2 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
                         style={{ color: 'var(--color-primary)' }}
                         title={t.nav.config}
                         aria-label={t.nav.config}
