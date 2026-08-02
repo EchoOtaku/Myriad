@@ -1,7 +1,7 @@
 //! Manifest and runtime Widget registry boundaries.
 
 use super::{
-    authorize_tapp_permission, find_admin_user_id, lock_tapp_lifecycle,
+    authorize_tapp_permission, current_is_admin, find_admin_user_id, lock_tapp_lifecycle,
     optional_authenticated_user_id, require_current_admin, validate_tapp_settings,
     validate_widget_refresh_policy, ApiResponse, TappManifest, TappSettingDef, TappWidgetCategory,
     TappWidgetRefreshPolicy, MAX_WIDGETS_PER_TAPP,
@@ -24,6 +24,7 @@ use crate::middleware::auth::{extract_optional_claims, Claims};
 use crate::models::entities::{tapp_widgets, tapps};
 use crate::services::permission_service::TappPermission;
 
+use crate::services::tapp_ownership::public_install_visible_to_viewer;
 use crate::services::tapp_lifecycle::{
     desired_manifest_widget_ids, format_tapp_widget_id, is_manifest_widget_row,
     legacy_manifest_widget_ids, local_widget_id_from_full, manifest_declares_local_widget_id,
@@ -74,6 +75,10 @@ pub(super) async fn list_all_widgets(
 ) -> Result<Json<ApiResponse<Vec<serde_json::Value>>>, HttpError> {
     let claims = extract_optional_claims(&headers);
     let user_id = optional_authenticated_user_id(claims.as_ref());
+    let is_admin = match claims.as_ref() {
+        Some(claims) => current_is_admin(claims, &db).await,
+        None => false,
+    };
     let admin_id = find_admin_user_id(&db).await?;
     let admin_tapp_ids: HashSet<String> = if let Some(admin_id) = admin_id {
         tapps::Entity::find()
@@ -82,6 +87,7 @@ pub(super) async fn list_all_widgets(
             .await
             .map_err(|_| HttpError(AppError::internal("Database error")))?
             .into_iter()
+            .filter(|tapp| public_install_visible_to_viewer(&tapp.visibility, is_admin))
             .map(|tapp| tapp.tapp_id)
             .collect()
     } else {
@@ -116,6 +122,12 @@ pub(super) async fn list_all_widgets(
         Vec::new()
     };
     for widget in admin_widgets {
+        // Hide widgets belonging to admin-only public installs for non-admins.
+        if !admin_tapp_ids.contains(&widget.tapp_id)
+            && widget_source(&widget.config) != Some("runtime")
+        {
+            continue;
+        }
         if widget_source(&widget.config) == Some("runtime") {
             if user_id == admin_id
                 && admin_id.is_some_and(|owner_id| {

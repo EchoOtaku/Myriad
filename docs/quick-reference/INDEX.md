@@ -1,468 +1,116 @@
-# 📚 Myriad Documentation Portal
+# Myriad 文档门户
 
-Welcome to Myriad documentation! This is your central hub for all project documentation, scripts, and resources.
+## 快速导航
 
-## 🎯 Quick Navigation
+| 目标 | 文档 |
+| --- | --- |
+| 部署 / 本地跑起来 | [QUICKSTART.md](../QUICKSTART.md) |
+| 生产 Docker 拓扑 | [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) |
+| 端口与暴露面 | [PORTS.md](../deployment/PORTS.md) |
+| 系统架构 | [ARCHITECTURE.md](../development/ARCHITECTURE.md) |
+| 从源码构建 | [BUILD.md](../development/BUILD.md) |
+| HTTP API 入口 | [API.md](../API.md) |
+| Updater 运维 | [UPDATER_QUICKSTART.md](../UPDATER_QUICKSTART.md) |
+| Tapp 开发 | [TAPP_DEVELOPMENT.md](../development/TAPP_DEVELOPMENT.md) |
 
-| I want to...              | Go to                                                     |
-| ------------------------- | --------------------------------------------------------- |
-| **Deploy Myriad now!**    | [Quick Start →](../QUICKSTART.md)                         |
-| **Understand the system** | [Architecture →](../development/ARCHITECTURE.md)          |
-| **Use the API**           | [API Docs →](../API.md)                                   |
-| **Deploy with Docker**    | [Docker Deployment →](../deployment/DOCKER_DEPLOYMENT.md)  |
-| **Build from source**     | [Build Guide →](../development/BUILD.md)                  |
-| **Check ports**           | [Ports →](../deployment/PORTS.md)                         |
-
----
-
-## 📖 Documentation Structure
+## 文档树
 
 ```
 docs/
-├── API.md                    # Complete API reference with examples
-├── QUICKSTART.md             # ⭐ Quick start guide (START HERE)
-├── UPDATER_QUICKSTART.md     # Update, rollback, and rescue flow
-├── updater-spec.md           # Updater protocol and failure-mode design
-│
-├── deployment/               # Current deployment documentation
-│   ├── DOCKER_DEPLOYMENT.md # proxy + updater + docker-guard production stack
-│   ├── MIGRATION_DOCKER_GUARD.md # sock → docker-guard topology migration
-│   ├── UPDATER_SECURITY_BASELINE.md # done-state updater security + red lines
-│   └── PORTS.md             # dev/prod port map
-│
-├── development/              # Development Documentation
-│   ├── ARCHITECTURE.md      # System architecture & design
-│   ├── BUILD.md             # Build from source instructions
-│   ├── TAPP_DEVELOPMENT.md  # Tapp development guide (index)
-│   └── tapp/                # Tapp reference docs (incl. STORE.md catalog)
-│
-├── features/                 # Feature Documentation
-│   ├── LIBRARY.md           # Library feature guide
-│   └── TAPP_FILE_FORMAT.md  # Tapp ZIP package format
-│
-├── design/                   # UI / asset design notes
-│   ├── icon-inventory.md    # Icon paths and naming
-│   └── theme-system.md      # Widget / page theme tokens
-│
-├── notification-catalog.md   # Notification kinds & icons
-│
-├── guides/                   # User Guides
-│   └── SECURITY_HEADERS.md  # Security configuration
-│
-└── quick-reference/          # THIS FILE - Documentation portal
-    └── INDEX.md              # Main documentation index
+├── QUICKSTART.md
+├── API.md
+├── UPDATER_QUICKSTART.md
+├── updater-spec.md
+├── notification-catalog.md
+├── deployment/
+│   ├── DOCKER_DEPLOYMENT.md
+│   ├── EXTERNAL_POSTGRES.md
+│   ├── PORTS.md
+│   ├── UPDATER_SECURITY_BASELINE.md
+│   ├── MIGRATION_DOMAIN.md          # 非联邦换域名
+│   ├── FEDERATION_DOMAIN_MOVE.md    # 联邦 Move
+│   └── examples/
+│       └── docker-compose.external-db.example.yml
+├── development/
+│   ├── ARCHITECTURE.md
+│   ├── BUILD.md
+│   ├── FEDERATION.md
+│   ├── OAUTH.md
+│   ├── TAPP_DEVELOPMENT.md
+│   └── tapp/                        # Tapp 参考（SDK / Store / Playground …）
+├── features/
+│   ├── LIBRARY.md
+│   └── TAPP_FILE_FORMAT.md
+├── design/
+│   ├── icon-inventory.md
+│   └── theme-system.md
+├── guides/
+│   └── SECURITY_HEADERS.md
+└── quick-reference/
+    └── INDEX.md                     # 本页
 ```
 
----
-
-## 🚀 Getting Started Paths
-
-### Path 1: New User (5 minutes)
-
-**Goal:** Get Myriad running quickly
-
-```
-1. Install Docker Desktop
-2. Read: QUICKSTART.md
-3. Run: bash scripts/docker/deploy.sh up
-4. Visit: http://localhost
-5. Complete setup wizard
-```
-
-### Path 2: Developer (30 minutes)
-
-**Goal:** Understand codebase and contribute
-
-```
-1. Read: development/ARCHITECTURE.md
-2. Read: development/BUILD.md
-3. Clone repository
-4. Run development scripts
-5. Explore: backend/src/ and frontend/src/
-```
-
-### Path 3: DevOps Engineer (20 minutes)
-
-**Goal:** Deploy and manage in production
-
-```
-1. Read: QUICKSTART.md
-2. Read: deployment/DOCKER_DEPLOYMENT.md
-3. Configure proxy/TLS at the host edge
-4. Configure monitoring and backups
-```
-
-### Path 4: API Consumer (15 minutes)
-
-**Goal:** Integrate with Myriad API
-
-```
-1. Read: API.md
-2. Test endpoints with curl/Postman
-3. Review JavaScript/Python examples
-4. Implement client integration
-5. Handle errors and rate limits
-```
-
----
-
-## 📂 Project Structure
-
-### Root Directory
+## 仓库根（相关）
 
 ```
 Myriad/
-├── README.md                    # Project overview
-├── LICENSE                      # GPL-3.0 license
-├── docker-compose.yml           # Production proxy + updater stack
-├── docker-compose.dev.yml       # Development PostgreSQL only
-├── .env.production.example      # Production environment template
-└── docker/                      # Component Dockerfiles
+├── docker-compose.yml           # 生产：proxy + updater + guard
+├── docker-compose.dev.yml       # 开发：仅 PostgreSQL
+├── .env.production.example
+├── backend/ · frontend/ · proxy/ · updater/
+├── crates/ · shared/ · docker/ · scripts/ · release/ · tools/
+└── README.md
 ```
 
-### Scripts Directory
+## 分类索引
 
-```
-scripts/
-├── docker/                         # Production / image packaging
-│   ├── deploy.sh / deploy.ps1      # Bootstrap & manage compose stack
-│   └── build-and-push.sh / .ps1    # Local component image build/push
-├── dev/                            # Local development
-│   ├── dev.sh / dev.ps1            # Start/stop backend, frontend, DB
-│   ├── build.sh / build.ps1        # Release-style local cargo + pnpm build
-│   ├── federation-multi-instance-suite.sh
-│   └── federation-fk-orphan-report.sql
-├── security/
-│   └── docker-audit-example.sh     # Optional host audit (deploy doctor --host)
-├── test-updater-smoke.sh           # Updater contract smoke
-└── test-updater-e2e.sh             # Updater + proxy local e2e harness
-```
+### 部署与运维
 
-### Backend Structure
+| 文档 | 说明 |
+| --- | --- |
+| [QUICKSTART.md](../QUICKSTART.md) | 生产与开发快速开始 |
+| [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) | 三网拓扑、env、健康检查 |
+| [EXTERNAL_POSTGRES.md](../deployment/EXTERNAL_POSTGRES.md) | 外部数据库 |
+| [PORTS.md](../deployment/PORTS.md) | 端口与代理路径 |
+| [UPDATER_QUICKSTART.md](../UPDATER_QUICKSTART.md) | 更新 / 回滚 / 救援 |
+| [updater-spec.md](../updater-spec.md) | Updater 协议与失败模式 |
+| [UPDATER_SECURITY_BASELINE.md](../deployment/UPDATER_SECURITY_BASELINE.md) | Updater 安全基线 |
+| [MIGRATION_DOMAIN.md](../deployment/MIGRATION_DOMAIN.md) | 换域名（非联邦） |
+| [FEDERATION_DOMAIN_MOVE.md](../deployment/FEDERATION_DOMAIN_MOVE.md) | 联邦域名 Move |
 
-```
-backend/
-├── src/
-│   ├── main.rs                 # Entry point
-│   ├── config.rs               # Configuration management
-│   ├── api/                    # API endpoints
-│   │   ├── auth.rs            # Authentication
-│   │   ├── profile.rs         # User profiles
-│   │   ├── platforms.rs       # Platform integrations
-│   │   ├── analysis.rs        # AI analysis
-│   │   └── ...
-│   ├── db/                     # Database layer
-│   ├── models/                 # Data models
-│   └── services/               # Business logic
-│       ├── analyzer.rs        # AI service
-│       ├── fetcher.rs         # Data fetching
-│       └── ...
-├── migrations/                  # Database migrations
-├── cache/                       # Runtime cache
-└── Cargo.toml                   # Rust dependencies
-```
+### 开发
 
-### Frontend Structure
+| 文档 | 说明 |
+| --- | --- |
+| [ARCHITECTURE.md](../development/ARCHITECTURE.md) | 组件与拓扑 |
+| [BUILD.md](../development/BUILD.md) | 工具链与构建 |
+| [API.md](../API.md) | HTTP API 入口 |
+| [OAUTH.md](../development/OAUTH.md) | 本地登录与 OAuth/OIDC |
+| [FEDERATION.md](../development/FEDERATION.md) | 联邦行为笔记 |
+| [TAPP_DEVELOPMENT.md](../development/TAPP_DEVELOPMENT.md) | Tapp 文档索引 |
+| [tapp/](../development/tapp/) | Manifest / SDK / Store / Playground / 排错 |
 
-```
-frontend/
-├── src/
-│   ├── pages/                  # Astro pages
-│   │   ├── index.astro        # Homepage
-│   │   ├── setup.astro        # Setup wizard
-│   │   ├── dashboard.astro    # Dashboard
-│   │   └── ...
-│   ├── components/             # React/Astro components
-│   │   ├── LoginForm.tsx
-│   │   ├── ConfigForm.tsx
-│   │   ├── PlatformStats.astro
-│   │   └── ...
-│   ├── layouts/                # Page layouts
-│   ├── lib/                    # Utilities & API client
-│   └── styles/                 # CSS styles
-├── public/                      # Static assets
-└── package.json                 # Node.js dependencies
-```
+### 功能与设计
 
-### Documentation Structure
+| 文档 | 说明 |
+| --- | --- |
+| [LIBRARY.md](../features/LIBRARY.md) | 资料库 |
+| [TAPP_FILE_FORMAT.md](../features/TAPP_FILE_FORMAT.md) | `.tapp` 包格式 |
+| [theme-system.md](../design/theme-system.md) | Surface / Glow |
+| [icon-inventory.md](../design/icon-inventory.md) | 图标规范 |
+| [notification-catalog.md](../notification-catalog.md) | 通知目录 |
+| [SECURITY_HEADERS.md](../guides/SECURITY_HEADERS.md) | 安全响应头 |
 
-```
-docs/
-├── API.md                      # 📡 Complete API reference
-├── QUICKSTART.md               # ⭐ Quick start guide
-├── UPDATER_QUICKSTART.md       # 🔁 Update operations
-├── updater-spec.md             # 🔧 Updater design
-│
-├── deployment/                 # 🚀 Current deployment guides
-│   ├── DOCKER_DEPLOYMENT.md   # proxy + updater production stack
-│   ├── UPDATER_SECURITY_BASELINE.md # updater security done-state
-│   └── PORTS.md               # dev/prod port map
-│
-├── development/                # 💻 Developer Guides
-│   ├── ARCHITECTURE.md        # System design
-│   ├── BUILD.md               # Build instructions
-│   ├── TAPP_DEVELOPMENT.md    # Tapp guide (index)
-│   └── tapp/                  # Tapp reference docs (incl. STORE.md)
-│
-├── features/                   # 📖 Feature Docs
-│   ├── LIBRARY.md             # Library feature
-│   └── TAPP_FILE_FORMAT.md    # Tapp ZIP package format
-│
-├── guides/                     # 📚 User Guides
-│   └── SECURITY_HEADERS.md    # Security setup
-│
-└── quick-reference/            # 📖 Quick Reference
-    └── INDEX.md               # This file
-```
-
----
-
-## 🎮 Scripts Quick Reference
-
-### Docker Deployment Scripts
-
-| Task                         | Windows                                                    | Linux/Mac                                           |
-| ---------------------------- | ---------------------------------------------------------- | --------------------------------------------------- |
-| **Bootstrap / Start**        | `.\scripts\docker\deploy.ps1 up`                           | `bash scripts/docker/deploy.sh up`                  |
-| **Manual Tag Upgrade**       | `.\scripts\docker\deploy.ps1 upgrade`                      | `bash scripts/docker/deploy.sh upgrade`             |
-| **View Status**              | `.\scripts\docker\deploy.ps1 status`                       | `bash scripts/docker/deploy.sh status`              |
-| **View Logs**                | `.\scripts\docker\deploy.ps1 logs`                         | `bash scripts/docker/deploy.sh logs`                |
-| **Restart Stack**            | `.\scripts\docker\deploy.ps1 restart`                      | `bash scripts/docker/deploy.sh restart`             |
-| **Stop Services**            | `.\scripts\docker\deploy.ps1 down`                         | `bash scripts/docker/deploy.sh down`                |
-
-### Development Scripts
-
-| Task                   | Windows                         | Linux/Mac                      |
-| ---------------------- | ------------------------------- | ------------------------------ |
-| **Start Dev Services** | `.\scripts\dev\dev.ps1 start`   | `./scripts/dev/dev.sh start`   |
-| **Stop Services**      | `.\scripts\dev\dev.ps1 stop`    | `./scripts/dev/dev.sh stop`    |
-| **Restart Services**   | `.\scripts\dev\dev.ps1 restart` | `./scripts/dev/dev.sh restart` |
-| **Clean Everything**   | `.\scripts\dev\dev.ps1 clean`   | `./scripts/dev/dev.sh clean`   |
-| **View Status**        | `.\scripts\dev\dev.ps1 status`  | `./scripts/dev/dev.sh status`  |
-| **Build Backend**      | `.\scripts\dev\build.ps1`       | `./scripts/dev/build.sh`       |
-
-**Advanced Options:**
-
-```powershell
-# Windows - Manage specific services
-.\scripts\dev\dev.ps1 start -Service backend
-.\scripts\dev\dev.ps1 stop -Service frontend
-.\scripts\dev\dev.ps1 clean -Force  # Skip confirmation
-```
+## 常用命令
 
 ```bash
-# Linux/Mac - Manage specific services
-./scripts/dev/dev.sh start backend
-./scripts/dev/dev.sh stop frontend
+# 生产
+bash scripts/docker/deploy.sh up
+bash scripts/docker/deploy.sh status
+
+# 开发
+docker compose -f docker-compose.dev.yml up -d postgres
+./scripts/dev/dev.sh start
 ```
 
-### Docker Deploy Commands
-
-```bash
-bash scripts/docker/deploy.sh up        # Bootstrap and start
-bash scripts/docker/deploy.sh down      # Stop containers, preserving volumes
-bash scripts/docker/deploy.sh restart   # Restart the stack
-bash scripts/docker/deploy.sh logs      # View stack logs
-bash scripts/docker/deploy.sh status    # View status and image versions
-bash scripts/docker/deploy.sh upgrade   # Pull and recreate after editing .env tags
-bash scripts/docker/build-and-push.sh --all   # Build component images locally
-```
-
----
-
-## 📊 Documentation by Category
-
-### 🚀 Deployment
-
-| Document                                                   | Description                | Audience              |
-| ---------------------------------------------------------- | -------------------------- | --------------------- |
-| [QUICKSTART.md](../QUICKSTART.md)                          | Quick start guide          | Everyone              |
-| [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) | Current proxy + updater Docker stack | Operators |
-| [UPDATER_SECURITY_BASELINE.md](../deployment/UPDATER_SECURITY_BASELINE.md) | Updater security done-state + operator red lines | Operators |
-| [PORTS.md](../deployment/PORTS.md)                          | Development and production port map | Operators, Developers |
-| [UPDATER_QUICKSTART.md](../UPDATER_QUICKSTART.md)          | Update, rollback, rescue flow | Operators |
-
-**Start with:** QUICKSTART.md
-
-### 💻 Development
-
-| Document                                          | Description                  | Audience   |
-| ------------------------------------------------- | ---------------------------- | ---------- |
-| [ARCHITECTURE.md](../development/ARCHITECTURE.md) | System architecture & design | Developers |
-| [BUILD.md](../development/BUILD.md)               | Build from source            | Developers |
-| [TAPP_DEVELOPMENT.md](../development/TAPP_DEVELOPMENT.md) | Tapp development guide | Developers |
-| [development/tapp/](../development/tapp/QUICKSTART.md) | Tapp reference docs | Developers |
-| [tapp/STORE.md](../development/tapp/STORE.md) | Remote Tapp store catalog & publish | Developers |
-| [TAPP_FILE_FORMAT.md](../features/TAPP_FILE_FORMAT.md) | `.tapp` ZIP package format | Developers |
-
-**Start with:** ARCHITECTURE.md
-
-### 📡 API
-
-| Document            | Description                          | Audience                |
-| ------------------- | ------------------------------------ | ----------------------- |
-| [API.md](../API.md) | Complete API reference with examples | Developers, Integrators |
-
-**Includes:** Endpoints, request/response formats, code examples in JavaScript, Python, cURL
-
-### 📚 Guides
-
-| Document                                             | Description                | Audience      |
-| ---------------------------------------------------- | -------------------------- | ------------- |
-| [SECURITY_HEADERS.md](../guides/SECURITY_HEADERS.md) | Security configuration     | System Admins |
-
-### 🎨 Design & UI
-
-| Document | Description | Audience |
-| -------- | ----------- | -------- |
-| [icon-inventory.md](../design/icon-inventory.md) | Icon paths and naming inventory | Frontend |
-| [theme-system.md](../design/theme-system.md) | Widget / page theme tokens | Frontend |
-| [notification-catalog.md](../notification-catalog.md) | Notification kinds and icons | Frontend, Product |
-
-### 📝 Reference
-
-| Document                        | Description                     | Audience |
-| ------------------------------- | ------------------------------- | -------- |
-| [updater-spec.md](../updater-spec.md) | Updater design reference | Operators, Developers |
-| [oauth-refactor-plan.md](../oauth-refactor-plan.md) | OAuth refactor plan | Developers |
-| [LICENSE](../../LICENSE)        | GPL-3.0 license terms           | Everyone |
-
----
-
-## 🔍 Find What You Need
-
-### "How do I deploy Myriad?"
-
-→ [QUICKSTART.md](../QUICKSTART.md)
-
-### "I want to use versioned Docker images"
-
-→ [QUICKSTART.md](../QUICKSTART.md) - Production quick start
-
-### "How do I build Docker images?"
-
-→ [UPDATER_QUICKSTART.md](../UPDATER_QUICKSTART.md) - Versioned image and updater flow
-
-### "What configuration options are available?"
-
-→ [deployment/DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md) - Current production configuration
-
-### "How do I use the API?"
-
-→ [API.md](../API.md)
-
-### "What's the system architecture?"
-
-→ [development/ARCHITECTURE.md](../development/ARCHITECTURE.md)
-
-### "How do I build from source?"
-
-→ [development/BUILD.md](../development/BUILD.md)
-
-### "What ports does each service use?"
-
-→ [deployment/PORTS.md](../deployment/PORTS.md)
-
-### "How do I contribute?"
-
-→ [development/BUILD.md](../development/BUILD.md) + [development/ARCHITECTURE.md](../development/ARCHITECTURE.md)
-
-### "How do I secure my deployment?"
-
-→ [guides/SECURITY_HEADERS.md](../guides/SECURITY_HEADERS.md)
-
-### "What is the updater security baseline?"
-
-→ [deployment/UPDATER_SECURITY_BASELINE.md](../deployment/UPDATER_SECURITY_BASELINE.md)
-
-### "Where are all the scripts?"
-
-→ See [Scripts Quick Reference](#-scripts-quick-reference) above
-
----
-
-## 💡 Documentation Tips
-
-### For New Users
-
-1. **Start simple:** Read [QUICKSTART.md](../QUICKSTART.md)
-2. **Try it:** Run deployment script
-3. **Explore:** Use the application
-4. **Deep dive:** Read other docs as needed
-
-### For Developers
-
-1. **Understand design:** [ARCHITECTURE.md](../development/ARCHITECTURE.md)
-2. **Set up environment:** [BUILD.md](../development/BUILD.md)
-3. **Learn API:** [API.md](../API.md)
-4. **Start coding:** Explore `backend/src/` and `frontend/src/`
-
-### For DevOps
-
-1. **Quick deploy:** [QUICKSTART.md](../QUICKSTART.md)
-2. **Production setup:** [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md)
-3. **Ports:** [PORTS.md](../deployment/PORTS.md)
-4. **Security:** [SECURITY_HEADERS.md](../guides/SECURITY_HEADERS.md)
-
----
-
-## 🆘 Getting Help
-
-### Documentation Issues
-
-- **Outdated info?** Check the deployment and updater docs for the current production layout
-- **Missing details?** Search within documents (Ctrl+F)
-- **Need examples?** See [API.md](../API.md) for code samples
-
-### Technical Issues
-
-1. Check relevant troubleshooting section in docs
-2. View logs: `bash scripts/docker/deploy.sh logs`
-3. Search [GitHub Issues](https://github.com/myriad-you/Myriad/issues)
-4. Open new issue with details
-
-### Contributing to Docs
-
-Found an error or want to improve documentation?
-
-1. All docs are in Markdown format
-2. Follow existing style and structure
-3. Test all commands before documenting
-4. Include examples for both Windows and Linux
-5. Submit pull request on GitHub
-
----
-
-## 📈 Documentation Statistics
-
-| Category        | Files | Total Lines     |
-| --------------- | ----- | --------------- |
-| **Deployment**  | 4     | ~610            |
-| **Development** | 12    | ~5870           |
-| **API**         | 1     | ~900            |
-| **Features**    | 2     | ~310            |
-| **Guides**      | 1     | ~200            |
-| **Reference**   | 3     | ~1375           |
-| **Total**       | **23** | **~9270 lines** |
-
----
-
-## 🌟 Quick Start Checklist
-
-- [ ] Docker Desktop installed
-- [ ] Repository cloned
-- [ ] Read [QUICKSTART.md](../QUICKSTART.md)
-- [ ] Run deployment script
-- [ ] Access http://localhost
-- [ ] Complete setup wizard
-- [ ] Configure platform integrations
-- [ ] Explore dashboard
-- [ ] Read [API.md](../API.md) for integrations
-
----
-
-**Documentation Version:** 1.1  
-**Last Updated:** 2026-07-03
-**Maintainer:** Myriad Team
-
-**Have questions?** Open an issue on [GitHub](https://github.com/myriad-you/Myriad/issues)
+Windows：`.\scripts\docker\deploy.ps1 up`、`.\scripts\dev\dev.ps1 start`。

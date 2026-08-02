@@ -226,3 +226,18 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ============================================
+   Tapp app icon badge — standalone vs glyph shell
+   ============================================ */
+.tapp-icon-badge--standalone {
+  background: transparent !important;
+}
+
+.tapp-icon-badge__media {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}

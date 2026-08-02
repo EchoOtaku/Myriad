@@ -304,26 +304,57 @@ html.dark #bg-container.wallpaper-awaiting #wallpaper-awaiting-fx::after {
 :root {
   /* 基色（随明暗切换）；--surface-alpha 是透明度的抽象点，各组件可覆盖以保留自身配置 */
   --surface-rgb: 255 255 255;
-  --surface-alpha: 80%;
-  --surface-border: rgb(255 255 255 / 30%);
+  /* 默认底略提高透明度（更透一点点）；档位类 glass-60/70/90/95 仍可覆盖 */
+  --surface-alpha: 74%;
+  /* 边框：浅色提高透明度（更透、更淡）；仍是单层 1px solid（暗色见 html.dark） */
+  --surface-border: rgb(255 255 255 / 10%);
   --surface-filter: blur(16px) saturate(180%);
-  --surface-shadow: 0 8px 32px 0 rgb(31 38 135 / 10%);
+
+  /* 顶部浸润高光：流体 sheen 的淡版（约 1/3 强度），solid/flat/outline 会清掉 --surface-bg */
+  --surface-sheen: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 6%),
+    rgb(255 255 255 / 0%) 40%
+  );
+  --surface-bg:
+    var(--surface-sheen), rgb(var(--surface-rgb) / var(--surface-alpha));
+
+  /* 阴影栈（流体边处理的极简子集，纯绘制可缓存）：
+     1) inset 顶 1px 弱高光
+     2) inset 底 1px 弱发丝线
+     3) 单层环境外影（历史玻璃观感）
+     已拿掉：底缘内接触影 / 内发光 / 双层外影 / 主题色长影 —— 那些流体味更重 */
+  --surface-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 28%),
+    inset 0 -1px 0 rgb(0 0 0 / 4%),
+    0 8px 28px 0 rgb(31 38 135 / 10%);
 }
 
 html.dark {
   --surface-rgb: 26 26 26;
-  --surface-border: rgb(255 255 255 / 10%);
-  --surface-shadow: 0 8px 32px 0 rgb(0 0 0 / 50%);
+  /* 暗色：低白度细边，靠底发丝 + 外影勾轮廓，避免发白 */
+  --surface-border: rgb(255 255 255 / 12%);
+  --surface-sheen: linear-gradient(
+    180deg,
+    rgb(255 255 255 / 3%),
+    rgb(255 255 255 / 0%) 40%
+  );
+  --surface-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 6%),
+    inset 0 -1px 0 rgb(0 0 0 / 18%),
+    0 8px 28px 0 rgb(0 0 0 / 45%);
 }
 
 /* 表面模式只调「透明度 + 滤镜（+ 边框/阴影）」，基色与各组件 alpha 保持解耦 */
 
-/* 纯色：不透明卡片底，无 backdrop-filter（低端设备更快） */
+/* 纯色：不透明卡片底，无 backdrop-filter（低端设备更快）
+   清掉默认玻璃的 sheen 层，回落到基色+透明度 */
 :root[data-surface='solid'] {
   --surface-alpha: 100%;
   --surface-border: var(--border-color);
   --surface-filter: none;
   --surface-shadow: 0 4px 16px 0 var(--shadow-color);
+  --surface-bg: rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
 /* 轻盈：半透明纯色，无模糊，壁纸隐约可见 */
@@ -332,6 +363,7 @@ html.dark {
   --surface-border: var(--border-color);
   --surface-filter: none;
   --surface-shadow: none;
+  --surface-bg: rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
 /* 描边：极淡背景（保证内容可读，非纯透明）+ 克制的细边框 */
@@ -340,6 +372,7 @@ html.dark {
   --surface-border: var(--border-color);
   --surface-filter: blur(3px);
   --surface-shadow: none;
+  --surface-bg: rgb(var(--surface-rgb) / var(--surface-alpha));
 }
 
 /* 流体玻璃（Liquid Glass 风格）：低模糊高透底（透出壁纸细节）吸附壁纸主色 +
@@ -349,7 +382,10 @@ html.dark {
    边缘色散弯光环（见下方 liquid 环规则）。
    性能约定：强化全部走静态绘制层（渐变/inset 阴影，一次绘制可缓存），
    blur 半径与 backdrop 采样次数保持不变 —— 那才是这个表面的真实开销 */
-:root[data-surface='liquid'] {
+/* .glass-liquid 是局部强制入口：用于即使全局选择其他表面，也必须保持
+   完整 Liquid 光学与交互的少量浮动 chrome。 */
+:root[data-surface='liquid'],
+.glass-liquid {
   /* 背景分层令牌，--surface-bg 只组合一次；明暗/chrome 各自只覆盖需要的一层：
      noise 磨砂纹理（明暗通用）· sheen 顶部浸润高光 · streak 对角镜面流光 ·
      bounce 底部环境反光 · tint 吸色玻璃底 */
@@ -401,7 +437,8 @@ html.dark {
    暗卡提亮背景会发灰泛白；只覆盖 sheen/streak/bounce/tint
    （--surface-bg 惰性求值自动取暗值）。底部反光改吸壁纸主色：
    暗景里玻璃拾取的环境光来自壁纸而非白光 */
-html.dark[data-surface='liquid'] {
+html.dark[data-surface='liquid'],
+html.dark .glass-liquid {
   /* 暗色流体基色压到近黑（微偏蓝的烟熏），#1a1a1a 在高透下会发灰泛亮 */
   --surface-rgb: 4 4 8;
   --surface-sheen: linear-gradient(
@@ -454,7 +491,8 @@ html.dark[data-surface='liquid'] {
    每张卡不再顶着一模一样的假反光。
    注意暗色 lens 块必须把这组层全部重声明：本块 (0,2,1) 在源码序上
    晚于暗色基础块 (0,2,1)，平局后会反过来盖掉暗色值 */
-html.surface-lens[data-surface='liquid'] {
+html.surface-lens[data-surface='liquid'],
+html.surface-lens .glass-liquid {
   --surface-filter: url('#liquid-lens') saturate(200%) brightness(1.06);
   --surface-sheen: linear-gradient(
     180deg,
@@ -477,7 +515,8 @@ html.surface-lens[data-surface='liquid'] {
    结构与色相仍可辨，只是整体被玻璃吸暗。这是暗色下透明与暗度
    兼得的唯一路径：加 tint 不透明度会同时杀死透明感。
    镜面提取用 #liquid-lens-dark（增益略高于亮色，维持暗景高光可见） */
-html.dark.surface-lens[data-surface='liquid'] {
+html.dark.surface-lens[data-surface='liquid'],
+html.dark.surface-lens .glass-liquid {
   /* 暗度由滤镜内压肩曲线提供（白背景→~50%，中间调→~30%），
      此处不再叠 brightness 免得双重压暗 */
   --surface-filter: url('#liquid-lens-dark') saturate(140%);
@@ -503,19 +542,23 @@ html.dark.surface-lens[data-surface='liquid'] {
    framer-motion 接管 transform 的卡片（内联样式优先）自动豁免不冲突 */
 @media (hover: hover) {
   :root[data-surface='liquid']
-    :is(.glass, .glass-surface):is(a, button, [role='button'], .cursor-pointer):hover {
+      :is(.glass, .glass-surface):is(a, button, [role='button'], .cursor-pointer):hover,
+  .glass-liquid:is(a, button, [role='button'], .cursor-pointer):hover {
     transform: translateY(-1px) scale(1.012);
-    border-color: rgb(255 255 255 / 70%);
+    /* !important：压过上方 .glass 令牌夺回，保留流体悬停加亮边 */
+    border-color: rgb(255 255 255 / 70%) !important;
   }
 
   html.dark[data-surface='liquid']
-    :is(.glass, .glass-surface):is(a, button, [role='button'], .cursor-pointer):hover {
-    border-color: rgb(255 255 255 / 26%);
+      :is(.glass, .glass-surface):is(a, button, [role='button'], .cursor-pointer):hover,
+  html.dark .glass-liquid:is(a, button, [role='button'], .cursor-pointer):hover {
+    border-color: rgb(255 255 255 / 26%) !important;
   }
 }
 
 :root[data-surface='liquid']
-  :is(.glass, .glass-surface):is(a, button, [role='button'], .cursor-pointer) {
+    :is(.glass, .glass-surface):is(a, button, [role='button'], .cursor-pointer),
+.glass-liquid:is(a, button, [role='button'], .cursor-pointer) {
   transition:
     background 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
@@ -525,7 +568,8 @@ html.dark.surface-lens[data-surface='liquid'] {
 }
 
 :root[data-surface='liquid']
-  :is(.glass, .glass-surface):is(a, button, [role='button'], .cursor-pointer):active {
+    :is(.glass, .glass-surface):is(a, button, [role='button'], .cursor-pointer):active,
+.glass-liquid:is(a, button, [role='button'], .cursor-pointer):active {
   transform: scale(0.972);
   filter: brightness(1.08);
   transition-duration: 0.3s, 0.3s, 0.3s, 0.09s, 0.09s;
@@ -597,6 +641,38 @@ html.dark.surface-lens[data-surface='liquid'] .surface-dialog {
     box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* 令牌夺回 —— 同元素上的 Tailwind 工具类常把边框/阴影盖掉：
+   · border-white/20 · dark:border-white/10（dark: 变体特异性 (0,2,0)）
+   · shadow-lg / shadow-xl（整段替换 box-shadow，inset 高光栈全丢）
+   · overrides.css 里 .border-gray-200/50 的 !important
+   用 html(.dark) .glass + !important 压过上述。
+   排除条件包在 :where() 里（零特异性），避免堆 :not 抬特异性压死流体 hover。
+   语义状态色边框按 class 名放行；逃生口：.glass-chrome-free / .glass-elev-free。
+   .glass-surface 仍按设计保留使用处工具类，不在此夺回。 */
+html
+  .glass:where(
+    :not([class*='border-red']):not([class*='border-rose']):not(
+        [class*='border-amber']
+      ):not([class*='border-orange']):not([class*='border-yellow']):not(
+        [class*='border-green']
+      ):not([class*='border-emerald']):not(.glass-chrome-free)
+  ),
+html.dark
+  .glass:where(
+    :not([class*='border-red']):not([class*='border-rose']):not(
+        [class*='border-amber']
+      ):not([class*='border-orange']):not([class*='border-yellow']):not(
+        [class*='border-green']
+      ):not([class*='border-emerald']):not(.glass-chrome-free)
+  ) {
+  border-color: var(--surface-border) !important;
+}
+
+html .glass:where(:not(.glass-elev-free)),
+html.dark .glass:where(:not(.glass-elev-free)) {
+  box-shadow: var(--surface-shadow) !important;
+}
+
 /* 内容密集的 chrome（控制面板信息岛 / Arael 面板 / 对话框）原生为 90%+ 不透明底，
    流体的高透底会压穿其可读性——升回 90% 不透明，噪点/高光/滤镜自动保留。
    ⚠️ 必须连 --surface-bg 一起在元素上重新声明：自定义属性里的 var()
@@ -636,20 +712,21 @@ html.dark[data-surface='liquid'] .surface-dialog-backdrop {
 /* 控制面板信息岛的流体边框适配：组件自带的中性边框/阴影换成表面令牌
    （镜面高光边 + 玻璃发丝线 + 双层投影）；展开态保留其自身更深的
    浮层投影（大面板需要更强的高度层级）。hover 覆盖列表逐档压过
-   组件自身 html.dark …:hover (0,4,1) 的特异性 */
+   组件自身 html.dark …:hover (0,4,1) 的特异性；!important 压过
+   组件 CSS 与 ISLAND_GLASS 工具类边框/阴影 */
 :root[data-surface='liquid'] .control-bar-trigger {
-  border-color: var(--surface-border);
+  border-color: var(--surface-border) !important;
 }
 
 :root[data-surface='liquid'] .control-bar-trigger:not(.expanded) {
-  box-shadow: var(--surface-shadow);
+  box-shadow: var(--surface-shadow) !important;
 }
 
 html[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover,
 html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
   background: var(--surface-bg);
-  border-color: var(--surface-border);
-  box-shadow: var(--surface-shadow);
+  border-color: var(--surface-border) !important;
+  box-shadow: var(--surface-shadow) !important;
 }
 
 /* ============================================
@@ -664,7 +741,8 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
    ============================================ */
 @supports (mask-composite: exclude) {
   :root[data-surface='liquid']
-    :is(.glass, .glass-surface, .control-bar-trigger):not(.fixed, .absolute) {
+      :is(.glass, .glass-surface, .control-bar-trigger):not(.fixed, .absolute),
+  .glass-liquid:not(.fixed, .absolute) {
     position: relative;
   }
 
@@ -677,7 +755,8 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
     :is(.glass, .glass-surface, .control-bar-trigger):not(
       .fixed,
       .absolute
-    )::before {
+    )::before,
+  .glass-liquid:not(.fixed, .absolute)::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -705,7 +784,8 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
     :is(.glass, .glass-surface, .control-bar-trigger):not(
       .fixed,
       .absolute
-    )::before {
+    )::before,
+  html.dark .glass-liquid:not(.fixed, .absolute)::before {
     background: conic-gradient(
       from 0deg,
       rgb(255 255 255 / 20%) 0deg,
@@ -741,13 +821,25 @@ html.dark[data-surface='liquid'] .control-bar-trigger:not(.expanded):hover {
 /* 主题选择器里的表面预览色块：静态呈现四种质感，
    不读全局令牌（否则会跟随当前 data-surface 而非展示各自样式） */
 .surface-swatch--glass {
-  background: rgb(255 255 255 / 80%);
-  border: 1px solid rgb(255 255 255 / 45%);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 6%), rgb(255 255 255 / 0%) 40%),
+    rgb(255 255 255 / 74%);
+  border: 1px solid rgb(255 255 255 / 10%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 28%),
+    inset 0 -1px 0 rgb(0 0 0 / 4%),
+    0 8px 28px 0 rgb(31 38 135 / 10%);
 }
 
 html.dark .surface-swatch--glass {
-  background: rgb(70 70 70 / 85%);
-  border: 1px solid rgb(255 255 255 / 15%);
+  background:
+    linear-gradient(180deg, rgb(255 255 255 / 3%), rgb(255 255 255 / 0%) 40%),
+    rgb(70 70 70 / 85%);
+  border: 1px solid rgb(255 255 255 / 12%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 6%),
+    inset 0 -1px 0 rgb(0 0 0 / 18%),
+    0 8px 28px 0 rgb(0 0 0 / 45%);
 }
 
 .surface-swatch--solid {
@@ -907,12 +999,16 @@ html.dark ::placeholder {
      选择器列表逐档压过明暗 × surface-lens 门控的全部特异性组合——
      裸 :root 版本 (0,2,0) 压不过 html.dark[...] (0,2,1) */
   :root[data-surface='liquid'],
-  html.surface-lens[data-surface='liquid'] {
+  html.surface-lens[data-surface='liquid'],
+  .glass-liquid,
+  html.surface-lens .glass-liquid {
     --surface-filter: blur(4px) saturate(180%);
   }
 
   html.dark[data-surface='liquid'],
-  html.dark.surface-lens[data-surface='liquid'] {
+  html.dark.surface-lens[data-surface='liquid'],
+  html.dark .glass-liquid,
+  html.dark.surface-lens .glass-liquid {
     --surface-filter: blur(4px) saturate(150%) brightness(0.7);
   }
 }

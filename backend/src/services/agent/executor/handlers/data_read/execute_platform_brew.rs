@@ -2484,18 +2484,36 @@ async fn execute_fuzzy_search(
         }
     }
 
-    // 搜索 Tapp 应用
+    // 搜索 Tapp 应用（与 catalog / tapp.list 同一可见性边界）
     if (scope == "all" || scope == "tapp") && (search_type.is_none() || search_type == Some("app"))
     {
-        let apps = tapps::Entity::find()
-            .all(ctx.db)
+        let admin_id = crate::services::tapp_ownership::get_admin_user_id(ctx.db)
             .await
-            .map_err(|e| {
-                    tracing::error!(error = %e, "Agent data_read database error");
-                    "Database error".to_string()
-                })?;
+            .map_err(|e| e.to_string())?;
+        let is_admin =
+            crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
+        let mut query = tapps::Entity::find();
+        if !is_admin {
+            query = query.filter(
+                tapps::Column::UserId
+                    .eq(ctx.user_id)
+                    .or(tapps::Column::UserId.eq(admin_id)),
+            );
+        }
+        let apps = query.all(ctx.db).await.map_err(|e| {
+            tracing::error!(error = %e, "Agent data_read database error");
+            "Database error".to_string()
+        })?;
 
         for app in apps {
+            if !crate::services::tapp_ownership::install_visible_to_viewer(
+                &app,
+                ctx.user_id,
+                admin_id,
+                is_admin,
+            ) {
+                continue;
+            }
             let name_lower = app.name.to_lowercase();
             let score = calculate_fuzzy_score(&query_lower, &name_lower);
 
@@ -4533,6 +4551,14 @@ async fn execute_tapp_list(
         .map_err(|e| format!("Failed to fetch Tapps: {e}"))?;
     let items: Vec<Value> = records
         .into_iter()
+        .filter(|tapp| {
+            crate::services::tapp_ownership::install_visible_to_viewer(
+                tapp,
+                ctx.user_id,
+                admin_id,
+                is_admin,
+            )
+        })
         .filter(|tapp| {
             enabled_filter.is_none_or(|enabled| {
                 let active = matches!(

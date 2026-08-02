@@ -12,7 +12,7 @@ use std::time::SystemTime;
 
 use tokio::sync::{Mutex, RwLock};
 
-use super::config::{load_config, McpServerConfig};
+use super::config::{load_config, save_config, validate_config, McpServerConfig, McpServersConfig};
 use super::protocol::McpToolDef;
 use super::server::{McpServer, SharedMcpServer};
 
@@ -157,7 +157,29 @@ impl McpManager {
     /// 强制从磁盘重载（API / 维护用）
     pub async fn reload_from_disk(&self) -> Result<(), String> {
         let _guard = self.reload_lock.lock().await;
+        self.reload_from_disk_locked().await
+    }
 
+    /// Read the on-disk config (including disabled servers) for the admin UI.
+    pub async fn read_config(&self) -> McpServersConfig {
+        load_config(&self.config_path).await
+    }
+
+    /// Path of `mcp_servers.json` (for UI hints).
+    pub fn config_path_display(&self) -> String {
+        self.config_path.display().to_string()
+    }
+
+    /// Validate, write config to disk, then hot-reload running children.
+    pub async fn replace_config(&self, config: McpServersConfig) -> Result<McpServersConfig, String> {
+        let config = validate_config(config)?;
+        let _guard = self.reload_lock.lock().await;
+        save_config(&self.config_path, &config).await?;
+        self.reload_from_disk_locked().await?;
+        Ok(config)
+    }
+
+    async fn reload_from_disk_locked(&self) -> Result<(), String> {
         let config = load_config(&self.config_path).await;
         let enabled: Vec<McpServerConfig> =
             config.servers.into_iter().filter(|s| s.enabled).collect();

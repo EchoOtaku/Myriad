@@ -27,6 +27,7 @@ pub mod profile;
 pub mod prompt;
 pub mod proxy;
 pub mod reports; // ✅ 双层报告系统API
+pub mod seo; // 🔍 公开 sitemap.xml 等 SEO 端点
 pub mod setup;
 pub mod setup_bootstrap;
 pub mod site_domain; // 🌐 Site public domain (BASE_URL / FRONTEND_URL / CORS) — not federation Move

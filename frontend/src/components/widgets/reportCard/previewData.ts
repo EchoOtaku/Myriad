@@ -20,45 +20,114 @@ const previewCover = (letter: string, bg: string, w = 160, h = 200) => {
 }
 
 // YouTube: channel stats + recent uploads (matches generate.rs card_visuals)
+// DEV force-mock on home — rotate fixtures freely while tuning the face.
 if (platformId === 'youtube') {
-  const thumb = (letter: string, bg: string) =>
-    previewCover(letter, bg, 320, 180)
+  const thumb = (letter: string, bg: string) => {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${bg}"/><stop offset="100%" stop-color="#111827"/></linearGradient></defs><rect width="320" height="180" fill="url(#g)"/><text x="160" y="98" text-anchor="middle" fill="#fff" font-size="28" font-family="system-ui,sans-serif" font-weight="700" opacity="0.92">${letter}</text></svg>`
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+  }
+  const daysAgo = (n: number) =>
+    new Date(Date.now() - n * 86_400_000).toISOString()
+  // Widget-library / isPreview fixture — gold-tier tech channel (representative)
+  const videos = [
+    {
+      title: '从零搭一个个人站：技术选型与踩坑',
+      letter: '01',
+      bg: '#b91c1c',
+      view_count: 52_000,
+      like_count: 3_200,
+      comment_count: 180,
+      duration: 'PT12M34S',
+      days: 3,
+    },
+    {
+      title: 'Rust 后端实战：Axum 路由与鉴权',
+      letter: '02',
+      bg: '#991b1b',
+      view_count: 31_000,
+      like_count: 1_100,
+      comment_count: 64,
+      duration: 'PT8M5S',
+      days: 14,
+    },
+    {
+      title: '一周开发日志 #27 — 报告卡片重设计',
+      letter: '03',
+      bg: '#7f1d1d',
+      view_count: 18_400,
+      like_count: 890,
+      comment_count: 42,
+      duration: 'PT1H2M3S',
+      days: 40,
+    },
+    {
+      title: '小屏幕 UI 密度：4×2 小组件怎么排',
+      letter: '04',
+      bg: '#dc2626',
+      view_count: 9_200,
+      like_count: 410,
+      comment_count: 19,
+      duration: 'PT4M20S',
+      days: 70,
+    },
+    {
+      title: '公开 API 限流与缓存策略随记',
+      letter: '05',
+      bg: '#ef4444',
+      view_count: 6_800,
+      like_count: 280,
+      duration: 'PT22M',
+      days: 100,
+    },
+  ]
   return {
-    channel_title: 'Preview Channel',
-    username: 'Preview Channel',
-    subscriber_count: 128_000,
-    view_count: 4_200_000,
-    video_count: 86,
+    channel_title: 'Myriad Studio',
+    username: 'Myriad Studio',
+    custom_url: '@myriadstudio',
+    channel_url: 'https://www.youtube.com/@myriadstudio',
+    channel_id: 'UCpreviewYouTubeMock',
+    // vibe ≤20 字 / line-clamp-2（与 X 卡 + AI prompt 同规）
+    vibe: '技术日志型创作者，上传稳均播不虚',
+    channel_type: '稳定更新',
+    // 24.8K → Gold on card award scale (≥10K)
+    subscriber_count: 24_800,
+    view_count: 1_920_000,
+    video_count: 64,
     is_empty_channel: false,
-    video_summary: 'Public channel with recent uploads',
-    avatar: previewAvatar('Y', '#FF0000'),
-    library_items: [
-      {
-        title: 'Sample Upload One',
-        type: 'video',
-        image: thumb('1', '#FF0000'),
-        cover: thumb('1', '#FF0000'),
-        view_count: 52_000,
-      },
-      {
-        title: 'Sample Upload Two',
-        type: 'video',
-        image: thumb('2', '#b91c1c'),
-        cover: thumb('2', '#b91c1c'),
-        view_count: 31_000,
-      },
-      {
-        title: 'Sample Upload Three',
-        type: 'video',
-        image: thumb('3', '#7f1d1d'),
-        cover: thumb('3', '#7f1d1d'),
-        view_count: 18_400,
-      },
+    video_summary:
+      '64 个公开视频，2.48 万订阅，累计 192 万观看；开发日志与 UI 实验',
+    summary: '「Myriad Studio」：技术站气质，上传稳、均播不虚。',
+    insights: [
+      '订阅 24.8K / 视频 64，体量匹配金牌档。',
+      '题材收敛在个人站与工程实践。',
+      '适合作为组件库预览的代表性 YouTube 卡数据。',
     ],
-    recent_videos: [
-      { title: 'Sample Upload One', view_count: 52_000 },
-      { title: 'Sample Upload Two', view_count: 31_000 },
-    ],
+    avatar: previewAvatar('M', '#FF0000'),
+    library_items: videos.map((v, i) => {
+      const cover = thumb(v.letter, v.bg)
+      return {
+        title: v.title,
+        type: 'video',
+        image: cover,
+        cover,
+        view_count: v.view_count,
+        like_count: v.like_count,
+        comment_count: v.comment_count,
+        duration: v.duration,
+        published_at: daysAgo(v.days),
+        video_id: `preview${i + 1}`,
+        url: `https://www.youtube.com/watch?v=preview${i + 1}`,
+      }
+    }),
+    recent_videos: videos.slice(0, 3).map((v, i) => ({
+      title: v.title,
+      video_id: `preview${i + 1}`,
+      cover: thumb(v.letter, v.bg),
+      view_count: v.view_count,
+      like_count: v.like_count,
+      duration: v.duration,
+      published_at: daysAgo(v.days),
+    })),
   }
 }
 

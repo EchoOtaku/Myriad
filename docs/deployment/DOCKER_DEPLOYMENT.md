@@ -54,11 +54,6 @@ Networks:
   directory is not writable. Healthcheck stays on `localhost:1103/health`.
 - Browser update requests go through backend admin routes:
   `/api/admin/updater/*`. The browser never receives `UPDATE_TOKEN`.
-- Migrating topology: see
-  [MIGRATION_V2_TO_V3.md](./MIGRATION_V2_TO_V3.md) (Chinese operator guide: old sock →
-  docker-guard + gateway + three nets; examples under `examples/`) and
-  [MIGRATION_DOCKER_GUARD.md](./MIGRATION_DOCKER_GUARD.md) (host `compose pull && up -d`;
-  UI alone cannot switch topology).
 - **External PostgreSQL** (no in-stack `postgres`, `MYRIAD_DB_MODE=external`,
   `DATABASE_URL` as source of truth): see
   [EXTERNAL_POSTGRES.md](./EXTERNAL_POSTGRES.md) and
@@ -74,10 +69,7 @@ Networks:
 | `scripts/docker/deploy.ps1` | Windows bootstrap and stack management |
 | `docs/deployment/PORTS.md` | Development and production port map |
 | `docs/deployment/EXTERNAL_POSTGRES.md` | External / 1Panel Postgres: `MYRIAD_DB_MODE=external`, no local pgdata |
-| `docs/deployment/MIGRATION_V2_TO_V3.md` | Chinese v2→v3 migration (sock → guard + gateway + three nets) |
-| `docs/deployment/examples/v3.env.example` | Redacted v3 `.env` example (kiseki.blog operator shape) |
 | `docs/deployment/examples/docker-compose.external-db.example.yml` | Compose without `postgres`; external `DATABASE_URL` |
-| `docs/deployment/MIGRATION_DOCKER_GUARD.md` | Migrate from updater+sock to docker-guard dual-net |
 | `docs/deployment/UPDATER_SECURITY_BASELINE.md` | Done-state security baseline + operator red lines |
 | `docs/UPDATER_QUICKSTART.md` | Operator guide for update, rollback, rescue |
 | `docs/updater-spec.md` | Updater protocol and failure-mode design |
@@ -128,8 +120,8 @@ Open `http://localhost` or the port configured by `HTTP_PORT`.
 | `MYRIAD_ADMIN_NETWORK` | no | Admin plane network override, default `myriad-admin-net` |
 | `MYRIAD_DOCKER_GUARD_NETWORK` | no | Internal updater/guard network override, default `myriad-docker-guard-net` |
 | `PROXY_TRUSTED_UPSTREAMS` | no | Comma-separated IP/CIDR allowlist for outer proxies; empty = auto-trust private/loopback peers only (Docker host reverse-proxy). Never `0.0.0.0/0` |
-| `TRUST_PROXY_HEADERS` | no | Backend: honor `X-Forwarded-For` / `X-Real-IP` when the TCP peer is on `TRUST_PROXY_PEERS` (compose default `true` behind bundled proxy) |
-| `TRUST_PROXY_PEERS` | no | Backend: CIDR/IP allowlist of reverse-proxy peers. **Empty = never trust forwarded headers** (fail-closed), even if `TRUST_PROXY_HEADERS=true`. Compose defaults to full RFC1918 (`10/8`, `172.16/12`, `192.168/16`) so stock Docker works; **production must tighten** to the reverse-proxy Docker network only (e.g. `172.18.0.0/16` from `docker network inspect`). Backend warns at startup when peers look overly broad. |
+| `TRUST_PROXY_HEADERS` | no | Backend: honor `X-Forwarded-For` / `X-Real-IP` from trusted reverse-proxy peers (compose default `true` behind bundled proxy). Required for weather / client-geo to use the visitor IP instead of the server egress. |
+| `TRUST_PROXY_PEERS` | no | Backend: CIDR/IP allowlist of reverse-proxy TCP peers. **Empty = trust private/loopback peers only** (aligned with empty `PROXY_TRUSTED_UPSTREAMS`). Non-empty = only listed peers. Compose defaults to full RFC1918 (`10/8`, `172.16/12`, `192.168/16`) so stock Docker works; **production should tighten** to the reverse-proxy Docker network only (e.g. `172.18.0.0/16` from `docker network inspect`). Backend warns at startup when peers look overly broad. |
 | `PROXY_ALLOW_DIRECT_UPDATER` | no | Enables `/_updater/*` rescue path, default `false` |
 | `COSIGN_VERIFY` | no | Release signature policy: `strict` (default), `soft`, or `off` |
 | `UPDATER_ALLOW_INSECURE_COSIGN` | no | Required dual key when `COSIGN_VERIFY=off` (`true` / alias `COSIGN_INSECURE_OK`) |
@@ -160,8 +152,8 @@ bash scripts/docker/deploy.sh doctor
 ```
 
 - Optional host scan for unexpected privileged containers / `docker.sock` binds
-  (not run on every upgrade): `bash scripts/security/docker-audit-example.sh scan`
-  or `bash scripts/docker/deploy.sh doctor --host`.
+  (not run on every upgrade): `bash scripts/docker/deploy.sh doctor --host`.
+  To watch new containers: `bash scripts/docker/deploy.sh doctor --events`.
 
 ### Hygiene (low-friction)
 
@@ -178,8 +170,8 @@ bash scripts/docker/deploy.sh doctor
   from `state/self-update-last.json`; also `GET /self-update/last` (token/gateway required).
 - **Root**: backend warns once at boot if running as uid 0 (compose should stay non-root).
 - **Deploy soft-check**: `deploy.sh|ps1 up|upgrade` runs topology doctor in warn-only mode.
-- **Doctor host tip**: `deploy.sh doctor` prints the optional host audit path; `doctor --host`
-  runs a non-fatal privileged / unexpected `docker.sock` scan.
+- **Doctor host checks**: `doctor --host` runs a non-fatal privileged / unexpected
+  `docker.sock` scan; `doctor --events` streams container create/start.
 - **Updater `/healthz`**: public and minimal (`{"ok":true}` only — no versions/token status).
   Gateway `/healthz` likewise needs no secret (compose healthcheck).
 

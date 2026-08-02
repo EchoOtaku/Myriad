@@ -1,15 +1,21 @@
 /**
  * 站点底部信息组件
- * 显示版本号、备案号、云基础设施 Logo
+ * 显示版本号、备案号、云基础设施 Logo、自定义图标+文本
  *
  * 注意：DOM class 避免使用 sponsor/ad 等易被广告拦截规则误杀的词。
+ * 折叠逻辑：非首页或移动端 → compact（仅图标 + tooltip）
  */
 
 import { SiCloudflare } from '@lib/icons'
 
-import React, { memo, useEffect, useState } from 'react'
+import React, { memo, useCallback, useEffect, useState } from 'react'
 
 import { getBuildInfo } from '../utils/buildInfo'
+import {
+  isFooterCustomHref,
+  parseFooterCustom,
+  type FooterCustomItem,
+} from '../utils/footerCustomLogic'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import './SiteFooter.css'
 
@@ -17,6 +23,7 @@ interface SiteConfig {
   site_icp?: string
   site_gongan?: string
   cloud_sponsors?: string
+  site_footer_custom?: string
 }
 
 // 又拍云 Logo（官方 logo 主体，移除文字）
@@ -36,8 +43,8 @@ L282.639,281.223L282.639,281.223
                 l16.492-21.911l1.176-1.563c1.786-2.373,4.638-3.665,7.605-3.529c1.082,0.049,2.164,0.039,3.242-0.029
                 c8.289-0.525,16.308-4.525,21.694-11.681c4.33-5.753,6.229-12.576,5.879-19.245c-0.063-1.201-0.757-2.298-1.851-2.796
                 c-2.27-1.032-4.017-3.137-4.454-5.83c-0.618-3.809,1.722-7.551,5.418-8.658c4.357-1.306,8.832,1.363,9.814,5.724
-                c0.532,2.362-0.079,4.711-1.463,6.48c-0.768,0.981-1.154,2.203-1.044,3.444c0.758,8.552-1.52,17.402-7.09,24.802
-                c-7.026,9.334-17.717,14.274-28.562,14.337c-2.09,0.012-4.052,1.011-5.309,2.681l-15.187,20.177
+                c0.532,2.362-0.079,4.711-1.463,6.48c-0.768,0.981-1.154-2.203-1.044-3.444c0.758,8.552-1.52,17.402-7.09,24.802
+                c-7.026,9.334-17.717,14.274-28.562,14.337c-2.09,0.012-4.052-1.011-5.309-2.681l-15.187,20.177
                 c-1.18,1.568-0.439,3.842,1.444,4.396c25.633,7.534,54.368-1.045,71.384-23.652C317.614,344.545,311.773,303.151,282.639,281.223z"
     />
   </svg>
@@ -89,6 +96,29 @@ const Tooltip: React.FC<{ content: string; children: React.ReactNode }> = ({
   </div>
 )
 
+function CustomIcon({
+  icon,
+  alt,
+  className,
+}: {
+  icon: string
+  alt: string
+  className?: string
+}) {
+  if (!icon) {
+    return <span className={`text-icon ${className || ''}`}>★</span>
+  }
+  return (
+    <img
+      src={icon}
+      alt={alt}
+      className={`footer-custom-icon ${className || ''}`}
+      loading="lazy"
+      decoding="async"
+    />
+  )
+}
+
 interface SiteFooterProps {
   isHomePage?: boolean
 }
@@ -115,18 +145,25 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
       }
     }, [])
 
-    useEffect(() => {
-      const loadConfig = async () => {
-        try {
-          const data = await getUIConfigDeduped()
-          console.debug('[SiteFooter] Config loaded:', data)
-          setConfig(data)
-        } catch (e) {
-          console.debug('[SiteFooter] Failed to load config:', e)
-        }
+    const loadConfig = useCallback(async () => {
+      try {
+        const data = await getUIConfigDeduped()
+        setConfig(data as SiteConfig)
+      } catch {
+        /* silent */
       }
-      loadConfig()
     }, [])
+
+    useEffect(() => {
+      void loadConfig()
+      const onFooterChanged = () => {
+        void loadConfig()
+      }
+      window.addEventListener('footerConfigChanged', onFooterChanged)
+      return () => {
+        window.removeEventListener('footerConfigChanged', onFooterChanged)
+      }
+    }, [loadConfig])
 
     // 解析云基础设施展示（config: cloud_sponsors）
     const providers = config?.cloud_sponsors
@@ -136,17 +173,81 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
           .filter((s) => CLOUD_PROVIDERS[s])
       : []
 
-    // 如果没有任何内容要显示，不渲染
+    const customItems: FooterCustomItem[] = parseFooterCustom(
+      config?.site_footer_custom,
+    )
+
+    // 如果没有任何内容要显示，不渲染（完整模式仍有版本号）
     const hasContent =
-      config?.site_icp || config?.site_gongan || providers.length > 0
+      config?.site_icp ||
+      config?.site_gongan ||
+      providers.length > 0 ||
+      customItems.length > 0
 
     // 移动端强制使用简化模式
     const useCompactMode = !isHomePage || isMobile
 
+    const renderCustomCompact = () =>
+      customItems.map((item, i) => {
+        const body = (
+          <span className="footer-icon-link footer-icon-custom">
+            <CustomIcon icon={item.icon} alt={item.text} />
+          </span>
+        )
+        const wrapped = (
+          <Tooltip key={`custom-${i}`} content={item.text}>
+            {isFooterCustomHref(item.url) ? (
+              <a
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="footer-custom-hit"
+              >
+                {body}
+              </a>
+            ) : (
+              body
+            )}
+          </Tooltip>
+        )
+        return wrapped
+      })
+
+    const renderCustomFull = () =>
+      customItems.map((item, i) => {
+        const inner = (
+          <>
+            <CustomIcon icon={item.icon} alt="" />
+            <span className="footer-custom-text">{item.text}</span>
+          </>
+        )
+        if (isFooterCustomHref(item.url)) {
+          return (
+            <a
+              key={`custom-${i}`}
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="footer-custom-link"
+            >
+              {inner}
+            </a>
+          )
+        }
+        return (
+          <span key={`custom-${i}`} className="footer-custom-link">
+            {inner}
+          </span>
+        )
+      })
+
     // 简化模式（非首页或移动端）：只显示图标
     if (useCompactMode) {
       const hasAnyIcon =
-        config?.site_icp || config?.site_gongan || providers.length > 0
+        config?.site_icp ||
+        config?.site_gongan ||
+        providers.length > 0 ||
+        customItems.length > 0
       if (!hasAnyIcon) return null
 
       return (
@@ -195,6 +296,8 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
                 </Tooltip>
               )
             })}
+
+            {renderCustomCompact()}
           </div>
         </footer>
       )
@@ -271,6 +374,14 @@ export const SiteFooter: React.FC<SiteFooterProps> = memo(
                   )
                 })}
               </div>
+            </>
+          )}
+
+          {/* 自定义区块 */}
+          {customItems.length > 0 && (
+            <>
+              <span className="footer-divider">·</span>
+              <div className="footer-custom">{renderCustomFull()}</div>
             </>
           )}
         </div>

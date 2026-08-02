@@ -249,6 +249,11 @@ interface BrewReaderProps {
   isAuthenticated?: boolean // 是否已登录（游客隐藏收藏按钮）
   isAdmin?: boolean // 是否为管理员（游客/普通用户隐藏重新生成按钮）
   sourceType?: SourceType // 来源类型（brewlia 时显示 AI 功能）
+  /**
+   * 分享用 URL。自有内容传入站内 `/brew/item/{id}`；
+   * 缺省则复制原文 `item.link`（外部订阅，避免把别人的文章当本站 SEO 页分享）。
+   */
+  shareUrl?: string
   // 阅读列表导航回调（从 Brew.tsx 传入）
   onNavigateToArticle?: (articleId: number) => void
   // 全局文章列表导航（非阅读列表时使用）
@@ -270,6 +275,7 @@ export default function BrewReader({
   isAuthenticated = false,
   isAdmin = false,
   sourceType,
+  shareUrl,
   onNavigateToArticle,
   articleList,
   currentArticleIndex,
@@ -1105,10 +1111,11 @@ export default function BrewReader({
     }
   }, [updateReadingProgress])
 
-  // 复制链接
+  // 复制链接：自有内容用站内规范 URL，外部订阅仍用原文
   const handleShare = async () => {
     try {
-      await navigator.clipboard.writeText(item.link)
+      const url = (shareUrl && shareUrl.trim()) || item.link
+      await navigator.clipboard.writeText(url)
       showToastMessage(t.brew.linkCopied)
     } catch (err) {
       console.error('Failed to copy:', err)

@@ -98,6 +98,24 @@ export type {
   SettingTitleTagProps,
   SettingTitleTagVariant,
 } from './SettingTitleTag'
+export { SettingTitleSelect } from './SettingTitleSelect'
+export type { SettingTitleSelectProps } from './SettingTitleSelect'
+export { DateRangePopover } from './DateRangePopover'
+export type {
+  DateRangePopoverLabels,
+  DateRangePopoverProps,
+} from './DateRangePopover'
+export { SettingFieldErrorTag } from './SettingFieldErrorTag'
+export type { SettingFieldErrorTagProps } from './SettingFieldErrorTag'
+export { SettingDefaultChangeTag } from './SettingDefaultChangeTag'
+export type { SettingDefaultChangeTagProps } from './SettingDefaultChangeTag'
+export {
+  SETTING_PRODUCT_DEFAULTS,
+  dismissSettingDefaultChange,
+  getSettingDefaultChangeNotice,
+  resetSettingDefaultChangeNoticesForTests,
+} from './settingDefaultChanges'
+export type { SettingDefaultChangeNotice } from './settingDefaultChanges'
 export { SettingTitleHelp } from './SettingTitleHelp'
 export type {
   SettingTitleHelpProps,
@@ -107,18 +125,22 @@ export { SettingTitleGuideEntry } from './SettingTitleGuideEntry'
 export type { SettingTitleGuideEntryProps } from './SettingTitleGuideEntry'
 export {
   getSettingGuidesCatalog,
+  getTappPermissionGuide,
+  getTappPermissionGuides,
   SettingGuideBody,
   useSettingGuide,
   guideAnchorId,
   guideDomProps,
   scrollToSettingGuide,
   scheduleScrollToSettingGuide,
+  tappPermissionGuidePath,
 } from './guides'
 export type {
   GuideSectionLabels,
   SettingGuideEntry,
   SettingGuidesCatalog,
   GuideBinding,
+  TappPermissionGuides,
 } from './guides'
 export {
   SettingsHelpProvider,

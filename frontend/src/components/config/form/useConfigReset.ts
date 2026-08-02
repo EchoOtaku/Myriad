@@ -257,7 +257,7 @@ export function useConfigReset(args: {
         }
         setConfig(next)
         setInitialConfig(JSON.parse(JSON.stringify(next)))
-      } else if (section === 'ui') {
+      } else if (section === 'basic') {
         const uiKeys = new Set(UI_RESET_KEYS)
         const next = {
           ...config,

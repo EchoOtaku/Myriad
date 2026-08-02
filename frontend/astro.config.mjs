@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const pkg = JSON.parse(
   readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8'),
 )
-const APP_VERSION = pkg.version || '0.3.21'
+const APP_VERSION = pkg.version || '0.3.22'
 
 /**
  * 自定义 Vite 插件：SPA 路由回退
@@ -49,6 +49,10 @@ function spaFallbackPlugin() {
           req.url = '/tapp/run/_'
         } else if (/^\/tapp\/detail\/[^_/][^/]*/.test(url)) {
           req.url = '/tapp/detail/_'
+        }
+        // Brew 自有文章 SEO 路径：/brew/item/:id
+        else if (/^\/brew\/item\/[^/]+/.test(url)) {
+          req.url = '/brew'
         }
         // 联邦动态路由回退
         else if (/^\/federation\/chat\/[^_/][^/]*/.test(url)) {
@@ -288,11 +292,63 @@ function proxyBackendRequestStreaming(
  * directly for WS during local development. REST ActivityPub paths are the
  * critical fix.
  */
-function isBackendDevProxyPath(urlPath) {
+function isSeoCrawlerUserAgent(ua) {
+  const s = String(ua || '').toLowerCase()
+  const markers = [
+    'googlebot',
+    'bingbot',
+    'slurp',
+    'duckduckbot',
+    'baiduspider',
+    'yandexbot',
+    'facebookexternalhit',
+    'facebot',
+    'twitterbot',
+    'linkedinbot',
+    'embedly',
+    'pinterest',
+    'applebot',
+    'semrushbot',
+    'ahrefsbot',
+    'discordbot',
+    'telegrambot',
+    'whatsapp',
+    'slackbot',
+    'redditbot',
+    'skypeuripreview',
+    'chatgpt-user',
+    'gptbot',
+    'claudebot',
+    'storebot-google',
+    'google-inspectiontool',
+    'preview',
+  ]
+  if (markers.some((m) => s.includes(m))) return true
+  return s.includes('bot/') || s.includes('spider') || s.includes('crawler')
+}
+
+/**
+ * @param {string} urlPath
+ * @param {string} [userAgent]
+ */
+function isBackendDevProxyPath(urlPath, userAgent) {
   const path = (urlPath || '').split('?')[0] || ''
-  return (
+  if (
     path.startsWith('/api/') ||
     path === '/health' ||
+    path === '/sitemap.xml' ||
+    path === '/robots.txt'
+  ) {
+    return true
+  }
+  // Crawler HTML shells (humans stay on SPA)
+  if (path.startsWith('/tapp/run/') && isSeoCrawlerUserAgent(userAgent)) {
+    return true
+  }
+  if (path.startsWith('/brew/item/') && isSeoCrawlerUserAgent(userAgent)) {
+    return true
+  }
+  return (
     path === '/.well-known/webfinger' ||
     path === '/.well-known/nodeinfo' ||
     path === '/nodeinfo/2.1' ||
@@ -307,16 +363,26 @@ function isBackendDevProxyPath(urlPath) {
  * Dev-only backend proxy implemented with one-shot node:http requests.
  * This avoids Vite http-proxy and undici keep-alive socket reuse while
  * preserving same-origin API URLs during local development.
+ *
+ * Middleware order note (Astro 7+):
+ * Astro's sec-fetch middleware is `unshift`ed in a configureServer post-hook and
+ * blocks subresource requests with Sec-Fetch-Site: cross-site. TApp sandboxes
+ * use srcdoc (opaque origin), so `<img src="/api/proxy/image…">` is treated as
+ * cross-site and never reaches the backend. We therefore install this proxy in a
+ * post-hook as well (no `enforce: 'pre'`) so our unshift runs after Astro's and
+ * sits at the front of the Connect stack.
  */
 function backendDevProxyPlugin() {
   return {
     name: 'backend-dev-proxy',
     apply: 'serve',
-    enforce: 'pre',
+    // Intentionally not `enforce: 'pre'`: post-hooks from pre plugins run before
+    // Astro's, so Astro's sec-fetch unshift would still land in front of us.
     configureServer(server) {
-      server.middlewares.use(async (req, res, next) => {
+      const handler = async (req, res, next) => {
         const originalUrl = req.url || ''
-        if (!isBackendDevProxyPath(originalUrl)) {
+        const ua = req.headers['user-agent'] || ''
+        if (!isBackendDevProxyPath(originalUrl, ua)) {
           next()
           return
         }
@@ -431,7 +497,15 @@ function backendDevProxyPlugin() {
             }),
           )
         }
-      })
+      }
+
+      // Post-hook: run after Astro unshifts sec-fetch, then put API proxy first.
+      return () => {
+        server.middlewares.stack.unshift({
+          route: '',
+          handle: handler,
+        })
+      }
     },
   }
 }

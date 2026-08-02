@@ -45,13 +45,6 @@ frontend/node_modules/
 frontend/dist/
 frontend/.astro/
 
-# Database
-database/*.sql
-!database/schema.sql
-!database/009_create_users_table.sql
-!database/012_create_platform_metadata.sql
-!database/013_create_metadata_history.sql
-
 # Scripts
 scripts/
 

@@ -25,8 +25,17 @@ import type {
 import { AnimatePresenceShim as AnimatePresence } from '@lib/motionShim'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import {
+  useMatch,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom'
 import AnimatedView from '../components/AnimatedView'
+import {
+  BREW_MINE_CATEGORY,
+  brewOwnItemPath,
+  isOwnBrewSource,
+} from '../components/brew/constants'
 import BrewFeedList from '../components/brew/BrewFeedList'
 import BrewReader from '../components/brew/BrewReader'
 import BrewSourceGrid from '../components/brew/BrewSourceGrid'
@@ -38,7 +47,16 @@ import { useSecondaryNav } from '../contexts/NavigationContext'
 import { useReadingListOptional } from '../contexts/ReadingListContext'
 import { useBrewScheduler } from '../hooks/animation'
 import { useBrewKeyboard } from '../hooks/useBrewKeyboard'
+import { usePageSeo } from '../hooks/usePageSeo'
 import * as brewApi from '../services/brewApi'
+import {
+  buildBrewItemPageSeo,
+  buildBrewListPageSeo,
+} from '../utils/brewPageSeo'
+import {
+  canAccessModuleVisibility,
+  useModuleVisibilityPreferences,
+} from '../utils/moduleVisibility'
 
 // 导航图标
 const NavIcons = {
@@ -114,10 +132,10 @@ type PresetCategoryId =
   (typeof _PRESET_CATEGORY_IDS)[keyof typeof _PRESET_CATEGORY_IDS]
 
 // 预置分类的数据库存储值（后端使用的固定值，不要改动）
-// 这些值与数据库中存储的分类名称一致
+// 这些值与数据库中存储的分类名称一致（与 brew/constants 同源）
 const PRESET_CATEGORY_DB_VALUES: Record<PresetCategoryId, string> = {
   friends: '友情链接',
-  mine: '我',
+  mine: BREW_MINE_CATEGORY,
 }
 
 // 需要合并展示文章的特殊分类（不显示网站卡片）
@@ -149,7 +167,18 @@ export default function Brew() {
   // 初始化动画调度器
   useBrewScheduler()
   const { t } = useI18n()
+  const navigate = useNavigate()
+  // 单路由 /brew/* 下解析文章 id，避免与 /brew 双 Route remount
+  const itemMatch = useMatch('/brew/item/:itemId')
+  const itemIdParam = itemMatch?.params.itemId
   const [searchParams, setSearchParams] = useSearchParams()
+  const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
+  const moduleOpenToAll = canAccessModuleVisibility(
+    moduleVisibility.modules.brew,
+    { isAuthenticated: false, isAdmin: false },
+  )
+  /** 源列表是否至少加载过一次（用于区分「未知」与「非自有」；用 state 触发重算） */
+  const [sourcesLoaded, setSourcesLoaded] = useState(false)
 
   // 获取预置分类的显示名称（国际化）
   const getCategoryName = useCallback(
@@ -210,6 +239,118 @@ export default function Brew() {
   const [total, setTotal] = useState(0)
   const pageRef = useRef(1) // 用 ref 存储 page，避免 loadItems 重新创建
   const loadRequestIdRef = useRef(0) // 请求版本号，用于取消过期请求
+
+  // 当前打开文章对应的源（用于自有内容 SEO / 分享）
+  const selectedItemSource = useMemo(() => {
+    if (!selectedItem) return null
+    return sources.find((s) => s.id === selectedItem.source_id) ?? null
+  }, [selectedItem, sources])
+
+  /**
+   * 自有性三态：源未解析前为 unknown，禁止据此清掉 /brew/item/*。
+   * - own: category 含「我」且非 admin_only
+   * - not-own: 源已解析为非自有 / 网络搜索 / 源列表已加载但找不到源
+   * - unknown: 仍在等源列表
+   */
+  const selectedItemOwnState: 'unknown' | 'own' | 'not-own' = useMemo(() => {
+    if (!selectedItem) return 'unknown'
+    if (selectedItem.fromWebSearch || selectedItem.source_id <= 0) {
+      return 'not-own'
+    }
+    if (selectedItemSource) {
+      return isOwnBrewSource(selectedItemSource) ? 'own' : 'not-own'
+    }
+    if (!sourcesLoaded) return 'unknown'
+    // 源列表已加载但找不到该源 → 不按自有收录
+    return 'not-own'
+  }, [selectedItem, selectedItemSource, sourcesLoaded])
+
+  const selectedItemIsOwn = selectedItemOwnState === 'own'
+
+  // 列表 SEO；打开文章时仅自有内容用文章级 meta（非自有 noindex）
+  usePageSeo(
+    useMemo(() => {
+      if (selectedItem && selectedItemOwnState !== 'unknown') {
+        return buildBrewItemPageSeo({
+          item: selectedItem,
+          source: selectedItemSource,
+          moduleOpenToAll,
+        })
+      }
+      if (selectedItem && selectedItemOwnState === 'unknown') {
+        // 解析中：先 noindex，避免误把外部文当可收录
+        return {
+          title: undefined,
+          path: brewOwnItemPath(selectedItem.id),
+          noindex: true,
+        }
+      }
+      return buildBrewListPageSeo({
+        listLabel: t.nav.brewReading || t.nav.brew,
+        listDescription: t.widgets.brewDesc,
+        moduleOpenToAll,
+      })
+    }, [
+      selectedItem,
+      selectedItemSource,
+      selectedItemOwnState,
+      moduleOpenToAll,
+      t,
+    ]),
+  )
+
+  // 自有文章：规范 URL 同步为 /brew/item/{id}
+  // 仅在 own / not-own 确定后改 URL；unknown 时保持深链路径
+  useEffect(() => {
+    if (!selectedItem) return
+    if (selectedItemOwnState === 'unknown') return
+    if (selectedItemOwnState === 'own') {
+      const want = String(selectedItem.id)
+      if (itemIdParam !== want) {
+        navigate(brewOwnItemPath(selectedItem.id), { replace: true })
+      }
+      return
+    }
+    // not-own：绝不保留 /brew/item/*，避免被爬取索引
+    if (itemIdParam) {
+      navigate('/brew', { replace: true })
+    }
+  }, [selectedItem, selectedItemOwnState, itemIdParam, navigate])
+
+  // Deep-link: /brew/item/:itemId → 打开阅读器（非自有也可读，但不做 SEO）
+  useEffect(() => {
+    if (!itemIdParam) return
+    const id = Number.parseInt(itemIdParam, 10)
+    if (!Number.isFinite(id) || id <= 0) return
+    if (selectedItem?.id === id) return
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const item = await brewApi.getItem(id)
+        if (cancelled) return
+        setSelectedItem(item)
+        // 补齐源列表后再判定 own/not-own（避免 unknown 被误清 URL）
+        try {
+          const all = await brewApi.getSources()
+          if (cancelled) return
+          setSourcesLoaded(true)
+          setSources(all)
+        } catch {
+          /* loadSources 的常规路径仍会填 */
+        }
+      } catch (err) {
+        console.error('[Brew] Failed to open deep-linked item:', err)
+        if (!cancelled) navigate('/brew', { replace: true })
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+    // 仅在路由 itemId 变化时拉取；selectedItem 不进依赖以免循环
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deep-link only
+  }, [itemIdParam])
 
   // 计算 source_id -> theme_color 映射
   const sourceColors = useMemo(() => {
@@ -648,6 +789,7 @@ export default function Brew() {
   const loadSources = useCallback(async () => {
     try {
       const data = await brewApi.getSources()
+      setSourcesLoaded(true)
       setSources(data)
     } catch (err) {
       console.error('Failed to load sources:', err)
@@ -1191,7 +1333,10 @@ export default function Brew() {
   // 关闭阅读器 - useCallback 缓存
   const handleCloseReader = useCallback(() => {
     setSelectedItem(null)
-  }, [])
+    if (itemIdParam) {
+      navigate('/brew', { replace: true })
+    }
+  }, [itemIdParam, navigate])
 
   // 处理已读/未读切换
   const handleToggleRead = async (item: BrewItem) => {
@@ -1446,9 +1591,12 @@ export default function Brew() {
                 onToggleStar={() => handleToggleStar(selectedItem)}
                 isAuthenticated={isAuthenticated}
                 isAdmin={isAdmin}
-                sourceType={
-                  sources.find((s) => s.id === selectedItem.source_id)
-                    ?.source_type
+                sourceType={selectedItemSource?.source_type}
+                // 仅自有文章用站内规范 URL 分享；外部订阅仍复制原文链接
+                shareUrl={
+                  selectedItemIsOwn
+                    ? `${typeof window !== 'undefined' ? window.location.origin : ''}${brewOwnItemPath(selectedItem.id)}`
+                    : undefined
                 }
                 onNavigateToArticle={handleNavigateToArticle}
                 articleList={readingList?.currentList ? undefined : items}

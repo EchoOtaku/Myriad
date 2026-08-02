@@ -433,6 +433,13 @@ impl ConfigService {
                 config.analytics_enabled = s != "false" && s != "0";
             }
         }
+        if let Some(v) = map.get("pwa_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.pwa_enabled = b;
+            } else if let Some(s) = v.as_str() {
+                config.pwa_enabled = s != "false" && s != "0";
+            }
+        }
 
         // AI 图片生成配置
         if let Some(v) = map.get("ai_image_provider") {
@@ -606,6 +613,28 @@ impl ConfigService {
         if let Some(v) = map.get("site_favicon") {
             config.site_favicon = v.as_str().map(|s| s.to_string());
         }
+        if let Some(v) = map.get("site_keywords") {
+            config.site_keywords = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("site_og_image") {
+            config.site_og_image = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("site_noindex") {
+            if let Some(b) = v.as_bool() {
+                config.site_noindex = b;
+            } else if let Some(s) = v.as_str() {
+                config.site_noindex = s == "true";
+            }
+        }
+        if let Some(v) = map.get("ga_measurement_id") {
+            config.ga_measurement_id = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("umami_website_id") {
+            config.umami_website_id = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("umami_script_url") {
+            config.umami_script_url = v.as_str().map(|s| s.to_string());
+        }
         if let Some(v) = map.get("site_icp") {
             config.site_icp = v.as_str().map(|s| s.to_string());
         }
@@ -614,6 +643,9 @@ impl ConfigService {
         }
         if let Some(v) = map.get("cloud_sponsors") {
             config.cloud_sponsors = v.as_str().map(|s| s.to_string());
+        }
+        if let Some(v) = map.get("site_footer_custom") {
+            config.site_footer_custom = v.as_str().map(|s| s.to_string());
         }
 
         // 音乐配置

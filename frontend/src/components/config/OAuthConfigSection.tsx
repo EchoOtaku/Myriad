@@ -6,7 +6,7 @@
  * - 列表：已配置的 providers 卡片（GitHub 也是其中一种，kind="github"）
  * - 选 preset 后自动填 discovery/scopes/icon，用户只补 client_id/secret
  *
- * 详见 docs/oauth-refactor-plan.md + oauthPresets.ts
+ * 详见 docs/development/OAUTH.md + oauthPresets.ts
  */
 
 import type { OAuthProviderEntry } from '../../utils/oauthSettings'

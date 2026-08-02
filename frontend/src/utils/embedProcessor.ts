@@ -11,6 +11,8 @@
  * 样式与资料库卡片风格一致
  */
 
+import { getNeteaseAudioUrlImmediate } from './musicPlayer'
+import { proxyImageUrlOr } from './proxyImageUrl'
 import { isTrustedIframeHost } from './rssContentProcessor'
 
 // ==================== 缓存系统 ====================
@@ -845,54 +847,87 @@ function formatCount(count: number): string {
 }
 
 /**
- * 从网易云音乐卡片获取歌曲信息并触发播放
+ * 从网易云音乐卡片获取歌曲信息并触发播放。
+ * 先用同步 URL 立刻开播，详情（歌名/封面）后台补全，避免 await 详情接口拖慢点击。
  * @param songId 歌曲 ID
  */
 export async function playNeteaseSong(songId: string): Promise<void> {
   try {
-    let songData: any = null
+    const fallbackCover =
+      'https://p1.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg'
 
-    // 通过后端代理 API 获取歌曲详情（避免跨域问题）
-    try {
-      const detailResponse = await fetch(
-        `/api/proxy/music/netease/song/${songId}`,
-      )
-
-      if (detailResponse.ok) {
-        songData = await detailResponse.json()
-      }
-    } catch (e) {
-      console.warn('[embedProcessor] 获取歌曲详情失败:', e)
-    }
-
-    // 构建歌曲对象（即使没有详情也能播放）
+    // 立刻开播：不 await 详情 / geo（Library 临时播放同策略）
     const song = {
       id: songId,
-      name: songData?.name || `网易云音乐 #${songId}`,
-      artist:
-        songData?.artists?.map((a: any) => a.name).join(', ') ||
-        songData?.ar?.map((a: any) => a.name).join(', ') ||
-        '未知艺术家',
-      album: songData?.album?.name || songData?.al?.name || '未知专辑',
-      cover:
-        songData?.album?.picUrl ||
-        songData?.al?.picUrl ||
-        `https://p1.music.126.net/UeTuwE7pvjBpypWLudqukA==/3132508627578625.jpg`,
-      url: `/api/proxy/music/netease/audio/${songId}`,
-      duration: songData?.duration ? Math.floor(songData.duration / 1000) : 0,
-      source: 'netease',
-      isVip: songData?.isVip || songData?.fee === 1 || songData?.fee === 4,
+      name: `网易云音乐 #${songId}`,
+      artist: '未知艺术家',
+      album: '未知专辑',
+      cover: proxyImageUrlOr(fallbackCover, fallbackCover),
+      url: getNeteaseAudioUrlImmediate(songId),
+      duration: 0,
+      source: 'netease' as const,
+      isVip: false,
     }
 
-    // 触发播放事件
+    window.dispatchEvent(new CustomEvent('open-control-panel'))
     window.dispatchEvent(
       new CustomEvent('play-song', {
         detail: { song },
       }),
     )
 
-    // 打开控制面板
-    window.dispatchEvent(new CustomEvent('open-control-panel'))
+    // 后台补歌名/封面（不重载音频）
+    try {
+      const detailResponse = await fetch(
+        `/api/proxy/music/netease/song/${songId}`,
+      )
+      if (!detailResponse.ok) return
+      const songData = await detailResponse.json()
+      const rawCover =
+        songData?.album?.picUrl || songData?.al?.picUrl || fallbackCover
+      const g = (window as { __musicPlayerState?: Record<string, unknown> })
+        .__musicPlayerState
+      const cur = g?.currentSong as
+        | { id?: string; url?: string; [k: string]: unknown }
+        | undefined
+      if (!cur || cur.id !== songId) return
+
+      const nextSong = {
+        ...cur,
+        name: songData?.name || cur.name,
+        artist:
+          songData?.artists?.map((a: { name?: string }) => a.name).join(', ') ||
+          songData?.ar?.map((a: { name?: string }) => a.name).join(', ') ||
+          cur.artist,
+        album: songData?.album?.name || songData?.al?.name || cur.album,
+        cover: proxyImageUrlOr(rawCover, rawCover),
+        duration: songData?.duration
+          ? Math.floor(songData.duration / 1000)
+          : cur.duration,
+        isVip: !!(
+          songData?.isVip ||
+          songData?.fee === 1 ||
+          songData?.fee === 4
+        ),
+        // 保留当前正在缓冲/播放的 url，避免触发重载
+        url: cur.url || song.url,
+      }
+      g!.currentSong = nextSong
+      // 宿主 React 态不会听 partial state-change；专用 patch 避免控制中心一直显示占位歌名，
+      // 以及后续全量广播用旧 currentSong 把 global 里的 enrichment 冲掉。
+      window.dispatchEvent(
+        new CustomEvent('music-player-patch-current-song', {
+          detail: { song: nextSong },
+        }),
+      )
+      window.dispatchEvent(
+        new CustomEvent('music-player-state-change', {
+          detail: { currentSong: nextSong },
+        }),
+      )
+    } catch (e) {
+      console.warn('[embedProcessor] 获取歌曲详情失败:', e)
+    }
   } catch (error) {
     console.error('[embedProcessor] 播放网易云音乐失败:', error)
     throw error

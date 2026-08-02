@@ -35,15 +35,25 @@ import { fetchJson } from '../../utils/apiHelper'
 import { getCSRFHeaderName, getCSRFToken } from '../../utils/csrf'
 import type { ReactNode } from 'react'
 import {
-  SegmentedControl,
   SettingGroup,
   SettingTitleGuideEntry,
   SettingTitleHelp,
+  SettingTitleSelect,
   SettingTitleTag,
   guideDomProps,
   useSettingGuide,
   useSettingsHelp,
 } from '../settings'
+import type { SettingOption } from '../settings/types'
+import {
+  AnalyticsRangePicker,
+  analyticsRangeDayCount,
+  analyticsRangeQuery,
+  defaultAnalyticsRange,
+  type AnalyticsRangeState,
+} from './analytics/AnalyticsRangePicker'
+import { CompareDelta } from './analytics/CompareDelta'
+import type { MetricDelta } from './analytics/compareDeltaLogic'
 import { EmptyCard } from './analytics/EmptyCard'
 import {
   analyticsBackupFilenameDay,
@@ -62,6 +72,7 @@ function AnalyticsTextBlock({
   description,
   guidePath,
   guide,
+  titleExtra,
   children,
 }: {
   id: string
@@ -69,6 +80,8 @@ function AnalyticsTextBlock({
   description?: string
   guidePath?: string
   guide?: ReactNode
+  /** 标题旁附加控件（如事件筛选） */
+  titleExtra?: ReactNode
   children: ReactNode
 }) {
   const { t } = useI18n()
@@ -99,6 +112,7 @@ function AnalyticsTextBlock({
             <SettingTitleGuideEntry title={title} guide={guide} />
           ) : null}
         </span>
+        {titleExtra}
       </h5>
       {expandHelp && showHelp ? (
         <p className="site-analytics-block-desc">{description}</p>
@@ -163,6 +177,19 @@ interface AnalyticsSummary {
     avg_engagement_ms?: number
     approx_bounce_permille?: number
   }
+  /** 日环比 + 区间环比（7→周 / 30→月 / 其它→较上期） */
+  compare?: {
+    day?: {
+      kind?: string
+      views?: MetricDelta
+      unique_visitors?: MetricDelta
+    }
+    range?: {
+      kind?: string
+      views?: MetricDelta
+      unique_visitors?: MetricDelta
+    }
+  }
   all_time: { views: number; unique_visitors: number }
   daily: DailyPoint[]
   pages: PageRow[]
@@ -178,9 +205,6 @@ function flagEmoji(code: string): string {
   const cps = [...cc].map((c) => 0x1f1e6 - 65 + c.charCodeAt(0))
   return String.fromCodePoint(...cps)
 }
-
-const RANGE_OPTIONS = ['7', '14', '30'] as const
-type RangeOption = (typeof RANGE_OPTIONS)[number]
 
 function pageLabel(
   path: string,
@@ -222,11 +246,15 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
   const numberLocale =
     locale === 'zh-CN' ? 'zh-CN' : locale === 'ja-JP' ? 'ja-JP' : 'en-US'
 
-  const [days, setDays] = useState<RangeOption>('7')
+  const [range, setRange] = useState<AnalyticsRangeState>(() =>
+    defaultAnalyticsRange(),
+  )
   const [data, setData] = useState<AnalyticsSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [ioBusy, setIoBusy] = useState(false)
+  /** 事件埋点列表筛选（空 = 全部） */
+  const [eventFilter, setEventFilter] = useState('')
   const importInputRef = useRef<HTMLInputElement>(null)
   const collectionEnabled = enabled !== false
 
@@ -236,7 +264,7 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
       setError(null)
       try {
         const res = await fetchJson<AnalyticsSummary>(
-          `${API_URL}/api/analytics/summary?days=${days}`,
+          `${API_URL}/api/analytics/summary?${analyticsRangeQuery(range)}`,
           signal ? { signal } : undefined,
           'Unable to load analytics',
         )
@@ -258,7 +286,7 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
         if (!signal?.aborted) setLoading(false)
       }
     },
-    [days, a.loadFailed],
+    [range, a.loadFailed],
   )
 
   useEffect(() => {
@@ -274,6 +302,24 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
   const duration = useCallback(
     (ms: number) => formatDuration(ms, numberLocale),
     [numberLocale],
+  )
+  const compareLabels = useMemo(
+    () => ({
+      day: a.compareDay,
+      week: a.compareWeek,
+      month: a.compareMonth,
+      period: a.comparePeriod,
+      new: a.compareNew,
+      vsPrevious: a.compareVsPrevious,
+    }),
+    [
+      a.compareDay,
+      a.compareWeek,
+      a.compareMonth,
+      a.comparePeriod,
+      a.compareNew,
+      a.compareVsPrevious,
+    ],
   )
 
   /** 首帧无数据时占位；之后刷新保留上一帧，不闪骨架屏 */
@@ -314,28 +360,51 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
     [data, pageLabels, count, duration],
   )
 
-  const eventRows = useMemo<RankRow[]>(
-    () =>
-      (data?.events ?? []).map((ev) => {
-        const targets = (ev.targets ?? [])
-          .filter((t) => t.target && t.count > 0)
-          .slice(0, 12)
-        return {
-          key: ev.name,
-          name: eventLabels[ev.name] || ev.name,
-          meta: eventLabels[ev.name] ? ev.name : undefined,
-          value: ev.count,
-          secondary: count(ev.unique_visitors),
-          subRows: targets.map((t) => ({
-            key: `${ev.name}:${t.target}`,
-            name: t.target,
-            value: t.count,
-            secondary: count(t.unique_visitors),
-          })),
-        }
-      }),
-    [data, eventLabels, count],
-  )
+  const eventFilterOptions: SettingOption<string>[] = useMemo(() => {
+    const opts: SettingOption<string>[] = [
+      { value: '', label: a.eventFilterAll },
+    ]
+    for (const ev of data?.events ?? []) {
+      if (!ev.name) continue
+      opts.push({
+        value: ev.name,
+        label: eventLabels[ev.name] || ev.name,
+      })
+    }
+    // 区间切换后若当前选中不在列表里，仍保留可见
+    if (eventFilter && !opts.some((o) => o.value === eventFilter)) {
+      opts.push({
+        value: eventFilter,
+        label: eventLabels[eventFilter] || eventFilter,
+      })
+    }
+    return opts
+  }, [data?.events, eventLabels, a.eventFilterAll, eventFilter])
+
+  const eventRows = useMemo<RankRow[]>(() => {
+    const source = data?.events ?? []
+    const list = eventFilter
+      ? source.filter((ev) => ev.name === eventFilter)
+      : source
+    return list.map((ev) => {
+      const targets = (ev.targets ?? [])
+        .filter((t) => t.target && t.count > 0)
+        .slice(0, 12)
+      return {
+        key: ev.name,
+        name: eventLabels[ev.name] || ev.name,
+        meta: eventLabels[ev.name] ? ev.name : undefined,
+        value: ev.count,
+        secondary: count(ev.unique_visitors),
+        subRows: targets.map((t) => ({
+          key: `${ev.name}:${t.target}`,
+          name: t.target,
+          value: t.count,
+          secondary: count(t.unique_visitors),
+        })),
+      }
+    })
+  }, [data?.events, eventFilter, eventLabels, count])
 
   const referrerRows = useMemo<RankRow[]>(
     () =>
@@ -367,7 +436,10 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
     data?.range?.approx_bounce_permille != null && (data?.range?.views ?? 0) > 0
       ? Math.round((data.range.approx_bounce_permille / 1000) * 100)
       : null
-  const dayCount = Math.max(1, data?.days ?? Number(days))
+  const dayCount = Math.max(
+    1,
+    data?.days ?? analyticsRangeDayCount(range),
+  )
   const dailyAvg = Math.round((data?.range.views ?? 0) / dayCount)
   const peak = useMemo(
     () =>
@@ -491,12 +563,9 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
   const titleExtra = (
     <>
       {error ? (
-        <span
-          className="setting-title-tag site-analytics-error-tag"
-          role="alert"
-        >
-          <span className="setting-title-tag-label">{error}</span>
-        </span>
+        <SettingTitleTag variant="danger" title={error}>
+          {error}
+        </SettingTitleTag>
       ) : null}
       <SettingTitleTag
         variant="muted"
@@ -547,18 +616,28 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
         tabIndex={-1}
         onChange={handleImportFile}
       />
-      <div className="site-analytics-scope-controls">
-        <SegmentedControl<RangeOption>
-          size="sm"
-          value={days}
-          onChange={setDays}
-          ariaLabel={a.rangeAria}
-          options={RANGE_OPTIONS.map((d) => ({
-            value: d,
-            label: a.daysN.replace('{n}', d),
-          }))}
-        />
-      </div>
+      <AnalyticsRangePicker
+        value={range}
+        onChange={setRange}
+        disabled={loading || ioBusy}
+        labels={{
+          daysN: a.daysN,
+          custom: a.rangeCustom,
+          rangeAria: a.rangeAria,
+          fromAria: a.rangeFromAria,
+          toAria: a.rangeToAria,
+          customTitle: a.rangeCustomTitle,
+          customHint: a.rangeCustomHint,
+          apply: a.rangeApply,
+          clear: a.rangeClear,
+          daysSelected: a.rangeDaysSelected,
+          prevMonth: a.rangePrevMonth,
+          nextMonth: a.rangeNextMonth,
+          weekdays: a.rangeWeekdays,
+          monthTitle: a.rangeMonthTitle,
+          today: a.rangeToday,
+        }}
+      />
     </>
   )
 
@@ -594,36 +673,76 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
                 <LuEye size={13} aria-hidden />
                 {a.todayViews}
               </span>
-              <span className="site-analytics-tile-value">
-                {tile(count(data?.today.views ?? 0))}
-              </span>
+              <div className="site-analytics-tile-metric">
+                <span className="site-analytics-tile-value">
+                  {tile(count(data?.today.views ?? 0))}
+                </span>
+                <CompareDelta
+                  kind={data?.compare?.day?.kind ?? 'day'}
+                  delta={data?.compare?.day?.views}
+                  labels={compareLabels}
+                  locale={numberLocale}
+                  hidden={firstLoad}
+                  formatPrevious={count}
+                />
+              </div>
             </div>
             <div className="site-analytics-tile">
               <span className="site-analytics-tile-label">
                 <LuUsers size={13} aria-hidden />
                 {a.todayVisitors}
               </span>
-              <span className="site-analytics-tile-value">
-                {tile(count(data?.today.unique_visitors ?? 0))}
-              </span>
+              <div className="site-analytics-tile-metric">
+                <span className="site-analytics-tile-value">
+                  {tile(count(data?.today.unique_visitors ?? 0))}
+                </span>
+                <CompareDelta
+                  kind={data?.compare?.day?.kind ?? 'day'}
+                  delta={data?.compare?.day?.unique_visitors}
+                  labels={compareLabels}
+                  locale={numberLocale}
+                  hidden={firstLoad}
+                  formatPrevious={count}
+                />
+              </div>
             </div>
             <div className="site-analytics-tile">
               <span className="site-analytics-tile-label">
                 <LuEye size={13} aria-hidden />
                 {a.rangeViews.replace('{n}', String(dayCount))}
               </span>
-              <span className="site-analytics-tile-value">
-                {tile(count(data?.range.views ?? 0))}
-              </span>
+              <div className="site-analytics-tile-metric">
+                <span className="site-analytics-tile-value">
+                  {tile(count(data?.range.views ?? 0))}
+                </span>
+                <CompareDelta
+                  kind={data?.compare?.range?.kind}
+                  delta={data?.compare?.range?.views}
+                  labels={compareLabels}
+                  locale={numberLocale}
+                  hidden={firstLoad}
+                  formatPrevious={count}
+                />
+              </div>
             </div>
             <div className="site-analytics-tile">
               <span className="site-analytics-tile-label">
                 <LuUsers size={13} aria-hidden />
                 {a.rangeVisitors.replace('{n}', String(dayCount))}
               </span>
-              <span className="site-analytics-tile-value">
-                {tile(count(data?.range.unique_visitors ?? 0))}
-              </span>
+              <div className="site-analytics-tile-metric">
+                <span className="site-analytics-tile-value">
+                  {tile(count(data?.range.unique_visitors ?? 0))}
+                </span>
+                <CompareDelta
+                  kind={data?.compare?.range?.kind}
+                  delta={data?.compare?.range?.unique_visitors}
+                  labels={compareLabels}
+                  locale={numberLocale}
+                  hidden={firstLoad}
+                  formatPrevious={count}
+                />
+              </div>
             </div>
             <div className="site-analytics-tile" title={a.avgEngagementHint}>
               <span className="site-analytics-tile-label">
@@ -824,6 +943,21 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
             description={a.eventsDesc}
             guidePath="platforms.eventAnalytics"
             guide={renderGuide(g.platforms.eventAnalytics)}
+            titleExtra={
+              <SettingTitleSelect
+                variant="title"
+                icon={<LuZap size={12} />}
+                label={a.eventFilter}
+                value={eventFilter}
+                options={eventFilterOptions}
+                onChange={setEventFilter}
+                aria-label={a.eventFilterAria}
+                disabled={firstLoad}
+                searchable
+                searchPlaceholder={t.common.search}
+                emptySearchText={t.common.noResults}
+              />
+            }
           >
             <RankList
               rows={eventRows}

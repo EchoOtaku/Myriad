@@ -174,7 +174,12 @@ export const ReportCardWidget = memo(
         if (timeoutId) clearTimeout(timeoutId)
         document.removeEventListener('visibilitychange', onVisibility)
       }
-    }, [isPreview, isOverviewControlled, hasDetailContent, animLevel.widgetUiRotation])
+    }, [
+      isPreview,
+      isOverviewControlled,
+      hasDetailContent,
+      animLevel.widgetUiRotation,
+    ])
 
     const handleContentChange = useCallback((content: any) => {
       setCardContent(content)

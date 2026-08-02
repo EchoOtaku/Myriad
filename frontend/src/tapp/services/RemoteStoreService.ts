@@ -7,14 +7,20 @@
  */
 
 import type { TappManifest, TappManifestLocales } from '../types'
+import type { StorePreviewDescriptor } from '../utils/storePreview'
 import api from '../../lib/api'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
 import {
   storeAssetStorePath,
   storePackageRoot,
 } from '../utils/storePackagePaths'
+import { parseStorePreview } from '../utils/storePreview'
 
-export { storeAssetStorePath, storePackageRoot } from '../utils/storePackagePaths'
+export {
+  storeAssetStorePath,
+  storePackageRoot,
+} from '../utils/storePackagePaths'
+export type { StorePreviewDescriptor } from '../utils/storePreview'
 
 // ============ 类型定义 ============
 
@@ -120,6 +126,8 @@ export interface RemoteApp {
   repository?: string
   /** 截图 URL 列表 */
   screenshots?: string[]
+  /** 商店专用、无脚本的静态预览场景 */
+  preview?: StorePreviewDescriptor
   /** 文件大小（字节） */
   size?: number
   /** 是否推荐应用 */
@@ -343,6 +351,77 @@ class RemoteStoreServiceImpl {
     }
   }
 
+  /**
+   * 更新商店源名称 / URL 等（需要管理员权限）。
+   * 官方源不可改 URL；自定义源改 URL 后会清索引缓存。
+   */
+  async updateSource(
+    sourceId: number,
+    patch: {
+      name?: string
+      description?: string
+      url?: string
+      enabled?: boolean
+      icon?: string
+    },
+  ): Promise<RemoteStoreSource> {
+    const existing = this.sources.find((s) => s.id === sourceId)
+    if (existing?.official && patch.url !== undefined) {
+      throw new Error('无法修改官方商店的 URL')
+    }
+
+    try {
+      const response = await api.post(
+        `/api/tapps/store/sources/${sourceId}`,
+        patch,
+      )
+
+      if (!response.data?.success) {
+        throw new Error(response.data?.error || '更新商店源失败')
+      }
+
+      const data = response.data.data
+      const updated: RemoteStoreSource = {
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        url: data.url,
+        enabled: data.enabled,
+        official: data.official,
+        icon: data.icon,
+      }
+
+      const idx = this.sources.findIndex((s) => s.id === sourceId)
+      if (idx >= 0) {
+        const prevUrl = this.sources[idx]!.url
+        this.sources[idx] = updated
+        if (prevUrl !== updated.url) {
+          this.clearCachedSource(prevUrl)
+          this.clearCachedSource(updated.url)
+        }
+      } else {
+        this.sources.push(updated)
+      }
+      return updated
+    } catch (error: any) {
+      if (error.response?.status === 403) {
+        throw new Error(
+          error.response?.data?.error || '需要管理员权限或无法修改官方商店 URL',
+        )
+      }
+      if (error.response?.status === 404) {
+        throw new Error('商店源不存在')
+      }
+      if (error.response?.status === 409) {
+        throw new Error('该商店源 URL 已存在')
+      }
+      if (error.response?.status === 400) {
+        throw new Error(error.response?.data?.error || '无效的商店源')
+      }
+      throw new Error(error.message || '更新商店源失败')
+    }
+  }
+
   /** 刷新商店源列表（从 API 重新加载） */
   async refreshSources(): Promise<void> {
     this.sourcesLoaded = false
@@ -434,6 +513,13 @@ class RemoteStoreServiceImpl {
         throw new Error('无效的商店索引格式')
       }
 
+      data.apps = data.apps.map((app) => ({
+        ...app,
+        preview: parseStorePreview(
+          (app as RemoteApp & { preview?: unknown }).preview,
+        ),
+      }))
+
       // 更新内存缓存
       this.cache.set(cacheKey, {
         data,
@@ -455,41 +541,67 @@ class RemoteStoreServiceImpl {
 
   /** 获取所有启用商店的应用列表 */
   async fetchAllApps(forceRefresh = false): Promise<{
-    apps: Array<RemoteApp & { sourceUrl: string; sourceName: string }>
+    apps: Array<
+      RemoteApp & {
+        sourceUrl: string
+        sourceName: string
+        sourceBaseUrl: string
+        sourceOfficial?: boolean
+      }
+    >
     sources: Array<{ source: RemoteStoreSource; error?: string }>
   }> {
     const enabledSources = await this.getEnabledSources()
-    const results: Array<{
-      source: RemoteStoreSource
-      index?: RemoteStoreIndex
-      error?: string
-    }> = []
+    const prioritizedSources = enabledSources
+      .map((source, configuredIndex) => ({ source, configuredIndex }))
+      .sort((a, b) => {
+        const officialRank =
+          Number(Boolean(b.source.official)) -
+          Number(Boolean(a.source.official))
+        return officialRank || a.configuredIndex - b.configuredIndex
+      })
+      .map(({ source }) => source)
 
-    // 并行获取所有商店数据
-    await Promise.all(
-      enabledSources.map(async (source) => {
+    // 并行获取，但保持显式源优先级；不能让网络返回顺序决定同 id 应用的来源。
+    const results = await Promise.all(
+      prioritizedSources.map(async (source) => {
         try {
           const index = await this.fetchStoreIndex(source, forceRefresh)
-          results.push({ source, index })
+          return { source, index }
         } catch (error) {
-          results.push({
+          return {
             source,
             error: error instanceof Error ? error.message : '未知错误',
-          })
+          }
         }
       }),
     )
 
-    // 合并应用列表
-    const apps: Array<RemoteApp & { sourceUrl: string; sourceName: string }> =
-      []
+    // 多源同 id：官方源优先；其余按配置顺序优先。同一 id 只产生一个安装来源。
+    const apps: Array<
+      RemoteApp & {
+        sourceUrl: string
+        sourceName: string
+        sourceBaseUrl: string
+        sourceOfficial?: boolean
+      }
+    > = []
+    const seenIds = new Set<string>()
     for (const result of results) {
       if (result.index) {
+        const sourceDirectory = new URL('.', result.source.url).toString()
+        const sourceBaseUrl = result.index.base_url
+          ? new URL(result.index.base_url, sourceDirectory).toString()
+          : sourceDirectory
         for (const app of result.index.apps) {
+          if (!app?.id || seenIds.has(app.id)) continue
+          seenIds.add(app.id)
           apps.push({
             ...app,
             sourceUrl: result.source.url,
             sourceName: result.source.name,
+            sourceBaseUrl,
+            sourceOfficial: Boolean(result.source.official),
           })
         }
       }
@@ -623,6 +735,59 @@ class RemoteStoreServiceImpl {
 
     const code = await response.text()
     return code
+  }
+
+  /**
+   * Static resources for store detail / featured previews.
+   *
+   * Prefer catalog `preview` (type: snapshot) paths. If none, fall back to
+   * `download.page_template` (+ page styles). Never re-renders local installed
+   * package HTML — that path produced empty white shells after sanitization.
+   */
+  async downloadAppPreview(
+    app: RemoteApp,
+    baseUrl: string,
+  ): Promise<{ html?: string; css?: string }> {
+    const sessionId = this.newStoreDownloadSessionId()
+    const downloadText = async (path?: string): Promise<string | undefined> => {
+      if (!path) return undefined
+      const response = await fetch(
+        this.storeFetchUrl(path, baseUrl, sessionId),
+        this.storeResourceFetchInit(),
+      )
+      if (!response.ok) return undefined
+      const text = await response.text()
+      return text.slice(0, 512 * 1024)
+    }
+
+    // 1. Explicit merchandising snapshot
+    if (app.preview?.html) {
+      const [html, ...styles] = await Promise.all([
+        downloadText(app.preview.html),
+        ...app.preview.styles.map((path) => downloadText(path)),
+      ])
+      return {
+        html,
+        css: styles.filter(Boolean).join('\n') || undefined,
+      }
+    }
+
+    // 2. Catalog page_template (static shell only — not local install resources)
+    const htmlPath = app.download.page_template
+    if (!htmlPath) return {}
+
+    const stylePaths = [app.download.styles, app.download.page_styles].filter(
+      (path): path is string => Boolean(path),
+    )
+    const [html, ...styles] = await Promise.all([
+      downloadText(htmlPath),
+      ...stylePaths.map((path) => downloadText(path)),
+    ])
+
+    return {
+      html,
+      css: styles.filter(Boolean).join('\n') || undefined,
+    }
   }
 
   /**
@@ -846,8 +1011,9 @@ class RemoteStoreServiceImpl {
         }
       }
       await Promise.all(
-        Array.from({ length: Math.min(concurrency, Math.max(1, totalPm)) }, () =>
-          worker(),
+        Array.from(
+          { length: Math.min(concurrency, Math.max(1, totalPm)) },
+          () => worker(),
         ),
       )
       // Manifest may declare pageModules; store index map must cover them all

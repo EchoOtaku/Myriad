@@ -56,6 +56,13 @@ pub fn create_agent_routes(
             "/mcp/status",
             get(mcp_status).route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
         )
+        // MCP 配置读写（admin UI 编辑 mcp_servers.json）
+        .route(
+            "/mcp/config",
+            get(mcp_get_config)
+                .put(mcp_put_config)
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
+        )
         // Agent 列表（需要认证）
         .route(
             "/agents",

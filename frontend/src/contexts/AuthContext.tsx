@@ -56,7 +56,8 @@ interface AuthContextType {
   user: User | null
   isLoading: boolean
   hasChecked: boolean
-  checkAuth: () => Promise<void>
+  /** Probe session; resolves true when authenticated after this probe. */
+  checkAuth: () => Promise<boolean>
   logout: () => void
 }
 
@@ -90,13 +91,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     TappRuntime.reset()
   }, [])
 
-  // Serialize concurrent checkAuth calls. Wait for any in-flight check, then
-  // always run a fresh /auth/me — login after page-load check must not no-op.
-  const checkAuthInflight = useRef<Promise<void> | null>(null)
+  // Serialize concurrent checkAuth: wait for in-flight, then always re-probe
+  // (login right after mount check must not no-op on a stale shared result).
+  const checkAuthInflight = useRef<Promise<boolean> | null>(null)
   /** Monotonic generation so a stale probe cannot clear a fresher login hint. */
   const checkAuthGeneration = useRef(0)
 
-  const checkAuth = useCallback(async () => {
+  const checkAuth = useCallback(async (): Promise<boolean> => {
     while (checkAuthInflight.current) {
       try {
         await checkAuthInflight.current
@@ -107,10 +108,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const generation = ++checkAuthGeneration.current
     setIsLoading(true)
-    // Holder so the async body can compare against the same Promise without
-    // TS "used before assigned" / ESLint prefer-const friction.
-    const inflight = { current: null as Promise<void> | null }
-    inflight.current = (async () => {
+    const inflight = { current: null as Promise<boolean> | null }
+    inflight.current = (async (): Promise<boolean> => {
       try {
         const response = await fetch(`${API_URL}/api/auth/me`, {
           credentials: 'include',
@@ -118,13 +117,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
 
         // Superseded by a newer checkAuth (e.g. login right after mount probe)
-        if (generation !== checkAuthGeneration.current) return
+        if (generation !== checkAuthGeneration.current) return false
 
         // Durable contract: guest/expired session → HTTP 200 + authenticated:false
         // (never 401). Parse body; do not treat status alone as "logged in".
         if (isAuthMeHttpOk(response.status)) {
           const parsed = parseAuthMeResponse(await response.json())
-          if (generation !== checkAuthGeneration.current) return
+          if (generation !== checkAuthGeneration.current) return false
           if (parsed.authenticated) {
             const u = parsed.user
             setSessionHint()
@@ -166,14 +165,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             })
             setIsAuthenticated(true)
             setIsAdmin(u.is_admin || false)
-            return
+            return true
           }
           // Definitive guest body — only then drop the session hint
           clearSessionHint()
           setUser(null)
           setIsAuthenticated(false)
           setIsAdmin(false)
-          return
+          return false
         }
 
         // 5xx / unexpected: keep session hint so a post-login probe can recover
@@ -183,12 +182,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsAuthenticated(false)
           setIsAdmin(false)
         }
+        // 5xx: unauthenticated for this probe (hint may remain for later recover)
+        return false
       } catch (_error) {
-        // Network/timeout: do NOT clear session hint (login race / blip)
-        if (generation !== checkAuthGeneration.current) return
+        // Network/timeout: keep session hint, but do not claim authenticated.
+        if (generation !== checkAuthGeneration.current) return false
         setUser(null)
         setIsAuthenticated(false)
         setIsAdmin(false)
+        return false
       } finally {
         if (generation === checkAuthGeneration.current) {
           setIsLoading(false)
@@ -200,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })()
     checkAuthInflight.current = inflight.current
-    await inflight.current
+    return await inflight.current
   }, [])
 
   const logout = useCallback(() => {

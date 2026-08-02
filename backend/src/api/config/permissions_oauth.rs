@@ -284,7 +284,7 @@ pub async fn update_permissions(
 // ============================================================================
 // PR #6: OAuth Providers + 本地注册开关 — 专用端点
 // ============================================================================
-// 详见 docs/oauth-refactor-plan.md §5、§7
+// 详见 docs/development/OAUTH.md
 //
 // GitHub 可以作为 kind="github" 的 provider entry 配置；旧的
 // github_client_id/github_client_secret 字段保留为兼容镜像。

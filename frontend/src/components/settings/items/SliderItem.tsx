@@ -15,6 +15,8 @@
 import type { SliderSettingConfig } from '../types'
 import React, { useCallback, useMemo, useState } from 'react'
 import { guideDomProps } from '../guides/guideAnchor'
+import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
+import { SettingFieldErrorTag } from '../SettingFieldErrorTag'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import './SettingItem.css'
 
@@ -212,6 +214,15 @@ export const SliderItem = React.memo<SliderItemProps>(
             {label}
             {required && <span className="required">*</span>}
             <SettingTitleGuideEntry title={label} guide={guide} />
+            <SettingDefaultChangeTag
+              fieldKey={itemKey}
+              onApply={(next) => {
+                if (disabled || loading) return
+                const n = Number(next)
+                if (!Number.isNaN(n)) onChange(n)
+              }}
+            />
+            <SettingFieldErrorTag>{error}</SettingFieldErrorTag>
           </span>
           {description && layout === 'vertical' && (
             <span className="setting-description">{description}</span>
@@ -365,7 +376,6 @@ export const SliderItem = React.memo<SliderItemProps>(
             </div>
           </div>
 
-          {error && <p className="setting-error">{error}</p>}
           {hint && !error && <p className="setting-hint">{hint}</p>}
         </div>
       </div>

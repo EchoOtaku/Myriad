@@ -1,6 +1,6 @@
 //! OAuth Provider 抽象层
 //!
-//! 详见 docs/oauth-refactor-plan.md
+//! 详见 docs/development/OAUTH.md
 //!
 //! 通过 [`OAuthProvider`] trait 抽象不同 provider（GitHub / 通用 OIDC / ...），
 //! 通用 handler 通过 [`ProviderRegistry`] 按 slug 路由。

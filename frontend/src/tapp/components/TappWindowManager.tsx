@@ -36,6 +36,12 @@ import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 // CSRF 防护
 import { getCSRFToken } from '../../utils/csrf'
 import { getUIConfigDeduped } from '../../utils/requestDedup'
+import {
+  HOST_PANEL_STORE_ID,
+  isHostPanelId,
+  isStoreHostPanel,
+} from '../constants/hostPanels'
+import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { useWindowAgentHandler } from '../hooks/useWindowAgentHandler'
 import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
@@ -43,19 +49,26 @@ import { TappPageSandbox } from '../runtime/TappPageSandbox'
 import { resolveManifestText } from '../utils/manifestLocale'
 import { getTappIconStyle } from '../utils/tappColors'
 import { TappIcon } from './TappIcon'
+import { TappIconBadge } from './TappIconBadge'
+import { TappStore } from './TappStore'
 import './TappWindowManager.css'
 
 const API_URL = CONFIG_API_URL
+
+/** 窗口种类：真实沙箱 Tapp 或宿主 React 面板 */
+export type TappWindowKind = 'tapp' | 'host'
 
 /** 窗口状态 */
 export interface TappWindow {
   /** 唯一窗口ID */
   windowId: string
-  /** Tapp ID */
+  /** Tapp ID，或宿主面板 ID（如 myriad:host.store） */
   tappId: string
-  /** Tapp 实例 */
+  /** 窗口种类，默认 tapp */
+  kind: TappWindowKind
+  /** Tapp 实例（host 为 null） */
   tapp: TappInstance | null
-  /** Tapp 代码 */
+  /** Tapp 代码（host 为 null） */
   code: TappCodeStructure | null
   /** 加载状态 */
   loading: boolean
@@ -71,6 +84,9 @@ export interface TappWindow {
   zIndex: number
 }
 
+/** 商店宿主面板默认尺寸（比单应用窗口更宽） */
+const HOST_STORE_WINDOW_SIZE = { width: 720, height: 640 }
+
 /** 窗口管理器 Props */
 export interface TappWindowManagerProps {
   /** 初始 Tapp ID */
@@ -80,7 +96,7 @@ export interface TappWindowManagerProps {
 }
 
 /** 最大窗口数量 */
-const MAX_WINDOWS = 3
+const MAX_WINDOWS = 5
 
 /** 默认窗口尺寸（移动端竖屏比例） */
 const DEFAULT_WINDOW_SIZE = { width: 400, height: 600 }
@@ -170,9 +186,12 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
     const { t, locale } = useI18n()
     const animConfig = useAnimationLevel()
     const noAnimation = isExlight(animConfig)
-    const windowTappName = window.tapp
-      ? resolveManifestText(window.tapp.manifest, locale).name
-      : ''
+    const isStorePanel = isStoreHostPanel(window.tappId)
+    const windowTappName = isStorePanel
+      ? t.tapp.storeTitle
+      : window.tapp
+        ? resolveManifestText(window.tapp.manifest, locale).name
+        : ''
 
     const windowRef = useRef<HTMLDivElement>(null)
     const [isDragging, setIsDragging] = useState(false)
@@ -211,11 +230,11 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
       window.size.height,
     ])
 
-    // 缓存图标样式计算
-    const iconStyle = useMemo(
-      () => (window.tapp ? getTappIconStyle(window.tapp.manifest) : null),
-      [window.tapp],
-    )
+    // 缓存图标样式计算（宿主商店用固定 token）
+    const iconStyle = useMemo(() => {
+      if (isStoreHostPanel(window.tappId)) return null
+      return window.tapp ? getTappIconStyle(window.tapp.manifest) : null
+    }, [window.tapp, window.tappId])
 
     // 拖拽处理 - 支持鼠标和触摸
     const handleDragStart = useCallback(
@@ -431,14 +450,18 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
     // 缓存标题栏样式（exlight：不透明底，避免关 blur 后仍透壁纸）
     const headerStyle = useMemo(
       () => ({
-        backgroundColor: noAnimation
-          ? 'var(--bg-secondary)'
-          : 'color-mix(in srgb, var(--bg-secondary) 85%, transparent)',
-        borderBottom: '1px solid var(--border-color)',
+        ...(isStorePanel
+          ? {}
+          : {
+              backgroundColor: noAnimation
+                ? 'var(--bg-secondary)'
+                : 'color-mix(in srgb, var(--bg-secondary) 85%, transparent)',
+            }),
+        borderBottom: `1px solid ${isStorePanel ? 'var(--surface-border)' : 'var(--border-color)'}`,
         opacity: isActive ? 1 : 0.7,
         transition: 'opacity 0.2s ease',
       }),
-      [isActive, noAnimation],
+      [isActive, isStorePanel, noAnimation],
     )
 
     // 缓存窗口点击处理函数
@@ -455,46 +478,22 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
       [onClose, window.windowId],
     )
 
-    // 调整大小的手柄 - 使用 useMemo 缓存避免每次渲染创建新数组
+    // 调整大小的手柄：命中区样式在 TappWindowManager.css（比 4px 边框更易抓取）
     const resizeHandles = useMemo(
-      () => [
-        {
-          direction: 'n',
-          className: 'top-0 left-2 right-2 h-1 cursor-n-resize',
-        },
-        {
-          direction: 's',
-          className: 'bottom-0 left-2 right-2 h-1 cursor-s-resize',
-        },
-        {
-          direction: 'e',
-          className: 'right-0 top-2 bottom-2 w-1 cursor-e-resize',
-        },
-        {
-          direction: 'w',
-          className: 'left-0 top-2 bottom-2 w-1 cursor-w-resize',
-        },
-        {
-          direction: 'ne',
-          className: 'top-0 right-0 w-3 h-3 cursor-ne-resize',
-        },
-        { direction: 'nw', className: 'top-0 left-0 w-3 h-3 cursor-nw-resize' },
-        {
-          direction: 'se',
-          className: 'bottom-0 right-0 w-3 h-3 cursor-se-resize',
-        },
-        {
-          direction: 'sw',
-          className: 'bottom-0 left-0 w-3 h-3 cursor-sw-resize',
-        },
-      ],
+      () =>
+        (['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const).map(
+          (direction) => ({
+            direction,
+            className: `tapp-window-resize-handle tapp-window-resize-${direction}`,
+          }),
+        ),
       [],
     )
 
     return (
       <div
         ref={windowRef}
-        className="absolute flex flex-col overflow-hidden rounded-xl"
+        className="absolute flex flex-col overflow-visible rounded-xl"
         style={{
           top: 0,
           left: 0,
@@ -505,7 +504,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
       >
         {/* 窗口标题栏 - 可拖拽（支持鼠标和触摸） */}
         <div
-          className={`flex items-center justify-between px-3 h-10 shrink-0 select-none backdrop-blur-sm ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={`flex items-center justify-between px-3 h-10 shrink-0 select-none rounded-t-xl ${isStorePanel ? 'glass glass-chrome-free' : 'backdrop-blur-sm'} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
           style={headerStyle}
           onMouseDown={handleDragStart}
           onTouchStart={handleDragStart}
@@ -533,20 +532,35 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
                   {t.tapp.loadAppFailed}
                 </span>
               </div>
-            ) : window.tapp && iconStyle ? (
+            ) : isStorePanel ? (
               <div className="flex items-center gap-2 min-w-0">
-                <div
-                  className={`w-6 h-6 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold shrink-0`}
-                  style={iconStyle.style}
-                >
+                <div className="flex items-center justify-center shrink-0">
                   <TappIcon
-                    icon={window.tapp.manifest.icon}
-                    iconSvg={window.tapp.manifest.iconSvg}
+                    icon={TAPP_ICON_TOKENS.store}
                     name={windowTappName}
-                    sizeClass="w-3 h-3"
+                    sizeClass="w-4 h-4"
                     textSizeClass="text-xs"
                   />
                 </div>
+                <span
+                  className="text-xs font-medium truncate"
+                  style={{ color: 'var(--text-primary)' }}
+                >
+                  {windowTappName}
+                </span>
+              </div>
+            ) : window.tapp && iconStyle ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <TappIconBadge
+                  icon={window.tapp.manifest.icon}
+                  iconSvg={window.tapp.manifest.iconSvg}
+                  name={windowTappName}
+                  iconStyle={iconStyle}
+                  shellClassName="w-6 h-6 rounded-lg"
+                  glyphSizeClass="w-3 h-3"
+                  glyphTextClass="text-xs"
+                  shine={false}
+                />
                 <span
                   className="text-xs font-medium truncate"
                   style={{ color: 'var(--text-primary)' }}
@@ -577,10 +591,12 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
           </div>
         </div>
 
-        {/* 窗口内容 */}
+        {/* 窗口内容（圆角 + 裁剪在此层，外层 overflow-visible 以便缩放命中区伸出边框） */}
         <div
-          className="flex-1 overflow-hidden relative"
-          style={{ backgroundColor: 'var(--bg-primary)' }}
+          className="flex-1 overflow-hidden relative rounded-b-xl"
+          style={{
+            backgroundColor: isStorePanel ? 'transparent' : 'var(--bg-primary)',
+          }}
         >
           {/* 交互时显示遮罩层，防止 iframe 捕获事件并避免重绘 */}
           {isInteracting && (
@@ -602,6 +618,15 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
                 </p>
               </div>
             </div>
+          ) : isStorePanel ? (
+            <div
+              data-window-id={window.windowId}
+              data-tapp-id={window.tappId}
+              data-host-panel="store"
+              className="tapp-store-frame--wallpaper absolute inset-0"
+            >
+              <TappStore className="h-full" embeddedChrome compact />
+            </div>
           ) : window.tapp && window.code ? (
             <div
               data-window-id={window.windowId}
@@ -617,20 +642,13 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
           ) : null}
         </div>
 
-        {/* 调整大小的手柄（支持鼠标和触摸） */}
+        {/* 调整大小的手柄（支持鼠标和触摸；命中区见 CSS） */}
         {resizeHandles.map(({ direction, className }) => (
           <div
             key={direction}
-            className={`absolute ${className} z-10`}
+            className={className}
             onMouseDown={(e) => handleResizeStart(e, direction)}
             onTouchStart={(e) => handleResizeStart(e, direction)}
-            onMouseEnter={(e) => {
-              ;(e.target as HTMLElement).style.backgroundColor =
-                'color-mix(in srgb, var(--color-primary) 30%, transparent)'
-            }}
-            onMouseLeave={(e) => {
-              ;(e.target as HTMLElement).style.backgroundColor = 'transparent'
-            }}
           />
         ))}
       </div>
@@ -640,6 +658,8 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
     // 自定义比较函数，只在关键属性变化时重新渲染
     return (
       prevProps.window.windowId === nextProps.window.windowId &&
+      prevProps.window.kind === nextProps.window.kind &&
+      prevProps.window.tappId === nextProps.window.tappId &&
       prevProps.window.position.x === nextProps.window.position.x &&
       prevProps.window.position.y === nextProps.window.position.y &&
       prevProps.window.size.width === nextProps.window.size.width &&
@@ -786,14 +806,15 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   }, [runtime])
 
   // 更新已打开的多窗口实例。资源缓存代际已在 runtime 事件发出前提升，所有同 ID
-  // 窗口共享一次重新加载，然后各自重建沙箱。
+  // 窗口共享一次重新加载，然后各自重建沙箱。宿主面板跳过。
   useEffect(() => {
     let cancelled = false
     const unsubscribe = runtime.on('tapp:updated', (data) => {
       const tappId = (data as { id: string }).id
+      if (isHostPanelId(tappId)) return
       setWindows((prev) =>
         prev.map((item) =>
-          item.tappId === tappId
+          item.kind === 'tapp' && item.tappId === tappId
             ? { ...item, loading: true, error: null, tapp: null, code: null }
             : item,
         ),
@@ -848,7 +869,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     }
   }, [initialTappId])
 
-  // 打开新的 Tapp 窗口（opts.size/position from Agent open_window when provided）
+  // 打开新的 Tapp / 宿主面板窗口（opts.size/position from Agent open_window when provided）
   const openTappWindow = useCallback(
     async (
       tappId: string,
@@ -862,37 +883,90 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         return
       }
 
+      const isHost = isHostPanelId(tappId)
+      // 商店宿主面板：已打开则聚焦，避免重复占用窗口位
+      if (isHost && isStoreHostPanel(tappId)) {
+        const existing = windows.find(
+          (w) => w.kind === 'host' && isStoreHostPanel(w.tappId),
+        )
+        if (existing) {
+          setActiveWindowId(existing.windowId)
+          setWindows((prev) =>
+            prev.map((w) =>
+              w.windowId === existing.windowId
+                ? { ...w, zIndex: nextZIndex }
+                : w,
+            ),
+          )
+          setNextZIndex((prev) => prev + 1)
+          setShowTappSelector(false)
+          return
+        }
+      }
+
       const windowId = generateWindowId()
       const basePos = getInitialPosition(windows.length)
       const position = {
         x:
-          typeof opts?.position?.x === 'number' && Number.isFinite(opts.position.x)
+          typeof opts?.position?.x === 'number' &&
+          Number.isFinite(opts.position.x)
             ? opts.position.x
             : basePos.x,
         y:
-          typeof opts?.position?.y === 'number' && Number.isFinite(opts.position.y)
+          typeof opts?.position?.y === 'number' &&
+          Number.isFinite(opts.position.y)
             ? opts.position.y
             : basePos.y,
       }
+      const defaultSize = isStoreHostPanel(tappId)
+        ? HOST_STORE_WINDOW_SIZE
+        : DEFAULT_WINDOW_SIZE
       const size = {
         width:
           typeof opts?.size?.width === 'number' &&
           Number.isFinite(opts.size.width) &&
           opts.size.width > 0
             ? opts.size.width
-            : DEFAULT_WINDOW_SIZE.width,
+            : defaultSize.width,
         height:
           typeof opts?.size?.height === 'number' &&
           Number.isFinite(opts.size.height) &&
           opts.size.height > 0
             ? opts.size.height
-            : DEFAULT_WINDOW_SIZE.height,
+            : defaultSize.height,
+      }
+
+      // 宿主面板：无需沙箱加载，直接就绪
+      if (isHost) {
+        if (!isStoreHostPanel(tappId)) {
+          console.warn('[TappWindowManager] Unknown host panel:', tappId)
+          return
+        }
+        const hostWindow: TappWindow = {
+          windowId,
+          tappId,
+          kind: 'host',
+          tapp: null,
+          code: null,
+          loading: false,
+          error: null,
+          position,
+          size,
+          isMaximized: false,
+          zIndex: nextZIndex,
+        }
+        setWindows((prev) => [...prev, hostWindow])
+        setActiveWindowId(windowId)
+        setNextZIndex((prev) => prev + 1)
+        setShowTappSelector(false)
+        return
       }
 
       // 创建初始窗口状态
       const newWindow: TappWindow = {
         windowId,
         tappId,
+        kind: 'tapp',
         tapp: null,
         code: null,
         loading: true,
@@ -962,13 +1036,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         )
       }
     },
-    [
-      windows.length,
-      nextZIndex,
-      runtime,
-      t.tapp.appNotExist,
-      t.tapp.loadAppFailed,
-    ],
+    [windows, nextZIndex, runtime, t.tapp.appNotExist, t.tapp.loadAppFailed],
   )
 
   // 关闭窗口（不触发暂停应用逻辑，应用继续在后台运行）
@@ -1074,7 +1142,8 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     setIsSaving(true)
 
     const schemeWindows: WindowSchemeItem[] = windows
-      .filter((w) => w.tapp) // 只保存已加载的窗口
+      // 已加载的 Tapp，或就绪的宿主面板
+      .filter((w) => w.kind === 'host' || !!w.tapp)
       .map((w) => ({
         tappId: w.tappId,
         position: { ...w.position },
@@ -1127,14 +1196,20 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
       for (let i = 0; i < scheme.windows.length && i < MAX_WINDOWS; i++) {
         const schemeWindow = scheme.windows[i]
         const windowId = generateWindowId()
+        const isHost = isHostPanelId(schemeWindow.tappId)
 
         newWindows.push({
           windowId,
           tappId: schemeWindow.tappId,
+          kind: isHost ? 'host' : 'tapp',
           tapp: null,
           code: null,
-          loading: true,
-          error: null,
+          // 宿主面板无需异步加载
+          loading: !isHost,
+          error:
+            isHost && !isStoreHostPanel(schemeWindow.tappId)
+              ? t.tapp.appNotExist
+              : null,
           position: { ...schemeWindow.position },
           size: { ...schemeWindow.size },
           isMaximized: false,
@@ -1149,10 +1224,12 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         setNextZIndex(baseZIndex + newWindows.length)
       }
 
-      // 5. 异步加载所有 Tapp 的资源
+      // 5. 异步加载所有真实 Tapp 的资源（跳过宿主面板）
       await runtime.waitForSync()
 
       for (const newWindow of newWindows) {
+        if (newWindow.kind === 'host') continue
+
         const { windowId, tappId } = newWindow
 
         try {
@@ -1542,16 +1619,60 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                   </motion.button>
                 </div>
 
-                {/* 应用列表 - 网格布局 */}
+                {/* 应用列表 - 网格布局（首项为商店宿主面板） */}
                 <div className="p-4 overflow-y-auto max-h-[calc(70vh-80px)]">
                   {selectableTapps.length === 0 ? (
                     <div className="text-center py-8">
                       <p style={{ color: 'var(--text-muted)' }}>
                         {t.tapp.noAvailableApps}
                       </p>
+                      {/* 仍可打开商店宿主面板 */}
+                      <motion.button
+                        onClick={() => openTappWindow(HOST_PANEL_STORE_ID)}
+                        className={`mt-4 mx-auto flex flex-col items-center gap-2 p-3 rounded-xl transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
+                        style={WINDOW_CONTROL_HOVER_STYLE}
+                        whileTap={{ scale: 0.95 }}
+                        title={t.tapp.storeTitle}
+                      >
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-black/5 dark:bg-white/10">
+                          <TappIcon
+                            icon={TAPP_ICON_TOKENS.store}
+                            name={t.tapp.storeTitle}
+                            sizeClass="w-6 h-6"
+                          />
+                        </div>
+                        <span
+                          className="text-xs text-center w-full truncate"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          {t.tapp.storeTitle}
+                        </span>
+                      </motion.button>
                     </div>
                   ) : (
                     <div className="grid grid-cols-4 gap-3">
+                      <motion.button
+                        key={HOST_PANEL_STORE_ID}
+                        onClick={() => openTappWindow(HOST_PANEL_STORE_ID)}
+                        className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
+                        style={WINDOW_CONTROL_HOVER_STYLE}
+                        whileTap={{ scale: 0.95 }}
+                        title={t.tapp.storeTitle}
+                      >
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-black/5 dark:bg-white/10">
+                          <TappIcon
+                            icon={TAPP_ICON_TOKENS.store}
+                            name={t.tapp.storeTitle}
+                            sizeClass="w-6 h-6"
+                          />
+                        </div>
+                        <span
+                          className="text-xs text-center w-full truncate"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
+                          {t.tapp.store}
+                        </span>
+                      </motion.button>
                       {selectableTapps.map((tapp) => {
                         const style = getTappIconStyle(tapp.manifest)
                         const text = resolveManifestText(tapp.manifest, locale)
@@ -1564,20 +1685,16 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                             whileTap={{ scale: 0.95 }}
                             title={text.description}
                           >
-                            {style && (
-                              <div
-                                className={`w-12 h-12 rounded-xl ${style.className} flex items-center justify-center text-white font-bold`}
-                                style={style.style}
-                              >
-                                <TappIcon
-                                  icon={tapp.manifest.icon}
-                                  iconSvg={tapp.manifest.iconSvg}
-                                  name={text.name}
-                                  sizeClass="w-6 h-6"
-                                  textSizeClass="text-lg"
-                                />
-                              </div>
-                            )}
+                            <TappIconBadge
+                              icon={tapp.manifest.icon}
+                              iconSvg={tapp.manifest.iconSvg}
+                              name={text.name}
+                              iconStyle={style}
+                              shellClassName="w-12 h-12 rounded-xl"
+                              glyphSizeClass="w-6 h-6"
+                              glyphTextClass="text-lg"
+                              shine={false}
+                            />
                             <span
                               className="text-xs text-center w-full truncate"
                               style={{ color: 'var(--text-primary)' }}

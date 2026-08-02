@@ -5,6 +5,7 @@
  * - 检测 mouse/touch 长按事件
  * - 超过阈值后触发回调
  * - 移动超过 10px 自动取消
+ * - 只认主键（左键 / 触控）；右键 / 中键不触发，避免抢系统菜单
  * - 自动排除交互元素
  */
 
@@ -46,6 +47,8 @@ export function useLongPress(
   const start = useCallback(
     (e: MouseEvent | TouchEvent) => {
       if (!enabled) return
+      // MouseEvent only: primary button (0). Right/middle must not open agent.
+      if ('button' in e && e.button !== 0) return
       const target = e.target as HTMLElement
       if (target.closest(EXCLUDED_SELECTORS)) return
 
@@ -82,6 +85,8 @@ export function useLongPress(
     const handleUp = () => cancel()
     const handleMouseMove = (e: MouseEvent) => checkMovement(e)
     const handleTouchMove = (e: TouchEvent) => checkMovement(e)
+    // Safety net: context menu (right-click / ctrl-click) always aborts
+    const handleContextMenu = () => cancel()
 
     document.addEventListener('mousedown', handleMouseDown)
     document.addEventListener('touchstart', handleTouchStart, {
@@ -91,6 +96,7 @@ export function useLongPress(
     document.addEventListener('touchend', handleUp)
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('touchmove', handleTouchMove, { passive: true })
+    document.addEventListener('contextmenu', handleContextMenu)
 
     return () => {
       document.removeEventListener('mousedown', handleMouseDown)
@@ -99,6 +105,7 @@ export function useLongPress(
       document.removeEventListener('touchend', handleUp)
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('touchmove', handleTouchMove)
+      document.removeEventListener('contextmenu', handleContextMenu)
       cancel()
     }
   }, [start, cancel, checkMovement])

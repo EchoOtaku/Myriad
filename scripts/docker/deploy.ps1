@@ -41,14 +41,10 @@ Commands:
   logs      docker compose logs -f
   status    docker compose ps + image versions
   doctor    Read-only topology / security checks (docker-guard, sock mounts, cosign)
-            Optional: doctor --host  (non-fatal privileged / docker.sock scan)
+            Optional: doctor --host    (non-fatal privileged / docker.sock scan)
+                      doctor --events  (stream container create/start; Ctrl-C)
   upgrade   Pull images pinned by .env tags + recreate
   help      Show this help
-
-Notes:
-  - Optional host audit script tip:
-      bash scripts/security/docker-audit-example.sh scan
-  - Or: .\deploy.ps1 doctor --host
 
 Examples:
   .\deploy.ps1                 # Bootstrap + start
@@ -56,6 +52,7 @@ Examples:
   .\deploy.ps1 status          # See running versions
   .\deploy.ps1 doctor          # Topology security checks
   .\deploy.ps1 doctor --host   # + non-fatal host privilege scan
+  .\deploy.ps1 doctor --events # Watch container create/start
 "@ | Write-Host
 }
 
@@ -144,9 +141,9 @@ function Ensure-Env {
 function Ensure-CurrentLayout {
     Write-Info "==> Ensuring current proxy + updater layout"
     New-Item -ItemType Directory -Force -Path pgdata, state, state/snapshots, state/cache, backups | Out-Null
-    Ensure-Key "MYRIAD_TAG" "v0.3.21"
-    Ensure-Key "PROXY_TAG" "v0.3.21"
-    Ensure-Key "UPDATER_TAG" "v0.3.21"
+    Ensure-Key "MYRIAD_TAG" "v0.3.22"
+    Ensure-Key "PROXY_TAG" "v0.3.22"
+    Ensure-Key "UPDATER_TAG" "v0.3.22"
     Ensure-Key "BACKEND_IMAGE" "docker.io/somekawahitomi/myriad-backend"
     Ensure-Key "FRONTEND_IMAGE" "docker.io/somekawahitomi/myriad-frontend"
     Ensure-Key "COMPOSE_PROJECT_NAME" "myriad"
@@ -299,12 +296,25 @@ function Test-EnvTruthy([string]$Key) {
 
 # Read-only topology checks. Does not migrate or restart services.
 # Returns $true on pass, $false on fail. Use -Soft to avoid exit (for post-up check).
-# Use -HostScan (or remaining arg --host) for non-fatal privileged/sock scan.
+# Use -HostScan / --host for non-fatal privileged/sock scan.
+# Use -Events / --events to stream container create/start (skips topology).
 function Cmd-Doctor {
     param(
         [switch]$Soft,
-        [switch]$HostScan
+        [switch]$HostScan,
+        [switch]$Events
     )
+    if ($Events) {
+        Write-Info "==> Streaming docker events (container create/start) — Ctrl-C to stop"
+        Write-Info "    Follow up with inspect if you see unexpected Privileged=true or docker.sock binds"
+        Write-Info "    Expected sock holder: myriad-docker-guard only"
+        docker events `
+            --filter 'type=container' `
+            --filter 'event=create' `
+            --filter 'event=start' `
+            --format '{{.Time}} {{.Action}} {{.Actor.Attributes.name}} image={{.Actor.Attributes.image}}'
+        return $true
+    }
     $fail = 0
     $skip = 0
     $adminNet = Get-EnvValue "MYRIAD_ADMIN_NETWORK"
@@ -541,14 +551,9 @@ function Cmd-Doctor {
     }
 
     Write-Host ""
-    Write-Info "Optional host audit tip:"
-    if (Test-Path "scripts/security/docker-audit-example.sh") {
-        Write-Info "  path: scripts/security/docker-audit-example.sh"
-        Write-Info "  run:  bash scripts/security/docker-audit-example.sh scan"
-        Write-Info "  or:   .\deploy.ps1 doctor --host   (non-fatal privileged / docker.sock scan)"
-    } else {
-        Write-Info "  scripts/security/docker-audit-example.sh not present in this tree"
-    }
+    Write-Info "Optional host checks:"
+    Write-Info "  .\deploy.ps1 doctor --host     # non-fatal privileged / docker.sock scan"
+    Write-Info "  .\deploy.ps1 doctor --events   # stream container create/start (Ctrl-C)"
 
     if ($HostScan) {
         Write-Host ""
@@ -619,9 +624,13 @@ function Cmd-Upgrade {
 }
 
 $hostScan = $false
+$eventsOnly = $false
 foreach ($a in @($Rest)) {
     if ($a -eq "--host" -or $a -eq "-Host" -or $a -eq "-host") {
         $hostScan = $true
+    }
+    if ($a -eq "--events" -or $a -eq "-Events" -or $a -eq "-events") {
+        $eventsOnly = $true
     }
 }
 
@@ -633,7 +642,7 @@ switch ($Command.ToLower()) {
     "logs"    { Cmd-Logs }
     "status"  { Cmd-Status }
     "doctor"  {
-        if (-not (Cmd-Doctor -HostScan:$hostScan)) { exit 1 }
+        if (-not (Cmd-Doctor -HostScan:$hostScan -Events:$eventsOnly)) { exit 1 }
     }
     "upgrade" { Cmd-Upgrade }
     "help"    { Show-Usage }

@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
+  getNeteaseAudioUrlImmediate,
   getNeteasePlayUrl,
   getNeteaseProxyAudioUrl,
   getNeteaseProxyFallbackUrl,
@@ -51,5 +52,13 @@ describe('netease play-url / proxy fallback (plan B+C)', () => {
       url: 'https://example/qq',
     }
     assert.equal(getNeteaseProxyFallbackUrl(qq), null)
+  })
+
+  it('getNeteaseAudioUrlImmediate is sync and returns a playable path', () => {
+    const id = '4242'
+    const url = getNeteaseAudioUrlImmediate(id)
+    assert.equal(typeof url, 'string')
+    assert.match(url, /netease/)
+    assert.match(url, new RegExp(id))
   })
 })

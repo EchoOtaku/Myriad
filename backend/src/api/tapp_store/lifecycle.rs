@@ -24,6 +24,7 @@ use crate::services::tapp_lifecycle::{
     clamp_recent_limit, recent_tapp_item, resolve_start_outcome, resolve_stop_outcome,
     RecentTappItem, StartOutcome, StopOutcome,
 };
+use crate::services::tapp_ownership::public_install_visible_to_viewer;
 use crate::error::HttpError;
 use myriad_error::AppError;
 
@@ -58,12 +59,16 @@ pub(super) async fn start_tapp(
     };
 
     let public_tapp = if let Some(admin_id) = admin_id {
-        tapps::Entity::find()
+        let row = tapps::Entity::find()
             .filter(tapps::Column::UserId.eq(admin_id))
             .filter(tapps::Column::TappId.eq(&tapp_id))
             .one(&db)
             .await
-            .map_err(|_| HttpError(AppError::internal("Database error")))?
+            .map_err(|_| HttpError(AppError::internal("Database error")))?;
+        // Admin-only public installs are invisible to non-admins (same as catalog).
+        row.filter(|tapp| {
+            public_install_visible_to_viewer(&tapp.visibility, is_current_admin)
+        })
     } else {
         None
     };
@@ -167,12 +172,15 @@ pub(super) async fn stop_tapp(
     };
 
     let public_tapp = if let Some(admin_id) = admin_id {
-        tapps::Entity::find()
+        let row = tapps::Entity::find()
             .filter(tapps::Column::UserId.eq(admin_id))
             .filter(tapps::Column::TappId.eq(&tapp_id))
             .one(&db)
             .await
-            .map_err(|_| HttpError(AppError::internal("Database error")))?
+            .map_err(|_| HttpError(AppError::internal("Database error")))?;
+        row.filter(|tapp| {
+            public_install_visible_to_viewer(&tapp.visibility, is_current_admin)
+        })
     } else {
         None
     };
@@ -273,10 +281,15 @@ pub(super) async fn get_recent_tapps(
         Vec::new()
     };
 
+    let is_admin = current_is_admin(&claims, &db).await;
+
     // 合并 Tapp 列表，建立 tapp_id -> tapp 映射（private wins for same id）
     let mut tapp_map: std::collections::HashMap<String, &tapps::Model> =
         std::collections::HashMap::new();
     for tapp in &admin_tapps {
+        if !public_install_visible_to_viewer(&tapp.visibility, is_admin) {
+            continue;
+        }
         tapp_map.insert(tapp.tapp_id.clone(), tapp);
     }
     for tapp in &user_tapps {

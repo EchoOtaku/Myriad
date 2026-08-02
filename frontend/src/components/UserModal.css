@@ -904,6 +904,7 @@ html.dark .user-modal-tapp-item:hover {
   border-radius: 0.5rem;
   font-size: 1rem;
   color: var(--color-primary, #64748b);
+  overflow: hidden;
 }
 
 html.dark .user-modal-tapp-icon {
@@ -913,6 +914,10 @@ html.dark .user-modal-tapp-icon {
     color-mix(in srgb, var(--color-secondary, #94a3b8) 20%, transparent) 100%
   );
   color: var(--color-accent, #cbd5e1);
+}
+
+.user-modal-tapp-icon.tapp-icon-badge--standalone {
+  background: transparent !important;
 }
 
 .user-modal-tapp-name {

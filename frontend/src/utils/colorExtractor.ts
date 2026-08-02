@@ -520,20 +520,67 @@ function analyzeImageColors(imageData: ImageData): ColorPalette {
 }
 
 /**
- * 从图片提取颜色（使用对象池优化）
+ * 代理 soft-fail / 损坏图：1×1 透明 PNG 等。
+ * 这类图 onload 成功但采样为空，会落成 DEFAULT 灰并被业务层丢弃。
  */
-async function extractFromImage(
+function isDegenerateImageSize(width: number, height: number): boolean {
+  return (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 2 ||
+    height <= 2
+  )
+}
+
+/**
+ * 从已解码像素分析；退化图直接抛错以便走 URL 回退 / 重试。
+ */
+function paletteFromRaster(
+  width: number,
+  height: number,
+  draw: (ctx: CanvasRenderingContext2D) => void,
+): ColorPalette {
+  if (isDegenerateImageSize(width, height)) {
+    throw new Error('Degenerate image (proxy placeholder or decode failure)')
+  }
+
+  const scale = Math.min(MAX_CANVAS_SIZE / width, MAX_CANVAS_SIZE / height, 1)
+  const w = Math.max(1, Math.floor(width * scale))
+  const h = Math.max(1, Math.floor(height * scale))
+
+  let imageData: ImageData
+  try {
+    imageData = withPooledCanvas(w, h, (ctx) => {
+      draw(ctx)
+      return ctx.getImageData(0, 0, w, h)
+    })
+  } catch (err) {
+    throw new Error(
+      err instanceof Error
+        ? `Canvas read failed: ${err.message}`
+        : 'Canvas read failed (likely CORS)',
+    )
+  }
+
+  const palette = analyzeImageColors(imageData)
+  if (isDefaultPalette(palette)) {
+    throw new Error('Empty color analysis (transparent or near-empty image)')
+  }
+  return palette
+}
+
+/**
+ * 加载单张图并取色（对象池 Image）。
+ * 注意：pool reset 会把 src 置空，避免「同 URL 不触发 onload」。
+ */
+async function extractFromSingleUrl(
   imageUrl: string,
   signal: AbortSignal,
 ): Promise<ColorPalette> {
-  // 使用池化的 Image 对象
   const pooled = imagePool.acquire()
   const { img } = pooled
   img.crossOrigin = 'anonymous'
-
-  // 注意：不添加 cacheBuster，因为浏览器缓存的图片可以直接使用
-  // 添加 cacheBuster 会导致重新请求图片，增加延迟
-  // 如果需要强制刷新，可以在 options 中传入 forceRefresh
+  img.referrerPolicy = 'no-referrer'
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -551,7 +598,16 @@ async function extractFromImage(
       }
       img.onerror = () => {
         signal.removeEventListener('abort', abortHandler)
-        reject(new Error('Failed to load image'))
+        reject(new Error(`Failed to load image: ${imageUrl.slice(0, 120)}`))
+      }
+
+      // 强制与当前 src 不同，保证缓存命中时也重新走 load 事件
+      if (img.src) {
+        try {
+          img.src = ''
+        } catch {
+          /* ignore */
+        }
       }
       img.src = imageUrl
     })
@@ -560,29 +616,53 @@ async function extractFromImage(
       throw new Error('Extraction cancelled after image load')
     }
 
-    // 使用池化的 Canvas
-    const scale = Math.min(
-      MAX_CANVAS_SIZE / img.width,
-      MAX_CANVAS_SIZE / img.height,
-      1,
-    )
-    const width = Math.floor(img.width * scale)
-    const height = Math.floor(img.height * scale)
+    const naturalW = img.naturalWidth || img.width
+    const naturalH = img.naturalHeight || img.height
 
-    const imageData = withPooledCanvas(width, height, (ctx) => {
-      ctx.drawImage(img, 0, 0, width, height)
-      return ctx.getImageData(0, 0, width, height)
+    return paletteFromRaster(naturalW, naturalH, (ctx) => {
+      ctx.drawImage(img, 0, 0, ctx.canvas.width, ctx.canvas.height)
     })
-
-    if (signal.aborted) {
-      throw new Error('Extraction cancelled after processing')
-    }
-
-    return analyzeImageColors(imageData)
   } finally {
-    // 确保归还 Image 到池中
     imagePool.release(pooled)
   }
+}
+
+/**
+ * 从 URL 取色；可选 fallback（音乐：小尺寸失败 → 原始封面）。
+ */
+async function extractFromImage(
+  imageUrl: string,
+  signal: AbortSignal,
+  fallbackUrl?: string | null,
+): Promise<ColorPalette> {
+  const candidates: string[] = [imageUrl]
+  if (fallbackUrl && fallbackUrl !== imageUrl) {
+    candidates.push(fallbackUrl)
+  }
+
+  let lastError: unknown = null
+  for (let i = 0; i < candidates.length; i++) {
+    if (signal.aborted) {
+      throw new Error('Extraction cancelled')
+    }
+    try {
+      return await extractFromSingleUrl(candidates[i], signal)
+    } catch (error) {
+      if (isAbortError(error)) throw error
+      lastError = error
+      console.debug(
+        '[ColorExtractor] URL candidate failed:',
+        i + 1,
+        '/',
+        candidates.length,
+        error instanceof Error ? error.message : error,
+      )
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error('All image URL candidates failed')
 }
 
 // ============================================================================
@@ -605,29 +685,47 @@ export async function extractColorsFromImage(
     if (!options.forceRefresh) {
       const cached = getCachedPalette(imageUrl)
       if (cached) return cached
+    }
+
+    // 同封面 in-flight 去重：high/low 都 join，避免双请求互抢代理配额
+    if (!options.forceRefresh) {
       const inflight = musicInflight.get(imageUrl)
       if (inflight) {
-        // 切到该封面时若在预取中：复用 in-flight，并取消「上一首」high（不同 URL）
-        if (
-          priority === 'high' &&
-          musicHighController &&
-          musicHighUrl &&
-          musicHighUrl !== imageUrl
-        ) {
-          try {
-            musicHighController.abort()
-          } catch {
-            /* ignore */
+        if (priority === 'high') {
+          // 切到该封面：取消「上一首」high（不同 URL），但不要 abort 本 URL 的 low
+          if (
+            musicHighController &&
+            musicHighUrl &&
+            musicHighUrl !== imageUrl
+          ) {
+            try {
+              musicHighController.abort()
+            } catch {
+              /* ignore */
+            }
+            musicHighController = null
           }
-          musicHighController = null
           musicHighUrl = imageUrl
         }
-        return inflight
+        try {
+          const reused = await inflight
+          if (!isDefaultPalette(reused)) return reused
+          // 预取失败得到 DEFAULT：high 必须自己再跑满重试；low 直接返回
+          if (priority === 'low') return reused
+        } catch (error) {
+          if (isAbortError(error)) throw error
+          if (priority === 'low') return { ...DEFAULT_PALETTE }
+          console.debug(
+            '[ColorExtractor] Music inflight failed, high will retry:',
+            error instanceof Error ? error.message : error,
+          )
+        }
+        // high + DEFAULT/失败 → fall through 新建 high（force 语义，不 join 旧 promise）
       }
     }
 
-    // high：取消上一首 high + 所有预取（用户已切走）
-    // low：不打断 high，也不互取消（邻曲可并行预热）
+    // high：取消上一首 high + 其它封面的 low 预取（带宽让给当前曲）
+    // low：不打断 high，也不互取消
     if (priority === 'high') {
       if (musicHighController) {
         try {
@@ -654,11 +752,12 @@ export async function extractColorsFromImage(
       musicLowControllers.add(myController)
     }
 
+    // 小尺寸加速解码；失败则回退原始封面（显示用那张，通常已在缓存）
     const fetchUrl = coverUrlForColorExtract(imageUrl)
+    const fallbackUrl = fetchUrl !== imageUrl ? imageUrl : null
+    // high：多次；low：2 次（含 URL 回退已在单次 attempt 内完成）
     const maxAttempts =
-      priority === 'high' && !options.forceRefresh
-        ? MUSIC_HIGH_MAX_ATTEMPTS
-        : 1
+      priority === 'high' ? MUSIC_HIGH_MAX_ATTEMPTS : 2
 
     const run = (async (): Promise<ColorPalette> => {
       try {
@@ -671,16 +770,14 @@ export async function extractColorsFromImage(
             const palette = await extractFromImage(
               fetchUrl,
               myController.signal,
+              fallbackUrl,
             )
             if (myController.signal.aborted) {
               throw new Error('Extraction cancelled')
             }
-            // 仅「完全分析失败」的占位 DEFAULT 才重试；真实灰阶封面会正常返回
-            if (!isDefaultPalette(palette)) {
-              setMemoryCache(imageUrl, palette)
-              return palette
-            }
-            lastError = new Error('empty analysis fallback palette')
+            // extractFromImage 成功时已保证非 DEFAULT
+            setMemoryCache(imageUrl, palette)
+            return palette
           } catch (error) {
             if (isAbortError(error)) throw error
             lastError = error
@@ -690,16 +787,14 @@ export async function extractColorsFromImage(
               error instanceof Error ? error.message : error,
             )
           }
-          // 退避后重试（可被 abort 打断）
           if (attempt < maxAttempts - 1) {
-            await sleepWithSignal(100 * (attempt + 1), myController.signal)
+            await sleepWithSignal(120 * (attempt + 1), myController.signal)
           }
         }
         console.debug(
           '[ColorExtractor] Music extraction exhausted retries:',
           lastError instanceof Error ? lastError.message : lastError,
         )
-        // 不缓存默认灰，便于后续 settle 重试
         return { ...DEFAULT_PALETTE }
       } finally {
         if (priority === 'high' && musicHighController === myController) {
@@ -824,34 +919,22 @@ export function clearColorCache(url?: string): void {
 }
 
 /**
- * 从已加载的 HTMLImageElement 直接提取颜色
- * 用于处理跨域图片（如网站图标），因为已经渲染到页面的图片可以绑定到 canvas
- * 注意：如果图片跨域且服务器不支持 CORS，仍会失败
+ * 从已加载的 HTMLImageElement 直接提取颜色（零网络，封面 onload 热路径）。
+ * 同源 / 已带 CORS 的图可读像素；跨域无 CORS 仍会失败并返回 DEFAULT。
  */
 export function extractColorsFromLoadedImage(
   img: HTMLImageElement,
 ): ColorPalette {
   try {
-    // 使用池化的 Canvas
-    const scale = Math.min(
-      MAX_CANVAS_SIZE / img.naturalWidth,
-      MAX_CANVAS_SIZE / img.naturalHeight,
-      1,
-    )
-    const width = Math.floor(img.naturalWidth * scale) || 50
-    const height = Math.floor(img.naturalHeight * scale) || 50
-
-    const imageData = withPooledCanvas(width, height, (ctx) => {
-      ctx.drawImage(img, 0, 0, width, height)
-      return ctx.getImageData(0, 0, width, height)
+    const naturalW = img.naturalWidth || img.width
+    const naturalH = img.naturalHeight || img.height
+    return paletteFromRaster(naturalW, naturalH, (ctx) => {
+      ctx.drawImage(img, 0, 0, ctx.canvas.width, ctx.canvas.height)
     })
-
-    return analyzeImageColors(imageData)
   } catch (err) {
-    // 跨域图片会抛出安全错误
     console.debug(
-      '[ColorExtractor] Cannot extract from image (likely CORS):',
-      err,
+      '[ColorExtractor] Cannot extract from loaded image:',
+      err instanceof Error ? err.message : err,
     )
     return { ...DEFAULT_PALETTE }
   }

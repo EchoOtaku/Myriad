@@ -1,15 +1,5 @@
 ---
-tasks:
-- id: morning-briefing
-  name: Morning Briefing
-  schedule: 0 9 * * *
-  action: Summarize today's top 5 important news from Brew subscriptions
-  enabled: false
-- id: brew-monitor
-  name: Subscription Monitor
-  schedule: 0 */6 * * *
-  action: Check for unread articles in Brew, notify if more than 20
-  enabled: false
+tasks: []
 ---
 
 # Heartbeat Tasks

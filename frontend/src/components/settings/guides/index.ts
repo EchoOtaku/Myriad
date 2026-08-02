@@ -4,6 +4,12 @@ export type {
   SettingGuidesCatalog,
 } from './types'
 export { getSettingGuidesCatalog } from './catalog'
+export {
+  getTappPermissionGuide,
+  getTappPermissionGuides,
+  tappPermissionGuidePath,
+} from './tappPermissionGuides'
+export type { TappPermissionGuides } from './tappPermissionGuides'
 export { SettingGuideBody } from './SettingGuideBody'
 export { useSettingGuide } from './useSettingGuide'
 export type { GuideBinding } from './useSettingGuide'

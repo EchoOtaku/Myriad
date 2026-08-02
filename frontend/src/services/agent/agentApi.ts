@@ -28,6 +28,105 @@ import type {
 import { apiService } from '../api'
 import { abortSseSubscriptions, executeSSERequest } from './sseTransport'
 
+/** On-disk MCP server entry (`mcp_servers.json`). */
+export interface McpServerConfig {
+  id: string
+  command: string
+  args: string[]
+  env: Record<string, string>
+  enabled: boolean
+  auto_restart: boolean
+  max_restart_attempts: number
+}
+
+export interface McpRuntimeServer {
+  id: string
+  healthy: boolean
+  tool_count: number
+  auto_restart: boolean
+}
+
+export interface McpConfigSnapshot {
+  servers: McpServerConfig[]
+  configPath: string
+  runtimeServers: McpRuntimeServer[]
+  toolCount: number
+}
+
+function parseMcpRuntimeServers(
+  raw: Array<Record<string, unknown>> | undefined,
+): McpRuntimeServer[] {
+  return (Array.isArray(raw) ? raw : [])
+    .map((row) => {
+      const id = typeof row.id === 'string' ? row.id.trim() : ''
+      if (!id) return null
+      return {
+        id,
+        healthy: row.healthy === true,
+        tool_count:
+          typeof row.tool_count === 'number' && Number.isFinite(row.tool_count)
+            ? Math.max(0, Math.floor(row.tool_count))
+            : 0,
+        auto_restart: row.auto_restart === true,
+      }
+    })
+    .filter((s): s is McpRuntimeServer => s != null)
+}
+
+function parseMcpServerConfig(raw: unknown): McpServerConfig | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const id = typeof o.id === 'string' ? o.id.trim() : ''
+  const command = typeof o.command === 'string' ? o.command.trim() : ''
+  if (!id || !command) return null
+  const args = Array.isArray(o.args)
+    ? o.args.filter((a): a is string => typeof a === 'string')
+    : []
+  const env: Record<string, string> = {}
+  if (o.env && typeof o.env === 'object' && !Array.isArray(o.env)) {
+    for (const [k, v] of Object.entries(o.env as Record<string, unknown>)) {
+      if (typeof k === 'string' && typeof v === 'string') env[k] = v
+    }
+  }
+  return {
+    id,
+    command,
+    args,
+    env,
+    enabled: o.enabled !== false,
+    auto_restart: o.auto_restart !== false,
+    max_restart_attempts:
+      typeof o.max_restart_attempts === 'number' &&
+      Number.isFinite(o.max_restart_attempts)
+        ? Math.max(0, Math.min(50, Math.floor(o.max_restart_attempts)))
+        : 3,
+  }
+}
+
+function normalizeMcpConfigSnapshot(response: {
+  config?: { servers?: unknown }
+  config_path?: string
+  runtime?: {
+    servers?: Array<Record<string, unknown>>
+    tool_count?: number
+  }
+}): McpConfigSnapshot {
+  const rawServers = response.config?.servers
+  const servers = (Array.isArray(rawServers) ? rawServers : [])
+    .map(parseMcpServerConfig)
+    .filter((s): s is McpServerConfig => s != null)
+  return {
+    servers,
+    configPath:
+      typeof response.config_path === 'string' ? response.config_path : '',
+    runtimeServers: parseMcpRuntimeServers(response.runtime?.servers),
+    toolCount:
+      typeof response.runtime?.tool_count === 'number'
+        ? response.runtime.tool_count
+        : 0,
+  }
+}
+
 /**
  * BE IntentAction serializes as snake_case unit strings (`"query"`).
  * Unknown/newtype variants may appear as objects; coerce to stable strings.
@@ -598,9 +697,14 @@ class AgentService {
 
   // ============ MCP ============
 
-  /** Admin: MCP server connection status */
+  /** Admin: MCP server connection status (`id`, `healthy`, `tool_count`, `auto_restart`). */
   async getMcpStatus(): Promise<{
-    servers: Array<Record<string, unknown>>
+    servers: Array<{
+      id: string
+      healthy: boolean
+      tool_count: number
+      auto_restart: boolean
+    }>
     tool_count: number
   }> {
     const response = await apiService.get<{
@@ -608,13 +712,40 @@ class AgentService {
       tool_count?: number
     }>(`${this.baseUrl}/mcp/status`)
     return {
-      servers: Array.isArray(response.servers) ? response.servers : [],
+      servers: parseMcpRuntimeServers(response.servers),
       tool_count:
         typeof response.tool_count === 'number' ? response.tool_count : 0,
     }
   }
 
-  /** Admin: hot-reload mcp_servers.json */
+  /** Admin: full on-disk config + runtime status for the editor UI. */
+  async getMcpConfig(): Promise<McpConfigSnapshot> {
+    const response = await apiService.get<{
+      config?: { servers?: unknown }
+      config_path?: string
+      runtime?: {
+        servers?: Array<Record<string, unknown>>
+        tool_count?: number
+      }
+    }>(`${this.baseUrl}/mcp/config`)
+    return normalizeMcpConfigSnapshot(response)
+  }
+
+  /** Admin: replace mcp_servers.json and hot-reload children. */
+  async putMcpConfig(servers: McpServerConfig[]): Promise<McpConfigSnapshot> {
+    const response = await apiService.put<{
+      config?: { servers?: unknown }
+      config_path?: string
+      runtime?: {
+        servers?: Array<Record<string, unknown>>
+        tool_count?: number
+      }
+      error?: string
+    }>(`${this.baseUrl}/mcp/config`, { servers })
+    return normalizeMcpConfigSnapshot(response)
+  }
+
+  /** Admin: hot-reload mcp_servers.json and restart stdio children */
   async reloadMcp(): Promise<{ reloaded: boolean; tool_count: number }> {
     const response = await apiService.post<{
       reloaded?: boolean

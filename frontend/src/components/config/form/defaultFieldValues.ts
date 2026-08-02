@@ -1,7 +1,7 @@
 import type { ConfigField } from './types'
 
 export function defaultAiFieldValue(key: string): string {
-  if (key === 'model') return 'gemini-3-flash-preview'
+  if (key === 'model') return 'gemini-3.6-flash'
   if (key === 'ai_image_provider') return 'openrouter'
   if (key === 'ai_image_model') return 'openai/gpt-image-2'
   if (key === 'ai_image_openai_base_url') return 'https://api.openai.com/v1'
@@ -11,7 +11,7 @@ export function defaultAiFieldValue(key: string): string {
   if (key === 'lite_provider') return 'openai'
   if (key === 'lite_openai_model') return 'openai/gpt-oss-20b:free'
   if (key === 'lite_openai_base_url') return 'https://openrouter.ai/api/v1'
-  if (key === 'lite_gemini_model') return 'gemini-3.5-flash'
+  if (key === 'lite_gemini_model') return 'gemini-3.5-flash-lite'
   if (key === 'pro_enabled') return 'false'
   return ''
 }
@@ -28,6 +28,15 @@ export function defaultUiFieldValue(key: string): string {
   if (key === 'evocative_ripple_quality') return '0.85'
   if (key === 'music_enabled') return 'false'
   if (key === 'analytics_enabled') return 'true'
+  if (key === 'pwa_enabled') return 'true'
+  if (key === 'site_noindex') return 'false'
+  // Clearable SEO / third-party analytics: empty = disabled (not env-injected)
+  if (key === 'site_keywords') return ''
+  if (key === 'site_og_image') return ''
+  if (key === 'ga_measurement_id') return ''
+  if (key === 'umami_website_id') return ''
+  if (key === 'umami_script_url') return ''
+  if (key === 'site_footer_custom') return ''
   if (key === 'music_source') return 'netease'
   if (key === 'music_playlist_id') return ''
   if (key === 'proxy_enabled') return 'false'

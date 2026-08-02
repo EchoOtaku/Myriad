@@ -48,6 +48,29 @@ export function isIconSvg(icon: string | undefined): boolean {
 }
 
 /**
+ * True when the app ships a self-contained icon (bitmap / full-color SVG).
+ * Monochrome glyph SVGs (`currentColor`) and emoji still need a tinted shell.
+ */
+export function hasStandaloneTappIcon(source: {
+  icon?: string
+  iconSvg?: string
+}): boolean {
+  if (
+    source.icon &&
+    (isIconUrl(source.icon) || Boolean(resolveTappIconAsset(source.icon)))
+  ) {
+    return true
+  }
+  const svg =
+    (source.iconSvg && isIconSvg(source.iconSvg) && source.iconSvg.trim()) ||
+    (source.icon && isIconSvg(source.icon) && source.icon.trim()) ||
+    ''
+  if (!svg) return false
+  if (/currentColor/i.test(svg)) return false
+  return true
+}
+
+/**
  * 将 SVG 转换为 data URI（iOS/Safari 兼容方式）
  * 这种方式比 dangerouslySetInnerHTML 更可靠
  */

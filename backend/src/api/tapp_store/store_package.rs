@@ -19,10 +19,11 @@ use crate::services::tapp_install_resources::validate_asset_resource_bytes;
 use crate::services::tapp_store_package::{
     append_store_cache_bust, find_store_app_entry, i18n_downloads, is_invalid_store_source_ref,
     join_store_file_url, nonempty_map_opt, optional_store_text_downloads, page_module_downloads,
-    prepare_store_catalog_base, require_download_page_styles_if_declared,
-    require_download_page_template_if_declared, resolve_store_source_among,
-    store_app_download_section, store_asset_download_plan, store_download_core_paths,
-    store_index_url, widget_template_downloads, OptionalStoreTextKind, StoreSourceRowRef,
+    parse_store_preview_descriptor, prepare_store_catalog_base,
+    require_download_page_styles_if_declared, require_download_page_template_if_declared,
+    resolve_store_source_among, store_app_download_section, store_asset_download_plan,
+    store_download_core_paths, store_index_url, widget_template_downloads, OptionalStoreTextKind,
+    StoreSourceRowRef,
 };
 
 // Path-stable re-exports for sibling modules / tests.
@@ -138,6 +139,10 @@ pub(super) async fn fetch_from_store(
         };
         api_http_error(status, err.message())
     })?;
+
+    if let Err(error) = parse_store_preview_descriptor(app_info) {
+        tracing::warn!(tapp_id, %error, "ignoring invalid optional store preview metadata");
+    }
 
     let download = store_app_download_section(app_info)
         .map_err(|err| api_http_error(StatusCode::BAD_GATEWAY, err.message()))?;

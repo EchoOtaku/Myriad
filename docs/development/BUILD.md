@@ -7,7 +7,7 @@ This document provides detailed build and compilation instructions for the Myria
 ### Required Tools
 - **Rust**: 1.88 or later; 1.90 recommended ([install](https://rustup.rs/))
 - **Node.js**: 25.x ([install](https://nodejs.org/))
-- **PostgreSQL**: 16 or later ([install](https://www.postgresql.org/download/))
+- **PostgreSQL**: 18 recommended (Compose default); see release `min_pg_version` for the compatibility floor ([install](https://www.postgresql.org/download/))
 - **Git**: Latest version
 
 ### Optional Tools
@@ -29,6 +29,9 @@ dependencies (see [Cargo Workspaces](https://doc.rust-lang.org/book/ch14-03-carg
 | `crates/myriad-error/` | `myriad-error` (shared `AppError` + redact) |
 | `crates/myriad-data-key/` | `myriad-data-key` (config/federation AES-GCM key) |
 | `crates/myriad-outbound/` | `myriad-outbound` (SSRF-safe HTTP egress) |
+| `crates/myriad-image-proxy/` | `myriad-image-proxy` (hotlink image proxy helpers) |
+| `crates/myriad-json-schema/` | `myriad-json-schema` (JSON schema helpers) |
+| `crates/myriad-platform-utils/` | `myriad-platform-utils` (platform sync helpers) |
 | `crates/myriad-module-visibility/` | `myriad-module-visibility` (page visibility prefs) |
 | `crates/myriad-process-info/` | `myriad-process-info` (memory/uptime/version) |
 | `crates/myriad-prompt-security/` | `myriad-prompt-security` (prompt injection heuristics) |
@@ -200,26 +203,15 @@ versioned Docker images through `docker-compose.yml` and `scripts/docker/deploy.
 
 ## Database Setup
 
-### Option 1: SQL Schema
+Schema is owned by SeaORM migrations under `backend/migrations/` (no standalone `database/schema.sql`).
 
-```powershell
-# Create database
-createdb myriad
+```bash
+# Dev DB via Compose
+docker compose -f docker-compose.dev.yml up -d postgres
 
-# Apply schema
-psql -U myriad -d myriad -f database\schema.sql
-```
-
-### Option 2: SeaORM Migrations
-
-```powershell
-cd backend
-
-# Run migrations
-sea-orm-cli migrate up
-
-# Or using cargo
-cargo run --manifest-path migrations/Cargo.toml
+# Migrations run on backend startup. Manual:
+cargo run -p migration
+# or: cd backend && sea-orm-cli migrate up
 ```
 
 ## Docker Build

@@ -20,6 +20,13 @@ export {
   loadConfigFavorites,
 } from './defaults'
 export {
+  CONFIG_NAV_STORAGE_KEY,
+  loadConfigNavPersisted,
+  saveConfigNavPersisted,
+  snapshotConfigNavScroll,
+  resolveInitialConfigSection,
+} from './configNavPersistence'
+export {
   defaultAiFieldValue,
   defaultUiFieldValue,
   mapConfigFields,

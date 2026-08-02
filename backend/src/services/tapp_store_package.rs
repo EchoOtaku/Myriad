@@ -114,6 +114,129 @@ pub fn validate_store_manifest_category(
     Ok(())
 }
 
+pub const STORE_PREVIEW_MIN_WIDTH: u32 = 1280;
+pub const STORE_PREVIEW_MIN_HEIGHT: u32 = 720;
+pub const STORE_PREVIEW_MAX_WIDTH: u32 = 3840;
+pub const STORE_PREVIEW_MAX_HEIGHT: u32 = 2160;
+pub const STORE_PREVIEW_MAX_STYLES: usize = 8;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StorePreviewDescriptor {
+    pub html: String,
+    pub styles: Vec<String>,
+    pub width: u32,
+    pub height: u32,
+    pub fit: String,
+    pub focus_x: f64,
+    pub focus_y: f64,
+    pub theme: String,
+}
+
+fn preview_dimension(value: Option<u64>, fallback: u32, min: u32, max: u32) -> u32 {
+    value
+        .and_then(|value| u32::try_from(value).ok())
+        .unwrap_or(fallback)
+        .clamp(min, max)
+}
+
+fn preview_focus(value: Option<f64>) -> f64 {
+    value
+        .filter(|value| value.is_finite())
+        .unwrap_or(0.5)
+        .clamp(0.0, 1.0)
+}
+
+/// Parse optional, store-only static preview metadata.
+///
+/// Preview metadata is never part of the installable Manifest and malformed
+/// metadata must not prevent installation. Callers may warn and ignore errors.
+pub fn parse_store_preview_descriptor(
+    app_info: &serde_json::Value,
+) -> Result<Option<StorePreviewDescriptor>, String> {
+    let Some(raw) = app_info.get("preview") else {
+        return Ok(None);
+    };
+    let preview = raw
+        .as_object()
+        .ok_or_else(|| "Store preview must be an object".to_string())?;
+    if preview.get("version").and_then(|value| value.as_u64()) != Some(1) {
+        return Err("Store preview version must be 1".to_string());
+    }
+    if preview.get("type").and_then(|value| value.as_str()) != Some("snapshot") {
+        return Err("Store preview type must be snapshot".to_string());
+    }
+    let html = preview
+        .get("html")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Store preview html path is required".to_string())?
+        .to_string();
+
+    let styles = preview
+        .get("styles")
+        .and_then(|value| value.as_array())
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .take(STORE_PREVIEW_MAX_STYLES)
+                .fold(Vec::<String>::new(), |mut paths, value| {
+                    if !paths.iter().any(|path| path == value) {
+                        paths.push(value.to_string());
+                    }
+                    paths
+                })
+        })
+        .unwrap_or_default();
+    let viewport = preview.get("viewport").and_then(|value| value.as_object());
+    let focus = preview.get("focus").and_then(|value| value.as_object());
+    let fit = match preview.get("fit").and_then(|value| value.as_str()) {
+        Some("contain") => "contain",
+        _ => "cover",
+    };
+    let theme = match preview.get("theme").and_then(|value| value.as_str()) {
+        Some("light") => "light",
+        Some("dark") => "dark",
+        _ => "auto",
+    };
+
+    Ok(Some(StorePreviewDescriptor {
+        html,
+        styles,
+        width: preview_dimension(
+            viewport
+                .and_then(|value| value.get("width"))
+                .and_then(|value| value.as_u64()),
+            STORE_PREVIEW_MIN_WIDTH,
+            STORE_PREVIEW_MIN_WIDTH,
+            STORE_PREVIEW_MAX_WIDTH,
+        ),
+        height: preview_dimension(
+            viewport
+                .and_then(|value| value.get("height"))
+                .and_then(|value| value.as_u64()),
+            STORE_PREVIEW_MIN_HEIGHT,
+            STORE_PREVIEW_MIN_HEIGHT,
+            STORE_PREVIEW_MAX_HEIGHT,
+        ),
+        fit: fit.to_string(),
+        focus_x: preview_focus(
+            focus
+                .and_then(|value| value.get("x"))
+                .and_then(|value| value.as_f64()),
+        ),
+        focus_y: preview_focus(
+            focus
+                .and_then(|value| value.get("y"))
+                .and_then(|value| value.as_f64()),
+        ),
+        theme: theme.to_string(),
+    }))
+}
+
 /// Errors while reading a store `index.json` structure (before network status).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoreIndexError {
@@ -561,6 +684,39 @@ mod tests {
             find_store_app_entry(&json!({}), "x").unwrap_err(),
             StoreIndexError::MissingAppsArray
         );
+    }
+
+    #[test]
+    fn optional_store_preview_is_parsed_and_bounded() {
+        let app = json!({
+            "preview": {
+                "version": 1,
+                "type": "snapshot",
+                "html": "apps/com.example/preview.html",
+                "styles": ["apps/com.example/page.css", "apps/com.example/page.css"],
+                "viewport": { "width": 320, "height": 99999 },
+                "fit": "contain",
+                "focus": { "x": -1.0, "y": 2.0 },
+                "theme": "dark"
+            }
+        });
+        let preview = parse_store_preview_descriptor(&app).unwrap().unwrap();
+        assert_eq!(preview.html, "apps/com.example/preview.html");
+        assert_eq!(preview.styles, vec!["apps/com.example/page.css"]);
+        assert_eq!(preview.width, STORE_PREVIEW_MIN_WIDTH);
+        assert_eq!(preview.height, STORE_PREVIEW_MAX_HEIGHT);
+        assert_eq!(preview.fit, "contain");
+        assert_eq!(preview.focus_x, 0.0);
+        assert_eq!(preview.focus_y, 1.0);
+        assert_eq!(preview.theme, "dark");
+
+        assert!(parse_store_preview_descriptor(&json!({}))
+            .unwrap()
+            .is_none());
+        assert!(parse_store_preview_descriptor(&json!({
+            "preview": { "version": 2, "type": "snapshot", "html": "preview.html" }
+        }))
+        .is_err());
     }
 
     #[test]

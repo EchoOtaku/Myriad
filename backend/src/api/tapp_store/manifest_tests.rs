@@ -1445,6 +1445,7 @@ fn batch_detail_mapping_applies_current_role_and_brew_capability_rules() {
         last_run_at: None,
         updated_at: now,
         error_message: None,
+        visibility: "all".to_string(),
     };
 
     let config = crate::config::DynamicConfig {

@@ -31,7 +31,9 @@ import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
 import { useNavigation } from '../../contexts/NavigationContext'
 import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { usePageSeo } from '../../hooks/usePageSeo'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
+import { buildPrivatePageSeo } from '../../utils/modulePageSeo'
 import { PlaygroundComposer } from '../components/PlaygroundComposer'
 import { TappPlaygroundIcon } from '../components/PlaygroundIcons'
 import { getTappRuntime } from '../runtime'
@@ -58,6 +60,10 @@ import {
   switchSession,
   updateActiveSessionWithMeta,
 } from '../utils/playgroundSession'
+import {
+  mapPlaygroundGenerateError,
+  mapPlaygroundRuntimeError,
+} from '../utils/playgroundErrorMessages'
 import {
   formatPlaygroundPackageErrors,
   PlaygroundPackageValidationError,
@@ -108,60 +114,6 @@ function isAbortLikeError(error: unknown): {
     /aborterror/i.test(lower) ||
     /the operation was aborted/i.test(message)
   return { aborted: aborted || timeout, timeout }
-}
-
-function mapPlaygroundGenerateError(
-  message: string,
-  copy: {
-    playgroundTimeoutHint: string
-    playgroundServerErrorHint: string
-    playgroundGenerateFailed: string
-    playgroundCancelled?: string
-  },
-  opts?: { userCancelled?: boolean },
-): string {
-  if (opts?.userCancelled && copy.playgroundCancelled) {
-    return copy.playgroundCancelled
-  }
-
-  const raw = (message || '').trim()
-  if (!raw) return copy.playgroundGenerateFailed
-
-  const lower = raw.toLowerCase()
-  const isTimeout =
-    raw === 'TimeoutError' ||
-    lower === 'timeouterror' ||
-    /timeout/i.test(raw) ||
-    /timed?\s*out/i.test(raw) ||
-    /aborted due to timeout/i.test(raw) ||
-    /signal timed out/i.test(raw) ||
-    /backend proxy timeout/i.test(raw) ||
-    /pro ai agent generation failed/i.test(raw)
-
-  if (isTimeout) return copy.playgroundTimeoutHint
-
-  // Non-user abort still treated as timeout/interrupt soft error
-  if (
-    raw === 'AbortError' ||
-    lower === 'aborterror' ||
-    /the operation was aborted/i.test(raw)
-  ) {
-    return copy.playgroundTimeoutHint
-  }
-
-  const isServer =
-    /\bHTTP\s*50[0234]\b/i.test(raw) ||
-    /\bHTTP\s*422\b/i.test(raw) ||
-    /bad gateway/i.test(raw) ||
-    /gateway timeout/i.test(raw) ||
-    /service unavailable/i.test(raw) ||
-    /failed to fetch/i.test(raw) ||
-    /networkerror/i.test(raw) ||
-    /load failed/i.test(raw)
-
-  if (isServer) return copy.playgroundServerErrorHint
-
-  return raw
 }
 
 const FILE_LABELS: Record<FileId, string> = {
@@ -555,6 +507,18 @@ export function TappPlaygroundPage() {
   const { isMobile } = useBreakpoints()
   const { setImmersiveMode } = useNavigation()
   const animConfig = useAnimationLevel()
+
+  usePageSeo(
+    useMemo(
+      () =>
+        buildPrivatePageSeo({
+          label: t.tapp.playgroundTitle || 'Playground',
+          path: '/tapp/playground',
+        }),
+      [t],
+    ),
+  )
+
   const [store, setStore] = useState<PlaygroundSessionsStore>(loadSessionsStore)
   const [instruction, setInstruction] = useState('')
   const [busy, setBusy] = useState(false)
@@ -1039,6 +1003,7 @@ export function TappPlaygroundPage() {
           : rawMessage || t.tapp.playgroundGenerateFailed
       const friendly = mapPlaygroundGenerateError(messageForMap, t.tapp, {
         userCancelled,
+        format,
       })
 
       if (userCancelled) {
@@ -1113,7 +1078,7 @@ export function TappPlaygroundPage() {
   /** Page sandbox errors may auto-repair (existing behavior). */
   const handleSandboxError = (sandboxError: Error) => {
     const message = sandboxError.message || 'Unknown sandbox runtime error'
-    setPreviewError(message)
+    setPreviewError(mapPlaygroundRuntimeError(message, t.tapp, format))
     // Widget-only projects have no page sandbox; never auto-repair for page absence.
     if (isWidgetOnly || !hasUsablePage) return
     if (!project || busy || runtimeRepairCountRef.current >= 2) return
@@ -1135,7 +1100,7 @@ export function TappPlaygroundPage() {
   /** Widget errors surface in the status band but do not trigger auto-repair. */
   const handleWidgetError = (sandboxError: Error) => {
     const message = sandboxError.message || 'Unknown widget runtime error'
-    setPreviewError(message)
+    setPreviewError(mapPlaygroundRuntimeError(message, t.tapp, format))
   }
 
   const showRevisionNotice = (rev: {

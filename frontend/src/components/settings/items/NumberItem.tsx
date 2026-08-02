@@ -5,6 +5,8 @@
 import type { NumberSettingConfig } from '../types'
 import React, { useCallback } from 'react'
 import { guideDomProps } from '../guides/guideAnchor'
+import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
+import { SettingFieldErrorTag } from '../SettingFieldErrorTag'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import './SettingItem.css'
 
@@ -59,6 +61,15 @@ export const NumberItem = React.memo<NumberItemProps>(
               {label}
               {required && <span className="required">*</span>}
               <SettingTitleGuideEntry title={label} guide={guide} />
+              <SettingDefaultChangeTag
+                fieldKey={itemKey}
+                onApply={(next) => {
+                  if (disabled || loading) return
+                  const n = Number(next)
+                  if (!Number.isNaN(n)) onChange(n)
+                }}
+              />
+              <SettingFieldErrorTag>{error}</SettingFieldErrorTag>
             </span>
             {description && (
               <span className="setting-description">{description}</span>
@@ -89,7 +100,6 @@ export const NumberItem = React.memo<NumberItemProps>(
             </div>
           </div>
         </div>
-        {error && <p className="setting-error">{error}</p>}
         {hint && !error && <p className="setting-hint">{hint}</p>}
       </div>
     )

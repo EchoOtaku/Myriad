@@ -12,7 +12,7 @@ use axum::{
 };
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, DatabaseConnection, EntityTrait, Set,
+    ActiveModelTrait, ActiveValue::NotSet, DatabaseConnection, EntityTrait, QueryOrder, Set,
 };
 use serde::Deserialize;
 
@@ -68,6 +68,7 @@ pub(super) async fn list_store_sources(
     State(db): State<DatabaseConnection>,
 ) -> Result<Json<ApiResponse<Vec<StoreSourceResponse>>>, HttpError> {
     let sources = tapp_store_sources::Entity::find()
+        .order_by_asc(tapp_store_sources::Column::Id)
         .all(&db)
         .await
         .map_err(|_| HttpError(AppError::internal("Database error")))?;

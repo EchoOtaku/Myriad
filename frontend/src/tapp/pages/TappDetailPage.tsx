@@ -1,33 +1,60 @@
 /**
- * Tapp 璇︽儏/閰嶇疆椤甸潰
- * 鏄剧ず Tapp 璇︾粏淇℃伅鍜岄厤缃€夐」
+ * Tapp 详情 / 配置页
+ * 对齐新版设置页：SettingSection + SettingGroup + 设置原语
  */
 
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { ToastType } from '../../components/Toast'
-
-import type { TappInstance, TappSettingItem } from '../types'
+import type { TappVisibility } from '../services/TappLifecycleApi'
+import type { TappInstance, TappPermission, TappSettingItem } from '../types'
 import {
-  FaArrowLeft,
-  FaCheck,
   FaCog,
   FaDownload,
   FaExclamationTriangle,
-  FaInfoCircle,
   FaLock,
   FaPause,
   FaPlay,
   FaTrash,
+  LuChevronLeft,
 } from '@lib/icons'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
 
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../../components/AnimatedView'
+import {
+  getTappPermissionGuide,
+  guideDomProps,
+  InfoActionCard,
+  InputItem,
+  NumberItem,
+  SegmentedControl,
+  SelectItem,
+  SettingGroup,
+  SettingsButton,
+  SettingSection,
+  SettingTitleGuideEntry,
+  SwitchItem,
+  tappPermissionGuidePath,
+  useSettingGuide,
+} from '../../components/settings'
+import { SettingItemWrapper } from '../../components/settings/items/SettingItemWrapper'
 import { Spinner } from '../../components/Spinner'
 import Toast from '../../components/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import { usePageSeo } from '../../hooks/usePageSeo'
 import { sanitizeUrl } from '../../utils/inputSanitizer'
-import { TappIcon } from '../components/TappIcon'
+import {
+  canAccessModuleVisibility,
+  useModuleVisibilityPreferences,
+} from '../../utils/moduleVisibility'
+import { TappIconBadge } from '../components/TappIconBadge'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { PERMISSION_CONFIG } from '../constants/permissions'
 import { getTappRuntime } from '../runtime'
@@ -35,20 +62,24 @@ import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import * as TappApiService from '../services/TappApiService'
 import { resolveManifestText } from '../utils/manifestLocale'
 import { getTappIconStyle } from '../utils/tappColors'
-
-// 使用 TappIcon 组件统一处理图标渲染
+import { buildTappDetailPageSeo } from '../utils/tappPageSeo'
+import '../../components/ConfigForm.css'
+import './TappDetailPage.css'
 
 interface TappDetailPageProps {
   tappId: string
 }
 
-/**
- * Tapp 璇︽儏椤甸潰缁勪欢
- */
 export function TappDetailPage({ tappId }: TappDetailPageProps) {
   const navigate = useNavigate()
   const { t, format, locale } = useI18n()
+  const { catalog: g, bindGuide, renderGuide } = useSettingGuide()
   const { isAuthenticated, hasChecked } = useAuth()
+  const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
+  const moduleOpenToAll = canAccessModuleVisibility(
+    moduleVisibility.modules.tapp,
+    { isAuthenticated: false, isAdmin: false },
+  )
 
   const [tapp, setTapp] = useState<TappInstance | null>(null)
   const [loading, setLoading] = useState(true)
@@ -58,22 +89,36 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     {},
   )
   const [settingsSaving, setSettingsSaving] = useState<string | null>(null)
-  // 本地输入值缓存（用于防止中文输入被打断）
+  /** 本地输入缓存，避免中文输入被打断 */
   const [localInputValues, setLocalInputValues] = useState<
     Record<string, string>
   >({})
-  // 待保存的设置（用于延迟保存和页面退出时保存）
   const pendingChangesRef = useRef<Record<string, unknown>>({})
-  // 防抖定时器引用
   const debounceTimersRef = useRef<
     Record<string, ReturnType<typeof setTimeout>>
   >({})
-  // Toast 消息
   const [toastMessage, setToastMessage] = useState<string>('')
   const [toastType, setToastType] = useState<ToastType>('info')
-  // 卸载确认对话框状态
   const [showUninstallDialog, setShowUninstallDialog] = useState(false)
+  const [uninstallAnchor, setUninstallAnchor] = useState<HTMLElement | null>(
+    null,
+  )
+  const [appVisibility, setAppVisibility] = useState<TappVisibility>('all')
+  const [visibilitySaving, setVisibilitySaving] = useState(false)
   const runtime = getTappRuntime()
+
+  usePageSeo(
+    useMemo(
+      () =>
+        buildTappDetailPageSeo({
+          tapp,
+          tappId,
+          locale,
+          moduleOpenToAll,
+        }),
+      [tapp, tappId, locale, moduleOpenToAll],
+    ),
+  )
 
   const showToastMessage = useCallback(
     (message: string, type: ToastType = 'info') => {
@@ -83,7 +128,6 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     [],
   )
 
-  // 鍔犺浇璁剧疆鍊?- 骞惰鍔犺浇浼樺寲
   const loadSettings = useCallback(
     async (manifest: TappInstance['manifest']) => {
       if (!manifest.settings?.length) return
@@ -103,16 +147,13 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     [tappId],
   )
 
-  // 淇濆瓨璁剧疆鍊?
   const saveSetting = useCallback(
     async (key: string, value: unknown, showHint = true) => {
       setSettingsSaving(key)
       try {
         await TappApiService.setTappSetting(tappId, key, value)
         setSettingsValues((prev) => ({ ...prev, [key]: value }))
-        // 从待保存列表中移除
         delete pendingChangesRef.current[key]
-        // 显示保存成功 Toast
         if (showHint) {
           showToastMessage(t.tapp.settingSaved, 'success')
         }
@@ -123,32 +164,27 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
         setSettingsSaving(null)
       }
     },
-    [tappId, t],
+    [tappId, t, showToastMessage],
   )
 
-  // 处理输入框变化（仅更新本地状态，不立即保存）
   const handleInputChange = useCallback(
     (key: string, value: string) => {
       setLocalInputValues((prev) => ({ ...prev, [key]: value }))
-      // 标记为待保存
       pendingChangesRef.current[key] = value
 
-      // 清除之前的防抖定时器
       if (debounceTimersRef.current[key]) {
         clearTimeout(debounceTimersRef.current[key])
       }
 
-      // 设置新的防抖定时器（2秒无操作后保存）
       debounceTimersRef.current[key] = setTimeout(() => {
         if (pendingChangesRef.current[key] !== undefined) {
-          saveSetting(key, pendingChangesRef.current[key])
+          void saveSetting(key, pendingChangesRef.current[key])
         }
       }, 2000)
     },
     [saveSetting],
   )
 
-  // 处理数字输入框变化
   const handleNumberChange = useCallback(
     (key: string, value: number) => {
       setLocalInputValues((prev) => ({ ...prev, [key]: String(value) }))
@@ -160,35 +196,31 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
 
       debounceTimersRef.current[key] = setTimeout(() => {
         if (pendingChangesRef.current[key] !== undefined) {
-          saveSetting(key, pendingChangesRef.current[key])
+          void saveSetting(key, pendingChangesRef.current[key])
         }
       }, 2000)
     },
     [saveSetting],
   )
 
-  // 输入框失焦时保存
   const handleInputBlur = useCallback(
     (key: string, type: 'input' | 'number') => {
-      // 清除防抖定时器
       if (debounceTimersRef.current[key]) {
         clearTimeout(debounceTimersRef.current[key])
         delete debounceTimersRef.current[key]
       }
 
-      // 如果有待保存的更改，立即保存
       if (pendingChangesRef.current[key] !== undefined) {
         const value =
           type === 'number'
             ? Number(pendingChangesRef.current[key])
             : pendingChangesRef.current[key]
-        saveSetting(key, value)
+        void saveSetting(key, value)
       }
     },
     [saveSetting],
   )
 
-  // 保存所有待保存的更改
   const saveAllPendingChanges = useCallback(async () => {
     const keys = Object.keys(pendingChangesRef.current)
     for (const key of keys) {
@@ -196,10 +228,8 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     }
   }, [saveSetting])
 
-  // 页面退出时保存所有待保存的更改
   useEffect(() => {
     const handleBeforeUnload = () => {
-      // 同步保存（尽力而为）
       const keys = Object.keys(pendingChangesRef.current)
       for (const key of keys) {
         void TappApiService.setTappSetting(
@@ -213,13 +243,11 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload)
-      // 组件卸载时清除所有定时器并保存
       Object.values(debounceTimersRef.current).forEach(clearTimeout)
-      saveAllPendingChanges()
+      void saveAllPendingChanges()
     }
   }, [tappId, saveAllPendingChanges])
 
-  // 鍔犺浇 Tapp
   useEffect(() => {
     const loadTapp = async () => {
       try {
@@ -232,6 +260,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
 
         setTapp(instance)
         setIsRunning(runtime.isRunning(tappId))
+        setAppVisibility(instance.visibility === 'admin' ? 'admin' : 'all')
 
         // 设置属于已登录查看者的控制面数据；访客只使用 manifest 默认值。
         if (hasChecked && isAuthenticated) {
@@ -245,9 +274,8 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
       }
     }
 
-    loadTapp()
+    void loadTapp()
 
-    // 鐩戝惉鐘舵€佸彉鍖?
     const unsubStarted = runtime.on('tapp:started', (data) => {
       if ((data as { id: string }).id === tappId) setIsRunning(true)
     })
@@ -261,12 +289,10 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     }
   }, [tappId, runtime, hasChecked, isAuthenticated, loadSettings, t])
 
-  // 杩斿洖
   const goBack = useCallback(() => {
     navigate('/tapp')
   }, [navigate])
 
-  // 鍚姩/鍋滄
   const handleToggleRunning = useCallback(async () => {
     try {
       if (isRunning) {
@@ -288,71 +314,103 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     }
   }, [runtime, tappId, isRunning, navigate])
 
-  // 鍗歌浇 - 显示确认对话框
-  const handleUninstall = useCallback(() => {
-    setShowUninstallDialog(true)
-  }, [])
+  const handleUninstall = useCallback(
+    (event?: ReactMouseEvent<HTMLButtonElement>) => {
+      const el = event?.currentTarget
+      setUninstallAnchor(el instanceof HTMLElement ? el : null)
+      setShowUninstallDialog(true)
+    },
+    [],
+  )
 
-  // 确认卸载
   const handleConfirmUninstall = useCallback(
     async (keepData: boolean) => {
       try {
         await runtime.uninstallTapp(tappId, { keepData })
         setShowUninstallDialog(false)
+        setUninstallAnchor(null)
         goBack()
       } catch (err) {
         console.error('Failed to uninstall Tapp:', err)
         showToastMessage(t.tapp.uninstallFailed || 'Uninstall failed', 'error')
-        throw err // 让组件处理 loading 状态
+        throw err
       }
     },
-    [runtime, tappId, goBack, t],
+    [runtime, tappId, goBack, t, showToastMessage],
   )
-  // 导出
+
   const handleExport = useCallback(async () => {
     try {
       await TappApiService.exportTapp(tappId)
     } catch (err) {
       console.error('Failed to export Tapp:', err)
-      alert(t.tapp.exportFailed || 'Export failed')
+      showToastMessage(t.tapp.exportFailed || 'Export failed', 'error')
     }
-  }, [tappId, t])
-  // 鍔犺浇鐘舵€?
+  }, [tappId, t, showToastMessage])
+
+  const handleVisibilityChange = useCallback(
+    async (visibility: TappVisibility) => {
+      if (visibility === appVisibility || visibilitySaving) return
+      const previous = appVisibility
+      setAppVisibility(visibility)
+      setVisibilitySaving(true)
+      try {
+        await TappApiService.setTappVisibility(tappId, visibility)
+        setTapp((prev) => (prev ? { ...prev, visibility } : prev))
+        showToastMessage(t.tapp.appVisibilitySaved, 'success')
+        void runtime.syncFromBackend(true)
+      } catch (err) {
+        console.error('Failed to update visibility:', err)
+        setAppVisibility(previous)
+        showToastMessage(t.tapp.appVisibilitySaveFailed, 'error')
+      } finally {
+        setVisibilitySaving(false)
+      }
+    },
+    [
+      appVisibility,
+      visibilitySaving,
+      tappId,
+      t,
+      showToastMessage,
+      runtime,
+    ],
+  )
+
+  const pageShell = (body: ReactNode) => (
+    <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
+      <div className="tapp-detail-page">{body}</div>
+    </AnimatedView>
+  )
+
   if (loading) {
-    return (
-      <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
-        <div className="max-w-4xl mx-auto">
-          <div className="glass rounded-xl p-8 md:p-12 flex justify-center">
-            <Spinner size="xl" color="primary" />
-          </div>
+    return pageShell(
+      <div className="config-section setting-section">
+        <div className="tapp-detail-state">
+          <Spinner size="xl" color="primary" />
         </div>
-      </AnimatedView>
+      </div>,
     )
   }
 
-  // 閿欒鐘舵€?
   if (error || !tapp) {
-    return (
-      <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
-        <div className="max-w-4xl mx-auto">
-          <div className="glass rounded-xl p-8 md:p-12 text-center">
-            <FaExclamationTriangle className="w-12 h-12 mx-auto text-red-500 mb-4" />
-            <h3 className="text-lg font-medium text-gray-800 dark:text-gray-100 mb-2">
-              {t.tapp.cannotLoadApp}
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm">
-              {error || t.tapp.appNotExist}
-            </p>
-            <button
-              onClick={goBack}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors"
-            >
-              <FaArrowLeft className="w-4 h-4" />
-              {t.tapp.backToAppList}
-            </button>
-          </div>
+    return pageShell(
+      <div className="config-section setting-section">
+        <div className="tapp-detail-state">
+          <FaExclamationTriangle className="tapp-detail-state-icon" />
+          <h3 className="tapp-detail-state-title">{t.tapp.cannotLoadApp}</h3>
+          <p className="tapp-detail-state-desc">
+            {error || t.tapp.appNotExist}
+          </p>
+          <SettingsButton
+            variant="primary"
+            icon={<LuChevronLeft />}
+            onClick={goBack}
+          >
+            {t.tapp.backToAppList}
+          </SettingsButton>
         </div>
-      </AnimatedView>
+      </div>,
     )
   }
 
@@ -367,501 +425,522 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
   const canManageSettings =
     tapp.userRole === 'admin' ||
     (tapp.userRole === 'user' && tapp.isTemporary === true)
+  const canManageVisibility =
+    tapp.userRole === 'admin' && tapp.isAdminTapp === true
+  const canStartStop =
+    tapp.userRole === 'admin' ||
+    (tapp.userRole === 'user' && tapp.isTemporary === true)
+  const canUninstall =
+    tapp.userRole === 'admin' ||
+    (tapp.userRole === 'user' && tapp.isTemporary === true)
 
-  return (
-    <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
-      <div className="max-w-4xl mx-auto">
-        {/* 澶撮儴鍗＄墖 */}
-        <div className="mb-4 md:mb-6">
-          <div className="glass rounded-xl p-4 md:p-5">
-            <div className="flex items-start gap-4">
-              <button
-                onClick={goBack}
-                className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors shrink-0"
-                title={t.tapp.back}
-                aria-label={t.tapp.backToAppList}
-              >
-                <FaArrowLeft className="w-5 h-5" />
-              </button>
+  const iconStyle = getTappIconStyle(manifest)
+  const hasManifestSettings = Boolean(manifest.settings?.length)
+  /** 已登录用户始终展示应用设置组（含空态 / 只读说明） */
+  const showSettingsGroup = isAuthenticated
 
-              <div
-                className={`w-14 h-14 sm:w-16 sm:h-16 rounded-xl ${getTappIconStyle(manifest).className} flex items-center justify-center text-white text-2xl sm:text-3xl font-bold shadow-lg shrink-0`}
-                style={getTappIconStyle(manifest).style}
+  const settingsGroupDesc = hasManifestSettings
+    ? canManageSettings
+      ? t.tapp.customizeBehavior
+      : t.tapp.settingsReadOnly
+    : canManageVisibility
+      ? t.tapp.appVisibilityDesc
+      : t.tapp.noSettingsDesc
+
+  const levelLabels = {
+    basic: t.tapp.basicPermission,
+    elevated: t.tapp.elevatedPermission,
+    privileged: t.tapp.privilegedPermission,
+  } as const
+
+  /** 高等级优先：特权 → 提升 → 基础 */
+  const permissionLevels = ['privileged', 'elevated', 'basic'] as const
+  type PermissionLevelKey = (typeof permissionLevels)[number]
+  interface PermissionListItem {
+    key: TappPermission
+    label: string
+    description: string
+    Icon: (typeof PERMISSION_CONFIG)[keyof typeof PERMISSION_CONFIG]['icon']
+  }
+
+  const permissionsByLevel: Record<PermissionLevelKey, PermissionListItem[]> = {
+    basic: [],
+    elevated: [],
+    privileged: [],
+  }
+  for (const permission of tapp.grantedPermissions) {
+    const config = PERMISSION_CONFIG[permission]
+    if (!config) continue
+    const level = PERMISSION_LEVELS[permission]
+    permissionsByLevel[level].push({
+      key: permission,
+      label: String(
+        t.tapp[config.labelKey as keyof typeof t.tapp] ?? permission,
+      ),
+      description: String(
+        t.tapp[config.descriptionKey as keyof typeof t.tapp] ?? '',
+      ),
+      Icon: config.icon,
+    })
+  }
+
+  const renderSettingControl = (setting: TappSettingItem) => {
+    const busy = settingsSaving === setting.key
+    const disabled = !canManageSettings || busy
+
+    if (setting.type === 'toggle') {
+      return (
+        <SwitchItem
+          key={setting.key}
+          itemKey={setting.key}
+          label={setting.label}
+          description={setting.description}
+          value={settingsValues[setting.key] === true}
+          onChange={(checked) => void saveSetting(setting.key, checked)}
+          disabled={disabled}
+          loading={busy}
+          layout="horizontal"
+        />
+      )
+    }
+
+    if (setting.type === 'select') {
+      return (
+        <SelectItem
+          key={setting.key}
+          itemKey={setting.key}
+          label={setting.label}
+          description={setting.description}
+          value={String(settingsValues[setting.key] ?? '')}
+          onChange={(v) => void saveSetting(setting.key, v)}
+          options={(setting.options ?? []).map((opt) => ({
+            value: opt.value,
+            label: opt.label,
+          }))}
+          disabled={disabled}
+          loading={busy}
+          layout="horizontal"
+        />
+      )
+    }
+
+    if (setting.type === 'input') {
+      return (
+        <InputItem
+          key={setting.key}
+          itemKey={setting.key}
+          label={setting.label}
+          description={setting.description}
+          value={
+            localInputValues[setting.key] ??
+            String(settingsValues[setting.key] ?? '')
+          }
+          onChange={(v) => handleInputChange(setting.key, v)}
+          onBlur={() => handleInputBlur(setting.key, 'input')}
+          placeholder={setting.placeholder}
+          disabled={disabled}
+          loading={busy}
+          layout="horizontal"
+        />
+      )
+    }
+
+    if (setting.type === 'number') {
+      const numValue =
+        localInputValues[setting.key] !== undefined
+          ? Number(localInputValues[setting.key])
+          : Number(settingsValues[setting.key] ?? setting.min ?? 0)
+      return (
+        <NumberItem
+          key={setting.key}
+          itemKey={setting.key}
+          label={setting.label}
+          description={setting.description}
+          value={Number.isFinite(numValue) ? numValue : 0}
+          onChange={(v) => handleNumberChange(setting.key, v)}
+          onBlur={() => handleInputBlur(setting.key, 'number')}
+          min={setting.min}
+          max={setting.max}
+          step={setting.step}
+          disabled={disabled}
+          loading={busy}
+          layout="horizontal"
+        />
+      )
+    }
+
+    if (setting.type === 'color') {
+      return (
+        <SettingItemWrapper
+          key={setting.key}
+          itemKey={setting.key}
+          label={setting.label}
+          description={setting.description}
+          disabled={disabled}
+          layout="horizontal"
+        >
+          <input
+            type="color"
+            className="tapp-detail-color-input"
+            value={String(settingsValues[setting.key] ?? '#6366f1')}
+            onChange={(e) => void saveSetting(setting.key, e.target.value)}
+            disabled={disabled}
+            aria-label={setting.label}
+            title={setting.label}
+          />
+        </SettingItemWrapper>
+      )
+    }
+
+    return null
+  }
+
+  const overviewActions = [
+    ...(canStartStop
+      ? [
+          {
+            key: 'toggle-run',
+            label: isRunning ? t.tapp.stop : t.tapp.start,
+            onClick: () => void handleToggleRunning(),
+            variant: (isRunning ? 'secondary' : 'primary') as
+              | 'primary'
+              | 'secondary',
+            icon: isRunning ? <FaPause /> : <FaPlay />,
+          },
+        ]
+      : []),
+    {
+      key: 'export',
+      label: t.tapp.export || 'Export',
+      onClick: () => void handleExport(),
+      variant: 'secondary' as const,
+      icon: <FaDownload />,
+    },
+    ...(canUninstall
+      ? [
+          {
+            key: 'uninstall',
+            label: t.tapp.uninstall,
+            onClick: handleUninstall,
+            variant: 'danger' as const,
+            icon: <FaTrash />,
+          },
+        ]
+      : []),
+  ]
+
+  // Copy disabled on the whole card (`copyable={false}`); no per-field copyText.
+  const infoFields = [
+    {
+      key: 'id',
+      label: t.tapp.appId,
+      value: manifest.id,
+      mono: true,
+    },
+    {
+      key: 'version',
+      label: t.tapp.version,
+      value: `v${manifest.version}`,
+    },
+    ...(manifest.author
+      ? [
+          {
+            key: 'author',
+            label: t.tapp.author,
+            value: (
+              <span>
+                {manifest.author.name}
+                {manifest.author.email ? (
+                  <>
+                    <br />
+                    <span className="settings-text-3">
+                      {manifest.author.email}
+                    </span>
+                  </>
+                ) : null}
+                {authorUrl ? (
+                  <>
+                    <br />
+                    <a
+                      href={authorUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="settings-text-2"
+                      style={{
+                        color: 'var(--cfg-accent)',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      {t.tapp.homepage}
+                    </a>
+                  </>
+                ) : null}
+              </span>
+            ),
+          },
+        ]
+      : []),
+    {
+      key: 'installed',
+      label: t.tapp.installedAt,
+      value: new Date(tapp.installedAt).toLocaleDateString(),
+    },
+    ...(tapp.lastRunAt
+      ? [
+          {
+            key: 'lastRun',
+            label: t.tapp.lastRunAt,
+            value: new Date(tapp.lastRunAt).toLocaleString(),
+          },
+        ]
+      : []),
+    ...(homepageUrl
+      ? [
+          {
+            key: 'homepage',
+            label: t.tapp.homepage,
+            value: (
+              <a
+                href={homepageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: 'var(--cfg-accent)',
+                  textDecoration: 'underline',
+                }}
               >
-                <TappIcon
-                  icon={manifest.icon}
-                  iconSvg={manifest.iconSvg}
-                  name={displayName}
-                  sizeClass="w-10 h-10 sm:w-12 sm:h-12"
-                  textSizeClass="text-2xl sm:text-3xl"
+                {t.tapp.visit}
+              </a>
+            ),
+          },
+        ]
+      : []),
+    ...(repositoryUrl
+      ? [
+          {
+            key: 'repository',
+            label: t.tapp.repository,
+            value: (
+              <a
+                href={repositoryUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: 'var(--cfg-accent)',
+                  textDecoration: 'underline',
+                }}
+              >
+                {t.tapp.visit}
+              </a>
+            ),
+          },
+        ]
+      : []),
+  ]
+
+  return pageShell(
+    <>
+      <SettingSection
+        sectionId="tapp-detail"
+        title={displayName}
+        description={displayDescription || undefined}
+        detail={displayDescription || g.tapp.detail.what}
+        showResetPage={false}
+        helpToggle
+        {...bindGuide('tapp.detail', g.tapp.detail)}
+        icon={
+          <TappIconBadge
+            icon={manifest.icon}
+            iconSvg={manifest.iconSvg}
+            name={displayName}
+            iconStyle={iconStyle}
+            shellClassName="tapp-detail-icon"
+            glyphSizeClass="w-7 h-7"
+            glyphTextClass="text-xl"
+            shine={false}
+          />
+        }
+        titleExtra={
+          <span className="tapp-detail-status">
+            <span
+              className={`tapp-detail-status-dot${
+                isRunning ? ' is-running' : ''
+              }`}
+              aria-hidden
+            />
+            {isRunning ? t.tapp.running : t.tapp.stopped}
+          </span>
+        }
+        headerLeading={
+          <button
+            type="button"
+            className="section-header-back"
+            onClick={goBack}
+            aria-label={t.tapp.backToAppList}
+          >
+            <LuChevronLeft size={18} aria-hidden />
+            <span>{t.common.back}</span>
+          </button>
+        }
+      >
+        {/* 应用信息 + 主操作 */}
+        <SettingGroup
+          id="tapp-overview"
+          title={t.tapp.appInfo}
+          description={t.tapp.detailInfo}
+          {...bindGuide('tapp.overview', g.tapp.overview)}
+        >
+          <InfoActionCard
+            copyable={false}
+            fields={infoFields}
+            actions={overviewActions}
+          />
+        </SettingGroup>
+
+        {/* 应用设置 */}
+        {showSettingsGroup && (
+          <SettingGroup
+            id="tapp-app-settings"
+            title={t.tapp.appSettings}
+            description={settingsGroupDesc}
+            icon={<FaCog />}
+            {...bindGuide('tapp.appSettings', g.tapp.appSettings)}
+          >
+            {canManageVisibility && (
+              <SettingItemWrapper
+                itemKey="tapp-visibility"
+                label={t.tapp.appVisibility}
+                description={t.tapp.appVisibilityDesc}
+                layout="horizontal"
+                disabled={visibilitySaving}
+                {...bindGuide('tapp.appVisibility', g.tapp.appVisibility)}
+              >
+                <SegmentedControl
+                  size="sm"
+                  columns={2}
+                  value={appVisibility}
+                  disabled={visibilitySaving}
+                  options={[
+                    {
+                      value: 'all' as const,
+                      label: t.tapp.appVisibilityAll,
+                    },
+                    {
+                      value: 'admin' as const,
+                      label: t.tapp.appVisibilityAdmin,
+                    },
+                  ]}
+                  onChange={handleVisibilityChange}
+                  ariaLabel={t.tapp.appVisibility}
                 />
-              </div>
+              </SettingItemWrapper>
+            )}
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-100">
-                      {displayName}
-                    </h1>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                      v{manifest.version}
-                      {manifest.author && ` · ${manifest.author.name}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div
-                      className={`w-2 h-2 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}
-                    />
-                    <span className="text-sm text-gray-500 dark:text-gray-400">
-                      {isRunning ? t.tapp.running : t.tapp.stopped}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-gray-600 dark:text-gray-300 mt-2 text-sm">
-                  {displayDescription}
-                </p>
-              </div>
-            </div>
-
-            {/* 鎿嶄綔鎸夐挳 */}
-            {(() => {
-              // 权限检查：判断当前用户是否可以执行操作
-              // - admin: 可以操作所有 Tapp
-              // - user: 只能操作自己临时安装的 Tapp（isTemporary=true），不能操作管理员的 Tapp
-              // - guest: 只能查看，不能操作
-              const canStartStop =
-                tapp.userRole === 'admin' ||
-                (tapp.userRole === 'user' && tapp.isTemporary === true)
-              const canUninstall =
-                tapp.userRole === 'admin' ||
-                (tapp.userRole === 'user' && tapp.isTemporary === true)
-
-              return (
-                <div className="flex items-center gap-3 mt-4 pt-4 border-t border-gray-200/50 dark:border-neutral-700/50">
-                  {canStartStop && (
-                    <button
-                      onClick={handleToggleRunning}
-                      className={`flex-1 sm:flex-none px-4 py-2 font-medium rounded-lg transition-colors flex items-center justify-center gap-2 ${
-                        isRunning
-                          ? 'bg-orange-600 hover:bg-orange-700 text-white'
-                          : 'bg-green-600 hover:bg-green-700 text-white'
-                      }`}
-                      title={isRunning ? t.tapp.stop : t.tapp.start}
-                    >
-                      {isRunning ? (
-                        <>
-                          <FaPause className="w-4 h-4" />
-                          {t.tapp.stop}
-                        </>
-                      ) : (
-                        <>
-                          <FaPlay className="w-4 h-4" />
-                          {t.tapp.start}
-                        </>
-                      )}
-                    </button>
-                  )}
-                  {canUninstall && (
-                    <button
-                      onClick={handleUninstall}
-                      className="px-4 py-2 font-medium rounded-lg transition-colors flex items-center gap-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 cursor-pointer"
-                      title={t.tapp.uninstall}
-                    >
-                      <FaTrash className="w-4 h-4" />
-                      <span className="hidden sm:inline">
-                        {t.tapp.uninstall}
-                      </span>
-                    </button>
-                  )}
-                  <button
-                    onClick={handleExport}
-                    className="px-4 py-2 font-medium rounded-lg transition-colors flex items-center gap-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 cursor-pointer"
-                    title={t.tapp.export || 'Export'}
-                  >
-                    <FaDownload className="w-4 h-4" />
-                    <span className="hidden sm:inline">
-                      {t.tapp.export || 'Export'}
-                    </span>
-                  </button>
-                </div>
-              )
-            })()}
-          </div>
-        </div>
-
-        {/* 搴旂敤璁剧疆 - 鏀惧湪鏉冮檺涔嬪墠 */}
-        {isAuthenticated && (
-          <div className="mb-4 md:mb-6">
-            <div className="glass rounded-xl p-4 md:p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-linear-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/50 dark:to-teal-900/50 flex items-center justify-center">
-                  <FaCog className="text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">
-                    {t.tapp.appSettings}
-                  </h2>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {manifest.settings && manifest.settings.length > 0
-                      ? canManageSettings
-                        ? t.tapp.customizeBehavior
-                        : t.tapp.settingsReadOnly
-                      : t.tapp.noSettingsDesc}
+            {hasManifestSettings
+              ? manifest.settings!.map(renderSettingControl)
+              : !canManageVisibility && (
+                  <p className="settings-text-3" style={{ margin: 0 }}>
+                    {t.tapp.noSettingsAvailable}
                   </p>
-                </div>
-              </div>
-
-              {manifest.settings && manifest.settings.length > 0 ? (
-                <div className="space-y-4">
-                  {manifest.settings.map((setting: TappSettingItem) => (
-                    <div
-                      key={setting.key}
-                      className="p-3 bg-white/50 dark:bg-neutral-900/50 rounded-lg border border-gray-200/50 dark:border-neutral-700/50"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          <label className="font-medium text-gray-800 dark:text-gray-100 text-sm">
-                            {setting.label}
-                          </label>
-                          {setting.description && (
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                              {setting.description}
-                            </p>
-                          )}
-                        </div>
-                        <div className="shrink-0">
-                          {/* Toggle 寮€鍏? */}
-                          {setting.type === 'toggle' && (
-                            <label className="relative inline-flex cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={settingsValues[setting.key] === true}
-                                onChange={(e) =>
-                                  saveSetting(setting.key, e.target.checked)
-                                }
-                                disabled={
-                                  !canManageSettings ||
-                                  settingsSaving === setting.key
-                                }
-                                className="sr-only peer"
-                                aria-label={setting.label}
-                              />
-                              <div
-                                className={`w-11 h-6 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-indigo-300 ${
-                                  settingsValues[setting.key] === true
-                                    ? 'bg-indigo-600'
-                                    : 'bg-gray-300 dark:bg-neutral-600'
-                                } ${settingsSaving === setting.key ? 'opacity-50' : ''}`}
-                              >
-                                <span
-                                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                                    settingsValues[setting.key] === true
-                                      ? 'translate-x-5'
-                                      : ''
-                                  }`}
-                                />
-                              </div>
-                            </label>
-                          )}
-
-                          {/* Select 涓嬫媺 */}
-                          {setting.type === 'select' && (
-                            <select
-                              value={String(settingsValues[setting.key] ?? '')}
-                              onChange={(e) =>
-                                saveSetting(setting.key, e.target.value)
-                              }
-                              disabled={
-                                !canManageSettings ||
-                                settingsSaving === setting.key
-                              }
-                              aria-label={setting.label}
-                              className="px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
-                            >
-                              {setting.options?.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                          )}
-
-                          {/* Input 杈撳叆妗? */}
-                          {setting.type === 'input' && (
-                            <input
-                              type="text"
-                              value={
-                                localInputValues[setting.key] ??
-                                String(settingsValues[setting.key] ?? '')
-                              }
-                              onChange={(e) =>
-                                handleInputChange(setting.key, e.target.value)
-                              }
-                              onBlur={() =>
-                                handleInputBlur(setting.key, 'input')
-                              }
-                              placeholder={setting.placeholder}
-                              disabled={
-                                !canManageSettings ||
-                                settingsSaving === setting.key
-                              }
-                              className="w-40 px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
-                            />
-                          )}
-
-                          {/* Number 鏁板瓧杈撳叆 */}
-                          {setting.type === 'number' && (
-                            <input
-                              type="number"
-                              value={
-                                localInputValues[setting.key] ??
-                                Number(
-                                  settingsValues[setting.key] ??
-                                    setting.min ??
-                                    0,
-                                )
-                              }
-                              onChange={(e) =>
-                                handleNumberChange(
-                                  setting.key,
-                                  Number(e.target.value),
-                                )
-                              }
-                              onBlur={() =>
-                                handleInputBlur(setting.key, 'number')
-                              }
-                              min={setting.min}
-                              max={setting.max}
-                              step={setting.step}
-                              disabled={
-                                !canManageSettings ||
-                                settingsSaving === setting.key
-                              }
-                              aria-label={setting.label}
-                              className="w-24 px-3 py-1.5 text-sm bg-white dark:bg-neutral-800 border border-gray-300 dark:border-neutral-600 rounded-lg text-gray-800 dark:text-gray-100"
-                            />
-                          )}
-
-                          {/* Color 棰滆壊閫夋嫨 */}
-                          {setting.type === 'color' && (
-                            <input
-                              type="color"
-                              value={String(
-                                settingsValues[setting.key] ?? '#6366f1',
-                              )}
-                              onChange={(e) =>
-                                saveSetting(setting.key, e.target.value)
-                              }
-                              disabled={
-                                !canManageSettings ||
-                                settingsSaving === setting.key
-                              }
-                              aria-label={setting.label}
-                              title={setting.label}
-                              className="w-10 h-8 rounded cursor-pointer border-0"
-                            />
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
-                  {t.tapp.noSettingsAvailable}
-                </p>
-              )}
-            </div>
-          </div>
+                )}
+          </SettingGroup>
         )}
 
-        {/* 鏉冮檺鍒楄〃 */}
-        <div className="mb-4 md:mb-6">
-          <div className="glass rounded-xl p-4 md:p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-amber-100 to-orange-100 dark:from-amber-900/50 dark:to-orange-900/50 flex items-center justify-center">
-                <FaLock className="text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">
-                  {t.tapp.permissions}
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {format(t.tapp.grantedPermissions, {
-                    count: tapp.grantedPermissions.length,
-                  })}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              {tapp.grantedPermissions.map((permission) => {
-                const config = PERMISSION_CONFIG[permission]
-                if (!config) return null
-
-                const Icon = config.icon
-                const level = PERMISSION_LEVELS[permission]
-                const levelColors = {
-                  basic:
-                    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                  elevated:
-                    'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-                  privileged:
-                    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-                }
-
-                const levelLabels = {
-                  basic: t.tapp.basicPermission,
-                  elevated: t.tapp.elevatedPermission,
-                  privileged: t.tapp.privilegedPermission,
-                }
-
+        {/* 权限：按等级分组，等级内部三列 */}
+        <SettingGroup
+          id="tapp-permissions"
+          title={t.tapp.permissions}
+          description={format(t.tapp.grantedPermissions, {
+            count: tapp.grantedPermissions.length,
+          })}
+          icon={<FaLock />}
+          {...bindGuide('tapp.permissions', g.tapp.permissions)}
+        >
+          {tapp.grantedPermissions.length === 0 ? (
+            <p className="settings-text-3" style={{ margin: 0 }}>
+              {t.tapp.noPermissions}
+            </p>
+          ) : (
+            <div className="tapp-perm-levels">
+              {permissionLevels.map((level) => {
+                const items = permissionsByLevel[level]
+                if (items.length === 0) return null
+                const levelGuide =
+                  level === 'privileged'
+                    ? g.tapp.permPrivileged
+                    : level === 'elevated'
+                      ? g.tapp.permElevated
+                      : g.tapp.permBasic
+                const levelGuidePath =
+                  level === 'privileged'
+                    ? 'tapp.permPrivileged'
+                    : level === 'elevated'
+                      ? 'tapp.permElevated'
+                      : 'tapp.permBasic'
                 return (
-                  <div
-                    key={permission}
-                    className="flex items-center gap-3 p-3 bg-white/50 dark:bg-neutral-900/50 rounded-lg border border-gray-200/50 dark:border-neutral-700/50"
+                  <SettingGroup
+                    key={level}
+                    toc={false}
+                    className={`tapp-perm-group tapp-perm-group--${level}`}
+                    title={levelLabels[level]}
+                    titleExtra={
+                      <span
+                        className={`tapp-perm-level tapp-perm-level--${level}`}
+                      >
+                        {items.length}
+                      </span>
+                    }
+                    {...bindGuide(levelGuidePath, levelGuide)}
                   >
-                    <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-neutral-800 flex items-center justify-center shrink-0">
-                      <Icon className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                    {/* 等级内部三列排布权限卡（只读 + 单项指南） */}
+                    <div className="tapp-perm-cards checkbox-group-options">
+                      {items.map(({ key, label, description, Icon }) => {
+                        const guidePath = tappPermissionGuidePath(key)
+                        const guide = renderGuide(
+                          getTappPermissionGuide(locale, key),
+                        )
+                        return (
+                          <div
+                            key={key}
+                            {...guideDomProps(guidePath)}
+                            className={`tapp-perm-card tapp-perm-card--${level} checkbox-group-card has-icon no-indicator has-guide-anchor`}
+                            role="group"
+                            aria-label={`${label} · ${levelLabels[level]}`}
+                          >
+                            <span className="checkbox-group-card-header">
+                              <span
+                                className="checkbox-group-card-icon"
+                                aria-hidden
+                              >
+                                <Icon />
+                              </span>
+                              <span className="checkbox-group-card-text">
+                                <span className="checkbox-group-card-label">
+                                  {label}
+                                  <SettingTitleGuideEntry
+                                    title={label}
+                                    guide={guide}
+                                  />
+                                </span>
+                                {description ? (
+                                  <span className="checkbox-group-card-desc">
+                                    {description}
+                                  </span>
+                                ) : null}
+                              </span>
+                            </span>
+                          </div>
+                        )
+                      })}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-800 dark:text-gray-100 text-sm">
-                          {t.tapp[config.labelKey as keyof typeof t.tapp]}
-                        </span>
-                        <span
-                          className={`px-1.5 py-0.5 text-xs rounded ${levelColors[level]}`}
-                        >
-                          {levelLabels[level]}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        {t.tapp[config.descriptionKey as keyof typeof t.tapp]}
-                      </p>
-                    </div>
-                    <FaCheck className="w-4 h-4 text-green-500 shrink-0" />
-                  </div>
+                  </SettingGroup>
                 )
               })}
             </div>
-          </div>
-        </div>
+          )}
+        </SettingGroup>
+      </SettingSection>
 
-        {/* 搴旂敤淇℃伅 */}
-        <div className="mb-4 md:mb-6">
-          <div className="glass rounded-xl p-4 md:p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-xl bg-linear-to-br from-gray-100 to-slate-100 dark:from-gray-800 dark:to-slate-800 flex items-center justify-center">
-                <FaInfoCircle className="text-gray-600 dark:text-gray-400" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-gray-800 dark:text-gray-100">
-                  {t.tapp.appInfo}
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {t.tapp.detailInfo}
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between py-2 border-b border-gray-200/50 dark:border-neutral-700/50">
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {t.tapp.appId}
-                </span>
-                <span className="text-sm font-mono text-gray-800 dark:text-gray-100">
-                  {manifest.id}
-                </span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-gray-200/50 dark:border-neutral-700/50">
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {t.tapp.version}
-                </span>
-                <span className="text-sm text-gray-800 dark:text-gray-100">
-                  v{manifest.version}
-                </span>
-              </div>
-              {manifest.author && (
-                <div className="flex items-center justify-between py-2 border-b border-gray-200/50 dark:border-neutral-700/50">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    {t.tapp.author}
-                  </span>
-                  <div className="text-right">
-                    <div className="text-sm text-gray-800 dark:text-gray-100">
-                      {manifest.author.name}
-                    </div>
-                    {manifest.author.email && (
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {manifest.author.email}
-                      </div>
-                    )}
-                    {authorUrl && (
-                      <a
-                        href={authorUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 hover:underline"
-                      >
-                        {t.tapp.homepage}
-                      </a>
-                    )}
-                  </div>
-                </div>
-              )}
-              <div className="flex items-center justify-between py-2 border-b border-gray-200/50 dark:border-neutral-700/50">
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {t.tapp.installedAt}
-                </span>
-                <span className="text-sm text-gray-800 dark:text-gray-100">
-                  {new Date(tapp.installedAt).toLocaleDateString()}
-                </span>
-              </div>
-              {tapp.lastRunAt && (
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    {t.tapp.lastRunAt}
-                  </span>
-                  <span className="text-sm text-gray-800 dark:text-gray-100">
-                    {new Date(tapp.lastRunAt).toLocaleString()}
-                  </span>
-                </div>
-              )}
-              {homepageUrl && (
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    {t.tapp.homepage}
-                  </span>
-                  <a
-                    href={homepageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
-                  >
-                    {t.tapp.visit}
-                  </a>
-                </div>
-              )}
-              {repositoryUrl && (
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    {t.tapp.repository}
-                  </span>
-                  <a
-                    href={repositoryUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
-                  >
-                    {t.tapp.visit}
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Toast 提示 */}
       {toastMessage && (
         <Toast
           message={toastMessage}
@@ -870,14 +949,17 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
         />
       )}
 
-      {/* 卸载确认对话框 */}
       <UninstallConfirmDialog
         isOpen={showUninstallDialog}
         appName={displayName || tappId}
-        onCancel={() => setShowUninstallDialog(false)}
+        anchorEl={uninstallAnchor}
+        onCancel={() => {
+          setShowUninstallDialog(false)
+          setUninstallAnchor(null)
+        }}
         onConfirm={handleConfirmUninstall}
       />
-    </AnimatedView>
+    </>,
   )
 }
 

@@ -15,9 +15,22 @@ import { formatCount, formatDuration, niceAxis, shortDay } from './format'
 
 export interface TrendPoint {
   day: string
+  /** 柱系列（访客统计 = 浏览量；AI 用量 = 调用次数） */
   views: number
+  /** 折线系列（访客统计 = 独立访客；AI 用量 = tokens） */
   visitors: number
   engagementMs?: number
+}
+
+/** 可复用图例 / 表格 / a11y 文案（默认走访客统计 i18n） */
+export interface TrendChartSeriesLabels {
+  primary: string
+  secondary: string
+  chartAria: string
+  tableDay?: string
+  /** 第三列（停留）；AI 用量等场景传 false 隐藏 */
+  showEngagement?: boolean
+  engagement?: string
 }
 
 interface TrendChartProps {
@@ -25,6 +38,8 @@ interface TrendChartProps {
   /** 刷新中：保留当前渲染并降透明度 */
   refreshing?: boolean
   numberLocale: string
+  /** 覆盖默认「浏览量 / 独立访客」文案，便于 AI 用量等复用 */
+  seriesLabels?: TrendChartSeriesLabels
 }
 
 /** 绘图区几何（px，实测宽度后按像素排版，保证发丝线与柱宽不被缩放糊掉） */
@@ -108,9 +123,16 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   points,
   refreshing = false,
   numberLocale,
+  seriesLabels,
 }) => {
   const { t } = useI18n()
   const a = t.config.analytics
+  const primaryLabel = seriesLabels?.primary ?? a.legendViews
+  const secondaryLabel = seriesLabels?.secondary ?? a.legendVisitors
+  const chartAria = seriesLabels?.chartAria ?? a.dailyChartAria
+  const tableDayLabel = seriesLabels?.tableDay ?? a.tableDay
+  const showEngagement = seriesLabels?.showEngagement !== false
+  const engagementLabel = seriesLabels?.engagement ?? a.tableEngagement
   const [attachPlot, width, wrapRef] = useMeasuredWidth<HTMLDivElement>()
   const [view, setView] = useState<ViewMode>('chart')
   const [active, setActive] = useState<number | null>(null)
@@ -248,14 +270,14 @@ export const TrendChart: React.FC<TrendChartProps> = ({
             className="site-analytics-legend-key site-analytics-legend-key--bar"
             aria-hidden
           />
-          {a.legendViews}
+          {primaryLabel}
         </li>
         <li>
           <span
             className="site-analytics-legend-key site-analytics-legend-key--line"
             aria-hidden
           />
-          {a.legendVisitors}
+          {secondaryLabel}
         </li>
       </ul>
     ) : (
@@ -284,7 +306,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
           className={`site-analytics-plot${refreshing ? ' is-refreshing' : ''}`}
           tabIndex={0}
           role="img"
-          aria-label={a.dailyChartAria}
+          aria-label={chartAria}
           onKeyDown={onKeyDown}
           onBlur={() => setActive(null)}
           onPointerLeave={() => setActive(null)}
@@ -449,7 +471,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                   aria-hidden
                 />
                 <strong>{count(activePoint.views, numberLocale)}</strong>
-                {a.legendViews}
+                {primaryLabel}
               </span>
               <span className="site-analytics-tip-row">
                 <span
@@ -457,7 +479,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                   aria-hidden
                 />
                 <strong>{count(activePoint.visitors, numberLocale)}</strong>
-                {a.legendVisitors}
+                {secondaryLabel}
               </span>
             </div>
           ) : null}
@@ -465,13 +487,15 @@ export const TrendChart: React.FC<TrendChartProps> = ({
       ) : (
         <div className="site-analytics-table-wrap">
           <table className="site-analytics-table">
-            <caption className="site-analytics-sr">{a.dailyChartAria}</caption>
+            <caption className="site-analytics-sr">{chartAria}</caption>
             <thead>
               <tr>
-                <th scope="col">{a.tableDay}</th>
-                <th scope="col">{a.legendViews}</th>
-                <th scope="col">{a.legendVisitors}</th>
-                <th scope="col">{a.tableEngagement}</th>
+                <th scope="col">{tableDayLabel}</th>
+                <th scope="col">{primaryLabel}</th>
+                <th scope="col">{secondaryLabel}</th>
+                {showEngagement ? (
+                  <th scope="col">{engagementLabel}</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -480,11 +504,13 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                   <th scope="row">{p.day}</th>
                   <td>{count(p.views, numberLocale)}</td>
                   <td>{count(p.visitors, numberLocale)}</td>
-                  <td>
-                    {p.engagementMs && p.engagementMs > 0
-                      ? formatDuration(p.engagementMs, numberLocale)
-                      : '—'}
-                  </td>
+                  {showEngagement ? (
+                    <td>
+                      {p.engagementMs && p.engagementMs > 0
+                        ? formatDuration(p.engagementMs, numberLocale)
+                        : '—'}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

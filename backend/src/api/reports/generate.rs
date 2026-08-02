@@ -410,7 +410,9 @@ pub(crate) async fn generate_platform_reports_internal(
                                     "video_id": v.video_id,
                                     "view_count": v.view_count,
                                     "like_count": v.like_count,
+                                    "comment_count": v.comment_count,
                                     "published_at": v.published_at,
+                                    "duration": v.duration,
                                 })
                             })
                             .collect();
@@ -2015,6 +2017,11 @@ async fn generate_ai_report(
             "用技术大佬的口吻，综合评估用户的代码贡献、技术栈深度和开源影响力。特别强调：仓库获得的 star 数量是衡量开发者水平和开源影响力的重要因素，高 star 项目往往代表更强的技术实力和社区认可度，评价时务必重点参考。",
             "card_visuals必须包含 'contribution_level' (稳定枚举: legendary|veteran|active|emerging，勿写中文等级名), 'languages' (对象数组 {name, percentage})。在判定 contribution_level 时，除了贡献数和仓库数量，务必重点权衡仓库获得的 star 总数——star 越高代表开源影响力越强，应对应更高的等级。注意：不要生成 'total_contributions'、'repos_count' 和 'contribution_calendar' 字段，这些将由系统自动计算。"
         ),
+        "youtube" => (
+            "你是一个熟悉 YouTube 创作者生态的频道观察者，能从订阅规模、累计观看、上传节奏与最近视频标题/互动里读出频道定位——是教程站、Vlog、评测、剪辑二创，还是长期停更的沉寂号。你只依据公开频道数据下结论，绝不编造不存在的视频、播放量或合作品牌。",
+            "用干净利落、略带互联网锋芒的口吻写频道评语。主线抓三件事：① 体量——订阅/总观看/视频数的量级与匹配度；② 内容气味——从 recent_videos 标题与时长推断题材；③ 活跃度——冷启动/沉寂如实写，不要拔高。硬性要求：数字用原值；summary 与 insights 可稍展开；card_visuals.vibe 与 X 卡同规——一句话人设、严格≤20汉字、首页最多两行、禁止换行与两句堆叠、有锋芒不客套、不带引号；禁止字段名与空话；空频道也给≤20字短评。",
+            "card_visuals必须包含：'vibe'（字符串，一句话频道人设，与 X 卡一致：≤20字，首页 line-clamp-2，禁止换行符，有锋芒不客套，不带引号）；'channel_type'（字符串，≤8字定位标签，如'技术教程'/'生活Vlog'/'冷启动号'/'停更沉寂'/'高播放低订阅'）。徽章材质由系统按订阅数映射 Creator Awards，不要生成 badge_color。订阅/观看/视频列表等由系统写入，一律省略。"
+        ),
         "netease" => (
             "你是一个文艺青年/乐评人，感性细腻，喜欢用歌词或诗意的语言表达。",
             "用文艺感性的口吻，解读用户的听歌品味、情感倾向和深夜听歌习惯。",
@@ -2072,12 +2079,32 @@ async fn generate_ai_report(
         system_prompt, tone_desc, visual_req, data_str
     );
 
-    // 6. 调用 AI
+    // 6. 调用 AI（全站费用账本：source=reports，主体记在站长；含管理员触发）
     let input_data = json!({
         "prompt": full_prompt
     });
 
-    match analyzer.analyze_profile(&input_data).await {
+    let admin_id = if let Ok(db) = crate::services::tapp_registry::database().await {
+        crate::services::tapp_ownership::get_admin_user_id(&db)
+            .await
+            .unwrap_or(1)
+    } else {
+        1
+    };
+    let attr = crate::services::ai_cost_ledger::AiLedgerAttribution {
+        subject_id: admin_id,
+        owner_id: admin_id,
+        source: "reports".into(),
+        operation: "report".into(),
+        tapp_id: "__reports__".into(),
+        task_id: format!("report:{platform}"),
+    };
+    let ai_result = crate::services::ai_cost_ledger::with_ai_ledger_attribution(attr, async {
+        analyzer.analyze_profile(&input_data).await
+    })
+    .await;
+
+    match ai_result {
         Ok(response) => {
             tracing::info!(
                 "Generated AI report for {}: {} chars",
@@ -2299,44 +2326,76 @@ fn generate_mock_report(
                         "url": v.url,
                         "video_id": v.video_id,
                         "view_count": v.view_count,
+                        "like_count": v.like_count,
+                        "comment_count": v.comment_count,
+                        "published_at": v.published_at,
+                        "duration": v.duration,
                     })
                 })
                 .collect();
             let is_empty_channel = analysis.video_count == 0 && analysis.recent_videos.is_empty();
-            let summary = if is_empty_channel {
-                format!(
-                    "频道「{}」已连接：公开区暂无视频（0 订阅 / 0 观看）。空频道也算成功同步。",
-                    metadata.user_summary.username
+            let subs = analysis.subscriber_count;
+            let views = analysis.view_count;
+            let vids = analysis.video_count;
+            // Rough views-per-video for mock 评语 tone (not shown as a metric field)
+            let vpv = if vids > 0 { views / vids } else { 0 };
+            let (vibe, channel_type, summary, insights) = if is_empty_channel {
+                (
+                    "冷启动空壳频道".to_string(),
+                    "冷启动号".to_string(),
+                    format!(
+                        "「{}」已挂上公开频道，但上传区还是一片空白——人设比内容先到位。",
+                        metadata.user_summary.username
+                    ),
+                    vec![
+                        analysis.video_summary.clone(),
+                        "不是抓取失败：频道资料能读到，只是公开视频数为 0。".to_string(),
+                        "有第一支公开片再同步，评语才会从「空壳」变成「有气味」。".to_string(),
+                    ],
                 )
             } else {
-                format!(
-                    "频道扫描完成：{} · {} 订阅 · {} 视频。",
-                    metadata.user_summary.username,
-                    analysis.subscriber_count,
-                    analysis.video_count
+                let latest = analysis
+                    .recent_videos
+                    .first()
+                    .map(|v| v.title.as_str())
+                    .unwrap_or("（无标题样本）");
+                let type_guess = if vpv >= 50_000 {
+                    "高播放密度"
+                } else if vids >= 50 && subs < 1_000 {
+                    "长尾堆量"
+                } else if vids <= 5 {
+                    "精品少更"
+                } else {
+                    "稳定更新"
+                };
+                (
+                    // Match X / AI prompt: vibe ≤20 汉字
+                    format!("{}·{}", type_guess, metadata.user_summary.username)
+                        .chars()
+                        .take(20)
+                        .collect::<String>(),
+                    type_guess.to_string(),
+                    format!(
+                        "「{}」：{} 订阅 / {} 支片 / 均播约 {}——公开区已经有可闻的内容气味。",
+                        metadata.user_summary.username, subs, vids, vpv
+                    ),
+                    vec![
+                        analysis.video_summary.clone(),
+                        format!(
+                            "体量：订阅 {} · 累计观看 {} · 视频 {}（均播约 {}）。",
+                            subs, views, vids, vpv
+                        ),
+                        format!("最近上传《{}》——标题是当前题材的直接证据。", latest),
+                        "评语来自本地 mock（未配置 AI）：重生成后会换成模型口吻。".to_string(),
+                    ],
                 )
-            };
-            let insights = if is_empty_channel {
-                vec![
-                    analysis.video_summary.clone(),
-                    "这不是抓取失败：API 已解析到频道资料，只是公开上传列表为空。".to_string(),
-                    "上传公开视频或换有内容的频道后，再同步即可看到样本与指标。".to_string(),
-                ]
-            } else {
-                vec![
-                    analysis.video_summary.clone(),
-                    format!("累计观看：{}", analysis.view_count),
-                    analysis
-                        .recent_videos
-                        .first()
-                        .map(|v| format!("最近上传：{}", v.title))
-                        .unwrap_or_else(|| "暂无上传样本".to_string()),
-                ]
             };
             (
                 summary,
                 insights,
                 json!({
+                    "vibe": vibe,
+                    "channel_type": channel_type,
                     "subscriber_count": analysis.subscriber_count,
                     "view_count": analysis.view_count,
                     "video_count": analysis.video_count,
@@ -2345,6 +2404,7 @@ fn generate_mock_report(
                     "channel_id": metadata.user_summary.user_id,
                     "avatar": analysis.avatar,
                     "channel_url": analysis.channel_url,
+                    "custom_url": analysis.custom_url,
                     "is_empty_channel": is_empty_channel,
                     "library_items": library_items,
                     "recent_videos": analysis.recent_videos,

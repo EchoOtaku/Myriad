@@ -31,13 +31,15 @@ import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../contexts/I18nContext'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
-import { TappIcon } from '../../tapp/components/TappIcon'
+import { hasStandaloneTappIcon, TappIcon } from '../../tapp/components/TappIcon'
+import { TappIconBadge } from '../../tapp/components/TappIconBadge'
 import {
   getRecentTapps,
   listTappDetails,
   listTapps,
 } from '../../tapp/services/TappLifecycleApi'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
+import { getTappIconStyle } from '../../tapp/utils/tappColors'
 import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetLongPressHint } from './shared/WidgetLongPressHint'
@@ -110,18 +112,29 @@ function appIconFill(color: string) {
 
 /**
  * App 图标风格的图标底座（2x1 / 2x2 用）。
- * `color`（Tapp manifest 主题色）为空时退回中性玻璃底（占位/预览用）。
+ * 自有整图图标铺满圆角区，不套主题色壳。
  */
 const IconTile = memo(
   ({
     color,
     tileClass,
+    standalone = false,
     children,
   }: {
     color: string | null
     tileClass: string
+    standalone?: boolean
     children: ReactNode
   }) => {
+    if (standalone) {
+      return (
+        <div
+          className={`${tileClass} rounded-lg overflow-hidden shrink-0 tapp-icon-badge--standalone`}
+        >
+          {children}
+        </div>
+      )
+    }
     return (
       <div
         className={`${tileClass} rounded-lg flex items-center justify-center overflow-hidden shrink-0 ${
@@ -229,16 +242,19 @@ const TappButton = memo(
             : 'hover:bg-black/5 dark:hover:bg-white/8 hover:shadow-sm active:scale-[0.98]'
         }`}
       >
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-black/5 dark:bg-white/10 overflow-hidden">
-          <TappIcon
-            icon={tapp.icon}
-            iconSvg={tapp.iconSvg}
-            name={tappName}
-            sizeClass="w-5 h-5"
-            textSizeClass="text-base"
-            svgColor="currentColor"
-          />
-        </div>
+        <TappIconBadge
+          icon={tapp.icon}
+          iconSvg={tapp.iconSvg}
+          name={tappName}
+          iconStyle={getTappIconStyle({
+            icon: tapp.icon,
+            iconSvg: tapp.iconSvg,
+          })}
+          shellClassName="w-8 h-8 rounded-lg bg-black/5 dark:bg-white/10"
+          glyphSizeClass="w-5 h-5"
+          glyphTextClass="text-base"
+          shine={false}
+        />
         <div className="min-w-0 flex-1 text-left">
           <div className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
             {tappName}
@@ -718,18 +734,27 @@ export const TappShortcutWidget = memo(
         )
       }
 
+      const standaloneIcon = hasStandaloneTappIcon(resolved!)
+
       // 2x1 — 图标 + 名称
       if (config.size === '2x1') {
         return (
           <div className="h-full w-full flex items-center justify-center gap-3">
-            <IconTile color={tileColor} tileClass="w-10 h-10">
+            <IconTile
+              color={tileColor}
+              tileClass="w-10 h-10"
+              standalone={standaloneIcon}
+            >
               <TappIcon
                 icon={resolved!.icon}
                 iconSvg={resolved!.iconSvg}
                 name={name}
-                sizeClass="w-6 h-6"
+                sizeClass={standaloneIcon ? 'w-full h-full' : 'w-6 h-6'}
                 textSizeClass="text-xl"
                 svgColor="#fff"
+                className={
+                  standaloneIcon ? 'tapp-icon-badge__media' : undefined
+                }
               />
             </IconTile>
             <span
@@ -745,14 +770,21 @@ export const TappShortcutWidget = memo(
       // 2x2 — 图标 + 名称 + 描述
       return (
         <div className="h-full w-full flex flex-col items-center justify-center gap-2.5 text-center">
-          <IconTile color={tileColor} tileClass="w-14 h-14">
+          <IconTile
+            color={tileColor}
+            tileClass="w-14 h-14"
+            standalone={standaloneIcon}
+          >
             <TappIcon
               icon={resolved!.icon}
               iconSvg={resolved!.iconSvg}
               name={name}
-              sizeClass="w-8 h-8"
+              sizeClass={standaloneIcon ? 'w-full h-full' : 'w-8 h-8'}
               textSizeClass="text-3xl"
               svgColor="#fff"
+              className={
+                standaloneIcon ? 'tapp-icon-badge__media' : undefined
+              }
             />
           </IconTile>
           <div className="w-full min-w-0">

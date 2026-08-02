@@ -21,12 +21,14 @@ import { API_URL } from '../config'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import { useHomeScheduler, usePageReady } from '../hooks/animation'
+import { usePageSeo } from '../hooks/usePageSeo'
 import { useTappWidgets } from '../hooks/useTappWidgets'
 import {
   useResolvedTitleColor,
   useTitleFont,
 } from '../hooks/useTitleFont'
 import { ensureMotionReady } from '../lib/lazyMotion'
+import { buildHomePageSeo } from '../utils/modulePageSeo'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
 import { getUserInfoWithCache } from '../utils/userInfoCache'
@@ -39,6 +41,9 @@ export default function Home() {
   const { t } = useI18n()
   const navigate = useNavigate()
   const isPageReady = usePageReady()
+
+  // 站级 title/description；固定 canonical 为 /
+  usePageSeo(useMemo(() => buildHomePageSeo(), []))
   const [widgets, setWidgets] = useState<WidgetConfig[]>([])
   const [isEditMode, setIsEditMode] = useState(false)
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null)

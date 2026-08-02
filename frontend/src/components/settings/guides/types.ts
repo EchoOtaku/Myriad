@@ -18,13 +18,25 @@ export interface SettingGuidesCatalog {
   ui: {
     siteUrl: SettingGuideEntry
     siteMetadata: SettingGuideEntry
+    /** 基础设置：网站名片 + PWA（合并组） */
+    siteIdentity: SettingGuideEntry
     siteTitle: SettingGuideEntry
     siteDescription: SettingGuideEntry
     siteFavicon: SettingGuideEntry
+    siteSeo: SettingGuideEntry
+    siteKeywords: SettingGuideEntry
+    siteOgImage: SettingGuideEntry
+    siteNoindex: SettingGuideEntry
+    pwaEnabled: SettingGuideEntry
+    thirdPartyAnalytics: SettingGuideEntry
+    gaMeasurementId: SettingGuideEntry
+    umamiWebsiteId: SettingGuideEntry
+    umamiScriptUrl: SettingGuideEntry
     siteFooter: SettingGuideEntry
     siteIcp: SettingGuideEntry
     siteGongan: SettingGuideEntry
     cloudSponsors: SettingGuideEntry
+    siteFooterCustom: SettingGuideEntry
     backgroundAndTheme: SettingGuideEntry
     wallpaper: SettingGuideEntry
     wallpaperBlur: SettingGuideEntry
@@ -62,6 +74,8 @@ export interface SettingGuidesCatalog {
     eventAnalytics: SettingGuideEntry
     /** 数据及统计：来源站点（访客统计组内分区） */
     referrerAnalytics: SettingGuideEntry
+    /** 数据及统计：AI 使用统计 */
+    aiUsage: SettingGuideEntry
     /** 数据及统计：接入平台子分类 */
     connected: SettingGuideEntry
     autoRefresh: SettingGuideEntry
@@ -138,6 +152,8 @@ export interface SettingGuidesCatalog {
     forceRefreshCache: SettingGuideEntry
     /** 运行与诊断：DB / 存储 / 出口 / 版本等只读检查 */
     runtimeDiagnostics: SettingGuideEntry
+    /** MCP 工具服务器状态与热重载 */
+    mcp: SettingGuideEntry
   }
   federation: {
     keys: SettingGuideEntry
@@ -175,6 +191,28 @@ export interface SettingGuidesCatalog {
   }
   about: {
     section: SettingGuideEntry
+  }
+  /**
+   * Tapp 应用详情页（非 /config 分区；搜索索引可跳过）。
+   * 仅覆盖页面通用文案，不写各应用 manifest 自定义设置项。
+   */
+  tapp: {
+    /** 详情页整体 */
+    detail: SettingGuideEntry
+    /** 顶部应用信息与操作 */
+    overview: SettingGuideEntry
+    /** 应用设置组 */
+    appSettings: SettingGuideEntry
+    /** 公开安装可见性 */
+    appVisibility: SettingGuideEntry
+    /** 已授权权限组 */
+    permissions: SettingGuideEntry
+    /** 特权权限子组 */
+    permPrivileged: SettingGuideEntry
+    /** 提升权限子组 */
+    permElevated: SettingGuideEntry
+    /** 基础权限子组 */
+    permBasic: SettingGuideEntry
   }
 }
 

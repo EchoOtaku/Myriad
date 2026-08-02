@@ -28,7 +28,10 @@ const MAX_BATCH_ITEMS: usize = 20;
 const MAX_ENGAGEMENT_MS: i64 = 30 * 60 * 1000; // 30 min cap per flush
 const MIN_ENGAGEMENT_MS: i64 = 800; // align with client MIN_ENGAGEMENT_MS
 pub(crate) const DEFAULT_SUMMARY_DAYS: i64 = 7;
-pub(crate) const MAX_SUMMARY_DAYS: i64 = 90;
+/// Admin summary / AI-usage query window upper bound.
+/// Aligned with [`DAILY_RETENTION_DAYS`] (page/event daily aggregates).
+/// Distinct-visitor detail is still limited by [`VISITOR_RETENTION_DAYS`].
+pub(crate) const MAX_SUMMARY_DAYS: i64 = 365;
 pub(crate) const VISITOR_RETENTION_DAYS: i64 = 90;
 pub(crate) const DAILY_RETENTION_DAYS: i64 = 365;
 /// Collect/pageview posts per client IP per minute (handler-level).
@@ -57,8 +60,10 @@ static RATE_LIMIT: once_cell::sync::Lazy<Arc<Mutex<HashMap<String, (Instant, u32
 static VIEW_DEDUPE: once_cell::sync::Lazy<Arc<Mutex<HashMap<String, Instant>>>> =
     once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 /// Admin summary cache: days → (stored_at, body). Invalidated on write.
-pub(crate) static SUMMARY_CACHE: once_cell::sync::Lazy<Arc<Mutex<HashMap<i64, (Instant, Value)>>>> =
-    once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+/// Cache key is `days:N` or `from..to` (YYYY-MM-DD).
+pub(crate) static SUMMARY_CACHE: once_cell::sync::Lazy<
+    Arc<Mutex<HashMap<String, (Instant, Value)>>>,
+> = once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 pub(crate) const SUMMARY_CACHE_TTL: StdDuration = StdDuration::from_secs(45);
 /// Public visitor-card aggregate (today / all-time / trend). The per-visitor
 /// ordinal is **never** cached here — it is looked up per request.
@@ -126,6 +131,55 @@ pub struct CollectItem {
 #[derive(Debug, Deserialize)]
 pub struct SummaryQuery {
     pub days: Option<i64>,
+    /// Inclusive start day `YYYY-MM-DD` (custom range; takes precedence with `to`).
+    pub from: Option<String>,
+    /// Inclusive end day `YYYY-MM-DD`.
+    pub to: Option<String>,
+}
+
+/// Resolve admin analytics / AI-usage calendar window.
+///
+/// Prefer explicit `from`+`to` when both parse; otherwise use `days` ending at
+/// [`analytics_today`]. Span is clamped to `1..=MAX_SUMMARY_DAYS`.
+pub(crate) fn resolve_analytics_window(
+    days: Option<i64>,
+    from_raw: Option<&str>,
+    to_raw: Option<&str>,
+) -> (chrono::NaiveDate, chrono::NaiveDate, i64) {
+    use chrono::NaiveDate;
+
+    let today = analytics_today();
+    let parse = |s: &str| NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d").ok();
+
+    if let (Some(from_s), Some(to_s)) = (from_raw, to_raw) {
+        if let (Some(mut from), Some(mut to)) = (parse(from_s), parse(to_s)) {
+            if from > to {
+                std::mem::swap(&mut from, &mut to);
+            }
+            // Cap end at server-local today (no future buckets).
+            if to > today {
+                to = today;
+            }
+            if from > to {
+                from = to;
+            }
+            let mut span = (to - from).num_days() + 1;
+            if span > MAX_SUMMARY_DAYS {
+                from = to - Duration::days(MAX_SUMMARY_DAYS - 1);
+                span = MAX_SUMMARY_DAYS;
+            }
+            if span < 1 {
+                span = 1;
+            }
+            return (from, to, span);
+        }
+    }
+
+    let days = days
+        .unwrap_or(DEFAULT_SUMMARY_DAYS)
+        .clamp(1, MAX_SUMMARY_DAYS);
+    let from = today - Duration::days(days - 1);
+    (from, today, days)
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -506,10 +560,11 @@ fn is_private_or_local_ip(ip: std::net::IpAddr) -> bool {
 /// Prefer edge CDN country headers (no network); codes are ISO 3166-1 alpha-2.
 ///
 /// Same trust rules as client IP: only honor CDN country headers when
-/// `TRUST_PROXY_HEADERS` is on **and** the TCP peer is on `TRUST_PROXY_PEERS`.
-/// Otherwise return `None` so callers fall through to IP geo lookup / none.
-/// Spoofed `cf-ipcountry` / `x-country-code` from untrusted clients must not
-/// pollute country analytics.
+/// `TRUST_PROXY_HEADERS` is on and the peer is trusted (`TRUST_PROXY_PEERS`
+/// allowlist, or private/loopback when that list is empty). Otherwise return
+/// `None` so callers fall through to IP geo lookup / none. Spoofed
+/// `cf-ipcountry` / `x-country-code` from untrusted clients must not pollute
+/// country analytics.
 pub(crate) fn country_from_headers(
     headers: &axum::http::HeaderMap,
     peer: Option<std::net::IpAddr>,
@@ -1372,4 +1427,84 @@ WHERE day >= $1 AND day <= $2 AND path = $3
     .flatten()
     .and_then(|r| r.try_get::<i64>("", "n").ok())
     .unwrap_or(0)
+}
+
+/// Pageviews in `[from, to]` excluding the site-wide rollup path.
+pub(crate) async fn sum_page_views(
+    db: &DatabaseConnection,
+    from: NaiveDate,
+    to: NaiveDate,
+) -> i64 {
+    db.query_one(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+SELECT COALESCE(SUM(views), 0)::bigint AS n
+FROM analytics_page_daily
+WHERE day >= $1 AND day <= $2 AND path <> $3
+"#,
+        [
+            SeaValue::from(from),
+            SeaValue::from(to),
+            SeaValue::from(SITE_PATH.to_string()),
+        ],
+    ))
+    .await
+    .ok()
+    .flatten()
+    .and_then(|r| r.try_get::<i64>("", "n").ok())
+    .unwrap_or(0)
+}
+
+/// Percent change for 环比 tiles. `None` when previous is 0 and current > 0
+/// (undefined baseline — UI shows "新" / new).
+pub(crate) fn pct_change(current: i64, previous: i64) -> Option<f64> {
+    if previous == 0 {
+        if current == 0 {
+            Some(0.0)
+        } else {
+            None
+        }
+    } else {
+        Some(((current - previous) as f64 / previous as f64) * 100.0)
+    }
+}
+
+/// `day` | `week` | `month` | `period` — labels for range 环比 on FE.
+pub(crate) fn compare_range_kind(days: i64) -> &'static str {
+    match days {
+        1 => "day",
+        7 => "week",
+        30 => "month",
+        _ => "period",
+    }
+}
+
+/// One metric delta for admin summary / AI usage `compare` objects.
+pub(crate) fn metric_delta(current: i64, previous: i64) -> serde_json::Value {
+    json!({
+        "current": current,
+        "previous": previous,
+        "pct": pct_change(current, previous),
+    })
+}
+
+#[cfg(test)]
+mod compare_tests {
+    use super::{compare_range_kind, pct_change};
+
+    #[test]
+    fn pct_change_cases() {
+        assert_eq!(pct_change(0, 0), Some(0.0));
+        assert_eq!(pct_change(10, 0), None);
+        assert_eq!(pct_change(120, 100), Some(20.0));
+        assert_eq!(pct_change(80, 100), Some(-20.0));
+    }
+
+    #[test]
+    fn range_kind_labels() {
+        assert_eq!(compare_range_kind(1), "day");
+        assert_eq!(compare_range_kind(7), "week");
+        assert_eq!(compare_range_kind(30), "month");
+        assert_eq!(compare_range_kind(14), "period");
+    }
 }

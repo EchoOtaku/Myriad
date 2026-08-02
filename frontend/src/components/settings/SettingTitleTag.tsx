@@ -2,14 +2,16 @@
  * 设置标题旁标签提示
  * 标签 / chip 形态，可静态展示说明，也可点击跳转（如「前往高级配置」）
  * 可选 detail：hover ⓘ 显示详细说明 tooltip
+ * 可选 onDismiss：右侧 × 关闭（默认值变更提示等）
  */
 
+import { LuX } from '@lib/icons'
 import type { ReactNode } from 'react'
 import React, { useCallback } from 'react'
 import { SettingTitleHelp } from './SettingTitleHelp'
 import './SettingTitleTag.css'
 
-export type SettingTitleTagVariant = 'default' | 'muted'
+export type SettingTitleTagVariant = 'default' | 'muted' | 'danger'
 
 export interface SettingTitleTagProps {
   /** 标签文案 */
@@ -25,9 +27,18 @@ export interface SettingTitleTagProps {
    */
   detail?: ReactNode
   disabled?: boolean
-  /** default = 品牌色强调；muted = 中性信息 */
+  /**
+   * default = 品牌色强调；muted = 中性信息；
+   * danger = 选项/分组标题旁报错（与站点分析错误标签同款）
+   */
   variant?: SettingTitleTagVariant
   className?: string
+  /** 无障碍：danger 报错默认 role=alert */
+  role?: string
+  /** 右侧关闭；与整卡 onClick 互斥优先渲染为 span + 关闭按钮 */
+  onDismiss?: () => void
+  /** 关闭按钮 aria-label */
+  dismissAriaLabel?: string
 }
 
 export const SettingTitleTag: React.FC<SettingTitleTagProps> = ({
@@ -39,14 +50,21 @@ export const SettingTitleTag: React.FC<SettingTitleTagProps> = ({
   disabled = false,
   variant = 'default',
   className = '',
+  role,
+  onDismiss,
+  dismissAriaLabel = 'Dismiss',
 }) => {
   const classes = [
     'setting-title-tag',
     variant === 'muted' ? 'setting-title-tag--muted' : '',
+    variant === 'danger' ? 'setting-title-tag--danger' : '',
+    onDismiss ? 'setting-title-tag--dismissible' : '',
+    onClick ? 'setting-title-tag--actionable' : '',
     className,
   ]
     .filter(Boolean)
     .join(' ')
+  const a11yRole = role ?? (variant === 'danger' ? 'alert' : undefined)
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -58,7 +76,28 @@ export const SettingTitleTag: React.FC<SettingTitleTagProps> = ({
     [disabled, onClick],
   )
 
-  const body = (
+  const handleDismiss = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      e.preventDefault()
+      if (!disabled) onDismiss?.()
+    },
+    [disabled, onDismiss],
+  )
+
+  const dismissBtn = onDismiss ? (
+    <button
+      type="button"
+      className="setting-title-tag-dismiss"
+      aria-label={dismissAriaLabel}
+      disabled={disabled}
+      onClick={handleDismiss}
+    >
+      <LuX aria-hidden />
+    </button>
+  ) : null
+
+  const mainInner = (
     <>
       {icon && (
         <span className="setting-title-tag-icon" aria-hidden>
@@ -66,11 +105,28 @@ export const SettingTitleTag: React.FC<SettingTitleTagProps> = ({
         </span>
       )}
       <span className="setting-title-tag-label">{children}</span>
-      {detail != null && detail !== '' && (
-        <SettingTitleHelp>{detail}</SettingTitleHelp>
-      )}
     </>
   )
+
+  // 可点 + 可关：主区域 button + 独立 ×，避免 button 嵌套
+  if (onClick && onDismiss) {
+    return (
+      <span className={classes} title={title} role={a11yRole}>
+        <button
+          type="button"
+          className="setting-title-tag-main"
+          disabled={disabled}
+          onClick={handleClick}
+        >
+          {mainInner}
+        </button>
+        {detail != null && detail !== '' && (
+          <SettingTitleHelp>{detail}</SettingTitleHelp>
+        )}
+        {dismissBtn}
+      </span>
+    )
+  }
 
   if (onClick) {
     return (
@@ -80,15 +136,23 @@ export const SettingTitleTag: React.FC<SettingTitleTagProps> = ({
         title={title}
         disabled={disabled}
         onClick={handleClick}
+        role={a11yRole}
       >
-        {body}
+        {mainInner}
+        {detail != null && detail !== '' && (
+          <SettingTitleHelp>{detail}</SettingTitleHelp>
+        )}
       </button>
     )
   }
 
   return (
-    <span className={classes} title={title}>
-      {body}
+    <span className={classes} title={title} role={a11yRole}>
+      {mainInner}
+      {detail != null && detail !== '' && (
+        <SettingTitleHelp>{detail}</SettingTitleHelp>
+      )}
+      {dismissBtn}
     </span>
   )
 }

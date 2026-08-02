@@ -24,6 +24,8 @@ export type ConfigSearchI18n = {
     networkDesc: string
     advanced: string
     advancedDesc: string
+    mcpTitle: string
+    mcpDesc: string
     about: string
     aboutDesc: string
     permissions: string
@@ -37,6 +39,8 @@ export type ConfigSearchI18n = {
     analytics: {
       visitorTitle: string
       visitorDesc: string
+      aiUsageTitle: string
+      aiUsageDesc: string
     }
   }
   notificationCenter: {
@@ -132,6 +136,26 @@ export function buildSearchableContent(
   items.push({
     type: 'section',
     section: 'platforms',
+    title: t.config.analytics.aiUsageTitle,
+    description: t.config.analytics.aiUsageDesc,
+    keywords: [
+      'ai',
+      'usage',
+      'token',
+      '用量',
+      '使用量',
+      '模型',
+      'model',
+      '调用',
+      'ledger',
+      'ai-usage',
+      'ai_usage',
+    ],
+  })
+
+  items.push({
+    type: 'section',
+    section: 'platforms',
     title: t.config.data,
     description: t.config.dataDesc,
     keywords: ['数据管理', 'data', '缓存', 'cache', '过滤', '智能过滤', '刷新'],
@@ -167,12 +191,13 @@ export function buildSearchableContent(
 
   items.push({
     type: 'section',
-    section: 'ui',
+    section: 'basic',
     title: t.config.basic,
     description: t.config.basicDesc,
     keywords: [
       'basic',
       '基础',
+      'ui',
       '站点',
       '主题',
       '背景',
@@ -185,6 +210,13 @@ export function buildSearchableContent(
       'base_url',
       'cors',
       'origin',
+      'pwa',
+      'service worker',
+      '安装',
+      'install',
+      '离线',
+      'offline',
+      'pwa_enabled',
     ],
   })
 
@@ -264,6 +296,29 @@ export function buildSearchableContent(
       'database',
       'storage',
       'task',
+      'mcp',
+      'model context protocol',
+      '工具服务器',
+      'tool server',
+    ],
+  })
+
+  items.push({
+    type: 'alias',
+    section: 'advanced',
+    title: t.config.mcpTitle,
+    description: t.config.mcpDesc,
+    keywords: [
+      'mcp',
+      'MCP',
+      'model context protocol',
+      '工具服务器',
+      'tool server',
+      'stdio',
+      'reload',
+      '热重载',
+      'arael',
+      'agent',
     ],
   })
 

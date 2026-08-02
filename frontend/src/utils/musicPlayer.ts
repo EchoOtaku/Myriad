@@ -3,7 +3,10 @@
  */
 
 import { API_URL } from '../config'
-import { isUserInChinaMainland } from './geoLocation'
+import {
+  getCachedIsChinaMainland,
+  isUserInChinaMainland,
+} from './geoLocation'
 import { shouldPreserveNativeAudioOutput } from './platformDetect'
 import { proxyImageUrlOr } from './proxyImageUrl'
 
@@ -56,6 +59,23 @@ export function getNeteaseProxyFallbackUrl(
 }
 
 /**
+ * 网易云音频 URL（同步、不阻塞点击）。
+ * - 已有 geo 缓存：国内 play-url / 海外全量代理
+ * - 未探测：先给**全量代理**（全球可真正出声，避免 play-url 在海外「假播」）；
+ *   后台预热 geo，下次国内可切 play-url。
+ *
+ * 临时播放入口必须用这个，禁止在点击路径上 await isUserInChinaMainland。
+ */
+export function getNeteaseAudioUrlImmediate(songId: string): string {
+  const cached = getCachedIsChinaMainland()
+  if (cached === true) return getNeteasePlayUrl(songId)
+  if (cached === false) return getNeteaseProxyAudioUrl(songId)
+  // 未缓存：不 await geo；优先全量代理保证首播真实出声
+  void isUserInChinaMainland()
+  return getNeteaseProxyAudioUrl(songId)
+}
+
+/**
  * 获取网易云音乐音频URL
  * 根据用户地理位置决定策略：
  * - 国内：play-url 解析后 302 到 HTTPS CDN（直连网易，无 Mixed Content）
@@ -75,6 +95,11 @@ export async function getNeteaseAudioUrl(
       ? getNeteaseProxyAudioUrl(songId)
       : getNeteasePlayUrl(songId)
   }
+
+  // 已有缓存则同步返回，避免临时播放等热路径再挂一次 microtask
+  const cached = getCachedIsChinaMainland()
+  if (cached === true) return getNeteasePlayUrl(songId)
+  if (cached === false) return getNeteaseProxyAudioUrl(songId)
 
   // 自动检测是否需要代理
   const inChina = await isUserInChinaMainland()
@@ -140,6 +165,17 @@ export function getQQProxyFallbackUrl(
 }
 
 /**
+ * QQ 音频 URL（同步、不阻塞点击）。语义同 getNeteaseAudioUrlImmediate。
+ */
+export function getQQAudioUrlImmediate(songMid: string): string {
+  const cached = getCachedIsChinaMainland()
+  if (cached === true) return getQQPlayUrl(songMid)
+  if (cached === false) return getQQProxyAudioUrl(songMid)
+  void isUserInChinaMainland()
+  return getQQProxyAudioUrl(songMid)
+}
+
+/**
  * 获取 QQ 音乐音频 URL
  * - 国内：play-url 302 到 HTTPS CDN（直连 QQ）
  * - 海外：全量代理拉流
@@ -151,6 +187,9 @@ export async function getQQAudioUrlForGeo(
   if (useProxy !== undefined) {
     return useProxy ? getQQProxyAudioUrl(songMid) : getQQPlayUrl(songMid)
   }
+  const cached = getCachedIsChinaMainland()
+  if (cached === true) return getQQPlayUrl(songMid)
+  if (cached === false) return getQQProxyAudioUrl(songMid)
   const inChina = await isUserInChinaMainland()
   return inChina ? getQQPlayUrl(songMid) : getQQProxyAudioUrl(songMid)
 }
@@ -1218,6 +1257,28 @@ export function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60)
   const secs = Math.floor(seconds % 60)
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+}
+
+/**
+ * 从网易云曲目 metadata（资料库 / 原始 API）判断是否 VIP。
+ * fee: 1 / 4 = 会员曲；兼容 isVip / is_vip / privilege.fee；fee 可能是字符串数字。
+ */
+export function isNeteaseVipFromMeta(meta: unknown): boolean {
+  if (!meta || typeof meta !== 'object') return false
+  const m = meta as Record<string, unknown>
+  if (m.isVip === true || m.is_vip === true) return true
+  const privilege =
+    m.privilege && typeof m.privilege === 'object'
+      ? (m.privilege as Record<string, unknown>)
+      : null
+  const feeRaw = m.fee ?? privilege?.fee
+  const fee =
+    typeof feeRaw === 'number'
+      ? feeRaw
+      : typeof feeRaw === 'string'
+        ? Number(feeRaw)
+        : NaN
+  return fee === 1 || fee === 4
 }
 
 /**

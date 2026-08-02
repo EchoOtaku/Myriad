@@ -167,6 +167,7 @@ Myriad/
 | [API](docs/API.md) | HTTP API |
 | [Tapp 开发](docs/development/TAPP_DEVELOPMENT.md) | 扩展应用 |
 | [联邦](docs/development/FEDERATION.md) | ActivityPub / MFP |
+| [OAuth / 登录](docs/development/OAUTH.md) | 本地账号与 OIDC |
 | [资料库](docs/features/LIBRARY.md) | Library 功能 |
 | [Docker 部署](docs/deployment/DOCKER_DEPLOYMENT.md) | 生产编排细节 |
 | [端口清单](docs/deployment/PORTS.md) | 端口与暴露面 |

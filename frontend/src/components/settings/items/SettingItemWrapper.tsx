@@ -4,6 +4,8 @@ import React from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { guideDomProps } from '../guides/guideAnchor'
 import { useSettingsHelp } from '../SettingsHelpContext'
+import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
+import { SettingFieldErrorTag } from '../SettingFieldErrorTag'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { SettingTitleHelp } from '../SettingTitleHelp'
 import './SettingItem.css'
@@ -18,9 +20,12 @@ export interface SettingItemWrapperProps extends Partial<BaseSettingItemConfig> 
   detail?: ReactNode
   /** 覆盖 BaseSettingItemConfig.guide */
   guide?: ReactNode
+  /** 点击「应用新默认」时写入选项值（字符串默认） */
+  onApplyDefault?: (newDefault: string) => void
 }
 
 export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
+  itemKey,
   label,
   detail,
   guide,
@@ -36,6 +41,7 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
   children,
   contentRight = false,
   disabled = false,
+  onApplyDefault,
 }) => {
   const anchorProps = guideDomProps(guidePath)
   const { t } = useI18n()
@@ -64,6 +70,11 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
         </SettingTitleHelp>
       )}
       <SettingTitleGuideEntry title={label} guide={guide} />
+      <SettingDefaultChangeTag
+        fieldKey={itemKey}
+        onApply={onApplyDefault}
+      />
+      <SettingFieldErrorTag>{error}</SettingFieldErrorTag>
     </span>
   )
 
@@ -97,7 +108,6 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
           )}
         </div>
         {hint && <p className="setting-hint">{hint}</p>}
-        {error && <p className="setting-error">{error}</p>}
       </div>
     )
   }
@@ -120,7 +130,12 @@ export const SettingItemWrapper: React.FC<SettingItemWrapperProps> = ({
       <div className="setting-control">{children}</div>
 
       {hint && <p className="setting-hint">{hint}</p>}
-      {error && <p className="setting-error">{error}</p>}
+      {/* 无 label 时无法贴标题，退回行下报错 */}
+      {!label && error ? (
+        <SettingFieldErrorTag className="setting-field-error-tag--solo">
+          {error}
+        </SettingFieldErrorTag>
+      ) : null}
     </div>
   )
 }

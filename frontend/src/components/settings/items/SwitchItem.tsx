@@ -7,6 +7,7 @@ import React, { useCallback } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { guideDomProps } from '../guides/guideAnchor'
 import { useSettingsHelp } from '../SettingsHelpContext'
+import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { SettingTitleHelp } from '../SettingTitleHelp'
 import { ToggleSwitch } from './ToggleSwitch'
@@ -67,6 +68,18 @@ export const SwitchItem = React.memo<SwitchItemProps>(
                 </SettingTitleHelp>
               )}
               <SettingTitleGuideEntry title={label} guide={guide} />
+              <SettingDefaultChangeTag
+                fieldKey={itemKey}
+                onApply={(next) => {
+                  if (disabled || loading) return
+                  const normalized = next.trim().toLowerCase()
+                  onChange(
+                    normalized === 'true' ||
+                      normalized === '1' ||
+                      normalized === 'yes',
+                  )
+                }}
+              />
             </span>
             {description && (
               <span className="setting-description">{description}</span>

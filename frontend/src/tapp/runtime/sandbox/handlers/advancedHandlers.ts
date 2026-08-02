@@ -13,8 +13,10 @@ import { getDynamicContentProvider } from '../../../../services/DynamicContentPr
 import { analyzeBeatGrid } from '../../../../utils/beatAnalyzer'
 import {
   getLyricsWithVerbatim,
-  getNeteaseAudioUrl,
+  getNeteaseAudioUrlImmediate,
+  getQQAudioUrlImmediate,
 } from '../../../../utils/musicPlayer'
+import { proxyImageUrlOr } from '../../../../utils/proxyImageUrl'
 import * as TappApiService from '../../../services/TappApiService'
 import {
   hostBindShortcut,
@@ -521,23 +523,21 @@ export function registerMediaHandlers(
       const source = String(songIn.source || 'netease')
       let url = String(songIn.url || '')
       if (!url) {
+        // 同步 URL：临时播放热路径禁止 await geo / 动态 import
         if (source === 'netease') {
-          // Geo-aware: CN → play-url CDN; overseas → full audio proxy
-          url = await getNeteaseAudioUrl(id)
+          url = getNeteaseAudioUrlImmediate(id)
         } else if (source === 'qq') {
-          // Same geo split as main-site musicPlayer (play-url vs /audio/)
-          const { getQQAudioUrlForGeo } = await import(
-            '../../../../utils/musicPlayer'
-          )
-          url = await getQQAudioUrlForGeo(id)
+          url = getQQAudioUrlImmediate(id)
         }
       }
+      const rawCover = String(songIn.cover || songIn.image || '')
       const song = {
         id,
         name: String(songIn.name || songIn.title || `Track #${id}`),
         artist: String(songIn.artist || ''),
         album: String(songIn.album || ''),
-        cover: String(songIn.cover || songIn.image || ''),
+        // 临时播放：统一代理封面，保证取色同源可读
+        cover: proxyImageUrlOr(rawCover, rawCover),
         url,
         duration:
           typeof songIn.duration === 'number' && isFinite(songIn.duration)
@@ -1144,8 +1144,13 @@ export function registerAdvancedHandlers(
     }
   })
 
-  // Shortcut handlers — persist via API then bind host keydown so chords fire
+  // Shortcut handlers — persist via API then bind host keydown so chords fire.
+  // Only rehydrate when the tapp has shortcut:register; otherwise list always
+  // 403s (grant lacks the permission) and clutters the Network panel.
   void (async () => {
+    if (!tappInstance.grantedPermissions?.includes('shortcut:register')) {
+      return
+    }
     try {
       const listed = await TappApiService.listShortcuts(
         tappInstance.id,
@@ -1166,7 +1171,7 @@ export function registerAdvancedHandlers(
         }
       }
     } catch {
-      /* list may fail without permission — ignore */
+      /* list may fail if grant expired/revoked — ignore */
     }
   })()
 

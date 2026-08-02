@@ -72,6 +72,7 @@ const Setup = lazy(() => import('./views/Setup.tsx'))
 const TappList = lazy(() => import('./tapp/pages/TappListPage.tsx'))
 const TappRun = lazy(() => import('./views/TappRunView.tsx'))
 const TappDetail = lazy(() => import('./views/TappDetailView.tsx'))
+const TappStore = lazy(() => import('./tapp/pages/TappStorePage.tsx'))
 const TappPlayground = lazy(
   () => import('./tapp/pages/TappPlaygroundPage.tsx'),
 )
@@ -397,10 +398,16 @@ function AppRoutes() {
   // - 'fixed': 绝对定位包装器（仅 tapp/run 等自带 fixed 全屏布局的页面）
   // - 'normal': 正常页面（带 transform 动画）
   const animationStyle: 'normal' | 'fixed' | 'opacity-only' =
-    location.pathname.startsWith('/tapp/run') ? 'fixed' : 'normal'
+    location.pathname.startsWith('/tapp/run') ||
+    location.pathname === '/tapp/store'
+      ? 'fixed'
+      : 'normal'
 
-  // 🎯 动画分组 key：同组路由之间不触发 exit/enter 动画，避免白屏间隙
-  const animationKey = location.pathname
+  // 🎯 动画分组 key：同组路由之间不触发 exit/enter 动画，避免白屏间隙。
+  // Brew 文章路径与列表同属一组，避免 /brew ↔ /brew/item/* 动画重挂载。
+  const animationKey = location.pathname.startsWith('/brew')
+    ? '/brew'
+    : location.pathname
 
   // 🔧 原子化调度器：在路由变化时自动管理页面生命周期
   // 这会在路由切换时清理旧页面的订阅并初始化新页面
@@ -438,9 +445,11 @@ function AppRoutes() {
             </ModuleVisibilityGuard>
           }
         />
-        {/* Brew 页面允许游客访问（只读），登录用户可使用已读/收藏，管理员可管理 */}
+        {/* Brew 页面允许游客访问（只读），登录用户可使用已读/收藏，管理员可管理。
+            使用 /brew/* 单路由，避免 /brew ↔ /brew/item/:id 切换时 remount 丢失阅读器状态。
+            自有文章规范路径 /brew/item/:id 由 Brew 内部 match。 */}
         <Route
-          path="/brew"
+          path="/brew/*"
           element={
             <ModuleVisibilityGuard moduleKey="brew">
               <SuspensePage>
@@ -535,6 +544,16 @@ function AppRoutes() {
             <ModuleVisibilityGuard moduleKey="tapp">
               <SuspensePage>
                 <TappDetail />
+              </SuspensePage>
+            </ModuleVisibilityGuard>
+          }
+        />
+        <Route
+          path="/tapp/store"
+          element={
+            <ModuleVisibilityGuard moduleKey="tapp">
+              <SuspensePage>
+                <TappStore />
               </SuspensePage>
             </ModuleVisibilityGuard>
           }

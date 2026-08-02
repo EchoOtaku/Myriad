@@ -60,8 +60,9 @@ services:
       DATA_DIR: /app/data
       CACHE_DIR: /app/cache
       JWT_SECRET: ${JWT_SECRET}
+      # Required for weather/client-geo: honor proxy-rewritten X-Real-IP.
       TRUST_PROXY_HEADERS: "true"
-      # Peers allowed to set XFF; empty allowlist never trusts headers. Tighten in prod.
+      # Empty = private peers only; default RFC1918 for stock Docker. Tighten in prod.
       TRUST_PROXY_PEERS: ${TRUST_PROXY_PEERS:-10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
       CSP_CONNECT_SRC: ${CSP_CONNECT_SRC:-'self' https:}

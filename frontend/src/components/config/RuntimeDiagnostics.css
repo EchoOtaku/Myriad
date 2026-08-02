@@ -63,33 +63,46 @@ html.dark .runtime-diagnostics-overview {
   min-width: 0;
 }
 
-.runtime-diagnostics-summary strong,
-.runtime-diagnostics-summary small {
-  display: block;
-}
-
 .runtime-diagnostics-summary strong {
+  display: block;
   font-size: 0.95rem;
   line-height: 1.3;
 }
 
-.runtime-diagnostics-summary small {
-  margin-top: 0.2rem;
-  color: var(--cfg-text-3);
-  font-size: 0.75rem;
-}
-
-.runtime-diagnostics-summary-meta {
+/*
+ * 三项 meta：soft chip + 明确 gap。
+ * 选择器必须压过 .summary small 的默认样式，否则 display:block 会吃掉 flex/gap。
+ */
+.runtime-diagnostics-summary small.runtime-diagnostics-summary-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
+  margin-top: 0.28rem;
+  color: var(--cfg-text-3);
+  font-size: 0.6875rem;
 }
 
-.runtime-diagnostics-summary-meta > span + span::before {
-  margin-right: 0.35rem;
-  color: var(--cfg-text-3);
-  content: '·';
+.runtime-diagnostics-summary-meta > span {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: var(--cfg-text-2);
+  font-size: 0.65rem;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+html.dark .runtime-diagnostics-summary-meta > span {
+  border-color: color-mix(in srgb, currentColor 18%, transparent);
+  background: color-mix(in srgb, currentColor 11%, transparent);
 }
 
 .runtime-diagnostics-actions {

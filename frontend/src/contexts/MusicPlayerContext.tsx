@@ -90,25 +90,57 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // 监听音乐播放器状态变化事件（向后兼容）
+  // ⚠️ 必须按字段合并：detail 可能是 partial（如 embed 只带 currentSong），
+  // 整表 setState 会把 lyrics/isPlaying 等冲成默认空值。
   useEffect(() => {
     const handleMusicStateChange = (e: Event) => {
-      const customEvent = e as CustomEvent
-      const detail = customEvent.detail
+      const detail = (e as CustomEvent).detail as
+        | Record<string, unknown>
+        | undefined
+      if (!detail) return
 
-      setState({
-        currentSong: detail?.currentSong || null,
-        isEnabled: detail?.isEnabled || false,
-        isPlaying: detail?.isPlaying || false,
-        musicColor: detail?.musicColor || '#ef4444',
-        isTempPlay: detail?.isTempPlay || false,
-        currentSongIndex: detail?.currentSongIndex || 0,
-        playlistLength: detail?.playlistLength || 0,
-        playlist: detail?.playlist || [],
-        lyrics: detail?.lyrics || [],
-        verbatimLyrics: detail?.verbatimLyrics || [],
-        hasVerbatimLyrics: detail?.hasVerbatimLyrics || false,
-        verbatimLyricsSource: detail?.verbatimLyricsSource || '',
-        currentLyricIndex: detail?.currentLyricIndex ?? -1,
+      setState((prev) => {
+        const next = { ...prev }
+        if ('currentSong' in detail) {
+          next.currentSong = (detail.currentSong as Song | null) ?? null
+        }
+        if ('isEnabled' in detail) next.isEnabled = Boolean(detail.isEnabled)
+        if ('isPlaying' in detail) next.isPlaying = Boolean(detail.isPlaying)
+        if ('musicColor' in detail) {
+          next.musicColor = String(detail.musicColor || '#ef4444')
+        }
+        if ('isTempPlay' in detail) {
+          next.isTempPlay = Boolean(detail.isTempPlay)
+        }
+        if ('currentSongIndex' in detail) {
+          next.currentSongIndex = Number(detail.currentSongIndex) || 0
+        }
+        if ('playlistLength' in detail) {
+          next.playlistLength = Number(detail.playlistLength) || 0
+        }
+        if ('playlist' in detail) {
+          next.playlist = (detail.playlist as Song[]) || []
+        }
+        if ('lyrics' in detail) {
+          next.lyrics = (detail.lyrics as LyricLine[]) || []
+        }
+        if ('verbatimLyrics' in detail) {
+          next.verbatimLyrics = (detail.verbatimLyrics as WordLyricLine[]) || []
+        }
+        if ('hasVerbatimLyrics' in detail) {
+          next.hasVerbatimLyrics = Boolean(detail.hasVerbatimLyrics)
+        }
+        if ('verbatimLyricsSource' in detail) {
+          next.verbatimLyricsSource = (detail.verbatimLyricsSource ||
+            '') as VerbatimLyricsSource
+        }
+        if ('currentLyricIndex' in detail) {
+          next.currentLyricIndex =
+            typeof detail.currentLyricIndex === 'number'
+              ? detail.currentLyricIndex
+              : -1
+        }
+        return next
       })
     }
 
@@ -365,5 +397,47 @@ function useFallbackMusicPlayerControl() {
       updateState,
     }),
     [state, playSong, togglePlayPause, stopTempPlay, updateState],
+  )
+}
+
+// ============================================
+// 窄订阅：仅 lyrics + currentLyricIndex（资料库卡片歌词等）
+// 避免 playlist / isPlaying 等无关字段触发重渲染
+// ============================================
+
+type MusicLyricsSlice = {
+  lyrics: LyricLine[]
+  currentLyricIndex: number
+}
+
+let lyricsSliceCache: MusicLyricsSlice = {
+  lyrics: globalMusicState.lyrics,
+  currentLyricIndex: globalMusicState.currentLyricIndex,
+}
+
+function getMusicLyricsSliceSnapshot(): MusicLyricsSlice {
+  const s = globalMusicState
+  if (
+    lyricsSliceCache.lyrics === s.lyrics &&
+    lyricsSliceCache.currentLyricIndex === s.currentLyricIndex
+  ) {
+    return lyricsSliceCache
+  }
+  lyricsSliceCache = {
+    lyrics: s.lyrics,
+    currentLyricIndex: s.currentLyricIndex,
+  }
+  return lyricsSliceCache
+}
+
+/**
+ * 仅订阅歌词列表与当前句索引。
+ * 与 useMusicPlayerControl 不同：不会因 isPlaying / playlist 等变化重渲染。
+ */
+export function useMusicLyricsSlice(): MusicLyricsSlice {
+  return useSyncExternalStore(
+    subscribeMusicState,
+    getMusicLyricsSliceSnapshot,
+    getMusicLyricsSliceSnapshot,
   )
 }

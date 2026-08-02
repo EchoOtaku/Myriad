@@ -8,7 +8,7 @@
 //! - **id_token 验证**: 通过 discovery 的 `jwks_uri` 拉取 JWKS，校验签名、
 //!   `iss`、`aud`、`exp`、`sub` 和 `azp`。
 //!
-//! 详见 docs/oauth-refactor-plan.md §6.3
+//! 详见 docs/development/OAUTH.md
 
 use async_trait::async_trait;
 use jsonwebtoken::{

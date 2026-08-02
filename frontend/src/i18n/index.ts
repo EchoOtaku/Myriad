@@ -279,7 +279,7 @@ export interface TranslationKeys {
   }
 
   // 配置
-      config: {
+  config: {
     title: string
     platforms: string
     platformsDesc: string
@@ -300,11 +300,44 @@ export interface TranslationKeys {
       timezoneHint: string
       rangeAria: string
       daysN: string
+      /** 时间范围：自定义 */
+      rangeCustom: string
+      rangeFromAria: string
+      rangeToAria: string
+      rangeCustomTitle: string
+      rangeCustomHint: string
+      rangeApply: string
+      rangeClear: string
+      rangeDaysSelected: string
+      rangePrevMonth: string
+      rangeNextMonth: string
+      /** 周一起 7 个短名 */
+      rangeWeekdays: string[]
+      /** 月标题模板 {y} {m} */
+      rangeMonthTitle: string
+      /** 弹出层快捷：今天 */
+      rangeToday: string
       refresh: string
       todayViews: string
       todayVisitors: string
       rangeViews: string
       rangeVisitors: string
+      /** 事件埋点标题旁筛选 */
+      eventFilter: string
+      eventFilterAll: string
+      eventFilterAria: string
+      /** 日环比 */
+      compareDay: string
+      /** 周环比（7 日区间） */
+      compareWeek: string
+      /** 月环比（30 日区间） */
+      compareMonth: string
+      /** 等长上期对比（其它天数） */
+      comparePeriod: string
+      /** previous=0 且 current>0 */
+      compareNew: string
+      /** title：上期绝对值，{n} = 格式化数字 */
+      compareVsPrevious: string
       avgEngagement: string
       avgEngagementShort: string
       avgEngagementHint: string
@@ -353,6 +386,48 @@ export interface TranslationKeys {
       importConfirm: string
       pageLabels: Record<string, string>
       eventLabels: Record<string, string>
+      /** AI 使用统计（数据及统计） */
+      aiUsageTitle: string
+      aiUsageDesc: string
+      aiUsageLoadFailed: string
+      aiUsageEmpty: string
+      aiUsageEmptyUsers: string
+      aiUsageEmptyModels: string
+      aiUsageEmptySources: string
+      aiUsageTodayCalls: string
+      aiUsageTodayTokens: string
+      aiUsageRangeCalls: string
+      aiUsageRangeTokens: string
+      aiUsageUsers: string
+      aiUsageModels: string
+      aiUsageInputTokens: string
+      aiUsageOutputTokens: string
+      aiUsageLegendCalls: string
+      aiUsageLegendTokens: string
+      aiUsageChartAria: string
+      aiUsageByUser: string
+      aiUsageByModel: string
+      aiUsageBySource: string
+      aiUsageBySourceDesc: string
+      aiUsageColUser: string
+      aiUsageColModel: string
+      aiUsageColSource: string
+      aiUsageColTokens: string
+      aiUsageColCalls: string
+      aiUsageCallsN: string
+      aiUsageAnonymous: string
+      aiUsageRoleAdmin: string
+      aiUsageRoleOwner: string
+      aiUsageSourceScheduler: string
+      aiUsageSourceAgent: string
+      aiUsageSourceReports: string
+      aiUsageSourceRuntime: string
+      aiUsageSourceOther: string
+      aiUsageFilterUser: string
+      aiUsageFilterModel: string
+      aiUsageFilterAll: string
+      aiUsageFiltersAria: string
+      aiUsageNote: string
     }
     configBackupTitle: string
     configBackupDesc: string
@@ -520,6 +595,17 @@ export interface TranslationKeys {
     managedListFilterAria: string
     detailHelpAria: string
     detailHelpAriaNamed: string
+    /** 产品默认值变更标签 */
+    defaultChangedTag: string
+    /** 可点击应用时的标签文案 */
+    defaultChangedApplyTag: string
+    /** 详情：旧默认 → 新默认 */
+    defaultChangedDetail: string
+    /** 可应用时的详情（含点击说明） */
+    defaultChangedApplyDetail: string
+    /** 点击应用 aria / title */
+    defaultChangedApplyAria: string
+    defaultChangedDismissAria: string
     expandGroupAria: string
     collapseGroupAria: string
     importPreviewRestore: string
@@ -886,6 +972,13 @@ export interface TranslationKeys {
     clearMusicCache: string
     siteMetadata: string
     siteMetadataDesc: string
+    /** 基础设置：网站名片 + PWA（原「网站元数据」与 PWA 合并） */
+    siteIdentity: string
+    siteIdentityDesc: string
+    siteSeo: string
+    siteSeoDesc: string
+    thirdPartyAnalytics: string
+    thirdPartyAnalyticsDesc: string
     backgroundAndTheme: string
     backgroundAndThemeDesc: string
     evocativeTitle: string
@@ -912,6 +1005,20 @@ export interface TranslationKeys {
     fieldSiteTitle: string
     fieldSiteDescription: string
     fieldSiteFavicon: string
+    fieldSiteKeywords: string
+    fieldSiteKeywordsHint: string
+    fieldSiteOgImage: string
+    fieldSiteOgImageHint: string
+    fieldSiteNoindex: string
+    fieldSiteNoindexHint: string
+    fieldPwaEnabled: string
+    fieldPwaEnabledHint: string
+    fieldGaMeasurementId: string
+    fieldGaMeasurementIdHint: string
+    fieldUmamiWebsiteId: string
+    fieldUmamiWebsiteIdHint: string
+    fieldUmamiScriptUrl: string
+    fieldUmamiScriptUrlHint: string
     imageUpload: string
     imageUploadClear: string
     imageUploadLocal: string
@@ -935,6 +1042,74 @@ export interface TranslationKeys {
     geminiBaseUrlHint: string
     githubApiBaseUrl: string
     githubApiBaseUrlHint: string
+    /** Advanced → MCP tool servers (admin) */
+    mcpTitle: string
+    mcpDesc: string
+    mcpConfigPathLabel: string
+    mcpStatServers: string
+    mcpStatEnabled: string
+    mcpStatHealthy: string
+    mcpStatTools: string
+    mcpStatusHealthy: string
+    mcpStatusUnhealthy: string
+    mcpStatusDisabled: string
+    mcpStatusStopped: string
+    mcpAutoRestartOn: string
+    mcpAutoRestartOff: string
+    mcpToolsCount: string
+    mcpFieldId: string
+    mcpFieldIdHint: string
+    mcpFieldCommand: string
+    mcpFieldCommandHint: string
+    mcpFieldArgs: string
+    mcpFieldArgsHint: string
+    mcpFieldEnv: string
+    mcpFieldEnvHint: string
+    mcpFieldEnabled: string
+    mcpFieldEnabledHint: string
+    mcpFieldHealth: string
+    mcpFieldTools: string
+    mcpFieldAutoRestart: string
+    mcpFieldAutoRestartHint: string
+    mcpFieldMaxRestart: string
+    mcpFieldMaxRestartHint: string
+    mcpRefreshDesc: string
+    mcpAddServer: string
+    mcpAddServerDesc: string
+    mcpEnable: string
+    mcpEnableDesc: string
+    mcpDisable: string
+    mcpDisableDesc: string
+    mcpEditDesc: string
+    mcpDeleteDesc: string
+    mcpDeleteConfirm: string
+    mcpFormAddTitle: string
+    mcpFormEditTitle: string
+    /** 编辑表单 expand chip 第二行（对齐 federationAddFilterDesc） */
+    mcpFormEditTitleDesc: string
+    mcpFormSaveAdd: string
+    mcpFormSaveAddDesc: string
+    mcpFormSaveEdit: string
+    mcpFormSaveEditDesc: string
+    mcpFormCancelDesc: string
+    mcpValidateIdRequired: string
+    mcpValidateIdCharset: string
+    mcpValidateIdDuplicate: string
+    mcpValidateCommandRequired: string
+    mcpSaveCreated: string
+    mcpSaveUpdated: string
+    mcpSaveDeleted: string
+    mcpSaveFailed: string
+    mcpLoadFailed: string
+    mcpEmpty: string
+    mcpEmptyFiltered: string
+    mcpSearchPlaceholder: string
+    mcpFilterAria: string
+    mcpFilterAll: string
+    mcpFilterEnabled: string
+    mcpFilterDisabled: string
+    mcpFilterHealthy: string
+    mcpFilterUnhealthy: string
     runtimeDiagnosticsTitle: string
     runtimeDiagnosticsDesc: string
     runtimeDiagnosticsStatusHealthy: string
@@ -982,6 +1157,10 @@ export interface TranslationKeys {
     runtimeDiagnosticsDays: string
     runtimeDiagnosticsHours: string
     runtimeDiagnosticsMinutes: string
+    /** 摘要 meta：运行时间 {duration} */
+    runtimeDiagnosticsUptime: string
+    /** 摘要 meta：部署于 {date}（据数据库建立时间） */
+    runtimeDiagnosticsDeployedAt: string
     runtimeDiagnosticsLoadFailed: string
     runtimeDiagnosticsDownload: string
     runtimeDiagnosticsCopied: string
@@ -993,6 +1172,11 @@ export interface TranslationKeys {
     placeholderWallpaperUrl: string
     placeholderSiteTitle: string
     placeholderSiteDescription: string
+    placeholderSiteKeywords: string
+    placeholderSiteOgImage: string
+    placeholderGaMeasurementId: string
+    placeholderUmamiWebsiteId: string
+    placeholderUmamiScriptUrl: string
     placeholderSiteFavicon: string
     callbackUrl: string
     savingDefault: string
@@ -1000,6 +1184,12 @@ export interface TranslationKeys {
     refreshing: string
     refreshFailed: string
     savedSuccess: string
+    /** 代理 / API 镜像：后端热重载，无整页刷新 */
+    savedSuccessRuntimeReload: string
+    /** 仍须 location.reload 的保存成功提示 */
+    savedSuccessHardReload: string
+    /** 硬刷前 reload-config 进行中 */
+    hardReloadPreparing: string
     configured: string
     notConfigured: string
     /** 平台卡状态点 */
@@ -1342,6 +1532,19 @@ export interface TranslationKeys {
     cloudflare: string
     edgeone: string
     upyun: string
+    siteFooterCustom: string
+    siteFooterCustomHint: string
+    siteFooterCustomItem: string
+    siteFooterCustomAdd: string
+    siteFooterCustomRemove: string
+    siteFooterCustomText: string
+    siteFooterCustomTextPlaceholder: string
+    siteFooterCustomIcon: string
+    siteFooterCustomIconPlaceholder: string
+    siteFooterCustomIconHint: string
+    siteFooterCustomUrl: string
+    siteFooterCustomUrlPlaceholder: string
+    siteFooterCustomUrlHint: string
   }
 
   // 小组件
@@ -1795,6 +1998,7 @@ export interface TranslationKeys {
     listRepeat: string
     loadPlaylistFailed: string
     playFailed: string
+    vipPlayFailed: string
   }
 
   // 缓存管理
@@ -2382,6 +2586,11 @@ export interface TranslationKeys {
     discordTagOpenSource: string
     discordTagIndieGame: string
     discordTagAcg: string
+    ytSubscribers: string
+    ytViews: string
+    ytVideos: string
+    ytEmptyChannel: string
+    ytRecentUploads: string
   }
 
   // 社交网络小组件扩展
@@ -2443,6 +2652,8 @@ export interface TranslationKeys {
     stopped: string
     installed: string
     installing: string
+    /** In-progress update (button/title without percent) */
+    updating: string
     /** Large package install progress, e.g. "Installing… 42%" */
     installProgress: string
     /** Downloading package files for large installs */
@@ -2677,6 +2888,28 @@ export interface TranslationKeys {
     playgroundFailedPhase: string
     playgroundTimeoutHint: string
     playgroundServerErrorHint: string
+    /** Pro AI model missing / disabled on server. */
+    playgroundAiNotConfiguredHint: string
+    /** Upstream model/agent call failed (e.g. 502). */
+    playgroundAiGenerationFailedHint: string
+    /** Validation exhausted after repair attempts. */
+    playgroundValidationFailedHint: string
+    /** Request body / history snapshots too large. */
+    playgroundPayloadTooLargeHint: string
+    /** Playground is admin-only. */
+    playgroundAdminRequiredHint: string
+    /** Need login before playground. */
+    playgroundAuthRequiredHint: string
+    playgroundRateLimitHint: string
+    playgroundNetworkHint: string
+    playgroundStreamIncompleteHint: string
+    playgroundAgentBusyHint: string
+    /** Invalid client request; `{detail}` from server. */
+    playgroundBadRequestHint: string
+    /** Secondary technical line; `{detail}`. */
+    playgroundErrorDetail: string
+    /** Preview sandbox/widget runtime; `{message}`. */
+    playgroundRuntimeError: string
     playgroundCancel: string
     playgroundCancelled: string
     playgroundAgentTrace: string
@@ -2761,6 +2994,13 @@ export interface TranslationKeys {
     settingsReadOnly: string
     noSettingsAvailable: string
     noSettingsDesc: string
+    /** 应用可见性（公开安装） */
+    appVisibility: string
+    appVisibilityDesc: string
+    appVisibilityAll: string
+    appVisibilityAdmin: string
+    appVisibilitySaved: string
+    appVisibilitySaveFailed: string
     appInfo: string
     detailInfo: string
     appId: string
@@ -2782,6 +3022,14 @@ export interface TranslationKeys {
 
     // 商店
     storeTitle: string
+    storeDiscover: string
+    storeDiscoverSubtitle: string
+    storeFeatured: string
+    storeFeaturedEyebrow: string
+    /** Discover: newest apps section */
+    storeLatest: string
+    storeBrowse: string
+    storeLibrary: string
     storeSourceSettings: string
     storeClose: string
     refreshStore: string
@@ -2793,10 +3041,20 @@ export interface TranslationKeys {
     licenseLabel: string
     updatedAtLabel: string
     sourceLabel: string
+    languagesLabel: string
     builtinExample: string
     categoryFilter: string
     allApps: string
+    /** Discover: open full catalog secondary page */
+    seeAllApps: string
     installedApps: string
+    storeUpdates: string
+    storePreview: string
+    storePreviewUnavailable: string
+    storeSortOrder: string
+    storeSortByCategory: string
+    storeSortByName: string
+    storeSortByDate: string
     loadingRemoteApps: string
     loadRemoteFailed: string
     noMatchingApps: string
@@ -2821,8 +3079,11 @@ export interface TranslationKeys {
     confirmUninstallBtn: string
 
     // 商店源设置
-    sourceManagement: string
+    storeSources: string
+    storeConfiguration: string
     addSource: string
+    editSource: string
+    saveSource: string
     sourceName: string
     sourceUrl: string
     official: string
@@ -2833,6 +3094,7 @@ export interface TranslationKeys {
     fillNameAndUrl: string
     invalidUrl: string
     addSourceFailed: string
+    updateSourceFailed: string
     refreshAllStores: string
     confirmDeleteSource: string
 
@@ -3529,6 +3791,7 @@ export interface TranslationKeys {
     tabSkills: string
     tabMemory: string
     emptyHeartbeat: string
+    emptyHeartbeatHint: string
     emptySkills: string
     emptyMemory: string
     manageLoadError: string
@@ -3541,11 +3804,28 @@ export interface TranslationKeys {
     deleteHeartbeat: string
     confirmDeleteHeartbeat: string
     heartbeatName: string
+    heartbeatNamePlaceholder: string
     heartbeatSchedule: string
+    heartbeatScheduleCustom: string
+    heartbeatCronHint: string
     heartbeatAction: string
+    heartbeatActionPlaceholder: string
     heartbeatEnabled: string
+    heartbeatActive: string
+    heartbeatPaused: string
+    heartbeatLastRun: string
+    heartbeatNeverRun: string
+    heartbeatCount: string
+    heartbeatPresetsAria: string
     cronEveryMinutes: string
+    cronEveryHours: string
+    cronHourly: string
     cronDaily: string
+    cronPreset15m: string
+    cronPreset30m: string
+    cronPreset1h: string
+    cronPreset6h: string
+    cronPresetDaily9: string
     originManual: string
     originAuto: string
     originImproved: string

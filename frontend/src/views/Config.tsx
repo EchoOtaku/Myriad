@@ -2,13 +2,16 @@
  * 系统配置视图组件
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../components/AnimatedView'
 import ConfigForm from '../components/ConfigForm'
 import { useAuth } from '../contexts/AuthContext'
+import { useI18n } from '../contexts/I18nContext'
 import { useConfigScheduler } from '../hooks/animation'
+import { usePageSeo } from '../hooks/usePageSeo'
+import { buildPrivatePageSeo } from '../utils/modulePageSeo'
 import { hasSessionHint } from '../utils/sessionDetection'
 
 export default function Config() {
@@ -16,9 +19,21 @@ export default function Config() {
   useConfigScheduler()
 
   const navigate = useNavigate()
+  const { t } = useI18n()
   const { isAdmin: authIsAdmin, isAuthenticated, checkAuth } = useAuth()
   const [loading, setLoading] = useState(true)
   const [isAdmin, setIsAdmin] = useState(false)
+
+  usePageSeo(
+    useMemo(
+      () =>
+        buildPrivatePageSeo({
+          label: t.nav.config,
+          path: '/config',
+        }),
+      [t],
+    ),
+  )
 
   // 使用 AuthContext 检查管理员权限
   useEffect(() => {

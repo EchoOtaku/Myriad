@@ -28,7 +28,9 @@ const myriadCommit = import.meta.env.PUBLIC_MYRIAD_COMMIT_SHA || ''
     <meta name="theme-color" content="#f5f5f5" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/webp" href="/favicon.webp" id="favicon-link" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- PWA manifest / install meta are applied by utils/pwa when pwa_enabled -->
+    <link rel="manifest" href="/manifest.webmanifest" id="pwa-manifest-link" />
+    <link rel="apple-touch-icon" href="/icons/pwa/icon-192.png" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Myriad" />
@@ -147,46 +149,10 @@ const myriadCommit = import.meta.env.PUBLIC_MYRIAD_COMMIT_SHA || ''
       }
     </style>
 
-    <!-- 开发模式优先清理旧 Service Worker，避免旧缓存先拦截 API 请求 -->
+    <!-- PWA：生产按 pwa_enabled 注册 SW；开发始终注销，避免旧缓存劫持 API -->
     <script>
-      function resetMyriadDevServiceWorker() {
-        Promise.all([
-          navigator.serviceWorker.getRegistrations().then((registrations) =>
-            Promise.all(
-              registrations.map(async (registration) => {
-                try {
-                  await registration.update()
-                } catch {}
-                return registration.unregister()
-              }),
-            ),
-          ),
-          'caches' in window
-            ? caches
-                .keys()
-                .then((keys) =>
-                  Promise.all(keys.filter((key) => key.startsWith('myriad-')).map((key) => caches.delete(key))),
-                )
-            : Promise.resolve(),
-        ])
-          .then(() => {
-            if (navigator.serviceWorker.controller && !sessionStorage.getItem('myriad-dev-sw-reset')) {
-              sessionStorage.setItem('myriad-dev-sw-reset', '1')
-              window.location.reload()
-            }
-          })
-          .catch(() => {})
-      }
-
-      if ('serviceWorker' in navigator && import.meta.env.DEV) {
-        resetMyriadDevServiceWorker()
-      } else if ('serviceWorker' in navigator && import.meta.env.PROD) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {
-            // Service Worker registration failed
-          })
-        })
-      }
+      import { initPwaLifecycle } from '../utils/pwa'
+      initPwaLifecycle()
     </script>
 
     <!-- 动态加载网站元数据 - 使用新的元数据管理工具 -->

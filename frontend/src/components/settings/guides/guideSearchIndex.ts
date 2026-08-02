@@ -12,7 +12,7 @@ export const GUIDE_CATALOG_TO_SECTION: Record<
   keyof SettingGuidesCatalog,
   string
 > = {
-  ui: 'ui',
+  ui: 'basic',
   modules: 'modules',
   platforms: 'platforms',
   notifications: 'notifications',
@@ -25,6 +25,8 @@ export const GUIDE_CATALOG_TO_SECTION: Record<
   /** 更新器内联在关于页 */
   updater: 'about',
   about: 'about',
+  /** Tapp 详情页不在 /config 内；索引阶段跳过 */
+  tapp: '',
 }
 
 export type GuideSearchEntry = {

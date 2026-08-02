@@ -86,7 +86,7 @@
 
 | Section | bag keys | 导出常量 |
 | ------- | -------- | -------- |
-| **UI**（基础） | `wallpaper_url` `wallpaper_blur` · `site_title` `site_description` `site_favicon` · `site_icp` `site_gongan` `cloud_sponsors` · `evocative_*` | `UI_RESET_KEYS`（**不含** `base_url`：域名走 `SiteUrlField` 独立 API） |
+| **UI**（基础） | `wallpaper_url` `wallpaper_blur` · `site_title` `site_description` `site_favicon` · `site_keywords` `site_og_image` `site_noindex` · `ga_measurement_id` `umami_website_id` `umami_script_url` · `site_icp` `site_gongan` `cloud_sponsors` `site_footer_custom` · `evocative_*` | `UI_RESET_KEYS`（**不含** `base_url`：域名走 `SiteUrlField` 独立 API） |
 | **Platforms** | `analytics_enabled` | `PLATFORMS_UI_RESET_KEYS` |
 | **Modules** | `music_enabled` `music_source` `music_playlist_id` | `MODULE_UI_RESET_KEYS` |
 | **Advanced** | `proxy_enabled` `proxy_url` `proxy_bypass` `gemini_base_url` `github_api_base_url` | `ADVANCED_RESET_KEYS` |
@@ -106,7 +106,12 @@
 - **`base_url` 空串不得覆盖**已生效域名（改域名走 `SiteUrlField` 独立 API）。
 - **`silent` 更新 bag**（旁路 API 已落库）必须同步 patch `initialConfig`，否则 `deepEqual(config, initialConfig)` 仍会点亮浮动保存。
 - **多 draft 统一保存**：阶段 1 全部写库 → 阶段 2 再 mark clean（`setInitialConfig` / 各 `setSaved*`）。禁止中途 clean，避免 OAuth 失败后 bag 已 clean 的状态分裂。
-- **按需硬刷新**：`configChangesNeedHardReload`（平台 / AI / 自动刷新 / 代理镜像）才 `reloadSystemConfig` + `location.reload`；纯 UI bag 只 toast。
+- **保存后刷新策略**（见 `uiBagOwnership.ts`）与 toast 文案：
+  - AI / platforms / auto_fetch / 纯 UI bag → 软保存 `savedSuccess`（platforms 另 `clearDedupCache` library）
+  - 代理 / API 镜像 → `configChangesNeedRuntimeReload`：`reloadSystemConfig` **无** `location.reload`；toast `savedSuccessRuntimeReload`
+  - 壁纸 / Evocative → `configChangesNeedWallpaperReload` 软刷壁纸层
+  - 硬刷路径（导入 / 清缓存 / 预留 hard save）：`hardReloadPreparing` → `savedSuccessHardReload`（勿盖成泛用 `savedSuccess`）；导入确认文案也说明将整页刷新
+  - `configChangesNeedHardReload` 当前主表单恒 false（保留分支供未来进程级变更）
 - **全量重置 bag**：只用 `ALL_OWNED_UI_BAG_KEYS`（见 `uiBagOwnership.ts`），勿重置 `base_url`。
 
 ### 管理端 vs 公开 API

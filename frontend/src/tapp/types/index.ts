@@ -486,6 +486,13 @@ export interface TappInstance {
   isAdminTapp?: boolean
 
   /**
+   * 公开安装可见性（仅 isAdminTapp 有意义）：
+   * - `all`：全体可见
+   * - `admin`：仅管理员可见
+   */
+  visibility?: 'all' | 'admin'
+
+  /**
    * 安装记录在服务端的生命周期状态（不含本页会话假启动）。
    * 公开站主 Tapp 以它为准：`running` 全站可显示；`installed` 表示站长已停，访客不得启动。
    */

@@ -52,9 +52,11 @@ html.dark .site-analytics-rank {
 }
 
 /*
- * 访客统计子分类内：概览 + 页面分区 + 事件/来源网格 之间用「组间距」。
+ * 访客 / AI 使用统计子分类内：概览 + 分区 + 侧栏网格 之间用「组间距」。
+ * （默认 setting-group-content 是 --settings-gap-item，会显得过紧。）
  */
-#visitor-stats > .setting-group-content {
+#visitor-stats > .setting-group-content,
+#ai-usage-stats > .setting-group-content {
   gap: var(--settings-gap-group, 1.25rem);
   /* 国家卡 hover tooltip 需要溢出 */
   overflow: visible;
@@ -137,6 +139,11 @@ html.dark .site-analytics-rank {
   min-width: 0;
 }
 
+/* 分区标题旁筛选（事件埋点等） */
+.site-analytics-block-title .setting-title-select {
+  margin-left: 0.15rem;
+}
+
 .site-analytics-block-desc {
   margin: 0;
   font-size: 0.75rem;
@@ -164,9 +171,15 @@ html.dark .site-analytics-rank {
 .site-analytics-scope-controls {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.4rem;
   margin-left: auto;
   min-width: 0;
+}
+
+/* 自定义：chip + Portal 月历（DateRangePopover） */
+.analytics-range-picker {
+  justify-content: flex-end;
 }
 
 /* 时区跟着日期段走，是注脚不是数值 */
@@ -185,12 +198,16 @@ html.dark .site-analytics-rank {
 }
 
 /*
- * 七个指标默认一行；再窄 4 → 2 列，避免 5/3 列时末行孤儿卡。
+ * 访客 7 格 / AI 6 格默认一行；再窄 4 → 2 列，避免 5/3 列时末行孤儿卡。
  */
 .site-analytics-tiles {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.4rem;
+}
+
+.site-analytics-tiles--6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .site-analytics-tile {
@@ -410,11 +427,33 @@ html.dark .site-analytics-country-tip {
 }
 
 /*
- * 大号数字用字体默认比例数字：tabular-nums 会把每位撑成 0 的宽度，
- * 展示字号下「121」这类数字会显得松散。等宽只留给要竖向对齐的列。
+ * 主数值 + 环比同一行：高度不变；放不下横向滚动。
+ * 大号数字用默认比例数字（tabular 会把「121」撑松）。
  */
-.site-analytics-tile-value {
+.site-analytics-tile-metric {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
   margin-top: auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.site-analytics-tile-metric::-webkit-scrollbar {
+  height: 3px;
+}
+
+.site-analytics-tile-metric::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cfg-text-3) 35%, transparent);
+}
+
+.site-analytics-tile-value {
+  flex: 0 0 auto;
   font-size: 1.15rem;
   font-weight: 650;
   letter-spacing: -0.02em;
@@ -422,8 +461,74 @@ html.dark .site-analytics-country-tip {
   color: var(--cfg-text-1);
 }
 
+/* 无环比的卡片仍把数值顶到底部 */
+.site-analytics-tile > .site-analytics-tile-value {
+  margin-top: auto;
+}
+
 .site-analytics-tile-value--sm {
   font-size: 0.95rem;
+}
+
+/* 日 / 周 / 月环比：跟在主数值后，略小于主数字 */
+.site-analytics-compare {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.18rem;
+  flex: 0 0 auto;
+  font-size: 0.6rem;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.site-analytics-compare-kind {
+  opacity: 0.72;
+  font-weight: 500;
+}
+
+.site-analytics-compare-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.site-analytics-compare.is-flat,
+.site-analytics-compare.is-new {
+  color: color-mix(in srgb, var(--cfg-text, #444) 62%, transparent);
+}
+
+/* Western / default: green rise, red fall */
+.site-analytics-compare[data-palette='green-up'].is-up {
+  color: color-mix(in srgb, #16a34a 88%, var(--cfg-text, #111));
+}
+
+.site-analytics-compare[data-palette='green-up'].is-down {
+  color: color-mix(in srgb, #dc2626 88%, var(--cfg-text, #111));
+}
+
+/* East Asia boards (zh / ja / ko): 红涨绿跌 */
+.site-analytics-compare[data-palette='red-up'].is-up {
+  color: color-mix(in srgb, #dc2626 88%, var(--cfg-text, #111));
+}
+
+.site-analytics-compare[data-palette='red-up'].is-down {
+  color: color-mix(in srgb, #16a34a 88%, var(--cfg-text, #111));
+}
+
+html.dark .site-analytics-compare[data-palette='green-up'].is-up {
+  color: color-mix(in srgb, #4ade80 80%, #fff);
+}
+
+html.dark .site-analytics-compare[data-palette='green-up'].is-down {
+  color: color-mix(in srgb, #f87171 80%, #fff);
+}
+
+html.dark .site-analytics-compare[data-palette='red-up'].is-up {
+  color: color-mix(in srgb, #f87171 80%, #fff);
+}
+
+html.dark .site-analytics-compare[data-palette='red-up'].is-down {
+  color: color-mix(in srgb, #4ade80 80%, #fff);
 }
 
 /* ===== 趋势图 ===== */
@@ -613,7 +718,8 @@ html.dark .site-analytics-country-tip {
 /* ===== 趋势「表格」视图（与排行表同一套表面令牌） ===== */
 
 .site-analytics-table-wrap {
-  max-height: 15rem;
+  /* 长区间（最多 365 天）内部滚动，不把设置页撑开 */
+  max-height: min(15rem, 40vh);
   overflow: auto;
   border-radius: var(--sa-table-radius);
   border: 1px solid var(--sa-table-border);
@@ -843,6 +949,11 @@ html.dark .site-analytics-country-tip {
   padding: 0;
   list-style: none;
   background: transparent;
+  /* 展开「显示更多」或带子行时内部滚动，表头/按钮留在外不跟着滚 */
+  max-height: min(20rem, 45vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .site-analytics-rank-row {
@@ -1172,15 +1283,17 @@ html.dark .site-analytics-error-tag {
 
 /* ===== 窄屏 ===== */
 
-/* 七格一行放不下：先 4 列，再 2 列 */
+/* 一行放不下：先 4 列，再 2 列（7 / 6 格共用） */
 @media (width <= 1180px) {
-  .site-analytics-tiles {
+  .site-analytics-tiles,
+  .site-analytics-tiles--6 {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
 @media (width <= 720px) {
-  .site-analytics-tiles {
+  .site-analytics-tiles,
+  .site-analytics-tiles--6 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1211,3 +1324,5 @@ html.dark .site-analytics-error-tag {
     transition: none;
   }
 }
+
+

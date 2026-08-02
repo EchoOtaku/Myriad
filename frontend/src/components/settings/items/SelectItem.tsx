@@ -6,6 +6,8 @@
 import type { SelectSettingConfig } from '../types'
 import React, { useCallback } from 'react'
 import { guideDomProps } from '../guides/guideAnchor'
+import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
+import { SettingFieldErrorTag } from '../SettingFieldErrorTag'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { FieldSelect } from './FieldSelect'
 import './SettingItem.css'
@@ -56,6 +58,13 @@ function SelectItemComponent<T extends string = string>({
           {label}
           {required && <span className="required">*</span>}
           <SettingTitleGuideEntry title={label} guide={guide} />
+          <SettingDefaultChangeTag
+            fieldKey={itemKey}
+            onApply={(next) => {
+              if (!disabled && !loading) onChange(next as T)
+            }}
+          />
+          <SettingFieldErrorTag>{error}</SettingFieldErrorTag>
         </span>
         {description && layout === 'vertical' && (
           <span className="setting-description">{description}</span>
@@ -72,7 +81,6 @@ function SelectItemComponent<T extends string = string>({
           className={error ? 'has-error' : ''}
           aria-label={label}
         />
-        {error && <p className="setting-error">{error}</p>}
         {hint && !error && <p className="setting-hint">{hint}</p>}
       </div>
     </div>

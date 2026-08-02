@@ -124,6 +124,12 @@ pub(super) fn build_base_api_router(
             get(api::analytics::get_summary)
                 .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
         )
+        // AI usage monitor (admin): day / user / model breakdown from cost ledger
+        .route(
+            "/api/analytics/ai-usage",
+            get(api::analytics::get_ai_usage_summary)
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
+        )
         .route(
             "/api/analytics/export",
             get(api::analytics::export_analytics)
@@ -308,6 +314,26 @@ pub(super) fn build_base_api_router(
         .route("/api/config/metadata", get(api::config::get_site_metadata)) // 🔓 公开端点：网站元数据
         .route("/api/config/public", get(api::config::get_public_config)) // 🔓 公开端点：平台公开信息（用于社交链接）
         .route("/api/config/ui", get(api::config::get_public_ui_config)) // 🔓 公开端点：UI 运行时（壁纸/动效/音乐/站点展示）
+        // 🔓 SEO：sitemap / robots / 公开 Tapp·Brew 摘要与爬虫 HTML 壳
+        .route("/sitemap.xml", get(api::seo::sitemap_xml))
+        .route("/api/seo/sitemap.xml", get(api::seo::sitemap_xml))
+        .route("/robots.txt", get(api::seo::robots_txt))
+        .route(
+            "/api/seo/tapp/{tapp_id}",
+            get(api::seo::tapp_seo_summary),
+        )
+        .route(
+            "/tapp/run/{tapp_id}",
+            get(api::seo::tapp_run_seo_html),
+        )
+        .route(
+            "/api/seo/brew/{item_id}",
+            get(api::seo::brew_item_seo_summary),
+        )
+        .route(
+            "/brew/item/{item_id}",
+            get(api::seo::brew_item_seo_html),
+        )
         // ✅ 安全修复 P0: CSRF Token 获取端点
         .route("/api/csrf-token", get(middleware::csrf::get_csrf_token))
         // AI推荐API - 🔓 公开端点：图标推荐服务

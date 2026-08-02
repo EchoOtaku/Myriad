@@ -339,11 +339,34 @@ export const jaJP: TranslationKeys = {
         '日次集計はサーバープロセスのローカル時刻（ホスト/コンテナの時計と TZ。固定オフセットなし）',
       rangeAria: '集計期間',
       daysN: '{n} 日',
+      rangeCustom: 'カスタム',
+      rangeFromAria: '開始日',
+      rangeToAria: '終了日',
+      rangeCustomTitle: 'カスタム期間',
+      rangeCustomHint:
+        '開始日を押し、続けて終了日を押します。ホバーで範囲をプレビュー。最大 365 日（日次集計の保持期間）。閲覧数などの日次ロールアップは最長1年；期間内ユニーク訪問者の明細は約 90 日分のみ。',
+      rangeApply: '適用',
+      rangeClear: 'クリア',
+      rangeDaysSelected: '{n} 日',
+      rangePrevMonth: '前の月',
+      rangeNextMonth: '次の月',
+      rangeWeekdays: ['月', '火', '水', '木', '金', '土', '日'],
+      rangeMonthTitle: '{y}年{m}月',
+      rangeToday: '今日',
       refresh: '更新',
       todayViews: '今日の閲覧',
       todayVisitors: '今日の訪問者',
       rangeViews: '{n} 日の閲覧',
       rangeVisitors: '{n} 日の訪問者',
+      eventFilter: 'イベント',
+      eventFilterAll: 'すべて',
+      eventFilterAria: 'イベント名で絞り込み',
+      compareDay: '日次比',
+      compareWeek: '週次比',
+      compareMonth: '月次比',
+      comparePeriod: '前期比',
+      compareNew: '新規',
+      compareVsPrevious: '前期 {n}',
       avgEngagement: '平均滞在',
       avgEngagementShort: '平均',
       avgEngagementHint: '滞在を報告した訪問者×ページ日の平均（表示中の時間）',
@@ -393,6 +416,50 @@ export const jaJP: TranslationKeys = {
       importInvalid: '無効な統計バックアップです',
       importConfirm:
         'インポートすると現在の訪問統計（ページ / イベント / 参照元 / 訪問者ハッシュ）がすべて【置き換え】られます。続行しますか？',
+      aiUsageTitle: 'AI 使用統計',
+      aiUsageDesc:
+        'サイト全体の AI 呼び出し（管理者・オーナーを含む）をユーザー・モデル・出典・日付で集計。Tapp ランタイム、定期タスク、Arael、レポート生成を含む。ユーザー／モデルで絞り込み可。棒＝回数、線＝トークン。',
+      aiUsageLoadFailed: 'AI 使用統計の読み込みに失敗しました',
+      aiUsageEmpty: '選択期間に AI 呼び出しはありません',
+      aiUsageEmptyUsers: '選択期間にユーザー別の使用量はありません',
+      aiUsageEmptyModels: '選択期間にモデル別の使用量はありません',
+      aiUsageEmptySources: '選択期間に出典別の使用量はありません',
+      aiUsageTodayCalls: '本日の呼び出し',
+      aiUsageTodayTokens: '本日のトークン',
+      aiUsageRangeCalls: '{n} 日の呼び出し',
+      aiUsageRangeTokens: '{n} 日のトークン',
+      aiUsageUsers: 'ユーザー数',
+      aiUsageModels: 'モデル数',
+      aiUsageInputTokens: '入力トークン',
+      aiUsageOutputTokens: '出力トークン',
+      aiUsageLegendCalls: '呼び出し回数',
+      aiUsageLegendTokens: 'トークン合計',
+      aiUsageChartAria: '日別 AI 呼び出し回数とトークンの推移',
+      aiUsageByUser: 'ユーザー別',
+      aiUsageByModel: 'モデル別',
+      aiUsageBySource: '出典別',
+      aiUsageBySourceDesc:
+        'Tapp ランタイム、定期タスク、Arael、レポート生成などを分けて表示。訪問統計と違い、管理者の呼び出しも集計します。',
+      aiUsageColUser: 'ユーザー',
+      aiUsageColModel: 'モデル',
+      aiUsageColSource: '出典',
+      aiUsageColTokens: 'トークン',
+      aiUsageColCalls: '呼び出し',
+      aiUsageCallsN: '{n} 回',
+      aiUsageAnonymous: '匿名 / ゲスト',
+      aiUsageRoleAdmin: '管理者',
+      aiUsageRoleOwner: 'オーナー',
+      aiUsageSourceScheduler: '定期タスク',
+      aiUsageSourceAgent: 'Arael',
+      aiUsageSourceReports: 'レポート生成',
+      aiUsageSourceRuntime: 'Tapp / ランタイム',
+      aiUsageSourceOther: 'その他',
+      aiUsageFilterUser: 'ユーザー',
+      aiUsageFilterModel: 'モデル',
+      aiUsageFilterAll: 'すべて',
+      aiUsageFiltersAria: 'ユーザーとモデルで AI 使用量を絞り込み',
+      aiUsageNote:
+        '全サイト費用台帳（tapp_ai_cost_ledger）：管理者と一般ユーザーを含む。出典は Tapp ランタイム、scheduler 定期タスク、Arael、レポート。トークンは推定値のことが多いです。',
       pageLabels: {
         '/': 'ホーム',
         '/library': 'ライブラリ',
@@ -465,12 +532,14 @@ export const jaJP: TranslationKeys = {
     resetCurrentPageDone: 'このページをリセットしました',
     resetCurrentPageNone: 'このページにリセットできる項目はありません',
     autoRefreshTitle: '更新頻度',
-    autoRefreshDescription: '設定済みプラットフォームを定期取得します（レポート表示スイッチとは無関係）。',
+    autoRefreshDescription:
+      '設定済みプラットフォームを定期取得します（レポート表示スイッチとは無関係）。',
     autoRefreshFrequencyDesc:
       '外部サービスへの同時アクセスを避けるため、各タスクは時間をずらして実行されます。',
     autoRefreshOff: 'オフ',
     autoRefreshEveryHours: '{hours}時間ごと',
-    autoRefreshSummary: '現在：設定済み {count} プラットフォーム、{hours} 時間ごと。',
+    autoRefreshSummary:
+      '現在：設定済み {count} プラットフォーム、{hours} 時間ごと。',
     autoRefreshNoPlatforms: '現在：設定済みプラットフォームなし。',
     autoRefreshDisabledHint: '現在：オフ。',
     ai: 'AI設定',
@@ -478,10 +547,10 @@ export const jaJP: TranslationKeys = {
     basic: '基本設定',
     basicDesc: 'サイト URL、壁紙、テーマ、サイトメタデータ',
     oauth: 'サードパーティログイン',
-    oauthDesc:
-      'GitHub、Google、Microsoft などのログイン提供元を追加・設定',
+    oauthDesc: 'GitHub、Google、Microsoft などのログイン提供元を追加・設定',
     music: '音楽プレイヤー',
-    musicDesc: '音楽プラットフォームとプレイリストを選択。オフでプレイヤーを非表示',
+    musicDesc:
+      '音楽プラットフォームとプレイリストを選択。オフでプレイヤーを非表示',
     network: 'ネットワークとミラー',
     networkDesc: 'アウトバウンドプロキシと Gemini / GitHub API ミラー',
     federation: '連合管理',
@@ -533,7 +602,8 @@ export const jaJP: TranslationKeys = {
     federationInstanceFilterLevel2: '2 関連',
     federationInstanceFilterLevel3: '3 信頼',
     federationInstanceFilterLevel4: '4 コア',
-    federationInstanceFilterEmpty: '検索条件またはフィルタに一致するインスタンスはありません。',
+    federationInstanceFilterEmpty:
+      '検索条件またはフィルタに一致するインスタンスはありません。',
     federationInstanceShowing: '{shown} / {total} 件を表示',
     federationInstanceTrustAria: 'インスタンスの信頼レベル',
     federationBlocked: '遮断中',
@@ -562,7 +632,8 @@ export const jaJP: TranslationKeys = {
     federationFilterSearchPlaceholder: '名前・種類・値を検索…',
     federationFilterSearchAria: 'コンテンツフィルタを検索',
     federationFilterFilterAria: '状態または種類で絞り込み',
-    federationFilterFilterEmpty: '検索条件またはフィルタに一致するルールはありません。',
+    federationFilterFilterEmpty:
+      '検索条件またはフィルタに一致するルールはありません。',
     federationFilterShowing: '{shown} / {total} 件を表示',
     federationFilterEnabled: 'オン',
     federationFilterDisabled: 'オフ',
@@ -628,6 +699,13 @@ export const jaJP: TranslationKeys = {
     managedListFilterAria: '絞り込み',
     detailHelpAria: '詳細説明',
     detailHelpAriaNamed: '{title} の詳細説明',
+    defaultChangedTag: 'デフォルト更新',
+    defaultChangedApplyTag: '新デフォルトを適用',
+    defaultChangedDetail: '製品デフォルト: {from} → {to}',
+    defaultChangedApplyDetail:
+      'クリックでこの項目を {to} に更新（旧: {from}）。× は通知のみ閉じます。',
+    defaultChangedApplyAria: '項目を {to} に更新',
+    defaultChangedDismissAria: 'デフォルト更新の通知を閉じる',
     expandGroupAria: '{title} を展開',
     collapseGroupAria: '{title} を折りたたむ',
     importPreviewRestore: '復元',
@@ -903,7 +981,8 @@ export const jaJP: TranslationKeys = {
     updaterInfraProxyLastFailed:
       '前回の proxy 更新に失敗: 目標 {target}（以前: {previous}）。{error}',
     updaterInfraProxyRolledBack: '以前のバージョンへ自動で戻しました。',
-    updaterSelfUpdateWaiting: 'アップデーター更新をスケジュール済み。結果を確認中…',
+    updaterSelfUpdateWaiting:
+      'アップデーター更新をスケジュール済み。結果を確認中…',
     updaterSelfUpdateReconnecting:
       'アップデーター再起動中です。接続が一時的に切れます。自動再接続中…',
     updaterSelfUpdateFailed: 'アップデーター更新に失敗: {error}',
@@ -919,7 +998,7 @@ export const jaJP: TranslationKeys = {
     updaterProxyUpdateFailed: 'proxy 更新に失敗: {error}',
     updaterProxyUpdateStillPending:
       'proxy 更新は継続中か、結果が未記録です。後でもう一度このページを更新してください。',
-    updaterTargetGroupTitle: '特定バージョンのインストール（上級者向け）',
+    updaterTargetGroupTitle: '特定バージョンのインストール',
     updaterTargetGroupDesc: '過去のリリースや特定コミット。通常は不要。',
     updaterTargetReleaseHead: '選択可能なバージョン（クリックで選択）',
     updaterTargetCommitHead: '最近のコミットと正式版（クリックで選択）',
@@ -1015,11 +1094,11 @@ export const jaJP: TranslationKeys = {
     exportConfigSuccess: '設定を正常にエクスポートしました！',
     exportConfigFailed: '設定のエクスポートに失敗しました',
     importConfigSuccess:
-      '設定をインポートして保存しました！ページを更新します...',
+      '設定をインポートして保存しました。完全な状態を読み込むためページを再読み込みします…',
     importConfigFailed: '設定のインポートに失敗しました',
     importConfigInvalid: '無効な設定ファイルです。JSON形式を確認してください。',
     importConfirmMessage:
-      '現在のバージョンに合わせて設定を統合し、現在の管理者の通知設定を復元します。新しい項目は維持し、廃止項目は無視します。以下のプレビューを確認してください。',
+      '現在のバージョンに合わせて設定を統合し、現在の管理者の通知設定を復元します。新しい項目は維持し、廃止項目は無視します。確認後にページを再読み込みします。以下のプレビューを確認してください。',
     frontendCacheTitle: '高度なツール',
     frontendCacheDesc:
       'この端末向けの点検・メンテ用ツール。サーバー設定は変えず、ログアウトもしません',
@@ -1029,22 +1108,23 @@ export const jaJP: TranslationKeys = {
       'メモリ／ローカルキャッシュ、Cache Storage、Service Worker キャッシュを消したあとページを再読み込みします。テーマ・言語・ログイン状態は残ります。',
     forceRefreshFrontendCacheConfirm: 'もう一度確認',
     forceRefreshFrontendCacheSuccess:
-      'フロントエンドキャッシュを消去しました。ページを更新します…',
+      'フロントエンドキャッシュを消去しました。ページを再読み込みします…',
     forceRefreshFrontendCacheFailed:
       'フロントエンドキャッシュの消去に失敗しました',
     searchConfig: '設定・ガイドを検索…',
     searchResults: '検索結果',
     noMatchingConfig: '一致する設定項目が見つかりません',
     searchGuideBadge: 'ガイド',
-    searchEmptyHint:
-      'スペース区切り（例：代理 同期）や短い語で試してください',
+    searchEmptyHint: 'スペース区切り（例：代理 同期）や短い語で試してください',
     savingConfig: '保存中...',
     configSaved: '設定を保存しました！',
     configSaveFailed: '設定の保存に失敗しました',
-    partialSaveWarning: '一部の設定は保存されましたが、後続の手順が失敗しました',
+    partialSaveWarning:
+      '一部の設定は保存されましたが、後続の手順が失敗しました',
     configEmpty: '設定が空のため、保存できません',
     loadConfigFailed: '設定の読み込みに失敗しました',
-    loadConfigFailedDesc: '設定を取得できません。接続を確認して再試行してください。',
+    loadConfigFailedDesc:
+      '設定を取得できません。接続を確認して再試行してください。',
     resettingConfig: '設定をリセット中...',
     configReset: '設定をリセットして保存しました！',
     free: '無料',
@@ -1055,6 +1135,14 @@ export const jaJP: TranslationKeys = {
     clearMusicCache: '音楽キャッシュをクリア',
     siteMetadata: 'サイトメタデータ',
     siteMetadataDesc: 'サイトタイトル、説明、ファビコン',
+    siteIdentity: 'サイト名刺とアプリ',
+    siteIdentityDesc:
+      'サイト名、紹介文、アイコン、および PWA としてインストールできるかどうか',
+    siteSeo: 'SEO 関連',
+    siteSeoDesc: 'キーワード、シェア画像、検索エンジンのインデックス',
+    thirdPartyAnalytics: '第三者計測',
+    thirdPartyAnalyticsDesc:
+      'Google Analytics / Umami などを接続。データ＆統計の第一方訪問者統計とは独立です',
     backgroundAndTheme: '背景とテーマ',
     backgroundAndThemeDesc: '壁紙、ぼかし、テーマ関連の見た目',
     // Evocative 壁紙エフェクト
@@ -1086,6 +1174,27 @@ export const jaJP: TranslationKeys = {
     fieldSiteTitle: 'サイトタイトル',
     fieldSiteDescription: 'サイト説明',
     fieldSiteFavicon: 'サイトアイコン',
+    fieldSiteKeywords: 'SEO キーワード',
+    fieldSiteKeywordsHint:
+      'カンマ区切り。ページの meta keywords に書き込まれます',
+    fieldSiteOgImage: 'シェア用プレビュー画像',
+    fieldSiteOgImageHint:
+      'リンク共有時に表示される Open Graph 画像。推奨 ≥1200×630、PNG/JPEG/WebP、≤1MB',
+    fieldSiteNoindex: '検索エンジンのインデックス',
+    fieldSiteNoindexHint:
+      'オン：検索エンジンにインデックスを許可。オフ：noindex, nofollow を出力（非公開・準備中向け）',
+    fieldPwaEnabled: 'PWA を有効化（インストール可能）',
+    fieldPwaEnabledHint:
+      'オンにするとブラウザが「アプリをインストール」を提示し、静的リソース用 Service Worker を登録します',
+    fieldGaMeasurementId: 'Google Analytics（GA4）',
+    fieldGaMeasurementIdHint:
+      'GA4 の測定 ID（例: G-XXXXXXXX）を入力。保存後に gtag を読み込み、ルート変更で page_view を送ります。空なら無効。管理者セッションは送信しません。',
+    fieldUmamiWebsiteId: 'Umami Website ID',
+    fieldUmamiWebsiteIdHint:
+      'Umami 管理画面の Website ID（UUID）。下のスクリプト URL と両方必要です。',
+    fieldUmamiScriptUrl: 'Umami スクリプト URL',
+    fieldUmamiScriptUrlHint:
+      'トラッカー script の完全 URL。Cloud は https://cloud.umami.is/script.js。ホストだけ入力した場合は /script.js を付けます。',
     imageUpload: 'アップロード',
     imageUploadClear: 'クリア',
     imageUploadLocal: 'ローカル画像をアップロード済み',
@@ -1117,6 +1226,76 @@ export const jaJP: TranslationKeys = {
     githubApiBaseUrl: 'GitHub APIベースURL',
     githubApiBaseUrlHint:
       '空欄の場合は公式エンドポイント、またはGitHub APIミラーURLを入力（注意：OAuthは公式エンドポイントが必要）',
+    mcpTitle: 'MCP ツールサーバー',
+    mcpDesc:
+      'Arael が使える外部 MCP（stdio）ツールを UI で追加・編集・削除。保存するとサーバー設定を書き込み、子プロセスを熱再読み込みします（サイト全体の再起動は不要）。管理者のみ表示。',
+    mcpConfigPathLabel: '設定ファイル',
+    mcpStatServers: 'サーバー',
+    mcpStatEnabled: '有効',
+    mcpStatHealthy: '正常',
+    mcpStatTools: 'ツール',
+    mcpStatusHealthy: '接続中',
+    mcpStatusUnhealthy: '異常',
+    mcpStatusDisabled: '無効',
+    mcpStatusStopped: '未起動',
+    mcpAutoRestartOn: '自動再起動オン',
+    mcpAutoRestartOff: '自動再起動オフ',
+    mcpToolsCount: '{n} ツール',
+    mcpFieldId: 'サーバー ID',
+    mcpFieldIdHint: '英数字と . _ - のみ。mcp.{id}.{tool} に使われます',
+    mcpFieldCommand: '起動コマンド',
+    mcpFieldCommandHint: '実行ファイル。例: npx、node、python',
+    mcpFieldArgs: '引数',
+    mcpFieldArgsHint: '空白区切り。空白を含む引数は引用符で囲む',
+    mcpFieldEnv: '環境変数',
+    mcpFieldEnvHint:
+      '1 行に KEY=value。秘密はサーバー側に置きリポジトリへ入れない',
+    mcpFieldEnabled: '有効',
+    mcpFieldEnabledHint: 'オフにすると子プロセスは起動しませんが設定は残ります',
+    mcpFieldHealth: 'ヘルス',
+    mcpFieldTools: 'ツール数',
+    mcpFieldAutoRestart: 'クラッシュ時の自動再起動',
+    mcpFieldAutoRestartHint: '子が異常終了したとき再起動を試みる',
+    mcpFieldMaxRestart: '最大再起動回数',
+    mcpFieldMaxRestartHint: '0–50。上限後は自動再起動しない',
+    mcpRefreshDesc: '一覧を再読み込み',
+    mcpAddServer: 'サーバーを追加',
+    mcpAddServerDesc: 'MCP サーバーを作成',
+    mcpEnable: '有効化',
+    mcpEnableDesc: '子プロセスを起動してツールを索引する',
+    mcpDisable: '無効化',
+    mcpDisableDesc: '子プロセスを止め、設定は残す',
+    mcpEditDesc: 'コマンド・引数・環境変数などを変更',
+    mcpDeleteDesc: '設定から削除して熱再読み込み',
+    mcpDeleteConfirm:
+      'MCP サーバー「{id}」を削除しますか？保存後すぐに反映されます。',
+    mcpFormAddTitle: 'MCP サーバーを追加',
+    mcpFormEditTitle: 'MCP サーバーを編集',
+    mcpFormEditTitleDesc: '既存サーバーのコマンドと環境を変更',
+    mcpFormSaveAdd: '追加して保存',
+    mcpFormSaveAddDesc: '設定を書き込み子プロセスを熱再読み込み',
+    mcpFormSaveEdit: '変更を保存',
+    mcpFormSaveEditDesc: '設定を更新し子プロセスを熱再読み込み',
+    mcpFormCancelDesc: '編集を破棄し、設定は書き込まない',
+    mcpValidateIdRequired: 'サーバー ID を入力してください',
+    mcpValidateIdCharset: 'ID は英数字と . _ - のみ',
+    mcpValidateIdDuplicate: 'そのサーバー ID は既にあります',
+    mcpValidateCommandRequired: '起動コマンドを入力してください',
+    mcpSaveCreated: 'MCP サーバーを追加し再読み込みしました',
+    mcpSaveUpdated: 'MCP 設定を保存し再読み込みしました',
+    mcpSaveDeleted: 'MCP サーバーを削除し再読み込みしました',
+    mcpSaveFailed: 'MCP 設定の保存に失敗しました',
+    mcpLoadFailed: 'MCP 設定を読み込めません',
+    mcpEmpty:
+      'MCP サーバーはまだありません。「サーバーを追加」から始めてください。',
+    mcpEmptyFiltered: '条件に合うサーバーがありません',
+    mcpSearchPlaceholder: 'ID またはコマンドで検索…',
+    mcpFilterAria: 'サーバーを絞り込み',
+    mcpFilterAll: 'すべて',
+    mcpFilterEnabled: '有効',
+    mcpFilterDisabled: '無効',
+    mcpFilterHealthy: '正常',
+    mcpFilterUnhealthy: '異常',
     runtimeDiagnosticsTitle: '実行状態と診断',
     runtimeDiagnosticsDesc:
       'データベース、ストレージ、システム／アーキテクチャ、サーバー出口、バージョン、バックグラウンドタスクを実際に検査し、認証情報を含まない診断レポートを生成します。',
@@ -1172,6 +1351,8 @@ export const jaJP: TranslationKeys = {
     runtimeDiagnosticsDays: '{n} 日',
     runtimeDiagnosticsHours: '{n} 時間',
     runtimeDiagnosticsMinutes: '{n} 分',
+    runtimeDiagnosticsUptime: '稼働時間 {duration}',
+    runtimeDiagnosticsDeployedAt: 'デプロイ {date}',
     runtimeDiagnosticsLoadFailed: '実行診断の読み込みに失敗しました',
     runtimeDiagnosticsDownload: 'レポートをダウンロード',
     runtimeDiagnosticsCopied: '診断レポートをコピーしました',
@@ -1185,14 +1366,27 @@ export const jaJP: TranslationKeys = {
       '画像直リンク、302リダイレクト、または url/image を返すJSON API',
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
-    placeholderSiteFavicon:
-      '/favicon.webp または https://example.com/icon.png',
+    placeholderSiteKeywords: '個人サイト, ブログ, デジタルライフ',
+    placeholderSiteOgImage:
+      'https://example.com/og.png またはローカル画像をアップロード',
+    placeholderGaMeasurementId: 'G-XXXXXXXXXX',
+    placeholderUmamiWebsiteId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+    placeholderUmamiScriptUrl: 'https://cloud.umami.is/script.js',
+    placeholderSiteFavicon: '/favicon.webp または https://example.com/icon.png',
     callbackUrl: 'コールバックURL',
     savingDefault: 'デフォルト設定を保存中...',
     resetFailed: '設定のリセットに失敗：',
     refreshing: '更新中...',
     refreshFailed: '設定の更新に失敗しました',
     savedSuccess: '設定を正常に保存しました！',
+    /** プロキシ / API ミラー：バックエンド熱リロード、ページ再読み込み不要 */
+    savedSuccessRuntimeReload:
+      '設定を保存し、ランタイムを熱リロードしました（ページ再読み込み不要）',
+    /** まだ location.reload が必要な保存パス */
+    savedSuccessHardReload:
+      '設定を保存しました。変更を反映するためページを再読み込みします…',
+    /** reload-config 実行中（ハードリロード前） */
+    hardReloadPreparing: '設定を保存しました。ページ再読み込みの準備中…',
     // ConfigForm拡張
     configured: '設定済み',
     notConfigured: '未設定',
@@ -1327,7 +1521,8 @@ export const jaJP: TranslationKeys = {
     siteUrlConfig: 'サイトURL',
     baseUrl: 'URL',
     baseUrlPlaceholder: 'https://example.com',
-    siteUrlFieldDesc: 'クリックで編集。保存で即時反映しチェックリストを返します。',
+    siteUrlFieldDesc:
+      'クリックで編集。保存で即時反映しチェックリストを返します。',
     siteUrlUnset: '未設定',
     siteUrlEdit: '編集',
     siteUrlSave: '保存',
@@ -1385,8 +1580,7 @@ export const jaJP: TranslationKeys = {
     oauthSetupGithub2Desc:
       'New OAuth App。Authorization callback URL に下のコールバックを設定。',
     oauthSetupGithub3Title: '認証情報をコピー',
-    oauthSetupGithub3Desc:
-      'Client ID をコピーし、Client Secret を生成。',
+    oauthSetupGithub3Desc: 'Client ID をコピーし、Client Secret を生成。',
     oauthSetupGoogle1Title: 'Google Cloud 認証情報を開く',
     oauthSetupGoogle1Desc:
       'APIs & Services → Credentials → Create credentials → OAuth client ID。',
@@ -1430,16 +1624,14 @@ export const jaJP: TranslationKeys = {
     oauthSetupAuthentik3Desc:
       'Client ID、Client Secret、Discovery URL をコピー。',
     oauthSetupKeycloak1Title: 'Keycloak Clients を開く',
-    oauthSetupKeycloak1Desc:
-      'Admin Console → 対象 Realm → Clients → Create。',
+    oauthSetupKeycloak1Desc: 'Admin Console → 対象 Realm → Clients → Create。',
     oauthSetupKeycloak2Title: 'コールバックと Discovery',
     oauthSetupKeycloak2Desc:
       'Valid redirect URIs に下のコールバック。Discovery は …/realms/<realm>/.well-known/openid-configuration。',
     oauthSetupKeycloak3Title: '認証情報をコピー',
     oauthSetupKeycloak3Desc: 'Credentials で Client ID / Secret をコピー。',
     oauthSetupAuth0Step1Title: 'Auth0 Applications を開く',
-    oauthSetupAuth0Step1Desc:
-      'Dashboard → Applications → Create Application。',
+    oauthSetupAuth0Step1Desc: 'Dashboard → Applications → Create Application。',
     oauthSetupAuth0Step2Title: 'コールバックを登録',
     oauthSetupAuth0Step2Desc:
       'Allowed Callback URLs に下のコールバック。Discovery は https://<tenant>.auth0.com/.well-known/openid-configuration。',
@@ -1617,6 +1809,22 @@ export const jaJP: TranslationKeys = {
     cloudflare: 'Cloudflare',
     edgeone: 'EdgeOne',
     upyun: '又拍云',
+    siteFooterCustom: 'カスタムブロック',
+    siteFooterCustomHint:
+      '最大 2 件のアイコン＋テキスト。折りたたみは届出/クラウド表示と同じ（ホームで展開、他ページとモバイルはアイコンのみ）',
+    siteFooterCustomItem: 'カスタム項目 {n}',
+    siteFooterCustomAdd: 'カスタム項目を追加',
+    siteFooterCustomRemove: 'この項目を削除',
+    siteFooterCustomText: '表示テキスト',
+    siteFooterCustomTextPlaceholder: '例：相互リンク / パートナー名',
+    siteFooterCustomIcon: 'アイコン',
+    siteFooterCustomIconPlaceholder:
+      'https://example.com/icon.png またはアップロード',
+    siteFooterCustomIconHint:
+      '任意。空ならプレースホルダー。PNG/JPEG/WebP/SVG、≤256KB',
+    siteFooterCustomUrl: 'リンク（任意）',
+    siteFooterCustomUrlPlaceholder: 'https://example.com',
+    siteFooterCustomUrlHint: '入力するとクリックで遷移。空なら表示のみ',
   },
 
   // ウィジェット
@@ -1803,7 +2011,8 @@ export const jaJP: TranslationKeys = {
         '人設はまだ生成が完了していません。完了後に自動更新されます。',
       regeneratePersona: '別の案',
       regeneratingPersona: '生成中',
-      regeneratePersonaFailed: '人設の再生成に失敗しました。再試行してください。',
+      regeneratePersonaFailed:
+        '人設の再生成に失敗しました。再試行してください。',
       personaNotCompletePending:
         '人設はまだ生成が完了していません。以下は一時下書きであり、最終結果ではありません。',
       personaNotCompleteIncomplete:
@@ -1833,7 +2042,8 @@ export const jaJP: TranslationKeys = {
       regenerateSeeds: '別の案',
       regeneratingSeeds: '生成中',
       nameLabel: '表示名',
-      nameHint: '空欄の場合はアカウント名を使用。ランダムは前のステップのタグを踏まえてAI生成します。',
+      nameHint:
+        '空欄の場合はアカウント名を使用。ランダムは前のステップのタグを踏まえてAI生成します。',
       namePlaceholder: '名前を入力',
       randomName: 'ランダム',
       randomNameBusy: '生成中',
@@ -1854,7 +2064,8 @@ export const jaJP: TranslationKeys = {
       createAndContinue: '作成して続行',
       createFailed: '作成に失敗しました',
       outfitSuggestTitle: '服装案',
-      outfitSuggestLead: '選択タグから生成。採用したものが既定の服装になります。',
+      outfitSuggestLead:
+        '選択タグから生成。採用したものが既定の服装になります。',
       outfitSuggesting: '生成中',
       outfitSuggestAgain: '別の案',
       outfitSuggestFailed: '服装の生成に失敗しました。再試行するか続行できます',
@@ -1865,19 +2076,21 @@ export const jaJP: TranslationKeys = {
       roomSuggestAgain: '別の案',
       roomSuggestFailed: '部屋の生成に失敗しました。再試行してください',
       roomSuggestEmpty: '部屋案がありません。「別の案」で再生成してください',
-      signalsEmpty: 'タグの準備ができていません。再試行するか、しばらくしてからお試しください',
+      signalsEmpty:
+        'タグの準備ができていません。再試行するか、しばらくしてからお試しください',
       visualsWaitingDesign:
         '人設の外見生成がまだ完了していません。完了後に出図できます（固まっていません）',
       roomMoodHint: '希望の雰囲気：{mood}',
       roomPickFirst: '先に部屋を選択してください',
       envNotesLabel: '補足',
       envNotesHint: '任意。',
-      envNotesPlaceholder:
-        '例：窓辺の採光多め、舞台床は空け、家具は後から',
+      envNotesPlaceholder: '例：窓辺の採光多め、舞台床は空け、家具は後から',
       designPendingSync: 'バックグラウンドで人格生成中',
-      designPendingSyncHint: 'バックグラウンド実行のため、設定作業には影響しません。',
+      designPendingSyncHint:
+        'バックグラウンド実行のため、設定作業には影響しません。',
       designBgBadge: 'バックグラウンド',
-      designBgNotice: '人格はバックグラウンドで生成中です。設定はそのまま続けられます',
+      designBgNotice:
+        '人格はバックグラウンドで生成中です。設定はそのまま続けられます',
       designPhaseBootstrap: 'データ整理',
       designPhaseQueued: '待機中',
       designPhaseDesigning: '生成中',
@@ -1891,7 +2104,8 @@ export const jaJP: TranslationKeys = {
       designElapsed: '{time}',
       identityStaleRebuild:
         'タグが変更されたため外見説明は無効です。再生成してから画像を作成してください。',
-      localeGlossHint: '表示中の言語で編集してください。下に他言語の対照があります。',
+      localeGlossHint:
+        '表示中の言語で編集してください。下に他言語の対照があります。',
       editPersona: '編集',
       doneEditing: '完了',
       cancelEdit: 'キャンセル',
@@ -1970,7 +2184,8 @@ export const jaJP: TranslationKeys = {
       derivedUnavailable:
         '現在のモデルは参照画像が未検証のため、動作生成に失敗する場合があります。',
       finish: '完了して入る',
-      missingCharacter: 'キャラクターが未作成です。前のステップに戻ってください。',
+      missingCharacter:
+        'キャラクターが未作成です。前のステップに戻ってください。',
       slotFront: '正面設定図',
       slotSide: '側面設定図',
       slotBack: '背面設定図',
@@ -2089,6 +2304,7 @@ export const jaJP: TranslationKeys = {
     loadPlaylistFailed: 'プレイリストの読み込みに失敗しました',
     playFailed:
       '再生に失敗しました。ネットワーク接続または曲の利用可能性を確認してください',
+    vipPlayFailed: 'VIP曲を再生できません（会員または試聴が必要）',
   },
 
   // キャッシュ管理
@@ -2395,7 +2611,8 @@ export const jaJP: TranslationKeys = {
   // プラットフォーム詳細のデータ管理
   dataManagement: {
     loadStatusFailed: '状態の読み込みに失敗しました',
-    statusUnavailable: '状態を一時的に取得できません。少し待って再試行してください。',
+    statusUnavailable:
+      '状態を一時的に取得できません。少し待って再試行してください。',
     confirmRefreshData: '{platform}の元データを更新してもよろしいですか？',
     csrfTokenError: 'CSRFトークンを取得できません',
     dataRefreshed: '{platform}データを更新しました',
@@ -2424,7 +2641,8 @@ export const jaJP: TranslationKeys = {
     clear: 'クリア',
     previewTitle: '現在のデータ',
     previewDesc: 'このページを開いたときに一度読み込みます（自動更新なし）',
-    previewEmpty: 'プレビューできるデータがありません。先に更新・処理してください',
+    previewEmpty:
+      'プレビューできるデータがありません。先に更新・処理してください',
     previewLoadFailed: 'データスナップショットを読み込めませんでした',
     previewUpdatedAt: 'キャッシュ更新: {time}',
     playtimeHours: '{n} 時間',
@@ -2685,6 +2903,11 @@ export const jaJP: TranslationKeys = {
     discordTagOpenSource: 'オープンソース',
     discordTagIndieGame: 'インディーゲーム',
     discordTagAcg: 'アニメ',
+    ytSubscribers: '登録者',
+    ytViews: '再生',
+    ytVideos: '動画',
+    ytEmptyChannel: '公開チャンネル連携済み — まだ動画がありません',
+    ytRecentUploads: '最近の投稿 {n} 本',
   },
 
   // ソーシャルネットワークウィジェット拡張
@@ -2750,6 +2973,7 @@ export const jaJP: TranslationKeys = {
     stopped: '停止中',
     installed: 'インストール済み',
     installing: 'インストール中...',
+    updating: '更新中...',
     installProgress: 'インストール中… {percent}%',
     installDownloading: 'ダウンロード中… {percent}%',
     installRegistering: '登録中… {percent}%',
@@ -2891,7 +3115,7 @@ export const jaJP: TranslationKeys = {
     browseStore: 'ストアを見る',
     manualInstall: '手動インストール',
     clickToOpen: 'クリックで開く',
-    confirmUninstall: 'このアプリをアンインストールしてもよろしいですか？',
+    confirmUninstall: '{name} をアンインストールしますか？',
     noPermissionToOperate: 'このアプリを操作する権限がありません',
     loginRequiredToInstall: 'アプリをインストールするにはログインしてください',
     export: 'エクスポート',
@@ -2997,6 +3221,29 @@ export const jaJP: TranslationKeys = {
       '生成がタイムアウトしました。プロジェクトと入力は保持されています。再試行を押してください。',
     playgroundServerErrorHint:
       'サービスが一時的に利用できません。プロジェクトと入力は保持されています。再試行を押してください。',
+    playgroundAiNotConfiguredHint:
+      'このサーバーでは Pro AI が未設定または無効です。管理者にモデル設定を依頼してから再試行してください。',
+    playgroundAiGenerationFailedHint:
+      'AI モデルが生成を完了できませんでした（上流エラー）。プロジェクトと入力は保持されています。少し待って再試行してください。',
+    playgroundValidationFailedHint:
+      '生成結果が自動修復後もパッケージ検証に通りませんでした。指示をより具体にするか、内容を簡略化して再試行してください。',
+    playgroundPayloadTooLargeHint:
+      'リクエストが大きすぎます（プロジェクトまたは履歴スナップショット過多）。新しいセッションを開始するか古い版を削除してから再試行してください。',
+    playgroundAdminRequiredHint:
+      'Tapp プレイグラウンドは管理者のみ利用できます。管理者アカウントでログインしてから再試行してください。',
+    playgroundAuthRequiredHint:
+      'Tapp プレイグラウンドを使う前にログインしてください。',
+    playgroundRateLimitHint:
+      'リクエストが多すぎます。少し待ってから再試行してください。',
+    playgroundNetworkHint:
+      'ネットワーク要求に失敗しました。接続を確認して再試行してください。',
+    playgroundStreamIncompleteHint:
+      '生成ストリームが完了前に切断されました。再試行を押してください。',
+    playgroundAgentBusyHint:
+      'プレイグラウンドが再起動中、または一時利用できません。少し待って再試行してください。',
+    playgroundBadRequestHint: '無効なリクエスト：{detail}',
+    playgroundErrorDetail: '詳細：{detail}',
+    playgroundRuntimeError: 'プレビュー実行エラー：{message}',
     playgroundCancel: 'キャンセル',
     playgroundCancelled:
       '生成をキャンセルしました。プロジェクトと入力は保持されています。準備ができたら再送してください。',
@@ -3091,6 +3338,12 @@ export const jaJP: TranslationKeys = {
       '公開アプリの設定は、インストール所有者または管理者のみ変更できます',
     noSettingsAvailable: '設定可能な項目がありません',
     noSettingsDesc: 'このアプリには設定可能な項目がありません',
+    appVisibility: 'アプリの表示範囲',
+    appVisibilityDesc: 'アプリ一覧で誰に表示するかを制御します',
+    appVisibilityAll: '全員',
+    appVisibilityAdmin: '管理者のみ',
+    appVisibilitySaved: '表示範囲を更新しました',
+    appVisibilitySaveFailed: '表示範囲の更新に失敗しました',
     appInfo: 'アプリ情報',
     detailInfo: '詳細情報',
     appId: 'アプリ ID',
@@ -3112,6 +3365,13 @@ export const jaJP: TranslationKeys = {
 
     // ストア
     storeTitle: 'Tapp ストア',
+    storeDiscover: '見つける',
+    storeDiscoverSubtitle: 'Myriad のための新しい体験を見つけよう',
+    storeFeatured: 'エディターのおすすめ',
+    storeFeaturedEyebrow: 'おすすめ',
+    storeLatest: '最新',
+    storeBrowse: 'ブラウズ',
+    storeLibrary: 'ライブラリ',
     storeSourceSettings: 'ストアソース設定',
     storeClose: 'ストアを閉じる',
     refreshStore: '更新',
@@ -3123,10 +3383,19 @@ export const jaJP: TranslationKeys = {
     licenseLabel: 'ライセンス',
     updatedAtLabel: '更新日',
     sourceLabel: '提供元',
+    languagesLabel: '対応言語',
     builtinExample: '組み込みサンプル',
     categoryFilter: 'アプリのカテゴリ',
     allApps: 'すべて',
+    seeAllApps: 'すべて見る',
     installedApps: 'インストール済み',
+    storeUpdates: 'アップデート',
+    storePreview: 'プレビュー',
+    storePreviewUnavailable: 'このアプリは現在プレビューを提供していません',
+    storeSortOrder: '並び順',
+    storeSortByCategory: 'カテゴリー順',
+    storeSortByName: '名前順',
+    storeSortByDate: '日付順',
     loadingRemoteApps: 'リモートアプリを読み込み中...',
     loadRemoteFailed: 'リモートストアの読み込みに失敗しました',
     noMatchingApps: '一致するアプリが見つかりません',
@@ -3151,9 +3420,12 @@ export const jaJP: TranslationKeys = {
     uninstalling: 'アンインストール中...',
     confirmUninstallBtn: 'アンインストールを確認',
 
-    // ストアソース設定
-    sourceManagement: 'ソース管理',
+    // ストア設定
+    storeSources: 'ストアソース',
+    storeConfiguration: '設定',
     addSource: 'ストアソースを追加',
+    editSource: 'ストアソースを編集',
+    saveSource: '保存',
     sourceName: 'ストア名',
     sourceUrl: 'ストア URL (index.json)',
     official: '公式',
@@ -3164,6 +3436,7 @@ export const jaJP: TranslationKeys = {
     fillNameAndUrl: '名前と URL を入力してください',
     invalidUrl: '有効な URL を入力してください',
     addSourceFailed: '追加に失敗しました',
+    updateSourceFailed: '更新に失敗しました',
     refreshAllStores: 'すべてのストアを更新',
     confirmDeleteSource: 'このストアソースを削除してもよろしいですか？',
 
@@ -3884,23 +4157,43 @@ export const jaJP: TranslationKeys = {
     tabSkills: 'スキル',
     tabMemory: 'メモリ',
     emptyHeartbeat: 'タスクはありません',
+    emptyHeartbeatHint:
+      'Arael に定期実行させたい指示を登録できます（日次サマリーや定期チェックなど）。',
     emptySkills: 'スキルはありません',
     emptyMemory: 'メモリはありません',
     manageLoadError: '読み込みに失敗しました。再試行してください。',
     manageActionError: '操作に失敗しました。再試行してください。',
-    loginRequiredHint: 'ログイン後に Arael と会話できます。ゲストは閲覧のみです。',
+    loginRequiredHint:
+      'ログイン後に Arael と会話できます。ゲストは閲覧のみです。',
     manageAdminOnly: 'タスクとスキルの管理は管理者のみ可能です。',
     editHeartbeat: '編集',
     saveHeartbeat: '保存',
-    createHeartbeat: '新規',
+    createHeartbeat: '新規タスク',
     deleteHeartbeat: '削除',
     confirmDeleteHeartbeat: '定時タスク「{name}」を削除しますか？',
     heartbeatName: '名前',
-    heartbeatSchedule: 'Cron',
+    heartbeatNamePlaceholder: '例：朝のダイジェスト',
+    heartbeatSchedule: '実行間隔',
+    heartbeatScheduleCustom: 'カスタム',
+    heartbeatCronHint: 'Cron 式（分 時 日 月 曜日）',
     heartbeatAction: '指示',
-    heartbeatEnabled: '有効',
+    heartbeatActionPlaceholder: 'Arael にやらせたいこと…',
+    heartbeatEnabled: '作成後すぐに有効化',
+    heartbeatActive: '稼働中',
+    heartbeatPaused: '停止中',
+    heartbeatLastRun: '前回 {time}',
+    heartbeatNeverRun: '未実行',
+    heartbeatCount: '{n} 件 · {active} 稼働',
+    heartbeatPresetsAria: 'よく使う間隔',
     cronEveryMinutes: '{n}分ごと',
+    cronEveryHours: '{n}時間ごと',
+    cronHourly: '毎時',
     cronDaily: '毎日 {time}',
+    cronPreset15m: '15分',
+    cronPreset30m: '30分',
+    cronPreset1h: '毎時',
+    cronPreset6h: '6時間',
+    cronPresetDaily9: '毎日 09:00',
     originManual: '手動',
     originAuto: '自動',
     originImproved: '改善',

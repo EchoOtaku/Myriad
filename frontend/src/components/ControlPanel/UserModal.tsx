@@ -11,9 +11,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
-import { TappIcon } from '../../tapp/components/TappIcon'
+import { TappIconBadge } from '../../tapp/components/TappIconBadge'
 import { getRecentTapps, listTapps } from '../../tapp/services/TappLifecycleApi'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
+import { getTappIconStyle } from '../../tapp/utils/tappColors'
 import { getCSRFToken } from '../../utils/csrf'
 import { normalizeOAuthIconUrl } from '../../utils/oauthIcons'
 import OAuthIconImage from '../OAuthIconImage'
@@ -1054,8 +1055,20 @@ export const UserModal: FC<UserModalProps> = ({
                         onClick={() => handleTappClick(tapp.id)}
                         className="user-modal-tapp-item"
                       >
-                        <div
-                          className="user-modal-tapp-icon"
+                        <TappIconBadge
+                          icon={tapp.icon}
+                          iconSvg={tapp.iconSvg}
+                          name={tappName}
+                          themeColor={tapp.themeColor}
+                          iconStyle={getTappIconStyle({
+                            icon: tapp.icon,
+                            iconSvg: tapp.iconSvg,
+                            themeColor: tapp.themeColor,
+                          })}
+                          shellClassName="user-modal-tapp-icon"
+                          glyphSizeClass="w-4 h-4"
+                          glyphTextClass="text-base"
+                          shine={false}
                           style={
                             tapp.themeColor
                               ? {
@@ -1063,16 +1076,7 @@ export const UserModal: FC<UserModalProps> = ({
                                 }
                               : undefined
                           }
-                        >
-                          <TappIcon
-                            icon={tapp.icon}
-                            iconSvg={tapp.iconSvg}
-                            name={tappName}
-                            sizeClass="w-4 h-4"
-                            textSizeClass="text-base"
-                            svgColor={tapp.themeColor || undefined}
-                          />
-                        </div>
+                        />
                         <span className="user-modal-tapp-name">
                           {tappName}
                         </span>

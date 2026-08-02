@@ -5,26 +5,31 @@
 
 use super::{
     current_is_admin, find_admin_user_id, find_visible_tapp, optional_authenticated_user_id,
-    ApiResponse, TappDetail, TappListItem,
+    require_current_admin, ApiResponse, TappDetail, TappListItem,
 };
 use axum::{
     extract::State,
     http::HeaderMap,
-    Json,
+    Extension, Json,
 };
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use chrono::Utc;
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
+};
+use serde::Deserialize;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::config::DynamicConfig;
-use crate::middleware::auth::extract_optional_claims;
-use crate::models::entities::tapps;
-use crate::services::tapp_catalog::{
-    catalog_install_flags, tapp_list_item_from_model,
-};
-use crate::services::tapp_context::role_for_optional_subject;
 use crate::error::HttpError;
+use crate::middleware::auth::{extract_optional_claims, Claims};
+use crate::models::entities::tapps;
+use crate::services::tapp_catalog::{catalog_install_flags, tapp_list_item_from_model};
+use crate::services::tapp_context::role_for_optional_subject;
+use crate::services::tapp_ownership::{
+    parse_tapp_visibility, public_install_visible_to_viewer, TAPP_VISIBILITY_ALL,
+};
 use myriad_error::AppError;
 
 // Path-stable for parent module / manifest_tests (`super::tapp_detail_from_model`).
@@ -36,6 +41,10 @@ pub(super) async fn list_tapps(
 ) -> Result<Json<ApiResponse<Vec<TappListItem>>>, HttpError> {
     let claims = extract_optional_claims(&headers);
     let user_id = optional_authenticated_user_id(claims.as_ref());
+    let is_admin = match claims.as_ref() {
+        Some(claims) => current_is_admin(claims, &db).await,
+        None => false,
+    };
     let admin_id = find_admin_user_id(&db).await?;
     let mut items = Vec::new();
     let mut seen_tapp_ids = HashSet::new();
@@ -65,6 +74,9 @@ pub(super) async fn list_tapps(
         Vec::new()
     };
     for tapp in admin_tapps {
+        if !public_install_visible_to_viewer(&tapp.visibility, is_admin) {
+            continue;
+        }
         if !seen_tapp_ids.insert(tapp.tapp_id.clone()) {
             continue;
         }
@@ -125,6 +137,9 @@ pub(super) async fn list_tapp_details(
         ));
     }
     for tapp in admin_tapps {
+        if !public_install_visible_to_viewer(&tapp.visibility, is_admin) {
+            continue;
+        }
         if seen.insert(tapp.tapp_id.clone()) {
             let (is_temporary, is_admin_tapp) = catalog_install_flags(true);
             details.push(tapp_detail_from_model(
@@ -137,6 +152,57 @@ pub(super) async fn list_tapp_details(
         }
     }
     Ok(Json(ApiResponse::success(details)))
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct SetTappVisibilityRequest {
+    visibility: String,
+}
+
+/// Update public-install visibility (`all` | `admin`). Admin-only; site-owner installs only.
+pub(super) async fn set_tapp_visibility(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    axum::extract::Path(tapp_id): axum::extract::Path<String>,
+    Json(req): Json<SetTappVisibilityRequest>,
+) -> Result<Json<ApiResponse<serde_json::Value>>, HttpError> {
+    require_current_admin(&claims, &db).await?;
+    let visibility = parse_tapp_visibility(&req.visibility).ok_or_else(|| {
+        HttpError(AppError::bad_request(
+            "Invalid visibility, must be 'all' or 'admin'",
+        ))
+    })?;
+    let admin_id = find_admin_user_id(&db)
+        .await?
+        .ok_or_else(|| HttpError(AppError::internal("No admin user found")))?;
+
+    let existing = tapps::Entity::find()
+        .filter(tapps::Column::UserId.eq(admin_id))
+        .filter(tapps::Column::TappId.eq(&tapp_id))
+        .one(&db)
+        .await
+        .map_err(|_| HttpError(AppError::internal("Database error")))?
+        .ok_or_else(|| HttpError(AppError::not_found("Not found")))?;
+
+    let mut active: tapps::ActiveModel = existing.into();
+    active.visibility = Set(visibility.to_string());
+    active.updated_at = Set(Utc::now().fixed_offset());
+    let updated = active
+        .update(&db)
+        .await
+        .map_err(|_| HttpError(AppError::internal("Database error")))?;
+
+    Ok(Json(ApiResponse::success(serde_json::json!({
+        "id": updated.tapp_id,
+        "visibility": visibility,
+    }))))
+}
+
+/// Convenience for tests / default when a row lacks a value (should not happen after heal).
+#[allow(dead_code)]
+pub(super) fn default_visibility() -> &'static str {
+    TAPP_VISIBILITY_ALL
 }
 
 pub(super) async fn get_tapp(

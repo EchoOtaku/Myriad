@@ -621,14 +621,6 @@ html.dark .managed-list-row-detail {
   gap: 0.35rem;
   flex: 0 0 auto;
   min-width: 0;
-  /* Visual separation from actions when both sit on one line */
-  margin-inline-end: 0.15rem;
-  padding-inline-end: 0.55rem;
-  border-inline-end: 1px solid rgb(209 213 219 / 55%);
-}
-
-html.dark .managed-list-row-trailing {
-  border-inline-end-color: rgb(255 255 255 / 12%);
 }
 
 /* Keep FieldSelect compact inside list rows */

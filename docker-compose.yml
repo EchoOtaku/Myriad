@@ -132,10 +132,13 @@ services:
       # (openssl rand -hex 32). When empty, backend derives from JWT_SECRET so
       # collect does not 503 on stock compose (ENVIRONMENT=production).
       ANALYTICS_SALT: ${ANALYTICS_SALT:-}
-      # The bundled proxy replaces client-supplied forwarding headers.
+      # The bundled proxy rewrites X-Real-IP / X-Forwarded-For to the real client.
+      # Backend must trust those headers from the proxy peer or weather/geo falls
+      # back to the *server* public IP (classic "weather shows datacenter city" bug).
       TRUST_PROXY_HEADERS: "true"
       # TCP peers allowed to supply X-Forwarded-For / X-Real-IP.
-      # Empty = never trust forwarded headers (fail-closed), even if HEADERS=true.
+      # Empty = same as proxy empty PROXY_TRUSTED_UPSTREAMS: only private/loopback
+      # peers (Docker network) may supply headers; public peers cannot forge.
       #
       # Default is full RFC1918 so stock Docker works. That is convenient but wide:
       # any host on those ranges that can reach backend could forge client IP.

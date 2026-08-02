@@ -359,13 +359,9 @@ const GlobalControlPanel: React.FC = () => {
   // 解构出稳定引用，供 expand/collapse 回调使用而不引入 musicPlayer 对象依赖
   const { setProgressUiVisible } = musicPlayer
 
-  // 音量弹窗状态（UI相关，保留在这里）
-  const [showVolumePopup, setShowVolumePopup] = useState(false)
-
   // DOM 引用
   const triggerRef = useRef<HTMLDivElement>(null)
   const expandedContentRef = useRef<HTMLDivElement>(null)
-  const volumeControlRef = useRef<HTMLDivElement>(null)
   // 展开状态镜像（供 popstate 等原生事件回调读取，避免闭包过期）
   const isExpandedRef = useRef(false)
   // 是否已压入哨兵历史记录（面板展开时移动端系统返回应先收起面板）
@@ -392,27 +388,9 @@ const GlobalControlPanel: React.FC = () => {
     loadWallpaper()
   }, []) // 只在挂载时运行一次，避免循环依赖
 
-  // 点击外部关闭音量弹窗
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        volumeControlRef.current &&
-        !volumeControlRef.current.contains(event.target as Node)
-      ) {
-        setShowVolumePopup(false)
-      }
-    }
-
-    if (showVolumePopup) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [showVolumePopup])
-
   // 注意：壁纸颜色提取完全由 AppLayout 负责
   // GlobalControlPanel 不再处理壁纸颜色，只处理音乐封面颜色
+  // 音量弹层开关 / 点外关闭在 MusicPlayer 内（state 与 ref 均来自 useMusicPlayer）
 
   // 获取动态内容提供者
   const dynamicContentProvider = getDynamicContentProvider()
@@ -1081,8 +1059,12 @@ const GlobalControlPanel: React.FC = () => {
     }
   }, [isExpanded])
 
+  // 展开/收起动画世代号：快速连点时作废过期 setTimeout，避免内容/进度闸门错位
+  const panelAnimGenRef = useRef(0)
+
   // 收起动画（时序与曲线保持不变：0.7s 容器收缩，400ms 中点切换内容）
   const collapsePanel = useCallback(() => {
+    const gen = ++panelAnimGenRef.current
     // 🔧 通知子组件动画开始
     window.dispatchEvent(new CustomEvent('gcp-animation-start'))
     isExpandedRef.current = false
@@ -1095,15 +1077,24 @@ const GlobalControlPanel: React.FC = () => {
     setPanelTab('control')
     setProgressUiVisible(false) // 进度条不可见，停止 currentTime 状态更新
     setTimeout(() => {
+      if (gen !== panelAnimGenRef.current) return
       setShowDynamicContent(true)
     }, 400) // 容器收缩到一半时显示（0.7s 动画的中点）
     // 🔧 动画结束后通知
     setTimeout(() => {
+      if (gen !== panelAnimGenRef.current) return
       window.dispatchEvent(new CustomEvent('gcp-animation-end'))
     }, 700)
   }, [setProgressUiVisible])
 
+  // 通知 Tab 下控制区仅 opacity 隐藏：进度 tick / 引擎需与 panelVisible 对齐
+  useEffect(() => {
+    if (!isExpanded || !showPanelContent) return
+    setProgressUiVisible(panelTab === 'control')
+  }, [panelTab, isExpanded, showPanelContent, setProgressUiVisible])
+
   const expandPanel = useCallback(() => {
+    const gen = ++panelAnimGenRef.current
     // 🔧 通知子组件动画开始
     window.dispatchEvent(new CustomEvent('gcp-animation-start'))
     isExpandedRef.current = true
@@ -1124,16 +1115,20 @@ const GlobalControlPanel: React.FC = () => {
     // 展开：动态内容立即淡出，容器开始展开，面板内容在中途淡入
     setShowDynamicContent(false)
     setIsExpanded(true)
+    // 先同步进度到 React 态，避免内容淡入首帧仍是旧 currentTime
+    setProgressUiVisible(true)
     // 遮罩层立即显示但透明，然后淡入
     setTimeout(() => {
+      if (gen !== panelAnimGenRef.current) return
       setShowOverlay(true)
     }, 0)
     setTimeout(() => {
+      if (gen !== panelAnimGenRef.current) return
       setShowPanelContent(true)
-      setProgressUiVisible(true) // 内容开始淡入，恢复进度条状态更新
     }, 400) // 容器展开到一半时显示（0.7s 动画的中点）
     // 🔧 动画结束后通知
     setTimeout(() => {
+      if (gen !== panelAnimGenRef.current) return
       window.dispatchEvent(new CustomEvent('gcp-animation-end'))
     }, 700)
   }, [setProgressUiVisible])
@@ -1677,8 +1672,15 @@ const GlobalControlPanel: React.FC = () => {
                   <Suspense fallback={null}>
                     <ControlPanelWidgets isAdmin={user?.is_admin} />
 
-                    {/* 音乐播放器 */}
-                    <MusicPlayer player={musicPlayer} />
+                    {/* 音乐播放器：收起或非控制 Tab 时停频谱/歌词引擎，不刷进度 */}
+                    <MusicPlayer
+                      player={musicPlayer}
+                      panelVisible={
+                        isExpanded &&
+                        showPanelContent &&
+                        panelTab === 'control'
+                      }
+                    />
                   </Suspense>
 
                   {/* 控制项网格 - 一行两个 */}

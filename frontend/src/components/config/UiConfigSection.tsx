@@ -4,15 +4,26 @@
  */
 
 import {
+  FaChartLine,
   FaGlobe,
   FaInfoCircle,
   FaLink,
   FaMagic,
+  FaPlus,
+  FaSearch,
+  FaTrash,
   LuPalette,
   SiCloudflare,
 } from '@lib/icons'
 import React, { useCallback, useMemo } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
+import {
+  emptyFooterCustomItem,
+  FOOTER_CUSTOM_MAX,
+  parseFooterCustomSlots,
+  serializeFooterCustom,
+  type FooterCustomItem,
+} from '../../utils/footerCustomLogic'
 import {
   CheckboxGroupItem,
   InputItem,
@@ -20,10 +31,12 @@ import {
   SettingGroup,
   SettingSection,
   SliderItem,
+  SwitchItem,
   useSettingGuide,
 } from '../settings'
 import { SettingItemWrapper } from '../settings/items/SettingItemWrapper'
 import { SiteUrlField } from './SiteUrlField'
+import './UiConfigSection.css'
 
 // EdgeOne Logo
 const EdgeOneIcon: React.FC = () => (
@@ -92,6 +105,9 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         site_title: t.config.fieldSiteTitle,
         site_description: t.config.fieldSiteDescription,
         site_favicon: t.config.fieldSiteFavicon,
+        site_keywords: t.config.fieldSiteKeywords,
+        site_og_image: t.config.fieldSiteOgImage,
+        site_noindex: t.config.fieldSiteNoindex,
       }
       return labels[fieldKey] || originalLabel
     },
@@ -105,6 +121,8 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         site_title: t.config.placeholderSiteTitle,
         site_description: t.config.placeholderSiteDescription,
         site_favicon: t.config.placeholderSiteFavicon,
+        site_keywords: t.config.placeholderSiteKeywords,
+        site_og_image: t.config.placeholderSiteOgImage,
       }
       return placeholders[fieldKey] || originalPlaceholder
     },
@@ -135,6 +153,40 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       updateValue('base_url', url, { silent: true })
     },
     [updateValue],
+  )
+
+  const footerCustomItems = useMemo(
+    () => parseFooterCustomSlots(getFieldValue('site_footer_custom')),
+    [getFieldValue],
+  )
+
+  const commitFooterCustom = useCallback(
+    (items: FooterCustomItem[]) => {
+      updateValue('site_footer_custom', serializeFooterCustom(items))
+    },
+    [updateValue],
+  )
+
+  const updateFooterCustomAt = useCallback(
+    (index: number, patch: Partial<FooterCustomItem>) => {
+      const next = footerCustomItems.map((it, i) =>
+        i === index ? { ...it, ...patch } : it,
+      )
+      commitFooterCustom(next)
+    },
+    [commitFooterCustom, footerCustomItems],
+  )
+
+  const addFooterCustom = useCallback(() => {
+    if (footerCustomItems.length >= FOOTER_CUSTOM_MAX) return
+    commitFooterCustom([...footerCustomItems, emptyFooterCustomItem()])
+  }, [commitFooterCustom, footerCustomItems])
+
+  const removeFooterCustomAt = useCallback(
+    (index: number) => {
+      commitFooterCustom(footerCustomItems.filter((_, i) => i !== index))
+    },
+    [commitFooterCustom, footerCustomItems],
   )
 
   // 站点元数据字段
@@ -173,10 +225,11 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         <SiteUrlField value={baseUrlValue} onApplied={handleSiteUrlApplied} />
       </SettingGroup>
 
+      {/* 站点名片 + PWA：标题/简介/图标与可安装应用开关同组 */}
       <SettingGroup
-        title={t.config.siteMetadata}
-        description={t.config.siteMetadataDesc}
-        {...bindGuide('ui.siteMetadata', g.ui.siteMetadata)}
+        title={t.config.siteIdentity}
+        description={t.config.siteIdentityDesc}
+        {...bindGuide('ui.siteIdentity', g.ui.siteIdentity)}
         icon={<FaGlobe />}
       >
         {siteMetadataFields.map((field) =>
@@ -222,6 +275,69 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
             />
           ),
         )}
+        <SwitchItem
+          itemKey="pwa_enabled"
+          label={t.config.fieldPwaEnabled}
+          description={t.config.fieldPwaEnabledHint}
+          value={getFieldValue('pwa_enabled') !== 'false'}
+          onChange={(checked) =>
+            updateValue('pwa_enabled', checked ? 'true' : 'false')
+          }
+          {...bindGuide('ui.pwaEnabled', g.ui.pwaEnabled)}
+          layout="horizontal"
+        />
+      </SettingGroup>
+
+      {/* SEO 相关：关键词、分享预览图、收录开关 */}
+      <SettingGroup
+        title={t.config.siteSeo}
+        description={t.config.siteSeoDesc}
+        {...bindGuide('ui.siteSeo', g.ui.siteSeo)}
+        icon={<FaSearch />}
+      >
+        <InputItem
+          itemKey="site_keywords"
+          label={t.config.fieldSiteKeywords}
+          value={getFieldValue('site_keywords')}
+          onChange={(v) => updateValue('site_keywords', v)}
+          placeholder={t.config.placeholderSiteKeywords}
+          hint={t.config.fieldSiteKeywordsHint}
+          {...bindGuide('ui.siteKeywords', g.ui.siteKeywords)}
+          layout="vertical"
+        />
+        <InputItem
+          itemKey="site_og_image"
+          label={t.config.fieldSiteOgImage}
+          value={getFieldValue('site_og_image')}
+          onChange={(v) => updateValue('site_og_image', v)}
+          placeholder={t.config.placeholderSiteOgImage}
+          inputType="url"
+          variant="imageUpload"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          maxImageBytes={1024 * 1024}
+          uploadLabel={t.config.imageUpload}
+          clearImageLabel={t.config.imageUploadClear}
+          localImageLabel={t.config.imageUploadLocal}
+          previewAlt={t.config.fieldSiteOgImage}
+          imageTypeError={t.config.imageUploadTypeError}
+          imageSizeError={t.config.imageUploadSizeError}
+          imageReadError={t.config.imageUploadReadError}
+          hint={t.config.fieldSiteOgImageHint}
+          {...bindGuide('ui.siteOgImage', g.ui.siteOgImage)}
+          layout="vertical"
+        />
+        {/* 开 = 允许收录（site_noindex=false）；关 = noindex,nofollow */}
+        <SwitchItem
+          itemKey="site_noindex"
+          label={t.config.fieldSiteNoindex}
+          description={t.config.fieldSiteNoindexHint}
+          value={getFieldValue('site_noindex') !== 'true'}
+          onChange={(checked) =>
+            updateValue('site_noindex', checked ? 'false' : 'true')
+          }
+          {...bindGuide('ui.siteNoindex', g.ui.siteNoindex)}
+          layout="horizontal"
+        />
       </SettingGroup>
 
       {/* 站点底部信息（备案和云赞助商） */}
@@ -286,6 +402,87 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
             updateValue('cloud_sponsors', newSponsors.join(','))
           }}
         />
+
+        <SettingItemWrapper
+          label={t.config.siteFooterCustom}
+          hint={t.config.siteFooterCustomHint}
+          {...bindGuide('ui.siteFooterCustom', g.ui.siteFooterCustom)}
+          layout="vertical"
+        >
+          <div className="site-footer-custom-editor">
+            {footerCustomItems.map((item, index) => (
+              <div
+                key={`footer-custom-${index}`}
+                className="site-footer-custom-card"
+              >
+                <div className="site-footer-custom-card-head">
+                  <span className="site-footer-custom-card-title">
+                    {t.config.siteFooterCustomItem.replace(
+                      '{n}',
+                      String(index + 1),
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    className="site-footer-custom-remove"
+                    onClick={() => removeFooterCustomAt(index)}
+                    aria-label={t.config.siteFooterCustomRemove}
+                  >
+                    <FaTrash aria-hidden />
+                  </button>
+                </div>
+                <InputItem
+                  itemKey={`site_footer_custom_text_${index}`}
+                  label={t.config.siteFooterCustomText}
+                  value={item.text}
+                  onChange={(v) => updateFooterCustomAt(index, { text: v })}
+                  placeholder={t.config.siteFooterCustomTextPlaceholder}
+                  layout="vertical"
+                />
+                <InputItem
+                  itemKey={`site_footer_custom_icon_${index}`}
+                  label={t.config.siteFooterCustomIcon}
+                  value={item.icon}
+                  onChange={(v) => updateFooterCustomAt(index, { icon: v })}
+                  placeholder={t.config.siteFooterCustomIconPlaceholder}
+                  inputType="url"
+                  variant="imageUpload"
+                  accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  maxImageBytes={256 * 1024}
+                  uploadLabel={t.config.imageUpload}
+                  clearImageLabel={t.config.imageUploadClear}
+                  localImageLabel={t.config.imageUploadLocal}
+                  previewAlt={t.config.siteFooterCustomIcon}
+                  imageTypeError={t.config.imageUploadTypeError}
+                  imageSizeError={t.config.imageUploadSizeError}
+                  imageReadError={t.config.imageUploadReadError}
+                  hint={t.config.siteFooterCustomIconHint}
+                  layout="vertical"
+                />
+                <InputItem
+                  itemKey={`site_footer_custom_url_${index}`}
+                  label={t.config.siteFooterCustomUrl}
+                  value={item.url}
+                  onChange={(v) => updateFooterCustomAt(index, { url: v })}
+                  placeholder={t.config.siteFooterCustomUrlPlaceholder}
+                  inputType="url"
+                  hint={t.config.siteFooterCustomUrlHint}
+                  layout="vertical"
+                />
+              </div>
+            ))}
+            {footerCustomItems.length < FOOTER_CUSTOM_MAX ? (
+              <button
+                type="button"
+                className="site-footer-custom-add"
+                onClick={addFooterCustom}
+              >
+                <FaPlus aria-hidden />
+                {t.config.siteFooterCustomAdd}
+              </button>
+            ) : null}
+          </div>
+        </SettingItemWrapper>
       </SettingGroup>
 
       <SettingGroup
@@ -413,6 +610,46 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           recommendedValue={85}
           recommendedLabel={t.config.sliderRecommended}
           {...bindGuide('ui.evocativeRippleQuality', g.ui.evocativeRippleQuality)}
+          layout="vertical"
+        />
+      </SettingGroup>
+
+      {/* 第三方统计：基础设置最末，与 SEO / 本站第一方访客统计分开 */}
+      <SettingGroup
+        title={t.config.thirdPartyAnalytics}
+        description={t.config.thirdPartyAnalyticsDesc}
+        {...bindGuide('ui.thirdPartyAnalytics', g.ui.thirdPartyAnalytics)}
+        icon={<FaChartLine />}
+      >
+        <InputItem
+          itemKey="ga_measurement_id"
+          label={t.config.fieldGaMeasurementId}
+          value={getFieldValue('ga_measurement_id')}
+          onChange={(v) => updateValue('ga_measurement_id', v.trim())}
+          placeholder={t.config.placeholderGaMeasurementId}
+          hint={t.config.fieldGaMeasurementIdHint}
+          {...bindGuide('ui.gaMeasurementId', g.ui.gaMeasurementId)}
+          layout="vertical"
+        />
+        <InputItem
+          itemKey="umami_website_id"
+          label={t.config.fieldUmamiWebsiteId}
+          value={getFieldValue('umami_website_id')}
+          onChange={(v) => updateValue('umami_website_id', v.trim())}
+          placeholder={t.config.placeholderUmamiWebsiteId}
+          hint={t.config.fieldUmamiWebsiteIdHint}
+          {...bindGuide('ui.umamiWebsiteId', g.ui.umamiWebsiteId)}
+          layout="vertical"
+        />
+        <InputItem
+          itemKey="umami_script_url"
+          label={t.config.fieldUmamiScriptUrl}
+          value={getFieldValue('umami_script_url')}
+          onChange={(v) => updateValue('umami_script_url', v.trim())}
+          placeholder={t.config.placeholderUmamiScriptUrl}
+          hint={t.config.fieldUmamiScriptUrlHint}
+          inputType="url"
+          {...bindGuide('ui.umamiScriptUrl', g.ui.umamiScriptUrl)}
           layout="vertical"
         />
       </SettingGroup>

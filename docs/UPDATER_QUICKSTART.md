@@ -31,7 +31,7 @@ bash scripts/docker/deploy.sh up
 - 若 `UPDATE_TOKEN` 为空则随机生成
 - Docker 网络默认显式命名为 `myriad-net`；同机多套部署时可设置 `MYRIAD_DOCKER_NETWORK`
 
-旧的 direct-port / named-volume 迁移脚本已移除。当前仓库只保留 proxy + updater 生产布局。
+生产布局为 proxy + updater（见 [deployment/DOCKER_DEPLOYMENT.md](./deployment/DOCKER_DEPLOYMENT.md)）。
 
 ## 2. 确认服务拓扑
 
@@ -48,9 +48,9 @@ updater (内网) ─► docker-guard ─► docker.sock
 只挂载给 `docker-guard`；updater 通过内部网络访问经项目/镜像/请求体白名单限制的 API。
 updater 只挂载宿主部署根目录一次，宿主上的 `./pgdata`、`./state` 路径和救援命令不变。
 
-从「updater 直接挂 sock」旧布局迁到当前拓扑：见
-[deployment/MIGRATION_DOCKER_GUARD.md](./deployment/MIGRATION_DOCKER_GUARD.md)
-（同目录 `compose pull && up -d`，保留 pgdata/.env；**仅 UI 无法切换拓扑**）。
+当前拓扑见 [deployment/DOCKER_DEPLOYMENT.md](./deployment/DOCKER_DEPLOYMENT.md)
+（三网 + docker-guard + updater-gateway）。首次或改拓扑请在宿主执行
+`bash scripts/docker/deploy.sh up`（或等价 compose）；**仅 UI 更新无法创建网络/服务**。
 
 自更新会同时重建 `docker-guard` 与 `updater`（共用 `UPDATER_TAG`）。该次 compose 走
 宿主 unix socket 的固定 argv 路径，日常 Docker API 仍经 guard 策略代理。

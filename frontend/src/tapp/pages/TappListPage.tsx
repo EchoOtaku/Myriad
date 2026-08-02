@@ -27,10 +27,9 @@ import {
 } from '@lib/motionShim'
 import {
   forwardRef,
-  lazy,
-  Suspense,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -47,11 +46,17 @@ import {
   isStandardAnimation,
   useAnimationLevel,
 } from '../../hooks/useAnimationLevel'
+import { usePageSeo } from '../../hooks/usePageSeo'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { useResolvedTitleColor, useTitleFont } from '../../hooks/useTitleFont'
+import {
+  canAccessModuleVisibility,
+  useModuleVisibilityPreferences,
+} from '../../utils/moduleVisibility'
 import { hasSessionHint } from '../../utils/sessionDetection'
 import { TappPlaygroundIcon } from '../components/PlaygroundIcons'
 import { TappIcon } from '../components/TappIcon'
+import { TappIconBadge } from '../components/TappIconBadge'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { getTappRuntime } from '../runtime'
@@ -64,6 +69,7 @@ import {
   TAPP_CATEGORY_I18N_KEYS,
 } from '../utils/tappCategories'
 import { getTappIconStyle as getTappIconStyleFromManifest } from '../utils/tappColors'
+import { buildTappListPageSeo } from '../utils/tappPageSeo'
 
 // 使用 TappIcon 组件统一处理图标渲染
 
@@ -71,8 +77,6 @@ import { getTappIconStyle as getTappIconStyleFromManifest } from '../utils/tappC
 function getTappIconStyle(tapp: TappInstance): IconStyle {
   return getTappIconStyleFromManifest(tapp.manifest)
 }
-
-const TappStore = lazy(() => import('../components/TappStore'))
 
 /** 按后端一致的权限等级统计 Manifest 权限。 */
 function getPermissionCounts(permissions: TappPermission[]): {
@@ -103,10 +107,10 @@ interface TappCardProps {
   isRunning: boolean
   onStart: () => void
   onStop: () => void
-  onUninstall: () => void
+  onUninstall: (anchor: HTMLElement) => void
   onConfigure: () => void
   onOpen: () => void
-  /** 鍗＄墖绱㈠紩锛堢敤浜庝氦閿欏姩鐢伙級 */
+  /** 卡片索引（交错动画） */
   index: number
 }
 
@@ -247,24 +251,19 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
           {/* 椤堕儴鍖哄煙锛氬浘鏍?+ 鍚嶇О + 鐘舵€? */}
           <div className="flex items-start gap-2.5 mb-auto">
             {/* 应用图标 */}
-            <div
-              className={`w-14 h-14 rounded-xl ${iconStyle.className} flex items-center justify-center text-white shadow-lg relative overflow-hidden shrink-0`}
-              style={iconStyle.style}
+            <TappIconBadge
+              icon={manifest.icon}
+              iconSvg={manifest.iconSvg}
+              name={displayName}
+              iconStyle={iconStyle}
+              shellClassName="w-14 h-14 rounded-xl shadow-lg"
+              glyphSizeClass="w-8 h-8"
+              glyphTextClass="text-2xl"
             >
-              <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
-              <TappIcon
-                icon={manifest.icon}
-                iconSvg={manifest.iconSvg}
-                name={displayName}
-                sizeClass="w-8 h-8"
-                textSizeClass="text-2xl"
-                className="relative z-10"
-              />
-              {/* 杩愯涓殑鑴夊啿鏁堟灉 */}
               {isRunning && (
-                <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                <div className="absolute inset-0 z-20 bg-white/20 animate-pulse" />
               )}
-            </div>
+            </TappIconBadge>
 
             {/* 鍚嶇О + 鍏冧俊鎭? */}
             <div className="flex-1 min-w-0 pt-1">
@@ -336,7 +335,7 @@ const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        onUninstall()
+                        onUninstall(e.currentTarget)
                       }}
                       className="p-2 rounded-xl transition-all text-gray-400 hover:text-red-500 hover:bg-red-500/10"
                       title={t.tapp.uninstall}
@@ -587,6 +586,11 @@ export function TappListPage() {
   const { t, locale } = useI18n()
   const { isMobile } = useBreakpoints()
   const { isAdmin, hasChecked, checkAuth } = useAuth()
+  const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
+  const moduleOpenToAll = canAccessModuleVisibility(
+    moduleVisibility.modules.tapp,
+    { isAuthenticated: false, isAdmin: false },
+  )
   // 🆕 标题字体 Hook
   const { currentFont, titleFontSize } = useTitleFont()
   // 自适应色对齐 Tapp 音乐播放器歌词：对比度推导
@@ -597,16 +601,30 @@ export function TappListPage() {
   const [loading, setLoading] = useState(true)
   const [showEmpty, setShowEmpty] = useState(false) // 延迟显示空状态
   const [showInstallModal, setShowInstallModal] = useState(false)
-  const [showStore, setShowStore] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
   const [toastType, setToastType] = useState<ToastType>('info')
-  // 卸载确认对话框状态
+  // 卸载确认 tooltip
   const [showUninstallDialog, setShowUninstallDialog] = useState(false)
   const [uninstallTargetId, setUninstallTargetId] = useState<string | null>(
     null,
   )
   const [uninstallTargetName, setUninstallTargetName] = useState('')
+  const [uninstallAnchor, setUninstallAnchor] = useState<HTMLElement | null>(
+    null,
+  )
   const runtime = getTappRuntime()
+
+  usePageSeo(
+    useMemo(
+      () =>
+        buildTappListPageSeo({
+          listLabel: t.tapp.listTitle || t.nav.tapp || 'Tapp',
+          listDescription: t.tapp.listSubtitle,
+          moduleOpenToAll,
+        }),
+      [t, moduleOpenToAll],
+    ),
+  )
 
   const showToastMessage = useCallback(
     (message: string, type: ToastType = 'info') => {
@@ -706,34 +724,34 @@ export function TappListPage() {
     }
   }
 
-  const handleUninstall = async (tappId: string) => {
-    // 找到对应的 Tapp 获取名称
-    const tapp = tapps.find((t) => t.id === tappId)
+  const handleUninstall = (tappId: string, anchor?: HTMLElement | null) => {
+    const tapp = tapps.find((item) => item.id === tappId)
     setUninstallTargetId(tappId)
     setUninstallTargetName(
       tapp ? resolveManifestText(tapp.manifest, locale).name : tappId,
     )
+    setUninstallAnchor(anchor ?? null)
     setShowUninstallDialog(true)
   }
 
-  // 确认卸载
   const handleConfirmUninstall = async (keepData: boolean) => {
     if (!uninstallTargetId) return
     try {
       await runtime.uninstallTapp(uninstallTargetId, { keepData })
       setShowUninstallDialog(false)
       setUninstallTargetId(null)
+      setUninstallAnchor(null)
     } catch (error) {
       console.error('Failed to uninstall Tapp:', error)
       showToastMessage(t.tapp.uninstallFailed || 'Uninstall failed', 'error')
-      throw error // 让组件处理 loading 状态
+      throw error
     }
   }
 
-  // 取消卸载
   const cancelUninstall = () => {
     setShowUninstallDialog(false)
     setUninstallTargetId(null)
+    setUninstallAnchor(null)
   }
 
   const handleOpen = (tappId: string) => {
@@ -827,7 +845,7 @@ export function TappListPage() {
                     </button>
                   )}
                   <button
-                    onClick={() => setShowStore(true)}
+                    onClick={() => navigate('/tapp/store')}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
                     style={{ color: 'var(--color-primary)' }}
                   >
@@ -863,7 +881,7 @@ export function TappListPage() {
               {/* 右侧移动端按钮 — Playground 仅桌面端入口 */}
               <div className="flex sm:hidden items-center gap-2">
                 <button
-                  onClick={() => setShowStore(true)}
+                  onClick={() => navigate('/tapp/store')}
                   className="p-2 rounded-lg glass shadow-sm"
                   title={t.tapp.storeTitle}
                 >
@@ -918,7 +936,7 @@ export function TappListPage() {
                 </p>
                 <div className="flex items-center justify-center gap-3">
                   <motion.button
-                    onClick={() => setShowStore(true)}
+                    onClick={() => navigate('/tapp/store')}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm"
                     style={{
                       background:
@@ -982,7 +1000,7 @@ export function TappListPage() {
                     isRunning={runningTapps.has(tapp.id)}
                     onStart={() => handleStart(tapp.id)}
                     onStop={() => handleStop(tapp.id)}
-                    onUninstall={() => handleUninstall(tapp.id)}
+                    onUninstall={(anchor) => handleUninstall(tapp.id, anchor)}
                     onConfigure={() => handleConfigure(tapp.id)}
                     onOpen={() => handleOpen(tapp.id)}
                     index={index}
@@ -1010,23 +1028,11 @@ export function TappListPage() {
         )}
       </AnimatePresence>
 
-      {/* 搴旂敤鍟嗗簵 */}
-      <Suspense fallback={null}>
-        <AnimatePresence>
-          {showStore && (
-            <TappStore
-              isOpen={showStore}
-              onClose={() => setShowStore(false)}
-              onInstalled={() => loadTapps(true)}
-            />
-          )}
-        </AnimatePresence>
-      </Suspense>
-
       {/* 卸载确认对话框 */}
       <UninstallConfirmDialog
         isOpen={showUninstallDialog}
         appName={uninstallTargetName}
+        anchorEl={uninstallAnchor}
         onCancel={cancelUninstall}
         onConfirm={handleConfirmUninstall}
       />

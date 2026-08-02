@@ -139,10 +139,16 @@ impl GithubClient {
     }
 
     /// True when a release tag belongs to the given channel filter.
+    ///
+    /// Myriad ships formal `vX.Y.Z` tags (non-prerelease) as the primary train.
+    /// **Stable**: formal only (no prerelease, no `*-preview.*` tags).
+    /// **Preview**: all non-draft releases (formal + prerelease / preview-marked)
+    /// so the Preview channel still sees subsequent formal versions.
     pub fn release_matches_channel(tag: &str, prerelease: bool, channel: Channel) -> bool {
         match channel {
             Channel::Stable => !prerelease && !is_marked(tag, "preview"),
-            Channel::Preview => is_marked(tag, "preview") || prerelease,
+            // Drafts are already filtered by list_releases_for_channel.
+            Channel::Preview => true,
         }
     }
 
@@ -312,14 +318,24 @@ impl GithubClient {
     }
 
     /// Compare current deploy tag vs a target git ref; returns None if current cannot be resolved.
+    ///
+    /// `target_ref` may be a bare branch/sha, a formal `vX.Y.Z` tag, or a Docker
+    /// `dev-<sha>` tag — the latter is normalized via [`deploy_tag_to_git_ref`].
     pub async fn compare_deploy_to_ref(
         &self,
         current: Option<&crate::version::DeployTag>,
         target_ref: &str,
     ) -> Result<Option<Freshness>> {
+        // Normalize Docker Hub commit tags (`dev-abc1234`) → bare sha so GitHub
+        // `/commits/{ref}` resolves. Passing `dev-…` literally 404s and dropped
+        // ancestry for the whole dev-channel tip path.
+        let target_ref = match crate::version::DeployTag::parse(target_ref.trim()) {
+            Ok(t) => deploy_tag_to_git_ref(&t),
+            Err(_) => target_ref.trim().to_string(),
+        };
         let Some(curr) = current else {
             // No recorded version → anything is "newer".
-            let tip = self.resolve_commit(target_ref).await?;
+            let tip = self.resolve_commit(&target_ref).await?;
             return Ok(Some(Freshness {
                 relation: CommitRelation::Ahead,
                 ahead_by: 1,
@@ -350,7 +366,7 @@ impl GithubClient {
                 return Ok(None);
             }
         };
-        let tip = self.resolve_commit(target_ref).await?;
+        let tip = self.resolve_commit(&target_ref).await?;
         if curr_info.sha == tip.sha {
             return Ok(Some(Freshness {
                 relation: CommitRelation::Identical,
@@ -571,7 +587,7 @@ mod channel_filter_tests {
     }
 
     #[test]
-    fn preview_matches_preview_or_prerelease() {
+    fn preview_matches_formal_and_prerelease() {
         assert!(GithubClient::release_matches_channel(
             "v1.0.0-preview.20260101",
             true,
@@ -582,8 +598,14 @@ mod channel_filter_tests {
             true,
             Channel::Preview
         ));
-        assert!(!GithubClient::release_matches_channel(
+        // Formal train is what Myriad actually ships — must still match preview.
+        assert!(GithubClient::release_matches_channel(
             "v1.0.0",
+            false,
+            Channel::Preview
+        ));
+        assert!(GithubClient::release_matches_channel(
+            "v0.3.21",
             false,
             Channel::Preview
         ));

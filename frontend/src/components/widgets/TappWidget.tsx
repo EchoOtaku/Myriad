@@ -23,11 +23,12 @@ import { useNavigate } from 'react-router-dom'
 import { useI18n } from '../../contexts/I18nContext'
 import { isPageVisible, onVisibility } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
-import { TappIcon } from '../../tapp/components/TappIcon'
+import { TappIconBadge } from '../../tapp/components/TappIconBadge'
 import { loadWidgetResources } from '../../tapp/runtime/sandbox/resourceLoader'
 import { getTappRuntime } from '../../tapp/runtime/TappRuntime'
 import { TappWidgetSandbox } from '../../tapp/runtime/TappWidgetSandbox'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
+import { getTappIconStyle } from '../../tapp/utils/tappColors'
 import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
@@ -269,15 +270,11 @@ const TappWidgetPreview = memo(
     const isLarge =
       config.size === '4x2' || config.size === '4x4' || config.size === '2x4'
 
-    // 图标样式
-    const iconBgStyle = previewInfo?.themeColor
-      ? {
-          background: `linear-gradient(to bottom right, ${previewInfo.themeColor}, ${previewInfo.themeColor}99)`,
-        }
-      : undefined
-    const iconBgClass = previewInfo?.themeColor
-      ? 'bg-linear-to-br'
-      : 'bg-linear-to-br from-indigo-500 to-purple-600'
+    const iconStyle = getTappIconStyle({
+      icon: previewInfo?.icon,
+      iconSvg: previewInfo?.iconSvg,
+      themeColor: previewInfo?.themeColor,
+    })
 
     return (
       <WidgetShell
@@ -300,28 +297,25 @@ const TappWidgetPreview = memo(
         }
       >
         {/* 图标 */}
-        <div
-          className={`${iconBgClass} flex items-center justify-center text-white shadow-lg relative overflow-hidden shrink-0 ${
+        <TappIconBadge
+          icon={previewInfo?.icon}
+          iconSvg={previewInfo?.iconSvg}
+          name={previewInfo?.name || 'Widget'}
+          iconStyle={iconStyle}
+          shellClassName={`shadow-lg ${
             isCompact
               ? 'w-8 h-8 rounded-md'
               : isLarge
                 ? 'w-14 h-14 rounded-lg mb-3'
                 : 'w-10 h-10 rounded-lg mb-2'
           }`}
-          style={iconBgStyle}
-        >
-          <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
-          <TappIcon
-            icon={previewInfo?.icon}
-            iconSvg={previewInfo?.iconSvg}
-            name={previewInfo?.name || 'Widget'}
-            sizeClass={isCompact ? 'w-5 h-5' : isLarge ? 'w-8 h-8' : 'w-6 h-6'}
-            textSizeClass={
-              isCompact ? 'text-lg' : isLarge ? 'text-2xl' : 'text-xl'
-            }
-            className="relative z-10"
-          />
-        </div>
+          glyphSizeClass={
+            isCompact ? 'w-5 h-5' : isLarge ? 'w-8 h-8' : 'w-6 h-6'
+          }
+          glyphTextClass={
+            isCompact ? 'text-lg' : isLarge ? 'text-2xl' : 'text-xl'
+          }
+        />
 
         {/* 文本信息 - 紧凑模式不显示 */}
         {!isCompact && (
@@ -816,15 +810,17 @@ function TappWidgetRuntime({
         .trim() ||
       '#8b5cf6'
 
-    // 图标样式
-    const iconBgStyle = tappInstance.manifest.themeColor
-      ? {
-          background: `linear-gradient(to bottom right, ${tappInstance.manifest.themeColor}, ${tappInstance.manifest.themeColor}99)`,
-        }
-      : undefined
-    const iconBgClass = tappInstance.manifest.themeColor
-      ? 'bg-linear-to-br'
-      : 'bg-linear-to-br from-indigo-500 to-purple-600'
+    const stoppedIconStyle = getTappIconStyle({
+      icon: widget.config.icon || tappInstance.manifest.icon,
+      iconSvg: tappInstance.manifest.iconSvg,
+      themeColor: tappInstance.manifest.themeColor,
+      category: tappInstance.manifest.category,
+      id: tappInstance.manifest.id,
+      permissions: tappInstance.manifest.permissions,
+    })
+    const stoppedName =
+      widget.config.name ||
+      resolveManifestText(tappInstance.manifest, locale).name
 
     return (
       <WidgetShell
@@ -848,23 +844,15 @@ function TappWidgetRuntime({
         }
       >
         {/* 图标 */}
-        <div
-          className={`w-12 h-12 ${iconBgClass} rounded-lg flex items-center justify-center text-white shadow-lg relative overflow-hidden mb-3`}
-          style={iconBgStyle}
-        >
-          <div className="absolute inset-0 bg-linear-to-br from-white/25 to-transparent" />
-          <TappIcon
-            icon={widget.config.icon || tappInstance.manifest.icon}
-            iconSvg={tappInstance.manifest.iconSvg}
-            name={
-              widget.config.name ||
-              resolveManifestText(tappInstance.manifest, locale).name
-            }
-            sizeClass="w-7 h-7"
-            textSizeClass="text-2xl"
-            className="relative z-10"
-          />
-        </div>
+        <TappIconBadge
+          icon={widget.config.icon || tappInstance.manifest.icon}
+          iconSvg={tappInstance.manifest.iconSvg}
+          name={stoppedName}
+          iconStyle={stoppedIconStyle}
+          shellClassName="w-12 h-12 rounded-lg shadow-lg mb-3"
+          glyphSizeClass="w-7 h-7"
+          glyphTextClass="text-2xl"
+        />
 
         {/* 名称 */}
         <div className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 text-center">

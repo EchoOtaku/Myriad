@@ -20,6 +20,7 @@ import {
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
 import { audioManager } from '../../utils/musicPlayer'
+import { PlayingSpectrum } from '../shared/PlayingSpectrum'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 
@@ -708,7 +709,7 @@ const AlbumCover = memo(
 
 AlbumCover.displayName = 'AlbumCover'
 
-// 播放状态指示器 - 高性能实时频谱版本；低性能模式退化为静态柱
+/** 小组件播放指示：共享频谱 + 入场动效 */
 const PlayingIndicator = memo(
   ({
     themeColor,
@@ -721,131 +722,19 @@ const PlayingIndicator = memo(
     anim?: AnimationConfig
     isPlaying?: boolean
   }) => {
-    const bar1Ref = useRef<HTMLDivElement>(null)
-    const bar2Ref = useRef<HTMLDivElement>(null)
-    const bar3Ref = useRef<HTMLDivElement>(null)
-    const bar4Ref = useRef<HTMLDivElement>(null)
-    const animationRef = useRef<number | null>(null)
-    const connectedRef = useRef(false)
-    const pageVisibleRef = useRef(isPageVisible())
-    // 仅中高性能启用实时频谱 RAF + Analyser
     const useSpectrum = (anim?.level ?? 'standard') === 'standard'
-
-    // 频谱动画循环 - 统一处理
-    useEffect(() => {
-      // 监听页面可见性变化
-      const unsubscribe = onVisibility((visible) => {
-        pageVisibleRef.current = visible
-      })
-
-      if (!isPlaying || !useSpectrum) {
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current)
-          animationRef.current = null
-        }
-        if (bar1Ref.current) bar1Ref.current.style.height = '30%'
-        if (bar2Ref.current) bar2Ref.current.style.height = '50%'
-        if (bar3Ref.current) bar3Ref.current.style.height = '40%'
-        if (bar4Ref.current) bar4Ref.current.style.height = '35%'
-        return unsubscribe
-      }
-
-      // 尝试连接音频到分析器
-      if (!connectedRef.current) {
-        const audio = audioManager.getCurrentAudio()
-        if (audio) {
-          audioManager.connectAudioToAnalyser(audio)
-          connectedRef.current = true
-        }
-      }
-
-      let lastUpdateTime = 0
-      const UPDATE_INTERVAL = 60
-
-      const updateSpectrum = (timestamp: number) => {
-        if (!pageVisibleRef.current || !isPlaying) {
-          animationRef.current = null
-          return
-        }
-
-        if (timestamp - lastUpdateTime >= UPDATE_INTERVAL) {
-          const data = audioManager.getSpectrumData()
-          if (bar1Ref.current)
-            bar1Ref.current.style.height = `${30 + data[0] ** 2.0 * 70}%`
-          if (bar2Ref.current)
-            bar2Ref.current.style.height = `${30 + data[1] ** 2.0 * 70}%`
-          if (bar3Ref.current)
-            bar3Ref.current.style.height = `${30 + data[2] ** 2.0 * 70}%`
-          if (bar4Ref.current)
-            bar4Ref.current.style.height = `${30 + data[3] ** 2.0 * 70}%`
-          lastUpdateTime = timestamp
-        }
-        animationRef.current = requestAnimationFrame(updateSpectrum)
-      }
-
-      if (pageVisibleRef.current) {
-        animationRef.current = requestAnimationFrame(updateSpectrum)
-      }
-
-      return () => {
-        unsubscribe()
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current)
-          animationRef.current = null
-        }
-      }
-    }, [isPlaying, useSpectrum])
-
-    // 缓存样式对象
-    const containerStyle = useMemo(
-      () => ({
-        gap: `${2 * scale}px`,
-        height: `${16 * scale}px`,
-      }),
-      [scale],
-    )
-
-    const barStyle = useMemo(
-      () => ({
-        background: themeColor,
-        width: `${2 * scale}px`,
-        transition: useSpectrum ? 'height 0.06s linear' : undefined,
-      }),
-      [themeColor, scale, useSpectrum],
-    )
-
-    // 低性能：播放时用极轻量 CSS 高度脉冲，无 Analyser / RAF
-    const liteHeights = isPlaying
-      ? (['35%', '70%', '55%', '40%'] as const)
-      : (['30%', '50%', '40%', '35%'] as const)
 
     return (
       <motion.div
-        className="flex items-end"
-        style={containerStyle}
         initial={INDICATOR_INITIAL}
         animate={INDICATOR_ANIMATE}
         transition={INDICATOR_TRANSITION}
       >
-        <div
-          ref={bar1Ref}
-          className="rounded-full"
-          style={{ ...barStyle, height: useSpectrum ? '30%' : liteHeights[0] }}
-        />
-        <div
-          ref={bar2Ref}
-          className="rounded-full"
-          style={{ ...barStyle, height: useSpectrum ? '50%' : liteHeights[1] }}
-        />
-        <div
-          ref={bar3Ref}
-          className="rounded-full"
-          style={{ ...barStyle, height: useSpectrum ? '40%' : liteHeights[2] }}
-        />
-        <div
-          ref={bar4Ref}
-          className="rounded-full"
-          style={{ ...barStyle, height: useSpectrum ? '35%' : liteHeights[3] }}
+        <PlayingSpectrum
+          themeColor={themeColor}
+          scale={scale}
+          isPlaying={isPlaying}
+          useSpectrum={useSpectrum}
         />
       </motion.div>
     )

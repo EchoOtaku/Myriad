@@ -356,7 +356,7 @@ const ModernConfigForm: React.FC = () => {
             {...props}
           />
         )
-      case 'ui':
+      case 'basic':
         return (
           <UiConfigSection
             configFields={config.ui_config.config_fields}
@@ -525,7 +525,7 @@ const ModernConfigForm: React.FC = () => {
           >
             <div className="config-sidebar-header">
               <span className="nav-icon">
-                <MyriadConfigIcon kind="ui" />
+                <MyriadConfigIcon kind="basic" />
               </span>
               <div className="config-sidebar-heading">
                 <h3 className="nav-title">{t.config.title}</h3>

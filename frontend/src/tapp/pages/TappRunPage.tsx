@@ -10,8 +10,9 @@
  * - 支持多窗口模式，可同时运行最多3个应用
  */
 
-import type { TappCodeStructure, TappInstance } from '../types'
+import type { CSSProperties } from 'react'
 
+import type { TappCodeStructure, TappInstance } from '../types'
 import {
   FaArrowLeft,
   FaCog,
@@ -28,20 +29,27 @@ import {
 } from '@lib/motionShim'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { Spinner } from '../../components/Spinner'
 import { useI18n } from '../../contexts/I18nContext'
 import { useNavigation } from '../../contexts/NavigationContext'
 import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
+import { usePageSeo } from '../../hooks/usePageSeo'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
-import { TappIcon } from '../components/TappIcon'
+import {
+  canAccessModuleVisibility,
+  useModuleVisibilityPreferences,
+} from '../../utils/moduleVisibility'
+import { TappIconBadge } from '../components/TappIconBadge'
 import { TappWindowManager } from '../components/TappWindowManager'
+import { HOST_PANEL_STORE_ID, isStoreHostPanel } from '../constants/hostPanels'
 import { useWindowAgentHandler } from '../hooks/useWindowAgentHandler'
 import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
 import { isWebKit, TappPageSandbox } from '../runtime/TappPageSandbox'
 import { resolveManifestText } from '../utils/manifestLocale'
 import { getTappIconStyle } from '../utils/tappColors'
+import { buildTappRunPageSeo } from '../utils/tappPageSeo'
 
 interface TappRunPageProps {
   tappId: string
@@ -71,6 +79,19 @@ export function TappRunPage({ tappId }: TappRunPageProps) {
   const isMultiWindow = multiParam && (!isMobile || multiSessionActive)
   const navigate = useNavigate()
 
+  // 宿主商店：单窗口走正式商店页，多窗口进窗口管理器
+  if (isStoreHostPanel(tappId)) {
+    if (isMultiWindow) {
+      return (
+        <TappWindowManager
+          initialTappId={HOST_PANEL_STORE_ID}
+          onBack={() => navigate('/tapp')}
+        />
+      )
+    }
+    return <Navigate to="/tapp/store" replace />
+  }
+
   // 多窗口模式
   if (isMultiWindow) {
     return (
@@ -96,6 +117,11 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const navigate = useNavigate()
   const { t, locale } = useI18n()
   const { setImmersiveMode } = useNavigation()
+  const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
+  const moduleOpenToAll = canAccessModuleVisibility(
+    moduleVisibility.modules.tapp,
+    { isAuthenticated: false, isAdmin: false },
+  )
 
   // Agent ui.open / open_window: multi-window registers via TappWindowManager;
   // single-window must still handle open_window (navigate to /tapp/run/:id).
@@ -135,6 +161,20 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [retryGeneration, setRetryGeneration] = useState(0)
   const runtime = getTappRuntime()
+
+  // 路由级 SEO：应用名 / 描述 / 可见性 noindex
+  usePageSeo(
+    useMemo(
+      () =>
+        buildTappRunPageSeo({
+          tapp,
+          tappId,
+          locale,
+          moduleOpenToAll,
+        }),
+      [tapp, tappId, locale, moduleOpenToAll],
+    ),
+  )
 
   // 全屏时沉浸隐藏 NavigationIsland（z-50），而不是把 TApp 抬到 ≥998
   // 与 host chrome z-ladder 一致：TApp shell 保持远低于 GCP overlay(998)/bar(9999)
@@ -263,6 +303,28 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
       : undefined
   }, [isFullscreen])
 
+  // 普通模式内容区：移动端为底部导航岛和系统安全区预留空间。
+  // 顶部仍沿用现有的 5rem 全局顶栏，不改变站点 chrome。
+  const contentStyle = useMemo((): CSSProperties => {
+    return {
+      position: 'absolute',
+      top: 'calc(5rem + 44px)',
+      right: isMobile ? '0.75rem' : '1rem',
+      bottom: isMobile
+        ? 'max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 4.5rem))'
+        : '1.5rem',
+      left: isMobile ? '0.75rem' : '1rem',
+      zIndex: 1,
+      maxWidth: '72rem',
+      marginLeft: 'auto',
+      marginRight: 'auto',
+      // 独立合成层：减轻 WebKit 在 overflow:hidden 祖先下的 iframe 绘制问题
+      WebkitTransform: 'translateZ(0)',
+      transform: 'translateZ(0)',
+      isolation: 'isolate',
+    }
+  }, [isMobile])
+
   // 🎬 动画配置 - 基于性能级别
   const transitions = useMemo(() => {
     const scale = animConfig.durationScale
@@ -332,28 +394,35 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
             {isFullscreen && isReady && tapp && (
               <motion.div
                 key="fullscreen-toolbar"
-                initial={{ opacity: 0, x: -16, scale: 0.92 }}
+                initial={
+                  isMobile ? false : { opacity: 0, x: -16, scale: 0.92 }
+                }
                 animate={{ opacity: 1, x: 0, scale: 1 }}
                 exit={{ opacity: 0, x: -16, scale: 0.92 }}
                 transition={transitions.elementEnter}
                 // z-900：高于内容/导航岛，但低于 GCP overlay(998) 与 bar(9999)
-                className="fixed top-4 left-4 z-900 opacity-0 hover:opacity-100 transition-opacity duration-300"
+                className={`fixed top-4 left-4 z-900 transition-opacity duration-300 ${
+                  isMobile
+                    ? 'opacity-100'
+                    : 'opacity-0 hover:opacity-100 focus-within:opacity-100'
+                }`}
               >
                 <div className="glass rounded-xl px-3 py-2 flex items-center gap-3 shadow-lg">
                   <div className="flex items-center gap-2">
                     {iconStyle && (
                       <motion.div
-                        className={`w-7 h-7 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-xs font-bold`}
-                        style={iconStyle.style}
                         whileHover={noAnimation ? undefined : { scale: 1.1 }}
                         whileTap={noAnimation ? undefined : { scale: 0.95 }}
                       >
-                        <TappIcon
+                        <TappIconBadge
                           icon={tapp.manifest.icon}
                           iconSvg={tapp.manifest.iconSvg}
                           name={displayName}
-                          sizeClass="w-4 h-4"
-                          textSizeClass="text-sm"
+                          iconStyle={iconStyle}
+                          shellClassName="w-7 h-7 rounded-lg"
+                          glyphSizeClass="w-4 h-4"
+                          glyphTextClass="text-sm"
+                          shine={false}
                         />
                       </motion.div>
                     )}
@@ -401,7 +470,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
       {/* 🎯 普通模式 - 控制栏 + 沙箱作为一个整体 */}
       <motion.div
         className="absolute inset-0 flex flex-col overflow-hidden pointer-events-none"
-        initial={noAnimation ? false : { opacity: 0, y: 35, scale: 0.95 }}
+        initial={false}
         animate={{
           opacity: isFullscreen ? 0 : 1,
           y: isFullscreen ? -30 : 0,
@@ -419,7 +488,19 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
         <div className="h-20 shrink-0" />
 
         {/* 控制栏 + 沙箱 整体容器 */}
-        <div className="flex-1 flex flex-col px-4 sm:px-6 min-h-0 pb-6">
+        <div
+          className={`flex-1 flex flex-col min-h-0 ${
+            isMobile ? 'px-3' : 'px-4 sm:px-6 pb-6'
+          }`}
+          style={
+            isMobile
+              ? {
+                  paddingBottom:
+                    'max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 4.5rem))',
+                }
+              : undefined
+          }
+        >
           <div className="max-w-6xl mx-auto w-full flex flex-col flex-1 min-h-0 max-h-[calc(100vh-8rem)]">
             {/* 头部卡片 - 紧凑单行 */}
             <div className="glass rounded-t-xl px-3 py-2 flex items-center justify-between gap-2 shadow-sm min-h-11 shrink-0 pointer-events-auto">
@@ -486,8 +567,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                       transition={transitions.stateSwitch}
                     >
                       <motion.div
-                        className={`w-7 h-7 rounded-lg ${iconStyle.className} flex items-center justify-center text-white text-sm font-bold shrink-0`}
-                        style={iconStyle.style}
+                        className="shrink-0"
                         initial={{ scale: 0.8, rotate: -10 }}
                         animate={{ scale: 1, rotate: 0 }}
                         transition={{
@@ -500,12 +580,15 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                         }
                         whileTap={noAnimation ? undefined : { scale: 0.95 }}
                       >
-                        <TappIcon
+                        <TappIconBadge
                           icon={tapp.manifest.icon}
                           iconSvg={tapp.manifest.iconSvg}
                           name={displayName}
-                          sizeClass="w-4 h-4"
-                          textSizeClass="text-sm"
+                          iconStyle={iconStyle}
+                          shellClassName="w-7 h-7 rounded-lg"
+                          glyphSizeClass="w-4 h-4"
+                          glyphTextClass="text-sm"
+                          shine={false}
                         />
                       </motion.div>
                       <motion.span
@@ -697,23 +780,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
                   left: 0,
                   zIndex: 1,
                 }
-              : {
-                  position: 'absolute',
-                  top: 'calc(5rem + 44px)',
-                  right: '1rem',
-                  bottom: '1.5rem',
-                  left: '1rem',
-                  zIndex: 1,
-                  maxWidth: '72rem',
-                  marginLeft: 'auto',
-                  marginRight: 'auto',
-                  // 独立合成层：减轻 WebKit 在 overflow:hidden 祖先下的 iframe 绘制问题
-                  // （页面级 opacity 动画已在 App.tsx 对 /tapp/run 关闭）
-                  // 仅非全屏使用 translateZ；全屏避免额外合成层干扰 host chrome hit-test
-                  WebkitTransform: 'translateZ(0)',
-                  transform: 'translateZ(0)',
-                  isolation: 'isolate',
-                }
+              : contentStyle
           }
         >
           <div

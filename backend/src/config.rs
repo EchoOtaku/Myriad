@@ -18,7 +18,7 @@ pub enum ModelTier {
 /// GitHub 仍走 `github_client_id` / `github_client_secret` 平铺字段（内置 provider）。
 /// 这里专门给 OIDC / 未来其他 provider 用。
 ///
-/// 详见 [`docs/oauth-refactor-plan.md`](../../docs/oauth-refactor-plan.md) §5。
+/// 详见 [`docs/development/OAUTH.md`](../../docs/development/OAUTH.md)。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OAuthProviderEntry {
     /// 路由 slug：`/api/auth/oauth/<slug>/login`。须全局唯一。
@@ -329,13 +329,30 @@ pub struct DynamicConfig {
     /// 第一方访客统计（pageview / engagement / event）是否开启；关闭后服务端拒绝采集
     pub analytics_enabled: bool,
 
+    /// PWA：是否启用 Service Worker 注册与可安装清单（默认开启，与历史行为一致）
+    pub pwa_enabled: bool,
+
     // 站点元数据
     pub site_title: Option<String>,
     pub site_description: Option<String>,
     pub site_favicon: Option<String>,
+    /// SEO 关键词（逗号分隔，写入 meta keywords）
+    pub site_keywords: Option<String>,
+    /// 社交分享预览图（Open Graph / Twitter Card）
+    pub site_og_image: Option<String>,
+    /// 禁止搜索引擎收录（true → robots: noindex, nofollow）
+    pub site_noindex: bool,
+    /// Google Analytics 4 Measurement ID（如 G-XXXXXXXXXX）；空则不加载 gtag
+    pub ga_measurement_id: Option<String>,
+    /// Umami website id（UUID）；空则不加载
+    pub umami_website_id: Option<String>,
+    /// Umami tracker 脚本完整 URL（如 https://cloud.umami.is/script.js）
+    pub umami_script_url: Option<String>,
     pub site_icp: Option<String>,       // ICP 备案号
     pub site_gongan: Option<String>,    // 公安备案号
     pub cloud_sponsors: Option<String>, // 云赞助商（cloudflare,edgeone,upyun 逗号分隔）
+    /// 页脚自定义项 JSON 数组，最多 2 条：[{text, icon?, url?}]
+    pub site_footer_custom: Option<String>,
 
     // 音乐配置
     pub music_enabled: Option<String>,
@@ -364,7 +381,7 @@ pub struct DynamicConfig {
     pub github_redirect_url: String,
 
     /// 通用 OIDC providers 列表（PR #3）
-    /// 详见 docs/oauth-refactor-plan.md §5
+    /// 详见 docs/development/OAUTH.md
     pub oauth_providers: Vec<OAuthProviderEntry>,
 
     /// 是否允许公开本地账号注册（PR #4）
@@ -488,7 +505,7 @@ impl Default for DynamicConfig {
             // 默认使用 OpenRouter（OpenAI 兼容，provider 记为 openai + OpenRouter base_url）
             ai_provider: "openai".to_string(),
             gemini_api_key: None,
-            gemini_model: "gemini-3.5-flash".to_string(),
+            gemini_model: "gemini-3.6-flash".to_string(),
             openai_api_key: None,
             openai_model: "minimax/minimax-m3".to_string(),
             openai_base_url: "https://openrouter.ai/api/v1".to_string(),
@@ -497,7 +514,7 @@ impl Default for DynamicConfig {
             lite_enabled: false,
             lite_ai_provider: "openai".to_string(),
             lite_gemini_api_key: None,
-            lite_gemini_model: "gemini-3.5-flash".to_string(),
+            lite_gemini_model: "gemini-3.5-flash-lite".to_string(),
             lite_openai_api_key: None,
             lite_openai_model: "openai/gpt-oss-20b:free".to_string(),
             lite_openai_base_url: "https://openrouter.ai/api/v1".to_string(),
@@ -507,7 +524,7 @@ impl Default for DynamicConfig {
             pro_gemini_api_key: None,
             pro_gemini_model: "gemini-3.1-pro-preview".to_string(),
             pro_openai_api_key: None,
-            pro_openai_model: "anthropic/claude-opus-4.8".to_string(),
+            pro_openai_model: "anthropic/claude-opus-5".to_string(),
             pro_openai_base_url: "https://openrouter.ai/api/v1".to_string(),
             topic_style: "balanced".to_string(),
 
@@ -572,12 +589,21 @@ impl Default for DynamicConfig {
 
             analytics_enabled: true,
 
+            pwa_enabled: true,
+
             site_title: None,
             site_description: None,
             site_favicon: None,
+            site_keywords: None,
+            site_og_image: None,
+            site_noindex: false,
+            ga_measurement_id: None,
+            umami_website_id: None,
+            umami_script_url: None,
             site_icp: None,
             site_gongan: None,
             cloud_sponsors: None,
+            site_footer_custom: None,
 
             music_enabled: None,
             music_source: None,

@@ -49,8 +49,10 @@ export const LEGACY_CONFIG_SECTION_MAP: Record<string, string> = {
   network: 'advanced',
   /** Updater panel lives under About (no standalone nav section). */
   updater: 'about',
-  /** MCP / agent prefs historically under notifications; product deep-link → about. */
-  mcp: 'about',
+  /** MCP ops panel lives under Advanced (was briefly under About). */
+  mcp: 'advanced',
+  /** Basic settings nav id used to be `ui` (display copy was already “basic”). */
+  ui: 'basic',
 }
 
 export function loadConfigFavorites(): string[] {

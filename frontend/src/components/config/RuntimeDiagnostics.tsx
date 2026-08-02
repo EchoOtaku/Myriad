@@ -62,6 +62,10 @@ interface RuntimeDiagnosticsResponse {
     commit_sha: string | null
     uptime_seconds: number
     config_mode: boolean
+    /**
+     * First schema apply / DB catalog stamp (RFC3339) — proxy for deploy time.
+     */
+    database_established_at?: string | null
     /** Process target OS (`linux` / `macos` / `windows`) */
     os?: string
     /** Process CPU architecture (`x86_64` / `aarch64` / …) */
@@ -110,12 +114,6 @@ interface RuntimeDiagnosticsResponse {
 
 interface RuntimeDiagnosticsProps {
   onMessage?: (message: string, type?: ToastType) => void
-}
-
-function statusRank(status: OverallStatus): number {
-  if (status === 'critical') return 2
-  if (status === 'warning') return 1
-  return 0
 }
 
 export default function RuntimeDiagnostics({
@@ -175,12 +173,35 @@ export default function RuntimeDiagnostics({
       data.runtime.version &&
       buildInfo.version !== data.runtime.version,
   )
-  const overallStatus: OverallStatus = versionMismatch
-    ? statusRank(data?.overall_status ?? 'healthy') >=
-      statusRank('warning')
-      ? (data?.overall_status ?? 'warning')
-      : 'warning'
-    : (data?.overall_status ?? 'healthy')
+  /**
+   * 总览「需要关注」不含服务器出口位置：该检查可保留卡片强调色，
+   * 但不抬升 overall（兼容旧后端仍把 location warning 写进 overall_status）。
+   */
+  const overallStatus: OverallStatus = (() => {
+    if (!data) return 'healthy'
+
+    let status: OverallStatus = 'healthy'
+    for (const check of data.checks) {
+      if (check.id === 'location') continue
+      if (check.status === 'error') {
+        status = 'critical'
+        break
+      }
+      if (check.status === 'warning') {
+        status = 'warning'
+      }
+    }
+
+    if (status !== 'critical') {
+      const hasStuck = data.tasks.active.some((task) => task.stuck)
+      const hasRecentFailures = data.tasks.recent_failures.length > 0
+      if (hasStuck || hasRecentFailures || versionMismatch) {
+        status = 'warning'
+      }
+    }
+
+    return status
+  })()
 
   const overallStatusLabel = (status: OverallStatus) => {
     if (status === 'healthy')
@@ -453,9 +474,9 @@ export default function RuntimeDiagnostics({
           id: 'backend' as const,
           status: 'ok' as DiagnosticStatus,
           badge: checkBadge('backend', 'ok', requestLatency ?? 0),
-          detail: `${format(t.config.runtimeDiagnosticsLatency, {
+          detail: format(t.config.runtimeDiagnosticsLatency, {
             n: requestLatency ?? 0,
-          })} · ${formatDuration(data.runtime.uptime_seconds)}`,
+          }),
           icon: <LuServer />,
         },
         {
@@ -467,6 +488,7 @@ export default function RuntimeDiagnostics({
         },
         ...data.checks.map((check) => ({
           id: check.id,
+          // 位置卡片保留 warning/error 强调色；总览 overall 已排除 location
           status: check.status,
           badge: checkBadge(check.id, check.status, check.latency_ms),
           detail: checkDetail(check),
@@ -548,8 +570,21 @@ export default function RuntimeDiagnostics({
                     <>
                       <span>{formatDate(data.generated_at)}</span>
                       <span>
-                        {formatDuration(data.runtime.uptime_seconds)}
+                        {format(t.config.runtimeDiagnosticsUptime, {
+                          duration: formatDuration(
+                            data.runtime.uptime_seconds,
+                          ),
+                        })}
                       </span>
+                      {data.runtime.database_established_at ? (
+                        <span>
+                          {format(t.config.runtimeDiagnosticsDeployedAt, {
+                            date: formatDate(
+                              data.runtime.database_established_at,
+                            ),
+                          })}
+                        </span>
+                      ) : null}
                     </>
                   ) : (
                     t.common.loading

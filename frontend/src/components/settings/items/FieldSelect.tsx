@@ -4,7 +4,8 @@
  *
  * - 视口空间不足时向上翻转（is-up）
  * - listbox：Arrow / Home / End / Enter / Space / Escape
- * - 字母/数字 typeahead（聚合输入，约 750ms 清空）
+ * - 字母/数字 typeahead（聚合输入，约 750ms 清空；searchable 时改用搜索框）
+ * - searchable：菜单顶部搜索框，按 label/value 过滤
  */
 
 import type { SettingOption } from '../types'
@@ -12,6 +13,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -29,6 +31,12 @@ export interface FieldSelectProps<T extends string = string> {
   'aria-label'?: string
   /** 紧凑模式（列表行内使用） */
   size?: 'md' | 'sm'
+  /** 菜单顶部搜索框，过滤选项 */
+  searchable?: boolean
+  /** 搜索框 placeholder */
+  searchPlaceholder?: string
+  /** 无匹配结果时的文案 */
+  emptySearchText?: string
 }
 
 const TYPEAHEAD_RESET_MS = 750
@@ -55,21 +63,38 @@ export function FieldSelect<T extends string = string>({
   className = '',
   'aria-label': ariaLabel,
   size = 'md',
+  searchable = false,
+  searchPlaceholder = 'Search…',
+  emptySearchText = 'No matches',
 }: FieldSelectProps<T>) {
   const [open, setOpen] = useState(false)
   const [menuUp, setMenuUp] = useState(false)
+  const [query, setQuery] = useState('')
   const rootRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const typeaheadRef = useRef({ buf: '', timer: 0 as ReturnType<
     typeof setTimeout
   > | 0 })
   const autoId = useId()
   const listboxId = `${(id || autoId).replace(/:/g, '')}-listbox`
+  const searchId = `${(id || autoId).replace(/:/g, '')}-search`
   const options = optionsProp ?? []
 
   const selected =
     options.find((o) => o.value === value) ?? options.find((o) => !o.disabled)
+
+  const filteredOptions = useMemo(() => {
+    if (!searchable) return options
+    const q = query.trim().toLowerCase()
+    if (!q) return options
+    return options.filter((o) => {
+      const label = optionSearchText(o).toLowerCase()
+      const val = String(o.value).toLowerCase()
+      return label.includes(q) || val.includes(q)
+    })
+  }, [options, query, searchable])
 
   const focusOptionIndex = useCallback((index: number) => {
     const list = listRef.current
@@ -83,7 +108,8 @@ export function FieldSelect<T extends string = string>({
 
   const runTypeahead = useCallback(
     (char: string) => {
-      const enabled = enabledIndices(options)
+      if (searchable) return
+      const enabled = enabledIndices(filteredOptions)
       if (enabled.length === 0) return
       const state = typeaheadRef.current
       if (state.timer) clearTimeout(state.timer)
@@ -94,7 +120,6 @@ export function FieldSelect<T extends string = string>({
       }, TYPEAHEAD_RESET_MS)
 
       const buf = state.buf
-      // Prefer match from current focus onward, then wrap
       const buttons = listRef.current?.querySelectorAll<HTMLButtonElement>(
         'button[role="option"]:not(:disabled)',
       )
@@ -108,27 +133,34 @@ export function FieldSelect<T extends string = string>({
         ...enabled.slice(start + 1),
         ...enabled.slice(0, start + 1),
       ]
-      // Same-letter repeat: jump to next starting with that letter
-      const query =
+      const searchQ =
         buf.length > 1 && buf.split('').every((c) => c === buf[0])
           ? buf[0]
           : buf
       const hit = order.find((optIdx) =>
-        optionSearchText(options[optIdx]).toLowerCase().startsWith(query),
+        optionSearchText(filteredOptions[optIdx]).toLowerCase().startsWith(
+          searchQ,
+        ),
       )
       if (hit == null) return
       const focusAt = enabled.indexOf(hit)
       if (focusAt >= 0) focusOptionIndex(focusAt)
     },
-    [options, focusOptionIndex],
+    [filteredOptions, focusOptionIndex, searchable],
   )
 
   const placeMenu = useCallback(() => {
     const root = rootRef.current
-    const list = listRef.current
-    if (!root || !list) return
+    if (!root) return
+    const panel = root.querySelector('.field-select-panel') as HTMLElement | null
+    const measure = panel ?? listRef.current
+    if (!measure) return
     const rect = root.getBoundingClientRect()
-    const menuH = Math.min(list.scrollHeight, window.innerHeight * 0.5, 16 * 16)
+    const menuH = Math.min(
+      measure.scrollHeight,
+      window.innerHeight * 0.5,
+      18 * 16,
+    )
     const spaceBelow = window.innerHeight - rect.bottom - 8
     const spaceAbove = rect.top - 8
     setMenuUp(spaceBelow < menuH && spaceAbove > spaceBelow)
@@ -144,31 +176,50 @@ export function FieldSelect<T extends string = string>({
   }, [open])
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      setQuery('')
+      return
+    }
     placeMenu()
     const onResize = () => placeMenu()
     window.addEventListener('resize', onResize)
     window.addEventListener('scroll', onResize, true)
-    // Focus selected (or first enabled) option
     requestAnimationFrame(() => {
-      const idx = options.findIndex((o) => o.value === value && !o.disabled)
-      const enabled = enabledIndices(options)
-      const focusAt =
-        idx >= 0
-          ? enabled.indexOf(idx)
-          : 0
+      if (searchable) {
+        searchRef.current?.focus()
+        return
+      }
+      const idx = filteredOptions.findIndex(
+        (o) => o.value === value && !o.disabled,
+      )
+      const enabled = enabledIndices(filteredOptions)
+      const focusAt = idx >= 0 ? enabled.indexOf(idx) : 0
       if (enabled.length > 0) focusOptionIndex(Math.max(0, focusAt))
     })
     return () => {
       window.removeEventListener('resize', onResize)
       window.removeEventListener('scroll', onResize, true)
     }
-  }, [open, options, value, placeMenu, focusOptionIndex])
+  }, [
+    open,
+    filteredOptions,
+    value,
+    placeMenu,
+    focusOptionIndex,
+    searchable,
+  ])
+
+  useEffect(() => {
+    if (!open || !searchable) return
+    // Query change may resize menu
+    placeMenu()
+  }, [query, open, searchable, placeMenu])
 
   const commit = useCallback(
     (next: T, optionDisabled?: boolean) => {
       if (optionDisabled) return
       setOpen(false)
+      setQuery('')
       triggerRef.current?.focus()
       if (next !== value) onChange(next)
     },
@@ -177,20 +228,10 @@ export function FieldSelect<T extends string = string>({
 
   const onListKeyDown = useCallback(
     (e: ReactKeyboardEvent) => {
-      const enabled = enabledIndices(options)
-      if (enabled.length === 0) return
-
-      const active = document.activeElement as HTMLElement | null
+      const enabled = enabledIndices(filteredOptions)
       const buttons = listRef.current?.querySelectorAll<HTMLButtonElement>(
         'button[role="option"]:not(:disabled)',
       )
-      if (!buttons?.length) return
-
-      let current = -1
-      buttons.forEach((b, i) => {
-        if (b === active) current = i
-      })
-      if (current < 0) current = 0
 
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -198,6 +239,21 @@ export function FieldSelect<T extends string = string>({
         triggerRef.current?.focus()
         return
       }
+
+      if (!buttons?.length) {
+        if (e.key === 'ArrowUp' && searchable) {
+          e.preventDefault()
+          searchRef.current?.focus()
+        }
+        return
+      }
+
+      let current = -1
+      buttons.forEach((b, i) => {
+        if (b === document.activeElement) current = i
+      })
+      if (current < 0) current = 0
+
       if (e.key === 'ArrowDown') {
         e.preventDefault()
         focusOptionIndex((current + 1) % buttons.length)
@@ -205,6 +261,10 @@ export function FieldSelect<T extends string = string>({
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault()
+        if (searchable && current === 0) {
+          searchRef.current?.focus()
+          return
+        }
         focusOptionIndex((current - 1 + buttons.length) % buttons.length)
         return
       }
@@ -220,12 +280,12 @@ export function FieldSelect<T extends string = string>({
       }
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault()
-        const opt = options[enabled[current]]
+        const opt = filteredOptions[enabled[current]]
         if (opt) commit(opt.value, opt.disabled)
         return
       }
-      // Typeahead: single printable character (no modifiers)
       if (
+        !searchable &&
         e.key.length === 1 &&
         !e.ctrlKey &&
         !e.metaKey &&
@@ -235,7 +295,44 @@ export function FieldSelect<T extends string = string>({
         runTypeahead(e.key)
       }
     },
-    [options, focusOptionIndex, commit, runTypeahead],
+    [filteredOptions, focusOptionIndex, commit, runTypeahead, searchable],
+  )
+
+  const onSearchKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setOpen(false)
+        triggerRef.current?.focus()
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        focusOptionIndex(0)
+        return
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const enabled = enabledIndices(filteredOptions)
+        if (enabled.length === 1) {
+          const opt = filteredOptions[enabled[0]]
+          if (opt) commit(opt.value, opt.disabled)
+        } else if (enabled.length > 0) {
+          // Prefer exact label/value match, else first
+          const q = query.trim().toLowerCase()
+          const exact = filteredOptions.find(
+            (o, i) =>
+              !o.disabled &&
+              enabled.includes(i) &&
+              (optionSearchText(o).toLowerCase() === q ||
+                String(o.value).toLowerCase() === q),
+          )
+          const pick = exact ?? filteredOptions[enabled[0]]
+          if (pick) commit(pick.value, pick.disabled)
+        }
+      }
+    },
+    [filteredOptions, focusOptionIndex, commit, query],
   )
 
   const onTriggerKeyDown = useCallback(
@@ -252,6 +349,7 @@ export function FieldSelect<T extends string = string>({
         return
       }
       if (
+        !searchable &&
         e.key.length === 1 &&
         !e.ctrlKey &&
         !e.metaKey &&
@@ -259,11 +357,10 @@ export function FieldSelect<T extends string = string>({
       ) {
         e.preventDefault()
         setOpen(true)
-        // Defer typeahead until menu mounts
         requestAnimationFrame(() => runTypeahead(e.key))
       }
     },
-    [disabled, runTypeahead],
+    [disabled, runTypeahead, searchable],
   )
 
   useEffect(() => {
@@ -276,7 +373,7 @@ export function FieldSelect<T extends string = string>({
   return (
     <div
       ref={rootRef}
-      className={`field-select-wrap field-select-size-${size}${open ? ' is-open' : ''}${menuUp ? ' is-up' : ''}${className ? ` ${className}` : ''}`}
+      className={`field-select-wrap field-select-size-${size}${open ? ' is-open' : ''}${menuUp ? ' is-up' : ''}${searchable ? ' is-searchable' : ''}${className ? ` ${className}` : ''}`}
     >
       <button
         ref={triggerRef}
@@ -299,33 +396,60 @@ export function FieldSelect<T extends string = string>({
         <span className="field-select-chevron" aria-hidden="true" />
       </button>
       {open && (
-        <ul
-          ref={listRef}
-          id={listboxId}
-          className="field-select-menu"
-          role="listbox"
-          aria-label={ariaLabel || selected?.label}
-          onKeyDown={onListKeyDown}
-        >
-          {options.map((option) => {
-            const isSelected = option.value === value
-            return (
-              <li key={String(option.value)} role="presentation">
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  disabled={option.disabled}
-                  tabIndex={-1}
-                  className={`field-select-option${isSelected ? ' is-selected' : ''}`}
-                  onClick={() => commit(option.value, option.disabled)}
-                >
-                  {option.label}
-                </button>
+        <div className="field-select-panel">
+          {searchable ? (
+            <div className="field-select-search">
+              <input
+                ref={searchRef}
+                id={searchId}
+                type="search"
+                className="field-select-search-input"
+                value={query}
+                placeholder={searchPlaceholder}
+                aria-label={searchPlaceholder}
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onSearchKeyDown}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          ) : null}
+          <ul
+            ref={listRef}
+            id={listboxId}
+            className="field-select-menu"
+            role="listbox"
+            aria-label={ariaLabel || selected?.label}
+            onKeyDown={onListKeyDown}
+          >
+            {filteredOptions.length === 0 ? (
+              <li className="field-select-empty" role="presentation">
+                {emptySearchText}
               </li>
-            )
-          })}
-        </ul>
+            ) : (
+              filteredOptions.map((option) => {
+                const isSelected = option.value === value
+                return (
+                  <li key={String(option.value)} role="presentation">
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      disabled={option.disabled}
+                      tabIndex={-1}
+                      className={`field-select-option${isSelected ? ' is-selected' : ''}`}
+                      onClick={() => commit(option.value, option.disabled)}
+                    >
+                      {option.label}
+                    </button>
+                  </li>
+                )
+              })
+            )}
+          </ul>
+        </div>
       )}
     </div>
   )

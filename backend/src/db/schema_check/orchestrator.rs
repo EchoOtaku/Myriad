@@ -21,6 +21,7 @@ use super::seeds::ensure_default_platforms;
 /// **Support floor: product ≥ 0.3.10.** 不再为更旧版本维护逐列「字段对齐」
 /// heal（approved_permissions / engagement 过渡形态 / rate_* 专用 ALTER 等）。
 ///
+/// - 2026.08.01.1: tapps.visibility（公开安装可见性 all|admin）
 /// - 2026.07.31.1: 删除 <0.3.10 字段级对齐；缺列通用 ADD；analytics target 仅保留 PK heal
 /// - 2026.07.30.5: analytics_visitor_seen.ordinal（访客到达序号）
 /// - 2026.07.30.4: 近月新表——001 analytics / 004 heartbeat / 005 federation 扩展
@@ -29,7 +30,7 @@ use super::seeds::ensure_default_platforms;
 /// - 2026.07.21–20: domain_aliases / interactions / heartbeat / policy / filters
 /// - ≤0.3.9 字段对齐（已删，见 git）：approved_permissions 专用 ADD、整表 create 兜底等
 /// Marker for ops/logs + `_schema_versions`. Bump only with real schema/heal work.
-pub const SCHEMA_VERSION: &str = "2026.07.31.1";
+pub const SCHEMA_VERSION: &str = "2026.08.01.1";
 
 
 pub async fn ensure_schema(db: &DatabaseConnection) -> Result<(), DbErr> {

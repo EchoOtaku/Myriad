@@ -10,6 +10,7 @@
  */
 
 import type { ChatSession } from '../types'
+import { LuSearch, LuX } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useI18n } from '../../../contexts/I18nContext'
@@ -114,49 +115,38 @@ export const AraelSessionList: React.FC<AraelSessionListProps> = ({
   return (
     <div className="arael-sessions">
       {/* Search bar */}
-      <div className="arael-sessions-search">
-        <svg
-          className="arael-sessions-search-icon"
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="11" cy="11" r="8" />
-          <line x1="21" y1="21" x2="16.65" y2="16.65" />
-        </svg>
-        <input
-          ref={searchRef}
-          type="text"
-          className="arael-sessions-search-input"
-          placeholder={t.arael.searchSessions}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        {searchQuery && (
-          <button
-            className="arael-sessions-search-clear"
-            onClick={() => setSearchQuery('')}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+      <div className="arael-sessions-search-wrap">
+        <label className="arael-sessions-search">
+          <LuSearch
+            className="arael-sessions-search-icon"
+            size={14}
+            aria-hidden
+          />
+          <input
+            ref={searchRef}
+            type="search"
+            className="arael-sessions-search-input"
+            placeholder={t.arael.searchSessions}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label={t.arael.searchSessions}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {searchQuery ? (
+            <button
+              type="button"
+              className="arael-sessions-search-clear"
+              onClick={() => {
+                setSearchQuery('')
+                searchRef.current?.focus()
+              }}
+              aria-label={t.common.close}
             >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        )}
+              <LuX size={12} aria-hidden />
+            </button>
+          ) : null}
+        </label>
       </div>
 
       {/* Loading */}

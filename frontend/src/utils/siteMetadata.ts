@@ -1,14 +1,28 @@
 /**
  * 网站元数据管理工具
- * 统一管理网站标题、描述和图标
+ * 统一管理网站标题、描述、图标、SEO（keywords / OG / robots）与 GA4
  */
 
 import { API_URL } from '../config'
+import { configureGoogleAnalytics } from './googleAnalytics'
+import { configureUmami } from './umamiAnalytics'
 
 export interface SiteMetadata {
   site_title: string
   site_description: string
   site_favicon: string
+  /** 逗号分隔关键词；空串表示不写 keywords meta */
+  site_keywords: string
+  /** 社交分享预览图 URL；空则回退 favicon */
+  site_og_image: string
+  /** true → robots noindex,nofollow */
+  site_noindex: boolean
+  /** GA4 Measurement ID（G-XXXXXXXX）；空则不加载 gtag */
+  ga_measurement_id: string
+  /** Umami website id；与 script url 同时有值才加载 */
+  umami_website_id: string
+  /** Umami tracker 脚本 URL */
+  umami_script_url: string
 }
 
 // 默认元数据
@@ -16,6 +30,12 @@ const DEFAULT_METADATA: SiteMetadata = {
   site_title: 'Myriad - A myriad of lights, in one place.',
   site_description: 'A myriad of lights, in one place.',
   site_favicon: '/favicon.webp',
+  site_keywords: '',
+  site_og_image: '',
+  site_noindex: false,
+  ga_measurement_id: '',
+  umami_website_id: '',
+  umami_script_url: '',
 }
 
 // 缓存键名
@@ -34,7 +54,7 @@ function getCachedMetadata(): SiteMetadata | null {
     if (cached && cacheTime) {
       const age = Date.now() - Number.parseInt(cacheTime)
       if (age < CACHE_DURATION) {
-        return JSON.parse(cached)
+        return normalizeMetadata(JSON.parse(cached))
       }
     }
   } catch (error) {
@@ -52,6 +72,23 @@ function cacheMetadata(metadata: SiteMetadata): void {
     localStorage.setItem(CACHE_TIME_KEY, Date.now().toString())
   } catch (error) {
     console.warn('[元数据] 写入缓存失败:', error)
+  }
+}
+
+function normalizeMetadata(raw: Partial<SiteMetadata> | null | undefined): SiteMetadata {
+  return {
+    site_title: raw?.site_title || DEFAULT_METADATA.site_title,
+    site_description: raw?.site_description || DEFAULT_METADATA.site_description,
+    site_favicon: raw?.site_favicon || DEFAULT_METADATA.site_favicon,
+    site_keywords: raw?.site_keywords ?? DEFAULT_METADATA.site_keywords,
+    site_og_image: raw?.site_og_image ?? DEFAULT_METADATA.site_og_image,
+    site_noindex: Boolean(raw?.site_noindex),
+    ga_measurement_id:
+      raw?.ga_measurement_id ?? DEFAULT_METADATA.ga_measurement_id,
+    umami_website_id:
+      raw?.umami_website_id ?? DEFAULT_METADATA.umami_website_id,
+    umami_script_url:
+      raw?.umami_script_url ?? DEFAULT_METADATA.umami_script_url,
   }
 }
 
@@ -77,12 +114,7 @@ async function fetchMetadata(): Promise<SiteMetadata | null> {
 
     if (response.ok) {
       const data = await response.json()
-      return {
-        site_title: data.site_title || DEFAULT_METADATA.site_title,
-        site_description:
-          data.site_description || DEFAULT_METADATA.site_description,
-        site_favicon: data.site_favicon || DEFAULT_METADATA.site_favicon,
-      }
+      return normalizeMetadata(data)
     }
   } catch (error) {
     if ((error as Error).name !== 'AbortError') {
@@ -103,12 +135,73 @@ function updateTitle(title: string): void {
 }
 
 /**
+ * 确保存在指定 name 的 meta 标签并设置 content
+ */
+function upsertMetaByName(name: string, content: string | null): void {
+  let el = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`)
+  if (content === null || content === '') {
+    el?.remove()
+    return
+  }
+  if (!el) {
+    el = document.createElement('meta')
+    el.setAttribute('name', name)
+    document.head.appendChild(el)
+  }
+  if (el.getAttribute('content') !== content) {
+    el.setAttribute('content', content)
+  }
+}
+
+/**
+ * 确保存在指定 property 的 meta 标签并设置 content（Open Graph）
+ */
+function upsertMetaByProperty(property: string, content: string | null): void {
+  let el = document.querySelector<HTMLMetaElement>(
+    `meta[property="${property}"]`,
+  )
+  if (content === null || content === '') {
+    el?.remove()
+    return
+  }
+  if (!el) {
+    el = document.createElement('meta')
+    el.setAttribute('property', property)
+    document.head.appendChild(el)
+  }
+  if (el.getAttribute('content') !== content) {
+    el.setAttribute('content', content)
+  }
+}
+
+/**
  * 更新页面描述
  */
 function updateDescription(description: string): void {
   const metaDesc = document.querySelector('meta[name="description"]')
   if (metaDesc && metaDesc.getAttribute('content') !== description) {
     metaDesc.setAttribute('content', description)
+  } else if (!metaDesc && description) {
+    upsertMetaByName('description', description)
+  }
+}
+
+/**
+ * 绝对化资源 URL（相对路径 → origin；data/http 原样）
+ */
+function toAbsoluteUrl(url: string): string {
+  if (!url) return ''
+  if (
+    url.startsWith('data:') ||
+    url.startsWith('http://') ||
+    url.startsWith('https://')
+  ) {
+    return url
+  }
+  try {
+    return new URL(url, window.location.origin).href
+  } catch {
+    return url
   }
 }
 
@@ -194,12 +287,155 @@ function updateFavicon(faviconUrl: string): void {
 }
 
 /**
- * 应用元数据到页面
+ * 单页 SEO 覆盖（路由级 title/OG/canonical）。
+ * 站级配置仍是底稿；有 page override 时叠在上面。
+ */
+export interface PageSeoInput {
+  /** 完整 document.title；缺省用站级 title */
+  title?: string
+  description?: string
+  /** 分享图；相对路径会绝对化；data: 会被忽略 */
+  image?: string
+  /**
+   * 规范路径或绝对 URL（如 `/tapp/run/com.example`）。
+   * 用于 og:url / canonical；缺省用当前 location。
+   */
+  path?: string
+  /** true → robots noindex,nofollow（与站级 noindex 取或） */
+  noindex?: boolean
+}
+
+/** 当前生效的站级元数据（含未写缓存时的默认） */
+let baseMetadata: SiteMetadata = { ...DEFAULT_METADATA }
+/** 路由级覆盖；离开页面时应 clearPageSeo */
+let pageSeo: PageSeoInput | null = null
+
+function resolvePageAbsoluteUrl(pathOrUrl?: string): string {
+  if (typeof window === 'undefined') return ''
+  if (pathOrUrl && (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://'))) {
+    return pathOrUrl
+  }
+  const path =
+    pathOrUrl ||
+    `${window.location.pathname}${window.location.search}` ||
+    '/'
+  try {
+    return new URL(path, window.location.origin).href
+  } catch {
+    return window.location.href
+  }
+}
+
+function pickShareImage(
+  pageImage: string | undefined,
+  metadata: SiteMetadata,
+): string {
+  const candidates = [
+    pageImage?.trim(),
+    metadata.site_og_image.trim(),
+    metadata.site_favicon,
+  ].filter(Boolean) as string[]
+
+  for (const raw of candidates) {
+    // 社交爬虫几乎不用 data: 图
+    if (raw.startsWith('data:')) continue
+    const abs = toAbsoluteUrl(raw)
+    if (abs) return abs
+  }
+  return ''
+}
+
+function upsertCanonicalLink(href: string | null): void {
+  let el = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')
+  if (!href) {
+    el?.remove()
+    return
+  }
+  if (!el) {
+    el = document.createElement('link')
+    el.rel = 'canonical'
+    document.head.appendChild(el)
+  }
+  if (el.getAttribute('href') !== href) {
+    el.href = href
+  }
+}
+
+/**
+ * 把站级 + 路由级 SEO 写到 head（title / description / robots / OG / twitter / canonical）
+ */
+function applyEffectiveSeo(): void {
+  if (typeof document === 'undefined') return
+
+  const base = baseMetadata
+  const page = pageSeo
+  const title = (page?.title?.trim() || base.site_title).trim()
+  const description = (
+    page?.description?.trim() ||
+    base.site_description
+  ).trim()
+  const pageUrl = resolvePageAbsoluteUrl(page?.path)
+  const noindex = Boolean(base.site_noindex || page?.noindex)
+  const ogImage = pickShareImage(page?.image, base)
+
+  updateTitle(title)
+  updateDescription(description)
+
+  const keywords = base.site_keywords.trim()
+  upsertMetaByName('keywords', keywords || null)
+  upsertMetaByName('robots', noindex ? 'noindex, nofollow' : 'index, follow')
+
+  upsertMetaByProperty('og:type', 'website')
+  upsertMetaByProperty('og:title', title || null)
+  upsertMetaByProperty('og:description', description || null)
+  // 分享卡片应对准「当前页」而不是站根
+  upsertMetaByProperty('og:url', pageUrl || null)
+  upsertMetaByProperty('og:image', ogImage || null)
+
+  upsertMetaByName('twitter:card', ogImage ? 'summary_large_image' : 'summary')
+  upsertMetaByName('twitter:title', title || null)
+  upsertMetaByName('twitter:description', description || null)
+  upsertMetaByName('twitter:image', ogImage || null)
+
+  upsertCanonicalLink(pageUrl || null)
+}
+
+/**
+ * 设置当前路由的 SEO（进入页面时调用；离开时 clearPageSeo）
+ */
+export function setPageSeo(input: PageSeoInput): void {
+  pageSeo = { ...input }
+  applyEffectiveSeo()
+}
+
+/**
+ * 清除路由 SEO，恢复站级默认（并保留当前 path 作为 og:url）
+ */
+export function clearPageSeo(): void {
+  pageSeo = null
+  applyEffectiveSeo()
+}
+
+/**
+ * 应用站级元数据到页面（favicon / analytics + 有效 SEO）
  */
 function applyMetadata(metadata: SiteMetadata): void {
-  updateTitle(metadata.site_title)
-  updateDescription(metadata.site_description)
-  updateFavicon(metadata.site_favicon)
+  baseMetadata = normalizeMetadata(metadata)
+  updateFavicon(baseMetadata.site_favicon)
+  applyEffectiveSeo()
+  configureGoogleAnalytics(baseMetadata.ga_measurement_id)
+  configureUmami(baseMetadata.umami_website_id, baseMetadata.umami_script_url)
+  // Keep installable PWA name in sync with site title when PWA is enabled.
+  void import('./pwa')
+    .then((m) => {
+      m.updateManifestBranding({
+        name: baseMetadata.site_title,
+        description: baseMetadata.site_description,
+      })
+    })
+    .catch(() => {
+      /* optional */
+    })
 }
 
 // 标记是否已经初始化（防止重复初始化）
@@ -268,5 +504,38 @@ export async function refreshSiteMetadata(): Promise<void> {
  * 获取当前元数据
  */
 export function getCurrentMetadata(): SiteMetadata {
-  return getCachedMetadata() || DEFAULT_METADATA
+  return getCachedMetadata() || baseMetadata || DEFAULT_METADATA
+}
+
+/**
+ * 用站级 title 拼页面标题：`页面 · 站点名`
+ */
+export function formatPageTitle(pageTitle: string): string {
+  const site = getCurrentMetadata().site_title.trim()
+  const page = pageTitle.trim()
+  if (!page) return site
+  if (!site || page === site) return page
+  // 避免 "Foo · Foo - bar" 重复
+  if (site.startsWith(page)) return site
+  return `${page} · ${site}`
+}
+
+/**
+ * 从 Tapp icon 字段挑可用于 og:image 的 URL（排除 emoji / data: / 内联 SVG）
+ */
+export function tappIconAsOgImage(icon?: string | null): string | undefined {
+  if (!icon || typeof icon !== 'string') return undefined
+  const trimmed = icon.trim()
+  if (!trimmed || trimmed.startsWith('data:')) return undefined
+  if (trimmed.startsWith('<svg') || trimmed.startsWith('<?xml')) return undefined
+  // 单字符/emoji 不是 URL
+  if (!trimmed.includes('/') && !trimmed.includes('.')) return undefined
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('/')
+  ) {
+    return trimmed
+  }
+  return undefined
 }

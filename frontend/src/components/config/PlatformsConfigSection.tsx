@@ -34,6 +34,7 @@ import {
 import { SETTINGS_DURATION_MS } from '../settings'
 import PlatformAutoRefreshSettings from './PlatformAutoRefreshSettings'
 import PlatformDataManagement from './PlatformDataManagement'
+import AiUsageSection from './AiUsageSection'
 import SiteAnalyticsSection from './SiteAnalyticsSection'
 import { getPlatformSetupGuide } from './platformSetupGuides'
 import './PlatformCardSnapshot.css'
@@ -831,6 +832,8 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
             enabled={analyticsEnabled}
             onEnabledChange={onAnalyticsEnabledChange}
           />
+
+          <AiUsageSection showMessage={showMessage} />
         </div>
       </AutoHeight>
     </SettingSection>

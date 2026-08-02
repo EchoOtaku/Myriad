@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { useAuth } from '../../contexts/AuthContext'
+import React from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import {
   LuExternalLink,
@@ -8,7 +7,6 @@ import {
   LuTag,
   LuUsers,
 } from '../../lib/icons'
-import { agentService } from '../../services/agent'
 import { getBuildInfo } from '../../utils/buildInfo'
 import { SettingGroup, SettingSection, useSettingGuide } from '../settings'
 import { UpdaterInlinePanel } from './UpdaterConfigSection'
@@ -24,97 +22,6 @@ const ORG_NAME = 'Myriad-You'
 const REPO_NAME = 'Myriad-You/Myriad'
 const ORG_URL = 'https://github.com/Myriad-You'
 const REPO_URL = 'https://github.com/Myriad-You/Myriad'
-
-/** Minimal MCP status/reload for About (deep-link mcp→about). Admin only. */
-function McpInlinePanel() {
-  const { t } = useI18n()
-  const { isAdmin } = useAuth()
-  const [loading, setLoading] = useState(false)
-  const [reloading, setReloading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [toolCount, setToolCount] = useState(0)
-  const [servers, setServers] = useState<Array<Record<string, unknown>>>([])
-
-  const load = useCallback(async () => {
-    if (!isAdmin) return
-    setLoading(true)
-    setError(null)
-    try {
-      const status = await agentService.getMcpStatus()
-      setServers(status.servers)
-      setToolCount(status.tool_count)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'MCP status failed')
-      setServers([])
-      setToolCount(0)
-    } finally {
-      setLoading(false)
-    }
-  }, [isAdmin])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  const onReload = useCallback(async () => {
-    if (!isAdmin || reloading) return
-    setReloading(true)
-    setError(null)
-    try {
-      const result = await agentService.reloadMcp()
-      setToolCount(result.tool_count)
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'MCP reload failed')
-    } finally {
-      setReloading(false)
-    }
-  }, [isAdmin, reloading, load])
-
-  if (!isAdmin) return null
-
-  return (
-    <SettingGroup>
-      <div className="about" data-setting-path="about.mcp">
-        <h4 className="mb-2 text-sm font-semibold text-gray-800 dark:text-gray-100">
-          MCP
-        </h4>
-        <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
-          {loading
-            ? '…'
-            : `${servers.length} server(s) · ${toolCount} tool(s)`}
-        </p>
-        {error && (
-          <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">
-            {error}
-          </p>
-        )}
-        {servers.length > 0 && (
-          <ul className="mb-3 space-y-1 text-xs text-gray-600 dark:text-gray-300">
-            {servers.map((s, i) => {
-              const name = String(s.name ?? s.id ?? `server-${i}`)
-              const st = String(s.status ?? s.state ?? '')
-              return (
-                <li key={name}>
-                  <span className="font-medium">{name}</span>
-                  {st ? ` — ${st}` : ''}
-                </li>
-              )
-            })}
-          </ul>
-        )}
-        <button
-          type="button"
-          className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-800"
-          onClick={() => void onReload()}
-          disabled={reloading || loading}
-        >
-          {reloading ? '…' : t.config.forceRefreshFrontendCacheButton || 'Reload'}
-        </button>
-      </div>
-    </SettingGroup>
-  )
-}
 
 export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
   title,
@@ -215,8 +122,6 @@ export const AboutConfigSection: React.FC<AboutConfigSectionProps> = ({
 
       {/* Updater 管理（仅 admin 可见；非 admin 调 /api/admin/updater/* 会 403，UI 自然提示） */}
       <UpdaterInlinePanel heading={t.config.updaterTitle} />
-      {/* MCP status/reload — deep-link section=mcp → about */}
-      <McpInlinePanel />
     </SettingSection>
   )
 }

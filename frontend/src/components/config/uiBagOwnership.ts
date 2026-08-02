@@ -10,14 +10,47 @@ export const UI_RESET_KEYS: readonly string[] = Object.freeze([
   'site_title',
   'site_description',
   'site_favicon',
+  'site_keywords',
+  'site_og_image',
+  'site_noindex',
+  'pwa_enabled',
+  'ga_measurement_id',
+  'umami_website_id',
+  'umami_script_url',
   'site_icp',
   'site_gongan',
   'cloud_sponsors',
+  'site_footer_custom',
   'evocative_parallax',
   'evocative_dynamic_blur',
   'evocative_ripple',
   'evocative_fps',
   'evocative_ripple_quality',
+])
+
+/**
+ * 站点元数据 / SEO / 第三方统计 bag：保存后清缓存并 `refreshSiteMetadata`（无整页刷新）
+ */
+export const METADATA_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
+  'site_title',
+  'site_description',
+  'site_favicon',
+  'site_keywords',
+  'site_og_image',
+  'site_noindex',
+  'ga_measurement_id',
+  'umami_website_id',
+  'umami_script_url',
+])
+
+/**
+ * 页脚 bag：保存后清 `/api/config/ui` 缓存并通知 SiteFooter 重载
+ */
+export const FOOTER_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
+  'site_icp',
+  'site_gongan',
+  'cloud_sponsors',
+  'site_footer_custom',
 ])
 
 /** 数据平台页：访客统计开关 */
@@ -49,7 +82,10 @@ export const ALL_OWNED_UI_BAG_KEYS: readonly string[] = Object.freeze([
   ...ADVANCED_RESET_KEYS,
 ])
 
-/** 变更后需要硬刷新页面的 bag key（代理 / API 镜像影响出站与运行时） */
+/**
+ * 变更后需要后端热重载（`reloadSystemConfig` / POST reload-config）的 bag key。
+ * 代理与 API 镜像影响出站客户端；不再触发整页 `location.reload`。
+ */
 export const RUNTIME_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
   ...ADVANCED_RESET_KEYS,
 ])
@@ -88,34 +124,58 @@ function bagKeysChanged(
   return false
 }
 
+type ConfigShape = {
+  platforms: unknown
+  auto_fetch: unknown
+  ai_config: unknown
+  ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+}
+
 /**
- * bag / 平台 / AI / 自动刷新变更是否需要 `reloadSystemConfig` + 整页刷新。
- * 纯展示项（壁纸、站点元数据、动效、访客统计、音乐）只落库，不必硬刷。
+ * 是否需要整页 `window.location.reload`。
+ *
+ * 主配置表单里 AI / 平台 / 自动刷新 / 代理镜像均已改为软路径：
+ * - AI / auto_fetch / platforms → 只落库 + toast（platforms 另清 library 缓存）
+ * - proxy / API 镜像 → `configChangesNeedRuntimeReload`（后端热重载，无整页刷新）
+ * - 壁纸 / Evocative → `configChangesNeedWallpaperReload`
+ *
+ * 保留此函数与 hard-reload 分支，供未来进程级变更使用；当前主路径恒为 false。
  */
 export function configChangesNeedHardReload(
+  _next: ConfigShape,
+  _prev: ConfigShape,
+  _deepEqual: (a: unknown, b: unknown) => boolean,
+): boolean {
+  return false
+}
+
+/**
+ * 代理 / API 镜像 bag 变更 → 调用 `reloadSystemConfig`，**不**整页刷新。
+ */
+export function configChangesNeedRuntimeReload(
   next: {
-    platforms: unknown
-    auto_fetch: unknown
-    ai_config: unknown
     ui_config?: { config_fields?: Array<{ key: string; value: string }> }
   },
   prev: {
-    platforms: unknown
-    auto_fetch: unknown
-    ai_config: unknown
     ui_config?: { config_fields?: Array<{ key: string; value: string }> }
   },
-  deepEqual: (a: unknown, b: unknown) => boolean,
 ): boolean {
-  if (!deepEqual(next.platforms, prev.platforms)) return true
-  if (!deepEqual(next.auto_fetch, prev.auto_fetch)) return true
-  if (!deepEqual(next.ai_config, prev.ai_config)) return true
-
   return bagKeysChanged(
     next.ui_config?.config_fields,
     prev.ui_config?.config_fields,
     RUNTIME_RELOAD_UI_BAG_KEYS,
   )
+}
+
+/**
+ * 平台配置变更 → 软保存后应失效 library 相关请求缓存，避免读到保存前数据。
+ */
+export function configChangesNeedPlatformsCacheInvalidation(
+  next: { platforms: unknown },
+  prev: { platforms: unknown },
+  deepEqual: (a: unknown, b: unknown) => boolean,
+): boolean {
+  return !deepEqual(next.platforms, prev.platforms)
 }
 
 /** 壁纸 URL / 模糊 / Evocative 开关变更 → 软刷新壁纸层（非 hard reload） */
@@ -131,5 +191,57 @@ export function configChangesNeedWallpaperReload(
     next.ui_config?.config_fields,
     prev.ui_config?.config_fields,
     WALLPAPER_SOFT_RELOAD_UI_BAG_KEYS,
+  )
+}
+
+/** 页脚备案 / 云商标 / 自定义项变更 → SiteFooter 软重载 */
+export function configChangesNeedFooterReload(
+  next: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+  prev: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+): boolean {
+  return bagKeysChanged(
+    next.ui_config?.config_fields,
+    prev.ui_config?.config_fields,
+    FOOTER_SOFT_RELOAD_UI_BAG_KEYS,
+  )
+}
+
+/** 站点标题 / 描述 / 图标 / SEO 变更 → 软刷新 document meta（非 hard reload） */
+export function configChangesNeedMetadataReload(
+  next: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+  prev: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+): boolean {
+  return bagKeysChanged(
+    next.ui_config?.config_fields,
+    prev.ui_config?.config_fields,
+    METADATA_SOFT_RELOAD_UI_BAG_KEYS,
+  )
+}
+
+/** PWA 开关：保存后注册/注销 Service Worker（非 hard reload） */
+export const PWA_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
+  'pwa_enabled',
+])
+
+export function configChangesNeedPwaReload(
+  next: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+  prev: {
+    ui_config?: { config_fields?: Array<{ key: string; value: string }> }
+  },
+): boolean {
+  return bagKeysChanged(
+    next.ui_config?.config_fields,
+    prev.ui_config?.config_fields,
+    PWA_SOFT_RELOAD_UI_BAG_KEYS,
   )
 }

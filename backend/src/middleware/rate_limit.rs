@@ -15,16 +15,17 @@ use tokio::sync::RwLock;
 /// Per-IP aggregate hard ceiling across **all** endpoints (path buckets still apply separately).
 /// Prevents a single IP from exhausting capacity by spreading traffic over many distinct paths.
 ///
-/// Sized for SPA + media grids: a single feed/profile paint can fire dozens of
-/// `/api/proxy/image` loads on top of normal API traffic. 300 was too low and
-/// surfaced as browser 429 noise on legitimate browsing.
-const IP_HARD_CAP_MAX: usize = 800;
+/// Sized for SPA + media grids: a single feed/profile paint can fire hundreds of
+/// `/api/proxy/image` loads on top of normal API traffic. Keep headroom above
+/// `IMAGE_PROXY_MAX` so image traffic alone does not trip the aggregate cap.
+const IP_HARD_CAP_MAX: usize = 1200;
 const IP_HARD_CAP_WINDOW: Duration = Duration::from_secs(60);
 
-/// Image proxy is allowlisted egress + streaming, not AI compute. Galleries and
-/// RSS cards legitimately request many images in one paint — keep a dedicated
-/// high bucket instead of the 10/min compute class.
-const IMAGE_PROXY_MAX: usize = 240;
+/// Image proxy is allowlisted egress + streaming, not AI compute. Galleries,
+/// RSS cards, and social report grids legitimately request many images per
+/// minute — dedicated high bucket (not compute class). 240/min still 429'd
+/// heavy boards; raise so more images load in one browsing session.
+const IMAGE_PROXY_MAX: usize = 400;
 const IMAGE_PROXY_WINDOW: Duration = Duration::from_secs(60);
 const IMAGE_PROXY_BUCKET: &str = "proxy_image";
 
@@ -456,8 +457,8 @@ mod tests {
 
     #[test]
     fn image_proxy_limits_are_gallery_friendly() {
-        assert!(IMAGE_PROXY_MAX >= 120);
-        assert!(IP_HARD_CAP_MAX >= IMAGE_PROXY_MAX);
+        assert!(IMAGE_PROXY_MAX >= 300);
+        assert!(IP_HARD_CAP_MAX >= IMAGE_PROXY_MAX + 200);
         assert_eq!(IMAGE_PROXY_WINDOW, Duration::from_secs(60));
     }
 

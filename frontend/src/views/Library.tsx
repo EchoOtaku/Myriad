@@ -11,6 +11,12 @@ import LibraryGrid from '../components/LibraryGrid'
 import { useI18n } from '../contexts/I18nContext'
 import { useSecondaryNav } from '../contexts/NavigationContext'
 import { useLibraryScheduler } from '../hooks/animation'
+import { usePageSeo } from '../hooks/usePageSeo'
+import { buildModulePageSeo } from '../utils/modulePageSeo'
+import {
+  canAccessModuleVisibility,
+  useModuleVisibilityPreferences,
+} from '../utils/moduleVisibility'
 
 // 资料库筛选图标
 const FilterIcons = {
@@ -136,6 +142,24 @@ export default function Library() {
   useLibraryScheduler()
 
   const { t } = useI18n()
+  const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
+  const moduleOpenToAll = canAccessModuleVisibility(
+    moduleVisibility.modules.library,
+    { isAuthenticated: false, isAdmin: false },
+  )
+
+  usePageSeo(
+    useMemo(
+      () =>
+        buildModulePageSeo({
+          label: t.library.title || t.nav.library,
+          description: t.widgets.multiPlatformAggregation,
+          path: '/library',
+          moduleOpenToAll,
+        }),
+      [t, moduleOpenToAll],
+    ),
+  )
 
   // 构建二级导航项
   const navItems: SecondaryNavItem[] = useMemo(

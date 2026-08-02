@@ -415,13 +415,79 @@ fn parse_push_time(raw: &str) -> Option<DateTime<Utc>> {
         })
 }
 
+/// Normalize a deploy-tag / sha fragment for identity comparison.
+///
+/// Runtime health stamps commit builds as `dev-<full40>` while Docker Hub tags
+/// use `dev-<short7>` (metadata-action `format=short`). Treat prefix-equal shas
+/// as the same identity so tip discovery does not miss upgrades or thrash.
+pub fn deploy_sha_fragment(tag_or_sha: &str) -> Option<String> {
+    let raw = tag_or_sha.trim().to_ascii_lowercase();
+    if raw.is_empty() {
+        return None;
+    }
+    let sha = raw
+        .strip_prefix("dev-")
+        .unwrap_or(raw.as_str())
+        .trim();
+    if sha.len() >= 7 && sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+        Some(sha.to_string())
+    } else {
+        None
+    }
+}
+
+/// True when two tag/sha strings refer to the same commit image (short ↔ full).
+pub fn same_commit_identity(a: &str, b: &str) -> bool {
+    match (deploy_sha_fragment(a), deploy_sha_fragment(b)) {
+        (Some(left), Some(right)) => {
+            left == right || left.starts_with(&right) || right.starts_with(&left)
+        }
+        _ => a.trim().eq_ignore_ascii_case(b.trim()),
+    }
+}
+
+/// True when the running deploy and a Docker Hub tip are the same artifact.
+///
+/// Handles:
+/// - exact tag match
+/// - short/long `dev-<sha>` (runtime vs Hub)
+/// - formal `vX.Y.Z` vs `dev-<sha>` when `current_commit_sha` matches the tip sha
+pub fn same_deploy_identity(
+    target_tag: &str,
+    current_tag: Option<&str>,
+    current_commit_sha: Option<&str>,
+    tip_commit_sha: Option<&str>,
+) -> bool {
+    let target_tag = target_tag.trim();
+    if target_tag.is_empty() {
+        return false;
+    }
+    if let Some(cur) = current_tag.map(str::trim).filter(|s| !s.is_empty()) {
+        if cur.eq_ignore_ascii_case(target_tag) || same_commit_identity(cur, target_tag) {
+            return true;
+        }
+    }
+    // Cross-kind: running formal release stamped with commit_sha of tip (or vice versa).
+    let tip_sha = tip_commit_sha
+        .and_then(deploy_sha_fragment)
+        .or_else(|| deploy_sha_fragment(target_tag));
+    let cur_sha = current_commit_sha
+        .and_then(deploy_sha_fragment)
+        .or_else(|| current_tag.and_then(deploy_sha_fragment));
+    match (tip_sha, cur_sha) {
+        (Some(t), Some(c)) => t == c || t.starts_with(&c) || c.starts_with(&t),
+        _ => false,
+    }
+}
+
 /// Decide whether a commit/dev target is an upgrade relative to the running deploy.
 ///
 /// Priority:
-/// 1. Same tag → identical (not an update).
-/// 2. Clear git ancestry (ahead / behind / identical) when provided.
-/// 3. Docker Hub push-time comparison (primary for private-repo / no-token cases).
-/// 4. Different tag with missing times → treat as upgrade (do not block on unknown).
+/// 1. Same deploy identity (tag / short↔full sha / known commit_sha) → identical.
+/// 2. Both sides formal releases → **semver** (not wall-clock; survives Hub re-pushes).
+/// 3. Clear git ancestry (ahead / behind / identical) when provided.
+/// 4. Docker Hub push-time comparison (primary for private-repo / no-token cases).
+/// 5. Different tag with missing times → treat as upgrade (do not block on unknown).
 pub fn commit_upgrade_direction(
     target_tag: &str,
     current_tag: Option<&str>,
@@ -429,9 +495,75 @@ pub fn commit_upgrade_direction(
     current_pushed_at: Option<&str>,
     ancestry: Option<&Freshness>,
 ) -> CommitUpgradeDirection {
+    commit_upgrade_direction_ex(
+        target_tag,
+        current_tag,
+        target_pushed_at,
+        current_pushed_at,
+        ancestry,
+        None,
+        None,
+    )
+}
+
+/// Extended direction check with optional resolved commit SHAs (runtime + tip).
+pub fn commit_upgrade_direction_ex(
+    target_tag: &str,
+    current_tag: Option<&str>,
+    target_pushed_at: Option<&str>,
+    current_pushed_at: Option<&str>,
+    ancestry: Option<&Freshness>,
+    current_commit_sha: Option<&str>,
+    tip_commit_sha: Option<&str>,
+) -> CommitUpgradeDirection {
     let target_tag = target_tag.trim();
-    if current_tag.is_some_and(|c| c.trim() == target_tag) {
+    if same_deploy_identity(
+        target_tag,
+        current_tag,
+        current_commit_sha,
+        tip_commit_sha.or_else(|| ancestry.and_then(|f| f.target_sha.as_deref())),
+    ) {
         return CommitUpgradeDirection::identical();
+    }
+    // Ancestry may also prove identical commits under different tag kinds.
+    if let Some(f) = ancestry {
+        if matches!(f.relation, crate::release::CommitRelation::Identical) {
+            return CommitUpgradeDirection::identical();
+        }
+        if let (Some(c), Some(t)) = (f.current_sha.as_deref(), f.target_sha.as_deref()) {
+            if same_commit_identity(c, t) {
+                return CommitUpgradeDirection::identical();
+            }
+        }
+    }
+
+    // Formal release → formal release: order by semver (re-push must not invert).
+    if let (Some(cur_raw), Ok(tgt)) = (
+        current_tag.map(str::trim).filter(|s| !s.is_empty()),
+        DeployTag::parse(target_tag),
+    ) {
+        if let (Ok(cur), Some(tgt_rel)) = (DeployTag::parse(cur_raw), tgt.as_release()) {
+            if let Some(cur_rel) = cur.as_release() {
+                if cur_rel.as_str() == tgt_rel.as_str() {
+                    return CommitUpgradeDirection::identical();
+                }
+                if cur_rel.older_than(&tgt_rel) {
+                    return CommitUpgradeDirection {
+                        is_upgrade: true,
+                        is_downgrade: false,
+                        relation: "ahead",
+                    };
+                }
+                if tgt_rel.older_than(&cur_rel) {
+                    return CommitUpgradeDirection {
+                        is_upgrade: false,
+                        is_downgrade: true,
+                        relation: "behind",
+                    };
+                }
+                // Non-orderable prerelease edge — fall through.
+            }
+        }
     }
 
     if let Some(f) = ancestry {
@@ -501,11 +633,19 @@ pub fn commit_upgrade_direction(
 }
 
 /// Look up `pushed_at` for a deploy tag in a Docker Hub common-build list.
+///
+/// Matches exact tag, bare/short sha, `dev-<sha>`, and short↔full sha prefixes.
 pub fn pushed_at_for_tag<'a>(builds: &'a [DockerBuild], tag: &str) -> Option<&'a str> {
     let tag = tag.trim();
     builds
         .iter()
-        .find(|b| b.tag == tag || b.short_sha == tag || b.tag == format!("dev-{tag}"))
+        .find(|b| {
+            b.tag == tag
+                || b.short_sha == tag
+                || b.tag == format!("dev-{tag}")
+                || same_commit_identity(&b.tag, tag)
+                || same_commit_identity(&b.short_sha, tag)
+        })
         .and_then(|b| b.pushed_at.as_deref())
 }
 
@@ -514,8 +654,64 @@ pub fn pushed_at_for_tag<'a>(builds: &'a [DockerBuild], tag: &str) -> Option<&'a
 ///
 /// `builds` must already be newest-first (as produced by [`common_builds`] /
 /// [`DockerHubClient::list_common_builds`]). No kind filter — time wins.
+///
+/// When `current_*` is provided, skip tips that are the same deploy identity as
+/// the running image so a formal `vX.Y.Z` and its `dev-<same-sha>` sibling do not
+/// hide a real subsequent build further down the list.
 pub fn select_dev_channel_tip(builds: &[DockerBuild]) -> Option<&DockerBuild> {
-    builds.first()
+    select_dev_channel_tip_for(builds, None, None)
+}
+
+/// Like [`select_dev_channel_tip`] but skips artifacts already running and
+/// tips that are clearly older than the running deploy (by push time, or by
+/// semver when both sides are formal releases). That way a same-commit
+/// `dev-*` sibling of the current `v*` release does not expose the previous
+/// build as a fake "available" tip.
+pub fn select_dev_channel_tip_for<'a>(
+    builds: &'a [DockerBuild],
+    current_tag: Option<&str>,
+    current_commit_sha: Option<&str>,
+) -> Option<&'a DockerBuild> {
+    if current_tag.is_none() && current_commit_sha.is_none() {
+        return builds.first();
+    }
+    let current_pushed = current_tag.and_then(|t| pushed_at_for_tag(builds, t));
+    let current_time = current_pushed.and_then(parse_push_time);
+    let current_release = current_tag.and_then(|t| {
+        DeployTag::parse(t)
+            .ok()
+            .and_then(|d| d.as_release())
+    });
+
+    builds.iter().find(|b| {
+        if same_deploy_identity(
+            &b.tag,
+            current_tag,
+            current_commit_sha,
+            Some(b.short_sha.as_str()),
+        ) {
+            return false;
+        }
+        // Semver-newer formal release is always a candidate (Hub re-push safe).
+        if let (Some(cur_rel), Ok(tip_tag)) = (&current_release, DeployTag::parse(&b.tag)) {
+            if let Some(tip_rel) = tip_tag.as_release() {
+                if cur_rel.older_than(&tip_rel) {
+                    return true;
+                }
+                if tip_rel.older_than(cur_rel) {
+                    return false;
+                }
+            }
+        }
+        // Drop tips older than current by wall-clock (previous builds).
+        match (
+            b.pushed_at.as_deref().and_then(parse_push_time),
+            current_time,
+        ) {
+            (Some(tip_t), Some(cur_t)) if tip_t < cur_t => false,
+            _ => true,
+        }
+    })
 }
 
 /// True when target and current are different deploy kinds (release vs commit/branch).
@@ -874,5 +1070,133 @@ mod tests {
         let tip2 = select_dev_channel_tip(&builds2).expect("tip");
         assert_eq!(tip2.tag, "dev-ccccccc");
         assert_eq!(tip2.kind, "commit");
+    }
+
+    #[test]
+    fn short_and_full_dev_sha_are_same_identity() {
+        assert!(same_commit_identity(
+            "dev-f6e2c4d",
+            "dev-f6e2c4d95a43d56ebc25722b785f44c73ef427a2"
+        ));
+        assert!(same_deploy_identity(
+            "dev-f6e2c4d",
+            Some("dev-f6e2c4d95a43d56ebc25722b785f44c73ef427a2"),
+            None,
+            None,
+        ));
+        // Formal release + matching commit_sha vs dev tip of same commit.
+        assert!(same_deploy_identity(
+            "dev-f6e2c4d",
+            Some("v0.3.21"),
+            Some("f6e2c4d95a43d56ebc25722b785f44c73ef427a2"),
+            Some("f6e2c4d"),
+        ));
+    }
+
+    #[test]
+    fn short_vs_full_dev_sha_is_identical_not_upgrade() {
+        let dir = commit_upgrade_direction(
+            "dev-f6e2c4d",
+            Some("dev-f6e2c4d95a43d56ebc25722b785f44c73ef427a2"),
+            Some("2026-07-31T14:13:00Z"),
+            Some("2026-07-31T14:12:00Z"),
+            None,
+        );
+        assert!(!dir.is_upgrade);
+        assert!(!dir.is_downgrade);
+        assert_eq!(dir.relation, "identical");
+    }
+
+    #[test]
+    fn release_to_release_uses_semver_not_push_time() {
+        // Older formal tag re-pushed later must not invert semver order.
+        let dir = commit_upgrade_direction(
+            "v0.3.17",
+            Some("v0.3.21"),
+            Some("2026-08-01T12:00:00Z"), // re-pushed "newer"
+            Some("2026-07-31T12:00:00Z"),
+            None,
+        );
+        assert!(!dir.is_upgrade);
+        assert!(dir.is_downgrade);
+        assert_eq!(dir.relation, "behind");
+
+        let up = commit_upgrade_direction(
+            "v0.3.21",
+            Some("v0.3.20"),
+            Some("2026-07-31T10:00:00Z"),
+            Some("2026-07-31T14:00:00Z"), // current "newer" by clock, older by semver
+            None,
+        );
+        assert!(up.is_upgrade);
+        assert!(!up.is_downgrade);
+        assert_eq!(up.relation, "ahead");
+    }
+
+    #[test]
+    fn select_tip_skips_running_identity_and_older_builds() {
+        let backend = DockerHubRepository::parse("example/backend").unwrap();
+        let frontend = DockerHubRepository::parse("example/frontend").unwrap();
+        // All sha fragments must be hex (DeployTag / docker-publish short sha).
+        let builds = common_builds(
+            &backend,
+            vec![
+                tag("dev-f6e2c4d", "2026-07-31T14:13:00Z", "sha256:d1"),
+                tag("v0.3.21", "2026-07-31T14:12:00Z", "sha256:r1"),
+                tag("dev-ba5c400", "2026-07-31T10:00:00Z", "sha256:d0"),
+                tag("dev-abcdef1", "2026-08-01T09:00:00Z", "sha256:dn"),
+            ],
+            &frontend,
+            vec![
+                tag("dev-f6e2c4d", "2026-07-31T14:13:00Z", "sha256:fd1"),
+                tag("v0.3.21", "2026-07-31T14:12:00Z", "sha256:fr1"),
+                tag("dev-ba5c400", "2026-07-31T10:00:00Z", "sha256:fd0"),
+                tag("dev-abcdef1", "2026-08-01T09:00:00Z", "sha256:fdn"),
+            ],
+            10,
+        );
+        // Running v0.3.21 @ f6e2c4d → skip same-commit siblings + older ba5c400;
+        // surface the later commit tip.
+        let tip = select_dev_channel_tip_for(
+            &builds,
+            Some("v0.3.21"),
+            Some("f6e2c4d95a43d56ebc25722b785f44c73ef427a2"),
+        )
+        .expect("real upgrade tip");
+        assert_eq!(tip.tag, "dev-abcdef1");
+
+        // Already on newest → no tip (only older remains after identity skip).
+        let none = select_dev_channel_tip_for(
+            &builds,
+            Some("dev-abcdef1"),
+            Some("abcdef1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        );
+        assert!(none.is_none());
+
+        // Running an older commit → tip is newest different identity.
+        let tip_up = select_dev_channel_tip_for(&builds, Some("dev-ba5c400"), None)
+            .expect("upgrade tip");
+        assert_eq!(tip_up.tag, "dev-abcdef1");
+    }
+
+    #[test]
+    fn pushed_at_matches_full_runtime_sha_to_short_hub_tag() {
+        let backend = DockerHubRepository::parse("example/backend").unwrap();
+        let frontend = DockerHubRepository::parse("example/frontend").unwrap();
+        let builds = common_builds(
+            &backend,
+            vec![tag("dev-f6e2c4d", "2026-07-31T14:13:00Z", "sha256:d1")],
+            &frontend,
+            vec![tag("dev-f6e2c4d", "2026-07-31T14:13:00Z", "sha256:fd1")],
+            10,
+        );
+        assert_eq!(
+            pushed_at_for_tag(
+                &builds,
+                "dev-f6e2c4d95a43d56ebc25722b785f44c73ef427a2"
+            )
+            .as_deref(),
+            Some("2026-07-31T14:13:00Z")
+        );
     }
 }

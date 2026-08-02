@@ -102,6 +102,37 @@ PROXY_TRUSTED_UPSTREAMS=192.0.2.10/32
 **切勿**将 `PROXY_TRUSTED_UPSTREAMS` 设为 `0.0.0.0/0`：那会允许任意客户端
 伪造 `X-Forwarded-For`。
 
+#### Backend 也必须信任 proxy 改写后的客户端 IP
+
+链路第二段：
+
+```text
+proxy → backend（compose 内网）
+```
+
+proxy 会把解析到的访客 IP 写入 `X-Real-IP` / `X-Forwarded-For` 再转给
+backend。backend 侧：
+
+| 变量 | 作用 |
+| --- | --- |
+| `TRUST_PROXY_HEADERS=true` | 允许从可信 peer 读取转发头（compose 默认开启） |
+| `TRUST_PROXY_PEERS` | 可信任的 TCP peer CIDR。**空 = 仅私网/loopback peer**（与 proxy 空 allowlist 对齐）。compose 默认 RFC1918 全段 |
+
+若 `TRUST_PROXY_HEADERS` 关闭，或 peer 不在信任范围，backend 会把 Docker 内网
+地址当成「客户端 IP」，`/api/proxy/client-geo` 再回退到**服务器出口公网 IP**，
+天气/欢迎语就会显示机房城市而不是访客位置。响应里会带
+`source: "server-egress"`；前端会软失败并尝试浏览器侧 IP 定位。
+
+排查：
+
+```bash
+# backend 日志应看到 resolved=公网访客 IP，而不是 10.x / 172.x
+docker logs myriad-backend 2>&1 | grep -i 'Client IP detection'
+
+# 经 proxy 打 client-geo：ip 应为访客公网，source 应为 client-ip
+curl -sS http://127.0.0.1:${HTTP_PORT:-80}/api/proxy/client-geo
+```
+
 ## Nginx TLS 入口示例
 
 ```nginx

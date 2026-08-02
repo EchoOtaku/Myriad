@@ -35,7 +35,7 @@ use access::{
 pub(crate) use access::{installation_write_forbidden_error, TappStorageAccess};
 #[cfg(test)]
 use catalog::tapp_detail_from_model;
-use catalog::{get_tapp, list_tapp_details, list_tapps};
+use catalog::{get_tapp, list_tapp_details, list_tapps, set_tapp_visibility};
 use installation::{install_tapp, install_tapp_file, update_tapp};
 use lifecycle::{get_recent_tapps, start_tapp, stop_tapp};
 pub use myriad_tapp_contract::manifest::*;
@@ -95,6 +95,7 @@ pub fn create_tapp_routes(
         .route("/{tapp_id}/settings", get(get_tapp_settings))
         .route("/{tapp_id}/settings/{key}", get(get_tapp_setting))
         .route("/{tapp_id}/settings/{key}", post(set_tapp_setting))
+        .route("/{tapp_id}/visibility", post(set_tapp_visibility))
         // 商店源管理（需要认证，API 内部检查管理员权限）
         .route("/store/sources", post(add_store_source))
         .route("/store/sources/{source_id}", post(update_store_source))

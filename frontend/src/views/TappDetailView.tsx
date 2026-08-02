@@ -5,18 +5,28 @@
 
 import React from 'react'
 import { useParams } from 'react-router-dom'
+import AnimatedView from '../components/AnimatedView'
+import { useI18n } from '../contexts/I18nContext'
 import { TappDetailPage } from '../tapp/pages'
+import '../components/ConfigForm.css'
+import '../tapp/pages/TappDetailPage.css'
 
 const TappDetailView: React.FC = () => {
-  // 从路由参数中获取 tappId
+  const { t } = useI18n()
   const { id } = useParams<{ id: string }>()
   const tappId = id ? decodeURIComponent(id) : ''
 
   if (!tappId) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-neutral-900 flex items-center justify-center">
-        <p className="text-gray-500 dark:text-gray-400">无效的 Tapp ID</p>
-      </div>
+      <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
+        <div className="tapp-detail-page">
+          <div className="config-section setting-section">
+            <div className="tapp-detail-state">
+              <p className="tapp-detail-state-desc">{t.tapp.appNotExist}</p>
+            </div>
+          </div>
+        </div>
+      </AnimatedView>
     )
   }
 

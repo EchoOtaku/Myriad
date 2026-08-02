@@ -92,11 +92,14 @@ interface ConfigField {
 // OpenAI 兼容服务的 Base URL / 默认模型预设
 const OPENAI_BASE_URL = 'https://api.openai.com/v1'
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
-const OPENAI_MODEL = 'gpt-5.5'
+// OpenAI 官方 GPT-5.6 三档：Luna（快/省）· Terra（均衡）· Sol（旗舰）
+const OPENAI_MODEL_LITE = 'gpt-5.6-luna'
+const OPENAI_MODEL_STANDARD = 'gpt-5.6-terra'
+const OPENAI_MODEL_PRO = 'gpt-5.6-sol'
 // OpenRouter 默认模型：三个文本模型层级共用同一种 Provider 配置协议。
 const OPENROUTER_MODEL_LITE = 'openai/gpt-oss-20b:free'
 const OPENROUTER_MODEL_STANDARD = 'minimax/minimax-m3'
-const OPENROUTER_MODEL_PRO = 'anthropic/claude-opus-4.8'
+const OPENROUTER_MODEL_PRO = 'anthropic/claude-opus-5'
 
 /**
  * 推断展示用的 Provider。
@@ -322,22 +325,27 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       baseUrlKey: string,
       modelKey: string,
       openrouterModel: string,
+      openaiModel: string,
       next: string,
     ) => {
       if (next === 'openrouter') {
         updateValue(providerKey, 'openai')
         updateValue(baseUrlKey, OPENROUTER_BASE_URL)
         updateValue(modelKey, openrouterModel)
-      } else if (next === 'openai') {
-        updateValue(providerKey, 'openai')
-        // 从 OpenRouter 切回时重置为官方地址与默认模型
-        if (getFieldValue(baseUrlKey).toLowerCase().includes('openrouter.ai')) {
-          updateValue(baseUrlKey, OPENAI_BASE_URL)
-          updateValue(modelKey, OPENAI_MODEL)
-        }
-      } else {
-        updateValue(providerKey, next)
+        return
       }
+      if (next === 'openai') {
+        updateValue(providerKey, 'openai')
+        const base = getFieldValue(baseUrlKey).trim().toLowerCase()
+        // OpenRouter / 空地址 → 官方；自定义兼容端点保留 base（仍切换高亮与 provider）
+        if (!base || base.includes('openrouter.ai')) {
+          updateValue(baseUrlKey, OPENAI_BASE_URL)
+          updateValue(modelKey, openaiModel)
+        }
+        return
+      }
+      // gemini 等：只改 provider；展示侧靠 resolveProvider
+      updateValue(providerKey, next)
     },
     [getFieldValue, updateValue],
   )
@@ -496,6 +504,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             'openai_base_url',
             'openai_model',
             OPENROUTER_MODEL_STANDARD,
+            OPENAI_MODEL_STANDARD,
             provider,
           )
         }
@@ -536,6 +545,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             'lite_openai_base_url',
             'lite_openai_model',
             OPENROUTER_MODEL_LITE,
+            OPENAI_MODEL_LITE,
             provider,
           )
         }
@@ -576,6 +586,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             'pro_openai_base_url',
             'pro_openai_model',
             OPENROUTER_MODEL_PRO,
+            OPENAI_MODEL_PRO,
             provider,
           )
         }

@@ -34,6 +34,9 @@ pub struct TappListItem {
     /// 是否为管理员/站点的公开 Tapp
     #[serde(default)]
     pub is_admin_tapp: bool,
+    /// 公开安装可见性：`all` | `admin`（私有安装始终仅本人）
+    #[serde(default = "default_tapp_visibility")]
+    pub visibility: String,
 }
 
 /// Full detail projection for catalog detail endpoints.
@@ -57,6 +60,13 @@ pub struct TappDetail {
     pub is_temporary: bool,
     #[serde(default)]
     pub is_admin_tapp: bool,
+    /// 公开安装可见性：`all` | `admin`
+    #[serde(default = "default_tapp_visibility")]
+    pub visibility: String,
+}
+
+fn default_tapp_visibility() -> String {
+    crate::services::tapp_ownership::TAPP_VISIBILITY_ALL.to_string()
 }
 
 /// Catalog namespace flags for a row.
@@ -97,6 +107,8 @@ pub fn tapp_list_item_from_model(
 ) -> TappListItem {
     let icon_svg = icon_svg_from_manifest(&tapp.manifest);
     let locales = manifest_locales(&tapp.manifest);
+    let visibility =
+        crate::services::tapp_ownership::normalize_tapp_visibility(&tapp.visibility).to_string();
     TappListItem {
         id: tapp.tapp_id,
         name: tapp.name,
@@ -110,6 +122,7 @@ pub fn tapp_list_item_from_model(
         last_run_at: tapp.last_run_at.map(|date| date.to_rfc3339()),
         is_temporary,
         is_admin_tapp,
+        visibility,
     }
 }
 
@@ -157,6 +170,8 @@ pub fn tapp_detail_from_model(
         serde_json::from_value(tapp.approved_permissions.clone()).unwrap_or_default();
     let granted_permissions =
         TappPermissionService::filter_permissions_for_role(config, role, &approved_permissions);
+    let visibility =
+        crate::services::tapp_ownership::normalize_tapp_visibility(&tapp.visibility).to_string();
     TappDetail {
         id: tapp.tapp_id,
         name: tapp.name,
@@ -173,6 +188,7 @@ pub fn tapp_detail_from_model(
         user_role: role.as_str().to_string(),
         is_temporary,
         is_admin_tapp,
+        visibility,
     }
 }
 
@@ -212,6 +228,7 @@ mod tests {
             last_run_at: None,
             updated_at: now,
             error_message: None,
+            visibility: "all".to_string(),
         }
     }
 

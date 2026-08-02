@@ -1421,32 +1421,21 @@ pub async fn get_client_geo(
     .unwrap_or_else(|| addr.ip().to_string());
 
     tracing::info!(
-        "Client IP detection: original={}, socket={}",
+        "Client IP detection: resolved={}, socket={}, x_real_ip={:?}, xff={:?}",
         client_ip,
-        addr.ip()
+        addr.ip(),
+        headers
+            .get("x-real-ip")
+            .and_then(|v| v.to_str().ok()),
+        headers
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
     );
 
-    // 检查是否为本地IP/内网IP
-    let is_local_ip = client_ip == "127.0.0.1"
-        || client_ip == "::1"
-        || client_ip.starts_with("192.168.")
-        || client_ip.starts_with("10.")
-        || client_ip.starts_with("172.16.")
-        || client_ip.starts_with("172.17.")
-        || client_ip.starts_with("172.18.")
-        || client_ip.starts_with("172.19.")
-        || client_ip.starts_with("172.20.")
-        || client_ip.starts_with("172.21.")
-        || client_ip.starts_with("172.22.")
-        || client_ip.starts_with("172.23.")
-        || client_ip.starts_with("172.24.")
-        || client_ip.starts_with("172.25.")
-        || client_ip.starts_with("172.26.")
-        || client_ip.starts_with("172.27.")
-        || client_ip.starts_with("172.28.")
-        || client_ip.starts_with("172.29.")
-        || client_ip.starts_with("172.30.")
-        || client_ip.starts_with("172.31.");
+    // Private / loopback / unparseable → cannot geo-locate the visitor; fall
+    // back to server egress only as a last resort (local dev / misconfigured
+    // TRUST_PROXY_*). FE treats `source=server-egress` as soft failure.
+    let is_local_ip = crate::middleware::client_ip::is_private_or_local_str(&client_ip);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
@@ -1455,10 +1444,13 @@ pub async fn get_client_geo(
         .unwrap();
 
     // 如果是本地IP，需要获取服务器的公网IP，然后查询位置
+    let used_server_egress = is_local_ip;
     let target_ip = if is_local_ip {
-        tracing::info!(
-            "Detected local/private IP: {}, fetching server public IP",
-            client_ip
+        tracing::warn!(
+            "Detected local/private client IP {} (socket={}); proxy X-Real-IP may be missing or \
+             TRUST_PROXY_HEADERS/TRUST_PROXY_PEERS misconfigured. Falling back to server egress IP.",
+            client_ip,
+            addr.ip()
         );
 
         // 方案1: 使用 ipify.org 获取服务器公网IP
@@ -1529,9 +1521,22 @@ pub async fn get_client_geo(
                 // Include resolved lookup IP for weather/geo debugging.
                 if let Some(obj) = data.as_object_mut() {
                     obj.insert("ip".to_string(), json!(target_ip));
+                    obj.insert(
+                        "detected_client_ip".to_string(),
+                        json!(client_ip),
+                    );
                     // Alias snake_case for clients that prefer country_code.
                     if let Some(cc) = obj.get("countryCode").cloned() {
                         obj.insert("country_code".to_string(), cc);
+                    }
+                    if used_server_egress {
+                        // Soft-fail marker: visitor IP was private; location is
+                        // the server egress, not the user. FE should try browser
+                        // IP services next.
+                        obj.insert("source".to_string(), json!("server-egress"));
+                        obj.insert("fallback".to_string(), json!("server-public-ip"));
+                    } else {
+                        obj.insert("source".to_string(), json!("client-ip"));
                     }
                 }
                 return (
@@ -1559,7 +1564,7 @@ pub async fn get_client_geo(
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
                 // 转换为统一格式
-                let unified_data = json!({
+                let mut unified_data = json!({
                     "status": "success",
                     "lat": lat,
                     "lon": lon,
@@ -1569,7 +1574,16 @@ pub async fn get_client_geo(
                     "country_code": country_code,
                     "regionName": data.get("region").and_then(|v| v.as_str()).unwrap_or(""),
                     "ip": target_ip,
+                    "detected_client_ip": client_ip,
                 });
+                if let Some(obj) = unified_data.as_object_mut() {
+                    if used_server_egress {
+                        obj.insert("source".to_string(), json!("server-egress"));
+                        obj.insert("fallback".to_string(), json!("server-public-ip"));
+                    } else {
+                        obj.insert("source".to_string(), json!("client-ip"));
+                    }
+                }
 
                 tracing::info!(
                     "Geolocation success via ipapi.co for IP {}: city={}, country={}",
@@ -1603,7 +1617,7 @@ pub async fn get_client_geo(
             ) {
                 if let (Ok(lat), Ok(lon)) = (lat_str.parse::<f64>(), lon_str.parse::<f64>()) {
                     // 转换为统一格式
-                    let unified_data = json!({
+                    let mut unified_data = json!({
                         "status": "success",
                         "lat": lat,
                         "lon": lon,
@@ -1611,7 +1625,16 @@ pub async fn get_client_geo(
                         "country": data.get("country").and_then(|v| v.as_str()).unwrap_or(""),
                         "regionName": data.get("region").and_then(|v| v.as_str()).unwrap_or(""),
                         "ip": target_ip,
+                        "detected_client_ip": client_ip,
                     });
+                    if let Some(obj) = unified_data.as_object_mut() {
+                        if used_server_egress {
+                            obj.insert("source".to_string(), json!("server-egress"));
+                            obj.insert("fallback".to_string(), json!("server-public-ip"));
+                        } else {
+                            obj.insert("source".to_string(), json!("client-ip"));
+                        }
+                    }
 
                     tracing::info!(
                         "Geolocation success via geojs.io for IP {}: city={}, country={}",
@@ -1635,7 +1658,7 @@ pub async fn get_client_geo(
         }
     }
 
-    // 如果是本地开发，返回默认位置
+    // 如果是本地开发，返回默认位置（仍标记 server-egress，FE 可改走浏览器侧 IP）
     if is_local_ip {
         tracing::warn!("All geolocation services failed for local IP, using default fallback");
         let fallback_data = json!({
@@ -1646,6 +1669,9 @@ pub async fn get_client_geo(
             "country": "Development",
             "regionName": "Local",
             "ip": client_ip,
+            "detected_client_ip": client_ip,
+            "source": "server-egress",
+            "fallback": "server-public-ip",
         });
         return (
             StatusCode::OK,

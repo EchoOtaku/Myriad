@@ -26,7 +26,8 @@ use crate::config::{Channel, Config};
 use crate::docker::DockerClient;
 use crate::error::{Result, UpdaterError};
 use crate::release::{
-    commit_upgrade_direction, is_cross_kind_deploy, pushed_at_for_tag, select_dev_channel_tip,
+    commit_upgrade_direction_ex, is_cross_kind_deploy, pushed_at_for_tag,
+    select_dev_channel_tip_for,
     DockerBuild, DockerHubClient, GithubClient, Manifest,
 };
 use crate::state::{Job, JobKind, JobStatus, LatestAvailable, MaintenanceFile, Phase, StateDir};
@@ -1674,16 +1675,24 @@ impl Worker {
         builds: Vec<DockerBuild>,
         persist_cache: bool,
     ) -> Result<Option<AvailableInfo>> {
-        let Some(build) = select_dev_channel_tip(&builds) else {
+        let state_now = self.state.read_updater()?;
+        let current = state_now.current_version.as_ref().map(|c| c.as_str());
+        let current_commit_sha = state_now.current_commit_sha.as_deref();
+
+        // Skip tip when it is the same artifact as the running deploy (e.g. v0.3.21
+        // vs dev-<same-sha>, or short vs full dev-sha). Otherwise a re-tagged sibling
+        // becomes "tip" and either thrash-upgrades or blocks seeing a later build.
+        let Some(build) =
+            select_dev_channel_tip_for(&builds, current, current_commit_sha)
+        else {
             if persist_cache {
-                let mut state = self.state.read_updater()?;
+                let mut state = state_now;
                 state.last_checked_at = Some(Utc::now());
                 state.latest_available = None;
                 self.state.write_updater(&state)?;
             }
-            return Err(UpdaterError::DockerHub(
-                "Docker Hub has no common immutable frontend/backend build".into(),
-            ));
+            // List was non-empty but every common build is the running identity.
+            return Ok(None);
         };
         // Clone tip fields we need past the shared builds borrow.
         let tip_tag = build.tag.clone();
@@ -1693,25 +1702,28 @@ impl Worker {
         let tip_backend_url = build.backend_url.clone();
 
         let tag = DeployTag::parse(&tip_tag)?;
-        let state_now = self.state.read_updater()?;
-        let current = state_now.current_version.as_ref().map(|c| c.as_str());
         let current_pushed = current.and_then(|c| pushed_at_for_tag(&builds, c));
 
-        // Cross-kind: push time is primary (no ancestry). Same-kind commits may use git.
+        // Cross-kind: push time / semver is primary (no ancestry). Same-kind commits may use git.
         let cross_kind = is_cross_kind_deploy(tag.as_str(), current);
         let freshness = if !cross_kind && !tag.is_release() && self.github_commit_metadata_enabled()
         {
             match self.github_client() {
-                Ok(gh) => match gh
-                    .compare_deploy_to_ref(state_now.current_version.as_ref(), tag.as_str())
-                    .await
-                {
-                    Ok(f) => f,
-                    Err(e) => {
-                        warn!(err = %e, "commit freshness compare failed");
-                        None
+                Ok(gh) => {
+                    // Always pass a git-resolvable ref (strip dev- prefix); bare
+                    // `dev-<sha>` 404s on the GitHub commits API and drops ancestry.
+                    let target_ref = crate::release::deploy_tag_to_git_ref(&tag);
+                    match gh
+                        .compare_deploy_to_ref(state_now.current_version.as_ref(), &target_ref)
+                        .await
+                    {
+                        Ok(f) => f,
+                        Err(e) => {
+                            warn!(err = %e, "commit freshness compare failed");
+                            None
+                        }
                     }
-                },
+                }
                 Err(e) => {
                     warn!(err = %e, "github client unavailable for ancestry");
                     None
@@ -1721,7 +1733,7 @@ impl Worker {
             None
         };
 
-        let direction = commit_upgrade_direction(
+        let direction = commit_upgrade_direction_ex(
             tag.as_str(),
             current,
             tip_pushed.as_deref(),
@@ -1731,6 +1743,8 @@ impl Worker {
             } else {
                 freshness.as_ref()
             },
+            current_commit_sha,
+            Some(tip_short_sha.as_str()),
         );
 
         info!(
@@ -1976,12 +1990,14 @@ impl Worker {
             );
         }
 
-        let direction = commit_upgrade_direction(
+        let direction = commit_upgrade_direction_ex(
             tag.as_str(),
             st_now.current_version.as_ref().map(|c| c.as_str()),
             None,
             None,
             freshness.as_ref(),
+            st_now.current_commit_sha.as_deref(),
+            Some(info.sha.as_str()),
         );
         info!(
             target = %tag,

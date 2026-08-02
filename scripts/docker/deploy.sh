@@ -38,8 +38,10 @@ Commands:
   pull      Pull images pinned by .env tags
   logs      docker compose logs -f
   status    docker compose ps + image versions
-  doctor [--host]  Read-only topology / security checks (nets, gateway, secrets, cosign)
-                   --host also runs a non-fatal privileged/docker.sock scan
+  doctor [--host|--events]
+                   Read-only topology / security checks (nets, gateway, secrets, cosign)
+                   --host    also run a non-fatal privileged/docker.sock scan
+                   --events  stream container create/start events (Ctrl-C; skips topology)
   upgrade          Pull images pinned by .env tags + recreate (manual upgrade path)
   help             Show this help
 
@@ -47,9 +49,6 @@ Notes:
   - This script only handles bootstrap. Normal updates run through the admin UI.
   - To switch versions, edit MYRIAD_TAG / UPDATER_TAG / PROXY_TAG in .env then
     run \`$0 upgrade\`.
-  - Optional host audit (privileged / docker.sock binds):
-      bash scripts/security/docker-audit-example.sh scan
-      $0 doctor --host
 
 Examples:
   $0                 # Bootstrap + start
@@ -57,6 +56,7 @@ Examples:
   $0 status          # See running versions
   $0 doctor          # Topology security checks
   $0 doctor --host   # Topology + non-fatal host privilege scan
+  $0 doctor --events # Watch container create/start (look for Privileged / docker.sock)
   $0 upgrade         # After editing .env, recreate with new tags
 EOF
 }
@@ -151,9 +151,9 @@ ensure_env() {
 ensure_current_layout() {
     info "==> Ensuring current proxy + updater layout"
     mkdir -p pgdata state state/snapshots state/cache backups
-    ensure_key MYRIAD_TAG v0.3.21
-    ensure_key PROXY_TAG v0.3.21
-    ensure_key UPDATER_TAG v0.3.21
+    ensure_key MYRIAD_TAG v0.3.22
+    ensure_key PROXY_TAG v0.3.22
+    ensure_key UPDATER_TAG v0.3.22
     ensure_key BACKEND_IMAGE docker.io/somekawahitomi/myriad-backend
     ensure_key FRONTEND_IMAGE docker.io/somekawahitomi/myriad-frontend
     ensure_key COMPOSE_PROJECT_NAME myriad
@@ -289,11 +289,12 @@ cmd_status() {
 # Read-only topology checks. Does not migrate or restart services.
 # Expected: docker-guard holds docker.sock; updater on admin+guard nets (not business net);
 # updater-gateway injects token; backend has UPDATER_GATEWAY_SECRET but no UPDATE_TOKEN.
-# Optional: pass --host for a non-fatal privileged/docker.sock scan.
+# Optional: --host (privileged/docker.sock scan), --events (stream create/start).
 cmd_doctor() {
     local fail=0
     local skip=0
     local host_scan=0
+    local events_only=0
     local admin_net guard_net business_net
     admin_net="${MYRIAD_ADMIN_NETWORK:-myriad-admin-net}"
     guard_net="${MYRIAD_DOCKER_GUARD_NETWORK:-myriad-docker-guard-net}"
@@ -301,8 +302,20 @@ cmd_doctor() {
     for arg in "$@"; do
         case "$arg" in
             --host) host_scan=1 ;;
+            --events) events_only=1 ;;
         esac
     done
+    if [ "$events_only" = "1" ]; then
+        info "==> Streaming docker events (container create/start) — Ctrl-C to stop"
+        info "    Follow up with inspect if you see unexpected Privileged=true or docker.sock binds"
+        info "    Expected sock holder: myriad-docker-guard only"
+        docker events \
+            --filter 'type=container' \
+            --filter 'event=create' \
+            --filter 'event=start' \
+            --format '{{.Time}} {{.Action}} {{.Actor.Attributes.name}} image={{.Actor.Attributes.image}}'
+        return 0
+    fi
     if [ -f .env ]; then
         local v
         v="$(grep -E '^MYRIAD_ADMIN_NETWORK=' .env 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"'" || true)"
@@ -604,14 +617,9 @@ cmd_doctor() {
     fi
 
     echo ""
-    info "Optional host audit tip:"
-    if [ -f scripts/security/docker-audit-example.sh ]; then
-        info "  path: scripts/security/docker-audit-example.sh"
-        info "  run:  bash scripts/security/docker-audit-example.sh scan"
-        info "  or:   $0 doctor --host   (non-fatal privileged / docker.sock scan)"
-    else
-        info "  scripts/security/docker-audit-example.sh not present in this tree"
-    fi
+    info "Optional host checks:"
+    info "  $0 doctor --host     # non-fatal privileged / docker.sock scan"
+    info "  $0 doctor --events   # stream container create/start (Ctrl-C)"
 
     if [ "$host_scan" = "1" ]; then
         echo ""

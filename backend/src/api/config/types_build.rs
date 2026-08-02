@@ -672,7 +672,7 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                 .map(|c| c.gemini_model.clone())
                 .unwrap_or_else(|| {
                     std::env::var("GEMINI_MODEL")
-                        .unwrap_or_else(|_| "gemini-3-flash-preview".to_string())
+                        .unwrap_or_else(|_| "gemini-3.6-flash".to_string())
                 }),
             api_key: get_value(
                 db_config.as_ref().and_then(|c| c.gemini_api_key.clone()),
@@ -722,9 +722,9 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                         .map(|c| c.gemini_model.clone())
                         .unwrap_or_else(|| {
                             std::env::var("GEMINI_MODEL")
-                                .unwrap_or_else(|_| "gemini-3.5-flash".to_string())
+                                .unwrap_or_else(|_| "gemini-3.6-flash".to_string())
                         }),
-                    placeholder: "gemini-3.5-flash, gemini-3.1-pro-preview, gemini-2.5-flash, etc."
+                    placeholder: "gemini-3.6-flash, gemini-3.1-pro-preview, gemini-2.5-flash, etc."
                         .to_string(),
                     required: false,
                 },
@@ -750,7 +750,7 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                             std::env::var("OPENAI_MODEL")
                                 .unwrap_or_else(|_| "minimax/minimax-m3".to_string())
                         }),
-                    placeholder: "minimax/minimax-m3, gpt-5.5, etc.".to_string(),
+                    placeholder: "minimax/minimax-m3, gpt-5.6-terra, etc.".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -846,9 +846,9 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                         .map(|c| c.pro_openai_model.clone())
                         .unwrap_or_else(|| {
                             std::env::var("PRO_OPENAI_MODEL")
-                                .unwrap_or_else(|_| "anthropic/claude-opus-4.8".to_string())
+                                .unwrap_or_else(|_| "anthropic/claude-opus-5".to_string())
                         }),
-                    placeholder: "anthropic/claude-opus-4.8, gpt-5.5, etc.".to_string(),
+                    placeholder: "anthropic/claude-opus-5, gpt-5.6-sol, etc.".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -1023,9 +1023,9 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                         .map(|c| c.lite_gemini_model.clone())
                         .unwrap_or_else(|| {
                             std::env::var("LITE_GEMINI_MODEL")
-                                .unwrap_or_else(|_| "gemini-3.5-flash".to_string())
+                                .unwrap_or_else(|_| "gemini-3.5-flash-lite".to_string())
                         }),
-                    placeholder: "gemini-3.5-flash".to_string(),
+                    placeholder: "gemini-3.5-flash-lite".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -1052,7 +1052,7 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                             std::env::var("LITE_OPENAI_MODEL")
                                 .unwrap_or_else(|_| "openai/gpt-oss-20b:free".to_string())
                         }),
-                    placeholder: "openai/gpt-oss-20b:free".to_string(),
+                    placeholder: "openai/gpt-oss-20b:free, gpt-5.6-luna, etc.".to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -1143,7 +1143,7 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
             //   pet_*、wallpaper_parallax（legacy 仅 DB；公开 API 亦不再返回）
             //   github_client_*（走 OAuth 专用端点 + legacy 平铺字段，勿进 admin bag）
             // 归属：
-            //   UI        → wallpaper_*, evocative_*, site_*, cloud_sponsors, base_url
+            //   UI        → wallpaper_*, evocative_*, site_*, cloud_sponsors, pwa_enabled, base_url
             //   Platforms → analytics_enabled
             //   Modules   → music_*
             //   Advanced  → proxy_*, gemini_base_url, github_api_base_url
@@ -1258,6 +1258,20 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                     required: false,
                 },
                 ConfigField {
+                    key: "pwa_enabled".to_string(),
+                    label: "Enable PWA".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.pwa_enabled.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("PWA_ENABLED")
+                                .unwrap_or_else(|_| "true".to_string())
+                        }),
+                    placeholder: "true".to_string(),
+                    required: false,
+                },
+                ConfigField {
                     key: "site_title".to_string(),
                     label: "网站标题".to_string(),
                     field_type: "text".to_string(),
@@ -1292,6 +1306,87 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                     required: false,
                 },
                 ConfigField {
+                    key: "site_keywords".to_string(),
+                    label: "SEO 关键词".to_string(),
+                    field_type: "text".to_string(),
+                    // Clearable: empty DB wins over env (see db_or_env_clearable).
+                    value: db_or_env_clearable(
+                        db_config.as_ref().and_then(|c| c.site_keywords.clone()),
+                        "SITE_KEYWORDS",
+                        "",
+                    ),
+                    placeholder: "个人主页, 博客, 数字生活（逗号分隔）".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "site_og_image".to_string(),
+                    label: "分享预览图".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_or_env_clearable(
+                        db_config.as_ref().and_then(|c| c.site_og_image.clone()),
+                        "SITE_OG_IMAGE",
+                        "",
+                    ),
+                    placeholder: "https://example.com/og.png 或上传本地图片".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "site_noindex".to_string(),
+                    label: "禁止搜索引擎收录".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.site_noindex.to_string())
+                        .unwrap_or_else(|| {
+                            std::env::var("SITE_NOINDEX")
+                                .unwrap_or_else(|_| "false".to_string())
+                        }),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "ga_measurement_id".to_string(),
+                    label: "Google Analytics".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_or_env_clearable(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.ga_measurement_id.clone()),
+                        "GA_MEASUREMENT_ID",
+                        "",
+                    ),
+                    placeholder: "G-XXXXXXXXXX".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "umami_website_id".to_string(),
+                    label: "Umami Website ID".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_or_env_clearable(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.umami_website_id.clone()),
+                        "UMAMI_WEBSITE_ID",
+                        "",
+                    ),
+                    placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "umami_script_url".to_string(),
+                    label: "Umami Script URL".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_or_env_clearable(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.umami_script_url.clone()),
+                        "UMAMI_SCRIPT_URL",
+                        "",
+                    ),
+                    placeholder: "https://cloud.umami.is/script.js".to_string(),
+                    required: false,
+                },
+                ConfigField {
                     key: "site_icp".to_string(),
                     label: "ICP 备案号".to_string(),
                     field_type: "text".to_string(),
@@ -1322,6 +1417,21 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                         .and_then(|c| c.cloud_sponsors.clone())
                         .unwrap_or_default(),
                     placeholder: "cloudflare,edgeone,upyun（多个用逗号分隔）".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "site_footer_custom".to_string(),
+                    label: "页脚自定义项".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_or_env_clearable(
+                        db_config
+                            .as_ref()
+                            .and_then(|c| c.site_footer_custom.clone()),
+                        "SITE_FOOTER_CUSTOM",
+                        "",
+                    ),
+                    placeholder: r#"[{"text":"示例","icon":"/logo.webp","url":"https://example.com"}]"#
+                        .to_string(),
                     required: false,
                 },
                 ConfigField {
@@ -1480,6 +1590,22 @@ pub(crate) fn platform_config_is_ready(platform: &PlatformConfig) -> bool {
     }
 }
 
+/// Clearable optional string: `Some` (including empty) is intentional DB state and
+/// wins over env. `None` means never set → env → `default`.
+///
+/// Used for SEO/analytics fields so clearing the admin UI cannot be undone by a
+/// leftover env var (e.g. `GA_MEASUREMENT_ID` in process environment).
+pub(crate) fn db_or_env_clearable(
+    db_val: Option<String>,
+    env_key: &str,
+    default: &str,
+) -> String {
+    match db_val {
+        Some(v) => v,
+        None => std::env::var(env_key).unwrap_or_else(|_| default.to_string()),
+    }
+}
+
 pub(crate) async fn reconcile_platform_auto_refresh_with_config(
     db: &DatabaseConnection,
     config: &ConfigResponse,
@@ -1563,6 +1689,7 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "discord_user_id",
     "enable_auto_fetch",
     "fetch_interval_hours",
+    "ga_measurement_id",
     "gemini_api_key",
     "gemini_base_url",
     "gemini_model",
@@ -1630,11 +1757,16 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "psn_enabled",
     "psn_npsso",
     "psn_online_id",
+    "pwa_enabled",
     "report_settings",
     "site_description",
     "site_favicon",
+    "site_footer_custom",
     "site_gongan",
     "site_icp",
+    "site_keywords",
+    "site_noindex",
+    "site_og_image",
     "site_title",
     "steam_api_key",
     "steam_enabled",
@@ -1661,6 +1793,8 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "ui_wallpaper_blur",
     "ui_wallpaper_parallax",
     "ui_wallpaper_url",
+    "umami_script_url",
+    "umami_website_id",
     "user_ai_cooldown_seconds",
     "user_ai_daily_calls",
     "user_ai_daily_tokens",
@@ -2455,17 +2589,49 @@ mod settings_backup_tests {
             ui_field("site_title", ""),
             ui_field("site_description", ""),
             ui_field("site_favicon", ""),
+            ui_field("site_keywords", ""),
+            ui_field("site_og_image", ""),
+            ui_field("site_noindex", "false"),
+            ui_field("ga_measurement_id", ""),
+            ui_field("umami_website_id", ""),
+            ui_field("umami_script_url", ""),
             ui_field("wallpaper_url", ""),
             ui_field("music_playlist_id", ""),
             ui_field("site_icp", ""),
+            ui_field("site_footer_custom", ""),
         ];
         let updates = collect_database_updates(&config);
         assert_eq!(updates.get("site_title"), Some(&json!("")));
         assert_eq!(updates.get("site_description"), Some(&json!("")));
         assert_eq!(updates.get("site_favicon"), Some(&json!("")));
+        assert_eq!(updates.get("site_keywords"), Some(&json!("")));
+        assert_eq!(updates.get("site_og_image"), Some(&json!("")));
+        assert_eq!(updates.get("site_noindex"), Some(&json!(false)));
+        assert_eq!(updates.get("ga_measurement_id"), Some(&json!("")));
+        assert_eq!(updates.get("umami_website_id"), Some(&json!("")));
+        assert_eq!(updates.get("umami_script_url"), Some(&json!("")));
         assert_eq!(updates.get("ui_wallpaper_url"), Some(&json!("")));
         assert_eq!(updates.get("music_playlist_id"), Some(&json!("")));
         assert_eq!(updates.get("site_icp"), Some(&json!("")));
+        assert_eq!(updates.get("site_footer_custom"), Some(&json!("")));
+    }
+
+    #[test]
+    fn clearable_db_empty_wins_over_env_fallback() {
+        // UI clear writes Some(""); that must not be treated as "missing → env".
+        assert_eq!(
+            db_or_env_clearable(Some(String::new()), "GA_MEASUREMENT_ID", ""),
+            ""
+        );
+        assert_eq!(
+            db_or_env_clearable(Some("G-ABC".into()), "GA_MEASUREMENT_ID", ""),
+            "G-ABC"
+        );
+        // None = never set; may use env (unset here → default).
+        assert_eq!(
+            db_or_env_clearable(None, "MYRIAD_TEST_UNSET_ENV_KEY_XYZ", "fallback"),
+            "fallback"
+        );
     }
 
     #[test]
@@ -2922,10 +3088,17 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 );
                 continue;
             }
-            "site_title" | "site_description" | "site_favicon" | "music_source" | "site_icp"
-            | "site_gongan" | "cloud_sponsors" | "proxy_url" | "proxy_bypass" | "gemini_base_url"
-            | "github_api_base_url" => {
+            "site_title" | "site_description" | "site_favicon" | "site_keywords"
+            | "site_og_image" | "ga_measurement_id" | "umami_website_id"
+            | "umami_script_url" | "music_source" | "site_icp" | "site_gongan"
+            | "cloud_sponsors" | "site_footer_custom" | "proxy_url" | "proxy_bypass"
+            | "gemini_base_url" | "github_api_base_url" => {
                 updates.insert(field.key.clone(), JsonValue::String(field.value.clone()));
+                continue;
+            }
+            "site_noindex" => {
+                let enabled = field.value == "true";
+                updates.insert(field.key.clone(), JsonValue::Bool(enabled));
                 continue;
             }
             "music_playlist_id" => {
@@ -2984,6 +3157,10 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
             "analytics_enabled" => {
                 let enabled = field.value != "false" && field.value != "0";
                 ("analytics_enabled", JsonValue::Bool(enabled))
+            }
+            "pwa_enabled" => {
+                let enabled = field.value != "false" && field.value != "0";
+                ("pwa_enabled", JsonValue::Bool(enabled))
             }
             // legacy：github OAuth 凭证走专用端点；bag 写入仍兼容
             "github_client_id" => ("github_client_id", JsonValue::String(field.value.clone())),
@@ -3259,9 +3436,17 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "pet_enabled" => "PET_ENABLED",
             "pet_image_url" => "PET_IMAGE_URL",
             "analytics_enabled" => "ANALYTICS_ENABLED",
+            "pwa_enabled" => "PWA_ENABLED",
             "site_title" => "SITE_TITLE",
             "site_description" => "SITE_DESCRIPTION",
             "site_favicon" => "SITE_FAVICON",
+            "site_keywords" => "SITE_KEYWORDS",
+            "site_og_image" => "SITE_OG_IMAGE",
+            "site_noindex" => "SITE_NOINDEX",
+            "ga_measurement_id" => "GA_MEASUREMENT_ID",
+            "umami_website_id" => "UMAMI_WEBSITE_ID",
+            "umami_script_url" => "UMAMI_SCRIPT_URL",
+            "site_footer_custom" => "SITE_FOOTER_CUSTOM",
             "github_client_id" => "GITHUB_CLIENT_ID",
             "github_client_secret" => "GITHUB_CLIENT_SECRET",
             "base_url" => "BASE_URL",
@@ -3404,39 +3589,65 @@ pub async fn get_site_metadata(
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     let db_config = config_service.load_config().await.ok();
 
-    let get_value = |db_val: Option<String>, env_key: &str, default: &str| -> String {
-        let from_db = db_val.filter(|v| !v.is_empty());
-        let from_env = std::env::var(env_key).ok();
-        let has_db = from_db.is_some();
-        let has_env = from_env.is_some();
-        let result = from_db.or(from_env).unwrap_or_else(|| default.to_string());
-
-        tracing::debug!(
-            "[元数据] {}: db={}, env={}, result={}",
-            env_key,
-            has_db,
-            has_env,
-            result
-        );
-
-        result
+    // Branding fields: empty DB still falls through to env/default (legacy UX).
+    let get_branding = |db_val: Option<String>, env_key: &str, default: &str| -> String {
+        db_val
+            .filter(|v| !v.is_empty())
+            .or_else(|| std::env::var(env_key).ok().filter(|v| !v.is_empty()))
+            .unwrap_or_else(|| default.to_string())
     };
 
+    let site_noindex = db_config
+        .as_ref()
+        .map(|c| c.site_noindex)
+        .unwrap_or_else(|| {
+            std::env::var("SITE_NOINDEX")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false)
+        });
+
     let metadata = json!({
-        "site_title": get_value(
+        "site_title": get_branding(
             db_config.as_ref().and_then(|c| c.site_title.clone()),
             "SITE_TITLE",
             "Myriad - A myriad of lights, in one place."
         ),
-        "site_description": get_value(
+        "site_description": get_branding(
             db_config.as_ref().and_then(|c| c.site_description.clone()),
             "SITE_DESCRIPTION",
             "A myriad of lights, in one place."
         ),
-        "site_favicon": get_value(
+        "site_favicon": get_branding(
             db_config.as_ref().and_then(|c| c.site_favicon.clone()),
             "SITE_FAVICON",
             "/favicon.webp"
+        ),
+        // Clearable SEO / third-party analytics: explicit empty DB disables (no env re-fill).
+        "site_keywords": db_or_env_clearable(
+            db_config.as_ref().and_then(|c| c.site_keywords.clone()),
+            "SITE_KEYWORDS",
+            ""
+        ),
+        "site_og_image": db_or_env_clearable(
+            db_config.as_ref().and_then(|c| c.site_og_image.clone()),
+            "SITE_OG_IMAGE",
+            ""
+        ),
+        "site_noindex": site_noindex,
+        "ga_measurement_id": db_or_env_clearable(
+            db_config.as_ref().and_then(|c| c.ga_measurement_id.clone()),
+            "GA_MEASUREMENT_ID",
+            ""
+        ),
+        "umami_website_id": db_or_env_clearable(
+            db_config.as_ref().and_then(|c| c.umami_website_id.clone()),
+            "UMAMI_WEBSITE_ID",
+            ""
+        ),
+        "umami_script_url": db_or_env_clearable(
+            db_config.as_ref().and_then(|c| c.umami_script_url.clone()),
+            "UMAMI_SCRIPT_URL",
+            ""
         ),
     });
 
@@ -3763,6 +3974,9 @@ pub async fn get_public_ui_config(
         "analytics_enabled": db_config.as_ref().map(|c| c.analytics_enabled).unwrap_or_else(||
             std::env::var("ANALYTICS_ENABLED").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)
         ),
+        "pwa_enabled": db_config.as_ref().map(|c| c.pwa_enabled).unwrap_or_else(||
+            std::env::var("PWA_ENABLED").unwrap_or_else(|_| "true".to_string()).parse().unwrap_or(true)
+        ),
         "wallpaper_url": get_value(
             db_config.as_ref().and_then(|c| c.ui_wallpaper_url.clone()),
             "UI_WALLPAPER_URL"
@@ -3813,6 +4027,11 @@ pub async fn get_public_ui_config(
         "site_icp": db_config.as_ref().and_then(|c| c.site_icp.clone()),
         "site_gongan": db_config.as_ref().and_then(|c| c.site_gongan.clone()),
         "cloud_sponsors": db_config.as_ref().and_then(|c| c.cloud_sponsors.clone()),
+        "site_footer_custom": db_or_env_clearable(
+            db_config.as_ref().and_then(|c| c.site_footer_custom.clone()),
+            "SITE_FOOTER_CUSTOM",
+            ""
+        ),
     });
 
     (StatusCode::OK, Json(ui_config))

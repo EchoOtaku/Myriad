@@ -304,30 +304,15 @@ impl TappApiService {
             }
         }
 
-        // 检查是否为本地/内网 IP
-        let is_local = ip == "auto"
-            || ip == "127.0.0.1"
-            || ip == "::1"
-            || ip.starts_with("192.168.")
-            || ip.starts_with("10.")
-            || ip.starts_with("172.16.")
-            || ip.starts_with("172.17.")
-            || ip.starts_with("172.18.")
-            || ip.starts_with("172.19.")
-            || ip.starts_with("172.20.")
-            || ip.starts_with("172.21.")
-            || ip.starts_with("172.22.")
-            || ip.starts_with("172.23.")
-            || ip.starts_with("172.24.")
-            || ip.starts_with("172.25.")
-            || ip.starts_with("172.26.")
-            || ip.starts_with("172.27.")
-            || ip.starts_with("172.28.")
-            || ip.starts_with("172.29.")
-            || ip.starts_with("172.30.")
-            || ip.starts_with("172.31.");
+        // Private / loopback / missing → server egress (local dev or broken proxy trust).
+        let is_local = crate::middleware::client_ip::is_private_or_local_str(ip);
 
         let target_ip = if is_local {
+            tracing::warn!(
+                client_ip = %ip,
+                "tapp geo: private/unresolved client IP; falling back to server egress \
+                 (check TRUST_PROXY_HEADERS / TRUST_PROXY_PEERS and proxy X-Real-IP)"
+            );
             // 获取服务器公网 IP
             if let Ok(resp) = TAPP_HTTP_CLIENT
                 .get("https://api.ipify.org?format=json")

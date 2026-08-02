@@ -93,6 +93,11 @@ pub struct Model {
     /// 错误信息
     #[sea_orm(column_type = "Text", nullable)]
     pub error_message: Option<String>,
+
+    /// 公开安装的可见性：`all`（全体）| `admin`（仅管理员）
+    /// 仅对站点主/管理员命名空间的安装生效；私有临时安装始终仅本人可见。
+    #[sea_orm(column_type = "String(StringLen::N(20))")]
+    pub visibility: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

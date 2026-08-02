@@ -55,10 +55,10 @@ Older DBs that already applied a pre-feature migration version get tables via
 skip the safety check. Retired migration history rows are removed by
 `reconcile_retired_migration_history` before `Migrator::up`.
 
-## Manual SQL Migration
+## Applying migrations
 
-Alternatively, you can apply the SQL schema directly:
+Prefer backend startup (runs `Migrator::up` automatically), or:
 
 ```bash
-psql -U myriad -d myriad -f ../database/schema.sql
+cargo run -p migration
 ```

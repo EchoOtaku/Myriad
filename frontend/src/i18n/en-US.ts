@@ -339,17 +339,41 @@ export const enUS: TranslationKeys = {
       eventsDesc:
         'Product events and unique users; sub-rows break down by target (tapp id, platform, music source, Brew source, …). Extend with trackProductEvent({ target }).',
       referrersTitle: 'Referrers',
-      referrersDesc: 'External referrer hostnames (same-site navigations excluded)',
+      referrersDesc:
+        'External referrer hostnames (same-site navigations excluded)',
       scopeLabel: 'Range',
       timezoneHint:
         'Calendar-day buckets use the server process local zone (host/container clock + TZ if set; no fixed offset)',
       rangeAria: 'Stats range',
       daysN: '{n} days',
+      rangeCustom: 'Custom',
+      rangeFromAria: 'Start date',
+      rangeToAria: 'End date',
+      rangeCustomTitle: 'Custom date range',
+      rangeCustomHint:
+        'Click a start day, then an end day. Hover previews the range. Max 365 days (daily aggregate retention). Views and similar daily rollups cover a full year; range unique-visitor detail is only kept ~90 days.',
+      rangeApply: 'Apply',
+      rangeClear: 'Clear',
+      rangeDaysSelected: '{n} days',
+      rangePrevMonth: 'Previous month',
+      rangeNextMonth: 'Next month',
+      rangeWeekdays: ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'],
+      rangeMonthTitle: '{y}-{m}',
+      rangeToday: 'Today',
       refresh: 'Refresh',
       todayViews: 'Views today',
       todayVisitors: 'Visitors today',
       rangeViews: '{n}-day views',
       rangeVisitors: '{n}-day visitors',
+      eventFilter: 'Event',
+      eventFilterAll: 'All',
+      eventFilterAria: 'Filter by event name',
+      compareDay: 'DoD',
+      compareWeek: 'WoW',
+      compareMonth: 'MoM',
+      comparePeriod: 'vs prior',
+      compareNew: 'new',
+      compareVsPrevious: 'Prior {n}',
       avgEngagement: 'Avg. engagement',
       avgEngagementShort: 'avg time',
       avgEngagementHint:
@@ -365,7 +389,8 @@ export const enUS: TranslationKeys = {
         'Approximate: share of pageviews with no engagement credit — not a session bounce rate',
       allTimeViews: 'All-time views',
       allTimeVisitors: 'All-time unique visitors',
-      allTimeVisitorsHint: 'Unique visitors are limited by ~90-day detail retention',
+      allTimeVisitorsHint:
+        'Unique visitors are limited by ~90-day detail retention',
       dailyAvgViews: 'Daily average',
       peakViews: 'Busiest day',
       legendViews: 'Page views',
@@ -400,6 +425,50 @@ export const enUS: TranslationKeys = {
       importInvalid: 'Invalid analytics backup file',
       importConfirm:
         'Import will REPLACE all current visitor stats (pages, events, referrers, visitor hashes). Continue?',
+      aiUsageTitle: 'AI usage stats',
+      aiUsageDesc:
+        'Full-site AI calls (including admins and the site owner) by user, model, source, and day. Covers Tapp runtime, scheduled jobs, Arael, and report generation. Filter by user or model; bars are calls, the line is tokens.',
+      aiUsageLoadFailed: 'Failed to load AI usage stats',
+      aiUsageEmpty: 'No AI calls in the selected range',
+      aiUsageEmptyUsers: 'No per-user usage in the selected range',
+      aiUsageEmptyModels: 'No per-model usage in the selected range',
+      aiUsageEmptySources: 'No per-source usage in the selected range',
+      aiUsageTodayCalls: 'Calls today',
+      aiUsageTodayTokens: 'Tokens today',
+      aiUsageRangeCalls: 'Calls ({n}d)',
+      aiUsageRangeTokens: 'Tokens ({n}d)',
+      aiUsageUsers: 'Users',
+      aiUsageModels: 'Models',
+      aiUsageInputTokens: 'Input tokens',
+      aiUsageOutputTokens: 'Output tokens',
+      aiUsageLegendCalls: 'Calls',
+      aiUsageLegendTokens: 'Tokens',
+      aiUsageChartAria: 'Daily AI calls and tokens trend chart',
+      aiUsageByUser: 'By user',
+      aiUsageByModel: 'By model',
+      aiUsageBySource: 'By source',
+      aiUsageBySourceDesc:
+        'Splits Tapp runtime, scheduled jobs, Arael, report generation, and other paths. Unlike visitor stats, admin calls are counted.',
+      aiUsageColUser: 'User',
+      aiUsageColModel: 'Model',
+      aiUsageColSource: 'Source',
+      aiUsageColTokens: 'Tokens',
+      aiUsageColCalls: 'Calls',
+      aiUsageCallsN: '{n} calls',
+      aiUsageAnonymous: 'Anonymous / guest',
+      aiUsageRoleAdmin: 'Admin',
+      aiUsageRoleOwner: 'Owner',
+      aiUsageSourceScheduler: 'Scheduled jobs',
+      aiUsageSourceAgent: 'Arael',
+      aiUsageSourceReports: 'Report generation',
+      aiUsageSourceRuntime: 'Tapp / runtime',
+      aiUsageSourceOther: 'Other',
+      aiUsageFilterUser: 'User',
+      aiUsageFilterModel: 'Model',
+      aiUsageFilterAll: 'All',
+      aiUsageFiltersAria: 'Filter AI usage by user and model',
+      aiUsageNote:
+        'Full-site cost ledger (tapp_ai_cost_ledger): includes admins and regular users. Sources: Tapp runtime, scheduler jobs, Arael, reports. Tokens are often estimates.',
       pageLabels: {
         '/': 'Home',
         '/library': 'Library',
@@ -472,12 +541,14 @@ export const enUS: TranslationKeys = {
     resetCurrentPageDone: 'This page has been reset',
     resetCurrentPageNone: 'Nothing to reset on this page',
     autoRefreshTitle: 'Refresh frequency',
-    autoRefreshDescription: 'Schedule fetches for configured platforms (independent of report-page switch).',
+    autoRefreshDescription:
+      'Schedule fetches for configured platforms (independent of report-page switch).',
     autoRefreshFrequencyDesc:
       'Platform jobs are staggered to avoid contacting every external service at once.',
     autoRefreshOff: 'Off',
     autoRefreshEveryHours: 'Every {hours} hours',
-    autoRefreshSummary: 'Now: {count} configured platforms, every {hours} hours.',
+    autoRefreshSummary:
+      'Now: {count} configured platforms, every {hours} hours.',
     autoRefreshNoPlatforms: 'Now: no configured platforms.',
     autoRefreshDisabledHint: 'Now: off.',
     ai: 'AI Config',
@@ -485,9 +556,11 @@ export const enUS: TranslationKeys = {
     basic: 'Basic Config',
     basicDesc: 'Site URL, wallpaper, theme, and site metadata',
     oauth: 'Third-party login',
-    oauthDesc: 'Add and configure GitHub, Google, Microsoft, and other login providers',
+    oauthDesc:
+      'Add and configure GitHub, Google, Microsoft, and other login providers',
     music: 'Music Player',
-    musicDesc: 'Choose a music platform and playlist; disable to hide the player',
+    musicDesc:
+      'Choose a music platform and playlist; disable to hide the player',
     network: 'Network & API mirrors',
     networkDesc: 'Outbound proxy and Gemini / GitHub API mirror base URLs',
     federation: 'Federation Management',
@@ -539,7 +612,8 @@ export const enUS: TranslationKeys = {
     federationInstanceFilterLevel2: '2 Associated',
     federationInstanceFilterLevel3: '3 Trusted',
     federationInstanceFilterLevel4: '4 Core',
-    federationInstanceFilterEmpty: 'No instances match the current search or filter.',
+    federationInstanceFilterEmpty:
+      'No instances match the current search or filter.',
     federationInstanceShowing: 'Showing {shown} / {total}',
     federationInstanceTrustAria: 'Instance trust level',
     federationBlocked: 'blocked',
@@ -568,7 +642,8 @@ export const enUS: TranslationKeys = {
     federationFilterSearchPlaceholder: 'Search name, type, or value…',
     federationFilterSearchAria: 'Search content filters',
     federationFilterFilterAria: 'Filter by status or type',
-    federationFilterFilterEmpty: 'No filters match the current search or filter.',
+    federationFilterFilterEmpty:
+      'No filters match the current search or filter.',
     federationFilterShowing: 'Showing {shown} / {total}',
     federationFilterEnabled: 'On',
     federationFilterDisabled: 'Off',
@@ -634,6 +709,13 @@ export const enUS: TranslationKeys = {
     managedListFilterAria: 'Filter',
     detailHelpAria: 'Details',
     detailHelpAriaNamed: '{title} details',
+    defaultChangedTag: 'Default updated',
+    defaultChangedApplyTag: 'Apply new default',
+    defaultChangedDetail: 'Product default: {from} → {to}',
+    defaultChangedApplyDetail:
+      'Click to set this option to {to} (was {from}). × only dismisses the notice.',
+    defaultChangedApplyAria: 'Set option to {to}',
+    defaultChangedDismissAria: 'Dismiss default-update notice',
     expandGroupAria: 'Expand {title}',
     collapseGroupAria: 'Collapse {title}',
     importPreviewRestore: 'Restore',
@@ -798,8 +880,7 @@ export const enUS: TranslationKeys = {
     updaterStatusOffline: 'Cannot reach the update service',
     updaterStatusFirstRun: 'No version recorded yet',
     updaterLastFailedTitle: 'Last update did not complete',
-    updaterLastFailedBody:
-      'From {from} to {to} failed. Reason: {reason}',
+    updaterLastFailedBody: 'From {from} to {to} failed. Reason: {reason}',
     updaterHintHealthy: 'No updates are available on this channel.',
     updaterHintUpdating: 'The system will be checked when it finishes.',
     updaterHintMaintenance: 'Exit maintenance mode below when ready.',
@@ -911,7 +992,8 @@ export const enUS: TranslationKeys = {
       'Last updater upgrade failed: target {target} (was {previous}). {error}',
     updaterInfraProxyLastFailed:
       'Last proxy upgrade failed: target {target} (was {previous}). {error}',
-    updaterInfraProxyRolledBack: 'Automatically rolled back to the previous version.',
+    updaterInfraProxyRolledBack:
+      'Automatically rolled back to the previous version.',
     updaterSelfUpdateWaiting: 'Updater upgrade scheduled; confirming result…',
     updaterSelfUpdateReconnecting:
       'Updater is restarting — connection may drop briefly; reconnecting…',
@@ -928,7 +1010,7 @@ export const enUS: TranslationKeys = {
     updaterProxyUpdateFailed: 'Proxy upgrade failed: {error}',
     updaterProxyUpdateStillPending:
       'Proxy upgrade still in progress or result not recorded yet; refresh this page later.',
-    updaterTargetGroupTitle: 'Install a specific version (advanced)',
+    updaterTargetGroupTitle: 'Install a specific version',
     updaterTargetGroupDesc:
       'Past releases or a specific commit. Not for daily use.',
     updaterTargetReleaseHead: 'Available versions (click to select)',
@@ -1024,12 +1106,12 @@ export const enUS: TranslationKeys = {
     exportConfigSuccess: 'Configuration exported successfully!',
     exportConfigFailed: 'Failed to export settings',
     importConfigSuccess:
-      'Configuration imported and saved! Page will refresh...',
+      'Settings imported and saved. Full page reload to load the complete state…',
     importConfigFailed: 'Failed to import configuration',
     importConfigInvalid:
       'Invalid configuration file. Please check the JSON format.',
     importConfirmMessage:
-      'Settings will be merged against the current version and the current administrator notification preferences restored. New options are preserved and removed options ignored. Review the preview below.',
+      'Settings will be merged against the current version and the current administrator notification preferences restored. New options are preserved and removed options ignored. The page will fully reload after confirm. Review the preview below.',
     frontendCacheTitle: 'Advanced tools',
     frontendCacheDesc:
       'Local troubleshooting and maintenance tools; does not change server settings or sign you out',
@@ -1039,21 +1121,22 @@ export const enUS: TranslationKeys = {
       'Clears in-memory and local caches, Cache Storage, and Service Worker caches, then reloads the page. Theme, language, and sign-in stay.',
     forceRefreshFrontendCacheConfirm: 'Click again',
     forceRefreshFrontendCacheSuccess:
-      'Frontend caches cleared. Reloading…',
+      'Frontend caches cleared. Full page reload…',
     forceRefreshFrontendCacheFailed: 'Failed to clear frontend caches',
     searchConfig: 'Search settings & guides…',
     searchResults: 'Search Results',
     noMatchingConfig: 'No matching configurations found',
     searchGuideBadge: 'Guide',
-    searchEmptyHint: 'Try multiple words (e.g. proxy sync) or a shorter keyword',
+    searchEmptyHint:
+      'Try multiple words (e.g. proxy sync) or a shorter keyword',
     savingConfig: 'Saving...',
     configSaved: 'Configuration saved!',
     configSaveFailed: 'Failed to save configuration',
-    partialSaveWarning:
-      'Some settings were saved, but later steps failed',
+    partialSaveWarning: 'Some settings were saved, but later steps failed',
     configEmpty: 'Configuration is empty, cannot save',
     loadConfigFailed: 'Failed to load configuration',
-    loadConfigFailedDesc: 'Settings are unavailable. Check the connection and retry.',
+    loadConfigFailedDesc:
+      'Settings are unavailable. Check the connection and retry.',
     resettingConfig: 'Resetting configuration...',
     configReset: 'Configuration reset and saved!',
     free: 'Free',
@@ -1064,6 +1147,14 @@ export const enUS: TranslationKeys = {
     clearMusicCache: 'Clear Music Cache',
     siteMetadata: 'Site Metadata',
     siteMetadataDesc: 'Site title, description, and favicon',
+    siteIdentity: 'Site identity & app',
+    siteIdentityDesc:
+      'Site name, blurb, and icon, plus whether visitors can install this site as a PWA',
+    siteSeo: 'SEO',
+    siteSeoDesc: 'Keywords, social share image, and search indexing',
+    thirdPartyAnalytics: 'Third-party Analytics',
+    thirdPartyAnalyticsDesc:
+      'Connect Google Analytics / Umami; independent from first-party visitor stats under Data & Analytics',
     backgroundAndTheme: 'Background and Theme',
     backgroundAndThemeDesc: 'Wallpaper, blur, and theme-related appearance',
     // Evocative Wallpaper Effects
@@ -1097,6 +1188,27 @@ export const enUS: TranslationKeys = {
     fieldSiteTitle: 'Site Title',
     fieldSiteDescription: 'Site Description',
     fieldSiteFavicon: 'Site Favicon',
+    fieldSiteKeywords: 'SEO Keywords',
+    fieldSiteKeywordsHint:
+      'Comma-separated keywords written to the page meta keywords tag',
+    fieldSiteOgImage: 'Share Preview Image',
+    fieldSiteOgImageHint:
+      'Open Graph image shown when the link is shared. Prefer ≥1200×630, PNG/JPEG/WebP, ≤1MB',
+    fieldSiteNoindex: 'Search engine indexing',
+    fieldSiteNoindexHint:
+      'On: allow search engines to index. Off: pages emit noindex, nofollow — useful for private or not-yet-public instances',
+    fieldPwaEnabled: 'Enable PWA (installable app)',
+    fieldPwaEnabledHint:
+      'When on, browsers can offer “Install app” and register a service worker for static assets',
+    fieldGaMeasurementId: 'Google Analytics (GA4)',
+    fieldGaMeasurementIdHint:
+      'GA4 Measurement ID (e.g. G-XXXXXXXX). After save, gtag loads and SPA navigations send page_view. Leave empty to disable. Staff sessions are not reported.',
+    fieldUmamiWebsiteId: 'Umami Website ID',
+    fieldUmamiWebsiteIdHint:
+      'Website ID (UUID) from the Umami dashboard. Required together with the script URL below.',
+    fieldUmamiScriptUrl: 'Umami Script URL',
+    fieldUmamiScriptUrlHint:
+      'Full tracker script URL. Cloud: https://cloud.umami.is/script.js; self-host often https://your-host/script.js. Host-only values get /script.js appended.',
     imageUpload: 'Upload',
     imageUploadClear: 'Clear',
     imageUploadLocal: 'Local image uploaded',
@@ -1128,13 +1240,83 @@ export const enUS: TranslationKeys = {
     githubApiBaseUrl: 'GitHub API Base URL',
     githubApiBaseUrlHint:
       'Leave empty for official endpoint, or enter GitHub API mirror URL (Note: OAuth still requires official endpoint)',
+    mcpTitle: 'MCP tool servers',
+    mcpDesc:
+      'Add, edit, or remove external MCP (stdio) tool processes for Arael. Saving writes the server config and hot-reloads children — no full site restart. Admin only.',
+    mcpConfigPathLabel: 'Config file',
+    mcpStatServers: 'Servers',
+    mcpStatEnabled: 'Enabled',
+    mcpStatHealthy: 'Healthy',
+    mcpStatTools: 'Tools',
+    mcpStatusHealthy: 'Connected',
+    mcpStatusUnhealthy: 'Unhealthy',
+    mcpStatusDisabled: 'Disabled',
+    mcpStatusStopped: 'Not running',
+    mcpAutoRestartOn: 'Auto-restart on',
+    mcpAutoRestartOff: 'Auto-restart off',
+    mcpToolsCount: '{n} tools',
+    mcpFieldId: 'Server ID',
+    mcpFieldIdHint: 'Letters, digits, . _ - only; used as mcp.{id}.{tool}',
+    mcpFieldCommand: 'Command',
+    mcpFieldCommandHint: 'Executable, e.g. npx, node, python',
+    mcpFieldArgs: 'Arguments',
+    mcpFieldArgsHint: 'Whitespace-separated; quote args that contain spaces',
+    mcpFieldEnv: 'Environment',
+    mcpFieldEnvHint: 'One KEY=value per line; secrets stay on the server',
+    mcpFieldEnabled: 'Enabled',
+    mcpFieldEnabledHint:
+      'When off, the process is not started but config is kept',
+    mcpFieldHealth: 'Health',
+    mcpFieldTools: 'Tool count',
+    mcpFieldAutoRestart: 'Auto-restart on crash',
+    mcpFieldAutoRestartHint: 'Try to relaunch if the child exits unexpectedly',
+    mcpFieldMaxRestart: 'Max restart attempts',
+    mcpFieldMaxRestartHint: '0–50; stop auto-restart after this many tries',
+    mcpRefreshDesc: 'Reload the list',
+    mcpAddServer: 'Add server',
+    mcpAddServerDesc: 'Create an MCP server',
+    mcpEnable: 'Enable',
+    mcpEnableDesc: 'Start this server process and index its tools',
+    mcpDisable: 'Disable',
+    mcpDisableDesc: 'Stop the child process; keep the config entry',
+    mcpEditDesc: 'Change command, args, env, and other options',
+    mcpDeleteDesc: 'Remove from config and hot-reload',
+    mcpDeleteConfirm:
+      'Delete MCP server “{id}”? Takes effect immediately on save.',
+    mcpFormAddTitle: 'Add MCP server',
+    mcpFormEditTitle: 'Edit MCP server',
+    mcpFormEditTitleDesc: 'Change command and environment for this server',
+    mcpFormSaveAdd: 'Add and save',
+    mcpFormSaveAddDesc: 'Write config and hot-reload children',
+    mcpFormSaveEdit: 'Save changes',
+    mcpFormSaveEditDesc: 'Update config and hot-reload children',
+    mcpFormCancelDesc: 'Discard this edit without writing config',
+    mcpValidateIdRequired: 'Server ID is required',
+    mcpValidateIdCharset: 'ID may only contain letters, digits, ., _, -',
+    mcpValidateIdDuplicate: 'That server ID already exists',
+    mcpValidateCommandRequired: 'Command is required',
+    mcpSaveCreated: 'MCP server added and reloaded',
+    mcpSaveUpdated: 'MCP config saved and reloaded',
+    mcpSaveDeleted: 'MCP server deleted and reloaded',
+    mcpSaveFailed: 'Failed to save MCP config',
+    mcpLoadFailed: 'Could not load MCP config',
+    mcpEmpty: 'No MCP servers yet. Click “Add server” to start.',
+    mcpEmptyFiltered: 'No servers match this filter',
+    mcpSearchPlaceholder: 'Search by ID or command…',
+    mcpFilterAria: 'Filter servers',
+    mcpFilterAll: 'All',
+    mcpFilterEnabled: 'Enabled',
+    mcpFilterDisabled: 'Disabled',
+    mcpFilterHealthy: 'Healthy',
+    mcpFilterUnhealthy: 'Unhealthy',
     runtimeDiagnosticsTitle: 'Runtime diagnostics',
     runtimeDiagnosticsDesc:
       'Run real database, storage, system/architecture, server-egress, version, and background-task checks, then export a credential-free diagnostic report.',
     runtimeDiagnosticsStatusHealthy: 'Running normally',
     runtimeDiagnosticsStatusWarning: 'Some items need attention',
     runtimeDiagnosticsStatusCritical: 'Runtime issue detected',
-    runtimeDiagnosticsStatusUnavailable: 'Diagnostics are temporarily unavailable',
+    runtimeDiagnosticsStatusUnavailable:
+      'Diagnostics are temporarily unavailable',
     runtimeDiagnosticsCheckHealthy: 'Healthy',
     runtimeDiagnosticsCheckWarning: 'Attention',
     runtimeDiagnosticsCheckCritical: 'Issue',
@@ -1182,6 +1364,8 @@ export const enUS: TranslationKeys = {
     runtimeDiagnosticsDays: '{n} d',
     runtimeDiagnosticsHours: '{n} h',
     runtimeDiagnosticsMinutes: '{n} min',
+    runtimeDiagnosticsUptime: 'Uptime {duration}',
+    runtimeDiagnosticsDeployedAt: 'Deployed {date}',
     runtimeDiagnosticsLoadFailed: 'Failed to load runtime diagnostics',
     runtimeDiagnosticsDownload: 'Download report',
     runtimeDiagnosticsCopied: 'Diagnostic report copied',
@@ -1195,14 +1379,27 @@ export const enUS: TranslationKeys = {
       'Direct image URL, 302 redirect, or JSON API with url/image field',
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
-    placeholderSiteFavicon:
-      '/favicon.webp or https://example.com/icon.png',
+    placeholderSiteKeywords: 'personal site, blog, digital life',
+    placeholderSiteOgImage:
+      'https://example.com/og.png or upload a local image',
+    placeholderGaMeasurementId: 'G-XXXXXXXXXX',
+    placeholderUmamiWebsiteId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
+    placeholderUmamiScriptUrl: 'https://cloud.umami.is/script.js',
+    placeholderSiteFavicon: '/favicon.webp or https://example.com/icon.png',
     callbackUrl: 'Callback URL',
     savingDefault: 'Saving default configuration...',
     resetFailed: 'Failed to reset configuration: ',
     refreshing: 'Refreshing...',
     refreshFailed: 'Failed to refresh configuration',
     savedSuccess: 'Configuration saved successfully!',
+    /** Proxy / API mirrors: backend hot-reload, no full page reload */
+    savedSuccessRuntimeReload:
+      'Configuration saved; runtime hot-reloaded (no page reload needed)',
+    /** Save paths that still call location.reload */
+    savedSuccessHardReload:
+      'Configuration saved. Full page reload to apply changes…',
+    /** While reload-config runs, before location.reload */
+    hardReloadPreparing: 'Configuration saved; preparing full page reload…',
     // ConfigForm extended
     configured: 'Configured',
     notConfigured: 'Not Configured',
@@ -1337,7 +1534,8 @@ export const enUS: TranslationKeys = {
     siteUrlConfig: 'Site URL',
     baseUrl: 'URL',
     baseUrlPlaceholder: 'https://example.com',
-    siteUrlFieldDesc: 'Click to edit; save applies now and returns a checklist.',
+    siteUrlFieldDesc:
+      'Click to edit; save applies now and returns a checklist.',
     siteUrlUnset: 'Not set',
     siteUrlEdit: 'Edit',
     siteUrlSave: 'Save',
@@ -1396,8 +1594,7 @@ export const enUS: TranslationKeys = {
     oauthSetupGithub2Desc:
       'New OAuth App; set Authorization callback URL to the callback below.',
     oauthSetupGithub3Title: 'Copy credentials',
-    oauthSetupGithub3Desc:
-      'Copy Client ID and generate a Client Secret.',
+    oauthSetupGithub3Desc: 'Copy Client ID and generate a Client Secret.',
     oauthSetupGoogle1Title: 'Open Google Cloud credentials',
     oauthSetupGoogle1Desc:
       'APIs & Services → Credentials → Create credentials → OAuth client ID.',
@@ -1441,22 +1638,19 @@ export const enUS: TranslationKeys = {
     oauthSetupAuthentik3Desc:
       'Copy Client ID, Client Secret, and full Discovery URL.',
     oauthSetupKeycloak1Title: 'Open Keycloak Clients',
-    oauthSetupKeycloak1Desc:
-      'Admin Console → target Realm → Clients → Create.',
+    oauthSetupKeycloak1Desc: 'Admin Console → target Realm → Clients → Create.',
     oauthSetupKeycloak2Title: 'Set callback & Discovery',
     oauthSetupKeycloak2Desc:
       'Valid redirect URIs = callback below; Discovery like …/realms/<realm>/.well-known/openid-configuration.',
     oauthSetupKeycloak3Title: 'Copy credentials',
     oauthSetupKeycloak3Desc: 'Copy Client ID / Secret on Credentials.',
     oauthSetupAuth0Step1Title: 'Open Auth0 Applications',
-    oauthSetupAuth0Step1Desc:
-      'Dashboard → Applications → Create Application.',
+    oauthSetupAuth0Step1Desc: 'Dashboard → Applications → Create Application.',
     oauthSetupAuth0Step2Title: 'Register callback',
     oauthSetupAuth0Step2Desc:
       'Allowed Callback URLs = callback below; Discovery like https://<tenant>.auth0.com/.well-known/openid-configuration.',
     oauthSetupAuth0Step3Title: 'Copy credentials',
-    oauthSetupAuth0Step3Desc:
-      'Copy Client ID and Client Secret on Settings.',
+    oauthSetupAuth0Step3Desc: 'Copy Client ID and Client Secret on Settings.',
     oauthSetupCustom1Title: 'Prepare IdP details',
     oauthSetupCustom1Desc:
       'Any standard OIDC IdP: Discovery URL, Client ID, Client Secret.',
@@ -1633,6 +1827,22 @@ export const enUS: TranslationKeys = {
     cloudflare: 'Cloudflare',
     edgeone: 'EdgeOne',
     upyun: 'Upyun',
+    siteFooterCustom: 'Custom blocks',
+    siteFooterCustomHint:
+      'Up to 2 custom icon+text rows. Same collapse rules as filing/cloud badges (expanded on home; icon-only elsewhere and on mobile)',
+    siteFooterCustomItem: 'Custom item {n}',
+    siteFooterCustomAdd: 'Add custom item',
+    siteFooterCustomRemove: 'Remove item',
+    siteFooterCustomText: 'Label text',
+    siteFooterCustomTextPlaceholder: 'e.g. Partner / Friend link',
+    siteFooterCustomIcon: 'Icon',
+    siteFooterCustomIconPlaceholder: 'https://example.com/icon.png or upload',
+    siteFooterCustomIconHint:
+      'Optional; placeholder if empty. PNG/JPEG/WebP/SVG, ≤256KB',
+    siteFooterCustomUrl: 'Link (optional)',
+    siteFooterCustomUrlPlaceholder: 'https://example.com',
+    siteFooterCustomUrlHint:
+      'When set, the item is clickable; leave empty for display only',
   },
 
   // Widgets
@@ -1809,11 +2019,13 @@ export const enUS: TranslationKeys = {
       step5Short: 'Portrait',
       step6Short: 'Assets',
       step1Title: 'Select trait tags',
-      step1Lead: 'Extracted from platform reports to shape persona and appearance.',
+      step1Lead:
+        'Extracted from platform reports to shape persona and appearance.',
       step2Title: 'Name and appearance',
       step2Lead: 'Set display name, gender presentation, and default outfit.',
       step3Title: 'Review persona',
-      step3Lead: 'Preview temperament, appearance, and room mood. Edit any field.',
+      step3Lead:
+        'Preview temperament, appearance, and room mood. Edit any field.',
       step3LeadPending:
         'Persona generation is not finished yet. It will refresh automatically when ready.',
       regeneratePersona: 'Try another set',
@@ -1848,7 +2060,8 @@ export const enUS: TranslationKeys = {
       regenerateSeeds: 'Try another set',
       regeneratingSeeds: 'Generating',
       nameLabel: 'Display name',
-      nameHint: 'Leave blank to use your account name, or roll an AI name from your step-1 tags.',
+      nameHint:
+        'Leave blank to use your account name, or roll an AI name from your step-1 tags.',
       namePlaceholder: 'Enter a name',
       randomName: 'Random',
       randomNameBusy: 'Generating',
@@ -1869,11 +2082,13 @@ export const enUS: TranslationKeys = {
       createAndContinue: 'Create and continue',
       createFailed: 'Creation failed',
       outfitSuggestTitle: 'Outfit options',
-      outfitSuggestLead: 'Generated from selected tags. Choice becomes the default outfit.',
+      outfitSuggestLead:
+        'Generated from selected tags. Choice becomes the default outfit.',
       outfitSuggesting: 'Generating',
       outfitSuggestAgain: 'Try another set',
       outfitSuggestFailed: 'Outfit generation failed. Retry or continue.',
-      outfitSuggestEmpty: 'No outfits yet. Tap “Try another set” to regenerate.',
+      outfitSuggestEmpty:
+        'No outfits yet. Tap “Try another set” to regenerate.',
       roomSuggestTitle: 'Room options',
       roomSuggestLead: 'Suggested by mood. Select one to continue.',
       roomSuggesting: 'Generating',
@@ -1890,9 +2105,11 @@ export const enUS: TranslationKeys = {
       envNotesPlaceholder:
         'e.g. more window light, keep stage floor open, furniture later',
       designPendingSync: 'Generating persona in background',
-      designPendingSyncHint: 'Runs in the background and does not block configuration.',
+      designPendingSyncHint:
+        'Runs in the background and does not block configuration.',
       designBgBadge: 'Background',
-      designBgNotice: 'Persona is generating in the background; you can keep configuring',
+      designBgNotice:
+        'Persona is generating in the background; you can keep configuring',
       designPhaseBootstrap: 'preparing data',
       designPhaseQueued: 'queued',
       designPhaseDesigning: 'generating',
@@ -1906,7 +2123,8 @@ export const enUS: TranslationKeys = {
       designElapsed: '{time}',
       identityStaleRebuild:
         'Tags changed; appearance description is outdated. Regenerate before creating images.',
-      localeGlossHint: 'Edit in the current UI language. Other languages are listed below.',
+      localeGlossHint:
+        'Edit in the current UI language. Other languages are listed below.',
       editPersona: 'Edit',
       doneEditing: 'Done',
       cancelEdit: 'Cancel',
@@ -1935,13 +2153,13 @@ export const enUS: TranslationKeys = {
         'Confirm the character first. The room will match their palette.',
       noAssetsBeforePreview:
         'Room and other assets are not generated until the first portrait is confirmed.',
-      step5SequenceHint:
-        'Flow: appearance brief → portrait → confirm → room.',
+      step5SequenceHint: 'Flow: appearance brief → portrait → confirm → room.',
       firstPreviewBadge: 'Draft',
       previewLabel: 'Preview',
       awaitingFirstPreview:
         'No portrait yet. Generate the appearance brief first, then create the image.',
-      readyForFirstPreview: 'Appearance brief ready. You can generate a portrait.',
+      readyForFirstPreview:
+        'Appearance brief ready. You can generate a portrait.',
       generatingFirstPreview: 'Generating portrait',
       busyPleaseWait: 'Previous step still running. Please wait…',
       designCardTitle: 'Appearance brief',
@@ -2103,6 +2321,7 @@ export const enUS: TranslationKeys = {
     listRepeat: 'List Repeat',
     loadPlaylistFailed: 'Failed to load playlist',
     playFailed: 'Playback failed, please check network or song availability',
+    vipPlayFailed: 'VIP song unavailable (membership or trial required)',
   },
 
   // Cache Management
@@ -2696,6 +2915,11 @@ export const enUS: TranslationKeys = {
     discordTagOpenSource: 'Open Source',
     discordTagIndieGame: 'Indie Games',
     discordTagAcg: 'Anime',
+    ytSubscribers: 'subs',
+    ytViews: 'views',
+    ytVideos: 'videos',
+    ytEmptyChannel: 'Public channel linked — no uploads yet',
+    ytRecentUploads: '{n} recent uploads',
   },
 
   // Social Network Widget Extended
@@ -2760,6 +2984,7 @@ export const enUS: TranslationKeys = {
     stopped: 'Stopped',
     installed: 'Installed',
     installing: 'Installing...',
+    updating: 'Updating...',
     installProgress: 'Installing… {percent}%',
     installDownloading: 'Downloading… {percent}%',
     installRegistering: 'Registering… {percent}%',
@@ -2903,7 +3128,7 @@ export const enUS: TranslationKeys = {
     browseStore: 'Browse Store',
     manualInstall: 'Manual Install',
     clickToOpen: 'Click to open',
-    confirmUninstall: 'Are you sure you want to uninstall this app?',
+    confirmUninstall: 'Uninstall {name}?',
     noPermissionToOperate: 'No permission to operate this app',
     loginRequiredToInstall: 'Please login to install apps',
     export: 'Export',
@@ -3007,6 +3232,29 @@ export const enUS: TranslationKeys = {
       'Generation timed out. Your project and prompt were kept — press Retry to try again.',
     playgroundServerErrorHint:
       'The service is temporarily unavailable. Your project and prompt were kept — press Retry.',
+    playgroundAiNotConfiguredHint:
+      'Pro AI is not enabled or configured on this server. Ask an admin to set up the Pro model, then retry.',
+    playgroundAiGenerationFailedHint:
+      'The AI model failed to complete generation (upstream error). Your project and prompt were kept — wait a moment and press Retry.',
+    playgroundValidationFailedHint:
+      'The generated Tapp did not pass package validation after automatic repairs. Try a clearer prompt, or simplify the request and Retry.',
+    playgroundPayloadTooLargeHint:
+      'This request is too large (project or history snapshots). Start a new session or delete older revisions, then retry.',
+    playgroundAdminRequiredHint:
+      'Tapp Playground is admin-only. Sign in with an administrator account and try again.',
+    playgroundAuthRequiredHint:
+      'Please sign in before using Tapp Playground, then try again.',
+    playgroundRateLimitHint:
+      'Too many requests. Wait a moment, then press Retry.',
+    playgroundNetworkHint:
+      'Network request failed. Check your connection and press Retry.',
+    playgroundStreamIncompleteHint:
+      'The generation stream ended before a complete result arrived. Press Retry to continue.',
+    playgroundAgentBusyHint:
+      'Playground is restarting or temporarily unavailable. Wait a moment and press Retry.',
+    playgroundBadRequestHint: 'Invalid request: {detail}',
+    playgroundErrorDetail: 'Details: {detail}',
+    playgroundRuntimeError: 'Preview runtime error: {message}',
     playgroundCancel: 'Cancel',
     playgroundCancelled:
       'Generation cancelled. Your project and prompt were kept — send again when ready.',
@@ -3100,6 +3348,12 @@ export const enUS: TranslationKeys = {
       'Public app settings can only be changed by the installation owner or an administrator',
     noSettingsAvailable: 'No configurable settings available',
     noSettingsDesc: 'This app has no configurable settings',
+    appVisibility: 'App visibility',
+    appVisibilityDesc: 'Control who can see this app in the app list',
+    appVisibilityAll: 'Everyone',
+    appVisibilityAdmin: 'Admins only',
+    appVisibilitySaved: 'Visibility updated',
+    appVisibilitySaveFailed: 'Failed to update visibility',
     appInfo: 'App Info',
     detailInfo: 'Detailed information',
     appId: 'App ID',
@@ -3121,6 +3375,13 @@ export const enUS: TranslationKeys = {
 
     // Store
     storeTitle: 'Tapp Store',
+    storeDiscover: 'Discover',
+    storeDiscoverSubtitle: 'Explore new experiences made for Myriad',
+    storeFeatured: 'Editor’s Choice',
+    storeFeaturedEyebrow: 'Recommended',
+    storeLatest: 'New',
+    storeBrowse: 'Browse',
+    storeLibrary: 'Library',
     storeSourceSettings: 'Store source settings',
     storeClose: 'Close store',
     refreshStore: 'Refresh',
@@ -3132,10 +3393,19 @@ export const enUS: TranslationKeys = {
     licenseLabel: 'License',
     updatedAtLabel: 'Updated',
     sourceLabel: 'Source',
+    languagesLabel: 'Languages',
     builtinExample: 'Built-in example',
     categoryFilter: 'App category',
     allApps: 'All',
+    seeAllApps: 'See All',
     installedApps: 'Installed',
+    storeUpdates: 'Updates',
+    storePreview: 'Preview',
+    storePreviewUnavailable: 'This app does not currently provide a preview',
+    storeSortOrder: 'Sort order',
+    storeSortByCategory: 'Category',
+    storeSortByName: 'Name',
+    storeSortByDate: 'Date',
     loadingRemoteApps: 'Loading remote apps...',
     loadRemoteFailed: 'Failed to load remote store',
     noMatchingApps: 'No matching apps found',
@@ -3160,9 +3430,12 @@ export const enUS: TranslationKeys = {
     uninstalling: 'Uninstalling...',
     confirmUninstallBtn: 'Confirm Uninstall',
 
-    // Store source settings
-    sourceManagement: 'Source Management',
+    // Store configuration
+    storeSources: 'Store Sources',
+    storeConfiguration: 'Configuration',
     addSource: 'Add Store Source',
+    editSource: 'Edit Store Source',
+    saveSource: 'Save',
     sourceName: 'Store Name',
     sourceUrl: 'Store URL (index.json)',
     official: 'Official',
@@ -3173,6 +3446,7 @@ export const enUS: TranslationKeys = {
     fillNameAndUrl: 'Please fill in name and URL',
     invalidUrl: 'Please enter a valid URL',
     addSourceFailed: 'Add failed',
+    updateSourceFailed: 'Update failed',
     refreshAllStores: 'Refresh all stores',
     confirmDeleteSource: 'Are you sure you want to delete this store source?',
 
@@ -3884,6 +4158,8 @@ export const enUS: TranslationKeys = {
     tabSkills: 'Skills',
     tabMemory: 'Memory',
     emptyHeartbeat: 'No scheduled tasks',
+    emptyHeartbeatHint:
+      'Have Arael run instructions on a schedule — daily digests, checks, and more.',
     emptySkills: 'No skills',
     emptyMemory: 'No memories',
     manageLoadError: 'Failed to load. Please retry.',
@@ -3892,15 +4168,32 @@ export const enUS: TranslationKeys = {
     manageAdminOnly: 'Only administrators can manage tasks and skills.',
     editHeartbeat: 'Edit',
     saveHeartbeat: 'Save',
-    createHeartbeat: 'New',
+    createHeartbeat: 'New task',
     deleteHeartbeat: 'Delete',
     confirmDeleteHeartbeat: 'Delete scheduled task “{name}”?',
     heartbeatName: 'Name',
-    heartbeatSchedule: 'Cron',
+    heartbeatNamePlaceholder: 'e.g. Morning digest',
+    heartbeatSchedule: 'Schedule',
+    heartbeatScheduleCustom: 'Custom',
+    heartbeatCronHint: 'Cron expression (min hour day month weekday)',
     heartbeatAction: 'Action',
-    heartbeatEnabled: 'Enabled',
+    heartbeatActionPlaceholder: 'What should Arael do…',
+    heartbeatEnabled: 'Enable immediately',
+    heartbeatActive: 'Active',
+    heartbeatPaused: 'Paused',
+    heartbeatLastRun: 'Last {time}',
+    heartbeatNeverRun: 'Not run yet',
+    heartbeatCount: '{n} tasks · {active} active',
+    heartbeatPresetsAria: 'Schedule presets',
     cronEveryMinutes: 'Every {n} min',
+    cronEveryHours: 'Every {n} h',
+    cronHourly: 'Hourly',
     cronDaily: 'Daily {time}',
+    cronPreset15m: '15 min',
+    cronPreset30m: '30 min',
+    cronPreset1h: 'Hourly',
+    cronPreset6h: '6 hours',
+    cronPresetDaily9: 'Daily 09:00',
     originManual: 'Manual',
     originAuto: 'Auto',
     originImproved: 'Improved',

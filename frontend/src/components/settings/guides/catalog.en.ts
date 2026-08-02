@@ -16,13 +16,21 @@ export const en: SettingGuidesCatalog = {
         'When the domain changes, the “return address” registered at login services (GitHub and the like) usually needs updating too, or login will fail.\nCertificates and domain DNS must match what you put here. When unsure, follow the checklist the system shows.',
     },
     siteMetadata: {
-      what: 'Your site’s public name card: name, one-line intro, and small icon.',
+      what: 'Your site’s public name card: name, one-line intro, and small icon. (Merged into “Site identity & app”.)',
       chain:
         '1) After editing, click “Save configuration” at the bottom of the page.\n2) Once saved, the browser tab, site name near the login area, and the short blurb when shared all use the new content.\n3) This is separate from “Site address” above: here you only change the name card, not how people reach you.',
       frontend:
         'Name and icon on the browser tab, site name on the login page, and the preview blurb when you paste the link into chat apps.\nAfter saving, force-refresh (Ctrl/Cmd+Shift+R) to see whether the icon updated.',
       notes:
         'The icon can be a web image URL or a small local upload (keep it small).\nIf the icon doesn’t change right away, the browser is usually still remembering the old one.',
+    },
+    siteIdentity: {
+      what: 'Public site card (name, blurb, icon) and whether visitors can install the site as a PWA.',
+      chain:
+        '1) Edit title / description / icon or the PWA switch → save configuration at the bottom.\n2) The card updates the browser tab, login site name, and share previews; with PWA on, the install name follows the title when possible.\n3) Separate from “Site address”: this does not change how people reach you.',
+      frontend:
+        'Tab name and icon, login site name, share blurb; mobile/desktop “Install app” when PWA is on.\nDev mode does not register a service worker.',
+      notes: 'Icon can be a URL or a small local file. PWA needs HTTPS (or localhost).',
     },
     siteTitle: {
       what: 'The site’s display name (the short name people see).',
@@ -44,6 +52,74 @@ export const en: SettingGuidesCatalog = {
         '1) Paste a link or upload → save at the bottom.\n2) The browser shows the new icon next time (sometimes it still shows the old one first).\n3) Unrelated to wallpaper or theme colors.',
       frontend: 'The little image on the tab corner and in bookmarks. After changing it, hard-refresh or try a private window.',
       notes: 'For local upload, pick a small image; very large files may fail to upload.',
+    },
+    siteSeo: {
+      what: 'Help search engines and social previews understand your site: keywords, share image, and whether to allow indexing.',
+      chain:
+        '1) Edit SEO fields here → save config at the bottom.\n2) After save, this page updates meta (keywords / robots / Open Graph) right away.\n3) Works with Site Metadata above: title and description also feed share cards.',
+      frontend:
+        'meta keywords, robots, og:*, and twitter:* in page source.\nLink preview image and text in chat apps.',
+      notes:
+        'Keywords barely affect Google ranking — don’t stuff them. Prefer a publicly reachable image URL for shares; pure data: images are invisible to most crawlers.',
+    },
+    siteKeywords: {
+      what: 'Keywords written into the page meta keywords tag.',
+      chain:
+        '1) Enter (comma-separated) → save at the bottom.\n2) Writes <meta name="keywords">.\n3) Does not change navigation or permissions.',
+      frontend: 'The keywords meta tag in the page head.',
+      notes: 'Modern engines almost ignore keywords; optional. Empty is fine.',
+    },
+    siteOgImage: {
+      what: 'The large preview image on link cards (Open Graph / Twitter).',
+      chain:
+        '1) URL or upload → save at the bottom.\n2) Writes og:image and twitter:image.\n3) If empty, falls back toward the site favicon when possible.',
+      frontend: 'Link previews in social apps; validators like Facebook Sharing Debugger can confirm.',
+      notes:
+        'Landscape ≥1200×630 works best. Uploaded data URLs rarely work for crawlers — use a public image URL in production.',
+    },
+    siteNoindex: {
+      what: 'Whether search engines may index this site (single switch).',
+      chain:
+        '1) On = allow indexing (robots: index, follow).\n2) Off = block (noindex, nofollow) → save at the bottom.\n3) Already-indexed pages do not vanish immediately — off only asks engines not to keep collecting.',
+      frontend: '<meta name="robots"> in the page head.',
+      notes: 'Turn off for private, demo, or not-yet-public instances. Keep on for a public site.',
+    },
+    pwaEnabled: {
+      what: 'Whether PWA is enabled (service worker + installable manifest), under “Site identity & app” with the title and icon.',
+      chain:
+        '1) When on, production registers /sw.js and keeps the web app manifest.\n2) Applies right after save — no full hard reload required.',
+      frontend: 'Browser “Apps” / install prompts; DevTools → Application → Service Workers.',
+      notes: 'Defaults on. Install prompts need HTTPS (or localhost).',
+    },
+    thirdPartyAnalytics: {
+      what: 'Send visits to external analytics (Google Analytics, Umami, …), separate from built-in visitor stats.',
+      chain:
+        '1) Fill GA and/or Umami as needed → save at the bottom.\n2) The visitor browser loads the matching scripts and sends page_view.\n3) Charts under Data & Analytics stay first-party.',
+      frontend: 'This group is third-party only; in-app stats stay under Data & Analytics.',
+      notes: 'Both can be empty (no third-party scripts). Enable one or both.',
+    },
+    gaMeasurementId: {
+      what: 'Your Google Analytics 4 Measurement ID — sends visits to your GA property.',
+      chain:
+        '1) Copy the G-… ID from GA Admin → Data streams.\n2) Paste here → save config at the bottom.\n3) The page loads gtag.js; SPA route changes send page_view.',
+      frontend:
+        'Network tab should show googletagmanager.com/gtag/js.\nGA Realtime should list matching page_path values.',
+      notes:
+        'GA4 only (G-…). Admin/owner browsing is not reported. First-party opt-out also skips third-party. Leave empty to disable GA.',
+    },
+    umamiWebsiteId: {
+      what: 'Website ID for this site in Umami (usually a UUID).',
+      chain:
+        '1) Copy Website ID from Umami site settings.\n2) Save with Script URL below.\n3) Tracker is injected; SPA routes call umami.track.',
+      frontend: 'Network tab shows your script URL; Umami realtime should list paths.',
+      notes: 'ID alone without script URL does nothing. Same field for Cloud and self-host.',
+    },
+    umamiScriptUrl: {
+      what: 'Full URL of the Umami tracker script.',
+      chain:
+        '1) Cloud: https://cloud.umami.is/script.js; self-host: https://your-umami/script.js.\n2) Loads after save with Website ID.\n3) data-auto-track is off; SPA router owns page views.',
+      frontend: 'A script tag with data-website-id in the page head.',
+      notes: 'Host-only values (e.g. https://stats.example.com) get /script.js appended. Prefer https.',
     },
     siteFooter: {
       what: 'The bar at the very bottom of the page: filing numbers, cloud-provider badges, and similar.',
@@ -72,6 +148,13 @@ export const en: SettingGuidesCatalog = {
         '1) Check the ones you want → save at the bottom.\n2) The footer gains a row of small icons.\n3) Unrelated to whether you actually use those services — pure display.',
       frontend: 'Sponsor / cloud badges in the footer. Unchecked means no badge row.',
       notes: 'You can select none; don’t treat this as “that cloud service is already set up.”',
+    },
+    siteFooterCustom: {
+      what: 'Fully custom icon+text footer blocks — at most 2.',
+      chain:
+        '1) Add item → text required, icon/url optional → save at the bottom.\n2) Home shows icon+text; other pages and mobile show icon only (tooltip text), same collapse as filing/cloud badges.\n3) Only items with non-empty text appear.',
+      frontend: 'Bottom-right footer; soft-refreshes after save.',
+      notes: 'Empty-text items are hidden. Links allow http(s), relative paths, mailto — not javascript:.',
     },
     backgroundAndTheme: {
       what: 'Site-wide background, background blur, and similar atmosphere settings.',
@@ -253,12 +336,12 @@ export const en: SettingGuidesCatalog = {
 
   platforms: {
     list: {
-      what: 'Data & stats overview: connected platforms and visitor stats (pages / events / referrers).',
+      what: 'Data & stats overview: connected platforms, visitor stats (pages / events / referrers), and AI usage stats.',
       chain:
-        '1) Under Connected platforms, link GitHub, Steam, Bilibili, etc. and set auto-refresh.\n2) Under Visitor stats, review KPIs, trends, and page/event/referrer sections.\n3) Card switches only control report-page visibility; auto-refresh syncs configured platforms.',
+        '1) Under Connected platforms, link GitHub, Steam, Bilibili, etc. and set auto-refresh.\n2) Under Visitor stats, review KPIs, trends, and page/event/referrer sections.\n3) Under AI usage stats, review governed AI calls by user / model / day.\n4) Card switches only control report-page visibility; auto-refresh syncs configured platforms.',
       frontend:
-        'Settings → Data & stats. Platform data feeds library and reports; visitor stats fill in as people browse.',
-      notes: 'Visitor stats do not store raw IPs; keep platform secrets private.',
+        'Settings → Data & stats. Platform data feeds library and reports; visitor and AI ledger aggregates are admin-only.',
+      notes: 'Visitor stats do not store raw IPs; keep platform secrets private. AI usage is admin-only.',
     },
     visitorStats: {
       what: 'Site-wide views, unique visitors, top countries, plus page / event / referrer sections in the same subcategory.',
@@ -287,6 +370,13 @@ export const en: SettingGuidesCatalog = {
         '1) Same range as visitor stats.\n2) Only external Referer hostnames; in-site navigation is ignored.\n3) Missing or unparsable Referer does not appear in this list.\n4) Disabling collection only affects new visits.',
       frontend: 'Data & stats → Visitor stats → Referrers section.',
       notes: 'Private mode, cross-site HTTPS, and in-app browsers often strip referrers. Ranking is by views, not unique visitors.',
+    },
+    aiUsage: {
+      what: 'Full-site AI usage (including admins/owner): daily trend, by user/model/source ranks, with filters.',
+      chain:
+        '1) Written to tapp_ai_cost_ledger: Tapp runtime and scheduled jobs settle via governed path; Arael and report generation use task-local attribution.\n2) Admin GET /api/analytics/ai-usage aggregates by the server local calendar day and does not exclude staff.\n3) Bars = calls, line = tokens; lists by user, model, and source (including scheduler).\n4) Independent of the visitor-stats collection switch.',
+      frontend: 'Settings → Data & stats → “AI usage stats” (KPIs, chart, by user / model / source).',
+      notes: 'Tokens are often estimates. Panel is admin-only.',
     },
     connected: {
       what: 'Connect external accounts and configure auto-refresh for configured platforms.',
@@ -659,9 +749,11 @@ export const en: SettingGuidesCatalog = {
     importConfig: {
       what: 'Restore settings from a backup file.',
       chain:
-        '1) Pick a file → confirm the preview → write back.\n2) The interface loads under the new settings.\n3) May overwrite your current theme, platforms, AI, and more.',
-      frontend: 'Many options may change together. After import, spot-check login, library, and assistant.',
-      notes: 'Wrong files fail; export the current state first if you can.',
+        '1) Pick a file → confirm the preview → write back.\n2) After success, full page reload (~2s) loads the complete state.\n3) May overwrite your current theme, platforms, AI, and more.',
+      frontend:
+        'Many options may change together. Import triggers a full page reload; spot-check login, library, and assistant.',
+      notes:
+        'Wrong files fail; export the current state first if you can. Confirm dialog notes the upcoming full page reload.',
     },
     resetConfig: {
       what: 'Restore everything to defaults.',
@@ -675,7 +767,7 @@ export const en: SettingGuidesCatalog = {
       chain:
         '1) Loads once when you open Advanced settings; refresh re-runs the suite.\n2) Checks DB connectivity, storage writability, migrations/schema, process memory, egress location, and frontend/backend version match.\n3) Status is healthy / attention / critical; copy or download JSON for maintainers.\n4) Does not change config, restart services, or write business data.',
       frontend: 'Settings → Advanced → top “Runtime diagnostics” card and check grid.',
-      notes: 'Egress location needs outbound probes; proxy/firewall may show unavailable without meaning the site is broken. Reports omit passwords and API keys — still avoid pasting internal IPs publicly.',
+      notes: 'Egress location is informational only (single-source/conflict does not raise overall attention). Proxy/firewall may show unavailable without the site being broken. Reports omit passwords and API keys — still avoid pasting internal IPs publicly.',
     },
     frontendCache: {
       what: 'Local advanced tools for troubleshooting (not server config).',
@@ -690,6 +782,13 @@ export const en: SettingGuidesCatalog = {
         '1) In-place double confirm: first click arms the button, second click runs.\n2) Wipes each cache layer, then full reload.\n3) Good when “I changed config / upgraded, but the browser still uses the old stuff.”',
       frontend: 'Button label switches to confirm state; reverts if not clicked again within ~4s.',
       notes: 'Only this browser; other devices are unaffected.',
+    },
+    mcp: {
+      what: 'Manage external MCP (stdio) tool servers for Arael in the UI: add/edit/remove, enable/disable, and inspect live health.',
+      chain:
+        '1) Save writes runtime data/agent/mcp_servers.json (often /data/agent/mcp_servers.json in the container) and hot-reloads children (no full site restart).\n2) Enabled servers start command/args; tools surface as mcp.{id}.{tool} for the agent.\n3) The list shows health and tool counts; disabled entries stay on disk but do not start.\n4) Env fields can hold secrets that live only on the server.',
+      frontend: 'Settings → Advanced → “MCP tool servers” (admin only). Deep link /config?section=mcp.',
+      notes: 'Config path follows the deploy data directory. Commands must be on PATH. Do not commit secrets. A failed save leaves running processes until a successful save.',
     },
   },
 
@@ -824,7 +923,7 @@ export const en: SettingGuidesCatalog = {
       notes: 'Sometimes these components need updating before the main site update.',
     },
     target: {
-      what: 'Install a particular old or specified version (advanced).',
+      what: 'Install a particular old or specified version.',
       chain:
         '1) Similar to a normal upgrade, but you choose the version.\n2) Features may shrink or behave differently.\n3) Wrong choice may leave the site unable to start.',
       frontend: 'Site-wide features may roll back.',
@@ -888,6 +987,69 @@ export const en: SettingGuidesCatalog = {
         '1) Upper area is read-only version and project info.\n2) Lower updater: channel, check frequency, auto-install, maintenance rescue, snapshots, and advanced diagnostics.\n3) When reporting errors, send the version number to maintainers.',
       frontend: 'About text, version number, and the same-page updater status card and groups.',
       notes: 'Reading version does not change business settings; starting an upgrade enters maintenance.',
+    },
+  },
+
+  tapp: {
+    detail: {
+      what: 'Detail page for one Tapp: identity, settings, start/stop, and uninstall.',
+      chain:
+        '1) Top card is identity plus actions (start/stop, export, uninstall).\n2) App settings save to this app’s per-user config (immediate or on blur).\n3) Permissions are a read-only list of capabilities granted at install time.',
+      frontend: 'Open an app from the Tapp list, or go to /tapp/detail/:id.',
+      notes:
+        'Guests usually can only view. Changing settings / start-stop / uninstall needs the right role (admin, or your own temporary install).\nUninstall asks whether to keep local data.',
+    },
+    overview: {
+      what: 'App profile and common actions: id, version, author, install time, plus start, export, uninstall.',
+      chain:
+        '1) Start opens the run page; stop if already running.\n2) Export downloads a package to your machine.\n3) Uninstall removes the install (optionally keeping data).',
+      frontend: 'Top info card and action row on the detail page.',
+      notes:
+        'App id is stable; renaming the display name does not change it.\nExport is for backup/migration; you must reinstall after uninstall.',
+    },
+    appSettings: {
+      what: 'Behavior options declared by the app manifest, plus install visibility for admins when applicable.',
+      chain:
+        '1) Toggles save immediately; text/number fields save after idle or blur.\n2) Values are stored per app id and only affect this app.\n3) Public-install global settings may be read-only unless you are the installer/admin.',
+      frontend: '“App settings” group on the detail page.',
+      notes:
+        'If the manifest has no settings, you may only see visibility or an empty state.\nChanges usually apply on the next run without a site-wide “Save config”.',
+    },
+    appVisibility: {
+      what: 'Who can see this site-level public install in the app list: everyone, or admins only.',
+      chain:
+        '1) Only admins, and only for public installs (not pure personal temp installs).\n2) “Admins only” hides it from regular users’ lists.\n3) Saves immediately and refreshes list caches.',
+      frontend: '“App visibility” segmented control under App settings.',
+      notes: 'Does not remove a user’s own temporary install; only site-level list visibility.',
+    },
+    permissions: {
+      what: 'Capabilities declared and granted at install, grouped by risk level.',
+      chain:
+        '1) Read-only here — you cannot add/remove grants on this page.\n2) Runtime APIs enforce these permissions.\n3) Higher risk groups appear first (privileged → elevated → basic).',
+      frontend: '“Permissions” group and level subgroups.',
+      notes:
+        'Changing grants usually means reinstall with a new manifest, or an app update flow.\nNo permissions means the app needs no extra capabilities.',
+    },
+    permPrivileged: {
+      what: 'Privileged permissions: site-level or sensitive write capabilities; highest risk.',
+      chain:
+        '1) Examples: home widgets, writing platform data, managing Tapp list, federation trust.\n2) Only for trusted apps.\n3) Unauthorized calls are rejected at runtime.',
+      frontend: '“Privileged” subgroup under Permissions.',
+      notes: 'If you do not recognize a privileged grant, verify the app source before use.',
+    },
+    permElevated: {
+      what: 'Elevated permissions: AI, network, schedulers, and other cost or outbound capabilities.',
+      chain:
+        '1) Examples: AI generate/chat, network fetch, speech, shortcuts, event publish.\n2) May consume quotas or call external services.\n3) Still bounded by site-wide AI/network configuration.',
+      frontend: '“Elevated” subgroup under Permissions.',
+      notes: 'Quota exhaustion or proxy failures can break these features without the app itself being broken.',
+    },
+    permBasic: {
+      what: 'Basic permissions: routine read/write, notifications, theme, and similar lower-risk capabilities.',
+      chain:
+        '1) Examples: read platform data, read reports, storage, notifications, media control.\n2) Usually does not change core site configuration.\n3) Still requires an explicit grant to call.',
+      frontend: '“Basic” subgroup under Permissions.',
+      notes: 'Basic is not unlimited — undeclared capabilities remain blocked.',
     },
   },
 }

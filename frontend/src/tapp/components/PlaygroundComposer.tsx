@@ -752,7 +752,7 @@ export function PlaygroundComposer({
                                   <div className="text-[9px] font-semibold mb-0.5 text-red-600 dark:text-red-300">
                                     {t.tapp.playgroundMemoryFailed}
                                   </div>
-                                  <p className="text-[10px] leading-relaxed text-red-600/90 dark:text-red-300/90">
+                                  <p className="text-[10px] leading-relaxed whitespace-pre-wrap break-words text-red-600/90 dark:text-red-300/90">
                                     {lastFailedAttempt.error}
                                   </p>
                                 </div>
@@ -1162,7 +1162,7 @@ export function PlaygroundComposer({
                     )}
                   </div>
 
-                  {/* Line 2: failed phase / error summary (no 4-dot timeline) */}
+                  {/* Line 2: failed phase / one-line error summary (expand for full multi-line detail) */}
                   <button
                     type="button"
                     onClick={() => setFailedDetailOpen((open) => !open)}
@@ -1183,14 +1183,14 @@ export function PlaygroundComposer({
                       {lastFailedAttempt.error ? (
                         <span className="text-red-600/70 dark:text-red-300/70">
                           {' · '}
-                          {lastFailedAttempt.error}
+                          {lastFailedAttempt.error.split('\n')[0]}
                         </span>
                       ) : null}
                     </p>
                   </button>
 
                   <AnimatePresence initial={false}>
-                    {failedDetailOpen && (
+                    {failedDetailOpen && lastFailedAttempt.error && (
                       <motion.div
                         key="failed-body"
                         initial={{ opacity: 0, height: 0 }}

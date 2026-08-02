@@ -680,7 +680,7 @@ async fn verify_password(password: &str, hash: &str) -> Result<(), HttpError> {
 // ============================================================================
 // PR #4 新增端点：公开注册 + 后补密码 + 本地登录开关
 // ============================================================================
-// 详见 docs/oauth-refactor-plan.md §7.2、§9
+// 详见 docs/development/OAUTH.md
 
 /// POST /api/auth/register —— 公开本地账号注册
 ///
@@ -994,7 +994,7 @@ async fn issue_session_cookie(
 // ============================================================================
 // PR #6: Admin 后台建本地账号
 // ============================================================================
-// 详见 docs/oauth-refactor-plan.md §7.2
+// 详见 docs/development/OAUTH.md
 //
 // 不受 allow_local_registration 开关限制；is_admin=true 仅站点 owner 可设。
 

@@ -201,6 +201,97 @@ pub(crate) async fn mcp_status(
     Ok(Json(json!({ "servers": servers, "tool_count": tools })))
 }
 
+/// GET /mcp/config — full on-disk config (incl. disabled) for admin UI editing.
+pub(crate) async fn mcp_get_config(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+) -> Result<Json<Value>, HttpError> {
+    require_current_admin(&claims, &db).await?;
+    let manager = crate::services::agent::mcp::get_mcp_manager().ok_or_else(|| {
+        HttpError::from((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "MCP manager not initialized" })),
+        ))
+    })?;
+    let config = manager.read_config().await;
+    let status = manager.list_server_status().await;
+    let tools = manager.list_tools().await.len();
+    Ok(Json(json!({
+        "config": config,
+        "config_path": manager.config_path_display(),
+        "runtime": {
+            "servers": status,
+            "tool_count": tools,
+        },
+    })))
+}
+
+/// PUT /mcp/config — replace mcp_servers.json and hot-reload children.
+pub(crate) async fn mcp_put_config(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, HttpError> {
+    require_current_admin(&claims, &db).await?;
+    let manager = crate::services::agent::mcp::get_mcp_manager().ok_or_else(|| {
+        HttpError::from((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({ "error": "MCP manager not initialized" })),
+        ))
+    })?;
+
+    // Accept either `{ "servers": [...] }` or `{ "config": { "servers": [...] } }`.
+    let config_val = body
+        .get("config")
+        .cloned()
+        .unwrap_or_else(|| {
+            if body.get("servers").is_some() {
+                body.clone()
+            } else {
+                json!({ "servers": [] })
+            }
+        });
+
+    let parsed: crate::services::agent::mcp::config::McpServersConfig =
+        serde_json::from_value(config_val).map_err(|e| {
+            HttpError::from((
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": format!("invalid MCP config: {e}") })),
+            ))
+        })?;
+
+    match manager.replace_config(parsed).await {
+        Ok(saved) => {
+            let status = manager.list_server_status().await;
+            let tools = manager.list_tools().await.len();
+            Ok(Json(json!({
+                "saved": true,
+                "reloaded": true,
+                "config": saved,
+                "config_path": manager.config_path_display(),
+                "runtime": {
+                    "servers": status,
+                    "tool_count": tools,
+                },
+            })))
+        }
+        Err(e) => {
+            let status = if e.starts_with("server ")
+                || e.contains("duplicate")
+                || e.contains("empty")
+                || e.contains("too many")
+                || e.contains("too long")
+                || e.contains("may only")
+            {
+                StatusCode::BAD_REQUEST
+            } else {
+                StatusCode::SERVICE_UNAVAILABLE
+            };
+            Err(HttpError::from((status, Json(json!({ "error": e })))))
+        }
+    }
+}
+
 // ============ Skills & Memory ============
 
 /// 获取可用技能列表

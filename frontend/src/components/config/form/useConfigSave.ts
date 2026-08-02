@@ -54,7 +54,12 @@ import {
 } from '../PlatformsConfigSection'
 import type { PermissionConfigValues } from '../PermissionsConfigSection'
 import {
+  configChangesNeedFooterReload,
   configChangesNeedHardReload,
+  configChangesNeedMetadataReload,
+  configChangesNeedPlatformsCacheInvalidation,
+  configChangesNeedPwaReload,
+  configChangesNeedRuntimeReload,
   configChangesNeedWallpaperReload,
 } from '../uiBagOwnership'
 import type {
@@ -62,6 +67,7 @@ import type {
   SaveLibrarySourcePreferencesResponse,
   ShowMessage,
 } from './types'
+import { snapshotConfigNavScroll } from './configNavPersistence'
 
 type ConfigI18n = {
   configEmpty: string
@@ -80,6 +86,9 @@ type ConfigI18n = {
   permissionsSaved: string
   federationPolicySaved: string
   savedSuccess: string
+  savedSuccessRuntimeReload: string
+  savedSuccessHardReload: string
+  hardReloadPreparing: string
   refreshing: string
 }
 
@@ -418,44 +427,95 @@ export function useConfigSave(args: {
       const needHardReload =
         Boolean(initialConfig) &&
         configChangesNeedHardReload(config, initialConfig!, deepEqual)
+      const needRuntimeReload =
+        Boolean(initialConfig) &&
+        configChangesNeedRuntimeReload(config, initialConfig!)
+      const needWallpaperReload =
+        Boolean(initialConfig) &&
+        configChangesNeedWallpaperReload(config, initialConfig!)
+      const needMetadataReload =
+        Boolean(initialConfig) &&
+        configChangesNeedMetadataReload(config, initialConfig!)
+      const needFooterReload =
+        Boolean(initialConfig) &&
+        configChangesNeedFooterReload(config, initialConfig!)
+      const needPwaReload =
+        Boolean(initialConfig) &&
+        configChangesNeedPwaReload(config, initialConfig!)
+      const needPlatformsCachePurge =
+        Boolean(initialConfig) &&
+        configChangesNeedPlatformsCacheInvalidation(
+          config,
+          initialConfig!,
+          deepEqual,
+        )
+
+      // Soft side-effects (no full-page reload): wallpaper, library cache, etc.
+      if (needWallpaperReload) {
+        clearDedupCache(`${API_URL}/api/config/ui`)
+        // Bust 1s lastLoadResult debounce so soft reload is not a no-op
+        void import('../../../hooks/useWallpaper').then((m) => {
+          m.invalidateWallpaperLoadCache()
+          window.dispatchEvent(new CustomEvent('wallpaperConfigChanged'))
+        })
+      }
+      if (needMetadataReload) {
+        clearDedupCache(`${API_URL}/api/config/metadata`)
+        void import('../../../utils/siteMetadata').then((m) => {
+          void m.refreshSiteMetadata()
+        })
+      }
+      if (needFooterReload) {
+        clearDedupCache(`${API_URL}/api/config/ui`)
+        window.dispatchEvent(new CustomEvent('footerConfigChanged'))
+      }
+      if (needPwaReload) {
+        clearDedupCache(`${API_URL}/api/config/ui`)
+        const raw = config.ui_config?.config_fields?.find(
+          (f) => f.key === 'pwa_enabled',
+        )?.value
+        const enabled = raw !== 'false' && raw !== '0'
+        void import('../../../utils/pwa').then((m) => {
+          void m.applyPwaEnabled(enabled)
+        })
+      }
+      if (needPlatformsCachePurge) {
+        clearDedupCache(`${API_URL}/api/library`)
+      }
+
+      // Proxy / API mirrors: backend hot-reload only — no location.reload.
+      if (needRuntimeReload && !needHardReload) {
+        try {
+          await getCSRFToken(true)
+          await reloadSystemConfig()
+        } catch {
+          // Config is already persisted; outbound clients may lag until next restart.
+        }
+        showMessage(t.config.savedSuccessRuntimeReload, 'success', 4000)
+        return
+      }
 
       if (!needHardReload) {
-        // Evocative / wallpaper bag saves without hard reload: drop 30s UI cache
-        // and notify AppLayout to re-run loadWallpaper (mount-only by default).
-        if (
-          initialConfig &&
-          configChangesNeedWallpaperReload(config, initialConfig)
-        ) {
-          clearDedupCache(`${API_URL}/api/config/ui`)
-          // Bust 1s lastLoadResult debounce so soft reload is not a no-op
-          void import('../../../hooks/useWallpaper').then((m) => {
-            m.invalidateWallpaperLoadCache()
-            window.dispatchEvent(new CustomEvent('wallpaperConfigChanged'))
-          })
-        }
+        // AI / platforms / auto_fetch / pure UI bags: toast only (side-effects above).
         showMessage(t.config.savedSuccess, 'success', 3000)
         return
       }
 
-      showMessage(
-        `${t.config.configSaved} ${t.config.refreshing}`,
-        'success',
-        0,
-      )
+      // Hard-reload path: sticky toast that keeps “full page reload” intent
+      // (do not overwrite with generic savedSuccess — that hid the reload cue).
+      showMessage(t.config.hardReloadPreparing, 'success', 0)
 
       try {
         await getCSRFToken(true)
         await reloadSystemConfig()
-        showMessage(t.config.savedSuccess, 'success', 0)
-        setTimeout(() => {
-          window.location.reload()
-        }, 2000)
       } catch {
-        showMessage(t.config.savedSuccess, 'success', 0)
-        setTimeout(() => {
-          window.location.reload()
-        }, 2000)
+        // Config already persisted; still reload so UI picks up full state.
       }
+      showMessage(t.config.savedSuccessHardReload, 'success', 0)
+      snapshotConfigNavScroll()
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
     } catch (error) {
       // Some sections may already have succeeded (pendingClean filled).
       // Commit those so UI dirty flags only reflect remaining unsaved drafts.

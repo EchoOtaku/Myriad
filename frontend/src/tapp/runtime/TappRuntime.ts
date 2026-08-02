@@ -252,6 +252,8 @@ export class TappRuntime {
             userRole,
             isTemporary: detail.is_temporary ?? false,
             isAdminTapp,
+            visibility:
+              detail.visibility === 'admin' ? 'admin' : 'all',
           }
           this.installedTapps.set(detail.id, instance)
           if (
@@ -384,6 +386,7 @@ export class TappRuntime {
       userRole,
       isTemporary: detail.is_temporary ?? result.isTemporary ?? false,
       isAdminTapp: detail.is_admin_tapp ?? result.isAdminTapp ?? false,
+      visibility: detail.visibility === 'admin' ? 'admin' : 'all',
     }
 
     // 添加到内存缓存

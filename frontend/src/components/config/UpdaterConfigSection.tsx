@@ -7,7 +7,7 @@
  *   3. 更新通道：三张单选卡片（稳定版 / 预览版 / 开发版·跟随提交），点选即保存
  *   4. 维护与恢复：仅在更新出问题时出现
  *   5. 更新器 / 边缘（两列卡片）
- *   6. 安装指定版本（高级，折叠）
+ *   6. 安装指定版本（折叠）
  *   7. 备份与回退（折叠）
  *   8. 高级与诊断（折叠）
  *
@@ -1365,7 +1365,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
         </SettingGroup>
       )}
 
-      {/* ===== 安装指定版本（高级，折叠）===== */}
+      {/* ===== 安装指定版本（折叠）===== */}
       {!showProgress && (
         <SettingGroup
           title={u.updaterTargetGroupTitle}

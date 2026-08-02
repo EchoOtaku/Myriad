@@ -17,38 +17,46 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use super::intake_helpers::{
-    analytics_collection_enabled, analytics_today, analytics_tz_label, count_distinct_site,
-    invalidate_summary_cache, normalize_country_code, normalize_country_name, normalize_event_name,
-    normalize_path, normalize_referrer_host, normalize_target, read_visitor_ordinal,
-    resolve_visitor_hash, ANALYTICS_BACKUP_FORMAT, ANALYTICS_BACKUP_VERSION, DAILY_RETENTION_DAYS,
-    DEFAULT_SUMMARY_DAYS, ENGAGE_MARKER, MAX_IMPORT_COUNTRY_DAILY, MAX_IMPORT_COUNTRY_VISITOR,
-    MAX_IMPORT_EVENT_DAILY, MAX_IMPORT_EVENT_VISITOR, MAX_IMPORT_PAGE_DAILY,
-    MAX_IMPORT_REFERRER_DAILY, MAX_IMPORT_VISITOR_SEEN, MAX_SUMMARY_DAYS, SITE_PATH, SUMMARY_CACHE,
-    SUMMARY_CACHE_TTL, SummaryQuery, VISITOR_CARD_CACHE, VISITOR_RETENTION_DAYS,
+    analytics_collection_enabled, analytics_today, analytics_tz_label, compare_range_kind,
+    count_distinct_site, invalidate_summary_cache, metric_delta, normalize_country_code,
+    normalize_country_name, normalize_event_name, normalize_path, normalize_referrer_host,
+    normalize_target, read_visitor_ordinal, resolve_visitor_hash, sum_page_views,
+    ANALYTICS_BACKUP_FORMAT, ANALYTICS_BACKUP_VERSION, DAILY_RETENTION_DAYS, ENGAGE_MARKER,
+    MAX_IMPORT_COUNTRY_DAILY, MAX_IMPORT_COUNTRY_VISITOR, MAX_IMPORT_EVENT_DAILY,
+    MAX_IMPORT_EVENT_VISITOR, MAX_IMPORT_PAGE_DAILY, MAX_IMPORT_REFERRER_DAILY,
+    MAX_IMPORT_VISITOR_SEEN, MAX_SUMMARY_DAYS, SITE_PATH, SUMMARY_CACHE, SUMMARY_CACHE_TTL,
+    SummaryQuery, VISITOR_CARD_CACHE, VISITOR_RETENTION_DAYS,
 };
 
-/// GET /api/analytics/summary?days=7
+/// GET /api/analytics/summary?days=7  or  ?from=YYYY-MM-DD&to=YYYY-MM-DD
 pub async fn get_summary(
     crate::extract::Db(db): crate::extract::Db,
     Query(q): Query<SummaryQuery>,
 ) -> (StatusCode, Json<Value>) {
-    let days = q
-        .days
-        .unwrap_or(DEFAULT_SUMMARY_DAYS)
-        .clamp(1, MAX_SUMMARY_DAYS);
+    use super::intake_helpers::resolve_analytics_window;
+
+    let (from, to_day, days) = resolve_analytics_window(
+        q.days,
+        q.from.as_deref(),
+        q.to.as_deref(),
+    );
+    let cache_key = format!(
+        "{}..{}",
+        from.format("%Y-%m-%d"),
+        to_day.format("%Y-%m-%d")
+    );
 
     // Short TTL cache — admin UI refresh shouldn't re-scan every open.
     {
         let cache = SUMMARY_CACHE.lock().await;
-        if let Some((at, body)) = cache.get(&days) {
+        if let Some((at, body)) = cache.get(&cache_key) {
             if at.elapsed() < SUMMARY_CACHE_TTL {
                 return (StatusCode::OK, Json(body.clone()));
             }
         }
     }
 
-    let today = analytics_today();
-    let from = today - Duration::days(days - 1);
+    let today = to_day; // end of selected window (for fill loop / “today” tiles)
     let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap_or(from);
     let tz_label = analytics_tz_label();
 
@@ -136,6 +144,28 @@ ORDER BY day ASC
         .unwrap_or(0);
 
     let range_uv = count_distinct_site(&db, from, today).await;
+
+    // 环比：今日 vs 前一日；当前区间 vs 等长上一区间。
+    // kind: day / week / month / period — FE maps to 日/周/月/较上期.
+    let prev_day = today - Duration::days(1);
+    let prev_range_to = from - Duration::days(1);
+    let prev_range_from = prev_range_to - Duration::days(days - 1);
+    let prev_day_views = sum_page_views(&db, prev_day, prev_day).await;
+    let prev_day_uv = count_distinct_site(&db, prev_day, prev_day).await;
+    let prev_range_views = sum_page_views(&db, prev_range_from, prev_range_to).await;
+    let prev_range_uv = count_distinct_site(&db, prev_range_from, prev_range_to).await;
+    let compare = json!({
+        "day": {
+            "kind": "day",
+            "views": metric_delta(today_views, prev_day_views),
+            "unique_visitors": metric_delta(today_uv, prev_day_uv),
+        },
+        "range": {
+            "kind": compare_range_kind(days),
+            "views": metric_delta(range_views, prev_range_views),
+            "unique_visitors": metric_delta(range_uv, prev_range_uv),
+        },
+    });
     // Avg dwell among visits that reported engagement (engaged_views = unique
     // visitor×path×day with ≥1 engagement flush, not per soft-flush).
     let avg_engagement_ms = if range_engaged_views > 0 {
@@ -497,6 +527,7 @@ FROM analytics_page_daily WHERE path <> $1
             "avg_engagement_ms": avg_engagement_ms,
             "approx_bounce_permille": short_engage,
         },
+        "compare": compare,
         "all_time": {
             "views": all_time_views,
             "unique_visitors": all_time_uv,
@@ -511,9 +542,9 @@ FROM analytics_page_daily WHERE path <> $1
 
     {
         let mut cache = SUMMARY_CACHE.lock().await;
-        cache.insert(days, (Instant::now(), body.clone()));
+        cache.insert(cache_key, (Instant::now(), body.clone()));
         // Keep map small (only a few day windows are ever queried)
-        if cache.len() > 8 {
+        if cache.len() > 12 {
             cache.retain(|_, (at, _)| at.elapsed() < SUMMARY_CACHE_TTL * 2);
         }
     }

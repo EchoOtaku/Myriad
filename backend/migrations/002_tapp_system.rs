@@ -66,6 +66,12 @@ impl MigrationTrait for Migration {
                             .default(Expr::current_timestamp()),
                     )
                     .col(ColumnDef::new(Tapps::ErrorMessage).text())
+                    .col(
+                        ColumnDef::new(Tapps::Visibility)
+                            .string_len(20)
+                            .not_null()
+                            .default("all"),
+                    )
                     .to_owned(),
             )
             .await?;
@@ -972,6 +978,7 @@ enum Tapps {
     LastRunAt,
     UpdatedAt,
     ErrorMessage,
+    Visibility,
 }
 
 #[derive(DeriveIden)]

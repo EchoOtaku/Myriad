@@ -120,6 +120,12 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     is_nullable: true,
                     default_value: None,
                 },
+                ColumnDef {
+                    name: "visibility".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: false,
+                    default_value: Some("'all'".into()),
+                },
             ],
         },
         TableDef {

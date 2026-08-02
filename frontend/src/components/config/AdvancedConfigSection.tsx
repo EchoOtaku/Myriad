@@ -28,6 +28,7 @@ import {
   SwitchItem,
   useSettingGuide,
 } from '../settings'
+import McpConfigPanel from './McpConfigPanel'
 import RuntimeDiagnostics from './RuntimeDiagnostics'
 
 interface UiConfigField {
@@ -408,6 +409,9 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
       sectionId={sectionId}
     >
       <RuntimeDiagnostics onMessage={onMessage} />
+
+      {/* MCP 工具服务器（admin；配置在服务器 mcp_servers.json） */}
+      <McpConfigPanel onMessage={onMessage} />
 
       {/* 代理 + API 镜像 */}
       <SettingGroup

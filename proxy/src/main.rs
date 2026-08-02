@@ -207,7 +207,13 @@ async fn handle(
     // ActivityPub/MFP endpoints registered outside /api (WebFinger discovery,
     // NodeInfo, actor documents and inboxes) — remote instances resolve
     // @user@domain against these, so they must not fall through to the frontend.
-    let upstream = if is_backend_path(&path) {
+    // SEO: crawler UAs on /tapp/run/* get the backend HTML shell; browsers get SPA.
+    let ua = req
+        .headers()
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let upstream = if is_backend_path(&path, ua) {
         &state.backend_upstream
     } else {
         &state.frontend_upstream
@@ -354,6 +360,55 @@ async fn forward_websocket(
     Ok(response)
 }
 
+/// Known crawler / link-preview user-agents that should receive backend SEO HTML
+/// for `/tapp/run/*` instead of the SPA shell.
+fn is_seo_crawler_ua(ua: &str) -> bool {
+    let ua = ua.to_ascii_lowercase();
+    const MARKERS: &[&str] = &[
+        "googlebot",
+        "bingbot",
+        "slurp",
+        "duckduckbot",
+        "baiduspider",
+        "yandexbot",
+        "facebookexternalhit",
+        "facebot",
+        "twitterbot",
+        "linkedinbot",
+        "embedly",
+        "quora link preview",
+        "pinterest",
+        "applebot",
+        "semrushbot",
+        "ahrefsbot",
+        "mj12bot",
+        "dotbot",
+        "petalbot",
+        "bytespider",
+        "discordbot",
+        "telegrambot",
+        "whatsapp",
+        "slackbot",
+        "redditbot",
+        "skypeuripreview",
+        "rogerbot",
+        "screaming frog",
+        "ia_archiver",
+        "chatgpt-user",
+        "gptbot",
+        "claudebot",
+        "anthropic-ai",
+        "storebot-google",
+        "google-inspectiontool",
+        "preview",
+    ];
+    MARKERS.iter().any(|m| ua.contains(m))
+        // Generic bot/spider/crawl (exclude common false positives is hard; keep short)
+        || ua.contains("bot/")
+        || ua.contains("spider")
+        || ua.contains("crawler")
+}
+
 /// Paths served by the backend. Everything else goes to the frontend SPA.
 ///
 /// Keep in sync with:
@@ -364,11 +419,27 @@ async fn forward_websocket(
 /// Missing an entry silently serves the SPA HTML for that URL (broken media, broken
 /// WebFinger, etc.). Prefer whole-site outer reverse proxies so this list only needs
 /// to live in Myriad proxy.
-fn is_backend_path(path: &str) -> bool {
-    path.starts_with("/api/")
+///
+/// `user_agent` is used only for `/tapp/run/*` SEO shell routing (crawlers → backend).
+fn is_backend_path(path: &str, user_agent: &str) -> bool {
+    if path.starts_with("/api/")
         || path == "/health"
-        // Federation (ActivityPub/MFP) public endpoints, see backend main.rs.
-        || path == "/.well-known/webfinger"
+        // Public SEO sitemap + robots (backend api::seo)
+        || path == "/sitemap.xml"
+        || path == "/robots.txt"
+    {
+        return true;
+    }
+    // Crawler HTML shells (humans stay on SPA)
+    if path.starts_with("/tapp/run/") && is_seo_crawler_ua(user_agent) {
+        return true;
+    }
+    // Site-owner original Brew articles only (backend 404s non-own content)
+    if path.starts_with("/brew/item/") && is_seo_crawler_ua(user_agent) {
+        return true;
+    }
+    // Federation (ActivityPub/MFP) public endpoints, see backend main.rs.
+    path == "/.well-known/webfinger"
         || path == "/.well-known/nodeinfo"
         || path == "/nodeinfo/2.1"
         || path == "/inbox"
@@ -767,48 +838,81 @@ mod tests {
 
     #[test]
     fn backend_paths_include_federation_endpoints() {
+        let browser = "Mozilla/5.0 (Macintosh) Chrome/120.0.0.0";
+        let googlebot =
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
+
         // REST / health
-        assert!(is_backend_path("/api/federation/channels"));
-        assert!(is_backend_path("/api/federation/media"));
-        assert!(is_backend_path("/api/federation/avatar-cache/x.webp"));
-        // Chat file-meta (chunk upload + content download) — under /api/*
+        assert!(is_backend_path("/api/federation/channels", browser));
+        assert!(is_backend_path("/api/federation/media", browser));
         assert!(is_backend_path(
-            "/api/federation/channels/ch_x/transfers"
-        ));
-        assert!(is_backend_path("/api/federation/rooms/rm_x/transfers"));
-        assert!(is_backend_path(
-            "/api/federation/transfers/tr_x/chunks"
+            "/api/federation/avatar-cache/x.webp",
+            browser
         ));
         assert!(is_backend_path(
-            "/api/federation/transfers/tr_x/content"
+            "/api/federation/channels/ch_x/transfers",
+            browser
         ));
-        assert!(is_backend_path("/health"));
+        assert!(is_backend_path(
+            "/api/federation/rooms/rm_x/transfers",
+            browser
+        ));
+        assert!(is_backend_path(
+            "/api/federation/transfers/tr_x/chunks",
+            browser
+        ));
+        assert!(is_backend_path(
+            "/api/federation/transfers/tr_x/content",
+            browser
+        ));
+        assert!(is_backend_path("/health", browser));
+        // Public SEO sitemap + robots
+        assert!(is_backend_path("/sitemap.xml", browser));
+        assert!(is_backend_path("/robots.txt", browser));
+        assert!(is_backend_path("/api/seo/sitemap.xml", browser));
+        // Tapp / Brew item SEO shells: crawlers only
+        assert!(is_backend_path("/tapp/run/com.example.app", googlebot));
+        assert!(is_backend_path(
+            "/tapp/run/com.example.app",
+            "facebookexternalhit/1.1"
+        ));
+        assert!(!is_backend_path("/tapp/run/com.example.app", browser));
+        assert!(is_backend_path("/brew/item/42", googlebot));
+        assert!(is_backend_path(
+            "/brew/item/42",
+            "Twitterbot/1.0"
+        ));
+        assert!(!is_backend_path("/brew/item/42", browser));
         // Discovery
-        assert!(is_backend_path("/.well-known/webfinger"));
-        assert!(is_backend_path("/.well-known/nodeinfo"));
-        assert!(is_backend_path("/nodeinfo/2.1"));
+        assert!(is_backend_path("/.well-known/webfinger", browser));
+        assert!(is_backend_path("/.well-known/nodeinfo", browser));
+        assert!(is_backend_path("/nodeinfo/2.1", browser));
         // Inbox + actor graph
-        assert!(is_backend_path("/inbox"));
-        assert!(is_backend_path("/users/misakimei"));
-        assert!(is_backend_path("/users/misakimei/inbox"));
-        assert!(is_backend_path("/users/misakimei/outbox"));
-        assert!(is_backend_path("/users/misakimei/followers"));
-        assert!(is_backend_path("/users/misakimei/following"));
-        assert!(is_backend_path("/users/misakimei/avatar"));
-        // Note attachment media (the historical miss that blanked Aro feed images)
+        assert!(is_backend_path("/inbox", browser));
+        assert!(is_backend_path("/users/misakimei", browser));
+        assert!(is_backend_path("/users/misakimei/inbox", browser));
+        assert!(is_backend_path("/users/misakimei/outbox", browser));
+        assert!(is_backend_path("/users/misakimei/followers", browser));
+        assert!(is_backend_path("/users/misakimei/following", browser));
+        assert!(is_backend_path("/users/misakimei/avatar", browser));
+        // Note attachment media
         assert!(is_backend_path(
-            "/media/federation/1/abc-def_01.jpg"
+            "/media/federation/1/abc-def_01.jpg",
+            browser
         ));
-        assert!(is_backend_path("/media/federation/42/uuid.mp4"));
+        assert!(is_backend_path("/media/federation/42/uuid.mp4", browser));
 
         // Must stay on SPA / ACME / non-backend
-        assert!(!is_backend_path("/"));
-        assert!(!is_backend_path("/users"));
-        assert!(!is_backend_path("/settings"));
-        assert!(!is_backend_path("/tapp/com.myriad.aro"));
-        assert!(!is_backend_path("/.well-known/acme-challenge/token"));
-        assert!(!is_backend_path("/media/federation")); // prefix requires trailing file path
-        assert!(!is_backend_path("/media/other/x.jpg"));
+        assert!(!is_backend_path("/", browser));
+        assert!(!is_backend_path("/users", browser));
+        assert!(!is_backend_path("/settings", browser));
+        assert!(!is_backend_path("/tapp/com.myriad.aro", browser));
+        assert!(!is_backend_path(
+            "/.well-known/acme-challenge/token",
+            browser
+        ));
+        assert!(!is_backend_path("/media/federation", browser));
+        assert!(!is_backend_path("/media/other/x.jpg", browser));
     }
 
     #[test]

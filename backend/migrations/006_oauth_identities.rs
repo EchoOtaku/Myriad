@@ -2,7 +2,7 @@ use sea_orm_migration::prelude::*;
 
 /// OAuth Identities + 解禁本地账号
 ///
-/// 详见 docs/oauth-refactor-plan.md
+/// 详见 docs/development/OAUTH.md
 ///
 /// 改动：
 /// 1. 新建 user_identities 表（多对一：一个 user 可挂多个 OAuth identity）

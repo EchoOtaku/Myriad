@@ -237,6 +237,13 @@ impl AiProvider {
             _ => Self::Gemini,
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::OpenAI => "openai",
+            Self::Gemini => "gemini",
+        }
+    }
 }
 
 pub struct AiAnalyzer {
@@ -355,9 +362,49 @@ impl AiAnalyzer {
     }
 
     pub async fn analyze_profile(&self, profile_data: &serde_json::Value) -> Result<String> {
-        match self.provider {
+        let input_chars = serde_json::to_string(profile_data)
+            .map(|s| s.len())
+            .unwrap_or(0);
+        let result = match self.provider {
             AiProvider::Gemini => self.analyze_with_gemini(profile_data).await,
             AiProvider::OpenAI => self.analyze_with_openai(profile_data).await,
+        };
+        self.note_ledger(input_chars, &result, "analyze").await;
+        result
+    }
+
+    /// Best-effort site-wide cost ledger when task-local attribution is set
+    /// (agent / reports). Governed Tapp+scheduler paths record separately.
+    async fn note_ledger(
+        &self,
+        input_chars: usize,
+        result: &Result<String, anyhow::Error>,
+        operation: &str,
+    ) {
+        let _ = operation;
+        match result {
+            Ok(text) => {
+                crate::services::ai_cost_ledger::record_ai_call_from_attribution(
+                    self.provider.as_str(),
+                    &self.model,
+                    input_chars,
+                    text.len(),
+                    "completed",
+                    None,
+                )
+                .await;
+            }
+            Err(_) => {
+                crate::services::ai_cost_ledger::record_ai_call_from_attribution(
+                    self.provider.as_str(),
+                    &self.model,
+                    input_chars,
+                    0,
+                    "failed",
+                    Some("AI_PROVIDER_ERROR"),
+                )
+                .await;
+            }
         }
     }
 
@@ -534,11 +581,17 @@ impl AiAnalyzer {
     ) -> Result<String> {
         match self.provider {
             AiProvider::Gemini => {
+                // analyze_profile notes the ledger once.
                 let full_prompt = flatten_messages_for_gemini(system, &messages);
                 let data = serde_json::json!({ "prompt": full_prompt });
                 self.analyze_profile(&data).await
             }
             AiProvider::OpenAI => {
+                let input_chars = system.len()
+                    + messages
+                        .iter()
+                        .map(|m| m.content.len())
+                        .sum::<usize>();
                 let mut openai_messages = Vec::with_capacity(messages.len() + 1);
                 if !system.trim().is_empty() {
                     openai_messages.push(OpenAIMessage {
@@ -578,23 +631,29 @@ impl AiAnalyzer {
                             "Failed to send request to OpenAI-compatible API (endpoint: {url}, model: {})",
                             self.model
                         )
-                    })?;
+                    });
 
-                if !response.status().is_success() {
-                    let status = response.status();
-                    let error_text = Self::read_limited_error_text(response).await;
-                    return Err(anyhow::anyhow!(format_openai_compatible_http_error(
-                        status,
-                        &url,
-                        &self.model,
-                        &error_text,
-                    )));
-                }
-
-                let openai_response: OpenAIResponse =
-                    Self::read_limited_json(response, 2 * 1024 * 1024).await?;
-
-                extract_openai_completion_text(&openai_response)
+                let result = match response {
+                    Ok(response) => {
+                        if !response.status().is_success() {
+                            let status = response.status();
+                            let error_text = Self::read_limited_error_text(response).await;
+                            Err(anyhow::anyhow!(format_openai_compatible_http_error(
+                                status,
+                                &url,
+                                &self.model,
+                                &error_text,
+                            )))
+                        } else {
+                            let openai_response: OpenAIResponse =
+                                Self::read_limited_json(response, 2 * 1024 * 1024).await?;
+                            extract_openai_completion_text(&openai_response)
+                        }
+                    }
+                    Err(e) => Err(e),
+                };
+                self.note_ledger(input_chars, &result, "chat").await;
+                result
             }
         }
     }
@@ -607,7 +666,17 @@ impl AiAnalyzer {
     ///
     /// 通过 `on_token` 回调逐步返回文本片段，适用于需要实时展示 AI 回复的场景。
     /// 回调返回 `false` 可提前终止流。
-    pub async fn analyze_stream<F>(&self, prompt: &str, mut on_token: F) -> Result<String>
+    pub async fn analyze_stream<F>(&self, prompt: &str, on_token: F) -> Result<String>
+    where
+        F: FnMut(&str) -> bool + Send,
+    {
+        let input_chars = prompt.len();
+        let result = self.analyze_stream_inner(prompt, on_token).await;
+        self.note_ledger(input_chars, &result, "stream").await;
+        result
+    }
+
+    async fn analyze_stream_inner<F>(&self, prompt: &str, mut on_token: F) -> Result<String>
     where
         F: FnMut(&str) -> bool + Send,
     {

@@ -145,23 +145,28 @@ fn bots_detected() {
     ));
 }
 
-/// CDN country headers must not be trusted when the peer allowlist is empty
-/// (even if TRUST_PROXY_HEADERS would be on) — same fail-closed rule as client IP.
+/// Empty allowlist + private peer honors CDN country (aligned with client IP /
+/// proxy empty PROXY_TRUSTED_UPSTREAMS). Public peers still cannot forge.
 #[test]
-fn country_headers_ignored_when_allowlist_empty() {
+fn country_headers_empty_allowlist_private_vs_public_peer() {
     use axum::http::{HeaderMap, HeaderValue};
 
     let mut headers = HeaderMap::new();
     headers.insert("cf-ipcountry", HeaderValue::from_static("JP"));
     headers.insert("x-country-code", HeaderValue::from_static("US"));
-    let peer: std::net::IpAddr = "10.0.0.2".parse().unwrap();
+    let private_peer: std::net::IpAddr = "10.0.0.2".parse().unwrap();
+    let public_peer: std::net::IpAddr = "192.0.2.7".parse().unwrap();
 
     assert!(
-        country_from_headers_with_trust(&headers, Some(peer), true, &[]).is_none(),
-        "empty allowlist must ignore forged CDN country headers"
+        country_from_headers_with_trust(&headers, Some(private_peer), true, &[]).is_some(),
+        "empty allowlist + private peer should honor CDN country"
     );
     assert!(
-        country_from_headers_with_trust(&headers, Some(peer), false, &[]).is_none(),
+        country_from_headers_with_trust(&headers, Some(public_peer), true, &[]).is_none(),
+        "empty allowlist + public peer must ignore forged CDN country"
+    );
+    assert!(
+        country_from_headers_with_trust(&headers, Some(private_peer), false, &[]).is_none(),
         "trust disabled must ignore country headers"
     );
 }

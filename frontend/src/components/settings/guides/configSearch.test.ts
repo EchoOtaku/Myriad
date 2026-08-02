@@ -29,7 +29,7 @@ const sample: ConfigSearchableItem[] = [
   },
   {
     type: 'guide',
-    section: 'ui',
+    section: 'basic',
     title: '工信部 ICP 备案号',
     description: '页脚备案文字',
     keywords: ['备案', 'icp'],

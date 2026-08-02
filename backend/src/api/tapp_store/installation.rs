@@ -394,6 +394,8 @@ async fn install_prepared_package(
         last_run_at: Set(Some(persist.last_run_at)),
         updated_at: Set(persist.updated_at),
         error_message: Set(None),
+        // New installs default to everyone; admin can tighten on the detail page.
+        visibility: Set(crate::services::tapp_ownership::TAPP_VISIBILITY_ALL.to_string()),
     };
 
     let result = match tapp.insert(&txn).await {

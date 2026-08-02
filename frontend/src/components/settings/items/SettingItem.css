@@ -171,9 +171,19 @@ html.dark .setting-horizontal .setting-item-content:hover {
 }
 
 .setting-label-text {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.4rem;
   font-size: 0.875rem;
   font-weight: 600;
   color: var(--cfg-text-1);
+}
+
+/* 无 label 时单独一行的报错标签 */
+.setting-field-error-tag--solo {
+  display: inline-flex;
+  margin-top: 0.25rem;
 }
 
 html.dark .setting-label-text {

@@ -49,31 +49,39 @@ export function useConfigBagState(
       providerFieldKey?: string,
       options?: { silent?: boolean },
     ) => {
-      if (!config) return
-
       const sectionKey = `${section}_config` as 'ai_config' | 'ui_config'
-      const sectionConfig = config[sectionKey]
       const sanitized = sanitizeMaskedFieldValue(value)
-      const newFields = sectionConfig.config_fields.map((f) =>
-        f.key === fieldKey ? { ...f, value: sanitized } : f,
-      )
-      const fieldExists = sectionConfig.config_fields.some(
-        (f) => f.key === fieldKey,
-      )
-      if (!fieldExists) return
+      // 用 ref 在同步 updater 内标记是否真正改到字段（避免闭包依赖 config）
+      let applied = false
 
-      const nextSection =
-        providerFieldKey && fieldKey === providerFieldKey
-          ? { ...sectionConfig, provider: sanitized, config_fields: newFields }
-          : { ...sectionConfig, config_fields: newFields }
-
-      setConfig({ ...config, [sectionKey]: nextSection })
+      // 函数式更新：连续改多个字段（切换 Provider 时写 provider+base+model）不会互相覆盖
+      setConfig((prev) => {
+        if (!prev) return prev
+        const sectionConfig = prev[sectionKey]
+        if (!sectionConfig) return prev
+        const fieldExists = sectionConfig.config_fields.some(
+          (f) => f.key === fieldKey,
+        )
+        if (!fieldExists) return prev
+        applied = true
+        const newFields = sectionConfig.config_fields.map((f) =>
+          f.key === fieldKey ? { ...f, value: sanitized } : f,
+        )
+        const nextSection =
+          providerFieldKey && fieldKey === providerFieldKey
+            ? { ...sectionConfig, provider: sanitized, config_fields: newFields }
+            : { ...sectionConfig, config_fields: newFields }
+        return { ...prev, [sectionKey]: nextSection }
+      })
 
       if (options?.silent) {
         setInitialConfig((prev) => {
           if (!prev) return prev
           const prevSection = prev[sectionKey]
           if (!prevSection) return prev
+          if (!prevSection.config_fields.some((f) => f.key === fieldKey)) {
+            return prev
+          }
           const prevFields = prevSection.config_fields.map((f) =>
             f.key === fieldKey ? { ...f, value: sanitized } : f,
           )
@@ -87,11 +95,12 @@ export function useConfigBagState(
               : { ...prevSection, config_fields: prevFields }
           return { ...prev, [sectionKey]: nextPrevSection }
         })
-      } else {
+      } else if (applied) {
+        // React 18 同步执行 updater，applied 此处可读
         notifyDirtyState(true)
       }
     },
-    [config, notifyDirtyState],
+    [notifyDirtyState],
   )
 
   const updateFieldValue = useCallback(

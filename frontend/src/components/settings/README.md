@@ -67,7 +67,18 @@ settings/
 | **一级分类切换** | **`SectionSwitch`**（退场/进场；高度委托 `AutoHeight`） |
 | 子分组 | `SettingGroup`（标题；可选 `titleExtra` / **`switch`** / **`detail`**） |
 | **多子分类网格**（嵌套多个 SettingGroup，2 列自适应） | **`SettingGroupGrid`**（`columns` / `minColumnWidth` / `variant` / **`align`**） |
-| **标题旁标签**（跳转 / 轻提示） | **`SettingTitleTag`**（经 `SettingGroup` 的 `titleExtra`；可选 `detail`） |
+| **标题旁标签**（跳转 / 轻提示） | **`SettingTitleTag`**（经 `SettingGroup` 的 `titleExtra`；可选 `detail`；`variant="danger"` 报错；`onDismiss` 可关闭） |
+| **选项字段报错**（贴在 label 旁） | **`SettingFieldErrorTag`** / 设置项 `error` prop（内部用 `SettingTitleTag` danger；更新器区块除外） |
+| **默认值已更新**（可关闭 / 可一点应用） | **`SettingDefaultChangeTag`**（`itemKey` + 可选 `onApply`；点标签写入新默认并关闭；× 仅关闭） |
+
+### 默认值变更提示
+
+产品默认变更时，在对应选项标题旁显示「默认值有更新」标签（可 × 关闭，状态存 `localStorage`）。
+
+1. 修改代码默认时，同步更新 `settings/settingDefaultChanges.ts` 里的 **`SETTING_PRODUCT_DEFAULTS`**（与 `defaultFieldValues` / 后端默认对齐）。
+2. 用户点标签「默认值有更新」→ 写入新默认并关闭提示；点 × → 只关闭、不改值。
+3. 关闭后不再显示该次 `from→to` 变更（已写入 draft 的仍需用户保存配置）。
+4. 调试可在控制台：`localStorage.removeItem('myriad_setting_default_notices_v1')` 后刷新。
 | **标题详细说明**（默认隐藏，hover ⓘ 显示） | **`SettingTitleHelp`** / `detail` prop（Group / Section / Tag / 设置项） |
 | **子分类标题开关**（模块启用） | **`SettingGroup` 的 `switch`**（右侧 `ToggleSwitch`；关闭时组内容弱化） |
 | **流程图式配置步骤**（去哪里 / 做什么 / 外链或站内动作） | **`SetupFlow`**（数据平台二级页；步骤数据见 `config/platformSetupGuides.ts`） |

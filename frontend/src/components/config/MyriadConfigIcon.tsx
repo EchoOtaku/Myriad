@@ -3,7 +3,7 @@ import React from 'react'
 export type MyriadConfigIconKind =
   | 'platforms'
   | 'ai'
-  | 'ui'
+  | 'basic'
   | 'music'
   | 'oauth'
   | 'permissions'
@@ -23,7 +23,7 @@ interface MyriadConfigIconProps {
 
 const SHARED_CONFIG_ICON_ASSETS: Partial<Record<MyriadConfigIconKind, string>> =
   {
-    ui: '/icons/control-panel/config.webp',
+    basic: '/icons/control-panel/config.webp',
     music: '/icons/dynamic/music.webp',
     // Same icon as notification center federation source
     federation: '/icons/notifications/aro.webp',

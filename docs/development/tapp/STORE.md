@@ -158,9 +158,47 @@ flowchart TB
 | `tags` | ❌ | 搜索标签；`demo` / `test` 用标签表达发布阶段 |
 | `license` / `homepage` / `repository` | ❌ | 元数据 |
 | `screenshots` | ❌ | URL 列表 |
+| `preview` | ❌ | 商店专用静态预览场景；不会进入运行时 Manifest |
 | `size` | ❌ | 字节；**≥ 1 MiB 时宿主强制走客户端下载** 以便进度条 |
 | `featured` / `verified` | ❌ | UI 徽章 |
 | `created_at` / `updated_at` | ❌ | ISO 时间 |
+
+### 静态预览 `preview`
+
+`preview` 由应用在目录条目中可选声明，只用于商店精选卡与详情页。宿主优先加载声明的
+HTML/CSS；未声明时回退到清洗后的 `download.page_template`，仍不可用时显示主题色占位。
+
+~~~json
+{
+  "preview": {
+    "version": 1,
+    "type": "snapshot",
+    "html": "apps/com.example.notes/preview.html",
+    "styles": [
+      "apps/com.example.notes/page.css",
+      "apps/com.example.notes/preview.css"
+    ],
+    "viewport": { "width": 1440, "height": 900 },
+    "fit": "cover",
+    "focus": { "x": 0.5, "y": 0.45 },
+    "theme": "dark"
+  }
+}
+~~~
+
+| 字段 | 约束 |
+| ---- | ---- |
+| `version` / `type` | 当前固定为 `1` / `"snapshot"` |
+| `html` | 必需；相对 `base_url` 的静态 HTML |
+| `styles` | 最多 8 个静态 CSS 路径；按声明顺序合并 |
+| `viewport` | 宽 `1280..3840`、高 `720..2160`；宿主不会使用低分辨率画布 |
+| `fit` | `cover`（默认）或 `contain` |
+| `focus` | 裁切焦点，`x` / `y` 均为 `0..1` |
+| `theme` | `auto`（默认）、`light` 或 `dark` |
+
+预览必须只包含公开、虚构或脱敏数据，并优先复用正式页面的结构与样式。商店会再次删除
+脚本、链接、外部资源和事件；显式快照中的表单控件只保留静态外观，并用禁止网络、导航、
+提交和指针交互的 iframe 渲染。预览错误只影响展示，**不得阻断安装**。
 
 ### `download` 路径表
 

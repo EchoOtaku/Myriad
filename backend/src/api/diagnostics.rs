@@ -1,7 +1,7 @@
 use crate::services::background_processor::{TaskStatus, BACKGROUND_PROCESSOR};
 use axum::{http::StatusCode, Json};
-use chrono::{Duration, Utc};
-use sea_orm::{ConnectionTrait, Statement};
+use chrono::{DateTime, Duration, TimeZone, Utc};
+use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
 use std::time::Instant;
@@ -16,6 +16,83 @@ const MEMORY_CRITICAL_MB: u64 = 1000;
 
 fn limited_detail(detail: impl AsRef<str>) -> String {
     detail.as_ref().chars().take(ERROR_DETAIL_LIMIT).collect()
+}
+
+/// Best-effort “when was this deployment’s database established”.
+///
+/// Preference order:
+/// 1. Earliest `seaql_migrations.applied_at` (first schema apply ≈ first deploy)
+/// 2. Postgres data-dir `PG_VERSION` mtime for the current database
+///
+/// Returns RFC3339 UTC when known.
+async fn probe_database_established_at(
+    db: &impl ConnectionTrait,
+) -> Option<DateTime<Utc>> {
+    // sea-orm: applied_at is typically a Unix epoch (bigint); some setups use timestamptz.
+    if let Ok(Some(row)) = db
+        .query_one(Statement::from_string(
+            db.get_database_backend(),
+            r#"
+            SELECT applied_at
+            FROM seaql_migrations
+            ORDER BY version ASC
+            LIMIT 1
+            "#
+            .to_owned(),
+        ))
+        .await
+    {
+        // Try timestamptz / timestamp first.
+        if let Ok(ts) = row.try_get::<DateTime<Utc>>("", "applied_at") {
+            return Some(ts);
+        }
+        if let Ok(ts) = row.try_get::<chrono::NaiveDateTime>("", "applied_at") {
+            return Some(DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc));
+        }
+        // bigint / i64 / f64 epoch seconds (or ms)
+        if let Ok(secs) = row.try_get::<i64>("", "applied_at") {
+            if secs > 1_000_000_000_000 {
+                return Utc.timestamp_millis_opt(secs).single();
+            }
+            if secs > 0 {
+                return Utc.timestamp_opt(secs, 0).single();
+            }
+        }
+        if let Ok(secs) = row.try_get::<f64>("", "applied_at") {
+            if secs > 0.0 {
+                return Utc.timestamp_opt(secs as i64, 0).single();
+            }
+        }
+    }
+
+    // Fallback: filesystem stamp of this database’s PG_VERSION (requires superuser
+    // or appropriate grants; ignore failures quietly).
+    if matches!(db.get_database_backend(), DatabaseBackend::Postgres) {
+        if let Ok(Some(row)) = db
+            .query_one(Statement::from_string(
+                DatabaseBackend::Postgres,
+                r#"
+                SELECT (pg_catalog.pg_stat_file(
+                    'base/' || d.oid::text || '/PG_VERSION',
+                    true
+                )).modification AS established_at
+                FROM pg_catalog.pg_database d
+                WHERE d.datname = current_database()
+                "#
+                .to_owned(),
+            ))
+            .await
+        {
+            if let Ok(ts) = row.try_get::<DateTime<Utc>>("", "established_at") {
+                return Some(ts);
+            }
+            if let Ok(ts) = row.try_get::<chrono::NaiveDateTime>("", "established_at") {
+                return Some(DateTime::<Utc>::from_naive_utc_and_offset(ts, Utc));
+            }
+        }
+    }
+
+    None
 }
 
 /// GET /api/admin/diagnostics
@@ -40,6 +117,13 @@ pub async fn runtime_diagnostics(
         .await
         .map(|_| ());
     let database_latency_ms = database_started.elapsed().as_millis() as u64;
+
+    // Only meaningful when DB is reachable; used as deploy-time proxy.
+    let database_established_at = if database_result.is_ok() {
+        probe_database_established_at(&db).await
+    } else {
+        None
+    };
 
     let storage_started = Instant::now();
     let storage_result =
@@ -114,13 +198,10 @@ pub async fn runtime_diagnostics(
         .iter()
         .any(|task| task.get("stuck").and_then(Value::as_bool) == Some(true));
     let has_critical_check = database_error.is_some() || storage_error.is_some() || !migrations_ok;
+    // 服务器出口位置仅作信息展示，不参与 overall（单源/冲突等不算「需要关注」）
     let overall_status = if has_critical_check || memory_status == "error" {
         "critical"
-    } else if has_stuck_task
-        || !recent_failures.is_empty()
-        || memory_status == "warning"
-        || server_location.status == "warning"
-    {
+    } else if has_stuck_task || !recent_failures.is_empty() || memory_status == "warning" {
         "warning"
     } else {
         "healthy"
@@ -181,6 +262,11 @@ pub async fn runtime_diagnostics(
                 "commit_sha": crate::api::build_commit_sha(),
                 "uptime_seconds": crate::api::process_uptime_seconds(),
                 "config_mode": config_mode,
+                // First schema apply / PG data dir stamp — proxy for “deployed since”.
+                "database_established_at": database_established_at
+                    .map(|t| t.to_rfc3339())
+                    .map(Value::String)
+                    .unwrap_or(Value::Null),
                 "os": platform.get("os").cloned().unwrap_or(Value::Null),
                 "arch": platform.get("arch").cloned().unwrap_or(Value::Null),
                 "family": platform.get("family").cloned().unwrap_or(Value::Null),

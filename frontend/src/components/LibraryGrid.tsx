@@ -17,20 +17,39 @@ import {
   type SyntheticEvent,
 } from 'react'
 import { useI18n } from '../contexts/I18nContext'
-import { useMusicPlayerControl } from '../contexts/MusicPlayerContext'
+import { useMusicLyricsSlice } from '../contexts/MusicPlayerContext'
 import { useLibraryIntersectionObserver } from '../hooks/animation'
+import { LyricWaveScroll } from './shared/LyricWaveScroll'
 import { useSharedResize } from '../hooks/useSharedEventListener'
 import {
   formatWatchProgressText,
   formatWatchStatusLabel,
   getWatchProgress,
 } from '../utils/libraryWatchProgress'
-import { audioManager, getNeteaseAudioUrl } from '../utils/musicPlayer'
+import {
+  audioManager,
+  getNeteaseAudioUrlImmediate,
+  isNeteaseVipFromMeta,
+} from '../utils/musicPlayer'
+import { proxyImageUrlOr } from '../utils/proxyImageUrl'
 import { getLibraryDataDeduped } from '../utils/requestDedup'
 import { showInfo } from '../utils/toastManager'
 import PlatformIcon from './PlatformIcon'
 import { QuickTransition } from './SkeletonTransition'
 import { Spinner } from './Spinner'
+
+/**
+ * 资料库「正在播 / 换歌退场」动效时长（ms）— 一处改、全局对齐。
+ * LEAVE_HOLD ≥ 歌词退场 ≥ CSS is-leaving；COVER_EXIT 对齐呼吸收回 transition。
+ */
+const LIBRARY_LIVE_MS = {
+  /** 换歌后旧卡保留挂载，盖住歌词+光带+封面退场 */
+  leaveHold: 560,
+  /** LibraryCardLyrics 卸 DOM（对齐 .is-leaving ~0.52s） */
+  lyricsUnmount: 520,
+  /** 封面呼吸收回后卸 phase */
+  coverExit: 600,
+} as const
 
 // 注入 / 热更新资料库网格样式（HMR 时覆写 textContent）
 if (typeof document !== 'undefined') {
@@ -101,25 +120,64 @@ if (typeof document !== 'undefined') {
             opacity: 1;
         }
 
-        /* 默认 hover 封面放大（卡片 .group 悬停） */
-        .group:hover .library-card-media__img.is-loaded {
+        /* 默认 hover 封面放大；播放中/退场中禁用（.is-hover-locked） */
+        .group:not(.is-hover-locked):hover .library-card-media__img.is-loaded {
             transform: scale(1.1);
         }
 
-        /* 播放中封面轻微呼吸；hover 时停呼吸、切到放大 */
+        /*
+         * 播放中封面：
+         * - 出场：轻弹放大再落稳
+         * - 循环：轻微呼吸
+         * - 退场：平滑收回 scale(1)，避免硬切
+         * 播放/退场中不响应 hover（保留呼吸，不抢退场）
+         */
+        @keyframes library-cover-play-in {
+            0% { transform: scale(1); }
+            40% { transform: scale(1.04); }
+            100% { transform: scale(1.012); }
+        }
+
+        /* 幅度更小、周期更长：约 1.2% 起伏 / 6.5s 一圈 */
         @keyframes library-cover-breath {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.045); }
+            0%, 100% { transform: scale(1.012); }
+            50% { transform: scale(1.024); }
         }
 
         .library-card-media.is-breathing .library-card-media__img.is-loaded {
-            animation: library-cover-breath 3.6s ease-in-out infinite;
+            animation:
+                library-cover-play-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both,
+                library-cover-breath 6.5s ease-in-out 0.4s infinite;
         }
 
-        .group:hover .library-card-media.is-breathing .library-card-media__img.is-loaded {
+        /*
+         * 退场：不用固定起点的 keyframes（会从呼吸中途硬切到 1.02）。
+         * JS 冻结当前 matrix 后只靠 transition 收到 scale(1)。
+         */
+        .library-card-media.is-breathing-out .library-card-media__img.is-loaded {
+            animation: none;
+            transition: transform 0.58s cubic-bezier(0.22, 1, 0.36, 1);
+            transform: scale(1);
+        }
+
+        .group:not(.is-hover-locked):hover
+            .library-card-media.is-breathing
+            .library-card-media__img.is-loaded,
+        .group:not(.is-hover-locked):hover
+            .library-card-media.is-breathing-out
+            .library-card-media__img.is-loaded {
             animation: none;
             transform: scale(1.1);
             transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .library-card-media.is-breathing .library-card-media__img.is-loaded,
+            .library-card-media.is-breathing-out .library-card-media__img.is-loaded {
+                animation: none;
+                transition: none;
+                transform: none;
+            }
         }
 
         .library-card-media__fallback {
@@ -235,7 +293,7 @@ if (typeof document !== 'undefined') {
         }
 
         .group\\/platform:hover .platform-icon-bg,
-        .group:hover .platform-icon-bg {
+        .group:not(.is-hover-locked):hover .platform-icon-bg {
             --lib-plat-border: color-mix(
                 in srgb,
                 rgb(255 255 255 / 65%),
@@ -247,7 +305,7 @@ if (typeof document !== 'undefined') {
         }
 
         html.dark .group\\/platform:hover .platform-icon-bg,
-        html.dark .group:hover .platform-icon-bg {
+        html.dark .group:not(.is-hover-locked):hover .platform-icon-bg {
             --lib-plat-border: color-mix(
                 in srgb,
                 rgb(255 255 255 / 20%),
@@ -339,6 +397,109 @@ if (typeof document !== 'undefined') {
             stroke-width: 26;
             opacity: 0;
             filter: blur(9px);
+        }
+
+        /*
+         * 资料库卡片歌词外壳（进出场 + 遮罩）
+         * 行级波浪引擎见 shared/LyricWaveScroll
+         */
+        .library-card-lyrics {
+            --music-color: #ef4444;
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            pointer-events: none;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            padding: 0 0.5rem 0.45rem;
+            opacity: 0;
+            transform: translateY(6px) scale(0.985);
+            filter: blur(0);
+            transition:
+                opacity 0.42s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.48s cubic-bezier(0.22, 1, 0.36, 1),
+                filter 0.4s ease;
+        }
+
+        .library-card-lyrics.is-on {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+        }
+
+        /* 播完/换歌退场：略下沉 + 微缩 + 轻糊，比硬淡出更顺 */
+        .library-card-lyrics.is-leaving {
+            opacity: 0;
+            transform: translateY(8px) scale(0.97);
+            filter: blur(1.2px);
+            transition:
+                opacity 0.48s cubic-bezier(0.33, 1, 0.68, 1),
+                transform 0.52s cubic-bezier(0.33, 1, 0.68, 1),
+                filter 0.42s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* 播放/退场中不藏歌词、不抢退场 */
+        .group:not(.is-hover-locked):hover .library-card-lyrics.is-on {
+            opacity: 0;
+            transform: translateY(4px) scale(0.99);
+            filter: blur(0.4px);
+            transition-duration: 0.22s;
+        }
+
+        /* 播放/退场：压掉 Tailwind group-hover 信息层 */
+        .group.is-hover-locked:hover .library-card-hover-chrome {
+            opacity: 0 !important;
+        }
+
+        /* 播放/退场：卡片不抬升/放大（只锁 transform，不硬改阴影） */
+        .group.is-hover-locked .library-card-shell {
+            transform: none !important;
+        }
+
+        .library-card-lyrics__mask {
+            position: absolute;
+            inset: 0;
+            border-radius: inherit;
+            background:
+                linear-gradient(
+                    to top,
+                    color-mix(
+                        in srgb,
+                        var(--music-color) 55%,
+                        rgb(0 0 0 / 90%)
+                    ) 0%,
+                    color-mix(
+                        in srgb,
+                        var(--music-color) 38%,
+                        rgb(0 0 0 / 72%)
+                    ) 28%,
+                    color-mix(
+                        in srgb,
+                        var(--music-color) 16%,
+                        transparent
+                    ) 55%,
+                    transparent 78%
+                );
+            opacity: 0.95;
+            transition:
+                opacity 0.4s ease,
+                background 0.45s ease;
+        }
+
+        .library-card-lyrics.is-leaving .library-card-lyrics__mask {
+            opacity: 0;
+            transition-duration: 0.45s;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .library-card-lyrics,
+            .library-card-lyrics.is-on,
+            .library-card-lyrics.is-leaving {
+                transition: opacity 0.15s ease;
+                transform: none;
+                filter: none;
+            }
         }
 
         /* 高分评分徽章 - 呼吸光晕 */
@@ -444,7 +605,7 @@ if (typeof document !== 'undefined') {
             max-width: 100%;
         }
 
-        .group:hover .library-card-caption {
+        .group:not(.is-hover-locked):hover .library-card-caption {
             --lib-caption-border: color-mix(
                 in srgb,
                 rgb(255 255 255 / 60%),
@@ -455,7 +616,7 @@ if (typeof document !== 'undefined') {
                 0 6px 14px -4px rgb(15 23 42 / 18%);
         }
 
-        html.dark .group:hover .library-card-caption {
+        html.dark .group:not(.is-hover-locked):hover .library-card-caption {
             --lib-caption-border: color-mix(
                 in srgb,
                 rgb(255 255 255 / 18%),
@@ -821,6 +982,11 @@ function openLibraryItemExternal(item: {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
 
+function preferReducedMotion(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
 function readCardCornerRadius(el: HTMLElement): { rx: number; ry: number } {
   const cs = getComputedStyle(el)
   const parsePair = (raw: string): [number, number] => {
@@ -1134,6 +1300,18 @@ function smoothstep01(x: number): number {
   return t * t * (3 - 2 * t)
 }
 
+/** 出场：前段加速到位（弹起感） */
+function easeOutCubic(t: number): number {
+  const x = Math.max(0, Math.min(1, t))
+  return 1 - (1 - x) ** 3
+}
+
+/** 退场：先慢后快收束，避免突然塌缩 */
+function easeInCubic(t: number): number {
+  const x = Math.max(0, Math.min(1, t))
+  return x * x * x
+}
+
 /**
  * 有机随机游走（Ornstein–Uhlenbeck 近似）
  * 均值回归 + 噪声，不会瞬跳
@@ -1151,7 +1329,8 @@ function ouStep(
 
 /**
  * 真实频谱驱动的连续四边柔光带
- * 频谱快响应 + 可见随机漂移；淡入淡出不抹平动态
+ * 频谱快响应 + 可见随机漂移；
+ * 出场弹起 / 退场频谱残留收束，避免硬切与塌成细环
  */
 const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
   musicColor,
@@ -1166,6 +1345,8 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
   const midRef = useRef<SVGPathElement>(null)
   const prevBandsRef = useRef<number[]>([0, 0, 0, 0, 0, 0, 0, 0])
   const smoothBandsRef = useRef<number[]>([0, 0, 0, 0, 0, 0, 0, 0])
+  /** 暂停后残留频谱，退场时缓衰减而非瞬间清零 */
+  const residualBandsRef = useRef<number[]>([0, 0, 0, 0, 0, 0, 0, 0])
   const energyHistRef = useRef<number[]>([])
   const wavePhaseRef = useRef(Math.random() * Math.PI * 2)
   const noisePhaseRef = useRef(Math.random() * Math.PI * 2)
@@ -1188,10 +1369,13 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
   const introRef = useRef(0)
   const bodySmoothRef = useRef(0)
   const opacitySmoothRef = useRef(0)
+  /** 出场瞬间高亮 kick（0→1 后衰减） */
+  const enterKickRef = useRef(0)
   const speedSmoothRef = useRef(0.06)
   const noiseSpeedRef = useRef(0.03 + Math.random() * 0.04)
   const sizeRef = useRef({ w: 0, h: 0, rx: 12, ry: 12 })
   const activeRef = useRef(active)
+  const prevActiveRef = useRef(active)
   activeRef.current = active
   const [mounted, setMounted] = useState(active)
 
@@ -1202,15 +1386,16 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
   useEffect(() => {
     if (!mounted) return
 
-    if (active && introRef.current < 0.04) {
+    // 刚切入播放：重置形态并打一记出场 kick
+    if (active && introRef.current < 0.08) {
       const t1 = Math.random()
       const t2 = (t1 + 0.28 + Math.random() * 0.4) % 1
       peak1TRef.current = t1
       peak2TRef.current = t2
       anchor1Ref.current = t1
       anchor2Ref.current = t2
-      peak1HRef.current = 0.45 + Math.random() * 0.7
-      peak2HRef.current = 0.4 + Math.random() * 0.75
+      peak1HRef.current = 0.55 + Math.random() * 0.65
+      peak2HRef.current = 0.5 + Math.random() * 0.7
       peak1WRef.current = 0.4 + Math.random() * 0.7
       peak2WRef.current = 0.35 + Math.random() * 0.75
       hBias1Ref.current = (Math.random() - 0.5) * 0.6
@@ -1226,6 +1411,9 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
       timeAccRef.current = 0
       opacitySmoothRef.current = 0
       bodySmoothRef.current = 0
+      enterKickRef.current = 1
+      // 给一点初始环，避免首帧全空
+      residualBandsRef.current = residualBandsRef.current.map(() => 0.18 + Math.random() * 0.12)
     }
 
     const audio = audioManager.getCurrentAudio()
@@ -1235,7 +1423,10 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
     }
 
     const wrap = wrapRef.current
-    const shell = wrap?.parentElement as HTMLElement | null
+    // 点击层无圆角；尺寸/圆角以 .library-card-shell 为准（缺省再退回 parent）
+    const shell =
+      (wrap?.closest('.library-card-shell') as HTMLElement | null) ||
+      (wrap?.parentElement as HTMLElement | null)
     const PAD = 28
 
     const syncGeometry = () => {
@@ -1271,27 +1462,63 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
         : null
     if (shell && ro) ro.observe(shell)
 
+    const reducedMotion = preferReducedMotion()
     let raf = 0
     let last = 0
+    /** reduced-motion：进场到位后停 rAF，直到暂停/再播 */
+    let reducedSettled = false
 
     const tick = (now: number) => {
       const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.032
-      // ~45fps：频谱更跟得上
-      if (now - last >= 22) {
+      // ~45fps：频谱更跟得上；减动效略降采样
+      const frameMs = reducedMotion ? 48 : 22
+      if (now - last >= frameMs) {
         last = now
         const playing = activeRef.current
+
+        // 边缘：从暂停再播时也补 kick
+        if (playing && !prevActiveRef.current) {
+          enterKickRef.current = Math.max(enterKickRef.current, 0.85)
+          reducedSettled = false
+        }
+        prevActiveRef.current = playing
+
+        // 出场快；退场更慢更柔（播完光带别瞬间瘪掉）
         const introTarget = playing ? 1 : 0
-        const introRate = playing ? 1.5 : 2.0
+        const introRate = playing ? 2.55 : 0.72
         introRef.current = lerp(
           introRef.current,
           introTarget,
           1 - Math.exp(-introRate * dt * 30),
         )
-        const presence = smoothstep01(introRef.current)
+        const intro = Math.max(0, Math.min(1, introRef.current))
+        // 几何 presence：出场 easeOut 弹开，退场 easeIn 先稳后收
+        const presence = playing
+          ? easeOutCubic(smoothstep01(intro))
+          : easeInCubic(smoothstep01(intro))
+        // 透明度：出场略滞后；退场略快于几何收缩，避免「空壳还亮」
+        const opacityPresence = playing
+          ? easeOutCubic(smoothstep01(Math.max(0, intro * 1.08 - 0.05)))
+          : easeInCubic(smoothstep01(Math.min(1, intro * 1.25)))
 
-        if (!playing && introRef.current < 0.015) {
+        // 出场 kick 衰减（~0.45s）
+        enterKickRef.current = lerp(
+          enterKickRef.current,
+          0,
+          1 - Math.exp(-(playing ? 3.2 : 5.5) * dt),
+        )
+        const kick = reducedMotion ? 0 : enterKickRef.current
+
+        if (
+          !playing &&
+          introRef.current < 0.012 &&
+          opacitySmoothRef.current < 0.02
+        ) {
           introRef.current = 0
           opacitySmoothRef.current = 0
+          bodySmoothRef.current = 0
+          enterKickRef.current = 0
+          residualBandsRef.current = [0, 0, 0, 0, 0, 0, 0, 0]
           softRef.current?.setAttribute('d', '')
           midRef.current?.setAttribute('d', '')
           if (softRef.current) softRef.current.style.opacity = '0'
@@ -1300,18 +1527,49 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
           return
         }
 
+        // reduced-motion 且播放中已到位：不再推进频谱环
+        if (reducedMotion && playing && presence > 0.98 && reducedSettled) {
+          // 不续 rAF；active 变化会重跑 effect 再启动
+          return
+        }
+
         const { w, h, rx, ry } = sizeRef.current
         if (w > 0 && h > 0) {
-          const raw = playing
-            ? audioManager.getSpectrumBands()
-            : ([0, 0, 0, 0, 0, 0, 0, 0] as number[])
+          let raw: number[]
+          if (reducedMotion) {
+            // 静态柔环，不读频谱、不流动
+            const level = playing ? 0.32 : 0.12 * presence
+            raw = [
+              level,
+              level,
+              level * 0.95,
+              level * 0.9,
+              level * 0.9,
+              level * 0.85,
+              level * 0.85,
+              level * 0.8,
+            ]
+          } else if (playing) {
+            raw = audioManager.getSpectrumBands()
+            // 缓存末帧，供退场残留
+            for (let i = 0; i < 8; i++) {
+              residualBandsRef.current[i] = raw[i] ?? residualBandsRef.current[i]
+            }
+          } else {
+            // 退场：残留频谱缓衰减，保持环形态再收
+            const decay = Math.exp(-2.8 * dt)
+            for (let i = 0; i < 8; i++) {
+              residualBandsRef.current[i] *= decay
+            }
+            raw = residualBandsRef.current
+          }
           const prev = prevBandsRef.current
           const smooth = smoothBandsRef.current
 
           let energy = 0
           let flux = 0
-          // 轻平滑：保留频谱跳变，只去掉单帧噪声
-          const bandLag = playing ? 0.55 : 0.88
+          // 播放轻平滑；退场更黏，形状不碎
+          const bandLag = playing ? 0.55 : 0.82
           for (let i = 0; i < 8; i++) {
             const v = raw[i] ?? 0
             smooth[i] = smooth[i] * bandLag + v * (1 - bandLag)
@@ -1321,6 +1579,11 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
           }
           energy /= 8
           flux = Math.min(1.2, flux * 0.65)
+          // 出场 kick 补一点假能量，频谱还没上来时也有光
+          if (playing && kick > 0.02) {
+            energy = Math.min(1.15, energy + kick * 0.42)
+            flux = Math.min(1.2, flux + kick * 0.25)
+          }
 
           const bass = (smooth[0] + smooth[1]) * 0.5
           const midF = (smooth[2] + smooth[3] + smooth[4]) / 3
@@ -1332,9 +1595,12 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
           const avgE =
             hist.reduce((a, b) => a + b, 0) / Math.max(1, hist.length)
           const onsetRaw = Math.max(0, (energy - avgE * 1.05) * 2.8)
-          const onset = Math.min(1, onsetRaw)
+          const onset = Math.min(
+            1,
+            onsetRaw + (playing ? kick * 0.55 : 0),
+          )
 
-          timeAccRef.current += dt * (playing ? 1 : presence)
+          timeAccRef.current += dt * (playing ? 1 : Math.max(0.15, presence))
 
           // 相位速度：跟能量/高频/flux 强绑定
           const speedTarget =
@@ -1344,7 +1610,8 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
             treble * 0.12 +
             flux * 0.08 +
             onset * 0.06 +
-            noiseSpeedRef.current * 0.4
+            noiseSpeedRef.current * 0.4 +
+            kick * 0.05
           speedSmoothRef.current = lerp(
             speedSmoothRef.current,
             speedTarget,
@@ -1465,7 +1732,8 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
               onset * 0.85 +
               smooth[0] * 0.7 +
               smooth[1] * 0.45 +
-              hBias1Ref.current,
+              hBias1Ref.current +
+              kick * 0.35,
           )
           const h2Target = Math.max(
             0.08,
@@ -1474,7 +1742,8 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
               onset * 0.95 +
               smooth[6] * 0.85 +
               smooth[7] * 0.7 +
-              hBias2Ref.current,
+              hBias2Ref.current +
+              kick * 0.4,
           )
           // 较快追上频谱
           peak1HRef.current = lerp(peak1HRef.current, h1Target, 0.14)
@@ -1529,22 +1798,33 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
           softRef.current?.setAttribute('d', d)
           midRef.current?.setAttribute('d', d)
 
-          // 线宽/透明度：安静明显变细变淡，响乐变胖变亮
+          // 线宽/透明度：出场 kick 更亮更厚；退场跟 opacityPresence 先灭
           const bodyTarget =
             (energy * 0.5 +
               bass * 0.25 +
               treble * 0.35 +
               onset * 0.4 +
-              flux * 0.2) *
+              flux * 0.2 +
+              kick * 0.55) *
             presence
-          bodySmoothRef.current = lerp(bodySmoothRef.current, bodyTarget, 0.2)
+          bodySmoothRef.current = lerp(
+            bodySmoothRef.current,
+            bodyTarget,
+            playing ? 0.22 : 0.14,
+          )
           const body = bodySmoothRef.current
           const opTarget =
-            presence * (0.28 + energy * 0.35 + body * 0.4 + onset * 0.15)
+            opacityPresence *
+            (0.28 +
+              energy * 0.35 +
+              body * 0.4 +
+              onset * 0.15 +
+              kick * 0.38)
+          // 退场透明度跟得更快，出场略柔
           opacitySmoothRef.current = lerp(
             opacitySmoothRef.current,
             opTarget,
-            0.18,
+            playing ? 0.2 : 0.28,
           )
           const op = opacitySmoothRef.current
           if (softRef.current) {
@@ -1552,7 +1832,12 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
               Math.min(1, Math.max(0, op * 0.95)),
             )
             softRef.current.style.strokeWidth = String(
-              22 + energy * 18 + bass * 12 + body * 20 + presence * 8,
+              22 +
+                energy * 18 +
+                bass * 12 +
+                body * 20 +
+                presence * 8 +
+                kick * 14,
             )
           }
           if (midRef.current) {
@@ -1560,12 +1845,24 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
               Math.min(1, Math.max(0, op * 0.9)),
             )
             midRef.current.style.strokeWidth = String(
-              14 + energy * 12 + treble * 10 + body * 14 + onset * 6,
+              14 +
+                energy * 12 +
+                treble * 10 +
+                body * 14 +
+                onset * 6 +
+                kick * 10,
             )
+          }
+
+          if (reducedMotion && playing && presence > 0.98) {
+            reducedSettled = true
           }
         }
       }
-      raf = requestAnimationFrame(tick)
+      // reduced 播放已静定则停环；否则续帧
+      if (!(reducedMotion && activeRef.current && reducedSettled)) {
+        raf = requestAnimationFrame(tick)
+      }
     }
     raf = requestAnimationFrame(tick)
 
@@ -1599,6 +1896,152 @@ const LibraryPlayingWaveBorder = memo(function LibraryPlayingWaveBorder({
 })
 
 /**
+ * 父级轻量订阅：仅 songId / isPlaying / musicColor
+ * 切句不触发 LibraryGrid 重渲染
+ */
+type LibraryMusicIdentity = {
+  songId: string | null
+  isPlaying: boolean
+  musicColor: string
+}
+
+function readLibraryMusicIdentity(): LibraryMusicIdentity {
+  if (typeof window === 'undefined') {
+    return { songId: null, isPlaying: false, musicColor: '#ef4444' }
+  }
+  const g = (window as any).__musicPlayerState
+  return {
+    songId: g?.currentSong?.id != null ? String(g.currentSong.id) : null,
+    isPlaying: Boolean(g?.isPlaying),
+    musicColor: String(g?.musicColor || '#ef4444'),
+  }
+}
+
+function useLibraryMusicIdentity(): LibraryMusicIdentity {
+  const [snap, setSnap] = useState(readLibraryMusicIdentity)
+  useEffect(() => {
+    // 事件只作通知：一律读 __musicPlayerState（宿主完整合并后的真相）。
+    // 禁止从 detail 重建——embed 等路径会发 partial（仅 currentSong），
+    // 缺字段会被当成 null/false/默认红，卡片「正在播」状态会假掉。
+    const applyFromGlobal = () => {
+      const next = readLibraryMusicIdentity()
+      setSnap((prev) =>
+        prev.songId === next.songId &&
+        prev.isPlaying === next.isPlaying &&
+        prev.musicColor === next.musicColor
+          ? prev
+          : next,
+      )
+    }
+    window.addEventListener('music-player-state-change', applyFromGlobal)
+    applyFromGlobal()
+    return () =>
+      window.removeEventListener('music-player-state-change', applyFromGlobal)
+  }, [])
+  return snap
+}
+
+/**
+ * 资料库卡片歌词外壳：进出场 + 封面色遮罩；
+ * 切换引擎见共享 LyricWaveScroll（与控制面板同一套）
+ *
+ * 退场时冻结歌词快照：换歌会 resetLyrics，不能靠 live hasLyrics 决定是否卸载，
+ * 否则 is-leaving 会被短路硬切。
+ */
+const LibraryCardLyrics = memo(function LibraryCardLyrics({
+  active,
+  musicColor,
+}: {
+  /** true=当前曲（含暂停）；false=换歌离场 */
+  active: boolean
+  musicColor: string
+}) {
+  const { lyrics: liveLyrics, currentLyricIndex: liveIndex } =
+    useMusicLyricsSlice()
+  const hasLiveLyrics = useMemo(
+    () => liveLyrics.some((l) => (l.text || '').trim()),
+    [liveLyrics],
+  )
+
+  const [mounted, setMounted] = useState(false)
+  const [visible, setVisible] = useState(false)
+  /** 展示用（active 时跟随 live；leave 期间冻结） */
+  const [displayLyrics, setDisplayLyrics] = useState(liveLyrics)
+  const [displayIndex, setDisplayIndex] = useState(liveIndex)
+  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 是否曾成功进场；从未进场则不走 leave 计时（避免首帧无词误卸） */
+  const everShownRef = useRef(false)
+
+  // active 且有词：同步展示；leave 时不写，保留上一曲快照
+  useEffect(() => {
+    if (active && hasLiveLyrics) {
+      setDisplayLyrics(liveLyrics)
+      setDisplayIndex(liveIndex)
+    }
+  }, [active, hasLiveLyrics, liveLyrics, liveIndex])
+
+  useEffect(() => {
+    if (leaveTimerRef.current) {
+      clearTimeout(leaveTimerRef.current)
+      leaveTimerRef.current = null
+    }
+    if (active && hasLiveLyrics) {
+      everShownRef.current = true
+      setMounted(true)
+      const raf = requestAnimationFrame(() => setVisible(true))
+      return () => cancelAnimationFrame(raf)
+    }
+    // 仍是当前曲但歌词暂空（切歌 reset / 二次加载中）：只等词，绝不 leave
+    // 否则 everShown 时会误走退场，把已挂载歌词卸掉，且二次加载失败时永久空白
+    if (active) {
+      if (!everShownRef.current) {
+        setMounted(false)
+        setVisible(false)
+      }
+      return
+    }
+    // 从未进场：保持未挂载
+    if (!everShownRef.current) {
+      setMounted(false)
+      setVisible(false)
+      return
+    }
+    // 非当前曲退场：冻结 display 快照；时长对齐 CSS is-leaving
+    setVisible(false)
+    leaveTimerRef.current = setTimeout(() => {
+      setMounted(false)
+      everShownRef.current = false
+      leaveTimerRef.current = null
+    }, LIBRARY_LIVE_MS.lyricsUnmount)
+    return () => {
+      if (leaveTimerRef.current) {
+        clearTimeout(leaveTimerRef.current)
+        leaveTimerRef.current = null
+      }
+    }
+  }, [active, hasLiveLyrics])
+
+  const hasDisplayLyrics = displayLyrics.some((l) => (l.text || '').trim())
+  if (!mounted || !hasDisplayLyrics) return null
+
+  return (
+    <div
+      className={`library-card-lyrics${visible ? ' is-on' : ' is-leaving'}`}
+      style={{ '--music-color': musicColor } as CSSProperties}
+      aria-hidden
+    >
+      <div className="library-card-lyrics__mask" />
+      <LyricWaveScroll
+        variant="card"
+        lyrics={displayLyrics}
+        currentLyricIndex={displayIndex}
+        musicColor={musicColor}
+      />
+    </div>
+  )
+})
+
+/**
  * 卡片外壳：封面占位 + 加载完再显示玻璃 chrome，避免滚动时标题/平台标先闪。
  */
 const LibraryCardShell = memo(function LibraryCardShell({
@@ -1622,7 +2065,74 @@ const LibraryCardShell = memo(function LibraryCardShell({
 }) {
   const hasCover = Boolean(cover)
   const [mediaReady, setMediaReady] = useState(!hasCover)
+  /** off | breathing | exiting — 退场播完再卸类，避免硬切 */
+  const [breathPhase, setBreathPhase] = useState<'off' | 'breathing' | 'exiting'>(
+    coverBreathing ? 'breathing' : 'off',
+  )
   const imgRef = useRef<HTMLImageElement>(null)
+
+  const clearCoverInline = useCallback(() => {
+    const img = imgRef.current
+    if (!img) return
+    img.style.transition = ''
+    img.style.transform = ''
+    img.style.animation = ''
+  }, [])
+
+  useEffect(() => {
+    if (coverBreathing) {
+      // 重新进场：清掉上次退出时写死的 inline transform
+      clearCoverInline()
+      setBreathPhase('breathing')
+      return
+    }
+    setBreathPhase((prev) => {
+      if (prev !== 'breathing') return prev === 'exiting' ? 'exiting' : 'off'
+      return 'exiting'
+    })
+  }, [coverBreathing, clearCoverInline])
+
+  // 退场：冻结当前呼吸 matrix → 下一帧 transition 到 scale(1)（避免 keyframes 硬切）
+  useEffect(() => {
+    if (breathPhase !== 'exiting') return
+    const img = imgRef.current
+    const reduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+
+    if (!img || reduced) {
+      clearCoverInline()
+      const t = window.setTimeout(() => setBreathPhase('off'), 40)
+      return () => window.clearTimeout(t)
+    }
+
+    const matrix = window.getComputedStyle(img).transform
+    img.style.animation = 'none'
+    img.style.transition = 'none'
+    img.style.transform =
+      matrix && matrix !== 'none' ? matrix : 'scale(1.018)'
+    // 强制提交 frozen 帧
+    void img.offsetWidth
+
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        img.style.transition =
+          'transform 0.58s cubic-bezier(0.22, 1, 0.36, 1)'
+        img.style.transform = 'scale(1)'
+      })
+    })
+
+    const t = window.setTimeout(() => {
+      clearCoverInline()
+      setBreathPhase('off')
+    }, LIBRARY_LIVE_MS.coverExit)
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+      window.clearTimeout(t)
+    }
+  }, [breathPhase, clearCoverInline])
 
   useEffect(() => {
     if (!cover) {
@@ -1653,14 +2163,19 @@ const LibraryCardShell = memo(function LibraryCardShell({
     [markReady, title],
   )
 
+  const mediaBreathClass =
+    breathPhase === 'breathing'
+      ? ' is-breathing'
+      : breathPhase === 'exiting'
+        ? ' is-breathing-out'
+        : ''
+
   return (
     <div
       className={`library-card-shell rounded-xl ${className || ''}`}
       data-media-ready={mediaReady ? 'true' : 'false'}
     >
-      <div
-        className={`library-card-media${coverBreathing ? ' is-breathing' : ''}`}
-      >
+      <div className={`library-card-media${mediaBreathClass}`}>
         {hasCover ? (
           <img
             ref={imgRef}
@@ -1811,17 +2326,38 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
   const containerRef = useRef<HTMLDivElement>(null)
   const containerWidthRef = useRef<number>(0) // 🔧 缓存容器宽度，避免重复读取
+    // 父级只跟 songId / isPlaying / musicColor，切句不重渲染整表
   const {
-    playSong,
-    currentSong,
+    songId: liveSongId,
     isPlaying: globalIsPlaying,
     musicColor,
-  } = useMusicPlayerControl()
+  } = useLibraryMusicIdentity()
   const { t } = useI18n()
 
-  // 使用 ref 存储回调函数，避免在依赖中频繁更新
-  const playSongRef = useRef(playSong)
-  playSongRef.current = playSong
+  // 不经 Context 的 playSong，避免订阅歌词态
+  const playSongRef = useRef((song: Song) => {
+    window.dispatchEvent(new CustomEvent('play-song', { detail: { song } }))
+  })
+
+  // 换歌/播完切走：旧卡保留离场窗口（见 LIBRARY_LIVE_MS.leaveHold）
+  const prevLiveSongIdRef = useRef<string | null>(liveSongId)
+  const [leavingSongId, setLeavingSongId] = useState<string | null>(null)
+  useEffect(() => {
+    const prev = prevLiveSongIdRef.current
+    prevLiveSongIdRef.current = liveSongId
+    if (prev && prev !== liveSongId) {
+      // 注意：此处 return 后不会执行下面的 liveSongId===null 清理，
+      // 否则会立刻清掉 leavingSongId，退场动画被掐断。
+      setLeavingSongId(prev)
+      const t = window.setTimeout(
+        () => setLeavingSongId(null),
+        LIBRARY_LIVE_MS.leaveHold,
+      )
+      return () => window.clearTimeout(t)
+    }
+    // 仅「本来就没有曲 / 清空」时卸离场标记（非换歌路径）
+    if (!liveSongId) setLeavingSongId(null)
+  }, [liveSongId])
 
   // 筛选后的所有项目
   const filteredAllItems = useMemo(() => {
@@ -2458,16 +2994,23 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         item.metadata.id || item.id.replace('netease_song_', '')
       ).toString()
       const musicState = (window as any).__musicPlayerState
-      if (musicState?.currentSong?.id === songId) {
+      if (
+        musicState?.currentSong?.id != null &&
+        String(musicState.currentSong.id) === songId
+      ) {
         window.dispatchEvent(new CustomEvent('open-control-panel'))
-        showInfo(t.library.alreadyPlaying)
+        // 暂停中：再点同一首应恢复播放，而不是误报「已在播放」
+        if (!musicState.isPlaying) {
+          window.dispatchEvent(new CustomEvent('toggle-play-pause'))
+          showInfo(t.library.nowPlaying.replace('{name}', item.title || ''))
+        } else {
+          showInfo(t.library.alreadyPlaying)
+        }
         return
       }
 
-      const isVip =
-        item.metadata.isVip ||
-        item.metadata.fee === 1 ||
-        item.metadata.fee === 4
+      // 正确标记 VIP；临时播放在 useMusicPlayer 内放行 excludeVipSongs
+      const isVip = isNeteaseVipFromMeta(item.metadata)
       if (isVip) {
         showInfo(t.library.vipSongWarning)
       }
@@ -2499,24 +3042,27 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
           ? item.metadata.duration
           : 0
 
-      // Geo-aware: CN play-url CDN; overseas full audio proxy
-      const url = await getNeteaseAudioUrl(songId)
+      // 同步 URL：禁止 await geo（会把「点击→开播」拖成数百 ms～数秒）
+      // 海外若 play-url 失败，播放器方案 C 会自动降级全量代理
+      const url = getNeteaseAudioUrlImmediate(songId)
 
       const song: Song = {
         id: songId.toString(),
         name,
         artist,
         album,
-        cover,
+        // 临时播放入口：裸 CDN 封面必须代理，否则播放器取色 canvas CORS 失败
+        cover: proxyImageUrlOr(cover, cover || ''),
         url,
         duration,
         source: 'netease',
-        isVip: false,
+        isVip,
       }
 
-      playSongRef.current(song)
+      // 先开面板 + toast，再播：体感即时
       window.dispatchEvent(new CustomEvent('open-control-panel'))
       showInfo(t.library.nowPlaying.replace('{name}', name))
+      playSongRef.current(song)
       void import('../utils/analyticsEvents').then(
         ({ trackProductEvent, AnalyticsEvents }) => {
           trackProductEvent(AnalyticsEvents.MUSIC_LIBRARY_PLAY, {
@@ -2613,18 +3159,18 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                     item.platform.toLowerCase().includes('网易') ||
                     item.id.startsWith('netease_'))
                 const isVip =
-                  isNeteaseMusic &&
-                  (item.metadata.isVip ||
-                    item.metadata.fee === 1 ||
-                    item.metadata.fee === 4)
+                  isNeteaseMusic && isNeteaseVipFromMeta(item.metadata)
                 const currentSongId = (
                   item.metadata.id || item.id.replace('netease_song_', '')
                 ).toString()
 
-                // Context 实时状态，无需额外检查
-                const isCurrentSong =
-                  currentSong && currentSong.id === currentSongId
-                const isPlaying = isCurrentSong && globalIsPlaying
+                // 轻量身份：切句不刷整表；换歌离场保留短窗口
+                const isCurrentSong = liveSongId === currentSongId
+                const isLeavingSong = leavingSongId === currentSongId
+                const showMusicLive = isCurrentSong || isLeavingSong
+                const isPlaying = Boolean(isCurrentSong && globalIsPlaying)
+                // 播放中 + 退场窗口：锁 hover，避免中途放大/藏词打断动画
+                const hoverLocked = isPlaying || isLeavingSong
 
                 const rowIndex = Math.floor(layout.top / 300)
                 const animationDelay = rowIndex * 0.05
@@ -2683,7 +3229,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 return (
                   <div
                     key={item.id}
-                    className="absolute group library-card-container"
+                    className={`absolute group library-card-container${hoverLocked ? ' is-hover-locked' : ''}`}
                     style={
                       {
                         left: `${layout.left}px`,
@@ -2708,7 +3254,11 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                         cover={item.cover}
                         title={item.title}
                         coverBreathing={Boolean(isPlaying)}
-                        className="bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02]"
+                        className={
+                          hoverLocked
+                            ? 'bg-white rounded-xl shadow-md transition-shadow duration-300'
+                            : 'bg-white rounded-xl shadow-md hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1 hover:scale-[1.02]'
+                        }
                         placeholder={
                           <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-pink-400 to-pink-500">
                             <span className="text-6xl">
@@ -2725,12 +3275,21 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                             handlePlayMusic(item)
                           }}
                         >
-                          <LibraryPlayingWaveBorder
-                            musicColor={musicColor}
-                            active={Boolean(isPlaying)}
-                          />
+                          {showMusicLive && (
+                            <>
+                              <LibraryPlayingWaveBorder
+                                musicColor={musicColor}
+                                active={isPlaying}
+                              />
+                              {/* active=当前曲（含暂停）；换歌时 false 走退场 */}
+                              <LibraryCardLyrics
+                                active={isCurrentSong}
+                                musicColor={musicColor}
+                              />
+                            </>
+                          )}
 
-                          <div className="library-card-chrome absolute inset-0 bg-linear-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3">
+                          <div className="library-card-chrome library-card-hover-chrome absolute inset-0 bg-linear-to-t from-black/95 via-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3">
                             <div>
                               <div className="flex items-start gap-1">
                                 <h3 className="font-bold text-white text-xs leading-tight line-clamp-2 mb-1 flex-1">

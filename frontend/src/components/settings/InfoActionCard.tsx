@@ -45,12 +45,16 @@ export interface InfoActionField {
 export interface InfoActionButton {
   key: string
   label: ReactNode
-  onClick: () => void
+  /** 可接收点击事件（用于锚定 popover / tooltip） */
+  onClick: (event?: React.MouseEvent<HTMLButtonElement>) => void
   disabled?: boolean
   loading?: boolean
   variant?: SettingsButtonVariant
+  /** Leading icon (passed to SettingsButton). */
+  icon?: ReactNode
   /** Optional window.confirm before onClick. */
   confirm?: string
+  /** Native tooltip / longer description. */
   title?: string
   ariaLabel?: string
 }
@@ -279,6 +283,7 @@ export const InfoActionCard = React.memo(function InfoActionCard({
               size="sm"
               disabled={a.disabled}
               loading={a.loading}
+              icon={a.icon}
               confirm={a.confirm}
               title={a.title}
               aria-label={

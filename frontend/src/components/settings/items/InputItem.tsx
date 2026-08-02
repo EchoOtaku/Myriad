@@ -18,6 +18,8 @@ import {
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { guideDomProps } from '../guides/guideAnchor'
+import { SettingDefaultChangeTag } from '../SettingDefaultChangeTag'
+import { SettingFieldErrorTag } from '../SettingFieldErrorTag'
 import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { SettingsButton } from './SettingsButton'
 import './SettingItem.css'
@@ -494,6 +496,11 @@ export const InputItem = React.memo<InputItemProps>(
             {label}
             {required && <span className="required">*</span>}
             <SettingTitleGuideEntry title={label} guide={guide} />
+            <SettingDefaultChangeTag
+              fieldKey={itemKey}
+              onApply={(next) => onChange(next)}
+            />
+            <SettingFieldErrorTag>{shownError}</SettingFieldErrorTag>
           </span>
           {description && layout === 'vertical' && (
             <span className="setting-description">{description}</span>
@@ -502,7 +509,6 @@ export const InputItem = React.memo<InputItemProps>(
 
         <div className="setting-control">
           {control}
-          {shownError && <p className="setting-error">{shownError}</p>}
           {hint && !shownError && <p className="setting-hint">{hint}</p>}
         </div>
       </div>

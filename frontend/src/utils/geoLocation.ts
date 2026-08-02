@@ -48,6 +48,15 @@ export interface GeoApiResponse {
   regionName?: string
   region?: string
   ip?: string
+  /** Backend-resolved visitor IP before private→server fallback */
+  detected_client_ip?: string
+  /**
+   * `client-ip` = geo for real visitor IP.
+   * `server-egress` = backend only saw a private peer (broken proxy trust) and
+   * used the server's public IP — treat as soft failure and try browser IP APIs.
+   */
+  source?: string
+  fallback?: string
 }
 
 // ===== 内存缓存 =====
@@ -122,6 +131,15 @@ export async function getClientGeoLocation(): Promise<GeoLocationData | null> {
   }
 
   return null
+}
+
+/**
+ * 同步读取「是否中国大陆」缓存。
+ * - `true` / `false`：本页已探测过
+ * - `null`：尚未探测（调用方勿阻塞点击去 await）
+ */
+export function getCachedIsChinaMainland(): boolean | null {
+  return userInChinaMainland
 }
 
 /**
@@ -257,6 +275,23 @@ async function getClientGeoFromBackend(): Promise<GeoLocationData | null> {
     },
     { cacheTTL: GEO_CACHE_TTL },
   )
+
+  // Server-egress means proxy/backend only saw a private hop and substituted the
+  // host public IP — that is the server location, not the visitor. Soft-fail so
+  // browser-side IP geo (ipapi.co etc.) can still use the real client egress.
+  if (
+    data.source === 'server-egress' ||
+    data.fallback === 'server-public-ip'
+  ) {
+    console.warn(
+      '[GeoLocation] Backend used server egress IP (proxy client-IP trust broken).',
+      {
+        detected: data.detected_client_ip,
+        lookupIp: data.ip,
+      },
+    )
+    return null
+  }
 
   if (data.status === 'success' || (data.lat && data.lon)) {
     return {

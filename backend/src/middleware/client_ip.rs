@@ -55,7 +55,11 @@ pub fn parse_proxy_peer_allowlist(raw: &str) -> Vec<ipnet::IpNet> {
 }
 
 /// Env: `TRUST_PROXY_PEERS` — CIDR/IP allowlist of reverse-proxy TCP peers.
-/// Empty/missing ⇒ no peer is trusted for XFF/X-Real-IP (even if TRUST_PROXY_HEADERS=1).
+///
+/// Empty/missing with `TRUST_PROXY_HEADERS=1` ⇒ mirror the proxy's empty
+/// `PROXY_TRUSTED_UPSTREAMS` rule: only private / loopback / link-local peers
+/// may supply XFF / X-Real-IP (Docker bridge + host Nginx). Public peers never
+/// get to forge headers. Set an explicit CIDR list to tighten further.
 pub fn trusted_proxy_peer_allowlist() -> &'static [ipnet::IpNet] {
     static ALLOWLIST: OnceLock<Vec<ipnet::IpNet>> = OnceLock::new();
     ALLOWLIST
@@ -68,13 +72,43 @@ pub fn trusted_proxy_peer_allowlist() -> &'static [ipnet::IpNet] {
         .as_slice()
 }
 
+/// RFC1918 / loopback / link-local (and IPv6 ULA / link-local).
+///
+/// Used when `TRUST_PROXY_PEERS` is empty so stock Docker (proxy → backend on
+/// the compose network) still honors `X-Real-IP` rewritten by the Myriad proxy.
+pub fn is_private_or_local(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_private() || v4.is_loopback() || v4.is_link_local(),
+        IpAddr::V6(v6) => {
+            v6.is_loopback() || v6.is_unique_local() || v6.is_unicast_link_local()
+        }
+    }
+}
+
+/// True when a string form of an IP is non-public (used by weather/geo fallbacks).
+pub fn is_private_or_local_str(ip: &str) -> bool {
+    let trimmed = ip.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") {
+        return true;
+    }
+    match trimmed.parse::<IpAddr>() {
+        Ok(addr) => is_private_or_local(addr),
+        // Unparseable tokens (hostnames etc.) are treated as non-public so we
+        // never send them to third-party geo APIs as a "client" address.
+        Err(_) => true,
+    }
+}
+
 /// True when `peer` is inside any prefix of `allowlist`.
 pub fn peer_in_proxy_allowlist(peer: IpAddr, allowlist: &[ipnet::IpNet]) -> bool {
     allowlist.iter().any(|net| net.contains(&peer))
 }
 
-/// Pure trust decision: honor forwarded headers only when trust is enabled **and**
-/// the TCP peer is on the allowlist. Empty allowlist never trusts headers.
+/// Pure trust decision: honor forwarded headers only when trust is enabled and
+/// either:
+/// - `allowlist` is non-empty and the TCP peer is on it, or
+/// - `allowlist` is empty and the TCP peer is private/loopback/link-local
+///   (aligned with proxy empty `PROXY_TRUSTED_UPSTREAMS`).
 pub fn should_trust_proxy_headers(
     peer_ip: Option<IpAddr>,
     trust_proxy_headers: bool,
@@ -83,12 +117,13 @@ pub fn should_trust_proxy_headers(
     if !trust_proxy_headers {
         return false;
     }
-    if allowlist.is_empty() {
+    let Some(peer) = peer_ip else {
         return false;
+    };
+    if allowlist.is_empty() {
+        return is_private_or_local(peer);
     }
-    peer_ip
-        .map(|ip| peer_in_proxy_allowlist(ip, allowlist))
-        .unwrap_or(false)
+    peer_in_proxy_allowlist(peer, allowlist)
 }
 
 pub fn client_ip_from_parts(
@@ -100,7 +135,7 @@ pub fn client_ip_from_parts(
         headers,
         peer_ip,
         trust_proxy_headers,
-        // Production path: env-backed allowlist. Empty ⇒ never trust XFF.
+        // Production path: env-backed allowlist. Empty ⇒ private peers only.
         trusted_proxy_peer_allowlist(),
     )
 }
@@ -158,10 +193,11 @@ pub fn log_proxy_trust_hygiene() {
     }
     let allowlist = trusted_proxy_peer_allowlist();
     if allowlist.is_empty() {
-        tracing::warn!(
-            "TRUST_PROXY_HEADERS is enabled but TRUST_PROXY_PEERS is empty — \
-             forwarded headers are ignored (fail-closed). Set TRUST_PROXY_PEERS to \
-             your reverse-proxy CIDR (e.g. the Docker network of the proxy service)."
+        tracing::info!(
+            "TRUST_PROXY_HEADERS is enabled and TRUST_PROXY_PEERS is empty — \
+             honoring X-Forwarded-For / X-Real-IP only from private/loopback peers \
+             (Docker proxy path). Set TRUST_PROXY_PEERS to the reverse-proxy CIDR \
+             to tighten (e.g. docker network inspect <project>_default)."
         );
         return;
     }
@@ -207,12 +243,25 @@ mod tests {
     }
 
     #[test]
-    fn empty_allowlist_never_trusts_forwarded_headers() {
+    fn empty_allowlist_trusts_private_peer_headers() {
         let mut headers = HeaderMap::new();
         headers.insert("x-real-ip", HeaderValue::from_static("203.0.113.50"));
         let peer = "10.0.0.2".parse().unwrap();
 
-        // TRUST on but allowlist empty → ignore forged headers
+        // Align with proxy empty PROXY_TRUSTED_UPSTREAMS: private peer → honor X-Real-IP
+        assert_eq!(
+            client_ip_from_parts_with_allowlist(&headers, Some(peer), true, &[]),
+            Some("203.0.113.50".parse().unwrap())
+        );
+        assert!(should_trust_proxy_headers(Some(peer), true, &[]));
+    }
+
+    #[test]
+    fn empty_allowlist_public_peer_cannot_forge_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", HeaderValue::from_static("203.0.113.50"));
+        let peer = "192.0.2.7".parse().unwrap();
+
         assert_eq!(
             client_ip_from_parts_with_allowlist(&headers, Some(peer), true, &[]),
             Some(peer)

@@ -99,6 +99,28 @@ impl Executor {
         user_id: i32,
         progress_tx: Option<tokio::sync::mpsc::Sender<types::AgentProgressEvent>>,
     ) -> Result<TaskState, String> {
+        // Full-site AI usage: attribute every nested AiAnalyzer call (including admin).
+        let attr = crate::services::ai_cost_ledger::AiLedgerAttribution {
+            subject_id: user_id,
+            owner_id: user_id,
+            source: "agent".into(),
+            operation: "agent".into(),
+            tapp_id: "__agent__".into(),
+            task_id: recipe.id.clone(),
+        };
+        crate::services::ai_cost_ledger::with_ai_ledger_attribution(attr, async {
+            self.execute_with_progress_inner(recipe, user_id, progress_tx)
+                .await
+        })
+        .await
+    }
+
+    async fn execute_with_progress_inner(
+        &self,
+        recipe: &Recipe,
+        user_id: i32,
+        progress_tx: Option<tokio::sync::mpsc::Sender<types::AgentProgressEvent>>,
+    ) -> Result<TaskState, String> {
         // 创建任务状态
         let mut task_state = TaskState::new(recipe);
         task_state.status = TaskStatus::Running;

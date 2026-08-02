@@ -7,12 +7,20 @@ import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
+  setGoogleAnalyticsStaffExcluded,
+  trackGooglePageview,
+} from '../utils/googleAnalytics'
+import {
   trackPageview,
   getOrCreateVisitorId,
   trackEvent,
   setAnalyticsStaffSession,
   setAnalyticsAdminSession,
 } from '../utils/siteAnalytics'
+import {
+  setUmamiStaffExcluded,
+  trackUmamiPageview,
+} from '../utils/umamiAnalytics'
 import {
   trackProductEvent,
   AnalyticsEvents,
@@ -37,7 +45,9 @@ export function usePageViewTracker() {
 
   useEffect(() => {
     setAnalyticsStaffSession({ isAdmin, isOwner })
-  }, [isAdmin, isOwner])
+    setGoogleAnalyticsStaffExcluded(isStaff)
+    setUmamiStaffExcluded(isStaff)
+  }, [isAdmin, isOwner, isStaff])
 
   useEffect(() => {
     if (!hasChecked) return
@@ -50,6 +60,9 @@ export function usePageViewTracker() {
     if (lastPathRef.current === path) return
     lastPathRef.current = path
     trackPageview(path)
+    // 第三方统计 SPA page_view（未配置时排队，配置后补发）
+    trackGooglePageview(path)
+    trackUmamiPageview(path)
   }, [location.pathname, hasChecked, isStaff])
 }
 

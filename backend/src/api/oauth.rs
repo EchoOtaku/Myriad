@@ -1,6 +1,6 @@
 //! 通用 OAuth handler（routing by `:slug`）
 //!
-//! 详见 docs/oauth-refactor-plan.md §7.1
+//! 详见 docs/development/OAUTH.md
 //!
 //! 端点：
 //!   GET    /api/auth/oauth/providers              列出 enabled providers

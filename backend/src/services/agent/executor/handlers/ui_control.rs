@@ -337,12 +337,14 @@ pub(super) async fn execute_tapp_page_content(
 
     match level {
         "apps" => {
-            // 应用列表层级
+            // 应用列表层级（与 catalog / tapp.list 同一可见性边界）
             let mut query = tapps::Entity::find();
             let admin_id = crate::services::tapp_ownership::get_admin_user_id(ctx.db)
                 .await
                 .map_err(|err| err.to_string())?;
-            if !crate::services::agent::user_is_current_admin(ctx.db, user_id).await {
+            let is_admin =
+                crate::services::agent::user_is_current_admin(ctx.db, user_id).await;
+            if !is_admin {
                 query = query.filter(
                     tapps::Column::UserId
                         .eq(user_id)
@@ -369,6 +371,14 @@ pub(super) async fn execute_tapp_page_content(
                 .all(ctx.db)
                 .await
                 .map_err(|e| format!("Failed to fetch tapps: {}", e))?;
+            let apps: Vec<_> = apps
+                .into_iter()
+                .filter(|app| {
+                    crate::services::tapp_ownership::install_visible_to_viewer(
+                        app, user_id, admin_id, is_admin,
+                    )
+                })
+                .collect();
 
             let running_count = apps
                 .iter()

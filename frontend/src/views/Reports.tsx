@@ -44,6 +44,12 @@ import {
   usePageReady,
   useReportsScheduler,
 } from '../hooks/animation'
+import { usePageSeo } from '../hooks/usePageSeo'
+import { buildModulePageSeo } from '../utils/modulePageSeo'
+import {
+  canAccessModuleVisibility,
+  useModuleVisibilityPreferences,
+} from '../utils/moduleVisibility'
 import { useHorizontalStripScroll } from '../hooks/useHorizontalStripScroll'
 import {
   useResolvedTitleColor,
@@ -282,6 +288,25 @@ export default function Reports() {
   }, [])
 
   const { t } = useI18n()
+  const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
+  const moduleOpenToAll = canAccessModuleVisibility(
+    moduleVisibility.modules.reports,
+    { isAuthenticated: false, isAdmin: false },
+  )
+
+  usePageSeo(
+    useMemo(
+      () =>
+        buildModulePageSeo({
+          label: t.reports.title || t.nav.reports,
+          description: t.widgets.dualLayerAnalysis,
+          path: '/reports',
+          moduleOpenToAll,
+        }),
+      [t, moduleOpenToAll],
+    ),
+  )
+
   const isPageReady = usePageReady()
   // 🆕 标题字体 Hook
   const { currentFont, titleFontSize } = useTitleFont()
