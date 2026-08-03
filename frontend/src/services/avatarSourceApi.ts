@@ -78,16 +78,24 @@ export const avatarSourceApi = {
     )
   },
 
+  /**
+   * Admin: set avatar source for another user.
+   * Only broadcast global refresh when the target is the viewer or site owner —
+   * editing a random user must not flash the homepage owner card.
+   */
   async setForUser(
     userId: number,
     kind: AvatarSourceKind,
     ref?: string | null,
+    options?: { broadcast?: boolean },
   ): Promise<SetAvatarSourceResponse> {
     const response = await apiService.put<SetAvatarSourceResponse>(
       `/admin/users/${userId}/avatar-source`,
       { kind, ref: ref ?? null },
     )
-    notifyAvatarChanged()
+    if (options?.broadcast) {
+      notifyAvatarChanged()
+    }
     return response
   },
 }

@@ -154,6 +154,31 @@ describe('fetchSiteOwnerProfile', () => {
     assert.equal(call, 2)
   })
 
+  it('concurrent force callers share one in-flight request', async () => {
+    let resolveFetch!: (value: Response) => void
+    const pending = new Promise<Response>((resolve) => {
+      resolveFetch = resolve
+    })
+    const { calls } = mockFetch(() => pending)
+
+    // Simulates notifyAvatarChanged dual-firing avatar + profile-display
+    const a = fetchSiteOwnerProfile({ force: true })
+    const b = fetchSiteOwnerProfile({ force: true })
+    assert.equal(calls.length, 1)
+
+    resolveFetch(
+      jsonResponse({
+        success: true,
+        user_info: { name: 'Once', avatar: null, bio: '', platform: null },
+      }),
+    )
+
+    const [pa, pb] = await Promise.all([a, b])
+    assert.equal(pa?.name, 'Once')
+    assert.equal(pb?.name, 'Once')
+    assert.equal(calls.length, 1)
+  })
+
   it('returns null on non-OK or malformed payloads', async () => {
     mockFetch(() => jsonResponse({ success: false }, 404))
     assert.equal(await fetchSiteOwnerProfile({ force: true }), null)

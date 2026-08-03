@@ -78,12 +78,13 @@ interface UsersConfigSectionProps {
   onAllowRegisterChange: (allow: boolean) => void
   /**
    * Private Tapp install cleanup preset:
-   * - 7 / 14: prune after that many days inactive
-   * - logout: wipe on logout
+   * - '7' / '14': prune after that many days inactive
+   * - 'logout': wipe on logout
+   * - other numeric string (e.g. '30'): preserve custom inactivity days from API
    */
-  privateTappInstallPreset: '7' | '14' | 'logout'
+  privateTappInstallPreset: string
   privateTappInstallLoading?: boolean
-  onPrivateTappInstallPresetChange: (preset: '7' | '14' | 'logout') => void
+  onPrivateTappInstallPresetChange: (preset: string) => void
 }
 
 const ONLINE_ICON_SIZE = 14
@@ -423,13 +424,37 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
         description: c.privateTappInstallCleanupDesc,
         icon: <LuTrash2 aria-hidden size={14} />,
         value: privateTappInstallPreset,
-        options: [
-          { value: '7', label: c.privateTappInstallPreset7Short },
-          { value: '14', label: c.privateTappInstallPreset14Short },
-          { value: 'logout', label: c.privateTappInstallPresetLogoutShort },
-        ],
-        onChange: (v) =>
-          onPrivateTappInstallPresetChange(v as '7' | '14' | 'logout'),
+        options: (() => {
+          const base = [
+            { value: '7', label: c.privateTappInstallPreset7Short },
+            { value: '14', label: c.privateTappInstallPreset14Short },
+          ]
+          // Preserve non-preset inactivity days (API allows 1–365) instead of
+          // silently showing them as 14.
+          if (
+            privateTappInstallPreset !== 'logout' &&
+            privateTappInstallPreset !== '7' &&
+            privateTappInstallPreset !== '14'
+          ) {
+            const days = Number(privateTappInstallPreset)
+            if (Number.isFinite(days) && days >= 1) {
+              base.push({
+                value: String(days),
+                // Reuse "7 days" / "7 天" short form with the real count
+                label: c.privateTappInstallPreset7Short.replace(
+                  /7/,
+                  String(days),
+                ),
+              })
+            }
+          }
+          base.push({
+            value: 'logout',
+            label: c.privateTappInstallPresetLogoutShort,
+          })
+          return base
+        })(),
+        onChange: (v) => onPrivateTappInstallPresetChange(String(v)),
         disabled: privateTappInstallLoading,
         loading: privateTappInstallLoading,
         className: 'users-private-tapp-choice',
@@ -665,6 +690,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
                       塞不进任意 URL，且会记一条审计日志 */}
                   <AvatarSourcePicker
                     userId={shown.id}
+                    targetIsSiteOwner={shown.is_owner}
                     onApplied={() => void loadUsers()}
                   />
                 </div>
@@ -747,18 +773,12 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
                 : `${c.usersOffline} · ${c.usersLastSeen}: ${formatDateTime(user.last_seen_at)}`
             }
           >
-            {user.avatar_url ? (
-              <Avatar
-                className="managed-list-avatar"
-                src={user.avatar_url}
-                name={user.display_name || user.username}
-                decorative
-              />
-            ) : (
-              <span className="managed-list-avatar-fallback" aria-hidden>
-                <LuUser size={16} />
-              </span>
-            )}
+            <Avatar
+              className="managed-list-avatar"
+              src={user.avatar_url}
+              name={user.display_name || user.username}
+              decorative
+            />
             <span className="users-presence-dot" aria-hidden />
           </span>
         ),

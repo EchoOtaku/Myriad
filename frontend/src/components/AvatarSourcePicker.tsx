@@ -21,6 +21,7 @@ import type {
 } from '../services/avatarSourceApi'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import avatarSourceApi from '../services/avatarSourceApi'
 import { Avatar } from './Avatar'
@@ -30,6 +31,11 @@ import './AvatarSourcePicker.css'
 interface AvatarSourcePickerProps {
   /** 省略 = 改自己；传 id = 管理员改他人 */
   userId?: number
+  /**
+   * 管理员改他人时：目标是否为站长。
+   * 仅 viewer / 站长切换才广播全局 avatar-changed（首页信息条）。
+   */
+  targetIsSiteOwner?: boolean
   /** 切换成功后的回调（刷新外层头像 / 关闭弹窗） */
   onApplied?: () => void
 }
@@ -41,9 +47,11 @@ function sourceKey(kind: AvatarSourceKind, ref: string | null): string {
 
 export function AvatarSourcePicker({
   userId,
+  targetIsSiteOwner = false,
   onApplied,
 }: AvatarSourcePickerProps) {
   const { t } = useI18n()
+  const { user: viewer } = useAuth()
   const [sources, setSources] = useState<AvatarSourceItem[]>([])
   const [currentKey, setCurrentKey] = useState<string>('')
   const [loading, setLoading] = useState(true)
@@ -88,7 +96,10 @@ export function AvatarSourcePicker({
       if (userId == null) {
         await avatarSourceApi.setMine(kind, ref)
       } else {
-        await avatarSourceApi.setForUser(userId, kind, ref)
+        const isViewer = viewer?.id === userId
+        await avatarSourceApi.setForUser(userId, kind, ref, {
+          broadcast: isViewer || targetIsSiteOwner,
+        })
       }
       setCurrentKey(key)
       onApplied?.()

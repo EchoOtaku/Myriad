@@ -280,14 +280,26 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           site_ai_intro?: string
           source?: string
         }
-        if (field === 'site_description' && data.site_description) {
-          updateValue('site_description', data.site_description)
+        const generated =
+          field === 'site_description'
+            ? data.site_description
+            : field === 'site_keywords'
+              ? data.site_keywords
+              : data.site_ai_intro
+        if (!generated?.trim()) {
+          // HTTP 200 with empty field must not look like success
+          setAiGenFeedback({
+            field,
+            message: t.config.siteAiGenerateError,
+          })
+          return
         }
-        if (field === 'site_keywords' && data.site_keywords) {
-          updateValue('site_keywords', data.site_keywords)
-        }
-        if (field === 'site_ai_intro' && data.site_ai_intro) {
-          updateValue('site_ai_intro', data.site_ai_intro)
+        if (field === 'site_description') {
+          updateValue('site_description', generated)
+        } else if (field === 'site_keywords') {
+          updateValue('site_keywords', generated)
+        } else {
+          updateValue('site_ai_intro', generated)
         }
         setAiGenFeedback({
           field,
@@ -946,7 +958,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           layout="vertical"
         />
       </SettingGroup>
-</SettingSection>
+    </SettingSection>
   )
 }
 

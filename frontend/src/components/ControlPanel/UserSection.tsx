@@ -5,7 +5,10 @@ import { createPortal } from 'react-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { useSiteOwnerProfile } from '../../hooks/useSiteOwnerProfile'
-import { onAvatarChanged } from '../../services/avatarSourceApi'
+import {
+  onAvatarChanged,
+  onProfileDisplayChanged,
+} from '../../services/avatarSourceApi'
 import { getCSRFToken } from '../../utils/csrf'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
 import { lockScroll } from '../../utils/scrollLock'
@@ -114,8 +117,25 @@ export const UserSection: React.FC<UserSectionProps> = memo(
       setUser(authUser as User | null)
     }, [authIsAuthenticated, authUser])
 
-    // 别处（含其它标签页）换了头像来源 → 重新探一次会话，拿到新快照
-    useEffect(() => onAvatarChanged(() => void checkAuth()), [checkAuth])
+    // 别处（含其它标签页）换了头像 / 名称简介来源 → 重新探一次会话。
+    // notifyAvatarChanged 双发时合并为一次 checkAuth。
+    useEffect(() => {
+      let scheduled = false
+      const refresh = () => {
+        if (scheduled) return
+        scheduled = true
+        queueMicrotask(() => {
+          scheduled = false
+          void checkAuth()
+        })
+      }
+      const offAvatar = onAvatarChanged(refresh)
+      const offText = onProfileDisplayChanged(refresh)
+      return () => {
+        offAvatar()
+        offText()
+      }
+    }, [checkAuth])
 
     // 打开弹窗
     const openModal = useCallback(() => {

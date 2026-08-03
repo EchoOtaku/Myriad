@@ -12,10 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_URL } from '../config'
-import {
-  onAvatarChanged,
-  onProfileDisplayChanged,
-} from '../services/profileDisplayEvents'
+import { onProfileDisplayChanged } from '../services/profileDisplayEvents'
 import { proxyImageUrl } from '../utils/proxyImageUrl'
 
 export interface SiteOwnerProfile {
@@ -37,9 +34,13 @@ export interface FetchSiteOwnerProfileOptions {
 /** 并发挂载多个消费者时只发一次「非强制」请求 */
 let inflight: Promise<SiteOwnerProfile | null> | null = null
 
+/** 并发 force 刷新合并为一次（avatar-changed 与 profile-display-changed 常双发） */
+let forceInflight: Promise<SiteOwnerProfile | null> | null = null
+
 /** @internal 单测用：清空共享 in-flight */
 export function __resetSiteOwnerProfileInflightForTests(): void {
   inflight = null
+  forceInflight = null
 }
 
 function parseProfilePayload(data: unknown): SiteOwnerProfile | null {
@@ -70,6 +71,8 @@ export async function fetchSiteOwnerProfile(
   const force = options.force === true
 
   if (!force && inflight) return inflight
+  // 同帧双事件（notifyAvatarChanged 同时派发 avatar + profile-display）合并为一次 force 请求
+  if (force && forceInflight) return forceInflight
 
   const run = (async (): Promise<SiteOwnerProfile | null> => {
     try {
@@ -92,8 +95,11 @@ export async function fetchSiteOwnerProfile(
   })()
 
   if (force) {
-    // 不把 force 请求塞进 inflight：避免「强制刷新」与「冷启动」互相污染
-    return run
+    // 不与冷路径 inflight 混用；仅合并并发 force
+    forceInflight = run.finally(() => {
+      forceInflight = null
+    })
+    return forceInflight
   }
 
   inflight = run.finally(() => {
@@ -160,16 +166,12 @@ export function useSiteOwnerProfile({
     void refresh(false)
   }, [refresh])
 
-  // 站长换了头像来源 / 名称简介来源 / 重抓平台数据 → 立即跟上（含跨标签页）
+  // 站长换了头像来源 / 名称简介来源 / 重抓平台数据 → 立即跟上（含跨标签页）。
+  // 只听 profile-display-changed：notifyAvatarChanged 会双发 avatar + profile-display，
+  // 若两边都 force 刷新会打两次 /user-info。avatar-changed 单独只用于 epoch 的场景
+  // 已由 refresh(force) 内 setAvatarEpoch 覆盖。
   useEffect(() => {
-    const onAvatar = () => void refresh(true)
-    const onText = () => void refresh(true)
-    const offAvatar = onAvatarChanged(onAvatar)
-    const offText = onProfileDisplayChanged(onText)
-    return () => {
-      offAvatar()
-      offText()
-    }
+    return onProfileDisplayChanged(() => void refresh(true))
   }, [refresh])
 
   return { profile, refresh, avatarEpoch }

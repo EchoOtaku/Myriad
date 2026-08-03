@@ -102,23 +102,33 @@ export function ProfileTextSourcePicker({
       label: t.userModal.profileTextSourceAuto,
       sublabel: t.userModal.profileTextSourceAutoDesc,
     },
-    ...sources.map((source) => ({
-      key: sourceKey(source.kind, source.ref || null),
-      kind: source.kind,
-      ref: source.ref || null,
-      label:
-        source.kind === 'account'
-          ? t.userModal.profileTextSourceAccount
-          : source.label,
-      sublabel:
-        source.preview_name ||
-        source.sublabel ||
-        (source.preview_bio
-          ? source.preview_bio.length > 48
-            ? `${source.preview_bio.slice(0, 48)}…`
-            : source.preview_bio
-          : null),
-    })),
+    ...sources.map((source) => {
+      // identity：sublabel 是 provider 用户名（handle），与 AvatarSourcePicker 一致；
+      // 勿用 preview_name（显示名）再强行加 @，会得到 `@Alice Smith`。
+      let sublabel: string | null
+      if (source.kind === 'identity') {
+        sublabel = source.sublabel
+      } else {
+        sublabel =
+          source.preview_name ||
+          source.sublabel ||
+          (source.preview_bio
+            ? source.preview_bio.length > 48
+              ? `${source.preview_bio.slice(0, 48)}…`
+              : source.preview_bio
+            : null)
+      }
+      return {
+        key: sourceKey(source.kind, source.ref || null),
+        kind: source.kind,
+        ref: source.ref || null,
+        label:
+          source.kind === 'account'
+            ? t.userModal.profileTextSourceAccount
+            : source.label,
+        sublabel,
+      }
+    }),
   ]
 
   return (
@@ -154,7 +164,11 @@ export function ProfileTextSourcePicker({
                     </span>
                     {row.sublabel && (
                       <span className="user-modal-profile-source-sub">
-                        {row.kind === 'identity' ? `@${row.sublabel}` : row.sublabel}
+                        {row.kind === 'identity'
+                          ? row.sublabel.startsWith('@')
+                            ? row.sublabel
+                            : `@${row.sublabel}`
+                          : row.sublabel}
                       </span>
                     )}
                   </span>

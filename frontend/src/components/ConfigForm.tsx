@@ -458,7 +458,8 @@ const ModernConfigForm: React.FC = () => {
             privateTappInstallPreset={(() => {
               const d = drafts.oauthDraft
               if (d.privateTappInstallCleanup === 'logout') return 'logout'
-              return d.privateTappInstallInactivityDays <= 7 ? '7' : '14'
+              // Keep exact day count (including non-preset values like 30)
+              return String(d.privateTappInstallInactivityDays)
             })()}
             privateTappInstallLoading={drafts.oauthLoading}
             onPrivateTappInstallPresetChange={(preset) =>
@@ -470,11 +471,12 @@ const ModernConfigForm: React.FC = () => {
                     privateTappInstallInactivityDays: 14,
                   }
                 }
+                const days = Number(preset)
                 return {
                   ...current,
                   privateTappInstallCleanup: 'inactivity',
                   privateTappInstallInactivityDays:
-                    preset === '7' ? 7 : 14,
+                    Number.isFinite(days) && days >= 1 ? Math.min(365, days) : 14,
                 }
               })
             }
