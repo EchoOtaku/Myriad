@@ -366,8 +366,8 @@ struct UserAvatarRow {
     is_owner: bool,
 }
 
-async fn load_user_avatar_row(
-    db: &DatabaseConnection,
+async fn load_user_avatar_row<C: ConnectionTrait>(
+    db: &C,
     user_id: i32,
 ) -> Result<Option<UserAvatarRow>, String> {
     // 这里刻意不取 avatar_resolved_url：解析时要重新算，读快照会自我循环
@@ -414,8 +414,8 @@ async fn load_user_avatar_row(
     }))
 }
 
-async fn identity_avatar(
-    db: &DatabaseConnection,
+async fn identity_avatar<C: ConnectionTrait>(
+    db: &C,
     user_id: i32,
     identity_id: i32,
 ) -> Option<String> {
@@ -444,8 +444,15 @@ struct ResolvedAvatar {
     from_sql_ladder: bool,
 }
 
-async fn resolve_detail(db: &DatabaseConnection, user_id: i32) -> ResolvedAvatar {
-    let row = match load_user_avatar_row(db, user_id).await {
+/// `user_row_db`: connection that can see the latest `users` / identity rows
+/// (the open transaction when switching source). `platform_db`: always the
+/// pool connection for platform_metadata (unchanged by avatar source writes).
+async fn resolve_detail<C: ConnectionTrait>(
+    user_row_db: &C,
+    platform_db: &DatabaseConnection,
+    user_id: i32,
+) -> ResolvedAvatar {
+    let row = match load_user_avatar_row(user_row_db, user_id).await {
         Ok(Some(row)) => row,
         Ok(None) => {
             return ResolvedAvatar {
@@ -466,7 +473,7 @@ async fn resolve_detail(db: &DatabaseConnection, user_id: i32) -> ResolvedAvatar
         if !row.is_owner {
             return None;
         }
-        let profiles = owner_platform_profiles(db, user_id).await;
+        let profiles = owner_platform_profiles(platform_db, user_id).await;
         match platform {
             // 指定平台
             Some(want) => profiles
@@ -487,7 +494,7 @@ async fn resolve_detail(db: &DatabaseConnection, user_id: i32) -> ResolvedAvatar
         AvatarSourceKind::Auto => owner_platform_avatar(None).await,
         AvatarSourceKind::Account => row.account_avatar.clone(),
         AvatarSourceKind::Identity => match row.source_ref.as_deref().and_then(|r| r.parse().ok()) {
-            Some(identity_id) => identity_avatar(db, user_id, identity_id).await,
+            Some(identity_id) => identity_avatar(user_row_db, user_id, identity_id).await,
             None => None,
         },
         AvatarSourceKind::Platform => owner_platform_avatar(row.source_ref.clone()).await,
@@ -507,13 +514,14 @@ async fn resolve_detail(db: &DatabaseConnection, user_id: i32) -> ResolvedAvatar
 
 /// 按用户选定的画像源解析出最终头像（已过站内代理）。
 pub async fn resolve_avatar(db: &DatabaseConnection, user_id: i32) -> Option<String> {
-    proxied_avatar(resolve_detail(db, user_id).await.url)
+    proxied_avatar(resolve_detail(db, db, user_id).await.url)
 }
 
 /// 解析并写回 `avatar_resolved_url` 快照，让所有出口一次查询就拿到同一张脸。
 ///
 /// 调用点：切换画像源、OAuth 登录刷新 identity 快照后、站长平台数据抓取完成后、
-/// 启动时为站长兜一次底。
+/// 启动时为站长兜一次底。写失败只记日志（后台刷新路径）；切换画像源走
+/// [`refresh_avatar_snapshot_on`] 并纳入同一事务。
 ///
 /// 结果来自 SQL 阶梯时写 NULL —— 让阶梯每次现算，不留陈旧快照。
 ///
@@ -523,24 +531,43 @@ pub async fn resolve_avatar(db: &DatabaseConnection, user_id: i32) -> Option<Str
 /// 且 ActivityPub 文档面向外站，相对路径也没有意义。代理只发生在 HTTP 出口
 /// （[`proxied_avatar`]），与阶梯里其余几列的语义保持一致。
 pub async fn refresh_avatar_snapshot(db: &DatabaseConnection, user_id: i32) -> Option<String> {
-    let resolved = resolve_detail(db, user_id).await;
+    match refresh_avatar_snapshot_on(db, db, user_id).await {
+        Ok(url) => url,
+        Err(e) => {
+            tracing::warn!("Avatar snapshot write failed for user {user_id}: {e}");
+            // Best-effort resolve for callers that only need a display URL.
+            proxied_avatar(resolve_detail(db, db, user_id).await.url)
+        }
+    }
+}
+
+/// Resolve + persist snapshot on `write_db` (may be an open transaction).
+///
+/// `platform_db` is the pool connection for platform metadata reads.
+/// Returns `Err` if the snapshot `UPDATE` fails so callers can abort the
+/// surrounding transaction instead of committing a source change without a
+/// matching `avatar_resolved_url`.
+pub async fn refresh_avatar_snapshot_on<C: ConnectionTrait>(
+    write_db: &C,
+    platform_db: &DatabaseConnection,
+    user_id: i32,
+) -> Result<Option<String>, String> {
+    let resolved = resolve_detail(write_db, platform_db, user_id).await;
 
     let value = match resolved.url.clone().filter(|_| !resolved.from_sql_ladder) {
         Some(url) => SeaValue::String(Some(Box::new(url))),
         None => SeaValue::String(None),
     };
-    if let Err(e) = db
+    write_db
         .execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "UPDATE users SET avatar_resolved_url = $1, avatar_updated_at = NOW() WHERE id = $2",
             vec![value, SeaValue::Int(Some(user_id))],
         ))
         .await
-    {
-        tracing::warn!("Avatar snapshot write failed for user {user_id}: {e}");
-    }
+        .map_err(|e| format!("Failed to write avatar snapshot: {e}"))?;
 
-    proxied_avatar(resolved.url)
+    Ok(proxied_avatar(resolved.url))
 }
 
 /// OAuth provider slug → `platform_metadata` 平台键（仅 1:1 同站映射）。
@@ -922,11 +949,16 @@ async fn set_avatar_source_txn(
         }
     }
 
+    // Snapshot must land in the same transaction as the source change so
+    // readers never observe a new kind with a stale avatar_resolved_url.
+    // Platform metadata is unchanged here — resolve it via the pool connection.
+    let avatar_url = refresh_avatar_snapshot_on(&txn, db, user_id).await?;
+
     txn.commit()
         .await
         .map_err(|e| format!("Failed to commit avatar source transaction: {e}"))?;
 
-    Ok(refresh_avatar_snapshot(db, user_id).await)
+    Ok(avatar_url)
 }
 
 #[cfg(test)]

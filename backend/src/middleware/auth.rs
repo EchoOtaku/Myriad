@@ -268,10 +268,39 @@ fn verify_guest_session(secret: &[u8], token: &str) -> Option<String> {
         .then(|| session_id.to_ascii_lowercase())
 }
 
+/// Stable negative subject id for a browser guest session.
+///
+/// ## Capacity / collision bound
+/// Postgres `tapp_runtime_registry.subject_id` (and related columns) are
+/// `INTEGER`, so the id must fit in signed 32-bit. We use the full negative
+/// `i32` range `i32::MIN ..= -1` (~2³¹ values). Birthday bound for ~50%
+/// collision probability among *distinct concurrent guest sessions* is on the
+/// order of √(π · 2³¹ / 2) ≈ **~58k** sessions — residual collisions only
+/// alias guest storage / rate-limit namespaces, never escalate to a real user
+/// (real users are non-negative).
+///
+/// ## Hash material
+/// Full SHA-256 is XOR-folded into 31 bits (previous scheme used only 4 raw
+/// prefix bytes). Cookie session tokens themselves are unchanged (HMAC of the
+/// 32-hex session id); only the derived numeric subject remaps. Existing
+/// guest storage rows under the old mapping become orphaned after upgrade —
+/// acceptable for ephemeral guest sandbox data (no migration).
+///
+/// A true 63-bit negative `i64` would need `BIGINT` subject columns site-wide;
+/// until then this is the strongest scheme that still fits the DB type.
 fn guest_id(session_id: &str) -> i32 {
     let digest = Sha256::digest(session_id.as_bytes());
-    let value = u32::from_be_bytes(digest[..4].try_into().expect("SHA-256 prefix"));
-    -((value % i32::MAX as u32) as i32 + 1)
+    let mut acc = 0u64;
+    for chunk in digest.chunks_exact(8) {
+        acc ^= u64::from_be_bytes(chunk.try_into().expect("SHA-256 8-byte chunk"));
+    }
+    // 31 payload bits → always map into i32::MIN ..= -1 (never 0 / positive).
+    let bits31 = (acc & 0x7FFF_FFFF) as u32;
+    if bits31 == 0 {
+        i32::MIN
+    } else {
+        -(bits31 as i32)
+    }
 }
 
 /// Optional authentication middleware - allows guest access
@@ -481,5 +510,12 @@ mod tests {
         assert!(first < 0);
         assert_eq!(first, guest_id("0123456789abcdef0123456789abcdef"));
         assert_ne!(first, guest_id("fedcba9876543210fedcba9876543210"));
+        // Never collide with real user ids (non-negative).
+        assert!(first <= -1);
+        // Distinct sessions should almost always differ under full-hash fold.
+        let many: std::collections::HashSet<i32> = (0u32..256)
+            .map(|i| guest_id(&format!("{i:032x}")))
+            .collect();
+        assert_eq!(many.len(), 256, "unexpected guest_id collision in 256 samples");
     }
 }

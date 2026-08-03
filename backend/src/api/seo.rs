@@ -110,28 +110,31 @@ fn html_escape(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// Prefer durable public origin (FRONTEND_URL → BASE_URL), then proxy Host.
-fn resolve_public_base_url(headers: &HeaderMap) -> String {
+/// Durable public origin only: `FRONTEND_URL`, then `BASE_URL`.
+///
+/// **Never** derive absolute SEO URLs from client `Host` / `X-Forwarded-Host`
+/// (or `X-Forwarded-Proto`) — a poisoned Host can poison cached sitemap /
+/// robots / canonical absolute links. When unset, callers must omit absolute
+/// URLs (fail closed) rather than invent an origin.
+fn resolve_public_base_url() -> Option<String> {
     for key in ["FRONTEND_URL", "BASE_URL"] {
         if let Ok(raw) = std::env::var(key) {
             let trimmed = raw.trim().trim_end_matches('/');
             if !trimmed.is_empty() {
-                return trimmed.to_string();
+                return Some(trimmed.to_string());
             }
         }
     }
-    let proto = headers
-        .get("x-forwarded-proto")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("https");
-    let host = headers
-        .get("x-forwarded-host")
-        .or_else(|| headers.get(header::HOST))
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("localhost");
-    let proto = proto.split(',').next().unwrap_or(proto).trim();
-    let host = host.split(',').next().unwrap_or(host).trim();
-    format!("{proto}://{host}")
+    None
+}
+
+/// Absolute URL when a durable origin is configured; otherwise the path only
+/// (relative — no host poisoning surface).
+fn public_absolute_url(base: Option<&str>, path: &str) -> String {
+    match base {
+        Some(b) if !b.is_empty() => format!("{b}{path}"),
+        _ => path.to_string(),
+    }
 }
 
 fn module_is_public_all(level: &str) -> bool {
@@ -306,18 +309,18 @@ fn brew_item_path(item_id: i32) -> String {
 
 async fn resolve_brew_item_seo_summary(
     db: &DatabaseConnection,
-    headers: &HeaderMap,
+    _headers: &HeaderMap,
     item_id: i32,
 ) -> Result<BrewItemSeoSummary, StatusCode> {
     if item_id <= 0 {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let base = resolve_public_base_url(headers);
+    let base = resolve_public_base_url();
     let branding = load_site_branding(db).await;
     let module_open = brew_module_open_to_guests(db).await;
     let path = brew_item_path(item_id);
-    let canonical_url = format!("{base}{path}");
+    let canonical_url = public_absolute_url(base.as_deref(), &path);
 
     if !module_open {
         return Err(StatusCode::NOT_FOUND);
@@ -347,12 +350,13 @@ async fn resolve_brew_item_seo_summary(
         .filter(|s| !s.trim().is_empty())
         .or(item.content.as_deref().filter(|s| !s.trim().is_empty()))
         .map(|s| strip_html_snippet(s, 160));
+    let base_for_img = base.as_deref().unwrap_or("");
     let image = item
         .image
         .as_deref()
-        .and_then(|i| absolute_share_image(&base, i))
-        .or_else(|| absolute_share_image(&base, branding.og_image.trim()))
-        .or_else(|| absolute_share_image(&base, branding.favicon.trim()));
+        .and_then(|i| absolute_share_image(base_for_img, i))
+        .or_else(|| absolute_share_image(base_for_img, branding.og_image.trim()))
+        .or_else(|| absolute_share_image(base_for_img, branding.favicon.trim()));
 
     Ok(BrewItemSeoSummary {
         id: item.id,
@@ -476,16 +480,16 @@ fn icon_from_manifest(manifest: &Value, row_icon: Option<&str>) -> Option<String
 /// Resolve public SEO summary for a site-owner install of `tapp_id`.
 async fn resolve_tapp_seo_summary(
     db: &DatabaseConnection,
-    headers: &HeaderMap,
+    _headers: &HeaderMap,
     tapp_id: &str,
 ) -> Result<TappSeoSummary, StatusCode> {
     validate_tapp_id(tapp_id).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let base = resolve_public_base_url(headers);
+    let base = resolve_public_base_url();
     let branding = load_site_branding(db).await;
     let module_open = tapp_module_open_to_guests(db).await;
     let path = format!("/tapp/run/{}", encode_path_segment(tapp_id));
-    let canonical_url = format!("{base}{path}");
+    let canonical_url = public_absolute_url(base.as_deref(), &path);
 
     let admin_id = find_admin_user_id(db)
         .await
@@ -516,11 +520,12 @@ async fn resolve_tapp_seo_summary(
     let name = name_from_manifest(&tapp.manifest, &tapp.name);
     let description = description_from_manifest(&tapp.manifest, tapp.description.as_deref());
     let icon_raw = icon_from_manifest(&tapp.manifest, tapp.icon.as_deref());
+    let base_for_img = base.as_deref().unwrap_or("");
     let image = icon_raw
         .as_deref()
-        .and_then(|i| absolute_share_image(&base, i))
-        .or_else(|| absolute_share_image(&base, branding.og_image.trim()))
-        .or_else(|| absolute_share_image(&base, branding.favicon.trim()));
+        .and_then(|i| absolute_share_image(base_for_img, i))
+        .or_else(|| absolute_share_image(base_for_img, branding.og_image.trim()))
+        .or_else(|| absolute_share_image(base_for_img, branding.favicon.trim()));
 
     Ok(TappSeoSummary {
         id: tapp.tapp_id,
@@ -745,17 +750,17 @@ fn simple_error_html(title: &str, message: &str) -> String {
     )
 }
 
-/// GET /robots.txt — absolute Sitemap line when public origin is known.
+/// GET /robots.txt — absolute Sitemap line only when durable env origin is set.
 /// Disallow private SPA routes (login/setup/admin/playground); public modules
 /// remain Allow. Client-side noindex is still applied on those pages for bots
 /// that execute JS.
 pub async fn robots_txt(
     State(db): State<DatabaseConnection>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
 ) -> Response {
     let branding = load_site_branding(&db).await;
-    let base = resolve_public_base_url(&headers);
-    let body = crate::api::seo_policy::build_robots_txt(&base, &branding.policy);
+    let base = resolve_public_base_url();
+    let body = crate::api::seo_policy::build_robots_txt(base.as_deref(), &branding.policy);
     (
         StatusCode::OK,
         [
@@ -768,9 +773,11 @@ pub async fn robots_txt(
 }
 
 /// GET /llms.txt — AI-facing site index when policy is ai_citation or ai_full.
+/// Absolute route links require durable `FRONTEND_URL`/`BASE_URL`; otherwise
+/// paths stay relative (no client-Host absolute links).
 pub async fn llms_txt(
     State(db): State<DatabaseConnection>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
 ) -> Response {
     let branding = load_site_branding(&db).await;
     if !crate::api::seo_policy::policy_serves_llms_txt(&branding.policy) {
@@ -785,7 +792,7 @@ pub async fn llms_txt(
             .into_response();
     }
 
-    let base = resolve_public_base_url(&headers);
+    let base = resolve_public_base_url();
     let intro = if branding.ai_intro.trim().is_empty() {
         branding.description.as_str()
     } else {
@@ -807,7 +814,8 @@ pub async fn llms_txt(
         }
     }
 
-    let body = crate::api::seo_policy::build_llms_txt(&branding.title, intro, &base, &routes);
+    let body =
+        crate::api::seo_policy::build_llms_txt(&branding.title, intro, base.as_deref(), &routes);
     (
         StatusCode::OK,
         [
@@ -821,16 +829,20 @@ pub async fn llms_txt(
 
 
 /// GET /sitemap.xml
+///
+/// Sitemap protocol requires absolute `<loc>` URLs. Without durable
+/// `FRONTEND_URL`/`BASE_URL` we return an empty urlset rather than poisoning
+/// caches with a client-supplied Host.
 pub async fn sitemap_xml(
     State(db): State<DatabaseConnection>,
-    headers: HeaderMap,
+    _headers: HeaderMap,
 ) -> Response {
     let branding = load_site_branding(&db).await;
-    if branding.noindex {
-        let empty = r#"<?xml version="1.0" encoding="UTF-8"?>
+    let empty = r#"<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 </urlset>
 "#;
+    if branding.noindex {
         return (
             StatusCode::OK,
             [
@@ -842,7 +854,21 @@ pub async fn sitemap_xml(
             .into_response();
     }
 
-    let base = resolve_public_base_url(&headers);
+    let Some(base) = resolve_public_base_url() else {
+        tracing::warn!(
+            "sitemap.xml: FRONTEND_URL/BASE_URL unset; returning empty urlset (no client Host fallback)"
+        );
+        return (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, "application/xml; charset=utf-8"),
+                (header::CACHE_CONTROL, "public, max-age=300"),
+            ],
+            empty.to_string(),
+        )
+            .into_response();
+    };
+
     let mut urls: Vec<SitemapUrl> = Vec::new();
 
     urls.push(SitemapUrl {
@@ -1015,5 +1041,23 @@ mod tests {
             format_document_title("Todo", "Myriad Site"),
             "Todo · Myriad Site"
         );
+    }
+
+    #[test]
+    fn public_absolute_url_omits_origin_when_base_missing() {
+        assert_eq!(public_absolute_url(None, "/tapp/run/x"), "/tapp/run/x");
+        assert_eq!(
+            public_absolute_url(Some("https://ex.com"), "/tapp/run/x"),
+            "https://ex.com/tapp/run/x"
+        );
+    }
+
+    #[test]
+    fn resolve_public_base_url_ignores_client_host_env() {
+        // Unit path: function never reads HeaderMap — only env. Host poisoning
+        // cannot affect origin selection by construction.
+        // Clear both keys for this process if set would break parallel tests;
+        // we only assert the pure helper and relative-fallback behaviour above.
+        let _ = resolve_public_base_url(); // smoke: does not panic without env
     }
 }

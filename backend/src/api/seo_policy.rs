@@ -66,8 +66,22 @@ Disallow: /config\n\
 Disallow: /tapp/playground\n\
 Disallow: /tapp/detail/\n";
 
+/// Optional absolute Sitemap line when a durable public origin is known.
+///
+/// `base` must come from env (`FRONTEND_URL`/`BASE_URL`), never client Host —
+/// omit the Sitemap directive when origin is unknown (fail closed).
+fn sitemap_line(base: Option<&str>) -> String {
+    match base.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(b) => format!("Sitemap: {b}/sitemap.xml\n"),
+        None => String::new(),
+    }
+}
+
 /// Build robots.txt body for a visibility policy.
-pub fn build_robots_txt(base: &str, policy: &str) -> String {
+///
+/// `base`: durable public origin, or `None` to omit absolute Sitemap.
+pub fn build_robots_txt(base: Option<&str>, policy: &str) -> String {
+    let sitemap = sitemap_line(base);
     match policy {
         VISIBILITY_PRIVATE => {
             "User-agent: *\n\
@@ -81,8 +95,7 @@ Disallow: /\n\
                 "User-agent: *\n\
 Allow: /\n\
 {PRIVATE_PATHS}\n\
-Sitemap: {base}/sitemap.xml\n\
-\n\
+{sitemap}\n\
 # Myriad visibility: search_only — block AI crawlers\n\
 "
             );
@@ -95,8 +108,7 @@ Sitemap: {base}/sitemap.xml\n\
                 "User-agent: *\n\
 Allow: /\n\
 {PRIVATE_PATHS}\n\
-Sitemap: {base}/sitemap.xml\n\
-\n\
+{sitemap}\n\
 # Myriad visibility: ai_citation — allow AI search, block training-oriented bots\n\
 "
             );
@@ -108,20 +120,23 @@ Sitemap: {base}/sitemap.xml\n\
             "User-agent: *\n\
 Allow: /\n\
 {PRIVATE_PATHS}\n\
-Sitemap: {base}/sitemap.xml\n\
-\n\
+{sitemap}\n\
 # Myriad visibility: ai_full\n"
         ),
     }
 }
 
 /// Build llms.txt markdown body.
+///
+/// `base`: durable public origin for absolute links, or `None` / empty for
+/// path-only links (no client-Host absolute URLs).
 pub fn build_llms_txt(
     title: &str,
     intro: &str,
-    base: &str,
+    base: Option<&str>,
     routes: &[(&str, &str)],
 ) -> String {
+    let origin = base.map(str::trim).filter(|b| !b.is_empty()).unwrap_or("");
     let mut body = String::new();
     body.push_str("# ");
     body.push_str(title.trim());
@@ -129,7 +144,7 @@ pub fn build_llms_txt(
     body.push_str(intro.trim().replace('\n', " ").as_str());
     body.push_str("\n\n## Primary routes\n\n");
     for (label, path) in routes {
-        body.push_str(&format!("- [{label}]({base}{path})\n"));
+        body.push_str(&format!("- [{label}]({origin}{path})\n"));
     }
     body.push_str(
         "\n## Notes\n\n\
@@ -156,14 +171,14 @@ mod tests {
 
     #[test]
     fn robots_private_disallows_all() {
-        let body = build_robots_txt("https://ex.com", VISIBILITY_PRIVATE);
+        let body = build_robots_txt(Some("https://ex.com"), VISIBILITY_PRIVATE);
         assert!(body.contains("Disallow: /"));
         assert!(!body.contains("Sitemap:"));
     }
 
     #[test]
     fn robots_ai_citation_blocks_training_not_search() {
-        let body = build_robots_txt("https://ex.com", VISIBILITY_AI_CITATION);
+        let body = build_robots_txt(Some("https://ex.com"), VISIBILITY_AI_CITATION);
         assert!(body.contains("User-agent: GPTBot"));
         assert!(body.contains("Sitemap: https://ex.com/sitemap.xml"));
         assert!(!body.contains("User-agent: ChatGPT-User"));
@@ -171,9 +186,16 @@ mod tests {
 
     #[test]
     fn robots_search_only_blocks_ai_search() {
-        let body = build_robots_txt("https://ex.com", VISIBILITY_SEARCH_ONLY);
+        let body = build_robots_txt(Some("https://ex.com"), VISIBILITY_SEARCH_ONLY);
         assert!(body.contains("User-agent: ChatGPT-User"));
         assert!(body.contains("User-agent: PerplexityBot"));
+    }
+
+    #[test]
+    fn robots_omits_sitemap_without_durable_origin() {
+        let body = build_robots_txt(None, VISIBILITY_AI_FULL);
+        assert!(!body.contains("Sitemap:"));
+        assert!(body.contains("Allow: /"));
     }
 
     #[test]
@@ -181,10 +203,22 @@ mod tests {
         let body = build_llms_txt(
             "My Site",
             "A personal hub.",
-            "https://ex.com",
+            Some("https://ex.com"),
             &[("Home", "/"), ("Brew", "/brew")],
         );
         assert!(body.contains("# My Site"));
         assert!(body.contains("[Brew](https://ex.com/brew)"));
+    }
+
+    #[test]
+    fn llms_uses_relative_paths_without_origin() {
+        let body = build_llms_txt(
+            "My Site",
+            "A personal hub.",
+            None,
+            &[("Home", "/"), ("Brew", "/brew")],
+        );
+        assert!(body.contains("[Brew](/brew)"));
+        assert!(!body.contains("https://"));
     }
 }

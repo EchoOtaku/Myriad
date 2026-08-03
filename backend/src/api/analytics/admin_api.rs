@@ -1847,6 +1847,23 @@ ON CONFLICT (day, country_code, visitor_hash) DO NOTHING
         }
     }
 
+    // Integrity-sealed restore is all-or-nothing. Prevalidate should have
+    // rejected bad rows already; if any row was still soft-skipped during
+    // insert (validation drift), roll back so replace never leaves a partial
+    // dataset after TRUNCATE.
+    if skipped > 0 {
+        let _ = txn.rollback().await;
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "success": false,
+                "error": "row_validation_failed",
+                "skipped": skipped,
+                "hint": "sealed analytics restore is all-or-nothing; re-export a clean backup or fix invalid rows",
+            })),
+        );
+    }
+
     if let Err(e) = recompute_unique_metrics(&txn).await {
         import_db_err!(txn, e);
     }
@@ -1867,7 +1884,7 @@ ON CONFLICT (day, country_code, visitor_hash) DO NOTHING
             "success": true,
             "mode": if replace { "replace" } else { "merge" },
             "inserted": inserted,
-            "skipped": skipped,
+            "skipped": 0,
             "integrity_verified": true,
             "unique_recomputed": true,
             // Surface ceiling so operators know hard bounds (not a secret).

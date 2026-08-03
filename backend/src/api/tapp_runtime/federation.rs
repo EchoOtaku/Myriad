@@ -212,18 +212,23 @@ async fn load_personal_feed(
 async fn load_public_feed(
     db: &DatabaseConnection,
 ) -> Result<Vec<Value>, HttpError> {
-    let rows = FeedRow::find_by_statement(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
+    // Local author avatar follows the same snapshot ladder as personal feed /
+    // federation actor documents — never raw `users.avatar_url` alone (that
+    // ignores avatar_source_kind / avatar_resolved_url).
+    let local_avatar = local_user_avatar_expr("u");
+    let base_url = crate::federation::types::get_base_url().await;
+    let base = base_url.trim_end_matches('/').to_string();
+    let sql = format!(
         r#"WITH public_items AS (
                SELECT DISTINCT ON (a.activity_id)
                       a.activity_id,
                       a.activity_type,
                       a.object_type,
                       LEFT(COALESCE(
-                          a.object_json #>> '{object,content}',
-                          a.object_json #>> '{object,source,content}',
+                          a.object_json #>> '{{object,content}}',
+                          a.object_json #>> '{{object,source,content}}',
                           a.object_json ->> 'content',
-                          a.object_json #>> '{object,summary}',
+                          a.object_json #>> '{{object,summary}}',
                           a.object_json ->> 'summary'
                       ), 200) AS content_preview,
                       COALESCE(
@@ -233,14 +238,21 @@ async fn load_public_feed(
                       COALESCE(a.received_at, a.published_at) AS received_at,
                       COALESCE(
                           a.object_json ->> 'actor',
-                          a.object_json #>> '{object,attributedTo}',
+                          a.object_json #>> '{{object,attributedTo}}',
                           a.object_json ->> 'attributedTo',
                           ra.actor_url
                       ) AS actor_url,
                       COALESCE(u.username, ra.username) AS username,
                       ra.domain,
                       COALESCE(u.display_name, ra.display_name, u.username, ra.username) AS display_name,
-                      COALESCE(u.avatar_url, ra.avatar_url) AS avatar_url,
+                      COALESCE(
+                          CASE
+                              WHEN u.username IS NOT NULL AND ({local_avatar}) IS NOT NULL
+                              THEN $2 || '/users/' || u.username || '/avatar'
+                              ELSE NULL
+                          END,
+                          ra.avatar_url
+                      ) AS avatar_url,
                       'public'::TEXT AS scope,
                       a.is_local AS is_local
                FROM federation_activities a
@@ -253,8 +265,8 @@ async fn load_public_feed(
                       AND (
                           COALESCE((a.object_json -> 'to')::JSONB, '[]'::JSONB) ? $1
                           OR COALESCE((a.object_json -> 'cc')::JSONB, '[]'::JSONB) ? $1
-                          OR COALESCE((a.object_json #> '{object,to}')::JSONB, '[]'::JSONB) ? $1
-                          OR COALESCE((a.object_json #> '{object,cc}')::JSONB, '[]'::JSONB) ? $1
+                          OR COALESCE((a.object_json #> '{{object,to}}')::JSONB, '[]'::JSONB) ? $1
+                          OR COALESCE((a.object_json #> '{{object,cc}}')::JSONB, '[]'::JSONB) ? $1
                       )
                   )
                ORDER BY a.activity_id, COALESCE(a.received_at, a.published_at) DESC
@@ -263,7 +275,12 @@ async fn load_public_feed(
            FROM public_items
            ORDER BY received_at DESC
            LIMIT 100"#,
-        [AP_PUBLIC.into()],
+        local_avatar = local_avatar,
+    );
+    let rows = FeedRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        sql,
+        [AP_PUBLIC.into(), base.into()],
     ))
     .all(db)
     .await
