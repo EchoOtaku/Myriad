@@ -20,7 +20,7 @@ import { proxyImageUrlOr } from '../../../../utils/proxyImageUrl'
 import * as TappApiService from '../../../services/TappApiService'
 import {
   hostBindShortcut,
-  hostUnbindAllForTapp,
+  hostUnbindAllForBridge,
   hostUnbindShortcut,
 } from '../../HostShortcutManager'
 import { getTappRuntime } from '../../TappRuntime'
@@ -1209,7 +1209,7 @@ export function registerAdvancedHandlers(
         id as string,
         await bridge.getRuntimeGrant(),
       )
-      hostUnbindShortcut(tappInstance.id, id as string)
+      hostUnbindShortcut(tappInstance.id, id as string, bridge)
       return { success: true, data: result }
     } catch (error) {
       return {
@@ -1235,7 +1235,8 @@ export function registerAdvancedHandlers(
   })
 
   return () => {
-    hostUnbindAllForTapp(tappInstance.id)
+    // Per-bridge unbind so multi-window peers keep their host shortcuts.
+    hostUnbindAllForBridge(bridge)
   }
 }
 

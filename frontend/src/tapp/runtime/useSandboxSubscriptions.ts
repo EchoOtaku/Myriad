@@ -54,14 +54,22 @@ export function useSandboxSubscriptions(
 
   const composedShouldRun = () => !pausedRef.current && pageVisibleRef.current
 
-  // Reset tracking when the bridge/iframe is torn down; re-emit on ready edge
-  // without equality short-circuit so a remount while minimized still gets pause.
+  // Reset tracking when the bridge/iframe is torn down.
+  // Ready edge: only force-emit pause when shouldRun is false (remount while
+  // minimized/hidden). When shouldRun is true, mark last without emitting
+  // resume — running is the default until pause, and force-resume here would
+  // double-start with onReady init.
   useEffect(() => {
     if (!isReady) {
       lastShouldRunRef.current = null
       return
     }
-    emitShouldRun(composedShouldRun(), true)
+    const shouldRun = composedShouldRun()
+    if (!shouldRun) {
+      emitShouldRun(false, true)
+    } else {
+      lastShouldRunRef.current = true
+    }
   }, [isReady, bridgeRef])
 
   // Host minimize / hide

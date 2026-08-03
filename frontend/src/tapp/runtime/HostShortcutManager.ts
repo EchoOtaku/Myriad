@@ -3,6 +3,9 @@
  *
  * Backend only persists chords; the host must attach keydown listeners and
  * emit `shortcut:triggered` (as a tappEvent) into the owning sandbox.
+ *
+ * Bindings are scoped per bridge instance (session token) so multi-window
+ * sandboxes of the same tappId do not overwrite or unbind each other.
  */
 
 import type { TappBridge } from './TappBridge'
@@ -20,13 +23,24 @@ export interface HostShortcutBinding {
 type InternalBinding = HostShortcutBinding & {
   chordParts: string[]
   mainKey: string
+  /** Bridge session token at bind time — identity for multi-window scoping. */
+  sessionToken: string
 }
 
 const bindings = new Map<string, InternalBinding>()
 let listenerAttached = false
 
-function bindingKey(tappId: string, shortcutId: string): string {
-  return `${tappId}\0${shortcutId}`
+function bridgeSessionToken(bridge: TappBridge): string {
+  try {
+    return bridge.getSessionToken() || ''
+  } catch {
+    return ''
+  }
+}
+
+/** Key includes bridge session so two windows of the same tapp can coexist. */
+function bindingKey(tappId: string, shortcutId: string, sessionToken: string): string {
+  return `${tappId}\0${shortcutId}\0${sessionToken}`
 }
 
 function normalizeKeys(keys: string): { parts: string[]; mainKey: string } | null {
@@ -83,41 +97,50 @@ function isTypingTarget(target: EventTarget | null): boolean {
   return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
 }
 
+function emitShortcut(binding: InternalBinding): void {
+  const payload = {
+    shortcutId: binding.shortcutId,
+    action: binding.action,
+    keys: binding.keys,
+    tappId: binding.tappId,
+    scope: binding.scope || 'global',
+  }
+
+  try {
+    binding.bridge.emit('tappEvent', {
+      version: 2,
+      eventId: `sc_${crypto.randomUUID().replaceAll('-', '')}`,
+      topic: 'shortcut:triggered',
+      scope: 'instance',
+      source: { tappId: binding.tappId, runtimeId: 'host' },
+      payload,
+      occurredAt: new Date().toISOString(),
+    })
+    // Direct event for listeners using addEventListener('shortcut:triggered')
+    binding.bridge.emit('shortcut:triggered', payload)
+  } catch (err) {
+    console.warn('[HostShortcut] emit failed:', err)
+  }
+}
+
 function onKeyDown(e: KeyboardEvent) {
   if (e.defaultPrevented || e.repeat) return
   if (isImeComposing(e)) return
   if (isTypingTarget(e.target)) return
   if (bindings.size === 0) return
 
+  // Emit to every live binding that matches the chord (multi-window same tapp).
+  let matched = false
   for (const binding of bindings.values()) {
     if (!matchesChord(e, binding)) continue
-    e.preventDefault()
-    e.stopPropagation()
-
-    const payload = {
-      shortcutId: binding.shortcutId,
-      action: binding.action,
-      keys: binding.keys,
-      tappId: binding.tappId,
-      scope: binding.scope || 'global',
+    // Drop orphaned bindings whose bridge no longer has a session.
+    if (!bridgeSessionToken(binding.bridge)) continue
+    if (!matched) {
+      e.preventDefault()
+      e.stopPropagation()
+      matched = true
     }
-
-    try {
-      binding.bridge.emit('tappEvent', {
-        version: 2,
-        eventId: `sc_${crypto.randomUUID().replaceAll('-', '')}`,
-        topic: 'shortcut:triggered',
-        scope: 'instance',
-        source: { tappId: binding.tappId, runtimeId: 'host' },
-        payload,
-        occurredAt: new Date().toISOString(),
-      })
-      // Direct event for listeners using addEventListener('shortcut:triggered')
-      binding.bridge.emit('shortcut:triggered', payload)
-    } catch (err) {
-      console.warn('[HostShortcut] emit failed:', err)
-    }
-    return
+    emitShortcut(binding)
   }
 }
 
@@ -133,28 +156,73 @@ function maybeDetachListener() {
   listenerAttached = false
 }
 
-/** Bind (or replace) a host keydown handler for a registered shortcut. */
+/** Bind (or replace on this bridge only) a host keydown handler for a shortcut. */
 export function hostBindShortcut(binding: HostShortcutBinding): void {
   const normalized = normalizeKeys(binding.keys)
   if (!normalized) {
     console.warn('[HostShortcut] invalid keys:', binding.keys)
     return
   }
-  bindings.set(bindingKey(binding.tappId, binding.shortcutId), {
+  const sessionToken = bridgeSessionToken(binding.bridge)
+  if (!sessionToken) {
+    console.warn('[HostShortcut] bridge has no session token; skip bind')
+    return
+  }
+  bindings.set(bindingKey(binding.tappId, binding.shortcutId, sessionToken), {
     ...binding,
     chordParts: normalized.parts,
     mainKey: normalized.mainKey,
+    sessionToken,
   })
   ensureListener()
 }
 
-/** Remove a host keydown binding. */
-export function hostUnbindShortcut(tappId: string, shortcutId: string): void {
-  bindings.delete(bindingKey(tappId, shortcutId))
+/**
+ * Remove a host keydown binding for one bridge instance.
+ * Prefer passing `bridge` so multi-window peers keep their bindings.
+ */
+export function hostUnbindShortcut(
+  tappId: string,
+  shortcutId: string,
+  bridge?: TappBridge,
+): void {
+  if (bridge) {
+    const sessionToken = bridgeSessionToken(bridge)
+    bindings.delete(bindingKey(tappId, shortcutId, sessionToken))
+  } else {
+    // Legacy: drop every window's binding for this shortcutId under tappId.
+    for (const key of [...bindings.keys()]) {
+      if (key.startsWith(`${tappId}\0${shortcutId}\0`)) bindings.delete(key)
+    }
+  }
   maybeDetachListener()
 }
 
-/** Drop every binding for a Tapp (e.g. sandbox destroy). */
+/**
+ * Drop every binding owned by this bridge (sandbox destroy cleanup).
+ * Preferred over hostUnbindAllForTapp so peer windows keep their shortcuts.
+ */
+export function hostUnbindAllForBridge(bridge: TappBridge): void {
+  const sessionToken = bridgeSessionToken(bridge)
+  if (!sessionToken) {
+    // Fall back to object identity if token is empty mid-teardown.
+    for (const [key, binding] of [...bindings.entries()]) {
+      if (binding.bridge === bridge) bindings.delete(key)
+    }
+  } else {
+    for (const [key, binding] of [...bindings.entries()]) {
+      if (binding.sessionToken === sessionToken || binding.bridge === bridge) {
+        bindings.delete(key)
+      }
+    }
+  }
+  maybeDetachListener()
+}
+
+/**
+ * Drop every binding for a Tapp across all bridges (true app-wide teardown).
+ * Prefer {@link hostUnbindAllForBridge} for sandbox destroy.
+ */
 export function hostUnbindAllForTapp(tappId: string): void {
   for (const key of [...bindings.keys()]) {
     if (key.startsWith(`${tappId}\0`)) bindings.delete(key)

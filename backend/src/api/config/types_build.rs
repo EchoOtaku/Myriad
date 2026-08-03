@@ -3818,8 +3818,17 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 );
                 continue;
             }
+            "site_ai_intro" => {
+                // Cap to match SEO AI generate path (~500 chars) so public
+                // /llms.txt cannot be bloated via the config bag.
+                let capped: String = field.value.chars().take(500).collect();
+                updates.insert(
+                    "site_ai_intro".to_string(),
+                    JsonValue::String(capped),
+                );
+                continue;
+            }
             "site_title" | "site_description" | "site_keywords"
-            | "site_ai_intro"
             | "ga_measurement_id" | "umami_website_id"
             | "music_source" | "site_icp" | "site_gongan"
             | "cloud_sponsors" | "site_footer_custom" | "proxy_bypass" => {

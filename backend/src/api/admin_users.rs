@@ -185,12 +185,19 @@ fn identity_row_to_json(row: &QueryResult) -> Value {
     })
 }
 
-const USER_SELECT: &str = "SELECT u.id, u.username, u.display_name, u.email, u.avatar_url, \
+/// User list/detail SELECT with resolved face snapshot as `avatar_url`
+/// (matches `/me` / public face). Identity rows keep identity-level URLs.
+fn user_select_sql() -> String {
+    format!(
+        "SELECT u.id, u.username, u.display_name, u.email, {avatar} AS avatar_url, \
         u.is_admin, u.is_owner, u.auth_provider, u.local_login_disabled, \
         u.password_hash IS NOT NULL AS has_password, \
         u.created_at, u.last_login_at, u.last_seen_at, u.online_seconds, \
         (SELECT COUNT(*) FROM tapps t WHERE t.user_id = u.id) AS tapp_count \
-     FROM users u";
+     FROM users u",
+        avatar = crate::services::avatar::avatar_snapshot_expr("u"),
+    )
+}
 
 /// GET /api/admin/users
 pub async fn list_users(
@@ -202,7 +209,10 @@ pub async fn list_users(
     let user_rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            format!("{USER_SELECT} ORDER BY u.is_owner DESC, u.is_admin DESC, u.created_at ASC"),
+            format!(
+                "{} ORDER BY u.is_owner DESC, u.is_admin DESC, u.created_at ASC",
+                user_select_sql()
+            ),
             vec![],
         ))
         .await
@@ -251,7 +261,7 @@ pub async fn get_user(
     let user_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            format!("{USER_SELECT} WHERE u.id = $1"),
+            format!("{} WHERE u.id = $1", user_select_sql()),
             [user_id.into()],
         ))
         .await

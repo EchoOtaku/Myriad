@@ -324,7 +324,7 @@ async function animateListItems(items) {
 
 - **`platform:read`**：guest-safe basic。真实用户与签名游客均可经 optional_auth + Grant
   读取**站点公开缓存**（`listEnabled` / `getData` / `getStats` / `getDistribution`）。
-- **`platform:write`**：privileged，仅登录主体；`addItem` / `addItems` 不会签入访客 Grant。
+- **`platform:write`**：privileged / admin-gated（非仅「已登录」）；`addItem` / `addItems` 不会签入访客 Grant。
 
 ```javascript
 // 获取已启用平台列表
