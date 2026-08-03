@@ -1221,7 +1221,7 @@ export const enUS: TranslationKeys = {
       'Comma-separated keywords written to the page meta keywords tag',
     fieldSiteOgImage: 'Share Preview Image',
     fieldSiteOgImageHint:
-      'Open Graph image shown when the link is shared. Prefer ≥1200×630, PNG/JPEG/WebP, ≤1MB',
+      'Public https URL for Open Graph / crawlers (data: and local uploads are not used). Prefer ≥1200×630, PNG/JPEG/WebP',
     fieldSiteNoindex: 'Search engine indexing',
     fieldSiteNoindexHint:
       'On: allow search engines to index. Off: pages emit noindex, nofollow — useful for private or not-yet-public instances',
@@ -1455,8 +1455,7 @@ export const enUS: TranslationKeys = {
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteKeywords: 'personal site, blog, digital life',
-    placeholderSiteOgImage:
-      'https://example.com/og.png or upload a local image',
+    placeholderSiteOgImage: 'https://example.com/og.png',
     placeholderGaMeasurementId: 'G-XXXXXXXXXX',
     placeholderUmamiWebsiteId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
     placeholderUmamiScriptUrl: 'https://cloud.umami.is/script.js',
@@ -1743,6 +1742,8 @@ export const enUS: TranslationKeys = {
     privateTappInstallPresetLogout: 'Delete on logout',
     privateTappInstallPreset7Short: '7 days',
     privateTappInstallPreset14Short: '14 days',
+    /** Custom inactivity days option label — {n} = day count */
+    privateTappInstallPresetNShort: '{n} days',
     privateTappInstallPresetLogoutShort: 'Logout',
     allowRegisterTitle: 'Allow public local registration',
     allowRegisterDesc:

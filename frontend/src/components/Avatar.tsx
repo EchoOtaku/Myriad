@@ -12,7 +12,7 @@
 
 import type { CSSProperties } from 'react'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { localFallbackAvatar, resolveAvatar } from '../utils/avatar'
 
 interface AvatarProps {
@@ -37,12 +37,12 @@ export function Avatar({
   decorative = false,
 }: AvatarProps) {
   const seed = name ?? undefined
-  const [failed, setFailed] = useState(false)
-
-  // src 变了要给新地址一次机会，否则切换画像源后永远停在兜底图
-  useEffect(() => {
-    setFailed(false)
-  }, [src])
+  // Track which src failed so a new src resets failed synchronously on render
+  // (useEffect would leave one frame of fallback flash after src changes).
+  const [failedForSrc, setFailedForSrc] = useState<string | null | undefined>(
+    undefined,
+  )
+  const failed = failedForSrc === src
 
   const resolved = failed ? localFallbackAvatar(seed) : resolveAvatar(src, seed)
 
@@ -56,7 +56,7 @@ export function Avatar({
       style={style}
       referrerPolicy="no-referrer"
       decoding="async"
-      onError={() => setFailed(true)}
+      onError={() => setFailedForSrc(src)}
     />
   )
 }

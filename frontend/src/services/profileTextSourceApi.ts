@@ -63,16 +63,24 @@ export const profileTextSourceApi = {
     )
   },
 
+  /**
+   * Admin: set name/bio source for another user.
+   * Only broadcast global refresh when the target is the viewer or site owner —
+   * editing a random user must not flash the homepage owner card.
+   */
   async setForUser(
     userId: number,
     kind: ProfileTextSourceKind,
     ref?: string | null,
+    options?: { broadcast?: boolean },
   ): Promise<SetProfileTextSourceResponse> {
     const response = await apiService.put<SetProfileTextSourceResponse>(
       `/admin/users/${userId}/profile-text-source`,
       { kind, ref: ref ?? null },
     )
-    notifyProfileDisplayChanged()
+    if (options?.broadcast) {
+      notifyProfileDisplayChanged()
+    }
     return response
   },
 }

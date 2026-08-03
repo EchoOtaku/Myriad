@@ -1206,7 +1206,7 @@ export const jaJP: TranslationKeys = {
       'カンマ区切り。ページの meta keywords に書き込まれます',
     fieldSiteOgImage: 'シェア用プレビュー画像',
     fieldSiteOgImageHint:
-      'リンク共有時に表示される Open Graph 画像。推奨 ≥1200×630、PNG/JPEG/WebP、≤1MB',
+      'クローラー向けの公開 https 画像 URL（data: やローカルアップロードは使えません）。推奨 ≥1200×630、PNG/JPEG/WebP',
     fieldSiteNoindex: '検索エンジンのインデックス',
     fieldSiteNoindexHint:
       'オン：検索エンジンにインデックスを許可。オフ：noindex, nofollow を出力（非公開・準備中向け）',
@@ -1440,8 +1440,7 @@ export const jaJP: TranslationKeys = {
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteKeywords: '個人サイト, ブログ, デジタルライフ',
-    placeholderSiteOgImage:
-      'https://example.com/og.png またはローカル画像をアップロード',
+    placeholderSiteOgImage: 'https://example.com/og.png',
     placeholderGaMeasurementId: 'G-XXXXXXXXXX',
     placeholderUmamiWebsiteId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
     placeholderUmamiScriptUrl: 'https://cloud.umami.is/script.js',
@@ -1728,6 +1727,8 @@ export const jaJP: TranslationKeys = {
     privateTappInstallPresetLogout: 'ログアウト時に削除',
     privateTappInstallPreset7Short: '7 日',
     privateTappInstallPreset14Short: '14 日',
+    /** カスタム未活動日数ラベル — {n} = 日数 */
+    privateTappInstallPresetNShort: '{n} 日',
     privateTappInstallPresetLogoutShort: 'ログアウト',
     allowRegisterTitle: 'ローカルアカウントの公開登録を許可',
     allowRegisterDesc:

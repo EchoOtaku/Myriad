@@ -219,7 +219,10 @@ export class TappRuntimeGrant {
     TappRuntimeGrant.sharedWidgetEntries.clear()
   }
 
-  /** Reissue once after a backend restart or explicit server-side revocation. */
+  /**
+   * Reissue once after backend restart, revocation, or subject mismatch
+   * (`INVALID_RUNTIME_GRANT` / `RUNTIME_GRANT_SUBJECT_MISMATCH` from host clients).
+   */
   static async recoverRejectedToken(token: string): Promise<string | null> {
     const owner = TappRuntimeGrant.tokenOwners.get(token)
     if (!owner || owner.destroyed) return null

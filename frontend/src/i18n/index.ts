@@ -1475,6 +1475,8 @@ export interface TranslationKeys {
     /** Short chip labels on the register-style choice card */
     privateTappInstallPreset7Short: string
     privateTappInstallPreset14Short: string
+    /** Custom inactivity days — template with {n} */
+    privateTappInstallPresetNShort: string
     privateTappInstallPresetLogoutShort: string
     neteaseMusic: string
     qqMusic: string

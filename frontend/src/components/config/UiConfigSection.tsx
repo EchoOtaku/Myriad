@@ -669,16 +669,6 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           onChange={(v) => updateValue('site_og_image', v)}
           placeholder={t.config.placeholderSiteOgImage}
           inputType="url"
-          variant="imageUpload"
-          accept="image/png,image/jpeg,image/webp,image/gif"
-          maxImageBytes={1024 * 1024}
-          uploadLabel={t.config.imageUpload}
-          clearImageLabel={t.config.imageUploadClear}
-          localImageLabel={t.config.imageUploadLocal}
-          previewAlt={t.config.fieldSiteOgImage}
-          imageTypeError={t.config.imageUploadTypeError}
-          imageSizeError={t.config.imageUploadSizeError}
-          imageReadError={t.config.imageUploadReadError}
           hint={t.config.fieldSiteOgImageHint}
           {...bindGuide('ui.siteOgImage', g.ui.siteOgImage)}
           layout="vertical"

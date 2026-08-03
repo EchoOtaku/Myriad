@@ -11,6 +11,7 @@ import type {
 } from '../services/profileTextSourceApi'
 
 import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
 import profileTextSourceApi from '../services/profileTextSourceApi'
 import { Spinner } from './Spinner'
@@ -19,6 +20,11 @@ import './AvatarSourcePicker.css'
 interface ProfileTextSourcePickerProps {
   /** 省略 = 改自己；传 id = 管理员改他人 */
   userId?: number
+  /**
+   * 管理员改他人时：目标是否为站长。
+   * 仅 viewer / 站长切换才广播全局 profile-display-changed（首页信息条）。
+   */
+  targetIsSiteOwner?: boolean
   onApplied?: () => void
 }
 
@@ -28,9 +34,11 @@ function sourceKey(kind: ProfileTextSourceKind, ref: string | null): string {
 
 export function ProfileTextSourcePicker({
   userId,
+  targetIsSiteOwner = false,
   onApplied,
 }: ProfileTextSourcePickerProps) {
   const { t } = useI18n()
+  const { user: viewer } = useAuth()
   const [sources, setSources] = useState<ProfileTextSourceItem[]>([])
   const [currentKey, setCurrentKey] = useState<string>('')
   const [loading, setLoading] = useState(true)
@@ -72,7 +80,10 @@ export function ProfileTextSourcePicker({
       if (userId == null) {
         await profileTextSourceApi.setMine(kind, ref)
       } else {
-        await profileTextSourceApi.setForUser(userId, kind, ref)
+        const isViewer = viewer?.id === userId
+        await profileTextSourceApi.setForUser(userId, kind, ref, {
+          broadcast: isViewer || targetIsSiteOwner,
+        })
       }
       setCurrentKey(key)
       onApplied?.()

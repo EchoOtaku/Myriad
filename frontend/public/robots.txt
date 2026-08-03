@@ -1,13 +1,9 @@
-User-agent: *
-Allow: /
-Disallow: /login
-Disallow: /register
-Disallow: /setup
-Disallow: /config
-Disallow: /tapp/playground
-Disallow: /tapp/detail/
+# Static fallback when the backend does not proxy /robots.txt.
+# Prefer the dynamic response (visibility policy, absolute Sitemap).
+# Default is conservative: block indexing until the app serves policy-aware rules.
 
-# Prefer the dynamic /robots.txt from the backend (absolute Sitemap when
-# FRONTEND_URL/BASE_URL is set). This static file is a fallback for hosts that
-# only serve frontend assets without proxying /robots.txt.
-Sitemap: /sitemap.xml
+User-agent: *
+Disallow: /
+
+# When the backend is correctly proxied, it overrides this file with policy-based
+# Allow/Disallow and an absolute Sitemap URL.

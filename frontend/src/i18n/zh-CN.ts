@@ -1143,7 +1143,7 @@ export const zhCN: TranslationKeys = {
     fieldSiteKeywordsHint: '多个关键词用英文逗号分隔；会写入页面 meta keywords',
     fieldSiteOgImage: '分享预览图',
     fieldSiteOgImageHint:
-      '链接被分享到社交软件时的预览大图（Open Graph）。建议 ≥1200×630，PNG/JPEG/WebP，≤1MB',
+      '公开可访问的 https 图片 URL（爬虫无法使用 data: 或本地上传）。建议 ≥1200×630，PNG/JPEG/WebP',
     fieldSiteNoindex: '搜索引擎收录',
     fieldSiteNoindexHint:
       '开启时允许搜索引擎收录；关闭后页面带上 noindex, nofollow，适合内网或未准备公开的实例',
@@ -1365,7 +1365,7 @@ export const zhCN: TranslationKeys = {
     placeholderSiteTitle: 'Myriad - A myriad of lights, in one place.',
     placeholderSiteDescription: 'A myriad of lights, in one place.',
     placeholderSiteKeywords: '个人主页, 博客, 数字生活',
-    placeholderSiteOgImage: 'https://example.com/og.png 或上传本地图片',
+    placeholderSiteOgImage: 'https://example.com/og.png',
     placeholderGaMeasurementId: 'G-XXXXXXXXXX',
     placeholderUmamiWebsiteId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
     placeholderUmamiScriptUrl: 'https://cloud.umami.is/script.js',
@@ -1643,6 +1643,8 @@ export const zhCN: TranslationKeys = {
     privateTappInstallPresetLogout: '登出即删除',
     privateTappInstallPreset7Short: '7 天',
     privateTappInstallPreset14Short: '14 天',
+    /** 自定义未活跃天数选项标签 — {n} = 天数 */
+    privateTappInstallPresetNShort: '{n} 天',
     privateTappInstallPresetLogoutShort: '登出',
     allowRegisterTitle: '允许公开注册本地账号',
     allowRegisterDesc:

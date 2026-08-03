@@ -185,7 +185,11 @@ export function AvatarSourcePicker({
                     </span>
                     {row.sublabel && (
                       <span className="user-modal-profile-source-sub">
-                        {row.kind === 'identity' ? `@${row.sublabel}` : row.sublabel}
+                        {row.kind === 'identity'
+                          ? row.sublabel.startsWith('@')
+                            ? row.sublabel
+                            : `@${row.sublabel}`
+                          : row.sublabel}
                       </span>
                     )}
                   </span>

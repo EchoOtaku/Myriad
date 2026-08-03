@@ -440,9 +440,9 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
             if (Number.isFinite(days) && days >= 1) {
               base.push({
                 value: String(days),
-                // Reuse "7 days" / "7 天" short form with the real count
-                label: c.privateTappInstallPreset7Short.replace(
-                  /7/,
+                // Dedicated {n} template — avoid brittle replace(/7/) on i18n
+                label: c.privateTappInstallPresetNShort.replace(
+                  '{n}',
                   String(days),
                 ),
               })
@@ -701,6 +701,7 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
                   {/* 名称/简介来源与头像独立；同站合并仅影响列表展示 */}
                   <ProfileTextSourcePicker
                     userId={shown.id}
+                    targetIsSiteOwner={shown.is_owner}
                     onApplied={() => void loadUsers()}
                   />
                 </div>

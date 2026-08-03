@@ -5,10 +5,7 @@ import { createPortal } from 'react-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { useSiteOwnerProfile } from '../../hooks/useSiteOwnerProfile'
-import {
-  onAvatarChanged,
-  onProfileDisplayChanged,
-} from '../../services/avatarSourceApi'
+import { onProfileDisplayChanged } from '../../services/avatarSourceApi'
 import { getCSRFToken } from '../../utils/csrf'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
 import { lockScroll } from '../../utils/scrollLock'
@@ -118,23 +115,10 @@ export const UserSection: React.FC<UserSectionProps> = memo(
     }, [authIsAuthenticated, authUser])
 
     // 别处（含其它标签页）换了头像 / 名称简介来源 → 重新探一次会话。
-    // notifyAvatarChanged 双发时合并为一次 checkAuth。
+    // 只听 profile-display-changed：notifyAvatarChanged 会双发 avatar + profile-display，
+    // 若两边都 checkAuth 会跨标签页打两次 /auth/me。
     useEffect(() => {
-      let scheduled = false
-      const refresh = () => {
-        if (scheduled) return
-        scheduled = true
-        queueMicrotask(() => {
-          scheduled = false
-          void checkAuth()
-        })
-      }
-      const offAvatar = onAvatarChanged(refresh)
-      const offText = onProfileDisplayChanged(refresh)
-      return () => {
-        offAvatar()
-        offText()
-      }
+      return onProfileDisplayChanged(() => void checkAuth())
     }, [checkAuth])
 
     // 打开弹窗
@@ -312,8 +296,7 @@ export const UserSection: React.FC<UserSectionProps> = memo(
                   onClose={closeModal}
                   onLogout={handleLogout}
                   onNavigateFromPanel={onNavigateFromPanel}
-                  // 头像来源已切换：重新探会话拿新快照（onAvatarChanged 也会触发，
-                  // 这里显式再调一次，保证本弹窗内立即回显）
+                  // 头像/文案来源已切换：重新探会话拿新快照（本弹窗内立即回显）
                   onProfileApplied={() => void checkAuth()}
                 />
               ) : (

@@ -12,7 +12,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_URL } from '../config'
-import { onProfileDisplayChanged } from '../services/profileDisplayEvents'
+import {
+  onAvatarChanged,
+  onProfileDisplayChanged,
+} from '../services/profileDisplayEvents'
 import { proxyImageUrl } from '../utils/proxyImageUrl'
 
 export interface SiteOwnerProfile {
@@ -131,6 +134,12 @@ export function useSiteOwnerProfile({
    */
   const [avatarEpoch, setAvatarEpoch] = useState(0)
   const requestGen = useRef(0)
+  /**
+   * avatar-changed 与 profile-display-changed 常双发；后一次 refresh 的
+   * requestGen 会 supersede 前一次。用 ref 记住「本轮需要 bump epoch」，
+   * 避免双发时只剩 bumpAvatar=false 的那次生效。
+   */
+  const pendingAvatarBump = useRef(false)
 
   const applyProfile = useCallback(
     (next: SiteOwnerProfile | null) => {
@@ -155,7 +164,10 @@ export function useSiteOwnerProfile({
       // 被更新的 force 刷新 superseded 时丢弃陈旧结果
       if (gen !== requestGen.current) return
       applyProfile(next)
-      if (force) {
+      // 仅头像相关变更 bump epoch（代理 URL 未变时仍 remount <img>）。
+      // 纯文案 profile-display 刷新不得 bump，否则首页头像闪一下。
+      if (force && pendingAvatarBump.current) {
+        pendingAvatarBump.current = false
         setAvatarEpoch((n) => n + 1)
       }
     },
@@ -167,11 +179,19 @@ export function useSiteOwnerProfile({
   }, [refresh])
 
   // 站长换了头像来源 / 名称简介来源 / 重抓平台数据 → 立即跟上（含跨标签页）。
-  // 只听 profile-display-changed：notifyAvatarChanged 会双发 avatar + profile-display，
-  // 若两边都 force 刷新会打两次 /user-info。avatar-changed 单独只用于 epoch 的场景
-  // 已由 refresh(force) 内 setAvatarEpoch 覆盖。
+  // profile-display：强制刷新文案。
+  // avatar-changed：标记 pendingAvatarBump 后再 force 刷新；notifyAvatarChanged
+  // 双发时 forceInflight 合并为一次 /user-info，epoch 仍会 bump。
   useEffect(() => {
-    return onProfileDisplayChanged(() => void refresh(true))
+    const offDisplay = onProfileDisplayChanged(() => void refresh(true))
+    const offAvatar = onAvatarChanged(() => {
+      pendingAvatarBump.current = true
+      void refresh(true)
+    })
+    return () => {
+      offDisplay()
+      offAvatar()
+    }
   }, [refresh])
 
   return { profile, refresh, avatarEpoch }

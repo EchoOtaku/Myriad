@@ -739,7 +739,8 @@ export class TappScheduler {
         response.status === 401 &&
         retryOnRuntimeGrant &&
         runtimeGrant &&
-        error.code === 'INVALID_RUNTIME_GRANT'
+        (error.code === 'INVALID_RUNTIME_GRANT' ||
+          error.code === 'RUNTIME_GRANT_SUBJECT_MISMATCH')
       ) {
         const replacement =
           await TappRuntimeGrant.recoverRejectedToken(runtimeGrant)

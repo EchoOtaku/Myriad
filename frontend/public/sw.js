@@ -5,7 +5,8 @@
 // v2.4: 壁纸 CDN / 跨域图片不再被 SW 用 mode:cors 劫持（无 ACAO 时生产会拿到空 blob，
 // 开发环境无 SW 则正常 —— 表现为「仅生产壁纸/动效异常」）
 // v2.5: 图片分支仅处理 GET；非 GET（含 HEAD）直接放行，避免 Cache API put 报错
-const CACHE_VERSION = 'myriad-v2.5'
+// v2.6: 合并重复 blob: 守卫；CSS/JS 分支仅 GET（与图片一致，避免 Cache API 报错）
+const CACHE_VERSION = 'myriad-v2.6'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`
 const IMAGE_CACHE = `${CACHE_VERSION}-images`
@@ -139,26 +140,6 @@ globalThis.addEventListener('fetch', (event) => {
     return
   }
 
-  // 跳过 blob: URL（由浏览器直接处理）
-  if (request.url.startsWith('blob:')) {
-    return
-  }
-
-  // 跳过 blob: URL（由浏览器直接处理）
-  if (request.url.startsWith('blob:')) {
-    return
-  }
-
-  // 跳过 blob: URL（由浏览器直接处理）
-  if (request.url.startsWith('blob:')) {
-    return
-  }
-
-  // 跳过 blob: URL（由浏览器直接处理）
-  if (request.url.startsWith('blob:')) {
-    return
-  }
-
   // API 请求 - 网络优先策略
   if (url.pathname.startsWith('/api/')) {
     // API responses are live application state. Let the browser hit the
@@ -229,8 +210,12 @@ globalThis.addEventListener('fetch', (event) => {
     return
   }
 
-  // CSS/JS静态资源 - 缓存优先(带过期检查)
+  // CSS/JS静态资源 - 缓存优先(带过期检查)；仅 GET（Cache API 不支持其它 method）
   if (/\.(css|js|woff2?)$/i.test(url.pathname)) {
+    if (request.method !== 'GET') {
+      return
+    }
+
     event.respondWith(
       caches.match(request).then(async (cachedResponse) => {
         if (

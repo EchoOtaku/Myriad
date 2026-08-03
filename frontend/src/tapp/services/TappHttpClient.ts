@@ -96,7 +96,8 @@ export async function apiRequest<T>(
       response.status === 401 &&
       retryOnRuntimeGrant &&
       runtimeGrant &&
-      errorData.code === 'INVALID_RUNTIME_GRANT'
+      (errorData.code === 'INVALID_RUNTIME_GRANT' ||
+        errorData.code === 'RUNTIME_GRANT_SUBJECT_MISMATCH')
     ) {
       const { TappRuntimeGrant } = await import('../runtime/TappRuntimeGrant')
       const replacement =
@@ -155,7 +156,8 @@ export async function streamRuntimeEvents(
     if (
       response.status === 401 &&
       retryOnRuntimeGrant &&
-      error.code === 'INVALID_RUNTIME_GRANT'
+      (error.code === 'INVALID_RUNTIME_GRANT' ||
+        error.code === 'RUNTIME_GRANT_SUBJECT_MISMATCH')
     ) {
       const { TappRuntimeGrant } = await import('../runtime/TappRuntimeGrant')
       const replacement =
