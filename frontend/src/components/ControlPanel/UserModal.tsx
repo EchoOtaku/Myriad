@@ -111,17 +111,54 @@ export const UserModal: FC<UserModalProps> = ({
     return window.innerHeight * (mobile ? 0.9 : 0.85)
   }, [])
 
+  // 与 UserModal.css --user-modal-min-height / min-height 保持一致（外层 shell 地板）
+  const getModalMinHeightPx = useCallback(() => {
+    if (typeof window === 'undefined') return 0
+    const el = modalRef.current
+    if (el) {
+      // Computed min-height is already min(designedMin, maxvh) resolved to px
+      const minH = parseFloat(getComputedStyle(el).minHeight)
+      if (Number.isFinite(minH) && minH > 0) return minH
+      const raw = getComputedStyle(el).getPropertyValue('--user-modal-min-height').trim()
+      const n = parseFloat(raw)
+      if (Number.isFinite(n) && n > 0) {
+        if (raw.endsWith('rem')) {
+          const rootFs =
+            parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+          return n * rootFs
+        }
+        return n
+      }
+    }
+    // Fallback before ref attach — keep in sync with UserModal.css
+    const mobile = window.matchMedia('(max-width: 640px)').matches
+    const rem = mobile ? 18 : 20
+    const rootFs =
+      parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+    return rem * rootFs
+  }, [])
+
+  // height = clamp(natural, effectiveMin, max) where effectiveMin = min(designedMin, max)
+  const clampModalHeight = useCallback(
+    (natural: number) => {
+      const maxH = getModalMaxHeightPx()
+      const minH = Math.min(getModalMinHeightPx(), maxH)
+      return Math.max(minH, Math.min(natural, maxH))
+    },
+    [getModalMaxHeightPx, getModalMinHeightPx],
+  )
+
   // 跟随内容自然高度，让主页/二级页切换（及内容加载）时的高度变化有过渡动画。
   // 测量 .user-modal-content（非滚动层），避免外层 height 钉住时 scrollHeight 卡在旧高度。
-  // 内容超过 max-height 时取 min(natural, max)，外层封顶、内层 .user-modal-inner 滚动。
+  // 外层高度 clamp 到 [min, max]；短内容时 shell 落在 min，内层 .user-modal-inner 填满。
   useEffect(() => {
     const el = contentRef.current
     if (!el) return
     const updateHeight = () => {
-      // 内容盒 height:auto + flex-shrink:0，getBoundingClientRect 即自然高度
+      // 内容盒 height:auto + flex-shrink:0，getBoundingClientRect 即自然高度（无 min-height）
       const natural = Math.ceil(el.getBoundingClientRect().height)
       if (natural <= 0) return
-      setModalHeight(Math.min(natural, getModalMaxHeightPx()))
+      setModalHeight(clampModalHeight(natural))
     }
     updateHeight()
     const observer = new ResizeObserver(updateHeight)
@@ -131,9 +168,9 @@ export const UserModal: FC<UserModalProps> = ({
       observer.disconnect()
       window.removeEventListener('resize', updateHeight)
     }
-  }, [getModalMaxHeightPx])
+  }, [clampModalHeight])
 
-  // 换页后等 DOM 绘制再量一次，确保从当前外层高度过渡到新内容自然高度
+  // 换页后等 DOM 绘制再量一次，确保从当前外层高度过渡到新内容 clamp 后高度
   useEffect(() => {
     const el = contentRef.current
     if (!el) return
@@ -142,7 +179,7 @@ export const UserModal: FC<UserModalProps> = ({
     if (modalEl) {
       const current = Math.ceil(modalEl.getBoundingClientRect().height)
       if (current > 0) {
-        setModalHeight(Math.min(current, getModalMaxHeightPx()))
+        setModalHeight(clampModalHeight(current))
       }
     }
     let raf2 = 0
@@ -150,7 +187,7 @@ export const UserModal: FC<UserModalProps> = ({
       raf2 = requestAnimationFrame(() => {
         const natural = Math.ceil(el.getBoundingClientRect().height)
         if (natural > 0) {
-          setModalHeight(Math.min(natural, getModalMaxHeightPx()))
+          setModalHeight(clampModalHeight(natural))
         }
       })
     })
@@ -158,7 +195,7 @@ export const UserModal: FC<UserModalProps> = ({
       cancelAnimationFrame(raf1)
       cancelAnimationFrame(raf2)
     }
-  }, [page, getModalMaxHeightPx])
+  }, [page, clampModalHeight])
 
   // 加载可用 provider 与当前用户已绑定的 identities
   const loadOAuthBindings = useCallback(async () => {

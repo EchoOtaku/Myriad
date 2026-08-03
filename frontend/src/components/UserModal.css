@@ -42,6 +42,17 @@ html.dark .user-info-button:hover {
   left: 50%;
   width: 90%;
   max-width: 400px;
+
+  /*
+   * Designed shell floor so short secondary pages (e.g. password) aren't stubby.
+   * 20rem ≈ 320px — fits head + password form + padding without empty-huge look.
+   * min() keeps floor ≤ max-height on short viewports.
+   * JS clampModalHeight must use the same floor (reads computed min-height / this var).
+   * Do NOT put min-height on .user-modal-content or .user-modal-page — that fakes
+   * natural height and breaks content-based shrink animation.
+   */
+  --user-modal-min-height: 20rem;
+  min-height: min(var(--user-modal-min-height), 85vh);
   max-height: 85vh;
   background: rgb(255 255 255 / 75%);
   backdrop-filter: blur(24px) saturate(180%);
@@ -892,6 +903,9 @@ html.dark .user-modal-recent-empty {
 @media (width <= 640px) {
   .user-modal {
     width: 95%;
+    /* Slightly tighter floor on small screens; still ≤ max-height via min() */
+    --user-modal-min-height: 18rem;
+    min-height: min(var(--user-modal-min-height), 90vh);
     max-height: 90vh;
     border-radius: 1.5rem;
   }
