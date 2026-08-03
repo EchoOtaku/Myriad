@@ -148,6 +148,29 @@ export const UserModal: FC<UserModalProps> = ({
     [getModalMaxHeightPx, getModalMinHeightPx],
   )
 
+  // .user-modal 全局 border-box：钉 height 时边框/内边距占额度，需加回壳层 chrome
+  const getShellChromePx = useCallback(() => {
+    const modalEl = modalRef.current
+    if (!modalEl) return 2 // 与 CSS border: 1px 上下合计兜底
+    const style = getComputedStyle(modalEl)
+    return (
+      (parseFloat(style.borderTopWidth) || 0) +
+      (parseFloat(style.borderBottomWidth) || 0) +
+      (parseFloat(style.paddingTop) || 0) +
+      (parseFloat(style.paddingBottom) || 0)
+    )
+  }, [])
+
+  // 内容自然高度 → 外层 shell 应钉的 height（含 chrome）。
+  // 用 offsetHeight：不受 pre-animate 的 scale(0.92) 影响（getBoundingClientRect 会缩水）。
+  const measureShellHeightFromContent = useCallback(() => {
+    const el = contentRef.current
+    if (!el) return 0
+    const contentH = el.offsetHeight
+    if (contentH <= 0) return 0
+    return Math.ceil(contentH + getShellChromePx())
+  }, [getShellChromePx])
+
   // 跟随内容自然高度，让主页/二级页切换（及内容加载）时的高度变化有过渡动画。
   // 测量 .user-modal-content（非滚动层），避免外层 height 钉住时 scrollHeight 卡在旧高度。
   // 外层高度 clamp 到 [min, max]；短内容时 shell 落在 min，内层 .user-modal-inner 填满。
@@ -155,8 +178,7 @@ export const UserModal: FC<UserModalProps> = ({
     const el = contentRef.current
     if (!el) return
     const updateHeight = () => {
-      // 内容盒 height:auto + flex-shrink:0，getBoundingClientRect 即自然高度（无 min-height）
-      const natural = Math.ceil(el.getBoundingClientRect().height)
+      const natural = measureShellHeightFromContent()
       if (natural <= 0) return
       setModalHeight(clampModalHeight(natural))
     }
@@ -168,7 +190,7 @@ export const UserModal: FC<UserModalProps> = ({
       observer.disconnect()
       window.removeEventListener('resize', updateHeight)
     }
-  }, [clampModalHeight])
+  }, [clampModalHeight, measureShellHeightFromContent])
 
   // 换页后等 DOM 绘制再量一次，确保从当前外层高度过渡到新内容 clamp 后高度
   useEffect(() => {
@@ -177,7 +199,8 @@ export const UserModal: FC<UserModalProps> = ({
     // 先钉住当前渲染高度，避免内容瞬间变矮时外层还没 transition 就塌掉
     const modalEl = modalRef.current
     if (modalEl) {
-      const current = Math.ceil(modalEl.getBoundingClientRect().height)
+      // offsetHeight：布局高度（含 border），不受 scale 变换影响
+      const current = modalEl.offsetHeight
       if (current > 0) {
         setModalHeight(clampModalHeight(current))
       }
@@ -185,7 +208,7 @@ export const UserModal: FC<UserModalProps> = ({
     let raf2 = 0
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
-        const natural = Math.ceil(el.getBoundingClientRect().height)
+        const natural = measureShellHeightFromContent()
         if (natural > 0) {
           setModalHeight(clampModalHeight(natural))
         }
@@ -195,7 +218,7 @@ export const UserModal: FC<UserModalProps> = ({
       cancelAnimationFrame(raf1)
       cancelAnimationFrame(raf2)
     }
-  }, [page, clampModalHeight])
+  }, [page, clampModalHeight, measureShellHeightFromContent])
 
   // 加载可用 provider 与当前用户已绑定的 identities
   const loadOAuthBindings = useCallback(async () => {
