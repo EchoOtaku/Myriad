@@ -99,7 +99,9 @@ export const UserModal: FC<UserModalProps> = ({
   const [unbindingId, setUnbindingId] = useState<number | null>(null)
   const { t, locale } = useI18n()
   const navigate = useNavigate()
+  /** 自然高度测量目标：不受外层钉住 height / 滚动容器 max-height 约束 */
   const contentRef = useRef<HTMLDivElement>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
   const [modalHeight, setModalHeight] = useState<number>()
 
   // 与 UserModal.css 的 max-height（85vh / 移动端 90vh）保持一致
@@ -109,13 +111,16 @@ export const UserModal: FC<UserModalProps> = ({
     return window.innerHeight * (mobile ? 0.9 : 0.85)
   }, [])
 
-  // 跟随内容高度，让主页/二级页切换（及内容加载）时的高度变化有过渡动画。
+  // 跟随内容自然高度，让主页/二级页切换（及内容加载）时的高度变化有过渡动画。
+  // 测量 .user-modal-content（非滚动层），避免外层 height 钉住时 scrollHeight 卡在旧高度。
   // 内容超过 max-height 时取 min(natural, max)，外层封顶、内层 .user-modal-inner 滚动。
   useEffect(() => {
     const el = contentRef.current
     if (!el) return
     const updateHeight = () => {
-      const natural = el.scrollHeight
+      // 内容盒 height:auto + flex-shrink:0，getBoundingClientRect 即自然高度
+      const natural = Math.ceil(el.getBoundingClientRect().height)
+      if (natural <= 0) return
       setModalHeight(Math.min(natural, getModalMaxHeightPx()))
     }
     updateHeight()
@@ -127,6 +132,33 @@ export const UserModal: FC<UserModalProps> = ({
       window.removeEventListener('resize', updateHeight)
     }
   }, [getModalMaxHeightPx])
+
+  // 换页后等 DOM 绘制再量一次，确保从当前外层高度过渡到新内容自然高度
+  useEffect(() => {
+    const el = contentRef.current
+    if (!el) return
+    // 先钉住当前渲染高度，避免内容瞬间变矮时外层还没 transition 就塌掉
+    const modalEl = modalRef.current
+    if (modalEl) {
+      const current = Math.ceil(modalEl.getBoundingClientRect().height)
+      if (current > 0) {
+        setModalHeight(Math.min(current, getModalMaxHeightPx()))
+      }
+    }
+    let raf2 = 0
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const natural = Math.ceil(el.getBoundingClientRect().height)
+        if (natural > 0) {
+          setModalHeight(Math.min(natural, getModalMaxHeightPx()))
+        }
+      })
+    })
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+    }
+  }, [page, getModalMaxHeightPx])
 
   // 加载可用 provider 与当前用户已绑定的 identities
   const loadOAuthBindings = useCallback(async () => {
@@ -497,6 +529,7 @@ export const UserModal: FC<UserModalProps> = ({
 
   return (
     <div
+      ref={modalRef}
       className={`user-modal ${canAnimate ? 'animate-in' : 'pre-animate'} ${isClosing ? 'closing' : ''}`}
       style={modalHeight !== undefined ? { height: modalHeight } : undefined}
     >
@@ -521,8 +554,10 @@ export const UserModal: FC<UserModalProps> = ({
         </svg>
       </button>
 
-      {/* 内容包裹层：ResizeObserver 测量自然高度，驱动弹窗高度过渡 */}
-      <div className="user-modal-inner" ref={contentRef}>
+      {/* 滚动容器：外层 height 封顶时在此滚动；不参与自然高度测量 */}
+      <div className="user-modal-inner">
+        {/* 测量目标：height auto，不受外层钉高影响，供 ResizeObserver 读自然高度 */}
+        <div className="user-modal-content" ref={contentRef}>
         {page !== 'main' ? (
           /* 二级页面：整体替换弹窗内容，左上角返回 */
           <div className="user-modal-page">
@@ -1009,6 +1044,7 @@ export const UserModal: FC<UserModalProps> = ({
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   )
