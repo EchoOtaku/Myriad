@@ -2386,8 +2386,7 @@ export const zhCN: TranslationKeys = {
     oauthNotConfigured: '该登录方式已停用',
     profileDisplaySourcesTitle: '展示来源',
     profileSourceTitle: '头像来源',
-    profileSourceHint:
-      '只影响头像。名称与简介请在下方「名称与简介来源」单独选择。',
+    profileSourceHint: '仅影响头像；名称与简介请在下方单独选择。',
     profileSourceEmpty: '还没有可选择的头像来源。',
     profileSourceCurrent: '当前',
     profileSourceAvatarHint: '更换',
@@ -2396,8 +2395,7 @@ export const zhCN: TranslationKeys = {
     profileSourceAutoDesc: '优先使用平台画像，没有则用账号头像',
     profileSourceAccount: '账号头像',
     profileTextSourceTitle: '名称与简介来源',
-    profileTextSourceHint:
-      '只影响显示名与简介，与头像来源相互独立。可把脸设为 GitHub、简介仍用 B 站。',
+    profileTextSourceHint: '仅影响名称与简介，与头像来源相互独立。',
     profileTextSourceEmpty: '还没有可选择的名称/简介来源。',
     profileTextSourceFailed: '切换名称与简介来源失败',
     profileTextSourceAuto: '自动',

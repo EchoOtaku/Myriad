@@ -2528,8 +2528,7 @@ export const enUS: TranslationKeys = {
     oauthNotConfigured: 'This sign-in method is disabled',
     profileDisplaySourcesTitle: 'Display sources',
     profileSourceTitle: 'Avatar source',
-    profileSourceHint:
-      'Affects the avatar only. Name and bio are chosen separately below.',
+    profileSourceHint: 'Affects the avatar only. Name and bio are selected separately below.',
     profileSourceEmpty: 'No avatar sources to choose from.',
     profileSourceCurrent: 'Current',
     profileSourceAvatarHint: 'Change',
@@ -2538,8 +2537,7 @@ export const enUS: TranslationKeys = {
     profileSourceAutoDesc: 'Prefer a platform profile, fall back to the account avatar',
     profileSourceAccount: 'Account avatar',
     profileTextSourceTitle: 'Name & bio source',
-    profileTextSourceHint:
-      'Affects display name and bio only, independent of the avatar. You can use a GitHub face with a Bilibili bio.',
+    profileTextSourceHint: 'Affects the name and bio only, independent of the avatar source.',
     profileTextSourceEmpty: 'No name/bio sources to choose from.',
     profileTextSourceFailed: 'Could not switch name & bio source',
     profileTextSourceAuto: 'Automatic',

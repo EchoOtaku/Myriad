@@ -2511,8 +2511,7 @@ export const jaJP: TranslationKeys = {
     oauthNotConfigured: 'このログイン方法は無効になっています',
     profileDisplaySourcesTitle: '表示の取得元',
     profileSourceTitle: 'アバターの取得元',
-    profileSourceHint:
-      'アバターのみに影響します。表示名と自己紹介は下で別途選びます。',
+    profileSourceHint: 'アバターのみに影響します。表示名と自己紹介は下で別途選択してください。',
     profileSourceEmpty: '選択できる取得元がありません。',
     profileSourceCurrent: '使用中',
     profileSourceAvatarHint: '変更',
@@ -2522,8 +2521,7 @@ export const jaJP: TranslationKeys = {
       'プラットフォームのプロフィールを優先し、なければアカウントのアバターを使用',
     profileSourceAccount: 'アカウントのアバター',
     profileTextSourceTitle: '表示名と自己紹介の取得元',
-    profileTextSourceHint:
-      '表示名と自己紹介のみに影響し、アバターとは独立です。顔は GitHub、紹介は Bilibili にもできます。',
+    profileTextSourceHint: '表示名と自己紹介のみに影響し、アバターの取得元とは独立しています。',
     profileTextSourceEmpty: '選択できる表示名/自己紹介の取得元がありません。',
     profileTextSourceFailed: '表示名と自己紹介の取得元の切り替えに失敗しました',
     profileTextSourceAuto: '自動',
