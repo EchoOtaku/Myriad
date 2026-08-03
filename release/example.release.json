@@ -1,30 +1,34 @@
 {
   "schema_version": 1,
-  "version": "v0.3.23",
+  "version": "v0.3.25",
   "commit_sha": "0123456789abcdef0123456789abcdef01234567",
   "channel": "stable",
   "released_at": "2026-05-16T00:00:00Z",
   "min_from_version": "v0.3.0",
   "images": {
     "backend": {
-      "ref": "docker.io/somekawahitomi/myriad-backend:v0.3.23",
+      "ref": "docker.io/somekawahitomi/myriad-backend:v0.3.25",
       "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
     },
     "frontend": {
-      "ref": "docker.io/somekawahitomi/myriad-frontend:v0.3.23",
+      "ref": "docker.io/somekawahitomi/myriad-frontend:v0.3.25",
       "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
     },
     "proxy": {
-      "ref": "docker.io/somekawahitomi/myriad-proxy:v0.3.22",
+      "ref": "docker.io/somekawahitomi/myriad-proxy:v0.3.25",
       "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
     },
     "updater": {
-      "ref": "docker.io/somekawahitomi/myriad-updater:v0.3.22",
+      "ref": "docker.io/somekawahitomi/myriad-updater:v0.3.25",
       "digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
     }
   },
   "env": {
-    "required": ["POSTGRES_PASSWORD", "JWT_SECRET", "CORS_ORIGINS"],
+    "required": [
+      "POSTGRES_PASSWORD",
+      "JWT_SECRET",
+      "CORS_ORIGINS"
+    ],
     "new": [],
     "removed": []
   },
@@ -41,6 +45,6 @@
     "min_pg_version": "16",
     "max_pg_version": "unbounded"
   },
-  "notes_url": "https://github.com/Myriad-You/Myriad/releases/tag/v0.3.23",
+  "notes_url": "https://github.com/Myriad-You/Myriad/releases/tag/v0.3.25",
   "signature": null
 }

@@ -1161,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "myriad-updater"
-version = "0.3.22"
+version = "0.3.25"
 dependencies = [
  "anyhow",
  "axum",

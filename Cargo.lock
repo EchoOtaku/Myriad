@@ -2168,7 +2168,7 @@ dependencies = [
 
 [[package]]
 name = "migration"
-version = "0.3.23"
+version = "0.3.25"
 dependencies = [
  "sea-orm",
  "sea-orm-migration",
@@ -2267,7 +2267,7 @@ dependencies = [
 
 [[package]]
 name = "myriad-backend"
-version = "0.3.23"
+version = "0.3.25"
 dependencies = [
  "aes-gcm",
  "anyhow",
