@@ -89,7 +89,7 @@ export function computeAgo(
   return { unit: 'day', n: d }
 }
 
-// ----- Pre-update revalidation (update to latest) -----
+// Pre-update revalidation (update to latest)
 
 /** Why applying “latest” is no longer necessary after a fresh check. */
 export type LatestUpdateAbortReason =

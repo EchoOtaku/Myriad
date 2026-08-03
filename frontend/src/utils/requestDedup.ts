@@ -6,9 +6,7 @@
  */
 
 // 进行中的请求缓存
-// ============================================
 // 预定义的常用 API 去重函数
-// ============================================
 
 import { API_URL } from '../config'
 import { normalizeJsonMediaUrls } from './proxyImageUrl'
@@ -25,7 +23,7 @@ const resultCache = new Map<string, { data: any; timestamp: number }>()
  */
 const cacheGeneration = new Map<string, number>()
 
-// 🔧 性能优化：LRU 缓存最大容量
+// LRU 缓存最大容量
 const MAX_CACHE_SIZE = 50
 
 // 默认缓存时间（毫秒）
@@ -115,7 +113,7 @@ export async function dedupedFetch<T>(
     cacheKey = url,
   } = options
 
-  // 1. 检查结果缓存（非强制刷新时）- 🔧 使用 LRU 读取
+  // 1. 检查结果缓存（非强制刷新时）-  使用 LRU 读取
   if (!forceRefresh) {
     const cached = getCacheWithLRU(cacheKey)
     if (cached && Date.now() - cached.timestamp < cacheTTL) {

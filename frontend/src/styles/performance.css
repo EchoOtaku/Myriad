@@ -146,7 +146,7 @@ html[data-perf-mode='exlight'] [class*='backdrop-blur'] {
   backdrop-filter: none !important;
 }
 
-/* ---------- exlight only（弱硬件低档 / prefers-reduced-motion）---------- */
+/* exlight only（弱硬件低档 / prefers-reduced-motion） */
 
 /*
  * 令牌：清 --surface-filter。
@@ -406,26 +406,26 @@ html[data-perf-mode='exlight']:not([data-surface]) .glass-95 {
    常用样式工具类（避免内联 style）
    ============================================ */
 
-/* 🔧 Georgia 字体（用于引用等装饰性文字） */
+/* Georgia 字体（用于引用等装饰性文字） */
 .font-georgia {
   font-family: Georgia, serif;
 }
 
-/* 🔧 主题色文本 */
+/* 主题色文本 */
 .text-primary-color {
   color: var(--color-primary);
 }
 
-/* 🔧 强调色文本 */
+/* 强调色文本 */
 .text-accent-color {
   color: var(--color-accent);
 }
 
-/* 🔧 热力图单元格优化 */
+/* 热力图单元格优化 */
 
-/* 🔧 弹幕动画项 */
+/* 弹幕动画项 */
 
-/* 🔧 小组件卡片容器 */
+/* 小组件卡片容器 */
 .widget-card {
   contain: content;
 }
@@ -434,18 +434,18 @@ html[data-perf-mode='exlight']:not([data-surface]) .glass-95 {
    报告页专用样式
    ============================================ */
 
-/* 🔧 对角分割背景裁剪 */
+/* 对角分割背景裁剪 */
 .clip-diagonal {
   clip-path: polygon(0 0, 70% 0, 45% 100%, 0 100%);
 }
 
-/* 🔧 大标题装饰文字位置 */
+/* 大标题装饰文字位置 */
 
-/* 🔧 主题色透明混合文字 */
+/* 主题色透明混合文字 */
 
-/* 🔧 强调色透明混合文字 */
+/* 强调色透明混合文字 */
 
-/* 🔧 弹幕文字颜色 */
+/* 弹幕文字颜色 */
 .danmaku-text-color {
   color: #b3e5ff;
 }

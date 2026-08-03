@@ -79,7 +79,6 @@ export interface TappWidgetSandboxProps {
   tappInstance: TappInstance
   /** Tapp 代码 */
   code: TappCodeStructure
-  /** Widget ID */
   widgetId: string
   /** Widget 渲染属性 */
   widgetProps: WidgetRenderProps
@@ -130,7 +129,7 @@ function generateWidgetHTML(
   const isDark = widgetProps.theme === 'dark'
   const primaryColor = widgetProps.primaryColor || '#8b5cf6'
 
-  // 🔒 生成唯一 nonce（每个沙箱实例独立）
+  // 生成唯一 nonce（每个沙箱实例独立）
   const nonce = generateNonce()
   const csp = generateCSP(
     nonce,
@@ -151,7 +150,7 @@ function generateWidgetHTML(
   // JS 代码 - 混合模式下也会加载
   const widgetCode = getCodeForMode(code, 'widget')
 
-  // 🎯 使用安装时预编译的 CSS
+  // 使用安装时预编译的 CSS
   const tailwindCSS = code.widgetCSS || ''
 
   // Always invoke Tapp.widgets[id].render when registered.
@@ -307,7 +306,7 @@ export const TappWidgetSandbox = memo(
       return () => window.clearTimeout(id)
     }, [isReady, tappInstance.id, widgetId, subjectEpoch])
 
-    // 🎯 性能优化：使用 ref 存储对象引用，避免依赖变化触发 iframe 重建
+    // 使用 ref 存储对象引用，避免依赖变化触发 iframe 重建
     // 这些对象的内容变化通过 ID 来追踪，而不是对象引用
     const tappInstanceRef = useRef(tappInstance)
     const codeRef = useRef(code)
@@ -352,7 +351,7 @@ export const TappWidgetSandbox = memo(
       onReady?.()
     }, [onReady])
 
-    // 🎯 共享订阅 hook：主题/主色调/页面可见性联动
+    // 共享订阅 hook：主题/主色调/页面可见性联动
     useSandboxSubscriptions(bridgeRef, isReady)
 
     // 同一个 Tapp 的 Page/其他 Widget 改写共享 storage 后，通知当前沙箱并刷新视图。
@@ -381,7 +380,7 @@ export const TappWidgetSandbox = memo(
       return buildTappMediaState(detail)
     }, [])
 
-    // 🎵 媒体状态变化 — 转发给 Widget 沙箱
+    // 媒体状态变化 — 转发给 Widget 沙箱
     useEffect(() => {
       if (!isReady) return
 
@@ -408,7 +407,7 @@ export const TappWidgetSandbox = memo(
         handleMusicStateChange,
       )
 
-      // 🎯 Widget 就绪时立即推送当前音乐状态（解决初始化竞态）
+      // Widget 就绪时立即推送当前音乐状态（解决初始化竞态）
       const pushCurrentState = () => {
         const state = (window as any).__musicPlayerState
         if (state && bridgeRef.current) {
@@ -423,7 +422,7 @@ export const TappWidgetSandbox = memo(
         window.dispatchEvent(new CustomEvent('request-music-state-sync'))
       }
 
-      // 🎯 延迟重推：确保 iframe SDK 消息监听器就绪后再推一次
+      // 延迟重推：确保 iframe SDK 消息监听器就绪后再推一次
       const retryTimer = setTimeout(pushCurrentState, 150)
 
       return () => {
@@ -487,13 +486,13 @@ export const TappWidgetSandbox = memo(
     const runtimeFingerprint = getTappRuntimeFingerprint(tappInstance)
 
     // 初始化（不依赖 theme/primaryColor 变化）
-    // 🎯 依赖优化：只使用稳定的 ID 和指纹，不使用对象引用
-    // 🎯 Safari 兼容：使用 imperative iframe 创建，确保 srcdoc 在 DOM 插入前设置
+    // 依赖优化：只使用稳定的 ID 和指纹，不使用对象引用
+    // Safari 兼容：使用 imperative iframe 创建，确保 srcdoc 在 DOM 插入前设置
     useEffect(() => {
       const container = containerRef.current
       if (!container) return
 
-      // 🎯 从 ref 获取当前对象，避免闭包陈旧问题
+      // 从 ref 获取当前对象，避免闭包陈旧问题
       const currentTappInstance = tappInstanceRef.current
       const currentCode = codeRef.current
 
@@ -590,7 +589,7 @@ export const TappWidgetSandbox = memo(
       // Widget SDK 只暴露平台/报告读取能力，避免注册未暴露的写入 handler。
       registerPlatformHandlers(bridge, currentTappInstance, { readOnly: true })
       registerReportHandlers(bridge, currentTappInstance, { readOnly: true })
-      // 🎯 注册 Context 处理器（包含 api.execute 和 context.getGeo）
+      // 注册 Context 处理器（包含 api.execute 和 context.getGeo）
       registerContextHandlers(bridge, currentTappInstance)
       const closeDataExchange = registerDataExchangeHandlers(
         bridge,
@@ -604,7 +603,7 @@ export const TappWidgetSandbox = memo(
         bridge,
         currentTappInstance,
       )
-      // 🎵 注册 Media 处理器（供音乐播放器 Tapp 使用）
+      // 注册 Media 处理器（供音乐播放器 Tapp 使用）
       registerMediaHandlers(bridge, currentTappInstance)
       registerSpeechHandlers(bridge, currentTappInstance)
       registerAnimationHandlers(bridge)
@@ -630,7 +629,7 @@ export const TappWidgetSandbox = memo(
         sessionToken,
       )
 
-      // 🎯 关键：先设置 srcdoc，再插入 DOM
+      // 关键：先设置 srcdoc，再插入 DOM
       // Safari 要求 srcdoc 在 iframe 插入 DOM 之前就设置好
       iframe.srcdoc = html
       container.appendChild(iframe)
@@ -650,7 +649,7 @@ export const TappWidgetSandbox = memo(
         bridgeRef.current = null
         setIsReady(false)
       }
-      // 🎯 稳定依赖：只有这些真正改变时才重建 iframe
+      // 稳定依赖：只有这些真正改变时才重建 iframe
       // - tappInstance.id: Tapp 实例 ID
       // - widgetId: Widget ID
       // - codeFingerprint: 代码指纹（内容变化才会变）

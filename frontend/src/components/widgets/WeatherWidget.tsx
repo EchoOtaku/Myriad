@@ -225,7 +225,7 @@ export const WeatherWidget = memo(
       t.weatherWidget.sampleCity,
     ])
 
-    // 🔧 使用首页原子化可见性感知定时器，页面隐藏时自动暂停
+    // 使用首页原子化可见性感知定时器，页面隐藏时自动暂停
     useHomeVisibilityInterval(fetchWeather, CACHE_DURATION, !isPreview)
 
     // 根据天气状况选择主题色 - 使用 useMemo 缓存

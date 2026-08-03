@@ -1,6 +1,12 @@
 import type { CSSProperties, ReactNode, SyntheticEvent } from 'react'
-import type { LibraryCanvasLayout } from '../utils/libraryCanvas'
-import type { LibraryPreferencesUpdatedDetail } from '../utils/libraryPreferences'
+import type {
+  LibraryCanvasLayout,
+  LibraryCanvasTransform,
+} from '../utils/libraryCanvas'
+import type {
+  LibraryLayoutMode,
+  LibraryPreferencesUpdatedDetail,
+} from '../utils/libraryPreferences'
 import type {
   WatchProgress,
   WatchProgressLabels,
@@ -8,20 +14,39 @@ import type {
 import type { Song } from '../utils/musicPlayer'
 
 import { FaBook, FaGamepad, FaMusic, FaVideo } from '@lib/icons'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useI18n } from '../contexts/I18nContext'
 import { useMusicLyricsSlice } from '../contexts/MusicPlayerContext'
 import { useLibraryIntersectionObserver } from '../hooks/animation'
 import { useLibraryCanvasControls } from '../hooks/useLibraryCanvasControls'
+import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useSharedResize } from '../hooks/useSharedEventListener'
 import {
   buildCenterOutCanvasLayout,
   getLibraryCanvasFocusScale,
+  getLibraryCanvasViewportBinKey,
   getLibraryCanvasViewportBounds,
   LIBRARY_CANVAS_STRIDE,
   libraryCanvasLayoutIntersects,
 } from '../utils/libraryCanvas'
-import { LIBRARY_PREFERENCES_UPDATED_EVENT } from '../utils/libraryPreferences'
+import {
+  acquireCoverDecodeSlot,
+  LIBRARY_CARD_COVER_SIZES,
+  releaseCoverImageElement,
+} from '../utils/libraryCardMedia'
+import { slimLibraryItems } from '../utils/libraryItemSlim'
+import {
+  LIBRARY_PREFERENCES_UPDATED_EVENT,
+  resolveLibraryLayoutMode,
+} from '../utils/libraryPreferences'
 import {
   formatWatchProgressText,
   formatWatchStatusLabel,
@@ -86,11 +111,20 @@ if (typeof document !== 'undefined') {
         .library-canvas-world .library-card-container {
             animation: none;
             transition: transform 120ms ease-out;
-            will-change: transform;
+            /* 静止不占合成层；拖拽时再开 will-change，避免几十张卡常驻 GPU 内存 */
         }
 
         [data-library-canvas-surface='true'][data-dragging='true'] {
             cursor: grabbing;
+        }
+
+        [data-library-canvas-surface='true'][data-dragging='true'] .library-canvas-world {
+            will-change: transform;
+        }
+
+        [data-library-canvas-surface='true'][data-dragging='true'] .library-card-container {
+            will-change: transform;
+            transition: none;
         }
 
         [data-library-canvas-surface='true'],
@@ -1390,13 +1424,21 @@ function ouStep(
  * 真实频谱驱动的连续四边柔光带
  * 频谱快响应 + 可见随机漂移；
  * 出场弹起 / 退场频谱残留收束，避免硬切与塌成细环
+ *
+ * active  = 当前曲（含暂停）→ 光晕保持显示
+ * playing = 真正在播 → 频谱动画；暂停只冻结末帧，不隐藏
+ * !active = 换歌离场 → 残留收束后卸载
  */
 const LibraryPlayingWaveBorder = memo(({
   musicColor,
   active,
+  playing = false,
 }: {
   musicColor: string
+  /** true=当前曲（含暂停）；false=换歌离场 */
   active: boolean
+  /** true=正在播放（驱动频谱）；false=暂停冻结 */
+  playing?: boolean
 }) => {
   const wrapRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -1404,7 +1446,7 @@ const LibraryPlayingWaveBorder = memo(({
   const midRef = useRef<SVGPathElement>(null)
   const prevBandsRef = useRef<number[]>([0, 0, 0, 0, 0, 0, 0, 0])
   const smoothBandsRef = useRef<number[]>([0, 0, 0, 0, 0, 0, 0, 0])
-  /** 暂停后残留频谱，退场时缓衰减而非瞬间清零 */
+  /** 暂停冻结 / 退场残留频谱 */
   const residualBandsRef = useRef<number[]>([0, 0, 0, 0, 0, 0, 0, 0])
   const energyHistRef = useRef<number[]>([])
   const wavePhaseRef = useRef(Math.random() * Math.PI * 2)
@@ -1434,8 +1476,10 @@ const LibraryPlayingWaveBorder = memo(({
   const noiseSpeedRef = useRef(0.03 + Math.random() * 0.04)
   const sizeRef = useRef({ w: 0, h: 0, rx: 12, ry: 12 })
   const activeRef = useRef(active)
-  const prevActiveRef = useRef(active)
+  const playingRef = useRef(playing)
+  const prevPlayingRef = useRef(playing)
   activeRef.current = active
+  playingRef.current = playing
   const [mounted, setMounted] = useState(active)
 
   useEffect(() => {
@@ -1445,7 +1489,7 @@ const LibraryPlayingWaveBorder = memo(({
   useEffect(() => {
     if (!mounted) return
 
-    // 刚切入播放：重置形态并打一记出场 kick
+    // 刚切入当前曲：重置形态并打一记出场 kick（暂停再播不走这里）
     if (active && introRef.current < 0.08) {
       const t1 = Math.random()
       const t2 = (t1 + 0.28 + Math.random() * 0.4) % 1
@@ -1478,7 +1522,7 @@ const LibraryPlayingWaveBorder = memo(({
     }
 
     const audio = audioManager.getCurrentAudio()
-    if (audio) {
+    if (audio && playing) {
       audioManager.connectAudioToAnalyser(audio)
       void audioManager.resumeAudioContext()
     }
@@ -1526,8 +1570,8 @@ const LibraryPlayingWaveBorder = memo(({
     const reducedMotion = preferReducedMotion()
     let raf = 0
     let last = 0
-    /** reduced-motion：进场到位后停 rAF，直到暂停/再播 */
-    let reducedSettled = false
+    /** reduced-motion / 暂停冻结：到位后停 rAF，playing/active 变化会重跑 effect */
+    let settled = false
 
     const tick = (now: number) => {
       const dt = last ? Math.min(0.05, (now - last) / 1000) : 0.032
@@ -1535,18 +1579,24 @@ const LibraryPlayingWaveBorder = memo(({
       const frameMs = reducedMotion ? 48 : 22
       if (now - last >= frameMs) {
         last = now
-        const playing = activeRef.current
+        const live = activeRef.current
+        const isPlaying = playingRef.current
 
-        // 边缘：从暂停再播时也补 kick
-        if (playing && !prevActiveRef.current) {
+        // 从暂停恢复播放：补 kick，不重置整圈形态
+        if (isPlaying && !prevPlayingRef.current) {
           enterKickRef.current = Math.max(enterKickRef.current, 0.85)
-          reducedSettled = false
+          settled = false
+          const audioNow = audioManager.getCurrentAudio()
+          if (audioNow) {
+            audioManager.connectAudioToAnalyser(audioNow)
+            void audioManager.resumeAudioContext()
+          }
         }
-        prevActiveRef.current = playing
+        prevPlayingRef.current = isPlaying
 
-        // 出场快；退场更慢更柔（播完光带别瞬间瘪掉）
-        const introTarget = playing ? 1 : 0
-        const introRate = playing ? 2.55 : 0.72
+        // 出场/保持由 live 决定；暂停仍 full presence，只有换歌才退场
+        const introTarget = live ? 1 : 0
+        const introRate = live ? 2.55 : 0.72
         introRef.current = lerp(
           introRef.current,
           introTarget,
@@ -1554,11 +1604,11 @@ const LibraryPlayingWaveBorder = memo(({
         )
         const intro = Math.max(0, Math.min(1, introRef.current))
         // 几何 presence：出场 easeOut 弹开，退场 easeIn 先稳后收
-        const presence = playing
+        const presence = live
           ? easeOutCubic(smoothstep01(intro))
           : easeInCubic(smoothstep01(intro))
         // 透明度：出场略滞后；退场略快于几何收缩，避免「空壳还亮」
-        const opacityPresence = playing
+        const opacityPresence = live
           ? easeOutCubic(smoothstep01(Math.max(0, intro * 1.08 - 0.05)))
           : easeInCubic(smoothstep01(Math.min(1, intro * 1.25)))
 
@@ -1566,12 +1616,13 @@ const LibraryPlayingWaveBorder = memo(({
         enterKickRef.current = lerp(
           enterKickRef.current,
           0,
-          1 - Math.exp(-(playing ? 3.2 : 5.5) * dt),
+          1 - Math.exp(-(isPlaying ? 3.2 : 5.5) * dt),
         )
         const kick = reducedMotion ? 0 : enterKickRef.current
 
+        // 仅换歌离场后卸载；暂停不卸
         if (
-          !playing &&
+          !live &&
           introRef.current < 0.012 &&
           opacitySmoothRef.current < 0.02
         ) {
@@ -1588,18 +1639,29 @@ const LibraryPlayingWaveBorder = memo(({
           return
         }
 
-        // reduced-motion 且播放中已到位：不再推进频谱环
-        if (reducedMotion && playing && presence > 0.98 && reducedSettled) {
-          // 不续 rAF；active 变化会重跑 effect 再启动
+        // 暂停冻结 / reduced 静环：到位后停 rAF，保留末帧
+        if (
+          live &&
+          !isPlaying &&
+          presence > 0.98 &&
+          settled
+        ) {
+          return
+        }
+        if (reducedMotion && live && isPlaying && presence > 0.98 && settled) {
           return
         }
 
         const { w, h, rx, ry } = sizeRef.current
         if (w > 0 && h > 0) {
+          // 暂停且已到位：完全不改 path/opacity，末帧定格
+          if (live && !isPlaying && presence > 0.98) {
+            settled = true
+          } else {
           let raw: number[]
           if (reducedMotion) {
             // 静态柔环，不读频谱、不流动
-            const level = playing ? 0.32 : 0.12 * presence
+            const level = live ? 0.32 : 0.12 * presence
             raw = [
               level,
               level,
@@ -1610,15 +1672,18 @@ const LibraryPlayingWaveBorder = memo(({
               level * 0.85,
               level * 0.8,
             ]
-          } else if (playing) {
+          } else if (isPlaying) {
             raw = audioManager.getSpectrumBands()
-            // 缓存末帧，供退场残留
+            // 缓存末帧，供暂停冻结 / 退场残留
             for (let i = 0; i < 8; i++) {
               residualBandsRef.current[i] =
                 raw[i] ?? residualBandsRef.current[i]
             }
+          } else if (live) {
+            // 暂停：沿用残留频谱，不衰减、不流动
+            raw = residualBandsRef.current
           } else {
-            // 退场：残留频谱缓衰减，保持环形态再收
+            // 换歌退场：残留频谱缓衰减，保持环形态再收
             const decay = Math.exp(-2.8 * dt)
             for (let i = 0; i < 8; i++) {
               residualBandsRef.current[i] *= decay
@@ -1630,8 +1695,8 @@ const LibraryPlayingWaveBorder = memo(({
 
           let energy = 0
           let flux = 0
-          // 播放轻平滑；退场更黏，形状不碎
-          const bandLag = playing ? 0.55 : 0.82
+          // 播放轻平滑；暂停冻结用粘滞；退场更黏
+          const bandLag = isPlaying ? 0.55 : live ? 0.92 : 0.82
           for (let i = 0; i < 8; i++) {
             const v = raw[i] ?? 0
             smooth[i] = smooth[i] * bandLag + v * (1 - bandLag)
@@ -1642,7 +1707,7 @@ const LibraryPlayingWaveBorder = memo(({
           energy /= 8
           flux = Math.min(1.2, flux * 0.65)
           // 出场 kick 补一点假能量，频谱还没上来时也有光
-          if (playing && kick > 0.02) {
+          if (isPlaying && kick > 0.02) {
             energy = Math.min(1.15, energy + kick * 0.42)
             flux = Math.min(1.2, flux + kick * 0.25)
           }
@@ -1657,9 +1722,13 @@ const LibraryPlayingWaveBorder = memo(({
           const avgE =
             hist.reduce((a, b) => a + b, 0) / Math.max(1, hist.length)
           const onsetRaw = Math.max(0, (energy - avgE * 1.05) * 2.8)
-          const onset = Math.min(1, onsetRaw + (playing ? kick * 0.55 : 0))
+          const onset = Math.min(1, onsetRaw + (isPlaying ? kick * 0.55 : 0))
 
-          timeAccRef.current += dt * (playing ? 1 : Math.max(0.15, presence))
+          // 仅播放时推进相位 / 峰漂移；暂停完全冻结形态
+          const motion = isPlaying ? presence : 0
+          if (isPlaying) {
+            timeAccRef.current += dt
+          }
 
           // 相位速度：跟能量/高频/flux 强绑定
           const speedTarget =
@@ -1673,153 +1742,157 @@ const LibraryPlayingWaveBorder = memo(({
             kick * 0.05
           speedSmoothRef.current = lerp(
             speedSmoothRef.current,
-            speedTarget,
-            0.18,
+            isPlaying ? speedTarget : 0,
+            isPlaying ? 0.18 : 0.35,
           )
-          wavePhaseRef.current += speedSmoothRef.current * presence
+          wavePhaseRef.current += speedSmoothRef.current * motion
           noisePhaseRef.current +=
-            (noiseSpeedRef.current + treble * 0.05 + flux * 0.04) * presence
+            (noiseSpeedRef.current + treble * 0.05 + flux * 0.04) * motion
 
-          // 随机偏置：噪声更大，均值回归更弱 → 不回到「固定模板」
-          hBias1Ref.current = ouStep(hBias1Ref.current, 0, 0.006, 0.16, dt)
-          hBias2Ref.current = ouStep(hBias2Ref.current, 0, 0.0055, 0.18, dt)
-          wBias1Ref.current = ouStep(wBias1Ref.current, 0, 0.008, 0.12, dt)
-          wBias2Ref.current = ouStep(wBias2Ref.current, 0, 0.0075, 0.13, dt)
-          hBias1Ref.current = Math.max(-0.75, Math.min(0.8, hBias1Ref.current))
-          hBias2Ref.current = Math.max(-0.8, Math.min(0.85, hBias2Ref.current))
-          wBias1Ref.current = Math.max(-0.55, Math.min(0.65, wBias1Ref.current))
-          wBias2Ref.current = Math.max(-0.6, Math.min(0.7, wBias2Ref.current))
+          // 随机偏置：仅播放时游走
+          if (isPlaying) {
+            hBias1Ref.current = ouStep(hBias1Ref.current, 0, 0.006, 0.16, dt)
+            hBias2Ref.current = ouStep(hBias2Ref.current, 0, 0.0055, 0.18, dt)
+            wBias1Ref.current = ouStep(wBias1Ref.current, 0, 0.008, 0.12, dt)
+            wBias2Ref.current = ouStep(wBias2Ref.current, 0, 0.0075, 0.13, dt)
+            hBias1Ref.current = Math.max(-0.75, Math.min(0.8, hBias1Ref.current))
+            hBias2Ref.current = Math.max(-0.8, Math.min(0.85, hBias2Ref.current))
+            wBias1Ref.current = Math.max(-0.55, Math.min(0.65, wBias1Ref.current))
+            wBias2Ref.current = Math.max(-0.6, Math.min(0.7, wBias2Ref.current))
 
-          // 峰速：频谱推 + 随机游走（可见漂移）
-          v1Ref.current = ouStep(
-            v1Ref.current,
-            (smooth[1] - smooth[4]) * 0.004,
-            0.03,
-            0.0028,
-            dt,
-          )
-          v2Ref.current = ouStep(
-            v2Ref.current,
-            (smooth[6] - smooth[2]) * 0.005,
-            0.028,
-            0.0032,
-            dt,
-          )
+            // 峰速：频谱推 + 随机游走（可见漂移）
+            v1Ref.current = ouStep(
+              v1Ref.current,
+              (smooth[1] - smooth[4]) * 0.004,
+              0.03,
+              0.0028,
+              dt,
+            )
+            v2Ref.current = ouStep(
+              v2Ref.current,
+              (smooth[6] - smooth[2]) * 0.005,
+              0.028,
+              0.0032,
+              dt,
+            )
+          }
+
           const s1 =
             (0.003 +
               bass * 0.006 +
               midF * 0.004 +
               flux * 0.005 +
               onset * 0.004) *
-            presence
+            motion
           const s2 =
             (0.0025 +
               treble * 0.01 +
               midF * 0.003 +
               flux * 0.006 +
               onset * 0.005) *
-            presence
+            motion
 
           // 频谱重心吸引：峰1偏低频能量位置，峰2偏高频
-          const bassFocus =
-            (0 * smooth[0] +
-              0.12 * smooth[1] +
-              0.25 * smooth[2] +
-              0.4 * smooth[3]) /
-            Math.max(0.08, smooth[0] + smooth[1] + smooth[2] + smooth[3])
-          const trebFocus =
-            (0.55 * smooth[4] +
-              0.7 * smooth[5] +
-              0.85 * smooth[6] +
-              1.0 * smooth[7]) /
-            Math.max(0.08, smooth[4] + smooth[5] + smooth[6] + smooth[7])
-          // 映射到周长，并加相位，避免钉死在固定边
-          const spin = (wavePhaseRef.current * 0.02) % 1
-          anchor1Ref.current =
-            (bassFocus * 0.35 + spin + hBias1Ref.current * 0.08 + 1) % 1
-          anchor2Ref.current =
-            (trebFocus * 0.35 +
-              0.5 +
-              spin * 1.3 +
-              hBias2Ref.current * 0.08 +
-              1) %
-            1
-
-          peak1TRef.current = circLerp(
-            peak1TRef.current,
-            anchor1Ref.current,
-            0.04 * presence,
-          )
-          peak2TRef.current = circLerp(
-            peak2TRef.current,
-            anchor2Ref.current,
-            0.035 * presence,
-          )
-          peak1TRef.current =
-            (peak1TRef.current + s1 + v1Ref.current * presence + 1) % 1
-          peak2TRef.current =
-            (peak2TRef.current + s2 + v2Ref.current * presence + 1) % 1
-
-          const gap = circDist(peak1TRef.current, peak2TRef.current)
-          if (gap < 0.18) {
-            const push = (0.18 - gap) * 0.12
-            peak2TRef.current = (peak2TRef.current + push + 1) % 1
-          }
-
-          // 强 onset / 定时：猛推随机态（仍平滑到目标）
-          if (
-            playing &&
-            presence > 0.45 &&
-            (timeAccRef.current >= nextReseedAtRef.current || onset > 0.72)
-          ) {
-            anchor1Ref.current = Math.random()
+          if (isPlaying) {
+            const bassFocus =
+              (0 * smooth[0] +
+                0.12 * smooth[1] +
+                0.25 * smooth[2] +
+                0.4 * smooth[3]) /
+              Math.max(0.08, smooth[0] + smooth[1] + smooth[2] + smooth[3])
+            const trebFocus =
+              (0.55 * smooth[4] +
+                0.7 * smooth[5] +
+                0.85 * smooth[6] +
+                1.0 * smooth[7]) /
+              Math.max(0.08, smooth[4] + smooth[5] + smooth[6] + smooth[7])
+            // 映射到周长，并加相位，避免钉死在固定边
+            const spin = (wavePhaseRef.current * 0.02) % 1
+            anchor1Ref.current =
+              (bassFocus * 0.35 + spin + hBias1Ref.current * 0.08 + 1) % 1
             anchor2Ref.current =
-              (anchor1Ref.current + 0.22 + Math.random() * 0.48) % 1
-            hBias1Ref.current += (Math.random() - 0.5) * (0.35 + onset * 0.4)
-            hBias2Ref.current += (Math.random() - 0.5) * (0.4 + onset * 0.45)
-            wBias1Ref.current += (Math.random() - 0.5) * 0.3
-            wBias2Ref.current += (Math.random() - 0.5) * 0.35
-            v1Ref.current += (Math.random() - 0.5) * 0.01
-            v2Ref.current += (Math.random() - 0.5) * 0.012
-            noiseSpeedRef.current = 0.02 + Math.random() * 0.06
-            nextReseedAtRef.current =
-              timeAccRef.current + 1.1 + Math.random() * 2.4 + (1 - onset) * 1.2
-          }
+              (trebFocus * 0.35 +
+                0.5 +
+                spin * 1.3 +
+                hBias2Ref.current * 0.08 +
+                1) %
+              1
 
-          // 峰高：可很低可很高 — 频谱主导 + 大随机偏置
-          const h1Target = Math.max(
-            0.08,
-            0.2 +
-              bass * 0.9 +
-              onset * 0.85 +
-              smooth[0] * 0.7 +
-              smooth[1] * 0.45 +
-              hBias1Ref.current +
-              kick * 0.35,
-          )
-          const h2Target = Math.max(
-            0.08,
-            0.15 +
-              treble * 1.25 +
-              onset * 0.95 +
-              smooth[6] * 0.85 +
-              smooth[7] * 0.7 +
-              hBias2Ref.current +
-              kick * 0.4,
-          )
-          // 较快追上频谱
-          peak1HRef.current = lerp(peak1HRef.current, h1Target, 0.14)
-          peak2HRef.current = lerp(peak2HRef.current, h2Target, 0.15)
-          const w1Target = Math.max(
-            0.3,
-            0.4 + bass * 0.55 - treble * 0.25 + midF * 0.15 + wBias1Ref.current,
-          )
-          const w2Target = Math.max(
-            0.28,
-            0.35 + midF * 0.3 + treble * 0.45 - bass * 0.12 + wBias2Ref.current,
-          )
-          peak1WRef.current = lerp(peak1WRef.current, w1Target, 0.1)
-          peak2WRef.current = lerp(peak2WRef.current, w2Target, 0.11)
+            peak1TRef.current = circLerp(
+              peak1TRef.current,
+              anchor1Ref.current,
+              0.04 * motion,
+            )
+            peak2TRef.current = circLerp(
+              peak2TRef.current,
+              anchor2Ref.current,
+              0.035 * motion,
+            )
+            peak1TRef.current =
+              (peak1TRef.current + s1 + v1Ref.current * motion + 1) % 1
+            peak2TRef.current =
+              (peak2TRef.current + s2 + v2Ref.current * motion + 1) % 1
+
+            const gap = circDist(peak1TRef.current, peak2TRef.current)
+            if (gap < 0.18) {
+              const push = (0.18 - gap) * 0.12
+              peak2TRef.current = (peak2TRef.current + push + 1) % 1
+            }
+
+            // 强 onset / 定时：猛推随机态（仍平滑到目标）
+            if (
+              presence > 0.45 &&
+              (timeAccRef.current >= nextReseedAtRef.current || onset > 0.72)
+            ) {
+              anchor1Ref.current = Math.random()
+              anchor2Ref.current =
+                (anchor1Ref.current + 0.22 + Math.random() * 0.48) % 1
+              hBias1Ref.current += (Math.random() - 0.5) * (0.35 + onset * 0.4)
+              hBias2Ref.current += (Math.random() - 0.5) * (0.4 + onset * 0.45)
+              wBias1Ref.current += (Math.random() - 0.5) * 0.3
+              wBias2Ref.current += (Math.random() - 0.5) * 0.35
+              v1Ref.current += (Math.random() - 0.5) * 0.01
+              v2Ref.current += (Math.random() - 0.5) * 0.012
+              noiseSpeedRef.current = 0.02 + Math.random() * 0.06
+              nextReseedAtRef.current =
+                timeAccRef.current + 1.1 + Math.random() * 2.4 + (1 - onset) * 1.2
+            }
+
+            // 峰高：可很低可很高 — 频谱主导 + 大随机偏置
+            const h1Target = Math.max(
+              0.08,
+              0.2 +
+                bass * 0.9 +
+                onset * 0.85 +
+                smooth[0] * 0.7 +
+                smooth[1] * 0.45 +
+                hBias1Ref.current +
+                kick * 0.35,
+            )
+            const h2Target = Math.max(
+              0.08,
+              0.15 +
+                treble * 1.25 +
+                onset * 0.95 +
+                smooth[6] * 0.85 +
+                smooth[7] * 0.7 +
+                hBias2Ref.current +
+                kick * 0.4,
+            )
+            // 较快追上频谱
+            peak1HRef.current = lerp(peak1HRef.current, h1Target, 0.14)
+            peak2HRef.current = lerp(peak2HRef.current, h2Target, 0.15)
+            const w1Target = Math.max(
+              0.3,
+              0.4 + bass * 0.55 - treble * 0.25 + midF * 0.15 + wBias1Ref.current,
+            )
+            const w2Target = Math.max(
+              0.28,
+              0.35 + midF * 0.3 + treble * 0.45 - bass * 0.12 + wBias2Ref.current,
+            )
+            peak1WRef.current = lerp(peak1WRef.current, w1Target, 0.1)
+            peak2WRef.current = lerp(peak2WRef.current, w2Target, 0.11)
+          }
 
           const d = buildSpectrumWavePath(
             w,
@@ -1853,28 +1926,35 @@ const LibraryPlayingWaveBorder = memo(({
           midRef.current?.setAttribute('d', d)
 
           // 线宽/透明度：出场 kick 更亮更厚；退场跟 opacityPresence 先灭
-          const bodyTarget =
-            (energy * 0.5 +
-              bass * 0.25 +
-              treble * 0.35 +
-              onset * 0.4 +
-              flux * 0.2 +
-              kick * 0.55) *
-            presence
+          // 暂停：保持当前 body/opacity，不向 0 收敛
+          const bodyTarget = isPlaying
+            ? (energy * 0.5 +
+                bass * 0.25 +
+                treble * 0.35 +
+                onset * 0.4 +
+                flux * 0.2 +
+                kick * 0.55) *
+              presence
+            : live
+              ? bodySmoothRef.current
+              : (energy * 0.5 + bass * 0.25 + treble * 0.35) * presence
           bodySmoothRef.current = lerp(
             bodySmoothRef.current,
             bodyTarget,
-            playing ? 0.22 : 0.14,
+            isPlaying ? 0.22 : live ? 0 : 0.14,
           )
           const body = bodySmoothRef.current
-          const opTarget =
-            opacityPresence *
-            (0.28 + energy * 0.35 + body * 0.4 + onset * 0.15 + kick * 0.38)
-          // 退场透明度跟得更快，出场略柔
+          const opTarget = isPlaying
+            ? opacityPresence *
+              (0.28 + energy * 0.35 + body * 0.4 + onset * 0.15 + kick * 0.38)
+            : live
+              ? opacitySmoothRef.current
+              : opacityPresence *
+                (0.28 + energy * 0.35 + body * 0.4)
           opacitySmoothRef.current = lerp(
             opacitySmoothRef.current,
             opTarget,
-            playing ? 0.2 : 0.28,
+            isPlaying ? 0.2 : live ? 0 : 0.28,
           )
           const op = opacitySmoothRef.current
           if (softRef.current) {
@@ -1904,13 +1984,23 @@ const LibraryPlayingWaveBorder = memo(({
             )
           }
 
-          if (reducedMotion && playing && presence > 0.98) {
-            reducedSettled = true
+          if (reducedMotion && live && isPlaying && presence > 0.98) {
+            settled = true
           }
+          if (live && !isPlaying && presence > 0.98) {
+            settled = true
+          }
+          } // end non-frozen draw
         }
       }
-      // reduced 播放已静定则停环；否则续帧
-      if (!(reducedMotion && activeRef.current && reducedSettled)) {
+      // 冻结 / reduced 静环已静定则停环；否则续帧
+      if (
+        !(
+          settled &&
+          activeRef.current &&
+          (!playingRef.current || reducedMotion)
+        )
+      ) {
         raf = requestAnimationFrame(tick)
       }
     }
@@ -1920,7 +2010,7 @@ const LibraryPlayingWaveBorder = memo(({
       cancelAnimationFrame(raf)
       ro?.disconnect()
     }
-  }, [mounted, active])
+  }, [mounted, active, playing])
 
   if (!mounted) return null
 
@@ -2115,11 +2205,14 @@ const LibraryCardShell = memo(({
 }) => {
   const hasCover = Boolean(cover)
   const [mediaReady, setMediaReady] = useState(!hasCover)
+  /** Gate real src through a decode budget so pan-in doesn't decode 30 covers at once. */
+  const [activeSrc, setActiveSrc] = useState<string | null>(null)
   /** off | breathing | exiting — 退场播完再卸类，避免硬切 */
   const [breathPhase, setBreathPhase] = useState<
     'off' | 'breathing' | 'exiting'
   >(coverBreathing ? 'breathing' : 'off')
   const imgRef = useRef<HTMLImageElement>(null)
+  const releaseSlotRef = useRef<(() => void) | null>(null)
 
   const clearCoverInline = useCallback(() => {
     const img = imgRef.current
@@ -2182,21 +2275,46 @@ const LibraryCardShell = memo(({
     }
   }, [breathPhase, clearCoverInline])
 
+  // Decode budget + unload on unmount (virtualized cards leave the viewport).
   useEffect(() => {
     if (!cover) {
+      setActiveSrc(null)
       setMediaReady(true)
       return
     }
-    // 缓存命中时 complete 已 true，避免先 false 再 true 闪一下
-    const img = imgRef.current
-    if (img?.complete && img.naturalWidth > 0) {
-      setMediaReady(true)
-      return
-    }
+
+    let cancelled = false
     setMediaReady(false)
+    setActiveSrc(null)
+
+    void acquireCoverDecodeSlot().then((release) => {
+      if (cancelled) {
+        release()
+        return
+      }
+      releaseSlotRef.current = release
+      setActiveSrc(cover)
+    })
+
+    return () => {
+      cancelled = true
+      releaseSlotRef.current?.()
+      releaseSlotRef.current = null
+      // Drop decoded bitmap when the card is culled from the canvas viewport.
+      releaseCoverImageElement(imgRef.current)
+      setActiveSrc(null)
+    }
   }, [cover])
 
-  const markReady = useCallback(() => setMediaReady(true), [])
+  const releaseDecodeSlot = useCallback(() => {
+    releaseSlotRef.current?.()
+    releaseSlotRef.current = null
+  }, [])
+
+  const markReady = useCallback(() => {
+    releaseDecodeSlot()
+    setMediaReady(true)
+  }, [releaseDecodeSlot])
 
   const handleError = useCallback(
     (e: SyntheticEvent<HTMLImageElement>) => {
@@ -2227,11 +2345,12 @@ const LibraryCardShell = memo(({
         {hasCover ? (
           <img
             ref={imgRef}
-            src={cover!}
+            src={activeSrc || undefined}
             alt={title}
             className={`library-card-media__img${mediaReady ? ' is-loaded' : ''}${imgClassName ? ` ${imgClassName}` : ''}`}
             loading="lazy"
             decoding="async"
+            sizes={LIBRARY_CARD_COVER_SIZES}
             draggable={false}
             onLoad={markReady}
             onError={handleError}
@@ -2364,6 +2483,56 @@ const CANVAS_MAX_SCALE = 1.6
 const CANVAS_SPATIAL_BIN_SIZE = CANVAS_STRIDE * 4
 const LIBRARY_PAGE_SIZE = 120
 
+/** Visible-card query used by both React virtualization and live paint. */
+function queryCanvasVisibleItems(
+  transform: LibraryCanvasTransform,
+  viewport: { width: number; height: number },
+  layouts: Map<string, CardLayout>,
+  spatialIndex: {
+    bins: Map<string, LibraryItem[]>
+    order: Map<string, number>
+  },
+  laidOutItems: LibraryItem[],
+): LibraryItem[] {
+  if (layouts.size === 0) return []
+  if (viewport.width === 0 || viewport.height === 0) {
+    return laidOutItems.slice(0, 30)
+  }
+  const { minX, maxX, minY, maxY } = getLibraryCanvasViewportBounds(
+    transform,
+    viewport,
+  )
+  const minBinX = Math.floor(minX / CANVAS_SPATIAL_BIN_SIZE)
+  const maxBinX = Math.floor(maxX / CANVAS_SPATIAL_BIN_SIZE)
+  const minBinY = Math.floor(minY / CANVAS_SPATIAL_BIN_SIZE)
+  const maxBinY = Math.floor(maxY / CANVAS_SPATIAL_BIN_SIZE)
+  const candidates: LibraryItem[] = []
+  const seen = new Set<string>()
+
+  for (let binX = minBinX; binX <= maxBinX; binX++) {
+    for (let binY = minBinY; binY <= maxBinY; binY++) {
+      const bin = spatialIndex.bins.get(`${binX},${binY}`)
+      if (!bin) continue
+      bin.forEach((item) => {
+        if (seen.has(item.id)) return
+        seen.add(item.id)
+        const layout = layouts.get(item.id)
+        if (
+          layout &&
+          libraryCanvasLayoutIntersects(layout, { minX, maxX, minY, maxY })
+        ) {
+          candidates.push(item)
+        }
+      })
+    }
+  }
+
+  return candidates.sort(
+    (a, b) =>
+      (spatialIndex.order.get(a.id) ?? 0) - (spatialIndex.order.get(b.id) ?? 0),
+  )
+}
+
 function readCanvasDefaultScale(): number {
   // Align with nav island: touch tablets in 768–1023 use compact chrome too.
   if (typeof window === 'undefined') return CANVAS_DEFAULT_SCALE_DESKTOP
@@ -2416,9 +2585,12 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   const [isTransitioning, setIsTransitioning] = useState(false)
   const transitionTimersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
-  // 布局状态
+  // 布局状态：preferred 来自用户设置；低端设备强制列表（见 resolveLibraryLayoutMode）
   const [layouts, setLayouts] = useState<Map<string, CardLayout>>(new Map())
-  const [layoutMode, setLayoutMode] = useState<'list' | 'canvas'>('list')
+  const [preferredLayout, setPreferredLayout] =
+    useState<LibraryLayoutMode>('list')
+  const { highHardware } = usePerformanceProfile()
+  const layoutMode = resolveLibraryLayoutMode(preferredLayout, highHardware)
   const [visibleCount, setVisibleCount] = useState(20) // 初始显示数量
   const [libraryHasMore, setLibraryHasMore] = useState(false)
   const nextLibraryOffsetRef = useRef<number | null>(null)
@@ -2428,11 +2600,163 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   // Mount-time only: avoid flipping scale when rotating/resizing mid-session.
   const canvasDefaultScaleRef = useRef(readCanvasDefaultScale())
+  const worldRef = useRef<HTMLDivElement | null>(null)
+  const canvasViewportRef = useRef({ width: 0, height: 0 })
+  const libraryHasMoreRef = useRef(false)
+  const canvasLoadedRadiusRef = useRef(0)
+  const loadNextLibraryPageLiveRef = useRef<() => void>(() => {})
+  const layoutsRef = useRef(new Map<string, CardLayout>())
+  const laidOutItemsRef = useRef<LibraryItem[]>([])
+  const canvasSpatialIndexRef = useRef<{
+    bins: Map<string, LibraryItem[]>
+    order: Map<string, number>
+  }>({ bins: new Map(), order: new Map() })
+  const lastCanvasVisibleSigRef = useRef('')
+  /** Tracks prior canvas effective mode for one-shot paint cleanup on leave. */
+  const wasCanvasLayoutRef = useRef(false)
+  const [canvasLiveVisibleItems, setCanvasLiveVisibleItems] = useState<
+    LibraryItem[]
+  >([])
+
+  const paintCanvasTransform = useCallback(
+    (t: LibraryCanvasTransform) => {
+      const surface = containerRef.current
+      const world = worldRef.current
+      if (world) {
+        world.style.transform = `translate3d(${t.x}px, ${t.y}px, 0) scale(${t.scale})`
+      }
+      if (surface) {
+        surface.style.backgroundSize = `${28 * t.scale}px ${28 * t.scale}px`
+        surface.style.backgroundPosition = `calc(50% + ${t.x}px) calc(50% + ${t.y}px)`
+      }
+
+      const viewport = canvasViewportRef.current
+      if (world && viewport.width > 0 && viewport.height > 0) {
+        const cards = world.querySelectorAll<HTMLElement>('[data-canvas-card]')
+        for (let i = 0; i < cards.length; i++) {
+          const el = cards[i]
+          const left = Number(el.dataset.layoutLeft)
+          const top = Number(el.dataset.layoutTop)
+          const width = Number(el.dataset.layoutWidth)
+          const height = Number(el.dataset.layoutHeight)
+          if (
+            !Number.isFinite(left) ||
+            !Number.isFinite(top) ||
+            !Number.isFinite(width) ||
+            !Number.isFinite(height)
+          ) {
+            continue
+          }
+          const focus = getLibraryCanvasFocusScale(
+            {
+              left,
+              top,
+              width,
+              height,
+              gridX: 0,
+              gridY: 0,
+              gridW: 1,
+              gridH: 1,
+            },
+            t,
+            viewport,
+          )
+          el.style.transform = `scale(${focus})`
+          el.style.zIndex = String(Math.round(focus * 100))
+        }
+      }
+
+      // Live virtualization: mount/unmount only when membership changes.
+      const nextVisible = queryCanvasVisibleItems(
+        t,
+        viewport,
+        layoutsRef.current,
+        canvasSpatialIndexRef.current,
+        laidOutItemsRef.current,
+      )
+      let sig = ''
+      for (let i = 0; i < nextVisible.length; i++) {
+        if (i) sig += '\n'
+        sig += nextVisible[i].id
+      }
+      if (sig !== lastCanvasVisibleSigRef.current) {
+        lastCanvasVisibleSigRef.current = sig
+        setCanvasLiveVisibleItems(nextVisible)
+      }
+
+      // Chrome lives in a portal — update labels/disabled without React.
+      const pct = Math.round(t.scale * 100)
+      const zoomLabel = document.querySelector(
+        '[data-library-canvas-zoom-percent]',
+      )
+      if (zoomLabel) zoomLabel.textContent = `${pct}%`
+      const zoomOut = document.querySelector(
+        '[data-library-canvas-zoom-out]',
+      ) as HTMLButtonElement | null
+      const zoomIn = document.querySelector(
+        '[data-library-canvas-zoom-in]',
+      ) as HTMLButtonElement | null
+      const resetBtn = document.querySelector(
+        '[data-library-canvas-reset]',
+      ) as HTMLButtonElement | null
+      if (zoomOut) zoomOut.disabled = t.scale <= CANVAS_MIN_SCALE + 0.001
+      if (zoomIn) zoomIn.disabled = t.scale >= CANVAS_MAX_SCALE - 0.001
+      if (resetBtn) {
+        const isDefault =
+          Math.abs(t.x) < 0.5 &&
+          Math.abs(t.y) < 0.5 &&
+          Math.abs(t.scale - canvasDefaultScaleRef.current) < 0.001
+        resetBtn.disabled = isDefault
+      }
+
+      // Edge preload without waiting for a React transform commit.
+      if (
+        libraryHasMoreRef.current &&
+        canvasLoadedRadiusRef.current > 0 &&
+        viewport.width > 0 &&
+        viewport.height > 0
+      ) {
+        const worldCenterX = -t.x / t.scale
+        const worldCenterY = -t.y / t.scale
+        const viewportRadius =
+          Math.hypot(viewport.width, viewport.height) / 2 / t.scale
+        const preloadBoundary = Math.max(
+          0,
+          canvasLoadedRadiusRef.current - viewportRadius * 1.25,
+        )
+        if (Math.hypot(worldCenterX, worldCenterY) >= preloadBoundary) {
+          loadNextLibraryPageLiveRef.current()
+        }
+      }
+    },
+    [],
+  )
+
+  // React transform commits when spatial bins change (chrome props) or on force flush.
+  const shouldCommitCanvasTransform = useCallback(
+    (next: LibraryCanvasTransform, committed: LibraryCanvasTransform) => {
+      const viewport = canvasViewportRef.current
+      if (viewport.width <= 0 || viewport.height <= 0) return true
+      return (
+        getLibraryCanvasViewportBinKey(
+          next,
+          viewport,
+          CANVAS_SPATIAL_BIN_SIZE,
+        ) !==
+        getLibraryCanvasViewportBinKey(
+          committed,
+          viewport,
+          CANVAS_SPATIAL_BIN_SIZE,
+        )
+      )
+    },
+    [],
+  )
+
   const {
     atMaxZoom: canvasAtMaxZoom,
     atMinZoom: canvasAtMinZoom,
     finishPointer: finishCanvasPointer,
-    focusTransform: canvasFocusTransform,
     handleBlur: handleCanvasBlur,
     handleClickCapture: handleCanvasClickCapture,
     handleKeyDown: handleCanvasKeyDown,
@@ -2442,6 +2766,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     isDefault: canvasViewIsDefault,
     reset: resetCanvasView,
     transform: canvasTransform,
+    transformRef: canvasTransformRef,
     zoom: zoomCanvas,
     zoomPercent: canvasZoomPercent,
   } = useLibraryCanvasControls({
@@ -2450,11 +2775,14 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     maxScale: CANVAS_MAX_SCALE,
     minScale: CANVAS_MIN_SCALE,
     surfaceRef: containerRef,
+    onPaint: paintCanvasTransform,
+    shouldCommit: shouldCommitCanvasTransform,
   })
   const [canvasViewport, setCanvasViewport] = useState({
     width: 0,
     height: 0,
   })
+  canvasViewportRef.current = canvasViewport
 
   useEffect(() => {
     const root = document.documentElement
@@ -2471,7 +2799,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     }
   }, [layoutMode])
 
-  const containerWidthRef = useRef<number>(0) // 🔧 缓存容器宽度，避免重复读取
+  const containerWidthRef = useRef<number>(0) // 缓存容器宽度，避免重复读取
   // 父级只跟 songId / isPlaying / musicColor，切句不重渲染整表
   const {
     songId: liveSongId,
@@ -2529,7 +2857,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       return
     }
 
-    // 🔧 使用缓存的容器宽度，避免强制重排
+    // 使用缓存的容器宽度，避免强制重排
     // 只有缓存无效时才读取
     if (containerWidthRef.current === 0) {
       containerWidthRef.current = containerRef.current.offsetWidth
@@ -2619,7 +2947,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
         // 优先级：
         // 1. 检查是否能放入 2x1 (需要 x+1 空闲)
         // 2. 检查是否能放入 1x2 (需要 y+1 空闲 - 总是假设 y+1 空闲，除非有预占，但这里我们是逐行扫描，y+1通常未处理)
-        //    注意：如果之前有 1x2 占据了 (x, y+1)，则 isOccupied(x, y+1) 会为 true。
+        // 注意：如果之前有 1x2 占据了 (x, y+1)，则 isOccupied(x, y+1) 会为 true。
         // 3. 放入 1x1
 
         // 为了保持"平均开始排布"，我们在所有能放入的候选中，选择 originalIndex 最小的那个
@@ -2735,7 +3063,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   // 使用共享的 resize 监听器
   useSharedResize(
     () => {
-      // 🔧 resize 时刷新容器宽度缓存
+      // resize 时刷新容器宽度缓存
       if (containerRef.current) {
         containerWidthRef.current = containerRef.current.offsetWidth
         if (layoutMode === 'canvas') {
@@ -2755,7 +3083,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     computeLayout()
   }, [computeLayout])
 
-  // 滚动加载更多 - 🔧 添加节流防止过快触发
+  // 滚动加载更多 -  添加节流防止过快触发
   const loadMoreRef = useRef<number | null>(null)
   const loadMore = useCallback(() => {
     if (loadMoreRef.current) return // 防止重复触发
@@ -2846,51 +3174,24 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     return { bins, order }
   }, [laidOutItems, layoutMode, layouts])
 
+  layoutsRef.current = layouts
+  laidOutItemsRef.current = laidOutItems
+  canvasSpatialIndexRef.current = canvasSpatialIndex
+
   // 排序后的可见项目
   const visibleItems = useMemo(() => {
     if (layouts.size === 0) return []
 
     if (layoutMode === 'canvas') {
-      if (canvasViewport.width === 0 || canvasViewport.height === 0) {
-        return laidOutItems.slice(0, 30)
-      }
-      const { minX, maxX, minY, maxY } = getLibraryCanvasViewportBounds(
+      // Live set is owned by paintCanvasTransform (absolute-follow pose).
+      // Fall back while viewport is measuring or before the first paint.
+      if (canvasLiveVisibleItems.length > 0) return canvasLiveVisibleItems
+      return queryCanvasVisibleItems(
         canvasTransform,
         canvasViewport,
-      )
-      const minBinX = Math.floor(minX / CANVAS_SPATIAL_BIN_SIZE)
-      const maxBinX = Math.floor(maxX / CANVAS_SPATIAL_BIN_SIZE)
-      const minBinY = Math.floor(minY / CANVAS_SPATIAL_BIN_SIZE)
-      const maxBinY = Math.floor(maxY / CANVAS_SPATIAL_BIN_SIZE)
-      const candidates: LibraryItem[] = []
-      const seen = new Set<string>()
-
-      for (let binX = minBinX; binX <= maxBinX; binX++) {
-        for (let binY = minBinY; binY <= maxBinY; binY++) {
-          const bin = canvasSpatialIndex.bins.get(`${binX},${binY}`)
-          if (!bin) continue
-          bin.forEach((item) => {
-            if (seen.has(item.id)) return
-            seen.add(item.id)
-            const layout = layouts.get(item.id)!
-            if (
-              libraryCanvasLayoutIntersects(layout, {
-                minX,
-                maxX,
-                minY,
-                maxY,
-              })
-            ) {
-              candidates.push(item)
-            }
-          })
-        }
-      }
-
-      return candidates.sort(
-        (a, b) =>
-          (canvasSpatialIndex.order.get(a.id) ?? 0) -
-          (canvasSpatialIndex.order.get(b.id) ?? 0),
+        layouts,
+        canvasSpatialIndex,
+        laidOutItems,
       )
     }
 
@@ -2905,6 +3206,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
 
     return sortedItems.slice(0, visibleCount)
   }, [
+    canvasLiveVisibleItems,
     canvasSpatialIndex,
     canvasTransform,
     canvasViewport,
@@ -2947,8 +3249,12 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       if (generation !== libraryFetchGenerationRef.current) return
 
       if (data.success) {
-        const balanced = balancedShuffleLibraryItems(data.items)
-        setLayoutMode(data.preferences?.layout === 'canvas' ? 'canvas' : 'list')
+        const balanced = balancedShuffleLibraryItems(
+          slimLibraryItems(data.items as LibraryItem[]),
+        )
+        setPreferredLayout(
+          data.preferences?.layout === 'canvas' ? 'canvas' : 'list',
+        )
         setAllItems(balanced)
         nextLibraryOffsetRef.current = data.next_offset ?? null
         setLibraryHasMore(Boolean(data.has_more && data.next_offset != null))
@@ -2972,7 +3278,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     const handlePreferencesUpdated = (event: Event) => {
       const detail = (event as CustomEvent<LibraryPreferencesUpdatedDetail>)
         .detail
-      if (detail?.layout) setLayoutMode(detail.layout)
+      if (detail?.layout) setPreferredLayout(detail.layout)
       void fetchLibraryData()
     }
     window.addEventListener(
@@ -3001,7 +3307,9 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       if (generation !== libraryFetchGenerationRef.current) return
       if (!data.success) throw new Error('No library data available')
 
-      const incoming = balancedShuffleLibraryItems(data.items)
+      const incoming = balancedShuffleLibraryItems(
+        slimLibraryItems(data.items as LibraryItem[]),
+      )
       setAllItems((current) => {
         if (incoming.length === 0) return current
         const known = new Set(current.map((item) => item.id))
@@ -3034,42 +3342,35 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     return radius
   }, [layouts])
 
-  useEffect(() => {
-    if (
-      layoutMode !== 'canvas' ||
-      !libraryHasMore ||
-      canvasLoadedRadius <= 0 ||
-      canvasViewport.width <= 0 ||
-      canvasViewport.height <= 0
-    ) {
+  libraryHasMoreRef.current = libraryHasMore
+  canvasLoadedRadiusRef.current = canvasLoadedRadius
+  loadNextLibraryPageLiveRef.current = () => {
+    void loadNextLibraryPage()
+  }
+
+  // After every React commit while canvas is active, re-paint the live pose.
+  // Covers: virtualized card mount, music/live re-renders stomping chrome
+  // disabled attrs, and first layout after viewport measure.
+  // Leaving canvas: one-shot strip of absolute-follow surface paint (cards clear
+  // via React list styles: transform none / zIndex auto).
+  useLayoutEffect(() => {
+    if (layoutMode === 'canvas') {
+      wasCanvasLayoutRef.current = true
+      paintCanvasTransform(canvasTransformRef.current)
       return
     }
-
-    const worldCenterX = -canvasTransform.x / canvasTransform.scale
-    const worldCenterY = -canvasTransform.y / canvasTransform.scale
-    const viewportRadius =
-      Math.hypot(canvasViewport.width, canvasViewport.height) /
-      2 /
-      canvasTransform.scale
-    const preloadBoundary = Math.max(
-      0,
-      canvasLoadedRadius - viewportRadius * 1.25,
-    )
-
-    if (Math.hypot(worldCenterX, worldCenterY) >= preloadBoundary) {
-      void loadNextLibraryPage()
-    }
-  }, [
-    canvasLoadedRadius,
-    canvasTransform,
-    canvasViewport,
-    layoutMode,
-    libraryHasMore,
-    loadNextLibraryPage,
-  ])
+    if (!wasCanvasLayoutRef.current) return
+    wasCanvasLayoutRef.current = false
+    const surface = containerRef.current
+    if (!surface) return
+    surface.style.removeProperty('background-size')
+    surface.style.removeProperty('background-position')
+  })
 
   useEffect(() => {
-    if (layoutMode === 'canvas') resetCanvasView()
+    if (layoutMode !== 'canvas') return
+    lastCanvasVisibleSigRef.current = ''
+    resetCanvasView()
   }, [filter, layoutMode, resetCanvasView])
 
   // 空状态图标
@@ -3476,10 +3777,9 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 layoutMode === 'canvas'
                   ? {
                       height: '100dvh',
+                      // Size/position painted via paintCanvasTransform for absolute follow.
                       backgroundImage:
                         'radial-gradient(circle, color-mix(in srgb, var(--text-color, currentColor) 18%, transparent) 1px, transparent 1.2px)',
-                      backgroundSize: `${28 * canvasTransform.scale}px ${28 * canvasTransform.scale}px`,
-                      backgroundPosition: `calc(50% + ${canvasTransform.x}px) calc(50% + ${canvasTransform.y}px)`,
                     }
                   : {
                       height: `${containerHeight}px`,
@@ -3533,6 +3833,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 />
               )}
               <div
+                ref={layoutMode === 'canvas' ? worldRef : undefined}
                 className={
                   layoutMode === 'canvas'
                     ? 'library-canvas-world absolute left-1/2 top-1/2'
@@ -3541,7 +3842,7 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 style={
                   layoutMode === 'canvas'
                     ? {
-                        transform: `translate3d(${canvasTransform.x}px, ${canvasTransform.y}px, 0) scale(${canvasTransform.scale})`,
+                        // Transform painted via paintCanvasTransform (absolute follow).
                         transformOrigin: '0 0',
                       }
                     : undefined
@@ -3550,14 +3851,6 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                 {visibleItems.map((item, itemIndex) => {
                   const layout = layouts.get(item.id)
                   if (!layout) return null
-                  const canvasFocusScale =
-                    layoutMode === 'canvas'
-                      ? getLibraryCanvasFocusScale(
-                          layout,
-                          canvasFocusTransform,
-                          canvasViewport,
-                        )
-                      : 1
 
                   const platformColor = getPlatformColor(item.platform)
                   // VIP badge is Netease-only (fee/isVip); Bangumi music has no fee model
@@ -3640,6 +3933,21 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                     <div
                       key={item.id}
                       className={`absolute group library-card-container${hoverLocked ? ' is-hover-locked' : ''}`}
+                      data-canvas-card={
+                        layoutMode === 'canvas' ? '' : undefined
+                      }
+                      data-layout-left={
+                        layoutMode === 'canvas' ? layout.left : undefined
+                      }
+                      data-layout-top={
+                        layoutMode === 'canvas' ? layout.top : undefined
+                      }
+                      data-layout-width={
+                        layoutMode === 'canvas' ? layout.width : undefined
+                      }
+                      data-layout-height={
+                        layoutMode === 'canvas' ? layout.height : undefined
+                      }
                       style={
                         {
                           left: `${layout.left}px`,
@@ -3648,15 +3956,13 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                           height: `${layout.height}px`,
                           '--platform-color': platformColor,
                           animationDelay: `${animationDelay}s`,
+                          // Canvas focus scale is painted each frame (absolute follow).
+                          // List must set transform/zIndex so React clears leftover paint.
+                          transformOrigin:
+                            layoutMode === 'canvas' ? 'center center' : undefined,
                           transform:
-                            layoutMode === 'canvas'
-                              ? `scale(${canvasFocusScale})`
-                              : undefined,
-                          transformOrigin: 'center center',
-                          zIndex:
-                            layoutMode === 'canvas'
-                              ? Math.round(canvasFocusScale * 100)
-                              : undefined,
+                            layoutMode === 'canvas' ? undefined : 'none',
+                          zIndex: layoutMode === 'canvas' ? undefined : 'auto',
                         } as CSSProperties
                       }
                       // 入场动画播放一次后移除，避免卡片滚出/滚入视口时
@@ -3697,9 +4003,11 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                           >
                             {showMusicLive && (
                               <>
+                                {/* active=当前曲（含暂停，光晕冻结保留）；playing=频谱动画 */}
                                 <LibraryPlayingWaveBorder
                                   musicColor={musicColor}
-                                  active={isPlaying}
+                                  active={isCurrentSong}
+                                  playing={isPlaying}
                                 />
                                 {/* active=当前曲（含暂停）；换歌时 false 走退场 */}
                                 <LibraryCardLyrics

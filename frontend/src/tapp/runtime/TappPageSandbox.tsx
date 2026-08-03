@@ -211,7 +211,7 @@ function generatePageHTML(
       .getPropertyValue('--color-primary')
       .trim() || '#94a3b8'
 
-  // 🔒 生成唯一 nonce（每个沙箱实例独立）
+  // 生成唯一 nonce（每个沙箱实例独立）
   const nonce = generateNonce()
   const cspOptions = cspOptionsFromPermissions(tappInstance.grantedPermissions)
   const csp = generateCSP(nonce, cspOptions)
@@ -231,7 +231,7 @@ function generatePageHTML(
   const hasHtmlTemplate = !!code.pageHtml
   const pageHtmlContent = code.pageHtml || ''
 
-  // 🎯 检测 pageHtml 是否已经包含分层结构
+  // 检测 pageHtml 是否已经包含分层结构
   // 如果包含 #tapp-background 或 #tapp-content，说明 Tapp 自己定义了分层
   const hasLayeredStructure =
     pageHtmlContent.includes('id="tapp-background"') ||
@@ -240,7 +240,7 @@ function generatePageHTML(
     pageHtmlContent.includes("id='tapp-content'")
 
   // JS 代码 - 混合模式下也会加载
-  // 🎯 page 模块化：如果有 pageModules，按顺序拼装替代 core+page 标记分割
+  // page 模块化：如果有 pageModules，按顺序拼装替代 core+page 标记分割
   let pageCode: string
   let loadingMode: 'modular' | 'monolith'
   let loadedModules: string[] = []
@@ -268,19 +268,19 @@ function generatePageHTML(
     pageCode = getCodeForMode(code, 'page')
   }
 
-  // 🎯 加载模式标识（用于调试和验证）
+  // 加载模式标识（用于调试和验证）
   const loadingModeScript =
     loadedModules.length > 0
       ? `window._TAPP_LOADING_MODE = '${loadingMode}';\n    window._TAPP_LOADED_MODULES = ${serializeSandboxScriptValue(loadedModules)};`
       : `window._TAPP_LOADING_MODE = '${loadingMode}';`
 
-  // 🎯 i18n 注入脚本
+  // i18n 注入脚本
   const i18nScript =
     code.i18n && Object.keys(code.i18n).length > 0
       ? `window._TAPP_I18N = ${serializeSandboxScriptValue(code.i18n)};`
       : 'window._TAPP_I18N = {};'
 
-  // 🎯 使用安装时预编译的 CSS
+  // 使用安装时预编译的 CSS
   const tailwindCSS = code.pageCSS || ''
 
   // 是否需要调用 Tapp.pages.render()
@@ -290,7 +290,7 @@ function generatePageHTML(
   // 初始安全区域 padding（确保首次渲染就有正确的间距）
   const initialPadding = `${safeInsets?.top ?? 0}px ${safeInsets?.right ?? 0}px ${safeInsets?.bottom ?? 0}px ${safeInsets?.left ?? 0}px`
 
-  // 🎯 根据是否有分层结构决定 body 内容
+  // 根据是否有分层结构决定 body 内容
   // - 有分层：直接使用 pageHtmlContent（已包含 #tapp-background 和 #tapp-content）
   // - 无分层：用默认结构包装
   const bodyContent = hasLayeredStructure
@@ -440,7 +440,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   const { locale } = useI18n()
   const animationConfig = useAnimationLevel()
 
-  // 🎯 性能优化：使用 ref 存储对象引用，避免依赖变化触发 iframe 重建
+  // 使用 ref 存储对象引用，避免依赖变化触发 iframe 重建
   const tappInstanceRef = useRef(tappInstance)
   const codeRef = useRef(code)
   const safeInsetsRef = useRef(safeInsets)
@@ -448,7 +448,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   codeRef.current = code
   safeInsetsRef.current = safeInsets
 
-  // 🎯 集成动画调度器的页面可见性感知 + 主题/主色调订阅（共享 hook）
+  // 集成动画调度器的页面可见性感知 + 主题/主色调订阅（共享 hook）
   useSandboxSubscriptions(bridgeRef, isReady)
 
   // 同一 Tapp 的其他 Page、headless core 或 Widget 修改 storage 时通知本沙箱。
@@ -471,7 +471,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     [tappInstance.id],
   )
 
-  // 🎯 生成稳定的代码指纹，只有代码实际变化时才重建 iframe
+  // 生成稳定的代码指纹，只有代码实际变化时才重建 iframe
   const codeFingerprint = useMemo(
     () => getCodeStructureFingerprint(code, headless ? 'background' : 'page'),
     [code, headless],
@@ -537,7 +537,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
     // 先注册监听，再触发同步（确保不会错过同步事件）
     window.addEventListener('music-player-state-change', handleMusicStateChange)
 
-    // 🎯 Tapp 就绪时立即推送当前音乐状态（解决初始化竞态）
+    // Tapp 就绪时立即推送当前音乐状态（解决初始化竞态）
     const pushCurrentState = () => {
       const state = (window as any).__musicPlayerState
       if (state && bridgeRef.current) {
@@ -554,7 +554,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       window.dispatchEvent(new CustomEvent('request-music-state-sync'))
     }
 
-    // 🎯 延迟重推：确保 iframe SDK 消息监听器就绪后再推一次
+    // 延迟重推：确保 iframe SDK 消息监听器就绪后再推一次
     // 解决初始推送早于 SDK 初始化的竞态
     const retryTimer = setTimeout(pushCurrentState, 150)
 
@@ -625,14 +625,14 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   )
 
   // 初始化
-  // 🎯 依赖优化：只使用稳定的 ID 和指纹，不使用对象引用
-  // 🎯 Safari 兼容：使用 imperative iframe 创建，确保 srcdoc 在 DOM 插入前设置
-  //    Safari/WebKit 不会重新渲染已挂载的 sandboxed iframe 的 srcdoc 变更
+  // 依赖优化：只使用稳定的 ID 和指纹，不使用对象引用
+  // Safari 兼容：使用 imperative iframe 创建，确保 srcdoc 在 DOM 插入前设置
+  // Safari/WebKit 不会重新渲染已挂载的 sandboxed iframe 的 srcdoc 变更
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
 
-    // 🎯 从 ref 获取当前对象，避免闭包陈旧问题
+    // 从 ref 获取当前对象，避免闭包陈旧问题
     const currentTappInstance = tappInstanceRef.current
     const currentCode = codeRef.current
 
@@ -804,10 +804,10 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       bridge.destroy()
       onDestroy?.()
     }
-    // 🎯 稳定依赖：只有这些真正改变时才重建 iframe
+    // 稳定依赖：只有这些真正改变时才重建 iframe
     // - tappInstance.id: Tapp 实例 ID
     // - codeFingerprint: 代码指纹（内容变化才会变）
-    // ⚠️ 注意：safeInsets 通过 ref 获取，不作为依赖（通过 postMessage 动态更新）
+    // 注意：safeInsets 通过 ref 获取，不作为依赖（通过 postMessage 动态更新）
   }, [
     tappInstance.id,
     runtimeFingerprint,

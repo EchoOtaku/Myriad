@@ -710,7 +710,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   const resizeTimeoutRef = useRef<number | null>(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  // 🎯 用 ref 跟踪 windows 和 activeWindowId，避免 agent handler 的 useEffect 因 windows 变化频繁重注册
+  // 用 ref 跟踪 windows 和 activeWindowId，避免 agent handler 的 useEffect 因 windows 变化频繁重注册
   const windowsRef = useRef(windows)
   windowsRef.current = windows
   const activeWindowIdRef = useRef(activeWindowId)
@@ -1093,7 +1093,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     [],
   )
 
-  // ===== Agent 操作处理器（已解耦为 Hook）=====
+  // Agent 操作处理器（已解耦为 Hook）
   useWindowAgentHandler({
     windowsRef,
     activeWindowIdRef,

@@ -1012,14 +1012,11 @@ html.dark ::placeholder {
   }
 }
 
-/* 移动端安全区域 */
-@supports (padding: env(safe-area-inset-bottom)) {
-  @media (width <= 767px) {
-    section {
-      padding-bottom: max(7rem, calc(7rem + env(safe-area-inset-bottom)));
-    }
-  }
-}
+/*
+ * 移动端底栏留白：勿对全局 section 加 padding-bottom。
+ * 各页内容壳已有 pb-*；内部 section（选项指南分节、SetupFlow 等）会被误伤。
+ * 见 layouts/AppLayout.css 同题注释。
+ */
 
 /* 减少动画 (用户偏好) */
 @media (prefers-reduced-motion: reduce) {

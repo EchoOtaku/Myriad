@@ -11,7 +11,7 @@ import type { ChatMessage, ExecutionStep } from '../types'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 
-// ---- 轻量 Markdown → React 渲染 ----
+// 轻量 Markdown → React 渲染
 
 // 匹配顺序: 行内代码 > 图片 > 链接 > 加粗 > 斜体
 const INLINE_RE =
@@ -417,7 +417,7 @@ export const AraelChatMessage: React.FC<AraelChatMessageProps> = React.memo(
   ({ message, onRetry, onAnswerQuestion, onSuggestionClick }) => {
     const { t, locale } = useI18n()
 
-    // ============ User ============
+    // User
     if (message.role === 'user') {
       return (
         <div className="arael-msg arael-msg-user">
@@ -431,7 +431,7 @@ export const AraelChatMessage: React.FC<AraelChatMessageProps> = React.memo(
       )
     }
 
-    // ============ System ============
+    // System
     if (message.role === 'system') {
       return (
         <div className="arael-msg arael-msg-system">
@@ -442,7 +442,7 @@ export const AraelChatMessage: React.FC<AraelChatMessageProps> = React.memo(
       )
     }
 
-    // ============ Assistant ============
+    // Assistant
     const exec = message.taskExecution
     const isProcessing =
       exec?.status === 'processing' || exec?.status === 'cancelling'

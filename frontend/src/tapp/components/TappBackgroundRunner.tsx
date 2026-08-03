@@ -125,8 +125,8 @@ export const TappBackgroundRunner: React.FC = () => {
   }, [runtime, loadBackgroundTapps])
 
   // 不渲染任何可见 UI，只在 DOM 中创建隐藏的 iframe。
-  // 🎯 headless=true：只运行 core（大脑）代码，不渲染整页 DOM——
-  //    后台实例从「隐形整页」降到「无头 JS」，大幅减少内存占用。
+  // headless=true：只运行 core（大脑）代码，不渲染整页 DOM——
+  // 后台实例从「隐形整页」降到「无头 JS」，大幅减少内存占用。
   return (
     <div
       className="fixed top-0 left-0 w-0 h-0 overflow-hidden invisible pointer-events-none"

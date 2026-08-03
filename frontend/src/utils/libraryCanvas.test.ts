@@ -4,6 +4,7 @@ import { describe, it } from 'node:test'
 import {
   buildCenterOutCanvasLayout,
   getLibraryCanvasFocusScale,
+  getLibraryCanvasViewportBinKey,
   getLibraryCanvasViewportBounds,
   LIBRARY_CANVAS_FOCUS_MAX_SCALE,
   LIBRARY_CANVAS_FOCUS_MIN_SCALE,
@@ -91,5 +92,30 @@ describe('library canvas geometry', () => {
       libraryCanvasLayoutIntersects({ ...base, left: 501 }, bounds),
       false,
     )
+  })
+
+  it('keeps viewport bin key stable for small pans inside the same bins', () => {
+    const viewport = { width: 1000, height: 800 }
+    const binSize = 800
+    const a = getLibraryCanvasViewportBinKey(
+      { x: 0, y: 0, scale: 1 },
+      viewport,
+      binSize,
+      0,
+    )
+    const b = getLibraryCanvasViewportBinKey(
+      { x: 40, y: -30, scale: 1 },
+      viewport,
+      binSize,
+      0,
+    )
+    assert.equal(a, b)
+    const c = getLibraryCanvasViewportBinKey(
+      { x: 900, y: 0, scale: 1 },
+      viewport,
+      binSize,
+      0,
+    )
+    assert.notEqual(a, c)
   })
 })

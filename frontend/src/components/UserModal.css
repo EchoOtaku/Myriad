@@ -1228,7 +1228,7 @@ html.dark .user-modal-login-only .text-red-800 {
   color: #fca5a5;
 }
 
-/* ==================== 第三方账号绑定 ==================== */
+/* 第三方账号绑定 */
 
 .user-modal-oauth-list {
   margin: 0;
@@ -1398,7 +1398,7 @@ html.dark .badge-oauth {
   color: #c4b5fd;
 }
 
-/* ==================== 弹窗二级页面（第三方绑定 / 修改密码） ==================== */
+/* 弹窗二级页面（第三方绑定 / 修改密码） */
 
 .user-modal-page {
   display: flex;

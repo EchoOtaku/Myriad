@@ -5,7 +5,7 @@
 import type { CardSize } from '../../types/brew'
 import { API_URL as CONFIG_API_URL } from '../../config'
 
-// ==================== 预设分类 ====================
+// 预设分类
 
 /**
  * 预置分类的数据库存储值（与后端 SEO / 前端导航一致，不要改文案）。
@@ -51,7 +51,7 @@ export function brewOwnItemPath(itemId: number | string): string {
   return `/brew/item/${encodeURIComponent(String(itemId))}`
 }
 
-// ==================== 默认值 ====================
+// 默认值
 
 /** 默认主题色（用于无图标或提取失败的情况） */
 export const DEFAULT_THEME_COLOR = '#6b7280'
@@ -66,12 +66,12 @@ export const SIZE_TO_ROWS: Record<CardSize, number> = {
 /** 短文阈值（字符数）- 低于此值视为简讯/短文 */
 const SHORT_CONTENT_THRESHOLD = 280
 
-// ==================== API 配置 ====================
+// API 配置
 
 /** API 基础 URL */
 export const API_URL = CONFIG_API_URL
 
-// ==================== 工具函数 ====================
+// 工具函数
 
 function isAlreadyProxiedImageUrl(url: string): boolean {
   // Avoid /api/proxy/image?url=…/api/proxy/image?url=… double-encoding

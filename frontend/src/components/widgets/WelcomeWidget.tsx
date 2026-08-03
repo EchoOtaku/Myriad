@@ -109,7 +109,7 @@ export const WelcomeWidget = memo(
       else setGreeting(t.greeting.night)
     }, [isPreview, t])
 
-    // 🔧 首页可见性感知定时器轮播引导卡片；exlight 只显示当前概览页
+    // 首页可见性感知定时器轮播引导卡片；exlight 只显示当前概览页
     useHomeVisibilityInterval(
       () =>
         setCurrentGuideIndex((prev) => (prev + 1) % navigationGuides.length),

@@ -49,6 +49,20 @@ interface LibraryCanvasControlsOptions {
   maxScale: number
   minScale: number
   surfaceRef: RefObject<HTMLDivElement | null>
+  /**
+   * Every committed visual frame (pointer / wheel / keyboard). Write world
+   * transform, card focus, chrome labels here — must not go through React.
+   */
+  onPaint?: (transform: LibraryCanvasTransform) => void
+  /**
+   * When true, push transform into React state (virtualization / committed UI).
+   * Return false for pure pans that stay in the same spatial bins so React does
+   * not re-render every frame. Discrete actions force-commit regardless.
+   */
+  shouldCommit?: (
+    next: LibraryCanvasTransform,
+    committed: LibraryCanvasTransform,
+  ) => boolean
 }
 
 export function useLibraryCanvasControls({
@@ -57,6 +71,8 @@ export function useLibraryCanvasControls({
   maxScale,
   minScale,
   surfaceRef,
+  onPaint,
+  shouldCommit,
 }: LibraryCanvasControlsOptions) {
   const initialTransform = useRef<LibraryCanvasTransform>({
     x: 0,
@@ -65,9 +81,18 @@ export function useLibraryCanvasControls({
   }).current
   const [transform, setTransform] =
     useState<LibraryCanvasTransform>(initialTransform)
+  /** Live pose — always matches the last painted frame (absolute follow). */
   const transformRef = useRef(initialTransform)
   const pendingTransformRef = useRef(initialTransform)
+  /** Last transform pushed into React state. */
+  const committedTransformRef = useRef(initialTransform)
   const transformRafRef = useRef<number | null>(null)
+  const forceCommitRef = useRef(false)
+  const onPaintRef = useRef(onPaint)
+  const shouldCommitRef = useRef(shouldCommit)
+  onPaintRef.current = onPaint
+  shouldCommitRef.current = shouldCommit
+
   const pressedPanKeysRef = useRef(new Set<string>())
   const keyboardMotionRef = useRef({
     frame: null as number | null,
@@ -84,8 +109,43 @@ export function useLibraryCanvasControls({
   } | null>(null)
   const suppressClickUntilRef = useRef(0)
 
+  const applyFrame = useCallback(
+    (next: LibraryCanvasTransform, forceCommit: boolean) => {
+      transformRef.current = next
+      pendingTransformRef.current = next
+      // Paint first so the frame the user sees never waits on React.
+      onPaintRef.current?.(next)
+
+      const committed = committedTransformRef.current
+      const unchanged =
+        next.x === committed.x &&
+        next.y === committed.y &&
+        next.scale === committed.scale
+      if (unchanged && !forceCommit) return
+
+      const commit =
+        forceCommit ||
+        !shouldCommitRef.current ||
+        shouldCommitRef.current(next, committed)
+      if (!commit) return
+
+      committedTransformRef.current = next
+      setTransform((rendered) =>
+        rendered.x === next.x &&
+        rendered.y === next.y &&
+        rendered.scale === next.scale
+          ? rendered
+          : next,
+      )
+    },
+    [],
+  )
+
   const scheduleTransform = useCallback(
-    (update: (current: LibraryCanvasTransform) => LibraryCanvasTransform) => {
+    (
+      update: (current: LibraryCanvasTransform) => LibraryCanvasTransform,
+      forceCommit = false,
+    ) => {
       const current = pendingTransformRef.current
       const next = update(current)
       if (
@@ -93,28 +153,46 @@ export function useLibraryCanvasControls({
         next.y === current.y &&
         next.scale === current.scale
       ) {
+        if (forceCommit) {
+          // Discrete control may re-assert the same pose into React.
+          forceCommitRef.current = true
+          if (transformRafRef.current === null) {
+            transformRafRef.current = requestAnimationFrame(() => {
+              transformRafRef.current = null
+              const force = forceCommitRef.current
+              forceCommitRef.current = false
+              applyFrame(pendingTransformRef.current, force)
+            })
+          }
+        }
         return
       }
       pendingTransformRef.current = next
       transformRef.current = next
+      if (forceCommit) forceCommitRef.current = true
       if (transformRafRef.current !== null) return
       transformRafRef.current = requestAnimationFrame(() => {
         transformRafRef.current = null
-        const pending = pendingTransformRef.current
-        setTransform((rendered) =>
-          rendered.x === pending.x &&
-          rendered.y === pending.y &&
-          rendered.scale === pending.scale
-            ? rendered
-            : pending,
-        )
+        const force = forceCommitRef.current
+        forceCommitRef.current = false
+        applyFrame(pendingTransformRef.current, force)
       })
     },
-    [],
+    [applyFrame],
   )
 
+  /** Flush live pose into React immediately (gesture end / leave). */
+  const flushCommit = useCallback(() => {
+    if (transformRafRef.current !== null) {
+      cancelAnimationFrame(transformRafRef.current)
+      transformRafRef.current = null
+    }
+    forceCommitRef.current = false
+    applyFrame(pendingTransformRef.current, true)
+  }, [applyFrame])
+
   const reset = useCallback(() => {
-    scheduleTransform(() => ({ x: 0, y: 0, scale: defaultScale }))
+    scheduleTransform(() => ({ x: 0, y: 0, scale: defaultScale }), true)
   }, [defaultScale, scheduleTransform])
 
   const zoom = useCallback(
@@ -122,7 +200,7 @@ export function useLibraryCanvasControls({
       scheduleTransform((current) => ({
         ...current,
         scale: Math.min(maxScale, Math.max(minScale, current.scale * factor)),
-      }))
+      }), true)
     },
     [maxScale, minScale, scheduleTransform],
   )
@@ -181,11 +259,13 @@ export function useLibraryCanvasControls({
         motion.frame = requestAnimationFrame(tick)
       } else {
         motion.frame = null
+        // Settle React state when keyboard pan coasts to a stop.
+        flushCommit()
       }
     }
 
     motion.frame = requestAnimationFrame(tick)
-  }, [keyboardDirection, scheduleTransform])
+  }, [flushCommit, keyboardDirection, scheduleTransform])
 
   const stopKeyboardMotion = useCallback(() => {
     pressedPanKeysRef.current.clear()
@@ -194,7 +274,8 @@ export function useLibraryCanvasControls({
     motion.frame = null
     motion.velocityX = 0
     motion.velocityY = 0
-  }, [])
+    flushCommit()
+  }, [flushCommit])
 
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -252,16 +333,19 @@ export function useLibraryCanvasControls({
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const drag = dragRef.current
       if (!drag || drag.pointerId !== event.pointerId) return
+      const wasDragging = drag.dragging
       dragRef.current = null
-      if (drag.dragging) {
+      if (wasDragging) {
         suppressClickUntilRef.current = performance.now() + 250
       }
       delete event.currentTarget.dataset.dragging
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId)
       }
+      // Absolute follow during drag is DOM-only; flush React for virtualization.
+      if (wasDragging) flushCommit()
     },
-    [],
+    [flushCommit],
   )
 
   const handleClickCapture = useCallback(
@@ -319,9 +403,11 @@ export function useLibraryCanvasControls({
     if (!active) return
     const frame = requestAnimationFrame(() => {
       surfaceRef.current?.focus({ preventScroll: true })
+      // Ensure first canvas frame is painted even before the first gesture.
+      applyFrame(transformRef.current, true)
     })
     return () => cancelAnimationFrame(frame)
-  }, [active, surfaceRef])
+  }, [active, applyFrame, surfaceRef])
 
   const handleKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -365,14 +451,21 @@ export function useLibraryCanvasControls({
       if (transformRafRef.current !== null) {
         cancelAnimationFrame(transformRafRef.current)
       }
-      stopKeyboardMotion()
+      // Don't flushCommit here — unmount may already be tearing down DOM.
+      pressedPanKeysRef.current.clear()
+      const motion = keyboardMotionRef.current
+      if (motion.frame !== null) cancelAnimationFrame(motion.frame)
+      motion.frame = null
     }
-  }, [stopKeyboardMotion])
+  }, [])
 
   return {
     atMaxZoom: transform.scale >= maxScale - 0.001,
     atMinZoom: transform.scale <= minScale + 0.001,
-    // 聚焦尺寸与画布位姿同一 rAF 更新，拖拽和滚轮中保持实时。
+    /**
+     * Committed React pose (virtualization). Live focus / world follow
+     * `transformRef` + onPaint — same visual frame as the gesture.
+     */
     focusTransform: transform,
     handleClickCapture,
     handleBlur: stopKeyboardMotion,
@@ -385,8 +478,11 @@ export function useLibraryCanvasControls({
       Math.abs(transform.y) < 0.5 &&
       Math.abs(transform.scale - defaultScale) < 0.001,
     finishPointer,
+    flushCommit,
     reset,
     transform,
+    /** Live transform; prefer this (or onPaint) for absolute-follow visuals. */
+    transformRef,
     zoom,
     zoomPercent: Math.round(transform.scale * 100),
   }

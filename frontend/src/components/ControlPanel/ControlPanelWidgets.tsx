@@ -362,7 +362,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
       }
     }, [maxPage, currentPage])
 
-    // 🔧 使用首页原子化可见性感知定时器自动切换页面 (10秒一次，仅在非编辑模式且有多页时)
+    // 使用首页原子化可见性感知定时器自动切换页面 (10秒一次，仅在非编辑模式且有多页时)
     useHomeVisibilityInterval(
       () => setCurrentPage((prev) => (prev >= maxPage ? 0 : prev + 1)),
       10000,

@@ -18,7 +18,7 @@ import {
   scheduleIdle,
 } from './core'
 
-// ==================== 可见性 Hooks ====================
+// 可见性 Hooks
 
 /**
  * 页面可见性 Hook
@@ -101,7 +101,7 @@ export function useVisibilityInterval(
   }, [delay, enabled, immediate])
 }
 
-// ==================== 尺寸观察 Hook ====================
+// 尺寸观察 Hook
 
 /**
  * 元素尺寸观察 Hook
@@ -150,7 +150,7 @@ export function useElementSize<T extends Element>(): {
   return { ref, ...size }
 }
 
-// ==================== 可见性观察 Hook ====================
+// 可见性观察 Hook
 
 /**
  * 元素视口可见性 Hook
@@ -235,7 +235,7 @@ export function useLazyLoad<T extends Element>(
   return { ref, shouldLoad: isVisible }
 }
 
-// ==================== 空闲任务 Hook ====================
+// 空闲任务 Hook
 
 /**
  * 空闲时执行 Hook
@@ -266,7 +266,7 @@ export function useIdleEffect(
   }, deps)
 }
 
-// ==================== DOM 批量操作 Hooks ====================
+// DOM 批量操作 Hooks
 
 /**
  * 批量 DOM 操作 Hook
@@ -295,7 +295,7 @@ export function useBatchedDom(): {
   }
 }
 
-// ==================== 动画帧 Hook ====================
+// 动画帧 Hook
 
 /**
  * RAF 循环 Hook
@@ -344,7 +344,7 @@ export function useAnimationFrame(
   }, [enabled])
 }
 
-// ==================== 防抖节流 Hooks ====================
+// 防抖节流 Hooks
 
 /**
  * 节流回调 Hook

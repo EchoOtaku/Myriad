@@ -38,7 +38,6 @@ export interface RSSHubInstance {
   accessKey?: string
   /** 是否为默认实例 */
   isDefault?: boolean
-  /** 是否启用 */
   enabled?: boolean
 }
 

@@ -26,7 +26,7 @@ import { Feature, hasFeature } from '../pageFeatures'
 // 支持的简单页面
 type SimplePageId = 'config' | 'login' | 'setup'
 
-// ==================== 页面初始化 ====================
+// 页面初始化
 // 注意：startPage 由 useRouteScheduler 统一调用
 // 这些简单页面的 Scheduler 保留为占位符，保持 API 一致性
 
@@ -54,7 +54,7 @@ export function useDetailsScheduler(): void {
   // startPage('details') 由 useRouteScheduler 统一调用
 }
 
-// ==================== Timeout Hooks ====================
+// Timeout Hooks
 
 /**
  * 简单页面延时器

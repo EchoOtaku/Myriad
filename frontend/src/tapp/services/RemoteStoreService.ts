@@ -22,7 +22,7 @@ export {
 } from '../utils/storePackagePaths'
 export type { StorePreviewDescriptor } from '../utils/storePreview'
 
-// ============ 类型定义 ============
+// 类型定义
 
 /** 远程商店源配置 */
 export interface RemoteStoreSource {
@@ -34,11 +34,9 @@ export interface RemoteStoreSource {
   description?: string
   /** 商店 URL（index.json 的 URL） */
   url: string
-  /** 是否启用 */
   enabled: boolean
   /** 是否为官方商店 */
   official?: boolean
-  /** 图标 */
   icon?: string
 }
 
@@ -91,7 +89,6 @@ export interface RemoteApp {
   theme_color?: string
   /** 分类 */
   category: string
-  /** 标签 */
   tags?: string[]
   /** 所需权限 */
   permissions: string[]
@@ -134,9 +131,7 @@ export interface RemoteApp {
   featured?: boolean
   /** 是否官方验证 */
   verified?: boolean
-  /** 创建时间 */
   created_at?: string
-  /** 更新时间 */
   updated_at?: string
 }
 
@@ -148,7 +143,7 @@ export interface RemoteCategory {
   icon?: string
 }
 
-// ============ 默认官方商店（用于 API 不可用时的降级） ============
+// 默认官方商店（用于 API 不可用时的降级）
 
 /** 官方远程商店 */
 export const OFFICIAL_STORE: RemoteStoreSource = {
@@ -160,11 +155,11 @@ export const OFFICIAL_STORE: RemoteStoreSource = {
   icon: TAPP_ICON_TOKENS.store,
 }
 
-// ============ 缓存配置 ============
+// 缓存配置
 
 const CACHE_TTL = 5 * 60 * 1000 // 5 分钟缓存
 
-// ============ 缓存结构（仅内存） ============
+// 缓存结构（仅内存）
 
 interface CacheEntry {
   data: RemoteStoreIndex
@@ -172,7 +167,7 @@ interface CacheEntry {
   url: string
 }
 
-// ============ 服务实现 ============
+// 服务实现
 
 class RemoteStoreServiceImpl {
   /** 商店源列表（从后端 API 获取） */
@@ -190,7 +185,7 @@ class RemoteStoreServiceImpl {
   /** 加载 Promise（防止并发加载） */
   private loadingPromise: Promise<void> | null = null
 
-  // ============ 商店源管理（通过后端 API） ============
+  // 商店源管理（通过后端 API）
 
   /** 从后端 API 加载商店源 */
   private async loadSourcesFromApi(): Promise<void> {
@@ -428,7 +423,7 @@ class RemoteStoreServiceImpl {
     await this.loadSourcesFromApi()
   }
 
-  // ============ 商店数据获取 ============
+  // 商店数据获取
 
   /** 获取商店索引（带内存缓存） */
   async fetchStoreIndex(
@@ -619,7 +614,7 @@ class RemoteStoreServiceImpl {
     return index.categories || []
   }
 
-  // ============ 应用下载 ============
+  // 应用下载
 
   /**
    * Store package fetches must bypass browser/CDN intermediate caches.
@@ -1180,7 +1175,7 @@ class RemoteStoreServiceImpl {
     return base + relativePath
   }
 
-  // ============ 缓存管理 ============
+  // 缓存管理
 
   /** 清除内存缓存 */
   clearCache(): void {

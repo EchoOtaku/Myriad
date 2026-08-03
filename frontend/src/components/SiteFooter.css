@@ -197,7 +197,7 @@ html.dark .site-footer-content:hover {
   height: 0.7rem;
 }
 
-/* ========== Tooltip 样式 ========== */
+/* Tooltip 样式 */
 .tooltip-wrapper {
   position: relative;
   display: inline-flex;
@@ -242,7 +242,7 @@ html.dark .tooltip-content {
   box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
 }
 
-/* ========== 文字图标 ========== */
+/* 文字图标 */
 .text-icon {
   display: inline-flex;
   align-items: center;

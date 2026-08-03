@@ -2,7 +2,7 @@ import { API_URL } from '../../config'
 import { getCSRFToken } from '../../utils/csrf'
 import { apiRequest } from './TappHttpClient'
 
-// ============ P0: Data Transform API ============
+// Data Transform API
 
 /** 数据输入源 */
 export type DataInput =
@@ -75,7 +75,7 @@ export async function dataTransform(
   })
 }
 
-// ============ P0: Context API ============
+// Context API
 
 /** 应用上下文 */
 export interface AppContext {
@@ -211,7 +211,7 @@ export async function getContextSystem(
   return apiRequest('/api/tapp/context/system', { runtimeGrant })
 }
 
-// ============ 地理位置 API ============
+// 地理位置 API
 
 /** 地理位置信息 */
 export interface GeoContext {
@@ -241,7 +241,7 @@ export async function getContextGeo(
   throw new Error('Failed to get geo info')
 }
 
-// ============ Tapp API 声明系统 ============
+// Tapp API 声明系统
 
 /** Tapp API 执行请求 */
 export interface TappApiExecuteRequest {

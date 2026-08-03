@@ -455,7 +455,7 @@ export default function Brew() {
       const { articleId, articleLink, openLatest, webSearchArticle } =
         customEvent.detail
 
-      // 🔴 处理网络搜索文章：创建临时的 BrewItem
+      // 处理网络搜索文章：创建临时的 BrewItem
       if (webSearchArticle?.isWebSearchArticle) {
         console.log(
           '[Brew] Opening web search article:',
@@ -492,7 +492,7 @@ export default function Brew() {
         return
       }
 
-      // 🔴 修复：优先使用后端返回的 articleId/articleLink，而不是无脑取第一篇
+      // 修复：优先使用后端返回的 articleId/articleLink，而不是无脑取第一篇
       // 这样才能正确打开"指定作者的最新文章"
       if (articleId || articleLink) {
         console.log('[Brew] Looking for specific article:', {
@@ -500,7 +500,7 @@ export default function Brew() {
           articleLink,
         })
 
-        // 🔴 如果 articleId 是数字，直接用 API 获取单篇文章（最可靠）
+        // 如果 articleId 是数字，直接用 API 获取单篇文章（最可靠）
         const numericId = articleId
           ? Number.parseInt(articleId, 10)
           : Number.NaN
@@ -520,7 +520,7 @@ export default function Brew() {
         }
 
         // 先在已加载的 items 中查找
-        // 🔴 优先用 link 匹配（最可靠），然后用 id 和 guid 匹配
+        // 优先用 link 匹配（最可靠），然后用 id 和 guid 匹配
         let targetItem = itemsRef.current.find((item) => {
           // 1. 优先匹配 link（最准确）
           if (articleLink && item.link === articleLink) return true
@@ -584,7 +584,7 @@ export default function Brew() {
         }
       }
 
-      // 🔴 只有在没有指定 articleId/articleLink 且 openLatest 为 true 时，才取第一篇
+      // 只有在没有指定 articleId/articleLink 且 openLatest 为 true 时，才取第一篇
       if (openLatest && !articleId && !articleLink) {
         console.log('[Brew] No specific article, opening latest...')
         // 如果 items 为空，先加载
@@ -1041,7 +1041,7 @@ export default function Brew() {
   // 阅读列表导航 - 根据文章 ID 跳转
   const handleNavigateToArticle = useCallback(
     async (articleId: number) => {
-      // 🔴 首先检查阅读列表中是否有这篇文章（可能是网络搜索结果）
+      // 首先检查阅读列表中是否有这篇文章（可能是网络搜索结果）
       if (readingList?.currentList) {
         const listItem = readingList.currentList.items.find(
           (i) => i.id === articleId,

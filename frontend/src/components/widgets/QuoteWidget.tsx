@@ -141,7 +141,7 @@ export const QuoteWidget = memo(
       }
     }, [fetchQuote, isPreview])
 
-    // 🔧 使用首页原子化可见性感知定时器，页面隐藏时自动暂停
+    // 使用首页原子化可见性感知定时器，页面隐藏时自动暂停
     useHomeVisibilityInterval(fetchQuote, CACHE_DURATION, !isPreview)
 
     // 主题色获取 - 优化：使用 requestAnimationFrame 批处理避免强制重排

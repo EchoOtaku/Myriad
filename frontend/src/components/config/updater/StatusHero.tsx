@@ -330,7 +330,7 @@ export function StatusHero({
   )
 }
 
-// ===== 进度卡 =====
+// 进度卡
 
 export function ProgressCard({ job, u }: { job: Job; u: U }) {
   const done = job.steps.filter((s) => s.ok === true).length
@@ -393,7 +393,7 @@ export function ProgressCard({ job, u }: { job: Job; u: U }) {
   )
 }
 
-// ===== 自动检查频率 + 自动安装 =====
+// 自动检查频率 + 自动安装
 
 const INTERVAL_OPTIONS: Array<{
   value: number

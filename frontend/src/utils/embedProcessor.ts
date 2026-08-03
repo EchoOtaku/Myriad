@@ -15,7 +15,7 @@ import { getNeteaseAudioUrlImmediate } from './musicPlayer'
 import { proxyImageUrlOr } from './proxyImageUrl'
 import { isTrustedIframeHost } from './rssContentProcessor'
 
-// ==================== 缓存系统 ====================
+// 缓存系统
 // 简单的内存缓存，避免重复请求相同资源（尤其是 GitHub API 有速率限制）
 const CACHE_TTL = 5 * 60 * 1000 // 5分钟缓存
 
@@ -53,7 +53,7 @@ function setCache<T>(key: string, data: T): void {
   }
 }
 
-// ==================== 类型定义 ====================
+// 类型定义
 // 嵌入类型
 export type EmbedType =
   'netease-music' | 'steam-game' | 'bilibili-video' | 'github-repo'

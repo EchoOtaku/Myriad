@@ -8,7 +8,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ---------- 卡片：单层浅渐变，按时段换主色 ---------- */
+/* 卡片：单层浅渐变，按时段换主色 */
 .config-tips-banner-card {
   --gb-ink: var(--cfg-label, #1d1d1f);
   --gb-muted: var(--cfg-label-2, rgb(60 60 67 / 72%));
@@ -69,7 +69,7 @@ html.dark .config-tips-banner-card {
     var(--cfg-subtle-bg, rgb(255 255 255 / 6%));
 }
 
-/* ---------- 内容：左图标 + 右文案 ---------- */
+/* 内容：左图标 + 右文案 */
 .config-tips-banner-body .gb {
   padding: 0.7rem 0.75rem;
 }

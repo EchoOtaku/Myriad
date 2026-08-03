@@ -112,18 +112,30 @@ export function LibraryCanvasChrome({
         </div>
       )}
       <div
-        className="fixed left-1/2 z-40 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-white/35 glass p-1 shadow-xl dark:border-white/10"
-        style={{
-          // Bottom island needs clearance; side rail can sit lower.
-          bottom: isMobile
-            ? 'calc(env(safe-area-inset-bottom, 0px) + 5.75rem)'
-            : 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)',
-        }}
+        className={
+          isMobile
+            ? 'fixed z-40 flex flex-col items-center gap-0.5 rounded-xl border border-white/35 glass p-1 shadow-xl dark:border-white/10'
+            : 'fixed left-1/2 z-40 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-white/35 glass p-1 shadow-xl dark:border-white/10'
+        }
+        style={
+          isMobile
+            ? {
+                // Right rail: optical middle of the usable canvas, not the full
+                // viewport. Bottom nav (~5.75rem) + safe-area pull visual center up.
+                top: 'calc((100dvh - env(safe-area-inset-bottom, 0px) - 5.75rem + env(safe-area-inset-top, 0px)) / 2)',
+                right: 'max(0.75rem, env(safe-area-inset-right, 0px))',
+                transform: 'translateY(-50%)',
+              }
+            : {
+                bottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)',
+              }
+        }
         role="toolbar"
         aria-label={ariaLabel}
       >
         <button
           type="button"
+          data-library-canvas-zoom-out=""
           className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white/65 hover:text-gray-950 active:bg-white/80 disabled:cursor-not-allowed disabled:opacity-35 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
           onClick={() => onZoom(1 / 1.16)}
           disabled={atMinZoom}
@@ -141,13 +153,19 @@ export function LibraryCanvasChrome({
           </svg>
         </button>
         <output
-          className="min-w-11 select-none text-center text-[11px] font-semibold tabular-nums text-gray-700 dark:text-gray-200"
+          data-library-canvas-zoom-percent=""
+          className={
+            isMobile
+              ? 'min-w-8 select-none py-0.5 text-center text-[10px] font-semibold tabular-nums text-gray-700 dark:text-gray-200'
+              : 'min-w-11 select-none text-center text-[11px] font-semibold tabular-nums text-gray-700 dark:text-gray-200'
+          }
           aria-live="polite"
         >
           {zoomPercent}%
         </output>
         <button
           type="button"
+          data-library-canvas-zoom-in=""
           className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white/65 hover:text-gray-950 active:bg-white/80 disabled:cursor-not-allowed disabled:opacity-35 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
           onClick={() => onZoom(1.16)}
           disabled={atMaxZoom}
@@ -165,12 +183,21 @@ export function LibraryCanvasChrome({
           </svg>
         </button>
         <span
-          className="mx-0.5 h-4 w-px bg-gray-900/10 dark:bg-white/15"
+          className={
+            isMobile
+              ? 'mx-0 h-px w-4 bg-gray-900/10 dark:bg-white/15'
+              : 'mx-0.5 h-4 w-px bg-gray-900/10 dark:bg-white/15'
+          }
           aria-hidden="true"
         />
         <button
           type="button"
-          className="flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-gray-600 transition-colors hover:bg-white/65 hover:text-gray-950 active:bg-white/80 disabled:cursor-default disabled:opacity-35 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+          data-library-canvas-reset=""
+          className={
+            isMobile
+              ? 'flex h-8 w-8 items-center justify-center rounded-lg text-gray-600 transition-colors hover:bg-white/65 hover:text-gray-950 active:bg-white/80 disabled:cursor-default disabled:opacity-35 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'
+              : 'flex h-8 items-center justify-center gap-1.5 rounded-lg px-2 text-[11px] font-medium text-gray-600 transition-colors hover:bg-white/65 hover:text-gray-950 active:bg-white/80 disabled:cursor-default disabled:opacity-35 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'
+          }
           onClick={onReset}
           disabled={isDefault}
           title={`${resetLabel} (0)`}
@@ -190,7 +217,8 @@ export function LibraryCanvasChrome({
               strokeLinejoin="round"
             />
           </svg>
-          <span className="hidden sm:inline">{resetLabel}</span>
+          {/* Mobile: icon-only reset; desktop keeps the label. */}
+          {!isMobile && <span>{resetLabel}</span>}
         </button>
       </div>
     </>,

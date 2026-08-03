@@ -88,13 +88,13 @@ function getBlurAmount(easeProgress: number, isEnteringPhase: boolean) {
   return isEnteringPhase ? easeProgress * 20 : (1 - easeProgress) * 20
 }
 
-// 🚀 性能优化：预编译正则表达式（避免每次调用时重新创建）
+// 预编译正则表达式（避免每次调用时重新创建）
 const CONTROL_CHARS_REGEX = /[\u0000-\u001F\u007F-\u009F]/g
 const MARKDOWN_SYMBOLS_REGEX = /[*_~`]/g
 const WHITESPACE_REGEX = /\s+/g
 const PUNCTUATION_SPLIT_REGEX = /([。！？.!?，,])/g
 
-// 🚀 性能优化：共享文本处理工具函数
+// 共享文本处理工具函数
 function cleanText(text: string): string {
   return text
     .replace(CONTROL_CHARS_REGEX, '')

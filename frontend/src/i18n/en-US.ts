@@ -1763,7 +1763,7 @@ export const enUS: TranslationKeys = {
       'Set the card layout and choose which platform sources appear in each category',
     libraryLayout: 'Card layout',
     libraryLayoutDesc:
-      'Choose the regular list or a draggable canvas extending from the center',
+      'Choose the regular list or a draggable canvas extending from the center. Low-end devices fall back to the list automatically',
     libraryLayoutList: 'List',
     libraryLayoutCanvas: 'Infinite canvas',
     librarySourceVisibleCount:
@@ -2008,7 +2008,7 @@ export const enUS: TranslationKeys = {
     canvasPanHint:
       'Drag cards or empty space · Arrow keys pan · + / - zoom · 0 resets',
     canvasPanHintMobile:
-      'Drag cards or empty space · Use the bottom buttons to zoom and reset',
+      'Drag cards or empty space · Use the side buttons to zoom and reset',
     canvasDismissHint: 'Hide canvas tips for this session',
     canvasResetView: 'Return to center',
     canvasZoomIn: 'Zoom in',

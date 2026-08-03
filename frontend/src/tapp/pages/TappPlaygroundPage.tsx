@@ -1418,7 +1418,7 @@ export function TappPlaygroundPage() {
 
   const interactive = !isMobile
 
-  /* ---------- 窗格内容 ---------- */
+  /* 窗格内容 */
 
   const previewHeader = (
     <div className="flex items-center gap-2 min-w-0 w-full px-3">

@@ -26,7 +26,7 @@ function getArgs(message: { payload: unknown }): unknown[] {
   return (message.payload as { args?: unknown[] }).args || []
 }
 
-// ============ Tapp 列表处理器 ============
+// Tapp 列表处理器
 
 export function registerTappListHandlers(
   bridge: TappBridge,
@@ -217,13 +217,13 @@ export function registerTappListHandlers(
   })
 }
 
-// ============ Brew 处理器 ============
+// Brew 处理器
 
 export function registerBrewListHandlers(
   bridge: TappBridge,
   _tappInstance: TappInstance,
 ): void {
-  // --- Brew 读取 ---
+  // Brew 读取
 
   // 文章列表
   bridge.registerHandler('brewList.list', async (message) => {
@@ -364,7 +364,7 @@ export function registerBrewListHandlers(
     }
   })
 
-  // --- Brew 写入 ---
+  // Brew 写入
 
   bridge.registerHandler('brewList.markRead', async (message) => {
     const [itemId] = getArgs(message) as [number]
@@ -426,7 +426,7 @@ export function registerBrewListHandlers(
     }
   })
 
-  // --- Brew 评论 ---
+  // Brew 评论
 
   bridge.registerHandler('brewList.getComments', async (message) => {
     const [itemId] = getArgs(message) as [number]
@@ -531,7 +531,7 @@ export function registerBrewListHandlers(
     }
   })
 
-  // --- Brew 管理 ---
+  // Brew 管理
 
   bridge.registerHandler('brewList.addSource', async (message) => {
     const [req] = getArgs(message) as [{ url: string; category?: string }]

@@ -50,9 +50,9 @@ import { WidgetShell } from './shared/WidgetShell'
 
 // 使用内联 SVG 图标，避免 react-icons 全量导入
 
-// ========== 安全验证工具函数 ==========
+// 安全验证工具函数
 
-// 🚀 性能优化：预编译正则表达式（避免每次调用时重新创建）
+// 预编译正则表达式（避免每次调用时重新创建）
 const HTML_TAG_REGEX = /<[^>]*>/g
 const DANGEROUS_CHARS_REGEX = /[<>"'`\\]/g
 const DANGEROUS_CHARS_WITH_AMP_REGEX = /[<>"'`\\&]/g
@@ -129,7 +129,7 @@ function sanitizeUrlPattern(pattern: string): string {
   return cleaned.slice(0, 500) // 限制长度
 }
 
-// ========== 结束安全验证工具函数 ==========
+// 结束安全验证工具函数
 
 // 平台配置定义 - 移到组件外部避免重复创建
 interface PlatformInfo {
@@ -317,7 +317,7 @@ const HINT_ARROW_ANIMATION = { x: [0, 2, 0] }
 const HINT_LOOP_TRANSITION = { duration: 1, repeat: 3 } // ~3s
 const HINT_NO_LOOP_TRANSITION = { duration: 0.3 }
 
-// ========== 自定义平台 PlatformInfo 缓存 ==========
+// 自定义平台 PlatformInfo 缓存
 // 注意：需要在 saveCustomPlatforms 之前声明
 const platformInfoCache = new Map<
   string,
@@ -834,7 +834,7 @@ const CustomPlatformForm = memo(
 CustomPlatformForm.displayName = 'CustomPlatformForm'
 
 // 解析弹窗内容 - 自动识别图片URL
-// ✅ 安全验证图片 URL
+// 安全验证图片 URL
 function isValidImageUrl(url: string): boolean {
   try {
     const parsed = new URL(url)
@@ -866,7 +866,7 @@ function parsePopupContent(text?: string): {
   const imageUrlRegex = /(https?:\/\/\S+\.(?:jpg|jpeg|png|gif|webp|bmp|svg))/gi
   const rawImageUrls = text.match(imageUrlRegex) || []
 
-  // ✅ 过滤不安全的图片 URL
+  // 过滤不安全的图片 URL
   const imageUrls = rawImageUrls.filter(isValidImageUrl)
 
   // 移除图片URL后的纯文本
@@ -1120,7 +1120,7 @@ const GlobalSettingsModal = memo(() => {
       return
     }
 
-    // ✅ 安全验证：检查 URL 模式
+    // 安全验证：检查 URL 模式
     const urlPattern = customFormData.linkPattern || ''
     if (
       customFormData.linkType === 'url' &&
@@ -1177,10 +1177,10 @@ const GlobalSettingsModal = memo(() => {
       // 确定最终使用的 URL 模式：优先使用用户填写的，否则使用 AI 推荐的
       const rawLinkPattern =
         customFormData.linkPattern || iconData.urlPattern || ''
-      // ✅ 安全处理：消毒 URL 模式
+      // 安全处理：消毒 URL 模式
       const finalLinkPattern = sanitizeUrlPattern(rawLinkPattern)
 
-      // ✅ 再次验证消毒后的 URL（AI 推荐的也需要验证）
+      // 再次验证消毒后的 URL（AI 推荐的也需要验证）
       if (
         customFormData.linkType === 'url' &&
         finalLinkPattern &&
@@ -1193,11 +1193,11 @@ const GlobalSettingsModal = memo(() => {
 
       const newPlatform: CustomPlatformData = {
         id: customId,
-        name: sanitizePlatformName(customFormData.name), // ✅ 消毒平台名称
+        name: sanitizePlatformName(customFormData.name), // 消毒平台名称
         username:
           customFormData.linkType === 'url'
             ? sanitizeUsername(customFormData.username)
-            : '', // ✅ 消毒用户名
+            : '', // 消毒用户名
         iconType: iconData.iconType || 'react-icons',
         iconLibrary: iconData.iconLibrary,
         iconName: iconData.iconName,
@@ -1209,12 +1209,12 @@ const GlobalSettingsModal = memo(() => {
           customFormData.linkType === 'url' &&
           isValidUrlPattern(finalLinkPattern)
             ? finalLinkPattern
-            : undefined, // ✅ 验证后存储
+            : undefined, // 验证后存储
         popupData:
           customFormData.linkType === 'popup'
             ? {
                 type: 'text',
-                text: sanitizePopupText(customFormData.popupText), // ✅ 消毒弹窗文本
+                text: sanitizePopupText(customFormData.popupText), // 消毒弹窗文本
               }
             : undefined,
       }

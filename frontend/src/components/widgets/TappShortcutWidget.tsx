@@ -45,9 +45,7 @@ import { GlowBackground } from './shared/GlowBackground'
 import { WidgetLongPressHint } from './shared/WidgetLongPressHint'
 import { WidgetShell } from './shared/WidgetShell'
 
-// ---------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
 
 export interface TappShortcutWidgetConfig {
   tappId?: string
@@ -67,9 +65,7 @@ interface ResolvedTapp {
 
 const DEFAULT_GLOW = '#6366f1'
 
-// ---------------------------------------------------------------------------
 // Per-Tapp accent color —— 与 Tapp 页实际渲染保持一致
-// ---------------------------------------------------------------------------
 
 /** 由 Tapp id 稳定散列出一个色相；仅用于 manifest 未提供主题色时的兜底 */
 function accentHue(seed: string): number {
@@ -150,9 +146,7 @@ const IconTile = memo(
 
 IconTile.displayName = 'TappShortcutIconTile'
 
-// ---------------------------------------------------------------------------
 // Global settings modal (singleton, same pattern as SocialNetworkWidget)
-// ---------------------------------------------------------------------------
 
 interface SettingsModalState {
   isOpen: boolean
@@ -432,9 +426,7 @@ const GlobalSettingsModal = memo(() => {
 
 GlobalSettingsModal.displayName = 'TappShortcutSettingsModal'
 
-// ---------------------------------------------------------------------------
 // Widget
-// ---------------------------------------------------------------------------
 
 export const TappShortcutWidget = memo(
   ({ config, isEditMode, isPreview, onConfigChange }: WidgetComponentProps) => {

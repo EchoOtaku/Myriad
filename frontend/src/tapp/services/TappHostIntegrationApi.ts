@@ -1,6 +1,6 @@
 import { apiRequest } from './TappHttpClient'
 
-// ============ P1: Report CRUD API ============
+// Report CRUD API
 
 /** 创建报告请求 */
 export interface CreateReportRequest {
@@ -104,7 +104,7 @@ export async function deleteTappReport(
   )
 }
 
-// ============ P1: Media Control API ============
+// Media Control API
 
 /** 媒体控制请求 */
 export interface MediaControlRequest {

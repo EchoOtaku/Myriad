@@ -220,7 +220,7 @@ function getSteamPresenceFromData(data: any): SteamPresence | null {
   }
 }
 
-// ==================== Steam组件（完整版）====================
+// Steam组件（完整版）
 function getSteamPresenceText(
   presence: SteamPresence | null,
   t: ReturnType<typeof useI18n>['t'],
@@ -744,8 +744,8 @@ export const SteamWidget = memo(({ data, showOverview, onContentChange }: any) =
   )
 })
 
-// ==================== 平台配置 ====================
-// ==================== Xbox / PSN 共用：成就/奖杯型标题轮播 ====================
+// 平台配置
+// Xbox / PSN 共用：成就/奖杯型标题轮播
 // 两个平台都没有时长数据，卡片走"成就完成度"叙事：
 // 概览 = 核心分数 + 完成度统计；详情 = 作品完成度轮播。
 
@@ -921,7 +921,7 @@ export const AchievementReportBody = memo(
 
 AchievementReportBody.displayName = 'AchievementReportBody'
 
-// ==================== Xbox：对齐 Steam 卡的身份+指标+底槽结构 ====================
+// Xbox：对齐 Steam 卡的身份+指标+底槽结构
 // 叙事：成就向（无时长）。概览 = 头像/在线 + GS/库/成就 + 硬核指数/正在玩；
 // 详情 = 作品封面轮播（带完成度角标）。
 
@@ -1600,7 +1600,7 @@ export const XboxWidget = memo(({ data, showOverview, onContentChange }: any) =>
 
 XboxWidget.displayName = 'XboxWidget'
 
-// ==================== PSN：对齐 Xbox/Steam 的身份+指标+底槽结构 ====================
+// PSN：对齐 Xbox/Steam 的身份+指标+底槽结构
 // 叙事：奖杯向（无时长）。概览 = 头像/在线 + 白金/等级/库 + 猎人指数/正在玩；
 // 详情 = 作品封面轮播（完成度 + 白金角标）。
 

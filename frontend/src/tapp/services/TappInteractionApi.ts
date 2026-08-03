@@ -5,7 +5,7 @@ import type {
 } from '../types'
 import { apiRequest, streamRuntimeEvents } from './TappHttpClient'
 
-// ============ P2: Component Registration API ============
+// Component Registration API
 
 /** 组件类型 */
 export type ComponentType = 'theme' | 'agent'
@@ -118,7 +118,7 @@ export async function listAllComponentsByType(
   })
 }
 
-// ============ P2: Shortcut Registration API ============
+// Shortcut Registration API
 
 /** 快捷键配置 */
 export interface ShortcutConfig {
@@ -193,7 +193,7 @@ export async function listShortcuts(
   return apiRequest(url, { runtimeGrant })
 }
 
-// ============ Event Broker API ============
+// Event Broker API
 
 export async function publishEvent(
   request: PublishEventRequest,

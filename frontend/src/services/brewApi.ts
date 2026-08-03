@@ -101,7 +101,7 @@ async function request<T>(
  */
 export type BrewAttributionHeaders = Record<string, string>
 
-// ==================== 订阅源管理 ====================
+// 订阅源管理
 
 /**
  * 获取所有订阅源（带缓存；Tapp 归因调用绕过缓存以保证服务端强制）
@@ -223,7 +223,7 @@ export async function discoverSource(
   return data.feed
 }
 
-// ==================== OPML 导入导出 ====================
+// OPML 导入导出
 
 /**
  * 导入 OPML
@@ -259,7 +259,7 @@ export async function exportOpml(
   return response.text()
 }
 
-// ==================== 分类管理 ====================
+// 分类管理
 
 /**
  * 获取所有分类（带缓存）
@@ -317,7 +317,7 @@ export async function deleteCategory(
   invalidateCategoriesCache()
 }
 
-// ==================== 文章获取 ====================
+// 文章获取
 
 /**
  * 获取文章列表
@@ -365,7 +365,7 @@ export function invalidateItemCache(id: number): void {
   requestCache.delete(`brew:item:${id}`)
 }
 
-// ==================== 阅读状态 ====================
+// 阅读状态
 
 /**
  * 标记为已读
@@ -448,7 +448,7 @@ export async function markAllRead(
   return data.marked
 }
 
-// ==================== 统计信息 ====================
+// 统计信息
 
 /**
  * 获取统计信息（带缓存）
@@ -466,7 +466,7 @@ export async function getStats(
   return requestCache.fetch('brew:stats', fetchStats, CACHE_TTL.STATS)
 }
 
-// ==================== 阅读进度同步 ====================
+// 阅读进度同步
 
 export interface BrewSyncStateItem {
   item_id: number
@@ -530,7 +530,7 @@ export async function updateReadProgress(
   invalidateItemCache(itemId)
 }
 
-// ==================== WebSocket ====================
+// WebSocket
 
 /**
  * 创建 WebSocket 连接（登录用户：新源/新文章推送）
@@ -559,7 +559,7 @@ export function createBrewWebSocket(
   return ws
 }
 
-// ==================== 用户评论（批注）====================
+// 用户评论（批注）
 
 /**
  * 评论项
@@ -592,9 +592,7 @@ export interface CommentItem {
   is_public: boolean
   /** 父评论 ID（回复时指定） */
   parent_id?: number
-  /** 创建时间 */
   created_at: number
-  /** 更新时间 */
   updated_at: number
   /** 回复列表（可选，仅详情时返回） */
   replies?: CommentItem[]
@@ -742,7 +740,7 @@ export async function createReply(
   })
 }
 
-// ==================== AI 风格标签 ====================
+// AI 风格标签
 
 export type { StyleTagsResponse } from './brewliaApi'
 export { generateStyleTags } from './brewliaApi'

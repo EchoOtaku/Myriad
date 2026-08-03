@@ -11,6 +11,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 
@@ -39,6 +40,11 @@ import {
   getWeatherInfo,
   WEATHER_ICON_ASSETS,
 } from '../utils/dynamicContent'
+import {
+  getNavLayoutSnapshot,
+  getServerNavLayoutSnapshot,
+  subscribeNavLayout,
+} from '../utils/navLayout'
 import { loadResource } from '../utils/resourceLoader'
 import { useThemeMode } from '../utils/themeSubscriber'
 import { showToast } from '../utils/toastManager'
@@ -137,6 +143,14 @@ const GlobalControlPanel: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { locale, setLocale, t } = useI18n()
+  const navLayout = useSyncExternalStore(
+    subscribeNavLayout,
+    getNavLayoutSnapshot,
+    getServerNavLayoutSnapshot,
+  )
+  // Mobile / touch-tablet: skip control-panel widget grid (weather/quote etc.)
+  // to save vertical space and memory; music player + settings remain.
+  const showControlPanelWidgets = navLayout === 'desktop'
   const { preferences: notificationPreferences } = useNotificationPreferences(
     user?.id,
   )
@@ -208,7 +222,7 @@ const GlobalControlPanel: React.FC = () => {
     }
   }, [isPageVisible])
 
-  // ============ 通知中心 ============
+  // 通知中心
 
   /** 面板 tab：控制面板 / 通知 */
   const [panelTab, setPanelTab] = useState<'control' | 'notifications'>(
@@ -817,7 +831,7 @@ const GlobalControlPanel: React.FC = () => {
   // 主题变化已通过 useThemeMode() hook 自动响应
   // 无需额外的 MutationObserver
 
-  // 动态计算展开面板的高度 - 🔧 事件驱动，无轮询
+  // 动态计算展开面板的高度 -  事件驱动，无轮询
   // 外部可通过 dispatchEvent(new CustomEvent('gcp-remeasure')) 触发重测
   useLayoutEffect(() => {
     if (!triggerRef.current) return
@@ -834,17 +848,17 @@ const GlobalControlPanel: React.FC = () => {
     let lastUpdateTime = 0
     let pendingMeasure = false
     let measureTimeout: number | null = null
-    let isAnimating = false // 🔧 动画状态标记
+    let isAnimating = false // 动画状态标记
 
-    // ⚠️ 移动端 / 低性能模式：加大节流、跳过 ResizeObserver
+    // 移动端 / 低性能模式：加大节流、跳过 ResizeObserver
     const isMobileDevice = perf.isMobile || isReducedAnimation(anim)
 
-    // ⚠️ 节流时间：防止短时间内多次事件触发重复测量
-    // 🔧 加大节流时间，减少克隆测量频率
+    // 节流时间：防止短时间内多次事件触发重复测量
+    // 加大节流时间，减少克隆测量频率
     const THROTTLE_MS = isMobileDevice ? 1200 : 600
 
     const measure = (force = false) => {
-      // 🔧 动画期间跳过测量（除非强制）
+      // 动画期间跳过测量（除非强制）
       if (isAnimating && !force) return
 
       const now = Date.now()
@@ -863,7 +877,7 @@ const GlobalControlPanel: React.FC = () => {
       }
       lastUpdateTime = now
 
-      // 🔒 DEV 契约断言：scrollHeight 直读的正确性依赖 CSS 把内容宽度
+      // DEV 契约断言：scrollHeight 直读的正确性依赖 CSS 把内容宽度
       // 固定为展开终值（.expanded-panel-content 的 width + flex-shrink: 0）。
       // 若被改回 100% 或恢复 flex 压缩，高度会按动画中间帧计算——
       // 在开发环境立即暴露，生产零开销
@@ -885,7 +899,7 @@ const GlobalControlPanel: React.FC = () => {
         }
       }
 
-      // 🔧 内容宽度已由 CSS 固定为展开终值（不随容器动画变化），
+      // 内容宽度已由 CSS 固定为展开终值（不随容器动画变化），
       // 直接读取真实布局高度即可 —— 无需克隆整棵面板到 body 测量，
       // 每次测量从"深克隆 + 插入 + 强制布局 + 移除"降为一次布局读取
       const raw = contentEl.scrollHeight
@@ -902,7 +916,7 @@ const GlobalControlPanel: React.FC = () => {
     // 立即测量，确保动画起始帧即为正确高度
     measure(true)
 
-    // 🔧 监听动画状态
+    // 监听动画状态
     const handleAnimationStart = () => {
       isAnimating = true
     }
@@ -915,7 +929,7 @@ const GlobalControlPanel: React.FC = () => {
     window.addEventListener('gcp-animation-start', handleAnimationStart)
     window.addEventListener('gcp-animation-end', handleAnimationEnd)
 
-    // 🔧 统一使用事件驱动重测（移除轮询）
+    // 统一使用事件驱动重测（移除轮询）
     const handleRemeasure = () => {
       measure()
     }
@@ -1065,7 +1079,7 @@ const GlobalControlPanel: React.FC = () => {
   // 收起动画（时序与曲线保持不变：0.7s 容器收缩，400ms 中点切换内容）
   const collapsePanel = useCallback(() => {
     const gen = ++panelAnimGenRef.current
-    // 🔧 通知子组件动画开始
+    // 通知子组件动画开始
     window.dispatchEvent(new CustomEvent('gcp-animation-start'))
     isExpandedRef.current = false
 
@@ -1080,7 +1094,7 @@ const GlobalControlPanel: React.FC = () => {
       if (gen !== panelAnimGenRef.current) return
       setShowDynamicContent(true)
     }, 400) // 容器收缩到一半时显示（0.7s 动画的中点）
-    // 🔧 动画结束后通知
+    // 动画结束后通知
     setTimeout(() => {
       if (gen !== panelAnimGenRef.current) return
       window.dispatchEvent(new CustomEvent('gcp-animation-end'))
@@ -1095,7 +1109,7 @@ const GlobalControlPanel: React.FC = () => {
 
   const expandPanel = useCallback(() => {
     const gen = ++panelAnimGenRef.current
-    // 🔧 通知子组件动画开始
+    // 通知子组件动画开始
     window.dispatchEvent(new CustomEvent('gcp-animation-start'))
     isExpandedRef.current = true
 
@@ -1126,7 +1140,7 @@ const GlobalControlPanel: React.FC = () => {
       if (gen !== panelAnimGenRef.current) return
       setShowPanelContent(true)
     }, 400) // 容器展开到一半时显示（0.7s 动画的中点）
-    // 🔧 动画结束后通知
+    // 动画结束后通知
     setTimeout(() => {
       if (gen !== panelAnimGenRef.current) return
       window.dispatchEvent(new CustomEvent('gcp-animation-end'))
@@ -1420,7 +1434,7 @@ const GlobalControlPanel: React.FC = () => {
           let duration: number
           let delay: string
 
-          // 🎵 歌词特殊处理：使用精确的时间轴同步
+          // 歌词特殊处理：使用精确的时间轴同步
           if (currentContent.type === 'music' && currentContent.lyricDuration) {
             // 歌词：使用歌词持续时间（到下一句的时间差）
             // 减去0.5秒作为缓冲，留出0.3秒作为延迟，确保流畅过渡
@@ -1668,9 +1682,11 @@ const GlobalControlPanel: React.FC = () => {
                   }`}
                   inert={panelTab === 'notifications'}
                 >
-                  {/* 动态信息卡片 - 切换显示 */}
+                  {/* 动态信息卡片 - 仅桌面显示；移动端关闭以省高度与资源 */}
                   <Suspense fallback={null}>
-                    <ControlPanelWidgets isAdmin={user?.is_admin} />
+                    {showControlPanelWidgets && (
+                      <ControlPanelWidgets isAdmin={user?.is_admin} />
+                    )}
 
                     {/* 音乐播放器：收起或非控制 Tab 时停频谱/歌词引擎，不刷进度 */}
                     <MusicPlayer

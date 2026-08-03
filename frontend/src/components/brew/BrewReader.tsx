@@ -63,7 +63,7 @@ import {
 // API URL
 const API_URL = CONFIG_API_URL
 
-// === iframe 保存/恢复 ===
+// iframe 保存/恢复
 // 在 innerHTML 更新前保存已加载的 iframe，更新后恢复，避免重新加载导致闪烁
 interface SavedIframe {
   key: string
@@ -598,7 +598,7 @@ export default function BrewReader({
   const baseContent = useMemo(() => {
     if (!contentReady) return ''
 
-    // 🔴 网络搜索文章：直接显示 AI 生成的摘要（不再支持加载原文）
+    // 网络搜索文章：直接显示 AI 生成的摘要（不再支持加载原文）
     // 必须 HTML 转义，禁止把模型/搜索文本当 HTML 注入
     if (item.fromWebSearch && !item.content) {
       const hasSummary = item.summary && item.summary.trim().length > 20
@@ -650,7 +650,7 @@ export default function BrewReader({
   const contentInnerRef = useRef<HTMLDivElement>(null)
   const prevBaseContentRef = useRef('')
 
-  // 🔴 统一内容渲染：基础内容变化时全量更新，仅注释/评论变化时保留已加载的 iframe
+  // 统一内容渲染：基础内容变化时全量更新，仅注释/评论变化时保留已加载的 iframe
   useEffect(() => {
     const container = contentInnerRef.current
     if (!container || !baseContent) return
@@ -1898,7 +1898,7 @@ export default function BrewReader({
               [&_.brew-embed-card]:text-base [&_.brew-embed-card]:leading-normal
               [&_.brew-embed-card_*]:no-underline
 
-              /* ====== RSS 内容适配样式 ====== */
+              /* RSS 内容适配样式 */
 
               /* RSS 图片 - 响应式 + 圆角 */
               [&_.rss-content-image]:rounded-xl [&_.rss-content-image]:max-w-full
@@ -1993,7 +1993,7 @@ export default function BrewReader({
               [&_.rss-content-footer]:mt-4 [&_.rss-content-footer]:text-sm
               [&_.rss-content-footer]:opacity-70
 
-              /* ====== 网络搜索摘要样式 - 浅色主题 ====== */
+              /* 网络搜索摘要样式 - 浅色主题 */
               /* 摘要容器 - 不设置固定字体大小，继承阅读器设置 */
               [&_.web-search-summary]:leading-[inherit]
 
@@ -2021,7 +2021,7 @@ export default function BrewReader({
               ${
                 isDark
                   ? `
-                /* === 暗色主题 === */
+                /* 暗色主题 */
                 prose-invert
 
                 /* 链接 */
@@ -2058,7 +2058,7 @@ export default function BrewReader({
                 /* mark */
                 [&_mark]:text-amber-200 [&_mark]:bg-amber-500/20
 
-                /* ====== RSS 内容样式 - 暗色主题 ====== */
+                /* RSS 内容样式 - 暗色主题 */
 
                 /* RSS 引用块 */
                 [&_.rss-content-blockquote]:bg-white/3 [&_.rss-content-blockquote]:border-white/10
@@ -2113,14 +2113,14 @@ export default function BrewReader({
                 [&_.brewlia-annotation:hover]:ring-2 [&_.brewlia-annotation:hover]:ring-current/30
                 [&_.brewlia-highlight-flash]:animate-pulse [&_.brewlia-highlight-flash]:ring-2 [&_.brewlia-highlight-flash]:ring-purple-400
 
-                /* ====== 网络搜索摘要样式 - 暗色主题 ====== */
+                /* 网络搜索摘要样式 - 暗色主题 */
                 /* 页脚区域 - 暗色主题 */
                 [&_.web-search-footer]:border-white/10
 
                 /* 原文链接按钮 - 暗色主题 */
                 [&_.web-search-link]:bg-white/10 [&_.web-search-link]:hover:bg-white/15
 
-                /* ====== Notion 内容样式 - 暗色主题 ====== */
+                /* Notion 内容样式 - 暗色主题 */
 
                 /* Notion 颜色 - 文字 */
                 [&_.notion-gray]:text-gray-400
@@ -2251,7 +2251,7 @@ export default function BrewReader({
 
               `
                   : `
-                /* === 浅色主题 === */
+                /* 浅色主题 */
 
                 /* 链接 */
                 prose-a:text-amber-700 prose-a:decoration-amber-600/30
@@ -2287,7 +2287,7 @@ export default function BrewReader({
                 /* mark */
                 [&_mark]:text-amber-900 [&_mark]:bg-amber-400/30
 
-                /* ====== RSS 内容样式 - 浅色主题 ====== */
+                /* RSS 内容样式 - 浅色主题 */
 
                 /* RSS 引用块 */
                 [&_.rss-content-blockquote]:bg-black/2 [&_.rss-content-blockquote]:border-black/10
@@ -2345,7 +2345,7 @@ export default function BrewReader({
                 /* figcaption */
                 prose-figcaption:text-current
 
-                /* ====== Notion 内容样式 - 浅色主题 ====== */
+                /* Notion 内容样式 - 浅色主题 */
 
                 /* Notion 颜色 - 文字 */
                 [&_.notion-gray]:text-gray-500

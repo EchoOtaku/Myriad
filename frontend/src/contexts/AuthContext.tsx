@@ -273,7 +273,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // 1) destroyAll old grants (irreversible)
         // 2) refresh session identity
         // 3) tell open sandboxes to remount AFTER grants are cleared and
-        //    user is known — otherwise Aro keeps a dead grant and stays guest.
+        // user is known — otherwise Aro keeps a dead grant and stays guest.
         void (async () => {
           try {
             await resetTappSubjectState()
@@ -304,7 +304,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('auth-state-changed', handleAuthChange)
   }, [checkAuth, logout, resetTappSubjectState])
 
-  // 🔧 性能优化：使用 useMemo 缓存 context value，避免不必要的重渲染
+  // 使用 useMemo 缓存 context value，避免不必要的重渲染
   const value = useMemo(
     () => ({
       isAuthenticated,

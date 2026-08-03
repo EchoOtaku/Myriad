@@ -47,7 +47,7 @@ html.dark .updater-panel-heading {
   color: var(--cfg-text-1);
 }
 
-/* ===== 状态卡（hero）— 半透明玻璃 ===== */
+/* 状态卡（hero）— 半透明玻璃 */
 .updater-hero {
   --updater-accent: 59 130 246;
   --updater-accent-strong: 37 99 235;
@@ -410,7 +410,7 @@ html.dark .updater-hero-feedback.error {
   color: #fda4af;
 }
 
-/* ===== 通道单选卡片 ===== */
+/* 通道单选卡片 */
 .updater-channels {
   display: flex;
   flex-direction: column;
@@ -586,7 +586,7 @@ html.dark .updater-channel-desc {
   color: var(--cfg-text-3);
 }
 
-/* ===== 安装指定版本 ===== */
+/* 安装指定版本 */
 .updater-target {
   display: flex;
   flex-direction: column;
@@ -607,7 +607,7 @@ html.dark .updater-channel-desc {
   gap: 0.5rem;
 }
 
-/* ===== 版本 / commit 列表 ===== */
+/* 版本 / commit 列表 */
 .updater-commit-list {
   border: 1px solid var(--updater-subtle-border);
   border-radius: 0.6rem;
@@ -692,7 +692,7 @@ html.dark .updater-commit-msg {
   white-space: nowrap;
 }
 
-/* ===== 新旧关系提示 ===== */
+/* 新旧关系提示 */
 .updater-compare-preview {
   padding: 0.55rem 0.85rem;
   border-radius: 0.6rem;
@@ -730,7 +730,7 @@ html.dark .updater-compare-preview.neutral {
   color: var(--cfg-text-2);
 }
 
-/* ===== 进度卡 ===== */
+/* 进度卡 */
 .updater-progress {
   padding: 1rem 1.1rem;
   border-radius: 0.75rem;
@@ -888,7 +888,7 @@ html.dark .updater-step-err-msg {
   color: #fca5a5;
 }
 
-/* ===== Drift（小提示条）===== */
+/* Drift（小提示条） */
 .updater-drift {
   padding: 0.5rem 0.85rem;
   border-radius: 0.5rem;
@@ -937,7 +937,7 @@ html.dark .updater-last-failed {
   border-color: rgb(248 113 113 / 35%);
 }
 
-/* ===== 快照区 ===== */
+/* 快照区 */
 .updater-snapshot-list {
   display: flex;
   flex-direction: column;
@@ -1045,7 +1045,7 @@ html.dark .updater-empty {
   color: var(--cfg-text-3);
 }
 
-/* ===== 高级与诊断 ===== */
+/* 高级与诊断 */
 .updater-detail-grid {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
@@ -1206,7 +1206,7 @@ html.dark .updater-transport-hint {
   opacity: 1;
 }
 
-/* ===== 自动检查 / 自动安装 ===== */
+/* 自动检查 / 自动安装 */
 .updater-hero-auto {
   position: relative;
   z-index: 1;
@@ -1235,7 +1235,7 @@ html.dark .updater-hero-auto {
   gap: 0.6rem;
 }
 
-/* ===== 备份区：上限 prefs + 列表 ===== */
+/* 备份区：上限 prefs + 列表 */
 .updater-snapshot-section {
   display: flex;
   flex-direction: column;
@@ -1445,7 +1445,7 @@ html.dark .updater-progress-hint.muted {
   color: var(--cfg-text-3);
 }
 
-/* ===== 更新器 / 边缘：两列半透明卡 ===== */
+/* 更新器 / 边缘：两列半透明卡 */
 .updater-infra-grid {
   margin-top: 0;
 }

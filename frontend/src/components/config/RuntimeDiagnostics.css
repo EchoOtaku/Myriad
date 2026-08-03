@@ -10,7 +10,7 @@
   margin-bottom: 1rem;
 }
 
-/* ===== 总览卡片 ===== */
+/* 总览卡片 */
 .runtime-diagnostics-overview {
   display: flex;
   align-items: center;
@@ -113,7 +113,7 @@ html.dark .runtime-diagnostics-summary-meta > span {
   gap: 0.375rem;
 }
 
-/* ===== 检查项网格 ===== */
+/* 检查项网格 */
 .runtime-diagnostics-grid {
   --sg-grid-gap: 0.5rem;
 }
@@ -206,7 +206,7 @@ html.dark .runtime-diagnostics-summary-meta > span {
   color: #dc2626;
 }
 
-/* ===== 任务面板 ===== */
+/* 任务面板 */
 .runtime-diagnostics-task-panels {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

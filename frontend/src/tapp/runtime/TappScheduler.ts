@@ -12,7 +12,7 @@ import type { TappAPIResponse } from '../types'
 import { getCSRFToken } from '../../utils/csrf'
 import { TappRuntimeGrant } from './TappRuntimeGrant'
 
-// ============ 类型定义 ============
+// 类型定义
 
 /** 调度类型 */
 export type ScheduleType = 'cron' | 'interval' | 'once' | 'daily'
@@ -172,7 +172,7 @@ interface SchedulerWebSocketMessage {
   executionId?: number
 }
 
-// ============ TappScheduler 类 ============
+// TappScheduler 类
 
 /**
  * Tapp 调度器
@@ -510,7 +510,7 @@ export class TappScheduler {
     }
   }
 
-  // ============ 公共 API ============
+  // 公共 API
 
   /**
    * 检查是否已连接

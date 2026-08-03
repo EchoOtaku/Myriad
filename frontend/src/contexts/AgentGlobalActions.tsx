@@ -398,7 +398,7 @@ export function AgentGlobalActions() {
     [location.pathname, navigate],
   )
 
-  // ============ 音乐播放器控制处理 ============
+  // 音乐播放器控制处理
   const handleMusicControl = useCallback(
     async (frontendAction: FrontendAction): Promise<boolean> => {
       console.log('[AgentGlobalActions] handleMusicControl:', frontendAction)
@@ -462,7 +462,7 @@ export function AgentGlobalActions() {
     [],
   )
 
-  // ============ 音乐歌单加载处理 ============
+  // 音乐歌单加载处理
   const handleMusicLoadPlaylist = useCallback(
     async (frontendAction: FrontendAction): Promise<boolean> => {
       console.log(
@@ -532,7 +532,7 @@ export function AgentGlobalActions() {
     musicPlayer.currentLyricIndex,
   ])
 
-  // ============ 阅读列表处理 ============
+  // 阅读列表处理
   const handleReadingList = useCallback(
     async (frontendAction: FrontendAction): Promise<boolean> => {
       console.log('[AgentGlobalActions] handleReadingList:', frontendAction)

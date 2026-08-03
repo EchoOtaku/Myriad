@@ -38,12 +38,12 @@ import { widgetTypeMatchesLibrarySearch } from './widgetLibrarySearch'
 import { preloadBuiltinWidgets } from './widgets/builtinWidgets'
 import './WidgetGrid.css'
 
-// ⚗️ 移动端检测 - 使用统一的性能检测系统
+// ⚗ 移动端检测 - 使用统一的性能检测系统
 function getIsMobile(): boolean {
   return getPerformanceProfileSync().isMobile
 }
 
-// 🔧 性能优化：预生成常见网格尺寸的索引数组缓存
+// 预生成常见网格尺寸的索引数组缓存
 const gridIndicesCache = new Map<string, number[]>()
 function getGridIndices(width: number, height: number): number[] {
   const key = `${width}x${height}`
@@ -665,7 +665,7 @@ export default function WidgetGrid({
   // Only enable compact mode (auto-layout) if we are in responsive mode (no custom columns) AND width is small
   const isCompact = !customGridColumns && gridColumns < GRID_WIDTH
   const containerRef = useRef<HTMLDivElement | null>(null)
-  // 🔧 性能优化：缓存 gridRect 避免频繁调用 getBoundingClientRect
+  // 缓存 gridRect 避免频繁调用 getBoundingClientRect
   const gridRectRef = useRef<DOMRect | null>(null)
   /** Container width for height = width * rows/cols (not for item geometry). */
   const [containerWidth, setContainerWidth] = useState(0)
@@ -957,7 +957,7 @@ export default function WidgetGrid({
     [widgetHistory, historyIndex],
   )
 
-  // 🔧 更新 gridRect 缓存（在拖拽开始时调用）
+  // 更新 gridRect 缓存（在拖拽开始时调用）
   const updateGridRectCache = useCallback(() => {
     if (containerRef.current) {
       gridRectRef.current = containerRef.current.getBoundingClientRect()
@@ -1007,7 +1007,7 @@ export default function WidgetGrid({
       const widget = widgets.find((w) => w.id === widgetId)
       if (!widget) return
 
-      // 🔧 拖拽开始时更新 gridRect 缓存
+      // 拖拽开始时更新 gridRect 缓存
       updateGridRectCache()
 
       // 立即设置光标位置
@@ -1029,7 +1029,7 @@ export default function WidgetGrid({
       e.stopPropagation()
       e.preventDefault()
 
-      // 🔧 拖拽开始时更新 gridRect 缓存
+      // 拖拽开始时更新 gridRect 缓存
       updateGridRectCache()
 
       // 获取初始位置
@@ -1063,7 +1063,7 @@ export default function WidgetGrid({
       const widget = widgets.find((w) => w.id === widgetId)
       if (!widget) return
 
-      // 🔧 调整大小开始时更新 gridRect 缓存
+      // 调整大小开始时更新 gridRect 缓存
       updateGridRectCache()
 
       // 获取初始位置（支持鼠标和触控）
@@ -1088,7 +1088,7 @@ export default function WidgetGrid({
       if (rafRef.current) return
 
       rafRef.current = requestAnimationFrame(() => {
-        // 🔧 使用缓存的 gridRect，避免在 RAF 回调中调用 getBoundingClientRect
+        // 使用缓存的 gridRect，避免在 RAF 回调中调用 getBoundingClientRect
         const gridRect = gridRectRef.current
         if (!gridRect) {
           rafRef.current = null
@@ -1221,7 +1221,7 @@ export default function WidgetGrid({
       }
 
       rafRef.current = requestAnimationFrame(() => {
-        // 🔧 使用缓存的 gridRect，避免在 RAF 回调中调用 getBoundingClientRect
+        // 使用缓存的 gridRect，避免在 RAF 回调中调用 getBoundingClientRect
         // 注意：如果容器在滚动过程中位置变化，需要在滚动事件中更新缓存
         const gridRect = gridRectRef.current
 
@@ -1420,7 +1420,7 @@ export default function WidgetGrid({
   handleResizeEndRef.current = handleResizeEnd
 
   // 注册拖拽事件（鼠标和触屏）- 使用 ref 避免频繁重建监听器
-  // ⚠️ 关键优化: 移动端禁用编辑模式,避免 passive: false 破坏滚动性能
+  // 关键优化: 移动端禁用编辑模式,避免 passive: false 破坏滚动性能
   useEffect(() => {
     if (draggedWidget) {
       const isMobile = getIsMobile()
@@ -1431,7 +1431,7 @@ export default function WidgetGrid({
       window.addEventListener('mousemove', moveHandler)
       window.addEventListener('mouseup', endHandler)
 
-      // ⚠️ 移动端使用 passive: true 避免阻塞滚动
+      // 移动端使用 passive: true 避免阻塞滚动
       // 这意味着在移动端拖拽时无法调用 preventDefault,但保证了滚动流畅性
       if (isMobile) {
         window.addEventListener('touchmove', moveHandler, { passive: true })
@@ -1456,7 +1456,7 @@ export default function WidgetGrid({
   }, [draggedWidget]) // 只依赖 draggedWidget 是否存在
 
   // 注册调整大小事件 - 使用 ref 避免频繁重建监听器
-  // ⚠️ 关键优化: 移动端使用 passive 监听避免阻塞滚动
+  // 关键优化: 移动端使用 passive 监听避免阻塞滚动
   useEffect(() => {
     if (resizingWidget) {
       const isMobile = getIsMobile()
@@ -1467,7 +1467,7 @@ export default function WidgetGrid({
       window.addEventListener('mousemove', moveHandler)
       window.addEventListener('mouseup', endHandler)
 
-      // ⚠️ 移动端使用 passive: true 避免阻塞滚动
+      // 移动端使用 passive: true 避免阻塞滚动
       if (isMobile) {
         window.addEventListener('touchmove', moveHandler, { passive: true })
       } else {
@@ -1578,7 +1578,7 @@ export default function WidgetGrid({
 
   // Memoize grid background
   const gridBackground = useMemo(() => {
-    // 🔧 使用缓存的网格索引
+    // 使用缓存的网格索引
     const indices = getGridIndices(currentGridWidth, currentGridHeight)
     return (
       <div

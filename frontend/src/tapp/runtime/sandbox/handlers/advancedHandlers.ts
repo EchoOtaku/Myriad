@@ -1457,7 +1457,7 @@ export function registerContextHandlers(
     }
   })
 
-  // ============ Tapp API 声明系统 ============
+  // Tapp API 声明系统
 
   // 执行 Tapp manifest 中声明的 API
   bridge.registerHandler('api.execute', async (message) => {

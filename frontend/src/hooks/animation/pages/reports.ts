@@ -39,7 +39,7 @@ import { Feature, hasFeature } from '../pageFeatures'
 
 const PAGE_ID = 'reports'
 
-// ==================== 页面初始化 ====================
+// 页面初始化
 
 /**
  * 报告页调度器初始化
@@ -52,7 +52,7 @@ export function useReportsScheduler(): void {
   }, [])
 }
 
-// ==================== 可见性 Hooks ====================
+// 可见性 Hooks
 
 export function useReportsVisibility(): boolean {
   const [visible, setVisible] = useState(() => isPageVisible())
@@ -67,7 +67,7 @@ export function useReportsVisibility(): boolean {
   return visible
 }
 
-// ==================== Interval Hooks ====================
+// Interval Hooks
 
 /** 获取报告页 Interval 管理器 */
 function getIntervalManager() {
@@ -143,7 +143,7 @@ export function useReportsInterval(
   }, [delay])
 }
 
-// ==================== Timeout Hooks ====================
+// Timeout Hooks
 
 /**
  * 报告页延时器
@@ -166,7 +166,7 @@ export function useReportsTimeout(
   }, [delay])
 }
 
-// ==================== RAF Hooks ====================
+// RAF Hooks
 
 // RAF 循环管理
 let _reportsRafId: number | null = null
@@ -250,7 +250,7 @@ export function useReportsRafThrottle<T extends (...args: any[]) => void>(
   return throttled
 }
 
-// ==================== DOM Batch Hooks ====================
+// DOM Batch Hooks
 
 let _reportsReadQueue: Array<() => void> = []
 let _reportsWriteQueue: Array<() => void> = []
@@ -302,7 +302,7 @@ export function useReportsBatchDom(): {
   return { batchRead, batchWrite }
 }
 
-// ==================== 清理 ====================
+// 清理
 
 export function cleanupReports(): void {
   // 清理所有 interval

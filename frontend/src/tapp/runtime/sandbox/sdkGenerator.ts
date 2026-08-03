@@ -19,9 +19,7 @@ import type { TappInstance } from '../../types'
 import type { SandboxCapabilityProfile } from './capabilityProfiles'
 import { serializeSandboxScriptValue } from './security'
 
-// ========================
-// 🎯 预缓存的静态代码片段
-// ========================
+// 预缓存的静态代码片段
 
 /**
  * 存储 key 验证器代码（预生成，避免重复计算）
@@ -184,7 +182,7 @@ export function generateFullSDK(
     return hostWindow;
   })();
 
-  // 🎯 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
+  // 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
   // 解决父窗口推送 mediaStateChange 早于 Tapp 代码注册 onStateChange 的竞态问题
   const _eventBuffer = new Map();
   const _BUFFERED_EVENTS = new Set(['mediaStateChange', 'mediaProgress', 'themeChange', 'primaryColorChange', 'localeChange']);
@@ -314,7 +312,7 @@ export function generateFullSDK(
         root.style.setProperty('--bg-primary', isDark ? '#0a0a0a' : '#fff');
         document.body.style.background = isDark ? '#0a0a0a' : '#fff';
         document.body.style.color = isDark ? 'rgba(255,255,255,.92)' : '#1a1a1a';
-        // 🎯 强制触发重绘（WebKit 走保守路径）
+        // 强制触发重绘（WebKit 走保守路径）
         _forceRepaint();
       }
       else if (message.action === 'locale:change') {
@@ -326,7 +324,7 @@ export function generateFullSDK(
         // 更新 CSS 变量
         if (message.payload) {
           document.documentElement.style.setProperty('--tapp-primary', message.payload);
-          // 🎯 强制触发重绘（WebKit 走保守路径）
+          // 强制触发重绘（WebKit 走保守路径）
           _forceRepaint();
         }
       }
@@ -340,7 +338,7 @@ export function generateFullSDK(
       eventListeners.set(event, listeners);
     }
     listeners.add(callback);
-    // 🎯 回放缓冲区：如果已有该事件的最新值，立即调用回调
+    // 回放缓冲区：如果已有该事件的最新值，立即调用回调
     const buffered = _eventBuffer.get(event);
     if (buffered !== undefined) {
       try { callback(buffered); } catch (e) {}
@@ -635,7 +633,7 @@ export function generateFullSDK(
       list: () => sendRequest('shortcut', 'list', []),
     },
 
-    // 🤖 Agent 交互 API - 允许 Tapp 与 Agent 进行数据交互
+    // Agent 交互 API - 允许 Tapp 与 Agent 进行数据交互
     agent: {
       onInteraction: (type, callback) => {
         if (typeof type !== 'string' || typeof callback !== 'function') {
@@ -1020,7 +1018,7 @@ export function generateWidgetSDK(
   var pendingRequests = new Map();
   var eventListeners = new Map();
   var dataExchangeProviders = new Map();
-  // 🎯 添加生命周期回调支持
+  // 添加生命周期回调支持
   var lifecycleCallbacks = { destroy: [], pause: [], resume: [] };
   var lifecycleDestroyed = false;
   var _assetUrlByPath = new Map();
@@ -1052,7 +1050,7 @@ export function generateWidgetSDK(
   // 发送与接收都绑定到创建当前沙箱的真实父窗口。
   var _HOST_WINDOW = window.parent;
 
-  // 🎯 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
+  // 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
   var _eventBuffer = new Map();
   var _BUFFERED_EVENTS = { mediaStateChange: 1, mediaProgress: 1, themeChange: 1, primaryColorChange: 1, localeChange: 1 };
   var _ACTION_TO_EVENT = { 'theme:change': 'themeChange', 'locale:change': 'localeChange', 'primaryColor:change': 'primaryColorChange' };
@@ -1087,7 +1085,7 @@ export function generateWidgetSDK(
       eventListeners.set(event, listeners);
     }
     listeners.add(callback);
-    // 🎯 回放缓冲区：如果已有该事件的最新值，立即调用回调
+    // 回放缓冲区：如果已有该事件的最新值，立即调用回调
     var buffered = _eventBuffer.get(event);
     if (buffered !== undefined) {
       try { callback(buffered); } catch(e) {}
@@ -1141,12 +1139,12 @@ export function generateWidgetSDK(
             .catch(function() {});
         }
       }
-      // 🎯 缓存有状态事件的最新值（供 addEventListener 回放，统一 camelCase key）
+      // 缓存有状态事件的最新值（供 addEventListener 回放，统一 camelCase key）
       var _bufKey = _ACTION_TO_EVENT[msg.action] || msg.action;
       if (_BUFFERED_EVENTS[_bufKey]) {
         _eventBuffer.set(_bufKey, msg.payload);
       }
-      // 🎯 强制重绘辅助函数：WebKit 专用沙箱会设置 window._TAPP_DISABLE_TRANSFORM_REPAINT
+      // 强制重绘辅助函数：WebKit 专用沙箱会设置 window._TAPP_DISABLE_TRANSFORM_REPAINT
       var forceRepaint = function () {
         void document.body.offsetHeight;
         if (window._TAPP_DISABLE_TRANSFORM_REPAINT) return;
@@ -1184,7 +1182,7 @@ export function generateWidgetSDK(
         root.style.setProperty('--bg-primary', isDark ? '#0a0a0a' : '#fff');
         document.body.style.background = isDark ? '#0a0a0a' : '#fff';
         document.body.style.color = isDark ? 'rgba(255,255,255,.92)' : '#1a1a1a';
-        // 🎯 强制触发重绘
+        // 强制触发重绘
         forceRepaint();
       }
       // 主色调变化事件
@@ -1193,7 +1191,7 @@ export function generateWidgetSDK(
         // 更新 CSS 变量
         if (msg.payload) {
           document.documentElement.style.setProperty('--tapp-primary', msg.payload);
-          // 🎯 强制触发重绘
+          // 强制触发重绘
           forceRepaint();
         }
       }
@@ -1210,21 +1208,21 @@ export function generateWidgetSDK(
         root.style.setProperty('--tapp-font-scale', msg.payload.fontScale || 1);
         window.dispatchEvent(new CustomEvent('tapp:resize', { detail: msg.payload }));
       }
-      // 🎯 生命周期暂停事件（页面不可见时触发）
+      // 生命周期暂停事件（页面不可见时触发）
       else if (msg.action === 'lifecycle:pause') {
         lifecycleCallbacks.pause.forEach(function(cb) { try { cb(); } catch(e) {} });
         eventListeners.get('pause')?.forEach(function(cb) { try { cb(); } catch(e) {} });
       }
-      // 🎯 生命周期恢复事件（页面重新可见时触发）
+      // 生命周期恢复事件（页面重新可见时触发）
       else if (msg.action === 'lifecycle:resume') {
         lifecycleCallbacks.resume.forEach(function(cb) { try { cb(); } catch(e) {} });
         eventListeners.get('resume')?.forEach(function(cb) { try { cb(); } catch(e) {} });
       }
-      // 🎵 媒体状态变化事件
+      // 媒体状态变化事件
       else if (msg.action === 'mediaStateChange') {
         eventListeners.get('mediaStateChange')?.forEach(function(cb) { try { cb(msg.payload); } catch(e) {} });
       }
-      // 🎵 媒体进度实时推送
+      // 媒体进度实时推送
       else if (msg.action === 'mediaProgress') {
         eventListeners.get('mediaProgress')?.forEach(function(cb) { try { cb(msg.payload); } catch(e) {} });
       }

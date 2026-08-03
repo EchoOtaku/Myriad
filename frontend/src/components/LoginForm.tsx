@@ -117,7 +117,7 @@ const LoginForm: FC = () => {
 
       // The JWT is intentionally available only through the HttpOnly cookie.
 
-      // 🔒 安全修复 P1: 只存储会话提示标志，不存储用户信息
+      // 只存储会话提示标志，不存储用户信息
       // 用户信息（包括 is_admin）将通过后端 API 实时验证
       setSessionHint()
 

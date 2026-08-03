@@ -8,7 +8,7 @@
  * - 支持多种消息类型：success / error / warning / info
  */
 
-/* ============ 容器基础样式 ============ */
+/* 容器基础样式 */
 .toast-container {
   position: fixed;
   top: 1.5rem;
@@ -24,7 +24,7 @@
   animation: toastSlideOut 0.3s cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 
-/* ============ 消息主体样式 ============ */
+/* 消息主体样式 */
 .toast-message {
   display: flex;
   align-items: center;
@@ -63,7 +63,7 @@ html.dark .toast-message {
   color: #f3f4f6;
 }
 
-/* ============ 类型样式 ============ */
+/* 类型样式 */
 
 /* 成功类型 */
 .toast-message.toast-success {
@@ -181,7 +181,7 @@ html.dark .toast-message.toast-info .toast-icon-wrapper {
   color: #60a5fa;
 }
 
-/* ============ 图标样式 ============ */
+/* 图标样式 */
 .toast-icon-wrapper {
   display: flex;
   align-items: center;
@@ -209,7 +209,7 @@ html.dark .toast-message.toast-info .toast-icon-wrapper {
   line-height: 1;
 }
 
-/* ============ 内容区域 ============ */
+/* 内容区域 */
 .toast-content {
   flex: 1;
   min-width: 0;
@@ -251,7 +251,7 @@ html.dark .toast-content:not(:has(.toast-title)) .toast-text {
   color: #e5e7eb;
 }
 
-/* ============ 关闭按钮 ============ */
+/* 关闭按钮 */
 .toast-close-btn {
   display: flex;
   align-items: center;
@@ -278,7 +278,7 @@ html.dark .toast-close-btn:hover {
   color: #d1d5db;
 }
 
-/* ============ 动画 ============ */
+/* 动画 */
 @keyframes toastSlideIn {
   0% {
     opacity: 0;
@@ -303,7 +303,7 @@ html.dark .toast-close-btn:hover {
   }
 }
 
-/* ============ 移动端适配 ============ */
+/* 移动端适配 */
 @media (width <= 640px) {
   .toast-container {
     top: 1rem;
@@ -344,7 +344,7 @@ html.dark .toast-close-btn:hover {
   }
 }
 
-/* ============ 减少动画偏好 ============ */
+/* 减少动画偏好 */
 @media (prefers-reduced-motion: reduce) {
   .toast-container {
     animation: none;
@@ -357,7 +357,7 @@ html.dark .toast-close-btn:hover {
   }
 }
 
-/* ============ Toast 容器包装器（多 Toast 支持） ============ */
+/* Toast 容器包装器（多 Toast 支持） */
 .toast-container-wrapper {
   position: fixed;
   top: 0;

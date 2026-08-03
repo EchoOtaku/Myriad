@@ -19,7 +19,7 @@ import {
 } from '../../../hooks/useAnimationLevel'
 import './GlowBackground.css'
 
-// ========== 组件接口 ==========
+// 组件接口
 
 export interface GlowBackgroundProps {
   /** 光晕颜色 (CSS 颜色值或 CSS 变量) */

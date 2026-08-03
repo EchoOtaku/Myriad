@@ -27,7 +27,7 @@ import type { TappInstance } from '../../types'
 import * as TappApiService from '../../services/TappApiService'
 import { generateOnDemandTailwindCSS } from './styles'
 
-// ============ 类型定义 ============
+// 类型定义
 
 /** Headless core 资源（后台任务专用） */
 export interface CoreResources {
@@ -84,7 +84,7 @@ interface ResourceCacheEntry<T> {
   ttl: number
 }
 
-// ============ 缓存配置 ============
+// 缓存配置
 
 const CACHE_TTL = {
   widget: 5 * 60 * 1000, // Widget 资源 5 分钟
@@ -130,7 +130,7 @@ function setCachedEntry<T>(
   }
 }
 
-// ============ 请求去重器 ============
+// 请求去重器
 
 class RequestDeduplicator {
   private pending = new Map<string, Promise<unknown>>()
@@ -145,7 +145,7 @@ class RequestDeduplicator {
   }
 }
 
-// ============ CSS 分离器 ============
+// CSS 分离器
 
 /**
  * CSS 分离工具
@@ -196,7 +196,7 @@ class CssSeparator {
   }
 }
 
-// ============ 资源加载器类 ============
+// 资源加载器类
 
 /**
  * Tapp 资源加载器
@@ -260,7 +260,7 @@ export class TappResourceLoader {
     return TappResourceLoader.instance
   }
 
-  // ============ Headless core 资源加载 ============
+  // Headless core 资源加载
 
   /**
    * 加载后台 core 运行所需的最小资源。
@@ -302,7 +302,7 @@ export class TappResourceLoader {
     )
   }
 
-  // ============ Widget 资源加载 ============
+  // Widget 资源加载
 
   /**
    * 加载 Widget 资源
@@ -353,7 +353,7 @@ export class TappResourceLoader {
           }
         }
 
-        // 🎯 确定 CSS 架构模式和样式来源
+        // 确定 CSS 架构模式和样式来源
         const cssMode = raw.cssMode || 'unified'
         // 分离模式：合并 styles（共享）+ widgetStyles（专用）
         // 统一模式：仅使用 styles
@@ -368,7 +368,7 @@ export class TappResourceLoader {
           effectiveStyles = raw.styles
         }
 
-        // 🎯 生成 Widget 专用 CSS
+        // 生成 Widget 专用 CSS
         // 原生 CSS 由 styles 字段单独交给沙箱；这里仅处理 Tailwind CSS。
         const tailwindCSS = await this.ensureWidgetCSS(
           tappInstance.id,
@@ -415,7 +415,7 @@ export class TappResourceLoader {
     )
   }
 
-  // ============ Page 资源加载 ============
+  // Page 资源加载
 
   /**
    * 加载 Page 资源
@@ -450,7 +450,7 @@ export class TappResourceLoader {
         const coreCode = this.extractCoreCode(raw.code)
         const pageCode = this.extractModeCode(raw.code, 'page')
 
-        // 🎯 确定 CSS 架构模式和样式来源
+        // 确定 CSS 架构模式和样式来源
         const cssMode = raw.cssMode || 'unified'
         // 分离模式：合并 styles（共享）+ pageStyles（专用）
         // 统一模式：仅使用 styles
@@ -465,7 +465,7 @@ export class TappResourceLoader {
           effectiveStyles = raw.styles
         }
 
-        // 🎯 生成 Page 专用 CSS
+        // 生成 Page 专用 CSS
         // 原生 CSS 由 styles 字段单独交给沙箱；这里仅处理 Tailwind CSS。
         const tailwindCSS = await this.ensurePageCSS(
           tappInstance.id,
@@ -512,7 +512,7 @@ export class TappResourceLoader {
     )
   }
 
-  // ============ CSS 处理（分离式） ============
+  // CSS 处理（分离式）
 
   /**
    * 确保有 Widget 专用的 CSS
@@ -539,7 +539,7 @@ export class TappResourceLoader {
 
     let css: string
 
-    // 🎯 策略 1: 优先使用后端预分离的 Widget CSS
+    // 策略 1: 优先使用后端预分离的 Widget CSS
     if (precompiledWidgetCSS !== undefined) {
       css = precompiledWidgetCSS
     } else {
@@ -591,7 +591,7 @@ export class TappResourceLoader {
 
     let css: string
 
-    // 🎯 策略 1: 优先使用后端预分离的 Page CSS
+    // 策略 1: 优先使用后端预分离的 Page CSS
     if (precompiledPageCSS !== undefined) {
       css = precompiledPageCSS
     } else {
@@ -620,7 +620,7 @@ export class TappResourceLoader {
     return css
   }
 
-  // ============ 原始资源获取 ============
+  // 原始资源获取
 
   /**
    * 获取原始资源（带缓存）
@@ -663,7 +663,7 @@ export class TappResourceLoader {
     })
   }
 
-  // ============ 代码提取 ============
+  // 代码提取
 
   /**
    * 提取核心代码（去除 widget/page 专用部分）
@@ -727,7 +727,7 @@ export class TappResourceLoader {
     return fullCode.substring(codeStart).trim()
   }
 
-  // ============ 缓存管理 ============
+  // 缓存管理
 
   /**
    * 清除指定 Tapp 的缓存
@@ -765,7 +765,7 @@ export class TappResourceLoader {
   }
 }
 
-// ============ 导出便捷函数 ============
+// 导出便捷函数
 
 /**
  * 获取资源加载器实例

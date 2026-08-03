@@ -130,7 +130,7 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
     transforms.push(`translateX(${xVal})`)
   }
 
-  // 🔧 新增：旋转支持
+  // 新增：旋转支持
   if (typeof initialState.rotate === 'number') {
     transforms.push(`rotate(${initialState.rotate}deg)`)
   }
@@ -141,7 +141,7 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
     transforms.push(`rotateY(${initialState.rotateY}deg)`)
   }
 
-  // 🔧 新增：斜切支持
+  // 新增：斜切支持
   if (typeof initialState.skewX === 'number') {
     transforms.push(`skewX(${initialState.skewX}deg)`)
   }
@@ -149,7 +149,7 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
     transforms.push(`skewY(${initialState.skewY}deg)`)
   }
 
-  // 🔧 新增：filter 支持
+  // 新增：filter 支持
   const filters: string[] = []
   if (typeof initialState.blur === 'number' && initialState.blur > 0) {
     filters.push(`blur(${initialState.blur}px)`)
@@ -175,7 +175,7 @@ function getInitialStyle(props: any): React.CSSProperties | undefined {
     style.transform = transforms.join(' ')
   }
 
-  // 🔧 新增：transformOrigin 支持
+  // 新增：transformOrigin 支持
   if (
     initialState.originX !== undefined ||
     initialState.originY !== undefined

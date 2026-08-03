@@ -21,7 +21,7 @@ import { API_URL } from '../config'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { resyncWallpaperBlur } from '../utils/wallpaperState'
 
-// ==================== 类型定义 ====================
+// 类型定义
 
 export type WidgetSurface = 'glass' | 'solid' | 'flat' | 'outline' | 'liquid'
 export type WidgetGlowMode = 'identity' | 'primary' | 'none'
@@ -33,7 +33,7 @@ interface WidgetThemeState {
 
 type WidgetThemeListener = (state: WidgetThemeState) => void
 
-// ==================== 选项配置 ====================
+// 选项配置
 
 export const SURFACE_OPTIONS: readonly {
   id: WidgetSurface
@@ -99,7 +99,7 @@ function isGlowMode(v: unknown): v is WidgetGlowMode {
   return v === 'identity' || v === 'primary' || v === 'none'
 }
 
-// ==================== 全局状态管理 ====================
+// 全局状态管理
 
 const DEFAULT_THEME: WidgetThemeState = { surface: 'glass', glow: 'identity' }
 
@@ -184,7 +184,7 @@ async function initGlobalState(): Promise<void> {
   return initPromise
 }
 
-// ==================== Hook ====================
+// Hook
 
 export function useWidgetTheme() {
   const [state, setState] = useState<WidgetThemeState>(globalState)

@@ -26,7 +26,6 @@ export type PageContentType =
 export interface PageContent {
   /** 内容类型 */
   type: PageContentType
-  /** 标题 */
   title?: string
   /** 内容摘要（用于快速预览） */
   summary?: string

@@ -113,7 +113,7 @@ interface DebugLogEntry {
   data: unknown
 }
 
-// ============ 组件 ============
+// 组件
 
 export const AraelPanel: React.FC = () => {
   const location = useLocation()
@@ -131,7 +131,7 @@ export const AraelPanel: React.FC = () => {
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
-  // ============ 对话系统核心状态 ============
+  // 对话系统核心状态
 
   // 消息状态（提取到 useMessageState hook）
   const {
@@ -297,7 +297,7 @@ export const AraelPanel: React.FC = () => {
     return () => el.removeEventListener('scroll', onScroll)
   }, [])
 
-  // ============ 预设管理 ============
+  // 预设管理
 
   const loadPresets = useCallback(async () => {
     // JWT-only endpoint — skip for guests (panel may still open for ai_chat gate)
@@ -385,7 +385,7 @@ export const AraelPanel: React.FC = () => {
     setTimeout(() => inputRef.current?.focus(), 100)
   }, [])
 
-  // ============ 会话管理 ============
+  // 会话管理
 
   const startNewSession = useCallback(async () => {
     // 新建会话只切换前端视图。旧任务由后端 run 持续执行，并通过通知中心报告状态。
@@ -661,7 +661,7 @@ export const AraelPanel: React.FC = () => {
       window.removeEventListener('arael-open-manage', handleOpenManage)
   }, [])
 
-  // ============ 中断 ============
+  // 中断
 
   const interruptCurrentTask = useCallback(async () => {
     // 用户意图中断：标记 abort intent=user，SSE 层不会 re-subscribe 同一 run
@@ -709,7 +709,7 @@ export const AraelPanel: React.FC = () => {
     setIsLoading(false)
   }, [messages, updateMessage, updateMessageExecution])
 
-  // ============ 面板控制 ============
+  // 面板控制
 
   const closePanel = useCallback(() => {
     setVisibility('hidden')
@@ -754,7 +754,7 @@ export const AraelPanel: React.FC = () => {
     }
   }, [visibility])
 
-  // ============ SSE 进度处理 ============
+  // SSE 进度处理
 
   const createProgressHandler = useCallback(
     (assistantMessageId: string) => {
@@ -1078,7 +1078,7 @@ export const AraelPanel: React.FC = () => {
 
   createProgressHandlerRef.current = createProgressHandler
 
-  // ============ 发送消息 ============
+  // 发送消息
 
   const handleSend = useCallback(
     async (text?: string) => {
@@ -1298,7 +1298,7 @@ export const AraelPanel: React.FC = () => {
     handleSendRef.current = handleSend
   }, [handleSend])
 
-  // ============ 处理 Agent 响应 ============
+  // 处理 Agent 响应
 
   const handleAgentResponse = useCallback(
     async (messageId: string, response: AgentResponse) => {
@@ -1624,7 +1624,7 @@ export const AraelPanel: React.FC = () => {
     handleAgentResponseRef.current = handleAgentResponse
   }, [handleAgentResponse])
 
-  // ============ 回答问题 ============
+  // 回答问题
 
   const answerQuestion = useCallback(
     async (messageId: string, answer: string) => {
@@ -1724,7 +1724,7 @@ export const AraelPanel: React.FC = () => {
     [handleSend],
   )
 
-  // ============ 渲染 ============
+  // 渲染
 
   const showFavorites =
     visibility === 'visible' &&

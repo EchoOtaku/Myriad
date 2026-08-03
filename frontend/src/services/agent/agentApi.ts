@@ -468,7 +468,7 @@ class AgentService {
     throw new Error(`Task ${taskId} timed out after ${timeoutMs}ms`)
   }
 
-  // ============ 任务预设 API ============
+  // 任务预设 API
 
   /**
    * 获取任务预设列表
@@ -543,7 +543,7 @@ class AgentService {
     )
   }
 
-  // ============ 队列管理 (Phase 1A) ============
+  // 队列管理 (Phase 1A)
 
   /**
    * 获取队列状态
@@ -581,7 +581,7 @@ class AgentService {
     })
   }
 
-  // ============ Heartbeat (Phase 4) ============
+  // Heartbeat (Phase 4)
 
   /**
    * 获取 Heartbeat 任务列表
@@ -649,7 +649,7 @@ class AgentService {
     )
   }
 
-  // ============ 执行追踪 ============
+  // 执行追踪
 
   /**
    * 获取执行追踪列表
@@ -660,7 +660,7 @@ class AgentService {
     return apiService.get(`${this.baseUrl}/traces?limit=${limit}`)
   }
 
-  // ============ 记忆 (Phase 3) ============
+  // 记忆 (Phase 3)
 
   /**
    * 获取记忆条目（通过 recall）
@@ -695,7 +695,7 @@ class AgentService {
     )
   }
 
-  // ============ MCP ============
+  // MCP
 
   /** Admin: MCP server connection status (`id`, `healthy`, `tool_count`, `auto_restart`). */
   async getMcpStatus(): Promise<{
@@ -758,7 +758,7 @@ class AgentService {
     }
   }
 
-  // ============ 技能 (Phase 2B) ============
+  // 技能 (Phase 2B)
 
   /**
    * 获取可用技能列表
@@ -783,7 +783,7 @@ class AgentService {
     )
   }
 
-  // ============ 会话管理 ============
+  // 会话管理
 
   /**
    * 创建新会话
@@ -851,7 +851,7 @@ class AgentService {
     )
   }
 
-  // ============ 内部方法 ============
+  // 内部方法
 
   /**
    * 执行 SSE 请求的通用方法

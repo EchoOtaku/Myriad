@@ -226,7 +226,7 @@ export function registerStorageHandlers(
     const [key] = (message.payload as { args: unknown[] }).args || []
     if (!key) return { success: false, error: 'Key is required' }
 
-    // 🔒 安全校验：验证 key 格式
+    // 安全校验：验证 key 格式
     const keyValidation = validateStorageKey(key as string)
     if (!keyValidation.valid) {
       return { success: false, error: `Invalid key: ${keyValidation.reason}` }
@@ -251,13 +251,13 @@ export function registerStorageHandlers(
     const [key, value] = (message.payload as { args: unknown[] }).args || []
     if (!key) return { success: false, error: 'Key is required' }
 
-    // 🔒 安全校验：验证 key 格式
+    // 安全校验：验证 key 格式
     const keyValidation = validateStorageKey(key as string)
     if (!keyValidation.valid) {
       return { success: false, error: `Invalid key: ${keyValidation.reason}` }
     }
 
-    // 🔒 安全校验：清理并检查 value 大小
+    // 安全校验：清理并检查 value 大小
     const sanitizedValue = sanitizeStorageValue(value)
     const valueSize = JSON.stringify(sanitizedValue).length
     if (valueSize > MAX_VALUE_SIZE) {
@@ -293,7 +293,7 @@ export function registerStorageHandlers(
     const [key] = (message.payload as { args: unknown[] }).args || []
     if (!key) return { success: false, error: 'Key is required' }
 
-    // 🔒 安全校验：验证 key 格式
+    // 安全校验：验证 key 格式
     const keyValidation = validateStorageKey(key as string)
     if (!keyValidation.valid) {
       return { success: false, error: `Invalid key: ${keyValidation.reason}` }

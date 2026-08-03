@@ -189,7 +189,7 @@ const TappWidgetPreview = memo(
             return
           }
 
-          // 🎯 使用新的资源加载器获取 Widget 专用资源
+          // 使用新的资源加载器获取 Widget 专用资源
           // ⚡ 优化：使用当前尺寸加载对应的资源
           const widgetSize = config?.size || widget.config.defaultSize || '4x2'
 
@@ -397,14 +397,14 @@ function TappWidgetRuntime({
   // ⚡ 记录上一次的尺寸，用于检测尺寸变化
   const prevSizeRef = useRef(config?.size)
 
-  // 🎯 集成动画调度器的页面可见性感知
+  // 集成动画调度器的页面可见性感知
   // 页面不可见时跳过非必要的状态更新，减少后台 CPU 开销
   const [pageVisible, setPageVisible] = useState(isPageVisible())
   useEffect(() => {
     return onVisibility(setPageVisible)
   }, [])
 
-  // 🎯 视口门控：widget 的 iframe 沙箱仅在进入视口（附近 300px）时挂载，
+  // 视口门控：widget 的 iframe 沙箱仅在进入视口（附近 300px）时挂载，
   // 远离视口则卸载以释放内存。需要后台常驻数据的 Tapp 由 TappBackgroundRunner
   // 用 headless core 保活，数据不丢；纯展示 widget 重新进入视口时重新挂载即可。
   // 默认 true 避免首屏闪烁；observer 首次回调会立即校正离屏项。
@@ -581,7 +581,7 @@ function TappWidgetRuntime({
 
     const loadCode = async () => {
       try {
-        // 🎯 使用新的资源加载器获取 Widget 专用资源
+        // 使用新的资源加载器获取 Widget 专用资源
         const widgetSize = config?.size || widget.config.defaultSize || '4x2'
 
         const resources = await loadWidgetResources(

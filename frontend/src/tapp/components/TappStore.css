@@ -348,9 +348,10 @@
 
 /*
  * Fullscreen page shell only: the floating control strip sits at
- * fixed top-4 left-4 (~1rem + ~2.6rem bar). Push the whole sidebar stack
- * (search + nav + tools) below it; main canvas stays edge-to-edge.
- * Safe-area covers notched devices when immersive.
+ * fixed top-4 left-4 (~1rem + ~2.6rem bar).
+ * - Desktop: pad sidebar (search + nav); main canvas stays edge-to-edge.
+ * - Mobile (sidebar hidden): pad the whole store so chrome/list/detail
+ *   clear the floating exit toolbar + status safe-area.
  */
 .as-store[data-fullscreen='true'] .as-store__sidebar {
   /* top-4 + bar (~2.65rem) + 0.55rem air */
@@ -366,6 +367,17 @@
     4.25rem,
     calc(env(safe-area-inset-top, 0px) + 3.75rem)
   );
+}
+
+/* Narrow surface = mobile chrome (sidebar display:none). */
+@container tapp-store (width <= 859px) {
+  .as-store[data-fullscreen='true'] {
+    padding-top: max(
+      4.25rem,
+      calc(env(safe-area-inset-top, 0px) + 3.75rem)
+    );
+    box-sizing: border-box;
+  }
 }
 
 /*
@@ -1109,7 +1121,8 @@ html.dark .as-store__search-shell:focus-within {
   background: transparent;
   border: 0;
   border-radius: inherit;
-  touch-action: pan-y;
+  /* Allow parent horizontal snap-scroll; pan-y alone steals the gesture. */
+  touch-action: manipulation;
 }
 
 .as-store__feature-hit:focus-visible {
@@ -2432,13 +2445,21 @@ html.dark .as-detail__perm-card--privileged.checkbox-group-card {
   .as-store__feature-card,
   .as-store__feature-card:first-child,
   .as-store__feature-card:nth-child(2) {
-    flex: 0 0 min(82cqw, 19.5rem);
+    /* Fixed rem basis — cqw can reflow mid-gesture if the store shell
+       resizes (nav/chrome), which reads as title text shrinking. */
+    flex: 0 0 min(82%, 19.5rem);
+    min-width: min(82%, 19.5rem);
     min-height: 10.25rem;
     padding: 1rem 1.05rem;
     scroll-snap-align: start;
     border-radius: 1rem;
+    /* pan-x only would block vertical page scroll from the strip. */
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .as-store__feature-card:active {
+    transform: none;
   }
 
   .as-store__feature-card:first-child {
@@ -2705,7 +2726,8 @@ html.dark .as-detail__perm-card--privileged.checkbox-group-card {
   .as-store__feature-card,
   .as-store__feature-card:first-child,
   .as-store__feature-card:nth-child(2) {
-    flex-basis: min(86cqw, 18rem);
+    flex: 0 0 min(86%, 18rem);
+    min-width: min(86%, 18rem);
     min-height: 9.5rem;
     padding: 0.9rem;
   }
@@ -2849,7 +2871,8 @@ html.dark .as-detail__perm-card--privileged.checkbox-group-card {
   .as-store__feature-card,
   .as-store__feature-card:first-child,
   .as-store__feature-card:nth-child(2) {
-    flex-basis: min(90cqw, 16.5rem);
+    flex: 0 0 min(90%, 16.5rem);
+    min-width: min(90%, 16.5rem);
     min-height: 8.75rem;
   }
 
@@ -2887,7 +2910,16 @@ html.dark .as-detail__perm-card--privileged.checkbox-group-card {
     color: var(--as-label);
   }
 
-  .as-store__feature-card:hover {
+  /*
+   * Featured strip scrolls horizontally on phone. :active scale + transform
+   * transition make titles flash-shrink on every finger-down swipe.
+   */
+  .as-store__feature-card {
+    transition: box-shadow 240ms ease;
+  }
+
+  .as-store__feature-card:hover,
+  .as-store__feature-card:active {
     box-shadow:
       0 0.5px 0 rgb(255 255 255 / 25%) inset,
       0 8px 24px rgb(0 0 0 / 12%);

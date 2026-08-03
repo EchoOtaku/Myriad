@@ -15,7 +15,7 @@ export {
   type SandboxCapabilityProfile,
 } from './capabilityProfiles'
 
-// 🎯 资源加载器（分离式 CSS 处理）
+// 资源加载器（分离式 CSS 处理）
 export {
   getResourceLoader,
   loadPageResources,
@@ -51,7 +51,7 @@ export {
   PAGE_CSS,
   PAGE_STATIC_CSS,
   WIDGET_CSS,
-  // 🎯 预计算的组合 CSS
+  // 预计算的组合 CSS
   WIDGET_STATIC_CSS,
 } from './styles'
 

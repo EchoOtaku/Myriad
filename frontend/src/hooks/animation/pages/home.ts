@@ -36,7 +36,7 @@ import { Feature, hasFeature } from '../pageFeatures'
 
 const PAGE_ID = 'home'
 
-// ==================== 页面初始化 ====================
+// 页面初始化
 
 /**
  * 首页调度器初始化
@@ -50,7 +50,7 @@ export function useHomeScheduler(): void {
   }, [])
 }
 
-// ==================== 可见性 Hooks ====================
+// 可见性 Hooks
 
 /**
  * 首页可见性感知 Hook
@@ -118,7 +118,7 @@ export function useHomeVisibilityInterval(
   }, [delay, visible, enabled])
 }
 
-// ==================== Resize Hooks ====================
+// Resize Hooks
 
 /** 获取首页 Resize 管理器 */
 function getResizeManager() {
@@ -212,7 +212,7 @@ export function useHomeResizeObserver(): {
   return { observeHomeResize, unobserveHomeResize }
 }
 
-// ==================== RAF Hooks ====================
+// RAF Hooks
 
 /**
  * 首页 RAF 节流
@@ -252,7 +252,7 @@ export function useHomeRaf<T extends (...args: any[]) => void>(
   return throttled
 }
 
-// ==================== Idle Hooks ====================
+// Idle Hooks
 
 /**
  * 首页空闲任务
@@ -280,7 +280,7 @@ export function useHomeIdle(
   }, deps)
 }
 
-// ==================== 清理 ====================
+// 清理
 
 /**
  * 清理首页资源（路由离开时自动调用）

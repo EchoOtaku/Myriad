@@ -149,6 +149,37 @@ export function getLibraryCanvasViewportBounds(
   }
 }
 
+/**
+ * Stable key for viewport spatial bins. Used to decide when React must remount
+ * virtualized cards; pan within the same bins stays DOM-only for absolute follow.
+ */
+export function getLibraryCanvasViewportBinKey(
+  transform: LibraryCanvasTransform,
+  viewport: LibraryCanvasViewport,
+  binSize: number,
+  overscanPx = 360,
+): string {
+  if (
+    viewport.width <= 0 ||
+    viewport.height <= 0 ||
+    binSize <= 0 ||
+    !Number.isFinite(binSize)
+  ) {
+    return '0'
+  }
+  const bounds = getLibraryCanvasViewportBounds(
+    transform,
+    viewport,
+    overscanPx,
+  )
+  return [
+    Math.floor(bounds.minX / binSize),
+    Math.floor(bounds.maxX / binSize),
+    Math.floor(bounds.minY / binSize),
+    Math.floor(bounds.maxY / binSize),
+  ].join(',')
+}
+
 export function libraryCanvasLayoutIntersects(
   layout: LibraryCanvasLayout,
   bounds: LibraryCanvasBounds,

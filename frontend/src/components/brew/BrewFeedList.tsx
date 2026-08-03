@@ -37,7 +37,7 @@ interface BrewFeedListProps {
   isAuthenticated?: boolean
 }
 
-// ==================== BrewFeedList 主组件 ====================
+// BrewFeedList 主组件
 
 export default function BrewFeedList({
   items,

@@ -860,10 +860,10 @@ const MusicPlaylistView: React.FC<{
     playlistScrollRef,
   } = player
 
-  // 🔧 监听面板动画状态，动画期间简化渲染
+  // 监听面板动画状态，动画期间简化渲染
   const [isPanelAnimating, setIsPanelAnimating] = useState(false)
 
-  // 🔧 监听面板动画事件
+  // 监听面板动画事件
   useEffect(() => {
     const handleAnimationStart = () => setIsPanelAnimating(true)
     const handleAnimationEnd = () => setIsPanelAnimating(false)
@@ -954,7 +954,7 @@ const MusicPlaylistView: React.FC<{
     isPanelAnimating,
   ])
 
-  // 🔧 预计算歌曲 ID 到索引的映射，避免 O(n²) 查找
+  // 预计算歌曲 ID 到索引的映射，避免 O(n²) 查找
   const songIdToIndex = useMemo(() => {
     const map = new Map<string, number>()
     playlist.forEach((song, index) => {
@@ -984,7 +984,7 @@ const MusicPlaylistView: React.FC<{
       })
     : playlist
 
-  // 🔧 动画期间只显示简化视图（当前歌曲附近的几首）
+  // 动画期间只显示简化视图（当前歌曲附近的几首）
   const visiblePlaylist =
     isPanelAnimating && displayPlaylist.length > 20
       ? displayPlaylist.slice(
@@ -1159,7 +1159,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   songIdRef.current = songId
   lyricsLenRef.current = lyricsLen
 
-  // 🔧 视图切换时触发父容器重测高度（仅面板展开时有意义）
+  // 视图切换时触发父容器重测高度（仅面板展开时有意义）
   useEffect(() => {
     if (!panelVisible) return
     // 延迟触发，等待 DOM 更新完成
@@ -1170,7 +1170,7 @@ export const MusicPlayer: React.FC<MusicPlayerProps> = ({
   }, [musicPlayerView, panelVisible])
 
   // 歌词视图自动返回：无词时延迟回 info。
-  // ⚠️ 勿依赖整个 player 对象（每帧新引用会重置 timer，永远不回退）
+  // 勿依赖整个 player 对象（每帧新引用会重置 timer，永远不回退）
   useEffect(() => {
     if (!panelVisible) return
     if (musicPlayerView !== 'lyrics') return

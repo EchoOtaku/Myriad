@@ -54,15 +54,15 @@
  * ```
  */
 
-// ==================== 页面级调度器 ====================
+// 页面级调度器
 // 每个页面独立的调度器 Hooks，统一通过 barrel 导出
 
 // Home
-// ==================== 页面功能配置 ====================
+// 页面功能配置
 // 便捷函数
 import { coordinator } from './coordinator'
 
-// ==================== 原子化 Hooks（按需使用）====================
+// 原子化 Hooks（按需使用）
 // 这些 Hooks 基于 core.ts，细粒度且 tree-shakeable
 export {
   // 动画帧
@@ -89,7 +89,7 @@ export { coordinator } from './coordinator'
 
 export { default as AnimationCoordinator } from './coordinator'
 
-// ==================== 原子化核心（轻量级，惰性初始化）====================
+// 原子化核心（轻量级，惰性初始化）
 // 这些 API 来自 core.ts，具有零开销初始化特性
 export {
   // DOM 批量操作
@@ -198,7 +198,7 @@ export {
   useTappVisibility,
 } from './pages/tapp'
 
-// ==================== 类型定义 ====================
+// 类型定义
 export type {
   AnimationConfig,
   AnimationListener,
@@ -213,7 +213,7 @@ export {
   ScheduleStrategy,
 } from './types'
 
-// 🔧 新增：生命周期管理 Hook
+// 新增：生命周期管理 Hook
 export {
   type AnimationLifecycleOptions,
   AnimationLifecyclePhase,
@@ -229,12 +229,12 @@ export { usePageReady } from './usePageReady'
 // 导出 Hooks
 export { pageTransitionManager, usePageTransition } from './usePageTransition'
 
-// 🔧 新增：路由调度器整合 Hook
+// 新增：路由调度器整合 Hook
 export { usePageScheduler, useRouteScheduler } from './useRouteScheduler'
 
 export { useStaggerAnimation } from './useStaggerAnimation'
 
-// 🔧 新增：可见性感知定时器 Hook
+// 新增：可见性感知定时器 Hook
 export {
   usePageVisible,
   useVisibilityInterval,
@@ -258,7 +258,7 @@ export function configureAnimationCoordinator(
   coordinator.updateConfig(config)
 }
 
-// ==================== 帧率管理 API ====================
+// 帧率管理 API
 
 /**
  * 启动 FPS 监控
@@ -311,7 +311,7 @@ export function getDetectedRefreshRate(): number {
   return coordinator.getDetectedRefreshRate()
 }
 
-// ==================== DOM 批量操作 API ====================
+// DOM 批量操作 API
 
 /**
  * 批量 DOM 读取
@@ -360,7 +360,7 @@ export function shouldYield(): boolean {
   return coordinator.shouldYield()
 }
 
-// ==================== ResizeObserver 管理 API ====================
+// ResizeObserver 管理 API
 
 /**
  * 观察元素尺寸变化
@@ -419,7 +419,7 @@ export function getCachedSize(
   return coordinator.getCachedSize(element)
 }
 
-// ==================== IntersectionObserver 管理 API ====================
+// IntersectionObserver 管理 API
 
 /**
  * 观察元素可见性变化
@@ -479,7 +479,7 @@ export function getIntersectionObserverCount(): number {
   return coordinator.getIntersectionObserverCount()
 }
 
-// ==================== 页面可见性订阅 API ====================
+// 页面可见性订阅 API
 
 /**
  * 订阅页面可见性变化
@@ -517,7 +517,7 @@ export function getPageVisibility(): boolean {
   return coordinator.getPageVisibility()
 }
 
-// ==================== 空闲任务调度 API ====================
+// 空闲任务调度 API
 
 /**
  * 调度空闲任务

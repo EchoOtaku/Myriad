@@ -96,7 +96,7 @@ export const federationApi = {
     )
   },
 
-  // ==================== 关注管理 ====================
+  // 关注管理
 
   /** 关注远程用户 */
   follow(target: string, runtimeGrant?: string): Promise<FollowResponse> {
@@ -135,7 +135,7 @@ export const federationApi = {
     )
   },
 
-  // ==================== 时间线 ====================
+  // 时间线
 
   /** 获取联邦时间线 */
   getTimeline(runtimeGrant?: string): Promise<TimelineResponse> {
@@ -145,7 +145,7 @@ export const federationApi = {
     )
   },
 
-  // ==================== 内容发布 ====================
+  // 内容发布
 
   /** 发布内容到联邦网络 */
   publish(
@@ -333,7 +333,7 @@ export const federationApi = {
     )
   },
 
-  // ==================== Channel 通信 ====================
+  // Channel 通信
 
   /** 获取 Channel 列表 */
   getChannels(runtimeGrant?: string): Promise<ChannelListResponse> {
@@ -466,7 +466,7 @@ export const federationApi = {
     )
   },
 
-  // ==================== Room 多方通信 ====================
+  // Room 多方通信
 
   /** 获取 Room 列表 */
   getRooms(runtimeGrant?: string): Promise<RoomListResponse> {
@@ -692,7 +692,7 @@ export const federationApi = {
     )
   },
 
-  // ==================== Ring ====================
+  // Ring
 
   /** 获取 Ring 列表 */
   getRings(runtimeGrant?: string): Promise<RingListResponse> {
@@ -786,7 +786,7 @@ export const federationApi = {
     }>(`${PREFIX}/rings/${ringId}/sync`, {}, attributionOptions(runtimeGrant))
   },
 
-  // ==================== Trust 策略管理 ====================
+  // Trust 策略管理
 
   /** 获取信任策略 */
   getTrustPolicy(runtimeGrant?: string): Promise<TrustPolicyResponse> {
@@ -893,7 +893,7 @@ export const federationApi = {
     )
   },
 
-  // ==================== 文件传输 ====================
+  // 文件传输
 
   /** 发起文件传输（私信 Channel） */
   initiateTransfer(

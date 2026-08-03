@@ -178,7 +178,7 @@ function summarizeInstruction(text: string, max = 48): string {
   return `${cleaned.slice(0, max - 1)}…`
 }
 
-/* ---------- 通知卡片 ---------- */
+/* 通知卡片 */
 
 function NotificationCard({
   tone,
@@ -236,7 +236,7 @@ function NotificationCard({
   )
 }
 
-/* ---------- 控制岛 ---------- */
+/* 控制岛 */
 
 function formatElapsedClock(totalSeconds: number): string {
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`

@@ -28,9 +28,7 @@ import { WidgetShell } from './shared/WidgetShell'
 import { WidgetSkeleton } from './shared/WidgetSkeleton'
 import './GamePresenceWidget.css'
 
-// ---------------------------------------------------------------------------
 // Types
-// ---------------------------------------------------------------------------
 
 /** 历史上支持过 xbox / psn；现在它们走独立报告卡，这里只剩米哈游 */
 export type GamePlatformId = 'hoyolab'
@@ -95,9 +93,7 @@ interface GameTheme {
   darkColor: string
 }
 
-// ---------------------------------------------------------------------------
 // Constants — brand-aligned palettes
-// ---------------------------------------------------------------------------
 
 /** 米哈游按子游戏细分（同一平台不同气质） */
 const HOYO_GAME_THEMES: Record<HoyoGame, GameTheme> = {
@@ -185,9 +181,7 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`
 }
 
-// ---------------------------------------------------------------------------
 // Settings modal (global singleton, same pattern as SocialNetworkWidget)
-// ---------------------------------------------------------------------------
 
 interface SettingsState {
   isOpen: boolean
@@ -424,9 +418,7 @@ const GamePresenceSettingsModal = memo(() => {
 
 GamePresenceSettingsModal.displayName = 'GamePresenceSettingsModal'
 
-// ---------------------------------------------------------------------------
 // Data fetch
-// ---------------------------------------------------------------------------
 
 const dataCache = new Map<string, { data: GamePresenceData, at: number }>()
 /** 展柜数据变化以天计，6 小时刷新一次足够 */
@@ -476,9 +468,7 @@ async function fetchGamePresence(
   return p
 }
 
-// ---------------------------------------------------------------------------
 // Widget
-// ---------------------------------------------------------------------------
 
 function resolveConfig(config: WidgetComponentProps['config']): {
   platformId: GamePlatformId
@@ -699,7 +689,7 @@ const GamePresenceWidget = memo(
     const hasAccount = Boolean(accountId)
     const meta = GAME_META[game]
 
-    // ---- 4x2 content: 顶部数值 → 角色横条 → 底部 App 图标 + 身份信息 ----
+    // 4x2 content: 顶部数值 → 角色横条 → 底部 App 图标 + 身份信息
     const content = useMemo(() => {
       const appIcon = (size: number) => (
         <img

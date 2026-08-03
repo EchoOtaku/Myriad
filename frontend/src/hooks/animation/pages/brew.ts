@@ -54,7 +54,7 @@ const STAGGER_CONFIG = {
 // 页面级别的动画状态追踪，避免卡片重复触发动画
 let pageAnimationBatchId = 0
 
-// ==================== 页面初始化 ====================
+// 页面初始化
 
 /**
  * Brew 页面调度器初始化 Hook
@@ -71,7 +71,7 @@ export function useBrewScheduler(): void {
   }, [])
 }
 
-// ==================== 动画配置 Hook ====================
+// 动画配置 Hook
 
 // 缓存的动画配置，避免每次调用都创建新对象
 const ANIM_CONFIG_CACHE = new Map<
@@ -118,7 +118,7 @@ export function useBrewAnimationConfig(): AnimationConfig & {
   }, [baseConfig])
 }
 
-// ==================== Stagger Animation Hook ====================
+// Stagger Animation Hook
 
 interface BrewStaggerResult {
   /** 是否可以开始动画 */
@@ -262,7 +262,7 @@ export function useBrewCardStagger(
   }
 }
 
-// ==================== 导出动画预设 ====================
+// 导出动画预设
 
 /**
  * Brew 卡片动画预设
@@ -323,7 +323,7 @@ export function getBrewTransition(
   }
 }
 
-// ==================== 页面清理 ====================
+// 页面清理
 
 /**
  * 清理 Brew 页面资源

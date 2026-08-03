@@ -90,7 +90,7 @@ export function MusicPlayerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // 监听音乐播放器状态变化事件（向后兼容）
-  // ⚠️ 必须按字段合并：detail 可能是 partial（如 embed 只带 currentSong），
+  // 必须按字段合并：detail 可能是 partial（如 embed 只带 currentSong），
   // 整表 setState 会把 lyrics/isPlaying 等冲成默认空值。
   useEffect(() => {
     const handleMusicStateChange = (e: Event) => {
@@ -206,10 +206,8 @@ export function useMusicPlayerControl() {
   return context
 }
 
-// ============================================
-// 🔧 性能优化：使用 useSyncExternalStore 实现外部状态订阅
+// 使用 useSyncExternalStore 实现外部状态订阅
 // 避免不必要的重渲染，只在实际使用的状态变化时更新组件
-// ============================================
 
 /** 全局音乐播放器状态存储 */
 let globalMusicState: MusicPlayerState = {
@@ -362,7 +360,7 @@ if (typeof window !== 'undefined') {
 
 // 降级方案：基于 useSyncExternalStore 的实现（高性能版本）
 function useFallbackMusicPlayerControl() {
-  // 🔧 使用 useSyncExternalStore 订阅外部状态
+  // 使用 useSyncExternalStore 订阅外部状态
   // 这比 useState + useEffect 更高效，因为它：
   // 1. 避免了初始化时的额外渲染
   // 2. 自动处理并发模式
@@ -389,7 +387,7 @@ function useFallbackMusicPlayerControl() {
     updateGlobalMusicState(newState)
   }, [])
 
-  // 🔧 使用 useMemo 避免每次都创建新对象
+  // 使用 useMemo 避免每次都创建新对象
   return useMemo(
     () => ({
       ...state,
@@ -402,10 +400,8 @@ function useFallbackMusicPlayerControl() {
   )
 }
 
-// ============================================
 // 窄订阅：仅 lyrics + currentLyricIndex（资料库卡片歌词等）
 // 避免 playlist / isPlaying 等无关字段触发重渲染
-// ============================================
 
 interface MusicLyricsSlice {
   lyrics: LyricLine[]

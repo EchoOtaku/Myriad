@@ -7,7 +7,7 @@
  * - 自动启用 GPU 合成
  */
 
-/* ========== 基础样式 ========== */
+/* 基础样式 */
 
 .glow-orb {
   position: absolute;
@@ -18,7 +18,7 @@
   background: var(--glow-color); /* 组件经内联变量下发身份色 */
 }
 
-/* ========== 主题光晕模式（html[data-glow] 驱动，见 useWidgetTheme） ========== */
+/* 主题光晕模式（html[data-glow] 驱动，见 useWidgetTheme） */
 
 /* 统一主题色：覆盖各组件身份色 */
 :root[data-glow='primary'] .glow-orb {
@@ -30,7 +30,7 @@
   display: none;
 }
 
-/* ========== 位置变体 ========== */
+/* 位置变体 */
 
 .glow-right {
   right: -2rem;
@@ -42,7 +42,7 @@
   bottom: -1.5rem;
 }
 
-/* ========== 尺寸变体 ========== */
+/* 尺寸变体 */
 
 .glow-size-sm {
   width: 6rem;
@@ -74,7 +74,7 @@
   height: 10rem;
 }
 
-/* ========== 模糊效果 ========== */
+/* 模糊效果 */
 
 .glow-blur-sm {
   filter: blur(24px); /* blur-xl */
@@ -84,7 +84,7 @@
   filter: blur(64px); /* blur-3xl */
 }
 
-/* ========== 静态状态 ========== */
+/* 静态状态 */
 
 .glow-static {
   opacity: var(--glow-opacity, 0.1);
@@ -95,7 +95,7 @@
   opacity: var(--glow-opacity, 0.06);
 }
 
-/* ========== 动画状态 ========== */
+/* 动画状态 */
 
 .glow-animate-primary {
   animation: glow-pulse-primary 3s ease-in-out forwards; /* 单次播放，保持最终状态 */
@@ -108,7 +108,7 @@
   will-change: opacity, transform;
 }
 
-/* ========== 关键帧动画（单次淡入） ========== */
+/* 关键帧动画（单次淡入） */
 
 @keyframes glow-pulse-primary {
   0% {
@@ -134,7 +134,7 @@
   }
 }
 
-/* ========== 性能模式降级 ========== */
+/* 性能模式降级 */
 
 /* 减少动效偏好 */
 @media (prefers-reduced-motion: reduce) {

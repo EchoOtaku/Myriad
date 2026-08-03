@@ -94,7 +94,7 @@ export function mapPlaygroundGenerateError(
 
   const lower = raw.toLowerCase()
 
-  // --- Model / agent failures first (before timeout) ---
+  // Model / agent failures first (before timeout)
   // Backend 502 exact text is "Pro AI agent generation failed"; never treat as timeout.
   if (
     /pro ai agent generation failed/i.test(raw) ||
@@ -112,7 +112,7 @@ export function mapPlaygroundGenerateError(
     return copy.playgroundAiNotConfiguredHint
   }
 
-  // --- Timeouts (client hard timeout or explicit timeout wording) ---
+  // Timeouts (client hard timeout or explicit timeout wording)
   const isTimeout =
     raw === 'TimeoutError' ||
     lower === 'timeouterror' ||
@@ -133,7 +133,7 @@ export function mapPlaygroundGenerateError(
     return copy.playgroundTimeoutHint
   }
 
-  // --- Auth / admin (playground is admin-only) ---
+  // Auth / admin (playground is admin-only)
   if (
     /\bHTTP\s*401\b/i.test(raw) ||
     /please login/i.test(raw) ||
@@ -157,12 +157,12 @@ export function mapPlaygroundGenerateError(
     return copy.playgroundAuthRequiredHint
   }
 
-  // --- Rate limit ---
+  // Rate limit
   if (/\bHTTP\s*429\b/i.test(raw) || /rate\s*limit/i.test(raw) || /too many requests/i.test(raw)) {
     return copy.playgroundRateLimitHint
   }
 
-  // --- Payload / history too large ---
+  // Payload / history too large
   if (
     /\bHTTP\s*413\b/i.test(raw) ||
     /payload too large/i.test(raw) ||
@@ -180,7 +180,7 @@ export function mapPlaygroundGenerateError(
     )
   }
 
-  // --- Validation exhausted (422) ---
+  // Validation exhausted (422)
   if (
     /did not pass validation/i.test(raw) ||
     (/validation/i.test(raw) && /after\s+\d+\s+attempts/i.test(raw)) ||
@@ -198,7 +198,7 @@ export function mapPlaygroundGenerateError(
     )
   }
 
-  // --- Agent busy / shutting down ---
+  // Agent busy / shutting down
   if (
     /agent is shutting down/i.test(raw) ||
     /playground agent is shutting down/i.test(raw)
@@ -206,7 +206,7 @@ export function mapPlaygroundGenerateError(
     return copy.playgroundAgentBusyHint
   }
 
-  // --- Stream incomplete ---
+  // Stream incomplete
   if (
     /stream ended without a final response/i.test(raw) ||
     /stream body unavailable/i.test(raw) ||
@@ -215,7 +215,7 @@ export function mapPlaygroundGenerateError(
     return copy.playgroundStreamIncompleteHint
   }
 
-  // --- Network / offline ---
+  // Network / offline
   if (
     /failed to fetch/i.test(raw) ||
     /networkerror/i.test(raw) ||
@@ -226,7 +226,7 @@ export function mapPlaygroundGenerateError(
     return copy.playgroundNetworkHint
   }
 
-  // --- Bad request with concrete server message ---
+  // Bad request with concrete server message
   if (
     /\bHTTP\s*400\b/i.test(raw) ||
     /instruction must contain/i.test(raw) ||
@@ -242,7 +242,7 @@ export function mapPlaygroundGenerateError(
     })
   }
 
-  // --- Generic 5xx / gateway ---
+  // Generic 5xx / gateway
   const isServer =
     /\bHTTP\s*50[0234]\b/i.test(raw) ||
     /bad gateway/i.test(raw) ||

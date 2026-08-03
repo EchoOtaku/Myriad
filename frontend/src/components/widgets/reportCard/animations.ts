@@ -1,6 +1,6 @@
 /** Static animation constants shared by platform faces. */
 
-// 🔧 性能优化：预生成热力图网格索引，避免在渲染时调用 Array.from
+// 预生成热力图网格索引，避免在渲染时调用 Array.from
 export const HEATMAP_WEEKS = Array.from({ length: 12 }, (_, i) => i)
 /** GitHub-style week columns: Sun–Sat (7 rows). */
 export const HEATMAP_DAYS = Array.from({ length: 7 }, (_, i) => i)

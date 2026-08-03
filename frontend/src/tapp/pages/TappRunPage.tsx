@@ -296,7 +296,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
     navigate(`/tapp/detail/${tappId}`)
   }, [navigate, tappId])
 
-  // 🎯 稳定的 safeInsets 对象，避免每次渲染都创建新对象
+  // 稳定的 safeInsets 对象，避免每次渲染都创建新对象
   const safeInsets = useMemo(() => {
     return isFullscreen
       ? { top: 72, right: 16, left: 16, bottom: 0 }
@@ -325,7 +325,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
     }
   }, [isMobile])
 
-  // 🎬 动画配置 - 基于性能级别
+  // 动画配置 - 基于性能级别
   const transitions = useMemo(() => {
     const scale = animConfig.durationScale
     return {
@@ -352,7 +352,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
     }
   }, [animConfig.spring, animConfig.durationScale])
 
-  // 🎯 内容状态
+  // 内容状态
   const isReady = !loading && !error && !!tapp && !!code
   const hasError = !loading && (error || !tapp || !code)
 
@@ -364,7 +364,7 @@ function TappRunPageStandard({ tappId, isMobile }: TappRunPageStandardProps) {
     ? resolveManifestText(tapp.manifest, locale).name
     : ''
 
-  // 🎯 统一渲染：始终显示相同的页面结构，只是内容不同
+  // 统一渲染：始终显示相同的页面结构，只是内容不同
   // 页面级动画由 App.tsx 的 FixedPageWrapper 提供（纯 opacity，不用 transform）
   //
   // Host chrome z-ladder（勿把 TApp 抬过 GCP）:

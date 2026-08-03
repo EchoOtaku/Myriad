@@ -22,7 +22,7 @@ import {
 import { useLibraryItemRotation } from '../hooks'
 import { getBilibiliProxyUrl } from '../media'
 
-// ==================== B站组件（完整版）====================
+// B站组件（完整版）
 export const DanmakuWidget = memo(
   ({
     data,
@@ -48,7 +48,7 @@ export const DanmakuWidget = memo(
     })
 
     // 🆕 低性能模式：限制弹幕数量不超过3条
-    // 🔧 用 useMemo 锁定：仅在 loop 状态变化时重算随机，避免每次渲染重新洗牌弹幕
+    // 用 useMemo 锁定：仅在 loop 状态变化时重算随机，避免每次渲染重新洗牌弹幕
     const maxDanmakuCount = useMemo(
       () =>
         allowLoop
@@ -62,7 +62,7 @@ export const DanmakuWidget = memo(
     )
 
     const animations = useMemo(() => {
-      // 🔧 使用预生成的 LANES_ARRAY 进行洗牌
+      // 使用预生成的 LANES_ARRAY 进行洗牌
       const availableLanes = [...LANES_ARRAY]
       for (let i = availableLanes.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))

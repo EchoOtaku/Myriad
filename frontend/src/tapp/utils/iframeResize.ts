@@ -482,12 +482,12 @@ export const IFRAME_RESIZE_CSS = `
 /* CSS 层叠定义：确保正确的样式优先级 */
 @layer tapp-reset, tapp-base, tapp-utilities, tapp-responsive;
 
-/* ==================== 重置层 ==================== */
+/* 重置层 */
 @layer tapp-reset {
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 }
 
-/* ==================== 基础层 ==================== */
+/* 基础层 */
 @layer tapp-base {
   :root {
     --tapp-container-width: 100vw;
@@ -591,7 +591,7 @@ export const IFRAME_RESIZE_CSS = `
   }
 }
 
-/* ==================== 工具类层 ==================== */
+/* 工具类层 */
 @layer tapp-utilities {
   /* 文本 */
   .tapp-text-xs { font-size: calc(.75rem * var(--tapp-font-scale)); }
@@ -701,7 +701,7 @@ export const IFRAME_RESIZE_CSS = `
   }
 }
 
-/* ==================== 响应式层 ==================== */
+/* 响应式层 */
 @layer tapp-responsive {
   /* 紧凑模式 */
   .tapp-compact .tapp-hide-compact { display: none; }

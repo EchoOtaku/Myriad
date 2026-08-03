@@ -4,7 +4,7 @@
  * 与 AraelPanel.tsx 源文件保持一致
  */
 
-// ============ 动画常量（与源文件一致）============
+// 动画常量（与源文件一致）
 
 export const SPRING_SNAPPY = {
   type: 'spring',
@@ -20,12 +20,12 @@ export const TRANSITION_QUICK = { duration: 0.12 } as const
 export const TRANSITION_NORMAL = { duration: 0.15 } as const
 export const TRANSITION_SLOW = { duration: 0.25, ease: 'easeOut' } as const
 
-// ============ 常量 ============
+// 常量
 
 /** 长按触发时间 (ms) */
 export const LONG_PRESS_DURATION = 500
 
-// ============ 类型定义（与源文件一致）============
+// 类型定义（与源文件一致）
 
 /** 面板可见性状态 */
 export type PanelVisibility = 'hidden' | 'visible'
@@ -132,7 +132,7 @@ export interface DataDisplayHint {
   [key: string]: unknown
 }
 
-// ============ 对话系统类型 ============
+// 对话系统类型
 
 /** 聊天消息 — 核心状态单元 */
 export interface ChatMessage {

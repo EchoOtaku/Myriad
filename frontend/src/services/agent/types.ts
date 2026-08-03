@@ -4,7 +4,7 @@
  * AI 驱动的自然语言任务编排系统类型
  */
 
-// ============ 处理上下文 ============
+// 处理上下文
 
 /** 处理上下文 */
 export interface ProcessContext {
@@ -38,7 +38,7 @@ export interface ClarifyRequest {
   context?: ProcessContext
 }
 
-// ============ 任务相关 ============
+// 任务相关
 
 /** 任务状态 */
 export type TaskStatus =
@@ -83,7 +83,7 @@ export interface TaskDetail {
   runId?: string
 }
 
-// ============ 澄清相关 ============
+// 澄清相关
 
 /** 澄清类型 */
 export type ClarificationType =
@@ -98,7 +98,7 @@ export interface ClarificationPoint {
   default?: string
 }
 
-// ============ 响应相关 ============
+// 响应相关
 
 /** 响应类型 */
 export type AgentResponseType =
@@ -143,7 +143,7 @@ export interface ConfirmationInfo {
   pendingSteps: ConfirmationStep[]
 }
 
-// ============ SSE 进度事件 ============
+// SSE 进度事件
 
 /** 后端已接管运行；断线后使用 runId 重新订阅，不重复创建任务。 */
 export interface RunStartedEvent {
@@ -351,7 +351,7 @@ export type ProgressEvent =
 /** 进度回调函数 */
 export type ProgressCallback = (event: ProgressEvent) => void
 
-// ============ 数据展示 ============
+// 数据展示
 
 /** 列定义 */
 export interface ColumnDef {
@@ -376,7 +376,7 @@ export type DataDisplayHint =
   | { type: 'timeline'; timeField: string; contentField: string }
   | { type: 'raw' }
 
-// ============ 前端动作 ============
+// 前端动作
 
 /** 前端动作类型 */
 export type FrontendActionType =
@@ -481,7 +481,7 @@ export interface FrontendAction {
   criteria?: string
 }
 
-// ============ 能力定义 ============
+// 能力定义
 
 /** 能力定义 */
 export interface Capability {
@@ -493,7 +493,7 @@ export interface Capability {
   requiresAi: boolean
 }
 
-// ============ 任务预设 ============
+// 任务预设
 
 /** 预设类型 */
 export type PresetType = 'favorite' | 'history'
@@ -534,7 +534,7 @@ export interface CreatePresetRequest {
   conversationData?: ConversationMessage[]
 }
 
-// ============ 会话相关 ============
+// 会话相关
 
 /** 对话消息（存储在 TaskPreset 中） */
 export interface ConversationMessage {
@@ -564,7 +564,7 @@ export interface SessionMessage {
   createdAt: string
 }
 
-// ============ 队列状态 (Phase 1A) ============
+// 队列状态 (Phase 1A)
 
 /** 队列状态 */
 export interface QueueStatus {
@@ -575,7 +575,7 @@ export interface QueueStatus {
   waiting?: number
 }
 
-// ============ Heartbeat (Phase 4) ============
+// Heartbeat (Phase 4)
 
 /** Heartbeat 定时任务 */
 export interface HeartbeatTask {
@@ -588,7 +588,7 @@ export interface HeartbeatTask {
   lastResult?: string
 }
 
-// ============ 执行追踪 ============
+// 执行追踪
 
 /** 步骤追踪详情 */
 export interface StepTrace {
@@ -625,7 +625,7 @@ export interface ExecutionTrace {
   }
 }
 
-// ============ 记忆 (Phase 3) ============
+// 记忆 (Phase 3)
 
 /** 记忆条目 */
 export interface MemoryEntry {
@@ -649,7 +649,7 @@ export interface MemoryEntry {
   relatedCapabilities?: string[]
 }
 
-// ============ 技能 (Phase 2B) ============
+// 技能 (Phase 2B)
 
 /** 技能信息 */
 export interface SkillInfo {
@@ -663,7 +663,7 @@ export interface SkillInfo {
   tierHint?: 'pro' | 'standard'
 }
 
-// ============ 中断/转向 (Phase 1A) ============
+// 中断/转向 (Phase 1A)
 
 /** 中断会话请求 */
 export interface InterruptRequest {
@@ -675,7 +675,7 @@ export interface SteerRequest {
   instruction: string
 }
 
-// ============ 多 Agent (Phase 6) ============
+// 多 Agent (Phase 6)
 
 /** Agent 配置信息 */
 export interface AgentProfile {

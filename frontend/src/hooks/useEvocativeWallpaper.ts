@@ -23,14 +23,14 @@ import { useEffect, useRef } from 'react'
 import { effectiveWallpaperBlur } from '../utils/wallpaperState'
 import { batchWrite, isPageVisible, onVisibility } from './animation/core'
 
-// ==================== 共享配置常量 ====================
+// 共享配置常量
 const SMOOTH = 0.08 // 基础平滑因子
 const SMOOTH_RETURN = 0.04 // 归正时使用更慢的速度
 const MAX_DELTA = 100 // 最大时间间隔
 const THROTTLE_MS = 50 // 鼠标事件节流
 const THRESHOLD = 0.05 // 静止检测阈值
 
-// ==================== 微动配置 ====================
+// 微动配置
 const PARALLAX_SCALE = 1.02
 const PARALLAX_MAX_OFFSET = 8
 const GYRO_SENS = 0.5
@@ -71,12 +71,12 @@ const STATIC_TF_PREFIX = `scale(${PARALLAX_SCALE}) translate3d(`
 const STATIC_TF_SUFFIX = ',0)'
 const IDLE_TF = `scale(${PARALLAX_SCALE}) translate3d(0,0,0)`
 
-// ==================== 动态模糊配置 ====================
+// 动态模糊配置
 const UNBLUR_ZONE = 0.4 // 上方 40% 为解除模糊区域
 const BLUR_PREFIX = 'blur('
 const BLUR_SUFFIX = 'px)'
 
-// ==================== 涟漪配置 ====================
+// 涟漪配置
 const MAX_RIPPLES = 3
 const RIPPLE_DURATION = 2000
 const RIPPLE_SPEED = 400
@@ -113,7 +113,7 @@ function fastExp(x: number): number {
   return EXP_TABLE[((absX / EXP_TABLE_MAX) * EXP_TABLE_SIZE) | 0]
 }
 
-// ==================== 类型定义 ====================
+// 类型定义
 export interface ParallaxOptions {
   enabled?: boolean
   enableGyroscope?: boolean
@@ -188,7 +188,7 @@ interface EvocativeState {
   rippleIsFadingOut: boolean
 }
 
-// ==================== 工具函数 ====================
+// 工具函数
 
 function buildTransform(cx: number, cy: number): string {
   const rx = ((cx * 10 + 0.5) | 0) / 10
@@ -449,7 +449,7 @@ function applyRippleDistortion(
   return { hasActive: hasActiveRipple, destData: destImageData }
 }
 
-// ==================== 主 Hook ====================
+// 主 Hook
 
 /**
  * Evocative 壁纸动效 Hook
@@ -651,7 +651,7 @@ export function useEvocativeWallpaper(
       })
     }
 
-    // ==================== 涟漪动画循环 ====================
+    // 涟漪动画循环
     const rippleAnimationLoop = (now: number) => {
       if (!s.active || !s.rippleCanvas || !s.rippleCtx || !s.sourceImageData)
         return
@@ -781,7 +781,7 @@ export function useEvocativeWallpaper(
       }
     }
 
-    // ==================== 统一动画循环 ====================
+    // 统一动画循环
     const tick = (t: number) => {
       if (!s.active) return
       if (!s.pageVisible) {
@@ -798,7 +798,7 @@ export function useEvocativeWallpaper(
 
         let needsContinue = false
 
-        // ========== 微动更新 ==========
+        // 微动更新
         if (enableParallax && !s.parallaxIdle) {
           const dx = (s.parallaxTx - s.parallaxCx) * factor
           const dy = (s.parallaxTy - s.parallaxCy) * factor
@@ -831,7 +831,7 @@ export function useEvocativeWallpaper(
           }
         }
 
-        // ========== 模糊更新 ==========
+        // 模糊更新
         if (enableDynamicBlur && !s.blurIdle) {
           const diff = s.blurTargetBlur - s.blurCurrentBlur
           const diffAbs = diff < 0 ? -diff : diff
@@ -893,7 +893,7 @@ export function useEvocativeWallpaper(
       }
     }
 
-    // ==================== 页面可见性 ====================
+    // 页面可见性
     const unsubscribeVisibility = onVisibility((visible) => {
       s.pageVisible = visible
       if (visible && s.active) {
@@ -907,7 +907,7 @@ export function useEvocativeWallpaper(
       }
     })
 
-    // ==================== 鼠标事件 ====================
+    // 鼠标事件
     let lastMouseTime = 0
     const onMouseMove = (e: MouseEvent) => {
       if (!s.pageVisible || !interactionReady) return
@@ -953,7 +953,7 @@ export function useEvocativeWallpaper(
       wake()
     }
 
-    // ==================== 点击涟漪 ====================
+    // 点击涟漪
     const onClick = (e: MouseEvent) => {
       if (
         !enableRipple ||
@@ -997,7 +997,7 @@ export function useEvocativeWallpaper(
       startRipple(e.clientX, e.clientY)
     }
 
-    // ==================== 陀螺仪 ====================
+    // 陀螺仪
     let lastGyroTime = 0
     const onGyro = (e: DeviceOrientationEvent) => {
       if (!interactionReady) return
@@ -1017,7 +1017,7 @@ export function useEvocativeWallpaper(
       wake()
     }
 
-    // ==================== 事件绑定 ====================
+    // 事件绑定
     const isMobileOnly = window.matchMedia(
       '(hover: none) and (pointer: coarse)',
     ).matches
@@ -1084,7 +1084,7 @@ export function useEvocativeWallpaper(
       }
     }
 
-    // ==================== 清理 ====================
+    // 清理
     return () => {
       s.active = false
       if (s.raf) cancelAnimationFrame(s.raf)

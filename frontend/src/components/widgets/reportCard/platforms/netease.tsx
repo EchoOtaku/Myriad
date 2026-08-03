@@ -6,7 +6,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { useLoopAnimation } from '../../../../hooks/animation'
 
-// ==================== Netease组件（完整版）====================
+// Netease组件（完整版）
 export const MusicStatsWidget = memo(
   ({
     data,

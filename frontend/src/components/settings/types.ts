@@ -4,9 +4,7 @@
 
 import type { CSSProperties, ReactNode } from 'react'
 
-// ==========================================
 // 基础类型
-// ==========================================
 
 /** 设置项类型枚举 */
 export type SettingType =
@@ -36,9 +34,7 @@ export interface SettingOption<T = string> {
   disabled?: boolean
 }
 
-// ==========================================
 // 设置项配置
-// ==========================================
 
 /** 基础设置项配置 */
 export interface BaseSettingItemConfig {
@@ -69,7 +65,6 @@ export interface BaseSettingItemConfig {
   hint?: string
   /** 是否必填 */
   required?: boolean
-  /** 是否禁用 */
   disabled?: boolean
   /** 加载状态 */
   loading?: boolean
@@ -282,9 +277,7 @@ export type SettingItemConfig =
   | ButtonSettingConfig
   | CustomSettingConfig
 
-// ==========================================
 // 分组与区块
-// ==========================================
 
 /** 子分类标题行右侧开关（模块启用等） */
 export interface SettingGroupSwitchConfig {
@@ -292,7 +285,6 @@ export interface SettingGroupSwitchConfig {
   checked: boolean
   /** 开关变化 */
   onChange: (checked: boolean) => void
-  /** 是否禁用 */
   disabled?: boolean
   /** 加载中（等同禁用交互） */
   loading?: boolean
@@ -351,7 +343,6 @@ export interface SettingGroupConfig {
   descriptionVisible?: boolean
   /** 子项 */
   items?: SettingItemConfig[]
-  /** 子元素 */
   children?: ReactNode
   /** 是否可折叠 */
   collapsible?: boolean
@@ -393,7 +384,6 @@ export interface SettingSectionConfig {
   descriptionVisible?: boolean
   /** 子组 */
   groups?: SettingGroupConfig[]
-  /** 子元素 */
   children?: ReactNode
   /** 自定义样式 */
   className?: string
@@ -401,9 +391,7 @@ export interface SettingSectionConfig {
   animated?: boolean
 }
 
-// ==========================================
 // 权限与配额预设
-// ==========================================
 
 /** 权限项配置 */
 export interface PermissionItem {
@@ -454,9 +442,7 @@ export interface QuotaGroupConfig {
   loading?: boolean
 }
 
-// ==========================================
 // 信息卡片
-// ==========================================
 
 /** 信息卡片配置 */
 export interface InfoCardConfig {
@@ -467,9 +453,7 @@ export interface InfoCardConfig {
   className?: string
 }
 
-// ==========================================
 // 工具类型
-// ==========================================
 
 /** 根据类型获取设置项配置 */
 export type SettingConfigByType<T extends SettingType> = T extends 'switch'

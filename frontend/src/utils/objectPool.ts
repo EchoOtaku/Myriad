@@ -176,9 +176,7 @@ export class ObjectPool<T> {
   }
 }
 
-// ============================================================================
 // 预定义的对象池
-// ============================================================================
 
 /** DOM 节点复用池配置 */
 export interface DOMNodePoolConfig {
@@ -292,9 +290,7 @@ export const timerPool = new ObjectPool<TimerObject>({
   idleTimeout: 60000,
 })
 
-// ============================================================================
 // 工具函数
-// ============================================================================
 
 /**
  * 使用池化定时器
@@ -367,9 +363,7 @@ export const globalPoolManager = new PoolManager()
 globalPoolManager.register('animationState', animationStatePool)
 globalPoolManager.register('timer', timerPool)
 
-// ============================================================================
 // Image 对象池 - 用于图片预加载
-// ============================================================================
 
 /** 图片加载对象 */
 export interface ImageLoadObject {
@@ -411,9 +405,7 @@ export const imagePool = new ObjectPool<ImageLoadObject>({
 
 globalPoolManager.register('image', imagePool)
 
-// ============================================================================
 // Canvas 对象池 - 用于图片处理（颜色提取等）
-// ============================================================================
 
 /** Canvas 加载对象 */
 export interface CanvasPoolObject {

@@ -3,7 +3,7 @@
  * 核心类型声明文件
  */
 
-// ============ 基础类型 ============
+// 基础类型
 
 /** 权限等级 */
 export type PermissionLevel = 'public' | 'basic' | 'elevated' | 'privileged'
@@ -44,7 +44,7 @@ export type TappCategory =
   | 'social'
   | 'utility'
 
-// ============ Tapp Manifest ============
+// Tapp Manifest
 
 /** 单个语言下的清单展示文案覆盖 */
 export interface TappManifestLocaleEntry {
@@ -72,7 +72,6 @@ export interface TappManifest {
   /** 版本号 (semver) */
   version: string
 
-  /** 描述 */
   description?: string
 
   /**
@@ -343,7 +342,6 @@ export interface ManifestWidget {
   id: string
   /** 显示名称 */
   name: string
-  /** 描述 */
   description?: string
   /** 图标（emoji 或 icon 名称） */
   icon?: string
@@ -380,7 +378,6 @@ export interface TappSettingItem {
   label: string
   /** 设置项类型 */
   type: TappSettingType
-  /** 描述 */
   description?: string
   /** 默认值 */
   defaultValue?: unknown
@@ -417,19 +414,19 @@ export type TappPermission =
   | 'ui:fullscreen'
   | 'ui:theme'
   | 'ui:confirm'
-  // P0: 网络权限
+  // 网络权限
   | 'network:fetch'
-  // P1: 媒体权限
+  // 媒体权限
   | 'media:control'
   | 'media:read'
   /** 在沙箱内播放包内/blob/data 音频 */
   | 'media:audio'
-  // P2: 组件注册权限
+  // 组件注册权限
   | 'component:theme'
   | 'component:agent'
-  // P2: 快捷键权限
+  // 快捷键权限
   | 'shortcut:register'
-  // P2: 事件权限
+  // 事件权限
   | 'event:publish'
   | 'event:subscribe'
   // P3: 定时任务权限
@@ -452,12 +449,12 @@ export type TappPermission =
   | 'federation:trust'
   | 'federation:files'
 
-// ============ 用户角色 ============
+// 用户角色
 
 /** 用户角色类型 */
 export type UserRole = 'guest' | 'user' | 'admin'
 
-// ============ 后台运行需求 ============
+// 后台运行需求
 
 /** 后台运行需求类型 */
 export type BackgroundRequirement =
@@ -468,7 +465,7 @@ export type BackgroundRequirement =
   | 'event-listener' // 事件监听（跨 Tapp 通信）
   | 'realtime' // 实时数据更新
 
-// ============ Tapp 实例 ============
+// Tapp 实例
 
 /** Tapp 实例信息 */
 export interface TappInstance {
@@ -521,7 +518,7 @@ export interface TappInstance {
   error?: string
 }
 
-// ============ 小组件注册 ============
+// 小组件注册
 
 /** 小组件注册配置 */
 export interface WidgetRegistration {
@@ -531,10 +528,8 @@ export interface WidgetRegistration {
   /** 显示名称 */
   name: string
 
-  /** 描述 */
   description?: string
 
-  /** 图标 */
   icon?: string
 
   /** 支持的尺寸 */
@@ -601,7 +596,7 @@ export interface WidgetRenderProps {
   locale?: string
 }
 
-// ============ 平台数据 ============
+// 平台数据
 
 /** 平台信息 */
 export interface PlatformInfo {
@@ -633,7 +628,6 @@ export interface NewPlatformItem {
   /** 封面图 */
   cover?: string
 
-  /** 描述 */
   description?: string
 
   /** 原始链接 */
@@ -661,13 +655,11 @@ export interface CustomPlatformConfig {
   /** 显示名称 */
   name: string
 
-  /** 图标 */
   icon: string
 
   /** 主题色 */
   color: string
 
-  /** 描述 */
   description: string
 
   /** 支持的数据类型 */
@@ -677,7 +669,7 @@ export interface CustomPlatformConfig {
   urlPattern?: string
 }
 
-// ============ AI 相关 ============
+// AI 相关
 
 /** 服务端权威 AI 用量；null limit/remaining 表示管理员无限制。 */
 export interface AIUsageSnapshot {
@@ -754,7 +746,7 @@ export interface AITaskEvent {
   data: unknown
 }
 
-// ============ 消息通信 ============
+// 消息通信
 
 /** Bridge 消息类型 */
 export type TappMessageType = 'request' | 'response' | 'event'
@@ -776,7 +768,6 @@ export interface TappMessage<T = unknown> {
   /** 来源 Tapp ID */
   source?: string
 
-  /** 时间戳 */
   timestamp: number
 }
 

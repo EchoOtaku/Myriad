@@ -106,7 +106,7 @@ html.dark .music-player-container:hover {
   }
 }
 
-/* ========== 状态: 音乐信息视图 ========== */
+/* 状态: 音乐信息视图 */
 
 /* overflow:visible 让播放键 hover 光晕不被裁切 */
 .music-view-info {
@@ -1323,7 +1323,7 @@ html.dark .music-volume-bar {
   border: none;
 }
 
-/* ========== 状态: 歌词滚动视图 ========== */
+/* 状态: 歌词滚动视图 */
 
 /* 歌词 / 播放列表页：适度收紧相对母容器内边距（按当前 mode 类，避免 hidden 常驻误匹配） */
 .music-player-container.music-view-mode-lyrics,
@@ -1657,7 +1657,7 @@ html.dark .music-mini-btn:hover {
   transform: scale(0.95);
 }
 
-/* ========== 状态: 播放列表视图 ========== */
+/* 状态: 播放列表视图 */
 .music-view-playlist {
   height: 100%;
   width: 100%;
@@ -1947,7 +1947,7 @@ html.dark .music-no-results-text {
   grid-column: 1 / -1;
 }
 
-/* 🔧 动画期间优化：禁用列表项的过渡动画和复杂样式 */
+/* 动画期间优化：禁用列表项的过渡动画和复杂样式 */
 .music-playlist-scroll.animating {
   /* 使用 content-visibility 优化渲染 */
   content-visibility: auto;

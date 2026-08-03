@@ -1746,7 +1746,7 @@ export const jaJP: TranslationKeys = {
     libraryModuleDesc: 'カード配置を設定し、カテゴリごとに表示するソースを選択',
     libraryLayout: 'カード配置',
     libraryLayoutDesc:
-      '通常リスト、または中央から広がるドラッグ可能なキャンバスを選択します',
+      '通常リスト、または中央から広がるドラッグ可能なキャンバスを選択します。低スペック端末では自動でリストに戻ります',
     libraryLayoutList: 'リスト',
     libraryLayoutCanvas: '無限キャンバス',
     librarySourceVisibleCount:
@@ -1989,7 +1989,7 @@ export const jaJP: TranslationKeys = {
     canvasPanHint:
       'カードまたは余白をドラッグ · 矢印キーで移動 · + / - でズーム · 0 でリセット',
     canvasPanHintMobile:
-      'カードまたは余白をドラッグ · 下部ボタンでズームとリセット',
+      'カードまたは余白をドラッグ · 右側ボタンでズームとリセット',
     canvasDismissHint: 'このセッションでは操作ヒントを表示しない',
     canvasResetView: '中央に戻す',
     canvasZoomIn: 'ズームイン',

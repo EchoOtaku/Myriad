@@ -89,7 +89,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const { t } = useI18n()
   const [backendConnected, setBackendConnected] = useState<boolean | null>(null)
   const [hasEverConnected, setHasEverConnected] = useState(false)
-  // ℹ️ 性能优化: 移动端/低端设备禁用背景动画
+  // ℹ 性能优化: 移动端/低端设备禁用背景动画
   const anim = useAnimationLevel()
   const [libraryCanvasActive, setLibraryCanvasActive] = useState(false)
 
@@ -126,7 +126,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   // 站点访客埋点（pathname 变化时上报）
   usePageViewTracker()
 
-  // 🔧 帧率优化：启用滚动优化和 FPS 监控
+  // 帧率优化：启用滚动优化和 FPS 监控
   useScrollOptimization({ enabled: true })
   useSystemSetupCheck()
 
@@ -154,7 +154,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     blur: 3,
   })
 
-  // 🎨 Evocative 壁纸动效统一 Hook
+  // Evocative 壁纸动效统一 Hook
   // 仅 exlight / prefers-reduced-motion 强制关；light 档仍尊重用户开关
   const evocativeForceOff = isExlight(anim) || libraryCanvasActive
   useEvocativeWallpaper('wallpaper', {
@@ -187,7 +187,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         : evocativeConfig.rippleQuality,
   })
 
-  // 🎨 壁纸颜色提取 —— 缓存 → 验证 → 提取 → 应用
+  // 壁纸颜色提取 —— 缓存 → 验证 → 提取 → 应用
   const extractAndApplyColors = useCallback(async (url: string) => {
     if (!wallpaperState.isUrlActive(url)) return
 

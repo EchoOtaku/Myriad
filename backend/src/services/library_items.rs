@@ -45,7 +45,14 @@ pub fn cached_library_items(user_id: i32) -> Option<CachedLibraryItems> {
 }
 
 pub fn store_library_items(user_id: i32, items: Vec<LibraryItem>) -> CachedLibraryItems {
-    let items = Arc::new(items);
+    // One pass before cache: medium covers + slim metadata so every page response
+    // (and the assembly cache) stays compact for large libraries / infinite canvas.
+    let items = Arc::new(
+        items
+            .into_iter()
+            .map(normalize_library_item_for_client)
+            .collect::<Vec<_>>(),
+    );
     *LIBRARY_ASSEMBLY_CACHE
         .write()
         .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(LibraryAssemblyCache {
@@ -54,6 +61,289 @@ pub fn store_library_items(user_id: i32, items: Vec<LibraryItem>) -> CachedLibra
         items: Arc::clone(&items),
     });
     items
+}
+
+/// Prefer card-sized covers and drop bulk platform JSON before shipping to clients.
+pub fn normalize_library_item_for_client(mut item: LibraryItem) -> LibraryItem {
+    if let Some(cover) = item.cover.take() {
+        item.cover = Some(prefer_card_cover_url(&cover));
+    }
+    item.metadata = slim_library_metadata(&item.metadata);
+    item
+}
+
+/// Prefer medium/common assets over large/original for library cards (~184–400 CSS px).
+pub fn prefer_card_cover_url(url: &str) -> String {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return trimmed.to_string();
+    }
+
+    // Already-proxied covers embed the CDN host in ?url= — rewrite upstream first
+    // so encoded paths like pic%2Fcover%2Fl%2F are not missed.
+    if trimmed.contains("/api/proxy/image") && trimmed.contains("url=") {
+        if let Some(preferred) = rewrite_proxied_cover_url(trimmed) {
+            return preferred;
+        }
+        return trimmed.to_string();
+    }
+
+    prefer_raw_card_cover_url(trimmed)
+}
+
+fn prefer_raw_card_cover_url(trimmed: &str) -> String {
+    // Bangumi: /pic/cover/{l|c|m|s|g}/… — common is enough for cards.
+    if trimmed.contains("bgm.tv") || trimmed.contains("lain.bgm") {
+        return trimmed
+            .replace("/pic/cover/l/", "/pic/cover/c/")
+            .replace("/pic/cover/g/", "/pic/cover/c/");
+    }
+
+    // Netease CDN accepts ?param=WxH; cap decode size without another hop.
+    if (trimmed.contains("music.126.net") || trimmed.contains("music.163.com"))
+        && !trimmed.contains("param=")
+    {
+        let sep = if trimmed.contains('?') { '&' } else { '?' };
+        return format!("{trimmed}{sep}param=300y300");
+    }
+
+    trimmed.to_string()
+}
+
+fn rewrite_proxied_cover_url(proxied: &str) -> Option<String> {
+    // Support relative `/api/proxy/image?url=…` and absolute forms.
+    let query = proxied.split_once('?').map(|(_, q)| q)?;
+    let mut upstream: Option<String> = None;
+    for pair in query.split('&') {
+        let mut parts = pair.splitn(2, '=');
+        let key = parts.next()?;
+        if key != "url" {
+            continue;
+        }
+        let raw = parts.next().unwrap_or("");
+        upstream = Some(urlencoding_decode(raw));
+        break;
+    }
+    let upstream = upstream?;
+    let preferred = prefer_raw_card_cover_url(&upstream);
+    if preferred == upstream {
+        return None;
+    }
+    // Re-proxy so callers still hit the same-origin image proxy.
+    Some(proxy_image_url(&preferred))
+}
+
+/// Minimal application/x-www-form-urlencoded decode for proxy `url` values.
+fn urlencoding_decode(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() => {
+                let h = |c: u8| -> Option<u8> {
+                    match c {
+                        b'0'..=b'9' => Some(c - b'0'),
+                        b'a'..=b'f' => Some(c - b'a' + 10),
+                        b'A'..=b'F' => Some(c - b'A' + 10),
+                        _ => None,
+                    }
+                };
+                if let (Some(a), Some(b)) = (h(bytes[i + 1]), h(bytes[i + 2])) {
+                    out.push(char::from(a * 16 + b));
+                    i += 3;
+                } else {
+                    out.push('%');
+                    i += 1;
+                }
+            }
+            c => {
+                out.push(char::from(c));
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+fn pick_str<'a>(obj: &'a serde_json::Map<String, Value>, keys: &[&str]) -> Option<&'a Value> {
+    keys.iter().find_map(|k| obj.get(*k))
+}
+
+fn slim_nested_object(value: &Value, keys: &[&str]) -> Option<Value> {
+    let obj = value.as_object()?;
+    let mut out = serde_json::Map::new();
+    for key in keys {
+        if let Some(v) = obj.get(*key) {
+            out.insert((*key).to_string(), v.clone());
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(Value::Object(out))
+    }
+}
+
+fn slim_artist_list(value: &Value) -> Value {
+    match value {
+        Value::Array(arr) => Value::Array(
+            arr.iter()
+                .filter_map(|entry| {
+                    if let Some(s) = entry.as_str() {
+                        return Some(json!(s));
+                    }
+                    let name = entry
+                        .as_object()
+                        .and_then(|o| o.get("name"))
+                        .and_then(|n| n.as_str())?;
+                    Some(json!({ "name": name }))
+                })
+                .collect(),
+        ),
+        Value::String(s) => json!(s),
+        other => other.clone(),
+    }
+}
+
+fn slim_album(value: &Value) -> Value {
+    match value {
+        Value::Object(obj) => {
+            let mut out = serde_json::Map::new();
+            if let Some(name) = pick_str(obj, &["name"]) {
+                out.insert("name".into(), name.clone());
+            }
+            if let Some(pic) = pick_str(obj, &["picUrl", "pic_url", "cover"]) {
+                if let Some(s) = pic.as_str() {
+                    out.insert("picUrl".into(), json!(prefer_card_cover_url(s)));
+                } else {
+                    out.insert("picUrl".into(), pic.clone());
+                }
+            }
+            Value::Object(out)
+        }
+        Value::String(s) => json!(s),
+        other => other.clone(),
+    }
+}
+
+/// Keep only fields LibraryGrid / watch-progress / play-song need.
+pub fn slim_library_metadata(metadata: &Value) -> Value {
+    let Some(obj) = metadata.as_object() else {
+        return metadata.clone();
+    };
+
+    let mut out = serde_json::Map::new();
+
+    // Flat scalars used for display, links, progress, playback.
+    const FLAT_KEYS: &[&str] = &[
+        "id",
+        "name",
+        "url",
+        "link",
+        "web_url",
+        "html_url",
+        "short_link",
+        "short_link_v2",
+        "share_url",
+        "appid",
+        "season_id",
+        "bvid",
+        "aid",
+        "subject_id",
+        "media_type",
+        "video_id",
+        "full_name",
+        "playtime_forever",
+        "rate",
+        "score",
+        "artist",
+        "dt",
+        "duration",
+        "fee",
+        "isVip",
+        "is_vip",
+        "type",
+        "status",
+        "progress",
+        "ep_status",
+        "vol_status",
+        "num_episodes_watched",
+        "num_chapters_read",
+        "num_volumes_read",
+        "num_episodes",
+        "num_chapters",
+        "num_volumes",
+        "platform",
+    ];
+    for key in FLAT_KEYS {
+        if let Some(v) = obj.get(*key) {
+            out.insert((*key).to_string(), v.clone());
+        }
+    }
+
+    if let Some(ar) = obj.get("ar") {
+        out.insert("ar".into(), slim_artist_list(ar));
+    }
+    if let Some(artists) = obj.get("artists") {
+        out.insert("artists".into(), slim_artist_list(artists));
+    }
+    if let Some(al) = obj.get("al") {
+        out.insert("al".into(), slim_album(al));
+    }
+    if let Some(album) = obj.get("album") {
+        out.insert("album".into(), slim_album(album));
+    }
+
+    if let Some(privilege) = obj.get("privilege") {
+        if let Some(fee) = privilege.get("fee") {
+            out.insert("privilege".into(), json!({ "fee": fee }));
+        }
+    }
+
+    if let Some(ls) = slim_nested_object(
+        obj.get("list_status").unwrap_or(&Value::Null),
+        &[
+            "score",
+            "status",
+            "num_episodes_watched",
+            "num_chapters_read",
+            "num_volumes_read",
+        ],
+    ) {
+        out.insert("list_status".into(), ls);
+    }
+
+    if let Some(subject) = slim_nested_object(
+        obj.get("subject").unwrap_or(&Value::Null),
+        &["id", "url", "eps", "volumes", "platform", "name", "name_cn"],
+    ) {
+        out.insert("subject".into(), subject);
+    }
+
+    if let Some(node) = slim_nested_object(
+        obj.get("node").unwrap_or(&Value::Null),
+        &[
+            "id",
+            "url",
+            "title",
+            "num_episodes",
+            "num_chapters",
+            "num_volumes",
+        ],
+    ) {
+        out.insert("node".into(), node);
+    }
+
+    if let Some(owner) = slim_nested_object(obj.get("owner").unwrap_or(&Value::Null), &["login"]) {
+        out.insert("owner".into(), owner);
+    }
+
+    Value::Object(out)
 }
 
 pub fn invalidate_library_assembly_cache() {
@@ -379,17 +669,18 @@ pub fn append_bangumi_library_items(library_items: &mut Vec<LibraryItem>, bangum
             .unwrap_or(0);
         let subject_platform = subject.get("platform").and_then(|v| v.as_str());
         let item_type = bangumi_library_item_type(subject_type, subject_platform);
+        // Card display is ~184–400 CSS px; prefer common/medium over large.
         let cover = subject
             .get("images")
             .and_then(|images| {
                 images
-                    .get("large")
-                    .or_else(|| images.get("common"))
+                    .get("common")
                     .or_else(|| images.get("medium"))
+                    .or_else(|| images.get("large"))
                     .or_else(|| images.get("small"))
             })
             .and_then(|v| v.as_str())
-            .map(proxy_image_url);
+            .map(|url| proxy_image_url(&prefer_card_cover_url(url)));
 
         let mut metadata = collection.clone();
         if let Some(obj) = metadata.as_object_mut() {
@@ -434,11 +725,12 @@ pub fn append_mal_library_items(library_items: &mut Vec<LibraryItem>, mal_data: 
                 .get("title")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Unknown");
+            // medium is typically ~225px; large is ~400+ and overkill for cards.
             let cover = node
-                .pointer("/main_picture/large")
-                .or_else(|| node.pointer("/main_picture/medium"))
+                .pointer("/main_picture/medium")
+                .or_else(|| node.pointer("/main_picture/large"))
                 .and_then(|v| v.as_str())
-                .map(proxy_image_url);
+                .map(|url| proxy_image_url(&prefer_card_cover_url(url)));
 
             let list_status = entry.get("list_status");
             // Flatten fields used by LibraryGrid (parity with Bangumi `rate` / `progress`)
@@ -569,13 +861,21 @@ mod tests {
             "collections": [{
                 "subject_id": 1,
                 "subject_type": 2,
+                "ep_status": 3,
+                "type": 3,
                 "subject": {
                     "id": 1,
                     "name": "Test",
                     "name_cn": "测试",
                     "type": 2,
-                    "images": { "large": "https://lain.bgm.tv/pic/cover/l/1.jpg" }
-                }
+                    "eps": 12,
+                    "images": {
+                        "large": "https://lain.bgm.tv/pic/cover/l/1.jpg",
+                        "common": "https://lain.bgm.tv/pic/cover/c/1.jpg",
+                        "summary": "huge text that should not ship"
+                    }
+                },
+                "comment": "long review body that should be dropped"
             }]
         });
         append_bangumi_library_items(&mut items, &data);
@@ -583,6 +883,85 @@ mod tests {
         assert_eq!(items[0].item_type, "anime");
         assert_eq!(items[0].platform, "Bangumi");
         assert!(items[0].cover.as_ref().unwrap().starts_with("/api/proxy/image"));
+        // Prefer common over large when both exist.
+        assert!(
+            items[0]
+                .cover
+                .as_ref()
+                .unwrap()
+                .contains("pic%2Fcover%2Fc%2F")
+                || items[0].cover.as_ref().unwrap().contains("/pic/cover/c/"),
+            "cover should use common size: {}",
+            items[0].cover.as_ref().unwrap()
+        );
+
+        let slimmed = normalize_library_item_for_client(items[0].clone());
+        assert!(slimmed.metadata.get("comment").is_none());
+        assert!(slimmed.metadata.get("subject").and_then(|s| s.get("images")).is_none());
+        assert_eq!(slimmed.metadata.get("ep_status"), Some(&json!(3)));
+        assert_eq!(
+            slimmed.metadata.pointer("/subject/eps"),
+            Some(&json!(12))
+        );
+    }
+
+    #[test]
+    fn prefer_card_cover_rewrites_bangumi_large_and_netease_param() {
+        assert_eq!(
+            prefer_card_cover_url("https://lain.bgm.tv/pic/cover/l/ab.jpg"),
+            "https://lain.bgm.tv/pic/cover/c/ab.jpg"
+        );
+        let netease = prefer_card_cover_url("https://p2.music.126.net/xx.jpg");
+        assert!(netease.contains("param=300y300"), "{netease}");
+        // Already sized: leave alone.
+        assert_eq!(
+            prefer_card_cover_url("https://p2.music.126.net/xx.jpg?param=200y200"),
+            "https://p2.music.126.net/xx.jpg?param=200y200"
+        );
+
+        // Proxied large Bangumi → re-proxy common.
+        let proxied = proxy_image_url("https://lain.bgm.tv/pic/cover/l/ab.jpg");
+        let rewritten = prefer_card_cover_url(&proxied);
+        assert!(
+            rewritten.contains("pic%2Fcover%2Fc%2F") || rewritten.contains("/pic/cover/c/"),
+            "proxied rewrite: {rewritten}"
+        );
+
+        // Proxied Netease without param → re-proxy with param.
+        let proxied_ne = proxy_image_url("https://p2.music.126.net/xx.jpg");
+        let rewritten_ne = prefer_card_cover_url(&proxied_ne);
+        assert!(
+            rewritten_ne.contains("param%3D300y300") || rewritten_ne.contains("param=300y300"),
+            "proxied netease: {rewritten_ne}"
+        );
+    }
+
+    #[test]
+    fn slim_metadata_keeps_play_and_progress_fields() {
+        let fat = json!({
+            "id": 42,
+            "name": "Song",
+            "fee": 1,
+            "ar": [{ "id": 9, "name": "Artist", "tns": [] }],
+            "al": { "id": 1, "name": "Album", "picUrl": "https://p2.music.126.net/a.jpg" },
+            "dt": 180000,
+            "privilege": { "fee": 1, "maxBr": 999, "st": 0 },
+            "alias": ["drop me"],
+        });
+        let slim = slim_library_metadata(&fat);
+        assert_eq!(slim.get("id"), Some(&json!(42)));
+        assert_eq!(slim.get("fee"), Some(&json!(1)));
+        assert_eq!(slim.pointer("/ar/0/name"), Some(&json!("Artist")));
+        assert!(slim.pointer("/ar/0/tns").is_none());
+        assert_eq!(slim.pointer("/privilege/fee"), Some(&json!(1)));
+        assert!(slim.pointer("/privilege/maxBr").is_none());
+        assert!(slim.get("alias").is_none());
+        assert!(
+            slim.pointer("/al/picUrl")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .contains("param=300y300")
+        );
     }
 
     #[test]

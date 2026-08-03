@@ -185,7 +185,7 @@ export const ReportCardWidget = memo(
       setCardContent(content)
     }, [])
 
-    // ===== 长按点击行为设置（参考社交组件：编辑模式下按住 500ms 打开设置）=====
+    // 长按点击行为设置（参考社交组件：编辑模式下按住 500ms 打开设置）
     // 仅作为仪表盘小组件时启用（报告页 bare / 预览态不干预）
     const interactive = !bare && !isPreview
     const clickAction: ReportCardClickAction =

@@ -86,7 +86,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
 
   const baseUrl = getFieldValue('base_url').replace(/\/$/, '')
 
-  // ---- providers + 开关 ----
+  // providers + 开关
   // 选 preset 的弹层状态
   const [picker, setPicker] = useState(false)
 
@@ -231,9 +231,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
 
 export default OAuthConfigSection
 
-// ============================================================================
 // Subcomponents
-// ============================================================================
 
 interface ProviderCardProps {
   entry: OAuthProviderEntry

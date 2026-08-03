@@ -19,9 +19,7 @@ import { wallpaperState } from './wallpaperState'
 
 export { coverUrlForColorExtract } from './coverUrlForColorExtract'
 
-// ============================================================================
 // 类型定义
-// ============================================================================
 
 export interface ColorPalette {
   primary: string
@@ -61,9 +59,7 @@ interface ColorInfo {
   chroma: number
 }
 
-// ============================================================================
 // 常量配置
-// ============================================================================
 
 const CACHE_VERSION = 5
 const CACHE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000 // 30天 (localStorage 长期缓存)
@@ -94,9 +90,7 @@ const DEFAULT_PALETTE: ColorPalette = Object.freeze({
 /** 音乐 high 取色：瞬时失败（网络/解码）自动重试次数 */
 const MUSIC_HIGH_MAX_ATTEMPTS = 3
 
-// ============================================================================
 // 缓存管理
-// ============================================================================
 
 const memoryCache = new Map<string, ColorPalette>()
 
@@ -246,9 +240,7 @@ function saveToLocalStorage(url: string, palette: ColorPalette): void {
   }
 }
 
-// ============================================================================
 // 颜色计算函数
-// ============================================================================
 
 /** 计算感知亮度 */
 function getPerceptualBrightness(r: number, g: number, b: number): number {
@@ -379,9 +371,7 @@ function darkenColor(r: number, g: number, b: number): string {
   return rgbToHex(rgb.r, rgb.g, rgb.b)
 }
 
-// ============================================================================
 // 图片分析
-// ============================================================================
 
 /**
  * 从像素采样构建量化色直方图。
@@ -665,9 +655,7 @@ async function extractFromImage(
     : new Error('All image URL candidates failed')
 }
 
-// ============================================================================
 // 公共 API
-// ============================================================================
 
 /**
  * 从图片提取颜色配色

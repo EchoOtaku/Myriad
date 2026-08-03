@@ -3,11 +3,11 @@
  * 状态与写路径拆到 `config/form/*` hooks。
  */
 import {
+  FaArrowLeft,
   FaExclamationTriangle,
   FaSearch,
   FaStar,
   FaTimes,
-  LuChevronLeft,
   LuRefreshCw,
 } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
@@ -665,19 +665,15 @@ const ModernConfigForm: React.FC = () => {
               <div className="config-mobile-section-bar">
                 <button
                   type="button"
-                  className="config-mobile-back"
+                  className="config-mobile-back glass glass-liquid"
                   onClick={handleMobileBackToNav}
                   aria-label={`${t.common.back} · ${t.config.title}`}
+                  title={t.common.back}
                 >
-                  <LuChevronLeft
-                    size={18}
-                    strokeWidth={2.25}
+                  <FaArrowLeft
                     className="config-mobile-back-icon"
                     aria-hidden
                   />
-                  <span className="config-mobile-back-label">
-                    {t.config.title}
-                  </span>
                 </button>
               </div>
             ) : null}

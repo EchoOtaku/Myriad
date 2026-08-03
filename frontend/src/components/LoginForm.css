@@ -75,7 +75,7 @@
   padding-right: 1.25rem;
 }
 
-/* === GitHub variant === */
+/* GitHub variant */
 .oauth-provider-btn-github {
   background: #1f2328;
   color: #fff;
@@ -100,7 +100,7 @@ html.dark .oauth-provider-btn-github:hover {
   box-shadow: 0 4px 16px rgb(255 255 255 / 15%);
 }
 
-/* === Generic OIDC variant === */
+/* Generic OIDC variant */
 .oauth-provider-btn-oidc {
   background: var(--bg-card, #fff);
   color: var(--text-primary, #1f2937);

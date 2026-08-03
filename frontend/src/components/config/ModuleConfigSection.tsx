@@ -469,7 +469,7 @@ export const ModuleConfigSection: React.FC<ModuleConfigSectionProps> = ({
     [t],
   )
 
-  // ===== 一言设置（存于后端数据库，随全局保存统一提交）=====
+  // 一言设置（存于后端数据库，随全局保存统一提交）
   const hitokotoSourceLabels = useMemo<Record<string, string>>(
     () => ({
       'hitokoto-cn': t.config.hitokotoSourceHitokotoCn,

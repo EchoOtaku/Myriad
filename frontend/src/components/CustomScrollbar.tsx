@@ -42,7 +42,7 @@ const IS_MOBILE_DEVICE = typeof window !== 'undefined' ? getIsMobile() : true
  * 这是防止移动端崩溃的第一道防线
  */
 export default function CustomScrollbar() {
-  // ⚠️ 关键: 使用模块级常量,避免首次渲染延迟
+  // 关键: 使用模块级常量,避免首次渲染延迟
   // 如果是移动端,直接返回 null,不执行任何逻辑
   if (IS_MOBILE_DEVICE) {
     return null
@@ -73,7 +73,7 @@ export default function CustomScrollbar() {
   return <CustomScrollbarInner />
 }
 
-// ⚠️ 关键修复: 将常量移到组件外部，避免每次渲染重新创建
+// 关键修复: 将常量移到组件外部，避免每次渲染重新创建
 // 这是导致无限重渲染的根本原因！
 const TRACK_HEIGHT_PERCENT = 0.3
 const MIN_THUMB_HEIGHT = 40 // 最小 Thumb 高度（px）
@@ -97,7 +97,7 @@ function CustomScrollbarInner() {
   const dragEndTimeRef = useRef(0) // 记录拖动结束时间
   const isRouteTransitioningRef = useRef(false) // 路由切换中，禁止所有更新
   const routeTransitionTimeRef = useRef(0) // 记录路由切换开始时间
-  const cachedDocumentHeightRef = useRef(0) // 🔧 缓存文档高度，减少重排
+  const cachedDocumentHeightRef = useRef(0) // 缓存文档高度，减少重排
   const lastHeightCheckRef = useRef(0) // 上次检查高度的时间
 
   // 计算并更新 Thumb 的位置和高度
@@ -118,7 +118,7 @@ function CustomScrollbarInner() {
 
     const windowHeight = window.innerHeight
 
-    // 🔧 优化：缓存 scrollHeight，每 500ms 最多更新一次
+    // 优化：缓存 scrollHeight，每 500ms 最多更新一次
     // 这减少了大量的强制布局计算
     if (
       now - lastHeightCheckRef.current > 500 ||
@@ -171,7 +171,7 @@ function CustomScrollbarInner() {
 
     // 记录当前 scrollTop
     lastScrollTopRef.current = scrollTop
-  }, []) // ⚠️ 修复: 空依赖数组，因为常量已移到组件外部
+  }, []) // 修复: 空依赖数组，因为常量已移到组件外部
 
   // RAF 节流的更新处理器 - 使用 useCallback 确保引用稳定
   const handleUpdate = useCallback(() => {
@@ -180,13 +180,13 @@ function CustomScrollbarInner() {
   }, [updateThumb])
 
   // 使用共享的 scroll 和 resize 监听器
-  // ⚠️ 关键优化: 使用共享事件监听器，减少重复注册
+  // 关键优化: 使用共享事件监听器，减少重复注册
   // RAF 节流 (~60fps) 由共享监听器内部处理
   useSharedScroll(handleUpdate)
   useSharedResize(handleUpdate)
 
   // ResizeObserver 用于监听文档高度变化
-  // ⚠️ 移除了 MutationObserver - 这是造成移动端崩溃的主要原因
+  // 移除了 MutationObserver - 这是造成移动端崩溃的主要原因
   useEffect(() => {
     let throttleTimer: number | null = null
     let initialRaf: number | null = null
@@ -246,7 +246,7 @@ function CustomScrollbarInner() {
       updateDelay = setTimeout(() => {
         // 解除更新禁止，并触发一次更新
         isRouteTransitioningRef.current = false
-        // 🔧 路由变化时重置高度缓存
+        // 路由变化时重置高度缓存
         cachedDocumentHeightRef.current = 0
         requestAnimationFrame(() => {
           updateThumb()

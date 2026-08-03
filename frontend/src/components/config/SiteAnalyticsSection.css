@@ -189,7 +189,7 @@ html.dark .site-analytics-rank {
   color: var(--cfg-text-3);
 }
 
-/* ===== KPI 磁贴 ===== */
+/* KPI 磁贴 */
 
 .site-analytics-visitors {
   display: flex;
@@ -531,7 +531,7 @@ html.dark .site-analytics-compare[data-palette='red-up'].is-down {
   color: color-mix(in srgb, #4ade80 80%, #fff);
 }
 
-/* ===== 趋势图 ===== */
+/* 趋势图 */
 
 .site-analytics-chart-block {
   display: flex;
@@ -715,7 +715,7 @@ html.dark .site-analytics-compare[data-palette='red-up'].is-down {
   font-variant-numeric: tabular-nums;
 }
 
-/* ===== 趋势「表格」视图（与排行表同一套表面令牌） ===== */
+/* 趋势「表格」视图（与排行表同一套表面令牌） */
 
 .site-analytics-table-wrap {
   /* 长区间（最多 365 天）内部滚动，不把设置页撑开 */
@@ -784,7 +784,7 @@ html.dark .site-analytics-compare[data-palette='red-up'].is-down {
   background: var(--sa-table-row-hover);
 }
 
-/* ===== 汇总元信息 + 脚注 ===== */
+/* 汇总元信息 + 脚注 */
 
 .site-analytics-meta {
   display: flex;
@@ -834,7 +834,7 @@ html.dark .site-analytics-compare[data-palette='red-up'].is-down {
   color: var(--cfg-text-3);
 }
 
-/* ===== 排行表：页面 / 事件 / 来源（与趋势表同一套表面） ===== */
+/* 排行表：页面 / 事件 / 来源（与趋势表同一套表面） */
 
 /*
  * 外壳 = 趋势 table-wrap；表头条 = thead；行分割 = tbody 线。
@@ -1185,7 +1185,7 @@ html.dark .site-analytics-compare[data-palette='red-up'].is-down {
   }
 }
 
-/* ===== 空态 / 错误 ===== */
+/* 空态 / 错误 */
 
 /*
  * 空态是一张占位卡，不是一行字：撑住区块高度，有数据后不跳版。
@@ -1283,7 +1283,7 @@ html.dark .site-analytics-error-tag {
   white-space: nowrap;
 }
 
-/* ===== 窄屏 ===== */
+/* 窄屏 */
 
 /* 一行放不下：先 4 列，再 2 列（7 / 6 格共用） */
 @media (width <= 1180px) {

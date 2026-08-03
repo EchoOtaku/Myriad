@@ -111,7 +111,7 @@ interface CrossPlatformReport {
   created_at: string
 }
 
-// 🚀 性能优化：平台配置常量（已在组件外部，避免重复创建）
+// 平台配置常量（已在组件外部，避免重复创建）
 const PLATFORMS = [
   {
     id: 'bilibili',
@@ -322,7 +322,7 @@ export default function Reports() {
   const [platformVisibilityReady, setPlatformVisibilityReady] =
     useState(false)
 
-  // 🎭 舞台模式状态
+  // 舞台模式状态
   const [isStageMode, setIsStageMode] = useState(false)
   const [stagePaused, setStagePaused] = useState(false) // 舞台模式暂停状态
   const [refreshingStage, setRefreshingStage] = useState(false) // 刷新舞台报告加载状态
@@ -386,7 +386,7 @@ export default function Reports() {
 
   const hasEnabledPlatforms = visiblePlatforms.length > 0
 
-  // 🚀 性能优化：监听舞台暂停状态
+  // 监听舞台暂停状态
   useEffect(() => {
     const handlePauseStateChange = (e: CustomEvent<{ isPaused: boolean }>) => {
       setStagePaused(e.detail.isPaused)
@@ -405,14 +405,14 @@ export default function Reports() {
     }
   }, [])
 
-  // 🚀 性能优化：缓存平台报告映射，避免重复查找
+  // 缓存平台报告映射，避免重复查找
   const platformReportsMap = useMemo(() => {
     const map = new Map<string, PlatformReport>()
     report?.platform_reports?.forEach((r) => map.set(r.platform, r))
     return map
   }, [report?.platform_reports])
 
-  // 🚀 性能优化：稳定的 ReportCardWidget config，避免每次渲染新建对象打破 memo
+  // 稳定的 ReportCardWidget config，避免每次渲染新建对象打破 memo
   const platformWidgetConfigs = useMemo(() => {
     const map: Record<string, WidgetConfig> = {}
     PLATFORMS.forEach((p) => {
@@ -421,7 +421,7 @@ export default function Reports() {
     return map
   }, [])
 
-  // 🎭 打开舞台模式
+  // 打开舞台模式
   const openStageMode = useCallback(
     (platformId: string) => {
       const platformReport = platformReportsMap.get(platformId)
@@ -447,7 +447,7 @@ export default function Reports() {
     [platformReportsMap],
   )
 
-  // 🎭 关闭舞台模式
+  // 关闭舞台模式
   const closeStageMode = useCallback(() => {
     setIsStageMode(false)
     setPlayAllMode(false)
@@ -457,7 +457,7 @@ export default function Reports() {
     // setStageReportData(null);
   }, [])
 
-  // 🎭 用户手动关闭舞台（无论什么模式都完全退出）
+  // 用户手动关闭舞台（无论什么模式都完全退出）
   const handleUserCloseStage = useCallback(() => {
     closeStageMode()
   }, [closeStageMode])
@@ -483,7 +483,7 @@ export default function Reports() {
     stageReportData,
   ])
 
-  // 🎭 开始播放所有平台
+  // 开始播放所有平台
   const startPlayAll = useCallback(() => {
     // 获取所有有报告的平台
     const platformsWithReports = visiblePlatforms.filter((p) =>
@@ -524,7 +524,7 @@ export default function Reports() {
     }
   }, [platformReportsMap, t.reportsPage.noPlatformReports, visiblePlatforms])
 
-  // 🎭 播放下一个平台（播放所有模式）
+  // 播放下一个平台（播放所有模式）
   const playNextPlatform = useCallback(() => {
     if (playAllQueueRef.current.length === 0) {
       // 所有平台播放完毕，退出舞台模式
@@ -587,7 +587,7 @@ export default function Reports() {
     })
   }, [])
 
-  // 🎭 刷新当前舞台模式的平台报告
+  // 刷新当前舞台模式的平台报告
   const refreshStageReport = useCallback(async () => {
     if (!stageReportData?.platform || stageReportData.type !== 'platform') {
       return
@@ -1180,7 +1180,7 @@ export default function Reports() {
                     >
                       {visiblePlatforms.map((platform, cardIndex) => {
                         const isLoading = loadingPlatform === platform.id
-                        // 🚀 性能优化：使用 Map 查找，O(1) 复杂度
+                        // 使用 Map 查找，O(1) 复杂度
                         const platformReport = platformReportsMap.get(platform.id)
                         // 舞台模式正在播放该平台：入口卡片改为占位提示
                         const isPlayingOnStage =
@@ -1216,7 +1216,7 @@ export default function Reports() {
                               // Matches home 4x2 at all breakpoints (1 / sm:2 / lg:4); see REPORT_CARD_FLEX_BASIS
                               flexBasis: REPORT_CARD_FLEX_BASIS,
                               willChange: 'transform, opacity',
-                            }} // 🚀 GPU加速
+                            }} // GPU加速
                             onClick={() => {
                               if (isPlayingOnStage) {
                                 // 点击正在舞台播放的入口卡片：关闭舞台，恢复卡片内容

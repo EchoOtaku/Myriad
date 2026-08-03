@@ -13,7 +13,7 @@
 
 import { Feature, getFeatureList, hasFeature } from './pageFeatures'
 
-// ==================== 类型定义 ====================
+// 类型定义
 
 /** 取消订阅函数 */
 export type Unsubscribe = () => void
@@ -24,7 +24,7 @@ let currentPageId: string | null = null
 /** 是否处于活动状态 */
 let isActive = true
 
-// ==================== 惰性初始化标记 ====================
+// 惰性初始化标记
 
 let visibilityInitialized = false
 let messageChannelInitialized = false
@@ -32,7 +32,7 @@ let resizeObserverInitialized = false
 let intersectionInitialized = false
 let idleSchedulerInitialized = false
 
-// ==================== 页面可见性模块（惰性） ====================
+// 页面可见性模块（惰性）
 
 let _isPageVisible = true
 let _visibilityHandler: (() => void) | null = null
@@ -80,7 +80,7 @@ export function isPageVisible(): boolean {
   return _isPageVisible
 }
 
-// ==================== MessageChannel 模块（惰性） ====================
+// MessageChannel 模块（惰性）
 
 let _channel: MessageChannel | null = null
 let _pendingCallbacks: Array<() => void> = []
@@ -117,7 +117,7 @@ export function yieldToMain(): Promise<void> {
   return new Promise((resolve) => scheduleTask(resolve))
 }
 
-// ==================== 时间戳缓存（微优化） ====================
+// 时间戳缓存（微优化）
 
 let _cachedNow = 0
 let _nowValid = false
@@ -141,7 +141,7 @@ export function refreshNow(): number {
   return _cachedNow
 }
 
-// ==================== ResizeObserver 模块（惰性） ====================
+// ResizeObserver 模块（惰性）
 
 let _resizeObserver: ResizeObserver | null = null
 const _resizeCallbacks = new WeakMap<
@@ -212,7 +212,7 @@ export function observeResize(
   }
 }
 
-// ==================== IntersectionObserver 模块（惰性） ====================
+// IntersectionObserver 模块（惰性）
 
 const _intersectionObservers = new Map<string, IntersectionObserver>()
 const _intersectionCallbacks = new WeakMap<
@@ -278,7 +278,7 @@ export function observeIntersection(
   }
 }
 
-// ==================== 空闲任务调度模块（惰性） ====================
+// 空闲任务调度模块（惰性）
 
 interface IdleTask {
   id: string
@@ -365,7 +365,7 @@ export function cancelIdle(id: string): boolean {
   return false
 }
 
-// ==================== DOM 批量读写（原子化） ====================
+// DOM 批量读写（原子化）
 
 let _reads: Array<() => void> = []
 let _writes: Array<() => void> = []
@@ -411,7 +411,7 @@ export function batchWrite(callback: () => void): void {
   }
 }
 
-// ==================== 页面清理注册表（自注册模式） ====================
+// 页面清理注册表（自注册模式）
 
 /** 页面级清理函数注册表 - 各 pages/*.ts 模块自行注册 */
 const _pageCleanupRegistry = new Map<string, () => void>()
@@ -426,7 +426,7 @@ export function runPageCleanup(pageId: string): void {
   _pageCleanupRegistry.get(pageId)?.()
 }
 
-// ==================== 页面生命周期（SPA 优化） ====================
+// 页面生命周期（SPA 优化）
 
 /**
  * 开始新页面（SPA 路由切换时调用）
@@ -500,7 +500,7 @@ export function isSchedulerActive(): boolean {
   return isActive && _isPageVisible
 }
 
-// ==================== 页面级 ResizeObserver 工厂（消除 pages 间重复代码） ====================
+// 页面级 ResizeObserver 工厂（消除 pages 间重复代码）
 
 interface PageResizeManager {
   observe: (
@@ -557,7 +557,7 @@ export function getPageResizeManager(pageId: string): PageResizeManager {
   return manager
 }
 
-// ==================== 页面级 Interval 管理（消除 pages 间重复代码） ====================
+// 页面级 Interval 管理（消除 pages 间重复代码）
 
 interface PageIntervalManager {
   add: (id: ReturnType<typeof setInterval>) => void
@@ -596,7 +596,7 @@ export function getPageIntervalManager(pageId: string): PageIntervalManager {
   return manager
 }
 
-// ==================== 统计信息（调试用） ====================
+// 统计信息（调试用）
 
 /** 获取调度器状态 */
 export function getStats() {
@@ -624,7 +624,7 @@ export function getStats() {
   }
 }
 
-// ==================== 销毁（仅测试用） ====================
+// 销毁（仅测试用）
 
 export function destroy(): void {
   cleanupPage()

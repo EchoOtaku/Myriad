@@ -819,7 +819,7 @@ html.dark .config-sidebar:hover {
   white-space: nowrap;
 }
 
-/* ---------- 搜索框（Apple 风格中性填充，无描边） ---------- */
+/* 搜索框（Apple 风格中性填充，无描边） */
 .config-sidebar-search {
   padding: 0 0.25rem;
 }
@@ -875,7 +875,7 @@ html.dark .config-sidebar-search .search-input:focus {
   color: var(--cfg-label-2);
 }
 
-/* ---------- 列表容器 ---------- */
+/* 列表容器 */
 .config-sidebar-scroll,
 .config-sidebar-results {
   display: flex;
@@ -920,7 +920,7 @@ html.dark .config-sidebar-search .search-input:focus {
   font-size: 0.625rem;
 }
 
-/* ---------- 分类行 ---------- */
+/* 分类行 */
 .config-nav-item {
   position: relative;
   display: flex;
@@ -1046,7 +1046,7 @@ html.dark .config-nav-item.is-active:hover {
   color: #fbbf24;
 }
 
-/* ---------- 搜索结果行 ---------- */
+/* 搜索结果行 */
 .config-nav-result {
   display: flex;
   align-items: center;
@@ -1162,7 +1162,7 @@ html.dark .config-nav-result-badge {
   font-weight: 400;
 }
 
-/* ---------- 移动端：一级分类列表 ↔ 二级内容（平台详情为三级） ---------- */
+/* 移动端：一级分类列表 ↔ 二级内容（平台详情为三级） */
 @media (width < 1024px) {
   .config-shell {
     gap: 0;
@@ -1253,30 +1253,20 @@ html.dark .config-nav-result-badge {
   }
 
   /*
-   * 二级顶栏：只剩返回按钮，浮到右上角智能岛那一行
-   * （.control-bar-trigger：fixed，top 1rem / ≤640px 0.75rem，height 3rem）。
-   * 行盒与岛同 top、同高且内容居中 → 两者中线重合，读作「左返回 · 右智能岛」；
-   * 代价是顶栏不再占流高度，二级内容直接从 Config 视图的 pt-20 起排。
-   * fixed 的祖先链干净（motion 静止时把 transform 写回 none），只有页面
-   * 进出动画那几百毫秒会跟着 AnimatedPage 一起位移，属于预期观感。
+   * 二级返回：对齐 Tapp 商店的圆形 glass 返回键
+   * （as-store__back + as-detail__fluid-control + glass-liquid）。
+   * fixed 浮在内容上方，不占流高度；内容仍从 Config 视图的 pt-20 起排。
+   * 不再与右上智能岛做同高垂直居中配对。
    */
   .config-mobile-section-bar {
     position: fixed;
     top: 1rem;
     left: 1rem;
-
-    /* 给右上角智能岛（收缩态 160px）让出整段右侧 */
-    max-width: calc(100vw - 12rem);
-
-    /* 岛是 9999、遮罩 998：返回键压住内容，但让遮罩压住自己 */
     z-index: 40;
     display: flex;
     align-items: center;
-    height: 3rem;
     margin: 0;
     padding: 0;
-
-    /* 行盒只负责定位：透明、不吃触摸，命中区就是按钮本身 */
     pointer-events: none;
   }
 
@@ -1286,102 +1276,55 @@ html.dark .config-nav-result-badge {
     transition: opacity var(--sm-dur-fast) var(--sm-ease-standard);
   }
 
-  /* 仅返回按钮：‹ 设置 — 主色文字 + frost 圆角矩形（浮在壁纸上要能看清） */
+  /* 圆形 glass 返回：仅 ← 图标，表面令牌跟商店 fluid-control 一致 */
   .config-mobile-back {
+    position: relative;
+    isolation: isolate;
     pointer-events: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.05rem;
-    max-width: 100%;
-
-    /* 44px 触控目标，比 3rem 的岛矮一档：主次分明又同处一行 */
-    height: 2.75rem;
+    display: inline-grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 2.35rem;
+    height: 2.35rem;
+    min-height: 2.35rem;
     margin: 0;
-    padding: 0 0.8rem 0 0.5rem;
-    border: 1px solid var(--cfg-frost-border);
-
-    /* 圆角矩形而非胶囊：跟旧顶栏（1rem）与设置面里的卡片圆角同族，
-       也和右侧智能岛的 2rem 胶囊拉开形状差别，不至于读成一对同类控件 */
-    border-radius: 1rem;
-    background: var(--cfg-frost-bg);
-    backdrop-filter: var(--cfg-frost-filter);
-    box-shadow: var(--cfg-frost-shadow);
-    color: var(--cfg-accent, #3b82f6);
+    padding: 0;
+    overflow: hidden;
+    border-radius: 999px;
+    color: color-mix(
+      in srgb,
+      var(--cfg-text-2, #4b5563) 82%,
+      var(--cfg-text-3, #9ca3af)
+    );
     font: inherit;
-    font-size: 0.875rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    line-height: 1.2;
+    font-size: 0;
+    line-height: 0;
     cursor: pointer;
-    transition:
-      background-color var(--sm-dur-fast) var(--sm-ease-standard),
-      box-shadow var(--sm-dur-fast) var(--sm-ease-standard),
-      opacity var(--sm-dur-fast) var(--sm-ease-standard),
-      color var(--sm-dur-fast) var(--sm-ease-standard);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transform: translateZ(0);
+    /* background / border / shadow / backdrop 由 .glass.glass-liquid 接管 */
   }
 
   .config-mobile-back-icon {
-    flex-shrink: 0;
-    width: 1.15rem;
-    height: 1.15rem;
-    margin-right: -0.05rem;
-  }
-
-  .config-mobile-back-label {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* 胶囊自带 frost 底：hover 只把表面提亮一档，不能换成半透明色块 */
-  .config-mobile-back:hover {
-    background: var(--cfg-frost-elevated-bg);
-    box-shadow: var(--cfg-frost-shadow-hover);
-  }
-
-  .config-mobile-back:active {
-    opacity: 0.6;
+    position: relative;
+    z-index: 2;
+    display: block;
+    width: 0.875rem;
+    height: 0.875rem;
   }
 
   .config-mobile-back:focus-visible {
     outline: 2px solid
-      color-mix(in srgb, var(--cfg-accent, #3b82f6) 50%, transparent);
+      color-mix(in srgb, var(--cfg-accent, #3b82f6) 68%, white);
     outline-offset: 2px;
   }
 
-  html.dark .config-mobile-back {
-    color: var(--cfg-accent, #93c5fd);
-  }
-
-  /* 小屏智能岛左移到 0.75rem：返回键跟着对称内缩，两端留白一致 */
+  /* 小屏智能岛内缩到 0.75rem：返回键对称跟进 */
   @media (width <= 640px) {
     .config-mobile-section-bar {
       top: 0.75rem;
       left: 0.75rem;
-    }
-  }
-
-  /*
-   * 极窄屏：岛左边缘在 vw - 12 - 160，带字胶囊约 123px 宽（实测 375 档两者
-   * 仍相距 68px、360 档 53px），再窄就贴上去了 —— 返回只留 chevron。
-   * 阈值取 360 而非旧的 380：三列顶栏时代字要跟居中标题抢位，如今胶囊独占
-   * 这一行，而「返回去哪」全靠这行字，能显就显。
-   */
-  @media (width < 360px) {
-    .config-mobile-back {
-      width: 2.75rem;
-      padding: 0;
-      justify-content: center;
-    }
-
-    /* 圆形键里 chevron 要正居中，去掉贴字用的负边距 */
-    .config-mobile-back-icon {
-      margin-right: 0;
-    }
-
-    .config-mobile-back-label {
-      display: none;
     }
   }
 
@@ -3161,7 +3104,7 @@ html.dark .copy-btn:hover {
   }
 }
 
-/* === Provider 卡片 — icon / callback / preset hint / advanced 折叠 === */
+/* Provider 卡片 — icon / callback / preset hint / advanced 折叠 */
 
 .oidc-provider-title-text {
   display: inline-flex;

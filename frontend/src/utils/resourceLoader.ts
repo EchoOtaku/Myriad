@@ -341,7 +341,7 @@ class ResourceLoader {
    * 获取加载统计
    */
   getStats() {
-    // 性能优化：单次遍历替代多次 filter
+    // 单次遍历替代多次 filter
     const queuedByPriority = {
       critical: 0,
       high: 0,

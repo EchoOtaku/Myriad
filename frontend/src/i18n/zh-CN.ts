@@ -1657,7 +1657,8 @@ export const zhCN: TranslationKeys = {
     libraryModuleTitle: '资料库',
     libraryModuleDesc: '设置资料库卡片排布，并按分类选择要显示的平台来源',
     libraryLayout: '卡片排布',
-    libraryLayoutDesc: '选择普通列表，或从页面中心向外延伸的可拖拽画布',
+    libraryLayoutDesc:
+      '选择普通列表，或从页面中心向外延伸的可拖拽画布；低端设备会自动回退为列表',
     libraryLayoutList: '列表',
     libraryLayoutCanvas: '无限画布',
     librarySourceVisibleCount: '当前显示 {shown} 项，来源过滤前 {total} 项',
@@ -1889,7 +1890,7 @@ export const zhCN: TranslationKeys = {
     emptyLibrary: '资料库为空，请先在配置页面获取平台数据',
     emptyCategory: '此分类暂无内容，试试切换其他分类',
     canvasPanHint: '拖动卡片或空白处移动 · 方向键平移 · + / - 缩放 · 0 复位',
-    canvasPanHintMobile: '拖动卡片或空白处移动 · 底部按钮缩放与复位',
+    canvasPanHintMobile: '拖动卡片或空白处移动 · 右侧按钮缩放与复位',
     canvasDismissHint: '本次会话不再显示操作提示',
     canvasResetView: '回到中心',
     canvasZoomIn: '放大画布',

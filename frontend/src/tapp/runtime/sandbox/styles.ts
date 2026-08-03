@@ -10,9 +10,7 @@
  * - Tailwind 类智能内联（按需提取）
  */
 
-// ========================
-// 🎯 Tailwind 类映射表
-// ========================
+// Tailwind 类映射表
 
 /**
  * Tailwind 类到 CSS 的映射表
@@ -825,9 +823,7 @@ function extractClassNames(source: string): Set<string> {
   return classes
 }
 
-// ========================
-// 🎯 动态 Tailwind 类解析
-// ========================
+// 动态 Tailwind 类解析
 
 /** 颜色映射 */
 const COLORS: Record<string, string> = {
@@ -1534,9 +1530,7 @@ export function generateOnDemandTailwindCSS(html: string): string {
   return cssRules.concat(spaceRules).concat(placeholderRules).join('\n')
 }
 
-// ========================
-// 🎯 主题 CSS 缓存
-// ========================
+// 主题 CSS 缓存
 
 /** 主题 CSS 缓存 */
 const themeCSSCache = new Map<string, string>()
@@ -1574,7 +1568,7 @@ export function generateThemeCSS(
 
   const primaryRgb = hexToRgb(primaryColor)
 
-  // 🎯 只提供壁纸色变量，不定义具体的文字/背景色
+  // 只提供壁纸色变量，不定义具体的文字/背景色
   // Tapp 的 CSS 应该使用 fallback 链条：var(--tapp-primary, var(--wallpaper-primary, #默认色))
   const css = `
 :root {
@@ -1677,9 +1671,7 @@ export const PAGE_CSS = `
   overflow: auto;
 }
 `
-// ========================
-// 🎯 预计算的组合 CSS（避免运行时拼接）
-// ========================
+// 预计算的组合 CSS（避免运行时拼接）
 
 /**
  * Widget 模式的完整静态 CSS（不含主题变量）

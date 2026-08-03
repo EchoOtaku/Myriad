@@ -140,7 +140,7 @@ export async function installFromCode(
   manifest: TappManifest,
   code: TappCodeStructure,
 ): Promise<TappListItem> {
-  // 🎯 生成 Widget 专用 CSS
+  // 生成 Widget 专用 CSS
   const widgetSources = [
     code.widgetHtml || '',
     code.styles || '',
@@ -149,7 +149,7 @@ export async function installFromCode(
   ].join('\n')
   const widgetCss = generateOnDemandTailwindCSS(widgetSources)
 
-  // 🎯 生成 Page 专用 CSS
+  // 生成 Page 专用 CSS
   const pageSources = [
     code.pageHtml || '',
     code.styles || '',
@@ -260,7 +260,6 @@ export async function installTappFile(
 export interface InstallFromStoreRequest {
   /** 商店源 URL（跨实例优先）或本机 store source ID */
   source: string
-  /** Tapp ID */
   tappId: string
   /** 授权的权限列表（可选，默认全部授权） */
   permissions?: string[]

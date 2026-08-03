@@ -15,9 +15,7 @@ import { loadImagePooled } from './objectPool'
  * 提供防抖、节流、RAF优化等性能工具
  */
 
-// ============================================
 // 帧率感知 - 代理到 AnimationCoordinator
-// ============================================
 
 /** 检查是否处于低帧率模式 */
 export function isLowFpsMode(): boolean {
@@ -108,7 +106,7 @@ export function rafThrottle<T extends (...args: any[]) => any>(
       return
     }
 
-    // 🔧 修复：使用正确的函数调用而非未定义变量
+    // 修复：使用正确的函数调用而非未定义变量
     if (skipOnLowFps && isLowFps()) {
       return
     }

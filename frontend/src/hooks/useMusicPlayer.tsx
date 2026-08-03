@@ -606,7 +606,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
       (typeof prevG?.musicColor === 'string' ? prevG.musicColor : null) ||
       null
 
-    // 🎯 同步更新全局状态（供 Tapp API 读取）— 写入完整状态，不依赖 Context 转手
+    // 同步更新全局状态（供 Tapp API 读取）— 写入完整状态，不依赖 Context 转手
     ;(window as any).__musicPlayerState = {
       ...((window as any).__musicPlayerState || {}),
       currentSong,
@@ -643,14 +643,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           currentSongIndex,
           playlistLength: playlist.length,
           playlist,
-          // 🎯 添加实时播放信息（供 Tapp 使用）
+          // 添加实时播放信息（供 Tapp 使用）
           currentTime: liveCurrentTime,
           audioDuration: liveDuration,
           generation: selectGenerationRef.current,
           isAudioLoading,
           volume,
           playMode,
-          // 🎯 添加歌词信息
+          // 添加歌词信息
           lyrics,
           verbatimLyrics,
           hasVerbatimLyrics: verbatimLyrics.length > 0,
@@ -1075,7 +1075,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         }
       }
       // 立刻推主题：缓存命中则新色；未命中则 pushSongTheme 内保留上一首色。
-      // ⚠️ playing 必须传 false：autoPlay 也要等 audio 真正 play 事件再亮「播放中」，
+      // playing 必须传 false：autoPlay 也要等 audio 真正 play 事件再亮「播放中」，
       // 否则会出现频谱/按钮已在播、实际无声的「虚假播放」。
       pushSongTheme(song, index, immediateColors, false, {
         resetProgress: true,
@@ -1648,7 +1648,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
         )
       }
 
-      // 🎯 实时更新全局状态并广播进度给 Tapp
+      // 实时更新全局状态并广播进度给 Tapp
       const globalState = (
         window as { __musicPlayerState?: Record<string, unknown> }
       ).__musicPlayerState
@@ -2351,7 +2351,7 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
   // 在当前播放列表中按索引播放（不进入临时单曲模式）
   // play-song-at-index / jump-to-index 语义一致：保留歌单，仅 selectSong
-  // ⚠️ 旧实现误走 playSong → 把整表换成 [单曲] 临时播放，Tapp playTrack(trackIndex) 会毁列表
+  // 旧实现误走 playSong → 把整表换成 [单曲] 临时播放，Tapp playTrack(trackIndex) 会毁列表
   const selectSongRef = useRef(selectSong)
   selectSongRef.current = selectSong
 

@@ -10,7 +10,7 @@
 
 import type { TappInstance } from '../tapp/types'
 
-// ============ 类型定义 ============
+// 类型定义
 
 /** 内置动态内容类型 */
 export type BuiltinContentType =
@@ -56,7 +56,6 @@ export interface ContentProviderConfig {
   name: string
   /** 来源 Tapp */
   tappId?: string
-  /** 是否启用 */
   enabled: boolean
   /** 更新间隔（毫秒） */
   updateInterval?: number
@@ -75,7 +74,7 @@ export interface ContentUpdateEvent {
 /** 内容更新监听器 */
 export type ContentUpdateListener = (event: ContentUpdateEvent) => void
 
-// ============ 动态内容提供者服务 ============
+// 动态内容提供者服务
 
 class DynamicContentProviderService {
   /** 已注册的内容提供者 */
@@ -99,7 +98,7 @@ class DynamicContentProviderService {
     })
   }
 
-  // ============ 提供者管理 ============
+  // 提供者管理
 
   /**
    * 注册内容提供者
@@ -141,7 +140,7 @@ class DynamicContentProviderService {
     return Array.from(this.providers.values())
   }
 
-  // ============ 内容管理 ============
+  // 内容管理
 
   /**
    * 设置当前语言
@@ -281,7 +280,7 @@ class DynamicContentProviderService {
     return localized
   }
 
-  // ============ 监听器管理 ============
+  // 监听器管理
 
   /**
    * 添加更新监听器
@@ -311,7 +310,7 @@ class DynamicContentProviderService {
     }
   }
 
-  // ============ Tapp 集成 ============
+  // Tapp 集成
 
   /**
    * 为 Tapp 注册内容提供者
@@ -387,7 +386,7 @@ class DynamicContentProviderService {
     return contents.find((c) => c.sourceTappId === tappId)
   }
 
-  // ============ 辅助方法 ============
+  // 辅助方法
 
   /**
    * 判断内容类型是否应显示副文本
@@ -432,7 +431,7 @@ class DynamicContentProviderService {
   }
 }
 
-// ============ 单例导出 ============
+// 单例导出
 
 /** 动态内容提供者服务单例 */
 export const dynamicContentProvider = new DynamicContentProviderService()

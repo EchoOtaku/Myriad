@@ -12,7 +12,7 @@ import {
 } from '../animations'
 import { useLibraryItemRotation } from '../hooks'
 
-// ==================== GitHub组件（完整版）====================
+// GitHub组件（完整版）
 export const GithubStatsWidget = memo(({ data }: any) => {
   const { t } = useI18n()
   const langs = useMemo(() => data?.languages || [], [data?.languages])

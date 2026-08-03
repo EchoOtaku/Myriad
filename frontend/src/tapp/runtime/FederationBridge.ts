@@ -217,7 +217,7 @@ export function registerFederationHandlers(
     })
   }
 
-  // ==================== 身份 ====================
+  // 身份
 
   bridge.registerHandler('federation.getIdentity', async () => {
     // Prefer grant-attributed call; session-only works for this endpoint and
@@ -273,7 +273,7 @@ export function registerFederationHandlers(
     },
   )
 
-  // ==================== 时间线 ====================
+  // 时间线
 
   bridge.registerHandler('federation.getFeed', async () => {
     try {
@@ -323,7 +323,7 @@ export function registerFederationHandlers(
     },
   )
 
-  // ==================== 关注管理 ====================
+  // 关注管理
 
   bridge.registerHandler('federation.follow', async (message: TappMessage) => {
     const [target] = (message.payload as { args: unknown[] }).args || []
@@ -386,7 +386,7 @@ export function registerFederationHandlers(
     }
   })
 
-  // ==================== 内容发布 ====================
+  // 内容发布
 
   bridge.registerHandler('federation.publish', async (message: TappMessage) => {
     const [req] = (message.payload as { args: unknown[] }).args || []
@@ -573,7 +573,7 @@ export function registerFederationHandlers(
     }
   })
 
-  // ==================== External share intent (X Web Intent only) ====================
+  // External share intent (X Web Intent only)
   // Compose share text + intent_url. Never posts server-side; user opens intent_url.
 
   bridge.registerHandler('federation.getExternalShareStatus', async () => {
@@ -735,7 +735,7 @@ export function registerFederationHandlers(
     }
   })
 
-  // ==================== Channel ====================
+  // Channel
 
   bridge.registerHandler('federation.getChannels', async () => {
     try {
@@ -969,7 +969,7 @@ export function registerFederationHandlers(
     },
   )
 
-  // ==================== Room ====================
+  // Room
 
   bridge.registerHandler('federation.getRooms', async () => {
     try {
@@ -1386,7 +1386,7 @@ export function registerFederationHandlers(
     },
   )
 
-  // ==================== Pin Room Message ====================
+  // Pin Room Message
 
   bridge.registerHandler(
     'federation.pinRoomMessage',
@@ -1419,7 +1419,7 @@ export function registerFederationHandlers(
     },
   )
 
-  // ==================== Ring (只读) ====================
+  // Ring (只读)
 
   bridge.registerHandler('federation.getRings', async () => {
     try {
@@ -1566,7 +1566,7 @@ export function registerFederationHandlers(
     },
   )
 
-  // ==================== Trust 策略管理 ====================
+  // Trust 策略管理
 
   bridge.registerHandler('federation.getTrustPolicy', async () => {
     try {
@@ -1868,7 +1868,7 @@ export function registerFederationHandlers(
     },
   )
 
-  // ==================== 文件传输 ====================
+  // 文件传输
 
   bridge.registerHandler(
     'federation.initiateTransfer',
@@ -2136,7 +2136,7 @@ export function registerFederationHandlers(
     },
   )
 
-  // ==================== WS 实时事件订阅 ====================
+  // WS 实时事件订阅
 
   bridge.registerHandler(
     'federation.subscribeChannel',

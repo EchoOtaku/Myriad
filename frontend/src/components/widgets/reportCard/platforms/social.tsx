@@ -534,7 +534,7 @@ export const XWidget = memo(({ data, showOverview, onContentChange }: any) => {
   )
 })
 
-// ==================== Discord 社区身份卡 ====================
+// Discord 社区身份卡
 // 概览面：账号画像 + 服务器图标墙 + 社区触达 / 角色定位
 // 详情面：代表服务器轮播（规模、角色、认证特性）
 const DISCORD_BLURPLE = '#5865F2'

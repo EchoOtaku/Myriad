@@ -46,7 +46,6 @@ export enum ScheduleStrategy {
 export interface AnimationConfig {
   /** 唯一标识 */
   id: string
-  /** 优先级 */
   priority: AnimationPriority
   /** 分组ID（用于交错动画） */
   groupId?: string

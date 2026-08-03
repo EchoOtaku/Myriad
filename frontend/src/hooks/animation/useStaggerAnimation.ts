@@ -88,7 +88,7 @@ export function useStaggerAnimation(
   const stateRef = useRef<AnimationState>(
     enabled ? AnimationState.WAITING : AnimationState.COMPLETED,
   )
-  // 🔧 优化：追踪是否已调度，避免重复调用 schedule
+  // 优化：追踪是否已调度，避免重复调用 schedule
   const scheduledRef = useRef(false)
   const [, forceUpdate] = useReducer((x) => x + 1, 0)
 
@@ -113,7 +113,7 @@ export function useStaggerAnimation(
       return
     }
 
-    // 🔧 优化：如果已经调度过，跳过重复调度
+    // 优化：如果已经调度过，跳过重复调度
     if (scheduledRef.current) {
       return
     }

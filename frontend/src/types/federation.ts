@@ -2,7 +2,7 @@
  * 联邦功能相关类型定义
  */
 
-// ==================== 关注相关 ====================
+// 关注相关
 
 export interface FollowRequest {
   target: string
@@ -57,7 +57,7 @@ export interface FollowListResponse {
   total: number
 }
 
-// ==================== 时间线 ====================
+// 时间线
 
 export interface TimelineItem {
   activity_id: string
@@ -95,7 +95,7 @@ export interface TimelineResponse {
   total: number
 }
 
-// ==================== 内容发布 ====================
+// 内容发布
 
 export interface NoteAttachmentInput {
   url: string
@@ -218,12 +218,12 @@ export interface PublishedListResponse {
   total: number
 }
 
-// ==================== 视图状态 ====================
+// 视图状态
 
 export type FederationTab =
   'timeline' | 'following' | 'followers' | 'published' | 'rings' | 'profile'
 
-// ==================== Channel 通信 ====================
+// Channel 通信
 
 export interface CreateChannelRequest {
   remote_actor: string
@@ -358,7 +358,7 @@ export interface WsMessage {
   event?: string
 }
 
-// ==================== Room 多方通信 ====================
+// Room 多方通信
 
 export interface CreateRoomRequest {
   name: string
@@ -501,7 +501,7 @@ export interface PinRoomMessageResponse {
   is_pinned: boolean
 }
 
-// ==================== Ring 相关 ====================
+// Ring 相关
 
 export interface CreateRingRequest {
   name: string
@@ -553,7 +553,7 @@ export interface AddPeerRequest {
   peer: string
 }
 
-// ==================== Trust 策略管理 ====================
+// Trust 策略管理
 
 /** Effective trust enforcement snapshot from GET /trust/policy */
 export interface TrustPolicyResponse {
@@ -650,7 +650,7 @@ export interface ToggleBlockRequest {
   block: boolean
 }
 
-// ==================== 文件传输 ====================
+// 文件传输
 
 export interface InitTransferRequest {
   filename: string

@@ -11,12 +11,12 @@ import type {
   SourceType,
 } from '../../types/brew'
 
-// ==================== 排序类型 ====================
+// 排序类型
 
 /** 排序模式 */
 export type SortMode = 'update' | 'custom' | 'category' | 'random' | 'pinyin'
 
-// ==================== 卡片组件类型 ====================
+// 卡片组件类型
 
 /** 订阅源卡片 Props */
 export interface SourceCardProps {
@@ -88,7 +88,7 @@ export interface BrewItemTranslations {
   openInNewTab: string
 }
 
-// ==================== 管理组件类型 ====================
+// 管理组件类型
 
 /** 控制岛模式 */
 export type ControlMode =
@@ -178,7 +178,7 @@ export interface ControlIslandProps {
   isAuthenticated?: boolean
 }
 
-// ==================== 导入/导出类型 ====================
+// 导入/导出类型
 
 /** Brew 导出清单 */
 export interface BrewExportManifest {

@@ -623,7 +623,7 @@ html.dark .arael-msg-content {
   color: #e5e7eb;
 }
 
-/* ====== Thinking Header (top-left of bubble, pure text) ====== */
+/* Thinking Header (top-left of bubble, pure text) */
 .arael-thinking-header {
   display: flex;
   align-items: center;
@@ -668,7 +668,7 @@ html.dark .arael-msg-content {
   opacity: 0.7;
 }
 
-/* ====== Thinking Panel (expandable detail, no background) ====== */
+/* Thinking Panel (expandable detail, no background) */
 .arael-thinking-panel {
   margin-bottom: 8px;
   padding-left: 2px;

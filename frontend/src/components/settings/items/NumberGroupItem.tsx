@@ -44,7 +44,6 @@ export interface NumberGroupItemProps {
   options: NumberGroupOption[]
   /** 值变化回调 */
   onChange: (key: string, value: number) => void
-  /** 是否禁用 */
   disabled?: boolean
   /** 自定义 class */
   className?: string

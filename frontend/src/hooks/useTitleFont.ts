@@ -18,7 +18,7 @@ import { deriveAdaptiveTitleColor } from '../utils/readableColor'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { useThemeMode } from '../utils/themeSubscriber'
 
-// ==================== 类型定义 ====================
+// 类型定义
 
 export interface FontOption {
   id: string
@@ -45,7 +45,7 @@ interface TitleStyle {
 
 type TitleStyleListener = (style: TitleStyle) => void
 
-// ==================== 常量配置 ====================
+// 常量配置
 
 // 颜色选项（基于全局壁纸色变量）
 // 自适应为默认，放在首位便于发现
@@ -190,7 +190,7 @@ const fontMap = new Map(AVAILABLE_FONTS.map((f) => [f.id, f]))
 const colorMap = new Map(AVAILABLE_COLORS.map((c) => [c.id, c]))
 const sizeMap = new Map(FONT_SIZE_OPTIONS.map((s) => [s.value, s]))
 
-// ==================== 字体加载器 ====================
+// 字体加载器
 
 const loadedFonts = new Set<string>()
 const loadingFonts = new Map<string, Promise<void>>()
@@ -238,7 +238,7 @@ function loadFont(font: FontOption): Promise<void> {
   return promise
 }
 
-// ==================== 全局状态管理 ====================
+// 全局状态管理
 
 let globalState: TitleStyle = {
   font: 'qwitcher-grypen',
@@ -357,7 +357,7 @@ async function initGlobalState(): Promise<void> {
   return initPromise
 }
 
-// ==================== Hook ====================
+// Hook
 
 export function useTitleFont() {
   const [state, setState] = useState<TitleStyle>(globalState)
@@ -458,7 +458,7 @@ export function useTitleFont() {
   }
 }
 
-// ==================== 工具函数 ====================
+// 工具函数
 
 export function getTitleFontFamily(fontId?: string): string {
   const id = fontId || globalState.font

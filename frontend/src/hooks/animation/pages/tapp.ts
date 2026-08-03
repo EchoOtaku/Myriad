@@ -39,7 +39,7 @@ const BASE_STAGGER_DELAY = 60 // ms
 
 let staggerIdCounter = 0
 
-// ==================== 页面初始化 ====================
+// 页面初始化
 
 /**
  * Tapp 页调度器初始化
@@ -55,7 +55,7 @@ export function useTappScheduler(): void {
   }, [])
 }
 
-// ==================== Stagger Animation Hook ====================
+// Stagger Animation Hook
 
 interface TappStaggerResult {
   /** 是否可以开始动画 */
@@ -167,7 +167,7 @@ export function useTappStagger(
   return { canAnimate, onComplete }
 }
 
-// ==================== Visibility Hook ====================
+// Visibility Hook
 
 /**
  * Tapp 页面可见性 Hook
@@ -188,7 +188,7 @@ export function useTappVisibility(): boolean {
   return visible
 }
 
-// ==================== 清理 ====================
+// 清理
 
 export function cleanupTapp(): void {
   staggerIdCounter = 0

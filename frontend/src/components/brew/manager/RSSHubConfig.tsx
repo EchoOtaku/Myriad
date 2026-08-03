@@ -471,7 +471,6 @@ interface RSSHubConfigProps {
   onConfigChange: (config: RSSHubConfig, fullUrl: string) => void
   /** 是否为编辑模式 */
   isEditMode?: boolean
-  /** 是否禁用 */
   disabled?: boolean
 }
 

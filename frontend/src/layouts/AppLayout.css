@@ -299,7 +299,7 @@ html[data-nav-layout='desktop'] .nav-group-spaced {
    └──────────────────────────────────────────┘
    ============================================= */
 
-/* --- 桌面端默认：从容优雅的节奏 --- */
+/* 桌面端默认：从容优雅的节奏 */
 
 /* 正常态过渡（进入动画完成时、data-animation 被移除后触发） */
 .nav-group:not([data-animation]) {
@@ -345,7 +345,7 @@ html[data-nav-layout='desktop'] .nav-group-spaced {
     transform 0.35s cubic-bezier(0.4, 0, 1, 1);
 }
 
-/* --- 底栏（mobile / 触控平板）覆盖：敏捷紧凑，水平进出场 --- */
+/* 底栏（mobile / 触控平板）覆盖：敏捷紧凑，水平进出场 */
 @media (width <= 767px) {
   /*
    * 空闲态不写 translateZ：常驻合成层会在横向滚动时留下图层残影。
@@ -451,19 +451,12 @@ html.dark .nav-item.active-secondary {
     inset 0 1px 0 0 rgb(255 255 255 / 10%);
 }
 
-/* 底栏模式：页面内容底部留出导航岛 + 安全区（自 astro 迁移）
- * 含平板触控 data-nav-layout=mobile（宽度可能 >767） */
-@supports (padding: env(safe-area-inset-bottom)) {
-  @media (width <= 767px) {
-    section {
-      padding-bottom: max(7rem, calc(7rem + env(safe-area-inset-bottom)));
-    }
-  }
-
-  html[data-nav-layout='mobile'] section {
-    padding-bottom: max(7rem, calc(7rem + env(safe-area-inset-bottom)));
-  }
-}
+/*
+ * 底栏模式导航岛留白：各页 AnimatedView / 内容壳已用 pb-24 / pb-28 等处理，
+ * 切勿再写全局 `section { padding-bottom: 7rem }`——设置「选项指南」的
+ * .setting-guide-block、SetupFlow、商店分区等内部 section 会被每块多垫 7rem，
+ * 移动端表现为「分类之间间距异常大」。
+ */
 
 /* 减少不必要的动画以提升性能 */
 @media (prefers-reduced-motion: reduce) {

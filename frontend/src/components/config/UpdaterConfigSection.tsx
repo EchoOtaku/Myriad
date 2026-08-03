@@ -369,7 +369,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     return CHANNEL_OPTIONS.filter((o) => fromServer.includes(o.channel))
   }, [status?.available_channels])
 
-  // ===== 操作 =====
+  // 操作
 
   const checkAvailable = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -998,7 +998,7 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     }
   }, [api, refresh, tokenRequired, explain, u, status, beginMaintWatch])
 
-  // ===== 渲染 =====
+  // 渲染
 
   const mood = useMemo<Mood>(() => deriveMood(status), [status])
 

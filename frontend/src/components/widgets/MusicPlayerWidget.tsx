@@ -24,7 +24,7 @@ import { PlayingSpectrum } from '../shared/PlayingSpectrum'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 
-// ==================== 漂浮歌词组件 ====================
+// 漂浮歌词组件
 
 interface FloatingChar {
   char: string
@@ -603,7 +603,7 @@ const FloatingLyrics = memo(
 
 FloatingLyrics.displayName = 'FloatingLyrics'
 
-// ==================== 静态动画常量（避免每次渲染创建新对象）====================
+// 静态动画常量（避免每次渲染创建新对象）
 
 // 封面入场动画
 const ALBUM_COVER_INITIAL = { scale: 0.5, opacity: 0, rotate: -15 }

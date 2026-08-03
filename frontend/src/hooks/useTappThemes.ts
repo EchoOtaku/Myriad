@@ -24,7 +24,7 @@ import { useEffect, useRef, useState } from 'react'
 // 静态 import 会把整个 tapp 服务层拖进首屏关键路径
 import { GLOW_OPTIONS, SURFACE_OPTIONS } from './useWidgetTheme'
 
-// ==================== 类型 ====================
+// 类型
 
 /** 消毒后的 Tapp 主题预设：只保留宿主可安全应用的字段 */
 export interface SafeTappTheme {
@@ -71,7 +71,7 @@ function sanitizeTappTheme(raw: unknown): SafeTappTheme | null {
   return { id, name, surface, glow }
 }
 
-// ==================== Hook ====================
+// Hook
 
 /**
  * 拉取并消毒当前用户已注册的 Tapp 主题预设。

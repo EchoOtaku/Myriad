@@ -37,7 +37,7 @@ import { Feature, hasFeature } from '../pageFeatures'
 
 const PAGE_ID = 'library'
 
-// ==================== 页面初始化 ====================
+// 页面初始化
 
 /**
  * 资料库调度器初始化
@@ -50,7 +50,7 @@ export function useLibraryScheduler(): void {
   }, [])
 }
 
-// ==================== Resize Hooks ====================
+// Resize Hooks
 
 /** 获取资料库页 Resize 管理器 */
 function getResizeManager() {
@@ -100,7 +100,7 @@ export function useLibraryResize<T extends Element>(
   return size
 }
 
-// ==================== Intersection Hooks ====================
+// Intersection Hooks
 
 let _libraryIntersectionObserver: IntersectionObserver | null = null
 const _libraryIntersectionCallbacks = new Map<
@@ -306,7 +306,7 @@ export function useLibraryIntersectionObserver(): {
   return { observeLibraryIntersection, unobserveLibraryIntersection }
 }
 
-// ==================== Idle Hooks ====================
+// Idle Hooks
 
 /**
  * 资料库空闲预加载
@@ -333,7 +333,7 @@ export function useLibraryPrefetch(
   }, deps)
 }
 
-// ==================== 清理 ====================
+// 清理
 
 export function cleanupLibrary(): void {
   getPageResizeManager(PAGE_ID).cleanup()

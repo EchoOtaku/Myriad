@@ -60,7 +60,7 @@ export function useElementAnimation(
 
   // 使用 ref 存储状态，避免不必要的渲染
   const stateRef = useRef<AnimationState>(AnimationState.WAITING)
-  // 🔧 优化：追踪是否已调度
+  // 优化：追踪是否已调度
   const scheduledRef = useRef(false)
   const [, forceUpdate] = useReducer((x) => x + 1, 0)
 
@@ -77,7 +77,7 @@ export function useElementAnimation(
       return
     }
 
-    // 🔧 优化：如果已经调度过，跳过重复调度
+    // 优化：如果已经调度过，跳过重复调度
     if (scheduledRef.current) {
       return
     }

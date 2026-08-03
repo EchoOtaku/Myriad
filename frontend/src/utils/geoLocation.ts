@@ -15,7 +15,7 @@
 import { API_URL } from '../config'
 import { dedupedFetch } from './requestDedup'
 
-// ===== 类型定义 =====
+// 类型定义
 
 export interface GeoLocationData {
   /** 纬度 */
@@ -59,7 +59,7 @@ export interface GeoApiResponse {
   fallback?: string
 }
 
-// ===== 内存缓存 =====
+// 内存缓存
 
 /** 用户是否在中国大陆的缓存 */
 let userInChinaMainland: boolean | null = null
@@ -76,7 +76,7 @@ let geoLocationCacheTime: number = 0
 /** 地理位置缓存有效期（5分钟） */
 const GEO_CACHE_TTL = 5 * 60 * 1000
 
-// ===== 浏览器定位常量（须在 resetGeoCache 之前声明）=====
+// 浏览器定位常量（须在 resetGeoCache 之前声明）
 
 /** localStorage：成功拿到的浏览器定位 */
 const BROWSER_GEO_CACHE_KEY = 'browser_geo_location_v1'
@@ -90,7 +90,7 @@ let browserGeoSessionAttempted = false
 /** 进行中的浏览器定位 Promise（去重） */
 let browserGeoInflight: Promise<GeoLocationData | null> | null = null
 
-// ===== 核心 API =====
+// 核心 API
 
 /**
  * 获取客户端地理位置（去重 + 缓存）
@@ -258,7 +258,7 @@ export function resetGeoCache(): void {
   console.log('[GeoLocation] 缓存已重置')
 }
 
-// ===== 内部实现 =====
+// 内部实现
 
 /**
  * 通过后端代理获取地理位置
@@ -447,7 +447,7 @@ export async function getGeoLocationWithLocalCache(
   return location
 }
 
-// ===== 浏览器定位（高精度，需用户授权）=====
+// 浏览器定位（高精度，需用户授权）
 
 function readBrowserGeoCache(ttl: number): GeoLocationData | null {
   try {

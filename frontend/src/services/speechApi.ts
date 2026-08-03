@@ -242,7 +242,7 @@ export async function getVoiceList(
   })
 }
 
-// ==================== ASR 语音转文本 ====================
+// ASR 语音转文本
 
 /**
  * ASR 请求参数
@@ -319,7 +319,7 @@ export function audioToBase64(blob: Blob): Promise<string> {
   })
 }
 
-// ==================== TTS 文本转语音 ====================
+// TTS 文本转语音
 
 /**
  * 单条文本转语音
@@ -859,7 +859,7 @@ export async function clearCache(): Promise<ClearCacheResponse> {
   })
 }
 
-// ==================== 文章缓存管理 ====================
+// 文章缓存管理
 
 /**
  * 音色缓存信息

@@ -912,7 +912,7 @@ function processInlineFormatting(html: string): string {
 function fixMalformedHtml(html: string): string {
   let result = html
 
-  // ========== 第一阶段：处理完全缺失尖括号的标签 ==========
+  // 第一阶段：处理完全缺失尖括号的标签
 
   // 检测是否存在缺失尖括号的标签模式
   // 典型特征: "iframe " 开头 + "/iframe" 结尾，但没有 <> 包裹
@@ -951,7 +951,7 @@ function fixMalformedHtml(html: string): string {
     result = result.replace(/~CLOSE_IFRAME~/g, '</iframe>')
   }
 
-  // ========== 第二阶段：修复属性格式问题 ==========
+  // 第二阶段：修复属性格式问题
 
   // 1. 修复 HTML 实体编码问题（amp; 变成 &）
   result = result.replace(/amp;/g, '&')
@@ -987,7 +987,7 @@ function fixMalformedHtml(html: string): string {
     '<iframe$1></iframe>',
   )
 
-  // ========== 第三阶段：处理开头就是没有 < 的 iframe ==========
+  // 第三阶段：处理开头就是没有 < 的 iframe
   // 处理整段内容开头就是 "iframe" 的情况
   if (/^iframe\s/i.test(result)) {
     result = `<${result}`

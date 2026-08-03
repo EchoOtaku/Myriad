@@ -24,9 +24,7 @@ import {
 
 export { areUrlsEquivalent, normalizeWallpaperUrl }
 
-// ============================================================================
 // 类型定义
-// ============================================================================
 
 /** 公开 API 应为 boolean；兼容网关/旧缓存把 true/false 序列化成字符串的情况 */
 function asConfigBool(value: unknown, defaultValue: boolean): boolean {
@@ -80,9 +78,7 @@ interface LoadWallpaperResult {
   }
 }
 
-// ============================================================================
 // 常量
-// ============================================================================
 
 /** 图片加载超时时间 */
 const IMAGE_LOAD_TIMEOUT = 15000
@@ -124,9 +120,7 @@ const IMAGE_EXTENSIONS = [
 /** 动态脚本扩展名 */
 const DYNAMIC_EXTENSIONS = ['.php', '.jsp', '.asp', '.aspx', '.py'] as const
 
-// ============================================================================
 // 工具函数
-// ============================================================================
 
 /**
  * 从颜色缓存中获取一个不同于当前URL的已缓存壁纸
@@ -393,7 +387,7 @@ async function applyWallpaperToDOM(
     return null
   }
 
-  // 🔒 检查是否需要更新：如果当前壁纸与目标相同且不是强制刷新，跳过
+  // 检查是否需要更新：如果当前壁纸与目标相同且不是强制刷新，跳过
   const currentUrl = extractBackgroundUrl(WALLPAPER_ELEMENT_ID)
   if (!forceRefresh && currentUrl && areUrlsEquivalent(currentUrl, imageUrl)) {
     // 已经是目标壁纸，只需更新模糊度（如果不同）
@@ -435,7 +429,7 @@ async function applyWallpaperToDOM(
       return null
     }
 
-    // 🔒 再次检查：预加载期间可能已经切换到目标壁纸
+    // 再次检查：预加载期间可能已经切换到目标壁纸
     const currentUrlAfterLoad = extractBackgroundUrl(WALLPAPER_ELEMENT_ID)
     if (
       !forceRefresh &&
@@ -552,9 +546,7 @@ async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
   }
 }
 
-// ============================================================================
 // Hook 实现
-// ============================================================================
 
 /**
  * loadWallpaper 去重机制

@@ -102,13 +102,13 @@ const api = axios.create({
   // Keep 4xx as fulfilled responses so callers (and CSRF retry) can inspect
   // body/status. Writers must still fail closed via assertConfigWriteSuccess.
   validateStatus: (status) => status < 500, // 只有5xx才算网络错误
-  withCredentials: true, // ✅ 自动发送 HttpOnly Cookie
+  withCredentials: true, // 自动发送 HttpOnly Cookie
 })
 
 // Add request interceptor to include auth token
 api.interceptors.request.use(
   async (config) => {
-    // ✅ 安全修复 P0: 异步获取 CSRF Token（从服务器）
+    // 异步获取 CSRF Token（从服务器）
     // 只有状态变更请求需要：后端 csrf_middleware 仅校验 POST/PUT/PATCH/DELETE。
     // Guest contract: GET /api/csrf-token returns 200 + csrf_token:null (not 401).
     // Still skip on GET to avoid wasted probe traffic on every read.
@@ -119,7 +119,7 @@ api.interceptors.request.use(
       }
     }
 
-    // ⚠️ HttpOnly Cookie 用于身份验证（自动发送，无需手动添加）
+    // HttpOnly Cookie 用于身份验证（自动发送，无需手动添加）
     // TokenManager.getToken() 返回 null（HttpOnly Cookie 无法被 JS 读取）
     // Axios 通过 withCredentials: true 自动发送 Cookie
 

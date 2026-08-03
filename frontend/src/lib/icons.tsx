@@ -7,9 +7,7 @@
 
 import type { LucideIcon } from 'lucide-react'
 import type { IconType } from 'react-icons'
-// ============================================================
 // Lucide Icons (Lu*) - 用于 Brew 阅读器等现代 UI
-// ============================================================
 import {
   Activity as LuActivity,
   AlertCircle as LuAlertCircle,
@@ -122,9 +120,7 @@ import {
 } from 'lucide-react'
 
 import { BsNintendoSwitch } from 'react-icons/bs'
-// ============================================================
 // Font Awesome Icons (Fa*) - 通用图标
-// ============================================================
 import {
   FaAlipay,
   FaAmazon,
@@ -263,13 +259,9 @@ import {
   FaWrench,
   FaXbox,
 } from 'react-icons/fa'
-// ============================================================
 // Font Awesome 6 Icons (Fa6*) - 用于 FaGrip 等
-// ============================================================
 import { FaGrip } from 'react-icons/fa6'
-// ============================================================
 // Simple Icons (Si*) - 品牌图标
-// ============================================================
 import {
   SiAnilist as SiAnilistRaw,
   SiApple as SiAppleRaw,
@@ -953,14 +945,10 @@ export {
   LuZoomOut,
 }
 
-// ============================================================
 // 别名
-// ============================================================
 export const FaXTwitter = SiX
 
-// ============================================================
 // 品牌图标别名 - 来自其他图标库
-// ============================================================
 
 /**
  * Nintendo Switch 品牌图标
@@ -968,9 +956,7 @@ export const FaXTwitter = SiX
  */
 export const SiNintendoswitch = withIconA11y(BsNintendoSwitch)
 
-// ============================================================
 // 图标映射表 - 用于动态查找 (getIconByName)
-// ============================================================
 export const iconMap: Record<string, IconType> = {
   // Simple Icons - 品牌图标
   SiSinaweibo,
@@ -1152,9 +1138,7 @@ export function getIconByName(name: string): IconType | null {
   return iconMap[name] || null
 }
 
-// ============================================================
 // 自定义 SVG 图标组件
-// ============================================================
 
 /**
  * RSSHub 品牌图标

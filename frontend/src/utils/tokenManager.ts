@@ -43,13 +43,13 @@ export class TokenManager {
    */
   static getToken(): string | null {
     try {
-      // ✅ 安全修复 P0: 仅从 HttpOnly Cookie 读取（XSS 无法窃取）
+      // 仅从 HttpOnly Cookie 读取（XSS 无法窃取）
       const cookieToken = this.getTokenFromCookie()
       if (cookieToken && this.isValidToken(cookieToken)) {
         return cookieToken
       }
 
-      // ✅ 安全修复 P0: 不再回退到 localStorage
+      // 不再回退到 localStorage
       // 如果 Cookie 中没有 Token，说明用户未登录或 Token 已过期
       return null
     } catch {
@@ -68,7 +68,7 @@ export class TokenManager {
         throw new Error('Invalid token format')
       }
 
-      // ✅ 安全修复 P0: 不再保存到 localStorage（容易被 XSS 窃取）
+      // 不再保存到 localStorage（容易被 XSS 窃取）
       // localStorage.setItem(this.TOKEN_KEY, token);
 
       // HttpOnly Cookie 由后端在 Set-Cookie 头中设置，前端无法设置

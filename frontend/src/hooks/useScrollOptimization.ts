@@ -13,7 +13,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSharedScroll } from './useSharedEventListener'
 
 interface ScrollOptimizationOptions {
-  /** 是否启用 */
   enabled?: boolean
   /** 滚动结束延迟（ms） */
   scrollEndDelay?: number

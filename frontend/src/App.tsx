@@ -56,7 +56,7 @@ import './styles/performance.css'
 // TappBackgroundRunner 懒加载，避免其错误阻塞主应用
 const TappBackgroundRunner = lazy(
   () => import('./tapp/components/TappBackgroundRunner'),
-) // 🔧 性能优化 CSS
+) // 性能优化 CSS
 
 // 懒加载视图组件 - 使用代码分割
 const Home = lazy(() => import('./views/Home.tsx'))
@@ -409,7 +409,7 @@ function animationKeyForPath(pathname: string): string {
 function AppRoutes() {
   const location = useLocation()
 
-  // 🎯 动画风格选择：
+  // 动画风格选择：
   // - 'fixed': 绝对定位包装器（仅 tapp/run 等自带 fixed 全屏布局的页面）
   // - 'normal': 正常页面（带 transform 动画）
   const animationStyle: 'normal' | 'fixed' | 'opacity-only' =
@@ -418,10 +418,10 @@ function AppRoutes() {
       ? 'fixed'
       : 'normal'
 
-  // 🎯 动画分组 key：同组路由之间不触发 exit/enter 动画，避免白屏间隙。
+  // 动画分组 key：同组路由之间不触发 exit/enter 动画，避免白屏间隙。
   const animationKey = animationKeyForPath(location.pathname)
 
-  // 🔧 原子化调度器：在路由变化时自动管理页面生命周期
+  // 原子化调度器：在路由变化时自动管理页面生命周期
   // 这会在路由切换时清理旧页面的订阅并初始化新页面
   useRouteScheduler()
 

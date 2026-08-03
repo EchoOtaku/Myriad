@@ -228,8 +228,8 @@ export async function getUserInfoWithCache(
   } else {
     // 并行获取：认证信息(实时) + 公开资料(缓存)
     ;[authInfo, profileInfo] = await Promise.all([
-      getAuthInfoRealtime(), // ⚠️ 实时验证权限
-      getProfileInfoWithCache(), // ✅ 可缓存的展示信息
+      getAuthInfoRealtime(), // 实时验证权限
+      getProfileInfoWithCache(), // 可缓存的展示信息
     ])
   }
 
@@ -239,7 +239,7 @@ export async function getUserInfoWithCache(
       name: authInfo.display_name || authInfo.username || userInfo.name,
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(authInfo.username || 'User')}&background=random`,
       bio: '这家伙很懒，没有介绍呢',
-      is_admin: authInfo.is_admin, // ⚠️ 来自实时验证
+      is_admin: authInfo.is_admin, // 来自实时验证
     }
   }
 

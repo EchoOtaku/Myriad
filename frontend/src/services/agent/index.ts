@@ -5,7 +5,7 @@
  */
 
 // 导出类型
-// ============ 便捷函数 ============
+// 便捷函数
 
 import type { AgentResponse, ProcessContext, ProgressCallback } from './types'
 

@@ -140,7 +140,7 @@ export function validatePlaygroundPackage(
   // hasPage when pageHtml is empty) does not hide "hasPage without page" errors.
   const declared = project.manifest
 
-  // --- Manifest required fields (validate_tapp_manifest core) ---
+  // Manifest required fields (validate_tapp_manifest core)
   const idError = validateTappId(manifest.id || '')
   if (idError) push(idError)
 
@@ -352,7 +352,7 @@ export function validatePlaygroundPackage(
     }
   }
 
-  // --- Declared resources must exist in the built file map ---
+  // Declared resources must exist in the built file map
   const requiredPaths: string[] = []
   if (manifest.main) requiredPaths.push(manifest.main)
   if (manifest.styles) requiredPaths.push(manifest.styles)

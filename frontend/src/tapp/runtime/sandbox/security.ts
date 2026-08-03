@@ -60,9 +60,7 @@ export function escapeSandboxScriptSource(source: string): string {
   return source.replace(/<\/script/gi, '<\\/script')
 }
 
-// ========================
-// 🎯 CSP 安全策略
-// ========================
+// CSP 安全策略
 
 /**
  * CSP 基础策略片段（不包含 script-src）
@@ -127,7 +125,7 @@ export function generateCSP(
   const allowWasm = options.allowWasm !== false
   const allowRemoteMedia = options.allowRemoteMedia === true
 
-  // 🔒 script-src: 仅 nonce（+ 可选 wasm）。不放行任何外部脚本 host——
+  // script-src: 仅 nonce（+ 可选 wasm）。不放行任何外部脚本 host——
   // host 白名单允许通过 <script src="https://host/?data"> 的 query 外泄数据。
   const wasmPart = allowWasm ? " 'wasm-unsafe-eval'" : ''
   const scriptSrc = nonce
@@ -210,9 +208,7 @@ export function generateSecurityWrapper(
 (() => {
   'use strict';
   
-  // =====================================================
-  // 🔒 第一优先级：立即冻结原型链（在任何用户代码之前）
-  // =====================================================
+  // 第一优先级：立即冻结原型链（在任何用户代码之前）
   try {
     Object.freeze(Object.prototype);
     Object.freeze(Array.prototype);
@@ -285,7 +281,7 @@ export function generateSecurityWrapper(
     }
   };
   
-  // === 禁用危险的全局 API ===
+  // 禁用危险的全局 API
   
   // 禁用 eval 和 Function 构造器（防止动态代码执行）
   try {
@@ -300,7 +296,7 @@ export function generateSecurityWrapper(
     window.Function.prototype = _Function.prototype;
   } catch (e) {}
   
-  // 🔒 安全加强：拦截 setTimeout/setInterval 的字符串参数
+  // 安全加强：拦截 setTimeout/setInterval 的字符串参数
   // 防止通过 setTimeout("malicious code", 0) 绕过 eval 禁用
   const _originalSetTimeout = window.setTimeout;
   const _originalSetInterval = window.setInterval;
@@ -412,7 +408,7 @@ export function generateSecurityWrapper(
     return false;
   };
 
-  // 🔒 安全加强：拦截 Image 构造器，尽早提示外部图片 URL 被 CSP 拦截
+  // 安全加强：拦截 Image 构造器，尽早提示外部图片 URL 被 CSP 拦截
   const _OriginalImage = window.Image;
   window.Image = class SecureImage extends _OriginalImage {
     constructor(width, height) {
@@ -439,7 +435,7 @@ export function generateSecurityWrapper(
     }
   };
   
-  // 🔒 安全加强：拦截 createElement，阻止危险元素创建
+  // 安全加强：拦截 createElement，阻止危险元素创建
   const _originalCreateElement = document.createElement.bind(document);
   const BLOCKED_ELEMENTS = ['script', 'iframe', 'frame', 'object', 'embed', 'link'];
   
@@ -485,7 +481,7 @@ export function generateSecurityWrapper(
     return element;
   };
   
-  // 🔒 安全加强：阻止 innerHTML 注入 script 标签
+  // 安全加强：阻止 innerHTML 注入 script 标签
   const _originalInnerHTMLDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
   if (_originalInnerHTMLDescriptor) {
     Object.defineProperty(Element.prototype, 'innerHTML', {
@@ -510,7 +506,7 @@ export function generateSecurityWrapper(
     });
   }
   
-  // 🔒 安全加强：阻止 outerHTML 注入 script 标签
+  // 安全加强：阻止 outerHTML 注入 script 标签
   const _originalOuterHTMLDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'outerHTML');
   if (_originalOuterHTMLDescriptor) {
     Object.defineProperty(Element.prototype, 'outerHTML', {
@@ -533,7 +529,7 @@ export function generateSecurityWrapper(
     });
   }
   
-  // 🔒 安全加强：拦截 insertAdjacentHTML
+  // 安全加强：拦截 insertAdjacentHTML
   const _originalInsertAdjacentHTML = Element.prototype.insertAdjacentHTML;
   Element.prototype.insertAdjacentHTML = function(position, text) {
     if (typeof text === 'string' && /<script[^>]*>/i.test(text)) {
@@ -543,7 +539,7 @@ export function generateSecurityWrapper(
     return _originalInsertAdjacentHTML.call(this, position, text);
   };
   
-  // 🔒 安全加强：阻止 document.write/writeln
+  // 安全加强：阻止 document.write/writeln
   document.write = () => { console.warn('[Security] document.write is disabled'); };
   document.writeln = () => { console.warn('[Security] document.writeln is disabled'); };
   
@@ -555,7 +551,7 @@ export function generateSecurityWrapper(
     safeDefineProperty(navigator, 'geolocation', { value: null, writable: false });
   }
   
-  // === 完整性验证 ===
+  // 完整性验证
   // 验证关键安全属性是否成功设置
   const securityChecks = [
     { check: () => window.parent !== window.top, name: 'parent isolation' },

@@ -182,7 +182,7 @@ async function analyze(url: string): Promise<BeatGrid | null> {
   }
 
   // 7. 生成拍点，逐拍 ±12% 吸附到局部包络峰（容忍轻微 tempo 漂移），
-  //    同时记录每拍峰值供重音标注
+  // 同时记录每拍峰值供重音标注
   const beats: number[] = []
   const peaks: number[] = []
   const snapW = Math.max(2, Math.round(bestLag * 0.12))
@@ -202,7 +202,7 @@ async function analyze(url: string): Promise<BeatGrid | null> {
   }
 
   // 8. 重音标注：拍峰值 > 全曲拍峰均值 + 1.5σ ——「明确被强调」的拍
-  //    （全曲统计显著，而非碰巧比邻拍响一点）
+  // （全曲统计显著，而非碰巧比邻拍响一点）
   let pMean = 0
   for (let i = 0; i < peaks.length; i++) pMean += peaks[i]
   pMean /= peaks.length || 1

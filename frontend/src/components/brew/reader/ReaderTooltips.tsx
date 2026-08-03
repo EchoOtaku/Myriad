@@ -24,7 +24,7 @@ import * as brewliaApi from '../../../services/brewliaApi'
 import { Spinner } from '../../Spinner'
 import { DATE_FORMAT_SHORT } from './constants'
 
-// ================== AI 注释 Tooltip ==================
+// AI 注释 Tooltip
 
 interface AnnotationTooltipProps {
   hoveredAnnotation: {
@@ -123,7 +123,7 @@ export function AnnotationTooltip({
   )
 }
 
-// ================== 评论 Tooltip ==================
+// 评论 Tooltip
 
 interface CommentTooltipProps {
   commentTooltip: { comment: CommentItem; x: number; y: number } | null
@@ -218,7 +218,7 @@ export function CommentTooltip({
   )
 }
 
-// ================== 评论输入弹窗 ==================
+// 评论输入弹窗
 
 interface CommentInputPopupProps {
   showCommentPopup: boolean

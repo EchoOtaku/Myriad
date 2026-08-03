@@ -51,7 +51,7 @@ interface WaitingItem {
   registeredAt: number
 }
 
-/** 🔧 WeakRef 元素追踪项 */
+/** WeakRef 元素追踪项 */
 interface WeakRefEntry {
   ref: WeakRef<HTMLElement>
   animationId: string
@@ -66,15 +66,15 @@ class AnimationCoordinator {
   // 事件订阅
   private listeners = new Map<string, Set<AnimationListener>>()
 
-  // ==================== 高效任务调度 ====================
-  // 🔧 已委托给 core.ts 的 scheduleTask()
+  // 高效任务调度
+  // 已委托给 core.ts 的 scheduleTask()
 
-  // ==================== 页面可见性优化 ====================
-  // 🔧 已委托给 core.ts 的 isPageVisible() / onVisibility()
+  // 页面可见性优化
+  // 已委托给 core.ts 的 isPageVisible() / onVisibility()
   private visibilityUnsubscribe: (() => void) | null = null
 
-  // ==================== 时间戳缓存 ====================
-  // 🔧 已委托给 core.ts 的 now() / refreshNow()
+  // 时间戳缓存
+  // 已委托给 core.ts 的 now() / refreshNow()
 
   // 页面就绪状态
   private currentPageId: string | null = null
@@ -89,7 +89,7 @@ class AnimationCoordinator {
   private pendingUpdates = new Set<string>()
   private isMicrotaskScheduled = false
 
-  // ==================== 并发控制 ====================
+  // 并发控制
   // 活动动画槽位
   private activeSlots = new Map<string, AnimationSlot>()
   // 等待队列（按优先级排序）
@@ -100,7 +100,7 @@ class AnimationCoordinator {
   private totalScheduled = 0
   /** 累计成功占槽次数 */
   private totalAcquired = 0
-  // ==================== 爆发模式 ====================
+  // 爆发模式
   // 爆发模式开始时间
   private burstStartTime: number = 0
   // 是否处于爆发模式
@@ -108,7 +108,7 @@ class AnimationCoordinator {
   // 爆发模式持续时间（动态调整）
   private currentBurstDuration: number = 0
 
-  // ==================== 超时清理 ====================
+  // 超时清理
   // 动画超时时间(ms)，超时后自动释放槽位
   private readonly ANIMATION_TIMEOUT = 2000
   // 超时检查定时器
@@ -123,11 +123,11 @@ class AnimationCoordinator {
 
   private delayTimerId: ReturnType<typeof setTimeout> | null = null
 
-  // ==================== 分片处理配置 ====================
+  // 分片处理配置
   // 每批最大处理数，避免 Long Task
   private readonly BATCH_SIZE = 8
 
-  // ==================== 帧率监控与管理 ====================
+  // 帧率监控与管理
   /** 帧时间预算（ms） - 60fps 基准，会根据检测到的刷新率动态调整 */
   private frameBudget: number = 16
   /**
@@ -194,9 +194,9 @@ class AnimationCoordinator {
    */
   private lowFpsThreshold: number = 45
 
-  // DOM 批量读写 - 🔧 已委托给 core.ts 的 batchRead() / batchWrite()
+  // DOM 批量读写 -  已委托给 core.ts 的 batchRead() / batchWrite()
 
-  // ==================== ResizeObserver 管理器 ====================
+  // ResizeObserver 管理器
   /** 共享的 ResizeObserver 实例（单一观察者，多元素） */
   private sharedResizeObserver: ResizeObserver | null = null
   /** 尺寸回调映射：element -> callback */
@@ -227,7 +227,7 @@ class AnimationCoordinator {
     { width: number; height: number }
   >()
 
-  // ==================== IntersectionObserver 管理器 ====================
+  // IntersectionObserver 管理器
   /** 共享的 IntersectionObserver 实例池（按配置分组） */
   private intersectionObservers = new Map<string, IntersectionObserver>()
   /** 可见性回调映射：element -> { callback, observerKey } */
@@ -246,11 +246,11 @@ class AnimationCoordinator {
   /** 可见性批次是否已调度 */
   private intersectionBatchScheduled: boolean = false
 
-  // ==================== 页面可见性订阅管理 ====================
+  // 页面可见性订阅管理
   /** 页面可见性变化回调集合 */
   private visibilitySubscribers = new Set<(isVisible: boolean) => void>()
 
-  // ==================== 空闲任务调度器 ====================
+  // 空闲任务调度器
   /** 空闲任务队列 */
   private idleTaskQueue: Array<{
     id: string
@@ -264,14 +264,14 @@ class AnimationCoordinator {
   /** 已注册的空闲任务 ID 集合（用于去重） */
   private registeredIdleTasks = new Set<string>()
 
-  // ==================== 对象池（减少 GC 压力）====================
-  // 🔧 等待队列 ID 索引，用于 O(1) 查找
+  // 对象池（减少 GC 压力）
+  // 等待队列 ID 索引，用于 O(1) 查找
   private waitingQueueIndex = new Map<string, number>()
   // 调度版本用于废弃页面就绪前已取消/重排的旧回调
   private scheduleVersions = new Map<string, number>()
 
-  // ==================== WeakRef 元素追踪（内存优化）====================
-  // 🔧 新增：使用 WeakRef 追踪元素，元素被 GC 时自动清理状态
+  // WeakRef 元素追踪（内存优化）
+  // 新增：使用 WeakRef 追踪元素，元素被 GC 时自动清理状态
   private elementRefs = new Map<string, WeakRefEntry>()
   // FinalizationRegistry 用于自动清理
   private finalizationRegistry: FinalizationRegistry<string> | null = null
@@ -280,7 +280,7 @@ class AnimationCoordinator {
 
   constructor(config: Partial<CoordinatorConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config }
-    // 🔧 订阅 core.ts 的页面可见性变化（用于 processWaitQueue 触发和通知订阅者）
+    // 订阅 core.ts 的页面可见性变化（用于 processWaitQueue 触发和通知订阅者）
     this.visibilityUnsubscribe = onVisibility((visible) => {
       if (visible) {
         if (this.fpsMonitorRunning) {
@@ -298,13 +298,13 @@ class AnimationCoordinator {
         }
       }
     })
-    // 📌 初始化时立即进入超频模式，确保首屏动画流畅
+    // 初始化时立即进入超频模式，确保首屏动画流畅
     this.activateBurstMode(10000)
-    // 🔧 初始化 FinalizationRegistry（如果浏览器支持）
+    // 初始化 FinalizationRegistry（如果浏览器支持）
     this.initFinalizationRegistry()
   }
 
-  // ==================== 页面可见性（委托 core.ts） ====================
+  // 页面可见性（委托 core.ts）
 
   /**
    * 🔧 订阅页面可见性变化
@@ -324,7 +324,7 @@ class AnimationCoordinator {
     return coreIsPageVisible()
   }
 
-  // ==================== WeakRef 元素追踪 ====================
+  // WeakRef 元素追踪
 
   /**
    * 🔧 初始化 FinalizationRegistry
@@ -453,7 +453,7 @@ class AnimationCoordinator {
     this.stopTimeoutCheckerIfIdle()
   }
 
-  // ==================== 超时清理 ====================
+  // 超时清理
 
   /**
    * 启动超时检查器
@@ -484,7 +484,7 @@ class AnimationCoordinator {
    * 清理超时的槽位 - 优化版：使用缓存时间戳，减少数组创建
    */
   private cleanupTimedOutSlots() {
-    // 🔧 页面不可见时跳过清理（节省 CPU）
+    // 页面不可见时跳过清理（节省 CPU）
     if (!coreIsPageVisible()) return
 
     // 快速返回：无活动槽位
@@ -514,7 +514,7 @@ class AnimationCoordinator {
     }
   }
 
-  // ==================== 动态并发控制 ====================
+  // 动态并发控制
 
   /**
    * 获取当前最大并发数 - 优化版：使用缓存时间戳减少计算开销
@@ -559,13 +559,13 @@ class AnimationCoordinator {
     this.currentBurstDuration = duration
   }
 
-  // ==================== 配置 ====================
+  // 配置
 
   updateConfig(config: Partial<CoordinatorConfig>) {
     this.config = { ...this.config, ...config }
   }
 
-  // ==================== 页面级（事件驱动）====================
+  // 页面级（事件驱动）
 
   /**
    * 开始页面过渡
@@ -627,7 +627,7 @@ class AnimationCoordinator {
             callbacks[index]()
           }
           if (index < callbacks.length) {
-            // 🔧 使用 MessageChannel 替代 setTimeout
+            // 使用 MessageChannel 替代 setTimeout
             scheduleTask(processBatch)
           }
         }
@@ -705,7 +705,7 @@ class AnimationCoordinator {
     this.stopTimeoutChecker()
   }
 
-  // ==================== 元素级（批量调度）====================
+  // 元素级（批量调度）
 
   /**
    * 调度动画
@@ -872,7 +872,7 @@ class AnimationCoordinator {
    * 添加到等待队列 - 优化版：使用索引 Map 快速检查重复
    */
   private addToWaitQueue(id: string, priority: AnimationPriority) {
-    // 🔧 使用索引 Map O(1) 检查是否已在队列中
+    // 使用索引 Map O(1) 检查是否已在队列中
     if (this.waitingQueueIndex.has(id)) {
       return
     }
@@ -887,7 +887,7 @@ class AnimationCoordinator {
       registeredAt: coreNow(),
     }
 
-    // 🔧 快速路径：队列为空或应该插入末尾
+    // 快速路径：队列为空或应该插入末尾
     const queueLen = this.waitingQueue.length
     if (
       queueLen === 0 ||
@@ -911,7 +911,7 @@ class AnimationCoordinator {
     }
     this.waitingQueue.splice(left, 0, item)
 
-    // 🔧 更新索引（插入位置及之后的所有项）
+    // 更新索引（插入位置及之后的所有项）
     this.rebuildWaitingQueueIndex(left)
   }
 
@@ -969,7 +969,7 @@ class AnimationCoordinator {
     ) {
       const next = this.waitingQueue.shift()
       if (next) {
-        // 🔧 从索引中移除
+        // 从索引中移除
         this.waitingQueueIndex.delete(next.id)
         this.acquireSlot(next.id, next.priority)
         this.markReady(next.id)
@@ -977,14 +977,14 @@ class AnimationCoordinator {
       }
     }
 
-    // 🔧 如果有移除，重建索引
+    // 如果有移除，重建索引
     if (processed > 0 && this.waitingQueue.length > 0) {
       this.rebuildWaitingQueueIndex(0)
     }
 
     // 如果还有剩余且有槽位，延迟继续处理
     if (this.waitingQueue.length > 0 && this.activeSlots.size < maxConcurrent) {
-      // 🔧 使用 MessageChannel 替代 setTimeout
+      // 使用 MessageChannel 替代 setTimeout
       scheduleTask(() => this.processWaitQueue())
     }
   }
@@ -1000,7 +1000,7 @@ class AnimationCoordinator {
     const executeAt = coreNow() + delay
     const item = { id, executeAt, priority }
 
-    // 🔧 快速路径：队列为空或应该插入末尾
+    // 快速路径：队列为空或应该插入末尾
     const queueLen = this.delayedQueue.length
     if (
       queueLen === 0 ||
@@ -1121,9 +1121,9 @@ class AnimationCoordinator {
     this.stopTimeoutCheckerIfIdle()
   }
 
-  // ==================== 帧率监控 ====================
+  // 帧率监控
 
-  // ==================== 批量更新（microtask 替代 RAF）====================
+  // 批量更新（microtask 替代 RAF）
 
   /**
    * 调度 microtask 刷新
@@ -1173,7 +1173,7 @@ class AnimationCoordinator {
       }
 
       if (index < ids.length) {
-        // 🔧 使用 MessageChannel 替代 setTimeout
+        // 使用 MessageChannel 替代 setTimeout
         scheduleTask(processBatch)
       }
     }
@@ -1181,7 +1181,7 @@ class AnimationCoordinator {
     processBatch()
   }
 
-  // ==================== 订阅 ====================
+  // 订阅
 
   /**
    * 订阅状态变化 - 优化版：减少 Map 查找
@@ -1208,7 +1208,7 @@ class AnimationCoordinator {
         listeners.delete(callback)
         if (listeners.size === 0) {
           this.listeners.delete(id)
-          // 🔧 修复：同时清理废弃的状态，避免内存泄漏
+          // 修复：同时清理废弃的状态，避免内存泄漏
           this.states.delete(id)
           this.pendingUpdates.delete(id)
         }
@@ -1235,7 +1235,7 @@ class AnimationCoordinator {
     return this.states.get(id)
   }
 
-  // ==================== 工具方法 ====================
+  // 工具方法
 
   /**
    * 计算交错延迟
@@ -1279,9 +1279,9 @@ class AnimationCoordinator {
       waitingQueueLength: this.waitingQueue.length,
       waitingQueueIndexSize: this.waitingQueueIndex.size,
       delayedQueueLength: this.delayedQueue.length,
-      // 🔧 新增：WeakRef 追踪的元素数量
+      // 新增：WeakRef 追踪的元素数量
       trackedElementsCount: this.elementRefs.size,
-      // 🔧 页面可见性状态（委托 core.ts）
+      // 页面可见性状态（委托 core.ts）
       isPageVisible: coreIsPageVisible(),
       // 总计：超过 500 可能有泄漏
       totalEntries:
@@ -1386,7 +1386,7 @@ class AnimationCoordinator {
     this.activateBurstMode(10000) // 首次加载也使用10s
   }
 
-  // ==================== 帧率监控 API ====================
+  // 帧率监控 API
 
   /**
    * 启动 FPS 监控
@@ -1431,7 +1431,7 @@ class AnimationCoordinator {
       this.lastFrameTimestamp = timestamp
       this.totalFrames++
 
-      // 🔧 刷新率检测阶段（前 30 帧）
+      // 刷新率检测阶段（前 30 帧）
       // 通过最小帧时间推断显示器刷新率
       if (!this.refreshRateDetected && this.totalFrames <= 30) {
         // 过滤掉异常短的帧时间（< 4ms，可能是测量误差）
@@ -1457,14 +1457,14 @@ class AnimationCoordinator {
         }
       }
 
-      // 🔧 环形缓冲区写入（避免 push/shift）
+      // 环形缓冲区写入（避免 push/shift）
       const idx = this.frameTimeIndex
       const oldValue = this.frameTimes[idx]
       this.frameTimes[idx] = frameTime
       // 位运算取模（64 = 2^6，所以 & 63 等价于 % 64）
       this.frameTimeIndex = (idx + 1) & 63
 
-      // 🔧 增量更新累加器（O(1) 复杂度）
+      // 增量更新累加器（O(1) 复杂度）
       if (this.frameTimeCount < this.FPS_SAMPLE_SIZE) {
         this.frameTimeCount++
         this.frameTimeSum += frameTime
@@ -1481,15 +1481,15 @@ class AnimationCoordinator {
       ) {
         this.lastFpsUpdateTime = timestamp
 
-        // 🔧 使用累加器直接计算平均帧时间（O(1)）
+        // 使用累加器直接计算平均帧时间（O(1)）
         const avgFrameTime = this.frameTimeSum / this.frameTimeCount
 
-        // 🔧 平滑处理：与上一次 FPS 做加权平均，避免抖动
+        // 平滑处理：与上一次 FPS 做加权平均，避免抖动
         const rawFps = 1000 / avgFrameTime
         // 80% 新值 + 20% 旧值，提高稳定性
         this.currentFps = Math.round(rawFps * 0.8 + this.currentFps * 0.2)
 
-        // 🔧 使用动态计算的阈值
+        // 使用动态计算的阈值
         this.isLowFpsMode = this.currentFps < this.lowFpsThreshold
       }
 
@@ -1655,7 +1655,7 @@ class AnimationCoordinator {
     // 注意：不重置 detectedRefreshRate，保留之前的检测结果
   }
 
-  // ==================== DOM 批量操作（委托 core.ts）====================
+  // DOM 批量操作（委托 core.ts）
 
   /**
    * 批量 DOM 读取 - 委托给 core.ts
@@ -1687,7 +1687,7 @@ class AnimationCoordinator {
     return this.isLowFpsMode || this.waitingQueue.length > 10
   }
 
-  // ==================== ResizeObserver 管理 ====================
+  // ResizeObserver 管理
 
   /**
    * 初始化共享 ResizeObserver
@@ -1871,7 +1871,7 @@ class AnimationCoordinator {
     return this.elementSizeCache.get(element) || null
   }
 
-  // ==================== IntersectionObserver 管理 ====================
+  // IntersectionObserver 管理
 
   /**
    * 获取或创建 IntersectionObserver
@@ -2014,7 +2014,7 @@ class AnimationCoordinator {
     return this.intersectionObservers.size
   }
 
-  // ==================== 空闲任务调度器 ====================
+  // 空闲任务调度器
 
   /**
    * 🔧 调度空闲任务
@@ -2157,35 +2157,35 @@ class AnimationCoordinator {
     // 停止 FPS 监控
     this.stopFpsMonitor()
     this.stopTimeoutChecker()
-    // 🔧 清理 WeakRef 检查器
+    // 清理 WeakRef 检查器
     if (this.weakRefCheckerId) {
       clearInterval(this.weakRefCheckerId)
       this.weakRefCheckerId = null
     }
-    // 🔧 取消订阅 core.ts 的可见性变化
+    // 取消订阅 core.ts 的可见性变化
     if (this.visibilityUnsubscribe) {
       this.visibilityUnsubscribe()
       this.visibilityUnsubscribe = null
     }
-    // 🔧 清理可见性订阅者
+    // 清理可见性订阅者
     this.visibilitySubscribers.clear()
     // 清理 elementRefs
     this.elementRefs.clear()
-    // 🔧 清理 ResizeObserver
+    // 清理 ResizeObserver
     if (this.sharedResizeObserver) {
       this.sharedResizeObserver.disconnect()
       this.sharedResizeObserver = null
     }
     this.observedElements.clear()
     this.resizeBatchQueue.length = 0
-    // 🔧 清理 IntersectionObserver
+    // 清理 IntersectionObserver
     for (const observer of this.intersectionObservers.values()) {
       observer.disconnect()
     }
     this.intersectionObservers.clear()
     this.intersectionObservedElements.clear()
     this.intersectionBatchQueue.length = 0
-    // 🔧 清理空闲任务
+    // 清理空闲任务
     if (this.idleCallbackId !== null) {
       if (typeof cancelIdleCallback !== 'undefined') {
         cancelIdleCallback(this.idleCallbackId)

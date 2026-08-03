@@ -6,7 +6,7 @@
 
 import type { ExampleTapp, TappCodeStructure } from './types'
 
-// ========== 页面 HTML 模板 ==========
+// 页面 HTML 模板
 const PAGE_HTML = `<!-- 背景层 -->
 <div id="tapp-background">
   <div class="hw-bg-base"></div>
@@ -98,7 +98,7 @@ const PAGE_HTML = `<!-- 背景层 -->
 </div>
 `
 
-// ========== CSS 样式 ==========
+// CSS 样式
 const STYLES = `/* ========== CSS 变量 ========== */
 :root {
   --hw-primary: var(--tapp-primary, #10B981);
@@ -109,11 +109,11 @@ const STYLES = `/* ========== CSS 变量 ========== */
   --hw-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 
-/* ========== 基础重置 ========== */
+/* 基础重置 */
 * { box-sizing: border-box; }
 body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 
-/* ========== Glass 效果 ========== */
+/* Glass 效果 */
 .glass {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(20px) saturate(180%);
@@ -125,7 +125,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   border-color: rgba(255, 255, 255, 0.08);
 }
 
-/* ========== 页面容器 ========== */
+/* 页面容器 */
 .hw-page {
   position: relative;
   width: 100%;
@@ -134,7 +134,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   color: var(--tapp-text, #1f1f1f);
 }
 
-/* ========== 背景层（#tapp-background） ========== */
+/* 背景层（#tapp-background） */
 #tapp-background {
   background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
 }
@@ -176,7 +176,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   50% { opacity: 1; transform: scale(1.1); }
 }
 
-/* ========== 主内容区 ========== */
+/* 主内容区 */
 .hw-main {
   position: relative;
   z-index: 1;
@@ -185,7 +185,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   padding: 24px;
 }
 
-/* ========== 标题卡片 ========== */
+/* 标题卡片 */
 .hw-header {
   border-radius: var(--hw-radius);
   padding: 32px;
@@ -239,7 +239,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 }
 .dark .hw-subtitle { color: #999; }
 
-/* ========== 功能卡片网格 ========== */
+/* 功能卡片网格 */
 .hw-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -247,7 +247,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   margin-bottom: 24px;
 }
 
-/* ========== 功能卡片 ========== */
+/* 功能卡片 */
 .hw-card {
   border-radius: var(--hw-radius-sm);
   padding: 24px;
@@ -323,7 +323,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   border-color: color-mix(in srgb, var(--hw-primary) 60%, transparent);
 }
 
-/* ========== 页脚 ========== */
+/* 页脚 */
 .hw-footer {
   text-align: center;
   padding: 16px 0;
@@ -337,7 +337,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 }
 .dark .hw-footer p { color: #888; }
 
-/* ========== 动画 ========== */
+/* 动画 */
 @keyframes hw-slide-up {
   from {
     opacity: 0;
@@ -349,7 +349,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   }
 }
 
-/* ========== 响应式 ========== */
+/* 响应式 */
 @media (max-width: 480px) {
   .hw-main { padding: 16px; }
   .hw-header { padding: 24px; }
@@ -358,7 +358,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
   .hw-grid { grid-template-columns: 1fr; }
 }
 
-/* ========== 减少动画 ========== */
+/* 减少动画 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -367,7 +367,7 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
 }
 `
 
-// ========== 核心代码 ==========
+// 核心代码
 const CORE_CODE = `// ========== i18n 翻译表 ==========
 var i18n = {
   'zh-CN': {
@@ -465,7 +465,7 @@ function updateTexts() {
 }
 `
 
-// ========== 页面代码 ==========
+// 页面代码
 const PAGE_CODE = `var isPaused = false;
 
 Tapp.lifecycle.onReady(async function() {
@@ -496,7 +496,7 @@ Tapp.lifecycle.onDestroy(async function() {
 });
 `
 
-// ========== 导出 Tapp 定义 ==========
+// 导出 Tapp 定义
 const codeStructure: TappCodeStructure = {
   core: CORE_CODE,
   page: PAGE_CODE,

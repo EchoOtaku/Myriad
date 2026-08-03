@@ -42,7 +42,7 @@ export function useNavAutoHide(selector = '.nav-container') {
     const navContainer = document.querySelector(selector) as HTMLElement
     if (!navContainer) return
 
-    // ===== 状态 =====
+    // 状态
     let lastScrollY = window.scrollY
     let rafId = 0
     let inactivityTimeoutId = 0
@@ -85,7 +85,7 @@ export function useNavAutoHide(selector = '.nav-container') {
       })
     }
 
-    // ===== 核心显示/隐藏 =====
+    // 核心显示/隐藏
     const showNav = () => {
       if (isNavVisible) return
       isNavVisible = true
@@ -106,7 +106,7 @@ export function useNavAutoHide(selector = '.nav-container') {
       applyVisibility(false)
     }
 
-    // ===== 无操作计时器 =====
+    // 无操作计时器
     const clearInactivityTimer = () => {
       if (inactivityTimeoutId) {
         clearTimeout(inactivityTimeoutId)
@@ -121,7 +121,7 @@ export function useNavAutoHide(selector = '.nav-container') {
       }
     }
 
-    // ===== 滚动处理 =====
+    // 滚动处理
     const processScroll = () => {
       if (isChromeSwitching(navContainer)) {
         rafId = 0
@@ -153,7 +153,7 @@ export function useNavAutoHide(selector = '.nav-container') {
       }
     }
 
-    // ===== 鼠标移动处理 =====
+    // 鼠标移动处理
     let pendingMouseMove: MouseEvent | null = null
     let mouseRafId = 0
 
@@ -183,7 +183,7 @@ export function useNavAutoHide(selector = '.nav-container') {
       }
     }
 
-    // ===== 交互处理 =====
+    // 交互处理
     const handleInteraction = () => {
       if (isChromeSwitching(navContainer)) return
       if (!hiddenByScroll) {
@@ -192,7 +192,7 @@ export function useNavAutoHide(selector = '.nav-container') {
       }
     }
 
-    // ===== 导航岛悬停 =====
+    // 导航岛悬停
     const handleNavEnter = () => {
       if (isChromeSwitching(navContainer)) return
       isHovering = true
@@ -228,7 +228,7 @@ export function useNavAutoHide(selector = '.nav-container') {
       cachedWindowHeight = window.innerHeight
     }
 
-    // ===== 初始化 & 事件注册 =====
+    // 初始化 & 事件注册
     applyVisibility(true)
 
     const controller = new AbortController()

@@ -30,7 +30,7 @@ function notifySubscribers() {
 
   if (newColor && newColor !== currentColor) {
     currentColor = newColor
-    // 🎯 使用 Array.from 创建快照，确保所有订阅者都被通知
+    // 使用 Array.from 创建快照，确保所有订阅者都被通知
     const subscriberArray = Array.from(subscribers)
     subscriberArray.forEach((callback) => {
       try {
@@ -42,7 +42,7 @@ function notifySubscribers() {
   }
 }
 
-// 🎯 防抖标记，避免多次 requestAnimationFrame 调用
+// 防抖标记，避免多次 requestAnimationFrame 调用
 let rafScheduled = false
 
 function scheduleNotify() {
@@ -63,7 +63,7 @@ function ensureObserver() {
         mutation.type === 'attributes' &&
         mutation.attributeName === 'style'
       ) {
-        // 🎯 使用防抖调度，避免频繁触发
+        // 使用防抖调度，避免频繁触发
         scheduleNotify()
         break
       }
@@ -94,7 +94,7 @@ export function subscribeToPrimaryColor(callback: ColorCallback): () => void {
   ensureObserver()
 
   // 立即调用一次，确保初始状态同步
-  // 🎯 修复：获取最新颜色而不是使用可能过期的 currentColor
+  // 修复：获取最新颜色而不是使用可能过期的 currentColor
   callback(getPrimaryColor())
 
   return () => {

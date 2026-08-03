@@ -18,7 +18,6 @@ import { isPageVisible, onVisibility } from './core'
 interface UseVisibilityIntervalOptions {
   /** 定时器间隔（ms） */
   delay: number
-  /** 是否启用 */
   enabled?: boolean
   /** 是否立即执行一次 */
   immediate?: boolean
@@ -109,7 +108,6 @@ export function useVisibilityInterval(
 interface UseVisibilityTimeoutOptions {
   /** 延迟时间（ms） */
   delay: number
-  /** 是否启用 */
   enabled?: boolean
 }
 

@@ -131,14 +131,17 @@ function TappStorePageStandard({ isMobile }: { isMobile: boolean }) {
         zIndex: 1,
       }
     }
+    // Horizontal inset must match the chrome column padding below
+    // (px-3.5 / sm:px-4 / md:px-6) so the content shell lines up with
+    // the glass title bar edges. Do not drift from those Tailwind steps.
     return {
       position: 'absolute',
       top: 'calc(5rem + 46px)',
-      right: isMobile ? '1.15rem' : '1rem',
+      right: isMobile ? '0.875rem' : '1rem',
       bottom: isMobile
         ? 'max(5.25rem, calc(env(safe-area-inset-bottom, 0px) + 4.25rem))'
         : '1.5rem',
-      left: isMobile ? '1.15rem' : '1rem',
+      left: isMobile ? '0.875rem' : '1rem',
       zIndex: 1,
       maxWidth: '72rem',
       marginLeft: 'auto',
@@ -155,11 +158,16 @@ function TappStorePageStandard({ isMobile }: { isMobile: boolean }) {
           animate={{ opacity: 1, x: 0, scale: 1 }}
           exit={{ opacity: 0, x: -16, scale: 0.92 }}
           transition={transitions.toolbar}
-          className={`fixed top-4 left-4 z-900 transition-opacity duration-300 ${
+          className={`fixed z-900 transition-opacity duration-300 ${
             isMobile
               ? 'opacity-100'
               : 'opacity-0 hover:opacity-100 focus-within:opacity-100'
           }`}
+          style={{
+            // Match store fullscreen content pad (safe-area + floating strip).
+            top: 'max(1rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))',
+            left: 'max(1rem, env(safe-area-inset-left, 0px))',
+          }}
         >
           <div className="glass flex items-center gap-3 rounded-xl px-3 py-2 shadow-lg">
             <div className="flex items-center gap-2">
