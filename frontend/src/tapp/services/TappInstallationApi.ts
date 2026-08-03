@@ -344,9 +344,9 @@ export async function resolveStoreSourceForTapp(tappId: string): Promise<{
 }
 
 export interface InstallFromStoreOptions {
-  /** Progress for large packages (download + register). */
+  /** Progress for browser-proxy fallback downloads and registration. */
   onProgress?: import('../utils/tappInstallProgress').TappInstallProgressCallback
-  /** Catalog `size` in bytes; ≥1 MiB uses client download for measurable progress. */
+  /** Catalog `size` in bytes, used to estimate browser fallback progress. */
   estimatedBytes?: number
 }
 
@@ -356,9 +356,6 @@ export interface InstallFromStoreOptions {
  * 优先走后端 `/api/tapps/install`（source=store，由服务端下载）。
  * 生产环境常见问题：backend 容器无法访问 raw.githubusercontent.com 等外网，
  * 会返回 502；此时回退为浏览器下载资源 + direct 安装（与商店列表同源）。
- *
- * Packages with estimatedBytes ≥ 1 MiB always use client download so the UI can
- * show real progress while fetching text + binary assets.
  *
  * @param request 安装请求 — `source` must be catalog URL/id, never `"store"`
  * @returns 安装后的 Tapp 信息
@@ -373,22 +370,12 @@ export async function installFromStore(
     )
   }
 
-  const { isLargeTappInstall, clampInstallPercent } = await import(
-    '../utils/tappInstallProgress',
-  )
+  const { clampInstallPercent } = await import('../utils/tappInstallProgress')
   const report = options?.onProgress
-  const large = isLargeTappInstall(options?.estimatedBytes)
 
-  // Large packages: client path for download progress (assets dominate size).
-  if (large) {
-    report?.({
-      phase: 'prepare',
-      message: 'prepare',
-      percent: 0,
-    })
-    return installFromStoreViaClient(request, options)
-  }
-
+  // Always let the backend fetch the store package first. This keeps the client
+  // request small even for multi-megabyte Tapps and avoids CDN/reverse-proxy
+  // upload limits. The browser only proxies the package when backend egress fails.
   try {
     report?.({
       phase: 'install',
@@ -712,9 +699,8 @@ export interface UpdateTappFromStoreRequest {
  * 更新 Tapp（从远程商店获取最新版本）
  *
  * Same dual path as installFromStore:
- * - large packages (≥1 MiB): browser download + direct update (measurable progress;
- *   avoids production backend→GitHub failures)
- * - otherwise: backend store fetch, with client fallback on 502/unreachable
+ * - always try the backend store fetch first (small client request)
+ * - use browser download + direct update only on 502/unreachable failures
  *
  * @param tappId - 要更新的 Tapp ID
  * @param request - 更新请求参数
@@ -731,25 +717,10 @@ export async function updateTappFromStore(
     )
   }
 
-  const { isLargeTappInstall, clampInstallPercent } = await import(
-    '../utils/tappInstallProgress',
-  )
+  const { clampInstallPercent } = await import('../utils/tappInstallProgress')
 
-  // Resolve size for path selection (list may omit size; catalog is authoritative).
-  let estimatedBytes = options?.estimatedBytes ?? 0
-  if (!isLargeTappInstall(estimatedBytes)) {
-    const peeked = await peekStoreAppSize(request.source, tappId)
-    if (peeked != null && peeked > 0) {
-      estimatedBytes = peeked
-      options = { ...options, estimatedBytes }
-    }
-  }
-
-  // Same dual path as installFromStore: ≥1 MiB → browser download + direct update.
-  if (isLargeTappInstall(estimatedBytes)) {
-    return updateFromStoreViaClient(tappId, request, options)
-  }
-
+  // Keep the initial request metadata-only for every package size. Browser
+  // proxying remains a recovery path for backend store egress failures.
   try {
     return await apiRequest(`/api/tapps/${encodeURIComponent(tappId)}/update`, {
       method: 'POST',
@@ -776,40 +747,6 @@ export async function updateTappFromStore(
       percent: clampInstallPercent(5),
     })
     return updateFromStoreViaClient(tappId, request, options)
-  }
-}
-
-/**
- * Lightweight catalog peek: resolve app.size for large-package path selection
- * without downloading the full package.
- */
-async function peekStoreAppSize(
-  sourceRef: string,
-  tappId: string,
-): Promise<number | null> {
-  try {
-    const { default: RemoteStoreService } = await import('./RemoteStoreService')
-    const sources = await RemoteStoreService.getSources()
-    const reqNorm = normalizeStoreCatalogUrl(sourceRef)
-    let source = sources.find(
-      (s) =>
-        String(s.id) === sourceRef ||
-        normalizeStoreCatalogUrl(s.url) === reqNorm,
-    )
-    if (!source && isHttpStoreSource(sourceRef)) {
-      const url = sourceRef.includes('index.json')
-        ? sourceRef.trim()
-        : `${reqNorm}/index.json`
-      source = { name: 'Shared catalog', url, enabled: true }
-    }
-    if (!source) return null
-    RemoteStoreService.clearCache()
-    const index = await RemoteStoreService.fetchStoreIndex(source, true)
-    const app = index.apps.find((a) => a.id === tappId)
-    const size = app?.size
-    return typeof size === 'number' && size > 0 ? size : null
-  } catch {
-    return null
   }
 }
 
@@ -875,9 +812,9 @@ async function updateFromStoreViaClient(
   if (pkg.pageTemplate) body.pageTemplate = pkg.pageTemplate
   if (pkg.widgetTemplates) body.widgetTemplates = pkg.widgetTemplates
   if (pkg.widgetCss) body.widgetCss = pkg.widgetCss
-  if (pkg.pageCss != null && pkg.pageCss !== '') { body.pageCss = pkg.pageCss
-}
-  else if (pkg.manifest.pageStyles) {
+  if (pkg.pageCss != null && pkg.pageCss !== '') {
+    body.pageCss = pkg.pageCss
+  } else if (pkg.manifest.pageStyles) {
     throw new Error(
       `Client update package is missing pageCss for manifest.pageStyles=${pkg.manifest.pageStyles}`,
     )

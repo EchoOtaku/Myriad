@@ -1,0 +1,193 @@
+import type { TappManifest } from '../types'
+import type { RemoteApp, RemoteStoreIndex } from './RemoteStoreService'
+import assert from 'node:assert/strict'
+import { afterEach, beforeEach, describe, it } from 'node:test'
+import RemoteStoreService from './RemoteStoreService.ts'
+import { installFromStore, updateTappFromStore } from './TappInstallationApi.ts'
+
+const originalFetch = globalThis.fetch
+const originalRemoteMethods = {
+  getSources: RemoteStoreService.getSources,
+  clearCache: RemoteStoreService.clearCache,
+  fetchStoreIndex: RemoteStoreService.fetchStoreIndex,
+  downloadAppPackage: RemoteStoreService.downloadAppPackage,
+}
+
+class MemoryStorage implements Storage {
+  private readonly values = new Map<string, string>()
+
+  get length(): number {
+    return this.values.size
+  }
+
+  clear(): void {
+    this.values.clear()
+  }
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null
+  }
+
+  key(index: number): string | null {
+    return Array.from(this.values.keys())[index] ?? null
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key)
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value)
+  }
+}
+
+function seedCsrfToken(): void {
+  sessionStorage.setItem('csrf_token', 'a'.repeat(32))
+  sessionStorage.setItem('csrf_token_stored_at', String(Date.now()))
+  sessionStorage.setItem('csrf_token_expires_at', String(Date.now() + 60_000))
+}
+
+function requestBody(init?: RequestInit): Record<string, unknown> {
+  assert.equal(typeof init?.body, 'string')
+  return JSON.parse(init.body) as Record<string, unknown>
+}
+
+beforeEach(() => {
+  Object.defineProperty(globalThis, 'sessionStorage', {
+    value: new MemoryStorage(),
+    configurable: true,
+    writable: true,
+  })
+  seedCsrfToken()
+})
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+  RemoteStoreService.getSources = originalRemoteMethods.getSources
+  RemoteStoreService.clearCache = originalRemoteMethods.clearCache
+  RemoteStoreService.fetchStoreIndex = originalRemoteMethods.fetchStoreIndex
+  RemoteStoreService.downloadAppPackage =
+    originalRemoteMethods.downloadAppPackage
+  Reflect.deleteProperty(globalThis, 'sessionStorage')
+})
+
+describe('Tapp store transport strategy', () => {
+  it('starts large installs with a metadata-only backend store request', async () => {
+    const bodies: Record<string, unknown>[] = []
+    globalThis.fetch = async (_input, init) => {
+      bodies.push(requestBody(init))
+      return Response.json({ success: true, data: { id: 'com.example.large' } })
+    }
+
+    await installFromStore(
+      {
+        source: 'https://store.example/index.json',
+        tappId: 'com.example.large',
+        permissions: ['storage'],
+      },
+      { estimatedBytes: 4 * 1024 * 1024 },
+    )
+
+    assert.equal(bodies.length, 1)
+    assert.deepEqual(bodies[0], {
+      source: 'store',
+      storeSource: 'https://store.example/index.json',
+      tappId: 'com.example.large',
+      permissions: ['storage'],
+    })
+  })
+
+  it('starts large updates with a metadata-only backend store request', async () => {
+    const calls: Array<{ url: string; body: Record<string, unknown> }> = []
+    globalThis.fetch = async (input, init) => {
+      calls.push({ url: String(input), body: requestBody(init) })
+      return Response.json({ success: true, data: { id: 'com.example.large' } })
+    }
+
+    await updateTappFromStore(
+      'com.example.large',
+      {
+        source: 'https://store.example/index.json',
+        permissions: ['storage'],
+      },
+      { estimatedBytes: 4 * 1024 * 1024 },
+    )
+
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0]?.url, '/api/tapps/com.example.large/update')
+    assert.deepEqual(calls[0]?.body, {
+      source: 'store',
+      storeSource: 'https://store.example/index.json',
+      permissions: ['storage'],
+    })
+  })
+
+  it('uses the browser package proxy only after a backend 502', async () => {
+    const manifest = {
+      id: 'com.example.fallback',
+      name: 'Fallback',
+      version: '1.0.0',
+      main: 'main.js',
+      permissions: ['storage'],
+      category: 'utility',
+    } as TappManifest
+    const app = {
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      description: '',
+      author: { name: 'Example' },
+      category: 'utility',
+      permissions: manifest.permissions,
+      download: { manifest: 'manifest.json', code: 'main.js' },
+      size: 4 * 1024 * 1024,
+    } as RemoteApp
+    const index: RemoteStoreIndex = {
+      name: 'Example',
+      description: '',
+      api_version: 2,
+      last_updated: '2026-08-03T00:00:00Z',
+      base_url: 'https://store.example/',
+      apps: [app],
+    }
+
+    RemoteStoreService.getSources = async () => [
+      {
+        id: 7,
+        name: 'Example',
+        url: 'https://store.example/index.json',
+        enabled: true,
+      },
+    ]
+    RemoteStoreService.clearCache = () => {}
+    RemoteStoreService.fetchStoreIndex = async () => index
+    RemoteStoreService.downloadAppPackage = async () => ({
+      manifest,
+      code: 'export {}',
+    })
+
+    const sources: string[] = []
+    globalThis.fetch = async (_input, init) => {
+      const body = requestBody(init)
+      sources.push(String(body.source))
+      if (body.source === 'store') {
+        return Response.json(
+          { error: 'Upstream fetch failed' },
+          { status: 502 },
+        )
+      }
+      return Response.json({ success: true, data: { id: manifest.id } })
+    }
+
+    await installFromStore(
+      {
+        source: '7',
+        tappId: manifest.id,
+        permissions: manifest.permissions,
+      },
+      { estimatedBytes: app.size },
+    )
+
+    assert.deepEqual(sources, ['store', 'direct'])
+  })
+})
