@@ -164,8 +164,10 @@ impl TappPermission {
     /// Capabilities whose HTTP boundary still requires a durable logged-in user.
     ///
     /// Guest-safe basic capabilities (private storage under signed guest session
-    /// id, public platform cache reads) are intentionally **not** listed here so
-    /// Runtime Grants can include them for guest widgets.
+    /// id, public platform cache reads, **reduced** `analytics:read` visitor-card
+    /// aggregates) are intentionally **not** listed here so Runtime Grants can
+    /// include them for guest widgets. Full admin analytics breakdowns stay
+    /// server-gated on admin role inside the analytics handlers.
     fn requires_authenticated_subject(&self) -> bool {
         matches!(
             self,
@@ -717,7 +719,8 @@ mod tests {
             &requested,
         );
 
-        // Guest-safe: platform:read, analytics:read + storage (optional_auth + grant subject).
+        // Guest-safe: platform:read, analytics:read (visitor-card aggregates only;
+        // full admin summary is role-gated in the handler) + storage.
         // Still excluded: brew:write, report:read, notifications, speech, etc.
         assert_eq!(
             granted,
@@ -733,6 +736,11 @@ mod tests {
                 "federation:read"
             ]
         );
+        assert!(TappPermissionService::check(
+            &config,
+            UserRole::Guest,
+            TappPermission::AnalyticsRead
+        ));
         assert!(TappPermissionService::check(
             &config,
             UserRole::Guest,

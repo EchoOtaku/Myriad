@@ -22,7 +22,7 @@ use super::seeds::ensure_default_platforms;
 /// heal（approved_permissions / engagement 过渡形态 / rate_* 专用 ALTER 等）。
 ///
 /// - 2026.08.03.2: users 名称/简介文案来源（profile_text_source_kind / profile_text_source_ref）
-/// - 2026.08.03.1: users 画像源选择（avatar_source_kind / avatar_source_ref / avatar_updated_at）
+/// - 2026.08.03.1: users 画像源选择（avatar_source_kind / avatar_source_ref / avatar_resolved_url / avatar_updated_at）
 /// - 2026.08.02.2: tapp_storage 凭据字段数据库约束与序列化/查询边界加固
 /// - 2026.08.02.1: tapp_storage 加密凭据字段（encrypted_value / binding_fingerprint）
 /// - 2026.08.01.1: tapps.visibility（公开安装可见性 all|admin）

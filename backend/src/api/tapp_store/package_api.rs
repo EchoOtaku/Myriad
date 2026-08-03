@@ -82,6 +82,10 @@ pub(super) struct TappResourcesResponse {
 
 /// Resource projection for dashboard widgets vs full page runtimes.
 ///
+/// **Bandwidth projection only** — mode controls which package sections are
+/// included in the HTTP response payload (omit unused templates/CSS/modules).
+/// It does not change auth, visibility, or runtime capability grants.
+///
 /// - `full` (default): everything (legacy clients)
 /// - `widget`: omit page template/CSS/modules; strip page section from code
 /// - `page`: omit widget templates/CSS; strip widget section from code

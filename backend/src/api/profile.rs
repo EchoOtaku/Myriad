@@ -400,11 +400,13 @@ async fn build_user_info(db: &DatabaseConnection) -> (StatusCode, Value) {
 }
 
 /// 内容哈希 ETag：任何字段变化都会变，因此 304 不会把陈旧名称/简介锁死。
+///
+/// Uses SHA-256 of canonical JSON bytes so ETags are stable across process
+/// restarts (unlike `DefaultHasher`, which is not portable).
 fn weak_etag(value: &Value) -> String {
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    value.to_string().hash(&mut hasher);
-    format!("W/\"{:x}\"", hasher.finish())
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(value.to_string().as_bytes());
+    format!("W/\"{:x}\"", digest)
 }
 
 /// GET /api/profile/user-info

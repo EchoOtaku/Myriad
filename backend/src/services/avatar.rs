@@ -25,7 +25,8 @@ use std::collections::HashMap;
 
 use myriad_image_proxy::proxy_image_url;
 use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, Value as SeaValue,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait,
+    Value as SeaValue,
 };
 use serde_json::{json, Value};
 
@@ -809,11 +810,42 @@ pub async fn current_avatar_source(
 ///
 /// 校验：来源必须真实属于该用户 —— 管理员替他人切换时也只能在**对方已有的**
 /// 来源里选，不能塞任意 URL。
+///
+/// Multi-step writes (`avatar_source_*`, optional `is_primary`, optional
+/// `linked_github_id`) run in a single DB transaction.
 pub async fn set_avatar_source(
     db: &DatabaseConnection,
     user_id: i32,
     kind: AvatarSourceKind,
     source_ref: Option<&str>,
+) -> Result<Option<String>, String> {
+    set_avatar_source_txn(db, user_id, kind, source_ref, None).await
+}
+
+/// OAuth `POST /identities/:id/primary`: set identity as avatar source and
+/// optionally backfill `users.linked_github_id` in the same transaction.
+pub async fn set_primary_identity_source(
+    db: &DatabaseConnection,
+    user_id: i32,
+    identity_id: i32,
+    linked_github_id: Option<i64>,
+) -> Result<Option<String>, String> {
+    set_avatar_source_txn(
+        db,
+        user_id,
+        AvatarSourceKind::Identity,
+        Some(&identity_id.to_string()),
+        linked_github_id,
+    )
+    .await
+}
+
+async fn set_avatar_source_txn(
+    db: &DatabaseConnection,
+    user_id: i32,
+    kind: AvatarSourceKind,
+    source_ref: Option<&str>,
+    linked_github_id: Option<i64>,
 ) -> Result<Option<String>, String> {
     let source_ref = source_ref.map(str::trim).filter(|s| !s.is_empty());
 
@@ -839,7 +871,26 @@ pub async fn set_avatar_source(
         }
     };
 
-    db.execute(Statement::from_sql_and_values(
+    let txn = db
+        .begin()
+        .await
+        .map_err(|e| format!("Failed to begin avatar source transaction: {e}"))?;
+
+    if let Some(github_id) = linked_github_id {
+        txn.execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "UPDATE users SET linked_github_id = COALESCE(linked_github_id, $1), \
+             updated_at = NOW() WHERE id = $2",
+            vec![
+                SeaValue::BigInt(Some(github_id)),
+                SeaValue::Int(Some(user_id)),
+            ],
+        ))
+        .await
+        .map_err(|e| format!("Failed to backfill linked_github_id: {e}"))?;
+    }
+
+    txn.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE users SET avatar_source_kind = $1, avatar_source_ref = $2, updated_at = NOW() \
          WHERE id = $3",
@@ -858,18 +909,22 @@ pub async fn set_avatar_source(
     // identity 源同步 is_primary，保持与既有 /identities/{id}/primary 语义一致
     if kind == AvatarSourceKind::Identity {
         if let Some(identity_id) = stored_ref.as_deref().and_then(|r| r.parse::<i32>().ok()) {
-            let _ = db
-                .execute(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "UPDATE user_identities SET is_primary = (id = $1) WHERE user_id = $2",
-                    vec![
-                        SeaValue::Int(Some(identity_id)),
-                        SeaValue::Int(Some(user_id)),
-                    ],
-                ))
-                .await;
+            txn.execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE user_identities SET is_primary = (id = $1) WHERE user_id = $2",
+                vec![
+                    SeaValue::Int(Some(identity_id)),
+                    SeaValue::Int(Some(user_id)),
+                ],
+            ))
+            .await
+            .map_err(|e| format!("Failed to set primary identity: {e}"))?;
         }
     }
+
+    txn.commit()
+        .await
+        .map_err(|e| format!("Failed to commit avatar source transaction: {e}"))?;
 
     Ok(refresh_avatar_snapshot(db, user_id).await)
 }

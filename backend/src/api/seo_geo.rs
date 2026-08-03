@@ -147,19 +147,41 @@ Field meanings (write only requested keys):
 - site_keywords → classic meta keywords list (phrases, comma-separated).
 - site_ai_intro → short site summary for AI systems; becomes the blockquote intro in public /llms.txt."#;
 
+/// Max UTF-8 bytes accepted per free-text input before building the AI prompt.
+const MAX_SITE_TITLE_BYTES: usize = 200;
+const MAX_SITE_DESCRIPTION_BYTES: usize = 2_000;
+const MAX_HINT_BYTES: usize = 2_000;
+
 /// POST /api/seo/generate-copy — admin/authenticated; uses site AI config.
 pub async fn generate_site_seo_copy(
     Json(payload): Json<GenerateSiteSeoRequest>,
 ) -> Result<Json<GenerateSiteSeoResponse>, HttpError> {
     let title = payload.site_title.trim();
-    if title.is_empty() && payload.hint.trim().is_empty() {
+    let desc_in = payload.site_description.trim();
+    let hint_in = payload.hint.trim();
+    if title.is_empty() && hint_in.is_empty() {
         return Err(HttpError(AppError::bad_request(
             "site_title or hint is required",
         )));
     }
+    if title.len() > MAX_SITE_TITLE_BYTES {
+        return Err(HttpError(AppError::bad_request(format!(
+            "site_title exceeds max length ({MAX_SITE_TITLE_BYTES} bytes)"
+        ))));
+    }
+    if desc_in.len() > MAX_SITE_DESCRIPTION_BYTES {
+        return Err(HttpError(AppError::bad_request(format!(
+            "site_description exceeds max length ({MAX_SITE_DESCRIPTION_BYTES} bytes)"
+        ))));
+    }
+    if hint_in.len() > MAX_HINT_BYTES {
+        return Err(HttpError(AppError::bad_request(format!(
+            "hint exceeds max length ({MAX_HINT_BYTES} bytes)"
+        ))));
+    }
 
     let want = FieldSet::from_request(&payload.fields);
-    let language = resolve_language(&payload.language, title, &payload.hint);
+    let language = resolve_language(&payload.language, title, hint_in);
     let keys = want.requested_keys_prompt();
     let briefs = want.field_briefs(language);
     let title_display = if title.is_empty() {
@@ -167,8 +189,8 @@ pub async fn generate_site_seo_copy(
     } else {
         title
     };
-    let desc = payload.site_description.trim();
-    let hint = payload.hint.trim();
+    let desc = desc_in;
+    let hint = hint_in;
     let desc_line = if desc.is_empty() {
         "(empty — draft from title and owner hint)"
     } else {
@@ -232,7 +254,7 @@ pub async fn generate_site_seo_copy(
         }
     }
 
-    let fb = fallback_copy(title, &payload.site_description, &payload.hint, language);
+    let fb = fallback_copy(title, desc, hint, language);
     Ok(Json(filter_response(want, fb, "fallback")))
 }
 

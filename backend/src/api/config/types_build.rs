@@ -3065,6 +3065,12 @@ mod settings_backup_tests {
         assert_eq!(updates.get("site_keywords"), Some(&json!("")));
         assert_eq!(updates.get("site_og_image"), Some(&json!("")));
         assert_eq!(updates.get("site_noindex"), Some(&json!(false)));
+        // Both fields present: policy is authoritative; raw noindex alone must not
+        // rewrite policy away from the explicit site_visibility_policy value.
+        assert_eq!(
+            updates.get("site_visibility_policy"),
+            Some(&json!("ai_full"))
+        );
         assert_eq!(updates.get("ga_measurement_id"), Some(&json!("")));
         assert_eq!(updates.get("umami_website_id"), Some(&json!("")));
         assert_eq!(updates.get("umami_script_url"), Some(&json!("")));
@@ -3072,6 +3078,42 @@ mod settings_backup_tests {
         assert_eq!(updates.get("music_playlist_id"), Some(&json!("")));
         assert_eq!(updates.get("site_icp"), Some(&json!("")));
         assert_eq!(updates.get("site_footer_custom"), Some(&json!("")));
+    }
+
+    #[test]
+    fn site_noindex_alone_syncs_visibility_policy() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![ui_field("site_noindex", "true")];
+        let updates = collect_database_updates(&config);
+        assert_eq!(updates.get("site_noindex"), Some(&json!(true)));
+        assert_eq!(
+            updates.get("site_visibility_policy"),
+            Some(&json!("private"))
+        );
+
+        config.ui_config.config_fields = vec![ui_field("site_noindex", "false")];
+        let updates = collect_database_updates(&config);
+        assert_eq!(updates.get("site_noindex"), Some(&json!(false)));
+        assert_eq!(
+            updates.get("site_visibility_policy"),
+            Some(&json!("ai_full"))
+        );
+    }
+
+    #[test]
+    fn site_visibility_policy_overrides_raw_noindex_in_same_payload() {
+        let mut config = empty_config();
+        // Conflicting legacy bit + explicit policy: policy wins, noindex follows policy.
+        config.ui_config.config_fields = vec![
+            ui_field("site_noindex", "true"),
+            ui_field("site_visibility_policy", "ai_full"),
+        ];
+        let updates = collect_database_updates(&config);
+        assert_eq!(updates.get("site_noindex"), Some(&json!(false)));
+        assert_eq!(
+            updates.get("site_visibility_policy"),
+            Some(&json!("ai_full"))
+        );
     }
 
     #[test]
@@ -3798,10 +3840,29 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 continue;
             }
             "site_noindex" => {
+                // When `site_visibility_policy` is also in this payload, policy is
+                // authoritative (and already wrote `site_noindex`). Ignore raw bit.
+                let has_policy = config
+                    .ui_config
+                    .config_fields
+                    .iter()
+                    .any(|f| f.key == "site_visibility_policy");
+                if has_policy {
+                    continue;
+                }
                 let enabled = field.value == "true";
                 updates.insert(field.key.clone(), JsonValue::Bool(enabled));
-                // If client only flips noindex (legacy), map to private / keep open as ai_full
-                // unless a visibility policy field is also in this payload (handled above).
+                // Legacy-only flip: keep visibility policy in lockstep.
+                updates.insert(
+                    "site_visibility_policy".to_string(),
+                    JsonValue::String(
+                        if enabled {
+                            "private".to_string()
+                        } else {
+                            "ai_full".to_string()
+                        },
+                    ),
+                );
                 continue;
             }
             "music_playlist_id" => {

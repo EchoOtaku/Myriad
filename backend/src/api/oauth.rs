@@ -21,8 +21,7 @@ use axum::{
 use chrono::{Duration, Utc};
 use jsonwebtoken::{encode, EncodingKey, Header};
 use sea_orm::{
-    ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait,
-    Value as SeaValue,
+    ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, Value as SeaValue,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -1056,31 +1055,18 @@ pub async fn set_primary_identity(
     let provider_username: Option<String> = row.try_get("", "provider_username").unwrap_or(None);
     let provider_user_id: String = row.try_get("", "provider_user_id").unwrap_or_default();
 
-    // GitHub 账号联结：仅在为空时补写，永不清空
-    if provider == "github" {
-        if let Ok(github_id) = provider_user_id.parse::<i64>() {
-            if let Err(e) = db
-                .execute(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "UPDATE users SET linked_github_id = COALESCE(linked_github_id, $1), \
-                     updated_at = NOW() WHERE id = $2",
-                    vec![
-                        SeaValue::BigInt(Some(github_id)),
-                        SeaValue::Int(Some(user_id)),
-                    ],
-                ))
-                .await
-            {
-                tracing::warn!(error = %e, "OAuth: failed to backfill linked_github_id");
-            }
-        }
-    }
+    // GitHub 账号联结（仅在为空时补写）+ avatar_source + is_primary 同事务。
+    let linked_github_id = if provider == "github" {
+        provider_user_id.parse::<i64>().ok()
+    } else {
+        None
+    };
 
-    let avatar_url = crate::services::avatar::set_avatar_source(
+    let avatar_url = crate::services::avatar::set_primary_identity_source(
         &db,
         user_id,
-        crate::services::avatar::AvatarSourceKind::Identity,
-        Some(&identity_id.to_string()),
+        identity_id,
+        linked_github_id,
     )
     .await
     .map_err(|message| {

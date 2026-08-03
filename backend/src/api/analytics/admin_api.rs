@@ -1183,14 +1183,28 @@ pub async fn import_analytics(
     if format != ANALYTICS_BACKUP_FORMAT {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "invalid_format" })),
+            Json(json!({
+                "success": false,
+                "error": "invalid_format",
+                "hint": format!(
+                    "expected format \"{ANALYTICS_BACKUP_FORMAT}\"; re-export from this instance"
+                ),
+            })),
         );
     }
     let version = body.version.unwrap_or(0);
     if version != ANALYTICS_BACKUP_VERSION {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": "unsupported_version" })),
+            Json(json!({
+                "success": false,
+                "error": "unsupported_version",
+                "hint": format!(
+                    "backup version {version} is not supported; this instance expects version {ANALYTICS_BACKUP_VERSION}. Re-export from a compatible instance or upgrade Myriad."
+                ),
+                "expected_version": ANALYTICS_BACKUP_VERSION,
+                "got_version": version,
+            })),
         );
     }
 
@@ -1230,7 +1244,7 @@ pub async fn import_analytics(
             Json(json!({
                 "success": false,
                 "error": "missing_integrity",
-                "hint": "re-export from this instance",
+                "hint": "integrity block is required; re-export analytics backup from this Myriad instance (hand-built JSON cannot be imported)",
             })),
         );
     };
@@ -1250,7 +1264,11 @@ pub async fn import_analytics(
         Err(e) => {
             return (
                 StatusCode::BAD_REQUEST,
-                Json(json!({ "success": false, "error": e })),
+                Json(json!({
+                    "success": false,
+                    "error": e,
+                    "hint": "backup payload could not be hashed; ensure arrays/fields match the export schema",
+                })),
             );
         }
     };
@@ -1260,9 +1278,28 @@ pub async fn import_analytics(
             error = e,
             "analytics import integrity verification failed"
         );
+        let hint = match e {
+            "content_hash_mismatch" => {
+                "payload was modified after export (content hash does not match). Re-export without editing metrics."
+            }
+            "integrity_key_mismatch" | "integrity_token_mismatch" | "invalid_integrity_token" => {
+                "integrity seal does not match this instance's data key (export is bound to the originating instance). Import only on the same Myriad instance, or re-export here."
+            }
+            "unsupported_integrity_alg" => {
+                "integrity algorithm is not supported by this build; upgrade Myriad or re-export from a compatible version."
+            }
+            "missing_integrity_token" => {
+                "integrity.token is missing or not ciphertext; re-export from this instance."
+            }
+            _ => "integrity verification failed; re-export from this instance and import without editing the file.",
+        };
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "success": false, "error": e })),
+            Json(json!({
+                "success": false,
+                "error": e,
+                "hint": hint,
+            })),
         );
     }
 
