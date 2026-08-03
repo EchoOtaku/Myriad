@@ -1147,6 +1147,26 @@ export function registerAdvancedHandlers(
   // Shortcut handlers — persist via API then bind host keydown so chords fire.
   // Only rehydrate when the tapp has shortcut:register; otherwise list always
   // 403s (grant lacks the permission) and clutters the Network panel.
+  //
+  // Multi-window: BE shortcuts are tapp-wide; peers keep stale host chords unless
+  // we broadcast register/unregister on a window CustomEvent.
+  const HOST_SHORTCUTS_CHANGED = 'tapp:host-shortcuts-changed'
+
+  type HostShortcutsChangedDetail = {
+    tappId: string
+    type: 'register' | 'unregister'
+    shortcut?: {
+      id: string
+      keys: string
+      action?: string
+      scope?: string
+    }
+    shortcutId?: string
+    /** Origin bridge session — peers ignore self to avoid double-bind. */
+    originSessionToken?: string
+  }
+
+  let rehydrateCancelled = false
   void (async () => {
     if (!tappInstance.grantedPermissions?.includes('shortcut:register')) {
       return
@@ -1156,9 +1176,11 @@ export function registerAdvancedHandlers(
         tappInstance.id,
         await bridge.getRuntimeGrant(),
       )
+      if (rehydrateCancelled) return
       const shortcuts = listed?.shortcuts
       if (!Array.isArray(shortcuts)) return
       for (const sc of shortcuts) {
+        if (rehydrateCancelled) return
         if (sc && typeof sc.id === 'string' && typeof sc.keys === 'string') {
           hostBindShortcut({
             tappId: tappInstance.id,
@@ -1174,6 +1196,49 @@ export function registerAdvancedHandlers(
       /* list may fail if grant expired/revoked — ignore */
     }
   })()
+
+  const onHostShortcutsChanged = (ev: Event) => {
+    const detail = (ev as CustomEvent<HostShortcutsChangedDetail>).detail
+    if (!detail || detail.tappId !== tappInstance.id) return
+    // Ignore self-originated events (we already bound/unbound locally).
+    const selfToken = bridge.getSessionToken()
+    if (
+      detail.originSessionToken &&
+      selfToken &&
+      detail.originSessionToken === selfToken
+    ) {
+      return
+    }
+    if (detail.type === 'register' && detail.shortcut) {
+      const sc = detail.shortcut
+      if (typeof sc.id === 'string' && typeof sc.keys === 'string') {
+        hostBindShortcut({
+          tappId: tappInstance.id,
+          shortcutId: sc.id,
+          keys: sc.keys,
+          action: String(sc.action || ''),
+          scope: sc.scope,
+          bridge,
+        })
+      }
+      return
+    }
+    if (detail.type === 'unregister' && typeof detail.shortcutId === 'string') {
+      hostUnbindShortcut(tappInstance.id, detail.shortcutId, bridge)
+    }
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener(HOST_SHORTCUTS_CHANGED, onHostShortcutsChanged)
+  }
+
+  const broadcastHostShortcutsChanged = (
+    detail: HostShortcutsChangedDetail,
+  ) => {
+    if (typeof window === 'undefined') return
+    window.dispatchEvent(
+      new CustomEvent(HOST_SHORTCUTS_CHANGED, { detail }),
+    )
+  }
 
   bridge.registerHandler('shortcut.register', async (message) => {
     const [config] = (message.payload as { args: unknown[] }).args || []
@@ -1191,6 +1256,17 @@ export function registerAdvancedHandlers(
         action: cfg.action || '',
         scope: cfg.scope,
         bridge,
+      })
+      broadcastHostShortcutsChanged({
+        tappId: tappInstance.id,
+        type: 'register',
+        shortcut: {
+          id: cfg.id,
+          keys: cfg.keys,
+          action: cfg.action || '',
+          scope: cfg.scope,
+        },
+        originSessionToken: bridge.getSessionToken(),
       })
       return { success: true, data: result }
     } catch (error) {
@@ -1210,6 +1286,12 @@ export function registerAdvancedHandlers(
         await bridge.getRuntimeGrant(),
       )
       hostUnbindShortcut(tappInstance.id, id as string, bridge)
+      broadcastHostShortcutsChanged({
+        tappId: tappInstance.id,
+        type: 'unregister',
+        shortcutId: id as string,
+        originSessionToken: bridge.getSessionToken(),
+      })
       return { success: true, data: result }
     } catch (error) {
       return {
@@ -1235,6 +1317,10 @@ export function registerAdvancedHandlers(
   })
 
   return () => {
+    rehydrateCancelled = true
+    if (typeof window !== 'undefined') {
+      window.removeEventListener(HOST_SHORTCUTS_CHANGED, onHostShortcutsChanged)
+    }
     // Per-bridge unbind so multi-window peers keep their host shortcuts.
     hostUnbindAllForBridge(bridge)
   }

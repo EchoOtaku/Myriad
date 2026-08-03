@@ -123,6 +123,22 @@ function emitShortcut(binding: InternalBinding): void {
   }
 }
 
+function isLiveBridge(bridge: TappBridge): boolean {
+  try {
+    if (typeof bridge.isDestroyed === 'function' && bridge.isDestroyed()) {
+      return false
+    }
+    const token = bridgeSessionToken(bridge)
+    if (!token) return false
+    if (typeof bridge.isSurfaceActive === 'function' && !bridge.isSurfaceActive()) {
+      return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 function onKeyDown(e: KeyboardEvent) {
   if (e.defaultPrevented || e.repeat) return
   if (isImeComposing(e)) return
@@ -130,11 +146,22 @@ function onKeyDown(e: KeyboardEvent) {
   if (bindings.size === 0) return
 
   // Emit to every live binding that matches the chord (multi-window same tapp).
+  // Empty token / destroyed / inactive surface → skip (and GC dead entries).
+  // Never preventDefault for orphaned-only matches.
   let matched = false
-  for (const binding of bindings.values()) {
+  for (const [key, binding] of [...bindings.entries()]) {
     if (!matchesChord(e, binding)) continue
-    // Drop orphaned bindings whose bridge no longer has a session.
-    if (!bridgeSessionToken(binding.bridge)) continue
+    if (!isLiveBridge(binding.bridge)) {
+      // GC destroyed / empty-token orphans so they cannot linger forever.
+      if (
+        !bridgeSessionToken(binding.bridge) ||
+        (typeof binding.bridge.isDestroyed === 'function' &&
+          binding.bridge.isDestroyed())
+      ) {
+        bindings.delete(key)
+      }
+      continue
+    }
     if (!matched) {
       e.preventDefault()
       e.stopPropagation()
@@ -142,6 +169,7 @@ function onKeyDown(e: KeyboardEvent) {
     }
     emitShortcut(binding)
   }
+  if (!matched) maybeDetachListener()
 }
 
 function ensureListener() {
@@ -163,7 +191,19 @@ export function hostBindShortcut(binding: HostShortcutBinding): void {
     console.warn('[HostShortcut] invalid keys:', binding.keys)
     return
   }
+  try {
+    if (
+      typeof binding.bridge.isDestroyed === 'function' &&
+      binding.bridge.isDestroyed()
+    ) {
+      console.warn('[HostShortcut] bridge destroyed; skip bind')
+      return
+    }
+  } catch {
+    return
+  }
   const sessionToken = bridgeSessionToken(binding.bridge)
+  // Empty token is treated as dead — never bind orphan chords.
   if (!sessionToken) {
     console.warn('[HostShortcut] bridge has no session token; skip bind')
     return

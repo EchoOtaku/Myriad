@@ -314,8 +314,34 @@ pub fn platform_profile(platform: &str, data: &Value) -> Option<PlatformProfile>
     }
 }
 
+/// Whether disk-cache fallback may be used for platform data under `user_id`.
+///
+/// The filtered platform cache is the **site owner's** snapshot only. Serving it
+/// under another `user_id` makes platform source refs validate for non-owners
+/// and can corrupt stored `avatar_source_kind` / profile-text platform choices.
+#[inline]
+pub(crate) fn allow_platform_disk_cache_for_user(is_owner: bool) -> bool {
+    is_owner
+}
+
+async fn load_user_is_owner(db: &DatabaseConnection, user_id: i32) -> bool {
+    db.query_one(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "SELECT COALESCE(is_owner, false) AS is_owner FROM users WHERE id = $1",
+        vec![SeaValue::Int(Some(user_id))],
+    ))
+    .await
+    .ok()
+    .flatten()
+    .and_then(|row| row.try_get::<bool>("", "is_owner").ok())
+    .unwrap_or(false)
+}
+
 /// 站长的全部平台原始数据：优先数据库，空则回落磁盘缓存（与 profile 的历史行为一致）。
 /// 第二个返回值是数据来源标记（`"database"` / `"cache"` / `"none"`），出口要透出。
+///
+/// Disk-cache fallback is **site-owner only**. For non-owners, empty DB → empty map
+/// (never the site-owner cache under another user_id).
 pub async fn owner_platform_data(
     db: &DatabaseConnection,
     owner_id: i32,
@@ -325,6 +351,12 @@ pub async fn owner_platform_data(
         Ok(data) if !data.is_empty() => return (data, "database"),
         Ok(_) => {}
         Err(e) => tracing::warn!("Avatar: platform metadata unavailable ({e}), trying cache"),
+    }
+
+    // Never serve site-owner disk cache under a non-owner user_id.
+    let is_owner = load_user_is_owner(db, owner_id).await;
+    if !allow_platform_disk_cache_for_user(is_owner) {
+        return (HashMap::new(), "none");
     }
 
     crate::services::platform_refresh::load_platform_data_cache()
@@ -890,6 +922,16 @@ async fn set_avatar_source_txn(
         }
         AvatarSourceKind::Platform => {
             let platform = source_ref.ok_or_else(|| "platform source requires a ref".to_string())?;
+            // Platform avatar is site-owner only. Check is_owner before profiles so a
+            // disk-cache fallback cannot make platform refs validate for non-owners.
+            let row = load_user_avatar_row(db, user_id)
+                .await?
+                .ok_or_else(|| "User not found".to_string())?;
+            if !row.is_owner {
+                return Err(
+                    "Platform avatar source is only available for the site owner".to_string(),
+                );
+            }
             let available = owner_platform_profiles(db, user_id).await;
             if !available.iter().any(|(name, _)| name == platform) {
                 return Err("Platform profile is not available for this user".to_string());
@@ -1028,6 +1070,12 @@ mod tests {
         assert_eq!(proxied_avatar(Some(String::new())), None);
         assert_eq!(proxied_avatar(Some("   ".into())), None);
         assert_eq!(proxied_avatar_value(None), serde_json::Value::Null);
+    }
+
+    #[test]
+    fn platform_disk_cache_is_owner_only() {
+        assert!(allow_platform_disk_cache_for_user(true));
+        assert!(!allow_platform_disk_cache_for_user(false));
     }
 
     #[test]

@@ -456,13 +456,21 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   const tappInstanceRef = useRef(tappInstance)
   const codeRef = useRef(code)
   const safeInsetsRef = useRef(safeInsets)
+  const pausedRef = useRef(paused)
   tappInstanceRef.current = tappInstance
   codeRef.current = code
   safeInsetsRef.current = safeInsets
+  pausedRef.current = paused
 
   // Visibility + host minimize/paused composed into one lifecycle stream;
   // also theme / primary-color subscriptions (shared with widget sandbox).
   useSandboxSubscriptions(bridgeRef, isReady, paused)
+
+  // Host keyboard shortcuts skip minimized / paused surfaces.
+  // Init path also applies pausedRef (this effect may run before bridge exists).
+  useEffect(() => {
+    bridgeRef.current?.setSurfaceActive(!paused)
+  }, [paused, isReady])
 
   // 同一 Tapp 的其他 Page、headless core 或 Widget 修改 storage 时通知本沙箱。
   useEffect(
@@ -674,6 +682,8 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         )
 
     bridge.initialize(iframe, currentTappInstance, sessionToken, runtimeGrant)
+    // Apply current minimize/paused state (effect may have run before bridge existed).
+    bridge.setSurfaceActive(!pausedRef.current)
 
     // 注册所有处理器
     registerLifecycleHandlers(

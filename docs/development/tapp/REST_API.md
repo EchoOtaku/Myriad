@@ -321,7 +321,8 @@ storage entity 也不会序列化密文；数据库约束只允许 `_credentials
 
 下列能力的真实后端路由仍要求**持久登录**主体，不会被签入访客 Grant：`report:read`、
 `ui:notification`、组件/快捷键注册、scheduler、语音服务、Brew 写入/评论，以及
-`platform:write`（`POST …/platform/items*`）。动态 Widget 注册与注销进一步限制为当前管理员。
+**privileged / admin-gated** `platform:write`（`POST …/platform/items*`；非仅「已登录」）。
+动态 Widget 注册与注销进一步限制为当前管理员。
 Manifest Widget 由安装/更新自动对账；动态 Widget 路由要求 `widget:register` 同时存在于
 Runtime Grant、安装授权和当前管理员角色，并拒绝覆盖/删除 Manifest 来源的注册。动态行记录
 Runtime Grant 的安装 owner，只返回给注册主体；公共安装卸载时会清理绑定该 owner 的动态

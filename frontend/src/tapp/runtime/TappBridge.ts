@@ -163,6 +163,16 @@ export class TappBridge {
   /** 会话 token（用于验证消息来源） */
   private sessionToken: string = ''
 
+  /** True after {@link destroy}; host shortcuts treat the bridge as dead. */
+  private destroyed = false
+
+  /**
+   * Host surface visibility (multi-window minimize / lifecycle pause).
+   * When false, host keyboard shortcuts skip this bridge.
+   * Set by sandboxes from the `paused` prop (and related lifecycle).
+   */
+  private surfaceActive = true
+
   /** Host-only backend identity for this concrete Page/Widget/headless runtime. */
   private runtimeGrant: TappRuntimeGrant | null = null
 
@@ -258,6 +268,8 @@ export class TappBridge {
     runtimeGrant?: TappRuntimeGrant,
     options?: TappBridgeInitOptions,
   ): void {
+    this.destroyed = false
+    this.surfaceActive = true
     this.iframe = iframe
     this.tappInstance = tappInstance
     this.runtimeGrant = runtimeGrant ?? null
@@ -304,10 +316,45 @@ export class TappBridge {
   }
 
   /**
-   * 获取会话 token（供沙箱 HTML 生成时使用）
+   * 获取会话 token（供沙箱 HTML 生成时使用）。
+   * Empty string after {@link destroy} so host shortcut bindings treat the bridge as dead.
    */
   getSessionToken(): string {
-    return this.sessionToken
+    return this.destroyed ? '' : this.sessionToken
+  }
+
+  /** Whether this bridge has been destroyed (session cleared, no longer live). */
+  isDestroyed(): boolean {
+    return this.destroyed
+  }
+
+  /**
+   * Host surface active flag (multi-window minimize / lifecycle pause).
+   * Sandboxes should call this from the `paused` prop effect.
+   */
+  setSurfaceActive(active: boolean): void {
+    this.surfaceActive = active
+  }
+
+  /**
+   * Whether host keyboard shortcuts should target this bridge.
+   * False when destroyed, host-paused, iframe gone/disconnected, or CSS-hidden.
+   */
+  isSurfaceActive(): boolean {
+    if (this.destroyed || !this.surfaceActive) return false
+    const iframe = this.iframe
+    if (!iframe || !iframe.isConnected) return false
+    try {
+      if (typeof window !== 'undefined') {
+        const style = window.getComputedStyle(iframe)
+        if (style.display === 'none' || style.visibility === 'hidden') {
+          return false
+        }
+      }
+    } catch {
+      /* ignore getComputedStyle failures */
+    }
+    return true
   }
 
   /**
@@ -381,6 +428,11 @@ export class TappBridge {
    * 销毁 Bridge
    */
   destroy(): void {
+    this.destroyed = true
+    this.surfaceActive = false
+    // Clear session first so host shortcut checks see a dead bridge immediately.
+    this.sessionToken = ''
+
     TappBridge.activeBridges.delete(this)
     if (this.registeredSource) {
       const mapped = TappBridge.bridgesBySource.get(this.registeredSource)

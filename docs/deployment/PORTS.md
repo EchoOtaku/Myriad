@@ -23,7 +23,7 @@ else goes to the frontend SPA). Match path-only (no query):
 | --- | --- |
 | `/api/*` | App API (includes federation REST + WebSocket upgrades for `/api/*`) |
 | `/health` | Backend health |
-| `/sitemap.xml` | Public SEO sitemap (also `/api/seo/sitemap.xml`) |
+| `/sitemap.xml` | Public SEO sitemap (also `/api/seo/sitemap.xml`); empty urlset when durable origin (`FRONTEND_URL`/`BASE_URL`) is unset — no client Host fallback |
 | `/robots.txt` | Dynamic robots; absolute `Sitemap:` line only when `FRONTEND_URL` or `BASE_URL` is set (omitted when unset) |
 | `/llms.txt` | AI-facing site index (when GEO policy allows) |
 | `/tapp/run/*` | **Crawler UA only** → backend SEO HTML shell; browsers → SPA |

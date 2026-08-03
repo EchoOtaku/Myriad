@@ -421,6 +421,17 @@ pub async fn set_profile_text_source(
         }
         ProfileTextSourceKind::Platform => {
             let platform = source_ref.ok_or_else(|| "platform source requires a ref".to_string())?;
+            // Platform text source is site-owner only. Gate on is_owner before profiles
+            // so disk-cache fallback cannot validate platform refs for non-owners.
+            let row = load_user_text_row(db, user_id)
+                .await?
+                .ok_or_else(|| "User not found".to_string())?;
+            if !row.is_owner {
+                return Err(
+                    "Platform profile text source is only available for the site owner"
+                        .to_string(),
+                );
+            }
             let available = owner_platform_profiles(db, user_id).await;
             if !available.iter().any(|(name, _)| name == platform) {
                 return Err("Platform profile is not available for this user".to_string());
@@ -553,5 +564,14 @@ mod tests {
         let resolved = account_resolved(&row);
         assert_eq!(resolved.name.as_deref(), Some("Pretty"));
         assert_eq!(resolved.bio, LAZY_BIO);
+    }
+
+    #[test]
+    fn platform_disk_cache_gate_matches_avatar_module() {
+        // Same rule as avatar::allow_platform_disk_cache_for_user — non-owners
+        // must never validate platform sources via the site-owner cache.
+        use crate::services::avatar::allow_platform_disk_cache_for_user;
+        assert!(allow_platform_disk_cache_for_user(true));
+        assert!(!allow_platform_disk_cache_for_user(false));
     }
 }
