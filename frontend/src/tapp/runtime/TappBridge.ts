@@ -49,17 +49,30 @@ class BridgeWindowCounter {
   ) {}
 
   tryTake(now = Date.now()): boolean {
-    const cutoff = now - this.windowMs
-    while (this.stamps.length > 0 && this.stamps[0]! <= cutoff) {
-      this.stamps.shift()
-    }
+    this.prune(now)
     if (this.stamps.length >= this.max) return false
     this.stamps.push(now)
     return true
   }
 
+  /** Ms until the oldest stamp leaves the window (0 if under cap). */
+  retryAfterMs(now = Date.now()): number {
+    this.prune(now)
+    if (this.stamps.length < this.max) return 0
+    const oldest = this.stamps[0]
+    if (oldest === undefined) return 0
+    return Math.max(0, oldest + this.windowMs - now)
+  }
+
   reset(): void {
     this.stamps = []
+  }
+
+  private prune(now: number): void {
+    const cutoff = now - this.windowMs
+    while (this.stamps.length > 0 && this.stamps[0]! <= cutoff) {
+      this.stamps.shift()
+    }
   }
 }
 
@@ -702,35 +715,25 @@ export class TappBridge {
     }
 
     const now = Date.now()
-    // While muted: still validate shape so legitimate requests get a structured
-    // error instead of hanging forever on the iframe side.
+    // While muted: cheap request-shape check only (answer BRIDGE_MUTED so the
+    // iframe unblocks). Defer full payload validation (JSON size, token, …)
+    // until unmuted — large invalid payloads must not burn CPU during mute.
     if (now < this.mutedUntil) {
-      const mutedValidation = this.validateMessage(event.data)
-      if (mutedValidation.valid) {
-        const mutedMsg = event.data as TappMessage
-        if (mutedMsg.type === 'request' && typeof mutedMsg.id === 'string') {
-          this.sendResponse(mutedMsg.id, {
-            success: false,
-            error: 'Bridge temporarily muted after invalid message burst',
-            code: 'BRIDGE_MUTED',
-          })
-        }
-      } else {
-        // Request-shaped but invalid: answer so the caller unblocks; do not
-        // re-extend mute (noteInvalidMessage) while already muted.
-        const candidate = event.data as Record<string, unknown> | undefined
-        if (
-          candidate?.type === 'request' &&
-          typeof candidate.id === 'string' &&
-          /^[\w-]+$/.test(candidate.id) &&
-          candidate.id.length <= 100
-        ) {
-          this.sendResponse(candidate.id, {
-            success: false,
-            error: 'Bridge temporarily muted after invalid message burst',
-            code: 'BRIDGE_MUTED',
-          })
-        }
+      const candidate = event.data as Record<string, unknown> | undefined
+      if (
+        candidate &&
+        typeof candidate === 'object' &&
+        candidate.type === 'request' &&
+        typeof candidate.id === 'string' &&
+        /^[\w-]+$/.test(candidate.id) &&
+        candidate.id.length <= 100
+      ) {
+        this.sendResponse(candidate.id, {
+          success: false,
+          error: 'Bridge temporarily muted after invalid message burst',
+          code: 'BRIDGE_MUTED',
+          retryAfter: Math.max(0, this.mutedUntil - now),
+        })
       }
       return
     }
@@ -764,6 +767,7 @@ export class TappBridge {
           success: false,
           error: 'Bridge rate limit exceeded; slow down',
           code: 'RATE_LIMITED',
+          retryAfter: this.inboundRate.retryAfterMs(now),
         })
       }
       return
@@ -775,7 +779,15 @@ export class TappBridge {
     const message = event.data as TappMessage
 
     if (message.type === 'request') {
-      if (this.seenRequestIds.has(message.id)) return
+      if (this.seenRequestIds.has(message.id)) {
+        // Structured reply so the SDK does not hang on a silent drop.
+        this.sendResponse(message.id, {
+          success: false,
+          error: 'Duplicate request id',
+          code: 'DUPLICATE_REQUEST',
+        })
+        return
+      }
       this.seenRequestIds.add(message.id)
       while (this.seenRequestIds.size > 2048) {
         const oldest = this.seenRequestIds.values().next().value
@@ -846,6 +858,7 @@ export class TappBridge {
           success: false,
           error: quotaCheck.reason || 'Quota exceeded',
           code: 'QUOTA_EXCEEDED',
+          retryAfter: quotaCheck.retryAfter,
         })
         return
       }

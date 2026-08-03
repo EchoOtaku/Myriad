@@ -804,4 +804,6 @@ export interface TappAPIResponse<T = unknown> {
   data?: T
   error?: string
   code?: string
+  /** Suggested wait before retry (ms), e.g. quota / mute / rate limit. */
+  retryAfter?: number
 }

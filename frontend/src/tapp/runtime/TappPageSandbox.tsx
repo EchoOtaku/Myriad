@@ -108,7 +108,10 @@ export interface TappPageSandboxProps {
   previewMode?: boolean
   /**
    * When true, host has hidden this surface (e.g. multi-window minimize).
-   * Emits lifecycle:pause / lifecycle:resume into the sandbox when available.
+   * Composed with document visibility into a single lifecycle:pause/resume
+   * stream (see useSandboxSubscriptions). Minimize intentionally keeps the
+   * sandbox/iframe alive so restore is instant; only work is frozen via
+   * lifecycle events (no teardown).
    */
   paused?: boolean
 }
@@ -457,20 +460,9 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   codeRef.current = code
   safeInsetsRef.current = safeInsets
 
-  // 集成动画调度器的页面可见性感知 + 主题/主色调订阅（共享 hook）
-  useSandboxSubscriptions(bridgeRef, isReady)
-
-  // Multi-window minimize / host hide: emit lifecycle pause/resume when ready.
-  const wasPausedRef = useRef(false)
-  useEffect(() => {
-    if (!isReady || !bridgeRef.current) return
-    if (paused === wasPausedRef.current) return
-    wasPausedRef.current = paused
-    bridgeRef.current.emit(
-      paused ? 'lifecycle:pause' : 'lifecycle:resume',
-      null,
-    )
-  }, [paused, isReady])
+  // Visibility + host minimize/paused composed into one lifecycle stream;
+  // also theme / primary-color subscriptions (shared with widget sandbox).
+  useSandboxSubscriptions(bridgeRef, isReady, paused)
 
   // 同一 Tapp 的其他 Page、headless core 或 Widget 修改 storage 时通知本沙箱。
   useEffect(
@@ -752,6 +744,15 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         hasExact('federation:message') ||
         hasExact('federation:trust') ||
         hasExact('federation:files')
+      const hasTappList =
+        hasExact('tappList:read') || hasExact('tappList:manage')
+      // dynamicContent.set/update/remove require ui:notification; get is public
+      // but only useful after set — gate the whole surface with the write perm.
+      const hasDynamicContent = hasExact('ui:notification')
+      const hasAdvanced =
+        hasExact('component:theme') ||
+        hasExact('component:agent') ||
+        hasExact('shortcut:register')
 
       registerStorageHandlers(bridge, currentTappInstance.id)
       registerAssetHandlers(bridge, currentTappInstance)
@@ -762,7 +763,9 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       if (hasAnalytics) {
         registerAnalyticsHandlers(bridge)
       }
-      if (!headless) registerTappListHandlers(bridge, currentTappInstance)
+      if (!headless && hasTappList) {
+        registerTappListHandlers(bridge, currentTappInstance)
+      }
       if (hasBrew) {
         registerBrewListHandlers(bridge, currentTappInstance)
       }
@@ -780,15 +783,17 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       const closeScheduler = hasScheduler
         ? registerSchedulerHandlers(bridge, currentTappInstance)
         : () => {}
-      if (!headless) registerDynamicContentHandlers(bridge, currentTappInstance)
-      const closeAdvanced = registerAdvancedHandlers(
-        bridge,
-        currentTappInstance,
-      )
+      if (!headless && hasDynamicContent) {
+        registerDynamicContentHandlers(bridge, currentTappInstance)
+      }
+      const closeAdvanced = hasAdvanced
+        ? registerAdvancedHandlers(bridge, currentTappInstance)
+        : () => {}
       const closeFederationSockets = hasFederation
         ? registerFederationHandlers(bridge, currentTappInstance)
         : () => {}
       registerContextHandlers(bridge, currentTappInstance)
+      // data-exchange stays public (consent host + broker still enforce)
       const closeDataExchange = registerDataExchangeHandlers(
         bridge,
         currentTappInstance,

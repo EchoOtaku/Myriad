@@ -259,14 +259,13 @@ class TappQuotaManager {
   }
 
   /**
-   * 检查配额是否允许操作（增强版：包含滑动窗口检查）
+   * Buckets that use only their own limiter (no secondary debit of the shared
+   * `bridge.action` budget). Includes:
+   * - `bridge.action` itself (already the shared budget — avoid double-check)
+   * - hot paths (storage / basic UI reads / lifecycle) with dedicated caps so
+   *   they cannot starve unrelated bridge actions
    */
-  /**
-   * Buckets that are carved out of the global bridge.action budget.
-   * Hot paths (storage / basic UI reads / lifecycle) use their own generous
-   * limits so they cannot starve unrelated bridge actions.
-   */
-  private isCarvedOut(bucket: string): boolean {
+  private isDedicatedBudgetBucket(bucket: string): boolean {
     return (
       bucket === 'bridge.action' ||
       bucket === 'storage' ||
@@ -275,6 +274,9 @@ class TappQuotaManager {
     )
   }
 
+  /**
+   * 检查配额是否允许操作（增强版：包含滑动窗口检查）
+   */
   checkQuota(
     tappId: string,
     type: string,
@@ -290,7 +292,7 @@ class TappQuotaManager {
     const primary = this.evaluateLimiter(tappId, bucket)
     if (!primary.allowed) return primary
 
-    if (!this.isCarvedOut(bucket)) {
+    if (!this.isDedicatedBudgetBucket(bucket)) {
       const global = this.evaluateLimiter(tappId, 'bridge.action')
       if (!global.allowed) return global
       return {
@@ -310,8 +312,8 @@ class TappQuotaManager {
     const record = this.getTypeUsage(tappId, bucket)
     record.lastUsedAt = Date.now()
     record.rateLimiter.record()
-    // 非 carve-out 能力族请求同时占用全局 bridge 配额
-    if (!this.isCarvedOut(bucket)) {
+    // Non-dedicated buckets also debit the shared global bridge budget
+    if (!this.isDedicatedBudgetBucket(bucket)) {
       const global = this.getTypeUsage(tappId, 'bridge.action')
       global.lastUsedAt = Date.now()
       global.rateLimiter.record()

@@ -1193,7 +1193,8 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     [activeWindowId],
   )
 
-  // 最小化窗口（藏入 Dock；实例保留，点击 Dock 可恢复）
+  // Minimize: hide into Dock but keep the sandbox/iframe alive so restore is
+  // instant. Work freezes via `paused` → lifecycle:pause (no teardown).
   const minimizeWindow = useCallback(
     (windowId: string) => {
       setWindows((prev) => {

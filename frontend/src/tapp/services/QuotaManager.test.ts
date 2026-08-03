@@ -75,4 +75,21 @@ describe('QuotaManager bridge soft limits', () => {
     }
     assert.equal(blocked, 0, 'storage should allow at least 50/min freely')
   })
+
+  it('returns retryAfter when a dedicated lifecycle bucket is exhausted', () => {
+    const q = getQuotaManager()
+    const tappId = `quota-retry-${Date.now()}`
+    // lifecyclePerMinute = 30
+    for (let i = 0; i < 30; i++) {
+      const check = q.checkQuota(tappId, 'lifecycle.ready')
+      assert.equal(check.allowed, true)
+      q.recordUsage(tappId, 'lifecycle.ready')
+    }
+    const denied = q.checkQuota(tappId, 'lifecycle.ready')
+    assert.equal(denied.allowed, false)
+    assert.ok(
+      typeof denied.retryAfter === 'number' && denied.retryAfter >= 0,
+      'denied lifecycle check should include retryAfter ms',
+    )
+  })
 })

@@ -251,7 +251,10 @@ export function generateFullSDK(
         if (message.payload?.success) {
           pending.resolve(message.payload.data);
         } else {
-          pending.reject(new Error(message.payload?.error || 'Unknown error'));
+          const err = new Error(message.payload?.error || 'Unknown error');
+          if (message.payload?.code != null) err.code = message.payload.code;
+          if (message.payload?.retryAfter != null) err.retryAfter = message.payload.retryAfter;
+          pending.reject(err);
         }
       }
     } else if (message.type === 'event') {
@@ -1421,7 +1424,14 @@ function buildWidgetSdkBody(
       clearTimeout(pending.timeout);
       pendingRequests.delete(msg.id);
       var payload = msg.payload || {};
-      if (payload.success) { pending.resolve(payload.data); } else { pending.reject(new Error(payload.error || 'Request failed')); }
+      if (payload.success) {
+        pending.resolve(payload.data);
+      } else {
+        var err = new Error(payload.error || 'Request failed');
+        if (payload.code != null) err.code = payload.code;
+        if (payload.retryAfter != null) err.retryAfter = payload.retryAfter;
+        pending.reject(err);
+      }
     }
 
     // 处理事件

@@ -4,7 +4,7 @@
  * 提取 TappPageSandbox 和 TappWidgetSandbox 之间的重复订阅逻辑：
  * - 主题变化监听
  * - 主色调变化监听
- * - 页面可见性联动（lifecycle:pause/resume）
+ * - 生命周期暂停/恢复（document 可见性 + host minimize/paused 合成）
  */
 
 import type { TappBridge } from './TappBridge'
@@ -18,26 +18,64 @@ import {
 import { subscribeToTheme } from '../../utils/themeSubscriber'
 
 /**
- * 管理沙箱公共事件订阅（主题、主色调、可见性）
+ * 管理沙箱公共事件订阅（主题、主色调、可见性/暂停）
+ *
+ * Host "should run" is composed as `!paused && isPageVisible()`. A single
+ * emitter owns lifecycle:pause / lifecycle:resume so visibility and minimize
+ * cannot override each other.
  *
  * @param bridgeRef - TappBridge 引用
  * @param isReady - 沙箱是否就绪
+ * @param paused - Host has hidden this surface (e.g. multi-window minimize)
  */
 export function useSandboxSubscriptions(
   bridgeRef: React.RefObject<TappBridge | null>,
   isReady: boolean,
+  paused = false,
 ): void {
   const pageVisibleRef = useRef(isPageVisible())
+  const pausedRef = useRef(paused)
+  pausedRef.current = paused
 
-  // 页面可见性联动：通知 iframe 冻结/恢复
+  /**
+   * Last emitted "should run" for the current ready cycle.
+   * `null` means nothing has been emitted yet for this bridge/iframe
+   * (after remount we always re-emit current state).
+   */
+  const lastShouldRunRef = useRef<boolean | null>(null)
+
+  const emitShouldRun = (shouldRun: boolean, force = false) => {
+    const bridge = bridgeRef.current
+    if (!bridge) return
+    if (!force && lastShouldRunRef.current === shouldRun) return
+    lastShouldRunRef.current = shouldRun
+    bridge.emit(shouldRun ? 'lifecycle:resume' : 'lifecycle:pause', null)
+  }
+
+  const composedShouldRun = () => !pausedRef.current && pageVisibleRef.current
+
+  // Reset tracking when the bridge/iframe is torn down; re-emit on ready edge
+  // without equality short-circuit so a remount while minimized still gets pause.
+  useEffect(() => {
+    if (!isReady) {
+      lastShouldRunRef.current = null
+      return
+    }
+    emitShouldRun(composedShouldRun(), true)
+  }, [isReady, bridgeRef])
+
+  // Host minimize / hide
+  useEffect(() => {
+    if (!isReady) return
+    emitShouldRun(composedShouldRun())
+  }, [paused, isReady, bridgeRef])
+
+  // Document visibility
   useEffect(() => {
     return onVisibility((visible) => {
       pageVisibleRef.current = visible
       if (isReady && bridgeRef.current) {
-        bridgeRef.current.emit(
-          visible ? 'lifecycle:resume' : 'lifecycle:pause',
-          null,
-        )
+        emitShouldRun(composedShouldRun())
       }
     })
   }, [isReady, bridgeRef])

@@ -212,15 +212,19 @@ describe('TappBridge session token + inbound event allowlist', () => {
     assert.equal(bridgesBySource.get(iframe.contentWindow as MessageEventSource), bridge)
   })
 
-  it('while muted, answers validated request shape with BRIDGE_MUTED', async () => {
+  function captureResponses(): Array<Record<string, unknown>> {
     const responses: Array<Record<string, unknown>> = []
-    // Capture postMessage replies from sendResponse
     const cw = iframe.contentWindow as Window & {
       postMessage: (msg: unknown, target: string) => void
     }
     cw.postMessage = (msg: unknown) => {
       responses.push(msg as Record<string, unknown>)
     }
+    return responses
+  }
+
+  it('while muted, answers request-shaped messages with BRIDGE_MUTED + retryAfter', async () => {
+    const responses = captureResponses()
 
     // Force mute window
     ;(bridge as unknown as { mutedUntil: number }).mutedUntil =
@@ -231,13 +235,13 @@ describe('TappBridge session token + inbound event allowlist', () => {
       data: 'dark',
     }))
 
+    // Intentionally omit token/payload details — mute path is a cheap shape check
     dispatchFromIframe({
       type: 'request',
       id: 'req-muted-1',
       action: 'ui.getTheme',
       payload: { api: 'ui', method: 'getTheme', args: [] },
       timestamp: Date.now(),
-      _sessionToken: SESSION,
     })
     await new Promise((r) => setTimeout(r, 0))
 
@@ -245,9 +249,44 @@ describe('TappBridge session token + inbound event allowlist', () => {
     const last = responses[responses.length - 1]!
     assert.equal(last.type, 'response')
     assert.equal(last.id, 'req-muted-1')
-    const payload = last.payload as { success?: boolean; code?: string }
+    const payload = last.payload as {
+      success?: boolean
+      code?: string
+      retryAfter?: number
+    }
     assert.equal(payload.success, false)
     assert.equal(payload.code, 'BRIDGE_MUTED')
+    assert.ok(
+      typeof payload.retryAfter === 'number' && payload.retryAfter > 0,
+      'expected positive retryAfter while muted',
+    )
+  })
+
+  it('while muted, does not full-validate large payloads (still answers by id)', async () => {
+    const responses = captureResponses()
+    ;(bridge as unknown as { mutedUntil: number }).mutedUntil =
+      Date.now() + 60_000
+
+    // Huge payload would be expensive under full validateMessage; mute path
+    // must only inspect request shape (type + id).
+    const huge = 'x'.repeat(2 * 1024 * 1024)
+    dispatchFromIframe({
+      type: 'request',
+      id: 'req-muted-huge',
+      action: 'storage.set',
+      payload: { api: 'storage', method: 'set', args: [huge] },
+      timestamp: Date.now(),
+      _sessionToken: SESSION,
+    })
+    await new Promise((r) => setTimeout(r, 0))
+
+    assert.ok(responses.length >= 1)
+    const last = responses[responses.length - 1]!
+    assert.equal(last.id, 'req-muted-huge')
+    assert.equal(
+      (last.payload as { code?: string }).code,
+      'BRIDGE_MUTED',
+    )
   })
 
   it('while muted, drops events without hanging requests', async () => {
@@ -264,5 +303,71 @@ describe('TappBridge session token + inbound event allowlist', () => {
     })
     await new Promise((r) => setTimeout(r, 0))
     assert.equal(readyFired, before)
+  })
+
+  it('answers duplicate request ids with DUPLICATE_REQUEST', async () => {
+    const responses = captureResponses()
+    bridge.registerHandler('ui.getTheme', async () => ({
+      success: true,
+      data: 'dark',
+    }))
+
+    const msg = {
+      type: 'request',
+      id: 'req-dup-1',
+      action: 'ui.getTheme',
+      payload: { api: 'ui', method: 'getTheme', args: [] },
+      timestamp: Date.now(),
+      _sessionToken: SESSION,
+    }
+    dispatchFromIframe(msg)
+    await new Promise((r) => setTimeout(r, 0))
+    dispatchFromIframe(msg)
+    await new Promise((r) => setTimeout(r, 0))
+
+    const dup = responses.find(
+      (r) =>
+        r.id === 'req-dup-1' &&
+        (r.payload as { code?: string })?.code === 'DUPLICATE_REQUEST',
+    )
+    assert.ok(dup, 'expected DUPLICATE_REQUEST response for replayed id')
+    assert.equal((dup!.payload as { success?: boolean }).success, false)
+  })
+
+  it('forwards retryAfter on RATE_LIMITED (bridge inbound soft limit)', async () => {
+    const responses = captureResponses()
+    const inboundRate = (
+      bridge as unknown as {
+        inboundRate: { tryTake: () => boolean; retryAfterMs: () => number }
+      }
+    ).inboundRate
+    const original = inboundRate.tryTake.bind(inboundRate)
+    inboundRate.tryTake = () => false
+    ;(
+      inboundRate as { retryAfterMs: () => number }
+    ).retryAfterMs = () => 1234
+
+    dispatchFromIframe({
+      type: 'request',
+      id: 'req-rate-1',
+      action: 'ui.getTheme',
+      payload: { api: 'ui', method: 'getTheme', args: [] },
+      timestamp: Date.now(),
+      _sessionToken: SESSION,
+    })
+    await new Promise((r) => setTimeout(r, 0))
+
+    inboundRate.tryTake = original
+
+    const last = responses[responses.length - 1]!
+    assert.equal(last.id, 'req-rate-1')
+    const payload = last.payload as {
+      code?: string
+      retryAfter?: number
+      success?: boolean
+    }
+    assert.equal(payload.success, false)
+    assert.equal(payload.code, 'RATE_LIMITED')
+    assert.equal(payload.retryAfter, 1234)
   })
 })
