@@ -155,7 +155,7 @@ flowchart TB
 | `permissions` | ✅ | 申请权限列表（展示与安装同意用） |
 | `download` | ✅ | 相对 `base_url` 的下载路径表 |
 | `icon` / `icon_svg` | ❌ | emoji/URL 或内联 SVG（`icon_svg` 优先） |
-| `icon_shell` | ❌ | 对应 Manifest `iconShell`：`true` 时全彩自定义图标仍套 material 色壳；省略时 auto（全彩图 standalone 铺满色壳外） |
+| `icon_shell` | ❌ | **仅商店索引 UI**（`index.json` → `RemoteStoreService` / 商店卡片）：`true` 时全彩自定义图标仍套 material 色壳；省略时 auto。**不是**可安装的 Manifest 字段（`TappManifest` 为 `deny_unknown_fields`，写入包内 `manifest.json` 会导致安装失败） |
 | `theme_color` | ❌ | `#RRGGBB` |
 | `tags` | ❌ | 搜索标签；`demo` / `test` 用标签表达发布阶段 |
 | `license` / `homepage` / `repository` | ❌ | 元数据 |

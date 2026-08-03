@@ -75,9 +75,11 @@ Tapp 管理接口大多返回：
 读取与运行时授权优先当前用户的私有安装；未安装私有副本时再使用站点公开（管理员）安装。
 公开与私有副本可双向并存；安装冲突只检查操作者可修改的 owner 命名空间。
 
-Storage 按当前登录 subject 命名空间隔离：打开公开安装时，每个用户读写自己的
-`user_id + tapp_id` 数据，不会读取站点 owner 的 storage。安装级 Manifest 设置仍由安装
-owner 或管理员写入，其他已登录用户只读声明过的键。
+Storage 按当前 **subject**（持久用户或签名游客 session）命名空间隔离：打开公开安装时，
+每个 subject 读写自己的 `user_id + tapp_id` 数据，不会读取站点 owner 的 storage。
+`storage` / `platform:read` 可进入访客 Runtime Grant（见下「Widget 与存储」）。
+安装级 Manifest 设置仍由安装 owner 或管理员写入；能打开该安装的运行者（含游客）可读已
+保存的声明键。
 
 `/details` 是 `TappRuntime` 的启动同步接口。它固定执行管理员集合与当前用户集合查询，
 同 ID 时保留用户私有版本，并对每项应用与单项 `/api/tapps/{tappId}` 相同的动态角色权限过滤，
@@ -135,7 +137,8 @@ interface TappResources {
 | GET | `/api/tapps/list-card-sizes` | 可选认证 | 见响应语义 |
 | PUT | `/api/tapps/list-card-sizes` | **登录**（持久用户；游客 403） | body：`{ sizes, order }` |
 
-GET 响应（camelCase / 与 handler 一致）：
+GET 响应字段名与 handler JSON **一致**（`sizes` / `order` 为短名；站点副本为
+**snake_case** 的 `site_sizes` / `site_order`，**不是** camelCase）：
 
 ```json
 {
@@ -144,17 +147,20 @@ GET 响应（camelCase / 与 handler 一致）：
   "order": ["com.example.app"],
   "site_sizes": { "com.myriad.notes": "1x1" },
   "site_order": ["com.myriad.notes"],
-  "source": "personal",
+  "source": "viewer",
   "writable": true
 }
 ```
+
+游客示例：`source` 为 `"site_owner"`，`writable` 为 `false`；`sizes`/`order` 与
+`site_sizes`/`site_order` 均为站点 owner 布局。
 
 | 字段 | 语义 |
 | ---- | ---- |
 | `sizes` / `order` | **主视图布局**：游客 = 站点 owner 布局；已登录 = **纯个人**偏好（**不**用 owner 布局填洞） |
 | `site_sizes` / `site_order` | 站点 owner（规范公开管理员）布局，供列表「站点」范围展示 |
-| `source` | `personal` \| `site_owner`（主视图数据来自哪一侧） |
-| `writable` | 是否允许 PUT（游客 `false`） |
+| `source` | `viewer` \| `site_owner`（主视图数据来自哪一侧；**不是** `personal`） |
+| `writable` | 是否允许 PUT（游客 `false`；持久登录用户 `true`） |
 
 PUT body 只写调用者个人行：`{ "sizes": { "<tappId>": "1x1"|"2x1" }, "order": ["<tappId>", ...] }`。
 非法尺寸键会被忽略；未知 Tapp id 可暂存，列表 hydrate 时按可见集合过滤。
@@ -165,10 +171,10 @@ PUT body 只写调用者个人行：`{ "sizes": { "<tappId>": "1x1"|"2x1" }, "or
 
 由站点配置 `tapp_private_install_cleanup` 驱动（管理端 OAuth/权限页）：
 
-| 模式 | 行为 |
-| ---- | ---- |
-| `logout`（可选） | **仅卸载当前调用者**的私有安装；失败记日志，不阻塞登出 |
-| `inactivity`（默认） | **本端点 no-op**；全局按不活跃天数裁剪只在 **每日后台 worker** 中执行 |
+| 模式 | 本端点 | 每日后台 worker |
+| ---- | ------ | --------------- |
+| `logout`（可选） | **仅卸载当前调用者**的私有安装；失败记日志，不阻塞登出 | **no-op**（只在 mode=`inactivity` 时 prune） |
+| `inactivity`（默认） | **no-op** | 全局按不活跃天数 prune 私有安装 |
 
 相关配置：
 
@@ -176,8 +182,8 @@ PUT body 只写调用者个人行：`{ "sizes": { "<tappId>": "1x1"|"2x1" }, "or
 - `tapp_private_install_inactivity_days`: 正整数（worker 用 `COALESCE(last_login_at, last_seen_at, created_at)`）
 
 **禁止**在用户登出路径上跑全局 prune（避免误删他人私有安装或拖慢 logout）。
-前端登出会调用本端点；卸载确认对话框与清理预设文案见 `UninstallConfirmDialog` /
-安装流程 `InstallTappDialog`。
+`logout` 模式下 worker 也不会 prune。前端登出会调用本端点；卸载确认对话框与清理预设文案见
+`UninstallConfirmDialog` / 安装流程 `InstallTappDialog`。
 
 直接安装请求：
 
@@ -306,11 +312,16 @@ storage entity 也不会序列化密文；数据库约束只允许 `_credentials
 | POST   | `/api/tapps/{tappId}/storage/{key}`      | 写入值                                      |
 | DELETE | `/api/tapps/{tappId}/storage/{key}`      | 删除值                                      |
 
-`storage` 路由要求 optional_auth + Runtime Grant；访客 Grant 不包含 `storage`，因此沙箱内
-的 `Tapp.storage` 不能为访客创建持久数据。通用 storage 使用当前 subject 命名空间，并拒绝
-访问 `_settings.`、`_component:`、`_shortcut:`、`_report:` 等宿主保留键。
-同理，平台数据、报告读取、统一通知、组件/快捷键注册、scheduler、语音服务和 Brew 写入/评论
-都要求持久登录主体，不会被签入访客 Grant；动态 Widget 注册与注销进一步限制为当前管理员。
+`storage` 路由要求 optional_auth + Runtime Grant。`storage` 与 `platform:read` 均为
+**guest-safe basic**（见 [MANIFEST · 权限](MANIFEST.md) 与
+`permission_service::requires_authenticated_subject`）：签名游客 session 可作为 subject，
+私有 storage 落在负 id 命名空间下，平台 **读** 走 optional_auth 的公开站点缓存。
+通用 storage 使用当前 subject 命名空间，并拒绝访问 `_settings.`、`_component:`、
+`_shortcut:`、`_report:` 等宿主保留键。
+
+下列能力的真实后端路由仍要求**持久登录**主体，不会被签入访客 Grant：`report:read`、
+`ui:notification`、组件/快捷键注册、scheduler、语音服务、Brew 写入/评论，以及
+`platform:write`（`POST …/platform/items*`）。动态 Widget 注册与注销进一步限制为当前管理员。
 Manifest Widget 由安装/更新自动对账；动态 Widget 路由要求 `widget:register` 同时存在于
 Runtime Grant、安装授权和当前管理员角色，并拒绝覆盖/删除 Manifest 来源的注册。动态行记录
 Runtime Grant 的安装 owner，只返回给注册主体；公共安装卸载时会清理绑定该 owner 的动态
@@ -347,13 +358,13 @@ Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外�
 
 ### 平台、AI 与数据
 
-| 方法   | 路径                                                     | 身份     | SDK 能力                        |
-| ------ | -------------------------------------------------------- | -------- | ------------------------------- |
-| GET    | `/api/tapp/platform/{platform}/data`                     | 登录     | `Tapp.platform.getData`         |
-| GET    | `/api/tapp/platform/{platform}/stats`                    | 登录     | `Tapp.platform.getStats`        |
-| GET    | `/api/tapp/platform/{platform}/distribution/{dimension}` | 登录     | `Tapp.platform.getDistribution` |
-| POST   | `/api/tapp/platform/items`                               | 登录     | `Tapp.platform.addItem`         |
-| POST   | `/api/tapp/platform/items/batch`                         | 登录     | `Tapp.platform.addItems`        |
+| 方法   | 路径                                                     | 身份 | SDK 能力                        |
+| ------ | -------------------------------------------------------- | ---- | ------------------------------- |
+| GET    | `/api/tapp/platform/{platform}/data`                     | 可选认证（`platform:read` + Grant；游客可读站点缓存） | `Tapp.platform.getData`         |
+| GET    | `/api/tapp/platform/{platform}/stats`                    | 可选认证（同上） | `Tapp.platform.getStats`        |
+| GET    | `/api/tapp/platform/{platform}/distribution/{dimension}` | 可选认证（同上） | `Tapp.platform.getDistribution` |
+| POST   | `/api/tapp/platform/items`                               | **登录** | `Tapp.platform.addItem`         |
+| POST   | `/api/tapp/platform/items/batch`                         | **登录** | `Tapp.platform.addItems`        |
 | POST   | `/api/tapp/ai/v2/tasks`                                  | 可选认证 | 创建 AI 任务                    |
 | GET    | `/api/tapp/ai/v2/tasks/{taskId}`                         | 可选认证 | 读取任务快照                    |
 | DELETE | `/api/tapp/ai/v2/tasks/{taskId}`                         | 可选认证 | 取消非终态任务                  |

@@ -50,15 +50,15 @@ flowchart LR
 | 层         | 主要位置                                                   | 职责                                               |
 | ---------- | ---------------------------------------------------------- | -------------------------------------------------- |
 | 页面入口   | `frontend/src/tapp/pages/`                                 | 列表、详情、单窗口/多窗口运行入口                  |
-| 列表布局   | `pages/TappListPage.tsx`、`services/TappListCardSizesApi.ts`、`backend/.../list_card_sizes.rs` | 卡片 1x1/2x1、mine/site 范围、个人 vs 站点布局偏好 |
-| 运行壳     | `components/TappAppShell.tsx`、`TappWindowManager.tsx`、`hooks/useTappMultiWindowSession.ts` | 多窗口会话、全屏 chrome、关闭/presence             |
-| 安装/卸载 UI | `InstallTappDialog.tsx`、`UninstallConfirmDialog.tsx`    | 权限同意安装、卸载确认与清理预设文案               |
+| 列表布局   | `frontend/src/tapp/pages/TappListPage.tsx`、`frontend/src/tapp/services/TappListCardSizesApi.ts`、`backend/src/api/tapp_store/list_card_sizes.rs`、`backend/src/services/tapp_list_card_sizes.rs` | 卡片 1x1/2x1、mine/site 范围、个人 vs 站点布局偏好 |
+| 运行壳     | `frontend/src/tapp/components/TappAppShell.tsx`、`frontend/src/tapp/components/TappWindowManager.tsx`、`frontend/src/tapp/hooks/useTappMultiWindowSession.ts` | 多窗口会话、全屏 chrome、关闭/presence             |
+| 安装/卸载 UI | `frontend/src/tapp/components/InstallTappDialog.tsx`、`frontend/src/tapp/components/UninstallConfirmDialog.tsx` | 权限同意安装、卸载确认与清理预设文案               |
 | 宿主状态   | `frontend/src/tapp/runtime/TappRuntime.ts`                 | 已安装/运行状态缓存、Widget 注册、后台需求         |
 | 资源加载   | `frontend/src/tapp/runtime/sandbox/resourceLoader.ts`      | 获取、拆分、缓存代码/CSS/HTML/i18n/Page 模块       |
-| 沙箱宿主   | `TappPageSandbox.tsx`、`TappWidgetSandbox.tsx`             | 创建 iframe、生成 HTML、注册对应 handler、清理实例 |
-| Widget 加载面 | `widgets/shared/WidgetSkeleton.tsx`、`hooks/useTappWidgets.ts` | Dashboard 第三方 Widget 默认骨架（defer / 屏外静态 / themeColor） |
+| 沙箱宿主   | `frontend/src/tapp/runtime/TappPageSandbox.tsx`、`frontend/src/tapp/runtime/TappWidgetSandbox.tsx` | 创建 iframe、生成 HTML、注册对应 handler、清理实例 |
+| Widget 加载面 | `frontend/src/components/widgets/shared/WidgetSkeleton.tsx`、`frontend/src/hooks/useTappWidgets.ts` | Dashboard 第三方 Widget 默认骨架（defer / 屏外静态 / themeColor） |
 | 后台宿主   | `frontend/src/tapp/components/TappBackgroundRunner.tsx`    | 为需要常驻的运行中 Tapp 拉起 headless core         |
-| SDK/Bridge | `runtime/sandbox/sdkGenerator.ts`、`runtime/TappBridge.ts` | 生成沙箱 SDK、验证消息、权限预检、分发 handler     |
+| SDK/Bridge | `frontend/src/tapp/runtime/sandbox/sdkGenerator.ts`、`frontend/src/tapp/runtime/TappBridge.ts` | 生成沙箱 SDK、验证消息、权限预检、分发 handler     |
 | 前端 API facade | `frontend/src/tapp/services/TappApiService.ts`        | 领域 API 聚合导出与默认对象装配                    |
 | Tapp 路由装配 | `backend/src/api/tapp_store.rs`                         | 路由组合、子模块声明与公共重导出                    |
 | 访问上下文 | `backend/src/api/tapp_store/access.rs`                    | 可见安装选择、所有权、权限过滤与存储访问身份        |
@@ -68,11 +68,11 @@ flowchart LR
 | 预处理安装包 | `backend/src/api/tapp_store/prepared_package.rs`          | 统一结构化/归档包校验、资源落盘与安装代际写入       |
 | 商店包获取 | `backend/src/api/tapp_store/store_package.rs`               | 可信出站访问、索引匹配、分类校验与远程资源下载      |
 | 卸载事务   | `backend/src/api/tapp_store/uninstall.rs`                  | private-first 鉴权、事务清理、目录隔离与失败恢复；`cleanup-temporary` 按站点策略 |
-| 列表卡片尺寸 | `backend/src/api/tapp_store/list_card_sizes.rs`、`services/tapp_list_card_sizes.rs` | GET 双布局 / PUT 纯个人；游客只读站点布局 |
+| 列表卡片尺寸 | `backend/src/api/tapp_store/list_card_sizes.rs`、`backend/src/services/tapp_list_card_sizes.rs` | GET 双布局 / PUT 纯个人；游客只读站点布局 |
 | 运行时 API | `backend/src/api/tapp_runtime/`                            | AI、数据、上下文、媒体、事件、报告、访问统计、声明 API 等 |
 | 调度入口   | `backend/src/api/tapp_scheduler.rs`                        | HTTP/WS 协议、身份/所有权/权限检查                 |
 | 调度引擎   | `backend/src/services/tapp_scheduler.rs`                   | 任务持久化、触发、重试、前端回执、后端动作         |
-| Manifest 契约 | `backend/src/api/tapp_store/manifest.rs`                | 安装清单、声明能力、Widget/设置/API 数据结构        |
+| Manifest 契约 | `crates/tapp-contract/src/manifest.rs`                  | 可安装 `TappManifest`（`deny_unknown_fields`）、声明能力、Widget/设置/API 数据结构 |
 | Tapp 目录查询 | `backend/src/api/tapp_store/catalog.rs`                  | 角色权限过滤、private-first 列表与详情查询          |
 | Manifest 校验 | `backend/src/api/tapp_store/validation.rs`              | 路径、权限、资源配额及声明能力的纯校验边界          |
 | 包文件生命周期 | `backend/src/api/tapp_store/package_files.rs`           | staging/activate/recovery、资源读写与归档安全边界   |
@@ -81,13 +81,13 @@ flowchart LR
 | Tapp 存储 | `backend/src/api/tapp_store/storage.rs`                      | 设置鉴权、私有命名空间、事务配额与存储路由          |
 | Widget 注册表 | `backend/src/api/tapp_store/widgets.rs`                  | Manifest 同步、所有权可见性与动态注册事务           |
 | 前端传输层 | `frontend/src/tapp/services/TappHttpClient.ts`              | CSRF、Runtime Grant 恢复、响应 envelope 与 SSE 解析 |
-| 前端运行时 API | `TappContextApi.ts` / `TappHostIntegrationApi.ts` / `TappInteractionApi.ts` | Context/Declared API、报告媒体、组件与事件交互 |
-| 前端数据 API | `TappStorageApi.ts` / `TappPlatformApi.ts` / `TappReportCatalogApi.ts` | 私有存储、平台数据与只读报告目录 |
-| 前端 Widget API | `TappWidgetApi.ts`                                     | Widget 注册、查询与注销                             |
-| 前端包资源 API | `TappPackageResourceApi.ts`                            | 已安装代码、资源、静态资产与导出                    |
-| 前端治理 API | `TappRuntimeAccessApi.ts` / `TappAiApi.ts`             | Runtime Grant、数据交换与服务端治理 AI 任务        |
-| 前端安装 API | `TappInstallationApi.ts`                                    | 安装、更新、卸载与临时安装清理                      |
-| 前端生命周期 API | `TappLifecycleApi.ts`                                | 列表、详情、最近使用、启动与停止                    |
+| 前端运行时 API | `frontend/src/tapp/services/TappContextApi.ts` / `TappHostIntegrationApi.ts` / `TappInteractionApi.ts` | Context/Declared API、报告媒体、组件与事件交互 |
+| 前端数据 API | `frontend/src/tapp/services/TappStorageApi.ts` / `TappPlatformApi.ts` / `TappReportCatalogApi.ts` | 私有存储、平台数据与只读报告目录 |
+| 前端 Widget API | `frontend/src/tapp/services/TappWidgetApi.ts`         | Widget 注册、查询与注销                             |
+| 前端包资源 API | `frontend/src/tapp/services/TappPackageResourceApi.ts` | 已安装代码、资源、静态资产与导出                    |
+| 前端治理 API | `frontend/src/tapp/services/TappRuntimeAccessApi.ts` / `TappAiApi.ts` | Runtime Grant、数据交换与服务端治理 AI 任务        |
+| 前端安装 API | `frontend/src/tapp/services/TappInstallationApi.ts`      | 安装、更新、卸载与临时安装清理                      |
+| 前端生命周期 API | `frontend/src/tapp/services/TappLifecycleApi.ts`      | 列表、详情、最近使用、启动与停止                    |
 | 声明 API   | `backend/src/services/tapp_api_service.rs`                 | 模板注入、出站请求、builtin、上下文隔离缓存        |
 
 `frontend/src/tapp/types/index.ts` 是前端运行时类型入口。运行时类型不得依赖
@@ -175,12 +175,13 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
 
 站点可配置 `tapp_private_install_cleanup`：
 
-| 值 | 登出时 `POST /api/tapps/cleanup-temporary` | 每日 worker |
+| 值 | 登出时 `POST /api/tapps/cleanup-temporary` | 每日 worker（`main.rs` 后台循环） |
 | -- | ------------------------------------------ | ----------- |
 | `inactivity`（默认） | no-op | 按 `tapp_private_install_inactivity_days` 全局 prune 不活跃用户私有安装 |
-| `logout` | 仅卸载**当前用户**私有安装 | 仍可配合 worker；登出路径禁止全局 prune |
+| `logout` | 仅卸载**当前用户**私有安装 | **no-op**（`mode != "inactivity"` 时 `continue`；不跑全局 prune） |
 
-实现：`uninstall.rs`（`cleanup_temporary_tapps` + worker）、配置读写
+实现：`backend/src/api/tapp_store/uninstall.rs`（`cleanup_temporary_tapps` +
+`prune_stale_private_tapps`）、`backend/src/main.rs` worker、配置读写
 `permissions_oauth` / DynamicConfig。详情见 [REST_API · 私有安装清理](REST_API.md#私有安装清理-post-apitappscleanup-temporary)。
 
 ## `core`、`widget`、`page` 三层
