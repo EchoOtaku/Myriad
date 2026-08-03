@@ -372,19 +372,28 @@ Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外�
 | GET    | `/api/tapp/ai/v2/usage`                                  | 可选认证 | 权威 calls/tokens/cooldown      |
 | GET    | `/api/tapp/ai/v2/ledger`                                 | 登录     | 宿主 UI 专用，无 SDK 暴露       |
 | POST   | `/api/tapp/data/transform`                               | 登录     | `Tapp.data.transform`           |
-| GET    | `/api/tapp/analytics/summary`                            | 可选认证 + Grant | `Tapp.analytics.getSummary`（`analytics:read`） |
+| GET    | `/api/tapp/analytics/summary`                            | 可选认证 + Grant | `Tapp.analytics.getSummary`（`analytics:read`；见下双 scope） |
 | GET    | `/api/tapp/analytics/visitor`                            | 可选认证 + Grant | `Tapp.analytics.getVisitorCard`（`analytics:read`） |
 
-#### 访问统计（Runtime Grant）
+#### 访问统计（Runtime Grant · 双 scope）
+
+实现：`backend/src/api/tapp_runtime/analytics.rs`。均需 `X-Tapp-Runtime-Grant` 且 Grant 含
+**`analytics:read`**（basic，guest-safe）。仅返回**聚合**数据，永不含访客哈希、序位
+（`your_ordinal_today` / `counted`）等身份字段。
 
 | 方法 | 路径 | 说明 |
 | ---- | ---- | ---- |
-| GET | `/api/tapp/analytics/summary?days=7` | 区间汇总 + 日趋势 + 页面/事件/来源/国家排行；也可用 `from`/`to`（`YYYY-MM-DD`）；`days` 默认 7、上限 365 |
-| GET | `/api/tapp/analytics/visitor` | 访客卡片精简：今日 / 累计 / 短趋势 |
+| GET | `/api/tapp/analytics/summary` | **Admin**：完整汇总（`scope: "admin"`）— `today` / `range` / `daily` / `pages` / `events` / `referrers` / `countries`；`days`（默认 7、上限 365）或 `from`/`to`（`YYYY-MM-DD`）**生效**。**非 admin**（user/guest）：仅访客卡片聚合（`scope: "visitor"`）— `today` / `all_time` / 短 `daily`；**忽略** range query |
+| GET | `/api/tapp/analytics/visitor` | 访客卡片精简（始终 `scope: "visitor"`）：今日 / 累计 / 短趋势；无窗口 query |
 
-均需 `X-Tapp-Runtime-Grant` 且 Grant 含 **`analytics:read`**（basic，游客可用）。  
-返回**聚合**数据，不包含访客哈希、序位等身份字段；与管理端「访客统计」同源。  
-SDK 与 Manifest 示例见 [API_REFERENCE · 访问统计](API_REFERENCE.md#访问统计-api)。
+对非 admin，`GET …/summary` 与 `GET …/visitor` 实质同为 visitor-card 形状；`…/visitor`
+仍是专用访客端点。Admin 若只要卡片也可调 `…/visitor`（不会给 pages 等 breakdown）。
+
+**`analytics_enabled` 短路**：站点关闭采集时两路由均返回
+`{ "success": true, "enabled": false, "source": "site_analytics" }`，不查表、无 `scope`。
+开启时响应含 `enabled: true`、`source: "site_analytics"` 与上表 `scope`。
+
+SDK 与示例见 [API_REFERENCE · 访问统计](API_REFERENCE.md#访问统计-api)。
 
 AI 权限、每分钟速率、每日 calls/tokens 与 cooldown 全由后端执行。配额在模型调用前事务预留、
 完成后按实际估算结算、失败/取消释放未消耗 token；calls 仍记录一次尝试。AI Task 还校验

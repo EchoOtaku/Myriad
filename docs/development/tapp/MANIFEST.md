@@ -143,8 +143,9 @@ Page、Widget 和 headless core 是运行形态，由 `hasPage`、`widgets` 和
   公开安装。不要写成“公共版本优先显示”。
 - **Storage 与 Settings 不同命名空间**：
   - `Tapp.storage` 的持久主体是 Runtime Grant **subject**（`user_id + tapp_id`）。打开
-    公开安装时，每个已登录用户仍读写自己的私有 storage，不会读取站点 owner 的数据。
-    游客 Grant 不含 `storage`，无持久 storage。
+    公开安装时，每个 subject（持久用户或**签名游客 session**）读写自己的私有 storage，
+    不会读取站点 owner 的数据。`storage` 为 guest-safe basic：签名游客可获 Grant 与负 id
+    命名空间下的持久 storage；无签名 session 则无 storage。
   - Manifest 声明的安装级设置（宿主 `Tapp.settings` / REST `GET|POST …/settings`）挂在
     **installation owner** 命名空间：owner 或管理员可**写**；凡能解析到该安装的运行者
     （含**游客打开公开安装**）可**读**已保存的声明键。未写入时回落 `defaultValue`。
@@ -769,7 +770,7 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 | `ui:confirm`         | 显示确认对话框   |
 | `ui:fullscreen`      | 请求全屏显示     |
 | `platform:read`      | 读取平台数据     |
-| `analytics:read`     | 读取站点访问统计（聚合） |
+| `analytics:read`     | 读取站点访问统计（聚合；admin 完整 summary，非 admin 仅访客卡片） |
 | `tappList:read`      | 读取 Tapp 列表   |
 | `brew:read`          | 读取 Brew 内容   |
 | `brew:write`         | 修改 Brew 状态   |

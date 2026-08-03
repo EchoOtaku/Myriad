@@ -82,7 +82,7 @@ flowchart LR
 | Widget 注册表 | `backend/src/api/tapp_store/widgets.rs`                  | Manifest 同步、所有权可见性与动态注册事务           |
 | 前端传输层 | `frontend/src/tapp/services/TappHttpClient.ts`              | CSRF、Runtime Grant 恢复、响应 envelope 与 SSE 解析 |
 | 前端运行时 API | `frontend/src/tapp/services/TappContextApi.ts` / `TappHostIntegrationApi.ts` / `TappInteractionApi.ts` | Context/Declared API、报告媒体、组件与事件交互 |
-| 前端数据 API | `frontend/src/tapp/services/TappStorageApi.ts` / `TappPlatformApi.ts` / `TappReportCatalogApi.ts` | 私有存储、平台数据与只读报告目录 |
+| 前端数据 API | `frontend/src/tapp/services/TappStorageApi.ts` / `TappPlatformApi.ts` / `TappReportCatalogApi.ts` / `TappAnalyticsApi.ts` | 私有存储、平台数据、只读报告目录与站点访问统计聚合 |
 | 前端 Widget API | `frontend/src/tapp/services/TappWidgetApi.ts`         | Widget 注册、查询与注销                             |
 | 前端包资源 API | `frontend/src/tapp/services/TappPackageResourceApi.ts` | 已安装代码、资源、静态资产与导出                    |
 | 前端治理 API | `frontend/src/tapp/services/TappRuntimeAccessApi.ts` / `TappAiApi.ts` | Runtime Grant、数据交换与服务端治理 AI 任务        |
@@ -151,10 +151,11 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
   因而普通用户不能用私有副本抢占 ID、阻止管理员后续发布。详情、资源、Widget、最终授权和
   Manifest 声明 API 必须选择同一安装记录。storage/Widget 的 ORM 不提供仅按 `tappId`
   的关联，查询必须显式携带 `user_id + tapp_id`。
-- **主体私有 Storage**：`Tapp.storage` 的 `user_id` 是 Runtime Grant subject。打开管理员
-  公开安装时，每个已登录用户仍读写自己的 `user_id + tapp_id` 空间，不会读取站点 owner
-  数据。Manifest 声明的安装级设置继续存放在安装 owner 命名空间；owner 或管理员可写，
-  其他已登录运行者只读。宿主内部键不会出现在通用 storage API 中。
+- **主体私有 Storage**：`Tapp.storage` 的 `user_id` 是 Runtime Grant subject（持久用户或
+  **签名游客 session**）。打开管理员公开安装时，每个 subject 读写自己的
+  `user_id + tapp_id` 空间（游客为负 id 命名空间），不会读取站点 owner 数据。
+  Manifest 声明的安装级设置继续存放在安装 owner 命名空间；owner 或管理员可写，
+  能打开该安装的运行者（含游客）可读已保存声明键。宿主内部键不会出现在通用 storage API 中。
 - 管理员控制面权限不等于普通用户私有安装的运行时访问权。代码、资源、Manifest、授权和
   Runtime Grant 只能解析到规范公开 owner 或当前主体自己的 owner，不能从其他用户同 ID
   记录中任意选择。
@@ -226,8 +227,10 @@ SDK 的 `lifecycle.onDestroy` 同时监听 `pagehide` 与 `beforeunload`，并�
 
 **Storage 与 Settings 分离**：
 
-- 私有 `Tapp.storage` 经 Runtime Grant 挂在 **subject** 命名空间；`_settings.` 等为宿主
-  保留前缀，storage API 不可访问。访客 Grant 不含 `storage`，无持久 storage。
+- 私有 `Tapp.storage` 经 Runtime Grant 挂在 **subject** 命名空间（持久用户或签名游客）；
+  `_settings.` 等为宿主保留前缀，storage API 不可访问。`storage` / `platform:read` 均为
+  **guest-safe basic**（与 [REST_API · Widget 与存储](REST_API.md#widget-与存储) 一致）：
+  签名游客可获 Grant 与负 id 下持久 storage、以及平台公开缓存读；无签名 session 则无。
 - 安装级 `Tapp.settings` 走专用 REST：`GET` 在 **optional_auth** 上（游客打开公开安装可读
   installation owner 已保存值；未写入回落 Manifest 默认）；`POST` 仅登录且 owner/管理员，
   并校验类型/选项/数值范围。详情页宿主设置**编辑器**仍是控制面：访客不展示写 UI。
@@ -346,9 +349,12 @@ Grant 不能继续保留已撤销能力，安装 owner 改变则令牌失效并�
 媒体控制与语音等宿主本地敏感动作在执行前还会调用 Runtime Grant authorize 路由实时复核；
 配置保存会同步有效权限并重建受影响的 Page、Widget 和 headless 沙箱。
 
-访客 Grant 只包含真实使用可选认证路由或纯宿主本地处理的能力。`storage`、平台数据、报告读取、
-统一通知、组件/快捷键注册、scheduler、语音服务，以及 Brew 写入/评论都要求持久登录主体，
-不会仅因 broad permission level 为 basic/elevated 就出现在访客 Grant 中。动态 Widget 的
+访客 Grant 只包含真实使用可选认证路由或纯宿主本地处理的能力。**guest-safe basic** 可进入
+签名游客 Grant：`storage`（负 id 私有命名空间）、`platform:read`（站点公开缓存）、
+`analytics:read`（**仅** visitor-card 聚合；完整 admin summary 在 handler 内按 Admin 角色
+门控，见 `tapp_runtime/analytics.rs`）。下列能力的真实后端路由仍要求**持久登录**主体，
+不会仅因 broad level 为 basic/elevated 就出现在访客 Grant 中：`report:read`、统一通知、
+组件/快捷键注册、scheduler、语音服务、Brew 写入/评论、`platform:write`。动态 Widget 的
 注册与注销属于 `privileged` 控制面，只允许当前管理员调用。
 
 ## 调度器
