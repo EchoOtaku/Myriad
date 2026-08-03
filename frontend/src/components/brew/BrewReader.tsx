@@ -42,6 +42,7 @@ import {
   processEmbeds,
 } from '../../utils/embedProcessor'
 import { escapeHtml } from '../../utils/inputSanitizer'
+import { proxyImageUrl } from '../../utils/proxyImageUrl'
 import { processRssContent } from '../../utils/rssContentProcessor'
 import {
   AnnotationTooltip,
@@ -228,18 +229,13 @@ function restoreEmbedElements(
   })
 }
 
-// 处理图片 URL - 封面图等外部图片通过代理访问
+// Dual-path: hotlink CDNs via proxy; otherwise original URL for display
 function getImageUrl(imageUrl: string | null): string | null {
   if (!imageUrl) return null
-  // 已经是本地路径或代理路径，直接使用
   if (imageUrl.startsWith('/api/') || imageUrl.startsWith(`${API_URL}/api/`)) {
     return imageUrl.startsWith('/api/') ? `${API_URL}${imageUrl}` : imageUrl
   }
-  // 外部 URL，使用图片代理
-  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-    return `${API_URL}/api/proxy/image?url=${encodeURIComponent(imageUrl)}`
-  }
-  return imageUrl
+  return proxyImageUrl(imageUrl) ?? imageUrl
 }
 
 interface BrewReaderProps {
