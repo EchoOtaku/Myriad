@@ -1166,6 +1166,10 @@ pub async fn fetch_fresh_platform_data(
         tracing::error!("Failed to update smart filter cache: {}", e);
     }
 
+    // 平台画像可能换了（站长在 B站换了头像）——重算站长快照，让 /api/auth/me 等
+    // 单查询出口也能跟着变；平台画像藏在 platform_metadata 的 JSON 里，SQL 阶梯够不到。
+    crate::services::avatar::refresh_avatar_snapshot(db, user_id).await;
+
     Ok(FreshPlatformData {
         data: all_data,
         errors: fetch_errors,

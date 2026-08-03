@@ -86,37 +86,23 @@ pub async fn get_current_user(
 
     use sea_orm::Value as SeaValue;
 
+    // 头像阶梯是 services::avatar 的共享片段（与 /api/tapp/context/user 同一份）
+    let user_sql = format!(
+        r#"SELECT u.id, u.username, u.auth_provider, u.is_admin,
+                  COALESCE(u.is_owner, false) AS is_owner,
+                  {avatar} AS avatar_url,
+                  u.github_id, u.linked_github_id, u.bio, u.display_name,
+                  u.password_hash IS NOT NULL AS has_password,
+                  u.last_login_at
+           FROM users u
+           WHERE u.id = $1"#,
+        avatar = crate::services::avatar::avatar_snapshot_expr("u"),
+    );
+
     let user_row = match db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT u.id, u.username, u.auth_provider, u.is_admin,
-                      COALESCE(u.is_owner, false) AS is_owner,
-                      COALESCE(
-                          NULLIF(
-                              CASE
-                                  WHEN u.avatar_url LIKE 'https://ui-avatars.com/%'
-                                       OR u.avatar_url LIKE 'http://ui-avatars.com/%'
-                                  THEN NULL
-                                  ELSE u.avatar_url
-                              END,
-                              ''
-                          ),
-                          (
-                              SELECT NULLIF(ui.avatar_url, '')
-                              FROM user_identities ui
-                              WHERE ui.user_id = u.id
-                                AND ui.avatar_url IS NOT NULL
-                                AND ui.avatar_url <> ''
-                              ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
-                              LIMIT 1
-                          ),
-                          NULLIF(u.avatar_url, '')
-                      ) AS avatar_url,
-                      u.github_id, u.linked_github_id, u.bio, u.display_name,
-                      u.password_hash IS NOT NULL AS has_password,
-                      u.last_login_at
-               FROM users u
-               WHERE u.id = $1"#,
+            user_sql,
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
@@ -166,9 +152,14 @@ pub async fn get_current_user(
         .unwrap_or_else(|_| "local".to_string());
     let is_admin: bool = user_row.try_get("", "is_admin").unwrap_or(false);
     let is_owner: bool = user_row.try_get("", "is_owner").unwrap_or(false);
-    let avatar_url: String = user_row
-        .try_get("", "avatar_url")
-        .unwrap_or_else(|_| "https://github.com/ghost.png".to_string());
+    // 无头像返回 null（不再编造 ghost.png）：前端 <Avatar> 负责生成本地兜底，
+    // 后端编造会让"没有头像"和"头像就是这张"无法区分。
+    let avatar_url = crate::services::avatar::proxied_avatar_value(
+        user_row
+            .try_get::<Option<String>>("", "avatar_url")
+            .ok()
+            .flatten(),
+    );
     let github_id: Option<i64> = user_row.try_get("", "github_id").ok();
     let linked_github_id: Option<i64> = user_row.try_get("", "linked_github_id").ok();
     let bio: Option<String> = user_row.try_get("", "bio").ok();

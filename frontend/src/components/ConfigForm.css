@@ -1253,81 +1253,9 @@ html.dark .config-nav-result-badge {
   }
 
   /*
-   * 二级返回：对齐 Tapp 商店的圆形 glass 返回键
-   * （as-store__back + as-detail__fluid-control + glass-liquid）。
-   * fixed 浮在内容上方，不占流高度；内容仍从 Config 视图的 pt-20 起排。
-   * 不再与右上智能岛做同高垂直居中配对。
+   * 移动端选项页返回：与平台二级页共用 .section-header-back
+   * （标题栏内嵌，不再使用独立 fixed 圆形 glass 键）
    */
-  .config-mobile-section-bar {
-    position: fixed;
-    top: 1rem;
-    left: 1rem;
-    z-index: 40;
-    display: flex;
-    align-items: center;
-    margin: 0;
-    padding: 0;
-    pointer-events: none;
-  }
-
-  /* 智能岛展开时会铺满这一行：返回键先退场，别和面板叠在一起 */
-  html.gcp-panel-open .config-mobile-section-bar {
-    opacity: 0;
-    transition: opacity var(--sm-dur-fast) var(--sm-ease-standard);
-  }
-
-  /* 圆形 glass 返回：仅 ← 图标，表面令牌跟商店 fluid-control 一致 */
-  .config-mobile-back {
-    position: relative;
-    isolation: isolate;
-    pointer-events: auto;
-    display: inline-grid;
-    flex: 0 0 auto;
-    place-items: center;
-    width: 2.35rem;
-    height: 2.35rem;
-    min-height: 2.35rem;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    border-radius: 999px;
-    color: color-mix(
-      in srgb,
-      var(--cfg-text-2, #4b5563) 82%,
-      var(--cfg-text-3, #9ca3af)
-    );
-    font: inherit;
-    font-size: 0;
-    line-height: 0;
-    cursor: pointer;
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-    transform: translateZ(0);
-    /* background / border / shadow / backdrop 由 .glass.glass-liquid 接管 */
-  }
-
-  .config-mobile-back-icon {
-    position: relative;
-    z-index: 2;
-    display: block;
-    width: 0.875rem;
-    height: 0.875rem;
-  }
-
-  .config-mobile-back:focus-visible {
-    outline: 2px solid
-      color-mix(in srgb, var(--cfg-accent, #3b82f6) 68%, white);
-    outline-offset: 2px;
-  }
-
-  /* 小屏智能岛内缩到 0.75rem：返回键对称跟进 */
-  @media (width <= 640px) {
-    .config-mobile-section-bar {
-      top: 0.75rem;
-      left: 0.75rem;
-    }
-  }
-
   .config-shell[data-mobile-pane='section'] .config-section {
     margin-bottom: 0.5rem;
   }
@@ -1337,13 +1265,9 @@ html.dark .config-nav-result-badge {
   }
 }
 
-/* 桌面：不显示移动 chevron / 顶栏 */
+/* 桌面：不显示移动 chevron */
 @media (width >= 1024px) {
   .config-nav-item-chevron {
-    display: none;
-  }
-
-  .config-mobile-section-bar {
     display: none;
   }
 }

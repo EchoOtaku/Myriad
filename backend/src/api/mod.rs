@@ -8,6 +8,8 @@ pub mod analysis;
 pub mod analytics;
 pub mod auth;
 pub mod auth_local;
+pub mod avatar_source; // 画像源选择（本人 + 管理员代改）
+pub mod profile_text_source; // 名称/简介文案来源（与画像源独立）
 pub mod bangumi;
 pub mod bilibili;
 pub mod brew;
@@ -29,6 +31,8 @@ pub mod prompt;
 pub mod proxy;
 pub mod reports;
 pub mod seo;
+pub mod seo_policy;
+pub mod seo_geo;
 pub mod setup;
 pub mod setup_bootstrap;
 pub mod site_domain; // BASE_URL / FRONTEND_URL / CORS — not federation Move

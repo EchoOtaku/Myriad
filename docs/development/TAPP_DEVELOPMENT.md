@@ -7,13 +7,13 @@
 
 | 文档 | 说明 |
 | ---- | ---- |
-| [架构总览](tapp/ARCHITECTURE.md) | 安装态、运行态、沙箱、后台 core 与调度器 |
-| [Tapp 商店](tapp/STORE.md) | 远程目录 `index.json`、源管理、安装链路与发布 |
+| [架构总览](tapp/ARCHITECTURE.md) | 安装态、运行态、列表布局、私有安装清理、沙箱与调度器 |
+| [Tapp 商店](tapp/STORE.md) | 远程目录 `index.json`、源管理、安装链路、`icon_shell` 与发布 |
 | [Tapp Playground](tapp/PLAYGROUND.md) | Pro AI 双模式（Page / Widget-only）生成、预览、导出与安装边界 |
 | [Playground 生成上下文](tapp/PLAYGROUND_GENERATION_CONTEXT.md) | 注入模型的开发上下文与能力边界 |
 | [快速入门](tapp/QUICKSTART.md) | CLI 创建/校验/打包，代码架构，生命周期 |
-| [Manifest 配置](tapp/MANIFEST.md) | 完整的 manifest.json 配置参考 |
-| [SDK API 参考](tapp/API_REFERENCE.md) | 所有 Tapp SDK API 详细文档 |
+| [Manifest 配置](tapp/MANIFEST.md) | 完整的 manifest.json 配置参考（含 `iconShell`、`analytics:read`） |
+| [SDK API 参考](tapp/API_REFERENCE.md) | 所有 Tapp SDK API（含 `Tapp.analytics`） |
 | [小组件开发](tapp/WIDGET.md) | Widget 开发指南、尺寸适配、样式规范 |
 | [页面样式规范](tapp/PAGE.md) | Page 布局、深色模式与 i18n |
 | [安全沙箱](tapp/SANDBOX.md) | CSP 策略、iframe 限制、权限系统 |
@@ -21,7 +21,7 @@
 | [样式规范](tapp/STYLING.md) | CSS 变量、Tailwind 集成、Glass 风格 |
 | [设计规范摘要](tapp/DESIGN_SPEC.md) | 注入 Playground agent 的设计语言摘要 |
 | [运行时契约](tapp/RUNTIME_CONTRACT_DESIGN.md) | Runtime Grant、Data Exchange、AI Task、Event、Agent |
-| [REST API](tapp/REST_API.md) | 后端 REST API 端点参考 |
+| [REST API](tapp/REST_API.md) | 宿主路由：安装、列表布局、清理策略、analytics Grant 等 |
 | [故障排除](tapp/TROUBLESHOOTING.md) | 常见问题、调试技巧、发布检查清单 |
 | [`.tapp` 文件格式](../features/TAPP_FILE_FORMAT.md) | ZIP 安装包布局与安装入口 |
 | [权限 fixtures](tapp/fixtures/README.md) | host 路由 / action 权限对照（先改 fixture） |

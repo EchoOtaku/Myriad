@@ -277,6 +277,17 @@ async fn run_server() -> anyhow::Result<()> {
                     tracing::info!("Continuing with existing schema...");
                 }
 
+                // 站长画像快照兜底：平台画像 SQL 阶梯够不到，存量库补完列后需要算一次，
+                // 否则要等到下次登录/抓取，`/api/auth/me` 与首页信息条会短暂显示两张脸。
+                match services::site_owner::site_owner_user_id(&db).await {
+                    Ok(owner_id) => {
+                        services::avatar::refresh_avatar_snapshot(&db, owner_id).await;
+                    }
+                    Err(error) => {
+                        tracing::debug!(%error, "Skipping avatar snapshot warmup (no site owner yet)")
+                    }
+                }
+
                 match api::tapp_store::recover_tapp_filesystem_state(&db).await {
                     Ok(0) => {}
                     Ok(count) => {
@@ -643,6 +654,49 @@ async fn run_server() -> anyhow::Result<()> {
                     }
                 });
                 tracing::info!("✅ Skill evolution pruning worker started");
+
+                // Prune private Tapp installs when cleanup mode is "inactivity"
+                {
+                    let db = db.clone();
+                    let dyn_cfg = GLOBAL_DYNAMIC_CONFIG.clone();
+                    tokio::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_secs(900)).await;
+                        let mut interval =
+                            tokio::time::interval(std::time::Duration::from_secs(86400));
+                        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                        loop {
+                            interval.tick().await;
+                            let (mode, days) = {
+                                let cfg = dyn_cfg.read().await;
+                                let mode =
+                                    cfg.tapp_private_install_cleanup.trim().to_ascii_lowercase();
+                                let days =
+                                    i64::from(cfg.tapp_private_install_inactivity_days.clamp(1, 365));
+                                (mode, days)
+                            };
+                            if mode != "inactivity" {
+                                continue;
+                            }
+                            match api::tapp_store::prune_stale_private_tapps(&db, days).await {
+                                Ok(n) if n > 0 => {
+                                    tracing::info!(
+                                        deleted = n,
+                                        days,
+                                        "Pruned stale private Tapp installs (inactive users)"
+                                    );
+                                }
+                                Ok(_) => {}
+                                Err(e) => {
+                                    tracing::warn!(
+                                        error = %e,
+                                        "Failed to prune stale private Tapp installs"
+                                    );
+                                }
+                            }
+                        }
+                    });
+                    tracing::info!("✅ Private Tapp install cleanup worker started");
+                }
 
                 // Initialize Federation delivery worker (MFP Activity delivery queue).
                 // Required for createNote/publish fan-out: rows enqueued in

@@ -114,6 +114,7 @@ export const UnifiedAppCard = forwardRef<
           category={app.category}
           id={app.id}
           permissions={app.permissions}
+          iconShell={app.iconShell}
           iconStyle={iconStyle}
           shellClassName="as-store-row__icon"
           glyphSizeClass="w-8 h-8"

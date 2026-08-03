@@ -169,3 +169,824 @@
     left: -8px;
   }
 }
+
+/* ── Multi-window dock ────────────────────────────────────────────────
+ *
+ * 尺寸：固定 rem（不跟视口 fluid 缩放，避免多处 clamp/vw 重算）
+ * 材质：.glass 消费 surface 令牌；布局：圆点 absolute，不撑高条
+ */
+
+.tapp-multi-desktop,
+.tapp-multi-dock {
+  --tapp-dock-icon: 2.5rem;
+  --tapp-dock-pad-y: 0.65rem;
+  --tapp-dock-pad-x: 0.9rem;
+  --tapp-dock-gap: 0.55rem;
+  --tapp-dock-radius: 1.2rem;
+  --tapp-dock-icon-radius: 0.8rem;
+  --tapp-dock-dot: 0.22rem;
+  --tapp-dock-dot-gap: 0.25rem;
+  --tapp-dock-bottom: max(
+    1.15rem,
+    calc(env(safe-area-inset-bottom, 0px) + 0.55rem)
+  );
+  --tapp-dock-stack: calc(
+    var(--tapp-dock-icon) + var(--tapp-dock-pad-y) * 2 +
+      var(--tapp-dock-dot-gap) + var(--tapp-dock-dot) + var(--tapp-dock-bottom) +
+      0.35rem
+  );
+}
+
+.tapp-multi-desktop {
+  bottom: var(--tapp-dock-stack) !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
+.tapp-multi-dock {
+  position: absolute;
+  left: 50%;
+  bottom: var(--tapp-dock-bottom);
+  z-index: 1000;
+  transform: translateX(-50%);
+  pointer-events: none;
+  /* 应用面板入口 + 最多 18 快捷 app */
+  max-width: min(98vw, 72rem);
+}
+
+/* 玻璃条：固定尺寸 + 全站 surface（.glass） */
+.tapp-multi-dock-inner {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--tapp-dock-gap);
+  padding: var(--tapp-dock-pad-y) var(--tapp-dock-pad-x);
+  border-radius: var(--tapp-dock-radius);
+  overflow: visible;
+  isolation: isolate;
+}
+
+.tapp-multi-dock-sep {
+  width: 1px;
+  height: calc(var(--tapp-dock-icon) * 0.78);
+  margin: 0 calc(var(--tapp-dock-gap) * 0.25);
+  align-self: center;
+  background: color-mix(
+    in srgb,
+    var(--surface-border, var(--border-color)) 85%,
+    transparent
+  );
+  flex-shrink: 0;
+}
+
+.tapp-multi-dock-item {
+  position: relative;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--tapp-dock-icon);
+  height: var(--tapp-dock-icon);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  transform-origin: 50% 80%;
+  will-change: transform;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tapp-multi-dock-item:focus,
+.tapp-multi-dock-item:focus-visible,
+.tapp-multi-dock-item:active {
+  outline: none;
+  box-shadow: none;
+}
+
+/* 悬停名称：图标上方，即时出现（替代原生 title 延迟） */
+.tapp-multi-dock-label {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.45rem);
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 0.22rem 0.5rem;
+  border-radius: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--text-primary);
+  background: color-mix(
+    in srgb,
+    var(--surface-bg, var(--bg-card)) 92%,
+    transparent
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--surface-border, var(--border-color)) 80%, transparent);
+  box-shadow: 0 4px 14px
+    color-mix(in srgb, var(--shadow-color, rgb(0 0 0 / 16%)) 70%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.tapp-multi-dock-item:hover .tapp-multi-dock-label,
+.tapp-multi-dock-item:focus-visible .tapp-multi-dock-label {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tapp-multi-dock-label {
+    transition: none;
+  }
+}
+
+/* Slot only — app badge brings material shell; no gray plate behind it */
+.tapp-multi-dock-icon {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--tapp-dock-icon-radius);
+  background: transparent;
+  overflow: hidden;
+}
+
+.tapp-multi-dock-badge-shell {
+  border-radius: var(--tapp-dock-icon-radius) !important;
+}
+
+/* 商店：无底壳，与 app 槽同大 */
+.tapp-multi-dock-store-glyph {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--tapp-dock-icon-radius);
+  object-fit: contain;
+}
+
+/* 圆点：强调色 inline；挂在图标槽下，不顶偏图标 */
+.tapp-multi-dock-dot {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + var(--tapp-dock-dot-gap));
+  width: var(--tapp-dock-dot);
+  height: var(--tapp-dock-dot);
+  margin: 0;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--surface-bg, var(--bg-card)) 40%, transparent);
+}
+
+.tapp-multi-dock[data-at-max='true'] .tapp-multi-dock-item:not(.is-open) {
+  opacity: 0.45;
+}
+
+.tapp-multi-dock-empty {
+  font-size: 0.75rem;
+  padding: 0.4rem 0.65rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Dock「应用」入口：Launchpad 风格壳 + 3×3 彩格 */
+.tapp-multi-dock-apps-shell {
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--tapp-dock-icon-radius);
+  /* 浅色：白 → 微灰微渐变 */
+  background: linear-gradient(
+    160deg,
+    #ffffff 0%,
+    #f4f4f5 48%,
+    #e4e4e7 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 80%),
+    inset 0 -1px 0 rgb(0 0 0 / 6%),
+    0 2px 8px
+      color-mix(in srgb, var(--shadow-color, rgb(0 0 0 / 12%)) 80%, transparent);
+  overflow: hidden;
+}
+
+html.dark .tapp-multi-dock-apps-shell {
+  /* 深色：近黑微渐变 */
+  background: linear-gradient(
+    160deg,
+    #2a2a2e 0%,
+    #1a1a1c 52%,
+    #0c0c0e 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 10%),
+    inset 0 -1px 0 rgb(0 0 0 / 35%),
+    0 2px 8px rgb(0 0 0 / 40%);
+}
+
+.tapp-multi-dock-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  /* 三行等高：胶囊高度 = 小方块高度 */
+  grid-template-rows: 1fr 1fr 1fr;
+  gap: 12%;
+  width: 60%;
+  height: 60%;
+  align-items: stretch;
+  justify-items: stretch;
+}
+
+/* 顶行：通栏胶囊（略宽于三列，仍落在外壳内） */
+.tapp-multi-dock-apps-search {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  width: 104%;
+  justify-self: center;
+  padding: 0 0 0 8%;
+  border-radius: 999px;
+  background: rgb(161 161 170 / 38%);
+  box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 40%);
+}
+
+html.dark .tapp-multi-dock-apps-search {
+  background: rgb(255 255 255 / 18%);
+  box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 8%);
+}
+
+/* 左侧小圆点：固定正圆，避免百分比宽高被压扁 */
+.tapp-multi-dock-apps-search-dot {
+  flex: none;
+  align-self: center;
+  width: 0.22rem;
+  height: 0.22rem;
+  border-radius: 50%;
+  background: rgb(82 82 91 / 55%);
+}
+
+html.dark .tapp-multi-dock-apps-search-dot {
+  background: rgb(212 212 216 / 55%);
+}
+
+.tapp-multi-dock-apps-grid > i {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border-radius: 28%;
+  box-shadow:
+    inset 0 0.5px 0 rgb(255 255 255 / 35%),
+    0 0.5px 1px rgb(0 0 0 / 12%);
+}
+
+/* 下两行六色：贴近 Launchpad 多彩小图标 */
+.tapp-multi-dock-apps-grid > i:nth-of-type(1) {
+  background: linear-gradient(145deg, #60a5fa, #2563eb);
+}
+.tapp-multi-dock-apps-grid > i:nth-of-type(2) {
+  background: linear-gradient(145deg, #4ade80, #16a34a);
+}
+.tapp-multi-dock-apps-grid > i:nth-of-type(3) {
+  background: linear-gradient(145deg, #fbbf24, #f59e0b);
+}
+.tapp-multi-dock-apps-grid > i:nth-of-type(4) {
+  background: linear-gradient(145deg, #f472b6, #db2777);
+}
+.tapp-multi-dock-apps-grid > i:nth-of-type(5) {
+  background: linear-gradient(145deg, #a78bfa, #7c3aed);
+}
+.tapp-multi-dock-apps-grid > i:nth-of-type(6) {
+  background: linear-gradient(145deg, #38bdf8, #0284c7);
+}
+
+.tapp-multi-dock-item.tapp-multi-dock-more.is-open .tapp-multi-dock-apps-shell {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 50%),
+    0 0 0 1.5px
+      color-mix(in srgb, var(--color-primary, #6366f1) 45%, transparent),
+    0 2px 10px
+      color-mix(in srgb, var(--color-primary, #6366f1) 28%, transparent);
+}
+
+/* ── 应用启动窗：居中浮层窗口，无全屏遮罩 ──────────────────────────── */
+.tapp-launchpad {
+  position: absolute;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* 避开顶栏 / Dock；不拦截窗外点击 */
+  padding: max(3.5rem, env(safe-area-inset-top, 0px) + 2.5rem) 1rem
+    max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 4.75rem));
+  overflow: visible;
+  pointer-events: none;
+}
+
+.tapp-launchpad-stage {
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  /* 7×3 阵列窗口；普通 .glass，不透明度介于默认玻璃与实底之间 */
+  --surface-alpha: 78%;
+  width: min(46rem, calc(100vw - 2rem));
+  max-height: min(32rem, calc(100vh - 9.5rem));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.05rem;
+  padding: 1.15rem 1.1rem 1rem;
+  border-radius: 1.35rem;
+  overflow: hidden;
+  background: var(
+    --surface-sheen,
+    linear-gradient(180deg, rgb(255 255 255 / 6%), transparent 40%)
+  ),
+    rgb(var(--surface-rgb, 255 255 255) / var(--surface-alpha));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 22%),
+    inset 0 -1px 0 rgb(0 0 0 / 5%),
+    0 14px 36px
+      color-mix(in srgb, var(--shadow-color, rgb(0 0 0 / 18%)) 65%, transparent);
+}
+
+html.dark .tapp-launchpad-stage {
+  --surface-alpha: 76%;
+  background: var(
+    --surface-sheen,
+    linear-gradient(180deg, rgb(255 255 255 / 3%), transparent 40%)
+  ),
+    rgb(var(--surface-rgb, 26 26 26) / var(--surface-alpha));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 6%),
+    inset 0 -1px 0 rgb(0 0 0 / 18%),
+    0 14px 36px rgb(0 0 0 / 42%);
+}
+
+/* 搜索 + 分类 */
+.tapp-launchpad-toolbar {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  flex-shrink: 0;
+}
+
+.tapp-launchpad-search {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: min(28rem, 86%);
+  max-width: 100%;
+  min-height: 2.45rem;
+  padding: 0.4rem 0.55rem 0.4rem 0.9rem;
+  border-radius: 999px;
+  color: var(--text-primary);
+  background: color-mix(
+    in srgb,
+    rgb(var(--surface-rgb, 255 255 255) / 48%),
+    transparent
+  );
+  border: 1px solid
+    color-mix(in srgb, var(--surface-border, var(--border-color)) 65%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 18%),
+    0 1px 2px rgb(0 0 0 / 4%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.tapp-launchpad-search:hover {
+  border-color: color-mix(
+    in srgb,
+    var(--surface-border, var(--border-color)) 90%,
+    var(--color-primary, #6366f1) 18%
+  );
+}
+
+.tapp-launchpad-search:focus-within {
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #6366f1) 45%,
+    var(--surface-border, var(--border-color))
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 22%),
+    0 0 0 3px
+      color-mix(in srgb, var(--color-primary, #6366f1) 18%, transparent);
+  background: color-mix(
+    in srgb,
+    rgb(var(--surface-rgb, 255 255 255) / 62%),
+    transparent
+  );
+}
+
+html.dark .tapp-launchpad-search {
+  background: color-mix(
+    in srgb,
+    rgb(var(--surface-rgb, 26 26 26) / 52%),
+    transparent
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 6%),
+    0 1px 2px rgb(0 0 0 / 18%);
+}
+
+html.dark .tapp-launchpad-search:focus-within {
+  background: color-mix(
+    in srgb,
+    rgb(var(--surface-rgb, 26 26 26) / 66%),
+    transparent
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 8%),
+    0 0 0 3px
+      color-mix(in srgb, var(--color-primary, #6366f1) 22%, transparent);
+}
+
+html[data-perf-mode='exlight'] .tapp-launchpad-search {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: color-mix(in srgb, var(--bg-card) 92%, transparent);
+}
+
+.tapp-launchpad-search-icon {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0.75;
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+
+.tapp-launchpad-search:focus-within .tapp-launchpad-search-icon {
+  color: var(--color-primary, #6366f1);
+  opacity: 0.95;
+}
+
+.tapp-launchpad-search-input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0.15rem 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+}
+
+.tapp-launchpad-search-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.tapp-launchpad-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.tapp-launchpad-search-clear {
+  display: grid;
+  place-items: center;
+  width: 1.55rem;
+  height: 1.55rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--text-muted);
+  background: color-mix(
+    in srgb,
+    var(--bg-hover, var(--bg-secondary)) 70%,
+    transparent
+  );
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.tapp-launchpad-search-clear:hover {
+  color: var(--text-primary);
+  background: color-mix(
+    in srgb,
+    var(--bg-hover, var(--bg-secondary)) 100%,
+    transparent
+  );
+}
+
+.tapp-launchpad-search-clear-icon {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+/* 分类标签 */
+.tapp-launchpad-cats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  padding: 0 0.15rem;
+}
+
+.tapp-launchpad-cat {
+  margin: 0;
+  padding: 0.28rem 0.7rem;
+  border: 1px solid
+    color-mix(in srgb, var(--surface-border, var(--border-color)) 70%, transparent);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
+  background: color-mix(
+    in srgb,
+    rgb(var(--surface-rgb, 255 255 255) / 28%),
+    transparent
+  );
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tapp-launchpad-cat:hover {
+  color: var(--text-primary);
+  border-color: color-mix(
+    in srgb,
+    var(--surface-border, var(--border-color)) 85%,
+    var(--color-primary, #6366f1) 15%
+  );
+  background: color-mix(
+    in srgb,
+    rgb(var(--surface-rgb, 255 255 255) / 42%),
+    transparent
+  );
+}
+
+.tapp-launchpad-cat.is-active {
+  color: var(--text-primary);
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary, #6366f1) 42%,
+    var(--surface-border, var(--border-color))
+  );
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #6366f1) 14%,
+    rgb(var(--surface-rgb, 255 255 255) / 40%)
+  );
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 14%);
+}
+
+.tapp-launchpad-cat:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--color-primary, #6366f1) 55%, transparent);
+  outline-offset: 2px;
+}
+
+html.dark .tapp-launchpad-cat {
+  background: color-mix(
+    in srgb,
+    rgb(var(--surface-rgb, 26 26 26) / 40%),
+    transparent
+  );
+}
+
+html.dark .tapp-launchpad-cat.is-active {
+  background: color-mix(
+    in srgb,
+    var(--color-primary, #6366f1) 22%,
+    rgb(var(--surface-rgb, 26 26 26) / 50%)
+  );
+}
+
+.tapp-launchpad-grid {
+  --tapp-lp-cols: 7;
+  --tapp-lp-rows: 3;
+  width: 100%;
+  flex: 0 0 auto;
+  /* 固定 7 列 × 最多 3 行，不纵向滚动（超出翻页） */
+  display: grid;
+  grid-template-columns: repeat(var(--tapp-lp-cols), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--tapp-lp-rows), auto);
+  gap: 1.15rem 0.65rem;
+  justify-items: center;
+  align-content: center;
+  padding: 0.15rem 0.25rem 0.1rem;
+  overflow: hidden;
+}
+
+.tapp-launchpad-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  max-width: 4.85rem;
+  margin: 0;
+  padding: 0.25rem 0.15rem 0.4rem;
+  border: 0;
+  border-radius: 0.85rem;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.14s ease;
+}
+
+.tapp-launchpad-item:hover,
+.tapp-launchpad-item:focus-visible {
+  outline: none;
+  transform: scale(1.06);
+}
+
+.tapp-launchpad-item:active {
+  transform: scale(0.96);
+}
+
+.tapp-launchpad-item.is-disabled {
+  opacity: 0.42;
+}
+
+/* Slot only — material badge is the default icon shell */
+.tapp-launchpad-icon {
+  position: relative;
+  width: 3.55rem;
+  height: 3.55rem;
+  border-radius: 0.92rem;
+  overflow: hidden;
+  background: transparent;
+}
+
+.tapp-launchpad-badge-shell {
+  border-radius: 0.92rem !important;
+}
+
+.tapp-launchpad-icon--store {
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.tapp-launchpad-icon--store .tapp-multi-dock-store-glyph {
+  width: 100%;
+  height: 100%;
+  border-radius: 0.92rem;
+  object-fit: contain;
+  box-shadow:
+    0 4px 12px
+      color-mix(in srgb, var(--shadow-color, rgb(0 0 0 / 18%)) 70%, transparent);
+}
+
+.tapp-launchpad-name {
+  max-width: 100%;
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  word-break: break-word;
+}
+
+.tapp-launchpad-dot {
+  position: absolute;
+  left: 50%;
+  bottom: 0.12rem;
+  width: 0.28rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--surface-bg, var(--bg-card)) 35%, transparent);
+}
+
+.tapp-launchpad-empty {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* 多页圆点（>21 个应用时） */
+.tapp-launchpad-pages {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  padding: 0.15rem 0;
+}
+
+.tapp-launchpad-page-dot {
+  width: 0.42rem;
+  height: 0.42rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    background 0.12s ease;
+}
+
+.tapp-launchpad-page-dot.is-active {
+  background: var(--text-primary);
+  transform: scale(1.2);
+}
+
+.tapp-launchpad-page-dot:focus-visible {
+  outline: 2px solid var(--color-primary, #6366f1);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tapp-multi-dock-item {
+    will-change: auto;
+  }
+
+  .tapp-launchpad-item {
+    transition: none;
+  }
+
+  .tapp-launchpad-item:hover,
+  .tapp-launchpad-item:focus-visible,
+  .tapp-launchpad-item:active {
+    transform: none;
+  }
+
+  .tapp-launchpad-page-dot {
+    transition: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .tapp-launchpad-stage {
+    width: min(100%, calc(100vw - 1rem));
+    max-height: min(26rem, calc(100vh - 9rem));
+    padding: 0.9rem 0.65rem 0.85rem;
+  }
+
+  .tapp-launchpad-grid {
+    gap: 0.85rem 0.35rem;
+  }
+
+  .tapp-launchpad-item {
+    max-width: 3.9rem;
+  }
+
+  .tapp-launchpad-icon {
+    width: 2.95rem;
+    height: 2.95rem;
+    border-radius: 0.78rem;
+  }
+
+  .tapp-launchpad-badge-shell {
+    border-radius: 0.78rem !important;
+  }
+
+  .tapp-launchpad-name {
+    font-size: 0.58rem;
+  }
+}

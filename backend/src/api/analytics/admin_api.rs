@@ -16,6 +16,10 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Instant;
 
+use super::backup_integrity::{
+    content_hash, day_ok_for_import, metric_ok, prevalidate_rows, seal_integrity,
+    validate_counts_object, verify_integrity, MAX_METRIC_VALUE,
+};
 use super::intake_helpers::{
     analytics_collection_enabled, analytics_today, analytics_tz_label, compare_range_kind,
     count_distinct_site, invalidate_summary_cache, metric_delta, normalize_country_code,
@@ -32,6 +36,16 @@ use super::intake_helpers::{
 pub async fn get_summary(
     crate::extract::Db(db): crate::extract::Db,
     Query(q): Query<SummaryQuery>,
+) -> (StatusCode, Json<Value>) {
+    build_analytics_summary(&db, q).await
+}
+
+/// Shared analytics summary builder (admin UI + Tapp runtime API).
+///
+/// Aggregates only — never includes visitor hashes or raw identity material.
+pub(crate) async fn build_analytics_summary(
+    db: &DatabaseConnection,
+    q: SummaryQuery,
 ) -> (StatusCode, Json<Value>) {
     use super::intake_helpers::resolve_analytics_window;
 
@@ -570,7 +584,8 @@ pub(crate) fn vid_from_query(uri: &axum::http::Uri) -> Option<String> {
 }
 
 /// Today / all-time / trend, shared by every visitor and cached briefly.
-async fn visitor_card_aggregate(db: &DatabaseConnection) -> Value {
+/// Also used by the Tapp analytics visitor-card endpoint.
+pub(crate) async fn visitor_card_aggregate(db: &DatabaseConnection) -> Value {
     {
         let cache = VISITOR_CARD_CACHE.lock().await;
         if let Some((at, body)) = cache.as_ref() {
@@ -724,27 +739,9 @@ pub async fn get_visitor_card(
 
 // ── Export / import (admin backup) ─────────────────────────────────────────
 
-pub(crate) fn parse_day_str(raw: &str) -> Option<NaiveDate> {
-    NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d").ok()
-}
-
-pub(crate) fn valid_visitor_hash(raw: &str) -> bool {
-    let s = raw.trim();
-    let len = s.len();
-    (8..=64).contains(&len) && s.chars().all(|c| c.is_ascii_hexdigit())
-}
-
-pub(crate) fn i64_nonneg(v: Option<&Value>) -> Option<i64> {
-    let n = v.and_then(|x| x.as_i64()).or_else(|| {
-        v.and_then(|x| x.as_u64())
-            .and_then(|u| i64::try_from(u).ok())
-    })?;
-    if n < 0 {
-        None
-    } else {
-        Some(n)
-    }
-}
+// parse_day_str / valid_visitor_hash / i64_nonneg live in intake_helpers
+// (shared with backup_integrity prevalidation).
+pub(crate) use super::intake_helpers::{i64_nonneg, parse_day_str, valid_visitor_hash};
 
 /// GET /api/analytics/export — full first-party analytics backup (admin).
 pub async fn export_analytics(
@@ -980,6 +977,49 @@ ORDER BY day ASC, country_code ASC, visitor_hash ASC
 
     let bucket_today = analytics_today().format("%Y-%m-%d").to_string();
 
+    let counts = json!({
+        "page_daily": page_daily.len(),
+        "visitor_seen": visitor_seen.len(),
+        "event_daily": event_daily.len(),
+        "event_visitor": event_visitor.len(),
+        "referrer_daily": referrer_daily.len(),
+        "country_daily": country_daily.len(),
+        "country_visitor": country_visitor.len(),
+    });
+
+    // Instance-bound integrity: field-canonical SHA-256 sealed with data key.
+    // Import rejects hand-edited tables unless the same key can open the token.
+    let hash = match content_hash(
+        ANALYTICS_BACKUP_FORMAT,
+        ANALYTICS_BACKUP_VERSION,
+        &page_daily,
+        &visitor_seen,
+        &event_daily,
+        &event_visitor,
+        &referrer_daily,
+        &country_daily,
+        &country_visitor,
+    ) {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::warn!("analytics export content hash failed: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "success": false, "error": "export_hash_failed" })),
+            );
+        }
+    };
+    let integrity = match seal_integrity(&hash) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("analytics export integrity seal failed: {}", e);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "success": false, "error": "export_integrity_failed" })),
+            );
+        }
+    };
+
     (
         StatusCode::OK,
         Json(json!({
@@ -992,15 +1032,7 @@ ORDER BY day ASC, country_code ASC, visitor_hash ASC
             // FE backup filenames prefer this over max(day) in payload tables
             // (max day can lag when today's rows are still empty).
             "bucket_today": bucket_today,
-            "counts": {
-                "page_daily": page_daily.len(),
-                "visitor_seen": visitor_seen.len(),
-                "event_daily": event_daily.len(),
-                "event_visitor": event_visitor.len(),
-                "referrer_daily": referrer_daily.len(),
-                "country_daily": country_daily.len(),
-                "country_visitor": country_visitor.len(),
-            },
+            "counts": counts,
             "page_daily": page_daily,
             "visitor_seen": visitor_seen,
             "event_daily": event_daily,
@@ -1008,6 +1040,7 @@ ORDER BY day ASC, country_code ASC, visitor_hash ASC
             "referrer_daily": referrer_daily,
             "country_daily": country_daily,
             "country_visitor": country_visitor,
+            "integrity": integrity,
         })),
     )
 }
@@ -1019,6 +1052,12 @@ pub struct AnalyticsImportBody {
     /// `replace` (default): truncate then insert. `merge`: upsert / add.
     #[serde(default)]
     pub mode: Option<String>,
+    /// Declared row counts from export (optional; validated when present).
+    #[serde(default)]
+    pub counts: Option<Value>,
+    /// Instance-bound integrity block from export (always required).
+    #[serde(default)]
+    pub integrity: Option<Value>,
     #[serde(default)]
     pub page_daily: Vec<Value>,
     #[serde(default)]
@@ -1133,6 +1172,9 @@ pub(crate) fn normalize_import_event_path(path_raw: &str) -> Option<String> {
 /// Entire import runs in one DB transaction (truncate + inserts + UV recompute).
 /// On any database error the transaction is rolled back so replace never leaves
 /// a half-wiped table set.
+///
+/// Integrity is always required: export seals a field-canonical content hash
+/// with this instance's data key; hand-edited metrics fail verification.
 pub async fn import_analytics(
     crate::extract::Db(db): crate::extract::Db,
     Json(body): Json<AnalyticsImportBody>,
@@ -1145,7 +1187,7 @@ pub async fn import_analytics(
         );
     }
     let version = body.version.unwrap_or(0);
-    if version == 0 || version > ANALYTICS_BACKUP_VERSION {
+    if version != ANALYTICS_BACKUP_VERSION {
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({ "success": false, "error": "unsupported_version" })),
@@ -1163,6 +1205,94 @@ pub async fn import_analytics(
         return (
             StatusCode::BAD_REQUEST,
             Json(json!({ "success": false, "error": "too_many_rows" })),
+        );
+    }
+
+    if let Err(e) = validate_counts_object(
+        body.counts.as_ref(),
+        body.page_daily.len(),
+        body.visitor_seen.len(),
+        body.event_daily.len(),
+        body.event_visitor.len(),
+        body.referrer_daily.len(),
+        body.country_daily.len(),
+        body.country_visitor.len(),
+    ) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "success": false, "error": e })),
+        );
+    }
+
+    let Some(integrity) = body.integrity.as_ref() else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "success": false,
+                "error": "missing_integrity",
+                "hint": "re-export from this instance",
+            })),
+        );
+    };
+
+    let expected_hash = match content_hash(
+        format,
+        version,
+        &body.page_daily,
+        &body.visitor_seen,
+        &body.event_daily,
+        &body.event_visitor,
+        &body.referrer_daily,
+        &body.country_daily,
+        &body.country_visitor,
+    ) {
+        Ok(h) => h,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "success": false, "error": e })),
+            );
+        }
+    };
+
+    if let Err(e) = verify_integrity(integrity, &expected_hash) {
+        tracing::warn!(
+            error = e,
+            "analytics import integrity verification failed"
+        );
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "success": false, "error": e })),
+        );
+    }
+
+    // Structural pre-check (day range, metric ceiling, path/hash shapes).
+    // Signed restores must be fully clean — no silent row skips.
+    let pre_skipped = match prevalidate_rows(
+        &body.page_daily,
+        &body.visitor_seen,
+        &body.event_daily,
+        &body.event_visitor,
+        &body.referrer_daily,
+        &body.country_daily,
+        &body.country_visitor,
+    ) {
+        Ok(n) => n,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "success": false, "error": e })),
+            );
+        }
+    };
+    if pre_skipped > 0 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "success": false,
+                "error": "row_validation_failed",
+                "skipped": pre_skipped,
+            })),
         );
     }
 
@@ -1240,6 +1370,7 @@ TRUNCATE analytics_page_daily,
             .get("day")
             .and_then(|v| v.as_str())
             .and_then(parse_day_str)
+            .filter(|d| day_ok_for_import(*d))
         else {
             skipped += 1;
             continue;
@@ -1249,15 +1380,21 @@ TRUNCATE analytics_page_daily,
             skipped += 1;
             continue;
         };
-        let Some(views) = i64_nonneg(row.get("views")) else {
+        let Some(views) = i64_nonneg(row.get("views")).filter(|&n| metric_ok(n)) else {
             skipped += 1;
             continue;
         };
         // UV / engaged_views are recomputed after detail rows land; accept any
         // non-negative placeholder (including 0) from the backup file.
-        let uv = i64_nonneg(row.get("unique_visitors")).unwrap_or(0);
-        let eng = i64_nonneg(row.get("engagement_ms")).unwrap_or(0);
-        let eng_v = i64_nonneg(row.get("engaged_views")).unwrap_or(0);
+        let uv = i64_nonneg(row.get("unique_visitors"))
+            .filter(|&n| metric_ok(n))
+            .unwrap_or(0);
+        let eng = i64_nonneg(row.get("engagement_ms"))
+            .filter(|&n| metric_ok(n))
+            .unwrap_or(0);
+        let eng_v = i64_nonneg(row.get("engaged_views"))
+            .filter(|&n| metric_ok(n))
+            .unwrap_or(0);
 
         // replace: write aggregates as given (UV fixed by recompute).
         // merge: only add views + engagement_ms — never sum UV / engaged_views.
@@ -1309,6 +1446,7 @@ ON CONFLICT (day, path) DO UPDATE SET
             .get("day")
             .and_then(|v| v.as_str())
             .and_then(parse_day_str)
+            .filter(|d| day_ok_for_import(*d))
         else {
             skipped += 1;
             continue;
@@ -1326,6 +1464,9 @@ ON CONFLICT (day, path) DO UPDATE SET
             skipped += 1;
             continue;
         }
+        let ordinal = i64_nonneg(row.get("ordinal"))
+            .filter(|&n| metric_ok(n))
+            .unwrap_or(0);
         match txn
             .execute(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
@@ -1339,7 +1480,7 @@ ON CONFLICT (day, path, visitor_hash) DO NOTHING
                     SeaValue::from(path),
                     SeaValue::from(hash.to_string()),
                     // 老备份没有 ordinal 字段 → 0（序号未知），不影响其余统计
-                    SeaValue::from(i64_nonneg(row.get("ordinal")).unwrap_or(0)),
+                    SeaValue::from(ordinal),
                 ],
             ))
             .await
@@ -1360,6 +1501,7 @@ ON CONFLICT (day, path, visitor_hash) DO NOTHING
             .get("day")
             .and_then(|v| v.as_str())
             .and_then(parse_day_str)
+            .filter(|d| day_ok_for_import(*d))
         else {
             skipped += 1;
             continue;
@@ -1379,11 +1521,13 @@ ON CONFLICT (day, path, visitor_hash) DO NOTHING
             .and_then(|v| v.as_str())
             .map(normalize_target)
             .unwrap_or_default();
-        let Some(count) = i64_nonneg(row.get("count")) else {
+        let Some(count) = i64_nonneg(row.get("count")).filter(|&n| metric_ok(n)) else {
             skipped += 1;
             continue;
         };
-        let uv = i64_nonneg(row.get("unique_visitors")).unwrap_or(0);
+        let uv = i64_nonneg(row.get("unique_visitors"))
+            .filter(|&n| metric_ok(n))
+            .unwrap_or(0);
         let sql = if replace {
             r#"
 INSERT INTO analytics_event_daily (day, event_name, path, target, count, unique_visitors)
@@ -1429,6 +1573,7 @@ ON CONFLICT (day, event_name, path, target) DO UPDATE SET
             .get("day")
             .and_then(|v| v.as_str())
             .and_then(parse_day_str)
+            .filter(|d| day_ok_for_import(*d))
         else {
             skipped += 1;
             continue;
@@ -1490,6 +1635,7 @@ ON CONFLICT (day, event_name, path, target, visitor_hash) DO NOTHING
             .get("day")
             .and_then(|v| v.as_str())
             .and_then(parse_day_str)
+            .filter(|d| day_ok_for_import(*d))
         else {
             skipped += 1;
             continue;
@@ -1499,7 +1645,7 @@ ON CONFLICT (day, event_name, path, target, visitor_hash) DO NOTHING
             skipped += 1;
             continue;
         };
-        let Some(count) = i64_nonneg(row.get("count")) else {
+        let Some(count) = i64_nonneg(row.get("count")).filter(|&n| metric_ok(n)) else {
             skipped += 1;
             continue;
         };
@@ -1543,6 +1689,7 @@ ON CONFLICT (day, host) DO UPDATE SET
             .get("day")
             .and_then(|v| v.as_str())
             .and_then(parse_day_str)
+            .filter(|d| day_ok_for_import(*d))
         else {
             skipped += 1;
             continue;
@@ -1560,7 +1707,7 @@ ON CONFLICT (day, host) DO UPDATE SET
             .and_then(|v| v.as_str())
             .map(normalize_country_name)
             .unwrap_or_default();
-        let Some(views) = i64_nonneg(row.get("views")) else {
+        let Some(views) = i64_nonneg(row.get("views")).filter(|&n| metric_ok(n)) else {
             skipped += 1;
             continue;
         };
@@ -1615,6 +1762,7 @@ ON CONFLICT (day, country_code) DO UPDATE SET
             .get("day")
             .and_then(|v| v.as_str())
             .and_then(parse_day_str)
+            .filter(|d| day_ok_for_import(*d))
         else {
             skipped += 1;
             continue;
@@ -1683,7 +1831,10 @@ ON CONFLICT (day, country_code, visitor_hash) DO NOTHING
             "mode": if replace { "replace" } else { "merge" },
             "inserted": inserted,
             "skipped": skipped,
+            "integrity_verified": true,
             "unique_recomputed": true,
+            // Surface ceiling so operators know hard bounds (not a secret).
+            "metric_ceiling": MAX_METRIC_VALUE,
         })),
     )
 }

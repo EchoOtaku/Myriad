@@ -3,7 +3,6 @@
  * 状态与写路径拆到 `config/form/*` hooks。
  */
 import {
-  FaArrowLeft,
   FaExclamationTriangle,
   FaSearch,
   FaStar,
@@ -344,6 +343,13 @@ const ModernConfigForm: React.FC = () => {
                 enabled ? 'true' : 'false',
               )
             }
+            getUiFieldValue={(key) => {
+              const field = config.ui_config.config_fields.find(
+                (f) => f.key === key,
+              )
+              return field?.value ?? ''
+            }}
+            onUiFieldChange={updateUiFieldValue}
             {...props}
           />
         )
@@ -448,6 +454,29 @@ const ModernConfigForm: React.FC = () => {
                 ...current,
                 allowLocalRegistration,
               }))
+            }
+            privateTappInstallPreset={(() => {
+              const d = drafts.oauthDraft
+              if (d.privateTappInstallCleanup === 'logout') return 'logout'
+              return d.privateTappInstallInactivityDays <= 7 ? '7' : '14'
+            })()}
+            privateTappInstallLoading={drafts.oauthLoading}
+            onPrivateTappInstallPresetChange={(preset) =>
+              drafts.setOAuthDraft((current) => {
+                if (preset === 'logout') {
+                  return {
+                    ...current,
+                    privateTappInstallCleanup: 'logout',
+                    privateTappInstallInactivityDays: 14,
+                  }
+                }
+                return {
+                  ...current,
+                  privateTappInstallCleanup: 'inactivity',
+                  privateTappInstallInactivityDays:
+                    preset === '7' ? 7 : 14,
+                }
+              })
             }
             {...props}
           />
@@ -661,22 +690,6 @@ const ModernConfigForm: React.FC = () => {
 
         {!(isMobileLayout && mobilePane === 'nav') ? (
           <div className="config-content">
-            {isMobileLayout ? (
-              <div className="config-mobile-section-bar">
-                <button
-                  type="button"
-                  className="config-mobile-back glass glass-liquid"
-                  onClick={handleMobileBackToNav}
-                  aria-label={`${t.common.back} · ${t.config.title}`}
-                  title={t.common.back}
-                >
-                  <FaArrowLeft
-                    className="config-mobile-back-icon"
-                    aria-hidden
-                  />
-                </button>
-              </div>
-            ) : null}
             <SettingsPageActionsProvider
               value={{
                 resetCurrentPage: handleResetCurrentPage,
@@ -687,6 +700,11 @@ const ModernConfigForm: React.FC = () => {
                   'oauth',
                   'users',
                 ].includes(activeSection),
+                // 移动端选项页：标题栏内嵌返回（与平台二级页 section-header-back 同款）
+                // 平台二级页通过显式 headerLeading 覆盖，先回列表再回菜单
+                onMobileBack: isMobileLayout
+                  ? handleMobileBackToNav
+                  : undefined,
               }}
             >
               <SectionSwitch

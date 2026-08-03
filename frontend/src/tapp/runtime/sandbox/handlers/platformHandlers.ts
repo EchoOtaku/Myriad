@@ -103,6 +103,52 @@ export function registerWidgetHandlers(
 /**
  * 注册 Platform 处理器
  */
+/**
+ * 注册站点访问统计处理器（聚合数据，需 analytics:read）
+ */
+export function registerAnalyticsHandlers(bridge: TappBridge): void {
+  bridge.registerHandler('analytics.getSummary', async (message) => {
+    const [options] = (message.payload as { args: unknown[] }).args || []
+    try {
+      const query =
+        options && typeof options === 'object'
+          ? (options as {
+              days?: number
+              from?: string
+              to?: string
+            })
+          : undefined
+      const data = await TappApiService.getAnalyticsSummary(
+        query,
+        await bridge.getRuntimeGrant(),
+      )
+      return { success: true, data }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
+    }
+  })
+
+  bridge.registerHandler('analytics.getVisitorCard', async () => {
+    try {
+      const data = await TappApiService.getAnalyticsVisitorCard(
+        await bridge.getRuntimeGrant(),
+      )
+      return { success: true, data }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed',
+      }
+    }
+  })
+}
+
+/**
+ * 注册 Platform 处理器
+ */
 export function registerPlatformHandlers(
   bridge: TappBridge,
   tappInstance: TappInstance,

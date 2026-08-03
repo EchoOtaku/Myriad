@@ -80,8 +80,8 @@ export const routeComponents = {
   // 否则 Vite 会拆成另一份 chunk，预取无效。
   tapp: lazyWithPreload(() => import('../tapp/pages/TappListPage.tsx')),
   tappStore: lazyWithPreload(() => import('../tapp/pages/TappStorePage.tsx')),
-  tappDetail: lazyWithPreload(() => import('../views/TappDetailView.tsx')),
-  tappRun: lazyWithPreload(() => import('../views/TappRunView.tsx')),
+  tappDetail: lazyWithPreload(() => import('../tapp/pages/TappDetailPage.tsx')),
+  tappRun: lazyWithPreload(() => import('../tapp/pages/TappRunPage.tsx')),
 }
 
 /**

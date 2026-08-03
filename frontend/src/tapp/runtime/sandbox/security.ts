@@ -317,17 +317,26 @@ export function generateSecurityWrapper(
     return _originalSetInterval.call(this, handler, timeout, ...args);
   };
   
-  // 限制 parent 访问，只允许 postMessage
-  safeDefineProperty(window, 'parent', {
-    value: { 
-      postMessage: _parentPostMessage,
-      // 包装 postMessage 自动添加 session token
-      __postMessageWithToken: (message, origin) => {
-        if (_parentPostMessage && message && typeof message === 'object') {
+  // 限制 parent 访问，只允许 postMessage；对象消息自动注入 session token
+  // （Bridge 对 request/event 均校验 token；用户代码漏加也会被补上）
+  var _postMessageWithToken = function(message, origin) {
+    if (!_parentPostMessage) return undefined;
+    if (message && typeof message === 'object') {
+      try {
+        if (!Object.prototype.hasOwnProperty.call(message, '_sessionToken') ||
+            message._sessionToken == null || message._sessionToken === '') {
           message._sessionToken = _SESSION_TOKEN;
         }
-        return _parentPostMessage ? _parentPostMessage(message, origin) : undefined;
+      } catch (e) {
+        // frozen / non-extensible message: still attempt send; Bridge will reject if missing
       }
+    }
+    return _parentPostMessage(message, origin);
+  };
+  safeDefineProperty(window, 'parent', {
+    value: {
+      postMessage: _postMessageWithToken,
+      __postMessageWithToken: _postMessageWithToken
     },
     writable: false
   });

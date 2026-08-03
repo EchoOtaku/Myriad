@@ -16,6 +16,7 @@ Manifest 是 Tapp 的核心配置文件，定义了应用的元数据、权限�
 | `permissions`            | string[] | ❌   | 所需权限列表                       |
 | `icon`                   | string   | ❌   | 图标（emoji 或 URL）               |
 | `iconSvg`                | string   | ❌   | 内联 SVG 图标代码（优先于 icon）   |
+| `iconShell`              | boolean  | ❌   | `true` 时全彩自定义图标仍套 material 色壳（默认 auto 铺满） |
 | `themeColor`             | string   | ❌   | 主题色（十六进制，如 #6366f1）     |
 | `widgets`                | object[] | ❌   | 小组件定义                         |
 | `hasPage`                | boolean  | ❌   | 是否有页面模块（可在页面模式运行） |
@@ -769,6 +770,7 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 | `ui:confirm`         | 显示确认对话框   |
 | `ui:fullscreen`      | 请求全屏显示     |
 | `platform:read`      | 读取平台数据     |
+| `analytics:read`     | 读取站点访问统计（聚合） |
 | `tappList:read`      | 读取 Tapp 列表   |
 | `brew:read`          | 读取 Brew 内容   |
 | `brew:write`         | 修改 Brew 状态   |
@@ -803,8 +805,9 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 Manifest 中声明并在安装时获授；实际读写始终落在当前会话可访问的 Brew 数据范围内。
 
 “基础”表示不需要管理员额外下放 elevated 权限，不等于匿名访客一定可用。访客没有持久
-用户主体，因此不会获得 `storage`、`platform:read`、`brew:write`、
-`brew:comment`、`report:read` 或 `ui:notification`；这些能力的真实后端路由均要求登录。
+用户主体时，部分能力仍可通过签名游客 session 使用（如 `storage`、`platform:read`、
+`analytics:read`）。下列能力的真实后端路由仍要求登录：`brew:write`、
+`brew:comment`、`report:read`、`ui:notification` 等。
 
 `component:theme`、`shortcut:register`、`scheduler:register`、`speech:tts` 与 `speech:asr`
 也要求持久登录主体，不会下放给匿名访客；管理配置中的旧字段仅为兼容历史配置而保留，

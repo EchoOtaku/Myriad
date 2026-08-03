@@ -38,10 +38,15 @@ myriad-tapp permissions .
 myriad-tapp pack .
 ```
 
-成功后，在 Myriad 的 Tapp 管理页面选择安装操作，上传
-`dist/{manifest.id}.tapp`。服务器通过 `POST /api/tapps/install-file` 安装该文件；浏览器
-会处理登录 Cookie 和 CSRF token。接口细节见 [Tapp REST API](REST_API.md#需要登录的变更路由)，
+成功后，在 Myriad 的 Tapp 管理页或商店选择安装，上传
+`dist/{manifest.id}.tapp`（或从商店安装）。宿主会弹出 **安装确认**（`InstallTappDialog`）
+展示申请权限；服务器经 `POST /api/tapps/install-file` / `install` 写入安装态。浏览器
+处理登录 Cookie 和 CSRF。接口见 [Tapp REST API](REST_API.md#需要登录的变更路由)，
 包格式见 [`.tapp` 文件格式](../../features/TAPP_FILE_FORMAT.md)。
+
+列表页支持 **我的 / 站点** 范围、卡片 `1x1`·`2x1` 与登录用户拖拽排序；布局 API 见
+[列表布局](REST_API.md#列表布局-apitappslist-card-sizes)。若声明 `analytics:read`，
+可用 [访问统计 SDK](API_REFERENCE.md#访问统计-api)。
 
 ---
 

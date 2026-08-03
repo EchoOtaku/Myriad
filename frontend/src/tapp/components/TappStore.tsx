@@ -59,6 +59,7 @@ import {
   TAPP_CATEGORIES,
   TAPP_CATEGORY_I18N_KEYS,
 } from '../utils/tappCategories'
+import { tappRunPath } from '../utils/tappPaths'
 import {
   compareVersions,
   findStoreSource,
@@ -273,6 +274,7 @@ export function TappStore({
           author: tapp.manifest.author || { name: 'Unknown' },
           icon: tapp.manifest.icon,
           iconSvg: tapp.manifest.iconSvg,
+          iconShell: tapp.manifest.iconShell,
           themeColor: tapp.manifest.themeColor,
           category: tapp.manifest.category,
           tags: tapp.tags,
@@ -305,6 +307,7 @@ export function TappStore({
           author: app.author,
           icon: app.icon,
           iconSvg: app.icon_svg,
+          iconShell: app.icon_shell,
           themeColor: app.theme_color,
           category: normalizeTappCategory(app.category),
           tags: app.tags || [],
@@ -346,6 +349,7 @@ export function TappStore({
         author: instance.manifest.author || { name: 'Unknown' },
         icon: instance.manifest.icon,
         iconSvg: instance.manifest.iconSvg,
+        iconShell: instance.manifest.iconShell,
         themeColor: instance.manifest.themeColor,
         category: normalizeTappCategory(instance.manifest.category),
         tags: [],
@@ -956,7 +960,7 @@ export function TappStore({
           })
         },
       )
-      navigate(`/tapp/run/${encodeURIComponent(appId)}`)
+      navigate(tappRunPath(appId))
     },
     [navigate],
   )

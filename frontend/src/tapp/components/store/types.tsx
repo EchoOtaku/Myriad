@@ -49,6 +49,8 @@ export interface UnifiedAppItem {
   icon?: string
   /** 内联 SVG 图标代码（优先于 icon） */
   iconSvg?: string
+  /** 可选：自定义全彩图标仍套 material 色壳 */
+  iconShell?: boolean
   /** 主题色（优先于分类渐变色） */
   themeColor?: string
   category: TappCategory

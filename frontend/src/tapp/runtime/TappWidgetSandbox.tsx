@@ -41,6 +41,7 @@ import {
   escapeSandboxScriptSource,
   generateCSP,
   generateNonce,
+  generateSecurityWrapper,
   generateSessionToken,
   generateThemeCSS,
   generateWidgetSDK,
@@ -61,6 +62,7 @@ import {
   registerFileHandlers,
   registerLifecycleHandlers,
   registerMediaHandlers,
+  registerAnalyticsHandlers,
   registerPlatformHandlers,
   registerReportHandlers,
   registerSchedulerHandlers,
@@ -72,6 +74,7 @@ import {
 import { TappBridge } from './TappBridge'
 import { TappRuntimeGrant } from './TappRuntimeGrant'
 import { useSandboxSubscriptions } from './useSandboxSubscriptions'
+import { widgetPerfMark } from './WidgetLoadPerf'
 import { onTappStorageChange } from './WidgetRuntimeSignals'
 
 export interface TappWidgetSandboxProps {
@@ -131,9 +134,11 @@ function generateWidgetHTML(
 
   // 生成唯一 nonce（每个沙箱实例独立）
   const nonce = generateNonce()
-  const csp = generateCSP(
-    nonce,
-    cspOptionsFromPermissions(tappInstance.grantedPermissions),
+  const cspOptions = cspOptionsFromPermissions(tappInstance.grantedPermissions)
+  const csp = generateCSP(nonce, cspOptions)
+  // 与 Page 对齐的深度防御包装（真正边界仍是 sandbox + CSP + Bridge）
+  const securityWrapper = escapeSandboxScriptSource(
+    generateSecurityWrapper(sessionToken, cspOptions.allowRemoteMedia),
   )
   const sdkCode = escapeSandboxScriptSource(
     generateWidgetSDK(tappInstance, sessionToken),
@@ -183,6 +188,7 @@ function generateWidgetHTML(
     window._TAPP_WIDGET_PROPS = ${serializeSandboxScriptValue(widgetProps)};
     window._TAPP_LOCALE = ${serializeSandboxScriptValue(widgetProps.locale)};
     window._TAPP_I18N = ${serializeSandboxScriptValue(code.i18n || {})};
+    window._TAPP_SESSION_TOKEN = ${serializeSandboxScriptValue(sessionToken)};
     window._TAPP_DIMENSIONS = { width: 0, height: 0, scale: 1, fontScale: 1, isCompact: false, isMini: false };
     window._TAPP_HAS_HTML = ${hasHtmlTemplateLiteral};
 
@@ -197,14 +203,19 @@ function generateWidgetHTML(
       }
     });
 
+    // iframe → host: early ready 必须带 session token（与 Bridge 校验对齐）
     window.parent.postMessage({
       type: 'event',
       id: 'widget-ready-' + Date.now(),
       action: 'tapp.ready',
       payload: null,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      _sessionToken: window._TAPP_SESSION_TOKEN
     }, document.referrer ? new URL(document.referrer).origin : '*');
   </script>
+
+  <!-- 安全包装（冻结危险 API；边界仍以 CSP/sandbox 为准） -->
+  <script nonce="${nonce}">${securityWrapper}</script>
 
   <!-- SDK 始终加载 -->
   <script nonce="${nonce}">${sdkCode}</script>
@@ -221,11 +232,13 @@ function generateWidgetHTML(
     })();
   </script>
 
-  <!-- Always try render(): pure-JS fills container; hybrid paints data into template -->
+  <!-- Always try render(): pure-JS fills container; hybrid paints data into template.
+       Microtask (not setTimeout 16ms) so first paint is not artificially delayed after
+       widget code registration; prior scripts already defined Tapp.widgets. -->
   <script nonce="${nonce}">
     (function() {
       'use strict';
-      setTimeout(function() {
+      var runRender = function() {
         try {
           var widgetId = ${serializeSandboxScriptValue(widgetId)};
           var widgetDef = Tapp.widgets && Tapp.widgets[widgetId];
@@ -255,7 +268,12 @@ function generateWidgetHTML(
               '<div class="tapp-empty tapp-text-error">Error: ' + (error && error.message ? error.message : error) + '</div>';
           }
         }
-      }, 16);
+      };
+      if (typeof Promise !== 'undefined' && Promise.resolve) {
+        Promise.resolve().then(runRender);
+      } else {
+        setTimeout(runRender, 0);
+      }
     })();
   </script>
 </body>
@@ -348,8 +366,14 @@ export const TappWidgetSandbox = memo(
 
     const handleReady = useCallback(() => {
       setIsReady(true)
+      widgetPerfMark(
+        tappInstance.id,
+        widgetId,
+        'iframe-ready',
+        widgetProps.size,
+      )
       onReady?.()
-    }, [onReady])
+    }, [onReady, tappInstance.id, widgetId, widgetProps.size])
 
     // 共享订阅 hook：主题/主色调/页面可见性联动
     useSandboxSubscriptions(bridgeRef, isReady)
@@ -521,16 +545,58 @@ export const TappWidgetSandbox = memo(
       iframeRef.current = iframe
 
       // 创建 Bridge（在 DOM 插入前设置消息监听）
+      // 同 Tapp 多 Widget：共享 host Runtime Grant（refcount），各 iframe 仍独立 session token
       const bridge = new TappBridge()
-      const runtimeGrant = new TappRuntimeGrant(
-        currentTappInstance.id,
-        `widget_${sessionToken.slice(0, 32)}`,
-        'widget',
+      const shared = TappRuntimeGrant.acquireSharedWidget(currentTappInstance.id)
+      const runtimeGrant = shared.grant
+      bridge.initialize(
+        iframe,
+        currentTappInstance,
+        sessionToken,
+        runtimeGrant,
+        {
+          releaseSharedGrant: shared.release,
+          reacquireSharedGrant: () =>
+            TappRuntimeGrant.acquireSharedWidget(currentTappInstance.id),
+        },
       )
-      bridge.initialize(iframe, currentTappInstance, sessionToken, runtimeGrant)
       bridgeRef.current = bridge
+      widgetPerfMark(
+        currentTappInstance.id,
+        widgetId,
+        'sandbox-mount',
+        propsForHtml.size,
+      )
+      // 与 iframe 解析并行预热 Runtime Grant（仍 host-only，不进 srcdoc）
+      // 使 render() 后的首次 storage/platform 调用免等签发 RTT
+      void runtimeGrant.getToken().catch(() => {
+        /* 首次 API 调用时会重试；此处失败不阻塞沙箱启动 */
+      })
 
-      // 注册处理器（Widget 只需要基础 API）
+      // 注册处理器：始终挂载 Widget 热路径；按 grantedPermissions 惰性挂载重型能力。
+      // Bridge 仍会做权限校验；这里少注册可降低每个 iframe 的启动成本，并缩小攻击面。
+      const granted = new Set(
+        (currentTappInstance.grantedPermissions || []) as string[],
+      )
+      const hasExact = (perm: string) => granted.has(perm)
+      const hasAi =
+        hasExact('ai:generate') ||
+        hasExact('ai:analyze') ||
+        hasExact('ai:chat') ||
+        hasExact('ai:image')
+      const hasMedia =
+        hasExact('media:read') ||
+        hasExact('media:control') ||
+        hasExact('media:audio')
+      const hasSpeech = hasExact('speech:tts') || hasExact('speech:asr')
+      const hasEvents =
+        hasExact('event:publish') || hasExact('event:subscribe')
+      const hasAgent = hasExact('component:agent')
+      const hasScheduler = hasExact('scheduler:register')
+      const hasPlatform = hasExact('platform:read')
+      const hasAnalytics = hasExact('analytics:read')
+      const hasReport = hasExact('report:read')
+
       registerLifecycleHandlers(bridge, currentTappInstance, handleReady)
       registerUIHandlers(bridge, currentTappInstance, () => {
         try {
@@ -585,37 +651,47 @@ export const TappWidgetSandbox = memo(
       })
       registerFileHandlers(bridge)
       registerAssetHandlers(bridge, currentTappInstance)
-      const closeAITaskStreams = registerAIHandlers(bridge)
-      // Widget SDK 只暴露平台/报告读取能力，避免注册未暴露的写入 handler。
-      registerPlatformHandlers(bridge, currentTappInstance, { readOnly: true })
-      registerReportHandlers(bridge, currentTappInstance, { readOnly: true })
-      // 注册 Context 处理器（包含 api.execute 和 context.getGeo）
+      // Context（含 api.execute）始终需要：声明式 HTTP/API 与公开上下文查询。
       registerContextHandlers(bridge, currentTappInstance)
+      registerAnimationHandlers(bridge)
+      // 共享 core 在 Widget 模式同样会执行，必须能声明后台保活需求。
+      registerBackgroundHandlers(bridge, currentTappInstance)
+
+      // 可选能力 — 仅在 manifest 已授权时挂载（后端仍强制 Runtime Grant + 权限）
+      const closeAITaskStreams = hasAi ? registerAIHandlers(bridge) : () => {}
+      if (hasPlatform) {
+        registerPlatformHandlers(bridge, currentTappInstance, {
+          readOnly: true,
+        })
+      }
+      if (hasAnalytics) {
+        registerAnalyticsHandlers(bridge)
+      }
+      if (hasReport) {
+        registerReportHandlers(bridge, currentTappInstance, { readOnly: true })
+      }
       const closeDataExchange = registerDataExchangeHandlers(
         bridge,
         currentTappInstance,
       )
-      const closeEventStream = registerEventHandlers(
-        bridge,
-        currentTappInstance,
-      )
-      const closeAgentInteractions = registerAgentInteractionHandlers(
-        bridge,
-        currentTappInstance,
-      )
-      // 注册 Media 处理器（供音乐播放器 Tapp 使用）
-      registerMediaHandlers(bridge, currentTappInstance)
-      registerSpeechHandlers(bridge, currentTappInstance)
-      registerAnimationHandlers(bridge)
-      // 共享 core 在 Widget 模式同样会执行，必须能声明后台保活需求。
-      registerBackgroundHandlers(bridge, currentTappInstance)
-      // ⏰ 注册 Scheduler 处理器（定时任务，与 SDK Tapp.scheduler 对应）
-      const closeScheduler = registerSchedulerHandlers(
-        bridge,
-        currentTappInstance,
-      )
+      const closeEventStream = hasEvents
+        ? registerEventHandlers(bridge, currentTappInstance)
+        : () => {}
+      const closeAgentInteractions = hasAgent
+        ? registerAgentInteractionHandlers(bridge, currentTappInstance)
+        : () => {}
+      if (hasMedia) {
+        registerMediaHandlers(bridge, currentTappInstance)
+      }
+      if (hasSpeech) {
+        registerSpeechHandlers(bridge, currentTappInstance)
+      }
+      const closeScheduler = hasScheduler
+        ? registerSchedulerHandlers(bridge, currentTappInstance)
+        : () => {}
 
-      // 监听 tapp.ready 事件（Widget HTML 发送的早期 ready 事件）
+      // 监听 tapp.ready：必须先 allowSandboxEvent（显式 inbound 白名单）
+      bridge.allowSandboxEvent('tapp.ready')
       const unsubscribeReady = bridge.on('tapp.ready', () => {
         handleReady()
       })
@@ -633,6 +709,11 @@ export const TappWidgetSandbox = memo(
       // Safari 要求 srcdoc 在 iframe 插入 DOM 之前就设置好
       iframe.srcdoc = html
       container.appendChild(iframe)
+      // srcdoc 解析后 contentWindow 稳定，注册到集中式 message 路由
+      bridge.attachSource()
+      // 部分引擎在 load 后替换 browsing context — 再挂一次
+      const onIframeLoad = () => bridge.attachSource()
+      iframe.addEventListener('load', onIframeLoad)
 
       return () => {
         unsubscribeReady()
@@ -641,6 +722,7 @@ export const TappWidgetSandbox = memo(
         closeAITaskStreams()
         closeEventStream()
         closeAgentInteractions()
+        iframe.removeEventListener('load', onIframeLoad)
         iframeRef.current = null
         if (container.contains(iframe)) {
           container.removeChild(iframe)

@@ -44,6 +44,8 @@ export interface ConfigSearchI18n {
       aiUsageTitle: string
       aiUsageDesc: string
     }
+    thirdPartyAnalytics: string
+    thirdPartyAnalyticsDesc: string
   }
   notificationCenter: {
     title: string
@@ -152,6 +154,28 @@ export function buildSearchableContent(
       'ledger',
       'ai-usage',
       'ai_usage',
+    ],
+  })
+
+  items.push({
+    type: 'section',
+    section: 'platforms',
+    title: t.config.thirdPartyAnalytics,
+    description: t.config.thirdPartyAnalyticsDesc,
+    keywords: [
+      '第三方',
+      'third-party',
+      '第三方统计',
+      'ga',
+      'ga4',
+      'google analytics',
+      'gtag',
+      'umami',
+      'ga_measurement_id',
+      'umami_website_id',
+      'umami_script_url',
+      '外部统计',
+      'analytics script',
     ],
   })
 

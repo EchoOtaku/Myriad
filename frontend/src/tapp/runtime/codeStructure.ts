@@ -66,6 +66,7 @@ export function getCodeStructureFingerprint(
       code.widgetHtml || '',
       code.styles || '',
       code.widgetCSS || '',
+      JSON.stringify(code.i18n || {}),
     ])
   }
   return hashParts([

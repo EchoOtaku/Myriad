@@ -27,6 +27,7 @@ export const PERMISSION_LEVELS: Record<TappPermission, TappPermissionLevel> = {
   'platform:read': 'basic',
   'platform:write': 'privileged',
   'platform:register': 'privileged',
+  'analytics:read': 'basic',
   'ai:generate': 'elevated',
   'ai:analyze': 'elevated',
   'ai:chat': 'elevated',
@@ -172,6 +173,10 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['platform.addItem', 'platform:write'],
     ['platform.addItems', 'platform:write'],
     ['platform.registerPlatform', 'platform:register'],
+
+    // 站点访问统计（聚合）
+    ['analytics.getSummary', 'analytics:read'],
+    ['analytics.getVisitorCard', 'analytics:read'],
     // Input/output permissions depend on the request shape and are enforced by
     // the backend Runtime Grant (`inline` needs none; platform/storage are dynamic).
     ['data.transform', 'public'],

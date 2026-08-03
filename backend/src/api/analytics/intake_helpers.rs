@@ -41,7 +41,33 @@ const RATE_LIMIT_PER_MINUTE: u32 = 90;
 const VIEW_DEDUPE_WINDOW: StdDuration = StdDuration::from_secs(3);
 const DEFAULT_ANALYTICS_SALT: &str = "myriad-analytics-v1";
 pub(crate) const ANALYTICS_BACKUP_FORMAT: &str = "myriad-analytics-backup";
+/// Backup schema version (single current format; integrity always required).
 pub(crate) const ANALYTICS_BACKUP_VERSION: u32 = 1;
+
+/// Parse `YYYY-MM-DD` day strings used in analytics backups / filters.
+pub(crate) fn parse_day_str(raw: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d").ok()
+}
+
+/// Visitor hash shape: 8–64 ASCII hex digits (matches intake fingerprints).
+pub(crate) fn valid_visitor_hash(raw: &str) -> bool {
+    let s = raw.trim();
+    let len = s.len();
+    (8..=64).contains(&len) && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Non-negative i64 from a JSON number (rejects negatives and u64 overflow).
+pub(crate) fn i64_nonneg(v: Option<&Value>) -> Option<i64> {
+    let n = v.and_then(|x| x.as_i64()).or_else(|| {
+        v.and_then(|x| x.as_u64())
+            .and_then(|u| i64::try_from(u).ok())
+    })?;
+    if n < 0 {
+        None
+    } else {
+        Some(n)
+    }
+}
 pub(crate) const MAX_IMPORT_PAGE_DAILY: usize = 50_000;
 pub(crate) const MAX_IMPORT_VISITOR_SEEN: usize = 200_000;
 pub(crate) const MAX_IMPORT_EVENT_DAILY: usize = 50_000;

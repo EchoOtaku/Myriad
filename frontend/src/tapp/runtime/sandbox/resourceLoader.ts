@@ -53,6 +53,8 @@ export interface WidgetResources {
   size: string
   /** CSS 架构模式 */
   cssMode?: 'unified' | 'separated'
+  /** i18n 翻译数据（语言代码 → 键值对） */
+  i18n?: Record<string, unknown>
 }
 
 /** Page 资源（特化类型） */
@@ -220,7 +222,10 @@ export class TappResourceLoader {
   /** Headless core 资源缓存 (key: tappId) */
   private coreCache = new Map<string, ResourceCacheEntry<CoreResources>>()
 
-  /** 原始资源缓存（从 API 获取，多个尺寸共享） */
+  /**
+   * 原始资源缓存（从 API 获取）。
+   * Key: `${tappId}:${mode}` — widget/page/full 投影互不污染。
+   */
   private rawResourceCache = new Map<
     string,
     ResourceCacheEntry<TappApiService.TappResources>
@@ -277,7 +282,8 @@ export class TappResourceLoader {
     return this.deduplicator.dedupe(
       `core:${cacheKey}:${generation}`,
       async () => {
-        const raw = await this.fetchRawResources(tappInstance.id)
+        // Core only needs JS + i18n; widget projection is the lightest full-code slice.
+        const raw = await this.fetchRawResources(tappInstance.id, 'widget')
         if (!this.generationIsCurrent(tappInstance.id, generation)) {
           return this.loadCoreResources(tappInstance)
         }
@@ -332,8 +338,8 @@ export class TappResourceLoader {
     return this.deduplicator.dedupe(
       `widget:${cacheKey}:${generation}`,
       async () => {
-        // 获取原始资源
-        const raw = await this.fetchRawResources(tappInstance.id)
+        // Widget 投影：跳过 page 模板/模块/CSS，减小传输与解析开销
+        const raw = await this.fetchRawResources(tappInstance.id, 'widget')
         if (!this.generationIsCurrent(tappInstance.id, generation)) {
           return this.loadWidgetResources(tappInstance, size, widgetId)
         }
@@ -392,6 +398,7 @@ export class TappResourceLoader {
           css,
           size,
           cssMode,
+          i18n: raw.i18n,
         }
 
         if (!this.generationIsCurrent(tappInstance.id, generation)) {
@@ -440,8 +447,8 @@ export class TappResourceLoader {
     return this.deduplicator.dedupe(
       `page:${cacheKey}:${generation}`,
       async () => {
-        // 获取原始资源
-        const raw = await this.fetchRawResources(tappInstance.id)
+        // Page 投影：跳过 widget 模板/CSS
+        const raw = await this.fetchRawResources(tappInstance.id, 'page')
         if (!this.generationIsCurrent(tappInstance.id, generation)) {
           return this.loadPageResources(tappInstance)
         }
@@ -623,44 +630,70 @@ export class TappResourceLoader {
   // 原始资源获取
 
   /**
-   * 获取原始资源（带缓存）
+   * 获取原始资源（带缓存，按 mode 投影）
    */
   private async fetchRawResources(
     tappId: string,
+    mode: TappApiService.TappResourceMode = 'full',
   ): Promise<TappApiService.TappResources> {
     const generation = this.generationFor(tappId)
-    const cached = getCachedEntry(this.rawResourceCache, tappId)
+    const cacheKey = `${tappId}:${mode}`
+    const cached = getCachedEntry(this.rawResourceCache, cacheKey)
     if (cached) return cached.data
 
-    return this.deduplicator.dedupe(`raw:${tappId}:${generation}`, async () => {
-      try {
-        const resources = await TappApiService.getTappResources(tappId)
-
-        if (!this.generationIsCurrent(tappId, generation)) {
-          return this.fetchRawResources(tappId)
-        }
-
+    // full 投影可回填 widget/page 子集缓存；先查 full 命中再投影（无网络）
+    if (mode !== 'full') {
+      const fullCached = getCachedEntry(this.rawResourceCache, `${tappId}:full`)
+      if (fullCached) {
+        const projected = projectResources(fullCached.data, mode)
         setCachedEntry(
           this.rawResourceCache,
-          tappId,
+          cacheKey,
           {
-            data: resources,
+            data: projected,
             timestamp: Date.now(),
-            ttl: CACHE_TTL.widget, // 使用较短的 TTL
+            ttl: CACHE_TTL.widget,
           },
           CACHE_LIMIT.raw,
         )
-
-        return resources
-      } catch {
-        // 回退到只获取代码
-        const code = await TappApiService.getTappCode(tappId)
-        if (!this.generationIsCurrent(tappId, generation)) {
-          return this.fetchRawResources(tappId)
-        }
-        return { code }
+        return projected
       }
-    })
+    }
+
+    return this.deduplicator.dedupe(
+      `raw:${cacheKey}:${generation}`,
+      async () => {
+        try {
+          const resources = await TappApiService.getTappResources(tappId, {
+            mode,
+          })
+
+          if (!this.generationIsCurrent(tappId, generation)) {
+            return this.fetchRawResources(tappId, mode)
+          }
+
+          setCachedEntry(
+            this.rawResourceCache,
+            cacheKey,
+            {
+              data: resources,
+              timestamp: Date.now(),
+              ttl: CACHE_TTL.widget, // 使用较短的 TTL
+            },
+            CACHE_LIMIT.raw,
+          )
+
+          return resources
+        } catch {
+          // 回退到只获取代码
+          const code = await TappApiService.getTappCode(tappId)
+          if (!this.generationIsCurrent(tappId, generation)) {
+            return this.fetchRawResources(tappId, mode)
+          }
+          return { code }
+        }
+      },
+    )
   }
 
   // 代码提取
@@ -746,10 +779,14 @@ export class TappResourceLoader {
           this.widgetCssCache.delete(key)
         }
       }
+      for (const key of this.rawResourceCache.keys()) {
+        if (key === tappId || key.startsWith(`${tappId}:`)) {
+          this.rawResourceCache.delete(key)
+        }
+      }
       this.coreCache.delete(tappId)
       this.pageCache.delete(tappId)
       this.pageCssCache.delete(tappId)
-      this.rawResourceCache.delete(tappId)
     } else {
       for (const tappId of this.cacheGenerations.keys()) {
         this.cacheGenerations.set(tappId, this.generationFor(tappId) + 1)
@@ -766,6 +803,54 @@ export class TappResourceLoader {
 }
 
 // 导出便捷函数
+
+/**
+ * Project a full resources payload down to a widget/page slice (local, no I/O).
+ * Used when a full cache entry can satisfy a narrower request.
+ */
+function projectResources(
+  full: TappApiService.TappResources,
+  mode: TappApiService.TappResourceMode,
+): TappApiService.TappResources {
+  if (mode === 'full') return full
+  if (mode === 'widget') {
+    const pageMarker = '// ========== Page Code =========='
+    const pageIdx = full.code.indexOf(pageMarker)
+    return {
+      code: pageIdx === -1 ? full.code : full.code.slice(0, pageIdx).trimEnd(),
+      styles: full.styles,
+      widgetStyles: full.widgetStyles,
+      widgetCSS: full.widgetCSS,
+      widgetTemplates: full.widgetTemplates,
+      cssMode: full.cssMode,
+      i18n: full.i18n,
+    }
+  }
+  // page
+  const widgetMarker = '// ========== Widget Code =========='
+  const pageMarker = '// ========== Page Code =========='
+  let code = full.code
+  const widgetIdx = code.indexOf(widgetMarker)
+  if (widgetIdx !== -1) {
+    const pageIdx = code.indexOf(pageMarker, widgetIdx)
+    if (pageIdx !== -1) {
+      code = `${code.slice(0, widgetIdx).trimEnd()}\n\n${code.slice(pageIdx)}`
+    } else {
+      code = code.slice(0, widgetIdx).trimEnd()
+    }
+  }
+  return {
+    code,
+    styles: full.styles,
+    pageStyles: full.pageStyles,
+    pageCSS: full.pageCSS,
+    pageTemplate: full.pageTemplate,
+    cssMode: full.cssMode,
+    i18n: full.i18n,
+    pageModules: full.pageModules,
+    pageModuleOrder: full.pageModuleOrder,
+  }
+}
 
 /**
  * 获取资源加载器实例

@@ -19,6 +19,10 @@ const DEFAULT_QUOTA = {
     writePerMinute: 10, // 每分钟写入次数
   },
   apiExecutePerMinute: 30,
+  /** 所有 Bridge API 的全局软上限（storage/ui/context 等原先未限速） */
+  bridgeActionsPerMinute: 180,
+  /** lifecycle.ready 等控制面信号 */
+  lifecyclePerMinute: 30,
 }
 
 type QuotaConfig = typeof DEFAULT_QUOTA
@@ -104,7 +108,14 @@ class TappQuotaManager {
     this.usageByTapp = new Map()
 
     // 启动自动清理（每 5 分钟清理一次过期数据）
-    setInterval(() => this.cleanupExpiredRecords(), 5 * 60 * 1000)
+    // unref so Node unit tests can exit (browser ignores unref).
+    const timer = setInterval(
+      () => this.cleanupExpiredRecords(),
+      5 * 60 * 1000,
+    )
+    if (typeof timer === 'object' && timer && 'unref' in timer) {
+      ;(timer as NodeJS.Timeout).unref()
+    }
   }
 
   /**
@@ -157,7 +168,14 @@ class TappQuotaManager {
     ) {
       return 'platform.write'
     }
-    return type
+    if (type === 'api.execute' || type === 'api.list') {
+      return 'api.execute'
+    }
+    if (type.startsWith('lifecycle.')) {
+      return 'lifecycle'
+    }
+    // 其余 bridge action 走全局桶
+    return 'bridge.action'
   }
 
   /** 获取或创建特定类型的使用记录（带滑动窗口限制器） */
@@ -170,8 +188,12 @@ class TappQuotaManager {
         maxRequests = this.quotaConfig.platform.readPerMinute
       } else if (type === 'platform.write') {
         maxRequests = this.quotaConfig.platform.writePerMinute
-      } else {
+      } else if (type === 'api.execute') {
         maxRequests = this.quotaConfig.apiExecutePerMinute
+      } else if (type === 'lifecycle') {
+        maxRequests = this.quotaConfig.lifecyclePerMinute
+      } else {
+        maxRequests = this.quotaConfig.bridgeActionsPerMinute
       }
 
       usage[type] = {
@@ -180,6 +202,28 @@ class TappQuotaManager {
       }
     }
     return usage[type]
+  }
+
+  private evaluateLimiter(
+    tappId: string,
+    bucket: string,
+  ): {
+    allowed: boolean
+    remaining: number
+    reason?: string
+    retryAfter?: number
+  } {
+    const record = this.getTypeUsage(tappId, bucket)
+    const rateCheck = record.rateLimiter.check()
+    if (!rateCheck.allowed) {
+      return {
+        allowed: false,
+        remaining: 0,
+        reason: `速率限制：请求过于频繁，请在 ${Math.ceil((rateCheck.retryAfter || 0) / 1000)} 秒后重试`,
+        retryAfter: rateCheck.retryAfter,
+      }
+    }
+    return { allowed: true, remaining: rateCheck.remaining }
   }
 
   /**
@@ -194,42 +238,38 @@ class TappQuotaManager {
     reason?: string
     retryAfter?: number
   } {
-    type = this.normalizeType(type)
+    const bucket = this.normalizeType(type)
 
-    switch (type) {
-      case 'platform.read':
-      case 'platform.write':
-      case 'api.execute':
-        break
-      default:
-        // 未跟踪的 action 不创建使用记录。AI 使用量由后端持久化账本统一记录。
-        return { allowed: true, remaining: Infinity }
-    }
+    // 先过能力族桶，再过全局 bridge 桶（platform/api 同时计入 bridge.action）
+    const primary = this.evaluateLimiter(tappId, bucket)
+    if (!primary.allowed) return primary
 
-    const record = this.getTypeUsage(tappId, type)
-    const rateCheck = record.rateLimiter.check()
-    if (!rateCheck.allowed) {
+    if (bucket !== 'bridge.action') {
+      const global = this.evaluateLimiter(tappId, 'bridge.action')
+      if (!global.allowed) return global
       return {
-        allowed: false,
-        remaining: 0,
-        reason: `速率限制：请求过于频繁，请在 ${Math.ceil((rateCheck.retryAfter || 0) / 1000)} 秒后重试`,
-        retryAfter: rateCheck.retryAfter,
+        allowed: true,
+        remaining: Math.min(primary.remaining, global.remaining),
       }
     }
-    return { allowed: true, remaining: rateCheck.remaining }
+
+    return primary
   }
 
   /**
    * 记录使用（同时更新滑动窗口）
    */
   recordUsage(tappId: string, type: string): void {
-    type = this.normalizeType(type)
-    if (!['platform.read', 'platform.write', 'api.execute'].includes(type)) {
-      return
-    }
-    const record = this.getTypeUsage(tappId, type)
+    const bucket = this.normalizeType(type)
+    const record = this.getTypeUsage(tappId, bucket)
     record.lastUsedAt = Date.now()
     record.rateLimiter.record()
+    // 能力族请求同时占用全局 bridge 配额
+    if (bucket !== 'bridge.action') {
+      const global = this.getTypeUsage(tappId, 'bridge.action')
+      global.lastUsedAt = Date.now()
+      global.rateLimiter.record()
+    }
   }
 }
 

@@ -13,10 +13,9 @@ export const UI_RESET_KEYS: readonly string[] = Object.freeze([
   'site_keywords',
   'site_og_image',
   'site_noindex',
+  'site_visibility_policy',
+  'site_ai_intro',
   'pwa_enabled',
-  'ga_measurement_id',
-  'umami_website_id',
-  'umami_script_url',
   'site_icp',
   'site_gongan',
   'cloud_sponsors',
@@ -38,6 +37,8 @@ export const METADATA_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze
   'site_keywords',
   'site_og_image',
   'site_noindex',
+  'site_visibility_policy',
+  'site_ai_intro',
   'ga_measurement_id',
   'umami_website_id',
   'umami_script_url',
@@ -53,9 +54,12 @@ export const FOOTER_SOFT_RELOAD_UI_BAG_KEYS: readonly string[] = Object.freeze([
   'site_footer_custom',
 ])
 
-/** 数据平台页：访客统计开关 */
+/** 数据及统计页：访客采集开关 + 第三方统计 bag */
 export const PLATFORMS_UI_RESET_KEYS: readonly string[] = Object.freeze([
   'analytics_enabled',
+  'ga_measurement_id',
+  'umami_website_id',
+  'umami_script_url',
 ])
 
 /** 模块页：音乐播放器（库/报告/一言走独立 draft） */

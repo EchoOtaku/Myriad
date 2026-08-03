@@ -58,10 +58,17 @@ html.dark {
  * 主内容区域使用相对定位，为退出动画提供容器。
  * 不要 isolation:isolate —— 那会建 backdrop root，
  * 主内容里的毛玻璃（数字生命设定卡 / 引导卡）就糊不到 #wallpaper。
- * AnimatePresence 已是 mode="wait"，不需要靠 isolation 叠两页。
+ *
+ * min-height 仅在 Tapp fixed 叠化路由上启用（html[data-tapp-overlay]），
+ * 避免全站短页被 100dvh 撑出多余空白。
  */
 main.relative {
   position: relative;
+}
+
+html[data-tapp-overlay] main.relative {
+  min-height: 100dvh;
+  min-height: 100vh;
 }
 
 /*

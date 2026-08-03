@@ -1,0 +1,165 @@
+/**
+ * Tapp run / store shell open & close.
+ *
+ * - No overshoot / bounce — single ease curve in and out.
+ * - Column may fade (opacity) when `.tapp-shell-presence--fade` is set.
+ *   WebKit run pages omit fade so opacity never sits on an iframe ancestor.
+ * - After enter settles (`--shown`), animation & will-change clear so in-page
+ *   element enter/exit (header AnimatePresence, loading, etc.) stay independent.
+ * - Fullscreen callers disable presence (fixed descendants × transform).
+ */
+
+/* ── Chrome column ─────────────────────────────────────────────────── */
+
+.tapp-shell-presence {
+  --tapp-shell-enter-duration: 0.48s;
+  --tapp-shell-exit-duration: 0.32s;
+  /* Smooth ease-out — no spring / overshoot */
+  --tapp-shell-enter-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tapp-shell-exit-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  transform-origin: 50% 18%;
+  backface-visibility: hidden;
+}
+
+.tapp-shell-presence--enter {
+  /* will-change only while animating — release on --shown for child compositing */
+  will-change: transform, opacity;
+  animation: tapp-shell-in var(--tapp-shell-enter-duration)
+    var(--tapp-shell-enter-ease) both;
+}
+
+.tapp-shell-presence--fade.tapp-shell-presence--enter {
+  animation-name: tapp-shell-in-fade;
+}
+
+/* Settled: identity, no animation — page chrome / sandbox free to animate */
+.tapp-shell-presence--shown {
+  transform: none;
+  opacity: 1;
+  will-change: auto;
+}
+
+.tapp-shell-presence--exit {
+  will-change: transform, opacity;
+  animation: tapp-shell-out var(--tapp-shell-exit-duration)
+    var(--tapp-shell-exit-ease) both;
+  pointer-events: none;
+}
+
+.tapp-shell-presence--fade.tapp-shell-presence--exit {
+  animation-name: tapp-shell-out-fade;
+}
+
+/* Transform only (WebKit-safe for iframe) */
+@keyframes tapp-shell-in {
+  from {
+    transform: translate3d(0, 1.25rem, 0) scale(0.97);
+  }
+  to {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes tapp-shell-out {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(0, 0.85rem, 0) scale(0.97);
+  }
+}
+
+/* Transform + fade (Chromium / Firefox / store panel) */
+@keyframes tapp-shell-in-fade {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 1.25rem, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes tapp-shell-out-fade {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, 0.85rem, 0) scale(0.97);
+  }
+}
+
+/* ── Ambient scrim (always opacity — sibling of column, never iframe parent) */
+
+.tapp-shell-scrim {
+  --tapp-shell-enter-duration: 0.48s;
+  --tapp-shell-exit-duration: 0.32s;
+  --tapp-shell-enter-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tapp-shell-exit-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: rgb(15 23 42 / 0.07);
+}
+
+html.dark .tapp-shell-scrim {
+  background: rgb(0 0 0 / 0.2);
+}
+
+.tapp-shell-scrim--enter {
+  animation: tapp-shell-scrim-in var(--tapp-shell-enter-duration)
+    var(--tapp-shell-enter-ease) both;
+}
+
+.tapp-shell-scrim--shown {
+  opacity: 1;
+}
+
+.tapp-shell-scrim--exit {
+  animation: tapp-shell-scrim-out var(--tapp-shell-exit-duration)
+    var(--tapp-shell-exit-ease) both;
+}
+
+@keyframes tapp-shell-scrim-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes tapp-shell-scrim-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tapp-shell-presence,
+  .tapp-shell-presence--enter,
+  .tapp-shell-presence--shown,
+  .tapp-shell-presence--exit,
+  .tapp-shell-scrim,
+  .tapp-shell-scrim--enter,
+  .tapp-shell-scrim--shown,
+  .tapp-shell-scrim--exit {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  .tapp-shell-scrim {
+    opacity: 0 !important;
+  }
+}

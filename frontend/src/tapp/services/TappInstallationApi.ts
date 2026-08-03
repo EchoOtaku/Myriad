@@ -832,8 +832,10 @@ async function updateFromStoreViaClient(
 }
 
 /**
- * 清理用户的临时 Tapp（登出时调用）
- * @returns 删除的临时 Tapp 数量
+ * Called on logout. Behavior is site-configured:
+ * - logout mode: wipe this user's private installs
+ * - inactivity mode: no-op (daily worker prunes stale private installs)
+ * @returns number of installs deleted
  */
 export async function cleanupTemporaryTapps(): Promise<number> {
   const result = await apiRequest<number>('/api/tapps/cleanup-temporary', {

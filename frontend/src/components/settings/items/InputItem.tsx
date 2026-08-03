@@ -15,6 +15,7 @@ import {
   FaUpload,
   LuCheck,
 } from '@lib/icons'
+import type { ReactNode } from 'react'
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { guideDomProps } from '../guides/guideAnchor'
@@ -24,7 +25,10 @@ import { SettingTitleGuideEntry } from '../SettingTitleGuideEntry'
 import { SettingsButton } from './SettingsButton'
 import './SettingItem.css'
 
-export interface InputItemProps extends Omit<InputSettingConfig, 'type'> {}
+export interface InputItemProps extends Omit<InputSettingConfig, 'type'> {
+  /** 标题旁附属控件（如 AI 生成 tag） */
+  labelAccessory?: ReactNode
+}
 
 const DEFAULT_MAX_IMAGE_BYTES = 512 * 1024
 
@@ -40,6 +44,7 @@ export const InputItem = React.memo<InputItemProps>(
     guidePath,
     description,
     hint,
+    labelAccessory,
     value,
     onChange,
     onFocus,
@@ -495,6 +500,7 @@ export const InputItem = React.memo<InputItemProps>(
             {label}
             {required && <span className="required">*</span>}
             <SettingTitleGuideEntry title={label} guide={guide} />
+            {labelAccessory}
             <SettingDefaultChangeTag
               fieldKey={itemKey}
               onApply={(next) => onChange(next)}

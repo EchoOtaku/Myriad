@@ -40,6 +40,7 @@ import {
 } from '../../tapp/services/TappLifecycleApi'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
 import { getTappIconStyle } from '../../tapp/utils/tappColors'
+import { tappRunPath } from '../../tapp/utils/tappPaths'
 import { Spinner } from '../Spinner'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetLongPressHint } from './shared/WidgetLongPressHint'
@@ -240,14 +241,15 @@ const TappButton = memo(
           icon={tapp.icon}
           iconSvg={tapp.iconSvg}
           name={tappName}
+          id={tapp.id}
           iconStyle={getTappIconStyle({
             icon: tapp.icon,
             iconSvg: tapp.iconSvg,
+            id: tapp.id,
           })}
-          shellClassName="w-8 h-8 rounded-lg bg-black/5 dark:bg-white/10"
+          shellClassName="w-8 h-8 rounded-lg"
           glyphSizeClass="w-5 h-5"
           glyphTextClass="text-base"
-          shine={false}
         />
         <div className="min-w-0 flex-1 text-left">
           <div className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
@@ -583,7 +585,7 @@ export const TappShortcutWidget = memo(
       }
       if (isEditMode) return
       if (resolved?.id) {
-        navigate(`/tapp/run/${resolved.id}`)
+        navigate(tappRunPath(resolved.id))
       }
     }, [isEditMode, resolved?.id, navigate])
 

@@ -4,13 +4,13 @@
  */
 
 import type { WidgetConfig, WidgetType } from '../components/WidgetGrid'
-import type { UserInfo } from '../utils/userInfoCache'
 import { FaCog, FaEdit } from '@lib/icons'
 import { motionShim as motion } from '@lib/motionShim'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../components/AnimatedView'
+import { Avatar } from '../components/Avatar'
 import { TitleFontSelector } from '../components/TitleFontSelector'
 import WidgetGrid from '../components/WidgetGrid'
 import {
@@ -23,6 +23,7 @@ import { useI18n } from '../contexts/I18nContext'
 import { useHomeScheduler, usePageReady } from '../hooks/animation'
 import { usePageSeo } from '../hooks/usePageSeo'
 import { useBreakpoints } from '../hooks/useSharedEventListener'
+import { useSiteOwnerProfile } from '../hooks/useSiteOwnerProfile'
 import { useTappWidgets } from '../hooks/useTappWidgets'
 import {
   useResolvedTitleColor,
@@ -32,7 +33,6 @@ import { ensureMotionReady } from '../lib/lazyMotion'
 import { buildHomePageSeo } from '../utils/modulePageSeo'
 import { getUIConfigDeduped } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
-import { getUserInfoWithCache } from '../utils/userInfoCache'
 
 export default function Home() {
   // 🆕 初始化首页调度器（Visibility + Resize + RAF + Idle）
@@ -50,7 +50,11 @@ export default function Home() {
   usePageSeo(useMemo(() => buildHomePageSeo(), []))
   const [widgets, setWidgets] = useState<WidgetConfig[]>([])
   const [isEditMode, setIsEditMode] = useState(false)
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  // 站长资料：HTTP 层缓存 + avatar-changed 强制 no-store 刷新，换头像来源后立即同步
+  const { profile: userInfo, avatarEpoch } = useSiteOwnerProfile({
+    fallbackName: 'Myriad Dashboard',
+    fallbackBio: t.home.defaultBio,
+  })
   // 空字符串代表「尚未拿到服务端真实值」，不用写死的 'Dashboard' 占位
   // 文本，避免每个访客首次加载都要闪一下错误文字再跳到真实标题
   const [dashboardTitle, setDashboardTitle] = useState('')
@@ -107,26 +111,6 @@ export default function Home() {
       checkAuth()
     }
   }, [hasChecked, checkAuth])
-
-  // 获取用户信息（使用缓存）
-  useEffect(() => {
-    async function fetchUserInfo() {
-      try {
-        // 总是获取公开用户信息（站长资料），不需要等待认证检查
-        const info = await getUserInfoWithCache(true) // 跳过认证检查
-        setUserInfo(info)
-      } catch {
-        // 设置默认访客信息
-        setUserInfo({
-          name: 'Myriad Dashboard',
-          avatar: 'https://ui-avatars.com/api/?name=Myriad&background=random',
-          bio: t.home.defaultBio,
-          is_admin: false,
-        })
-      }
-    }
-    fetchUserInfo()
-  }, [t])
 
   // 登录后获取 CSRF Token（强制从服务器拉，避免与 axios 轮换后的双缓存脱节）
   useEffect(() => {
@@ -457,19 +441,12 @@ export default function Home() {
                   {userInfo ? (
                     <>
                       <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 dark:border-white/10">
-                        <img
+                        <Avatar
+                          // avatarEpoch：强制刷新后即使代理 URL 未变也 remount，避开 <img> 磁盘缓存
+                          key={`${userInfo.avatar ?? ''}:${avatarEpoch}`}
                           src={userInfo.avatar}
-                          alt={userInfo.name}
+                          name={userInfo.name}
                           className="w-full h-full object-cover"
-                          // 代理图同源；缺省 referrer 可避免部分 CDN 二次校验异常
-                          referrerPolicy="no-referrer"
-                          decoding="async"
-                          onError={(e) => {
-                            const el = e.currentTarget
-                            if (el.dataset.fallback === '1') return
-                            el.dataset.fallback = '1'
-                            el.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name || 'User')}&background=random`
-                          }}
                         />
                       </div>
                       <div className="flex flex-col justify-center">

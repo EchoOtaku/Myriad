@@ -339,7 +339,12 @@ pub struct DynamicConfig {
     /// 社交分享预览图（Open Graph / Twitter Card）
     pub site_og_image: Option<String>,
     /// 禁止搜索引擎收录（true → robots: noindex, nofollow）
+    /// 与 site_visibility_policy 联动：private 时为 true。
     pub site_noindex: bool,
+    /// 站点可见性 / GEO 策略：private | search_only | ai_citation | ai_full
+    pub site_visibility_policy: String,
+    /// 面向 AI 引擎的站点简介（写入 llms.txt；可空则回退 site_description）
+    pub site_ai_intro: Option<String>,
     /// Google Analytics 4 Measurement ID（如 G-XXXXXXXXXX）；空则不加载 gtag
     pub ga_measurement_id: Option<String>,
     /// Umami website id（UUID）；空则不加载
@@ -394,6 +399,13 @@ pub struct DynamicConfig {
 
     /// 是否允许公开本地账号注册（PR #4）
     pub allow_local_registration: bool,
+
+    /// Private (non-admin) Tapp install cleanup:
+    /// - `"logout"`: wipe subject's private installs on logout
+    /// - `"inactivity"`: prune after `tapp_private_install_inactivity_days` without login/seen
+    pub tapp_private_install_cleanup: String,
+    /// Days of inactivity before pruning private installs (when mode is inactivity).
+    pub tapp_private_install_inactivity_days: i32,
 
     // 站点 URL 配置（用于自动生成 OAuth 回调等 URL）
     pub base_url: Option<String>,
@@ -605,6 +617,8 @@ impl Default for DynamicConfig {
             site_keywords: None,
             site_og_image: None,
             site_noindex: false,
+            site_visibility_policy: String::new(),
+            site_ai_intro: None,
             ga_measurement_id: None,
             umami_website_id: None,
             umami_script_url: None,
@@ -644,6 +658,9 @@ impl Default for DynamicConfig {
 
             oauth_providers: Vec::new(),
             allow_local_registration: false,
+            // Default: keep private installs until 14 days inactive (not wipe on logout)
+            tapp_private_install_cleanup: "inactivity".to_string(),
+            tapp_private_install_inactivity_days: 14,
 
             base_url: None,
 

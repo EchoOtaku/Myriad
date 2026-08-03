@@ -107,33 +107,13 @@ async fn enrich_feed_items(db: &DatabaseConnection, user_id: i32, items: &mut [V
     }
 }
 
-/// SQL expression: resolved local-user avatar URL when present (OAuth/provider or
-/// ui-avatars placeholder last). Used only for the post author, never the viewer.
-const LOCAL_USER_AVATAR_SQL: &str = r#"
-COALESCE(
-    NULLIF(
-        CASE
-            WHEN {alias}.avatar_url LIKE 'https://ui-avatars.com/%'
-                 OR {alias}.avatar_url LIKE 'http://ui-avatars.com/%'
-            THEN NULL
-            ELSE {alias}.avatar_url
-        END,
-        ''
-    ),
-    (
-        SELECT NULLIF(ui.avatar_url, '')
-        FROM user_identities ui
-        WHERE ui.user_id = {alias}.id
-          AND ui.avatar_url IS NOT NULL
-          AND ui.avatar_url <> ''
-        ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
-        LIMIT 1
-    ),
-    NULLIF({alias}.avatar_url, '')
-)"#;
-
+/// SQL expression: resolved local-user avatar URL when present. Used only for the
+/// post author, never the viewer.
+///
+/// 曾在此另抄一份阶梯；现在统一走 services::avatar，作者头像才会跟随用户
+/// 在用户中心选定的画像源（此前联邦这边一直停在旧的隐式优先级上）。
 fn local_user_avatar_expr(alias: &str) -> String {
-    LOCAL_USER_AVATAR_SQL.replace("{alias}", alias)
+    crate::services::avatar::avatar_snapshot_expr(alias)
 }
 
 async fn load_personal_feed(

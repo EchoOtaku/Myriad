@@ -4,7 +4,8 @@
 
 // v2.4: 壁纸 CDN / 跨域图片不再被 SW 用 mode:cors 劫持（无 ACAO 时生产会拿到空 blob，
 // 开发环境无 SW 则正常 —— 表现为「仅生产壁纸/动效异常」）
-const CACHE_VERSION = 'myriad-v2.4'
+// v2.5: 图片分支仅处理 GET；非 GET（含 HEAD）直接放行，避免 Cache API put 报错
+const CACHE_VERSION = 'myriad-v2.5'
 const STATIC_CACHE = `${CACHE_VERSION}-static`
 const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`
 const IMAGE_CACHE = `${CACHE_VERSION}-images`
@@ -104,6 +105,10 @@ function isCacheExpired(response, maxAge) {
 
 // 添加缓存时间戳
 async function cacheWithTimestamp(cacheName, request, response) {
+  // Cache API only accepts GET; HEAD/others throw "Request method '…' is unsupported"
+  if (request.method && request.method !== 'GET') {
+    return
+  }
   // ✅ 跳过 206 Partial Content 响应（Cache API 不支持）
   if (response.status === 206) {
     console.log('[SW] Skipping cache for 206 response:', request.url)
@@ -163,10 +168,15 @@ globalThis.addEventListener('fetch', (event) => {
 
   // 图片请求 - 缓存优先策略(带过期检查)
   // ⚠️ 壁纸 CDN：完全不拦截，交给浏览器（CSS background 可用 no-cors 显示）
+  // ⚠️ 仅 GET：Cache API 不支持 put HEAD；图床探活 HEAD 必须直通网络
   if (
     request.destination === 'image' ||
     /\.(jpg|jpeg|png|gif|webp|svg|avif)$/i.test(url.pathname)
   ) {
+    if (request.method !== 'GET') {
+      return
+    }
+
     const isWallpaperCDN = WALLPAPER_CDN_DOMAINS.some((domain) =>
       url.hostname.includes(domain),
     )

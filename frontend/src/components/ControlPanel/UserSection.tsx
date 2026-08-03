@@ -1,23 +1,23 @@
 import type { User } from '../../contexts/AuthContext'
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react'
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { createPortal } from 'react-dom'
-import { API_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import { useSiteOwnerProfile } from '../../hooks/useSiteOwnerProfile'
+import { onAvatarChanged } from '../../services/avatarSourceApi'
 import { getCSRFToken } from '../../utils/csrf'
 import { clearPlaylistCache } from '../../utils/musicPlayer'
-import { proxyImageUrl } from '../../utils/proxyImageUrl'
-import {
-  clearAllUserCache,
-  invalidateUserInfoCache,
-} from '../../utils/userInfoCache'
+import { lockScroll } from '../../utils/scrollLock'
+import { clearAllUserCache } from '../../utils/userInfoCache'
+import { Avatar } from '../Avatar'
 import LoginForm from '../LoginForm'
 import { UserModal } from './UserModal'
 
 interface UserInfo {
   name: string
-  avatar: string
+  /** 可能为空：<Avatar> 负责本地兜底 */
+  avatar: string | null
   bio: string
   platform: string
 }
@@ -45,7 +45,6 @@ export const UserSection: React.FC<UserSectionProps> = memo(
     const { t } = useI18n()
     const [user, setUser] = useState<User | null>(null)
     const [isAuthenticated, setIsAuthenticated] = useState(false)
-    const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
 
     // 弹窗状态机：'closed' -> 'mounting' -> 'visible' -> 'closing' -> 'closed'
     const [modalState, setModalState] = useState<
@@ -71,126 +70,52 @@ export const UserSection: React.FC<UserSectionProps> = memo(
       }
     }, [modalState])
 
-    // 滚动锁定 - 保存并恢复原始 overflow 值
+    // 滚动锁定：必须锁 html —— 本站 html 带 overflow，滚动容器是它不是 body
     useEffect(() => {
       if (modalState !== 'closed') {
-        const originalOverflow = document.body.style.overflow
-        document.body.style.overflow = 'hidden'
-        return () => {
-          document.body.style.overflow = originalOverflow
-        }
+        return lockScroll()
       }
     }, [modalState])
 
+    // 站长的展示名/简介沿用平台画像（站点形象），与首页信息条同一份数据；
+    // 普通用户没有平台资料，不必为此多打一次公开接口。
+    const { profile: ownerProfile } = useSiteOwnerProfile({
+      enabled: authUser?.is_owner === true,
+    })
+
     /**
-     * 切换 OAuth 画像源后，在本弹窗生命周期内优先用 /api/auth/me，
-     * 避免管理员仍被 /api/profile/user-info 站长资料盖掉头像。
+     * 头像一律取会话身份自己的（`/api/auth/me` 读的是画像源快照，与首页同源），
+     * 名称/简介对站长优先用平台画像。
+     *
+     * 头像不再走 `/api/profile/user-info` 分支：来源已由用户显式选定并落成快照，
+     * 前端不需要再分支，也不需要切换画像源后临时翻转策略的那套 ref。
      */
-    const preferSessionProfileRef = useRef(false)
-
-    const applySessionUserInfo = useCallback(
-      (session: {
-        display_name?: string
-        username?: string
-        avatar_url?: string
-        bio?: string
-        auth_provider?: string
-      }) => {
-        const displayName =
-          session.display_name ||
-          session.username ||
-          t.userModal.unknownUser
-        const avatar =
-          proxyImageUrl(session.avatar_url) ||
-          `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`
-        const bio = session.bio || t.userModal.defaultBio
-        const platform =
-          session.auth_provider === 'github'
+    const userInfo: UserInfo | null = useMemo(() => {
+      if (!authUser) return null
+      const sessionName =
+        authUser.display_name || authUser.username || t.userModal.unknownUser
+      return {
+        name: ownerProfile?.name || sessionName,
+        avatar: authUser.avatar_url ?? null,
+        bio: ownerProfile?.bio || authUser.bio || t.userModal.defaultBio,
+        platform:
+          ownerProfile?.platform ||
+          (authUser.auth_provider === 'github'
             ? 'GitHub'
-            : session.auth_provider === 'local'
+            : authUser.auth_provider === 'local'
               ? 'Local'
-              : session.auth_provider || t.userModal.unknownPlatform
-        setUserInfo({
-          name: displayName,
-          avatar,
-          bio,
-          platform,
-        })
-      },
-      [t],
-    )
-
-    // 获取用户信息
-    // 对于管理员：默认站长资料；切画像源后或 forceSession 时用登录会话（/api/auth/me）
-    // 对于普通用户：使用 authUser / 会话
-    const fetchUserInfo = useCallback(
-      async (opts?: { forceSession?: boolean }) => {
-        if (!authUser) return
-
-        const forceSession =
-          opts?.forceSession === true || preferSessionProfileRef.current
-
-        if (forceSession) {
-          try {
-            const meRes = await fetch(`${API_URL}/api/auth/me`, {
-              credentials: 'include',
-            })
-            if (meRes.ok) {
-              const me = await meRes.json()
-              if (me?.authenticated !== false && (me?.id || me?.username)) {
-                applySessionUserInfo(me)
-                return
-              }
-            }
-          } catch {
-            /* fall through to authUser */
-          }
-          applySessionUserInfo(authUser)
-          return
-        }
-
-        // 站长默认公开站点形象（is_owner，非 is_admin：管理员≠站长）
-        if (authUser.is_owner === true) {
-          try {
-            const profileResponse = await fetch(
-              `${API_URL}/api/profile/user-info`,
-            )
-            if (profileResponse.ok) {
-              const profileData = await profileResponse.json()
-              if (profileData.success && profileData.user_info) {
-                setUserInfo({
-                  name: profileData.user_info.name || t.userModal.unknownUser,
-                  avatar:
-                    proxyImageUrl(profileData.user_info.avatar) ||
-                    `https://ui-avatars.com/api/?name=${encodeURIComponent(profileData.user_info.name || t.userModal.unknownUser)}&background=random`,
-                  bio: profileData.user_info.bio || t.userModal.defaultBio,
-                  platform:
-                    profileData.user_info.platform ||
-                    t.userModal.unknownPlatform,
-                })
-                return
-              }
-            }
-          } catch (_error) {
-            console.debug(
-              '[UserSection] Failed to fetch owner profile, using authUser info',
-            )
-          }
-        }
-
-        applySessionUserInfo(authUser)
-      },
-      [authUser, t, applySessionUserInfo],
-    )
+              : authUser.auth_provider || t.userModal.unknownPlatform),
+      }
+    }, [authUser, ownerProfile, t])
 
     // 同步 AuthContext 的用户信息
     useEffect(() => {
       setIsAuthenticated(authIsAuthenticated)
       setUser(authUser as User | null)
-      if (authUser) {
-        void fetchUserInfo()
-      }
-    }, [authIsAuthenticated, authUser, fetchUserInfo])
+    }, [authIsAuthenticated, authUser])
+
+    // 别处（含其它标签页）换了头像来源 → 重新探一次会话，拿到新快照
+    useEffect(() => onAvatarChanged(() => void checkAuth()), [checkAuth])
 
     // 打开弹窗
     const openModal = useCallback(() => {
@@ -213,18 +138,10 @@ export const UserSection: React.FC<UserSectionProps> = memo(
       }
     }, [modalState])
 
-    // 弹窗关闭后恢复管理员默认站长资料策略
-    useEffect(() => {
-      if (modalState === 'closed') {
-        preferSessionProfileRef.current = false
-      }
-    }, [modalState])
-
     // 监听登录成功事件
     useEffect(() => {
       const handleLoginSuccess = () => {
         closeModal()
-        invalidateUserInfoCache()
         getCSRFToken(true).catch(console.warn)
       }
 
@@ -272,7 +189,7 @@ export const UserSection: React.FC<UserSectionProps> = memo(
       )
 
       try {
-        // 先清理用户临时安装的 Tapp（服务层按需加载，登出是低频路径）
+        // 站点策略：登出即删 / 或顺带清理未活跃用户的个人安装
         const { cleanupTemporaryTapps } = await import(
           '../../tapp/services/TappApiService',
         )
@@ -320,13 +237,10 @@ export const UserSection: React.FC<UserSectionProps> = memo(
         >
           {isAuthenticated && userInfo ? (
             <>
-              <img
+              <Avatar
                 src={userInfo.avatar}
-                alt={userInfo.name}
+                name={userInfo.name}
                 className="w-10 h-10 rounded-full object-cover shrink-0"
-                onError={(e) => {
-                  e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name)}`
-                }}
               />
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
@@ -378,14 +292,9 @@ export const UserSection: React.FC<UserSectionProps> = memo(
                   onClose={closeModal}
                   onLogout={handleLogout}
                   onNavigateFromPanel={onNavigateFromPanel}
-                  onProfileApplied={() => {
-                    preferSessionProfileRef.current = true
-                    void (async () => {
-                      await checkAuth()
-                      // 强制 /me，避免管理员站长资料盖过刚选的 OAuth 画像
-                      await fetchUserInfo({ forceSession: true })
-                    })()
-                  }}
+                  // 头像来源已切换：重新探会话拿新快照（onAvatarChanged 也会触发，
+                  // 这里显式再调一次，保证本弹窗内立即回显）
+                  onProfileApplied={() => void checkAuth()}
                 />
               ) : (
                 <div

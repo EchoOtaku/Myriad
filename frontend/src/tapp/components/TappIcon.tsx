@@ -22,8 +22,11 @@ export interface TappIconProps {
   textSizeClass?: string
   /** 额外的 className */
   className?: string
-  /** SVG 颜色（替换 currentColor，默认 white） */
-  svgColor?: string
+  /**
+   * SVG 颜色（替换 currentColor，默认 white）。
+   * 传 `null` 时不替换 — 用于全彩 SVG 坐在 iconShell 上。
+   */
+  svgColor?: string | null
 }
 
 /**
@@ -50,11 +53,17 @@ export function isIconSvg(icon: string | undefined): boolean {
 /**
  * True when the app ships a self-contained icon (bitmap / full-color SVG).
  * Monochrome glyph SVGs (`currentColor`) and emoji still need a tinted shell.
+ *
+ * `iconShell: true` opts out: custom full-color art still sits on a material shell.
  */
 export function hasStandaloneTappIcon(source: {
   icon?: string
   iconSvg?: string
+  iconShell?: boolean
 }): boolean {
+  // Optional: force material shell even for URL / full-color SVG.
+  if (source.iconShell === true) return false
+
   if (
     source.icon &&
     (isIconUrl(source.icon) || Boolean(resolveTappIconAsset(source.icon)))
@@ -71,10 +80,32 @@ export function hasStandaloneTappIcon(source: {
 }
 
 /**
+ * Natural full-color media (URL / non-currentColor SVG) regardless of iconShell.
+ * Used to avoid monochrome glyph filters (opacity / white plate) on inset art.
+ */
+export function isTappIconFullColorMedia(source: {
+  icon?: string
+  iconSvg?: string
+}): boolean {
+  if (
+    source.icon &&
+    (isIconUrl(source.icon) || Boolean(resolveTappIconAsset(source.icon)))
+  ) {
+    return true
+  }
+  const svg =
+    (source.iconSvg && isIconSvg(source.iconSvg) && source.iconSvg.trim()) ||
+    (source.icon && isIconSvg(source.icon) && source.icon.trim()) ||
+    ''
+  if (!svg) return false
+  return !/currentColor/i.test(svg)
+}
+
+/**
  * 将 SVG 转换为 data URI（iOS/Safari 兼容方式）
  * 这种方式比 dangerouslySetInnerHTML 更可靠
  */
-function svgToDataUri(svg: string, color: string = 'white'): string {
+function svgToDataUri(svg: string, color?: string | null): string {
   let normalized = svg.trim()
 
   // 添加 xmlns（如果缺失）- 必须用于 data URI
@@ -85,8 +116,10 @@ function svgToDataUri(svg: string, color: string = 'white'): string {
     )
   }
 
-  // 替换 currentColor 为指定颜色（data URI 中无法继承 CSS 颜色）
-  normalized = normalized.replace(/currentColor/g, color)
+  // 替换 currentColor（data URI 无法继承 CSS）；null = 保留原样
+  if (color) {
+    normalized = normalized.replace(/currentColor/g, color)
+  }
 
   // 编码为 data URI
   const encoded = encodeURIComponent(normalized)
@@ -113,11 +146,13 @@ export function TappIcon({
 
   // 将 SVG 转换为 data URI（使用 useMemo 避免重复计算）
   const svgDataUri = useMemo(() => {
+    // null → leave currentColor; undefined falls back to white via default param
+    const color = svgColor === null ? null : (svgColor ?? 'white')
     if (iconSvg && isIconSvg(iconSvg)) {
-      return svgToDataUri(iconSvg, svgColor)
+      return svgToDataUri(iconSvg, color)
     }
     if (icon && isIconSvg(icon)) {
-      return svgToDataUri(icon, svgColor)
+      return svgToDataUri(icon, color)
     }
     return null
   }, [iconSvg, icon, svgColor])

@@ -17,6 +17,7 @@ import { useI18n } from '../../contexts/I18nContext'
 import { Spinner } from '../Spinner'
 import { CheckboxCard } from './items/CheckboxCard'
 import { SegmentedControl } from './items/ChoiceControls'
+import { FieldSelect } from './items/FieldSelect'
 import { InputItem } from './items/InputItem'
 import { SettingsButton } from './items/SettingsButton'
 import { SettingTitleGuideEntry } from './SettingTitleGuideEntry'
@@ -119,7 +120,32 @@ export interface ManagedListStatSwitch {
   guidePath?: string
 }
 
-export type ManagedListStat = ManagedListStatMetric | ManagedListStatSwitch
+/**
+ * Choice chip — same chrome as switch stats, with an inline select
+ * (e.g. users “personal Tapp cleanup” next to allow-register).
+ */
+export interface ManagedListStatChoice {
+  key: string
+  kind: 'choice'
+  label: string
+  description?: string
+  icon?: ReactNode
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (value: string) => void
+  disabled?: boolean
+  loading?: boolean
+  title?: string
+  guide?: ReactNode
+  guidePath?: string
+  /** Extra class on the card shell */
+  className?: string
+}
+
+export type ManagedListStat =
+  | ManagedListStatMetric
+  | ManagedListStatSwitch
+  | ManagedListStatChoice
 
 export interface ManagedListAction {
   key: string
@@ -800,7 +826,10 @@ export const ManagedList = React.memo(({
           >
             {/* 1. Numeric metrics */}
             {stats
-              ?.filter((s) => s.kind !== 'switch')
+              ?.filter(
+                (s): s is ManagedListStatMetric =>
+                  s.kind !== 'switch' && s.kind !== 'choice',
+              )
               .map((s) => (
                 <div
                   key={s.key}
@@ -812,7 +841,8 @@ export const ManagedList = React.memo(({
               ))}
 
             {/* 2. Interactive chips after data (same card region) */}
-            {((stats && stats.some((s) => s.kind === 'switch')) ||
+            {((stats &&
+              stats.some((s) => s.kind === 'switch' || s.kind === 'choice')) ||
               hasChromeBar) && (
               <div
                 className="managed-list-chip-actions"
@@ -821,7 +851,8 @@ export const ManagedList = React.memo(({
               >
                 {stats
                   ?.filter(
-                    (s): s is ManagedListStatSwitch => s.kind === 'switch',
+                    (s): s is ManagedListStatSwitch | ManagedListStatChoice =>
+                      s.kind === 'switch' || s.kind === 'choice',
                   )
                   .map((s) => {
                     const labelNode =
@@ -836,19 +867,86 @@ export const ManagedList = React.memo(({
                       ) : (
                         s.label
                       )
-                    const card = (
-                      <CheckboxCard
-                        size="sm"
-                        label={labelNode}
-                        description={s.description}
-                        icon={s.icon}
-                        checked={s.checked}
-                        onChange={s.onChange}
-                        disabled={s.disabled}
-                        loading={s.loading}
-                        title={s.title}
-                      />
-                    )
+
+                    const card =
+                      s.kind === 'switch' ? (
+                        <CheckboxCard
+                          size="sm"
+                          label={labelNode}
+                          description={s.description}
+                          icon={s.icon}
+                          checked={s.checked}
+                          onChange={s.onChange}
+                          disabled={s.disabled}
+                          loading={s.loading}
+                          title={s.title}
+                        />
+                      ) : (
+                        <div
+                          className={[
+                            'checkbox-group-card',
+                            'checkbox-group-card--sm',
+                            'has-icon',
+                            'no-indicator',
+                            'managed-list-choice-card',
+                            s.disabled || s.loading ? 'is-disabled' : '',
+                            s.className ?? '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                        >
+                          {/* Single header row: icon | title+desc | select (like switch chip) */}
+                          <span className="checkbox-group-card-header">
+                            {s.icon ? (
+                              <span
+                                className="checkbox-group-card-icon"
+                                aria-hidden
+                              >
+                                {s.icon}
+                              </span>
+                            ) : null}
+                            <span className="checkbox-group-card-text">
+                              <span className="checkbox-group-card-label">
+                                {labelNode}
+                              </span>
+                              {s.description ? (
+                                <span
+                                  className="checkbox-group-card-desc"
+                                  title={
+                                    typeof s.description === 'string'
+                                      ? s.description
+                                      : s.title
+                                  }
+                                >
+                                  {s.description}
+                                </span>
+                              ) : null}
+                            </span>
+                            <div
+                              className="managed-list-choice-select"
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                            >
+                              <FieldSelect
+                                size="sm"
+                                value={s.value}
+                                disabled={s.disabled || s.loading}
+                                aria-label={
+                                  typeof s.label === 'string'
+                                    ? s.label
+                                    : undefined
+                                }
+                                options={s.options.map((o) => ({
+                                  value: o.value,
+                                  label: o.label,
+                                }))}
+                                onChange={s.onChange}
+                              />
+                            </div>
+                          </span>
+                        </div>
+                      )
+
                     if (!s.guidePath) {
                       return <React.Fragment key={s.key}>{card}</React.Fragment>
                     }

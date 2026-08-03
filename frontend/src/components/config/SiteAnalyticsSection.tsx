@@ -229,11 +229,54 @@ interface SiteAnalyticsSectionProps {
 function isAnalyticsBackup(data: unknown): data is Record<string, unknown> {
   if (!data || typeof data !== 'object') return false
   const o = data as Record<string, unknown>
-  return (
-    o.format === ANALYTICS_BACKUP_FORMAT &&
-    typeof o.version === 'number' &&
-    o.version >= 1
-  )
+  if (
+    o.format !== ANALYTICS_BACKUP_FORMAT ||
+    typeof o.version !== 'number' ||
+    o.version !== 1
+  ) {
+    return false
+  }
+  // Integrity block is always required (instance-bound anti-tamper seal).
+  const integrity = o.integrity
+  if (!integrity || typeof integrity !== 'object') return false
+  const i = integrity as Record<string, unknown>
+  if (typeof i.alg !== 'string' || typeof i.token !== 'string') return false
+  if (typeof i.content_hash !== 'string' || i.content_hash.length < 32) {
+    return false
+  }
+  return true
+}
+
+/** Map backend import error codes to user-facing copy. */
+function analyticsImportErrorMessage(
+  code: string | undefined,
+  a: {
+    importFailed: string
+    importIntegrityFailed: string
+    importMissingIntegrity: string
+    importInvalid: string
+  },
+): string {
+  switch (code) {
+    case 'missing_integrity':
+      return a.importMissingIntegrity
+    case 'content_hash_mismatch':
+    case 'invalid_integrity_token':
+    case 'integrity_token_mismatch':
+    case 'integrity_key_mismatch':
+    case 'unsupported_integrity_alg':
+    case 'missing_integrity_token':
+      return a.importIntegrityFailed
+    case 'counts_mismatch':
+    case 'row_validation_failed':
+    case 'invalid_format':
+    case 'unsupported_version':
+    case 'too_many_rows':
+    case 'invalid_mode':
+      return `${a.importFailed}: ${code}`
+    default:
+      return code ? `${a.importFailed}: ${code}` : a.importFailed
+  }
 }
 
 const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
@@ -534,18 +577,19 @@ const SiteAnalyticsSection: React.FC<SiteAnalyticsSectionProps> = ({
             a.importFailed,
           )
           if (!res?.success) {
-            throw new Error(res?.error || a.importFailed)
+            throw new Error(
+              analyticsImportErrorMessage(res?.error, a),
+            )
           }
           showMessage?.(a.importSuccess, 'success')
           await load(undefined)
         } catch (err) {
           console.error('analytics import failed', err)
-          showMessage?.(
-            `${a.importFailed}${
-              err instanceof Error && err.message ? `: ${err.message}` : ''
-            }`,
-            'error',
-          )
+          const msg =
+            err instanceof Error && err.message
+              ? err.message
+              : a.importFailed
+          showMessage?.(msg, 'error')
         } finally {
           setIoBusy(false)
         }

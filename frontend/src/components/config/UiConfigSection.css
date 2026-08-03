@@ -67,3 +67,9 @@
   color: var(--color-primary, #64748b);
   border-color: color-mix(in srgb, var(--color-primary, #64748b) 40%, transparent);
 }
+
+
+/* SEO AI generate tag sits inline in field titles */
+.seo-ai-gen-tag-anchor {
+  margin-left: 0.15rem;
+}

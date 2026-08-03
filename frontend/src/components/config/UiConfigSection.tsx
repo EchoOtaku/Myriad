@@ -5,7 +5,6 @@
 
 import type { FooterCustomItem } from '../../utils/footerCustomLogic'
 import {
-  FaChartLine,
   FaGlobe,
   FaInfoCircle,
   FaLink,
@@ -16,7 +15,9 @@ import {
   LuPalette,
   SiCloudflare,
 } from '@lib/icons'
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
+import { API_URL } from '../../config'
+import { getCSRFToken } from '../../utils/csrf'
 import { useI18n } from '../../contexts/I18nContext'
 import {
   emptyFooterCustomItem,
@@ -32,10 +33,13 @@ import {
   SettingGroup,
   SettingSection,
   SliderItem,
+  SettingAnchoredPanel,
+  SettingsButton,
   SwitchItem,
   useSettingGuide,
 } from '../settings'
 import { SettingItemWrapper } from '../settings/items/SettingItemWrapper'
+import { SettingTitleTag } from '../settings/SettingTitleTag'
 import { SiteUrlField } from './SiteUrlField'
 import './UiConfigSection.css'
 
@@ -96,6 +100,20 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
 }) => {
   const { t } = useI18n()
   const { catalog: g, bindGuide } = useSettingGuide()
+  type SeoAiField = 'site_description' | 'site_keywords' | 'site_ai_intro'
+
+  /** Which SEO field is currently being AI-generated (tag loading state) */
+  const [aiGenField, setAiGenField] = useState<SeoAiField | null>(null)
+  /** Feedback pinned under the field that was just generated */
+  const [aiGenFeedback, setAiGenFeedback] = useState<{
+    field: SeoAiField
+    message: string
+  } | null>(null)
+  /** Open anchored panel field + optional owner hint draft */
+  const [aiGenTipField, setAiGenTipField] = useState<SeoAiField | null>(null)
+  const [aiGenHint, setAiGenHint] = useState('')
+
+
 
   // 标签归属本 Section，壳层不再维护死字段 label map
   const getFieldLabel = useCallback(
@@ -109,6 +127,8 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         site_keywords: t.config.fieldSiteKeywords,
         site_og_image: t.config.fieldSiteOgImage,
         site_noindex: t.config.fieldSiteNoindex,
+        site_visibility_policy: t.config.fieldSiteVisibilityPolicy,
+        site_ai_intro: t.config.fieldSiteAiIntro,
       }
       return labels[fieldKey] || originalLabel
     },
@@ -136,6 +156,257 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
       return configFields.find((f) => f.key === key)?.value || ''
     },
     [configFields],
+  )
+
+  const visibilityPolicy = useMemo(() => {
+    const raw = getFieldValue('site_visibility_policy').trim()
+    if (
+      raw === 'private' ||
+      raw === 'search_only' ||
+      raw === 'ai_citation' ||
+      raw === 'ai_full'
+    ) {
+      return raw
+    }
+    return getFieldValue('site_noindex') === 'true' ? 'private' : 'ai_full'
+  }, [getFieldValue])
+
+  /** Per-policy tip with inline code for paths / technical tokens */
+  const visibilityPolicyHint = useMemo(() => {
+    const code = (text: string, key?: string) => (
+      <code key={key ?? text} className="inline-code">
+        {text}
+      </code>
+    )
+    switch (visibilityPolicy) {
+      case 'private':
+        return (
+          <>
+            {t.config.visibilityPrivateHintBefore}
+            {code('noindex')}
+            {t.config.visibilityPrivateHintMid}
+            {code('sitemap')}
+            {t.config.visibilityPrivateHintMid2}
+            {code('/llms.txt')}
+            {t.config.visibilityPrivateHintAfter}
+          </>
+        )
+      case 'search_only':
+        return (
+          <>
+            {t.config.visibilitySearchOnlyHintBefore}
+            {code('Google')}
+            {' / '}
+            {code('Bing')}
+            {t.config.visibilitySearchOnlyHintAfter}
+          </>
+        )
+      case 'ai_citation':
+        return (
+          <>
+            {t.config.visibilityAiCitationHintBefore}
+            {code('/llms.txt')}
+            {t.config.visibilityAiCitationHintAfter}
+          </>
+        )
+      default:
+        return (
+          <>
+            {t.config.visibilityAiFullHintBefore}
+            {code('/llms.txt')}
+            {t.config.visibilityAiFullHintAfter}
+          </>
+        )
+    }
+  }, [t.config, visibilityPolicy])
+
+  const tryOpenAiGenTip = useCallback(
+    (field: SeoAiField) => {
+      const title = getFieldValue('site_title').trim()
+      if (!title) {
+        setAiGenFeedback({
+          field,
+          message: t.config.siteAiGenerateNeedTitle,
+        })
+        setAiGenTipField(null)
+        return
+      }
+      setAiGenHint('')
+      setAiGenTipField(field)
+    },
+    [getFieldValue, t.config.siteAiGenerateNeedTitle],
+  )
+
+  const handleAiGenerateField = useCallback(
+    async (field: SeoAiField, hint: string) => {
+      const title = getFieldValue('site_title').trim()
+      const description = getFieldValue('site_description').trim()
+      if (!title) {
+        setAiGenFeedback({
+          field,
+          message: t.config.siteAiGenerateNeedTitle,
+        })
+        return
+      }
+      setAiGenTipField(null)
+      setAiGenField(field)
+      setAiGenFeedback(null)
+      try {
+        const base = API_URL || ''
+        const csrfToken = await getCSRFToken()
+        if (!csrfToken) {
+          throw new Error('csrf')
+        }
+        const res = await fetch(`${base}/api/seo/generate-copy`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken,
+          },
+          body: JSON.stringify({
+            site_title: title,
+            site_description: description,
+            hint: hint.trim(),
+            fields: [field],
+          }),
+        })
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`)
+        }
+        const data = (await res.json()) as {
+          site_description?: string
+          site_keywords?: string
+          site_ai_intro?: string
+          source?: string
+        }
+        if (field === 'site_description' && data.site_description) {
+          updateValue('site_description', data.site_description)
+        }
+        if (field === 'site_keywords' && data.site_keywords) {
+          updateValue('site_keywords', data.site_keywords)
+        }
+        if (field === 'site_ai_intro' && data.site_ai_intro) {
+          updateValue('site_ai_intro', data.site_ai_intro)
+        }
+        setAiGenFeedback({
+          field,
+          message:
+            data.source === 'fallback'
+              ? t.config.siteAiGenerateFallback
+              : t.config.siteAiGenerateSuccess,
+        })
+      } catch {
+        setAiGenFeedback({
+          field,
+          message: t.config.siteAiGenerateError,
+        })
+      } finally {
+        setAiGenField(null)
+      }
+    },
+    [getFieldValue, t.config, updateValue],
+  )
+
+  const renderSeoAiPanel = useCallback(
+    (field: SeoAiField) => {
+      const busy = aiGenField === field
+      const anyBusy = aiGenField !== null
+      return (
+        <SettingAnchoredPanel
+          open={aiGenTipField === field}
+          onOpenChange={(next) => {
+            if (!next) {
+              if (aiGenField === null) setAiGenTipField(null)
+              return
+            }
+            tryOpenAiGenTip(field)
+          }}
+          preventClose={anyBusy}
+          disabled={anyBusy && !busy}
+          placement="bottom"
+          align="start"
+          ariaLabel={t.config.siteAiGenerateDialogTitle}
+          className="seo-ai-gen-tag-anchor"
+          trigger={({ toggle }) => (
+            <SettingTitleTag
+              variant="muted"
+              icon={<FaMagic />}
+              disabled={anyBusy}
+              onClick={toggle}
+              title={
+                busy
+                  ? t.config.siteAiGenerating
+                  : t.config.siteAiGenerateTagHint
+              }
+            >
+              {busy ? t.config.siteAiGenerating : t.config.siteAiGenerateTag}
+            </SettingTitleTag>
+          )}
+        >
+          <div className="setting-anchored-panel-title">
+            {t.config.siteAiGenerateDialogTitle}
+          </div>
+          <p className="setting-anchored-panel-desc">
+            {t.config.siteAiGenerateDialogDesc}
+          </p>
+          <label
+            className="setting-anchored-panel-label"
+            htmlFor={`seo-ai-gen-hint-${field}`}
+          >
+            {t.config.siteAiGenerateHintLabel}
+            <span className="setting-anchored-panel-label-meta">
+              {t.config.siteAiGenerateHintOptional}
+            </span>
+          </label>
+          <textarea
+            id={`seo-ai-gen-hint-${field}`}
+            className="setting-anchored-panel-input"
+            rows={2}
+            value={aiGenTipField === field ? aiGenHint : ''}
+            onChange={(e) => setAiGenHint(e.target.value)}
+            placeholder={t.config.siteAiGenerateHintPlaceholder}
+            disabled={anyBusy}
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault()
+                void handleAiGenerateField(field, aiGenHint)
+              }
+            }}
+          />
+          <div className="setting-anchored-panel-actions">
+            <SettingsButton
+              size="sm"
+              variant="secondary"
+              disabled={anyBusy}
+              onClick={() => setAiGenTipField(null)}
+            >
+              {t.common.cancel}
+            </SettingsButton>
+            <SettingsButton
+              size="sm"
+              variant="primary"
+              loading={busy}
+              disabled={anyBusy}
+              icon={<FaMagic />}
+              onClick={() => void handleAiGenerateField(field, aiGenHint)}
+            >
+              {t.config.siteAiGenerateConfirm}
+            </SettingsButton>
+          </div>
+        </SettingAnchoredPanel>
+      )
+    },
+    [
+      aiGenField,
+      aiGenHint,
+      aiGenTipField,
+      handleAiGenerateField,
+      t.common.cancel,
+      t.config,
+      tryOpenAiGenTip,
+    ],
   )
 
   const baseUrlValue = getFieldValue('base_url')
@@ -269,6 +540,17 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
               placeholder={getFieldPlaceholder(field.key, field.placeholder)}
               multiline={field.key === 'site_description'}
               rows={2}
+              labelAccessory={
+                field.key === 'site_description'
+                  ? renderSeoAiPanel('site_description')
+                  : undefined
+              }
+              hint={
+                field.key === 'site_description' &&
+                aiGenFeedback?.field === 'site_description'
+                  ? aiGenFeedback.message
+                  : undefined
+              }
               {...(field.key === 'site_title'
                 ? bindGuide('ui.siteTitle', g.ui.siteTitle)
                 : bindGuide('ui.siteDescription', g.ui.siteDescription))}
@@ -289,20 +571,82 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
         />
       </SettingGroup>
 
-      {/* SEO 相关：关键词、分享预览图、收录开关 */}
+      {/* SEO / GEO：可见性策略、AI 文案、关键词、分享图 */}
       <SettingGroup
         title={t.config.siteSeo}
         description={t.config.siteSeoDesc}
         {...bindGuide('ui.siteSeo', g.ui.siteSeo)}
         icon={<FaSearch />}
       >
+        <SettingItemWrapper
+          label={t.config.fieldSiteVisibilityPolicy}
+          description={t.config.fieldSiteVisibilityPolicyHint}
+          layout="vertical"
+          {...bindGuide('ui.siteVisibilityPolicy', g.ui.siteVisibilityPolicy)}
+        >
+          <SegmentedControl
+            size="sm"
+            columns={4}
+            value={visibilityPolicy}
+            options={[
+              {
+                value: 'private',
+                label: t.config.visibilityPrivate,
+              },
+              {
+                value: 'search_only',
+                label: t.config.visibilitySearchOnly,
+              },
+              {
+                value: 'ai_citation',
+                label: t.config.visibilityAiCitation,
+              },
+              {
+                value: 'ai_full',
+                label: t.config.visibilityAiFull,
+              },
+            ]}
+            onChange={(v) => {
+              updateValue('site_visibility_policy', v)
+              updateValue('site_noindex', v === 'private' ? 'true' : 'false')
+            }}
+            ariaLabel={t.config.fieldSiteVisibilityPolicy}
+          />
+          <p className="setting-hint" style={{ marginTop: '0.5rem' }}>
+            {visibilityPolicyHint}
+          </p>
+        </SettingItemWrapper>
+
+        <InputItem
+          itemKey="site_ai_intro"
+          label={t.config.fieldSiteAiIntro}
+          value={getFieldValue('site_ai_intro')}
+          onChange={(v) => updateValue('site_ai_intro', v)}
+          placeholder={t.config.fieldSiteAiIntroHint}
+          hint={
+            aiGenFeedback?.field === 'site_ai_intro'
+              ? aiGenFeedback.message
+              : t.config.fieldSiteAiIntroHint
+          }
+          multiline
+          rows={3}
+          labelAccessory={renderSeoAiPanel('site_ai_intro')}
+          {...bindGuide('ui.siteAiIntro', g.ui.siteAiIntro)}
+          layout="vertical"
+        />
+
         <InputItem
           itemKey="site_keywords"
           label={t.config.fieldSiteKeywords}
           value={getFieldValue('site_keywords')}
           onChange={(v) => updateValue('site_keywords', v)}
           placeholder={t.config.placeholderSiteKeywords}
-          hint={t.config.fieldSiteKeywordsHint}
+          hint={
+            aiGenFeedback?.field === 'site_keywords'
+              ? aiGenFeedback.message
+              : t.config.fieldSiteKeywordsHint
+          }
+          labelAccessory={renderSeoAiPanel('site_keywords')}
           {...bindGuide('ui.siteKeywords', g.ui.siteKeywords)}
           layout="vertical"
         />
@@ -326,18 +670,6 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           hint={t.config.fieldSiteOgImageHint}
           {...bindGuide('ui.siteOgImage', g.ui.siteOgImage)}
           layout="vertical"
-        />
-        {/* 开 = 允许收录（site_noindex=false）；关 = noindex,nofollow */}
-        <SwitchItem
-          itemKey="site_noindex"
-          label={t.config.fieldSiteNoindex}
-          description={t.config.fieldSiteNoindexHint}
-          value={getFieldValue('site_noindex') !== 'true'}
-          onChange={(checked) =>
-            updateValue('site_noindex', checked ? 'false' : 'true')
-          }
-          {...bindGuide('ui.siteNoindex', g.ui.siteNoindex)}
-          layout="horizontal"
         />
       </SettingGroup>
 
@@ -614,47 +946,7 @@ export const UiConfigSection: React.FC<UiConfigSectionProps> = ({
           layout="vertical"
         />
       </SettingGroup>
-
-      {/* 第三方统计：基础设置最末，与 SEO / 本站第一方访客统计分开 */}
-      <SettingGroup
-        title={t.config.thirdPartyAnalytics}
-        description={t.config.thirdPartyAnalyticsDesc}
-        {...bindGuide('ui.thirdPartyAnalytics', g.ui.thirdPartyAnalytics)}
-        icon={<FaChartLine />}
-      >
-        <InputItem
-          itemKey="ga_measurement_id"
-          label={t.config.fieldGaMeasurementId}
-          value={getFieldValue('ga_measurement_id')}
-          onChange={(v) => updateValue('ga_measurement_id', v.trim())}
-          placeholder={t.config.placeholderGaMeasurementId}
-          hint={t.config.fieldGaMeasurementIdHint}
-          {...bindGuide('ui.gaMeasurementId', g.ui.gaMeasurementId)}
-          layout="vertical"
-        />
-        <InputItem
-          itemKey="umami_website_id"
-          label={t.config.fieldUmamiWebsiteId}
-          value={getFieldValue('umami_website_id')}
-          onChange={(v) => updateValue('umami_website_id', v.trim())}
-          placeholder={t.config.placeholderUmamiWebsiteId}
-          hint={t.config.fieldUmamiWebsiteIdHint}
-          {...bindGuide('ui.umamiWebsiteId', g.ui.umamiWebsiteId)}
-          layout="vertical"
-        />
-        <InputItem
-          itemKey="umami_script_url"
-          label={t.config.fieldUmamiScriptUrl}
-          value={getFieldValue('umami_script_url')}
-          onChange={(v) => updateValue('umami_script_url', v.trim())}
-          placeholder={t.config.placeholderUmamiScriptUrl}
-          hint={t.config.fieldUmamiScriptUrlHint}
-          inputType="url"
-          {...bindGuide('ui.umamiScriptUrl', g.ui.umamiScriptUrl)}
-          layout="vertical"
-        />
-      </SettingGroup>
-    </SettingSection>
+</SettingSection>
   )
 }
 

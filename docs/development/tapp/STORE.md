@@ -116,7 +116,8 @@ flowchart TB
 | 源 CRUD | `backend/src/api/tapp_store/store_sources.rs` |
 | 商店拉包 | `backend/src/api/tapp_store/store_package.rs` |
 | 前端源与目录 | `frontend/src/tapp/services/RemoteStoreService.ts` |
-| 商店 UI | `frontend/src/tapp/components/TappStore.tsx` |
+| 商店 UI | `frontend/src/tapp/components/TappStore.tsx`、`store/StoreCatalogView.tsx` |
+| 安装同意 | `frontend/src/tapp/components/InstallTappDialog.tsx`（权限列表 + 确认） |
 | 安装入口 | `frontend/src/tapp/services/TappInstallationApi.ts` |
 
 ---
@@ -154,6 +155,7 @@ flowchart TB
 | `permissions` | ✅ | 申请权限列表（展示与安装同意用） |
 | `download` | ✅ | 相对 `base_url` 的下载路径表 |
 | `icon` / `icon_svg` | ❌ | emoji/URL 或内联 SVG（`icon_svg` 优先） |
+| `icon_shell` | ❌ | 对应 Manifest `iconShell`：`true` 时全彩自定义图标仍套 material 色壳；省略时 auto（全彩图 standalone 铺满色壳外） |
 | `theme_color` | ❌ | `#RRGGBB` |
 | `tags` | ❌ | 搜索标签；`demo` / `test` 用标签表达发布阶段 |
 | `license` / `homepage` / `repository` | ❌ | 元数据 |

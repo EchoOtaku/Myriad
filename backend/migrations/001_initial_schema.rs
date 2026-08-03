@@ -204,6 +204,13 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default("{}"),
                     )
+                    // 列表页应用卡尺寸（tappId → 1x1|2x1）；旧库由 schema_check 补列
+                    .col(
+                        ColumnDef::new(Users::TappListCardSizes)
+                            .json_binary()
+                            .not_null()
+                            .default("{}"),
+                    )
                     // 在线状态跟踪（原 009；旧库由 schema_check 补列）
                     .col(ColumnDef::new(Users::LastSeenAt).timestamp_with_time_zone())
                     .col(
@@ -219,6 +226,20 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .default(false),
                     )
+                    // 画像源选择（旧库由 schema_check 补列）：
+                    // kind = auto | account | identity | platform，NULL/auto 表示沿用隐式优先级；
+                    // ref = identity id 或平台名（bilibili/github/…）。
+                    //
+                    // 解析结果单独存 avatar_resolved_url，**不回写 avatar_url** —— avatar_url 是
+                    // "账号"这一来源本身，被覆盖就再也切不回来了。
+                    .col(ColumnDef::new(Users::AvatarSourceKind).string_len(20))
+                    .col(ColumnDef::new(Users::AvatarSourceRef).string_len(64))
+                    .col(ColumnDef::new(Users::AvatarResolvedUrl).text())
+                    .col(ColumnDef::new(Users::AvatarUpdatedAt).timestamp_with_time_zone())
+                    // 名称/简介文案来源（与画像源独立；旧库由 schema_check 补列）：
+                    // kind = auto | account | identity | platform；ref = identity id 或平台键。
+                    .col(ColumnDef::new(Users::ProfileTextSourceKind).string_len(20))
+                    .col(ColumnDef::new(Users::ProfileTextSourceRef).string_len(64))
                     .to_owned(),
             )
             .await?;
@@ -740,9 +761,16 @@ enum Users {
     LinkedGithubId,
     LocalLoginDisabled,
     NotificationPreferences,
+    TappListCardSizes,
     LastSeenAt,
     OnlineSeconds,
     IsOwner,
+    AvatarSourceKind,
+    AvatarSourceRef,
+    AvatarResolvedUrl,
+    AvatarUpdatedAt,
+    ProfileTextSourceKind,
+    ProfileTextSourceRef,
 }
 
 #[derive(DeriveIden)]

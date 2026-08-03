@@ -8,7 +8,7 @@ use super::{
     require_current_admin, ApiResponse, TappDetail, TappListItem,
 };
 use axum::{
-    extract::State,
+    extract::{Query, State},
     http::HeaderMap,
     Extension, Json,
 };
@@ -35,9 +35,28 @@ use myriad_error::AppError;
 // Path-stable for parent module / manifest_tests (`super::tapp_detail_from_model`).
 pub(super) use crate::services::tapp_catalog::tapp_detail_from_model;
 
+/// Catalog list scope:
+/// - omit / `all`: personal installs first, then site-owner public (dedupe by id)
+/// - `mine`: only the durable subject's personal installs
+/// - `site`: only site-owner public installs (no personal overlay / no id collision drop)
+#[derive(Debug, Default, Deserialize)]
+pub(super) struct CatalogListQuery {
+    #[serde(default)]
+    scope: Option<String>,
+}
+
+fn parse_catalog_scope(raw: Option<&str>) -> &'static str {
+    match raw.map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("mine") => "mine",
+        Some("site") => "site",
+        _ => "all",
+    }
+}
+
 pub(super) async fn list_tapps(
     State(db): State<DatabaseConnection>,
     headers: HeaderMap,
+    Query(query): Query<CatalogListQuery>,
 ) -> Result<Json<ApiResponse<Vec<TappListItem>>>, HttpError> {
     let claims = extract_optional_claims(&headers);
     let user_id = optional_authenticated_user_id(claims.as_ref());
@@ -45,43 +64,55 @@ pub(super) async fn list_tapps(
         Some(claims) => current_is_admin(claims, &db).await,
         None => false,
     };
+    let scope = parse_catalog_scope(query.scope.as_deref());
     let admin_id = find_admin_user_id(&db).await?;
     let mut items = Vec::new();
     let mut seen_tapp_ids = HashSet::new();
 
-    if let Some(user_id) = user_id {
-        if Some(user_id) != admin_id {
-            let user_tapps = tapps::Entity::find()
-                .filter(tapps::Column::UserId.eq(user_id))
-                .all(&db)
-                .await
-                .map_err(|_| HttpError(AppError::internal("Database error")))?;
-            for tapp in user_tapps {
-                seen_tapp_ids.insert(tapp.tapp_id.clone());
-                let (is_temporary, is_admin_tapp) = catalog_install_flags(false);
-                items.push(tapp_list_item_from_model(tapp, is_temporary, is_admin_tapp));
+    let include_mine = scope == "all" || scope == "mine";
+    let include_site = scope == "all" || scope == "site";
+
+    if include_mine {
+        if let Some(user_id) = user_id {
+            if Some(user_id) != admin_id {
+                let user_tapps = tapps::Entity::find()
+                    .filter(tapps::Column::UserId.eq(user_id))
+                    .all(&db)
+                    .await
+                    .map_err(|_| HttpError(AppError::internal("Database error")))?;
+                for tapp in user_tapps {
+                    if !seen_tapp_ids.insert(tapp.tapp_id.clone()) {
+                        continue;
+                    }
+                    let (is_temporary, is_admin_tapp) = catalog_install_flags(false);
+                    items.push(tapp_list_item_from_model(tapp, is_temporary, is_admin_tapp));
+                }
             }
         }
     }
 
-    let admin_tapps = if let Some(admin_id) = admin_id {
-        tapps::Entity::find()
-            .filter(tapps::Column::UserId.eq(admin_id))
-            .all(&db)
-            .await
-            .map_err(|_| HttpError(AppError::internal("Database error")))?
-    } else {
-        Vec::new()
-    };
-    for tapp in admin_tapps {
-        if !public_install_visible_to_viewer(&tapp.visibility, is_admin) {
-            continue;
+    if include_site {
+        let admin_tapps = if let Some(admin_id) = admin_id {
+            tapps::Entity::find()
+                .filter(tapps::Column::UserId.eq(admin_id))
+                .all(&db)
+                .await
+                .map_err(|_| HttpError(AppError::internal("Database error")))?
+        } else {
+            Vec::new()
+        };
+        for tapp in admin_tapps {
+            if !public_install_visible_to_viewer(&tapp.visibility, is_admin) {
+                continue;
+            }
+            // scope=all: skip ids already covered by personal installs
+            // scope=site: only site rows were loaded — still dedupe within site list
+            if !seen_tapp_ids.insert(tapp.tapp_id.clone()) {
+                continue;
+            }
+            let (is_temporary, is_admin_tapp) = catalog_install_flags(true);
+            items.push(tapp_list_item_from_model(tapp, is_temporary, is_admin_tapp));
         }
-        if !seen_tapp_ids.insert(tapp.tapp_id.clone()) {
-            continue;
-        }
-        let (is_temporary, is_admin_tapp) = catalog_install_flags(true);
-        items.push(tapp_list_item_from_model(tapp, is_temporary, is_admin_tapp));
     }
     Ok(Json(ApiResponse::success(items)))
 }
@@ -90,6 +121,7 @@ pub(super) async fn list_tapp_details(
     State(db): State<DatabaseConnection>,
     State(dynamic_config): State<Arc<RwLock<DynamicConfig>>>,
     headers: HeaderMap,
+    Query(query): Query<CatalogListQuery>,
 ) -> Result<Json<ApiResponse<Vec<TappDetail>>>, HttpError> {
     let claims = extract_optional_claims(&headers);
     let user_id = optional_authenticated_user_id(claims.as_ref());
@@ -97,24 +129,37 @@ pub(super) async fn list_tapp_details(
         Some(claims) => current_is_admin(claims, &db).await,
         None => false,
     };
+    let scope = parse_catalog_scope(query.scope.as_deref());
     let role = role_for_optional_subject(user_id, is_admin);
     let admin_id = find_admin_user_id(&db).await?;
-    let admin_tapps = if let Some(admin_id) = admin_id {
-        tapps::Entity::find()
-            .filter(tapps::Column::UserId.eq(admin_id))
-            .all(&db)
-            .await
-            .map_err(|_| HttpError(AppError::internal("Database error")))?
-    } else {
-        Vec::new()
-    };
-    let user_tapps = if let Some(user_id) = user_id {
-        if Some(user_id) != admin_id {
+
+    let include_mine = scope == "all" || scope == "mine";
+    let include_site = scope == "all" || scope == "site";
+
+    let admin_tapps = if include_site {
+        if let Some(admin_id) = admin_id {
             tapps::Entity::find()
-                .filter(tapps::Column::UserId.eq(user_id))
+                .filter(tapps::Column::UserId.eq(admin_id))
                 .all(&db)
                 .await
                 .map_err(|_| HttpError(AppError::internal("Database error")))?
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
+    let user_tapps = if include_mine {
+        if let Some(user_id) = user_id {
+            if Some(user_id) != admin_id {
+                tapps::Entity::find()
+                    .filter(tapps::Column::UserId.eq(user_id))
+                    .all(&db)
+                    .await
+                    .map_err(|_| HttpError(AppError::internal("Database error")))?
+            } else {
+                Vec::new()
+            }
         } else {
             Vec::new()
         }
@@ -126,7 +171,9 @@ pub(super) async fn list_tapp_details(
     let config = dynamic_config.read().await;
     let mut details = Vec::with_capacity(admin_tapps.len() + user_tapps.len());
     for tapp in user_tapps {
-        seen.insert(tapp.tapp_id.clone());
+        if !seen.insert(tapp.tapp_id.clone()) {
+            continue;
+        }
         let (is_temporary, is_admin_tapp) = catalog_install_flags(false);
         details.push(tapp_detail_from_model(
             tapp,
@@ -140,16 +187,19 @@ pub(super) async fn list_tapp_details(
         if !public_install_visible_to_viewer(&tapp.visibility, is_admin) {
             continue;
         }
-        if seen.insert(tapp.tapp_id.clone()) {
-            let (is_temporary, is_admin_tapp) = catalog_install_flags(true);
-            details.push(tapp_detail_from_model(
-                tapp,
-                role,
-                is_temporary,
-                is_admin_tapp,
-                &config,
-            ));
+        // scope=site loads only site rows, so personal installs never enter `seen`
+        // and public apps remain visible even when the viewer also installed them.
+        if !seen.insert(tapp.tapp_id.clone()) {
+            continue;
         }
+        let (is_temporary, is_admin_tapp) = catalog_install_flags(true);
+        details.push(tapp_detail_from_model(
+            tapp,
+            role,
+            is_temporary,
+            is_admin_tapp,
+            &config,
+        ));
     }
     Ok(Json(ApiResponse::success(details)))
 }

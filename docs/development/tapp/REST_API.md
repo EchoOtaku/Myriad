@@ -65,6 +65,7 @@ Tapp 管理接口大多返回：
 | GET  | `/api/tapps/details`            | 批量详情、Manifest、状态和当前角色的最终授权 |
 | GET  | `/api/tapps/widgets`            | 所有可见的已注册 Widget                      |
 | GET  | `/api/tapps/store/sources`      | 已启用的商店源                               |
+| GET  | `/api/tapps/list-card-sizes`    | 列表页卡片尺寸/顺序（见下「列表布局」）      |
 | GET  | `/api/tapps/{tappId}`           | Tapp 详情、Manifest、状态和最终授权          |
 | GET  | `/api/tapps/{tappId}/code`      | 主代码文本                                   |
 | GET  | `/api/tapps/{tappId}/resources` | 代码、CSS、HTML、i18n、Page 模块等资源对象   |
@@ -117,11 +118,66 @@ interface TappResources {
 | ------ | ------------------------------------ | --------------------------------------- |
 | POST   | `/api/tapps/install`                 | direct/store 统一安装                   |
 | POST   | `/api/tapps/install-file`            | multipart 上传 `.tapp`，字段名 `file`   |
-| POST   | `/api/tapps/cleanup-temporary`       | 清理当前用户临时 Tapp                   |
+| POST   | `/api/tapps/cleanup-temporary`       | 私有安装清理（见下「私有安装清理」）    |
+| PUT    | `/api/tapps/list-card-sizes`         | 写入**当前登录用户**个人列表布局        |
 | POST   | `/api/tapps/{tappId}/update`         | direct/store 更新，保留用户数据         |
 | POST   | `/api/tapps/{tappId}/start`          | 持久化 owner 自己的 running 状态        |
 | POST   | `/api/tapps/{tappId}/stop`           | 停止 owner 安装并撤销对应 Runtime Grant |
 | DELETE | `/api/tapps/{tappId}?keep_data=true` | 卸载；可选保留存储/设置                 |
+
+### 列表布局 `/api/tapps/list-card-sizes`
+
+宿主 Tapp **列表页**卡片尺寸（`1x1` | `2x1`）与拖拽顺序。存于
+`users.tapp_list_card_sizes`；**不是**安装级 Manifest 设置。
+
+| 方法 | 路径 | 身份 | 说明 |
+| ---- | ---- | ---- | ---- |
+| GET | `/api/tapps/list-card-sizes` | 可选认证 | 见响应语义 |
+| PUT | `/api/tapps/list-card-sizes` | **登录**（持久用户；游客 403） | body：`{ sizes, order }` |
+
+GET 响应（camelCase / 与 handler 一致）：
+
+```json
+{
+  "success": true,
+  "sizes": { "com.example.app": "2x1" },
+  "order": ["com.example.app"],
+  "site_sizes": { "com.myriad.notes": "1x1" },
+  "site_order": ["com.myriad.notes"],
+  "source": "personal",
+  "writable": true
+}
+```
+
+| 字段 | 语义 |
+| ---- | ---- |
+| `sizes` / `order` | **主视图布局**：游客 = 站点 owner 布局；已登录 = **纯个人**偏好（**不**用 owner 布局填洞） |
+| `site_sizes` / `site_order` | 站点 owner（规范公开管理员）布局，供列表「站点」范围展示 |
+| `source` | `personal` \| `site_owner`（主视图数据来自哪一侧） |
+| `writable` | 是否允许 PUT（游客 `false`） |
+
+PUT body 只写调用者个人行：`{ "sizes": { "<tappId>": "1x1"|"2x1" }, "order": ["<tappId>", ...] }`。
+非法尺寸键会被忽略；未知 Tapp id 可暂存，列表 hydrate 时按可见集合过滤。
+
+前端：`TappListCardSizesApi` + `TappListPage`（mine / site 范围、拖拽排序、卸载后清理预设）。
+
+### 私有安装清理 `POST /api/tapps/cleanup-temporary`
+
+由站点配置 `tapp_private_install_cleanup` 驱动（管理端 OAuth/权限页）：
+
+| 模式 | 行为 |
+| ---- | ---- |
+| `logout`（可选） | **仅卸载当前调用者**的私有安装；失败记日志，不阻塞登出 |
+| `inactivity`（默认） | **本端点 no-op**；全局按不活跃天数裁剪只在 **每日后台 worker** 中执行 |
+
+相关配置：
+
+- `tapp_private_install_cleanup`: `"logout"` \| `"inactivity"`
+- `tapp_private_install_inactivity_days`: 正整数（worker 用 `COALESCE(last_login_at, last_seen_at, created_at)`）
+
+**禁止**在用户登出路径上跑全局 prune（避免误删他人私有安装或拖慢 logout）。
+前端登出会调用本端点；卸载确认对话框与清理预设文案见 `UninstallConfirmDialog` /
+安装流程 `InstallTappDialog`。
 
 直接安装请求：
 
@@ -305,6 +361,19 @@ Widget 注册 body 除 `id`、`name`、`default_size`、`sizes` 等元数据外�
 | GET    | `/api/tapp/ai/v2/usage`                                  | 可选认证 | 权威 calls/tokens/cooldown      |
 | GET    | `/api/tapp/ai/v2/ledger`                                 | 登录     | 宿主 UI 专用，无 SDK 暴露       |
 | POST   | `/api/tapp/data/transform`                               | 登录     | `Tapp.data.transform`           |
+| GET    | `/api/tapp/analytics/summary`                            | 可选认证 + Grant | `Tapp.analytics.getSummary`（`analytics:read`） |
+| GET    | `/api/tapp/analytics/visitor`                            | 可选认证 + Grant | `Tapp.analytics.getVisitorCard`（`analytics:read`） |
+
+#### 访问统计（Runtime Grant）
+
+| 方法 | 路径 | 说明 |
+| ---- | ---- | ---- |
+| GET | `/api/tapp/analytics/summary?days=7` | 区间汇总 + 日趋势 + 页面/事件/来源/国家排行；也可用 `from`/`to`（`YYYY-MM-DD`）；`days` 默认 7、上限 365 |
+| GET | `/api/tapp/analytics/visitor` | 访客卡片精简：今日 / 累计 / 短趋势 |
+
+均需 `X-Tapp-Runtime-Grant` 且 Grant 含 **`analytics:read`**（basic，游客可用）。  
+返回**聚合**数据，不包含访客哈希、序位等身份字段；与管理端「访客统计」同源。  
+SDK 与 Manifest 示例见 [API_REFERENCE · 访问统计](API_REFERENCE.md#访问统计-api)。
 
 AI 权限、每分钟速率、每日 calls/tokens 与 cooldown 全由后端执行。配额在模型调用前事务预留、
 完成后按实际估算结算、失败/取消释放未消耗 token；calls 仍记录一次尝试。AI Task 还校验

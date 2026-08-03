@@ -465,6 +465,11 @@ export function generateFullSDK(
       registerPlatform: (c) => sendRequest('platform', 'registerPlatform', [c]),
     },
 
+    analytics: {
+      getSummary: (o) => sendRequest('analytics', 'getSummary', [o]),
+      getVisitorCard: () => sendRequest('analytics', 'getVisitorCard', []),
+    },
+
     ai: {
       tasks: {
         create: (request) => sendRequest('ai', 'tasks.create', [request]),
@@ -988,24 +993,327 @@ export function generateFullSDK(
 }
 
 /**
- * 生成精简版 SDK（用于 Widget 模式）
- *
- * @param tappInstance - Tapp 实例
- * @param sessionToken - 会话 token（用于消息验证）
+ * Widget SDK 模板缓存：同一 Tapp（id/name/version/permissions/caps）只拼装一次大字符串，
+ * 每个 iframe 仅替换会话 token。session token 必须每实例唯一，绝不能跨沙箱复用。
  */
-export function generateWidgetSDK(
-  tappInstance: TappInstance,
-  sessionToken?: string,
+const WIDGET_SDK_TOKEN_PLACEHOLDER = '__TAPP_WIDGET_SESSION_TOKEN__'
+let widgetSdkTemplateCache: { key: string; body: string } | null = null
+
+/** Optional Widget SDK namespaces driven by grantedPermissions (smaller srcdoc). */
+export interface WidgetSdkCaps {
+  ai: boolean
+  platform: boolean
+  analytics: boolean
+  report: boolean
+  media: boolean
+  speech: boolean
+  event: boolean
+  agent: boolean
+  scheduler: boolean
+}
+
+export function resolveWidgetSdkCaps(
+  permissions: string[] | undefined | null,
+): WidgetSdkCaps {
+  const p = new Set(permissions || [])
+  const has = (name: string) => p.has(name)
+  return {
+    ai:
+      has('ai:generate') ||
+      has('ai:analyze') ||
+      has('ai:chat') ||
+      has('ai:image'),
+    platform: has('platform:read'),
+    analytics: has('analytics:read'),
+    report: has('report:read'),
+    media:
+      has('media:read') || has('media:control') || has('media:audio'),
+    speech: has('speech:tts') || has('speech:asr'),
+    event: has('event:publish') || has('event:subscribe'),
+    agent: has('component:agent'),
+    scheduler: has('scheduler:register'),
+  }
+}
+
+function capsFingerprint(caps: WidgetSdkCaps): string {
+  return [
+    caps.ai,
+    caps.platform,
+    caps.analytics,
+    caps.report,
+    caps.media,
+    caps.speech,
+    caps.event,
+    caps.agent,
+    caps.scheduler,
+  ]
+    .map((v) => (v ? '1' : '0'))
+    .join('')
+}
+
+function buildWidgetSdkBody(
+  idLiteral: string,
+  nameLiteral: string,
+  versionLiteral: string,
+  tokenLiteral: string,
+  permissionsLiteral: string,
+  caps: WidgetSdkCaps,
 ): string {
-  const { id, manifest, grantedPermissions } = tappInstance
-  const token = sessionToken || ''
-  const idLiteral = serializeSandboxScriptValue(id)
-  const nameLiteral = serializeSandboxScriptValue(manifest.name)
-  const versionLiteral = serializeSandboxScriptValue(manifest.version)
-  const tokenLiteral = serializeSandboxScriptValue(token)
-  const permissionsLiteral = serializeSandboxScriptValue(
-    grantedPermissions || [],
-  )
+  // Always keep optional namespaces present so existing Tapps that call
+  // Tapp.ai / Tapp.media without a prior capability check get a clear
+  // Permission denied Promise rejection (previous contract), not TypeError.
+  // Full implementations only when granted — large API bodies omitted otherwise.
+  const bufferedEvents = caps.media
+    ? `{ mediaStateChange: 1, mediaProgress: 1, themeChange: 1, primaryColorChange: 1, localeChange: 1 }`
+    : `{ themeChange: 1, primaryColorChange: 1, localeChange: 1 }`
+
+  const deniedHelper = `
+  var _denied = function(perm) {
+    return function() {
+      return Promise.reject(new Error('Permission denied: Missing permission: ' + perm));
+    };
+  };
+`
+
+  const aiNs = caps.ai
+    ? `
+    ai: {
+      tasks: {
+        create: function(request) { return sendRequest('ai', 'tasks.create', [request]); },
+        get: function(taskId) { return sendRequest('ai', 'tasks.get', [taskId]); },
+        cancel: function(taskId) { return sendRequest('ai', 'tasks.cancel', [taskId]); },
+        usage: function() { return sendRequest('ai', 'tasks.usage', []); },
+        subscribe: function(taskId, callback) {
+          if (typeof taskId !== 'string' || typeof callback !== 'function') {
+            return Promise.reject(new Error('taskId and callback are required'));
+          }
+          var removeListener = addEventListener('aiTaskEvent', function(event) {
+            if (event && event.taskId === taskId) callback({ event: event.event, data: event.data });
+          });
+          return sendRequest('ai', 'tasks.subscribe', [taskId]).then(function() {
+            return function() {
+              removeListener();
+              sendRequest('ai', 'tasks.unsubscribe', [taskId]).catch(function() {});
+            };
+          }, function(error) {
+            removeListener();
+            throw error;
+          });
+        }
+      }
+    },`
+    : `
+    ai: {
+      tasks: {
+        create: _denied('ai:generate'),
+        get: _denied('ai:generate'),
+        cancel: _denied('ai:generate'),
+        usage: _denied('ai:generate'),
+        subscribe: _denied('ai:generate')
+      }
+    },`
+
+  const eventNs = caps.event
+    ? `
+    event: {
+      publish: function(request) { return sendRequest('event', 'publish', [request]); },
+      on: function(topic, callback) {
+        if (typeof topic !== 'string' || typeof callback !== 'function') {
+          throw new Error('topic and callback are required');
+        }
+        return addEventListener('tappEvent', function(event) {
+          if (event && event.topic === topic) callback(event);
+        });
+      }
+    },`
+    : `
+    event: {
+      publish: _denied('event:publish'),
+      on: function() { throw new Error('Permission denied: Missing permission: event:subscribe'); }
+    },`
+
+  const agentNs = caps.agent
+    ? `
+    agent: {
+      onInteraction: function(type, callback) {
+        if (typeof type !== 'string' || typeof callback !== 'function') {
+          throw new Error('interaction type and callback are required');
+        }
+        return addEventListener('agentInteractionV2', function(raw) {
+          if (!raw || raw.type !== type) return;
+          callback(Object.assign({}, raw, {
+            accept: function() { return sendRequest('agent', 'v2.accept', [raw.interactionId]); },
+            submitResult: function(result) {
+              result = result || {};
+              return sendRequest('agent', 'v2.result', [raw.interactionId, Object.assign({}, result, {
+                idempotencyKey: result.idempotencyKey || ('result-' + raw.interactionId)
+              })]);
+            },
+            reject: function(reason) { return sendRequest('agent', 'v2.reject', [raw.interactionId, reason]); },
+            requestIntent: function(request) { return sendRequest('agent', 'v2.intent', [raw.interactionId, request]); }
+          }));
+        });
+      }
+    },`
+    : `
+    agent: {
+      onInteraction: function() { throw new Error('Permission denied: Missing permission: component:agent'); }
+    },`
+
+  const mediaNs = caps.media
+    ? `
+    media: {
+      play: function() { return sendRequest('media', 'control', [{ action: 'play' }]); },
+      pause: function() { return sendRequest('media', 'control', [{ action: 'pause' }]); },
+      next: function() { return sendRequest('media', 'control', [{ action: 'next' }]); },
+      prev: function() { return sendRequest('media', 'control', [{ action: 'prev' }]); },
+      seek: function(p) { return sendRequest('media', 'control', [{ action: 'seek', value: p }]); },
+      setVolume: function(v) { return sendRequest('media', 'control', [{ action: 'volume', value: v }]); },
+      setMode: function(m) { return sendRequest('media', 'control', [{ action: 'mode', value: m }]); },
+      mute: function() { return sendRequest('media', 'control', [{ action: 'mute' }]); },
+      unmute: function() { return sendRequest('media', 'control', [{ action: 'unmute' }]); },
+      getStatus: function() { return sendRequest('media', 'getStatus', []); },
+      getPlaylist: function() { return sendRequest('media', 'getPlaylist', []); },
+      getSpectrum: function() { return sendRequest('media', 'getSpectrum', []); },
+      getLyrics: function(opts) { return sendRequest('media', 'getLyrics', [opts || {}]); },
+      getBeatGrid: function() { return sendRequest('media', 'getBeatGrid', []); },
+      playTrack: function(id, idx) {
+        return sendRequest('media', 'playTrack', [
+          id && typeof id === 'object' ? id : { trackId: id, trackIndex: idx },
+        ]);
+      },
+      jumpToIndex: function(idx) { return sendRequest('media', 'jumpToIndex', [{ index: idx }]); },
+      loadNeteasePlaylist: function(playlistId) { return sendRequest('media', 'loadNeteasePlaylist', [{ playlistId: playlistId }]); },
+      getSkipVip: function() { return sendRequest('media', 'getSkipVip', []); },
+      setSkipVip: function(value) { return sendRequest('media', 'setSkipVip', [{ value: value }]); },
+      onStateChange: function(cb) { return addEventListener('mediaStateChange', cb); },
+      onProgress: function(cb) { return addEventListener('mediaProgress', cb); }
+    },`
+    : `
+    media: {
+      play: _denied('media:control'), pause: _denied('media:control'), next: _denied('media:control'),
+      prev: _denied('media:control'), seek: _denied('media:control'), setVolume: _denied('media:control'),
+      setMode: _denied('media:control'), mute: _denied('media:control'), unmute: _denied('media:control'),
+      getStatus: _denied('media:read'), getPlaylist: _denied('media:read'), getSpectrum: _denied('media:read'),
+      getLyrics: _denied('media:read'), getBeatGrid: _denied('media:read'), playTrack: _denied('media:control'),
+      jumpToIndex: _denied('media:control'), loadNeteasePlaylist: _denied('media:control'),
+      getSkipVip: _denied('media:read'), setSkipVip: _denied('media:control'),
+      onStateChange: function() { return function() {}; },
+      onProgress: function() { return function() {}; }
+    },`
+
+  const platformNs = caps.platform
+    ? `
+    platform: {
+      listEnabled: function() { return sendRequest('platform', 'listEnabled', []); },
+      getData: function(p, o) { return sendRequest('platform', 'getData', [p, o]); },
+      getStats: function(p) { return sendRequest('platform', 'getStats', [p]); },
+      getDistribution: function(p, d) { return sendRequest('platform', 'getDistribution', [p, d]); }
+    },`
+    : `
+    platform: {
+      listEnabled: _denied('platform:read'), getData: _denied('platform:read'),
+      getStats: _denied('platform:read'), getDistribution: _denied('platform:read')
+    },`
+
+  const analyticsNs = caps.analytics
+    ? `
+    analytics: {
+      getSummary: function(o) { return sendRequest('analytics', 'getSummary', [o]); },
+      getVisitorCard: function() { return sendRequest('analytics', 'getVisitorCard', []); }
+    },`
+    : `
+    analytics: {
+      getSummary: _denied('analytics:read'),
+      getVisitorCard: _denied('analytics:read')
+    },`
+
+  const reportNs = caps.report
+    ? `
+    report: {
+      listReports: function() { return sendRequest('report', 'listReports', []); },
+      getReport: function(id) { return sendRequest('report', 'getReport', [id]); },
+      getPlatformReport: function(p) { return sendRequest('report', 'getPlatformReport', [p]); },
+      list: function() { return sendRequest('report', 'list', []); },
+      get: function(id) { return sendRequest('report', 'get', [{ reportId: id }]); }
+    },`
+    : `
+    report: {
+      listReports: _denied('report:read'), getReport: _denied('report:read'),
+      getPlatformReport: _denied('report:read'), list: _denied('report:read'), get: _denied('report:read')
+    },`
+
+  const schedulerNs = caps.scheduler
+    ? `
+    scheduler: {
+      register: function(options) { return sendRequest('scheduler', 'register', [options]); },
+      unregister: function(taskId) { return sendRequest('scheduler', 'unregister', [taskId]); },
+      list: function() { return sendRequest('scheduler', 'list', []); },
+      get: function(taskId) { return sendRequest('scheduler', 'get', [taskId]); },
+      enable: function(taskId) { return sendRequest('scheduler', 'enable', [taskId]); },
+      disable: function(taskId) { return sendRequest('scheduler', 'disable', [taskId]); },
+      trigger: function(taskId) { return sendRequest('scheduler', 'trigger', [taskId]); },
+      onTask: function(taskId, cb) {
+        if (!taskId || typeof cb !== 'function') throw new Error('taskId and callback required');
+        var subscribeRequest = sendRequest('scheduler', 'subscribe', [taskId]);
+        if (subscribeRequest && subscribeRequest.catch) subscribeRequest.catch(function() {});
+        var removeListener = addEventListener('schedulerTask', function(d) {
+          if (!d || d.taskId !== taskId) return;
+          var event = d.event || d;
+          Promise.resolve().then(function() {
+            return cb(d.payload, event);
+          }).then(function() {
+            return sendRequest('scheduler', 'complete', [event.executionId, true]);
+          }, function(error) {
+            return sendRequest('scheduler', 'complete', [
+              event.executionId,
+              false,
+              error && error.message ? error.message : String(error)
+            ]);
+          }).catch(function() {});
+        });
+        return function() {
+          removeListener();
+          var unsubscribeRequest = sendRequest('scheduler', 'unsubscribe', [taskId]);
+          if (unsubscribeRequest && unsubscribeRequest.catch) unsubscribeRequest.catch(function() {});
+        };
+      }
+    },`
+    : `
+    scheduler: {
+      register: _denied('scheduler:register'), unregister: _denied('scheduler:register'),
+      list: _denied('scheduler:register'), get: _denied('scheduler:register'),
+      enable: _denied('scheduler:register'), disable: _denied('scheduler:register'),
+      trigger: _denied('scheduler:register'),
+      onTask: function() { throw new Error('Permission denied: Missing permission: scheduler:register'); }
+    },`
+
+  const speechNs = caps.speech
+    ? `
+    speech: {
+      tts: function(r) { return sendRequest('speech', 'tts', [r]); },
+      getVoices: function() { return sendRequest('speech', 'getVoices', []); },
+      getStatus: function() { return sendRequest('speech', 'getStatus', []); },
+      asr: function(r) { return sendRequest('speech', 'asr', [r]); }
+    },`
+    : `
+    speech: {
+      tts: _denied('speech:tts'), getVoices: _denied('speech:tts'),
+      getStatus: _denied('speech:tts'), asr: _denied('speech:asr')
+    },`
+
+  // Always freeze optional namespaces (full or stub) so shape stays stable.
+  const freezeOptional = [
+    'Object.freeze(Tapp.ai.tasks); Object.freeze(Tapp.ai);',
+    'Object.freeze(Tapp.platform);',
+    'Object.freeze(Tapp.analytics);',
+    'Object.freeze(Tapp.report);',
+    'Object.freeze(Tapp.scheduler);',
+    'Object.freeze(Tapp.speech);',
+    'Object.freeze(Tapp.media);',
+    'Object.freeze(Tapp.event);',
+    'Object.freeze(Tapp.agent);',
+  ].join('\n  ')
 
   return `
 (function() {
@@ -1047,12 +1355,20 @@ export function generateWidgetSDK(
   window.addEventListener('pagehide', notifyLifecycleDestroy);
   window.addEventListener('beforeunload', notifyLifecycleDestroy);
 
-  // 发送与接收都绑定到创建当前沙箱的真实父窗口。
-  var _HOST_WINDOW = window.parent;
+  // security wrapper 会收窄 window.parent。接收包装前的真实 WindowProxy，
+  // 用于发送消息与校验宿主响应来源（与 Page SDK 一致）。
+  var _HOST_WINDOW = (function() {
+    var takeNativeParent = window.__TAPP_TAKE_NATIVE_PARENT__;
+    var hostWindow = typeof takeNativeParent === 'function'
+      ? takeNativeParent()
+      : window.parent;
+    try { delete window.__TAPP_TAKE_NATIVE_PARENT__; } catch (e) {}
+    return hostWindow;
+  })();
 
   // 事件缓冲区：缓存最新的有状态事件，新监听器注册时立即回放
   var _eventBuffer = new Map();
-  var _BUFFERED_EVENTS = { mediaStateChange: 1, mediaProgress: 1, themeChange: 1, primaryColorChange: 1, localeChange: 1 };
+  var _BUFFERED_EVENTS = ${bufferedEvents};
   var _ACTION_TO_EVENT = { 'theme:change': 'themeChange', 'locale:change': 'localeChange', 'primaryColor:change': 'primaryColorChange' };
 
   var generateId = function() { return 'widget-' + (++messageIdCounter) + '-' + Date.now(); };
@@ -1232,6 +1548,7 @@ export function generateWidgetSDK(
     }
   });
 
+  ${deniedHelper}
   var currentLocale = typeof window._TAPP_LOCALE === 'string'
     ? window._TAPP_LOCALE
     : (typeof document !== 'undefined' && document.documentElement.lang)
@@ -1332,152 +1649,14 @@ export function generateWidgetSDK(
       set: function(k, v) { validateStorageKey(k); return sendRequest('settings', 'set', [k, v]); },
       getAll: function() { return sendRequest('settings', 'getAll', []); }
     },
-
-    ai: {
-      tasks: {
-        create: function(request) { return sendRequest('ai', 'tasks.create', [request]); },
-        get: function(taskId) { return sendRequest('ai', 'tasks.get', [taskId]); },
-        cancel: function(taskId) { return sendRequest('ai', 'tasks.cancel', [taskId]); },
-        usage: function() { return sendRequest('ai', 'tasks.usage', []); },
-        subscribe: function(taskId, callback) {
-          if (typeof taskId !== 'string' || typeof callback !== 'function') {
-            return Promise.reject(new Error('taskId and callback are required'));
-          }
-          var removeListener = addEventListener('aiTaskEvent', function(event) {
-            if (event && event.taskId === taskId) callback({ event: event.event, data: event.data });
-          });
-          return sendRequest('ai', 'tasks.subscribe', [taskId]).then(function() {
-            return function() {
-              removeListener();
-              sendRequest('ai', 'tasks.unsubscribe', [taskId]).catch(function() {});
-            };
-          }, function(error) {
-            removeListener();
-            throw error;
-          });
-        }
-      }
-    },
-
-    event: {
-      publish: function(request) { return sendRequest('event', 'publish', [request]); },
-      on: function(topic, callback) {
-        if (typeof topic !== 'string' || typeof callback !== 'function') {
-          throw new Error('topic and callback are required');
-        }
-        return addEventListener('tappEvent', function(event) {
-          if (event && event.topic === topic) callback(event);
-        });
-      }
-    },
-
-    agent: {
-      onInteraction: function(type, callback) {
-        if (typeof type !== 'string' || typeof callback !== 'function') {
-          throw new Error('interaction type and callback are required');
-        }
-        return addEventListener('agentInteractionV2', function(raw) {
-          if (!raw || raw.type !== type) return;
-          callback(Object.assign({}, raw, {
-            accept: function() { return sendRequest('agent', 'v2.accept', [raw.interactionId]); },
-            submitResult: function(result) {
-              result = result || {};
-              return sendRequest('agent', 'v2.result', [raw.interactionId, Object.assign({}, result, {
-                idempotencyKey: result.idempotencyKey || ('result-' + raw.interactionId)
-              })]);
-            },
-            reject: function(reason) { return sendRequest('agent', 'v2.reject', [raw.interactionId, reason]); },
-            requestIntent: function(request) { return sendRequest('agent', 'v2.intent', [raw.interactionId, request]); }
-          }));
-        });
-      }
-    },
-
-    media: {
-      play: function() { return sendRequest('media', 'control', [{ action: 'play' }]); },
-      pause: function() { return sendRequest('media', 'control', [{ action: 'pause' }]); },
-      next: function() { return sendRequest('media', 'control', [{ action: 'next' }]); },
-      prev: function() { return sendRequest('media', 'control', [{ action: 'prev' }]); },
-      seek: function(p) { return sendRequest('media', 'control', [{ action: 'seek', value: p }]); },
-      setVolume: function(v) { return sendRequest('media', 'control', [{ action: 'volume', value: v }]); },
-      setMode: function(m) { return sendRequest('media', 'control', [{ action: 'mode', value: m }]); },
-      mute: function() { return sendRequest('media', 'control', [{ action: 'mute' }]); },
-      unmute: function() { return sendRequest('media', 'control', [{ action: 'unmute' }]); },
-      getStatus: function() { return sendRequest('media', 'getStatus', []); },
-      getPlaylist: function() { return sendRequest('media', 'getPlaylist', []); },
-      getSpectrum: function() { return sendRequest('media', 'getSpectrum', []); },
-      getLyrics: function(opts) { return sendRequest('media', 'getLyrics', [opts || {}]); },
-      getBeatGrid: function() { return sendRequest('media', 'getBeatGrid', []); },
-      playTrack: function(id, idx) {
-        return sendRequest('media', 'playTrack', [
-          id && typeof id === 'object' ? id : { trackId: id, trackIndex: idx },
-        ]);
-      },
-      jumpToIndex: function(idx) { return sendRequest('media', 'jumpToIndex', [{ index: idx }]); },
-      loadNeteasePlaylist: function(playlistId) { return sendRequest('media', 'loadNeteasePlaylist', [{ playlistId: playlistId }]); },
-      getSkipVip: function() { return sendRequest('media', 'getSkipVip', []); },
-      setSkipVip: function(value) { return sendRequest('media', 'setSkipVip', [{ value: value }]); },
-      onStateChange: function(cb) { return addEventListener('mediaStateChange', cb); },
-      onProgress: function(cb) { return addEventListener('mediaProgress', cb); }
-    },
-
-    platform: {
-      listEnabled: function() { return sendRequest('platform', 'listEnabled', []); },
-      getData: function(p, o) { return sendRequest('platform', 'getData', [p, o]); },
-      getStats: function(p) { return sendRequest('platform', 'getStats', [p]); },
-      getDistribution: function(p, d) { return sendRequest('platform', 'getDistribution', [p, d]); }
-    },
-
-    report: {
-      listReports: function() { return sendRequest('report', 'listReports', []); },
-      getReport: function(id) { return sendRequest('report', 'getReport', [id]); },
-      getPlatformReport: function(p) { return sendRequest('report', 'getPlatformReport', [p]); },
-      list: function() { return sendRequest('report', 'list', []); },
-      get: function(id) { return sendRequest('report', 'get', [{ reportId: id }]); }
-    },
-
+${aiNs}${eventNs}${agentNs}${mediaNs}${platformNs}${analyticsNs}${reportNs}
     background: {
       require: function(r, reason) { return sendRequest('background', 'require', [r, reason]); },
       release: function(r) { return sendRequest('background', 'release', [r]); },
       list: function() { return sendRequest('background', 'list', []); },
       has: function(r) { return sendRequest('background', 'has', [r]); }
     },
-
-    scheduler: {
-      register: function(options) { return sendRequest('scheduler', 'register', [options]); },
-      unregister: function(taskId) { return sendRequest('scheduler', 'unregister', [taskId]); },
-      list: function() { return sendRequest('scheduler', 'list', []); },
-      get: function(taskId) { return sendRequest('scheduler', 'get', [taskId]); },
-      enable: function(taskId) { return sendRequest('scheduler', 'enable', [taskId]); },
-      disable: function(taskId) { return sendRequest('scheduler', 'disable', [taskId]); },
-      trigger: function(taskId) { return sendRequest('scheduler', 'trigger', [taskId]); },
-      onTask: function(taskId, cb) {
-        if (!taskId || typeof cb !== 'function') throw new Error('taskId and callback required');
-        var subscribeRequest = sendRequest('scheduler', 'subscribe', [taskId]);
-        if (subscribeRequest && subscribeRequest.catch) subscribeRequest.catch(function() {});
-        var removeListener = addEventListener('schedulerTask', function(d) {
-          if (!d || d.taskId !== taskId) return;
-          var event = d.event || d;
-          Promise.resolve().then(function() {
-            return cb(d.payload, event);
-          }).then(function() {
-            return sendRequest('scheduler', 'complete', [event.executionId, true]);
-          }, function(error) {
-            return sendRequest('scheduler', 'complete', [
-              event.executionId,
-              false,
-              error && error.message ? error.message : String(error)
-            ]);
-          }).catch(function() {});
-        });
-        return function() {
-          removeListener();
-          var unsubscribeRequest = sendRequest('scheduler', 'unsubscribe', [taskId]);
-          if (unsubscribeRequest && unsubscribeRequest.catch) unsubscribeRequest.catch(function() {});
-        };
-      }
-    },
-
+${schedulerNs}
     animation: {
       getLevel: function() { return sendRequest('animation', 'getLevel', []); },
       shouldAnimate: function() { return sendRequest('animation', 'shouldAnimate', []); },
@@ -1485,14 +1664,7 @@ export function generateWidgetSDK(
       getStaggerDelay: function(i, d) { return sendRequest('animation', 'getStaggerDelay', [i, d]); },
       onLevelChange: function(cb) { return addEventListener('animationLevelChange', cb); }
     },
-
-    speech: {
-      tts: function(r) { return sendRequest('speech', 'tts', [r]); },
-      getVoices: function() { return sendRequest('speech', 'getVoices', []); },
-      getStatus: function() { return sendRequest('speech', 'getStatus', []); },
-      asr: function(r) { return sendRequest('speech', 'asr', [r]); }
-    },
-
+${speechNs}
     ui: {
       getTheme: function() { return sendRequest('ui', 'getTheme', []); },
       getPrimaryColor: function() { return sendRequest('ui', 'getPrimaryColor', []); },
@@ -1578,29 +1750,23 @@ export function generateWidgetSDK(
     }
   };
 
-  // 冻结所有 API 对象（防止篡改）
+  // 冻结已暴露的 API 对象（防止篡改；未授权命名空间不生成，故不 freeze）
   Object.freeze(Tapp);
   Object.freeze(Tapp.lifecycle);
   Object.freeze(Tapp.i18n);
   Object.freeze(Tapp.storage);
   Object.freeze(Tapp.dataExchange);
   Object.freeze(Tapp.settings);
-  Object.freeze(Tapp.ai.tasks);
-  Object.freeze(Tapp.ai);
-  Object.freeze(Tapp.platform);
-  Object.freeze(Tapp.report);
   Object.freeze(Tapp.background);
-  Object.freeze(Tapp.scheduler);
   Object.freeze(Tapp.animation);
-  Object.freeze(Tapp.speech);
   Object.freeze(Tapp.ui);
   Object.freeze(Tapp.api);
-  Object.freeze(Tapp.media);
   Object.freeze(Tapp.context);
   Object.freeze(Tapp.user);
   Object.freeze(Tapp.dom);
   Object.freeze(Tapp.file);
   Object.freeze(Tapp.assets);
+  ${freezeOptional}
 
   // widgets/pages 容器保持可扩展：Widget 代码需要向其注册 render 定义
   // （Object.seal 会禁止新增属性，strict 模式下注册直接抛 TypeError）。
@@ -1615,4 +1781,49 @@ export function generateWidgetSDK(
   console.log('[TappWidgetSDK] Initialized:', ${idLiteral});
 })();
 `
+}
+
+/**
+ * 生成精简版 SDK（用于 Widget 模式）
+ *
+ * @param tappInstance - Tapp 实例
+ * @param sessionToken - 会话 token（用于消息验证）
+ */
+export function generateWidgetSDK(
+  tappInstance: TappInstance,
+  sessionToken?: string,
+): string {
+  const { id, manifest, grantedPermissions } = tappInstance
+  const token = sessionToken || ''
+  const idLiteral = serializeSandboxScriptValue(id)
+  const nameLiteral = serializeSandboxScriptValue(manifest.name)
+  const versionLiteral = serializeSandboxScriptValue(manifest.version)
+  const permissionsLiteral = serializeSandboxScriptValue(
+    grantedPermissions || [],
+  )
+  const caps = resolveWidgetSdkCaps(grantedPermissions)
+  const cacheKey = `${id}\0${manifest.name}\0${manifest.version}\0${permissionsLiteral}\0${capsFingerprint(caps)}`
+  const placeholderLiteral = serializeSandboxScriptValue(
+    WIDGET_SDK_TOKEN_PLACEHOLDER,
+  )
+
+  if (!widgetSdkTemplateCache || widgetSdkTemplateCache.key !== cacheKey) {
+    widgetSdkTemplateCache = {
+      key: cacheKey,
+      body: buildWidgetSdkBody(
+        idLiteral,
+        nameLiteral,
+        versionLiteral,
+        placeholderLiteral,
+        permissionsLiteral,
+        caps,
+      ),
+    }
+  }
+
+  // 每实例替换会话 token（安全：token 不进缓存，不跨沙箱共享）
+  return widgetSdkTemplateCache.body.replace(
+    placeholderLiteral,
+    serializeSandboxScriptValue(token),
+  )
 }

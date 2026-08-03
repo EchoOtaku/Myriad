@@ -1,0 +1,136 @@
+/**
+ * 头像来源选择器样式。
+ *
+ * 从 UserModal.css 迁出：选择器现在也用在设置页「用户管理」里，而
+ * UserModal 是懒加载的——样式留在那边时，设置页会拿到没有样式的裸列表。
+ * 类名保留 `user-modal-` 前缀以免动到既有 DOM 快照与用户自定义 CSS。
+ */
+
+/** 展示来源页：头像源 / 文案源两段标题（UserModal 与设置页共用） */
+.user-modal-profile-source-section {
+  margin-bottom: 1.25rem;
+}
+
+.user-modal-profile-source-section:last-child {
+  margin-bottom: 0;
+}
+
+.user-modal-profile-source-section-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+}
+
+html.dark .user-modal-profile-source-section-title {
+  color: rgb(255 255 255 / 92%);
+}
+
+.user-modal-profile-source-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-secondary, #64748b);
+}
+
+.user-modal-profile-source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.user-modal-profile-source-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgb(0 0 0 / 6%);
+  background: rgb(0 0 0 / 3%);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.user-modal-profile-source-row:hover:not(:disabled) {
+  background: rgb(0 0 0 / 6%);
+  border-color: rgb(0 0 0 / 10%);
+}
+
+.user-modal-profile-source-row.is-primary {
+  border-color: color-mix(in srgb, var(--color-primary, #6366f1) 35%, transparent);
+  background: color-mix(in srgb, var(--color-primary, #6366f1) 10%, transparent);
+}
+
+.user-modal-profile-source-row:disabled {
+  opacity: 0.75;
+  cursor: default;
+}
+
+html.dark .user-modal-profile-source-row {
+  border-color: rgb(255 255 255 / 8%);
+  background: rgb(255 255 255 / 4%);
+}
+
+html.dark .user-modal-profile-source-row:hover:not(:disabled) {
+  background: rgb(255 255 255 / 7%);
+}
+
+.user-modal-profile-source-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.user-modal-profile-source-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.user-modal-profile-source-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary, #0f172a);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+html.dark .user-modal-profile-source-name {
+  color: rgb(255 255 255 / 92%);
+}
+
+.user-modal-profile-source-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #64748b);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-modal-profile-source-current {
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 0.1rem 0.35rem;
+  border-radius: 999px;
+  color: var(--color-primary, #6366f1);
+  background: color-mix(in srgb, var(--color-primary, #6366f1) 14%, transparent);
+}
+
+.user-modal-profile-source-check {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-primary, #6366f1);
+}

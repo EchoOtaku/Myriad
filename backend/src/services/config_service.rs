@@ -568,6 +568,20 @@ impl ConfigService {
             config.allow_local_registration = v.as_bool().unwrap_or(false);
         }
 
+        // Private Tapp install retention (users section)
+        if let Some(v) = map.get("tapp_private_install_cleanup") {
+            let mode = v.as_str().unwrap_or("inactivity").trim().to_ascii_lowercase();
+            config.tapp_private_install_cleanup = if mode == "logout" {
+                "logout".to_string()
+            } else {
+                "inactivity".to_string()
+            };
+        }
+        if let Some(v) = map.get("tapp_private_install_inactivity_days") {
+            let days = v.as_i64().or_else(|| v.as_u64().map(|n| n as i64)).unwrap_or(14);
+            config.tapp_private_install_inactivity_days = days.clamp(1, 365) as i32;
+        }
+
         // 站点 URL 配置
         if let Some(v) = map.get("base_url") {
             config.base_url = v.as_str().map(|s| s.to_string());
@@ -664,6 +678,26 @@ impl ConfigService {
             } else if let Some(s) = v.as_str() {
                 config.site_noindex = s == "true";
             }
+        }
+        if let Some(v) = map.get("site_visibility_policy") {
+            if let Some(s) = v.as_str() {
+                config.site_visibility_policy = s.to_string();
+            }
+        }
+        if let Some(v) = map.get("site_ai_intro") {
+            config.site_ai_intro = v.as_str().map(|s| s.to_string());
+        }
+        // Keep noindex in sync with policy when policy is set.
+        if !config.site_visibility_policy.trim().is_empty() {
+            let pol = config.site_visibility_policy.trim();
+            if pol == "private" {
+                config.site_noindex = true;
+            } else if matches!(pol, "search_only" | "ai_citation" | "ai_full") {
+                config.site_noindex = false;
+            }
+        } else if config.site_noindex {
+            // Legacy: only noindex known → treat as private for consumers that read policy.
+            config.site_visibility_policy = "private".to_string();
         }
         if let Some(v) = map.get("ga_measurement_id") {
             config.ga_measurement_id = v.as_str().map(|s| s.to_string());

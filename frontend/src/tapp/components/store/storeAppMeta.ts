@@ -158,7 +158,7 @@ export function formatAppLanguages(tags: string[], uiLocale: string): string {
 
 /** @see hasStandaloneTappIcon — store alias */
 export function hasStandaloneAppIcon(
-  app: Pick<UnifiedAppItem, 'icon' | 'iconSvg'>,
+  app: Pick<UnifiedAppItem, 'icon' | 'iconSvg' | 'iconShell'>,
 ): boolean {
   return hasStandaloneTappIcon(app)
 }
@@ -172,6 +172,7 @@ export function getAppIconStyle(app: UnifiedAppItem): IconStyle {
   return getTappIconStyle({
     icon: app.icon,
     iconSvg: app.iconSvg,
+    iconShell: app.iconShell,
     themeColor: app.themeColor,
     category: app.category,
     id: app.id,

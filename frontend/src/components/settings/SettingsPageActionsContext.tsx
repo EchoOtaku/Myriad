@@ -9,6 +9,12 @@ export interface SettingsPageActionsContextValue {
   resetCurrentPage?: () => void | Promise<void>
   /** 是否允许重置本页；about 等只读页为 false */
   canResetCurrentPage?: boolean
+  /**
+   * 移动端选项页 → 菜单的返回。有值时 SettingSection 标题栏显示与
+   * 平台二级页一致的 `section-header-back`（显式 headerLeading 优先，
+   * 用于二级页先回到列表）。
+   */
+  onMobileBack?: () => void
 }
 
 const SettingsPageActionsContext =

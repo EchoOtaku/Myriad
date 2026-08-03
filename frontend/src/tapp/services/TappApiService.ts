@@ -54,6 +54,10 @@ import {
   getTappResources,
 } from './TappPackageResourceApi'
 import {
+  getAnalyticsSummary,
+  getAnalyticsVisitorCard,
+} from './TappAnalyticsApi'
+import {
   addPlatformItem,
   addPlatformItems,
   getPlatformData,
@@ -81,6 +85,7 @@ import {
 } from './TappWidgetApi'
 
 export * from './TappAiApi'
+export * from './TappAnalyticsApi'
 export * from './TappContextApi'
 export * from './TappCredentialApi'
 export * from './TappHostIntegrationApi'
@@ -129,6 +134,8 @@ export default {
   getPlatformDistribution,
   addPlatformItem,
   addPlatformItems,
+  getAnalyticsSummary,
+  getAnalyticsVisitorCard,
   createAITask,
   getAITask,
   cancelAITask,

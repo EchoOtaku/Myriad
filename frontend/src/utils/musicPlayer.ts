@@ -15,16 +15,29 @@ export { shouldPreserveNativeAudioOutput }
 /**
  * 网易云「仅解析播放链」接口：后端 302 到 HTTPS CDN，音频字节仍直连网易。
  * 替代已失效于 HTTPS 站点的 outer/url（会跳到 http CDN → Mixed Content）。
+ *
+ * ⚠️ 最终 CDN 无 Access-Control-Allow-Origin。桌面 createMediaElementSource
+ * 会得到全 0 频谱，严重时 AudioContext 接管后静音——桌面应走全量代理。
  */
 export function getNeteasePlayUrl(songId: string): string {
   return `${API_URL}/api/proxy/music/netease/play-url/${songId}`
 }
 
 /**
- * 网易云全量音频代理（字节经本机回传）。海外 / 需 CORS / 方案 C 降级时使用。
+ * 网易云全量音频代理（字节经本机回传）。
+ * 海外 / 桌面 Web Audio 频谱（需同源 CORS）/ 方案 C 降级时使用。
  */
 export function getNeteaseProxyAudioUrl(songId: string): string {
   return `${API_URL}/api/proxy/music/netease/audio/${songId}`
+}
+
+/**
+ * 桌面会把 HTMLAudio 接入 Web Audio 做频谱（createMediaElementSource）。
+ * 此时必须同源可 CORS 的音频字节；play-url→CDN 无 ACAO 会全 0 甚至静音。
+ * 移动端保留原生 HTMLAudio、不接图，可用 play-url 省带宽。
+ */
+export function prefersSameOriginMusicProxy(): boolean {
+  return !shouldPreserveNativeAudioOutput()
 }
 
 /**
@@ -47,6 +60,58 @@ export function isNeteaseDirectPlayUrl(url: string): boolean {
 }
 
 /**
+ * play-url / 外站 CDN：对 MediaElementAudioSource 不安全（CORS → 零输出 / 可能静音）。
+ */
+export function isWebAudioUnsafeMediaUrl(url: string): boolean {
+  if (!url) return false
+  return isNeteaseDirectPlayUrl(url) || isQQDirectPlayUrl(url)
+}
+
+/**
+ * 桌面频谱路径：若仍是 play-url / CDN，升级为同源全量代理。
+ * 移动端或已是 `/audio/` 时原样返回。用于旧歌单缓存与热路径兜底。
+ */
+export function ensureSpectrumSafePlaybackUrl(
+  song: Pick<Song, 'id' | 'source' | 'url'>,
+): string {
+  if (!song?.url) return song?.url ?? ''
+  if (!prefersSameOriginMusicProxy()) return song.url
+  if (song.source === 'netease' && isNeteaseDirectPlayUrl(song.url)) {
+    return getNeteaseProxyAudioUrl(song.id)
+  }
+  if (song.source === 'qq' && isQQDirectPlayUrl(song.url)) {
+    return getQQProxyAudioUrl(song.id)
+  }
+  // source 缺失但 URL 形态可识别时仍升级（嵌入/外部入口）
+  if (isNeteaseDirectPlayUrl(song.url) && song.id) {
+    return getNeteaseProxyAudioUrl(song.id)
+  }
+  if (isQQDirectPlayUrl(song.url) && song.id) {
+    return getQQProxyAudioUrl(song.id)
+  }
+  return song.url
+}
+
+/** 返回带频谱安全 URL 的 Song 副本（URL 未变则返回原引用）。 */
+export function withSpectrumSafePlaybackUrl<T extends Song>(song: T): T {
+  const url = ensureSpectrumSafePlaybackUrl(song)
+  return url === song.url ? song : { ...song, url }
+}
+
+/**
+ * 国内 geo 下的网易播放 URL：移动 play-url；桌面全量代理（Web Audio CORS）。
+ * 海外一律全量代理。
+ */
+export function getNeteaseGeoPlaybackUrl(
+  songId: string,
+  inChina: boolean,
+): string {
+  if (!inChina) return getNeteaseProxyAudioUrl(songId)
+  if (prefersSameOriginMusicProxy()) return getNeteaseProxyAudioUrl(songId)
+  return getNeteasePlayUrl(songId)
+}
+
+/**
  * 方案 C：直连失败时的全量代理 URL。
  * 非网易、或已经是代理地址时返回 null。
  */
@@ -60,13 +125,15 @@ export function getNeteaseProxyFallbackUrl(
 
 /**
  * 网易云音频 URL（同步、不阻塞点击）。
- * - 已有 geo 缓存：国内 play-url / 海外全量代理
- * - 未探测：先给**全量代理**（全球可真正出声，避免 play-url 在海外「假播」）；
- *   后台预热 geo，下次国内可切 play-url。
+ * - 桌面（频谱 / Web Audio）：始终全量代理（同源 CORS）
+ * - 移动 + geo 国内：play-url；海外 / 未缓存：全量代理
  *
  * 临时播放入口必须用这个，禁止在点击路径上 await isUserInChinaMainland。
  */
 export function getNeteaseAudioUrlImmediate(songId: string): string {
+  // 桌面要接 createMediaElementSource：不能走 play-url→CDN
+  if (prefersSameOriginMusicProxy()) return getNeteaseProxyAudioUrl(songId)
+
   const cached = getCachedIsChinaMainland()
   if (cached === true) return getNeteasePlayUrl(songId)
   if (cached === false) return getNeteaseProxyAudioUrl(songId)
@@ -77,8 +144,9 @@ export function getNeteaseAudioUrlImmediate(songId: string): string {
 
 /**
  * 获取网易云音乐音频URL
- * 根据用户地理位置决定策略：
- * - 国内：play-url 解析后 302 到 HTTPS CDN（直连网易，无 Mixed Content）
+ * 根据用户地理位置与是否需要 Web Audio 决定策略：
+ * - 桌面：全量代理（频谱 CORS）
+ * - 移动国内：play-url 302 HTTPS CDN
  * - 海外：全量代理拉流
  *
  * @param songId 歌曲ID
@@ -96,6 +164,10 @@ export async function getNeteaseAudioUrl(
       : getNeteasePlayUrl(songId)
   }
 
+  if (prefersSameOriginMusicProxy()) {
+    return getNeteaseProxyAudioUrl(songId)
+  }
+
   // 已有缓存则同步返回，避免临时播放等热路径再挂一次 microtask
   const cached = getCachedIsChinaMainland()
   if (cached === true) return getNeteasePlayUrl(songId)
@@ -103,26 +175,19 @@ export async function getNeteaseAudioUrl(
 
   // 自动检测是否需要代理
   const inChina = await isUserInChinaMainland()
-
-  if (inChina) {
-    // 中国大陆：只解析 HTTPS CDN 链，音频仍直连网易
-    return getNeteasePlayUrl(songId)
-  } else {
-    // 海外用户：通过后端全量代理
-    return getNeteaseProxyAudioUrl(songId)
-  }
+  return getNeteaseGeoPlaybackUrl(songId, inChina)
 }
 
 /**
  * QQ「仅解析播放链」：后端 302 到 HTTPS CDN，音频字节仍直连 QQ。
- * 与网易 play-url 对称；国内优先，海外降级全量代理。
+ * 与网易 play-url 对称。CDN 同样无 ACAO，桌面频谱须走全量代理。
  */
 export function getQQPlayUrl(songMid: string): string {
   return `${API_URL}/api/proxy/music/qq/play-url/${songMid}`
 }
 
 /**
- * QQ 全量音频代理（字节经本机回传）。海外 / 需 CORS / 直连失败降级时使用。
+ * QQ 全量音频代理（字节经本机回传）。海外 / 桌面 Web Audio / 直连失败降级时使用。
  */
 export function getQQProxyAudioUrl(songMid: string): string {
   return `${API_URL}/api/proxy/music/qq/audio/${songMid}`
@@ -154,6 +219,18 @@ export function isQQDirectPlayUrl(url: string): boolean {
 }
 
 /**
+ * 国内 geo 下的 QQ 播放 URL：移动 play-url；桌面全量代理（Web Audio CORS）。
+ */
+export function getQQGeoPlaybackUrl(
+  songMid: string,
+  inChina: boolean,
+): string {
+  if (!inChina) return getQQProxyAudioUrl(songMid)
+  if (prefersSameOriginMusicProxy()) return getQQProxyAudioUrl(songMid)
+  return getQQPlayUrl(songMid)
+}
+
+/**
  * 直连失败时的全量代理 URL。非 QQ 或已是代理地址时返回 null。
  */
 export function getQQProxyFallbackUrl(
@@ -168,6 +245,8 @@ export function getQQProxyFallbackUrl(
  * QQ 音频 URL（同步、不阻塞点击）。语义同 getNeteaseAudioUrlImmediate。
  */
 export function getQQAudioUrlImmediate(songMid: string): string {
+  if (prefersSameOriginMusicProxy()) return getQQProxyAudioUrl(songMid)
+
   const cached = getCachedIsChinaMainland()
   if (cached === true) return getQQPlayUrl(songMid)
   if (cached === false) return getQQProxyAudioUrl(songMid)
@@ -177,7 +256,8 @@ export function getQQAudioUrlImmediate(songMid: string): string {
 
 /**
  * 获取 QQ 音乐音频 URL
- * - 国内：play-url 302 到 HTTPS CDN（直连 QQ）
+ * - 桌面：全量代理（频谱 CORS）
+ * - 移动国内：play-url 302 CDN
  * - 海外：全量代理拉流
  */
 export async function getQQAudioUrlForGeo(
@@ -187,11 +267,13 @@ export async function getQQAudioUrlForGeo(
   if (useProxy !== undefined) {
     return useProxy ? getQQProxyAudioUrl(songMid) : getQQPlayUrl(songMid)
   }
+  if (prefersSameOriginMusicProxy()) return getQQProxyAudioUrl(songMid)
+
   const cached = getCachedIsChinaMainland()
   if (cached === true) return getQQPlayUrl(songMid)
   if (cached === false) return getQQProxyAudioUrl(songMid)
   const inChina = await isUserInChinaMainland()
-  return inChina ? getQQPlayUrl(songMid) : getQQProxyAudioUrl(songMid)
+  return getQQGeoPlaybackUrl(songMid, inChina)
 }
 
 /**
@@ -679,8 +761,13 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
 
     // 等待地理位置检测结果
     const inChina = await geoPromise
+    const useSameOriginProxy = prefersSameOriginMusicProxy()
     console.log(
-      `[MusicPlayer] 歌单加载完成，用户在中国大陆: ${inChina}，${inChina ? 'play-url 直连 CDN' : '全量代理'}`,
+      `[MusicPlayer] 歌单加载完成，用户在中国大陆: ${inChina}，${
+        !inChina || useSameOriginProxy
+          ? '全量代理' + (useSameOriginProxy && inChina ? '（桌面频谱 CORS）' : '')
+          : 'play-url 直连 CDN'
+      }`,
     )
 
     const songs = tracks.map((track: any) => {
@@ -695,12 +782,9 @@ export async function getNeteasePlaylist(playlistId: string): Promise<Song[]> {
       const isTrial = false // 网易云playlist接口不返回试听信息
       const trialDuration = undefined
 
-      // 国内：后端解析临时链并 302 到 HTTPS CDN（音频直连网易，无 Mixed Content）
-      // 海外：全量代理拉流（绕过地理限制）
+      // 国内移动：play-url 302 CDN；国内桌面 / 海外：全量代理（桌面需 CORS 频谱）
       // 方案 C：直连失败时在 useMusicPlayer 降级到 getNeteaseProxyAudioUrl
-      const audioUrl = inChina
-        ? getNeteasePlayUrl(String(track.id))
-        : getNeteaseProxyAudioUrl(String(track.id))
+      const audioUrl = getNeteaseGeoPlaybackUrl(String(track.id), inChina)
 
       return {
         id: track.id.toString(),
@@ -770,8 +854,13 @@ export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
     const songlist = playlist.songlist || []
 
     const inChina = await geoPromise
+    const useSameOriginProxy = prefersSameOriginMusicProxy()
     console.log(
-      `[MusicPlayer] QQ 歌单加载完成，用户在中国大陆: ${inChina}，${inChina ? 'play-url 直连 CDN' : '全量代理'}`,
+      `[MusicPlayer] QQ 歌单加载完成，用户在中国大陆: ${inChina}，${
+        !inChina || useSameOriginProxy
+          ? '全量代理' + (useSameOriginProxy && inChina ? '（桌面频谱 CORS）' : '')
+          : 'play-url 直连 CDN'
+      }`,
     )
 
     const songs = songlist
@@ -794,10 +883,8 @@ export async function getQQPlaylist(playlistId: string): Promise<Song[]> {
           cover: song.albummid
             ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.albummid}.jpg`
             : '',
-          // 国内 play-url 302 CDN；海外全量代理（对齐网易）
-          url: inChina
-            ? getQQPlayUrl(songMid)
-            : getQQProxyAudioUrl(songMid),
+          // 国内移动 play-url；国内桌面 / 海外全量代理（对齐网易，桌面频谱 CORS）
+          url: getQQGeoPlaybackUrl(songMid, inChina),
           duration: song.interval || 0,
           source: 'qq' as MusicSource,
           // 后端会补 isVip；无字段时默认 false
@@ -1706,10 +1793,19 @@ class GlobalAudioManager {
    * ⚠️ 移动端默认拒绝接入：MediaElementAudioSourceNode 会劫持原生输出，
    * AudioContext 在页面后台被 suspend 后音乐无法继续，表现为「不能后台播放」。
    * 桌面端可安全使用实时频谱；移动端 media.getSpectrum 返回静默（0）。
+   *
+   * ⚠️ play-url / 外站 CDN：最终响应无 ACAO 时 MediaElementSource 输出全 0，
+   * 且会劫持元素扬声器输出 → 可能静音。此类 URL 绝不接入（频谱退 CSS 柱）。
    */
   connectAudioToAnalyser(audio: HTMLAudioElement): boolean {
     if (this.nativeOutputLocked || shouldPreserveNativeAudioOutput()) {
       this.nativeOutputLocked = true
+      return false
+    }
+
+    // 防御：直连 CDN / play-url 无 CORS，接入会导致频谱全 0 甚至整轨静音
+    const mediaUrl = audio.currentSrc || audio.src || ''
+    if (isWebAudioUnsafeMediaUrl(mediaUrl)) {
       return false
     }
 

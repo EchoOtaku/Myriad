@@ -37,47 +37,6 @@ fn site_owner_error(error: String) -> (StatusCode, Json<Value>) {
     )
 }
 
-/// Extract public profile fields from YouTube channel payload.
-/// Stored shape is Data API `channels.list` item (`snippet.*`); also accept flat
-/// smart_filter / legacy keys.
-fn youtube_user_info_fields(yt_user: &Value) -> Option<(Option<&Value>, Option<String>, &str)> {
-    let snip = yt_user.get("snippet");
-    let name = snip
-        .and_then(|s| s.get("title"))
-        .or_else(|| yt_user.get("title"))
-        .or_else(|| yt_user.get("name"))
-        .or_else(|| snip.and_then(|s| s.get("customUrl")))
-        .or_else(|| yt_user.get("customUrl"));
-    let avatar = snip
-        .and_then(|s| {
-            s.pointer("/thumbnails/high/url")
-                .or_else(|| s.pointer("/thumbnails/medium/url"))
-                .or_else(|| s.pointer("/thumbnails/default/url"))
-        })
-        .or_else(|| {
-            yt_user
-                .get("thumbnails")
-                .and_then(|t| t.get("high").or_else(|| t.get("default")))
-                .and_then(|t| t.get("url"))
-        })
-        .or_else(|| yt_user.get("avatar"))
-        .or_else(|| yt_user.get("face"))
-        .and_then(|v| v.as_str())
-        .map(proxy_image_url);
-    let bio = snip
-        .and_then(|s| s.get("description"))
-        .or_else(|| yt_user.get("description"))
-        .or_else(|| yt_user.get("bio"))
-        .and_then(|b| b.as_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("");
-    if name.is_some() || avatar.is_some() {
-        Some((name, avatar, bio))
-    } else {
-        None
-    }
-}
-
 pub async fn fetch_all_data(State(db): State<DatabaseConnection>) -> (StatusCode, Json<Value>) {
     tracing::info!("Starting fetch all data...");
 
@@ -380,232 +339,104 @@ pub async fn get_platform_metadata_status(
     }
 }
 
-/// 从数据库或缓存中获取用户信息（支持多平台）
-/// 优先从数据库获取，若数据库无数据则从缓存获取
-pub async fn get_user_info(
-    crate::extract::Db(db): crate::extract::Db,
-) -> (StatusCode, Json<Value>) {
-    let user_id = match site_owner_user_id(&db).await {
+/// 站长公开资料（首页信息条 / SEO）。
+///
+/// - **头像** ← [`crate::services::avatar::resolve_avatar`]（`avatar_source_*`）
+/// - **名称/简介/平台标签** ← [`crate::services::profile_text::resolve_profile_text`]
+///   （`profile_text_source_*`，与画像源独立）
+///
+/// 两套来源可分别选定，例如脸用 GitHub、简介仍用 B 站。文案 auto 时保留历史
+/// `PLATFORM_ORDER` 首个平台；显式选定后严格跟该源。
+async fn build_user_info(db: &DatabaseConnection) -> (StatusCode, Value) {
+    use crate::services::avatar::resolve_avatar;
+    use crate::services::profile_text::resolve_profile_text;
+
+    let user_id = match site_owner_user_id(db).await {
         Ok(user_id) => user_id,
-        Err(error) => return site_owner_error(error),
+        Err(error) => {
+            tracing::warn!(%error, "Site owner lookup failed");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                json!({ "success": false, "message": "Site owner is not configured" }),
+            );
+        }
     };
 
-    // 创建元数据服务
-    let metadata_service = crate::services::metadata_service::MetadataService::new(db.clone());
-
-    // 1. 优先从数据库获取最新数据
-    match metadata_service.get_all_latest_metadata(user_id).await {
-        Ok(db_data) if !db_data.is_empty() => {
-            tracing::info!("📊 Returning user info from database");
-
-            // 优先从 Bilibili 获取（兼容旧缓存 user_info）
-            // 头像必须走 proxy_image_url：hdslb 等 CDN 有防盗链，直链在浏览器里打不开
-            if let Some(bilibili_data) = db_data.get("bilibili") {
-                if let Some(bilibili_user) = bilibili_data
-                    .get("user")
-                    .or_else(|| bilibili_data.get("user_info"))
-                {
-                    return (
-                        StatusCode::OK,
-                        Json(json!({
-                            "success": true,
-                            "user_info": {
-                                "name": bilibili_user.get("name"),
-                                "avatar": bilibili_user
-                                    .get("face")
-                                    .and_then(|v| v.as_str())
-                                    .map(proxy_image_url),
-                                "bio": bilibili_user.get("sign").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).unwrap_or("这家伙很懒，没有介绍呢"),
-                                "platform": "Bilibili"
-                            },
-                            "source": "database"
-                        })),
-                    );
-                }
-            }
-
-            // 其次从 GitHub 获取
-            if let Some(github_data) = db_data.get("github") {
-                if let Some(github_user) = github_data.get("user") {
-                    return (
-                        StatusCode::OK,
-                        Json(json!({
-                            "success": true,
-                            "user_info": {
-                                "name": github_user.get("name").and_then(|n| n.as_str()).or_else(|| github_user.get("login").and_then(|l| l.as_str())),
-                                "avatar": github_user
-                                    .get("avatar_url")
-                                    .and_then(|v| v.as_str())
-                                    .map(proxy_image_url),
-                                "bio": github_user.get("bio").and_then(|b| b.as_str()).filter(|s| !s.is_empty()).unwrap_or("这家伙很懒，没有介绍呢"),
-                                "platform": "GitHub"
-                            },
-                            "source": "database"
-                        })),
-                    );
-                }
-            }
-
-            // YouTube channel (when SocialNetwork / report card has YT linked)
-            if let Some(yt_data) = db_data.get("youtube") {
-                if let Some(yt_user) = yt_data
-                    .get("user")
-                    .or_else(|| yt_data.get("channel"))
-                    .or_else(|| yt_data.get("user_info"))
-                {
-                    if let Some((name, avatar, bio)) = youtube_user_info_fields(yt_user) {
-                        return (
-                            StatusCode::OK,
-                            Json(json!({
-                                "success": true,
-                                "user_info": {
-                                    "name": name,
-                                    "avatar": avatar,
-                                    "bio": if bio.is_empty() { "YouTube" } else { bio },
-                                    "platform": "YouTube"
-                                },
-                                "source": "database"
-                            })),
-                        );
-                    }
-                }
-            }
-
-            // 最后从 Steam 获取
-            if let Some(steam_data) = db_data.get("steam") {
-                if let Some(steam_user) = steam_data.get("user") {
-                    return (
-                        StatusCode::OK,
-                        Json(json!({
-                            "success": true,
-                            "user_info": {
-                                "name": steam_user.get("personaname"),
-                                "avatar": steam_user
-                                    .get("avatarfull")
-                                    .or_else(|| steam_user.get("avatar"))
-                                    .and_then(|v| v.as_str())
-                                    .map(proxy_image_url),
-                                "bio": "Steam 玩家",
-                                "platform": "Steam"
-                            },
-                            "source": "database"
-                        })),
-                    );
-                }
-            }
-        }
-        Ok(_) => {
-            tracing::info!("📊 Database is empty, falling back to cache");
-        }
-        Err(e) => {
-            tracing::warn!(
-                "Failed to fetch from database: {}, falling back to cache",
-                e
+    let avatar = resolve_avatar(db, user_id).await;
+    let text = match resolve_profile_text(db, user_id).await {
+        Ok(text) => text,
+        Err(error) => {
+            tracing::warn!(%error, user_id, "Profile text resolve failed");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                json!({ "success": false, "message": "Failed to resolve profile text" }),
             );
         }
+    };
+
+    if text.name.is_none() && avatar.is_none() {
+        return (
+            StatusCode::NOT_FOUND,
+            json!({
+                "success": false,
+                "message": "No user info found in database or cache. Please fetch platform data first."
+            }),
+        );
     }
 
-    // 2. 降级：从缓存文件获取数据
-    if let Some(cache) = load_platform_data_cache() {
-        tracing::info!("📦 Returning user info from cache file");
-        let data = &cache.data;
-
-        // 优先从 Bilibili 获取（兼容旧缓存 user_info）
-        if let Some(bilibili_user) = data
-            .get("bilibili")
-            .and_then(|b| b.get("user").or_else(|| b.get("user_info")))
-        {
-            return (
-                StatusCode::OK,
-                Json(json!({
-                    "success": true,
-                    "user_info": {
-                        "name": bilibili_user.get("name"),
-                        "avatar": bilibili_user
-                            .get("face")
-                            .and_then(|v| v.as_str())
-                            .map(proxy_image_url),
-                        "bio": bilibili_user.get("sign").and_then(|s| s.as_str()).filter(|s| !s.is_empty()).unwrap_or("这家伙很懒，没有介绍呢"),
-                        "platform": "Bilibili"
-                    },
-                    "source": "cache"
-                })),
-            );
-        }
-
-        // 其次从 GitHub 获取
-        if let Some(github_user) = data.get("github").and_then(|g| g.get("user")) {
-            return (
-                StatusCode::OK,
-                Json(json!({
-                    "success": true,
-                    "user_info": {
-                        "name": github_user.get("name").and_then(|n| n.as_str()).or_else(|| github_user.get("login").and_then(|l| l.as_str())),
-                        "avatar": github_user
-                            .get("avatar_url")
-                            .and_then(|v| v.as_str())
-                            .map(proxy_image_url),
-                        "bio": github_user.get("bio").and_then(|b| b.as_str()).filter(|s| !s.is_empty()).unwrap_or("这家伙很懒，没有介绍呢"),
-                        "platform": "GitHub"
-                    },
-                    "source": "cache"
-                })),
-            );
-        }
-
-        // YouTube channel (cache path — same snippet.* shape as DB)
-        if let Some(yt_user) = data.get("youtube").and_then(|y| {
-            y.get("user")
-                .or_else(|| y.get("channel"))
-                .or_else(|| y.get("user_info"))
-        }) {
-            if let Some((name, avatar, bio)) = youtube_user_info_fields(yt_user) {
-                return (
-                    StatusCode::OK,
-                    Json(json!({
-                        "success": true,
-                        "user_info": {
-                            "name": name,
-                            "avatar": avatar,
-                            "bio": if bio.is_empty() { "YouTube" } else { bio },
-                            "platform": "YouTube"
-                        },
-                        "source": "cache"
-                    })),
-                );
-            }
-        }
-
-        // 最后从 Steam 获取
-        if let Some(steam_user) = data.get("steam").and_then(|s| s.get("user")) {
-            return (
-                StatusCode::OK,
-                Json(json!({
-                    "success": true,
-                    "user_info": {
-                        "name": steam_user.get("personaname"),
-                        "avatar": steam_user
-                            .get("avatarfull")
-                            .or_else(|| steam_user.get("avatar"))
-                            .and_then(|v| v.as_str())
-                            .map(proxy_image_url),
-                        "bio": "Steam 玩家",
-                        "platform": "Steam"
-                    },
-                    "source": "cache"
-                })),
-            );
-        }
-    }
-
-    // 3. 数据库和缓存都没有数据
     (
-        StatusCode::NOT_FOUND,
-        Json(json!({
-            "success": false,
-            "message": "No user info found in database or cache. Please fetch platform data first."
-        })),
+        StatusCode::OK,
+        json!({
+            "success": true,
+            "user_info": {
+                "name": text.name,
+                "avatar": avatar,
+                "bio": text.bio,
+                "platform": text.platform,
+            },
+            "source": text.source,
+        }),
     )
+}
+
+/// 内容哈希 ETag：任何字段变化都会变，因此 304 不会把陈旧名称/简介锁死。
+fn weak_etag(value: &Value) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.to_string().hash(&mut hasher);
+    format!("W/\"{:x}\"", hasher.finish())
+}
+
+/// GET /api/profile/user-info
+///
+/// 带 `Cache-Control` + 内容 ETag，取代前端那套 30 分钟 localStorage 缓存
+/// （后者只在登录/登出时失效，站长换了画像源要等半小时才生效）。
+pub async fn get_user_info(
+    crate::extract::Db(db): crate::extract::Db,
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+
+    let (status, body) = build_user_info(&db).await;
+    if status != StatusCode::OK {
+        return (status, Json(body)).into_response();
+    }
+
+    let etag = weak_etag(&body);
+    let cache_headers = [
+        (axum::http::header::CACHE_CONTROL, "public, max-age=60"),
+        (axum::http::header::ETAG, etag.as_str()),
+    ];
+
+    let matches = headers
+        .get(axum::http::header::IF_NONE_MATCH)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.split(',').any(|candidate| candidate.trim() == etag));
+    if matches {
+        return (StatusCode::NOT_MODIFIED, cache_headers).into_response();
+    }
+
+    (status, cache_headers, Json(body)).into_response()
 }
 
 /// 删除平台数据缓存
@@ -1261,9 +1092,9 @@ pub async fn get_batch_user_info(
     };
 
     // 1. 获取用户基本信息
-    let (status, json) = get_user_info(crate::extract::Db(db.clone())).await;
+    let (status, body) = build_user_info(&db).await;
     if status == StatusCode::OK {
-        response.user_info = Some(json.0);
+        response.user_info = Some(body);
     } else {
         response.user_info = Some(json!({
             "success": false,

@@ -85,6 +85,11 @@ export interface RemoteApp {
   icon?: string
   /** 内联 SVG 图标代码（优先于 icon） */
   icon_svg?: string
+  /**
+   * 可选：全彩自定义图标仍保留 material 色壳（catalog → install manifest 同源语义）。
+   * 缺省 false / 未声明 = auto（全彩图 standalone 铺满）。
+   */
+  icon_shell?: boolean
   /** 主题色（十六进制，如 #6366f1） */
   theme_color?: string
   /** 分类 */

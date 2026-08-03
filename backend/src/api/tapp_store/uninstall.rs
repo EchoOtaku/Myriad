@@ -386,33 +386,128 @@ async fn do_uninstall_tapp(
     Ok(Json(ApiResponse::success(())))
 }
 
-/// 清理用户的临时 Tapp（登出时调用）
+/// Private (non-admin) installs are kept while the subject stays active.
+/// After this many days without login/seen activity, they are pruned.
+pub const PRIVATE_INSTALL_INACTIVITY_DAYS: i64 = 14;
+
+/// Delete private Tapp installs owned by non-admin users who have been inactive
+/// for `inactivity_days` (based on `COALESCE(last_login_at, last_seen_at, created_at)`).
 ///
-/// 删除当前用户的所有临时安装的 Tapp
+/// Never touches site-owner / admin public installs. Used by the daily
+/// background worker only (not the user-facing logout endpoint).
+pub async fn prune_stale_private_tapps(
+    db: &DatabaseConnection,
+    inactivity_days: i64,
+) -> Result<i32, String> {
+    let days = inactivity_days.max(1);
+    // Site owner id — double-guard even if is_admin/is_owner flags are wrong.
+    let site_owner_id = find_admin_user_id(db).await.ok().flatten();
+
+    let rows = db
+        .query_all(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+            SELECT t.id
+            FROM tapps t
+            INNER JOIN users u ON u.id = t.user_id
+            WHERE COALESCE(u.is_admin, false) = false
+              AND COALESCE(u.is_owner, false) = false
+              AND ($2::int IS NULL OR t.user_id <> $2)
+              AND COALESCE(u.last_login_at, u.last_seen_at, u.created_at)
+                  < NOW() - make_interval(days => $1::int)
+            "#,
+            [
+                (days as i32).into(),
+                match site_owner_id {
+                    Some(id) => id.into(),
+                    None => sea_orm::Value::Int(None),
+                },
+            ],
+        ))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut deleted = 0i32;
+    for row in rows {
+        let row_id: i32 = row
+            .try_get("", "id")
+            .map_err(|e| e.to_string())?;
+        let Some(model) = tapps::Entity::find_by_id(row_id)
+            .one(db)
+            .await
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+        // Re-check: never uninstall site-owner rows
+        if site_owner_id == Some(model.user_id) {
+            continue;
+        }
+        match do_uninstall_tapp(db, &model, false).await {
+            Ok(_) => deleted += 1,
+            Err(HttpError(err)) => {
+                tracing::warn!(
+                    tapp_id = %model.tapp_id,
+                    user_id = model.user_id,
+                    error = %err,
+                    "Failed to prune stale private Tapp install"
+                );
+            }
+        }
+    }
+    Ok(deleted)
+}
+
+/// Logout / manual cleanup endpoint.
+///
+/// Behavior is driven by site config (`tapp_private_install_cleanup`):
+/// - `logout`: wipe the caller's private installs immediately
+/// - `inactivity` (default): no-op here — global prune runs only in the daily
+///   background worker so logout cannot delete other users' installs or stall
 pub(super) async fn cleanup_temporary_tapps(
     State(db): State<DatabaseConnection>,
+    State(dynamic_config): State<std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>>,
     Extension(claims): Extension<Claims>,
 ) -> Result<Json<ApiResponse<i32>>, HttpError> {
-    let user_id: i32 = claims.sub.parse().map_err(|_| HttpError(AppError::unauthorized("Unauthorized")))?;
-    // Current administrators operate the canonical public namespace and never
-    // receive session-temporary installations.
-    if current_is_admin(&claims, &db).await {
-        return Ok(Json(ApiResponse::success(0)));
+    let user_id: i32 = claims
+        .sub
+        .parse()
+        .map_err(|_| HttpError(AppError::unauthorized("Unauthorized")))?;
+
+    let mode = {
+        let cfg = dynamic_config.read().await;
+        cfg.tapp_private_install_cleanup.trim().to_ascii_lowercase()
+    };
+
+    if mode == "logout" {
+        // Wipe this subject's private installs now.
+        // Admins operate the public namespace and never have private temps here.
+        if current_is_admin(&claims, &db).await {
+            return Ok(Json(ApiResponse::success(0)));
+        }
+        let user_tapps = tapps::Entity::find()
+            .filter(tapps::Column::UserId.eq(user_id))
+            .all(&db)
+            .await
+            .map_err(|_| HttpError(AppError::internal("Database error")))?;
+        let mut deleted = 0i32;
+        for tapp in &user_tapps {
+            match do_uninstall_tapp(&db, tapp, false).await {
+                Ok(_) => deleted += 1,
+                Err(HttpError(err)) => {
+                    tracing::warn!(
+                        tapp_id = %tapp.tapp_id,
+                        user_id = tapp.user_id,
+                        error = %err,
+                        "Failed to uninstall private Tapp on logout cleanup"
+                    );
+                }
+            }
+        }
+        return Ok(Json(ApiResponse::success(deleted)));
     }
 
-    // 获取用户的所有临时 Tapp
-    let user_tapps = tapps::Entity::find()
-        .filter(tapps::Column::UserId.eq(user_id))
-        .all(&db)
-        .await
-        .map_err(|_| HttpError(AppError::internal("Database error")))?;
-
-    // 删除每个 Tapp（临时 Tapp 不保留数据）
-    let mut deleted = 0;
-    for tapp in &user_tapps {
-        let _ = do_uninstall_tapp(&db, tapp, false).await?;
-        deleted += 1;
-    }
-
-    Ok(Json(ApiResponse::success(deleted)))
+    // inactivity (default): rely on the daily worker; do not prune globally
+    // from a user-facing logout call.
+    Ok(Json(ApiResponse::success(0)))
 }

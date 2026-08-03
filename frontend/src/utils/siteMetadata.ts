@@ -4,6 +4,11 @@
  */
 
 import { API_URL } from '../config'
+import {
+  sanitizeSiteFaviconUrl,
+  sanitizeSiteOgImageUrl,
+  sanitizeUmamiScriptUrl,
+} from './configUrlPolicy'
 import { configureGoogleAnalytics } from './googleAnalytics'
 import { configureUmami } from './umamiAnalytics'
 
@@ -76,19 +81,31 @@ function cacheMetadata(metadata: SiteMetadata): void {
 }
 
 function normalizeMetadata(raw: Partial<SiteMetadata> | null | undefined): SiteMetadata {
+  const faviconRaw = raw?.site_favicon || DEFAULT_METADATA.site_favicon
+  const favicon =
+    sanitizeSiteFaviconUrl(faviconRaw) || DEFAULT_METADATA.site_favicon
+
+  const ogRaw = raw?.site_og_image ?? DEFAULT_METADATA.site_og_image
+  const ogSanitized = sanitizeSiteOgImageUrl(ogRaw)
+  // null = rejected junk → clear; '' = intentionally empty
+  const site_og_image = ogSanitized === null ? '' : ogSanitized
+
+  const umamiRaw = raw?.umami_script_url ?? DEFAULT_METADATA.umami_script_url
+  const umamiSanitized = sanitizeUmamiScriptUrl(umamiRaw)
+  const umami_script_url = umamiSanitized === null ? '' : umamiSanitized
+
   return {
     site_title: raw?.site_title || DEFAULT_METADATA.site_title,
     site_description: raw?.site_description || DEFAULT_METADATA.site_description,
-    site_favicon: raw?.site_favicon || DEFAULT_METADATA.site_favicon,
+    site_favicon: favicon,
     site_keywords: raw?.site_keywords ?? DEFAULT_METADATA.site_keywords,
-    site_og_image: raw?.site_og_image ?? DEFAULT_METADATA.site_og_image,
+    site_og_image,
     site_noindex: Boolean(raw?.site_noindex),
     ga_measurement_id:
       raw?.ga_measurement_id ?? DEFAULT_METADATA.ga_measurement_id,
     umami_website_id:
       raw?.umami_website_id ?? DEFAULT_METADATA.umami_website_id,
-    umami_script_url:
-      raw?.umami_script_url ?? DEFAULT_METADATA.umami_script_url,
+    umami_script_url,
   }
 }
 
@@ -245,6 +262,13 @@ function inferFaviconType(faviconUrl: string): string | undefined {
 function updateFavicon(faviconUrl: string): void {
   if (!faviconUrl) return
 
+  const safe = sanitizeSiteFaviconUrl(faviconUrl)
+  if (!safe) {
+    console.warn('[元数据] 拒绝不安全的 favicon URL')
+    return
+  }
+  faviconUrl = safe
+
   let favicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
 
   if (!favicon) {
@@ -337,9 +361,10 @@ function pickShareImage(
   ].filter(Boolean) as string[]
 
   for (const raw of candidates) {
-    // 社交爬虫几乎不用 data: 图
-    if (raw.startsWith('data:')) continue
-    const abs = toAbsoluteUrl(raw)
+    // Soft policy: path/http(s) only (no data:/javascript:). Private hosts OK.
+    const safe = sanitizeSiteOgImageUrl(raw)
+    if (!safe) continue
+    const abs = toAbsoluteUrl(safe)
     if (abs) return abs
   }
   return ''

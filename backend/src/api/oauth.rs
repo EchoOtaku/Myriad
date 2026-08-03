@@ -87,7 +87,22 @@ fn oauth_client_error_redirect(frontend_base: &str, error_code: &str) -> Respons
     no_store_redirect(&url)
 }
 
+/// 登录/绑定后把 provider 快照同步到 `users`，并重算画像源。
+///
+/// 重算是必须的：用户若选了某个 OAuth 身份作画像源，对方在 provider 改了头像，
+/// 只有这次登录能把新地址带进来；不刷新 `avatar_resolved_url` 就会一直停在
+/// 绑定当天那张脸。
 async fn sync_user_oauth_profile_snapshot(
+    db: &DatabaseConnection,
+    user_id: i32,
+    slug: &str,
+    profile: &NormalizedProfile,
+) {
+    sync_user_oauth_columns(db, user_id, slug, profile).await;
+    crate::services::avatar::refresh_avatar_snapshot(db, user_id).await;
+}
+
+async fn sync_user_oauth_columns(
     db: &DatabaseConnection,
     user_id: i32,
     slug: &str,
@@ -978,7 +993,10 @@ pub async fn list_my_identities(
                 "provider": r.try_get::<String>("", "provider").unwrap_or_default(),
                 "provider_username": r.try_get::<Option<String>>("", "provider_username").unwrap_or(None),
                 "email": r.try_get::<Option<String>>("", "email").unwrap_or(None),
-                "avatar_url": r.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
+                // 画像源选择器直接把它当 <img src>：不代理则 hdslb 等防盗链 CDN 裂图
+                "avatar_url": crate::services::avatar::proxied_avatar_value(
+                    r.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
+                ),
                 "profile_url": r.try_get::<Option<String>>("", "profile_url").unwrap_or(None),
                 "is_primary": r.try_get::<bool>("", "is_primary").unwrap_or(false),
                 "linked_at": r.try_get::<chrono::DateTime<chrono::Utc>>("", "linked_at").ok().map(|t| t.to_rfc3339()),
@@ -991,8 +1009,14 @@ pub async fn list_my_identities(
 }
 
 // POST /api/auth/identities/{identity_id}/primary
-// 将指定 OAuth/OIDC identity 设为画像源（is_primary），并同步 avatar 等到 users 表。
-// 全部写操作在同一事务内，避免清 primary 后中途失败导致无 primary。
+//
+// 兼容别名：等价于 PUT /api/users/me/avatar-source {kind:"identity", ref:<id>}。
+// 画像源的唯一写入处是 services::avatar::set_avatar_source（它一并维护
+// is_primary 与 avatar_resolved_url 快照），这里只做 GitHub 账号联结的补写。
+//
+// 已移除的旧副作用：**不再覆盖 users.display_name**。改画像源是选头像，
+// 顺手改掉展示名属于两件事绑一起，用户切个头像却发现名字变了。
+// 同样不再覆盖 users.avatar_url —— 那是"账号"这一来源本身，覆盖后就切不回来了。
 
 pub async fn set_primary_identity(
     Path(identity_id): Path<i32>,
@@ -1006,18 +1030,10 @@ pub async fn set_primary_identity(
         )))?;
     let user_id: i32 = claims.sub.parse().map_err(|_| err_400("Invalid user id"))?;
 
-    let txn = db
-        .begin()
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "OAuth: failed to begin transaction");
-            err_500("Database error")
-        })?;
-
-    let row = match txn
+    let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT id, provider, provider_username, avatar_url, provider_user_id \
+            "SELECT provider, provider_username, provider_user_id \
              FROM user_identities WHERE id = $1 AND user_id = $2",
             vec![
                 SeaValue::Int(Some(identity_id)),
@@ -1025,151 +1041,60 @@ pub async fn set_primary_identity(
             ],
         ))
         .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = txn.rollback().await;
-            { tracing::error!("OAuth DB error: {e}"); return Err(err_500("Database error")); }
-        }
-    };
-
-    let Some(row) = row else {
-        let _ = txn.rollback().await;
-        return Err(HttpError::from((
-            StatusCode::NOT_FOUND,
-            Json(json!({"error": "Identity not found"})),
-        )));
-    };
+        .map_err(|e| {
+            tracing::error!("OAuth DB error: {e}");
+            err_500("Database error")
+        })?
+        .ok_or_else(|| {
+            HttpError::from((
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Identity not found"})),
+            ))
+        })?;
 
     let provider: String = row.try_get("", "provider").unwrap_or_default();
     let provider_username: Option<String> = row.try_get("", "provider_username").unwrap_or(None);
-    let avatar_url: Option<String> = row.try_get("", "avatar_url").unwrap_or(None);
     let provider_user_id: String = row.try_get("", "provider_user_id").unwrap_or_default();
 
-    let run = async {
-        // Clear other primaries, then mark this one
-        txn.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "UPDATE user_identities SET is_primary = FALSE WHERE user_id = $1",
-            vec![SeaValue::Int(Some(user_id))],
-        ))
-        .await
-        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?;
-
-        txn.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "UPDATE user_identities SET is_primary = TRUE WHERE id = $1 AND user_id = $2",
-            vec![
-                SeaValue::Int(Some(identity_id)),
-                SeaValue::Int(Some(user_id)),
-            ],
-        ))
-        .await
-        .map_err(|e| { tracing::error!("OAuth DB error: {e}"); err_500("Database error") })?;
-
-        // Apply profile snapshot onto users (avatar; GitHub linked id when applicable)
-        let avatar_trim = avatar_url
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string);
-
-        if provider == "github" {
-            let github_id = provider_user_id.parse::<i64>().ok();
-            // Prefer identity avatar when present; never wipe with NULL
-            if let Some(avatar) = avatar_trim.clone() {
-                txn.execute(Statement::from_sql_and_values(
+    // GitHub 账号联结：仅在为空时补写，永不清空
+    if provider == "github" {
+        if let Ok(github_id) = provider_user_id.parse::<i64>() {
+            if let Err(e) = db
+                .execute(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
-                    "UPDATE users SET \
-                        linked_github_id = COALESCE($1, linked_github_id), \
-                        avatar_url = $2, \
-                        updated_at = NOW() \
-                     WHERE id = $3",
+                    "UPDATE users SET linked_github_id = COALESCE(linked_github_id, $1), \
+                     updated_at = NOW() WHERE id = $2",
                     vec![
-                        SeaValue::BigInt(github_id),
-                        SeaValue::String(Some(Box::new(avatar))),
+                        SeaValue::BigInt(Some(github_id)),
                         SeaValue::Int(Some(user_id)),
                     ],
                 ))
                 .await
-                .map_err(|e| {
-                    tracing::error!(error = %e, "OAuth: failed to apply profile");
-                    err_500("Database error")
-                })?;
-            } else if github_id.is_some() {
-                txn.execute(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "UPDATE users SET \
-                        linked_github_id = COALESCE($1, linked_github_id), \
-                        updated_at = NOW() \
-                     WHERE id = $2",
-                    vec![SeaValue::BigInt(github_id), SeaValue::Int(Some(user_id))],
-                ))
-                .await
-                .map_err(|e| {
-                    tracing::error!(error = %e, "OAuth: failed to apply profile");
-                    err_500("Database error")
-                })?;
-            }
-        } else if let Some(avatar) = avatar_trim {
-            txn.execute(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2",
-                vec![
-                    SeaValue::String(Some(Box::new(avatar))),
-                    SeaValue::Int(Some(user_id)),
-                ],
-            ))
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "OAuth: failed to apply avatar");
-                err_500("Database error")
-            })?;
-        }
-
-        // Prefer provider display username when present (does not change login username)
-        if let Some(ref name) = provider_username {
-            let name = name.trim();
-            if !name.is_empty() {
-                txn.execute(Statement::from_sql_and_values(
-                    DatabaseBackend::Postgres,
-                    "UPDATE users SET display_name = $1, updated_at = NOW() WHERE id = $2",
-                    vec![
-                        SeaValue::String(Some(Box::new(name.to_string()))),
-                        SeaValue::Int(Some(user_id)),
-                    ],
-                ))
-                .await
-                .map_err(|e| {
-                    tracing::error!(error = %e, "OAuth: failed to apply display_name");
-                    err_500("Database error")
-                })?;
+            {
+                tracing::warn!(error = %e, "OAuth: failed to backfill linked_github_id");
             }
         }
-
-        Ok::<(), HttpError>(())
     }
-    .await;
 
-    match run {
-        Ok(()) => {
-            txn.commit()
-                .await
-                .map_err(|e| {
-                    tracing::error!(error = %e, "OAuth: failed to commit transaction");
-                    err_500("Database error")
-                })?;
-            Ok(Json(json!({
-                "success": true,
-                "identity_id": identity_id,
-                "provider": provider,
-                "provider_username": provider_username,
-                "avatar_url": avatar_url,
-            })))
-        }
-        Err(e) => {
-            let _ = txn.rollback().await;
-            Err(e)
-        }
-    }
+    let avatar_url = crate::services::avatar::set_avatar_source(
+        &db,
+        user_id,
+        crate::services::avatar::AvatarSourceKind::Identity,
+        Some(&identity_id.to_string()),
+    )
+    .await
+    .map_err(|message| {
+        HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({"success": false, "message": message})),
+        ))
+    })?;
+
+    Ok(Json(json!({
+        "success": true,
+        "identity_id": identity_id,
+        "provider": provider,
+        "provider_username": provider_username,
+        "avatar_url": avatar_url,
+    })))
 }

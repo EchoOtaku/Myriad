@@ -34,6 +34,7 @@ export {
 } from './contentHandlers'
 
 export {
+  registerAnalyticsHandlers,
   registerPlatformHandlers,
   registerWidgetHandlers,
 } from './platformHandlers'

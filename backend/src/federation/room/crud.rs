@@ -741,7 +741,7 @@ pub async fn get_members(
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT rm.actor_url, rm.is_local, rm.role, rm.joined_at, rm.invited_by,
+            format!(r#"SELECT rm.actor_url, rm.is_local, rm.role, rm.joined_at, rm.invited_by,
                       COALESCE(rm.membership_status, 'active') AS membership_status,
                       COALESCE(
                           NULLIF(ra.display_name, ''),
@@ -751,25 +751,7 @@ pub async fn get_members(
                       ) AS display_name,
                       COALESCE(
                           NULLIF(ra.avatar_url, ''),
-                          NULLIF(
-                              CASE
-                                  WHEN u.avatar_url LIKE 'https://ui-avatars.com/%'
-                                       OR u.avatar_url LIKE 'http://ui-avatars.com/%'
-                                  THEN NULL
-                                  ELSE u.avatar_url
-                              END,
-                              ''
-                          ),
-                          (
-                              SELECT NULLIF(ui.avatar_url, '')
-                              FROM user_identities ui
-                              WHERE ui.user_id = u.id
-                                AND ui.avatar_url IS NOT NULL
-                                AND ui.avatar_url <> ''
-                              ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
-                              LIMIT 1
-                          ),
-                          NULLIF(u.avatar_url, '')
+                          {avatar}
                       ) AS avatar_url
                FROM federation_room_members rm
                LEFT JOIN federation_remote_actors ra ON rm.actor_url = ra.actor_url
@@ -778,7 +760,7 @@ pub async fn get_members(
                ORDER BY
                  CASE COALESCE(rm.membership_status, 'active') WHEN 'active' THEN 0 ELSE 1 END,
                  CASE rm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 WHEN 'member' THEN 2 ELSE 3 END,
-                 rm.joined_at"#,
+                 rm.joined_at"#, avatar = crate::services::avatar::avatar_snapshot_expr("u")),
             [room_id.into()],
         ))
         .await

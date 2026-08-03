@@ -10,23 +10,17 @@
   margin-right: auto;
 }
 
-/* 标题栏应用图标：字形套品牌色底；自有整图铺满、不套色壳 */
+/* 标题栏图标：尺寸见 .tapp-page-icon--header；质感走默认 material */
 .tapp-detail-icon {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 0.75rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
   font-weight: 700;
-  box-shadow: 0 4px 14px -4px rgb(0 0 0 / 22%);
-  overflow: hidden;
-  flex-shrink: 0;
 }
 
 .tapp-detail-icon.tapp-icon-badge--standalone {
   background: transparent !important;
+  box-shadow: 0 4px 14px -4px rgb(0 0 0 / 22%) !important;
 }
 
 /* 运行状态 chip（标题旁） */

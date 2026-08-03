@@ -447,8 +447,8 @@ export const IFRAME_RESIZE_SCRIPT = `
   updateCSS(dims);
 
   // 通知父窗口就绪
-  // 注意：消息格式需要符合 TappBridge 规范，包含 id、type、action 字段
-  // action 只能包含字母数字下划线和点号
+  // 注意：消息格式需要符合 TappBridge 规范，包含 id、type、action、_sessionToken
+  // action 只能包含字母数字下划线和点号；token 由宿主注入到 window._TAPP_SESSION_TOKEN
   if (window.parent !== window) {
     try {
       window.parent.postMessage({
@@ -456,7 +456,10 @@ export const IFRAME_RESIZE_SCRIPT = `
         id: 'tapp-ready-' + Date.now(),
         action: 'tapp.ready',
         payload: null,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        _sessionToken: typeof window._TAPP_SESSION_TOKEN === 'string'
+          ? window._TAPP_SESSION_TOKEN
+          : undefined
       }, '*');
     } catch(e) {}
   }

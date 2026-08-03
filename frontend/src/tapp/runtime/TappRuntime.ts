@@ -198,7 +198,11 @@ export class TappRuntime {
     // 使用请求去重
     return this.deduplicator.dedupe('sync', async () => {
       try {
-        const details = await TappApiService.listTappDetails()
+        // details 与 widgets 无依赖，并行拉取缩短冷启动
+        const [details, backendWidgets] = await Promise.all([
+          TappApiService.listTappDetails(),
+          TappApiService.getAllWidgets(),
+        ])
         const previousTapps = this.installedTapps
         const permissionChanges: TappInstance[] = []
         this.installedTapps = new Map()
@@ -281,8 +285,6 @@ export class TappRuntime {
           }
         }
 
-        // 获取后端已注册的小组件
-        const backendWidgets = await TappApiService.getAllWidgets()
         this.registeredWidgets.clear()
         for (const widget of backendWidgets) {
           this.registeredWidgets.set(widget.id, widget)

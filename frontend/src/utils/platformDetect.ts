@@ -149,6 +149,9 @@ export const isWebKit: boolean = (() => {
  * Surface 会误锁，导致 `createMediaElementSource` 永不接入 → 频谱全 0 →
  * 音乐播放器 Tapp 的 Aurora / 节奏涟漪等桌面动效全部静默。
  * 桌面 OS 一律允许 Web Audio 频谱（与后台策略无关）。
+ *
+ * 桌面接入频谱时音频 URL 须同源可 CORS（见 musicPlayer prefersSameOriginMusicProxy）：
+ * play-url 302 到网易/QQ CDN 时最终响应无 ACAO → MediaElementSource 全 0 / 可能静音。
  */
 export function shouldPreserveNativeAudioOutput(): boolean {
   if (typeof navigator === 'undefined' || typeof window === 'undefined') {

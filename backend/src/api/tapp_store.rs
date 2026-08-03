@@ -15,6 +15,7 @@ mod catalog;
 mod credentials;
 mod installation;
 mod lifecycle;
+mod list_card_sizes;
 mod package_api;
 mod package_files;
 mod prepared_package;
@@ -42,6 +43,7 @@ use credentials::{
 };
 use installation::{install_tapp, install_tapp_file, update_tapp};
 use lifecycle::{get_recent_tapps, start_tapp, stop_tapp};
+use list_card_sizes::{get_list_card_sizes, put_list_card_sizes};
 pub use myriad_tapp_contract::manifest::*;
 use package_api::{export_tapp, get_tapp_asset, get_tapp_code, get_tapp_resources};
 pub(crate) use package_files::*;
@@ -61,6 +63,9 @@ pub use types::{ApiResponse, TappDetail, TappListItem};
 #[cfg(test)]
 use uninstall::uninstall_post_commit_cleanup_path;
 use uninstall::{cleanup_temporary_tapps, uninstall_tapp};
+pub use uninstall::{
+    prune_stale_private_tapps, PRIVATE_INSTALL_INACTIVITY_DAYS,
+};
 pub(crate) use validation::*;
 #[cfg(test)]
 use widgets::runtime_widget_belongs_to_installation;
@@ -69,7 +74,7 @@ pub type RegisterWidgetRequest = widgets::RegisterWidgetRequest;
 use widgets::{list_all_widgets, reconcile_manifest_widgets, register_widget, unregister_widget};
 
 use axum::{
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 
@@ -90,6 +95,8 @@ pub fn create_tapp_routes(
         .route("/install", post(install_tapp))
         .route("/install-file", post(install_tapp_file))
         .route("/cleanup-temporary", post(cleanup_temporary_tapps))
+        // Write own list card sizes (site owner's row = public layout for guests)
+        .route("/list-card-sizes", put(put_list_card_sizes))
         .route("/{tapp_id}", delete(uninstall_tapp))
         .route("/{tapp_id}/update", post(update_tapp))
         .route("/{tapp_id}/start", post(start_tapp))
@@ -118,6 +125,8 @@ pub fn create_tapp_routes(
         .route("/details", get(list_tapp_details))
         .route("/widgets", get(list_all_widgets))
         .route("/store/sources", get(list_store_sources))
+        // Public list layout: guests read site-owner card sizes (no auth required)
+        .route("/list-card-sizes", get(get_list_card_sizes))
         .route("/{tapp_id}", get(get_tapp))
         .route("/{tapp_id}/code", get(get_tapp_code))
         .route("/{tapp_id}/resources", get(get_tapp_resources))

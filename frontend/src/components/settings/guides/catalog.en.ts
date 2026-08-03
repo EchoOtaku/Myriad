@@ -84,42 +84,31 @@ export const en: SettingGuidesCatalog = {
       frontend: '<meta name="robots"> in the page head.',
       notes: 'Turn off for private, demo, or not-yet-public instances. Keep on for a public site.',
     },
+    siteVisibilityPolicy: {
+      what: 'Four-level policy for search engines and AI discovery/citation.',
+      chain:
+        '1) Pick a level → save config.\n2) Backend updates robots.txt / sitemap / llms.txt and syncs noindex.\n3) Public sites: prefer Allow AI citations.',
+      frontend: 'Differences on GET /robots.txt, /sitemap.xml, /llms.txt; page robots meta.',
+      notes: 'Not all AI bots honor robots; check CDN AI bot settings (e.g. Cloudflare) separately.',
+    },
+    siteAiIntro: {
+      what: 'AI-facing site blurb written into /llms.txt.',
+      chain: '1) Write or AI-generate → save.\n2) Served when policy is Allow AI citations or Fully open.',
+      frontend: 'Summary block in public /llms.txt.',
+      notes: 'Prefer facts and scope over marketing fluff.',
+    },
+    siteAiGenerate: {
+      what: 'Per-field “AI generate” title tags for description / keywords / AI intro.',
+      chain: '1) Set site title → click the tag next to a field → review → save config.',
+      frontend: 'Title-adjacent SettingTitleTag; POST /api/seo/generate-copy with a single field.',
+      notes: 'AI generate opens an optional hint dialog, then POSTs a single field.',
+    },
     pwaEnabled: {
       what: 'Whether PWA is enabled (service worker + installable manifest), under “Site identity & app” with the title and icon.',
       chain:
         '1) When on, production registers /sw.js and keeps the web app manifest.\n2) Applies right after save — no full hard reload required.',
       frontend: 'Browser “Apps” / install prompts; DevTools → Application → Service Workers.',
       notes: 'Defaults on. Install prompts need HTTPS (or localhost).',
-    },
-    thirdPartyAnalytics: {
-      what: 'Send visits to external analytics (Google Analytics, Umami, …), separate from built-in visitor stats.',
-      chain:
-        '1) Fill GA and/or Umami as needed → save at the bottom.\n2) The visitor browser loads the matching scripts and sends page_view.\n3) Charts under Data & Analytics stay first-party.',
-      frontend: 'This group is third-party only; in-app stats stay under Data & Analytics.',
-      notes: 'Both can be empty (no third-party scripts). Enable one or both.',
-    },
-    gaMeasurementId: {
-      what: 'Your Google Analytics 4 Measurement ID — sends visits to your GA property.',
-      chain:
-        '1) Copy the G-… ID from GA Admin → Data streams.\n2) Paste here → save config at the bottom.\n3) The page loads gtag.js; SPA route changes send page_view.',
-      frontend:
-        'Network tab should show googletagmanager.com/gtag/js.\nGA Realtime should list matching page_path values.',
-      notes:
-        'GA4 only (G-…). Admin/owner browsing is not reported. First-party opt-out also skips third-party. Leave empty to disable GA.',
-    },
-    umamiWebsiteId: {
-      what: 'Website ID for this site in Umami (usually a UUID).',
-      chain:
-        '1) Copy Website ID from Umami site settings.\n2) Save with Script URL below.\n3) Tracker is injected; SPA routes call umami.track.',
-      frontend: 'Network tab shows your script URL; Umami realtime should list paths.',
-      notes: 'ID alone without script URL does nothing. Same field for Cloud and self-host.',
-    },
-    umamiScriptUrl: {
-      what: 'Full URL of the Umami tracker script.',
-      chain:
-        '1) Cloud: https://cloud.umami.is/script.js; self-host: https://your-umami/script.js.\n2) Loads after save with Website ID.\n3) data-auto-track is off; SPA router owns page views.',
-      frontend: 'A script tag with data-website-id in the page head.',
-      notes: 'Host-only values (e.g. https://stats.example.com) get /script.js appended. Prefer https.',
     },
     siteFooter: {
       what: 'The bar at the very bottom of the page: filing numbers, cloud-provider badges, and similar.',
@@ -362,7 +351,7 @@ export const en: SettingGuidesCatalog = {
       chain:
         '1) Shares the visitor-stats collection switch, date range, and exclusions (admin/owner not counted).\n2) Count = sum in range; visitors = distinct people who fired the event.\n3) Built-ins cover login/OAuth, music, library, Brew, report stage, Arael, Tapp, friend links, theme/locale/control panel; pass target for per-entity split (tapp id, platform slug, …).\n4) Main row = event total; sub-rows = target breakdown (up to ~20).\n5) Turning collection off stops new writes; history stays readable.',
       frontend: 'Data & stats → Visitor stats → Events section (beside Referrers).',
-      notes: 'Keep custom event names stable and short; noisy high-frequency events crowd the ranking. Export/import backups include event aggregates.',
+      notes: 'Keep custom event names stable and short; noisy high-frequency events crowd the ranking. Export/import backups include event aggregates and are sealed with an instance integrity token so hand-edited metrics are rejected.',
     },
     referrerAnalytics: {
       what: 'Which external sites sent traffic here (views by referrer hostname).',
@@ -377,6 +366,36 @@ export const en: SettingGuidesCatalog = {
         '1) Written to tapp_ai_cost_ledger: Tapp runtime and scheduled jobs settle via governed path; Arael and report generation use task-local attribution.\n2) Admin GET /api/analytics/ai-usage aggregates by the server local calendar day and does not exclude staff.\n3) Bars = calls, line = tokens; lists by user, model, and source (including scheduler).\n4) Independent of the visitor-stats collection switch.',
       frontend: 'Settings → Data & stats → “AI usage stats” (KPIs, chart, by user / model / source).',
       notes: 'Tokens are often estimates. Panel is admin-only.',
+    },
+    thirdPartyAnalytics: {
+      what: 'Send visits to external analytics (Google Analytics, Umami, …), separate from first-party visitor charts on this page.',
+      chain:
+        '1) At the bottom of Data & Analytics, fill GA and/or Umami → save.\n2) Visitor browsers load matching scripts and send page_view.\n3) Visitor Stats charts above stay first-party and are not sent to GA/Umami.',
+      frontend: 'Settings → Data & Analytics → last group “Third-party Analytics”.',
+      notes: 'Both can be empty (no third-party scripts). Enable one or both.',
+    },
+    gaMeasurementId: {
+      what: 'Your Google Analytics 4 Measurement ID — sends visits to your GA property.',
+      chain:
+        '1) Copy the G-… ID from GA Admin → Data streams.\n2) Paste under Third-party Analytics → save config.\n3) The page loads gtag.js; SPA route changes send page_view.',
+      frontend:
+        'Network tab should show googletagmanager.com/gtag/js.\nGA Realtime should list matching page_path values.',
+      notes:
+        'GA4 only (G-…). Admin/owner browsing is not reported. First-party opt-out also skips third-party. Leave empty to disable GA.',
+    },
+    umamiWebsiteId: {
+      what: 'Website ID for this site in Umami (usually a UUID).',
+      chain:
+        '1) Copy Website ID from Umami site settings.\n2) Save with Script URL below.\n3) Tracker is injected; SPA routes call umami.track.',
+      frontend: 'Network tab shows your script URL; Umami realtime should list paths.',
+      notes: 'ID alone without script URL does nothing. Same field for Cloud and self-host.',
+    },
+    umamiScriptUrl: {
+      what: 'Full URL of the Umami tracker script.',
+      chain:
+        '1) Cloud: https://cloud.umami.is/script.js; self-host: https://your-umami/script.js.\n2) Loads after save with Website ID.\n3) data-auto-track is off; SPA router owns page views.',
+      frontend: 'A script tag with data-website-id in the page head.',
+      notes: 'Host-only values (e.g. https://stats.example.com) get /script.js appended. Prefer https.',
     },
     connected: {
       what: 'Connect external accounts and configure auto-refresh for configured platforms.',

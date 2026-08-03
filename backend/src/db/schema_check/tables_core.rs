@@ -180,6 +180,12 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     is_nullable: false,
                     default_value: Some("'{}'::jsonb".into()),
                 },
+                ColumnDef {
+                    name: "tapp_list_card_sizes".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: false,
+                    default_value: Some("'{}'::jsonb".into()),
+                },
                 // 在线状态跟踪（base 001）
                 ColumnDef {
                     name: "last_seen_at".into(),
@@ -199,6 +205,44 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     data_type: "boolean".into(),
                     is_nullable: false,
                     default_value: Some("false".into()),
+                },
+                // 画像源选择（base 001）：NULL = auto，沿用隐式优先级，故存量库补列即可，无需回填
+                ColumnDef {
+                    name: "avatar_source_kind".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "avatar_source_ref".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "avatar_resolved_url".into(),
+                    data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "avatar_updated_at".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                // 名称/简介文案来源（与 avatar_source_* 独立；NULL = auto）
+                ColumnDef {
+                    name: "profile_text_source_kind".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "profile_text_source_ref".into(),
+                    data_type: "character varying".into(),
+                    is_nullable: true,
+                    default_value: None,
                 },
             ],
         },

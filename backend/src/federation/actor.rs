@@ -39,34 +39,14 @@ pub async fn get_actor(
     let user = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT u.id, u.username, u.display_name,
-                      COALESCE(
-                          NULLIF(
-                              CASE
-                                  WHEN u.avatar_url LIKE 'https://ui-avatars.com/%'
-                                       OR u.avatar_url LIKE 'http://ui-avatars.com/%'
-                                  THEN NULL
-                                  ELSE u.avatar_url
-                              END,
-                              ''
-                          ),
-                          (
-                              SELECT NULLIF(ui.avatar_url, '')
-                              FROM user_identities ui
-                              WHERE ui.user_id = u.id
-                                AND ui.avatar_url IS NOT NULL
-                                AND ui.avatar_url <> ''
-                              ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
-                              LIMIT 1
-                          ),
-                          NULLIF(u.avatar_url, '')
-                      ) AS avatar_url,
+            format!(r#"SELECT u.id, u.username, u.display_name,
+                      {avatar} AS avatar_url,
                       u.bio,
                       fk.public_key_pem, fk.key_id
                FROM users u
                LEFT JOIN federation_keys fk ON fk.user_id = u.id
                WHERE u.username = $1
-               LIMIT 1"#,
+               LIMIT 1"#, avatar = crate::services::avatar::avatar_snapshot_expr("u")),
             [username.clone().into()],
         ))
         .await
@@ -586,31 +566,11 @@ async fn upsert_local_actor_as_remote(
     let user_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT id, username, display_name,
-                      COALESCE(
-                          NULLIF(
-                              CASE
-                                  WHEN avatar_url LIKE 'https://ui-avatars.com/%'
-                                       OR avatar_url LIKE 'http://ui-avatars.com/%'
-                                  THEN NULL
-                                  ELSE avatar_url
-                              END,
-                              ''
-                          ),
-                          (
-                              SELECT NULLIF(ui.avatar_url, '')
-                              FROM user_identities ui
-                              WHERE ui.user_id = users.id
-                                AND ui.avatar_url IS NOT NULL
-                                AND ui.avatar_url <> ''
-                              ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
-                              LIMIT 1
-                          ),
-                          NULLIF(avatar_url, '')
-                      ) AS avatar_url
+            format!(r#"SELECT id, username, display_name,
+                      {avatar} AS avatar_url
                FROM users
                WHERE username = $1
-               LIMIT 1"#,
+               LIMIT 1"#, avatar = crate::services::avatar::avatar_snapshot_expr("users")),
             [username.into()],
         ))
         .await
@@ -793,31 +753,11 @@ pub async fn get_local_identity(
     if let Ok(Some(row)) = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT id, display_name,
-                      COALESCE(
-                          NULLIF(
-                              CASE
-                                  WHEN avatar_url LIKE 'https://ui-avatars.com/%'
-                                       OR avatar_url LIKE 'http://ui-avatars.com/%'
-                                  THEN NULL
-                                  ELSE avatar_url
-                              END,
-                              ''
-                          ),
-                          (
-                              SELECT NULLIF(ui.avatar_url, '')
-                              FROM user_identities ui
-                              WHERE ui.user_id = users.id
-                                AND ui.avatar_url IS NOT NULL
-                                AND ui.avatar_url <> ''
-                              ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
-                              LIMIT 1
-                          ),
-                          NULLIF(avatar_url, '')
-                      ) AS avatar_url
+            format!(r#"SELECT id, display_name,
+                      {avatar} AS avatar_url
                FROM users
                WHERE username = $1
-               LIMIT 1"#,
+               LIMIT 1"#, avatar = crate::services::avatar::avatar_snapshot_expr("users")),
             [username.to_string().into()],
         ))
         .await
@@ -869,30 +809,10 @@ async fn get_local_avatar_url(
     let row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT COALESCE(
-                      NULLIF(
-                          CASE
-                              WHEN avatar_url LIKE 'https://ui-avatars.com/%'
-                                   OR avatar_url LIKE 'http://ui-avatars.com/%'
-                              THEN NULL
-                              ELSE avatar_url
-                          END,
-                          ''
-                      ),
-                      (
-                          SELECT NULLIF(ui.avatar_url, '')
-                          FROM user_identities ui
-                          WHERE ui.user_id = users.id
-                            AND ui.avatar_url IS NOT NULL
-                            AND ui.avatar_url <> ''
-                          ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
-                          LIMIT 1
-                      ),
-                      NULLIF(avatar_url, '')
-                  ) AS avatar_url
+            format!(r#"SELECT {avatar} AS avatar_url
                FROM users
                WHERE username = $1
-               LIMIT 1"#,
+               LIMIT 1"#, avatar = crate::services::avatar::avatar_snapshot_expr("users")),
             [username.to_string().into()],
         ))
         .await

@@ -25,7 +25,12 @@ export {
   type WidgetResources,
 } from './resourceLoader'
 // SDK 生成器
-export { generateFullSDK, generateWidgetSDK } from './sdkGenerator'
+export {
+  generateFullSDK,
+  generateWidgetSDK,
+  resolveWidgetSdkCaps,
+} from './sdkGenerator'
+export type { WidgetSdkCaps } from './sdkGenerator'
 
 // 安全策略
 export {

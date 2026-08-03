@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { API_URL } from '../config'
 import { fetchJsonWithRetry } from '../utils/apiRetry'
+import { cssBackgroundImage } from '../utils/cssUrl'
 import { loadImagePooled } from '../utils/objectPool'
 import { proxyImageUrl } from '../utils/proxyImageUrl'
 import { getUIConfigDeduped } from '../utils/requestDedup'
@@ -21,6 +22,7 @@ import {
   normalizeWallpaperUrl,
   wallpaperState,
 } from '../utils/wallpaperState'
+import { sanitizeWallpaperUrl } from '../utils/wallpaperUrlPolicy'
 
 export { areUrlsEquivalent, normalizeWallpaperUrl }
 
@@ -160,9 +162,13 @@ function getCachedAlternativeWallpaper(
 
     if (alternatives.length === 0) return null
 
-    // 随机选择一个
-    const randomIndex = Math.floor(Math.random() * alternatives.length)
-    return alternatives[randomIndex].url
+    // 随机选择一个（须再过策略：缓存可能含历史脏 URL）
+    const safeAlts = alternatives
+      .map((item: { url: string }) => sanitizeWallpaperUrl(item.url))
+      .filter((u: string | null): u is string => !!u)
+    if (safeAlts.length === 0) return null
+    const randomIndex = Math.floor(Math.random() * safeAlts.length)
+    return safeAlts[randomIndex]
   } catch {
     return null
   }
@@ -217,17 +223,8 @@ function extractImageUrlFromJson(data: unknown): string | null {
 
   const tryString = (v: unknown): string | null => {
     if (typeof v !== 'string') return null
-    const s = v.trim()
-    if (!s) return null
-    if (
-      s.startsWith('http://') ||
-      s.startsWith('https://') ||
-      s.startsWith('//') ||
-      s.startsWith('data:image/')
-    ) {
-      return s.startsWith('//') ? `https:${s}` : s
-    }
-    return null
+    // Policy rejects data:/private hosts/non-http schemes (incl. data:image/svg+xml)
+    return sanitizeWallpaperUrl(v)
   }
 
   for (const key of [
@@ -269,84 +266,109 @@ function extractImageUrlFromJson(data: unknown): string | null {
 }
 
 /**
+ * Accept only policy-safe final URLs after redirects / JSON extraction.
+ * proxyImageUrl may rewrite to absolute `http://localhost…/api/proxy/image?...`
+ * in dev — normalize to path form so host policy does not reject same-app proxy.
+ */
+function finalizeWallpaperUrl(
+  candidate: string | null | undefined,
+): string | null {
+  if (!candidate) return null
+  let proxied = proxyImageUrl(candidate) || candidate
+  const proxyMarker = '/api/proxy/image'
+  const idx = proxied.indexOf(proxyMarker)
+  if (idx >= 0) {
+    proxied = proxied.slice(idx)
+  }
+  return sanitizeWallpaperUrl(proxied)
+}
+
+/**
+ * Path ends with a common image extension → treat as direct asset URL.
+ * No network probe needed; applyWallpaperToDOM confirms via Image() preload.
+ */
+function isLikelyDirectImageUrl(url: string): boolean {
+  try {
+    const path = new URL(
+      url,
+      typeof location !== 'undefined' ? location.href : 'https://local.invalid',
+    ).pathname.toLowerCase()
+    return IMAGE_EXTENSIONS.some((ext) => path.endsWith(ext))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Resolve non-direct wallpaper URLs without HEAD.
+ * Many CDNs/image hosts reject HEAD; SW Cache API also cannot put HEAD.
+ * GET only: follow redirects, detect image/* vs JSON 图床 API, extract final URL.
+ * Display validity is confirmed later via Image() preload in applyWallpaperToDOM.
+ */
+async function resolveImageUrlViaGet(url: string): Promise<string | null> {
+  const getResp = await fetch(url, {
+    method: 'GET',
+    redirect: 'follow',
+    headers: { Accept: 'application/json, image/*, */*' },
+  })
+  const getType = getResp.headers.get('content-type') || ''
+  if (getType.includes('image/')) {
+    // Drain body so the connection can be reused; Image() will fetch for display.
+    try {
+      await getResp.blob()
+    } catch {
+      /* ignore body read errors */
+    }
+    return finalizeWallpaperUrl(getResp.url || url)
+  }
+  if (getType.includes('json') || getType.includes('text/')) {
+    const text = await getResp.text()
+    try {
+      const data = JSON.parse(text)
+      const extracted = extractImageUrlFromJson(data)
+      const final = finalizeWallpaperUrl(extracted)
+      if (final) return final
+    } catch {
+      /* not JSON */
+    }
+  }
+  return finalizeWallpaperUrl(getResp.url || url)
+}
+
+/**
  * 获取实际的图片 URL：
- * 1) HEAD 跟随 302 重定向
- * 2) 若响应像 JSON 图床 API，GET 并解析常见字段（url/image/img/...）
- * 3) 失败则回退原始 URL
+ * 1) 策略校验（scheme / 主机）
+ * 2) 直链图片：跳过探测，交给 Image() 预加载验证（从不使用 HEAD）
+ * 3) API / 无扩展名：GET 跟随 302 或解析 JSON 图床
+ * 4) 失败则回退原始 URL（仍须通过策略）
  */
 async function resolveImageUrl(
   apiUrl: string,
   bustCache = false,
 ): Promise<string> {
-  const url = bustCache
-    ? apiUrl.includes('?')
-      ? `${apiUrl}&t=${Date.now()}`
-      : `${apiUrl}?t=${Date.now()}`
-    : apiUrl
+  const base = sanitizeWallpaperUrl(apiUrl)
+  if (!base) return ''
 
-  try {
-    // Prefer HEAD for pure redirect chains (cheap).
-    const head = await fetch(url, { method: 'HEAD', redirect: 'follow' })
-    const contentType = head.headers.get('content-type') || ''
-    if (contentType.includes('image/')) {
-      return head.url || url
-    }
-    // 非图片：可能是 JSON 图床或 text；改 GET 解析
-    if (
-      contentType.includes('json') ||
-      contentType.includes('text/') ||
-      !contentType
-    ) {
-      const getResp = await fetch(url, {
-        method: 'GET',
-        redirect: 'follow',
-        headers: { Accept: 'application/json, image/*, */*' },
-      })
-      const getType = getResp.headers.get('content-type') || ''
-      if (getType.includes('image/')) {
-        return getResp.url || url
-      }
-      if (getType.includes('json') || getType.includes('text/')) {
-        const text = await getResp.text()
-        try {
-          const data = JSON.parse(text)
-          const extracted = extractImageUrlFromJson(data)
-          // JSON endpoints often return CDN URLs that need hotlink proxy
-          if (extracted) return proxyImageUrl(extracted) || extracted
-        } catch {
-          // not JSON — fall through
-        }
-      }
-      // HEAD 已跟随重定向到最终 URL 时可用
-      if (head.url && head.url !== url) return head.url
-    } else if (head.url) {
-      return head.url
-    }
-  } catch {
-    // HEAD 失败：尝试 GET JSON
-    try {
-      const getResp = await fetch(url, {
-        method: 'GET',
-        redirect: 'follow',
-        headers: { Accept: 'application/json, image/*, */*' },
-      })
-      const getType = getResp.headers.get('content-type') || ''
-      if (getType.includes('image/')) return getResp.url || url
-      const text = await getResp.text()
-      try {
-        const data = JSON.parse(text)
-        const extracted = extractImageUrlFromJson(data)
-        if (extracted) return proxyImageUrl(extracted) || extracted
-      } catch {
-        /* ignore */
-      }
-      if (getResp.url) return getResp.url
-    } catch {
-      /* ignore */
-    }
+  const url = bustCache
+    ? base.includes('?')
+      ? `${base}&t=${Date.now()}`
+      : `${base}?t=${Date.now()}`
+    : base
+
+  // Direct image assets (path ends with image extension): no network probe.
+  // applyWallpaperToDOM → preloadImage (Image()) is the availability check.
+  if (isLikelyDirectImageUrl(url)) {
+    return finalizeWallpaperUrl(url) || ''
   }
 
-  return url
+  try {
+    const viaGet = await resolveImageUrlViaGet(url)
+    if (viaGet) return viaGet
+  } catch {
+    /* network / CORS — fall back to sanitized URL; Image() will verify */
+  }
+
+  return finalizeWallpaperUrl(url) || ''
 }
 
 /**
@@ -386,6 +408,15 @@ async function applyWallpaperToDOM(
     console.warn('壁纸元素不存在')
     return null
   }
+
+  const safeUrl = sanitizeWallpaperUrl(imageUrl)
+  if (!safeUrl) {
+    console.warn('壁纸 URL 未通过安全策略，已拒绝应用')
+    wallpaperState.setError('壁纸 URL 不安全或无效')
+    return null
+  }
+  // Use sanitized URL for the rest of apply
+  imageUrl = safeUrl
 
   // 检查是否需要更新：如果当前壁纸与目标相同且不是强制刷新，跳过
   const currentUrl = extractBackgroundUrl(WALLPAPER_ELEMENT_ID)
@@ -443,8 +474,8 @@ async function applyWallpaperToDOM(
       return imageUrl
     }
 
-    // 应用到 DOM（先不可见，再渐显）
-    wallpaperEl.style.backgroundImage = `url(${imageUrl})`
+    // 应用到 DOM（先不可见，再渐显）；强制 url("...") 防 CSS 注入/截断
+    wallpaperEl.style.backgroundImage = cssBackgroundImage(imageUrl)
     wallpaperEl.style.filter = `blur(${effectiveWallpaperBlur(blur)}px)`
     wallpaperEl.classList.remove('wallpaper-fading')
 
@@ -522,8 +553,15 @@ async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
       ),
     }
 
+    // Apply-time policy: drop legacy DB junk (javascript:/private hosts/data:)
+    const rawWallpaper =
+      typeof data.wallpaper_url === 'string' ? data.wallpaper_url : ''
+    const wallpaper_url = rawWallpaper
+      ? sanitizeWallpaperUrl(rawWallpaper) || ''
+      : ''
+
     console.debug('[Wallpaper] Config received:', {
-      wallpaper_url: data.wallpaper_url,
+      wallpaper_url,
       blur: data.wallpaper_blur,
       evocative: {
         parallax: evocative.evocative_parallax,
@@ -536,7 +574,7 @@ async function fetchWallpaperConfig(): Promise<WallpaperConfig | null> {
 
     // 即使没有壁纸 URL，也返回动效开关（避免图挂了/URL 空时整条 evocative 被丢掉）
     return {
-      wallpaper_url: typeof data.wallpaper_url === 'string' ? data.wallpaper_url : '',
+      wallpaper_url,
       wallpaper_blur: asConfigNumber(data.wallpaper_blur, 3),
       ...evocative,
     }

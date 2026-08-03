@@ -27,11 +27,10 @@ export interface SettingGuidesCatalog {
     siteKeywords: SettingGuideEntry
     siteOgImage: SettingGuideEntry
     siteNoindex: SettingGuideEntry
+    siteVisibilityPolicy: SettingGuideEntry
+    siteAiIntro: SettingGuideEntry
+    siteAiGenerate: SettingGuideEntry
     pwaEnabled: SettingGuideEntry
-    thirdPartyAnalytics: SettingGuideEntry
-    gaMeasurementId: SettingGuideEntry
-    umamiWebsiteId: SettingGuideEntry
-    umamiScriptUrl: SettingGuideEntry
     siteFooter: SettingGuideEntry
     siteIcp: SettingGuideEntry
     siteGongan: SettingGuideEntry
@@ -76,6 +75,11 @@ export interface SettingGuidesCatalog {
     referrerAnalytics: SettingGuideEntry
     /** 数据及统计：AI 使用统计 */
     aiUsage: SettingGuideEntry
+    /** 数据及统计：第三方统计（GA / Umami） */
+    thirdPartyAnalytics: SettingGuideEntry
+    gaMeasurementId: SettingGuideEntry
+    umamiWebsiteId: SettingGuideEntry
+    umamiScriptUrl: SettingGuideEntry
     /** 数据及统计：接入平台子分类 */
     connected: SettingGuideEntry
     autoRefresh: SettingGuideEntry

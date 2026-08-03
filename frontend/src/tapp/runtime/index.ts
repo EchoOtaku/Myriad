@@ -41,3 +41,11 @@ export type {
 export { TappWidgetSandbox } from './TappWidgetSandbox'
 
 export type { TappWidgetSandboxProps } from './TappWidgetSandbox'
+
+export {
+  clearWidgetPerf,
+  getWidgetPerfSnapshot,
+  getWidgetPerfSummary,
+  widgetPerfMark,
+} from './WidgetLoadPerf'
+export type { WidgetPerfPhase, WidgetPerfRecord } from './WidgetLoadPerf'

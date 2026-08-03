@@ -27,7 +27,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import AnimatedView from '../../components/AnimatedView'
 import {
   getTappPermissionGuide,
@@ -59,20 +59,20 @@ import {
 import { TappIconBadge } from '../components/TappIconBadge'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { PERMISSION_CONFIG } from '../constants/permissions'
+import { useTappShellPresence } from '../hooks/useTappShellPresence'
 import { getTappRuntime } from '../runtime'
 import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import * as TappApiService from '../services/TappApiService'
 import { resolveManifestText } from '../utils/manifestLocale'
 import { getTappIconStyle } from '../utils/tappColors'
 import { buildTappDetailPageSeo } from '../utils/tappPageSeo'
+import { TAPP_LIST_PATH, tappRunPath } from '../utils/tappPaths'
 import '../../components/ConfigForm.css'
 import './TappDetailPage.css'
 
-interface TappDetailPageProps {
-  tappId: string
-}
-
-export function TappDetailPage({ tappId }: TappDetailPageProps) {
+export function TappDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  const tappId = id ? decodeURIComponent(id) : ''
   const navigate = useNavigate()
   const { t, format, locale } = useI18n()
   const { catalog: g, bindGuide, renderGuide } = useSettingGuide()
@@ -357,9 +357,19 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
     t,
   ])
 
+  // 与 run/store 同款壳层：进场 + 返回时 requestClose 再 navigate（列表下 fixed 叠化）
+  const {
+    shellClassName,
+    scrimClassName,
+    shellStyle,
+    onShellAnimationEnd,
+    requestClose,
+    isExiting,
+  } = useTappShellPresence({ enabled: true, fade: true })
+
   const goBack = useCallback(() => {
-    navigate('/tapp')
-  }, [navigate])
+    requestClose(() => navigate(TAPP_LIST_PATH))
+  }, [navigate, requestClose])
 
   const handleToggleRunning = useCallback(async () => {
     try {
@@ -375,7 +385,7 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
             })
           },
         )
-        navigate(`/tapp/run/${tappId}`)
+        navigate(tappRunPath(tappId))
       }
     } catch (err) {
       console.error('Failed to toggle Tapp:', err)
@@ -446,10 +456,41 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
   )
 
   const pageShell = (body: ReactNode) => (
-    <AnimatedView className="min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12">
-      <div className="tapp-detail-page">{body}</div>
+    <AnimatedView
+      className="relative min-h-screen px-4 sm:px-6 pt-20 pb-24 md:pb-12"
+      style={{ pointerEvents: isExiting ? 'none' : undefined }}
+    >
+      {scrimClassName ? (
+        <div className={scrimClassName} style={shellStyle} aria-hidden />
+      ) : null}
+      <div
+        className={`tapp-detail-page relative z-[1] ${shellClassName}`}
+        style={shellStyle}
+        onAnimationEnd={onShellAnimationEnd}
+      >
+        {body}
+      </div>
     </AnimatedView>
   )
+
+  if (!tappId) {
+    return pageShell(
+      <div className="config-section setting-section">
+        <div className="tapp-detail-state">
+          <FaExclamationTriangle className="tapp-detail-state-icon" />
+          <h3 className="tapp-detail-state-title">{t.tapp.cannotLoadApp}</h3>
+          <p className="tapp-detail-state-desc">{t.tapp.appNotExist}</p>
+          <SettingsButton
+            variant="primary"
+            icon={<LuChevronLeft />}
+            onClick={goBack}
+          >
+            {t.tapp.backToAppList}
+          </SettingsButton>
+        </div>
+      </div>,
+    )
+  }
 
   if (loading) {
     return pageShell(
@@ -822,11 +863,14 @@ export function TappDetailPage({ tappId }: TappDetailPageProps) {
             icon={manifest.icon}
             iconSvg={manifest.iconSvg}
             name={displayName}
+            id={manifest.id}
+            themeColor={manifest.themeColor}
+            category={manifest.category}
+            permissions={manifest.permissions}
             iconStyle={iconStyle}
-            shellClassName="tapp-detail-icon"
+            shellClassName="tapp-page-icon tapp-page-icon--header tapp-detail-icon"
             glyphSizeClass="w-7 h-7"
             glyphTextClass="text-xl"
-            shine={false}
           />
         }
         titleExtra={

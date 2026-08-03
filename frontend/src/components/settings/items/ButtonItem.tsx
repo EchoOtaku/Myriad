@@ -27,6 +27,8 @@ export const ButtonItem = React.memo<ButtonItemProps>(
     detail,
     description,
     hint,
+    guide,
+    guidePath,
     onClick,
     buttonText,
     buttonIcon,
@@ -72,6 +74,8 @@ export const ButtonItem = React.memo<ButtonItemProps>(
         detail={detail}
         description={description}
         hint={hint}
+        guide={guide}
+        guidePath={guidePath}
         layout={layout}
         size={size}
         className={`setting-item-button ${className}`}

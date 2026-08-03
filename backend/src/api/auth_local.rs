@@ -190,13 +190,15 @@ pub async fn create_admin(
     ) VALUES ($1, $2, $3, true, NULL, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     RETURNING id";
 
+    // avatar_url 留空：占位头像是「显示时的兜底」，不是账号数据。
+    // 曾在这里播种 ui-avatars.com 外链（渲染出的 "Ad" 就是 name=Admin 的缩写），
+    // 结果是每个新装站点从第一天起就依赖一个外部图床，且用户显式选「账号头像」
+    // 时会把这张占位图当成真头像用。现在交给前端 <Avatar> 本地生成。
     let insert_params = vec![
         SeaValue::String(Some(Box::new(request.username.clone()))),
         SeaValue::String(Some(Box::new("local".to_string()))),
         SeaValue::String(Some(Box::new(password_hash))),
-        SeaValue::String(Some(Box::new(
-            "https://ui-avatars.com/api/?name=Admin&background=4f46e5&color=fff".to_string(),
-        ))),
+        SeaValue::String(None),
     ];
 
     let user_result = match txn
@@ -754,9 +756,8 @@ pub async fn register(
                     .map(|s| SeaValue::String(Some(Box::new(s))))
                     .unwrap_or(SeaValue::String(None)),
                 SeaValue::String(Some(Box::new(password_hash))),
-                SeaValue::String(Some(Box::new(
-                    "https://ui-avatars.com/api/?name=User&background=4f46e5&color=fff".to_string(),
-                ))),
+                // 占位头像退成显示兜底，不落库（见 create_owner 处说明）
+                SeaValue::String(None),
             ],
         ))
         .await
@@ -1070,10 +1071,8 @@ pub async fn admin_create_user(
                     .unwrap_or(SeaValue::String(None)),
                 SeaValue::String(Some(Box::new(password_hash))),
                 SeaValue::Bool(Some(create_as_admin)),
-                SeaValue::String(Some(Box::new(format!(
-                    "https://ui-avatars.com/api/?name={}&background=4f46e5&color=fff",
-                    urlencoding::encode(&req.username)
-                )))),
+                // 占位头像退成显示兜底，不落库（见 create_owner 处说明）
+                SeaValue::String(None),
             ],
         ))
         .await

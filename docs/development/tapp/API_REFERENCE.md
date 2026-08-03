@@ -357,6 +357,39 @@ await Tapp.platform.addItems([
 
 ---
 
+## 访问统计 API
+
+**权限**: `analytics:read`（basic，游客可用）
+
+读取站点第一方访客统计的**聚合**结果，与管理端「访客统计」同源。  
+**不包含**访客哈希、序位等身份相关字段。
+
+```javascript
+// 区间汇总 + 日趋势 + 页面 / 事件 / 来源 / 国家排行
+// days 默认 7，上限 365；也可用 from/to（YYYY-MM-DD）
+const summary = await Tapp.analytics.getSummary({ days: 7 });
+// summary.today / summary.range / summary.daily / summary.pages / summary.events …
+
+// 访客卡片精简数据（今日 / 累计 / 短趋势）
+const card = await Tapp.analytics.getVisitorCard();
+// card.today / card.all_time / card.daily
+```
+
+REST（Runtime Grant 请求头）：
+
+- `GET /api/tapp/analytics/summary?days=7`
+- `GET /api/tapp/analytics/visitor`
+
+Manifest 示例：
+
+```json
+{
+  "permissions": ["analytics:read"]
+}
+```
+
+---
+
 ## AI API
 
 **权限**: `ai:generate`, `ai:analyze`, `ai:chat`, `ai:image`

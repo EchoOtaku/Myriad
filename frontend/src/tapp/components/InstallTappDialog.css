@@ -1,0 +1,292 @@
+/**
+ * 安装 Tapp 浮层 — 对齐卸载确认 / 设置页指南浮窗的定位与进出场
+ * 中性主色强调（卸载用红色危险语义）
+ */
+
+.install-tip {
+  --install-tip-enter-ms: 280ms;
+  --install-tip-exit-ms: 260ms;
+  --install-tip-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --install-tip-exit-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --install-tip-accent: var(--color-primary, #6366f1);
+
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10050;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(22rem, calc(100vw - 1.25rem));
+  min-width: min(18rem, calc(100vw - 1.25rem));
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem 0.9rem;
+  border-radius: 0.875rem;
+  border: 1px solid
+    color-mix(
+      in srgb,
+      var(--install-tip-accent) 22%,
+      var(--cfg-frost-border, rgb(255 255 255 / 45%))
+    );
+  background: color-mix(
+    in srgb,
+    var(--cfg-frost-bg, rgb(255 255 255 / 72%)) 88%,
+    transparent
+  );
+  backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  -webkit-backdrop-filter: var(--cfg-frost-filter, blur(20px) saturate(180%));
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 8%),
+    0 16px 36px -12px
+      color-mix(in srgb, var(--install-tip-accent) 18%, transparent);
+  color: var(--cfg-text-1, #1d1d1f);
+  overflow: hidden;
+  text-align: left;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(0, 8px, 0) scale(0.96);
+  transform-origin: center top;
+  will-change: top, left, opacity, transform;
+  transition:
+    opacity var(--install-tip-enter-ms) var(--install-tip-ease),
+    transform var(--install-tip-enter-ms) var(--install-tip-ease),
+    box-shadow var(--install-tip-enter-ms) var(--install-tip-ease);
+}
+
+.install-tip--top {
+  transform-origin: center bottom;
+  transform: translate3d(0, 10px, 0) scale(0.96);
+}
+
+.install-tip--bottom {
+  transform-origin: center top;
+  transform: translate3d(0, -10px, 0) scale(0.96);
+}
+
+.install-tip--left {
+  transform-origin: right center;
+  transform: translate3d(12px, 0, 0) scale(0.96);
+}
+
+.install-tip--right {
+  transform-origin: left center;
+  transform: translate3d(-12px, 0, 0) scale(0.96);
+}
+
+.install-tip.is-ready {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0) scale(1);
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 8%),
+    0 16px 36px -12px
+      color-mix(in srgb, var(--install-tip-accent) 18%, transparent);
+}
+
+.install-tip.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity var(--install-tip-exit-ms) var(--install-tip-exit-ease),
+    transform var(--install-tip-exit-ms) var(--install-tip-exit-ease),
+    box-shadow var(--install-tip-exit-ms) var(--install-tip-exit-ease);
+}
+
+.install-tip--top.is-leaving {
+  transform: translate3d(0, 8px, 0) scale(0.96);
+}
+
+.install-tip--bottom.is-leaving {
+  transform: translate3d(0, -8px, 0) scale(0.96);
+}
+
+.install-tip--left.is-leaving {
+  transform: translate3d(10px, 0, 0) scale(0.96);
+}
+
+.install-tip--right.is-leaving {
+  transform: translate3d(-10px, 0, 0) scale(0.96);
+}
+
+html.dark .install-tip {
+  border-color: color-mix(
+    in srgb,
+    var(--install-tip-accent) 32%,
+    var(--cfg-frost-border, rgb(255 255 255 / 12%))
+  );
+  background: color-mix(
+    in srgb,
+    var(--cfg-frost-bg, rgb(28 28 30 / 72%)) 90%,
+    transparent
+  );
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 35%),
+    0 18px 40px -14px
+      color-mix(in srgb, var(--install-tip-accent) 24%, transparent);
+  color: var(--cfg-text-1, #f5f5f7);
+}
+
+html.dark .install-tip.is-ready {
+  box-shadow:
+    0 4px 6px -1px rgb(0 0 0 / 35%),
+    0 18px 40px -14px
+      color-mix(in srgb, var(--install-tip-accent) 24%, transparent);
+}
+
+.install-tip-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.install-tip-header-icon {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  color: var(--install-tip-accent);
+}
+
+.install-tip-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--cfg-text-1, #1d1d1f);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html.dark .install-tip-title {
+  color: var(--cfg-text-1, #f5f5f7);
+}
+
+.install-tip-error {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.55rem;
+  border: 1px solid
+    color-mix(in srgb, #ef4444 28%, var(--cfg-subtle-border, transparent));
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  color: #dc2626;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+html.dark .install-tip-error {
+  border-color: color-mix(in srgb, #f87171 32%, transparent);
+  background: color-mix(in srgb, #f87171 12%, transparent);
+  color: #f87171;
+}
+
+.install-tip-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 7.5rem;
+  padding: 1rem 0.75rem;
+  border-radius: 0.65rem;
+  border: 1.5px dashed
+    color-mix(
+      in srgb,
+      var(--install-tip-accent) 28%,
+      var(--cfg-subtle-border, rgb(229 231 235 / 55%))
+    );
+  background: var(--cfg-subtle-bg, rgb(255 255 255 / 42%));
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
+  user-select: none;
+}
+
+html.dark .install-tip-drop {
+  border-color: color-mix(
+    in srgb,
+    var(--install-tip-accent) 36%,
+    var(--cfg-subtle-border, transparent)
+  );
+  background: var(--cfg-subtle-bg);
+}
+
+.install-tip-drop:hover:not(.is-disabled):not(.is-dragover) {
+  border-color: color-mix(in srgb, var(--install-tip-accent) 55%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--install-tip-accent) 8%,
+    var(--cfg-subtle-bg, rgb(255 255 255 / 42%))
+  );
+}
+
+.install-tip-drop.is-dragover {
+  border-color: var(--install-tip-accent);
+  border-style: solid;
+  background: color-mix(in srgb, var(--install-tip-accent) 12%, transparent);
+}
+
+.install-tip-drop.is-disabled {
+  opacity: 0.55;
+  cursor: wait;
+  pointer-events: none;
+}
+
+.install-tip-drop-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--cfg-text-3, rgb(60 60 67 / 48%));
+  margin-bottom: 0.15rem;
+}
+
+html.dark .install-tip-drop-icon {
+  color: var(--cfg-text-3, rgb(235 235 245 / 52%));
+}
+
+.install-tip-drop-label {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--cfg-text-1, #1d1d1f);
+  text-align: center;
+}
+
+html.dark .install-tip-drop-label {
+  color: var(--cfg-text-1, #f5f5f7);
+}
+
+.install-tip-drop-hint {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+  color: var(--cfg-text-3, rgb(60 60 67 / 48%));
+  text-align: center;
+}
+
+html.dark .install-tip-drop-hint {
+  color: var(--cfg-text-3, rgb(235 235 245 / 52%));
+}
+
+.install-tip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .install-tip,
+  .install-tip.is-leaving {
+    transition: none;
+    transform: none;
+  }
+
+  .install-tip.is-ready {
+    transform: none;
+  }
+}

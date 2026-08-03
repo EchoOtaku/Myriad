@@ -82,43 +82,31 @@ export const zh: SettingGuidesCatalog = {
       frontend: '页面 head 的 <meta name="robots">。',
       notes: '内网、演示、还没准备好公开时请关掉。公开运营的站点保持开启。',
     },
+    siteVisibilityPolicy: {
+      what: '搜索引擎与 AI 能否收录/引用本站的四档策略。',
+      chain:
+        '① 选择档位 → 底部保存。\n② 后端更新 robots.txt / sitemap / llms.txt，并同步 noindex。\n③ 公开站推荐「允许 AI 引用」。',
+      frontend: 'GET /robots.txt、/sitemap.xml、/llms.txt 的策略差异；页面 meta robots。',
+      notes: '不保证所有 AI 都遵守 robots；Cloudflare 等 CDN 另有 AI 爬虫开关需自行检查。',
+    },
+    siteAiIntro: {
+      what: '写给生成式 AI 的站点说明，进入 /llms.txt。',
+      chain: '① 手写或用「AI 生成」→ 保存。\n② 策略为「允许 AI 引用 / 全面开放」时对外提供 llms.txt。',
+      frontend: '公开 /llms.txt 中的摘要段落。',
+      notes: '用事实与边界说明，避免空泛营销语。',
+    },
+    siteAiGenerate: {
+      what: '各字段标题旁的「AI 生成」标签，单独生成描述 / 关键词 / AI 简介。',
+      chain: '① 先填网站标题 → 点对应字段旁「AI 生成」→ 检查 → 保存配置。',
+      frontend: '字段标题旁 SettingTitleTag；调用 /api/seo/generate-copy，fields 仅含当前字段。',
+      notes: '点「AI 生成」先弹补充说明（可选）再请求；fields 仅含当前字段。',
+    },
     pwaEnabled: {
       what: '是否启用 PWA（Service Worker + 可安装清单），与标题/图标同属「站点名片与应用」。',
       chain:
         '① 开启后，生产环境注册 /sw.js 并保留 web app manifest。\n② 保存后立即生效，不必整页硬刷。',
       frontend: '浏览器「应用」/ 安装提示；开发者工具 Application → Service Workers。',
       notes: '默认开启。需 HTTPS（或 localhost）才会出现安装提示。',
-    },
-    thirdPartyAnalytics: {
-      what: '把访问数据报到外部统计服务（Google Analytics、Umami 等），与本站自带访客统计分开。',
-      chain:
-        '① 按需填写 GA 和/或 Umami → 底部保存。\n② 访客端按配置加载对应脚本并上报 page_view。\n③ 「数据及统计」里的图表仍是本站第一方数据。',
-      frontend: '本分组只配第三方；站内统计看板仍在「数据及统计」。',
-      notes: '两项都可空；都空则不加载任何第三方统计脚本。可只开其中一个，也可同时开。',
-    },
-    gaMeasurementId: {
-      what: 'Google Analytics 4 的测量 ID，用来把访问数据报到你的 GA 后台。',
-      chain:
-        '① 在 Google Analytics 控制台创建媒体资源 → 数据流里复制 G- 开头的 ID。\n② 填到这里 → 底部保存配置。\n③ 页面会加载 gtag.js；访客切换路由时上报 page_view。',
-      frontend:
-        '浏览器网络面板里可见 googletagmanager.com/gtag/js。\nGA 实时报告里应出现对应 page_path。',
-      notes:
-        '只支持 GA4（G-…）。管理员/站长自己浏览不会上报。用户若在本站关闭了第一方统计（opt-out），第三方也不再发。留空即不加载 GA。',
-    },
-    umamiWebsiteId: {
-      what: 'Umami 里该站点的 Website ID（通常是 UUID）。',
-      chain:
-        '① 在 Umami 后台打开网站设置，复制 Website ID。\n② 与「脚本地址」一起填 → 底部保存。\n③ 页面注入 tracker，路由切换时 umami.track 上报。',
-      frontend: '网络面板可见你配置的 script URL；Umami 实时访问里应有路径。',
-      notes: '只填 ID 不填脚本地址不会生效。Cloud 与自托管的 ID 都是这一栏。',
-    },
-    umamiScriptUrl: {
-      what: 'Umami 跟踪脚本的完整地址。',
-      chain:
-        '① Cloud 填 https://cloud.umami.is/script.js；自托管填 https://你的Umami域名/script.js。\n② 与 Website ID 一起保存后加载。\n③ data-auto-track 关闭，由本站 SPA 路由统一发 page view。',
-      frontend: '页面 head 里带 data-website-id 的 script 标签。',
-      notes:
-        '只填主机（如 https://stats.example.com）时会自动补 /script.js。请使用 https。',
     },
     siteFooter: {
       what: '网页最底下那一栏：备案号、云服务商标识等。',
@@ -358,7 +346,7 @@ export const zh: SettingGuidesCatalog = {
       chain:
         '① 与访客统计同一采集开关、时间范围与排除规则（管理员/站长不计入）。\n② 次数 = 区间合计；访客 = 区间内触发过该事件的去重访客。\n③ 内置覆盖登录/OAuth、音乐、资料库、Brew、报告舞台、Arael、Tapp、友链、主题/语言/控制面板等；可用 target 维度按实体拆分（如 tapp id、平台 slug）。\n④ 列表主行是事件合计，子行是 target 明细（最多约 20）。\n⑤ 关闭采集后新事件不再写入，历史仍可查。',
       frontend: '数据及统计 → 访客统计 →「事件埋点」分区（与「来源站点」并排）。',
-      notes: '自定义事件名请保持稳定、简短；高频无意义事件会挤占排行。导出/导入备份会包含事件聚合。',
+      notes: '自定义事件名请保持稳定、简短；高频无意义事件会挤占排行。导出/导入备份会包含事件聚合；备份带本实例完整性签名，手改指标无法导入。',
     },
     referrerAnalytics: {
       what: '从哪些外部网站点进来的（按来源主机名汇总浏览量）。',
@@ -373,6 +361,37 @@ export const zh: SettingGuidesCatalog = {
         '① 写入 tapp_ai_cost_ledger：Tapp 运行时与定时任务（scheduler）走受管结算；Arael 与报告生成经任务上下文记入。\n② 管理端 GET /api/analytics/ai-usage 按服务器本地日历日聚合，不排除管理员。\n③ 柱 = 调用次数，线 = Token；下方可按用户、模型、来源（含定时任务）查看。\n④ 与访客统计独立：不依赖访客采集开关。',
       frontend: '设置 → 数据及统计 →「AI 使用统计」（KPI、折线图、按用户/模型/来源）。',
       notes: 'Token 多为估算。仅管理员可看本面板。',
+    },
+    thirdPartyAnalytics: {
+      what: '把访问数据报到外部统计服务（Google Analytics、Umami 等），与本站第一方访客统计看板分开。',
+      chain:
+        '① 在「数据及统计」页最下方按需填写 GA 和/或 Umami → 底部保存。\n② 访客端按配置加载对应脚本并上报 page_view。\n③ 上方「访客统计」图表仍是本站第一方数据，不会写入 GA/Umami。',
+      frontend: '设置 → 数据及统计 → 页末「第三方统计」分组。',
+      notes: '两项都可空；都空则不加载任何第三方统计脚本。可只开其中一个，也可同时开。',
+    },
+    gaMeasurementId: {
+      what: 'Google Analytics 4 的测量 ID，用来把访问数据报到你的 GA 后台。',
+      chain:
+        '① 在 Google Analytics 控制台创建媒体资源 → 数据流里复制 G- 开头的 ID。\n② 填到「第三方统计」→ 底部保存配置。\n③ 页面会加载 gtag.js；访客切换路由时上报 page_view。',
+      frontend:
+        '浏览器网络面板里可见 googletagmanager.com/gtag/js。\nGA 实时报告里应出现对应 page_path。',
+      notes:
+        '只支持 GA4（G-…）。管理员/站长自己浏览不会上报。用户若在本站关闭了第一方统计（opt-out），第三方也不再发。留空即不加载 GA。',
+    },
+    umamiWebsiteId: {
+      what: 'Umami 里该站点的 Website ID（通常是 UUID）。',
+      chain:
+        '① 在 Umami 后台打开网站设置，复制 Website ID。\n② 与「脚本地址」一起填 → 底部保存。\n③ 页面注入 tracker，路由切换时 umami.track 上报。',
+      frontend: '网络面板可见你配置的 script URL；Umami 实时访问里应有路径。',
+      notes: '只填 ID 不填脚本地址不会生效。Cloud 与自托管的 ID 都是这一栏。',
+    },
+    umamiScriptUrl: {
+      what: 'Umami 跟踪脚本的完整地址。',
+      chain:
+        '① Cloud 填 https://cloud.umami.is/script.js；自托管填 https://你的Umami域名/script.js。\n② 与 Website ID 一起保存后加载。\n③ data-auto-track 关闭，由本站 SPA 路由统一发 page view。',
+      frontend: '页面 head 里带 data-website-id 的 script 标签。',
+      notes:
+        '只填主机（如 https://stats.example.com）时会自动补 /script.js。请使用 https。',
     },
     connected: {
       what: '连接 GitHub、Steam、B 站等外部账号，并配置自动刷新间隔。',

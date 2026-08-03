@@ -44,9 +44,17 @@ interface TappResourcesRaw {
   page_module_order?: string[]
 }
 
-export async function getTappResources(tappId: string): Promise<TappResources> {
+/** Projection of installed package resources. Matches backend `mode` query. */
+export type TappResourceMode = 'full' | 'widget' | 'page'
+
+export async function getTappResources(
+  tappId: string,
+  options?: { mode?: TappResourceMode },
+): Promise<TappResources> {
+  const mode = options?.mode && options.mode !== 'full' ? options.mode : undefined
+  const params = mode ? `?mode=${encodeURIComponent(mode)}` : ''
   const response = await fetch(
-    `${API_URL}/api/tapps/${encodeURIComponent(tappId)}/resources`,
+    `${API_URL}/api/tapps/${encodeURIComponent(tappId)}/resources${params}`,
     { method: 'GET', credentials: 'include' },
   )
   if (!response.ok) {

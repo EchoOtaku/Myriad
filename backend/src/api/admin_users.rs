@@ -152,7 +152,9 @@ fn user_row_to_json(row: &QueryResult, identities: &[Value]) -> Value {
         "username": row.try_get::<String>("", "username").unwrap_or_default(),
         "display_name": row.try_get::<Option<String>>("", "display_name").unwrap_or(None),
         "email": row.try_get::<Option<String>>("", "email").unwrap_or(None),
-        "avatar_url": row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
+        "avatar_url": crate::services::avatar::proxied_avatar_value(
+            row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
+        ),
         "is_admin": row.try_get::<bool>("", "is_admin").unwrap_or(false),
         "is_owner": row.try_get::<bool>("", "is_owner").unwrap_or(false),
         "auth_provider": row.try_get::<String>("", "auth_provider").unwrap_or_default(),
@@ -174,7 +176,9 @@ fn identity_row_to_json(row: &QueryResult) -> Value {
         "provider": row.try_get::<String>("", "provider").unwrap_or_default(),
         "provider_username": row.try_get::<Option<String>>("", "provider_username").unwrap_or(None),
         "email": row.try_get::<Option<String>>("", "email").unwrap_or(None),
-        "avatar_url": row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
+        "avatar_url": crate::services::avatar::proxied_avatar_value(
+            row.try_get::<Option<String>>("", "avatar_url").unwrap_or(None),
+        ),
         "is_primary": row.try_get::<bool>("", "is_primary").unwrap_or(false),
         "linked_at": rfc3339(row, "linked_at"),
         "last_login_at": rfc3339(row, "last_login_at"),

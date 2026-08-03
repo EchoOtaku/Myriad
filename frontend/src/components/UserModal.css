@@ -78,15 +78,21 @@ html.dark .user-info-button:hover {
     visibility 0s linear 0s;
 }
 
-/* 内容包裹层：自然高度由内容决定，供 ResizeObserver 测量后驱动弹窗高度过渡 */
+/* 内容包裹层：自然高度由内容决定，供 ResizeObserver 测量后驱动弹窗高度过渡。
+   主页与二级页共用此滚动容器；内容超过 max-height 时在此滚动，避免被
+   .user-modal { overflow: hidden } 裁切且无滚动条。关闭按钮在 outer 上 absolute，不随滚。
+   flex-grow:0 避免外层显式 height 偏高时被撑满，导致 scrollHeight 量不准、高度缩不回去。 */
 .user-modal-inner {
   display: flex;
   flex-direction: column;
-  flex-shrink: 0;
-
-  /* 与 .user-modal 的 max-height 一致，内容过高时由内部区域滚动 */
-  max-height: 85vh;
+  flex: 0 1 auto;
   min-height: 0;
+
+  /* 与 .user-modal 的 max-height 一致，内容过高时在此滚动 */
+  max-height: 85vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* 关闭状态 */
@@ -310,114 +316,8 @@ html.dark .user-modal-avatar-lg {
   opacity: 1;
 }
 
-.user-modal-profile-source-hint {
-  margin: 0 0 0.75rem;
-  font-size: 0.8125rem;
-  line-height: 1.45;
-  color: var(--text-secondary, #64748b);
-}
-
-.user-modal-profile-source-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.user-modal-profile-source-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  width: 100%;
-  padding: 0.65rem 0.75rem;
-  border-radius: 0.85rem;
-  border: 1px solid rgb(0 0 0 / 6%);
-  background: rgb(0 0 0 / 3%);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.user-modal-profile-source-row:hover:not(:disabled) {
-  background: rgb(0 0 0 / 6%);
-  border-color: rgb(0 0 0 / 10%);
-}
-
-.user-modal-profile-source-row.is-primary {
-  border-color: color-mix(in srgb, var(--color-primary, #6366f1) 35%, transparent);
-  background: color-mix(in srgb, var(--color-primary, #6366f1) 10%, transparent);
-}
-
-.user-modal-profile-source-row:disabled {
-  opacity: 0.75;
-  cursor: default;
-}
-
-html.dark .user-modal-profile-source-row {
-  border-color: rgb(255 255 255 / 8%);
-  background: rgb(255 255 255 / 4%);
-}
-
-html.dark .user-modal-profile-source-row:hover:not(:disabled) {
-  background: rgb(255 255 255 / 7%);
-}
-
-.user-modal-profile-source-avatar {
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 50%;
-  object-fit: cover;
-  flex-shrink: 0;
-}
-
-.user-modal-profile-source-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-}
-
-.user-modal-profile-source-name {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-primary, #0f172a);
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-}
-
-html.dark .user-modal-profile-source-name {
-  color: rgb(255 255 255 / 92%);
-}
-
-.user-modal-profile-source-sub {
-  font-size: 0.75rem;
-  color: var(--text-secondary, #64748b);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.user-modal-profile-source-current {
-  font-size: 0.625rem;
-  font-weight: 600;
-  padding: 0.1rem 0.35rem;
-  border-radius: 999px;
-  color: var(--color-primary, #6366f1);
-  background: color-mix(in srgb, var(--color-primary, #6366f1) 14%, transparent);
-}
-
-.user-modal-profile-source-check {
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--color-primary, #6366f1);
-}
+/* 头像来源选择器的样式已迁到 AvatarSourcePicker.css（设置页也要用，
+   而 UserModal 是懒加载的） */
 
 /* 在线状态指示器 */
 .user-modal-online-dot {
@@ -468,6 +368,22 @@ html.dark .user-modal-online-dot {
 
 html.dark .user-modal-username {
   color: #f3f4f6;
+}
+
+/* 真实本地账号名（标题是平台昵称时用它区分「你是谁」和「站点显示成谁」） */
+.user-modal-account-name {
+  /* 负上边距抵消标题的 margin-bottom(0.5rem)，与昵称贴成一组；
+     标题那条不能改——没有本行时它还要负责与徽章组的间距 */
+  margin: -0.35rem 0 0.5rem;
+  line-height: 1.25;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary, #64748b);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html.dark .user-modal-account-name {
+  color: rgb(255 255 255 / 55%);
 }
 
 /* 徽章组 */
@@ -890,34 +806,22 @@ html.dark .user-modal-tapp-item:hover {
   box-shadow: 0 6px 20px rgb(0 0 0 / 30%);
 }
 
+/* 尺寸 only；默认 material 色壳来自 TappIconBadge */
 .user-modal-tapp-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 2rem;
   height: 2rem;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--color-primary, #94a3b8) 15%, transparent) 0%,
-    color-mix(in srgb, var(--color-secondary, #94a3b8) 15%, transparent) 100%
-  );
   border-radius: 0.5rem;
   font-size: 1rem;
-  color: var(--color-primary, #64748b);
+  color: #fff;
   overflow: hidden;
-}
-
-html.dark .user-modal-tapp-icon {
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--color-primary, #94a3b8) 20%, transparent) 0%,
-    color-mix(in srgb, var(--color-secondary, #94a3b8) 20%, transparent) 100%
-  );
-  color: var(--color-accent, #cbd5e1);
 }
 
 .user-modal-tapp-icon.tapp-icon-badge--standalone {
   background: transparent !important;
+  box-shadow: none !important;
 }
 
 .user-modal-tapp-name {
@@ -986,6 +890,10 @@ html.dark .user-modal-recent-empty {
     width: 95%;
     max-height: 90vh;
     border-radius: 1.5rem;
+  }
+
+  .user-modal-inner {
+    max-height: 90vh;
   }
 
   .user-modal-hero {
@@ -1403,8 +1311,10 @@ html.dark .badge-oauth {
 .user-modal-page {
   display: flex;
   flex-direction: column;
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 320px;
+  /* 二级页在 capped 高度内尽量由 page-body 滚动；内容仍可随 inner 兜底滚动 */
+  max-height: 100%;
   animation: user-modal-page-in 0.25s ease;
 }
 

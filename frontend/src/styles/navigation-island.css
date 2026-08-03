@@ -145,18 +145,6 @@ html.dark .dynamic-island {
   box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 10%);
 }
 
-.dynamic-island:hover {
-  background: rgb(255 255 255 / 60%);
-  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 90%);
-  border-color: rgb(99 102 241 / 25%);
-  border-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
-}
-
-html.dark .dynamic-island:hover {
-  background: rgb(26 26 26 / 60%);
-  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 15%);
-}
-
 /* 流动渐变边框（自 astro 页面级样式迁移，原双份声明已删） */
 .dynamic-island::before {
   content: '';
@@ -182,8 +170,26 @@ html.dark .dynamic-island:hover {
   transition: opacity 0.3s ease;
 }
 
-.dynamic-island:hover::before {
-  opacity: 1;
+/*
+ * Hover 仅限真悬停设备。触屏点按会“粘住”:hover，
+ * 岛体发亮 / 项放大残留到下次点别的地方，观感很差。
+ */
+@media (hover: hover) {
+  .dynamic-island:hover {
+    background: rgb(255 255 255 / 60%);
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 90%);
+    border-color: rgb(99 102 241 / 25%);
+    border-color: color-mix(in srgb, var(--color-primary) 25%, transparent);
+  }
+
+  html.dark .dynamic-island:hover {
+    background: rgb(26 26 26 / 60%);
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 15%);
+  }
+
+  .dynamic-island:hover::before {
+    opacity: 1;
+  }
 }
 
 @keyframes border-flow {
@@ -254,14 +260,6 @@ html[data-nav-layout='mobile'] .dynamic-island {
   justify-content: center;
 }
 
-.nav-item:hover {
-  color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-  transform: scale(1.08) translateZ(0);
-  box-shadow: 0 3px 10px
-    color-mix(in srgb, var(--color-primary) 18%, transparent);
-}
-
 .nav-item:active {
   transform: scale(1.02) translateZ(0);
   box-shadow: 0 2px 6px
@@ -272,16 +270,26 @@ html.dark .nav-item {
   color: var(--text-secondary);
 }
 
-html.dark .nav-item:hover {
-  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
-  box-shadow: 0 3px 12px
-    color-mix(in srgb, var(--color-primary) 25%, transparent);
-}
-
 html.dark .nav-item:active {
   transform: scale(1.02) translateZ(0);
   box-shadow: 0 2px 6px
     color-mix(in srgb, var(--color-primary) 20%, transparent);
+}
+
+@media (hover: hover) {
+  .nav-item:hover {
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+    transform: scale(1.08) translateZ(0);
+    box-shadow: 0 3px 10px
+      color-mix(in srgb, var(--color-primary) 18%, transparent);
+  }
+
+  html.dark .nav-item:hover {
+    background: color-mix(in srgb, var(--color-primary) 18%, transparent);
+    box-shadow: 0 3px 12px
+      color-mix(in srgb, var(--color-primary) 25%, transparent);
+  }
 }
 
 /* 焦点状态（键盘导航，自 astro 迁移） */
@@ -511,13 +519,12 @@ html[data-nav-layout='desktop'] .dynamic-island::before {
   }
 }
 
-/* 触摸设备优化 */
+/*
+ * 触屏：仅保留按下反馈。
+ * 岛 / 导航项 :hover 已包在 @media (hover: hover) 内，
+ * 点按不会再粘住高亮或 scale（旧逻辑只清了一部分，仍会残留）。
+ */
 @media (hover: none) and (pointer: coarse) {
-  .nav-item:hover {
-    transform: none;
-    background: transparent;
-  }
-
   .nav-item:active {
     transform: scale(0.95);
     background: color-mix(in srgb, var(--color-primary) 20%, transparent);

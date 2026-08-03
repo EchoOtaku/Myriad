@@ -16,7 +16,7 @@
 //! ## Tapp 权限完整列表
 //!
 //! ### Basic - 默认开放（标注 authenticated 的能力不向游客签发）
-//! - platform:read (authenticated), tappList:read, brew:read
+//! - platform:read, analytics:read, tappList:read, brew:read
 //! - brew:write (authenticated), brew:comment (authenticated)
 //! - report:read (authenticated), storage (authenticated)
 //! - ui:notification (authenticated), ui:fullscreen, ui:theme, ui:confirm
@@ -72,6 +72,9 @@ pub enum TappPermission {
     // Basic 级别
     #[serde(rename = "platform:read")]
     PlatformRead,
+    /// First-party site analytics aggregates (no visitor hashes).
+    #[serde(rename = "analytics:read")]
+    AnalyticsRead,
     #[serde(rename = "tappList:read")]
     TappListRead,
     #[serde(rename = "brew:read")]
@@ -183,6 +186,7 @@ impl TappPermission {
         match self {
             // Basic
             TappPermission::PlatformRead
+            | TappPermission::AnalyticsRead
             | TappPermission::TappListRead
             | TappPermission::BrewRead
             | TappPermission::BrewWrite
@@ -233,6 +237,7 @@ impl TappPermission {
         match self {
             TappPermission::WidgetRegister => "注册小组件",
             TappPermission::PlatformRead => "读取平台数据",
+            TappPermission::AnalyticsRead => "读取访问统计",
             TappPermission::TappListRead => "读取 Tapp 列表",
             TappPermission::BrewRead => "读取 Brew 内容",
             TappPermission::PlatformWrite => "写入平台数据",
@@ -294,6 +299,7 @@ impl TappPermission {
         match s {
             "widget:register" => Some(TappPermission::WidgetRegister),
             "platform:read" => Some(TappPermission::PlatformRead),
+            "analytics:read" => Some(TappPermission::AnalyticsRead),
             "tappList:read" => Some(TappPermission::TappListRead),
             "brew:read" => Some(TappPermission::BrewRead),
             "platform:write" => Some(TappPermission::PlatformWrite),
@@ -339,6 +345,7 @@ impl TappPermission {
         match self {
             TappPermission::WidgetRegister => "widget:register",
             TappPermission::PlatformRead => "platform:read",
+            TappPermission::AnalyticsRead => "analytics:read",
             TappPermission::TappListRead => "tappList:read",
             TappPermission::BrewRead => "brew:read",
             TappPermission::PlatformWrite => "platform:write",
@@ -684,6 +691,7 @@ mod tests {
         };
         let requested = vec![
             "platform:read".to_string(),
+            "analytics:read".to_string(),
             "media:read".to_string(),
             "media:control".to_string(),
             "event:subscribe".to_string(),
@@ -709,12 +717,13 @@ mod tests {
             &requested,
         );
 
-        // Guest-safe: platform:read + storage (optional_auth + grant subject).
+        // Guest-safe: platform:read, analytics:read + storage (optional_auth + grant subject).
         // Still excluded: brew:write, report:read, notifications, speech, etc.
         assert_eq!(
             granted,
             vec![
                 "platform:read",
+                "analytics:read",
                 "media:read",
                 "media:control",
                 "event:subscribe",

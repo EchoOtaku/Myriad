@@ -1,4 +1,4 @@
-//! Public SEO: sitemap, Tapp/Brew share summary API, and crawler HTML shells.
+//! Public SEO: sitemap, robots, llms.txt, Tapp/Brew share summary, crawler shells.
 //!
 //! Indexability (guest / crawler):
 //! - Site not `site_noindex` for sitemap entries (shell still returns noindex meta)
@@ -83,6 +83,8 @@ struct SiteBranding {
     favicon: String,
     og_image: String,
     noindex: bool,
+    policy: String,
+    ai_intro: String,
 }
 
 struct SitemapUrl {
@@ -190,7 +192,7 @@ async fn load_site_branding(db: &DatabaseConnection) -> SiteBranding {
         std::env::var(env_key).unwrap_or_default()
     };
 
-    let noindex = db_config
+    let noindex_flag = db_config
         .as_ref()
         .map(|c| c.site_noindex)
         .unwrap_or_else(|| {
@@ -198,6 +200,16 @@ async fn load_site_branding(db: &DatabaseConnection) -> SiteBranding {
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false)
         });
+
+    let policy_raw = db_config
+        .as_ref()
+        .map(|c| c.site_visibility_policy.clone())
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| std::env::var("SITE_VISIBILITY_POLICY").ok())
+        .unwrap_or_default();
+    let policy = crate::api::seo_policy::normalize_visibility_policy(&policy_raw, noindex_flag)
+        .to_string();
+    let noindex = noindex_flag || policy == crate::api::seo_policy::VISIBILITY_PRIVATE;
 
     SiteBranding {
         title: branding(
@@ -220,6 +232,11 @@ async fn load_site_branding(db: &DatabaseConnection) -> SiteBranding {
             "SITE_OG_IMAGE",
         ),
         noindex,
+        policy,
+        ai_intro: clearable(
+            db_config.as_ref().and_then(|c| c.site_ai_intro.clone()),
+            "SITE_AI_INTRO",
+        ),
     }
 }
 
@@ -732,20 +749,13 @@ fn simple_error_html(title: &str, message: &str) -> String {
 /// Disallow private SPA routes (login/setup/admin/playground); public modules
 /// remain Allow. Client-side noindex is still applied on those pages for bots
 /// that execute JS.
-pub async fn robots_txt(headers: HeaderMap) -> Response {
+pub async fn robots_txt(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+) -> Response {
+    let branding = load_site_branding(&db).await;
     let base = resolve_public_base_url(&headers);
-    let body = format!(
-        "User-agent: *\n\
-Allow: /\n\
-Disallow: /login\n\
-Disallow: /register\n\
-Disallow: /setup\n\
-Disallow: /config\n\
-Disallow: /tapp/playground\n\
-Disallow: /tapp/detail/\n\
-\n\
-Sitemap: {base}/sitemap.xml\n"
-    );
+    let body = crate::api::seo_policy::build_robots_txt(&base, &branding.policy);
     (
         StatusCode::OK,
         [
@@ -756,6 +766,59 @@ Sitemap: {base}/sitemap.xml\n"
     )
         .into_response()
 }
+
+/// GET /llms.txt — AI-facing site index when policy is ai_citation or ai_full.
+pub async fn llms_txt(
+    State(db): State<DatabaseConnection>,
+    headers: HeaderMap,
+) -> Response {
+    let branding = load_site_branding(&db).await;
+    if !crate::api::seo_policy::policy_serves_llms_txt(&branding.policy) {
+        return (
+            StatusCode::NOT_FOUND,
+            [
+                (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
+                (header::CACHE_CONTROL, "public, max-age=300"),
+            ],
+            "llms.txt is disabled for this site visibility policy.\n".to_string(),
+        )
+            .into_response();
+    }
+
+    let base = resolve_public_base_url(&headers);
+    let intro = if branding.ai_intro.trim().is_empty() {
+        branding.description.as_str()
+    } else {
+        branding.ai_intro.as_str()
+    };
+
+    let prefs = load_module_visibility_preferences(&db).await;
+    let modules = &prefs.modules;
+    let mut routes: Vec<(&str, &str)> = vec![("Home", "/")];
+    for (key, path, label) in [
+        ("library", "/library", "Library"),
+        ("brew", "/brew", "Brew"),
+        ("reports", "/reports", "Reports"),
+        ("tapp", "/tapp", "Tapp"),
+    ] {
+        let level = modules.get(key).map(String::as_str).unwrap_or("all");
+        if module_is_public_all(level) {
+            routes.push((label, path));
+        }
+    }
+
+    let body = crate::api::seo_policy::build_llms_txt(&branding.title, intro, &base, &routes);
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=1800"),
+        ],
+        body,
+    )
+        .into_response()
+}
+
 
 /// GET /sitemap.xml
 pub async fn sitemap_xml(

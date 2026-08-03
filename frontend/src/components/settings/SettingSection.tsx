@@ -11,6 +11,7 @@
 import type { ReactNode } from 'react'
 import type { SettingSectionConfig } from './types'
 
+import { LuChevronLeft } from '@lib/icons'
 import React, { useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import { guideDomProps } from './guides/guideAnchor'
@@ -38,6 +39,7 @@ export interface SettingSectionProps extends SettingSectionConfig {
   headerActions?: ReactNode
   /**
    * 标题栏左侧前缀（如二级页返回），在区块图标之前。
+   * 传入节点时覆盖移动端默认「回菜单」返回；传 false 可强制隐藏。
    */
   headerLeading?: ReactNode
 }
@@ -124,6 +126,26 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
     helpContent != null &&
     helpContent !== ''
 
+  // 显式 headerLeading 优先（平台二级页 → 列表）；否则移动端回菜单
+  const resolvedHeaderLeading: ReactNode =
+    headerLeading !== undefined && headerLeading !== null
+      ? headerLeading === false
+        ? null
+        : headerLeading
+      : pageActions?.onMobileBack
+        ? (
+            <button
+              type="button"
+              className="section-header-back"
+              onClick={pageActions.onMobileBack}
+              aria-label={t.common.back}
+            >
+              <LuChevronLeft size={18} aria-hidden />
+              <span>{t.common.back}</span>
+            </button>
+          )
+        : null
+
   const renderIcon = () => {
     if (!icon) return null
     if (typeof icon === 'string') {
@@ -146,8 +168,10 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
         >
           <div className="section-header">
             <div className="section-header-left">
-              {headerLeading != null && headerLeading !== false ? (
-                <div className="section-header-leading">{headerLeading}</div>
+              {resolvedHeaderLeading != null ? (
+                <div className="section-header-leading">
+                  {resolvedHeaderLeading}
+                </div>
               ) : null}
               {renderIcon()}
               <div className="section-header-text">

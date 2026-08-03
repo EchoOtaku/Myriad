@@ -395,6 +395,7 @@ fn is_compute_intensive(path: &str) -> bool {
     p == "/api/fetch"
         || p == "/api/analysis"
         || p == "/api/prompt/generate"
+        || p == "/api/seo/generate-copy"
         || p == "/api/profile/refresh"
         || p == "/api/profile/fetch-all"
         || p == "/api/profile/fetch-platform"

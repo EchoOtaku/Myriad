@@ -83,42 +83,31 @@ export const ja: SettingGuidesCatalog = {
       frontend: 'ページ head の <meta name="robots">。',
       notes: '非公開・デモ・公開前はオフ。公開運用ならオンのまま。',
     },
+    siteVisibilityPolicy: {
+      what: '検索エンジンと AI の発見・引用に関する 4 段階の方針。',
+      chain:
+        '① レベルを選ぶ → 設定を保存。\n② robots.txt / sitemap / llms.txt と noindex が更新されます。\n③ 公開サイトは「AI 引用を許可」を推奨。',
+      frontend: 'GET /robots.txt、/sitemap.xml、/llms.txt の差。ページの robots meta。',
+      notes: 'すべての AI が robots を守るとは限りません。CDN の AI ボット設定も確認してください。',
+    },
+    siteAiIntro: {
+      what: '生成 AI 向けのサイト説明。/llms.txt に入ります。',
+      chain: '① 手書きまたは AI 生成 → 保存。\n② 「AI 引用を許可 / 全面開放」のとき公開。',
+      frontend: '公開 /llms.txt の要約。',
+      notes: '宣伝文より事実と範囲を書く。',
+    },
+    siteAiGenerate: {
+      what: '各フィールド横の「AI 生成」タグで説明・キーワード・AI 紹介を個別生成。',
+      chain: '① サイトタイトルを入れてから各タグを押す → 確認 → 設定保存。',
+      frontend: 'タイトル横の SettingTitleTag。/api/seo/generate-copy に単一 field を送る。',
+      notes: '「AI 生成」で任意の補足ダイアログの後、単一 field を POST。',
+    },
     pwaEnabled: {
       what: 'PWA（Service Worker + インストール用マニフェスト）を有効にするか。「サイト名刺とアプリ」内でタイトル／アイコンと並びます。',
       chain:
         '① オン時は本番で /sw.js を登録し web app manifest を維持。\n② 保存後すぐ反映（フルハードリロード不要）。',
       frontend: 'ブラウザの「アプリ」/ インストール案内；開発者ツール Application → Service Workers。',
       notes: '既定はオン。インストール案内には HTTPS（または localhost）が必要です。',
-    },
-    thirdPartyAnalytics: {
-      what: '訪問データを外部計測（Google Analytics、Umami など）に送る設定。第一方の訪問者統計とは別です。',
-      chain:
-        '① 必要に応じて GA と/または Umami を記入 → 下で保存。\n② 訪問者側で対応スクリプトが読み込まれ page_view が送られます。\n③ 「データ＆統計」のグラフは第一方のままです。',
-      frontend: 'このグループは第三者のみ。サイト内統計は「データ＆統計」。',
-      notes: 'どちらも空なら第三者スクリプトは読みません。片方だけ／両方とも可。',
-    },
-    gaMeasurementId: {
-      what: 'Google Analytics 4 の測定 ID。訪問データを GA 管理画面に送ります。',
-      chain:
-        '① GA 管理画面のデータストリームから G- で始まる ID をコピー。\n② ここに貼る → 下で設定を保存。\n③ gtag.js が読み込まれ、ルート変更で page_view が送られます。',
-      frontend:
-        'ネットワークに googletagmanager.com/gtag/js が見えます。\nGA リアルタイムで page_path が確認できます。',
-      notes:
-        'GA4（G-…）のみ。管理者自身の閲覧は送りません。第一方オプトアウト時は第三者も送りません。空なら GA 無効。',
-    },
-    umamiWebsiteId: {
-      what: 'Umami 上のこのサイトの Website ID（通常 UUID）。',
-      chain:
-        '① Umami のサイト設定から Website ID をコピー。\n② 下のスクリプト URL と一緒に保存。\n③ トラッカーが入り、ルート変更で umami.track。',
-      frontend: 'ネットワークに設定した script URL。Umami リアルタイムにパスが出ます。',
-      notes: 'ID だけ・URL なしでは動きません。Cloud / 自ホスト共通。',
-    },
-    umamiScriptUrl: {
-      what: 'Umami トラッカー script の完全 URL。',
-      chain:
-        '① Cloud: https://cloud.umami.is/script.js。自ホスト: https://あなたのUmami/script.js。\n② Website ID と保存後に読み込み。\n③ data-auto-track はオフ、SPA ルーターが page view を送ります。',
-      frontend: 'head 内の data-website-id 付き script。',
-      notes: 'ホストだけ（例 https://stats.example.com）のときは /script.js を付けます。https 推奨。',
     },
     siteFooter: {
       what: 'ページ一番下の帯：届出番号、クラウドのマークなど。',
@@ -374,6 +363,36 @@ export const ja: SettingGuidesCatalog = {
         '① tapp_ai_cost_ledger へ記録：Tapp ランタイムと定期タスクは管理パスで精算、Arael とレポート生成はタスク文脈で記録。\n② 管理 API GET /api/analytics/ai-usage はサーバーのローカル暦日で集計し、管理者を除外しない。\n③ 棒＝呼び出し、線＝トークン。ユーザー・モデル・出典（定期タスク含む）で一覧。\n④ 訪問統計の収集スイッチとは独立。',
       frontend: '設定 → データと統計 →「AI 使用統計」（KPI・グラフ・ユーザー／モデル／出典）。',
       notes: 'トークンは推定のことが多いです。パネルは管理者のみ。',
+    },
+    thirdPartyAnalytics: {
+      what: '訪問データを外部計測（Google Analytics、Umami など）に送る設定。本ページの第一方訪問者統計とは別です。',
+      chain:
+        '① 「データ＆統計」ページ最下部で GA と/または Umami を記入 → 下で保存。\n② 訪問者側で対応スクリプトが読み込まれ page_view が送られます。\n③ 上の「訪問者統計」グラフは第一方のまま、GA/Umami には入りません。',
+      frontend: '設定 → データ＆統計 → ページ末尾「第三者計測」。',
+      notes: 'どちらも空なら第三者スクリプトは読みません。片方だけ／両方とも可。',
+    },
+    gaMeasurementId: {
+      what: 'Google Analytics 4 の測定 ID。訪問データを GA 管理画面に送ります。',
+      chain:
+        '① GA 管理画面のデータストリームから G- で始まる ID をコピー。\n② 「第三者計測」に貼る → 下で設定を保存。\n③ gtag.js が読み込まれ、ルート変更で page_view が送られます。',
+      frontend:
+        'ネットワークに googletagmanager.com/gtag/js が見えます。\nGA リアルタイムで page_path が確認できます。',
+      notes:
+        'GA4（G-…）のみ。管理者自身の閲覧は送りません。第一方オプトアウト時は第三者も送りません。空なら GA 無効。',
+    },
+    umamiWebsiteId: {
+      what: 'Umami 上のこのサイトの Website ID（通常 UUID）。',
+      chain:
+        '① Umami のサイト設定から Website ID をコピー。\n② 下のスクリプト URL と一緒に保存。\n③ トラッカーが入り、ルート変更で umami.track。',
+      frontend: 'ネットワークに設定した script URL。Umami リアルタイムにパスが出ます。',
+      notes: 'ID だけ・URL なしでは動きません。Cloud / 自ホスト共通。',
+    },
+    umamiScriptUrl: {
+      what: 'Umami トラッカー script の完全 URL。',
+      chain:
+        '① Cloud: https://cloud.umami.is/script.js。自ホスト: https://あなたのUmami/script.js。\n② Website ID と保存後に読み込み。\n③ data-auto-track はオフ、SPA ルーターが page view を送ります。',
+      frontend: 'head 内の data-website-id 付き script。',
+      notes: 'ホストだけ（例 https://stats.example.com）のときは /script.js を付けます。https 推奨。',
     },
     connected: {
       what: '外部アカウントをつなぎ、設定済みプラットフォームの自動更新間隔もここで決める。',

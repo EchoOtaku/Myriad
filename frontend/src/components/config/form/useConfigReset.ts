@@ -407,6 +407,10 @@ export function useConfigReset(args: {
                 ...oauthDraft,
                 allowLocalRegistration:
                   DEFAULT_OAUTH_SETTINGS.allowLocalRegistration,
+                privateTappInstallCleanup:
+                  DEFAULT_OAUTH_SETTINGS.privateTappInstallCleanup,
+                privateTappInstallInactivityDays:
+                  DEFAULT_OAUTH_SETTINGS.privateTappInstallInactivityDays,
               }
             : cloneOAuthSettings(DEFAULT_OAUTH_SETTINGS)
         const saved = await updateOAuthSettings(next)

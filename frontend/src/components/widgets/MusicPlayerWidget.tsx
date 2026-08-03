@@ -19,6 +19,7 @@ import {
 } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
+import { cssBackgroundImage } from '../../utils/cssUrl'
 import { audioManager } from '../../utils/musicPlayer'
 import { PlayingSpectrum } from '../shared/PlayingSpectrum'
 import { GlowBackground } from './shared/GlowBackground'
@@ -931,7 +932,11 @@ export const MusicPlayerWidget = memo(
               <motion.div
                 key={currentSong.cover}
                 className={`absolute inset-0 bg-cover bg-center ${anim.level === 'standard' ? 'blur-xl' : 'blur-sm'} opacity-30 dark:opacity-20`}
-                style={{ backgroundImage: `url(${currentSong.cover || ''})` }}
+                style={{
+                  backgroundImage: currentSong.cover
+                    ? cssBackgroundImage(currentSong.cover)
+                    : undefined,
+                }}
                 initial={{ opacity: 0, scale: 1.2 }}
                 animate={
                   anim.level === 'standard'

@@ -27,8 +27,10 @@ import { TappIconBadge } from '../../tapp/components/TappIconBadge'
 import { loadWidgetResources } from '../../tapp/runtime/sandbox/resourceLoader'
 import { getTappRuntime } from '../../tapp/runtime/TappRuntime'
 import { TappWidgetSandbox } from '../../tapp/runtime/TappWidgetSandbox'
+import { widgetPerfMark } from '../../tapp/runtime/WidgetLoadPerf'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
 import { getTappIconStyle } from '../../tapp/utils/tappColors'
+import { tappDetailPath } from '../../tapp/utils/tappPaths'
 import { GlowBackground } from './shared/GlowBackground'
 import { WidgetShell } from './shared/WidgetShell'
 import {
@@ -54,6 +56,9 @@ function getTappWidgetPreviewInfo(
   icon?: string
   iconSvg?: string
   themeColor?: string
+  category?: string
+  id?: string
+  permissions?: string[]
   description?: string
   tappName?: string
 } | null {
@@ -73,7 +78,7 @@ function getTappWidgetPreviewInfo(
       }
     }
 
-    // 获取 Tapp 实例以获取主题色
+    // 获取 Tapp 实例以获取主题色 / 官方 mark id
     const tapp = runtime.getTapp(widget.tappId)
 
     return {
@@ -81,6 +86,9 @@ function getTappWidgetPreviewInfo(
       icon: widget.config.icon || tapp?.manifest.icon,
       iconSvg: tapp?.manifest.iconSvg,
       themeColor: tapp?.manifest.themeColor,
+      category: tapp?.manifest.category,
+      id: tapp?.manifest.id || widget.tappId,
+      permissions: tapp?.manifest.permissions,
       description: widget.config.description,
       tappName: tapp
         ? resolveManifestText(tapp.manifest, locale).name
@@ -207,6 +215,7 @@ const TappWidgetPreview = memo(
               widgetHtml: resources.html,
               styles: resources.styles,
               widgetCSS: resources.css,
+              i18n: resources.i18n,
             }
 
             if (!cancelled) {
@@ -284,6 +293,9 @@ const TappWidgetPreview = memo(
       icon: previewInfo?.icon,
       iconSvg: previewInfo?.iconSvg,
       themeColor: previewInfo?.themeColor,
+      category: previewInfo?.category,
+      id: previewInfo?.id,
+      permissions: previewInfo?.permissions,
     })
 
     return (
@@ -312,13 +324,17 @@ const TappWidgetPreview = memo(
           icon={previewInfo?.icon}
           iconSvg={previewInfo?.iconSvg}
           name={previewInfo?.name || 'Widget'}
+          id={previewInfo?.id}
+          themeColor={previewInfo?.themeColor}
+          category={previewInfo?.category}
+          permissions={previewInfo?.permissions}
           iconStyle={iconStyle}
-          shellClassName={`shadow-lg ${
+          shellClassName={`tapp-page-icon ${
             isCompact
-              ? 'w-8 h-8 rounded-md'
+              ? 'w-8 h-8'
               : isLarge
-                ? 'w-14 h-14 rounded-lg mb-3'
-                : 'w-10 h-10 rounded-lg mb-2'
+                ? 'w-14 h-14 mb-3'
+                : 'w-10 h-10 mb-2'
           }`}
           glyphSizeClass={
             isCompact ? 'w-5 h-5' : isLarge ? 'w-8 h-8' : 'w-6 h-6'
@@ -464,7 +480,7 @@ function TappWidgetRuntime({
     }
   }, [config?.size, widget])
 
-  // 加载 Widget 信息和代码
+  // 加载 Widget 元数据 + 运行时资源（合并路径，避免二次 effect 多等一帧）
   useEffect(() => {
     let cancelled = false
 
@@ -477,7 +493,6 @@ function TappWidgetRuntime({
       setIsRunning(false)
 
       try {
-        // 等待 runtime 同步
         await runtime.waitForSync()
 
         const widgets = runtime.getRegisteredWidgets()
@@ -491,7 +506,6 @@ function TappWidgetRuntime({
           return
         }
 
-        // 获取 Tapp 实例
         const tapp = runtime.getTapp(found.tappId)
         if (!tapp) {
           if (!cancelled) {
@@ -501,21 +515,44 @@ function TappWidgetRuntime({
           return
         }
 
-        // 检查 Tapp 是否运行中
         const running = runtime.isRunning(found.tappId)
+        const widgetSize = config?.size || found.config.defaultSize || '4x2'
+        widgetPerfMark(found.tappId, found.config.id, 'host-load-start', widgetSize)
 
-        if (!cancelled) {
-          setWidget(found)
-          setTappInstance(tapp)
-          setIsRunning(running)
-          setError(null)
-          if (running) {
-            // 资源统一由下面的 loadCode effect 加载，避免初次挂载重复执行。
-          } else {
-            setCode(null)
-            setLoading(false)
-          }
+        if (cancelled) return
+        setWidget(found)
+        setTappInstance(tapp)
+        setIsRunning(running)
+        setError(null)
+
+        if (!running) {
+          setCode(null)
+          setLoading(false)
+          return
         }
+
+        // 运行中：直接拉取 widget 投影资源（与元数据同一路径，减少状态机往返）
+        const resources = await loadWidgetResources(
+          tapp,
+          widgetSize,
+          found.config.id,
+        )
+        if (cancelled) return
+        widgetPerfMark(
+          found.tappId,
+          found.config.id,
+          'resources-ready',
+          widgetSize,
+        )
+        setCode({
+          core: resources.core,
+          widget: resources.widget,
+          widgetHtml: resources.html,
+          styles: resources.styles,
+          widgetCSS: resources.css,
+          i18n: resources.i18n,
+        })
+        setLoading(false)
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load widget')
@@ -531,7 +568,7 @@ function TappWidgetRuntime({
     }
   }, [tappWidgetId, runtime])
 
-  // 监听 Tapp 启动/停止事件
+  // 监听 Tapp 启动/停止/更新 — 触发资源补拉路径（不重复 waitForSync 全量重载）
   useEffect(() => {
     if (!widget) return
 
@@ -539,8 +576,8 @@ function TappWidgetRuntime({
       const eventData = data as { id: string }
       if (eventData.id === widget.tappId) {
         setIsRunning(true)
-        // 重新加载
         setError(null)
+        setCode(null)
         setLoading(true)
       }
     }
@@ -574,33 +611,40 @@ function TappWidgetRuntime({
     }
   }, [widget, runtime])
 
-  // 重新加载时获取代码
+  // 启动/更新后 loading=true 时补拉资源（与初次挂载路径共用 loadWidgetResources）
   useEffect(() => {
-    if (!loading || !isRunning || !widget || !tappInstance) return
+    if (!loading || !isRunning || !widget || !tappInstance || code) return
     let cancelled = false
 
     const loadCode = async () => {
       try {
-        // 使用新的资源加载器获取 Widget 专用资源
         const widgetSize = config?.size || widget.config.defaultSize || '4x2'
-
+        widgetPerfMark(
+          tappInstance.id,
+          widget.config.id,
+          'host-load-start',
+          widgetSize,
+        )
         const resources = await loadWidgetResources(
           tappInstance,
           widgetSize,
           widget.config.id,
         )
-
-        // 转换为 TappCodeStructure 格式
-        const tappCode: TappCodeStructure = {
+        if (cancelled) return
+        widgetPerfMark(
+          tappInstance.id,
+          widget.config.id,
+          'resources-ready',
+          widgetSize,
+        )
+        setCode({
           core: resources.core,
           widget: resources.widget,
           widgetHtml: resources.html,
           styles: resources.styles,
           widgetCSS: resources.css,
-        }
-
-        if (cancelled) return
-        setCode(tappCode)
+          i18n: resources.i18n,
+        })
         setError(null)
         setLoading(false)
       } catch (err) {
@@ -614,7 +658,7 @@ function TappWidgetRuntime({
     return () => {
       cancelled = true
     }
-  }, [loading, isRunning, widget, tappInstance, config?.size])
+  }, [loading, isRunning, widget, tappInstance, config?.size, code])
 
   // 使用 useMemo 稳定 widgetProps，避免 TappWidgetSandbox 不必要的重渲染
   // scale 和 fontScale 由 TappWidgetSandbox 内部自动计算并注入到 iframe
@@ -783,7 +827,7 @@ function TappWidgetRuntime({
   // 跳转到 Tapp 详情
   const handleGoToTapp = useCallback(() => {
     if (!widget) return
-    navigate(`/tapp/detail/${widget.tappId}`)
+    navigate(tappDetailPath(widget.tappId))
   }, [widget, navigate])
 
   // 编辑模式下禁用指针事件，允许父级处理拖拽
@@ -873,8 +917,12 @@ function TappWidgetRuntime({
           icon={widget.config.icon || tappInstance.manifest.icon}
           iconSvg={tappInstance.manifest.iconSvg}
           name={stoppedName}
+          id={tappInstance.manifest.id || tappInstance.id}
+          themeColor={tappInstance.manifest.themeColor}
+          category={tappInstance.manifest.category}
+          permissions={tappInstance.manifest.permissions}
           iconStyle={stoppedIconStyle}
-          shellClassName="w-12 h-12 rounded-lg shadow-lg mb-3"
+          shellClassName="tapp-page-icon w-12 h-12 mb-3"
           glyphSizeClass="w-7 h-7"
           glyphTextClass="text-2xl"
         />

@@ -382,6 +382,8 @@ export interface TranslationKeys {
       importSuccess: string
       importFailed: string
       importInvalid: string
+      importIntegrityFailed: string
+      importMissingIntegrity: string
       importConfirm: string
       pageLabels: Record<string, string>
       eventLabels: Record<string, string>
@@ -1029,6 +1031,47 @@ export interface TranslationKeys {
     fieldSiteOgImageHint: string
     fieldSiteNoindex: string
     fieldSiteNoindexHint: string
+    fieldSiteVisibilityPolicy: string
+    fieldSiteVisibilityPolicyHint: string
+    visibilityPrivate: string
+    visibilityPrivateHint: string
+    visibilityPrivateHintBefore: string
+    visibilityPrivateHintMid: string
+    visibilityPrivateHintMid2: string
+    visibilityPrivateHintAfter: string
+    visibilitySearchOnly: string
+    visibilitySearchOnlyHint: string
+    visibilitySearchOnlyHintBefore: string
+    visibilitySearchOnlyHintAfter: string
+    visibilityAiCitation: string
+    visibilityAiCitationHint: string
+    visibilityAiCitationHintBefore: string
+    visibilityAiCitationHintAfter: string
+    visibilityAiFull: string
+    visibilityAiFullHint: string
+    visibilityAiFullHintBefore: string
+    visibilityAiFullHintAfter: string
+    fieldSiteAiIntro: string
+    fieldSiteAiIntroHint: string
+    fieldSiteAiGenerate: string
+    fieldSiteAiGenerateDesc: string
+    fieldSiteAiGenerateButton: string
+    fieldSiteAiGenerateHint: string
+    fieldSiteAiGenerateHintInput: string
+    fieldSiteAiGenerateHintPlaceholder: string
+    siteAiGenerateSuccess: string
+    siteAiGenerateFallback: string
+    siteAiGenerateError: string
+    siteAiGenerateNeedTitle: string
+    siteAiGenerateTag: string
+    siteAiGenerateTagHint: string
+    siteAiGenerating: string
+    siteAiGenerateDialogTitle: string
+    siteAiGenerateDialogDesc: string
+    siteAiGenerateHintLabel: string
+    siteAiGenerateHintPlaceholder: string
+    siteAiGenerateHintOptional: string
+    siteAiGenerateConfirm: string
     fieldPwaEnabled: string
     fieldPwaEnabledHint: string
     fieldGaMeasurementId: string
@@ -1422,6 +1465,17 @@ export interface TranslationKeys {
     oauthSetupCustom3Desc: string
     allowRegisterTitle: string
     allowRegisterDesc: string
+    /** Single control: private Tapp install cleanup policy */
+    privateTappInstallCleanupTitle: string
+    privateTappInstallCleanupDesc: string
+    /** Full labels (tooltips / a11y) */
+    privateTappInstallPreset7: string
+    privateTappInstallPreset14: string
+    privateTappInstallPresetLogout: string
+    /** Short chip labels on the register-style choice card */
+    privateTappInstallPreset7Short: string
+    privateTappInstallPreset14Short: string
+    privateTappInstallPresetLogoutShort: string
     neteaseMusic: string
     qqMusic: string
     neteasePlaylistHint: string
@@ -2130,12 +2184,23 @@ export interface TranslationKeys {
     oauthUnbindFailed: string
     oauthNoProviders: string
     oauthNotConfigured: string
+    profileDisplaySourcesTitle: string
     profileSourceTitle: string
     profileSourceHint: string
     profileSourceEmpty: string
     profileSourceCurrent: string
     profileSourceAvatarHint: string
     profileSourceFailed: string
+    profileSourceAuto: string
+    profileSourceAutoDesc: string
+    profileSourceAccount: string
+    profileTextSourceTitle: string
+    profileTextSourceHint: string
+    profileTextSourceEmpty: string
+    profileTextSourceFailed: string
+    profileTextSourceAuto: string
+    profileTextSourceAutoDesc: string
+    profileTextSourceAccount: string
   }
 
   // 小组件网格
@@ -2744,6 +2809,7 @@ export interface TranslationKeys {
     permReadPlatform: string
     permWritePlatform: string
     permRegisterPlatform: string
+    permReadAnalytics: string
     permAiGenerate: string
     permAiAnalyze: string
     permAiChat: string
@@ -2784,6 +2850,7 @@ export interface TranslationKeys {
     permReadPlatformDesc: string
     permWritePlatformDesc: string
     permRegisterPlatformDesc: string
+    permReadAnalyticsDesc: string
     permAiGenerateDesc: string
     permAiAnalyzeDesc: string
     permAiChatDesc: string
@@ -2828,6 +2895,20 @@ export interface TranslationKeys {
     browseStore: string
     manualInstall: string
     clickToOpen: string
+    /** List card size toggle — expand 1x1 → 2x1 */
+    cardExpand: string
+    /** List card size toggle — shrink 2x1 → 1x1 */
+    cardShrink: string
+    /** List card drag handle — reorder layout */
+    cardDragReorder: string
+    /** Regular user: show only personal installs */
+    listScopeMine: string
+    /** Regular user: show site-owner public installs */
+    listScopeSite: string
+    /** Toggle button title when currently on personal list */
+    listScopeSwitchToSite: string
+    /** Toggle button title when currently on site-owner list */
+    listScopeSwitchToMine: string
     confirmUninstall: string
     noPermissionToOperate: string
     loginRequiredToInstall: string
@@ -3020,6 +3101,17 @@ export interface TranslationKeys {
     openFirstApp: string
     selectApp: string
     noAvailableApps: string
+    /** Multi-window bottom dock (a11y) */
+    dockLabel: string
+    /** Tooltip when at max windows and app not open */
+    dockAtMax: string
+    /** Multi-window titlebar: minimize to dock */
+    minimize: string
+    /** Dock Launchpad entry label (Apps) */
+    dockMoreApps: string
+    dockAppPanel: string
+    /** Launchpad search placeholder */
+    dockAppSearch: string
 
     // 详情页面
     appSettings: string

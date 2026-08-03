@@ -21,6 +21,8 @@ use super::seeds::ensure_default_platforms;
 /// **Support floor: product ≥ 0.3.10.** 不再为更旧版本维护逐列「字段对齐」
 /// heal（approved_permissions / engagement 过渡形态 / rate_* 专用 ALTER 等）。
 ///
+/// - 2026.08.03.2: users 名称/简介文案来源（profile_text_source_kind / profile_text_source_ref）
+/// - 2026.08.03.1: users 画像源选择（avatar_source_kind / avatar_source_ref / avatar_updated_at）
 /// - 2026.08.02.2: tapp_storage 凭据字段数据库约束与序列化/查询边界加固
 /// - 2026.08.02.1: tapp_storage 加密凭据字段（encrypted_value / binding_fingerprint）
 /// - 2026.08.01.1: tapps.visibility（公开安装可见性 all|admin）
@@ -32,7 +34,7 @@ use super::seeds::ensure_default_platforms;
 /// - 2026.07.21–20: domain_aliases / interactions / heartbeat / policy / filters
 /// - ≤0.3.9 字段对齐（已删，见 git）：approved_permissions 专用 ADD、整表 create 兜底等
 /// Marker for ops/logs + `_schema_versions`. Bump only with real schema/heal work.
-pub const SCHEMA_VERSION: &str = "2026.08.02.2";
+pub const SCHEMA_VERSION: &str = "2026.08.03.2";
 
 pub async fn ensure_schema(db: &DatabaseConnection) -> Result<(), DbErr> {
     // 1. 尝试获取 Advisory Lock（非阻塞）

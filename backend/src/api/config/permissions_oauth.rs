@@ -351,6 +351,8 @@ pub async fn get_oauth_providers(
         Json(json!({
             "providers": providers,
             "allow_local_registration": config.allow_local_registration,
+            "tapp_private_install_cleanup": config.tapp_private_install_cleanup,
+            "tapp_private_install_inactivity_days": config.tapp_private_install_inactivity_days,
         })),
     )
 }
@@ -359,6 +361,11 @@ pub async fn get_oauth_providers(
 pub struct UpdateOAuthProvidersPayload {
     pub providers: Vec<crate::config::OAuthProviderEntry>,
     pub allow_local_registration: bool,
+    /// Optional so older clients still work; omitted fields leave existing config unchanged.
+    #[serde(default)]
+    pub tapp_private_install_cleanup: Option<String>,
+    #[serde(default)]
+    pub tapp_private_install_inactivity_days: Option<i32>,
 }
 
 /// PUT /api/config/oauth-providers
@@ -493,6 +500,24 @@ pub async fn update_oauth_providers(
         json!(payload.allow_local_registration),
     );
 
+    // Optional fields: only write when the client actually sent them so older
+    // clients (or partial PUTs) do not silently reset cleanup policy.
+    if let Some(raw) = payload.tapp_private_install_cleanup.as_deref() {
+        let mode = raw.trim().to_ascii_lowercase();
+        if mode == "logout" || mode == "inactivity" {
+            updates.insert(
+                "tapp_private_install_cleanup".to_string(),
+                json!(mode),
+            );
+        }
+    }
+    if let Some(days) = payload.tapp_private_install_inactivity_days {
+        updates.insert(
+            "tapp_private_install_inactivity_days".to_string(),
+            json!(days.clamp(1, 365)),
+        );
+    }
+
     // 兼容镜像：若 entries 里有 slug="github"，同时写到 legacy 平铺字段；
     // 反之则清空它们，让 registry 不会同时拿到两份冲突的凭证。
     if let Some(gh) = payload
@@ -528,12 +553,23 @@ pub async fn update_oauth_providers(
     // 热重载 OAuth 注册中心
     crate::services::oauth::registry::REGISTRY.reload().await;
 
+    // Report effective cleanup settings (post-update cache, or defaults).
+    let (cleanup_mode, inactivity_days) = {
+        let cfg = dynamic_config.read().await;
+        (
+            cfg.tapp_private_install_cleanup.clone(),
+            cfg.tapp_private_install_inactivity_days,
+        )
+    };
+
     (
         StatusCode::OK,
         Json(json!({
             "success": true,
             "providers_count": payload.providers.len(),
             "allow_local_registration": payload.allow_local_registration,
+            "tapp_private_install_cleanup": cleanup_mode,
+            "tapp_private_install_inactivity_days": inactivity_days,
         })),
     )
 }

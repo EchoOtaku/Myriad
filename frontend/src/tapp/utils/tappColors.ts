@@ -1,184 +1,248 @@
 /**
- * Tapp 颜色工具
- * 根据 Tapp 类别和配置提供一致的颜色方案
+ * Tapp 颜色与图标壳（默认方案）
+ *
+ * 默认：多色 material 壳 + 现有 iconSvg/emoji/URL 白 glyph。
+ * 不做宿主重绘；standalone 全彩图铺满不套壳。
+ * 质感与 Dock「应用」入口一致：顶内高光 / 底边压暗 / 可选斜向 glaze。
  */
 
 import type { CSSProperties } from 'react'
 import type { TappCategory, TappPermission } from '../types'
-import { hasStandaloneTappIcon } from '../components/TappIcon'
+import {
+  hasStandaloneTappIcon,
+  isTappIconFullColorMedia,
+} from '../components/TappIcon'
 import { normalizeTappCategory } from './tappCategories'
 
-/** 类别颜色配置 */
+/** 类别渐变色（hex；壳填充用） */
 export const CATEGORY_COLORS: Record<
   TappCategory,
-  { from: string; to: string; fromHex: string; toHex: string }
+  { fromHex: string; toHex: string }
 > = {
-  // 实用工具
-  utility: {
-    from: 'from-emerald-500',
-    to: 'to-teal-500',
-    fromHex: '#10b981',
-    toHex: '#14b8a6',
-  },
-  // 效率
-  productivity: {
-    from: 'from-orange-500',
-    to: 'to-amber-500',
-    fromHex: '#f97316',
-    toHex: '#f59e0b',
-  },
-  // 游戏
-  game: {
-    from: 'from-rose-500',
-    to: 'to-pink-500',
-    fromHex: '#f43f5e',
-    toHex: '#ec4899',
-  },
-  // 社交
-  social: {
-    from: 'from-sky-500',
-    to: 'to-cyan-500',
-    fromHex: '#0ea5e9',
-    toHex: '#06b6d4',
-  },
-  // 开发
-  developer: {
-    from: 'from-slate-600',
-    to: 'to-zinc-500',
-    fromHex: '#475569',
-    toHex: '#71717a',
-  },
-  // 媒体
-  media: {
-    from: 'from-red-500',
-    to: 'to-orange-500',
-    fromHex: '#ef4444',
-    toHex: '#f97316',
-  },
-  // AI
-  ai: {
-    from: 'from-violet-500',
-    to: 'to-purple-500',
-    fromHex: '#8b5cf6',
-    toHex: '#a855f7',
-  },
-  // 数据
-  data: {
-    from: 'from-teal-500',
-    to: 'to-cyan-500',
-    fromHex: '#14b8a6',
-    toHex: '#06b6d4',
-  },
+  utility: { fromHex: '#10b981', toHex: '#14b8a6' },
+  productivity: { fromHex: '#f97316', toHex: '#f59e0b' },
+  game: { fromHex: '#f43f5e', toHex: '#ec4899' },
+  social: { fromHex: '#0ea5e9', toHex: '#06b6d4' },
+  developer: { fromHex: '#475569', toHex: '#71717a' },
+  media: { fromHex: '#ef4444', toHex: '#f97316' },
+  ai: { fromHex: '#8b5cf6', toHex: '#a855f7' },
+  data: { fromHex: '#14b8a6', toHex: '#06b6d4' },
 }
 
-/** 默认使用全局壁纸色 */
-export const DEFAULT_TAPP_BG =
-  'bg-[var(--bg-accent,rgb(var(--color-accent,16_185_129)))]'
+/** @deprecated Material shell no longer uses Tailwind gradient utility classes. */
+export const DEFAULT_TAPP_BG = 'tapp-icon-shell--fill'
 
-/** 图标样式返回类型 */
+/** 图标样式返回类型（默认 material 方案） */
 export interface IconStyle {
+  /** Shell fill class (`tapp-icon-shell--fill`) or empty when standalone */
   className: string
+  /** CSS vars `--tapp-shell-a/b` for the dual-stop fill */
   style?: CSSProperties
   /**
-   * Self-contained app icon — paint no tinted shell / shine behind it.
-   * Accent className/style still describe brand color for non-icon surfaces.
+   * Self-contained app icon — no tinted shell behind it.
+   * Accent still describes brand color for non-icon surfaces.
    */
   standalone: boolean
+  /**
+   * Full-color custom art forced onto a material shell (`iconShell: true`).
+   * Badge keeps shell but skips monochrome glyph wash (opacity / white plate).
+   */
+  insetMedia: boolean
+  /** Solid accent (hex) for dock dots, glows, etc. */
+  accentColor: string
+  /** True when non-standalone — badge applies material inset finish */
+  material: boolean
 }
 
-/** Minimal fields needed for shell / accent resolution. */
+/** Minimal fields for shell / accent resolution. */
 export interface TappIconStyleSource {
   icon?: string
   iconSvg?: string
+  /** Optional: keep material shell under custom full-color icon */
+  iconShell?: boolean
   themeColor?: string
   category?: string
   id?: string
   permissions?: readonly TappPermission[] | string[]
 }
 
-/**
- * 根据 manifest / 商店条目获取图标色壳样式。
- * `standalone` 时调用方应铺满自有图标，不再套分类/主题色底。
- */
-export function getTappIconStyle(source: TappIconStyleSource): IconStyle {
-  const standalone = hasStandaloneTappIcon(source)
+const SHELL_A = '--tapp-shell-a'
+const SHELL_B = '--tapp-shell-b'
 
-  // 1. 优先使用自定义主题色
-  if (source.themeColor) {
-    return {
-      className: 'bg-linear-to-br',
-      style: {
-        background: `linear-gradient(to bottom right, ${source.themeColor}, ${source.themeColor}99)`,
-      },
-      standalone,
-    }
-  }
-
-  // 2. 使用分类 / 权限推断的渐变色
+function materialShellStyle(fromHex: string, toHex: string): CSSProperties {
   return {
-    className: getTappIconGradient(source),
-    standalone,
+    [SHELL_A]: fromHex,
+    [SHELL_B]: toHex,
+  } as CSSProperties
+}
+
+function mixHex(
+  hex: string,
+  toward: '#ffffff' | '#000000',
+  amount: number,
+): string {
+  const raw = hex.trim().replace('#', '')
+  const full =
+    raw.length === 3
+      ? raw
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : raw
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return hex
+  const n = Number.parseInt(full, 16)
+  const r = (n >> 16) & 0xff
+  const g = (n >> 8) & 0xff
+  const b = n & 0xff
+  const tr = toward === '#ffffff' ? 255 : 0
+  const tg = toward === '#ffffff' ? 255 : 0
+  const tb = toward === '#ffffff' ? 255 : 0
+  const t = Math.min(1, Math.max(0, amount))
+  const mr = Math.round(r + (tr - r) * t)
+  const mg = Math.round(g + (tg - g) * t)
+  const mb = Math.round(b + (tb - b) * t)
+  return `#${((1 << 24) | (mr << 16) | (mg << 8) | mb).toString(16).slice(1)}`
+}
+
+function shellStopsFromTheme(themeColor: string): { from: string; to: string } {
+  const base = themeColor.trim()
+  // Subtle dual-stop: light white up top, light black down bottom
+  return {
+    from: mixHex(base, '#ffffff', 0.07),
+    to: mixHex(base, '#000000', 0.1),
   }
 }
 
-/**
- * 根据 Tapp manifest 获取图标背景渐变色（类名方式，不支持自定义颜色）
- * 注意：自定义 themeColor 需要使用 getTappIconStyle 函数
- */
-export function getTappIconGradient(source: TappIconStyleSource): string {
-  // 注意：themeColor 不能通过 Tailwind 动态类名支持，需使用 getTappIconStyle
-
-  // 1. Manifest 的用途分类是图标色的权威来源。
-  if (source.category) {
-    return getCategoryGradient(source.category)
+/** Resolve shell gradient stops (theme → category → id/permissions → default). */
+function resolveShellStops(source: TappIconStyleSource): {
+  from: string
+  to: string
+  accent: string
+} {
+  if (source.themeColor?.trim()) {
+    const base = source.themeColor.trim()
+    const stops = shellStopsFromTheme(base)
+    return { from: stops.from, to: stops.to, accent: base }
   }
 
-  // 2. 旧 Manifest 缺少 category 时，尝试从 ID 推断。
+  if (source.category) {
+    const normalized = normalizeTappCategory(source.category)
+    const colors = CATEGORY_COLORS[normalized]
+    if (colors) {
+      return {
+        from: colors.fromHex,
+        to: colors.toHex,
+        accent: colors.fromHex,
+      }
+    }
+  }
+
   const id = source.id || ''
   const idParts = id.split('.')
   const lastPart = idParts[idParts.length - 1]?.toLowerCase() || ''
   const idLower = id.toLowerCase()
-
-  // 检查 ID 中是否包含类别关键词
   for (const [category, colors] of Object.entries(CATEGORY_COLORS)) {
     if (lastPart.includes(category) || idLower.includes(category)) {
-      return `bg-linear-to-br ${colors.from} ${colors.to}`
+      return {
+        from: colors.fromHex,
+        to: colors.toHex,
+        accent: colors.fromHex,
+      }
     }
   }
 
-  // 3. 尝试从权限推断类型
   const permissions = source.permissions || []
   if (
     permissions.includes('ai:generate') ||
     permissions.includes('ai:chat') ||
     permissions.includes('ai:image')
   ) {
-    return `bg-linear-to-br ${CATEGORY_COLORS.ai.from} ${CATEGORY_COLORS.ai.to}`
+    const c = CATEGORY_COLORS.ai
+    return { from: c.fromHex, to: c.toHex, accent: c.fromHex }
   }
   if (
     permissions.includes('media:control') ||
     permissions.includes('media:read')
   ) {
-    return `bg-linear-to-br ${CATEGORY_COLORS.media.from} ${CATEGORY_COLORS.media.to}`
+    const c = CATEGORY_COLORS.media
+    return { from: c.fromHex, to: c.toHex, accent: c.fromHex }
   }
   if (permissions.includes('platform:register')) {
-    return `bg-linear-to-br ${CATEGORY_COLORS.data.from} ${CATEGORY_COLORS.data.to}`
+    const c = CATEGORY_COLORS.data
+    return { from: c.fromHex, to: c.toHex, accent: c.fromHex }
   }
   if (permissions.includes('widget:register')) {
-    return `bg-linear-to-br ${CATEGORY_COLORS.utility.from} ${CATEGORY_COLORS.utility.to}`
+    const c = CATEGORY_COLORS.utility
+    return { from: c.fromHex, to: c.toHex, accent: c.fromHex }
   }
 
-  // 4. 默认使用全局壁纸色
-  return DEFAULT_TAPP_BG
+  return {
+    from: DEFAULT_TAPP_ACCENT_HEX,
+    to: mixHex(DEFAULT_TAPP_ACCENT_HEX, '#000000', 0.2),
+    accent: DEFAULT_TAPP_ACCENT_HEX,
+  }
 }
 
 /**
- * 根据类别名称获取颜色
+ * Default icon presentation: material multi-stop shell + existing glyph art.
+ * `standalone` → full-bleed media, no shell.
+ * `iconShell: true` → keep shell even for full-color custom icons.
+ */
+export function getTappIconStyle(source: TappIconStyleSource): IconStyle {
+  const standalone = hasStandaloneTappIcon(source)
+  const stops = resolveShellStops(source)
+  // Full-color media sitting on a forced shell (not monochrome glyph treatment)
+  const insetMedia =
+    !standalone &&
+    source.iconShell === true &&
+    isTappIconFullColorMedia(source)
+
+  if (standalone) {
+    return {
+      className: '',
+      standalone: true,
+      insetMedia: false,
+      accentColor: stops.accent,
+      material: false,
+    }
+  }
+
+  return {
+    className: 'tapp-icon-shell--fill',
+    style: materialShellStyle(stops.from, stops.to),
+    standalone: false,
+    insetMedia,
+    accentColor: stops.accent,
+    material: true,
+  }
+}
+
+/**
+ * @deprecated Use getTappIconStyle().className — material fill class only
+ * (pair with style CSS vars from getTappIconStyle).
+ */
+export function getTappIconGradient(source: TappIconStyleSource): string {
+  return getTappIconStyle(source).className || DEFAULT_TAPP_BG
+}
+
+/**
+ * @deprecated Use getTappIconStyle({ category }).className
  */
 export function getCategoryGradient(category: string | undefined): string {
-  if (!category) return DEFAULT_TAPP_BG
+  return getTappIconStyle({ category }).className || DEFAULT_TAPP_BG
+}
 
-  const normalized = normalizeTappCategory(category)
-  const colors = CATEGORY_COLORS[normalized]
-  return `bg-linear-to-br ${colors.from} ${colors.to}`
+/** 默认强调色（DOM 可用 CSS 变量） */
+export const DEFAULT_TAPP_ACCENT =
+  'var(--bg-accent, var(--color-primary, #6366f1))'
+
+/** SVG data-URI / canvas 等无法解析 CSS 变量时的实色回退 */
+export const DEFAULT_TAPP_ACCENT_HEX = '#6366f1'
+
+/**
+ * 实心强调色：Dock 指示点 / 装饰光晕。
+ * 始终返回可绘制颜色（themeColor 或分类 hex）。
+ */
+export function getTappIconAccentColor(source: TappIconStyleSource): string {
+  return resolveShellStops(source).accent
 }

@@ -39,6 +39,12 @@ pub(super) fn build_authenticated_router(
                 post(api::prompt::generate_prompt)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
             )
+            // SEO / GEO AI copy assist — admin only (site branding)
+            .route(
+                "/api/seo/generate-copy",
+                post(api::seo_geo::generate_site_seo_copy)
+                    .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
+            )
             // 后台任务管理 API -  REQUIRE AUTHENTICATION
             .route(
                 "/api/tasks",
@@ -197,6 +203,17 @@ pub(super) fn build_authenticated_router(
                 "/api/tapp/platform/items/batch",
                 post(api::tapp_runtime::add_platform_items_batch)
                     .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
+            )
+            // Site analytics aggregates for Tapp (guest-safe; Runtime Grant analytics:read)
+            .route(
+                "/api/tapp/analytics/summary",
+                get(api::tapp_runtime::get_tapp_analytics_summary)
+                    .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::optional_auth_middleware)),
+            )
+            .route(
+                "/api/tapp/analytics/visitor",
+                get(api::tapp_runtime::get_tapp_analytics_visitor)
+                    .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::optional_auth_middleware)),
             )
             // AI Task API - 支持权限下放（使用 optional_auth）
             .route(

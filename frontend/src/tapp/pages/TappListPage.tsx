@@ -1,51 +1,37 @@
 /**
- * Tapp 鍟嗗簵/鍒楄〃椤甸潰
- * 鏄剧ず宸插畨瑁呯殑 Tapp 鍜屽彲鐢ㄧ殑 Tapp
+ * Tapp list page — installed apps + shortcuts to store / playground.
  */
 
 import type { ToastType } from '../../components/Toast'
-
 import type { TappInstance, TappPermission } from '../types'
-import type { IconStyle } from '../utils/tappColors'
 import {
-  FaCog,
-  FaFileAlt,
   FaFolder,
-  FaLock,
-  FaPause,
-  FaPlay,
+  FaGlobe,
   FaPlus,
   FaTh,
-  FaTimes,
-  FaTrash,
-  FaUpload,
+  FaUser,
   MyriadStoreIcon,
 } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
-  motionShim as motion,
 } from '@lib/motionShim'
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
 } from 'react'
-
 import { useNavigate } from 'react-router-dom'
 import AnimatedView from '../../components/AnimatedView'
-import { Spinner } from '../../components/Spinner'
 import Toast from '../../components/Toast'
+import { GlowBackground } from '../../components/widgets/shared/GlowBackground'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
-import { useTappScheduler, useTappStagger } from '../../hooks/animation'
-import {
-  isExlight,
-  isStandardAnimation,
-  useAnimationLevel,
-} from '../../hooks/useAnimationLevel'
+import { useTappScheduler } from '../../hooks/animation'
+import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePageSeo } from '../../hooks/usePageSeo'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
 import { useResolvedTitleColor, useTitleFont } from '../../hooks/useTitleFont'
@@ -54,538 +40,47 @@ import {
   useModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
 import { hasSessionHint } from '../../utils/sessionDetection'
+import { InstallTappDialog } from '../components/InstallTappDialog'
 import { TappPlaygroundIcon } from '../components/PlaygroundIcons'
+import type { TappAppCardSize } from '../components/TappAppCard'
+import {
+  applyTappAppCardOrder,
+  loadTappAppCardLayout,
+  loadTappAppCardSizes,
+  saveTappAppCardLayout,
+  TappAppCard,
+  toggleTappAppCardSize,
+} from '../components/TappAppCard'
+import {
+  fetchTappListCardSizes,
+  saveTappListCardSizes,
+} from '../services/TappListCardSizesApi'
 import { TappIcon } from '../components/TappIcon'
-import { TappIconBadge } from '../components/TappIconBadge'
 import { UninstallConfirmDialog } from '../components/UninstallConfirmDialog'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
+import { listTappDetails } from '../services/TappLifecycleApi'
 import { getTappRuntime } from '../runtime'
-import { PERMISSION_LEVELS } from '../runtime/permissionConfig'
 import { isWebKit } from '../runtime/TappPageSandbox'
-import * as TappApiService from '../services/TappApiService'
 import { resolveManifestText } from '../utils/manifestLocale'
-import {
-  resolveTappCategory,
-  TAPP_CATEGORY_I18N_KEYS,
-} from '../utils/tappCategories'
-import { getTappIconStyle as getTappIconStyleFromManifest } from '../utils/tappColors'
 import { buildTappListPageSeo } from '../utils/tappPageSeo'
-
-// 使用 TappIcon 组件统一处理图标渲染
-
-/** 包装函数，接受 TappInstance 并返回图标背景样式 */
-function getTappIconStyle(tapp: TappInstance): IconStyle {
-  return getTappIconStyleFromManifest(tapp.manifest)
-}
-
-/** 按后端一致的权限等级统计 Manifest 权限。 */
-function getPermissionCounts(permissions: TappPermission[]): {
-  basic: number
-  elevated: number
-  admin: number
-} {
-  let basic = 0
-  let elevated = 0
-  let admin = 0
-
-  for (const p of permissions) {
-    const level = PERMISSION_LEVELS[p]
-    if (level === 'privileged') {
-      admin++
-    } else if (level === 'elevated') {
-      elevated++
-    } else {
-      basic++
-    }
-  }
-
-  return { basic, elevated, admin }
-}
-
-interface TappCardProps {
-  tapp: TappInstance
-  isRunning: boolean
-  onStart: () => void
-  onStop: () => void
-  onUninstall: (anchor: HTMLElement) => void
-  onConfigure: () => void
-  onOpen: () => void
-  /** 卡片索引（交错动画） */
-  index: number
-}
-
-const TappCard = forwardRef<HTMLDivElement, TappCardProps>(
-  (
-    {
-      tapp,
-      isRunning,
-      onStart,
-      onStop,
-      onUninstall,
-      onConfigure,
-      onOpen,
-      index,
-    },
-    ref,
-  ) => {
-    const { manifest } = tapp
-    const { t, locale } = useI18n()
-    const { name: displayName, description: displayDescription } =
-      resolveManifestText(manifest, locale)
-    const animConfig = useAnimationLevel()
-    const [isHovered, setIsHovered] = useState(false)
-
-    // 交错延迟完全由协调器管理；exlight 模式直接显示。
-    const animationsEnabled = !isExlight(animConfig)
-    const { canAnimate, onComplete } = useTappStagger(index, {
-      enabled: animationsEnabled,
-    })
-
-    // 鑾峰彇鏉冮檺缁熻鍜屽簲鐢ㄧ被鍒?
-    const permissionCounts = getPermissionCounts(tapp.grantedPermissions)
-    const categoryId = resolveTappCategory(manifest)
-    // 启动/停止：仅站主公开装所有者，或自己的临时装（与 TappRuntime.canControlLifecycle 一致）。
-    // 普通用户不能对站主「已停止」的公开 Tapp 点启动。
-    const canStartStop =
-      (tapp.userRole === 'admin' && tapp.isAdminTapp === true) ||
-      (tapp.userRole === 'user' && tapp.isTemporary === true)
-    const canUninstall =
-      tapp.userRole === 'admin' ||
-      (tapp.userRole === 'user' && tapp.isTemporary === true)
-    const canConfigure =
-      tapp.userRole === 'admin' ||
-      (tapp.userRole === 'user' && tapp.isTemporary === true)
-    const category = t.tapp[TAPP_CATEGORY_I18N_KEYS[categoryId]]
-    const totalPermissions =
-      permissionCounts.basic +
-      permissionCounts.elevated +
-      permissionCounts.admin
-
-    // 是否有页面模块可打开
-    const hasPage = manifest.hasPage === true
-
-    // Page Tapp 始终可以打开。运行页会按需启动当前查看者的会话；
-    // 游客和公共安装的普通用户不会因此改写安装记录的持久运行状态。
-    const handleCardClick = () => {
-      if (hasPage) {
-        onOpen()
-      }
-    }
-
-    // 切换运行状态
-    const handleToggleRun = (e: React.MouseEvent) => {
-      e.stopPropagation()
-      if (!canStartStop) return
-      if (isRunning) {
-        onStop()
-      } else {
-        onStart()
-      }
-    }
-
-    // 获取图标样式用于装饰
-    const iconStyle = getTappIconStyle(tapp)
-
-    return (
-      <motion.div
-        ref={ref}
-        layout={!isExlight(animConfig)}
-        initial={animationsEnabled ? { opacity: 0, y: 20 } : false}
-        animate={
-          !animationsEnabled || canAnimate
-            ? { opacity: 1, y: 0 }
-            : { opacity: 0, y: 20 }
-        }
-        exit={animationsEnabled ? { opacity: 0, scale: 0.95 } : undefined}
-        onAnimationComplete={onComplete}
-        transition={
-          !animationsEnabled
-            ? { duration: 0 }
-            : !animConfig.spring ||
-!isStandardAnimation(animConfig)
-              ? { type: 'tween', duration: 0.25 }
-              : {
-                  type: 'spring',
-                  stiffness: 400,
-                  damping: 28,
-                }
-        }
-        whileHover={
-          isStandardAnimation(animConfig) ? { y: -4 } : {}
-        }
-        whileTap={animationsEnabled ? { scale: 0.98 } : {}}
-        onClick={handleCardClick}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        className={`group relative aspect-2/1 rounded-2xl overflow-hidden glass-surface glass-70 ${
-          hasPage ? 'cursor-pointer' : ''
-        }`}
-      >
-        {/* 动态渐变背景 - 基于图标颜色 */}
-        <div
-          className={`absolute inset-0 opacity-[0.08] transition-opacity duration-500 ${isHovered ? 'opacity-[0.15]' : ''}`}
-          style={{
-            background: `linear-gradient(135deg, ${iconStyle.style?.background ? iconStyle.style.background : 'var(--color-primary)'}, transparent 60%)`,
-          }}
-        />
-
-        {/* 瑁呴グ鍏夋晥 - 鍙充笂 */}
-        <div
-          className={`absolute -right-8 -top-8 w-24 h-24 rounded-full blur-2xl transition-all duration-500 ${
-            isRunning ? 'opacity-40' : 'opacity-20'
-          } ${isHovered ? 'scale-150 opacity-50' : ''}`}
-          style={{
-            background:
-              'linear-gradient(180deg, var(--color-primary), transparent)',
-          }}
-        />
-
-        {/* 瑁呴グ鍏夋晥 - 宸︿笅 */}
-        <div
-          className={`absolute -left-6 -bottom-6 w-16 h-16 rounded-full blur-xl opacity-10 transition-all duration-500 ${isHovered ? 'scale-125 opacity-20' : ''}`}
-          style={{ background: 'var(--color-primary)' }}
-        />
-
-        {/* ===== 涓诲唴瀹瑰尯鍩?===== */}
-        <div className="relative z-10 h-full flex flex-col p-3">
-          {/* 椤堕儴鍖哄煙锛氬浘鏍?+ 鍚嶇О + 鐘舵€? */}
-          <div className="flex items-start gap-2.5 mb-auto">
-            {/* 应用图标 */}
-            <TappIconBadge
-              icon={manifest.icon}
-              iconSvg={manifest.iconSvg}
-              name={displayName}
-              iconStyle={iconStyle}
-              shellClassName="w-14 h-14 rounded-xl shadow-lg"
-              glyphSizeClass="w-8 h-8"
-              glyphTextClass="text-2xl"
-            >
-              {isRunning && (
-                <div className="absolute inset-0 z-20 bg-white/20 animate-pulse" />
-              )}
-            </TappIconBadge>
-
-            {/* 鍚嶇О + 鍏冧俊鎭? */}
-            <div className="flex-1 min-w-0 pt-1">
-              <div className="flex items-center gap-2">
-                <h3 className="font-bold text-gray-800 dark:text-gray-100 truncate text-base leading-tight">
-                  {displayName}
-                </h3>
-                {isRunning && (
-                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
-                )}
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/10 text-gray-600 dark:text-gray-400 font-medium">
-                  {category}
-                </span>
-                <span className="text-xs text-gray-400 dark:text-gray-500">
-                  v{manifest.version}
-                </span>
-              </div>
-            </div>
-
-            {/* 鍙充笂瑙掓搷浣滃尯 - 鎮诞鏄剧ず瀹屾暣锛岄粯璁ゅ彧鏄剧ず涓绘寜閽? */}
-            <div className="flex items-center gap-0.5 shrink-0">
-              {/* 涓绘搷浣滄寜閽細鍚姩/鍋滄 - 仅有权限时显示 */}
-              {canStartStop && (
-                <motion.button
-                  onClick={handleToggleRun}
-                  className={`p-2 rounded-xl transition-all shadow-sm ${
-                    isRunning
-                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 hover:bg-amber-500/25'
-                      : 'bg-green-500/15 text-green-600 dark:text-green-400 hover:bg-green-500/25'
-                  }`}
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.95 }}
-                  title={isRunning ? t.tapp.stop : t.tapp.start}
-                >
-                  {isRunning ? (
-                    <FaPause className="w-3 h-3" />
-                  ) : (
-                    <FaPlay className="w-3 h-3" />
-                  )}
-                </motion.button>
-              )}
-
-              {/* 次要操作：悬浮时展开 - 仅有权限时显示 */}
-              {(canConfigure || canUninstall) && (
-                <motion.div
-                  className="flex items-center gap-0.5 overflow-hidden"
-                  initial={{ width: 0, opacity: 0 }}
-                  animate={{
-                    width: isHovered ? 'auto' : 0,
-                    opacity: isHovered ? 1 : 0,
-                  }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {canConfigure && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onConfigure()
-                      }}
-                      className="p-2 rounded-xl transition-all text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-500/10"
-                      title={t.tapp.settings}
-                    >
-                      <FaCog className="w-3 h-3" />
-                    </button>
-                  )}
-                  {canUninstall && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onUninstall(e.currentTarget)
-                      }}
-                      className="p-2 rounded-xl transition-all text-gray-400 hover:text-red-500 hover:bg-red-500/10"
-                      title={t.tapp.uninstall}
-                    >
-                      <FaTrash className="w-3 h-3" />
-                    </button>
-                  )}
-                </motion.div>
-              )}
-            </div>
-          </div>
-
-          {/* 底部区域：描述 + 权限信息 */}
-          <div className="mt-auto">
-            {/* 搴旂敤鎻忚堪 - 鏈€澶?琛屽彲婊氬姩 */}
-            {displayDescription && (
-              <div className="max-h-10 overflow-y-auto mb-2 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
-                <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed pr-1">
-                  {displayDescription}
-                </p>
-              </div>
-            )}
-
-            {/* 搴曢儴淇℃伅鏉★細鏉冮檺鎽樿 + 鍙墦寮€鎻愮ず */}
-            <div className="flex items-center justify-between">
-              {/* 鏉冮檺鎽樿 */}
-              <div className="flex items-center gap-1">
-                {totalPermissions > 0 ? (
-                  <>
-                    <FaLock className="w-2.5 h-2.5 text-gray-400" />
-                    <div className="flex items-center gap-0.5 text-[9px]">
-                      {permissionCounts.admin > 0 && (
-                        <span className="px-1 py-0.5 rounded bg-red-500/10 text-red-500 dark:text-red-400 font-medium">
-                          {permissionCounts.admin}
-                        </span>
-                      )}
-                      {permissionCounts.elevated > 0 && (
-                        <span className="px-1 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium">
-                          {permissionCounts.elevated}
-                        </span>
-                      )}
-                      {permissionCounts.basic > 0 && (
-                        <span className="px-1 py-0.5 rounded bg-green-500/10 text-green-600 dark:text-green-400 font-medium">
-                          {permissionCounts.basic}
-                        </span>
-                      )}
-                      <span className="text-gray-400 dark:text-gray-500 ml-0.5">
-                        {t.tapp.permissions}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <span className="text-[9px] text-gray-400 dark:text-gray-500 flex items-center gap-1">
-                    <FaLock className="w-2.5 h-2.5" />
-                    {t.tapp.noPermissions}
-                  </span>
-                )}
-              </div>
-
-              {/* 可点击提示 */}
-              {hasPage && (
-                <motion.span
-                  className="text-[9px] text-gray-400 dark:text-gray-500 flex items-center gap-1"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: isHovered ? 1 : 0.5 }}
-                >
-                  <span className="w-1 h-1 rounded-full bg-current" />
-                  {t.tapp.clickToOpen}
-                </motion.span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 杈规鏁堟灉 */}
-        <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-black/5 dark:ring-white/10 pointer-events-none" />
-
-        {/* 鎮诞鏃剁殑楂樺厜杈规 */}
-        <motion.div
-          className="absolute inset-0 rounded-2xl pointer-events-none"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: isHovered ? 1 : 0 }}
-          style={{
-            boxShadow:
-              'inset 0 0 0 1px rgba(var(--color-primary-rgb, 99, 102, 241), 0.3)',
-          }}
-        />
-      </motion.div>
-    )
-  },
-)
-
-TappCard.displayName = 'TappCard'
+import {
+  TAPP_PLAYGROUND_PATH,
+  TAPP_STORE_PATH,
+  tappDetailPath,
+  tappRunMultiPath,
+  tappRunPath,
+} from '../utils/tappPaths'
+import '../components/TappAppCard.css'
 
 /**
- * 瀹夎 Tapp 妯℃€佹
- */
-function InstallTappModal({
-  onClose,
-  onInstall,
-  onSuccess,
-}: {
-  onClose: () => void
-  onInstall: () => void
-  onSuccess?: (name: string) => void
-}) {
-  const { t } = useI18n()
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [dragOver, setDragOver] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // 处理文件上传
-  const handleFileUpload = async (file: File) => {
-    if (!file.name.endsWith('.tapp')) {
-      setError(t.tapp.selectTappFile)
-      return
-    }
-
-    setError('')
-    setLoading(true)
-
-    try {
-      const result = await TappApiService.installTappFile(file)
-      onInstall()
-      onSuccess?.(result.name || file.name.replace('.tapp', ''))
-      onClose()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t.tapp.installFailed)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // 澶勭悊鎷栨斁
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(false)
-    const file = e.dataTransfer.files[0]
-    if (file) handleFileUpload(file)
-  }
-
-  // 澶勭悊鏂囦欢閫夋嫨
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) handleFileUpload(file)
-  }
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="surface-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        className="surface-dialog glass rounded-2xl shadow-xl max-w-md w-full overflow-hidden"
-        onClick={(e: React.MouseEvent) => e.stopPropagation()}
-      >
-        {/* 澶撮儴 */}
-        <div className="px-6 py-4 border-b border-gray-200/50 dark:border-neutral-700/50 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-            <FaUpload className="text-indigo-500" />
-            {t.tapp.installTappTitle}
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
-            title={t.tapp.storeClose}
-            aria-label={t.tapp.storeClose}
-          >
-            <FaTimes className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* 鍐呭 */}
-        <div className="p-6">
-          {/* 閿欒鎻愮ず */}
-          {error && (
-            <div className="mb-4 p-3 bg-red-50/80 dark:bg-red-900/20 border border-red-200/50 dark:border-red-800/50 rounded-lg text-red-600 dark:text-red-400 text-sm">
-              {error}
-            </div>
-          )}
-
-          {/* 鏂囦欢涓婁紶鍖哄煙 */}
-          <div
-            onDragOver={(e) => {
-              e.preventDefault()
-              setDragOver(true)
-            }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors ${
-              dragOver
-                ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-900/20'
-                : 'border-gray-300 dark:border-neutral-600 hover:border-indigo-400 hover:bg-gray-50/50 dark:hover:bg-neutral-800/50'
-            } ${loading ? 'opacity-50 cursor-wait' : ''}`}
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".tapp"
-              onChange={handleFileChange}
-              className="hidden"
-              disabled={loading}
-              aria-label={t.tapp.selectTappFile}
-            />
-            {loading ? (
-              <Spinner size="xl" color="primary" center />
-            ) : (
-              <>
-                <FaFileAlt className="w-12 h-12 mx-auto mb-4 text-gray-400 dark:text-gray-500" />
-                <p className="text-gray-600 dark:text-gray-300 font-medium mb-2">
-                  {t.tapp.dropTappFile}
-                </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {t.tapp.orClickToSelect}
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* 搴曢儴 */}
-        <div className="px-6 py-4 border-t border-gray-200/50 dark:border-neutral-700/50 flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
-          >
-            {t.tapp.cancel}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  )
-}
-
-/**
- * Tapp 鍒楄〃椤甸潰缁勪欢
+ * Tapp list page component
  */
 export function TappListPage() {
   const navigate = useNavigate()
   const { t, locale } = useI18n()
   const { isMobile } = useBreakpoints()
-  const { isAdmin, hasChecked, checkAuth } = useAuth()
+  const { isAdmin, isAuthenticated, hasChecked, checkAuth } = useAuth()
+  const animConfig = useAnimationLevel()
   const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
   const moduleOpenToAll = canAccessModuleVisibility(
     moduleVisibility.modules.tapp,
@@ -597,10 +92,54 @@ export function TappListPage() {
   const titleColorCss = useResolvedTitleColor()
 
   const [tapps, setTapps] = useState<TappInstance[]>([])
+  /**
+   * Pure site-owner public catalog (no personal-id collision drop).
+   * `null` = not loaded yet (do not treat as empty or fall back to runtime filter).
+   */
+  const [siteTapps, setSiteTapps] = useState<TappInstance[] | null>(null)
   const [runningTapps, setRunningTapps] = useState<Set<string>>(new Set())
+  /**
+   * Personal list card size (1x1 / 2x1) + order.
+   * Logged-in: bound to user row in DB; localStorage is cache.
+   * Never store site-owner fills here — site scope uses `siteCard*` below.
+   */
+  const [cardSizes, setCardSizes] = useState<Record<string, TappAppCardSize>>(
+    () => loadTappAppCardSizes(),
+  )
+  const [cardOrder, setCardOrder] = useState<string[]>(
+    () => loadTappAppCardLayout().order,
+  )
+  /** Site-owner public layout (read-only for regular users). */
+  const [siteCardSizes, setSiteCardSizes] = useState<
+    Record<string, TappAppCardSize>
+  >({})
+  const [siteCardOrder, setSiteCardOrder] = useState<string[]>([])
+  /**
+   * Regular users (non-admin): filter list between personal installs and
+   * site-owner public apps. Admins/guests do not use this toggle.
+   * Persisted for the tab so refresh keeps the same scope.
+   */
+  type ListScope = 'mine' | 'site'
+  const [listScope, setListScope] = useState<ListScope>(() => {
+    if (typeof window === 'undefined') return 'mine'
+    try {
+      const raw = window.sessionStorage.getItem('tapp.listScope.v1')
+      return raw === 'site' ? 'site' : 'mine'
+    } catch {
+      return 'mine'
+    }
+  })
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const dragIdRef = useRef<string | null>(null)
+  /** Tear down window-level drag listeners registered for the active session. */
+  const dragSessionCleanupRef = useRef<(() => void) | null>(null)
+  const suppressOpenRef = useRef(false)
   const [loading, setLoading] = useState(true)
   const [showEmpty, setShowEmpty] = useState(false) // 延迟显示空状态
-  const [showInstallModal, setShowInstallModal] = useState(false)
+  // 手动安装 tooltip（锚定安装按钮）
+  const [showInstallDialog, setShowInstallDialog] = useState(false)
+  const [installAnchor, setInstallAnchor] = useState<HTMLElement | null>(null)
   const [toastMessage, setToastMessage] = useState('')
   const [toastType, setToastType] = useState<ToastType>('info')
   // 卸载确认 tooltip
@@ -637,7 +176,44 @@ export function TappListPage() {
   // 馃幀 鍒濆鍖?Tapp 椤甸潰璋冨害鍣紙缁熶竴鍔ㄧ敾鍗忚皟锛?
   useTappScheduler()
 
-  // 鍔犺浇 Tapp 鍒楄〃
+  /** Map site-scope details → list cards; overlay running state from runtime. */
+  const mapSiteDetails = useCallback(
+    (details: Awaited<ReturnType<typeof listTappDetails>>): TappInstance[] => {
+      return details.map((detail) => {
+        const existing = runtime.getTapp(detail.id)
+        const installationStatus: TappInstance['installationStatus'] =
+          detail.status === 'running'
+            ? 'running'
+            : detail.status === 'error'
+              ? 'error'
+              : 'installed'
+        const isRunning =
+          runtime.isRunning(detail.id) || installationStatus === 'running'
+        return {
+          id: detail.id,
+          manifest: detail.manifest,
+          status: isRunning
+            ? 'running'
+            : installationStatus === 'error'
+              ? 'error'
+              : 'installed',
+          installationStatus,
+          installedAt: detail.installed_at,
+          lastRunAt: detail.last_run_at,
+          grantedPermissions: (detail.granted_permissions ||
+            []) as TappPermission[],
+          // Keep viewer role for actions; mark as site-public for filtering
+          userRole: existing?.userRole ?? (isAdmin ? 'admin' : 'user'),
+          isTemporary: false,
+          isAdminTapp: true,
+          visibility: detail.visibility === 'admin' ? 'admin' : 'all',
+        }
+      })
+    },
+    [runtime, isAdmin],
+  )
+
+  // 加载 Tapp 列表
   const loadTapps = useCallback(
     async (forceSync: boolean = false) => {
       // 如果需要强制同步（如安装后），先从后端刷新
@@ -647,6 +223,7 @@ export function TappListPage() {
 
       const allTapps = runtime.getAllTapps()
       setTapps(allTapps)
+      // Mine / admin / guest can render immediately; site scope waits on `siteTapps`.
       setLoading(false)
 
       const running = new Set<string>()
@@ -656,21 +233,81 @@ export function TappListPage() {
         }
       })
       setRunningTapps(running)
+
+      // Site catalog for regular users (complete public list, no personal dedupe).
+      // Stay on `null` until this settles so site scope never uses a runtime fallback.
+      if (isAuthenticated && !isAdmin) {
+        try {
+          const details = await listTappDetails('site')
+          setSiteTapps(mapSiteDetails(details))
+        } catch (error) {
+          console.error('Failed to load site Tapp catalog:', error)
+          // Keep last successful catalog; first-load failure → empty (not runtime dedupe).
+          setSiteTapps((prev) => prev ?? [])
+        }
+      } else {
+        // Admin / guest: site toggle unused; clear pending state.
+        setSiteTapps(null)
+      }
     },
-    [runtime],
+    [runtime, isAuthenticated, isAdmin, mapSiteDetails],
   )
 
-  // 延迟显示空状态 - 避免加载快时闪烁
+  /** Non-admin signed-in users can switch personal vs site-owner catalogs. */
+  const canToggleListScope = isAuthenticated && !isAdmin
+
+  /** Drop duplicate ids (first wins) — defensive; API also dedupes within a scope. */
+  const dedupeById = useCallback((list: TappInstance[]) => {
+    const seen = new Set<string>()
+    const out: TappInstance[] = []
+    for (const item of list) {
+      if (!item?.id || seen.has(item.id)) continue
+      seen.add(item.id)
+      out.push(item)
+    }
+    return out
+  }, [])
+
+  /** Site catalog still in flight — do not empty-flash or use runtime fallback. */
+  const siteCatalogPending =
+    canToggleListScope && listScope === 'site' && siteTapps === null
+
+  const scopedTapps = useMemo(() => {
+    if (!canToggleListScope) return dedupeById(tapps)
+    if (listScope === 'site') {
+      // null = not loaded yet → empty list while pending (empty CTA gated separately)
+      if (siteTapps === null) return []
+      return dedupeById(siteTapps)
+    }
+    // mine: personal / temporary installs only (not site-public)
+    return dedupeById(tapps.filter((t) => t.isAdminTapp !== true))
+  }, [tapps, siteTapps, listScope, canToggleListScope, dedupeById])
+
+  /** Site scope uses owner layout; mine / admin / guest-primary uses personal state. */
+  const useSiteLayout = canToggleListScope && listScope === 'site'
+  const activeCardSizes = useSiteLayout ? siteCardSizes : cardSizes
+  const activeCardOrder = useSiteLayout ? siteCardOrder : cardOrder
+
+  const orderedTapps = useMemo(
+    () => applyTappAppCardOrder(scopedTapps, activeCardOrder),
+    [scopedTapps, activeCardOrder],
+  )
+
+  /** Layout editing only on personal list (site-owner layout is read-only). */
+  const canEditLayout =
+    isAuthenticated && (!canToggleListScope || listScope === 'mine')
+
+  // 延迟显示空状态 — 等 loading + site catalog 都就绪后再判断
   useEffect(() => {
-    if (!loading && tapps.length === 0) {
+    if (!loading && !siteCatalogPending && orderedTapps.length === 0) {
       const timer = setTimeout(() => {
         setShowEmpty(true)
-      }, 150) // 150ms 延迟，确认确实没有应用
+      }, 150)
       return () => clearTimeout(timer)
     } else {
       setShowEmpty(false)
     }
-  }, [loading, tapps.length])
+  }, [loading, siteCatalogPending, orderedTapps.length])
 
   useEffect(() => {
     let mounted = true
@@ -724,47 +361,302 @@ export function TappListPage() {
     }
   }
 
-  const handleUninstall = (tappId: string, anchor?: HTMLElement | null) => {
-    const tapp = tapps.find((item) => item.id === tappId)
-    setUninstallTargetId(tappId)
-    setUninstallTargetName(
-      tapp ? resolveManifestText(tapp.manifest, locale).name : tappId,
-    )
-    setUninstallAnchor(anchor ?? null)
-    setShowUninstallDialog(true)
-  }
-
-  const handleConfirmUninstall = async (keepData: boolean) => {
-    if (!uninstallTargetId) return
-    try {
-      await runtime.uninstallTapp(uninstallTargetId, { keepData })
-      setShowUninstallDialog(false)
-      setUninstallTargetId(null)
-      setUninstallAnchor(null)
-    } catch (error) {
-      console.error('Failed to uninstall Tapp:', error)
-      showToastMessage(t.tapp.uninstallFailed || 'Uninstall failed', 'error')
-      throw error
-    }
-  }
-
-  const cancelUninstall = () => {
+  /** 安装 / 卸载 tip 互斥：同一时刻只开一个，避免双 portal 叠层与状态打架 */
+  const openInstallDialog = useCallback((anchor?: HTMLElement | null) => {
     setShowUninstallDialog(false)
     setUninstallTargetId(null)
+    setUninstallTargetName('')
     setUninstallAnchor(null)
-  }
+    setInstallAnchor(anchor ?? null)
+    setShowInstallDialog(true)
+  }, [])
 
-  const handleOpen = (tappId: string) => {
-    void import('../../utils/analyticsEvents').then(
-      ({ trackProductEvent, AnalyticsEvents }) => {
-        trackProductEvent(AnalyticsEvents.TAPP_RUN, {
-          target: tappId,
-          throttleMs: 2000,
-        })
-      },
-    )
-    navigate(`/tapp/run/${tappId}`)
-  }
+  const cancelInstall = useCallback(() => {
+    setShowInstallDialog(false)
+    setInstallAnchor(null)
+  }, [])
+
+  const handleUninstall = useCallback(
+    (tappId: string, anchor?: HTMLElement | null) => {
+      const tapp = tapps.find((item) => item.id === tappId)
+      setShowInstallDialog(false)
+      setInstallAnchor(null)
+      setUninstallTargetId(tappId)
+      setUninstallTargetName(
+        tapp ? resolveManifestText(tapp.manifest, locale).name : tappId,
+      )
+      setUninstallAnchor(anchor ?? null)
+      setShowUninstallDialog(true)
+    },
+    [tapps, locale],
+  )
+
+  const handleConfirmUninstall = useCallback(
+    async (keepData: boolean) => {
+      if (!uninstallTargetId) return
+      try {
+        await runtime.uninstallTapp(uninstallTargetId, { keepData })
+        setShowUninstallDialog(false)
+        setUninstallTargetId(null)
+        setUninstallAnchor(null)
+      } catch (error) {
+        console.error('Failed to uninstall Tapp:', error)
+        showToastMessage(t.tapp.uninstallFailed || 'Uninstall failed', 'error')
+        throw error
+      }
+    },
+    [uninstallTargetId, runtime, showToastMessage, t.tapp.uninstallFailed],
+  )
+
+  const cancelUninstall = useCallback(() => {
+    setShowUninstallDialog(false)
+    setUninstallTargetId(null)
+    setUninstallTargetName('')
+    setUninstallAnchor(null)
+  }, [])
+
+  const handleOpen = useCallback(
+    (tappId: string) => {
+      if (suppressOpenRef.current) {
+        suppressOpenRef.current = false
+        return
+      }
+      void import('../../utils/analyticsEvents').then(
+        ({ trackProductEvent, AnalyticsEvents }) => {
+          trackProductEvent(AnalyticsEvents.TAPP_RUN, {
+            target: tappId,
+            throttleMs: 2000,
+          })
+        },
+      )
+      navigate(tappRunPath(tappId))
+    },
+    [navigate],
+  )
+
+  // Hydrate layout: personal prefs stay pure; site-owner layout is separate.
+  // Never full-save a display merge (that would sticky-freeze owner sizes).
+  useEffect(() => {
+    if (!hasChecked) return
+    let cancelled = false
+    void (async () => {
+      try {
+        const remote = await fetchTappListCardSizes()
+        if (cancelled) return
+        setSiteCardSizes(remote.siteSizes)
+        setSiteCardOrder(remote.siteOrder)
+        if (isAuthenticated) {
+          const local = loadTappAppCardLayout()
+          // Drop local keys that only mirror site-owner layout (legacy sticky
+          // merge pollution). Keep local-only keys that differ from site.
+          const localPersonalOnly: Record<string, TappAppCardSize> = {}
+          for (const [id, size] of Object.entries(local.sizes)) {
+            if (id in remote.sizes) continue
+            if (remote.siteSizes[id] === size) continue
+            localPersonalOnly[id] = size
+          }
+          // Pure personal: server wins conflicts; remaining local-only migrate.
+          const personalSizes: Record<string, TappAppCardSize> = {
+            ...localPersonalOnly,
+            ...remote.sizes,
+          }
+          const personalOrder =
+            remote.order.length > 0 ? remote.order : local.order
+          setCardSizes(personalSizes)
+          setCardOrder(personalOrder)
+          saveTappAppCardLayout({
+            sizes: personalSizes,
+            order: personalOrder,
+          })
+          const hasLocalOnly = Object.keys(localPersonalOnly).length > 0
+          const localOrderOnly =
+            remote.order.length === 0 && local.order.length > 0
+          if (hasLocalOnly || localOrderOnly) {
+            // Migrate pure personal prefs only — never site fills.
+            await saveTappListCardSizes({
+              sizes: personalSizes,
+              order: personalOrder,
+            })
+          }
+        } else {
+          // Guest: primary payload is site-owner layout
+          setCardSizes(remote.sizes)
+          setCardOrder(remote.order)
+        }
+      } catch {
+        // Offline: guests keep empty/default; authed keep local cache
+        if (!isAuthenticated) {
+          setCardSizes({})
+          setCardOrder([])
+          setSiteCardSizes({})
+          setSiteCardOrder([])
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [hasChecked, isAuthenticated])
+
+  /** Persist personal layout only (site layout is owner-controlled). */
+  const persistLayout = useCallback(
+    (sizes: Record<string, TappAppCardSize>, order: string[]) => {
+      saveTappAppCardLayout({ sizes, order })
+      void saveTappListCardSizes({ sizes, order }).catch(() => {
+        // Network failure: local cache already updated; next load retries
+      })
+    },
+    [],
+  )
+
+  const handleToggleCardSize = useCallback(
+    (tappId: string) => {
+      // Guests / site-owner view: layout is read-only
+      if (!canEditLayout) return
+      setCardSizes((prev) => {
+        const nextSize = toggleTappAppCardSize(prev[tappId] ?? '1x1')
+        const next = { ...prev, [tappId]: nextSize }
+        persistLayout(next, cardOrder)
+        return next
+      })
+    },
+    [canEditLayout, cardOrder, persistLayout],
+  )
+
+  const handleToggleListScope = useCallback(() => {
+    setListScope((prev) => {
+      const next: ListScope = prev === 'mine' ? 'site' : 'mine'
+      try {
+        window.sessionStorage.setItem('tapp.listScope.v1', next)
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }, [])
+
+  const clearCardDrag = useCallback(() => {
+    dragIdRef.current = null
+    setDragId(null)
+    setDragOverId(null)
+    // Remove any window-level session listeners (idempotent)
+    const cleanup = dragSessionCleanupRef.current
+    if (cleanup) {
+      dragSessionCleanupRef.current = null
+      cleanup()
+    }
+  }, [])
+
+  /** Always leave drag UI in a clean state (drop, cancel, escape, leave window). */
+  const finishCardDrag = useCallback(() => {
+    clearCardDrag()
+    // Swallow residual click from mouseup after HTML5 drag; then re-enable open
+    suppressOpenRef.current = true
+    window.setTimeout(() => {
+      suppressOpenRef.current = false
+    }, 0)
+  }, [clearCardDrag])
+
+  // Unmount safety: never leave drag listeners / ghost state behind
+  useEffect(() => {
+    return () => {
+      dragSessionCleanupRef.current?.()
+      dragSessionCleanupRef.current = null
+      dragIdRef.current = null
+    }
+  }, [])
+
+  const handleDragHandleStart = useCallback(
+    (e: ReactDragEvent, tappId: string) => {
+      if (!canEditLayout) {
+        e.preventDefault()
+        return
+      }
+      // Tear down a previous session if start fires without a clean end
+      dragSessionCleanupRef.current?.()
+      dragSessionCleanupRef.current = null
+
+      suppressOpenRef.current = true
+      dragIdRef.current = tappId
+      setDragId(tappId)
+      setDragOverId(null)
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', tappId)
+
+      // Window capture: dragend always fires when a DnD op ends (even if drop
+      // target never receives events, or the card unmounts mid-drag).
+      const onWindowDragEnd = () => {
+        finishCardDrag()
+      }
+      // Escape / focus loss can cancel without a clean bubble path
+      const onKeyDown = (ev: KeyboardEvent) => {
+        if (ev.key === 'Escape') finishCardDrag()
+      }
+      window.addEventListener('dragend', onWindowDragEnd, true)
+      window.addEventListener('keydown', onKeyDown, true)
+      dragSessionCleanupRef.current = () => {
+        window.removeEventListener('dragend', onWindowDragEnd, true)
+        window.removeEventListener('keydown', onKeyDown, true)
+      }
+    },
+    [canEditLayout, finishCardDrag],
+  )
+
+  const handleDragOverCard = useCallback(
+    (e: ReactDragEvent, tappId: string) => {
+      const from = dragIdRef.current
+      if (from === null || from === tappId) {
+        // No active session (or self) — keep highlight clear
+        if (from === null) setDragOverId(null)
+        return
+      }
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+      setDragOverId((prev) => (prev === tappId ? prev : tappId))
+    },
+    [],
+  )
+
+  const handleDragLeaveCard = useCallback(
+    (e: ReactDragEvent, tappId: string) => {
+      const next = e.relatedTarget as Node | null
+      if (next && (e.currentTarget as HTMLElement).contains(next)) return
+      setDragOverId((prev) => (prev === tappId ? null : prev))
+    },
+    [],
+  )
+
+  const handleDropOnCard = useCallback(
+    (e: ReactDragEvent, toId: string) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const fromId = dragIdRef.current
+      if (!fromId || fromId === toId || !canEditLayout) {
+        finishCardDrag()
+        return
+      }
+
+      setCardOrder((prev) => {
+        // Build order from currently visible apps so drops always resolve
+        const base = applyTappAppCardOrder(scopedTapps, prev).map((t) => t.id)
+        const fromIndex = base.indexOf(fromId)
+        const toIndex = base.indexOf(toId)
+        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return prev
+        const next = [...base]
+        next.splice(fromIndex, 1)
+        next.splice(toIndex, 0, fromId)
+        persistLayout(cardSizes, next)
+        return next
+      })
+      // Clear highlight + dragging immediately; dragend will also call finish
+      finishCardDrag()
+    },
+    [canEditLayout, scopedTapps, cardSizes, persistLayout, finishCardDrag],
+  )
+
+  const handleDragEndCard = useCallback(() => {
+    finishCardDrag()
+  }, [finishCardDrag])
 
   const handleConfigure = (tappId: string) => {
     void import('../../utils/analyticsEvents').then(
@@ -775,7 +667,7 @@ export function TappListPage() {
         })
       },
     )
-    navigate(`/tapp/detail/${tappId}`)
+    navigate(tappDetailPath(tappId))
   }
 
   return (
@@ -812,7 +704,11 @@ export function TappListPage() {
                 />
                 <div className="flex flex-col justify-center">
                   <div className="text-sm font-bold text-gray-800 dark:text-gray-200 leading-tight">
-                    {t.tapp.listTitle}
+                    {canToggleListScope
+                      ? listScope === 'site'
+                        ? t.tapp.listScopeSite
+                        : t.tapp.listScopeMine
+                      : t.tapp.listTitle}
                   </div>
                   <div className="text-[10px] text-gray-500 dark:text-gray-400 max-w-50 truncate leading-tight">
                     {t.tapp.listSubtitle}
@@ -834,7 +730,7 @@ export function TappListPage() {
                             })
                           },
                         )
-                        navigate('/tapp/playground')
+                        navigate(TAPP_PLAYGROUND_PATH)
                       }}
                       className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
                       style={{ color: 'var(--color-primary)' }}
@@ -844,8 +740,32 @@ export function TappListPage() {
                       {t.tapp.playground}
                     </button>
                   )}
+                  {/* Regular user: toggle mine ↔ site-owner list (playground slot) */}
+                  {canToggleListScope && (
+                    <button
+                      type="button"
+                      onClick={handleToggleListScope}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
+                      style={{ color: 'var(--color-primary)' }}
+                      title={
+                        listScope === 'mine'
+                          ? t.tapp.listScopeSwitchToSite
+                          : t.tapp.listScopeSwitchToMine
+                      }
+                      aria-pressed={listScope === 'site'}
+                    >
+                      {listScope === 'mine' ? (
+                        <FaGlobe className="w-3.5 h-3.5" />
+                      ) : (
+                        <FaUser className="w-3.5 h-3.5" />
+                      )}
+                      {listScope === 'mine'
+                        ? t.tapp.listScopeSite
+                        : t.tapp.listScopeMine}
+                    </button>
+                  )}
                   <button
-                    onClick={() => navigate('/tapp/store')}
+                    onClick={() => navigate(TAPP_STORE_PATH)}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
                     style={{ color: 'var(--color-primary)' }}
                   >
@@ -855,7 +775,7 @@ export function TappListPage() {
                   {/* 多任务入口 - 仅平板和PC端显示，Safari 不支持 */}
                   {!isMobile && !isWebKit && (
                     <button
-                      onClick={() => navigate('/tapp/run?multi=true')}
+                      onClick={() => navigate(tappRunMultiPath())}
                       className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10"
                       style={{ color: 'var(--color-primary)' }}
                       title={t.tapp.multiWindow}
@@ -866,7 +786,7 @@ export function TappListPage() {
                   )}
                   {isAdmin && (
                     <button
-                      onClick={() => setShowInstallModal(true)}
+                      onClick={(e) => openInstallDialog(e.currentTarget)}
                       className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 cursor-pointer"
                       style={{ color: 'var(--color-primary)' }}
                       title={t.tapp.install}
@@ -880,8 +800,33 @@ export function TappListPage() {
 
               {/* 右侧移动端按钮 — Playground 仅桌面端入口 */}
               <div className="flex sm:hidden items-center gap-2">
+                {canToggleListScope && (
+                  <button
+                    type="button"
+                    onClick={handleToggleListScope}
+                    className="p-2 rounded-lg glass shadow-sm"
+                    title={
+                      listScope === 'mine'
+                        ? t.tapp.listScopeSwitchToSite
+                        : t.tapp.listScopeSwitchToMine
+                    }
+                    aria-pressed={listScope === 'site'}
+                  >
+                    {listScope === 'mine' ? (
+                      <FaGlobe
+                        className="w-5 h-5"
+                        style={{ color: 'var(--color-primary)' }}
+                      />
+                    ) : (
+                      <FaUser
+                        className="w-5 h-5"
+                        style={{ color: 'var(--color-primary)' }}
+                      />
+                    )}
+                  </button>
+                )}
                 <button
-                  onClick={() => navigate('/tapp/store')}
+                  onClick={() => navigate(TAPP_STORE_PATH)}
                   className="p-2 rounded-lg glass shadow-sm"
                   title={t.tapp.storeTitle}
                 >
@@ -892,7 +837,7 @@ export function TappListPage() {
                 </button>
                 {isAdmin && (
                   <button
-                    onClick={() => setShowInstallModal(true)}
+                    onClick={(e) => openInstallDialog(e.currentTarget)}
                     className="p-2 rounded-lg glass shadow-sm"
                     title={t.tapp.manualInstall}
                   >
@@ -906,51 +851,39 @@ export function TappListPage() {
             </div>
           </div>
 
-          {/* 鍐呭鍖哄煙 */}
-          {tapps.length === 0 && showEmpty ? (
-            /* 绌虹姸鎬?- 涓庡崱鐗囪璁￠鏍间竴鑷? */
-            <div className="relative rounded-2xl overflow-hidden">
-              {/* 鑳屾櫙 */}
-              <div className="absolute inset-0 glass-surface glass-70" />
-
-              {/* 瑁呴グ鍏夋晥 */}
-              <div
-                className="absolute -right-20 -top-20 w-48 h-48 rounded-full blur-3xl opacity-20"
-                style={{ background: 'var(--color-primary)' }}
+          {/* Content */}
+          {orderedTapps.length === 0 && showEmpty ? (
+            <div className="tapp-app-empty glass glass-chrome-free">
+              <GlowBackground
+                color="var(--color-primary, #6366f1)"
+                animLevel={animConfig.level}
+                shouldAnimate={animConfig.loop}
+                variant="dual"
+                size="lg"
+                opacity={0.16}
               />
-              <div
-                className="absolute -left-16 -bottom-16 w-32 h-32 rounded-full blur-2xl opacity-15"
-                style={{ background: 'var(--color-primary)' }}
-              />
-
-              {/* 鍐呭 */}
-              <div className="relative z-10 p-8 md:p-12 text-center">
-                <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-linear-to-br from-gray-100 to-gray-200 dark:from-white/10 dark:to-white/5 flex items-center justify-center shadow-lg">
-                  <FaFolder className="w-10 h-10 text-gray-400 dark:text-gray-500" />
+              <div className="tapp-app-empty__content">
+                <div className="tapp-app-empty__icon">
+                  <FaFolder className="w-9 h-9" />
                 </div>
-                <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100 mb-2">
+                <h3 className="tapp-app-empty__title">
                   {t.tapp.noAppsInstalled}
                 </h3>
-                <p className="text-gray-500 dark:text-gray-400 mb-6 text-sm max-w-sm mx-auto">
+                <p className="tapp-app-empty__desc">
                   {t.tapp.noAppsInstalledDesc}
                 </p>
-                <div className="flex items-center justify-center gap-3">
-                  <motion.button
-                    onClick={() => navigate('/tapp/store')}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-sm"
-                    style={{
-                      background:
-                        'linear-gradient(135deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 80%, black))',
-                      color: 'white',
-                    }}
-                    whileHover={{ scale: 1.02, y: -1 }}
-                    whileTap={{ scale: 0.98 }}
+                <div className="tapp-app-empty__actions">
+                  <button
+                    type="button"
+                    onClick={() => navigate(TAPP_STORE_PATH)}
+                    className="tapp-app-empty__btn tapp-app-empty__btn--primary"
                   >
                     <MyriadStoreIcon className="w-4 h-4" />
                     {t.tapp.browseStore}
-                  </motion.button>
+                  </button>
                   {!isMobile && isAdmin && (
-                    <motion.button
+                    <button
+                      type="button"
                       onClick={() => {
                         void import('../../utils/analyticsEvents').then(
                           ({ trackProductEvent, AnalyticsEvents }) => {
@@ -959,44 +892,55 @@ export function TappListPage() {
                             })
                           },
                         )
-                        navigate('/tapp/playground')
+                        navigate(TAPP_PLAYGROUND_PATH)
                       }}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15"
-                      style={{ color: 'var(--color-primary)' }}
-                      whileHover={{ scale: 1.02, y: -1 }}
-                      whileTap={{ scale: 0.98 }}
+                      className="tapp-app-empty__btn tapp-app-empty__btn--ghost"
                     >
                       <TappPlaygroundIcon className="w-4 h-4" />
                       {t.tapp.playground}
-                    </motion.button>
+                    </button>
                   )}
                   {isAdmin && (
-                    <motion.button
-                      onClick={() => setShowInstallModal(true)}
-                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all bg-black/5 dark:bg-white/10 hover:bg-black/10 dark:hover:bg-white/15"
-                      style={{ color: 'var(--color-primary)' }}
-                      whileHover={{ scale: 1.02, y: -1 }}
-                      whileTap={{ scale: 0.98 }}
+                    <button
+                      type="button"
+                      onClick={(e: ReactMouseEvent<HTMLButtonElement>) =>
+                        openInstallDialog(e.currentTarget)
+                      }
+                      className="tapp-app-empty__btn tapp-app-empty__btn--ghost"
                       title={t.tapp.manualInstall}
                     >
                       <FaPlus className="w-4 h-4" />
                       {t.tapp.manualInstall}
-                    </motion.button>
+                    </button>
                   )}
                 </div>
               </div>
-
-              {/* 杈规 */}
-              <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-black/5 dark:ring-white/10 pointer-events-none" />
             </div>
           ) : (
-            /* Tapp 鍒楄〃 - 2:1 瀹介珮姣斿崱鐗囷紝4鍒楃綉鏍? */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            <div
+              className={`tapp-app-card-grid${dragId ? ' is-reordering' : ''}`}
+            >
               <AnimatePresence mode="popLayout">
-                {tapps.map((tapp, index) => (
-                  <TappCard
+                {orderedTapps.map((tapp, index) => (
+                  <TappAppCard
                     key={tapp.id}
                     tapp={tapp}
+                    size={activeCardSizes[tapp.id] ?? '1x1'}
+                    canResize={canEditLayout}
+                    canReorder={canEditLayout}
+                    dragLabel={t.tapp.cardDragReorder}
+                    isDragging={dragId === tapp.id}
+                    isDragOver={dragOverId === tapp.id && dragId !== tapp.id}
+                    onDragHandleStart={handleDragHandleStart}
+                    onDragOverCard={handleDragOverCard}
+                    onDragLeaveCard={handleDragLeaveCard}
+                    onDropOnCard={handleDropOnCard}
+                    onDragEndCard={handleDragEndCard}
+                    onToggleSize={
+                      canEditLayout
+                        ? () => handleToggleCardSize(tapp.id)
+                        : undefined
+                    }
                     isRunning={runningTapps.has(tapp.id)}
                     onStart={() => handleStart(tapp.id)}
                     onStop={() => handleStop(tapp.id)}
@@ -1012,23 +956,21 @@ export function TappListPage() {
         </div>
       </div>
 
-      {/* 瀹夎妯℃€佹 */}
-      <AnimatePresence>
-        {showInstallModal && (
-          <InstallTappModal
-            onClose={() => setShowInstallModal(false)}
-            onInstall={() => loadTapps(true)}
-            onSuccess={(name) =>
-              showToastMessage(
-                t.tapp.installSuccess.replace('{name}', name),
-                'success',
-              )
-            }
-          />
-        )}
-      </AnimatePresence>
+      {/* 手动安装浮层（与卸载确认同款锚定 tooltip） */}
+      <InstallTappDialog
+        isOpen={showInstallDialog}
+        anchorEl={installAnchor}
+        onCancel={cancelInstall}
+        onInstall={() => loadTapps(true)}
+        onSuccess={(name) =>
+          showToastMessage(
+            t.tapp.installSuccess.replace('{name}', name),
+            'success',
+          )
+        }
+      />
 
-      {/* 卸载确认对话框 */}
+      {/* 卸载确认浮层 */}
       <UninstallConfirmDialog
         isOpen={showUninstallDialog}
         appName={uninstallTargetName}

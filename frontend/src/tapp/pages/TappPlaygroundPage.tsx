@@ -64,6 +64,7 @@ import {
   switchSession,
   updateActiveSessionWithMeta,
 } from '../utils/playgroundSession'
+import { TAPP_LIST_PATH, tappDetailPath } from '../utils/tappPaths'
 import {
   formatPlaygroundPackageErrors,
   PlaygroundPackageValidationError,
@@ -1243,11 +1244,7 @@ export function TappPlaygroundPage() {
         )
       }
 
-      window.setTimeout(
-        navigate,
-        450,
-        `/tapp/detail/${encodeURIComponent(installed.id)}`,
-      )
+      window.setTimeout(navigate, 450, tappDetailPath(installed.id))
     } catch (installError) {
       setError(
         installError instanceof Error
@@ -1723,7 +1720,7 @@ export function TappPlaygroundPage() {
 
   // Playground is desktop-admin only; redirect mobile direct/bookmark URLs.
   if (isMobile) {
-    return <Navigate to="/tapp" replace />
+    return <Navigate to={TAPP_LIST_PATH} replace />
   }
 
   const codeValue =
@@ -1972,7 +1969,7 @@ export function TappPlaygroundPage() {
           }}
         >
           <motion.button
-            onClick={() => navigate('/tapp')}
+            onClick={() => navigate(TAPP_LIST_PATH)}
             whileTap={animationsEnabled ? { scale: 0.92 } : {}}
             className="w-8 h-8 rounded-lg grid place-items-center transition-colors hover:bg-black/5 dark:hover:bg-white/10"
             style={{ color: 'var(--text-secondary)' }}

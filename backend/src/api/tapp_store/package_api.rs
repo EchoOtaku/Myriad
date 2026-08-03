@@ -80,104 +80,268 @@ pub(super) struct TappResourcesResponse {
     page_module_order: Option<Vec<String>>,
 }
 
+/// Resource projection for dashboard widgets vs full page runtimes.
+///
+/// - `full` (default): everything (legacy clients)
+/// - `widget`: omit page template/CSS/modules; strip page section from code
+/// - `page`: omit widget templates/CSS; strip widget section from code
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ResourceMode {
+    Full,
+    Widget,
+    Page,
+}
+
+impl ResourceMode {
+    fn parse(raw: Option<&str>) -> Self {
+        match raw.map(str::trim).map(|s| s.to_ascii_lowercase()).as_deref() {
+            Some("widget") => Self::Widget,
+            Some("page") => Self::Page,
+            _ => Self::Full,
+        }
+    }
+
+    fn wants_widget(self) -> bool {
+        matches!(self, Self::Full | Self::Widget)
+    }
+
+    fn wants_page(self) -> bool {
+        matches!(self, Self::Full | Self::Page)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub(super) struct GetTappResourcesQuery {
+    /// `full` | `widget` | `page`. Unknown values fall back to full.
+    #[serde(default)]
+    mode: Option<String>,
+}
+
+const WIDGET_CODE_MARKER: &str = "// ========== Widget Code ==========";
+const PAGE_CODE_MARKER: &str = "// ========== Page Code ==========";
+
+/// Drop the page section so widget sandboxes never download page modules' JS.
+fn strip_page_code_section(code: &str) -> String {
+    match code.find(PAGE_CODE_MARKER) {
+        Some(idx) => code[..idx].trim_end().to_string(),
+        None => code.to_string(),
+    }
+}
+
+/// Drop the widget section while preserving any trailing page section.
+fn strip_widget_code_section(code: &str) -> String {
+    let Some(widget_idx) = code.find(WIDGET_CODE_MARKER) else {
+        return code.to_string();
+    };
+    match code.find(PAGE_CODE_MARKER) {
+        Some(page_idx) if page_idx > widget_idx => {
+            let mut out = String::with_capacity(code.len() - (page_idx - widget_idx));
+            out.push_str(code[..widget_idx].trim_end());
+            if !out.is_empty() {
+                out.push_str("\n\n");
+            }
+            out.push_str(&code[page_idx..]);
+            out
+        }
+        _ => code[..widget_idx].trim_end().to_string(),
+    }
+}
+
+async fn read_optional_text(tapp_dir: &std::path::Path, path: Option<&str>) -> Option<String> {
+    let path = path?;
+    read_tapp_text_resource(tapp_dir, path).await.ok()
+}
+
+async fn load_widget_templates(
+    tapp_dir: &std::path::Path,
+    manifest: &serde_json::Value,
+) -> WidgetTemplateContents {
+    let entries = installed_widget_template_paths(manifest);
+    if entries.is_empty() {
+        return WidgetTemplateContents::new();
+    }
+
+    let reads = entries.into_iter().map(|entry| {
+        let dir = tapp_dir.to_path_buf();
+        async move {
+            let content = read_tapp_text_resource(&dir, &entry.path).await.ok();
+            (entry.widget_id, entry.size, content)
+        }
+    });
+    let results = futures::future::join_all(reads).await;
+
+    let mut widget_templates = WidgetTemplateContents::new();
+    for (widget_id, size, content) in results {
+        if let Some(content) = content {
+            widget_templates
+                .entry(widget_id)
+                .or_default()
+                .insert(size, content);
+        }
+    }
+    widget_templates
+}
+
+async fn load_i18n(
+    tapp_dir: &std::path::Path,
+) -> Option<HashMap<String, serde_json::Value>> {
+    let i18n_dir = regular_resource_directory(tapp_dir, "i18n")?;
+    let mut translations = HashMap::new();
+    let mut entries = fs::read_dir(i18n_dir).await.ok()?;
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if !entry.file_type().await.is_ok_and(|kind| kind.is_file())
+            || path.extension().and_then(|extension| extension.to_str()) != Some("json")
+        {
+            continue;
+        }
+        let Some(filename) = entry.file_name().to_str().map(String::from) else {
+            continue;
+        };
+        if !is_safe_path_component(&filename) {
+            continue;
+        }
+        let Some(language) = filename.strip_suffix(".json") else {
+            continue;
+        };
+        let relative = format!("i18n/{filename}");
+        if let Ok(content) = read_tapp_text_resource(tapp_dir, &relative).await {
+            if let Ok(value) = serde_json::from_str(&content) {
+                translations.insert(language.to_string(), value);
+            }
+        }
+    }
+    (!translations.is_empty()).then_some(translations)
+}
+
+async fn load_page_modules(
+    tapp_dir: &std::path::Path,
+    order: &[String],
+) -> Result<HashMap<String, String>, HttpError> {
+    if order.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let reads = order.iter().map(|name| {
+        let dir = tapp_dir.to_path_buf();
+        let name = name.clone();
+        async move {
+            let relative = installed_page_module_relative_path(&name);
+            let content = read_tapp_text_resource(&dir, &relative).await;
+            (name, content)
+        }
+    });
+    let results = futures::future::join_all(reads).await;
+    let mut modules = HashMap::with_capacity(results.len());
+    for (name, content) in results {
+        let content =
+            content.map_err(|_| HttpError(AppError::internal("Database error")))?;
+        modules.insert(name, content);
+    }
+    Ok(modules)
+}
+
 pub(super) async fn get_tapp_resources(
     State(db): State<DatabaseConnection>,
     headers: HeaderMap,
     Path(tapp_id): Path<String>,
+    Query(query): Query<GetTappResourcesQuery>,
 ) -> Result<Json<TappResourcesResponse>, HttpError> {
+    let mode = ResourceMode::parse(query.mode.as_deref());
     let tapp = visible_tapp(&db, &headers, &tapp_id).await?;
     let tapp_dir = installed_tapp_dir(&tapp)?;
-    let code = fs::read_to_string(installed_code_path(&tapp)?)
-        .await
-        .map_err(|_| HttpError(AppError::internal("Database error")))?;
+    let code_path = installed_code_path(&tapp)?;
     let manifest = &tapp.manifest;
     let plan = installed_text_resource_plan(manifest);
 
-    let styles = if let Some(path) = &plan.styles {
-        read_tapp_text_resource(&tapp_dir, path).await.ok()
-    } else {
-        None
-    };
-    let widget_styles = if let Some(path) = &plan.widget_styles {
-        read_tapp_text_resource(&tapp_dir, path).await.ok()
-    } else {
-        None
-    };
-    let page_styles = if let Some(path) = &plan.page_styles {
-        read_tapp_text_resource(&tapp_dir, path).await.ok()
-    } else {
-        None
-    };
-    let page_template = read_tapp_text_resource(&tapp_dir, &plan.page_template)
-        .await
-        .ok();
+    // Parallel independent FS reads: code + shared styles + optional mode slices + i18n.
+    let want_widget = mode.wants_widget();
+    let want_page = mode.wants_page();
 
-    let mut widget_templates = WidgetTemplateContents::new();
-    for entry in installed_widget_template_paths(manifest) {
-        if let Ok(content) = read_tapp_text_resource(&tapp_dir, &entry.path).await {
-            widget_templates
-                .entry(entry.widget_id)
-                .or_default()
-                .insert(entry.size, content);
-        }
+    let (
+        code_result,
+        styles,
+        widget_styles,
+        page_styles,
+        widget_css,
+        page_css,
+        page_template,
+        widget_templates,
+        i18n,
+    ) = tokio::join!(
+        async {
+            fs::read_to_string(&code_path)
+                .await
+                .map_err(|_| HttpError(AppError::internal("Database error")))
+        },
+        read_optional_text(&tapp_dir, plan.styles.as_deref()),
+        async {
+            if want_widget {
+                read_optional_text(&tapp_dir, plan.widget_styles.as_deref()).await
+            } else {
+                None
+            }
+        },
+        async {
+            if want_page {
+                read_optional_text(&tapp_dir, plan.page_styles.as_deref()).await
+            } else {
+                None
+            }
+        },
+        async {
+            if want_widget {
+                read_optional_text(&tapp_dir, plan.widget_css.as_deref()).await
+            } else {
+                None
+            }
+        },
+        async {
+            if want_page {
+                read_optional_text(&tapp_dir, plan.page_css.as_deref()).await
+            } else {
+                None
+            }
+        },
+        async {
+            if want_page {
+                read_tapp_text_resource(&tapp_dir, &plan.page_template)
+                    .await
+                    .ok()
+            } else {
+                None
+            }
+        },
+        async {
+            if want_widget {
+                load_widget_templates(&tapp_dir, manifest).await
+            } else {
+                WidgetTemplateContents::new()
+            }
+        },
+        load_i18n(&tapp_dir),
+    );
+
+    let mut code = code_result?;
+    match mode {
+        ResourceMode::Widget => code = strip_page_code_section(&code),
+        ResourceMode::Page => code = strip_widget_code_section(&code),
+        ResourceMode::Full => {}
     }
 
-    let widget_css = if let Some(path) = &plan.widget_css {
-        read_tapp_text_resource(&tapp_dir, path).await.ok()
-    } else {
-        None
-    };
-    let page_css = if let Some(path) = &plan.page_css {
-        read_tapp_text_resource(&tapp_dir, path).await.ok()
-    } else {
-        None
-    };
-
-    let i18n = if let Some(i18n_dir) = regular_resource_directory(&tapp_dir, "i18n") {
-        let mut translations = HashMap::new();
-        if let Ok(mut entries) = fs::read_dir(i18n_dir).await {
-            while let Ok(Some(entry)) = entries.next_entry().await {
-                let path = entry.path();
-                if !entry.file_type().await.is_ok_and(|kind| kind.is_file())
-                    || path.extension().and_then(|extension| extension.to_str()) != Some("json")
-                {
-                    continue;
-                }
-                let Some(filename) = entry.file_name().to_str().map(String::from) else {
-                    continue;
-                };
-                if !is_safe_path_component(&filename) {
-                    continue;
-                }
-                let Some(language) = filename.strip_suffix(".json") else {
-                    continue;
-                };
-                let relative = format!("i18n/{filename}");
-                if let Ok(content) = read_tapp_text_resource(&tapp_dir, &relative).await {
-                    if let Ok(value) = serde_json::from_str(&content) {
-                        translations.insert(language.to_string(), value);
-                    }
-                }
+    let (page_module_order, page_modules) = if want_page {
+        let order = installed_page_module_names(manifest);
+        if let Some(order) = order {
+            let modules = load_page_modules(&tapp_dir, &order).await?;
+            if modules.is_empty() {
+                (None, None)
+            } else {
+                (Some(order), Some(modules))
             }
+        } else {
+            (None, None)
         }
-        (!translations.is_empty()).then_some(translations)
     } else {
-        None
-    };
-
-    let page_module_order = installed_page_module_names(manifest);
-    let page_modules = if let Some(order) = &page_module_order {
-        let mut modules = HashMap::new();
-        for name in order {
-            let relative = installed_page_module_relative_path(name);
-            let content = read_tapp_text_resource(&tapp_dir, &relative)
-                .await
-                .map_err(|_| HttpError(AppError::internal("Database error")))?;
-            modules.insert(name.clone(), content);
-        }
-        (!modules.is_empty()).then_some(modules)
-    } else {
-        None
+        (None, None)
     };
 
     Ok(Json(TappResourcesResponse {
@@ -191,7 +355,7 @@ pub(super) async fn get_tapp_resources(
         page_template,
         css_mode: plan.css_mode.map(String::from),
         i18n,
-        page_module_order: page_modules.as_ref().and(page_module_order),
+        page_module_order,
         page_modules,
     }))
 }
@@ -279,4 +443,46 @@ pub(super) async fn export_tapp(
         ],
         zip_data,
     ))
+}
+
+#[cfg(test)]
+mod resource_mode_tests {
+    use super::*;
+
+    #[test]
+    fn parses_resource_mode() {
+        assert_eq!(ResourceMode::parse(None), ResourceMode::Full);
+        assert_eq!(ResourceMode::parse(Some("full")), ResourceMode::Full);
+        assert_eq!(ResourceMode::parse(Some("WIDGET")), ResourceMode::Widget);
+        assert_eq!(ResourceMode::parse(Some(" page ")), ResourceMode::Page);
+        assert_eq!(ResourceMode::parse(Some("unknown")), ResourceMode::Full);
+    }
+
+    #[test]
+    fn strips_page_section_for_widget_projection() {
+        let code = "core();\n// ========== Widget Code ==========\nw();\n// ========== Page Code ==========\np();\n";
+        let stripped = strip_page_code_section(code);
+        assert!(stripped.contains("core()"));
+        assert!(stripped.contains("w()"));
+        assert!(!stripped.contains("p()"));
+        assert!(!stripped.contains("Page Code"));
+    }
+
+    #[test]
+    fn strips_widget_section_for_page_projection() {
+        let code = "core();\n// ========== Widget Code ==========\nw();\n// ========== Page Code ==========\np();\n";
+        let stripped = strip_widget_code_section(code);
+        assert!(stripped.contains("core()"));
+        assert!(!stripped.contains("w()"));
+        assert!(stripped.contains("p()"));
+        assert!(stripped.contains("Page Code"));
+        assert!(!stripped.contains("Widget Code"));
+    }
+
+    #[test]
+    fn strip_is_noop_without_markers() {
+        let code = "just core";
+        assert_eq!(strip_page_code_section(code), code);
+        assert_eq!(strip_widget_code_section(code), code);
+    }
 }

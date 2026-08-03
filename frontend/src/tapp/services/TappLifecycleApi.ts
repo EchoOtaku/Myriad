@@ -60,12 +60,24 @@ export interface RecentTappItem {
   runCount: number
 }
 
-export async function listTapps(): Promise<TappListItem[]> {
-  return apiRequest('/api/tapps')
+/** Catalog list scope for /api/tapps and /api/tapps/details. */
+export type TappCatalogScope = 'all' | 'mine' | 'site'
+
+function catalogScopeQuery(scope?: TappCatalogScope): string {
+  if (!scope || scope === 'all') return ''
+  return `?scope=${encodeURIComponent(scope)}`
 }
 
-export async function listTappDetails(): Promise<TappDetail[]> {
-  return apiRequest('/api/tapps/details')
+export async function listTapps(
+  scope?: TappCatalogScope,
+): Promise<TappListItem[]> {
+  return apiRequest(`/api/tapps${catalogScopeQuery(scope)}`)
+}
+
+export async function listTappDetails(
+  scope?: TappCatalogScope,
+): Promise<TappDetail[]> {
+  return apiRequest(`/api/tapps/details${catalogScopeQuery(scope)}`)
 }
 
 export async function getRecentTapps(

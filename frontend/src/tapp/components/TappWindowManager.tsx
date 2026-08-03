@@ -9,15 +9,17 @@
  * - 窗口层级管理（点击置顶）
  */
 
-import type { TappCodeStructure, TappInstance } from '../types'
+import type { TappCategory, TappCodeStructure, TappInstance } from '../types'
 import {
   FaExclamationTriangle,
   FaGripVertical,
-  FaPlus,
   FaSave,
   FaTh,
   FaTimes,
   FaTrash,
+  LuMinus,
+  LuSearch,
+  LuX,
 } from '@lib/icons'
 
 import {
@@ -31,7 +33,7 @@ import { API_URL as CONFIG_API_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 // 统一动画调度器
-import { isPageVisible, scheduleIdle, startPage } from '../../hooks/animation'
+import { isPageVisible, startPage } from '../../hooks/animation'
 import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 // CSRF 防护
 import { getCSRFToken } from '../../utils/csrf'
@@ -47,7 +49,15 @@ import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
 import { resolveManifestText } from '../utils/manifestLocale'
-import { getTappIconStyle } from '../utils/tappColors'
+import {
+  resolveTappCategory,
+  TAPP_CATEGORIES,
+  TAPP_CATEGORY_I18N_KEYS,
+} from '../utils/tappCategories'
+import {
+  getTappIconAccentColor,
+  getTappIconStyle,
+} from '../utils/tappColors'
 import { TappIcon } from './TappIcon'
 import { TappIconBadge } from './TappIconBadge'
 import { TappStore } from './TappStore'
@@ -80,12 +90,15 @@ export interface TappWindow {
   size: { width: number; height: number }
   /** 是否最大化 */
   isMaximized: boolean
+  /** 是否最小化（藏入 Dock，实例仍保留） */
+  isMinimized: boolean
   /** 层级 */
   zIndex: number
 }
 
 /** 商店宿主面板默认尺寸（比单应用窗口更宽） */
-const HOST_STORE_WINDOW_SIZE = { width: 720, height: 640 }
+/** 商店宿主面板默认尺寸（宽屏：侧栏 + 内容区） */
+const HOST_STORE_WINDOW_SIZE = { width: 960, height: 720 }
 
 /** 窗口管理器 Props */
 export interface TappWindowManagerProps {
@@ -98,8 +111,20 @@ export interface TappWindowManagerProps {
 /** 最大窗口数量 */
 const MAX_WINDOWS = 5
 
+/** Dock 直接展示的已安装应用上限；超出收入应用面板 */
+const MAX_DOCK_APPS = 18
+
+/** Launchpad：每行 7 个，最多 3 行 → 每页 21 */
+const LAUNCHPAD_COLS = 7
+const LAUNCHPAD_ROWS = 3
+const LAUNCHPAD_PAGE_SIZE = LAUNCHPAD_COLS * LAUNCHPAD_ROWS
+
 /** 默认窗口尺寸（移动端竖屏比例） */
 const DEFAULT_WINDOW_SIZE = { width: 400, height: 600 }
+
+type LaunchpadEntry =
+  | { kind: 'store' }
+  | { kind: 'app'; tapp: TappInstance }
 
 /** 窗口方案中的窗口配置 */
 interface WindowSchemeItem {
@@ -120,18 +145,11 @@ interface WindowScheme {
 const MIN_WINDOW_SIZE = { ...DEFAULT_WINDOW_SIZE }
 
 const WINDOW_CONTROL_HOVER_CLASS = 'tapp-window-control'
-const WINDOW_CONTROL_TEXT_HOVER_CLASS =
-  'tapp-window-control tapp-window-control-text'
 const WINDOW_CONTROL_DANGER_HOVER_CLASS =
   'tapp-window-control tapp-window-control-danger'
 
 const WINDOW_CONTROL_HOVER_STYLE = {
   '--tapp-window-control-hover-bg': 'var(--bg-hover)',
-} as React.CSSProperties
-
-const WINDOW_CONTROL_PRIMARY_HOVER_STYLE = {
-  '--tapp-window-control-hover-bg':
-    'color-mix(in srgb, var(--color-primary) 15%, transparent)',
 } as React.CSSProperties
 
 const WINDOW_CONTROL_DANGER_HOVER_STYLE = {
@@ -167,6 +185,7 @@ interface TappWindowComponentProps {
   window: TappWindow
   isActive: boolean
   onClose: (windowId: string) => void
+  onMinimize: (windowId: string) => void
   onFocus: (windowId: string) => void
   onMove: (windowId: string, position: { x: number; y: number }) => void
   onResize: (windowId: string, size: { width: number; height: number }) => void
@@ -178,6 +197,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
     window,
     isActive,
     onClose,
+    onMinimize,
     onFocus,
     onMove,
     onResize,
@@ -469,13 +489,29 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
       onFocus(window.windowId)
     }, [onFocus, window.windowId])
 
-    // 缓存关闭按钮处理函数
+    // 缓存关闭 / 最小化按钮处理函数
     const handleCloseClick = useCallback(
       (e: React.MouseEvent) => {
         e.stopPropagation()
         onClose(window.windowId)
       },
       [onClose, window.windowId],
+    )
+
+    const handleMinimizeClick = useCallback(
+      (e: React.MouseEvent) => {
+        e.stopPropagation()
+        onMinimize(window.windowId)
+      },
+      [onMinimize, window.windowId],
+    )
+
+    /** 标题栏控件：阻止 mousedown 冒泡触发拖拽 */
+    const stopTitleControlPointer = useCallback(
+      (e: React.MouseEvent | React.TouchEvent) => {
+        e.stopPropagation()
+      },
+      [],
     )
 
     // 调整大小的手柄：命中区样式在 TappWindowManager.css（比 4px 边框更易抓取）
@@ -498,9 +534,18 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
           top: 0,
           left: 0,
           ...windowStyle,
-          ...boxShadowStyle,
+          ...(window.isMinimized
+            ? {
+                // 最小化：保留挂载与沙箱状态，仅隐藏
+                visibility: 'hidden' as const,
+                pointerEvents: 'none' as const,
+                zIndex: 0,
+                boxShadow: 'none',
+              }
+            : boxShadowStyle),
         }}
-        onClick={handleWindowClick}
+        onClick={window.isMinimized ? undefined : handleWindowClick}
+        aria-hidden={window.isMinimized || undefined}
       >
         {/* 窗口标题栏 - 可拖拽（支持鼠标和触摸） */}
         <div
@@ -555,11 +600,14 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
                   icon={window.tapp.manifest.icon}
                   iconSvg={window.tapp.manifest.iconSvg}
                   name={windowTappName}
+                  id={window.tapp.manifest.id || window.tapp.id}
+                  themeColor={window.tapp.manifest.themeColor}
+                  category={window.tapp.manifest.category}
+                  permissions={window.tapp.manifest.permissions}
                   iconStyle={iconStyle}
-                  shellClassName="w-6 h-6 rounded-lg"
+                  shellClassName="tapp-page-icon w-6 h-6"
                   glyphSizeClass="w-3 h-3"
                   glyphTextClass="text-xs"
-                  shine={false}
                 />
                 <span
                   className="text-xs font-medium truncate"
@@ -577,12 +625,29 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
             ) : null}
           </div>
 
-          {/* 右侧：关闭按钮 */}
-          <div className="flex items-center gap-1 shrink-0">
+          {/* 右侧：最小化 + 关闭 */}
+          <div className="flex items-center gap-0.5 shrink-0">
             <motion.button
+              type="button"
+              onClick={handleMinimizeClick}
+              onMouseDown={stopTitleControlPointer}
+              onTouchStart={stopTitleControlPointer}
+              className="p-1.5 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 rounded transition-colors"
+              title={t.tapp.minimize}
+              aria-label={t.tapp.minimize}
+              whileHover={noAnimation ? undefined : { scale: 1.1 }}
+              whileTap={noAnimation ? undefined : { scale: 0.9 }}
+            >
+              <LuMinus className="w-3 h-3" />
+            </motion.button>
+            <motion.button
+              type="button"
               onClick={handleCloseClick}
-              className="p-1 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+              onMouseDown={stopTitleControlPointer}
+              onTouchStart={stopTitleControlPointer}
+              className="p-1.5 text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
               title={t.common.close}
+              aria-label={t.common.close}
               whileHover={noAnimation ? undefined : { scale: 1.1 }}
               whileTap={noAnimation ? undefined : { scale: 0.9 }}
             >
@@ -665,6 +730,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
       prevProps.window.size.width === nextProps.window.size.width &&
       prevProps.window.size.height === nextProps.window.size.height &&
       prevProps.window.zIndex === nextProps.window.zIndex &&
+      prevProps.window.isMinimized === nextProps.window.isMinimized &&
       prevProps.window.loading === nextProps.window.loading &&
       prevProps.window.error === nextProps.window.error &&
       prevProps.window.tapp === nextProps.window.tapp &&
@@ -694,6 +760,8 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const schemeMenuRef = useRef<HTMLDivElement>(null)
+  const launchpadSearchRef = useRef<HTMLInputElement>(null)
+  const launchpadStageRef = useRef<HTMLDivElement>(null)
   const [containerBounds, setContainerBounds] = useState({
     width: 0,
     height: 0,
@@ -701,9 +769,14 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   const [windows, setWindows] = useState<TappWindow[]>([])
   const [activeWindowId, setActiveWindowId] = useState<string | null>(null)
   const [nextZIndex, setNextZIndex] = useState(100)
-  const [showTappSelector, setShowTappSelector] = useState(false)
   const [availableTapps, setAvailableTapps] = useState<TappInstance[]>([])
   const [showSchemeMenu, setShowSchemeMenu] = useState(false)
+  const [showLaunchpad, setShowLaunchpad] = useState(false)
+  const [launchpadQuery, setLaunchpadQuery] = useState('')
+  const [launchpadCategory, setLaunchpadCategory] = useState<
+    TappCategory | 'all'
+  >('all')
+  const [launchpadPage, setLaunchpadPage] = useState(0)
   const [savedSchemes, setSavedSchemes] = useState<WindowScheme[]>([])
 
   // 用于防抖的 ref
@@ -789,21 +862,80 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     }
   }, [])
 
-  // 加载可用的 Tapps - 使用空闲调度
-  useEffect(() => {
-    // 使用空闲任务调度预加载 Tapp 列表，避免阻塞主线程
-    const cancelIdle = scheduleIdle(
-      'tapp-multi-load-tapps',
-      async () => {
-        await runtime.waitForSync()
-        const tapps = runtime.getAllTapps()
-        setAvailableTapps(tapps.filter((t) => t.manifest.hasPage))
-      },
-      'normal',
-    )
-
-    return cancelIdle
+  /** Dock 已安装列表：内存快照 + 事件驱动刷新（避免 idle 延迟 / 商店装完不同步） */
+  const refreshDockApps = useCallback(() => {
+    const next = runtime
+      .getAllTapps()
+      .filter((item) => item.manifest.hasPage)
+    setAvailableTapps((prev) => {
+      if (
+        prev.length === next.length &&
+        prev.every(
+          (p, i) =>
+            p.id === next[i]?.id &&
+            p.manifest.version === next[i]?.manifest.version &&
+            p.manifest.icon === next[i]?.manifest.icon &&
+            p.manifest.themeColor === next[i]?.manifest.themeColor &&
+            p.manifest.category === next[i]?.manifest.category,
+        )
+      ) {
+        return prev
+      }
+      return next
+    })
   }, [runtime])
+
+  useEffect(() => {
+    let cancelled = false
+
+    // 立即用当前缓存填 Dock，避免 scheduleIdle 造成空坞
+    refreshDockApps()
+
+    const syncThenRefresh = async () => {
+      await runtime.waitForSync()
+      if (!cancelled) refreshDockApps()
+    }
+    void syncThenRefresh()
+
+    const onChange = () => {
+      if (!cancelled) refreshDockApps()
+    }
+    const unsubInstalled = runtime.on('tapp:installed', onChange)
+    const unsubUninstalled = runtime.on('tapp:uninstalled', (data) => {
+      const id = (data as { id?: string })?.id
+      if (id) {
+        // 卸载后关掉对应窗口，指示点与列表一并收敛
+        setWindows((prev) => {
+          const remaining = prev.filter((w) => w.tappId !== id)
+          setActiveWindowId((cur) => {
+            if (cur && remaining.some((w) => w.windowId === cur)) return cur
+            if (remaining.length === 0) return null
+            return remaining.reduce((a, b) =>
+              a.zIndex >= b.zIndex ? a : b,
+            ).windowId
+          })
+          return remaining
+        })
+      }
+      onChange()
+    })
+    const unsubUpdated = runtime.on('tapp:updated', onChange)
+    const unsubSync = runtime.on('sync:complete', onChange)
+
+    const onVisible = () => {
+      if (isPageVisible()) onChange()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      cancelled = true
+      unsubInstalled()
+      unsubUninstalled()
+      unsubUpdated()
+      unsubSync()
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [runtime, refreshDockApps])
 
   // 更新已打开的多窗口实例。资源缓存代际已在 runtime 事件发出前提升，所有同 ID
   // 窗口共享一次重新加载，然后各自重建沙箱。宿主面板跳过。
@@ -894,12 +1026,11 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
           setWindows((prev) =>
             prev.map((w) =>
               w.windowId === existing.windowId
-                ? { ...w, zIndex: nextZIndex }
+                ? { ...w, zIndex: nextZIndex, isMinimized: false }
                 : w,
             ),
           )
           setNextZIndex((prev) => prev + 1)
-          setShowTappSelector(false)
           return
         }
       }
@@ -953,12 +1084,12 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
           position,
           size,
           isMaximized: false,
+          isMinimized: false,
           zIndex: nextZIndex,
         }
         setWindows((prev) => [...prev, hostWindow])
         setActiveWindowId(windowId)
         setNextZIndex((prev) => prev + 1)
-        setShowTappSelector(false)
         return
       }
 
@@ -974,13 +1105,13 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
         position,
         size,
         isMaximized: false,
+        isMinimized: false,
         zIndex: nextZIndex,
       }
 
       setWindows((prev) => [...prev, newWindow])
       setActiveWindowId(windowId)
       setNextZIndex((prev) => prev + 1)
-      setShowTappSelector(false)
 
       // 异步加载 Tapp
       try {
@@ -1044,9 +1175,11 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     (windowId: string) => {
       setWindows((prev) => {
         const remaining = prev.filter((w) => w.windowId !== windowId)
-        // 如果关闭的是活动窗口，激活下一个
+        // 如果关闭的是活动窗口，激活下一个可见窗口
         if (activeWindowId === windowId && remaining.length > 0) {
-          const topWindow = remaining.reduce((a, b) =>
+          const candidates = remaining.filter((w) => !w.isMinimized)
+          const pool = candidates.length > 0 ? candidates : remaining
+          const topWindow = pool.reduce((a, b) =>
             a.zIndex > b.zIndex ? a : b,
           )
           setActiveWindowId(topWindow.windowId)
@@ -1059,13 +1192,39 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     [activeWindowId],
   )
 
-  // 聚焦窗口
+  // 最小化窗口（藏入 Dock；实例保留，点击 Dock 可恢复）
+  const minimizeWindow = useCallback(
+    (windowId: string) => {
+      setWindows((prev) => {
+        const next = prev.map((w) =>
+          w.windowId === windowId ? { ...w, isMinimized: true } : w,
+        )
+        if (activeWindowId === windowId) {
+          const visible = next.filter((w) => !w.isMinimized)
+          if (visible.length > 0) {
+            const top = visible.reduce((a, b) =>
+              a.zIndex > b.zIndex ? a : b,
+            )
+            setActiveWindowId(top.windowId)
+          } else {
+            setActiveWindowId(null)
+          }
+        }
+        return next
+      })
+    },
+    [activeWindowId],
+  )
+
+  // 聚焦窗口（同时从最小化恢复）
   const focusWindow = useCallback(
     (windowId: string) => {
       setActiveWindowId(windowId)
       setWindows((prev) =>
         prev.map((w) =>
-          w.windowId === windowId ? { ...w, zIndex: nextZIndex } : w,
+          w.windowId === windowId
+            ? { ...w, zIndex: nextZIndex, isMinimized: false }
+            : w,
         ),
       )
       setNextZIndex((prev) => prev + 1)
@@ -1213,6 +1372,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
           position: { ...schemeWindow.position },
           size: { ...schemeWindow.size },
           isMaximized: false,
+          isMinimized: false,
           zIndex: baseZIndex + i,
         })
       }
@@ -1298,17 +1458,272 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
     [savedSchemes, saveToCloud],
   )
 
-  // 可用于添加的 Tapps（允许打开同一应用的多个实例）
-  const selectableTapps = useMemo(() => {
-    // 不再排除已打开的应用，允许多实例
-    return availableTapps
-  }, [availableTapps])
+  // Dock 快捷槽：最多 MAX_DOCK_APPS；已打开优先。应用面板入口常显，面板内始终列全部。
+  const dockVisibleApps = useMemo(() => {
+    const openIds = new Set(
+      windows
+        .map((w) => w.tappId)
+        .filter((id) => !isHostPanelId(id)),
+    )
+    const openApps: TappInstance[] = []
+    const restApps: TappInstance[] = []
+    for (const app of availableTapps) {
+      if (openIds.has(app.id)) openApps.push(app)
+      else restApps.push(app)
+    }
+    return [...openApps, ...restApps].slice(0, MAX_DOCK_APPS)
+  }, [availableTapps, windows])
+
+  /** 应用面板：全部已安装（有页面）应用，与是否溢出无关 */
+  const dockPanelApps = availableTapps
+
+  /** 按 tappId 统计打开中的窗口（用于 Dock 指示点） */
+  const openCountByTappId = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const w of windows) {
+      map.set(w.tappId, (map.get(w.tappId) ?? 0) + 1)
+    }
+    return map
+  }, [windows])
+
+  const closeLaunchpad = useCallback(() => {
+    setShowLaunchpad(false)
+    setLaunchpadQuery('')
+    setLaunchpadCategory('all')
+    setLaunchpadPage(0)
+  }, [])
+
+  const openLaunchpad = useCallback(() => {
+    setShowLaunchpad(true)
+    setLaunchpadQuery('')
+    setLaunchpadCategory('all')
+    setLaunchpadPage(0)
+  }, [])
+
+  /** 已安装应用中出现过的分类（稳定顺序） */
+  const launchpadCategories = useMemo(() => {
+    const present = new Set<TappCategory>()
+    for (const app of dockPanelApps) {
+      present.add(resolveTappCategory(app.manifest))
+    }
+    return TAPP_CATEGORIES.filter((c) => present.has(c))
+  }, [dockPanelApps])
+
+  const launchpadCategoryLabel = useCallback(
+    (cat: TappCategory) => {
+      const key = TAPP_CATEGORY_I18N_KEYS[cat]
+      return (t.tapp as Record<string, string>)[key] ?? cat
+    },
+    [t.tapp],
+  )
+
+  /** 启动台：商店 + 已安装（搜索 + 分类），扁平条目供 7×3 分页 */
+  const launchpadEntries = useMemo((): LaunchpadEntry[] => {
+    const q = launchpadQuery.trim().toLowerCase()
+    const storeTitle = t.tapp.storeTitle
+    const entries: LaunchpadEntry[] = []
+    // 商店仅在「全部」分类下展示
+    if (
+      launchpadCategory === 'all' &&
+      (!q || storeTitle.toLowerCase().includes(q))
+    ) {
+      entries.push({ kind: 'store' })
+    }
+    for (const tapp of dockPanelApps) {
+      const cat = resolveTappCategory(tapp.manifest)
+      if (launchpadCategory !== 'all' && cat !== launchpadCategory) continue
+      if (q) {
+        const name = resolveManifestText(tapp.manifest, locale).name
+        if (!name.toLowerCase().includes(q)) continue
+      }
+      entries.push({ kind: 'app', tapp })
+    }
+    return entries
+  }, [
+    dockPanelApps,
+    launchpadCategory,
+    launchpadQuery,
+    locale,
+    t.tapp.storeTitle,
+  ])
+
+  const launchpadPageCount = Math.max(
+    1,
+    Math.ceil(launchpadEntries.length / LAUNCHPAD_PAGE_SIZE) || 1,
+  )
+
+  const launchpadPageItems = useMemo(() => {
+    const page = Math.min(launchpadPage, launchpadPageCount - 1)
+    const start = page * LAUNCHPAD_PAGE_SIZE
+    return launchpadEntries.slice(start, start + LAUNCHPAD_PAGE_SIZE)
+  }, [launchpadEntries, launchpadPage, launchpadPageCount])
+
+  // 搜索 / 分类变化时回到第一页；页码钳制
+  useEffect(() => {
+    setLaunchpadPage(0)
+  }, [launchpadQuery, launchpadCategory])
+
+  useEffect(() => {
+    setLaunchpadPage((p) => Math.min(p, launchpadPageCount - 1))
+  }, [launchpadPageCount])
+
+  // 启动台：聚焦搜索；Esc 关闭；点窗外关闭；←/→ 翻页（非输入中）
+  useEffect(() => {
+    if (!showLaunchpad) return
+    const tId = window.setTimeout(() => {
+      launchpadSearchRef.current?.focus()
+    }, 40)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        closeLaunchpad()
+        return
+      }
+      const typing =
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      if (typing) return
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        e.preventDefault()
+        setLaunchpadPage((p) => Math.min(p + 1, launchpadPageCount - 1))
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault()
+        setLaunchpadPage((p) => Math.max(p - 1, 0))
+      }
+    }
+    const onPointerDown = (e: MouseEvent) => {
+      const stage = launchpadStageRef.current
+      const target = e.target as Node
+      if (stage && !stage.contains(target)) {
+        // Dock「应用」入口自行 toggle，勿抢先关掉再被打开
+        if (
+          target instanceof Element &&
+          target.closest('.tapp-multi-dock-more')
+        ) {
+          return
+        }
+        closeLaunchpad()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    // 延迟，避免打开时同一 click 立刻关掉
+    const outId = window.setTimeout(() => {
+      document.addEventListener('mousedown', onPointerDown)
+    }, 0)
+    return () => {
+      window.clearTimeout(tId)
+      window.clearTimeout(outId)
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onPointerDown)
+    }
+  }, [showLaunchpad, closeLaunchpad, launchpadPageCount])
+
+  /**
+   * Dock 点击：已有窗口则聚焦（含从最小化恢复）；Alt/⌘/Ctrl 强制新开。
+   * 同 app 多窗时：若顶层已是活动且可见，则恢复下一扇最小化副本，否则聚焦 z 最高。
+   */
+  const activateFromDock = useCallback(
+    (tappId: string, forceNew: boolean) => {
+      if (!forceNew) {
+        const same = windows.filter((w) => w.tappId === tappId)
+        if (same.length > 0) {
+          const byZ = [...same].sort((a, b) => b.zIndex - a.zIndex)
+          const top = byZ[0]
+          const minimizedTop = byZ.find((w) => w.isMinimized)
+          const target =
+            !top.isMinimized &&
+            activeWindowId === top.windowId &&
+            minimizedTop
+              ? minimizedTop
+              : top
+          focusWindow(target.windowId)
+          closeLaunchpad()
+          return
+        }
+      }
+      if (windows.length >= MAX_WINDOWS) {
+        console.warn('Maximum window limit reached')
+        return
+      }
+      void openTappWindow(tappId)
+      closeLaunchpad()
+    },
+    [windows, activeWindowId, focusWindow, openTappWindow, closeLaunchpad],
+  )
+
+  const dockAtMax = windows.length >= MAX_WINDOWS
+
+  /** 渲染单个 Dock 应用图标 */
+  const renderDockAppItem = useCallback(
+    (tapp: TappInstance) => {
+      const style = getTappIconStyle(tapp.manifest)
+      const accent = getTappIconAccentColor({
+        icon: tapp.manifest.icon,
+        iconSvg: tapp.manifest.iconSvg,
+        themeColor: tapp.manifest.themeColor,
+        category: tapp.manifest.category,
+        id: tapp.id,
+        permissions: tapp.manifest.permissions,
+      })
+      const text = resolveManifestText(tapp.manifest, locale)
+      const openCount = openCountByTappId.get(tapp.id) ?? 0
+      const isOpen = openCount > 0
+      const appLabel = `${text.name}${isOpen && openCount > 1 ? ` (${openCount})` : ''}${dockAtMax && !isOpen ? ` · ${t.tapp.dockAtMax}` : ''}`
+      return (
+        <motion.button
+          key={tapp.id}
+          type="button"
+          className={`tapp-multi-dock-item${isOpen ? ' is-open' : ''}`}
+          onClick={(e: React.MouseEvent) =>
+            activateFromDock(tapp.id, e.altKey || e.metaKey || e.ctrlKey)
+          }
+          aria-label={appLabel}
+          whileHover={noAnimation ? undefined : { y: -5, scale: 1.1 }}
+          whileTap={noAnimation ? undefined : { scale: 0.92 }}
+        >
+          <span className="tapp-multi-dock-label" aria-hidden>
+            {appLabel}
+          </span>
+          <span className="tapp-multi-dock-icon">
+            <TappIconBadge
+              icon={tapp.manifest.icon}
+              iconSvg={tapp.manifest.iconSvg}
+              name={text.name}
+              id={tapp.manifest.id || tapp.id}
+              themeColor={tapp.manifest.themeColor}
+              category={tapp.manifest.category}
+              permissions={tapp.manifest.permissions}
+              iconStyle={style}
+              shellClassName="tapp-multi-dock-badge-shell h-full w-full"
+              glyphSizeClass="w-[55%] h-[55%]"
+              glyphTextClass="text-[0.7em]"
+            />
+          </span>
+          <span
+            className="tapp-multi-dock-dot"
+            style={{
+              opacity: isOpen ? 1 : 0,
+              background: accent,
+            }}
+            aria-hidden
+          />
+        </motion.button>
+      )
+    },
+    [
+      activateFromDock,
+      dockAtMax,
+      locale,
+      noAnimation,
+      openCountByTappId,
+      t.tapp.dockAtMax,
+    ],
+  )
 
   return (
-    // z-100：窗口管理器整体需高于全局 NavigationIsland（fixed z-50，移动端在底部），
-    // 否则岛会浮在 tapp 窗口上、挡住底部控制区的点击（按钮可见但点不到）
-    <div className="fixed inset-0 overflow-hidden z-100" data-no-ripple>
-      {/* 顶部工具栏 - 简化合并 */}
+    // z-100：高于 NavigationIsland（z-50），避免底栏被挡住
+    <div className="fixed inset-0 z-100 overflow-hidden" data-no-ripple>
+      {/* 顶部工具栏：返回 + 方案 + 窗口计数（不再弹中间选择器） */}
       <div className="absolute top-4 left-4 z-1000">
         <div
           className="flex items-center gap-2 rounded-xl px-2 py-1.5 backdrop-blur-md"
@@ -1320,11 +1735,10 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
           }}
         >
-          {/* 返回按钮 */}
           {onBack && (
             <motion.button
               onClick={onBack}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-2 transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
               style={{
                 ...WINDOW_CONTROL_HOVER_STYLE,
                 color: 'var(--text-secondary)',
@@ -1333,7 +1747,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
               title={t.tapp.back}
             >
               <svg
-                className="w-4 h-4"
+                className="h-4 w-4"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -1348,12 +1762,11 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
             </motion.button>
           )}
 
-          {/* 方案管理按钮 - 仅登录用户可见，放在返回按钮右边 */}
           {isAuthenticated && (
             <>
               {onBack && (
                 <div
-                  className="w-px h-6"
+                  className="h-6 w-px"
                   style={{ backgroundColor: 'var(--border-color)' }}
                 />
               )}
@@ -1361,7 +1774,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
               <div className="relative" ref={schemeMenuRef}>
                 <motion.button
                   onClick={() => setShowSchemeMenu(!showSchemeMenu)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-2 transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
                   style={{
                     ...WINDOW_CONTROL_HOVER_STYLE,
                     color: 'var(--text-secondary)',
@@ -1369,15 +1782,14 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                   whileTap={noAnimation ? undefined : { scale: 0.9 }}
                   title={t.tapp.windowScheme}
                 >
-                  <FaTh className="w-4 h-4" />
+                  <FaTh className="h-4 w-4" />
                   <span className="text-xs font-medium">{t.tapp.scheme}</span>
                 </motion.button>
 
-                {/* 方案下拉菜单 */}
                 <AnimatePresence>
                   {showSchemeMenu && (
                     <motion.div
-                      className="absolute top-full left-0 mt-2 w-56 rounded-xl overflow-hidden z-1001"
+                      className="absolute top-full left-0 z-1001 mt-2 w-56 overflow-hidden rounded-xl"
                       style={{
                         backgroundColor: 'var(--bg-card)',
                         border: '1px solid var(--border-color)',
@@ -1388,12 +1800,11 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                       exit={{ opacity: 0, y: -8, scale: 0.95 }}
                       transition={{ duration: 0.15 }}
                     >
-                      {/* 保存当前方案按钮 */}
                       {windows.length > 0 && (
                         <motion.button
                           onClick={saveCurrentScheme}
                           disabled={isSaving}
-                          className={`w-full flex items-center gap-3 px-4 py-3 text-sm transition-colors disabled:opacity-50 ${
+                          className={`flex w-full items-center gap-3 px-4 py-3 text-sm transition-colors disabled:opacity-50 ${
                             isSaving
                               ? 'bg-transparent'
                               : WINDOW_CONTROL_HOVER_CLASS
@@ -1407,7 +1818,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                             <Spinner size="sm" color="primary" />
                           ) : (
                             <FaSave
-                              className="w-4 h-4"
+                              className="h-4 w-4"
                               style={{ color: 'var(--color-primary)' }}
                             />
                           )}
@@ -1419,7 +1830,6 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                         </motion.button>
                       )}
 
-                      {/* 分隔线 */}
                       {windows.length > 0 && savedSchemes.length > 0 && (
                         <div
                           className="mx-3 my-1 h-px"
@@ -1427,17 +1837,16 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                         />
                       )}
 
-                      {/* 已保存的方案列表 */}
                       {savedSchemes.length > 0 ? (
                         <div className="max-h-48 overflow-y-auto py-1">
                           {savedSchemes.map((scheme) => (
                             <div
                               key={scheme.id}
-                              className="flex items-center justify-between px-4 py-2.5 group transition-colors hover:bg-[var(--bg-hover)]"
+                              className="group flex items-center justify-between px-4 py-2.5 transition-colors hover:bg-[var(--bg-hover)]"
                             >
                               <motion.button
                                 onClick={() => loadScheme(scheme)}
-                                className="flex-1 text-left text-sm truncate"
+                                className="min-w-0 flex-1 truncate text-left text-sm"
                                 style={{ color: 'var(--text-primary)' }}
                                 whileTap={{ scale: 0.98 }}
                               >
@@ -1459,12 +1868,12 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
                                   e.stopPropagation()
                                   deleteScheme(scheme.id)
                                 }}
-                                className={`p-1.5 opacity-0 group-hover:opacity-100 rounded transition-all ${WINDOW_CONTROL_DANGER_HOVER_CLASS}`}
+                                className={`rounded p-1.5 opacity-0 transition-all group-hover:opacity-100 ${WINDOW_CONTROL_DANGER_HOVER_CLASS}`}
                                 style={WINDOW_CONTROL_DANGER_HOVER_STYLE}
                                 whileTap={{ scale: 0.9 }}
                                 title={t.tapp.deleteScheme}
                               >
-                                <FaTrash className="w-3.5 h-3.5" />
+                                <FaTrash className="h-3.5 w-3.5" />
                               </motion.button>
                             </div>
                           ))}
@@ -1484,41 +1893,29 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
             </>
           )}
 
-          {/* 分隔线 */}
           <div
-            className="w-px h-6"
+            className="h-6 w-px"
             style={{ backgroundColor: 'var(--border-color)' }}
           />
 
-          {/* 窗口计数 + 添加按钮 */}
-          <div className="flex items-center gap-2">
-            <span
-              className="px-2 py-1 text-sm font-medium"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              {windows.length}/{MAX_WINDOWS}
-            </span>
-
-            {windows.length < MAX_WINDOWS && (
-              <motion.button
-                onClick={() => setShowTappSelector(true)}
-                className={`flex items-center justify-center w-8 h-8 rounded-lg transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
-                style={{
-                  ...WINDOW_CONTROL_PRIMARY_HOVER_STYLE,
-                  color: 'var(--color-primary)',
-                }}
-                whileTap={noAnimation ? undefined : { scale: 0.9 }}
-                title={t.tapp.addWindow}
-              >
-                <FaPlus className="w-4 h-4" />
-              </motion.button>
+          <span
+            className="px-2 py-1 text-sm font-medium"
+            style={{ color: 'var(--text-muted)' }}
+            title={t.tapp.windowCount.replace(
+              '{count}',
+              String(windows.length),
             )}
-          </div>
+          >
+            {windows.length}/{MAX_WINDOWS}
+          </span>
         </div>
       </div>
 
-      {/* 窗口容器 */}
-      <div ref={containerRef} className="absolute inset-0 overflow-hidden">
+      {/* 窗口桌面（底部为 Dock 留白） */}
+      <div
+        ref={containerRef}
+        className="tapp-multi-desktop absolute inset-0 overflow-hidden"
+      >
         <AnimatePresence>
           {windows.map((window) => (
             <TappWindowComponent
@@ -1526,6 +1923,7 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
               window={window}
               isActive={activeWindowId === window.windowId}
               onClose={closeWindow}
+              onMinimize={minimizeWindow}
               onFocus={focusWindow}
               onMove={moveWindow}
               onResize={resizeWindow}
@@ -1533,185 +1931,281 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
             />
           ))}
         </AnimatePresence>
-
-        {/* 空状态提示 */}
-        {windows.length === 0 && (
-          <motion.div
-            className="absolute inset-0 flex items-center justify-center"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-          >
-            <div className="text-center">
-              <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gray-200 dark:bg-neutral-700 flex items-center justify-center">
-                <FaPlus className="w-8 h-8 text-gray-400 dark:text-gray-500" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-700 dark:text-gray-200 mb-2">
-                {t.tapp.noOpenWindows}
-              </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                {t.tapp.clickToAddWindow}
-              </p>
-              <motion.button
-                onClick={() => setShowTappSelector(true)}
-                className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-colors"
-                whileHover={noAnimation ? undefined : { scale: 1.02 }}
-                whileTap={noAnimation ? undefined : { scale: 0.98 }}
-              >
-                {t.tapp.openFirstApp}
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
       </div>
 
-      {/* Tapp 选择器弹窗 */}
+      {/* 应用启动窗：居中窗口，无背景遮罩 */}
       <AnimatePresence>
-        {showTappSelector && (
-          <>
-            {/* 背景遮罩 */}
+        {showLaunchpad && (
+          <div className="tapp-launchpad" aria-hidden={false}>
             <motion.div
-              className="fixed inset-0 z-2000"
-              style={{
-                backgroundColor:
-                  'color-mix(in srgb, var(--bg-primary) 60%, transparent)',
-              }}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowTappSelector(false)}
-            />
+              ref={launchpadStageRef}
+              className="tapp-launchpad-stage glass"
+              role="dialog"
+              aria-modal="false"
+              aria-label={t.tapp.dockAppPanel}
+              initial={
+                noAnimation ? false : { opacity: 0, scale: 0.96, y: 10 }
+              }
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={
+                noAnimation
+                  ? undefined
+                  : { opacity: 0, scale: 0.97, y: 8 }
+              }
+              transition={
+                noAnimation
+                  ? { duration: 0 }
+                  : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
+              }
+            >
+              <div className="tapp-launchpad-toolbar">
+                <label className="tapp-launchpad-search">
+                  <LuSearch
+                    className="tapp-launchpad-search-icon"
+                    aria-hidden
+                  />
+                  <input
+                    ref={launchpadSearchRef}
+                    type="search"
+                    className="tapp-launchpad-search-input"
+                    value={launchpadQuery}
+                    onChange={(e) => setLaunchpadQuery(e.target.value)}
+                    placeholder={t.tapp.dockAppSearch}
+                    aria-label={t.tapp.dockAppSearch}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  {launchpadQuery.length > 0 && (
+                    <button
+                      type="button"
+                      className="tapp-launchpad-search-clear"
+                      onClick={() => {
+                        setLaunchpadQuery('')
+                        launchpadSearchRef.current?.focus()
+                      }}
+                      aria-label={t.common.close}
+                    >
+                      <LuX className="tapp-launchpad-search-clear-icon" />
+                    </button>
+                  )}
+                </label>
 
-            {/* 选择器面板 - 使用 flex 居中 */}
-            <div className="fixed inset-0 z-2001 flex items-center justify-center pointer-events-none">
-              <motion.div
-                className="w-full max-w-md max-h-[70vh] overflow-hidden rounded-2xl pointer-events-auto mx-4"
-                style={{
-                  backgroundColor: 'var(--bg-card)',
-                  border: '1px solid var(--border-color)',
-                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                }}
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-              >
-                {/* 头部 */}
                 <div
-                  className="px-5 py-4 flex items-center justify-between"
-                  style={{ borderBottom: '1px solid var(--border-color)' }}
+                  className="tapp-launchpad-cats"
+                  role="tablist"
+                  aria-label={t.tapp.categoryFilter}
                 >
-                  <h3
-                    className="text-lg font-semibold"
-                    style={{ color: 'var(--text-primary)' }}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={launchpadCategory === 'all'}
+                    className={`tapp-launchpad-cat${launchpadCategory === 'all' ? ' is-active' : ''}`}
+                    onClick={() => setLaunchpadCategory('all')}
                   >
-                    {t.tapp.selectApp}
-                  </h3>
-                  <motion.button
-                    onClick={() => setShowTappSelector(false)}
-                    className={`p-1.5 rounded-lg transition-colors ${WINDOW_CONTROL_TEXT_HOVER_CLASS}`}
-                    style={{
-                      ...WINDOW_CONTROL_HOVER_STYLE,
-                      color: 'var(--text-muted)',
-                    }}
-                    whileTap={{ scale: 0.9 }}
-                  >
-                    <FaTimes className="w-4 h-4" />
-                  </motion.button>
+                    {t.tapp.allApps}
+                  </button>
+                  {launchpadCategories.map((cat) => (
+                    <button
+                      key={cat}
+                      type="button"
+                      role="tab"
+                      aria-selected={launchpadCategory === cat}
+                      className={`tapp-launchpad-cat${launchpadCategory === cat ? ' is-active' : ''}`}
+                      onClick={() => setLaunchpadCategory(cat)}
+                    >
+                      {launchpadCategoryLabel(cat)}
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                {/* 应用列表 - 网格布局（首项为商店宿主面板） */}
-                <div className="p-4 overflow-y-auto max-h-[calc(70vh-80px)]">
-                  {selectableTapps.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p style={{ color: 'var(--text-muted)' }}>
-                        {t.tapp.noAvailableApps}
-                      </p>
-                      {/* 仍可打开商店宿主面板 */}
-                      <motion.button
-                        onClick={() => openTappWindow(HOST_PANEL_STORE_ID)}
-                        className={`mt-4 mx-auto flex flex-col items-center gap-2 p-3 rounded-xl transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
-                        style={WINDOW_CONTROL_HOVER_STYLE}
-                        whileTap={{ scale: 0.95 }}
-                        title={t.tapp.storeTitle}
-                      >
-                        <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-black/5 dark:bg-white/10">
-                          <TappIcon
-                            icon={TAPP_ICON_TOKENS.store}
-                            name={t.tapp.storeTitle}
-                            sizeClass="w-6 h-6"
-                          />
-                        </div>
-                        <span
-                          className="text-xs text-center w-full truncate"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          {t.tapp.storeTitle}
-                        </span>
-                      </motion.button>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-4 gap-3">
-                      <motion.button
-                        key={HOST_PANEL_STORE_ID}
-                        onClick={() => openTappWindow(HOST_PANEL_STORE_ID)}
-                        className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
-                        style={WINDOW_CONTROL_HOVER_STYLE}
-                        whileTap={{ scale: 0.95 }}
-                        title={t.tapp.storeTitle}
-                      >
-                        <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-black/5 dark:bg-white/10">
-                          <TappIcon
-                            icon={TAPP_ICON_TOKENS.store}
-                            name={t.tapp.storeTitle}
-                            sizeClass="w-6 h-6"
-                          />
-                        </div>
-                        <span
-                          className="text-xs text-center w-full truncate"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          {t.tapp.store}
-                        </span>
-                      </motion.button>
-                      {selectableTapps.map((tapp) => {
-                        const style = getTappIconStyle(tapp.manifest)
-                        const text = resolveManifestText(tapp.manifest, locale)
+              {launchpadEntries.length === 0 ? (
+                <div className="tapp-launchpad-empty">
+                  {t.tapp.noAvailableApps}
+                </div>
+              ) : (
+                <>
+                  <div
+                    className="tapp-launchpad-grid"
+                    style={
+                      {
+                        '--tapp-lp-cols': LAUNCHPAD_COLS,
+                        '--tapp-lp-rows': LAUNCHPAD_ROWS,
+                      } as React.CSSProperties
+                    }
+                  >
+                    {launchpadPageItems.map((entry) => {
+                      if (entry.kind === 'store') {
+                        const storeOpen =
+                          (openCountByTappId.get(HOST_PANEL_STORE_ID) ?? 0) >
+                          0
+                        const storeTitle = t.tapp.storeTitle
+                        const storeLabel = `${storeTitle}${dockAtMax && !storeOpen ? ` · ${t.tapp.dockAtMax}` : ''}`
                         return (
-                          <motion.button
-                            key={tapp.id}
-                            onClick={() => openTappWindow(tapp.id)}
-                            className={`flex flex-col items-center gap-2 p-3 rounded-xl transition-colors ${WINDOW_CONTROL_HOVER_CLASS}`}
-                            style={WINDOW_CONTROL_HOVER_STYLE}
-                            whileTap={{ scale: 0.95 }}
-                            title={text.description}
+                          <button
+                            key="host-store"
+                            type="button"
+                            className={`tapp-launchpad-item${storeOpen ? ' is-open' : ''}${dockAtMax && !storeOpen ? ' is-disabled' : ''}`}
+                            onClick={(e) =>
+                              activateFromDock(
+                                HOST_PANEL_STORE_ID,
+                                e.altKey || e.metaKey || e.ctrlKey,
+                              )
+                            }
+                            aria-label={storeLabel}
                           >
+                            <span className="tapp-launchpad-icon tapp-launchpad-icon--store">
+                              <TappIcon
+                                icon={TAPP_ICON_TOKENS.store}
+                                name={storeTitle}
+                                sizeClass="w-full h-full"
+                                className="tapp-multi-dock-store-glyph"
+                              />
+                            </span>
+                            <span className="tapp-launchpad-name">
+                              {storeTitle}
+                            </span>
+                            <span
+                              className="tapp-launchpad-dot"
+                              style={{
+                                opacity: storeOpen ? 1 : 0,
+                                background: 'var(--color-primary, #6366f1)',
+                              }}
+                              aria-hidden
+                            />
+                          </button>
+                        )
+                      }
+
+                      const { tapp } = entry
+                      const style = getTappIconStyle(tapp.manifest)
+                      const text = resolveManifestText(tapp.manifest, locale)
+                      const openCount = openCountByTappId.get(tapp.id) ?? 0
+                      const isOpen = openCount > 0
+                      const accent = getTappIconAccentColor({
+                        icon: tapp.manifest.icon,
+                        iconSvg: tapp.manifest.iconSvg,
+                        themeColor: tapp.manifest.themeColor,
+                        category: tapp.manifest.category,
+                        id: tapp.id,
+                        permissions: tapp.manifest.permissions,
+                      })
+                      return (
+                        <button
+                          key={tapp.id}
+                          type="button"
+                          className={`tapp-launchpad-item${isOpen ? ' is-open' : ''}${dockAtMax && !isOpen ? ' is-disabled' : ''}`}
+                          onClick={(e) =>
+                            activateFromDock(
+                              tapp.id,
+                              e.altKey || e.metaKey || e.ctrlKey,
+                            )
+                          }
+                          aria-label={text.name}
+                        >
+                          <span className="tapp-launchpad-icon">
                             <TappIconBadge
                               icon={tapp.manifest.icon}
                               iconSvg={tapp.manifest.iconSvg}
                               name={text.name}
+                              id={tapp.manifest.id || tapp.id}
+                              themeColor={tapp.manifest.themeColor}
+                              category={tapp.manifest.category}
+                              permissions={tapp.manifest.permissions}
                               iconStyle={style}
-                              shellClassName="w-12 h-12 rounded-xl"
-                              glyphSizeClass="w-6 h-6"
-                              glyphTextClass="text-lg"
-                              shine={false}
+                              shellClassName="tapp-launchpad-badge-shell h-full w-full"
+                              glyphSizeClass="w-[52%] h-[52%]"
+                              glyphTextClass="text-[0.85em]"
                             />
-                            <span
-                              className="text-xs text-center w-full truncate"
-                              style={{ color: 'var(--text-primary)' }}
-                            >
-                              {text.name}
-                            </span>
-                          </motion.button>
-                        )
-                      })}
+                          </span>
+                          <span className="tapp-launchpad-name">
+                            {text.name}
+                          </span>
+                          <span
+                            className="tapp-launchpad-dot"
+                            style={{
+                              opacity: isOpen ? 1 : 0,
+                              background: accent,
+                            }}
+                            aria-hidden
+                          />
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {launchpadPageCount > 1 && (
+                    <div
+                      className="tapp-launchpad-pages"
+                      role="tablist"
+                      aria-label={t.tapp.dockAppPanel}
+                    >
+                      {Array.from({ length: launchpadPageCount }, (_, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          role="tab"
+                          aria-selected={i === launchpadPage}
+                          className={`tapp-launchpad-page-dot${i === launchpadPage ? ' is-active' : ''}`}
+                          onClick={() => setLaunchpadPage(i)}
+                          aria-label={`${i + 1} / ${launchpadPageCount}`}
+                        />
+                      ))}
                     </div>
                   )}
-                </div>
-              </motion.div>
-            </div>
-          </>
+                </>
+              )}
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
+
+      {/* macOS 风格底部 Dock：应用入口(左) + 最多 18 快捷应用 */}
+      <nav
+        className="tapp-multi-dock"
+        aria-label={t.tapp.dockLabel}
+        data-at-max={dockAtMax ? 'true' : undefined}
+      >
+        <div className="tapp-multi-dock-inner glass">
+          {/* 启动台入口：最左，名称「应用」 */}
+          <motion.button
+            type="button"
+            className={`tapp-multi-dock-item tapp-multi-dock-more${showLaunchpad ? ' is-open' : ''}`}
+            onClick={() =>
+              showLaunchpad ? closeLaunchpad() : openLaunchpad()
+            }
+            aria-label={t.tapp.dockAppPanel}
+            aria-expanded={showLaunchpad}
+            aria-haspopup="dialog"
+            whileHover={noAnimation ? undefined : { y: -5, scale: 1.1 }}
+            whileTap={noAnimation ? undefined : { scale: 0.92 }}
+          >
+            <span className="tapp-multi-dock-label" aria-hidden>
+              {t.tapp.dockAppPanel}
+            </span>
+            {/* 启动台风格：顶行胶囊 + 下两行彩格 */}
+            <span className="tapp-multi-dock-apps-shell" aria-hidden>
+              <span className="tapp-multi-dock-apps-grid">
+                <span className="tapp-multi-dock-apps-search">
+                  <span className="tapp-multi-dock-apps-search-dot" />
+                </span>
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+                <i />
+              </span>
+            </span>
+          </motion.button>
+
+          {/* 快捷应用槽（最多 18） */}
+          {dockVisibleApps.length > 0 && (
+            <div className="tapp-multi-dock-sep" aria-hidden />
+          )}
+          {dockVisibleApps.map((tapp) => renderDockAppItem(tapp))}
+        </div>
+      </nav>
     </div>
   )
 }

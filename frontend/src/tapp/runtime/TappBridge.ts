@@ -3,10 +3,13 @@
  * 负责主应用与 Tapp 沙箱之间的安全通信
  *
  * 安全特性：
- * - 严格的消息来源验证
+ * - 严格的消息来源验证（event.source）
+ * - request/event 会话 token
+ * - 显式 sandbox inbound event 白名单
  * - 细粒度权限检查（含用户角色验证）
  * - 输入、大小和时间戳验证
  * - 会话内请求 ID 防重放
+ * - 每 Bridge 软限速 + 并发上限（防 iframe 洪水）
  */
 
 import type { RuntimeGrantKind } from '../services/TappApiService'
@@ -22,6 +25,43 @@ import { PERMISSION_MAP } from './permissionConfig'
 import { TappRuntimeGrant } from './TappRuntimeGrant'
 
 type MessageHandler = (message: TappMessage) => Promise<TappAPIResponse>
+
+/** Soft host-side abuse limits (defense-in-depth; backend still authoritative). */
+const BRIDGE_LIMITS = {
+  /** Max validated inbound messages (request+event) per sliding minute */
+  messagesPerMinute: 240,
+  /** Max concurrent in-flight request handlers */
+  maxConcurrentRequests: 32,
+  /** Invalid messages before short mute */
+  invalidBeforeMute: 40,
+  /** Mute duration after invalid burst */
+  invalidMuteMs: 10_000,
+  /** Acceptable clock skew for message timestamps */
+  timestampSkewMs: 2 * 60 * 1000,
+} as const
+
+/** Tiny sliding-window counter for bridge-local limits. */
+class BridgeWindowCounter {
+  private stamps: number[] = []
+  constructor(
+    private readonly windowMs: number,
+    private readonly max: number,
+  ) {}
+
+  tryTake(now = Date.now()): boolean {
+    const cutoff = now - this.windowMs
+    while (this.stamps.length > 0 && this.stamps[0]! <= cutoff) {
+      this.stamps.shift()
+    }
+    if (this.stamps.length >= this.max) return false
+    this.stamps.push(now)
+    return true
+  }
+
+  reset(): void {
+    this.stamps = []
+  }
+}
 
 /**
  * 生成唯一消息 ID（使用加密安全的随机数）
@@ -61,12 +101,43 @@ const SERVER_AUTHORITATIVE_HOST_PERMISSIONS = new Set<TappPermission>([
  * Tapp Bridge 类
  * 处理主应用与沙箱之间的双向通信
  */
+export type TappBridgeInitOptions = {
+  /**
+   * When set, destroy() releases a shared grant instead of destroying it.
+   * Used by multi-widget same-Tapp sandboxes (refcount on TappRuntimeGrant).
+   */
+  releaseSharedGrant?: () => void
+  /**
+   * Re-acquire shared grant after subject reset (login/logout destroyAll).
+   * Must return a fresh { grant, release } pair so refcounts stay correct.
+   */
+  reacquireSharedGrant?: () => {
+    grant: TappRuntimeGrant
+    release: () => void
+  }
+}
+
 export class TappBridge {
   private iframe: HTMLIFrameElement | null = null
   private tappInstance: TappInstance | null = null
   private messageHandlers: Map<string, MessageHandler> = new Map()
   private eventListeners: Map<string, Set<(data: unknown) => void>> = new Map()
   private seenRequestIds = new Set<string>()
+
+  /**
+   * Sandbox → host event actions this bridge instance will dispatch.
+   * Empty until {@link allowSandboxEvent}; host must opt in per action.
+   */
+  private allowedSandboxEvents = new Set<string>()
+
+  /** Soft per-bridge rate limit for validated inbound traffic. */
+  private readonly inboundRate = new BridgeWindowCounter(
+    60_000,
+    BRIDGE_LIMITS.messagesPerMinute,
+  )
+  private inFlightRequests = 0
+  private invalidCount = 0
+  private mutedUntil = 0
 
   /**
    * postMessage 目标 origin（发送消息用）
@@ -92,8 +163,71 @@ export class TappBridge {
     kind: RuntimeGrantKind
   } | null = null
 
+  private releaseSharedGrant: (() => void) | null = null
+  private reacquireSharedGrant: (() => {
+    grant: TappRuntimeGrant
+    release: () => void
+  }) | null = null
+  private registeredSource: MessageEventSource | null = null
+
+  /**
+   * Single window-level router for all bridges (N widgets → 1 listener).
+   * Routing key remains event.source === iframe.contentWindow (isolation intact).
+   */
+  private static readonly bridgesBySource = new Map<
+    MessageEventSource,
+    TappBridge
+  >()
+  /** Live bridges for srcdoc attach race: ready may fire before attachSource. */
+  private static readonly activeBridges = new Set<TappBridge>()
+  private static sharedListenerAttached = false
+
+  private static ensureSharedListener(): void {
+    if (TappBridge.sharedListenerAttached) return
+    if (typeof window === 'undefined') return
+    window.addEventListener('message', TappBridge.onSharedWindowMessage)
+    TappBridge.sharedListenerAttached = true
+  }
+
+  private static maybeDetachSharedListener(): void {
+    if (TappBridge.activeBridges.size > 0) return
+    if (!TappBridge.sharedListenerAttached) return
+    if (typeof window === 'undefined') return
+    window.removeEventListener('message', TappBridge.onSharedWindowMessage)
+    TappBridge.sharedListenerAttached = false
+  }
+
+  /**
+   * Resolve bridge for an inbound message.
+   * Prefer O(1) source map; fall back to contentWindow scan so early
+   * tapp.ready is not lost when srcdoc scripts race attachSource().
+   */
+  private static resolveBridgeForSource(
+    source: MessageEventSource,
+  ): TappBridge | null {
+    const mapped = TappBridge.bridgesBySource.get(source)
+    if (mapped) return mapped
+    for (const bridge of TappBridge.activeBridges) {
+      const win = bridge.iframe?.contentWindow
+      if (win && win === source) {
+        // Heal the map for subsequent messages
+        bridge.attachSource()
+        return bridge
+      }
+    }
+    return null
+  }
+
+  private static onSharedWindowMessage(event: MessageEvent): void {
+    const source = event.source
+    if (!source) return
+    const bridge = TappBridge.resolveBridgeForSource(source)
+    if (!bridge) return
+    void bridge.handleMessage(event)
+  }
+
   constructor() {
-    // 绑定消息处理器
+    // bound instance methods for handler registration
     this.handleMessage = this.handleMessage.bind(this)
   }
 
@@ -109,10 +243,13 @@ export class TappBridge {
     tappInstance: TappInstance,
     sessionToken?: string,
     runtimeGrant?: TappRuntimeGrant,
+    options?: TappBridgeInitOptions,
   ): void {
     this.iframe = iframe
     this.tappInstance = tappInstance
     this.runtimeGrant = runtimeGrant ?? null
+    this.releaseSharedGrant = options?.releaseSharedGrant ?? null
+    this.reacquireSharedGrant = options?.reacquireSharedGrant ?? null
     this.grantSeed = runtimeGrant
       ? {
           tappId: runtimeGrant.getTappId(),
@@ -133,8 +270,24 @@ export class TappBridge {
       ).join('')
     }
 
-    // 监听消息
-    window.addEventListener('message', this.handleMessage)
+    // 集中式 message 路由（同 Tapp 多 Widget 时只挂一个 window listener）
+    TappBridge.ensureSharedListener()
+    TappBridge.activeBridges.add(this)
+    this.attachSource()
+  }
+
+  /**
+   * Register iframe.contentWindow as the routing key.
+   * Call after the iframe is in the document (srcdoc parse may recreate the window).
+   */
+  attachSource(): void {
+    const win = this.iframe?.contentWindow
+    if (!win) return
+    if (this.registeredSource && this.registeredSource !== win) {
+      TappBridge.bridgesBySource.delete(this.registeredSource)
+    }
+    this.registeredSource = win
+    TappBridge.bridgesBySource.set(win, this)
   }
 
   /**
@@ -151,6 +304,18 @@ export class TappBridge {
    */
   private ensureLiveRuntimeGrant(): TappRuntimeGrant {
     if (this.runtimeGrant && !this.runtimeGrant.isDestroyed()) {
+      return this.runtimeGrant
+    }
+    // Shared widget grants: re-enter the refcounted pool after destroyAll.
+    if (this.reacquireSharedGrant) {
+      const next = this.reacquireSharedGrant()
+      this.runtimeGrant = next.grant
+      this.releaseSharedGrant = next.release
+      this.grantSeed = {
+        tappId: this.runtimeGrant.getTappId(),
+        instanceId: this.runtimeGrant.getInstanceId(),
+        kind: this.runtimeGrant.getKind(),
+      }
       return this.runtimeGrant
     }
     if (!this.grantSeed) {
@@ -192,17 +357,36 @@ export class TappBridge {
    * 销毁 Bridge
    */
   destroy(): void {
-    window.removeEventListener('message', this.handleMessage)
+    TappBridge.activeBridges.delete(this)
+    if (this.registeredSource) {
+      const mapped = TappBridge.bridgesBySource.get(this.registeredSource)
+      if (mapped === this) {
+        TappBridge.bridgesBySource.delete(this.registeredSource)
+      }
+      this.registeredSource = null
+    }
+    TappBridge.maybeDetachSharedListener()
 
     this.messageHandlers.clear()
     this.eventListeners.clear()
     this.seenRequestIds.clear()
+    this.allowedSandboxEvents.clear()
+    this.inboundRate.reset()
+    this.inFlightRequests = 0
+    this.invalidCount = 0
+    this.mutedUntil = 0
 
     this.iframe = null
     this.tappInstance = null
-    this.runtimeGrant?.destroy()
+    if (this.releaseSharedGrant) {
+      this.releaseSharedGrant()
+    } else {
+      this.runtimeGrant?.destroy()
+    }
     this.runtimeGrant = null
     this.grantSeed = null
+    this.releaseSharedGrant = null
+    this.reacquireSharedGrant = null
   }
 
   /**
@@ -217,6 +401,27 @@ export class TappBridge {
    */
   unregisterHandler(action: string): void {
     this.messageHandlers.delete(action)
+  }
+
+  /**
+   * Opt-in: allow a sandbox → host event action on this bridge instance.
+   * Action format: same as postMessage action (`[\w.]+`, max 50).
+   */
+  allowSandboxEvent(action: string): void {
+    if (!/^[\w.]+$/.test(action) || action.length > 50) {
+      throw new Error(`Invalid sandbox event action: ${action}`)
+    }
+    this.allowedSandboxEvents.add(action)
+  }
+
+  /** Remove a previously allowed sandbox → host event action. */
+  disallowSandboxEvent(action: string): void {
+    this.allowedSandboxEvents.delete(action)
+  }
+
+  /** Whether this bridge will dispatch the given sandbox event action. */
+  isSandboxEventAllowed(action: string): boolean {
+    return this.allowedSandboxEvents.has(action)
   }
 
   /**
@@ -284,7 +489,7 @@ export class TappBridge {
     if (
       typeof msg.timestamp !== 'number' ||
       !Number.isFinite(msg.timestamp) ||
-      Math.abs(Date.now() - msg.timestamp) > 5 * 60 * 1000
+      Math.abs(Date.now() - msg.timestamp) > BRIDGE_LIMITS.timestampSkewMs
     ) {
       return { valid: false, error: 'Invalid or stale timestamp' }
     }
@@ -441,11 +646,20 @@ export class TappBridge {
       }
     }
 
-    // 会话 token 验证（增强安全性）
-    // 对于 request 类型的消息，验证 session token
-    if (msg.type === 'request' && this.sessionToken) {
+    // iframe → host: request 与 event 都必须携带 session token。
+    // event.source 已校验具体 WindowProxy；token 防止同页其它脚本在
+    // 误获 contentWindow 引用时伪造宿主监听的事件（如 tapp.ready）。
+    // host → iframe 的 emit 不走此路径。
+    if (
+      (msg.type === 'request' || msg.type === 'event') &&
+      this.sessionToken
+    ) {
       const sessionToken = msg._sessionToken as string | undefined
-      if (sessionToken !== this.sessionToken) {
+      if (
+        typeof sessionToken !== 'string' ||
+        sessionToken.length === 0 ||
+        sessionToken !== this.sessionToken
+      ) {
         console.warn(
           '[TappBridge] Session token mismatch - possible message spoofing',
         )
@@ -454,6 +668,17 @@ export class TappBridge {
     }
 
     return { valid: true }
+  }
+
+  private noteInvalidMessage(): void {
+    this.invalidCount += 1
+    if (this.invalidCount >= BRIDGE_LIMITS.invalidBeforeMute) {
+      this.mutedUntil = Date.now() + BRIDGE_LIMITS.invalidMuteMs
+      this.invalidCount = 0
+      console.warn(
+        '[TappBridge] Temporarily muting bridge after invalid message burst',
+      )
+    }
   }
 
   /**
@@ -465,9 +690,15 @@ export class TappBridge {
       return
     }
 
+    const now = Date.now()
+    if (now < this.mutedUntil) {
+      return
+    }
+
     // 验证消息格式
     const validation = this.validateMessage(event.data)
     if (!validation.valid) {
+      this.noteInvalidMessage()
       console.warn(`[TappBridge] Invalid message: ${validation.error}`)
       const candidate = event.data as Record<string, unknown> | undefined
       if (
@@ -484,6 +715,22 @@ export class TappBridge {
       }
       return
     }
+
+    // Soft rate limit after validation (token + shape OK)
+    if (!this.inboundRate.tryTake(now)) {
+      const candidate = event.data as TappMessage
+      if (candidate.type === 'request' && typeof candidate.id === 'string') {
+        this.sendResponse(candidate.id, {
+          success: false,
+          error: 'Bridge rate limit exceeded; slow down',
+          code: 'RATE_LIMITED',
+        })
+      }
+      return
+    }
+
+    // Valid traffic gradually cools the invalid counter
+    if (this.invalidCount > 0) this.invalidCount -= 1
 
     const message = event.data as TappMessage
 
@@ -541,7 +788,16 @@ export class TappBridge {
 
     const action = `${payload.api}.${payload.method}`
 
-    // 配额检查
+    if (this.inFlightRequests >= BRIDGE_LIMITS.maxConcurrentRequests) {
+      this.sendResponse(id, {
+        success: false,
+        error: 'Too many concurrent bridge requests',
+        code: 'CONCURRENCY_LIMIT',
+      })
+      return
+    }
+
+    // 配额检查（含全局 bridge 软限速）
     if (this.tappInstance) {
       const quotaManager = getQuotaManager()
       const quotaCheck = quotaManager.checkQuota(this.tappInstance.id, action)
@@ -577,30 +833,42 @@ export class TappBridge {
       return
     }
 
+    this.inFlightRequests += 1
     try {
       const response = await handler(message)
 
-      // 记录配额使用
-      if (this.tappInstance && response.success) {
+      // 记录配额使用：成功与失败都计入，避免刷失败绕过
+      if (this.tappInstance) {
         const quotaManager = getQuotaManager()
         quotaManager.recordUsage(this.tappInstance.id, action)
       }
 
       this.sendResponse(id, response)
     } catch (error) {
+      if (this.tappInstance) {
+        getQuotaManager().recordUsage(this.tappInstance.id, action)
+      }
       console.error(`[TappBridge] Handler error for ${action}:`, error)
       this.sendResponse(id, {
         success: false,
         error: error instanceof Error ? error.message : 'Internal error',
         code: 'HANDLER_ERROR',
       })
+    } finally {
+      this.inFlightRequests = Math.max(0, this.inFlightRequests - 1)
     }
   }
 
   /**
-   * 处理事件
+   * 处理来自沙箱的事件（仅本实例 allowSandboxEvent 白名单）
    */
   private handleEvent(message: TappMessage): void {
+    if (!this.allowedSandboxEvents.has(message.action)) {
+      console.warn(
+        `[TappBridge] Dropping unsolicited sandbox event: ${message.action}`,
+      )
+      return
+    }
     const listeners = this.eventListeners.get(message.action)
     if (listeners) {
       for (const listener of listeners) {

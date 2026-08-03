@@ -58,6 +58,8 @@ export function isValidUmamiScriptUrl(url: string): boolean {
   try {
     const u = new URL(url)
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return false
+    // Allow self-host on LAN/localhost; only scheme + host presence matter here.
+    if (!u.hostname) return false
     // Cloud default ends with script.js; self-host may use /umami.js or /script.js
     return true
   } catch {

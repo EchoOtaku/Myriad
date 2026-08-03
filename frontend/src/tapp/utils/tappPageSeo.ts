@@ -16,6 +16,12 @@ import {
   tappIconAsOgImage,
 } from '../../utils/siteMetadata'
 import { resolveManifestText } from './manifestLocale'
+import {
+  TAPP_LIST_PATH,
+  TAPP_STORE_PATH,
+  tappDetailPath,
+  tappRunPath,
+} from './tappPaths'
 
 export function isTappIndexable(tapp: TappInstance | null | undefined): boolean {
   if (!tapp) return false
@@ -33,7 +39,7 @@ export function buildTappRunPageSeo(opts: {
   moduleOpenToAll: boolean
 }): PageSeoInput {
   const { tapp, tappId, locale, moduleOpenToAll } = opts
-  const path = `/tapp/run/${encodeURIComponent(tappId)}`
+  const path = tappRunPath(tappId)
   if (!tapp) {
     return {
       title: formatPageTitle(tappId),
@@ -61,7 +67,7 @@ export function buildTappDetailPageSeo(opts: {
   return {
     ...run,
     // 详情页规范到 run（避免 run/detail 重复收录）；分享仍可用 detail URL 作 og:url
-    path: `/tapp/detail/${encodeURIComponent(opts.tappId)}`,
+    path: tappDetailPath(opts.tappId),
     // 索引只保留 run：详情默认 noindex
     noindex: true,
   }
@@ -75,7 +81,7 @@ export function buildTappListPageSeo(opts: {
   return {
     title: formatPageTitle(opts.listLabel),
     description: opts.listDescription,
-    path: '/tapp',
+    path: TAPP_LIST_PATH,
     noindex: !opts.moduleOpenToAll,
   }
 }
@@ -88,7 +94,7 @@ export function buildTappStorePageSeo(opts: {
   return {
     title: formatPageTitle(opts.storeLabel),
     description: opts.storeDescription,
-    path: '/tapp/store',
+    path: TAPP_STORE_PATH,
     noindex: !opts.moduleOpenToAll,
   }
 }

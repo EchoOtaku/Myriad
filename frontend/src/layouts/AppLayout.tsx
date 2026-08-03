@@ -354,7 +354,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           wallpaper-awaiting 仅由 useWallpaper JS 切换，不要写死在 className（避免 re-render 盖掉） */}
       <div
         id="bg-container"
-        className="fixed inset-0 -z-10 overflow-hidden"
+        className="fixed inset-0 -z-10 min-h-lvh w-full overflow-hidden"
       >
         {/* 首次加载呼吸占位：独立层，z-0，不占 ::before/::after */}
         <div

@@ -14,6 +14,8 @@ pub mod ai_task_provider; // Text/image provider execution for AI Tasks
 pub mod ai_task_registry; // Cross-replica register/persist
 pub mod ai_task_runtime; // Process-local AI_TASKS map + state transitions
 pub mod analyzer;
+pub mod avatar; // 头像来源枚举/解析 + 出口统一代理（单一解析处）
+pub mod profile_text; // 名称/简介文案来源（与 avatar 独立）
 pub mod json_schema_subset;
 pub mod platform_cache; // Platform filtered-JSON cache
 pub mod platform_items; // Cache → uniform items[] projection
@@ -32,6 +34,7 @@ pub mod tapp_context; // Runtime context payloads + subject role projection
 pub mod tapp_credentials; // Installation-scoped write-only credential bindings
 pub mod tapp_catalog; // Catalog/detail list projection (role-filtered)
 pub mod tapp_lifecycle; // Start/stop/uninstall + recent/widget pure rules
+pub mod tapp_list_card_sizes; // Per-user list page card sizes (1x1|2x1)
 pub mod tapp_validation; // Manifest/package pure validators
 pub mod tapp_package_fs; // Install-dir lifecycle artifacts + orphan/path rules
 pub mod tapp_package_read; // Installed package resource path plans

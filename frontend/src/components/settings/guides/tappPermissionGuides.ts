@@ -43,6 +43,13 @@ const zh: TappPermissionGuides = {
     frontend: '设置「数据及统计 / 接入平台」及相关配置。',
     notes: '属于站点级扩展，勿装来源不明的应用。',
   },
+  'analytics:read': {
+    what: '允许读取站点访问统计的汇总数据（今日/区间访问、热门页、来源等）。',
+    chain:
+      '① 应用声明并获批本权限。\n② 通过 Tapp.analytics 读取聚合摘要。\n③ 仅汇总，不含访客指纹或原始日志。',
+    frontend: '应用内统计卡片、访客概览等；设置「站点分析」为数据源。',
+    notes: '只读聚合；不开放导入导出或 AI 用量明细。',
+  },
   'ai:generate': {
     what: '允许调用 AI 生成内容（文案、摘要等，视站点模型配置而定）。',
     chain:
@@ -312,6 +319,13 @@ const en: TappPermissionGuides = {
     frontend: 'Config → Platforms.',
     notes: 'Site-level extension; trust the app source.',
   },
+  'analytics:read': {
+    what: 'Allows reading aggregated site analytics (visits, top pages, referrers, etc.).',
+    chain:
+      '1) App is granted this permission.\n2) Calls Tapp.analytics for summary cards.\n3) Aggregate-only — no visitor hashes or raw logs.',
+    frontend: 'In-app analytics cards; site analytics as the data source.',
+    notes: 'Read-only aggregates; no backup import/export or AI usage ledgers.',
+  },
   'ai:generate': {
     what: 'Allows AI content generation (text/summaries per site models).',
     chain:
@@ -580,6 +594,13 @@ const ja: TappPermissionGuides = {
       '① 定義を登録。\n② 接続可能一覧に出る。\n③ その後設定・同期できる。',
     frontend: '設定の「プラットフォーム」。',
     notes: 'サイト級の拡張。出所を確認してください。',
+  },
+  'analytics:read': {
+    what: 'サイト訪問統計の集計（本日/期間の訪問、人気ページ、流入元など）を読めます。',
+    chain:
+      '① 本権限が付与される。\n② Tapp.analytics で集計サマリーを取得。\n③ 集計のみで、訪問者指紋や生ログは含まない。',
+    frontend: 'アプリ内の統計カード等。データ源はサイト分析。',
+    notes: '読み取り専用の集計。インポート/エクスポートや AI 利用明細は対象外。',
   },
   'ai:generate': {
     what: 'AI による文章などの生成を呼べます。',

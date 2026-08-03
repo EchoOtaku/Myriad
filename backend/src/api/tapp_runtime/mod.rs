@@ -18,6 +18,7 @@ mod agent_interactions;
 mod ai_cost_ledger;
 // AI quota domain: `crate::services::ai_quota` (reserve/settle/release/usage).
 mod ai_tasks;
+mod analytics;
 pub mod common;
 mod components;
 mod context;
@@ -117,6 +118,9 @@ pub use federation::get_federation_feed;
 
 // Metrics API
 pub use metrics::{get_rate_limit_status, get_tapp_metrics};
+
+// Site analytics (visitor stats) for Tapp runtimes
+pub use analytics::{get_tapp_analytics_summary, get_tapp_analytics_visitor};
 
 // Notifications API
 pub use notifications::create_tapp_notification;

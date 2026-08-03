@@ -85,6 +85,249 @@ pub(crate) fn normalize_music_playlist_id(raw: &str) -> String {
     }
 }
 
+/// Sanitize a wallpaper URL for persistence.
+///
+/// - Empty → empty (clear wallpaper)
+/// - Absolute `http`/`https` only (no `data:`, `javascript:`, credentials)
+/// - Same-origin path `/...` allowed
+/// - Blocks loopback / private / link-local / special hostnames (visitor browsers
+///   must not be pointed at intranet targets via public UI config)
+///
+/// Returns `None` when the value must not be stored as-is (caller should skip
+/// the update rather than write a dangerous URL).
+pub(crate) fn sanitize_wallpaper_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Some(String::new());
+    }
+
+    // Same-origin path only (single leading slash, not protocol-relative //)
+    if s.starts_with('/') && !s.starts_with("//") {
+        // Reject `/javascript:...` style smuggling
+        if s.len() > 1 {
+            let rest = &s[1..];
+            if let Some(colon) = rest.find(':') {
+                let scheme = &rest[..colon];
+                if scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '.' || c == '-')
+                    && !scheme.is_empty()
+                    && scheme
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_alphabetic())
+                {
+                    return None;
+                }
+            }
+        }
+        return Some(s.to_string());
+    }
+
+    let candidate = if let Some(rest) = s.strip_prefix("//") {
+        format!("https://{rest}")
+    } else {
+        s.to_string()
+    };
+
+    let parsed = url::Url::parse(&candidate).ok()?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        _ => return None,
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return None;
+    }
+    let host = parsed.host_str()?;
+    if is_blocked_wallpaper_host(host) {
+        return None;
+    }
+    Some(parsed.to_string())
+}
+
+fn is_blocked_wallpaper_host(host: &str) -> bool {
+    let h = host.trim().trim_matches(|c| c == '[' || c == ']').to_ascii_lowercase();
+    if h.is_empty() {
+        return true;
+    }
+    if h == "localhost"
+        || h == "0.0.0.0"
+        || h == "::"
+        || h == "::1"
+        || h.ends_with(".localhost")
+        || h.ends_with(".local")
+        || h.ends_with(".internal")
+        || h.ends_with(".arpa")
+        || h.ends_with(".lan")
+        || h.ends_with(".home")
+        || h.ends_with(".corp")
+    {
+        return true;
+    }
+
+    if let Ok(ip) = h.parse::<std::net::IpAddr>() {
+        return is_blocked_wallpaper_ip(ip);
+    }
+    false
+}
+
+fn is_blocked_wallpaper_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                // CGNAT 100.64.0.0/10
+                || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 64)
+                || v4.octets()[0] >= 224
+        }
+        std::net::IpAddr::V6(v6) => {
+            if let Some(mapped) = v6.to_ipv4_mapped() {
+                return is_blocked_wallpaper_ip(std::net::IpAddr::V4(mapped));
+            }
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_unique_local()
+                || (v6.segments()[0] & 0xffc0) == 0xfe80
+        }
+    }
+}
+
+/// Same-origin path `/...` (not `//host`), rejecting `/javascript:...` smuggling.
+fn sanitize_site_relative_path(s: &str) -> Option<String> {
+    if !(s.starts_with('/') && !s.starts_with("//")) {
+        return None;
+    }
+    if s.len() > 1 {
+        let rest = &s[1..];
+        if let Some(colon) = rest.find(':') {
+            let scheme = &rest[..colon];
+            if !scheme.is_empty()
+                && scheme
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_alphabetic())
+                && scheme
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '.' || c == '-')
+            {
+                return None;
+            }
+        }
+    }
+    Some(s.to_string())
+}
+
+/// Favicon / logo: empty, same-origin path, http(s), or `data:image/*` (local upload).
+/// Private hosts allowed (self-host LAN). No wallpaper-style host block.
+pub(crate) fn sanitize_site_favicon_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Some(String::new());
+    }
+    if let Some(path) = sanitize_site_relative_path(s) {
+        return Some(path);
+    }
+    // data:image/... only (uploaded favicon); reject data:text/html etc.
+    if let Some(rest) = s.strip_prefix("data:") {
+        let lower = rest.to_ascii_lowercase();
+        if lower.starts_with("image/") {
+            return Some(s.to_string());
+        }
+        return None;
+    }
+    sanitize_http_url_allow_private(s)
+}
+
+/// OG / share image: empty, path, http(s). No data: (crawlers need fetchable URLs).
+pub(crate) fn sanitize_site_og_image_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Some(String::new());
+    }
+    if let Some(path) = sanitize_site_relative_path(s) {
+        return Some(path);
+    }
+    sanitize_http_url_allow_private(s)
+}
+
+/// Tracker script URL (Umami): empty or http(s). Private hosts OK for self-host.
+pub(crate) fn sanitize_umami_script_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Some(String::new());
+    }
+    sanitize_http_url_allow_private(s)
+}
+
+/// Outbound HTTP proxy: empty, or http(s)/socks* (LAN proxies are normal).
+pub(crate) fn sanitize_proxy_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Some(String::new());
+    }
+    let parsed = url::Url::parse(s).ok()?;
+    match parsed.scheme() {
+        "http" | "https" | "socks5" | "socks5h" | "socks4" | "socks4a" => {}
+        _ => return None,
+    }
+    if parsed.host_str().is_none() {
+        return None;
+    }
+    Some(s.to_string())
+}
+
+/// API base URL (Gemini / GitHub / etc.): empty or http(s); private OK for reverse proxies.
+pub(crate) fn sanitize_http_base_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    if s.is_empty() {
+        return Some(String::new());
+    }
+    sanitize_http_url_allow_private(s)
+}
+
+/// http(s) only; protocol-relative → https. **Does not** block private hosts.
+fn sanitize_http_url_allow_private(raw: &str) -> Option<String> {
+    let candidate = if let Some(rest) = raw.strip_prefix("//") {
+        format!("https://{rest}")
+    } else {
+        raw.to_string()
+    };
+    let parsed = url::Url::parse(&candidate).ok()?;
+    match parsed.scheme() {
+        "http" | "https" => {}
+        _ => return None,
+    }
+    if parsed.host_str().is_none() {
+        return None;
+    }
+    Some(parsed.to_string())
+}
+
+/// Apply a clearable URL field: empty writes empty; invalid skips the update.
+fn insert_sanitized_clearable_url(
+    updates: &mut std::collections::HashMap<String, serde_json::Value>,
+    db_key: &str,
+    raw: &str,
+    sanitize: fn(&str) -> Option<String>,
+) {
+    match sanitize(raw) {
+        Some(safe) => {
+            updates.insert(db_key.to_string(), serde_json::Value::String(safe));
+        }
+        None => {
+            tracing::warn!(
+                key = db_key,
+                value = %raw,
+                "Rejecting config URL that failed scheme/format policy (keeping previous value)"
+            );
+        }
+    }
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ConfigResponse {
@@ -1480,6 +1723,43 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                     required: false,
                 },
                 ConfigField {
+                    key: "site_visibility_policy".to_string(),
+                    label: "搜索与 AI 可见性".to_string(),
+                    field_type: "select".to_string(),
+                    value: {
+                        let noindex = db_config
+                            .as_ref()
+                            .map(|c| c.site_noindex)
+                            .unwrap_or_else(|| {
+                                std::env::var("SITE_NOINDEX")
+                                    .map(|v| v == "true" || v == "1")
+                                    .unwrap_or(false)
+                            });
+                        let raw = db_config
+                            .as_ref()
+                            .map(|c| c.site_visibility_policy.clone())
+                            .filter(|s| !s.trim().is_empty())
+                            .or_else(|| std::env::var("SITE_VISIBILITY_POLICY").ok())
+                            .unwrap_or_default();
+                        crate::api::seo_policy::normalize_visibility_policy(&raw, noindex).to_string()
+                    },
+                    placeholder: "ai_citation".to_string(),
+                    required: false,
+                },
+                ConfigField {
+                    key: "site_ai_intro".to_string(),
+                    label: "AI 站点简介".to_string(),
+                    field_type: "text".to_string(),
+                    value: db_or_env_clearable(
+                        db_config.as_ref().and_then(|c| c.site_ai_intro.clone()),
+                        "SITE_AI_INTRO",
+                        "",
+                    ),
+                    placeholder: "用 2～4 句话向 AI 说明本站是谁、有什么内容（写入 llms.txt）"
+                        .to_string(),
+                    required: false,
+                },
+                ConfigField {
                     key: "ga_measurement_id".to_string(),
                     label: "Google Analytics".to_string(),
                     field_type: "text".to_string(),
@@ -1804,6 +2084,8 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "ai_provider",
     "allow_local_registration",
     "analytics_enabled",
+    "tapp_private_install_cleanup",
+    "tapp_private_install_inactivity_days",
     "bangumi_access_token",
     "bangumi_enabled",
     "bangumi_user_agent",
@@ -1899,10 +2181,12 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "site_footer_custom",
     "site_gongan",
     "site_icp",
+    "site_ai_intro",
     "site_keywords",
     "site_noindex",
     "site_og_image",
     "site_title",
+    "site_visibility_policy",
     "steam_api_key",
     "steam_enabled",
     "steam_id",
@@ -2764,6 +3048,8 @@ mod settings_backup_tests {
             ui_field("site_keywords", ""),
             ui_field("site_og_image", ""),
             ui_field("site_noindex", "false"),
+            ui_field("site_visibility_policy", "ai_full"),
+            ui_field("site_ai_intro", ""),
             ui_field("ga_measurement_id", ""),
             ui_field("umami_website_id", ""),
             ui_field("umami_script_url", ""),
@@ -2786,6 +3072,124 @@ mod settings_backup_tests {
         assert_eq!(updates.get("music_playlist_id"), Some(&json!("")));
         assert_eq!(updates.get("site_icp"), Some(&json!("")));
         assert_eq!(updates.get("site_footer_custom"), Some(&json!("")));
+    }
+
+    #[test]
+    fn sanitize_wallpaper_url_allows_http_https_and_paths() {
+        assert_eq!(sanitize_wallpaper_url(""), Some(String::new()));
+        assert_eq!(
+            sanitize_wallpaper_url("https://images.unsplash.com/photo-1"),
+            Some("https://images.unsplash.com/photo-1".to_string())
+        );
+        assert_eq!(
+            sanitize_wallpaper_url("/uploads/wall.jpg"),
+            Some("/uploads/wall.jpg".to_string())
+        );
+        assert_eq!(
+            sanitize_wallpaper_url("//cdn.example.com/a.jpg"),
+            Some("https://cdn.example.com/a.jpg".to_string())
+        );
+    }
+
+    #[test]
+    fn sanitize_wallpaper_url_rejects_schemes_and_private_hosts() {
+        assert_eq!(sanitize_wallpaper_url("javascript:alert(1)"), None);
+        assert_eq!(sanitize_wallpaper_url("data:image/png;base64,aaa"), None);
+        assert_eq!(sanitize_wallpaper_url("http://127.0.0.1/a.jpg"), None);
+        assert_eq!(sanitize_wallpaper_url("http://192.168.1.1/a.jpg"), None);
+        assert_eq!(sanitize_wallpaper_url("http://localhost/a.jpg"), None);
+        assert_eq!(
+            sanitize_wallpaper_url("https://user:pass@cdn.example.com/a.jpg"),
+            None
+        );
+    }
+
+    #[test]
+    fn collect_rejects_unsafe_wallpaper_url() {
+        let mut config = empty_config();
+        config.ui_config.config_fields =
+            vec![ui_field("wallpaper_url", "javascript:alert(1)")];
+        let updates = collect_database_updates(&config);
+        assert!(!updates.contains_key("ui_wallpaper_url"));
+
+        config.ui_config.config_fields =
+            vec![ui_field("wallpaper_url", "https://cdn.example.com/w.jpg")];
+        let updates = collect_database_updates(&config);
+        assert_eq!(
+            updates.get("ui_wallpaper_url"),
+            Some(&json!("https://cdn.example.com/w.jpg"))
+        );
+    }
+
+    #[test]
+    fn soft_url_fields_allow_normal_self_host_usage() {
+        // Favicon: path, public, LAN, data:image
+        assert_eq!(
+            sanitize_site_favicon_url("/favicon.webp"),
+            Some("/favicon.webp".to_string())
+        );
+        assert_eq!(
+            sanitize_site_favicon_url("https://cdn.example.com/icon.png"),
+            Some("https://cdn.example.com/icon.png".to_string())
+        );
+        assert_eq!(
+            sanitize_site_favicon_url("http://192.168.1.5/logo.png"),
+            Some("http://192.168.1.5/logo.png".to_string())
+        );
+        assert!(sanitize_site_favicon_url("data:image/png;base64,aaa")
+            .unwrap()
+            .starts_with("data:image/png"));
+        assert_eq!(sanitize_site_favicon_url("javascript:alert(1)"), None);
+        assert_eq!(sanitize_site_favicon_url("data:text/html,x"), None);
+
+        // OG: no data:
+        assert_eq!(
+            sanitize_site_og_image_url("/og.png"),
+            Some("/og.png".to_string())
+        );
+        assert_eq!(sanitize_site_og_image_url("data:image/png;base64,x"), None);
+
+        // Umami + API base: http(s), private OK
+        assert_eq!(
+            sanitize_umami_script_url("http://10.0.0.2:3000/script.js"),
+            Some("http://10.0.0.2:3000/script.js".to_string())
+        );
+        assert_eq!(sanitize_umami_script_url("javascript:x"), None);
+        assert_eq!(
+            sanitize_http_base_url("http://127.0.0.1:11434/v1"),
+            Some("http://127.0.0.1:11434/v1".to_string())
+        );
+
+        // Proxy: socks + localhost OK
+        assert_eq!(
+            sanitize_proxy_url("http://127.0.0.1:7890"),
+            Some("http://127.0.0.1:7890".to_string())
+        );
+        assert_eq!(
+            sanitize_proxy_url("socks5://127.0.0.1:1080"),
+            Some("socks5://127.0.0.1:1080".to_string())
+        );
+        assert_eq!(sanitize_proxy_url("javascript:x"), None);
+    }
+
+    #[test]
+    fn collect_soft_url_fields_reject_only_dangerous_schemes() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![
+            ui_field("site_favicon", "javascript:x"),
+            ui_field("proxy_url", "http://127.0.0.1:7890"),
+            ui_field("umami_script_url", "https://cloud.umami.is/script.js"),
+        ];
+        let updates = collect_database_updates(&config);
+        assert!(!updates.contains_key("site_favicon"));
+        assert_eq!(
+            updates.get("proxy_url"),
+            Some(&json!("http://127.0.0.1:7890"))
+        );
+        assert_eq!(
+            updates.get("umami_script_url"),
+            Some(&json!("https://cloud.umami.is/script.js"))
+        );
     }
 
     #[test]
@@ -3308,24 +3712,96 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
     for field in &config.ui_config.config_fields {
         let (key, json_value) = match field.key.as_str() {
             // 可清空非敏感串：空串也写库，否则「重置本页」会被下方 is_empty 守卫吞掉
+            // 仅持久化策略允许的 URL（http(s)/同站路径）；非法值跳过以免写入危险 scheme/内网
             "wallpaper_url" => {
-                updates.insert(
-                    "ui_wallpaper_url".to_string(),
-                    JsonValue::String(field.value.clone()),
+                match sanitize_wallpaper_url(&field.value) {
+                    Some(safe) => {
+                        updates.insert(
+                            "ui_wallpaper_url".to_string(),
+                            JsonValue::String(safe),
+                        );
+                    }
+                    None => {
+                        tracing::warn!(
+                            wallpaper_url = %field.value,
+                            "Rejecting wallpaper_url that failed scheme/host policy"
+                        );
+                    }
+                }
+                continue;
+            }
+            // Soft URL policy (scheme/format only — private hosts allowed for self-host)
+            "site_favicon" => {
+                insert_sanitized_clearable_url(
+                    &mut updates,
+                    "site_favicon",
+                    &field.value,
+                    sanitize_site_favicon_url,
                 );
                 continue;
             }
-            "site_title" | "site_description" | "site_favicon" | "site_keywords"
-            | "site_og_image" | "ga_measurement_id" | "umami_website_id"
-            | "umami_script_url" | "music_source" | "site_icp" | "site_gongan"
-            | "cloud_sponsors" | "site_footer_custom" | "proxy_url" | "proxy_bypass"
-            | "gemini_base_url" | "github_api_base_url" => {
+            "site_og_image" => {
+                insert_sanitized_clearable_url(
+                    &mut updates,
+                    "site_og_image",
+                    &field.value,
+                    sanitize_site_og_image_url,
+                );
+                continue;
+            }
+            "umami_script_url" => {
+                insert_sanitized_clearable_url(
+                    &mut updates,
+                    "umami_script_url",
+                    &field.value,
+                    sanitize_umami_script_url,
+                );
+                continue;
+            }
+            "proxy_url" => {
+                insert_sanitized_clearable_url(
+                    &mut updates,
+                    "proxy_url",
+                    &field.value,
+                    sanitize_proxy_url,
+                );
+                continue;
+            }
+            "gemini_base_url" | "github_api_base_url" => {
+                insert_sanitized_clearable_url(
+                    &mut updates,
+                    &field.key,
+                    &field.value,
+                    sanitize_http_base_url,
+                );
+                continue;
+            }
+            "site_title" | "site_description" | "site_keywords"
+            | "site_ai_intro"
+            | "ga_measurement_id" | "umami_website_id"
+            | "music_source" | "site_icp" | "site_gongan"
+            | "cloud_sponsors" | "site_footer_custom" | "proxy_bypass" => {
                 updates.insert(field.key.clone(), JsonValue::String(field.value.clone()));
+                continue;
+            }
+            "site_visibility_policy" => {
+                let pol = crate::api::seo_policy::normalize_visibility_policy(&field.value, false);
+                updates.insert(
+                    "site_visibility_policy".to_string(),
+                    JsonValue::String(pol.to_string()),
+                );
+                // Keep legacy noindex bit in lockstep
+                updates.insert(
+                    "site_noindex".to_string(),
+                    JsonValue::Bool(pol == "private"),
+                );
                 continue;
             }
             "site_noindex" => {
                 let enabled = field.value == "true";
                 updates.insert(field.key.clone(), JsonValue::Bool(enabled));
+                // If client only flips noindex (legacy), map to private / keep open as ai_full
+                // unless a visibility policy field is also in this payload (handled above).
                 continue;
             }
             "music_playlist_id" => {
@@ -3689,6 +4165,8 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             "site_keywords" => "SITE_KEYWORDS",
             "site_og_image" => "SITE_OG_IMAGE",
             "site_noindex" => "SITE_NOINDEX",
+            "site_visibility_policy" => "SITE_VISIBILITY_POLICY",
+            "site_ai_intro" => "SITE_AI_INTRO",
             "ga_measurement_id" => "GA_MEASUREMENT_ID",
             "umami_website_id" => "UMAMI_WEBSITE_ID",
             "umami_script_url" => "UMAMI_SCRIPT_URL",
@@ -3714,10 +4192,61 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
         if !should_write_env_field(&field.key, &field.value) {
             continue;
         }
-        let env_value = if field.key == "music_playlist_id" {
-            normalize_music_playlist_id(&field.value)
-        } else {
-            field.value.clone()
+        let env_value = match field.key.as_str() {
+            "music_playlist_id" => normalize_music_playlist_id(&field.value),
+            "wallpaper_url" => match sanitize_wallpaper_url(&field.value) {
+                Some(safe) => safe,
+                None => {
+                    tracing::warn!(
+                        wallpaper_url = %field.value,
+                        "Skipping UI_WALLPAPER_URL env write: failed scheme/host policy"
+                    );
+                    continue;
+                }
+            },
+            "site_favicon" => match sanitize_site_favicon_url(&field.value) {
+                Some(safe) => safe,
+                None => {
+                    tracing::warn!("Skipping SITE_FAVICON env write: failed scheme/format policy");
+                    continue;
+                }
+            },
+            "site_og_image" => match sanitize_site_og_image_url(&field.value) {
+                Some(safe) => safe,
+                None => {
+                    tracing::warn!("Skipping SITE_OG_IMAGE env write: failed scheme/format policy");
+                    continue;
+                }
+            },
+            "umami_script_url" => match sanitize_umami_script_url(&field.value) {
+                Some(safe) => safe,
+                None => {
+                    tracing::warn!(
+                        "Skipping UMAMI_SCRIPT_URL env write: failed scheme/format policy"
+                    );
+                    continue;
+                }
+            },
+            "proxy_url" => match sanitize_proxy_url(&field.value) {
+                Some(safe) => safe,
+                None => {
+                    tracing::warn!("Skipping PROXY_URL env write: failed scheme/format policy");
+                    continue;
+                }
+            },
+            "gemini_base_url" | "github_api_base_url" => {
+                match sanitize_http_base_url(&field.value) {
+                    Some(safe) => safe,
+                    None => {
+                        tracing::warn!(
+                            key = %field.key,
+                            "Skipping API base URL env write: failed scheme/format policy"
+                        );
+                        continue;
+                    }
+                }
+            }
+            _ => field.value.clone(),
         };
         env_content = update_env_var(&env_content, key, &env_value);
     }
@@ -3852,6 +4381,21 @@ pub async fn get_site_metadata(
                 .unwrap_or(false)
         });
 
+    let site_visibility_policy = {
+        let raw = db_config
+            .as_ref()
+            .map(|c| c.site_visibility_policy.clone())
+            .filter(|s| !s.trim().is_empty())
+            .or_else(|| std::env::var("SITE_VISIBILITY_POLICY").ok())
+            .unwrap_or_default();
+        crate::api::seo_policy::normalize_visibility_policy(&raw, site_noindex)
+    };
+    let site_ai_intro = db_or_env_clearable(
+        db_config.as_ref().and_then(|c| c.site_ai_intro.clone()),
+        "SITE_AI_INTRO",
+        "",
+    );
+
     let metadata = json!({
         "site_title": get_branding(
             db_config.as_ref().and_then(|c| c.site_title.clone()),
@@ -3880,6 +4424,8 @@ pub async fn get_site_metadata(
             ""
         ),
         "site_noindex": site_noindex,
+        "site_visibility_policy": site_visibility_policy,
+        "site_ai_intro": site_ai_intro,
         "ga_measurement_id": db_or_env_clearable(
             db_config.as_ref().and_then(|c| c.ga_measurement_id.clone()),
             "GA_MEASUREMENT_ID",

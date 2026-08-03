@@ -8,6 +8,12 @@ export { CollapseRegion } from './CollapseRegion'
 export type { CollapseRegionProps } from './CollapseRegion'
 export { CompactSettingGroup } from './CompactSettingGroup'
 export { DateRangePopover } from './DateRangePopover'
+export { SettingAnchoredPanel } from './SettingAnchoredPanel'
+export type {
+  SettingAnchoredPanelPlacement,
+  SettingAnchoredPanelProps,
+  SettingAnchoredPanelTriggerApi,
+} from './SettingAnchoredPanel'
 export type {
   DateRangePopoverLabels,
   DateRangePopoverProps,
@@ -84,6 +90,7 @@ export type {
   ManagedListStat,
   ManagedListStatMetric,
   ManagedListStatSwitch,
+  ManagedListStatChoice,
   ManagedListTone,
 } from './ManagedList'
 // 动效系统（CSS 令牌在 settings-motion.css，JS 取值在 motion.ts）

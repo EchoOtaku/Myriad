@@ -456,6 +456,7 @@ fn is_backend_path(path: &str, user_agent: &str) -> bool {
         // Public SEO sitemap + robots (backend api::seo)
         || path == "/sitemap.xml"
         || path == "/robots.txt"
+        || path == "/llms.txt"
     {
         return true;
     }
@@ -898,6 +899,7 @@ mod tests {
         // Public SEO sitemap + robots
         assert!(is_backend_path("/sitemap.xml", browser));
         assert!(is_backend_path("/robots.txt", browser));
+        assert!(is_backend_path("/llms.txt", browser));
         assert!(is_backend_path("/api/seo/sitemap.xml", browser));
         // Tapp / Brew item SEO shells: crawlers only
         assert!(is_backend_path("/tapp/run/com.example.app", googlebot));

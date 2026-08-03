@@ -1,0 +1,1459 @@
+/**
+ * Installed Tapp card — widget-style sizes:
+ * - 1x1 (1 track)
+ * - 2x1 wide (2 tracks, same row height as 1x1)
+ *
+ * Height is a fraction of track width via --tapp-app-card-h-ratio
+ * (1 = square; lower = shorter cards).
+ *
+ * Rest / hover detail faces; surface matches glass chrome without borders.
+ */
+
+.tapp-app-card {
+  /* height = trackWidth × ratio (shared by 1x1 + 2x1) */
+  --tapp-app-card-h-ratio: 0.78;
+  container-type: inline-size;
+  container-name: tapp-app-card;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 0.75rem; /* rounded-xl — WidgetShell / status bar */
+  cursor: default;
+  /* Kill .glass border + any theme border-color reclaim */
+  border: none !important;
+  border-color: transparent !important;
+  transition:
+    transform 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 180ms ease,
+    filter 180ms ease;
+}
+
+/* 1x1 — width W, height = W × h-ratio (lock: content must not expand the box) */
+.tapp-app-card--1x1 {
+  aspect-ratio: 1 / var(--tapp-app-card-h-ratio);
+  min-height: 0;
+  max-height: 100%;
+  /* Prefer aspect-ratio over content min-size so padding/wrap never “撑大” the card */
+  overflow: hidden;
+}
+
+/*
+ * 2x1 — two tracks wide, same height as a 1x1 neighbor.
+ * width = 2W + gap; want height = W × h-ratio.
+ *
+ * Do NOT use 100cqi here: cqi resolves to the nearest *ancestor* container
+ * (the grid), not the card itself — that made height ≈ half the whole grid.
+ *
+ * Do NOT put body in the same grid cell as the sizer without removing its
+ * size contribution: rest/detail content (large icon, desc, perms, dock)
+ * expands the row past target height and cards become tall empty panels.
+ *
+ * Pattern: only ::before is in-flow (half-width × aspect-ratio → height).
+ * Body (and glow orbs, already absolute) overlay via position:absolute.
+ */
+.tapp-app-card--2x1 {
+  /* block so only the sizer contributes intrinsic height */
+  display: block;
+  aspect-ratio: auto;
+  height: auto;
+  min-height: 0;
+  /* clip faces denser than the lowered height */
+  overflow: hidden;
+}
+
+.tapp-app-card--2x1::before {
+  content: '';
+  display: block;
+  width: calc((100% - var(--tapp-app-card-gap, 0.55rem)) / 2);
+  max-width: 100%;
+  /* same height ratio as 1x1: height = W × h-ratio */
+  aspect-ratio: 1 / var(--tapp-app-card-h-ratio);
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* Fill the sizer box; never grow the card */
+.tapp-app-card--2x1 > .tapp-app-card__body {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tapp-app-card.is-openable {
+  cursor: pointer;
+}
+
+.tapp-app-card:active.is-openable:not(.is-dragging) {
+  transform: scale(0.992);
+}
+
+/* Hover elevates via soft shadow only — no outline / ring */
+.tapp-app-card.is-hovered:not(.is-dragging),
+.tapp-app-card:focus-visible:not(.is-dragging) {
+  filter: brightness(1.02);
+}
+
+/* —— Drag reorder (floating top-right handle) —— */
+
+.tapp-app-card {
+  /* Space reserved so rest + hover content clear the floating handle */
+  --tapp-app-card-drag-size: 1.45rem;
+  --tapp-app-card-drag-inset: 0.35rem;
+  --tapp-app-card-drag-clearance: calc(
+    var(--tapp-app-card-drag-size) + var(--tapp-app-card-drag-inset) + 0.2rem
+  );
+}
+
+.tapp-app-card__drag-handle {
+  position: absolute;
+  top: var(--tapp-app-card-drag-inset);
+  right: var(--tapp-app-card-drag-inset);
+  z-index: 8; /* above rest + detail faces */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tapp-app-card-drag-size);
+  height: var(--tapp-app-card-drag-size);
+  color: var(--text-muted, #6b7280);
+  cursor: grab;
+  touch-action: none;
+  /* Floating chip — soft glass so it reads over hover content */
+  background: color-mix(in srgb, var(--text-primary, #111) 7%, #fff 72%);
+  border: 0;
+  border-radius: 0.45rem;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 6%),
+    0 4px 12px rgb(0 0 0 / 8%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  opacity: 0.72;
+  pointer-events: auto;
+  transition:
+    opacity 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease,
+    transform 120ms ease;
+}
+
+html.dark .tapp-app-card__drag-handle {
+  color: var(--text-muted, #d1d5db);
+  background: color-mix(in srgb, #0a0a0a 45%, #fff 12%);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 25%),
+    0 4px 14px rgb(0 0 0 / 28%);
+}
+
+.tapp-app-card__drag-icon {
+  width: 0.72rem;
+  height: 0.72rem;
+  pointer-events: none;
+}
+
+/* Always readable on hover (floats above detail face) */
+.tapp-app-card.is-hovered .tapp-app-card__drag-handle,
+.tapp-app-card:focus-within .tapp-app-card__drag-handle {
+  opacity: 1;
+  box-shadow:
+    0 1px 3px rgb(0 0 0 / 8%),
+    0 6px 16px rgb(0 0 0 / 12%);
+}
+
+@media (hover: hover) {
+  .tapp-app-card.is-reorderable .tapp-app-card__drag-handle {
+    opacity: 0.45;
+  }
+
+  .tapp-app-card.is-reorderable:hover .tapp-app-card__drag-handle,
+  .tapp-app-card.is-reorderable:focus-within .tapp-app-card__drag-handle {
+    opacity: 1;
+  }
+
+  .tapp-app-card__drag-handle:hover {
+    color: var(--tapp-app-accent, var(--color-primary, #6366f1));
+    background: color-mix(
+      in srgb,
+      var(--tapp-app-accent, var(--color-primary, #6366f1)) 16%,
+      #fff 70%
+    );
+  }
+
+  html.dark .tapp-app-card__drag-handle:hover {
+    background: color-mix(
+      in srgb,
+      var(--tapp-app-accent, var(--color-primary, #6366f1)) 22%,
+      #0a0a0a 55%
+    );
+  }
+}
+
+.tapp-app-card__drag-handle:active {
+  cursor: grabbing;
+  transform: scale(0.96);
+}
+
+.tapp-app-card.is-dragging {
+  opacity: 0.45;
+  filter: saturate(0.85);
+  z-index: 2;
+}
+
+.tapp-app-card.is-drag-over {
+  outline: 2px solid
+    color-mix(
+      in srgb,
+      var(--tapp-app-accent, var(--color-primary, #6366f1)) 55%,
+      transparent
+    );
+  outline-offset: 2px;
+  filter: brightness(1.04);
+}
+
+/* Touch: always show handle (no hover) */
+@media (hover: none) {
+  .tapp-app-card.is-reorderable {
+    --tapp-app-card-drag-size: 1.7rem;
+  }
+
+  .tapp-app-card.is-reorderable .tapp-app-card__drag-handle {
+    opacity: 0.95;
+  }
+
+  .tapp-app-card.is-reorderable .tapp-app-card__drag-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+  }
+}
+
+/*
+ * Rest face: title does NOT yield to the drag handle (handle floats on top).
+ * Hover (1x1 detail head): keep a small right inset so name stays readable.
+ */
+.tapp-app-card.is-reorderable .tapp-app-card__detail-head {
+  padding-right: var(--tapp-app-card-drag-clearance);
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* While dragging, keep rest face (don't flip to detail under the cursor) */
+.tapp-app-card.is-dragging .tapp-app-card__face--rest {
+  opacity: 1 !important;
+  transform: none !important;
+  pointer-events: none;
+}
+
+.tapp-app-card.is-dragging .tapp-app-card__face--detail {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Stack rest + detail faces in the same cell */
+.tapp-app-card__body {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  /* One track that always fills the body — faces get a real height for pin-to-bottom */
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  align-content: stretch;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.55rem;
+  box-sizing: border-box;
+}
+
+.tapp-app-card__face {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  justify-self: stretch;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  transition:
+    opacity 180ms ease,
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* —— Rest face (default) —— */
+
+.tapp-app-card__face--rest {
+  align-items: stretch;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.1rem 0.15rem;
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+/* 2x1 rest: horizontal (icon | meta), top-aligned — not vertically centered */
+.tapp-app-card--2x1 .tapp-app-card__face--rest {
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.6rem;
+  padding: 0.2rem 0.25rem 0.15rem;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__body {
+  /* Slightly roomier inset so content breathes without growing the card */
+  padding: 0.7rem 0.8rem;
+  /* Must stretch — align-content:start collapsed the row to content height,
+     so margin-top:auto on the dock could never pin to the card bottom. */
+  align-content: stretch;
+  height: 100%;
+}
+
+.tapp-app-card.is-hovered .tapp-app-card__face--rest,
+.tapp-app-card:focus-within .tapp-app-card__face--rest {
+  opacity: 0;
+  transform: scale(0.96);
+  pointer-events: none;
+}
+
+.tapp-app-card__icon-wrap {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__icon-wrap {
+  flex: 0 0 auto;
+  align-items: flex-start;
+  padding-top: 0.05rem;
+}
+
+.tapp-app-card__icon {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Shell / background size (unchanged box); glyph/media scaled inside */
+.tapp-app-card__icon--rest .tapp-page-icon,
+.tapp-app-card__icon--rest.tapp-page-icon {
+  width: 2.85rem;
+  height: 2.85rem;
+}
+
+/* 2x1 rest: modestly larger shell than 1x1; keep glyph roomy inside padding */
+.tapp-app-card--2x1 .tapp-app-card__icon--rest .tapp-page-icon {
+  width: 3.15rem;
+  height: 3.15rem;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__icon--detail .tapp-page-icon {
+  width: 2rem;
+  height: 2rem;
+}
+
+/*
+ * Icon shell always flex-centers its content.
+ * - Standalone (third-party full-color): media fills the box — no inset “extra
+ *   background” band, no off-center 78% art.
+ * - Material shell + glyph: glyph size comes from glyphSizeClass only.
+ */
+.tapp-app-card__icon .tapp-page-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Third-party / full-color: full-bleed into squircle (same as store rows) */
+.tapp-app-card__icon .tapp-icon-badge--standalone {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tapp-app-card__icon .tapp-icon-badge--standalone .tapp-icon-badge__media {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100%;
+  max-height: 100%;
+  margin: 0;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+/* iconShell full-color on material: keep art contained & centered */
+.tapp-app-card__icon .tapp-icon-badge__inset-media {
+  width: auto;
+  height: auto;
+  max-width: 78%;
+  max-height: 78%;
+  object-fit: contain;
+}
+
+.tapp-app-card__icon-pulse {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  background: rgb(255 255 255 / 18%);
+  pointer-events: none;
+  animation: tapp-app-card-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tapp-app-card-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.tapp-app-card__meta {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  padding: 0 0.15rem;
+  text-align: center;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__meta {
+  flex: 1;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.18rem;
+  min-height: 0;
+  padding: 0;
+  text-align: left;
+  /* allow desc to clamp within remaining height */
+  overflow: hidden;
+}
+
+.tapp-app-card__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__title-row {
+  /* Title · version · running sit in one cluster after the name (not row-end) */
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+  gap: 0.3rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__sub {
+  text-align: left;
+}
+
+.tapp-app-card__name {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-primary, #1f2937);
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 2x1 rest: title sizes to text; version + running follow immediately.
+ * Title can shrink (ellipsis) so trailing meta never wraps to a new line.
+ */
+.tapp-app-card--2x1 .tapp-app-card__face--rest .tapp-app-card__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.9375rem;
+  letter-spacing: -0.015em;
+}
+
+html.dark .tapp-app-card__name {
+  color: var(--text-primary, #f3f4f6);
+}
+
+/* 2x1 rest: category chip */
+.tapp-app-card__rest-cat {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  max-width: 100%;
+  margin: 0.02rem 0 0;
+  padding: 0.08rem 0.35rem;
+  overflow: hidden;
+  color: var(--tapp-app-accent, var(--color-primary, #6366f1));
+  font-size: 0.5625rem;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: color-mix(
+    in srgb,
+    var(--tapp-app-accent, var(--color-primary, #6366f1)) 12%,
+    transparent
+  );
+  border-radius: 999px;
+}
+
+html.dark .tapp-app-card__rest-cat {
+  background: color-mix(
+    in srgb,
+    var(--tapp-app-accent, var(--color-primary, #6366f1)) 16%,
+    transparent
+  );
+}
+
+/* 2x1 rest: always-visible description (3-line clamp) */
+.tapp-app-card__rest-desc {
+  margin: 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.75rem;
+  line-height: 1.32;
+  text-align: left;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  word-break: break-word;
+}
+
+html.dark .tapp-app-card__rest-desc {
+  color: var(--text-muted, #9ca3af);
+}
+
+/* 2x1 rest: version immediately after title */
+.tapp-app-card__rest-version {
+  flex: 0 0 auto;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.88;
+  max-width: 4.25rem;
+}
+
+html.dark .tapp-app-card__rest-version {
+  color: var(--text-muted, #9ca3af);
+}
+
+.tapp-app-card__running-dot {
+  flex: 0 0 auto;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgb(34 197 94 / 18%);
+  animation: tapp-app-card-pulse 1.6s ease-in-out infinite;
+}
+
+.tapp-app-card__sub {
+  margin: 0;
+  width: 100%;
+  min-width: 0;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  text-align: center;
+}
+
+html.dark .tapp-app-card__sub {
+  color: var(--text-muted, #9ca3af);
+}
+
+.tapp-app-card__sub-viewport {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  min-width: 0;
+  height: 1.3em;
+}
+
+.tapp-app-card__sub-line {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* —— Detail face (hover replaces rest) —— */
+
+.tapp-app-card__face--detail {
+  /*
+   * Dock is position:absolute bottom — always fixed to the card bottom.
+   * Mid/head get padding-bottom so content never sits under the dock.
+   */
+  --tapp-app-card-dock-h: 1.85rem;
+  --tapp-app-card-detail-gap: 0.35rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--tapp-app-card-detail-gap);
+  padding: 0.05rem 0.05rem 0;
+  /* reserve dock band + gap */
+  padding-bottom: calc(
+    var(--tapp-app-card-dock-h) + var(--tapp-app-card-detail-gap)
+  );
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(1.02);
+  pointer-events: none;
+}
+
+/* 2x1 detail: compact dock + slightly tighter mid gap */
+.tapp-app-card--2x1 .tapp-app-card__face--detail,
+.tapp-app-card--2x1 .tapp-app-card__face--detail-perms {
+  --tapp-app-card-dock-h: 1.85rem;
+  --tapp-app-card-detail-gap: 0.3rem;
+  padding: 0.1rem 0.05rem 0;
+  padding-bottom: calc(
+    var(--tapp-app-card-dock-h) + var(--tapp-app-card-detail-gap)
+  );
+}
+
+.tapp-app-card.is-hovered .tapp-app-card__face--detail,
+.tapp-app-card:focus-within .tapp-app-card__face--detail {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+/* Touch: always show detail layout (no hover) */
+@media (hover: none) {
+  .tapp-app-card__face--rest {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .tapp-app-card__face--detail {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+
+.tapp-app-card__detail-head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.tapp-app-card__icon--detail .tapp-page-icon,
+.tapp-app-card__icon--detail.tapp-page-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.tapp-app-card__detail-titles {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+}
+
+.tapp-app-card__face--detail .tapp-app-card__title-row {
+  justify-content: flex-start;
+}
+
+.tapp-app-card__face--detail .tapp-app-card__name {
+  font-size: 0.8125rem;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__face--detail .tapp-app-card__name {
+  font-size: 0.875rem;
+}
+
+.tapp-app-card__version {
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__version {
+  font-size: 0.625rem;
+}
+
+html.dark .tapp-app-card__version {
+  color: var(--text-muted, #9ca3af);
+}
+
+.tapp-app-card__detail-mid {
+  display: flex;
+  /* Grow to fill face so dock can pin to bottom even with short content */
+  flex: 1 1 0;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tapp-app-card__detail-desc {
+  margin: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  /* Multi-line clamp for the square middle */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+  word-break: break-word;
+}
+
+html.dark .tapp-app-card__detail-desc {
+  color: var(--text-muted, #9ca3af);
+}
+
+/* 2x1 hover: entire mid is permissions (scroll if many); dock is absolute */
+.tapp-app-card--2x1 .tapp-app-card__detail-mid--perms-only {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* —— Permission chips / full list —— */
+
+.tapp-app-card__perms {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.28rem;
+  min-width: 0;
+  max-width: 100%;
+  height: 1.35rem;
+  overflow: hidden;
+}
+
+/* 2x1 hover: every permission (icon / label), wrap inside mid; mid grows, dock stays bottom */
+.tapp-app-card__perms--full {
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: flex-start;
+  gap: 0.3rem;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.tapp-app-card__perms-empty {
+  display: block;
+  width: 100%;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  opacity: 0.85;
+}
+
+html.dark .tapp-app-card__perms-empty {
+  color: var(--text-muted, #9ca3af);
+}
+
+.tapp-app-card__perm {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  color: var(--text-muted, #6b7280);
+  background: color-mix(in srgb, var(--text-primary, #111) 6%, transparent);
+  border-radius: 0.375rem;
+}
+
+/* Labeled chips in full list */
+.tapp-app-card__perm--labeled {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  min-height: 1.35rem;
+  padding: 0.18rem 0.4rem 0.18rem 0.3rem;
+  gap: 0.28rem;
+  border-radius: 0.4rem;
+}
+
+.tapp-app-card__perm-label {
+  overflow: hidden;
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 7.5rem;
+}
+
+html.dark .tapp-app-card__perm {
+  color: var(--text-muted, #9ca3af);
+  background: color-mix(in srgb, #fff 10%, transparent);
+}
+
+.tapp-app-card__perm-icon {
+  width: 0.7rem;
+  height: 0.7rem;
+  flex-shrink: 0;
+}
+
+.tapp-app-card__perm--labeled .tapp-app-card__perm-icon {
+  width: 0.68rem;
+  height: 0.68rem;
+}
+
+.tapp-app-card__perm--elevated {
+  color: #d97706;
+  background: rgb(245 158 11 / 14%);
+}
+
+html.dark .tapp-app-card__perm--elevated {
+  color: #fbbf24;
+  background: rgb(245 158 11 / 16%);
+}
+
+.tapp-app-card__perm--privileged {
+  color: #dc2626;
+  background: rgb(239 68 68 / 12%);
+}
+
+html.dark .tapp-app-card__perm--privileged {
+  color: #f87171;
+  background: rgb(239 68 68 / 16%);
+}
+
+.tapp-app-card__perm--more {
+  width: auto;
+  min-width: 1.35rem;
+  padding: 0 0.3rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.01em;
+}
+
+/* —— Bottom dock (detail face only) —— */
+
+.tapp-app-card__dock {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: grid;
+  flex: none;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.3rem;
+  width: 100%;
+  height: var(--tapp-app-card-dock-h, 1.85rem);
+  margin: 0;
+  box-sizing: border-box;
+}
+
+/* Guest / no-action: “click to open” band (same slot as action dock) */
+.tapp-app-card__dock--open-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  grid-template-columns: none;
+  height: var(--tapp-app-card-dock-h, 1.85rem);
+  min-height: 0;
+  padding: 0;
+  pointer-events: none; /* clicks pass through to the card */
+}
+
+.tapp-app-card__open-hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0 0.55rem;
+  overflow: hidden;
+  color: var(--tapp-app-accent, var(--color-primary, #6366f1));
+  font-size: 0.6875rem;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: color-mix(
+    in srgb,
+    var(--tapp-app-accent, var(--color-primary, #6366f1)) 12%,
+    transparent
+  );
+  border-radius: 0.5rem;
+  box-sizing: border-box;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__open-hint {
+  font-size: 0.6875rem;
+  border-radius: 0.5rem;
+}
+
+html.dark .tapp-app-card__open-hint {
+  background: color-mix(
+    in srgb,
+    var(--tapp-app-accent, var(--color-primary, #6366f1)) 16%,
+    transparent
+  );
+}
+
+/* run + settings + uninstall (+ size when allowed) */
+.tapp-app-card__dock--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tapp-app-card__dock--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.tapp-app-card__dock-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  color: var(--text-muted, #6b7280);
+  cursor: pointer;
+  appearance: none;
+  /* Soft fill only — no border (matches status-bar chips) */
+  background: color-mix(in srgb, var(--text-primary, #111) 5.5%, transparent);
+  border: 0;
+  border-radius: 0.5rem;
+  box-shadow: none;
+  outline: none;
+  transition:
+    background 140ms ease,
+    color 140ms ease,
+    transform 120ms ease;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__dock-btn {
+  border-radius: 0.5rem;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__dock-icon {
+  width: 0.72rem;
+  height: 0.72rem;
+}
+
+/* 2x1 hover perms: slightly denser chips */
+.tapp-app-card--2x1 .tapp-app-card__perms--full {
+  gap: 0.25rem;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__perm {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.35rem;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__perm--labeled {
+  min-height: 1.25rem;
+  padding: 0.14rem 0.35rem 0.14rem 0.28rem;
+  gap: 0.22rem;
+  border-radius: 0.35rem;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__perm-label {
+  font-size: 0.5625rem;
+  max-width: 6.75rem;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__perm-icon {
+  width: 0.62rem;
+  height: 0.62rem;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__perm--labeled .tapp-app-card__perm-icon {
+  width: 0.6rem;
+  height: 0.6rem;
+}
+
+.tapp-app-card--2x1 .tapp-app-card__perms-empty {
+  font-size: 0.6875rem;
+}
+
+html.dark .tapp-app-card__dock-btn {
+  color: var(--text-muted, #9ca3af);
+  background: color-mix(in srgb, #fff 9%, transparent);
+}
+
+.tapp-app-card__dock-icon {
+  width: 0.72rem;
+  height: 0.72rem;
+  flex-shrink: 0;
+}
+
+.tapp-app-card__dock-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.tapp-app-card__dock-btn:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.tapp-app-card__dock-btn--size:not(:disabled) {
+  color: var(--tapp-app-accent, var(--color-primary));
+  background: color-mix(
+    in srgb,
+    var(--tapp-app-accent, var(--color-primary)) 12%,
+    transparent
+  );
+}
+
+.tapp-app-card__dock-btn--run:not(:disabled) {
+  color: #16a34a;
+  background: rgb(34 197 94 / 12%);
+}
+
+html.dark .tapp-app-card__dock-btn--run:not(:disabled) {
+  color: #4ade80;
+  background: rgb(34 197 94 / 14%);
+}
+
+.tapp-app-card__dock-btn--stop:not(:disabled) {
+  color: #d97706;
+  background: rgb(245 158 11 / 12%);
+}
+
+html.dark .tapp-app-card__dock-btn--stop:not(:disabled) {
+  color: #fbbf24;
+  background: rgb(245 158 11 / 14%);
+}
+
+@media (hover: hover) {
+  .tapp-app-card__dock-btn:hover:not(:disabled) {
+    color: var(--text-primary, #1f2937);
+    background: color-mix(in srgb, var(--text-primary, #111) 10%, transparent);
+  }
+
+  html.dark .tapp-app-card__dock-btn:hover:not(:disabled) {
+    color: var(--text-primary, #f3f4f6);
+    background: color-mix(in srgb, #fff 14%, transparent);
+  }
+
+  .tapp-app-card__dock-btn--size:hover:not(:disabled) {
+    color: var(--tapp-app-accent, var(--color-primary));
+    background: color-mix(
+      in srgb,
+      var(--tapp-app-accent, var(--color-primary)) 18%,
+      transparent
+    );
+  }
+
+  .tapp-app-card__dock-btn--run:hover:not(:disabled) {
+    color: #15803d;
+    background: rgb(34 197 94 / 18%);
+  }
+
+  html.dark .tapp-app-card__dock-btn--run:hover:not(:disabled) {
+    color: #86efac;
+    background: rgb(34 197 94 / 22%);
+  }
+
+  .tapp-app-card__dock-btn--stop:hover:not(:disabled) {
+    color: #b45309;
+    background: rgb(245 158 11 / 18%);
+  }
+
+  html.dark .tapp-app-card__dock-btn--stop:hover:not(:disabled) {
+    color: #fcd34d;
+    background: rgb(245 158 11 / 22%);
+  }
+
+  .tapp-app-card__dock-btn--settings:hover:not(:disabled) {
+    color: var(--tapp-app-accent, var(--color-primary));
+    background: color-mix(
+      in srgb,
+      var(--tapp-app-accent, var(--color-primary)) 14%,
+      transparent
+    );
+  }
+
+  .tapp-app-card__dock-btn--danger:hover:not(:disabled) {
+    color: #ef4444;
+    background: rgb(239 68 68 / 14%);
+  }
+
+  html.dark .tapp-app-card__dock-btn--danger:hover:not(:disabled) {
+    color: #f87171;
+    background: rgb(239 68 68 / 18%);
+  }
+}
+
+/* —— Empty state —— */
+
+.tapp-app-empty {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: none !important;
+  border-color: transparent !important;
+}
+
+.tapp-app-empty__content {
+  position: relative;
+  z-index: 1;
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .tapp-app-empty__content {
+    padding: 2.75rem 2rem;
+  }
+}
+
+.tapp-app-empty__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 4.5rem;
+  height: 4.5rem;
+  margin: 0 auto 1.1rem;
+  color: var(--text-muted, #9ca3af);
+  background: rgb(0 0 0 / 5%);
+  border-radius: 0.75rem;
+}
+
+html.dark .tapp-app-empty__icon {
+  background: rgb(255 255 255 / 8%);
+}
+
+.tapp-app-empty__title {
+  margin: 0 0 0.4rem;
+  color: var(--text-primary, #1f2937);
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+html.dark .tapp-app-empty__title {
+  color: var(--text-primary, #f3f4f6);
+}
+
+.tapp-app-empty__desc {
+  margin: 0 auto 1.35rem;
+  max-width: 22rem;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+html.dark .tapp-app-empty__desc {
+  color: var(--text-muted, #9ca3af);
+}
+
+.tapp-app-empty__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.tapp-app-empty__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.1rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  border: 0;
+  border-radius: 0.625rem;
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    filter 140ms ease;
+}
+
+.tapp-app-empty__btn:active {
+  transform: scale(0.98);
+}
+
+.tapp-app-empty__btn--primary {
+  color: #fff;
+  background: linear-gradient(
+    135deg,
+    var(--color-primary),
+    color-mix(in srgb, var(--color-primary) 80%, black)
+  );
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+@media (hover: hover) {
+  .tapp-app-empty__btn--primary:hover {
+    filter: brightness(1.04);
+    transform: translateY(-1px);
+  }
+}
+
+.tapp-app-empty__btn--ghost {
+  color: var(--color-primary);
+  background: rgb(0 0 0 / 5%);
+}
+
+html.dark .tapp-app-empty__btn--ghost {
+  background: rgb(255 255 255 / 10%);
+}
+
+@media (hover: hover) {
+  .tapp-app-empty__btn--ghost:hover {
+    background: rgb(0 0 0 / 10%);
+  }
+
+  html.dark .tapp-app-empty__btn--ghost:hover {
+    background: rgb(255 255 255 / 14%);
+  }
+}
+
+/*
+ * Adaptive grid — max 8 columns (1x1 tracks).
+ * 2x1 cards span 2 tracks when the grid has room (container query).
+ * grid-auto-flow: dense packs later 1x1 cards into holes left by 2x1 spans.
+ */
+.tapp-app-card-grid {
+  --tapp-app-card-gap: 0.55rem;
+  --tapp-app-card-min: 6.25rem;
+  container-type: inline-size;
+  container-name: tapp-app-card-grid;
+  display: grid;
+  gap: var(--tapp-app-card-gap);
+  /* Keep row tops aligned; height comes from each card, not stretch */
+  align-items: start;
+  justify-items: stretch;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(
+      max(
+        min(100%, var(--tapp-app-card-min)),
+        calc((100% - 7 * var(--tapp-app-card-gap)) / 8)
+      ),
+      1fr
+    )
+  );
+  /* dense: fill holes left by 2x1 spans with later 1x1 cards */
+  grid-auto-flow: dense;
+  grid-auto-rows: auto;
+}
+
+.tapp-app-card-grid.is-reordering {
+  /* Slightly dim grid while dragging for focus */
+  user-select: none;
+}
+
+/* Phones: keep track min modest so cards don’t grow oversized */
+@media (max-width: 639px) {
+  .tapp-app-card-grid {
+    --tapp-app-card-gap: 0.5rem;
+    --tapp-app-card-min: 6.5rem;
+  }
+}
+
+@media (min-width: 640px) {
+  .tapp-app-card-grid {
+    --tapp-app-card-gap: 0.6rem;
+    --tapp-app-card-min: 6.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .tapp-app-card-grid {
+    --tapp-app-card-gap: 0.65rem;
+    --tapp-app-card-min: 6.75rem;
+  }
+}
+
+/* Span 2 tracks once ≥2 columns fit (~2×min + gap) */
+@container tapp-app-card-grid (min-width: 13.5rem) {
+  .tapp-app-card--2x1 {
+    grid-column: span 2;
+  }
+}
+
+/*
+ * Very narrow: single column — 2x1 becomes full-width banner.
+ * Avoid leaving half-row holes (no multi-col packing).
+ */
+@container tapp-app-card-grid (max-width: 13.49rem) {
+  .tapp-app-card--2x1 {
+    grid-column: span 1;
+    display: block;
+    aspect-ratio: 2.35 / 1;
+  }
+
+  .tapp-app-card--2x1::before {
+    display: none;
+  }
+
+  /* body stays absolute inset 0 and fills the aspect-ratio box */
+  .tapp-app-card--2x1 > .tapp-app-card__body {
+    position: absolute;
+    inset: 0;
+    height: 100%;
+  }
+}
+
+@container tapp-app-card (max-width: 8.5rem) {
+  .tapp-app-card__body {
+    padding: 0.4rem;
+  }
+
+  .tapp-app-card__icon--rest .tapp-page-icon {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .tapp-app-card__icon--detail .tapp-page-icon {
+    width: 1.65rem;
+    height: 1.65rem;
+  }
+
+  .tapp-app-card__name {
+    font-size: 0.75rem;
+  }
+
+  .tapp-app-card__face--detail .tapp-app-card__name {
+    font-size: 0.7rem;
+  }
+
+  .tapp-app-card__sub,
+  .tapp-app-card__detail-desc {
+    font-size: 0.625rem;
+  }
+
+  .tapp-app-card__face--detail {
+    --tapp-app-card-dock-h: 1.55rem;
+  }
+
+  .tapp-app-card__dock-btn {
+    border-radius: 0.4rem;
+  }
+
+  .tapp-app-card__dock-icon {
+    width: 0.62rem;
+    height: 0.62rem;
+  }
+
+  .tapp-app-card__detail-desc {
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+  }
+}
+
+@container tapp-app-card (max-width: 7rem) {
+  .tapp-app-card__body {
+    padding: 0.32rem;
+  }
+
+  .tapp-app-card__icon--rest .tapp-page-icon {
+    width: 2.35rem;
+    height: 2.35rem;
+  }
+
+  .tapp-app-card__icon--detail .tapp-page-icon {
+    width: 1.45rem;
+    height: 1.45rem;
+  }
+
+  .tapp-app-card__name {
+    font-size: 0.6875rem;
+  }
+
+  .tapp-app-card__face--detail .tapp-app-card__name {
+    font-size: 0.65rem;
+  }
+
+  .tapp-app-card__sub,
+  .tapp-app-card__detail-desc,
+  .tapp-app-card__version {
+    font-size: 0.5625rem;
+  }
+
+  .tapp-app-card__face--detail {
+    --tapp-app-card-dock-h: 1.4rem;
+  }
+
+  .tapp-app-card__dock-icon {
+    width: 0.55rem;
+    height: 0.55rem;
+  }
+
+  .tapp-app-card__detail-desc {
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tapp-app-card,
+  .tapp-app-card__face,
+  .tapp-app-card__dock-btn,
+  .tapp-app-empty__btn {
+    transition: none;
+  }
+
+  .tapp-app-card__icon-pulse,
+  .tapp-app-card__running-dot {
+    animation: none;
+  }
+}

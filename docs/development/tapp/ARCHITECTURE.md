@@ -50,6 +50,9 @@ flowchart LR
 | 层         | 主要位置                                                   | 职责                                               |
 | ---------- | ---------------------------------------------------------- | -------------------------------------------------- |
 | 页面入口   | `frontend/src/tapp/pages/`                                 | 列表、详情、单窗口/多窗口运行入口                  |
+| 列表布局   | `pages/TappListPage.tsx`、`services/TappListCardSizesApi.ts`、`backend/.../list_card_sizes.rs` | 卡片 1x1/2x1、mine/site 范围、个人 vs 站点布局偏好 |
+| 运行壳     | `components/TappAppShell.tsx`、`TappWindowManager.tsx`、`hooks/useTappMultiWindowSession.ts` | 多窗口会话、全屏 chrome、关闭/presence             |
+| 安装/卸载 UI | `InstallTappDialog.tsx`、`UninstallConfirmDialog.tsx`    | 权限同意安装、卸载确认与清理预设文案               |
 | 宿主状态   | `frontend/src/tapp/runtime/TappRuntime.ts`                 | 已安装/运行状态缓存、Widget 注册、后台需求         |
 | 资源加载   | `frontend/src/tapp/runtime/sandbox/resourceLoader.ts`      | 获取、拆分、缓存代码/CSS/HTML/i18n/Page 模块       |
 | 沙箱宿主   | `TappPageSandbox.tsx`、`TappWidgetSandbox.tsx`             | 创建 iframe、生成 HTML、注册对应 handler、清理实例 |
@@ -64,8 +67,9 @@ flowchart LR
 | 安装与更新 | `backend/src/api/tapp_store/installation.rs`               | 直接/文件安装、staging 事务与更新回滚               |
 | 预处理安装包 | `backend/src/api/tapp_store/prepared_package.rs`          | 统一结构化/归档包校验、资源落盘与安装代际写入       |
 | 商店包获取 | `backend/src/api/tapp_store/store_package.rs`               | 可信出站访问、索引匹配、分类校验与远程资源下载      |
-| 卸载事务   | `backend/src/api/tapp_store/uninstall.rs`                  | private-first 鉴权、事务清理、目录隔离与失败恢复    |
-| 运行时 API | `backend/src/api/tapp_runtime/`                            | AI、数据、上下文、媒体、事件、报告、声明 API 等    |
+| 卸载事务   | `backend/src/api/tapp_store/uninstall.rs`                  | private-first 鉴权、事务清理、目录隔离与失败恢复；`cleanup-temporary` 按站点策略 |
+| 列表卡片尺寸 | `backend/src/api/tapp_store/list_card_sizes.rs`、`services/tapp_list_card_sizes.rs` | GET 双布局 / PUT 纯个人；游客只读站点布局 |
+| 运行时 API | `backend/src/api/tapp_runtime/`                            | AI、数据、上下文、媒体、事件、报告、访问统计、声明 API 等 |
 | 调度入口   | `backend/src/api/tapp_scheduler.rs`                        | HTTP/WS 协议、身份/所有权/权限检查                 |
 | 调度引擎   | `backend/src/services/tapp_scheduler.rs`                   | 任务持久化、触发、重试、前端回执、后端动作         |
 | Manifest 契约 | `backend/src/api/tapp_store/manifest.rs`                | 安装清单、声明能力、Widget/设置/API 数据结构        |
@@ -154,6 +158,30 @@ Manifest 会经历 Rust 结构的反序列化和再序列化。因此新增 Mani
 - 管理员控制面权限不等于普通用户私有安装的运行时访问权。代码、资源、Manifest、授权和
   Runtime Grant 只能解析到规范公开 owner 或当前主体自己的 owner，不能从其他用户同 ID
   记录中任意选择。
+
+### 列表页布局（个人 vs 站点）
+
+宿主列表 UI（`TappListPage`）支持：
+
+- **范围**：`mine`（个人相关安装）与 `site`（站点公开目录视图）。
+- **卡片尺寸**：`1x1` / `2x1`；登录用户可拖拽排序（auth）。
+- **布局来源分离**：个人 `sizes`/`order` **不**再 sticky 合并站点 owner 偏好；站点视图只读
+  `site_sizes`/`site_order`。游客 GET 只拿到站点布局且 `writable: false`。
+- **隐私**：列表卡片不向访客泄露安装 owner 身份字段。
+
+端点见 [REST_API · 列表布局](REST_API.md#列表布局-apitappslist-card-sizes)。
+
+### 私有安装生命周期清理
+
+站点可配置 `tapp_private_install_cleanup`：
+
+| 值 | 登出时 `POST /api/tapps/cleanup-temporary` | 每日 worker |
+| -- | ------------------------------------------ | ----------- |
+| `inactivity`（默认） | no-op | 按 `tapp_private_install_inactivity_days` 全局 prune 不活跃用户私有安装 |
+| `logout` | 仅卸载**当前用户**私有安装 | 仍可配合 worker；登出路径禁止全局 prune |
+
+实现：`uninstall.rs`（`cleanup_temporary_tapps` + worker）、配置读写
+`permissions_oauth` / DynamicConfig。详情见 [REST_API · 私有安装清理](REST_API.md#私有安装清理-post-apitappscleanup-temporary)。
 
 ## `core`、`widget`、`page` 三层
 

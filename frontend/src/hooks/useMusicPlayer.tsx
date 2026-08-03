@@ -25,6 +25,7 @@ import {
   audioManager,
   createPlaybackAudioElement,
   destroyPlaybackAudioElement,
+  ensureSpectrumSafePlaybackUrl,
   filterPlaylist,
   getCurrentLyricIndex,
   getLyricsWithVerbatim,
@@ -34,6 +35,7 @@ import {
   getQQProxyFallbackUrl,
   shouldPreserveNativeAudioOutput,
   throttle,
+  withSpectrumSafePlaybackUrl,
 } from '../utils/musicPlayer'
 import {
   buildMusicPlayerSnapshot,
@@ -544,7 +546,8 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
           preloadAudio.addEventListener('error', handleError)
           preloadAudio.addEventListener('canplay', handleCanPlay)
 
-          preloadAudio.src = nextSong.url
+          // 桌面频谱：预加载也走同源代理，避免 play 时再切源打断缓冲
+          preloadAudio.src = ensureSpectrumSafePlaybackUrl(nextSong)
           preloadAudio.load()
         })
       })
@@ -1031,12 +1034,14 @@ export function useMusicPlayer(): UseMusicPlayerReturn {
 
       // 临时播放 / Tapp / 资料库入口常带裸 CDN 封面；统一代理后再取色（canvas CORS）
       const proxiedCover = proxyImageUrlOr(songIn.cover, songIn.cover || '')
-      const song: Song =
+      const withCover: Song =
         proxiedCover && proxiedCover !== songIn.cover
           ? { ...songIn, cover: proxiedCover }
           : songIn.cover
             ? songIn
             : { ...songIn, cover: proxiedCover }
+      // 桌面 Web Audio 频谱：旧缓存 play-url / CDN 升级为同源 /audio/ 代理
+      const song = withSpectrumSafePlaybackUrl(withCover)
 
       // 新一代切歌令牌：丢弃更早一次 select 的取色 / delayed play
       const generation = ++selectGenerationRef.current

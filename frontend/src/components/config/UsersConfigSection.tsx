@@ -31,11 +31,15 @@ import {
   LuClock,
   LuPackage,
   LuShieldCheck,
+  LuTrash2,
   LuUser,
 } from '../../lib/icons'
 import adminUsersApi from '../../services/adminUsersApi'
 import { messageForAdminUserError } from '../../utils/authErrorMessages'
 import { getOAuthIconAsset } from '../../utils/oauthIcons'
+import { Avatar } from '../Avatar'
+import { AvatarSourcePicker } from '../AvatarSourcePicker'
+import { ProfileTextSourcePicker } from '../ProfileTextSourcePicker'
 import OAuthIconImage from '../OAuthIconImage'
 import {
   guideDomProps,
@@ -72,6 +76,14 @@ interface UsersConfigSectionProps {
   allowRegister: boolean
   allowRegisterLoading?: boolean
   onAllowRegisterChange: (allow: boolean) => void
+  /**
+   * Private Tapp install cleanup preset:
+   * - 7 / 14: prune after that many days inactive
+   * - logout: wipe on logout
+   */
+  privateTappInstallPreset: '7' | '14' | 'logout'
+  privateTappInstallLoading?: boolean
+  onPrivateTappInstallPresetChange: (preset: '7' | '14' | 'logout') => void
 }
 
 const ONLINE_ICON_SIZE = 14
@@ -128,6 +140,9 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
   allowRegister,
   allowRegisterLoading = false,
   onAllowRegisterChange,
+  privateTappInstallPreset,
+  privateTappInstallLoading = false,
+  onPrivateTappInstallPresetChange,
 }) => {
   const { t } = useI18n()
   const c = t.config
@@ -401,14 +416,40 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
         guide: renderGuide(g.users.allowLocalRegister),
         guidePath: 'users.allowLocalRegister',
       },
+      {
+        key: 'private-tapp-cleanup',
+        kind: 'choice',
+        label: c.privateTappInstallCleanupTitle,
+        description: c.privateTappInstallCleanupDesc,
+        icon: <LuTrash2 aria-hidden size={14} />,
+        value: privateTappInstallPreset,
+        options: [
+          { value: '7', label: c.privateTappInstallPreset7Short },
+          { value: '14', label: c.privateTappInstallPreset14Short },
+          { value: 'logout', label: c.privateTappInstallPresetLogoutShort },
+        ],
+        onChange: (v) =>
+          onPrivateTappInstallPresetChange(v as '7' | '14' | 'logout'),
+        disabled: privateTappInstallLoading,
+        loading: privateTappInstallLoading,
+        className: 'users-private-tapp-choice',
+      },
     ]
   }, [
     users,
     allowRegister,
     allowRegisterLoading,
     onAllowRegisterChange,
+    privateTappInstallPreset,
+    privateTappInstallLoading,
+    onPrivateTappInstallPresetChange,
     c.allowRegisterTitle,
     c.allowRegisterDesc,
+    c.privateTappInstallCleanupTitle,
+    c.privateTappInstallCleanupDesc,
+    c.privateTappInstallPreset7Short,
+    c.privateTappInstallPreset14Short,
+    c.privateTappInstallPresetLogoutShort,
     c.usersFilterAll,
     c.usersRoleAdmin,
     c.usersOnline,
@@ -618,6 +659,27 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
                 </div>
                 <div className="users-expand-block">
                   <div className="users-expand-block-title">
+                    {t.userModal.profileSourceTitle}
+                  </div>
+                  {/* 管理员替他人换头像来源；后端只接受该用户已有的来源，
+                      塞不进任意 URL，且会记一条审计日志 */}
+                  <AvatarSourcePicker
+                    userId={shown.id}
+                    onApplied={() => void loadUsers()}
+                  />
+                </div>
+                <div className="users-expand-block">
+                  <div className="users-expand-block-title">
+                    {t.userModal.profileTextSourceTitle}
+                  </div>
+                  {/* 名称/简介来源与头像独立；同站合并仅影响列表展示 */}
+                  <ProfileTextSourcePicker
+                    userId={shown.id}
+                    onApplied={() => void loadUsers()}
+                  />
+                </div>
+                <div className="users-expand-block">
+                  <div className="users-expand-block-title">
                     {c.usersInstalledTapps}
                   </div>
                   {tappBlock}
@@ -636,6 +698,9 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
       c,
       t.common?.copy,
       t.common?.copied,
+      t.userModal.profileSourceTitle,
+      t.userModal.profileTextSourceTitle,
+      loadUsers,
       formatDateTime,
       formatOnlineTotal,
       handleUnlinkIdentity,
@@ -683,10 +748,11 @@ export const UsersConfigSection: React.FC<UsersConfigSectionProps> = ({
             }
           >
             {user.avatar_url ? (
-              <img
+              <Avatar
                 className="managed-list-avatar"
                 src={user.avatar_url}
-                alt=""
+                name={user.display_name || user.username}
+                decorative
               />
             ) : (
               <span className="managed-list-avatar-fallback" aria-hidden>

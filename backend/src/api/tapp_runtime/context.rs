@@ -114,40 +114,27 @@ pub async fn get_context_user(
     let mut avatar_url: Option<String> = None;
 
     if user_id > 0 {
+        // 与 /api/auth/me 共用 services::avatar 的阶梯，两处不再各抄一份
+        let sql = format!(
+            r#"SELECT u.display_name, {avatar} AS avatar_url
+               FROM users u
+               WHERE u.id = $1
+               LIMIT 1"#,
+            avatar = crate::services::avatar::avatar_snapshot_expr("u"),
+        );
         if let Ok(Some(row)) = db
             .query_one(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
-                r#"SELECT display_name,
-                          COALESCE(
-                              NULLIF(
-                                  CASE
-                                      WHEN avatar_url LIKE 'https://ui-avatars.com/%'
-                                           OR avatar_url LIKE 'http://ui-avatars.com/%'
-                                      THEN NULL
-                                      ELSE avatar_url
-                                  END,
-                                  ''
-                              ),
-                              (
-                                  SELECT NULLIF(ui.avatar_url, '')
-                                  FROM user_identities ui
-                                  WHERE ui.user_id = users.id
-                                    AND ui.avatar_url IS NOT NULL
-                                    AND ui.avatar_url <> ''
-                                  ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
-                                  LIMIT 1
-                              ),
-                              NULLIF(avatar_url, '')
-                          ) AS avatar_url
-                   FROM users
-                   WHERE id = $1
-                   LIMIT 1"#,
+                sql,
                 [user_id.into()],
             ))
             .await
         {
             display_name = row.try_get("", "display_name").ok();
-            avatar_url = row.try_get("", "avatar_url").ok();
+            // tapp 沙箱同样只该拿到可显示地址（防盗链直链在 iframe 里一样裂）
+            avatar_url = crate::services::avatar::proxied_avatar(
+                row.try_get::<Option<String>>("", "avatar_url").ok().flatten(),
+            );
         }
     }
 

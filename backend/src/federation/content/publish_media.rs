@@ -1490,31 +1490,11 @@ async fn ensure_remote_actor_stub(
             if let Ok(Some(row)) = db
                 .query_one(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
-                    r#"SELECT display_name,
-                              COALESCE(
-                                  NULLIF(
-                                      CASE
-                                          WHEN avatar_url LIKE 'https://ui-avatars.com/%'
-                                               OR avatar_url LIKE 'http://ui-avatars.com/%'
-                                          THEN NULL
-                                          ELSE avatar_url
-                                      END,
-                                      ''
-                                  ),
-                                  (
-                                      SELECT NULLIF(ui.avatar_url, '')
-                                      FROM user_identities ui
-                                      WHERE ui.user_id = users.id
-                                        AND ui.avatar_url IS NOT NULL
-                                        AND ui.avatar_url <> ''
-                                      ORDER BY ui.is_primary DESC, ui.last_login_at DESC NULLS LAST, ui.linked_at DESC
-                                      LIMIT 1
-                                  ),
-                                  NULLIF(avatar_url, '')
-                              ) AS avatar_url
+                    format!(r#"SELECT display_name,
+                              {avatar} AS avatar_url
                        FROM users
                        WHERE username = $1
-                       LIMIT 1"#,
+                       LIMIT 1"#, avatar = crate::services::avatar::avatar_snapshot_expr("users")),
                     [uname.clone().into()],
                 ))
                 .await

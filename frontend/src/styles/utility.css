@@ -228,10 +228,13 @@
 }
 
 /* ============================================
-   Tapp app icon badge — standalone vs glyph shell
+   Tapp app icon — default material shell (replaces old Tailwind gradients)
+   Multi-color shells OK; inset highlight finish is consistent.
+   Glyph art always comes from app icon / iconSvg (no host redraw).
    ============================================ */
 .tapp-icon-badge--standalone {
   background: transparent !important;
+  box-shadow: none !important;
 }
 
 .tapp-icon-badge__media {
@@ -240,4 +243,67 @@
   height: 100%;
   object-fit: cover;
   border-radius: inherit;
+}
+
+/* Existing monochrome SVG / emoji: slightly larger glyph, shell size unchanged */
+.tapp-icon-badge__glyph {
+  display: block;
+  object-fit: contain;
+  /* ~+12% visual weight without growing the outer shell */
+  transform: scale(1.12);
+  transform-origin: center center;
+  /* Soften pure white glyph (Dock-like, not chalky) */
+  opacity: 0.86;
+  /* Prefer depth over bright rim — avoids large-page icons looking washed white */
+  filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 28%));
+}
+
+/* Full-color custom art on material shell (`iconShell: true`) — no monochrome wash */
+.tapp-icon-badge__inset-media {
+  display: block;
+  object-fit: contain;
+  transform: scale(1.08);
+  transform-origin: center center;
+  filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / 20%));
+}
+
+/*
+ * Dual-stop fill — light white lift / black depth baked into hue (subtle).
+ * No separate shine layer.
+ */
+.tapp-icon-shell--fill {
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--tapp-shell-a, #6366f1) 94%, #fff) 0%,
+    var(--tapp-shell-a, #6366f1) 48%,
+    color-mix(in srgb, var(--tapp-shell-b, #4f46e5) 95%, #000) 100%
+  );
+}
+
+/* Material rim: soft top highlight + bottom edge + outer depth */
+.tapp-icon-shell--material {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 18%),
+    inset 0 -1px 0 rgb(0 0 0 / 12%),
+    0 2px 8px rgb(0 0 0 / 14%) !important;
+}
+
+/* Default Tapp pages (list / detail / run): size + squircle only */
+.tapp-page-icon {
+  flex-shrink: 0;
+  overflow: hidden;
+  color: #fff;
+  border-radius: 22%;
+}
+.tapp-page-icon--md {
+  width: 3.5rem; /* ~w-14 */
+  height: 3.5rem;
+}
+.tapp-page-icon--sm {
+  width: 1.75rem; /* ~w-7 */
+  height: 1.75rem;
+}
+.tapp-page-icon--header {
+  width: 3rem;
+  height: 3rem;
 }

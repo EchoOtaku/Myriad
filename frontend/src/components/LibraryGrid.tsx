@@ -3770,13 +3770,13 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
               ref={containerRef}
               className={
                 layoutMode === 'canvas'
-                  ? 'fixed inset-0 z-0 h-dvh w-dvw overflow-hidden touch-none cursor-grab bg-white/5 dark:bg-black/5'
+                  ? // inset-0 铺满 fixed 视口；勿再写死 h-dvh（iOS 地址栏伸缩时会短一截）
+                    'fixed inset-0 z-0 min-h-lvh w-full overflow-hidden touch-none cursor-grab bg-white/5 dark:bg-black/5'
                   : 'relative w-full'
               }
               style={
                 layoutMode === 'canvas'
                   ? {
-                      height: '100dvh',
                       // Size/position painted via paintCanvasTransform for absolute follow.
                       backgroundImage:
                         'radial-gradient(circle, color-mix(in srgb, var(--text-color, currentColor) 18%, transparent) 1px, transparent 1.2px)',

@@ -8,7 +8,12 @@ import type { ReactNode } from 'react'
 import type { ToastType } from '../Toast'
 
 import type { PlatformAutoFetchConfig } from './PlatformAutoRefreshSettings'
-import { LuChevronLeft, LuDatabase, LuGripVertical } from '@lib/icons'
+import {
+  FaChartLine,
+  LuChevronLeft,
+  LuDatabase,
+  LuGripVertical,
+} from '@lib/icons'
 import React, {
 
   useCallback,
@@ -30,7 +35,8 @@ import {
   SettingSection,
   SettingTitleHelp,
   SetupFlow,
-  ToggleSwitch, useSettingGuide,
+  ToggleSwitch,
+  useSettingGuide,
 } from '../settings'
 import AiUsageSection from './AiUsageSection'
 import PlatformAutoRefreshSettings from './PlatformAutoRefreshSettings'
@@ -91,6 +97,9 @@ export interface PlatformsConfigSectionProps {
   /** 访客统计总开关（默认开启） */
   analyticsEnabled?: boolean
   onAnalyticsEnabledChange?: (enabled: boolean) => void
+  /** 第三方统计等 ui_config bag 字段读写（与访客开关同一保存路径） */
+  getUiFieldValue?: (key: string) => string
+  onUiFieldChange?: (key: string, value: string) => void
 }
 
 function isMaskedValue(value: string) {
@@ -303,9 +312,12 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
   onFocusPlatformConsumed,
   analyticsEnabled = true,
   onAnalyticsEnabledChange,
+  getUiFieldValue,
+  onUiFieldChange,
 }) => {
   const { t, locale } = useI18n()
   const { catalog: settingGuides, bindGuide } = useSettingGuide()
+  const g = settingGuides
   const dm = t.dataManagement
   const numberLocale =
     locale === 'zh-CN' ? 'zh-CN' : locale === 'ja-JP' ? 'ja-JP' : 'en-US'
@@ -484,6 +496,7 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
         detail={platformCapability}
         {...bindGuide('platforms.platformFields', settingGuides.platforms.platformFields)}
         headerLeading={
+          // 二级：回平台列表（覆盖移动端「回菜单」；列表层再由 onMobileBack 回菜单）
           <button
             type="button"
             className="section-header-back"
@@ -834,6 +847,60 @@ const PlatformsConfigSection: React.FC<PlatformsConfigSectionProps> = ({
           />
 
           <AiUsageSection showMessage={showMessage} />
+
+          {/* 第三方统计：数据及统计页最末，与本站第一方访客/AI 用量看板分开 */}
+          {getUiFieldValue && onUiFieldChange ? (
+            <SettingGroup
+              title={t.config.thirdPartyAnalytics}
+              description={t.config.thirdPartyAnalyticsDesc}
+              {...bindGuide(
+                'platforms.thirdPartyAnalytics',
+                g.platforms.thirdPartyAnalytics,
+              )}
+              icon={<FaChartLine />}
+            >
+              <InputItem
+                itemKey="ga_measurement_id"
+                label={t.config.fieldGaMeasurementId}
+                value={getUiFieldValue('ga_measurement_id')}
+                onChange={(v) => onUiFieldChange('ga_measurement_id', v.trim())}
+                placeholder={t.config.placeholderGaMeasurementId}
+                hint={t.config.fieldGaMeasurementIdHint}
+                {...bindGuide(
+                  'platforms.gaMeasurementId',
+                  g.platforms.gaMeasurementId,
+                )}
+                layout="vertical"
+              />
+              <InputItem
+                itemKey="umami_website_id"
+                label={t.config.fieldUmamiWebsiteId}
+                value={getUiFieldValue('umami_website_id')}
+                onChange={(v) => onUiFieldChange('umami_website_id', v.trim())}
+                placeholder={t.config.placeholderUmamiWebsiteId}
+                hint={t.config.fieldUmamiWebsiteIdHint}
+                {...bindGuide(
+                  'platforms.umamiWebsiteId',
+                  g.platforms.umamiWebsiteId,
+                )}
+                layout="vertical"
+              />
+              <InputItem
+                itemKey="umami_script_url"
+                label={t.config.fieldUmamiScriptUrl}
+                value={getUiFieldValue('umami_script_url')}
+                onChange={(v) => onUiFieldChange('umami_script_url', v.trim())}
+                placeholder={t.config.placeholderUmamiScriptUrl}
+                hint={t.config.fieldUmamiScriptUrlHint}
+                inputType="url"
+                {...bindGuide(
+                  'platforms.umamiScriptUrl',
+                  g.platforms.umamiScriptUrl,
+                )}
+                layout="vertical"
+              />
+            </SettingGroup>
+          ) : null}
         </div>
       </AutoHeight>
     </SettingSection>

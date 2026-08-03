@@ -9,7 +9,7 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import React, { lazy, Suspense, useEffect, useState } from 'react'
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import {
   BrowserRouter,
   Navigate,
@@ -34,6 +34,8 @@ import { isExlight, useAnimationLevel } from './hooks/useAnimationLevel'
 import { AppLayout } from './layouts/AppLayout'
 import { recordNavigation } from './router/navigationHistory'
 import { TappDataExchangeConsentHost } from './tapp/components/TappDataExchangeConsentHost'
+import { resolvePageRouteAnimation } from './tapp/routing/tappRouteMeta'
+import { tappRunPath } from './tapp/utils/tappPaths'
 import { preloadCriticalRoutes } from './utils/codeSplitting'
 import {
   canAccessModuleVisibility,
@@ -68,10 +70,10 @@ const Login = lazy(() => import('./views/Login.tsx'))
 const Register = lazy(() => import('./views/Register.tsx'))
 const Setup = lazy(() => import('./views/Setup.tsx'))
 
-// Tapp 页面
+// Tapp 页面（直连 pages，不再经 views 薄包装）
 const TappList = lazy(() => import('./tapp/pages/TappListPage.tsx'))
-const TappRun = lazy(() => import('./views/TappRunView.tsx'))
-const TappDetail = lazy(() => import('./views/TappDetailView.tsx'))
+const TappRun = lazy(() => import('./tapp/pages/TappRunPage.tsx'))
+const TappDetail = lazy(() => import('./tapp/pages/TappDetailPage.tsx'))
 const TappStore = lazy(() => import('./tapp/pages/TappStorePage.tsx'))
 const TappPlayground = lazy(
   () => import('./tapp/pages/TappPlaygroundPage.tsx'),
@@ -199,7 +201,7 @@ function GlobalAgentWindowHandler() {
             (typeof data?.tappId === 'string' ? data.tappId : undefined) ||
             (typeof data?.tapp_id === 'string' ? data.tapp_id : undefined)
           if (!id) return false
-          navigate(`/tapp/run/${encodeURIComponent(id)}`)
+          navigate(tappRunPath(id))
           return true
         }
         registerActionHandler(handler as never)
@@ -283,48 +285,57 @@ function SuspensePage({ children }: { children: React.ReactNode }) {
 
 /**
  * 带动画的页面包装器
- * 确保 AnimatePresence 直接包裹 motion 组件
+ * 策略来自 resolvePageRouteAnimation（tappRouteMeta）
  */
 function AnimatedPage({
   children,
   animationKey,
-  animationStyle,
+  variant,
+  style,
 }: {
   children: React.ReactNode
-  animationKey?: string
-  animationStyle?: 'normal' | 'fixed' | 'opacity-only'
+  animationKey: string
+  variant: 'page' | 'fixed' | 'detail'
+  style: 'normal' | 'fixed'
 }) {
-  const location = useLocation()
-  const style = animationStyle ?? 'normal'
+  const isFixed = style === 'fixed'
+  const isDetail = variant === 'detail'
   const animationConfig = useAnimationLevel()
   const animationsEnabled = !isExlight(animationConfig)
 
-  // 选择动画变体和包装样式
-  const variants = style === 'normal' ? pageVariants : fixedPageVariants
-  const wrapperStyle =
-    style === 'fixed'
-      ? { position: 'absolute' as const, inset: 0 }
-      : { width: '100%' }
+  // 离开 fixed 的那一帧仍用 sync，避免 run→list/detail 先白屏再进场
+  const wasFixedRef = useRef(isFixed)
+  const presenceMode =
+    isFixed || wasFixedRef.current ? ('sync' as const) : ('wait' as const)
+  useEffect(() => {
+    wasFixedRef.current = isFixed
+  }, [isFixed])
 
-  // /tapp/run 自带 fixed 全屏壳：不要做 opacity 进场动画。
-  // WebKit 在「opacity 动画祖先 + overflow:hidden」链上嵌套 iframe 时会出现
-  // 合成层 bug（内容看得见/DOM 在但点不到，或干脆不绘制）。原先用 body portal
-  // 规避绘制，却引入几何同步与命中错乱，移动端表现为「摸得到但不触发交互」。
-  // 去掉页面级 opacity 后，iframe 可安全内联，触摸链路恢复正常。
-  if (style === 'fixed') {
-    return (
-      <div key={animationKey ?? location.pathname} style={wrapperStyle}>
-        {children}
-      </div>
-    )
-  }
+  const variants =
+    variant === 'fixed'
+      ? fixedPageVariants
+      : variant === 'detail'
+        ? detailPageVariants
+        : pageVariants
+  const wrapperStyle = isFixed
+    ? ({
+        position: 'absolute' as const,
+        inset: 0,
+        zIndex: 20,
+        // 详情是可滚动设置页；run/store 自管 overflow
+        ...(isDetail ? { overflow: 'auto' as const } : {}),
+      } as const)
+    : ({ width: '100%', position: 'relative' as const } as const)
 
   return (
-    <AnimatePresence mode="wait">
+    <AnimatePresence mode={presenceMode} initial={false}>
       <motion.div
-        key={animationKey ?? location.pathname}
+        key={animationKey}
         variants={animationsEnabled ? variants : undefined}
-        initial={animationsEnabled ? 'initial' : false}
+        // fixed / detail 进场：不播页面级 initial（壳层自管）
+        initial={
+          animationsEnabled && !isFixed && !isDetail ? 'initial' : false
+        }
         animate={animationsEnabled ? 'enter' : undefined}
         exit={animationsEnabled ? 'exit' : undefined}
         style={wrapperStyle}
@@ -337,6 +348,7 @@ function AnimatedPage({
 
 /**
  * 页面动画配置 - 普通页面（带 transform）
+ * exit 偏淡出、少位移，叠在 Tapp 壳下时不显得「闪一下没了」
  */
 const pageVariants = {
   initial: {
@@ -355,52 +367,41 @@ const pageVariants = {
   },
   exit: {
     opacity: 0,
-    y: -15,
-    scale: 0.98,
+    y: 8,
+    scale: 0.99,
     transition: {
-      duration: 0.25,
-      ease: [0.4, 0, 0.6, 1],
+      duration: 0.32,
+      ease: [0.4, 0, 0.2, 1],
     },
   },
 }
 
 /**
- * 🎯 Fixed 布局页面动画配置 - 只用 opacity，不用 transform
- * transform 会破坏 fixed 定位（fixed 元素会相对于有 transform 的祖先定位）
+ * Fixed 全屏壳：进退场由页内 useTappShellPresence 主责。
+ * 页面层 exit duration 0，避免「壳退完再淡一帧」双退。
+ * 禁止进场 opacity（WebKit + iframe）；禁止 transform（破坏子树 fixed）。
  */
 const fixedPageVariants = {
-  initial: {
-    opacity: 0,
-  },
+  initial: {},
   enter: {
-    opacity: 1,
-    transition: {
-      duration: 0.3,
-      ease: [0.22, 1, 0.36, 1],
-    },
+    transition: { duration: 0 },
   },
   exit: {
-    opacity: 0,
-    transition: {
-      duration: 0.2,
-      ease: [0.4, 0, 0.6, 1],
-    },
+    transition: { duration: 0 },
   },
 }
 
-/** Group SPA keys so sibling routes swap without exit→wait→enter blank frames. */
-function animationKeyForPath(pathname: string): string {
-  if (pathname.startsWith('/brew')) return '/brew'
-  // Full-screen Tapp shells keep their own key (fixed chrome, no shared list shell).
-  if (pathname.startsWith('/tapp/run')) return pathname
-  if (pathname === '/tapp/store' || pathname === '/tapp/playground') {
-    return pathname
-  }
-  // /tapp ↔ /tapp/detail/:id share the list shell — skip page-level remount wait.
-  if (pathname === '/tapp' || pathname.startsWith('/tapp/detail')) {
-    return '/tapp'
-  }
-  return pathname
+/**
+ * 详情：同上，壳层 presence 负责动效；页面层不二次淡出。
+ */
+const detailPageVariants = {
+  initial: {},
+  enter: {
+    transition: { duration: 0 },
+  },
+  exit: {
+    transition: { duration: 0 },
+  },
 }
 
 /**
@@ -408,36 +409,40 @@ function animationKeyForPath(pathname: string): string {
  */
 function AppRoutes() {
   const location = useLocation()
-
-  // 动画风格选择：
-  // - 'fixed': 绝对定位包装器（仅 tapp/run 等自带 fixed 全屏布局的页面）
-  // - 'normal': 正常页面（带 transform 动画）
-  const animationStyle: 'normal' | 'fixed' | 'opacity-only' =
-    location.pathname.startsWith('/tapp/run') ||
-    location.pathname === '/tapp/store'
-      ? 'fixed'
-      : 'normal'
-
-  // 动画分组 key：同组路由之间不触发 exit/enter 动画，避免白屏间隙。
-  const animationKey = animationKeyForPath(location.pathname)
+  const routeAnim = resolvePageRouteAnimation(location.pathname)
 
   // 原子化调度器：在路由变化时自动管理页面生命周期
-  // 这会在路由切换时清理旧页面的订阅并初始化新页面
   useRouteScheduler()
 
-  // 记录每次路由变化
-  // 页面动画状态由 AnimatedView 中的 usePageTransition 自动管理
   useEffect(() => {
     recordNavigation(location.pathname)
   }, [location.pathname])
 
-  // 路由切换时恢复到顶部
+  // 路由切换时恢复到顶部（fixed 叠化目的页 skipScroll）
   useEffect(() => {
+    if (routeAnim.skipScroll) return
     window.scrollTo(0, 0)
-  }, [location.pathname])
+  }, [location.pathname, routeAnim.skipScroll])
+
+  // fixed 叠化时给 main 撑 min-height；离开后短延迟再摘，避免 exit 帧 main 塌缩
+  useEffect(() => {
+    const root = document.documentElement
+    if (routeAnim.style === 'fixed') {
+      root.setAttribute('data-tapp-overlay', '')
+      return
+    }
+    const timer = window.setTimeout(() => {
+      root.removeAttribute('data-tapp-overlay')
+    }, 420)
+    return () => window.clearTimeout(timer)
+  }, [routeAnim.style])
 
   return (
-    <AnimatedPage animationStyle={animationStyle} animationKey={animationKey}>
+    <AnimatedPage
+      animationKey={routeAnim.key}
+      style={routeAnim.style}
+      variant={routeAnim.variant}
+    >
       <Routes location={location}>
         <Route
           path="/"

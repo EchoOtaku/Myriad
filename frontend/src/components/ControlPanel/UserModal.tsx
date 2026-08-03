@@ -15,8 +15,12 @@ import { TappIconBadge } from '../../tapp/components/TappIconBadge'
 import { getRecentTapps, listTapps } from '../../tapp/services/TappLifecycleApi'
 import { resolveManifestText } from '../../tapp/utils/manifestLocale'
 import { getTappIconStyle } from '../../tapp/utils/tappColors'
+import { TAPP_LIST_PATH, tappRunPath } from '../../tapp/utils/tappPaths'
 import { getCSRFToken } from '../../utils/csrf'
 import { normalizeOAuthIconUrl } from '../../utils/oauthIcons'
+import { Avatar } from '../Avatar'
+import { AvatarSourcePicker } from '../AvatarSourcePicker'
+import { ProfileTextSourcePicker } from '../ProfileTextSourcePicker'
 import OAuthIconImage from '../OAuthIconImage'
 import { Spinner } from '../Spinner'
 import '../UserModal.css'
@@ -39,7 +43,8 @@ interface OAuthIdentity {
 
 interface UserInfo {
   name: string
-  avatar: string
+  /** 可能为空：<Avatar> 负责本地兜底，后端不再编造 ui-avatars 地址 */
+  avatar: string | null
   bio: string
   platform: string
 }
@@ -77,10 +82,6 @@ export const UserModal: FC<UserModalProps> = ({
   const [page, setPage] = useState<
     'main' | 'oauth' | 'password' | 'profileSource'
   >('main')
-  const [profileSelectingId, setProfileSelectingId] = useState<number | null>(
-    null,
-  )
-  const [profileSourceError, setProfileSourceError] = useState('')
   // 是否已有本地密码：有 → 修改密码；没有（纯 OAuth 账户）→ 设置密码
   // 旧版后端没有 has_password 字段时按 auth_provider 兜底
   const [hasPassword, setHasPassword] = useState(
@@ -101,16 +102,31 @@ export const UserModal: FC<UserModalProps> = ({
   const contentRef = useRef<HTMLDivElement>(null)
   const [modalHeight, setModalHeight] = useState<number>()
 
-  // 跟随内容高度，让主页/二级页切换（及内容加载）时的高度变化有过渡动画
+  // 与 UserModal.css 的 max-height（85vh / 移动端 90vh）保持一致
+  const getModalMaxHeightPx = useCallback(() => {
+    if (typeof window === 'undefined') return Number.POSITIVE_INFINITY
+    const mobile = window.matchMedia('(max-width: 640px)').matches
+    return window.innerHeight * (mobile ? 0.9 : 0.85)
+  }, [])
+
+  // 跟随内容高度，让主页/二级页切换（及内容加载）时的高度变化有过渡动画。
+  // 内容超过 max-height 时取 min(natural, max)，外层封顶、内层 .user-modal-inner 滚动。
   useEffect(() => {
     const el = contentRef.current
     if (!el) return
-    const observer = new ResizeObserver(() => {
-      setModalHeight(el.offsetHeight)
-    })
+    const updateHeight = () => {
+      const natural = el.scrollHeight
+      setModalHeight(Math.min(natural, getModalMaxHeightPx()))
+    }
+    updateHeight()
+    const observer = new ResizeObserver(updateHeight)
     observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
+    window.addEventListener('resize', updateHeight)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', updateHeight)
+    }
+  }, [getModalMaxHeightPx])
 
   // 加载可用 provider 与当前用户已绑定的 identities
   const loadOAuthBindings = useCallback(async () => {
@@ -270,52 +286,10 @@ export const UserModal: FC<UserModalProps> = ({
     setPage('main')
     setOAuthError('')
     setPasswordError('')
-    setProfileSourceError('')
-    setProfileSelectingId(null)
   }
 
   const openProfileSource = () => {
-    if (identities.length === 0 && linkedProviders.length === 0) return
-    setProfileSourceError('')
     setPage('profileSource')
-    void loadOAuthBindings()
-  }
-
-  const handleSelectProfileSource = async (identity: OAuthIdentity) => {
-    if (identity.is_primary || profileSelectingId != null) return
-    setProfileSourceError('')
-    setProfileSelectingId(identity.id)
-    try {
-      const csrfToken = await getCSRFToken()
-      if (!csrfToken) {
-        setProfileSourceError(t.userModal.cannotGetCsrf)
-        return
-      }
-      const response = await fetch(
-        `${API_URL}/api/auth/identities/${identity.id}/primary`,
-        {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'X-CSRF-Token': csrfToken },
-        },
-      )
-      if (!response.ok) {
-        const body = await response.json().catch(() => null)
-        setProfileSourceError(
-          (typeof body?.message === 'string' && body.message) ||
-            (typeof body?.error === 'string' && body.error) ||
-            t.userModal.profileSourceFailed,
-        )
-        return
-      }
-      await loadOAuthBindings()
-      onProfileApplied?.()
-      setPage('main')
-    } catch {
-      setProfileSourceError(t.userModal.networkError)
-    } finally {
-      setProfileSelectingId(null)
-    }
   }
 
   // 解绑某个 OAuth identity
@@ -514,11 +488,11 @@ export const UserModal: FC<UserModalProps> = ({
   }
 
   const handleTappClick = (tappId: string) => {
-    goFromPanel(`/tapp/run/${tappId}`)
+    goFromPanel(tappRunPath(tappId))
   }
 
   const handleViewAllTapps = () => {
-    goFromPanel('/tapp')
+    goFromPanel(TAPP_LIST_PATH)
   }
 
   return (
@@ -577,7 +551,7 @@ export const UserModal: FC<UserModalProps> = ({
                 {page === 'oauth'
                   ? t.userModal.oauthBindings
                   : page === 'profileSource'
-                    ? t.userModal.profileSourceTitle
+                    ? t.userModal.profileDisplaySourcesTitle
                     : hasPassword
                       ? t.userModal.changePassword
                       : t.userModal.setPassword}
@@ -586,74 +560,28 @@ export const UserModal: FC<UserModalProps> = ({
 
             {page === 'profileSource' ? (
               <div className="user-modal-page-body">
-                <p className="user-modal-profile-source-hint">
-                  {t.userModal.profileSourceHint}
-                </p>
-                {oauthLoading && identities.length === 0 ? (
-                  <p className="user-modal-oauth-empty">…</p>
-                ) : identities.length === 0 ? (
-                  <p className="user-modal-oauth-empty">
-                    {t.userModal.profileSourceEmpty}
-                  </p>
-                ) : (
-                  <ul className="user-modal-profile-source-list">
-                    {identities.map((identity) => {
-                      const name = providerDisplayName(identity.provider)
-                      const avatar =
-                        identity.avatar_url ||
-                        `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                          identity.provider_username || name,
-                        )}&size=64&background=6366f1&color=fff`
-                      const selecting = profileSelectingId === identity.id
-                      return (
-                        <li key={identity.id}>
-                          <button
-                            type="button"
-                            className={`user-modal-profile-source-row ${identity.is_primary ? 'is-primary' : ''}`}
-                            disabled={selecting || profileSelectingId != null}
-                            onClick={() =>
-                              void handleSelectProfileSource(identity)
-                            }
-                          >
-                            <img
-                              src={avatar}
-                              alt=""
-                              className="user-modal-profile-source-avatar"
-                              onError={(e) => {
-                                e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=64&background=6366f1&color=fff`
-                              }}
-                            />
-                            <span className="user-modal-profile-source-info">
-                              <span className="user-modal-profile-source-name">
-                                {name}
-                                {identity.is_primary && (
-                                  <span className="user-modal-profile-source-current">
-                                    {t.userModal.profileSourceCurrent}
-                                  </span>
-                                )}
-                              </span>
-                              {identity.provider_username && (
-                                <span className="user-modal-profile-source-sub">
-                                  @{identity.provider_username}
-                                </span>
-                              )}
-                            </span>
-                            {selecting ? (
-                              <Spinner size="sm" />
-                            ) : identity.is_primary ? (
-                              <span className="user-modal-profile-source-check">
-                                ✓
-                              </span>
-                            ) : null}
-                          </button>
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-                {profileSourceError && (
-                  <p className="user-modal-oauth-error">{profileSourceError}</p>
-                )}
+                {/* 两套来源分开管理：切头像不改文案，切文案不改头像 */}
+                <section className="user-modal-profile-source-section">
+                  <h4 className="user-modal-profile-source-section-title">
+                    {t.userModal.profileSourceTitle}
+                  </h4>
+                  <AvatarSourcePicker
+                    onApplied={() => {
+                      void loadOAuthBindings()
+                      onProfileApplied?.()
+                    }}
+                  />
+                </section>
+                <section className="user-modal-profile-source-section">
+                  <h4 className="user-modal-profile-source-section-title">
+                    {t.userModal.profileTextSourceTitle}
+                  </h4>
+                  <ProfileTextSourcePicker
+                    onApplied={() => {
+                      onProfileApplied?.()
+                    }}
+                  />
+                </section>
               </div>
             ) : page === 'oauth' ? (
               <div className="user-modal-page-body">
@@ -847,38 +775,26 @@ export const UserModal: FC<UserModalProps> = ({
               {/* 装饰背景 */}
               <div className="user-modal-hero-bg" />
 
-              {/* 头像：有 OAuth 绑定时可点击选择画像源 */}
+              {/* 头像：点击选择画像源。
+                  这里不再要求「已绑定 OAuth」—— 账号本身就是一个可选来源，
+                  站长还多出平台画像，所以任何人都有得选。 */}
               <div className="user-modal-avatar-wrapper">
-                {identities.length > 0 || linkedProviders.length > 0 ? (
-                  <button
-                    type="button"
-                    className="user-modal-avatar-btn"
-                    onClick={openProfileSource}
-                    title={t.userModal.profileSourceTitle}
-                    aria-label={t.userModal.profileSourceTitle}
-                  >
-                    <img
-                      src={userInfo.avatar}
-                      alt={userInfo.name}
-                      className="user-modal-avatar-lg"
-                      onError={(e) => {
-                        e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name)}&size=128&background=6366f1&color=fff`
-                      }}
-                    />
-                    <span className="user-modal-avatar-edit-hint">
-                      {t.userModal.profileSourceAvatarHint}
-                    </span>
-                  </button>
-                ) : (
-                  <img
+                <button
+                  type="button"
+                  className="user-modal-avatar-btn"
+                  onClick={openProfileSource}
+                  title={t.userModal.profileSourceTitle}
+                  aria-label={t.userModal.profileSourceTitle}
+                >
+                  <Avatar
                     src={userInfo.avatar}
-                    alt={userInfo.name}
+                    name={userInfo.name}
                     className="user-modal-avatar-lg"
-                    onError={(e) => {
-                      e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(userInfo.name)}&size=128&background=6366f1&color=fff`
-                    }}
                   />
-                )}
+                  <span className="user-modal-avatar-edit-hint">
+                    {t.userModal.profileSourceAvatarHint}
+                  </span>
+                </button>
                 {/* 在线状态指示器 */}
                 <div className="user-modal-online-dot" />
               </div>
@@ -886,6 +802,11 @@ export const UserModal: FC<UserModalProps> = ({
               {/* 用户名和角色 */}
               <div className="user-modal-identity">
                 <h3 className="user-modal-username">{userInfo.name}</h3>
+                {/* 真实本地账号名：面板上方显示的是平台昵称（站点形象），
+                    和登录用的账号不是一回事，这里明确标出来 */}
+                {user.username && user.username !== userInfo.name && (
+                  <p className="user-modal-account-name">@{user.username}</p>
+                )}
                 <div className="user-modal-badges">
                   {/* 角色徽章 */}
                   <span
@@ -1059,23 +980,17 @@ export const UserModal: FC<UserModalProps> = ({
                           icon={tapp.icon}
                           iconSvg={tapp.iconSvg}
                           name={tappName}
+                          id={tapp.id}
                           themeColor={tapp.themeColor}
                           iconStyle={getTappIconStyle({
                             icon: tapp.icon,
                             iconSvg: tapp.iconSvg,
                             themeColor: tapp.themeColor,
+                            id: tapp.id,
                           })}
                           shellClassName="user-modal-tapp-icon"
                           glyphSizeClass="w-4 h-4"
                           glyphTextClass="text-base"
-                          shine={false}
-                          style={
-                            tapp.themeColor
-                              ? {
-                                  background: `linear-gradient(135deg, ${tapp.themeColor}30 0%, ${tapp.themeColor}40 100%)`,
-                                }
-                              : undefined
-                          }
                         />
                         <span className="user-modal-tapp-name">
                           {tappName}

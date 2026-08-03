@@ -152,6 +152,28 @@ pub(super) fn build_base_api_router(
             post(api::oauth::set_primary_identity)
                 .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
         )
+        // 画像源：账号 / OAuth 身份 /（站长）平台画像，选定后全站出口同步
+        .route(
+            "/api/users/me/avatar-sources",
+            get(api::avatar_source::list_my_avatar_sources)
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/api/users/me/avatar-source",
+            axum::routing::put(api::avatar_source::set_my_avatar_source)
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
+        )
+        // 名称/简介文案来源（与画像源独立；auto / account / platform / identity）
+        .route(
+            "/api/users/me/profile-text-sources",
+            get(api::profile_text_source::list_my_profile_text_sources)
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
+        )
+        .route(
+            "/api/users/me/profile-text-source",
+            axum::routing::put(api::profile_text_source::set_my_profile_text_source)
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::auth_middleware)),
+        )
         .route(
             "/api/auth/change-password",
             post(api::auth_local::change_password)
@@ -174,6 +196,26 @@ pub(super) fn build_base_api_router(
         .route(
             "/api/admin/users/{id}/identities/{identity_id}",
             axum::routing::delete(api::admin_users::unlink_identity)
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
+        )
+        .route(
+            "/api/admin/users/{id}/avatar-sources",
+            get(api::avatar_source::list_user_avatar_sources)
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
+        )
+        .route(
+            "/api/admin/users/{id}/avatar-source",
+            axum::routing::put(api::avatar_source::set_user_avatar_source)
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
+        )
+        .route(
+            "/api/admin/users/{id}/profile-text-sources",
+            get(api::profile_text_source::list_user_profile_text_sources)
+                .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
+        )
+        .route(
+            "/api/admin/users/{id}/profile-text-source",
+            axum::routing::put(api::profile_text_source::set_user_profile_text_source)
                 .route_layer(from_fn_with_state(app_state.clone(), middleware::auth::admin_middleware)),
         )
         // Site public domain (BASE_URL / FRONTEND_URL / CORS) — not federation Move
@@ -288,6 +330,8 @@ pub(super) fn build_base_api_router(
         .route("/sitemap.xml", get(api::seo::sitemap_xml))
         .route("/api/seo/sitemap.xml", get(api::seo::sitemap_xml))
         .route("/robots.txt", get(api::seo::robots_txt))
+        .route("/llms.txt", get(api::seo::llms_txt))
+        .route("/api/seo/llms.txt", get(api::seo::llms_txt))
         .route(
             "/api/seo/tapp/{tapp_id}",
             get(api::seo::tapp_seo_summary),

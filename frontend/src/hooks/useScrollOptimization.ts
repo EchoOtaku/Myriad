@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { lockScroll } from '../utils/scrollLock'
 import { useSharedScroll } from './useSharedEventListener'
 
 interface ScrollOptimizationOptions {
@@ -210,6 +211,9 @@ export function useScrollDirection(): 'up' | 'down' | 'none' {
 /**
  * 使用滚动锁定
  * 在执行某些操作时锁定滚动
+ *
+ * 实现在 utils/scrollLock：本站滚动容器是 html 而非 body，
+ * 这里曾只改 body.style.overflow —— 建了个 BFC，页面照滚。
  */
 export function useScrollLock(): {
   isLocked: boolean
@@ -217,31 +221,27 @@ export function useScrollLock(): {
   unlock: () => void
 } {
   const [isLocked, setIsLocked] = useState(false)
-  const originalStyle = useRef<string>('')
+  const release = useRef<(() => void) | null>(null)
 
   const lock = useCallback(() => {
-    if (typeof document === 'undefined') return
-
-    originalStyle.current = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    if (release.current) return
+    release.current = lockScroll()
     setIsLocked(true)
   }, [])
 
   const unlock = useCallback(() => {
-    if (typeof document === 'undefined') return
-
-    document.body.style.overflow = originalStyle.current
+    release.current?.()
+    release.current = null
     setIsLocked(false)
   }, [])
 
   // 组件卸载时恢复
   useEffect(() => {
     return () => {
-      if (isLocked && typeof document !== 'undefined') {
-        document.body.style.overflow = originalStyle.current
-      }
+      release.current?.()
+      release.current = null
     }
-  }, [isLocked])
+  }, [])
 
   return { isLocked, lock, unlock }
 }

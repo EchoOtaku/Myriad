@@ -1,22 +1,19 @@
 /**
  * Tapp 商店正式页面
  *
- * 壳层对齐运行页：顶栏 chrome（返回 / 标题 / 多窗口 / 全屏），不另做移动顶栏。
- * 内容为宿主面板；多窗口走 myriad:host.store。
+ * 壳层：TappAppShell（与 run 同构）；单树布局，全屏只切 fixed。
+ * 多窗口统一走 /tapp/run/:hostStoreId?multi=true（不在本页挂 WindowManager）。
  */
 
-import type { CSSProperties } from 'react'
-import { FaArrowLeft, FaCompress, FaExpand, FaTh } from '@lib/icons'
+import { FaCompress, FaExpand, FaTh } from '@lib/icons'
 import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useCallback, useMemo, useState } from 'react'
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { useI18n } from '../../contexts/I18nContext'
-import { useNavigation } from '../../contexts/NavigationContext'
 import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { usePageSeo } from '../../hooks/usePageSeo'
 import { useBreakpoints } from '../../hooks/useSharedEventListener'
@@ -24,25 +21,29 @@ import {
   canAccessModuleVisibility,
   useModuleVisibilityPreferences,
 } from '../../utils/moduleVisibility'
+import { isWebKit } from '../../utils/platformDetect'
+import { TappAppShell } from '../components/TappAppShell'
 import { TappIcon } from '../components/TappIcon'
 import { TappStore } from '../components/TappStore'
-import { TappWindowManager } from '../components/TappWindowManager'
 import { HOST_PANEL_STORE_ID } from '../constants/hostPanels'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
-import { isWebKit } from '../runtime/TappPageSandbox'
+import { useTappFullscreenChrome } from '../hooks/useTappFullscreenChrome'
+import { useTappShellClose } from '../hooks/useTappShellClose'
+import { useTappShellPresence } from '../hooks/useTappShellPresence'
 import { buildTappStorePageSeo } from '../utils/tappPageSeo'
+import { TAPP_LIST_PATH, tappRunPath } from '../utils/tappPaths'
 
 export function TappStorePage() {
   const [searchParams] = useSearchParams()
   const { isMobile } = useBreakpoints()
-  const multiParam = searchParams.get('multi') === 'true' && !isWebKit
-  const navigate = useNavigate()
-
-  if (multiParam && !isMobile) {
+  // 多窗统一入口：/tapp/run/:storeHost?multi=true（Run 页挂 WindowManager）
+  const wantsMulti =
+    searchParams.get('multi') === 'true' && !isWebKit && !isMobile
+  if (wantsMulti) {
     return (
-      <TappWindowManager
-        initialTappId={HOST_PANEL_STORE_ID}
-        onBack={() => navigate('/tapp')}
+      <Navigate
+        to={tappRunPath(HOST_PANEL_STORE_ID, { multi: true })}
+        replace
       />
     )
   }
@@ -53,7 +54,6 @@ export function TappStorePage() {
 function TappStorePageStandard({ isMobile }: { isMobile: boolean }) {
   const navigate = useNavigate()
   const { t } = useI18n()
-  const { setImmersiveMode } = useNavigation()
   const animConfig = useAnimationLevel()
   const noAnimation = isExlight(animConfig)
   const { preferences: moduleVisibility } = useModuleVisibilityPreferences()
@@ -63,6 +63,9 @@ function TappStorePageStandard({ isMobile }: { isMobile: boolean }) {
   )
 
   const [isFullscreen, setIsFullscreen] = useState(false)
+  useTappFullscreenChrome(isFullscreen, setIsFullscreen, {
+    enableEscape: true,
+  })
 
   usePageSeo(
     useMemo(
@@ -76,26 +79,45 @@ function TappStorePageStandard({ isMobile }: { isMobile: boolean }) {
     ),
   )
 
-  useEffect(() => {
-    setImmersiveMode(isFullscreen)
-    return () => setImmersiveMode(false)
-  }, [isFullscreen, setImmersiveMode])
+  const {
+    requestClose,
+    shellClassName,
+    scrimClassName,
+    shellStyle,
+    onShellAnimationEnd,
+    isExiting,
+  } = useTappShellPresence({
+    enabled: !isFullscreen,
+    fade: true,
+  })
+  const presence = useMemo(
+    () => ({
+      shellClassName,
+      scrimClassName,
+      shellStyle,
+      onShellAnimationEnd,
+      isExiting,
+    }),
+    [
+      shellClassName,
+      scrimClassName,
+      shellStyle,
+      onShellAnimationEnd,
+      isExiting,
+    ],
+  )
 
-  useEffect(() => {
-    if (!isFullscreen) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        setIsFullscreen(false)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [isFullscreen])
-
-  const goBack = useCallback(() => navigate('/tapp'), [navigate])
+  const navigateHome = useCallback(() => {
+    navigate(TAPP_LIST_PATH)
+  }, [navigate])
+  const goBack = useTappShellClose({
+    isFullscreen,
+    setIsFullscreen,
+    requestClose,
+    onClosed: navigateHome,
+  })
   const openMulti = useCallback(() => {
-    navigate(`/tapp/run/${encodeURIComponent(HOST_PANEL_STORE_ID)}?multi=true`)
+    navigate(tappRunPath(HOST_PANEL_STORE_ID, { multi: true }))
   }, [navigate])
   const toggleFullscreen = useCallback(() => {
     setIsFullscreen((v) => !v)
@@ -103,12 +125,6 @@ function TappStorePageStandard({ isMobile }: { isMobile: boolean }) {
 
   const transitions = useMemo(
     () => ({
-      chrome: {
-        type: 'spring' as const,
-        stiffness: 350,
-        damping: 32,
-        mass: 0.8,
-      },
       toolbar: animConfig.spring
         ? { type: 'spring' as const, stiffness: 320, damping: 28 }
         : {
@@ -118,36 +134,6 @@ function TappStorePageStandard({ isMobile }: { isMobile: boolean }) {
     }),
     [animConfig.spring, animConfig.durationScale],
   )
-
-  // 普通模式内容区：对齐运行页沙箱定位；移动端底部给导航岛留白
-  const contentStyle = useMemo((): CSSProperties => {
-    if (isFullscreen) {
-      return {
-        position: 'fixed',
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-        zIndex: 1,
-      }
-    }
-    // Horizontal inset must match the chrome column padding below
-    // (px-3.5 / sm:px-4 / md:px-6) so the content shell lines up with
-    // the glass title bar edges. Do not drift from those Tailwind steps.
-    return {
-      position: 'absolute',
-      top: 'calc(5rem + 46px)',
-      right: isMobile ? '0.875rem' : '1rem',
-      bottom: isMobile
-        ? 'max(5.25rem, calc(env(safe-area-inset-bottom, 0px) + 4.25rem))'
-        : '1.5rem',
-      left: isMobile ? '0.875rem' : '1rem',
-      zIndex: 1,
-      maxWidth: '72rem',
-      marginLeft: 'auto',
-      marginRight: 'auto',
-    }
-  }, [isFullscreen, isMobile])
 
   const fsToolbar = (
     <AnimatePresence>
@@ -164,7 +150,6 @@ function TappStorePageStandard({ isMobile }: { isMobile: boolean }) {
               : 'opacity-0 hover:opacity-100 focus-within:opacity-100'
           }`}
           style={{
-            // Match store fullscreen content pad (safe-area + floating strip).
             top: 'max(1rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))',
             left: 'max(1rem, env(safe-area-inset-left, 0px))',
           }}
@@ -203,115 +188,71 @@ function TappStorePageStandard({ isMobile }: { isMobile: boolean }) {
   )
 
   return (
-    <div
-      data-tapp-store-shell=""
-      style={{
-        position: 'fixed',
-        inset: 0,
-        overflow: 'hidden',
-        zIndex: 40,
-      }}
-    >
-      {isWebKit ? createPortal(fsToolbar, document.body) : fsToolbar}
-
-      {/* 与运行页一致的 chrome（全屏时淡出） */}
-      <motion.div
-        className="pointer-events-none absolute inset-0 flex flex-col overflow-hidden"
-        initial={noAnimation ? false : { opacity: 0, y: 24, scale: 0.98 }}
-        animate={{
-          opacity: isFullscreen ? 0 : 1,
-          y: isFullscreen ? -24 : 0,
-          scale: isFullscreen ? 0.96 : 1,
-        }}
-        transition={noAnimation ? undefined : transitions.chrome}
-        style={{ pointerEvents: isFullscreen ? 'none' : undefined }}
-      >
-        <div className="h-20 shrink-0" />
-
-        <div className="flex min-h-0 flex-1 flex-col px-3.5 pb-5 sm:px-4 md:px-6">
-          <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col">
-            {/* 头部卡片 — 与运行页同一套 glass 顶栏 */}
-            <div className="glass pointer-events-auto flex min-h-11 shrink-0 items-center justify-between gap-2 rounded-t-xl px-3.5 py-2 shadow-sm sm:px-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <motion.button
-                  onClick={goBack}
-                  className="shrink-0 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-neutral-700 dark:hover:text-gray-300"
-                  title={t.tapp.back}
-                  aria-label={t.tapp.backToAppList}
-                  whileHover={noAnimation ? undefined : { scale: 1.1, x: -2 }}
-                  whileTap={noAnimation ? undefined : { scale: 0.9 }}
-                >
-                  <FaArrowLeft className="h-4 w-4" />
-                </motion.button>
-
-                <div className="flex min-w-0 items-center gap-2">
-                  <div className="flex shrink-0 items-center justify-center">
-                    <TappIcon
-                      icon={TAPP_ICON_TOKENS.store}
-                      name={t.tapp.storeTitle}
-                      sizeClass="w-5 h-5"
-                    />
-                  </div>
-                  <span className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
-                    {t.tapp.storeTitle}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-1">
-                {!isMobile && !isWebKit && (
-                  <motion.button
-                    onClick={openMulti}
-                    className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
-                    title={t.tapp.multiWindow}
-                    whileHover={noAnimation ? undefined : { scale: 1.15 }}
-                    whileTap={noAnimation ? undefined : { scale: 0.9 }}
-                  >
-                    <FaTh className="h-3.5 w-3.5" />
-                  </motion.button>
-                )}
-                <motion.button
-                  onClick={toggleFullscreen}
-                  className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-neutral-700 dark:hover:text-gray-300"
-                  title={t.tapp.fullscreen}
-                  whileHover={noAnimation ? undefined : { scale: 1.15 }}
-                  whileTap={noAnimation ? undefined : { scale: 0.9 }}
-                >
-                  <FaExpand className="h-3.5 w-3.5" />
-                </motion.button>
-              </div>
-            </div>
-
-            {/* 占位，真实内容绝对定位叠在下方 */}
-            <div className="min-h-0 flex-1 rounded-b-xl" aria-hidden />
+    <TappAppShell
+      shellAttr="data-tapp-store-shell"
+      isMobile={isMobile}
+      isFullscreen={isFullscreen}
+      presence={presence}
+      fullscreenToolbar={fsToolbar}
+      onBack={goBack}
+      backTitle={t.tapp.back}
+      backAriaLabel={t.tapp.backToAppList}
+      contentClassName={
+        isFullscreen ? undefined : 'tapp-store-standard-content shadow-sm'
+      }
+      headerLeading={
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="flex shrink-0 items-center justify-center">
+            <TappIcon
+              icon={TAPP_ICON_TOKENS.store}
+              name={t.tapp.storeTitle}
+              sizeClass="w-5 h-5"
+            />
           </div>
+          <span className="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
+            {t.tapp.storeTitle}
+          </span>
         </div>
-      </motion.div>
-
-      {/* 商店内容：与运行页沙箱同层，全屏/普通只切定位 */}
+      }
+      headerActions={
+        <div className="flex shrink-0 items-center gap-1">
+          {!isMobile && !isWebKit && (
+            <motion.button
+              onClick={openMulti}
+              className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
+              title={t.tapp.multiWindow}
+              whileHover={noAnimation ? undefined : { scale: 1.15 }}
+              whileTap={noAnimation ? undefined : { scale: 0.9 }}
+            >
+              <FaTh className="h-3.5 w-3.5" />
+            </motion.button>
+          )}
+          <motion.button
+            onClick={toggleFullscreen}
+            className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-neutral-700 dark:hover:text-gray-300"
+            title={t.tapp.fullscreen}
+            whileHover={noAnimation ? undefined : { scale: 1.15 }}
+            whileTap={noAnimation ? undefined : { scale: 0.9 }}
+          >
+            <FaExpand className="h-3.5 w-3.5" />
+          </motion.button>
+        </div>
+      }
+    >
       <div
-        className={`pointer-events-auto overflow-hidden transition-[border-radius] duration-300 ease-out ${
+        className={`h-full overflow-hidden ${
           isFullscreen
-            ? 'rounded-none'
-            : 'tapp-store-standard-content rounded-b-xl shadow-sm'
+            ? 'bg-[var(--bg-primary)]'
+            : 'tapp-store-frame--wallpaper'
         }`}
-        style={contentStyle}
       >
-        <div
-          className={`h-full overflow-hidden ${
-            isFullscreen
-              ? 'bg-[var(--bg-primary)]'
-              : 'tapp-store-frame--wallpaper'
-          }`}
-        >
-          <TappStore
-            className="h-full"
-            embeddedChrome
-            fullscreen={isFullscreen}
-          />
-        </div>
+        <TappStore
+          className="h-full"
+          embeddedChrome
+          fullscreen={isFullscreen}
+        />
       </div>
-    </div>
+    </TappAppShell>
   )
 }
 

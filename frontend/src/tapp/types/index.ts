@@ -93,6 +93,12 @@ export interface TappManifest {
   /** 内联 SVG 图标代码（优先于 icon 字段） */
   iconSvg?: string
 
+  /**
+   * 可选：自定义全彩图 / 全彩 SVG 仍套 material 色壳（不铺满 standalone）。
+   * 默认 auto：bitmap / 非 currentColor SVG → standalone；currentColor SVG / emoji → 色壳。
+   */
+  iconShell?: boolean
+
   /** 主题色（十六进制，如 #6366f1） */
   themeColor?: string
 
@@ -399,6 +405,8 @@ export type TappPermission =
   | 'platform:read'
   | 'platform:write'
   | 'platform:register'
+  // 访问统计（聚合，无访客哈希）
+  | 'analytics:read'
   // AI 权限
   | 'ai:generate'
   | 'ai:analyze'
@@ -769,6 +777,13 @@ export interface TappMessage<T = unknown> {
   source?: string
 
   timestamp: number
+
+  /**
+   * iframe → host 消息的会话令牌（request / event 必填）。
+   * 仅存在于沙箱发出的消息；host → iframe 的 emit 不携带。
+   * 永远不是 Runtime Grant。
+   */
+  _sessionToken?: string
 }
 
 /** API 调用请求 */

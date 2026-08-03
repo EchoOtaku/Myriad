@@ -25,6 +25,7 @@ else goes to the frontend SPA). Match path-only (no query):
 | `/health` | Backend health |
 | `/sitemap.xml` | Public SEO sitemap (also `/api/seo/sitemap.xml`) |
 | `/robots.txt` | Dynamic robots with absolute Sitemap URL |
+| `/llms.txt` | AI-facing site index (when GEO policy allows) |
 | `/tapp/run/*` | **Crawler UA only** → backend SEO HTML shell; browsers → SPA |
 | `/brew/item/*` | **Crawler UA only** → own Brew articles SEO shell (`我` category); browsers → SPA |
 | `/api/seo/tapp/{id}` | Public Tapp share summary JSON |

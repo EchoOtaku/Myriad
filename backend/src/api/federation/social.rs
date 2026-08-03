@@ -1657,7 +1657,7 @@ pub(crate) async fn get_federation_timeline(
     let rows = db
         .query_all(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT t.activity_id, t.activity_type, t.object_type,
+            format!(r#"SELECT t.activity_id, t.activity_type, t.object_type,
                       t.content_preview, t.content_json, t.is_read, t.received_at,
                       ra.actor_url AS remote_actor_url,
                       ra.username AS remote_username,
@@ -1672,32 +1672,14 @@ pub(crate) async fn get_federation_timeline(
                           WHEN ra.id IS NOT NULL THEN
                               CASE
                                   WHEN peer.username IS NOT NULL
-                                       AND (
-                                           (peer.avatar_url IS NOT NULL AND peer.avatar_url <> ''
-                                            AND peer.avatar_url NOT LIKE 'https://ui-avatars.com/%'
-                                            AND peer.avatar_url NOT LIKE 'http://ui-avatars.com/%')
-                                           OR EXISTS (
-                                               SELECT 1 FROM user_identities ui
-                                               WHERE ui.user_id = peer.id
-                                                 AND ui.avatar_url IS NOT NULL AND ui.avatar_url <> ''
-                                           )
-                                       )
+                                       AND {peer_has_avatar}
                                   THEN $2 || '/users/' || peer.username || '/avatar'
                                   ELSE NULL
                               END
                           ELSE
                               CASE
                                   WHEN author.username IS NOT NULL
-                                       AND (
-                                           (author.avatar_url IS NOT NULL AND author.avatar_url <> ''
-                                            AND author.avatar_url NOT LIKE 'https://ui-avatars.com/%'
-                                            AND author.avatar_url NOT LIKE 'http://ui-avatars.com/%')
-                                           OR EXISTS (
-                                               SELECT 1 FROM user_identities ui
-                                               WHERE ui.user_id = author.id
-                                                 AND ui.avatar_url IS NOT NULL AND ui.avatar_url <> ''
-                                           )
-                                       )
+                                       AND {author_has_avatar}
                                   THEN $2 || '/users/' || author.username || '/avatar'
                                   ELSE NULL
                               END
@@ -1718,6 +1700,8 @@ pub(crate) async fn get_federation_timeline(
                  AND (t.activity_type IS NULL OR t.activity_type <> 'Like')
                ORDER BY t.received_at DESC
                LIMIT 50"#,
+                peer_has_avatar = crate::services::avatar::avatar_presence_expr("peer"),
+                author_has_avatar = crate::services::avatar::avatar_presence_expr("author")),
             [user_id.into(), base.into(), local_domain.clone().into()],
         ))
         .await

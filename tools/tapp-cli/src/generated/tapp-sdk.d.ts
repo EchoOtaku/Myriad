@@ -177,6 +177,10 @@ export interface TappSdk {
     [key: string]: unknown
   }
 
+  analytics: {
+    getSummary(...args: unknown[]): Promise<unknown> // permission: analytics:read
+    getVisitorCard(...args: unknown[]): Promise<unknown> // permission: analytics:read
+  }
   animation: {
     getConfig(...args: unknown[]): Promise<unknown>
     getLevel(...args: unknown[]): Promise<unknown>

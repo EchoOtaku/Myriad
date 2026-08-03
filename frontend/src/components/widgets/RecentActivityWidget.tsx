@@ -551,8 +551,23 @@ function platformConfigId(platform: string): string {
 }
 
 /**
+ * Raise rgba/rgb alpha so the bottom-left platform chip reads a bit stronger
+ * on activity card covers (report-card pills keep the lighter shared bgColor).
+ */
+function deepenPlatformChipColor(color: string, alphaScale = 1.85, maxAlpha = 0.42): string {
+  const m = color.match(
+    /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i,
+  )
+  if (!m) return color
+  const a = m[4] != null ? Number.parseFloat(m[4]) : 1
+  if (!Number.isFinite(a)) return color
+  const next = Math.min(maxAlpha, Math.max(0, a * alphaScale))
+  return `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${next})`
+}
+
+/**
  * Same as report-card CardLogoPill collapsed mark (bg / border / text / icon),
- * only smaller — do not invent alternate chrome.
+ * only smaller — slightly deeper chip fill for legibility on activity cards.
  */
 const PlatformLogoBadge = memo(
   ({ platform, compact }: { platform: string; compact: boolean }) => {
@@ -567,8 +582,8 @@ const PlatformLogoBadge = memo(
         style={{
           width: box,
           height: box,
-          background: config.bgColor,
-          border: `1px solid ${config.borderColor}`,
+          background: deepenPlatformChipColor(config.bgColor),
+          border: `1px solid ${deepenPlatformChipColor(config.borderColor, 1.35, 0.5)}`,
           fontSize: icon,
         }}
       >

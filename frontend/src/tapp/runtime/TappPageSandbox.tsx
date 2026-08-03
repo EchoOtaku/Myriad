@@ -53,6 +53,7 @@ import {
   registerFileHandlers,
   registerLifecycleHandlers,
   registerMediaHandlers,
+  registerAnalyticsHandlers,
   registerPlatformHandlers,
   registerReportHandlers,
   registerSchedulerHandlers,
@@ -158,6 +159,7 @@ function generateHeadlessCoreHTML(
     window._TAPP_HAS_HTML = false;
     window._TAPP_HEADLESS = true;
     window._TAPP_LOCALE = ${serializeSandboxScriptValue(locale)};
+    window._TAPP_SESSION_TOKEN = ${serializeSandboxScriptValue(sessionToken)};
     ${i18nScript}
   </script>
   <script nonce="${nonce}">${securityWrapper}</script>
@@ -325,6 +327,7 @@ function generatePageHTML(
     window._TAPP_HAS_HTML = ${hasHtmlTemplate};
     ${loadingModeScript}
     window._TAPP_LOCALE = ${serializeSandboxScriptValue(locale)};
+    window._TAPP_SESSION_TOKEN = ${serializeSandboxScriptValue(sessionToken)};
     ${i18nScript}
     window._TAPP_INITIAL_SAFE_INSETS = {
       top: ${safeInsets?.top ?? 0},
@@ -701,6 +704,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
       registerAssetHandlers(bridge, currentTappInstance)
       if (!headless) registerWidgetHandlers(bridge, currentTappInstance)
       registerPlatformHandlers(bridge, currentTappInstance)
+      registerAnalyticsHandlers(bridge)
       if (!headless) registerTappListHandlers(bridge, currentTappInstance)
       registerBrewListHandlers(bridge, currentTappInstance)
       const closeAITaskStreams = registerAIHandlers(bridge)
@@ -789,6 +793,11 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
     container.appendChild(iframe)
     iframe.srcdoc = html
+    // 集中式 message 路由：srcdoc 挂载后注册 contentWindow
+    bridge.attachSource()
+    const onIframeLoad = () => bridge.attachSource()
+    iframe.addEventListener('load', onIframeLoad)
+    cleanups.push(() => iframe.removeEventListener('load', onIframeLoad))
 
     cleanups.push(() => {
       container.style.pointerEvents = ''

@@ -88,6 +88,13 @@ export const PERMISSION_CONFIG: Record<
     descriptionKey: 'permRegisterPlatformDesc',
   },
 
+  // —— 访问统计 ——
+  'analytics:read': {
+    icon: FaChartBar,
+    labelKey: 'permReadAnalytics',
+    descriptionKey: 'permReadAnalyticsDesc',
+  },
+
   // —— AI ——
   'ai:generate': {
     icon: FaMagic,
