@@ -106,6 +106,11 @@ export interface TappPageSandboxProps {
    * but never issues a backend Runtime Grant or registers host-mutating APIs.
    */
   previewMode?: boolean
+  /**
+   * When true, host has hidden this surface (e.g. multi-window minimize).
+   * Emits lifecycle:pause / lifecycle:resume into the sandbox when available.
+   */
+  paused?: boolean
 }
 
 /**
@@ -423,6 +428,7 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
   safeInsets,
   headless = false,
   previewMode = false,
+  paused = false,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const bridgeRef = useRef<TappBridge | null>(null)
@@ -453,6 +459,18 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
 
   // 集成动画调度器的页面可见性感知 + 主题/主色调订阅（共享 hook）
   useSandboxSubscriptions(bridgeRef, isReady)
+
+  // Multi-window minimize / host hide: emit lifecycle pause/resume when ready.
+  const wasPausedRef = useRef(false)
+  useEffect(() => {
+    if (!isReady || !bridgeRef.current) return
+    if (paused === wasPausedRef.current) return
+    wasPausedRef.current = paused
+    bridgeRef.current.emit(
+      paused ? 'lifecycle:pause' : 'lifecycle:resume',
+      null,
+    )
+  }, [paused, isReady])
 
   // 同一 Tapp 的其他 Page、headless core 或 Widget 修改 storage 时通知本沙箱。
   useEffect(
@@ -700,44 +718,87 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         previewSettingsRef.current,
       )
     } else {
+      // Always mount the hot path; gate heavy optional capabilities by
+      // grantedPermissions (same pattern as TappWidgetSandbox).
+      const granted = new Set(
+        (currentTappInstance.grantedPermissions || []) as string[],
+      )
+      const hasExact = (perm: string) => granted.has(perm)
+      const hasAi =
+        hasExact('ai:generate') ||
+        hasExact('ai:analyze') ||
+        hasExact('ai:chat') ||
+        hasExact('ai:image')
+      const hasMedia =
+        hasExact('media:read') ||
+        hasExact('media:control') ||
+        hasExact('media:audio')
+      const hasSpeech = hasExact('speech:tts') || hasExact('speech:asr')
+      const hasEvents =
+        hasExact('event:publish') || hasExact('event:subscribe')
+      const hasAgent = hasExact('component:agent')
+      const hasScheduler = hasExact('scheduler:register')
+      const hasPlatform = hasExact('platform:read') || hasExact('platform:write')
+      const hasAnalytics = hasExact('analytics:read')
+      const hasReport = hasExact('report:read')
+      const hasBrew =
+        hasExact('brew:read') ||
+        hasExact('brew:write') ||
+        hasExact('brew:comment') ||
+        hasExact('brew:manage')
+      const hasFederation =
+        hasExact('federation:read') ||
+        hasExact('federation:write') ||
+        hasExact('federation:message') ||
+        hasExact('federation:trust') ||
+        hasExact('federation:files')
+
       registerStorageHandlers(bridge, currentTappInstance.id)
       registerAssetHandlers(bridge, currentTappInstance)
       if (!headless) registerWidgetHandlers(bridge, currentTappInstance)
-      registerPlatformHandlers(bridge, currentTappInstance)
-      registerAnalyticsHandlers(bridge)
+      if (hasPlatform) {
+        registerPlatformHandlers(bridge, currentTappInstance)
+      }
+      if (hasAnalytics) {
+        registerAnalyticsHandlers(bridge)
+      }
       if (!headless) registerTappListHandlers(bridge, currentTappInstance)
-      registerBrewListHandlers(bridge, currentTappInstance)
-      const closeAITaskStreams = registerAIHandlers(bridge)
-      registerReportHandlers(bridge, currentTappInstance)
-      registerMediaHandlers(bridge, currentTappInstance)
-      registerSpeechHandlers(bridge, currentTappInstance)
+      if (hasBrew) {
+        registerBrewListHandlers(bridge, currentTappInstance)
+      }
+      const closeAITaskStreams = hasAi ? registerAIHandlers(bridge) : () => {}
+      if (hasReport) {
+        registerReportHandlers(bridge, currentTappInstance)
+      }
+      if (hasMedia) {
+        registerMediaHandlers(bridge, currentTappInstance)
+      }
+      if (hasSpeech) {
+        registerSpeechHandlers(bridge, currentTappInstance)
+      }
       registerBackgroundHandlers(bridge, currentTappInstance)
-      const closeScheduler = registerSchedulerHandlers(
-        bridge,
-        currentTappInstance,
-      )
+      const closeScheduler = hasScheduler
+        ? registerSchedulerHandlers(bridge, currentTappInstance)
+        : () => {}
       if (!headless) registerDynamicContentHandlers(bridge, currentTappInstance)
       const closeAdvanced = registerAdvancedHandlers(
         bridge,
         currentTappInstance,
       )
-      const closeFederationSockets = registerFederationHandlers(
-        bridge,
-        currentTappInstance,
-      )
+      const closeFederationSockets = hasFederation
+        ? registerFederationHandlers(bridge, currentTappInstance)
+        : () => {}
       registerContextHandlers(bridge, currentTappInstance)
       const closeDataExchange = registerDataExchangeHandlers(
         bridge,
         currentTappInstance,
       )
-      const closeEventStream = registerEventHandlers(
-        bridge,
-        currentTappInstance,
-      )
-      const closeAgentInteractions = registerAgentInteractionHandlers(
-        bridge,
-        currentTappInstance,
-      )
+      const closeEventStream = hasEvents
+        ? registerEventHandlers(bridge, currentTappInstance)
+        : () => {}
+      const closeAgentInteractions = hasAgent
+        ? registerAgentInteractionHandlers(bridge, currentTappInstance)
+        : () => {}
       cleanups.push(
         closeAdvanced,
         closeFederationSockets,

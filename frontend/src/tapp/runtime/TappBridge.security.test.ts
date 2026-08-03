@@ -211,4 +211,58 @@ describe('TappBridge session token + inbound event allowlist', () => {
     // Map should be healed for subsequent messages
     assert.equal(bridgesBySource.get(iframe.contentWindow as MessageEventSource), bridge)
   })
+
+  it('while muted, answers validated request shape with BRIDGE_MUTED', async () => {
+    const responses: Array<Record<string, unknown>> = []
+    // Capture postMessage replies from sendResponse
+    const cw = iframe.contentWindow as Window & {
+      postMessage: (msg: unknown, target: string) => void
+    }
+    cw.postMessage = (msg: unknown) => {
+      responses.push(msg as Record<string, unknown>)
+    }
+
+    // Force mute window
+    ;(bridge as unknown as { mutedUntil: number }).mutedUntil =
+      Date.now() + 60_000
+
+    bridge.registerHandler('ui.getTheme', async () => ({
+      success: true,
+      data: 'dark',
+    }))
+
+    dispatchFromIframe({
+      type: 'request',
+      id: 'req-muted-1',
+      action: 'ui.getTheme',
+      payload: { api: 'ui', method: 'getTheme', args: [] },
+      timestamp: Date.now(),
+      _sessionToken: SESSION,
+    })
+    await new Promise((r) => setTimeout(r, 0))
+
+    assert.ok(responses.length >= 1, 'expected a response while muted')
+    const last = responses[responses.length - 1]!
+    assert.equal(last.type, 'response')
+    assert.equal(last.id, 'req-muted-1')
+    const payload = last.payload as { success?: boolean; code?: string }
+    assert.equal(payload.success, false)
+    assert.equal(payload.code, 'BRIDGE_MUTED')
+  })
+
+  it('while muted, drops events without hanging requests', async () => {
+    ;(bridge as unknown as { mutedUntil: number }).mutedUntil =
+      Date.now() + 60_000
+    const before = readyFired
+    dispatchFromIframe({
+      type: 'event',
+      id: 'ready-muted',
+      action: 'tapp.ready',
+      payload: null,
+      timestamp: Date.now(),
+      _sessionToken: SESSION,
+    })
+    await new Promise((r) => setTimeout(r, 0))
+    assert.equal(readyFired, before)
+  })
 })

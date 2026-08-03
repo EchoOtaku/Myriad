@@ -701,6 +701,7 @@ const TappWindowComponent: React.FC<TappWindowComponentProps> = React.memo(
               <TappPageSandbox
                 tappInstance={window.tapp}
                 code={window.code}
+                paused={window.isMinimized}
                 onError={(err) => console.error('[TappWindow] Error:', err)}
               />
             </div>

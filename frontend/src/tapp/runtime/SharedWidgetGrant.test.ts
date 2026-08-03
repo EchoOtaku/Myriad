@@ -19,6 +19,15 @@ describe('sharedWidgetInstanceId', () => {
     assert.match(instanceId, /^[A-Za-z0-9._-]+$/)
   })
 
+  it('is longer than a short 8-hex hash while remaining BE-safe', () => {
+    const id = sharedWidgetInstanceId('com.example.app')
+    // ws.<slug>.<16 hex> — more entropy than the previous ws.<8 hex>
+    assert.ok(id.length > 12, `expected longer id, got ${id}`)
+    assert.match(id, /^ws\./)
+    assert.match(id, /^[A-Za-z0-9._-]+$/)
+    assert.ok(id.length <= 100)
+  })
+
   it('is stable for the same tapp id', () => {
     assert.equal(
       sharedWidgetInstanceId('com.example.app'),
@@ -62,5 +71,12 @@ describe('TappRuntimeGrant.acquireSharedWidget', () => {
     const b = TappRuntimeGrant.acquireSharedWidget('com.example.wipe')
     assert.equal(b.grant.isDestroyed(), false)
     b.release()
+  })
+
+  it('clearSharedWidgetGrants destroys pool entries without full destroyAll', () => {
+    const a = TappRuntimeGrant.acquireSharedWidget('com.example.clear')
+    TappRuntimeGrant.clearSharedWidgetGrants()
+    assert.equal(a.grant.isDestroyed(), true)
+    assert.equal(TappRuntimeGrant.sharedWidgetRefCount('com.example.clear'), 0)
   })
 })

@@ -19,10 +19,19 @@ const DEFAULT_QUOTA = {
     writePerMinute: 10, // 每分钟写入次数
   },
   apiExecutePerMinute: 30,
-  /** 所有 Bridge API 的全局软上限（storage/ui/context 等原先未限速） */
+  /** 所有 Bridge API 的全局软上限（不含 storage / UI 热路径） */
   bridgeActionsPerMinute: 180,
   /** lifecycle.ready 等控制面信号 */
   lifecyclePerMinute: 30,
+  /**
+   * storage.* 是 Widget/Page 热路径，单独宽限且不计入全局 bridge 桶，
+   * 避免正常读写把其它 API 顶到 180/min 上限。
+   */
+  storagePerMinute: 600,
+  /**
+   * ui.getTheme / locale / animation 等基础读路径同样从全局桶剥离。
+   */
+  uiHotPerMinute: 360,
 }
 
 type QuotaConfig = typeof DEFAULT_QUOTA
@@ -174,6 +183,25 @@ class TappQuotaManager {
     if (type.startsWith('lifecycle.')) {
       return 'lifecycle'
     }
+    if (type.startsWith('storage.')) {
+      return 'storage'
+    }
+    // Basic UI/animation/user reads that fire on every paint/theme tick
+    if (
+      type === 'ui.getTheme' ||
+      type === 'ui.getPrimaryColor' ||
+      type === 'ui.getLocale' ||
+      type === 'animation.getLevel' ||
+      type === 'animation.shouldAnimate' ||
+      type === 'animation.getConfig' ||
+      type === 'animation.getStaggerDelay' ||
+      type === 'user.getRole' ||
+      type === 'user.isAdmin' ||
+      type === 'user.isGuest' ||
+      type === 'user.isLoggedIn'
+    ) {
+      return 'ui.hot'
+    }
     // 其余 bridge action 走全局桶
     return 'bridge.action'
   }
@@ -192,6 +220,10 @@ class TappQuotaManager {
         maxRequests = this.quotaConfig.apiExecutePerMinute
       } else if (type === 'lifecycle') {
         maxRequests = this.quotaConfig.lifecyclePerMinute
+      } else if (type === 'storage') {
+        maxRequests = this.quotaConfig.storagePerMinute
+      } else if (type === 'ui.hot') {
+        maxRequests = this.quotaConfig.uiHotPerMinute
       } else {
         maxRequests = this.quotaConfig.bridgeActionsPerMinute
       }
@@ -229,6 +261,20 @@ class TappQuotaManager {
   /**
    * 检查配额是否允许操作（增强版：包含滑动窗口检查）
    */
+  /**
+   * Buckets that are carved out of the global bridge.action budget.
+   * Hot paths (storage / basic UI reads / lifecycle) use their own generous
+   * limits so they cannot starve unrelated bridge actions.
+   */
+  private isCarvedOut(bucket: string): boolean {
+    return (
+      bucket === 'bridge.action' ||
+      bucket === 'storage' ||
+      bucket === 'ui.hot' ||
+      bucket === 'lifecycle'
+    )
+  }
+
   checkQuota(
     tappId: string,
     type: string,
@@ -240,11 +286,11 @@ class TappQuotaManager {
   } {
     const bucket = this.normalizeType(type)
 
-    // 先过能力族桶，再过全局 bridge 桶（platform/api 同时计入 bridge.action）
+    // 先过能力族桶；platform/api 等仍同时计入全局 bridge 桶
     const primary = this.evaluateLimiter(tappId, bucket)
     if (!primary.allowed) return primary
 
-    if (bucket !== 'bridge.action') {
+    if (!this.isCarvedOut(bucket)) {
       const global = this.evaluateLimiter(tappId, 'bridge.action')
       if (!global.allowed) return global
       return {
@@ -264,8 +310,8 @@ class TappQuotaManager {
     const record = this.getTypeUsage(tappId, bucket)
     record.lastUsedAt = Date.now()
     record.rateLimiter.record()
-    // 能力族请求同时占用全局 bridge 配额
-    if (bucket !== 'bridge.action') {
+    // 非 carve-out 能力族请求同时占用全局 bridge 配额
+    if (!this.isCarvedOut(bucket)) {
       const global = this.getTypeUsage(tappId, 'bridge.action')
       global.lastUsedAt = Date.now()
       global.rateLimiter.record()

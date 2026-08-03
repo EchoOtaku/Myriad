@@ -72,7 +72,8 @@ import './TappDetailPage.css'
 
 export function TappDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const tappId = id ? decodeURIComponent(id) : ''
+  // react-router already decodes path params; avoid double-decode (throws on lone `%`)
+  const tappId = id ?? ''
   const navigate = useNavigate()
   const { t, format, locale } = useI18n()
   const { catalog: g, bindGuide, renderGuide } = useSettingGuide()

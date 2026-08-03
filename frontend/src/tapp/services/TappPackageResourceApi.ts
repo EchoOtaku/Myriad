@@ -47,11 +47,61 @@ interface TappResourcesRaw {
 /** Projection of installed package resources. Matches backend `mode` query. */
 export type TappResourceMode = 'full' | 'widget' | 'page'
 
+/**
+ * Project a full resources payload down to a widget/page slice (local, no I/O).
+ * Used when a full cache entry or code-only 404 fallback can satisfy a narrower request.
+ */
+export function projectTappResources(
+  full: TappResources,
+  mode: TappResourceMode,
+): TappResources {
+  if (mode === 'full') return full
+  if (mode === 'widget') {
+    const pageMarker = '// ========== Page Code =========='
+    const pageIdx = full.code.indexOf(pageMarker)
+    return {
+      code: pageIdx === -1 ? full.code : full.code.slice(0, pageIdx).trimEnd(),
+      styles: full.styles,
+      widgetStyles: full.widgetStyles,
+      widgetCSS: full.widgetCSS,
+      widgetTemplates: full.widgetTemplates,
+      cssMode: full.cssMode,
+      i18n: full.i18n,
+    }
+  }
+  // page — strip widget section if present
+  const widgetMarker = '// ========== Widget Code =========='
+  const pageMarker = '// ========== Page Code =========='
+  let code = full.code
+  const widgetIdx = code.indexOf(widgetMarker)
+  if (widgetIdx !== -1) {
+    const pageIdx = code.indexOf(pageMarker, widgetIdx)
+    if (pageIdx !== -1) {
+      code = `${code.slice(0, widgetIdx).trimEnd()}\n\n${code.slice(pageIdx)}`
+    } else {
+      code = code.slice(0, widgetIdx).trimEnd()
+    }
+  }
+  return {
+    code,
+    styles: full.styles,
+    pageStyles: full.pageStyles,
+    pageCSS: full.pageCSS,
+    pageTemplate: full.pageTemplate,
+    cssMode: full.cssMode,
+    i18n: full.i18n,
+    pageModules: full.pageModules,
+    pageModuleOrder: full.pageModuleOrder,
+  }
+}
+
 export async function getTappResources(
   tappId: string,
   options?: { mode?: TappResourceMode },
 ): Promise<TappResources> {
-  const mode = options?.mode && options.mode !== 'full' ? options.mode : undefined
+  const requestedMode: TappResourceMode = options?.mode ?? 'full'
+  const mode =
+    options?.mode && options.mode !== 'full' ? options.mode : undefined
   const params = mode ? `?mode=${encodeURIComponent(mode)}` : ''
   const response = await fetch(
     `${API_URL}/api/tapps/${encodeURIComponent(tappId)}/resources${params}`,
@@ -59,7 +109,10 @@ export async function getTappResources(
   )
   if (!response.ok) {
     if (response.status === 404) {
-      return { code: await getTappCode(tappId) }
+      // Legacy code-only endpoint returns the full package source — project/strip
+      // for the requested mode so widget/page surfaces never receive foreign slices.
+      const code = await getTappCode(tappId)
+      return projectTappResources({ code }, requestedMode)
     }
     throw new Error(`Failed to get Tapp resources: ${response.status}`)
   }

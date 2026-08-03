@@ -17,18 +17,30 @@ interface SharedWidgetEntry {
 
 /**
  * Backend `MAX_INSTANCE_ID_LENGTH` is 100; tapp ids may be up to 128.
- * Never embed the full tappId in instance_id — use a stable short form.
+ * Never embed the full tappId in instance_id — use a stable longer hash form.
+ * Charset must stay compatible with BE: [A-Za-z0-9_.-]
  */
 export function sharedWidgetInstanceId(tappId: string): string {
-  let hash = 0x811c9dc5
+  // Dual FNV-1a 32-bit streams → 16 hex chars of entropy (collision-resistant
+  // enough for the share table, which is also keyed by tappId).
+  let h1 = 0x811c9dc5
+  let h2 = 0x811c9dc5 ^ 0x9e3779b9
   for (let i = 0; i < tappId.length; i++) {
-    hash ^= tappId.charCodeAt(i)
-    hash = Math.imul(hash, 0x01000193)
+    const c = tappId.charCodeAt(i)
+    h1 ^= c
+    h1 = Math.imul(h1, 0x01000193)
+    h2 ^= c + i
+    h2 = Math.imul(h2, 0x01000193)
   }
-  const hex = (hash >>> 0).toString(16).padStart(8, '0')
-  // Prefix + hash is enough for uniqueness in the share table (keyed by tappId).
-  // Keep charset compatible with BE: [A-Za-z0-9_.-]
-  const id = `ws.${hex}`
+  const hex =
+    (h1 >>> 0).toString(16).padStart(8, '0') +
+    (h2 >>> 0).toString(16).padStart(8, '0')
+  // Compact stable slug (not the full id) for debuggability, then hash.
+  const slug = tappId
+    .replace(/[^A-Za-z0-9_.-]/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 48)
+  const id = `ws.${slug}.${hex}`
   return id.length <= 100 ? id : id.slice(0, 100)
 }
 
@@ -96,6 +108,17 @@ export class TappRuntimeGrant {
   /** Test helper */
   static sharedWidgetRefCount(tappId: string): number {
     return TappRuntimeGrant.sharedWidgetEntries.get(tappId)?.refs ?? 0
+  }
+
+  /**
+   * Destroy every shared-widget pool entry and clear the table.
+   * Targeted helper for tests / hot-reload; login/logout uses {@link destroyAll}.
+   */
+  static clearSharedWidgetGrants(): void {
+    for (const entry of TappRuntimeGrant.sharedWidgetEntries.values()) {
+      entry.grant.destroy()
+    }
+    TappRuntimeGrant.sharedWidgetEntries.clear()
   }
 
   async getToken(): Promise<string> {

@@ -308,6 +308,17 @@ export class TappBridge {
     }
     // Shared widget grants: re-enter the refcounted pool after destroyAll.
     if (this.reacquireSharedGrant) {
+      // Drop the previous shared-pool hold before (or as we) re-acquire so
+      // refcounts do not leak across subject resets.
+      const previousRelease = this.releaseSharedGrant
+      this.releaseSharedGrant = null
+      if (previousRelease) {
+        try {
+          previousRelease()
+        } catch {
+          /* ignore stale release */
+        }
+      }
       const next = this.reacquireSharedGrant()
       this.runtimeGrant = next.grant
       this.releaseSharedGrant = next.release
@@ -691,7 +702,36 @@ export class TappBridge {
     }
 
     const now = Date.now()
+    // While muted: still validate shape so legitimate requests get a structured
+    // error instead of hanging forever on the iframe side.
     if (now < this.mutedUntil) {
+      const mutedValidation = this.validateMessage(event.data)
+      if (mutedValidation.valid) {
+        const mutedMsg = event.data as TappMessage
+        if (mutedMsg.type === 'request' && typeof mutedMsg.id === 'string') {
+          this.sendResponse(mutedMsg.id, {
+            success: false,
+            error: 'Bridge temporarily muted after invalid message burst',
+            code: 'BRIDGE_MUTED',
+          })
+        }
+      } else {
+        // Request-shaped but invalid: answer so the caller unblocks; do not
+        // re-extend mute (noteInvalidMessage) while already muted.
+        const candidate = event.data as Record<string, unknown> | undefined
+        if (
+          candidate?.type === 'request' &&
+          typeof candidate.id === 'string' &&
+          /^[\w-]+$/.test(candidate.id) &&
+          candidate.id.length <= 100
+        ) {
+          this.sendResponse(candidate.id, {
+            success: false,
+            error: 'Bridge temporarily muted after invalid message burst',
+            code: 'BRIDGE_MUTED',
+          })
+        }
+      }
       return
     }
 

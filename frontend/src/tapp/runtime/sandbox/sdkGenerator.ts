@@ -1750,7 +1750,9 @@ ${speechNs}
     }
   };
 
-  // 冻结已暴露的 API 对象（防止篡改；未授权命名空间不生成，故不 freeze）
+  // Freeze exposed API objects (prevent tampering). Optional namespaces always
+  // exist as full impl or denied stubs — freezeOptional covers both so shape
+  // stays stable regardless of grantedPermissions.
   Object.freeze(Tapp);
   Object.freeze(Tapp.lifecycle);
   Object.freeze(Tapp.i18n);

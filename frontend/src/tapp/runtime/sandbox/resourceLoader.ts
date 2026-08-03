@@ -685,12 +685,12 @@ export class TappResourceLoader {
 
           return resources
         } catch {
-          // 回退到只获取代码
+          // 回退到只获取代码，并按 mode 投影/剥离（避免 widget 拿到 page 段）
           const code = await TappApiService.getTappCode(tappId)
           if (!this.generationIsCurrent(tappId, generation)) {
             return this.fetchRawResources(tappId, mode)
           }
-          return { code }
+          return projectResources({ code }, mode)
         }
       },
     )
@@ -807,49 +807,14 @@ export class TappResourceLoader {
 /**
  * Project a full resources payload down to a widget/page slice (local, no I/O).
  * Used when a full cache entry can satisfy a narrower request.
+ * Implementation lives in TappPackageResourceApi so 404 code-only fallbacks
+ * share the same strip logic.
  */
 function projectResources(
   full: TappApiService.TappResources,
   mode: TappApiService.TappResourceMode,
 ): TappApiService.TappResources {
-  if (mode === 'full') return full
-  if (mode === 'widget') {
-    const pageMarker = '// ========== Page Code =========='
-    const pageIdx = full.code.indexOf(pageMarker)
-    return {
-      code: pageIdx === -1 ? full.code : full.code.slice(0, pageIdx).trimEnd(),
-      styles: full.styles,
-      widgetStyles: full.widgetStyles,
-      widgetCSS: full.widgetCSS,
-      widgetTemplates: full.widgetTemplates,
-      cssMode: full.cssMode,
-      i18n: full.i18n,
-    }
-  }
-  // page
-  const widgetMarker = '// ========== Widget Code =========='
-  const pageMarker = '// ========== Page Code =========='
-  let code = full.code
-  const widgetIdx = code.indexOf(widgetMarker)
-  if (widgetIdx !== -1) {
-    const pageIdx = code.indexOf(pageMarker, widgetIdx)
-    if (pageIdx !== -1) {
-      code = `${code.slice(0, widgetIdx).trimEnd()}\n\n${code.slice(pageIdx)}`
-    } else {
-      code = code.slice(0, widgetIdx).trimEnd()
-    }
-  }
-  return {
-    code,
-    styles: full.styles,
-    pageStyles: full.pageStyles,
-    pageCSS: full.pageCSS,
-    pageTemplate: full.pageTemplate,
-    cssMode: full.cssMode,
-    i18n: full.i18n,
-    pageModules: full.pageModules,
-    pageModuleOrder: full.pageModuleOrder,
-  }
+  return TappApiService.projectTappResources(full, mode)
 }
 
 /**

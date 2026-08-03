@@ -62,7 +62,8 @@ import {
  */
 export function TappRunPage() {
   const { id } = useParams<{ id: string }>()
-  const tappId = id ? decodeURIComponent(id) : ''
+  // react-router already decodes path params; avoid double-decode (throws on lone `%`)
+  const tappId = id ?? ''
   const { isMobile } = useBreakpoints()
   const isMultiWindow = useTappMultiWindowSession()
   const navigate = useNavigate()

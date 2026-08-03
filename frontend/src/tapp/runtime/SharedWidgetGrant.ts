@@ -13,8 +13,7 @@ export function acquireSharedWidgetGrant(tappId: string): {
 }
 
 export function clearSharedWidgetGrants(): void {
-  // destroyAll already clears the share table; this is for targeted tests.
-  // Re-acquire path after destroyAll starts empty.
+  TappRuntimeGrant.clearSharedWidgetGrants()
 }
 
 export function sharedWidgetGrantRefCount(tappId: string): number {
