@@ -1,5 +1,5 @@
 //! Remote room activity handlers (inbox).
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde_json::json;
 use std::collections::HashSet;
 
@@ -1137,10 +1137,13 @@ pub async fn handle_room_governance(
         }
         // Apply sticker pack mirror from home / peer.
         if let Some(stickers_val) = changes.get("stickers") {
-            let room_row = db
+            // 行锁：shared_data_config 同时住着 e2e.published_keys。不加锁的
+            // 读改写会用贴纸同步时的旧快照覆盖并发写入的公钥，房间 E2E 随之失效。
+            let txn = db.begin().await.map_err(|e| e.to_string())?;
+            let room_row = txn
                 .query_one(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
-                    "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
+                    "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1 FOR UPDATE",
                     [room_id.into()],
                 ))
                 .await
@@ -1151,15 +1154,19 @@ pub async fn handle_room_governance(
                 .ok()
                 .flatten()
                 .unwrap_or_else(|| json!({}));
+            if !shared.is_object() {
+                shared = json!({});
+            }
             let parsed = parse_room_stickers(&json!({ "stickers": stickers_val }));
             shared["stickers"] = stickers_to_json(&parsed);
-            db.execute(Statement::from_sql_and_values(
+            txn.execute(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
                 [room_id.into(), shared.into()],
             ))
             .await
             .map_err(|e| e.to_string())?;
+            txn.commit().await.map_err(|e| e.to_string())?;
 
             crate::federation::ws_gateway::broadcast_to_room(
                 room_id,

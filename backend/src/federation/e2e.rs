@@ -320,39 +320,62 @@ pub fn encrypt_with_session(
 
 /// 解密收到的加密消息
 ///
-/// 优先使用信封内的发送方公钥（`ephemeral_key`）做 ECDH；
-/// 若信封缺公钥则回退到会话内已缓存的 remote_public_key。
+/// 信封里的 `ephemeral_key` 是**发送方**的公钥。收到对端消息时它就是我们要的
+/// ECDH 对端；但自己发出去的消息，这个字段等于本地公钥 —— 拿它做 ECDH 得到的是
+/// ECDH(local_sk, local_pk)，和加密时用的 ECDH(local_sk, remote_pk) 不是同一个
+/// 密钥，于是**发送方永远解不开自己发的消息**。Channel 聊天里表现为：自己的气泡
+/// 一直停在「Encrypted · decrypting…」，对端却读得正常。
+///
+/// 因此按顺序试：信封里的发送方公钥（若不是我们自己）→ 会话缓存的
+/// remote_public_key。两个都试是为了兼容对端刚轮换、我们还没记下新公钥的情况。
 pub fn decrypt_with_session(
     session: &EncryptionSession,
     envelope: &EncryptedEnvelope,
 ) -> Result<Vec<u8>, String> {
-    let remote_pk_b64 = if !envelope.ephemeral_key.is_empty() {
-        envelope.ephemeral_key.as_str()
-    } else {
-        session
-            .remote_public_key
-            .as_deref()
-            .ok_or("No remote public key for decryption")?
-    };
-
-    let remote_pk_bytes =
-        base64_decode(remote_pk_b64).map_err(|_| "Invalid remote/ephemeral key encoding")?;
-    if remote_pk_bytes.len() != 32 {
-        return Err("Remote public key must be 32 bytes".to_string());
+    let local_pk = session.local_keypair.public_key.as_str();
+    let mut candidates: Vec<&str> = Vec::with_capacity(2);
+    if !envelope.ephemeral_key.is_empty() && envelope.ephemeral_key != local_pk {
+        candidates.push(envelope.ephemeral_key.as_str());
     }
+    if let Some(remote) = session.remote_public_key.as_deref() {
+        if !candidates.contains(&remote) {
+            candidates.push(remote);
+        }
+    }
+    if candidates.is_empty() {
+        return Err("No remote public key for decryption".to_string());
+    }
+
     let local_sk_bytes = base64_decode(&session.local_keypair.private_key)
         .map_err(|_| "Invalid local private key")?;
     if local_sk_bytes.len() != 32 {
         return Err("Local private key must be 32 bytes".to_string());
     }
-
     let mut sk = [0u8; 32];
     sk.copy_from_slice(&local_sk_bytes);
-    let mut rpk = [0u8; 32];
-    rpk.copy_from_slice(&remote_pk_bytes);
 
-    let shared = compute_shared_secret(&sk, &rpk);
-    decrypt_message(envelope, &shared, session.target_id.as_bytes())
+    let mut last_err = "No remote public key for decryption".to_string();
+    for candidate in candidates {
+        let remote_pk_bytes = match base64_decode(candidate) {
+            Ok(b) if b.len() == 32 => b,
+            Ok(_) => {
+                last_err = "Remote public key must be 32 bytes".to_string();
+                continue;
+            }
+            Err(_) => {
+                last_err = "Invalid remote/ephemeral key encoding".to_string();
+                continue;
+            }
+        };
+        let mut rpk = [0u8; 32];
+        rpk.copy_from_slice(&remote_pk_bytes);
+        let shared = compute_shared_secret(&sk, &rpk);
+        match decrypt_message(envelope, &shared, session.target_id.as_bytes()) {
+            Ok(plain) => return Ok(plain),
+            Err(e) => last_err = e,
+        }
+    }
+    Err(last_err)
 }
 
 /// 校验 Base64 编码的 32 字节 X25519 公钥
@@ -853,5 +876,113 @@ mod tests {
         // outsider cannot decrypt
         let eve = generate_keypair();
         assert!(decrypt_json_for_recipient(&env, &eve.private_key, &eve.public_key, aad).is_err());
+    }
+
+    /// A sender left out of `recipients` cannot read back their own message.
+    ///
+    /// `collect_room_e2e_recipients` deliberately excludes the sender, so the
+    /// send path has to append a self key-wrap. When the local member key is
+    /// unreadable that wrap is missing, and the row is stored as ciphertext the
+    /// author's own `get_room_messages` can never open — the bubble sits at
+    /// "Encrypted · decrypting…" forever while the peer reads it fine. Hence the
+    /// plaintext fallback in `room::messages::send_room_message`.
+    #[test]
+    fn sender_without_self_wrap_cannot_read_own_message() {
+        let aad = b"rm_selfwrap";
+        let me = generate_keypair();
+        let peer = generate_keypair();
+        let plain = serde_json::json!({"text": "hi"});
+
+        let peer_only = vec![("peer".to_string(), peer.public_key.clone())];
+        let env = encrypt_json_for_recipients(&plain, aad, &peer_only).unwrap();
+        assert!(
+            decrypt_json_for_recipient(&env, &me.private_key, &me.public_key, aad).is_err(),
+            "sender must not be able to open an envelope with no wrap for its own key"
+        );
+        assert_eq!(
+            decrypt_json_for_recipient(&env, &peer.private_key, &peer.public_key, aad).unwrap(),
+            plain,
+            "peer still reads it — this is why the failure is invisible to the sender"
+        );
+
+        // With the self-wrap appended, both sides read it.
+        let with_self = vec![
+            ("peer".to_string(), peer.public_key.clone()),
+            ("me".to_string(), me.public_key.clone()),
+        ];
+        let env = encrypt_json_for_recipients(&plain, aad, &with_self).unwrap();
+        assert_eq!(
+            decrypt_json_for_recipient(&env, &me.private_key, &me.public_key, aad).unwrap(),
+            plain
+        );
+    }
+
+    /// The author of a channel message must be able to read it back.
+    ///
+    /// `encrypt_with_session` stamps the envelope's `ephemeral_key` with the
+    /// *sender's* public key. `decrypt_with_session` used to always ECDH against
+    /// that field, so decrypting your own message computed
+    /// ECDH(local_sk, local_pk) instead of ECDH(local_sk, remote_pk) and failed.
+    /// Every message you sent stayed sealed in your own transcript — "Encrypted ·
+    /// decrypting…" forever — while the peer read it normally.
+    #[test]
+    fn sender_can_decrypt_own_channel_message() {
+        let target = "ch_selfread";
+        let peer = generate_keypair();
+
+        let mut mine = create_session(target);
+        accept_key_exchange(&mut mine, &peer.public_key).unwrap();
+
+        let plain = serde_json::json!({"text": "hello from me"});
+        let env = encrypt_json_payload(&mine, &plain).unwrap();
+
+        // The envelope advertises our own key as the sender key.
+        let envelope: EncryptedEnvelope = serde_json::from_value(env.clone()).unwrap();
+        assert_eq!(envelope.ephemeral_key, mine.local_keypair.public_key);
+
+        assert_eq!(
+            decrypt_json_payload(&mine, &env).unwrap(),
+            plain,
+            "author must be able to reopen their own message"
+        );
+
+        // And the peer still reads it with the symmetric ECDH secret.
+        let peer_session = session_from_stored(
+            target,
+            &peer.public_key,
+            &peer.private_key,
+            Some(&mine.local_keypair.public_key),
+        )
+        .unwrap();
+        assert_eq!(decrypt_json_payload(&peer_session, &env).unwrap(), plain);
+    }
+
+    /// A rotated local keypair retires every message encrypted under the old one.
+    ///
+    /// This is what the lost-update on `properties.e2e` / `shared_data_config.e2e`
+    /// caused: the inbound and outbound key-exchange writers each wrote back a
+    /// whole-object snapshot, so one silently dropped the other's key material.
+    /// Losing `local_private_key` made the next initiate mint a fresh pair and
+    /// re-announce it, retiring the history on every turn. Both writers now take
+    /// the row lock, so the pair survives a concurrent exchange.
+    #[test]
+    fn rotated_keypair_cannot_open_prior_ciphertext() {
+        let target = "ch_rotate";
+        let peer = generate_keypair();
+
+        let mut first = create_session(target);
+        accept_key_exchange(&mut first, &peer.public_key).unwrap();
+        let plain = serde_json::json!({"text": "before rotation"});
+        let env = encrypt_json_payload(&first, &plain).unwrap();
+        assert_eq!(decrypt_json_payload(&first, &env).unwrap(), plain);
+
+        // Same peer, new local keypair — neither ECDH candidate reproduces the
+        // secret the old private key produced.
+        let mut rotated = create_session(target);
+        accept_key_exchange(&mut rotated, &peer.public_key).unwrap();
+        assert!(
+            decrypt_json_payload(&rotated, &env).is_err(),
+            "history encrypted before the rotation must not be readable after it"
+        );
     }
 }

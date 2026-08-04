@@ -1,6 +1,6 @@
 //! Room E2E multi-party encryption.
 use axum::{http::StatusCode, Json};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde_json::json;
 
 use crate::federation::types::*;
@@ -151,11 +151,34 @@ pub async fn initiate_e2e_key_exchange(
         ));
     }
 
-    // 1) 读取成员行；已有本地密钥则复用，避免每次打开会话轮换公钥导致解密失败
-    let member_row = db
+    // 1) 读取成员行；已有本地密钥则复用，避免每次打开会话轮换公钥导致解密失败。
+    //
+    // 成员行和房间行都在一个事务里加锁，且加锁顺序固定为「先房间后成员」，
+    // 与 handle_key_exchange 一致。两条路径过去各自「读 → 改 → 整体写回」，
+    // 互相覆盖时会出现 published_keys 里是 K1、成员行私钥却是 K2 的错配：
+    // 对端按 K1 加密，本端只有 K2 —— 房间历史就此永久解不开。
+    let txn = db.begin().await.map_err(db_err)?;
+    let room_row = txn
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT custom_permissions FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
+            "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1 FOR UPDATE",
+            [room_id.into()],
+        ))
+        .await
+        .map_err(db_err)?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(json!({"error": "Room not found"})),
+            )
+        })?;
+
+    let member_row = txn
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"SELECT custom_permissions FROM federation_room_members
+               WHERE room_id = $1 AND actor_url = $2
+               FOR UPDATE"#,
             [room_id.into(), local_actor.clone().into()],
         ))
         .await
@@ -218,6 +241,9 @@ pub async fn initiate_e2e_key_exchange(
         (session.local_keypair.public_key, sealed)
     };
 
+    if !perms.is_object() {
+        perms = json!({});
+    }
     perms["e2e"] = json!({
         "local_public_key": public_key,
         "local_private_key": sealed_sk,
@@ -225,7 +251,7 @@ pub async fn initiate_e2e_key_exchange(
         "algorithm": crate::federation::e2e::E2E_ALGORITHM,
     });
 
-    db.execute(Statement::from_sql_and_values(
+    txn.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_room_members SET custom_permissions = $3 WHERE room_id = $1 AND actor_url = $2",
         [
@@ -237,31 +263,19 @@ pub async fn initiate_e2e_key_exchange(
     .await
     .map_err(db_err)?;
 
-    // 2) 登记到 room.shared_data_config.e2e.published_keys
-    let room_row = db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
-            [room_id.into()],
-        ))
-        .await
-        .map_err(db_err)?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "Room not found"})),
-            )
-        })?;
-
+    // 2) 登记到 room.shared_data_config.e2e.published_keys（沿用上面已锁定的行）
     let mut shared = room_row
         .try_get::<Option<serde_json::Value>>("", "shared_data_config")
         .ok()
         .flatten()
         .unwrap_or_else(|| json!({}));
-    if shared.get("e2e").is_none() {
+    if !shared.is_object() {
+        shared = json!({});
+    }
+    if !shared["e2e"].is_object() {
         shared["e2e"] = json!({ "published_keys": {} });
     }
-    if shared["e2e"].get("published_keys").is_none() {
+    if !shared["e2e"]["published_keys"].is_object() {
         shared["e2e"]["published_keys"] = json!({});
     }
     let already_published = shared["e2e"]["published_keys"]
@@ -276,13 +290,15 @@ pub async fn initiate_e2e_key_exchange(
         .map(|o| o.len())
         .unwrap_or(0);
 
-    db.execute(Statement::from_sql_and_values(
+    txn.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
         [room_id.into(), shared.into()],
     ))
     .await
     .map_err(db_err)?;
+    // Commit before fan-out so a peer answering instantly does not block on our lock.
+    txn.commit().await.map_err(db_err)?;
 
     // Skip KeyExchange fan-out when this actor already published the same key
     // (re-initiate must not double-send to remotes / WS).
@@ -402,10 +418,14 @@ pub async fn handle_key_exchange(
     // 发送方必须是成员（含 inviter/owner self-heal）
     ensure_room_message_sender_member(db, room_id, actor_url_str).await?;
 
-    let room_row = db
+    // 行锁下读改写：本地 initiate_e2e_key_exchange 会并发改同一份
+    // shared_data_config。没有锁时两边用各自的快照整体覆盖，谁后写谁获胜，
+    // published_keys 会丢掉一方的公钥 —— 丢失方从此收不到能解开的消息。
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let room_row = txn
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
+            "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1 FOR UPDATE",
             [room_id.into()],
         ))
         .await
@@ -417,10 +437,13 @@ pub async fn handle_key_exchange(
         .ok()
         .flatten()
         .unwrap_or_else(|| json!({}));
-    if shared.get("e2e").is_none() {
+    if !shared.is_object() {
+        shared = json!({});
+    }
+    if !shared["e2e"].is_object() {
         shared["e2e"] = json!({ "published_keys": {} });
     }
-    if shared["e2e"].get("published_keys").is_none() {
+    if !shared["e2e"]["published_keys"].is_object() {
         shared["e2e"]["published_keys"] = json!({});
     }
     shared["e2e"]["published_keys"][actor_url_str] = json!(public_key);
@@ -430,13 +453,14 @@ pub async fn handle_key_exchange(
         .map(|o| o.len())
         .unwrap_or(0);
 
-    db.execute(Statement::from_sql_and_values(
+    txn.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
         [room_id.into(), shared.into()],
     ))
     .await
     .map_err(|e| e.to_string())?;
+    txn.commit().await.map_err(|e| e.to_string())?;
 
     crate::federation::ws_gateway::broadcast_to_room(
         room_id,

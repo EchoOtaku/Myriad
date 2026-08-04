@@ -1,6 +1,6 @@
 
 use axum::{http::StatusCode, Json};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -990,14 +990,14 @@ pub async fn send_message(
     let mut ws_payload = stored_payload.clone();
     let mut ws_is_encrypted = is_encrypted;
     if is_encrypted {
+        // 解密不要求 established：信封自带发送方公钥，只要本地私钥在就能试。
+        // 这样即使 remote_public_key 曾经被并发写覆盖丢失，历史也还能读回来。
         if let Ok(session) = load_e2e_session(channel_id, properties.as_ref()).await {
-            if session.established {
-                if let Ok(plain) =
-                    crate::federation::e2e::decrypt_json_payload(&session, &stored_payload)
-                {
-                    ws_payload = plain;
-                    ws_is_encrypted = false;
-                }
+            if let Ok(plain) =
+                crate::federation::e2e::decrypt_json_payload(&session, &stored_payload)
+            {
+                ws_payload = plain;
+                ws_is_encrypted = false;
             }
         }
     }
@@ -1099,13 +1099,9 @@ pub async fn get_messages(
         let mut display_encrypted = is_encrypted;
         if is_encrypted {
             if let Some(session) = e2e_session.as_ref() {
-                if session.established {
-                    if let Ok(plain) =
-                        crate::federation::e2e::decrypt_json_payload(session, &payload)
-                    {
-                        payload = plain;
-                        display_encrypted = false;
-                    }
+                if let Ok(plain) = crate::federation::e2e::decrypt_json_payload(session, &payload) {
+                    payload = plain;
+                    display_encrypted = false;
                 }
             }
         }
@@ -1352,10 +1348,20 @@ pub async fn handle_channel_message(
         .get("messageId")
         .and_then(|v| v.as_str())
         .unwrap_or(&fallback_msg_id);
-    let sender = object
-        .get("from")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+    // object.from 必须与签名 actor 一致，并且落库一律存签名 actor。
+    //
+    // 这里过去直接采信 object.from（缺失时存字符串 "unknown"）。Aro 的
+    // isLocalActor 在 1:1 channel 里判定「不等于 remote_actor_url 的一律算本地」，
+    // 所以对端只要把 from 写成别的串，它的消息就会渲染成你自己发的气泡 ——
+    // 右对齐、没有头像、没有昵称。Room 路径一直有这个校验，channel 漏了。
+    if let Some(claimed) = object.get("from").and_then(|v| v.as_str()) {
+        if !same_actor_url(claimed, actor_url_str) {
+            return Err(format!(
+                "ChannelMessage from {claimed} does not match signed actor {actor_url_str}"
+            ));
+        }
+    }
+    let sender = actor_url_str;
     let message_type = object
         .get("messageType")
         .and_then(|v| v.as_str())
@@ -1414,13 +1420,11 @@ pub async fn handle_channel_message(
                 .ok()
                 .flatten();
             if let Ok(session) = load_e2e_session(channel_id, properties.as_ref()).await {
-                if session.established {
-                    if let Ok(plain) =
-                        crate::federation::e2e::decrypt_json_payload(&session, &payload)
-                    {
-                        ws_payload = plain;
-                        ws_is_encrypted = false;
-                    }
+                if let Ok(plain) =
+                    crate::federation::e2e::decrypt_json_payload(&session, &payload)
+                {
+                    ws_payload = plain;
+                    ws_is_encrypted = false;
                 }
             }
         }
@@ -1653,14 +1657,38 @@ pub async fn handle_key_exchange(
         return Err(format!("Channel {channel_id} is closed"));
     }
 
-    let mut properties = ch_row
+    // 合并 e2e 状态：写入 remote_public_key；若已有本地密钥则 established=true。
+    //
+    // 必须在行锁下重读 properties。这里和 initiate_e2e_key_exchange 都是
+    // 「读整个 properties → 改 e2e → 整体写回」，两者用各自的快照互相覆盖：
+    // 本函数会抹掉刚写入的 local_private_key，下一次 initiate 因此认为本地
+    // 还没有密钥、重新生成一对并再发一条 KeyExchange —— 对端的 remote key 随之
+    // 作废，双方陷入密钥轮换循环，而循环前加密的历史永远解不开
+    // （截图里那串 "Encrypted · decrypting…" 就是这么来的）。
+    let txn = db.begin().await.map_err(|e| e.to_string())?;
+    let locked = txn
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT properties FROM federation_channels WHERE channel_id = $1 FOR UPDATE",
+            [channel_id.into()],
+        ))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Channel {channel_id} not found"))?;
+
+    let mut properties = locked
         .try_get::<Option<serde_json::Value>>("", "properties")
         .ok()
         .flatten()
         .unwrap_or_else(|| json!({}));
+    if !properties.is_object() {
+        properties = json!({});
+    }
 
-    // 合并 e2e 状态：写入 remote_public_key；若已有本地密钥则 established=true
     let mut e2e_obj = properties.get("e2e").cloned().unwrap_or_else(|| json!({}));
+    if !e2e_obj.is_object() {
+        e2e_obj = json!({});
+    }
     e2e_obj["remote_public_key"] = json!(public_key);
     e2e_obj["algorithm"] = json!(algorithm);
     let has_local = e2e_obj
@@ -1671,13 +1699,14 @@ pub async fn handle_key_exchange(
     e2e_obj["established"] = json!(has_local);
     properties["e2e"] = e2e_obj;
 
-    db.execute(Statement::from_sql_and_values(
+    txn.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_channels SET properties = $2, last_activity_at = NOW() WHERE channel_id = $1",
         [channel_id.into(), properties.into()],
     ))
     .await
     .map_err(|e| e.to_string())?;
+    txn.commit().await.map_err(|e| e.to_string())?;
 
     let message_id = activity
         .get("id")
@@ -1917,13 +1946,20 @@ pub async fn initiate_e2e_key_exchange(
 ) -> Result<E2eKeyExchangeResponse, (StatusCode, Json<serde_json::Value>)> {
     let base_url = get_base_url().await;
 
-    let ch_row = db
+    // 全程持有 channel 行锁：入站 handle_key_exchange 会并发改写同一个
+    // properties。两条路径各自「读 → 改 e2e → 整体写回」，谁后写谁获胜，于是
+    // 本地私钥或对端公钥会被对方手里的旧快照抹掉。丢了 local_private_key，
+    // 下一次调用就认为本地还没有密钥、重新生成一对并再发一条 KeyExchange，
+    // 双方陷入密钥轮换循环 —— 轮换之前加密的消息从此永远解不开。
+    let txn = db.begin().await.map_err(db_err)?;
+    let ch_row = txn
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT c.status, c.properties, ra.actor_url, ra.inbox_url
                FROM federation_channels c
                JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
-               WHERE c.user_id = $1 AND c.channel_id = $2"#,
+               WHERE c.user_id = $1 AND c.channel_id = $2
+               FOR UPDATE OF c"#,
             [user_id.into(), channel_id.into()],
         ))
         .await
@@ -2044,15 +2080,21 @@ pub async fn initiate_e2e_key_exchange(
         "sealed": true,
         "algorithm": crate::federation::e2e::E2E_ALGORITHM,
     });
+    if !properties.is_object() {
+        properties = json!({});
+    }
     properties["e2e"] = e2e_state;
 
-    db.execute(Statement::from_sql_and_values(
+    txn.execute(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_channels SET properties = $2, last_activity_at = NOW() WHERE channel_id = $1 AND user_id = $3",
         [channel_id.into(), properties.into(), user_id.into()],
     ))
     .await
     .map_err(db_err)?;
+    // Commit before the KeyExchange fan-out: a peer that answers instantly must
+    // not race an uncommitted local key (and must not block on our row lock).
+    txn.commit().await.map_err(db_err)?;
 
     let local_actor = actor_url(&base_url, username);
     let activity_id = generate_activity_id(&base_url);

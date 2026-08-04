@@ -62,21 +62,41 @@ pub async fn send_room_message(
             tracing::debug!(room_id = %room_id, "No peer E2E keys yet; sending plaintext");
             (req.payload.clone(), false)
         } else {
-            // 也给自己 wrap 一份，便于本端历史解密
+            // 也给自己 wrap 一份，便于本端历史解密。
+            //
+            // 拿不到本地密钥就必须退回明文：没有 self-wrap 的密文，本端
+            // get_room_messages 永远解不开，发出去的消息会在自己的聊天记录里
+            // 停在「Encrypted · decrypting…」——只有对端读得到。宁可明文，
+            // 也不要写下一条自己都打不开的历史。
             let mut all = recipients;
-            if let Ok((my_pk, _)) = load_member_e2e_keys(db, room_id, &local_actor).await {
-                if !all.iter().any(|(_, pk)| pk == &my_pk) {
-                    all.push((local_actor.clone(), my_pk));
+            match load_member_e2e_keys(db, room_id, &local_actor).await {
+                Ok((my_pk, _)) => {
+                    if !all.iter().any(|(_, pk)| pk == &my_pk) {
+                        all.push((local_actor.clone(), my_pk));
+                    }
+                    match crate::federation::e2e::encrypt_json_for_recipients(
+                        &req.payload,
+                        room_id.as_bytes(),
+                        &all,
+                    ) {
+                        Ok(encrypted) => (encrypted, true),
+                        Err(e) => {
+                            tracing::warn!(
+                                room_id = %room_id,
+                                error = %e,
+                                "E2E encrypt failed; plaintext"
+                            );
+                            (req.payload.clone(), false)
+                        }
+                    }
                 }
-            }
-            match crate::federation::e2e::encrypt_json_for_recipients(
-                &req.payload,
-                room_id.as_bytes(),
-                &all,
-            ) {
-                Ok(encrypted) => (encrypted, true),
                 Err(e) => {
-                    tracing::warn!(room_id = %room_id, error = %e, "E2E encrypt failed; plaintext");
+                    tracing::warn!(
+                        room_id = %room_id,
+                        error = %e,
+                        "No local E2E key for sender; sending plaintext instead of \
+                         self-undecryptable ciphertext"
+                    );
                     (req.payload.clone(), false)
                 }
             }
