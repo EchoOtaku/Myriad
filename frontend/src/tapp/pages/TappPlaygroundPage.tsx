@@ -64,6 +64,7 @@ import {
   switchSession,
   updateActiveSessionWithMeta,
 } from '../utils/playgroundSession'
+import { selectPreviewGrantedPermissions } from '../utils/previewGrants'
 import { TAPP_LIST_PATH, tappDetailPath } from '../utils/tappPaths'
 import {
   formatPlaygroundPackageErrors,
@@ -877,12 +878,17 @@ export function TappPlaygroundPage() {
 
   const tappInstance = useMemo<TappInstance | null>(() => {
     if (!project) return null
+    // MYR-024: Manifest permissions are install-time declarations only.
+    // Preview grants are an explicit temporary allowlist intersection — never
+    // the full declaration list (which would open real host capabilities / CSP).
     return {
       id: project.manifest.id,
       manifest: project.manifest,
       status: 'running',
       installedAt: new Date().toISOString(),
-      grantedPermissions: project.manifest.permissions,
+      grantedPermissions: selectPreviewGrantedPermissions(
+        project.manifest.permissions,
+      ),
       userRole: 'admin',
       isTemporary: true,
       isAdminTapp: false,
@@ -1649,6 +1655,7 @@ export function TappPlaygroundPage() {
             code={project.code as TappCodeStructure}
             widgetId={activeWidget.id}
             widgetProps={widgetRenderProps}
+            previewMode
             onError={handleWidgetError}
             onReady={() => setPreviewError('')}
             className="w-full h-full"
