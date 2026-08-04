@@ -21,7 +21,6 @@ import { useI18n } from '../contexts/I18nContext'
 import { assertConfigWriteSuccess } from '../lib/api'
 import { parseAuthMeResponse } from '../utils/authMe'
 import { getCSRFHeaderName, getCSRFToken } from '../utils/csrf'
-import { SiteUrlField } from './config/SiteUrlField'
 import { InputItem, SegmentedControl, SwitchItem } from './settings'
 import { SettingItemWrapper } from './settings/items/SettingItemWrapper'
 import {
@@ -158,13 +157,9 @@ const SetupWizard: React.FC = () => {
     /** private / search_only / ai_citation / ai_full */
     visibility: 'ai_full',
     analytics: true,
+    /** 内存节约（高级设置同款 bag，默认可关） */
+    memorySaver: false,
   })
-  /**
-   * 站点对外地址：交给 SiteUrlField 自己管——它自带点击编辑 / 二次确认 /
-   * 独立提交（/admin/site/domain，同时改 CORS 与 .env），不跟其它字段一起整份回写。
-   * 这里只存「当前显示值」，成功后由 onApplied 回填。
-   */
-  const [baseUrlValue, setBaseUrlValue] = useState('')
   const [savingSite, setSavingSite] = useState(false)
   /**
    * 刚建完管理员：这一刻服务端的 is_setup_required 已经翻成 false，
@@ -482,14 +477,13 @@ const SetupWizard: React.FC = () => {
       if (!Array.isArray(fields)) return
       const pick = (key: string) =>
         fields.find((field: any) => field?.key === key)?.value || ''
-      // 没配过就先拿当前访问地址垫上，绝大多数情况这就是对的
-      setBaseUrlValue(pick('base_url') || window.location.origin)
       setSiteForm({
         title: pick('site_title'),
         description: pick('site_description'),
         favicon: pick('site_favicon'),
         visibility: pick('site_visibility_policy') || 'ai_full',
         analytics: pick('analytics_enabled') !== 'false',
+        memorySaver: pick('memory_saver_enabled') === 'true',
       })
     } catch {
       // 读不到就留空：这一步全是选填，填不填都能走完
@@ -526,9 +520,9 @@ const SetupWizard: React.FC = () => {
       }
 
       /*
-       * base_url 不在这里改：它由 /admin/site/domain 连同 frontend_url、
-       * CORS 与 .env 一起改，走整份回写只会写一半。
-       * site_noindex 是 site_visibility_policy 的派生位，设置页也是这么联动的。
+       * base_url 不在向导里改：域名走 /admin/site/domain（设置页 SiteUrlField），
+       * 整份回写只会写一半。site_noindex 是 site_visibility_policy 的派生位。
+       * memory_saver_enabled 与高级设置同一 bag，保存后后端会 apply 资源档。
        */
       const patch: Record<string, string> = {
         site_title: siteForm.title.trim(),
@@ -537,6 +531,7 @@ const SetupWizard: React.FC = () => {
         site_visibility_policy: siteForm.visibility,
         site_noindex: siteForm.visibility === 'private' ? 'true' : 'false',
         analytics_enabled: siteForm.analytics ? 'true' : 'false',
+        memory_saver_enabled: siteForm.memorySaver ? 'true' : 'false',
       }
       config.ui_config.config_fields = fields.map((field: any) =>
         field && typeof field.key === 'string' && field.key in patch
@@ -1168,9 +1163,9 @@ const SetupWizard: React.FC = () => {
               />
               {/*
                 这一步的字段直接用设置页同款的选项组件（InputItem / SegmentedControl /
-                SwitchItem / SiteUrlField），跟正式设置页交互一致——以后从这里改的东西，
+                SwitchItem），跟正式设置页交互一致——以后从这里改的东西，
                 去设置页也认得出来是同一个控件。视觉语言因此跟向导其余几步不完全统一，
-                这是有意的取舍。
+                这是有意的取舍。站点地址不在此步配置（设置页「基础」里的 SiteUrlField）。
               */}
               <StepBody>
                 <InputItem
@@ -1212,17 +1207,6 @@ const SetupWizard: React.FC = () => {
                   hint={t.config.imageUploadHint}
                   layout="vertical"
                 />
-                {/* 站点地址是它自己的一趟：点击编辑、二次确认、独立保存，向导不插手 */}
-                <SettingItemWrapper
-                  label={t.config.siteUrlConfig}
-                  description={t.config.siteUrlFieldDesc}
-                  layout="vertical"
-                >
-                  <SiteUrlField
-                    value={baseUrlValue}
-                    onApplied={setBaseUrlValue}
-                  />
-                </SettingItemWrapper>
                 <SettingItemWrapper
                   label={t.config.fieldSiteVisibilityPolicy}
                   description={t.config.fieldSiteVisibilityPolicyHint}
@@ -1258,6 +1242,18 @@ const SetupWizard: React.FC = () => {
                   disabled={savingSite}
                   onChange={(checked) =>
                     setSiteForm({ ...siteForm, analytics: checked })
+                  }
+                  layout="horizontal"
+                />
+                {/* 内存节约：与高级设置同款；放在站点步最后，便于小内存主机首次部署勾选 */}
+                <SwitchItem
+                  itemKey="memory_saver_enabled"
+                  label={t.config.memorySaver}
+                  description={t.config.memorySaverHint}
+                  value={siteForm.memorySaver}
+                  disabled={savingSite}
+                  onChange={(checked) =>
+                    setSiteForm({ ...siteForm, memorySaver: checked })
                   }
                   layout="horizontal"
                 />

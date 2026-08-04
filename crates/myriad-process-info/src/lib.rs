@@ -77,6 +77,16 @@ pub fn process_platform_info() -> Value {
     })
 }
 
+/// RSS (MiB) at/above which metrics and runtime diagnostics report **warning**.
+///
+/// ~500 MiB backend load is operationally normal on 1 GiB hosts; warn slightly above.
+pub const MEMORY_WARNING_MB: u64 = 600;
+
+/// RSS (MiB) at/above which metrics and runtime diagnostics report **critical**.
+///
+/// Leaves a little headroom under a 1 GiB host budget before OOM pressure.
+pub const MEMORY_CRITICAL_MB: u64 = 750;
+
 /// Process memory info (cross-platform, best-effort).
 pub fn process_memory_info() -> Value {
     get_memory_info()
@@ -211,6 +221,15 @@ mod tests {
         assert!(!is_valid_commit_sha(
             "0123456789abcdef0123456789abcdef012345678" // 41
         ));
+    }
+
+    #[test]
+    fn memory_alert_thresholds_fit_1g_host_budget() {
+        assert_eq!(MEMORY_WARNING_MB, 600);
+        assert_eq!(MEMORY_CRITICAL_MB, 750);
+        assert!(MEMORY_WARNING_MB > 500);
+        assert!(MEMORY_CRITICAL_MB < 1024);
+        assert!(MEMORY_WARNING_MB < MEMORY_CRITICAL_MB);
     }
 
     #[test]

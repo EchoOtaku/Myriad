@@ -1,6 +1,7 @@
 use crate::services::background_processor::{TaskStatus, BACKGROUND_PROCESSOR};
 use axum::{http::StatusCode, Json};
 use chrono::{DateTime, Duration, TimeZone, Utc};
+use myriad_process_info::{MEMORY_CRITICAL_MB, MEMORY_WARNING_MB};
 use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 use serde_json::{json, Value};
 use std::sync::atomic::Ordering;
@@ -11,8 +12,6 @@ const RECENT_FAILURE_HOURS: i64 = 24;
 const TASK_SNAPSHOT_LIMIT: usize = 100;
 const RECENT_FAILURE_LIMIT: usize = 5;
 const ERROR_DETAIL_LIMIT: usize = 500;
-const MEMORY_WARNING_MB: u64 = 500;
-const MEMORY_CRITICAL_MB: u64 = 1000;
 
 fn limited_detail(detail: impl AsRef<str>) -> String {
     detail.as_ref().chars().take(ERROR_DETAIL_LIMIT).collect()
@@ -234,11 +233,19 @@ pub async fn runtime_diagnostics(
         json!({
             "id": "memory",
             "status": memory_status,
-            // Surface RSS so the Advanced Settings panel can show process memory
+            // Surface RSS + profile so Advanced Settings can show process memory
             // without a second /api/metrics call.
-            "detail": rss_mb.map(|mb| format!("rss_mb={mb}")),
+            "detail": rss_mb.map(|mb| {
+                format!(
+                    "rss_mb={mb} profile={} (warn≥{MEMORY_WARNING_MB}, critical≥{MEMORY_CRITICAL_MB})",
+                    crate::services::memory_profile::active_profile().as_str()
+                )
+            }),
             "rss_mb": rss_mb,
             "rss_kb": memory.get("rss_kb").cloned().unwrap_or(Value::Null),
+            "warning_mb": MEMORY_WARNING_MB,
+            "critical_mb": MEMORY_CRITICAL_MB,
+            "memory_profile": crate::services::memory_profile::metrics_snapshot(),
         }),
         json!({
             "id": "location",

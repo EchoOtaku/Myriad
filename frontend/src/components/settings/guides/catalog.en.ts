@@ -798,6 +798,20 @@ export const en: SettingGuidesCatalog = {
   },
 
   advanced: {
+    memorySaver: {
+      what: 'Trade concurrent capacity for lower memory use on small hosts (~1 GiB).',
+      chain:
+        '1) Off (default) = historical budgets — no change for existing installs.\n2) On = tighter concurrent federation buffers, slightly lower single-message/attachment caps, smaller process caches, fewer DB pool connections and Argon2 slots.\n3) Normal chat/media still fit; huge inline attachments may need chunked transfer or turn saver off.\n4) Most knobs apply after Save; DB pool size fully applies after backend reconnect/restart.',
+      frontend: 'No page theme change. Very large media or multi-path peaks may reject sooner or show “retry later”.',
+      notes: 'Operators can force a profile with MYRIAD_MEMORY_PROFILE=default|saver (env overrides this switch).',
+    },
+    memorySaverEnable: {
+      what: 'Enable memory-saver resource budgets.',
+      chain:
+        '1) Saves to server config, then reloads runtime concurrency/federation/cache caps.\n2) Federation stays on; budgets are just tighter.\n3) Best for 1 GiB VMs; leave off on larger hosts.',
+      frontend: 'Indirect under heavy load. Daily browsing should feel the same.',
+      notes: 'Turn off anytime and Save to restore balanced budgets (restart if you care about DB pool size).',
+    },
     network: {
       what: 'Whether the server uses a proxy when going to the open internet, and access addresses for a few services.',
       chain:

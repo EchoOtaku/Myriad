@@ -84,6 +84,7 @@ Myriad/
 | 文档 | 说明 |
 | --- | --- |
 | [ARCHITECTURE.md](../development/ARCHITECTURE.md) | 组件与拓扑 |
+| [BACKEND_MEMORY_AUDIT.md](../development/BACKEND_MEMORY_AUDIT.md) | 后端内存审计（基线/稳态/尖峰） |
 | [BUILD.md](../development/BUILD.md) | 工具链与构建 |
 | [API.md](../API.md) | HTTP API 入口 |
 | [OAUTH.md](../development/OAUTH.md) | 本地登录与 OAuth/OIDC |

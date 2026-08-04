@@ -163,6 +163,8 @@ export interface SettingGuidesCatalog {
     allowLocalRegister: SettingGuideEntry
   }
   advanced: {
+    memorySaver: SettingGuideEntry
+    memorySaverEnable: SettingGuideEntry
     network: SettingGuideEntry
     proxyEnable: SettingGuideEntry
     proxyUrl: SettingGuideEntry

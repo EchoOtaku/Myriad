@@ -425,10 +425,8 @@ pub(super) fn build_base_api_router(
             get(federation::actor::get_following),
         )
         // Layer 2: Inbox（远程实例投递，通过 HTTP Signature 验证）
-        // Limit = `federation::limits::INBOX_BODY_LIMIT` (64 MiB explicit; 36 MiB
-        // MESSAGE_PAYLOAD + envelope headroom — MYR-002). Nested limit may exceed
-        // the global 50 MiB DefaultBodyLimit on the outer router — intentional.
-        // Concurrent buffering is also gated by INBOX_INFLIGHT_RAW_BUDGET (429).
+        // Live body limit follows memory profile (default 64 MiB / saver 48 MiB).
+        // Concurrent buffering is also gated by inbox inflight budget (429).
         .merge(
             Router::<crate::state::AppState>::new()
                 .route(
@@ -439,8 +437,8 @@ pub(super) fn build_base_api_router(
                 // 远端可达表面。verify_preparse_gate 会在解析 JSON 之前先校验
                 // 签名头 / Date / Digest，攻击者要触发解析必须先算出正确的
                 // SHA-256 —— 这是这个上限敢放宽的前提。
-                .layer(axum::extract::DefaultBodyLimit::max(
-                    federation::limits::INBOX_BODY_LIMIT,
+                .layer(axum::middleware::from_fn(
+                    federation::limits::live_inbox_body_limit,
                 )),
         )
         // Federation API（需认证）

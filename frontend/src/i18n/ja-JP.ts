@@ -1316,7 +1316,13 @@ export const jaJP: TranslationKeys = {
     // ネットワークプロキシ設定
     advanced: '詳細設定',
     advancedDesc:
-      '実行診断、アウトバウンドプロキシ、API ミラー、設定バックアップ/復元、危険な操作',
+      '実行診断、メモリ節約、アウトバウンドプロキシ、API ミラー、設定バックアップ/復元、危険な操作',
+    memorySaverGroup: 'メモリ',
+    memorySaverGroupDesc:
+      '約 1 GB のホストで同時メモリ使用を抑えます。既定オフ＝これまでの均衡予算（既存は無感）。',
+    memorySaver: 'メモリ節約',
+    memorySaverHint:
+      '連合の同時バッファと単一メッセージ／添付の上限（均衡より少し低い）、転送チャンク同時量、プロセス内キャッシュ、DB プール、パスワードハッシュ同時数を締めます。機能は残りますが、極大メディアや多路ピークでは早めに拒否／「あとで再試行」になり得ます。MYRIAD_MEMORY_PROFILE で上書き可。DB プールは再起動後に完全適用。',
     enableProxy: 'ネットワークプロキシを有効化',
     enableProxyHint:
       '有効にすると、外部APIリクエストはプロキシ経由で送信されます',

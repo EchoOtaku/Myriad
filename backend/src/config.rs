@@ -506,6 +506,10 @@ pub struct DynamicConfig {
     /// 游客 AI 调用冷却时间（秒）
     pub guest_ai_cooldown_seconds: i32,
 
+    /// 内存节约模式（高级设置）：收紧并发预算 / 缓存 / 连接池等，适合 ~1 GiB 主机。
+    /// 默认 false = 历史行为。`MYRIAD_MEMORY_PROFILE` env 可覆盖。
+    pub memory_saver_enabled: bool,
+
     // 网络代理配置（用于中国大陆服务器访问外部API）
     /// 是否启用网络代理
     pub proxy_enabled: bool,
@@ -722,6 +726,7 @@ impl Default for DynamicConfig {
             guest_ai_cooldown_seconds: 10,
 
             // 网络代理配置默认值
+            memory_saver_enabled: false,
             proxy_enabled: false, // 默认关闭代理
             proxy_url: None,
             proxy_bypass: None,

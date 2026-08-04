@@ -92,8 +92,8 @@ use crate::federation::limits::TRANSFER_CHUNK_SIZE as DEFAULT_CHUNK_SIZE;
 /// 单个文件传输总大小上限（产品决策，见 limits 注释）
 use crate::federation::limits::MAX_FILE_SIZE;
 use crate::federation::limits::{
-    MAX_CONCURRENT_TRANSFERS, MAX_CONCURRENT_TRANSFERS_PER_USER, MAX_CONCURRENT_TRANSFER_BYTES,
-    MAX_IN_FLIGHT_CHUNK_BYTES,
+    max_in_flight_chunk_bytes, MAX_CONCURRENT_TRANSFERS, MAX_CONCURRENT_TRANSFERS_PER_USER,
+    MAX_CONCURRENT_TRANSFER_BYTES, MAX_IN_FLIGHT_CHUNK_BYTES,
 };
 
 // ── MYR-008: in-flight chunk byte budget ────────────────────────────────────
@@ -116,9 +116,10 @@ impl InFlightChunkGuard {
         if bytes == 0 {
             return Some(Self { bytes: 0 });
         }
+        let limit = max_in_flight_chunk_bytes();
         loop {
             let cur = IN_FLIGHT_CHUNK_BYTES.load(Ordering::Relaxed);
-            if cur.saturating_add(bytes) > MAX_IN_FLIGHT_CHUNK_BYTES {
+            if cur.saturating_add(bytes) > limit {
                 return None;
             }
             match IN_FLIGHT_CHUNK_BYTES.compare_exchange_weak(
@@ -294,9 +295,9 @@ fn admit_chunk_bytes(
                 "error": "Too many in-flight transfer chunks",
                 "message": format!(
                     "Decoded chunk budget is {} bytes; retry shortly",
-                    MAX_IN_FLIGHT_CHUNK_BYTES
+                    max_in_flight_chunk_bytes()
                 ),
-                "limit_bytes": MAX_IN_FLIGHT_CHUNK_BYTES,
+                "limit_bytes": max_in_flight_chunk_bytes(),
             })),
         )
     })

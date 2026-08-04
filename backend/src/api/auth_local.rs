@@ -30,20 +30,19 @@ use crate::middleware::auth::{
 /// 503 after a short wait rather than queue forever. Login, register,
 /// change-password, set-password, setup create-admin, and admin create-user
 /// all share this single permit path via [`hash_password`] / [`verify_password`].
+/// Historical default concurrency (default memory profile). Saver uses 2 via memory_profile.
 const PASSWORD_HASH_PERMITS: usize = 4;
 /// How long a request may wait for a hash/verify permit before 503.
 /// Acts as a short queue bound — waiters beyond this get 503, not harsher IP limits.
 const PASSWORD_HASH_ACQUIRE_TIMEOUT: StdDuration = StdDuration::from_secs(15);
 
-static PASSWORD_HASH_SEMAPHORE: Lazy<Arc<Semaphore>> =
-    Lazy::new(|| Arc::new(Semaphore::new(PASSWORD_HASH_PERMITS)));
-
 /// Acquire a global Argon2 permit, or return 503 if the wait times out.
 async fn acquire_password_hash_permit() -> Result<OwnedSemaphorePermit, HttpError> {
+    let permits = crate::services::memory_profile::argon2_permits();
     acquire_password_hash_permit_from(
-        PASSWORD_HASH_SEMAPHORE.clone(),
+        crate::services::memory_profile::argon2_semaphore(),
         PASSWORD_HASH_ACQUIRE_TIMEOUT,
-        PASSWORD_HASH_PERMITS,
+        permits,
     )
     .await
 }

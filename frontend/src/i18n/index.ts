@@ -1133,6 +1133,10 @@ export interface TranslationKeys {
     fieldMusicPlaylistId: string
     advanced: string
     advancedDesc: string
+    memorySaverGroup: string
+    memorySaverGroupDesc: string
+    memorySaver: string
+    memorySaverHint: string
     enableProxy: string
     enableProxyHint: string
     proxyUrl: string

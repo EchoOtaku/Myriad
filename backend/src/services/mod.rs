@@ -51,6 +51,7 @@ pub mod enka_assets; // Enka character metadata for Hoyoverse cards
 pub mod fetcher;
 pub mod governed_text; // Governed AI text sink (scheduler + declared-API builtins)
 pub mod http_client; // Shared HTTP client with proxy support
+pub mod memory_profile; // default vs memory-saver process budgets
 pub mod kugou_service; // Kugou lyrics (KRC) supplement
 pub mod metadata_service;
 pub mod module_visibility; // Module visibility for Agent (no api::config import)

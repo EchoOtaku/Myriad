@@ -11,9 +11,6 @@ use super::types::*;
 
 // 消息功能
 
-/// 最大消息载荷大小（与 channel 共用同一常量，见 [`crate::federation::limits`]）
-use crate::federation::limits::MESSAGE_PAYLOAD_LIMIT as MAX_ROOM_MESSAGE_PAYLOAD;
-
 /// 发送 Room 消息
 pub async fn send_room_message(
     user_id: i32,
@@ -22,13 +19,14 @@ pub async fn send_room_message(
     db: &DatabaseConnection,
     req: &SendRoomMessageRequest,
 ) -> Result<SendRoomMessageResponse, (StatusCode, Json<serde_json::Value>)> {
-    // 验证载荷大小
+    // 验证载荷大小（default 36 MiB；内存节约档略低）
+    let max_payload = crate::federation::limits::message_payload_limit();
     let payload_size = req.payload.to_string().len();
-    if payload_size > MAX_ROOM_MESSAGE_PAYLOAD {
+    if payload_size > max_payload {
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(
-                json!({"error": format!("Message payload too large: {} bytes (max {})", payload_size, MAX_ROOM_MESSAGE_PAYLOAD)}),
+                json!({"error": format!("Message payload too large: {} bytes (max {})", payload_size, max_payload)}),
             ),
         ));
     }

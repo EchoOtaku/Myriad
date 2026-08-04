@@ -336,8 +336,8 @@ pub async fn create_channel(
     // 创建新 Channel
     let channel_id = generate_channel_id();
     let properties = json!({
-        // Align with MESSAGE_PAYLOAD_LIMIT (36 MiB — Tapp package share; MYR-002)
-        "maxMessageSize": MAX_MESSAGE_PAYLOAD,
+        // Align with live message_payload_limit (default 36 MiB; saver lower)
+        "maxMessageSize": crate::federation::limits::message_payload_limit(),
         "supportedFormats": ["text/plain", "text/markdown", "application/json"]
     });
 
@@ -768,10 +768,6 @@ pub async fn delete_channel(
 
 // 消息功能
 
-/// 最大消息载荷大小（JSON 序列化后字符串长度）。
-/// 取值与上限链的单一事实源见 [`crate::federation::limits`]。
-use crate::federation::limits::MESSAGE_PAYLOAD_LIMIT as MAX_MESSAGE_PAYLOAD;
-
 /// 发送消息到 Channel
 pub async fn send_message(
     user_id: i32,
@@ -780,13 +776,14 @@ pub async fn send_message(
     db: &DatabaseConnection,
     req: &SendMessageRequest,
 ) -> Result<SendMessageResponse, (StatusCode, Json<serde_json::Value>)> {
-    // 验证载荷大小
+    // 验证载荷大小（default 36 MiB；内存节约档略低）
+    let max_payload = crate::federation::limits::message_payload_limit();
     let payload_size = req.payload.to_string().len();
-    if payload_size > MAX_MESSAGE_PAYLOAD {
+    if payload_size > max_payload {
         return Err((
             StatusCode::PAYLOAD_TOO_LARGE,
             Json(
-                json!({"error": format!("Message payload too large: {} bytes (max {})", payload_size, MAX_MESSAGE_PAYLOAD)}),
+                json!({"error": format!("Message payload too large: {} bytes (max {})", payload_size, max_payload)}),
             ),
         ));
     }

@@ -37,19 +37,25 @@ static GEO_CACHE: Lazy<RwLock<HashMap<String, (GeoInfo, Instant)>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
 
 const GEO_CACHE_TTL: Duration = Duration::from_secs(600);
-const MAX_GEO_CACHE_ENTRIES: usize = 2048;
+const MAX_GEO_CACHE_ENTRIES: usize = 2048; // default profile; runtime: memory_profile
 
 // API 响应缓存
 
 struct CacheEntry {
     data: Value,
+    /// Approximate JSON size for byte-budget eviction.
+    size_bytes: usize,
     expires_at: Instant,
     cached_at: Instant,
 }
 
+fn approx_json_bytes(value: &Value) -> usize {
+    serde_json::to_vec(value).map(|v| v.len()).unwrap_or(0)
+}
+
 static API_CACHE: Lazy<RwLock<HashMap<String, CacheEntry>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
-const MAX_API_CACHE_ENTRIES: usize = 2048;
+const MAX_API_CACHE_ENTRIES: usize = 2048; // default profile; runtime: memory_profile
 const MAX_TAPP_HTTP_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
 // 上下文类型
@@ -393,7 +399,13 @@ impl TappApiService {
                     };
                     let mut cache = GEO_CACHE.write().await;
                     cache.retain(|_, (_, cached_at)| cached_at.elapsed() < GEO_CACHE_TTL);
-                    while cache.len() >= MAX_GEO_CACHE_ENTRIES {
+                    let geo_cap = crate::services::memory_profile::max_geo_cache_entries();
+                    let geo_bytes_cap = crate::services::memory_profile::max_geo_cache_bytes();
+                    // Geo entries are small (~200B); enforce entry + coarse byte budget.
+                    let entry_bytes = 256usize;
+                    while cache.len() >= geo_cap
+                        || cache.len().saturating_mul(entry_bytes) >= geo_bytes_cap
+                    {
                         let Some(oldest) = cache
                             .iter()
                             .min_by_key(|(_, (_, cached_at))| *cached_at)
@@ -937,11 +949,22 @@ impl TappApiService {
         let mut cache = API_CACHE.write().await;
         let now = Instant::now();
         cache.retain(|_, entry| entry.expires_at > now);
-        while cache.len() >= MAX_API_CACHE_ENTRIES {
+        let api_cap = crate::services::memory_profile::max_api_cache_entries();
+        let api_bytes_cap = crate::services::memory_profile::max_api_cache_bytes();
+        let size_bytes = approx_json_bytes(data);
+        // Skip caching absurd single values that alone exceed the byte budget.
+        if size_bytes > api_bytes_cap {
+            return;
+        }
+        // Replace: drop old entry first so size accounting is accurate.
+        cache.remove(key);
+        while cache.len() >= api_cap
+            || cache.values().map(|e| e.size_bytes).sum::<usize>() + size_bytes > api_bytes_cap
+        {
             let Some(oldest) = cache
                 .iter()
                 .min_by_key(|(_, entry)| entry.cached_at)
-                .map(|(key, _)| key.clone())
+                .map(|(k, _)| k.clone())
             else {
                 break;
             };
@@ -951,6 +974,7 @@ impl TappApiService {
             key.to_string(),
             CacheEntry {
                 data: data.clone(),
+                size_bytes,
                 expires_at: now + Duration::from_secs(ttl as u64),
                 cached_at: now,
             },

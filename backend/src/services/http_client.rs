@@ -23,6 +23,24 @@ pub static TAPP_HTTP_CLIENT: Lazy<Client> = Lazy::new(|| {
         .expect("Failed to create Tapp HTTP client")
 });
 
+/// Shared client for music CDN / audio streaming (NetEase, QQ, KuGou, etc.).
+///
+/// Browser-like UA for CDN referer policies. Prefer this over per-request
+/// `Client::builder()` to reuse connection pools (memory + latency).
+pub static MEDIA_FETCH_CLIENT: Lazy<Client> = Lazy::new(|| {
+    Client::builder()
+        .pool_max_idle_per_host(8)
+        .pool_idle_timeout(Duration::from_secs(90))
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .user_agent(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
+             (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        )
+        .build()
+        .expect("Failed to create media fetch HTTP client")
+});
+
 /// 全局 HTTP 客户端（带代理支持）
 static GLOBAL_HTTP_CLIENT: Lazy<RwLock<Option<Client>>> = Lazy::new(|| RwLock::new(None));
 

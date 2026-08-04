@@ -165,6 +165,7 @@ describe('uiBagOwnership', () => {
     assert.equal(configChangesNeedRuntimeReload(nextMirror, prevMirror), true)
 
     for (const key of [
+      'memory_saver_enabled',
       'proxy_enabled',
       'proxy_url',
       'proxy_bypass',

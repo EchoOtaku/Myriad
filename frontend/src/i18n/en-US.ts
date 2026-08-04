@@ -1336,7 +1336,13 @@ export const enUS: TranslationKeys = {
     // Network Proxy Config
     advanced: 'Advanced',
     advancedDesc:
-      'Runtime diagnostics, outbound proxy, API mirrors, settings backup/restore, and dangerous actions',
+      'Runtime diagnostics, memory saver, outbound proxy, API mirrors, settings backup/restore, and dangerous actions',
+    memorySaverGroup: 'Memory',
+    memorySaverGroupDesc:
+      'Lower concurrent memory use on small hosts (~1 GiB). Default off = balanced (historical) budgets.',
+    memorySaver: 'Memory saver',
+    memorySaverHint:
+      'Tightens concurrent federation buffers, slightly lowers single-message/attachment size caps, transfer chunk concurrency, process caches, DB pool size, and password-hash concurrency. Features stay available; very large media or multi-path peaks may reject sooner or show “retry later”. Env MYRIAD_MEMORY_PROFILE can override. DB pool fully applies after backend restart.',
     enableProxy: 'Enable Network Proxy',
     enableProxyHint:
       'External API requests will be sent through the proxy when enabled',

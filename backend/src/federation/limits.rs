@@ -50,6 +50,12 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// 留业务余量（不是审计报告式的 multi-KiB 苛刻裁剪）。
 pub const MESSAGE_PAYLOAD_LIMIT: usize = 36 * 1024 * 1024;
 
+/// Live message payload cap (default or memory-saver).
+#[inline]
+pub fn message_payload_limit() -> usize {
+    crate::services::memory_profile::message_payload_limit()
+}
+
 /// inbox 请求体上限（`/inbox` 与 `/users/{u}/inbox`）。
 ///
 /// 必须容纳 [`MESSAGE_PAYLOAD_LIMIT`] 加上活动信封、JSON 转义膨胀与
@@ -57,13 +63,27 @@ pub const MESSAGE_PAYLOAD_LIMIT: usize = 36 * 1024 * 1024;
 ///
 /// MYR-002（产品）：**显式 64 MiB**，不要写成 `MESSAGE_PAYLOAD_LIMIT * 3 / 2`
 /// （那会得到 54 MiB）。信封余量由编译期 assert 约束（≥ 25% of payload）。
+/// Active process value: [`inbox_body_limit`].
 pub const INBOX_BODY_LIMIT: usize = 64 * 1024 * 1024;
+
+/// Live inbox body cap (default or memory-saver).
+#[inline]
+pub fn inbox_body_limit() -> usize {
+    crate::services::memory_profile::inbox_body_limit()
+}
 
 /// 已认证用户提交内容的路由上限（发布、房间/频道消息、媒体上传）。
 ///
 /// 比 inbox 略宽：这些请求来自已登录的本地用户，不是任意远端。
 /// MYR-002：`INBOX + 16 MiB` → **80 MiB**。
+/// Active: [`authenticated_body_limit`].
 pub const AUTHENTICATED_BODY_LIMIT: usize = INBOX_BODY_LIMIT + 16 * 1024 * 1024;
+
+/// Live authenticated body cap (default or memory-saver).
+#[inline]
+pub fn authenticated_body_limit() -> usize {
+    crate::services::memory_profile::authenticated_body_limit()
+}
 
 /// 小型联邦控制端点的请求体上限（信任策略、房间创建、邀请等）。
 ///
@@ -105,14 +125,33 @@ pub const MAX_CONCURRENT_TRANSFER_BYTES: i64 = 64 * 1024 * 1024 * 1024; // 64 Gi
 
 /// Max decoded chunk payload bytes held concurrently across upload/inbound handlers.
 ///
-/// At [`TRANSFER_CHUNK_SIZE`] (4 MiB), this allows ~32 simultaneous chunk ops.
+/// At [`TRANSFER_CHUNK_SIZE`] (4 MiB), this allows ~32 simultaneous chunk ops (**default**).
+/// Active cap: [`max_in_flight_chunk_bytes`].
 pub const MAX_IN_FLIGHT_CHUNK_BYTES: usize = 128 * 1024 * 1024; // 128 MiB
 
-/// Note 内联图片附件的字节上限。
+/// Live transfer chunk inflight byte budget.
+#[inline]
+pub fn max_in_flight_chunk_bytes() -> usize {
+    crate::services::memory_profile::max_in_flight_chunk_bytes()
+}
+
+/// Note 内联图片附件的字节上限（**default**）。
 pub const NOTE_IMAGE_LIMIT: usize = 32 * 1024 * 1024;
 
-/// Note 内联视频附件的字节上限。
+/// Live note image cap.
+#[inline]
+pub fn note_image_limit() -> usize {
+    crate::services::memory_profile::note_image_limit()
+}
+
+/// Note 内联视频附件的字节上限（**default**）。
 pub const NOTE_VIDEO_LIMIT: usize = 256 * 1024 * 1024;
+
+/// Live note video cap.
+#[inline]
+pub fn note_video_limit() -> usize {
+    crate::services::memory_profile::note_video_limit()
+}
 
 /// 单条 Note 的附件数量上限。
 pub const NOTE_ATTACHMENT_COUNT_LIMIT: usize = 32;
@@ -140,10 +179,17 @@ pub const NOTE_TEXT_CHAR_LIMIT: usize = 100_000;
 //
 // Exhausted budget → HTTP **429** (not a lower body limit / 413).
 
-/// Concurrent raw-body reservation budget for inbox handlers.
+/// Concurrent raw-body reservation budget for inbox handlers (**default** profile).
 ///
+/// Active process budget is [`inbox_inflight_raw_budget`] (memory-saver may lower it).
 /// See module comment block above for the full sizing rationale (MYR-002).
 pub const INBOX_INFLIGHT_RAW_BUDGET: usize = 512 * 1024 * 1024;
+
+/// Live inbox concurrent raw-body budget (default or memory-saver).
+#[inline]
+pub fn inbox_inflight_raw_budget() -> usize {
+    crate::services::memory_profile::inbox_inflight_raw_budget()
+}
 
 /// Currently reserved raw body bytes across in-flight inbox handlers.
 static INBOX_INFLIGHT_RAW_BYTES: AtomicUsize = AtomicUsize::new(0);
@@ -181,13 +227,15 @@ pub fn inbox_inflight_raw_bytes() -> usize {
 /// is always representable, and zero-length reservations still take a slot of 1.
 ///
 /// Returns `None` when the budget cannot admit `bytes` without exceeding
-/// [`INBOX_INFLIGHT_RAW_BUDGET`] (caller should respond **429**).
+/// the active [`inbox_inflight_raw_budget`] (caller should respond **429**).
 pub fn try_acquire_inbox_inflight(bytes: usize) -> Option<InboxInflightPermit> {
-    let bytes = bytes.clamp(1, INBOX_BODY_LIMIT);
+    let body_cap = inbox_body_limit();
+    let bytes = bytes.clamp(1, body_cap);
+    let budget = inbox_inflight_raw_budget();
     loop {
         let current = INBOX_INFLIGHT_RAW_BYTES.load(Ordering::Acquire);
         let new = current.checked_add(bytes)?;
-        if new > INBOX_INFLIGHT_RAW_BUDGET {
+        if new > budget {
             return None;
         }
         match INBOX_INFLIGHT_RAW_BYTES.compare_exchange_weak(
@@ -216,19 +264,32 @@ pub async fn buffer_inbox_body(
     use axum::Json;
     use serde_json::json;
 
-    let reserve = request
+    let body_cap = inbox_body_limit();
+    let content_length = request
         .headers()
         .get(header::CONTENT_LENGTH)
         .and_then(|v| v.to_str().ok())
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(INBOX_BODY_LIMIT)
-        .clamp(1, INBOX_BODY_LIMIT);
+        .and_then(|s| s.parse::<usize>().ok());
+    // Reject oversized Content-Length before buffering (memory-saver live cap).
+    if let Some(cl) = content_length {
+        if cl > body_cap {
+            return Err((
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(json!({
+                    "error": format!(
+                        "Inbox body exceeds limit: {cl} bytes (max {body_cap})"
+                    )
+                })),
+            ));
+        }
+    }
+    let reserve = content_length.unwrap_or(body_cap).clamp(1, body_cap);
 
     let permit = try_acquire_inbox_inflight(reserve).ok_or_else(|| {
         tracing::warn!(
             reserve_bytes = reserve,
             inflight = inbox_inflight_raw_bytes(),
-            budget = INBOX_INFLIGHT_RAW_BUDGET,
+            budget = inbox_inflight_raw_budget(),
             "inbox concurrent memory budget exhausted"
         );
         (
@@ -239,7 +300,7 @@ pub async fn buffer_inbox_body(
         )
     })?;
 
-    let body = axum::body::to_bytes(request.into_body(), INBOX_BODY_LIMIT)
+    let body = axum::body::to_bytes(request.into_body(), body_cap)
         .await
         .map_err(|e| {
             (
@@ -250,6 +311,115 @@ pub async fn buffer_inbox_body(
 
     Ok((body, permit))
 }
+
+// ── Live DefaultBodyLimit (memory profile hot-reload) ───────────────────────
+//
+// Axum's `DefaultBodyLimit::max(N)` freezes N when the router is built. Memory
+// saver can change after config save without rebuilding routes. These layers
+// re-read the active profile **per request**: Content-Length precheck + stream
+// cap via `http_body_util::Limited`.
+
+/// Which live budget a route should enforce at the HTTP body layer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LiveBodyLimitKind {
+    /// Shared / user inbox (remote deliveries).
+    Inbox,
+    /// Authenticated federation write surface (messages, follow, …).
+    Authenticated,
+    /// Freeform Note media upload (video cap + envelope).
+    NoteMedia,
+    /// Chunked file transfer upload.
+    TransferChunk,
+    /// Small control JSON (trust, room meta, …).
+    SmallControl,
+}
+
+impl LiveBodyLimitKind {
+    #[inline]
+    pub fn limit_bytes(self) -> usize {
+        match self {
+            Self::Inbox => inbox_body_limit(),
+            Self::Authenticated => authenticated_body_limit(),
+            Self::NoteMedia => note_video_limit().saturating_add(16 * 1024 * 1024),
+            Self::TransferChunk => TRANSFER_CHUNK_BODY_LIMIT,
+            Self::SmallControl => SMALL_CONTROL_BODY_LIMIT,
+        }
+    }
+}
+
+async fn live_body_limit_middleware(
+    kind: LiveBodyLimitKind,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::body::Body;
+    use axum::http::{header, StatusCode};
+    use axum::response::IntoResponse;
+    use axum::Json;
+    use serde_json::json;
+
+    let limit = kind.limit_bytes();
+    if let Some(cl) = request
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<usize>().ok())
+    {
+        if cl > limit {
+            return (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                Json(json!({
+                    "error": format!("Request body too large: {cl} bytes (max {limit})")
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    let (parts, body) = request.into_parts();
+    // Stream cap without Content-Length (Content-Length already checked above).
+    let limited_body = http_body_util::Limited::new(body, limit);
+    let request = axum::extract::Request::from_parts(parts, Body::new(limited_body));
+    next.run(request).await
+}
+
+/// Named middleware entry points (axum `from_fn` needs plain async fns).
+pub async fn live_inbox_body_limit(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    live_body_limit_middleware(LiveBodyLimitKind::Inbox, request, next).await
+}
+
+pub async fn live_authenticated_body_limit(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    live_body_limit_middleware(LiveBodyLimitKind::Authenticated, request, next).await
+}
+
+pub async fn live_note_media_body_limit(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    live_body_limit_middleware(LiveBodyLimitKind::NoteMedia, request, next).await
+}
+
+pub async fn live_transfer_chunk_body_limit(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    live_body_limit_middleware(LiveBodyLimitKind::TransferChunk, request, next).await
+}
+
+pub async fn live_small_control_body_limit(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    live_body_limit_middleware(LiveBodyLimitKind::SmallControl, request, next).await
+}
+
+
 
 // 编译期不变量
 //
@@ -418,6 +588,67 @@ mod constant_tests {
         let max_full = INBOX_INFLIGHT_RAW_BUDGET / INBOX_BODY_LIMIT;
         assert!(max_full >= 4, "budget should allow several full deliveries");
         assert!(max_full < 10, "budget must not allow ~10 concurrent full-size");
+    }
+
+    /// Locks constants cited by `docs/development/BACKEND_MEMORY_AUDIT.md`.
+    ///
+    /// Product single-request limits stay large (media); concurrent raw budget is
+    /// the 1 GiB-host tension (512 MiB reserved buffering alone). Changing these
+    /// is a product/profile decision — this test fails loudly if they drift
+    /// without updating the audit.
+    #[test]
+    fn memory_audit_1g_host_budget_tension() {
+        const ONE_GIB: usize = 1024 * 1024 * 1024;
+        // Single-request product floor (do not silently shrink in drive-by refactors).
+        assert!(MESSAGE_PAYLOAD_LIMIT >= 32 * 1024 * 1024);
+        assert!(INBOX_BODY_LIMIT >= MESSAGE_PAYLOAD_LIMIT);
+        // Concurrent budget is half a 1 GiB host — intentional audit finding.
+        assert_eq!(INBOX_INFLIGHT_RAW_BUDGET, 512 * 1024 * 1024);
+        assert!(
+            INBOX_INFLIGHT_RAW_BUDGET * 2 <= ONE_GIB,
+            "inflight raw budget is sized as half of 1 GiB (audit R2)"
+        );
+        assert!(
+            MAX_IN_FLIGHT_CHUNK_BYTES <= 128 * 1024 * 1024,
+            "chunk inflight must stay documented upper bound"
+        );
+        assert_eq!(MAX_IN_FLIGHT_CHUNK_BYTES, 128 * 1024 * 1024);
+    }
+
+    #[test]
+    fn live_body_limit_kinds_track_memory_profile() {
+        let _g = crate::services::memory_profile::test_profile_lock();
+        crate::services::memory_profile::apply(
+            crate::services::memory_profile::MemoryProfile::Default,
+        );
+        assert_eq!(
+            LiveBodyLimitKind::Inbox.limit_bytes(),
+            INBOX_BODY_LIMIT
+        );
+        assert_eq!(
+            LiveBodyLimitKind::Authenticated.limit_bytes(),
+            AUTHENTICATED_BODY_LIMIT
+        );
+
+        crate::services::memory_profile::apply(
+            crate::services::memory_profile::MemoryProfile::Saver,
+        );
+        assert_eq!(
+            LiveBodyLimitKind::Inbox.limit_bytes(),
+            crate::services::memory_profile::SAVER_INBOX_BODY_LIMIT
+        );
+        assert_eq!(
+            LiveBodyLimitKind::Authenticated.limit_bytes(),
+            crate::services::memory_profile::SAVER_AUTHENTICATED_BODY_LIMIT
+        );
+        assert!(
+            LiveBodyLimitKind::NoteMedia.limit_bytes()
+                < NOTE_VIDEO_LIMIT + 16 * 1024 * 1024
+        );
+        // Restore default for other tests in this process.
+        crate::services::memory_profile::apply(
+            crate::services::memory_profile::MemoryProfile::Default,
+        );
     }
 }
 

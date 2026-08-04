@@ -872,6 +872,15 @@ impl ConfigService {
             }
         }
 
+        // 内存节约（高级设置）
+        if let Some(v) = map.get("memory_saver_enabled") {
+            if let Some(b) = v.as_bool() {
+                config.memory_saver_enabled = b;
+            } else if let Some(s) = v.as_str() {
+                config.memory_saver_enabled = s == "true" || s == "1";
+            }
+        }
+
         // 网络代理配置
         if let Some(v) = map.get("proxy_enabled") {
             if let Some(b) = v.as_bool() {

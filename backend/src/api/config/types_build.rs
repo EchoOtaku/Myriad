@@ -1915,6 +1915,18 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                     placeholder: "Playlist ID from music platform".to_string(),
                     required: false,
                 },
+                // 内存节约（高级设置）
+                ConfigField {
+                    key: "memory_saver_enabled".to_string(),
+                    label: "内存节约".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.memory_saver_enabled.to_string())
+                        .unwrap_or_else(|| "false".to_string()),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
                 // 网络代理配置
                 ConfigField {
                     key: "proxy_enabled".to_string(),
@@ -2190,6 +2202,7 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "pro_openai_api_key",
     "pro_openai_base_url",
     "pro_openai_model",
+    "memory_saver_enabled",
     "proxy_bypass",
     "proxy_enabled",
     "proxy_url",
@@ -3009,6 +3022,18 @@ mod settings_backup_tests {
     }
 
     #[test]
+    fn ui_memory_saver_flag_persists_bool() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![ui_field("memory_saver_enabled", "true")];
+        let on = collect_database_updates(&config);
+        assert_eq!(on.get("memory_saver_enabled"), Some(&json!(true)));
+
+        config.ui_config.config_fields = vec![ui_field("memory_saver_enabled", "false")];
+        let off = collect_database_updates(&config);
+        assert_eq!(off.get("memory_saver_enabled"), Some(&json!(false)));
+    }
+
+    #[test]
     fn ui_network_proxy_and_mirror_fields_persist_non_empty() {
         let mut config = empty_config();
         config.ui_config.config_fields = vec![
@@ -3559,6 +3584,10 @@ pub async fn update_config(
     // 3. 更新全局动态配置缓存
     match config_service.load_config().await {
         Ok(new_config) => {
+            // 内存节约档：立即收紧并发/缓存/Argon2；DB 池在下次建连/重启后生效
+            crate::services::memory_profile::apply_from_saver_flag(
+                new_config.memory_saver_enabled,
+            );
             *dynamic_config.write().await = new_config;
             tracing::info!("✅ Dynamic configuration cache updated");
 
@@ -4138,6 +4167,10 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
             "proxy_enabled" => {
                 let enabled = field.value == "true";
                 ("proxy_enabled", JsonValue::Bool(enabled))
+            }
+            "memory_saver_enabled" => {
+                let enabled = field.value == "true";
+                ("memory_saver_enabled", JsonValue::Bool(enabled))
             }
             _ => continue,
         };

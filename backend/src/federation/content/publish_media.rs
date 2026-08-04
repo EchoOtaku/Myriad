@@ -125,9 +125,7 @@ pub struct MediaUploadResponse {
 // 媒体限制
 
 use crate::federation::limits::NOTE_ATTACHMENT_COUNT_LIMIT as MAX_NOTE_ATTACHMENTS;
-use crate::federation::limits::NOTE_IMAGE_LIMIT as MAX_IMAGE_BYTES;
 use crate::federation::limits::NOTE_TEXT_CHAR_LIMIT as MAX_NOTE_TEXT_CHARS;
-use crate::federation::limits::NOTE_VIDEO_LIMIT as MAX_VIDEO_BYTES;
 
 // 核心发布功能
 
@@ -676,9 +674,9 @@ pub async fn store_federation_media(
     })?;
 
     let max = if attachment_type == "Image" {
-        MAX_IMAGE_BYTES
+        crate::federation::limits::note_image_limit()
     } else {
-        MAX_VIDEO_BYTES
+        crate::federation::limits::note_video_limit()
     };
     if bytes.is_empty() {
         return Err((

@@ -19,6 +19,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
+use crate::services::http_client::MEDIA_FETCH_CLIENT;
+
 // 导入网易云音乐统一服务
 use crate::services::kugou_service::KugouService;
 use crate::services::netease_service::{CacheEntry, NeteaseService, MUSIC_CACHE, RATE_LIMITER};
@@ -924,10 +926,7 @@ pub async fn proxy_netease_audio(Path(song_id): Path<String>) -> Response {
     match service.fetch_audio_url(song_id_i64).await {
         Ok(audio_url) => {
             // 获取实际音频流
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .build()
-                .unwrap();
+            let client = MEDIA_FETCH_CLIENT.clone();
 
             match client
                 .get(&audio_url)
@@ -1002,14 +1001,7 @@ fn is_valid_qq_songmid(song_mid: &str) -> bool {
 /// 旧前端硬编码的 `ws.stream.qqmusic.qq.com/{songmid}.m4a?fromtag=46` 已全面 403。
 /// 当前可用路径：`music.vkey.GetEVkey` + `RS02{songmid}.mp3`（部分曲目需回退其它封装）。
 async fn resolve_qq_audio_url(song_mid: &str) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-             (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        )
-        .timeout(Duration::from_secs(15))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = MEDIA_FETCH_CLIENT.clone();
 
     // 优先 RS02（海外匿名可拿到 purl），再回退常见清晰度封装
     let filenames = [
@@ -1260,14 +1252,7 @@ pub async fn proxy_qq_audio(Path(song_mid): Path<String>) -> Response {
         }
     };
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-             (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        )
-        .build()
-        .unwrap();
+    let client = MEDIA_FETCH_CLIENT.clone();
 
     match client
         .get(&audio_url)
@@ -1350,14 +1335,7 @@ pub async fn proxy_qq_playlist(Path(playlist_id): Path<String>) -> Response {
         }
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-             (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        )
-        .timeout(Duration::from_secs(20))
-        .build()
-        .unwrap();
+    let client = MEDIA_FETCH_CLIENT.clone();
 
     let url = format!(
         "https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg?type=1&json=1&utf8=1&onlysong=0&disstid={}&g_tk=5381&loginUin=0&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0",
@@ -1461,11 +1439,7 @@ pub async fn get_client_geo(
     // TRUST_PROXY_*). FE treats `source=server-egress` as soft failure.
     let is_local_ip = crate::middleware::client_ip::is_private_or_local_str(&client_ip);
 
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        .build()
-        .unwrap();
+    let client = MEDIA_FETCH_CLIENT.clone();
 
     // 如果是本地IP，需要获取服务器的公网IP，然后查询位置
     let used_server_egress = is_local_ip;
@@ -1803,14 +1777,7 @@ pub async fn proxy_qq_lyrics(Path(song_mid): Path<String>) -> Response {
         }
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 \
-             (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        )
-        .timeout(Duration::from_secs(15))
-        .build()
-        .unwrap();
+    let client = MEDIA_FETCH_CLIENT.clone();
 
     let url = format!(
         "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid={}&g_tk=5381&format=json&inCharset=utf8&outCharset=utf-8&nobase64=1",

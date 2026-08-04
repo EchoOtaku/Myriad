@@ -45,6 +45,7 @@ mod db;
 mod error;
 mod extract;
 mod federation;
+mod memory_audit_invariants;
 mod middleware;
 mod models;
 mod oauth_url_builder;
@@ -336,6 +337,10 @@ async fn run_server() -> anyhow::Result<()> {
         }
     }
 
+    // Memory profile before first DB pool (env can force saver for 1 GiB hosts).
+    // Re-applied after dynamic config load with `memory_saver_enabled`.
+    services::memory_profile::apply_from_saver_flag(false);
+
     // Try to initialize database connection if URL is configured.
     // When DATABASE_URL is set (external DB / compose), retry with backoff before
     // falling into CONFIGURATION MODE — a single pool timeout after stack restart
@@ -425,6 +430,9 @@ async fn run_server() -> anyhow::Result<()> {
                 // Load the merged configuration
                 match config_service.load_config().await {
                     Ok(dynamic_config) => {
+                        services::memory_profile::apply_from_saver_flag(
+                            dynamic_config.memory_saver_enabled,
+                        );
                         *GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
                         tracing::info!("✅ Dynamic configuration loaded from database");
                     }

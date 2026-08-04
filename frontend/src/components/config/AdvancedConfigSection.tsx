@@ -247,6 +247,8 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
     [uiConfigFields],
   )
   const isProxyEnabled = getUiFieldValue('proxy_enabled') === 'true'
+  const isMemorySaverEnabled =
+    getUiFieldValue('memory_saver_enabled') === 'true'
 
   const closeImportConfirm = useCallback(() => {
     setImportConfirmOpen(false)
@@ -412,6 +414,26 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
 
       {/* MCP 工具服务器（admin；配置在服务器 mcp_servers.json） */}
       <McpConfigPanel onMessage={onMessage} />
+
+      {/* 内存节约：收紧并发预算 / 缓存 / 连接池（~1 GiB 主机） */}
+      <SettingGroup
+        title={t.config.memorySaverGroup}
+        description={t.config.memorySaverGroupDesc}
+        {...bindGuide('advanced.memorySaver', g.advanced.memorySaver)}
+        icon={<FaGlobe />}
+      >
+        <SwitchItem
+          itemKey="memory_saver_enabled"
+          label={t.config.memorySaver}
+          description={t.config.memorySaverHint}
+          {...bindGuide('advanced.memorySaverEnable', g.advanced.memorySaverEnable)}
+          value={isMemorySaverEnabled}
+          onChange={(v) =>
+            updateUiFieldValue('memory_saver_enabled', v.toString())
+          }
+          layout="horizontal"
+        />
+      </SettingGroup>
 
       {/* 代理 + API 镜像 */}
       <SettingGroup

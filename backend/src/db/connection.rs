@@ -192,9 +192,12 @@ fn redact_database_url_fallback(input: &str) -> String {
 pub async fn establish_connection(database_url: &str) -> Result<DatabaseConnection, DbErr> {
     let mut opt = ConnectOptions::new(database_url.to_owned());
 
-    // 配置连接池以提升并发性能
-    opt.max_connections(20) // 最大连接数（默认为10）
-        .min_connections(5) // 最小连接数（默认为1）
+    // Pool size follows memory profile (default 5/20; saver 2/8). Applied at
+    // connect only — changing profile later needs a reconnect/restart for pool.
+    let min_c = crate::services::memory_profile::db_min_connections();
+    let max_c = crate::services::memory_profile::db_max_connections().max(min_c);
+    opt.max_connections(max_c)
+        .min_connections(min_c)
         .connect_timeout(Duration::from_secs(10)) // 连接超时
         .acquire_timeout(Duration::from_secs(10)) // 获取连接超时
         .idle_timeout(Duration::from_secs(300)) // 空闲连接超时（5分钟）

@@ -1,10 +1,8 @@
 use axum::{http::StatusCode, response::IntoResponse, Json};
+use myriad_process_info::{MEMORY_CRITICAL_MB, MEMORY_WARNING_MB};
 use serde_json::json;
 use std::sync::atomic::Ordering;
 
-// 告警阈值配置 (P2优化)
-const MEMORY_WARNING_MB: u64 = 500; // 内存使用超过500MB时警告
-const MEMORY_CRITICAL_MB: u64 = 1000; // 内存使用超过1GB时严重告警
 const TASKS_WARNING: usize = 50; // 任务数超过50时警告
 const TASKS_CRITICAL: usize = 100; // 任务数超过100时严重告警
 
@@ -40,6 +38,11 @@ pub async fn get_metrics(
             "status": if alerts.is_empty() { "ok" } else { "warning" },
             "timestamp": chrono::Utc::now().to_rfc3339(),
             "memory": memory_info,
+            "memory_profile": crate::services::memory_profile::metrics_snapshot(),
+            "memory_alerts": {
+                "warning_mb": MEMORY_WARNING_MB,
+                "critical_mb": MEMORY_CRITICAL_MB,
+            },
             "tasks": task_stats,
             "csrf": csrf_stats,
             "system": {
