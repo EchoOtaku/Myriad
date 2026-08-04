@@ -293,11 +293,12 @@ const WidgetGridItem = React.memo(
     const instanceSettings = widgetType.settings || []
 
     // 使用统一动画协调系统；exlight 模式直接显示且不进入调度队列。
+    // Entrance timing intentionally eased after feedback that 80ms / stiff-300 felt too fast.
     const animationsEnabled = !isExlight(anim)
     const { canAnimate, onComplete } = useStaggerAnimation({
       groupId: 'widget-grid',
       index: index || 0,
-      baseDelay: 80,
+      baseDelay: 115,
       enabled: animationsEnabled,
     })
 
@@ -335,11 +336,11 @@ const WidgetGridItem = React.memo(
             : ''
         }`}
         style={style}
-        initial={animationsEnabled ? { opacity: 0, scale: 0.9, y: 12 } : false}
+        initial={animationsEnabled ? { opacity: 0, scale: 0.9, y: 14 } : false}
         animate={
           !animationsEnabled || canAnimate
             ? { opacity: 1, scale: 1, y: 0 }
-            : { opacity: 0, scale: 0.9, y: 12 }
+            : { opacity: 0, scale: 0.9, y: 14 }
         }
         exit={animationsEnabled ? { opacity: 0, scale: 0.9 } : undefined}
         onAnimationComplete={onComplete}
@@ -347,11 +348,11 @@ const WidgetGridItem = React.memo(
           !animationsEnabled
             ? { duration: 0 }
             : useLiteTransition
-              ? { type: 'tween', duration: 0.35 }
+              ? { type: 'tween', duration: 0.48 }
               : {
                   type: 'spring',
-                  stiffness: 300,
-                  damping: 25,
+                  stiffness: 230,
+                  damping: 29,
                 }
         }
       >
