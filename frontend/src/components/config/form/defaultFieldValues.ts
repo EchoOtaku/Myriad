@@ -28,8 +28,9 @@ export function defaultTripoFieldValue(key: string): string {
 }
 
 export function defaultUiFieldValue(key: string): string {
+  // Empty → client applies bundled `/wallpapers/default.webp` fallback.
   if (key === 'wallpaper_url') {
-    return 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809'
+    return ''
   }
   if (key === 'wallpaper_blur') return '3'
   if (key === 'evocative_parallax') return 'true'
