@@ -1,16 +1,13 @@
 //! Provider-side execution for host-governed AI Tasks.
 //!
-//! Text (AiAnalyzer) and image (Pollinations / PixAI) live here so the HTTP
+//! Text (AiAnalyzer) and image (Pollinations) live here so the HTTP
 //! orchestration module does not own outbound provider logic. Task registry,
 //! quota, and local cancel state stay with the caller.
-
-use std::time::Duration;
 
 use serde_json::{json, Value};
 
 use crate::services::ai_config::{AiConfig, AiImageConfig};
 use crate::services::analyzer::AiAnalyzer;
-use crate::services::http_client::TAPP_HTTP_CLIENT;
 
 /// Stable provider error (code + message) shared with the AI Task API surface.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,40 +82,6 @@ pub fn image_size_from_input(input: &Value) -> (u32, u32) {
     (width, height)
 }
 
-fn pixai_task_id(value: &Value) -> Option<String> {
-    value
-        .pointer("/data/task/id")
-        .or_else(|| value.pointer("/data/id"))
-        .or_else(|| value.get("id"))
-        .and_then(|value| match value {
-            Value::String(value) => Some(value.clone()),
-            Value::Number(value) => Some(value.to_string()),
-            _ => None,
-        })
-}
-
-fn pixai_image_url(value: &Value) -> Option<String> {
-    let task = value
-        .pointer("/data/task")
-        .or_else(|| value.get("data"))
-        .unwrap_or(value);
-    task.pointer("/outputs/mediaUrls/0")
-        .or_else(|| task.pointer("/outputs/0/url"))
-        .or_else(|| task.pointer("/outputs/0/mediaUrl"))
-        .and_then(Value::as_str)
-        .map(str::to_owned)
-        .or_else(|| {
-            task.pointer("/outputs/mediaIds/0").map(|id| {
-                format!(
-                    "https://api.pixai.art/v1/media/{}/download",
-                    id.as_str()
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| id.to_string())
-                )
-            })
-        })
-}
-
 /// Run a text model. When `stream` is true, `on_delta` receives each token chunk.
 ///
 /// Returns `(raw_text, estimated_input_tokens, estimated_output_tokens)`.
@@ -152,16 +115,17 @@ where
     Ok((raw, input_tokens, output_tokens))
 }
 
-/// Run an image provider (Pollinations URL or PixAI poll).
+/// Run an image provider (currently Pollinations URL construction).
 ///
-/// `on_progress(attempt, max_attempts)` is invoked while polling PixAI.
+/// `on_progress` is reserved for providers that poll remote jobs; Pollinations
+/// completes immediately so it is unused today.
 /// Result value shape: `{ format: "image", value: { url, width, height }, contextProvenance: [] }`.
 pub async fn run_image_provider<F>(
     config: AiImageConfig,
     prompt: &str,
     width: u32,
     height: u32,
-    mut on_progress: F,
+    mut _on_progress: F,
 ) -> Result<Value, ProviderError>
 where
     F: FnMut(u32, u32) + Send,
@@ -183,101 +147,9 @@ where
             "contextProvenance": [],
         }));
     }
-    if config.provider != "pixai" {
-        return Err(ProviderError::new(
-            "AI_PROVIDER_UNAVAILABLE",
-            "Configured image provider is not supported",
-        ));
-    }
-    let api_key = config
-        .pixai_api_key
-        .filter(|key| !key.is_empty())
-        .ok_or_else(|| {
-            ProviderError::new("AI_PROVIDER_UNAVAILABLE", "PixAI API key is not configured")
-        })?;
-    let response = TAPP_HTTP_CLIENT
-        .post("https://api.pixai.art/v1/task")
-        .header("Authorization", format!("Bearer {api_key}"))
-        .header("x-apollo-operation-name", "createTask")
-        .json(&json!({
-            "parameters": {
-                "prompts": prompt,
-                "modelId": config.model,
-                "width": width,
-                "height": height,
-                "batchSize": 1,
-            }
-        }))
-        .send()
-        .await
-        .map_err(|_| ProviderError::new("AI_PROVIDER_ERROR", "Failed to submit PixAI task"))?;
-    if !response.status().is_success() {
-        return Err(ProviderError::new(
-            "AI_PROVIDER_ERROR",
-            format!("PixAI rejected the task with status {}", response.status()),
-        ));
-    }
-    let created: Value = response.json().await.map_err(|_| {
-        ProviderError::new(
-            "AI_PROVIDER_ERROR",
-            "PixAI returned an invalid task response",
-        )
-    })?;
-    let task_id = pixai_task_id(&created).ok_or_else(|| {
-        ProviderError::new("AI_PROVIDER_ERROR", "PixAI returned no task ID")
-    })?;
-
-    for attempt in 1..=40 {
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        on_progress(attempt, 40);
-        let response = TAPP_HTTP_CLIENT
-            .get(format!("https://api.pixai.art/v1/task/{task_id}"))
-            .header("Authorization", format!("Bearer {api_key}"))
-            .header("x-apollo-operation-name", "getTask")
-            .send()
-            .await
-            .map_err(|_| ProviderError::new("AI_PROVIDER_ERROR", "Failed to poll PixAI task"))?;
-        if !response.status().is_success() {
-            continue;
-        }
-        let status_value: Value = response.json().await.map_err(|_| {
-            ProviderError::new(
-                "AI_PROVIDER_ERROR",
-                "PixAI returned an invalid status response",
-            )
-        })?;
-        let task = status_value
-            .pointer("/data/task")
-            .or_else(|| status_value.get("data"))
-            .unwrap_or(&status_value);
-        let status = task
-            .get("status")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        if matches!(status.as_str(), "completed" | "success" | "succeeded") {
-            let url = pixai_image_url(&status_value).ok_or_else(|| {
-                ProviderError::new(
-                    "AI_PROVIDER_ERROR",
-                    "PixAI completed without an image URL",
-                )
-            })?;
-            return Ok(json!({
-                "format": "image",
-                "value": { "url": url, "width": width, "height": height },
-                "contextProvenance": [],
-            }));
-        }
-        if matches!(status.as_str(), "failed" | "error" | "cancelled") {
-            return Err(ProviderError::new(
-                "AI_PROVIDER_ERROR",
-                "PixAI image task failed",
-            ));
-        }
-    }
     Err(ProviderError::new(
-        "AI_TASK_TIMEOUT",
-        "PixAI image generation timed out",
+        "AI_PROVIDER_UNAVAILABLE",
+        "Configured image provider is not supported",
     ))
 }
 

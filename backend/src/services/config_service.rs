@@ -473,9 +473,6 @@ impl ConfigService {
                 config.ai_image_volcengine_base_url = s.to_string();
             }
         }
-        if let Some(v) = map.get("pixai_api_key") {
-            config.pixai_api_key = v.as_str().map(|s| s.to_string());
-        }
 
         // Tripo 3D 独立配置
         if let Some(v) = map.get("tripo_enabled") {

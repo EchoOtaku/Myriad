@@ -770,7 +770,6 @@ export const jaJP: TranslationKeys = {
     openaiApiKeyLabel: 'OpenAI API Key',
     openaiBaseUrlLabel: 'OpenAI Base URL',
     openaiModelLabel: 'OpenAI モデル名',
-    pixaiApiKey: 'PixAI API Key',
     domainStatusAuto: '自動',
     domainStatusManual: '手動',
     updaterMinVersionShort: '最低',
@@ -1525,8 +1524,6 @@ export const jaJP: TranslationKeys = {
     // AI画像生成設定
     aiImageTitle: '画像生成モデル',
     aiImageDesc: '画像を生成。解像度はリクエストで指定',
-    pixaiPlaceholder: 'platform.pixai.artから取得',
-    pixaiModelId: 'モデルバージョンID',
     // 音声サービス設定 (TTS/ASR)
     speechServiceTitle: '音声サービス',
     speechServiceDesc: 'Tencent Cloud の TTS 読み上げと ASR 認識',
@@ -1568,7 +1565,7 @@ export const jaJP: TranslationKeys = {
     bangumiUserAgentLabel: 'User-Agent',
     bangumiUsernamePlaceholder: 'Bangumi ユーザー名',
     bangumiAccessTokenPlaceholder: '非公開コレクション用の Bearer Token',
-    bangumiUserAgentPlaceholder: 'haru/Myriad',
+    bangumiUserAgentPlaceholder: 'myriad/Myriad',
     platformSetupTitle: '設定ステップ',
     platformSetupOptional: '任意',
     platformSetupOpen: '開く',

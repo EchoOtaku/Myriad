@@ -5,7 +5,7 @@
 //! - systemPrompt guidance prepending
 //! - semantic text extraction from step outputs
 //! - prompt sanitization
-//! - image dimension / prompt / PixAI URL pure mapping
+//! - image dimension / prompt pure mapping
 
 use serde_json::Value;
 #[cfg(test)]
@@ -324,49 +324,6 @@ pub fn resolve_negative_prompt(params: &HashMap<String, Value>) -> Option<String
         })
 }
 
-/// Extract image URL from PixAI task payload (mediaUrls / mediaIds / legacy array).
-pub fn extract_pixai_image_url(task_data: &Value) -> String {
-    let outputs = match task_data.get("outputs") {
-        Some(o) => o,
-        None => return String::new(),
-    };
-
-    if let Some(url) = outputs
-        .get("mediaUrls")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-        .and_then(|v| v.as_str())
-    {
-        return url.to_string();
-    }
-
-    if let Some(mid) = outputs
-        .get("mediaIds")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| arr.first())
-    {
-        let mid_str = match mid {
-            Value::String(s) => s.clone(),
-            Value::Number(n) => n.to_string(),
-            _ => return String::new(),
-        };
-        return format!("https://api.pixai.art/v1/media/{mid_str}/download");
-    }
-
-    if let Some(arr) = outputs.as_array() {
-        if let Some(first) = arr.first() {
-            if let Some(url) = first.get("url").and_then(|v| v.as_str()) {
-                return url.to_string();
-            }
-            if let Some(url) = first.get("mediaUrl").and_then(|v| v.as_str()) {
-                return url.to_string();
-            }
-        }
-    }
-
-    String::new()
-}
-
 /// Whether a capability should receive memory context injection.
 pub fn capability_needs_memory(capability_id: &str) -> bool {
     matches!(
@@ -495,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn semantic_text_and_pixai_url() {
+    fn semantic_text_extraction() {
         let obj = json!({
             "aiSummary": "总览",
             "results": [
@@ -508,24 +465,6 @@ mod tests {
         assert!(text.contains("A"));
         assert!(text.contains("B"));
         assert_eq!(extract_semantic_text(&json!("plain")), "plain");
-
-        assert_eq!(
-            extract_pixai_image_url(&json!({
-                "outputs": { "mediaUrls": ["https://cdn.example/img.png"] }
-            })),
-            "https://cdn.example/img.png"
-        );
-        assert!(extract_pixai_image_url(&json!({
-            "outputs": { "mediaIds": ["7001"] }
-        }))
-        .contains("7001"));
-        assert_eq!(
-            extract_pixai_image_url(&json!({
-                "outputs": [{ "url": "https://legacy/x" }]
-            })),
-            "https://legacy/x"
-        );
-        assert!(extract_pixai_image_url(&json!({})).is_empty());
     }
 
     #[test]

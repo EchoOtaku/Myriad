@@ -158,7 +158,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "properties": {
                 "username": { "type": "string" },
                 "access_token": { "type": "string", "description": "可选，用于访问需要授权的数据" },
-                "user_agent": { "type": "string", "default": "haru/Myriad" }
+                "user_agent": { "type": "string", "default": "myriad/Myriad" }
             },
             "required": ["username"]
         }),
@@ -186,7 +186,7 @@ pub fn register(registry: &mut CapabilityRegistry) {
             "properties": {
                 "username": { "type": "string" },
                 "access_token": { "type": "string", "description": "可选，用于访问私有收藏" },
-                "user_agent": { "type": "string", "default": "haru/Myriad" }
+                "user_agent": { "type": "string", "default": "myriad/Myriad" }
             },
             "required": ["username"]
         }),

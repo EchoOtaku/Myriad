@@ -437,8 +437,8 @@ mod tests {
 
     #[test]
     fn fallback_uses_hint_in_intro() {
-        let (_, _, intro) = fallback_copy("Haru", "", "独立开发者，写 Rust", "zh");
+        let (_, _, intro) = fallback_copy("Myriad", "", "独立开发者，写 Rust", "zh");
         assert!(intro.contains("独立开发者"));
-        assert!(intro.contains("Haru"));
+        assert!(intro.contains("Myriad"));
     }
 }

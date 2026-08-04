@@ -14,7 +14,7 @@ Handle tasks requiring creativity, deep reasoning, or generative AI capabilities
 
 ## Capabilities
 - Free-form AI chat and conversation
-- Image generation (OpenAI / OpenRouter / Seedream / PixAI)
+- Image generation (OpenAI / OpenRouter / Seedream)
 - Tapp (mini web app) generation
 - Code explanation and generation
 - Platform report creation and analysis

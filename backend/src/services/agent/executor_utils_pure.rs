@@ -184,7 +184,7 @@ pub fn extract_image_url(output: &Value) -> Option<String> {
         .as_object()
         .and_then(|obj| obj.get("imageUrl"))
         .and_then(|v| v.as_str())
-        .filter(|url| !url.starts_with("pixai://")) // pixai:// 是异步任务，不是真实 URL
+        .filter(|url| url.starts_with("http://") || url.starts_with("https://"))
         .map(|s| s.to_string())
 }
 

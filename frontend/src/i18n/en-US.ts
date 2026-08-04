@@ -781,7 +781,6 @@ export const enUS: TranslationKeys = {
     openaiApiKeyLabel: 'OpenAI API Key',
     openaiBaseUrlLabel: 'OpenAI Base URL',
     openaiModelLabel: 'OpenAI Model Name',
-    pixaiApiKey: 'PixAI API Key',
     domainStatusAuto: 'Auto',
     domainStatusManual: 'Manual',
     updaterMinVersionShort: 'min',
@@ -1544,8 +1543,6 @@ export const enUS: TranslationKeys = {
     // AI Image Generation Configuration
     aiImageTitle: 'Image Generation Model',
     aiImageDesc: 'Generate images; size is set per request',
-    pixaiPlaceholder: 'Get from platform.pixai.art',
-    pixaiModelId: 'Model Version ID',
     // Speech service (TTS/ASR) configuration
     speechServiceTitle: 'Speech Service',
     speechServiceDesc: 'Tencent Cloud TTS readout and ASR recognition',
@@ -1587,7 +1584,7 @@ export const enUS: TranslationKeys = {
     bangumiUserAgentLabel: 'User-Agent',
     bangumiUsernamePlaceholder: 'your Bangumi username',
     bangumiAccessTokenPlaceholder: 'Bearer token for private collections',
-    bangumiUserAgentPlaceholder: 'haru/Myriad',
+    bangumiUserAgentPlaceholder: 'myriad/Myriad',
     platformSetupTitle: 'Setup steps',
     platformSetupOptional: 'Optional',
     platformSetupOpen: 'Open',

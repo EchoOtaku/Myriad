@@ -322,8 +322,8 @@ fn test_filter_discord() {
         "user": {
             // 真实 snowflake（2016 年注册），用于验证账号年龄解算
             "id": "155149108183695360",
-            "username": "haru",
-            "global_name": "Haru",
+            "username": "myriad",
+            "global_name": "Myriad",
             "premium_type": 2,
             "public_flags": 256 | (1u64 << 22),
             "avatar": "abcavatarhash",
@@ -354,7 +354,7 @@ fn test_filter_discord() {
         "connections": [
             {
                 "type": "steam",
-                "name": "haru_steam",
+                "name": "myriad_steam",
                 "id": "76561198000000000",
                 "verified": true,
                 "visibility": 1
@@ -375,7 +375,7 @@ fn test_filter_discord() {
 
     let filtered = SmartFilter::filter("discord", &raw).expect("filter discord");
     assert_eq!(filtered.platform, "discord");
-    assert_eq!(filtered.user_summary.username, "Haru");
+    assert_eq!(filtered.user_summary.username, "Myriad");
     assert_eq!(filtered.user_summary.user_id, "155149108183695360");
     assert_eq!(filtered.user_summary.level.as_deref(), Some("Nitro"));
     assert_eq!(filtered.user_summary.stats.total_content, 2);
@@ -401,7 +401,7 @@ fn test_filter_discord() {
             assert_eq!(steam.id_match, Some(true));
             let github = analysis.identity_graph.cross_check.get("github").unwrap();
             assert_eq!(github.name_match, Some(true));
-            assert!(analysis.community_summary.contains("Haru"));
+            assert!(analysis.community_summary.contains("Myriad"));
 
             // with_counts 派生：总触达 / 在线 / 社区规格计数
             assert_eq!(analysis.guild_stats.total_member_reach, 51_200);

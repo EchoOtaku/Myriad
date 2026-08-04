@@ -362,7 +362,7 @@ pub struct DynamicConfig {
     pub music_source: Option<String>,
     pub music_playlist_id: Option<String>,
 
-    // AI 图片生成配置（统一服务：OpenAI 兼容 / OpenRouter / Volcengine / PixAI）
+    // AI 图片生成配置（统一服务：OpenAI 兼容 / OpenRouter / Volcengine）
     // 分辨率由调用方（agent / tapp）在请求参数中决定，不设全局配置
     pub ai_image_provider: String,
     pub ai_image_model: String,
@@ -372,7 +372,6 @@ pub struct DynamicConfig {
     pub ai_image_openrouter_api_key: Option<String>,
     pub ai_image_volcengine_api_key: Option<String>,
     pub ai_image_volcengine_base_url: String,
-    pub pixai_api_key: Option<String>,
 
     // 3D 模型生成配置（独立于 AI 图片 Provider）
     pub tripo_enabled: bool,
@@ -569,7 +568,7 @@ impl Default for DynamicConfig {
             bangumi_username: None,
             bangumi_access_token: None,
             platform_order: None,
-            bangumi_user_agent: Some("haru/Myriad".to_string()),
+            bangumi_user_agent: Some("myriad/Myriad".to_string()),
             x_enabled: None,
             x_username: None,
             x_bearer_token: None,
@@ -643,7 +642,6 @@ impl Default for DynamicConfig {
             ai_image_openrouter_api_key: None,
             ai_image_volcengine_api_key: None,
             ai_image_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
-            pixai_api_key: None,
             // Tripo 3D（低模 Web 角色默认预算）
             tripo_enabled: false,
             tripo_api_key: None,

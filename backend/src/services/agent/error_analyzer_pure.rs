@@ -232,7 +232,7 @@ fn check_content_policy(
         || error_lower.contains("nsfw")
         || error_lower.contains("inappropriate")
         || error_lower.contains("violat")
-        // PixAI / image generation specific patterns（收窄匹配避免误判网络/权限错误）
+        // Image generation content-policy patterns（收窄匹配避免误判网络/权限错误）
         || error_lower.contains("moderation")
         || error_lower.contains("unsafe content")
         || error_lower.contains("content not allowed")
@@ -245,10 +245,7 @@ fn check_content_policy(
         || (error_lower.contains("not allowed")
             && (error_lower.contains("content")
                 || error_lower.contains("prompt")
-                || error_lower.contains("image")))
-        || (error_lower.contains("pixai")
-            && error_lower.contains("failed")
-            && (error_lower.contains("prompt") || error_lower.contains("content")));
+                || error_lower.contains("image")));
 
     if !is_content_violation {
         return None;
@@ -707,12 +704,12 @@ mod tests {
     }
 
     #[test]
-    fn test_pixai_content_policy() {
+    fn test_image_content_policy() {
         let params: HashMap<String, Value> = [("prompt".into(), Value::String("test".into()))]
             .into_iter()
             .collect();
         let analysis = analyze_error(
-            "PixAI image generation failed: content moderation violation",
+            "image generation failed: content moderation violation",
             "ai.image",
             &params,
         );

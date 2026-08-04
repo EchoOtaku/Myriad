@@ -744,7 +744,7 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                                 .and_then(|c| c.bangumi_user_agent.clone()),
                             "BANGUMI_USER_AGENT",
                         ),
-                        placeholder: "haru/Myriad".to_string(),
+                        placeholder: "myriad/Myriad".to_string(),
                         required: false,
                     },
                 ],
@@ -1153,7 +1153,7 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                             std::env::var("AI_IMAGE_PROVIDER")
                                 .unwrap_or_else(|_| "openrouter".to_string())
                         }),
-                    placeholder: "openai (compatible), openrouter, volcengine, or pixai"
+                    placeholder: "openai (compatible), openrouter, or volcengine"
                         .to_string(),
                     required: false,
                 },
@@ -1237,17 +1237,6 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                             })
                         }),
                     placeholder: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
-                    required: false,
-                },
-                ConfigField {
-                    key: "pixai_api_key".to_string(),
-                    label: "PixAI API Key".to_string(),
-                    field_type: "password".to_string(),
-                    value: mask_sensitive(get_value(
-                        db_config.as_ref().and_then(|c| c.pixai_api_key.clone()),
-                        "PIXAI_API_KEY",
-                    )),
-                    placeholder: "Get from platform.pixai.art".to_string(),
                     required: false,
                 },
                 // Lite 模型配置（与 Pro 使用同一字段协议：开关 + 字段留空回退 Standard）
@@ -2193,7 +2182,6 @@ pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "openxbl_api_key",
     "pet_enabled",
     "pet_image_url",
-    "pixai_api_key",
     "platform_order",
     "pro_ai_provider",
     "pro_enabled",
@@ -3884,7 +3872,6 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 "ai_image_volcengine_base_url",
                 JsonValue::String(field.value.clone()),
             ),
-            "pixai_api_key" => ("pixai_api_key", JsonValue::String(field.value.clone())),
             // 腾讯云语音服务配置 (TTS/ASR)
             "tencent_secret_id" => ("tencent_secret_id", JsonValue::String(field.value.clone())),
             "tencent_secret_key" => ("tencent_secret_key", JsonValue::String(field.value.clone())),
@@ -4313,7 +4300,6 @@ const DB_ONLY_ENV_KEYS: &[&str] = &[
     "AI_IMAGE_VOLCENGINE_BASE_URL",
     "AI_IMAGE_WIDTH",
     "AI_IMAGE_HEIGHT",
-    "PIXAI_API_KEY",
     "LITE_ENABLED",
     "LITE_AI_PROVIDER",
     "LITE_GEMINI_API_KEY",

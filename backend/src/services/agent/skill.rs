@@ -610,9 +610,9 @@ mod tests {
 
     #[test]
     fn test_simple_tokenize_mixed() {
-        let tokens = SkillRegistry::simple_tokenize("use pixai to 生成");
+        let tokens = SkillRegistry::simple_tokenize("use openai to 生成");
         assert!(tokens.contains(&"use".to_string()));
-        assert!(tokens.contains(&"pixai".to_string()));
+        assert!(tokens.contains(&"openai".to_string()));
         assert!(tokens.contains(&"生".to_string()));
         assert!(tokens.contains(&"成".to_string()));
         // "to" 有 2 个字符，满足 >= 2 阈值，会保留

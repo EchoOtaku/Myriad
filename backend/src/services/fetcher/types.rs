@@ -86,7 +86,7 @@ pub struct SteamWishlistItem {
 }
 
 pub(crate) const BANGUMI_API_BASE: &str = "https://api.bgm.tv";
-pub(crate) const DEFAULT_BANGUMI_USER_AGENT: &str = "haru/Myriad";
+pub(crate) const DEFAULT_BANGUMI_USER_AGENT: &str = "myriad/Myriad";
 
 pub(crate) fn steam_persona_state_label(state: i32) -> &'static str {
     match state {

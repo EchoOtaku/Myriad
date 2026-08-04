@@ -27,6 +27,6 @@ mod adapter_tests {
         );
         let img = extract_image_url(&serde_json::json!({"imageUrl": "https://x/a.png"}));
         assert_eq!(img.as_deref(), Some("https://x/a.png"));
-        assert!(extract_image_url(&serde_json::json!({"imageUrl": "pixai://job"})).is_none());
+        assert!(extract_image_url(&serde_json::json!({"imageUrl": "data:image/png;base64,xx"})).is_none());
     }
 }

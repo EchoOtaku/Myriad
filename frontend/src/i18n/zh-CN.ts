@@ -731,7 +731,6 @@ export const zhCN: TranslationKeys = {
     openaiApiKeyLabel: 'OpenAI API Key',
     openaiBaseUrlLabel: 'OpenAI Base URL',
     openaiModelLabel: 'OpenAI 模型名',
-    pixaiApiKey: 'PixAI API Key',
     domainStatusAuto: '自动',
     domainStatusManual: '手动',
     updaterMinVersionShort: '最低',
@@ -1446,8 +1445,6 @@ export const zhCN: TranslationKeys = {
     // 图片生成模型配置
     aiImageTitle: '图片生成模型',
     aiImageDesc: '生成图片；分辨率由请求参数指定',
-    pixaiPlaceholder: '从 platform.pixai.art 获取',
-    pixaiModelId: '模型版本 ID',
     // 语音服务配置 (TTS/ASR)
     speechServiceTitle: '语音服务',
     speechServiceDesc: '腾讯云 TTS 朗读与 ASR 识别',
@@ -1487,7 +1484,7 @@ export const zhCN: TranslationKeys = {
     bangumiUserAgentLabel: 'User-Agent',
     bangumiUsernamePlaceholder: '你的 Bangumi 用户名',
     bangumiAccessTokenPlaceholder: '用于读取私有收藏的 Bearer Token',
-    bangumiUserAgentPlaceholder: 'haru/Myriad',
+    bangumiUserAgentPlaceholder: 'myriad/Myriad',
     platformSetupTitle: '配置步骤',
     platformSetupOptional: '可选',
     platformSetupOpen: '打开',

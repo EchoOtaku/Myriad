@@ -7,9 +7,8 @@ use super::HandlerContext;
 use crate::models::entities::brew_items;
 use crate::services::agent::ai_process_pure::{
     append_memory_to_system_prompt, capability_needs_conversation_context, capability_needs_memory,
-    extract_pixai_image_url, extract_semantic_text, inject_directive_to_params,
-    inject_steering_to_params, merge_system_prompt, resolve_image_dimensions,
-    resolve_image_prompt, resolve_negative_prompt, sanitize_prompt_input,
+    extract_semantic_text, inject_directive_to_params, inject_steering_to_params,
+    merge_system_prompt, resolve_image_dimensions, resolve_image_prompt, sanitize_prompt_input,
     take_recent_conversation_messages, with_system_guidance,
 };
 use crate::services::agent::data_read_pure::extract_json_array_from_ai_response;
@@ -1181,12 +1180,10 @@ async fn execute_code_explain(
 async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, String> {
     let prompt = resolve_image_prompt(params)?;
     let prompt = prompt.as_str();
-    let negative_prompt = resolve_negative_prompt(params);
 
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
     let provider = config.ai_image_provider.clone();
     let model = config.ai_image_model.clone();
-    let pixai_api_key = config.pixai_api_key.clone();
     drop(config);
 
     let (width, height) = resolve_image_dimensions(params);
@@ -1205,196 +1202,6 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
                 "height": height,
                 "provider": "pollinations"
             }))
-        }
-        "pixai" => {
-            let api_key = pixai_api_key
-                .filter(|k| !k.is_empty())
-                .ok_or("PixAI API key not configured")?;
-
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(30))
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .map_err(|e| format!("HTTP client error: {}", e))?;
-
-            // 1. 提交生成任务
-            let mut pixai_params = json!({
-                "prompts": prompt,
-                "modelId": model,
-                "width": width,
-                "height": height,
-                "batchSize": 1
-            });
-            if let Some(ref neg) = negative_prompt {
-                if let Some(obj) = pixai_params.as_object_mut() {
-                    obj.insert("negativePrompt".to_string(), Value::String(neg.clone()));
-                }
-            }
-            let response = client
-                .post("https://api.pixai.art/v1/task")
-                .header("Authorization", format!("Bearer {}", api_key))
-                .header("Content-Type", "application/json")
-                .header("x-apollo-operation-name", "createTask")
-                .json(&json!({
-                    "parameters": pixai_params
-                }))
-                .send()
-                .await
-                .map_err(|e| format!("PixAI API request failed: {}", e))?;
-
-            if !response.status().is_success() {
-                let status = response.status();
-                return Err(format!("PixAI API error: {}", status));
-            }
-
-            let pixai_bytes =
-                crate::services::outbound_security::read_limited_body(response, 1024 * 1024)
-                    .await
-                    .map_err(|e| format!("Failed to read PixAI response: {e}"))?;
-            let raw_result: Value = serde_json::from_slice(&pixai_bytes)
-                .map_err(|e| format!("Failed to parse PixAI response: {}", e))?;
-
-            tracing::info!(
-                "[ai.image] PixAI create task response: {}",
-                serde_json::to_string(&raw_result).unwrap_or_default()
-            );
-
-            // PixAI 可能返回 GraphQL 格式 {"data": {"task": {...}}} 或 REST 格式 {...}
-            let result = raw_result
-                .get("data")
-                .and_then(|d| d.get("task").or(Some(d)))
-                .unwrap_or(&raw_result);
-
-            // PixAI 的 id 可能是数字类型
-            let task_id_str = result
-                .get("id")
-                .or_else(|| result.get("taskId"))
-                .map(|v| match v {
-                    Value::String(s) => s.clone(),
-                    Value::Number(n) => n.to_string(),
-                    _ => v.to_string().trim_matches('"').to_string(),
-                })
-                .unwrap_or_default();
-
-            if task_id_str.is_empty() {
-                return Err("PixAI returned empty task ID".to_string());
-            }
-
-            tracing::info!("[ai.image] PixAI task submitted: {}", task_id_str);
-
-            // 2. 轮询等待完成（最多 120 秒，每 3 秒查一次）
-            let max_polls = 40;
-            let poll_interval = std::time::Duration::from_secs(3);
-
-            for attempt in 0..max_polls {
-                tokio::time::sleep(poll_interval).await;
-
-                let status_resp = client
-                    .get(format!("https://api.pixai.art/v1/task/{}", task_id_str))
-                    .header("Authorization", format!("Bearer {}", api_key))
-                    .header("Content-Type", "application/json")
-                    .header("x-apollo-operation-name", "getTask")
-                    .send()
-                    .await;
-
-                let status_resp = match status_resp {
-                    Ok(r) => r,
-                    Err(e) => {
-                        tracing::warn!("[ai.image] PixAI poll #{} failed: {}", attempt, e);
-                        continue;
-                    }
-                };
-
-                if !status_resp.status().is_success() {
-                    tracing::warn!(
-                        "[ai.image] PixAI poll #{} HTTP {}",
-                        attempt,
-                        status_resp.status()
-                    );
-                    continue;
-                }
-
-                let raw_data: Value = match crate::services::outbound_security::read_limited_body(
-                    status_resp,
-                    512 * 1024,
-                )
-                .await
-                .ok()
-                .and_then(|b| serde_json::from_slice(&b).ok())
-                {
-                    Some(v) => v,
-                    None => continue,
-                };
-
-                // PixAI 可能返回 GraphQL 格式 {"data": {...}} 或直接 REST 格式 {...}
-                let task_data = raw_data
-                    .get("data")
-                    .and_then(|d| d.get("task").or(Some(d)))
-                    .unwrap_or(&raw_data);
-
-                // status 可能在顶层或嵌套
-                let status = task_data
-                    .get("status")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown");
-
-                tracing::debug!(
-                    "[ai.image] PixAI poll #{}: status={}, raw: {}",
-                    attempt,
-                    status,
-                    serde_json::to_string(&raw_data).unwrap_or_default()
-                );
-
-                match status {
-                    "completed" => {
-                        // 记录完整响应以便调试
-                        tracing::info!(
-                            "[ai.image] PixAI task completed, full response: {}",
-                            serde_json::to_string(&task_data).unwrap_or_default()
-                        );
-
-                        // 从响应中提取图片 URL，尝试多种字段路径
-                        let image_url = extract_pixai_image_url(task_data);
-
-                        if image_url.is_empty() {
-                            tracing::warn!(
-                                "[ai.image] PixAI completed but could not extract image URL"
-                            );
-                            // 返回任务数据让前端自行处理
-                            return Ok(json!({
-                                "provider": "pixai",
-                                "taskId": task_id_str,
-                                "status": "completed",
-                                "width": width,
-                                "height": height,
-                                "taskData": task_data,
-                                "message": crate::services::agent::response_agent::image_generated_no_url()
-                            }));
-                        }
-
-                        tracing::info!("[ai.image] PixAI image URL: {}", image_url);
-                        return Ok(json!({
-                            "imageUrl": image_url,
-                            "width": width,
-                            "height": height,
-                            "provider": "pixai",
-                            "taskId": task_id_str,
-                            "status": "completed"
-                        }));
-                    }
-                    "failed" | "cancelled" => {
-                        let error = task_data
-                            .get("error")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("Unknown error");
-                        return Err(format!("PixAI image generation failed: {}", error));
-                    }
-                    // "waiting" | "running" | "queued" 等状态继续轮询
-                    _ => {}
-                }
-            }
-
-            Err("PixAI image generation timed out (120s)".to_string())
         }
         _ => Err(format!("Unknown image provider: {}", provider)),
     }

@@ -25,7 +25,6 @@ pub struct AiConfig {
 pub struct AiImageConfig {
     pub provider: String,
     pub model: String,
-    pub pixai_api_key: Option<String>,
 }
 
 /// Domain error when no usable provider is configured.
@@ -153,7 +152,6 @@ pub async fn get_ai_image_config() -> Result<AiImageConfig, AiConfigError> {
     let image_config = AiImageConfig {
         provider: config.ai_image_provider.clone(),
         model: config.ai_image_model.clone(),
-        pixai_api_key: config.pixai_api_key.clone(),
     };
 
     let mut cache = AI_IMAGE_CONFIG_CACHE.write().await;

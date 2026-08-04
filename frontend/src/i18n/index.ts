@@ -669,7 +669,6 @@ export interface TranslationKeys {
     openaiApiKeyLabel: string
     openaiBaseUrlLabel: string
     openaiModelLabel: string
-    pixaiApiKey: string
     domainStatusAuto: string
     domainStatusManual: string
     updaterMinVersionShort: string
@@ -1319,8 +1318,6 @@ export interface TranslationKeys {
     openaiCompatible: string
     aiImageTitle: string
     aiImageDesc: string
-    pixaiPlaceholder: string
-    pixaiModelId: string
     speechServiceTitle: string
     speechServiceDesc: string
     tencentSecretId: string

@@ -1558,10 +1558,10 @@ mod tests {
 
     #[test]
     fn test_tokenize_mixed_cjk_latin() {
-        let tokens = TfIdfIndex::tokenize("使用PixAI生成");
-        assert!(tokens.contains(&"pixai".to_string()));
+        let tokens = TfIdfIndex::tokenize("使用OpenAI生成");
+        assert!(tokens.contains(&"openai".to_string()));
         assert!(tokens.contains(&"使用".to_string()));
-        // "使用" 和 "生成" 被 "PixAI" 隔断，不应生成 cross-boundary bigram
+        // "使用" 和 "生成" 被 "OpenAI" 隔断，不应生成 cross-boundary bigram
         assert!(!tokens.contains(&"用生".to_string()));
     }
 
