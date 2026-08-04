@@ -1,5 +1,6 @@
+
 use axum::{http::StatusCode, Json};
-use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -1572,78 +1573,6 @@ pub async fn load_e2e_session(
     crate::federation::e2e::session_from_stored(channel_id, local_pk, &local_sk, remote_pk)
 }
 
-async fn persist_remote_channel_e2e_key<C: ConnectionTrait>(
-    db: &C,
-    channel_id: &str,
-    actor_url_str: &str,
-    public_key: &str,
-    algorithm: &str,
-) -> Result<bool, String> {
-    let row = db
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"UPDATE federation_channels AS c
-               SET properties = (
-                       (CASE
-                            WHEN jsonb_typeof(c.properties::jsonb) = 'object'
-                                THEN c.properties::jsonb
-                            ELSE '{}'::jsonb
-                        END)
-                       || jsonb_build_object(
-                            'e2e',
-                            (CASE
-                                 WHEN jsonb_typeof(c.properties::jsonb -> 'e2e') = 'object'
-                                     THEN c.properties::jsonb -> 'e2e'
-                                 ELSE '{}'::jsonb
-                             END)
-                            || jsonb_build_object(
-                                 'remote_public_key', $3::text,
-                                 'algorithm', $4::text,
-                                 'established',
-                                     COALESCE(
-                                         c.properties::jsonb -> 'e2e' ->> 'local_public_key',
-                                         ''
-                                     ) <> ''
-                                     AND COALESCE(
-                                         c.properties::jsonb -> 'e2e' ->> 'local_private_key',
-                                         ''
-                                     ) <> ''
-                               )
-                          )
-                   )::json,
-                   last_activity_at = NOW()
-               FROM federation_remote_actors AS ra
-               WHERE c.channel_id = $1
-                 AND c.remote_actor_id = ra.id
-                 AND ra.actor_url = $2
-                 AND c.status <> 'closed'
-               RETURNING COALESCE(
-                   c.properties::jsonb -> 'e2e' ->> 'local_public_key',
-                   ''
-               ) <> ''
-               AND COALESCE(
-                   c.properties::jsonb -> 'e2e' ->> 'local_private_key',
-                   ''
-               ) <> '' AS established"#,
-            [
-                channel_id.into(),
-                actor_url_str.into(),
-                public_key.into(),
-                algorithm.into(),
-            ],
-        ))
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| {
-            format!(
-                "Channel {} not found, closed, or actor {} is not the remote party",
-                channel_id, actor_url_str
-            )
-        })?;
-
-    row.try_get("", "established").map_err(|e| e.to_string())
-}
-
 /// 处理 myriad:KeyExchange Activity
 ///
 /// 1. 校验公钥材料（`e2e` 模块）
@@ -1671,11 +1600,11 @@ pub async fn handle_key_exchange(
     crate::federation::e2e::validate_public_key_b64(public_key)
         .map_err(|e| format!("Invalid remote E2E public key: {e}"))?;
 
-    // 验证发送方是该 Channel 的远程方。
+    // 验证发送方是该 Channel 的远程方，并读取 properties
     let ch_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"SELECT c.status FROM federation_channels c
+            r#"SELECT c.properties, c.status FROM federation_channels c
                JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
                WHERE c.channel_id = $1 AND ra.actor_url = $2"#,
             [channel_id.into(), actor_url_str.into()],
@@ -1724,11 +1653,31 @@ pub async fn handle_key_exchange(
         return Err(format!("Channel {channel_id} is closed"));
     }
 
-    // Merge only the E2E leaf. A concurrent local initializer may be holding the
-    // row lock; PostgreSQL applies this expression to the latest committed row.
-    let has_local =
-        persist_remote_channel_e2e_key(db, channel_id, actor_url_str, public_key, algorithm)
-            .await?;
+    let mut properties = ch_row
+        .try_get::<Option<serde_json::Value>>("", "properties")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| json!({}));
+
+    // 合并 e2e 状态：写入 remote_public_key；若已有本地密钥则 established=true
+    let mut e2e_obj = properties.get("e2e").cloned().unwrap_or_else(|| json!({}));
+    e2e_obj["remote_public_key"] = json!(public_key);
+    e2e_obj["algorithm"] = json!(algorithm);
+    let has_local = e2e_obj
+        .get("local_private_key")
+        .and_then(|v| v.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    e2e_obj["established"] = json!(has_local);
+    properties["e2e"] = e2e_obj;
+
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE federation_channels SET properties = $2, last_activity_at = NOW() WHERE channel_id = $1",
+        [channel_id.into(), properties.into()],
+    ))
+    .await
+    .map_err(|e| e.to_string())?;
 
     let message_id = activity
         .get("id")
@@ -1953,30 +1902,28 @@ pub async fn handle_channel_accept(
     Ok(())
 }
 
-#[derive(Debug)]
-struct ChannelLocalE2eState {
-    remote_inbox: Option<String>,
-    remote_actor_url: String,
-    public_key: String,
-    established: bool,
-    new_keypair: bool,
-}
 
-async fn ensure_local_channel_e2e_key(
-    db: &DatabaseConnection,
+
+
+
+
+
+/// 发起 Channel E2E 密钥交换：生成 X25519 密钥对、写入 properties、投递 myriad:KeyExchange
+pub async fn initiate_e2e_key_exchange(
     user_id: i32,
+    username: &str,
     channel_id: &str,
-    jwt_secret: &str,
-) -> Result<ChannelLocalE2eState, (StatusCode, Json<serde_json::Value>)> {
-    let txn = db.begin().await.map_err(db_err)?;
-    let ch_row = txn
+    db: &DatabaseConnection,
+) -> Result<E2eKeyExchangeResponse, (StatusCode, Json<serde_json::Value>)> {
+    let base_url = get_base_url().await;
+
+    let ch_row = db
         .query_one(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT c.status, c.properties, ra.actor_url, ra.inbox_url
                FROM federation_channels c
                JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
-               WHERE c.user_id = $1 AND c.channel_id = $2
-               FOR UPDATE OF c"#,
+               WHERE c.user_id = $1 AND c.channel_id = $2"#,
             [user_id.into(), channel_id.into()],
         ))
         .await
@@ -1989,6 +1936,8 @@ async fn ensure_local_channel_e2e_key(
         })?;
 
     let status: String = ch_row.try_get("", "status").unwrap_or_default();
+    // Alignment: do not fan-out KeyExchange while local channel is still pending
+    // (remote may not have applied ChannelOpen yet → not_found storm).
     if !["active", "accepted"].contains(&status.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
@@ -2000,172 +1949,110 @@ async fn ensure_local_channel_e2e_key(
         ));
     }
 
-    let remote_inbox = ch_row
+    let remote_inbox: Option<String> = ch_row
         .try_get::<Option<String>>("", "inbox_url")
         .unwrap_or(None);
     let remote_actor_url: String = ch_row.try_get("", "actor_url").unwrap_or_default();
-    let properties = ch_row
+    let mut properties = ch_row
         .try_get::<Option<serde_json::Value>>("", "properties")
         .ok()
         .flatten()
         .unwrap_or_else(|| json!({}));
 
+    // 保留已有 remote key（若对端先发起）
     let existing_remote = properties
         .get("e2e")
         .and_then(|e| e.get("remote_public_key"))
         .and_then(|v| v.as_str())
-        .map(str::to_owned);
+        .map(|s| s.to_string());
+
+    // 已有本地密钥则复用：打开会话时自动 key-exchange 若每次轮换密钥，
+    // 对端仍握旧公钥 → 解密失败，且历史里堆满 outbound KeyExchange。
     let existing_local_pk = properties
         .get("e2e")
         .and_then(|e| e.get("local_public_key"))
         .and_then(|v| v.as_str())
-        .map(str::to_owned);
+        .map(|s| s.to_string());
     let existing_local_sk = properties
         .get("e2e")
         .and_then(|e| e.get("local_private_key"))
         .and_then(|v| v.as_str())
-        .map(str::to_owned);
+        .map(|s| s.to_string());
 
-    // The row lock makes key generation single-writer. Concurrent callers read
-    // and fan out the pair committed by the first caller instead of minting K1/K2.
-    let (candidate_public_key, sealed_sk, established, new_keypair) =
-        if let (Some(pk), Some(sk_stored)) = (existing_local_pk, existing_local_sk) {
-            match crate::federation::e2e::unseal_private_key(&sk_stored, jwt_secret) {
-                Ok(_) => {
-                    let established = existing_remote
-                        .as_ref()
-                        .map(|remote| {
-                            crate::federation::e2e::validate_public_key_b64(remote).is_ok()
-                        })
-                        .unwrap_or(false);
-                    (pk, sk_stored, established, false)
-                }
-                Err(_) => {
-                    let mut session = crate::federation::e2e::create_session(channel_id);
-                    let established = existing_remote
-                        .as_ref()
-                        .map(|remote| {
-                            crate::federation::e2e::accept_key_exchange(&mut session, remote)
-                                .is_ok()
-                        })
-                        .unwrap_or(false);
-                    let sealed = crate::federation::e2e::seal_private_key(
-                        &session.local_keypair.private_key,
-                        jwt_secret,
-                    )
-                    .map_err(|e| {
-                        (
-                            StatusCode::INTERNAL_SERVER_ERROR,
-                            Json(json!({"error": format!("Failed to seal E2E key: {e}")})),
-                        )
-                    })?;
-                    (session.local_keypair.public_key, sealed, established, true)
-                }
+    let jwt_secret = jwt_secret_for_channel_e2e().await;
+    // new_keypair: only write a history KeyExchange bubble when the local key is mint-new
+    let (public_key, sealed_sk, established, new_keypair) = if let (Some(pk), Some(sk_stored)) =
+        (existing_local_pk, existing_local_sk)
+    {
+        // Validate we can still unseal; if seal secret rotated, mint a new pair.
+        match crate::federation::e2e::unseal_private_key(&sk_stored, &jwt_secret) {
+            Ok(_sk) => {
+                let established = existing_remote
+                    .as_ref()
+                    .map(|r| crate::federation::e2e::validate_public_key_b64(r).is_ok())
+                    .unwrap_or(false);
+                (pk, sk_stored, established, false)
             }
-        } else {
-            let mut session = crate::federation::e2e::create_session(channel_id);
-            let established = existing_remote
-                .as_ref()
-                .map(|remote| {
-                    crate::federation::e2e::accept_key_exchange(&mut session, remote).is_ok()
-                })
-                .unwrap_or(false);
-            let sealed = crate::federation::e2e::seal_private_key(
-                &session.local_keypair.private_key,
-                jwt_secret,
-            )
-            .map_err(|e| {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": format!("Failed to seal E2E key: {e}")})),
+            Err(_) => {
+                let mut session = crate::federation::e2e::create_session(channel_id);
+                let mut established = false;
+                if let Some(ref remote_pk) = existing_remote {
+                    if crate::federation::e2e::accept_key_exchange(&mut session, remote_pk).is_ok()
+                    {
+                        established = true;
+                    }
+                }
+                let sealed = crate::federation::e2e::seal_private_key(
+                    &session.local_keypair.private_key,
+                    &jwt_secret,
                 )
-            })?;
-            (session.local_keypair.public_key, sealed, established, true)
-        };
-
-    let persisted = txn
-        .query_one(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"UPDATE federation_channels AS c
-               SET properties = (
-                       (CASE
-                            WHEN jsonb_typeof(c.properties::jsonb) = 'object'
-                                THEN c.properties::jsonb
-                            ELSE '{}'::jsonb
-                        END)
-                       || jsonb_build_object(
-                            'e2e',
-                            (CASE
-                                 WHEN jsonb_typeof(c.properties::jsonb -> 'e2e') = 'object'
-                                     THEN c.properties::jsonb -> 'e2e'
-                                 ELSE '{}'::jsonb
-                             END)
-                            || jsonb_build_object(
-                                 'local_public_key', $3::text,
-                                 'local_private_key', $4::text,
-                                 'established', $5::boolean,
-                                 'sealed', true,
-                                 'algorithm', $6::text
-                               )
-                          )
-                   )::json,
-                   last_activity_at = NOW()
-               WHERE c.channel_id = $1 AND c.user_id = $2
-               RETURNING
-                   c.properties::jsonb #>> '{e2e,local_public_key}' AS local_public_key,
-                   COALESCE(
-                       (c.properties::jsonb #>> '{e2e,established}')::boolean,
-                       false
-                   ) AS established"#,
-            [
-                channel_id.into(),
-                user_id.into(),
-                candidate_public_key.clone().into(),
-                sealed_sk.into(),
-                established.into(),
-                crate::federation::e2e::E2E_ALGORITHM.into(),
-            ],
-        ))
-        .await
-        .map_err(db_err)?
-        .ok_or_else(|| {
+                .map_err(|e| {
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
+                    )
+                })?;
+                (session.local_keypair.public_key, sealed, established, true)
+            }
+        }
+    } else {
+        let mut session = crate::federation::e2e::create_session(channel_id);
+        let mut established = false;
+        if let Some(ref remote_pk) = existing_remote {
+            if crate::federation::e2e::accept_key_exchange(&mut session, remote_pk).is_ok() {
+                established = true;
+            }
+        }
+        let sealed = crate::federation::e2e::seal_private_key(
+            &session.local_keypair.private_key,
+            &jwt_secret,
+        )
+        .map_err(|e| {
             (
-                StatusCode::NOT_FOUND,
-                Json(json!({"error": "Channel not found"})),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": format!("Failed to seal E2E key: {}", e)})),
             )
         })?;
+        (session.local_keypair.public_key, sealed, established, true)
+    };
 
-    let public_key: String = persisted
-        .try_get("", "local_public_key")
-        .unwrap_or(candidate_public_key);
-    let established = persisted.try_get("", "established").unwrap_or(established);
-    txn.commit().await.map_err(db_err)?;
+    let e2e_state = json!({
+        "local_public_key": public_key,
+        "local_private_key": sealed_sk,
+        "remote_public_key": existing_remote,
+        "established": established,
+        "sealed": true,
+        "algorithm": crate::federation::e2e::E2E_ALGORITHM,
+    });
+    properties["e2e"] = e2e_state;
 
-    Ok(ChannelLocalE2eState {
-        remote_inbox,
-        remote_actor_url,
-        public_key,
-        established,
-        new_keypair,
-    })
-}
-
-/// 发起 Channel E2E 密钥交换：生成 X25519 密钥对、写入 properties、投递 myriad:KeyExchange
-pub async fn initiate_e2e_key_exchange(
-    user_id: i32,
-    username: &str,
-    channel_id: &str,
-    db: &DatabaseConnection,
-) -> Result<E2eKeyExchangeResponse, (StatusCode, Json<serde_json::Value>)> {
-    let base_url = get_base_url().await;
-    let jwt_secret = jwt_secret_for_channel_e2e().await;
-    let ChannelLocalE2eState {
-        remote_inbox,
-        remote_actor_url,
-        public_key,
-        established,
-        new_keypair,
-    } = ensure_local_channel_e2e_key(db, user_id, channel_id, &jwt_secret).await?;
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE federation_channels SET properties = $2, last_activity_at = NOW() WHERE channel_id = $1 AND user_id = $3",
+        [channel_id.into(), properties.into(), user_id.into()],
+    ))
+    .await
+    .map_err(db_err)?;
 
     let local_actor = actor_url(&base_url, username);
     let activity_id = generate_activity_id(&base_url);
@@ -2270,11 +2157,10 @@ pub async fn initiate_e2e_key_exchange(
     })
 }
 
+
 #[cfg(test)]
 mod channel_early_buffer_tests {
     use super::*;
-    use sea_orm::Database;
-    use sea_orm_migration::MigratorTrait;
     use serde_json::json;
 
     #[test]
@@ -2282,17 +2168,9 @@ mod channel_early_buffer_tests {
         let id = "ch_test_buffer_unit";
         // clear any prior via purge by using unique id
         let act = json!({"id": "https://example.com/act/1", "type": "Create"});
-        assert!(buffer_early_channel_activity(
-            id,
-            "https://a.example/actor",
-            &act
-        ));
+        assert!(buffer_early_channel_activity(id, "https://a.example/actor", &act));
         // second with same id is treated as success (dedupe)
-        assert!(buffer_early_channel_activity(
-            id,
-            "https://a.example/actor",
-            &act
-        ));
+        assert!(buffer_early_channel_activity(id, "https://a.example/actor", &act));
     }
 
     #[test]
@@ -2300,158 +2178,9 @@ mod channel_early_buffer_tests {
         let id = "ch_test_buffer_cap";
         for i in 0..EARLY_MSG_MAX_PER_CHANNEL {
             let act = json!({"id": format!("https://example.com/act/{i}"), "type": "Create"});
-            assert!(
-                buffer_early_channel_activity(id, "https://a.example/actor", &act),
-                "i={i}"
-            );
+            assert!(buffer_early_channel_activity(id, "https://a.example/actor", &act), "i={i}");
         }
         let overflow = json!({"id": "https://example.com/act/overflow", "type": "Create"});
-        assert!(!buffer_early_channel_activity(
-            id,
-            "https://a.example/actor",
-            &overflow
-        ));
-    }
-
-    #[tokio::test]
-    async fn concurrent_channel_key_updates_preserve_both_keys_when_db_provided() {
-        let database_url = std::env::var("CHANNEL_TEST_DATABASE_URL")
-            .or_else(|_| std::env::var("NOTIFICATION_TEST_DATABASE_URL"))
-            .or_else(|_| std::env::var("MYRIAD_SCHEMA_DRIFT_DB"));
-        let Ok(database_url) = database_url else {
-            return;
-        };
-        let db = Database::connect(&database_url)
-            .await
-            .expect("connect test db");
-        migration::Migrator::up(&db, None)
-            .await
-            .expect("migrator up");
-
-        let suffix = uuid::Uuid::new_v4().simple().to_string();
-        let username = format!("channel-e2e-{suffix}");
-        let channel_id = format!("ch_e2e_{suffix}");
-        let remote_actor = format!("https://remote-{suffix}.example/users/peer");
-        let remote_inbox = format!("https://remote-{suffix}.example/inbox");
-
-        let user_row = db
-            .query_one(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "INSERT INTO users (username) VALUES ($1) RETURNING id",
-                [username.into()],
-            ))
-            .await
-            .expect("insert user")
-            .expect("user row");
-        let user_id: i32 = user_row.try_get("", "id").expect("user id");
-
-        let remote_row = db
-            .query_one(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                r#"INSERT INTO federation_remote_actors
-                   (actor_url, domain, inbox_url, created_at)
-                   VALUES ($1, $2, $3, NOW())
-                   RETURNING id"#,
-                [
-                    remote_actor.clone().into(),
-                    format!("remote-{suffix}.example").into(),
-                    remote_inbox.into(),
-                ],
-            ))
-            .await
-            .expect("insert remote actor")
-            .expect("remote actor row");
-        let remote_actor_id: i32 = remote_row.try_get("", "id").expect("remote actor id");
-
-        db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            r#"INSERT INTO federation_channels
-               (channel_id, user_id, remote_actor_id, channel_type, status, properties, initiated_by)
-               VALUES ($1, $2, $3, 'text', 'active', $4, 'local')"#,
-            [
-                channel_id.clone().into(),
-                user_id.into(),
-                remote_actor_id.into(),
-                json!({"sentinel": {"keep": true}}).into(),
-            ],
-        ))
-        .await
-        .expect("insert channel");
-
-        let remote_public_key = crate::federation::e2e::create_session(&channel_id)
-            .local_keypair
-            .public_key;
-        let jwt_secret = format!("channel-e2e-test-secret-{suffix}");
-        let (local_one, local_two, remote_result) = tokio::join!(
-            ensure_local_channel_e2e_key(&db, user_id, &channel_id, &jwt_secret),
-            ensure_local_channel_e2e_key(&db, user_id, &channel_id, &jwt_secret),
-            persist_remote_channel_e2e_key(
-                &db,
-                &channel_id,
-                &remote_actor,
-                &remote_public_key,
-                crate::federation::e2e::E2E_ALGORITHM,
-            ),
-        );
-
-        let stored_row = db
-            .query_one(Statement::from_sql_and_values(
-                DatabaseBackend::Postgres,
-                "SELECT properties FROM federation_channels WHERE channel_id = $1",
-                [channel_id.clone().into()],
-            ))
-            .await
-            .expect("read channel")
-            .expect("channel row");
-        let stored = stored_row
-            .try_get::<Option<serde_json::Value>>("", "properties")
-            .expect("properties")
-            .expect("properties value");
-
-        db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "DELETE FROM federation_channels WHERE channel_id = $1",
-            [channel_id.into()],
-        ))
-        .await
-        .expect("delete channel");
-        db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "DELETE FROM federation_remote_actors WHERE id = $1",
-            [remote_actor_id.into()],
-        ))
-        .await
-        .expect("delete remote actor");
-        db.execute(Statement::from_sql_and_values(
-            DatabaseBackend::Postgres,
-            "DELETE FROM users WHERE id = $1",
-            [user_id.into()],
-        ))
-        .await
-        .expect("delete user");
-
-        let local_one = local_one.expect("first local initializer");
-        let local_two = local_two.expect("second local initializer");
-        remote_result.expect("remote key merge");
-        assert_eq!(local_one.public_key, local_two.public_key);
-        assert_ne!(local_one.new_keypair, local_two.new_keypair);
-        assert_eq!(stored.pointer("/sentinel/keep"), Some(&json!(true)));
-        assert_eq!(
-            stored
-                .pointer("/e2e/local_public_key")
-                .and_then(|v| v.as_str()),
-            Some(local_one.public_key.as_str())
-        );
-        assert_eq!(
-            stored
-                .pointer("/e2e/remote_public_key")
-                .and_then(|v| v.as_str()),
-            Some(remote_public_key.as_str())
-        );
-        assert_eq!(stored.pointer("/e2e/established"), Some(&json!(true)));
-        assert!(stored
-            .pointer("/e2e/local_private_key")
-            .and_then(|v| v.as_str())
-            .is_some_and(|value| !value.is_empty()));
+        assert!(!buffer_early_channel_activity(id, "https://a.example/actor", &overflow));
     }
 }

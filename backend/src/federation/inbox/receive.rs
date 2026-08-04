@@ -1,3 +1,4 @@
+
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, Request, StatusCode},
@@ -12,7 +13,7 @@ use crate::federation::actor::{
 };
 use crate::federation::errors::{is_permanent_federation_error, map_inbox_handler_error};
 use crate::federation::limits::buffer_inbox_body;
-use crate::federation::replay::{begin_replay, replay_dedup_keys, ReplayDecision};
+use crate::federation::replay::{is_replay_or_record, replay_dedup_keys};
 use crate::federation::signature::{
     parse_signature_header, require_covered_headers, verify_date_freshness, verify_digest,
     verify_signature, HTTP_DATE_MAX_SKEW,
@@ -73,33 +74,18 @@ pub async fn post_inbox(
     let request_path = format!("/users/{}/inbox", username);
     verify_request_signature(&db, &headers, &body, &actor_url_str, &request_path).await?;
 
-    // MYR-023: reserve after authentication but before rate accounting. Commit
-    // only after the handler succeeds, so a transient 5xx/503 remains retryable.
+    // MYR-023: short-lived activity id / digest dedup after successful auth.
+    // Legitimate peer retries get 202 without re-running side-effect handlers.
     let activity_id = activity["id"].as_str().unwrap_or("");
-    let replay = match begin_replay(&replay_dedup_keys(activity_id, &body)) {
-        ReplayDecision::Fresh(reservation) => reservation,
-        ReplayDecision::Accepted => {
-            tracing::info!(
-                activity_id = %activity_id,
-                activity_type = %activity_type,
-                actor = %actor_url_str,
-                "📬 Inbox replay suppressed after prior successful handling"
-            );
-            return Ok(StatusCode::ACCEPTED);
-        }
-        ReplayDecision::InFlight => {
-            tracing::info!(
-                activity_id = %activity_id,
-                activity_type = %activity_type,
-                actor = %actor_url_str,
-                "📬 Concurrent inbox replay asked to retry"
-            );
-            return Err((
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({"error": "Activity is already being processed", "retry": true})),
-            ));
-        }
-    };
+    if is_replay_or_record(&replay_dedup_keys(activity_id, &body)) {
+        tracing::info!(
+            activity_id = %activity_id,
+            activity_type = %activity_type,
+            actor = %actor_url_str,
+            "📬 Inbox replay suppressed (activity id / body digest seen recently)"
+        );
+        return Ok(StatusCode::ACCEPTED);
+    }
 
     // 信任策略：黑名单 / 速率 / 内容过滤
     let actor_domain = extract_domain(&actor_url_str).unwrap_or_default();
@@ -125,7 +111,7 @@ pub async fn post_inbox(
     );
 
     // 分发处理
-    let result = match activity_type.as_str() {
+    match activity_type.as_str() {
         "Follow" => handle_follow(&db, user_id, &actor_url_str, &activity).await,
         "Accept" => handle_accept(&db, user_id, &activity).await,
         "Reject" => handle_reject(&db, user_id, &actor_url_str, &activity).await,
@@ -165,20 +151,18 @@ pub async fn post_inbox(
             ];
             if !ALLOWED_MFP_TYPES.contains(&ty) {
                 tracing::warn!("Rejected unknown MFP activity type: {}", ty);
-                Err((
+                return Err((
                     StatusCode::BAD_REQUEST,
                     Json(json!({"error": format!("Unknown MFP activity type: {}", ty)})),
-                ))
-            } else {
-                handle_mfp_activity(&db, Some(user_id), &actor_url_str, ty, &activity).await
+                ));
             }
+            handle_mfp_activity(&db, Some(user_id), &actor_url_str, ty, &activity).await
         }
         _ => {
             tracing::warn!("Unsupported activity type: {}", activity_type);
             Ok(StatusCode::ACCEPTED) // AP 规范建议静默接受未知类型
         }
-    };
-    replay.complete(result)
+    }
 }
 
 /// POST /inbox  (Shared Inbox)
@@ -216,31 +200,17 @@ pub async fn post_shared_inbox(
     // 验证签名（MYR-022: actor fetch is ephemeral until verified）
     verify_request_signature(&db, &headers, &body, &actor_url_str, "/inbox").await?;
 
+    // MYR-023: short-lived activity id / digest dedup after successful auth.
     let activity_id = activity["id"].as_str().unwrap_or("");
-    let replay = match begin_replay(&replay_dedup_keys(activity_id, &body)) {
-        ReplayDecision::Fresh(reservation) => reservation,
-        ReplayDecision::Accepted => {
-            tracing::info!(
-                activity_id = %activity_id,
-                activity_type = %activity_type,
-                actor = %actor_url_str,
-                "📬 Shared inbox replay suppressed after prior successful handling"
-            );
-            return Ok(StatusCode::ACCEPTED);
-        }
-        ReplayDecision::InFlight => {
-            tracing::info!(
-                activity_id = %activity_id,
-                activity_type = %activity_type,
-                actor = %actor_url_str,
-                "📬 Concurrent shared-inbox replay asked to retry"
-            );
-            return Err((
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({"error": "Activity is already being processed", "retry": true})),
-            ));
-        }
-    };
+    if is_replay_or_record(&replay_dedup_keys(activity_id, &body)) {
+        tracing::info!(
+            activity_id = %activity_id,
+            activity_type = %activity_type,
+            actor = %actor_url_str,
+            "📬 Shared inbox replay suppressed (activity id / body digest seen recently)"
+        );
+        return Ok(StatusCode::ACCEPTED);
+    }
 
     // 信任策略
     let actor_domain = extract_domain(&actor_url_str).unwrap_or_default();
@@ -264,9 +234,8 @@ pub async fn post_shared_inbox(
         actor_url_str
     );
 
-    let result = async {
-        // 公开内容 → 粉丝时间线
-        if matches!(activity_type.as_str(), "Create" | "Announce") {
+    // 公开内容 → 粉丝时间线
+    if matches!(activity_type.as_str(), "Create" | "Announce") {
         // 只有寻址到 Public 或该 Actor 自己 followers collection 的活动才能进入
         // 粉丝首页。定向给具体个人（甚至完全未寻址）的活动过去也会被广播给
         // 该 Actor 的全部本地粉丝。
@@ -307,51 +276,47 @@ pub async fn post_shared_inbox(
 
         distribute_to_followers(&db, remote.id, &activity_type, &activity).await?;
         return Ok(StatusCode::ACCEPTED);
-        }
-
-        // Move is not user-targeted: re-point local follow graph for the migrating remote.
-        if activity_type == "Move" {
-            return handle_move(&db, &actor_url_str, &activity).await;
-        }
-
-        // MFP / social: route through same handlers as personal inbox when addressed
-        // to a local user (to/cc) or when object has room/channel ids.
-        if activity_type.starts_with("myriad:")
-            || matches!(
-                activity_type.as_str(),
-                "Follow" | "Accept" | "Undo" | "Delete" | "Update" | "Like"
-            )
-        {
-            let target_user_id =
-                resolve_shared_inbox_local_user(&db, &activity_type, &activity).await;
-            if let Some(uid) = target_user_id {
-                if activity_type.starts_with("myriad:") {
-                    return handle_mfp_activity(
-                        &db,
-                        Some(uid),
-                        &actor_url_str,
-                        &activity_type,
-                        &activity,
-                    )
-                    .await;
-                }
-                return match activity_type.as_str() {
-                    "Follow" => handle_follow(&db, uid, &actor_url_str, &activity).await,
-                    "Accept" => handle_accept(&db, uid, &activity).await,
-                    "Undo" => handle_undo(&db, uid, &actor_url_str, &activity).await,
-                    "Create" | "Update" | "Delete" | "Announce" | "Like" => {
-                        handle_content_activity(&db, uid, &actor_url_str, &activity_type, &activity)
-                            .await
-                    }
-                    _ => Ok(StatusCode::ACCEPTED),
-                };
-            }
-        }
-
-        Ok(StatusCode::ACCEPTED)
     }
-    .await;
-    replay.complete(result)
+
+    // Move is not user-targeted: re-point local follow graph for the migrating remote.
+    if activity_type == "Move" {
+        return handle_move(&db, &actor_url_str, &activity).await;
+    }
+
+    // MFP / social: route through same handlers as personal inbox when addressed
+    // to a local user (to/cc) or when object has room/channel ids.
+    if activity_type.starts_with("myriad:")
+        || matches!(
+            activity_type.as_str(),
+            "Follow" | "Accept" | "Undo" | "Delete" | "Update" | "Like"
+        )
+    {
+        let target_user_id = resolve_shared_inbox_local_user(&db, &activity_type, &activity).await;
+        if let Some(uid) = target_user_id {
+            if activity_type.starts_with("myriad:") {
+                return handle_mfp_activity(
+                    &db,
+                    Some(uid),
+                    &actor_url_str,
+                    &activity_type,
+                    &activity,
+                )
+                .await;
+            }
+            return match activity_type.as_str() {
+                "Follow" => handle_follow(&db, uid, &actor_url_str, &activity).await,
+                "Accept" => handle_accept(&db, uid, &activity).await,
+                "Undo" => handle_undo(&db, uid, &actor_url_str, &activity).await,
+                "Create" | "Update" | "Delete" | "Announce" | "Like" => {
+                    handle_content_activity(&db, uid, &actor_url_str, &activity_type, &activity)
+                        .await
+                }
+                _ => Ok(StatusCode::ACCEPTED),
+            };
+        }
+    }
+
+    Ok(StatusCode::ACCEPTED)
 }
 
 /// Resolve which local user a shared-inbox activity targets.
@@ -1664,14 +1629,15 @@ async fn verify_request_signature(
     }
 
     // MYR-022: trusted cache or ephemeral remote fetch — never poison DB on 401.
-    let mut resolved: ResolvedRemoteActor = fetch_remote_actor_for_verify(db, actor_url_str, false)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": format!("Cannot verify actor: {}", e)})),
-            )
-        })?;
+    let mut resolved: ResolvedRemoteActor =
+        fetch_remote_actor_for_verify(db, actor_url_str, false)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": format!("Cannot verify actor: {}", e)})),
+                )
+            })?;
 
     // If we stored a public_key_id for this actor, Signature keyId must match
     // (normalized). On mismatch, force ephemeral re-fetch once — stale cache
@@ -3075,13 +3041,7 @@ mod tests {
         // 底层差值仍然存在（这正是必须显式拒绝的原因）
         assert_ne!(
             headers.get("date").unwrap().to_str().unwrap(),
-            headers
-                .get_all("date")
-                .iter()
-                .last()
-                .unwrap()
-                .to_str()
-                .unwrap(),
+            headers.get_all("date").iter().last().unwrap().to_str().unwrap(),
         );
 
         let err = unique_header(&headers, "date").unwrap_err();
@@ -3100,10 +3060,7 @@ mod tests {
             unique_header(&headers, "date").unwrap(),
             Some("Mon, 04 Aug 2025 10:00:00 GMT")
         );
-        assert_eq!(
-            unique_header(&headers, "digest").unwrap(),
-            Some("SHA-256=abc")
-        );
+        assert_eq!(unique_header(&headers, "digest").unwrap(), Some("SHA-256=abc"));
         assert_eq!(unique_header(&headers, "signature").unwrap(), None);
     }
 
@@ -3140,3 +3097,4 @@ mod tests {
         assert!(!map.contains_key("x-extra"));
     }
 }
+

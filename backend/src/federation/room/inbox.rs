@@ -7,7 +7,7 @@ use crate::federation::types::*;
 
 use super::e2e::decrypt_room_payload_for_local_ws;
 use super::helpers::*;
-use super::stickers::{parse_room_stickers, replace_room_stickers, stickers_to_json};
+use super::stickers::{parse_room_stickers, stickers_to_json};
 
 // Inbox 处理（远程 Room 事件）
 
@@ -498,7 +498,8 @@ pub async fn handle_room_leave(
             .map_err(|e| e.to_string())?
             .and_then(|r| r.try_get::<String>("", "owner_actor").ok())
             .unwrap_or_default();
-        let is_room_owner = !owner_actor.is_empty() && same_actor_url(&owner_actor, actor_url_str);
+        let is_room_owner =
+            !owner_actor.is_empty() && same_actor_url(&owner_actor, actor_url_str);
         if !is_room_owner && !kicker_role.as_deref().map(is_admin_role).unwrap_or(false) {
             tracing::warn!(
                 "[Room] rejected kick of {} from {} without admin role in room {}",
@@ -685,7 +686,8 @@ pub async fn handle_room_join(
 
     if !room_join_authorized(RoomJoinAuth {
         is_self_join,
-        announcer_is_owner: !owner_actor.is_empty() && same_actor_url(&owner_actor, actor_url_str),
+        announcer_is_owner: !owner_actor.is_empty()
+            && same_actor_url(&owner_actor, actor_url_str),
         announcer_role: announcer_role.as_deref(),
         invite_policy: &invite_policy,
         room_is_public,
@@ -727,11 +729,7 @@ pub async fn handle_room_join(
            ON CONFLICT (room_id, actor_url) DO UPDATE SET
                membership_status = 'active',
                joined_at = COALESCE(federation_room_members.joined_at, NOW())"#,
-        [
-            room_id.into(),
-            joining.into(),
-            effective_role.clone().into(),
-        ],
+        [room_id.into(), joining.into(), effective_role.clone().into()],
     ))
     .await
     .map_err(|e| e.to_string())?;
@@ -928,11 +926,7 @@ pub(crate) async fn refanout_local_e2e_keys_to_member(
 }
 
 /// Notify local users (inviter preferred, else owner) that someone joined/accepted.
-pub(crate) async fn notify_local_members_of_join(
-    db: &DatabaseConnection,
-    room_id: &str,
-    joining_actor: &str,
-) {
+pub(crate) async fn notify_local_members_of_join(db: &DatabaseConnection, room_id: &str, joining_actor: &str) {
     // Prefer invited_by local user; fall back to local owner/admin members
     let inviter_row = db
         .query_one(Statement::from_sql_and_values(
@@ -1143,14 +1137,29 @@ pub async fn handle_room_governance(
         }
         // Apply sticker pack mirror from home / peer.
         if let Some(stickers_val) = changes.get("stickers") {
-            let parsed = parse_room_stickers(&json!({ "stickers": stickers_val }));
-            let stickers_value = stickers_to_json(&parsed);
-            let updated = replace_room_stickers(db, room_id, &stickers_value)
+            let room_row = db
+                .query_one(Statement::from_sql_and_values(
+                    DatabaseBackend::Postgres,
+                    "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
+                    [room_id.into()],
+                ))
                 .await
-                .map_err(|e| e.to_string())?;
-            if !updated {
-                return Err(format!("Room {room_id} not found"));
-            }
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("Room {room_id} not found"))?;
+            let mut shared = room_row
+                .try_get::<Option<serde_json::Value>>("", "shared_data_config")
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| json!({}));
+            let parsed = parse_room_stickers(&json!({ "stickers": stickers_val }));
+            shared["stickers"] = stickers_to_json(&parsed);
+            db.execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
+                [room_id.into(), shared.into()],
+            ))
+            .await
+            .map_err(|e| e.to_string())?;
 
             crate::federation::ws_gateway::broadcast_to_room(
                 room_id,
@@ -1160,7 +1169,7 @@ pub async fn handle_room_governance(
                     "event": "stickers_changed",
                     "actor": actor_url_str,
                     "op": "sync",
-                    "stickers": stickers_value,
+                    "stickers": stickers_to_json(&parsed),
                 }),
             )
             .await;
@@ -1212,7 +1221,11 @@ pub async fn handle_room_governance(
                SET role = $3
                WHERE room_id = $1 AND actor_url = $2
                  AND COALESCE(membership_status, 'active') = 'active'"#,
-            [room_id.into(), target_stored.clone().into(), role.into()],
+            [
+                room_id.into(),
+                target_stored.clone().into(),
+                role.into(),
+            ],
         ))
         .await
         .map_err(|e| e.to_string())?;
@@ -1345,3 +1358,5 @@ pub async fn handle_room_governance(
     );
     Ok(())
 }
+
+
