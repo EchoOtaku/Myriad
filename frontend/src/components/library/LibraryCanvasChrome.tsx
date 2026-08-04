@@ -51,6 +51,11 @@ export function LibraryCanvasChrome({
   const isMobile = navLayout === 'mobile'
 
   useEffect(() => {
+    // Mobile: never show the top pan/zoom tip (chrome is self-explanatory).
+    if (isMobile) {
+      setShowHint(false)
+      return
+    }
     try {
       setShowHint(
         window.sessionStorage.getItem(CANVAS_HINT_SESSION_KEY) !== '1',
@@ -58,7 +63,7 @@ export function LibraryCanvasChrome({
     } catch {
       setShowHint(true)
     }
-  }, [])
+  }, [isMobile])
 
   const dismissHint = useCallback(() => {
     setShowHint(false)
@@ -78,7 +83,7 @@ export function LibraryCanvasChrome({
   // nav (z-50) / GCP stacking, and isn't covered by the transformed card world.
   return createPortal(
     <>
-      {showHint === true && (
+      {showHint === true && !isMobile && (
         <div
           className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-3 sm:px-16 md:px-24"
           style={{

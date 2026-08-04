@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from 'react'
-
+import { flushSync } from 'react-dom'
 import { useLocation } from 'react-router-dom'
 import GlobalControlPanel from '../components/GlobalControlPanel'
 import NavigationIsland from '../components/NavigationIsland'
@@ -99,12 +99,17 @@ export function AppLayout({ children }: AppLayoutProps) {
     applyNavLayoutToDocument(getNavLayoutSnapshot())
   }, [])
 
-  useEffect(() => {
+  // Layout + flushSync: when LibraryGrid marks canvas in its layout effect,
+  // stop evocative RAF and soft-lock wallpaper before paint. A passive effect
+  // left one frame of parallax (hard cut) when entering /library from elsewhere.
+  useLayoutEffect(() => {
     const syncLibraryCanvasMode = () => {
-      setLibraryCanvasActive(
+      const next =
         location.pathname === '/library' &&
-          document.documentElement.dataset.libraryCanvas === 'active',
-      )
+        document.documentElement.dataset.libraryCanvas === 'active'
+      flushSync(() => {
+        setLibraryCanvasActive(next)
+      })
     }
 
     window.addEventListener(

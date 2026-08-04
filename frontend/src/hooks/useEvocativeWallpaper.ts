@@ -40,14 +40,27 @@ const EFFECT_EDGE_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)'
 const EFFECT_EDGE_TRANSITION = `transform ${EFFECT_EDGE_MS}ms ${EFFECT_EDGE_EASE}`
 const IDENTITY_TF = 'scale(1) translate3d(0,0,0)'
 
+function isLibraryCanvasHoldingWallpaper(): boolean {
+  return (
+    typeof document !== 'undefined' &&
+    document.documentElement.dataset.libraryCanvas === 'active'
+  )
+}
+
 /**
  * Soft-lock wallpaper to identity (all clients).
- * Capture the current computed transform as the from-value, then transition to
- * identity so entering library canvas doesn't hard-cut parallax scale/offset.
- * Leaves transform at IDENTITY_TF so removing data-library-canvas later won't
- * snap back to a stale parallax matrix.
+ * Cache the current computed transform as the from-value, then transition to
+ * identity so entering library canvas (esp. from other routes) doesn't hard-cut
+ * parallax scale/offset. Leaves transform at IDENTITY_TF so removing
+ * data-library-canvas later won't snap back to a stale parallax matrix.
+ *
+ * Idempotent: LibraryGrid layout + evocative cleanup/effect body may all call
+ * this when canvas activates; later calls must not restart the in-flight fade.
  */
 function softLockWallpaperTransform(el: HTMLElement): void {
+  // Already locked (or mid soft-lock after to-value was written).
+  if (el.style.transform === IDENTITY_TF) return
+
   let computed = 'none'
   try {
     computed = getComputedStyle(el).transform
@@ -57,13 +70,32 @@ function softLockWallpaperTransform(el: HTMLElement): void {
   const from =
     !computed || computed === 'none' ? IDENTITY_TF : computed
 
-  // Establish the start frame without transitioning, then animate to identity.
-  el.style.transition = 'none'
+  // Cache from-frame with transition disabled, then ease to identity.
+  // Important beats residual stylesheet transition on #wallpaper (opacity rule).
+  el.style.setProperty('transition', 'none', 'important')
   el.style.transform = from
   // Force style flush so the browser registers the from value before to-value.
   void el.offsetWidth
-  el.style.transition = EFFECT_EDGE_TRANSITION
+  el.style.setProperty('transition', EFFECT_EDGE_TRANSITION, 'important')
   el.style.transform = IDENTITY_TF
+}
+
+/**
+ * Capture the live parallax matrix and ease #wallpaper to identity.
+ * Called from LibraryGrid's layout effect so the from-frame is cached before
+ * paint when navigating into /library canvas from another route.
+ */
+export function softLockWallpaperForLibraryCanvas(): void {
+  if (typeof document === 'undefined') return
+  const el = document.getElementById('wallpaper')
+  if (el) softLockWallpaperTransform(el)
+}
+
+/** Clear inline transform/transition, including soft-lock's important transition. */
+function clearWallpaperTransformStyles(el: HTMLElement): void {
+  el.style.removeProperty('transition')
+  el.style.transform = ''
+  el.style.transformOrigin = ''
 }
 
 // 预计算的静态 transform 字符串
@@ -617,14 +649,10 @@ export function useEvocativeWallpaper(
       if (el) {
         // 进画布：各端 soft-lock 缓入 identity；inline 固定为 identity，
         // 离场摘掉 CSS 时不会弹回旧 parallax 位移。
-        const libraryCanvasHoldsWallpaper =
-          document.documentElement.dataset.libraryCanvas === 'active'
-        if (libraryCanvasHoldsWallpaper) {
+        if (isLibraryCanvasHoldingWallpaper()) {
           softLockWallpaperTransform(el)
         } else {
-          el.style.transition = ''
-          el.style.transform = ''
-          el.style.transformOrigin = ''
+          clearWallpaperTransformStyles(el)
         }
         el.style.willChange = ''
         // 注意：不清除 filter，因为基础模糊由 useWallpaper 管理
@@ -691,7 +719,9 @@ export function useEvocativeWallpaper(
 
     if (enableParallax) {
       if (softRestore) {
-        el.style.transition = EFFECT_EDGE_TRANSITION
+        // Drop soft-lock's important transition so restore can interpolate.
+        el.style.removeProperty('transition')
+        el.style.setProperty('transition', EFFECT_EDGE_TRANSITION)
         el.style.transform = IDENTITY_TF
         // 双 rAF：先提交 identity，再过渡到 idle scale，保证浏览器能插值
         softRestoreRaf1 = requestAnimationFrame(() => {
@@ -702,12 +732,12 @@ export function useEvocativeWallpaper(
         })
         softRestoreTimer = setTimeout(() => {
           if (!s.active || s.el !== el) return
-          el.style.transition = ''
+          el.style.removeProperty('transition')
           interactionReady = true
           softRestoreTimer = null
         }, EFFECT_EDGE_MS)
       } else {
-        el.style.transition = ''
+        el.style.removeProperty('transition')
         el.style.transform = IDLE_TF
       }
     }
@@ -862,6 +892,15 @@ export function useEvocativeWallpaper(
         return
       }
 
+      // Canvas marked active (layout) before evocative effect tears down —
+      // stop writing parallax so soft-lock's cached from-frame can ease out.
+      if (isLibraryCanvasHoldingWallpaper()) {
+        softLockWallpaperTransform(el)
+        s.parallaxIdle = true
+        s.raf = null
+        return
+      }
+
       let delta = t - s.lastTime
       if (delta >= frameMs) {
         if (delta > MAX_DELTA) delta = MAX_DELTA
@@ -951,6 +990,7 @@ export function useEvocativeWallpaper(
 
     const wake = () => {
       if (!s.pageVisible) return
+      if (isLibraryCanvasHoldingWallpaper()) return
 
       const parallaxNeedsWake = enableParallax && s.parallaxIdle
       const blurNeedsWake = enableDynamicBlur && s.blurIdle
@@ -1192,17 +1232,12 @@ export function useEvocativeWallpaper(
       }
 
       // 资料库画布激活时：各端 soft-lock 缓入 identity；离场时不会弹回旧 parallax 位移。
-      const libraryCanvasHoldsWallpaper =
-        typeof document !== 'undefined' &&
-        document.documentElement.dataset.libraryCanvas === 'active'
-      if (libraryCanvasHoldsWallpaper) {
+      if (isLibraryCanvasHoldingWallpaper()) {
         softLockWallpaperTransform(el)
         el.style.willChange = ''
       } else {
-        // 重绑 / 卸载时清掉 soft-restore 的 transition，避免残留影响下一次
-        el.style.transition = ''
-        el.style.transform = ''
-        el.style.transformOrigin = ''
+        // 重绑 / 卸载时清掉 soft-lock/restore 的 transition，避免残留影响下一次
+        clearWallpaperTransformStyles(el)
         el.style.willChange = ''
       }
       // 注意：不清除 filter，因为基础模糊由 useWallpaper 管理

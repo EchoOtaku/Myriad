@@ -27,6 +27,7 @@ import { useI18n } from '../contexts/I18nContext'
 import { useMusicLyricsSlice } from '../contexts/MusicPlayerContext'
 import { useLibraryIntersectionObserver } from '../hooks/animation'
 import { useLibraryCanvasControls } from '../hooks/useLibraryCanvasControls'
+import { softLockWallpaperForLibraryCanvas } from '../hooks/useEvocativeWallpaper'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useSharedResize } from '../hooks/useSharedEventListener'
 import {
@@ -80,6 +81,28 @@ const LIBRARY_LIVE_MS = {
   coverExit: 600,
 } as const
 
+/**
+ * Session-scoped: canvas cards that already played (or silently claimed) their
+ * first-reveal enter. Prevents virtualization remounts from replaying motion.
+ */
+const canvasCardRevealedIds = new Set<string>()
+
+/**
+ * Claim first-reveal for a canvas card id.
+ * Returns enter delay seconds when the shell should animate; null to mount quiet
+ * (already seen, or surface is mid-drag).
+ */
+function claimCanvasCardEnter(
+  itemId: string,
+  itemIndex: number,
+  surfaceDragging: boolean,
+): number | null {
+  if (canvasCardRevealedIds.has(itemId)) return null
+  canvasCardRevealedIds.add(itemId)
+  if (surfaceDragging) return null
+  return Math.min((itemIndex % 12) * 0.055, 0.6)
+}
+
 // 注入 / 热更新资料库网格样式（HMR 时覆写 textContent）
 if (typeof document !== 'undefined') {
   let style = document.getElementById(
@@ -107,11 +130,38 @@ if (typeof document !== 'undefined') {
             animation: fadeInUp 0.35s ease-out backwards;
         }
 
-        /* 画布虚拟化会按视口装卸卡片；禁用重复入场，拖拽时保持空间连续。 */
+        /* 画布虚拟化会按视口装卸卡片；外层禁用 fadeInUp（焦点 scale 占用 transform）。 */
         .library-canvas-world .library-card-container {
             animation: none;
             transition: transform 120ms ease-out;
             /* 静止不占合成层；拖拽时再开 will-change，避免几十张卡常驻 GPU 内存 */
+        }
+
+        /*
+         * 首次揭示入场挂在内层 shell（不碰外层 focus scale）。
+         * 回扫已见 id / 拖拽中静默挂载，避免虚拟化重播与平移时弹入。
+         */
+        @keyframes library-canvas-shell-enter {
+            from {
+                opacity: 0;
+                transform: scale(0.96);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .library-canvas-world .library-card-shell[data-canvas-enter='1'] {
+            animation: library-canvas-shell-enter 0.62s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .library-canvas-world .library-card-shell[data-canvas-enter='1'] {
+                animation: none;
+                opacity: 1;
+                transform: none;
+            }
         }
 
         [data-library-canvas-surface='true'][data-dragging='true'] {
@@ -140,12 +190,12 @@ if (typeof document !== 'undefined') {
 
         /*
          * 无限画布本身已响应指针；背景强制静止，避免双重位移与点击涟漪干扰。
-         * transform 由 useEvocativeWallpaper soft-lock 缓入 identity（勿在此 !important 写死
-         * transform，否则各端过渡插值会被掐断）；退出画布后 soft-restore 缓回 scale。
+         * transform 过渡由 useEvocativeWallpaper soft-lock 写入（需能先 transition:none
+         * 缓存 from 帧再缓入 identity；此处勿 !important，否则 from 帧插值被掐断）。
+         * 退出画布后 soft-restore 缓回 scale。
          */
         html[data-library-canvas='active'] #wallpaper {
             animation: none !important;
-            transition: transform 0.42s cubic-bezier(0.22, 1, 0.36, 1) !important;
         }
 
         html[data-library-canvas='active'] #wallpaper-ripple-canvas {
@@ -190,16 +240,17 @@ if (typeof document !== 'undefined') {
             height: 100%;
             object-fit: cover;
             opacity: 0;
-            transform: scale(1);
-            /* opacity + transform 都要过渡，避免 hover 放大「丢动画」 */
+            /* 就绪前微放大，淡入时缩入，比纯 opacity 更有「落稳」感 */
+            transform: scale(1.045);
             transition:
-                opacity 0.28s ease,
-                transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+                opacity 0.52s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.62s cubic-bezier(0.22, 1, 0.36, 1);
             will-change: opacity, transform;
         }
 
         .library-card-media__img.is-loaded {
             opacity: 1;
+            transform: scale(1);
         }
 
         /* 默认 hover 封面放大；播放中/退场中禁用（.is-hover-locked） */
@@ -2192,6 +2243,8 @@ const LibraryCardShell = memo(({
   placeholder,
   children,
   coverBreathing = false,
+  priority = false,
+  canvasEnterDelay = null,
 }: {
   cover: string | null
   title: string
@@ -2202,6 +2255,10 @@ const LibraryCardShell = memo(({
   children: ReactNode
   /** 播放中封面呼吸动效 */
   coverBreathing?: boolean
+  /** Canvas visible cards: eager fetch (decode slot still caps concurrency). */
+  priority?: boolean
+  /** First-reveal shell enter delay (seconds); null = no enter animation. */
+  canvasEnterDelay?: number | null
 }) => {
   const hasCover = Boolean(cover)
   const [mediaReady, setMediaReady] = useState(!hasCover)
@@ -2211,8 +2268,26 @@ const LibraryCardShell = memo(({
   const [breathPhase, setBreathPhase] = useState<
     'off' | 'breathing' | 'exiting'
   >(coverBreathing ? 'breathing' : 'off')
+  // Freeze mount-time enter delay — parent re-renders pass null after the id is claimed.
+  const [enterDelay] = useState(canvasEnterDelay)
+  const [canvasEntering, setCanvasEntering] = useState(() => enterDelay != null)
   const imgRef = useRef<HTMLImageElement>(null)
   const releaseSlotRef = useRef<(() => void) | null>(null)
+
+  // reduced-motion / missed animationend: drop enter flag so attributes don't linger
+  useEffect(() => {
+    if (!canvasEntering) return
+    const delayMs = ((enterDelay ?? 0) + 0.62) * 1000 + 80
+    const reduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    if (reduced) {
+      setCanvasEntering(false)
+      return
+    }
+    const t = window.setTimeout(() => setCanvasEntering(false), delayMs)
+    return () => window.clearTimeout(t)
+  }, [canvasEntering, enterDelay])
 
   const clearCoverInline = useCallback(() => {
     const img = imgRef.current
@@ -2336,10 +2411,28 @@ const LibraryCardShell = memo(({
         ? ' is-breathing-out'
         : ''
 
+  const handleShellAnimationEnd = useCallback(
+    (e: SyntheticEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return
+      if (e.currentTarget.dataset.canvasEnter !== '1') return
+      setCanvasEntering(false)
+      e.currentTarget.removeAttribute('data-canvas-enter')
+      e.currentTarget.style.animationDelay = ''
+    },
+    [],
+  )
+
   return (
     <div
       className={`library-card-shell rounded-xl ${className || ''}`}
       data-media-ready={mediaReady ? 'true' : 'false'}
+      data-canvas-enter={canvasEntering ? '1' : undefined}
+      style={
+        canvasEntering && enterDelay != null
+          ? { animationDelay: `${enterDelay}s` }
+          : undefined
+      }
+      onAnimationEnd={canvasEntering ? handleShellAnimationEnd : undefined}
     >
       <div className={`library-card-media${mediaBreathClass}`}>
         {hasCover ? (
@@ -2348,7 +2441,7 @@ const LibraryCardShell = memo(({
             src={activeSrc || undefined}
             alt={title}
             className={`library-card-media__img${mediaReady ? ' is-loaded' : ''}${imgClassName ? ` ${imgClassName}` : ''}`}
-            loading="lazy"
+            loading={priority ? 'eager' : 'lazy'}
             decoding="async"
             sizes={LIBRARY_CARD_COVER_SIZES}
             draggable={false}
@@ -2784,11 +2877,17 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
   })
   canvasViewportRef.current = canvasViewport
 
-  useEffect(() => {
+  // Layout phase: mark canvas + cache wallpaper from-frame before paint so
+  // entering /library from another route eases parallax out instead of hard-cutting.
+  useLayoutEffect(() => {
     const root = document.documentElement
     const active = layoutMode === 'canvas'
-    if (active) root.dataset.libraryCanvas = 'active'
-    else delete root.dataset.libraryCanvas
+    if (active) {
+      root.dataset.libraryCanvas = 'active'
+      softLockWallpaperForLibraryCanvas()
+    } else {
+      delete root.dataset.libraryCanvas
+    }
     window.dispatchEvent(new Event('libraryCanvasModeChanged'))
 
     return () => {
@@ -3875,10 +3974,19 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                   const hoverLocked = isPlaying || isLeavingSong
 
                   const rowIndex = Math.floor(layout.top / 300)
-                  const animationDelay =
+                  const listAnimationDelay = rowIndex * 0.05
+                  const surfaceDragging =
+                    layoutMode === 'canvas' &&
+                    containerRef.current?.dataset.dragging === 'true'
+                  const canvasEnterDelay =
                     layoutMode === 'canvas'
-                      ? Math.min(itemIndex * 0.025, 0.4)
-                      : rowIndex * 0.05
+                      ? claimCanvasCardEnter(
+                          item.id,
+                          itemIndex,
+                          Boolean(surfaceDragging),
+                        )
+                      : null
+                  const canvasPriority = layoutMode === 'canvas'
 
                   // Bangumi / MAL 用户评分（0 表示未评分），显示在卡片左上角
                   const isBangumi = isBangumiPlatform(item.platform)
@@ -3955,7 +4063,10 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                           width: `${layout.width}px`,
                           height: `${layout.height}px`,
                           '--platform-color': platformColor,
-                          animationDelay: `${animationDelay}s`,
+                          // List fadeInUp stagger only; canvas enter delay lives on the shell.
+                          ...(layoutMode === 'list'
+                            ? { animationDelay: `${listAnimationDelay}s` }
+                            : {}),
                           // Canvas focus scale is painted each frame (absolute follow).
                           // List must set transform/zIndex so React clears leftover paint.
                           transformOrigin:
@@ -3979,6 +4090,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                           cover={item.cover}
                           title={item.title}
                           coverBreathing={Boolean(isPlaying)}
+                          priority={canvasPriority}
+                          canvasEnterDelay={canvasEnterDelay}
                           className={
                             hoverLocked
                               ? 'bg-white rounded-xl shadow-md transition-shadow duration-300'
@@ -4051,6 +4164,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                         <LibraryCardShell
                           cover={item.cover}
                           title={item.title}
+                          priority={canvasPriority}
+                          canvasEnterDelay={canvasEnterDelay}
                           className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
                           placeholder={
                             <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-pink-400 to-purple-500">
@@ -4108,6 +4223,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                         <LibraryCardShell
                           cover={item.cover}
                           title={item.title}
+                          priority={canvasPriority}
+                          canvasEnterDelay={canvasEnterDelay}
                           className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
                           placeholder={
                             <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-blue-400 to-blue-500">
@@ -4149,6 +4266,8 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
                         <LibraryCardShell
                           cover={item.cover}
                           title={item.title}
+                          priority={canvasPriority}
+                          canvasEnterDelay={canvasEnterDelay}
                           className="bg-white rounded-xl shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1"
                           placeholder={
                             <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-purple-400 to-pink-500">
