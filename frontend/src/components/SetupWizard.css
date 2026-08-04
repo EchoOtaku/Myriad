@@ -2,6 +2,14 @@
    初始化向导 — 沿用「数字生命」引导的流体玻璃语言
    一张定高玻璃卡：顶栏（返回 + 步骤位置）→ 标题区 → 正文 → 右下悬浮动作。
    没有进度条，位置全靠顶栏右侧那一行文字交代。
+
+   动效分层（与 settings-motion 同哲学）：
+   1. 令牌      --sob-dur-* / --sob-ease-* / --sob-shift-* / --sob-stagger
+   2. 禁区      .setup-ob / .setup-ob__card 永不挂 opacity·transform 动画
+   3. 换步      pane 只淡入；方向由 data-dir → 内部 rise 位移表达
+   4. 编排      hero / body / features / bar 错落入场
+   5. 微交互    悬停抬升、FAB 亮度呼吸、招手、note 弹出
+   6. 降级      prefers-reduced-motion + data-perf-mode=exlight
    ============================================ */
 
 @property --sob-top-dense {
@@ -21,10 +29,42 @@
   --sob-accent: var(--color-primary, #7c6ee6);
   --sob-surface-rgb: var(--surface-rgb, 255 255 255);
 
-  /* 出场缓入、果冻回弹、玻璃滑移 */
+  /* —— 动效令牌：一处改、全向导同步 —— */
+  --sob-dur-instant: 90ms;
+  --sob-dur-fast: 160ms;
+  --sob-dur-base: 280ms;
+  --sob-dur-slow: 420ms;
+  --sob-dur-enter: 480ms;
+  --sob-stagger: 42ms;
+  --sob-shift-xs: 4px;
+  --sob-shift-sm: 10px;
+  --sob-shift-md: 16px;
+  --sob-shift-x: 22px;
+  --sob-scale-press: 0.94;
+  --sob-scale-hover: 1.04;
+  --sob-lift: -2px;
+
+  /* 出场缓入、果冻回弹、玻璃滑移、退场 */
   --sob-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --sob-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --sob-ease-glide: cubic-bezier(0.32, 0.72, 0, 1);
+  --sob-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --sob-ease-emphasis: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* 语义过渡：控件直接 transition: var(...) */
+  --sob-t-fill:
+    background-color var(--sob-dur-fast) var(--sob-ease-glide),
+    border-color var(--sob-dur-fast) var(--sob-ease-glide),
+    color var(--sob-dur-fast) var(--sob-ease-glide);
+  --sob-t-elevate:
+    transform var(--sob-dur-base) var(--sob-ease-spring),
+    box-shadow var(--sob-dur-base) var(--sob-ease-glide),
+    border-color var(--sob-dur-fast) var(--sob-ease-glide),
+    filter var(--sob-dur-fast) var(--sob-ease-glide);
+  --sob-t-control:
+    border-color var(--sob-dur-fast) var(--sob-ease-glide),
+    box-shadow var(--sob-dur-base) var(--sob-ease-glide),
+    background-color var(--sob-dur-fast) var(--sob-ease-glide);
 
   /*
    * 低开销流体玻璃绘制令牌（不额外开 backdrop）：镜面边 · 顶线发丝 · 轻 sheen。
@@ -68,6 +108,12 @@
   width: min(100%, 46rem);
   margin: 0 auto;
   color: var(--sob-ink);
+
+  /*
+   * 禁止在此节点（或 .setup-ob__card）上挂 opacity / transform 动画：
+   * 祖先一旦形成合成层，子级毛玻璃的 backdrop-filter 就采不到壁纸。
+   * 入场只打在 pane / hero / body 等内容层。
+   */
 }
 
 html.dark .setup-ob {
@@ -117,6 +163,8 @@ html.dark .setup-ob {
   position: absolute;
   border-radius: 50%;
   filter: blur(8px);
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .setup-ob__aurora i:first-child {
@@ -129,7 +177,7 @@ html.dark .setup-ob {
     color-mix(in srgb, var(--sob-accent) 26%, transparent),
     transparent 68%
   );
-  animation: setup-ob-drift-a 13s var(--sob-ease-glide) infinite;
+  animation: setup-ob-drift-a 14s var(--sob-ease-glide) infinite;
 }
 
 .setup-ob__aurora i:last-child {
@@ -142,29 +190,38 @@ html.dark .setup-ob {
     color-mix(in srgb, var(--sob-accent) 15%, transparent),
     transparent 70%
   );
-  animation: setup-ob-drift-b 17s var(--sob-ease-glide) infinite;
+  animation: setup-ob-drift-b 18s var(--sob-ease-glide) infinite;
+  animation-delay: -4s;
 }
 
 /* 只位移 / 缩放，不改 opacity：透过毛玻璃时 opacity 呼吸会像整卡在闪 */
 @keyframes setup-ob-drift-a {
   0%,
   100% {
-    transform: scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 
-  50% {
-    transform: translate(28px, 26px) scale(1.1);
+  33% {
+    transform: translate3d(22px, 18px, 0) scale(1.08);
+  }
+
+  66% {
+    transform: translate3d(-12px, 28px, 0) scale(1.04);
   }
 }
 
 @keyframes setup-ob-drift-b {
   0%,
   100% {
-    transform: scale(1.04);
+    transform: translate3d(0, 0, 0) scale(1.04);
   }
 
-  50% {
-    transform: translate(-26px, 18px) scale(0.95);
+  40% {
+    transform: translate3d(-24px, 14px, 0) scale(0.96);
+  }
+
+  70% {
+    transform: translate3d(16px, -10px, 0) scale(1.02);
   }
 }
 
@@ -295,6 +352,8 @@ html.dark .setup-ob {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
+  animation: setup-ob-fade-soft var(--sob-dur-base) var(--sob-ease-out)
+    backwards;
 }
 
 /* 右上角只是「你在哪」的轻提示，压得比正文更淡 */
@@ -307,6 +366,20 @@ html.dark .setup-ob {
   color: color-mix(in srgb, var(--sob-muted) 72%, var(--sob-ink));
   font-size: 12px;
   white-space: nowrap;
+  animation: setup-ob-fade-soft var(--sob-dur-base) var(--sob-ease-out)
+    backwards;
+}
+
+@keyframes setup-ob-fade-soft {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 3px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }
 
 .setup-ob-top__step b {
@@ -352,18 +425,14 @@ html.dark .setup-ob {
   cursor: pointer;
   font: inherit;
   place-items: center;
-  transition:
-    transform 0.22s var(--sob-ease-spring),
-    background-color 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: var(--sob-t-elevate), var(--sob-t-fill);
 }
 
 .setup-ob-back__hit svg {
   width: 17px;
   height: 17px;
   margin-left: -1px;
+  transition: transform var(--sob-dur-fast) var(--sob-ease-spring);
 }
 
 .setup-ob-back__label {
@@ -374,7 +443,7 @@ html.dark .setup-ob {
   white-space: nowrap;
   pointer-events: none;
   user-select: none;
-  transition: color 0.2s ease;
+  transition: color var(--sob-dur-fast) var(--sob-ease-glide);
 }
 
 .setup-ob-back__hit:hover:not(:disabled) {
@@ -383,7 +452,11 @@ html.dark .setup-ob {
     var(--sob-liq-sheen), color-mix(in srgb, var(--sob-accent) 14%, transparent);
   box-shadow: var(--sob-liq-soft-shadow);
   color: var(--sob-ink);
-  transform: translateX(-1px);
+  transform: translate3d(-2px, 0, 0);
+}
+
+.setup-ob-back__hit:hover:not(:disabled) svg {
+  transform: translate3d(-1px, 0, 0);
 }
 
 .setup-ob-back:has(.setup-ob-back__hit:hover:not(:disabled))
@@ -393,7 +466,7 @@ html.dark .setup-ob {
 
 .setup-ob-back__hit:active:not(:disabled) {
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 20%);
-  transform: scale(0.94);
+  transform: scale(var(--sob-scale-press));
 }
 
 .setup-ob-back__hit:focus-visible {
@@ -481,6 +554,55 @@ html.dark .setup-ob {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--sob-muted) 34%, transparent)
     transparent;
+
+  /*
+   * 换步：只动内容层的 opacity。
+   * 不在 pane 上挂 transform——否则它会变成 absolute 悬浮钮的包含块，
+   * 动画结束时 FAB 会从「相对 pane」跳回「相对 card」。
+   * 方向感交给内部 hero / body 的位移错落（见下方 data-dir 规则）。
+   * fill 用 backwards（不要 both），播完不留残余样式。
+   * 毛玻璃卡本体绝不参与此动画。
+   */
+  animation: setup-ob-pane-fade var(--sob-dur-enter) var(--sob-ease-out)
+    backwards;
+}
+
+.setup-ob__pane[data-dir='forward'],
+.setup-ob__pane[data-dir='back'],
+.setup-ob__pane[data-dir='fade'] {
+  animation-name: setup-ob-pane-fade;
+}
+
+@keyframes setup-ob-pane-fade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* 前进：内容从右侧轻托入；返回：从左侧；淡入：略上浮 */
+.setup-ob__pane[data-dir='forward'] .setup-ob-hero > *,
+.setup-ob__pane[data-dir='forward'] .setup-ob-body > *,
+.setup-ob__pane[data-dir='forward'] .setup-ob-welcome > *:not(.setup-ob-body) {
+  --sob-enter-x: var(--sob-shift-x);
+  --sob-enter-y: 0px;
+}
+
+.setup-ob__pane[data-dir='back'] .setup-ob-hero > *,
+.setup-ob__pane[data-dir='back'] .setup-ob-body > *,
+.setup-ob__pane[data-dir='back'] .setup-ob-welcome > *:not(.setup-ob-body) {
+  --sob-enter-x: calc(var(--sob-shift-x) * -1);
+  --sob-enter-y: 0px;
+}
+
+.setup-ob__pane[data-dir='fade'] .setup-ob-hero > *,
+.setup-ob__pane[data-dir='fade'] .setup-ob-body > *,
+.setup-ob__pane[data-dir='fade'] .setup-ob-welcome > *:not(.setup-ob-body) {
+  --sob-enter-x: 0px;
+  --sob-enter-y: var(--sob-shift-sm);
 }
 
 /* 状态页（读取中 / 已完成）：内容居中，不做滚动 */
@@ -519,7 +641,11 @@ html.dark .setup-ob {
   margin: 0 0 9px var(--sob-pad-x);
   object-fit: contain;
   filter: drop-shadow(0 18px 30px rgb(15 23 42 / 22%));
-  animation: setup-ob-rise 0.6s var(--sob-ease-out) both;
+
+  /* 入场后轻浮：rise 播完再接 float，互不抢 transform 终点 */
+  animation:
+    setup-ob-rise var(--sob-dur-slow) var(--sob-ease-out) backwards,
+    setup-ob-logo-float 5.2s var(--sob-ease-glide) var(--sob-dur-slow) infinite;
 }
 
 /* 完成屏：首页欢迎小组件同款招手，比 logo 略收一档，避免 emoji 裁切发糊 */
@@ -527,6 +653,52 @@ html.dark .setup-ob {
   width: clamp(72px, 11vw, 108px);
   height: clamp(72px, 11vw, 108px);
   filter: drop-shadow(0 12px 22px rgb(15 23 42 / 18%));
+  transform-origin: 70% 70%;
+
+  /* 先 rise，结束后再招手两下；错开 transform 占用期 */
+  animation:
+    setup-ob-rise var(--sob-dur-slow) var(--sob-ease-out) backwards,
+    setup-ob-wave 2.4s var(--sob-ease-spring) calc(var(--sob-dur-slow) + 40ms) 2
+      both;
+}
+
+@keyframes setup-ob-logo-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(0, -5px, 0);
+  }
+}
+
+/* 招手两下再停：完成页的小庆祝 */
+@keyframes setup-ob-wave {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  12% {
+    transform: rotate(16deg);
+  }
+
+  24% {
+    transform: rotate(-10deg);
+  }
+
+  36% {
+    transform: rotate(14deg);
+  }
+
+  48% {
+    transform: rotate(-6deg);
+  }
+
+  60% {
+    transform: rotate(0deg);
+  }
 }
 
 /* 主体这一屏的字压得比其它步骤更大，标题才压得住那颗 logo */
@@ -558,6 +730,27 @@ html.dark .setup-ob {
   gap: 6px;
   padding: 2px var(--sob-pad-x) 0;
   text-align: left;
+}
+
+/* 标题区错落入场：pane 整体已在滑，这里只补极轻上浮，不叠 opacity */
+.setup-ob-hero > * {
+  animation: setup-ob-rise var(--sob-dur-base) var(--sob-ease-out) backwards;
+}
+
+.setup-ob-hero > :nth-child(1) {
+  animation-delay: calc(var(--sob-stagger) * 0.5);
+}
+
+.setup-ob-hero > :nth-child(2) {
+  animation-delay: calc(var(--sob-stagger) * 1.2);
+}
+
+.setup-ob-hero > :nth-child(3) {
+  animation-delay: calc(var(--sob-stagger) * 1.9);
+}
+
+.setup-ob-hero > :nth-child(n + 4) {
+  animation-delay: calc(var(--sob-stagger) * 2.6);
 }
 
 .setup-ob-hero h1 {
@@ -613,33 +806,43 @@ html.dark .setup-ob {
   text-align: left;
 }
 
+/*
+ * 正文子块错落：只位移不改 opacity——
+ * pane 已在做整层淡入，再叠透明度会发闷、发脏。
+ */
 .setup-ob-body > * {
-  animation: setup-ob-rise 0.5s var(--sob-ease-out) both;
+  animation: setup-ob-rise var(--sob-dur-base) var(--sob-ease-out) backwards;
+  animation-delay: calc(var(--sob-stagger) * 1.5);
 }
 
 .setup-ob-body > :nth-child(2) {
-  animation-delay: 55ms;
+  animation-delay: calc(var(--sob-stagger) * 2.3);
 }
 
 .setup-ob-body > :nth-child(3) {
-  animation-delay: 110ms;
+  animation-delay: calc(var(--sob-stagger) * 3.1);
 }
 
 .setup-ob-body > :nth-child(4) {
-  animation-delay: 165ms;
+  animation-delay: calc(var(--sob-stagger) * 3.9);
 }
 
 .setup-ob-body > :nth-child(n + 5) {
-  animation-delay: 220ms;
+  animation-delay: calc(var(--sob-stagger) * 4.5);
 }
 
+/* 方向由 pane[data-dir] 注入 --sob-enter-x / --sob-enter-y，默认上浮 */
 @keyframes setup-ob-rise {
   from {
-    transform: translateY(8px);
+    transform: translate3d(
+      var(--sob-enter-x, 0),
+      var(--sob-enter-y, var(--sob-shift-sm)),
+      0
+    );
   }
 
   to {
-    transform: none;
+    transform: translate3d(0, 0, 0);
   }
 }
 
@@ -656,6 +859,22 @@ html.dark .setup-ob {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
+
+  /* 比正文晚半拍入场，主动作最后出现 */
+  animation: setup-ob-bar-in var(--sob-dur-slow) var(--sob-ease-out)
+    calc(var(--sob-stagger) * 2) backwards;
+}
+
+@keyframes setup-ob-bar-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
 }
 
 /* 「下一步」：流体玻璃圆钮——吸色透底 + 镜面边 + 色散环 + 凝胶手感 */
@@ -701,12 +920,10 @@ html.dark .setup-ob {
   color: color-mix(in srgb, var(--sob-accent) 78%, var(--sob-ink));
   isolation: isolate;
   backdrop-filter: blur(12px) saturate(1.85) brightness(1.05);
-  animation: setup-ob-fab-float 4.6s var(--sob-ease-glide) infinite;
-  transition:
-    transform 0.35s var(--sob-ease-spring),
-    border-color 0.25s ease,
-    box-shadow 0.3s ease,
-    filter 0.25s ease;
+
+  /* 呼吸只动 filter，不改 box-shadow（省 paint）也不抢 hover 的 transform */
+  animation: setup-ob-fab-breathe 4.6s var(--sob-ease-glide) infinite;
+  transition: var(--sob-t-elevate);
 }
 
 @supports (mask-composite: exclude) or (-webkit-mask-composite: xor) {
@@ -751,7 +968,7 @@ html.dark .setup-ob {
   z-index: 1;
   width: 21px;
   height: 21px;
-  transition: transform 0.35s var(--sob-ease-spring);
+  transition: transform var(--sob-dur-base) var(--sob-ease-spring);
 }
 
 .setup-ob-bar .setup-ob-cta:hover:not(:disabled) {
@@ -762,19 +979,19 @@ html.dark .setup-ob {
     inset 0 0 20px -4px rgb(255 255 255 / 28%),
     0 4px 10px -2px rgb(31 38 135 / 16%),
     0 22px 44px -14px color-mix(in srgb, var(--sob-accent) 48%, transparent);
-  filter: brightness(1.04);
-  transform: translateY(-2px) scale(1.04);
+  filter: brightness(1.06);
+  transform: translate3d(0, var(--sob-lift), 0) scale(var(--sob-scale-hover));
   animation-play-state: paused;
 }
 
 /* 悬停时箭头往前探一探，指向「下一步」 */
 .setup-ob-bar .setup-ob-cta:hover:not(:disabled) svg {
-  transform: translateX(3px);
+  transform: translate3d(3px, 0, 0);
 }
 
 .setup-ob-bar .setup-ob-cta:active:not(:disabled) {
   filter: brightness(1.08);
-  transform: scale(0.94);
+  transform: scale(var(--sob-scale-press));
 }
 
 html.dark .setup-ob-bar .setup-ob-cta {
@@ -805,25 +1022,15 @@ html.dark .setup-ob-bar .setup-ob-cta {
   color: color-mix(in srgb, var(--sob-accent) 70%, white);
 }
 
-/* 呼吸只走着色长影，不动位移，免得和悬停的形变打架 */
-@keyframes setup-ob-fab-float {
+/* 呼吸只走亮度，不动位移 / 阴影，免得和悬停的形变打架、也省 paint */
+@keyframes setup-ob-fab-breathe {
   0%,
   100% {
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 55%),
-      inset 0 -1px 0 rgb(0 0 0 / 8%),
-      inset 0 0 18px -4px rgb(255 255 255 / 22%),
-      0 2px 6px -2px rgb(31 38 135 / 14%),
-      0 16px 36px -12px color-mix(in srgb, var(--sob-accent) 38%, transparent);
+    filter: brightness(1);
   }
 
   50% {
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 60%),
-      inset 0 -1px 0 rgb(0 0 0 / 7%),
-      inset 0 0 20px -4px rgb(255 255 255 / 26%),
-      0 3px 8px -2px rgb(31 38 135 / 16%),
-      0 22px 44px -14px color-mix(in srgb, var(--sob-accent) 52%, transparent);
+    filter: brightness(1.07);
   }
 }
 
@@ -847,9 +1054,7 @@ html.dark .setup-ob-bar .setup-ob-cta {
   font-size: 13.5px;
   font-weight: 640;
   white-space: nowrap;
-  transition:
-    transform 0.25s var(--sob-ease-spring),
-    box-shadow 0.25s ease;
+  transition: var(--sob-t-elevate);
 }
 
 .setup-ob-cta svg {
@@ -861,11 +1066,11 @@ html.dark .setup-ob-bar .setup-ob-cta {
   box-shadow:
     var(--sob-liq-inset),
     0 18px 36px color-mix(in srgb, var(--sob-accent) 38%, transparent);
-  transform: translateY(-2px) scale(1.03);
+  transform: translate3d(0, var(--sob-lift), 0) scale(1.03);
 }
 
 .setup-ob-cta:active:not(:disabled) {
-  transform: scale(0.94);
+  transform: scale(var(--sob-scale-press));
 }
 
 .setup-ob-cta:focus-visible {
@@ -906,11 +1111,7 @@ html.dark .setup-ob-bar .setup-ob-cta {
   font: inherit;
   font-size: 13px;
   backdrop-filter: blur(14px) saturate(1.3);
-  transition:
-    transform 0.2s var(--sob-ease-out),
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    background-color 0.2s ease;
+  transition: var(--sob-t-elevate), var(--sob-t-fill);
 }
 
 .setup-ob-ghost svg {
@@ -920,7 +1121,7 @@ html.dark .setup-ob-bar .setup-ob-cta {
 
 .setup-ob-ghost:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--sob-accent) 40%, var(--sob-line));
-  transform: translateY(-1px);
+  transform: translate3d(0, -1px, 0);
 }
 
 .setup-ob-ghost:disabled {
@@ -985,9 +1186,7 @@ html.dark .setup-ob-bar .setup-ob-cta {
   color: inherit;
   font: inherit;
   font-size: 13.5px;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: var(--sob-t-control);
 }
 
 .setup-ob-input::placeholder {
@@ -1033,6 +1232,19 @@ html.dark .setup-ob-bar .setup-ob-cta {
   font-size: 12.5px;
   line-height: 1.5;
   white-space: pre-line;
+  animation: setup-ob-note-in var(--sob-dur-base) var(--sob-ease-out) backwards;
+}
+
+@keyframes setup-ob-note-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }
 
 .setup-ob-note svg {
@@ -1079,7 +1291,7 @@ html.dark .setup-ob-bar .setup-ob-cta {
   color: color-mix(in srgb, var(--sob-ink) 74%, var(--sob-muted));
 }
 
-/* ---------- 欢迎步的三张特性卡 ---------- */
+/* ---------- 欢迎步的四张特性卡 ---------- */
 
 /* 四步对应四张卡，一行四列 */
 .setup-ob-features {
@@ -1105,12 +1317,57 @@ html.dark .setup-ob-bar .setup-ob-cta {
   font-weight: 620;
   line-height: 1.45;
   text-align: center;
+  transition: var(--sob-t-elevate);
+
+  /* 逐张弹出，盖过 body 子块的统一 delay */
+  animation: setup-ob-feature-in var(--sob-dur-slow) var(--sob-ease-out)
+    backwards;
+}
+
+.setup-ob-features > :nth-child(1) {
+  animation-delay: calc(var(--sob-stagger) * 2);
+}
+
+.setup-ob-features > :nth-child(2) {
+  animation-delay: calc(var(--sob-stagger) * 3);
+}
+
+.setup-ob-features > :nth-child(3) {
+  animation-delay: calc(var(--sob-stagger) * 4);
+}
+
+.setup-ob-features > :nth-child(4) {
+  animation-delay: calc(var(--sob-stagger) * 5);
+}
+
+@keyframes setup-ob-feature-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.setup-ob-features > div:hover {
+  border-color: color-mix(in srgb, var(--sob-accent) 28%, var(--sob-liq-border));
+  box-shadow: var(--sob-liq-soft-shadow);
+  color: var(--sob-ink);
+  transform: translate3d(0, var(--sob-lift), 0);
+}
+
+.setup-ob-features > div:hover svg {
+  transform: scale(1.08);
 }
 
 .setup-ob-features svg {
   width: 1.3rem;
   height: 1.3rem;
   color: var(--sob-accent);
+  transition: transform var(--sob-dur-fast) var(--sob-ease-spring);
 }
 
 /*
@@ -1139,6 +1396,22 @@ html.dark .setup-ob-bar .setup-ob-cta {
   gap: 14px;
   padding: 0 var(--sob-pad-x);
   text-align: center;
+}
+
+.setup-ob-state > * {
+  animation: setup-ob-rise var(--sob-dur-base) var(--sob-ease-out) backwards;
+}
+
+.setup-ob-state > :nth-child(2) {
+  animation-delay: var(--sob-stagger);
+}
+
+.setup-ob-state > :nth-child(3) {
+  animation-delay: calc(var(--sob-stagger) * 2);
+}
+
+.setup-ob-state > :nth-child(n + 4) {
+  animation-delay: calc(var(--sob-stagger) * 3);
 }
 
 .setup-ob-state h1 {
@@ -1174,6 +1447,20 @@ html.dark .setup-ob-bar .setup-ob-cta {
     color-mix(in srgb, var(--sob-accent) 18%, transparent);
   color: var(--sob-accent);
   place-items: center;
+  animation: setup-ob-glyph-pop var(--sob-dur-slow) var(--sob-ease-spring)
+    backwards;
+}
+
+@keyframes setup-ob-glyph-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .setup-ob-state__glyph svg {
@@ -1239,18 +1526,77 @@ html.dark .setup-ob-bar .setup-ob-cta {
   }
 }
 
+/* ---------- 降级：令牌归零 + 关掉循环/入场 ---------- */
+
 @media (prefers-reduced-motion: reduce) {
+  .setup-ob {
+    --sob-dur-instant: 1ms;
+    --sob-dur-fast: 1ms;
+    --sob-dur-base: 1ms;
+    --sob-dur-slow: 1ms;
+    --sob-dur-enter: 1ms;
+    --sob-stagger: 0ms;
+    --sob-shift-xs: 0px;
+    --sob-shift-sm: 0px;
+    --sob-shift-md: 0px;
+    --sob-shift-x: 0px;
+    --sob-scale-press: 1;
+    --sob-scale-hover: 1;
+    --sob-lift: 0px;
+  }
+
   .setup-ob__aurora i,
+  .setup-ob__pane,
+  .setup-ob-top__side,
+  .setup-ob-top__step,
+  .setup-ob-hero > *,
   .setup-ob-body > *,
+  .setup-ob-bar,
   .setup-ob-bar .setup-ob-cta,
+  .setup-ob-welcome__logo,
+  .setup-ob-welcome__wave,
+  .setup-ob-features > div,
+  .setup-ob-note,
+  .setup-ob-state > *,
+  .setup-ob-state__glyph,
   .setup-ob-spin {
-    animation: none;
+    animation: none !important;
   }
 
   .setup-ob-back__hit,
   .setup-ob-cta,
   .setup-ob-ghost,
-  .setup-ob-input {
-    transition: none;
+  .setup-ob-input,
+  .setup-ob-features > div,
+  .setup-ob-features svg {
+    transition: none !important;
   }
+}
+
+/*
+ * exlight：保留「有变化」的信息，去掉循环与位移幅度。
+ * 毛玻璃是否关由 performance.css 统一处理，这里只收动效。
+ */
+html[data-perf-mode='exlight'] .setup-ob {
+  --sob-dur-enter: var(--sob-dur-base);
+  --sob-dur-slow: var(--sob-dur-base);
+  --sob-shift-sm: 0px;
+  --sob-shift-md: 0px;
+  --sob-shift-x: 0px;
+  --sob-scale-press: 1;
+  --sob-scale-hover: 1;
+  --sob-lift: 0px;
+  --sob-stagger: 0ms;
+  --sob-ease-spring: var(--sob-ease-glide);
+}
+
+html[data-perf-mode='exlight'] .setup-ob__aurora i,
+html[data-perf-mode='exlight'] .setup-ob-bar .setup-ob-cta,
+html[data-perf-mode='exlight'] .setup-ob-welcome__logo,
+html[data-perf-mode='exlight'] .setup-ob-welcome__wave {
+  animation: none !important;
+}
+
+html[data-perf-mode='exlight'] .setup-ob-features > div {
+  animation: none;
 }

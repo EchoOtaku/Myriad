@@ -89,9 +89,15 @@ export function StepTopBar({
 }) {
   return (
     <div className="setup-ob-top">
-      <div className="setup-ob-top__side">{back}</div>
+      <div className="setup-ob-top__side" key={stepName ?? 'brand'}>
+        {back}
+      </div>
       {stepName && current && total ? (
-        <p className="setup-ob-top__step" aria-label={progressText}>
+        <p
+          className="setup-ob-top__step"
+          aria-label={progressText}
+          key={`${current}-${stepName}`}
+        >
           <b>{stepName}</b>
           <span aria-hidden>
             {current}/{total}

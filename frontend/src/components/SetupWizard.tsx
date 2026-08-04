@@ -9,7 +9,13 @@ import {
   LuShieldCheck,
   LuSparkles,
 } from '@lib/icons'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
 import { assertConfigWriteSuccess } from '../lib/api'
@@ -67,6 +73,33 @@ const TOTAL_STEPS = 4
 
 /** 完成页问候用：跨站点信息步 / 刷新仍能叫出刚建的管理员名 */
 const SETUP_ADMIN_NAME_KEY = 'myriad-setup-admin-name'
+
+/**
+ * 步骤时序秩：用于推算进场方向。
+ * loading / error 等终态用负值，走淡入；同一步内细分（database→migrate）仍算前进。
+ */
+const STAGE_RANK: Record<Stage, number> = {
+  blank: -2,
+  loading: -1,
+  error: -1,
+  welcome: 0,
+  database: 1,
+  migrate: 2,
+  admin: 3,
+  site: 4,
+  done: 5,
+}
+
+type EnterDir = 'forward' | 'back' | 'fade'
+
+function enterDirBetween(from: Stage, to: Stage): EnterDir {
+  const a = STAGE_RANK[from]
+  const b = STAGE_RANK[to]
+  if (a < 0 || b < 0) return 'fade'
+  if (b > a) return 'forward'
+  if (b < a) return 'back'
+  return 'fade'
+}
 
 async function getResponseError(response: Response, fallback: string) {
   try {
@@ -640,6 +673,20 @@ const SetupWizard: React.FC = () => {
   useTopBarDense(cardRef, paneRef, stage)
 
   /**
+   * 换步进场方向：在 paint 前算好，避免首帧无 data-dir 闪一下。
+   * 卡片本身（毛玻璃）不动——只给 pane 贴 data-dir，动效打在内容层。
+   */
+  const prevStageRef = useRef<Stage>(stage)
+  const [enterDir, setEnterDir] = useState<EnterDir>('fade')
+  useLayoutEffect(() => {
+    const prev = prevStageRef.current
+    if (prev !== stage) {
+      setEnterDir(enterDirBetween(prev, stage))
+      prevStageRef.current = stage
+    }
+  }, [stage])
+
+  /**
    * 完成页补全问候名与登录态：
    * - 刚建号：rememberAdminName 已写入
    * - 刷新 / 直接打开已完成：表单空，从 session 或 /api/auth/me 取
@@ -747,7 +794,12 @@ const SetupWizard: React.FC = () => {
 
         <div className="setup-ob__viewport">
           {stage === 'loading' && (
-            <div className="setup-ob__pane is-centered" ref={bindPane}>
+            <div
+              className="setup-ob__pane is-centered"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="loading"
+            >
               <div className="setup-ob-state" role="status">
                 <img src="/logo.webp" alt="" className="setup-ob-state__logo" />
                 <Spinner size="md" color="primary" />
@@ -757,7 +809,12 @@ const SetupWizard: React.FC = () => {
           )}
 
           {stage === 'error' && (
-            <div className="setup-ob__pane is-centered" ref={bindPane}>
+            <div
+              className="setup-ob__pane is-centered"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="error"
+            >
               <div className="setup-ob-state">
                 <span className="setup-ob-state__glyph is-bad" aria-hidden>
                   <LuAlertTriangle />
@@ -776,7 +833,12 @@ const SetupWizard: React.FC = () => {
           )}
 
           {stage === 'done' && (
-            <div className="setup-ob__pane is-welcome" ref={bindPane}>
+            <div
+              className="setup-ob__pane is-welcome"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="done"
+            >
               {/*
                 排布跟欢迎首屏看齐：左对齐主体垂直居中。
                 完成打勾换成首页欢迎小组件同款招手（welcome.webp）。
@@ -823,7 +885,12 @@ const SetupWizard: React.FC = () => {
           )}
 
           {stage === 'welcome' && (
-            <div className="setup-ob__pane is-welcome" ref={bindPane}>
+            <div
+              className="setup-ob__pane is-welcome"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="welcome"
+            >
               {/* logo 与欢迎文案是同一个主体：整块垂直居中、横向靠左 */}
               <div className="setup-ob-welcome">
                 <img
@@ -874,6 +941,8 @@ const SetupWizard: React.FC = () => {
             <form
               className="setup-ob__pane"
               ref={bindPane}
+              data-dir={enterDir}
+              key="database"
               onSubmit={(event) => {
                 event.preventDefault()
                 void handleSaveDbConfig()
@@ -982,7 +1051,12 @@ const SetupWizard: React.FC = () => {
           )}
 
           {stage === 'migrate' && (
-            <div className="setup-ob__pane" ref={bindPane}>
+            <div
+              className="setup-ob__pane"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="migrate"
+            >
               <StepHero
                 title={t.setup.initDatabase}
                 lead={t.setup.initDatabaseDesc}
@@ -1009,6 +1083,8 @@ const SetupWizard: React.FC = () => {
             <form
               className="setup-ob__pane"
               ref={bindPane}
+              data-dir={enterDir}
+              key="admin"
               onSubmit={(event) => {
                 event.preventDefault()
                 void handleCreateAdmin()
@@ -1077,6 +1153,8 @@ const SetupWizard: React.FC = () => {
             <form
               className="setup-ob__pane"
               ref={bindPane}
+              data-dir={enterDir}
+              key="site"
               onSubmit={(event) => {
                 event.preventDefault()
                 void handleSaveSiteInfo()
