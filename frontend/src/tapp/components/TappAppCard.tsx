@@ -736,6 +736,14 @@ export const TappAppCard = forwardRef<HTMLDivElement, TappAppCardProps>(
         onMouseEnter={() => {
           // Ignore synthetic hover while this card (or any reorder) is mid-drag
           if (isDragging) return
+          // 2x1: no detail/hover face on touch / no-hover UIs (sticky :hover too)
+          if (
+            isWide &&
+            typeof window !== 'undefined' &&
+            window.matchMedia('(hover: none)').matches
+          ) {
+            return
+          }
           setIsHovered(true)
         }}
         onMouseLeave={() => setIsHovered(false)}

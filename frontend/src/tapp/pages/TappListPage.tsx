@@ -926,8 +926,9 @@ export function TappListPage() {
                     key={tapp.id}
                     tapp={tapp}
                     size={activeCardSizes[tapp.id] ?? '1x1'}
-                    canResize={canEditLayout}
-                    canReorder={canEditLayout}
+                    // Mobile: no reorder handle or 1x1↔2x1 size toggle
+                    canResize={canEditLayout && !isMobile}
+                    canReorder={canEditLayout && !isMobile}
                     dragLabel={t.tapp.cardDragReorder}
                     isDragging={dragId === tapp.id}
                     isDragOver={dragOverId === tapp.id && dragId !== tapp.id}
@@ -937,7 +938,7 @@ export function TappListPage() {
                     onDropOnCard={handleDropOnCard}
                     onDragEndCard={handleDragEndCard}
                     onToggleSize={
-                      canEditLayout
+                      canEditLayout && !isMobile
                         ? () => handleToggleCardSize(tapp.id)
                         : undefined
                     }

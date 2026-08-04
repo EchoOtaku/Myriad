@@ -225,19 +225,20 @@ html.dark .tapp-app-card__drag-handle {
   filter: brightness(1.04);
 }
 
-/* Touch: always show handle (no hover) */
-@media (hover: none) {
+/*
+ * Mobile / touch-primary: hide reorder handle.
+ * Desktop hover-capable UIs keep the floating drag handle.
+ * (width matches the 2-col phone grid breakpoint below.)
+ */
+@media (hover: none) and (pointer: coarse), (width <= 639px) {
+  .tapp-app-card__drag-handle {
+    display: none !important;
+    pointer-events: none !important;
+  }
+
+  /* No reserved clearance when handle is gone */
   .tapp-app-card.is-reorderable {
-    --tapp-app-card-drag-size: 1.7rem;
-  }
-
-  .tapp-app-card.is-reorderable .tapp-app-card__drag-handle {
-    opacity: 0.95;
-  }
-
-  .tapp-app-card.is-reorderable .tapp-app-card__drag-icon {
-    width: 0.85rem;
-    height: 0.85rem;
+    --tapp-app-card-drag-clearance: 0px;
   }
 }
 
@@ -666,17 +667,80 @@ html.dark .tapp-app-card__sub {
   pointer-events: auto;
 }
 
-/* Touch: always show detail layout (no hover) */
+/*
+ * Touch: always show detail layout (no hover) for 1x1 so dock actions work.
+ * 2x1 must stay on rest face on mobile — no hover/detail flip (perms dock).
+ */
 @media (hover: none) {
-  .tapp-app-card__face--rest {
+  .tapp-app-card:not(.tapp-app-card--2x1) .tapp-app-card__face--rest {
     opacity: 0;
     pointer-events: none;
   }
 
-  .tapp-app-card__face--detail {
+  .tapp-app-card:not(.tapp-app-card--2x1) .tapp-app-card__face--detail {
     opacity: 1;
     transform: none;
     pointer-events: auto;
+  }
+
+  /* 2x1: force rest face even if is-hovered / :focus-within sticks on touch */
+  .tapp-app-card--2x1 .tapp-app-card__face--rest,
+  .tapp-app-card--2x1.is-hovered .tapp-app-card__face--rest,
+  .tapp-app-card--2x1:focus-within .tapp-app-card__face--rest {
+    opacity: 1 !important;
+    transform: none !important;
+    pointer-events: auto !important;
+  }
+
+  .tapp-app-card--2x1 .tapp-app-card__face--detail,
+  .tapp-app-card--2x1.is-hovered .tapp-app-card__face--detail,
+  .tapp-app-card--2x1:focus-within .tapp-app-card__face--detail {
+    opacity: 0 !important;
+    transform: none !important;
+    pointer-events: none !important;
+  }
+
+  .tapp-app-card--2x1.is-hovered:not(.is-dragging),
+  .tapp-app-card--2x1:focus-visible:not(.is-dragging) {
+    filter: none;
+  }
+}
+
+/* Phone grid width: same 2x1 rest-face lock (covers odd hover:hover phones) */
+@media (width <= 639px) {
+  .tapp-app-card--2x1 .tapp-app-card__face--rest,
+  .tapp-app-card--2x1.is-hovered .tapp-app-card__face--rest,
+  .tapp-app-card--2x1:focus-within .tapp-app-card__face--rest {
+    opacity: 1 !important;
+    transform: none !important;
+    pointer-events: auto !important;
+  }
+
+  .tapp-app-card--2x1 .tapp-app-card__face--detail,
+  .tapp-app-card--2x1.is-hovered .tapp-app-card__face--detail,
+  .tapp-app-card--2x1:focus-within .tapp-app-card__face--detail {
+    opacity: 0 !important;
+    transform: none !important;
+    pointer-events: none !important;
+  }
+
+  .tapp-app-card--2x1.is-hovered:not(.is-dragging),
+  .tapp-app-card--2x1:focus-visible:not(.is-dragging) {
+    filter: none;
+  }
+}
+
+/*
+ * Mobile / touch-primary: hide 1x1↔2x1 size toggle.
+ * Keep run / settings / uninstall; collapse 4-col dock to 3.
+ */
+@media (hover: none) and (pointer: coarse), (width <= 639px) {
+  .tapp-app-card__dock-btn--size {
+    display: none !important;
+  }
+
+  .tapp-app-card__dock--4 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
