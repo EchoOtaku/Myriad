@@ -5,6 +5,24 @@ auditConfig:
     - GHSA-qwww-vcr4-c8h2
 shellEmulator: true
 trustPolicy: no-downgrade
+# no-downgrade compares by publish date across every version line, with no semver
+# awareness: a version is rejected if any *earlier-published* release had stronger
+# trust evidence. That structurally misfires on maintenance branches, and on
+# maintainers who stop attaching provenance. Both entries below were checked
+# against the registry — same publisher either side, no takeover signal:
+#
+#   semver@6.3.1    2023-07-10, lukekarrys (npm CLI team), 6.x backport line.
+#                   Flagged only because 7.5.4 shipped with provenance three days
+#                   earlier. The 6.x line never had it — 6.3.0 (isaacs) neither.
+#   chokidar@4.0.3  2024-12-18, paulmillr — same publisher as 4.0.0/4.0.1, which
+#                   did have provenance. He stopped attaching it from 4.0.2 on.
+#                   Reached via @astrojs/check.
+#
+# Pinned to exact versions on purpose: a future compromised chokidar/semver
+# release is still rejected. Re-verify before widening or bumping either entry.
+trustPolicyExclude:
+  - semver@6.3.1
+  - chokidar@4.0.3
 overrides:
   brace-expansion: '>=5.0.9'
   fast-uri: '>=3.1.5'

@@ -104,7 +104,15 @@ if [ "$SKIP_BUILD" -eq 0 ]; then
     command -v pnpm >/dev/null 2>&1 || { err "✗ pnpm not found — run 'corepack enable'"; exit 1; }
     # PUBLIC_API_URL empty  -> SPA calls the API same-origin via relative /api/*
     # HUSKY=0               -> don't trip git hooks during CI-style installs
-    ( cd frontend && HUSKY=0 pnpm install --frozen-lockfile \
+    # --trust-lockfile      -> the lockfile is committed and reviewed, so don't
+    #                          re-apply minimumReleaseAge / trustPolicy to every
+    #                          entry at assemble time. Without it a routine dep
+    #                          bump blocks the build for 24h (pnpm quarantines
+    #                          freshly published versions), and no-downgrade
+    #                          misfires on maintenance branches. Vet the lockfile
+    #                          on the way in — `pnpm install` in frontend/ still
+    #                          enforces both policies for day-to-day work.
+    ( cd frontend && HUSKY=0 pnpm install --frozen-lockfile --trust-lockfile \
         && HUSKY=0 PUBLIC_API_URL="" PUBLIC_MYRIAD_VERSION="$VERSION" pnpm run build )
     ok "✓ frontend built"
 else
