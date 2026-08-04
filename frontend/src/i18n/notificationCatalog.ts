@@ -12,8 +12,8 @@
 import type {
   NotificationEventKey,
   NotificationSourceKey,
-} from "../services/notificationPreferencesApi"
-import type { Locale } from "./index"
+} from '../services/notificationPreferencesApi'
+import type { Locale } from './index'
 
 export interface NotificationSourceCopy {
   title: string
@@ -114,7 +114,10 @@ const SOURCE_TEXT: Record<
       title: 'システム更新',
       description: '更新、ロールバック、復旧状態',
     },
-    federation: { title: '連合', description: '連合メッセージ、フォロー、招待' },
+    federation: {
+      title: '連合',
+      description: '連合メッセージ、フォロー、招待',
+    },
     system: { title: 'システム', description: 'Myriad からの重要なお知らせ' },
   },
 }
