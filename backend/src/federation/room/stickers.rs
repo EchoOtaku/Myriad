@@ -36,6 +36,20 @@ pub(crate) fn stickers_to_json(list: &[RoomStickerItem]) -> serde_json::Value {
     serde_json::to_value(list).unwrap_or_else(|_| json!([]))
 }
 
+const REPLACE_ROOM_STICKERS_SQL: &str = r#"
+UPDATE federation_rooms
+SET shared_data_config = (
+    CASE
+        WHEN jsonb_typeof(shared_data_config::jsonb) = 'object'
+            THEN shared_data_config::jsonb
+        ELSE '{}'::jsonb
+    END
+    || jsonb_build_object('stickers', $2::jsonb)
+)::json,
+updated_at = NOW()
+WHERE room_id = $1
+"#;
+
 pub(crate) async fn load_room_shared_config(
     db: &DatabaseConnection,
     room_id: &str,
@@ -61,19 +75,19 @@ pub(crate) async fn load_room_shared_config(
         .unwrap_or_else(|| json!({})))
 }
 
-pub(crate) async fn save_room_shared_config(
+pub(crate) async fn replace_room_stickers(
     db: &DatabaseConnection,
     room_id: &str,
-    shared: serde_json::Value,
-) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
-    db.execute(Statement::from_sql_and_values(
-        DatabaseBackend::Postgres,
-        "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
-        [room_id.into(), shared.into()],
-    ))
-    .await
-    .map_err(db_err)?;
-    Ok(())
+    stickers: &serde_json::Value,
+) -> Result<bool, sea_orm::DbErr> {
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            REPLACE_ROOM_STICKERS_SQL,
+            [room_id.into(), stickers.clone().into()],
+        ))
+        .await?;
+    Ok(result.rows_affected() == 1)
 }
 
 pub(crate) async fn broadcast_and_fanout_stickers(
@@ -192,7 +206,7 @@ pub async fn add_room_sticker(
         ));
     }
 
-    let mut shared = load_room_shared_config(db, room_id).await?;
+    let shared = load_room_shared_config(db, room_id).await?;
     let mut stickers = parse_room_stickers(&shared);
     if stickers.len() >= ROOM_STICKER_MAX_COUNT {
         return Err((
@@ -221,8 +235,16 @@ pub async fn add_room_sticker(
     if stickers.len() > ROOM_STICKER_MAX_COUNT {
         stickers.truncate(ROOM_STICKER_MAX_COUNT);
     }
-    shared["stickers"] = stickers_to_json(&stickers);
-    save_room_shared_config(db, room_id, shared).await?;
+    let stickers_value = stickers_to_json(&stickers);
+    if !replace_room_stickers(db, room_id, &stickers_value)
+        .await
+        .map_err(db_err)?
+    {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Room not found"})),
+        ));
+    }
 
     broadcast_and_fanout_stickers(
         db,
@@ -301,7 +323,7 @@ pub async fn remove_room_sticker(
         }
     }
 
-    let mut shared = load_room_shared_config(db, room_id).await?;
+    let shared = load_room_shared_config(db, room_id).await?;
     let mut stickers = parse_room_stickers(&shared);
     let found = stickers.iter().any(|s| s.id == sticker_id);
     if !found {
@@ -312,8 +334,16 @@ pub async fn remove_room_sticker(
     }
 
     stickers.retain(|s| s.id != sticker_id);
-    shared["stickers"] = stickers_to_json(&stickers);
-    save_room_shared_config(db, room_id, shared).await?;
+    let stickers_value = stickers_to_json(&stickers);
+    if !replace_room_stickers(db, room_id, &stickers_value)
+        .await
+        .map_err(db_err)?
+    {
+        return Err((
+            StatusCode::NOT_FOUND,
+            Json(json!({"error": "Room not found"})),
+        ));
+    }
 
     broadcast_and_fanout_stickers(
         db,
@@ -332,4 +362,3 @@ pub async fn remove_room_sticker(
         stickers,
     })
 }
-

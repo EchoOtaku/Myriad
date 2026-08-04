@@ -1,11 +1,10 @@
 //! Federation inbox anti-replay (MYR-023).
 //!
 //! HTTP Date freshness alone is weak: a signed request can be re-played until
-//! the Date falls outside the clock-skew window. This module keeps a short-lived
-//! in-memory set of activity ids / body digests seen after a **successful**
-//! signature verification, for a TTL matching (and slightly exceeding) that
-//! date window so legitimate peer retries remain idempotent without re-running
-//! side-effecting handlers.
+//! the Date falls outside the clock-skew window. This module reserves activity
+//! ids / body digests while a handler is running and commits them only after the
+//! handler succeeds. Transient failures therefore remain retryable, while
+//! concurrent duplicates cannot run the same side effects.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -43,11 +42,30 @@ pub fn replay_dedup_keys(activity_id: &str, body: &[u8]) -> Vec<String> {
     keys
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ReplayEntryState {
+    InFlight(u64),
+    Accepted,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ReplayEntry {
+    until: Instant,
+    state: ReplayEntryState,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ReplayBegin {
+    Fresh(u64),
+    InFlight,
+    Accepted,
+}
+
 struct ReplayCache {
-    /// key → earliest Instant when the entry may be dropped
-    entries: HashMap<String, Instant>,
+    entries: HashMap<String, ReplayEntry>,
     /// Insertion order for overflow eviction (oldest first).
     order: Vec<String>,
+    next_token: u64,
 }
 
 impl ReplayCache {
@@ -55,12 +73,13 @@ impl ReplayCache {
         Self {
             entries: HashMap::new(),
             order: Vec::new(),
+            next_token: 1,
         }
     }
 
     fn purge_expired(&mut self, now: Instant) {
         self.order.retain(|k| {
-            if self.entries.get(k).is_some_and(|until| *until > now) {
+            if self.entries.get(k).is_some_and(|entry| entry.until > now) {
                 true
             } else {
                 self.entries.remove(k);
@@ -69,21 +88,24 @@ impl ReplayCache {
         });
     }
 
-    /// Returns `true` if **any** key was already present (replay).
-    /// Otherwise inserts all keys and returns `false` (first sighting).
-    fn check_and_record(&mut self, keys: &[String], ttl: Duration, now: Instant) -> bool {
+    fn begin(&mut self, keys: &[String], ttl: Duration, now: Instant) -> ReplayBegin {
         self.purge_expired(now);
-        if keys.is_empty() {
-            return false;
-        }
-        if keys.iter().any(|k| self.entries.contains_key(k)) {
-            return true;
-        }
-        let until = now + ttl;
-        for k in keys {
-            if self.entries.contains_key(k) {
-                continue;
+
+        let mut has_in_flight = false;
+        for key in keys {
+            match self.entries.get(key).map(|entry| entry.state) {
+                Some(ReplayEntryState::Accepted) => return ReplayBegin::Accepted,
+                Some(ReplayEntryState::InFlight(_)) => has_in_flight = true,
+                None => {}
             }
+        }
+        if has_in_flight {
+            return ReplayBegin::InFlight;
+        }
+
+        let token = self.take_token();
+        let until = now + ttl;
+        for key in keys {
             while self.entries.len() >= REPLAY_DEDUP_MAX_ENTRIES {
                 if let Some(old) = self.order.first().cloned() {
                     self.order.remove(0);
@@ -92,10 +114,50 @@ impl ReplayCache {
                     break;
                 }
             }
-            self.entries.insert(k.clone(), until);
-            self.order.push(k.clone());
+            self.entries.insert(
+                key.clone(),
+                ReplayEntry {
+                    until,
+                    state: ReplayEntryState::InFlight(token),
+                },
+            );
+            self.order.push(key.clone());
         }
-        false
+        ReplayBegin::Fresh(token)
+    }
+
+    fn take_token(&mut self) -> u64 {
+        let token = self.next_token;
+        self.next_token = self.next_token.wrapping_add(1).max(1);
+        token
+    }
+
+    /// Commit only entries still owned by this reservation. The token prevents
+    /// an expired handler from overwriting a newer reservation.
+    fn commit(&mut self, keys: &[String], token: u64, ttl: Duration, now: Instant) {
+        let until = now + ttl;
+        for key in keys {
+            let Some(entry) = self.entries.get_mut(key) else {
+                continue;
+            };
+            if entry.state == ReplayEntryState::InFlight(token) {
+                entry.state = ReplayEntryState::Accepted;
+                entry.until = until;
+            }
+        }
+    }
+
+    fn release(&mut self, keys: &[String], token: u64) {
+        for key in keys {
+            if self
+                .entries
+                .get(key)
+                .is_some_and(|entry| entry.state == ReplayEntryState::InFlight(token))
+            {
+                self.entries.remove(key);
+                self.order.retain(|candidate| candidate != key);
+            }
+        }
     }
 
     #[cfg(test)]
@@ -109,21 +171,86 @@ fn global_cache() -> &'static Mutex<ReplayCache> {
     CACHE.get_or_init(|| Mutex::new(ReplayCache::new()))
 }
 
-/// After signature verification: return `true` if this activity/body was
-/// already accepted recently (caller should answer 202 without re-handling).
+/// Result of reserving an authenticated inbox activity.
+pub enum ReplayDecision {
+    Fresh(ReplayReservation),
+    InFlight,
+    Accepted,
+}
+
+/// In-flight reservation. Completing an error, or dropping the reservation,
+/// releases its keys so the peer can retry the same Activity.
+pub struct ReplayReservation {
+    keys: Vec<String>,
+    token: u64,
+    finished: bool,
+}
+
+impl ReplayReservation {
+    pub fn complete<T, E>(mut self, result: Result<T, E>) -> Result<T, E> {
+        if result.is_ok() {
+            self.commit();
+        }
+        result
+    }
+
+    fn commit(&mut self) {
+        let ttl = std_duration_from_chrono(replay_dedup_ttl());
+        let now = Instant::now();
+        match global_cache().lock() {
+            Ok(mut cache) => cache.commit(&self.keys, self.token, ttl, now),
+            Err(poisoned) => {
+                tracing::error!(
+                    "federation replay cache lock poisoned while committing; resetting"
+                );
+                let mut cache = poisoned.into_inner();
+                *cache = ReplayCache::new();
+            }
+        }
+        self.finished = true;
+    }
+}
+
+impl Drop for ReplayReservation {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
+        }
+        match global_cache().lock() {
+            Ok(mut cache) => cache.release(&self.keys, self.token),
+            Err(poisoned) => {
+                tracing::error!("federation replay cache lock poisoned while releasing; resetting");
+                let mut cache = poisoned.into_inner();
+                *cache = ReplayCache::new();
+            }
+        }
+    }
+}
+
+/// Reserve an activity after successful signature verification.
 ///
 /// Fail-open on lock poison so a stuck mutex cannot deny all federation.
-pub fn is_replay_or_record(keys: &[String]) -> bool {
+pub fn begin_replay(keys: &[String]) -> ReplayDecision {
     let ttl = std_duration_from_chrono(replay_dedup_ttl());
     let now = Instant::now();
-    match global_cache().lock() {
-        Ok(mut cache) => cache.check_and_record(keys, ttl, now),
+    let begin = match global_cache().lock() {
+        Ok(mut cache) => cache.begin(keys, ttl, now),
         Err(poisoned) => {
             tracing::error!("federation replay cache lock poisoned; resetting");
             let mut cache = poisoned.into_inner();
             *cache = ReplayCache::new();
-            cache.check_and_record(keys, ttl, now)
+            cache.begin(keys, ttl, now)
         }
+    };
+
+    match begin {
+        ReplayBegin::Fresh(token) => ReplayDecision::Fresh(ReplayReservation {
+            keys: keys.to_vec(),
+            token,
+            finished: false,
+        }),
+        ReplayBegin::InFlight => ReplayDecision::InFlight,
+        ReplayBegin::Accepted => ReplayDecision::Accepted,
     }
 }
 
@@ -134,6 +261,13 @@ fn std_duration_from_chrono(d: chrono::Duration) -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn fresh_token(begin: ReplayBegin) -> u64 {
+        match begin {
+            ReplayBegin::Fresh(token) => token,
+            other => panic!("expected fresh replay reservation, got {other:?}"),
+        }
+    }
 
     #[test]
     fn replay_dedup_keys_include_digest_and_normalized_id() {
@@ -164,14 +298,28 @@ mod tests {
         let keys = replay_dedup_keys("https://peer.example/a/1", b"body-a");
         let ttl = Duration::from_secs(600);
         let t0 = Instant::now();
-        assert!(!cache.check_and_record(&keys, ttl, t0));
-        assert!(cache.check_and_record(&keys, ttl, t0 + Duration::from_secs(1)));
+        let token = fresh_token(cache.begin(&keys, ttl, t0));
+        assert_eq!(
+            cache.begin(&keys, ttl, t0 + Duration::from_millis(1)),
+            ReplayBegin::InFlight
+        );
+        cache.commit(&keys, token, ttl, t0 + Duration::from_millis(2));
+        assert_eq!(
+            cache.begin(&keys, ttl, t0 + Duration::from_secs(1)),
+            ReplayBegin::Accepted
+        );
         // Same activity id, different body → still replay (id key hits).
         let keys2 = replay_dedup_keys("https://peer.example/a/1", b"body-b");
-        assert!(cache.check_and_record(&keys2, ttl, t0 + Duration::from_secs(2)));
+        assert_eq!(
+            cache.begin(&keys2, ttl, t0 + Duration::from_secs(2)),
+            ReplayBegin::Accepted
+        );
         // Different id and body → fresh.
         let keys3 = replay_dedup_keys("https://peer.example/a/2", b"body-c");
-        assert!(!cache.check_and_record(&keys3, ttl, t0 + Duration::from_secs(3)));
+        assert!(matches!(
+            cache.begin(&keys3, ttl, t0 + Duration::from_secs(3)),
+            ReplayBegin::Fresh(_)
+        ));
     }
 
     #[test]
@@ -180,8 +328,70 @@ mod tests {
         let keys = replay_dedup_keys("", b"same-bytes");
         let ttl = Duration::from_secs(600);
         let t0 = Instant::now();
-        assert!(!cache.check_and_record(&keys, ttl, t0));
-        assert!(cache.check_and_record(&keys, ttl, t0));
+        let token = fresh_token(cache.begin(&keys, ttl, t0));
+        cache.commit(&keys, token, ttl, t0);
+        assert_eq!(cache.begin(&keys, ttl, t0), ReplayBegin::Accepted);
+    }
+
+    #[test]
+    fn transient_handler_failure_releases_reservation_for_retry() {
+        let mut cache = ReplayCache::new();
+        let keys = replay_dedup_keys("https://peer.example/a/transient", b"room-not-ready");
+        let ttl = Duration::from_secs(600);
+        let t0 = Instant::now();
+
+        let token = fresh_token(cache.begin(&keys, ttl, t0));
+        assert_eq!(
+            cache.begin(&keys, ttl, t0 + Duration::from_millis(1)),
+            ReplayBegin::InFlight
+        );
+
+        // Mirrors an inbox handler returning transient 503: do not commit.
+        cache.release(&keys, token);
+        assert!(matches!(
+            cache.begin(&keys, ttl, t0 + Duration::from_secs(1)),
+            ReplayBegin::Fresh(_)
+        ));
+        assert_eq!(cache.order.len(), keys.len());
+    }
+
+    #[test]
+    fn public_reservation_releases_after_handler_error() {
+        let keys = replay_dedup_keys(
+            "https://peer.example/a/public-transient-test",
+            b"key-exchange-before-room-invite",
+        );
+        let reservation = match begin_replay(&keys) {
+            ReplayDecision::Fresh(reservation) => reservation,
+            _ => panic!("first public reservation should be fresh"),
+        };
+
+        let result: Result<(), ()> = reservation.complete(Err(()));
+        assert!(result.is_err());
+        assert!(matches!(begin_replay(&keys), ReplayDecision::Fresh(_)));
+    }
+
+    #[test]
+    fn stale_release_does_not_remove_a_newer_reservation() {
+        let mut cache = ReplayCache::new();
+        let keys = replay_dedup_keys("https://peer.example/a/reowned", b"same-body");
+        let ttl = Duration::from_secs(1);
+        let t0 = Instant::now();
+
+        let stale_token = fresh_token(cache.begin(&keys, ttl, t0));
+        let current_token = fresh_token(cache.begin(&keys, ttl, t0 + Duration::from_secs(2)));
+
+        cache.release(&keys, stale_token);
+        assert_eq!(
+            cache.begin(&keys, ttl, t0 + Duration::from_millis(2500)),
+            ReplayBegin::InFlight
+        );
+
+        cache.release(&keys, current_token);
+        assert!(matches!(
+            cache.begin(&keys, ttl, t0 + Duration::from_secs(3)),
+            ReplayBegin::Fresh(_)
+        ));
     }
 
     #[test]
@@ -190,10 +400,17 @@ mod tests {
         let keys = replay_dedup_keys("https://peer.example/a/x", b"z");
         let ttl = Duration::from_secs(10);
         let t0 = Instant::now();
-        assert!(!cache.check_and_record(&keys, ttl, t0));
-        assert!(cache.check_and_record(&keys, ttl, t0 + Duration::from_secs(1)));
+        let token = fresh_token(cache.begin(&keys, ttl, t0));
+        cache.commit(&keys, token, ttl, t0);
+        assert_eq!(
+            cache.begin(&keys, ttl, t0 + Duration::from_secs(1)),
+            ReplayBegin::Accepted
+        );
         // After TTL, purged on next call.
-        assert!(!cache.check_and_record(&keys, ttl, t0 + Duration::from_secs(11)));
+        assert!(matches!(
+            cache.begin(&keys, ttl, t0 + Duration::from_secs(11)),
+            ReplayBegin::Fresh(_)
+        ));
     }
 
     #[test]
@@ -205,14 +422,15 @@ mod tests {
         for i in 0..(REPLAY_DEDUP_MAX_ENTRIES + 8) {
             let body = format!("body-{i}");
             let keys = replay_dedup_keys("", body.as_bytes());
-            assert!(
-                !cache.check_and_record(&keys, ttl, t0),
-                "unique body {i} should not be a replay"
-            );
+            let token = fresh_token(cache.begin(&keys, ttl, t0));
+            cache.commit(&keys, token, ttl, t0);
         }
         assert!(cache.len() <= REPLAY_DEDUP_MAX_ENTRIES);
         // First body should have been evicted.
         let first = replay_dedup_keys("", b"body-0");
-        assert!(!cache.check_and_record(&first, ttl, t0));
+        assert!(matches!(
+            cache.begin(&first, ttl, t0),
+            ReplayBegin::Fresh(_)
+        ));
     }
 }
