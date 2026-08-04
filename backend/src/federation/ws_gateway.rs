@@ -255,7 +255,7 @@ async fn handle_channel_socket(
     // 验证用户拥有该 Channel
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
     let owns_channel = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT 1 FROM federation_channels WHERE user_id = $1 AND channel_id = $2 AND status != 'closed'",
             [user_id.into(), channel_id.clone().into()],
@@ -452,7 +452,7 @@ async fn handle_room_socket(
     // pending 看历史。两条路必须同一个门槛。
     use sea_orm::{ConnectionTrait as _, DatabaseBackend, Statement};
     let is_member = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT 1 FROM federation_room_members
                WHERE room_id = $1 AND actor_url = $2

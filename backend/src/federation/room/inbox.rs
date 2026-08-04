@@ -56,7 +56,7 @@ pub async fn handle_room_invite(
                 continue;
             };
             if let Ok(Some(row)) = db
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT id FROM users WHERE username = $1",
                     [uname.into()],
@@ -79,7 +79,7 @@ pub async fn handle_room_invite(
             // 任何人的邀请塞给最老的账号 —— 与 resolve_shared_inbox_local_user
             // 的处理保持一致：宁可拒收。
             let rows = db
-                .query_all(Statement::from_sql_and_values(
+                .query_all_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT id FROM users ORDER BY id LIMIT 2",
                     [],
@@ -97,7 +97,7 @@ pub async fn handle_room_invite(
 
     // 查找或创建本地用户对应的 actor_url
     let local_actor = if let Ok(Some(row)) = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT username FROM users WHERE id = $1",
             [target_user_id.into()],
@@ -138,7 +138,7 @@ pub async fn handle_room_invite(
         });
     let has_real_name = invite_name.is_some();
     let display_name = resolve_invite_room_name(invite_name.as_deref(), room_id);
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_rooms
            (room_id, name, description, owner_actor, home_server, governance_type, invite_policy,
@@ -239,7 +239,7 @@ pub async fn handle_room_invite(
 
     // Local invitee is *pending* until they accept (does not auto-join).
     let inserted = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_room_members
            (room_id, actor_url, is_local, local_user_id, role, invited_by, joined_at, membership_status)
@@ -319,7 +319,7 @@ pub async fn handle_room_message(
 
     // Room may still be in-flight (invite race) — ask peer to retry (503), not permanent 404
     let room_exists = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT 1 FROM federation_rooms WHERE room_id = $1",
             [room_id.into()],
@@ -356,7 +356,7 @@ pub async fn handle_room_message(
         .unwrap_or(false);
 
     let inserted = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_room_messages
            (room_id, message_id, sender_actor, message_type, payload, thread_id, reply_to,
@@ -417,7 +417,7 @@ pub async fn handle_room_message(
         let local_users = crate::federation::notify::room_local_user_ids(db, room_id).await;
         // Resolve which local user_ids belong to the sender (tolerate URL drift).
         let sender_local_ids: HashSet<i32> = db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT local_user_id, actor_url FROM federation_room_members
                    WHERE room_id = $1 AND is_local = true AND local_user_id IS NOT NULL"#,
@@ -489,7 +489,7 @@ pub async fn handle_room_leave(
             .await
             .map_err(|e| e.to_string())?;
         let owner_actor: String = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "SELECT owner_actor FROM federation_rooms WHERE room_id = $1",
                 [room_id.into()],
@@ -513,7 +513,7 @@ pub async fn handle_room_leave(
         }
     }
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "DELETE FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
         [room_id.into(), removed.into()],
@@ -637,7 +637,7 @@ pub async fn handle_room_join(
 
     // 验证 Room 存在，同时取出授权要用的策略字段
     let room_row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT owner_actor, invite_policy, is_public FROM federation_rooms WHERE room_id = $1",
             [room_id.into()],
@@ -721,7 +721,7 @@ pub async fn handle_room_join(
     let effective_role = room_join_effective_role(prior.as_ref().map(|(r, _)| r.as_str()), role);
 
     // 加入/激活成员（pending → active on accept-side RoomJoin)
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_room_members
            (room_id, actor_url, is_local, role, joined_at, membership_status)
@@ -785,7 +785,7 @@ pub(crate) async fn refanout_local_e2e_keys_to_member(
     }
 
     let room_row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
             [room_id.into()],
@@ -814,7 +814,7 @@ pub(crate) async fn refanout_local_e2e_keys_to_member(
 
     // Resolve target inbox
     let target = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT inbox_url, domain FROM federation_remote_actors WHERE actor_url = $1",
             [target_actor.into()],
@@ -834,7 +834,7 @@ pub(crate) async fn refanout_local_e2e_keys_to_member(
 
     // Local active members that own a published key
     let local_members = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT actor_url, local_user_id FROM federation_room_members
                WHERE room_id = $1 AND is_local = true
@@ -885,7 +885,7 @@ pub(crate) async fn refanout_local_e2e_keys_to_member(
         });
 
         let act_row = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"INSERT INTO federation_activities
                    (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
@@ -901,7 +901,7 @@ pub(crate) async fn refanout_local_e2e_keys_to_member(
             .map_err(|e| e.to_string())?;
         if let Some(act_id) = act_row.and_then(|r| r.try_get::<i32>("", "id").ok()) {
             let _ = db
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"INSERT INTO federation_delivery_queue
                        (activity_id, target_inbox, target_domain, status, created_at)
@@ -929,7 +929,7 @@ pub(crate) async fn refanout_local_e2e_keys_to_member(
 pub(crate) async fn notify_local_members_of_join(db: &DatabaseConnection, room_id: &str, joining_actor: &str) {
     // Prefer invited_by local user; fall back to local owner/admin members
     let inviter_row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT invited_by FROM federation_room_members
                WHERE room_id = $1 AND actor_url = $2"#,
@@ -946,7 +946,7 @@ pub(crate) async fn notify_local_members_of_join(db: &DatabaseConnection, room_i
 
     if let Some(ref inv) = invited_by {
         if let Ok(Some(row)) = db
-            .query_one(Statement::from_sql_and_values(
+            .query_one_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT local_user_id FROM federation_room_members
                    WHERE room_id = $1 AND is_local = true AND actor_url = $2
@@ -964,7 +964,7 @@ pub(crate) async fn notify_local_members_of_join(db: &DatabaseConnection, room_i
     if targets.is_empty() {
         // Fall back: notify all local owners/admins (cap 5)
         if let Ok(rows) = db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT local_user_id FROM federation_room_members
                    WHERE room_id = $1 AND is_local = true
@@ -1017,7 +1017,7 @@ pub async fn handle_room_invite_reject(
 
     // Only delete if this actor was pending on our side
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"DELETE FROM federation_room_members
                WHERE room_id = $1 AND actor_url = $2
@@ -1030,7 +1030,7 @@ pub async fn handle_room_invite_reject(
     if result.rows_affected() == 0 {
         // Fallback same_actor_url match
         let rows = db
-            .query_all(Statement::from_sql_and_values(
+            .query_all_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"SELECT actor_url FROM federation_room_members
                    WHERE room_id = $1 AND COALESCE(membership_status, 'active') = 'pending'"#,
@@ -1042,7 +1042,7 @@ pub async fn handle_room_invite_reject(
             let url: String = r.try_get("", "actor_url").unwrap_or_default();
             if same_actor_url(&url, actor_url_str) {
                 let _ = db
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         DatabaseBackend::Postgres,
                         "DELETE FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
                         [room_id.into(), url.into()],
@@ -1095,7 +1095,7 @@ pub async fn handle_room_governance(
 
     // 验证发送方是成员。名称/策略/贴纸包均需 admin 或 owner。
     let sender_row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT m.role, r.owner_actor,
                       COALESCE(m.membership_status, 'active') AS membership_status
@@ -1138,7 +1138,7 @@ pub async fn handle_room_governance(
         // Apply sticker pack mirror from home / peer.
         if let Some(stickers_val) = changes.get("stickers") {
             let room_row = db
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
                     [room_id.into()],
@@ -1153,7 +1153,7 @@ pub async fn handle_room_governance(
                 .unwrap_or_else(|| json!({}));
             let parsed = parse_room_stickers(&json!({ "stickers": stickers_val }));
             shared["stickers"] = stickers_to_json(&parsed);
-            db.execute(Statement::from_sql_and_values(
+            db.execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
                 [room_id.into(), shared.into()],
@@ -1215,7 +1215,7 @@ pub async fn handle_room_governance(
         if target_role == "owner" {
             return Err("Cannot change owner role; use transfer_owner".to_string());
         }
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"UPDATE federation_room_members
                SET role = $3
@@ -1249,7 +1249,7 @@ pub async fn handle_room_governance(
             return Err("Only owner can transfer ownership".to_string());
         }
         let old_owner = owner.clone();
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "UPDATE federation_rooms SET owner_actor = $2, updated_at = NOW() WHERE room_id = $1",
             [room_id.into(), new_owner.into()],
@@ -1259,7 +1259,7 @@ pub async fn handle_room_governance(
         // Demote previous owner role if still a member
         if !old_owner.is_empty() && !same_actor_url(&old_owner, new_owner) {
             let _ = db
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"UPDATE federation_room_members
                        SET role = 'admin'
@@ -1269,7 +1269,7 @@ pub async fn handle_room_governance(
                 .await;
         }
         let _ = db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"UPDATE federation_room_members
                    SET role = 'owner'
@@ -1301,7 +1301,7 @@ pub async fn handle_room_governance(
         // Remote governance: never allow public → private.
         if !v {
             let currently_public: bool = db
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     "SELECT is_public FROM federation_rooms WHERE room_id = $1",
                     [room_id.into()],
@@ -1329,7 +1329,7 @@ pub async fn handle_room_governance(
             "UPDATE federation_rooms SET {} = $2, updated_at = NOW() WHERE room_id = $1",
             col
         );
-        db.execute(Statement::from_sql_and_values(
+        db.execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             &sql,
             [room_id.into(), val],
