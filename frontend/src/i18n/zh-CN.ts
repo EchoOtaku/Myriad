@@ -404,7 +404,7 @@ export const zhCN: TranslationKeys = {
         '导入将【覆盖】当前全部访客统计数据（页面 / 事件 / 来源 / 访客哈希）。仅接受本实例签名的备份。是否继续？',
       aiUsageTitle: 'AI 使用统计',
       aiUsageDesc:
-        '全站 AI 调用（含管理员与站长）：按用户、模型、来源与日期汇总。含 Tapp 运行时、定时任务（scheduler）、Arael、报告生成等。可筛用户与模型；柱=调用次数，线=Token。',
+        '全站 AI 调用（含管理员与站长）：按用户、模型、来源与日期汇总。含 Tapp 运行时、定时任务（scheduler）、Arael、报告生成等。可筛用户与模型；柱=调用次数（左轴），线=Token（右轴，独立刻度）。',
       aiUsageLoadFailed: '加载 AI 使用统计失败',
       aiUsageEmpty: '所选范围内暂无 AI 调用记录',
       aiUsageEmptyUsers: '所选范围内暂无用户用量',
@@ -3023,6 +3023,7 @@ export const zhCN: TranslationKeys = {
     permFullscreen: '全屏模式',
     permReadTheme: '读取主题',
     permConfirm: '确认对话框',
+    permOpenUrl: '打开声明链接',
     permNetworkFetch: '网络请求',
     permMediaControl: '媒体控制',
     permMediaRead: '读取媒体状态',
@@ -3064,6 +3065,8 @@ export const zhCN: TranslationKeys = {
     permFullscreenDesc: '允许请求全屏显示',
     permReadThemeDesc: '允许读取当前主题设置',
     permConfirmDesc: '允许显示确认对话框',
+    permOpenUrlDesc:
+      '允许通过宿主打开 Manifest openUrls 中声明的链接（未声明地址一律拒绝）',
     permNetworkFetchDesc:
       '允许声明式 HTTP API，以及加载远端图片/音视频（封面 CDN 等）',
     permMediaControlDesc: '允许控制媒体播放（播放、暂停、切换等）',
@@ -3245,7 +3248,7 @@ export const zhCN: TranslationKeys = {
     playgroundExampleLabelMarkdown: 'Markdown',
     playgroundExamplesLabel: '试试示例',
     playgroundPreviewCapabilities:
-      '预览仅支持 storage、settings、ui:theme、ui:confirm 与全屏等能力；其他权限需安装后使用。',
+      '预览仅支持 storage、settings、ui:theme、ui:confirm、ui:openUrl 与全屏等能力；其他权限需安装后使用。',
     playgroundPreviewCapabilitiesDismiss: '知道了',
     playgroundPruneNotice: '浏览器存储已满，已自动清理较早的历史以腾出空间。',
     playgroundPruneNoticeSessions: '已移除 {n} 个较早会话以腾出存储空间。',

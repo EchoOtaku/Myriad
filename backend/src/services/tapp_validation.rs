@@ -7,9 +7,13 @@
 
 use std::path::{Component, Path as FsPath};
 
+use myriad_tapp_contract::contract_rules::{
+    MAX_OPEN_URL_ID_LEN, MAX_OPEN_URLS, OPEN_URL_PERMISSION,
+};
 use myriad_tapp_contract::manifest::{
     valid_agent_name, valid_event_topic, TappAiContextSource, TappAiOperation, TappAiOutputFormat,
-    TappHttpBodyMode, TappManifest, TappSettingDef, TappWidgetRefreshMode, TappWidgetRefreshPolicy,
+    TappHttpBodyMode, TappManifest, TappOpenUrlMatch, TappSettingDef, TappWidgetRefreshMode,
+    TappWidgetRefreshPolicy,
 };
 use reqwest::header::HeaderName;
 use std::str::FromStr;
@@ -282,6 +286,102 @@ pub fn validate_http_url(value: &str, field: &str) -> Result<(), String> {
     let parsed = reqwest::Url::parse(value).map_err(|_| format!("Invalid Tapp {field}"))?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(format!("Tapp {field} must be an HTTP(S) URL"));
+    }
+    Ok(())
+}
+
+/// Stricter URL rules for host-mediated navigation targets (`openUrls`).
+/// HTTPS only, except http on loopback hosts for local development.
+pub fn validate_open_url_target(value: &str, field: &str) -> Result<reqwest::Url, String> {
+    if value.len() > 2_048 {
+        return Err(format!("Tapp {field} is too long"));
+    }
+    if value.chars().any(|ch| ch.is_control() || ch.is_whitespace()) {
+        return Err(format!("Tapp {field} must not contain whitespace or control characters"));
+    }
+    let parsed = reqwest::Url::parse(value).map_err(|_| format!("Invalid Tapp {field}"))?;
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        return Err(format!("Tapp {field} must not include URL credentials"));
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| format!("Tapp {field} must include a hostname"))?;
+    let is_loopback = host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1";
+    match parsed.scheme() {
+        "https" => {}
+        "http" if is_loopback => {}
+        "http" => {
+            return Err(format!(
+                "Tapp {field} must use HTTPS (http is only allowed for localhost)"
+            ));
+        }
+        _ => return Err(format!("Tapp {field} must be an HTTPS URL")),
+    }
+    if parsed.cannot_be_a_base() {
+        return Err(format!("Tapp {field} must be an absolute hierarchical URL"));
+    }
+    Ok(parsed)
+}
+
+fn validate_open_urls(manifest: &TappManifest) -> Result<(), String> {
+    let has_permission = manifest
+        .permissions
+        .iter()
+        .any(|value| value == OPEN_URL_PERMISSION);
+    let entries = manifest.open_urls.as_deref().unwrap_or(&[]);
+
+    if entries.is_empty() {
+        if has_permission {
+            return Err(
+                "Tapp permission ui:openUrl requires a non-empty openUrls allowlist".to_string(),
+            );
+        }
+        return Ok(());
+    }
+    if !has_permission {
+        return Err(
+            "Tapp openUrls requires manifest permission ui:openUrl".to_string(),
+        );
+    }
+    if entries.len() > MAX_OPEN_URLS {
+        return Err(format!(
+            "Tapp openUrls accepts at most {MAX_OPEN_URLS} entries"
+        ));
+    }
+
+    let mut ids = std::collections::HashSet::new();
+    for (index, entry) in entries.iter().enumerate() {
+        let field = format!("openUrls[{index}]");
+        if entry.id.is_empty()
+            || entry.id.len() > MAX_OPEN_URL_ID_LEN
+            || !is_safe_path_component(&entry.id)
+            || !entry
+                .id
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_alphanumeric())
+        {
+            return Err(format!(
+                "Tapp {field}.id must use 1-{MAX_OPEN_URL_ID_LEN} ASCII letters, numbers, dots, underscores, or hyphens"
+            ));
+        }
+        if !ids.insert(entry.id.as_str()) {
+            return Err(format!("Duplicate Tapp openUrls id: {}", entry.id));
+        }
+        let parsed = validate_open_url_target(&entry.url, &format!("{field}.url"))?;
+        // Prefix match is path-based; require a non-empty path (at least `/`).
+        if matches!(entry.match_mode, TappOpenUrlMatch::Prefix) && parsed.path().is_empty() {
+            return Err(format!(
+                "Tapp {field}.url for match=prefix must include a path (e.g. https://example.com/docs/)"
+            ));
+        }
+        // Reject fragment-only noise in declarations — host drops fragments on open.
+        if parsed.fragment().is_some() {
+            return Err(format!(
+                "Tapp {field}.url must not include a #fragment"
+            ));
+        }
+        let _ = entry.match_mode; // exhaustively known via serde enum
     }
     Ok(())
 }
@@ -1082,6 +1182,8 @@ pub fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
             }
         }
     }
+
+    validate_open_urls(manifest)?;
     Ok(())
 }
 
@@ -1253,6 +1355,75 @@ mod tests {
         assert!(
             validate_http_url(&format!("https://x/{}", "a".repeat(3_000)), "homepage").is_err()
         );
+
+        assert!(validate_open_url_target("https://docs.example.com/a", "openUrls[0].url").is_ok());
+        assert!(validate_open_url_target("http://localhost:3000/x", "openUrls[0].url").is_ok());
+        assert!(validate_open_url_target("http://example.com/x", "openUrls[0].url").is_err());
+        assert!(validate_open_url_target("https://user:pass@example.com/", "openUrls[0].url").is_err());
+    }
+
+    #[test]
+    fn open_urls_require_permission_and_allowlist_pair() {
+        use myriad_tapp_contract::manifest::{TappCategory, TappOpenUrlDef, TappOpenUrlMatch};
+
+        let mut manifest = TappManifest {
+            id: "com.example.open".into(),
+            name: "Open".into(),
+            version: "1.0.0".into(),
+            description: None,
+            locales: None,
+            author: None,
+            main: "main.js".into(),
+            styles: None,
+            widget_styles: None,
+            page_styles: None,
+            page_template: None,
+            css_mode: None,
+            permissions: vec!["ui:openUrl".into()],
+            icon: None,
+            icon_svg: None,
+            theme_color: None,
+            homepage: None,
+            repository: None,
+            min_system_version: None,
+            widgets: None,
+            has_page: false,
+            background_requirements: None,
+            settings: None,
+            credentials: None,
+            category: Some(TappCategory::Utility),
+            page_modules: None,
+            apis: None,
+            data_exchange: None,
+            ai: None,
+            events: None,
+            agent: None,
+            assets: None,
+            open_urls: None,
+        };
+
+        // Permission without openUrls → fail
+        assert!(validate_tapp_manifest(&manifest).is_err());
+
+        manifest.open_urls = Some(vec![TappOpenUrlDef {
+            id: "docs".into(),
+            url: "https://docs.example.com/guide/".into(),
+            match_mode: TappOpenUrlMatch::Prefix,
+        }]);
+        assert!(validate_tapp_manifest(&manifest).is_ok());
+
+        // openUrls without permission → fail
+        manifest.permissions.clear();
+        assert!(validate_tapp_manifest(&manifest).is_err());
+
+        // Public http host → fail
+        manifest.permissions = vec!["ui:openUrl".into()];
+        manifest.open_urls = Some(vec![TappOpenUrlDef {
+            id: "insecure".into(),
+            url: "http://example.com/".into(),
+            match_mode: TappOpenUrlMatch::Exact,
+        }]);
+        assert!(validate_tapp_manifest(&manifest).is_err());
     }
 
     #[test]

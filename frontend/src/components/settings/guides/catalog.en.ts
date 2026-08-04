@@ -371,7 +371,7 @@ export const en: SettingGuidesCatalog = {
     aiUsage: {
       what: 'Full-site AI usage (including admins/owner): daily trend, by user/model/source ranks, with filters.',
       chain:
-        '1) Written to tapp_ai_cost_ledger: Tapp runtime and scheduled jobs settle via governed path; Arael and report generation use task-local attribution.\n2) Admin GET /api/analytics/ai-usage aggregates by the server local calendar day and does not exclude staff.\n3) Bars = calls, line = tokens; lists by user, model, and source (including scheduler).\n4) Independent of the visitor-stats collection switch.',
+        '1) Written to tapp_ai_cost_ledger: Tapp runtime and scheduled jobs settle via governed path; Arael and report generation use task-local attribution.\n2) Admin GET /api/analytics/ai-usage aggregates by the server local calendar day and does not exclude staff.\n3) Bars = calls (left axis), line = tokens (right axis, independent scale so large token counts do not flatten call bars); lists by user, model, and source (including scheduler).\n4) Independent of the visitor-stats collection switch.',
       frontend: 'Settings → Data & stats → “AI usage stats” (KPIs, chart, by user / model / source).',
       notes: 'Tokens are often estimates. Panel is admin-only.',
     },

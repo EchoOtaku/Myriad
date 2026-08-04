@@ -426,7 +426,7 @@ export const jaJP: TranslationKeys = {
         'インポートすると現在の訪問統計（ページ / イベント / 参照元 / 訪問者ハッシュ）がすべて【置き換え】られます。このインスタンスで署名されたバックアップのみ受け入れます。続行しますか？',
       aiUsageTitle: 'AI 使用統計',
       aiUsageDesc:
-        'サイト全体の AI 呼び出し（管理者・オーナーを含む）をユーザー・モデル・出典・日付で集計。Tapp ランタイム、定期タスク、Arael、レポート生成を含む。ユーザー／モデルで絞り込み可。棒＝回数、線＝トークン。',
+        'サイト全体の AI 呼び出し（管理者・オーナーを含む）をユーザー・モデル・出典・日付で集計。Tapp ランタイム、定期タスク、Arael、レポート生成を含む。ユーザー／モデルで絞り込み可。棒＝回数（左軸）、線＝トークン（右軸・独立スケール）。',
       aiUsageLoadFailed: 'AI 使用統計の読み込みに失敗しました',
       aiUsageEmpty: '選択期間に AI 呼び出しはありません',
       aiUsageEmptyUsers: '選択期間にユーザー別の使用量はありません',
@@ -3159,6 +3159,7 @@ export const jaJP: TranslationKeys = {
     permFullscreen: 'フルスクリーンモード',
     permReadTheme: 'テーマ読取',
     permConfirm: '確認ダイアログ',
+    permOpenUrl: '宣言リンクを開く',
     permNetworkFetch: 'ネットワークリクエスト',
     permMediaControl: 'メディア制御',
     permMediaRead: 'メディア状態読取',
@@ -3202,6 +3203,8 @@ export const jaJP: TranslationKeys = {
     permFullscreenDesc: 'フルスクリーン表示のリクエストを許可',
     permReadThemeDesc: '現在のテーマ設定の読取を許可',
     permConfirmDesc: '確認ダイアログの表示を許可',
+    permOpenUrlDesc:
+      'Manifest openUrls で宣言したリンクのみホスト経由で開く（未宣言 URL は拒否）',
     permNetworkFetchDesc:
       '宣言型 HTTP API、およびリモート画像/メディア（カバー CDN 等）の読み込みを許可',
     permMediaControlDesc:
@@ -3403,7 +3406,7 @@ export const jaJP: TranslationKeys = {
     playgroundExampleLabelMarkdown: 'Markdown',
     playgroundExamplesLabel: '例を試す',
     playgroundPreviewCapabilities:
-      'プレビューでは storage・settings・ui:theme・ui:confirm・全画面などが使えます。その他の権限はインストール後に利用できます。',
+      'プレビューでは storage・settings・ui:theme・ui:confirm・ui:openUrl・全画面などが使えます。その他の権限はインストール後に利用できます。',
     playgroundPreviewCapabilitiesDismiss: '了解',
     playgroundPruneNotice:
       'ブラウザの保存容量がいっぱいだったため、古い履歴を整理しました。',

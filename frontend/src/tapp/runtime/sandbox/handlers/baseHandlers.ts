@@ -9,8 +9,17 @@ import type { PermissionLevel, TappInstance } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
 import type { TappNotificationOptions } from '../types'
 import * as TappApiService from '../../../services/TappApiService'
+import {
+  listOpenUrlDeclarations,
+  OpenUrlRateLimiter,
+  resolveOpenUrl,
+  type OpenUrlRequest,
+} from '../../../utils/openUrlAllowlist'
 import { emitTappStorageChange } from '../../WidgetRuntimeSignals'
 import { sanitizeStorageValue, validateStorageKey } from '../security'
+
+/** Per-tapp openUrl rate limit (host-side; shared across sandboxes in this tab). */
+const openUrlRateLimiter = new OpenUrlRateLimiter(8, 10_000)
 
 /**
  * 注册生命周期处理器
@@ -123,6 +132,62 @@ export function registerUIHandlers(
     const [msg] = (message.payload as { args: unknown[] }).args || []
     const result = window.confirm(String(msg) || 'Confirm?')
     return { success: true, data: result }
+  })
+
+  // Declared-link navigation: host opens a tab after allowlist resolution.
+  // Never trust a free-form URL from the sandbox — only { id, path?, query? }.
+  bridge.registerHandler('ui.listOpenUrls', async () => {
+    return {
+      success: true,
+      data: listOpenUrlDeclarations(tappInstance.manifest.openUrls),
+    }
+  })
+
+  bridge.registerHandler('ui.openUrl', async (message) => {
+    const [raw] = (message.payload as { args: unknown[] }).args || []
+    const request =
+      typeof raw === 'string'
+        ? ({ id: raw } satisfies OpenUrlRequest)
+        : (raw as OpenUrlRequest | undefined)
+    if (!request || typeof request !== 'object') {
+      return { success: false, error: 'openUrl requires { id, path?, query? }' }
+    }
+
+    if (!openUrlRateLimiter.allow(tappInstance.id)) {
+      return { success: false, error: 'openUrl rate limit exceeded' }
+    }
+
+    const resolved = resolveOpenUrl(tappInstance.manifest.openUrls, request)
+    if (!resolved.ok) {
+      return { success: false, error: resolved.error }
+    }
+
+    try {
+      // Prefer anchor-click: with `noopener`, `window.open` often returns null
+      // even on success, so we cannot treat a null handle as "blocked".
+      const anchor = document.createElement('a')
+      anchor.href = resolved.url
+      anchor.target = '_blank'
+      anchor.rel = 'noopener noreferrer'
+      anchor.style.display = 'none'
+      document.body.appendChild(anchor)
+      anchor.click()
+      document.body.removeChild(anchor)
+      return {
+        success: true,
+        data: {
+          id: resolved.id,
+          url: resolved.url,
+          match: resolved.match,
+        },
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to open URL',
+      }
+    }
   })
 
   bridge.registerHandler('ui.requestFullscreen', async () => {

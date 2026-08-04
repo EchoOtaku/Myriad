@@ -185,6 +185,29 @@ export interface TappManifest {
    * 二进制文件允许；运行时通过 `Tapp.assets` 读取，不走 `Tapp.storage`。
    */
   assets?: string[]
+
+  /**
+   * Host-mediated external links for `Tapp.ui.openUrl`.
+   * Runtime only opens by declared `id` (+ optional path/query under match rules);
+   * undeclared / free-form URLs are rejected.
+   * Requires permission `ui:openUrl`.
+   */
+  openUrls?: TappOpenUrlDef[]
+}
+
+/** One install-time declared external navigation target. */
+export interface TappOpenUrlDef {
+  /** Stable id for `Tapp.ui.openUrl({ id })`. */
+  id: string
+  /** Base HTTPS URL (http only for localhost / 127.0.0.1). */
+  url: string
+  /**
+   * How path/query may extend `url`:
+   * - `exact` (default): only the declared URL
+   * - `prefix`: same origin, path under the declared path prefix
+   * - `origin`: any path/query on the declared origin
+   */
+  match?: 'exact' | 'prefix' | 'origin'
 }
 
 export type TappAIOperation = 'generate' | 'analyze' | 'chat' | 'image'
@@ -422,6 +445,8 @@ export type TappPermission =
   | 'ui:fullscreen'
   | 'ui:theme'
   | 'ui:confirm'
+  /** Open host browser tab for a manifest `openUrls` allowlisted link only. */
+  | 'ui:openUrl'
   // 网络权限
   | 'network:fetch'
   // 媒体权限

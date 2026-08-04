@@ -366,7 +366,7 @@ export const zh: SettingGuidesCatalog = {
     aiUsage: {
       what: '全站 AI 调用用量（含管理员/站长）：日期趋势、用户/模型/来源排行，可筛用户与模型。',
       chain:
-        '① 写入 tapp_ai_cost_ledger：Tapp 运行时与定时任务（scheduler）走受管结算；Arael 与报告生成经任务上下文记入。\n② 管理端 GET /api/analytics/ai-usage 按服务器本地日历日聚合，不排除管理员。\n③ 柱 = 调用次数，线 = Token；下方可按用户、模型、来源（含定时任务）查看。\n④ 与访客统计独立：不依赖访客采集开关。',
+        '① 写入 tapp_ai_cost_ledger：Tapp 运行时与定时任务（scheduler）走受管结算；Arael 与报告生成经任务上下文记入。\n② 管理端 GET /api/analytics/ai-usage 按服务器本地日历日聚合，不排除管理员。\n③ 柱 = 调用次数（左轴），线 = Token（右轴独立刻度，避免量级差压扁一方）；下方可按用户、模型、来源（含定时任务）查看。\n④ 与访客统计独立：不依赖访客采集开关。',
       frontend: '设置 → 数据及统计 →「AI 使用统计」（KPI、折线图、按用户/模型/来源）。',
       notes: 'Token 多为估算。仅管理员可看本面板。',
     },

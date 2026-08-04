@@ -18,6 +18,8 @@ export const PREVIEW_PERMISSIONS = [
   'ui:theme',
   'ui:confirm',
   'ui:fullscreen',
+  /** Declared openUrls only; host still enforces allowlist. */
+  'ui:openUrl',
 ] as const satisfies readonly TappPermission[]
 
 const PREVIEW_PERMISSION_SET = new Set<string>(PREVIEW_PERMISSIONS)

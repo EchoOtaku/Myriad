@@ -510,6 +510,7 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
               points={trendPoints}
               refreshing={refreshing}
               numberLocale={numberLocale}
+              independentScales
               seriesLabels={{
                 primary: a.aiUsageLegendCalls,
                 secondary: a.aiUsageLegendTokens,

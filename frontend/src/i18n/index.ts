@@ -2838,6 +2838,7 @@ export interface TranslationKeys {
     permFullscreen: string
     permReadTheme: string
     permConfirm: string
+    permOpenUrl: string
     permNetworkFetch: string
     permMediaControl: string
     permMediaRead: string
@@ -2879,6 +2880,7 @@ export interface TranslationKeys {
     permFullscreenDesc: string
     permReadThemeDesc: string
     permConfirmDesc: string
+    permOpenUrlDesc: string
     permNetworkFetchDesc: string
     permMediaControlDesc: string
     permMediaReadDesc: string

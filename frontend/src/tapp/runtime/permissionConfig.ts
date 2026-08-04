@@ -39,6 +39,7 @@ export const PERMISSION_LEVELS: Record<TappPermission, TappPermissionLevel> = {
   'ui:fullscreen': 'basic',
   'ui:theme': 'basic',
   'ui:confirm': 'basic',
+  'ui:openUrl': 'basic',
   'network:fetch': 'elevated',
   'media:control': 'basic',
   'media:read': 'basic',
@@ -215,6 +216,8 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     // UI 权限
     ['ui.showNotification', 'ui:notification'],
     ['ui.confirm', 'ui:confirm'],
+    ['ui.openUrl', 'ui:openUrl'],
+    ['ui.listOpenUrls', 'ui:openUrl'],
     ['ui.requestFullscreen', 'ui:fullscreen'],
     ['ui.exitFullscreen', 'ui:fullscreen'],
     ['ui.toggleFullscreen', 'ui:fullscreen'],

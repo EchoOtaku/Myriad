@@ -562,6 +562,9 @@ export function generateFullSDK(
       onLocaleChange: (cb) => addEventListener('localeChange', cb),
       showNotification: (o) => sendRequest('ui', 'showNotification', [o]),
       confirm: (m) => sendRequest('ui', 'confirm', [m]),
+      // Declared allowlist only: { id, path?, query? } — never a free-form URL.
+      openUrl: (req) => sendRequest('ui', 'openUrl', [req]),
+      listOpenUrls: () => sendRequest('ui', 'listOpenUrls', []),
       requestFullscreen: () => sendRequest('ui', 'requestFullscreen', []),
       exitFullscreen: () => sendRequest('ui', 'exitFullscreen', []),
       fullscreen: {
@@ -1680,6 +1683,8 @@ ${speechNs}
       getPrimaryColor: function() { return sendRequest('ui', 'getPrimaryColor', []); },
       getLocale: function() { return sendRequest('ui', 'getLocale', []); },
       showNotification: function(o) { return sendRequest('ui', 'showNotification', [o]); },
+      openUrl: function(req) { return sendRequest('ui', 'openUrl', [req]); },
+      listOpenUrls: function() { return sendRequest('ui', 'listOpenUrls', []); },
       onThemeChange: function(cb) { return addEventListener('themeChange', cb); },
       onPrimaryColorChange: function(cb) { return addEventListener('primaryColorChange', cb); },
       onLocaleChange: function(cb) { return addEventListener('localeChange', cb); }

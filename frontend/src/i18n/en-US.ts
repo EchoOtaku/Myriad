@@ -435,7 +435,7 @@ export const enUS: TranslationKeys = {
         'Import will REPLACE all current visitor stats (pages, events, referrers, visitor hashes). Only backups signed by this instance are accepted. Continue?',
       aiUsageTitle: 'AI usage stats',
       aiUsageDesc:
-        'Full-site AI calls (including admins and the site owner) by user, model, source, and day. Covers Tapp runtime, scheduled jobs, Arael, and report generation. Filter by user or model; bars are calls, the line is tokens.',
+        'Full-site AI calls (including admins and the site owner) by user, model, source, and day. Covers Tapp runtime, scheduled jobs, Arael, and report generation. Filter by user or model; bars are calls (left axis), the line is tokens (right axis, independent scale).',
       aiUsageLoadFailed: 'Failed to load AI usage stats',
       aiUsageEmpty: 'No AI calls in the selected range',
       aiUsageEmptyUsers: 'No per-user usage in the selected range',
@@ -3172,6 +3172,7 @@ export const enUS: TranslationKeys = {
     permFullscreen: 'Fullscreen Mode',
     permReadTheme: 'Read Theme',
     permConfirm: 'Confirm Dialog',
+    permOpenUrl: 'Open Declared Links',
     permNetworkFetch: 'Network Fetch',
     permMediaControl: 'Media Control',
     permMediaRead: 'Read Media Status',
@@ -3215,6 +3216,8 @@ export const enUS: TranslationKeys = {
     permFullscreenDesc: 'Allow requesting fullscreen display',
     permReadThemeDesc: 'Allow reading current theme settings',
     permConfirmDesc: 'Allow showing confirm dialogs',
+    permOpenUrlDesc:
+      'Allow the host to open links declared in Manifest openUrls (all other URLs are rejected)',
     permNetworkFetchDesc:
       'Allow declared HTTP APIs and loading remote images/media (e.g. cover CDNs)',
     permMediaControlDesc:
@@ -3416,7 +3419,7 @@ export const enUS: TranslationKeys = {
     playgroundExampleLabelMarkdown: 'Markdown pad',
     playgroundExamplesLabel: 'Try an example',
     playgroundPreviewCapabilities:
-      'Preview supports storage, settings, ui:theme, ui:confirm, and fullscreen. Other permissions need Install.',
+      'Preview supports storage, settings, ui:theme, ui:confirm, ui:openUrl, and fullscreen. Other permissions need Install.',
     playgroundPreviewCapabilitiesDismiss: 'Got it',
     playgroundPruneNotice:
       'Browser storage was full — older history was trimmed to free space.',

@@ -127,6 +127,14 @@ const zh: TappPermissionGuides = {
     frontend: '运行中的模态确认。',
     notes: '频繁弹窗会骚扰用户，应用应克制使用。',
   },
+  'ui:openUrl': {
+    what: '允许由宿主打开 Manifest openUrls 中声明的外链（未声明地址一律拒绝）。',
+    chain:
+      '① 应用声明 openUrls 与本权限并获安装授权。\n② 调用 Tapp.ui.openUrl({ id })（可带 path/query，受 match 约束）。\n③ 宿主校验 allowlist 后新标签打开，无二次确认框。',
+    frontend: '应用内按钮/卡片点击跳转；详情页可见 openUrls 权限说明。',
+    notes:
+      '只能打开安装时声明的链接；沙箱内 window.open 仍禁用。安装时请核对声明域名。',
+  },
   'network:fetch': {
     what: '允许声明式 HTTP 请求，以及加载远端图片/音视频等资源。',
     chain:
@@ -403,6 +411,14 @@ const en: TappPermissionGuides = {
     frontend: 'Modal confirms while the app runs.',
     notes: 'Excessive prompts annoy users.',
   },
+  'ui:openUrl': {
+    what: 'Allows the host to open links declared in Manifest openUrls (all other URLs are rejected).',
+    chain:
+      '1) App declares openUrls + this permission and is approved at install.\n2) Calls Tapp.ui.openUrl({ id }) (optional path/query within match rules).\n3) Host checks the allowlist and opens a new tab — no extra confirm dialog.',
+    frontend: 'In-app buttons/cards that open external links; permission copy on the detail page.',
+    notes:
+      'Only declared links work; sandbox window.open stays disabled. Review declared hosts at install time.',
+  },
   'network:fetch': {
     what: 'Allows declarative HTTP and loading remote media/images.',
     chain:
@@ -678,6 +694,14 @@ const ja: TappPermissionGuides = {
       '① 確認要求。\n② ユーザーが OK/キャンセル。\n③ 結果がアプリへ。',
     frontend: '実行中のモーダル確認。',
     notes: '多用すると迷惑になります。',
+  },
+  'ui:openUrl': {
+    what: 'Manifest openUrls で宣言したリンクのみ、ホスト経由で新しいタブを開けます（未宣言 URL は拒否）。',
+    chain:
+      '① openUrls と本権限を宣言しインストール承認。\n② Tapp.ui.openUrl({ id }) を呼ぶ（match 内の path/query 可）。\n③ ホストが allowlist を検証して開く。追加の確認ダイアログはなし。',
+    frontend: 'アプリ内の外部リンクボタン/カード。詳細ページの権限説明。',
+    notes:
+      '宣言済みリンクのみ。サンドボックスの window.open は無効のまま。インストール時にドメインを確認。',
   },
   'network:fetch': {
     what: '宣言的 HTTP と、遠隔の画像・音声などの読み込みができます。',
