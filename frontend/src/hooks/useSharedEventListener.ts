@@ -7,7 +7,14 @@
  * @version 1.2
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { rafThrottle } from '../utils/performance'
 import { VIEWPORT_MQ } from '../utils/viewportBands'
 
@@ -321,7 +328,53 @@ export function useDebouncedWindowSize(delay = 150): {
 }
 
 /**
+ * 每个 query 字符串全局只建一个 MediaQueryList + 一个原生 change 监听。
+ *
+ * 此前每个调用点各自 `matchMedia()` 并挂监听：首页十几个小组件
+ * （useWidgetSize → useViewportBand 两条 + useAnimationLevel 一条）
+ * 会堆出几十个 MQL 对象。distinct query 只有个位数，注册表常驻即可，
+ * 不做引用计数摘除——摘了就得在重订阅时补一次读值与通知，反而易错。
+ */
+interface SharedMediaQueryEntry {
+  mql: MediaQueryList
+  matches: boolean
+  listeners: Set<() => void>
+}
+
+const _mediaQueryRegistry = new Map<string, SharedMediaQueryEntry>()
+
+function getSharedMediaQuery(query: string): SharedMediaQueryEntry | null {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return null
+  }
+
+  let entry = _mediaQueryRegistry.get(query)
+  if (!entry) {
+    const mql = window.matchMedia(query)
+    const created: SharedMediaQueryEntry = {
+      mql,
+      matches: mql.matches,
+      listeners: new Set(),
+    }
+    mql.addEventListener('change', (event: MediaQueryListEvent) => {
+      created.matches = event.matches
+      for (const listener of created.listeners) listener()
+    })
+    _mediaQueryRegistry.set(query, created)
+    entry = created
+  }
+  return entry
+}
+
+/** SSR 快照必须是稳定引用，否则 useSyncExternalStore 会警告 */
+function mediaQueryServerSnapshot(): boolean {
+  return false
+}
+
+/**
  * 媒体查询 Hook - 响应式断点检测
+ *
+ * 同一 query 的所有调用点共享一个 MediaQueryList（见 {@link getSharedMediaQuery}）。
  *
  * @param query 媒体查询字符串
  * @returns 是否匹配
@@ -333,24 +386,24 @@ export function useDebouncedWindowSize(delay = 150): {
  * ```
  */
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(() => {
-    if (typeof window === 'undefined') return false
-    return window.matchMedia(query).matches
-  })
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      const entry = getSharedMediaQuery(query)
+      if (!entry) return () => {}
+      entry.listeners.add(onStoreChange)
+      return () => {
+        entry.listeners.delete(onStoreChange)
+      }
+    },
+    [query],
+  )
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const mediaQuery = window.matchMedia(query)
-    setMatches(mediaQuery.matches)
-
-    const handler = (e: MediaQueryListEvent) => setMatches(e.matches)
-    mediaQuery.addEventListener('change', handler)
-
-    return () => mediaQuery.removeEventListener('change', handler)
+  const getSnapshot = useCallback(() => {
+    const entry = getSharedMediaQuery(query)
+    return entry ? entry.matches : false
   }, [query])
 
-  return matches
+  return useSyncExternalStore(subscribe, getSnapshot, mediaQueryServerSnapshot)
 }
 
 /**

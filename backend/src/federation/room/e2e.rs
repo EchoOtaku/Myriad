@@ -22,7 +22,7 @@ pub(crate) async fn decrypt_room_payload_for_local_ws(
     encrypted_payload: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT actor_url FROM federation_room_members
                WHERE room_id = $1 AND is_local = true
@@ -63,7 +63,7 @@ pub(crate) async fn load_member_e2e_keys(
     actor_url: &str,
 ) -> Result<(String, String), String> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT custom_permissions FROM federation_room_members WHERE room_id = $1 AND actor_url = $2",
             [room_id.into(), actor_url.into()],
@@ -99,7 +99,7 @@ pub(crate) async fn collect_room_e2e_recipients(
     exclude_actor: &str,
 ) -> Result<Vec<(String, String)>, String> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1",
             [room_id.into()],
@@ -159,7 +159,7 @@ pub async fn initiate_e2e_key_exchange(
     // 对端按 K1 加密，本端只有 K2 —— 房间历史就此永久解不开。
     let txn = db.begin().await.map_err(db_err)?;
     let room_row = txn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1 FOR UPDATE",
             [room_id.into()],
@@ -174,7 +174,7 @@ pub async fn initiate_e2e_key_exchange(
         })?;
 
     let member_row = txn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT custom_permissions FROM federation_room_members
                WHERE room_id = $1 AND actor_url = $2
@@ -251,7 +251,7 @@ pub async fn initiate_e2e_key_exchange(
         "algorithm": crate::federation::e2e::E2E_ALGORITHM,
     });
 
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_room_members SET custom_permissions = $3 WHERE room_id = $1 AND actor_url = $2",
         [
@@ -290,7 +290,7 @@ pub async fn initiate_e2e_key_exchange(
         .map(|o| o.len())
         .unwrap_or(0);
 
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
         [room_id.into(), shared.into()],
@@ -401,7 +401,7 @@ pub async fn handle_key_exchange(
     // (transient). Permanent not_found only after room row is known-absent and we
     // already completed invite handling (see ensure below).
     let room_exists = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT 1 FROM federation_rooms WHERE room_id = $1",
             [room_id.into()],
@@ -423,7 +423,7 @@ pub async fn handle_key_exchange(
     // published_keys 会丢掉一方的公钥 —— 丢失方从此收不到能解开的消息。
     let txn = db.begin().await.map_err(|e| e.to_string())?;
     let room_row = txn
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT shared_data_config FROM federation_rooms WHERE room_id = $1 FOR UPDATE",
             [room_id.into()],
@@ -453,7 +453,7 @@ pub async fn handle_key_exchange(
         .map(|o| o.len())
         .unwrap_or(0);
 
-    txn.execute(Statement::from_sql_and_values(
+    txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         "UPDATE federation_rooms SET shared_data_config = $2, updated_at = NOW() WHERE room_id = $1",
         [room_id.into(), shared.into()],

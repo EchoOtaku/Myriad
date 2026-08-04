@@ -90,6 +90,38 @@ pub struct TappManifest {
     pub agent: Option<TappAgentManifest>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub assets: Option<Vec<String>>,
+    /// Allowlisted external links for host-mediated `Tapp.ui.openUrl`.
+    /// Runtime opens only by declared `id` (+ optional path/query under match rules).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_urls: Option<Vec<TappOpenUrlDef>>,
+}
+
+/// One install-time declared external navigation target.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "tapp-contract-schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TappOpenUrlDef {
+    /// Stable id used by `Tapp.ui.openUrl({ id })` (not a free-form URL).
+    pub id: String,
+    /// Base HTTPS URL (http only for localhost / 127.0.0.1).
+    pub url: String,
+    /// How runtime path/query may extend `url`. Defaults to exact.
+    #[serde(rename = "match", default)]
+    #[cfg_attr(
+        feature = "tapp-contract-schema",
+        schemars(extend("enum" = crate::contract_rules::OPEN_URL_MATCH_MODES))
+    )]
+    pub match_mode: TappOpenUrlMatch,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "tapp-contract-schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum TappOpenUrlMatch {
+    #[default]
+    Exact,
+    Prefix,
+    Origin,
 }
 
 /// 单个语言下的清单展示文案覆盖

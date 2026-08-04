@@ -310,8 +310,13 @@ pub(super) fn validate_sdk_namespaces(fields: &[(&str, &str)]) -> Result<(), Str
 /// treat the full list as granted host capabilities — only this allowlist may
 /// be exercised, and only when also declared. Keep in sync with frontend
 /// `PREVIEW_PERMISSIONS` in `frontend/src/tapp/utils/previewGrants.ts`.
-pub(super) const PREVIEW_PERMISSIONS: &[&str] =
-    &["storage", "ui:theme", "ui:confirm", "ui:fullscreen"];
+pub(super) const PREVIEW_PERMISSIONS: &[&str] = &[
+    "storage",
+    "ui:theme",
+    "ui:confirm",
+    "ui:fullscreen",
+    "ui:openUrl",
+];
 
 /// Intersect manifest declarations with temporary preview grants.
 ///

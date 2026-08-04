@@ -39,6 +39,7 @@ import {
   FaPalette,
   FaPaperPlane,
   FaPlay,
+  FaExternalLinkAlt,
   FaQuestionCircle,
   FaRobot,
   FaServer,
@@ -154,6 +155,11 @@ export const PERMISSION_CONFIG: Record<
     icon: FaQuestionCircle,
     labelKey: 'permConfirm',
     descriptionKey: 'permConfirmDesc',
+  },
+  'ui:openUrl': {
+    icon: FaExternalLinkAlt,
+    labelKey: 'permOpenUrl',
+    descriptionKey: 'permOpenUrlDesc',
   },
 
   // —— 网络 / 媒体 ——

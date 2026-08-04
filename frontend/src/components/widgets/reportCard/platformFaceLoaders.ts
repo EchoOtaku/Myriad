@@ -13,6 +13,8 @@ export type PlatformFaceComponent = ComponentType<{
   showOverview: boolean
   onContentChange: (content: any) => void
   allowLoop?: boolean
+  /** 库条带预览态：face 须据此关掉在线状态等真实网络轮询 */
+  isPreview?: boolean
 }>
 
 const registry = new Map<string, PlatformFaceComponent>()

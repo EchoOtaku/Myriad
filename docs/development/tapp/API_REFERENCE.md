@@ -185,7 +185,7 @@ const allSettings = await Tapp.settings.getAll();
 
 ## UI API
 
-**权限**: `ui:notification`, `ui:theme`, `ui:confirm`, `ui:fullscreen`
+**权限**: `ui:notification`, `ui:theme`, `ui:confirm`, `ui:fullscreen`, `ui:openUrl`
 
 ### 基础 UI
 
@@ -205,6 +205,41 @@ await Tapp.ui.showNotification({
 const confirmed = await Tapp.ui.confirm("确定要执行吗？");
 // 返回: true（确定）或 false（取消）
 ```
+
+### 打开声明链接（openUrl）
+
+**权限**: `ui:openUrl`  
+**Manifest**: 非空 `openUrls`（见 [MANIFEST · openUrls](MANIFEST.md#外链-allowlistopenurls)）  
+**沙箱**: Page / Widget；**headless 不可用**
+
+沙箱禁止 `window.open` 与顶层导航。外链必须由宿主打开，且**只能**命中安装时声明的
+allowlist。调用方**不得**传入完整 URL。
+
+```javascript
+// 查看本 Tapp 已声明的目标
+const links = await Tapp.ui.listOpenUrls();
+// [{ id, url, match: 'exact'|'prefix'|'origin' }, ...]
+
+// 按 id 打开（exact：不可带 path/query）
+await Tapp.ui.openUrl({ id: "status" });
+// 简写
+await Tapp.ui.openUrl("status");
+
+// prefix / origin：可在声明范围内扩展 path 与 query
+await Tapp.ui.openUrl({
+  id: "docs",
+  path: "widget",
+  query: { from: "tapp" },
+});
+// → 例如 https://docs.example.com/guide/widget?from=tapp
+```
+
+安全行为：
+
+- 未声明的 `id`、逃出 `prefix`/`origin`、绝对 URL 形态的 `path`、危险协议 → **拒绝**
+- 声明 URL 仅 **HTTPS**（loopback 可 `http`）；禁止用户名密码与 `#fragment`
+- 宿主 `window.open(url, '_blank', 'noopener,noreferrer')`，带简单速率限制
+- 与 `network:fetch` 无关：openUrl **不会**代发 HTTP 请求，只打开浏览器标签
 
 ### 主题
 

@@ -229,27 +229,45 @@ export const jaJP: TranslationKeys = {
     welcomeEyebrow: '初回セットアップ',
     welcomeTitle: 'Myriad へようこそ',
     welcomeDesc:
-      'さまざまなプラットフォームに散らばるデータを、あなたのためのひとつの場所に集約します。PostgreSQL の接続と管理者作成だけで始められます。',
-    welcomeDatabase: 'PostgreSQL データベースに接続',
-    welcomeAdmin: '安全な管理者アカウントを作成',
+      'さまざまなプラットフォームに散らばるデータを、あなたのためのひとつの場所に集約します。PostgreSQL の接続と所有者アカウント作成だけで始められます。',
+    welcomeDatabase: 'PostgreSQL に接続',
+    welcomeAdmin: '安全な所有者アカウントを作成',
+    welcomeSite: 'サイトに名前をつける',
     welcomeReady: '設定完了後すぐに利用開始',
     welcomeFootnote: 'セットアップは通常、数分で完了します',
     getStarted: 'セットアップを開始',
     welcomeStep: 'ようこそ',
     welcomeStepShort: '開始',
+    databaseStepShort: 'データベース',
+    adminStepShort: '所有者',
+    siteStepShort: 'サイト',
+    siteInfoTitle: 'サイトに名前をつける',
+    siteInfoDesc:
+      'いずれも後から設定でいつでも変更できます。今入れておくと、最初に開いたときからあなたのサイトになります。',
+    siteTitleHint: 'ブラウザのタブと検索結果に表示されます',
+    saveSiteInfo: '保存して完了',
+    savingSiteInfo: '保存中...',
+    siteInfoFailed: 'サイト情報の保存に失敗しました',
+    autoLoginFailed:
+      '所有者アカウントは作成できましたが、自動ログインに失敗しました。手動でログインしてください。',
+    enterSite: 'サイトへ',
+    stepOf: 'ステップ {current} / {total}',
+    backTo: '{step} に戻る',
     checkingStatus: 'システム状態を確認しています...',
     databaseConfig: 'データベース設定',
     databaseConfigDesc:
       'PostgreSQLデータベース接続を設定し、マイグレーションを実行',
-    adminAccount: '管理者アカウント',
-    adminAccountDesc: 'システム管理者アカウントを作成',
+    adminAccount: '所有者アカウント',
+    adminAccountDesc: 'システム所有者アカウントを作成',
     connectionFailed: '接続失敗',
     connectionFailedDesc:
       'バックエンドサービスに接続できません。サーバーが起動していることを確認してください',
     backendDisconnected: 'バックエンドサービス接続中断',
     reconnecting: '再接続を試行中...',
     retry: '再試行',
-    complete: 'システム設定完了！',
+    doneGreeting: 'こんにちは、{name} さん',
+    doneReadyTitle: '始める準備はできましたか？',
+    doneEyebrow: '設定完了',
     completeDesc: 'Myriadシステムの準備が整いました。ご利用いただけます。',
     goToLogin: 'ログインへ',
     host: 'ホストアドレス',
@@ -266,7 +284,7 @@ export const jaJP: TranslationKeys = {
     initDatabaseDesc:
       'データベース接続成功。テーブル構造がまだ作成されていません。まずデータベースを初期化してください。',
     initializing: '初期化中...',
-    createAdmin: '管理者アカウント作成',
+    createAdmin: '所有者アカウント作成',
     creating: '作成中...',
     adminUsernameHint: 'ユーザー名：3〜20文字、英数字とアンダースコアのみ',
     adminPasswordHint: 'パスワード：8文字以上で、英字と数字を含める',
@@ -300,11 +318,11 @@ export const jaJP: TranslationKeys = {
     passwordLengthError: 'パスワードは8文字以上必要です',
     passwordComplexityError:
       'パスワードは8文字以上で、英字と数字を含める必要があります',
-    adminCreated: '管理者アカウント作成成功！',
-    createAdminFailed: '管理者アカウント作成失敗',
+    adminCreated: '所有者アカウントを作成しました',
+    createAdminFailed: '所有者アカウント作成失敗',
     createFailed: '作成失敗',
     adminAccountFullDesc:
-      'システム完全管理権限を持つローカル管理者アカウントを作成',
+      'システム完全管理権限を持つローカル所有者アカウントを作成',
     saveHint:
       'ヒント：保存後、完全なルートテーブルを読み込むためバックエンドが再起動します',
     atLeast8Chars: '8文字以上、英字と数字を含める',
@@ -426,7 +444,7 @@ export const jaJP: TranslationKeys = {
         'インポートすると現在の訪問統計（ページ / イベント / 参照元 / 訪問者ハッシュ）がすべて【置き換え】られます。このインスタンスで署名されたバックアップのみ受け入れます。続行しますか？',
       aiUsageTitle: 'AI 使用統計',
       aiUsageDesc:
-        'サイト全体の AI 呼び出し（管理者・オーナーを含む）をユーザー・モデル・出典・日付で集計。Tapp ランタイム、定期タスク、Arael、レポート生成を含む。ユーザー／モデルで絞り込み可。棒＝回数、線＝トークン。',
+        'サイト全体の AI 呼び出し（管理者・オーナーを含む）をユーザー・モデル・出典・日付で集計。Tapp ランタイム、定期タスク、Arael、レポート生成を含む。ユーザー／モデルで絞り込み可。棒＝回数（左軸）、線＝トークン（右軸・独立スケール）。',
       aiUsageLoadFailed: 'AI 使用統計の読み込みに失敗しました',
       aiUsageEmpty: '選択期間に AI 呼び出しはありません',
       aiUsageEmptyUsers: '選択期間にユーザー別の使用量はありません',
@@ -1236,7 +1254,8 @@ export const jaJP: TranslationKeys = {
     visibilitySearchOnlyHintBefore: '',
     visibilitySearchOnlyHintAfter: ' など検索エンジンは許可、AI クローラは遮断',
     visibilityAiCitation: 'AI 引用を許可',
-    visibilityAiCitationHint: 'AI 検索の引用を許可、学習ボットを遮断、/llms.txt を提供',
+    visibilityAiCitationHint:
+      'AI 検索の引用を許可、学習ボットを遮断、/llms.txt を提供',
     visibilityAiCitationHintBefore: 'AI 検索の引用を許可、学習ボットを遮断、',
     visibilityAiCitationHintAfter: ' を提供',
     visibilityAiFull: '全面開放',
@@ -1250,15 +1269,18 @@ export const jaJP: TranslationKeys = {
     fieldSiteAiGenerateDesc:
       'タイトルとヒントから説明・キーワード・AI 紹介を生成。AI 設定のモデルを使用（未設定時はテンプレート）。',
     fieldSiteAiGenerateButton: '文案を生成',
-    fieldSiteAiGenerateHint: '下の欄に入ります。確認してから設定を保存してください。',
+    fieldSiteAiGenerateHint:
+      '下の欄に入ります。確認してから設定を保存してください。',
     fieldSiteAiGenerateHintInput: '補足（任意）',
-    fieldSiteAiGenerateHintPlaceholder: '例：インディー開発者、技術ブログと OSS',
+    fieldSiteAiGenerateHintPlaceholder:
+      '例：インディー開発者、技術ブログと OSS',
     siteAiGenerateSuccess: '生成しました。確認して保存',
     siteAiGenerateFallback: 'AI 利用不可のためテンプレートで生成しました',
     siteAiGenerateError: '生成に失敗しました。後でもう一度',
     siteAiGenerateNeedTitle: '先にサイトタイトルを入力',
     siteAiGenerateTag: 'AI 生成',
-    siteAiGenerateTagHint: 'この項目を AI 生成。短い補足を書けます（先にタイトルが必要）',
+    siteAiGenerateTagHint:
+      'この項目を AI 生成。短い補足を書けます（先にタイトルが必要）',
     siteAiGenerating: '生成中…',
     siteAiGenerateDialogTitle: 'AI で文案を生成',
     siteAiGenerateDialogDesc:
@@ -2523,7 +2545,8 @@ export const jaJP: TranslationKeys = {
     oauthNotConfigured: 'このログイン方法は無効になっています',
     profileDisplaySourcesTitle: '表示の取得元',
     profileSourceTitle: 'アバターの取得元',
-    profileSourceHint: 'アバターのみに影響します。表示名と自己紹介は下で別途選択してください。',
+    profileSourceHint:
+      'アバターのみに影響します。表示名と自己紹介は下で別途選択してください。',
     profileSourceEmpty: '選択できる取得元がありません。',
     profileSourceCurrent: '使用中',
     profileSourceAvatarHint: '変更',
@@ -2533,7 +2556,8 @@ export const jaJP: TranslationKeys = {
       'プラットフォームのプロフィールを優先し、なければアカウントのアバターを使用',
     profileSourceAccount: 'アカウントのアバター',
     profileTextSourceTitle: '表示名と自己紹介の取得元',
-    profileTextSourceHint: '表示名と自己紹介のみに影響し、アバターの取得元とは独立しています。',
+    profileTextSourceHint:
+      '表示名と自己紹介のみに影響し、アバターの取得元とは独立しています。',
     profileTextSourceEmpty: '選択できる表示名/自己紹介の取得元がありません。',
     profileTextSourceFailed: '表示名と自己紹介の取得元の切り替えに失敗しました',
     profileTextSourceAuto: '自動',
@@ -3159,6 +3183,7 @@ export const jaJP: TranslationKeys = {
     permFullscreen: 'フルスクリーンモード',
     permReadTheme: 'テーマ読取',
     permConfirm: '確認ダイアログ',
+    permOpenUrl: '宣言リンクを開く',
     permNetworkFetch: 'ネットワークリクエスト',
     permMediaControl: 'メディア制御',
     permMediaRead: 'メディア状態読取',
@@ -3202,6 +3227,8 @@ export const jaJP: TranslationKeys = {
     permFullscreenDesc: 'フルスクリーン表示のリクエストを許可',
     permReadThemeDesc: '現在のテーマ設定の読取を許可',
     permConfirmDesc: '確認ダイアログの表示を許可',
+    permOpenUrlDesc:
+      'Manifest openUrls で宣言したリンクのみホスト経由で開く（未宣言 URL は拒否）',
     permNetworkFetchDesc:
       '宣言型 HTTP API、およびリモート画像/メディア（カバー CDN 等）の読み込みを許可',
     permMediaControlDesc:
@@ -3403,7 +3430,7 @@ export const jaJP: TranslationKeys = {
     playgroundExampleLabelMarkdown: 'Markdown',
     playgroundExamplesLabel: '例を試す',
     playgroundPreviewCapabilities:
-      'プレビューでは storage・settings・ui:theme・ui:confirm・全画面などが使えます。その他の権限はインストール後に利用できます。',
+      'プレビューでは storage・settings・ui:theme・ui:confirm・ui:openUrl・全画面などが使えます。その他の権限はインストール後に利用できます。',
     playgroundPreviewCapabilitiesDismiss: '了解',
     playgroundPruneNotice:
       'ブラウザの保存容量がいっぱいだったため、古い履歴を整理しました。',

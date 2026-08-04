@@ -1,5 +1,10 @@
 import type { PerformanceProfile } from './usePerformanceProfile'
-import { useContext, useEffect, useMemo, useState } from 'react'
+import {
+  useContext,
+  useEffect,
+  useMemo,
+  useSyncExternalStore,
+} from 'react'
 import { AnimationPreferenceContext } from '../contexts/AnimationPreferenceContext'
 import {
   getStoredAutoWantHigh,
@@ -201,6 +206,98 @@ if (typeof document !== 'undefined') {
   }
 }
 
+/* ============================================================
+   全局副作用去重
+   ------------------------------------------------------------
+   resolveAnimationConfig 返回的是三个模块常量之一，所有实例本来就
+   拿到同一个对象；但下面三件事都是**全局**副作用，此前每个消费者
+   （首页十几个小组件都经此 hook）挂载时各跑一遍：
+     · 写 <html data-perf-mode>        → N 次全文档样式失效
+     · 写 currentAnimationConfig      → N 次同值赋值
+     · configureAnimationCoordinator  → N 次同参重配全局协调器
+     · startAutoFrameAdapt 的 demote 监听 → N 份监听器
+   这里用模块级「上次已应用」闸门收敛成一次。
+   ============================================================ */
+
+/** demote 后 +1；订阅者据此重读 localStorage 的 auto 高低档 */
+let _autoEpoch = 0
+const _autoEpochListeners = new Set<() => void>()
+let _autoAdaptStarted = false
+
+function getAutoEpochSnapshot(): number {
+  return _autoEpoch
+}
+
+function subscribeAutoEpoch(onStoreChange: () => void): () => void {
+  _autoEpochListeners.add(onStoreChange)
+
+  // 全局只注册一份 demote 监听（探测本身另有 probeStarted 闸）
+  if (!_autoAdaptStarted) {
+    _autoAdaptStarted = true
+    startAutoFrameAdapt({
+      enabled: true,
+      onDemote: () => {
+        _autoEpoch += 1
+        for (const listener of _autoEpochListeners) listener()
+      },
+    })
+  }
+
+  return () => {
+    _autoEpochListeners.delete(onStoreChange)
+  }
+}
+
+/** 已应用到全局的档位/形态，避免同值重复写 DOM 与重配协调器 */
+let _appliedCoordinatorLevel: AnimationLevel | null = null
+let _appliedCoordinatorIsMobile: boolean | null = null
+
+function applyAnimationConfigGlobals(
+  config: AnimationConfig,
+  isMobile: boolean,
+): void {
+  if (currentAnimationConfig !== config) {
+    currentAnimationConfig = config
+    syncPerfModeToDocument(config.level)
+  }
+
+  if (
+    _appliedCoordinatorLevel === config.level &&
+    _appliedCoordinatorIsMobile === isMobile
+  ) {
+    return
+  }
+  _appliedCoordinatorLevel = config.level
+  _appliedCoordinatorIsMobile = isMobile
+
+  switch (config.level) {
+    case 'exlight':
+      configureAnimationCoordinator({
+        baseConcurrent: 4,
+        burstConcurrent: 8,
+        burstDuration: 3000,
+        maxLoopSlots: 2,
+      })
+      break
+    case 'light':
+      configureAnimationCoordinator({
+        baseConcurrent: isMobile ? 6 : 10,
+        burstConcurrent: isMobile ? 16 : 24,
+        burstDuration: 6000,
+        maxLoopSlots: isMobile ? 4 : 6,
+      })
+      break
+    case 'standard':
+      configureAnimationCoordinator({
+        baseConcurrent: isMobile ? 12 : 20,
+        burstConcurrent: isMobile ? 32 : 64,
+        burstDuration: 10000,
+        maxLoopSlots: isMobile ? 8 : 16,
+      })
+      break
+  }
+}
+
 export function useAnimationLevel(): AnimationConfig {
   const perf = usePerformanceProfile()
   const prefContext = useContext(AnimationPreferenceContext)
@@ -208,9 +305,18 @@ export function useAnimationLevel(): AnimationConfig {
     readStoredUserPreference() ??
     'auto') as AnimationUserPreference
 
-  // localStorage 为 auto 高/低真源；epoch 在 demote 后 +1 触发重读
-  const [autoEpoch, setAutoEpoch] = useState(0)
+  // localStorage 为 auto 高/低真源；epoch 在 demote 后 +1 触发重读。
+  // 手动档不订阅（也就不会启动采样探测），与此前 `pref !== 'auto'` 早退等价。
+  const isAuto = pref === 'auto' && !perf.reduceMotion
+  const autoEpoch = useSyncExternalStore(
+    isAuto ? subscribeAutoEpoch : noopSubscribe,
+    getAutoEpochSnapshot,
+    getAutoEpochSnapshot,
+  )
+
   const autoWantHigh = useMemo(() => {
+    // autoEpoch 在 demote 后 +1，仅用于触发重读 localStorage，不参与计算
+    void autoEpoch
     if (pref !== 'auto' && pref != null) return true
     return getStoredAutoWantHigh()
   }, [pref, autoEpoch])
@@ -220,55 +326,13 @@ export function useAnimationLevel(): AnimationConfig {
     [perf, pref, autoWantHigh],
   )
 
-  // 仅 auto：空闲后全局只采一次；手动档不跑
   useEffect(() => {
-    if (pref !== 'auto') return
-    if (perf.reduceMotion) return
-    if (!autoWantHigh) return
-
-    return startAutoFrameAdapt({
-      enabled: true,
-      onDemote: () => {
-        setAutoEpoch((n) => n + 1)
-      },
-    })
-  }, [pref, perf.reduceMotion, autoWantHigh])
-
-  useEffect(() => {
-    currentAnimationConfig = config
-    syncPerfModeToDocument(config.level)
-  }, [config])
-
-  useEffect(() => {
-    const isMobile = perf.isMobile
-
-    switch (config.level) {
-      case 'exlight':
-        configureAnimationCoordinator({
-          baseConcurrent: 4,
-          burstConcurrent: 8,
-          burstDuration: 3000,
-          maxLoopSlots: 2,
-        })
-        break
-      case 'light':
-        configureAnimationCoordinator({
-          baseConcurrent: isMobile ? 6 : 10,
-          burstConcurrent: isMobile ? 16 : 24,
-          burstDuration: 6000,
-          maxLoopSlots: isMobile ? 4 : 6,
-        })
-        break
-      case 'standard':
-        configureAnimationCoordinator({
-          baseConcurrent: isMobile ? 12 : 20,
-          burstConcurrent: isMobile ? 32 : 64,
-          burstDuration: 10000,
-          maxLoopSlots: isMobile ? 8 : 16,
-        })
-        break
-    }
-  }, [config.level, perf.isMobile])
+    applyAnimationConfigGlobals(config, perf.isMobile)
+  }, [config, perf.isMobile])
 
   return config
+}
+
+function noopSubscribe(): () => void {
+  return () => {}
 }

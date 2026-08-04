@@ -211,11 +211,32 @@ export interface TranslationKeys {
     welcomeDesc: string
     welcomeDatabase: string
     welcomeAdmin: string
+    welcomeSite: string
     welcomeReady: string
     welcomeFootnote: string
     getStarted: string
     welcomeStep: string
     welcomeStepShort: string
+    /** 顶栏右侧步骤名：数据库 */
+    databaseStepShort: string
+    /** 顶栏右侧步骤名：所有者 */
+    adminStepShort: string
+    /** 顶栏右侧步骤名：站点 */
+    siteStepShort: string
+    siteInfoTitle: string
+    siteInfoDesc: string
+    siteTitleHint: string
+    saveSiteInfo: string
+    savingSiteInfo: string
+    siteInfoFailed: string
+    /** 建号后自动登录失败时的提示 */
+    autoLoginFailed: string
+    /** 已登录时最后一屏的动作 */
+    enterSite: string
+    /** 读屏用的完整位置文案，占位符 {current} / {total} */
+    stepOf: string
+    /** 返回按钮的完整文案，占位符 {step} */
+    backTo: string
     checkingStatus: string
     databaseConfig: string
     databaseConfigDesc: string
@@ -226,7 +247,11 @@ export interface TranslationKeys {
     backendDisconnected: string
     reconnecting: string
     retry: string
-    complete: string
+    /** 完成屏问候语，占位符 {name}；没有用户名时只显示 doneReadyTitle 一行 */
+    doneGreeting: string
+    doneReadyTitle: string
+    /** 完成屏左上角占位标签（配置已完成） */
+    doneEyebrow: string
     completeDesc: string
     goToLogin: string
     host: string
@@ -2838,6 +2863,7 @@ export interface TranslationKeys {
     permFullscreen: string
     permReadTheme: string
     permConfirm: string
+    permOpenUrl: string
     permNetworkFetch: string
     permMediaControl: string
     permMediaRead: string
@@ -2879,6 +2905,7 @@ export interface TranslationKeys {
     permFullscreenDesc: string
     permReadThemeDesc: string
     permConfirmDesc: string
+    permOpenUrlDesc: string
     permNetworkFetchDesc: string
     permMediaControlDesc: string
     permMediaReadDesc: string

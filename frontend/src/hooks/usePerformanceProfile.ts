@@ -1,5 +1,5 @@
 import type { HardwareSignals, OsKind } from '../utils/deviceHardwareTier'
-import { useEffect, useRef, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import {
   collectHardwareSignals,
   detectAppleSiliconAsync,
@@ -121,75 +121,105 @@ function readViewportFlags() {
   return { isMobile, reduceMotion }
 }
 
+/* ============================================================
+   共享 store
+   ------------------------------------------------------------
+   此前每个调用点各持一份 useState + 一个 prefers-reduced-motion
+   MediaQueryList + 一次 syncHardwareToDocument()。首页十几个小组件
+   （每个都经 useAnimationLevel 走到这里）会堆出十几个 MQL 监听、
+   十几次根元素 dataset 写入（每次让整份文档样式失效）。
+
+   探测结果本来就是模块级单例（cachedProfile），这里只是把订阅一并收敛：
+   一次探测、一个监听、一次 DOM 同步、一组订阅者。
+   ============================================================ */
+
+const _profileListeners = new Set<() => void>()
+let _profileBootstrapped = false
+
+/** 只在真正变化时换引用——getSnapshot 必须返回稳定引用 */
+function sameProfile(a: PerformanceProfile, b: PerformanceProfile): boolean {
+  return (
+    a.isMobile === b.isMobile &&
+    a.reduceMotion === b.reduceMotion &&
+    a.highHardware === b.highHardware &&
+    a.os === b.os &&
+    a.hardwareConcurrency === b.hardwareConcurrency &&
+    a.deviceMemory === b.deviceMemory
+  )
+}
+
+function publishProfile(next: PerformanceProfile): void {
+  const prev = cachedProfile
+  hasDetected = true
+  if (prev && sameProfile(prev, next)) {
+    // 保住旧引用，订阅者不必重渲染
+    cachedProfile = prev
+    return
+  }
+  cachedProfile = next
+  syncHardwareToDocument(next)
+  for (const listener of _profileListeners) listener()
+}
+
+/** 不经缓存地重新读一次硬件与视口标志 */
+function readProfileFresh(): PerformanceProfile {
+  const { isMobile, reduceMotion } = readViewportFlags()
+  return buildProfile(collectHardwareSignals(), reduceMotion, isMobile)
+}
+
+/** 全进程一次：写 DOM 标志、挂 reduced-motion 监听、补 macOS 芯片探测 */
+function bootstrapProfileStore(): void {
+  if (_profileBootstrapped || typeof window === 'undefined') return
+  _profileBootstrapped = true
+
+  const detected = detectPerformanceProfile()
+  syncHardwareToDocument(detected)
+
+  window
+    .matchMedia('(prefers-reduced-motion: reduce)')
+    .addEventListener('change', () => {
+      publishProfile(readProfileFresh())
+    })
+
+  // macOS：同步可能认不出芯片（保守 low）。async architecture / 单次 WebGL 后再升/降。
+  // 用 highHardware 是否变化判断，勿用 appleSilicon ===（async 已写缓存时恒等）。
+  if (detected.os === 'macos') {
+    void detectAppleSiliconAsync().then((appleSilicon) => {
+      if (appleSilicon == null) return
+      const signals = collectHardwareSignals()
+      signals.appleSilicon = appleSilicon
+      const { isMobile, reduceMotion } = readViewportFlags()
+      publishProfile(buildProfile(signals, reduceMotion, isMobile))
+    })
+  }
+}
+
+function subscribeProfile(onStoreChange: () => void): () => void {
+  bootstrapProfileStore()
+  _profileListeners.add(onStoreChange)
+  return () => {
+    _profileListeners.delete(onStoreChange)
+  }
+}
+
+/** 首帧用同步探测，避免 DEFAULT highHardware:true 闪一下再降档 */
+function profileSnapshot(): PerformanceProfile {
+  if (typeof window === 'undefined') return DEFAULT_PROFILE
+  try {
+    return detectPerformanceProfile()
+  } catch {
+    return DEFAULT_PROFILE
+  }
+}
+
+function profileServerSnapshot(): PerformanceProfile {
+  return DEFAULT_PROFILE
+}
+
 export function usePerformanceProfile(): PerformanceProfile {
-  // 首帧用同步探测，避免 DEFAULT highHardware:true 闪一下再降档
-  const [profile, setProfile] = useState<PerformanceProfile>(() => {
-    if (typeof window === 'undefined') return DEFAULT_PROFILE
-    try {
-      return detectPerformanceProfile()
-    } catch {
-      return DEFAULT_PROFILE
-    }
-  })
-  const hasInitialized = useRef(false)
-
-  useEffect(() => {
-    if (hasInitialized.current) return
-    hasInitialized.current = true
-
-    let cancelled = false
-    const apply = (next: PerformanceProfile) => {
-      if (cancelled) return
-      resetPerformanceProfileCache()
-      cachedProfile = next
-      hasDetected = true
-      syncHardwareToDocument(next)
-      setProfile(next)
-    }
-
-    const detected = detectPerformanceProfile()
-    syncHardwareToDocument(detected)
-    setProfile(detected)
-
-    // macOS：同步可能认不出芯片（保守 low）。async architecture / 单次 WebGL 后再升/降。
-    // 用 highHardware 是否变化判断，勿用 appleSilicon ===（async 已写缓存时恒等）。
-    if (detected.os === 'macos') {
-      void detectAppleSiliconAsync().then((appleSilicon) => {
-        if (cancelled || appleSilicon == null) return
-        const signals = collectHardwareSignals()
-        signals.appleSilicon = appleSilicon
-        const { isMobile, reduceMotion } = readViewportFlags()
-        const next = buildProfile(signals, reduceMotion, isMobile)
-        if (
-          cachedProfile &&
-          cachedProfile.highHardware === next.highHardware &&
-          cachedProfile.os === next.os
-        ) {
-          return
-        }
-        apply(next)
-      })
-    }
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
-    const handler = () => {
-      resetPerformanceProfileCache()
-      const next = detectPerformanceProfile()
-      syncHardwareToDocument(next)
-      setProfile(next)
-    }
-
-    mediaQuery.addEventListener('change', handler)
-    return () => mediaQuery.removeEventListener('change', handler)
-  }, [])
-
-  return profile
+  return useSyncExternalStore(
+    subscribeProfile,
+    profileSnapshot,
+    profileServerSnapshot,
+  )
 }

@@ -1,20 +1,44 @@
 import {
-  FaCheck,
-  FaDatabase,
-  FaExclamationTriangle,
-  FaUser,
+  LuAlertTriangle,
   LuArrowRight,
-  LuClipboardList,
+  LuCheck,
   LuDatabase,
-  LuInfo,
+  LuGlobe,
+  LuRotateCw,
   LuServer,
   LuShieldCheck,
   LuSparkles,
-  LuWrench,
 } from '@lib/icons'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 import { API_URL } from '../config'
 import { useI18n } from '../contexts/I18nContext'
+import { assertConfigWriteSuccess } from '../lib/api'
+import { parseAuthMeResponse } from '../utils/authMe'
+import { getCSRFHeaderName, getCSRFToken } from '../utils/csrf'
+import { SiteUrlField } from './config/SiteUrlField'
+import { InputItem, SegmentedControl, SwitchItem } from './settings'
+import { SettingItemWrapper } from './settings/items/SettingItemWrapper'
+import {
+  ActionBar,
+  Aurora,
+  BackButton,
+  BrandMark,
+  BrandTag,
+  Field,
+  Note,
+  PrimaryButton,
+  StepBody,
+  StepHero,
+  StepTopBar,
+  TextInput,
+  useTopBarDense,
+} from './setup/SetupChrome'
 import { Spinner } from './Spinner'
 import './SetupWizard.css'
 
@@ -29,6 +53,53 @@ type SetupNotice = {
   tone: 'info' | 'success' | 'error'
   message: string
 } | null
+
+/**
+ * 欢迎 → 数据库（连接 / 建表）→ 管理员 → 站点信息；
+ * 终态（读取中 / 连不上 / 已完成）不占步骤位，顶栏右侧那行就整条不画。
+ */
+type Stage =
+  | 'blank'
+  | 'loading'
+  | 'error'
+  | 'welcome'
+  | 'database'
+  | 'migrate'
+  | 'admin'
+  | 'site'
+  | 'done'
+
+const TOTAL_STEPS = 4
+
+/** 完成页问候用：跨站点信息步 / 刷新仍能叫出刚建的管理员名 */
+const SETUP_ADMIN_NAME_KEY = 'myriad-setup-admin-name'
+
+/**
+ * 步骤时序秩：用于推算进场方向。
+ * loading / error 等终态用负值，走淡入；同一步内细分（database→migrate）仍算前进。
+ */
+const STAGE_RANK: Record<Stage, number> = {
+  blank: -2,
+  loading: -1,
+  error: -1,
+  welcome: 0,
+  database: 1,
+  migrate: 2,
+  admin: 3,
+  site: 4,
+  done: 5,
+}
+
+type EnterDir = 'forward' | 'back' | 'fade'
+
+function enterDirBetween(from: Stage, to: Stage): EnterDir {
+  const a = STAGE_RANK[from]
+  const b = STAGE_RANK[to]
+  if (a < 0 || b < 0) return 'fade'
+  if (b > a) return 'forward'
+  if (b < a) return 'back'
+  return 'fade'
+}
 
 async function getResponseError(response: Response, fallback: string) {
   try {
@@ -49,6 +120,12 @@ const SetupWizard: React.FC = () => {
     return sessionStorage.getItem('myriad-setup-started') === 'true'
   })
   const pollTimerRef = useRef<number | null>(null)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  /** 当前步骤的滚动容器：普通步是 div，带表单的步骤是 form —— 故走回调 ref */
+  const paneRef = useRef<HTMLElement | null>(null)
+  const bindPane = useCallback((node: HTMLElement | null) => {
+    paneRef.current = node
+  }, [])
 
   // 数据库配置
   const [dbConfig, setDbConfig] = useState({
@@ -72,6 +149,45 @@ const SetupWizard: React.FC = () => {
   })
   const [creatingAdmin, setCreatingAdmin] = useState(false)
   const [adminCreated, setAdminCreated] = useState(false)
+
+  // 站点信息（第 4 步，全部选填，都有能用的默认值）
+  const [siteForm, setSiteForm] = useState({
+    title: '',
+    description: '',
+    favicon: '',
+    /** private / search_only / ai_citation / ai_full */
+    visibility: 'ai_full',
+    analytics: true,
+  })
+  /**
+   * 站点对外地址：交给 SiteUrlField 自己管——它自带点击编辑 / 二次确认 /
+   * 独立提交（/admin/site/domain，同时改 CORS 与 .env），不跟其它字段一起整份回写。
+   * 这里只存「当前显示值」，成功后由 onApplied 回填。
+   */
+  const [baseUrlValue, setBaseUrlValue] = useState('')
+  const [savingSite, setSavingSite] = useState(false)
+  /**
+   * 刚建完管理员：这一刻服务端的 is_setup_required 已经翻成 false，
+   * 状态机会直接冲到「完成」。用这个本地标记压住，把第 4 步走完再放行。
+   */
+  const [atSiteStep, setAtSiteStep] = useState(false)
+  /** 建号后自动登录成功——最后一屏就不用再叫人去登录了 */
+  const [signedIn, setSignedIn] = useState(false)
+  /**
+   * 完成页「你好，xxx」用的名字。
+   * 不能只靠 adminForm：走完站点信息步、刷新、或直接打开已完成态时，
+   * 表单是空的，问候会被整段跳过。创建管理员时写入 session，done 时再兜底拉 /me。
+   */
+  const [doneUserName, setDoneUserName] = useState(
+    () => sessionStorage.getItem(SETUP_ADMIN_NAME_KEY) || '',
+  )
+
+  const rememberAdminName = useCallback((name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    sessionStorage.setItem(SETUP_ADMIN_NAME_KEY, trimmed)
+    setDoneUserName(trimmed)
+  }, [])
 
   const checkSetupStatus = useCallback(async () => {
     try {
@@ -151,6 +267,19 @@ const SetupWizard: React.FC = () => {
   const enterSetup = () => {
     sessionStorage.setItem('myriad-setup-started', 'true')
     setHasEnteredSetup(true)
+  }
+
+  /**
+   * 顶栏左上角的返回：退回欢迎页，不动任何已填内容。
+   * 数据库 / 建表 / 管理员 / 站点四步共用同一个目的地——这个向导不记「上一步」，
+   * 只有「回到最开始」，所以左上角的返回箭头旁始终挂着「欢迎」。
+   * 顺手清掉 atSiteStep：不然从第 4 步按返回，本地标记还压着，画面纹丝不动。
+   */
+  const leaveSetup = () => {
+    sessionStorage.removeItem('myriad-setup-started')
+    setNotice(null)
+    setHasEnteredSetup(false)
+    setAtSiteStep(false)
   }
 
   const handleSaveDbConfig = async () => {
@@ -320,6 +449,132 @@ const SetupWizard: React.FC = () => {
     }
   }
 
+  /**
+   * 用刚建好的管理员换一个会话（HttpOnly Cookie）。
+   * /api/auth/login 在 CSRF 豁免名单里，这里不需要带 token。
+   */
+  const signInAsNewAdmin = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          username: adminForm.username,
+          password: adminForm.password,
+        }),
+      })
+      return response.ok
+    } catch {
+      return false
+    }
+  }
+
+  /** 把当前生效的站点信息（可能来自 .env）读进第 4 步的表单，别让人对着空框猜。 */
+  const loadSiteInfoDraft = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/config`, {
+        credentials: 'include',
+      })
+      if (!response.ok) return
+      const config = await response.json()
+      const fields = config?.ui_config?.config_fields
+      if (!Array.isArray(fields)) return
+      const pick = (key: string) =>
+        fields.find((field: any) => field?.key === key)?.value || ''
+      // 没配过就先拿当前访问地址垫上，绝大多数情况这就是对的
+      setBaseUrlValue(pick('base_url') || window.location.origin)
+      setSiteForm({
+        title: pick('site_title'),
+        description: pick('site_description'),
+        favicon: pick('site_favicon'),
+        visibility: pick('site_visibility_policy') || 'ai_full',
+        analytics: pick('analytics_enabled') !== 'false',
+      })
+    } catch {
+      // 读不到就留空：这一步全是选填，填不填都能走完
+    }
+  }
+
+  /** 收尾：放开第 4 步的占位，让状态机按服务端结果落到完成页。 */
+  const finishSetup = async () => {
+    setSavingSite(false)
+    setAtSiteStep(false)
+    setNotice(null)
+    sessionStorage.removeItem('myriad-setup-started')
+    await checkSetupStatus()
+  }
+
+  const handleSaveSiteInfo = async () => {
+    setNotice(null)
+    setSavingSite(true)
+
+    try {
+      // 后端 POST /api/config 收的是整份 ConfigResponse，不是局部 map：
+      // 先取全量，只改这几格，其余原样带回去，免得把别的配置抹平。
+      const current = await fetch(`${API_URL}/api/config`, {
+        credentials: 'include',
+      })
+      if (!current.ok) {
+        throw new Error(await getResponseError(current, t.setup.siteInfoFailed))
+      }
+      const config = await current.json()
+      const fields = config?.ui_config?.config_fields
+      if (!Array.isArray(fields)) {
+        // 拿回来的不是预期的 ConfigResponse：整份回写会把别的配置抹平，宁可停手
+        throw new TypeError(t.setup.siteInfoFailed)
+      }
+
+      /*
+       * base_url 不在这里改：它由 /admin/site/domain 连同 frontend_url、
+       * CORS 与 .env 一起改，走整份回写只会写一半。
+       * site_noindex 是 site_visibility_policy 的派生位，设置页也是这么联动的。
+       */
+      const patch: Record<string, string> = {
+        site_title: siteForm.title.trim(),
+        site_description: siteForm.description.trim(),
+        site_favicon: siteForm.favicon.trim(),
+        site_visibility_policy: siteForm.visibility,
+        site_noindex: siteForm.visibility === 'private' ? 'true' : 'false',
+        analytics_enabled: siteForm.analytics ? 'true' : 'false',
+      }
+      config.ui_config.config_fields = fields.map((field: any) =>
+        field && typeof field.key === 'string' && field.key in patch
+          ? { ...field, value: patch[field.key] }
+          : field,
+      )
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      const csrfToken = await getCSRFToken()
+      if (csrfToken) {
+        headers[getCSRFHeaderName()] = csrfToken
+      }
+
+      const saved = await fetch(`${API_URL}/api/config`, {
+        method: 'POST',
+        headers,
+        credentials: 'include',
+        body: JSON.stringify(config),
+      })
+      // 配置写入可能 200 + success:false，状态码不足以判成败
+      assertConfigWriteSuccess(
+        saved.status,
+        await saved.json().catch(() => null),
+        t.setup.siteInfoFailed,
+      )
+
+      await finishSetup()
+    } catch (err: any) {
+      setNotice({
+        tone: 'error',
+        message: `${t.setup.siteInfoFailed}: ${err.message}`,
+      })
+      setSavingSite(false)
+    }
+  }
+
   const handleCreateAdmin = async () => {
     setNotice(null)
     if (adminForm.username.length < 3 || adminForm.username.length > 20) {
@@ -367,6 +622,22 @@ const SetupWizard: React.FC = () => {
 
       setNotice({ tone: 'success', message: t.setup.adminCreated })
       setAdminCreated(true)
+      // 先记住名字：后面站点步 / 完成页 / 刷新都靠它拼「你好，xxx」
+      rememberAdminName(adminForm.username)
+
+      /*
+       * 用刚填的凭据换一个会话：第 4 步写站点信息走的是已鉴权的
+       * POST /api/config（admin_middleware），没有会话就写不进去。
+       * 登录不上也不阻断——直接把人送到完成页，让他手动登录。
+       */
+      const loggedIn = await signInAsNewAdmin()
+      setSignedIn(loggedIn)
+      if (loggedIn) {
+        await loadSiteInfoDraft()
+        setAtSiteStep(true)
+        return
+      }
+      setNotice({ tone: 'info', message: t.setup.autoLoginFailed })
       await checkSetupStatus()
     } catch (err: any) {
       setNotice({
@@ -378,527 +649,634 @@ const SetupWizard: React.FC = () => {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="setup-state-card glass" role="status">
-        <img src="/logo.webp" alt="Myriad" className="setup-state-logo" />
-        <Spinner size="md" color="primary" />
-      </div>
-    )
-  }
+  // atSiteStep 排在最前：建完号那一刻服务端已经说「不用再配了」，
+  // 但第 4 步还没走完，得由本地标记压住，不然会直接冲到完成页。
+  const stage: Stage = atSiteStep
+    ? 'site'
+    : loading
+      ? 'loading'
+      : error
+        ? 'error'
+        : !status
+          ? 'blank'
+          : !status.is_setup_required
+            ? 'done'
+            : !hasEnteredSetup
+              ? 'welcome'
+              : !dbConfigured
+                ? 'database'
+                : !status.has_database
+                  ? 'migrate'
+                  : 'admin'
 
-  if (error) {
-    return (
-      <div className="setup-flow flex w-full items-center justify-center">
-        <div className="max-w-md w-full glass rounded-2xl shadow-xl p-6 sm:p-8 text-center">
-          <div className="w-14 h-14 sm:w-16 sm:h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FaExclamationTriangle className="text-2xl sm:text-3xl text-red-600 dark:text-red-400" />
-          </div>
-          <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-            {t.setup.connectionFailed}
-          </h2>
-          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-6">
-            {error}
-          </p>
-          <button
-            onClick={() => void checkSetupStatus()}
-            className="px-6 py-3 text-white rounded-lg transition-colors setup-retry-button min-h-11 text-sm sm:text-base"
-          >
-            {t.setup.retry}
-          </button>
-        </div>
-      </div>
-    )
-  }
+  // 顶栏色层随正文滚动加浓；换步时重新绑定滚动容器
+  useTopBarDense(cardRef, paneRef, stage)
 
-  if (!status) return null
+  /**
+   * 换步进场方向：在 paint 前算好，避免首帧无 data-dir 闪一下。
+   * 卡片本身（毛玻璃）不动——只给 pane 贴 data-dir，动效打在内容层。
+   */
+  const prevStageRef = useRef<Stage>(stage)
+  const [enterDir, setEnterDir] = useState<EnterDir>('fade')
+  useLayoutEffect(() => {
+    const prev = prevStageRef.current
+    if (prev !== stage) {
+      setEnterDir(enterDirBetween(prev, stage))
+      prevStageRef.current = stage
+    }
+  }, [stage])
 
-  if (status.is_setup_required && !hasEnteredSetup) {
-    return (
-      <section
-        className="setup-welcome glass"
-        aria-labelledby="setup-welcome-title"
-      >
-        <div className="setup-welcome-glow" aria-hidden="true" />
-        <img src="/logo.webp" alt="Myriad" className="setup-welcome-logo" />
-        <div className="setup-welcome-copy">
-          <p className="setup-eyebrow">{t.setup.welcomeEyebrow}</p>
-          <h1 id="setup-welcome-title">{t.setup.welcomeTitle}</h1>
-          <p className="setup-welcome-description">{t.setup.welcomeDesc}</p>
-        </div>
-        <div className="setup-welcome-features">
-          <div>
-            <LuServer aria-hidden="true" />
-            <span>{t.setup.welcomeDatabase}</span>
-          </div>
-          <div>
-            <LuShieldCheck aria-hidden="true" />
-            <span>{t.setup.welcomeAdmin}</span>
-          </div>
-          <div>
-            <LuSparkles aria-hidden="true" />
-            <span>{t.setup.welcomeReady}</span>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="setup-primary-button"
-          onClick={enterSetup}
-        >
-          <span>{t.setup.getStarted}</span>
-          <LuArrowRight aria-hidden="true" />
-        </button>
-        <p className="setup-welcome-footnote">{t.setup.welcomeFootnote}</p>
-      </section>
-    )
-  }
+  /**
+   * 完成页补全问候名与登录态：
+   * - 刚建号：rememberAdminName 已写入
+   * - 刷新 / 直接打开已完成：表单空，从 session 或 /api/auth/me 取
+   */
+  useEffect(() => {
+    if (stage !== 'done') return
 
-  // 如果设置完成，显示完成页面
-  if (!status.is_setup_required) {
-    return (
-      <div className="setup-flow w-full py-8 md:py-12">
-        <div className="max-w-4xl mx-auto">
-          <div className="glass rounded-2xl shadow-xl p-6 sm:p-8 text-center">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
-              <FaCheck className="text-3xl sm:text-4xl text-green-600 dark:text-green-400" />
-            </div>
-            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">
-              {t.setup.complete}
-            </h2>
-            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mb-6 sm:mb-8">
-              {t.setup.completeDesc}
-            </p>
-            <a
-              href="/login"
-              className="inline-flex px-6 sm:px-8 py-3 text-sm sm:text-base text-white rounded-lg transition-colors setup-complete-link min-h-11 items-center justify-center"
-            >
-              {t.setup.goToLogin}
-            </a>
-          </div>
-        </div>
-      </div>
-    )
-  }
+    const fromForm = adminForm.username.trim()
+    if (fromForm) {
+      rememberAdminName(fromForm)
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/auth/me`, {
+          credentials: 'include',
+        })
+        if (!response.ok || cancelled) return
+        const parsed = parseAuthMeResponse(await response.json())
+        if (cancelled || !parsed.authenticated) return
+        setSignedIn(true)
+        if (parsed.user.username) {
+          rememberAdminName(parsed.user.username)
+        }
+      } catch {
+        // 未登录或探活失败：完成页仍可只显示「准备好开始了吗」
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [stage, adminForm.username, rememberAdminName])
+
+  if (stage === 'blank') return null
+
+  // 问候名：表单优先，其次 session /me 回填的 doneUserName
+  const greetingName = adminForm.username.trim() || doneUserName.trim()
+
+  // 建表仍属「数据库」这一步：连接与迁移是同一件事的两半
+  const stepIndex =
+    stage === 'welcome'
+      ? 1
+      : stage === 'database' || stage === 'migrate'
+        ? 2
+        : stage === 'admin'
+          ? 3
+          : stage === 'site'
+            ? 4
+            : 0
+  const stepName =
+    stage === 'welcome'
+      ? t.setup.welcomeStepShort
+      : stage === 'database' || stage === 'migrate'
+        ? t.setup.databaseStepShort
+        : stage === 'admin'
+          ? t.setup.adminStepShort
+          : stage === 'site'
+            ? t.setup.siteStepShort
+            : ''
+
+  const noticeNode = notice ? (
+    <Note tone={notice.tone}>{notice.message}</Note>
+  ) : null
 
   return (
-    <div className="setup-flow w-full py-8 md:py-12">
-      <div className="max-w-6xl mx-auto">
-        {/* 进度标签栏 */}
-        <div className="flex justify-center mb-4 md:mb-6">
-          <div className="glass rounded-xl p-1.5 inline-flex gap-1 sm:gap-1.5 w-full sm:w-auto">
-            <div className="setup-step-completed flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-xs font-semibold sm:flex-none sm:gap-2 sm:px-6 sm:text-sm">
-              <FaCheck className="text-green-600 dark:text-green-400" />
-              <span className="hidden sm:inline">{t.setup.welcomeStep}</span>
-              <span className="sm:hidden">{t.setup.welcomeStepShort}</span>
-            </div>
-            <div
-              className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${
-                !dbConfigured
-                  ? 'bg-white dark:bg-neutral-900 shadow-sm setup-step-active'
-                  : 'setup-step-completed'
-              }`}
-            >
-              {dbConfigured ? (
-                <FaCheck className="text-green-600 dark:text-green-400" />
-              ) : (
-                <FaDatabase />
-              )}
-              <span className="hidden sm:inline">{t.setup.databaseConfig}</span>
-              <span className="sm:hidden">{t.setup.database}</span>
-            </div>
-            <div
-              className={`flex-1 sm:flex-none px-3 sm:px-6 py-2.5 rounded-lg font-semibold text-xs sm:text-sm transition-all duration-300 flex items-center justify-center gap-1.5 sm:gap-2 ${
-                dbConfigured && !adminCreated
-                  ? 'bg-white dark:bg-neutral-900 shadow-sm setup-step-active'
-                  : dbConfigured && adminCreated
-                    ? 'setup-step-completed'
-                    : 'setup-step-disabled'
-              }`}
-            >
-              {adminCreated ? (
-                <FaCheck className="text-green-600 dark:text-green-400" />
-              ) : (
-                <FaUser />
-              )}
-              <span className="hidden sm:inline">{t.setup.adminAccount}</span>
-              <span className="sm:hidden">{t.auth.username}</span>
-            </div>
-          </div>
-        </div>
+    <section className="setup-ob" aria-label={t.setup.title}>
+      <Aurora />
 
-        {notice && (
-          <div
-            className={`setup-notice setup-notice-${notice.tone}`}
-            role={notice.tone === 'error' ? 'alert' : 'status'}
-            aria-live="polite"
-          >
-            {notice.tone === 'success' ? (
-              <FaCheck aria-hidden="true" />
-            ) : notice.tone === 'error' ? (
-              <FaExclamationTriangle aria-hidden="true" />
+      <div className="setup-ob__card" ref={cardRef}>
+        <StepTopBar
+          stepName={stepName || undefined}
+          current={stepIndex || undefined}
+          total={stepIndex ? TOTAL_STEPS : undefined}
+          progressText={t.setup.stepOf
+            .replace('{current}', String(stepIndex))
+            .replace('{total}', String(TOTAL_STEPS))}
+          back={
+            stage === 'database' ||
+            stage === 'migrate' ||
+            stage === 'admin' ||
+            stage === 'site' ? (
+              <BackButton
+                label={t.setup.backTo.replace(
+                  '{step}',
+                  t.setup.welcomeStepShort,
+                )}
+                destination={t.setup.welcomeStepShort}
+                disabled={
+                  savingDb || migratingDb || creatingAdmin || savingSite
+                }
+                onClick={leaveSetup}
+              />
+            ) : stage === 'welcome' ? (
+              <BrandMark label={t.setup.welcomeEyebrow} />
+            ) : stage === 'done' ? (
+              <BrandMark label={t.setup.doneEyebrow} icon={LuCheck} />
             ) : (
-              <LuInfo aria-hidden="true" />
-            )}
-            <span>{notice.message}</span>
-          </div>
-        )}
+              <BrandTag label="Myriad" />
+            )
+          }
+        />
 
-        <div className="space-y-6">
-          {/* 数据库配置卡片 */}
-          {!dbConfigured && (
+        <div className="setup-ob__viewport">
+          {stage === 'loading' && (
+            <div
+              className="setup-ob__pane is-centered"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="loading"
+            >
+              <div className="setup-ob-state" role="status">
+                <img src="/logo.webp" alt="" className="setup-ob-state__logo" />
+                <Spinner size="md" color="primary" />
+                <p>{t.setup.checkingStatus}</p>
+              </div>
+            </div>
+          )}
+
+          {stage === 'error' && (
+            <div
+              className="setup-ob__pane is-centered"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="error"
+            >
+              <div className="setup-ob-state">
+                <span className="setup-ob-state__glyph is-bad" aria-hidden>
+                  <LuAlertTriangle />
+                </span>
+                <h1>{t.setup.connectionFailed}</h1>
+                <p>{error}</p>
+              </div>
+              <ActionBar>
+                <PrimaryButton
+                  label={t.setup.retry}
+                  icon={LuRotateCw}
+                  onClick={() => void checkSetupStatus()}
+                />
+              </ActionBar>
+            </div>
+          )}
+
+          {stage === 'done' && (
+            <div
+              className="setup-ob__pane is-welcome"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="done"
+            >
+              {/*
+                排布跟欢迎首屏看齐：左对齐主体垂直居中。
+                完成打勾换成首页欢迎小组件同款招手（welcome.webp）。
+              */}
+              <div className="setup-ob-welcome">
+                <img
+                  src="/icons/widgets/welcome.webp"
+                  alt=""
+                  aria-hidden
+                  draggable={false}
+                  className="setup-ob-welcome__logo setup-ob-welcome__wave"
+                />
+                <StepHero
+                  title={
+                    greetingName ? (
+                      <>
+                        {t.setup.doneGreeting.replace('{name}', greetingName)}
+                        <br />
+                        {t.setup.doneReadyTitle}
+                      </>
+                    ) : (
+                      t.setup.doneReadyTitle
+                    )
+                  }
+                  lead={t.setup.completeDesc}
+                  titleId="setup-ob-title"
+                />
+              </div>
+              <ActionBar>
+                {/* 走完第 4 步的人已经是登录态，不必再被赶去登录页 */}
+                <a
+                  href={signedIn ? '/' : '/login'}
+                  className="setup-ob-cta"
+                  title={signedIn ? t.setup.enterSite : t.setup.goToLogin}
+                  aria-label={signedIn ? t.setup.enterSite : t.setup.goToLogin}
+                >
+                  <span>
+                    {signedIn ? t.setup.enterSite : t.setup.goToLogin}
+                  </span>
+                  <LuArrowRight aria-hidden />
+                </a>
+              </ActionBar>
+            </div>
+          )}
+
+          {stage === 'welcome' && (
+            <div
+              className="setup-ob__pane is-welcome"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="welcome"
+            >
+              {/* logo 与欢迎文案是同一个主体：整块垂直居中、横向靠左 */}
+              <div className="setup-ob-welcome">
+                <img
+                  src="/logo.webp"
+                  alt="Myriad"
+                  className="setup-ob-welcome__logo"
+                />
+                {/* 眉标已经挂到左上角的占位上，正文里不再重复一遍 */}
+                <StepHero
+                  title={t.setup.welcomeTitle}
+                  lead={t.setup.welcomeDesc}
+                  titleId="setup-ob-title"
+                  notes={noticeNode}
+                />
+                <StepBody>
+                  <div className="setup-ob-features">
+                    <div>
+                      <LuServer aria-hidden />
+                      <span>{t.setup.welcomeDatabase}</span>
+                    </div>
+                    <div>
+                      <LuShieldCheck aria-hidden />
+                      <span>{t.setup.welcomeAdmin}</span>
+                    </div>
+                    <div>
+                      <LuGlobe aria-hidden />
+                      <span>{t.setup.welcomeSite}</span>
+                    </div>
+                    <div>
+                      <LuSparkles aria-hidden />
+                      <span>{t.setup.welcomeReady}</span>
+                    </div>
+                  </div>
+                </StepBody>
+              </div>
+              {/* 提示跟主按钮配成一对：左下角一句轻提示，右下角浮起的「开始」 */}
+              <ActionBar split>
+                <p className="setup-ob-bar__note">{t.setup.welcomeFootnote}</p>
+                <PrimaryButton
+                  label={t.setup.getStarted}
+                  onClick={enterSetup}
+                />
+              </ActionBar>
+            </div>
+          )}
+
+          {stage === 'database' && (
             <form
-              className="glass rounded-xl p-4 md:p-5"
+              className="setup-ob__pane"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="database"
               onSubmit={(event) => {
                 event.preventDefault()
                 void handleSaveDbConfig()
               }}
             >
-              <div className="flex flex-col md:flex-row items-start justify-between gap-4 md:gap-6">
-                <div className="flex-1 w-full md:w-auto">
-                  <div className="flex items-center gap-3 mb-3 md:mb-4">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center text-xl sm:text-2xl setup-db-icon-wrapper">
-                      <FaDatabase />
-                    </div>
-                    <div>
-                      <h2 className="text-base sm:text-lg font-bold text-gray-800 dark:text-gray-100">
-                        {t.setup.databaseConfig}
-                      </h2>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        {t.setup.databaseConfigDesc}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 md:space-y-4">
-                    {/* 配置模式提示 */}
-                    {!dbConfigured && (
-                      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 rounded-lg p-3">
-                        <div className="flex items-start gap-2">
-                          <FaExclamationTriangle className="text-amber-600 dark:text-amber-500 mt-0.5 shrink-0" />
-                          <div>
-                            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-1">
-                              <LuWrench size={14} className="inline mr-1" />
-                              {t.setup.configurationMode}
-                            </p>
-                            <p className="text-xs text-amber-700 dark:text-amber-300">
-                              {t.setup.configurationModeDesc}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 配置表单 */}
-                    <div className="setup-form-surface bg-white/50 rounded-lg p-4 border border-gray-200/50">
-                      <h3 className="font-semibold text-gray-800 mb-3 text-sm">
-                        {t.setup.connectionInfo}
-                      </h3>
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            {t.setup.host}
-                          </label>
-                          <input
-                            type="number"
-                            value={dbConfig.host}
-                            onChange={(e) =>
-                              setDbConfig({ ...dbConfig, host: e.target.value })
-                            }
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                            placeholder="localhost"
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            {t.setup.port}
-                          </label>
-                          <input
-                            type="text"
-                            value={dbConfig.port}
-                            onChange={(e) =>
-                              setDbConfig({ ...dbConfig, port: e.target.value })
-                            }
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                            placeholder="5432"
-                            min={1}
-                            max={65535}
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            {t.setup.database}
-                          </label>
-                          <input
-                            type="text"
-                            value={dbConfig.database}
-                            onChange={(e) =>
-                              setDbConfig({
-                                ...dbConfig,
-                                database: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                            placeholder="myriad"
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            {t.setup.username}
-                          </label>
-                          <input
-                            type="text"
-                            value={dbConfig.username}
-                            onChange={(e) =>
-                              setDbConfig({
-                                ...dbConfig,
-                                username: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                            placeholder="postgres"
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            {t.auth.password}
-                          </label>
-                          <input
-                            type="password"
-                            value={dbConfig.password}
-                            onChange={(e) =>
-                              setDbConfig({
-                                ...dbConfig,
-                                password: e.target.value,
-                              })
-                            }
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                            placeholder={t.auth.enterPassword}
-                            autoComplete="off"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <label className="block text-xs font-medium text-gray-700 mb-1">
-                            {t.setup.bootstrapToken}
-                            <span className="ml-1 font-normal text-gray-400">
-                              ({t.setup.bootstrapTokenOptional})
-                            </span>
-                          </label>
-                          <input
-                            type="password"
-                            value={bootstrapToken}
-                            onChange={(e) => setBootstrapToken(e.target.value)}
-                            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-mono"
-                            placeholder={t.setup.bootstrapTokenPlaceholder}
-                            autoComplete="off"
-                          />
-                          <p className="mt-1 text-[11px] text-gray-500 leading-snug">
-                            {t.setup.bootstrapTokenHint}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 操作按钮 */}
-                    <div className="flex gap-3">
-                      <button
-                        type="submit"
-                        disabled={savingDb}
-                        className="w-full py-3 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-bold flex items-center justify-center gap-2 shadow-lg setup-save-button"
-                      >
-                        {savingDb ? (
-                          <Spinner size="xs" color="white" />
-                        ) : (
-                          <LuDatabase size={16} />
-                        )}
-                        <span>
-                          {savingDb ? t.setup.saving : t.setup.saveAndConnect}
-                        </span>
-                      </button>
-                    </div>
-
-                    {/* 说明文字 */}
-                    <div className="text-xs text-gray-500 text-center">
-                      <LuInfo size={12} className="inline mr-1" />
-                      {t.setup.saveHint}
-                    </div>
-                  </div>
+              <StepHero
+                title={t.setup.databaseConfig}
+                lead={t.setup.databaseConfigDesc}
+                titleId="setup-ob-title"
+                notes={
+                  <>
+                    <Note tone="warn">
+                      {`${t.setup.configurationMode}\n${t.setup.configurationModeDesc}`}
+                    </Note>
+                    {noticeNode}
+                  </>
+                }
+              />
+              <StepBody>
+                <div className="setup-ob-grid">
+                  <Field label={t.setup.host}>
+                    <TextInput
+                      type="text"
+                      value={dbConfig.host}
+                      onChange={(e) =>
+                        setDbConfig({ ...dbConfig, host: e.target.value })
+                      }
+                      placeholder="localhost"
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field label={t.setup.port}>
+                    <TextInput
+                      type="number"
+                      value={dbConfig.port}
+                      onChange={(e) =>
+                        setDbConfig({ ...dbConfig, port: e.target.value })
+                      }
+                      placeholder="5432"
+                      min={1}
+                      max={65535}
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field label={t.setup.database}>
+                    <TextInput
+                      type="text"
+                      value={dbConfig.database}
+                      onChange={(e) =>
+                        setDbConfig({ ...dbConfig, database: e.target.value })
+                      }
+                      placeholder="myriad"
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field label={t.setup.username}>
+                    <TextInput
+                      type="text"
+                      value={dbConfig.username}
+                      onChange={(e) =>
+                        setDbConfig({ ...dbConfig, username: e.target.value })
+                      }
+                      placeholder="postgres"
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field label={t.auth.password} wide>
+                    <TextInput
+                      type="password"
+                      value={dbConfig.password}
+                      onChange={(e) =>
+                        setDbConfig({ ...dbConfig, password: e.target.value })
+                      }
+                      placeholder={t.setup.enterDbPassword}
+                      autoComplete="off"
+                    />
+                  </Field>
+                  <Field
+                    label={t.setup.bootstrapToken}
+                    optional
+                    optionalLabel={t.setup.bootstrapTokenOptional}
+                    hint={t.setup.bootstrapTokenHint}
+                    wide
+                  >
+                    <TextInput
+                      type="password"
+                      mono
+                      value={bootstrapToken}
+                      onChange={(e) => setBootstrapToken(e.target.value)}
+                      placeholder={t.setup.bootstrapTokenPlaceholder}
+                      autoComplete="off"
+                    />
+                  </Field>
                 </div>
-              </div>
+                <Note>{t.setup.saveHint}</Note>
+              </StepBody>
+              <ActionBar>
+                <PrimaryButton
+                  type="submit"
+                  label={savingDb ? t.setup.saving : t.setup.saveAndConnect}
+                  icon={LuDatabase}
+                  busy={savingDb}
+                />
+              </ActionBar>
             </form>
           )}
 
-          {/* 管理员账户卡片 */}
-          {dbConfigured && !adminCreated && (
+          {stage === 'migrate' && (
+            <div
+              className="setup-ob__pane"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="migrate"
+            >
+              <StepHero
+                title={t.setup.initDatabase}
+                lead={t.setup.initDatabaseDesc}
+                titleId="setup-ob-title"
+                notes={noticeNode}
+              />
+              <StepBody>
+                <Note tone="success">{t.setup.dbConnectionSuccess}</Note>
+              </StepBody>
+              <ActionBar>
+                <PrimaryButton
+                  label={
+                    migratingDb ? t.setup.initializing : t.setup.initDatabase
+                  }
+                  icon={LuDatabase}
+                  busy={migratingDb}
+                  onClick={() => void handleMigrateDatabase()}
+                />
+              </ActionBar>
+            </div>
+          )}
+
+          {stage === 'admin' && (
             <form
-              className="glass rounded-xl p-5"
+              className="setup-ob__pane"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="admin"
               onSubmit={(event) => {
                 event.preventDefault()
                 void handleCreateAdmin()
               }}
             >
-              <div className="flex items-start justify-between gap-6">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl setup-admin-icon-wrapper">
-                      <FaUser />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">
-                        {t.setup.adminAccount}
-                      </h2>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        {t.setup.adminAccountDesc}
-                      </p>
-                    </div>
-                  </div>
+              <StepHero
+                title={t.setup.adminAccount}
+                lead={t.setup.adminAccountFullDesc}
+                titleId="setup-ob-title"
+                notes={noticeNode}
+              />
+              <StepBody>
+                <Field label={t.auth.username} hint={t.setup.adminUsernameHint}>
+                  <TextInput
+                    type="text"
+                    value={adminForm.username}
+                    onChange={(e) =>
+                      setAdminForm({ ...adminForm, username: e.target.value })
+                    }
+                    placeholder="owner"
+                    pattern="^[a-zA-Z0-9_]{3,20}$"
+                    autoComplete="username"
+                  />
+                </Field>
+                <Field label={t.auth.password} hint={t.setup.adminPasswordHint}>
+                  <TextInput
+                    type="password"
+                    value={adminForm.password}
+                    onChange={(e) =>
+                      setAdminForm({ ...adminForm, password: e.target.value })
+                    }
+                    placeholder={t.setup.atLeast8Chars}
+                    minLength={8}
+                    autoComplete="new-password"
+                  />
+                </Field>
+                <Field label={t.auth.confirmPassword}>
+                  <TextInput
+                    type="password"
+                    value={adminForm.confirmPassword}
+                    onChange={(e) =>
+                      setAdminForm({
+                        ...adminForm,
+                        confirmPassword: e.target.value,
+                      })
+                    }
+                    placeholder={t.setup.enterPasswordAgain}
+                    minLength={8}
+                    autoComplete="new-password"
+                  />
+                </Field>
+              </StepBody>
+              <ActionBar>
+                <PrimaryButton
+                  type="submit"
+                  label={creatingAdmin ? t.setup.creating : t.setup.createAdmin}
+                  busy={creatingAdmin}
+                  /* 建好之后按住不放，等自动登录把整卡推到下一步 */
+                  disabled={adminCreated}
+                />
+              </ActionBar>
+            </form>
+          )}
 
-                  <div className="space-y-4">
-                    {/* 数据库表初始化提示 */}
-                    {status && !status.has_database && (
-                      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-lg p-3">
-                        <div className="flex items-start gap-2">
-                          <FaDatabase className="text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-                          <div className="flex-1">
-                            <p className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">
-                              <LuClipboardList
-                                size={14}
-                                className="inline mr-1"
-                              />
-                              {t.setup.initDatabase}
-                            </p>
-                            <p className="text-xs text-blue-700 dark:text-blue-300 mb-3">
-                              {t.setup.initDatabaseDesc}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={handleMigrateDatabase}
-                              disabled={migratingDb}
-                              className="w-full py-2 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-migrate-button"
-                            >
-                              {migratingDb ? (
-                                <Spinner size="xs" color="white" />
-                              ) : (
-                                <FaDatabase />
-                              )}
-                              <span>
-                                {migratingDb
-                                  ? t.setup.initializing
-                                  : t.setup.initDatabase}
-                              </span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* 管理员表单 - 仅在数据库已初始化后显示 */}
-                    {status && status.has_database && (
-                      <>
-                        {/* 说明 */}
-                        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 rounded-lg p-3">
-                          <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
-                            {t.setup.adminAccountFullDesc}
-                          </p>
-                          <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1 list-disc list-inside">
-                            <li>{t.setup.adminUsernameHint}</li>
-                            <li>{t.setup.adminPasswordHint}</li>
-                          </ul>
-                        </div>
-
-                        {/* 表单 */}
-                        <div className="setup-form-surface bg-white/50 rounded-lg p-4 border border-gray-200/50">
-                          <div className="space-y-3">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                {t.auth.username} *
-                              </label>
-                              <input
-                                type="text"
-                                value={adminForm.username}
-                                onChange={(e) =>
-                                  setAdminForm({
-                                    ...adminForm,
-                                    username: e.target.value,
-                                  })
-                                }
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                placeholder="admin"
-                                pattern="^[a-zA-Z0-9_]{3,20}$"
-                                autoComplete="username"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                {t.auth.password} *
-                              </label>
-                              <input
-                                type="password"
-                                value={adminForm.password}
-                                onChange={(e) =>
-                                  setAdminForm({
-                                    ...adminForm,
-                                    password: e.target.value,
-                                  })
-                                }
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                placeholder={t.setup.atLeast8Chars}
-                                minLength={8}
-                                autoComplete="new-password"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">
-                                {t.auth.confirmPassword} *
-                              </label>
-                              <input
-                                type="password"
-                                value={adminForm.confirmPassword}
-                                onChange={(e) =>
-                                  setAdminForm({
-                                    ...adminForm,
-                                    confirmPassword: e.target.value,
-                                  })
-                                }
-                                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                                placeholder={t.setup.enterPasswordAgain}
-                                minLength={8}
-                                autoComplete="new-password"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 创建按钮 */}
-                        <button
-                          type="submit"
-                          disabled={creatingAdmin}
-                          className="w-full py-2.5 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold flex items-center justify-center gap-2 setup-create-admin-button"
-                        >
-                          {creatingAdmin ? (
-                            <Spinner size="xs" color="white" />
-                          ) : (
-                            <FaUser />
-                          )}
-                          <span>
-                            {creatingAdmin
-                              ? t.setup.creating
-                              : t.setup.createAdmin}
-                          </span>
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
+          {stage === 'site' && (
+            <form
+              className="setup-ob__pane"
+              ref={bindPane}
+              data-dir={enterDir}
+              key="site"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleSaveSiteInfo()
+              }}
+            >
+              <StepHero
+                title={t.setup.siteInfoTitle}
+                lead={t.setup.siteInfoDesc}
+                titleId="setup-ob-title"
+                notes={noticeNode}
+              />
+              {/*
+                这一步的字段直接用设置页同款的选项组件（InputItem / SegmentedControl /
+                SwitchItem / SiteUrlField），跟正式设置页交互一致——以后从这里改的东西，
+                去设置页也认得出来是同一个控件。视觉语言因此跟向导其余几步不完全统一，
+                这是有意的取舍。
+              */}
+              <StepBody>
+                <InputItem
+                  itemKey="site_title"
+                  label={t.config.fieldSiteTitle}
+                  value={siteForm.title}
+                  onChange={(v) => setSiteForm({ ...siteForm, title: v })}
+                  placeholder={t.config.placeholderSiteTitle}
+                  hint={t.setup.siteTitleHint}
+                  layout="vertical"
+                />
+                <InputItem
+                  itemKey="site_description"
+                  label={t.config.fieldSiteDescription}
+                  value={siteForm.description}
+                  onChange={(v) => setSiteForm({ ...siteForm, description: v })}
+                  placeholder={t.config.placeholderSiteDescription}
+                  multiline
+                  rows={2}
+                  layout="vertical"
+                />
+                <InputItem
+                  itemKey="site_favicon"
+                  label={t.config.fieldSiteFavicon}
+                  value={siteForm.favicon}
+                  onChange={(v) => setSiteForm({ ...siteForm, favicon: v })}
+                  placeholder={t.config.placeholderSiteFavicon}
+                  inputType="url"
+                  variant="imageUpload"
+                  accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,image/x-icon,.ico"
+                  maxImageBytes={512 * 1024}
+                  uploadLabel={t.config.imageUpload}
+                  clearImageLabel={t.config.imageUploadClear}
+                  localImageLabel={t.config.imageUploadLocal}
+                  previewAlt={t.config.fieldSiteFavicon}
+                  imageTypeError={t.config.imageUploadTypeError}
+                  imageSizeError={t.config.imageUploadSizeError}
+                  imageReadError={t.config.imageUploadReadError}
+                  hint={t.config.imageUploadHint}
+                  layout="vertical"
+                />
+                {/* 站点地址是它自己的一趟：点击编辑、二次确认、独立保存，向导不插手 */}
+                <SettingItemWrapper
+                  label={t.config.siteUrlConfig}
+                  description={t.config.siteUrlFieldDesc}
+                  layout="vertical"
+                >
+                  <SiteUrlField
+                    value={baseUrlValue}
+                    onApplied={setBaseUrlValue}
+                  />
+                </SettingItemWrapper>
+                <SettingItemWrapper
+                  label={t.config.fieldSiteVisibilityPolicy}
+                  description={t.config.fieldSiteVisibilityPolicyHint}
+                  layout="vertical"
+                >
+                  <SegmentedControl
+                    size="sm"
+                    columns={4}
+                    value={siteForm.visibility}
+                    options={[
+                      { value: 'ai_full', label: t.config.visibilityAiFull },
+                      {
+                        value: 'ai_citation',
+                        label: t.config.visibilityAiCitation,
+                      },
+                      {
+                        value: 'search_only',
+                        label: t.config.visibilitySearchOnly,
+                      },
+                      { value: 'private', label: t.config.visibilityPrivate },
+                    ]}
+                    onChange={(v) =>
+                      setSiteForm({ ...siteForm, visibility: v })
+                    }
+                    ariaLabel={t.config.fieldSiteVisibilityPolicy}
+                  />
+                </SettingItemWrapper>
+                <SwitchItem
+                  itemKey="analytics_enabled"
+                  label={t.config.analytics.visitorTitle}
+                  description={t.config.analytics.visitorDesc}
+                  value={siteForm.analytics}
+                  disabled={savingSite}
+                  onChange={(checked) =>
+                    setSiteForm({ ...siteForm, analytics: checked })
+                  }
+                  layout="horizontal"
+                />
+              </StepBody>
+              <ActionBar>
+                <PrimaryButton
+                  type="submit"
+                  label={
+                    savingSite ? t.setup.savingSiteInfo : t.setup.saveSiteInfo
+                  }
+                  icon={LuCheck}
+                  busy={savingSite}
+                />
+              </ActionBar>
             </form>
           )}
         </div>
       </div>
-    </div>
+    </section>
   )
 }
 

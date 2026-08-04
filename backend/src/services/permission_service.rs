@@ -19,7 +19,7 @@
 //! - platform:read, analytics:read, tappList:read, brew:read
 //! - brew:write (authenticated), brew:comment (authenticated)
 //! - report:read (authenticated), storage (authenticated)
-//! - ui:notification (authenticated), ui:fullscreen, ui:theme, ui:confirm
+//! - ui:notification (authenticated), ui:fullscreen, ui:theme, ui:confirm, ui:openUrl
 //! - media:read, media:control, media:audio, event:subscribe
 //! - federation:read, federation:write, federation:message, federation:files
 //!
@@ -95,6 +95,9 @@ pub enum TappPermission {
     UiTheme,
     #[serde(rename = "ui:confirm")]
     UiConfirm,
+    /// Open a host browser tab for a manifest-declared allowlisted link only.
+    #[serde(rename = "ui:openUrl")]
+    UiOpenUrl,
     #[serde(rename = "media:read")]
     MediaRead,
     /// Play package audio via blob/data URLs inside the sandbox.
@@ -199,6 +202,7 @@ impl TappPermission {
             | TappPermission::UiFullscreen
             | TappPermission::UiTheme
             | TappPermission::UiConfirm
+            | TappPermission::UiOpenUrl
             | TappPermission::MediaRead
             | TappPermission::MediaAudio
             | TappPermission::MediaControl
@@ -257,6 +261,7 @@ impl TappPermission {
             TappPermission::UiFullscreen => "全屏模式",
             TappPermission::UiTheme => "主题访问",
             TappPermission::UiConfirm => "确认对话框",
+            TappPermission::UiOpenUrl => "打开声明链接",
             TappPermission::NetworkFetch => "网络请求",
             TappPermission::MediaControl => "媒体控制",
             TappPermission::MediaRead => "读取媒体",
@@ -315,6 +320,7 @@ impl TappPermission {
             "ui:fullscreen" => Some(TappPermission::UiFullscreen),
             "ui:theme" => Some(TappPermission::UiTheme),
             "ui:confirm" => Some(TappPermission::UiConfirm),
+            "ui:openUrl" => Some(TappPermission::UiOpenUrl),
             "ai:generate" => Some(TappPermission::AiGenerate),
             "ai:analyze" => Some(TappPermission::AiAnalyze),
             "ai:chat" => Some(TappPermission::AiChat),
@@ -361,6 +367,7 @@ impl TappPermission {
             TappPermission::UiFullscreen => "ui:fullscreen",
             TappPermission::UiTheme => "ui:theme",
             TappPermission::UiConfirm => "ui:confirm",
+            TappPermission::UiOpenUrl => "ui:openUrl",
             TappPermission::AiGenerate => "ai:generate",
             TappPermission::AiAnalyze => "ai:analyze",
             TappPermission::AiChat => "ai:chat",

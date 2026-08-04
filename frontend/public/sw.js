@@ -12,7 +12,7 @@ const DYNAMIC_CACHE = `${CACHE_VERSION}-dynamic`
 const IMAGE_CACHE = `${CACHE_VERSION}-images`
 
 // 需要预缓存的静态资源
-const STATIC_ASSETS = ['/', '/logo.webp']
+const STATIC_ASSETS = ['/', '/logo.webp', '/wallpapers/default.webp']
 
 // 缓存配置
 const MAX_DYNAMIC_CACHE_SIZE = 50

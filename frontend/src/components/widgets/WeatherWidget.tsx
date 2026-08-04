@@ -7,6 +7,7 @@ import type { TranslationKeys } from '../../i18n'
 import type { WeatherData } from '../../utils/dynamicContent'
 
 import type { WidgetConfig } from '../WidgetGrid'
+import { motionShim as motion } from '@lib/motionShim'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../contexts/I18nContext'
 import {
@@ -35,14 +36,9 @@ import { WidgetSkeleton } from './shared/WidgetSkeleton'
 const CACHE_KEY = 'weather_data_cache'
 const CACHE_DURATION = 30 * 60 * 1000 // 30分钟
 
-/**
- * 根据 WMO 天气代码返回对应的翻译键
- * @param code WMO 天气代码
- * @returns 翻译键名
- */
-function getWeatherKeyFromCode(code: number): keyof TranslationKeys['weather'] {
-  const weatherKeyMap: Record<number, keyof TranslationKeys['weather']> = {
-    0: 'sunny',
+/** WMO 天气代码 → 翻译键。模块级常量，别在函数里重建这张表 */
+const WEATHER_KEY_BY_CODE: Record<number, keyof TranslationKeys['weather']> = {
+  0: 'sunny',
     1: 'sunny',
     2: 'partlyCloudy',
     3: 'cloudy',
@@ -69,10 +65,16 @@ function getWeatherKeyFromCode(code: number): keyof TranslationKeys['weather'] {
     86: 'heavySnowShowers',
     95: 'thunderstorm',
     96: 'thunderstorm',
-    99: 'thunderstorm',
-  }
+  99: 'thunderstorm',
+}
 
-  return weatherKeyMap[code] || 'unknown'
+/**
+ * 根据 WMO 天气代码返回对应的翻译键
+ * @param code WMO 天气代码
+ * @returns 翻译键名
+ */
+function getWeatherKeyFromCode(code: number): keyof TranslationKeys['weather'] {
+  return WEATHER_KEY_BY_CODE[code] || 'unknown'
 }
 
 /**
@@ -111,8 +113,6 @@ export const WeatherWidget = memo(
     )
     const anim = useAnimationLevel()
     const { t, locale } = useI18n()
-    // framer-motion 动态模块（仅在需要动画时加载）
-    const [FM, setFM] = useState<null | { motion: any }>(null)
 
     // 🆕 使用触发式动画 - 组件挂载时播放一次天气图标动画
     const { isAnimating } = useLoopAnimation({
@@ -122,25 +122,17 @@ export const WeatherWidget = memo(
     })
 
     const canAnimate = anim.loop && isAnimating
-    // 需要动画时才加载 framer-motion
-    useEffect(() => {
-      let cancelled = false
-      if (canAnimate && !FM) {
-        import('motion/react')
-          .then((mod) => {
-            if (!cancelled) setFM({ motion: mod.motion })
-          })
-          .catch(() => {
-            // 忽略加载失败，保持静态渲染
-          })
-      }
-      return () => {
-        cancelled = true
-      }
-    }, [canAnimate, FM])
-    // 在未加载 framer-motion 时使用原生标签占位
-    const MDiv: any = FM ? FM.motion.div : 'div'
-    const MSpan: any = FM ? FM.motion.span : 'span'
+
+    /*
+     * 走全局 motionShim，不再自建一份 `import('motion/react')` + 局部 state。
+     *
+     * 本地那份的真正代价不是重复下载（chunk 有缓存），而是元素类型会从
+     * 'div' 变成 motion.div —— React 视作不同类型，整棵子树卸载重挂
+     * （图标重新解码、内部状态丢失）。shim 是全局单例：首页在 applyWidgets
+     * 前已 ensureMotionReady()，挂载时就是真 motion 组件，不存在中途切换。
+     */
+    const MDiv = motion.div
+    const MSpan = motion.span
 
     const [weatherData, setWeatherData] = useState<WeatherData | null>(null)
     const [loading, setLoading] = useState(true)

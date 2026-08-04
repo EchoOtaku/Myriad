@@ -82,6 +82,12 @@ interface LoadWallpaperResult {
 
 // 常量
 
+/**
+ * Bundled fallback when `wallpaper_url` is empty (unset site + first-run setup).
+ * Same-origin WebP under `public/wallpapers/`.
+ */
+export const DEFAULT_FALLBACK_WALLPAPER_URL = '/wallpapers/default.webp'
+
 /** 图片加载超时时间 */
 const IMAGE_LOAD_TIMEOUT = 15000
 
@@ -653,19 +659,66 @@ export function useWallpaper() {
       console.debug('[Wallpaper] Starting new load...')
       // 执行实际加载
       const doLoad = async (): Promise<LoadWallpaperResult | null> => {
-        try {
-          const config = await fetchWallpaperConfig()
-          if (!config) {
+        const defaultEvocative = {
+          parallax: true,
+          dynamicBlur: false,
+          ripple: false,
+          fps: 30,
+          rippleQuality: 0.85,
+        }
+
+        /** Last-resort paint so exception / offline never leaves #wallpaper blank. */
+        const applyBundledFallback = async (
+          blur = 3,
+          evocative: LoadWallpaperResult['evocative'] = defaultEvocative,
+        ): Promise<LoadWallpaperResult | null> => {
+          try {
+            console.debug('[Wallpaper] Applying bundled fallback')
+            const verifiedUrl = await applyWallpaperToDOM(
+              DEFAULT_FALLBACK_WALLPAPER_URL,
+              blur,
+              true,
+            )
+            const finalUrl = verifiedUrl || DEFAULT_FALLBACK_WALLPAPER_URL
+            const result: LoadWallpaperResult = {
+              actualUrl: finalUrl,
+              blur,
+              verified:
+                !!verifiedUrl &&
+                areUrlsEquivalent(verifiedUrl, DEFAULT_FALLBACK_WALLPAPER_URL),
+              parallaxEnabled: evocative.parallax,
+              evocative,
+            }
+            lastLoadResult = result
+            lastLoadTimestamp = Date.now()
+            if (verifiedUrl) {
+              setWallpaperUrl(verifiedUrl)
+            }
+            setBlur(blur)
+            setCanRefresh(false)
+            return result
+          } catch (fallbackError) {
+            console.error('[Wallpaper] Bundled fallback failed:', fallbackError)
             return null
           }
+        }
 
-          const evocative = {
-            parallax: config.evocative_parallax,
-            dynamicBlur: config.evocative_dynamic_blur,
-            ripple: config.evocative_ripple,
-            fps: config.evocative_fps,
-            rippleQuality: config.evocative_ripple_quality,
-          }
+        try {
+          const config = await fetchWallpaperConfig()
+
+          // Config missing (offline / pre-setup): still paint bundled fallback.
+          const evocative = config
+            ? {
+                parallax: config.evocative_parallax,
+                dynamicBlur: config.evocative_dynamic_blur,
+                ripple: config.evocative_ripple,
+                fps: config.evocative_fps,
+                rippleQuality: config.evocative_ripple_quality,
+              }
+            : defaultEvocative
+
+          const blur = config?.wallpaper_blur ?? 3
+          const configuredUrl = config?.wallpaper_url ?? ''
 
           // 动效开关与壁纸图解耦：图失败时仍要把 evocative 交给 AppLayout
           const buildResult = (
@@ -673,45 +726,72 @@ export function useWallpaper() {
             verified: boolean,
           ): LoadWallpaperResult => ({
             actualUrl,
-            blur: config.wallpaper_blur,
+            blur,
             verified,
             parallaxEnabled: evocative.parallax,
             evocative,
           })
 
-          if (!config.wallpaper_url) {
-            const result = buildResult('', false)
+          const applyAndFinish = async (
+            imageUrl: string,
+            /** True when image is the configured URL (not bundled fallback). */
+            fromConfig: boolean,
+            /** Force DOM re-apply when switching off a previous wallpaper. */
+            forceRefresh = false,
+          ): Promise<LoadWallpaperResult> => {
+            const verifiedUrl = await applyWallpaperToDOM(
+              imageUrl,
+              blur,
+              forceRefresh,
+            )
+            const finalUrl = verifiedUrl || imageUrl
+            const result = buildResult(
+              finalUrl,
+              !!verifiedUrl && areUrlsEquivalent(verifiedUrl, imageUrl),
+            )
             lastLoadResult = result
             lastLoadTimestamp = Date.now()
-            setBlur(config.wallpaper_blur)
-            setCanRefresh(false)
+            if (verifiedUrl) {
+              setWallpaperUrl(verifiedUrl)
+            }
+            setBlur(blur)
+            setCanRefresh(
+              fromConfig && configuredUrl
+                ? !isStaticImageUrl(configuredUrl)
+                : false,
+            )
             return result
           }
 
-          const actualUrl = await resolveImageUrl(config.wallpaper_url)
+          // Unconfigured / empty → bundled WebP (incl. first-run setup).
+          if (!configuredUrl) {
+            console.debug(
+              '[Wallpaper] No wallpaper_url; applying bundled fallback',
+            )
+            // forceRefresh: replace whatever was previously painted (clear case).
+            return applyAndFinish(DEFAULT_FALLBACK_WALLPAPER_URL, false, true)
+          }
 
-          // 验证URL有效性
+          const actualUrl = await resolveImageUrl(configuredUrl)
+
+          // 验证URL有效性（已配置但无效：不伪装成默认壁纸，保留空结果便于排查）
           if (!actualUrl || actualUrl.includes('/api/proxy/music/')) {
             const result = buildResult('', false)
             lastLoadResult = result
             lastLoadTimestamp = Date.now()
-            setBlur(config.wallpaper_blur)
+            setBlur(blur)
             setCanRefresh(false)
             return result
           }
 
-          // 应用到DOM并验证
-          const verifiedUrl = await applyWallpaperToDOM(
-            actualUrl,
-            config.wallpaper_blur,
-          )
+          const verifiedUrl = await applyWallpaperToDOM(actualUrl, blur)
 
           if (!verifiedUrl) {
             const result = buildResult(actualUrl, false)
             lastLoadResult = result
             lastLoadTimestamp = Date.now()
-            setBlur(config.wallpaper_blur)
-            setCanRefresh(!isStaticImageUrl(config.wallpaper_url))
+            setBlur(blur)
+            setCanRefresh(!isStaticImageUrl(configuredUrl))
             return result
           }
 
@@ -720,19 +800,19 @@ export function useWallpaper() {
             areUrlsEquivalent(verifiedUrl, actualUrl),
           )
 
-          // 缓存结果
           lastLoadResult = result
           lastLoadTimestamp = Date.now()
 
-          // 更新本地状态
           setWallpaperUrl(verifiedUrl)
-          setBlur(config.wallpaper_blur)
-          setCanRefresh(!isStaticImageUrl(config.wallpaper_url))
+          setBlur(blur)
+          setCanRefresh(!isStaticImageUrl(configuredUrl))
 
           return result
         } catch (error) {
           console.error('加载壁纸失败:', error)
-          return null
+          // Exception path: still paint bundled default so first-run / API
+          // throws never leave the surface blank.
+          return applyBundledFallback()
         }
       }
 

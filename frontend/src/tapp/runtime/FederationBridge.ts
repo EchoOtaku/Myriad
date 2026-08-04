@@ -25,11 +25,40 @@ import type { TappBridge } from './TappBridge'
 import { ApiError } from '../../services/api'
 import { federationApi } from '../../services/federationApi'
 import { xShareApi } from '../../services/xShareApi'
+import { isKnownGuest } from '../../utils/authState'
 import { getFederationFeed } from '../services/TappApiService'
 import {
   federationMediaUrlRejectionReason,
   isValidFederationMediaUrl,
 } from '../utils/federationMediaUrl'
+
+/**
+ * 访客闸 —— 确定未登录时，per-user 的联邦读取不必真发请求。
+ *
+ * 背景：Aro 这类后台通知型 Tapp 会以 core 模式在首页常驻轮询
+ * getChannels/getRooms。访客根本没有私信和房间，这些请求只可能拿到
+ * 401，却每 15 秒重复一次、每个访客每个页面都来一遍——网络面板和
+ * 服务端日志里全是红的，还白白占限流额度。
+ *
+ * 刻意只盖 Channel/Room 的读取：它们天然是「我的会话」，语义上访客一定
+ * 为空；时间线、关注列表、Ring 这些可能有公开语义，不在此列。写操作也
+ * 不盖——那些由用户动作触发，不会空转，真失败了该让调用方看见原因。
+ *
+ * fail-open：只有 isKnownGuest() 为 true（/api/auth/me 给出确定答案）
+ * 才短路；状态未知一律照旧走网络，绝不误挡真实用户。鉴权仍在后端。
+ */
+/**
+ * 返回「空成功」而非错误：访客没有会话是正常状态，不是故障。
+ * Aro 的 loadConversations 在两个列表都 reject 时会弹错误横幅，
+ * 空列表才是它期望的访客表现。
+ */
+function guestEmptyChannels() {
+  return { success: true as const, data: { channels: [], total: 0 } }
+}
+
+function guestEmptyRooms() {
+  return { success: true as const, data: { rooms: [], total: 0 } }
+}
 
 /** Map API failures for Tapp sandbox — preserve ROOM_INVITE_PENDING etc. */
 function federationFail(error: unknown, fallback: string) {
@@ -739,19 +768,11 @@ export function registerFederationHandlers(
 
   bridge.registerHandler('federation.getChannels', async () => {
     try {
-      // Channels require a durable user session. Guests/anonymous viewers would
-      // only get HTTP 401 console noise — return empty without hitting the API.
-      // Prefer live auth when available; fall back to session hint (boot race).
-      let mayHaveUserSession = false
-      try {
-        const { hasSessionHint } = await import('../../utils/sessionDetection')
-        mayHaveUserSession = hasSessionHint()
-      } catch {
-        mayHaveUserSession = false
-      }
-      if (!mayHaveUserSession) {
-        return { success: true, data: { channels: [], total: 0 } }
-      }
+      // Channels require a durable user session. Guests would only get 401s.
+      // 改用 authState 的权威结论：此前这里读 hasSessionHint()，那是
+      // localStorage 启发式，fail-closed——已登录但清过 localStorage 的
+      // 用户会拿到空会话列表。现在只有确定是访客才短路，未知一律放行。
+      if (isKnownGuest()) return guestEmptyChannels()
       const runtimeGrant = await bridge.getRuntimeGrant()
       const data = await federationApi.getChannels(runtimeGrant)
       return { success: true, data }
@@ -973,10 +994,22 @@ export function registerFederationHandlers(
 
   bridge.registerHandler('federation.getRooms', async () => {
     try {
+      // 与 getChannels 同理：房间是 per-user 的，访客必然 401。
+      // 线上实测这里被 Aro 的后台轮询每 15s 打一次，每个访客每个页面都在红。
+      if (isKnownGuest()) return guestEmptyRooms()
       const runtimeGrant = await bridge.getRuntimeGrant()
       const data = await federationApi.getRooms(runtimeGrant)
       return { success: true, data }
     } catch (error) {
+      // 会话过期（hint 还在）同样按空列表处理，与 getChannels 对齐
+      const status =
+        error &&
+        typeof error === 'object' &&
+        'status' in error &&
+        typeof (error as { status: unknown }).status === 'number'
+          ? (error as { status: number }).status
+          : undefined
+      if (status === 401 || status === 403) return guestEmptyRooms()
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed',

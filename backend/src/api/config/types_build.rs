@@ -2509,7 +2509,7 @@ pub async fn export_settings(
     let registry = settings_registry();
     let effective_config = build_config(&db, true).await;
     let rows = match db
-        .query_all(Statement::from_string(
+        .query_all_raw(Statement::from_string(
             DatabaseBackend::Postgres,
             "SELECT key, value, description, category, is_encrypted, is_public FROM configurations ORDER BY key"
                 .to_string(),
@@ -2656,7 +2656,7 @@ pub async fn restore_settings(
     let restore_result: Result<(), sea_orm::DbErr> = async {
         for entry in entries {
             transaction
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"
                         INSERT INTO configurations
@@ -2687,7 +2687,7 @@ pub async fn restore_settings(
         let notification_value = serde_json::to_value(&notification_preferences)
             .map_err(|error| sea_orm::DbErr::Custom(error.to_string()))?;
         let update_result = transaction
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "UPDATE users SET notification_preferences = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
                 vec![notification_value.into(), user_id.into()],
@@ -3468,6 +3468,36 @@ mod settings_backup_tests {
     }
 
     #[test]
+    fn remove_env_keys_strips_active_and_commented_db_only_lines() {
+        let content = "\
+DATABASE_URL=postgres://x\n\
+UI_WALLPAPER_URL=https://example.com/a.jpg\n\
+# GEMINI_API_KEY=old\n\
+GITHUB_TOKEN=ghp_x\n\
+BASE_URL=https://site.example\n\
+PROXY_ENABLED=true\n\
+";
+        let next = remove_env_keys(content, DB_ONLY_ENV_KEYS);
+        assert!(next.contains("DATABASE_URL=postgres://x"));
+        assert!(next.contains("BASE_URL=https://site.example"));
+        assert!(next.contains("PROXY_ENABLED=true"));
+        assert!(!next.contains("UI_WALLPAPER_URL"));
+        assert!(!next.contains("GEMINI_API_KEY"));
+        assert!(!next.contains("GITHUB_TOKEN"));
+    }
+
+    #[test]
+    fn db_only_env_keys_covers_wallpaper_and_ai() {
+        assert!(DB_ONLY_ENV_KEYS.contains(&"UI_WALLPAPER_URL"));
+        assert!(DB_ONLY_ENV_KEYS.contains(&"GEMINI_API_KEY"));
+        assert!(DB_ONLY_ENV_KEYS.contains(&"GITHUB_TOKEN"));
+        // Deploy keys must NOT be purged
+        assert!(!DB_ONLY_ENV_KEYS.contains(&"BASE_URL"));
+        assert!(!DB_ONLY_ENV_KEYS.contains(&"PROXY_URL"));
+        assert!(!DB_ONLY_ENV_KEYS.contains(&"GITHUB_CLIENT_ID"));
+    }
+
+    #[test]
     fn music_playlist_id_normalized_in_db_updates() {
         let mut config = empty_config();
         config.ui_config.config_fields = vec![ui_field(
@@ -3505,10 +3535,10 @@ pub async fn update_config(
     }
     tracing::info!("✅ Configuration saved to database");
 
-    // 2. 保存到 .env 文件（向后兼容）
+    // 2. Sync deploy keys to .env (BASE_URL / OAuth client / proxy); purge DB-only dual-writes
     let body = match save_all_configs(&payload).await {
         Ok(_) => {
-            tracing::info!("✅ Configuration saved to .env file");
+            tracing::info!("✅ Deploy env synced; DB-only app keys purged from .env");
             json!({
                 "success": true,
                 "message": "Configuration saved successfully! Changes will be applied automatically within a few seconds."
@@ -4142,7 +4172,159 @@ fn should_write_env_field(field_key: &str, value: &str) -> bool {
     }
 }
 
-/// 保存所有配置到 .env 文件
+/// App config that lives only in the database (groups A/B/C).
+///
+/// Never dual-write these to `.env` / process env. On every config save we also
+/// strip any legacy lines and `remove_var` so stale process env cannot resurrect
+/// cleared wallpaper / secrets / AI settings.
+///
+/// Kept in env (not in this list):
+/// - infra: DATABASE_URL, SERVER_*, JWT_SECRET, CORS_ORIGINS, FRONTEND_*, RUST_LOG
+/// - site origin: BASE_URL (+ site-domain FRONTEND_URL / CORS adapt)
+/// - OAuth deploy: GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET
+/// - outbound runtime: PROXY_*, GEMINI_BASE_URL, GITHUB_API_BASE_URL
+///
+/// ## TECH DEBT — remove after 5 releases
+///
+/// Introduced in **v0.3.26** (stop dual-writing A/B/C + one-time purge of legacy
+/// `.env` / process env). The **purge path** (`DB_ONLY_ENV_KEYS`,
+/// `remove_env_keys` on save, `std::env::remove_var` loop for this list) exists
+/// only so old installs clean themselves on the next config save.
+///
+/// **Remove target: ≥ v0.3.31** (5 versions after 0.3.26). By then all active
+/// deployments should have purged; keep only the “do not write A/B/C to env”
+/// contract (i.e. never re-add dual-write). Delete:
+/// - this constant (or shrink to empty if unused)
+/// - `remove_env_keys` + its unit tests (if only used for this purge)
+/// - the `remove_env_keys(...)` call and `for key in DB_ONLY_ENV_KEYS { remove_var }`
+///   in `save_all_configs`
+///
+/// Tracked: https://github.com/Myriad-You/Myriad/issues/301
+const DB_ONLY_ENV_KEYS: &[&str] = &[
+    // A — pure UI / site bag / music / report topic / dead pet
+    "UI_WALLPAPER_URL",
+    "UI_WALLPAPER_BLUR",
+    "UI_WALLPAPER_PARALLAX",
+    "UI_EVOCATIVE_PARALLAX",
+    "UI_EVOCATIVE_DYNAMIC_BLUR",
+    "UI_EVOCATIVE_RIPPLE",
+    "UI_EVOCATIVE_FPS",
+    "UI_EVOCATIVE_RIPPLE_QUALITY",
+    "PET_ENABLED",
+    "PET_IMAGE_URL",
+    "ANALYTICS_ENABLED",
+    "PWA_ENABLED",
+    "SITE_TITLE",
+    "SITE_DESCRIPTION",
+    "SITE_FAVICON",
+    "SITE_KEYWORDS",
+    "SITE_OG_IMAGE",
+    "SITE_NOINDEX",
+    "SITE_VISIBILITY_POLICY",
+    "SITE_AI_INTRO",
+    "SITE_FOOTER_CUSTOM",
+    "SITE_ICP",
+    "SITE_GONGAN",
+    "GA_MEASUREMENT_ID",
+    "UMAMI_WEBSITE_ID",
+    "UMAMI_SCRIPT_URL",
+    "MUSIC_ENABLED",
+    "MUSIC_SOURCE",
+    "MUSIC_PLAYLIST_ID",
+    "TOPIC_STYLE",
+    // B — platform credentials
+    "GITHUB_USERNAME",
+    "GITHUB_TOKEN",
+    "BILIBILI_UID",
+    "STEAM_API_KEY",
+    "STEAM_ID",
+    "YOUTUBE_API_KEY",
+    "YOUTUBE_CHANNEL_ID",
+    "NETEASE_USER_ID",
+    "BANGUMI_USERNAME",
+    "BANGUMI_ACCESS_TOKEN",
+    "BANGUMI_USER_AGENT",
+    "X_USERNAME",
+    "X_BEARER_TOKEN",
+    "MAL_USERNAME",
+    "MAL_CLIENT_ID",
+    "XBOX_GAMERTAG",
+    "OPENXBL_API_KEY",
+    "PSN_ONLINE_ID",
+    "PSN_NPSSO",
+    "DISCORD_ACCESS_TOKEN",
+    "DISCORD_REFRESH_TOKEN",
+    "DISCORD_TOKEN_EXPIRES_AT",
+    "DISCORD_USER_ID",
+    // C — AI / Lite / Pro / image / Tripo
+    "AI_PROVIDER",
+    "GEMINI_API_KEY",
+    "GEMINI_MODEL",
+    "OPENAI_API_KEY",
+    "OPENAI_MODEL",
+    "OPENAI_BASE_URL",
+    "OPENAI_MAX_TOKENS",
+    "PRO_ENABLED",
+    "PRO_AI_PROVIDER",
+    "PRO_GEMINI_API_KEY",
+    "PRO_GEMINI_MODEL",
+    "PRO_OPENAI_API_KEY",
+    "PRO_OPENAI_MODEL",
+    "PRO_OPENAI_BASE_URL",
+    "AI_IMAGE_PROVIDER",
+    "AI_IMAGE_MODEL",
+    "AI_IMAGE_OPENAI_API_KEY",
+    "AI_IMAGE_OPENAI_BASE_URL",
+    "AI_IMAGE_OPENROUTER_API_KEY",
+    "AI_IMAGE_VOLCENGINE_API_KEY",
+    "AI_IMAGE_VOLCENGINE_BASE_URL",
+    "AI_IMAGE_WIDTH",
+    "AI_IMAGE_HEIGHT",
+    "PIXAI_API_KEY",
+    "LITE_ENABLED",
+    "LITE_AI_PROVIDER",
+    "LITE_GEMINI_API_KEY",
+    "LITE_GEMINI_MODEL",
+    "LITE_OPENAI_API_KEY",
+    "LITE_OPENAI_MODEL",
+    "LITE_OPENAI_BASE_URL",
+    "TRIPO_ENABLED",
+    "TRIPO_API_KEY",
+    "TRIPO_BASE_URL",
+    "TRIPO_MODEL",
+    "TRIPO_FACE_LIMIT",
+    "TRIPO_POLL_INTERVAL_SECONDS",
+    "TRIPO_TASK_TIMEOUT_SECONDS",
+    "TRIPO_MAX_DOWNLOAD_MB",
+];
+
+/// Drop `KEY=...` and `# KEY=...` lines from .env content.
+pub(crate) fn remove_env_keys(content: &str, keys: &[&str]) -> String {
+    if keys.is_empty() {
+        return content.to_string();
+    }
+    let prefixes: Vec<(String, String)> = keys
+        .iter()
+        .map(|k| (format!("{k}="), format!("# {k}=")))
+        .collect();
+    let mut out: Vec<&str> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        let drop = prefixes.iter().any(|(eq, hash)| {
+            trimmed.starts_with(eq.as_str()) || trimmed.starts_with(hash.as_str())
+        });
+        if !drop {
+            out.push(line);
+        }
+    }
+    let mut s = out.join("\n");
+    if content.ends_with('\n') && !s.is_empty() && !s.ends_with('\n') {
+        s.push('\n');
+    }
+    s
+}
+
+/// 保存部署相关配置到 .env；应用配置（A/B/C）只在 DB，绝不 dual-write。
 async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::error::Error>> {
     use std::fs;
     use std::path::Path;
@@ -4164,232 +4346,25 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
         String::new()
     };
 
-    // Platform credentials: mask keeps .env; empty clears (unlike AI/OAuth secrets).
-    // Track emptied keys so process env is removed after dotenv reload (commented
-    // lines alone do not unset already-loaded variables).
-    let mut platform_env_keys_to_clear: Vec<&'static str> = Vec::new();
-    let mut write_platform_env = |env_content: &mut String, key: &'static str, value: &str| {
-        if !should_write_platform_env_field(value) {
-            return;
-        }
-        *env_content = update_env_var(env_content, key, value);
-        if value.trim().is_empty() {
-            platform_env_keys_to_clear.push(key);
-        }
-    };
+    // Purge legacy dual-written A/B/C keys from the file before writing deploy keys.
+    env_content = remove_env_keys(&env_content, DB_ONLY_ENV_KEYS);
 
-    for platform in &config.platforms {
-        match platform.name.as_str() {
-            "GitHub" => {
-                for field in &platform.config_fields {
-                    let key = match field.key.as_str() {
-                        "username" => "GITHUB_USERNAME",
-                        "token" => "GITHUB_TOKEN",
-                        _ => continue,
-                    };
-                    write_platform_env(&mut env_content, key, &field.value);
-                }
-            }
-            "Bilibili" => {
-                for field in &platform.config_fields {
-                    if field.key == "uid" {
-                        write_platform_env(&mut env_content, "BILIBILI_UID", &field.value);
-                    }
-                }
-            }
-            "Steam" => {
-                for field in &platform.config_fields {
-                    let key = match field.key.as_str() {
-                        "api_key" => "STEAM_API_KEY",
-                        "steam_id" => "STEAM_ID",
-                        _ => continue,
-                    };
-                    write_platform_env(&mut env_content, key, &field.value);
-                }
-            }
-            "YouTube" => {
-                for field in &platform.config_fields {
-                    let key = match field.key.as_str() {
-                        "api_key" => "YOUTUBE_API_KEY",
-                        "channel_id" => "YOUTUBE_CHANNEL_ID",
-                        _ => continue,
-                    };
-                    write_platform_env(&mut env_content, key, &field.value);
-                }
-            }
-            "Netease Music" => {
-                for field in &platform.config_fields {
-                    if field.key == "user_id" {
-                        write_platform_env(&mut env_content, "NETEASE_USER_ID", &field.value);
-                    }
-                }
-            }
-            "Bangumi" => {
-                for field in &platform.config_fields {
-                    let key = match field.key.as_str() {
-                        "username" => "BANGUMI_USERNAME",
-                        "access_token" => "BANGUMI_ACCESS_TOKEN",
-                        "user_agent" => "BANGUMI_USER_AGENT",
-                        _ => continue,
-                    };
-                    write_platform_env(&mut env_content, key, &field.value);
-                }
-            }
-            "X" => {
-                for field in &platform.config_fields {
-                    let key = match field.key.as_str() {
-                        "username" => "X_USERNAME",
-                        "bearer_token" => "X_BEARER_TOKEN",
-                        _ => continue,
-                    };
-                    write_platform_env(&mut env_content, key, &field.value);
-                }
-            }
-            "MyAnimeList" => {
-                for field in &platform.config_fields {
-                    let key = match field.key.as_str() {
-                        "username" => "MAL_USERNAME",
-                        "client_id" => "MAL_CLIENT_ID",
-                        _ => continue,
-                    };
-                    write_platform_env(&mut env_content, key, &field.value);
-                }
-            }
-            "Xbox" => {
-                for field in &platform.config_fields {
-                    let key = match field.key.as_str() {
-                        "gamertag" => "XBOX_GAMERTAG",
-                        "openxbl_api_key" => "OPENXBL_API_KEY",
-                        _ => continue,
-                    };
-                    write_platform_env(&mut env_content, key, &field.value);
-                }
-            }
-            "PlayStation" => {
-                for field in &platform.config_fields {
-                    let key = match field.key.as_str() {
-                        "online_id" => "PSN_ONLINE_ID",
-                        "npsso" => "PSN_NPSSO",
-                        _ => continue,
-                    };
-                    write_platform_env(&mut env_content, key, &field.value);
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // 保存 AI 配置（密钥字段跳过掩码）
-    for field in &config.ai_config.config_fields {
-        let key = match field.key.as_str() {
-            "provider" => "AI_PROVIDER",
-            "gemini_api_key" => "GEMINI_API_KEY",
-            "gemini_model" => "GEMINI_MODEL",
-            "openai_api_key" => "OPENAI_API_KEY",
-            "openai_model" => "OPENAI_MODEL",
-            "openai_base_url" => "OPENAI_BASE_URL",
-            // Pro 模型配置
-            "pro_enabled" => "PRO_ENABLED",
-            "pro_provider" => "PRO_AI_PROVIDER",
-            "pro_gemini_api_key" => "PRO_GEMINI_API_KEY",
-            "pro_gemini_model" => "PRO_GEMINI_MODEL",
-            "pro_openai_api_key" => "PRO_OPENAI_API_KEY",
-            "pro_openai_model" => "PRO_OPENAI_MODEL",
-            "pro_openai_base_url" => "PRO_OPENAI_BASE_URL",
-            // AI 图片生成配置
-            "ai_image_provider" => "AI_IMAGE_PROVIDER",
-            "ai_image_model" => "AI_IMAGE_MODEL",
-            "ai_image_openai_api_key" => "AI_IMAGE_OPENAI_API_KEY",
-            "ai_image_openai_base_url" => "AI_IMAGE_OPENAI_BASE_URL",
-            "ai_image_openrouter_api_key" => "AI_IMAGE_OPENROUTER_API_KEY",
-            "ai_image_volcengine_api_key" => "AI_IMAGE_VOLCENGINE_API_KEY",
-            "ai_image_volcengine_base_url" => "AI_IMAGE_VOLCENGINE_BASE_URL",
-            "pixai_api_key" => "PIXAI_API_KEY",
-            "lite_enabled" => "LITE_ENABLED",
-            "lite_provider" => "LITE_AI_PROVIDER",
-            "lite_ai_provider" => "LITE_AI_PROVIDER",
-            "lite_gemini_api_key" => "LITE_GEMINI_API_KEY",
-            "lite_gemini_model" => "LITE_GEMINI_MODEL",
-            "lite_openai_api_key" => "LITE_OPENAI_API_KEY",
-            "lite_openai_model" => "LITE_OPENAI_MODEL",
-            "lite_openai_base_url" => "LITE_OPENAI_BASE_URL",
-            _ => continue,
-        };
-        if !should_write_env_field(&field.key, &field.value) {
-            continue;
-        }
-        env_content = update_env_var(&env_content, key, &field.value);
-    }
-
-    // Tripo 3D uses its own configuration namespace.
-    for field in &config.tripo_config.config_fields {
-        let key = match field.key.as_str() {
-            "tripo_enabled" => "TRIPO_ENABLED",
-            "tripo_api_key" => "TRIPO_API_KEY",
-            "tripo_base_url" => "TRIPO_BASE_URL",
-            "tripo_model" => "TRIPO_MODEL",
-            "tripo_face_limit" => "TRIPO_FACE_LIMIT",
-            "tripo_poll_interval_seconds" => "TRIPO_POLL_INTERVAL_SECONDS",
-            "tripo_task_timeout_seconds" => "TRIPO_TASK_TIMEOUT_SECONDS",
-            "tripo_max_download_mb" => "TRIPO_MAX_DOWNLOAD_MB",
-            _ => continue,
-        };
-        if !should_write_env_field(&field.key, &field.value) {
-            continue;
-        }
-        env_content = update_env_var(&env_content, key, &field.value);
-    }
-
-    // 保存报告配置
-    for field in &config.report_config.config_fields {
-        let key = match field.key.as_str() {
-            "topic_style" => "TOPIC_STYLE",
-            _ => continue,
-        };
-        env_content = update_env_var(&env_content, key, &field.value);
-    }
+    // Keys emptied on this save (commented `# KEY=`) — must remove_var after dotenv.
+    let mut env_keys_to_clear: Vec<&'static str> = Vec::new();
 
     // Capture previous public origin before rewriting BASE_URL so CORS replace
     // can swap the old entry instead of treating the new value as previous.
     let previous_base_url = crate::api::site_domain::read_env_key(&env_content, "BASE_URL")
         .or_else(|| std::env::var("BASE_URL").ok().filter(|s| !s.is_empty()));
 
-    // 保存 UI 配置
+    // Only deploy / outbound keys still dual-write to .env:
+    // BASE_URL, GitHub OAuth client, proxy, API base mirrors.
     let mut saved_base_url: Option<String> = None;
     for field in &config.ui_config.config_fields {
         let key = match field.key.as_str() {
-            "wallpaper_url" => "UI_WALLPAPER_URL",
-            "wallpaper_blur" => "UI_WALLPAPER_BLUR",
-            "wallpaper_parallax" => "UI_WALLPAPER_PARALLAX",
-            // Evocative 壁纸动效
-            "evocative_parallax" => "UI_EVOCATIVE_PARALLAX",
-            "evocative_dynamic_blur" => "UI_EVOCATIVE_DYNAMIC_BLUR",
-            "evocative_ripple" => "UI_EVOCATIVE_RIPPLE",
-            "evocative_fps" => "UI_EVOCATIVE_FPS",
-            "evocative_ripple_quality" => "UI_EVOCATIVE_RIPPLE_QUALITY",
-            "pet_enabled" => "PET_ENABLED",
-            "pet_image_url" => "PET_IMAGE_URL",
-            "analytics_enabled" => "ANALYTICS_ENABLED",
-            "pwa_enabled" => "PWA_ENABLED",
-            "site_title" => "SITE_TITLE",
-            "site_description" => "SITE_DESCRIPTION",
-            "site_favicon" => "SITE_FAVICON",
-            "site_keywords" => "SITE_KEYWORDS",
-            "site_og_image" => "SITE_OG_IMAGE",
-            "site_noindex" => "SITE_NOINDEX",
-            "site_visibility_policy" => "SITE_VISIBILITY_POLICY",
-            "site_ai_intro" => "SITE_AI_INTRO",
-            "ga_measurement_id" => "GA_MEASUREMENT_ID",
-            "umami_website_id" => "UMAMI_WEBSITE_ID",
-            "umami_script_url" => "UMAMI_SCRIPT_URL",
-            "site_footer_custom" => "SITE_FOOTER_CUSTOM",
             "github_client_id" => "GITHUB_CLIENT_ID",
             "github_client_secret" => "GITHUB_CLIENT_SECRET",
             "base_url" => "BASE_URL",
-            "music_enabled" => "MUSIC_ENABLED",
-            "music_source" => "MUSIC_SOURCE",
-            "music_playlist_id" => "MUSIC_PLAYLIST_ID",
-            // 网络代理配置
             "proxy_enabled" => "PROXY_ENABLED",
             "proxy_url" => "PROXY_URL",
             "proxy_bypass" => "PROXY_BYPASS",
@@ -4400,45 +4375,11 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
         if field.key == "base_url" {
             saved_base_url = Some(field.value.clone());
         }
-        // github_client_secret (and any other secret UI fields) must not write masks
+        // github_client_secret must not write masks
         if !should_write_env_field(&field.key, &field.value) {
             continue;
         }
         let env_value = match field.key.as_str() {
-            "music_playlist_id" => normalize_music_playlist_id(&field.value),
-            "wallpaper_url" => match sanitize_wallpaper_url(&field.value) {
-                Some(safe) => safe,
-                None => {
-                    tracing::warn!(
-                        wallpaper_url = %field.value,
-                        "Skipping UI_WALLPAPER_URL env write: failed scheme/host policy"
-                    );
-                    continue;
-                }
-            },
-            "site_favicon" => match sanitize_site_favicon_url(&field.value) {
-                Some(safe) => safe,
-                None => {
-                    tracing::warn!("Skipping SITE_FAVICON env write: failed scheme/format policy");
-                    continue;
-                }
-            },
-            "site_og_image" => match sanitize_site_og_image_url(&field.value) {
-                Some(safe) => safe,
-                None => {
-                    tracing::warn!("Skipping SITE_OG_IMAGE env write: failed scheme/format policy");
-                    continue;
-                }
-            },
-            "umami_script_url" => match sanitize_umami_script_url(&field.value) {
-                Some(safe) => safe,
-                None => {
-                    tracing::warn!(
-                        "Skipping UMAMI_SCRIPT_URL env write: failed scheme/format policy"
-                    );
-                    continue;
-                }
-            },
             "proxy_url" => match sanitize_proxy_url(&field.value) {
                 Some(safe) => safe,
                 None => {
@@ -4461,6 +4402,10 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
             _ => field.value.clone(),
         };
         env_content = update_env_var(&env_content, key, &env_value);
+        // Commented `# KEY=` lines do not unset process env after dotenv reload.
+        if env_value.trim().is_empty() {
+            env_keys_to_clear.push(key);
+        }
     }
 
     // When site base_url changes to a valid origin, also adapt FRONTEND_URL +
@@ -4497,7 +4442,7 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
     }
 
     fs::write(env_path, env_content_normalized.as_bytes())?;
-    tracing::info!("✅ Configuration saved to .env file");
+    tracing::info!("✅ Configuration saved to .env file (DB-only keys purged)");
 
     // 重新加载环境变量
     if let Err(e) = dotenvy::from_path_override(env_path) {
@@ -4506,10 +4451,12 @@ async fn save_all_configs(config: &ConfigResponse) -> Result<(), Box<dyn std::er
         tracing::info!("♻️ Environment variables reloaded after config save");
     }
 
-    // Empty platform credentials are written as commented `# KEY=` lines; dotenv
-    // does not remove already-loaded process env. Drop them so form rebuild and
-    // has_token checks cannot resurrect cleared secrets from the process env.
-    for key in platform_env_keys_to_clear {
+    // Drop emptied deploy keys + all DB-only keys from process env so nothing
+    // can resurrect via std::env after a purge (dotenv never unsets missing keys).
+    for key in env_keys_to_clear {
+        std::env::remove_var(key);
+    }
+    for key in DB_ONLY_ENV_KEYS {
         std::env::remove_var(key);
     }
 
@@ -4973,10 +4920,11 @@ pub async fn get_public_ui_config(
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
     let db_config = config_service.load_config().await.ok();
 
+    // Prefer DB when present (including intentional empty clear); else process env.
+    // Must match admin bag / SEO clearable fields — empty wallpaper must NOT fall
+    // through to a stale UI_WALLPAPER_URL still sitting in process env after clear.
     let get_value = |db_val: Option<String>, env_key: &str| -> String {
-        db_val
-            .filter(|v| !v.is_empty())
-            .unwrap_or_else(|| std::env::var(env_key).unwrap_or_default())
+        db_or_env_clearable(db_val, env_key, "")
     };
 
     let ui_config = json!({
@@ -5306,7 +5254,7 @@ async fn load_module_visibility_preferences(
 ) -> ModuleVisibilityPreferences {
     let sql = "SELECT value FROM configurations WHERE key = $1";
     let result = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             sql,
             vec![MODULE_VISIBILITY_PREFERENCES_KEY.into()],
@@ -5448,7 +5396,7 @@ impl HitokotoConfig {
 async fn load_hitokoto_config(db: &DatabaseConnection) -> HitokotoConfig {
     let sql = "SELECT value FROM configurations WHERE key = $1";
     let result = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             sql,
             vec![HITOKOTO_CONFIG_KEY.into()],
@@ -5564,7 +5512,7 @@ impl ReportSettings {
 pub async fn load_report_settings(db: &DatabaseConnection) -> ReportSettings {
     let sql = "SELECT value FROM configurations WHERE key = $1";
     let result = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             sql,
             vec![REPORT_SETTINGS_KEY.into()],

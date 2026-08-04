@@ -231,27 +231,45 @@ export const enUS: TranslationKeys = {
     welcomeEyebrow: 'First-time setup',
     welcomeTitle: 'Welcome to Myriad',
     welcomeDesc:
-      'Bring the data scattered across your platforms into one place that is truly yours. Connect PostgreSQL and create an administrator to get started.',
-    welcomeDatabase: 'Connect your PostgreSQL database',
-    welcomeAdmin: 'Create a secure administrator',
+      'Bring the data scattered across your platforms into one place that is truly yours. Connect PostgreSQL and create an owner account to get started.',
+    welcomeDatabase: 'Connect PostgreSQL',
+    welcomeAdmin: 'Create a secure owner account',
+    welcomeSite: 'Name your site',
     welcomeReady: 'Start exploring when setup is done',
     welcomeFootnote: 'Setup usually takes only a few minutes',
     getStarted: 'Start setup',
     welcomeStep: 'Welcome',
     welcomeStepShort: 'Welcome',
+    databaseStepShort: 'Database',
+    adminStepShort: 'Owner',
+    siteStepShort: 'Site',
+    siteInfoTitle: 'Name your site',
+    siteInfoDesc:
+      'All of this can be changed later in settings. Filling it in now just means the site looks like yours the first time you open it.',
+    siteTitleHint: 'Shown in the browser tab and in search results',
+    saveSiteInfo: 'Save and finish',
+    savingSiteInfo: 'Saving...',
+    siteInfoFailed: 'Failed to save site information',
+    autoLoginFailed:
+      'The owner account was created, but signing in automatically failed. Please sign in manually.',
+    enterSite: 'Enter the site',
+    stepOf: 'Step {current} of {total}',
+    backTo: 'Back to {step}',
     checkingStatus: 'Checking system status...',
     databaseConfig: 'Database Configuration',
     databaseConfigDesc:
       'Configure PostgreSQL database connection and run migrations',
-    adminAccount: 'Admin Account',
-    adminAccountDesc: 'Create system administrator account',
+    adminAccount: 'Owner Account',
+    adminAccountDesc: 'Create the system owner account',
     connectionFailed: 'Connection Failed',
     connectionFailedDesc:
       'Cannot connect to backend service, please make sure the server is running',
     backendDisconnected: 'Backend service disconnected',
     reconnecting: 'Attempting to reconnect...',
     retry: 'Retry',
-    complete: 'Setup Complete!',
+    doneGreeting: 'Hi, {name}',
+    doneReadyTitle: 'Ready to get started?',
+    doneEyebrow: 'Setup complete',
     completeDesc: 'Your Myriad system is ready to use.',
     goToLogin: 'Go to Login',
     host: 'Host',
@@ -268,7 +286,7 @@ export const enUS: TranslationKeys = {
     initDatabaseDesc:
       'Database connected, but tables not created yet. Please initialize the database first.',
     initializing: 'Initializing...',
-    createAdmin: 'Create Admin Account',
+    createAdmin: 'Create Owner Account',
     creating: 'Creating...',
     adminUsernameHint:
       'Username: 3-20 characters, letters, numbers and underscores only',
@@ -305,11 +323,11 @@ export const enUS: TranslationKeys = {
     passwordLengthError: 'Password must be at least 8 characters',
     passwordComplexityError:
       'Password must be at least 8 characters and contain both letters and numbers',
-    adminCreated: 'Admin account created successfully!',
-    createAdminFailed: 'Failed to create admin account',
+    adminCreated: 'Owner account created',
+    createAdminFailed: 'Failed to create owner account',
     createFailed: 'Creation failed',
     adminAccountFullDesc:
-      'Create local admin account with full system management privileges',
+      'Create a local owner account with full system management privileges',
     saveHint:
       'Tip: Backend restarts after saving so the full route table is loaded',
     atLeast8Chars: 'At least 8 characters with letters and numbers',
@@ -435,7 +453,7 @@ export const enUS: TranslationKeys = {
         'Import will REPLACE all current visitor stats (pages, events, referrers, visitor hashes). Only backups signed by this instance are accepted. Continue?',
       aiUsageTitle: 'AI usage stats',
       aiUsageDesc:
-        'Full-site AI calls (including admins and the site owner) by user, model, source, and day. Covers Tapp runtime, scheduled jobs, Arael, and report generation. Filter by user or model; bars are calls, the line is tokens.',
+        'Full-site AI calls (including admins and the site owner) by user, model, source, and day. Covers Tapp runtime, scheduled jobs, Arael, and report generation. Filter by user or model; bars are calls (left axis), the line is tokens (right axis, independent scale).',
       aiUsageLoadFailed: 'Failed to load AI usage stats',
       aiUsageEmpty: 'No AI calls in the selected range',
       aiUsageEmptyUsers: 'No per-user usage in the selected range',
@@ -1191,7 +1209,8 @@ export const enUS: TranslationKeys = {
     siteIdentityDesc:
       'Site name, blurb, and icon, plus whether visitors can install this site as a PWA',
     siteSeo: 'SEO & AI visibility',
-    siteSeoDesc: 'Search/AI policy, keywords, share image, and AI-assisted copy',
+    siteSeoDesc:
+      'Search/AI policy, keywords, share image, and AI-assisted copy',
     thirdPartyAnalytics: 'Third-party Analytics',
     thirdPartyAnalyticsDesc:
       'Connect Google Analytics / Umami; independent from the first-party visitor charts above — external reporting only',
@@ -1252,12 +1271,16 @@ export const enUS: TranslationKeys = {
     visibilitySearchOnlyHintBefore: 'Allow ',
     visibilitySearchOnlyHintAfter: ' search engines; block AI crawlers',
     visibilityAiCitation: 'Allow AI citations',
-    visibilityAiCitationHint: 'Allow AI search citations; block training bots; serve /llms.txt',
-    visibilityAiCitationHintBefore: 'Allow AI search citations; block training bots; serve ',
+    visibilityAiCitationHint:
+      'Allow AI search citations; block training bots; serve /llms.txt',
+    visibilityAiCitationHintBefore:
+      'Allow AI search citations; block training bots; serve ',
     visibilityAiCitationHintAfter: '',
     visibilityAiFull: 'Fully open',
-    visibilityAiFullHint: 'No extra blocks for search or AI training/citations; serve /llms.txt',
-    visibilityAiFullHintBefore: 'No extra blocks for search engines or AI training/citations; serve ',
+    visibilityAiFullHint:
+      'No extra blocks for search or AI training/citations; serve /llms.txt',
+    visibilityAiFullHintBefore:
+      'No extra blocks for search engines or AI training/citations; serve ',
     visibilityAiFullHintAfter: '',
     fieldSiteAiIntro: 'AI site intro',
     fieldSiteAiIntroHint:
@@ -1266,15 +1289,18 @@ export const enUS: TranslationKeys = {
     fieldSiteAiGenerateDesc:
       'Generate description, keywords, and AI intro from your title and a short hint. Uses AI settings; falls back to templates if unconfigured.',
     fieldSiteAiGenerateButton: 'Generate copy',
-    fieldSiteAiGenerateHint: 'Fills the fields below — review, then save config.',
+    fieldSiteAiGenerateHint:
+      'Fills the fields below — review, then save config.',
     fieldSiteAiGenerateHintInput: 'Extra hint (optional)',
-    fieldSiteAiGenerateHintPlaceholder: 'e.g. indie developer; tech blog and open-source projects',
+    fieldSiteAiGenerateHintPlaceholder:
+      'e.g. indie developer; tech blog and open-source projects',
     siteAiGenerateSuccess: 'Generated — review and save',
     siteAiGenerateFallback: 'AI unavailable; template used — edit as needed',
     siteAiGenerateError: 'Generation failed; try again later',
     siteAiGenerateNeedTitle: 'Add a site title first',
     siteAiGenerateTag: 'AI generate',
-    siteAiGenerateTagHint: 'AI-generate this field; optional short hint (set a title first)',
+    siteAiGenerateTagHint:
+      'AI-generate this field; optional short hint (set a title first)',
     siteAiGenerating: 'Generating…',
     siteAiGenerateDialogTitle: 'AI generate copy',
     siteAiGenerateDialogDesc:
@@ -2540,16 +2566,19 @@ export const enUS: TranslationKeys = {
     oauthNotConfigured: 'This sign-in method is disabled',
     profileDisplaySourcesTitle: 'Display sources',
     profileSourceTitle: 'Avatar source',
-    profileSourceHint: 'Affects the avatar only. Name and bio are selected separately below.',
+    profileSourceHint:
+      'Affects the avatar only. Name and bio are selected separately below.',
     profileSourceEmpty: 'No avatar sources to choose from.',
     profileSourceCurrent: 'Current',
     profileSourceAvatarHint: 'Change',
     profileSourceFailed: 'Could not switch avatar source',
     profileSourceAuto: 'Automatic',
-    profileSourceAutoDesc: 'Prefer a platform profile, fall back to the account avatar',
+    profileSourceAutoDesc:
+      'Prefer a platform profile, fall back to the account avatar',
     profileSourceAccount: 'Account avatar',
     profileTextSourceTitle: 'Name & bio source',
-    profileTextSourceHint: 'Affects the name and bio only, independent of the avatar source.',
+    profileTextSourceHint:
+      'Affects the name and bio only, independent of the avatar source.',
     profileTextSourceEmpty: 'No name/bio sources to choose from.',
     profileTextSourceFailed: 'Could not switch name & bio source',
     profileTextSourceAuto: 'Automatic',
@@ -3172,6 +3201,7 @@ export const enUS: TranslationKeys = {
     permFullscreen: 'Fullscreen Mode',
     permReadTheme: 'Read Theme',
     permConfirm: 'Confirm Dialog',
+    permOpenUrl: 'Open Declared Links',
     permNetworkFetch: 'Network Fetch',
     permMediaControl: 'Media Control',
     permMediaRead: 'Read Media Status',
@@ -3215,6 +3245,8 @@ export const enUS: TranslationKeys = {
     permFullscreenDesc: 'Allow requesting fullscreen display',
     permReadThemeDesc: 'Allow reading current theme settings',
     permConfirmDesc: 'Allow showing confirm dialogs',
+    permOpenUrlDesc:
+      'Allow the host to open links declared in Manifest openUrls (all other URLs are rejected)',
     permNetworkFetchDesc:
       'Allow declared HTTP APIs and loading remote images/media (e.g. cover CDNs)',
     permMediaControlDesc:
@@ -3416,7 +3448,7 @@ export const enUS: TranslationKeys = {
     playgroundExampleLabelMarkdown: 'Markdown pad',
     playgroundExamplesLabel: 'Try an example',
     playgroundPreviewCapabilities:
-      'Preview supports storage, settings, ui:theme, ui:confirm, and fullscreen. Other permissions need Install.',
+      'Preview supports storage, settings, ui:theme, ui:confirm, ui:openUrl, and fullscreen. Other permissions need Install.',
     playgroundPreviewCapabilitiesDismiss: 'Got it',
     playgroundPruneNotice:
       'Browser storage was full — older history was trimmed to free space.',

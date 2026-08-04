@@ -91,6 +91,11 @@ interface FitState {
 }
 
 const TOL = 0.5
+/**
+ * 触发重测的最小宽度变化（px）。低于此值的宽度抖动（过渡中间帧、
+ * 亚像素舍入）不值得付一整轮强制重排。
+ */
+const REFIT_MIN_DELTA = 4
 /** 可读性硬下限：任何自动推导的 min 不低于此值 */
 const ABS_MIN_FONT = 10
 /** 每多一行的结构惩罚 */
@@ -129,6 +134,13 @@ function sizeBadness(s: number, min: number, ideal: number): number {
   return r * r * r * 100
 }
 
+/**
+ * 二分迭代次数。每一轮都是一次 write(style) → read(geometry) 的强制同步重排，
+ * 所以次数直接等于重排次数。6 轮在 10~42px 区间已收敛到 0.5px 以内，
+ * 比原来的 8 轮少 25% 重排且肉眼无差。
+ */
+const BISECT_STEPS = 6
+
 /** 二分求满足 pred 的最大字号；先试上限，放得下直接用 */
 function largestFitting(
   lo: number,
@@ -141,7 +153,7 @@ function largestFitting(
   let best = lo
   let l = lo
   let h = hi
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < BISECT_STEPS; i++) {
     const mid = (l + h) / 2
     apply(mid)
     if (fits()) {
@@ -235,10 +247,14 @@ export function useFitText(options: FitTextOptions): FitTextResult {
       range.selectNodeContents(el)
       return range.getBoundingClientRect().width
     }
-    const boxWidth = () => el.getBoundingClientRect().width
+    // 容器宽在整轮测量里只读一次：FitText 渲染时强制 display:block（见组件的
+    // layout 对象），块级元素的宽度来自包含块，不随自身字号变化，所以二分
+    // 途中重复读它只是白白多一次强制重排。宽度真变了会由 ResizeObserver 补测。
+    const measuredBoxWidth = el.getBoundingClientRect().width
     // 生长目标：占宽 ≤ RESTRAINT（留白）；溢出判定：全宽（不误伤长文本）
-    const widthOkGrow = () => contentWidth() <= boxWidth() * RESTRAINT + TOL
-    const widthOkHard = () => contentWidth() <= boxWidth() + TOL
+    const widthOkGrow = () =>
+      contentWidth() <= measuredBoxWidth * RESTRAINT + TOL
+    const widthOkHard = () => contentWidth() <= measuredBoxWidth + TOL
     const applySize = (s: number) => {
       el.style.fontSize = `${s}px`
       el.style.lineHeight = String(lineHeightFor(s))
@@ -291,7 +307,7 @@ export function useFitText(options: FitTextOptions): FitTextResult {
         el.style.whiteSpace = 'nowrap'
         applySize(sMarquee)
         const distance
-          = Math.max(0, contentWidth() - boxWidth()) + MARQUEE_LEAD_PX
+          = Math.max(0, contentWidth() - measuredBoxWidth) + MARQUEE_LEAD_PX
         best = { mode: 'marquee', size: sMarquee, badness, clamped: false, distance }
       }
     }
@@ -349,12 +365,17 @@ export function useFitText(options: FitTextOptions): FitTextResult {
       raf = requestAnimationFrame(() => runFit(node))
     }
 
-    // 宽度驱动重测：观察自身（flex 兄弟挤压）与父容器（网格入场/缩放）
+    // 宽度驱动重测：观察自身（flex 兄弟挤压）与父容器（网格入场/缩放）。
+    // 阈值取 REFIT_MIN_DELTA 而非 1px：网格高度过渡 / 窗口缩放期间每帧都会
+    // 有亚像素级抖动，1px 阈值会让整条过渡变成一串强制重排的重测。
     const ro = new ResizeObserver(() => {
       const prev = widthsRef.current
       const elW = node.clientWidth
       const parentW = node.parentElement?.clientWidth ?? -1
-      if (Math.abs(elW - prev.el) < 1 && Math.abs(parentW - prev.parent) < 1) {
+      if (
+        Math.abs(elW - prev.el) < REFIT_MIN_DELTA &&
+        Math.abs(parentW - prev.parent) < REFIT_MIN_DELTA
+      ) {
         return
       }
       schedule()

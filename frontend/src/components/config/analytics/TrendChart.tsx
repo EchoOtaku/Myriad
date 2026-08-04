@@ -1,8 +1,9 @@
 /**
- * 每日趋势：浏览量柱 + 独立访客折线
+ * 每日趋势：柱系列 + 折线系列
  *
- * - 单一坐标轴（两个序列都是「次数」，不做双轴，避免编造相关性）
- * - 序列身份靠形状（柱 vs 线）+ 图例 + 表格，不靠色相；访客线走中性去强调色
+ * - 默认单 Y 轴（访客统计：浏览量 / 独立访客同为「次数」，可比）
+ * - independentScales：左右双轴各自缩放（AI 用量：次数 ≪ Token，同轴会压扁一方）
+ * - 序列身份靠形状（柱 vs 线）+ 图例 + 表格，不靠色相；折线走中性去强调色
  * - 悬停 / 键盘左右键读同一份数值；另有表格视图，数值不被 tooltip 独占
  * - 刷新时保留上一帧（降透明度），不闪骨架屏
  */
@@ -40,6 +41,11 @@ interface TrendChartProps {
   numberLocale: string
   /** 覆盖默认「浏览量 / 独立访客」文案，便于 AI 用量等复用 */
   seriesLabels?: TrendChartSeriesLabels
+  /**
+   * 柱与线使用独立 Y 轴（左柱 / 右线）。
+   * AI 用量次数与 Token 量级差大时开启；访客统计保持 false（同单位单轴）。
+   */
+  independentScales?: boolean
 }
 
 /** 绘图区几何（px，实测宽度后按像素排版，保证发丝线与柱宽不被缩放糊掉） */
@@ -48,15 +54,17 @@ const PLOT_H = 132
 const TOP_PAD = 10
 /** x 轴日期带 */
 const AXIS_H = 18
-/** y 轴刻度文字 */
+/** y 轴刻度文字（左） */
 const GUTTER_L = 38
-/** 右侧留白：给折线末端的直接标注腾地方 */
+/** 右侧留白：单轴时给折线末端标注；双轴时给右轴刻度 */
 const GUTTER_R = 34
+/** 双轴时右轴刻度更宽（compact 如 100K / 1.2万） */
+const GUTTER_R_DUAL = 44
 const BAR_MAX_W = 22
 const BAR_GAP = 3
 /** 悬停点半径（只在读数时出现） */
 const DOT_R = 3
-/** 末端标注与最后一根柱之间的间距 */
+/** 末端标注与最后一根柱之间的间距（仅单轴） */
 const END_LABEL_GAP = 14
 /** 日期标签的最小可读间距 */
 const LABEL_MIN_W = 36
@@ -124,6 +132,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   refreshing = false,
   numberLocale,
   seriesLabels,
+  independentScales = false,
 }) => {
   const { t } = useI18n()
   const a = t.config.analytics
@@ -138,24 +147,40 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   const [active, setActive] = useState<number | null>(null)
 
   const count = formatCount
-  const axis = useMemo(
+  /** 柱轴：双轴时仅看 primary；单轴时取两序列峰值 */
+  const barAxis = useMemo(
     () =>
       niceAxis(
         Math.max(
           0,
-          ...points.map((p) => Math.max(p.views, p.visitors)),
+          ...points.map((p) =>
+            independentScales ? p.views : Math.max(p.views, p.visitors),
+          ),
         ),
       ),
-    [points],
+    [points, independentScales],
+  )
+  /** 线轴：双轴时独立；单轴时与柱共用 */
+  const lineAxis = useMemo(
+    () =>
+      independentScales
+        ? niceAxis(Math.max(0, ...points.map((p) => p.visitors)))
+        : barAxis,
+    [points, independentScales, barAxis],
   )
 
-  const plotW = Math.max(0, width - GUTTER_L - GUTTER_R)
+  const gutterR = independentScales ? GUTTER_R_DUAL : GUTTER_R
+  const plotW = Math.max(0, width - GUTTER_L - gutterR)
   const slot = points.length > 0 ? plotW / points.length : 0
   const barW = Math.max(3, Math.min(BAR_MAX_W, slot - BAR_GAP))
   const baseY = TOP_PAD + PLOT_H
-  const yOf = useCallback(
-    (v: number) => baseY - (Math.max(0, v) / axis.max) * PLOT_H,
-    [axis.max, baseY],
+  const yOfBar = useCallback(
+    (v: number) => baseY - (Math.max(0, v) / barAxis.max) * PLOT_H,
+    [barAxis.max, baseY],
+  )
+  const yOfLine = useCallback(
+    (v: number) => baseY - (Math.max(0, v) / lineAxis.max) * PLOT_H,
+    [lineAxis.max, baseY],
   )
   const xOf = useCallback(
     (i: number) => GUTTER_L + slot * i + slot / 2,
@@ -171,9 +196,9 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   const linePoints = useMemo(
     () =>
       points
-        .map((p, i) => `${px(xOf(i))},${px(yOf(p.visitors))}`)
+        .map((p, i) => `${px(xOf(i))},${px(yOfLine(p.visitors))}`)
         .join(' '),
-    [points, xOf, yOf],
+    [points, xOf, yOfLine],
   )
 
   const onKeyDown = useCallback(
@@ -215,7 +240,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
         Math.max(0, Math.floor(rel / slot)),
       )
     },
-    [points.length, width, slot, plotW],
+    [points.length, width, slot, plotW, wrapRef],
   )
 
   const scrubTo = useCallback(
@@ -329,15 +354,15 @@ export const TrendChart: React.FC<TrendChartProps> = ({
               focusable="false"
               aria-hidden
             >
-              {/* 刻度：发丝实线 + 整数标签 */}
-              {axis.ticks.map((tick) => {
-                const y = yOf(tick)
+              {/* 网格 + 左轴（柱序列）刻度 */}
+              {barAxis.ticks.map((tick) => {
+                const y = yOfBar(tick)
                 return (
-                  <g key={tick}>
+                  <g key={`bar-${tick}`}>
                     <line
                       className="site-analytics-grid"
                       x1={GUTTER_L}
-                      x2={width - GUTTER_R}
+                      x2={width - gutterR}
                       y1={px(y)}
                       y2={px(y)}
                     />
@@ -354,6 +379,25 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 )
               })}
 
+              {/* 双轴：右轴（折线序列）刻度，不另画网格以免与左轴错位打架 */}
+              {independentScales
+                ? lineAxis.ticks.map((tick) => {
+                    const y = yOfLine(tick)
+                    return (
+                      <text
+                        key={`line-${tick}`}
+                        className="site-analytics-tick site-analytics-tick--secondary"
+                        x={width - gutterR + 6}
+                        y={px(y)}
+                        textAnchor="start"
+                        dominantBaseline="middle"
+                      >
+                        {count(tick, numberLocale)}
+                      </text>
+                    )
+                  })
+                : null}
+
               {/* 悬停列的竖向定位线，压在柱下方 */}
               {active != null ? (
                 <line
@@ -365,12 +409,12 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 />
               ) : null}
 
-              {/* 浏览量柱 */}
+              {/* 柱序列 */}
               {points.map((p, i) => {
                 const d = columnPath(
                   xOf(i) - barW / 2,
                   barW,
-                  yOf(p.views),
+                  yOfBar(p.views),
                   baseY,
                 )
                 if (!d) return null
@@ -383,7 +427,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 )
               })}
 
-              {/* 访客折线（中性去强调色，形状即身份） */}
+              {/* 折线（中性去强调色，形状即身份） */}
               {points.length > 1 ? (
                 <polyline
                   className="site-analytics-line"
@@ -392,15 +436,14 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 />
               ) : null}
               {/*
-                末端不放记号，改成把数值直接标在右侧留白里：
-                末点必然落在最后一根柱子内部（UV ≤ PV），任何圆点搁那儿
-                都像柱子被打了个洞；标注落在柱外的空白上，还多给一个读数。
+                单轴：末端数值标在右侧留白（UV ≤ PV 时末点常落在柱内，
+                不画圆点改标数字）。双轴右侧留给右轴刻度，不再叠末端标。
               */}
-              {points.length > 0 ? (
+              {!independentScales && points.length > 0 ? (
                 <text
                   className="site-analytics-end-label"
                   x={px(xOf(points.length - 1) + END_LABEL_GAP)}
-                  y={px(yOf(points[points.length - 1]!.visitors))}
+                  y={px(yOfLine(points[points.length - 1]!.visitors))}
                   dominantBaseline="middle"
                 >
                   {count(points[points.length - 1]!.visitors, numberLocale)}
@@ -412,7 +455,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
                 <circle
                   className="site-analytics-dot"
                   cx={px(xOf(active))}
-                  cy={px(yOf(points[active]!.visitors))}
+                  cy={px(yOfLine(points[active]!.visitors))}
                   r={DOT_R}
                 />
               ) : null}
@@ -421,7 +464,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({
               <line
                 className="site-analytics-baseline"
                 x1={GUTTER_L}
-                x2={width - GUTTER_R}
+                x2={width - gutterR}
                 y1={baseY}
                 y2={baseY}
               />

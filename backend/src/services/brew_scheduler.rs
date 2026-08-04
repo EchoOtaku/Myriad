@@ -409,7 +409,6 @@ impl BrewSchedulerEngine {
             .collect();
 
         let mut new_items: Vec<brew_items::ActiveModel> = Vec::new();
-        let mut new_titles: Vec<String> = Vec::new();
 
         let image_cache = crate::services::image_cache::ImageCacheService::new();
 
@@ -456,26 +455,52 @@ impl BrewSchedulerEngine {
                 ..Default::default()
             };
 
-            if new_titles.len() < 5 {
-                new_titles.push(item.title.clone());
-            }
             new_items.push(new_item);
         }
 
-        // 批量插入，ON CONFLICT DO NOTHING 防止并发竞态下的重复键错误
-        let new_count = new_items.len() as i32;
-        if !new_items.is_empty() {
+        // Concurrent-safe batch insert (unique: source_id + guid).
+        //
+        // Strategy: ON CONFLICT DO NOTHING + RETURNING so:
+        // - only rows PostgreSQL actually inserted are counted (no over-count on race);
+        // - all-conflict / empty RETURNING is intentional success with 0 inserts, not a
+        //   hard failure (another worker may have inserted the same guids first);
+        // - real DB errors still fail the fetch.
+        // new_count and notification titles come only from returned models.
+        let (new_count, new_titles) = if new_items.is_empty() {
+            (0_i32, Vec::new())
+        } else {
+            let candidate_len = new_items.len();
             let on_conflict =
                 OnConflict::columns([brew_items::Column::SourceId, brew_items::Column::Guid])
                     .do_nothing()
                     .to_owned();
-            brew_items::Entity::insert_many(new_items)
+            let inserted = match brew_items::Entity::insert_many(new_items)
                 .on_conflict(on_conflict)
-                .do_nothing()
-                .exec(db)
+                .exec_with_returning(db)
                 .await
-                .map_err(|e| format!("Failed to batch insert items: {}", e))?;
-        }
+            {
+                Ok(models) => models,
+                // SeaORM may surface zero RETURNING rows as RecordNotInserted; for our
+                // DO NOTHING path that means concurrent/idempotent skips — count 0.
+                Err(sea_orm::DbErr::RecordNotInserted) => {
+                    tracing::debug!(
+                        source_id = source.id,
+                        candidates = candidate_len,
+                        "[BrewScheduler] insert skipped all candidates (concurrent ON CONFLICT DO NOTHING)"
+                    );
+                    Vec::new()
+                }
+                Err(e) => {
+                    return Err(format!("Failed to batch insert items: {e}"));
+                }
+            };
+            let titles: Vec<String> = inserted
+                .iter()
+                .map(|m| m.title.clone())
+                .take(5)
+                .collect();
+            (inserted.len() as i32, titles)
+        };
 
         if new_count > 0 {
             let mut source_active: brew_sources::ActiveModel = source.clone().into();

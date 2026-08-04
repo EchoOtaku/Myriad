@@ -97,15 +97,19 @@
 
 /* 动画状态 */
 
+/*
+ * 不挂 will-change：这两条是 3s 的单次淡入（forwards），类名不会摘，
+ * will-change 就永久驻留，每个光晕白占一层合成层——首页十几个小组件
+ * （dual 变体还是两个）叠起来是实打实的 GPU 内存。
+ * 光晕本身有 filter: blur()，动画期间浏览器自会为它建层，无需提示。
+ */
 .glow-animate-primary {
   animation: glow-pulse-primary 3s ease-in-out forwards; /* 单次播放，保持最终状态 */
-  will-change: opacity, transform;
 }
 
 .glow-animate-secondary {
   animation: glow-pulse-secondary 3s ease-in-out forwards; /* 单次播放，保持最终状态 */
   animation-delay: 0.5s;
-  will-change: opacity, transform;
 }
 
 /* 关键帧动画（单次淡入） */

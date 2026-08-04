@@ -637,6 +637,11 @@ html.dark .site-analytics-compare[data-palette='red-up'].is-down {
   font-variant-numeric: tabular-nums;
 }
 
+/* 双轴右刻度：与左轴同级，略淡一点以免抢主读数 */
+.site-analytics-tick--secondary {
+  fill: var(--cfg-text-3);
+}
+
 .site-analytics-bar {
   fill: var(--sa-mark);
   fill-opacity: 0.88;

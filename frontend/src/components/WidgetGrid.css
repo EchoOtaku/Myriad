@@ -52,6 +52,23 @@
     height 0.45s cubic-bezier(0.25, 1, 0.5, 1);
 }
 
+/*
+ * 每个格子自成一个布局/绘制单元：小组件内部的重排（FitText 定字号、
+ * 列表数据到货、骨架切正文）不再冒泡成整张网格的重排。
+ * 不加 size —— 尺寸本来就由外层的百分比几何决定，加了反而丢掉自适应。
+ */
+.widget-grid-item {
+  contain: layout paint style;
+}
+
+/*
+ * 库条带预览：同上，另外它整块被 scale() 压缩，
+ * 隔离后内部变化不会连累条带里其它预览一起重排。
+ */
+.widget-library-preview {
+  contain: layout paint style;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .widget-grid-item--layout-motion,
   .widget-grid-container--layout-motion:not([data-band-switch]),
@@ -69,11 +86,36 @@
   }
 }
 
-/* 网格背景 */
+/*
+ * 网格背景线：两层 repeating-linear-gradient 画完，一个盒子搞定。
+ * 此前是 cols×rows 个带 border 的空 div（桌面 16×4 = 64 个），
+ * 纯装饰却要参与布局与绘制。格距由 --cell-w / --cell-h 下发。
+ */
 .widget-grid-background {
-  display: grid;
-  grid-template-columns: repeat(16, 1fr);
-  grid-template-rows: repeat(4, 1fr);
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      var(--widget-grid-line) 0 1px,
+      transparent 1px var(--widget-grid-cell-w)
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      var(--widget-grid-line) 0 1px,
+      transparent 1px var(--widget-grid-cell-h)
+    );
+
+  /* 右/下各补一条收边线，与原来「每格四边都有 border」的观感一致 */
+  box-shadow:
+    inset -1px 0 0 0 var(--widget-grid-line),
+    inset 0 -1px 0 0 var(--widget-grid-line);
+}
+
+:root {
+  --widget-grid-line: rgb(229 231 235 / 30%); /* gray-200/30 */
+}
+
+html.dark {
+  --widget-grid-line: rgb(255 255 255 / 5%);
 }
 
 /* 拖拽时的流畅过渡 */

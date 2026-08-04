@@ -16,6 +16,7 @@ describe('previewGrants (MYR-024)', () => {
       'ui:theme',
       'ui:confirm',
       'ui:fullscreen',
+      'ui:openUrl',
       'media:read',
     ]
     assert.deepEqual(selectPreviewGrantedPermissions(declared), [
@@ -23,6 +24,7 @@ describe('previewGrants (MYR-024)', () => {
       'ui:theme',
       'ui:confirm',
       'ui:fullscreen',
+      'ui:openUrl',
     ])
     assert.ok(!selectPreviewGrantedPermissions(declared).includes('network:fetch'))
     assert.ok(!selectPreviewGrantedPermissions(declared).includes('ai:generate'))
@@ -45,6 +47,7 @@ describe('previewGrants (MYR-024)', () => {
       'ui:theme',
       'ui:confirm',
       'ui:fullscreen',
+      'ui:openUrl',
     ])
     for (const permission of PREVIEW_PERMISSIONS) {
       assert.equal(isPreviewPermission(permission), true)

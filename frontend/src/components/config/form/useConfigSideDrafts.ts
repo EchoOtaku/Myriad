@@ -267,7 +267,9 @@ export function useConfigSideDrafts(
 
   const loadHitokotoSettings = useCallback(async () => {
     try {
-      const config = await fetchHitokotoConfig()
+      // 配置编辑器必须看到权威值，不吃 fetchHitokotoConfig 的进程内缓存，
+      // 否则草稿可能基于最多 5 分钟前的旧配置，保存时把别处的改动覆盖掉
+      const config = await fetchHitokotoConfig({ force: true })
       setSavedHitokotoConfig(config)
       setHitokotoDraft(config)
     } catch {

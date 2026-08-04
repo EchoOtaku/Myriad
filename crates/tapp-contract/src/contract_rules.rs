@@ -52,6 +52,11 @@ pub const MAX_AI_OUTPUT_FORMATS: usize = 3;
 pub const MAX_EVENT_TOPICS: usize = 100;
 pub const MAX_AGENT_INTERACTIONS: usize = 32;
 pub const MAX_AGENT_INTENTS: usize = 16;
+/// Declared external link targets for host-mediated `Tapp.ui.openUrl`.
+pub const MAX_OPEN_URLS: usize = 32;
+pub const MAX_OPEN_URL_ID_LEN: usize = 64;
+pub const MAX_OPEN_URL_QUERY_KEYS: usize = 16;
+pub const MAX_OPEN_URL_QUERY_VALUE_LEN: usize = 512;
 pub const MIN_WIDGET_REFRESH_INTERVAL_SECONDS: u32 = 15;
 pub const MAX_WIDGET_REFRESH_INTERVAL_SECONDS: u32 = 86_400;
 pub const TAPP_PROTOCOL_VERSION: u8 = 2;
@@ -154,6 +159,10 @@ pub const TAPP_CATEGORY_ALIASES: &[&str] = &[
 pub const WIDGET_CATEGORY_ALIASES: &[&str] = &["tool"];
 pub const WIDGET_MANIFEST_PERMISSION: &str = "widget:register";
 pub const HTTP_API_PERMISSION: &str = "network:fetch";
+/// Host opens a browser tab for a manifest-declared link only.
+pub const OPEN_URL_PERMISSION: &str = "ui:openUrl";
+/// Allowed `openUrls[].match` values (exact path, path prefix, or whole origin).
+pub const OPEN_URL_MATCH_MODES: &[&str] = &["exact", "prefix", "origin"];
 pub const EVENT_PERMISSION_RULES: &[(&str, &str)] = &[
     ("publish", "event:publish"),
     ("subscribe", "event:subscribe"),

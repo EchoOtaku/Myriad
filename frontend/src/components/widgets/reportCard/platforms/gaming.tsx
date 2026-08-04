@@ -375,7 +375,7 @@ export const ScoreCardBody = memo(
 )
 ScoreCardBody.displayName = 'ScoreCardBody'
 
-export const SteamStatsWidget = memo(({ data }: any) => {
+export const SteamStatsWidget = memo(({ data, isPreview }: any) => {
   const { t } = useI18n()
   const anim = useAnimationLevel()
   const fallbackPresence = useMemo(() => getSteamPresenceFromData(data), [data])
@@ -510,6 +510,8 @@ export const SteamStatsWidget = memo(({ data }: any) => {
   const showNowPlaying = Boolean(nowPlaying) && slotIndex === 1
 
   useEffect(() => {
+    // 库条带预览用的是假数据，不该去打真接口
+    if (isPreview) return
     let cancelled = false
 
     const refreshPresence = async () => {
@@ -530,7 +532,7 @@ export const SteamStatsWidget = memo(({ data }: any) => {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [])
+  }, [isPreview])
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -1022,7 +1024,7 @@ export const XboxScoreCardBody = memo(
 )
 XboxScoreCardBody.displayName = 'XboxScoreCardBody'
 
-export const XboxStatsWidget = memo(({ data }: any) => {
+export const XboxStatsWidget = memo(({ data, isPreview }: any) => {
   const { t } = useI18n()
   const anim = useAnimationLevel()
 
@@ -1099,7 +1101,8 @@ export const XboxStatsWidget = memo(({ data }: any) => {
   const [livePresence, setLivePresence] = useState<XboxPresence | null>(null)
 
   useEffect(() => {
-    if (!gamertag) return
+    // 预览态的 gamertag 来自 previewData（'PreviewGamer'），不能拿去打接口
+    if (isPreview || !gamertag) return
     let cancelled = false
     const refresh = async () => {
       if (document.hidden) return
@@ -1112,7 +1115,7 @@ export const XboxStatsWidget = memo(({ data }: any) => {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [gamertag])
+  }, [gamertag, isPreview])
 
   // 无 gamertag 时尝试从公开配置取
   useEffect(() => {
@@ -1701,7 +1704,7 @@ export const PsnScoreCardBody = memo(
 )
 PsnScoreCardBody.displayName = 'PsnScoreCardBody'
 
-export const PsnStatsWidget = memo(({ data }: any) => {
+export const PsnStatsWidget = memo(({ data, isPreview }: any) => {
   const { t } = useI18n()
   const anim = useAnimationLevel()
 
@@ -1780,7 +1783,8 @@ export const PsnStatsWidget = memo(({ data }: any) => {
   const [livePresence, setLivePresence] = useState<PsnPresence | null>(null)
 
   useEffect(() => {
-    if (!onlineId) return
+    // 预览态的 onlineId 来自 previewData（'PreviewPSN'），不能拿去打接口
+    if (isPreview || !onlineId) return
     let cancelled = false
     const refresh = async () => {
       if (document.hidden) return
@@ -1793,7 +1797,7 @@ export const PsnStatsWidget = memo(({ data }: any) => {
       cancelled = true
       window.clearInterval(intervalId)
     }
-  }, [onlineId])
+  }, [onlineId, isPreview])
 
   useEffect(() => {
     if (onlineId) return

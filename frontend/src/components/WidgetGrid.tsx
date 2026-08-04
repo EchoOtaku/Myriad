@@ -43,18 +43,6 @@ function getIsMobile(): boolean {
   return getPerformanceProfileSync().isMobile
 }
 
-// 预生成常见网格尺寸的索引数组缓存
-const gridIndicesCache = new Map<string, number[]>()
-function getGridIndices(width: number, height: number): number[] {
-  const key = `${width}x${height}`
-  let indices = gridIndicesCache.get(key)
-  if (!indices) {
-    indices = Array.from({ length: width * height }, (_, i) => i)
-    gridIndicesCache.set(key, indices)
-  }
-  return indices
-}
-
 // 小组件尺寸配置
 export type WidgetSize =
   | '1x1'
@@ -317,7 +305,9 @@ const WidgetGridItem = React.memo(
       width: `${(dim.w / gw) * 100}%`,
       height: `${(dim.h / gh) * 100}%`,
       zIndex: isHovered ? 20 : 10,
-      willChange: isEditMode ? 'transform, left, top' : 'auto',
+      // 只提示 transform：left/top 是布局属性，will-change 对它们没有
+      // 加速作用，写上去只是让编辑模式下每个小组件白白多提升一层合成层。
+      willChange: isEditMode ? 'transform' : 'auto',
     }
 
     // 检查是否支持调整大小
@@ -460,6 +450,80 @@ const WidgetGridItem = React.memo(
     )
   },
 )
+
+/**
+ * 库条带的按需预览槽。
+ *
+ * 此前一进编辑模式就把目录里**全部**小组件（22 个内置 + 所有 Tapp）
+ * 的真实实现同时挂载：每个都带 `.glass` 的 backdrop-filter、光晕的
+ * blur(24~64px)，外层还套了 scale(0.65)（缩放的模糊层要重新光栅化），
+ * 屏幕外的那些也照样在合成。
+ *
+ * 现在只有滚动到附近时才挂真实组件；挂上之后不再卸载——来回滚动时
+ * 反复卸载/重挂会让预览闪烁，且预览本身没有持续开销（数据请求都被
+ * isPreview 挡掉了）。
+ */
+const LibraryPreviewSlot = React.memo(
+  ({
+    scrollRef,
+    renderWidth,
+    renderHeight,
+    displayScale,
+    children,
+  }: {
+    scrollRef: React.RefObject<HTMLDivElement | null>
+    renderWidth: number
+    renderHeight: number
+    displayScale: number
+    children: React.ReactNode
+  }) => {
+    const [mounted, setMounted] = useState(false)
+    const slotRef = useRef<HTMLDivElement | null>(null)
+
+    useEffect(() => {
+      if (mounted) return
+      const node = slotRef.current
+      if (!node) return
+
+      // 不支持 IO 的环境退回「立即挂载」，行为与改造前一致
+      if (typeof IntersectionObserver === 'undefined') {
+        setMounted(true)
+        return
+      }
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            setMounted(true)
+            observer.disconnect()
+          }
+        },
+        {
+          root: scrollRef.current ?? null,
+          // 提前一屏挂载，滚动时不会看到空框
+          rootMargin: '0px 320px',
+        },
+      )
+      observer.observe(node)
+      return () => observer.disconnect()
+    }, [mounted, scrollRef])
+
+    return (
+      <div
+        ref={slotRef}
+        className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5 widget-library-preview"
+        style={{
+          width: renderWidth,
+          height: renderHeight,
+          transform: `scale(${displayScale})`,
+        }}
+      >
+        {mounted ? <Suspense fallback={null}>{children}</Suspense> : null}
+      </div>
+    )
+  },
+)
+LibraryPreviewSlot.displayName = 'LibraryPreviewSlot'
 
 // 小组件库右侧滚动提示 - 独立组件，隔离滚动状态，
 // 避免每次滚动都重渲染整个小组件库（含所有预览小组件）导致卡顿
@@ -870,11 +934,28 @@ export default function WidgetGrid({
         : customGridRows || GRID_HEIGHT
 
   // Explicit height from cols/rows. Cross-band: snap (no height transition).
-  // Same-band resize: optional height transition via CSS when geometryMotion.
   const gridPixelHeight =
     containerWidth > 0
       ? (containerWidth * currentGridHeight) / currentGridWidth
       : undefined
+
+  /*
+   * 高度过渡只表达「行数变了」，不表达「窗口宽度变了」。
+   *
+   * 高度是从 containerWidth 算出来的内联 px，缩放窗口时它每帧都在变；
+   * 过渡它意味着 450ms 内每帧重排全部小组件，进而反复唤醒各 widget 的
+   * ResizeObserver（useWidgetSize 重渲染 + FitText 整轮强制重排重测）。
+   * 行数变化是离散事件，才值得缓动。
+   */
+  const [rowCountMorphing, setRowCountMorphing] = useState(false)
+  const prevRowCountRef = useRef(currentGridHeight)
+  useEffect(() => {
+    if (prevRowCountRef.current === currentGridHeight) return
+    prevRowCountRef.current = currentGridHeight
+    setRowCountMorphing(true)
+    const timer = window.setTimeout(setRowCountMorphing, 500, false)
+    return () => window.clearTimeout(timer)
+  }, [currentGridHeight])
 
   const [draggedWidget, setDraggedWidget] = useState<{
     type: 'existing' | 'new'
@@ -918,6 +999,17 @@ export default function WidgetGrid({
     )
   }, [isEditMode, availableWidgets])
 
+  /*
+   * id → WidgetType 索引。
+   * 此前每处都 `availableWidgets.find(...)`：渲染循环里每个格子一次，
+   * 拖拽/缩放的 rAF 回调里每帧一次，而 availableWidgets 含全部 Tapp 小组件。
+   */
+  const widgetTypeById = useMemo(() => {
+    const map = new Map<string, WidgetType>()
+    for (const widgetType of availableWidgets) map.set(widgetType.id, widgetType)
+    return map
+  }, [availableWidgets])
+
   // 按运行时元数据过滤（内置 + 第三方 Tapp 同一路径，不依赖预置名单）
   const libraryWidgets = useMemo(() => {
     const widgetsI18n = t.widgets as Record<string, unknown>
@@ -942,21 +1034,43 @@ export default function WidgetGrid({
   // RAF ref for drag handling
   const rafRef = useRef<number | null>(null)
 
+  /*
+   * 最新状态镜像。
+   *
+   * WidgetGridItem 的 memo 比较函数刻意不比回调（比了就等于不 memo），
+   * 于是被拦下的格子会一直握着**首次通过比较那一帧**的回调闭包。
+   * 若回调直接闭包 widgets，就会读到过期数组——改配置或删除某个格子时，
+   * 会把此后新增的小组件一并抹掉。
+   *
+   * 因此下面所有传给 item 的回调都必须：引用恒定 + 从这里读最新值。
+   * （文件里 handleDragMoveRef 等已是同一约定。）
+   */
+  const latestRef = useRef({
+    widgets,
+    onWidgetsChange,
+    widgetHistory,
+    historyIndex,
+  })
+  latestRef.current = {
+    widgets,
+    onWidgetsChange,
+    widgetHistory,
+    historyIndex,
+  }
+
   // 保存到历史记录
-  const saveToHistory = useCallback(
-    (newWidgets: WidgetConfig[]) => {
-      const newHistory = widgetHistory.slice(0, historyIndex + 1)
-      newHistory.push(newWidgets)
-      // 限制历史记录数量为20
-      if (newHistory.length > 20) {
-        newHistory.shift()
-      } else {
-        setHistoryIndex(historyIndex + 1)
-      }
-      setWidgetHistory(newHistory)
-    },
-    [widgetHistory, historyIndex],
-  )
+  const saveToHistory = useCallback((newWidgets: WidgetConfig[]) => {
+    const { widgetHistory: history, historyIndex: index } = latestRef.current
+    const newHistory = history.slice(0, index + 1)
+    newHistory.push(newWidgets)
+    // 限制历史记录数量为20
+    if (newHistory.length > 20) {
+      newHistory.shift()
+    } else {
+      setHistoryIndex(index + 1)
+    }
+    setWidgetHistory(newHistory)
+  }, [])
 
   // 更新 gridRect 缓存（在拖拽开始时调用）
   const updateGridRectCache = useCallback(() => {
@@ -1005,7 +1119,7 @@ export default function WidgetGrid({
       e.stopPropagation()
       e.preventDefault()
 
-      const widget = widgets.find((w) => w.id === widgetId)
+      const widget = latestRef.current.widgets.find((w) => w.id === widgetId)
       if (!widget) return
 
       // 拖拽开始时更新 gridRect 缓存
@@ -1021,7 +1135,7 @@ export default function WidgetGrid({
         offset: { x: 0, y: 0 }, // offset 现在不再使用
       })
     },
-    [isEditMode, widgets, updateGridRectCache],
+    [isEditMode, updateGridRectCache],
   )
 
   // 开始拖拽新小组件
@@ -1061,7 +1175,7 @@ export default function WidgetGrid({
       e.stopPropagation()
       e.preventDefault()
 
-      const widget = widgets.find((w) => w.id === widgetId)
+      const widget = latestRef.current.widgets.find((w) => w.id === widgetId)
       if (!widget) return
 
       // 调整大小开始时更新 gridRect 缓存
@@ -1078,7 +1192,7 @@ export default function WidgetGrid({
         direction,
       })
     },
-    [isEditMode, widgets, updateGridRectCache],
+    [isEditMode, updateGridRectCache],
   )
 
   // 调整大小移动
@@ -1129,7 +1243,7 @@ export default function WidgetGrid({
         let minDistance = Infinity
 
         // 获取该组件类型支持的尺寸列表
-        const widgetType = availableWidgets.find((w) => w.id === widget.type)
+        const widgetType = widgetTypeById.get(widget.type)
 
         // 如果找不到组件类型定义，或者没有定义 supportedSizes，则不允许调整大小（锁定当前尺寸）
         // 这是一个安全措施，防止意外拉伸到不支持的尺寸
@@ -1195,7 +1309,7 @@ export default function WidgetGrid({
       currentGridWidth,
       currentGridHeight,
       onWidgetsChange,
-      availableWidgets,
+      widgetTypeById,
     ],
   )
 
@@ -1248,9 +1362,7 @@ export default function WidgetGrid({
           const widget = widgets.find((w) => w.id === draggedWidget.widgetId)
           size = widget?.size || '1x1'
         } else if (draggedWidget.type === 'new' && draggedWidget.widgetTypeId) {
-          const widgetType = availableWidgets.find(
-            (w) => w.id === draggedWidget.widgetTypeId,
-          )
+          const widgetType = widgetTypeById.get(draggedWidget.widgetTypeId)
           size = widgetType?.defaultSize || '1x1'
         }
         const dim = SIZE_TO_DIMENSIONS[size]
@@ -1283,7 +1395,7 @@ export default function WidgetGrid({
     [
       draggedWidget,
       widgets,
-      availableWidgets,
+      widgetTypeById,
       currentGridWidth,
       currentGridHeight,
     ],
@@ -1335,9 +1447,7 @@ export default function WidgetGrid({
       }
     } else if (draggedWidget.type === 'new' && draggedWidget.widgetTypeId) {
       // 添加新小组件
-      const widgetType = availableWidgets.find(
-        (w) => w.id === draggedWidget.widgetTypeId,
-      )
+      const widgetType = widgetTypeById.get(draggedWidget.widgetTypeId)
       if (!widgetType) return
 
       const newWidget: WidgetConfig = {
@@ -1379,18 +1489,43 @@ export default function WidgetGrid({
     setDraggedWidget(null)
     setHoveredCell(null)
     setDragCursorPosition(null)
-  }, [draggedWidget, hoveredCell, widgets, availableWidgets, onWidgetsChange])
+  }, [
+    draggedWidget,
+    hoveredCell,
+    widgets,
+    widgetTypeById,
+    onWidgetsChange,
+    saveToHistory,
+    currentGridWidth,
+    currentGridHeight,
+  ])
 
-  // 移除小组件
+  // 移除小组件（引用恒定，见 latestRef 注释）
   const handleRemoveWidget = useCallback(
     (widgetId: string) => {
-      const newWidgets = widgets.filter((w) => w.id !== widgetId)
-      onWidgetsChange?.(newWidgets)
+      const { widgets: current, onWidgetsChange: notify } = latestRef.current
+      const newWidgets = current.filter((w) => w.id !== widgetId)
+      notify?.(newWidgets)
       // 添加到历史记录
       saveToHistory(newWidgets)
     },
-    [widgets, onWidgetsChange],
+    [saveToHistory],
   )
+
+  // 单个小组件的配置变更（引用恒定，见 latestRef 注释）
+  const handleWidgetConfigChange = useCallback(
+    (widgetId: string, newConfig: any) => {
+      const { widgets: current, onWidgetsChange: notify } = latestRef.current
+      const newWidgets = current.map((w) =>
+        w.id === widgetId ? { ...w, config: newConfig } : w,
+      )
+      notify?.(newWidgets)
+      saveToHistory(newWidgets)
+    },
+    [saveToHistory],
+  )
+
+  const handleWidgetMouseLeave = useCallback(() => setHoveredWidgetId(null), [])
 
   // 撤销功能
   const handleUndo = useCallback(() => {
@@ -1531,11 +1666,9 @@ export default function WidgetGrid({
       const widget = widgets.find((w) => w.id === draggedWidget.widgetId)
       size = widget?.size || '1x1'
       widgetConfig = widget
-      widgetType = availableWidgets.find((w) => w.id === widget?.type)
+      widgetType = widget ? widgetTypeById.get(widget.type) : undefined
     } else if (draggedWidget.type === 'new' && draggedWidget.widgetTypeId) {
-      widgetType = availableWidgets.find(
-        (w) => w.id === draggedWidget.widgetTypeId,
-      )
+      widgetType = widgetTypeById.get(draggedWidget.widgetTypeId)
       size = widgetType?.defaultSize || '1x1'
 
       // 创建预览配置
@@ -1575,29 +1708,30 @@ export default function WidgetGrid({
       widgetType,
       widgetConfig,
     }
-  }, [draggedWidget, hoveredCell, widgets, availableWidgets])
+  }, [
+    draggedWidget,
+    hoveredCell,
+    widgets,
+    widgetTypeById,
+    currentGridWidth,
+    currentGridHeight,
+  ])
 
-  // Memoize grid background
-  const gridBackground = useMemo(() => {
-    // 使用缓存的网格索引
-    const indices = getGridIndices(currentGridWidth, currentGridHeight)
-    return (
+  // 网格背景线：单个盒子 + repeating gradient（细节见 WidgetGrid.css）
+  const gridBackground = useMemo(
+    () => (
       <div
         className="widget-grid-background absolute inset-0 pointer-events-none z-0"
-        style={{
-          gridTemplateColumns: `repeat(${currentGridWidth}, 1fr)`,
-          gridTemplateRows: `repeat(${currentGridHeight}, 1fr)`,
-        }}
-      >
-        {indices.map((i) => (
-          <div
-            key={i}
-            className="border border-gray-200/30 dark:border-white/5"
-          />
-        ))}
-      </div>
-    )
-  }, [currentGridWidth, currentGridHeight])
+        style={
+          {
+            '--widget-grid-cell-w': `${100 / currentGridWidth}%`,
+            '--widget-grid-cell-h': `${100 / currentGridHeight}%`,
+          } as React.CSSProperties
+        }
+      />
+    ),
+    [currentGridWidth, currentGridHeight],
+  )
 
   // 小组件库内容
   const libraryContent = (
@@ -1753,22 +1887,18 @@ export default function WidgetGrid({
                           height: wrapperHeight,
                         }}
                       >
-                        <div
-                          className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
-                          style={{
-                            width: renderWidth,
-                            height: renderHeight,
-                            transform: `scale(${displayScale})`,
-                          }}
+                        <LibraryPreviewSlot
+                          scrollRef={libraryScrollRef}
+                          renderWidth={renderWidth}
+                          renderHeight={renderHeight}
+                          displayScale={displayScale}
                         >
-                          <Suspense fallback={null}>
-                            <WidgetComponent
-                              config={previewConfig}
-                              isEditMode={true}
-                              isPreview={true}
-                            />
-                          </Suspense>
-                        </div>
+                          <WidgetComponent
+                            config={previewConfig}
+                            isEditMode={true}
+                            isPreview={true}
+                          />
+                        </LibraryPreviewSlot>
                         <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
                       </div>
                       <div
@@ -1780,23 +1910,19 @@ export default function WidgetGrid({
                     </>
                   ) : (
                     <>
-                      {/* 缩放容器 */}
-                      <div
-                        className="absolute top-0 left-0 origin-top-left pointer-events-none shadow-sm rounded-xl overflow-hidden ring-1 ring-black/5 dark:ring-white/5"
-                        style={{
-                          width: renderWidth,
-                          height: renderHeight,
-                          transform: `scale(${displayScale})`,
-                        }}
+                      {/* 缩放容器（按需挂载，见 LibraryPreviewSlot） */}
+                      <LibraryPreviewSlot
+                        scrollRef={libraryScrollRef}
+                        renderWidth={renderWidth}
+                        renderHeight={renderHeight}
+                        displayScale={displayScale}
                       >
-                        <Suspense fallback={null}>
-                          <WidgetComponent
-                            config={previewConfig}
-                            isEditMode={true}
-                            isPreview={true}
-                          />
-                        </Suspense>
-                      </div>
+                        <WidgetComponent
+                          config={previewConfig}
+                          isEditMode={true}
+                          isPreview={true}
+                        />
+                      </LibraryPreviewSlot>
 
                       {/* 遮罩层 - 用于拖拽交互和高亮 */}
                       <div className="absolute inset-0 z-20 rounded-xl ring-1 ring-black/5 dark:ring-white/10 group-hover:ring-2 group-hover:ring-blue-500 transition-all bg-transparent" />
@@ -1863,7 +1989,9 @@ export default function WidgetGrid({
         <div
           ref={gridRef}
           className={`widget-grid-container relative w-full rounded-xl ${
-            geometryMotion ? 'widget-grid-container--layout-motion' : ''
+            geometryMotion && rowCountMorphing
+              ? 'widget-grid-container--layout-motion'
+              : ''
           } ${isEditMode ? 'edit-mode' : ''}`}
           data-band-switch={bandSwitch ?? undefined}
           style={
@@ -1919,20 +2047,14 @@ export default function WidgetGrid({
           {/* 小组件 */}
           <div className="absolute inset-0 z-10">
             {currentWidgets.map((widget, index) => {
-              const widgetType = availableWidgets.find(
-                (w) => w.id === widget.type,
-              )
+              const widgetType = widgetTypeById.get(widget.type)
               if (!widgetType) return null
 
-              // 处理小组件配置变更
-              const handleConfigChange = (newConfig: any) => {
-                // 只更新对应 widget 的 config 字段
-                const newWidgets = widgets.map((w) =>
-                  w.id === widget.id ? { ...w, config: newConfig } : w,
-                )
-                onWidgetsChange?.(newWidgets)
-                saveToHistory(newWidgets)
-              }
+              // 只闭包 widget.id（对某个格子恒定），实际读写走
+              // handleWidgetConfigChange 的 latestRef，因此即便这个箭头
+              // 被 memo 冻在旧的一帧，也不会写回过期的 widgets 数组。
+              const handleConfigChange = (newConfig: any) =>
+                handleWidgetConfigChange(widget.id, newConfig)
 
               return (
                 <WidgetGridItem
@@ -1943,7 +2065,7 @@ export default function WidgetGrid({
                   isHovered={hoveredWidgetId === widget.id}
                   onDragStart={handleWidgetDragStart}
                   onMouseEnter={setHoveredWidgetId}
-                  onMouseLeave={() => setHoveredWidgetId(null)}
+                  onMouseLeave={handleWidgetMouseLeave}
                   onRemove={handleRemoveWidget}
                   onResizeStart={handleResizeStart}
                   gridWidth={currentGridWidth}

@@ -355,7 +355,7 @@ async fn resolve_shared_inbox_local_user(
         let follow_id = extract_accept_object_id(activity);
         if !follow_id.is_empty() {
             if let Ok(Some(row)) = db
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"SELECT f.user_id
                        FROM federation_follows f
@@ -389,7 +389,7 @@ async fn resolve_shared_inbox_local_user(
     // `ORDER BY id LIMIT 1` silently handed unaddressed activities to the
     // oldest account on multi-user hosts.
     if let Ok(rows) = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id FROM users ORDER BY id LIMIT 2",
             [],
@@ -417,7 +417,7 @@ async fn local_user_id_from_actorish_url(db: &DatabaseConnection, url: &str) -> 
     let base = get_base_url().await;
     let local = local_username_from_actor_url(&base, url)?;
     if let Ok(Some(row)) = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id FROM users WHERE username = $1",
             [local.into()],
@@ -489,7 +489,7 @@ async fn handle_move(
     let activity_id = activity["id"].as_str().unwrap_or("").to_string();
     if !activity_id.is_empty() {
         let _ = db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 r#"INSERT INTO federation_activities
                        (activity_id, activity_type, object_type, object_json, is_local, received_at, published_at)
@@ -571,7 +571,7 @@ async fn handle_follow(
     // `rows_affected == 0` idempotency check never fired and re-enqueued Accept.
     // Pattern: conditional UPDATE + RETURNING; empty result means already accepted.
     let upserted = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_follows (user_id, remote_actor_id, direction, status, activity_id, created_at)
                VALUES ($1, $2, 'incoming', 'accepted', $3, NOW())
@@ -760,7 +760,7 @@ async fn handle_accept(
         if !channel_id.is_empty() {
             // 先取 pending channel 的远程对端 URL，再在 Rust 侧用 same_actor_url 授权
             let pending = db
-                .query_one(Statement::from_sql_and_values(
+                .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"SELECT ra.actor_url
                        FROM federation_channels c
@@ -780,7 +780,7 @@ async fn handle_accept(
 
             if authorized {
                 let result = db
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         DatabaseBackend::Postgres,
                         r#"UPDATE federation_channels
                            SET status = 'accepted', last_activity_at = NOW()
@@ -1011,7 +1011,7 @@ async fn handle_follow_accept(
     // - recent accepted (last 40) so normalized id compare can still hit after
     // query/host-case drift without scanning all history
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT f.activity_id, f.status, ra.actor_url
                FROM federation_follows f
@@ -1077,7 +1077,7 @@ async fn handle_follow_accept(
     }
 
     let result = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"UPDATE federation_follows
                SET status = 'accepted', accepted_at = NOW()
@@ -1125,7 +1125,7 @@ async fn handle_undo(
             // 已经取关，我们这边还在往它的 inbox 投递。快路径保留精确匹配
             // （actor_url 有唯一约束，命中即唯一），未命中时再走规范化兜底。
             let removed = db
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"DELETE FROM federation_follows
                        WHERE user_id = $1 AND direction = 'incoming'
@@ -1206,7 +1206,7 @@ async fn delete_incoming_follow_normalized(
     actor_url_str: &str,
 ) -> Result<u64, sea_orm::DbErr> {
     let rows = db
-        .query_all(Statement::from_sql_and_values(
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"SELECT f.id, ra.actor_url
                FROM federation_follows f
@@ -1228,7 +1228,7 @@ async fn delete_incoming_follow_normalized(
             continue;
         }
         removed += db
-            .execute(Statement::from_sql_and_values(
+            .execute_raw(Statement::from_sql_and_values(
                 DatabaseBackend::Postgres,
                 "DELETE FROM federation_follows WHERE id = $1",
                 [id.into()],
@@ -1287,7 +1287,7 @@ async fn handle_content_activity(
     let object_type = activity["object"]["type"].as_str().map(|s| s.to_string());
 
     // 记录 Activity
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_activities
                (activity_id, remote_actor_id, activity_type, object_type, object_json, is_local, received_at, published_at)
@@ -1314,7 +1314,7 @@ async fn handle_content_activity(
             // `remote_actor_id` 约束是关键：没有它，任何持有效签名的远端都能
             // 用任意 object id 删掉目标用户时间线里**别人**的条目。
             let _ = db
-                .execute(Statement::from_sql_and_values(
+                .execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"DELETE FROM federation_timeline
                        WHERE user_id = $1
@@ -1347,7 +1347,7 @@ async fn handle_content_activity(
     // Announce / Create / Update land on the feed.
     let preview = timeline_preview_from_object(&activity["object"]);
 
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_timeline
                (user_id, activity_id, remote_actor_id, activity_type, object_type, content_preview, content_json, received_at)
@@ -1413,7 +1413,7 @@ async fn distribute_to_followers(
 
     // 批量 INSERT — 一次 SQL 分发到所有关注者的时间线，避免 N+1
     let _ = db
-        .execute(Statement::from_sql_and_values(
+        .execute_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_timeline
                    (user_id, activity_id, remote_actor_id, activity_type, object_type, content_preview, content_json, received_at)
@@ -1754,7 +1754,7 @@ async fn enqueue_delivery(
 
     // 存 Activity 记录
     let act_row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"INSERT INTO federation_activities
                    (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
@@ -1793,7 +1793,7 @@ async fn enqueue_delivery(
                 );
                 // Mark as delivered for observability (queue row optional)
                 let _ = db
-                    .execute(Statement::from_sql_and_values(
+                    .execute_raw(Statement::from_sql_and_values(
                         DatabaseBackend::Postgres,
                         r#"INSERT INTO federation_delivery_queue
                                (activity_id, target_inbox, target_domain, status, created_at, last_attempt_at)
@@ -1820,7 +1820,7 @@ async fn enqueue_delivery(
     }
 
     // 加入投递队列（远程 / local fallback）
-    db.execute(Statement::from_sql_and_values(
+    db.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"INSERT INTO federation_delivery_queue
                (activity_id, target_inbox, target_domain, status, created_at)
@@ -1907,7 +1907,7 @@ async fn get_local_user(
     username: &str,
 ) -> Result<(i32, String), (StatusCode, Json<serde_json::Value>)> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT id, username FROM users WHERE username = $1 LIMIT 1",
             [username.into()],
@@ -1932,7 +1932,7 @@ async fn get_username_by_id(
     user_id: i32,
 ) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
     let row = db
-        .query_one(Statement::from_sql_and_values(
+        .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             "SELECT username FROM users WHERE id = $1 LIMIT 1",
             [user_id.into()],
@@ -3041,7 +3041,7 @@ mod tests {
         // 底层差值仍然存在（这正是必须显式拒绝的原因）
         assert_ne!(
             headers.get("date").unwrap().to_str().unwrap(),
-            headers.get_all("date").iter().last().unwrap().to_str().unwrap(),
+            headers.get_all("date").iter().next_back().unwrap().to_str().unwrap(),
         );
 
         let err = unique_header(&headers, "date").unwrap_err();

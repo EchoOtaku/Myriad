@@ -96,7 +96,7 @@ manifest-src 'none'
 | `fetch`、`XMLHttpRequest`、`WebSocket`、`EventSource`    | 禁用                     | Manifest `apis` + `Tapp.api()`                |
 | `localStorage`、`sessionStorage`、`indexedDB`、Cache API | 禁用或替换为空实现       | `Tapp.storage`                                |
 | `eval`、带源码的 `Function`、字符串形式的 timer          | 禁用                     | 使用预打包代码和函数回调                      |
-| `window.open`、`alert`、`confirm`、`prompt`、`print`     | 禁用                     | `Tapp.ui.showNotification/confirm` 等受控 API |
+| `window.open`、`alert`、`confirm`、`prompt`、`print`     | 禁用                     | `Tapp.ui.showNotification/confirm`；外链用 `Tapp.ui.openUrl` + Manifest `openUrls` |
 | `window.parent/top/opener`                               | 限制                     | 只使用生成的 Tapp SDK                         |
 | 直接下载                                                 | sandbox 未开放 downloads | `Tapp.file.download()`                        |
 

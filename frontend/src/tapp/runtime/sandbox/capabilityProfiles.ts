@@ -9,6 +9,8 @@ export type SandboxCapabilityProfile = 'page' | 'widget' | 'headless'
 export const HEADLESS_DENIED_ACTIONS = [
   'ui.setTitle',
   'ui.confirm',
+  'ui.openUrl',
+  'ui.listOpenUrls',
   'ui.requestFullscreen',
   'ui.exitFullscreen',
   'ui.toggleFullscreen',

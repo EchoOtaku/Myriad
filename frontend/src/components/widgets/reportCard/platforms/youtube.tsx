@@ -19,7 +19,6 @@ import {
   useId,
   useMemo,
   useRef,
-  useState,
 } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import {
@@ -241,15 +240,44 @@ const YoutubeStatsWidget = memo(({ data }: { data: any }) => {
   const viewsDisplay = useCountUp(views, 700, 160)
   const videosDisplay = useCountUp(videos, 700, 220)
 
-  // Card-local pointer → mild 3D tilt on the large play-button medal
+  /*
+   * Card-local pointer → mild 3D tilt on the large play-button medal.
+   *
+   * 这里刻意不走 React state：倾斜是逐帧的视觉插值，setState 会让整张
+   * YouTube face（含全部渐变与 SVG）以 60fps 重渲染。改为在 rAF 里直接写
+   * DOM——medal 写 transform，高光/glint 写渐变坐标属性。
+   * 卡片矩形在指针进入时量一次，之后 mousemove 不再 getBoundingClientRect。
+   */
   const cardRef = useRef<HTMLDivElement>(null)
+  const medalRef = useRef<HTMLDivElement>(null)
+  const specRef = useRef<SVGLinearGradientElement>(null)
+  const glintRef = useRef<SVGRadialGradientElement>(null)
+  const cardRectRef = useRef<DOMRect | null>(null)
   const tiltTarget = useRef({ rx: 0, ry: 0 })
   const tiltCurrent = useRef({ rx: 0, ry: 0 })
   const tiltRaf = useRef(0)
-  const [tilt, setTilt] = useState({ rx: 0, ry: 0 })
   const reduceMotion = useMemo(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return false
     return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  }, [])
+
+  const paintTilt = useCallback((rx: number, ry: number) => {
+    const medal = medalRef.current
+    if (medal) {
+      medal.style.transform = `rotateX(${rx}deg) rotateY(${ry}deg) translateZ(8px)`
+    }
+    const spec = specRef.current
+    if (spec) {
+      spec.setAttribute('x1', `${22 + ry * 1.2}%`)
+      spec.setAttribute('y1', `${8 - rx * 1.1}%`)
+      spec.setAttribute('x2', `${78 + ry * 0.8}%`)
+      spec.setAttribute('y2', `${92 - rx * 0.6}%`)
+    }
+    const glint = glintRef.current
+    if (glint) {
+      glint.setAttribute('cx', `${30 + ry * 0.9}%`)
+      glint.setAttribute('cy', `${26 - rx * 0.9}%`)
+    }
   }, [])
 
   const runTiltLoop = useCallback(() => {
@@ -262,13 +290,13 @@ const YoutubeStatsWidget = memo(({ data }: { data: any }) => {
     if (done) {
       c.rx = t.rx
       c.ry = t.ry
-      setTilt({ rx: c.rx, ry: c.ry })
+      paintTilt(c.rx, c.ry)
       tiltRaf.current = 0
       return
     }
-    setTilt({ rx: c.rx, ry: c.ry })
+    paintTilt(c.rx, c.ry)
     tiltRaf.current = requestAnimationFrame(runTiltLoop)
-  }, [])
+  }, [paintTilt])
 
   const kickTilt = useCallback(() => {
     if (reduceMotion) return
@@ -277,12 +305,22 @@ const YoutubeStatsWidget = memo(({ data }: { data: any }) => {
     }
   }, [reduceMotion, runTiltLoop])
 
+  const onCardPointerEnter = useCallback(() => {
+    if (reduceMotion) return
+    const el = cardRef.current
+    if (el) cardRectRef.current = el.getBoundingClientRect()
+  }, [reduceMotion])
+
   const onCardPointerMove = useCallback(
     (e: ReactMouseEvent<HTMLDivElement>) => {
       if (reduceMotion) return
-      const el = cardRef.current
-      if (!el) return
-      const r = el.getBoundingClientRect()
+      let r = cardRectRef.current
+      if (!r) {
+        const el = cardRef.current
+        if (!el) return
+        r = el.getBoundingClientRect()
+        cardRectRef.current = r
+      }
       if (r.width < 1 || r.height < 1) return
       const px = (e.clientX - r.left) / r.width - 0.5
       const py = (e.clientY - r.top) / r.height - 0.5
@@ -302,6 +340,7 @@ const YoutubeStatsWidget = memo(({ data }: { data: any }) => {
   )
 
   const onCardPointerLeave = useCallback(() => {
+    cardRectRef.current = null
     tiltTarget.current = { rx: 0, ry: 0 }
     kickTilt()
   }, [kickTilt])
@@ -334,6 +373,7 @@ const YoutubeStatsWidget = memo(({ data }: { data: any }) => {
     <div
       ref={cardRef}
       className="relative h-full w-full overflow-hidden"
+      onMouseEnter={onCardPointerEnter}
       onMouseMove={onCardPointerMove}
       onMouseLeave={onCardPointerLeave}
     >
@@ -381,10 +421,11 @@ const YoutubeStatsWidget = memo(({ data }: { data: any }) => {
       >
         {/* Big medal only — mild 3D tilt following card pointer */}
         <div
+          ref={medalRef}
           className="relative w-full will-change-transform"
           style={{
             aspectRatio: '68 / 48',
-            transform: `rotateX(${tilt.rx}deg) rotateY(${tilt.ry}deg) translateZ(8px)`,
+            transform: 'rotateX(0deg) rotateY(0deg) translateZ(8px)',
             transformStyle: 'preserve-3d',
             filter: `drop-shadow(0 0 3px ${award.shadow}) drop-shadow(0 6px 14px ${award.shadow})`,
           }}
@@ -407,13 +448,15 @@ const YoutubeStatsWidget = memo(({ data }: { data: any }) => {
                 <stop offset="48%" stopColor={award.body[1]} />
                 <stop offset="100%" stopColor={award.body[2]} />
               </linearGradient>
-              {/* Specular follows tilt slightly for live metal feel */}
+              {/* Specular follows tilt slightly for live metal feel.
+                  坐标由 paintTilt 在 rAF 里直接写属性，见上方 tilt 注释 */}
               <linearGradient
+                ref={specRef}
                 id={`yt-spec-${gradId}`}
-                x1={`${22 + tilt.ry * 1.2}%`}
-                y1={`${8 - tilt.rx * 1.1}%`}
-                x2={`${78 + tilt.ry * 0.8}%`}
-                y2={`${92 - tilt.rx * 0.6}%`}
+                x1="22%"
+                y1="8%"
+                x2="78%"
+                y2="92%"
               >
                 <stop offset="0%" stopColor="#fff" stopOpacity="0.38" />
                 <stop offset="38%" stopColor="#fff" stopOpacity="0.06" />
@@ -422,9 +465,10 @@ const YoutubeStatsWidget = memo(({ data }: { data: any }) => {
                 <stop offset="100%" stopColor="#fff" stopOpacity="0" />
               </linearGradient>
               <radialGradient
+                ref={glintRef}
                 id={`yt-glint-${gradId}`}
-                cx={`${30 + tilt.ry * 0.9}%`}
-                cy={`${26 - tilt.rx * 0.9}%`}
+                cx="30%"
+                cy="26%"
                 r="46%"
               >
                 <stop offset="0%" stopColor="#fff" stopOpacity="0.45" />
