@@ -352,6 +352,7 @@ export const ReportCardWidget = memo(
               showOverview={showOverview}
               onContentChange={handleContentChange}
               allowLoop={animLevel.loop}
+              isPreview={isPreview}
             />
           </div>
         ) : null}

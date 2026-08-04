@@ -10,7 +10,7 @@
  */
 
 import type { AnimationLevel } from '../../../hooks/useAnimationLevel'
-import { memo, useMemo } from 'react'
+import { memo } from 'react'
 import {
 
   getCurrentAnimationConfig,
@@ -18,6 +18,12 @@ import {
   isStandardAnimation,
 } from '../../../hooks/useAnimationLevel'
 import './GlowBackground.css'
+
+const SIZE_CLASS: Record<'sm' | 'md' | 'lg', string> = {
+  sm: 'glow-size-sm',
+  md: 'glow-size-md',
+  lg: 'glow-size-lg',
+}
 
 // 组件接口
 
@@ -55,7 +61,9 @@ export const GlowBackground = memo(
   }: GlowBackgroundProps) => {
     const animLevel = animLevelProp ?? getCurrentAnimationConfig().level
 
-    // exlight：不渲染光晕（静态也不画），省合成层
+    // exlight：不渲染光晕（静态也不画），省合成层。
+    // ⚠️ 这里之前是早返回，后面还跟着两个 useMemo —— 档位切换时会改变 hook
+    // 调用数量，直接违反 hooks 规则。现在整个组件不再用 hook，早返回才安全。
     if (isExlight(animLevel)) {
       return null
     }
@@ -65,28 +73,14 @@ export const GlowBackground = memo(
       ? 'glow-blur-lg'
       : 'glow-blur-sm'
 
-    // 根据 size 确定尺寸类
-    const sizeClass = useMemo(() => {
-      switch (size) {
-        case 'sm':
-          return 'glow-size-sm'
-        case 'lg':
-          return 'glow-size-lg'
-        default:
-          return 'glow-size-md'
-      }
-    }, [size])
+    const sizeClass = SIZE_CLASS[size]
 
     // 基础样式：颜色经 --glow-color 变量下发，主题光晕模式（primary/none）
     // 由 html[data-glow] 的 CSS 规则覆盖（见 GlowBackground.css），无 JS 订阅
-    const baseStyle = useMemo(
-      () =>
-        ({
-          '--glow-color': color,
-          ...(opacity !== undefined && { '--glow-opacity': opacity }),
-        }) as React.CSSProperties,
-      [color, opacity],
-    )
+    const baseStyle = {
+      '--glow-color': color,
+      ...(opacity !== undefined && { '--glow-opacity': opacity }),
+    } as React.CSSProperties
 
     // 根据 variant 渲染不同布局
     if (variant === 'single-left') {

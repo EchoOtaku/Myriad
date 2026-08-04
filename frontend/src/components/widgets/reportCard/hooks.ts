@@ -29,11 +29,18 @@ export function useCountUp(value: number, duration = 800, delay = 0) {
     }
     let raf = 0
     const start = performance.now() + delay
+    let last = -1
     const tick = (now: number) => {
-      // delay 期间 p 被夹在 0，setState(0) 与旧值相同时 React 会跳过重渲染
       const p = Math.min(Math.max((now - start) / duration, 0), 1)
       const eased = 1 - (1 - p) ** 3
-      setDisplay(Math.round(value * eased))
+      const next = Math.round(value * eased)
+      // 只在整数显示值真的变了才 setState。delay 期间恒为 0，
+      // 大数值的尾段也常常连续多帧落在同一整数上——同一张 face 挂了
+      // 三个 useCountUp，省下的是三条逐帧重渲染。
+      if (next !== last) {
+        last = next
+        setDisplay(next)
+      }
       if (p < 1) raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)

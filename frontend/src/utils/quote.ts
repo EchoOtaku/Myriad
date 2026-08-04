@@ -91,12 +91,74 @@ export function normalizeHitokotoConfig(
   }
 }
 
-/** 从后端读取一言配置 */
-export async function fetchHitokotoConfig(): Promise<HitokotoConfig> {
-  const response = await apiService.get<HitokotoConfigResponse>(
-    '/config/hitokoto',
-  )
-  return normalizeHitokotoConfig(response.config)
+/*
+ * 一言配置的进程内缓存。
+ *
+ * `/config/hitokoto` 此前每次 getRandomQuote() 都会打一发，而调用方有三处
+ * （QuoteWidget、GlobalControlPanel 的动态内容、/config 的表单草稿），
+ * 于是一次页面加载能看到 3 次同样的请求。这份配置是「用户偶尔改一次」
+ * 的量级，值得缓存 + 合并在途请求。
+ *
+ * 失效路径：updateHitokotoConfig 保存后主动清除；跨标签页的修改由
+ * HITOKOTO_CONFIG_UPDATED_EVENT + TTL 兜底。故意不落 localStorage——
+ * 换设备改了配置后不该被本地旧值粘住。
+ */
+const HITOKOTO_CONFIG_TTL = 5 * 60 * 1000
+let cachedHitokotoConfig: HitokotoConfig | null = null
+let cachedHitokotoConfigAt = 0
+let hitokotoConfigInflight: Promise<HitokotoConfig> | null = null
+
+/** 丢弃一言配置缓存，下次读取重新回源 */
+export function clearHitokotoConfigCache(): void {
+  cachedHitokotoConfig = null
+  cachedHitokotoConfigAt = 0
+  hitokotoConfigInflight = null
+}
+
+// 任何来源派发的配置更新事件都让缓存跟上：updateHitokotoConfig 自己会带上
+// 权威值（直接采纳），其它派发方没带 detail 时保守清空。
+if (typeof window !== 'undefined') {
+  window.addEventListener(HITOKOTO_CONFIG_UPDATED_EVENT, (event: Event) => {
+    const detail = (event as CustomEvent<HitokotoConfig | undefined>).detail
+    if (detail && typeof detail.sourceId === 'string') {
+      cachedHitokotoConfig = normalizeHitokotoConfig(detail)
+      cachedHitokotoConfigAt = Date.now()
+      hitokotoConfigInflight = null
+      return
+    }
+    clearHitokotoConfigCache()
+  })
+}
+
+/** 从后端读取一言配置（进程内缓存 + 在途合并） */
+export async function fetchHitokotoConfig(
+  options?: { force?: boolean },
+): Promise<HitokotoConfig> {
+  if (!options?.force) {
+    if (
+      cachedHitokotoConfig &&
+      Date.now() - cachedHitokotoConfigAt < HITOKOTO_CONFIG_TTL
+    ) {
+      return cachedHitokotoConfig
+    }
+    if (hitokotoConfigInflight) return hitokotoConfigInflight
+  }
+
+  hitokotoConfigInflight = (async () => {
+    try {
+      const response = await apiService.get<HitokotoConfigResponse>(
+        '/config/hitokoto',
+      )
+      const config = normalizeHitokotoConfig(response.config)
+      cachedHitokotoConfig = config
+      cachedHitokotoConfigAt = Date.now()
+      return config
+    } finally {
+      hitokotoConfigInflight = null
+    }
+  })()
+
+  return hitokotoConfigInflight
 }
 
 /** 保存一言配置到后端，并清除本地一言缓存，使新设置立即生效 */
@@ -111,6 +173,10 @@ export async function updateHitokotoConfig(
     throw new Error(response.message || 'Failed to save hitokoto config')
   }
   const saved = normalizeHitokotoConfig(response.config)
+  // 刚拿到权威值，直接写进缓存，省掉保存后必然发生的一次回源
+  cachedHitokotoConfig = saved
+  cachedHitokotoConfigAt = Date.now()
+  hitokotoConfigInflight = null
   // 切换源后旧缓存失效
   localStorage.removeItem('quote_cache')
   localStorage.removeItem('quote_cache_time')

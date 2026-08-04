@@ -16,6 +16,7 @@ import {
 } from 'react'
 import { API_URL } from '../config'
 import { isAuthMeHttpOk, parseAuthMeResponse } from '../utils/authMe'
+import { setKnownAuthState } from '../utils/authState'
 import {
   clearSessionHint,
   hasSessionHint,
@@ -165,6 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             })
             setIsAuthenticated(true)
             setIsAdmin(u.is_admin || false)
+            setKnownAuthState(true)
             return true
           }
           // Definitive guest body — only then drop the session hint
@@ -172,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null)
           setIsAuthenticated(false)
           setIsAdmin(false)
+          setKnownAuthState(false)
           return false
         }
 
@@ -181,8 +184,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null)
           setIsAuthenticated(false)
           setIsAdmin(false)
+          setKnownAuthState(false)
         }
         // 5xx: unauthenticated for this probe (hint may remain for later recover)
+        // 认证状态保持「未知」——5xx 不是「确定是访客」，不能让沙箱据此拦请求
         return false
       } catch (_error) {
         // Network/timeout: keep session hint, but do not claim authenticated.
@@ -190,6 +195,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null)
         setIsAuthenticated(false)
         setIsAdmin(false)
+        // 同上：网络失败只是「这次没探到」，不写入 knownAuthState
         return false
       } finally {
         if (generation === checkAuthGeneration.current) {
@@ -212,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
     setIsAuthenticated(false)
     setIsAdmin(false)
+    setKnownAuthState(false)
     // 清除会话提示标志
     clearSessionHint()
   }, [resetTappSubjectState])
@@ -262,6 +269,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAdmin(false)
       setIsLoading(false)
       setHasChecked(true)
+      // 整个宿主已经按访客渲染了，沙箱侧同样按访客处理才自洽。
+      // 极端情况（localStorage 被清但 Cookie 仍有效）下这里会偏保守，
+      // 但那种情况宿主本来也显示未登录；后续任何一次 checkAuth 成功都会翻正。
+      setKnownAuthState(false)
     }
   }, [])
 
