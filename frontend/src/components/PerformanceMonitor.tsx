@@ -9,6 +9,7 @@
 import type { CSSProperties } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 
+import { useI18n } from '../contexts/I18nContext'
 import { coordinator as animationCoordinator } from '../hooks/animation'
 import { usePerfMetrics } from '../hooks/usePerfMetrics'
 import { clearLyricsCache, clearPlaylistCache } from '../utils/musicPlayer'
@@ -36,6 +37,8 @@ function clsClass(cls: number): string {
 }
 
 export default function PerformanceMonitor() {
+  const { t } = useI18n()
+  const pm = t.perfMonitor
   const [isExpanded, setIsExpanded] = useState(false)
   const [pauseAll, setPauseAll] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -94,7 +97,7 @@ export default function PerformanceMonitor() {
       {/* ── 标题栏 / 收缩摘要 ── */}
       <div className="pm-bar">
         <div className="pm-bar-left">
-          <span className="pm-label">Perf</span>
+          <span className="pm-label">{pm.label}</span>
           <span className={`pm-value ${fpsClass(frame.fps, frame.isLowFps)}`}>
             {frame.fps}
             <span className="pm-unit">fps</span>
@@ -110,8 +113,11 @@ export default function PerformanceMonitor() {
               className={`pm-value ${stability.longTaskCount > 5 ? 'pm-bad' : 'pm-warn'}`}
               title={
                 stability.lastLongTaskMs
-                  ? `最近 Long Task ${stability.lastLongTaskMs}ms`
-                  : 'Long Tasks'
+                  ? pm.lastLongTask.replace(
+                      '{ms}',
+                      String(stability.lastLongTaskMs),
+                    )
+                  : pm.longTasks
               }
             >
               LT {stability.longTaskCount}
@@ -122,11 +128,7 @@ export default function PerformanceMonitor() {
           type="button"
           className="pm-toggle"
           onClick={() => setIsExpanded((v) => !v)}
-          title={
-            isExpanded
-              ? '收起 (Ctrl+Shift+M)'
-              : '展开 (Ctrl+Shift+M)'
-          }
+          title={isExpanded ? pm.collapseTitle : pm.expandTitle}
           aria-expanded={isExpanded}
         >
           {isExpanded ? '▼' : '▲'}
@@ -138,14 +140,17 @@ export default function PerformanceMonitor() {
         <div className="pm-body">
           {/* 帧 */}
           <section className="pm-section">
-            <div className="pm-section-title">帧</div>
+            <div className="pm-section-title">{pm.sectionFrame}</div>
             <div className="pm-grid">
               <Row
                 label="FPS"
                 value={`${frame.fps}`}
                 className={fpsClass(frame.fps, frame.isLowFps)}
               />
-              <Row label="平均帧时" value={`${frame.avgFrameTime} ms`} />
+              <Row
+                label={pm.avgFrameTime}
+                value={`${frame.avgFrameTime} ms`}
+              />
               <Row
                 label="P95"
                 value={`${frame.p95FrameMs} ms`}
@@ -158,7 +163,7 @@ export default function PerformanceMonitor() {
                 }
               />
               <Row
-                label="最差帧"
+                label={pm.worstFrame}
                 value={`${frame.maxFrameMs} ms`}
                 className={
                   frame.maxFrameMs > frame.jankThresholdMs
@@ -169,7 +174,7 @@ export default function PerformanceMonitor() {
                 }
               />
               <Row
-                label="卡顿率"
+                label={pm.jankRate}
                 value={`${Math.round(frame.jankRatio * 100)}%`}
                 className={
                   frame.jankRatio > 0.1
@@ -180,21 +185,21 @@ export default function PerformanceMonitor() {
                 }
               />
               <Row
-                label="刷新率"
+                label={pm.refreshRate}
                 value={
                   frame.refreshRateDetected
                     ? `${frame.detectedRefreshRate} Hz`
-                    : '检测中…'
+                    : pm.detecting
                 }
               />
               <Row
-                label="低帧模式"
+                label={pm.lowFpsMode}
                 value={frame.isLowFps ? 'ON' : 'OFF'}
                 className={frame.isLowFps ? 'pm-warn' : 'pm-muted'}
               />
               <Row
-                label="采样"
-                value={frame.isMonitoring ? '运行中' : '未启动'}
+                label={pm.sampling}
+                value={frame.isMonitoring ? pm.running : pm.notStarted}
                 className={frame.isMonitoring ? 'pm-ok' : 'pm-warn'}
               />
             </div>
@@ -203,9 +208,9 @@ export default function PerformanceMonitor() {
           {/* 运行时 */}
           <section className="pm-section">
             <div className="pm-section-title">
-              运行时
+              {pm.sectionRuntime}
               {!memory && (
-                <span className="pm-hint">内存仅 Chromium</span>
+                <span className="pm-hint">{pm.memChromiumOnly}</span>
               )}
             </div>
             <div className="pm-grid">
@@ -217,7 +222,7 @@ export default function PerformanceMonitor() {
                     className={memClass(memory.usedPercent)}
                   />
                   <div className="pm-row pm-row-full">
-                    <span className="pm-muted">使用率</span>
+                    <span className="pm-muted">{pm.usageRate}</span>
                     <div className="pm-meter" aria-hidden>
                       <div
                         className={`pm-meter-fill ${memClass(memory.usedPercent)}`}
@@ -234,15 +239,22 @@ export default function PerformanceMonitor() {
                   </div>
                 </>
               ) : (
-                <Row label="Heap" value="不可用" className="pm-muted" />
+                <Row
+                  label="Heap"
+                  value={pm.unavailable}
+                  className="pm-muted"
+                />
               )}
               <Row
-                label="Long Tasks"
+                label={pm.longTasks}
                 value={
                   stability.longTaskCount > 0
                     ? `${stability.longTaskCount}${
                         stability.lastLongTaskMs
-                          ? ` · 最近 ${stability.lastLongTaskMs}ms`
+                          ? pm.recentMs.replace(
+                              '{ms}',
+                              String(stability.lastLongTaskMs),
+                            )
                           : ''
                       }`
                     : '0'
@@ -262,14 +274,14 @@ export default function PerformanceMonitor() {
                 className="pm-btn pm-btn-ghost"
                 onClick={resetLongTasks}
               >
-                重置 LT 计数
+                {pm.resetLtCount}
               </button>
             )}
           </section>
 
           {/* 稳定 */}
           <section className="pm-section">
-            <div className="pm-section-title">稳定</div>
+            <div className="pm-section-title">{pm.sectionStability}</div>
             <div className="pm-grid">
               <Row
                 label="CLS"
@@ -289,7 +301,7 @@ export default function PerformanceMonitor() {
                 className="pm-btn pm-btn-ghost"
                 onClick={resetCls}
               >
-                重置 CLS
+                {pm.resetCls}
               </button>
             )}
           </section>
@@ -297,18 +309,18 @@ export default function PerformanceMonitor() {
           {/* 动画（WAAPI） */}
           <section className="pm-section">
             <div className="pm-section-title">
-              动画
+              {pm.sectionAnimation}
               <span className="pm-hint">document.getAnimations()</span>
             </div>
             <div className="pm-grid">
               <Row
-                label="运行中"
+                label={pm.runningCount}
                 value={`${animations.running}`}
                 className={
                   animations.running > 15 ? 'pm-warn' : 'pm-ok'
                 }
               />
-              <Row label="总计" value={`${animations.total}`} />
+              <Row label={pm.total} value={`${animations.total}`} />
             </div>
             {animations.items.length > 0 && (
               <ul className="pm-list">
@@ -334,14 +346,14 @@ export default function PerformanceMonitor() {
                 className="pm-btn"
                 onClick={refreshAnimations}
               >
-                刷新列表
+                {pm.refreshList}
               </button>
               <button
                 type="button"
                 className={`pm-btn ${pauseAll ? 'pm-btn-active' : ''}`}
                 onClick={() => setPauseAll((v) => !v)}
               >
-                {pauseAll ? '恢复动画' : '暂停全部'}
+                {pauseAll ? pm.resumeAnimations : pm.pauseAll}
               </button>
             </div>
           </section>
@@ -349,12 +361,12 @@ export default function PerformanceMonitor() {
           {/* 协调器：瞬时槽位常为 0 是正常的，看峰值/累计 */}
           <section className="pm-section">
             <div className="pm-section-title">
-              动画协调器
-              <span className="pm-hint">瞬时槽位·空闲≈0</span>
+              {pm.sectionCoordinator}
+              <span className="pm-hint">{pm.coordinatorHint}</span>
             </div>
             <div className="pm-grid">
               <Row
-                label="瞬时活跃"
+                label={pm.instantActive}
                 value={`${coordinator.activeSlots} / ${coordinator.maxConcurrent}`}
                 className={
                   coordinator.activeSlots >= coordinator.maxConcurrent
@@ -365,39 +377,39 @@ export default function PerformanceMonitor() {
                 }
               />
               <Row
-                label="会话峰值"
+                label={pm.sessionPeak}
                 value={`${coordinator.peakActiveSlots}`}
                 className={
                   coordinator.peakActiveSlots > 0 ? 'pm-ok' : 'pm-muted'
                 }
               />
               <Row
-                label="等待/延迟"
+                label={pm.waitingDelayed}
                 value={`${coordinator.waitingQueue} / ${coordinator.delayedQueue}`}
                 className={
                   coordinator.totalQueued > 5 ? 'pm-warn' : 'pm-muted'
                 }
               />
               <Row
-                label="累计调度"
+                label={pm.totalScheduled}
                 value={`${coordinator.totalScheduled}`}
                 className={
                   coordinator.totalScheduled > 0 ? 'pm-ok' : 'pm-muted'
                 }
               />
               <Row
-                label="累计占槽"
+                label={pm.totalAcquired}
                 value={`${coordinator.totalAcquired}`}
                 className={
                   coordinator.totalAcquired > 0 ? 'pm-ok' : 'pm-muted'
                 }
               />
               <Row
-                label="状态登记"
+                label={pm.stateRegistry}
                 value={`${coordinator.statesSize}`}
               />
               <Row
-                label="页就绪"
+                label={pm.pageReady}
                 value={coordinator.pageReady ? 'YES' : 'NO'}
                 className={coordinator.pageReady ? 'pm-ok' : 'pm-warn'}
               />
@@ -410,8 +422,11 @@ export default function PerformanceMonitor() {
               />
               {coordinator.currentPageId && (
                 <div className="pm-row pm-row-full">
-                  <span className="pm-muted">页面</span>
-                  <span className="pm-list-target" title={coordinator.currentPageId}>
+                  <span className="pm-muted">{pm.page}</span>
+                  <span
+                    className="pm-list-target"
+                    title={coordinator.currentPageId}
+                  >
                     {coordinator.currentPageId}
                   </span>
                 </div>
@@ -428,7 +443,7 @@ export default function PerformanceMonitor() {
                   })
                 }
               >
-                节能 6/16
+                {pm.ecoMode}
               </button>
               <button
                 type="button"
@@ -440,7 +455,7 @@ export default function PerformanceMonitor() {
                   })
                 }
               >
-                默认 16/48
+                {pm.defaultMode}
               </button>
               <button
                 type="button"
@@ -452,38 +467,38 @@ export default function PerformanceMonitor() {
                   })
                 }
               >
-                性能 24/48
+                {pm.performanceMode}
               </button>
               <button
                 type="button"
                 className="pm-btn pm-btn-ghost"
                 onClick={() => {
                   animationCoordinator.resetConcurrencyStats()
-                  showToast('会话统计已重置')
+                  showToast(pm.toastSessionStatsReset)
                 }}
               >
-                重置峰值
+                {pm.resetPeak}
               </button>
             </div>
           </section>
 
           {/* 资源队列 */}
           <section className="pm-section">
-            <div className="pm-section-title">资源队列</div>
+            <div className="pm-section-title">{pm.sectionResource}</div>
             <div className="pm-grid">
               <Row
-                label="排队"
+                label={pm.queued}
                 value={`${resource.queued}`}
                 className={resource.queued > 0 ? 'pm-warn' : 'pm-muted'}
               />
               <Row
-                label="进行中"
+                label={pm.inProgress}
                 value={`${resource.active}`}
                 className={resource.active > 0 ? 'pm-ok' : 'pm-muted'}
               />
-              <Row label="完成" value={`${resource.completed}`} />
+              <Row label={pm.completed} value={`${resource.completed}`} />
               <Row
-                label="失败"
+                label={pm.failed}
                 value={`${resource.failed}`}
                 className={resource.failed > 0 ? 'pm-bad' : 'pm-muted'}
               />
@@ -495,20 +510,20 @@ export default function PerformanceMonitor() {
                 disabled={!hasResourceActivity}
                 onClick={() => {
                   globalResourceLoader.clear()
-                  showToast('队列已清空')
+                  showToast(pm.toastQueueCleared)
                 }}
               >
-                清空队列
+                {pm.clearQueue}
               </button>
               <button
                 type="button"
                 className="pm-btn"
                 onClick={() => {
                   globalResourceLoader.reset()
-                  showToast('统计已重置')
+                  showToast(pm.toastStatsReset)
                 }}
               >
-                重置统计
+                {pm.resetStats}
               </button>
               <button
                 type="button"
@@ -516,10 +531,10 @@ export default function PerformanceMonitor() {
                 onClick={() => {
                   clearPlaylistCache()
                   clearLyricsCache()
-                  showToast('音乐缓存已清')
+                  showToast(pm.toastMusicCacheCleared)
                 }}
               >
-                清音乐缓存
+                {pm.clearMusicCache}
               </button>
             </div>
           </section>

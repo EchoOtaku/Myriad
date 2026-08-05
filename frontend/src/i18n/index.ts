@@ -18,31 +18,20 @@ export interface TranslationKeys {
     /** Shown when a host load surface stalls (e.g. Tapp iframe past ready timeout). */
     loadingSlow: string
     error: string
-    success: string
     retry: string
     close: string
     back: string
     or: string
     go: string
     refresh: string
-    reset: string
     search: string
     noResults: string
     enabled: string
     disabled: string
-    configured: string
-    unconfigured: string
-    required: string
-    networkError: string
-    unknownError: string
     copy: string
     copied: string
-    add: string
     open: string
     optional: string
-    expand: string
-    collapse: string
-    details: string
   }
 
   // 导航
@@ -53,9 +42,6 @@ export interface TranslationKeys {
     life: string
     config: string
     login: string
-    logout: string
-    account: string
-    federation: string
     backToHome: string
     // 导航岛
     mainNavigation: string
@@ -75,19 +61,12 @@ export interface TranslationKeys {
     showTvSeries: string
     book: string
     showBook: string
-    currentFilterAll: string
-    currentFilterGame: string
-    currentFilterVideo: string
-    currentFilterMusic: string
-    currentFilterAnime: string
-    currentFilterTvSeries: string
     expandFilters: string
     // Brew
     brew: string
     brewReading: string
     // Agent
     agent: string
-    aiAssistant: string
     // Tapp（主导航 /tapp = 已装应用列表）
     tapp: string
     openTapp: string
@@ -115,15 +94,12 @@ export interface TranslationKeys {
     animation: string
     lowPerformance: string
     highPerformance: string
-    noAnimation: string
     wallpaper: string
     random: string
     configuration: string
     system: string
     themeSwitch: string
     wallpaperSwitch: string
-    appearanceSettings: string
-    clickToExpand: string
     language: string
     languageSwitch: string
   }
@@ -134,9 +110,6 @@ export interface TranslationKeys {
     password: string
     confirmPassword: string
     login: string
-    loggingIn: string
-    logout: string
-    loggingOut: string
     loginWithGithub: string
     enterUsername: string
     enterPassword: string
@@ -145,12 +118,8 @@ export interface TranslationKeys {
     usernameFormatError: string
     passwordLengthError: string
     loginFailed: string
-    loginResponseIncomplete: string
     userInfoIncomplete: string
-    invalidTokenFormat: string
     rateLimitError: string
-    logoutSuccess: string
-    logoutFailed: string
     /** Shown when OAuth callback redirects with `?oauth_error=` */
     oauthError: string
     oauthErrorWithDesc: string
@@ -189,8 +158,6 @@ export interface TranslationKeys {
     // PR #4/#5: 注册 + provider 通用按钮
     loginWith: string
     register: string
-    registering: string
-    registerTitle: string
     haveAccount: string
     backToLogin: string
     noAccount: string
@@ -215,7 +182,6 @@ export interface TranslationKeys {
     welcomeReady: string
     welcomeFootnote: string
     getStarted: string
-    welcomeStep: string
     welcomeStepShort: string
     /** 顶栏右侧步骤名：数据库 */
     databaseStepShort: string
@@ -241,7 +207,6 @@ export interface TranslationKeys {
     databaseConfig: string
     databaseConfigDesc: string
     adminAccount: string
-    adminAccountDesc: string
     connectionFailed: string
     connectionFailedDesc: string
     backendDisconnected: string
@@ -258,7 +223,6 @@ export interface TranslationKeys {
     port: string
     database: string
     username: string
-    connectionInfo: string
     saveAndConnect: string
     saving: string
     configurationMode: string
@@ -293,7 +257,6 @@ export interface TranslationKeys {
     no: string
     usernameLengthError: string
     usernameFormatError: string
-    passwordLengthError: string
     passwordComplexityError: string
     adminCreated: string
     createAdminFailed: string
@@ -1782,23 +1745,12 @@ export interface TranslationKeys {
 
   // 首页
   home: {
-    dashboard: string
-    welcomeBack: string
     defaultBio: string
-    fetchUserInfoFailed: string
-    fetchCsrfFailed: string
-    parseDashboardFailed: string
-    loadConfigFailed: string
-    saveWidgetsFailed: string
-    saveTitleFailed: string
-    saveCustomPlatformsFailed: string
   }
 
   // 资料库
   library: {
     title: string
-    noData: string
-    loadFailed: string
     // 游戏时长
     playedHours: string
     // 音乐相关
@@ -1845,10 +1797,6 @@ export interface TranslationKeys {
   // 报告
   reports: {
     title: string
-    noData: string
-    loadFailed: string
-    generating: string
-    generated: string
   }
 
   // 数字生命
@@ -2053,34 +2001,69 @@ export interface TranslationKeys {
     }
   }
 
-  // 账户
-  account: {
-    title: string
-    profile: string
-    name: string
-    bio: string
-    avatar: string
-    saveProfile: string
-    saving: string
-    saved: string
-    saveFailed: string
-    changePassword: string
-    currentPassword: string
-    newPassword: string
-    confirmNewPassword: string
-    passwordChanged: string
-    passwordChangeFailed: string
-  }
-
   // 错误信息
   errors: {
     networkError: string
-    serverError: string
-    unauthorized: string
-    forbidden: string
-    notFound: string
-    timeout: string
     unknown: string
+  }
+
+  /** 开发环境右下角性能监控面板 */
+  perfMonitor: {
+    label: string
+    lastLongTask: string
+    longTasks: string
+    collapseTitle: string
+    expandTitle: string
+    sectionFrame: string
+    avgFrameTime: string
+    worstFrame: string
+    jankRate: string
+    refreshRate: string
+    detecting: string
+    lowFpsMode: string
+    sampling: string
+    running: string
+    notStarted: string
+    sectionRuntime: string
+    memChromiumOnly: string
+    usageRate: string
+    unavailable: string
+    recentMs: string
+    resetLtCount: string
+    sectionStability: string
+    resetCls: string
+    sectionAnimation: string
+    runningCount: string
+    total: string
+    refreshList: string
+    resumeAnimations: string
+    pauseAll: string
+    sectionCoordinator: string
+    coordinatorHint: string
+    instantActive: string
+    sessionPeak: string
+    waitingDelayed: string
+    totalScheduled: string
+    totalAcquired: string
+    stateRegistry: string
+    pageReady: string
+    page: string
+    ecoMode: string
+    defaultMode: string
+    performanceMode: string
+    resetPeak: string
+    toastSessionStatsReset: string
+    sectionResource: string
+    queued: string
+    inProgress: string
+    completed: string
+    failed: string
+    clearQueue: string
+    resetStats: string
+    clearMusicCache: string
+    toastQueueCleared: string
+    toastStatsReset: string
+    toastMusicCacheCleared: string
   }
 
   // 天气小组件
@@ -2146,35 +2129,9 @@ export interface TranslationKeys {
     vipPlayFailed: string
   }
 
-  // 缓存管理
-  cache: {
-    title: string
-    totalSize: string
-    clearAll: string
-    clearAllConfirm: string
-    clearPlatformConfirm: string
-    clearFailed: string
-    submitTaskFailed: string
-    cached: string
-    notCached: string
-    size: string
-    modifiedTime: string
-    notProcessed: string
-    clearCache: string
-    reprocess: string
-    process: string
-    loading: string
-    aboutCaching: string
-    cacheHint1: string
-    cacheHint2: string
-    cacheHint3: string
-    cacheHint4: string
-  }
-
   // 任务状态
   task: {
     fetchFailed: string
-    loadingInfo: string
     pending: string
     processing: string
     completed: string
@@ -2286,8 +2243,6 @@ export interface TranslationKeys {
     linkAutoGenerate: string
     linkManualInput: string
     popupHint: string
-    close: string
-    delete: string
     longPressToEdit: string
     linkType: string
     urlLink: string
@@ -2298,10 +2253,8 @@ export interface TranslationKeys {
     popupContent: string
     usePlaceholder: string
     noUsernameHint: string
-    generating: string
     create: string
     noContent: string
-    neteaseMusic: string
     selectPlatform: string
     copy: string
     clickToVisit: string
@@ -2313,19 +2266,7 @@ export interface TranslationKeys {
     noReportData: string
     casualPlayer: string
     hardcorePlayer: string
-    beginnerDev: string
-    activeDev: string
-    seniorDev: string
-    coreDev: string
-    legendaryDev: string
     danmakuDefault: string[]
-  }
-
-  // 性能监控
-  performance: {
-    animationDetected: string
-    collapse: string
-    expand: string
   }
 
   // 报告页面
@@ -2416,37 +2357,6 @@ export interface TranslationKeys {
     malWish: string
     malOnHold: string
     malDropped: string
-  }
-
-  // 账户页面
-  accountPage: {
-    accountInfo: string
-    githubBinding: string
-    adminRole: string
-    normalUser: string
-    localAccount: string
-    githubAccount: string
-    displayName: string
-    bindGithub: string
-    githubBound: string
-    localLoginEnabled: string
-    changePassword: string
-    changePasswordDesc: string
-    currentPassword: string
-    newPassword: string
-    confirmNewPassword: string
-    enterCurrentPassword: string
-    atLeast8Chars: string
-    enterNewPasswordAgain: string
-    passwordMinLength: string
-    passwordMismatch: string
-    passwordSameAsOld: string
-    csrfTokenError: string
-    passwordChangeSuccess: string
-    changeFailed: string
-    networkError: string
-    changing: string
-    changePasswordBtn: string
   }
 
   // 平台二级页数据管理
@@ -2555,53 +2465,22 @@ export interface TranslationKeys {
     no: string
     unknownProject: string
     playTime: string
-    playtime2weeks: string
-    playtimeForever: string
     achievementCount: string
-    achievements: string
-    lastPlayed: string
     status: string
     rating: string
     progress: string
-    tags: string
-    notes: string
-    note: string
-    favorite: string
-    iconUrl: string
-    lastSync: string
-    description: string
-    category: string
-    genres: string
-    name: string
-    title: string
     watchersCount: string
-    watchers: string
     stargazersCount: string
     forksCount: string
     openIssuesCount: string
     likedSongs: string
     playlists: string
-    picUrl: string
-    coverUrl: string
-    sampleRate: string
     games: string
-    videos: string
-    songs: string
-    albums: string
-    justNow: string
-    daysAgo: string
-    hoursAgo: string
-    loadCacheFailed: string
-    saveCacheFailed: string
-    fetchActivitiesFailed: string
-    myMusicCollection: string
-    techShareCollection: string
     initialImport: string
     itemAdded: string
     itemRemoved: string
     /** Footer under the grid, e.g. “Only the latest 8 are loaded”. */
     loadedLimitHint: string
-    moreActivities: string
     minutes: string
     hoursMinutes: string
     episodesProgress: string
@@ -2651,7 +2530,6 @@ export interface TranslationKeys {
     sampleLyricPrev: string
     sampleLyricCurrent: string
     sampleLyricNext: string
-    noLyrics: string
   }
 
   // 平台报告卡片：长按点击行为设置
@@ -2664,11 +2542,8 @@ export interface TranslationKeys {
 
   // 报告卡片小组件扩展
   reportCardWidget: {
-    bilibili: string
-    neteaseMusic: string
     beginnerDev: string
     activeDev: string
-    intermediateDev: string
     seniorDev: string
     veteranDev: string
     legendaryDev: string
@@ -2730,7 +2605,6 @@ export interface TranslationKeys {
     xPreviewDescTech: string
     xPreviewDescArt: string
     discordGuilds: string
-    discordReach: string
     discordConnections: string
     discordMembers: string
     discordOnline: string
@@ -2749,7 +2623,6 @@ export interface TranslationKeys {
     ytViews: string
     ytVideos: string
     ytEmptyChannel: string
-    ytRecentUploads: string
   }
 
   // 社交网络小组件扩展
@@ -2762,7 +2635,6 @@ export interface TranslationKeys {
     confirmDeleteCustomPlatform: string
     close: string
     delete: string
-    longPressToEdit: string
   }
 
   // 游戏公开状态小组件
@@ -3309,14 +3181,6 @@ export interface TranslationKeys {
     dynamicContentDesc: string
     dynamicContentSet: string
     dynamicContentRemoved: string
-  }
-
-  // 动态内容
-  dynamicContent: {
-    unavailable: string
-    noContent: string
-    loading: string
-    tappContent: string
   }
 
   // Brew RSS 阅读器
@@ -3890,64 +3754,6 @@ export interface TranslationKeys {
     lightboxDownload: string
     lightboxClose: string
     lightboxCloseHint: string
-  }
-
-  // 联邦
-  federation: {
-    title: string
-    subtitle: string
-    timeline: string
-    profile: string
-    following: string
-    followers: string
-    published: string
-    channels: string
-    followBtn: string
-    followPlaceholder: string
-    emptyTimeline: string
-    emptyTimelineHint: string
-    emptyFollowing: string
-    emptyFollowers: string
-    emptyPublished: string
-    emptyPublishedHint: string
-    // Phase 3: Channel
-    channelPlaceholder: string
-    newChannelBtn: string
-    emptyChannels: string
-    emptyChannelsHint: string
-    back: string
-    connected: string
-    disconnected: string
-    closeChannel: string
-    emptyChatHint: string
-    messagePlaceholder: string
-    sendBtn: string
-    rooms: string
-    roomNamePlaceholder: string
-    newRoomBtn: string
-    emptyRooms: string
-    emptyRoomsHint: string
-    roomMembers: string
-    leaveRoom: string
-    emptyRoomHint: string
-    invitePlaceholder: string
-    rings: string
-    ringNamePlaceholder: string
-    newRingBtn: string
-    emptyRings: string
-    emptyRingsHint: string
-    leaveRing: string
-    ringPeers: string
-    addPeerPlaceholder: string
-    addPeerBtn: string
-    removePeer: string
-    emptyPeers: string
-    emptyPeersHint: string
-    triggerSync: string
-    syncComplete: string
-    syncFailed: string
-    lastSync: string
-    config: string
   }
 
   // Arael AI 助手
