@@ -548,15 +548,24 @@ REST 商店安装仍是 body `source: "store"` + `storeSource: catalogRef`（源
 | 浏览器 fallback 下载 + direct 成功 | 前端 `storeStats.reportStoreInstallHit` | `myriad-browser` |
 | direct / 文件安装 | **不上报** | — |
 
-环境变量（后端，可选）：
+环境变量：
 
 | 变量 | 默认 | 说明 |
 | ---- | ---- | ---- |
 | `TAPP_STORE_STATS_URL` | `https://stats.store.myriad.you` | 空/`off` 禁用 |
 | `TAPP_STORE_STATS_ENABLED` | 开 | `false` 禁用 |
-| `TAPP_STORE_STATS_HMAC` | 无 | 若 edge 设了 `INGEST_HMAC_SECRET` 则填同一密钥 |
+| `TAPP_STORE_STATS_HMAC` | 无 | **推荐**：与 Worker secret `INGEST_HMAC_SECRET` 相同 |
+| `VITE_TAPP_STORE_STATS_URL` | 同上 | 前端构建时覆盖 |
 
-前端：`VITE_TAPP_STORE_STATS_URL`（默认同上）。
+Edge 密钥（CF Worker secrets，**勿写进 Git**）：
+
+| Secret | 用途 |
+| ------ | ---- |
+| `INGEST_HMAC_SECRET` | 校验 `client=myriad-backend` 的 `X-Stats-Signature` |
+| `ADMIN_TOKEN` | `POST /v1/admin/*` Bearer |
+
+生成并配置：`tapp-store/edge/scripts/setup-secrets.sh`  
+风险清单：`tapp-store/edge/RISKS.md`
 
 详细部署与 API 见商店仓库 `edge/README.md`。
 

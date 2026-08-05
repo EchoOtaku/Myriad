@@ -26,12 +26,14 @@ export interface StoreStatsResponse {
 }
 
 let cachedAt = 0
+/** Positive counts only; missing key means unknown / not yet fetched. */
 let cachedMap: Record<string, number> = {}
 
 function statsBaseUrl(): string | null {
   const fromEnv =
     typeof import.meta !== 'undefined' &&
-    (import.meta as { env?: Record<string, string> }).env?.VITE_TAPP_STORE_STATS_URL
+    (import.meta as { env?: Record<string, string> }).env
+      ?.VITE_TAPP_STORE_STATS_URL
   const raw = (fromEnv || DEFAULT_STORE_STATS_URL).trim()
   if (!raw || raw === '0' || raw === 'false' || raw === 'off') return null
   return raw.replace(/\/+$/, '')
@@ -50,20 +52,22 @@ export async function fetchStoreDownloadCounts(
 
   const unique = [...new Set(appIds.filter(Boolean))]
   const now = Date.now()
-  if (now - cachedAt < STATS_TTL_MS) {
-    const hit: Record<string, number> = {}
-    let allCached = true
-    for (const id of unique) {
-      if (cachedMap[id] !== undefined) hit[id] = cachedMap[id]
-      else allCached = false
+  const out: Record<string, number> = {}
+  const missing: string[] = []
+
+  for (const id of unique) {
+    if (now - cachedAt < STATS_TTL_MS && cachedMap[id] !== undefined) {
+      if (cachedMap[id] > 0) out[id] = cachedMap[id]
+    } else {
+      missing.push(id)
     }
-    if (allCached) return hit
   }
 
-  const out: Record<string, number> = {}
+  if (missing.length === 0) return out
+
   const batchSize = 100
-  for (let i = 0; i < unique.length; i += batchSize) {
-    const batch = unique.slice(i, i + batchSize)
+  for (let i = 0; i < missing.length; i += batchSize) {
+    const batch = missing.slice(i, i + batchSize)
     try {
       const url = `${base}/v1/stats?apps=${encodeURIComponent(batch.join(','))}`
       const res = await fetch(url, {
@@ -73,12 +77,12 @@ export async function fetchStoreDownloadCounts(
       })
       if (!res.ok) continue
       const data = (await res.json()) as StoreStatsResponse
-      for (const [id, entry] of Object.entries(data.apps || {})) {
+      for (const id of batch) {
+        const entry = data.apps?.[id]
         const n = entry?.downloads ?? entry?.installs ?? 0
-        if (typeof n === 'number' && n > 0) {
-          out[id] = n
-          cachedMap[id] = n
-        }
+        // Cache zeros too so we do not re-fetch cold apps every list load.
+        cachedMap[id] = typeof n === 'number' && n > 0 ? n : 0
+        if (cachedMap[id] > 0) out[id] = cachedMap[id]
       }
     } catch {
       // stats failure must never break store UI
@@ -103,7 +107,7 @@ export interface ReportStoreHitInput {
 
 /**
  * Browser-only beacon after client-fallback install/update success.
- * Silent on failure.
+ * Silent on failure. Does not send HMAC (backend path is the trusted one).
  */
 export function reportStoreInstallHit(input: ReportStoreHitInput): void {
   const base = statsBaseUrl()
@@ -126,7 +130,10 @@ export function reportStoreInstallHit(input: ReportStoreHitInput): void {
 
   const url = `${base}/v1/hit`
   try {
-    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+    if (
+      typeof navigator !== 'undefined' &&
+      typeof navigator.sendBeacon === 'function'
+    ) {
       const blob = new Blob([body], { type: 'application/json' })
       if (navigator.sendBeacon(url, blob)) return
     }
