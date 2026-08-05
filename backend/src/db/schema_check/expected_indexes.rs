@@ -562,6 +562,12 @@ pub(crate) fn get_expected_indexes() -> Vec<IndexDef> {
             is_unique: false,
         },
         IndexDef {
+            name: "federation_inbox_receipts_pkey".into(),
+            table: "federation_inbox_receipts".into(),
+            columns: vec!["signer".into(), "activity_id".into(), "inbox_scope".into()],
+            is_unique: true,
+        },
+        IndexDef {
             name: "idx_published_user_type".into(),
             table: "federation_published_content".into(),
             columns: vec!["user_id".into(), "content_type".into()],

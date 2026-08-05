@@ -5,11 +5,11 @@ import type { UnifiedAppItem } from './types'
 import { forwardRef, useMemo } from 'react'
 import { Spinner } from '../../../components/Spinner'
 import { useI18n } from '../../../contexts/I18nContext'
+import { formatDownloadCount } from '../../utils/formatDownloadCount'
 import {
   compareVersions,
   packageProgressLabel,
 } from '../../utils/tappStoreHelpers'
-import { formatDownloadCount } from '../../utils/formatDownloadCount'
 import { TappIconBadge } from '../TappIconBadge'
 import {
   getAppIconStyle,

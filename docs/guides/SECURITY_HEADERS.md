@@ -91,11 +91,10 @@ client → 宿主 Nginx/Caddy → Docker 发布的 proxy 端口 → backend
 此时 proxy 容器看到的 TCP 对端往往是 Docker 网桥地址（例如 `172.17.0.1`），
 而不是真实客户端。若外层已正确设置 `X-Real-IP` / `X-Forwarded-For`：
 
-- **`PROXY_TRUSTED_UPSTREAMS` 为空（默认）**：proxy 会**仅对**私网 / loopback /
-  link-local 对端信任转发头（含上述 Docker 网桥场景），从 `X-Forwarded-For`
-  右侧剥离可信跳，得到真实客户端 IP。公网对端仍不能伪造头。
-- **显式填写 CIDR**：仅允许列表中的上游传递转发头（显式 allowlist，不再自动
-  信任私网对端）。例如外层代理源地址是 `192.0.2.10`：
+- **`PROXY_TRUSTED_UPSTREAMS` 为空（默认）**：proxy 不信任任何转发头，全部根据
+  TCP 对端、请求协议和 `Host` 重建。这样即使直接暴露 proxy，客户端也不能伪造来源。
+- **显式填写 CIDR**：仅允许列表中的上游传递转发头。Docker 宿主反向代理也必须
+  显式列出它在容器视角下的源地址；例如外层代理源地址是 `192.0.2.10`：
 
 ```env
 PROXY_TRUSTED_UPSTREAMS=192.0.2.10/32
@@ -123,6 +122,20 @@ backend。backend 侧：
 | --- | --- |
 | `TRUST_PROXY_HEADERS=true` | 允许从可信 peer 读取转发头（compose 默认开启） |
 | `TRUST_PROXY_PEERS` | 可信任的 TCP peer CIDR。**空 = 窄默认**（loopback + docker0，非 RFC1918 全段）。compose 默认含 `172.28.0.0/16`（myriad-net） |
+
+库存 compose 的完整两段示例（实际地址必须以部署网络为准）：
+
+```env
+# 宿主 Nginx/Caddy → myriad-proxy
+PROXY_TRUSTED_UPSTREAMS=172.17.0.1/32
+# myriad-proxy → backend
+TRUST_PROXY_HEADERS=true
+TRUST_PROXY_PEERS=172.28.0.0/16
+```
+
+compose 不为第一段写死默认 CIDR：宿主网关地址会随 Docker 网络、rootless
+模式和发布端口实现变化，而且 proxy 也可能被直接暴露。错误的“常见默认”要么
+不起作用，要么扩大伪造转发头的范围，因此必须显式配置。
 
 若 `TRUST_PROXY_HEADERS` 关闭，或 peer 不在信任范围，backend 会把 Docker 内网
 地址当成「客户端 IP」，`/api/proxy/client-geo` 再回退到**服务器出口公网 IP**，
@@ -185,9 +198,9 @@ server {
 ```
 
 如果 `.env` 中设置了 `HTTP_PORT=8080`，把 `proxy_pass` 改为
-`http://127.0.0.1:8080`。在 Docker 宿主 Nginx 场景下，默认空的
-`PROXY_TRUSTED_UPSTREAMS` 即可；仅在上游是公网 IP 或需要收紧信任范围时
-再填写显式 CIDR。
+`http://127.0.0.1:8080`。在 Docker 宿主 Nginx 场景下，应把宿主代理在容器
+视角下的固定源地址或最窄 CIDR 写入 `PROXY_TRUSTED_UPSTREAMS`；保持为空时
+转发头会被忽略，定位和审计会使用 Docker 网桥对端地址。
 
 **不要**写成分路径只放行 `/api`（除非你完整复制 [PORTS.md](../deployment/PORTS.md) 的 backend 白名单，且包含 `/media/federation/`）。
 
@@ -221,7 +234,7 @@ curl -I http://localhost:1103/health
 - `CSP_CONNECT_SRC`：覆盖生产 CSP 的 `connect-src`，默认为 `'self' https:`。
 - `ENABLE_CSP_DEV=true`：开发环境也启用 CSP。
 - `PROXY_TRUSTED_UPSTREAMS`：允许传递真实客户端 IP 的外层代理 IP/CIDR 列表。
-  留空时仅自动信任私网/loopback/link-local 对端；切勿设为 `0.0.0.0/0`。
+  留空时不信任任何转发头；切勿设为 `0.0.0.0/0`。
 
 更多部署细节见 [Docker 部署](../deployment/DOCKER_DEPLOYMENT.md) 和
 [端口清单](../deployment/PORTS.md)。

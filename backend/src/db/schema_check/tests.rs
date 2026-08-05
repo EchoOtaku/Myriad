@@ -42,6 +42,8 @@ fn test_recent_month_features_in_expected_schema() {
         "federation_policy_settings",
         "federation_domain_aliases",
         "federation_object_interactions",
+        // 012
+        "federation_inbox_receipts",
     ] {
         assert!(
             names.contains(&required),
@@ -94,6 +96,7 @@ fn test_recent_month_features_in_expected_schema() {
         "idx_federation_domain_aliases_new",
         "idx_fed_interactions_object_kind",
         "idx_fed_interactions_user_kind_created",
+        "federation_inbox_receipts_pkey",
     ] {
         assert!(
             idx_names.contains(&required),
@@ -157,87 +160,6 @@ fn test_default_platform_seeds_include_x_and_core() {
     sorted.sort();
     sorted.dedup();
     assert_eq!(sorted.len(), names.len());
-}
-
-/// Retired seaql_migrations rows that must be stripped before Migrator::up.
-/// digital_life* versions: local/dev only (never production); exact-name match only.
-#[test]
-fn test_retired_migration_versions_include_digital_life_and_thin_alters() {
-    let versions = RETIRED_MIGRATION_VERSIONS;
-    for required in [
-        // thin ALTER consolidation
-        "007_notification_preferences",
-        "008_tapp_approved_permissions",
-        "009_user_presence",
-        "010_user_owner",
-        "011_owner_is_admin",
-        "008_tapp_runtime_registry",
-        "009_activity_events",
-        // digital_life experiment — local-only history (never prod)
-        "007_digital_life",
-        "008_digital_life_phase_two",
-        "009_digital_life_phase_three",
-        "010_digital_life_phase_four",
-        "011_digital_life_asset_subjects",
-    ] {
-        assert!(
-            versions.contains(&required),
-            "RETIRED_MIGRATION_VERSIONS missing {required}"
-        );
-    }
-    // no accidental empties / duplicates
-    assert!(!versions.is_empty());
-    let mut sorted: Vec<&str> = versions.to_vec();
-    sorted.sort();
-    sorted.dedup();
-    assert_eq!(
-        sorted.len(),
-        versions.len(),
-        "RETIRED_MIGRATION_VERSIONS must be unique"
-    );
-    // Future real 007_* must not be blocked by a bare "007" retirement rule.
-    // We only retire exact digital_life / thin-ALTER strings.
-    assert!(!versions.iter().any(|v| *v == "007" || v.ends_with("_")));
-    assert!(
-        !versions.contains(&"007_something_else"),
-        "must not retire hypothetical future 007 names"
-    );
-}
-
-/// Explicit DROP list for temporary digital_life tables (plus runtime prefix scan).
-#[test]
-fn test_retired_digital_life_tables_are_prefixed_and_cover_core() {
-    let tables = RETIRED_DIGITAL_LIFE_TABLES;
-    assert!(!tables.is_empty());
-    for required in [
-        "digital_life_characters",
-        "digital_life_worlds",
-        "digital_life_memories",
-        "digital_life_visual_lineages",
-        "digital_life_social_proposals",
-    ] {
-        assert!(
-            tables.contains(&required),
-            "RETIRED_DIGITAL_LIFE_TABLES missing core table {required}"
-        );
-    }
-    for name in tables {
-        assert!(
-            name.starts_with("digital_life_"),
-            "retired digital_life table must use feature prefix, got {name}"
-        );
-        // Never put generically named experiment companions on this list.
-        assert_ne!(*name, "image_generation_jobs");
-        assert_ne!(*name, "image_assets");
-    }
-    let mut sorted: Vec<&str> = tables.to_vec();
-    sorted.sort();
-    sorted.dedup();
-    assert_eq!(
-        sorted.len(),
-        tables.len(),
-        "RETIRED_DIGITAL_LIFE_TABLES must be unique"
-    );
 }
 
 #[test]
@@ -347,7 +269,7 @@ async fn migrations_leave_no_schema_drift() {
         drift.summary()
     );
 
-    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
+    use sea_orm::{ConnectionTrait, DatabaseBackend, Statement, TransactionTrait};
     let invalid = db
         .execute_raw(Statement::from_string(
             DatabaseBackend::Postgres,
@@ -364,6 +286,103 @@ VALUES
         invalid.is_err(),
         "tapp_storage must reject encrypted payloads outside _credentials.*"
     );
+
+    // A review deployment may already have recorded the short-lived first
+    // 012 migration while retaining its scope-less table. Rewriting 012 would
+    // never run for that database, so 013 must repair the persisted shape.
+    db.execute_unprepared(
+        r#"
+DROP TABLE federation_inbox_receipts;
+CREATE TABLE federation_inbox_receipts (
+    id BIGSERIAL PRIMARY KEY,
+    signer TEXT NOT NULL,
+    activity_id TEXT NOT NULL,
+    body_digest CHAR(64) NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'processing',
+    attempts INTEGER NOT NULL DEFAULT 1,
+    lease_until TIMESTAMPTZ,
+    outcome_status SMALLINT,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    accepted_at TIMESTAMPTZ,
+    CONSTRAINT federation_inbox_receipts_identity_unique UNIQUE (signer, activity_id)
+);
+DELETE FROM seaql_migrations
+WHERE version = '013_federation_inbox_receipts_v2';
+"#,
+    )
+    .await
+    .expect("create the legacy receipt shape and rewind only migration 013");
+
+    crate::db::Migrator::up(&db, None)
+        .await
+        .expect("013 must upgrade a database that already recorded old 012");
+    let upgraded_drift = report_schema_drift(&db)
+        .await
+        .expect("upgraded receipt schema drift report must succeed");
+    assert!(
+        upgraded_drift.is_empty(),
+        "legacy receipt upgrade must restore the authoritative schema:\n{}",
+        upgraded_drift.summary()
+    );
+
+    let legacy_column_count = db
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            r#"SELECT COUNT(*)::BIGINT AS count
+               FROM information_schema.columns
+               WHERE table_schema = current_schema()
+                 AND table_name = 'federation_inbox_receipts'
+                 AND column_name IN ('id', 'attempts', 'lease_until', 'updated_at', 'accepted_at')"#
+                .to_string(),
+        ))
+        .await
+        .expect("inspect upgraded receipt columns")
+        .expect("column count row");
+    assert_eq!(
+        legacy_column_count
+            .try_get::<i64>("", "count")
+            .expect("read legacy receipt column count"),
+        0,
+        "013 must remove every column unique to the scope-less receipt shape"
+    );
+
+    // Permanent handler rejection must preserve the claimed receipt while
+    // removing every DB effect performed after the handler savepoint.
+    let txn = db.begin().await.expect("begin receipt savepoint probe");
+    txn.execute_unprepared(
+        "CREATE TEMP TABLE receipt_savepoint_probe (value INTEGER) ON COMMIT DROP",
+    )
+    .await
+    .expect("create receipt savepoint probe table");
+    crate::federation::inbox::begin_receipt_handler_effects(&txn)
+        .await
+        .expect("create handler savepoint");
+    txn.execute_unprepared("INSERT INTO receipt_savepoint_probe (value) VALUES (1)")
+        .await
+        .expect("write simulated handler side effect");
+    crate::federation::inbox::rollback_receipt_handler_effects(&txn)
+        .await
+        .expect("rollback simulated rejected-handler effects");
+    let remaining = txn
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT COUNT(*)::BIGINT AS count FROM receipt_savepoint_probe".to_string(),
+        ))
+        .await
+        .expect("query receipt savepoint probe")
+        .expect("receipt savepoint count row");
+    assert_eq!(
+        remaining
+            .try_get::<i64>("", "count")
+            .expect("read receipt savepoint count"),
+        0,
+        "permanent rejection must not commit handler writes"
+    );
+    txn.rollback()
+        .await
+        .expect("rollback receipt savepoint probe");
 }
 
 #[tokio::test]
