@@ -235,16 +235,11 @@ pub(super) async fn install_tapp(
     )
     .await?;
     if from_store {
-        let key = crate::services::store_stats_beacon::server_install_idempotency_key(
+        // Instance-day cap (1 install count / instance / app / day) — no shared secret.
+        crate::services::store_stats_beacon::spawn_store_stats_hit(
             &stats_app_id,
             &stats_version,
             "install",
-        );
-        crate::services::store_stats_beacon::spawn_store_stats_hit_with_key(
-            &stats_app_id,
-            &stats_version,
-            "install",
-            Some(key),
         );
     }
     Ok(result)
@@ -891,16 +886,10 @@ pub(super) async fn update_tapp(
     // Only the deterministic site-owner namespace is public and persistent.
     // List projection: services::tapp_catalog (preserves live status/last_run_at).
     if from_store {
-        let key = crate::services::store_stats_beacon::server_install_idempotency_key(
+        crate::services::store_stats_beacon::spawn_store_stats_hit(
             &tapp_id,
             &stats_version,
             "update",
-        );
-        crate::services::store_stats_beacon::spawn_store_stats_hit_with_key(
-            &tapp_id,
-            &stats_version,
-            "update",
-            Some(key),
         );
     }
     Ok(Json(ApiResponse::success(

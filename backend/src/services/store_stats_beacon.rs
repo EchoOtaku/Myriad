@@ -1,10 +1,10 @@
-//! Fire-and-forget install/update beacons to the official Tapp store stats edge.
+//! Fire-and-forget install stats to the official edge.
 //!
-//! Dual-path:
-//! - Backend `source=store` success → HMAC hit with stable install key.
-//! - Browser fallback → `/api/tapps/store/stats-report` (installed-only) → HMAC hit.
+//! Model B (default): **no shared secret required**.
+//! Cap: **1 count per Myriad instance / app / event / UTC day**.
+//! Browser never talks to edge; only this backend posts hits.
 //!
-//! Never blocks installation.
+//! Optional: set TAPP_STORE_STATS_HMAC if edge REQUIRE_HMAC=true.
 
 use crate::services::http_client::TAPP_HTTP_CLIENT;
 use hmac::{Hmac, KeyInit, Mac};
@@ -17,23 +17,22 @@ const DEFAULT_STATS_URL: &str = "https://stats.store.myriad.you";
 
 static HMAC_DESYNC_LOGGED: AtomicBool = AtomicBool::new(false);
 
-/// Spawn a non-blocking hit (generates a stable key when none provided).
+/// Spawn install/update hit (instance-day cap enforced on edge via instance_hash).
 pub fn spawn_store_stats_hit(app_id: &str, version: &str, event: &str) {
-    let key = server_install_idempotency_key(app_id, version, event);
-    spawn_store_stats_hit_with_key(app_id, version, event, Some(key));
+    spawn_store_stats_hit_with_key(app_id, version, event, None);
 }
 
 pub fn spawn_store_stats_hit_with_key(
     app_id: &str,
     version: &str,
     event: &str,
-    idempotency_key: Option<String>,
+    _idempotency_key: Option<String>,
 ) {
     let app_id = app_id.to_string();
     let version = version.to_string();
     let event = event.to_string();
     tokio::spawn(async move {
-        if let Err(err) = send_hit(&app_id, &version, &event, idempotency_key.as_deref()).await {
+        if let Err(err) = send_hit(&app_id, &version, &event).await {
             tracing::debug!(
                 target: "store_stats",
                 error = %err,
@@ -45,48 +44,42 @@ pub fn spawn_store_stats_hit_with_key(
     });
 }
 
-/// One count per user / app / version / event / UTC day (report path).
-pub fn daily_user_idempotency_key(
-    user_id: i32,
-    app_id: &str,
-    version: &str,
-    event: &str,
-) -> String {
-    let day = chrono::Utc::now().format("%Y-%m-%d");
-    stable_key(&format!("u{user_id}|{app_id}|{version}|{event}|{day}"))
+/// Instance fingerprint for edge instance_hash (8–64 hex).
+pub fn instance_hash() -> String {
+    let material = instance_material();
+    let full = stable_key(&material);
+    // 32 hex chars
+    full
 }
 
-/// One count per site instance / app / version / event / UTC day (server install).
-/// Stable across handler retries within the same day; avoids UUID double-count.
-pub fn server_install_idempotency_key(app_id: &str, version: &str, event: &str) -> String {
+/// One count per instance / app / event / UTC day (local key, edge recomputes too).
+pub fn instance_day_idempotency_key(app_id: &str, event: &str) -> String {
     let day = chrono::Utc::now().format("%Y-%m-%d");
-    let instance = instance_fingerprint();
-    stable_key(&format!("s|{instance}|{app_id}|{version}|{event}|{day}"))
+    let inst = instance_hash();
+    stable_key(&format!("inst|{inst}|{app_id}|{event}|{day}"))
 }
 
-fn instance_fingerprint() -> String {
-    // Prefer public site identity; fall back to a process-stable salt from JWT if set.
+fn instance_material() -> String {
     if let Ok(base) = env::var("BASE_URL") {
         let t = base.trim().trim_end_matches('/');
         if !t.is_empty() {
-            return stable_key(t)[..16].to_string();
+            return t.to_string();
         }
     }
     if let Ok(front) = env::var("FRONTEND_URL") {
         let t = front.trim().trim_end_matches('/');
         if !t.is_empty() {
-            return stable_key(t)[..16].to_string();
+            return t.to_string();
         }
     }
-    // Last resort: shared default (still better than random UUID per call).
-    "default".to_string()
+    // Dev fallback — all local instances without BASE_URL share one bucket.
+    "myriad-default-instance".to_string()
 }
 
 fn stable_key(material: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(material.as_bytes());
     let digest = hasher.finalize();
-    // 32 hex chars — fits 8–128 idempotency regex
     digest
         .iter()
         .take(16)
@@ -119,27 +112,21 @@ fn stats_base_url() -> Option<String> {
     Some(raw.trim_end_matches('/').to_string())
 }
 
-async fn send_hit(
-    app_id: &str,
-    version: &str,
-    event: &str,
-    idempotency_key: Option<&str>,
-) -> Result<(), String> {
+async fn send_hit(app_id: &str, version: &str, event: &str) -> Result<(), String> {
     let base = match stats_base_url() {
         Some(u) => u,
         None => return Ok(()),
     };
 
-    let key = idempotency_key
-        .map(|s| s.trim().to_string())
-        .filter(|s| s.len() >= 8 && s.len() <= 128)
-        .unwrap_or_else(|| server_install_idempotency_key(app_id, version, event));
+    let inst = instance_hash();
+    let key = instance_day_idempotency_key(app_id, event);
 
     let body = serde_json::json!({
         "app_id": app_id,
         "version": version,
         "event": event,
         "idempotency_key": key,
+        "instance_hash": inst,
         "client": "myriad-backend",
         "source": "official",
         "myriad_version": env!("CARGO_PKG_VERSION"),
@@ -153,15 +140,14 @@ async fn send_hit(
         .header("user-agent", "Myriad-Store-Stats/1.0")
         .json(&body);
 
-    let hmac_secret = env::var("TAPP_STORE_STATS_HMAC")
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
-
-    if let Some(ref secret) = hmac_secret {
-        let payload = format!("{app_id}\n{event}\n{key}\n{version}");
-        let sig = hmac_sha256_hex(secret.as_bytes(), payload.as_bytes());
-        req = req.header("X-Stats-Signature", format!("sha256={sig}"));
+    // Optional signature if operator enabled REQUIRE_HMAC on edge.
+    if let Ok(secret) = env::var("TAPP_STORE_STATS_HMAC") {
+        let secret = secret.trim();
+        if !secret.is_empty() {
+            let payload = format!("{app_id}\n{event}\n{key}\n{version}");
+            let sig = hmac_sha256_hex(secret.as_bytes(), payload.as_bytes());
+            req = req.header("X-Stats-Signature", format!("sha256={sig}"));
+        }
     }
 
     let res = req.send().await.map_err(|e| format!("request: {e}"))?;
@@ -170,11 +156,11 @@ async fn send_hit(
         if !HMAC_DESYNC_LOGGED.swap(true, Ordering::Relaxed) {
             tracing::warn!(
                 target: "store_stats",
-                "store stats edge returned 401 — sync TAPP_STORE_STATS_HMAC with Worker INGEST_HMAC_SECRET"
+                "store stats 401 — edge may have REQUIRE_HMAC; set TAPP_STORE_STATS_HMAC or disable REQUIRE_HMAC"
             );
         }
         let text = res.text().await.unwrap_or_default();
-        return Err(format!("HTTP 401 (HMAC desync?): {text}"));
+        return Err(format!("HTTP 401: {text}"));
     }
     if !status.is_success() {
         let text = res.text().await.unwrap_or_default();
@@ -197,22 +183,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_url_is_custom_domain() {
-        assert!(DEFAULT_STATS_URL.contains("stats.store.myriad.you"));
-    }
-
-    #[test]
-    fn daily_key_is_stable() {
-        let a = daily_user_idempotency_key(1, "com.a.b", "1.0.0", "install");
-        let b = daily_user_idempotency_key(1, "com.a.b", "1.0.0", "install");
+    fn instance_day_key_stable() {
+        let a = instance_day_idempotency_key("com.a.b", "install");
+        let b = instance_day_idempotency_key("com.a.b", "install");
         assert_eq!(a, b);
         assert!(a.len() >= 8 && a.len() <= 128);
     }
 
     #[test]
-    fn server_key_is_stable_within_day() {
-        let a = server_install_idempotency_key("com.a.b", "1.0.0", "install");
-        let b = server_install_idempotency_key("com.a.b", "1.0.0", "install");
-        assert_eq!(a, b);
+    fn instance_hash_is_hexish() {
+        let h = instance_hash();
+        assert!(h.len() >= 8);
     }
 }

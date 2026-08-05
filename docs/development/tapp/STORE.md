@@ -537,37 +537,30 @@ REST 商店安装仍是 body `source: "store"` + `storeSource: catalogRef`（源
 | 正式 URL | **`https://stats.store.myriad.you`** |
 | 计什么 | **安装成功**（`event=install`）；`update` 单独计数；不计 preview / 浏览 |
 | 真值 | Edge DO 原子计数 + KV 镜像；**不**写回 `index.json` |
-| 写入口 | 默认 **仅** HMAC 签名的 `client=myriad-backend`（禁止浏览器直连 hit） |
-| 万级应用 | stats 必须 `apps=` / `app=` / `top=`；**读路径不写 KV** |
+| 写入口 | 仅 Myriad 后端 `client=myriad-backend`（**默认不需要密钥**） |
+| 计数上限 | **每实例 / 每 app / 每 UTC 日 / 每 event 最多 +1**（`instance_hash`） |
+| 万级应用 | stats 必须 `apps=` / `app=` / `top=`；读路径不写 KV |
 
 ### Myriad 双路径打点
 
 | 路径 | 谁上报 | 如何到 edge |
 | ---- | ------ | ----------- |
-| `source=store` 安装/更新成功 | 后端 `store_stats_beacon` | 直接 HMAC hit |
-| 浏览器 fallback 成功 | FE → `POST /api/tapps/store/stats-report` | 后端代签 HMAC hit |
+| `source=store` 安装/更新成功 | 后端 `store_stats_beacon` | 直连 hit + `instance_hash` |
+| 浏览器 fallback 成功 | FE → `POST /api/tapps/store/stats-report`（须已安装） | 后端 hit + `instance_hash` |
 | direct / 文件安装 | **不上报** | — |
 
-环境变量：
+实例身份：`BASE_URL` 或 `FRONTEND_URL` 的哈希（未设置则共用 dev 默认桶）。
+
+环境变量（可选）：
 
 | 变量 | 默认 | 说明 |
 | ---- | ---- | ---- |
 | `TAPP_STORE_STATS_URL` | `https://stats.store.myriad.you` | 空/`off` 禁用 |
 | `TAPP_STORE_STATS_ENABLED` | 开 | `false` 禁用 |
-| `TAPP_STORE_STATS_HMAC` | 无 | **推荐**：与 Worker secret `INGEST_HMAC_SECRET` 相同 |
-| `VITE_TAPP_STORE_STATS_URL` | 同上 | 前端构建时覆盖 |
+| `TAPP_STORE_STATS_HMAC` | 无 | **可选**；仅当 edge `REQUIRE_HMAC=true` 时需要 |
+| `BASE_URL` / `FRONTEND_URL` | — | 建议设置，用于实例隔离计数 |
 
-Edge 密钥（CF Worker secrets，**勿写进 Git**）：
-
-| Secret | 用途 |
-| ------ | ---- |
-| `INGEST_HMAC_SECRET` | 校验 `client=myriad-backend` 的 `X-Stats-Signature` |
-| `ADMIN_TOKEN` | `POST /v1/admin/*` Bearer |
-
-生成并配置：`tapp-store/edge/scripts/setup-secrets.sh`  
-风险清单：`tapp-store/edge/RISKS.md`
-
-详细部署与 API 见商店仓库 `edge/README.md`。
+默认 **零密钥** 即可显示安装热度。详见 `tapp-store/edge/README.md`。
 
 ---
 

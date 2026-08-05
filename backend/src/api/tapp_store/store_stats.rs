@@ -1,5 +1,5 @@
-//! Authenticated store stats report (browser fallback → backend → edge HMAC).
-//! Only counts apps the caller actually has installed on this instance.
+//! Authenticated store stats report (browser fallback → backend → edge).
+//! Instance-day cap: 1 count / instance / app / event / UTC day (no shared secret).
 
 use super::{api_http_error, ApiResponse};
 use axum::{
@@ -58,9 +58,7 @@ pub(super) async fn report_store_stats(
         ));
     }
 
-    // Precision: only count if this user (or any install row they can see) has the app.
-    // Temporary installs are under the user's id; public under admin — check both via
-    // any row matching tapp_id owned by this user, or (for admin) any site install.
+    // Must be installed by this user on this instance.
     let installed = tapps::Entity::find()
         .filter(tapps::Column::TappId.eq(app_id))
         .filter(tapps::Column::UserId.eq(user_id))
@@ -68,43 +66,16 @@ pub(super) async fn report_store_stats(
         .await
         .map_err(|_| api_http_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
 
-    let installed = match installed {
-        Some(row) => Some(row),
-        None => {
-            // Admin may have installed into canonical public namespace under admin user id
-            // different from claims.sub in rare cases — also accept if tapp exists and
-            // reporter is the same as installation owner only. Keep strict: must own row.
-            None
-        }
-    };
-
-    let Some(row) = installed else {
+    if installed.is_none() {
         return Err(api_http_error(
             StatusCode::FORBIDDEN,
             "app is not installed for this user",
         ));
-    };
+    }
 
-    // Prefer DB version for idempotency material when present.
-    let version_for_key = if !row.version.trim().is_empty() {
-        row.version.trim()
-    } else {
-        version
-    };
-
-    let key = store_stats_beacon::daily_user_idempotency_key(
-        user_id,
-        app_id,
-        version_for_key,
-        event,
-    );
-
-    store_stats_beacon::spawn_store_stats_hit_with_key(
-        app_id,
-        version_for_key,
-        event,
-        Some(key),
-    );
+    // Instance-day key (edge also recomputes from instance_hash).
+    let key = store_stats_beacon::instance_day_idempotency_key(app_id, event);
+    store_stats_beacon::spawn_store_stats_hit_with_key(app_id, version, event, Some(key));
 
     Ok(Json(ApiResponse::success(serde_json::json!({
         "queued": true
