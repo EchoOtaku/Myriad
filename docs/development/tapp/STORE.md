@@ -534,13 +534,29 @@ REST 商店安装仍是 body `source: "store"` + `storeSource: catalogRef`（源
 | 项 | 说明 |
 | -- | ---- |
 | 代码 | 商店仓库 [`edge/`](https://github.com/Myriad-You/tapp-store/tree/main/edge) |
+| 正式 URL | **`https://stats.store.myriad.you`** |
 | 计什么 | **安装成功**（`event=install`）；`update` 单独计数；不计 preview / 浏览 |
 | 真值 | `GET /v1/stats`；**不**由 Catalog Sync 写回 `index.json` |
-| `index.json` `downloads` | 仅占位/降级；UI 优先 edge overlay |
-| 部署 | `wrangler deploy` → `*.workers.dev` 即可；自定义域名可选 |
-| 万级应用 | stats 必须 `apps=` / `app=` / `top=`；禁止无参全量 dump |
+| `index.json` `downloads` | 仅占位；UI 用 edge overlay（`>0` 才展示） |
+| 万级应用 | stats 必须 `apps=` / `app=` / `top=`；**读路径不写 KV** |
 
-Myriad 接入：后端/前端在安装成功路径 fire-and-forget `POST /v1/hit`；商店 UI 批量拉 stats 展示。失败不影响安装。
+### Myriad 双路径打点
+
+| 路径 | 谁上报 | `client` |
+| ---- | ------ | -------- |
+| `POST /api/tapps/install` `source=store` 成功 | 后端 `store_stats_beacon` | `myriad-backend` |
+| 浏览器 fallback 下载 + direct 成功 | 前端 `storeStats.reportStoreInstallHit` | `myriad-browser` |
+| direct / 文件安装 | **不上报** | — |
+
+环境变量（后端，可选）：
+
+| 变量 | 默认 | 说明 |
+| ---- | ---- | ---- |
+| `TAPP_STORE_STATS_URL` | `https://stats.store.myriad.you` | 空/`off` 禁用 |
+| `TAPP_STORE_STATS_ENABLED` | 开 | `false` 禁用 |
+| `TAPP_STORE_STATS_HMAC` | 无 | 若 edge 设了 `INGEST_HMAC_SECRET` 则填同一密钥 |
+
+前端：`VITE_TAPP_STORE_STATS_URL`（默认同上）。
 
 详细部署与 API 见商店仓库 `edge/README.md`。
 

@@ -648,6 +648,18 @@ async function installFromStoreViaClient(
     body: JSON.stringify(requestBody),
   })
 
+  // Client-fallback path only — backend store installs beacon server-side.
+  try {
+    const { reportStoreInstallHit } = await import('./storeStats')
+    reportStoreInstallHit({
+      appId: pkg.manifest.id,
+      version: pkg.manifest.version,
+      event: 'install',
+    })
+  } catch {
+    // never block install
+  }
+
   report?.({
     phase: 'done',
     message: 'done',
@@ -827,6 +839,17 @@ async function updateFromStoreViaClient(
     `/api/tapps/${encodeURIComponent(tappId)}/update`,
     { method: 'POST', body: JSON.stringify(body) },
   )
+
+  try {
+    const { reportStoreInstallHit } = await import('./storeStats')
+    reportStoreInstallHit({
+      appId: pkg.manifest.id,
+      version: pkg.manifest.version,
+      event: 'update',
+    })
+  } catch {
+    // never block update
+  }
   report?.({ phase: 'done', message: 'done', percent: 100 })
   return result
 }

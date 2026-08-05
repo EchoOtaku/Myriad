@@ -9,6 +9,7 @@ import {
   compareVersions,
   packageProgressLabel,
 } from '../../utils/tappStoreHelpers'
+import { formatDownloadCount } from '../../utils/formatDownloadCount'
 import { TappIconBadge } from '../TappIconBadge'
 import {
   getAppIconStyle,
@@ -58,7 +59,7 @@ export const UnifiedAppCard = forwardRef<
     },
     ref,
   ) => {
-    const { t, format } = useI18n()
+    const { t, format, locale } = useI18n()
     const busy = installing || updating
     const busyProgress = installPercent != null && busy
     const hasUpdate =
@@ -68,6 +69,12 @@ export const UnifiedAppCard = forwardRef<
 
     const iconStyle = getAppIconStyle(app)
     const subtitle = app.description || app.author.name
+    const downloadsLabel =
+      typeof app.downloads === 'number' && app.downloads > 0
+        ? format(t.tapp.downloadsCount, {
+            n: formatDownloadCount(app.downloads, locale),
+          })
+        : null
     const dateLabel = useMemo(() => {
       if (!date) return null
       const dateValue = new Date(date)
@@ -129,7 +136,11 @@ export const UnifiedAppCard = forwardRef<
             ) : null}
           </div>
           <div className="as-store-row__sub">{subtitle}</div>
-          {dateLabel && <div className="as-store-row__sub2">{dateLabel}</div>}
+          {(dateLabel || downloadsLabel) && (
+            <div className="as-store-row__sub2">
+              {[downloadsLabel, dateLabel].filter(Boolean).join(' · ')}
+            </div>
+          )}
         </div>
 
         <div className="as-store-row__side">
