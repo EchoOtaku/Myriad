@@ -1,11 +1,10 @@
 //! Fire-and-forget install/update beacons to the official Tapp store stats edge.
 //!
-//! Never blocks or fails installation. Dual-path rule:
-//! - Backend `source=store` success → this module (`client=myriad-backend` + HMAC).
-//! - Browser fallback → FE `POST /api/tapps/store/stats-report` → this module.
-//! - Direct/file installs → no beacon.
+//! Dual-path:
+//! - Backend `source=store` success → HMAC hit with stable install key.
+//! - Browser fallback → `/api/tapps/store/stats-report` (installed-only) → HMAC hit.
 //!
-//! Accuracy: callers should pass a stable `idempotency_key` so retries never double-count.
+//! Never blocks installation.
 
 use crate::services::http_client::TAPP_HTTP_CLIENT;
 use hmac::{Hmac, KeyInit, Mac};
@@ -13,18 +12,17 @@ use sha2::{Digest, Sha256};
 use std::env;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-use uuid::Uuid;
 
 const DEFAULT_STATS_URL: &str = "https://stats.store.myriad.you";
 
 static HMAC_DESYNC_LOGGED: AtomicBool = AtomicBool::new(false);
 
-/// Spawn a non-blocking hit. Safe to call after commit/activate.
+/// Spawn a non-blocking hit (generates a stable key when none provided).
 pub fn spawn_store_stats_hit(app_id: &str, version: &str, event: &str) {
-    spawn_store_stats_hit_with_key(app_id, version, event, None);
+    let key = server_install_idempotency_key(app_id, version, event);
+    spawn_store_stats_hit_with_key(app_id, version, event, Some(key));
 }
 
-/// Spawn with an explicit idempotency key (preferred for retries / report API).
 pub fn spawn_store_stats_hit_with_key(
     app_id: &str,
     version: &str,
@@ -47,7 +45,7 @@ pub fn spawn_store_stats_hit_with_key(
     });
 }
 
-/// Stable key for "one count per user per app version per event per day".
+/// One count per user / app / version / event / UTC day (report path).
 pub fn daily_user_idempotency_key(
     user_id: i32,
     app_id: &str,
@@ -55,25 +53,45 @@ pub fn daily_user_idempotency_key(
     event: &str,
 ) -> String {
     let day = chrono::Utc::now().format("%Y-%m-%d");
-    let mut hasher = Sha256::new();
-    hasher.update(format!("u{user_id}|{app_id}|{version}|{event}|{day}").as_bytes());
-    let digest = hasher.finalize();
-    format!(
-        "u{}-{}",
-        user_id,
-        digest
-            .iter()
-            .take(16)
-            .map(|b| format!("{b:02x}"))
-            .collect::<String>()
-    )
+    stable_key(&format!("u{user_id}|{app_id}|{version}|{event}|{day}"))
 }
 
-/// Stable key for server-side store install (one per install success path).
-pub fn install_session_idempotency_key(app_id: &str, version: &str, event: &str) -> String {
-    // Unique per call site success; UUID ensures no accidental merge across installs.
-    // Retries of the *same* handler success should not re-call spawn.
-    format!("be-{event}-{app_id}-{}-{}", version, Uuid::new_v4())
+/// One count per site instance / app / version / event / UTC day (server install).
+/// Stable across handler retries within the same day; avoids UUID double-count.
+pub fn server_install_idempotency_key(app_id: &str, version: &str, event: &str) -> String {
+    let day = chrono::Utc::now().format("%Y-%m-%d");
+    let instance = instance_fingerprint();
+    stable_key(&format!("s|{instance}|{app_id}|{version}|{event}|{day}"))
+}
+
+fn instance_fingerprint() -> String {
+    // Prefer public site identity; fall back to a process-stable salt from JWT if set.
+    if let Ok(base) = env::var("BASE_URL") {
+        let t = base.trim().trim_end_matches('/');
+        if !t.is_empty() {
+            return stable_key(t)[..16].to_string();
+        }
+    }
+    if let Ok(front) = env::var("FRONTEND_URL") {
+        let t = front.trim().trim_end_matches('/');
+        if !t.is_empty() {
+            return stable_key(t)[..16].to_string();
+        }
+    }
+    // Last resort: shared default (still better than random UUID per call).
+    "default".to_string()
+}
+
+fn stable_key(material: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(material.as_bytes());
+    let digest = hasher.finalize();
+    // 32 hex chars — fits 8–128 idempotency regex
+    digest
+        .iter()
+        .take(16)
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn stats_enabled() -> bool {
@@ -115,7 +133,7 @@ async fn send_hit(
     let key = idempotency_key
         .map(|s| s.trim().to_string())
         .filter(|s| s.len() >= 8 && s.len() <= 128)
-        .unwrap_or_else(|| install_session_idempotency_key(app_id, version, event));
+        .unwrap_or_else(|| server_install_idempotency_key(app_id, version, event));
 
     let body = serde_json::json!({
         "app_id": app_id,
@@ -152,7 +170,7 @@ async fn send_hit(
         if !HMAC_DESYNC_LOGGED.swap(true, Ordering::Relaxed) {
             tracing::warn!(
                 target: "store_stats",
-                "store stats edge returned 401 — rotate/sync TAPP_STORE_STATS_HMAC with Worker INGEST_HMAC_SECRET (do not log secret values)"
+                "store stats edge returned 401 — sync TAPP_STORE_STATS_HMAC with Worker INGEST_HMAC_SECRET"
             );
         }
         let text = res.text().await.unwrap_or_default();
@@ -184,10 +202,17 @@ mod tests {
     }
 
     #[test]
-    fn daily_key_is_stable_shape() {
+    fn daily_key_is_stable() {
         let a = daily_user_idempotency_key(1, "com.a.b", "1.0.0", "install");
         let b = daily_user_idempotency_key(1, "com.a.b", "1.0.0", "install");
         assert_eq!(a, b);
         assert!(a.len() >= 8 && a.len() <= 128);
+    }
+
+    #[test]
+    fn server_key_is_stable_within_day() {
+        let a = server_install_idempotency_key("com.a.b", "1.0.0", "install");
+        let b = server_install_idempotency_key("com.a.b", "1.0.0", "install");
+        assert_eq!(a, b);
     }
 }

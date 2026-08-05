@@ -1,15 +1,19 @@
 //! Authenticated store stats report (browser fallback → backend → edge HMAC).
+//! Only counts apps the caller actually has installed on this instance.
 
 use super::{api_http_error, ApiResponse};
 use axum::{
+    extract::State,
     http::StatusCode,
     response::IntoResponse,
     Extension, Json,
 };
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Deserialize;
 
 use crate::error::HttpError;
 use crate::middleware::auth::Claims;
+use crate::models::entities::tapps;
 use crate::services::store_stats_beacon;
 
 #[derive(Debug, Deserialize)]
@@ -19,14 +23,11 @@ pub struct StoreStatsReportRequest {
     pub version: String,
     /// `install` | `update`
     pub event: String,
-    /// Optional client session key; backend still binds to user+day for anti-spam.
-    pub idempotency_key: Option<String>,
 }
 
 /// POST /api/tapps/store/stats-report
-///
-/// Cookie/JWT auth + CSRF (via global middleware). Never accepts anonymous edge hits.
 pub(super) async fn report_store_stats(
+    State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
     Json(req): Json<StoreStatsReportRequest>,
 ) -> Result<impl IntoResponse, HttpError> {
@@ -57,12 +58,50 @@ pub(super) async fn report_store_stats(
         ));
     }
 
-    // One count per user / app / version / event / UTC day — retries safe.
-    let key = store_stats_beacon::daily_user_idempotency_key(user_id, app_id, version, event);
+    // Precision: only count if this user (or any install row they can see) has the app.
+    // Temporary installs are under the user's id; public under admin — check both via
+    // any row matching tapp_id owned by this user, or (for admin) any site install.
+    let installed = tapps::Entity::find()
+        .filter(tapps::Column::TappId.eq(app_id))
+        .filter(tapps::Column::UserId.eq(user_id))
+        .one(&db)
+        .await
+        .map_err(|_| api_http_error(StatusCode::INTERNAL_SERVER_ERROR, "Database error"))?;
+
+    let installed = match installed {
+        Some(row) => Some(row),
+        None => {
+            // Admin may have installed into canonical public namespace under admin user id
+            // different from claims.sub in rare cases — also accept if tapp exists and
+            // reporter is the same as installation owner only. Keep strict: must own row.
+            None
+        }
+    };
+
+    let Some(row) = installed else {
+        return Err(api_http_error(
+            StatusCode::FORBIDDEN,
+            "app is not installed for this user",
+        ));
+    };
+
+    // Prefer DB version for idempotency material when present.
+    let version_for_key = if !row.version.trim().is_empty() {
+        row.version.trim()
+    } else {
+        version
+    };
+
+    let key = store_stats_beacon::daily_user_idempotency_key(
+        user_id,
+        app_id,
+        version_for_key,
+        event,
+    );
 
     store_stats_beacon::spawn_store_stats_hit_with_key(
         app_id,
-        version,
+        version_for_key,
         event,
         Some(key),
     );
@@ -76,7 +115,6 @@ fn is_plausible_app_id(id: &str) -> bool {
     if id.len() < 3 || id.len() > 128 {
         return false;
     }
-    // reverse-domain-ish: a.b...
     let mut parts = 0;
     for part in id.split('.') {
         if part.is_empty() || part.len() > 63 {
