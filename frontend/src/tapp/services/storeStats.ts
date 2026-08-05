@@ -1,7 +1,7 @@
 /**
  * Official Tapp store install stats.
  * - Reads: public edge GET /v1/stats
- * - Writes: only via Myriad backend (HMAC) — never anonymous edge hits
+ * - Writes: only via Myriad backend (auth + CSRF + HMAC to edge)
  */
 
 export const DEFAULT_STORE_STATS_URL = 'https://stats.store.myriad.you'
@@ -99,22 +99,24 @@ export interface ReportStoreHitInput {
 }
 
 /**
- * Report install/update via Myriad backend (auth cookie).
- * Edge rejects anonymous browser hits when ALLOW_ANONYMOUS_HITS=false.
+ * Report install/update via Myriad backend (session cookie + CSRF via apiRequest).
+ * Edge never sees browser credentials; backend signs HMAC.
  */
 export function reportStoreInstallHit(input: ReportStoreHitInput): void {
-  const body = JSON.stringify({
-    appId: input.appId,
-    version: input.version,
-    event: input.event,
-  })
-
-  // Prefer keepalive fetch to same-origin API (sendBeacon cannot set cookies reliably cross-path).
-  void fetch('/api/tapps/store/stats-report', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body,
-    credentials: 'same-origin',
-    keepalive: true,
-  }).catch(() => {})
+  // Fire-and-forget; do not block install UI. Use dynamic import to avoid cycles.
+  void (async () => {
+    try {
+      const { apiRequest } = await import('./TappHttpClient')
+      await apiRequest('/api/tapps/store/stats-report', {
+        method: 'POST',
+        body: JSON.stringify({
+          appId: input.appId,
+          version: input.version,
+          event: input.event,
+        }),
+      })
+    } catch {
+      // never surface stats failures
+    }
+  })()
 }
