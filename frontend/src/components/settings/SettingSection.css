@@ -8,9 +8,18 @@
   /* 样式继承自 ConfigForm.css 的 .config-section */
 }
 
-/* 右上角：本页 TOC | 特殊操作 | 分割线 | 常驻（重置 / 说明） */
+/* 右上角：本页 TOC | 特殊操作 | 分割线 | 常驻（重置 / [夹心] / 说明） */
 .section-header-actions-extra,
 .section-header-actions-pinned {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+/* 「重置」与「显示说明」之间的页专属操作（如 AI 快捷访问） */
+.section-header-actions-between {
   display: flex;
   align-items: center;
   gap: 0.45rem;

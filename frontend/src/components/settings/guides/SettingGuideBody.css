@@ -102,3 +102,28 @@ html.dark .setting-guide-step-num {
 html.dark .setting-guide-step-text {
   color: var(--cfg-text-1);
 }
+
+/* 指南正文中的外链（密钥/控制台 URL 等） */
+.setting-guide-link {
+  color: var(--cfg-accent, #4f6ef7);
+  text-decoration: underline;
+  text-underline-offset: 0.12em;
+  word-break: break-all;
+}
+
+.setting-guide-link:hover {
+  color: color-mix(in srgb, var(--cfg-accent, #4f6ef7) 80%, black);
+}
+
+html.dark .setting-guide-link {
+  color: color-mix(
+    in srgb,
+    var(--color-light, var(--cfg-accent, #a5b8ff)) 75%,
+    white
+  );
+}
+
+html.dark .setting-guide-link:hover {
+  color: white;
+}
+

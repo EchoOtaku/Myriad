@@ -28,6 +28,7 @@ import {
   SwitchItem,
   useSettingGuide,
 } from '../settings'
+import { AiProvidersQuickAccess } from './AiProvidersQuickAccess'
 
 /**
  * Volcengine (火山引擎) 官方标识。
@@ -356,11 +357,23 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   // AI Provider 选项。OpenRouter 默认在前，其次 OpenAI 兼容，最后 Gemini
   const aiProviderOptions: SettingOption<string>[] = useMemo(
     () => [
-      { value: 'openrouter', label: 'OpenRouter', icon: <SiOpenrouter /> },
+      {
+        value: 'openrouter',
+        label: t.config.providerOpenRouter,
+        icon: <SiOpenrouter />,
+      },
       { value: 'openai', label: t.config.openaiCompatible, icon: <SiOpenai /> },
-      { value: 'gemini', label: 'Gemini', icon: <SiGooglegemini /> },
+      {
+        value: 'gemini',
+        label: t.config.providerGemini,
+        icon: <SiGooglegemini />,
+      },
     ],
-    [t.config.openaiCompatible],
+    [
+      t.config.openaiCompatible,
+      t.config.providerGemini,
+      t.config.providerOpenRouter,
+    ],
   )
 
   // 图片生成 Provider 选项（OpenAI 兼容复用文本侧同名文案）
@@ -370,22 +383,29 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         value: 'openai',
         label: t.config.openaiCompatible,
         icon: <SiOpenai />,
-        badge: 'GPT Image',
+        badge: t.config.imageProviderBadgeGptImage,
       },
       {
         value: 'openrouter',
-        label: 'OpenRouter',
+        label: t.config.providerOpenRouter,
         icon: <SiOpenrouter />,
-        badge: 'Image API',
+        badge: t.config.imageProviderBadgeImageApi,
       },
       {
         value: 'volcengine',
-        label: 'Volcengine',
+        label: t.config.providerVolcengine,
         icon: <VolcengineIcon />,
-        badge: 'Seedream',
+        badge: t.config.imageProviderBadgeSeedream,
       },
     ],
-    [t.config.openaiCompatible],
+    [
+      t.config.imageProviderBadgeGptImage,
+      t.config.imageProviderBadgeImageApi,
+      t.config.imageProviderBadgeSeedream,
+      t.config.openaiCompatible,
+      t.config.providerOpenRouter,
+      t.config.providerVolcengine,
+    ],
   )
 
   const handleImageProviderChange = useCallback(
@@ -458,6 +478,8 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       icon={icon}
       description={description}
       sectionId={sectionId}
+      // 仅 AI 配置页：完整 SettingTitleGuideEntry，夹在「重置」与「说明」之间
+      headerBetweenPinned={<AiProvidersQuickAccess />}
     >
       <ModelTierGroup
         title={t.config.aiStandardModelTitle}

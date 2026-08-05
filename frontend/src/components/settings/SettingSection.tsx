@@ -35,8 +35,13 @@ export interface SettingSectionProps extends SettingSectionConfig {
   helpToggle?: boolean
   /** 是否显示「重置本页」；默认跟随页面 actions context */
   showResetPage?: boolean
-  /** 本页特殊右上角操作，渲染在重置 / 显示说明之前。 */
+  /** 本页特殊右上角操作，渲染在重置 / 显示说明之前（分隔线左侧）。 */
   headerActions?: ReactNode
+  /**
+   * 常驻区插槽：夹在「重置本页」与「显示说明」之间。
+   * 仅个别页需要（如 AI 配置的服务商快捷访问）；其它页勿传。
+   */
+  headerBetweenPinned?: ReactNode
   /**
    * 标题栏左侧前缀（如二级页返回），在区块图标之前。
    * 传入节点时覆盖移动端默认「回菜单」返回；传 false 可强制隐藏。
@@ -93,6 +98,7 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
   helpToggle = true,
   showResetPage,
   headerActions,
+  headerBetweenPinned,
   headerLeading,
 }) => {
   const { t } = useI18n()
@@ -112,7 +118,9 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
     pageActions?.canResetCurrentPage !== false &&
     typeof pageActions?.resetCurrentPage === 'function'
 
-  const hasPinnedActions = canReset || helpToggle
+  const hasBetweenPinned =
+    headerBetweenPinned != null && headerBetweenPinned !== false
+  const hasPinnedActions = canReset || helpToggle || hasBetweenPinned
   const hasExtraActions = headerActions != null && headerActions !== false
 
   const iconClassName = sectionId
@@ -229,6 +237,11 @@ export const SettingSection: React.FC<SettingSectionProps> = ({
                     <SettingsPageResetButton
                       onReset={() => pageActions!.resetCurrentPage!()}
                     />
+                  )}
+                  {hasBetweenPinned && (
+                    <div className="section-header-actions-between">
+                      {headerBetweenPinned}
+                    </div>
                   )}
                   {helpToggle && (
                     <SettingsHelpToggle

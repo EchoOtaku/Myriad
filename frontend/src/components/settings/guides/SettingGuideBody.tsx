@@ -1,8 +1,10 @@
 /**
  * 结构化选项指南正文（概述 / 关联 / 位置 / 提示）
  * 支持多行步骤（① / 1) 开头）自动拆成 1 2 3 列表。
+ * 正文内 http(s) URL 自动转为外链（新标签打开）。
  */
 
+import type { ReactNode } from 'react'
 import type { GuideSectionLabels, SettingGuideEntry } from './types'
 import React, { useMemo } from 'react'
 import './SettingGuideBody.css'
@@ -15,6 +17,44 @@ export interface SettingGuideBodyProps {
 const STEP_LINE =
   /^(?:[①②③④⑤⑥⑦⑧⑨⑩]|\d+[)）.、]|[（(]\d+[)）])\s*/
 
+/** 匹配 http(s) URL；尾部常见中文/英文标点不计入链接 */
+const URL_RE = /(https?:\/\/[^\s<>"'）】\]},;，。；]+)/g
+
+function trimUrlTrailingPunct(raw: string): { href: string; trail: string } {
+  let href = raw
+  let trail = ''
+  while (href.length > 0 && /[.,;:!?）】\]}>'"]$/u.test(href)) {
+    trail = href.slice(-1) + trail
+    href = href.slice(0, -1)
+  }
+  return { href, trail }
+}
+
+function linkifyLine(text: string): ReactNode {
+  const parts = text.split(URL_RE)
+  if (parts.length === 1) return text
+  return parts.map((part, i) => {
+    if (!part.startsWith('http://') && !part.startsWith('https://')) {
+      return <React.Fragment key={i}>{part}</React.Fragment>
+    }
+    const { href, trail } = trimUrlTrailingPunct(part)
+    if (!href) return <React.Fragment key={i}>{part}</React.Fragment>
+    return (
+      <React.Fragment key={i}>
+        <a
+          className="setting-guide-link"
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {href}
+        </a>
+        {trail}
+      </React.Fragment>
+    )
+  })
+}
+
 function renderText(text: string) {
   const lines = text
     .split('\n')
@@ -25,7 +65,16 @@ function renderText(text: string) {
     lines.length >= 2 && stepLines.length >= Math.ceil(lines.length * 0.6)
 
   if (!isStepList) {
-    return <p className="setting-guide-block-text">{text}</p>
+    return (
+      <p className="setting-guide-block-text">
+        {lines.map((line, i) => (
+          <React.Fragment key={i}>
+            {i > 0 ? <br /> : null}
+            {linkifyLine(line)}
+          </React.Fragment>
+        ))}
+      </p>
+    )
   }
 
   return (
@@ -36,7 +85,7 @@ function renderText(text: string) {
             {i + 1}
           </span>
           <span className="setting-guide-step-text">
-            {line.replace(STEP_LINE, '')}
+            {linkifyLine(line.replace(STEP_LINE, ''))}
           </span>
         </li>
       ))}

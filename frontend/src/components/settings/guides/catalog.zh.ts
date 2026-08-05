@@ -1,4 +1,9 @@
 import type { SettingGuidesCatalog } from './types'
+import { AI_PROVIDER_GUIDE_ORDER } from './catalog.aiProviders.order'
+import {
+  aiProvidersQuickAccessZh,
+  aiProvidersZh,
+} from './catalog.aiProviders.zh'
 
 /**
  * 中文选项指南（白话 + 牵连关系）
@@ -600,6 +605,10 @@ export const zh: SettingGuidesCatalog = {
       frontend: '助手回答的质量与速度差异。',
       notes: '名称填错会调用失败；以服务商控制台里的为准。',
     },
+    providersQuickAccess: aiProvidersQuickAccessZh,
+    providers: Object.fromEntries(
+      AI_PROVIDER_GUIDE_ORDER.map((id) => [id, aiProvidersZh[id]!]),
+    ) as SettingGuidesCatalog['ai']['providers'],
   },
 
   tripo: {

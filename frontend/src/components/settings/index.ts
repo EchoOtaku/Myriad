@@ -153,7 +153,10 @@ export {
 } from './SettingsTocContext'
 export type { SettingsTocItem } from './SettingsTocContext'
 export { SettingTitleGuideEntry } from './SettingTitleGuideEntry'
-export type { SettingTitleGuideEntryProps } from './SettingTitleGuideEntry'
+export type {
+  SettingTitleGuideEntryProps,
+  SettingTitleGuideTriggerApi,
+} from './SettingTitleGuideEntry'
 export { SettingTitleHelp } from './SettingTitleHelp'
 export type {
   SettingTitleHelpProps,

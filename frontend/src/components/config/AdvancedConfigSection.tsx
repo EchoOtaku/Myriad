@@ -5,6 +5,7 @@ import {
   FaSave,
   FaTimes,
   LuDownload,
+  LuMemoryStick,
   LuRefreshCw,
   LuUpload,
 } from '@lib/icons'
@@ -420,7 +421,7 @@ export const AdvancedConfigSection: React.FC<AdvancedConfigSectionProps> = ({
         title={t.config.memorySaverGroup}
         description={t.config.memorySaverGroupDesc}
         {...bindGuide('advanced.memorySaver', g.advanced.memorySaver)}
-        icon={<FaGlobe />}
+        icon={<LuMemoryStick />}
       >
         <SwitchItem
           itemKey="memory_saver_enabled"

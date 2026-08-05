@@ -97,29 +97,61 @@ export function buildGuideSearchIndex(locale: Locale): GuideSearchEntry[] {
     const section = GUIDE_CATALOG_TO_SECTION[area]
     if (!section || !group || typeof group !== 'object') continue
 
-    for (const [key, entry] of Object.entries(group) as Array<
-      [string, SettingGuideEntry]
-    >) {
-      if (!entry?.what) continue
-      const fields = entryFields(entry)
-      const blob = fields.join('\n')
-      const haystack = blob.toLowerCase().replace(/\s+/g, ' ').trim()
-      const tokens = tokenizeForSearch(blob)
-      // path 片段也加入 keywords（如 agentPreset）
-      tokens.push(key.toLowerCase(), area.toLowerCase())
+    for (const [key, value] of Object.entries(group)) {
+      // 叶子指南条目
+      if (value && typeof value === 'object' && 'what' in value && (value as SettingGuideEntry).what) {
+        const entry = value as SettingGuideEntry
+        const fields = entryFields(entry)
+        const blob = fields.join('\n')
+        const haystack = blob.toLowerCase().replace(/\s+/g, ' ').trim()
+        const tokens = tokenizeForSearch(blob)
+        tokens.push(key.toLowerCase(), area.toLowerCase())
 
-      out.push({
-        type: 'guide',
-        section,
-        title: guideEntryTitle(entry.what),
-        description:
-          entry.frontend?.split('\n')[0]?.trim() ||
-          entry.notes?.split('\n')[0]?.trim() ||
-          entry.what,
-        keywords: [...new Set(tokens)],
-        haystack,
-        guidePath: `${area}.${key}`,
-      })
+        out.push({
+          type: 'guide',
+          section,
+          title: guideEntryTitle(entry.what),
+          description:
+            entry.frontend?.split('\n')[0]?.trim() ||
+            entry.notes?.split('\n')[0]?.trim() ||
+            entry.what,
+          keywords: [...new Set(tokens)],
+          haystack,
+          guidePath: `${area}.${key}`,
+        })
+        continue
+      }
+
+      // 嵌套分组（如 ai.providers.*）：一层子条目
+      if (value && typeof value === 'object') {
+        for (const [subKey, subVal] of Object.entries(
+          value as Record<string, SettingGuideEntry>,
+        )) {
+          if (!subVal?.what) continue
+          const fields = entryFields(subVal)
+          const blob = fields.join('\n')
+          const haystack = blob.toLowerCase().replace(/\s+/g, ' ').trim()
+          const tokens = tokenizeForSearch(blob)
+          tokens.push(
+            key.toLowerCase(),
+            subKey.toLowerCase(),
+            area.toLowerCase(),
+          )
+
+          out.push({
+            type: 'guide',
+            section,
+            title: guideEntryTitle(subVal.what),
+            description:
+              subVal.frontend?.split('\n')[0]?.trim() ||
+              subVal.notes?.split('\n')[0]?.trim() ||
+              subVal.what,
+            keywords: [...new Set(tokens)],
+            haystack,
+            guidePath: `${area}.${key}.${subKey}`,
+          })
+        }
+      }
     }
   }
 

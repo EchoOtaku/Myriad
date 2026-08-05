@@ -1,4 +1,9 @@
 import type { SettingGuidesCatalog } from './types'
+import { AI_PROVIDER_GUIDE_ORDER } from './catalog.aiProviders.order'
+import {
+  aiProvidersQuickAccessJa,
+  aiProvidersJa,
+} from './catalog.aiProviders.ja'
 
 /**
  * 日本語オプションガイド（平易な言い回し + つながり）
@@ -602,6 +607,10 @@ export const ja: SettingGuidesCatalog = {
       frontend: '助手の答えの質と速さの差。',
       notes: '名前を間違えると呼べません。サービス提供者の管理画面の表記に合わせてください。',
     },
+    providersQuickAccess: aiProvidersQuickAccessJa,
+    providers: Object.fromEntries(
+      AI_PROVIDER_GUIDE_ORDER.map((id) => [id, aiProvidersJa[id]!]),
+    ) as SettingGuidesCatalog['ai']['providers'],
   },
 
   tripo: {

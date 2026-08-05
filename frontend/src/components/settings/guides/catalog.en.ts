@@ -1,4 +1,9 @@
 import type { SettingGuidesCatalog } from './types'
+import { AI_PROVIDER_GUIDE_ORDER } from './catalog.aiProviders.order'
+import {
+  aiProvidersQuickAccessEn,
+  aiProvidersEn,
+} from './catalog.aiProviders.en'
 
 /**
  * English setting guides (plain language + what connects to what)
@@ -605,6 +610,10 @@ export const en: SettingGuidesCatalog = {
       frontend: 'Differences in assistant answer quality and speed.',
       notes: 'Wrong name causes the call to fail; use the name from the provider’s console.',
     },
+    providersQuickAccess: aiProvidersQuickAccessEn,
+    providers: Object.fromEntries(
+      AI_PROVIDER_GUIDE_ORDER.map((id) => [id, aiProvidersEn[id]!]),
+    ) as SettingGuidesCatalog['ai']['providers'],
   },
 
   tripo: {

@@ -471,6 +471,12 @@ export interface TranslationKeys {
     /** 收起已展开的选项指南 */
     hideOptionGuide: string
     hideOptionGuideAria: string
+    /** 固定选项指南浮窗（仅关闭钮可关；可拖动） */
+    pinOptionGuide: string
+    pinOptionGuideAria: string
+    unpinOptionGuide: string
+    unpinOptionGuideAria: string
+    optionGuideDragHint: string
     optionGuideFooterHint: string
     /** 设置页标题右侧：本页子分类快速跳转 */
     sectionTocAria: string
@@ -1316,6 +1322,17 @@ export interface TranslationKeys {
     aiProEnableDesc: string
     aiProProviderHint: string
     openaiCompatible: string
+    /** 文本/图片 Provider 选项标签 */
+    providerOpenRouter: string
+    providerGemini: string
+    providerVolcengine: string
+    /** 图片 Provider 选项角标 */
+    imageProviderBadgeGptImage: string
+    imageProviderBadgeImageApi: string
+    imageProviderBadgeSeedream: string
+    /** AI 页右上角：服务商 / API Key 速查 */
+    aiProvidersQuickAccess: string
+    aiProvidersQuickAccessDesc: string
     aiImageTitle: string
     aiImageDesc: string
     speechServiceTitle: string
