@@ -536,16 +536,16 @@ REST 商店安装仍是 body `source: "store"` + `storeSource: catalogRef`（源
 | 代码 | 商店仓库 [`edge/`](https://github.com/Myriad-You/tapp-store/tree/main/edge) |
 | 正式 URL | **`https://stats.store.myriad.you`** |
 | 计什么 | **安装成功**（`event=install`）；`update` 单独计数；不计 preview / 浏览 |
-| 真值 | `GET /v1/stats`；**不**由 Catalog Sync 写回 `index.json` |
-| `index.json` `downloads` | 仅占位；UI 用 edge overlay（`>0` 才展示） |
+| 真值 | Edge DO 原子计数 + KV 镜像；**不**写回 `index.json` |
+| 写入口 | 默认 **仅** HMAC 签名的 `client=myriad-backend`（禁止浏览器直连 hit） |
 | 万级应用 | stats 必须 `apps=` / `app=` / `top=`；**读路径不写 KV** |
 
 ### Myriad 双路径打点
 
-| 路径 | 谁上报 | `client` |
-| ---- | ------ | -------- |
-| `POST /api/tapps/install` `source=store` 成功 | 后端 `store_stats_beacon` | `myriad-backend` |
-| 浏览器 fallback 下载 + direct 成功 | 前端 `storeStats.reportStoreInstallHit` | `myriad-browser` |
+| 路径 | 谁上报 | 如何到 edge |
+| ---- | ------ | ----------- |
+| `source=store` 安装/更新成功 | 后端 `store_stats_beacon` | 直接 HMAC hit |
+| 浏览器 fallback 成功 | FE → `POST /api/tapps/store/stats-report` | 后端代签 HMAC hit |
 | direct / 文件安装 | **不上报** | — |
 
 环境变量：

@@ -1,10 +1,7 @@
 /**
- * Official Tapp store install stats (edge service).
- * Default: https://stats.store.myriad.you
- *
- * Dual-path beacons:
- * - Backend store install/update → myriad-backend (server)
- * - Browser fallback only → myriad-browser (this module)
+ * Official Tapp store install stats.
+ * - Reads: public edge GET /v1/stats
+ * - Writes: only via Myriad backend (HMAC) — never anonymous edge hits
  */
 
 export const DEFAULT_STORE_STATS_URL = 'https://stats.store.myriad.you'
@@ -26,7 +23,6 @@ export interface StoreStatsResponse {
 }
 
 let cachedAt = 0
-/** Positive counts only; missing key means unknown / not yet fetched. */
 let cachedMap: Record<string, number> = {}
 
 function statsBaseUrl(): string | null {
@@ -80,7 +76,6 @@ export async function fetchStoreDownloadCounts(
       for (const id of batch) {
         const entry = data.apps?.[id]
         const n = entry?.downloads ?? entry?.installs ?? 0
-        // Cache zeros too so we do not re-fetch cold apps every list load.
         cachedMap[id] = typeof n === 'number' && n > 0 ? n : 0
         if (cachedMap[id] > 0) out[id] = cachedMap[id]
       }
@@ -101,50 +96,25 @@ export interface ReportStoreHitInput {
   appId: string
   version: string
   event: StoreStatsEvent
-  /** Session-unique; defaults to random UUID */
-  idempotencyKey?: string
 }
 
 /**
- * Browser-only beacon after client-fallback install/update success.
- * Silent on failure. Does not send HMAC (backend path is the trusted one).
+ * Report install/update via Myriad backend (auth cookie).
+ * Edge rejects anonymous browser hits when ALLOW_ANONYMOUS_HITS=false.
  */
 export function reportStoreInstallHit(input: ReportStoreHitInput): void {
-  const base = statsBaseUrl()
-  if (!base) return
-
-  const idempotency_key =
-    input.idempotencyKey ||
-    (typeof crypto !== 'undefined' && crypto.randomUUID
-      ? `fe-${input.event}-${crypto.randomUUID()}`
-      : `fe-${input.event}-${Date.now()}-${Math.random().toString(36).slice(2)}`)
-
   const body = JSON.stringify({
-    app_id: input.appId,
+    appId: input.appId,
     version: input.version,
     event: input.event,
-    idempotency_key,
-    client: 'myriad-browser',
-    source: 'official',
   })
 
-  const url = `${base}/v1/hit`
-  try {
-    if (
-      typeof navigator !== 'undefined' &&
-      typeof navigator.sendBeacon === 'function'
-    ) {
-      const blob = new Blob([body], { type: 'application/json' })
-      if (navigator.sendBeacon(url, blob)) return
-    }
-  } catch {
-    // fall through
-  }
-
-  void fetch(url, {
+  // Prefer keepalive fetch to same-origin API (sendBeacon cannot set cookies reliably cross-path).
+  void fetch('/api/tapps/store/stats-report', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body,
+    credentials: 'same-origin',
     keepalive: true,
   }).catch(() => {})
 }

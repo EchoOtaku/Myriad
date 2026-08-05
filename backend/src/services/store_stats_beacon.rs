@@ -1,18 +1,22 @@
 //! Fire-and-forget install/update beacons to the official Tapp store stats edge.
 //!
 //! Never blocks or fails installation. Dual-path rule:
-//! - Backend `source=store` success → this module reports (`client=myriad-backend`).
-//! - Browser fallback install → frontend reports (`client=myriad-browser`).
+//! - Backend `source=store` success → this module (`client=myriad-backend` + HMAC).
+//! - Browser fallback install → FE calls Myriad `POST /api/tapps/store/stats-report`
+//!   which uses this module (never hits edge anonymously when ALLOW_ANONYMOUS_HITS=false).
 //! - Direct/file installs → no beacon.
 
 use crate::services::http_client::TAPP_HTTP_CLIENT;
 use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use std::env;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use uuid::Uuid;
 
 const DEFAULT_STATS_URL: &str = "https://stats.store.myriad.you";
+
+static HMAC_DESYNC_LOGGED: AtomicBool = AtomicBool::new(false);
 
 /// Spawn a non-blocking hit. Safe to call after commit/activate.
 pub fn spawn_store_stats_hit(app_id: &str, version: &str, event: &str) {
@@ -30,6 +34,15 @@ pub fn spawn_store_stats_hit(app_id: &str, version: &str, event: &str) {
             );
         }
     });
+}
+
+/// Synchronous send for the authenticated FE report endpoint (still short timeout).
+pub async fn report_store_stats_hit(
+    app_id: &str,
+    version: &str,
+    event: &str,
+) -> Result<(), String> {
+    send_hit(app_id, version, event).await
 }
 
 fn stats_enabled() -> bool {
@@ -83,18 +96,30 @@ async fn send_hit(app_id: &str, version: &str, event: &str) -> Result<(), String
         .header("user-agent", "Myriad-Store-Stats/1.0")
         .json(&body);
 
-    if let Ok(secret) = env::var("TAPP_STORE_STATS_HMAC") {
-        let secret = secret.trim();
-        if !secret.is_empty() {
-            let payload = format!("{app_id}\n{event}\n{idempotency_key}\n{version}");
-            let sig = hmac_sha256_hex(secret.as_bytes(), payload.as_bytes());
-            req = req.header("X-Stats-Signature", format!("sha256={sig}"));
-        }
+    let hmac_secret = env::var("TAPP_STORE_STATS_HMAC")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    if let Some(ref secret) = hmac_secret {
+        let payload = format!("{app_id}\n{event}\n{idempotency_key}\n{version}");
+        let sig = hmac_sha256_hex(secret.as_bytes(), payload.as_bytes());
+        req = req.header("X-Stats-Signature", format!("sha256={sig}"));
     }
 
     let res = req.send().await.map_err(|e| format!("request: {e}"))?;
-    if !res.status().is_success() {
-        let status = res.status();
+    let status = res.status();
+    if status.as_u16() == 401 {
+        if !HMAC_DESYNC_LOGGED.swap(true, Ordering::Relaxed) {
+            tracing::warn!(
+                target: "store_stats",
+                "store stats edge returned 401 — check TAPP_STORE_STATS_HMAC matches Worker INGEST_HMAC_SECRET"
+            );
+        }
+        let text = res.text().await.unwrap_or_default();
+        return Err(format!("HTTP 401 (HMAC desync?): {text}"));
+    }
+    if !status.is_success() {
         let text = res.text().await.unwrap_or_default();
         return Err(format!("HTTP {status}: {text}"));
     }
