@@ -1,21 +1,17 @@
 //! Fire-and-forget install stats to the official edge.
 //!
-//! Model B (default): **no shared secret required**.
-//! Cap: **1 count per Myriad instance / app / event / UTC day**.
-//! Browser never talks to edge; only this backend posts hits.
+//! **No secrets in Myriad.** Posts plain JSON with instance_hash.
+//! Cap on edge: 1 / instance / app / event / UTC day.
 //!
-//! Optional: set TAPP_STORE_STATS_HMAC if edge REQUIRE_HMAC=true.
+//! Local/dev: OFF unless TAPP_STORE_STATS_ENABLED=true.
+//! Production: auto-on when ENVIRONMENT=production and non-localhost BASE_URL.
 
 use crate::services::http_client::TAPP_HTTP_CLIENT;
-use hmac::{Hmac, KeyInit, Mac};
 use sha2::{Digest, Sha256};
 use std::env;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 const DEFAULT_STATS_URL: &str = "https://stats.store.myriad.you";
-
-static HMAC_DESYNC_LOGGED: AtomicBool = AtomicBool::new(false);
 
 /// Spawn install/update hit (instance-day cap enforced on edge via instance_hash).
 pub fn spawn_store_stats_hit(app_id: &str, version: &str, event: &str) {
@@ -44,15 +40,11 @@ pub fn spawn_store_stats_hit_with_key(
     });
 }
 
-/// Instance fingerprint for edge instance_hash (8–64 hex).
+/// 8–64 hex instance fingerprint for edge.
 pub fn instance_hash() -> String {
-    let material = instance_material();
-    let full = stable_key(&material);
-    // 32 hex chars
-    full
+    stable_key(&instance_material())
 }
 
-/// One count per instance / app / event / UTC day (local key, edge recomputes too).
 pub fn instance_day_idempotency_key(app_id: &str, event: &str) -> String {
     let day = chrono::Utc::now().format("%Y-%m-%d");
     let inst = instance_hash();
@@ -60,20 +52,36 @@ pub fn instance_day_idempotency_key(app_id: &str, event: &str) -> String {
 }
 
 fn instance_material() -> String {
-    if let Ok(base) = env::var("BASE_URL") {
-        let t = base.trim().trim_end_matches('/');
+    if let Ok(id) = env::var("TAPP_STORE_INSTANCE_ID") {
+        let t = id.trim();
         if !t.is_empty() {
-            return t.to_string();
+            return format!("id:{t}");
+        }
+    }
+    if let Ok(base) = env::var("BASE_URL") {
+        let t = normalize_origin(&base);
+        if !t.is_empty() {
+            return t;
         }
     }
     if let Ok(front) = env::var("FRONTEND_URL") {
-        let t = front.trim().trim_end_matches('/');
+        let t = normalize_origin(&front);
         if !t.is_empty() {
-            return t.to_string();
+            return t;
         }
     }
-    // Dev fallback — all local instances without BASE_URL share one bucket.
-    "myriad-default-instance".to_string()
+    let host = env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port = env::var("SERVER_PORT").unwrap_or_else(|_| "1103".to_string());
+    let host = if host == "0.0.0.0" || host == "::" {
+        "127.0.0.1".to_string()
+    } else {
+        host
+    };
+    format!("http://{host}:{port}")
+}
+
+fn normalize_origin(raw: &str) -> String {
+    raw.trim().trim_end_matches('/').to_string()
 }
 
 fn stable_key(material: &str) -> String {
@@ -88,13 +96,30 @@ fn stable_key(material: &str) -> String {
 }
 
 fn stats_enabled() -> bool {
-    match env::var("TAPP_STORE_STATS_ENABLED") {
-        Ok(v) => {
-            let t = v.trim().to_ascii_lowercase();
-            !(t == "0" || t == "false" || t == "no" || t == "off")
-        }
-        Err(_) => true,
+    if let Ok(v) = env::var("TAPP_STORE_STATS_ENABLED") {
+        let t = v.trim().to_ascii_lowercase();
+        return matches!(t.as_str(), "1" | "true" | "yes" | "on");
     }
+    is_production_public_instance()
+}
+
+fn is_production_public_instance() -> bool {
+    let env_prod = env::var("ENVIRONMENT")
+        .map(|s| s.trim() == "production")
+        .unwrap_or(false);
+    if !env_prod {
+        return false;
+    }
+    !instance_looks_local()
+}
+
+fn instance_looks_local() -> bool {
+    let material = instance_material().to_ascii_lowercase();
+    material.contains("127.0.0.1")
+        || material.contains("localhost")
+        || material.contains("[::1]")
+        || material.contains("0.0.0.0")
+        || material.starts_with("id:dev")
 }
 
 fn stats_base_url() -> Option<String> {
@@ -133,49 +158,22 @@ async fn send_hit(app_id: &str, version: &str, event: &str) -> Result<(), String
     });
 
     let url = format!("{base}/v1/hit");
-    let mut req = TAPP_HTTP_CLIENT
+    let res = TAPP_HTTP_CLIENT
         .post(&url)
         .timeout(Duration::from_secs(2))
         .header("content-type", "application/json")
         .header("user-agent", "Myriad-Store-Stats/1.0")
-        .json(&body);
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("request: {e}"))?;
 
-    // Optional signature if operator enabled REQUIRE_HMAC on edge.
-    if let Ok(secret) = env::var("TAPP_STORE_STATS_HMAC") {
-        let secret = secret.trim();
-        if !secret.is_empty() {
-            let payload = format!("{app_id}\n{event}\n{key}\n{version}");
-            let sig = hmac_sha256_hex(secret.as_bytes(), payload.as_bytes());
-            req = req.header("X-Stats-Signature", format!("sha256={sig}"));
-        }
-    }
-
-    let res = req.send().await.map_err(|e| format!("request: {e}"))?;
     let status = res.status();
-    if status.as_u16() == 401 {
-        if !HMAC_DESYNC_LOGGED.swap(true, Ordering::Relaxed) {
-            tracing::warn!(
-                target: "store_stats",
-                "store stats 401 — edge may have REQUIRE_HMAC; set TAPP_STORE_STATS_HMAC or disable REQUIRE_HMAC"
-            );
-        }
-        let text = res.text().await.unwrap_or_default();
-        return Err(format!("HTTP 401: {text}"));
-    }
     if !status.is_success() {
         let text = res.text().await.unwrap_or_default();
         return Err(format!("HTTP {status}: {text}"));
     }
     Ok(())
-}
-
-fn hmac_sha256_hex(secret: &[u8], message: &[u8]) -> String {
-    type HmacSha256 = Hmac<Sha256>;
-    let mut mac = HmacSha256::new_from_slice(secret)
-        .unwrap_or_else(|_| HmacSha256::new_from_slice(b"_").expect("hmac"));
-    mac.update(message);
-    let bytes = mac.finalize().into_bytes();
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 #[cfg(test)]
@@ -187,12 +185,10 @@ mod tests {
         let a = instance_day_idempotency_key("com.a.b", "install");
         let b = instance_day_idempotency_key("com.a.b", "install");
         assert_eq!(a, b);
-        assert!(a.len() >= 8 && a.len() <= 128);
     }
 
     #[test]
-    fn instance_hash_is_hexish() {
-        let h = instance_hash();
-        assert!(h.len() >= 8);
+    fn normalize_strips_slash() {
+        assert_eq!(normalize_origin("https://a.com/"), "https://a.com");
     }
 }

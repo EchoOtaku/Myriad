@@ -537,8 +537,9 @@ REST 商店安装仍是 body `source: "store"` + `storeSource: catalogRef`（源
 | 正式 URL | **`https://stats.store.myriad.you`** |
 | 计什么 | **安装成功**（`event=install`）；`update` 单独计数；不计 preview / 浏览 |
 | 真值 | Edge DO 原子计数 + KV 镜像；**不**写回 `index.json` |
-| 写入口 | 仅 Myriad 后端 `client=myriad-backend`（**默认不需要密钥**） |
-| 计数上限 | **每实例 / 每 app / 每 UTC 日 / 每 event 最多 +1**（`instance_hash`） |
+| 写入口 | 仅 Myriad 后端（**无密钥**；`instance_hash` 标识实例） |
+| 计数上限 | **每实例 / 每 app / 每 event / 每 UTC 日最多 +1** |
+| 本地 | **默认不上报** |
 | 万级应用 | stats 必须 `apps=` / `app=` / `top=`；读路径不写 KV |
 
 ### Myriad 双路径打点
@@ -549,18 +550,24 @@ REST 商店安装仍是 body `source: "store"` + `storeSource: catalogRef`（源
 | 浏览器 fallback 成功 | FE → `POST /api/tapps/store/stats-report`（须已安装） | 后端 hit + `instance_hash` |
 | direct / 文件安装 | **不上报** | — |
 
-实例身份：`BASE_URL` 或 `FRONTEND_URL` 的哈希（未设置则共用 dev 默认桶）。
+实例身份（优先顺序）：
 
-环境变量（可选）：
+1. `TAPP_STORE_INSTANCE_ID`（本地多实例联调）
+2. `BASE_URL`
+3. `FRONTEND_URL`
+4. `http://{SERVER_HOST}:{SERVER_PORT}`（native dev 默认）
+
+环境变量：
 
 | 变量 | 默认 | 说明 |
 | ---- | ---- | ---- |
-| `TAPP_STORE_STATS_URL` | `https://stats.store.myriad.you` | 空/`off` 禁用 |
-| `TAPP_STORE_STATS_ENABLED` | 开 | `false` 禁用 |
-| `TAPP_STORE_STATS_HMAC` | 无 | **可选**；仅当 edge `REQUIRE_HMAC=true` 时需要 |
-| `BASE_URL` / `FRONTEND_URL` | — | 建议设置，用于实例隔离计数 |
+| `TAPP_STORE_STATS_ENABLED` | **本地关 / 生产开** | 显式 `true`/`false` 优先；未设时：仅 `ENVIRONMENT=production` 且非 localhost 才上报 |
+| `TAPP_STORE_STATS_URL` | `https://stats.store.myriad.you` | 上报目标 |
+| `TAPP_STORE_INSTANCE_ID` | 无 | 覆盖实例桶 |
+| `BASE_URL` / `FRONTEND_URL` | — | 生产必设公网 URL；dev.sh 写本地 URL |
 
-默认 **零密钥** 即可显示安装热度。详见 `tapp-store/edge/README.md`。
+**本地默认不统计**（不污染线上数字）。要测统计再设 `TAPP_STORE_STATS_ENABLED=true`。  
+默认 **零密钥**。详见 `tapp-store/edge/README.md`。
 
 ---
 
