@@ -444,23 +444,28 @@ REST 商店安装仍是 body `source: "store"` + `storeSource: catalogRef`（源
 
 ## 发布到商店
 
-### 开发者流程
+官方源仓库 [Myriad-You/tapp-store](https://github.com/Myriad-You/tapp-store) 的发布流程以该仓库 README 为准（CI 强制执行）。摘要：
 
-1. 用 `@myriad/tapp-cli` 初始化、校验、打包（见 [QUICKSTART](QUICKSTART.md)）。
-2. 确认 `manifest.json`：`category`、`permissions`、`main`、模板/CSS/assets 路径完整；`version` 语义化。
-3. 在目标商店仓库 `apps/{id}/` 放入源文件（入口文件名与索引 `download.code` 一致）。
-4. 更新根 `index.json`：版本、权限、`download` 全路径、`size`（大包务必填）、`locales`。
-5. 保证 **索引 `category` == Manifest `category`**，**索引 `version` == Manifest `version`**。
-6. PR / 推送后，用 Myriad 商店 UI 强制刷新源缓存并试装。
+### 开发者流程（官方源）
+
+1. 用 `@myriad/tapp-cli` 初始化、`check`、可选 `pack`（见 [QUICKSTART](QUICKSTART.md)）。
+2. 确认 `manifest.json`：`category`（稳定 ID）、`permissions`、`main`、模板/CSS/assets；**semver `version`**。
+3. 在商店仓库 **只改一个** `apps/{id}/`；**不要手改** 根 `index.json`。
+4. 可选：`apps/{id}/catalog.json` 写商店展示字段（`long_description` / `tags` / `preview` / `featured`…）。
+5. PR 门禁：单 app、禁 index、非文档改动须 bump version、`validate-app`、`myriad-tapp check`、preview 校验。
+6. 合并到 `main` 后 Catalog Sync bot 从 manifest + catalog.json 自动对齐 `index.json`。
+7. Myriad 商店 UI 强制刷新源缓存并试装。
+
+自建第三方源仍可手维护完整 `index.json`；与官方仓库贡献规则不同。
 
 ### 索引检查清单
 
+- [ ] 官方仓库：PR 未改 `index.json`；合并后 bot 已对齐 version / category / permissions / download / size
 - [ ] `download.manifest` / `download.code` 可 `GET` 且 200
-- [ ] Manifest 声明的 `pageStyles` / `pageTemplate` / `widgetStyles` / 每个 widget 模板在索引中有对应路径且文件存在
-- [ ] `page_modules` 的 **键** 是安装后文件名（如 `index.js`），值是商店相对路径
-- [ ] `manifest.assets` 中每个路径在 `{packageRoot}/assets/...` 可下载
-- [ ] `permissions` 与 Manifest 一致；含 Widget 时含 `widget:register`（普通用户安装会过滤特权能力，应用其余部分仍可装）
-- [ ] `minSystemVersion`（若声明）仅在 Manifest 维护，索引不要做第二份版本源
+- [ ] Manifest 声明的 page/widget 资源在索引中有对应路径（官方由 sync 生成）
+- [ ] `page_modules` 的 **键** 是安装后文件名，值是商店相对路径
+- [ ] `manifest.assets` 在 `{packageRoot}/assets/...` 可下载
+- [ ] `minSystemVersion`（若声明）仅在 Manifest 维护
 - [ ] 路径大小写与托管源一致（GitHub raw 区分大小写）
 
 ### 自建商店源
