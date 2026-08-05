@@ -42,17 +42,14 @@ pub async fn webfinger(
         )
     })?;
 
-    // 获取本实例域名
-    let base_url = get_base_url().await;
-    let our_domain = extract_domain(&base_url).unwrap_or_default();
-
     // 仅处理本实例的用户
-    if !domain.eq_ignore_ascii_case(&our_domain) {
-        return Err((
+    let base_url = get_base_url().await;
+    let our_domain = local_webfinger_domain(&domain, &base_url).ok_or_else(|| {
+        (
             StatusCode::NOT_FOUND,
             Json(json!({"error": "User not found on this instance"})),
-        ));
-    }
+        )
+    })?;
 
     // db from AppState (no process-global fallback)
 
@@ -180,6 +177,33 @@ pub async fn nodeinfo(
 // 辅助函数
 
 /// 解析 acct:user@domain 格式
+/// Canonical `acct:` domain for a WebFinger resource addressed at this instance.
+///
+/// Returns `None` when the resource belongs to some other host.
+///
+/// An instance on a non-default port (lab / self-hosted, e.g.
+/// `http://127.0.0.1:1103`) has to accept both `host` and `host:port`: handles
+/// are written to match the Actor URL's authority (`@alice@127.0.0.1:1103`),
+/// but [`extract_domain`] drops the port, so our own WebFinger answered 404 for
+/// our own users. The caller turns any non-2xx into 502, which is why
+/// `@user@domain` reported a bare Bad Gateway while the same person's profile
+/// URL worked — a profile URL carries its own scheme and takes
+/// `resolve_actor_reference`'s pass-through branch, never touching WebFinger.
+///
+/// The returned value is the addressable form, so `subject` stays consistent
+/// with the Actor URL's host.
+fn local_webfinger_domain(resource_domain: &str, base_url: &str) -> Option<String> {
+    let host = extract_domain(base_url)?;
+    let host_port = extract_host_port(base_url).unwrap_or_else(|| host.clone());
+    if resource_domain.eq_ignore_ascii_case(&host)
+        || resource_domain.eq_ignore_ascii_case(&host_port)
+    {
+        Some(host_port)
+    } else {
+        None
+    }
+}
+
 fn parse_acct_uri(resource: &str) -> Option<(String, String)> {
     let stripped = resource.trim().strip_prefix("acct:")?;
     let parts: Vec<&str> = stripped.splitn(2, '@').collect();
@@ -259,6 +283,45 @@ mod tests {
         assert_eq!(parse_acct_uri("acct:@example.com"), None);
         assert_eq!(parse_acct_uri("acct:alice@"), None);
         assert_eq!(parse_acct_uri("acct:alice"), None);
+    }
+
+    /// An instance on a non-default port must resolve its own users by handle.
+    ///
+    /// `@alice@127.0.0.1:1103` used to 404 here because the port was compared
+    /// away, and the caller reported that 404 as a 502 — the "New chat" box
+    /// rejected every handle while the equivalent profile URL worked.
+    #[test]
+    fn webfinger_accepts_handle_with_non_default_port() {
+        let base = "http://127.0.0.1:1103";
+        assert_eq!(
+            local_webfinger_domain("127.0.0.1:1103", base).as_deref(),
+            Some("127.0.0.1:1103")
+        );
+        // Bare host still resolves, and subject reports the addressable form.
+        assert_eq!(
+            local_webfinger_domain("127.0.0.1", base).as_deref(),
+            Some("127.0.0.1:1103")
+        );
+        // A different port is a different instance.
+        assert_eq!(local_webfinger_domain("127.0.0.1:1102", base), None);
+        assert_eq!(local_webfinger_domain("example.com", base), None);
+    }
+
+    #[test]
+    fn webfinger_domain_unchanged_on_default_ports() {
+        for base in ["https://example.com", "https://example.com:443"] {
+            assert_eq!(
+                local_webfinger_domain("example.com", base).as_deref(),
+                Some("example.com"),
+                "base {base}"
+            );
+            assert_eq!(
+                local_webfinger_domain("EXAMPLE.COM", base).as_deref(),
+                Some("example.com"),
+                "base {base} (case-insensitive)"
+            );
+            assert_eq!(local_webfinger_domain("other.example", base), None);
+        }
     }
 
     #[test]

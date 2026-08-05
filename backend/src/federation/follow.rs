@@ -403,11 +403,61 @@ pub async fn resolve_actor_reference(
 }
 
 /// WebFinger 查询：acct:user@domain → Actor URL
+///
+/// HTTPS 优先。本地联邦 lab（`MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND=1`）下实例
+/// 通常只监听明文 HTTP，因此再回退一次 `http://`——否则 handle 输入会在 TLS
+/// 握手阶段失败并被映射成 502，而同一 Actor 的 profile URL（自带 scheme）却能用。
+/// 与 [`room::members::fetch_remote_public_room`] 的 scheme 回退保持一致。
 async fn resolve_acct_to_url(acct: &str) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
-    let webfinger_url = build_webfinger_url(acct)?;
+    let candidates = build_webfinger_url_candidates(acct)?;
+    let mut last_err: Option<(StatusCode, Json<serde_json::Value>)> = None;
 
+    for candidate in candidates {
+        match webfinger_lookup_once(&candidate).await {
+            Ok(actor_url) => return Ok(actor_url),
+            // A definite "that instance has no such account" outranks a later
+            // transport failure on the fallback scheme — reporting the refused
+            // connection instead would hide the answer we actually got.
+            Err(err) => {
+                let definitive = err.0 == StatusCode::NOT_FOUND;
+                last_err = Some(err);
+                if definitive {
+                    break;
+                }
+            }
+        }
+    }
+
+    Err(last_err.unwrap_or_else(|| {
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(json!({"error": "WebFinger lookup failed"})),
+        )
+    }))
+}
+
+/// WebFinger 候选 URL：HTTPS 优先，lab 模式下追加 HTTP。
+fn build_webfinger_url_candidates(
+    acct: &str,
+) -> Result<Vec<String>, (StatusCode, Json<serde_json::Value>)> {
+    let https_url = build_webfinger_url(acct)?;
+    let mut candidates = vec![https_url.clone()];
+
+    if crate::services::outbound_security::federation_lab_private_outbound_enabled() {
+        if let Some(rest) = https_url.strip_prefix("https://") {
+            candidates.push(format!("http://{}", rest));
+        }
+    }
+
+    Ok(candidates)
+}
+
+/// 单次 WebFinger 请求：JRD → rel=self 的 Actor URL
+async fn webfinger_lookup_once(
+    webfinger_url: &str,
+) -> Result<String, (StatusCode, Json<serde_json::Value>)> {
     // 防止 SSRF：验证 WebFinger URL 不指向内网
-    if is_internal_url(&webfinger_url) {
+    if is_internal_url(webfinger_url) {
         return Err((
             StatusCode::BAD_REQUEST,
             Json(json!({"error": "Cannot resolve internal domains"})),
@@ -415,7 +465,7 @@ async fn resolve_acct_to_url(acct: &str) -> Result<String, (StatusCode, Json<ser
     }
 
     let (target_url, client) = crate::services::outbound_security::build_public_http_client(
-        &webfinger_url,
+        webfinger_url,
         std::time::Duration::from_secs(10),
         None,
     )
@@ -427,23 +477,49 @@ async fn resolve_acct_to_url(acct: &str) -> Result<String, (StatusCode, Json<ser
         )
     })?;
 
+    // Some instances only answer `application/json` (or negotiate poorly on an
+    // unknown Accept); RFC 7033 §10.2 names jrd+json, so offer both.
     let resp = client
         .get(target_url)
-        .header("Accept", "application/jrd+json")
+        .header("Accept", "application/jrd+json, application/json;q=0.9")
         .send()
         .await
         .map_err(|e| {
+            tracing::warn!(
+                webfinger_url = %webfinger_url,
+                error = %e,
+                "WebFinger request failed"
+            );
             (
                 StatusCode::BAD_GATEWAY,
-                Json(json!({"error": format!("WebFinger lookup failed: {}", e)})),
+                Json(json!({"error": format!("WebFinger lookup failed for {webfinger_url}: {e}")})),
             )
         })?;
 
     let status = resp.status();
     if !status.is_success() {
+        // 404/410 是「那个实例上没有这个账号」，不是网关故障。以前一律 502，
+        // 用户看到的是含糊的 Bad Gateway，而真正该说的是「handle 拼错了 / 对方
+        // 实例不认这个账号」。其余非 2xx 仍然算上游异常。
+        let mapped = if matches!(status, StatusCode::NOT_FOUND | StatusCode::GONE) {
+            StatusCode::NOT_FOUND
+        } else {
+            StatusCode::BAD_GATEWAY
+        };
+        tracing::warn!(
+            webfinger_url = %webfinger_url,
+            status = status.as_u16(),
+            "WebFinger returned non-success status"
+        );
         return Err((
-            StatusCode::BAD_GATEWAY,
-            Json(json!({"error": format!("WebFinger lookup returned HTTP {}", status.as_u16())})),
+            mapped,
+            Json(json!({
+                "error": if mapped == StatusCode::NOT_FOUND {
+                    format!("No such account at that instance ({webfinger_url} returned HTTP {})", status.as_u16())
+                } else {
+                    format!("WebFinger lookup for {webfinger_url} returned HTTP {}", status.as_u16())
+                }
+            })),
         ));
     }
 
@@ -457,9 +533,20 @@ async fn resolve_acct_to_url(acct: &str) -> Result<String, (StatusCode, Json<ser
             )
         })?;
     let wf: serde_json::Value = serde_json::from_slice(&body).map_err(|_| {
+        // Almost always an SPA index.html: the reverse proxy did not route
+        // /.well-known/webfinger to the backend. Say so instead of "invalid".
+        tracing::warn!(
+            webfinger_url = %webfinger_url,
+            "WebFinger response was not JSON (is /.well-known/webfinger routed to the backend?)"
+        );
         (
             StatusCode::BAD_GATEWAY,
-            Json(json!({"error": "Invalid WebFinger response"})),
+            Json(json!({
+                "error": format!(
+                    "{webfinger_url} did not return JSON — that host may not route \
+                     /.well-known/webfinger to its Myriad backend"
+                )
+            })),
         )
     })?;
 
@@ -467,7 +554,7 @@ async fn resolve_acct_to_url(acct: &str) -> Result<String, (StatusCode, Json<ser
     let links = wf["links"].as_array().ok_or_else(|| {
         (
             StatusCode::BAD_GATEWAY,
-            Json(json!({"error": "No links in WebFinger response"})),
+            Json(json!({"error": format!("No links in WebFinger response from {webfinger_url}")})),
         )
     })?;
 
@@ -483,7 +570,11 @@ async fn resolve_acct_to_url(acct: &str) -> Result<String, (StatusCode, Json<ser
 
     Err((
         StatusCode::BAD_GATEWAY,
-        Json(json!({"error": "No ActivityPub self link found in WebFinger response"})),
+        Json(json!({
+            "error": format!(
+                "No ActivityPub self link in WebFinger response from {webfinger_url}"
+            )
+        })),
     ))
 }
 
@@ -562,6 +653,29 @@ mod tests {
             url,
             "https://example.com/.well-known/webfinger?resource=acct%3Aalice%40example.com"
         );
+    }
+
+    #[tokio::test]
+    async fn webfinger_candidates_https_only_without_lab_flag() {
+        let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
+        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        let candidates = build_webfinger_url_candidates("alice@example.com").unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert!(candidates[0].starts_with("https://example.com/"));
+    }
+
+    #[tokio::test]
+    async fn webfinger_candidates_add_http_fallback_in_lab() {
+        let _guard = crate::services::outbound_security::tests_lab_env_lock().await;
+        std::env::remove_var("ENVIRONMENT");
+        std::env::set_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND", "1");
+        let candidates = build_webfinger_url_candidates("alice@127.0.0.1:1103").unwrap();
+        std::env::remove_var("MYRIAD_FEDERATION_LAB_PRIVATE_OUTBOUND");
+        assert_eq!(candidates.len(), 2);
+        assert!(candidates[0].starts_with("https://127.0.0.1:1103/"));
+        assert!(candidates[1].starts_with("http://127.0.0.1:1103/"));
+        // Both must carry the same encoded acct resource.
+        assert!(candidates[1].contains("resource=acct%3Aalice%40127.0.0.1%3A1103"));
     }
 
     #[test]
