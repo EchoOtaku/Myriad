@@ -270,6 +270,11 @@ export const zhCN: TranslationKeys = {
     saveHint: '提示：保存配置后，后端会重启以加载完整路由',
     atLeast8Chars: '至少 8 个字符，包含字母和数字',
     enterPasswordAgain: '再次输入密码',
+    setupSecret: '安装暗号',
+    setupSecretHint:
+      '编排里已经写好数据库时才要填。从部署目录 .env 的 MYRIAD_SETUP_SECRET 复制。向导自己填库时不会出现这一项。',
+    setupSecretPlaceholder: '粘贴 MYRIAD_SETUP_SECRET',
+    setupSecretRequired: '请填写安装暗号。它在服务器的 .env 里，不在网页设置中。',
     bootstrapToken: '引导令牌',
     bootstrapTokenOptional: '安装操作必填',
     bootstrapTokenPlaceholder: '粘贴 .bootstrap-token 内容',
@@ -783,6 +788,13 @@ export const zhCN: TranslationKeys = {
     usersUnlinkConfirm: '确定解绑该 OAuth 账号？该用户将无法再用它登录。',
     usersInstalledTapps: '已安装应用',
     usersNoTapps: '未安装任何应用',
+    usersUninstallTapp: '卸载',
+    usersUninstallTappConfirm: '确定卸载该用户的「{name}」？应用文件将被删除。',
+    usersEnableTappInstall: '允许安装应用',
+    usersDisableTappInstall: '禁止安装应用',
+    usersTappInstallDisabled: '已禁止安装',
+    usersErrorCannotRestrictOwnerInstall: '不能禁止站点所有者安装应用。',
+    usersErrorTappNotFound: '未找到该应用安装。',
     usersRole: '角色',
     usersRoleAdmin: '管理员',
     usersRoleUser: '用户',
@@ -804,6 +816,10 @@ export const zhCN: TranslationKeys = {
       '确定永久删除该用户账户？其 OAuth 绑定、已安装应用及相关数据将被清除，且无法恢复。',
     usersDeleteSuccess: '用户已删除',
     usersEmail: '邮箱',
+    usersAccountSection: '账号',
+    usersActivitySection: '活动',
+    usersDetail: '详情',
+    usersHideDetail: '收起详情',
     usersCancel: '取消',
     usersCancelDesc: '放弃本次创建',
     usersCreateUser: '新建用户',
@@ -2389,6 +2405,7 @@ export const zhCN: TranslationKeys = {
     viewAllTapps: '查看全部 Tapp',
     oauthBindings: '第三方账号绑定',
     oauthAccount: 'OAuth 账户',
+    linkedProviderCount: '{count} 个平台',
     oauthBind: '绑定',
     oauthUnbind: '解绑',
     oauthUnbindConfirm: '确定解绑该第三方账号？解绑后将无法再用它登录。',
@@ -2964,6 +2981,7 @@ export const zhCN: TranslationKeys = {
     permMessageFederation: '联邦消息',
     permTrustFederation: '联邦信任',
     permFederationFiles: '联邦文件',
+    permGameSession: '游戏房间',
 
     // 权限描述
     permRegisterWidgetDesc: '仅允许管理员注册自定义小组件到主页',
@@ -3008,6 +3026,8 @@ export const zhCN: TranslationKeys = {
     permMessageFederationDesc: '允许发送和接收联邦消息',
     permTrustFederationDesc: '允许管理联邦信任关系',
     permFederationFilesDesc: '允许访问联邦文件传输能力',
+    permGameSessionDesc:
+      '允许用联邦房间开局、加入和收发结构化游戏消息（仍需对应联邦权限）',
 
     // 列表页面
     listTitle: 'Tapp 应用',

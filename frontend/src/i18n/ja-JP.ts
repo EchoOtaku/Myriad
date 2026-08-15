@@ -290,6 +290,12 @@ export const jaJP: TranslationKeys = {
       'ヒント：保存後、完全なルートテーブルを読み込むためバックエンドが再起動します',
     atLeast8Chars: '8文字以上、英字と数字を含める',
     enterPasswordAgain: 'パスワードを再入力',
+    setupSecret: 'セットアップ合言葉',
+    setupSecretHint:
+      '編成側ですでに DATABASE_URL が書かれているときだけ必要です。サーバー .env の MYRIAD_SETUP_SECRET を貼ってください。ウィザードで DB を自分で書く場合はこの欄は出ません。',
+    setupSecretPlaceholder: 'MYRIAD_SETUP_SECRET を貼り付け',
+    setupSecretRequired:
+      'セットアップ合言葉を入力してください。値はサーバーの .env にあり、ウェブ設定には出ません。',
     bootstrapToken: 'ブートストラップトークン',
     bootstrapTokenOptional: 'インストール操作に必須',
     bootstrapTokenPlaceholder: '.bootstrap-token の内容を貼り付け',
@@ -824,6 +830,13 @@ export const jaJP: TranslationKeys = {
       'この OAuth アカウントの連携を解除しますか？このユーザーはこのアカウントでログインできなくなります。',
     usersInstalledTapps: 'インストール済みアプリ',
     usersNoTapps: 'アプリ未インストール',
+    usersUninstallTapp: 'アンインストール',
+    usersUninstallTappConfirm: 'このユーザーの「{name}」をアンインストールしますか？アプリのファイルは削除されます。',
+    usersEnableTappInstall: 'アプリのインストールを許可',
+    usersDisableTappInstall: 'アプリのインストールを禁止',
+    usersTappInstallDisabled: 'インストール禁止中',
+    usersErrorCannotRestrictOwnerInstall: 'サイト所有者のインストールを禁止できません。',
+    usersErrorTappNotFound: 'そのアプリのインストールが見つかりません。',
     usersRole: 'ロール',
     usersRoleAdmin: '管理者',
     usersRoleUser: 'ユーザー',
@@ -845,6 +858,10 @@ export const jaJP: TranslationKeys = {
       'このユーザーアカウントを完全に削除しますか？OAuth 連携・インストール済みアプリ・関連データが削除され、元に戻せません。',
     usersDeleteSuccess: 'ユーザーを削除しました',
     usersEmail: 'メールアドレス',
+    usersAccountSection: 'アカウント',
+    usersActivitySection: 'アクティビティ',
+    usersDetail: '詳細',
+    usersHideDetail: '詳細を閉じる',
     usersCancel: 'キャンセル',
     usersCancelDesc: '作成をやめる',
     usersCreateUser: '新規ユーザー',
@@ -2511,6 +2528,7 @@ export const jaJP: TranslationKeys = {
     viewAllTapps: 'すべてのTappを見る',
     oauthBindings: '外部アカウント連携',
     oauthAccount: 'OAuth アカウント',
+    linkedProviderCount: '{count} 件連携',
     oauthBind: '連携',
     oauthUnbind: '解除',
     oauthUnbindConfirm:
@@ -3097,6 +3115,7 @@ export const jaJP: TranslationKeys = {
     permMessageFederation: 'Federation メッセージ',
     permTrustFederation: 'Federation 信頼管理',
     permFederationFiles: 'Federation ファイル',
+    permGameSession: 'ゲームルーム',
 
     // 権限説明
     permRegisterWidgetDesc:
@@ -3146,6 +3165,8 @@ export const jaJP: TranslationKeys = {
     permMessageFederationDesc: 'Federation メッセージの送受信を許可',
     permTrustFederationDesc: 'Federation の信頼関係の管理を許可',
     permFederationFilesDesc: 'Federation ファイル転送機能へのアクセスを許可',
+    permGameSessionDesc:
+      'Federation ルームでの対局作成・参加と構造化ゲームメッセージの送受信を許可（Federation 権限も必要）',
 
     // リストページ
     listTitle: 'Tapp アプリ',

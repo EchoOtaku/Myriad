@@ -1108,6 +1108,50 @@ Channel/Room **JSON 消息**（含内联 base64 图）后端载荷上限 **36 Mi
 参数与 REST 字段以 `frontend/src/types/federation.ts`、后端路由与
 `fixtures/action_permissions.json` 为准，勿从方法名臆造字段。
 
+## Game API
+
+**权限**: `game:session`（另需 `federation:read` / `federation:write` / `federation:message`）
+
+Page 上的 `Tapp.game` 把联邦房间收成对局会话。消息类型固定为
+`game:<tappId>:<protocol>`，载荷只能是
+`{ kind: "intent"|"state", seq, nonce, body }`。单条默认 ≤ 64 KiB，房间可在
+`manifest.game.maxMessageBytes`（1024–256 KiB）里放宽；宿主按**该房间**的上限校验，
+不能 E2E 加密。`seq` / `nonce` 只给对局自己去重和排序，宿主不保证单调、也不拦重放。
+`body` 是不透明 JSON，关键词过滤看不到里面的文本。
+
+`Tapp.game.create()` 默认**不公开**（`isPublic: false`），`invite_policy` 仍是 `open`。
+同一实例上，分享 ID 可以直接 `join`。跨实例时：
+
+- 公开房（`{ isPublic: true }`）：对端用 `room_id@home` 走公开房间接口，副本会带上
+  `game` 配置；
+- 私房：对端必须被邀请。`RoomInvite` 会带上同一份 `game` 配置，副本才能收意图。
+  私房的分享 ID **不能**跨实例自助加入（公开目录接口会 404 / `REMOTE_NOT_PUBLIC`）。
+
+发送和入站都会核对 `message_type` 必须是这间房绑定的 `game:<tappId>:<protocol>`；
+别的 Tapp 的 `game:…` 信封会被 400。`Tapp.game.onMessage` 也只收本包这一条类型。
+
+跨实例入站时**不**对这段 JSON 做关键词过滤，但仍检查成员、签名、体积、频率和域名拉黑。
+
+```javascript
+const room = await Tapp.game.create({ name: "Gomoku", maxPlayers: 2 });
+// room.share_id === `${room.room_id}@${room.home_server}`
+await navigator.clipboard.writeText(room.share_id);
+
+const joined = await Tapp.game.join("rm_…@peer.example:8443");
+await Tapp.federation.subscribeRoom(joined.room_id);
+
+Tapp.game.onMessage((ev) => {
+  const envelope = ev.data.message.payload; // kind / seq / nonce / body
+});
+
+await Tapp.game.sendIntent(joined.room_id, { action: "place", row: 7, col: 7 }, 1);
+await Tapp.game.sendState(room.room_id, snapshot, seq);
+```
+
+失败时 `join` 可能带 `code`：`ROOM_NOT_FOUND`、`REMOTE_HOME_UNREACHABLE`、
+`REMOTE_NOT_PUBLIC`、`INSTANCE_BLOCKED`。Playground 预览不注册这些 handler。
+权威仍在房主客户端；房主掉线不会自动选主。
+
 ---
 
 ## Tapp 列表 API
