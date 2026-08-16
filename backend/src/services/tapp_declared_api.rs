@@ -14,7 +14,9 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 
 use crate::models::entities::tapps;
-use crate::services::permission_service::{TappPermission, TappPermissionService, UserRole};
+use crate::services::permission_service::{
+    tapp_permission_replacement_hint, TappPermissionService, UnknownTappPermission, UserRole,
+};
 use crate::services::tapp_ownership::{self, TappAccessError};
 use crate::GLOBAL_DYNAMIC_CONFIG;
 use myriad_tapp_contract::manifest::{TappApiAccess, TappApiDef};
@@ -41,6 +43,7 @@ pub enum DeclaredApiError {
     Access(TappAccessError),
     GrantScopeChanged,
     InvalidUser,
+    UnknownPermission { permission: String },
     ApiNotFound { api_name: String },
 }
 
@@ -55,6 +58,7 @@ impl DeclaredApiError {
             },
             Self::GrantScopeChanged => "INVALID_RUNTIME_GRANT",
             Self::InvalidUser => "INVALID_USER",
+            Self::UnknownPermission { .. } => "UNKNOWN_TAPP_PERMISSION",
             Self::ApiNotFound { .. } => "API_NOT_FOUND",
         }
     }
@@ -64,6 +68,14 @@ impl DeclaredApiError {
             Self::Access(err) => err.message(),
             Self::GrantScopeChanged => "Runtime grant installation scope changed".to_string(),
             Self::InvalidUser => "Invalid user".to_string(),
+            Self::UnknownPermission { permission } => {
+                match tapp_permission_replacement_hint(permission) {
+                    Some(hint) => {
+                        format!("Unknown Tapp permission '{permission}'; {hint}")
+                    }
+                    None => format!("Unknown Tapp permission '{permission}'"),
+                }
+            }
             Self::ApiNotFound { api_name } => {
                 format!("API '{api_name}' not defined in manifest")
             }
@@ -78,6 +90,7 @@ impl DeclaredApiError {
                 | TappAccessError::PermissionNotGranted { .. } => 403,
             },
             Self::GrantScopeChanged | Self::InvalidUser => 401,
+            Self::UnknownPermission { .. } => 409,
             Self::ApiNotFound { .. } => 404,
         }
     }
@@ -90,6 +103,14 @@ impl std::fmt::Display for DeclaredApiError {
 }
 
 impl std::error::Error for DeclaredApiError {}
+
+impl From<UnknownTappPermission> for DeclaredApiError {
+    fn from(error: UnknownTappPermission) -> Self {
+        Self::UnknownPermission {
+            permission: error.permission,
+        }
+    }
+}
 
 pub(crate) fn manifest_apis_fingerprint(manifest: &Value) -> String {
     let encoded = serde_json::to_vec(manifest.get("apis").unwrap_or(&Value::Null))
@@ -179,15 +200,10 @@ pub async fn resolve_declared_api_tapp(
 pub async fn filter_granted_permissions(
     installed_permissions: Vec<String>,
     role: UserRole,
-) -> Vec<String> {
+) -> Result<Vec<String>, DeclaredApiError> {
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
-    installed_permissions
-        .into_iter()
-        .filter(|permission| {
-            TappPermission::from_str(permission)
-                .is_some_and(|permission| TappPermissionService::check(&config, role, permission))
-        })
-        .collect()
+    TappPermissionService::filter_permissions_for_role(&config, role, &installed_permissions)
+        .map_err(DeclaredApiError::from)
 }
 
 /// Parse approved_permissions JSON array from a Tapp install row.
@@ -313,11 +329,40 @@ mod tests {
         );
         assert_eq!(DeclaredApiError::GrantScopeChanged.status_hint(), 401);
         assert_eq!(
+            DeclaredApiError::UnknownPermission {
+                permission: "legacy:unknown".into()
+            }
+            .code(),
+            "UNKNOWN_TAPP_PERMISSION"
+        );
+        assert_eq!(
             DeclaredApiError::ApiNotFound {
                 api_name: "x".into()
             }
             .status_hint(),
             404
+        );
+    }
+
+    #[test]
+    fn unknown_permission_message_uses_shared_replacement_hint() {
+        let storage = DeclaredApiError::UnknownPermission {
+            permission: "storage".into(),
+        };
+        let message = storage.message();
+        assert!(message.contains("'storage'"), "{message}");
+        assert!(message.contains("storage:read"), "{message}");
+        assert!(message.contains("storage:write"), "{message}");
+        assert!(message.contains("reinstall"), "{message}");
+        // 仍保持 fail-closed 语义与通用错误码。
+        assert_eq!(storage.code(), "UNKNOWN_TAPP_PERMISSION");
+
+        let generic = DeclaredApiError::UnknownPermission {
+            permission: "legacy:unknown".into(),
+        };
+        assert_eq!(
+            generic.message(),
+            "Unknown Tapp permission 'legacy:unknown'"
         );
     }
 

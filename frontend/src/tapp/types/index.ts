@@ -461,7 +461,8 @@ export type TappPermission =
   | 'report:read'
   | 'report:write'
   // 存储权限
-  | 'storage'
+  | 'storage:read'
+  | 'storage:write'
   // UI 权限
   | 'ui:notification'
   | 'ui:fullscreen'
@@ -542,6 +543,9 @@ export interface TappInstance {
 
   /** 已授权的权限 */
   grantedPermissions: TappPermission[]
+
+  /** 批准权限包含平台不再识别的名称，必须重新授权后才能运行 */
+  needsReauthorization?: boolean
 
   /**
    * 当前用户角色

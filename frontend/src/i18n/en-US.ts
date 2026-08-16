@@ -1853,6 +1853,8 @@ export const enUS: TranslationKeys = {
     permSpeechAsr: 'Speech to Text',
     permSpeechAsrHint:
       'Allow Tapp to use cloud speech recognition service (ASR)',
+    permStorageWrite: 'Write Local Storage',
+    permStorageWriteHint: 'Allow writing to this app’s private storage',
     permissionsSaved: 'Permission settings saved',
     permissionsSaveFailed: 'Failed to save permission settings',
     // Module settings
@@ -3093,6 +3095,8 @@ export const enUS: TranslationKeys = {
     elevatedPermission: 'Elevated',
     privilegedPermission: 'Privileged',
     grantedPermissions: 'Granted Permissions',
+    reauthorizationRequired: 'Reauthorization required',
+    reauthorizationMessage: 'Permissions expired. Reauthorize in settings before running.',
 
     // Permission labels
     permRegisterWidget: 'Register Widget',
@@ -3105,7 +3109,8 @@ export const enUS: TranslationKeys = {
     permAiChat: 'AI Chat',
     permReadReport: 'Read Report',
     permWriteReport: 'Write Report',
-    permStorage: 'Local Storage',
+    permStorageRead: 'Read Local Storage',
+    permStorageWrite: 'Write Local Storage',
     permNotification: 'Send Notification',
     permFullscreen: 'Fullscreen Mode',
     permReadTheme: 'Read Theme',
@@ -3150,7 +3155,9 @@ export const enUS: TranslationKeys = {
     permAiChatDesc: 'Allow calling AI for conversation',
     permReadReportDesc: 'Allow reading generated report data',
     permWriteReportDesc: 'Allow creating, updating and deleting reports',
-    permStorageDesc: 'Allow using local storage space',
+    permStorageReadDesc:
+      'Allow reading this app’s own private storage (read-only, never persists writes)',
+    permStorageWriteDesc: 'Allow writing to this app’s private storage',
     permNotificationDesc: 'Allow sending system notifications',
     permFullscreenDesc: 'Allow requesting fullscreen display',
     permReadThemeDesc: 'Allow reading current theme settings',

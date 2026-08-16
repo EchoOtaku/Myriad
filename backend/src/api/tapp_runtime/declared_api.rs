@@ -51,7 +51,7 @@ fn declared_http_error(err: DeclaredApiError) -> (StatusCode, Json<Value>) {
                 }
             }
         }
-        DeclaredApiError::GrantScopeChanged => (
+        DeclaredApiError::GrantScopeChanged | DeclaredApiError::UnknownPermission { .. } => (
             status,
             Json(json!({
                 "error": err.message(),
@@ -167,7 +167,9 @@ pub async fn execute_tapp_api(
         UserRole::User
     };
     let granted_permissions =
-        tapp_declared_api::filter_granted_permissions(installed_permissions, role).await;
+        tapp_declared_api::filter_granted_permissions(installed_permissions, role)
+            .await
+            .map_err(declared_http_error)?;
 
     // Resolve host-only credential material only after determining that this
     // caller is part of the API's declared audience. This avoids turning

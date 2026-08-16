@@ -1565,6 +1565,8 @@ export interface TranslationKeys {
     permSpeechTtsHint: string
     permSpeechAsr: string
     permSpeechAsrHint: string
+    permStorageWrite: string
+    permStorageWriteHint: string
     permissionsSaved: string
     permissionsSaveFailed: string
     moduleSettings: string
@@ -2756,6 +2758,8 @@ export interface TranslationKeys {
     elevatedPermission: string
     privilegedPermission: string
     grantedPermissions: string
+    reauthorizationRequired: string
+    reauthorizationMessage: string
 
     // 权限标签
     permRegisterWidget: string
@@ -2768,7 +2772,8 @@ export interface TranslationKeys {
     permAiChat: string
     permReadReport: string
     permWriteReport: string
-    permStorage: string
+    permStorageRead: string
+    permStorageWrite: string
     permNotification: string
     permFullscreen: string
     permReadTheme: string
@@ -2811,7 +2816,8 @@ export interface TranslationKeys {
     permAiChatDesc: string
     permReadReportDesc: string
     permWriteReportDesc: string
-    permStorageDesc: string
+    permStorageReadDesc: string
+    permStorageWriteDesc: string
     permNotificationDesc: string
     permFullscreenDesc: string
     permReadThemeDesc: string

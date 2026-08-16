@@ -131,10 +131,15 @@ export const PERMISSION_CONFIG: Record<
   },
 
   // —— 存储 / UI ——
-  storage: {
+  'storage:read': {
     icon: FaHdd,
-    labelKey: 'permStorage',
-    descriptionKey: 'permStorageDesc',
+    labelKey: 'permStorageRead',
+    descriptionKey: 'permStorageReadDesc',
+  },
+  'storage:write': {
+    icon: FaHdd,
+    labelKey: 'permStorageWrite',
+    descriptionKey: 'permStorageWriteDesc',
   },
   'ui:notification': {
     icon: FaBell,

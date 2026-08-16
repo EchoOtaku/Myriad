@@ -349,7 +349,7 @@ export interface TappSdk {
     uploadMedia(...args: unknown[]): Promise<unknown> // permission: federation:write
   }
   file: {
-    download(...args: unknown[]): Promise<unknown> // permission: storage
+    download(...args: unknown[]): Promise<unknown> // permission: storage:read
   }
   game: {
     create(...args: unknown[]): Promise<unknown> // permission: game:session

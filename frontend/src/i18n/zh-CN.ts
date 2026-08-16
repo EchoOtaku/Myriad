@@ -1742,6 +1742,8 @@ export const zhCN: TranslationKeys = {
     permSpeechTtsHint: '允许 Tapp 使用云端语音合成服务（TTS）',
     permSpeechAsr: '语音转文本',
     permSpeechAsrHint: '允许 Tapp 使用云端语音识别服务（ASR）',
+    permStorageWrite: '写入本地存储',
+    permStorageWriteHint: '允许写入该应用的私有存储空间',
     permissionsSaved: '权限设置已保存',
     permissionsSaveFailed: '保存权限设置失败',
     // 模块设置
@@ -2939,6 +2941,8 @@ export const zhCN: TranslationKeys = {
     elevatedPermission: '提升',
     privilegedPermission: '特权',
     grantedPermissions: '已授权权限',
+    reauthorizationRequired: '需重新授权',
+    reauthorizationMessage: '权限已过期，请在设置中重新授权后运行。',
 
     // 权限标签
     permRegisterWidget: '注册小组件',
@@ -2951,7 +2955,8 @@ export const zhCN: TranslationKeys = {
     permAiChat: 'AI 对话',
     permReadReport: '读取报告',
     permWriteReport: '写入报告',
-    permStorage: '本地存储',
+    permStorageRead: '读取本地存储',
+    permStorageWrite: '写入本地存储',
     permNotification: '发送通知',
     permFullscreen: '全屏模式',
     permReadTheme: '读取主题',
@@ -2994,7 +2999,8 @@ export const zhCN: TranslationKeys = {
     permAiChatDesc: '允许调用 AI 进行对话',
     permReadReportDesc: '允许读取生成的报告数据',
     permWriteReportDesc: '允许创建、更新和删除报告',
-    permStorageDesc: '允许使用本地存储空间',
+    permStorageReadDesc: '允许读取该应用自己的私有存储数据（只读，不产生持久写入）',
+    permStorageWriteDesc: '允许写入该应用的私有存储空间',
     permNotificationDesc: '允许发送系统通知',
     permFullscreenDesc: '允许请求全屏显示',
     permReadThemeDesc: '允许读取当前主题设置',

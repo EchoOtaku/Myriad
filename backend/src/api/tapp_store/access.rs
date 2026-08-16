@@ -87,9 +87,10 @@ pub(super) fn optional_authenticated_user_id(claims: Option<&Claims>) -> Option<
 fn require_runtime_storage_grant(
     grant: &RuntimeGrantContext,
     tapp_id: &str,
+    permission: TappPermission,
 ) -> Result<(), HttpError> {
     grant.require_tapp_id(tapp_id)?;
-    grant.require(TappPermission::Storage)?;
+    grant.require(permission)?;
     Ok(())
 }
 
@@ -146,8 +147,20 @@ pub(super) async fn authorize_runtime_storage(
     tapp_id: &str,
     dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
 ) -> Result<TappStorageAccess, HttpError> {
-    require_runtime_storage_grant(grant, tapp_id)?;
-    authorize_tapp_permission(db, claims, tapp_id, TappPermission::Storage, dynamic_config).await?;
+    require_runtime_storage_grant(grant, tapp_id, TappPermission::StorageRead)?;
+    authorize_tapp_permission(db, claims, tapp_id, TappPermission::StorageRead, dynamic_config).await?;
+    storage_access_from_runtime_grant(grant, claims)
+}
+
+pub(crate) async fn authorize_runtime_storage_write(
+    db: &DatabaseConnection,
+    claims: &Claims,
+    grant: &RuntimeGrantContext,
+    tapp_id: &str,
+    dynamic_config: &std::sync::Arc<tokio::sync::RwLock<crate::config::DynamicConfig>>,
+) -> Result<TappStorageAccess, HttpError> {
+    require_runtime_storage_grant(grant, tapp_id, TappPermission::StorageWrite)?;
+    authorize_tapp_permission(db, claims, tapp_id, TappPermission::StorageWrite, dynamic_config).await?;
     storage_access_from_runtime_grant(grant, claims)
 }
 
@@ -188,11 +201,20 @@ pub(super) async fn filter_install_permissions(
     dynamic_config: &tokio::sync::RwLock<crate::config::DynamicConfig>,
     role: UserRole,
     permissions: Vec<String>,
-) -> Vec<String> {
+) -> Result<Vec<String>, HttpError> {
     let config = dynamic_config.read().await;
-    let granted = TappPermissionService::filter_permissions_for_role(&config, role, &permissions);
+    let granted = TappPermissionService::filter_permissions_for_role(&config, role, &permissions)
+        .map_err(|error| {
+        HttpError::from((
+            StatusCode::CONFLICT,
+            axum::Json(serde_json::json!({
+                "error": error.message(),
+                "code": error.code(),
+            })),
+        ))
+    })?;
     drop(config);
-    granted
+    Ok(granted)
 }
 
 pub(super) async fn authorize_tapp_permission(

@@ -18,7 +18,7 @@
 //! ### Basic - 默认开放（标注 authenticated 的能力不向游客签发）
 //! - platform:read, analytics:read, tappList:read, brew:read
 //! - brew:write (authenticated), brew:comment (authenticated)
-//! - report:read (authenticated), storage (authenticated)
+//! - report:read (authenticated), storage:read (guest-safe)
 //! - ui:notification (authenticated), ui:fullscreen, ui:theme, ui:confirm, ui:openUrl
 //! - media:read, media:control, media:audio, event:subscribe
 //! - federation:read, federation:write, federation:message, federation:files
@@ -36,6 +36,46 @@
 
 use crate::config::DynamicConfig;
 use serde::{Deserialize, Serialize};
+
+pub const UNKNOWN_TAPP_PERMISSION_CODE: &str = "UNKNOWN_TAPP_PERMISSION";
+
+/// 已移除权限名的替代建议（仅用于错误提示，不构成兼容映射；
+/// 未知名仍 fail-closed，绝不解码成新权限）。
+/// 单一来源：permission-service、声明式 API、运行时签发三处错误路径共用。
+pub(crate) fn tapp_permission_replacement_hint(permission: &str) -> Option<&'static str> {
+    match permission {
+        "storage" => Some(
+            "use 'storage:read' or 'storage:write' instead; update the TAPP Manifest, then update or reinstall the app",
+        ),
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownTappPermission {
+    pub permission: String,
+}
+
+impl UnknownTappPermission {
+    pub fn code(&self) -> &'static str {
+        UNKNOWN_TAPP_PERMISSION_CODE
+    }
+
+    pub fn message(&self) -> String {
+        match tapp_permission_replacement_hint(&self.permission) {
+            Some(hint) => format!("Unknown Tapp permission '{}'; {}", self.permission, hint),
+            None => format!("Unknown Tapp permission '{}'", self.permission),
+        }
+    }
+}
+
+impl std::fmt::Display for UnknownTappPermission {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message())
+    }
+}
+
+impl std::error::Error for UnknownTappPermission {}
 
 /// 用户角色
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,8 +125,8 @@ pub enum TappPermission {
     BrewComment,
     #[serde(rename = "report:read")]
     ReportRead,
-    #[serde(rename = "storage")]
-    Storage,
+    #[serde(rename = "storage:read")]
+    StorageRead,
     #[serde(rename = "ui:notification")]
     UiNotification,
     #[serde(rename = "ui:fullscreen")]
@@ -144,6 +184,8 @@ pub enum TappPermission {
     SpeechTts,
     #[serde(rename = "speech:asr")]
     SpeechAsr,
+    #[serde(rename = "storage:write")]
+    StorageWrite,
 
     // Privileged 级别
     #[serde(rename = "widget:register")]
@@ -199,7 +241,7 @@ impl TappPermission {
             | TappPermission::BrewWrite
             | TappPermission::BrewComment
             | TappPermission::ReportRead
-            | TappPermission::Storage
+            | TappPermission::StorageRead
             | TappPermission::UiNotification
             | TappPermission::UiFullscreen
             | TappPermission::UiTheme
@@ -227,6 +269,7 @@ impl TappPermission {
             | TappPermission::SchedulerRegister
             | TappPermission::SpeechTts
             | TappPermission::SpeechAsr => PermissionLevel::Elevated,
+            TappPermission::StorageWrite => PermissionLevel::Elevated,
 
             // Privileged
             TappPermission::WidgetRegister
@@ -259,7 +302,8 @@ impl TappPermission {
             TappPermission::ReportWrite => "生成报告",
             TappPermission::BrewWrite => "编辑 Brew 内容",
             TappPermission::BrewComment => "Brew 评论",
-            TappPermission::Storage => "本地存储",
+            TappPermission::StorageRead => "读取本地存储",
+            TappPermission::StorageWrite => "写入本地存储",
             TappPermission::UiNotification => "显示通知",
             TappPermission::UiFullscreen => "全屏模式",
             TappPermission::UiTheme => "主题访问",
@@ -302,6 +346,7 @@ impl TappPermission {
             TappPermission::SchedulerRegister,
             TappPermission::SpeechTts,
             TappPermission::SpeechAsr,
+            TappPermission::StorageWrite,
         ]
     }
 
@@ -319,7 +364,7 @@ impl TappPermission {
             "report:write" => Some(TappPermission::ReportWrite),
             "brew:write" => Some(TappPermission::BrewWrite),
             "brew:comment" => Some(TappPermission::BrewComment),
-            "storage" => Some(TappPermission::Storage),
+            "storage:read" => Some(TappPermission::StorageRead),
             "ui:notification" => Some(TappPermission::UiNotification),
             "ui:fullscreen" => Some(TappPermission::UiFullscreen),
             "ui:theme" => Some(TappPermission::UiTheme),
@@ -343,6 +388,7 @@ impl TappPermission {
             "scheduler:register" => Some(TappPermission::SchedulerRegister),
             "speech:tts" => Some(TappPermission::SpeechTts),
             "speech:asr" => Some(TappPermission::SpeechAsr),
+            "storage:write" => Some(TappPermission::StorageWrite),
             "federation:read" => Some(TappPermission::FederationRead),
             "federation:write" => Some(TappPermission::FederationWrite),
             "federation:message" => Some(TappPermission::FederationMessage),
@@ -367,7 +413,8 @@ impl TappPermission {
             TappPermission::ReportWrite => "report:write",
             TappPermission::BrewWrite => "brew:write",
             TappPermission::BrewComment => "brew:comment",
-            TappPermission::Storage => "storage",
+            TappPermission::StorageRead => "storage:read",
+            TappPermission::StorageWrite => "storage:write",
             TappPermission::UiNotification => "ui:notification",
             TappPermission::UiFullscreen => "ui:fullscreen",
             TappPermission::UiTheme => "ui:theme",
@@ -420,13 +467,21 @@ impl TappPermissionService {
         config: &DynamicConfig,
         role: UserRole,
         permissions: &[String],
-    ) -> Vec<String> {
-        permissions
+    ) -> Result<Vec<String>, UnknownTappPermission> {
+        let parsed = permissions
             .iter()
-            .filter_map(|permission| TappPermission::from_str(permission))
+            .map(|permission| {
+                TappPermission::from_str(permission).ok_or_else(|| UnknownTappPermission {
+                    permission: permission.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(parsed
+            .into_iter()
             .filter(|permission| Self::check(config, role, *permission))
             .map(|permission| permission.as_str().to_string())
-            .collect()
+            .collect())
     }
 
     /// 检查用户是否拥有特定 Tapp 权限
@@ -489,6 +544,7 @@ impl TappPermissionService {
             TappPermission::SchedulerRegister => config.user_perm_scheduler_register,
             TappPermission::SpeechTts => config.user_perm_speech_tts,
             TappPermission::SpeechAsr => config.user_perm_speech_asr,
+            TappPermission::StorageWrite => config.user_perm_storage_write,
             _ => false,
         }
     }
@@ -507,6 +563,7 @@ impl TappPermissionService {
             TappPermission::SchedulerRegister => false,
             TappPermission::SpeechTts => false,
             TappPermission::SpeechAsr => false,
+            TappPermission::StorageWrite => config.guest_perm_storage_write,
             _ => false,
         }
     }
@@ -552,6 +609,7 @@ impl TappPermissionService {
                 scheduler_register: config.user_perm_scheduler_register,
                 speech_tts: config.user_perm_speech_tts,
                 speech_asr: config.user_perm_speech_asr,
+                storage_write: config.user_perm_storage_write,
             },
             guest: ElevatedPermissions {
                 ai_generate: config.guest_perm_ai_generate,
@@ -571,6 +629,7 @@ impl TappPermissionService {
                 scheduler_register: false,
                 speech_tts: false,
                 speech_asr: false,
+                storage_write: config.guest_perm_storage_write,
             },
             user_ai_quota: AiQuotaConfig {
                 daily_calls: config.user_ai_daily_calls,
@@ -628,6 +687,7 @@ pub struct ElevatedPermissions {
     pub scheduler_register: bool,
     pub speech_tts: bool,
     pub speech_asr: bool,
+    pub storage_write: bool,
 }
 
 #[cfg(test)]
@@ -660,7 +720,46 @@ mod tests {
         assert!(TappPermissionService::check(
             &config,
             UserRole::User,
-            TappPermission::Storage
+            TappPermission::StorageRead
+        ));
+    }
+
+    #[test]
+    fn storage_permissions_split_read_from_delegated_write() {
+        let defaults = DynamicConfig::default();
+        assert_eq!(TappPermission::StorageRead.level(), PermissionLevel::Basic);
+        assert_eq!(TappPermission::StorageWrite.level(), PermissionLevel::Elevated);
+        assert!(TappPermission::from_str("storage").is_none());
+        assert!(TappPermissionService::check(
+            &defaults,
+            UserRole::User,
+            TappPermission::StorageRead
+        ));
+        assert!(!TappPermissionService::check(
+            &defaults,
+            UserRole::User,
+            TappPermission::StorageWrite
+        ));
+        assert!(!TappPermissionService::check(
+            &defaults,
+            UserRole::Guest,
+            TappPermission::StorageWrite
+        ));
+
+        let delegated = DynamicConfig {
+            user_perm_storage_write: true,
+            guest_perm_storage_write: true,
+            ..DynamicConfig::default()
+        };
+        assert!(TappPermissionService::check(
+            &delegated,
+            UserRole::User,
+            TappPermission::StorageWrite
+        ));
+        assert!(TappPermissionService::check(
+            &delegated,
+            UserRole::Guest,
+            TappPermission::StorageWrite
         ));
     }
 
@@ -715,7 +814,7 @@ mod tests {
             "brew:write".to_string(),
             "brew:comment".to_string(),
             "report:read".to_string(),
-            "storage".to_string(),
+            "storage:read".to_string(),
             "ui:notification".to_string(),
             "component:theme".to_string(),
             "shortcut:register".to_string(),
@@ -731,7 +830,8 @@ mod tests {
             &config,
             UserRole::Guest,
             &requested,
-        );
+        )
+        .unwrap();
 
         // Guest-safe: platform:read, analytics:read (visitor-card aggregates only;
         // full admin summary is role-gated in the handler) + storage.
@@ -744,7 +844,7 @@ mod tests {
                 "media:read",
                 "media:control",
                 "event:subscribe",
-                "storage",
+                "storage:read",
                 "tappList:read",
                 "brew:read",
                 "federation:read"
@@ -758,7 +858,7 @@ mod tests {
         assert!(TappPermissionService::check(
             &config,
             UserRole::Guest,
-            TappPermission::Storage
+            TappPermission::StorageRead
         ));
         assert!(TappPermissionService::check(
             &config,
@@ -836,7 +936,7 @@ mod tests {
         let config = DynamicConfig::default();
         let requested = vec![
             "widget:register".to_string(),
-            "storage".to_string(),
+            "storage:read".to_string(),
             "ui:theme".to_string(),
         ];
 
@@ -857,7 +957,7 @@ mod tests {
         ));
         assert_eq!(
             TappPermissionService::filter_permissions_for_role(&config, UserRole::User, &requested,),
-            vec!["storage", "ui:theme"]
+            Ok(vec!["storage:read".to_string(), "ui:theme".to_string()])
         );
         assert_eq!(
             TappPermissionService::filter_permissions_for_role(
@@ -865,7 +965,7 @@ mod tests {
                 UserRole::Guest,
                 &requested,
             ),
-            vec!["storage", "ui:theme"]
+            Ok(vec!["storage:read".to_string(), "ui:theme".to_string()])
         );
     }
 
@@ -907,7 +1007,8 @@ mod tests {
         ];
 
         let granted =
-            TappPermissionService::filter_permissions_for_role(&config, UserRole::User, &requested);
+            TappPermissionService::filter_permissions_for_role(&config, UserRole::User, &requested)
+                .unwrap();
 
         assert_eq!(
             granted,
@@ -935,7 +1036,8 @@ mod tests {
             &config,
             UserRole::Guest,
             &requested,
-        );
+        )
+        .unwrap();
 
         assert_eq!(granted, vec!["federation:read"]);
     }
@@ -955,8 +1057,67 @@ mod tests {
             &config,
             UserRole::Admin,
             &requested,
-        );
+        )
+        .unwrap();
 
         assert_eq!(granted, requested);
+    }
+
+    #[test]
+    fn filter_permissions_rejects_unknown_name_without_partial_result() {
+        let requested = vec![
+            "storage:read".to_string(),
+            "legacy:unknown".to_string(),
+            "ui:theme".to_string(),
+        ];
+
+        let error = TappPermissionService::filter_permissions_for_role(
+            &DynamicConfig::default(),
+            UserRole::Admin,
+            &requested,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.permission, "legacy:unknown");
+        assert_eq!(error.code(), UNKNOWN_TAPP_PERMISSION_CODE);
+    }
+
+    #[test]
+    fn retired_storage_error_recommends_split_permissions_but_stays_fail_closed() {
+        // storage 仍不可解析：拆分后的 storage:read / storage:write 是独立权限。
+        assert!(TappPermission::from_str("storage").is_none());
+        assert!(TappPermission::from_str("storage:read").is_some());
+        assert!(TappPermission::from_str("storage:write").is_some());
+
+        // 真实 permission-service 过滤路径：storage 被拒，且错误提示给出替代权限。
+        let error = TappPermissionService::filter_permissions_for_role(
+            &DynamicConfig::default(),
+            UserRole::Admin,
+            &["storage".to_string()],
+        )
+        .unwrap_err();
+        let message = error.message();
+        assert!(message.contains("'storage'"), "{message}");
+        assert!(message.contains("storage:read"), "{message}");
+        assert!(message.contains("storage:write"), "{message}");
+        assert!(message.contains("update"), "{message}");
+        assert!(message.contains("reinstall"), "{message}");
+
+        // 失败仍是 fail-closed：不放行任何权限。
+        assert!(TappPermissionService::filter_permissions_for_role(
+            &DynamicConfig::default(),
+            UserRole::Admin,
+            &["storage".to_string()],
+        )
+        .is_err());
+
+        // 任意未知名保持通用错误形态，不带替代建议。
+        let generic = UnknownTappPermission {
+            permission: "legacy:unknown".to_string(),
+        };
+        assert_eq!(
+            generic.message(),
+            "Unknown Tapp permission 'legacy:unknown'"
+        );
     }
 }
