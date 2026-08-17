@@ -3121,7 +3121,7 @@ export interface TranslationKeys {
     inboundBlockManual: string
     inboundGuardLoadFailed: string
     inboundGuardSaveFailed: string
-    credentialBinding: string
+    credentialBindings: string
     credentialBindingPlacement: string
     credentialBindingSign: string
     credentialReauthorizationRequired: string
