@@ -681,7 +681,7 @@ Compose 服务集合。`POST /admin/self-update` 保留一键体验；Updater �
 拒绝额外 repo、digest、command。Guard network 隔离是第一层边界，capability 用于避免
 错误接入 guard-net 的其他容器直接触发 TCB 操作；它不用于防御本就有权读该值的 updater。
 
-生产 Guard 镜像必须来自宿主机持有的 `docker-guard.env`，且形式严格为
+生产 Guard 镜像必须来自 `./guard-policy/docker-guard.env`（首次由 Guard 从 `.env` 写入），且形式严格为
 `docker.io/somekawahitomi/myriad-updater@sha256:<64 hex>`。Guard 启动时通过原始 socket
 inspect 自身容器，要求实际 `Config.Image` 与 `DOCKER_GUARD_EXPECTED_IMAGE` 完全一致。
 `.env`、Updater 提供的仓库/digest 或 updater 状态均不是该身份的权威来源。
@@ -737,7 +737,7 @@ digest **没有**与签名 release manifest 中的 `expected_digest` 做字节�
 
 ```
 # 先修改 .env 中的 UPDATER_TAG，再由宿主 Docker CLI 重建 TCB 服务
-docker compose --env-file .env --env-file /etc/myriad/docker-guard.env up -d docker-guard updater updater-gateway
+docker compose --env-file .env --env-file ./guard-policy/docker-guard.env up -d docker-guard updater updater-gateway
 ```
 
 ### 14.3 前向兼容

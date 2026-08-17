@@ -209,6 +209,8 @@ export interface TranslationKeys {
     adminAccount: string
     connectionFailed: string
     connectionFailedDesc: string
+    claimedRepairTitle: string
+    claimedRepairDesc: string
     backendDisconnected: string
     reconnecting: string
     retry: string
@@ -269,12 +271,6 @@ export interface TranslationKeys {
     setupSecretHint: string
     setupSecretPlaceholder: string
     setupSecretRequired: string
-    bootstrapToken: string
-    bootstrapTokenOptional: string
-    bootstrapTokenPlaceholder: string
-    bootstrapTokenHint: string
-    bootstrapTokenRequired: string
-    bootstrapTokenRotated: string
   }
 
   // 配置

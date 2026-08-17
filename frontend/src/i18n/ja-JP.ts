@@ -227,6 +227,9 @@ export const jaJP: TranslationKeys = {
     connectionFailed: '接続失敗',
     connectionFailedDesc:
       'バックエンドサービスに接続できません。サーバーが起動していることを確認してください',
+    claimedRepairTitle: 'セットアップは完了済みです',
+    claimedRepairDesc:
+      'このインスタンスにはすでに所有者がいます。先に PostgreSQL を直してください。セットアップウィザードでホスト設定を変えないでください。',
     backendDisconnected: 'バックエンドサービス接続中断',
     reconnecting: '再接続を試行中...',
     retry: '再試行',
@@ -296,15 +299,6 @@ export const jaJP: TranslationKeys = {
     setupSecretPlaceholder: 'MYRIAD_SETUP_SECRET を貼り付け',
     setupSecretRequired:
       'セットアップ合言葉を入力してください。値はサーバーの .env にあり、ウェブ設定には出ません。',
-    bootstrapToken: 'ブートストラップトークン',
-    bootstrapTokenOptional: 'インストール操作に必須',
-    bootstrapTokenPlaceholder: '.bootstrap-token の内容を貼り付け',
-    bootstrapTokenHint:
-      'DATA_DIR/.bootstrap-token（または MYRIAD_BOOTSTRAP_TOKEN）の短期トークンを入力してください。初回設定、DB 初期化、所有者作成のすべてで必要です。',
-    bootstrapTokenRequired:
-      'ブートストラップトークンが必要です。サーバー上の .bootstrap-token を読み取り、入力して再試行してください。',
-    bootstrapTokenRotated:
-      'データベース初期化トークンは無効になりました。所有者を作成する前に、サーバーのデータディレクトリから新しい .bootstrap-token を読み取ってください。',
   },
 
   // 設定

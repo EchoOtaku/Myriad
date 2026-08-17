@@ -229,6 +229,9 @@ export const enUS: TranslationKeys = {
     connectionFailed: 'Connection Failed',
     connectionFailedDesc:
       'Cannot connect to backend service, please make sure the server is running',
+    claimedRepairTitle: 'Setup already claimed',
+    claimedRepairDesc:
+      'This instance already has an owner. Repair PostgreSQL first; do not use the setup wizard to change host configuration.',
     backendDisconnected: 'Backend service disconnected',
     reconnecting: 'Attempting to reconnect...',
     retry: 'Retry',
@@ -297,19 +300,10 @@ export const enUS: TranslationKeys = {
     enterPasswordAgain: 'Enter password again',
     setupSecret: 'Setup passphrase',
     setupSecretHint:
-      'Required only when the database URL was already written by orchestration. Copy MYRIAD_SETUP_SECRET from the server .env, or open the generator’s #setup_secret link to fill it. The wizard database step does not show this field.',
+      'Required only when the database URL was already written by orchestration. Copy MYRIAD_SETUP_SECRET from the server .env, or open the generator’s #setup_secret link to fill it. The wizard-only database path does not show this field.',
     setupSecretPlaceholder: 'Paste MYRIAD_SETUP_SECRET',
     setupSecretRequired:
       'Enter the setup passphrase from the server .env. It is not shown in the web UI.',
-    bootstrapToken: 'Bootstrap token',
-    bootstrapTokenOptional: 'required for installation operations',
-    bootstrapTokenPlaceholder: 'Paste contents of .bootstrap-token',
-    bootstrapTokenHint:
-      'Read the short-lived token from DATA_DIR/.bootstrap-token (or MYRIAD_BOOTSTRAP_TOKEN). It is required for first install, database initialization, and owner creation.',
-    bootstrapTokenRequired:
-      'Bootstrap token required: read the server .bootstrap-token file, paste it, and try again.',
-    bootstrapTokenRotated:
-      'The database-initialization token is now invalid. Before creating the owner, read the new .bootstrap-token from the server data directory.',
   },
 
   // Configuration

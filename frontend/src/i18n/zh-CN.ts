@@ -214,6 +214,9 @@ export const zhCN: TranslationKeys = {
     adminAccount: '所有者账户',
     connectionFailed: '连接失败',
     connectionFailedDesc: '无法连接到后端服务，请确保服务器正在运行',
+    claimedRepairTitle: '安装已完成',
+    claimedRepairDesc:
+      '这个实例已经有站长。库挂了请先修 PostgreSQL，不要再用安装向导改宿主配置。',
     backendDisconnected: '后端服务连接中断',
     reconnecting: '正在尝试重新连接...',
     retry: '重试',
@@ -275,15 +278,6 @@ export const zhCN: TranslationKeys = {
       '编排里已经写好数据库时才要填。从部署目录 .env 的 MYRIAD_SETUP_SECRET 复制，或用生成器给的 #setup_secret 链接自动填入。向导自己填库时不会出现这一项。',
     setupSecretPlaceholder: '粘贴 MYRIAD_SETUP_SECRET',
     setupSecretRequired: '请填写安装暗号。它在服务器的 .env 里，不在网页设置中。',
-    bootstrapToken: '引导令牌',
-    bootstrapTokenOptional: '安装操作必填',
-    bootstrapTokenPlaceholder: '粘贴 .bootstrap-token 内容',
-    bootstrapTokenHint:
-      '从服务器数据目录的 .bootstrap-token 文件（或环境变量 MYRIAD_BOOTSTRAP_TOKEN）读取短期令牌。首次安装、数据库初始化和创建所有者都必须填写。',
-    bootstrapTokenRequired:
-      '需要引导令牌：请读取服务器上的 .bootstrap-token 文件，填入后重试。',
-    bootstrapTokenRotated:
-      '数据库初始化令牌已失效。创建所有者前，请重新读取服务器数据目录中的 .bootstrap-token。',
   },
 
   // 配置

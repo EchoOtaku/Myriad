@@ -297,16 +297,16 @@ pub async fn create_admin(
         }
     };
 
-    // Delete the capability before committing the durable owner. A crash after
-    // the database commit must never leave a replayable file that can be
-    // reloaded while the database is temporarily unavailable on restart.
-    if let Err(error) = crate::api::setup_bootstrap::consume_bootstrap() {
-        tracing::error!(%error, "create-admin token cleanup failed before commit");
-        let _ = crate::api::setup_bootstrap::invalidate_bootstrap_in_memory();
+    // Persist the claimed marker and close the window before committing the
+    // durable owner. A crash after commit must not leave setup open while the
+    // database is temporarily unavailable on restart.
+    if let Err(error) = crate::api::setup_bootstrap::consume_setup() {
+        tracing::error!(%error, "create-admin setup cleanup failed before commit");
+        let _ = crate::api::setup_bootstrap::invalidate_setup_in_memory();
         let _ = txn.rollback().await;
         return Err(HttpError(
-            AppError::internal("Failed to consume bootstrap capability").with_message(
-                "无法安全关闭安装引导令牌；管理员账户尚未提交，请检查数据目录权限后重试。",
+            AppError::internal("Failed to close setup window").with_message(
+                "无法安全关闭安装向导；管理员账户尚未提交，请检查数据目录权限后重试。",
             ),
         ));
     }

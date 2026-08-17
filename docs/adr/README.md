@@ -34,6 +34,12 @@ ADR 记录的是**已生效的结论**，不是提议。编号是写作顺序，
 - [0014 TAPP 生命周期：实例层三状态，卸载从安装层向下级联](0014-instance-lifecycle-and-uninstall-cascade.md)
 - [0019 常驻三档映射到 backgroundRequirements 六类](0019-resident-tier-mapping.md)
 
+### 安装控制面
+
+- [0022 首次未认领安装走浏览器向导，令牌与 loopback 只留给破窗](0022-first-run-browser-setup.md) — **被 0023 取代**
+- [0023 安装控制面只留安装暗号，删除引导令牌](0023-setup-secret-replaces-bootstrap-token.md) — 取代 0022
+- [0024 安装向导不看出站对端，删除远程安装开关](0024-drop-remote-bootstrap-gate.md)
+
 ### 能力面（组件、端点、出站）
 
 - [0008 component:theme 注册锚定安装 owner，guest 不开放](0008-component-theme-owner-scoped.md)
