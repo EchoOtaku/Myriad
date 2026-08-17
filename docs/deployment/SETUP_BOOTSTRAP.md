@@ -21,6 +21,7 @@
 - 进程环境里有非空 `MYRIAD_SETUP_SECRET` → 连库 / 建表 / 改 `.env` / 创建所有者都必须对上。官方向导走请求头 `X-Setup-Secret`；手写客户端也可以只放 JSON `setup_secret`。中间件只拦向导窗口，暗号在读完 body 之后校验，两种送法等效。
 - 没配这枚值 → 放行
 - **编排生成器**（`com.myriad.config-generator`）和 `deploy.sh` 会写入并注入 backend
+- 官方 `docker-compose.yml` 已经写好 `DATABASE_URL`，未设置 `MYRIAD_SETUP_SECRET` 时 compose 会拒绝启动
 - 向导的 `init-env` / `database-config` **不会**再自动生成
 - HTTP 响应和启动日志都不回传正文
 

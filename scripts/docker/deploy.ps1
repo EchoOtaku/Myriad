@@ -153,6 +153,12 @@ function Assert-GuardPolicy {
     New-Item -ItemType Directory -Force -Path $ComposeGuardDir | Out-Null
     if (-not (Test-Path -LiteralPath $GuardEnvFile -PathType Leaf)) {
         Write-GuardPolicyFromEnv
+    } else {
+        $existingImage = ((Get-Content -LiteralPath $GuardEnvFile | Where-Object { $_ -match '^DOCKER_GUARD_IMAGE=' } | Select-Object -First 1) -split '=', 2)[1]
+        if ($existingImage -notmatch '^docker\.io/somekawahitomi/myriad-updater@sha256:[0-9a-fA-F]{64}$') {
+            Write-Warn "  ! $GuardEnvFile is not digest-pinned; rewriting from .env"
+            Write-GuardPolicyFromEnv
+        }
     }
     if ((Get-Item -LiteralPath $GuardEnvFile).Attributes -band [IO.FileAttributes]::ReparsePoint) {
         throw "Guard policy must not be a symbolic link: $GuardEnvFile"

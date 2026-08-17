@@ -126,7 +126,7 @@ database outage.
 | `DOCKER_GUARD_IMAGE` | yes | Exact `docker.io/somekawahitomi/myriad-updater@sha256:<64hex>` identity for Guard; first boot source is `.env`, live TCB copy is `./guard-policy/docker-guard.env` |
 | `MYRIAD_GUARD_ENV_FILE` | no | Fixed Compose-relative path `guard-policy/docker-guard.env` |
 | `UPDATER_GATEWAY_SECRET` | yes | Shared secret for backend→gateway (`X-Updater-Gateway-Secret`); deploy fills if empty; backend + gateway only |
-| `MYRIAD_SETUP_SECRET` | yes\* | Passphrase for setup writes **when the stack already has a real DATABASE_URL**. `deploy.sh` fills it if empty. Wizard-only DB setup does not require it. \*Required until an owner exists on orchestrated installs. Never expose it in the UI. See [SETUP_BOOTSTRAP.md](./SETUP_BOOTSTRAP.md). |
+| `MYRIAD_SETUP_SECRET` | yes\* | Passphrase for setup writes **when the stack already has a real DATABASE_URL**. Official compose refuses to start if unset. `deploy.sh` fills it if empty. Wizard-only native DB setup does not require it. \*Required until an owner exists on orchestrated installs. Never expose it in the UI. See [SETUP_BOOTSTRAP.md](./SETUP_BOOTSTRAP.md). |
 | `HTTP_PORT` | no | Published proxy port, default `80` |
 | `CHANNEL` | no | Release channel, default `stable` |
 | `MYRIAD_GITHUB_REPO` | no | Release source repo, default `Myriad-You/Myriad` |

@@ -128,10 +128,10 @@ services:
       DATA_DIR: /app/data
       CACHE_DIR: /app/cache
       JWT_SECRET: ${JWT_SECRET}
-      # Passphrase for setup writes when orchestration already wrote DATABASE_URL.
-      # deploy.sh fills host .env if empty. Empty = wizard-only DB setup is not gated.
+      # Official compose always writes DATABASE_URL, so setup writes must match
+      # this passphrase. deploy.sh / the generator fill host .env if empty.
       # Never expose the value in the admin UI.
-      MYRIAD_SETUP_SECRET: ${MYRIAD_SETUP_SECRET:-}
+      MYRIAD_SETUP_SECRET: ${MYRIAD_SETUP_SECRET:?Set MYRIAD_SETUP_SECRET in .env}
       # Visitor-hash salt for first-party analytics. Prefer a dedicated random value
       # (openssl rand -hex 32). When empty, backend derives from JWT_SECRET so
       # collect does not 503 on stock compose (ENVIRONMENT=production).
@@ -271,18 +271,7 @@ services:
     command:
       - |
         set -eu
-        if [ ! -f /guard-policy/docker-guard.env ]; then
-          umask 077
-          cat > /guard-policy/docker-guard.env <<'POLICY'
-        DOCKER_GUARD_IMAGE=${DOCKER_GUARD_IMAGE:?Set DOCKER_GUARD_IMAGE in .env to an exact repo@sha256 digest}
-        GUARD_SELF_UPDATE_TOKEN=${GUARD_SELF_UPDATE_TOKEN:?Host Guard self-update token is required}
-        GUARD_COMPOSE_PROJECT_NAME=${GUARD_COMPOSE_PROJECT_NAME:-myriad}
-        GUARD_MYRIAD_DOCKER_NETWORK=${GUARD_MYRIAD_DOCKER_NETWORK:-myriad-net}
-        GUARD_MYRIAD_ADMIN_NETWORK=${GUARD_MYRIAD_ADMIN_NETWORK:-myriad-admin-net}
-        GUARD_MYRIAD_DOCKER_GUARD_NETWORK=${GUARD_MYRIAD_DOCKER_GUARD_NETWORK:-myriad-docker-guard-net}
-        MYRIAD_GUARD_ENV_FILE=guard-policy/docker-guard.env
-        POLICY
-        fi
+        if [ ! -f /guard-policy/docker-guard.env ]; then umask 077; fi
         exec /usr/bin/tini -- /usr/local/bin/myriad-docker-guard
     environment:
       COMPOSE_PROJECT_NAME: ${GUARD_COMPOSE_PROJECT_NAME:-myriad}

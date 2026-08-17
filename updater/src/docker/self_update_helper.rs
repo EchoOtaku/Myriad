@@ -701,8 +701,11 @@ fn require_guard_bootstrap(service: &Value) -> Result<()> {
     };
     if !script.contains("exec /usr/bin/tini -- /usr/local/bin/myriad-docker-guard")
         || !script.contains("/guard-policy/docker-guard.env")
+        || !script.contains("umask 077")
         || script.contains("docker.sock")
         || script.contains("privileged")
+        || script.contains("cat >")
+        || script.contains("<<")
     {
         return Err(UpdaterError::Precondition(
             "docker-guard command is outside the fixed TCB contract".into(),
@@ -1165,6 +1168,41 @@ mod tests {
             serde_json::json!(["myriad-admin-net", "myriad-docker-guard-net"]);
         let bytes = serde_json::to_vec(&model).unwrap();
         assert!(validate_compose_model(&bytes, &image, &config()).is_ok());
+    }
+
+    #[test]
+    fn guard_bootstrap_rejects_quoted_policy_stub() {
+        let stub = serde_json::json!({
+            "entrypoint": ["/bin/sh", "-c"],
+            "command": [
+                "set -eu\nif [ ! -f /guard-policy/docker-guard.env ]; then\n  umask 077\n  cat > /guard-policy/docker-guard.env <<'POLICY'\nDOCKER_GUARD_IMAGE=bad\nPOLICY\nfi\nexec /usr/bin/tini -- /usr/local/bin/myriad-docker-guard\n"
+            ]
+        });
+        assert!(require_guard_bootstrap(&stub).is_err());
+
+        let umask_only = serde_json::json!({
+            "entrypoint": ["/bin/sh", "-c"],
+            "command": [
+                "set -eu\nif [ ! -f /guard-policy/docker-guard.env ]; then umask 077; fi\nexec /usr/bin/tini -- /usr/local/bin/myriad-docker-guard\n"
+            ]
+        });
+        assert!(require_guard_bootstrap(&umask_only).is_ok());
+    }
+
+    #[test]
+    fn official_compose_guard_command_does_not_write_policy_stub() {
+        let compose = include_str!("../../../docker-compose.yml");
+        let example = include_str!(
+            "../../../docs/deployment/examples/docker-compose.external-db.example.yml"
+        );
+        for text in [compose, example] {
+            assert!(!text.contains("<<'POLICY'"));
+            assert!(!text.contains("cat > /guard-policy/docker-guard.env"));
+            assert!(text.contains("if [ ! -f /guard-policy/docker-guard.env ]; then umask 077; fi"));
+            assert!(text.contains(
+                "MYRIAD_SETUP_SECRET: ${MYRIAD_SETUP_SECRET:?Set MYRIAD_SETUP_SECRET in .env}"
+            ));
+        }
     }
 
     #[test]

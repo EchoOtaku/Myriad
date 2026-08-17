@@ -32,8 +32,7 @@ bash scripts/docker/deploy.sh up
 - 补齐 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME=myriad` 等当前布局 key
 - 若 `UPDATE_TOKEN` 为空则随机生成
 - 若 `.env` / `./guard-policy/docker-guard.env` 缺少 `GUARD_SELF_UPDATE_TOKEN` 则随机生成
-- 未认领的首次安装可直接用浏览器经 proxy 做完向导；编排预置了安装暗号则要对上。创建 owner 后再次运行
-  `deploy.sh up`，脚本会依据 `.bootstrap-claimed` 关掉远程破窗开关
+- 未认领的首次安装可直接用浏览器经 proxy 做完向导；编排预置了安装暗号则要对上。官方 compose 没有暗号会拒绝启动；`deploy.sh` 会在空值时生成
 - Docker 网络默认显式命名为 `myriad-net`；同机多套部署时可设置 `MYRIAD_DOCKER_NETWORK`
 
 生产布局为 proxy + updater（见 [deployment/DOCKER_DEPLOYMENT.md](./deployment/DOCKER_DEPLOYMENT.md)）。

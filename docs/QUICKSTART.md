@@ -61,7 +61,7 @@ Windows:
 .\scripts\docker\deploy.ps1 up
 ```
 
-打开 `http://localhost`，或 `.env` 中 `HTTP_PORT` 指向的端口。首次访问会进入初始化向导，浏览器里可以直接做完。Docker / 编排已经写好数据库时，安装写操作要填安装暗号（`.env` 的 `MYRIAD_SETUP_SECRET`，`deploy.sh up` 会生成）。向导自己填库则不用。详见 [SETUP_BOOTSTRAP.md](deployment/SETUP_BOOTSTRAP.md)。
+打开 `http://localhost`，或 `.env` 中 `HTTP_PORT` 指向的端口。首次访问会进入初始化向导，浏览器里可以直接做完。官方 compose 已经写好数据库，未设置 `MYRIAD_SETUP_SECRET` 会拒绝启动（`deploy.sh up` 会生成）。向导自己填库则不用。详见 [SETUP_BOOTSTRAP.md](deployment/SETUP_BOOTSTRAP.md)。
 
 ### 3. 常用运维命令
 

@@ -198,7 +198,13 @@ fn ensure_host_policy_file(config: &GuardConfig, write_path: &Path) -> Result<()
         return Ok(());
     }
     if write_path.exists() {
-        return Ok(());
+        if host_policy_file_is_pinned(write_path) {
+            return Ok(());
+        }
+        warn!(
+            path = %write_path.display(),
+            "replacing invalid host Guard policy"
+        );
     }
     let body = format!(
         "DOCKER_GUARD_IMAGE={}\n\
@@ -237,6 +243,20 @@ fn ensure_host_policy_file(config: &GuardConfig, write_path: &Path) -> Result<()
         .with_context(|| format!("cannot install {}", write_path.display()))?;
     info!(path = %write_path.display(), "wrote host Guard policy");
     Ok(())
+}
+
+fn host_policy_file_is_pinned(path: &Path) -> bool {
+    let Ok(text) = fs::read_to_string(path) else {
+        return false;
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        let Some(image) = line.strip_prefix("DOCKER_GUARD_IMAGE=") else {
+            continue;
+        };
+        return validate_guard_image_ref(image, false).is_ok();
+    }
+    false
 }
 
 #[derive(Clone)]
@@ -3125,9 +3145,19 @@ mod tests {
         assert!(first.contains("DOCKER_GUARD_IMAGE="));
         assert!(first.contains("GUARD_SELF_UPDATE_TOKEN="));
         assert!(first.contains("MYRIAD_GUARD_ENV_FILE=guard-policy/docker-guard.env"));
-        fs::write(&path, "keep\n").unwrap();
+        let pinned = first.clone();
         assert!(ensure_host_policy_file(&cfg, &path).is_ok());
-        assert_eq!(fs::read_to_string(&path).unwrap(), "keep\n");
+        assert_eq!(fs::read_to_string(&path).unwrap(), pinned);
+
+        fs::write(
+            &path,
+            "DOCKER_GUARD_IMAGE=${DOCKER_GUARD_IMAGE:?Set DOCKER_GUARD_IMAGE in .env}\n",
+        )
+        .unwrap();
+        assert!(ensure_host_policy_file(&cfg, &path).is_ok());
+        let healed = fs::read_to_string(&path).unwrap();
+        assert!(healed.contains(&cfg.expected_guard_image));
+        assert!(!healed.contains("${DOCKER_GUARD_IMAGE:?"));
     }
 
     #[test]

@@ -161,6 +161,13 @@ ensure_guard_policy() {
     mkdir -p "$COMPOSE_GUARD_DIR"
     if [ ! -f "$GUARD_ENV_FILE" ]; then
         seed_guard_policy_from_env
+    else
+        local existing_image
+        existing_image="$(grep '^DOCKER_GUARD_IMAGE=' "$GUARD_ENV_FILE" | head -1 | cut -d= -f2- || true)"
+        if ! printf '%s' "$existing_image" | grep -Eq '^docker\.io/somekawahitomi/myriad-updater@sha256:[0-9a-fA-F]{64}$'; then
+            warn "  ! $GUARD_ENV_FILE is not digest-pinned; rewriting from .env"
+            seed_guard_policy_from_env
+        fi
     fi
     if [ -L "$GUARD_ENV_FILE" ]; then
         err "✗ Guard policy must not be a symbolic link: $GUARD_ENV_FILE"
