@@ -43,6 +43,10 @@ impl InstallationWindow {
     fn consume(&mut self) {
         self.open = false;
     }
+
+    fn reopen(&mut self) {
+        self.open = true;
+    }
 }
 
 /// Absence is fail-closed. Startup must initialize this whenever setup is open.
@@ -57,7 +61,10 @@ fn validate_private_file(path: &Path) -> io::Result<fs::Metadata> {
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("setup marker path is not a regular file: {}", path.display()),
+            format!(
+                "setup marker path is not a regular file: {}",
+                path.display()
+            ),
         ));
     }
     #[cfg(unix)]
@@ -242,6 +249,26 @@ pub fn consume_setup() -> io::Result<()> {
     Ok(())
 }
 
+/// Undo `consume_setup` after the owner transaction rolls back.
+///
+/// The marker is removed so a later restart does not treat this process as
+/// claimed. The in-memory window reopens even if that unlink fails, so the
+/// same process can retry without a restart.
+pub fn reopen_setup_after_failed_claim() -> io::Result<()> {
+    let Some(state) = INSTALLATION_WINDOW.get() else {
+        return Err(io::Error::other("installation window is uninitialized"));
+    };
+    let mut state = state
+        .lock()
+        .map_err(|_| io::Error::other("installation window mutex is poisoned"))?;
+    let remove_error = remove_file_if_present(&state.claimed_marker_file).err();
+    state.reopen();
+    match remove_error {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
+}
+
 /// Emergency fail-closed transition for a path that has already obtained
 /// durable owner proof but could not persist cleanup metadata.
 pub fn invalidate_setup_in_memory() -> io::Result<()> {
@@ -366,6 +393,27 @@ mod tests {
         let mut consumed = window(true);
         consumed.consume();
         assert!(consumed.authorize().is_err());
+        consumed.reopen();
+        assert!(consumed.authorize().is_ok());
+    }
+
+    #[test]
+    fn failed_claim_removes_marker_and_reopens_window() {
+        let dir =
+            std::env::temp_dir().join(format!("myriad-setup-reopen-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        let marker = claimed_marker_path(&dir);
+        persist_claimed_marker(&marker).unwrap();
+        let mut consumed = InstallationWindow {
+            open: false,
+            claimed_marker_file: marker.clone(),
+        };
+        assert!(consumed.authorize().is_err());
+        remove_file_if_present(&consumed.claimed_marker_file).unwrap();
+        consumed.reopen();
+        assert!(consumed.authorize().is_ok());
+        assert!(!marker.exists());
+        fs::remove_dir_all(dir).ok();
     }
 
     #[test]

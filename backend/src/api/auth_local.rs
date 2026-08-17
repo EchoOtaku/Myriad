@@ -302,17 +302,28 @@ pub async fn create_admin(
     // database is temporarily unavailable on restart.
     if let Err(error) = crate::api::setup_bootstrap::consume_setup() {
         tracing::error!(%error, "create-admin setup cleanup failed before commit");
-        let _ = crate::api::setup_bootstrap::invalidate_setup_in_memory();
+        if let Err(reopen_error) = crate::api::setup_bootstrap::reopen_setup_after_failed_claim() {
+            tracing::error!(
+                %reopen_error,
+                "create-admin could not reopen setup after consume failure"
+            );
+        }
         let _ = txn.rollback().await;
         return Err(HttpError(
             AppError::internal("Failed to close setup window").with_message(
-                "无法安全关闭安装向导；管理员账户尚未提交，请检查数据目录权限后重试。",
+                "无法写入安装认领标记；管理员账户尚未提交，请检查数据目录权限后重试。",
             ),
         ));
     }
 
     txn.commit().await.map_err(|e| {
         tracing::error!("create-admin commit failed: {:?}", e);
+        if let Err(error) = crate::api::setup_bootstrap::reopen_setup_after_failed_claim() {
+            tracing::error!(
+                %error,
+                "create-admin could not clear the claimed marker after commit failure"
+            );
+        }
         HttpError(map_create_admin_insert_error(&e))
     })?;
 
@@ -838,6 +849,25 @@ pub async fn register(
                     "error": "Registration disabled",
                     "message": "Public registration is disabled. Ask an administrator to create an account."
                 })),
+            )));
+        }
+    }
+    match crate::services::site_owner::installation_has_owner(&db).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err(HttpError::from((
+                StatusCode::FORBIDDEN,
+                Json(json!({
+                    "error": "setup_required",
+                    "message": "Finish the setup wizard before creating an account."
+                })),
+            )));
+        }
+        Err(error) => {
+            tracing::error!(error = %error, "register: failed to read installation claim");
+            return Err(HttpError::from((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error": "Database error"})),
             )));
         }
     }

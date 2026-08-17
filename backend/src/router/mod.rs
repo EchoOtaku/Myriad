@@ -6,20 +6,9 @@ mod authenticated;
 mod base;
 
 async fn installation_claimed(db: &sea_orm::DatabaseConnection) -> anyhow::Result<bool> {
-    use sea_orm::ConnectionTrait;
-
-    let row = db
-        .query_one_raw(sea_orm::Statement::from_string(
-            sea_orm::DatabaseBackend::Postgres,
-            "SELECT EXISTS (
-                SELECT 1 FROM users
-                WHERE is_admin = true OR COALESCE(is_owner, false) = true
-            ) AS claimed",
-        ))
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("installation claim query returned no row"))?;
-    row.try_get("", "claimed")
-        .map_err(|error| anyhow::anyhow!("decode installation claim state: {error}"))
+    crate::services::site_owner::installation_has_owner(db)
+        .await
+        .map_err(|error| anyhow::anyhow!("{error}"))
 }
 
 pub(crate) async fn start_unified_server(config: AppConfig) -> anyhow::Result<()> {
