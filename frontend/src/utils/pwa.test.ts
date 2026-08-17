@@ -16,8 +16,8 @@ import {
   PWA_ICON_BACKGROUND,
   PWA_LOGO_SCALE_MAX,
   PWA_LOGO_SCALE_MIN,
-  resolveManifestUrl,
   pwaIconIsCanvasReadable,
+  resolveManifestUrl,
   resolvePwaIconSourceUrl,
 } from './pwa'
 

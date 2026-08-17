@@ -133,7 +133,7 @@ globalThis.addEventListener('fetch', (event) => {
 
   // 跨域交给浏览器。本 SW 只缓存同站资源；拦跨域再 fetch 会变成 CORS
   // 请求，对端无 ACAO 时失败并变成 uncaught FetchEvent。
-  if (url.origin !== self.location.origin) {
+  if (url.origin !== globalThis.location.origin) {
     return
   }
 

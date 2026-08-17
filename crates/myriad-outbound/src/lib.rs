@@ -389,8 +389,8 @@ mod tests {
         assert_eq!(
             ips,
             vec![
-                "1.1.1.1".parse().unwrap(),
-                "2606:4700:4700::1111".parse().unwrap(),
+                "1.1.1.1".parse::<IpAddr>().unwrap(),
+                "2606:4700:4700::1111".parse::<IpAddr>().unwrap(),
             ]
         );
     }
