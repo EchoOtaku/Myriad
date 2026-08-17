@@ -248,7 +248,8 @@ UI / API 手动回滚到某个快照时，同样会按快照的 `source_version`
 history 是否有 `PRE_SWAP_FAIL` / `ROLLBACK_OK` / `NEEDS_MANUAL`；再按 §5 救援。
 
 管理 UI 在自动回滚成功、维护已退出时，仍会通过 `/status.last_failed_update` 显示
-「上次更新未成功」横幅，避免误以为升级成功。
+「上次更新未成功」横幅，避免误以为升级成功。横幅可永久关闭（`POST /last-failed/dismiss`）；
+下次失败会再出现。
 
 本地回归：
 

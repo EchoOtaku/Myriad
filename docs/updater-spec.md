@@ -372,7 +372,7 @@ updater 会先从 `*:myriad-rollback` 重新创建原版本 tag，再交给 Comp
 **审计行**：`audit: pre_swap_cleanup_ok` / `audit: pre_swap_restore_failed`（swap 前失败恢复）；
 `audit: auto_rollback_ok`（swap 后自动回滚成功）；`audit: recovery_needs_manual` / `recovery_pre_swap_clear`。
 
-`/status` 返回 `last_failed_update`：自动回滚成功后 maintenance 已 idle 时，UI 仍能提示「上次更新未成功」。
+`/status` 返回 `last_failed_update`：自动回滚成功后 maintenance 已 idle 时，UI 仍能提示「上次更新未成功」。操作员可 `POST /last-failed/dismiss` 永久关掉这条提示（清掉 `updater.json` 里的记录）；下次失败会重新出现。成功更新也会清掉未确认的失败横幅。
 
 ### 7.2 更新主流程失败调度（实现）
 
@@ -634,6 +634,7 @@ proxy 通道开关：proxy 启动时读 `PROXY_ALLOW_DIRECT_UPDATER`，未开启
 | GET | `/jobs` | token | 历史任务 |
 | GET | `/jobs/{id}` | token | 任务详细 log |
 | POST | `/update` | token | `{target_version, allow_skip_versions: false}` |
+| POST | `/last-failed/dismiss` | token | 永久关闭「上次更新未成功」横幅 |
 | POST | `/rollback` | token | `{snapshot_id}` |
 | POST | `/admin/self-update` | token | 一键请求可信 TCB 交接；Updater 仅提交 tag intent |
 | POST | `/admin/proxy-update` | token | 手动升级 proxy（可选 body `{target_version}`；默认频道最新 release） |

@@ -245,6 +245,55 @@ export function snapshotDeleteBlockReason(
   return null
 }
 
+const DISMISSED_LAST_FAILED_KEY = 'myriad.updater.dismissedLastFailedJobId'
+
+export function dismissedLastFailedJobId(): string | null {
+  try {
+    const value = window.localStorage.getItem(DISMISSED_LAST_FAILED_KEY)
+    return value && value.trim() ? value : null
+  } catch {
+    return null
+  }
+}
+
+export function isDismissedLastFailed(jobId: string | undefined): boolean {
+  if (!jobId) return false
+  return dismissedLastFailedJobId() === jobId
+}
+
+/** Cached check tip used as the infra upgrade hint (same as confirm dialogs). */
+export function infraLatestTip(
+  status: UpdaterStatus | null | undefined,
+): string | null {
+  const tip = status?.latest_available?.version?.trim()
+  return tip || null
+}
+
+function normalizeDeployTag(tag: string): string {
+  return tag.trim().replace(/^v/i, '').toLowerCase()
+}
+
+/** True when this component is not already on the cached tip. */
+export function infraComponentBehind(
+  current: string | null | undefined,
+  tip: string | null | undefined,
+): boolean {
+  const target = tip?.trim()
+  if (!target) return false
+  const running = current?.trim()
+  if (!running) return true
+  return normalizeDeployTag(running) !== normalizeDeployTag(target)
+}
+
+export function rememberDismissedLastFailed(jobId: string): void {
+  if (!jobId) return
+  try {
+    window.localStorage.setItem(DISMISSED_LAST_FAILED_KEY, jobId)
+  } catch {
+    /* private mode / quota — UI still hides via component state */
+  }
+}
+
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`

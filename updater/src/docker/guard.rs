@@ -2674,9 +2674,10 @@ fn validate_image_pull(
                 has_tag = true;
                 validate_pull_tag(&value)?;
             }
-            // Compose/Bollard may select an architecture, but import/build
+            // Bollard 0.21 always serializes `platform` (empty = let the engine
+            // choose). A non-empty value pins an architecture. Import/build
             // selectors such as fromSrc/repo are never part of a registry pull.
-            "platform" if !value.trim().is_empty() => {}
+            "platform" => {}
             _ => return Err(format!("image pull query parameter {name} is forbidden")),
         }
     }
@@ -3669,6 +3670,14 @@ mod tests {
         let allowed =
             Uri::from_static("/v1.51/images/create?fromImage=docker.io%2Fexample%2Fbackend&tag=v1");
         assert!(validate_image_pull(&state(), &allowed, &Bytes::new()).is_ok());
+        let empty_platform = Uri::from_static(
+            "/v1.51/images/create?fromImage=docker.io%2Fexample%2Fbackend&tag=v1&platform=",
+        );
+        assert!(validate_image_pull(&state(), &empty_platform, &Bytes::new()).is_ok());
+        let pinned_platform = Uri::from_static(
+            "/v1.51/images/create?fromImage=docker.io%2Fexample%2Fbackend&tag=v1&platform=linux%2Farm64",
+        );
+        assert!(validate_image_pull(&state(), &pinned_platform, &Bytes::new()).is_ok());
         let denied = Uri::from_static("/v1.51/images/create?fromImage=evil%2Fpayload&tag=latest");
         assert!(validate_image_pull(&state(), &denied, &Bytes::new()).is_err());
 

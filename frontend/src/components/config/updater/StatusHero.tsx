@@ -10,6 +10,7 @@ import {
   FieldSelect,
   SettingsButton,
   SettingTitleGuideEntry,
+  SettingTitleTag,
   ToggleSwitch,
   useSettingGuide,
 } from '../../settings'
@@ -253,32 +254,36 @@ export function StatusHero({
         </div>
         {action && <div className="updater-hero-action">{action}</div>}
       </div>
-      {showUpdateDetails &&
-        (freshness || source === 'dockerhub' || irreversible || notesUrl) && (
-          <div className="updater-hero-details">
-            {freshness && <p>{freshness}</p>}
-            {source === 'dockerhub' && (
-              <p className="updater-hero-warning">
-                {u.updaterDockerHubFallback}
-              </p>
-            )}
-            {irreversible && (
-              <p className="updater-hero-warning">
-                {u.updaterIrreversibleWarn}
-              </p>
-            )}
-            {notesUrl && (
-              <a
-                className="updater-hero-notes"
-                href={notesUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-              >
-                {u.updaterReleaseNotes} ↗
-              </a>
-            )}
-          </div>
-        )}
+      {showUpdateDetails && (freshness || irreversible || notesUrl) && (
+        <div className="updater-hero-details">
+          {freshness && <p>{freshness}</p>}
+          {irreversible && (
+            <p className="updater-hero-warning">
+              {u.updaterIrreversibleWarn}
+            </p>
+          )}
+          {notesUrl && (
+            <a
+              className="updater-hero-notes"
+              href={notesUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              {u.updaterReleaseNotes} ↗
+            </a>
+          )}
+        </div>
+      )}
+      {showUpdateDetails && source === 'dockerhub' && (
+        <div className="updater-hero-source">
+          <SettingTitleTag
+            variant="muted"
+            detail={u.updaterDockerHubFallback}
+          >
+            {u.updaterDockerHubSourceTag}
+          </SettingTitleTag>
+        </div>
+      )}
       <AutoUpdatePrefs
         status={status}
         disabled={!!busy || tokenRequired}

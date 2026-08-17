@@ -7,7 +7,11 @@
 
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { isFreshInfraOutcome } from './helpers.ts'
+import {
+  infraComponentBehind,
+  isDismissedLastFailed,
+  isFreshInfraOutcome,
+} from './helpers.ts'
 
 describe('isFreshInfraOutcome', () => {
   const last = {
@@ -53,5 +57,29 @@ describe('isFreshInfraOutcome', () => {
       ),
       null,
     )
+  })
+})
+
+describe('infraComponentBehind', () => {
+  it('treats a missing current tag as behind when a tip exists', () => {
+    assert.equal(infraComponentBehind(null, 'v0.3.33'), true)
+    assert.equal(infraComponentBehind('', 'v0.3.33'), true)
+  })
+
+  it('ignores a missing tip', () => {
+    assert.equal(infraComponentBehind('v0.3.32', null), false)
+  })
+
+  it('compares tags without requiring a matching v prefix', () => {
+    assert.equal(infraComponentBehind('v0.3.32', 'v0.3.33'), true)
+    assert.equal(infraComponentBehind('0.3.33', 'v0.3.33'), false)
+    assert.equal(infraComponentBehind('v0.3.33', 'v0.3.33'), false)
+  })
+})
+
+describe('isDismissedLastFailed', () => {
+  it('does not treat a missing job id as dismissed', () => {
+    assert.equal(isDismissedLastFailed(undefined), false)
+    assert.equal(isDismissedLastFailed(''), false)
   })
 })

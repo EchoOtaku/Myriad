@@ -63,6 +63,10 @@ import {
   deriveSelection,
   format,
   formatBytes,
+  infraComponentBehind,
+  infraLatestTip,
+  isDismissedLastFailed,
+  rememberDismissedLastFailed,
   INFRA_OUTCOME_MAX_TRIES,
   INFRA_OUTCOME_POLL_MS,
   isFreshInfraOutcome,
@@ -156,6 +160,10 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   const [nowTick, setNowTick] = useState(() => Date.now())
   /** True while the open-panel always-once auto-check is in flight. */
   const [autoRechecking, setAutoRechecking] = useState(false)
+  /** Local hide of the last-failed banner (survives old updater without dismiss API). */
+  const [dismissedFailedJobId, setDismissedFailedJobId] = useState<
+    string | null
+  >(null)
 
   /** Job we are watching for maintenance → full-page navigate (once). */
   const maintWatchJobRef = useRef<string | null>(null)
@@ -333,6 +341,22 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       if (d?.drift) setDrift({ build: d.build, current: d.current })
     })
   }, [refresh])
+
+  // Old updater has no dismiss API; keep a local ack and sync it once the
+  // endpoint exists so the banner stays gone after a later updater upgrade.
+  useEffect(() => {
+    const jobId = status?.last_failed_update?.job_id
+    if (!jobId || !isDismissedLastFailed(jobId)) return
+    setDismissedFailedJobId(jobId)
+    void api.dismissLastFailed().then(
+      () => {
+        void refresh()
+      },
+      () => {
+        /* keep the local hide */
+      },
+    )
+  }, [api, refresh, status?.last_failed_update?.job_id])
 
   useEffect(() => {
     if (status?.job_in_flight) {
@@ -1018,6 +1042,19 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     }
   }, [api, refresh, tokenRequired, explain, u, status, beginMaintWatch])
 
+  const dismissLastFailed = useCallback(async () => {
+    const failed = status?.last_failed_update
+    if (!failed) return
+    rememberDismissedLastFailed(failed.job_id)
+    setDismissedFailedJobId(failed.job_id)
+    try {
+      await api.dismissLastFailed()
+      await refresh()
+    } catch {
+      /* Old updater: local ack is enough to keep this job's banner closed. */
+    }
+  }, [api, refresh, status?.last_failed_update])
+
   // 渲染
 
   const mood = useMemo<Mood>(() => deriveMood(status), [status])
@@ -1050,11 +1087,12 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     (mood === 'maintenance' || mood === 'needsManual') && !showProgress
   const requiresSelfUpdate =
     !!status?.requires_self_update && !!status.latest_available
+  const infraTip = infraLatestTip(status)
+  const updaterHasUpdate =
+    requiresSelfUpdate || infraComponentBehind(status?.updater_version, infraTip)
+  const proxyHasUpdate = infraComponentBehind(status?.proxy_version, infraTip)
   /** 业务侧有新版本（或强制要求先升更新器）时，在组件区给出提示 */
-  const infraUpdateCue =
-    requiresSelfUpdate ||
-    !!status?.update_available ||
-    !!status?.latest_available
+  const infraUpdateCue = updaterHasUpdate || proxyHasUpdate
   return (
     <div className="updater-panel">
       {heading && <h3 className="updater-panel-heading">{heading}</h3>}
@@ -1075,18 +1113,32 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
       )}
 
       {/* Auto-rollback / pre-swap cleanup leaves maintenance idle but records this. */}
-      {status?.last_failed_update && mood !== 'updating' && (
-        <div className="updater-last-failed" role="status">
-          <strong>{u.updaterLastFailedTitle}</strong>
-          <span>
-            {format(u.updaterLastFailedBody, {
-              from: status.last_failed_update.from_version ?? '—',
-              to: status.last_failed_update.to_version ?? '—',
-              reason: status.last_failed_update.reason,
-            })}
-          </span>
-        </div>
-      )}
+      {status?.last_failed_update &&
+        mood !== 'updating' &&
+        dismissedFailedJobId !== status.last_failed_update.job_id &&
+        !isDismissedLastFailed(status.last_failed_update.job_id) && (
+          <div className="updater-last-failed" role="status">
+            <div className="updater-last-failed-head">
+              <strong>{u.updaterLastFailedTitle}</strong>
+              <button
+                type="button"
+                className="updater-last-failed-dismiss"
+                onClick={() => void dismissLastFailed()}
+                aria-label={u.updaterLastFailedDismissAria}
+                title={u.updaterLastFailedDismissAria}
+              >
+                {u.updaterLastFailedDismiss}
+              </button>
+            </div>
+            <span>
+              {format(u.updaterLastFailedBody, {
+                from: status.last_failed_update.from_version ?? '—',
+                to: status.last_failed_update.to_version ?? '—',
+                reason: status.last_failed_update.reason,
+              })}
+            </span>
+          </div>
+        )}
 
       {showProgress ? (
         <ProgressCard job={activeJob!} u={u} />
@@ -1237,15 +1289,26 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
           icon={<FaServer />}
           titleExtra={
             requiresSelfUpdate ? (
-              <SettingTitleTag title={u.updaterInfraRequired}>
-                {u.updaterInfraRequired}
+              <SettingTitleTag
+                title={
+                  infraTip
+                    ? format(u.updaterSelfUpdateNeeded, {
+                        version: infraTip,
+                        minVersion:
+                          status?.latest_available?.min_updater_version ??
+                          infraTip,
+                      })
+                    : u.updaterInfraRequired
+                }
+              >
+                {infraTip ?? u.updaterInfraRequired}
               </SettingTitleTag>
-            ) : infraUpdateCue ? (
+            ) : infraUpdateCue && infraTip ? (
               <SettingTitleTag
                 variant="muted"
                 title={u.updaterInfraUpdateAvailableHint}
               >
-                {u.updaterInfraUpdateAvailableHint}
+                {infraTip}
               </SettingTitleTag>
             ) : null
           }
@@ -1265,16 +1328,21 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
               className={
                 requiresSelfUpdate
                   ? 'updater-infra-card is-attention'
-                  : infraUpdateCue
+                  : updaterHasUpdate
                     ? 'updater-infra-card is-update-cue'
                     : 'updater-infra-card'
               }
               titleExtra={
                 requiresSelfUpdate ? (
-                  <SettingTitleTag>{u.updaterInfraRequired}</SettingTitleTag>
-                ) : infraUpdateCue ? (
-                  <SettingTitleTag variant="muted">
-                    {u.updaterInfraUpdateAvailableHint}
+                  <SettingTitleTag title={u.updaterInfraRequired}>
+                    {infraTip ?? u.updaterInfraRequired}
+                  </SettingTitleTag>
+                ) : updaterHasUpdate && infraTip ? (
+                  <SettingTitleTag
+                    variant="muted"
+                    title={u.updaterInfraUpdateAvailableHint}
+                  >
+                    {infraTip}
                   </SettingTitleTag>
                 ) : null
               }
@@ -1333,14 +1401,17 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
               description={u.updaterInfraProxyDesc}
               icon={<FaServer />}
               className={
-                infraUpdateCue
+                proxyHasUpdate
                   ? 'updater-infra-card is-update-cue'
                   : 'updater-infra-card'
               }
               titleExtra={
-                infraUpdateCue ? (
-                  <SettingTitleTag variant="muted">
-                    {u.updaterInfraUpdateAvailableHint}
+                proxyHasUpdate && infraTip ? (
+                  <SettingTitleTag
+                    variant="muted"
+                    title={u.updaterInfraUpdateAvailableHint}
+                  >
+                    {infraTip}
                   </SettingTitleTag>
                 ) : null
               }
