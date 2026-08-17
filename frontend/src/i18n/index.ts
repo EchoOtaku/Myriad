@@ -788,6 +788,8 @@ export interface TranslationKeys {
     updaterStatusFirstRun: string
     updaterLastFailedTitle: string
     updaterLastFailedBody: string
+    updaterLastFailedDismiss: string
+    updaterLastFailedDismissAria: string
     updaterHintHealthy: string
     updaterHintUpdating: string
     updaterHintMaintenance: string
@@ -888,6 +890,7 @@ export interface TranslationKeys {
     updaterTargetCommitHead: string
     updaterTargetDockerHubHead: string
     updaterDockerHubFallback: string
+    updaterDockerHubSourceTag: string
     updaterDockerHubBuild: string
     updaterCommitTarget: string
     updaterCommitPlaceholder: string

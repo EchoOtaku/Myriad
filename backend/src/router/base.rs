@@ -492,6 +492,10 @@ pub(super) fn build_base_api_router(
             "/api/federation/public/rooms/{room_id}",
             get(api::federation::federation_get_public_room),
         )
+        .route(
+            "/api/federation/public/limits",
+            get(federation::limits::public_limits),
+        )
         // Layer 2: Actor + Outbox + Collections（无需认证，AP 标准端点）
         .route("/users/{username}", get(federation::actor::get_actor))
         .route(

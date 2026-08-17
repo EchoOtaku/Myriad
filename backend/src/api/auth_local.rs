@@ -31,7 +31,7 @@ use crate::middleware::auth::{
 /// 503 after a short wait rather than queue forever. Login, register,
 /// change-password, set-password, setup create-admin, and admin create-user
 /// all share this single permit path via [`hash_password`] / [`verify_password`].
-/// Historical default concurrency (default memory profile). Saver uses 2 via memory_profile.
+/// Historical default concurrency (default memory profile). Saver uses 1 via memory_profile.
 const PASSWORD_HASH_PERMITS: usize = 4;
 /// How long a request may wait for a hash/verify permit before 503.
 /// Acts as a short queue bound — waiters beyond this get 503, not harsher IP limits.

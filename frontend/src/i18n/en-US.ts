@@ -914,6 +914,8 @@ export const enUS: TranslationKeys = {
     updaterStatusFirstRun: 'No version recorded yet',
     updaterLastFailedTitle: 'Last update did not complete',
     updaterLastFailedBody: 'From {from} to {to} failed. Reason: {reason}',
+    updaterLastFailedDismiss: 'Don’t show again',
+    updaterLastFailedDismissAria: 'Permanently dismiss this failed-update notice',
     updaterHintHealthy: 'No updates are available on this channel.',
     updaterHintUpdating: 'The system will be checked when it finishes.',
     updaterHintMaintenance: 'Exit maintenance mode below when ready.',
@@ -1051,6 +1053,7 @@ export const enUS: TranslationKeys = {
     updaterTargetDockerHubHead: 'Docker Hub builds (click to select)',
     updaterDockerHubFallback:
       'Discovering builds via Docker Hub (normal when the source repo is private or GITHUB_TOKEN is unset).',
+    updaterDockerHubSourceTag: 'Docker Hub',
     updaterDockerHubBuild: 'Built on Docker Hub',
     updaterCommitTarget: 'Enter manually',
     updaterCommitPlaceholder: 'vX.Y.Z, dev-xxx, or commit sha',
@@ -1323,7 +1326,7 @@ export const enUS: TranslationKeys = {
       'Lower concurrent memory use on small hosts (~1 GiB). Default off uses the current bounded balanced profile; upgrades from older releases can change request limits.',
     memorySaver: 'Memory saver',
     memorySaverHint:
-      'Tightens concurrent federation buffers, slightly lowers single-message/attachment size caps, transfer chunk concurrency, process caches, DB pool size, and password-hash concurrency. Features stay available; very large media or multi-path peaks may reject sooner or show “retry later”. Env MYRIAD_MEMORY_PROFILE can override. DB pool fully applies after backend restart.',
+      'A second notch below the bounded default: smaller chunk inflight, process caches, DB pool, password-hash concurrency, and video/audio peaks. Everyday messages still fit; large media should use chunked transfer, and lossless audio may reject sooner. Env MYRIAD_MEMORY_PROFILE can override. DB pool fully applies after backend restart.',
     enableProxy: 'Enable Network Proxy',
     enableProxyHint:
       'External API requests will be sent through the proxy when enabled',
