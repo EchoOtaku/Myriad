@@ -1630,7 +1630,6 @@ html.dark[data-perf-mode='exlight'] .arael-sessions-search:hover,
 html.dark[data-perf-mode='exlight'] .arael-sessions-search:focus-within {
   background: rgb(26 26 26 / 96%);
 }
-}
 
 html.dark .arael-sessions-search:focus-within {
   background: rgb(255 255 255 / 12%);
