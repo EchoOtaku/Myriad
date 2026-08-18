@@ -496,6 +496,13 @@ impl ConfigService {
             }
         }
 
+        if let Some(v) = map.get("agent_life_enabled") {
+            config.agent_life_enabled = v
+                .as_bool()
+                .or_else(|| v.as_str().map(|s| s == "true" || s == "1"))
+                .unwrap_or(config.agent_life_enabled);
+        }
+
         // Tripo 3D 独立配置
         if let Some(v) = map.get("tripo_enabled") {
             config.tripo_enabled = v
@@ -1075,6 +1082,27 @@ mod tests {
         assert_eq!(config.ui_theme.as_deref(), Some("paper"));
         assert_eq!(config.ui_primary_color.as_deref(), Some("#112233"));
         assert_eq!(config.ui_secondary_color.as_deref(), Some("#445566"));
+    }
+
+    #[test]
+    fn parses_agent_life_flag_from_database_config() {
+        let on = ConfigService::parse_config(HashMap::from([(
+            "agent_life_enabled".into(),
+            json!(true),
+        )]));
+        assert!(on.agent_life_enabled);
+
+        let from_str = ConfigService::parse_config(HashMap::from([(
+            "agent_life_enabled".into(),
+            json!("true"),
+        )]));
+        assert!(from_str.agent_life_enabled);
+
+        let off = ConfigService::parse_config(HashMap::from([(
+            "agent_life_enabled".into(),
+            json!(false),
+        )]));
+        assert!(!off.agent_life_enabled);
     }
 
     #[test]

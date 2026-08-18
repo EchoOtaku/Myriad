@@ -1922,6 +1922,17 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
                     placeholder: "false".to_string(),
                     required: false,
                 },
+                ConfigField {
+                    key: "agent_life_enabled".to_string(),
+                    label: "Agent 生命".to_string(),
+                    field_type: "checkbox".to_string(),
+                    value: db_config
+                        .as_ref()
+                        .map(|c| c.agent_life_enabled.to_string())
+                        .unwrap_or_else(|| "false".to_string()),
+                    placeholder: "false".to_string(),
+                    required: false,
+                },
                 // 网络代理配置
                 ConfigField {
                     key: "proxy_enabled".to_string(),
@@ -2103,6 +2114,7 @@ pub(crate) struct SettingDescriptor {
 /// 备份/恢复 registry：含 legacy 键（`pet_*` / `ui_wallpaper_parallax` / `github_client_*` 等）。
 /// 这些键仍可从旧备份还原到 DB，但**不再**进入管理端 `ui_config.config_fields` emit。
 pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
+    "agent_life_enabled",
     "ai_image_model",
     "ai_image_openai_api_key",
     "ai_image_openai_base_url",
@@ -3025,6 +3037,18 @@ mod settings_backup_tests {
         config.ui_config.config_fields = vec![ui_field("memory_saver_enabled", "false")];
         let off = collect_database_updates(&config);
         assert_eq!(off.get("memory_saver_enabled"), Some(&json!(false)));
+    }
+
+    #[test]
+    fn ui_agent_life_flag_persists_bool() {
+        let mut config = empty_config();
+        config.ui_config.config_fields = vec![ui_field("agent_life_enabled", "true")];
+        let on = collect_database_updates(&config);
+        assert_eq!(on.get("agent_life_enabled"), Some(&json!(true)));
+
+        config.ui_config.config_fields = vec![ui_field("agent_life_enabled", "false")];
+        let off = collect_database_updates(&config);
+        assert_eq!(off.get("agent_life_enabled"), Some(&json!(false)));
     }
 
     #[test]
@@ -4135,6 +4159,10 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 let enabled = field.value == "true";
                 ("memory_saver_enabled", JsonValue::Bool(enabled))
             }
+            "agent_life_enabled" => {
+                let enabled = field.value == "true";
+                ("agent_life_enabled", JsonValue::Bool(enabled))
+            }
             _ => continue,
         };
         // 忽略屏蔽值（前端返回的掩码）与空敏感字段，避免覆盖已保存的密钥
@@ -4751,8 +4779,28 @@ pub async fn get_public_config(
         db_config.as_ref().and_then(|c| c.platform_order.as_ref()),
     );
 
+    let life_enabled = db_config
+        .as_ref()
+        .map(|config| config.agent_life_enabled_resolved())
+        .unwrap_or_else(|| {
+            crate::config::DynamicConfig::default().agent_life_enabled_resolved()
+        });
+    let stored_name = if life_enabled {
+        crate::services::agent::life::get_persona(&db)
+            .await
+            .ok()
+            .flatten()
+            .map(|persona| persona.name)
+    } else {
+        None
+    };
     let response = json!({
-        "platforms": public_platforms
+        "platforms": public_platforms,
+        "agentLifeEnabled": life_enabled,
+        "agentPersonaName": crate::services::agent::life::public_persona_name(
+            life_enabled,
+            stored_name.as_deref(),
+        ),
     });
 
     (StatusCode::OK, Json(response))

@@ -211,7 +211,7 @@ pub(super) fn build_authenticated_router(
             "/api/agent",
             api::agent::create_agent_routes(app_state.clone()),
         )
-        // Digital Life 3D
+        // Tripo 3D
         // Provider operations are admin-only; content-addressed GLB assets
         // remain public so guest home scenes can render them.
         .nest(

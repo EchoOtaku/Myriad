@@ -373,6 +373,9 @@ pub struct DynamicConfig {
     pub ai_image_volcengine_api_key: Option<String>,
     pub ai_image_volcengine_base_url: String,
 
+    /// Agent 生命：设定、状态、主动对话、事件开口。默认关。
+    pub agent_life_enabled: bool,
+
     // 3D 模型生成配置（独立于 AI 图片 Provider）
     pub tripo_enabled: bool,
     pub tripo_api_key: Option<String>,
@@ -656,6 +659,7 @@ impl Default for DynamicConfig {
             ai_image_openrouter_api_key: None,
             ai_image_volcengine_api_key: None,
             ai_image_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
+            agent_life_enabled: false,
             // Tripo 3D（低模 Web 角色默认预算）
             tripo_enabled: false,
             tripo_api_key: None,
@@ -757,6 +761,17 @@ impl Default for DynamicConfig {
 }
 
 impl DynamicConfig {
+    /// 环境变量 `AGENT_LIFE_ENABLED` 覆盖库里的开关。未设置时用 `agent_life_enabled`。
+    pub fn agent_life_enabled_resolved(&self) -> bool {
+        match std::env::var("AGENT_LIFE_ENABLED") {
+            Ok(value) => matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            ),
+            Err(_) => self.agent_life_enabled,
+        }
+    }
+
     /// 根据模型层级解析 AI 配置
     ///
     /// Lite / Pro 仅在对应开关开启时使用独立配置；关闭或字段留空时回退到 Standard。

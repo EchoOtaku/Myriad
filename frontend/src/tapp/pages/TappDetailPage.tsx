@@ -760,6 +760,17 @@ export function TappDetailPage() {
         ]
       : []),
     {
+      key: 'ask-arael',
+      label: t.arael.askArael,
+      onClick: () =>
+        window.dispatchEvent(
+          new CustomEvent('arael-open-session', {
+            detail: { sessionId: '' },
+          }),
+        ),
+      variant: 'secondary' as const,
+    },
+    {
       key: 'export',
       label: t.tapp.export || 'Export',
       onClick: () => void handleExport(),
