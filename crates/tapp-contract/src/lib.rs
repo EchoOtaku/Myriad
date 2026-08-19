@@ -76,7 +76,6 @@ pub fn export_tapp_contract() -> Value {
             "authorEmailLength": contract_rules::MAX_AUTHOR_EMAIL_LEN,
             "storageKeyLength": contract_rules::MAX_STORAGE_KEY_LEN,
             "tappPermissions": contract_rules::MAX_TAPP_PERMISSIONS,
-            "pageModules": contract_rules::MAX_PAGE_MODULES,
             "backgroundRequirements": contract_rules::MAX_BACKGROUND_REQUIREMENTS,
             "tappSettings": contract_rules::MAX_TAPP_SETTINGS,
             "tappCredentials": contract_rules::MAX_TAPP_CREDENTIALS,

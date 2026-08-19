@@ -912,7 +912,7 @@ class RemoteStoreServiceImpl {
     })
 
     const indexWithBase = { ...storeIndex, base_url: baseUrl }
-    // Manifest first so we know which package fields are required (pageStyles etc.)
+    // Manifest first so we know which layer resources are required (page.styles etc.)
     const downloadedManifest = await this.downloadManifest(
       app,
       indexWithBase,
@@ -956,12 +956,12 @@ class RemoteStoreServiceImpl {
 
     if (needsPageCss && !pageCss) {
       throw new Error(
-        'Downloaded package is missing pageStyles content (page.css). Check store download.page_styles.',
+        'Downloaded package is missing page.styles content. Check store download.page_styles.',
       )
     }
     if (needsPageTemplate && !pageTemplate) {
       throw new Error(
-        'Downloaded package is missing pageTemplate content. Check store download.page_template.',
+        'Downloaded package is missing page.template content. Check store download.page_template.',
       )
     }
 

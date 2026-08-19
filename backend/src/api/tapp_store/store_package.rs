@@ -430,14 +430,14 @@ mod tests {
     #[test]
     fn package_root_from_code_path() {
         assert_eq!(
-            store_package_root("apps/com.myriad.doudizhu/main.js"),
+            store_package_root("apps/com.myriad.doudizhu/core.js"),
             "apps/com.myriad.doudizhu"
         );
         assert_eq!(
             store_package_root("apps/com.myriad.doudizhu/manifest.json"),
             "apps/com.myriad.doudizhu"
         );
-        assert_eq!(store_package_root("main.js"), "");
+        assert_eq!(store_package_root("core.js"), "");
         assert_eq!(store_package_root("/nested/a/b/c.js"), "nested/a/b");
     }
 

@@ -960,17 +960,6 @@ function validateManifest(manifest, diagnostics, requiredPermissions) {
     }
   }
 
-  if (manifest.pageModules !== undefined) {
-    if (
-      !Array.isArray(manifest.pageModules) ||
-      manifest.pageModules.length > contract.limits.pageModules ||
-      manifest.pageModules.some((module) => typeof module !== 'string' || module.length > contract.limits.tappIdLength || !SAFE_COMPONENT.test(module) || !module.endsWith(contract.rules.resourceExtensions.pageModule)) ||
-      hasDuplicates(manifest.pageModules)
-    ) {
-      diagnostics.push(diagnostic('error', 'invalid-page-modules', `pageModules must contain at most ${contract.limits.pageModules} unique ${contract.rules.resourceExtensions.pageModule} filenames`))
-    }
-  }
-
   if (manifest.assets !== undefined && (
     !Array.isArray(manifest.assets) ||
     manifest.assets.some((asset) => typeof asset !== 'string') ||

@@ -138,7 +138,7 @@ export function validatePlaygroundPackage(
   const { manifest, files } = pkg
   const code = project.code
   // Mode checks use the author-declared manifest so normalize (which may clear
-  // hasPage when pageHtml is empty) does not hide "hasPage without page" errors.
+  // declared page when pageHtml is empty) does not hide "page without content" errors.
   const declared = project.manifest
 
   // Manifest required fields (validate_tapp_manifest core)

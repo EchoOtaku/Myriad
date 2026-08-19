@@ -52,7 +52,6 @@
     "openUrlQueryKeys": 16,
     "openUrlQueryValueLength": 512,
     "openUrls": 32,
-    "pageModules": 64,
     "resourceBytes": 67108864,
     "resourcePathLength": 256,
     "routeMaxBodyBytes": 1048576,

@@ -1225,11 +1225,11 @@ await Tapp.tappList.install({
 // await Tapp.tappList.install({
 //   source: "direct",
 //   manifest: { id: "com.example.app", name: "App", version: "1.0.0",
-//               category: "utility", main: "main.js", permissions: [] },
-//   code: "/* ... */",
+//               category: "utility", core: { entry: "core.js" }, permissions: [] },
+//   modules: { "core.js": "/* ... */" },
 //   permissions: ["storage:read"],
 // });
-// ❌ 无效：source:"direct" 且缺少 manifest 或 code
+// ❌ 无效：source:"direct" 且缺少 manifest 或 modules
 
 await Tapp.tappList.start("com.example.app");
 await Tapp.tappList.stop("com.example.app");
@@ -1244,8 +1244,9 @@ await Tapp.tappList.export("com.example.app");
   不要用裸 `source: "1"`。`storeSource` / catalog 不能是模式字面量 `"store"` / `"direct"`。
   宿主再发 REST `source:"store"` + `storeSource: catalogRef`。后端拉包失败（如 502）或大包
   （索引 `size` ≥ 1 MiB）时可回退浏览器下载 + REST `source:"direct"`。
-- **直接路径**：`source: "direct"` 时必须带 `manifest` + `code`（及可选资源）；走
-  `installDirect`，包体会经过 sandbox Bridge（与商店元数据-only 路径不同）。
+- **直接路径**：`source: "direct"` 时必须带 `manifest` + `modules`（及可选资源）；走
+  `installDirect`，包体会经过 sandbox Bridge（与商店元数据-only 路径不同）。`modules`
+  的键是包内相对路径（`core.js`、`page/index.js`、`widget/index.js`）。
 - **上传 `.tapp` 文件**仍走宿主 UI / `POST /api/tapps/install-file`，不经
   `tappList.install`（见 [REST API](REST_API.md)、[文件格式](../../features/TAPP_FILE_FORMAT.md)）。
 - 分享卡片安装必须带真实 catalog（`storeSource` 或 HTTP `source`），见 [STORE](STORE.md)。

@@ -47,7 +47,6 @@ export interface PageFeatureConfig {
  * | home            | Visibility, Resize, RAF, Idle                 |
  * | library         | Resize, Intersection, Idle                    |
  * | reports         | Visibility, Interval, RAF, DOMBatch           |
- * | life            | Visibility                                    |
  * | config          | Timeout                                       |
  * | login           | Timeout                                       |
  * | details         | 基础（无特殊需求）                              |

@@ -9,9 +9,9 @@ use myriad_tapp_contract::manifest::{TappCategory, TappManifest};
 
 use crate::services::tapp_validation::MAX_TAPP_ASSETS;
 
-/// Package directory on the store host (parent of main.js / manifest.json).
+/// Package directory on the store host (parent of the core entry / manifest.json).
 ///
-/// Example: `apps/com.myriad.doudizhu/main.js` → `apps/com.myriad.doudizhu`
+/// Example: `apps/com.myriad.doudizhu/core.js` → `apps/com.myriad.doudizhu`
 pub fn store_package_root(code_or_manifest_path: &str) -> String {
     let path = code_or_manifest_path.trim().trim_start_matches('/');
     match path.rfind('/') {
@@ -299,7 +299,7 @@ pub fn store_download_core_paths(
     Ok((manifest_path, code_path))
 }
 
-/// When the manifest declares pageStyles, the store index must list download.page_styles.
+/// When the manifest declares `page.styles`, the store index must list download.page_styles.
 pub fn require_download_page_styles_if_declared<'a>(
     download: &'a serde_json::Value,
     manifest: &TappManifest,
@@ -313,14 +313,14 @@ pub fn require_download_page_styles_if_declared<'a>(
     ) {
         (Some(path), _) => Ok(Some(path)),
         (None, true) => Err(
-            "Store index is missing download.page_styles for a manifest that declares pageStyles"
+            "Store index is missing download.page_styles for a manifest that declares page.styles"
                 .to_string(),
         ),
         (None, false) => Ok(None),
     }
 }
 
-/// When the manifest declares pageTemplate, the store index must list download.page_template.
+/// When the manifest declares `page.template`, the store index must list download.page_template.
 pub fn require_download_page_template_if_declared<'a>(
     download: &'a serde_json::Value,
     manifest: &TappManifest,
@@ -334,7 +334,7 @@ pub fn require_download_page_template_if_declared<'a>(
     ) {
         (Some(path), _) => Ok(Some(path)),
         (None, true) => Err(
-            "Store index is missing download.page_template for a manifest that declares pageTemplate"
+            "Store index is missing download.page_template for a manifest that declares page.template"
                 .to_string(),
         ),
         (None, false) => Ok(None),
@@ -597,14 +597,14 @@ mod tests {
     #[test]
     fn package_root_from_code_path() {
         assert_eq!(
-            store_package_root("apps/com.myriad.doudizhu/main.js"),
+            store_package_root("apps/com.myriad.doudizhu/core.js"),
             "apps/com.myriad.doudizhu"
         );
         assert_eq!(
             store_package_root("apps/com.myriad.doudizhu/manifest.json"),
             "apps/com.myriad.doudizhu"
         );
-        assert_eq!(store_package_root("main.js"), "");
+        assert_eq!(store_package_root("core.js"), "");
         assert_eq!(store_package_root("/nested/a/b/c.js"), "nested/a/b");
     }
 
@@ -648,8 +648,8 @@ mod tests {
             "https://ex.com/store"
         );
         assert_eq!(
-            join_store_file_url("https://ex.com/store/", "apps/a/main.js"),
-            "https://ex.com/store/apps/a/main.js"
+            join_store_file_url("https://ex.com/store/", "apps/a/core.js"),
+            "https://ex.com/store/apps/a/core.js"
         );
     }
 
@@ -682,7 +682,7 @@ mod tests {
                 "category": "utility",
                 "download": {
                     "manifest": "apps/com.example.app/manifest.json",
-                    "code": "apps/com.example.app/main.js",
+                    "code": "apps/com.example.app/core.js",
                     "page_styles": "apps/com.example.app/page.css"
                 }
             }]
@@ -691,7 +691,7 @@ mod tests {
         let download = store_app_download_section(app).unwrap();
         let (manifest_path, code_path) = store_download_core_paths(download).unwrap();
         assert_eq!(manifest_path, "apps/com.example.app/manifest.json");
-        assert_eq!(code_path, "apps/com.example.app/main.js");
+        assert_eq!(code_path, "apps/com.example.app/core.js");
 
         assert!(matches!(
             find_store_app_entry(&index, "missing").unwrap_err(),

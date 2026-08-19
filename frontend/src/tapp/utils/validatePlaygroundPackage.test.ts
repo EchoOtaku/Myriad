@@ -146,7 +146,7 @@ describe('validatePlaygroundPackage', () => {
           (e) =>
             e.includes('Page') ||
             e.includes('Widgets') ||
-            e.includes('hasPage'),
+            e.includes('page'),
         ),
         `expected empty-project error, got: ${result.errors.join('; ')}`,
       )
@@ -173,7 +173,7 @@ describe('validatePlaygroundPackage', () => {
     }
   })
 
-  it('rejects missing page.html when pageTemplate is declared', () => {
+  it('rejects missing page.html when page.template is declared', () => {
     const { manifest, code } = validPageProject()
     const result = validatePlaygroundPackage({
       manifest,

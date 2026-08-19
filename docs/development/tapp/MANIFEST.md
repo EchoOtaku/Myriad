@@ -216,7 +216,8 @@ Page、Widget 和 headless core 是运行形态，由 `page`、`widgets` 和
   "version": "1.0.0",
   "description": "一个功能丰富的 Tapp 示例",
   "category": "utility",
-  "main": "index.js",
+  "core": { "entry": "core.js", "styles": "styles.css" },
+  "page": { "entry": "page/index.js", "template": "page.html" },
   "author": {
     "name": "开发者名称",
     "email": "dev@example.com",
@@ -253,7 +254,8 @@ Page、Widget 和 headless core 是运行形态，由 `page`、`widgets` 和
       "icon": "📊",
       "defaultSize": "2x2",
       "sizes": ["1x1", "1x2", "2x1", "2x2", "4x2", "4x4"],
-      "category": "utility"
+      "category": "utility",
+      "entry": "widget/index.js"
     }
   ],
   "settings": [

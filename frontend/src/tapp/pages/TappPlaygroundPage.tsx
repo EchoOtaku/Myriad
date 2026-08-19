@@ -1379,20 +1379,20 @@ export function TappPlaygroundPage() {
   }
 
   const files: Array<{ id: FileId; label: string }> = [
-    { id: 'page', label: 'main.js · page' },
-    { id: 'html', label: 'page.html' },
-    { id: 'styles', label: 'styles.css' },
-    { id: 'core', label: 'main.js · core' },
-    { id: 'manifest', label: 'manifest.json' },
-    { id: 'i18n', label: 'i18n.json' },
+    { id: 'page', label: FILE_LABELS.page },
+    { id: 'html', label: FILE_LABELS.html },
+    { id: 'styles', label: FILE_LABELS.styles },
+    { id: 'core', label: FILE_LABELS.core },
+    { id: 'manifest', label: FILE_LABELS.manifest },
+    { id: 'i18n', label: FILE_LABELS.i18n },
     ...(project?.code.widget
-      ? ([{ id: 'widget', label: 'main.js · widget' }] as const)
+      ? ([{ id: 'widget', label: FILE_LABELS.widget }] as const)
       : []),
     ...(project?.code.widgetHtml
-      ? ([{ id: 'widgetHtml', label: 'widget.html' }] as const)
+      ? ([{ id: 'widgetHtml', label: FILE_LABELS.widgetHtml }] as const)
       : []),
     ...(Object.keys(project?.code.assets || {}).length
-      ? ([{ id: 'assets', label: 'assets' }] as const)
+      ? ([{ id: 'assets', label: FILE_LABELS.assets }] as const)
       : []),
   ]
 

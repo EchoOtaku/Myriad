@@ -45,9 +45,8 @@ pub fn parse_install_source(source: &str) -> Result<InstallSource, InvalidInstal
 
 /// Where client `widgetCss` / `pageCss` bodies should land for direct install.
 ///
-/// Prefer declared `manifest.widgetStyles` / `pageStyles` paths when present
-/// (cssMode=separated). Otherwise treat the bodies as generated
-/// `widget.css` / `page.css` sidecars.
+/// Prefer declared `widget.styles` / `page.styles` paths when present.
+/// Otherwise treat the bodies as generated `widget.css` / `page.css` sidecars.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DirectCssChannels {
     pub widget_styles: Option<String>,

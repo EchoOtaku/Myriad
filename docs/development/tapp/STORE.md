@@ -533,7 +533,7 @@ REST 商店安装仍是 body `source: "store"` + `storeSource: catalogRef`（源
 | category 不匹配 | 索引与 Manifest 分类不一致 | 两边改成同一稳定 ID |
 | 缺 page styles / template | 索引漏 `page_styles` / `page_template` | 补路径；文件必须存在 |
 | 贴图/音频 404 | assets 未声明或路径不在 `assets/` | Manifest `assets` + 仓库文件与包根拼接规则 |
-| 入口 404 | `download.code` 与磁盘文件名不一致 | 对齐 `main.js` / `index.js` |
+| 入口 404 | `download.code` 与 `core.entry` 不是同一份文件 | 对齐 `core.js`（或你声明的 core 入口名）；其余层文件走 `download.modules` |
 | 装了旧版 | 浏览器或中间层缓存 | 强制刷新源；检查 `index` 与文件是否已推送 |
 | 大包无进度 / 卡住 | 未填 `size` 走服务端路径 | 索引填写真实 `size`（≥1MiB 走客户端） |
 

@@ -163,23 +163,22 @@ pub fn installed_widget_template_paths(
     out
 }
 
-/// Ordered page module file names from `manifest.pageModules` (array of strings).
-pub fn installed_page_module_names(manifest: &serde_json::Value) -> Option<Vec<String>> {
-    manifest
-        .get("pageModules")
-        .and_then(serde_json::Value::as_array)
-        .map(|values| {
-            values
-                .iter()
-                .filter_map(|value| value.as_str().map(String::from))
-                .collect::<Vec<_>>()
-        })
-        .filter(|names| !names.is_empty())
+/// Page exists if the `page` object is declared. Replaces the old `hasPage` flag.
+pub fn manifest_declares_page(manifest: &serde_json::Value) -> bool {
+    manifest.get("page").is_some()
 }
 
-/// Relative path under the install dir for a page module file name.
-pub fn installed_page_module_relative_path(name: &str) -> String {
-    format!("page/{name}")
+/// Shared layer is present when `core` is declared.
+pub fn manifest_declares_core(manifest: &serde_json::Value) -> bool {
+    manifest.get("core").is_some()
+}
+
+/// At least one widget is declared.
+pub fn manifest_declares_widgets(manifest: &serde_json::Value) -> bool {
+    manifest
+        .get("widgets")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|widgets| !widgets.is_empty())
 }
 
 /// Whether `path` is declared in a typed manifest's `assets` list.

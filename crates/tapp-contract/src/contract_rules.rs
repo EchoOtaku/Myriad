@@ -44,7 +44,6 @@ pub const MAX_HTTP_URL_LEN: usize = 2_048;
 pub const MAX_AUTHOR_EMAIL_LEN: usize = 320;
 pub const MAX_STORAGE_KEY_LEN: usize = 256;
 pub const MAX_TAPP_PERMISSIONS: usize = 64;
-pub const MAX_PAGE_MODULES: usize = 64;
 pub const MAX_BACKGROUND_REQUIREMENTS: usize = 16;
 pub const MAX_TAPP_SETTINGS: usize = 64;
 pub const MAX_TAPP_CREDENTIALS: usize = 16;

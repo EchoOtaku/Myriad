@@ -264,7 +264,7 @@ Tapp.widgets["my-widget"] = {
 最少注意：
 
 1. 商店 `index.json` 的 `download.code` 必须能下载到与 `core.entry` **同一份**入口代码（路径字符串不必相同）。
-2. Manifest 声明的 `styles` / `pageTemplate` / Widget 模板 / `pageStyles` 等，索引 `download` 表与磁盘文件必须齐全。
+2. Manifest 声明的 `core.styles` / `page.template` / `page.styles` / Widget 模板等，索引 `download` 表与磁盘文件必须齐全。非 core 的层文件走 `download.modules`。
 3. 索引与 Manifest 的 `version`、`category` 必须一致；`category` 用稳定用途 ID（见 [MANIFEST](MANIFEST.md#应用分类)）。
 4. 二进制贴图等走 `manifest.assets`，**不要**写进 `download` 表；路径须在包根下的 `assets/`。
 5. 大包在索引填写真实 `size`（字节），≥ 1 MiB 时宿主走客户端下载以显示进度。
@@ -401,7 +401,7 @@ Widget: render() 里 Tapp.storage.get(key)   （或 onChanged 局部更新）
 **2. core 拉数写 storage**
 
 ```javascript
-// main.js 的 core 段 — 三种模式都会加载
+// core.js — 三种模式都会先加载共享层
 // ⚠️ 只写 storage 即可；不要在 core/Page/headless 里调用 Tapp.widget.invalidate
 //    （该方法仅存在于 Widget 沙箱，见下表）
 async function pullFeed() {

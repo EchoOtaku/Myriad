@@ -126,7 +126,7 @@ describe('tapp docs gating consistency', () => {
 
   it('store package path helpers match documented examples', () => {
     assert.equal(
-      storePackageRoot('apps/com.myriad.doudizhu/main.js'),
+      storePackageRoot('apps/com.myriad.doudizhu/core.js'),
       'apps/com.myriad.doudizhu',
     )
     assert.equal(

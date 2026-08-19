@@ -198,6 +198,25 @@ describe('Tapp project core', () => {
     assert.ok(report.permissions.missing.some(({ permission }) => permission === 'storage:write'))
   })
 
+  it('rejects retired layer-contract fields as unknown', async () => {
+    const root = await temporaryDirectory('retired-layer-fields')
+    await createProject(root, { type: 'page' })
+    const manifestPath = join(root, 'manifest.json')
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
+    manifest.main = 'main.js'
+    manifest.hasPage = true
+    manifest.pageModules = ['extra.js']
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+
+    const report = await inspectProject(root)
+    const messages = report.diagnostics
+      .filter(({ code }) => code === 'unknown-manifest-field')
+      .map(({ message }) => message)
+    assert.ok(messages.some((message) => message.includes('main')))
+    assert.ok(messages.some((message) => message.includes('hasPage')))
+    assert.ok(messages.some((message) => message.includes('pageModules')))
+  })
+
   it('rejects retired storage permission instead of satisfying storage writes', async () => {
     const root = await temporaryDirectory('retired-storage-permission')
     await createProject(root, { type: 'page' })

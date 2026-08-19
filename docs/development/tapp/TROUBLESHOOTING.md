@@ -518,7 +518,7 @@ HTTP 声明式 API 都需要，不只是 `protected`）：
 2. 后端容器访问不了 raw.githubusercontent.com 等外网时 store 安装失败；宿主可能回退为
    浏览器下载 + REST `source: "direct"`。
 3. 上传 `.tapp` 走 `install-file`；SDK 内联包用 `tappList.install({ source: "direct",
-   manifest, code, ... })`（见 [API 参考 · Tapp 列表](./API_REFERENCE.md#tapp-列表-api)）。
+   manifest, modules, ... })`（见 [API 参考 · Tapp 列表](./API_REFERENCE.md#tapp-列表-api)）。
 
 **解决方案**：
 

@@ -20,7 +20,7 @@ const instance: TappInstance = {
     id: 'com.example.sec',
     name: 'Sec',
     version: '1.0.0',
-    main: 'main.js',
+    core: { entry: 'core.js' },
     permissions: [],
     category: 'utility',
   },

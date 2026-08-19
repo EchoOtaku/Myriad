@@ -4566,9 +4566,9 @@ async fn execute_tapp_list(
                 "description": tapp.description,
                 "icon": tapp.icon,
                 "status": format!("{:?}", tapp.status).to_lowercase(),
-                "hasCore": tapp.manifest.get("hasCore").and_then(Value::as_bool).unwrap_or(false),
-                "hasPage": tapp.manifest.get("hasPage").and_then(Value::as_bool).unwrap_or(false),
-                "hasWidget": tapp.manifest.get("hasWidget").and_then(Value::as_bool).unwrap_or(false),
+                "hasCore": crate::services::tapp_package_read::manifest_declares_core(&tapp.manifest),
+                "hasPage": crate::services::tapp_package_read::manifest_declares_page(&tapp.manifest),
+                "hasWidget": crate::services::tapp_package_read::manifest_declares_widgets(&tapp.manifest),
                 "backgroundRequirements": tapp.manifest
                     .get("backgroundRequirements")
                     .cloned()

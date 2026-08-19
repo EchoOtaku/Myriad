@@ -8,15 +8,21 @@ use crate::models::entities::{tapp_scheduled_tasks, tapp_task_executions, tapp_w
 use crate::services::agent::ui_analysis::{
     build_breadcrumb, build_navigate_full_path, detect_page_type, extract_json_from_response,
     extract_route_context, generate_suggested_actions, get_page_name, is_safe_agent_tapp_id,
-    is_valid_page_interact_action, is_valid_router_path, normalize_music_control,
-    parse_html_elements, parse_html_structure, parse_i18n, parse_js_events, parse_js_functions,
-    parse_playlist_id_param, resolve_window_close_target, resolve_window_focus_target,
-    router_can_go_back,
+    is_valid_page_interact_action, is_valid_router_path, join_layer_analysis_sources,
+    normalize_music_control, parse_html_elements, parse_html_structure, parse_i18n, parse_js_events,
+    parse_js_functions, parse_playlist_id_param, resolve_window_close_target,
+    resolve_window_focus_target, router_can_go_back,
 };
+use crate::services::data_paths::paths;
+use crate::services::tapp_package_read::{
+    installed_core_entry, installed_page_entry, installed_text_resource_plan,
+};
+use crate::services::tapp_validation::validate_resource_path;
 use crate::services::tapp_storage::{sandbox_storage_count, sandbox_storage_entries};
 use sea_orm::{ColumnTrait, EntityTrait, ExprTrait, PaginatorTrait, QueryFilter, QueryOrder};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::path::Path;
 
 /// 执行 UI 控制能力
 pub async fn execute(
@@ -46,6 +52,18 @@ pub async fn execute(
 }
 
 // Tapp UI 相关
+
+async fn read_declared_text(tapp_dir: &Path, relative: Option<String>) -> String {
+    let Some(relative) = relative else {
+        return String::new();
+    };
+    if validate_resource_path(&relative).is_err() {
+        return String::new();
+    }
+    tokio::fs::read_to_string(tapp_dir.join(relative))
+        .await
+        .unwrap_or_default()
+}
 
 /// 执行 Tapp UI 结构解析
 async fn execute_tapp_ui_analysis(
@@ -81,19 +99,18 @@ async fn execute_tapp_ui_analysis(
         .map_err(|e| format!("Failed to fetch tapp: {}", e))?
         .ok_or("Tapp not found")?;
 
-    // 构建文件路径
-    let base_path = format!("data/tapps/{}/{}", user_id, tapp_id);
+    let tapp_dir = paths().tapp_user_dir(user_id).join(tapp_id);
+    let html_relative = installed_text_resource_plan(&tapp.manifest)
+        .page_template
+        .filter(|path| validate_resource_path(path).is_ok())
+        .unwrap_or_else(|| "page.html".to_string());
+    let html_content = read_declared_text(&tapp_dir, Some(html_relative)).await;
 
-    // 读取 HTML 文件
-    let html_content = tokio::fs::read_to_string(format!("{}/page.html", base_path))
-        .await
-        .unwrap_or_default();
-
-    // 读取 JS 文件
     let js_content = if include_code {
-        tokio::fs::read_to_string(format!("{}/main.js", base_path))
-            .await
-            .unwrap_or_default()
+        join_layer_analysis_sources([
+            read_declared_text(&tapp_dir, installed_core_entry(&tapp.manifest)).await,
+            read_declared_text(&tapp_dir, installed_page_entry(&tapp.manifest)).await,
+        ])
     } else {
         String::new()
     };
@@ -806,10 +823,7 @@ async fn execute_tapp_windows_query(
     let available_tapps: Vec<Value> = all_tapps
         .iter()
         .filter(|t| {
-            t.manifest
-                .get("hasPage")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false)
+            crate::services::tapp_package_read::manifest_declares_page(&t.manifest)
         })
         .map(|t| {
             json!({
@@ -880,11 +894,7 @@ async fn execute_tapp_window_open(
 
     let tapp = tapp.ok_or("Tapp not found")?;
 
-    let has_page = tapp
-        .manifest
-        .get("hasPage")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let has_page = crate::services::tapp_package_read::manifest_declares_page(&tapp.manifest);
     if !has_page {
         return Err(format!(
             "Tapp '{}' does not have a page component",
