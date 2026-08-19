@@ -129,6 +129,34 @@ describe('validatePlaygroundPackage', () => {
     }
   })
 
+  it('does not require a core layer unless backgroundRequirements are declared', () => {
+    const { manifest, code } = validPageProject()
+    const result = validatePlaygroundPackage({
+      manifest: { ...manifest, core: undefined },
+      code: { ...code, core: '', styles: '' },
+    })
+    assert.equal(result.ok, true)
+  })
+
+  it('requires core when backgroundRequirements are declared without core code', () => {
+    const { manifest, code } = validPageProject()
+    const result = validatePlaygroundPackage({
+      manifest: {
+        ...manifest,
+        core: undefined,
+        backgroundRequirements: ['scheduler'],
+      },
+      code: { ...code, core: '' },
+    })
+    assert.equal(result.ok, false)
+    if (!result.ok) {
+      assert.ok(
+        result.errors.some((e) => e.includes('backgroundRequirements')),
+        `expected core/background error, got: ${result.errors.join('; ')}`,
+      )
+    }
+  })
+
   it('rejects project with neither page nor widgets', () => {
     const { manifest, code } = validPageProject()
     const result = validatePlaygroundPackage({

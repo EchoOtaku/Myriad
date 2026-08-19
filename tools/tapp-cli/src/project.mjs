@@ -1358,8 +1358,8 @@ button { width: fit-content; padding: 8px 12px; }
   if (hasWidget) {
     await mkdir(join(root, 'templates'), { recursive: true })
     const template = `<div data-widget-root="true" class="widget"></div>\n`
-    await writeFile(join(root, 'templates/widget-2x2.html'), template)
-    await writeFile(join(root, 'templates/widget-4x2.html'), template)
+    await writeFile(join(root, 'templates/starter-2x2.html'), template)
+    await writeFile(join(root, 'templates/starter-4x2.html'), template)
   }
   return { root, type, manifest }
 }

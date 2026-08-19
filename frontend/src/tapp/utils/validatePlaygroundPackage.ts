@@ -210,8 +210,11 @@ export function validatePlaygroundPackage(
   // 只看 normalize 结果就分不出「没打算要页面」和「声明了却没写内容」。
   const hasPage = declared.page !== undefined || manifest.page !== undefined
 
-  if (!manifest.core?.entry) {
-    push('Playground requires a core layer')
+  const declaredBackground =
+    (declared.backgroundRequirements?.length ?? 0) > 0 ||
+    (manifest.backgroundRequirements?.length ?? 0) > 0
+  if (declaredBackground && !declared.core?.entry && !code.core?.trim()) {
+    push('Tapp declaring backgroundRequirements must declare a core layer')
   }
 
   // Dual mode: Page and/or Widget-only. Reject empty projects (neither).
@@ -385,12 +388,12 @@ export function validatePlaygroundPackage(
     }
   }
 
-  // core 层入口必须带上源码，空文件装上去也跑不出东西
+  // 安装契约只在后台常驻时强制 core。空 core.js 对 Page/Widget 预览无害。
   const coreEntry = manifest.core?.entry
-  if (coreEntry && fileExists(files, coreEntry)) {
+  if (declaredBackground && coreEntry && fileExists(files, coreEntry)) {
     const source = files[coreEntry]
     if (typeof source === 'string' && source.trim().length === 0) {
-      push('Tapp core entry is empty (missing core code)')
+      push('Tapp declaring backgroundRequirements must declare a core layer')
     }
   }
 

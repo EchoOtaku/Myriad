@@ -910,8 +910,8 @@ Tapp.storage.get(key)
       'page.html',
       'page/index.js',
       'styles.css',
-      'templates/widget-2x2.html',
-      'templates/widget-4x2.html',
+      'templates/starter-2x2.html',
+      'templates/starter-4x2.html',
       'widget/index.js',
     ])
     assert.equal(
