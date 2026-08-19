@@ -6,7 +6,7 @@
 
 param(
     [Parameter(Position = 0, Mandatory = $false)]
-    [ValidateSet("start", "stop", "restart", "clean", "status", "logs", "help", "menu", "monitor", "tui")]
+    [ValidateSet("start", "stop", "restart", "clean", "status", "logs", "help", "menu", "monitor", "tui", "doctor", "db-setup")]
     [string]$Command = "help",
     
     [ValidateSet("backend", "frontend", "updater", "database", "all", "all-updater")]
@@ -17,8 +17,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Get project root (scripts/dev -> repo root)
-$projectRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+# Get project root (scripts/ -> repo root)
+$projectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $devUpdaterDir = Join-Path $projectRoot ".dev-updater"
 $devUpdaterTokenDefault = "9xQ3vN8mP2rT5wY7zA1bC4dF6hJ8kL0n"
 $devUpdaterGatewaySecretDefault = "dev-updater-gateway-secret-32chars!!"
@@ -136,6 +136,47 @@ function Stop-ProjectProcesses {
         }
     }
     return $count
+}
+
+function Get-DevDatabaseUrl {
+    if ($env:DATABASE_URL) {
+        return $env:DATABASE_URL
+    }
+    $dbUrl = "postgres://myriad:myriad_dev_password@localhost:5432/myriad"
+    $envFile = Join-Path $projectRoot "backend\.env"
+    if (Test-Path $envFile) {
+        $line = Select-String -Path $envFile -Pattern '^\s*DATABASE_URL\s*=' | Select-Object -Last 1
+        if ($line) {
+            $dbUrl = ($line.Line -replace '^\s*DATABASE_URL\s*=\s*', '').Trim('"').Trim("'")
+        }
+    }
+    return $dbUrl
+}
+
+function Get-DevDatabaseParts {
+    $dbUrl = Get-DevDatabaseUrl
+    $uri = $dbUrl -replace '^postgres(ql)?://', 'http://'
+    $parsed = [Uri]$uri
+    $userInfo = $parsed.UserInfo.Split(':', 2)
+    [pscustomobject]@{
+        Url      = $dbUrl
+        User     = $userInfo[0]
+        Password = if ($userInfo.Count -gt 1) { $userInfo[1] } else { "" }
+        Host     = $parsed.Host
+        Port     = $parsed.Port
+        Name     = $parsed.AbsolutePath.Trim('/')
+    }
+}
+
+function Test-ListenPort {
+    param([int]$Port)
+    try {
+        $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+        return [bool]$conns
+    }
+    catch {
+        return $false
+    }
 }
 
 function Get-DevUpdaterToken {
@@ -429,7 +470,7 @@ function Start-Services {
 
     if (($Service -eq "all" -or $Service -eq "all-updater") -and -not $backendReady) {
         Write-Error "Frontend was not started to avoid 127.0.0.1:1103 ECONNREFUSED."
-        Write-Info "Fix the backend error first, then run: .\dev.ps1 start -Service frontend"
+        Write-Info "Fix the backend error first, then run: .\scripts\dev.ps1 start -Service frontend"
         return
     }
 
@@ -617,7 +658,7 @@ END `$`$;
     Write-Host ""
     Write-Success "Cleanup Complete!"
     Write-Host "`nNext steps:"
-    Write-Host "  1. Run '.\dev.ps1 start' to start services" -ForegroundColor White
+    Write-Host "  1. Run '.\scripts\dev.ps1 start' to start services" -ForegroundColor White
     Write-Host "  2. Complete setup wizard at http://localhost:1102/setup" -ForegroundColor White
     Write-Host ""
 }
@@ -706,23 +747,13 @@ function Show-Monitor {
             Write-Host ""
             Write-Host "Database" -ForegroundColor Yellow
             if (Get-Command psql -ErrorAction SilentlyContinue) {
-                $envFile = Join-Path $projectRoot "backend\.env"
-                $dbUrl = "postgres://myriad:myriad_dev_password@localhost:5432/myriad"
-                if (Test-Path $envFile) {
-                    $line = Select-String -Path $envFile -Pattern '^\s*DATABASE_URL\s*=' | Select-Object -Last 1
-                    if ($line) {
-                        $dbUrl = ($line.Line -replace '^\s*DATABASE_URL\s*=\s*', '').Trim('"').Trim("'")
-                    }
-                }
-                $uri = $dbUrl -replace '^postgres(ql)?://', 'http://'
                 try {
-                    $parsed = [Uri]$uri
-                    $userInfo = $parsed.UserInfo.Split(':', 2)
-                    $env:PGPASSWORD = if ($userInfo.Count -gt 1) { $userInfo[1] } else { "" }
-                    $size = & psql -w -h $parsed.Host -p $parsed.Port -U $userInfo[0] -d $parsed.AbsolutePath.Trim('/') -tAc "SELECT pg_size_pretty(pg_database_size(current_database()))" 2>$null
-                    $tables = & psql -w -h $parsed.Host -p $parsed.Port -U $userInfo[0] -d $parsed.AbsolutePath.Trim('/') -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'" 2>$null
+                    $db = Get-DevDatabaseParts
+                    $env:PGPASSWORD = $db.Password
+                    $size = & psql -w -h $db.Host -p $db.Port -U $db.User -d $db.Name -tAc "SELECT pg_size_pretty(pg_database_size(current_database()))" 2>$null
+                    $tables = & psql -w -h $db.Host -p $db.Port -U $db.User -d $db.Name -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'" 2>$null
                     if ($size) {
-                        Write-Host "  $($userInfo[0])@$($parsed.Host):$($parsed.Port)$($parsed.AbsolutePath)  $size  $tables tables" -ForegroundColor Gray
+                        Write-Host "  $($db.User)@$($db.Host):$($db.Port)/$($db.Name)  $size  $tables tables" -ForegroundColor Gray
                     }
                     else {
                         Write-Host "  not reachable via psql" -ForegroundColor DarkGray
@@ -748,6 +779,144 @@ function Show-Monitor {
 }
 
 # ====================
+# DOCTOR Command
+# ====================
+function Invoke-Doctor {
+    Write-Header "Myriad Dev — doctor"
+    $missing = 0
+
+    Write-Host "Toolchain" -ForegroundColor Yellow
+    foreach ($item in @(
+            @{ Name = "rustc"; Hint = "install Rust: https://rustup.rs" },
+            @{ Name = "cargo"; Hint = "install Rust: https://rustup.rs" },
+            @{ Name = "node"; Hint = "Node 20+ required" },
+            @{ Name = "pnpm"; Hint = "run 'corepack enable'" },
+            @{ Name = "psql"; Hint = "install PostgreSQL client tools" }
+        )) {
+        $cmd = Get-Command $item.Name -ErrorAction SilentlyContinue
+        if ($cmd) {
+            $ver = (& $item.Name --version 2>$null | Select-Object -First 1)
+            if (-not $ver) { $ver = "ok" }
+            Write-Success ("{0,-8} {1}" -f $item.Name, $ver)
+        }
+        else {
+            Write-Error "$($item.Name) not found — $($item.Hint)"
+            $missing += 1
+        }
+    }
+
+    Write-Host ""
+    Write-Host "Database" -ForegroundColor Yellow
+    try {
+        $db = Get-DevDatabaseParts
+        Write-Host "  $($db.User)@$($db.Host):$($db.Port)/$($db.Name)" -ForegroundColor Gray
+        if (Get-Command psql -ErrorAction SilentlyContinue) {
+            $env:PGPASSWORD = $db.Password
+            $ok = & psql -w -h $db.Host -p $db.Port -U $db.User -d $db.Name -tAc "SELECT 1" 2>$null
+            if ($ok) {
+                Write-Success "reachable"
+            }
+            else {
+                Write-Error "not reachable — start PostgreSQL, then: .\scripts\dev.ps1 db-setup"
+            }
+        }
+        else {
+            Write-Host "  psql not on PATH — cannot verify" -ForegroundColor DarkGray
+        }
+    }
+    catch {
+        Write-Error "Could not parse DATABASE_URL"
+    }
+
+    Write-Host ""
+    Write-Host "Config" -ForegroundColor Yellow
+    $envFile = Join-Path $projectRoot "backend\.env"
+    if (Test-Path $envFile) {
+        Write-Success "backend/.env present"
+    }
+    else {
+        Write-Host "  backend/.env missing — it will be generated on start" -ForegroundColor Yellow
+    }
+
+    Write-Host ""
+    Write-Host "Ports" -ForegroundColor Yellow
+    foreach ($port in 1103, 1102) {
+        if (Test-ListenPort -Port $port) {
+            Write-Host "  :$port in use" -ForegroundColor Yellow
+        }
+        else {
+            Write-Success ":$port free"
+        }
+    }
+
+    Write-Host ""
+    if ($missing -eq 0) {
+        Write-Success "Ready."
+        return
+    }
+    Write-Error "Missing prerequisites (see above)."
+}
+
+# ====================
+# DB-SETUP Command
+# ====================
+function Invoke-PsqlAdmin {
+    param([string]$Sql)
+    if ($env:MYRIAD_PSQL_ADMIN) {
+        $parts = @($env:MYRIAD_PSQL_ADMIN -split '\s+')
+        & $parts[0] @($parts[1..($parts.Length - 1)]) -v ON_ERROR_STOP=1 -tAc $Sql
+        return
+    }
+    $db = Get-DevDatabaseParts
+    & psql -w -U postgres -h $db.Host -p $db.Port -d postgres -v ON_ERROR_STOP=1 -tAc $Sql
+}
+
+function Invoke-DbSetup {
+    if (-not (Get-Command psql -ErrorAction SilentlyContinue)) {
+        Write-Error "psql not found — install the PostgreSQL client tools"
+        return
+    }
+
+    try {
+        $db = Get-DevDatabaseParts
+    }
+    catch {
+        Write-Error "Could not parse DATABASE_URL"
+        return
+    }
+
+    Write-Header "Creating role '$($db.User)' and database '$($db.Name)' on $($db.Host):$($db.Port)"
+    if ($env:MYRIAD_PSQL_ADMIN) {
+        Write-Info "Using MYRIAD_PSQL_ADMIN"
+    }
+
+    $roleLit = $db.User.Replace("'", "''")
+    $passLit = $db.Password.Replace("'", "''")
+    $dbLit = $db.Name.Replace("'", "''")
+
+    $roleExists = Invoke-PsqlAdmin "SELECT 1 FROM pg_roles WHERE rolname = '$roleLit'"
+    if (-not $roleExists) {
+        Invoke-PsqlAdmin "CREATE ROLE `"$($db.User)`" WITH LOGIN PASSWORD '$passLit'" | Out-Null
+        Write-Success "Created role $($db.User)"
+    }
+    else {
+        Write-Info "Role $($db.User) already exists"
+    }
+
+    $dbExists = Invoke-PsqlAdmin "SELECT 1 FROM pg_database WHERE datname = '$dbLit'"
+    if (-not $dbExists) {
+        Invoke-PsqlAdmin "CREATE DATABASE `"$($db.Name)`" WITH OWNER = `"$($db.User)`" ENCODING = 'UTF8' LC_COLLATE = 'C' LC_CTYPE = 'C' TEMPLATE = template0" | Out-Null
+        Write-Success "Created database $($db.Name)"
+    }
+    else {
+        Write-Info "Database $($db.Name) already exists"
+    }
+
+    Write-Success "Database ready — $($db.User)@$($db.Host):$($db.Port)/$($db.Name)"
+    Write-Info "Schema migrations run automatically on backend startup."
+}
+
+# ====================
 # LOGS Command
 # ====================
 function Show-Logs {
@@ -763,7 +932,7 @@ function Show-Logs {
 function Show-Help {
     Write-Host "Myriad Development Script" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "Usage: .\dev.ps1 <command> [options]" -ForegroundColor White
+    Write-Host "Usage: .\scripts\dev.ps1 <command> [options]" -ForegroundColor White
     Write-Host ""
     Write-Host "Commands:" -ForegroundColor Yellow
     Write-Host "  start [-Service <service>]   - Start services (default: all)" -ForegroundColor White
@@ -772,22 +941,26 @@ function Show-Help {
     Write-Host "  clean [-Force]               - Clean build files and database" -ForegroundColor White
     Write-Host "  status                       - Show service status" -ForegroundColor White
     Write-Host "  monitor                      - Live dashboard (processes + database)" -ForegroundColor White
+    Write-Host "  doctor                       - Check toolchain, ports and database" -ForegroundColor White
+    Write-Host "  db-setup                     - Create local PostgreSQL role + database" -ForegroundColor White
     Write-Host "  logs                         - Show logs info" -ForegroundColor White
     Write-Host "  help                         - Show this help" -ForegroundColor White
     Write-Host ""
     Write-Host "Services: backend, frontend, updater, database, all, all-updater (default: all)" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Examples:" -ForegroundColor Yellow
-    Write-Host "  .\dev.ps1 start                      # Start DB + backend + frontend" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 start -Service all-updater # Start stack with updater harness" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 start -Service database    # Start postgres only" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 start -Service updater     # Start updater harness only" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 start -Service backend     # Start backend only" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 stop                       # Stop all (incl. DB)" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 restart -Service frontend  # Restart frontend" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 clean -Force               # Clean without prompt" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 status                     # Show status" -ForegroundColor Gray
-    Write-Host "  .\dev.ps1 monitor                    # Live dashboard (Ctrl+C to leave)" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 start                      # Start DB + backend + frontend" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 start -Service all-updater # Start stack with updater harness" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 start -Service database    # Start postgres only" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 start -Service updater     # Start updater harness only" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 start -Service backend     # Start backend only" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 doctor                     # Check prerequisites" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 db-setup                   # Create local role + database" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 stop                       # Stop all (incl. DB)" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 restart -Service frontend  # Restart frontend" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 clean -Force               # Clean without prompt" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 status                     # Show status" -ForegroundColor Gray
+    Write-Host "  .\scripts\dev.ps1 monitor                    # Live dashboard (Ctrl+C to leave)" -ForegroundColor Gray
     Write-Host ""
 }
 
@@ -810,10 +983,12 @@ function Show-InteractiveMenu {
         Write-Host "10. Live monitor" -ForegroundColor White
         Write-Host "11. Clean project" -ForegroundColor White
         Write-Host "12. Show logs info" -ForegroundColor White
+        Write-Host "13. Doctor (toolchain / ports / database)" -ForegroundColor White
+        Write-Host "14. Create local database (db-setup)" -ForegroundColor White
         Write-Host "0. Exit" -ForegroundColor Gray
         Write-Host ""
 
-        $choice = Read-Host "Select an option (0-12)"
+        $choice = Read-Host "Select an option (0-14)"
         
         switch ($choice) {
             "1" {
@@ -860,6 +1035,12 @@ function Show-InteractiveMenu {
             "12" {
                 Show-Logs
             }
+            "13" {
+                Invoke-Doctor
+            }
+            "14" {
+                Invoke-DbSetup
+            }
             "0" {
                 Write-Host ""
                 Write-Host "Goodbye!" -ForegroundColor Cyan
@@ -867,7 +1048,7 @@ function Show-InteractiveMenu {
             }
             default {
                 Write-Host ""
-                Write-Host "Invalid option. Please select 0-12" -ForegroundColor Red
+                Write-Host "Invalid option. Please select 0-14" -ForegroundColor Red
             }
         }
         
@@ -900,6 +1081,8 @@ else {
         "monitor" { Show-Monitor }
         "tui" { Show-Monitor }
         "logs" { Show-Logs }
+        "doctor" { Invoke-Doctor }
+        "db-setup" { Invoke-DbSetup }
         "help" { Show-Help }
     }
     

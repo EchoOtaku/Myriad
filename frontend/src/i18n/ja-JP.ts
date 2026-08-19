@@ -1103,7 +1103,7 @@ export const jaJP: TranslationKeys = {
     updaterErrNotConfigured:
       '開発環境では既定でアップデーターは起動しません。完全な更新フローを試すには production compose スタックを使うか、backend に MYRIAD_UPDATER_URL / UPDATE_TOKEN を設定してください。',
     updaterErrUpstream:
-      'アップデーターに接続できません（502/503）。開発環境では先に起動してください：./scripts/dev/dev.sh start updater',
+      'アップデーターに接続できません（502/503）。開発環境では先に起動してください：./scripts/dev.sh start updater',
     updaterDriftWarn:
       'このページはバージョン {build} のキャッシュですが、サーバーは {current} で稼働中です。',
     updaterDriftAction: 'ページを再読み込み',

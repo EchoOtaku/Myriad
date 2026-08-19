@@ -113,13 +113,13 @@ Myriad/
 
 ```bash
 # 生产
-bash scripts/docker/deploy.sh up
-bash scripts/docker/deploy.sh status
+bash scripts/extra/deploy.sh up
+bash scripts/extra/deploy.sh status
 
 # 开发（默认本机 PostgreSQL；`--docker` 改用 compose postgres）
-./scripts/dev/dev.sh            # 实时 TUI
-./scripts/dev/dev.sh start
-./scripts/dev/dev.sh status
+./scripts/dev.sh            # 实时 TUI
+./scripts/dev.sh start
+./scripts/dev.sh status
 ```
 
-Windows：`.\scripts\docker\deploy.ps1 up`、`.\scripts\dev\dev.ps1 start`。
+Windows 开发：`.\scripts\dev.ps1 start`。生产部署用 WSL / Git Bash 跑 `bash scripts/extra/deploy.sh up`。

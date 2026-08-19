@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TESTBED="${TESTBED:-/tmp/myriad-e2e}"
 # Prefer CARGO_TARGET_DIR when set (shared cache builds), else package-local target/.
 CARGO_TARGET="${CARGO_TARGET_DIR:-}"

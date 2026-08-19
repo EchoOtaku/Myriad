@@ -199,7 +199,7 @@ This creates:
 2. `target/release/myriad-backend` for the backend binary (workspace root `target/`).
 
 The default production deployment does not run these artifacts directly. It uses
-versioned Docker images through `docker-compose.yml` and `scripts/docker/deploy.sh`.
+versioned Docker images through `docker-compose.yml` and `scripts/extra/deploy.sh`.
 
 ## Database Setup
 
@@ -218,22 +218,13 @@ cargo run -p migration
 
 ### Build Images
 
-```powershell
-# Windows: build all services
-.\scripts\docker\build-and-push.ps1 -All
-
-# Build specific service
-.\scripts\docker\build-and-push.ps1 -BackendOnly
-.\scripts\docker\build-and-push.ps1 -FrontendOnly
-```
+Local verification of a Dockerfile:
 
 ```bash
-# Linux/macOS: build all services
-bash scripts/docker/build-and-push.sh --all
-
-# Build specific service
-bash scripts/docker/build-and-push.sh --backend-only
-bash scripts/docker/build-and-push.sh --frontend-only
+docker build -f docker/Dockerfile.backend -t myriad-backend .
+docker build -f docker/Dockerfile.frontend -t myriad-frontend .
+docker build -f proxy/Dockerfile -t myriad-proxy ./proxy
+docker build -f updater/Dockerfile -t myriad-updater ./updater
 ```
 
 Production releases should normally be built by GitHub Actions `release.yml`
@@ -265,15 +256,12 @@ Dev packaging commit-title flags: `-p` (package) · `-full` (package + force inf
 
 ### Docker Build Options
 
-```powershell
+```bash
 # Build without cache
-.\scripts\docker\build-and-push.ps1 -All -NoBuildCache
+docker build --no-cache -f docker/Dockerfile.backend -t myriad-backend .
 
-# Build with specific Docker file
-docker build -f docker/Dockerfile.backend -t myriad-backend .
-
-# Build and push to registry
-.\scripts\docker\build-and-push.ps1 -All -Push -Username your-registry-user
+# Push a locally tagged image
+docker push your-registry/myriad-backend:tag
 ```
 
 ## Optimization Tips
@@ -393,7 +381,7 @@ After building:
 1. Configure `.env` files
 2. Set up database
 3. Run tests: `cargo test` (backend), `pnpm test` (frontend)
-4. Start development: `./scripts/dev/dev.sh start` or `.\scripts\dev\dev.ps1 start`
+4. Start development: `./scripts/dev.sh start` or `.\scripts\dev.ps1 start`
    - Default is a locally installed PostgreSQL (`doctor` checks prerequisites,
      `db-setup` creates the role/database). Pass `--docker` to use compose
      postgres instead.

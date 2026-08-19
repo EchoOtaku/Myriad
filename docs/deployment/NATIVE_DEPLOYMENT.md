@@ -538,9 +538,9 @@ reachable from the internet.
 
 ## See also
 
-- `scripts/dev/dev.sh start` — Docker-free **development** loop
+- `scripts/dev.sh start` — Docker-free **development** loop
   (`cargo run` + `pnpm dev` against a local PostgreSQL; pass `--docker` for
-  compose postgres). `scripts/native/assemble.sh` builds the deploy bundle
+  compose postgres). `scripts/extra/assemble.sh` builds the deploy bundle
   described above.
 - [DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md) — the containerized topology
 - [SETUP_BOOTSTRAP.md](./SETUP_BOOTSTRAP.md) — setup passphrase

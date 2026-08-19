@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 TMPROOT="$(mktemp -d -t myriad-updater-test-XXXXXX)"
 trap 'rm -rf "$TMPROOT"' EXIT
 

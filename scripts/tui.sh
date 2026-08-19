@@ -32,6 +32,8 @@ TUI_CACHE_FE_STATE="stopped"
 TUI_CACHE_FE_DETAIL="—"
 TUI_CACHE_UP_STATE="stopped"
 TUI_CACHE_UP_DETAIL="—"
+TUI_EXPECT_BE_UNTIL=0
+TUI_EXPECT_FE_UNTIL=0
 
 TUI_TAB_COUNT=5
 TUI_LOG_COUNT=4
@@ -151,9 +153,9 @@ tui_fmt_rss() {
 
 tui_dot() {
     case "$1" in
-        running|healthy|up) echo -e "${GREEN}●${NC}" ;;
-        starting|degraded)  echo -e "${YELLOW}●${NC}" ;;
-        *)                  echo -e "${DIM}○${NC}" ;;
+        running|healthy|up) echo -e "${GREEN}*${NC}" ;;
+        starting|degraded)  echo -e "${YELLOW}+${NC}" ;;
+        *)                  echo -e "${DIM}.${NC}" ;;
     esac
 }
 
@@ -422,9 +424,11 @@ tui_refresh_procs() {
         [[ -n "$pg" ]] && tui_add_pid_tree postgres $pg
     fi
 
-    tui_add_container "myriad-updater-dev" updater
-    tui_add_container "myriad-updater-gateway-dev" gateway
-    tui_add_container "myriad-docker-guard-dev" guard
+    if [[ "$USE_NATIVE" -eq 0 ]]; then
+        tui_add_container "myriad-updater-dev" updater
+        tui_add_container "myriad-updater-gateway-dev" gateway
+        tui_add_container "myriad-docker-guard-dev" guard
+    fi
 
     if [[ $TUI_SEL -ge $TUI_PROC_COUNT && $TUI_PROC_COUNT -gt 0 ]]; then
         TUI_SEL=$((TUI_PROC_COUNT - 1))
@@ -432,7 +436,8 @@ tui_refresh_procs() {
 }
 
 tui_refresh_status() {
-    local svc deep="$TUI_STATUS_DIRTY"
+    local svc pids now
+    now="$(date +%s)"
     parse_db_url || true
     for svc in database backend frontend updater; do
         TUI_S_STATE="stopped"
@@ -451,23 +456,32 @@ tui_refresh_status() {
                 TUI_CACHE_DB_DETAIL="$TUI_S_DETAIL"
                 ;;
             backend)
-                if backend_health_ok; then
-                    TUI_S_STATE="healthy"
-                elif backend_port_in_use; then
-                    TUI_S_STATE="starting"
-                elif [[ "$deep" -eq 1 && -n "$(list_backend_pids)" ]]; then
-                    TUI_S_STATE="starting"
+                # Port / compiled binary are the truth. Do not wait on /health.
+                if backend_port_in_use || backend_binary_up; then
+                    TUI_S_STATE="running"
+                    TUI_S_DETAIL=":${BACKEND_PORT}"
+                    TUI_EXPECT_BE_UNTIL=0
+                else
+                    pids="$(list_backend_pids || true)"
+                    if [[ -n "$pids" ]] || [[ "$now" -lt "${TUI_EXPECT_BE_UNTIL:-0}" ]]; then
+                        TUI_S_STATE="starting"
+                        TUI_S_DETAIL="cargo"
+                    fi
                 fi
                 TUI_CACHE_BE_STATE="$TUI_S_STATE"
                 TUI_CACHE_BE_DETAIL="$TUI_S_DETAIL"
                 ;;
             frontend)
-                if frontend_health_ok; then
-                    TUI_S_STATE="up"
-                elif frontend_port_in_use; then
-                    TUI_S_STATE="starting"
-                elif [[ "$deep" -eq 1 && -n "$(list_frontend_pids)" ]]; then
-                    TUI_S_STATE="starting"
+                if frontend_port_in_use; then
+                    TUI_S_STATE="running"
+                    TUI_S_DETAIL=":${FRONTEND_PORT}"
+                    TUI_EXPECT_FE_UNTIL=0
+                else
+                    pids="$(list_frontend_pids || true)"
+                    if [[ -n "$pids" ]] || [[ "$now" -lt "${TUI_EXPECT_FE_UNTIL:-0}" ]]; then
+                        TUI_S_STATE="starting"
+                        TUI_S_DETAIL="pnpm"
+                    fi
                 fi
                 TUI_CACHE_FE_STATE="$TUI_S_STATE"
                 TUI_CACHE_FE_DETAIL="$TUI_S_DETAIL"
@@ -477,7 +491,7 @@ tui_refresh_status() {
                     TUI_S_STATE="n/a"
                     TUI_S_DETAIL="docker only"
                 elif get_service_status updater; then
-                    if updater_health_ok; then TUI_S_STATE="healthy"; else TUI_S_STATE="starting"; fi
+                    if updater_health_ok; then TUI_S_STATE="running"; else TUI_S_STATE="starting"; fi
                     TUI_S_DETAIL="http://127.0.0.1:1101  gateway :1104"
                 fi
                 TUI_CACHE_UP_STATE="$TUI_S_STATE"
@@ -509,7 +523,7 @@ tui_draw_list() {
             printf '  %b%s%b\n' "$DIM" "$(tui_hline "$rule_w")" "$NC"
         fi
         if [[ $i -eq $TUI_SEL ]]; then
-            printf '  %b▸ %s%b\n' "$BRIGHT_CYAN" "$($labelfn "$id")" "$NC"
+            printf '  %b> %s%b\n' "$BRIGHT_CYAN" "$($labelfn "$id")" "$NC"
         else
             printf '    %s\n' "$($labelfn "$id")"
         fi
@@ -568,11 +582,11 @@ tui_draw_footer() {
         keys=""
     else
         case "$TUI_TAB" in
-            0) hint="↑↓ menu  ↵ run  s/x/r  a start-all  K stop-all" ;;
-            1) hint="↑↓ select  x stop  X kill  r refresh" ;;
-            2) hint="s start  x stop  p psql  Tools → db-setup" ;;
-            3) hint="← → source  ↑↓/PgUp scroll  G tail" ;;
-            4) hint="↑↓ select  ↵ run" ;;
+            0) hint="up/dn menu  Enter run  s/x/r  a start-all  K stop-all" ;;
+            1) hint="up/dn select  x stop  X kill  r refresh" ;;
+            2) hint="s start  x stop  p psql  Tools -> db-setup" ;;
+            3) hint="left/right source  up/dn/PgUp scroll  G tail" ;;
+            4) hint="up/dn select  Enter run" ;;
         esac
     fi
     printf '%b%s%b\n' "$DIM" "$(tui_hline)" "$NC"
@@ -702,7 +716,7 @@ tui_draw_overview_compact() {
 
 tui_draw_overview() {
     parse_db_url || true
-    [[ "$TUI_STATUS_DIRTY" -eq 1 ]] && tui_refresh_status
+    tui_refresh_status
     tui_logo_init || true
 
     if tui_overview_fits_mark; then
@@ -730,7 +744,7 @@ tui_draw_overview() {
 
 tui_draw_processes() {
     if [[ $TUI_PROC_COUNT -eq 0 ]]; then
-        printf '\n  %bNo Myriad processes.%b  Overview → Start all.\n' "$DIM" "$NC"
+        printf '\n  %bNo Myriad processes.%b  Overview -> Start all.\n' "$DIM" "$NC"
         return
     fi
     printf '  %s\n' "$(tui_pad "SVC" 9)$(tui_pad "ID" 16)$(tui_pad "RSS" 8)$(tui_pad "TIME" 10)CMD"
@@ -755,13 +769,13 @@ tui_draw_processes() {
         [[ "$kids" =~ ^[1-9] ]] && shown="$cmd  +$kids"
         row="$(tui_pad "$kind" 9)$(tui_pad "$(tui_proc_id "$id")" 16)$(tui_pad "$rss" 8)$(tui_pad "$etime" 10)$(tui_trunc "$shown" $((TUI_COLS - 47)))"
         if [[ $i -eq $TUI_SEL ]]; then
-            printf ' %b▸%b %s\n' "$BRIGHT_CYAN" "$NC" "$row"
+            printf ' %b>%b %s\n' "$BRIGHT_CYAN" "$NC" "$row"
         else
             printf '   %s\n' "$row"
         fi
         i=$((i + 1))
     done <<< "$TUI_PROCS"
-    printf '\n  %b%d root(s)  x stop   X kill   postgres → Database stop%b\n' "$DIM" "$TUI_PROC_COUNT" "$NC"
+    printf '\n  %b%d root(s)  x stop   X kill   postgres -> Database stop%b\n' "$DIM" "$TUI_PROC_COUNT" "$NC"
 }
 
 tui_draw_database() {
@@ -774,7 +788,7 @@ tui_draw_database() {
     printf '\n  %s@%s:%s/%s   %s   %s\n' "$DB_USER" "$DB_HOST" "$DB_PORT" "$DB_NAME" "$src" "$reachable"
 
     if [[ "$reachable" != "yes" ]]; then
-        printf '\n  %bNot reachable.%b  Press s to start, x to stop, or Tools → Create role + database.\n' "$YELLOW" "$NC"
+        printf '\n  %bNot reachable.%b  Press s to start, x to stop, or Tools -> Create role + database.\n' "$YELLOW" "$NC"
         return
     fi
     if ! have psql; then
@@ -949,7 +963,7 @@ tui_draw_logs() {
         i=$((i + 1))
     done
     if [[ "$TUI_LOG_SKIP" -gt 0 ]]; then
-        printf '  %b↑%s%b' "$DIM" "$TUI_LOG_SKIP" "$NC"
+        printf '  %b^%s%b' "$DIM" "$TUI_LOG_SKIP" "$NC"
     fi
     echo ""
     printf '  %b%s%b\n' "$DIM" "$(tui_hline $((TUI_COLS - 4)))" "$NC"
@@ -1008,7 +1022,7 @@ tui_draw_tools() {
         id="$(tui_nth "$TUI_TOOL_IDS" $((i + 1)))"
         hint="$(tui_tool_hint "$id")"
         if [[ $i -eq $TUI_SEL ]]; then
-            printf '  %b▸ %s%b  %b%s%b\n' \
+            printf '  %b> %s%b  %b%s%b\n' \
                 "$BRIGHT_CYAN" "$(tui_pad "$(tui_tool_label "$id")" 24)" "$NC" \
                 "$DIM" "$hint" "$NC"
         else
@@ -1021,12 +1035,12 @@ tui_draw_tools() {
 
 tui_draw_help() {
     printf '\n  %bKeys%b\n' "$BOLD" "$NC"
-    printf '    1-5 / tab / ← →   switch tabs\n'
-    printf '    ↑ ↓ j k  g/G      move / first / last\n'
-    printf '    s / x / r         start / stop / restart\n'
-    printf '    a / K             start-all / stop-all\n'
-    printf '    p                 psql     ?/h help   q quit\n'
-    printf '    Logs              ↑↓ / PgUp PgDn scroll   G tail\n'
+    printf '    1-5 / tab / left right   switch tabs\n'
+    printf '    up/dn j k  g/G           move / first / last\n'
+    printf '    s / x / r                start / stop / restart\n'
+    printf '    a / K                    start-all / stop-all\n'
+    printf '    p                        psql     ?/h help   q quit\n'
+    printf '    Logs                     up/dn / PgUp PgDn scroll   G tail\n'
     printf '    Esc               dismiss message / close help\n'
     printf '\n  Mark is on the left from ~70×18. Starts write backend.log / frontend.log.\n'
 }
@@ -1050,19 +1064,29 @@ tui_idle_tick() {
         return 0
     fi
     tui_tick_clock
+    local boot=0
+    # Watch until the stack is up — a cached "stopped" must not sit for 30s.
+    case "$TUI_CACHE_BE_STATE|$TUI_CACHE_FE_STATE|$TUI_CACHE_DB_STATE" in
+        *starting*|*stopped*) boot=1 ;;
+    esac
     if [[ -n "$TUI_MSG" && "$TUI_MSG_ERR" -eq 0 && $TUI_IDLE -ge 8 ]]; then
         tui_set_msg ""
+        TUI_STATUS_DIRTY=1
         tui_render || true
         return 0
     fi
-    [[ $((TUI_IDLE % 3)) -eq 0 ]] || return 0
+    # 1s while any of db/be/fe is down or booting. All running: clock only, probe ~30s.
+    [[ $boot -eq 1 || $((TUI_IDLE % 30)) -eq 0 ]] || return 0
     case "$TUI_TAB" in
         0)
             local before after
             before="$(tui_status_fp)"
             tui_refresh_status || true
             after="$(tui_status_fp)"
-            [[ "$before" != "$after" ]] && tui_render || true
+            if [[ "$before" != "$after" ]]; then
+                [[ "$TUI_MSG" == Postgres* ]] && tui_set_msg "$(tui_live_msg)"
+                tui_render || true
+            fi
             ;;
         1)
             local before="$TUI_PROCS"
@@ -1157,6 +1181,7 @@ tui_set_tab() {
     TUI_CONFIRM_TEXT=""
     # Keep errors visible when jumping to Logs after a failed start.
     [[ "$TUI_MSG_ERR" -eq 1 ]] || tui_set_msg ""
+    [[ "$TUI_TAB" -eq 0 ]] && TUI_STATUS_DIRTY=1
     [[ "$TUI_TAB" -eq 1 ]] && tui_refresh_procs
     tui_restore_sel
     return 0
@@ -1257,42 +1282,73 @@ tui_note_change() {
     [[ "$TUI_TAB" -eq 1 ]] && tui_refresh_procs
 }
 
-tui_start_svc() {
+tui_live_msg() {
+    printf 'Postgres %s   Backend %s   Frontend %s' \
+        "${TUI_CACHE_DB_STATE:-?}" "${TUI_CACHE_BE_STATE:-?}" "${TUI_CACHE_FE_STATE:-?}"
+}
+
+tui_mark_launch() {
+    local until=$(( $(date +%s) + 45 ))
     case "$1" in
-        database) tui_run_quiet "Database starting" "Database starting" start_database ;;
-        backend)  tui_run_quiet "Backend launching → backend.log" "Backend launching → backend.log" start_backend ;;
-        frontend)
-            if [[ "$SKIP_INSTALL" -eq 0 && ! -d "$FRONTEND_DIR/node_modules" ]]; then
-                tui_run_quiet "Installing frontend dependencies…" "Frontend launching → frontend.log" start_frontend
-            else
-                tui_run_quiet "Frontend launching → frontend.log" "Frontend launching → frontend.log" start_frontend
-            fi
-            ;;
-        updater)  tui_run_quiet "Updater harness starting" "Updater harness starting" start_updater ;;
-        all)      tui_run_quiet "Starting database + stack…" "Stack launching → backend.log / frontend.log" start_all ;;
+        backend|all) TUI_EXPECT_BE_UNTIL=$until ;;
+    esac
+    case "$1" in
+        frontend|all) TUI_EXPECT_FE_UNTIL=$until ;;
+    esac
+}
+
+tui_clear_launch() {
+    case "$1" in
+        backend|all) TUI_EXPECT_BE_UNTIL=0 ;;
+    esac
+    case "$1" in
+        frontend|all) TUI_EXPECT_FE_UNTIL=0 ;;
+    esac
+}
+
+tui_set_live_msg() {
+    tui_refresh_status || true
+    tui_set_msg "$(tui_live_msg)"
+}
+
+tui_start_svc() {
+    tui_mark_launch "$1"
+    case "$1" in
+        database) tui_run_quiet "Starting database…" "" start_database ;;
+        backend)  tui_run_quiet "Starting backend…" "" start_backend ;;
+        frontend) tui_run_quiet "Starting frontend…" "" start_frontend ;;
+        updater)  tui_run_quiet "Starting updater…" "" start_updater ;;
+        all)      tui_run_quiet "Starting database + stack…" "" start_all ;;
         *)        tui_set_msg "cannot start $1" 1; return 0 ;;
     esac
     tui_note_change
+    [[ "$TUI_MSG_ERR" -eq 1 ]] && return 0
+    tui_set_live_msg
 }
 
 tui_stop_svc() {
+    tui_clear_launch "$1"
     case "$1" in
-        database) tui_run_quiet "Stopping database…" "Database stopped" stop_database ;;
-        backend)  tui_run_quiet "Stopping backend…" "Backend stopped" stop_backend ;;
-        frontend) tui_run_quiet "Stopping frontend…" "Frontend stopped" stop_frontend ;;
-        updater)  tui_run_quiet "Stopping updater…" "Updater stopped" stop_updater ;;
-        all)      tui_run_quiet "Stopping all services…" "All services stopped" stop_all ;;
-        *)        tui_set_msg "cannot stop $1" 1 ;;
+        database) tui_run_quiet "Stopping database…" "" stop_database ;;
+        backend)  tui_run_quiet "Stopping backend…" "" stop_backend ;;
+        frontend) tui_run_quiet "Stopping frontend…" "" stop_frontend ;;
+        updater)  tui_run_quiet "Stopping updater…" "" stop_updater ;;
+        all)      tui_run_quiet "Stopping all services…" "" stop_all ;;
+        *)        tui_set_msg "cannot stop $1" 1; return 0 ;;
     esac
     tui_note_change
+    [[ "$TUI_MSG_ERR" -eq 1 ]] && return 0
+    tui_set_live_msg
 }
 
 tui_restart_svc() {
     local svc="$1"
     [[ -n "$svc" ]] || return 0
     if [[ "$svc" == "all" ]]; then
-        tui_run_quiet "Restarting database + stack…" "Stack launching → backend.log / frontend.log" restart_all
+        tui_mark_launch all
+        tui_run_quiet "Restarting database + stack…" "" restart_all
         tui_note_change
+        [[ "$TUI_MSG_ERR" -eq 1 ]] || tui_set_live_msg
         return 0
     fi
     tui_stop_svc "$svc"
@@ -1362,7 +1418,7 @@ tui_run_tool() {
             parse_db_url || { tui_set_msg "bad DATABASE_URL" 1; return; }
             have psql || { tui_set_msg "psql not found" 1; return; }
             if ! db_reachable; then
-                tui_set_msg "Database is not reachable — s to start, or Tools → Create role + database" 1
+                tui_set_msg "Database is not reachable -- s to start, or Tools -> Create role + database" 1
                 return
             fi
             tui_suspend env PGPASSWORD="$DB_PASS" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME"

@@ -113,7 +113,7 @@ cp /path/to/repo/docs/deployment/examples/docker-compose.external-db.example.yml
 docker compose --env-file .env pull
 docker compose --env-file .env up -d
 # 或（若仍使用仓库脚本且 compose 文件名兼容）：
-# bash scripts/docker/deploy.sh up
+# bash scripts/extra/deploy.sh up
 ```
 
 > **1Panel**：用「编排」导入上述 compose + `.env` 即可。应用商店里的 Postgres 与 Myriad 栈 **分开** 创建；Myriad 栈内不要再勾选/附带 postgres 容器。网络互通见下一节。

@@ -86,7 +86,7 @@ cp .env.production.example .env
 # BASE_URL / FRONTEND_URL 填你的公网域名（联邦发现依赖 BASE_URL）
 # UPDATE_TOKEN / UPDATER_GATEWAY_SECRET 留空时由 deploy 脚本生成
 
-bash scripts/docker/deploy.sh up          # Windows: .\scripts\docker\deploy.ps1 up
+bash scripts/extra/deploy.sh up
 ```
 
 打开 `http://localhost`（或 `.env` 中的 `HTTP_PORT`），按引导完成初始化。
@@ -102,15 +102,15 @@ host HTTP_PORT → proxy → frontend:1102
 ### 本地开发
 
 ```bash
-./scripts/dev/dev.sh                   # 实时 TUI：启动菜单 + 进程 / 数据库 / 日志
-./scripts/dev/dev.sh start             # 本机 PostgreSQL，日志打在当前终端
-./scripts/dev/dev.sh start --docker    # Docker postgres + 新开终端
-.\scripts\dev\dev.ps1 start            # Windows
+./scripts/dev.sh                   # 实时 TUI：启动菜单 + 进程 / 数据库 / 日志
+./scripts/dev.sh start             # 本机 PostgreSQL，日志打在当前终端
+./scripts/dev.sh start --docker    # Docker postgres + 新开终端
+.\scripts\dev.ps1 start            # Windows
 ```
 
-后端 `:1103`，前端 `:1102`。没有本机库时先 `./scripts/dev/dev.sh db-setup`。
-`./scripts/dev/dev.sh status` 看快照，`monitor` / 无参数进入可管理的 TUI。
-需要在开发 UI 里测「更新管理」时：`./scripts/dev/dev.sh start all-updater`。
+后端 `:1103`，前端 `:1102`。没有本机库时先 `./scripts/dev.sh db-setup`。
+`./scripts/dev.sh status` 看快照，`monitor` / 无参数进入可管理的 TUI。
+需要在开发 UI 里测「更新管理」时：`./scripts/dev.sh start all-updater`。
 更多细节见 [快速开始](docs/QUICKSTART.md)。
 
 

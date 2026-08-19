@@ -9,9 +9,9 @@
 --   • Heal never DELETE / SET NULL to "fix" orphans.
 --
 -- Usage:
---   psql "$DATABASE_URL" -f scripts/dev/federation-fk-orphan-report.sql
+--   psql "$DATABASE_URL" -f scripts/extra/federation-fk-orphan-report.sql
 --   docker exec -i myriad-postgres-dev psql -U myriad -d myriad \
---     -f - < scripts/dev/federation-fk-orphan-report.sql
+--     -f - < scripts/extra/federation-fk-orphan-report.sql
 --
 -- Interpretation (conservative remediation order):
 --   orphans = 0  → safe to set MYRIAD_FEDERATION_APPLY_FKS=1 (or leave unconstrained)

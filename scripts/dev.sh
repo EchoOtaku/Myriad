@@ -26,7 +26,7 @@ BRIGHT_WHITE='\033[38;2;242;184;183m'
 NC='\033[0m' # Reset
 
 # ==================== Project Config ====================
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # Same number as backend/Cargo.toml — not a separate "script version".
 VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' "$PROJECT_ROOT/backend/Cargo.toml" 2>/dev/null | head -n 1)"
 VERSION="${VERSION:-dev}"
@@ -63,21 +63,22 @@ DB_HOST="localhost"
 DB_PORT="5432"
 DB_NAME=""
 
-# ==================== Unicode Icons ====================
-ICON_CHECK="✔"
-ICON_CROSS="✖"
-ICON_ARROW="➜"
-ICON_ROCKET="🚀"
-ICON_STOP="⏹"
-ICON_REFRESH="↻"
-ICON_TRASH="🗑"
-ICON_INFO="ℹ"
-ICON_WARN="⚠"
-ICON_DB="🗄"
-ICON_RUST="🦀"
-ICON_NODE="⬢"
-ICON_UPDATER="⇧"
-ICON_HEART="❤"
+# ==================== Character Icons ====================
+# ASCII / 1-cell only — no emoji (wide cells break the TUI).
+ICON_CHECK="+"
+ICON_CROSS="x"
+ICON_ARROW=">"
+ICON_ROCKET="*"
+ICON_STOP="-"
+ICON_REFRESH="o"
+ICON_TRASH="x"
+ICON_INFO="i"
+ICON_WARN="!"
+ICON_DB="#"
+ICON_RUST="R"
+ICON_NODE="N"
+ICON_UPDATER="^"
+ICON_HEART="*"
 
 # ==================== Helper Functions ====================
 
@@ -179,7 +180,9 @@ terminate_pids() {
 
     local remaining
     local ticks=0
+    # TUI nowait: 1s then KILL. CLI: full KILL_WAIT_SECS.
     local max_ticks=$((KILL_WAIT_SECS * 4))
+    [[ "$DEV_START_NOWAIT" -eq 1 ]] && max_ticks=4
     while [[ $ticks -lt $max_ticks ]]; do
         remaining=()
         for pid in "${pid_arr[@]}"; do
@@ -226,13 +229,35 @@ free_port() {
     fi
 }
 
+# Background a command in $1, append stdio to $2. Sets LAUNCH_PID.
+# Never wrap this in $(...) — bash waits for the child's pipe and freezes the TUI.
+launch_logged() {
+    local dir="$1" log="$2"
+    shift 2
+    (
+        cd "$dir" || exit 1
+        exec >>"$log" 2>&1 </dev/null
+        exec "$@"
+    ) &
+    LAUNCH_PID=$!
+}
+
+# True if this PID belongs to this checkout (argv path or cwd).
+# The compiled binary lives at $PROJECT_ROOT/target/..., not $BACKEND_DIR.
+in_project_tree() {
+    local pid="$1" cmd="$2" cwd
+    [[ -n "$cmd" && "$cmd" == *"$PROJECT_ROOT"* ]] && return 0
+    cwd="$(proc_cwd "$pid" 2>/dev/null || true)"
+    [[ -n "$cwd" && ( "$cwd" == "$PROJECT_ROOT" || "$cwd" == "$PROJECT_ROOT"/* ) ]]
+}
+
 # Match backend via:
 #   1) myriad-backend, or `cargo run` / cargo-watch, in this project's tree
 #   2) whoever is listening on BACKEND_PORT (must free port to restart)
 # rust-analyzer `cargo check` is not a match.
 list_backend_pids() {
     local -a found=()
-    local pid cmd cwd
+    local pid cmd
 
     while IFS= read -r line; do
         # pid is first field; remainder is command (may contain spaces)
@@ -244,18 +269,10 @@ list_backend_pids() {
         local match=0
         # Only the running server — not `cargo check` / rust-analyzer.
         if [[ "$cmd" == *myriad-backend* ]]; then
-            if [[ "$cmd" == *"$BACKEND_DIR"* ]]; then
-                match=1
-            else
-                cwd="$(proc_cwd "$pid" 2>/dev/null || true)"
-                [[ -n "$cwd" && ( "$cwd" == "$BACKEND_DIR" || "$cwd" == "$BACKEND_DIR"/* ) ]] && match=1
-            fi
+            in_project_tree "$pid" "$cmd" && match=1
         elif [[ "$cmd" == *"cargo run"* || "$cmd" == *"cargo-watch"* || "$cmd" == *"cargo watch"* ]]; then
-            if [[ "$cmd" == *"$BACKEND_DIR"* ]]; then
-                match=1
-            else
-                cwd="$(proc_cwd "$pid" 2>/dev/null || true)"
-                [[ -n "$cwd" && ( "$cwd" == "$BACKEND_DIR" || "$cwd" == "$BACKEND_DIR"/* ) ]] && match=1
+            if [[ "$cmd" != *"cargo check"* && "$cmd" != *"cargo clippy"* ]]; then
+                in_project_tree "$pid" "$cmd" && match=1
             fi
         fi
         [[ $match -eq 1 ]] && found+=("$pid")
@@ -274,7 +291,7 @@ list_backend_pids() {
 # Match frontend via `pnpm run dev` / astro / vite in this tree, plus FRONTEND_PORT.
 list_frontend_pids() {
     local -a found=()
-    local pid cmd cwd
+    local pid cmd
 
     while IFS= read -r line; do
         pid="${line%% *}"
@@ -287,12 +304,7 @@ list_frontend_pids() {
         if [[ "$cmd" == *"pnpm run dev"* || "$cmd" == *"pnpm dev"* || \
               ( "$cmd" == *astro* && "$cmd" == *dev* ) || \
               ( "$cmd" == *vite* && "$cmd" != *build* && "$cmd" != *preview* ) ]]; then
-            if [[ "$cmd" == *"$FRONTEND_DIR"* ]]; then
-                match=1
-            else
-                cwd="$(proc_cwd "$pid" 2>/dev/null || true)"
-                [[ -n "$cwd" && ( "$cwd" == "$FRONTEND_DIR" || "$cwd" == "$FRONTEND_DIR"/* ) ]] && match=1
-            fi
+            in_project_tree "$pid" "$cmd" && match=1
         fi
         [[ $match -eq 1 ]] && found+=("$pid")
     done < <(ps -axo pid=,command= 2>/dev/null || true)
@@ -414,6 +426,13 @@ run_in_dir() {
     ( cd "$dir" && "$@" )
 }
 
+# Fire-and-forget for TUI nowait. Do not wrap in $(...).
+run_in_dir_detached() {
+    local dir="$1"
+    shift
+    ( cd "$dir" && exec "$@" ) >/dev/null 2>&1 &
+}
+
 # Never print secrets that cargo / compose / rustc may echo.
 sanitize_dev_log() {
     sed -E \
@@ -427,21 +446,22 @@ docker_cli_available() { have docker; }
 # is stopped or still coming up. Require a live ping, not just a socket.
 docker_usable() {
     docker_cli_available || return 1
-    [[ -n "${DOCKER_HOST:-}" ]] && return 0
     local sock=""
     if [[ -S /var/run/docker.sock ]]; then
         sock=/var/run/docker.sock
     elif [[ -S "${HOME}/.docker/run/docker.sock" ]]; then
         sock="${HOME}/.docker/run/docker.sock"
-    else
-        return 1
     fi
-    # Socket can exist while Desktop is starting; cap the wait.
-    if have curl; then
+    # Socket / DOCKER_HOST can exist while Desktop is starting. Cap the wait.
+    if [[ -n "$sock" ]] && have curl; then
         curl -fsS --unix-socket "$sock" --max-time 1 http://localhost/_ping >/dev/null 2>&1
-    else
-        return 0
+        return
     fi
+    if [[ -n "${DOCKER_HOST:-}" ]] && have curl; then
+        curl -fsS --max-time 1 "${DOCKER_HOST}/_ping" >/dev/null 2>&1
+        return
+    fi
+    [[ -n "$sock" || -n "${DOCKER_HOST:-}" ]]
 }
 
 # ==================== Native / local PostgreSQL ====================
@@ -517,14 +537,14 @@ db_reachable() {
     tool="$(find_pg_tool pg_isready || true)"
     if [[ -n "$tool" ]]; then
         # pg_isready uses 2 for "no response" — that is down, not "no tools".
-        if "$tool" -q -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -U "$DB_USER" >/dev/null 2>&1; then
+        if "$tool" -q -t 2 -h "$DB_HOST" -p "$DB_PORT" -d "$DB_NAME" -U "$DB_USER" >/dev/null 2>&1; then
             return 0
         fi
         return 1
     fi
     tool="$(find_pg_tool psql || true)"
     if [[ -n "$tool" ]]; then
-        if PGPASSWORD="$DB_PASS" "$tool" -w "$(resolve_db_url)" -tAc 'SELECT 1' >/dev/null 2>&1; then
+        if PGCONNECT_TIMEOUT=2 PGPASSWORD="$DB_PASS" "$tool" -w "$(resolve_db_url)" -tAc 'SELECT 1' >/dev/null 2>&1; then
             return 0
         fi
         return 1
@@ -646,6 +666,10 @@ native_pg_do_start() {
     local formula="$1" brew_cmd pgctl datadir root
     brew_cmd="$(brew_bin || true)"
     if [[ -n "$brew_cmd" ]]; then
+        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+            "$brew_cmd" services start "$formula" >/dev/null 2>&1 &
+            return 0
+        fi
         "$brew_cmd" services start "$formula"
         return
     fi
@@ -661,7 +685,11 @@ native_pg_do_start() {
         return 1
     fi
     print_info "brew not on PATH — starting with pg_ctl"
-    "$pgctl" -D "$datadir" -l "$datadir/server.log" start
+    if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+        "$pgctl" -D "$datadir" -l "$datadir/server.log" start -W
+    else
+        "$pgctl" -D "$datadir" -l "$datadir/server.log" start
+    fi
 }
 
 start_native_database() {
@@ -673,7 +701,9 @@ start_native_database() {
 
     local rc=0
     db_reachable || rc=$?
-    if [[ "$rc" -eq 0 ]]; then
+    # CLI: already up is a no-op. TUI nowait still kicks brew/pg_ctl start so
+    # an in-flight `pg_ctl stop -W` cannot win the race.
+    if [[ "$rc" -eq 0 && "$DEV_START_NOWAIT" -eq 0 ]]; then
         print_success "Local PostgreSQL reachable ($DB_USER@$DB_HOST:$DB_PORT/$DB_NAME)"
         return 0
     fi
@@ -709,7 +739,11 @@ native_pg_do_stop() {
     local formula="$1" brew_cmd pgctl="" datadir="" root
     brew_cmd="$(brew_bin || true)"
     if [[ -n "$brew_cmd" ]]; then
-        "$brew_cmd" services stop "$formula" || true
+        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+            "$brew_cmd" services stop "$formula" >/dev/null 2>&1 &
+        else
+            "$brew_cmd" services stop "$formula" || true
+        fi
     fi
     datadir="$(native_pg_datadir "$formula" || true)"
     for root in /opt/homebrew /usr/local; do
@@ -723,7 +757,11 @@ native_pg_do_stop() {
     if [[ -n "$pgctl" && -n "$datadir" ]]; then
         if db_reachable || [[ -n "$(list_listen_pids "${DB_PORT:-5432}")" ]]; then
             print_info "Stopping $formula with pg_ctl"
-            "$pgctl" -D "$datadir" stop -m fast || true
+            if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+                "$pgctl" -D "$datadir" stop -m fast -W >/dev/null 2>&1 || true
+            else
+                "$pgctl" -D "$datadir" stop -m fast || true
+            fi
         fi
     fi
 }
@@ -744,7 +782,12 @@ stop_native_database() {
     print_step "Stopping Homebrew $formula (all databases on :$DB_PORT)…"
     native_pg_do_stop "$formula"
 
-    # Restart needs the port free. Don't honor TUI nowait here.
+    if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+        print_info "PostgreSQL stopping ($formula)"
+        return 0
+    fi
+
+    # CLI restart needs the port free before start.
     local i=0 rc
     while [[ $i -lt 15 ]]; do
         rc=0
@@ -796,7 +839,7 @@ ensure_backend_env() {
     db_url="$(resolve_db_url)"
 
     ( umask 077; cat > "$env_file" <<ENV
-# Myriad backend — LOCAL DEVELOPMENT ONLY (generated by scripts/dev/dev.sh)
+# Myriad backend — LOCAL DEVELOPMENT ONLY (generated by scripts/dev.sh)
 # Not a production config: no ENVIRONMENT=production, so CSP/HSTS stay off.
 # Full reference: backend/.env.example
 
@@ -963,7 +1006,7 @@ SQL
 # ==================== Logo & Banner ====================
 
 show_mini_logo() {
-    echo -e "${BRIGHT_CYAN}${BOLD}◆ Myriad${NC} ${DIM}v${VERSION}${NC}"
+    echo -e "${BRIGHT_CYAN}${BOLD}* Myriad${NC} ${DIM}v${VERSION}${NC}"
 }
 
 # ==================== Status Functions ====================
@@ -972,10 +1015,10 @@ get_service_status() {
     local service=$1
     case $service in
         backend)
-            [[ -n "$(list_backend_pids)" ]]
+            backend_port_in_use || [[ -n "$(list_backend_pids)" ]]
             ;;
         frontend)
-            [[ -n "$(list_frontend_pids)" ]]
+            frontend_port_in_use || [[ -n "$(list_frontend_pids)" ]]
             ;;
         database)
             if [[ "$USE_NATIVE" -eq 1 ]]; then
@@ -1001,19 +1044,38 @@ get_status_text() {
     fi
 }
 
+wait_for_port() {
+    local port="$1" tries="${2:-8}" i=0
+    while [[ $i -lt $tries ]]; do
+        [[ -n "$(list_listen_pids "$port")" ]] && return 0
+        sleep 0.25
+        i=$((i + 1))
+    done
+    return 1
+}
+
 backend_health_ok() {
-    curl -fsS --max-time 1 "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null 2>&1
+    curl -fsS --connect-timeout 0.2 --max-time 0.4 \
+        "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null 2>&1
 }
 
 frontend_health_ok() {
-    curl -fsS --max-time 1 "http://127.0.0.1:${FRONTEND_PORT}/" >/dev/null 2>&1
+    # Astro often binds IPv6 *:port. Probe both stacks; ignore HTTP status.
+    local url
+    for url in \
+        "http://127.0.0.1:${FRONTEND_PORT}/" \
+        "http://localhost:${FRONTEND_PORT}/"
+    do
+        curl -sS -o /dev/null --connect-timeout 0.2 --max-time 0.4 "$url" >/dev/null 2>&1 && return 0
+    done
+    return 1
 }
 
 # psql against the resolved DATABASE_URL. Extra args forwarded (e.g. -tAc 'SELECT 1').
 db_psql() {
     parse_db_url || return 1
     have psql || return 1
-    PGPASSWORD="$DB_PASS" psql -w -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" "$@"
+    PGCONNECT_TIMEOUT=2 PGPASSWORD="$DB_PASS" psql -w -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" "$@"
 }
 
 db_scalar() {
@@ -1034,6 +1096,7 @@ docker_container_running() {
 }
 
 db_is_docker() {
+    [[ "$USE_NATIVE" -eq 1 ]] && return 1
     docker_container_running "myriad-postgres-dev"
 }
 
@@ -1041,12 +1104,24 @@ backend_port_in_use() {
     [[ -n "$(list_listen_pids "$BACKEND_PORT")" ]]
 }
 
+# Compiled server process (not `cargo run` still compiling).
+backend_binary_up() {
+    local p cmd
+    while IFS= read -r p; do
+        [[ "$p" =~ ^[0-9]+$ ]] || continue
+        cmd="$(ps -p "$p" -o command= 2>/dev/null)"
+        [[ "$cmd" == *myriad-backend* ]] && return 0
+    done < <(list_backend_pids)
+    return 1
+}
+
 frontend_port_in_use() {
     [[ -n "$(list_listen_pids "$FRONTEND_PORT")" ]]
 }
 
 updater_health_ok() {
-    curl -fsS --max-time 1 "http://127.0.0.1:1101/healthz" >/dev/null 2>&1
+    curl -fsS --connect-timeout 0.2 --max-time 0.4 \
+        "http://127.0.0.1:1101/healthz" >/dev/null 2>&1
 }
 
 wait_for_backend() {
@@ -1138,7 +1213,9 @@ EOF
 }
 
 dev_updater_enabled() {
-    [[ "${MYRIAD_DEV_UPDATER:-}" == "1" ]] || get_service_status updater
+    [[ "$USE_NATIVE" -eq 1 ]] && return 1
+    [[ "${MYRIAD_DEV_UPDATER:-}" == "1" ]] && return 0
+    get_service_status updater
 }
 
 # One-line detail for status: "pid 1234  cpu 1.2%  mem 3.4%  up 00:12"
@@ -1320,11 +1397,12 @@ start_database() {
         print_error "docker-compose.dev.yml not found"
         return 1
     fi
-    run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml up -d
     if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+        run_in_dir_detached "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml up -d
         print_info "PostgreSQL launching via docker compose"
         return 0
     fi
+    run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml up -d
     sleep 3
     if get_service_status database; then
         print_success "Database started"
@@ -1338,9 +1416,14 @@ stop_database() {
     local stopped_docker=0
     if docker_container_running "myriad-postgres-dev"; then
         print_step "Stopping PostgreSQL database..."
-        run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml stop postgres || true
-        run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml rm -f postgres || true
-        print_success "Database stopped"
+        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+            run_in_dir_detached "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml stop postgres
+            print_info "PostgreSQL container stopping"
+        else
+            run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml stop postgres || true
+            run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml rm -f postgres || true
+            print_success "Database stopped"
+        fi
         stopped_docker=1
     fi
     if [[ "$USE_NATIVE" -eq 1 && "$stopped_docker" -eq 0 ]]; then
@@ -1366,13 +1449,15 @@ start_updater() {
     fi
 
     ensure_dev_updater_files
-    UPDATE_TOKEN="$(dev_updater_token)" \
-        run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml --profile updater up -d docker-guard updater updater-gateway
-
     if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+        UPDATE_TOKEN="$(dev_updater_token)" \
+            run_in_dir_detached "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml --profile updater \
+            up -d docker-guard updater updater-gateway
         print_info "Updater harness launching (gateway :1104)"
         return 0
     fi
+    UPDATE_TOKEN="$(dev_updater_token)" \
+        run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml --profile updater up -d docker-guard updater updater-gateway
     if ! wait_for_updater 120; then
         print_warning "Updater did not become ready within 120s"
         print_info "Check logs with: docker compose -f docker-compose.dev.yml --profile updater logs -f docker-guard updater updater-gateway"
@@ -1389,6 +1474,12 @@ stop_updater() {
         return 0
     fi
     print_step "Stopping updater dev harness..."
+    if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+        run_in_dir_detached "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml --profile updater \
+            stop updater-gateway updater docker-guard
+        print_info "Updater harness stopping"
+        return 0
+    fi
     run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml --profile updater stop updater-gateway updater docker-guard || true
     run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml --profile updater rm -f updater-gateway updater docker-guard || true
     print_success "Updater harness stopped"
@@ -1398,81 +1489,64 @@ start_backend() {
     print_step "Starting Rust backend..."
     have cargo || { print_error "cargo not found — install Rust: https://rustup.rs"; return 1; }
 
-    # Healthy and process visible → nothing to do.
-    if backend_health_ok && get_service_status backend; then
-        print_warning "Backend is already running and healthy"
+    # Start means start — already up is a no-op. Restart is a separate action.
+    if backend_port_in_use || backend_binary_up || [[ -n "$(list_backend_pids)" ]]; then
+        print_warning "Backend is already running"
         return 0
-    fi
-
-    # Stale process, wrong cwd, or port occupied by an orphan binary → hard reset.
-    if get_service_status backend || backend_port_in_use || backend_health_ok; then
-        print_warning "Clearing existing backend / port ${BACKEND_PORT} before start..."
-        stop_backend || true
-        sleep 0.5
-        if backend_port_in_use; then
-            print_error "Port ${BACKEND_PORT} still in use; cannot start backend"
-            return 1
-        fi
     fi
 
     ensure_backend_env || return 1
 
-    local rust_cmd="cargo run"
-    [[ "$CARGO_RELEASE" -eq 1 ]] && rust_cmd="cargo run --release"
-    # Prefer gateway when harness is up; backend holds UPDATER_GATEWAY_SECRET, not UPDATE_TOKEN.
+    local -a run_cmd=(cargo run)
+    [[ "$CARGO_RELEASE" -eq 1 ]] && run_cmd=(cargo run --release)
     local updater_url="http://127.0.0.1:1104"
-    local gw_secret
-    gw_secret="$(dev_updater_gateway_secret)"
-    local cargo_cmd="$rust_cmd"
+    local gw_secret=""
     local inject_updater=0
-    if dev_updater_enabled && [[ "$USE_NATIVE" -eq 0 ]]; then
+    if dev_updater_enabled; then
         ensure_dev_updater_files
-        cargo_cmd="MYRIAD_UPDATER_URL=$updater_url UPDATER_GATEWAY_SECRET=$gw_secret $rust_cmd"
+        gw_secret="$(dev_updater_gateway_secret)"
         inject_updater=1
         print_info "Backend updater proxy via gateway: $updater_url (gateway secret; no UPDATE_TOKEN)"
-    elif dev_updater_enabled && [[ "$USE_NATIVE" -eq 1 ]]; then
-        print_warning "Ignoring updater harness in --native mode"
     fi
     if [[ "$CARGO_RELEASE" -eq 1 ]]; then
         print_info "Backend will run in release mode"
     fi
 
     if [[ "$DEV_START_BG" -eq 1 ]]; then
-        # TUI / monitor: stay in this session, write logs to backend.log.
-        local bg_pid
-        bg_pid="$(
-            cd "$BACKEND_DIR" || exit 1
-            if [[ "$inject_updater" -eq 1 ]]; then
-                MYRIAD_UPDATER_URL="$updater_url" UPDATER_GATEWAY_SECRET="$gw_secret" \
-                    nohup $rust_cmd > "$PROJECT_ROOT/backend.log" 2>&1 &
-            else
-                nohup $rust_cmd > "$PROJECT_ROOT/backend.log" 2>&1 &
-            fi
-            echo $!
-        )"
-        print_info "Backend running in background (pid $bg_pid, logs: backend.log)"
-        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
-            return 0
-        fi
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        osascript -e 'tell application "Terminal" to do script "cd '"$BACKEND_DIR"' && echo \"🦀 Myriad Backend\" && source ~/.cargo/env 2>/dev/null; '"$cargo_cmd"'"' 2>/dev/null
-    else
-        if command -v gnome-terminal &> /dev/null; then
-            gnome-terminal -- bash -c "cd '$BACKEND_DIR' && echo '🦀 Myriad Backend' && $cargo_cmd; exec bash" 2>/dev/null
+        if [[ "$inject_updater" -eq 1 ]]; then
+            launch_logged "$BACKEND_DIR" "$PROJECT_ROOT/backend.log" \
+                env MYRIAD_UPDATER_URL="$updater_url" UPDATER_GATEWAY_SECRET="$gw_secret" \
+                "${run_cmd[@]}"
         else
-            (
-                cd "$BACKEND_DIR" || exit 1
-                if [[ "$inject_updater" -eq 1 ]]; then
-                    MYRIAD_UPDATER_URL="$updater_url" UPDATER_GATEWAY_SECRET="$gw_secret" \
-                        nohup $rust_cmd > "$PROJECT_ROOT/backend.log" 2>&1 &
-                else
-                    nohup $rust_cmd > "$PROJECT_ROOT/backend.log" 2>&1 &
-                fi
-            )
-            print_info "Backend running in background (logs: backend.log)"
+            launch_logged "$BACKEND_DIR" "$PROJECT_ROOT/backend.log" "${run_cmd[@]}"
         fi
+        print_info "Backend running in background (pid $LAUNCH_PID, logs: backend.log)"
+        return 0
     fi
 
+    local cargo_cmd="${run_cmd[*]}"
+    if [[ "$inject_updater" -eq 1 ]]; then
+        cargo_cmd="MYRIAD_UPDATER_URL=$updater_url UPDATER_GATEWAY_SECRET=$gw_secret $cargo_cmd"
+    fi
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        osascript -e 'tell application "Terminal" to do script "cd '"$BACKEND_DIR"' && echo \"* Myriad Backend\" && source ~/.cargo/env 2>/dev/null; '"$cargo_cmd"'"' 2>/dev/null
+    elif command -v gnome-terminal &> /dev/null; then
+        gnome-terminal -- bash -c "cd '$BACKEND_DIR' && echo '* Myriad Backend' && $cargo_cmd; exec bash" 2>/dev/null
+    else
+        if [[ "$inject_updater" -eq 1 ]]; then
+            launch_logged "$BACKEND_DIR" "$PROJECT_ROOT/backend.log" \
+                env MYRIAD_UPDATER_URL="$updater_url" UPDATER_GATEWAY_SECRET="$gw_secret" \
+                "${run_cmd[@]}"
+        else
+            launch_logged "$BACKEND_DIR" "$PROJECT_ROOT/backend.log" "${run_cmd[@]}"
+        fi
+        print_info "Backend running in background (pid $LAUNCH_PID, logs: backend.log)"
+        return 0
+    fi
+
+    if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+        return 0
+    fi
     if ! wait_for_backend 180; then
         if [[ -n "$(list_backend_pids)" ]] || backend_port_in_use; then
             print_warning "Backend is still compiling or booting after 180s — leaving it running"
@@ -1520,6 +1594,10 @@ stop_backend() {
 ensure_frontend_deps() {
     [[ "$SKIP_INSTALL" -eq 1 ]] && return 0
     [[ -d "$FRONTEND_DIR/node_modules" ]] && return 0
+    if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+        print_error "frontend/node_modules missing — run: (cd frontend && pnpm install)"
+        return 1
+    fi
     print_step "Installing frontend dependencies…"
     ( cd "$FRONTEND_DIR" && pnpm install ) || return 1
 }
@@ -1528,46 +1606,32 @@ start_frontend() {
     print_step "Starting Astro frontend..."
     have pnpm || { print_error "pnpm not found — run 'corepack enable'"; return 1; }
 
-    if get_service_status frontend && frontend_port_in_use; then
+    if frontend_port_in_use || [[ -n "$(list_frontend_pids)" ]]; then
         print_warning "Frontend is already running"
         return 0
-    fi
-
-    if get_service_status frontend || frontend_port_in_use; then
-        print_warning "Clearing existing frontend / port ${FRONTEND_PORT} before start..."
-        stop_frontend || true
-        sleep 0.5
-        if frontend_port_in_use; then
-            print_error "Port ${FRONTEND_PORT} still in use; cannot start frontend"
-            return 1
-        fi
     fi
 
     ensure_frontend_deps || return 1
 
     if [[ "$DEV_START_BG" -eq 1 ]]; then
-        local bg_pid
-        bg_pid="$(
-            cd "$FRONTEND_DIR" || exit 1
-            nohup pnpm run dev > "$PROJECT_ROOT/frontend.log" 2>&1 &
-            echo $!
-        )"
-        print_info "Frontend running in background (pid $bg_pid, logs: frontend.log)"
-        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
-            return 0
-        fi
-    elif [[ "$OSTYPE" == "darwin"* ]]; then
-        osascript -e 'tell application "Terminal" to do script "cd '"$FRONTEND_DIR"' && echo \"⚡ Myriad Frontend\" && pnpm run dev"' 2>/dev/null
-    else
-        if command -v gnome-terminal &> /dev/null; then
-            gnome-terminal -- bash -c "cd '$FRONTEND_DIR' && echo '⚡ Myriad Frontend' && pnpm run dev; exec bash" 2>/dev/null
-        else
-            ( cd "$FRONTEND_DIR" && nohup pnpm run dev > "$PROJECT_ROOT/frontend.log" 2>&1 & )
-            print_info "Frontend running in background (logs: frontend.log)"
-        fi
+        launch_logged "$FRONTEND_DIR" "$PROJECT_ROOT/frontend.log" pnpm run dev
+        print_info "Frontend running in background (pid $LAUNCH_PID, logs: frontend.log)"
+        return 0
     fi
 
-    sleep 2
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        osascript -e 'tell application "Terminal" to do script "cd '"$FRONTEND_DIR"' && echo \"* Myriad Frontend\" && pnpm run dev"' 2>/dev/null
+    elif command -v gnome-terminal &> /dev/null; then
+        gnome-terminal -- bash -c "cd '$FRONTEND_DIR' && echo '* Myriad Frontend' && pnpm run dev; exec bash" 2>/dev/null
+    else
+        launch_logged "$FRONTEND_DIR" "$PROJECT_ROOT/frontend.log" pnpm run dev
+        print_info "Frontend running in background (pid $LAUNCH_PID, logs: frontend.log)"
+        return 0
+    fi
+
+    if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+        return 0
+    fi
     print_success "Frontend starting on http://localhost:${FRONTEND_PORT}"
 }
 
@@ -1754,7 +1818,11 @@ start_foreground_stack() {
 
 start_all() {
     maybe_autodetect_native
-    if [[ "$USE_NATIVE" -eq 1 && "$USE_FG" -eq 0 && "$DETACH_EXPLICIT" -eq 0 ]]; then
+    if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+        USE_FG=0
+        DETACH_EXPLICIT=1
+        DEV_START_BG=1
+    elif [[ "$USE_NATIVE" -eq 1 && "$USE_FG" -eq 0 && "$DETACH_EXPLICIT" -eq 0 ]]; then
         USE_FG=1
     fi
 
@@ -1767,12 +1835,8 @@ start_all() {
     echo -e "${BRIGHT_CYAN}${BOLD}${ICON_ROCKET} Starting All Services${NC}"
     echo ""
 
-    # Postgres first, and always wait — TUI nowait used to skip this and
-    # leave the stack talking to a down database.
-    local saved_nowait="$DEV_START_NOWAIT"
-    DEV_START_NOWAIT=0
-    start_database || { DEV_START_NOWAIT=$saved_nowait; return 1; }
-    DEV_START_NOWAIT=$saved_nowait
+    # TUI nowait: launch postgres and return. CLI still waits inside start_database.
+    start_database || return 1
     echo ""
 
     check_tools || return 1
@@ -1842,7 +1906,9 @@ stop_all() {
 
 restart_all() {
     stop_all
-    sleep 2
+    if [[ "$DEV_START_NOWAIT" -eq 0 ]]; then
+        sleep 2
+    fi
     start_all
 }
 
@@ -2020,7 +2086,7 @@ main() {
     # Drag / Open With may pass this script's own path as $1.
     if [[ ${#positional[@]} -gt 0 ]]; then
         case "${positional[0]}" in
-            "$0"|*/scripts/dev/dev.sh|*/dev.sh)
+            "$0"|*/scripts/dev.sh|*/dev.sh)
                 positional=("${positional[@]:1}")
                 ;;
         esac

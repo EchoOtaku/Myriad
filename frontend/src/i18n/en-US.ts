@@ -1116,7 +1116,7 @@ export const enUS: TranslationKeys = {
     updaterErrNotConfigured:
       'The development stack does not start the updater by default. To test the full update flow, run the production compose stack or set MYRIAD_UPDATER_URL / UPDATE_TOKEN on the backend.',
     updaterErrUpstream:
-      'Cannot reach the updater (502/503). In dev, start it first: ./scripts/dev/dev.sh start updater',
+      'Cannot reach the updater (502/503). In dev, start it first: ./scripts/dev.sh start updater',
     updaterDriftWarn:
       'This page is cached at version {build}, but the server runs {current}.',
     updaterDriftAction: 'Reload page',

@@ -1046,7 +1046,7 @@ export const zhCN: TranslationKeys = {
     updaterErrNotConfigured:
       '开发环境默认不启动更新器。需要测试完整更新流程时，请使用生产 compose 栈，或在 backend 配置 MYRIAD_UPDATER_URL / UPDATE_TOKEN。',
     updaterErrUpstream:
-      '无法连接更新器（502/503）。开发环境请先启动：./scripts/dev/dev.sh start updater',
+      '无法连接更新器（502/503）。开发环境请先启动：./scripts/dev.sh start updater',
     updaterDriftWarn: '页面缓存的版本（{build}）和服务器（{current}）不一致。',
     updaterDriftAction: '刷新页面',
     updaterAgoJustNow: '刚刚',

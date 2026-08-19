@@ -6,7 +6,7 @@
 #   ring add_peer/sync, channel open/accept/message.
 #
 # Usage:
-#   ./scripts/dev/federation-multi-instance-suite.sh [run|down]
+#   ./scripts/extra/federation-suite.sh [run|down]
 # Env:
 #   SCRATCH_DIR  evidence dir (default ./tmp/federation-suite)
 #   KEEP_RUNNING=1 leave backends up
@@ -19,7 +19,7 @@
 #   PORT_A=18180 PORT_B=18181 PORT_C=18182 \
 #   DB_A=myriad_fed_173_a DB_B=myriad_fed_173_b \
 #   SCRATCH_DIR=/tmp/fed-suite-173 \
-#   ./scripts/dev/federation-multi-instance-suite.sh run
+#   ./scripts/extra/federation-suite.sh run
 #
 # Cancelled dead-letters (error_message LIKE 'cancelled:%') must not fail
 # delivery wait loops; bulk retry-dead skips them (single-id retry may revive).

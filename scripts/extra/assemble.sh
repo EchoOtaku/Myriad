@@ -16,7 +16,7 @@
 #   VERSION            Stamped build version (also baked into /health)
 #
 # Usage:
-#   scripts/native/assemble.sh [--skip-build] [--tar] [--version <v>] [-h]
+#   scripts/extra/assemble.sh [--skip-build] [--tar] [--version <v>] [-h]
 #
 #   --skip-build   Reuse existing target/release binary + frontend/dist
 #   --tar          Also produce ./myriad-native-<version>.tar.gz

@@ -22,7 +22,7 @@
 cd /path/to/myriad
 # .env 填入独立验证过的 DOCKER_GUARD_IMAGE（repo@sha256）。
 # Guard 首次启动会写入 ./guard-policy/docker-guard.env。
-bash scripts/docker/deploy.sh up
+bash scripts/extra/deploy.sh up
 ```
 
 脚本做的事：
@@ -56,7 +56,7 @@ updater 对部署根本身只读，仅通过独立挂载写入 `./.env`、`./pgd
 
 当前拓扑见 [deployment/DOCKER_DEPLOYMENT.md](./deployment/DOCKER_DEPLOYMENT.md)
 （三网 + docker-guard + updater-gateway）。首次或改拓扑请在宿主执行
-`bash scripts/docker/deploy.sh up`（或等价 compose）；**仅 UI 更新无法创建网络/服务**。
+`bash scripts/extra/deploy.sh up`（或等价 compose）；**仅 UI 更新无法创建网络/服务**。
 
 管理员可以在 UI 中一键更新 Guard/updater TCB，无需 SSH。Updater 只提交目标 tag；
 Updater 使用宿主策略 capability 提交意图；Guard 固定官方 updater 仓库、通过宿主 Docker
@@ -82,7 +82,7 @@ Updater 使用宿主策略 capability 提交意图；Guard 固定官方 updater 
 ```bash
 # 在 .env 里加这一行，然后重启 proxy/stack
 PROXY_ALLOW_DIRECT_UPDATER=true
-bash scripts/docker/deploy.sh restart
+bash scripts/extra/deploy.sh restart
 ```
 
 默认 `PROXY_ALLOW_DIRECT_UPDATER=false`，`/_updater/*` 返回 404，强制走 backend。
@@ -255,12 +255,12 @@ history 是否有 `PRE_SWAP_FAIL` / `ROLLBACK_OK` / `NEEDS_MANUAL`；再按 §5 
 
 ```bash
 # 无 Docker 的决策矩阵 + schema 冒烟
-./scripts/test-updater-smoke.sh
+./scripts/extra/test-updater-smoke.sh
 
 # 需 release 二进制 + Docker：含 crash recovery（health_probing active=false → needs_manual）
 cd updater && cargo build --release --bins
 cd proxy && cargo build --release
-./scripts/test-updater-e2e.sh
+./scripts/extra/test-updater-e2e.sh
 ```
 
 ## 5. 出问题怎么办
@@ -359,7 +359,7 @@ COSIGN_VERIFY=strict
 随后重启 updater/stack：
 
 ```bash
-bash scripts/docker/deploy.sh restart
+bash scripts/extra/deploy.sh restart
 ```
 
 从此每次拉 release.json 时：
