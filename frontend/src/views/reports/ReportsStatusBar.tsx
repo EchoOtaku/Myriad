@@ -1,21 +1,15 @@
 /**
  * Reports status bar — one card that carries the whole page state:
  * - Rotating tip carousel with clickable ticks that double as the timer
- * - Merged actions (play-all / stage transport + life CTA)
+ * - Merged actions (play-all / stage transport)
  * - Large hero title that tracks the active tip
  * Controls follow the home page status bar (Home.tsx user card): rounded-xl
  * glass, round avatar, hairline divider, rounded-lg ghost buttons in the
  * theme color. Styling lives in reportsStatusBar.css.
  */
 import type { ReactNode } from 'react'
-import type {
-  AgentLifeSnapshot,
-  LifeStatusKind,
-  ReportsDynamicTip,
-  ReportsStatusCopy,
-} from './reportsDynamicStatus'
+import type { ReportsDynamicTip, ReportsStatusCopy } from './reportsDynamicStatus'
 import {
-  LuChevronRight,
   LuPause,
   LuPlay,
   LuRefreshCw,
@@ -25,13 +19,9 @@ import {
   AnimatePresenceShim as AnimatePresence,
   motionShim as motion,
 } from '@lib/motionShim'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import LifeMark from '../../components/agent/LifeMark'
+import { useEffect, useMemo, useState } from 'react'
 import { Avatar } from '../../components/Avatar'
-import {
-  buildReportsDynamicTips,
-  resolveLifeActionLabel,
-} from './reportsDynamicStatus'
+import { buildReportsDynamicTips } from './reportsDynamicStatus'
 import './reportsStatusBar.css'
 
 const TIP_ROTATE_MS = 7000
@@ -61,19 +51,11 @@ interface Props {
   reportCount: number
   hasEnabledPlatforms: boolean
   platforms: PlatformIconSource[]
-  showLife: boolean
-  lifeKind: LifeStatusKind
-  lifeSnapshot: AgentLifeSnapshot | null
   isAdmin: boolean
   refreshingStage: boolean
   /** Null for guests — then report tips carry no glyph at all */
   viewer?: ViewerIdentity | null
   copy: ReportsStatusCopy
-  lifeActionLabels: {
-    create: string
-    open: string
-    login: string
-  }
   actionTitles: {
     playAll: string
     refreshing: string
@@ -94,15 +76,12 @@ interface Props {
   onPlayAll: () => void
   onRefreshStage: () => void
   onCloseStage: () => void
-  onOpenLife: () => void
-  onLogin: () => void
 }
 
 /**
- * Only ever shows *who* this tip is about — the platform mark on stage, the
- * life mark for life tips, and the signed-in user's
- * avatar for their own reports. No document icon: a page glyph next to
- * "9 reports ready" says nothing the sentence doesn't.
+ * Only ever shows *who* this tip is about — the platform mark on stage, and
+ * the signed-in user's avatar for their own reports. No document icon: a page
+ * glyph next to "9 reports ready" says nothing the sentence doesn't.
  */
 function TipGlyph({
   tip,
@@ -122,10 +101,6 @@ function TipGlyph({
         </span>
       )
     }
-  }
-
-  if (tip.kind.startsWith('life')) {
-    return <LifeMark className="rsb-glyph" />
   }
 
   // Reports are the viewer's own data — their face belongs on them.
@@ -154,22 +129,16 @@ export default function ReportsStatusBar({
   reportCount,
   hasEnabledPlatforms,
   platforms,
-  showLife,
-  lifeKind,
-  lifeSnapshot,
   isAdmin,
   refreshingStage,
   viewer,
   copy,
-  lifeActionLabels,
   actionTitles,
   titleStyle,
   stageCompactHero = false,
   onPlayAll,
   onRefreshStage,
   onCloseStage,
-  onOpenLife,
-  onLogin,
 }: Props) {
   const tips = useMemo(
     () =>
@@ -182,9 +151,6 @@ export default function ReportsStatusBar({
         stagePlatformHero,
         enabledPlatformCount,
         reportCount,
-        showLife,
-        lifeKind,
-        lifeSnapshot,
       }),
     [
       copy,
@@ -195,9 +161,6 @@ export default function ReportsStatusBar({
       stagePlatformHero,
       enabledPlatformCount,
       reportCount,
-      showLife,
-      lifeKind,
-      lifeSnapshot,
     ],
   )
 
@@ -219,49 +182,15 @@ export default function ReportsStatusBar({
   }, [tips.length, tipsSignature, held])
 
   const tip = tips[tipIndex] || tips[0]
-  const lifeAction = showLife
-    ? resolveLifeActionLabel(lifeKind, lifeActionLabels)
-    : null
-  const lifeInteractive =
-    lifeKind === 'create' ||
-    lifeKind === 'ready' ||
-    lifeKind === 'guest'
-
-  const openLife = useCallback(() => {
-    if (lifeKind === 'guest') {
-      onLogin()
-      return
-    }
-    if (lifeKind === 'disabled' || lifeKind === 'loading' || !showLife) {
-      return
-    }
-    onOpenLife()
-  }, [lifeKind, onLogin, onOpenLife, showLife])
-
-  const tipClickable = tip?.action === 'open-life' || tip?.action === 'login'
-
-  const handleTipActivate = () => {
-    if (!tipClickable || !tip) return
-    if (tip.action === 'login') {
-      onLogin()
-      return
-    }
-    openLife()
-  }
 
   if (!tip) return null
 
-  // The action follows the tip: play-all belongs to the report tips, the life
-  // CTA to the life tip. Showing both at once made the right side a permanent
-  // toolbar that had nothing to do with the sentence on the left.
-  const isLifeTip = tip.kind.startsWith('life')
-  const showCta = !isStageMode && isLifeTip && Boolean(lifeAction && lifeInteractive)
-  const showPlay = !isStageMode && !isLifeTip && hasEnabledPlatforms
-  const hasActions = isStageMode || showCta || showPlay
+  const showPlay = !isStageMode && hasEnabledPlatforms
+  const hasActions = isStageMode || showPlay
 
   return (
     <div
-      className={`rsb ${isStageMode ? 'mb-2 md:mb-0' : ''}`}
+      className="rsb mb-2"
       onMouseEnter={() => setHeld(true)}
       onMouseLeave={() => setHeld(false)}
     >
@@ -311,18 +240,9 @@ export default function ReportsStatusBar({
           transition={{ duration: 0.42, ease: SLIDE_EASE }}
         >
           <div
-            className={`rsb-tip ${tipClickable ? 'is-clickable' : ''}`}
-            role={tipClickable ? 'button' : 'status'}
-            tabIndex={tipClickable ? 0 : undefined}
+            className="rsb-tip"
+            role="status"
             aria-label={`${tip.main}. ${tip.sub}`}
-            onClick={handleTipActivate}
-            onKeyDown={(event) => {
-              if (!tipClickable) return
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                handleTipActivate()
-              }
-            }}
           >
             <div className="rsb-stack">
               <AnimatePresence initial={false} mode="popLayout">
@@ -343,7 +263,6 @@ export default function ReportsStatusBar({
                 </motion.div>
               </AnimatePresence>
             </div>
-            {tipClickable && <LuChevronRight className="rsb-go" aria-hidden />}
           </div>
 
           {hasActions && <span className="rsb-sep" aria-hidden />}
@@ -395,20 +314,7 @@ export default function ReportsStatusBar({
               </>
             ) : (
               <AnimatePresence initial={false} mode="popLayout">
-                {showCta ? (
-                  <motion.button
-                    key="life-cta"
-                    type="button"
-                    onClick={openLife}
-                    className="rsb-btn"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.26, ease: SLIDE_EASE }}
-                  >
-                    {lifeAction}
-                  </motion.button>
-                ) : showPlay ? (
+                {showPlay ? (
                   <motion.button
                     key="play-all"
                     type="button"

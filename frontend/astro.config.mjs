@@ -86,10 +86,9 @@ const BACKEND_TARGET = 'http://127.0.0.1:1103'
 const PLAYGROUND_PROXY_TIMEOUT_MS = 30 * 60 * 1000
 // Federation file-meta downloads / chunk uploads can exceed the default 30s.
 const FEDERATION_TRANSFER_PROXY_TIMEOUT_MS = 10 * 60 * 1000
-// Digital Life onboarding / visuals: a single directional rig is composed
-// from five independently validated image sheets. Provider retries can exceed
-// three minutes, so the proxy must match the 15-minute rig client contract
-// instead of abandoning a still-running backend job.
+// Digital Life 3D + Agent life onboarding (Lite distill / name / draft):
+// backend Lite timeout is 120s and the socket stays idle until the model
+// returns. Default 30s proxy timeout surfaces as "Backend proxy timeout".
 const DIGITAL_LIFE_PROXY_TIMEOUT_MS = 15 * 60 * 1000
 
 const HOP_BY_HOP_HEADERS = new Set([
@@ -113,6 +112,15 @@ function isFederationTransferContentPath(urlPath) {
 function isDigitalLifeApiPath(urlPath) {
   const path = (urlPath || '').split('?')[0] || ''
   return path.startsWith('/api/digital-life/')
+}
+
+function isAgentPersonaGenerationPath(urlPath) {
+  const path = (urlPath || '').split('?')[0] || ''
+  return (
+    path === '/api/agent/persona/signals' ||
+    path === '/api/agent/persona/draft' ||
+    path === '/api/agent/persona/name'
+  )
 }
 
 /** Long-running federation transfer REST (initiate / list / chunk / cancel / get). */
@@ -414,7 +422,8 @@ function backendDevProxyPlugin() {
             : isFederationTransferApiPath(originalUrl) ||
                 isFederationTransferContentPath(originalUrl)
               ? FEDERATION_TRANSFER_PROXY_TIMEOUT_MS
-              : isDigitalLifeApiPath(originalUrl)
+              : isDigitalLifeApiPath(originalUrl) ||
+                  isAgentPersonaGenerationPath(originalUrl)
                 ? DIGITAL_LIFE_PROXY_TIMEOUT_MS
                 : 30000
           // SSE and large transfer downloads must be piped. Buffering a multi-MB

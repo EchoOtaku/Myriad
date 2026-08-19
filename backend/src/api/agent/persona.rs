@@ -2,7 +2,7 @@
 
 use super::*;
 use axum::{extract::State, Extension, Json};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::DatabaseConnection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -39,6 +39,48 @@ pub struct DraftPersonaRequest {
     pub name: String,
     #[serde(default)]
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub gender: String,
+    #[serde(default)]
+    pub extra_requirements: String,
+    #[serde(default = "default_signals_language")]
+    pub language: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestNameRequest {
+    #[serde(default)]
+    pub selected_tags: Vec<String>,
+    #[serde(default)]
+    pub gender: String,
+    #[serde(default)]
+    pub avoid_name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportSignalsRequest {
+    consent: bool,
+    #[serde(default = "default_signals_language")]
+    language: String,
+    #[serde(default)]
+    regenerate: bool,
+}
+
+fn default_signals_language() -> String {
+    "zh-CN".to_string()
+}
+
+fn normalize_signals_language(raw: &str) -> &'static str {
+    let value = raw.trim();
+    if value.starts_with("zh") {
+        "zh-CN"
+    } else if value.starts_with("ja") {
+        "ja-JP"
+    } else {
+        "en-US"
+    }
 }
 
 fn life_disabled() -> HttpError {
@@ -248,43 +290,112 @@ pub async fn put_addressee(
     })))
 }
 
-/// GET /api/agent/persona/signals
-/// Short personality tags from this person's stored reports. No visual assets.
-pub async fn get_persona_signals(
+/// POST /api/agent/persona/signals
+/// Distill spoken personality tags from the owner's latest reports. No visual assets.
+pub async fn report_signals(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
+    Json(request): Json<ReportSignalsRequest>,
 ) -> Result<Json<Value>, HttpError> {
     require_life_enabled().await?;
-    let user_id = parse_user_id_with_agent_access(&claims, &db).await?;
-    let rows = crate::models::entities::platform_reports::Entity::find()
-        .filter(crate::models::entities::platform_reports::Column::UserId.eq(user_id))
-        .all(&db)
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "[Agent persona] signals load failed");
+    let user_id = require_site_owner(&claims, &db).await?;
+    if !request.consent {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Explicit consent is required",
+                "code": "consent_required"
+            })),
+        )));
+    }
+    let language = normalize_signals_language(&request.language);
+    let distilled = life::report_dna::distill_report_dna(
+        &db,
+        user_id,
+        language,
+        request.regenerate,
+    )
+    .await
+    .map_err(distill_error)?;
+    Ok(Json(json!({
+        "reportCount": distilled.provenance.report_count,
+        "platforms": distilled.provenance.platforms,
+        "fingerprint": distilled.provenance.fingerprint,
+        "tags": distilled.tags,
+        "aiDistilled": distilled.ai_distilled,
+        "model": distilled.model,
+        "rawReportsStored": false,
+    })))
+}
+
+fn distill_error(error: life::report_dna::DistillReportDnaError) -> HttpError {
+    match error {
+        life::report_dna::DistillReportDnaError::Db(error) => {
+            tracing::error!(%error, "[Agent persona] report DNA load failed");
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": "Database error" })),
             ))
-        })?;
-
-    let mut tags = Vec::new();
-    let mut seen = std::collections::HashSet::new();
-    for row in &rows {
-        collect_persona_tags(&row.report, &row.platform, &mut tags, &mut seen);
-        if tags.len() >= 24 {
-            break;
         }
+        life::report_dna::DistillReportDnaError::AnalyzerUnavailable => HttpError::from((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Lite model is unavailable",
+                "code": "lite_unavailable"
+            })),
+        )),
+        life::report_dna::DistillReportDnaError::ProviderFailed
+        | life::report_dna::DistillReportDnaError::EmptyResponse => HttpError::from((
+            StatusCode::BAD_GATEWAY,
+            Json(json!({
+                "error": "Failed to distill report signals",
+                "code": "report_dna_failed"
+            })),
+        )),
     }
+}
 
-    Ok(Json(json!({
-        "reportCount": rows.len(),
-        "tags": tags,
-    })))
+/// POST /api/agent/persona/name
+/// Lite rolls one OC display name from selected tags + gender.
+pub async fn suggest_name(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<SuggestNameRequest>,
+) -> Result<Json<Value>, HttpError> {
+    require_life_enabled().await?;
+    let _user_id = require_site_owner(&claims, &db).await?;
+    let tags = life::report_dna::sanitize_onboarding_tags(&body.selected_tags);
+    match life::onboarding_ai::suggest_display_name(
+        &tags,
+        &body.gender,
+        body.avoid_name.as_deref(),
+    )
+    .await
+    {
+        Ok((name, model)) => Ok(Json(json!({
+            "name": name,
+            "model": model,
+            "tier": "lite",
+        }))),
+        Err(life::onboarding_ai::OnboardingAiError::AnalyzerUnavailable) => Err(HttpError::from((
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "error": "Lite model is unavailable",
+                "code": "lite_unavailable"
+            })),
+        ))),
+        Err(_) => Err(HttpError::from((
+            StatusCode::BAD_GATEWAY,
+            Json(json!({
+                "error": "Failed to suggest a name",
+                "code": "name_suggest_failed"
+            })),
+        ))),
+    }
 }
 
 /// POST /api/agent/persona/draft
-/// Lite writes a personality paragraph from tags. No appearance, room, or clothes.
+/// Lite writes a structured character persona. No appearance, room, or clothes.
 pub async fn draft_persona(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -292,48 +403,25 @@ pub async fn draft_persona(
 ) -> Result<Json<Value>, HttpError> {
     require_life_enabled().await?;
     let _user_id = require_site_owner(&claims, &db).await?;
-    let tags = sanitize_draft_tags(&body.tags);
-    let fallback = tags.join("、");
+    let tags = life::report_dna::sanitize_onboarding_tags(&body.tags);
+    let language = normalize_signals_language(&body.language);
     let name = body.name.trim();
     let display = if name.is_empty() { "Arael" } else { name };
-    if tags.is_empty() {
-        return Ok(Json(json!({
-            "personality": fallback,
-            "source": "empty",
-        })));
-    }
-
-    let Some(analyzer) =
-        crate::services::ai::create_ai_analyzer_for_tier(crate::config::ModelTier::Lite).await
-    else {
-        return Ok(Json(json!({
-            "personality": fallback,
-            "source": "fallback",
-        })));
-    };
-    let system = "根据词条写一段不超过200字的性格说明，用第二人称对这个生命说话时的口吻来写。\
-不要写外形、立绘、房间、服装。不要输出 JSON，不要解释。";
-    let prompt = format!("名字：{display}\n词条：{}", tags.join("、"));
-    match analyzer.analyze_with_system(system, &prompt).await {
-        Ok(raw) => {
-            let text = sanitize_draft_text(&raw);
-            if !is_usable_personality_draft(&text) {
-                Ok(Json(json!({
-                    "personality": fallback,
-                    "source": "fallback",
-                })))
-            } else {
-                Ok(Json(json!({
-                    "personality": text,
-                    "source": "lite",
-                })))
-            }
-        }
-        Err(_) => Ok(Json(json!({
-            "personality": fallback,
-            "source": "fallback",
-        }))),
-    }
+    let (persona, model, source) = life::onboarding_ai::suggest_persona(
+        display,
+        language,
+        &tags,
+        &body.gender,
+        &body.extra_requirements,
+    )
+    .await;
+    let personality = life::onboarding_ai::flatten_persona_text(&persona);
+    Ok(Json(json!({
+        "persona": persona,
+        "personality": personality,
+        "source": source,
+        "model": model,
+    })))
 }
 
 /// Site assets only. The public face must not be able to point off-site, so a
@@ -362,109 +450,16 @@ fn sanitize_portrait_asset_id(raw: &str) -> Option<String> {
     }
 }
 
-fn sanitize_draft_tags(tags: &[String]) -> Vec<String> {
-    let mut seen = std::collections::HashSet::new();
-    let mut out = Vec::new();
-    for tag in tags {
-        let Some(label) = clip_persona_tag(tag) else {
-            continue;
-        };
-        if !seen.insert(label.to_lowercase()) {
-            continue;
-        }
-        out.push(label);
-        if out.len() >= 24 {
-            break;
-        }
-    }
-    out
-}
-
-fn sanitize_draft_text(raw: &str) -> String {
-    raw.trim()
-        .trim_matches(|c| c == '"' || c == '“' || c == '”')
-        .chars()
-        .take(400)
-        .collect()
-}
-
-fn is_usable_personality_draft(text: &str) -> bool {
-    text.chars().count() >= 4 && !text.starts_with('{')
-}
-
-fn clip_persona_tag(raw: &str) -> Option<String> {
-    let label: String = raw.split_whitespace().collect::<Vec<_>>().join(" ");
-    let count = label.chars().count();
-    if count < 2 {
-        return None;
-    }
-    if count <= 40 {
-        Some(label)
-    } else {
-        Some(label.chars().take(40).collect())
-    }
-}
-
-fn collect_persona_tags(
-    report: &Value,
-    platform: &str,
-    tags: &mut Vec<Value>,
-    seen: &mut std::collections::HashSet<String>,
-) {
-    let Some(insights) = report.get("insights").and_then(Value::as_array) else {
-        return;
-    };
-    for insight in insights {
-        let Some(raw) = insight.as_str() else {
-            continue;
-        };
-        let Some(label) = clip_persona_tag(raw) else {
-            continue;
-        };
-        if !seen.insert(label.to_lowercase()) {
-            continue;
-        }
-        tags.push(json!({
-            "label": label,
-            "source": platform,
-        }));
-        if tags.len() >= 24 {
-            return;
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn clips_long_insights_instead_of_dropping_them() {
-        let long = "一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十一二三四五六七八九十超出";
-        let clipped = clip_persona_tag(long).expect("tag");
-        assert_eq!(clipped.chars().count(), 40);
-    }
-
-    #[test]
-    fn collects_unique_insights_as_tags() {
-        let report = json!({
-            "insights": ["夜战爱好者", "夜战爱好者", "x", "喜欢独立游戏"]
-        });
-        let mut tags = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        collect_persona_tags(&report, "steam", &mut tags, &mut seen);
-        assert_eq!(tags.len(), 2);
-        assert_eq!(tags[0]["label"], "夜战爱好者");
-        assert_eq!(tags[0]["source"], "steam");
-        assert_eq!(tags[1]["label"], "喜欢独立游戏");
-    }
-
-    #[test]
-    fn draft_tags_dedupe_and_cap() {
-        let tags = sanitize_draft_tags(&[
+    fn draft_tags_use_onboarding_sanitize() {
+        let tags = life::report_dna::sanitize_onboarding_tags(&[
             "  夜战  ".into(),
             "夜战".into(),
-            "x".into(),
             "喜欢独立游戏".into(),
         ]);
         assert_eq!(tags, vec!["夜战".to_string(), "喜欢独立游戏".to_string()]);
@@ -509,9 +504,4 @@ mod tests {
         assert_eq!(set.portrait_asset_id, Some(Some("/a.png".to_string())));
     }
 
-    #[test]
-    fn json_shaped_draft_is_rejected() {
-        assert!(!is_usable_personality_draft("{\"a\":1}"));
-        assert!(is_usable_personality_draft("话少，认真，对熟人会软一点。"));
-    }
 }

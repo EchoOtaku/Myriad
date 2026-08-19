@@ -809,26 +809,56 @@ class AgentService {
   /**
    * 创建新会话
    */
-  async getPersonaSignals(): Promise<{
+  async getPersonaSignals(body: {
+    language: string
+    regenerate?: boolean
+  }): Promise<{
     reportCount: number
-    tags: Array<{ label: string; source?: string }>
+    platforms: string[]
+    fingerprint: string
+    tags: string[]
+    aiDistilled: boolean
+    model?: string | null
   } | null> {
-    try {
-      return await apiService.get(`${this.baseUrl}/persona/signals`)
-    } catch {
-      return null
-    }
+    return apiService.post(
+      `${this.baseUrl}/persona/signals`,
+      {
+        consent: true,
+        language: body.language,
+        regenerate: body.regenerate === true,
+      },
+      { timeout: 180000 },
+    )
   }
 
   async draftPersona(body: {
     name: string
     tags: string[]
-  }): Promise<{ personality: string; source: string } | null> {
+    gender?: string
+    extraRequirements?: string
+    language?: string
+  }): Promise<{
+    persona?: Record<string, unknown>
+    personality: string
+    source: string
+  } | null> {
     try {
-      return await apiService.post(`${this.baseUrl}/persona/draft`, body)
+      return await apiService.post(`${this.baseUrl}/persona/draft`, body, {
+        timeout: 180000,
+      })
     } catch {
       return null
     }
+  }
+
+  async suggestPersonaName(body: {
+    selectedTags: string[]
+    gender?: string
+    avoidName?: string
+  }): Promise<{ name: string; model?: string | null; tier?: string }> {
+    return apiService.post(`${this.baseUrl}/persona/name`, body, {
+      timeout: 180000,
+    })
   }
 
   async getPersona(): Promise<AgentPersona | null> {

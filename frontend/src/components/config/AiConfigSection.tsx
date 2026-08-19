@@ -15,9 +15,14 @@ import {
   SiOpenai,
   SiOpenrouter,
 } from '@lib/icons'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useI18n } from '../../contexts/I18nContext'
+import PersonaOnboardingPage from '../agent/onboarding/PersonaOnboardingPage'
+import {
+  isPersonaPageOpen,
+  setPersonaPageOpen,
+} from '../agent/onboarding/personaPage'
 import {
   ButtonItem,
   InputItem,
@@ -239,6 +244,23 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   const { t } = useI18n()
   const { catalog: g, bindGuide } = useSettingGuide()
   const [speechTesting, setSpeechTesting] = useState(false)
+  const [personaPage, setPersonaPage] = useState(isPersonaPageOpen)
+
+  useEffect(() => {
+    const apply = () => setPersonaPage(isPersonaPageOpen())
+    window.addEventListener('popstate', apply)
+    return () => window.removeEventListener('popstate', apply)
+  }, [])
+
+  const openPersonaPage = useCallback(() => {
+    setPersonaPageOpen(true)
+    setPersonaPage(true)
+  }, [])
+
+  const closePersonaPage = useCallback(() => {
+    setPersonaPageOpen(false)
+    setPersonaPage(false)
+  }, [])
 
   const fieldGuideFor = useCallback(
     (fieldKey: string) => {
@@ -484,6 +506,16 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     }
   }, [onSpeechTest, t.config.speechTestFailed])
 
+  if (personaPage) {
+    return (
+      <PersonaOnboardingPage
+        onBack={closePersonaPage}
+        liteEnabled={liteEnabled}
+        agentLifeEnabled={agentLifeEnabled}
+      />
+    )
+  }
+
   return (
     <SettingSection
       title={title}
@@ -602,13 +634,11 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         updateValue={updateValue}
       />
 
-      {/* 生命开口写的每一句都走 Lite。Lite 关着时后端也当这个开关没开，
-          所以这里直接禁用并显示为关，而不是让人打开后发现没反应。 */}
+      {/* 开关留在这一级；标题、说明和指南在二级页的 SettingSection 上。 */}
       <SettingGroup
         title={t.config.agentLife}
-        description={t.config.agentLifeHint}
-        {...bindGuide('ai.agentLife', g.ai.agentLife)}
         icon={<LuSparkles />}
+        guidePath="ai.agentLife"
       >
         <SwitchItem
           itemKey="agent_life_enabled"
@@ -621,6 +651,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           }
           layout="horizontal"
         />
+        {liteEnabled && agentLifeEnabled ? (
+          <ButtonItem
+            itemKey="agent_life_onboarding"
+            buttonText={t.life.onboarding.openPage}
+            onClick={openPersonaPage}
+            layout="horizontal"
+          />
+        ) : null}
       </SettingGroup>
 
       {/* 图片生成模型 */}

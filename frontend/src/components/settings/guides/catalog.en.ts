@@ -551,7 +551,8 @@ export const en: SettingGuidesCatalog = {
       what: 'Let Arael speak with the site persona, keep per-person mood and diary, and speak after named events.',
       chain:
         '1) Off by default. Off means chat and tasks only — no event listening, no hidden speech, persona unused.\n2) Requires the Lite tier above: every line life writes goes through Lite, and without it those calls fall back to the standard model. With Lite off this switch has no effect even when turned on.\n3) On: the owner’s persona replaces the public soul; mood and diary stay per signed-in person.\n4) AGENT_LIFE_ENABLED can override the saved switch, but still needs Lite.\n5) Autonomic speech stays hidden; valuable events also notify if the person is not chatting.',
-      frontend: 'The reports status bar shows the name and mood. Guests only see the public name.',
+      frontend:
+        'Chat uses this persona. Write it on this item’s secondary settings page. Guests do not see mood.',
       notes: 'Only the site owner can write the persona. Diary cannot be deleted. Heartbeat is never blocked by mood.',
     },
     liteEnable: {

@@ -1821,10 +1821,10 @@ export interface TranslationKeys {
   // Agent 设定引导
   life: {
     onboarding: {
-      title: string
-      stepOf: string
+      openPage: string
       next: string
       backTo: string
+      optional: string
       step1Short: string
       step2Short: string
       step3Short: string
@@ -1834,18 +1834,60 @@ export interface TranslationKeys {
       step2Lead: string
       step3Title: string
       step3Lead: string
+      step3LeadPending: string
       noReports: string
       selectedCount: string
       selectNothingYet: string
       skipTags: string
+      dragCanvas: string
+      signalsEmpty: string
+      loadingAiSignals: string
+      loadSignalsFailed: string
+      reportCount: string
+      aiDistilledMeta: string
+      reportsButFallback: string
+      regenerateSeeds: string
+      regeneratingSeeds: string
+      saveFirst: string
       nameLabel: string
       nameHint: string
       namePlaceholder: string
+      randomName: string
+      randomNameBusy: string
+      randomNameFailed: string
+      genderLabel: string
+      gender: {
+        female: string
+        male: string
+        nonbinary: string
+        unspecified: string
+      }
+      genderRequired: string
+      extraLabel: string
+      extraHint: string
       extraPlaceholder: string
       personaGroupCharacter: string
+      regeneratePersona: string
+      regeneratingPersona: string
+      regeneratePersonaFailed: string
+      personaNotCompleteIncomplete: string
+      personaFieldGenerating: string
+      personaDraftLabel: string
+      editPersona: string
+      doneEditing: string
+      cancelEdit: string
+      fieldTemperament: string
+      fieldLikes: string
+      fieldDrives: string
+      fieldSocial: string
+      fieldVoice: string
+      fieldSummary: string
       creating: string
       createAndContinue: string
       createFailed: string
+      saving: string
+      saveAndContinue: string
+      saveFailed: string
     }
   }
 
@@ -2179,7 +2221,6 @@ export interface TranslationKeys {
     stagePlaying: string
     stagePaused: string
     heroStage: string
-    heroLife: string
     tipPlatformCount: string
     tipPlatformCountSub: string
     tipReportReady: string
@@ -3696,18 +3737,7 @@ export interface TranslationKeys {
     personaOwnerOnly: string
     personaDoNotDisturb: string
     personaLifeOff: string
-    statusBarTitle: string
-    statusLoading: string
-    statusDisabled: string
     statusNeedLogin: string
-    statusCreateHint: string
-    statusReadyHint: string
-    statusIdle: string
-    statusThinking: string
-    statusTalking: string
-    statusCreate: string
-    statusOpen: string
-    statusLogin: string
     emptyHeartbeat: string
     emptyHeartbeatHint: string
     emptySkills: string

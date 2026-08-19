@@ -9,7 +9,7 @@ test('drops short tags and dedupes case-insensitively', () => {
   )
 })
 
-test('caps at 24 tags', () => {
+test('caps at 28 tags', () => {
   const tags = Array.from({ length: 30 }, (_, i) => `tag-${i}`)
-  assert.equal(uniqPersonaTags(tags).length, 24)
+  assert.equal(uniqPersonaTags(tags).length, 28)
 })
