@@ -139,11 +139,10 @@ pub const PACKAGE_RESOURCE_FILE_LIMITS: &[(&str, &str)] = &[("i18n", "i18nFiles"
 pub const PACKAGE_RESOURCE_BYTE_LIMITS: &[(&str, &str)] = &[("i18n", "i18nResourceBytes")];
 pub const ASSET_DIRECTORY: &str = "assets";
 
-/// 层专属目录：目录下的 `.js` 只下发给对应层的沙箱。
+/// 官方脚手架的推荐层目录。
 ///
-/// 这条约定让「widget 沙箱不下载 Page 的代码」不必依赖在服务端重复实现一遍
-/// `require` 解析——归属看目录，注入范围再由客户端按依赖图裁剪。放在这两个目录
-/// 之外的 `.js` 视为共享文件，所有层都可以 require。
+/// 这只是作者布局约定，不决定隔离边界。实际层归属由 manifest 入口及其 require
+/// 闭包决定；入口和依赖可以位于任意安全包内路径。
 pub const PAGE_LAYER_DIRECTORY: &str = "page";
 pub const WIDGET_LAYER_DIRECTORY: &str = "widget";
 /// 层内声明的资源路径：字段路径 → 扩展名规则键。

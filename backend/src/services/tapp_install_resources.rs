@@ -4,7 +4,7 @@
 //! does not own contract messages only in the API layer. The API still resolves
 //! sandbox paths (canonicalize / symlink rejection) and performs file IO.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use myriad_tapp_contract::manifest::TappManifest;
 
@@ -54,9 +54,18 @@ pub fn collect_declared_install_resources(manifest: &TappManifest) -> Vec<Declar
         });
     }
     let layer_styles = [
-        manifest.core.as_ref().and_then(|core| core.styles.as_deref()),
-        manifest.page.as_ref().and_then(|page| page.styles.as_deref()),
-        manifest.page.as_ref().and_then(|page| page.template.as_deref()),
+        manifest
+            .core
+            .as_ref()
+            .and_then(|core| core.styles.as_deref()),
+        manifest
+            .page
+            .as_ref()
+            .and_then(|page| page.styles.as_deref()),
+        manifest
+            .page
+            .as_ref()
+            .and_then(|page| page.template.as_deref()),
     ];
     for optional in layer_styles.into_iter().flatten() {
         resources.push(DeclaredInstallResource {
@@ -142,6 +151,79 @@ pub fn resolve_require_target(from_module: &str, request: &str) -> Option<String
         return None;
     }
     Some(resolved.join("/"))
+}
+
+/// Resolve one request against the package module table.
+///
+/// The CommonJS subset permits omitting `.js`, but never directory indexes or
+/// JSON modules. Installation validation and resource projection both call
+/// this helper so the accepted graph cannot drift from the graph sent to the
+/// runtime.
+pub fn resolve_require_against_modules(
+    from_module: &str,
+    request: &str,
+    known: &HashSet<String>,
+) -> Option<String> {
+    let resolved = resolve_require_target(from_module, request)?;
+    if known.contains(&resolved) {
+        return Some(resolved);
+    }
+    let with_extension = format!("{resolved}.js");
+    known.contains(&with_extension).then_some(with_extension)
+}
+
+/// Exact module closure and request-resolution table for a set of layer
+/// entries. Paths are package-relative and independent of directory names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TappModuleGraph {
+    pub included: Vec<String>,
+    pub resolutions: BTreeMap<String, BTreeMap<String, String>>,
+}
+
+pub fn collect_tapp_module_graph(
+    sources: &HashMap<String, String>,
+    entries: &[String],
+) -> Result<TappModuleGraph, String> {
+    let known: HashSet<String> = sources.keys().cloned().collect();
+    let mut queue: VecDeque<String> = entries.iter().cloned().collect();
+    let mut seen = HashSet::new();
+    let mut included = Vec::new();
+    let mut resolutions = BTreeMap::new();
+
+    for entry in entries {
+        if !known.contains(entry) {
+            return Err(format!("Declared Tapp layer entry is missing: {entry}"));
+        }
+    }
+
+    while let Some(current) = queue.pop_front() {
+        if !seen.insert(current.clone()) {
+            continue;
+        }
+        let source = sources
+            .get(&current)
+            .ok_or_else(|| format!("Tapp module is missing: {current}"))?;
+        included.push(current.clone());
+
+        let mut module_resolutions = BTreeMap::new();
+        for request in extract_require_requests(source) {
+            let target = resolve_require_against_modules(&current, &request, &known)
+                .ok_or_else(|| require_target_missing(&current, &request))?;
+            module_resolutions.insert(request, target.clone());
+            if !seen.contains(&target) {
+                queue.push_back(target);
+            }
+        }
+        if !module_resolutions.is_empty() {
+            resolutions.insert(current, module_resolutions);
+        }
+    }
+
+    included.sort();
+    Ok(TappModuleGraph {
+        included,
+        resolutions,
+    })
 }
 
 /// 提取一个模块直接 `require` 的字面量目标（原样，未解析）。
@@ -455,11 +537,8 @@ pub fn validate_write_assets_declaration(
     declared: Option<&[String]>,
     provided_keys: impl IntoIterator<Item = impl AsRef<str>>,
 ) -> Result<(), String> {
-    let declared: std::collections::HashSet<&str> = declared
-        .unwrap_or(&[])
-        .iter()
-        .map(String::as_str)
-        .collect();
+    let declared: std::collections::HashSet<&str> =
+        declared.unwrap_or(&[]).iter().map(String::as_str).collect();
     let provided: Vec<String> = provided_keys
         .into_iter()
         .map(|key| key.as_ref().to_string())
@@ -632,20 +711,17 @@ mod tests {
 
     #[test]
     fn agent_schema_rejects_ref_and_invalid_json() {
-        assert!(validate_agent_schema_bytes(
-            "schemas/input.json",
-            br#"{"type":"object"}"#
-        )
-        .is_ok());
-        assert!(validate_agent_schema_bytes("schemas/input.json", b"not-json")
-            .unwrap_err()
-            .contains("not valid JSON"));
-        assert!(validate_agent_schema_bytes(
-            "schemas/input.json",
-            br#"{"$ref":"remote.json"}"#
-        )
-        .unwrap_err()
-        .contains("does not support $ref"));
+        assert!(validate_agent_schema_bytes("schemas/input.json", br#"{"type":"object"}"#).is_ok());
+        assert!(
+            validate_agent_schema_bytes("schemas/input.json", b"not-json")
+                .unwrap_err()
+                .contains("not valid JSON")
+        );
+        assert!(
+            validate_agent_schema_bytes("schemas/input.json", br#"{"$ref":"remote.json"}"#)
+                .unwrap_err()
+                .contains("does not support $ref")
+        );
         let huge = vec![b'a'; MAX_AGENT_SCHEMA_RESOURCE_BYTES + 1];
         assert!(validate_agent_schema_bytes("schemas/input.json", &huge)
             .unwrap_err()
@@ -658,20 +734,16 @@ mod tests {
             validate_asset_resource_bytes("assets/a.png", 10, 0).unwrap(),
             10
         );
-        assert!(validate_asset_resource_bytes(
-            "assets/a.png",
-            MAX_TAPP_ASSET_BYTES + 1,
-            0
-        )
-        .unwrap_err()
-        .contains("exceeds"));
-        assert!(validate_asset_resource_bytes(
-            "assets/a.png",
-            1,
-            MAX_TAPP_ASSETS_TOTAL_BYTES
-        )
-        .unwrap_err()
-        .contains("total size exceeds"));
+        assert!(
+            validate_asset_resource_bytes("assets/a.png", MAX_TAPP_ASSET_BYTES + 1, 0)
+                .unwrap_err()
+                .contains("exceeds")
+        );
+        assert!(
+            validate_asset_resource_bytes("assets/a.png", 1, MAX_TAPP_ASSETS_TOTAL_BYTES)
+                .unwrap_err()
+                .contains("total size exceeds")
+        );
         assert!(validate_asset_resource_bytes("not-under-assets.png", 1, 0).is_err());
     }
 
@@ -684,9 +756,11 @@ mod tests {
         assert!(validate_i18n_filename("../x.json").is_err());
 
         assert!(validate_i18n_file_bytes("en-US.json", br#"{"title":"T"}"#).is_ok());
-        assert!(validate_i18n_file_bytes("en-US.json", br#"["not","object"]"#)
-            .unwrap_err()
-            .contains("JSON object"));
+        assert!(
+            validate_i18n_file_bytes("en-US.json", br#"["not","object"]"#)
+                .unwrap_err()
+                .contains("JSON object")
+        );
         assert!(validate_i18n_file_count(MAX_TAPP_I18N_FILES).is_ok());
         assert!(validate_i18n_file_count(MAX_TAPP_I18N_FILES + 1).is_err());
     }
@@ -713,9 +787,11 @@ mod tests {
         let mut paths = HashSet::new();
         let total = validate_archive_entry("src/main.js", false, 10, &mut paths, 0).unwrap();
         assert_eq!(total, 10);
-        assert!(validate_archive_entry("src/main.js", false, 1, &mut paths, total)
-            .unwrap_err()
-            .contains("Duplicate"));
+        assert!(
+            validate_archive_entry("src/main.js", false, 1, &mut paths, total)
+                .unwrap_err()
+                .contains("Duplicate")
+        );
         assert_eq!(
             validate_archive_entry("empty/", true, 0, &mut paths, total).unwrap(),
             total
@@ -762,6 +838,64 @@ mod tests {
         }
     }
 
+    #[test]
+    fn module_graph_follows_entries_not_directory_names() {
+        let sources = HashMap::from([
+            (
+                "src/core.js".to_string(),
+                "exports.name = 'core';".to_string(),
+            ),
+            (
+                "screens/detail.js".to_string(),
+                "require('../src/core'); require('../shared/view.js');".to_string(),
+            ),
+            (
+                "widgets/card.js".to_string(),
+                "require('../shared/view.js');".to_string(),
+            ),
+            (
+                "widgets/other.js".to_string(),
+                "globalThis.other = true;".to_string(),
+            ),
+            (
+                "shared/view.js".to_string(),
+                "exports.ok = true;".to_string(),
+            ),
+        ]);
+
+        let graph =
+            collect_tapp_module_graph(&sources, &["src/core.js".into(), "widgets/card.js".into()])
+                .unwrap();
+
+        assert_eq!(
+            graph.included,
+            vec!["shared/view.js", "src/core.js", "widgets/card.js"]
+        );
+        assert!(!graph.included.contains(&"widgets/other.js".to_string()));
+        assert_eq!(
+            graph.resolutions["widgets/card.js"]["../shared/view.js"],
+            "shared/view.js"
+        );
+    }
+
+    #[test]
+    fn module_graph_handles_cycles_and_rejects_missing_targets() {
+        let cyclic = HashMap::from([
+            ("a.js".to_string(), "require('./b.js');".to_string()),
+            ("b.js".to_string(), "require('./a.js');".to_string()),
+        ]);
+        let graph = collect_tapp_module_graph(&cyclic, &["a.js".into()]).unwrap();
+        assert_eq!(graph.included, vec!["a.js", "b.js"]);
+
+        let broken = HashMap::from([(
+            "entry.js".to_string(),
+            "require('./missing.js');".to_string(),
+        )]);
+        assert!(collect_tapp_module_graph(&broken, &["entry.js".into()])
+            .unwrap_err()
+            .contains("requires ./missing.js"));
+    }
+
     /// 与运行时提取器共用的用例。改这里时同步改
     /// `frontend/src/tapp/runtime/moduleRuntime.test.ts` 的同名用例。
     const SHARED_EXTRACTION_SOURCE: &str = r#"
@@ -796,12 +930,11 @@ mod tests {
         assert!(validate_write_assets_declaration(Some(&[]), ["assets/a.png"]).is_err());
         let declared = vec!["assets/a.png".to_string(), "assets/b.bin".to_string()];
         assert!(validate_write_assets_declaration(Some(&declared), ["assets/a.png"]).is_ok());
-        assert!(validate_write_assets_declaration(
-            Some(&declared),
-            ["assets/missing.png"]
-        )
-        .unwrap_err()
-        .contains("not declared"));
+        assert!(
+            validate_write_assets_declaration(Some(&declared), ["assets/missing.png"])
+                .unwrap_err()
+                .contains("not declared")
+        );
         // Empty payload always ok.
         assert!(validate_write_assets_declaration(None, std::iter::empty::<&str>()).is_ok());
     }

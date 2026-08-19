@@ -21,9 +21,13 @@ export function getLayerEntries(
   if (mode === 'page' && code.pageEntry) entries.push(code.pageEntry)
   if (mode === 'widget' && widgetId) {
     // 只装这一个 widget 的入口。同一 Tapp 的其它 widget 不进这个 iframe——
-    // 想共用代码就各自 require 同一个文件。
+    // 想共用代码就各自 require 同一个文件。id 对不上必须失败，不能退化成
+    // 「只跑 core」——那看起来像成功的空 widget。
     const widgetEntry = code.widgetEntries?.[widgetId]
-    if (widgetEntry) entries.push(widgetEntry)
+    if (!widgetEntry) {
+      throw new Error(`Unknown widget id: ${widgetId}`)
+    }
+    entries.push(widgetEntry)
   }
   return entries
 }
@@ -39,11 +43,15 @@ export function buildLayerScript(
   mode: TappSandboxMode,
   widgetId?: string,
 ): LayerExecutionPlan {
-  return buildLayerRuntime(code.modules, getLayerEntries(code, mode, widgetId))
+  return buildLayerRuntime(
+    code.modules,
+    getLayerEntries(code, mode, widgetId),
+    code.moduleResolutions,
+  )
 }
 
 function hashParts(parts: string[]): string {
-  let fnv = 0x811C9DC5
+  let fnv = 0x811c9dc5
   let djb = 5381
   let totalLength = 0
   for (const part of parts) {
@@ -84,7 +92,11 @@ export function getCodeStructureFingerprint(
   widgetId?: string,
 ): string {
   const entries = getLayerEntries(code, mode, widgetId)
-  const { includedModules } = buildLayerRuntime(code.modules, entries)
+  const { includedModules } = buildLayerRuntime(
+    code.modules,
+    entries,
+    code.moduleResolutions,
+  )
   const moduleParts = includedModules.flatMap((path) => [
     path,
     code.modules[path],

@@ -7,8 +7,7 @@
 use super::{
     api_error, archive_entry_path, log_install_failure, validate_installed_resources,
     validate_tapp_archive, validate_tapp_archive_with, widget_template_path, write_install_assets,
-    write_install_generation,
-    write_tapp_resource, ApiResponse,
+    write_install_generation, write_tapp_resource, ApiResponse,
 };
 use axum::{http::StatusCode, Json};
 use chrono::{DateTime, FixedOffset};
@@ -50,7 +49,9 @@ fn map_load_error(err: PackageLoadError) -> PackageError {
 }
 
 /// HTTP adapter: load a .tapp archive into a validated prepared package.
-pub(super) fn package_from_archive(file_data: Vec<u8>) -> Result<PreparedTappPackage, PackageError> {
+pub(super) fn package_from_archive(
+    file_data: Vec<u8>,
+) -> Result<PreparedTappPackage, PackageError> {
     let cursor = std::io::Cursor::new(&file_data);
     let mut archive = zip::ZipArchive::new(cursor)
         .map_err(|_| map_load_error(PackageLoadError::InvalidArchive))?;
@@ -118,9 +119,7 @@ impl PreparedTappPackageHttp for PreparedTappPackage {
             }
             None => {
                 // MYR-025: share Arc into extract; do not clone the full zip.
-                let file_data = self
-                    .archive_arc()
-                    .expect("archive package has bytes");
+                let file_data = self.archive_arc().expect("archive package has bytes");
                 extract_archive(self, tapp_dir, file_data, context).await?;
             }
         }
@@ -226,7 +225,15 @@ async fn write_resources(
                     )),
                 ));
             };
-            write_text(package, tapp_dir, declared, content, "widget_styles", context).await?;
+            write_text(
+                package,
+                tapp_dir,
+                declared,
+                content,
+                "widget_styles",
+                context,
+            )
+            .await?;
         }
     }
 
@@ -268,7 +275,15 @@ async fn write_resources(
                 )),
             ));
         };
-        write_text(package, tapp_dir, declared, content, "page_template", context).await?;
+        write_text(
+            package,
+            tapp_dir,
+            declared,
+            content,
+            "page_template",
+            context,
+        )
+        .await?;
     }
     if let Some(widgets) = &resources.widget_templates {
         for (widget_id, templates) in widgets {
@@ -368,7 +383,13 @@ async fn extract_archive(
     match result {
         Ok(Ok(())) => Ok(()),
         Ok(Err(error)) => {
-            log_write_failure(package, "extract_write", context, tapp_dir.as_path(), &error);
+            log_write_failure(
+                package,
+                "extract_write",
+                context,
+                tapp_dir.as_path(),
+                &error,
+            );
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 api_error(format!("Failed to save files: {error}")),
@@ -433,7 +454,9 @@ mod tests {
             },
         );
 
-        assert!(package.validate_for_http(Some("com.example.other")).is_err());
+        assert!(package
+            .validate_for_http(Some("com.example.other"))
+            .is_err());
         assert!(package
             .validate_for_http(Some("com.example.prepared"))
             .is_ok());
@@ -530,13 +553,13 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    /// 安装 → 落盘 → 扫描登记 → 按层分发，一条链路走完。
+    /// 安装 → 落盘 → 扫描登记 → 按入口闭包分发，一条链路走完。
     ///
-    /// 「widget 沙箱拿不到 Page 的 JS」是这次改造的硬要求，而它只成立在落盘后的
-    /// 目录归属判断上——各段函数分开测都过，拼起来漏下发不会被任何一段测出来。
+    /// 文件故意不放进 `page/` / `widget/`：层归属必须来自 manifest 入口和
+    /// require 图，不能来自目录名。
     #[tokio::test]
-    async fn staged_layers_are_distributed_by_directory_ownership() {
-        use crate::services::tapp_package_read::module_layer;
+    async fn staged_layers_are_distributed_by_entry_graph() {
+        use crate::services::tapp_install_resources::collect_tapp_module_graph;
 
         let root = std::env::temp_dir().join(format!(
             "myriad-prepared-layers-{}",
@@ -546,15 +569,15 @@ mod tests {
             "id": "com.example.layers",
             "name": "Layered package",
             "version": "1.0.0",
-            "core": { "entry": "core.js" },
-            "page": { "entry": "page/index.js" },
+            "core": { "entry": "src/core.js" },
+            "page": { "entry": "screens/page.js" },
             "widgets": [{
                 "id": "card",
                 "name": "Card",
                 "defaultSize": "2x2",
                 "sizes": ["2x2"],
                 "category": "utility",
-                "entry": "widget/index.js"
+                "entry": "components/card.js"
             }],
             "category": "utility",
             "permissions": ["widget:register"]
@@ -566,24 +589,29 @@ mod tests {
             PreparedTappResources {
                 modules: HashMap::from([
                     (
-                        "core.js".to_string(),
-                        "var shared = require('./lib/shared.js');".to_string(),
+                        "src/core.js".to_string(),
+                        "var shared = require('../lib/shared.js');".to_string(),
                     ),
                     (
                         "lib/shared.js".to_string(),
                         "module.exports = 1;".to_string(),
                     ),
                     (
-                        "page/index.js".to_string(),
-                        "require('../core.js'); require('./state.js');".to_string(),
+                        "screens/page.js".to_string(),
+                        "require('../src/core.js'); require('../shared/page-state.js');"
+                            .to_string(),
                     ),
                     (
-                        "page/state.js".to_string(),
+                        "shared/page-state.js".to_string(),
                         "module.exports = {};".to_string(),
                     ),
                     (
-                        "widget/index.js".to_string(),
-                        "require('../core.js');".to_string(),
+                        "components/card.js".to_string(),
+                        "require('../src/core.js');".to_string(),
+                    ),
+                    (
+                        "components/other-widget.js".to_string(),
+                        "globalThis.otherWidget = true;".to_string(),
                     ),
                 ]),
                 ..PreparedTappResources::default()
@@ -607,31 +635,47 @@ mod tests {
         crate::api::tapp_store::package_files::validate_installed_package_modules(&root).unwrap();
 
         let scanned = crate::api::tapp_store::package_files::collect_package_module_paths(&root);
-        let for_mode = |want_widget: bool, want_page: bool| {
-            let mut kept: Vec<&str> = scanned
-                .iter()
-                .filter(|relative| module_layer(relative).wanted_by(want_widget, want_page))
-                .map(String::as_str)
-                .collect();
-            kept.sort_unstable();
-            kept
+        let sources: HashMap<String, String> = scanned
+            .iter()
+            .map(|relative| {
+                (
+                    relative.clone(),
+                    std::fs::read_to_string(root.join(relative)).unwrap(),
+                )
+            })
+            .collect();
+        let for_entries = |entries: &[&str]| {
+            collect_tapp_module_graph(
+                &sources,
+                &entries
+                    .iter()
+                    .map(|entry| (*entry).to_string())
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap()
+            .included
         };
 
         assert_eq!(
-            for_mode(true, false),
-            vec!["core.js", "lib/shared.js", "widget/index.js"]
+            for_entries(&["src/core.js", "components/card.js"]),
+            vec!["components/card.js", "lib/shared.js", "src/core.js"]
         );
         assert_eq!(
-            for_mode(false, true),
+            for_entries(&["src/core.js", "screens/page.js"]),
             vec![
-                "core.js",
                 "lib/shared.js",
-                "page/index.js",
-                "page/state.js"
+                "screens/page.js",
+                "shared/page-state.js",
+                "src/core.js"
             ]
         );
-        // headless 只要共享层。
-        assert_eq!(for_mode(false, false), vec!["core.js", "lib/shared.js"]);
+        assert_eq!(
+            for_entries(&["src/core.js"]),
+            vec!["lib/shared.js", "src/core.js"]
+        );
+        assert!(!for_entries(&["src/core.js", "components/card.js"])
+            .iter()
+            .any(|path| path == "components/other-widget.js"));
 
         std::fs::remove_dir_all(root).unwrap();
     }
@@ -837,11 +881,7 @@ mod tests {
         super::super::validate_installed_resources(&package.manifest, &root).unwrap();
 
         // 指向不存在文件的 require 必须在安装期就失败
-        std::fs::write(
-            root.join("page/index.js"),
-            "require('./ghost.js');",
-        )
-        .unwrap();
+        std::fs::write(root.join("page/index.js"), "require('./ghost.js');").unwrap();
         let error = super::super::validate_installed_resources(&package.manifest, &root)
             .expect_err("missing require target must fail install validation");
         assert!(error.contains("ghost.js"), "got: {error}");

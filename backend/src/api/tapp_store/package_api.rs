@@ -7,10 +7,9 @@
 use super::{
     append_directory_to_zip, collect_package_module_paths, find_visible_tapp,
     guess_asset_mime_type, installed_tapp_dir, is_safe_path_component,
-    optional_authenticated_user_id,
-    read_tapp_text_resource, regular_resource_directory, regular_resource_path,
-    unsupported_package_structure, validate_asset_path, WidgetTemplateContents,
-    MAX_TAPP_GAME_ASSET_BYTES,
+    optional_authenticated_user_id, read_tapp_text_resource, regular_resource_directory,
+    regular_resource_path, unsupported_package_structure, validate_asset_path,
+    WidgetTemplateContents, MAX_TAPP_GAME_ASSET_BYTES,
 };
 use axum::{
     extract::{Path, Query, State},
@@ -25,10 +24,12 @@ use tokio::fs;
 
 use crate::error::HttpError;
 use crate::middleware::auth::{Claims, OptionalClaims};
+use crate::services::tapp_install_resources::collect_tapp_module_graph;
 use crate::services::tapp_package_read::{
-    asset_bytes_within_limit, installed_core_entry, installed_manifest_declares_asset,
-    installed_page_entry, installed_text_resource_plan, installed_widget_layer_paths,
-    installed_widget_template_paths, module_layer, HOST_PAGE_CSS, HOST_WIDGET_CSS,
+    asset_bytes_within_limit, filter_widget_paths, installed_core_entry,
+    installed_manifest_declares_asset, installed_page_entry, installed_text_resource_plan,
+    installed_widget_layer_paths, installed_widget_template_paths, require_known_widget_id,
+    HOST_PAGE_CSS, HOST_WIDGET_CSS,
 };
 use myriad_error::AppError;
 
@@ -51,6 +52,11 @@ pub(super) struct TappResourcesResponse {
     /// 至少包含相关层的入口。层内被 require 的文件随依赖图一起进来，
     /// 与本层无关的层入口不会下发。
     modules: HashMap<String, String>,
+    /// 安装期同语义的静态解析表：模块路径 → require 原文 → 目标模块。
+    ///
+    /// 客户端有这个字段时不再扫描源码；缺失时仍可兼容旧后端。
+    module_resolutions:
+        std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
     /// 各层入口的相对路径，供客户端知道从哪个模块开始执行。
     #[serde(skip_serializing_if = "Option::is_none")]
     core_entry: Option<String>,
@@ -85,18 +91,25 @@ pub(super) struct TappResourcesResponse {
 /// or runtime capability grants.
 ///
 /// - `full` (default): every layer
-/// - `widget`: core + widget layers only; page JS never reaches a widget iframe
+/// - `core`: core dependency closure only
+/// - `widget`: core + one requested widget dependency closure
 /// - `page`: core + page layers only
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ResourceMode {
     Full,
+    Core,
     Widget,
     Page,
 }
 
 impl ResourceMode {
     fn parse(raw: Option<&str>) -> Self {
-        match raw.map(str::trim).map(|s| s.to_ascii_lowercase()).as_deref() {
+        match raw
+            .map(str::trim)
+            .map(|s| s.to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("core") => Self::Core,
             Some("widget") => Self::Widget,
             Some("page") => Self::Page,
             _ => Self::Full,
@@ -114,9 +127,13 @@ impl ResourceMode {
 
 #[derive(Debug, Deserialize)]
 pub(super) struct GetTappResourcesQuery {
-    /// `full` | `widget` | `page`. Unknown values fall back to full.
+    /// `full` | `core` | `widget` | `page`. Unknown values fall back to full.
     #[serde(default)]
     mode: Option<String>,
+    /// Widget mode may select one manifest widget. Omitted keeps the old
+    /// all-widget projection for backward-compatible callers.
+    #[serde(default)]
+    widget_id: Option<String>,
 }
 
 async fn read_optional_text(tapp_dir: &std::path::Path, path: Option<&str>) -> Option<String> {
@@ -127,8 +144,12 @@ async fn read_optional_text(tapp_dir: &std::path::Path, path: Option<&str>) -> O
 async fn load_widget_templates(
     tapp_dir: &std::path::Path,
     manifest: &serde_json::Value,
+    widget_id: Option<&str>,
 ) -> WidgetTemplateContents {
-    let entries = installed_widget_template_paths(manifest);
+    let entries: Vec<_> = installed_widget_template_paths(manifest)
+        .into_iter()
+        .filter(|entry| widget_id.is_none_or(|selected| entry.widget_id == selected))
+        .collect();
     if entries.is_empty() {
         return WidgetTemplateContents::new();
     }
@@ -154,9 +175,7 @@ async fn load_widget_templates(
     widget_templates
 }
 
-async fn load_i18n(
-    tapp_dir: &std::path::Path,
-) -> Option<HashMap<String, serde_json::Value>> {
+async fn load_i18n(tapp_dir: &std::path::Path) -> Option<HashMap<String, serde_json::Value>> {
     let i18n_dir = regular_resource_directory(tapp_dir, "i18n")?;
     let mut translations = HashMap::new();
     let mut entries = fs::read_dir(i18n_dir).await.ok()?;
@@ -230,19 +249,38 @@ pub(super) async fn get_tapp_resources(
 
     let want_widget = mode.wants_widget();
     let want_page = mode.wants_page();
+    let selected_widget_id = if mode == ResourceMode::Widget {
+        require_known_widget_id(manifest, query.widget_id.as_deref()).map_err(|error| {
+            unsupported_package_structure(&format!("Unknown widget id: {}", error.0))
+        })?
+    } else {
+        None
+    };
 
-    // 只下发该 mode 相关层的入口：widget iframe 不应拿到 Page 的 JS。
+    // 入口完全来自 manifest。目录名不参与层归属。
     let core_entry = installed_core_entry(manifest);
     let page_entry = want_page.then(|| installed_page_entry(manifest)).flatten();
     let widget_entries: HashMap<String, String> = if want_widget {
-        installed_widget_layer_paths(manifest, "entry")
-            .into_iter()
-            .collect()
+        let entries = filter_widget_paths(
+            installed_widget_layer_paths(manifest, "entry"),
+            selected_widget_id,
+        );
+        if let Some(widget_id) = selected_widget_id {
+            if entries.is_empty() {
+                return Err(unsupported_package_structure(&format!(
+                    "Widget {widget_id} has no layer entry"
+                )));
+            }
+        }
+        entries.into_iter().collect()
     } else {
         HashMap::new()
     };
     let widget_styles_paths = if want_widget {
-        installed_widget_layer_paths(manifest, "styles")
+        filter_widget_paths(
+            installed_widget_layer_paths(manifest, "styles"),
+            selected_widget_id,
+        )
     } else {
         Vec::new()
     };
@@ -279,7 +317,7 @@ pub(super) async fn get_tapp_resources(
         },
         async {
             if want_widget {
-                load_widget_templates(&tapp_dir, manifest).await
+                load_widget_templates(&tapp_dir, manifest, selected_widget_id).await
             } else {
                 WidgetTemplateContents::new()
             }
@@ -287,20 +325,25 @@ pub(super) async fn get_tapp_resources(
         load_i18n(&tapp_dir),
     );
 
-    // 声明的层入口必须下发；同层其它 `.js` 一并给出，让客户端能解析 require。
-    let mut wanted: Vec<String> = Vec::new();
-    wanted.extend(core_entry.clone());
-    wanted.extend(page_entry.clone());
-    wanted.extend(widget_entries.values().cloned());
-    for relative in collect_package_module_paths(&tapp_dir) {
-        if wanted.contains(&relative) {
-            continue;
-        }
-        if module_layer(&relative).wanted_by(want_widget, want_page) {
-            wanted.push(relative);
-        }
-    }
-    let modules = load_layer_modules(&tapp_dir, &wanted).await?;
+    // 扫描包内模块后只返回所选入口的精确闭包。`page/` / `widget/` 只是推荐布局，
+    // 不再决定一个文件能否进入某层，也不会让同一目录的其它 Widget 源码旁路进入。
+    let package_module_paths = collect_package_module_paths(&tapp_dir);
+    let all_modules = load_layer_modules(&tapp_dir, &package_module_paths).await?;
+    let mut layer_entries = Vec::new();
+    layer_entries.extend(core_entry.clone());
+    layer_entries.extend(page_entry.clone());
+    layer_entries.extend(widget_entries.values().cloned());
+    let graph = collect_tapp_module_graph(&all_modules, &layer_entries)
+        .map_err(|error| unsupported_package_structure(&error))?;
+    let modules: HashMap<String, String> = graph
+        .included
+        .iter()
+        .filter_map(|path| {
+            all_modules
+                .get(path)
+                .map(|source| (path.clone(), source.clone()))
+        })
+        .collect();
 
     let mut widget_styles = HashMap::new();
     for (widget_id, path) in widget_styles_paths {
@@ -311,6 +354,7 @@ pub(super) async fn get_tapp_resources(
 
     Ok(Json(TappResourcesResponse {
         modules,
+        module_resolutions: graph.resolutions,
         core_entry,
         page_entry,
         widget_entries,
@@ -348,13 +392,15 @@ pub(super) async fn get_tapp_asset(
     use base64::{engine::general_purpose::STANDARD, Engine};
 
     let tapp = visible_tapp(&db, claims.as_ref(), &tapp_id).await?;
-    validate_asset_path(&query.path).map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
+    validate_asset_path(&query.path)
+        .map_err(|_| HttpError(AppError::bad_request("Bad request")))?;
     if !installed_manifest_declares_asset(&tapp.manifest, &query.path) {
         return Err(HttpError(AppError::not_found("Not found")));
     }
 
     let tapp_dir = installed_tapp_dir(&tapp)?;
-    let file_path = regular_resource_path(&tapp_dir, &query.path).ok_or_else(|| HttpError(AppError::not_found("Not found")))?;
+    let file_path = regular_resource_path(&tapp_dir, &query.path)
+        .ok_or_else(|| HttpError(AppError::not_found("Not found")))?;
     let bytes = fs::read(file_path)
         .await
         .map_err(|_| HttpError(AppError::not_found("Not found")))?;
@@ -416,6 +462,7 @@ mod resource_mode_tests {
     fn parses_resource_mode() {
         assert_eq!(ResourceMode::parse(None), ResourceMode::Full);
         assert_eq!(ResourceMode::parse(Some("full")), ResourceMode::Full);
+        assert_eq!(ResourceMode::parse(Some("CORE")), ResourceMode::Core);
         assert_eq!(ResourceMode::parse(Some("WIDGET")), ResourceMode::Widget);
         assert_eq!(ResourceMode::parse(Some(" page ")), ResourceMode::Page);
         assert_eq!(ResourceMode::parse(Some("unknown")), ResourceMode::Full);
@@ -430,6 +477,8 @@ mod resource_mode_tests {
         assert!(ResourceMode::Page.wants_page());
         assert!(!ResourceMode::Page.wants_widget());
         assert!(ResourceMode::Full.wants_widget() && ResourceMode::Full.wants_page());
+        assert!(!ResourceMode::Core.wants_widget());
+        assert!(!ResourceMode::Core.wants_page());
     }
 
     /// 钉住出站 JSON 的键名。
@@ -441,12 +490,16 @@ mod resource_mode_tests {
     fn resource_response_keys_match_the_client_interface() {
         let response = TappResourcesResponse {
             modules: HashMap::from([("core.js".to_string(), "0".to_string())]),
+            module_resolutions: std::collections::BTreeMap::from([(
+                "core.js".to_string(),
+                std::collections::BTreeMap::from([(
+                    "./shared.js".to_string(),
+                    "shared.js".to_string(),
+                )]),
+            )]),
             core_entry: Some("core.js".to_string()),
             page_entry: Some("page/index.js".to_string()),
-            widget_entries: HashMap::from([(
-                "card".to_string(),
-                "widget/index.js".to_string(),
-            )]),
+            widget_entries: HashMap::from([("card".to_string(), "widget/index.js".to_string())]),
             core_styles: Some("a{}".to_string()),
             page_styles: Some("b{}".to_string()),
             widget_styles: HashMap::from([("card".to_string(), "c{}".to_string())]),
@@ -465,16 +518,20 @@ mod resource_mode_tests {
             .map(String::as_str)
             .collect();
         keys.sort_unstable();
-        assert_eq!(keys, vec![
-            "core_entry",
-            "core_styles",
-            "modules",
-            "page_css",
-            "page_entry",
-            "page_styles",
-            "widget_css",
-            "widget_entries",
-            "widget_styles",
-        ]);
+        assert_eq!(
+            keys,
+            vec![
+                "core_entry",
+                "core_styles",
+                "module_resolutions",
+                "modules",
+                "page_css",
+                "page_entry",
+                "page_styles",
+                "widget_css",
+                "widget_entries",
+                "widget_styles",
+            ]
+        );
     }
 }

@@ -68,6 +68,13 @@ describe('getLayerEntries', () => {
   it('loads no widget entry without a widget id', () => {
     assert.deepEqual(getLayerEntries(sampleCode(), 'widget'), ['core.js'])
   })
+
+  it('rejects a widget id that is not in the projection', () => {
+    assert.throws(
+      () => getLayerEntries(sampleCode(), 'widget', 'ghost'),
+      /Unknown widget id: ghost/,
+    )
+  })
 })
 
 describe('buildLayerScript', () => {
@@ -85,6 +92,32 @@ describe('buildLayerScript', () => {
     assert.ok(!source.includes('"widget/index.js"'))
     // 计划同时给出装入清单，调用方不必为调试输出再算一遍依赖图
     assert.deepEqual(includedModules, ['core.js', 'page/index.js'])
+  })
+
+  /// iframe 不能 eval，宿主把这段源码原样塞进 srcdoc。这里按同一条注入路径
+  /// 执行：core 先跑、跨文件只走 exports、另一层的模块不进脚本。
+  it('runs the injected srcdoc script the way an iframe would', () => {
+    const code = sampleCode()
+    code.modules['core.js'] = 'module.exports = { appName: "My Tapp" };'
+    code.modules['page/index.js'] =
+      'var core = require("../core.js"); globalThis.__proof = core.appName; var note = "</script>";'
+    code.modules['widget/index.js'] = 'globalThis.__widgetRan = true;'
+    code.moduleResolutions = {
+      'page/index.js': { '../core.js': 'core.js' },
+    }
+
+    const plan = buildLayerScript(code, 'page')
+    assert.ok(!plan.source.includes('widget/index.js'))
+    assert.ok(!plan.source.includes('</script>'))
+    assert.ok(plan.source.includes('<\\/script'))
+
+    // eslint-disable-next-line no-new-func -- host-side stand-in for the iframe script tag
+    new Function(plan.source)()
+    assert.equal((globalThis as { __proof?: string }).__proof, 'My Tapp')
+    assert.equal(
+      (globalThis as { __widgetRan?: boolean }).__widgetRan,
+      undefined,
+    )
   })
 })
 

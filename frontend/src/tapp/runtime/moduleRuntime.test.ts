@@ -78,7 +78,8 @@ describe('collectRequires', () => {
 describe('collectLayerModules', () => {
   const modules = {
     'core.js': 'module.exports = { shared: 1 };',
-    'page/index.js': 'var core = require("../core.js"); var s = require("./state.js");',
+    'page/index.js':
+      'var core = require("../core.js"); var s = require("./state.js");',
     'page/state.js': 'module.exports = {};',
     'widget/index.js': 'require("../core.js");',
     'orphan.js': 'module.exports = 1;',
@@ -100,10 +101,9 @@ describe('collectLayerModules', () => {
   })
 
   it('reports unresolved requires instead of silently dropping them', () => {
-    const broken = collectLayerModules(
-      { 'core.js': 'require("./nope.js");' },
-      ['core.js'],
-    )
+    const broken = collectLayerModules({ 'core.js': 'require("./nope.js");' }, [
+      'core.js',
+    ])
     assert.deepEqual(broken.missing, ['core.js → ./nope.js'])
   })
 
@@ -135,7 +135,8 @@ describe('buildLayerRuntime', () => {
   it('isolates module top-level declarations and shares via exports', () => {
     const plan = buildLayerRuntime(
       {
-        'core.js': 'var secret = 42; module.exports = { get: function () { return secret; } };',
+        'core.js':
+          'var secret = 42; module.exports = { get: function () { return secret; } };',
         'page/index.js':
           'var core = require("../core.js"); globalThis.__result = { fromExports: core.get(), leaked: typeof secret };',
       },
@@ -143,7 +144,8 @@ describe('buildLayerRuntime', () => {
     )
     // eslint-disable-next-line no-new-func -- host-side test only
     new Function(plan.source)()
-    const result = (globalThis as { __result?: Record<string, unknown> }).__result
+    const result = (globalThis as { __result?: Record<string, unknown> })
+      .__result
     assert.equal(result?.fromExports, 42)
     assert.equal(result?.leaked, 'undefined')
   })
@@ -166,14 +168,39 @@ describe('buildLayerRuntime', () => {
   it('breaks require cycles with partial exports', () => {
     const plan = buildLayerRuntime(
       {
-        'a.js': 'exports.name = "a"; var b = require("./b.js"); exports.sawB = b.name;',
-        'b.js': 'var a = require("./a.js"); exports.name = "b"; exports.sawA = a.name;',
+        'a.js':
+          'exports.name = "a"; var b = require("./b.js"); exports.sawB = b.name;',
+        'b.js':
+          'var a = require("./a.js"); exports.name = "b"; exports.sawA = a.name;',
       },
       ['a.js'],
     )
     // eslint-disable-next-line no-new-func -- host-side test only
     new Function(`${plan.source}`)()
     assert.ok(plan.includedModules.includes('b.js'))
+  })
+
+  it('consumes the host resolution graph without rescanning source', () => {
+    const plan = buildLayerRuntime(
+      {
+        'layers/page.js':
+          'var shared = require("./shared"); globalThis.__hostGraph = shared.value;',
+        'lib/shared.js': 'module.exports = { value: 7 };',
+        'widget/private.js': 'globalThis.__wrongLayer = true;',
+      },
+      ['layers/page.js'],
+      {
+        'layers/page.js': {
+          './shared': 'lib/shared.js',
+        },
+      },
+    )
+
+    assert.deepEqual(plan.includedModules, ['layers/page.js', 'lib/shared.js'])
+    assert.ok(!plan.source.includes('widget/private.js'))
+    // eslint-disable-next-line no-new-func -- host-side test only
+    new Function(plan.source)()
+    assert.equal((globalThis as { __hostGraph?: number }).__hostGraph, 7)
   })
 
   it('throws inside the sandbox for an unknown module', () => {

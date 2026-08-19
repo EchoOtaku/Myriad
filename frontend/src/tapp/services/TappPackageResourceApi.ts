@@ -6,6 +6,8 @@ import { apiRequest } from './TappHttpClient'
 export interface TappResources {
   /** 包内 `.js` 文件：相对路径 → 源码，只含该 mode 相关层。 */
   modules: Record<string, string>
+  /** 宿主解析的 require 图；缺失表示旧后端，由前端兼容扫描。 */
+  moduleResolutions?: Record<string, Record<string, string>>
   coreEntry?: string
   pageEntry?: string
   widgetEntries?: Record<string, string>
@@ -23,6 +25,7 @@ export interface TappResources {
 
 interface TappResourcesRaw {
   modules: Record<string, string>
+  module_resolutions?: Record<string, Record<string, string>>
   core_entry?: string
   page_entry?: string
   widget_entries?: Record<string, string>
@@ -37,15 +40,18 @@ interface TappResourcesRaw {
 }
 
 /** Projection of installed package resources. Matches backend `mode` query. */
-export type TappResourceMode = 'full' | 'widget' | 'page'
+export type TappResourceMode = 'full' | 'core' | 'widget' | 'page'
 
 export async function getTappResources(
   tappId: string,
-  options?: { mode?: TappResourceMode },
+  options?: { mode?: TappResourceMode; widgetId?: string },
 ): Promise<TappResources> {
   const mode =
     options?.mode && options.mode !== 'full' ? options.mode : undefined
-  const params = mode ? `?mode=${encodeURIComponent(mode)}` : ''
+  const query = new URLSearchParams()
+  if (mode) query.set('mode', mode)
+  if (options?.widgetId) query.set('widget_id', options.widgetId)
+  const params = query.size > 0 ? `?${query.toString()}` : ''
   const response = await fetch(
     `${API_URL}/api/tapps/${encodeURIComponent(tappId)}/resources${params}`,
     { method: 'GET', credentials: 'include' },
@@ -58,6 +64,7 @@ export async function getTappResources(
   const raw: TappResourcesRaw = await response.json()
   return {
     modules: raw.modules || {},
+    moduleResolutions: raw.module_resolutions,
     coreEntry: raw.core_entry,
     pageEntry: raw.page_entry,
     widgetEntries: raw.widget_entries,

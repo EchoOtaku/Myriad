@@ -3,7 +3,6 @@
 //! HTTP handlers keep visibility/auth and filesystem IO. This module owns how
 //! a stored manifest JSON maps to relative paths the reader should attempt.
 
-use myriad_tapp_contract::contract_rules::{PAGE_LAYER_DIRECTORY, WIDGET_LAYER_DIRECTORY};
 use myriad_tapp_contract::manifest::TappManifest;
 
 /// 宿主预编译 Tailwind 产物的固定路径。
@@ -47,37 +46,6 @@ pub fn installed_text_resource_plan(manifest: &serde_json::Value) -> InstalledTe
     }
 }
 
-/// 包内 `.js` 归属哪一层。
-///
-/// 归属看目录，这样服务端不必重复实现一遍 `require` 解析就能保证 widget 沙箱拿不到
-/// Page 的代码。共享文件对所有层可见——任何层都可以 require 它。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModuleLayer {
-    Shared,
-    Page,
-    Widget,
-}
-
-impl ModuleLayer {
-    /// 该层的模块是否要下发给这次请求。
-    pub fn wanted_by(self, want_widget: bool, want_page: bool) -> bool {
-        match self {
-            Self::Shared => true,
-            Self::Page => want_page,
-            Self::Widget => want_widget,
-        }
-    }
-}
-
-/// 按层专属目录判断归属。同名但不是目录前缀的文件（`page.js`）仍是共享文件。
-pub fn module_layer(relative: &str) -> ModuleLayer {
-    match relative.split_once('/') {
-        Some((PAGE_LAYER_DIRECTORY, _)) => ModuleLayer::Page,
-        Some((WIDGET_LAYER_DIRECTORY, _)) => ModuleLayer::Widget,
-        _ => ModuleLayer::Shared,
-    }
-}
-
 /// `core.entry` from a stored manifest JSON.
 pub fn installed_core_entry(manifest: &serde_json::Value) -> Option<String> {
     layer_string(manifest, "core", "entry")
@@ -88,12 +56,71 @@ pub fn installed_page_entry(manifest: &serde_json::Value) -> Option<String> {
     layer_string(manifest, "page", "entry")
 }
 
+/// Widget ids declared on a stored manifest, in declaration order.
+pub fn installed_widget_ids(manifest: &serde_json::Value) -> Vec<String> {
+    let Some(widgets) = manifest
+        .get("widgets")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return Vec::new();
+    };
+    widgets
+        .iter()
+        .filter_map(|widget| {
+            widget
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+/// A `widget_id` query that does not name a declared widget.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownWidgetId(pub String);
+
+/// Accept a requested widget id only when the manifest actually declares it.
+///
+/// Omitted id keeps the all-widget projection. A typo must not silently shrink
+/// the graph to core-only — that looks like a successful empty widget.
+pub fn require_known_widget_id<'a>(
+    manifest: &serde_json::Value,
+    selected: Option<&'a str>,
+) -> Result<Option<&'a str>, UnknownWidgetId> {
+    let Some(id) = selected else {
+        return Ok(None);
+    };
+    if installed_widget_ids(manifest)
+        .iter()
+        .any(|declared| declared == id)
+    {
+        return Ok(Some(id));
+    }
+    Err(UnknownWidgetId(id.to_string()))
+}
+
+pub fn filter_widget_paths(
+    paths: Vec<(String, String)>,
+    selected: Option<&str>,
+) -> Vec<(String, String)> {
+    match selected {
+        None => paths,
+        Some(id) => paths
+            .into_iter()
+            .filter(|(widget_id, _)| widget_id == id)
+            .collect(),
+    }
+}
+
 /// `(widget id, path)` pairs for a per-widget layer key such as `entry` / `styles`.
 pub fn installed_widget_layer_paths(
     manifest: &serde_json::Value,
     key: &str,
 ) -> Vec<(String, String)> {
-    let Some(widgets) = manifest.get("widgets").and_then(serde_json::Value::as_array) else {
+    let Some(widgets) = manifest
+        .get("widgets")
+        .and_then(serde_json::Value::as_array)
+    else {
         return Vec::new();
     };
     widgets
@@ -268,25 +295,34 @@ mod tests {
         assert!(installed_layer_entries(&json!({})).is_empty());
     }
 
-    /// widget 沙箱不该下载 Page 的代码。归属看专属目录，这样服务端不必重复实现
-    /// 一遍 require 解析；共享文件对所有层可见，因为任何层都能 require 它。
     #[test]
-    fn layer_directories_own_their_modules() {
-        assert_eq!(module_layer("page/index.js"), ModuleLayer::Page);
-        assert_eq!(module_layer("page/state/store.js"), ModuleLayer::Page);
-        assert_eq!(module_layer("widget/render.js"), ModuleLayer::Widget);
-        assert_eq!(module_layer("core.js"), ModuleLayer::Shared);
-        assert_eq!(module_layer("lib/util.js"), ModuleLayer::Shared);
-        // 同名但不是目录前缀的文件仍是共享文件
-        assert_eq!(module_layer("page.js"), ModuleLayer::Shared);
-
-        assert!(!ModuleLayer::Page.wanted_by(true, false));
-        assert!(ModuleLayer::Page.wanted_by(false, true));
-        assert!(!ModuleLayer::Widget.wanted_by(false, true));
-        assert!(ModuleLayer::Widget.wanted_by(true, false));
-        for (want_widget, want_page) in [(true, false), (false, true), (true, true)] {
-            assert!(ModuleLayer::Shared.wanted_by(want_widget, want_page));
-        }
+    fn requested_widget_id_must_be_declared() {
+        let manifest = json!({
+            "widgets": [
+                { "id": "card", "entry": "components/card.js" },
+                { "id": "list", "entry": "components/list.js" }
+            ]
+        });
+        assert_eq!(installed_widget_ids(&manifest), vec!["card", "list"]);
+        assert_eq!(require_known_widget_id(&manifest, None).unwrap(), None);
+        assert_eq!(
+            require_known_widget_id(&manifest, Some("card")).unwrap(),
+            Some("card")
+        );
+        assert_eq!(
+            require_known_widget_id(&manifest, Some("ghost")).unwrap_err(),
+            UnknownWidgetId("ghost".into())
+        );
+        assert_eq!(
+            filter_widget_paths(
+                vec![
+                    ("card".into(), "components/card.js".into()),
+                    ("list".into(), "components/list.js".into())
+                ],
+                Some("card")
+            ),
+            vec![("card".into(), "components/card.js".into())]
+        );
     }
 
     #[test]
@@ -358,7 +394,10 @@ mod tests {
             json!({ "assets": [42] }),
             json!({ "core": { "entry": "core.js" } }),
         ] {
-            assert!(!installed_manifest_declares_asset(&shape, "assets/icon.png"));
+            assert!(!installed_manifest_declares_asset(
+                &shape,
+                "assets/icon.png"
+            ));
         }
     }
 }

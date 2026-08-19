@@ -46,7 +46,7 @@ export function extractRequireRequests(source: string): string[] {
       continue
     }
 
-    if (char === '\'' || char === '"' || char === '`') {
+    if (char === "'" || char === '"' || char === '`') {
       index += 1
       while (index < source.length) {
         if (source[index] === '\\') {
@@ -69,7 +69,7 @@ export function extractRequireRequests(source: string): string[] {
       if (atBoundary && rest.startsWith('(')) {
         const inner = rest.slice(1).trimStart()
         const quote = inner[0]
-        if (quote === '\'' || quote === '"') {
+        if (quote === "'" || quote === '"') {
           const end = inner.indexOf(quote, 1)
           if (end > 1) requests.push(inner.slice(1, end))
         }
@@ -135,6 +135,8 @@ function resolveAgainstModules(
 
 /** 一个模块的 require 解析结果：原样请求 → 解析后的模块路径。 */
 export type RequireResolution = Map<string, string>
+/** 后端预解析的 require 表：模块路径 → 原样请求 → 目标模块路径。 */
+export type ModuleResolutionTable = Record<string, Record<string, string>>
 
 /** 静态解析一个模块直接 require 的目标。 */
 export function collectRequires(
@@ -199,6 +201,39 @@ export function collectLayerModules(
   return { included: included.sort(), missing, resolution }
 }
 
+function collectResolvedLayerModules(
+  modules: Record<string, string>,
+  entries: string[],
+  resolutions: ModuleResolutionTable,
+): { included: string[]; missing: string[] } {
+  const included: string[] = []
+  const missing: string[] = []
+  const seen = new Set<string>()
+  const queue = entries.filter((entry) => entry in modules)
+
+  for (const entry of entries) {
+    if (!(entry in modules)) missing.push(entry)
+  }
+
+  while (queue.length > 0) {
+    const current = queue.shift()!
+    if (seen.has(current)) continue
+    seen.add(current)
+    included.push(current)
+    for (const [request, target] of Object.entries(
+      resolutions[current] || {},
+    )) {
+      if (!(target in modules)) {
+        missing.push(`${current} → ${request}`)
+      } else if (!seen.has(target)) {
+        queue.push(target)
+      }
+    }
+  }
+
+  return { included: included.sort(), missing }
+}
+
 function escapeModuleSource(source: string): string {
   // 模块体作为函数字面量嵌进外层 script，必须切断提前闭合 script 的可能。
   return source.replace(/<\/script/gi, '<\\/script')
@@ -213,9 +248,13 @@ function escapeModuleSource(source: string): string {
 export function buildLayerRuntime(
   modules: Record<string, string>,
   entries: string[],
+  moduleResolutions?: ModuleResolutionTable,
 ): LayerExecutionPlan {
   const orderedEntries = entries.filter((entry) => entry in modules)
-  const { included, resolution } = collectLayerModules(modules, entries)
+  const collected = moduleResolutions
+    ? collectResolvedLayerModules(modules, entries, moduleResolutions)
+    : collectLayerModules(modules, entries)
+  const included = collected.included
 
   if (included.length === 0) {
     return { source: '', includedModules: [], entries: [] }
@@ -230,8 +269,18 @@ export function buildLayerRuntime(
 
   // 解析表沿用依赖图那一遍的结果：沙箱内只查表，路径解析不实现第二遍。
   const resolutionTable: Record<string, Record<string, string>> = {}
-  for (const [path, requests] of resolution) {
-    resolutionTable[path] = Object.fromEntries(requests)
+  if (moduleResolutions) {
+    for (const path of included) {
+      if (moduleResolutions[path]) {
+        resolutionTable[path] = moduleResolutions[path]
+      }
+    }
+  } else {
+    const resolution = (collected as ReturnType<typeof collectLayerModules>)
+      .resolution
+    for (const [path, requests] of resolution) {
+      resolutionTable[path] = Object.fromEntries(requests)
+    }
   }
 
   return {

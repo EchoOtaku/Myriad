@@ -33,6 +33,7 @@ import { generateOnDemandTailwindCSS } from './styles'
 export interface CoreResources {
   /** core 层依赖图内的模块：相对路径 → 源码 */
   modules: Record<string, string>
+  moduleResolutions?: Record<string, Record<string, string>>
   coreEntry?: string
   /** core 可能使用的翻译数据 */
   i18n?: Record<string, unknown>
@@ -42,6 +43,7 @@ export interface CoreResources {
 export interface WidgetResources {
   /** core + widget 层依赖图内的模块 */
   modules: Record<string, string>
+  moduleResolutions?: Record<string, Record<string, string>>
   coreEntry?: string
   widgetEntries?: Record<string, string>
   /** Widget HTML 模板（已按尺寸选择） */
@@ -60,6 +62,7 @@ export interface WidgetResources {
 export interface PageResources {
   /** core + page 层依赖图内的模块 */
   modules: Record<string, string>
+  moduleResolutions?: Record<string, Record<string, string>>
   coreEntry?: string
   pageEntry?: string
   /** Page HTML 模板 */
@@ -251,13 +254,13 @@ export class TappResourceLoader {
     return this.deduplicator.dedupe(
       `core:${cacheKey}:${generation}`,
       async () => {
-        // Core only needs JS + i18n; widget projection is the lightest slice.
-        const raw = await this.fetchRawResources(tappInstance.id, 'widget')
+        const raw = await this.fetchRawResources(tappInstance.id, 'core')
         if (!this.generationIsCurrent(tappInstance.id, generation)) {
           return this.loadCoreResources(tappInstance)
         }
         const resources: CoreResources = {
           modules: raw.modules,
+          moduleResolutions: raw.moduleResolutions,
           coreEntry: raw.coreEntry,
           i18n: raw.i18n,
         }
@@ -309,7 +312,11 @@ export class TappResourceLoader {
       `widget:${cacheKey}:${generation}`,
       async () => {
         // Widget 投影：跳过 page 模板/模块/CSS，减小传输与解析开销
-        const raw = await this.fetchRawResources(tappInstance.id, 'widget')
+        const raw = await this.fetchRawResources(
+          tappInstance.id,
+          'widget',
+          widgetId,
+        )
         if (!this.generationIsCurrent(tappInstance.id, generation)) {
           return this.loadWidgetResources(tappInstance, size, widgetId)
         }
@@ -327,9 +334,10 @@ export class TappResourceLoader {
 
         // 作者样式：core 共享层 + 该 widget 的层样式。层没声明专用样式时，
         // 结果与过去的 unified 模式一致，不需要额外的模式开关。
-        const styleParts = [raw.coreStyles, raw.widgetStyles?.[widgetId]].filter(
-          (part): part is string => !!part,
-        )
+        const styleParts = [
+          raw.coreStyles,
+          raw.widgetStyles?.[widgetId],
+        ].filter((part): part is string => !!part)
         const effectiveStyles =
           styleParts.length > 0 ? styleParts.join('\n') : undefined
 
@@ -346,6 +354,7 @@ export class TappResourceLoader {
 
         const resources: WidgetResources = {
           modules: raw.modules,
+          moduleResolutions: raw.moduleResolutions,
           coreEntry: raw.coreEntry,
           widgetEntries: raw.widgetEntries,
           html,
@@ -426,6 +435,7 @@ export class TappResourceLoader {
 
         const resources: PageResources = {
           modules: raw.modules,
+          moduleResolutions: raw.moduleResolutions,
           coreEntry: raw.coreEntry,
           pageEntry: raw.pageEntry,
           html: raw.pageTemplate,
@@ -557,9 +567,10 @@ export class TappResourceLoader {
   private async fetchRawResources(
     tappId: string,
     mode: TappApiService.TappResourceMode = 'full',
+    widgetId?: string,
   ): Promise<TappApiService.TappResources> {
     const generation = this.generationFor(tappId)
-    const cacheKey = `${tappId}:${mode}`
+    const cacheKey = `${tappId}:${mode}:${widgetId || ''}`
     const cached = getCachedEntry(this.rawResourceCache, cacheKey)
     if (cached) return cached.data
 
@@ -570,10 +581,11 @@ export class TappResourceLoader {
         // 当前契约时让 409 照常抛出，而不是换条路把旧格式送进沙箱。
         const resources = await TappApiService.getTappResources(tappId, {
           mode,
+          widgetId,
         })
 
         if (!this.generationIsCurrent(tappId, generation)) {
-          return this.fetchRawResources(tappId, mode)
+          return this.fetchRawResources(tappId, mode, widgetId)
         }
 
         setCachedEntry(

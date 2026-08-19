@@ -357,6 +357,8 @@ export interface TappCredentialItem {
 export interface TappCodeStructure {
   /** 包内 `.js` 文件：相对路径 → 源码。只含当前模式依赖图内的文件。 */
   modules: Record<string, string>
+  /** 宿主预解析的 require 图；旧后端响应可省略并由前端兼容扫描。 */
+  moduleResolutions?: Record<string, Record<string, string>>
   /** core 层入口；headless 后台只执行它。 */
   coreEntry?: string
   /** Page 层入口。 */

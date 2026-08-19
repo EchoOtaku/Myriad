@@ -49,17 +49,17 @@ async fn rename_activation_path(from: &FsPath, to: &FsPath) -> Result<(), std::i
 
 use crate::models::entities::tapps;
 use crate::services::data_paths::paths;
-use myriad_tapp_contract::contract_rules::ASSET_DIRECTORY;
 use crate::services::tapp_package_fs::{
     archive_entry_relative_path, filesystem_error_message, filesystem_error_status_hint,
     install_generation_matches_micros, install_generation_payload, is_lifecycle_artifact_filename,
     lifecycle_artifact_dir_name, looks_like_tapp_installation_from_markers,
     orphan_tapp_key_if_unowned, parse_tapp_owner_dir_name, plan_tapp_directory_recovery,
-    recovery_artifacts_to_remove_after_promote,
-    recovery_discard_artifact_name, recovery_plan_mutates_live, resource_relative_path,
-    sandbox_path_matches_relative, should_log_filesystem_permission_context,
-    should_preserve_orphan_path, sort_recovery_artifact_paths, RecoveryPlan,
+    recovery_artifacts_to_remove_after_promote, recovery_discard_artifact_name,
+    recovery_plan_mutates_live, resource_relative_path, sandbox_path_matches_relative,
+    should_log_filesystem_permission_context, should_preserve_orphan_path,
+    sort_recovery_artifact_paths, RecoveryPlan,
 };
+use myriad_tapp_contract::contract_rules::ASSET_DIRECTORY;
 
 // Path-stable re-exports for manifest_tests / parent imports.
 pub(crate) use crate::services::tapp_package_fs::{
@@ -746,7 +746,6 @@ pub(crate) fn unsupported_package_structure(reason: &str) -> HttpError {
     HttpError(AppError::conflict("Tapp package is not usable").with_message(reason))
 }
 
-
 pub(crate) fn resource_path(tapp_dir: &FsPath, relative: &str) -> Option<PathBuf> {
     resource_relative_path(tapp_dir, relative).ok()
 }
@@ -905,9 +904,9 @@ pub(crate) fn validate_installed_resources(
 
 /// 递归列出安装目录内可被 require 的模块相对路径。
 ///
-/// 跳过 `assets/`、不安全的路径分量与符号链接。层归属不在这里过滤——由
-/// [`crate::services::tapp_package_read::module_layer`] 判断，分发与安装校验
-/// 共用这一份遍历，避免同一套规则实现两遍。
+/// 跳过 `assets/`、不安全的路径分量与符号链接。这里只收集候选文件，层归属
+/// 由 manifest 入口加 require 闭包决定，目录名不参与。分发与安装校验共用这一份
+/// 遍历，避免同一套扫描实现两遍。
 pub(crate) fn collect_package_module_paths(tapp_dir: &FsPath) -> Vec<String> {
     use crate::services::tapp_validation::is_safe_path_component;
 
@@ -960,7 +959,7 @@ pub(crate) fn collect_package_module_paths(tapp_dir: &FsPath) -> Vec<String> {
 /// 「扫描登记」是指这一步——不是「随便放什么都不管」。
 pub(crate) fn validate_installed_package_modules(tapp_dir: &FsPath) -> Result<(), String> {
     use crate::services::tapp_install_resources::{
-        extract_require_requests, require_target_missing, resolve_require_target,
+        extract_require_requests, require_target_missing, resolve_require_against_modules,
         validate_text_resource_bytes,
     };
 
@@ -977,18 +976,12 @@ pub(crate) fn validate_installed_package_modules(tapp_dir: &FsPath) -> Result<()
         sources.push((relative, source));
     }
 
-    let known: std::collections::HashSet<&str> =
-        sources.iter().map(|(path, _)| path.as_str()).collect();
+    let known: std::collections::HashSet<String> =
+        sources.iter().map(|(path, _)| path.clone()).collect();
     for (relative, source) in &sources {
         for request in extract_require_requests(source) {
-            let resolved = resolve_require_target(relative, &request)
+            resolve_require_against_modules(relative, &request, &known)
                 .ok_or_else(|| require_target_missing(relative, &request))?;
-            if known.contains(resolved.as_str())
-                || known.contains(format!("{resolved}.js").as_str())
-            {
-                continue;
-            }
-            return Err(require_target_missing(relative, &request));
         }
     }
 
