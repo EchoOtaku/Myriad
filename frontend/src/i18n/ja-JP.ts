@@ -2887,6 +2887,8 @@ export const jaJP: TranslationKeys = {
     grantedPermissions: '付与済み権限',
     reauthorizationRequired: '再承認が必要',
     reauthorizationMessage: '権限の有効期限が切れました。設定で再承認してから実行してください。',
+    packageUnusable: 'パッケージが利用できません',
+    packageUnusableMessage: 'このパッケージは現在の Tapp 形式と一致しません。現行バージョン向けにビルドされたパッケージを再インストールしてください。',
 
     // 権限ラベル
     permRegisterWidget: 'ウィジェット登録',

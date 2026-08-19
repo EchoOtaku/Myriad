@@ -2906,6 +2906,8 @@ export const enUS: TranslationKeys = {
     grantedPermissions: 'Granted Permissions',
     reauthorizationRequired: 'Reauthorization required',
     reauthorizationMessage: 'Permissions expired. Reauthorize in settings before running.',
+    packageUnusable: 'Package not usable',
+    packageUnusableMessage: 'This package does not match the current Tapp format. Reinstall a package built for this version.',
 
     // Permission labels
     permRegisterWidget: 'Register Widget',

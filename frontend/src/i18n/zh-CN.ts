@@ -2772,6 +2772,8 @@ export const zhCN: TranslationKeys = {
     grantedPermissions: '已授权权限',
     reauthorizationRequired: '需重新授权',
     reauthorizationMessage: '权限已过期，请在设置中重新授权后运行。',
+    packageUnusable: '包不可用',
+    packageUnusableMessage: '该包与当前 Tapp 格式不符，请重新安装为当前版本构建的包。',
 
     // 权限标签
     permRegisterWidget: '注册小组件',

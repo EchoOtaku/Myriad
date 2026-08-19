@@ -369,8 +369,8 @@ server {
     ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
 
-    # .tapp uploads and multipart imports can be large.
-    client_max_body_size 50m;
+    # .tapp uploads (game packages up to 128 MiB) and multipart imports.
+    client_max_body_size 130m;
 
     location / {
         proxy_pass http://127.0.0.1:1103;

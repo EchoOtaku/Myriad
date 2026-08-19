@@ -306,7 +306,10 @@ pub fn require_download_page_styles_if_declared<'a>(
 ) -> Result<Option<&'a str>, String> {
     match (
         download.get("page_styles").and_then(|v| v.as_str()),
-        manifest.page_styles.is_some(),
+        manifest
+            .page
+            .as_ref()
+            .is_some_and(|page| page.styles.is_some()),
     ) {
         (Some(path), _) => Ok(Some(path)),
         (None, true) => Err(
@@ -324,7 +327,10 @@ pub fn require_download_page_template_if_declared<'a>(
 ) -> Result<Option<&'a str>, String> {
     match (
         download.get("page_template").and_then(|v| v.as_str()),
-        manifest.page_template.is_some(),
+        manifest
+            .page
+            .as_ref()
+            .is_some_and(|page| page.template.is_some()),
     ) {
         (Some(path), _) => Ok(Some(path)),
         (None, true) => Err(
@@ -453,9 +459,12 @@ pub fn i18n_downloads(download: &serde_json::Value) -> Vec<NamedPathDownload> {
     named_path_map_downloads(download, "i18n")
 }
 
-/// `download.page_modules` filename → path entries.
-pub fn page_module_downloads(download: &serde_json::Value) -> Vec<NamedPathDownload> {
-    named_path_map_downloads(download, "page_modules")
+/// `download.modules` 包内相对路径 → 仓库路径。
+///
+/// 覆盖任意层的入口与层内文件（`core.js`、`page/index.js`、`widget/index.js`…）。
+/// 取代按目录写死的 `page_modules`：层入口可以在任何位置，索引不该只能描述 `page/`。
+pub fn module_downloads(download: &serde_json::Value) -> Vec<NamedPathDownload> {
+    named_path_map_downloads(download, "modules")
 }
 
 /// Collapse a map into `None` when empty (install payload convention).
@@ -733,11 +742,10 @@ mod tests {
             "id": "com.example.app",
             "name": "App",
             "version": "1.0.0",
-            "main": "main.js",
+            "core": { "entry": "core.js" },
+            "page": { "entry": "page/index.js", "styles": "page.css", "template": "page.html" },
             "category": "utility",
-            "permissions": [],
-            "pageStyles": "page.css",
-            "pageTemplate": "page.html"
+            "permissions": []
         }))
         .unwrap();
         let download_ok = json!({
@@ -769,7 +777,7 @@ mod tests {
             "id": "com.example.app",
             "name": "App",
             "version": "1.0.0",
-            "main": "main.js",
+            "core": { "entry": "main.js" },
             "category": "music",
             "permissions": []
         }))
@@ -804,7 +812,7 @@ mod tests {
                 "list": { "4x2": "apps/a/templates/list-4x2.html" }
             },
             "i18n": { "en-US": "apps/a/i18n/en-US.json" },
-            "page_modules": { "extra.js": "apps/a/page/extra.js" }
+            "modules": { "page/extra.js": "apps/a/page/extra.js" }
         });
         let optional = optional_store_text_downloads(&download);
         assert_eq!(optional.len(), 2);
@@ -820,8 +828,8 @@ mod tests {
             key: "en-US".into(),
             path: "apps/a/i18n/en-US.json".into()
         }]);
-        let modules = page_module_downloads(&download);
-        assert_eq!(modules[0].key, "extra.js");
+        let modules = module_downloads(&download);
+        assert_eq!(modules[0].key, "page/extra.js");
 
         assert!(optional_store_text_downloads(&json!({})).is_empty());
         assert!(widget_template_downloads(&json!({})).is_empty());

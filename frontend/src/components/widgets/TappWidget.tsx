@@ -210,8 +210,9 @@ const TappWidgetPreview = memo(
 
             // 转换为 TappWidgetSandbox 需要的 TappCodeStructure
             const tappCode: TappCodeStructure = {
-              core: resources.core,
-              widget: resources.widget,
+              modules: resources.modules,
+              coreEntry: resources.coreEntry,
+              widgetEntries: resources.widgetEntries,
               widgetHtml: resources.html,
               styles: resources.styles,
               widgetCSS: resources.css,
@@ -597,8 +598,9 @@ function TappWidgetRuntime({
           widgetSize,
         )
         setCode({
-          core: resources.core,
-          widget: resources.widget,
+          modules: resources.modules,
+          coreEntry: resources.coreEntry,
+          widgetEntries: resources.widgetEntries,
           widgetHtml: resources.html,
           styles: resources.styles,
           widgetCSS: resources.css,
@@ -690,8 +692,9 @@ function TappWidgetRuntime({
           widgetSize,
         )
         setCode({
-          core: resources.core,
-          widget: resources.widget,
+          modules: resources.modules,
+          coreEntry: resources.coreEntry,
+          widgetEntries: resources.widgetEntries,
           widgetHtml: resources.html,
           styles: resources.styles,
           widgetCSS: resources.css,

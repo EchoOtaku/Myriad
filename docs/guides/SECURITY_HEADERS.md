@@ -163,9 +163,11 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
 
     # Federation media upload is up to ~50MB (images 10MB / video 50MB).
+    # .tapp file install accepts game packages up to 128 MiB.
     # Chat file-meta chunks are ~1.4 MiB JSON each (still needs >1m default).
-    # Default nginx 1m will break POST /api/federation/media and transfer chunks.
-    client_max_body_size 55m;
+    # Default nginx 1m will break POST /api/federation/media, /api/tapps/install-file,
+    # and transfer chunks.
+    client_max_body_size 130m;
 
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 

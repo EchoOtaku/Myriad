@@ -10,6 +10,7 @@
 - [国际化 API](#国际化-api)
 - [跨 Tapp Data Exchange API](#跨-tapp-data-exchange-api)
 - [设置 API](#设置-api)
+- [共享数据 API](#共享数据-api)
 - [UI API](#ui-api)
 - [动画 API](#动画-api)
 - [平台 API](#平台-api)
@@ -90,7 +91,7 @@ await Tapp.storage.clear();
 
 // 获取存储使用情况
 const usage = await Tapp.storage.usage();
-// 返回: { used: 1024, quota: 5242880 } // 字节；quota 是服务端硬上限
+// 返回: { used: 1024, quota: 8388608 } // 字节；quota 是服务端硬上限
 
 // 同一 Tapp 的其他 Page、Widget 或 headless core 修改 storage 时触发
 const unsubscribe = Tapp.storage.onChanged(({ key, operation }) => {
@@ -98,10 +99,10 @@ const unsubscribe = Tapp.storage.onChanged(({ key, operation }) => {
 });
 ```
 
-存储 key 和单值由后端校验，单值最大 1 MiB，总量最大 5 MiB。替换投影与写入位于同一数据库
+存储 key 和单值由后端校验，单值最大 1 MiB，总量最大 8 MiB。替换投影与写入位于同一数据库
 事务并使用 subject/Tapp advisory lock，因此并发写入也不能越过配额。公开 Tapp 仍按当前
-**subject**（持久用户或签名游客）隔离存储；`_settings.`、`_component:`、`_shortcut:`、
-`_report:` 为宿主保留前缀。
+**subject**（持久用户或签名游客）隔离存储；`_settings.`、`_shared.`、`_component:`、
+`_shortcut:`、`_report:` 为宿主保留前缀。
 
 ---
 
@@ -182,6 +183,43 @@ const allSettings = await Tapp.settings.getAll();
   `apis.*.credential`。放置方式为 `header` / `query` / `form` / `sign`（互斥）；
   旧清单的 `{header, prefix}` 仍视为请求头绑定。凭据只有安装管理界面的写入/删除/状态接口，
   不进入 `Tapp.settings`、模板上下文或任何沙箱读取 API。
+
+---
+
+## 共享数据 API
+
+**权限**: 读取方法使用 `storage:read`；写入、删除与清空使用 `storage:write`；与私有
+`Tapp.storage` / `Tapp.settings` 共用权限位，但**数据命名空间不同**
+
+`Tapp.shared` 是安装级 KV，语义是**数据**而不是配置。公开部署里用它存放要展示给访客的
+站长数据：owner / 管理员写入 installation owner 命名空间，能打开该安装的运行者（含游客）
+读到同一份内容。不要把个人草稿放这里，也不要把密钥或配置塞进 `Tapp.settings`。
+
+```javascript
+const posts = await Tapp.shared.get("posts");
+await Tapp.shared.set("posts", [{ title: "hello", body: "…" }]);
+await Tapp.shared.remove("drafts");
+const keys = await Tapp.shared.keys();
+const all = await Tapp.shared.getAll();
+await Tapp.shared.clear();
+const usage = await Tapp.shared.usage();
+const unsubscribe = Tapp.shared.onChanged(({ key, operation }) => {
+  console.log(key, operation); // set | remove | clear
+});
+```
+
+| 操作 | 游客（公开安装） | 已登录运行者 | 安装 owner / 管理员 |
+| ---- | ---------------- | ------------ | ------------------- |
+| `get` / `getAll` / `keys` / `usage` | ✅ 读站主已写入的值 | ✅ 只读 | ✅ |
+| `set` / `remove` / `clear` | ❌ | ❌（非 owner） | ✅ |
+
+- 读走宿主 shared REST（**optional_auth**），不需要 Runtime Grant。
+- 写要求持久登录，且仅 owner / 当前管理员。
+- 键空间与 `Tapp.storage`、`Tapp.settings` 独立；不能用 `_shared.*` 经 storage API 读写。
+- 单值最大 1 MiB；写入计入安装 owner 命名空间的 8 MiB 配额（与 settings / credentials / owner 自己的 storage 合计）。
+- 不要在 shared 里存放密钥：凡能打开该公开安装的 visitor 均可读。
+
+`Tapp.data` 是数据处理 API（`transform`），不是这个仓库。
 
 ---
 
@@ -1579,7 +1617,7 @@ const text = await Tapp.speech.asr({ audio }); // speech:asr
 **权限**: public（仅可读本安装 `manifest.assets` 声明路径）
 
 用于游戏贴图、音频、wasm、glTF/GLB、关卡 JSON 等包内静态文件。不走 `Tapp.storage`。
-Three.js 等引擎库不能放在 `assets/`（禁止 `.js`），应打成 IIFE 放进 `pageModules`。
+Three.js 等引擎库不能放在 `assets/`（禁止 `.js`），应打成 IIFE 放进 `page/` 并 require。
 
 ```javascript
 const paths = await Tapp.assets.list();
@@ -1614,7 +1652,7 @@ Tapp.assets.revokeAll(); // 也会在 onDestroy 时自动调用
 
 | 命名空间                                   | 主要能力                                            | 权限族                             |
 | ------------------------------------------ | --------------------------------------------------- | ---------------------------------- |
-| `storage`, `settings`                      | Tapp 私有键值存储与设置（读权限含签名游客）         | `storage:read`, `storage:write`    |
+| `storage`, `settings`, `shared`            | 私有 KV、安装设置、安装级共享数据（读含签名游客）   | `storage:read`, `storage:write`    |
 | `dataExchange`                             | 逐次授权的跨 Tapp 具名数据交换                      | Manifest + one-shot consent        |
 | `ui`, `animation`, `dynamicContent`, `dom` | 宿主 UI、主题、动画和安全 DOM helper                | `ui:*` 或 public                   |
 | `platform`, `data`                         | 平台数据读取、写入、转换和注册                      | `platform:*`                       |

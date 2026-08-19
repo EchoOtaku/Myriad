@@ -2595,6 +2595,8 @@ export interface TranslationKeys {
     grantedPermissions: string
     reauthorizationRequired: string
     reauthorizationMessage: string
+    packageUnusable: string
+    packageUnusableMessage: string
 
     // 权限标签
     permRegisterWidget: string

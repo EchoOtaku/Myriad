@@ -62,7 +62,8 @@ export const TappBackgroundRunner: React.FC = () => {
 
             // 转换为 TappCodeStructure 格式
             const code: TappCodeStructure = {
-              core: resources.core,
+              modules: resources.modules,
+              coreEntry: resources.coreEntry,
               i18n: resources.i18n,
             }
 

@@ -48,6 +48,7 @@ import { useWindowAgentHandler } from '../hooks/useWindowAgentHandler'
 import { getTappRuntime } from '../runtime'
 import { loadPageResources } from '../runtime/sandbox/resourceLoader'
 import { TappPageSandbox } from '../runtime/TappPageSandbox'
+import { tappHasPage } from '../utils/manifestLayers'
 import { resolveManifestText } from '../utils/manifestLocale'
 import {
   resolveTappCategory,
@@ -860,7 +861,13 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
   const refreshDockApps = useCallback(() => {
     const next = runtime
       .getAllTapps()
-      .filter((item) => item.manifest.hasPage)
+      .filter(
+        (item) =>
+          tappHasPage(item.manifest) &&
+          // 包与当前格式不符的安装不进 Dock：点开只会失败
+          item.installationStatus !== 'error' &&
+          item.status !== 'error',
+      )
     setAvailableTapps((prev) => {
       if (
         prev.length === next.length &&
@@ -952,14 +959,13 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
           const resources = await loadPageResources(instance)
           if (cancelled) return
           const code: TappCodeStructure = {
-            core: resources.core,
-            page: resources.page,
+            modules: resources.modules,
+            coreEntry: resources.coreEntry,
+            pageEntry: resources.pageEntry,
             pageHtml: resources.html,
             styles: resources.styles,
             pageCSS: resources.css,
             i18n: resources.i18n,
-            pageModules: resources.pageModules,
-            pageModuleOrder: resources.pageModuleOrder,
           }
           setWindows((prev) =>
             prev.map((item) =>
@@ -1125,14 +1131,13 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
 
         const resources = await loadPageResources(instance)
         const tappCode: TappCodeStructure = {
-          core: resources.core,
-          page: resources.page,
+          modules: resources.modules,
+          coreEntry: resources.coreEntry,
+          pageEntry: resources.pageEntry,
           pageHtml: resources.html,
           styles: resources.styles,
           pageCSS: resources.css,
           i18n: resources.i18n,
-          pageModules: resources.pageModules,
-          pageModuleOrder: resources.pageModuleOrder,
         }
 
         if (!runtime.isRunning(tappId)) {
@@ -1402,14 +1407,13 @@ export const TappWindowManager: React.FC<TappWindowManagerProps> = ({
 
           const resources = await loadPageResources(instance)
           const tappCode: TappCodeStructure = {
-            core: resources.core,
-            page: resources.page,
+            modules: resources.modules,
+            coreEntry: resources.coreEntry,
+            pageEntry: resources.pageEntry,
             pageHtml: resources.html,
             styles: resources.styles,
             pageCSS: resources.css,
             i18n: resources.i18n,
-            pageModules: resources.pageModules,
-            pageModuleOrder: resources.pageModuleOrder,
           }
 
           if (!runtime.isRunning(tappId)) {

@@ -206,14 +206,13 @@ function TappRunPageStandard({
         if (cancelled) return
 
         const tappCode: TappCodeStructure = {
-          core: resources.core,
-          page: resources.page,
+          modules: resources.modules,
+          coreEntry: resources.coreEntry,
+          pageEntry: resources.pageEntry,
           pageHtml: resources.html,
           styles: resources.styles,
           pageCSS: resources.css,
           i18n: resources.i18n,
-          pageModules: resources.pageModules,
-          pageModuleOrder: resources.pageModuleOrder,
         }
 
         if (!runtime.isRunning(tappId)) {

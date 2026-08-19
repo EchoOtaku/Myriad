@@ -120,17 +120,18 @@ You must follow the current Myriad Tapp contract:
 - `manifest.category` is exactly one of ai, data, developer, game, media,
   productivity, social, utility.
 - A Playground project is valid with at least one of:
-  (1) Page mode — user wants a full app/page UI: set `hasPage: true`, non-empty
-  `code.page` + `code.pageHtml`, and `pageTemplate: "page.html"`.
+  (1) Page mode — user wants a full app/page UI: declare the `page` layer object
+  with `entry: "page/index.js"` and `template: "page.html"`, and provide non-empty
+  `code.page` + `code.pageHtml`.
   (2) Widget-only mode — user clearly wants only a dashboard widget / 小组件 /
-  widget without an app page: set `hasPage: false`, omit `pageTemplate` and leave
+  widget without an app page: omit the whole `page` object and leave
   `code.page` / `code.pageHtml` empty (do NOT invent a stub page); put UI in
   `code.widget` + `code.widgetHtml`; declare non-empty `manifest.widgets` and
   `widget:register` permission.
   Prefer widget-only when the instruction is clearly widget-only. Never require
-  both modes. Projects may still add assets, pageModules (Page mode),
-  backgroundRequirements, declared APIs, AI tasks, events, agent interactions,
-  or dataExchange when the request and retrieved contract support them.
+  both modes. Projects may still add assets, backgroundRequirements, declared
+  APIs, AI tasks, events, agent interactions, or dataExchange when the request
+  and retrieved contract support them.
 - Manifest application categories and Widget categories are separate. Widget
   category is exactly stats, activity, visualization, utility, or custom, and
   any non-empty `manifest.widgets` requires `widget:register` permission.
@@ -139,9 +140,12 @@ You must follow the current Myriad Tapp contract:
   instance preferences belong in `widgets[].settings`.
 - Every setting definition uses the exact camelCase field `defaultValue`; never
   emit the common but invalid alias `default`.
-- `main` must be `main.js`, `cssMode` must be `unified`, and `styles` must be
-  `styles.css`. In Page mode, `pageTemplate` must be `page.html`. In widget-only
-  mode, omit `pageTemplate` (page resources stay empty).
+- Layer entries and resource paths are fixed: `core.entry` is `core.js`,
+  `core.styles` is `styles.css`, `page.entry` is `page/index.js`,
+  `page.template` is `page.html`, and each `widgets[].entry` is
+  `widget/index.js`. There is no top-level `main`, `hasPage`, `cssMode`,
+  `styles`, `pageTemplate`, or `pageModules` field — emitting any of them is
+  rejected. `hasPage` is derived from whether the `page` object exists.
 - Request only permissions that the code actually calls. Prefer no permission.
   `storage:read`, `storage:write`, `ui:theme`, `ui:confirm`, `ui:fullscreen`, and `ui:openUrl` are available in the
   temporary preview. Never declare the retired `storage` token; reads use
@@ -151,8 +155,9 @@ You must follow the current Myriad Tapp contract:
 - Put shared initialization in `code.core`. In Page mode, put Page behavior in
   `code.page`, CSS in `code.styles`, and body markup only in `code.pageHtml`.
   In widget-only mode, put widget logic in `code.widget` / `code.widgetHtml` and
-  shared CSS in `code.styles` (core may hold shared init; main remains main.js).
-  Optional module resources use the other declared `code` fields. Never put
+  shared CSS in `code.styles`. `code.core` always runs first in every mode, so
+  cross-layer helpers belong there and layer entries reach them with
+  `require('../core.js')` from a layer directory. Never put
   `<script>`, inline event handlers, or external resources in HTML templates.
 - Never put HTML/JS entrypoints or Widget templates in `manifest.assets` or
   `code.assets`. `assets` is only for package-static binary/data files under
@@ -192,8 +197,8 @@ You must follow the current Myriad Tapp contract:
   output, security, or platform rules.
 
 Return ONLY one JSON object, without Markdown fences or commentary, in exactly
-this shape (Page mode example; for widget-only set hasPage false, omit
-pageTemplate, leave page/pageHtml empty, and fill widgets + widget/widgetHtml):
+this shape (Page mode example; for widget-only omit the whole "page" object,
+leave page/pageHtml empty, and fill widgets + widget/widgetHtml):
 {
   "project": {
     "manifest": {
@@ -206,14 +211,11 @@ pageTemplate, leave page/pageHtml empty, and fill widgets + widget/widgetHtml):
         "ja-JP": { "name": "名前", "description": "説明" }
       },
       "author": { "name": "Myriad Playground" },
-      "main": "main.js",
-      "styles": "styles.css",
-      "pageTemplate": "page.html",
-      "cssMode": "unified",
+      "core": { "entry": "core.js", "styles": "styles.css" },
+      "page": { "entry": "page/index.js", "template": "page.html" },
       "permissions": [],
       "icon": "emoji",
       "themeColor": "#RRGGBB",
-      "hasPage": true,
       "category": "utility",
       "widgets": []
     },
@@ -226,8 +228,6 @@ pageTemplate, leave page/pageHtml empty, and fill widgets + widget/widgetHtml):
       "widgetHtml": "optional widget markup",
       "widgetCSS": "optional widget-only CSS",
       "pageCSS": "optional page-only CSS",
-      "pageModules": {},
-      "pageModuleOrder": [],
       "assets": {},
       "i18n": {
         "zh-CN": {},
@@ -305,10 +305,6 @@ pub struct PlaygroundCode {
     pub i18n: HashMap<String, Value>,
     #[serde(default)]
     pub assets: HashMap<String, String>,
-    #[serde(default)]
-    pub page_modules: HashMap<String, String>,
-    #[serde(default)]
-    pub page_module_order: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1221,14 +1217,6 @@ fn compact_project_summary(project: &PlaygroundProject) -> String {
     if let Some(page_css) = &code.page_css {
         file_sizes.push(format!("pageCSS={}B", page_css.len()));
     }
-    if !code.page_modules.is_empty() {
-        let module_bytes: usize = code.page_modules.values().map(String::len).sum();
-        file_sizes.push(format!(
-            "pageModules={}files/{}B",
-            code.page_modules.len(),
-            module_bytes
-        ));
-    }
     if !code.assets.is_empty() {
         let asset_bytes: usize = code.assets.values().map(String::len).sum();
         file_sizes.push(format!(
@@ -1264,12 +1252,12 @@ fn compact_project_summary(project: &PlaygroundProject) -> String {
     };
 
     format!(
-        "manifest.id={} name={:?} version={} category={:?} hasPage={} permissions={} widgets={} files=[{}]",
+        "manifest.id={} name={:?} version={} category={:?} pageLayer={} permissions={} widgets={} files=[{}]",
         manifest.id,
         manifest.name,
         manifest.version,
         manifest.category,
-        manifest.has_page,
+        manifest.has_page(),
         permissions,
         widgets,
         file_sizes.join(", ")
@@ -1490,3 +1478,45 @@ fn extract_json_object(raw: &str) -> Result<&str, String> {
 #[path = "helpers.rs"]
 mod helpers;
 use helpers::*;
+
+#[cfg(test)]
+mod prompt_contract_tests {
+    use super::*;
+
+    /// 提示词是纯字符串，契约改了它不会编译失败——这条测试就是那个编译失败。
+    ///
+    /// 层入口契约切换时它整轮没人动，模型照示例输出的 manifest 会被
+    /// `deny_unknown_fields` 拒掉，而 Playground 生成路径没有任何别的地方会报警。
+    #[test]
+    fn generate_prompt_teaches_the_current_layer_contract() {
+        let prompt = format!("{PLAYGROUND_SYSTEM_PROMPT}{PLANNER_SYSTEM_PROMPT}");
+
+        for retired in [
+            "\"main\":",
+            "\"hasPage\":",
+            "\"cssMode\":",
+            "\"pageTemplate\":",
+            "\"pageModules\":",
+            "\"pageModuleOrder\":",
+            "main.js",
+        ] {
+            assert!(
+                !prompt.contains(retired),
+                "generate prompt still teaches the retired manifest field {retired}"
+            );
+        }
+
+        for required in [
+            PLAYGROUND_CORE_ENTRY,
+            PLAYGROUND_STYLES,
+            PLAYGROUND_PAGE_ENTRY,
+            PLAYGROUND_PAGE_TEMPLATE,
+            PLAYGROUND_WIDGET_ENTRY,
+        ] {
+            assert!(
+                prompt.contains(required),
+                "generate prompt never mentions the fixed Playground path {required}"
+            );
+        }
+    }
+}
