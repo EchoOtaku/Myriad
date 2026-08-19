@@ -1042,6 +1042,7 @@ impl ConfigService {
 #[cfg(test)]
 mod tests {
     use super::ConfigService;
+    use crate::config::DynamicConfig;
     use serde_json::json;
     use std::collections::{HashMap, HashSet};
     use syn::visit::Visit;
@@ -1103,6 +1104,29 @@ mod tests {
             json!(false),
         )]));
         assert!(!off.agent_life_enabled);
+    }
+
+    #[test]
+    fn agent_life_stays_off_without_a_lite_model() {
+        // Holds whatever AGENT_LIFE_ENABLED says: the Lite tier is the hard
+        // prerequisite, so life never silently spends the standard model.
+        let no_lite = DynamicConfig {
+            agent_life_enabled: true,
+            lite_enabled: false,
+            ..DynamicConfig::default()
+        };
+        assert!(!no_lite.agent_life_enabled_resolved());
+
+        let with_lite = DynamicConfig {
+            agent_life_enabled: true,
+            lite_enabled: true,
+            ..DynamicConfig::default()
+        };
+        assert_eq!(
+            with_lite.agent_life_enabled_resolved(),
+            with_lite.agent_life_switch_on()
+        );
+        assert!(!with_lite.agent_life_needs_lite());
     }
 
     #[test]

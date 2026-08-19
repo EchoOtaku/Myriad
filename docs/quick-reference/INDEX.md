@@ -117,7 +117,9 @@ bash scripts/docker/deploy.sh up
 bash scripts/docker/deploy.sh status
 
 # 开发（默认本机 PostgreSQL；`--docker` 改用 compose postgres）
+./scripts/dev/dev.sh            # 实时 TUI
 ./scripts/dev/dev.sh start
+./scripts/dev/dev.sh status
 ```
 
 Windows：`.\scripts\docker\deploy.ps1 up`、`.\scripts\dev\dev.ps1 start`。

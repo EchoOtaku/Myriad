@@ -19,8 +19,17 @@ pub struct PutPersonaRequest {
     pub name: String,
     #[serde(default)]
     pub personality: String,
-    #[serde(default)]
-    pub portrait_asset_id: Option<String>,
+    /// Absent keeps the current portrait, explicit `null` clears it.
+    #[serde(default, deserialize_with = "present_option")]
+    pub portrait_asset_id: Option<Option<String>>,
+}
+
+fn present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,7 +103,11 @@ pub async fn get_persona(
 
     let (mood, activity, do_not_disturb) = if life::is_logged_in_addressee(user_id) {
         match life::get_or_create_state(&db, user_id).await {
-            Ok(state) => (state.mood, state.activity, state.do_not_disturb),
+            Ok(state) => (
+                state.mood,
+                life::current_activity(&state).to_string(),
+                state.do_not_disturb,
+            ),
             Err(_) => (70.0, "idle".to_string(), false),
         }
     } else {
@@ -145,23 +158,32 @@ pub async fn put_persona(
 ) -> Result<Json<Value>, HttpError> {
     require_life_enabled().await?;
     let user_id = require_site_owner(&claims, &db).await?;
-    let portrait = body.portrait_asset_id.and_then(|raw| {
-        let cleaned = crate::api::config::sanitize_wallpaper_url(&raw)?;
-        if cleaned.is_empty() {
-            None
-        } else {
-            Some(cleaned)
-        }
-    });
+    let portrait = match body.portrait_asset_id {
+        None => life::PortraitUpdate::Keep,
+        Some(None) => life::PortraitUpdate::Clear,
+        Some(Some(raw)) => match sanitize_portrait_asset_id(&raw) {
+            Some(cleaned) if cleaned.is_empty() => life::PortraitUpdate::Clear,
+            Some(cleaned) => life::PortraitUpdate::Set(cleaned),
+            None => {
+                return Err(HttpError::from((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": "Portrait must be a site asset",
+                        "code": "portrait_not_site_asset"
+                    })),
+                )))
+            }
+        },
+    };
     let saved = life::upsert_persona(&db, body.name, body.personality, portrait, user_id)
-    .await
-    .map_err(|error| {
-        tracing::error!(%error, "[Agent persona] save failed");
-        HttpError::from((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Database error" })),
-        ))
-    })?;
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "[Agent persona] save failed");
+            HttpError::from((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            ))
+        })?;
     Ok(Json(json!({
         "name": saved.name,
         "personality": saved.personality,
@@ -221,7 +243,7 @@ pub async fn put_addressee(
         })?;
     Ok(Json(json!({
         "mood": state.mood,
-        "activity": state.activity,
+        "activity": life::current_activity(&state),
         "doNotDisturb": state.do_not_disturb,
     })))
 }
@@ -311,6 +333,32 @@ pub async fn draft_persona(
             "personality": fallback,
             "source": "fallback",
         }))),
+    }
+}
+
+/// Site assets only. The public face must not be able to point off-site, so a
+/// scheme, host, or traversal is refused rather than quietly rewritten.
+/// Accepts a same-origin path (`/uploads/face.png`) or a bare asset id.
+fn sanitize_portrait_asset_id(raw: &str) -> Option<String> {
+    let value = raw.trim();
+    if value.is_empty() {
+        return Some(String::new());
+    }
+    if value.len() > 512
+        || value.contains(':')
+        || value.contains("..")
+        || value.starts_with("//")
+        || value.chars().any(|c| c.is_whitespace() || c.is_control())
+    {
+        return None;
+    }
+    let bare_id = value
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    if value.starts_with('/') || bare_id {
+        Some(value.to_string())
+    } else {
+        None
     }
 }
 
@@ -420,6 +468,45 @@ mod tests {
             "喜欢独立游戏".into(),
         ]);
         assert_eq!(tags, vec!["夜战".to_string(), "喜欢独立游戏".to_string()]);
+    }
+
+    #[test]
+    fn portrait_accepts_site_assets_only() {
+        assert_eq!(
+            sanitize_portrait_asset_id(" /uploads/face.png "),
+            Some("/uploads/face.png".to_string())
+        );
+        assert_eq!(
+            sanitize_portrait_asset_id("asset_1-2.png"),
+            Some("asset_1-2.png".to_string())
+        );
+        assert_eq!(sanitize_portrait_asset_id(""), Some(String::new()));
+        assert_eq!(
+            sanitize_portrait_asset_id("https://cdn.example.com/a.png"),
+            None
+        );
+        assert_eq!(sanitize_portrait_asset_id("//cdn.example.com/a.png"), None);
+        assert_eq!(sanitize_portrait_asset_id("javascript:alert(1)"), None);
+        assert_eq!(sanitize_portrait_asset_id("/javascript:alert(1)"), None);
+        assert_eq!(sanitize_portrait_asset_id("/uploads/../secret"), None);
+        assert_eq!(sanitize_portrait_asset_id("face 1.png"), None);
+    }
+
+    #[test]
+    fn absent_portrait_keeps_and_null_clears() {
+        let keep: PutPersonaRequest =
+            serde_json::from_value(json!({ "name": "瞳", "personality": "认真" })).expect("keep");
+        assert!(keep.portrait_asset_id.is_none());
+
+        let clear: PutPersonaRequest =
+            serde_json::from_value(json!({ "name": "瞳", "portraitAssetId": null }))
+                .expect("clear");
+        assert_eq!(clear.portrait_asset_id, Some(None));
+
+        let set: PutPersonaRequest =
+            serde_json::from_value(json!({ "name": "瞳", "portraitAssetId": "/a.png" }))
+                .expect("set");
+        assert_eq!(set.portrait_asset_id, Some(Some("/a.png".to_string())));
     }
 
     #[test]

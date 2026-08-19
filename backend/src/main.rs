@@ -320,6 +320,12 @@ async fn run_server() -> anyhow::Result<()> {
                         services::memory_profile::apply_from_saver_flag(
                             dynamic_config.memory_saver_enabled,
                         );
+                        if dynamic_config.agent_life_needs_lite() {
+                            tracing::warn!(
+                                "⚠️  Agent life is switched on but the Lite model is not enabled; \
+                                 life stays off so its calls do not fall back to the standard model"
+                            );
+                        }
                         *GLOBAL_DYNAMIC_CONFIG.write().await = dynamic_config;
                         tracing::info!("✅ Dynamic configuration loaded from database");
                     }

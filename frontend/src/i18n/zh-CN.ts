@@ -37,7 +37,6 @@ export const zhCN: TranslationKeys = {
     home: '首页',
     library: '资料库',
     reports: '平台报告',
-    life: '旧生命页',
     config: '配置',
     login: '登录',
     backToHome: '返回主页',
@@ -1242,7 +1241,7 @@ export const zhCN: TranslationKeys = {
       '在均衡档之上再收一档：分块并发、进程内缓存、连接池、密码哈希并发，以及视频/音频峰值。日常消息仍可用；大媒体请走分块传输，无损音频可能更早拒收。可用 MYRIAD_MEMORY_PROFILE 覆盖。连接池需重启后端后完全生效。',
     agentLife: 'Agent 生命',
     agentLifeHint:
-      '打开后 Arael 会用设定说话，记住跟每个人的心情和日记，并在有名单上的事时自己开口。关上则只聊天办事。',
+      '打开后 Arael 会用设定说话，记住跟每个人的心情和日记，并在有名单上的事时自己开口。关上则只聊天办事。需要先启用 Lite 模型，否则这个开关不生效。',
     enableProxy: '启用网络代理',
     enableProxyHint: '开启后将使用代理访问外部API',
     proxyUrl: '代理地址',

@@ -37,7 +37,6 @@ export const enUS: TranslationKeys = {
     home: 'Home',
     library: 'Library',
     reports: 'Platform Reports',
-    life: 'Retired life page',
     config: 'Config',
     login: 'Login',
     backToHome: 'Back to Home',
@@ -1329,7 +1328,7 @@ export const enUS: TranslationKeys = {
       'A second notch below the bounded default: smaller chunk inflight, process caches, DB pool, password-hash concurrency, and video/audio peaks. Everyday messages still fit; large media should use chunked transfer, and lossless audio may reject sooner. Env MYRIAD_MEMORY_PROFILE can override. DB pool fully applies after backend restart.',
     agentLife: 'Agent life',
     agentLifeHint:
-      'When on, Arael speaks with the site persona, keeps per-person mood and diary, and may speak after named events. When off, it only chats and does tasks.',
+      'When on, Arael speaks with the site persona, keeps per-person mood and diary, and may speak after named events. When off, it only chats and does tasks. Requires the Lite model — without it this switch has no effect.',
     enableProxy: 'Enable Network Proxy',
     enableProxyHint:
       'External API requests will be sent through the proxy when enabled',

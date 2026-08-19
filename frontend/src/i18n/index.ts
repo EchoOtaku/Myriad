@@ -39,7 +39,6 @@ export interface TranslationKeys {
     home: string
     library: string
     reports: string
-    life: string
     config: string
     login: string
     backToHome: string

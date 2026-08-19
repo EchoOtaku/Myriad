@@ -102,12 +102,14 @@ host HTTP_PORT → proxy → frontend:1102
 ### 本地开发
 
 ```bash
+./scripts/dev/dev.sh                   # 实时 TUI：启动菜单 + 进程 / 数据库 / 日志
 ./scripts/dev/dev.sh start             # 本机 PostgreSQL，日志打在当前终端
 ./scripts/dev/dev.sh start --docker    # Docker postgres + 新开终端
 .\scripts\dev\dev.ps1 start            # Windows
 ```
 
 后端 `:1103`，前端 `:1102`。没有本机库时先 `./scripts/dev/dev.sh db-setup`。
+`./scripts/dev/dev.sh status` 看快照，`monitor` / 无参数进入可管理的 TUI。
 需要在开发 UI 里测「更新管理」时：`./scripts/dev/dev.sh start all-updater`。
 更多细节见 [快速开始](docs/QUICKSTART.md)。
 

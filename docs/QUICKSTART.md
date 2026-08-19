@@ -89,9 +89,11 @@ bash scripts/docker/deploy.sh upgrade
 
 ```bash
 ./scripts/dev/dev.sh db-setup          # 本机还没有 myriad 库时
+./scripts/dev/dev.sh                   # 实时 TUI：原来的启动菜单 + 进程 / 数据库 / 日志
 ./scripts/dev/dev.sh start             # 本机 PG + backend:1103 + frontend:1102
 ./scripts/dev/dev.sh start --docker    # 改用 docker compose 起 postgres
-./scripts/dev/dev.sh status
+./scripts/dev/dev.sh status            # 一次性快照（PID、健康、库大小）
+./scripts/dev/dev.sh logs backend      # 看后台启动写入的 backend.log
 ```
 
 Windows:

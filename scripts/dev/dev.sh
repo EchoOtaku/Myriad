@@ -5,7 +5,7 @@
 # Single entry for local development. Default is a local PostgreSQL plus
 # cargo / pnpm in this terminal. Pass --docker to use compose postgres.
 # Usage: ./dev.sh [command] [service] [options]
-#        run without args for the interactive menu
+#        run without args for the live TUI (start menu + monitor)
 
 set -e
 
@@ -13,27 +13,20 @@ set -e
 BOLD='\033[1m'
 DIM='\033[2m'
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
-WHITE='\033[0;37m'
-
-# Bright Colors
-BRIGHT_RED='\033[1;31m'
-BRIGHT_GREEN='\033[1;32m'
 BRIGHT_YELLOW='\033[1;33m'
 BRIGHT_CYAN='\033[1;36m'
 BRIGHT_WHITE='\033[1;37m'
-
 NC='\033[0m' # Reset
 
 # ==================== Project Config ====================
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-VERSION="1.0.0"
+VERSION="2.0.0"
 DEV_UPDATER_DIR="$PROJECT_ROOT/.dev-updater"
 DEV_UPDATER_TOKEN_DEFAULT="9xQ3vN8mP2rT5wY7zA1bC4dF6hJ8kL0n"
 BACKEND_PORT=1103
@@ -48,11 +41,14 @@ DEFAULT_DB_URL="postgres://myriad:myriad_dev_password@localhost:5432/myriad"
 USE_NATIVE=1          # default: local PostgreSQL. --docker flips this off.
 USE_FG=1              # default: backend + frontend in this terminal
 FG_EXPLICIT=0         # 1 = user passed --fg
-DETACH_EXPLICIT=0     # 1 = user passed --detach (keep the menu usable)
+DETACH_EXPLICIT=0     # 1 = user passed --detach
 CARGO_RELEASE=0
 SKIP_INSTALL=0
 RUN_BACKEND=1
 RUN_FRONTEND=1
+DEV_START_BG=0        # 1 = nohup into *.log (TUI start)
+DEV_START_NOWAIT=0    # 1 = launch and return (TUI keeps the screen)
+WATCH=0               # 1 = live TUI for `status --watch`
 
 DB_USER=""
 DB_PASS=""
@@ -75,23 +71,8 @@ ICON_RUST="🦀"
 ICON_NODE="⬢"
 ICON_UPDATER="⇧"
 ICON_HEART="❤"
-ICON_SPARKLE="✨"
 
 # ==================== Helper Functions ====================
-
-clear_screen() {
-    # Erase display + scrollback, then home. Avoids a tall blank region
-    # above the logo when scrolling up after clear (some terminals keep
-    # cleared rows in scrollback when only CSI 2J is used).
-    printf "\033[H\033[2J\033[3J"
-}
-
-hide_cursor() { printf "\033[?25l"; }
-show_cursor() { printf "\033[?25h"; }
-
-get_terminal_size() {
-    TERM_COLS=$(tput cols 2>/dev/null || echo 80)
-}
 
 # Unique, sorted PIDs from multi-line input (ignores empty / non-numeric).
 normalize_pids() {
@@ -349,7 +330,13 @@ draw_box_line() {
     # Remove ANSI codes for length calculation
     local clean_text=$(echo -e "$text" | sed 's/\x1b\[[0-9;]*m//g')
     local text_len=${#clean_text}
-    
+    local inner=$((width - 3))
+    if [[ $text_len -gt $inner ]]; then
+        clean_text="${clean_text:0:$((inner - 1))}…"
+        text="${clean_text}"
+        text_len=${#clean_text}
+    fi
+
     echo -en "${color}│${NC} ${text}"
     local padding=$((width - text_len - 3))
     [[ $padding -gt 0 ]] && printf '%*s' "$padding" ""
@@ -432,6 +419,99 @@ db_reachable() {
     else
         return 2
     fi
+}
+
+db_is_local_host() {
+    parse_db_url || return 1
+    case "$DB_HOST" in
+        localhost|127.0.0.1|::1) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Homebrew formula that owns local PostgreSQL, if any.
+native_pg_brew_formula() {
+    have brew || return 1
+    local line formula
+    while IFS= read -r line; do
+        formula="${line%% *}"
+        case "$formula" in
+            postgresql|postgresql@*)
+                printf '%s\n' "$formula"
+                return 0
+                ;;
+        esac
+    done < <(brew services list 2>/dev/null)
+    brew list --formula 2>/dev/null | grep -E '^postgresql(@[0-9]+)?$' | tail -n 1
+}
+
+wait_for_database() {
+    local timeout="${1:-20}" elapsed=0 rc
+    while [[ $elapsed -lt $timeout ]]; do
+        rc=0
+        db_reachable || rc=$?
+        [[ $rc -eq 0 ]] && return 0
+        [[ $rc -eq 2 ]] && return 2
+        sleep 1
+        elapsed=$((elapsed + 1))
+    done
+    db_reachable
+}
+
+start_native_database() {
+    parse_db_url || return 1
+    if ! db_is_local_host; then
+        print_error "DATABASE_URL host is $DB_HOST — not started by this script"
+        return 1
+    fi
+
+    local rc=0
+    db_reachable || rc=$?
+    case "$rc" in
+        0)
+            print_success "Local PostgreSQL reachable ($DB_USER@$DB_HOST:$DB_PORT/$DB_NAME)"
+            return 0
+            ;;
+        2)
+            print_warning "No pg_isready/psql — cannot verify the database"
+            return 0
+            ;;
+    esac
+
+    local formula
+    formula="$(native_pg_brew_formula || true)"
+    if [[ -n "$formula" ]]; then
+        print_step "Starting Homebrew $formula…"
+        brew services start "$formula" || return 1
+        if wait_for_database 25; then
+            print_success "Local PostgreSQL reachable ($DB_USER@$DB_HOST:$DB_PORT/$DB_NAME)"
+            return 0
+        fi
+        print_error "Started $formula, but $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME is still unreachable"
+        print_info "Create the role + database: $0 db-setup"
+        return 1
+    fi
+
+    print_error "Local PostgreSQL is not running and no Homebrew postgresql formula was found"
+    print_info "Install/start PostgreSQL, then: $0 db-setup"
+    return 1
+}
+
+stop_native_database() {
+    parse_db_url || return 0
+    if ! db_is_local_host; then
+        print_info "Remote PostgreSQL ($DB_HOST) is not managed by this script"
+        return 0
+    fi
+    local formula
+    formula="$(native_pg_brew_formula || true)"
+    if [[ -z "$formula" ]]; then
+        print_info "Local PostgreSQL is not a Homebrew service (left running)"
+        return 0
+    fi
+    print_step "Stopping Homebrew $formula (all databases on :$DB_PORT)…"
+    brew services stop "$formula" || return 1
+    print_success "Database stopped"
 }
 
 maybe_autodetect_native() {
@@ -628,15 +708,6 @@ SQL
 
 # ==================== Logo & Banner ====================
 
-show_logo() {
-    local logo="$PROJECT_ROOT/shared/logo-ansi.txt"
-    if [[ -f "$logo" ]]; then
-        # Truecolor half-block art (UTF-8). No wordmark — character only.
-        cat "$logo"
-        echo ""
-    fi
-}
-
 show_mini_logo() {
     echo -e "${BRIGHT_CYAN}${BOLD}◆ Myriad${NC} ${DIM}v${VERSION}${NC}"
 }
@@ -676,6 +747,38 @@ backend_health_ok() {
     curl -fsS --max-time 1 "http://127.0.0.1:${BACKEND_PORT}/health" >/dev/null 2>&1
 }
 
+frontend_health_ok() {
+    curl -fsS --max-time 1 "http://127.0.0.1:${FRONTEND_PORT}/" >/dev/null 2>&1
+}
+
+# psql against the resolved DATABASE_URL. Extra args forwarded (e.g. -tAc 'SELECT 1').
+db_psql() {
+    parse_db_url || return 1
+    have psql || return 1
+    PGPASSWORD="$DB_PASS" psql -w -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" "$@"
+}
+
+db_scalar() {
+    db_psql -tAc "$1" 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# First line of `ps -p` snapshot: pid ppid pcpu pmem rss etime command
+proc_ps() {
+    local pid="$1"
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    ps -p "$pid" -o pid=,ppid=,pcpu=,pmem=,rss=,etime=,command= 2>/dev/null | head -n 1
+}
+
+docker_container_running() {
+    local name="$1"
+    docker_cli_available || return 1
+    docker ps --filter "name=^${name}$" --format "{{.Names}}" 2>/dev/null | grep -q .
+}
+
+db_is_docker() {
+    docker_container_running "myriad-postgres-dev"
+}
+
 backend_port_in_use() {
     [[ -n "$(list_listen_pids "$BACKEND_PORT")" ]]
 }
@@ -689,13 +792,22 @@ updater_health_ok() {
 }
 
 wait_for_backend() {
-    local timeout="${1:-90}"
+    local timeout="${1:-180}"
     local elapsed=0
     print_info "Waiting for backend health on http://127.0.0.1:${BACKEND_PORT}/health ..."
+    print_info "First cargo compile can take a few minutes — this is not a crash."
     while [[ $elapsed -lt $timeout ]]; do
         if backend_health_ok; then
             print_success "Backend is ready"
             return 0
+        fi
+        # Still compiling / booting is success-in-progress if a process exists.
+        if [[ $((elapsed % 15)) -eq 0 && $elapsed -gt 0 ]]; then
+            if [[ -n "$(list_backend_pids)" ]]; then
+                print_info "Still starting… ${elapsed}s / ${timeout}s (cargo may be compiling)"
+            else
+                print_info "No backend process yet… ${elapsed}s / ${timeout}s"
+            fi
         fi
         sleep 1
         elapsed=$((elapsed + 1))
@@ -771,68 +883,161 @@ dev_updater_enabled() {
     [[ "${MYRIAD_DEV_UPDATER:-}" == "1" ]] || get_service_status updater
 }
 
+# One-line detail for status: "pid 1234  cpu 1.2%  mem 3.4%  up 00:12"
+status_proc_detail() {
+    local pid="$1"
+    local line cpu mem etime
+    line="$(proc_ps "$pid" || true)"
+    [[ -n "$line" ]] || { echo "pid $pid"; return 0; }
+    # pid ppid pcpu pmem rss etime command — fields 1,3,4,6
+    set -- $line
+    cpu="${3:-?}"
+    mem="${4:-?}"
+    etime="${6:-?}"
+    echo "pid $pid  cpu ${cpu}%  mem ${mem}%  up $etime"
+}
+
 show_status_dashboard() {
-    local width=50
-    
+    local width=70
+
     echo ""
     draw_box "Service Status" $width "$BRIGHT_CYAN"
-    
+
     # Database
     local db_status=false
     get_service_status database && db_status=true
+    local db_kind="local"
+    db_is_docker && db_kind="docker"
     draw_box_line "${ICON_DB} Database (PostgreSQL)    $(get_status_text $db_status)" $width "$BRIGHT_CYAN"
-    
+    if $db_status && parse_db_url; then
+        draw_box_line "    ${DIM}${db_kind}  ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}${NC}" $width "$BRIGHT_CYAN"
+        if have psql; then
+            local db_size db_conns db_tables db_ver
+            db_size="$(db_scalar "SELECT pg_size_pretty(pg_database_size(current_database()))" || true)"
+            db_conns="$(db_scalar "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()" || true)"
+            db_tables="$(db_scalar "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'" || true)"
+            db_ver="$(db_scalar "SELECT split_part(current_setting('server_version'), ' ', 1)" || true)"
+            [[ -n "$db_size" ]] && draw_box_line "    ${DIM}v${db_ver}  ${db_size}  ${db_conns} conn  ${db_tables} tables${NC}" $width "$BRIGHT_CYAN"
+        fi
+    fi
+
     # Backend
     local backend_status=false
     get_service_status backend && backend_status=true
-    draw_box_line "${ICON_RUST} Backend (Rust/Axum)      $(get_status_text $backend_status)" $width "$BRIGHT_CYAN"
-    
+    local be_health="${DIM}—${NC}"
+    if $backend_status; then
+        if backend_health_ok; then
+            be_health="${GREEN}healthy${NC}"
+        else
+            be_health="${YELLOW}starting / unhealthy${NC}"
+        fi
+    fi
+    draw_box_line "${ICON_RUST} Backend (Rust/Axum)      $(get_status_text $backend_status)  ${be_health}" $width "$BRIGHT_CYAN"
+    if $backend_status; then
+        local be_pid
+        be_pid="$(list_backend_pids | head -n 1)"
+        [[ -n "$be_pid" ]] && draw_box_line "    ${DIM}$(status_proc_detail "$be_pid")${NC}" $width "$BRIGHT_CYAN"
+    fi
+
     # Frontend
     local frontend_status=false
     get_service_status frontend && frontend_status=true
-    draw_box_line "${ICON_NODE} Frontend (Astro/React)   $(get_status_text $frontend_status)" $width "$BRIGHT_CYAN"
+    local fe_health="${DIM}—${NC}"
+    if $frontend_status; then
+        if frontend_health_ok; then
+            fe_health="${GREEN}up${NC}"
+        else
+            fe_health="${YELLOW}starting${NC}"
+        fi
+    fi
+    draw_box_line "${ICON_NODE} Frontend (Astro/React)   $(get_status_text $frontend_status)  ${fe_health}" $width "$BRIGHT_CYAN"
+    if $frontend_status; then
+        local fe_pid
+        fe_pid="$(list_frontend_pids | head -n 1)"
+        [[ -n "$fe_pid" ]] && draw_box_line "    ${DIM}$(status_proc_detail "$fe_pid")${NC}" $width "$BRIGHT_CYAN"
+    fi
 
     # Updater harness
     local updater_status=false
     get_service_status updater && updater_status=true
-    draw_box_line "${ICON_UPDATER} Updater Harness        $(get_status_text $updater_status)" $width "$BRIGHT_CYAN"
-    
-    draw_box_line "" $width "$BRIGHT_CYAN"
-    
-    if $backend_status || $frontend_status || $updater_status; then
-        $backend_status && draw_box_line "${DIM}API:      http://localhost:${BACKEND_PORT}${NC}" $width "$BRIGHT_CYAN"
-        $frontend_status && draw_box_line "${DIM}Frontend: http://localhost:${FRONTEND_PORT}${NC}" $width "$BRIGHT_CYAN"
-        $updater_status && draw_box_line "${DIM}Updater:  http://127.0.0.1:1101${NC}" $width "$BRIGHT_CYAN"
+    local up_health="${DIM}—${NC}"
+    if $updater_status; then
+        if updater_health_ok; then
+            up_health="${GREEN}healthy${NC}"
+        else
+            up_health="${YELLOW}starting / unhealthy${NC}"
+        fi
     fi
-    
+    draw_box_line "${ICON_UPDATER} Updater Harness          $(get_status_text $updater_status)  ${up_health}" $width "$BRIGHT_CYAN"
+
+    draw_box_line "" $width "$BRIGHT_CYAN"
+
+    if $backend_status || $frontend_status || $updater_status; then
+        $backend_status && draw_box_line "${DIM}API:      http://localhost:${BACKEND_PORT}   /health${NC}" $width "$BRIGHT_CYAN"
+        $frontend_status && draw_box_line "${DIM}Frontend: http://localhost:${FRONTEND_PORT}${NC}" $width "$BRIGHT_CYAN"
+        $updater_status && draw_box_line "${DIM}Updater:  http://127.0.0.1:1101   gateway :1104${NC}" $width "$BRIGHT_CYAN"
+    fi
+
     draw_box_bottom $width "$BRIGHT_CYAN"
     echo ""
+}
+
+show_logs() {
+    local which="${1:-all}"
+    local lines="${2:-80}"
+    case "$which" in
+        backend|be)
+            if [[ -f "$PROJECT_ROOT/backend.log" ]]; then
+                echo -e "${BOLD}backend.log${NC} (last $lines)"
+                tail -n "$lines" "$PROJECT_ROOT/backend.log"
+            else
+                print_warning "No backend.log — backend may have been started in another terminal"
+            fi
+            ;;
+        frontend|fe)
+            if [[ -f "$PROJECT_ROOT/frontend.log" ]]; then
+                echo -e "${BOLD}frontend.log${NC} (last $lines)"
+                tail -n "$lines" "$PROJECT_ROOT/frontend.log"
+            else
+                print_warning "No frontend.log — frontend may have been started in another terminal"
+            fi
+            ;;
+        database|db|postgres)
+            if docker_container_running "myriad-postgres-dev"; then
+                echo -e "${BOLD}docker logs myriad-postgres-dev${NC} (last $lines)"
+                docker logs --tail "$lines" myriad-postgres-dev 2>&1
+            else
+                print_info "Native PostgreSQL has no compose log — check the server journal"
+            fi
+            ;;
+        updater)
+            if docker_container_running "myriad-updater-dev"; then
+                echo -e "${BOLD}docker logs myriad-updater-dev${NC} (last $lines)"
+                docker logs --tail "$lines" myriad-updater-dev 2>&1
+            else
+                print_warning "Updater harness is not running"
+            fi
+            ;;
+        all|*)
+            show_logs backend "$lines"
+            echo ""
+            show_logs frontend "$lines"
+            echo ""
+            show_logs database "$lines"
+            ;;
+    esac
 }
 
 # ==================== Service Control ====================
 
 start_database() {
     maybe_autodetect_native
+    parse_db_url || true
 
     if [[ "$USE_NATIVE" -eq 1 ]]; then
-        print_step "Checking local PostgreSQL..."
-        local rc=0
-        db_reachable || rc=$?
-        case "$rc" in
-            0)
-                print_success "Local PostgreSQL reachable ($DB_USER@$DB_HOST:$DB_PORT/$DB_NAME)"
-                return 0
-                ;;
-            2)
-                print_warning "No pg_isready/psql — cannot verify the database, starting anyway"
-                return 0
-                ;;
-            *)
-                print_error "Local PostgreSQL not reachable: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
-                print_info "Start PostgreSQL, then run: $0 db-setup"
-                return 1
-                ;;
-        esac
+        print_step "Starting local PostgreSQL..."
+        start_native_database
+        return
     fi
 
     print_step "Starting PostgreSQL database..."
@@ -871,7 +1076,7 @@ stop_database() {
         fi
     fi
     if [[ "$USE_NATIVE" -eq 1 && "$stopped_docker" -eq 0 ]]; then
-        print_info "Local PostgreSQL is not managed by this script (left running)"
+        stop_native_database
     fi
 }
 
@@ -953,7 +1158,19 @@ start_backend() {
         print_info "Backend will run in release mode"
     fi
 
-    if [[ "$OSTYPE" == "darwin"* ]]; then
+    if [[ "$DEV_START_BG" -eq 1 ]]; then
+        # TUI / monitor: stay in this session, write logs to backend.log.
+        if [[ "$inject_updater" -eq 1 ]]; then
+            MYRIAD_UPDATER_URL="$updater_url" UPDATER_GATEWAY_SECRET="$gw_secret" \
+                nohup $rust_cmd > "$PROJECT_ROOT/backend.log" 2>&1 &
+        else
+            nohup $rust_cmd > "$PROJECT_ROOT/backend.log" 2>&1 &
+        fi
+        print_info "Backend running in background (pid $!, logs: backend.log)"
+        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+            return 0
+        fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
         osascript -e 'tell application "Terminal" to do script "cd '"$BACKEND_DIR"' && echo \"🦀 Myriad Backend\" && source ~/.cargo/env 2>/dev/null; '"$cargo_cmd"'"' 2>/dev/null
     else
         if command -v gnome-terminal &> /dev/null; then
@@ -968,9 +1185,14 @@ start_backend() {
         fi
     fi
 
-    if ! wait_for_backend 90; then
-        print_warning "Backend did not become ready within 90s"
-        print_warning "Check the backend terminal, or backend.log if it was started in background."
+    if ! wait_for_backend 180; then
+        if [[ -n "$(list_backend_pids)" ]] || backend_port_in_use; then
+            print_warning "Backend is still compiling or booting after 180s — leaving it running"
+            print_info "Watch: $0 logs backend   or   tail -f $PROJECT_ROOT/backend.log"
+        else
+            print_warning "Backend did not become ready within 180s and no process is visible"
+            print_warning "Check the backend terminal, or backend.log if it was started in background."
+        fi
         if backend_port_in_use; then
             print_info "Port ${BACKEND_PORT} listeners: $(list_listen_pids "$BACKEND_PORT" | tr '\n' ' ')"
         fi
@@ -1028,7 +1250,13 @@ start_frontend() {
 
     cd "$FRONTEND_DIR"
 
-    if [[ "$OSTYPE" == "darwin"* ]]; then
+    if [[ "$DEV_START_BG" -eq 1 ]]; then
+        nohup pnpm run dev > "$PROJECT_ROOT/frontend.log" 2>&1 &
+        print_info "Frontend running in background (pid $!, logs: frontend.log)"
+        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
+            return 0
+        fi
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
         osascript -e 'tell application "Terminal" to do script "cd '"$FRONTEND_DIR"' && echo \"⚡ Myriad Frontend\" && pnpm run dev"' 2>/dev/null
     else
         if command -v gnome-terminal &> /dev/null; then
@@ -1155,16 +1383,26 @@ start_foreground_stack() {
 
     if [[ "$RUN_BACKEND" -eq 1 ]]; then
         if backend_port_in_use; then
-            print_error "Port $BACKEND_PORT (backend) is already in use"
-            print_info "Stop it first: $0 stop backend"
+            if backend_health_ok && get_service_status backend; then
+                print_error "Backend is already running on :$BACKEND_PORT"
+                print_info "Foreground start cannot attach to an existing process (Ctrl-C would not stop it)."
+            else
+                print_error "Port $BACKEND_PORT (backend) is already in use"
+            fi
+            print_info "Stop it first: $0 stop backend    Restart: $0 restart    Watch: $0 monitor"
             return 1
         fi
         parse_db_url || { print_error "Could not parse DATABASE_URL: $(resolve_db_url)"; return 1; }
         ensure_backend_env || return 1
     fi
     if [[ "$RUN_FRONTEND" -eq 1 ]] && frontend_port_in_use; then
-        print_error "Port $FRONTEND_PORT (frontend) is already in use"
-        print_info "Stop it first: $0 stop frontend"
+        if get_service_status frontend; then
+            print_error "Frontend is already running on :$FRONTEND_PORT"
+            print_info "Foreground start cannot attach to an existing process (Ctrl-C would not stop it)."
+        else
+            print_error "Port $FRONTEND_PORT (frontend) is already in use"
+        fi
+        print_info "Stop it first: $0 stop frontend    Restart: $0 restart    Watch: $0 monitor"
         return 1
     fi
 
@@ -1242,12 +1480,20 @@ start_all() {
 
     start_database || return 1
     echo ""
-    sleep 2
+    if [[ "$DEV_START_NOWAIT" -eq 0 ]]; then
+        sleep 2
+    fi
     if [[ "$RUN_BACKEND" -eq 1 ]]; then
         start_backend
-        if ! backend_health_ok; then
+        if backend_health_ok; then
+            :
+        elif [[ -n "$(list_backend_pids)" ]] || backend_port_in_use; then
             echo ""
-            print_error "Backend is not ready; frontend was not started to avoid 127.0.0.1:${BACKEND_PORT} ECONNREFUSED."
+            print_warning "Backend is still starting (often cargo compile). Frontend will start anyway."
+            print_info "If /health stays down: $0 logs backend"
+        else
+            echo ""
+            print_error "Backend process never appeared; frontend was not started."
             print_info "Fix the backend error first, then run: $0 start frontend"
             return 1
         fi
@@ -1361,101 +1607,11 @@ END \$\$;" > /dev/null 2>&1 || true
     echo ""
 }
 
-# ==================== Interactive Menu ====================
-
-show_menu() {
-    clear_screen
-    show_logo
-    show_status_dashboard
-    
-    local width=50
-    draw_box "Main Menu" $width "$MAGENTA"
-    draw_box_line "" $width "$MAGENTA"
-    draw_box_line "  ${BRIGHT_GREEN}1${NC})  ${ICON_ROCKET} Start All Services" $width "$MAGENTA"
-    draw_box_line "  ${BRIGHT_GREEN}2${NC})  ${ICON_STOP} Stop All Services" $width "$MAGENTA"
-    draw_box_line "  ${BRIGHT_GREEN}3${NC})  ${ICON_REFRESH} Restart All Services" $width "$MAGENTA"
-    draw_box_line "" $width "$MAGENTA"
-    draw_box_line "  ${BRIGHT_YELLOW}4${NC})  ${ICON_DB} Database Only" $width "$MAGENTA"
-    draw_box_line "  ${BRIGHT_YELLOW}5${NC})  ${ICON_RUST} Backend Only" $width "$MAGENTA"
-    draw_box_line "  ${BRIGHT_YELLOW}6${NC})  ${ICON_NODE} Frontend Only" $width "$MAGENTA"
-    draw_box_line "" $width "$MAGENTA"
-    draw_box_line "  ${BRIGHT_YELLOW}7${NC})  ${ICON_UPDATER} Updater Harness" $width "$MAGENTA"
-    draw_box_line "" $width "$MAGENTA"
-    draw_box_line "  ${BRIGHT_CYAN}8${NC})  ${ICON_INFO} Show Status" $width "$MAGENTA"
-    draw_box_line "  ${BRIGHT_RED}9${NC})  ${ICON_TRASH} Clean Project" $width "$MAGENTA"
-    draw_box_line "" $width "$MAGENTA"
-    draw_box_line "  ${DIM}q${NC})  Exit" $width "$MAGENTA"
-    draw_box_line "" $width "$MAGENTA"
-    draw_box_bottom $width "$MAGENTA"
-    
-    echo ""
-    echo -en "${CYAN}Select option: ${NC}"
-}
-
-show_service_menu() {
-    local service=$1
-    local service_name="" icon=""
-    
-    case $service in
-        database) service_name="Database"; icon="$ICON_DB" ;;
-        backend) service_name="Backend"; icon="$ICON_RUST" ;;
-        frontend) service_name="Frontend"; icon="$ICON_NODE" ;;
-        updater) service_name="Updater Harness"; icon="$ICON_UPDATER" ;;
-    esac
-    
-    echo ""
-    draw_box "$icon $service_name" 40 "$CYAN"
-    draw_box_line "  1) Start" 40 "$CYAN"
-    draw_box_line "  2) Stop" 40 "$CYAN"
-    draw_box_line "  3) Restart" 40 "$CYAN"
-    draw_box_line "  b) Back" 40 "$CYAN"
-    draw_box_bottom 40 "$CYAN"
-    
-    echo ""
-    echo -en "${CYAN}Select: ${NC}"
-    read -r choice
-    
-    case $choice in
-        1) case $service in
-            database) start_database ;; backend) start_backend ;; frontend) start_frontend ;; updater) start_updater ;;
-           esac ;;
-        2) case $service in
-            database) stop_database ;; backend) stop_backend ;; frontend) stop_frontend ;; updater) stop_updater ;;
-           esac ;;
-        3) case $service in
-            database) stop_database; sleep 1; start_database ;;
-            backend) stop_backend; sleep 1; start_backend ;;
-            frontend) stop_frontend; sleep 1; start_frontend ;;
-            updater) stop_updater; sleep 1; start_updater ;;
-           esac ;;
-    esac
-    
-    echo ""
-    echo -e "${DIM}Press Enter to continue...${NC}"
-    read -r
-}
+# ==================== Interactive (TUI) ====================
 
 run_interactive() {
-    trap 'show_cursor; echo ""; exit 0' INT TERM
-    
-    while true; do
-        show_menu
-        read -r choice
-        
-        case $choice in
-            1) USE_FG=0; DETACH_EXPLICIT=1; start_all; echo -e "${DIM}Press Enter...${NC}"; read -r ;;
-            2) stop_all; echo -e "${DIM}Press Enter...${NC}"; read -r ;;
-            3) restart_all; echo -e "${DIM}Press Enter...${NC}"; read -r ;;
-            4) show_service_menu "database" ;;
-            5) show_service_menu "backend" ;;
-            6) show_service_menu "frontend" ;;
-            7) show_service_menu "updater" ;;
-            8) clear_screen; show_mini_logo; show_status_dashboard; echo -e "${DIM}Press Enter...${NC}"; read -r ;;
-            9) clean_project; echo -e "${DIM}Press Enter...${NC}"; read -r ;;
-            q|Q) clear_screen; echo -e "${CYAN}${ICON_HEART} Thanks for using Myriad! ${ICON_HEART}${NC}"; echo ""; exit 0 ;;
-            *) print_warning "Invalid option"; sleep 1 ;;
-        esac
-    done
+    run_tui || true
+    return 0
 }
 
 # ==================== CLI Help ====================
@@ -1470,11 +1626,12 @@ show_help() {
     echo -e "  ${GREEN}up${NC}                 Alias for start --fg (this terminal)"
     echo -e "  ${RED}stop${NC}    [service]  Stop services (default: all)"
     echo -e "  ${YELLOW}restart${NC} [service]  Restart services (default: all)"
-    echo -e "  ${CYAN}status${NC}             Show service status"
+    echo -e "  ${CYAN}status${NC}             Snapshot of services, PIDs, health, database"
+    echo -e "  ${CYAN}monitor${NC} | ${CYAN}tui${NC} | ${CYAN}menu${NC}  Live TUI (start menu + processes / database / logs)"
+    echo -e "  ${CYAN}logs${NC}    [service]  Tail backend.log / frontend.log / docker"
     echo -e "  ${CYAN}doctor${NC}             Check toolchain, ports and database"
     echo -e "  ${CYAN}db-setup${NC}           Create local PostgreSQL role + database"
     echo -e "  ${MAGENTA}clean${NC}              Clean build files and database"
-    echo -e "  ${BLUE}menu${NC}               Open interactive menu"
     echo -e "  ${DIM}help${NC}               Show this help"
     echo ""
     echo -e "${BOLD}Services:${NC} database (db), backend, frontend, updater, all, all-updater"
@@ -1488,13 +1645,15 @@ show_help() {
     echo -e "  ${DIM}--frontend-only${NC}    Start only the frontend"
     echo -e "  ${DIM}--release${NC}          Build/run the backend in release mode"
     echo -e "  ${DIM}--skip-install${NC}     Skip pnpm install (foreground starts only)"
+    echo -e "  ${DIM}--watch${NC}            With status: open the live TUI"
     echo ""
     echo -e "${BOLD}Environment:${NC}"
     echo -e "  ${DIM}DATABASE_URL${NC}         Override the dev database URL"
     echo -e "  ${DIM}MYRIAD_PSQL_ADMIN${NC}    Superuser psql command used by db-setup"
     echo ""
     echo -e "${BOLD}Examples:${NC}"
-    echo -e "  ${DIM}./dev.sh${NC}                      # Open interactive menu"
+    echo -e "  ${DIM}./dev.sh${NC}                      # Live TUI (start menu + monitor)"
+    echo -e "  ${DIM}./dev.sh monitor${NC}              # Same as no-args TUI"
     echo -e "  ${DIM}./dev.sh start${NC}                # Local postgres, logs in this terminal"
     echo -e "  ${DIM}./dev.sh start --docker${NC}       # Docker postgres + new terminals"
     echo -e "  ${DIM}./dev.sh start --docker --fg${NC}  # Docker postgres, logs in this terminal"
@@ -1502,8 +1661,10 @@ show_help() {
     echo -e "  ${DIM}./dev.sh start backend${NC}        # Start backend only"
     echo -e "  ${DIM}./dev.sh doctor${NC}               # Check prerequisites"
     echo -e "  ${DIM}./dev.sh db-setup${NC}             # Create local role + database"
+    echo -e "  ${DIM}./dev.sh logs backend${NC}         # Tail backend.log"
     echo -e "  ${DIM}./dev.sh stop${NC}                 # Stop all services"
-    echo -e "  ${DIM}./dev.sh status${NC}               # Show status"
+    echo -e "  ${DIM}./dev.sh status${NC}               # One-shot status"
+    echo -e "  ${DIM}./dev.sh status --watch${NC}       # Live TUI"
     echo ""
 }
 
@@ -1523,6 +1684,7 @@ main() {
             --frontend-only) RUN_BACKEND=0; shift ;;
             --release) CARGO_RELEASE=1; shift ;;
             --skip-install) SKIP_INSTALL=1; shift ;;
+            --watch) WATCH=1; shift ;;
             -h|--help) show_help_flag=1; shift ;;
             --*) print_error "Unknown option: $1"; echo ""; show_help; exit 2 ;;
             *) positional+=("$1"); shift ;;
@@ -1548,10 +1710,22 @@ main() {
         USE_FG=1
     fi
 
+    # Drag / Open With may pass this script's own path as $1.
+    if [[ ${#positional[@]} -gt 0 ]]; then
+        case "${positional[0]}" in
+            "$0"|*/scripts/dev/dev.sh|*/dev.sh)
+                positional=("${positional[@]:1}")
+                ;;
+        esac
+    fi
+
     local command="${positional[0]:-}"
     local service="${positional[1]:-all}"
 
-    [[ -z "$command" ]] && { run_interactive; exit 0; }
+    if [[ -z "$command" ]]; then
+        run_interactive
+        exit 0
+    fi
 
     case "$command" in
         start|up)
@@ -1600,14 +1774,26 @@ main() {
                 updater) USE_NATIVE=0; stop_updater; sleep 1; start_updater ;;
                 *) print_error "Unknown service: $service"; exit 1 ;;
             esac ;;
-        status) show_mini_logo; show_status_dashboard ;;
+        status)
+            if [[ "$WATCH" -eq 1 ]]; then
+                run_tui
+            else
+                show_mini_logo
+                show_status_dashboard
+            fi
+            ;;
         doctor) run_doctor ;;
         db-setup) run_db_setup ;;
+        logs) show_logs "$service" ;;
         clean) clean_project ;;
-        menu) run_interactive ;;
+        menu|monitor|tui) run_tui ;;
         help) show_help ;;
         *) print_error "Unknown command: $command"; echo ""; show_help; exit 1 ;;
     esac
 }
+
+# Live TUI (sourced so it can call start_*/stop_* defined above).
+# shellcheck source=tui.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/tui.sh"
 
 main "$@"

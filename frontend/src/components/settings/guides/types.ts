@@ -111,6 +111,7 @@ export interface SettingGuidesCatalog {
     standard: SettingGuideEntry
     lite: SettingGuideEntry
     liteEnable: SettingGuideEntry
+    agentLife: SettingGuideEntry
     pro: SettingGuideEntry
     proEnable: SettingGuideEntry
     image: SettingGuideEntry
@@ -200,7 +201,6 @@ export interface SettingGuidesCatalog {
   advanced: {
     memorySaver: SettingGuideEntry
     memorySaverEnable: SettingGuideEntry
-    agentLife: SettingGuideEntry
     network: SettingGuideEntry
     proxyEnable: SettingGuideEntry
     proxyUrl: SettingGuideEntry

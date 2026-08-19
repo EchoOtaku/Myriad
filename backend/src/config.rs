@@ -761,8 +761,8 @@ impl Default for DynamicConfig {
 }
 
 impl DynamicConfig {
-    /// 环境变量 `AGENT_LIFE_ENABLED` 覆盖库里的开关。未设置时用 `agent_life_enabled`。
-    pub fn agent_life_enabled_resolved(&self) -> bool {
+    /// 开关本身：环境变量 `AGENT_LIFE_ENABLED` 覆盖库里的 `agent_life_enabled`。
+    pub fn agent_life_switch_on(&self) -> bool {
         match std::env::var("AGENT_LIFE_ENABLED") {
             Ok(value) => matches!(
                 value.trim().to_ascii_lowercase().as_str(),
@@ -770,6 +770,20 @@ impl DynamicConfig {
             ),
             Err(_) => self.agent_life_enabled,
         }
+    }
+
+    /// 生命是否真的生效。
+    ///
+    /// 它写的每一句都走 Lite。Lite 关着时那些调用会回落到标准模型——同样的量，
+    /// 贵一档——所以没配 Lite 就不让这个开关生效，而不是让它悄悄花主力模型的钱。
+    /// （Lite 开着但字段留空仍会回落，那是站长自己的选择，不在这里拦。）
+    pub fn agent_life_enabled_resolved(&self) -> bool {
+        self.agent_life_switch_on() && self.lite_enabled
+    }
+
+    /// 开关开着却缺 Lite。用来在日志里说清为什么没生效。
+    pub fn agent_life_needs_lite(&self) -> bool {
+        self.agent_life_switch_on() && !self.lite_enabled
     }
 
     /// 根据模型层级解析 AI 配置

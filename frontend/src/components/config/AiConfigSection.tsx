@@ -103,6 +103,9 @@ interface AiConfigSectionProps {
   configFields: ConfigField[]
   /** 更新配置字段值 */
   updateValue: (key: string, value: string) => void
+  /** ui bag：Agent 生命总开关存在这里，控件挂在 Lite 旁边 */
+  uiConfigFields: Array<{ key: string; value: string }>
+  updateUiFieldValue: (key: string, value: string) => void
   /** 语音测试回调 */
   onSpeechTest: () => Promise<{ success: boolean; message: string }>
   title: string
@@ -225,6 +228,8 @@ function fieldsForModelTier(
 export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   configFields,
   updateValue,
+  uiConfigFields,
+  updateUiFieldValue,
   onSpeechTest,
   title,
   icon,
@@ -277,6 +282,13 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     const val = getFieldValue('lite_enabled', 'false')
     return val === 'true' || val === '1'
   }, [getFieldValue])
+
+  const agentLifeEnabled = useMemo(
+    () =>
+      uiConfigFields.find((field) => field.key === 'agent_life_enabled')
+        ?.value === 'true',
+    [uiConfigFields],
+  )
 
   const currentLiteProvider = useMemo(() => {
     const raw = getFieldValue('lite_provider')
@@ -548,6 +560,26 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         }
         updateValue={updateValue}
       />
+
+      {/* 生命开口写的每一句都走 Lite，所以总开关紧跟在 Lite 后面：
+          分到高级页的话，管理员会打开它、然后发现不生效。 */}
+      <SettingGroup
+        title={t.config.agentLife}
+        description={t.config.agentLifeHint}
+        {...bindGuide('ai.agentLife', g.ai.agentLife)}
+        icon={<LuSparkles />}
+      >
+        <SwitchItem
+          itemKey="agent_life_enabled"
+          label={t.config.agentLife}
+          description={t.config.agentLifeHint}
+          value={agentLifeEnabled}
+          onChange={(value: boolean) =>
+            updateUiFieldValue('agent_life_enabled', value ? 'true' : 'false')
+          }
+          layout="horizontal"
+        />
+      </SettingGroup>
 
       <ModelTierGroup
         title={t.config.aiProModelTitle}

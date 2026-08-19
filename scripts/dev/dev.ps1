@@ -6,7 +6,7 @@
 
 param(
     [Parameter(Position = 0, Mandatory = $false)]
-    [ValidateSet("start", "stop", "restart", "clean", "status", "logs", "help", "menu")]
+    [ValidateSet("start", "stop", "restart", "clean", "status", "logs", "help", "menu", "monitor", "tui")]
     [string]$Command = "help",
     
     [ValidateSet("backend", "frontend", "updater", "database", "all", "all-updater")]
@@ -678,6 +678,76 @@ function Show-Status {
 }
 
 # ====================
+# MONITOR Command
+# ====================
+function Show-Monitor {
+    Write-Host "Live monitor — Ctrl+C to leave. Services keep running." -ForegroundColor Cyan
+    Write-Host ""
+    try {
+        while ($true) {
+            Clear-Host
+            Write-Host "Myriad Dev  monitor   $(Get-Date -Format 'HH:mm:ss')" -ForegroundColor Cyan
+            Write-Host ""
+            Show-Status
+
+            Write-Host "Processes" -ForegroundColor Yellow
+            $be = @(Get-ProjectBackendProcesses)
+            $fe = @(Get-ProjectFrontendProcesses)
+            if (-not $be -and -not $fe) {
+                Write-Host "  (none)" -ForegroundColor DarkGray
+            }
+            foreach ($p in $be) {
+                Write-Host ("  backend  pid {0,-7} cpu {1,5:N1}%  {2}" -f $p.Id, $p.CPU, $p.ProcessName) -ForegroundColor Gray
+            }
+            foreach ($p in $fe) {
+                Write-Host ("  frontend pid {0,-7} cpu {1,5:N1}%  {2}" -f $p.Id, $p.CPU, $p.ProcessName) -ForegroundColor Gray
+            }
+
+            Write-Host ""
+            Write-Host "Database" -ForegroundColor Yellow
+            if (Get-Command psql -ErrorAction SilentlyContinue) {
+                $envFile = Join-Path $projectRoot "backend\.env"
+                $dbUrl = "postgres://myriad:myriad_dev_password@localhost:5432/myriad"
+                if (Test-Path $envFile) {
+                    $line = Select-String -Path $envFile -Pattern '^\s*DATABASE_URL\s*=' | Select-Object -Last 1
+                    if ($line) {
+                        $dbUrl = ($line.Line -replace '^\s*DATABASE_URL\s*=\s*', '').Trim('"').Trim("'")
+                    }
+                }
+                $uri = $dbUrl -replace '^postgres(ql)?://', 'http://'
+                try {
+                    $parsed = [Uri]$uri
+                    $userInfo = $parsed.UserInfo.Split(':', 2)
+                    $env:PGPASSWORD = if ($userInfo.Count -gt 1) { $userInfo[1] } else { "" }
+                    $size = & psql -w -h $parsed.Host -p $parsed.Port -U $userInfo[0] -d $parsed.AbsolutePath.Trim('/') -tAc "SELECT pg_size_pretty(pg_database_size(current_database()))" 2>$null
+                    $tables = & psql -w -h $parsed.Host -p $parsed.Port -U $userInfo[0] -d $parsed.AbsolutePath.Trim('/') -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'" 2>$null
+                    if ($size) {
+                        Write-Host "  $($userInfo[0])@$($parsed.Host):$($parsed.Port)$($parsed.AbsolutePath)  $size  $tables tables" -ForegroundColor Gray
+                    }
+                    else {
+                        Write-Host "  not reachable via psql" -ForegroundColor DarkGray
+                    }
+                }
+                catch {
+                    Write-Host "  could not parse DATABASE_URL" -ForegroundColor DarkGray
+                }
+            }
+            else {
+                Write-Host "  psql not on PATH — size/tables skipped" -ForegroundColor DarkGray
+            }
+
+            Write-Host ""
+            Write-Host "Refreshing every 2s. Ctrl+C exits the dashboard." -ForegroundColor DarkGray
+            Start-Sleep -Seconds 2
+        }
+    }
+    finally {
+        Write-Host ""
+        Write-Host "Left monitor. Services were not stopped." -ForegroundColor Cyan
+    }
+}
+
+# ====================
 # LOGS Command
 # ====================
 function Show-Logs {
@@ -701,6 +771,7 @@ function Show-Help {
     Write-Host "  restart [-Service <service>] - Restart services (default: all)" -ForegroundColor White
     Write-Host "  clean [-Force]               - Clean build files and database" -ForegroundColor White
     Write-Host "  status                       - Show service status" -ForegroundColor White
+    Write-Host "  monitor                      - Live dashboard (processes + database)" -ForegroundColor White
     Write-Host "  logs                         - Show logs info" -ForegroundColor White
     Write-Host "  help                         - Show this help" -ForegroundColor White
     Write-Host ""
@@ -716,6 +787,7 @@ function Show-Help {
     Write-Host "  .\dev.ps1 restart -Service frontend  # Restart frontend" -ForegroundColor Gray
     Write-Host "  .\dev.ps1 clean -Force               # Clean without prompt" -ForegroundColor Gray
     Write-Host "  .\dev.ps1 status                     # Show status" -ForegroundColor Gray
+    Write-Host "  .\dev.ps1 monitor                    # Live dashboard (Ctrl+C to leave)" -ForegroundColor Gray
     Write-Host ""
 }
 
@@ -735,12 +807,13 @@ function Show-InteractiveMenu {
         Write-Host "7. Stop all services" -ForegroundColor White
         Write-Host "8. Restart all services" -ForegroundColor White
         Write-Host "9. Show status" -ForegroundColor White
-        Write-Host "10. Clean project" -ForegroundColor White
-        Write-Host "11. Show logs info" -ForegroundColor White
+        Write-Host "10. Live monitor" -ForegroundColor White
+        Write-Host "11. Clean project" -ForegroundColor White
+        Write-Host "12. Show logs info" -ForegroundColor White
         Write-Host "0. Exit" -ForegroundColor Gray
         Write-Host ""
-        
-        $choice = Read-Host "Select an option (0-11)"
+
+        $choice = Read-Host "Select an option (0-12)"
         
         switch ($choice) {
             "1" {
@@ -779,9 +852,12 @@ function Show-InteractiveMenu {
                 Show-Status
             }
             "10" {
-                Clear-Project
+                Show-Monitor
             }
             "11" {
+                Clear-Project
+            }
+            "12" {
                 Show-Logs
             }
             "0" {
@@ -791,7 +867,7 @@ function Show-InteractiveMenu {
             }
             default {
                 Write-Host ""
-                Write-Host "Invalid option. Please select 0-11" -ForegroundColor Red
+                Write-Host "Invalid option. Please select 0-12" -ForegroundColor Red
             }
         }
         
@@ -821,6 +897,8 @@ else {
         "restart" { Restart-Services }
         "clean" { Clear-Project }
         "status" { Show-Status }
+        "monitor" { Show-Monitor }
+        "tui" { Show-Monitor }
         "logs" { Show-Logs }
         "help" { Show-Help }
     }

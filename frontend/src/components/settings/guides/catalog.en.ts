@@ -547,10 +547,17 @@ export const en: SettingGuidesCatalog = {
       frontend: 'Users usually don’t see a separate page — mainly which setup simple background tasks use.',
       notes: 'Can use a different provider than Standard; safer to make sure Standard works first.',
     },
+    agentLife: {
+      what: 'Let Arael speak with the site persona, keep per-person mood and diary, and speak after named events.',
+      chain:
+        '1) Off by default. Off means chat and tasks only — no event listening, no hidden speech, persona unused.\n2) Requires the Lite tier above: every line life writes goes through Lite, and without it those calls fall back to the standard model. With Lite off this switch has no effect even when turned on.\n3) On: the owner’s persona replaces the public soul; mood and diary stay per signed-in person.\n4) AGENT_LIFE_ENABLED can override the saved switch, but still needs Lite.\n5) Autonomic speech stays hidden; valuable events also notify if the person is not chatting.',
+      frontend: 'The reports status bar shows the name and mood. Guests only see the public name.',
+      notes: 'Only the site owner can write the persona. Diary cannot be deleted. Heartbeat is never blocked by mood.',
+    },
     liteEnable: {
       what: 'Whether to enable the Lite tier.',
       chain:
-        '1) Off = everything falls back to Standard.\n2) On = lite tasks use the Lite setup.\n3) Turning off does not delete what you already filled in.',
+        '1) Off = everything falls back to Standard.\n2) On = lite tasks use the Lite setup.\n3) Turning off does not delete what you already filled in.\n4) Agent life depends on this tier and cannot be turned on without it.',
       frontend: 'Indirectly affects which model is used; simple tasks can show cost/speed differences.',
       notes: 'If Standard still doesn’t work, don’t rush to enable Lite.',
     },
@@ -820,13 +827,6 @@ export const en: SettingGuidesCatalog = {
         '1) Saves to server config, then reloads runtime concurrency/federation/cache caps.\n2) Federation stays on; budgets are just tighter.\n3) Best for 1 GiB VMs; leave off on larger hosts.',
       frontend: 'Indirect under heavy load. Daily browsing should feel the same.',
       notes: 'Turn off anytime and Save to restore balanced budgets (restart if you care about DB pool size).',
-    },
-    agentLife: {
-      what: 'Let Arael speak with the site persona, keep per-person mood and diary, and speak after named events.',
-      chain:
-        '1) Off by default. Off means chat and tasks only — no event listening, no hidden speech, persona unused.\n2) On: the owner’s persona replaces the public soul; mood and diary stay per signed-in person.\n3) AGENT_LIFE_ENABLED can override the saved switch.\n4) Autonomic speech stays hidden; valuable events also notify if the person is not chatting.',
-      frontend: 'Shows on the reports bar and persona guide. Guests only see the public name.',
-      notes: 'Only the site owner can write the persona. Diary cannot be deleted. Heartbeat is never blocked by mood.',
     },
     network: {
       what: 'Whether the server uses a proxy when going to the open internet, and access addresses for a few services.',
