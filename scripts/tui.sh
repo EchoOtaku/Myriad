@@ -32,8 +32,12 @@ TUI_CACHE_FE_STATE="stopped"
 TUI_CACHE_FE_DETAIL="—"
 TUI_CACHE_UP_STATE="stopped"
 TUI_CACHE_UP_DETAIL="—"
+TUI_EXPECT_DB_UNTIL=0
 TUI_EXPECT_BE_UNTIL=0
 TUI_EXPECT_FE_UNTIL=0
+TUI_POLL_FAST=3
+TUI_POLL_IDLE=10
+TUI_POLL_TIME=3
 
 TUI_TAB_COUNT=5
 TUI_LOG_COUNT=4
@@ -227,8 +231,8 @@ tui_enter() {
     printf '\033[?25l'
     # Normal cursor keys (CSI), not application mode SS3 after smcup.
     tput rmkx 2>/dev/null || printf '\033[?1l'
-    # VMIN=0 VTIME=10: kernel waits up to 1s. No bash `read -t` (3.2 is instant).
-    stty -echo -icanon time 10 min 0 2>/dev/null || stty -echo -icanon 2>/dev/null || true
+    # VMIN=0 VTIME=3: kernel waits up to 0.3s. No bash `read -t` (3.2 is instant).
+    stty -echo -icanon time "$TUI_POLL_TIME" min 0 2>/dev/null || stty -echo -icanon 2>/dev/null || true
     TUI_ACTIVE=1
 }
 
@@ -281,7 +285,7 @@ tui_read_key() {
         stty time 1 min 0 2>/dev/null || true
         tui_read_byte
         if [[ -z "$TUI_BYTE" ]]; then
-            stty time 10 min 0 2>/dev/null || true
+            stty time "$TUI_POLL_TIME" min 0 2>/dev/null || true
             TUI_KEY="esc"
             return 0
         fi
@@ -305,7 +309,7 @@ tui_read_key() {
                 done
             fi
         fi
-        stty time 10 min 0 2>/dev/null || true
+        stty time "$TUI_POLL_TIME" min 0 2>/dev/null || true
     fi
     case "$k" in
         $'\033[A'|$'\033OA'|$'\033[1A') TUI_KEY="up" ;;
@@ -436,69 +440,74 @@ tui_refresh_procs() {
 }
 
 tui_refresh_status() {
-    local svc pids now
+    local now line dbp="${DB_PORT:-5432}" have_db=0 have_be=0 have_fe=0 have_up=0
     now="$(date +%s)"
     parse_db_url || true
-    for svc in database backend frontend updater; do
-        TUI_S_STATE="stopped"
-        TUI_S_DETAIL="—"
-        case "$svc" in
-            database)
-                if get_service_status database; then
-                    TUI_S_STATE="running"
-                    if [[ "$USE_NATIVE" -eq 1 ]]; then
-                        TUI_S_DETAIL="native  ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
-                    else
-                        TUI_S_DETAIL="docker  ${DB_USER}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
-                    fi
-                fi
-                TUI_CACHE_DB_STATE="$TUI_S_STATE"
-                TUI_CACHE_DB_DETAIL="$TUI_S_DETAIL"
-                ;;
-            backend)
-                # Port / compiled binary are the truth. Do not wait on /health.
-                if backend_port_in_use || backend_binary_up; then
-                    TUI_S_STATE="running"
-                    TUI_S_DETAIL=":${BACKEND_PORT}"
-                    TUI_EXPECT_BE_UNTIL=0
-                else
-                    pids="$(list_backend_pids || true)"
-                    if [[ -n "$pids" ]] || [[ "$now" -lt "${TUI_EXPECT_BE_UNTIL:-0}" ]]; then
-                        TUI_S_STATE="starting"
-                        TUI_S_DETAIL="cargo"
-                    fi
-                fi
-                TUI_CACHE_BE_STATE="$TUI_S_STATE"
-                TUI_CACHE_BE_DETAIL="$TUI_S_DETAIL"
-                ;;
-            frontend)
-                if frontend_port_in_use; then
-                    TUI_S_STATE="running"
-                    TUI_S_DETAIL=":${FRONTEND_PORT}"
-                    TUI_EXPECT_FE_UNTIL=0
-                else
-                    pids="$(list_frontend_pids || true)"
-                    if [[ -n "$pids" ]] || [[ "$now" -lt "${TUI_EXPECT_FE_UNTIL:-0}" ]]; then
-                        TUI_S_STATE="starting"
-                        TUI_S_DETAIL="pnpm"
-                    fi
-                fi
-                TUI_CACHE_FE_STATE="$TUI_S_STATE"
-                TUI_CACHE_FE_DETAIL="$TUI_S_DETAIL"
-                ;;
-            updater)
-                if [[ "$USE_NATIVE" -eq 1 ]]; then
-                    TUI_S_STATE="n/a"
-                    TUI_S_DETAIL="docker only"
-                elif get_service_status updater; then
-                    if updater_health_ok; then TUI_S_STATE="running"; else TUI_S_STATE="starting"; fi
-                    TUI_S_DETAIL="http://127.0.0.1:1101  gateway :1104"
-                fi
-                TUI_CACHE_UP_STATE="$TUI_S_STATE"
-                TUI_CACHE_UP_DETAIL="$TUI_S_DETAIL"
-                ;;
-        esac
-    done
+    dbp="${DB_PORT:-5432}"
+
+    if command -v lsof >/dev/null 2>&1; then
+        while IFS= read -r line; do
+            case "$line" in
+                *":${dbp}"*) have_db=1 ;;
+            esac
+            case "$line" in
+                *":${BACKEND_PORT}"*) have_be=1 ;;
+            esac
+            case "$line" in
+                *":${FRONTEND_PORT}"*) have_fe=1 ;;
+            esac
+            case "$line" in
+                *:1101*) have_up=1 ;;
+            esac
+        done < <(lsof -nP -iTCP:"$dbp" -iTCP:"$BACKEND_PORT" -iTCP:"$FRONTEND_PORT" -iTCP:1101 -sTCP:LISTEN 2>/dev/null)
+    fi
+
+    if [[ $have_db -eq 1 ]]; then
+        TUI_CACHE_DB_STATE="running"
+        TUI_CACHE_DB_DETAIL=":${dbp}"
+        TUI_EXPECT_DB_UNTIL=0
+    elif [[ "$now" -lt "${TUI_EXPECT_DB_UNTIL:-0}" ]]; then
+        TUI_CACHE_DB_STATE="starting"
+        TUI_CACHE_DB_DETAIL="postgres"
+    else
+        TUI_CACHE_DB_STATE="stopped"
+        TUI_CACHE_DB_DETAIL="—"
+    fi
+
+    if [[ $have_be -eq 1 ]]; then
+        TUI_CACHE_BE_STATE="running"
+        TUI_CACHE_BE_DETAIL=":${BACKEND_PORT}"
+        TUI_EXPECT_BE_UNTIL=0
+    elif [[ "$now" -lt "${TUI_EXPECT_BE_UNTIL:-0}" ]]; then
+        TUI_CACHE_BE_STATE="starting"
+        TUI_CACHE_BE_DETAIL="cargo"
+    else
+        TUI_CACHE_BE_STATE="stopped"
+        TUI_CACHE_BE_DETAIL="—"
+    fi
+
+    if [[ $have_fe -eq 1 ]]; then
+        TUI_CACHE_FE_STATE="running"
+        TUI_CACHE_FE_DETAIL=":${FRONTEND_PORT}"
+        TUI_EXPECT_FE_UNTIL=0
+    elif [[ "$now" -lt "${TUI_EXPECT_FE_UNTIL:-0}" ]]; then
+        TUI_CACHE_FE_STATE="starting"
+        TUI_CACHE_FE_DETAIL="pnpm"
+    else
+        TUI_CACHE_FE_STATE="stopped"
+        TUI_CACHE_FE_DETAIL="—"
+    fi
+
+    if [[ "$USE_NATIVE" -eq 1 ]]; then
+        TUI_CACHE_UP_STATE="n/a"
+        TUI_CACHE_UP_DETAIL="docker only"
+    elif [[ $have_up -eq 1 ]]; then
+        TUI_CACHE_UP_STATE="running"
+        TUI_CACHE_UP_DETAIL=":1101"
+    else
+        TUI_CACHE_UP_STATE="stopped"
+        TUI_CACHE_UP_DETAIL="—"
+    fi
     TUI_STATUS_DIRTY=0
 }
 
@@ -1055,6 +1064,20 @@ tui_status_fp() {
     printf '%s' "$TUI_CACHE_DB_STATE|$TUI_CACHE_BE_STATE|$TUI_CACHE_FE_STATE|$TUI_CACHE_UP_STATE|$TUI_CACHE_DB_DETAIL|$TUI_CACHE_BE_DETAIL|$TUI_CACHE_FE_DETAIL|$TUI_CACHE_UP_DETAIL"
 }
 
+tui_stack_quiet() {
+    [[ "$TUI_CACHE_DB_STATE" == "running" && \
+       "$TUI_CACHE_BE_STATE" == "running" && \
+       "$TUI_CACHE_FE_STATE" == "running" ]]
+}
+
+tui_apply_poll() {
+    local want="$TUI_POLL_FAST"
+    tui_stack_quiet && want="$TUI_POLL_IDLE"
+    [[ "$want" -eq "$TUI_POLL_TIME" ]] && return 0
+    TUI_POLL_TIME="$want"
+    stty time "$TUI_POLL_TIME" min 0 2>/dev/null || true
+}
+
 tui_idle_tick() {
     TUI_IDLE=$((TUI_IDLE + 1))
     tui_size
@@ -1064,19 +1087,19 @@ tui_idle_tick() {
         return 0
     fi
     tui_tick_clock
-    local boot=0
-    # Watch until the stack is up — a cached "stopped" must not sit for 30s.
-    case "$TUI_CACHE_BE_STATE|$TUI_CACHE_FE_STATE|$TUI_CACHE_DB_STATE" in
-        *starting*|*stopped*) boot=1 ;;
-    esac
-    if [[ -n "$TUI_MSG" && "$TUI_MSG_ERR" -eq 0 && $TUI_IDLE -ge 8 ]]; then
+    tui_apply_poll
+    local quiet=0 msgttl=16
+    tui_stack_quiet && { quiet=1; msgttl=8; }
+    if [[ -n "$TUI_MSG" && "$TUI_MSG_ERR" -eq 0 && $TUI_IDLE -ge $msgttl ]]; then
         tui_set_msg ""
         TUI_STATUS_DIRTY=1
         tui_render || true
         return 0
     fi
-    # 1s while any of db/be/fe is down or booting. All running: clock only, probe ~30s.
-    [[ $boot -eq 1 || $((TUI_IDLE % 30)) -eq 0 ]] || return 0
+    # Booting: probe every 0.3s. All running: clock only, probe ~30s.
+    if [[ $quiet -eq 1 && $((TUI_IDLE % 30)) -ne 0 ]]; then
+        return 0
+    fi
     case "$TUI_TAB" in
         0)
             local before after
@@ -1290,6 +1313,9 @@ tui_live_msg() {
 tui_mark_launch() {
     local until=$(( $(date +%s) + 45 ))
     case "$1" in
+        database|all) TUI_EXPECT_DB_UNTIL=$until ;;
+    esac
+    case "$1" in
         backend|all) TUI_EXPECT_BE_UNTIL=$until ;;
     esac
     case "$1" in
@@ -1298,6 +1324,9 @@ tui_mark_launch() {
 }
 
 tui_clear_launch() {
+    case "$1" in
+        database|all) TUI_EXPECT_DB_UNTIL=0 ;;
+    esac
     case "$1" in
         backend|all) TUI_EXPECT_BE_UNTIL=0 ;;
     esac
@@ -1308,6 +1337,7 @@ tui_clear_launch() {
 
 tui_set_live_msg() {
     tui_refresh_status || true
+    tui_apply_poll
     tui_set_msg "$(tui_live_msg)"
 }
 

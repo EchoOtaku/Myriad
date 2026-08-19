@@ -666,10 +666,6 @@ native_pg_do_start() {
     local formula="$1" brew_cmd pgctl datadir root
     brew_cmd="$(brew_bin || true)"
     if [[ -n "$brew_cmd" ]]; then
-        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
-            "$brew_cmd" services start "$formula" >/dev/null 2>&1 &
-            return 0
-        fi
         "$brew_cmd" services start "$formula"
         return
     fi
@@ -685,11 +681,7 @@ native_pg_do_start() {
         return 1
     fi
     print_info "brew not on PATH — starting with pg_ctl"
-    if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
-        "$pgctl" -D "$datadir" -l "$datadir/server.log" start -W
-    else
-        "$pgctl" -D "$datadir" -l "$datadir/server.log" start
-    fi
+    "$pgctl" -D "$datadir" -l "$datadir/server.log" start
 }
 
 start_native_database() {
@@ -701,9 +693,7 @@ start_native_database() {
 
     local rc=0
     db_reachable || rc=$?
-    # CLI: already up is a no-op. TUI nowait still kicks brew/pg_ctl start so
-    # an in-flight `pg_ctl stop -W` cannot win the race.
-    if [[ "$rc" -eq 0 && "$DEV_START_NOWAIT" -eq 0 ]]; then
+    if [[ "$rc" -eq 0 ]]; then
         print_success "Local PostgreSQL reachable ($DB_USER@$DB_HOST:$DB_PORT/$DB_NAME)"
         return 0
     fi
@@ -717,10 +707,6 @@ start_native_database() {
     if [[ -n "$formula" ]]; then
         print_step "Starting Homebrew $formula…"
         native_pg_do_start "$formula" || return 1
-        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
-            print_info "PostgreSQL launching ($formula)"
-            return 0
-        fi
         if wait_for_database 25; then
             print_success "Local PostgreSQL reachable ($DB_USER@$DB_HOST:$DB_PORT/$DB_NAME)"
             return 0
@@ -737,14 +723,6 @@ start_native_database() {
 
 native_pg_do_stop() {
     local formula="$1" brew_cmd pgctl="" datadir="" root
-    brew_cmd="$(brew_bin || true)"
-    if [[ -n "$brew_cmd" ]]; then
-        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
-            "$brew_cmd" services stop "$formula" >/dev/null 2>&1 &
-        else
-            "$brew_cmd" services stop "$formula" || true
-        fi
-    fi
     datadir="$(native_pg_datadir "$formula" || true)"
     for root in /opt/homebrew /usr/local; do
         if [[ -x "$root/opt/$formula/bin/pg_ctl" ]]; then
@@ -752,17 +730,16 @@ native_pg_do_stop() {
             break
         fi
     done
-    # brew services stop is a no-op if we started with pg_ctl, or if
-    # the service is `none` but postgres is still bound to :5432.
+    # Stop the postmaster first and wait — restart_all starts immediately after.
     if [[ -n "$pgctl" && -n "$datadir" ]]; then
         if db_reachable || [[ -n "$(list_listen_pids "${DB_PORT:-5432}")" ]]; then
             print_info "Stopping $formula with pg_ctl"
-            if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
-                "$pgctl" -D "$datadir" stop -m fast -W >/dev/null 2>&1 || true
-            else
-                "$pgctl" -D "$datadir" stop -m fast || true
-            fi
+            "$pgctl" -D "$datadir" stop -m fast || true
         fi
+    fi
+    brew_cmd="$(brew_bin || true)"
+    if [[ -n "$brew_cmd" ]]; then
+        "$brew_cmd" services stop "$formula" >/dev/null 2>&1 || true
     fi
 }
 
@@ -782,12 +759,6 @@ stop_native_database() {
     print_step "Stopping Homebrew $formula (all databases on :$DB_PORT)…"
     native_pg_do_stop "$formula"
 
-    if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
-        print_info "PostgreSQL stopping ($formula)"
-        return 0
-    fi
-
-    # CLI restart needs the port free before start.
     local i=0 rc
     while [[ $i -lt 15 ]]; do
         rc=0
@@ -1397,33 +1368,22 @@ start_database() {
         print_error "docker-compose.dev.yml not found"
         return 1
     fi
-    if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
-        run_in_dir_detached "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml up -d
-        print_info "PostgreSQL launching via docker compose"
+    run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml up -d
+    if wait_for_database 25; then
+        print_success "Database started"
         return 0
     fi
-    run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml up -d
-    sleep 3
-    if get_service_status database; then
-        print_success "Database started"
-    else
-        print_error "Failed to start database"
-        return 1
-    fi
+    print_error "Failed to start database"
+    return 1
 }
 
 stop_database() {
     local stopped_docker=0
     if docker_container_running "myriad-postgres-dev"; then
         print_step "Stopping PostgreSQL database..."
-        if [[ "$DEV_START_NOWAIT" -eq 1 ]]; then
-            run_in_dir_detached "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml stop postgres
-            print_info "PostgreSQL container stopping"
-        else
-            run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml stop postgres || true
-            run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml rm -f postgres || true
-            print_success "Database stopped"
-        fi
+        run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml stop postgres || true
+        run_in_dir "$PROJECT_ROOT" docker compose -f docker-compose.dev.yml rm -f postgres || true
+        print_success "Database stopped"
         stopped_docker=1
     fi
     if [[ "$USE_NATIVE" -eq 1 && "$stopped_docker" -eq 0 ]]; then
@@ -1835,8 +1795,12 @@ start_all() {
     echo -e "${BRIGHT_CYAN}${BOLD}${ICON_ROCKET} Starting All Services${NC}"
     echo ""
 
-    # TUI nowait: launch postgres and return. CLI still waits inside start_database.
+    # Database first and actually up — backend must not race a down postgres.
     start_database || return 1
+    if ! get_service_status database; then
+        print_error "Database is not reachable; backend was not started"
+        return 1
+    fi
     echo ""
 
     check_tools || return 1
@@ -1906,9 +1870,6 @@ stop_all() {
 
 restart_all() {
     stop_all
-    if [[ "$DEV_START_NOWAIT" -eq 0 ]]; then
-        sleep 2
-    fi
     start_all
 }
 
