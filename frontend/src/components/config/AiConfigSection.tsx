@@ -561,26 +561,6 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         updateValue={updateValue}
       />
 
-      {/* 生命开口写的每一句都走 Lite，所以总开关紧跟在 Lite 后面：
-          分到高级页的话，管理员会打开它、然后发现不生效。 */}
-      <SettingGroup
-        title={t.config.agentLife}
-        description={t.config.agentLifeHint}
-        {...bindGuide('ai.agentLife', g.ai.agentLife)}
-        icon={<LuSparkles />}
-      >
-        <SwitchItem
-          itemKey="agent_life_enabled"
-          label={t.config.agentLife}
-          description={t.config.agentLifeHint}
-          value={agentLifeEnabled}
-          onChange={(value: boolean) =>
-            updateUiFieldValue('agent_life_enabled', value ? 'true' : 'false')
-          }
-          layout="horizontal"
-        />
-      </SettingGroup>
-
       <ModelTierGroup
         title={t.config.aiProModelTitle}
         icon={<LuZap />}
@@ -621,6 +601,27 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         }
         updateValue={updateValue}
       />
+
+      {/* 生命开口写的每一句都走 Lite。Lite 关着时后端也当这个开关没开，
+          所以这里直接禁用并显示为关，而不是让人打开后发现没反应。 */}
+      <SettingGroup
+        title={t.config.agentLife}
+        description={t.config.agentLifeHint}
+        {...bindGuide('ai.agentLife', g.ai.agentLife)}
+        icon={<LuSparkles />}
+      >
+        <SwitchItem
+          itemKey="agent_life_enabled"
+          label={t.config.agentLife}
+          description={liteEnabled ? undefined : t.config.agentLifeNeedsLite}
+          disabled={!liteEnabled}
+          value={agentLifeEnabled && liteEnabled}
+          onChange={(value: boolean) =>
+            updateUiFieldValue('agent_life_enabled', value ? 'true' : 'false')
+          }
+          layout="horizontal"
+        />
+      </SettingGroup>
 
       {/* 图片生成模型 */}
       <SettingGroup

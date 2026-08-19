@@ -1121,6 +1121,8 @@ export interface TranslationKeys {
     memorySaverHint: string
     agentLife: string
     agentLifeHint: string
+    /** Shown on the switch while the Lite tier is off */
+    agentLifeNeedsLite: string
     enableProxy: string
     enableProxyHint: string
     proxyUrl: string
