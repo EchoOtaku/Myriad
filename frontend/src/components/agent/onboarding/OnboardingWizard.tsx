@@ -12,6 +12,7 @@ import { emptyPersona, flattenPersona, personaFromApi } from './onboardingTypes'
 import BasicsStep from './steps/BasicsStep'
 import PersonaEditStep from './steps/PersonaEditStep'
 import TagBubblesStep from './steps/TagBubblesStep'
+import { ErrorNote } from './ui/Feedback'
 
 interface Props {
   initialName?: string
@@ -113,7 +114,7 @@ export default function OnboardingWizard({
           <div
             key={step}
             className="life-ob__pane sm-pane"
-            data-nav={paneNav}
+            data-nav={paneNav === 'none' ? undefined : paneNav}
           >
             {step === 1 && (
               <TagBubblesStep
@@ -168,7 +169,7 @@ export default function OnboardingWizard({
                 }
               />
             )}
-            {error ? <p className="life-ob-error">{error}</p> : null}
+            {error ? <ErrorNote>{error}</ErrorNote> : null}
           </div>
         </div>
       </div>

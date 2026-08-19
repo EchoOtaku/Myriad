@@ -23,14 +23,3 @@ export function setGenerationCache<T>(key: string, value: T) {
     /* ignore */
   }
 }
-
-export function clearGenerationCache(kind?: string) {
-  if (typeof window === 'undefined') return
-  const prefix = kind ? `${PREFIX}${kind}:` : PREFIX
-  const keys: string[] = []
-  for (let i = 0; i < sessionStorage.length; i += 1) {
-    const key = sessionStorage.key(i)
-    if (key?.startsWith(prefix)) keys.push(key)
-  }
-  for (const key of keys) sessionStorage.removeItem(key)
-}

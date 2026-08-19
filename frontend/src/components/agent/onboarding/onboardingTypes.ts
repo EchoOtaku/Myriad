@@ -1,7 +1,5 @@
 export type OnboardingStep = 1 | 2 | 3
 
-export const TOTAL_STEPS = 3
-
 /** 二级页标题栏：说明文案 + 可选「换一批」 */
 export interface OnboardingHeaderAction {
   label: string
@@ -137,11 +135,4 @@ export function personaFromApi(value: unknown): StructuredPersona {
     draftSource:
       typeof source.draftSource === 'string' ? source.draftSource : 'lite',
   }
-}
-
-export function personaNeedsGeneration(persona: StructuredPersona): boolean {
-  return (
-    persona.draftSource === 'seed' ||
-    (!persona.summary.trim() && persona.temperament.length === 0)
-  )
 }

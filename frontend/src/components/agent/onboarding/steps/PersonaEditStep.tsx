@@ -1,9 +1,9 @@
 import type { OnboardingHeaderChrome, StructuredPersona } from '../onboardingTypes'
 import { LuCheck, LuEdit3, LuX } from '@lib/icons'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { joinList, parseList } from '../onboardingTypes'
-import { ActionBar, GhostButton, PrimaryButton, StepBody } from '../ui/Chrome'
+import { ActionBar, PrimaryButton, StepBody } from '../ui/Chrome'
 import { ErrorNote } from '../ui/Feedback'
 import { TextArea, TextInput } from '../ui/Field'
 
@@ -159,7 +159,7 @@ export default function PersonaEditStep({
         ? o.personaNotCompleteIncomplete
         : o.step3Lead
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onHeaderChange?.({
       description: headerDescription,
       tone: draftSource === 'fallback' && !generating && !regenBusy

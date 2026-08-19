@@ -22,7 +22,7 @@ export function Working({ children }: { children: ReactNode }) {
 
 export function ErrorNote({ children }: { children: ReactNode }) {
   return (
-    <div className="life-error life-ob-error" role="alert">
+    <div className="life-error" role="alert">
       <span>{children}</span>
     </div>
   )

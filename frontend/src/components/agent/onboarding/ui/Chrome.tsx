@@ -49,7 +49,7 @@ export function PrimaryButton({
   return (
     <button
       type="button"
-      className="life-primary-button life-ob-cta"
+      className="life-ob-cta"
       disabled={disabled || busy}
       onClick={onClick}
     >

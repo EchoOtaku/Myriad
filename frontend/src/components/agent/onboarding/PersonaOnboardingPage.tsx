@@ -11,6 +11,7 @@ import {
   useSettingGuide,
 } from '../../settings'
 import OnboardingWizard from './OnboardingWizard'
+import { ErrorNote } from './ui/Feedback'
 import '../PersonaOnboarding.css'
 
 interface Props {
@@ -149,7 +150,7 @@ export default function PersonaOnboardingPage({
         </button>
       }
     >
-      {error ? <p className="life-error life-ob-error">{error}</p> : null}
+      {error ? <ErrorNote>{error}</ErrorNote> : null}
       {wizardOpen ? (
         <OnboardingWizard
           initialName={name}

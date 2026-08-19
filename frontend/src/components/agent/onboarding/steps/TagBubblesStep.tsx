@@ -1,5 +1,5 @@
 import type { LifeOnboardingTag, OnboardingHeaderChrome } from '../onboardingTypes'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { agentService } from '../../../../services/agent'
 import { ApiError } from '../../../../services/api'
@@ -114,6 +114,10 @@ export default function TagBubblesStep({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locale, o.loadSignalsFailed, o.saveFirst, reloadToken])
 
+  const reshuffle = useCallback(() => {
+    setReloadToken((token) => token + 1)
+  }, [])
+
   const toggle = (label: string) => {
     if (selected.includes(label)) {
       onChange(selected.filter((item) => item !== label))
@@ -121,6 +125,32 @@ export default function TagBubblesStep({
       onChange([...selected, label])
     }
   }
+
+  const toggleById = useCallback(
+    (id: string) => {
+      const hit = tags.find((tag) => tag.id === id)
+      if (hit) toggle(hit.label)
+    },
+    // toggle closes over selected/onChange; tags is the lookup table.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onChange, selected, tags],
+  )
+
+  const canvasKey = useMemo(
+    () => tags.map((tag) => tag.id).join('|') || 'empty',
+    [tags],
+  )
+  const canvasItems = useMemo(
+    () =>
+      tags.map((tag) => ({
+        id: tag.id,
+        label: tag.label,
+        weight: Math.min(Math.max(tag.weight, 0), 1),
+        selected: selected.includes(tag.label),
+        disabled: busy || loading || regenerating,
+      })),
+    [busy, loading, regenerating, selected, tags],
+  )
 
   const tagLabels = new Set(tags.map((tag) => tag.label))
   const selectedCount = selected.reduce(
@@ -137,14 +167,14 @@ export default function TagBubblesStep({
         ? o.reportsButFallback.replace('{count}', String(reportCount))
         : o.noReports
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onHeaderChange?.({
       description: loading ? o.step1Lead : sourceNote,
       action: {
         label: regenerating ? o.regeneratingSeeds : o.regenerateSeeds,
         busy: loading || regenerating,
         disabled: blocked,
-        onClick: () => setReloadToken((token) => token + 1),
+        onClick: reshuffle,
       },
     })
   }, [
@@ -155,7 +185,7 @@ export default function TagBubblesStep({
     o.step1Lead,
     onHeaderChange,
     regenerating,
-    reportCount,
+    reshuffle,
     sourceNote,
   ])
 
@@ -166,26 +196,15 @@ export default function TagBubblesStep({
           <Working>
             {regenerating ? o.regeneratingSeeds : o.loadingAiSignals}
           </Working>
-        ) : tags.length === 0 ? (
-          <Working>{o.loadingAiSignals}</Working>
-        ) : (
+        ) : canvasItems.length > 0 ? (
           <BubbleCanvas
-            key={tags.map((tag) => tag.id).join('|') || 'empty'}
+            key={canvasKey}
             label={o.step1Title}
-            items={tags.map((tag) => ({
-              id: tag.id,
-              label: tag.label,
-              weight: Math.min(Math.max(tag.weight, 0), 1),
-              selected: selected.includes(tag.label),
-              disabled: blocked,
-            }))}
+            items={canvasItems}
             onPannableChange={setCanPan}
-            onToggle={(id) => {
-              const hit = tags.find((tag) => tag.id === id)
-              if (hit) toggle(hit.label)
-            }}
+            onToggle={toggleById}
           />
-        )}
+        ) : null}
         <div
           className="life-ob-tags__fade life-ob-tags__fade--bottom"
           aria-hidden

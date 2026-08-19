@@ -1,6 +1,6 @@
 import type { LifeGender, OnboardingHeaderChrome } from '../onboardingTypes'
 import { LuLoader2, LuShuffle } from '@lib/icons'
-import { useEffect, useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { agentService } from '../../../../services/agent'
 import { ActionBar, PrimaryButton, StepBody } from '../ui/Chrome'
@@ -39,7 +39,7 @@ export default function BasicsStep({
   const [nameError, setNameError] = useState('')
   const [rollingName, setRollingName] = useState(false)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onHeaderChange?.({ description: o.step2Lead })
   }, [o.step2Lead, onHeaderChange])
 

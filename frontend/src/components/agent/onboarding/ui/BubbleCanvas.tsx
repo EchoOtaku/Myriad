@@ -162,7 +162,7 @@ function pack(items: BubbleItem[], viewW: number, viewH: number): Layout {
 
       // 随机撒点，挑一个既贴着已有气泡、又靠近中心的落点
       let best: { x: number; y: number; score: number } | null = null
-      for (let attempt = 0; attempt < 500; attempt += 1) {
+      for (let attempt = 0; attempt < 160; attempt += 1) {
         const x = minX + random() * (maxX - minX)
         const y = minY + random() * (maxY - minY)
         if (overlaps(x, y, radius, placed)) continue
@@ -287,11 +287,7 @@ export default function BubbleCanvas({
     measure()
     const observer = new ResizeObserver(measure)
     observer.observe(node)
-    window.addEventListener('resize', measure)
-    return () => {
-      observer.disconnect()
-      window.removeEventListener('resize', measure)
-    }
+    return () => observer.disconnect()
   }, [])
 
   // 只有词条集合或画布尺寸变了才重新装箱；
