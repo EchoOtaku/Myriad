@@ -221,15 +221,12 @@ var state = require('./state.js')
 文件、不超体积上限，且每个 `require` 目标真实存在——引用了不存在的文件在装包时就失败，
 不会等到打开应用。
 
-### 层专属目录
+### 推荐目录
 
-`page/` 与 `widget/` 是层专属目录，目录下的 `.js` 只下发给对应层的沙箱：widget 沙箱
-永远拿不到 `page/` 下的代码。这两个目录之外的 `.js` 是共享文件，任何层都可以 require，
-因此也会下发给所有层。
-
-想让某段代码只进一个层，就把它放进对应的专属目录。层入口本身也适用这条规则：脚手架和
-Playground 生成的 widget 入口是 `widget/index.js`，放在根目录的话它会作为共享文件下发
-给 Page 沙箱。
+脚手架和 Playground 把 Page 入口放在 `page/index.js`、Widget 入口放在
+`widget/index.js`。这只是作者布局约定。下发范围由 manifest 声明的层入口及其
+`require` 闭包决定：widget 沙箱拿不到 Page 入口闭包里的文件，也不会拿到同一个
+目录里其它 widget 的源码。入口和依赖可以放在任意安全的包内路径。
 
 core 是三层共享层，三种模式都先执行它；只有后台专属逻辑需要用
 `_TAPP_MODE === 'core'` 自行守卫。后台 headless 模式只运行 core。

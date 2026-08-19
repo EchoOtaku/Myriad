@@ -264,64 +264,6 @@ docker build --no-cache -f docker/Dockerfile.backend -t myriad-backend .
 docker push your-registry/myriad-backend:tag
 ```
 
-## Optimization Tips
-
-### Backend
-
-1. **Use release profile**
-   ```toml
-   [profile.release]
-   opt-level = 3
-   lto = true
-   codegen-units = 1
-   strip = true
-   ```
-
-2. **Enable CPU features**
-   ```powershell
-   $env:RUSTFLAGS="-C target-cpu=native"
-   cargo build --release
-   ```
-
-3. **Reduce binary size**
-   ```toml
-   [profile.release]
-   opt-level = "z"  # Optimize for size
-   lto = true
-   strip = true
-   ```
-
-### Frontend
-
-1. **Optimize images**
-   - Use WebP format
-   - Compress before adding to `public/`
-
-2. **Code splitting**
-   - Astro automatically splits by page
-   - Use dynamic imports for large components
-
-3. **Minimize JavaScript**
-   - Already done by Vite/Rollup
-   - Check output with `pnpm run build`
-
-## Build Times (Reference)
-
-### Development Machine (Example: Ryzen 7 5800X, 32GB RAM, NVMe SSD)
-
-**Backend:**
-- First build (debug): ~3-5 minutes
-- Incremental build (debug): ~10-30 seconds
-- Release build: ~5-10 minutes
-
-**Frontend:**
-- pnpm install: ~1-2 minutes
-- Development build: ~5-15 seconds
-- Production build: ~30-60 seconds
-
-**Full Docker build:**
-- All services: ~10-15 minutes
-
 ## CI/CD Considerations
 
 | Workflow | Trigger | What it builds |
@@ -345,45 +287,9 @@ docker build -f docker/Dockerfile.backend -t myriad-backend .
 
 ## Troubleshooting
 
-### General Issues
+```bash
+cargo clean
+(cd frontend && rm -rf node_modules dist .astro)
+```
 
-1. **Clean build**
-   ```powershell
-   # Backend
-   cd backend
-   cargo clean
-   
-   # Frontend
-   cd frontend
-   rm -r node_modules dist .astro
-   ```
-
-2. **Update dependencies**
-   ```powershell
-   # Backend
-   cargo update
-   
-   # Frontend
-   pnpm update
-   ```
-
-3. **Check versions**
-   ```powershell
-   rustc --version
-   cargo --version
-   node --version
-   pnpm --version
-   ```
-
-## Next Steps
-
-After building:
-1. Configure `.env` files
-2. Set up database
-3. Run tests: `cargo test` (backend), `pnpm test` (frontend)
-4. Start development: `./scripts/dev.sh start` or `.\scripts\dev.ps1 start`
-   - Default is a locally installed PostgreSQL (`doctor` checks prerequisites,
-     `db-setup` creates the role/database). Pass `--docker` to use compose
-     postgres instead.
-
-For deployment instructions, see [Docker Deployment](../deployment/DOCKER_DEPLOYMENT.md).
+部署见 [DOCKER_DEPLOYMENT.md](../deployment/DOCKER_DEPLOYMENT.md)。

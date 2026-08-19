@@ -10,7 +10,7 @@ maintainers are not relying on chat history.
 Related:
 
 - [DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md) — topology and env
-- [UPDATER_QUICKSTART.md](../UPDATER_QUICKSTART.md) — day-to-day update ops
+- [UPDATER_QUICKSTART.md](./UPDATER_QUICKSTART.md) — day-to-day update ops
 - [updater-spec.md](../updater-spec.md) §15 — design-level trust boundary
 - [UPDATER_GATEWAY_THREAT_MODEL.md](./UPDATER_GATEWAY_THREAT_MODEL.md) — exact
   token-bearing gateway capabilities and failure boundaries

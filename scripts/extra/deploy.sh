@@ -11,7 +11,7 @@
 #   - Provides quick subcommands: up / down / restart / logs / status / pull
 #
 # After this script bootstraps the stack, normal day-to-day operation is the
-# admin UI -> 设置/关于 -> Update Management. See docs/UPDATER_QUICKSTART.md.
+# admin UI -> 设置/关于 -> Update Management. See docs/deployment/UPDATER_QUICKSTART.md.
 # =============================================================================
 
 set -e

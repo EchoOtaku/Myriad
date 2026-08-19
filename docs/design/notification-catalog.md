@@ -16,18 +16,18 @@ and color communicate status, so the UI does not need 28 unrelated pictograms.
 
 | Source key   | Product          | Icon source                          |
 | ------------ | ---------------- | ------------------------------------ |
-| `agent`      | Arael tasks      | `/icons/notifications/arael.png`     |
-| `heartbeat`  | Arael Heartbeat  | `/icons/notifications/heartbeat.png` |
-| `mcp`        | MCP tool servers | `/icons/notifications/mcp.png`       |
-| `brew`       | Brew             | `/icons/notifications/brew.png`      |
-| `tapp`       | Tapp runtime     | `/icons/notifications/tapp.png`      |
-| `updater`    | System updater   | `/icons/notifications/updater.png`   |
-| `federation` | Federation       | `/icons/notifications/aro.png`       |
-| `system`     | Myriad system    | `/icons/notifications/system.png`    |
+| `agent`      | Arael tasks      | `/icons/notifications/arael.webp`     |
+| `heartbeat`  | Arael Heartbeat  | `/icons/notifications/heartbeat.webp` |
+| `mcp`        | MCP tool servers | `/icons/notifications/mcp.webp`       |
+| `brew`       | Brew             | `/icons/notifications/brew.webp`      |
+| `tapp`       | Tapp runtime     | `/icons/notifications/tapp.webp`      |
+| `updater`    | System updater   | `/icons/notifications/updater.webp`   |
+| `federation` | Federation       | `/icons/notifications/aro.webp`       |
+| `system`     | Myriad system    | `/icons/notifications/system.webp`    |
 
 The reusable implementation lives in
 `frontend/src/components/notifications/NotificationIcons.tsx`.
-All eight assets are notification-scoped 512×512 transparent PNGs; other
+All eight assets are notification-scoped 512×512 transparent WebP; other
 product surfaces keep their existing navigation and module icon implementations.
 
 ## Persisted presentation types

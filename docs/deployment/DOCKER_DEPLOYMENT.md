@@ -72,7 +72,7 @@ Networks:
 | `docs/deployment/examples/docker-compose.external-db.example.yml` | Compose without `postgres`; external `DATABASE_URL` |
 | `docs/deployment/UPDATER_SECURITY_BASELINE.md` | Done-state security baseline + operator red lines |
 | `docs/deployment/SETUP_BOOTSTRAP.md` | 安装暗号：编排预置库时，安装写操作必须对上 |
-| `docs/UPDATER_QUICKSTART.md` | Operator guide for update, rollback, rescue |
+| `docs/deployment/UPDATER_QUICKSTART.md` | Operator guide for update, rollback, rescue |
 | `docs/updater-spec.md` | Updater protocol and failure-mode design |
 
 ## First Start

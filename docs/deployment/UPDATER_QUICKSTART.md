@@ -1,8 +1,8 @@
 # Updater Quickstart
 
 如何在自托管 Myriad 实例上启用 updater，并执行第一次升级。
-完整设计参考 [docs/updater-spec.md](./updater-spec.md)。
-安全基线（已完成态 + 运维红线）：[deployment/UPDATER_SECURITY_BASELINE.md](./deployment/UPDATER_SECURITY_BASELINE.md)。
+完整设计参考 [updater-spec.md](../updater-spec.md)。
+安全基线（已完成态 + 运维红线）：[deployment/UPDATER_SECURITY_BASELINE.md](./UPDATER_SECURITY_BASELINE.md)。
 
 > 运行模型：updater 不是 A/B 双活分区。Myriad 生产环境只有一套正在运行的
 > backend/frontend（以及可选的 compose 内 postgres）；更新时进入维护模式，停止业务容器，
@@ -35,7 +35,7 @@ bash scripts/extra/deploy.sh up
 - 未认领的首次安装可直接用浏览器经 proxy 做完向导；编排预置了安装暗号则要对上。官方 compose 没有暗号会拒绝启动；`deploy.sh` 会在空值时生成
 - Docker 网络默认显式命名为 `myriad-net`；同机多套部署时可设置 `MYRIAD_DOCKER_NETWORK`
 
-生产布局为 proxy + updater（见 [deployment/DOCKER_DEPLOYMENT.md](./deployment/DOCKER_DEPLOYMENT.md)）。
+生产布局为 proxy + updater（见 [deployment/DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md)）。
 
 ## 2. 确认服务拓扑
 
@@ -54,7 +54,7 @@ updater (内网) ─► docker-guard ─► docker.sock
 updater 对部署根本身只读，仅通过独立挂载写入 `./.env`、`./pgdata`、`./state`；Compose
 文件和 `./guard-policy/` 对 updater 只读。
 
-当前拓扑见 [deployment/DOCKER_DEPLOYMENT.md](./deployment/DOCKER_DEPLOYMENT.md)
+当前拓扑见 [deployment/DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md)
 （三网 + docker-guard + updater-gateway）。首次或改拓扑请在宿主执行
 `bash scripts/extra/deploy.sh up`（或等价 compose）；**仅 UI 更新无法创建网络/服务**。
 
@@ -168,7 +168,7 @@ audit: update_request job=… target=… mode=… allow_downgrade=… allow_dive
 ```
 
 `audit.log` 还会记录 rollback / rescue / job 终态（以及旧版 self-update 兼容记录，见
-[updater-spec.md §16.1](./updater-spec.md)）。
+[updater-spec.md §16.1](../updater-spec.md)）。
 
 Commit 模式成功后 **只写入 `dev-<shortsha>`** 到 `MYRIAD_TAG`。  
 业务更新只换 **backend/frontend**；proxy 独立更新；Guard/updater TCB 可在 UI 中一键升级。
@@ -389,7 +389,7 @@ UPDATER_ALLOW_INSECURE_COSIGN=true   # 或 COSIGN_INSECURE_OK=true
 - **修改 `.env`**：用户可以随便加自己的 key，updater 只触碰 `MYRIAD_TAG`/`PROXY_TAG`/`UPDATER_TAG` + release 声明的 `env.new`。
 - **每次更新的 token 验证**：5 次/分钟错误后封 10 分钟。
 
-更多 corner case 见 [updater-spec.md §16-17](./updater-spec.md)。
+更多 corner case 见 [updater-spec.md §16-17](../updater-spec.md)。
 
 ## 外部 PostgreSQL（`MYRIAD_DB_MODE=external`）
 
@@ -412,9 +412,9 @@ DATABASE_URL=postgres://user:pass@db-host:5432/myriad?sslmode=prefer
 ```
 
 未设置 `MYRIAD_DB_MODE` 时默认为 `bundled`（兼容现有部署）。完整契约见
-[updater-spec.md §9.1.1](./updater-spec.md)。
+[updater-spec.md §9.1.1](../updater-spec.md)。
 
 Compose 形态与连通性（`host.docker.internal`、sslmode、容器内核对 `DATABASE_URL`）见：
 
-- [deployment/EXTERNAL_POSTGRES.md](./deployment/EXTERNAL_POSTGRES.md)
-- [deployment/examples/docker-compose.external-db.example.yml](./deployment/examples/docker-compose.external-db.example.yml)
+- [deployment/EXTERNAL_POSTGRES.md](./EXTERNAL_POSTGRES.md)
+- [deployment/examples/docker-compose.external-db.example.yml](./examples/docker-compose.external-db.example.yml)

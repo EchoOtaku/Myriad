@@ -85,9 +85,10 @@ bash scripts/extra/deploy.sh upgrade
 
 ```bash
 ./scripts/dev.sh db-setup          # 本机还没有 myriad 库时
-./scripts/dev.sh                   # 实时 TUI：原来的启动菜单 + 进程 / 数据库 / 日志
+./scripts/dev.sh                   # 实时 TUI：启动菜单 + 进程 / 数据库 / 日志
 ./scripts/dev.sh start             # 本机 PG + backend:1103 + frontend:1102
 ./scripts/dev.sh start --docker    # 改用 docker compose 起 postgres
+./scripts/dev.sh doctor            # 工具链、端口、数据库
 ./scripts/dev.sh status            # 一次性快照（PID、健康、库大小）
 ./scripts/dev.sh logs backend      # 看后台启动写入的 backend.log
 ```
@@ -212,5 +213,5 @@ CORS_ORIGINS=http://localhost:1102,http://localhost:1103
 - [无 Docker 部署](deployment/NATIVE_DEPLOYMENT.md)
 - [Setup 安装暗号](deployment/SETUP_BOOTSTRAP.md)
 - [端口清单](deployment/PORTS.md)
-- [Updater 运维](UPDATER_QUICKSTART.md)
+- [Updater 运维](deployment/UPDATER_QUICKSTART.md)
 - [README](../README.md)

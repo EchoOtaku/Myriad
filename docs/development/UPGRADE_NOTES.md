@@ -16,4 +16,4 @@
 - **站长必须更新 Manifest。** 把声明的 `storage` 改为 `storage:read`（读取私有存储）和/或 `storage:write`（写入私有存储），然后更新或重装该应用。
 - **改变平台下放配置无法修复。** `storage` 是声明层不存在的权限名，调整平台侧的权限下放开关对未知的声明权限没有任何作用。
 
-已安装应用的旧权限串清理与「需重新授权」标记不随本版本提供，由后续升级迁移单独处理。
+已安装应用的 `approved_permissions` 里如果还留着无法识别的旧名（例如 `storage`），列表和详情会标 `needs_reauthorization`，授予权限为空，直到更新 Manifest 并更新或重装。不会自动把 `storage` 改写成 `storage:read` / `storage:write`。
