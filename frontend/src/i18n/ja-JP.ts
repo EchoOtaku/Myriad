@@ -1314,6 +1314,8 @@ export const jaJP: TranslationKeys = {
     agentLifeMood: '気分',
     agentLifeActivity: '様子',
     agentLifeEmpty: '人設はまだありません',
+    agentLifeNeedsReports:
+      '人設を作るにはプラットフォーム報告が {need} 件以上必要です。今は {count} 件です。',
     agentLifeDelete: '人設を削除',
     agentLifeDeleteConfirm: '今の人設を削除しますか？気分と日記も消えます。',
     agentLifeDeleteFailed: '人設を削除できませんでした',
@@ -2210,7 +2212,7 @@ export const jaJP: TranslationKeys = {
       step3Title: '人設を確認',
       step3Lead: '性格を確認し、項目ごとに直せます。',
       step3LeadPending: '人設はまだ生成中です。完了すると自動で更新されます。',
-      noReports: '報告がまだありません。このステップはスキップできます。',
+      noReports: 'タグを抽出するにはプラットフォーム報告が 3 件以上必要です。',
       selectedCount: '{count} 件選択中',
       selectNothingYet: 'まだ選んでいません',
       skipTags: 'スキップ',

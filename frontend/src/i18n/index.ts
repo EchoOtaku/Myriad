@@ -1126,6 +1126,7 @@ export interface TranslationKeys {
     agentLifeMood: string
     agentLifeActivity: string
     agentLifeEmpty: string
+    agentLifeNeedsReports: string
     agentLifeDelete: string
     agentLifeDeleteConfirm: string
     agentLifeDeleteFailed: string

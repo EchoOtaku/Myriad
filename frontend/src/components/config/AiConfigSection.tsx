@@ -672,6 +672,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   const [mood, setMood] = useState(70)
   const [activity, setActivity] = useState('idle')
   const [personality, setPersonality] = useState('')
+  const [reportCount, setReportCount] = useState(0)
   const [vitalsReady, setVitalsReady] = useState(false)
   const [personaBusy, setPersonaBusy] = useState(false)
   const [personaError, setPersonaError] = useState<string | null>(null)
@@ -699,6 +700,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       setMood(70)
       setActivity('idle')
       setPersonality('')
+      setReportCount(0)
       setVitalsReady(false)
       return
     }
@@ -718,6 +720,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           setMood(typeof persona.mood === 'number' ? persona.mood : 70)
           setActivity(persona.activity ?? 'idle')
           setPersonality(persona.personality?.trim() ?? '')
+          setReportCount(
+            typeof persona.reportCount === 'number' ? persona.reportCount : 0,
+          )
           setVitalsReady(true)
         })
         .catch(() => {
@@ -725,6 +730,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             setSavedPersonaName('')
             setHasSavedPersona(false)
             setPersonality('')
+            setReportCount(0)
             setVitalsReady(false)
           }
         })
@@ -993,13 +999,17 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           emptyText={
             !proEnabled
               ? personaGateLead
-              : lifeOn
-                ? t.config.agentLifeEmpty
-                : t.config.agentLifeHint
+              : lifeOn && !hasSavedPersona && reportCount < 3
+                ? t.config.agentLifeNeedsReports
+                    .replace('{count}', String(reportCount))
+                    .replace('{need}', '3')
+                : lifeOn
+                  ? t.config.agentLifeEmpty
+                  : t.config.agentLifeHint
           }
           fields={personaCardFields}
           actions={
-            lifeOn
+            lifeOn && (hasSavedPersona || reportCount >= 3)
               ? [
                   {
                     key: 'setup',

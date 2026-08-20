@@ -1334,6 +1334,8 @@ export const enUS: TranslationKeys = {
     agentLifeMood: 'Mood',
     agentLifeActivity: 'Activity',
     agentLifeEmpty: 'No persona yet',
+    agentLifeNeedsReports:
+      'Generate a persona after at least {need} platform reports. You have {count}.',
     agentLifeDelete: 'Delete persona',
     agentLifeDeleteConfirm:
       'Delete the current persona? Mood and diary will be cleared too.',
@@ -2235,7 +2237,7 @@ export const enUS: TranslationKeys = {
       step3Title: 'Confirm persona',
       step3Lead: 'Preview the personality. Edit any field.',
       step3LeadPending: 'Persona is still generating. It will refresh when ready.',
-      noReports: 'No reports yet. You can skip this step.',
+      noReports: 'You need at least 3 platform reports to distill tags.',
       selectedCount: '{count} selected',
       selectNothingYet: 'None selected yet',
       skipTags: 'Skip',

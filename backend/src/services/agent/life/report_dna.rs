@@ -85,12 +85,34 @@ impl From<DbErr> for DistillReportDnaError {
     }
 }
 
+pub const MIN_PERSONA_REPORTS: usize = 3;
+
 fn is_chunk_platform(platform: &str) -> bool {
     platform
         .rsplit_once("_chunk_")
         .is_some_and(|(base, suffix)| {
             !base.is_empty() && suffix.chars().all(|character| character.is_ascii_digit())
         })
+}
+
+/// Distinct platforms with a real report. Chunks and the `all` rollup do not count.
+pub async fn count_report_platforms(
+    database: &DatabaseConnection,
+    user_id: i32,
+) -> Result<usize, DbErr> {
+    let rows = platform_reports::Entity::find()
+        .filter(platform_reports::Column::UserId.eq(user_id))
+        .filter(platform_reports::Column::Platform.ne("all"))
+        .all(database)
+        .await?;
+    let mut seen = HashSet::new();
+    for row in rows {
+        if is_chunk_platform(&row.platform) {
+            continue;
+        }
+        seen.insert(row.platform);
+    }
+    Ok(seen.len())
 }
 
 async fn collect_report_dna_bundle(
