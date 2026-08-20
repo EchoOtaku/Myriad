@@ -632,10 +632,6 @@ export interface TranslationKeys {
     importPreviewIgnored: string
     importPreviewMigrated: string
     importPreviewInvalid: string
-    volcengineArkApiKey: string
-    volcengineArkBaseUrl: string
-    volcengineArkApiKeyPlaceholder: string
-    openaiApiKeyLabel: string
     openaiBaseUrlLabel: string
     openaiModelLabel: string
     domainStatusAuto: string
@@ -1121,12 +1117,18 @@ export interface TranslationKeys {
     memorySaverHint: string
     agentLife: string
     agentLifeHint: string
-    /** Shown on the switch while the Lite tier is off */
+    /** Shown while the Lite tier is off */
     agentLifeNeedsLite: string
-    /** Shown on the switch while the Pro tier is off */
+    /** Shown while the Pro tier is off */
     agentLifeNeedsPro: string
-    /** Shown on the switch while both Lite and Pro are off */
+    /** Shown while the Pro tier is off (legacy key, same copy as needsPro) */
     agentLifeNeedsLiteAndPro: string
+    agentLifeMood: string
+    agentLifeActivity: string
+    agentLifeEmpty: string
+    agentLifeDelete: string
+    agentLifeDeleteConfirm: string
+    agentLifeDeleteFailed: string
     enableProxy: string
     enableProxyHint: string
     proxyUrl: string
@@ -1315,13 +1317,8 @@ export interface TranslationKeys {
     providerOpenRouter: string
     providerGemini: string
     providerVolcengine: string
-    /** 图片 Provider 选项角标 */
-    imageProviderBadgeGptImage: string
-    imageProviderBadgeImageApi: string
-    imageProviderBadgeSeedream: string
     aiVendorsTitle: string
     aiVendorsDesc: string
-    aiVendorLabel: string
     aiVendorAdd: string
     aiVendorAddDesc: string
     aiVendorEmpty: string
@@ -1342,7 +1339,38 @@ export interface TranslationKeys {
     aiVendorCapText: string
     aiVendorCapImage: string
     aiVendorCapSpeech: string
-    geminiApiKeyLabel: string
+    aiVendorSetupTitle: string
+    aiVendorSetupOpen: string
+    aiVendorSetupPortalTitle: string
+    aiVendorSetupPortalDesc: string
+    aiVendorSetupCreateTitle: string
+    aiVendorSetupCreateDesc: string
+    aiVendorSetupFillTitle: string
+    aiVendorSetupFillDesc: string
+    aiVendorSetupAzurePortalTitle: string
+    aiVendorSetupAzurePortalDesc: string
+    aiVendorSetupAzureCreateTitle: string
+    aiVendorSetupAzureCreateDesc: string
+    aiVendorSetupAzureFillTitle: string
+    aiVendorSetupAzureFillDesc: string
+    aiVendorSetupCompatiblePortalTitle: string
+    aiVendorSetupCompatiblePortalDesc: string
+    aiVendorSetupCompatibleCreateTitle: string
+    aiVendorSetupCompatibleCreateDesc: string
+    aiVendorSetupCompatibleFillTitle: string
+    aiVendorSetupCompatibleFillDesc: string
+    aiVendorSetupOllamaPortalTitle: string
+    aiVendorSetupOllamaPortalDesc: string
+    aiVendorSetupOllamaCreateTitle: string
+    aiVendorSetupOllamaCreateDesc: string
+    aiVendorSetupOllamaFillTitle: string
+    aiVendorSetupOllamaFillDesc: string
+    aiVendorSetupTencentPortalTitle: string
+    aiVendorSetupTencentPortalDesc: string
+    aiVendorSetupTencentCreateTitle: string
+    aiVendorSetupTencentCreateDesc: string
+    aiVendorSetupTencentFillTitle: string
+    aiVendorSetupTencentFillDesc: string
     aiImageTitle: string
     aiImageDesc: string
     speechServiceTitle: string
@@ -1364,13 +1392,10 @@ export interface TranslationKeys {
     speechTestFailed: string
     speechProvider: string
     speechProviderTencent: string
-    speechReuseTextCredentials: string
-    speechReuseTextCredentialsDesc: string
     speechSttModel: string
     speechTtsModel: string
     speechTtsVoice: string
     speechOpenRouterTtsHint: string
-    speechKeyFallbackHint: string
     platformDescGithub: string
     platformDescBilibili: string
     platformDescBangumi: string
@@ -1482,6 +1507,12 @@ export interface TranslationKeys {
     oauthProvidersEmpty: string
     oauthAddLoginMethod: string
     oauthPickPreset: string
+    oauthConfigured: string
+    oauthCredsMissing: string
+    oauthExpand: string
+    oauthCollapse: string
+    oauthDocs: string
+    oauthAdded: string
     oauthHowToHint: string
     oauthAdvanced: string
     oauthSetupTitle: string
