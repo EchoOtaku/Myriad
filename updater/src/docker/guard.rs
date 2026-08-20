@@ -544,6 +544,27 @@ fn validate_guard_image_ref(image: &str, allow_unpinned_dev: bool) -> Result<()>
     Ok(())
 }
 
+/// Docker Engine `RepoDigests` often omit the `docker.io/` registry prefix even
+/// when the image was pulled as `docker.io/…`. Policy files and Guard identity
+/// still require the canonical `docker.io/…@sha256:<64 hex>` form.
+fn canonicalize_trusted_digest_ref(actual: &str) -> Result<String> {
+    let Some((repo, digest)) = actual.rsplit_once("@sha256:") else {
+        return Err(anyhow!(
+            "DOCKER_GUARD_EXPECTED_IMAGE must be {TRUSTED_GUARD_REPOSITORY}@sha256:<64 hex>"
+        ));
+    };
+    if repo.trim_start_matches("docker.io/")
+        != TRUSTED_GUARD_REPOSITORY.trim_start_matches("docker.io/")
+    {
+        return Err(anyhow!(
+            "pulled image has no trusted updater repository digest"
+        ));
+    }
+    let canonical = format!("{TRUSTED_GUARD_REPOSITORY}@sha256:{digest}");
+    validate_guard_image_ref(&canonical, false)?;
+    Ok(canonical)
+}
+
 async fn verify_running_guard_image(
     socket: &Path,
     container_id: &str,
@@ -1784,13 +1805,8 @@ async fn pull_trusted_tag_and_resolve(
         .into_iter()
         .flatten()
         .filter_map(Value::as_str)
-        .find(|actual| {
-            normalize_repository(actual).trim_start_matches("docker.io/")
-                == TRUSTED_UPDATER_REPOSITORY.trim_start_matches("docker.io/")
-        })
-        .map(str::to_owned)
+        .find_map(|actual| canonicalize_trusted_digest_ref(actual).ok())
         .ok_or_else(|| anyhow!("pulled image has no trusted updater repository digest"))?;
-    validate_guard_image_ref(&exact_image, false)?;
     let created = image
         .get("Created")
         .and_then(Value::as_str)
@@ -3123,6 +3139,31 @@ mod tests {
         )
         .is_err());
         assert!(validate_guard_image_ref("myriad-updater-dev:v0.0.0-dev", true).is_ok());
+    }
+
+    #[test]
+    fn trusted_digest_canonicalizes_engine_repodigests_without_registry_prefix() {
+        let digest = "869973a4d9b4aba6383fdc6aba62b6a908328aebcce748f34ac1f5590193b0b9";
+        let canonical = format!("{TRUSTED_GUARD_REPOSITORY}@sha256:{digest}");
+        assert_eq!(
+            canonicalize_trusted_digest_ref(&format!(
+                "somekawahitomi/myriad-updater@sha256:{digest}"
+            ))
+            .unwrap(),
+            canonical
+        );
+        assert_eq!(
+            canonicalize_trusted_digest_ref(&canonical).unwrap(),
+            canonical
+        );
+        assert!(canonicalize_trusted_digest_ref(&format!(
+            "evil.example/myriad-updater@sha256:{digest}"
+        ))
+        .is_err());
+        assert!(canonicalize_trusted_digest_ref(&format!(
+            "somekawahitomi/myriad-updater:{digest}"
+        ))
+        .is_err());
     }
 
     #[test]
