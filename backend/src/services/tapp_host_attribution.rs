@@ -422,8 +422,12 @@ mod tests {
             Some(TappPermission::BrewWrite)
         );
         assert_eq!(
+            brew_permission("GET", "/api/brew/items/{id}/comments"),
+            Some(TappPermission::BrewRead)
+        );
+        assert_eq!(
             brew_permission("POST", "/api/brew/items/{id}/comments"),
-            Some(TappPermission::BrewComment)
+            Some(TappPermission::BrewCommentWrite)
         );
         assert_eq!(
             brew_permission("POST", "/api/brew/sources"),
@@ -563,8 +567,8 @@ mod tests {
             Some("brew.manage")
         );
         assert_eq!(
-            host_attribution_rate_limit_operation("DELETE", TappPermission::BrewComment),
-            Some("brew.comment")
+            host_attribution_rate_limit_operation("DELETE", TappPermission::BrewCommentWrite),
+            Some("brew.commentWrite")
         );
         assert_eq!(
             host_attribution_rate_limit_operation("POST", TappPermission::FederationMessage),

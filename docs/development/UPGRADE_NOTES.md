@@ -17,3 +17,10 @@
 - **改变平台下放配置无法修复。** `storage` 是声明层不存在的权限名，调整平台侧的权限下放开关对未知的声明权限没有任何作用。
 
 已安装应用的 `approved_permissions` 里如果还留着无法识别的旧名（例如 `storage`），列表和详情会标 `needs_reauthorization`，授予权限为空，直到更新 Manifest 并更新或重装。不会自动把 `storage` 改写成 `storage:read` / `storage:write`。
+
+## TAPP Brew 权限拆分（破坏性变更）
+
+`brew:write` 继续覆盖已读/未读/全部已读和收藏等当前用户状态；评论与回复的读取并入 `brew:read`，创建、更新与删除改用 `brew:commentWrite`。
+- `brew:commentWrite` 是 Elevated 权限，普通用户需由站长显式下放，游客不会获得该授予权限。
+
+已安装应用的旧权限串清理与「需重新授权」标记不随本版本提供，由后续升级迁移单独处理。

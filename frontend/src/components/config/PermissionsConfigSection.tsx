@@ -38,6 +38,7 @@ const GUEST_AUTHENTICATED_PERMISSION_KEYS = new Set([
   'scheduler_register',
   'speech_tts',
   'speech_asr',
+  'brew_comment_write',
 ])
 export type AgentPermissionPreset = 'none' | 'chat' | 'standard' | 'elevated'
 
@@ -116,6 +117,7 @@ export interface PermissionConfigValues extends Record<
   user_perm_speech_tts: boolean
   user_perm_speech_asr: boolean
   user_perm_storage_write: boolean
+  user_perm_brew_comment_write: boolean
   // 游客权限
   guest_perm_ai_generate: boolean
   guest_perm_ai_analyze: boolean
@@ -130,6 +132,7 @@ export interface PermissionConfigValues extends Record<
   guest_perm_speech_tts: boolean
   guest_perm_speech_asr: boolean
   guest_perm_storage_write: boolean
+  guest_perm_brew_comment_write: boolean
   // AI 配额
   user_ai_daily_calls: number
   user_ai_daily_tokens: number
@@ -211,6 +214,12 @@ export const PermissionsConfigSection: React.FC<
       code: 'storage:write',
       label: t.config.permStorageWrite,
       hint: t.config.permStorageWriteHint,
+    },
+    {
+      key: 'brew_comment_write',
+      code: 'brew:commentWrite',
+      label: t.tapp.permCommentWriteBrew,
+      hint: t.tapp.permCommentWriteBrewDesc,
     },
     // 网络（report:write 已仅管理员，不再展示下放开关）
     {

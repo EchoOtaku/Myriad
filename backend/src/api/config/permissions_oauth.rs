@@ -93,7 +93,9 @@ pub struct UpdatePermissionsPayload {
     pub user_perm_speech_tts: Option<bool>,
     pub user_perm_speech_asr: Option<bool>,
     pub user_perm_storage_write: Option<bool>,
-    // 游客 elevated 配置
+    /// brew:commentWrite - 写 Brew 评论（Elevated，需登录主体）
+    pub user_perm_brew_comment_write: Option<bool>,
+    // 游客 elevated 配置；认证绑定字段仅为兼容旧请求，实际强制关闭
     pub guest_perm_ai_generate: Option<bool>,
     pub guest_perm_ai_analyze: Option<bool>,
     pub guest_perm_ai_chat: Option<bool>,
@@ -102,6 +104,8 @@ pub struct UpdatePermissionsPayload {
     pub guest_perm_media_control: Option<bool>,
     pub guest_perm_event_publish: Option<bool>,
     pub guest_perm_storage_write: Option<bool>,
+    #[allow(dead_code)] // accepted for compatibility; update endpoint forces false
+    pub guest_perm_brew_comment_write: Option<bool>,
     // AI 使用限额配置
     pub user_ai_daily_calls: Option<i32>,
     pub user_ai_daily_tokens: Option<i32>,
@@ -121,7 +125,9 @@ mod tapp_permission_payload_tests {
             "user_perm_speech_tts": true,
             "user_perm_speech_asr": false,
             "user_perm_storage_write": true,
-            "guest_perm_storage_write": false
+            "guest_perm_storage_write": false,
+            "user_perm_brew_comment_write": true,
+            "guest_perm_brew_comment_write": false
         }))
         .unwrap();
 
@@ -129,6 +135,8 @@ mod tapp_permission_payload_tests {
         assert_eq!(payload.user_perm_speech_asr, Some(false));
         assert_eq!(payload.user_perm_storage_write, Some(true));
         assert_eq!(payload.guest_perm_storage_write, Some(false));
+        assert_eq!(payload.user_perm_brew_comment_write, Some(true));
+        assert_eq!(payload.guest_perm_brew_comment_write, Some(false));
     }
 }
 
@@ -189,6 +197,9 @@ pub async fn update_permissions(
     if let Some(v) = payload.user_perm_storage_write {
         updates.insert("user_perm_storage_write".to_string(), json!(v));
     }
+    if let Some(v) = payload.user_perm_brew_comment_write {
+        updates.insert("user_perm_brew_comment_write".to_string(), json!(v));
+    }
 
     // 游客权限。需要持久登录主体的能力保留兼容字段，但强制关闭。
     if let Some(v) = payload.guest_perm_ai_generate {
@@ -219,6 +230,8 @@ pub async fn update_permissions(
     updates.insert("guest_perm_scheduler_register".to_string(), json!(false));
     updates.insert("guest_perm_speech_tts".to_string(), json!(false));
     updates.insert("guest_perm_speech_asr".to_string(), json!(false));
+    // brew:commentWrite 路由要求持久登录主体：游客一律强制关闭
+    updates.insert("guest_perm_brew_comment_write".to_string(), json!(false));
     if let Some(v) = payload.guest_perm_storage_write {
         updates.insert("guest_perm_storage_write".to_string(), json!(v));
     }
