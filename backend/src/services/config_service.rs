@@ -1232,15 +1232,18 @@ mod tests {
 
     #[test]
     fn agent_life_stays_off_without_required_models() {
-        // Holds whatever AGENT_LIFE_ENABLED says: Lite and Pro are hard
-        // prerequisites, so life never silently spends the standard model.
+        // Pro is required for onboarding. Lite is optional: without it,
+        // life still runs, but Lite jobs must not fall back to Standard.
         let no_lite = DynamicConfig {
             agent_life_enabled: true,
             lite_enabled: false,
             pro_enabled: true,
             ..DynamicConfig::default()
         };
-        assert!(!no_lite.agent_life_enabled_resolved());
+        assert_eq!(
+            no_lite.agent_life_enabled_resolved(),
+            no_lite.agent_life_switch_on()
+        );
         assert!(no_lite.agent_life_needs_lite());
         assert!(!no_lite.agent_life_needs_pro());
 

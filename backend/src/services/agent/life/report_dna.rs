@@ -142,7 +142,7 @@ pub async fn distill_report_dna(
     }
 
     let call_id = uuid::Uuid::new_v4().to_string();
-    let target_tag_count = if bundle.report_count >= 3 { 20 } else { 16 };
+    let target_tag_count = if bundle.report_count >= 3 { 16 } else { 12 };
     let evidence_tags = localize_report_seed_keys(&bundle.fallback_seed_keys, language);
     let fallback = || fallback_tag_deck(&evidence_tags, language, &call_id, target_tag_count);
     let report_count = bundle.report_count;
@@ -169,8 +169,8 @@ pub async fn distill_report_dna(
         "reportCount": bundle.report_count,
         "platforms": bundle.platforms,
         "targetTagCount": target_tag_count,
-        "minTagCount": 12,
-        "maxTagCount": 20,
+        "minTagCount": 8,
+        "maxTagCount": 16,
         "regenerate": regenerate,
         "callId": call_id,
         "evidence": bundle.evidence,
@@ -286,10 +286,13 @@ fn complete_ai_tag_deck(primary: &[String], language: &str, target: usize) -> Ve
             break;
         }
     }
-    if result.len() < target {
+    // Only pad to the playable minimum. Do not flood a good short deck
+    // with generic pool leftovers just to hit targetTagCount.
+    const MIN_PLAYABLE: usize = 8;
+    if result.len() < MIN_PLAYABLE {
         for extra in persona_pool_labels(language) {
             unique_push(&mut result, &extra);
-            if result.len() >= target {
+            if result.len() >= MIN_PLAYABLE {
                 break;
             }
         }
@@ -594,7 +597,7 @@ pub(crate) fn tag_matches_ui_language(label: &str, language: &str) -> bool {
     });
     match language {
         "en-US" => has_latin && !has_han && !has_kana,
-        "ja-JP" => (has_han || has_kana) && !has_latin,
+        "ja-JP" => has_han || has_kana,
         _ => has_han && !has_latin && !has_kana,
     }
 }
@@ -1045,5 +1048,7 @@ mod tests {
         assert!(!tag_matches_ui_language("慢热", "en-US"));
         assert!(!tag_matches_ui_language("Night owl", "zh-CN"));
         assert!(tag_matches_ui_language("スロースターター", "ja-JP"));
+        assert!(tag_matches_ui_language("夜型OK", "ja-JP"));
+        assert!(!tag_matches_ui_language("Night owl", "ja-JP"));
     }
 }

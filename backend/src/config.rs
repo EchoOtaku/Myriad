@@ -833,16 +833,15 @@ impl DynamicConfig {
 
     /// 生命是否真的生效。
     ///
-    /// 开口走 Lite，设定引导走 Pro。对应档关着时调用会回落到标准模型——同样的量，
-    /// 贵一档——所以两档都没开就不让这个开关生效，而不是让它悄悄花主力模型的钱。
-    /// （档开着但字段留空仍会回落，那是站长自己的选择，不在这里拦。）
+    /// 设定引导走 Pro；聊天里的人设只是系统词，跟 Lite 无关。
+    /// Lite 只写主动开口和心情微调——档关着时这两处直接停，不回落到标准模型。
     pub fn agent_life_enabled_resolved(&self) -> bool {
-        self.agent_life_switch_on() && self.lite_enabled && self.pro_enabled
+        self.agent_life_switch_on() && self.pro_enabled
     }
 
-    /// 开关开着却缺 Lite。用来在日志里说清为什么没生效。
+    /// 开关开着却缺 Lite。主动开口会走短句兜底，心情微调不会跑。
     pub fn agent_life_needs_lite(&self) -> bool {
-        self.agent_life_switch_on() && !self.lite_enabled
+        self.agent_life_switch_on() && self.pro_enabled && !self.lite_enabled
     }
 
     /// 开关开着却缺 Pro。设定引导和开关生效都要这一档。
