@@ -1,19 +1,18 @@
 import type { ReportsStatusCopy } from './reportsDynamicStatus'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildReportsDynamicTips } from './reportsDynamicStatus'
+import {
+  buildReportsDynamicTips,
+  marqueeDurationMs,
+  pickReportHook,
+} from './reportsDynamicStatus'
 
 const copy: ReportsStatusCopy = {
   heroStage: 'Stage',
   platformReport: 'Platform Reports',
-  clickToView: 'Click card to view',
   noEnabledPlatforms: 'No platforms',
   stagePlaying: 'Playing on stage',
   stagePaused: 'Stage paused',
-  tipPlatformCount: '{count} data platforms',
-  tipPlatformCountSub: 'Click a card',
-  tipReportReady: '{count} reports ready',
-  tipReportReadySub: 'Play all',
   tipNoReports: 'No reports yet',
   tipNoReportsSub: 'Generate below',
 }
@@ -55,37 +54,77 @@ test('stage hero uses the latin platform name, main keeps the localized one', ()
     stagePaused: false,
     stagePlatformId: 'netease',
     stagePlatformName: '网易云',
-    stagePlatformHero: 'NetEase Music',
+    stagePlatformHero: 'NetEase',
     enabledPlatformCount: 1,
     reportCount: 1,
   })
 
-  assert.equal(tip.hero, 'NetEase Music')
+  assert.equal(tip.hero, 'NetEase')
   assert.equal(tip.main, '网易云')
 })
 
-test('platform count tip is dropped when it repeats the report count', () => {
-  const allCovered = buildReportsDynamicTips({
+test('idle bar puts the platform first and the hook in the subtitle', () => {
+  const tips = buildReportsDynamicTips({
     copy,
     isStageMode: false,
     stagePaused: false,
-    enabledPlatformCount: 9,
-    reportCount: 9,
+    enabledPlatformCount: 2,
+    reportCount: 2,
+    highlights: [
+      {
+        platformId: 'youtube',
+        platformName: 'YouTube',
+        hook: '技术日志型创作者，上传稳均播不虚',
+      },
+      {
+        platformId: 'bangumi',
+        platformName: 'Bangumi',
+        hook: '偏爱深夜动画与硬核科幻',
+      },
+    ],
   })
-  assert.deepEqual(
-    allCovered.map((t) => t.id),
-    ['platform-ready'],
-  )
 
-  const partial = buildReportsDynamicTips({
-    copy,
-    isStageMode: false,
-    stagePaused: false,
-    enabledPlatformCount: 9,
-    reportCount: 4,
-  })
   assert.deepEqual(
-    partial.map((t) => t.id),
-    ['platform-ready', 'platform-count'],
+    tips.map((t) => t.id),
+    ['highlight-youtube', 'highlight-bangumi'],
   )
+  assert.equal(tips[0].main, 'YouTube')
+  assert.equal(tips[0].sub, '技术日志型创作者，上传稳均播不虚')
+  assert.equal(tips[0].scrollSub, true)
+  assert.equal(tips[1].hero, 'Stage')
+})
+
+test('pickReportHook prefers vibe, then taste, then insight', () => {
+  assert.equal(
+    pickReportHook({
+      summary: 'long summary',
+      insights: ['first insight'],
+      card_visuals: { vibe: '  short vibe  ', taste_profile: 'taste' },
+    }),
+    'short vibe',
+  )
+  assert.equal(
+    pickReportHook({
+      insights: ['first insight'],
+      card_visuals: { taste_profile: '深夜向', mood_keywords: ['欢快', '夜'] },
+    }),
+    '深夜向',
+  )
+  assert.equal(
+    pickReportHook({
+      insights: ['  keep going  '],
+      card_visuals: { mood_keywords: ['欢快', '夜', '燃', 'extra'] },
+    }),
+    '欢快 · 夜 · 燃',
+  )
+  assert.equal(pickReportHook({ summary: 'only summary' }), 'only summary')
+  assert.equal(pickReportHook({}), '')
+})
+
+test('marqueeDurationMs scales with overflow and stays bounded', () => {
+  assert.equal(marqueeDurationMs(0), 0)
+  assert.equal(marqueeDurationMs(-4), 0)
+  assert.ok(marqueeDurationMs(20) >= 1800)
+  assert.ok(marqueeDurationMs(20_000) <= 14_000)
+  assert.equal(marqueeDurationMs(360), 10_000)
 })

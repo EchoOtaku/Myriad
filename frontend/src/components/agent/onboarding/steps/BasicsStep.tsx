@@ -3,6 +3,7 @@ import { LuLoader2, LuShuffle } from '@lib/icons'
 import { useLayoutEffect, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { agentService } from '../../../../services/agent'
+import { generationFailureMessage } from '../generationError'
 import { ActionBar, PrimaryButton, StepBody } from '../ui/Chrome'
 import { ErrorNote } from '../ui/Feedback'
 import { Field, FieldGroup, TextArea, TextInput } from '../ui/Field'
@@ -18,7 +19,7 @@ interface Props {
   onGender: (value: LifeGender) => void
   onExtra: (value: string) => void
   onSubmit: () => Promise<void>
-  onHeaderChange?: (chrome: OnboardingHeaderChrome) => void
+  onHeaderChange: (chrome: OnboardingHeaderChrome) => void
 }
 
 export default function BasicsStep({
@@ -33,14 +34,14 @@ export default function BasicsStep({
   onSubmit,
   onHeaderChange,
 }: Props) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const o = t.life.onboarding
   const [localError, setLocalError] = useState('')
   const [nameError, setNameError] = useState('')
   const [rollingName, setRollingName] = useState(false)
 
   useLayoutEffect(() => {
-    onHeaderChange?.({ description: o.step2Lead })
+    onHeaderChange({ description: o.step2Lead })
   }, [o.step2Lead, onHeaderChange])
 
   const rollDisplayName = () => {
@@ -56,9 +57,10 @@ export default function BasicsStep({
         selectedTags: tags,
         gender: gender ?? undefined,
         avoidName: displayName.trim() || undefined,
+        language: locale,
       })
       .then((response) => {
-        if (!response.name?.trim() || response.tier === 'fallback') {
+        if (!response.name?.trim()) {
           throw new Error(o.randomNameFailed)
         }
         onDisplayName(response.name)
@@ -66,14 +68,18 @@ export default function BasicsStep({
       })
       .catch((reason) => {
         setNameError(
-          reason instanceof Error ? reason.message : o.randomNameFailed,
+          generationFailureMessage(
+            reason,
+            o.randomNameFailed,
+            o.generationTimeout,
+          ),
         )
       })
       .finally(() => setRollingName(false))
   }
 
   return (
-    <section className="life-ob-basics" aria-label={o.step2Title}>
+    <section aria-label={o.step2Title}>
       <StepBody>
         <Field label={o.nameLabel} hint={o.nameHint}>
           <div className="life-ob-name-row">
@@ -146,7 +152,11 @@ export default function BasicsStep({
             }
             void onSubmit().catch((reason) => {
               setLocalError(
-                reason instanceof Error ? reason.message : o.createFailed,
+                generationFailureMessage(
+                  reason,
+                  o.createFailed,
+                  o.generationTimeout,
+                ),
               )
             })
           }}

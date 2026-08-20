@@ -4,7 +4,7 @@ import type {
   OnboardingStep,
   StructuredPersona,
 } from './onboardingTypes'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
 import { invalidatePublicConfigCache } from '../../../utils/requestDedup'
@@ -12,15 +12,14 @@ import { emptyPersona, flattenPersona, personaFromApi } from './onboardingTypes'
 import BasicsStep from './steps/BasicsStep'
 import PersonaEditStep from './steps/PersonaEditStep'
 import TagBubblesStep from './steps/TagBubblesStep'
-import { ErrorNote } from './ui/Feedback'
 
 interface Props {
   initialName?: string
   initialPersona?: StructuredPersona
   step: OnboardingStep
   onStepChange: (step: OnboardingStep) => void
-  onBusyChange?: (busy: boolean) => void
-  onHeaderChange?: (chrome: OnboardingHeaderChrome) => void
+  onBusyChange: (busy: boolean) => void
+  onHeaderChange: (chrome: OnboardingHeaderChrome) => void
   onFinished: () => void
 }
 
@@ -36,7 +35,6 @@ export default function OnboardingWizard({
   const { t, locale } = useI18n()
   const o = t.life.onboarding
   const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [displayName, setDisplayName] = useState(initialName)
   const [gender, setGender] = useState<LifeGender | null>(null)
@@ -44,7 +42,6 @@ export default function OnboardingWizard({
   const [persona, setPersona] = useState<StructuredPersona>(
     () => initialPersona ?? emptyPersona(),
   )
-  const [generating, setGenerating] = useState(false)
   const runLock = useRef(false)
   const previousStep = useRef(step)
   const hasStepped = useRef(false)
@@ -52,75 +49,67 @@ export default function OnboardingWizard({
   if (previousStep.current !== step) hasStepped.current = true
   previousStep.current = step
   const paneNav = !hasStepped.current
-    ? 'none'
+    ? undefined
     : direction > 0
       ? 'forward'
       : 'back'
+
+  useEffect(() => {
+    const saved = initialName.trim()
+    if (!saved) return
+    setDisplayName((current) => (current.trim() ? current : initialName))
+  }, [initialName])
+
+  const localeRef = useRef(locale)
+  useEffect(() => {
+    if (localeRef.current === locale) return
+    localeRef.current = locale
+    setSelectedTags([])
+  }, [locale])
 
   const run = async (operation: () => Promise<OnboardingStep | void>) => {
     if (busy || runLock.current) return
     runLock.current = true
     setBusy(true)
-    onBusyChange?.(true)
-    setError('')
+    onBusyChange(true)
     try {
       const next = await operation()
       if (next) onStepChange(next)
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : o.saveFailed
-      setError(message)
-      throw reason
     } finally {
       runLock.current = false
       setBusy(false)
-      onBusyChange?.(false)
+      onBusyChange(false)
     }
   }
 
   const draftPersona = async () => {
-    const name = displayName.trim() || 'Arael'
-    setGenerating(true)
-    try {
-      const draft = await agentService.draftPersona({
-        name,
-        tags: selectedTags,
-        gender: gender ?? 'unspecified',
-        extraRequirements: extraRequirements.trim(),
-        language: locale,
-      })
-      if (draft?.persona) {
-        setPersona(personaFromApi(draft.persona))
-      } else if (draft?.personality) {
-        setPersona(
-          personaFromApi({
-            summary: draft.personality,
-            temperament: selectedTags,
-            draftSource: draft.source || 'fallback',
-          }),
-        )
-      }
-    } finally {
-      setGenerating(false)
-    }
+    const draft = await agentService.draftPersona({
+      name: displayName.trim() || 'Arael',
+      tags: selectedTags,
+      gender: gender ?? 'unspecified',
+      extraRequirements: extraRequirements.trim(),
+      language: locale,
+    })
+    if (!draft.persona) throw new Error(o.regeneratePersonaFailed)
+    setPersona(personaFromApi(draft.persona))
   }
 
   const stepTitle =
     step === 1 ? o.step1Title : step === 2 ? o.step2Title : o.step3Title
 
   return (
-    <section className="life-ob life-ob--embedded" aria-label={stepTitle}>
+    <section className="life-ob" aria-label={stepTitle}>
       <div className="life-ob__card">
         <div className="life-ob__viewport">
           <div
             key={step}
             className="life-ob__pane sm-pane"
-            data-nav={paneNav === 'none' ? undefined : paneNav}
+            data-nav={paneNav}
           >
             {step === 1 && (
               <TagBubblesStep
                 selected={selectedTags}
                 onChange={setSelectedTags}
-                busy={busy}
                 onHeaderChange={onHeaderChange}
                 onNext={() => onStepChange(2)}
               />
@@ -138,8 +127,7 @@ export default function OnboardingWizard({
                 onHeaderChange={onHeaderChange}
                 onSubmit={() =>
                   run(async () => {
-                    if (!gender) throw new Error(o.genderRequired)
-                    void draftPersona()
+                    await draftPersona()
                     return 3
                   })
                 }
@@ -149,17 +137,14 @@ export default function OnboardingWizard({
               <PersonaEditStep
                 persona={persona}
                 busy={busy}
-                generating={generating}
                 onHeaderChange={onHeaderChange}
                 onRegenerate={draftPersona}
                 onSave={(next) =>
                   run(async () => {
-                    const saved = await agentService.putPersona({
+                    await agentService.putPersona({
                       name: displayName.trim(),
                       personality: flattenPersona(next),
                     })
-                    setDisplayName(saved.name)
-                    setPersona(next)
                     invalidatePublicConfigCache()
                     window.dispatchEvent(
                       new CustomEvent('arael-persona-updated'),
@@ -169,7 +154,6 @@ export default function OnboardingWizard({
                 }
               />
             )}
-            {error ? <ErrorNote>{error}</ErrorNote> : null}
           </div>
         </div>
       </div>

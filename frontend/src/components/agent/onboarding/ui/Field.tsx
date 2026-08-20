@@ -33,18 +33,15 @@ export function Field({
 
 export function FieldGroup({
   label,
-  hint,
   children,
 }: {
   label: string
-  hint?: string
   children: ReactNode
 }) {
   return (
     <fieldset className="life-ob-field">
       <legend className="life-ob-field__label">{label}</legend>
       {children}
-      {hint && <small className="life-ob-field__hint">{hint}</small>}
     </fieldset>
   )
 }

@@ -21,18 +21,20 @@ use crate::{
     config::ModelTier,
     middleware::auth::admin_middleware,
     services::{
+        agent::ai_process_pure::USER_TEXT_MAX_CHARS,
         ai::create_ai_analyzer_for_tier_with_timeout,
         analyzer::ChatMessage,
         tapp_playground_knowledge::{self, KnowledgeExcerpt},
     },
 };
 
-const MAX_INSTRUCTION_BYTES: usize = 8 * 1024;
+const MAX_INSTRUCTION_CHARS: usize = USER_TEXT_MAX_CHARS;
 const MAX_PROJECT_BYTES: usize = 512 * 1024;
 const MAX_MODEL_RESPONSE_BYTES: usize = 1024 * 1024;
 const MAX_CODE_FIELD_BYTES: usize = 256 * 1024;
 const MAX_RUNTIME_FEEDBACK_ITEMS: usize = 8;
-const MAX_RUNTIME_FEEDBACK_BYTES: usize = 2 * 1024;
+const MAX_RUNTIME_FEEDBACK_CHARS: usize = USER_TEXT_MAX_CHARS;
+const MAX_AGENT_QUERY_CHARS: usize = 160;
 const MAX_AGENT_QUERIES: usize = 6;
 const MAX_AGENT_ATTEMPTS: usize = 3;
 const MAX_RETRIEVED_CONTEXT_CHARS: usize = 60_000;
@@ -46,8 +48,8 @@ const MAX_HISTORY_TURNS: usize = 20;
 const FULL_PROJECT_HISTORY_TURNS: usize = 2;
 /// Cap total request payload carefully (history may include many full project snapshots).
 const MAX_REQUEST_BODY_BYTES: usize = 12 * 1024 * 1024;
-const MAX_HISTORY_EXPLANATION_BYTES: usize = 4_000;
-const MAX_HISTORY_ERROR_BYTES: usize = 4_000;
+const MAX_HISTORY_EXPLANATION_CHARS: usize = USER_TEXT_MAX_CHARS;
+const MAX_HISTORY_ERROR_CHARS: usize = USER_TEXT_MAX_CHARS;
 /// Pro 模型生成完整项目较慢；与前端 `TappPlaygroundService.ts` 的
 /// 超时预算（约 30 分钟）保持一致。
 ///
@@ -529,10 +531,10 @@ async fn generate_project_stream(
 
 fn validate_generate_request(request: &PlaygroundGenerateRequest) -> Result<(), ApiError> {
     let instruction = request.instruction.trim();
-    if instruction.is_empty() || instruction.len() > MAX_INSTRUCTION_BYTES {
+    if instruction.is_empty() || instruction.chars().count() > MAX_INSTRUCTION_CHARS {
         return Err(api_error(
             StatusCode::BAD_REQUEST,
-            format!("Instruction must contain 1-{MAX_INSTRUCTION_BYTES} bytes"),
+            format!("Instruction must contain 1-{MAX_INSTRUCTION_CHARS} characters"),
         ));
     }
 
@@ -1022,9 +1024,11 @@ fn parse_agent_plan(raw: &str) -> Result<PlaygroundAgentPlan, String> {
     if plan
         .queries
         .iter()
-        .any(|query| query.trim().is_empty() || query.len() > 160)
+        .any(|query| query.trim().is_empty() || query.chars().count() > MAX_AGENT_QUERY_CHARS)
     {
-        return Err("agent documentation queries must contain 1-160 bytes".to_string());
+        return Err(format!(
+            "agent documentation queries must contain 1-{MAX_AGENT_QUERY_CHARS} characters"
+        ));
     }
     if plan.capabilities.len() > 16 || plan.acceptance_criteria.len() > 16 {
         return Err("agent plan contains too many capabilities or acceptance criteria".to_string());
@@ -1103,10 +1107,10 @@ fn validate_runtime_feedback(feedback: &[String]) -> Result<(), String> {
     }
     if feedback
         .iter()
-        .any(|error| error.trim().is_empty() || error.len() > MAX_RUNTIME_FEEDBACK_BYTES)
+        .any(|error| error.trim().is_empty() || error.chars().count() > MAX_RUNTIME_FEEDBACK_CHARS)
     {
         return Err(format!(
-            "Each runtime feedback item must contain 1-{MAX_RUNTIME_FEEDBACK_BYTES} bytes"
+            "Each runtime feedback item must contain 1-{MAX_RUNTIME_FEEDBACK_CHARS} characters"
         ));
     }
     Ok(())
@@ -1124,19 +1128,19 @@ fn validate_history(history: &[PlaygroundHistoryTurn]) -> Result<(), ApiError> {
             return Err(api_error(StatusCode::BAD_REQUEST, "Failed history entries may only appear as a trailing tail"));
         }
         let instruction = turn.instruction.trim();
-        if instruction.is_empty() || instruction.len() > MAX_INSTRUCTION_BYTES {
+        if instruction.is_empty() || instruction.chars().count() > MAX_INSTRUCTION_CHARS {
             return Err(api_error(StatusCode::BAD_REQUEST, format!(
-                    "History turn {index} instruction must contain 1-{MAX_INSTRUCTION_BYTES} bytes"
+                    "History turn {index} instruction must contain 1-{MAX_INSTRUCTION_CHARS} characters"
                 )));
         }
-        if turn.explanation.len() > MAX_HISTORY_EXPLANATION_BYTES {
+        if turn.explanation.chars().count() > MAX_HISTORY_EXPLANATION_CHARS {
             return Err(api_error(StatusCode::BAD_REQUEST, format!(
-                    "History turn {index} explanation exceeds {MAX_HISTORY_EXPLANATION_BYTES} bytes"
+                    "History turn {index} explanation exceeds {MAX_HISTORY_EXPLANATION_CHARS} characters"
                 )));
         }
         if let Some(error) = &turn.error {
-            if error.len() > MAX_HISTORY_ERROR_BYTES {
-                return Err(api_error(StatusCode::BAD_REQUEST, format!("History turn {index} error exceeds {MAX_HISTORY_ERROR_BYTES} bytes")));
+            if error.chars().count() > MAX_HISTORY_ERROR_CHARS {
+                return Err(api_error(StatusCode::BAD_REQUEST, format!("History turn {index} error exceeds {MAX_HISTORY_ERROR_CHARS} characters")));
             }
         }
         if turn.failed {
@@ -1371,8 +1375,12 @@ fn parse_and_validate_model_output(raw: &str) -> Result<(PlaygroundModelOutput, 
     let normalized_aliases = normalize_known_generator_aliases(&mut value);
     let output: PlaygroundModelOutput =
         serde_json::from_value(value).map_err(|error| format!("invalid JSON project: {error}"))?;
-    if output.explanation.trim().is_empty() || output.explanation.len() > 4_000 {
-        return Err("explanation must contain 1-4000 bytes".to_string());
+    if output.explanation.trim().is_empty()
+        || output.explanation.chars().count() > USER_TEXT_MAX_CHARS
+    {
+        return Err(format!(
+            "explanation must contain 1-{USER_TEXT_MAX_CHARS} characters"
+        ));
     }
     validate_playground_project(&output.project)?;
     Ok((output, normalized_aliases))

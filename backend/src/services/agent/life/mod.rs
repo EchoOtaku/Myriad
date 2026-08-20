@@ -3,6 +3,7 @@
 pub mod gates;
 pub mod ingest;
 pub mod onboarding_ai;
+pub mod onboarding_prompts;
 pub mod report_dna;
 pub mod state;
 pub mod store;

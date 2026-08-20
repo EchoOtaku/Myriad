@@ -1,5 +1,5 @@
-//! Lite onboarding helpers copied from digital-life v2: name roll + structured
-//! persona draft. Visual identity / outfits stay out.
+//! Pro onboarding helpers: name roll + structured persona draft.
+//! Prompts live in `onboarding_prompts`. Visual identity / outfits stay out.
 
 use serde_json::{json, Map, Value};
 use std::time::Duration;
@@ -7,57 +7,17 @@ use std::time::Duration;
 use crate::config::ModelTier;
 use crate::services::ai::create_ai_analyzer_for_tier_with_timeout;
 
-use super::report_dna::sanitize_onboarding_tags;
+use super::onboarding_prompts::{NAME_SYSTEM_PROMPT, PERSONA_SYSTEM_PROMPT};
+use super::report_dna::sanitize_onboarding_tags_for_language;
 
 const ONBOARDING_AI_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_PERSONA_LIST_ITEMS: usize = 12;
-
-const NAME_SYSTEM_PROMPT: &str = r#"You design ONE original character display name for Agent life onboarding (step 2).
-This is a CHARACTER NAME, not a real-life nickname and not a poem title.
-
-Return ONLY one JSON object, no markdown:
-{"name":"..."}
-
-## Goal
-A short original OC name that feels intentional: one identity unit with internal logic (phonetics + meaning cohere), matching genderPresentation and the mood of selectedTags.
-
-## Logical name (required)
-- The two/three characters belong together as ONE designed name, not random pretty characters glued together.
-- Meaning should be simple and coherent as a persona label — not a landscape collage, not a proverb, not a tag dump.
-- genderPresentation must fit (female / male name color; nonbinary/unspecified → androgynous OC name).
-- selectedTags (if any) steer temperament only: cooler vs warmer, restrained vs open, night vs soft — WITHOUT naming the trait literally.
-
-## Form
-- Prefer 2–4 Simplified Chinese characters (max 6). No spaces, no punctuation, no Latin.
-- Original only. Invented OK; must still feel name-like.
-
-## Hard ban
-A) Everyday social nicknames / 阿X / 小X / 张三李四 real-world handles.
-B) Scenery/poetry stacks with no name unity.
-C) Pasting persona tags as the name (慢热、边界感、夜猫子…).
-D) English tokens, pure digits, 小姐/大人, famous real people or existing game characters.
-
-## Tags usage
-- NON-EMPTY selectedTags = hard mood lock. Name should feel like it could belong to that kernel.
-- Do not illustrate every tag; one coherent temperament is enough.
-- EMPTY tags: invent from genderPresentation only.
-
-## Other
-- Must differ from avoidName when avoidName is set.
-- One name only."#;
-
-const PERSONA_SYSTEM_PROMPT: &str = r#"You design one coherent original CHARACTER persona for Agent life onboarding.
-Return only one JSON object with this exact shape:
-{"persona":{"summary":"...","temperament":["..."],"likes":["..."],"drives":["..."],"socialStyle":"...","speechStyle":"..."}}
-
-Rules:
-- This is a pure character persona. Never add appearance, hair, outfit, accessory, palette, room, furniture, environment, inventory, location, world lore, job title, platform brand, or site capability.
-- Ground the persona in selectedTags, genderPresentation, and extraRequirements.
-- summary: one natural sentence, 20-120 characters in the requested language. Personality, not looks.
-- temperament: 3-8 concise spoken traits, not poetic slogans or media titles.
-- likes and drives: 2-6 grounded items each; required, never empty; do not invent biographical facts.
-- socialStyle and speechStyle: concrete interaction guidance, not roleplay prose; required, never empty.
-- No Markdown, no comments, no extra keys outside persona."#;
+const MAX_PERSONA_LIST_ITEM_CHARS: usize = 180;
+const MAX_PERSONA_GUIDANCE_CHARS: usize = 800;
+const MIN_SUMMARY_CHARS: usize = 40;
+const MIN_TEMPERAMENT_ITEMS: usize = 5;
+const MIN_PAIR_ITEMS: usize = 4;
+const MIN_GUIDANCE_CHARS: usize = 20;
 
 #[derive(Debug)]
 pub enum OnboardingAiError {
@@ -70,24 +30,32 @@ pub async fn suggest_display_name(
     selected_tags: &[String],
     gender: &str,
     avoid_name: Option<&str>,
-) -> Result<(String, Option<String>), OnboardingAiError> {
-    let seeds = sanitize_onboarding_tags(selected_tags);
+    language: &str,
+) -> Result<String, OnboardingAiError> {
+    let seeds = sanitize_onboarding_tags_for_language(selected_tags, language);
     let avoid = avoid_name
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.chars().take(40).collect::<String>());
     let input = json!({
+        "pipeline": "onboarding/name",
         "task": "recommend_display_name",
         "rollId": format!("n{}", uuid::Uuid::new_v4().simple()),
+        "language": language,
         "genderPresentation": normalize_gender(gender),
         "selectedTags": seeds,
         "avoidName": avoid.clone().unwrap_or_default(),
+        "nameSchool": match language {
+            "zh-CN" => "liyue-xianzhou-meaning-first",
+            "ja-JP" => "inazuma-meaning-first",
+            _ => "word-name-etymology-first",
+        },
     })
     .to_string();
-    let (raw, model) = run_onboarding_call("onboarding_name", NAME_SYSTEM_PROMPT, &input).await?;
-    let name = parse_display_name_suggestion(&raw, avoid.as_deref())
+    let raw = run_onboarding_call(NAME_SYSTEM_PROMPT, &input).await?;
+    let name = parse_display_name_suggestion(&raw, avoid.as_deref(), language)
         .ok_or(OnboardingAiError::UnusableResponse)?;
-    Ok((name, model))
+    Ok(name)
 }
 
 pub async fn suggest_persona(
@@ -96,10 +64,11 @@ pub async fn suggest_persona(
     selected_tags: &[String],
     gender: &str,
     extra_requirements: &str,
-) -> (Value, Option<String>, &'static str) {
-    let tags = sanitize_onboarding_tags(selected_tags);
+) -> Result<Value, OnboardingAiError> {
+    let tags = sanitize_onboarding_tags_for_language(selected_tags, language);
     let fallback = fallback_persona_draft(name, language, &tags);
     let input = json!({
+        "pipeline": "onboarding/persona",
         "task": "design_character_persona",
         "rollId": format!("p{}", uuid::Uuid::new_v4().simple()),
         "name": name.chars().take(50).collect::<String>(),
@@ -107,37 +76,42 @@ pub async fn suggest_persona(
         "genderPresentation": normalize_gender(gender),
         "selectedTags": tags,
         "extraRequirements": extra_requirements.chars().take(500).collect::<String>(),
+        "fullness": {
+            "summaryChars": "80-280",
+            "temperamentCount": "5-8",
+            "likesCount": "4-6",
+            "drivesCount": "4-6",
+            "guidance": "2-4 sentences each for socialStyle and speechStyle",
+        },
     })
     .to_string();
-    let Ok((raw, model)) =
-        run_onboarding_call("onboarding_persona", PERSONA_SYSTEM_PROMPT, &input).await
-    else {
-        return (fallback, None, "fallback");
-    };
-    let Some(parsed) = parse_json_object(&raw) else {
-        return (fallback, None, "fallback");
-    };
-    if !persona_draft_is_complete(&parsed) {
-        return (fallback, None, "fallback");
+    let raw = run_onboarding_call(PERSONA_SYSTEM_PROMPT, &input).await?;
+    let parsed = parse_json_object(&raw).ok_or(OnboardingAiError::UnusableResponse)?;
+    if !persona_draft_is_complete(&parsed) || !persona_matches_ui_language(&parsed, language) {
+        return Err(OnboardingAiError::UnusableResponse);
     }
-    let Some(persona) = sanitize_persona_draft(&parsed, &fallback) else {
-        return (fallback, None, "fallback");
-    };
-    (persona, model, "lite")
+    let persona = sanitize_persona_draft(&parsed, &fallback)
+        .ok_or(OnboardingAiError::UnusableResponse)?;
+    Ok(persona)
 }
 
 async fn run_onboarding_call(
-    _task: &str,
     system: &str,
     input: &str,
-) -> Result<(String, Option<String>), OnboardingAiError> {
+) -> Result<String, OnboardingAiError> {
+    {
+        let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
+        if !config.pro_enabled {
+            return Err(OnboardingAiError::AnalyzerUnavailable);
+        }
+    }
     let Some(analyzer) =
-        create_ai_analyzer_for_tier_with_timeout(ModelTier::Lite, Some(ONBOARDING_AI_TIMEOUT)).await
+        create_ai_analyzer_for_tier_with_timeout(ModelTier::Pro, Some(ONBOARDING_AI_TIMEOUT)).await
     else {
         return Err(OnboardingAiError::AnalyzerUnavailable);
     };
     match analyzer.analyze_with_system(system, input).await {
-        Ok(raw) if !raw.trim().is_empty() => Ok((raw, None)),
+        Ok(raw) if !raw.trim().is_empty() => Ok(raw),
         _ => Err(OnboardingAiError::ProviderFailed),
     }
 }
@@ -155,7 +129,7 @@ fn parse_json_object(raw: &str) -> Option<Value> {
     serde_json::from_str(&raw[start..=end]).ok()
 }
 
-fn parse_display_name_suggestion(raw: &str, avoid: Option<&str>) -> Option<String> {
+fn parse_display_name_suggestion(raw: &str, avoid: Option<&str>, language: &str) -> Option<String> {
     let parsed = parse_json_object(raw)?;
     let candidates = if let Some(name) = parsed.get("name").and_then(Value::as_str) {
         vec![name.to_string()]
@@ -169,7 +143,7 @@ fn parse_display_name_suggestion(raw: &str, avoid: Option<&str>) -> Option<Strin
     };
     let avoid_norm = avoid.map(str::trim).filter(|v| !v.is_empty());
     for candidate in candidates {
-        let cleaned = sanitize_display_name_candidate(&candidate);
+        let cleaned = sanitize_display_name_candidate(&candidate, language);
         if cleaned.is_empty() {
             continue;
         }
@@ -181,7 +155,7 @@ fn parse_display_name_suggestion(raw: &str, avoid: Option<&str>) -> Option<Strin
     None
 }
 
-fn sanitize_display_name_candidate(raw: &str) -> String {
+fn sanitize_display_name_candidate(raw: &str, language: &str) -> String {
     let trimmed = raw
         .chars()
         .filter(|ch| !ch.is_control())
@@ -193,35 +167,118 @@ fn sanitize_display_name_candidate(raw: &str) -> String {
         )
     });
     let collapsed = trimmed.split_whitespace().collect::<Vec<_>>().join("");
-    let count = collapsed.chars().count();
+    match language {
+        "en-US" => sanitize_latin_display_name(&collapsed),
+        "ja-JP" => sanitize_cjk_display_name(&collapsed, true),
+        _ => sanitize_cjk_display_name(&collapsed, false),
+    }
+}
+
+fn sanitize_latin_display_name(value: &str) -> String {
+    if !value.chars().all(|ch| ch.is_ascii_alphabetic()) {
+        return String::new();
+    }
+    let count = value.chars().count();
+    if !(2..=12).contains(&count) {
+        return String::new();
+    }
+    if value.chars().filter(|ch| ch.is_ascii_uppercase()).count() > 1 {
+        return String::new();
+    }
+    if is_blocked_en_display_name(value) {
+        return String::new();
+    }
+    value.to_string()
+}
+
+fn is_blocked_en_display_name(value: &str) -> bool {
+    const BLOCKED: &[&str] = &[
+        "robin", "sunday", "firefly", "sparkle", "stelle", "caelus", "jean", "diluc",
+        "amber", "lisa", "maris", "cael", "liora",
+    ];
+    let lower = value.to_ascii_lowercase();
+    BLOCKED.iter().any(|blocked| lower == *blocked)
+}
+
+fn is_blocked_ja_display_name(value: &str) -> bool {
+    const BLOCKED: &[&str] = &["綾華", "绫华", "万葉", "万叶", "宵宮", "宵宫", "早柚", "神子", "雷電", "雷电"];
+    BLOCKED.iter().any(|blocked| value == *blocked || value.contains(blocked))
+}
+
+fn is_blocked_zh_display_name(value: &str) -> bool {
+    const BLOCKED: &[&str] = &[
+        "甘雨", "刻晴", "钟离", "行秋", "重云", "香菱", "凝光", "北斗", "辛焱",
+        "云堇", "夜兰", "申鹤", "胡桃", "七七", "瑶瑶", "白术", "闲云", "魈",
+        "景元", "丹恒", "符玄", "镜流", "彦卿", "素裳", "青雀", "停云", "驭空",
+        "罗刹", "三月七", "花火", "黄泉", "流萤", "知更鸟", "藿藿", "寒鸦",
+        "雪衣", "银狼", "姬子", "澄羽", "岚音", "星语", "月璃", "玄霄", "墨染",
+        "夜雪", "凌霄",
+    ];
+    BLOCKED
+        .iter()
+        .any(|blocked| value == *blocked || (blocked.chars().count() >= 2 && value.contains(blocked)))
+}
+
+fn is_cjk_han(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{4E00}'..='\u{9FFF}' | '\u{3400}'..='\u{4DBF}' | '\u{F900}'..='\u{FAFF}'
+    )
+}
+
+fn is_hiragana(ch: char) -> bool {
+    matches!(ch, '\u{3041}'..='\u{3096}')
+}
+
+fn is_katakana_letter(ch: char) -> bool {
+    matches!(ch, '\u{30A1}'..='\u{30FA}' | '\u{30FC}')
+}
+
+fn sanitize_cjk_display_name(value: &str, japanese: bool) -> String {
+    let count = value.chars().count();
     if count < 2 {
         return String::new();
     }
-    if collapsed.chars().all(|ch| ch.is_ascii_alphanumeric()) {
+    let script_ok = value.chars().all(|ch| {
+        if japanese {
+            is_cjk_han(ch) || is_hiragana(ch) || is_katakana_letter(ch)
+        } else {
+            is_cjk_han(ch)
+        }
+    });
+    if !script_ok {
         return String::new();
     }
-    if collapsed.starts_with('阿') || collapsed.starts_with('小') {
+    if !japanese && (value.starts_with('阿') || value.starts_with('小')) {
         return String::new();
     }
-    if collapsed.contains("小姐") || collapsed.contains("大人") {
+    if value.contains("小姐") || value.contains("大人") {
         return String::new();
     }
-    collapsed.chars().take(6).collect()
+    if !japanese && is_blocked_zh_display_name(value) {
+        return String::new();
+    }
+    if japanese
+        && (value.ends_with("ちゃん")
+            || value.ends_with("くん")
+            || value.ends_with("さん")
+            || value.ends_with('様')
+            || is_blocked_ja_display_name(value))
+    {
+        return String::new();
+    }
+    value.chars().take(6).collect()
 }
 
-pub fn fallback_persona_draft(name: &str, language: &str, tags: &[String]) -> Value {
-    let tags = sanitize_onboarding_tags(tags);
+fn fallback_persona_draft(name: &str, language: &str, tags: &[String]) -> Value {
+    let tags = sanitize_onboarding_tags_for_language(tags, language);
     json!({
-        "displayName": bounded_text(name, 50),
         "summary": fallback_summary(name, language, &tags),
         "temperament": tags,
-        "traits": tags,
         "likes": [],
         "drives": [],
         "socialStyle": "",
         "speechStyle": "",
-        "language": bounded_text(language, 16),
-        "draftSource": "fallback",
     })
 }
 
@@ -235,9 +292,6 @@ fn sanitize_persona_draft(value: &Value, fallback: &Value) -> Option<Value> {
         "temperament",
         &["temperament", "traits"],
     );
-    if let Some(temperament) = result.get("temperament").cloned() {
-        result.insert("traits".into(), temperament);
-    }
     replace_list(&mut result, source, "likes", &["likes"]);
     replace_list(&mut result, source, "drives", &["drives", "motivations"]);
     replace_text(
@@ -245,32 +299,82 @@ fn sanitize_persona_draft(value: &Value, fallback: &Value) -> Option<Value> {
         source,
         "socialStyle",
         &["socialStyle", "social_style"],
-        500,
+        MAX_PERSONA_GUIDANCE_CHARS,
     );
     replace_text(
         &mut result,
         source,
         "speechStyle",
         &["speechStyle", "speech_style", "voice"],
-        500,
+        MAX_PERSONA_GUIDANCE_CHARS,
     );
-    result.insert("draftSource".into(), json!("lite"));
     Some(Value::Object(result))
 }
 
-pub fn persona_draft_is_complete(value: &Value) -> bool {
+fn persona_matches_ui_language(value: &Value, language: &str) -> bool {
+    let source = value.get("persona").unwrap_or(value);
+    let mut text = String::new();
+    for key in ["summary", "socialStyle", "speechStyle"] {
+        if let Some(part) = source.get(key).and_then(Value::as_str) {
+            text.push_str(part);
+        }
+    }
+    for key in ["temperament", "likes", "drives", "traits"] {
+        if let Some(items) = list_from_value(source, &[key]) {
+            for item in items {
+                text.push_str(&item);
+            }
+        }
+    }
+    let mut latin = 0usize;
+    let mut cjk = 0usize;
+    for ch in text.chars() {
+        if ch.is_ascii_alphabetic() {
+            latin += 1;
+        } else if is_cjk_han(ch) || is_hiragana(ch) || is_katakana_letter(ch) {
+            cjk += 1;
+        }
+    }
+    let total = latin + cjk;
+    if total < 8 {
+        return true;
+    }
+    match language {
+        "en-US" => latin * 2 >= total,
+        _ => cjk * 2 >= total,
+    }
+}
+
+fn persona_draft_is_complete(value: &Value) -> bool {
     let Some(source) = value.get("persona").unwrap_or(value).as_object() else {
         return false;
     };
     let summary_ready = source
         .get("summary")
         .and_then(Value::as_str)
-        .is_some_and(|summary| summary.trim().chars().count() >= 8);
-    let temperament_ready = list_from(source, &["temperament", "traits"]).is_some_and(|items| !items.is_empty());
-    summary_ready && temperament_ready
+        .is_some_and(|summary| summary.trim().chars().count() >= MIN_SUMMARY_CHARS);
+    let temperament_ready = list_from(source, &["temperament", "traits"])
+        .is_some_and(|items| items.len() >= MIN_TEMPERAMENT_ITEMS);
+    let likes_ready = list_from(source, &["likes"]).is_some_and(|items| items.len() >= MIN_PAIR_ITEMS);
+    let drives_ready =
+        list_from(source, &["drives", "motivations"]).is_some_and(|items| items.len() >= MIN_PAIR_ITEMS);
+    let social_ready = ["socialStyle", "social_style"]
+        .iter()
+        .find_map(|key| source.get(*key).and_then(Value::as_str))
+        .is_some_and(|value| value.trim().chars().count() >= MIN_GUIDANCE_CHARS);
+    let speech_ready = ["speechStyle", "speech_style", "voice"]
+        .iter()
+        .find_map(|key| source.get(*key).and_then(Value::as_str))
+        .is_some_and(|value| value.trim().chars().count() >= MIN_GUIDANCE_CHARS);
+    summary_ready
+        && temperament_ready
+        && likes_ready
+        && drives_ready
+        && social_ready
+        && speech_ready
 }
 
-pub fn flatten_persona_text(persona: &Value) -> String {
+fn flatten_persona_text(persona: &Value) -> String {
     let source = persona.get("persona").unwrap_or(persona);
     let mut lines = Vec::new();
     if let Some(items) = list_from_value(source, &["temperament", "traits"]) {
@@ -382,14 +486,14 @@ fn list_value(value: &Value) -> Option<Vec<String>> {
             .map(str::to_string)
             .collect::<Vec<_>>(),
         Value::String(value) => value
-            .split(['、', ',', '，', ';', '/', '|'])
+            .split(['、', '，', ';', '/', '|'])
             .map(str::to_string)
             .collect(),
         _ => return None,
     };
     let mut sanitized = Vec::new();
     for item in raw {
-        let item = bounded_text(&item, 120);
+        let item = bounded_text(&item, MAX_PERSONA_LIST_ITEM_CHARS);
         if item.is_empty() || sanitized.iter().any(|existing| existing == &item) {
             continue;
         }
@@ -415,24 +519,62 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sanitize_display_name_rejects_latin_and_nick_prefixes() {
-        assert!(sanitize_display_name_candidate("Alice").is_empty());
-        assert!(sanitize_display_name_candidate("阿强").is_empty());
-        assert!(sanitize_display_name_candidate("小美").is_empty());
-        assert_eq!(sanitize_display_name_candidate("澄羽"), "澄羽");
-        assert_eq!(sanitize_display_name_candidate("「岚音」"), "岚音");
+    fn sanitize_display_name_follows_ui_language() {
+        assert!(sanitize_display_name_candidate("Alice", "zh-CN").is_empty());
+        assert!(sanitize_display_name_candidate("阿强", "zh-CN").is_empty());
+        assert!(sanitize_display_name_candidate("小美", "zh-CN").is_empty());
+        assert_eq!(sanitize_display_name_candidate("晚衡", "zh-CN"), "晚衡");
+        assert_eq!(sanitize_display_name_candidate("「听白」", "zh-CN"), "听白");
+        assert!(sanitize_display_name_candidate("澄羽", "zh-CN").is_empty());
+        assert!(sanitize_display_name_candidate("甘雨", "zh-CN").is_empty());
+        assert!(sanitize_display_name_candidate("景元", "zh-CN").is_empty());
+        assert_eq!(sanitize_display_name_candidate("Alice", "en-US"), "Alice");
+        assert!(sanitize_display_name_candidate("NightOwl", "en-US").is_empty());
+        assert!(sanitize_display_name_candidate("Robin", "en-US").is_empty());
+        assert!(sanitize_display_name_candidate("澄羽", "en-US").is_empty());
+        assert_eq!(sanitize_display_name_candidate("あおい", "ja-JP"), "あおい");
+        assert_eq!(sanitize_display_name_candidate("雪見", "ja-JP"), "雪見");
+        assert!(sanitize_display_name_candidate("宵宮", "ja-JP").is_empty());
+        assert!(sanitize_display_name_candidate("Alice", "ja-JP").is_empty());
+        assert!(sanitize_display_name_candidate("澄羽A", "zh-CN").is_empty());
+        assert!(sanitize_display_name_candidate("澄羽Ａ", "zh-CN").is_empty());
+        assert!(sanitize_display_name_candidate("澄羽・", "zh-CN").is_empty());
+        assert!(sanitize_display_name_candidate("Aoi雪", "ja-JP").is_empty());
+        assert_eq!(sanitize_display_name_candidate("ハナ", "ja-JP"), "ハナ");
+        assert_eq!(sanitize_display_name_candidate("サリー", "ja-JP"), "サリー");
+        assert!(sanitize_display_name_candidate("葵ちゃん", "ja-JP").is_empty());
     }
 
     #[test]
     fn persona_parser_requires_real_character_content() {
         let parsed = parse_json_object(
-            r#"{"persona":{"summary":"安静但会认真回应重要事情。","temperament":["克制","细心"],"likes":["雨声"],"drives":["理解彼此"],"socialStyle":"不抢话","speechStyle":"简洁温和"}}"#,
+            r#"{"persona":{"summary":"安静但会认真回应对自己重要的事情。想靠近，又把话说得很短。认定谁值得之后，锋会收起来。","temperament":["克制","细心","慢热","嘴硬心软","边界感强"],"likes":["夜里听雨","把桌面重新排好","长时间安静地做事","把一件小事做到位"],"drives":["理解彼此","守住边界","把节奏握在自己手里","对认定的人认真"],"socialStyle":"先听，不抢着说话。熟了之后才会把句子拉长。","speechStyle":"话少，用词干净。对在意的人会把锋收起来，把事说清楚。"}}"#,
         )
         .unwrap();
         assert!(persona_draft_is_complete(&parsed));
+        assert!(persona_matches_ui_language(&parsed, "zh-CN"));
+        assert!(!persona_matches_ui_language(&parsed, "en-US"));
         assert!(!persona_draft_is_complete(&json!({
             "persona": { "summary": "只有一句，没有性格数组" }
         })));
+        assert!(!persona_draft_is_complete(&json!({
+            "persona": {
+                "summary": "安静但会认真回应对自己重要的事情。",
+                "temperament": ["克制"]
+            }
+        })));
+        let english = json!({
+            "persona": {
+                "summary": "Quiet, but answers the things that matter.",
+                "temperament": ["restrained", "careful"],
+                "likes": ["rain"],
+                "drives": ["understand people"],
+                "socialStyle": "does not interrupt",
+                "speechStyle": "brief and warm"
+            }
+        });
+        assert!(persona_matches_ui_language(&english, "en-US"));
+        assert!(!persona_matches_ui_language(&english, "ja-JP"));
     }
 
     #[test]

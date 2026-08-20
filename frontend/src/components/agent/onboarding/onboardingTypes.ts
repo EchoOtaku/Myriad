@@ -1,6 +1,6 @@
 export type OnboardingStep = 1 | 2 | 3
 
-/** 二级页标题栏：说明文案 + 可选「换一批」 */
+/** 步骤上报给二级页标题栏：说明 + 可选「换一批」 */
 export interface OnboardingHeaderAction {
   label: string
   busy?: boolean
@@ -11,7 +11,17 @@ export interface OnboardingHeaderAction {
 export interface OnboardingHeaderChrome {
   description: string
   action?: OnboardingHeaderAction
-  tone?: 'default' | 'warning'
+}
+
+/** 设定引导二级页标题栏，由引导页合成后交给设置壳 */
+export interface OnboardingPageChrome {
+  title: string
+  description: string
+  detailTone: 'default' | 'warning'
+  action?: OnboardingHeaderAction
+  backDisabled: boolean
+  backAria: string
+  onBack: () => void
 }
 
 export type LifeGender = 'female' | 'male' | 'nonbinary' | 'unspecified'
@@ -27,7 +37,6 @@ export interface LifeOnboardingTag {
   id: string
   label: string
   weight: number
-  source: 'report' | 'fallback'
 }
 
 export interface StructuredPersona {
@@ -37,7 +46,6 @@ export interface StructuredPersona {
   drives: string[]
   socialStyle: string
   speechStyle: string
-  draftSource: string
 }
 
 export function emptyPersona(): StructuredPersona {
@@ -48,13 +56,12 @@ export function emptyPersona(): StructuredPersona {
     drives: [],
     socialStyle: '',
     speechStyle: '',
-    draftSource: 'seed',
   }
 }
 
 export function parseList(value: string): string[] {
   return value
-    .split(/[、,，;/|]/)
+    .split(/[、，;/|]/)
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 12)
@@ -96,12 +103,13 @@ export function parseFlattenedPersona(raw: string): StructuredPersona {
   for (const line of raw.split('\n')) {
     const trimmed = line.trim()
     if (!trimmed) continue
-    const match = trimmed.match(/^(气质|喜好|驱动力|社交|表达)[：:]\s*(.*)$/)
+    const match = trimmed.match(/^(气质|喜好|驱动力|社交|表达)[：:](.*)$/)
     if (!match) {
       leftover.push(trimmed)
       continue
     }
-    const [, key, value] = match
+    const [, key, rawValue] = match
+    const value = rawValue.trim()
     if (key === '气质') persona.temperament = parseList(value)
     else if (key === '喜好') persona.likes = parseList(value)
     else if (key === '驱动力') persona.drives = parseList(value)
@@ -109,17 +117,12 @@ export function parseFlattenedPersona(raw: string): StructuredPersona {
     else if (key === '表达') persona.speechStyle = value
   }
   if (leftover.length) persona.summary = leftover.join('\n')
-  if (!persona.draftSource) persona.draftSource = 'seed'
   return persona
 }
 
 export function personaFromApi(value: unknown): StructuredPersona {
-  const raw =
-    value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
   const source =
-    raw.persona && typeof raw.persona === 'object'
-      ? (raw.persona as Record<string, unknown>)
-      : raw
+    value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
   return {
     summary: typeof source.summary === 'string' ? source.summary : '',
     temperament: parseList(joinList(source.temperament || source.traits)),
@@ -132,7 +135,5 @@ export function personaFromApi(value: unknown): StructuredPersona {
         : typeof source.voice === 'string'
           ? source.voice
           : '',
-    draftSource:
-      typeof source.draftSource === 'string' ? source.draftSource : 'lite',
   }
 }

@@ -1,14 +1,15 @@
 import type { LifeOnboardingTag, OnboardingHeaderChrome } from '../onboardingTypes'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { agentService } from '../../../../services/agent'
 import { ApiError } from '../../../../services/api'
-import { uniqPersonaTags } from '../../personaTags'
+import { keepSelectedPersonaTags, uniqPersonaTags } from '../../personaTags'
 import {
   generationCacheKey,
   getGenerationCache,
   setGenerationCache,
 } from '../generationCache'
+import { generationFailureMessage } from '../generationError'
 import BubbleCanvas from '../ui/BubbleCanvas'
 import { ActionBar, GhostButton, PrimaryButton } from '../ui/Chrome'
 import { ErrorNote, Working } from '../ui/Feedback'
@@ -17,26 +18,25 @@ interface SignalsCache {
   tags: LifeOnboardingTag[]
   reportCount: number
   aiDistilled: boolean
-  derivedFromReports: boolean
 }
 
 interface Props {
   selected: string[]
   onChange: (tags: string[]) => void
   onNext: () => void
-  busy?: boolean
-  onHeaderChange?: (chrome: OnboardingHeaderChrome) => void
+  onHeaderChange: (chrome: OnboardingHeaderChrome) => void
 }
 
-const SIGNALS_KEY = generationCacheKey('signals', ['default'])
+function signalsCacheKey(locale: string) {
+  return generationCacheKey('signals', [locale])
+}
 
-function toTags(labels: string[], aiDistilled: boolean): LifeOnboardingTag[] {
+function toTags(labels: string[]): LifeOnboardingTag[] {
   const stamp = Date.now().toString(36)
   return uniqPersonaTags(labels).map((label, index) => ({
     id: `${stamp}-${index}`,
     label,
     weight: Math.max(0.35, 1 - index * 0.08),
-    source: aiDistilled ? 'report' : 'fallback',
   }))
 }
 
@@ -44,17 +44,14 @@ export default function TagBubblesStep({
   selected,
   onChange,
   onNext,
-  busy = false,
   onHeaderChange,
 }: Props) {
   const { t, locale } = useI18n()
   const o = t.life.onboarding
-  const cached = getGenerationCache<SignalsCache>(SIGNALS_KEY)
+  const cacheKey = signalsCacheKey(locale)
+  const cached = getGenerationCache<SignalsCache>(cacheKey)
   const [tags, setTags] = useState<LifeOnboardingTag[]>(() => cached?.tags || [])
   const [reportCount, setReportCount] = useState(() => cached?.reportCount || 0)
-  const [derivedFromReports, setDerivedFromReports] = useState(
-    () => cached?.derivedFromReports ?? Boolean(cached?.tags?.length),
-  )
   const [aiDistilled, setAiDistilled] = useState(
     () => Boolean(cached?.aiDistilled),
   )
@@ -63,43 +60,67 @@ export default function TagBubblesStep({
   const [error, setError] = useState('')
   const [reloadToken, setReloadToken] = useState(0)
   const [canPan, setCanPan] = useState(false)
+  const tagsRef = useRef(tags)
+  tagsRef.current = tags
 
   useEffect(() => {
     let cancelled = false
     const force = reloadToken > 0
+    const existing = getGenerationCache<SignalsCache>(cacheKey)
+    if (!force && existing?.tags?.length) {
+      setTags(existing.tags)
+      setReportCount(existing.reportCount)
+      setAiDistilled(existing.aiDistilled)
+      setLoading(false)
+      setRegenerating(false)
+      const kept = keepSelectedPersonaTags(
+        selected,
+        existing.tags.map((tag) => tag.label),
+      )
+      if (kept.length !== selected.length) onChange(kept)
+      return
+    }
+
     if (force) setRegenerating(true)
-    else if (!getGenerationCache(SIGNALS_KEY)) setLoading(true)
+    else setLoading(true)
 
     void agentService
       .getPersonaSignals({ language: locale, regenerate: force })
       .then((signals) => {
         if (cancelled) return
-        const nextTags = toTags(signals?.tags ?? [], signals?.aiDistilled === true)
+        const nextTags = toTags(signals.tags)
         const next: SignalsCache = {
           tags: nextTags,
-          reportCount: signals?.reportCount ?? 0,
-          aiDistilled: signals?.aiDistilled === true,
-          derivedFromReports: (signals?.reportCount ?? 0) > 0,
+          reportCount: signals.reportCount,
+          aiDistilled: signals.aiDistilled === true,
         }
         setTags(next.tags)
         setReportCount(next.reportCount)
         setAiDistilled(next.aiDistilled)
-        setDerivedFromReports(next.derivedFromReports)
-        setGenerationCache(SIGNALS_KEY, next)
+        setGenerationCache(cacheKey, next)
         setError('')
         if (nextTags.length > 0) {
-          const labels = new Set(nextTags.map((tag) => tag.label))
-          const kept = selected.filter((label) => labels.has(label))
+          const kept = keepSelectedPersonaTags(
+            selected,
+            nextTags.map((tag) => tag.label),
+          )
           if (kept.length !== selected.length) onChange(kept)
         }
       })
       .catch((reason) => {
         if (cancelled) return
+        if (!force && tagsRef.current.length > 0) return
         if (reason instanceof ApiError && reason.code === 'agent_life_disabled') {
           setError(o.saveFirst)
           return
         }
-        setError(reason instanceof Error ? reason.message : o.loadSignalsFailed)
+        setError(
+          generationFailureMessage(
+            reason,
+            o.loadSignalsFailed,
+            o.generationTimeout,
+          ),
+        )
       })
       .finally(() => {
         if (!cancelled) {
@@ -110,29 +131,24 @@ export default function TagBubblesStep({
     return () => {
       cancelled = true
     }
-    // selected/onChange intentionally omitted — only prune after a fresh deck.
+    // selected/onChange 只在换一批后修剪，不跟进当前勾选。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locale, o.loadSignalsFailed, o.saveFirst, reloadToken])
+  }, [cacheKey, locale, o.generationTimeout, o.loadSignalsFailed, o.saveFirst, reloadToken])
 
   const reshuffle = useCallback(() => {
     setReloadToken((token) => token + 1)
   }, [])
 
-  const toggle = (label: string) => {
-    if (selected.includes(label)) {
-      onChange(selected.filter((item) => item !== label))
-    } else {
-      onChange([...selected, label])
-    }
-  }
-
   const toggleById = useCallback(
     (id: string) => {
       const hit = tags.find((tag) => tag.id === id)
-      if (hit) toggle(hit.label)
+      if (!hit) return
+      if (selected.includes(hit.label)) {
+        onChange(selected.filter((item) => item !== hit.label))
+      } else {
+        onChange([...selected, hit.label])
+      }
     },
-    // toggle closes over selected/onChange; tags is the lookup table.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [onChange, selected, tags],
   )
 
@@ -147,9 +163,9 @@ export default function TagBubblesStep({
         label: tag.label,
         weight: Math.min(Math.max(tag.weight, 0), 1),
         selected: selected.includes(tag.label),
-        disabled: busy || loading || regenerating,
+        disabled: loading || regenerating,
       })),
-    [busy, loading, regenerating, selected, tags],
+    [loading, regenerating, selected, tags],
   )
 
   const tagLabels = new Set(tags.map((tag) => tag.label))
@@ -158,17 +174,15 @@ export default function TagBubblesStep({
     0,
   )
   const canContinue = selectedCount > 0 || reportCount === 0
-  const blocked = busy || loading || regenerating
+  const blocked = loading || regenerating
   const sourceNote = aiDistilled
     ? o.aiDistilledMeta.replace('{count}', String(reportCount))
-    : derivedFromReports
-      ? o.reportCount.replace('{count}', String(reportCount))
-      : reportCount > 0
-        ? o.reportsButFallback.replace('{count}', String(reportCount))
-        : o.noReports
+    : reportCount > 0
+      ? o.reportsButFallback.replace('{count}', String(reportCount))
+      : o.noReports
 
   useLayoutEffect(() => {
-    onHeaderChange?.({
+    onHeaderChange({
       description: loading ? o.step1Lead : sourceNote,
       action: {
         label: regenerating ? o.regeneratingSeeds : o.regenerateSeeds,
@@ -241,7 +255,6 @@ export default function TagBubblesStep({
         {reportCount === 0 && (
           <GhostButton
             label={o.skipTags}
-            plain
             disabled={blocked}
             onClick={onNext}
           />

@@ -56,6 +56,8 @@ pub struct SuggestNameRequest {
     pub gender: String,
     #[serde(default)]
     pub avoid_name: Option<String>,
+    #[serde(default = "default_signals_language")]
+    pub language: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -318,13 +320,9 @@ pub async fn report_signals(
     .await
     .map_err(distill_error)?;
     Ok(Json(json!({
-        "reportCount": distilled.provenance.report_count,
-        "platforms": distilled.provenance.platforms,
-        "fingerprint": distilled.provenance.fingerprint,
+        "reportCount": distilled.report_count,
         "tags": distilled.tags,
         "aiDistilled": distilled.ai_distilled,
-        "model": distilled.model,
-        "rawReportsStored": false,
     })))
 }
 
@@ -340,8 +338,8 @@ fn distill_error(error: life::report_dna::DistillReportDnaError) -> HttpError {
         life::report_dna::DistillReportDnaError::AnalyzerUnavailable => HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "Lite model is unavailable",
-                "code": "lite_unavailable"
+                "error": "Pro model is unavailable",
+                "code": "pro_unavailable"
             })),
         )),
         life::report_dna::DistillReportDnaError::ProviderFailed
@@ -356,7 +354,7 @@ fn distill_error(error: life::report_dna::DistillReportDnaError) -> HttpError {
 }
 
 /// POST /api/agent/persona/name
-/// Lite rolls one OC display name from selected tags + gender.
+/// Pro rolls one OC display name from selected tags + gender.
 pub async fn suggest_name(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -364,24 +362,24 @@ pub async fn suggest_name(
 ) -> Result<Json<Value>, HttpError> {
     require_life_enabled().await?;
     let _user_id = require_site_owner(&claims, &db).await?;
-    let tags = life::report_dna::sanitize_onboarding_tags(&body.selected_tags);
+    let language = normalize_signals_language(&body.language);
+    let tags = life::report_dna::sanitize_onboarding_tags_for_language(&body.selected_tags, language);
     match life::onboarding_ai::suggest_display_name(
         &tags,
         &body.gender,
         body.avoid_name.as_deref(),
+        language,
     )
     .await
     {
-        Ok((name, model)) => Ok(Json(json!({
+        Ok(name) => Ok(Json(json!({
             "name": name,
-            "model": model,
-            "tier": "lite",
         }))),
         Err(life::onboarding_ai::OnboardingAiError::AnalyzerUnavailable) => Err(HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "Lite model is unavailable",
-                "code": "lite_unavailable"
+                "error": "Pro model is unavailable",
+                "code": "pro_unavailable"
             })),
         ))),
         Err(_) => Err(HttpError::from((
@@ -395,7 +393,7 @@ pub async fn suggest_name(
 }
 
 /// POST /api/agent/persona/draft
-/// Lite writes a structured character persona. No appearance, room, or clothes.
+/// Pro writes a structured character persona. No appearance, room, or clothes.
 pub async fn draft_persona(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -403,24 +401,41 @@ pub async fn draft_persona(
 ) -> Result<Json<Value>, HttpError> {
     require_life_enabled().await?;
     let _user_id = require_site_owner(&claims, &db).await?;
-    let tags = life::report_dna::sanitize_onboarding_tags(&body.tags);
     let language = normalize_signals_language(&body.language);
+    let tags = life::report_dna::sanitize_onboarding_tags_for_language(&body.tags, language);
     let name = body.name.trim();
     let display = if name.is_empty() { "Arael" } else { name };
-    let (persona, model, source) = life::onboarding_ai::suggest_persona(
+    let persona = match life::onboarding_ai::suggest_persona(
         display,
         language,
         &tags,
         &body.gender,
         &body.extra_requirements,
     )
-    .await;
-    let personality = life::onboarding_ai::flatten_persona_text(&persona);
+    .await
+    {
+        Ok(value) => value,
+        Err(life::onboarding_ai::OnboardingAiError::AnalyzerUnavailable) => {
+            return Err(HttpError::from((
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({
+                    "error": "Pro model is unavailable",
+                    "code": "pro_unavailable"
+                })),
+            )))
+        }
+        Err(_) => {
+            return Err(HttpError::from((
+                StatusCode::BAD_GATEWAY,
+                Json(json!({
+                    "error": "Failed to draft a persona",
+                    "code": "persona_draft_failed"
+                })),
+            )))
+        }
+    };
     Ok(Json(json!({
         "persona": persona,
-        "personality": personality,
-        "source": source,
-        "model": model,
     })))
 }
 

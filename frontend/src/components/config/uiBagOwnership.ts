@@ -80,8 +80,8 @@ export const ADVANCED_RESET_KEYS: readonly string[] = Object.freeze([
 ])
 
 /**
- * AI 页：Agent 生命总开关。字段仍存在 ui bag 里，但控件挂在 Lite 模型旁边——
- * 生命开口全走 Lite，前提和开关不该分在两页。
+ * AI 页：Agent 生命总开关。字段仍存在 ui bag 里，但控件挂在 Lite / Pro 旁边——
+ * 开口走 Lite、设定引导走 Pro，前提和开关不该分在两页。
  */
 export const AI_UI_RESET_KEYS: readonly string[] = Object.freeze([
   'agent_life_enabled',

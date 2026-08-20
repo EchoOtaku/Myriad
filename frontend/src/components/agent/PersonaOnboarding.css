@@ -1,4 +1,4 @@
-/* Agent life onboarding — v2 digital-life wizard chrome, minus visual assets. */
+/* Agent 生命设定引导：词条 / 命名 / 人设。 */
 
 .setting-section--persona,
 .life-ob {
@@ -14,18 +14,32 @@ html.dark .life-ob {
   --life-surface-rgb: var(--surface-rgb, 24 24 27);
 }
 
-.setting-section--persona .life-ob {
-  max-width: none;
-  margin: 0;
-  padding: 0;
+/*
+ * 内容区贴玻璃卡左 / 右 / 下沿，只留标题下的上边距。
+ * 标题栏自己补回原来的左右内边距，避免和内容一起被拉出去。
+ */
+.setting-section.setting-section--persona {
+  padding-right: 0;
+  padding-bottom: 0;
+  padding-left: 0;
 }
 
-.life-ob--embedded .life-ob__card {
-  height: clamp(520px, calc(100dvh - 16rem), 780px);
+.setting-section.setting-section--persona > .section-header {
+  padding-right: 1.5rem;
+  padding-left: 1.5rem;
 }
 
-.life-ob--embedded .life-ob-tags__board .life-ob-bg.is-block {
-  background: transparent;
+@media (width >= 768px) {
+  .setting-section.setting-section--persona > .section-header {
+    padding-right: 1.25rem;
+    padding-left: 1.25rem;
+  }
+}
+
+.setting-section.setting-section--persona > .config-form {
+  overflow: hidden;
+  border-bottom-right-radius: 1.25rem;
+  border-bottom-left-radius: 1.25rem;
 }
 
 @keyframes life-spin {
@@ -72,17 +86,12 @@ html.dark .life-ob {
   display: flex;
   gap: 14px;
   align-items: center;
-  justify-content: space-between;
-  max-width: 680px;
-  margin: 0 auto 18px;
+  margin: 0;
   padding: 11px 16px;
   border: 1px solid rgb(239 68 68 / 22%);
   border-radius: 16px;
   color: #b42318;
-
-  /* 实色提示条：不要 backdrop-filter + 入场动画（玻璃合成闪） */
   background: rgb(254 226 226 / 92%);
-  animation: none;
 }
 
 .life-ob {
@@ -143,9 +152,10 @@ html.dark .life-ob {
 .life-ob__card {
   --ob-pad: clamp(18px, 3vw, 34px);
   --ob-label-gap: 10px;
+
   display: flex;
   flex-direction: column;
-  height: inherit;
+  height: clamp(520px, calc(100dvh - 16rem), 780px);
   position: relative;
   z-index: 1;
   overflow: hidden;
@@ -203,26 +213,6 @@ html.dark .life-ob {
 
 .life-ob-bar .life-ghost-button {
   min-height: 44px;
-}
-
-/* 纯文本弱动作（如「跳过」）：去掉边框 / 背景 / 玻璃，像一条可点链接 */
-.life-ghost-button--text,
-.life-ob-bar .life-ghost-button--text {
-  border-color: transparent;
-  background: transparent;
-  backdrop-filter: none;
-  box-shadow: none;
-  color: var(--life-muted);
-}
-
-.life-ghost-button--text:hover:not(:disabled),
-.life-ob-bar .life-ghost-button--text:hover:not(:disabled) {
-  border-color: transparent;
-  color: var(--life-ink);
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-  transform: none;
 }
 
 /* 「下一步」：流体玻璃圆钮——吸色透底 + 镜面边 + 色散环 + 凝胶手感 */
@@ -370,40 +360,26 @@ html.dark .life-ob-bar .life-ob-cta {
 
 .life-ghost-button {
   display: inline-flex;
-  gap: 7px;
   align-items: center;
   justify-content: center;
   padding: 11px 18px;
-  border: 1px solid var(--ob-liq-border, var(--life-line));
+  border: 0;
   border-radius: 999px;
-  color: var(--life-ink);
-  background:
-    var(--ob-liq-sheen, none),
-    color-mix(in srgb, rgb(var(--life-surface-rgb) / 28%), transparent);
-  box-shadow: var(--ob-liq-inset, inset 0 1px 0 rgb(255 255 255 / 28%));
+  color: var(--life-muted);
+  background: transparent;
+  box-shadow: none;
   font: inherit;
   cursor: pointer;
   transition: var(--sm-t-control);
 }
 
 .life-ghost-button:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--life-accent) 40%, var(--life-line));
-  box-shadow: var(
-    --ob-liq-soft-shadow,
-    inset 0 1px 0 rgb(255 255 255 / 36%),
-    0 6px 16px -8px rgb(31 38 135 / 12%)
-  );
-  transform: translateY(-1px);
+  color: var(--life-ink);
 }
 
 .life-ghost-button:disabled {
   opacity: 0.5;
   cursor: wait;
-}
-
-.life-ghost-button svg {
-  width: 14px;
-  height: 14px;
 }
 
 /* 主操作按钮走与卡片同源的流体玻璃：镜面边 + sheen + 斜向发丝 + 内高光，
@@ -549,7 +525,7 @@ html.dark .life-ob-bar .life-ob-cta {
   }
 }
 
-/* ---------- 可选项：药丸 / 卡片 / 磁贴 ---------- */
+/* 词条圆泡的基座；选中勾和悬停位移由这里提供，形状由 --bubble 覆盖。 */
 
 .life-choice {
   position: relative;
@@ -560,14 +536,12 @@ html.dark .life-ob-bar .life-ob-cta {
   font: inherit;
   text-align: left;
   cursor: pointer;
-  animation: sm-rise-in var(--sm-dur-slow) var(--sm-ease-spring) both;
-  animation-delay: calc(var(--choice-i, 0) * 26ms);
   transition:
-    border-color 0.22s ease,
-    background-color 0.22s ease,
-    box-shadow 0.22s ease,
-    translate 0.3s var(--life-ease-spring),
-    scale 0.3s var(--life-ease-spring);
+    border-color var(--sm-dur-base) var(--sm-ease-standard),
+    background-color var(--sm-dur-base) var(--sm-ease-standard),
+    box-shadow var(--sm-dur-base) var(--sm-ease-standard),
+    translate var(--sm-dur-slow) var(--sm-ease-spring),
+    scale var(--sm-dur-slow) var(--sm-ease-spring);
 }
 
 /* 入场动画带 fill:both，会一直压住 transform；
@@ -620,8 +594,8 @@ html.dark .life-ob-bar .life-ob-cta {
   opacity: 0;
   transform: scale(0.4);
   transition:
-    opacity 0.18s ease,
-    transform 0.34s var(--life-ease-spring);
+    opacity var(--sm-dur-fast) var(--sm-ease-standard),
+    transform var(--sm-dur-slow) var(--sm-ease-spring);
 }
 
 .life-choice.is-on .life-choice__tick {
@@ -640,6 +614,7 @@ html.dark .life-ob-bar .life-ob-cta {
   width: 100%;
   min-height: 200px;
   flex: 1 1 auto;
+  contain: layout style;
 }
 
 /* 气泡都定位在这一层上，拖拽时整层平移 */
@@ -658,11 +633,7 @@ html.dark .life-ob-bar .life-ob-cta {
   cursor: grabbing;
 }
 
-/*
- * 第一页词条白板：无边框，铺满整张卡片。
- * 顶栏样式与其它步完全同一套（带色渐变模糊），不再开关/换定位。
- * chrome 只承接标题区延续，顶槽交给顶栏 ::before。
- */
+/* 词条步白板铺满卡片，不另起边框。 */
 .life-ob__card:has(.life-ob-tags) > .life-ob__viewport {
   position: absolute;
   inset: 0;
@@ -711,7 +682,7 @@ html.dark .life-ob-bar .life-ob-cta {
   cursor: grabbing;
 }
 
-.life-ob-tags__board .life-ob-bg.is-block {
+.life-ob-tags__board .life-ob-bg {
   position: absolute;
   inset: 0;
   display: flex;
@@ -723,10 +694,9 @@ html.dark .life-ob-bar .life-ob-cta {
   padding: var(--ob-pad);
   border: 0;
   border-radius: 0;
-  background: color-mix(in srgb, var(--life-surface, #fff) 72%, transparent);
+  background: transparent;
 }
 
-/* 仅底部渐变（顶区已由 chrome 承担） */
 .life-ob-tags .life-ob-tags__fade--bottom {
   position: absolute;
   right: 0;
@@ -737,12 +707,10 @@ html.dark .life-ob-bar .life-ob-cta {
   pointer-events: none;
   background: linear-gradient(
     to top,
-    rgb(var(--life-surface-rgb) / 52%) 0%,
-    rgb(var(--life-surface-rgb) / 28%) 42%,
+    rgb(var(--life-surface-rgb) / 72%) 0%,
+    rgb(var(--life-surface-rgb) / 36%) 48%,
     rgb(var(--life-surface-rgb) / 0%) 100%
   );
-  backdrop-filter: blur(16px) saturate(1.25);
-  mask-image: linear-gradient(to top, #000 0%, #000 38%, transparent 100%);
 }
 
 .life-ob-tags__error {
@@ -858,15 +826,17 @@ html.dark .life-ob-bar .life-ob-cta {
   place-items: center;
   filter: hue-rotate(var(--bubble-shift)) brightness(var(--bubble-bright))
     saturate(1.18);
+  contain: layout style;
   animation:
-    sm-rise-in var(--sm-dur-slow) var(--sm-ease-spring) both,
-    life-bubble-float 5.2s ease-in-out infinite;
+    sm-rise-in var(--sm-dur-slow) var(--sm-ease-spring) backwards,
+    life-bubble-float 5.2s var(--sm-ease-standard) infinite;
   animation-delay:
-    calc(var(--choice-i, 0) * 40ms), calc(var(--choice-i, 0) * 240ms);
+    calc(var(--choice-i, 0) * var(--sm-stagger)),
+    calc(var(--choice-i, 0) * 240ms);
   transition:
-    filter 0.28s ease,
-    box-shadow 0.28s ease,
-    scale 0.3s var(--life-ease-spring);
+    filter var(--sm-dur-slow) var(--sm-ease-standard),
+    box-shadow var(--sm-dur-slow) var(--sm-ease-standard),
+    scale var(--sm-dur-slow) var(--sm-ease-spring);
 }
 
 /* 悬停 / 选中 / 焦点都不要冒出 line 边框（基座 .life-choice 会改 border-color） */
@@ -913,7 +883,7 @@ html.dark .life-ob-bar .life-ob-cta {
   letter-spacing: 0.01em;
   overflow-wrap: anywhere;
   text-shadow: 0 1px 0 rgb(255 255 255 / 42%);
-  transition: opacity 0.2s ease;
+  transition: var(--sm-t-fade);
 }
 
 .life-choice--bubble:hover:not(:disabled) {
@@ -971,9 +941,6 @@ html.dark .life-ob-bar .life-ob-cta {
   filter: drop-shadow(0 1px 2px rgb(0 0 0 / 28%));
 }
 
-/* 性别这类少量选项仍走普通换行排布 */
-
-/* ---- life.css 4255-4804 ---- */
 .life-ob-field {
   display: grid;
   gap: var(--ob-label-gap, 10px);
@@ -1033,9 +1000,7 @@ fieldset.life-ob-field > legend.life-ob-field__label {
   background: var(--ob-liq-sheen, none), rgb(var(--life-surface-rgb) / 74%);
   box-shadow: var(--ob-liq-inset, none);
   font: inherit;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: var(--sm-t-control);
 }
 
 /* Step 2: name field + icon-only liquid roll (matches fluid ghost buttons) */
@@ -1065,12 +1030,7 @@ fieldset.life-ob-field > legend.life-ob-field__label {
     color-mix(in srgb, rgb(var(--life-surface-rgb) / 42%), transparent);
   box-shadow: var(--ob-liq-inset, inset 0 1px 0 rgb(255 255 255 / 28%));
   cursor: pointer;
-  transition:
-    transform 0.22s var(--life-ease-spring),
-    border-color 0.2s ease,
-    color 0.2s ease,
-    background-color 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: var(--sm-t-control);
 }
 
 .life-ob-name-roll:hover:not(:disabled) {
@@ -1084,7 +1044,7 @@ fieldset.life-ob-field > legend.life-ob-field__label {
     inset 0 1px 0 rgb(255 255 255 / 36%),
     0 6px 16px -8px rgb(31 38 135 / 12%)
   );
-  transform: translateY(-1px);
+  transform: translateY(var(--sm-lift));
 }
 
 .life-ob-name-roll:active:not(:disabled) {
@@ -1101,10 +1061,6 @@ fieldset.life-ob-field > legend.life-ob-field__label {
   height: 16px;
 }
 
-.life-ob-name-roll__spin {
-  animation: life-spin 0.85s linear infinite;
-}
-
 .life-ob-input:focus {
   border-color: color-mix(in srgb, var(--life-accent) 58%, var(--life-line));
   box-shadow:
@@ -1118,7 +1074,6 @@ fieldset.life-ob-field > legend.life-ob-field__label {
   resize: vertical;
 }
 
-/* 设定页：性格 / 样子 / 房间分组；当前语言只读，每条旁单独编辑 */
 .life-ob-persona-groups {
   display: grid;
   gap: 16px;
@@ -1238,11 +1193,7 @@ fieldset.life-ob-field > legend.life-ob-field__label {
     color-mix(in srgb, rgb(var(--life-surface-rgb) / 55%), transparent);
   box-shadow: var(--ob-liq-inset, none);
   cursor: pointer;
-  transition:
-    color 0.18s ease,
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    transform 0.2s var(--life-ease-spring);
+  transition: var(--sm-t-control);
 }
 
 .life-ob-persona-view__edit svg {
@@ -1285,10 +1236,7 @@ fieldset.life-ob-field > legend.life-ob-field__label {
   background: var(--ob-liq-sheen, none), rgb(var(--life-surface-rgb) / 70%);
   box-shadow: var(--ob-liq-inset, none);
   cursor: pointer;
-  transition:
-    transform 0.2s var(--life-ease-spring),
-    background-color 0.18s ease,
-    color 0.18s ease;
+  transition: var(--sm-t-control);
 }
 
 .life-ob-persona-view__action svg {
@@ -1314,24 +1262,15 @@ fieldset.life-ob-field > legend.life-ob-field__label {
 /* ---------- 忙碌 ---------- */
 
 .life-ob-bg {
-  margin: 0;
-}
-
-.life-ob-bg.is-block {
   display: flex;
   flex-direction: column;
   gap: 10px;
   align-items: center;
   justify-content: center;
+  margin: 0;
   padding: 26px 16px;
   border: 0;
   border-radius: 16px;
-  background: color-mix(in srgb, var(--life-ink, #222) 4%, transparent);
-  color: var(--life-muted);
-  text-align: center;
-}
-
-.life-ob-bg.is-block.is-active {
   background:
     radial-gradient(
       120% 80% at 50% 0%,
@@ -1339,9 +1278,11 @@ fieldset.life-ob-field > legend.life-ob-field__label {
       transparent 62%
     ),
     color-mix(in srgb, var(--life-ink, #222) 3%, transparent);
+  color: var(--life-muted);
+  text-align: center;
 }
 
-.life-ob-bg.is-block .life-ob-bg__text {
+.life-ob-bg__text {
   margin: 0;
   max-width: 30em;
   color: color-mix(in srgb, var(--life-ink, #222) 76%, var(--life-muted));
@@ -1358,7 +1299,7 @@ fieldset.life-ob-field > legend.life-ob-field__label {
   opacity: 0.85;
 }
 
-.life-ob-bg.is-block .life-loading__orb {
+.life-ob-bg .life-loading__orb {
   display: block;
   flex: 0 0 auto;
   width: 32px;
@@ -1376,5 +1317,9 @@ fieldset.life-ob-field > legend.life-ob-field__label {
 }
 
 html[data-perf-mode='exlight'] .life-choice--bubble {
-  animation: sm-rise-in var(--sm-dur-base) var(--sm-ease-standard) both;
+  animation: sm-rise-in var(--sm-dur-base) var(--sm-ease-standard) backwards;
+}
+
+html[data-perf-mode='exlight'] .life-loading__orb {
+  animation: none;
 }

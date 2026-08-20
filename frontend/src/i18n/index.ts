@@ -1123,6 +1123,10 @@ export interface TranslationKeys {
     agentLifeHint: string
     /** Shown on the switch while the Lite tier is off */
     agentLifeNeedsLite: string
+    /** Shown on the switch while the Pro tier is off */
+    agentLifeNeedsPro: string
+    /** Shown on the switch while both Lite and Pro are off */
+    agentLifeNeedsLiteAndPro: string
     enableProxy: string
     enableProxyHint: string
     proxyUrl: string
@@ -1292,6 +1296,8 @@ export interface TranslationKeys {
     platformStatusUnconfigured: string
     aiProvider: string
     aiProviderHint: string
+    aiLlmTitle: string
+    aiLlmDesc: string
     aiLiteModelTitle: string
     aiLiteModelDesc: string
     aiLiteEnable: string
@@ -1313,9 +1319,30 @@ export interface TranslationKeys {
     imageProviderBadgeGptImage: string
     imageProviderBadgeImageApi: string
     imageProviderBadgeSeedream: string
-    /** AI 页右上角：服务商 / API Key 速查 */
-    aiProvidersQuickAccess: string
-    aiProvidersQuickAccessDesc: string
+    aiVendorsTitle: string
+    aiVendorsDesc: string
+    aiVendorLabel: string
+    aiVendorAdd: string
+    aiVendorAddDesc: string
+    aiVendorEmpty: string
+    aiVendorDisplayName: string
+    aiVendorApiKey: string
+    aiVendorDocs: string
+    aiVendorConfigured: string
+    aiVendorKeyMissing: string
+    aiVendorExpand: string
+    aiVendorCollapse: string
+    aiVendorUsedBy: string
+    aiVendorUsedStandard: string
+    aiVendorUsedLite: string
+    aiVendorUsedPro: string
+    aiVendorUsedImage: string
+    aiVendorUsedSpeech: string
+    aiVendorUsedJoin: string
+    aiVendorCapText: string
+    aiVendorCapImage: string
+    aiVendorCapSpeech: string
+    geminiApiKeyLabel: string
     aiImageTitle: string
     aiImageDesc: string
     speechServiceTitle: string
@@ -1332,8 +1359,18 @@ export interface TranslationKeys {
     tencentRegionChongqing: string
     tencentRegionNanjing: string
     speechTestAvailability: string
+    speechTestTag: string
     speechTestSuccess: string
     speechTestFailed: string
+    speechProvider: string
+    speechProviderTencent: string
+    speechReuseTextCredentials: string
+    speechReuseTextCredentialsDesc: string
+    speechSttModel: string
+    speechTtsModel: string
+    speechTtsVoice: string
+    speechOpenRouterTtsHint: string
+    speechKeyFallbackHint: string
     platformDescGithub: string
     platformDescBilibili: string
     platformDescBangumi: string
@@ -1822,6 +1859,22 @@ export interface TranslationKeys {
   life: {
     onboarding: {
       openPage: string
+      editPage: string
+      setupLabel: string
+      currentPersona: string
+      mood: {
+        floor: string
+        low: string
+        normal: string
+        high: string
+      }
+      moodLine: string
+      activity: {
+        idle: string
+        working: string
+        thinking: string
+        talking: string
+      }
       next: string
       backTo: string
       optional: string
@@ -1843,7 +1896,7 @@ export interface TranslationKeys {
       signalsEmpty: string
       loadingAiSignals: string
       loadSignalsFailed: string
-      reportCount: string
+      generationTimeout: string
       aiDistilledMeta: string
       reportsButFallback: string
       regenerateSeeds: string
@@ -1870,7 +1923,6 @@ export interface TranslationKeys {
       regeneratePersona: string
       regeneratingPersona: string
       regeneratePersonaFailed: string
-      personaNotCompleteIncomplete: string
       personaFieldGenerating: string
       personaDraftLabel: string
       editPersona: string
@@ -2217,14 +2269,9 @@ export interface TranslationKeys {
     noEnabledPlatforms: string
     noEnabledPlatformsDesc: string
     platformReport: string
-    clickToView: string
     stagePlaying: string
     stagePaused: string
     heroStage: string
-    tipPlatformCount: string
-    tipPlatformCountSub: string
-    tipReportReady: string
-    tipReportReadySub: string
     tipNoReports: string
     tipNoReportsSub: string
     playAllReports: string

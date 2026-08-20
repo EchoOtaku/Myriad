@@ -2,16 +2,16 @@ import type { OnboardingHeaderChrome, StructuredPersona } from '../onboardingTyp
 import { LuCheck, LuEdit3, LuX } from '@lib/icons'
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
+import { generationFailureMessage } from '../generationError'
 import { joinList, parseList } from '../onboardingTypes'
 import { ActionBar, PrimaryButton, StepBody } from '../ui/Chrome'
 import { ErrorNote } from '../ui/Feedback'
-import { TextArea, TextInput } from '../ui/Field'
+import { TextArea } from '../ui/Field'
 
 interface Props {
   persona: StructuredPersona
   busy: boolean
-  generating: boolean
-  onHeaderChange?: (chrome: OnboardingHeaderChrome) => void
+  onHeaderChange: (chrome: OnboardingHeaderChrome) => void
   onRegenerate: () => Promise<void>
   onSave: (persona: StructuredPersona) => Promise<void>
 }
@@ -21,7 +21,7 @@ type PersonaFieldKey =
   | 'likes'
   | 'drives'
   | 'socialStyle'
-  | 'voice'
+  | 'speechStyle'
   | 'summary'
 
 function text(value: unknown): string {
@@ -35,7 +35,6 @@ function keepText(next: unknown, fallback: string): string {
 export default function PersonaEditStep({
   persona,
   busy,
-  generating,
   onHeaderChange,
   onRegenerate,
   onSave,
@@ -49,10 +48,7 @@ export default function PersonaEditStep({
   const [likes, setLikes] = useState(() => joinList(persona.likes))
   const [drives, setDrives] = useState(() => joinList(persona.drives))
   const [socialStyle, setSocialStyle] = useState(() => persona.socialStyle)
-  const [voice, setVoice] = useState(() => persona.speechStyle)
-  const [draftSource, setDraftSource] = useState(
-    () => persona.draftSource || 'seed',
-  )
+  const [speechStyle, setSpeechStyle] = useState(() => persona.speechStyle)
   const [error, setError] = useState('')
   const [editingField, setEditingField] = useState<PersonaFieldKey | null>(null)
   const [draft, setDraft] = useState('')
@@ -64,8 +60,7 @@ export default function PersonaEditStep({
     setLikes((current) => joinList(next.likes) || current)
     setDrives((current) => joinList(next.drives) || current)
     setSocialStyle((current) => keepText(next.socialStyle, current))
-    setVoice((current) => keepText(next.speechStyle, current))
-    setDraftSource(next.draftSource || 'lite')
+    setSpeechStyle((current) => keepText(next.speechStyle, current))
   }, [])
 
   useEffect(() => {
@@ -82,19 +77,23 @@ export default function PersonaEditStep({
       setDraft('')
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : o.regeneratePersonaFailed,
+        generationFailureMessage(
+          reason,
+          o.regeneratePersonaFailed,
+          o.generationTimeout,
+        ),
       )
     } finally {
       setRegenBusy(false)
     }
-  }, [o.regeneratePersonaFailed, onRegenerate, regenBusy])
+  }, [o.generationTimeout, o.regeneratePersonaFailed, onRegenerate, regenBusy])
 
   const values: Record<PersonaFieldKey, string> = {
     temperament,
     likes,
     drives,
     socialStyle,
-    voice,
+    speechStyle,
     summary,
   }
   const setters: Record<PersonaFieldKey, (next: string) => void> = {
@@ -102,32 +101,32 @@ export default function PersonaEditStep({
     likes: setLikes,
     drives: setDrives,
     socialStyle: setSocialStyle,
-    voice: setVoice,
+    speechStyle: setSpeechStyle,
     summary: setSummary,
   }
   const optionalFields = new Set<PersonaFieldKey>([
     'likes',
     'drives',
     'socialStyle',
-    'voice',
+    'speechStyle',
   ])
   const rows: Array<{
     key: PersonaFieldKey
     label: string
-    multiline?: boolean
+    areaRows: number
   }> = [
-    { key: 'temperament', label: o.fieldTemperament },
-    { key: 'likes', label: o.fieldLikes },
-    { key: 'drives', label: o.fieldDrives },
-    { key: 'socialStyle', label: o.fieldSocial },
-    { key: 'voice', label: o.fieldVoice },
-    { key: 'summary', label: o.fieldSummary, multiline: true },
+    { key: 'temperament', label: o.fieldTemperament, areaRows: 3 },
+    { key: 'likes', label: o.fieldLikes, areaRows: 3 },
+    { key: 'drives', label: o.fieldDrives, areaRows: 3 },
+    { key: 'socialStyle', label: o.fieldSocial, areaRows: 4 },
+    { key: 'speechStyle', label: o.fieldVoice, areaRows: 4 },
+    { key: 'summary', label: o.fieldSummary, areaRows: 5 },
   ]
 
   const shownValue = (key: PersonaFieldKey) => {
     const raw = values[key].trim()
     if (raw) return raw
-    return generating || regenBusy ? o.personaFieldGenerating : ''
+    return regenBusy ? o.personaFieldGenerating : ''
   }
 
   const visibleRows = rows.filter((row) => {
@@ -150,36 +149,22 @@ export default function PersonaEditStep({
     setDraft('')
   }
 
-  const blocked = busy || generating || regenBusy || editingField !== null
-  const incomplete = generating || regenBusy || draftSource === 'fallback'
-  const headerDescription =
-    generating || regenBusy
-      ? o.step3LeadPending
-      : draftSource === 'fallback'
-        ? o.personaNotCompleteIncomplete
-        : o.step3Lead
+  const blocked = busy || regenBusy || editingField !== null
+  const headerDescription = regenBusy ? o.step3LeadPending : o.step3Lead
 
   useLayoutEffect(() => {
-    onHeaderChange?.({
+    onHeaderChange({
       description: headerDescription,
-      tone: draftSource === 'fallback' && !generating && !regenBusy
-        ? 'warning'
-        : 'default',
       action: {
-        label:
-          generating || regenBusy
-            ? o.regeneratingPersona
-            : o.regeneratePersona,
-        busy: generating || regenBusy,
+        label: regenBusy ? o.regeneratingPersona : o.regeneratePersona,
+        busy: regenBusy,
         disabled: blocked,
         onClick: () => void generatePersona(),
       },
     })
   }, [
     blocked,
-    draftSource,
     generatePersona,
-    generating,
     headerDescription,
     o.regeneratePersona,
     o.regeneratingPersona,
@@ -191,7 +176,7 @@ export default function PersonaEditStep({
     <section aria-label={o.step3Title}>
       <StepBody>
         <div
-          className={`life-ob-persona-groups${incomplete ? ' is-incomplete' : ''}`}
+          className={`life-ob-persona-groups${regenBusy ? ' is-incomplete' : ''}`}
         >
           <section
             className="life-ob-persona-group"
@@ -199,7 +184,7 @@ export default function PersonaEditStep({
           >
             <h2 className="life-ob-persona-group__title">
               {o.personaGroupCharacter}
-              {incomplete ? (
+              {regenBusy ? (
                 <span className="life-ob-persona-group__draft">
                   {o.personaDraftLabel}
                 </span>
@@ -217,43 +202,25 @@ export default function PersonaEditStep({
                     {isEditing ? (
                       <div className="life-ob-persona-view__editor">
                         <dt>{row.label}</dt>
-                        {row.multiline ? (
-                          <TextArea
-                            rows={3}
-                            value={draft}
-                            autoFocus
-                            onChange={(event) => setDraft(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (
-                                (event.metaKey || event.ctrlKey) &&
-                                event.key === 'Enter'
-                              ) {
-                                event.preventDefault()
-                                commitEdit()
-                              }
-                              if (event.key === 'Escape') {
-                                event.preventDefault()
-                                cancelEdit()
-                              }
-                            }}
-                          />
-                        ) : (
-                          <TextInput
-                            value={draft}
-                            autoFocus
-                            onChange={(event) => setDraft(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault()
-                                commitEdit()
-                              }
-                              if (event.key === 'Escape') {
-                                event.preventDefault()
-                                cancelEdit()
-                              }
-                            }}
-                          />
-                        )}
+                        <TextArea
+                          rows={row.areaRows}
+                          value={draft}
+                          autoFocus
+                          onChange={(event) => setDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (
+                              (event.metaKey || event.ctrlKey) &&
+                              event.key === 'Enter'
+                            ) {
+                              event.preventDefault()
+                              commitEdit()
+                            }
+                            if (event.key === 'Escape') {
+                              event.preventDefault()
+                              cancelEdit()
+                            }
+                          }}
+                        />
                         <div className="life-ob-persona-view__actions">
                           <button
                             type="button"
@@ -316,7 +283,6 @@ export default function PersonaEditStep({
           label={busy ? o.saving : o.saveAndContinue}
           busy={busy}
           disabled={
-            generating ||
             regenBusy ||
             editingField !== null ||
             !summary.trim() ||
@@ -330,10 +296,15 @@ export default function PersonaEditStep({
               likes: parseList(likes),
               drives: parseList(drives),
               socialStyle: socialStyle.trim(),
-              speechStyle: voice.trim(),
-              draftSource,
+              speechStyle: speechStyle.trim(),
             }).catch((reason) => {
-              setError(reason instanceof Error ? reason.message : o.saveFailed)
+              setError(
+                generationFailureMessage(
+                  reason,
+                  o.saveFailed,
+                  o.generationTimeout,
+                ),
+              )
             })
           }}
         />

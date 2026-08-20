@@ -60,6 +60,7 @@ import { REPORT_PLATFORM_IDS } from '../utils/reportCardVisuals'
 import { invalidateLatestReportCache } from '../utils/requestDedup'
 import { hasSessionHint } from '../utils/sessionDetection'
 import ReportsStatusBar from './reports/ReportsStatusBar'
+import { pickReportHook } from './reports/reportsDynamicStatus'
 import {
   REPORT_CARD_FLEX_BASIS,
   REPORT_CAROUSEL_CSS_VARS,
@@ -411,6 +412,22 @@ export default function Reports() {
     report?.platform_reports?.forEach((r) => map.set(r.platform, r))
     return map
   }, [report?.platform_reports])
+
+  const reportHighlights = useMemo(() => {
+    const items = []
+    for (const platform of visiblePlatforms) {
+      const report = platformReportsMap.get(platform.id)
+      if (!report) continue
+      const hook = pickReportHook(report)
+      if (!hook) continue
+      items.push({
+        platformId: platform.id,
+        platformName: platform.name,
+        hook,
+      })
+    }
+    return items
+  }, [visiblePlatforms, platformReportsMap])
 
   // 稳定的 ReportCardWidget config，避免每次渲染新建对象打破 memo
   const platformWidgetConfigs = useMemo(() => {
@@ -971,13 +988,20 @@ export default function Reports() {
                           )?.name || stageReportData.platform
                         : null
                     }
-                    stagePlatformHero={stageReportData?.platform || null}
+                    stagePlatformHero={
+                      stageReportData?.platform === 'netease'
+                        ? 'NetEase'
+                        : PLATFORMS.find(
+                            (p) => p.id === stageReportData?.platform,
+                          )?.name ||
+                          stageReportData?.platform ||
+                          null
+                    }
                     enabledPlatformCount={visiblePlatforms.length}
                     reportCount={visiblePlatforms.filter((p) =>
                       platformReportsMap.has(p.id),
                     ).length}
                     hasEnabledPlatforms={hasEnabledPlatforms}
-                    platforms={visiblePlatforms}
                     isAdmin={isAdmin}
                     refreshingStage={refreshingStage}
                     viewer={
@@ -988,18 +1012,14 @@ export default function Reports() {
                           }
                         : null
                     }
+                    highlights={reportHighlights}
                     stageCompactHero={isStageMode}
                     copy={{
                       heroStage: t.reportsPage.heroStage,
                       platformReport: t.reportsPage.platformReport,
-                      clickToView: t.reportsPage.clickToView,
                       noEnabledPlatforms: t.reportsPage.noEnabledPlatforms,
                       stagePlaying: t.reportsPage.stagePlaying,
                       stagePaused: t.reportsPage.stagePaused,
-                      tipPlatformCount: t.reportsPage.tipPlatformCount,
-                      tipPlatformCountSub: t.reportsPage.tipPlatformCountSub,
-                      tipReportReady: t.reportsPage.tipReportReady,
-                      tipReportReadySub: t.reportsPage.tipReportReadySub,
                       tipNoReports: t.reportsPage.tipNoReports,
                       tipNoReportsSub: t.reportsPage.tipNoReportsSub,
                     }}

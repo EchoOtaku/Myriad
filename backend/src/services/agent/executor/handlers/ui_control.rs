@@ -4,6 +4,7 @@
 //! HTML/JS 解析、路由/窗口/音乐纯规则见 [`crate::services::agent::ui_analysis`]。
 
 use super::HandlerContext;
+use crate::services::agent::ai_process_pure::USER_TEXT_MAX_CHARS;
 use crate::models::entities::{tapp_scheduled_tasks, tapp_task_executions, tapp_widgets, tapps};
 use crate::services::agent::ui_analysis::{
     build_breadcrumb, build_navigate_full_path, detect_page_type, extract_json_from_response,
@@ -43,7 +44,7 @@ pub async fn execute(
         "router.state" => execute_router_state(params).await,
         "page.interact" => execute_page_interact(params).await,
         "page.understand" => execute_page_understand(params, ctx).await,
-        "page.content" => execute_page_content(params).await,
+        "page.content" => execute_page_content(params, ctx).await,
         "music.control" => execute_music_control(params).await,
         "music.status" => execute_music_status().await,
         "music.playlist" => execute_music_playlist(params).await,
@@ -1025,7 +1026,7 @@ async fn execute_page_understand(
 
     if let Some(analyzer) = ctx.ai_analyzer {
         let context_str = serde_json::to_string_pretty(&page_context).unwrap_or_default();
-        let truncated_context: String = context_str.chars().take(4000).collect();
+        let truncated_context: String = context_str.chars().take(USER_TEXT_MAX_CHARS).collect();
 
         let prompt = format!(
             "你是一个页面交互分析助手。请分析当前页面上下文并理解用户意图，生成操作计划。\n\n\
@@ -1120,16 +1121,14 @@ async fn execute_music_control(params: &HashMap<String, Value>) -> Result<Value,
     }))
 }
 
-/// 获取音乐播放器状态
+/// 获取音乐播放器状态（状态只在浏览器；回 frontendAction 让前端探测）
 async fn execute_music_status() -> Result<Value, String> {
     let timestamp = chrono::Utc::now().timestamp_millis();
     Ok(json!({
-        "success": true,
         "frontendAction": {
             "type": "music_get_status",
             "timestamp": timestamp
-        },
-        "message": "请求获取播放器状态"
+        }
     }))
 }
 
@@ -1184,7 +1183,10 @@ async fn execute_music_playlist(params: &HashMap<String, Value>) -> Result<Value
 // 页面内容
 
 /// 读取当前页面内容
-async fn execute_page_content(params: &HashMap<String, Value>) -> Result<Value, String> {
+async fn execute_page_content(
+    params: &HashMap<String, Value>,
+    ctx: &HandlerContext<'_>,
+) -> Result<Value, String> {
     let current_path = params
         .get("currentPath")
         .and_then(|v| v.as_str())
@@ -1195,60 +1197,84 @@ async fn execute_page_content(params: &HashMap<String, Value>) -> Result<Value, 
         .unwrap_or_else(|| detect_page_type(current_path));
     let context = params.get("context").cloned().unwrap_or(json!({}));
 
+    if let Some(snapshot) = context
+        .get("content")
+        .or_else(|| context.get("html"))
+        .or_else(|| context.get("text"))
+        .filter(|v| match v {
+            Value::String(s) => !s.trim().is_empty(),
+            Value::Object(o) => !o.is_empty(),
+            Value::Array(a) => !a.is_empty(),
+            _ => false,
+        })
+    {
+        return Ok(json!({
+            "pageType": page_type,
+            "currentPath": current_path,
+            "content": snapshot,
+            "source": "snapshot"
+        }));
+    }
+
+    let route_ctx = extract_route_context(current_path, params);
     match page_type {
         "brew" => {
-            // 简化版：返回基础信息
-            Ok(json!({
-                "pageType": "brew",
-                "hierarchy": { "level": "list" },
-                "content": { "title": "Brew 订阅" },
-                "note": "详细内容请使用 brew.page 能力"
-            }))
+            let mut brew_params = HashMap::new();
+            if let Some(id) = context.get("sourceId").cloned().filter(|v| !v.is_null()) {
+                brew_params.insert("sourceId".into(), id);
+            }
+            if let Some(id) = context.get("itemId").cloned().filter(|v| !v.is_null()) {
+                brew_params.insert("itemId".into(), id);
+            }
+            if let Some(cat) = context.get("category").cloned().filter(|v| !v.is_null()) {
+                brew_params.insert("category".into(), cat);
+            }
+            let level = if brew_params.contains_key("itemId") {
+                "article"
+            } else if brew_params.contains_key("sourceId") {
+                "items"
+            } else {
+                "sources"
+            };
+            brew_params.insert("level".into(), json!(level));
+            super::data_read::execute("brew.page", &brew_params, ctx).await
+        }
+        "tapp" => {
+            let tapp_id = context
+                .get("tappId")
+                .or_else(|| params.get("tappId"))
+                .cloned()
+                .filter(|v| v.as_str().map(|s| !s.trim().is_empty()).unwrap_or(false));
+            let Some(tapp_id) = tapp_id else {
+                return Err(
+                    "page.content 读取 Tapp 页需要 context.tappId，或由前端提供 content 快照"
+                        .to_string(),
+                );
+            };
+            let mut tapp_params = HashMap::new();
+            tapp_params.insert("tappId".into(), tapp_id);
+            super::data_read::execute("tapp.page", &tapp_params, ctx).await
         }
         "platform" => {
             let platform = context
                 .get("platform")
-                .and_then(|v| v.as_str())
-                .unwrap_or("steam");
-            let item_id = context.get("itemId").and_then(|v| v.as_str());
-
-            if let Some(id) = item_id {
-                Ok(json!({
-                    "pageType": "platform",
-                    "hierarchy": {
-                        "level": "detail",
-                        "parent": { "platform": platform },
-                        "current": { "itemId": id }
-                    },
-                    "content": {
-                        "title": format!("{} 详情", platform),
-                        "detail": { "id": id, "platform": platform }
-                    },
-                    "navigation": {
-                        "canGoBack": true,
-                        "parentPath": format!("/platform/{}", platform)
-                    }
-                }))
-            } else {
-                Ok(json!({
-                    "pageType": "platform",
-                    "hierarchy": { "level": "list", "platform": platform },
-                    "content": { "title": format!("{} 列表", platform) },
-                    "navigation": { "canGoBack": true }
-                }))
-            }
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .or_else(|| route_ctx.get("platform").and_then(Value::as_str));
+            let Some(platform) = platform else {
+                return Err(
+                    "page.content 读取平台页需要 context.platform，或由前端提供 content 快照"
+                        .to_string(),
+                );
+            };
+            let mut platform_params = HashMap::new();
+            platform_params.insert("platform".into(), json!(platform));
+            super::data_read::execute("platform.read", &platform_params, ctx).await
         }
-        "tapp" => Ok(json!({
-            "pageType": "tapp",
-            "hierarchy": { "level": "apps" },
-            "content": { "title": "Tapp 应用" },
-            "note": "详细内容请使用 tapp.page 能力"
-        })),
-        _ => Ok(json!({
-            "pageType": page_type,
-            "currentPath": current_path,
-            "content": { "title": "页面内容" },
-            "navigation": { "canGoBack": true }
-        })),
+        "report" => super::data_read::execute("report.list", params, ctx).await,
+        _ => Err(format!(
+            "无法读取页面内容：pageType={page_type} 没有对应的数据能力，且未提供 context 快照"
+        )),
     }
 }
