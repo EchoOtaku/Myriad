@@ -52,14 +52,14 @@ Page/Widget 模板必须是 `.html`；代码与模板类声明资源必须是安
 ```json
 {
   "category": "game",
-  "permissions": ["game:session", "federation:read", "federation:write", "federation:message"],
+  "permissions": ["game:session", "federation:read", "federation:room", "federation:message"],
   "game": { "protocol": "gomoku", "maxPlayers": 2 },
   "runtimeModules": ["three"]
 }
 ```
 
 - `game.protocol`：小写 `[a-z0-9._-]`，会组成房间消息类型 `game:<tappId>:<protocol>`。
-- 声明 `game` 时必须同时申请 `game:session` 与 `federation:read` / `federation:write` / `federation:message`。
+- 声明 `game` 时必须同时申请 `game:session` 与 `federation:read` / `federation:room` / `federation:message`。
 - `runtimeModules` 目前只允许 `three`，且仅 game / developer 分类。宿主注入钉死版本，不走 CDN。
 - `Tapp.game.create()` 默认不公开。同一实例可用 `room_id@home_server` 加入；跨实例私房必须邀请（邀请会带上 `game` 配置），跨实例自助加入要 `{ isPublic: true }`。
 - 发送/入站只接受该房间绑定的 `game:<tappId>:<protocol>`；`seq` / `nonce` 由对局自己去重。
@@ -971,7 +971,8 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 | `media:audio`        | 播放包内/blob/data 音频 |
 | `event:subscribe`    | 订阅声明的 topic |
 | `federation:read`    | 读取联邦数据     |
-| `federation:write`   | 联邦个人操作     |
+| `federation:interact` | 关注/取关、点赞、收藏、转发（announce）（需持久登录主体） |
+| `federation:ring`    | Ring 成员管理与 peer/同步操作（需持久登录主体） |
 | `federation:message` | 联邦消息         |
 | `federation:files`   | 联邦文件传输     |
 | `game:session`       | 游戏房间会话（`Tapp.game`；仍需对应联邦权限） |
@@ -992,6 +993,9 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 | `speech:tts`         | 文本转语音        |
 | `speech:asr`         | 语音转文本        |
 | `storage:write`      | 写入本地数据存储  |
+| `federation:post`    | 发布/取消发布、创建 Note、上传媒体、密钥轮换与对外投递管理 |
+| `federation:channel` | 创建/接受/关闭/删除频道及频道 E2E 密钥协商 |
+| `federation:room`    | 创建/更新/删除/加入/邀请/治理房间、E2E 密钥、贴纸与置顶 |
 | `brew:commentWrite`  | 创建/编辑/删除 Brew 评论与回复 |
 
 `brew:write` 描述的是 Tapp 能力，不按宿主用户角色下放。Tapp 仍必须在 Manifest 中声明并在
@@ -1001,7 +1005,8 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 “基础”表示不需要管理员额外下放 elevated 权限，不等于匿名访客一定可用。访客没有持久
 用户主体时，部分能力仍可通过签名游客 session 使用（如 `storage:read`、`platform:read`、
 `analytics:read`）。下列能力的真实后端路由仍要求登录：`brew:write`、
-`brew:commentWrite`、`report:read`、`ui:notification` 等。
+`brew:commentWrite`、`report:read`、`ui:notification`、`federation:interact`、
+`federation:ring` 等。
 
 评论读取（`getComments`/`getReplies`）并入 `brew:read`；评论写入（创建/编辑/删除）使用
 `brew:commentWrite`。

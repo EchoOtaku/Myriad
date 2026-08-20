@@ -93,6 +93,9 @@ pub struct UpdatePermissionsPayload {
     pub user_perm_speech_tts: Option<bool>,
     pub user_perm_speech_asr: Option<bool>,
     pub user_perm_storage_write: Option<bool>,
+    pub user_perm_federation_post: Option<bool>,
+    pub user_perm_federation_channel: Option<bool>,
+    pub user_perm_federation_room: Option<bool>,
     /// brew:commentWrite - 写 Brew 评论（Elevated，需登录主体）
     pub user_perm_brew_comment_write: Option<bool>,
     // 游客 elevated 配置；认证绑定字段仅为兼容旧请求，实际强制关闭
@@ -104,6 +107,12 @@ pub struct UpdatePermissionsPayload {
     pub guest_perm_media_control: Option<bool>,
     pub guest_perm_event_publish: Option<bool>,
     pub guest_perm_storage_write: Option<bool>,
+    #[allow(dead_code)] // accepted for compatibility; federation writes need a durable subject
+    pub guest_perm_federation_post: Option<bool>,
+    #[allow(dead_code)] // accepted for compatibility; federation writes need a durable subject
+    pub guest_perm_federation_channel: Option<bool>,
+    #[allow(dead_code)] // accepted for compatibility; federation writes need a durable subject
+    pub guest_perm_federation_room: Option<bool>,
     #[allow(dead_code)] // accepted for compatibility; update endpoint forces false
     pub guest_perm_brew_comment_write: Option<bool>,
     // AI 使用限额配置
@@ -126,6 +135,12 @@ mod tapp_permission_payload_tests {
             "user_perm_speech_asr": false,
             "user_perm_storage_write": true,
             "guest_perm_storage_write": false,
+            "user_perm_federation_post": true,
+            "user_perm_federation_channel": false,
+            "user_perm_federation_room": true,
+            "guest_perm_federation_post": true,
+            "guest_perm_federation_channel": true,
+            "guest_perm_federation_room": false,
             "user_perm_brew_comment_write": true,
             "guest_perm_brew_comment_write": false
         }))
@@ -135,6 +150,12 @@ mod tapp_permission_payload_tests {
         assert_eq!(payload.user_perm_speech_asr, Some(false));
         assert_eq!(payload.user_perm_storage_write, Some(true));
         assert_eq!(payload.guest_perm_storage_write, Some(false));
+        assert_eq!(payload.user_perm_federation_post, Some(true));
+        assert_eq!(payload.user_perm_federation_channel, Some(false));
+        assert_eq!(payload.user_perm_federation_room, Some(true));
+        assert_eq!(payload.guest_perm_federation_post, Some(true));
+        assert_eq!(payload.guest_perm_federation_channel, Some(true));
+        assert_eq!(payload.guest_perm_federation_room, Some(false));
         assert_eq!(payload.user_perm_brew_comment_write, Some(true));
         assert_eq!(payload.guest_perm_brew_comment_write, Some(false));
     }
@@ -197,6 +218,15 @@ pub async fn update_permissions(
     if let Some(v) = payload.user_perm_storage_write {
         updates.insert("user_perm_storage_write".to_string(), json!(v));
     }
+    if let Some(v) = payload.user_perm_federation_post {
+        updates.insert("user_perm_federation_post".to_string(), json!(v));
+    }
+    if let Some(v) = payload.user_perm_federation_channel {
+        updates.insert("user_perm_federation_channel".to_string(), json!(v));
+    }
+    if let Some(v) = payload.user_perm_federation_room {
+        updates.insert("user_perm_federation_room".to_string(), json!(v));
+    }
     if let Some(v) = payload.user_perm_brew_comment_write {
         updates.insert("user_perm_brew_comment_write".to_string(), json!(v));
     }
@@ -235,6 +265,11 @@ pub async fn update_permissions(
     if let Some(v) = payload.guest_perm_storage_write {
         updates.insert("guest_perm_storage_write".to_string(), json!(v));
     }
+    // federation 写路由全部要求持久登录主体（AuthedClaims）：游客下放配置
+    // 接受但强制写入 false，与 component:theme 等认证绑定能力一致。
+    updates.insert("guest_perm_federation_post".to_string(), json!(false));
+    updates.insert("guest_perm_federation_channel".to_string(), json!(false));
+    updates.insert("guest_perm_federation_room".to_string(), json!(false));
 
     // AI 使用限额配置
     if let Some(v) = payload.user_ai_daily_calls {

@@ -439,14 +439,18 @@ mod tests {
     }
 
     #[test]
-    fn federation_keys_rotate_and_cancel_pending_are_write() {
+    fn federation_keys_rotate_and_cancel_pending_are_post() {
+        // rotateKeys: 覆盖本地签名密钥并向 followers fan-out Update(Person)，
+        // 是「外部可见广播」的持久副作用 → federation:post。
         assert_eq!(
             federation_permission("POST", "/api/federation/keys/rotate"),
-            Some(TappPermission::FederationWrite)
+            Some(TappPermission::FederationPost)
         );
+        // delivery 管理：只改本用户投递队列状态，但直接影响外部可见广播是否
+        // 送达（retry/cancel/dismiss/purge）→ federation:post。
         assert_eq!(
             federation_permission("POST", "/api/federation/delivery/cancel-pending"),
-            Some(TappPermission::FederationWrite)
+            Some(TappPermission::FederationPost)
         );
         assert_eq!(
             federation_permission("GET", "/api/federation/delivery/stats"),
@@ -458,23 +462,23 @@ mod tests {
         );
         assert_eq!(
             federation_permission("POST", "/api/federation/delivery/retry-dead"),
-            Some(TappPermission::FederationWrite)
+            Some(TappPermission::FederationPost)
         );
         assert_eq!(
             federation_permission("POST", "/api/federation/delivery/{id}/retry"),
-            Some(TappPermission::FederationWrite)
+            Some(TappPermission::FederationPost)
         );
         assert_eq!(
             federation_permission("POST", "/api/federation/delivery/{id}/cancel"),
-            Some(TappPermission::FederationWrite)
+            Some(TappPermission::FederationPost)
         );
         assert_eq!(
             federation_permission("DELETE", "/api/federation/delivery/{id}"),
-            Some(TappPermission::FederationWrite)
+            Some(TappPermission::FederationPost)
         );
         assert_eq!(
             federation_permission("POST", "/api/federation/delivery/purge-dead"),
-            Some(TappPermission::FederationWrite)
+            Some(TappPermission::FederationPost)
         );
         assert_eq!(
             federation_permission("GET", "/api/federation/identity"),
@@ -493,7 +497,7 @@ mod tests {
                 "POST",
                 "/api/federation/rooms/{room_id}/messages/{message_id}/pin"
             ),
-            Some(TappPermission::FederationWrite)
+            Some(TappPermission::FederationRoom)
         );
         assert_eq!(
             federation_permission("POST", "/api/federation/channels/{channel_id}/messages"),
@@ -536,7 +540,7 @@ mod tests {
                 "POST",
                 "/api/federation/rooms/{room_id}/e2e/key-exchange"
             ),
-            Some(TappPermission::FederationWrite)
+            Some(TappPermission::FederationRoom)
         );
         assert_eq!(
             federation_permission("DELETE", "/api/federation/timeline"),
@@ -557,6 +561,117 @@ mod tests {
     }
 
     #[test]
+    fn federation_write_routes_are_bound_to_action_domains() {
+        // 跨域归属（handoff 映射表）：每条写路由只绑定一个动作域权限。
+        // Basic 域（interact/ring）路由绝不绑定 Elevated 权限，反之亦然。
+        // interact 域
+        assert_eq!(
+            federation_permission("POST", "/api/federation/follow"),
+            Some(TappPermission::FederationInteract)
+        );
+        assert_eq!(
+            federation_permission("POST", "/api/federation/unfollow"),
+            Some(TappPermission::FederationInteract)
+        );
+        assert_eq!(
+            federation_permission("POST", "/api/federation/like"),
+            Some(TappPermission::FederationInteract)
+        );
+        assert_eq!(
+            federation_permission("POST", "/api/federation/announce"),
+            Some(TappPermission::FederationInteract)
+        );
+        // post 域
+        assert_eq!(
+            federation_permission("POST", "/api/federation/publish"),
+            Some(TappPermission::FederationPost)
+        );
+        assert_eq!(
+            federation_permission("POST", "/api/federation/notes"),
+            Some(TappPermission::FederationPost)
+        );
+        assert_eq!(
+            federation_permission("POST", "/api/federation/media"),
+            Some(TappPermission::FederationPost)
+        );
+        // channel 域
+        assert_eq!(
+            federation_permission("POST", "/api/federation/channels"),
+            Some(TappPermission::FederationChannel)
+        );
+        assert_eq!(
+            federation_permission("POST", "/api/federation/channels/{channel_id}/accept"),
+            Some(TappPermission::FederationChannel)
+        );
+        // room 域
+        assert_eq!(
+            federation_permission("POST", "/api/federation/rooms/{room_id}/invite"),
+            Some(TappPermission::FederationRoom)
+        );
+        assert_eq!(
+            federation_permission("PUT", "/api/federation/rooms/{room_id}"),
+            Some(TappPermission::FederationRoom)
+        );
+        // room sticker 路由与 action addRoomSticker/removeRoomSticker 同域
+        // （federation:room）：host route 与 action fixture 必须 lockstep。
+        assert_eq!(
+            federation_permission("POST", "/api/federation/rooms/{room_id}/stickers"),
+            Some(TappPermission::FederationRoom)
+        );
+        assert_eq!(
+            federation_permission(
+                "DELETE",
+                "/api/federation/rooms/{room_id}/stickers/{sticker_id}"
+            ),
+            Some(TappPermission::FederationRoom)
+        );
+        // ring 域
+        assert_eq!(
+            federation_permission("POST", "/api/federation/rings"),
+            Some(TappPermission::FederationRing)
+        );
+        assert_eq!(
+            federation_permission("POST", "/api/federation/rings/{ring_id}/sync"),
+            Some(TappPermission::FederationRing)
+        );
+
+        // 跨域负例：Elevated 路由不能落在 Basic 域权限上。
+        for (method, path) in [
+            ("POST", "/api/federation/publish"),
+            ("POST", "/api/federation/notes"),
+            ("POST", "/api/federation/channels"),
+            ("POST", "/api/federation/rooms"),
+        ] {
+            let permission = federation_permission(method, path).unwrap();
+            assert!(
+                !matches!(
+                    permission,
+                    TappPermission::FederationInteract | TappPermission::FederationRing
+                ),
+                "{method} {path} must not resolve to a Basic federation domain"
+            );
+        }
+        // 跨域负例：Basic 域路由不能落在 Elevated 权限上。
+        for (method, path) in [
+            ("POST", "/api/federation/follow"),
+            ("POST", "/api/federation/bookmark"),
+            ("POST", "/api/federation/rings"),
+            ("POST", "/api/federation/rings/{ring_id}/peers"),
+        ] {
+            let permission = federation_permission(method, path).unwrap();
+            assert!(
+                !matches!(
+                    permission,
+                    TappPermission::FederationPost
+                        | TappPermission::FederationChannel
+                        | TappPermission::FederationRoom
+                ),
+                "{method} {path} must not resolve to an Elevated federation domain"
+            );
+        }
+    }
+
+    #[test]
     fn host_write_methods_are_rate_limited_by_permission_class() {
         assert_eq!(
             host_attribution_rate_limit_operation("POST", TappPermission::BrewWrite),
@@ -569,6 +684,26 @@ mod tests {
         assert_eq!(
             host_attribution_rate_limit_operation("DELETE", TappPermission::BrewCommentWrite),
             Some("brew.commentWrite")
+        );
+        assert_eq!(
+            host_attribution_rate_limit_operation("POST", TappPermission::FederationPost),
+            Some("federation.post")
+        );
+        assert_eq!(
+            host_attribution_rate_limit_operation("POST", TappPermission::FederationInteract),
+            Some("federation.interact")
+        );
+        assert_eq!(
+            host_attribution_rate_limit_operation("POST", TappPermission::FederationChannel),
+            Some("federation.channel")
+        );
+        assert_eq!(
+            host_attribution_rate_limit_operation("POST", TappPermission::FederationRoom),
+            Some("federation.room")
+        );
+        assert_eq!(
+            host_attribution_rate_limit_operation("POST", TappPermission::FederationRing),
+            Some("federation.ring")
         );
         assert_eq!(
             host_attribution_rate_limit_operation("POST", TappPermission::FederationMessage),
@@ -603,7 +738,7 @@ mod tests {
             None
         );
         assert_eq!(
-            host_attribution_rate_limit_operation("OPTIONS", TappPermission::FederationWrite),
+            host_attribution_rate_limit_operation("OPTIONS", TappPermission::FederationPost),
             None
         );
         // Case-insensitive method matching.

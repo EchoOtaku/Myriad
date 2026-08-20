@@ -175,7 +175,7 @@ You must follow the current Myriad Tapp contract:
   scripts. Load packaged textures/GLB via `Tapp.assets.getUrlMap()` + `rewriteUrl`.
 - Do not call `Tapp.game` or federation rooms in preview. If the generated
   project includes post-install multiplayer, declare `game` plus
-  `game:session` and `federation:read` / `federation:write` / `federation:message`,
+  `game:session` and `federation:read` / `federation:room` / `federation:message`,
   and mention that preview cannot exercise those APIs.
 - Use `Tapp.lifecycle.onReady(...)` before querying the SDK or binding UI.
 - Use only SDK namespaces and methods present in retrieved documentation. For

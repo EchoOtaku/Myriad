@@ -910,6 +910,21 @@ impl ConfigService {
                 config.user_perm_storage_write = b;
             }
         }
+        if let Some(v) = map.get("user_perm_federation_post") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_federation_post = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_federation_channel") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_federation_channel = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_federation_room") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_federation_room = b;
+            }
+        }
         if let Some(v) = map.get("user_perm_brew_comment_write") {
             if let Some(b) = v.as_bool() {
                 config.user_perm_brew_comment_write = b;
@@ -985,6 +1000,21 @@ impl ConfigService {
         if let Some(v) = map.get("guest_perm_storage_write") {
             if let Some(b) = v.as_bool() {
                 config.guest_perm_storage_write = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_federation_post") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_federation_post = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_federation_channel") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_federation_channel = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_federation_room") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_federation_room = b;
             }
         }
         if let Some(v) = map.get("guest_perm_brew_comment_write") {

@@ -21,13 +21,15 @@
 //! - report:read (authenticated), storage:read (guest-safe)
 //! - ui:notification (authenticated), ui:fullscreen, ui:theme, ui:confirm, ui:openUrl
 //! - media:read, media:control, media:audio, event:subscribe
-//! - federation:read, federation:write, federation:message, federation:files
+//! - federation:read, federation:message, federation:files
+//! - federation:interact (authenticated), federation:ring (authenticated)
 //!
 //! ### Elevated - 可配置下放
 //! - ai:generate, ai:analyze, ai:chat, ai:image
 //! - network:fetch, component:theme (authenticated)
 //! - shortcut:register (authenticated), event:publish
 //! - scheduler:register, speech:tts, speech:asr (all authenticated)
+//! - federation:post, federation:channel, federation:room
 //! - brew:commentWrite (authenticated)
 //!
 //! ### Privileged - 仅管理员
@@ -47,6 +49,9 @@ pub(crate) fn tapp_permission_replacement_hint(permission: &str) -> Option<&'sta
     match permission {
         "storage" => Some(
             "use 'storage:read' or 'storage:write' instead; update the TAPP Manifest, then update or reinstall the app",
+        ),
+        "federation:write" => Some(
+            "use 'federation:post', 'federation:interact', 'federation:channel', 'federation:room', or 'federation:ring' instead; update the TAPP Manifest, then update or reinstall the app",
         ),
         "brew:comment" => Some(
             "use 'brew:read' (read comments) or 'brew:commentWrite' (write comments) instead",
@@ -166,14 +171,35 @@ pub enum TappPermission {
     EventSubscribe,
     #[serde(rename = "federation:read")]
     FederationRead,
-    #[serde(rename = "federation:write")]
-    FederationWrite,
     #[serde(rename = "federation:message")]
     FederationMessage,
     #[serde(rename = "federation:files")]
     FederationFiles,
     #[serde(rename = "game:session")]
     GameSession,
+
+    // Basic 级别（拆分自 federation:write，ADR 0013 / 0020）
+    /// follow/unfollow, like/unlike, bookmark/unbookmark, announce/unannounce.
+    /// Basic 但要求持久登录主体（游客无身份可绑定互动）。
+    #[serde(rename = "federation:interact")]
+    FederationInteract,
+    /// Ring membership and peer/sync operations. Basic 但同样要求持久登录主体。
+    #[serde(rename = "federation:ring")]
+    FederationRing,
+
+    // Elevated 级别（拆分自 federation:write，ADR 0013 / 0020）
+    /// Publish/unpublish, create notes, uploads and other actions that create
+    /// externally visible posts; includes signing-key rotation and outbound
+    /// delivery-queue management (both change what peers receive).
+    #[serde(rename = "federation:post")]
+    FederationPost,
+    /// Create, accept, close, delete, key setup and governance for Channels.
+    #[serde(rename = "federation:channel")]
+    FederationChannel,
+    /// Create/update/delete/join/invite/governance/key/sticker/pin operations
+    /// for Rooms.
+    #[serde(rename = "federation:room")]
+    FederationRoom,
 
     // Elevated 级别
     #[serde(rename = "ai:generate")]
@@ -246,6 +272,8 @@ impl TappPermission {
                 | TappPermission::SchedulerRegister
                 | TappPermission::SpeechTts
                 | TappPermission::SpeechAsr
+                | TappPermission::FederationInteract
+                | TappPermission::FederationRing
         )
     }
 
@@ -270,7 +298,8 @@ impl TappPermission {
             | TappPermission::MediaControl
             | TappPermission::EventSubscribe
             | TappPermission::FederationRead
-            | TappPermission::FederationWrite
+            | TappPermission::FederationInteract
+            | TappPermission::FederationRing
             | TappPermission::FederationMessage
             | TappPermission::FederationFiles
             | TappPermission::GameSession => PermissionLevel::Basic,
@@ -288,6 +317,9 @@ impl TappPermission {
             | TappPermission::SpeechTts
             | TappPermission::SpeechAsr => PermissionLevel::Elevated,
             TappPermission::StorageWrite => PermissionLevel::Elevated,
+            TappPermission::FederationPost
+            | TappPermission::FederationChannel
+            | TappPermission::FederationRoom => PermissionLevel::Elevated,
             TappPermission::BrewCommentWrite => PermissionLevel::Elevated,
 
             // Privileged
@@ -343,7 +375,11 @@ impl TappPermission {
             TappPermission::SpeechTts => "文本转语音",
             TappPermission::SpeechAsr => "语音转文本",
             TappPermission::FederationRead => "读取联邦数据",
-            TappPermission::FederationWrite => "联邦个人操作",
+            TappPermission::FederationPost => "发布联邦内容",
+            TappPermission::FederationInteract => "联邦互动",
+            TappPermission::FederationChannel => "频道管理",
+            TappPermission::FederationRoom => "房间管理",
+            TappPermission::FederationRing => "Ring 管理",
             TappPermission::FederationMessage => "联邦消息",
             TappPermission::FederationFiles => "联邦文件传输",
             TappPermission::FederationTrust => "联邦信任管理",
@@ -366,6 +402,9 @@ impl TappPermission {
             TappPermission::SpeechTts,
             TappPermission::SpeechAsr,
             TappPermission::StorageWrite,
+            TappPermission::FederationPost,
+            TappPermission::FederationChannel,
+            TappPermission::FederationRoom,
             TappPermission::BrewCommentWrite,
         ]
     }
@@ -410,7 +449,11 @@ impl TappPermission {
             "storage:write" => Some(TappPermission::StorageWrite),
             "brew:commentWrite" => Some(TappPermission::BrewCommentWrite),
             "federation:read" => Some(TappPermission::FederationRead),
-            "federation:write" => Some(TappPermission::FederationWrite),
+            "federation:post" => Some(TappPermission::FederationPost),
+            "federation:interact" => Some(TappPermission::FederationInteract),
+            "federation:channel" => Some(TappPermission::FederationChannel),
+            "federation:room" => Some(TappPermission::FederationRoom),
+            "federation:ring" => Some(TappPermission::FederationRing),
             "federation:message" => Some(TappPermission::FederationMessage),
             "federation:files" => Some(TappPermission::FederationFiles),
             "federation:trust" => Some(TappPermission::FederationTrust),
@@ -459,7 +502,11 @@ impl TappPermission {
             TappPermission::SpeechTts => "speech:tts",
             TappPermission::SpeechAsr => "speech:asr",
             TappPermission::FederationRead => "federation:read",
-            TappPermission::FederationWrite => "federation:write",
+            TappPermission::FederationPost => "federation:post",
+            TappPermission::FederationInteract => "federation:interact",
+            TappPermission::FederationChannel => "federation:channel",
+            TappPermission::FederationRoom => "federation:room",
+            TappPermission::FederationRing => "federation:ring",
             TappPermission::FederationMessage => "federation:message",
             TappPermission::FederationFiles => "federation:files",
             TappPermission::FederationTrust => "federation:trust",
@@ -519,11 +566,15 @@ impl TappPermissionService {
         }
 
         // 游客的 federation 能力严格只读：可以读取经过内容级过滤的公开
-        // Feed，但不能关注、发布、通信或传输文件。
+        // Feed，但不能发布/治理/通信或传输文件。federation:interact 与
+        // federation:ring 虽为 Basic，但要求持久登录主体（见
+        // requires_authenticated_subject），游客同样拿不到。
         if role == UserRole::Guest
             && matches!(
                 permission,
-                TappPermission::FederationWrite
+                TappPermission::FederationPost
+                    | TappPermission::FederationChannel
+                    | TappPermission::FederationRoom
                     | TappPermission::FederationMessage
                     | TappPermission::FederationFiles
                     | TappPermission::GameSession
@@ -565,6 +616,9 @@ impl TappPermissionService {
             TappPermission::SpeechTts => config.user_perm_speech_tts,
             TappPermission::SpeechAsr => config.user_perm_speech_asr,
             TappPermission::StorageWrite => config.user_perm_storage_write,
+            TappPermission::FederationPost => config.user_perm_federation_post,
+            TappPermission::FederationChannel => config.user_perm_federation_channel,
+            TappPermission::FederationRoom => config.user_perm_federation_room,
             TappPermission::BrewCommentWrite => config.user_perm_brew_comment_write,
             _ => false,
         }
@@ -585,6 +639,11 @@ impl TappPermissionService {
             TappPermission::SpeechTts => false,
             TappPermission::SpeechAsr => false,
             TappPermission::StorageWrite => config.guest_perm_storage_write,
+            // federation 写域不向游客下放：guest 排除块在 check() 中先拦截，
+            // 这里即使配置为 true 也不会生效（写路由要求持久登录主体）。
+            TappPermission::FederationPost => false,
+            TappPermission::FederationChannel => false,
+            TappPermission::FederationRoom => false,
             TappPermission::BrewCommentWrite => config.guest_perm_brew_comment_write,
             _ => false,
         }
@@ -632,6 +691,9 @@ impl TappPermissionService {
                 speech_tts: config.user_perm_speech_tts,
                 speech_asr: config.user_perm_speech_asr,
                 storage_write: config.user_perm_storage_write,
+                federation_post: config.user_perm_federation_post,
+                federation_channel: config.user_perm_federation_channel,
+                federation_room: config.user_perm_federation_room,
                 brew_comment_write: config.user_perm_brew_comment_write,
             },
             guest: ElevatedPermissions {
@@ -653,6 +715,10 @@ impl TappPermissionService {
                 speech_tts: false,
                 speech_asr: false,
                 storage_write: config.guest_perm_storage_write,
+                // federation 写域不向游客下放：固定 false
+                federation_post: false,
+                federation_channel: false,
+                federation_room: false,
                 // brew:commentWrite 路由要求持久登录主体，游客一律关闭
                 brew_comment_write: false,
             },
@@ -713,6 +779,9 @@ pub struct ElevatedPermissions {
     pub speech_tts: bool,
     pub speech_asr: bool,
     pub storage_write: bool,
+    pub federation_post: bool,
+    pub federation_channel: bool,
+    pub federation_room: bool,
     /// brew:commentWrite - 写 Brew 评论（Elevated，需登录主体）
     pub brew_comment_write: bool,
 }
@@ -1164,7 +1233,11 @@ mod tests {
         let config = DynamicConfig::default();
         let requested = vec![
             "federation:read".to_string(),
-            "federation:write".to_string(),
+            "federation:post".to_string(),
+            "federation:interact".to_string(),
+            "federation:channel".to_string(),
+            "federation:room".to_string(),
+            "federation:ring".to_string(),
             "federation:message".to_string(),
             "federation:files".to_string(),
             "federation:trust".to_string(),
@@ -1174,11 +1247,14 @@ mod tests {
             TappPermissionService::filter_permissions_for_role(&config, UserRole::User, &requested)
                 .unwrap();
 
+        // post/channel/room 是 Elevated，默认不授予普通用户；interact/ring 是
+        // Basic 但要求持久登录主体（user 满足）。trust 是 Privileged。
         assert_eq!(
             granted,
             vec![
                 "federation:read",
-                "federation:write",
+                "federation:interact",
+                "federation:ring",
                 "federation:message",
                 "federation:files"
             ]
@@ -1190,7 +1266,11 @@ mod tests {
         let config = DynamicConfig::default();
         let requested = vec![
             "federation:read".to_string(),
-            "federation:write".to_string(),
+            "federation:post".to_string(),
+            "federation:interact".to_string(),
+            "federation:channel".to_string(),
+            "federation:room".to_string(),
+            "federation:ring".to_string(),
             "federation:message".to_string(),
             "federation:files".to_string(),
             "federation:trust".to_string(),
@@ -1203,6 +1283,8 @@ mod tests {
         )
         .unwrap();
 
+        // 游客严格只读：interact/ring 需持久登录主体；post/channel/room/message/
+        // files 被 guest 排除块拦截；trust 仅管理员。
         assert_eq!(granted, vec!["federation:read"]);
     }
 
@@ -1211,7 +1293,11 @@ mod tests {
         let config = DynamicConfig::default();
         let requested = vec![
             "federation:read".to_string(),
-            "federation:write".to_string(),
+            "federation:post".to_string(),
+            "federation:interact".to_string(),
+            "federation:channel".to_string(),
+            "federation:room".to_string(),
+            "federation:ring".to_string(),
             "federation:message".to_string(),
             "federation:files".to_string(),
             "federation:trust".to_string(),
@@ -1225,6 +1311,215 @@ mod tests {
         .unwrap();
 
         assert_eq!(granted, requested);
+    }
+
+    #[test]
+    fn federation_split_levels_and_delegation_defaults() {
+        let defaults = DynamicConfig::default();
+        // ADR 0020 定级：写类 Elevated，互动/ring Basic。
+        assert_eq!(TappPermission::FederationPost.level(), PermissionLevel::Elevated);
+        assert_eq!(
+            TappPermission::FederationChannel.level(),
+            PermissionLevel::Elevated
+        );
+        assert_eq!(TappPermission::FederationRoom.level(), PermissionLevel::Elevated);
+        assert_eq!(
+            TappPermission::FederationInteract.level(),
+            PermissionLevel::Basic
+        );
+        assert_eq!(TappPermission::FederationRing.level(), PermissionLevel::Basic);
+
+        // 旧 federation:write 已从枚举移除，无法解析。
+        assert!(TappPermission::from_str("federation:write").is_none());
+        assert!(TappPermission::from_str("federation:post").is_some());
+        assert!(TappPermission::from_str("federation:interact").is_some());
+        assert!(TappPermission::from_str("federation:channel").is_some());
+        assert!(TappPermission::from_str("federation:room").is_some());
+        assert!(TappPermission::from_str("federation:ring").is_some());
+
+        // 三个 Elevated 权限进入可配置下放集合。
+        let elevated = TappPermission::all_elevated();
+        assert!(elevated.contains(&TappPermission::FederationPost));
+        assert!(elevated.contains(&TappPermission::FederationChannel));
+        assert!(elevated.contains(&TappPermission::FederationRoom));
+        assert!(!elevated.contains(&TappPermission::FederationInteract));
+        assert!(!elevated.contains(&TappPermission::FederationRing));
+
+        // 默认全部关闭：普通用户拿不到写类。
+        assert!(!TappPermissionService::check(
+            &defaults,
+            UserRole::User,
+            TappPermission::FederationPost
+        ));
+        assert!(!TappPermissionService::check(
+            &defaults,
+            UserRole::User,
+            TappPermission::FederationChannel
+        ));
+        assert!(!TappPermissionService::check(
+            &defaults,
+            UserRole::User,
+            TappPermission::FederationRoom
+        ));
+        // Basic：普通用户默认持有 interact/ring。
+        assert!(TappPermissionService::check(
+            &defaults,
+            UserRole::User,
+            TappPermission::FederationInteract
+        ));
+        assert!(TappPermissionService::check(
+            &defaults,
+            UserRole::User,
+            TappPermission::FederationRing
+        ));
+
+        // 游客永不持有任何 federation 写类/互动权限（严格只读）。
+        for perm in [
+            TappPermission::FederationPost,
+            TappPermission::FederationInteract,
+            TappPermission::FederationChannel,
+            TappPermission::FederationRoom,
+            TappPermission::FederationRing,
+        ] {
+            assert!(!TappPermissionService::check(
+                &defaults,
+                UserRole::Guest,
+                perm
+            ));
+        }
+    }
+
+    #[test]
+    fn federation_elevated_delegation_grants_user_but_never_guest() {
+        let delegated = DynamicConfig {
+            user_perm_federation_post: true,
+            user_perm_federation_channel: true,
+            user_perm_federation_room: true,
+            guest_perm_federation_post: true, // 配置即使开启也无效
+            guest_perm_federation_channel: true,
+            guest_perm_federation_room: true,
+            ..DynamicConfig::default()
+        };
+        assert!(TappPermissionService::check(
+            &delegated,
+            UserRole::User,
+            TappPermission::FederationPost
+        ));
+        assert!(TappPermissionService::check(
+            &delegated,
+            UserRole::User,
+            TappPermission::FederationChannel
+        ));
+        assert!(TappPermissionService::check(
+            &delegated,
+            UserRole::User,
+            TappPermission::FederationRoom
+        ));
+        // 游客严格只读：下放配置被 guest 排除块拦截。
+        assert!(!TappPermissionService::check(
+            &delegated,
+            UserRole::Guest,
+            TappPermission::FederationPost
+        ));
+        assert!(!TappPermissionService::check(
+            &delegated,
+            UserRole::Guest,
+            TappPermission::FederationChannel
+        ));
+        assert!(!TappPermissionService::check(
+            &delegated,
+            UserRole::Guest,
+            TappPermission::FederationRoom
+        ));
+
+        // GET 摘要必须带回 user 侧下放值；游客侧固定 false，避免前端 ?? false 把已开开关写回。
+        let effective = TappPermissionService::get_permission_config(&delegated);
+        assert!(effective.user.federation_post);
+        assert!(effective.user.federation_channel);
+        assert!(effective.user.federation_room);
+        assert!(!effective.guest.federation_post);
+        assert!(!effective.guest.federation_channel);
+        assert!(!effective.guest.federation_room);
+    }
+
+    #[test]
+    fn federation_basic_grants_cannot_reach_elevated_domains() {
+        // 跨域拒绝：一个只声明了 Basic 域（interact/ring）的 manifest，在
+        // 过滤后绝不能包含 Elevated 域（post/channel/room）的能力。
+        let config = DynamicConfig::default();
+        let requested = vec![
+            "federation:interact".to_string(),
+            "federation:ring".to_string(),
+            "federation:post".to_string(),
+            "federation:channel".to_string(),
+            "federation:room".to_string(),
+        ];
+
+        let granted =
+            TappPermissionService::filter_permissions_for_role(&config, UserRole::User, &requested)
+                .unwrap();
+        assert!(granted.contains(&"federation:interact".to_string()));
+        assert!(granted.contains(&"federation:ring".to_string()));
+        assert!(!granted.contains(&"federation:post".to_string()));
+        assert!(!granted.contains(&"federation:channel".to_string()));
+        assert!(!granted.contains(&"federation:room".to_string()));
+
+        // 反向：授予 Elevated 域也不隐含 Basic 互动能力之外的内容；
+        // post/channel/room 之间互不越权。
+        let elevated_config = DynamicConfig {
+            user_perm_federation_post: true,
+            user_perm_federation_channel: true,
+            user_perm_federation_room: true,
+            ..DynamicConfig::default()
+        };
+        let requested_elevated = vec![
+            "federation:post".to_string(),
+            "federation:channel".to_string(),
+            "federation:room".to_string(),
+        ];
+        let granted_elevated = TappPermissionService::filter_permissions_for_role(
+            &elevated_config,
+            UserRole::User,
+            &requested_elevated,
+        )
+        .unwrap();
+        assert_eq!(
+            granted_elevated,
+            vec![
+                "federation:post".to_string(),
+                "federation:channel".to_string(),
+                "federation:room".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_federation_write_fails_explicitly_with_replacements() {
+        let requested = vec![
+            "federation:read".to_string(),
+            "federation:write".to_string(),
+            "federation:message".to_string(),
+        ];
+
+        let error = TappPermissionService::filter_permissions_for_role(
+            &DynamicConfig::default(),
+            UserRole::Admin,
+            &requested,
+        )
+        .unwrap_err();
+
+        assert_eq!(error.permission, "federation:write");
+        assert_eq!(error.code(), UNKNOWN_TAPP_PERMISSION_CODE);
+        let message = error.message();
+        for replacement in [
+            "federation:post",
+            "federation:interact",
+            "federation:channel",
+            "federation:room",
+            "federation:ring",
+        ] {
+            assert!(message.contains(replacement), "{message}");
+        }
     }
 
     #[test]

@@ -38,6 +38,10 @@ const GUEST_AUTHENTICATED_PERMISSION_KEYS = new Set([
   'scheduler_register',
   'speech_tts',
   'speech_asr',
+  // federation 写域全部要求持久登录主体（AuthedClaims），游客下放无意义
+  'federation_post',
+  'federation_channel',
+  'federation_room',
   'brew_comment_write',
 ])
 export type AgentPermissionPreset = 'none' | 'chat' | 'standard' | 'elevated'
@@ -117,6 +121,9 @@ export interface PermissionConfigValues extends Record<
   user_perm_speech_tts: boolean
   user_perm_speech_asr: boolean
   user_perm_storage_write: boolean
+  user_perm_federation_post: boolean
+  user_perm_federation_channel: boolean
+  user_perm_federation_room: boolean
   user_perm_brew_comment_write: boolean
   // 游客权限
   guest_perm_ai_generate: boolean
@@ -132,6 +139,9 @@ export interface PermissionConfigValues extends Record<
   guest_perm_speech_tts: boolean
   guest_perm_speech_asr: boolean
   guest_perm_storage_write: boolean
+  guest_perm_federation_post: boolean
+  guest_perm_federation_channel: boolean
+  guest_perm_federation_room: boolean
   guest_perm_brew_comment_write: boolean
   // AI 配额
   user_ai_daily_calls: number
@@ -214,6 +224,25 @@ export const PermissionsConfigSection: React.FC<
       code: 'storage:write',
       label: t.config.permStorageWrite,
       hint: t.config.permStorageWriteHint,
+    },
+    // 联邦（拆分自 federation:write；游客不展示，见 GUEST_AUTHENTICATED_PERMISSION_KEYS）
+    {
+      key: 'federation_post',
+      code: 'federation:post',
+      label: t.tapp.permPostFederation,
+      hint: t.tapp.permPostFederationDesc,
+    },
+    {
+      key: 'federation_channel',
+      code: 'federation:channel',
+      label: t.tapp.permChannelFederation,
+      hint: t.tapp.permChannelFederationDesc,
+    },
+    {
+      key: 'federation_room',
+      code: 'federation:room',
+      label: t.tapp.permRoomFederation,
+      hint: t.tapp.permRoomFederationDesc,
     },
     {
       key: 'brew_comment_write',

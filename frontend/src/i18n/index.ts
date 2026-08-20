@@ -2758,7 +2758,11 @@ export interface TranslationKeys {
     permCommentWriteBrew: string
     permManageBrew: string
     permReadFederation: string
-    permWriteFederation: string
+    permPostFederation: string
+    permInteractFederation: string
+    permChannelFederation: string
+    permRoomFederation: string
+    permRingFederation: string
     permMessageFederation: string
     permTrustFederation: string
     permFederationFiles: string
@@ -2802,7 +2806,11 @@ export interface TranslationKeys {
     permCommentWriteBrewDesc: string
     permManageBrewDesc: string
     permReadFederationDesc: string
-    permWriteFederationDesc: string
+    permPostFederationDesc: string
+    permInteractFederationDesc: string
+    permChannelFederationDesc: string
+    permRoomFederationDesc: string
+    permRingFederationDesc: string
     permMessageFederationDesc: string
     permTrustFederationDesc: string
     permFederationFilesDesc: string

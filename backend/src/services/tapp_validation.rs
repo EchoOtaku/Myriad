@@ -724,7 +724,7 @@ pub fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
         {
             return Err("Tapp game requires the game:session permission".to_string());
         }
-        for required in ["federation:read", "federation:write", "federation:message"] {
+        for required in ["federation:read", "federation:room", "federation:message"] {
             if !manifest
                 .permissions
                 .iter()
@@ -2129,6 +2129,24 @@ mod tests {
     }
 
     #[test]
+    fn retired_federation_write_manifest_lists_all_replacements() {
+        let error =
+            validate_tapp_manifest(&permission_manifest(&["federation:write"])).unwrap_err();
+        assert!(error.contains("'federation:write'"), "{error}");
+        for replacement in [
+            "federation:post",
+            "federation:interact",
+            "federation:channel",
+            "federation:room",
+            "federation:ring",
+        ] {
+            assert!(error.contains(replacement), "{error}");
+        }
+        assert!(error.contains("Manifest"), "{error}");
+        assert!(error.contains("reinstall"), "{error}");
+    }
+
+    #[test]
     fn generic_unknown_permission_keeps_unknown_error() {
         let error =
             validate_tapp_manifest(&permission_manifest(&["legacy:unknown"])).unwrap_err();
@@ -2155,7 +2173,7 @@ mod tests {
             "permissions": [
                 "game:session",
                 "federation:read",
-                "federation:write",
+                "federation:room",
                 "federation:message"
             ],
             "game": { "protocol": "v1", "maxPlayers": 2 }
@@ -2169,7 +2187,7 @@ mod tests {
         manifest.permissions = vec![
             "game:session".into(),
             "federation:read".into(),
-            "federation:write".into(),
+            "federation:room".into(),
         ];
         assert!(validate_tapp_manifest(&manifest)
             .unwrap_err()
@@ -2177,7 +2195,7 @@ mod tests {
         manifest.permissions = vec![
             "game:session".into(),
             "federation:read".into(),
-            "federation:write".into(),
+            "federation:room".into(),
             "federation:message".into(),
         ];
         manifest.game.as_mut().unwrap().protocol = "V1".into();
