@@ -5,6 +5,34 @@ use crate::federation::types::key_id;
 use super::queue_and_query::*;
 
 #[test]
+fn federation_relationships_are_revoked_on_the_fifth_consecutive_failure() {
+    for failures in [i32::MIN, -1, 0, 1, 2, 3, 4] {
+        assert!(!should_revoke_relationships(failures));
+    }
+    assert!(should_revoke_relationships(5));
+    assert!(should_revoke_relationships(6));
+}
+
+#[test]
+fn only_dns_failures_from_client_preparation_count_as_remote_failures() {
+    assert!(outbound_client_error_counts_as_remote_failure(
+        "DNS resolution failed: no records"
+    ));
+    assert!(outbound_client_error_counts_as_remote_failure(
+        "DNS resolution returned no addresses"
+    ));
+    for local_error in [
+        "Invalid URL: relative URL without a base",
+        "Only HTTP and HTTPS URLs are allowed",
+        "URL credentials are not allowed",
+        "Target resolves to no public addresses",
+        "HTTP client error: invalid configuration",
+    ] {
+        assert!(!outbound_client_error_counts_as_remote_failure(local_error));
+    }
+}
+
+#[test]
 fn retry_backoff_grows_exponentially_and_is_capped() {
     // 低位不加抖动，可精确断言
     assert_eq!(retry_backoff_secs(0), 1);

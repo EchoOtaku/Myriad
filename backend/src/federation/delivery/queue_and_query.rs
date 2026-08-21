@@ -1,5 +1,6 @@
 use sea_orm::{
     ConnectionTrait, DatabaseBackend, DatabaseConnection, DbErr, QueryResult, Statement,
+    TransactionSession, TransactionTrait,
 };
 use serde::Serialize;
 use serde_json::json;
@@ -89,10 +90,18 @@ pub struct DeliveryBatchStats {
     pub dead: u32,
     pub retried: u32,
     pub lease_lost: u32,
+    pub relationships_revoked: u32,
 }
 
 const DELIVERY_LEASE_SECS: i64 = 10 * 60;
 const DELIVERY_LEASE_HEARTBEAT_SECS: u64 = 60;
+const DELIVERY_FAILURE_REVOCATION_THRESHOLD: i32 = 5;
+const DOMAIN_REVOCATION_REASON: &str =
+    "cancelled: federation relationship revoked after 5 consecutive delivery failures";
+
+pub(crate) fn should_revoke_relationships(consecutive_failures: i32) -> bool {
+    consecutive_failures >= DELIVERY_FAILURE_REVOCATION_THRESHOLD
+}
 
 struct DeliveryLeaseHeartbeat {
     task: tokio::task::JoinHandle<()>,
@@ -231,6 +240,336 @@ pub(crate) async fn mark_delivery_delivered_if_owned(
         ))
         .await?;
     Ok(result.rows_affected() == 1)
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum RemoteDeliveryFailureDisposition {
+    Dead,
+    RetryAfter(i64),
+}
+
+#[derive(Debug)]
+struct DeliveryAttemptError {
+    message: String,
+    counts_toward_remote_failure: bool,
+}
+
+impl DeliveryAttemptError {
+    fn local(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            counts_toward_remote_failure: false,
+        }
+    }
+
+    fn remote(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            counts_toward_remote_failure: true,
+        }
+    }
+}
+
+pub(crate) fn outbound_client_error_counts_as_remote_failure(error: &str) -> bool {
+    error.starts_with("DNS resolution failed:") || error == "DNS resolution returned no addresses"
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct RemoteDeliveryFailureSettlement {
+    pub applied: bool,
+    pub consecutive_failures: i32,
+    pub relationships_revoked: bool,
+    pub follows_removed: u64,
+    pub channels_closed: u64,
+    pub room_members_removed: u64,
+    pub transfers_cancelled: u64,
+    pub deliveries_cancelled: u64,
+}
+
+async fn lock_delivery_instance(
+    db: &impl ConnectionTrait,
+    target_domain: &str,
+) -> Result<i32, DbErr> {
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"INSERT INTO federation_instances (domain, failure_count, created_at)
+           VALUES ($1, 0, NOW())
+           ON CONFLICT (domain) DO NOTHING"#,
+        [target_domain.into()],
+    ))
+    .await?;
+
+    let row = db
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            "SELECT failure_count FROM federation_instances WHERE domain = $1 FOR UPDATE",
+            [target_domain.into()],
+        ))
+        .await?
+        .ok_or_else(|| DbErr::Custom("failed to lock federation instance".into()))?;
+    Ok(row.try_get("", "failure_count").unwrap_or(0))
+}
+
+/// Settle a successful remote HTTP delivery and reset the domain failure streak.
+///
+/// The instance row is locked before the queue row is settled, matching the
+/// failure path's lock order. A cancelled/reclaimed lease cannot reset health.
+pub(crate) async fn settle_remote_delivery_success(
+    db: &(impl ConnectionTrait + TransactionTrait),
+    queue_id: i32,
+    lease_token: Uuid,
+    target_domain: &str,
+) -> Result<bool, DbErr> {
+    let txn = db.begin().await?;
+    let _ = lock_delivery_instance(&txn, target_domain).await?;
+    let applied = mark_delivery_delivered_if_owned(&txn, queue_id, lease_token).await?;
+    if !applied {
+        txn.rollback().await?;
+        return Ok(false);
+    }
+
+    txn.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"UPDATE federation_instances
+           SET last_success_at = NOW(), failure_count = 0
+           WHERE domain = $1"#,
+        [target_domain.into()],
+    ))
+    .await?;
+    txn.commit().await?;
+    Ok(true)
+}
+
+/// Settle one confirmed remote-reachability delivery failure.
+///
+/// DNS resolution, request/connection errors, and non-success HTTP responses
+/// use this path. Local signing/DB/policy failures remain queue-local and never
+/// affect the domain streak. On the fifth consecutive failure, active
+/// relationship rows to the domain are removed (channels are closed to preserve
+/// messages) and its unfinished deliveries are cancelled in the same transaction.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn settle_remote_delivery_failure(
+    db: &(impl ConnectionTrait + TransactionTrait),
+    queue_id: i32,
+    lease_token: Uuid,
+    target_domain: &str,
+    new_attempts: i32,
+    error_message: &str,
+    disposition: RemoteDeliveryFailureDisposition,
+) -> Result<RemoteDeliveryFailureSettlement, DbErr> {
+    let txn = db.begin().await?;
+    let _ = lock_delivery_instance(&txn, target_domain).await?;
+
+    let queue_update = match disposition {
+        RemoteDeliveryFailureDisposition::Dead => {
+            txn.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"UPDATE federation_delivery_queue
+                   SET status = 'dead', attempts = $1, error_message = $2,
+                       last_attempt_at = NOW(), next_retry_at = NULL,
+                       lease_token = NULL, lease_expires_at = NULL
+                   WHERE id = $3 AND status = 'delivering' AND lease_token = $4"#,
+                [
+                    new_attempts.into(),
+                    error_message.into(),
+                    queue_id.into(),
+                    lease_token.into(),
+                ],
+            ))
+            .await?
+        }
+        RemoteDeliveryFailureDisposition::RetryAfter(backoff_secs) => {
+            txn.execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"UPDATE federation_delivery_queue
+                   SET status = 'pending', attempts = $1, error_message = $2,
+                       last_attempt_at = NOW(),
+                       next_retry_at = NOW() + make_interval(secs => $4::double precision),
+                       lease_token = NULL, lease_expires_at = NULL
+                   WHERE id = $3 AND status = 'delivering' AND lease_token = $5"#,
+                [
+                    new_attempts.into(),
+                    error_message.into(),
+                    queue_id.into(),
+                    backoff_secs.into(),
+                    lease_token.into(),
+                ],
+            ))
+            .await?
+        }
+    };
+
+    if queue_update.rows_affected() != 1 {
+        txn.rollback().await?;
+        return Ok(RemoteDeliveryFailureSettlement::default());
+    }
+
+    let failure_row = txn
+        .query_one_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_instances
+               SET failure_count = failure_count + 1
+               WHERE domain = $1
+               RETURNING failure_count"#,
+            [target_domain.into()],
+        ))
+        .await?
+        .ok_or_else(|| DbErr::Custom("failed to update federation failure count".into()))?;
+    let consecutive_failures = failure_row.try_get("", "failure_count").unwrap_or(0);
+    let mut settlement = RemoteDeliveryFailureSettlement {
+        applied: true,
+        consecutive_failures,
+        ..Default::default()
+    };
+
+    if !should_revoke_relationships(consecutive_failures) {
+        txn.commit().await?;
+        return Ok(settlement);
+    }
+
+    settlement.follows_removed = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"DELETE FROM federation_follows f
+               USING federation_remote_actors ra
+               WHERE f.remote_actor_id = ra.id
+                 AND LOWER(ra.domain) = LOWER($1)
+                 AND f.status IN ('pending', 'accepted')"#,
+            [target_domain.into()],
+        ))
+        .await?
+        .rows_affected();
+
+    settlement.channels_closed = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_channels c
+               SET status = 'closed', closed_at = COALESCE(closed_at, NOW())
+               FROM federation_remote_actors ra
+               WHERE c.remote_actor_id = ra.id
+                 AND LOWER(ra.domain) = LOWER($1)
+                 AND c.status IN ('pending', 'accepted', 'active')"#,
+            [target_domain.into()],
+        ))
+        .await?
+        .rows_affected();
+
+    settlement.transfers_cancelled = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_file_transfers ft
+               SET status = 'cancelled'
+               WHERE ft.status IN ('pending', 'in-progress', 'finalizing')
+                 AND (
+                   EXISTS (
+                     SELECT 1
+                     FROM federation_channels c
+                     JOIN federation_remote_actors ra ON c.remote_actor_id = ra.id
+                     WHERE c.channel_id = ft.channel_id
+                       AND LOWER(ra.domain) = LOWER($1)
+                   )
+                   OR (
+                     ft.room_id IS NOT NULL
+                     AND EXISTS (
+                       SELECT 1
+                       FROM federation_rooms r
+                       WHERE r.room_id = ft.room_id
+                         AND (
+                           EXISTS (
+                             SELECT 1 FROM federation_remote_actors owner
+                             WHERE owner.actor_url = r.owner_actor
+                               AND LOWER(owner.domain) = LOWER($1)
+                           )
+                           OR LOWER(regexp_replace(
+                                split_part(regexp_replace(BTRIM(r.home_server), '^https?://', '', 'i'), '/', 1),
+                                ':[0-9]+$', ''
+                              )) = LOWER(regexp_replace($1, ':[0-9]+$', ''))
+                         )
+                     )
+                   )
+                 )"#,
+            [target_domain.into()],
+        ))
+        .await?
+        .rows_affected();
+
+    settlement.room_members_removed = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"DELETE FROM federation_room_members rm
+               WHERE (
+                 rm.is_local = false
+                 AND (
+                     EXISTS (
+                       SELECT 1 FROM federation_remote_actors ra
+                       WHERE ra.actor_url = rm.actor_url
+                         AND LOWER(ra.domain) = LOWER($1)
+                     )
+                     OR LOWER(regexp_replace(
+                          split_part(regexp_replace(BTRIM(rm.actor_url), '^https?://', '', 'i'), '/', 1),
+                          ':[0-9]+$', ''
+                        )) = LOWER(regexp_replace($1, ':[0-9]+$', ''))
+                 )
+               )
+               OR (
+                 rm.is_local = true
+                 AND EXISTS (
+                   SELECT 1
+                   FROM federation_rooms r
+                   WHERE r.room_id = rm.room_id
+                     AND (
+                       EXISTS (
+                         SELECT 1 FROM federation_remote_actors owner
+                         WHERE owner.actor_url = r.owner_actor
+                           AND LOWER(owner.domain) = LOWER($1)
+                       )
+                       OR LOWER(regexp_replace(
+                            split_part(regexp_replace(BTRIM(r.home_server), '^https?://', '', 'i'), '/', 1),
+                            ':[0-9]+$', ''
+                          )) = LOWER(regexp_replace($1, ':[0-9]+$', ''))
+                     )
+                 )
+               )"#,
+            [target_domain.into()],
+        ))
+        .await?
+        .rows_affected();
+
+    settlement.deliveries_cancelled = txn
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"UPDATE federation_delivery_queue
+               SET status = 'dead',
+                   error_message = CASE
+                     WHEN error_message ILIKE 'cancelled:%' THEN error_message
+                     WHEN error_message IS NULL OR BTRIM(error_message) = '' THEN $2
+                     ELSE $2 || '; previous error: ' || error_message
+                   END,
+                   last_attempt_at = NOW(), next_retry_at = NULL,
+                   lease_token = NULL, lease_expires_at = NULL
+               WHERE LOWER(target_domain) = LOWER($1)
+                 AND (
+                   status IN ('pending', 'delivering')
+                   OR (
+                     status = 'dead'
+                     AND (error_message IS NULL OR error_message NOT ILIKE 'cancelled:%')
+                   )
+                 )"#,
+            [target_domain.into(), DOMAIN_REVOCATION_REASON.into()],
+        ))
+        .await?
+        .rows_affected();
+
+    txn.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        "UPDATE federation_instances SET failure_count = 0 WHERE domain = $1",
+        [target_domain.into()],
+    ))
+    .await?;
+
+    settlement.relationships_revoked = true;
+    txn.commit().await?;
+    Ok(settlement)
 }
 
 fn lease_update_applied(
@@ -387,9 +726,14 @@ pub async fn process_delivery_queue_detailed(
                     Ok(()) => {
                         // 投递成功 — only if still `delivering` (user cancel may
                         // have marked dead mid-flight; do not resurrect).
-                        let applied = mark_delivery_delivered_if_owned(db, queue_id, lease_token)
-                            .await
-                            .map_err(|e| format!("Queue delivery completion failed: {e}"))?;
+                        let applied = settle_remote_delivery_success(
+                            db,
+                            queue_id,
+                            lease_token,
+                            &target_domain,
+                        )
+                        .await
+                        .map_err(|e| format!("Queue delivery completion failed: {e}"))?;
                         if !lease_update_applied(
                             u64::from(applied),
                             &mut stats,
@@ -405,32 +749,31 @@ pub async fn process_delivery_queue_detailed(
                         }
                         stats.delivered += 1;
 
-                        // 更新实例的 last_success_at，重置 failure_count
-                        let _ = db
-                            .execute_raw(Statement::from_sql_and_values(
-                                DatabaseBackend::Postgres,
-                                "UPDATE federation_instances SET last_success_at = NOW(), failure_count = 0 WHERE domain = $1",
-                                [target_domain.clone().into()],
-                            ))
-                            .await;
-
                         tracing::debug!("📤 Delivered {} to {}", activity_type, target_inbox);
                     }
-                    Err(e) => {
+                    Err(delivery_error) => {
                         let new_attempts = attempts + 1;
-                        // Permanent: 4xx from peer, OR 5xx body that is really
-                        // not_found / not_member (legacy peers still return 500).
-                        let permanent = crate::federation::errors::is_permanent_delivery_error(&e);
-                        if permanent || new_attempts >= max_attempts {
-                            // 放弃 — only if still delivering (preserve user cancel).
+                        if !delivery_error.counts_toward_remote_failure {
+                            let error_message = delivery_error.message;
                             let mark = db
                                 .execute_raw(Statement::from_sql_and_values(
                                     DatabaseBackend::Postgres,
-                                    "UPDATE federation_delivery_queue SET status = 'dead', attempts = $1, error_message = $2, last_attempt_at = NOW(), lease_token = NULL, lease_expires_at = NULL WHERE id = $3 AND status = 'delivering' AND lease_token = $4",
-                                    [new_attempts.into(), e.clone().into(), queue_id.into(), lease_token.into()],
+                                    r#"UPDATE federation_delivery_queue
+                                       SET status = 'dead', attempts = $1, error_message = $2,
+                                           last_attempt_at = NOW(), next_retry_at = NULL,
+                                           lease_token = NULL, lease_expires_at = NULL
+                                       WHERE id = $3 AND status = 'delivering' AND lease_token = $4"#,
+                                    [
+                                        new_attempts.into(),
+                                        error_message.clone().into(),
+                                        queue_id.into(),
+                                        lease_token.into(),
+                                    ],
                                 ))
                                 .await
-                                .map_err(|err| format!("Queue dead-letter update failed: {err}"))?;
+                                .map_err(|err| {
+                                    format!("Queue local delivery failure update failed: {err}")
+                                })?;
                             if !lease_update_applied(
                                 mark.rows_affected(),
                                 &mut stats,
@@ -439,6 +782,69 @@ pub async fn process_delivery_queue_detailed(
                             ) {
                                 continue;
                             }
+                            tracing::error!(
+                                queue_id,
+                                target = %target_inbox,
+                                error = %error_message,
+                                "Federation delivery failed before remote request; peer health unchanged"
+                            );
+                            mark_delivery_dead(
+                                user_id,
+                                &activity_type,
+                                &target_domain,
+                                &error_message,
+                            )
+                            .await;
+                            stats.dead += 1;
+                            continue;
+                        }
+
+                        let e = delivery_error.message;
+                        // Permanent: 4xx from peer, OR 5xx body that is really
+                        // not_found / not_member (legacy peers still return 500).
+                        let permanent = crate::federation::errors::is_permanent_delivery_error(&e);
+                        let terminal = permanent || new_attempts >= max_attempts;
+                        let backoff_secs = retry_backoff_secs(new_attempts);
+                        let disposition = if terminal {
+                            RemoteDeliveryFailureDisposition::Dead
+                        } else {
+                            RemoteDeliveryFailureDisposition::RetryAfter(backoff_secs)
+                        };
+                        let settlement = settle_remote_delivery_failure(
+                            db,
+                            queue_id,
+                            lease_token,
+                            &target_domain,
+                            new_attempts,
+                            &e,
+                            disposition,
+                        )
+                        .await
+                        .map_err(|err| format!("Queue remote failure settlement failed: {err}"))?;
+                        if !lease_update_applied(
+                            u64::from(settlement.applied),
+                            &mut stats,
+                            queue_id,
+                            if terminal { "dead" } else { "pending" },
+                        ) {
+                            continue;
+                        }
+
+                        if settlement.relationships_revoked {
+                            stats.relationships_revoked += 1;
+                            tracing::warn!(
+                                target_domain = %target_domain,
+                                consecutive_failures = settlement.consecutive_failures,
+                                follows_removed = settlement.follows_removed,
+                                channels_closed = settlement.channels_closed,
+                                room_members_removed = settlement.room_members_removed,
+                                transfers_cancelled = settlement.transfers_cancelled,
+                                deliveries_cancelled = settlement.deliveries_cancelled,
+                                "Revoked federation relationships after consecutive delivery failures"
+                            );
+                        }
+
+                        if terminal {
                             if permanent {
                                 tracing::warn!(
                                     "💀 Delivery permanent failure to {}: {}",
@@ -453,37 +859,29 @@ pub async fn process_delivery_queue_detailed(
                                     e
                                 );
                             }
-                            mark_delivery_dead(user_id, &activity_type, &target_domain, &e).await;
+                            let notification_error = if settlement.relationships_revoked {
+                                DOMAIN_REVOCATION_REASON
+                            } else {
+                                &e
+                            };
+                            mark_delivery_dead(
+                                user_id,
+                                &activity_type,
+                                &target_domain,
+                                notification_error,
+                            )
+                            .await;
+                            stats.dead += 1;
+                        } else if settlement.relationships_revoked {
+                            mark_delivery_dead(
+                                user_id,
+                                &activity_type,
+                                &target_domain,
+                                DOMAIN_REVOCATION_REASON,
+                            )
+                            .await;
                             stats.dead += 1;
                         } else {
-                            // 指数退避：2^attempts 秒，最大 86400 秒 (24h)
-                            let backoff_secs = retry_backoff_secs(new_attempts);
-                            let mark = db
-                                .execute_raw(Statement::from_sql_and_values(
-                                    DatabaseBackend::Postgres,
-                                    "UPDATE federation_delivery_queue SET status = 'pending', attempts = $1, error_message = $2, last_attempt_at = NOW(), next_retry_at = NOW() + make_interval(secs => $4::double precision), lease_token = NULL, lease_expires_at = NULL WHERE id = $3 AND status = 'delivering' AND lease_token = $5",
-                                    [new_attempts.into(), e.clone().into(), queue_id.into(), backoff_secs.into(), lease_token.into()],
-                                ))
-                                .await
-                                .map_err(|err| format!("Queue retry update failed: {err}"))?;
-                            if !lease_update_applied(
-                                mark.rows_affected(),
-                                &mut stats,
-                                queue_id,
-                                "pending",
-                            ) {
-                                continue;
-                            }
-
-                            // 更新实例 failure_count
-                            let _ = db
-                                .execute_raw(Statement::from_sql_and_values(
-                                    DatabaseBackend::Postgres,
-                                    "UPDATE federation_instances SET failure_count = failure_count + 1 WHERE domain = $1",
-                                    [target_domain.clone().into()],
-                                ))
-                                .await;
-
                             tracing::warn!(
                                 "⚠️ Delivery failed (attempt {}/{}), retrying in {}s: {}",
                                 new_attempts,
@@ -592,16 +990,18 @@ pub fn spawn_delivery_worker(db: DatabaseConnection) {
                         || s.dead > 0
                         || s.retried > 0
                         || s.reclaimed > 0
-                        || s.lease_lost > 0 =>
+                        || s.lease_lost > 0
+                        || s.relationships_revoked > 0 =>
                 {
                     tracing::info!(
-                        "📤 Delivery worker: claimed={} reclaimed={} delivered={} dead={} retried={} lease_lost={}",
+                        "📤 Delivery worker: claimed={} reclaimed={} delivered={} dead={} retried={} lease_lost={} relationships_revoked={}",
                         s.claimed,
                         s.reclaimed,
                         s.delivered,
                         s.dead,
                         s.retried,
-                        s.lease_lost
+                        s.lease_lost,
+                        s.relationships_revoked
                     );
                 }
                 Err(e) => {
@@ -1268,13 +1668,13 @@ async fn deliver_activity(
     body: &[u8],
     stored_key_id: Option<&str>,
     activity_type: &str,
-) -> Result<(), String> {
+) -> Result<(), DeliveryAttemptError> {
     // 纵深防御：即使 inbox URL 已入库，投递前仍验证不指向内网
     if is_internal_url(target_inbox) {
-        return Err(format!(
+        return Err(DeliveryAttemptError::local(format!(
             "Refusing to deliver to internal URL: {}",
             target_inbox
-        ));
+        )));
     }
 
     let kid = resolve_signing_key_id(activity_type, base_url, username, stored_key_id);
@@ -1302,7 +1702,8 @@ async fn deliver_activity(
         body: Some(body),
     };
 
-    let signed = sign_request(keypair, &params).map_err(|e| format!("Signing failed: {}", e))?;
+    let signed = sign_request(keypair, &params)
+        .map_err(|e| DeliveryAttemptError::local(format!("Signing failed: {}", e)))?;
 
     let user_agent = format!("Myriad/{} (+{})", env!("CARGO_PKG_VERSION"), base_url);
     let (target_url, client) = crate::services::outbound_security::build_public_http_client(
@@ -1310,7 +1711,14 @@ async fn deliver_activity(
         Duration::from_secs(30),
         Some(&user_agent),
     )
-    .await?;
+    .await
+    .map_err(|message| {
+        if outbound_client_error_counts_as_remote_failure(&message) {
+            DeliveryAttemptError::remote(message)
+        } else {
+            DeliveryAttemptError::local(message)
+        }
+    })?;
 
     let resp = client
         .post(target_url)
@@ -1322,7 +1730,7 @@ async fn deliver_activity(
         .body(body.to_vec())
         .send()
         .await
-        .map_err(|e| format!("Request failed: {}", e))?;
+        .map_err(|e| DeliveryAttemptError::remote(format!("Request failed: {}", e)))?;
 
     let status = resp.status();
     if status.is_success() || status.as_u16() == 202 {
@@ -1341,9 +1749,15 @@ async fn deliver_activity(
         // Permanent client errors: do not burn max_attempts with useless retries.
         // Keep retrying 408/429 (timeout / rate limit) as transient.
         if status.is_client_error() && code != 408 && code != 429 {
-            Err(format!("PERMANENT HTTP {}: {}", code, snippet))
+            Err(DeliveryAttemptError::remote(format!(
+                "PERMANENT HTTP {}: {}",
+                code, snippet
+            )))
         } else {
-            Err(format!("HTTP {}: {}", code, snippet))
+            Err(DeliveryAttemptError::remote(format!(
+                "HTTP {}: {}",
+                code, snippet
+            )))
         }
     }
 }

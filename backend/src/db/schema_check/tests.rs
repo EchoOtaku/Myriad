@@ -530,7 +530,13 @@ CREATE TEMP TABLE users (
     username TEXT NOT NULL
 ) ON COMMIT DROP;
 CREATE TEMP TABLE federation_room_messages (
-    message_id TEXT PRIMARY KEY
+    message_id TEXT PRIMARY KEY,
+    room_id TEXT
+) ON COMMIT DROP;
+CREATE TEMP TABLE federation_rooms (
+    room_id TEXT PRIMARY KEY,
+    owner_actor TEXT NOT NULL,
+    home_server TEXT NOT NULL
 ) ON COMMIT DROP;
 CREATE TEMP TABLE federation_room_members (
     room_id TEXT NOT NULL,
@@ -543,6 +549,38 @@ CREATE TEMP TABLE federation_remote_actors (
     actor_url TEXT NOT NULL UNIQUE,
     inbox_url TEXT NOT NULL,
     domain TEXT NOT NULL
+) ON COMMIT DROP;
+CREATE TEMP TABLE federation_instances (
+    domain TEXT PRIMARY KEY,
+    failure_count INTEGER NOT NULL DEFAULT 0,
+    last_success_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+) ON COMMIT DROP;
+CREATE TEMP TABLE federation_follows (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    remote_actor_id INTEGER NOT NULL,
+    direction TEXT NOT NULL,
+    status TEXT NOT NULL,
+    accepted_at TIMESTAMPTZ
+) ON COMMIT DROP;
+CREATE TEMP TABLE federation_channels (
+    id SERIAL PRIMARY KEY,
+    channel_id TEXT NOT NULL UNIQUE,
+    remote_actor_id INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    closed_at TIMESTAMPTZ
+) ON COMMIT DROP;
+CREATE TEMP TABLE federation_channel_messages (
+    channel_id TEXT NOT NULL,
+    message_id TEXT PRIMARY KEY,
+    payload JSON NOT NULL
+) ON COMMIT DROP;
+CREATE TEMP TABLE federation_file_transfers (
+    channel_id TEXT NOT NULL,
+    room_id TEXT,
+    transfer_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL
 ) ON COMMIT DROP;
 CREATE TEMP TABLE federation_delivery_queue (
     id SERIAL PRIMARY KEY,
@@ -739,6 +777,369 @@ VALUES
         .await
         .expect("complete with current lease owner")
     );
+
+    outer
+        .execute_unprepared(
+            r#"
+TRUNCATE federation_delivery_queue, federation_activities, federation_instances,
+         federation_follows, federation_channels, federation_channel_messages,
+         federation_file_transfers, federation_room_messages, federation_room_members,
+         federation_rooms, federation_remote_actors
+         RESTART IDENTITY;
+
+INSERT INTO federation_remote_actors (actor_url, inbox_url, domain)
+VALUES
+    ('https://peer.example/users/bob', 'https://peer.example/inbox', 'peer.example'),
+    ('https://other.example/users/eve', 'https://other.example/inbox', 'other.example');
+INSERT INTO federation_instances (domain, failure_count)
+VALUES ('peer.example', 0), ('other.example', 0);
+INSERT INTO federation_follows (user_id, remote_actor_id, direction, status, accepted_at)
+VALUES
+    (1, 1, 'outgoing', 'accepted', NOW()),
+    (1, 1, 'incoming', 'accepted', NOW()),
+    (1, 2, 'outgoing', 'accepted', NOW());
+INSERT INTO federation_channels (channel_id, remote_actor_id, status)
+VALUES
+    ('channel-peer', 1, 'active'),
+    ('channel-other', 2, 'active');
+INSERT INTO federation_channel_messages (channel_id, message_id, payload)
+VALUES ('channel-peer', 'message-history', '{"text":"keep me"}');
+INSERT INTO federation_rooms (room_id, owner_actor, home_server)
+VALUES
+    ('room-remote', 'https://peer.example/users/bob', 'https://peer.example:8443'),
+    ('room-local', 'https://local.example/users/alice', 'local.example');
+INSERT INTO federation_room_messages (message_id, room_id)
+VALUES ('room-message-history', 'room-remote');
+INSERT INTO federation_file_transfers (channel_id, room_id, transfer_id, status)
+VALUES
+    ('channel-peer', NULL, 'transfer-peer', 'in-progress'),
+    ('channel-other', NULL, 'transfer-other', 'in-progress'),
+    ('', 'room-remote', 'transfer-room-remote', 'in-progress'),
+    ('', 'room-local', 'transfer-room-local', 'in-progress');
+INSERT INTO federation_room_members (room_id, actor_url, is_local, membership_status)
+VALUES
+    ('room-remote', 'https://peer.example/users/bob', FALSE, 'active'),
+    ('room-remote', 'https://peer.example:8443/users/uncached', FALSE, 'pending'),
+    ('room-remote', 'https://other.example/users/eve', FALSE, 'active'),
+    ('room-remote', 'https://local.example/users/alice', TRUE, 'active'),
+    ('room-local', 'https://peer.example/users/bob', FALSE, 'active'),
+    ('room-local', 'https://local.example/users/alice', TRUE, 'active');
+INSERT INTO federation_activities
+    (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
+SELECT
+    'activity-failure-' || n,
+    1,
+    'Create',
+    'Note',
+    json_build_object('id', 'activity-failure-' || n),
+    TRUE,
+    NOW()
+FROM generate_series(1, 9) AS n;
+INSERT INTO federation_delivery_queue
+    (activity_id, target_inbox, target_domain, status, created_at, next_retry_at, error_message)
+VALUES
+    (1, 'https://peer.example/inbox/1', 'peer.example', 'pending', NOW(), NOW(), NULL),
+    (2, 'https://peer.example/inbox/2', 'peer.example', 'pending', NOW(), NOW(), NULL),
+    (3, 'https://peer.example/inbox/3', 'peer.example', 'pending', NOW(), NOW(), NULL),
+    (4, 'https://peer.example/inbox/4', 'peer.example', 'pending', NOW(), NOW(), NULL),
+    (5, 'https://peer.example/inbox/5', 'peer.example', 'pending', NOW(), NOW(), NULL),
+    (6, 'https://peer.example/inbox/extra', 'peer.example', 'pending', NOW(), NOW(), NULL),
+    (7, 'https://other.example/inbox', 'other.example', 'pending', NOW(), NOW(), NULL),
+    (8, 'https://peer.example/inbox/completed', 'peer.example', 'delivered', NOW(), NULL, NULL),
+    (9, 'https://peer.example/inbox/already-cancelled', 'peer.example', 'dead', NOW(), NULL,
+     'cancelled: existing teardown');
+"#,
+        )
+        .await
+        .expect("seed domain relationship revocation contract");
+
+    for queue_id in 1..=5 {
+        let token = Uuid::new_v4();
+        outer
+            .execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"UPDATE federation_delivery_queue
+                   SET status = 'delivering', lease_token = $2,
+                       lease_expires_at = NOW() + INTERVAL '10 minutes'
+                   WHERE id = $1"#,
+                [queue_id.into(), token.into()],
+            ))
+            .await
+            .expect("claim delivery for failure settlement contract");
+
+        let disposition = if queue_id == 5 {
+            crate::federation::delivery::RemoteDeliveryFailureDisposition::Dead
+        } else {
+            crate::federation::delivery::RemoteDeliveryFailureDisposition::RetryAfter(60)
+        };
+        let settlement = crate::federation::delivery::settle_remote_delivery_failure(
+            &outer,
+            queue_id,
+            token,
+            "peer.example",
+            1,
+            "HTTP 503 from peer",
+            disposition,
+        )
+        .await
+        .expect("settle confirmed remote HTTP failure");
+
+        assert!(settlement.applied);
+        assert_eq!(settlement.consecutive_failures, queue_id);
+        assert_eq!(settlement.relationships_revoked, queue_id == 5);
+        if queue_id < 5 {
+            let active = outer
+                .query_one_raw(Statement::from_string(
+                    DatabaseBackend::Postgres,
+                    "SELECT COUNT(*)::BIGINT AS count FROM federation_channels WHERE status = 'active'"
+                        .to_string(),
+                ))
+                .await
+                .expect("count channels before threshold")
+                .expect("active channel count row");
+            assert_eq!(active.try_get::<i64>("", "count").unwrap(), 2);
+        } else {
+            assert_eq!(settlement.follows_removed, 2);
+            assert_eq!(settlement.channels_closed, 1);
+            assert_eq!(settlement.room_members_removed, 4);
+            assert_eq!(settlement.transfers_cancelled, 2);
+            assert_eq!(settlement.deliveries_cancelled, 6);
+        }
+    }
+
+    let instance = outer
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT failure_count FROM federation_instances WHERE domain = 'peer.example'"
+                .to_string(),
+        ))
+        .await
+        .expect("read reset failure streak")
+        .expect("peer instance row");
+    assert_eq!(instance.try_get::<i32>("", "failure_count").unwrap(), 0);
+
+    let relationship_state = outer
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            r#"SELECT
+                 (SELECT COUNT(*) FROM federation_follows f
+                  JOIN federation_remote_actors ra ON ra.id = f.remote_actor_id
+                  WHERE ra.domain = 'peer.example')::BIGINT AS target_follows,
+                 (SELECT COUNT(*) FROM federation_channels c
+                  JOIN federation_remote_actors ra ON ra.id = c.remote_actor_id
+                  WHERE ra.domain = 'peer.example' AND c.status = 'closed')::BIGINT AS closed_channels,
+                 (SELECT COUNT(*) FROM federation_room_members
+                  WHERE is_local = FALSE
+                    AND LOWER(regexp_replace(
+                          split_part(regexp_replace(BTRIM(actor_url), '^https?://', '', 'i'), '/', 1),
+                          ':[0-9]+$', ''
+                        )) = 'peer.example')::BIGINT AS target_members,
+                 (SELECT COUNT(*) FROM federation_room_members
+                  WHERE room_id = 'room-remote' AND is_local = TRUE)::BIGINT AS local_remote_room_members,
+                 (SELECT COUNT(*) FROM federation_room_members
+                  WHERE room_id = 'room-local' AND is_local = TRUE)::BIGINT AS local_local_room_members,
+                 (SELECT COUNT(*) FROM federation_channel_messages
+                  WHERE message_id = 'message-history')::BIGINT AS preserved_channel_messages,
+                 (SELECT COUNT(*) FROM federation_room_messages
+                  WHERE message_id = 'room-message-history')::BIGINT AS preserved_room_messages,
+                 (SELECT COUNT(*) FROM federation_delivery_queue
+                  WHERE target_domain = 'peer.example'
+                    AND status IN ('pending', 'delivering'))::BIGINT AS unfinished_deliveries,
+                 (SELECT COUNT(*) FROM federation_delivery_queue
+                  WHERE target_domain = 'peer.example'
+                    AND status <> 'delivered'
+                    AND (error_message IS NULL OR error_message NOT ILIKE 'cancelled:%'))::BIGINT AS uncancelled_deliveries,
+                 (SELECT COUNT(*) FROM federation_delivery_queue
+                  WHERE target_domain = 'peer.example'
+                    AND status = 'delivered')::BIGINT AS preserved_completed_deliveries,
+                 (SELECT COUNT(*) FROM federation_delivery_queue
+                  WHERE target_inbox = 'https://peer.example/inbox/already-cancelled'
+                    AND status = 'dead'
+                    AND error_message = 'cancelled: existing teardown')::BIGINT AS preserved_cancelled_delivery"#
+                .to_string(),
+        ))
+        .await
+        .expect("read revoked relationship state")
+        .expect("relationship state row");
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "target_follows")
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "closed_channels")
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "target_members")
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "local_remote_room_members")
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "local_local_room_members")
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "preserved_channel_messages")
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "preserved_room_messages")
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "unfinished_deliveries")
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "uncancelled_deliveries")
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "preserved_completed_deliveries")
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "preserved_cancelled_delivery")
+            .unwrap(),
+        1
+    );
+
+    let unrelated_state = outer
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            r#"SELECT
+                 (SELECT COUNT(*) FROM federation_follows f
+                  JOIN federation_remote_actors ra ON ra.id = f.remote_actor_id
+                  WHERE ra.domain = 'other.example' AND f.status = 'accepted')::BIGINT AS accepted_follows,
+                 (SELECT COUNT(*) FROM federation_channels c
+                  JOIN federation_remote_actors ra ON ra.id = c.remote_actor_id
+                  WHERE ra.domain = 'other.example' AND c.status = 'active')::BIGINT AS active_channels,
+                 (SELECT COUNT(*) FROM federation_room_members
+                  WHERE actor_url LIKE 'https://other.example/%'
+                    AND membership_status = 'active')::BIGINT AS active_members,
+                 (SELECT COUNT(*) FROM federation_file_transfers
+                  WHERE transfer_id = 'transfer-other' AND status = 'in-progress')::BIGINT AS active_transfers,
+                 (SELECT COUNT(*) FROM federation_file_transfers
+                  WHERE transfer_id = 'transfer-room-local' AND status = 'in-progress')::BIGINT AS active_local_room_transfers,
+                 (SELECT COUNT(*) FROM federation_file_transfers
+                  WHERE transfer_id IN ('transfer-peer', 'transfer-room-remote')
+                    AND status = 'cancelled')::BIGINT AS cancelled_target_transfers,
+                 (SELECT COUNT(*) FROM federation_delivery_queue
+                  WHERE target_domain = 'other.example' AND status = 'pending')::BIGINT AS pending_deliveries"#
+                .to_string(),
+        ))
+        .await
+        .expect("read unrelated domain state")
+        .expect("unrelated state row");
+    for column in [
+        "accepted_follows",
+        "active_channels",
+        "active_members",
+        "active_transfers",
+        "active_local_room_transfers",
+        "pending_deliveries",
+    ] {
+        assert_eq!(unrelated_state.try_get::<i64>("", column).unwrap(), 1);
+    }
+    assert_eq!(
+        unrelated_state
+            .try_get::<i64>("", "cancelled_target_transfers")
+            .unwrap(),
+        2
+    );
+
+    outer
+        .execute_unprepared(
+            r#"
+UPDATE federation_instances SET failure_count = 4 WHERE domain = 'other.example';
+UPDATE federation_delivery_queue
+SET status = 'delivering', lease_token = '00000000-0000-0000-0000-000000000001',
+    lease_expires_at = NOW() + INTERVAL '10 minutes'
+WHERE target_domain = 'other.example';
+"#,
+        )
+        .await
+        .expect("prepare success streak reset contract");
+    assert!(crate::federation::delivery::settle_remote_delivery_success(
+        &outer,
+        7,
+        Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+        "other.example",
+    )
+    .await
+    .expect("settle successful remote delivery"));
+    let reset = outer
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT failure_count FROM federation_instances WHERE domain = 'other.example'"
+                .to_string(),
+        ))
+        .await
+        .expect("read success reset")
+        .expect("other instance row");
+    assert_eq!(reset.try_get::<i32>("", "failure_count").unwrap(), 0);
+
+    outer
+        .execute_unprepared(
+            r#"
+UPDATE federation_instances SET failure_count = 3 WHERE domain = 'other.example';
+INSERT INTO federation_activities
+    (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
+VALUES
+    ('activity-stale-success', 1, 'Create', 'Note', '{"id":"activity-stale-success"}', TRUE, NOW());
+INSERT INTO federation_delivery_queue
+    (activity_id, target_inbox, target_domain, status, lease_token, lease_expires_at, created_at)
+VALUES
+    (10, 'https://other.example/stale', 'other.example', 'delivering',
+     '00000000-0000-0000-0000-000000000002', NOW() + INTERVAL '10 minutes', NOW());
+"#,
+        )
+        .await
+        .expect("prepare stale success settlement contract");
+    assert!(
+        !crate::federation::delivery::settle_remote_delivery_success(
+            &outer,
+            10,
+            Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap(),
+            "other.example",
+        )
+        .await
+        .expect("reject stale successful delivery settlement")
+    );
+    let stale_health = outer
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            "SELECT failure_count FROM federation_instances WHERE domain = 'other.example'"
+                .to_string(),
+        ))
+        .await
+        .expect("read health after stale success")
+        .expect("other instance health row");
+    assert_eq!(stale_health.try_get::<i32>("", "failure_count").unwrap(), 3);
 
     outer
         .rollback()

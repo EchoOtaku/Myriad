@@ -135,6 +135,19 @@ Classifier: `is_user_cancelled_delivery_error` — exact `cancelled: by user` (c
 or any `cancelled:` prefix (room/channel teardown). Peer errors that merely mention
 “cancelled” mid-string do **not** match.
 
+Remote health uses consecutive outbound delivery outcomes per domain. A successful
+HTTP acknowledgement resets the streak. DNS failures, timeouts,
+connection errors, and non-success HTTP responses increment it; local URL/SSRF
+policy, HTTP-client preparation, key/signing/DB failures, trust-policy rejection,
+lease reclaim, and a remote human not replying do not.
+On the fifth failure, one transaction removes active follows and room memberships,
+closes DM channels, cancels open DM transfers plus transfers in rooms hosted by the
+failed domain, and marks unfinished or otherwise retryable deliveries to that domain
+with a `cancelled:` reason. Locally hosted rooms keep other members; for a room hosted by
+the failed domain, local memberships are removed. Cached actors, room/channel
+messages, activities, and completed deliveries remain as local history. This is a
+liveness teardown, not a trust block; a later new relationship starts a fresh streak.
+
 Resource teardown: `cancel_pending_deliveries_for_resource` **excludes** `RoomDissolve` /
 `ChannelClose` (and `myriad:` variants) so dissolve/close fan-out is never self-cancelled.
 `delete_room` cancels stale traffic **before** dissolve enqueue.
