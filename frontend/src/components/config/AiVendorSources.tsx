@@ -48,6 +48,7 @@ import {
   VolcengineMark,
   ZhipuMark,
 } from './vendorIcons'
+import { useAddedCardOpen, useAddedSlug } from './useAddedCard'
 import { getVendorSetupGuide } from './vendorSetupGuides'
 import './AiVendorAdd.css'
 
@@ -208,6 +209,48 @@ export function AiVendorAddTrigger({
 }: AiVendorSourcesProps) {
   const { t } = useI18n()
   const addFromPreset = useAddVendorSource(sources, onChange)
+  const guide = useMemo(
+    () => (
+      <div className="oidc-preset-grid">
+        {AI_VENDOR_PRESETS.map((preset) => {
+          const used = sources
+            .filter(
+              (source) =>
+                source.preset === preset.id ||
+                source.slug === preset.defaultSlug,
+            )
+            .flatMap((source) => usages[source.slug] ?? [])
+          const usedHint = usedByText([...new Set(used)], t)
+          const capsHint = capabilityText(preset.capabilities, t)
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              className={`oidc-preset-card${usedHint ? ' is-used' : ''}`}
+              onClick={() => addFromPreset(preset.id)}
+              title={[preset.display_name, capsHint, usedHint]
+                .filter(Boolean)
+                .join(' · ')}
+            >
+              <span className="oidc-preset-icon">
+                <VendorKindIcon
+                  kind={preset.kind}
+                  slug={preset.defaultSlug}
+                  preset={preset.id}
+                />
+              </span>
+              <span className="oidc-preset-name">{preset.display_name}</span>
+              <span className="ai-vendor-preset-caps">{capsHint}</span>
+              {usedHint ? (
+                <span className="ai-vendor-preset-used">{usedHint}</span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+    ),
+    [addFromPreset, sources, t, usages],
+  )
 
   return (
     <SettingTitleGuideEntry
@@ -215,45 +258,7 @@ export function AiVendorAddTrigger({
       requireShowDetails={false}
       className="ai-vendor-add-entry"
       panelClassName="ai-vendor-add-float"
-      guide={
-        <div className="oidc-preset-grid">
-          {AI_VENDOR_PRESETS.map((preset) => {
-            const used = sources
-              .filter(
-                (source) =>
-                  source.preset === preset.id ||
-                  source.slug === preset.defaultSlug,
-              )
-              .flatMap((source) => usages[source.slug] ?? [])
-            const usedHint = usedByText([...new Set(used)], t)
-            const capsHint = capabilityText(preset.capabilities, t)
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                className="oidc-preset-card"
-                onClick={() => addFromPreset(preset.id)}
-                title={[preset.display_name, capsHint, usedHint]
-                  .filter(Boolean)
-                  .join(' · ')}
-              >
-                <span className="oidc-preset-icon">
-                  <VendorKindIcon
-                    kind={preset.kind}
-                    slug={preset.defaultSlug}
-                    preset={preset.id}
-                  />
-                </span>
-                <span className="oidc-preset-name">{preset.display_name}</span>
-                <span className="ai-vendor-preset-caps">{capsHint}</span>
-                {usedHint ? (
-                  <span className="ai-vendor-preset-used">{usedHint}</span>
-                ) : null}
-              </button>
-            )
-          })}
-        </div>
-      }
+      guide={guide}
       renderTrigger={({ open, closing, toggle, ariaLabel }) => (
         <CheckboxCard
           variant="switch"
@@ -279,6 +284,7 @@ export const AiVendorSources: React.FC<AiVendorSourcesProps> = ({
   usages = {},
 }) => {
   const { t } = useI18n()
+  const addedSlug = useAddedSlug(sources.map((source) => source.slug))
 
   const updateSource = (index: number, patch: Partial<AiVendorSource>) => {
     onChange(sources.map((item, i) => (i === index ? { ...item, ...patch } : item)))
@@ -294,9 +300,10 @@ export const AiVendorSources: React.FC<AiVendorSourcesProps> = ({
 
       {sources.map((source, index) => (
         <VendorCard
-          key={`${source.slug}-${index}`}
+          key={source.slug}
           source={source}
           usedBy={usages[source.slug]}
+          justAdded={source.slug === addedSlug}
           onChange={(patch) => updateSource(index, patch)}
           onRemove={() => onChange(sources.filter((_, i) => i !== index))}
         />
@@ -328,11 +335,13 @@ function hasVendorCredential(source: AiVendorSource): boolean {
 function VendorCard({
   source,
   usedBy,
+  justAdded = false,
   onChange,
   onRemove,
 }: {
   source: AiVendorSource
   usedBy?: VendorUsageId[]
+  justAdded?: boolean
   onChange: (patch: Partial<AiVendorSource>) => void
   onRemove: () => void
 }) {
@@ -341,7 +350,7 @@ function VendorCard({
   const configured = hasVendorCredential(source)
   const title = source.display_name || source.slug
   const usedHint = usedByText(usedBy, t)
-  const [open, setOpen] = useState(!configured)
+  const [open, setOpen] = useAddedCardOpen(justAdded, !configured)
   const regionOptions = useMemo(
     () => [
       { value: 'ap-guangzhou', label: t.config.tencentRegionGuangzhou },
@@ -360,7 +369,7 @@ function VendorCard({
     <div
       className={`oidc-provider-card ai-vendor-card${open ? ' is-open' : ''}${
         source.enabled ? '' : ' disabled'
-      }`}
+      }${justAdded ? ' is-added' : ''}`}
     >
       <div className="oidc-provider-header ai-vendor-card-header">
         <button
@@ -374,11 +383,13 @@ function VendorCard({
           ).replace('{title}', title)}
         />
         <div className="oidc-provider-title">
-          <VendorKindIcon
-            kind={source.kind}
-            slug={source.slug}
-            preset={source.preset}
-          />
+          <span className="oidc-provider-icon-img" aria-hidden>
+            <VendorKindIcon
+              kind={source.kind}
+              slug={source.slug}
+              preset={source.preset}
+            />
+          </span>
           <span className="oidc-provider-title-text">{title}</span>
           <span className="ai-vendor-card-tags">
             <SettingTitleTag

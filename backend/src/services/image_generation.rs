@@ -490,6 +490,10 @@ fn aspect_ratio(width: u32, height: u32) -> &'static str {
         "3:2"
     } else if width.saturating_mul(3) == height.saturating_mul(2) {
         "2:3"
+    } else if width.saturating_mul(3) == height.saturating_mul(4) {
+        "4:3"
+    } else if width.saturating_mul(4) == height.saturating_mul(3) {
+        "3:4"
     } else if width > height {
         "16:9"
     } else {
@@ -878,7 +882,6 @@ fn provider_label(provider: &str) -> &str {
 mod tests {
     use super::*;
     use crate::config::DynamicConfig;
-
     #[test]
     fn builds_each_supported_provider_request() {
         for (provider, expected_suffix) in [
@@ -944,6 +947,9 @@ mod tests {
         assert!(body.get("background").is_none());
         assert!(body.get("output_format").is_none());
         assert!(body.get("n").is_none());
+
+        let (_, portrait) = request_parts(&generic, "portrait", 1152, 1536, None).unwrap();
+        assert_eq!(portrait["aspect_ratio"], "3:4");
 
         let transparent = ImageGenerationConfig {
             model: "openai/gpt-image-1".to_string(),

@@ -7,6 +7,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
+import { PERMISSION_LEVELS, PERMISSION_MAP } from '../runtime/permissionConfig.ts'
 import { PERMISSION_CONFIG } from './permissions.ts'
 
 describe('permission copy keys', () => {
@@ -36,5 +37,13 @@ describe('permission copy keys', () => {
       labelKeys.add(entry.labelKey)
       descriptionKeys.add(entry.descriptionKey)
     }
+  })
+
+  it('exposes 3d:generate as elevated and keeps asset reads public', () => {
+    assert.equal(PERMISSION_LEVELS['3d:generate'], 'elevated')
+    assert.equal(PERMISSION_CONFIG['3d:generate'].labelKey, 'perm3dGenerate')
+    assert.equal(PERMISSION_MAP.get('model3d.createTask'), '3d:generate')
+    assert.equal(PERMISSION_MAP.get('model3d.getUrl'), 'public')
+    assert.equal(PERMISSION_MAP.get('model3d.getMetadata'), 'public')
   })
 })

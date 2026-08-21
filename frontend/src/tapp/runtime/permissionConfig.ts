@@ -32,6 +32,7 @@ export const PERMISSION_LEVELS: Record<TappPermission, TappPermissionLevel> = {
   'ai:analyze': 'elevated',
   'ai:chat': 'elevated',
   'ai:image': 'elevated',
+  '3d:generate': 'elevated',
   'report:read': 'basic',
   'report:write': 'privileged',
   'storage:read': 'basic',
@@ -192,6 +193,14 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     ['ai.tasks.usage', 'public'],
     ['ai.tasks.subscribe', 'public'],
     ['ai.tasks.unsubscribe', 'public'],
+
+    ['model3d.status', '3d:generate'],
+    ['model3d.upload', '3d:generate'],
+    ['model3d.createTask', '3d:generate'],
+    ['model3d.getTask', '3d:generate'],
+    ['model3d.awaitTask', '3d:generate'],
+    ['model3d.getUrl', 'public'],
+    ['model3d.getMetadata', 'public'],
 
     // 报告权限
     ['report.listReports', 'report:read'],

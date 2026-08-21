@@ -2,46 +2,50 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SETTINGS_DURATION_MS } from '../settings'
 import { saveConfigNavPersisted } from './form/configNavPersistence'
 
-const PERSONA_PAGE = 'persona'
+export type AiSubpage = 'persona' | 'face'
 
-function isPersonaPageOpen(): boolean {
-  if (typeof window === 'undefined') return false
-  return new URLSearchParams(window.location.search).get('page') === PERSONA_PAGE
+function readSubpage(): AiSubpage | null {
+  if (typeof window === 'undefined') return null
+  const page = new URLSearchParams(window.location.search).get('page')
+  return page === 'persona' || page === 'face' ? page : null
 }
 
-function setPersonaPageOpen(open: boolean) {
+function writeSubpage(page: AiSubpage | null) {
   if (typeof window === 'undefined') return
   const url = new URL(window.location.href)
-  if (open) url.searchParams.set('page', PERSONA_PAGE)
+  if (page) url.searchParams.set('page', page)
   else url.searchParams.delete('page')
   window.history.pushState(window.history.state, '', url.toString())
 }
 
 /**
- * AI 一级 ↔ 设定引导：URL `page=persona`、回顶、sm-pane 方向。
+ * AI 一级 ↔ 设定 / 形象二级页：URL `page=persona|face`、回顶、sm-pane 方向。
  * 回顶与换设置分类同一套（scrollTo(0) + 清掉滚动快照）。
  */
-export function usePersonaPage(onNavigate?: (open: boolean) => void) {
-  const [open, setOpen] = useState(isPersonaPageOpen)
+export function useAiSubpage(
+  onNavigate?: (page: AiSubpage | null) => void,
+) {
+  const [page, setPage] = useState<AiSubpage | null>(readSubpage)
   const [navDir, setNavDir] = useState<'none' | 'forward' | 'back'>('none')
-  const openRef = useRef(open)
+  const pageRef = useRef(page)
   const onNavigateRef = useRef(onNavigate)
-  openRef.current = open
+  pageRef.current = page
   onNavigateRef.current = onNavigate
 
-  const reveal = useCallback((nextOpen: boolean) => {
+  const reveal = useCallback((next: AiSubpage | null) => {
+    const prev = pageRef.current
     window.scrollTo({ top: 0, behavior: 'auto' })
     saveConfigNavPersisted({ scrollY: 0 })
-    setNavDir(nextOpen ? 'forward' : 'back')
-    setOpen(nextOpen)
-    onNavigateRef.current?.(nextOpen)
+    setNavDir(next && !prev ? 'forward' : !next && prev ? 'back' : 'forward')
+    setPage(next)
+    onNavigateRef.current?.(next)
   }, [])
 
   useEffect(() => {
     const apply = () => {
-      const nextOpen = isPersonaPageOpen()
-      if (nextOpen === openRef.current) return
-      reveal(nextOpen)
+      const next = readSubpage()
+      if (next === pageRef.current) return
+      reveal(next)
     }
     window.addEventListener('popstate', apply)
     return () => window.removeEventListener('popstate', apply)
@@ -55,20 +59,23 @@ export function usePersonaPage(onNavigate?: (open: boolean) => void) {
       'none',
     )
     return () => window.clearTimeout(id)
-  }, [navDir, open])
+  }, [navDir, page])
 
-  const openPage = useCallback(() => {
-    setPersonaPageOpen(true)
-    reveal(true)
-  }, [reveal])
+  const openPage = useCallback(
+    (next: AiSubpage) => {
+      writeSubpage(next)
+      reveal(next)
+    },
+    [reveal],
+  )
 
   const closePage = useCallback(() => {
-    setPersonaPageOpen(false)
-    reveal(false)
+    writeSubpage(null)
+    reveal(null)
   }, [reveal])
 
   return {
-    open,
+    page,
     navDir: navDir === 'none' ? undefined : navDir,
     openPage,
     closePage,

@@ -5,6 +5,7 @@
 mod ai;
 mod brew;
 mod external;
+mod model3d;
 mod platform;
 mod report;
 mod system;
@@ -18,6 +19,7 @@ pub fn register_all(registry: &mut CapabilityRegistry) {
     platform::register(registry);
     brew::register(registry);
     ai::register(registry);
+    model3d::register(registry);
     tapp::register(registry);
     report::register(registry);
     system::register(registry);

@@ -25,8 +25,26 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     default_value: Some("''::text".into()),
                 },
                 ColumnDef {
+                    name: "persona_json".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "visual_profile".into(),
+                    data_type: "jsonb".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
                     name: "portrait_asset_id".into(),
                     data_type: "text".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
+                    name: "portrait_generation".into(),
+                    data_type: "jsonb".into(),
                     is_nullable: true,
                     default_value: None,
                 },

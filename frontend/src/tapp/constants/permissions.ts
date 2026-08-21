@@ -20,6 +20,7 @@ import {
   FaClock,
   FaCog,
   FaComments,
+  FaCube,
   FaDatabase,
   FaEdit,
   FaEnvelope,
@@ -116,6 +117,11 @@ export const PERMISSION_CONFIG: Record<
     icon: FaImage,
     labelKey: 'permAiImage',
     descriptionKey: 'permAiImageDesc',
+  },
+  '3d:generate': {
+    icon: FaCube,
+    labelKey: 'perm3dGenerate',
+    descriptionKey: 'perm3dGenerateDesc',
   },
 
   // —— 报告 ——

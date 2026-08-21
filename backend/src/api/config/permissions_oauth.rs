@@ -77,11 +77,12 @@ pub async fn get_permissions(
 /// 更新 Tapp 权限下放配置（仅管理员）
 #[derive(Debug, Deserialize)]
 pub struct UpdatePermissionsPayload {
-    // 普通用户可下放的 elevated 权限（14 项）
+    // 普通用户可下放的 elevated 权限
     pub user_perm_ai_generate: Option<bool>,
     pub user_perm_ai_analyze: Option<bool>,
     pub user_perm_ai_chat: Option<bool>,
     pub user_perm_ai_image: Option<bool>,
+    pub user_perm_3d_generate: Option<bool>,
     #[allow(dead_code)]
     pub user_perm_report_write: Option<bool>, // 忽略：强制 false
     pub user_perm_network_fetch: Option<bool>,
@@ -100,6 +101,7 @@ pub struct UpdatePermissionsPayload {
     pub guest_perm_ai_analyze: Option<bool>,
     pub guest_perm_ai_chat: Option<bool>,
     pub guest_perm_ai_image: Option<bool>,
+    pub guest_perm_3d_generate: Option<bool>,
     pub guest_perm_network_fetch: Option<bool>,
     pub guest_perm_media_control: Option<bool>,
     pub guest_perm_event_publish: Option<bool>,
@@ -155,7 +157,7 @@ pub async fn update_permissions(
     let config_service = crate::services::config_service::ConfigService::new(db);
     let mut updates = std::collections::HashMap::new();
 
-    // 普通用户权限（13 项 elevated）
+    // 普通用户权限（elevated）
     if let Some(v) = payload.user_perm_ai_generate {
         updates.insert("user_perm_ai_generate".to_string(), json!(v));
     }
@@ -167,6 +169,9 @@ pub async fn update_permissions(
     }
     if let Some(v) = payload.user_perm_ai_image {
         updates.insert("user_perm_ai_image".to_string(), json!(v));
+    }
+    if let Some(v) = payload.user_perm_3d_generate {
+        updates.insert("user_perm_3d_generate".to_string(), json!(v));
     }
     // report:write 不再下放：强制写入 false
     updates.insert("user_perm_report_write".to_string(), json!(false));
@@ -213,6 +218,9 @@ pub async fn update_permissions(
     }
     if let Some(v) = payload.guest_perm_ai_image {
         updates.insert("guest_perm_ai_image".to_string(), json!(v));
+    }
+    if let Some(v) = payload.guest_perm_3d_generate {
+        updates.insert("guest_perm_3d_generate".to_string(), json!(v));
     }
     // report:write 不再下放：强制写入 false
     updates.insert("guest_perm_report_write".to_string(), json!(false));
@@ -482,10 +490,7 @@ pub async fn update_oauth_providers(
     if let Some(raw) = payload.tapp_private_install_cleanup.as_deref() {
         let mode = raw.trim().to_ascii_lowercase();
         if mode == "logout" || mode == "inactivity" {
-            updates.insert(
-                "tapp_private_install_cleanup".to_string(),
-                json!(mode),
-            );
+            updates.insert("tapp_private_install_cleanup".to_string(), json!(mode));
         }
     }
     if let Some(days) = payload.tapp_private_install_inactivity_days {

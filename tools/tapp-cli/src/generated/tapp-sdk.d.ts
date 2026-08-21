@@ -3,7 +3,7 @@
  * Generated from the runtime permission catalog. Call sites still need
  * matching Manifest permissions and a handler in the current sandbox profile.
  *
- * Headless-denied Bridge actions: component.list, component.registerAgent, component.registerTheme, component.unregister, dynamicContent.get, dynamicContent.remove, dynamicContent.set, dynamicContent.update, file.download, shortcut.list, shortcut.register, shortcut.unregister, tappList.export, tappList.get, tappList.getInstallPackage, tappList.getRecent, tappList.install, tappList.list, tappList.resolveStoreSource, tappList.start, tappList.stop, tappList.uninstall, ui.confirm, ui.exitFullscreen, ui.isFullscreen, ui.listOpenUrls, ui.openUrl, ui.requestFullscreen, ui.setTitle, ui.toggleFullscreen, widget.listRegistered, widget.register, widget.unregister, widget.updateConfig
+ * Headless-denied Bridge actions: component.list, component.registerAgent, component.registerTheme, component.unregister, dynamicContent.get, dynamicContent.remove, dynamicContent.set, dynamicContent.update, file.download, model3d.awaitTask, model3d.createTask, model3d.getMetadata, model3d.getTask, model3d.getUrl, model3d.status, model3d.upload, shortcut.list, shortcut.register, shortcut.unregister, tappList.export, tappList.get, tappList.getInstallPackage, tappList.getRecent, tappList.install, tappList.list, tappList.resolveStoreSource, tappList.start, tappList.stop, tappList.uninstall, ui.confirm, ui.exitFullscreen, ui.isFullscreen, ui.listOpenUrls, ui.openUrl, ui.requestFullscreen, ui.setTitle, ui.toggleFullscreen, widget.listRegistered, widget.register, widget.unregister, widget.updateConfig
  *
  * Do not edit by hand — run: npm run sync-contract
  */
@@ -358,6 +358,15 @@ export interface TappSdk {
     sendIntent(...args: unknown[]): Promise<unknown> // permission: game:session
     sendState(...args: unknown[]): Promise<unknown> // permission: game:session
     shareId(...args: unknown[]): Promise<unknown> // permission: game:session
+  }
+  model3d: {
+    awaitTask(...args: unknown[]): Promise<unknown> // permission: 3d:generate
+    createTask(...args: unknown[]): Promise<unknown> // permission: 3d:generate
+    getMetadata(...args: unknown[]): Promise<unknown>
+    getTask(...args: unknown[]): Promise<unknown> // permission: 3d:generate
+    getUrl(...args: unknown[]): Promise<unknown>
+    status(...args: unknown[]): Promise<unknown> // permission: 3d:generate
+    upload(...args: unknown[]): Promise<unknown> // permission: 3d:generate
   }
   platform: {
     addItem(...args: unknown[]): Promise<unknown> // permission: platform:write

@@ -487,6 +487,16 @@ impl ConfigService {
                 .or_else(|| v.as_str().map(|s| s == "true" || s == "1"))
                 .unwrap_or(config.agent_life_enabled);
         }
+        if let Some(v) = map.get("agent_rig_asset_id") {
+            config.agent_rig_asset_id = v
+                .as_str()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .and_then(crate::services::digital_life_rig::normalize_asset_id);
+        }
+        if let Some(v) = map.get("see_through_hf_token") {
+            config.see_through_hf_token = opt_nonempty_string(v);
+        }
 
         // Tripo 3D 独立配置
         if let Some(v) = map.get("tripo_enabled") {
@@ -839,7 +849,7 @@ impl ConfigService {
         }
 
         // Tapp 权限下放配置
-        // 普通用户可下放的 elevated 权限（13 项）
+        // 普通用户可下放的 elevated 权限
         if let Some(v) = map.get("user_perm_ai_generate") {
             if let Some(b) = v.as_bool() {
                 config.user_perm_ai_generate = b;
@@ -858,6 +868,11 @@ impl ConfigService {
         if let Some(v) = map.get("user_perm_ai_image") {
             if let Some(b) = v.as_bool() {
                 config.user_perm_ai_image = b;
+            }
+        }
+        if let Some(v) = map.get("user_perm_3d_generate") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_3d_generate = b;
             }
         }
         if let Some(v) = map.get("user_perm_report_write") {
@@ -916,7 +931,7 @@ impl ConfigService {
             }
         }
 
-        // 游客可下放的 elevated 权限（13 项）
+        // 游客可下放的 elevated 权限
         if let Some(v) = map.get("guest_perm_ai_generate") {
             if let Some(b) = v.as_bool() {
                 config.guest_perm_ai_generate = b;
@@ -935,6 +950,11 @@ impl ConfigService {
         if let Some(v) = map.get("guest_perm_ai_image") {
             if let Some(b) = v.as_bool() {
                 config.guest_perm_ai_image = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_3d_generate") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_3d_generate = b;
             }
         }
         if let Some(v) = map.get("guest_perm_report_write") {
@@ -1185,6 +1205,48 @@ mod tests {
     }
 
     #[test]
+    fn parses_agent_rig_asset_id_from_database_config() {
+        let hex = "a".repeat(64);
+        let on = ConfigService::parse_config(HashMap::from([(
+            "agent_rig_asset_id".into(),
+            json!(hex.clone()),
+        )]));
+        assert_eq!(on.agent_rig_asset_id.as_deref(), Some(hex.as_str()));
+
+        let cleared =
+            ConfigService::parse_config(HashMap::from([("agent_rig_asset_id".into(), json!(""))]));
+        assert_eq!(cleared.agent_rig_asset_id, None);
+
+        let invalid = ConfigService::parse_config(HashMap::from([(
+            "agent_rig_asset_id".into(),
+            json!("not-a-sha256"),
+        )]));
+        assert_eq!(invalid.agent_rig_asset_id, None);
+    }
+
+    #[test]
+    fn parses_see_through_hf_token_from_database_config() {
+        assert!(crate::services::data_key::is_sensitive_config_key(
+            "see_through_hf_token"
+        ));
+
+        let configured = ConfigService::parse_config(HashMap::from([(
+            "see_through_hf_token".into(),
+            json!("hf_test_token"),
+        )]));
+        assert_eq!(
+            configured.see_through_hf_token.as_deref(),
+            Some("hf_test_token")
+        );
+
+        let empty = ConfigService::parse_config(HashMap::from([(
+            "see_through_hf_token".into(),
+            json!("  "),
+        )]));
+        assert_eq!(empty.see_through_hf_token, None);
+    }
+
+    #[test]
     fn parses_speech_provider_fields_from_database_config() {
         let vendors = ConfigService::parse_config(HashMap::from([(
             "ai_vendor_sources".into(),
@@ -1338,9 +1400,7 @@ mod tests {
                 let syn::Expr::Path(receiver) = call.receiver.as_ref() else {
                     return None;
                 };
-                if receiver.path.segments.len() != 1
-                    || receiver.path.segments[0].ident != "map"
-                {
+                if receiver.path.segments.len() != 1 || receiver.path.segments[0].ident != "map" {
                     return None;
                 }
                 match call.args.first()? {

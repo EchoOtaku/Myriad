@@ -144,6 +144,17 @@ export default function OnboardingWizard({
                     await agentService.putPersona({
                       name: displayName.trim(),
                       personality: flattenPersona(next),
+                      persona: {
+                        displayName: displayName.trim(),
+                        ...next,
+                        language: locale,
+                        draftSource: 'owner-reviewed',
+                      },
+                      visualProfile: {
+                        gender: gender ?? 'unspecified',
+                        extraRequirements: extraRequirements.trim(),
+                        language: locale,
+                      },
                     })
                     invalidatePublicConfigCache()
                     window.dispatchEvent(

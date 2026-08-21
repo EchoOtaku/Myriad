@@ -41,6 +41,13 @@ export const HEADLESS_DENIED_ACTIONS = [
   'dynamicContent.get',
   'dynamicContent.remove',
   'file.download',
+  'model3d.status',
+  'model3d.upload',
+  'model3d.createTask',
+  'model3d.getTask',
+  'model3d.awaitTask',
+  'model3d.getUrl',
+  'model3d.getMetadata',
 ] as const
 
 export function applySandboxCapabilityProfile(

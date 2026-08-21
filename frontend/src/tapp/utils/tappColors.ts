@@ -155,7 +155,8 @@ function resolveShellStops(source: TappIconStyleSource): {
   if (
     permissions.includes('ai:generate') ||
     permissions.includes('ai:chat') ||
-    permissions.includes('ai:image')
+    permissions.includes('ai:image') ||
+    permissions.includes('3d:generate')
   ) {
     const c = CATEGORY_COLORS.ai
     return { from: c.fromHex, to: c.toHex, accent: c.fromHex }

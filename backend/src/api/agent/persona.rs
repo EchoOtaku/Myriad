@@ -4,11 +4,11 @@ use super::*;
 use axum::{extract::State, Extension, Json};
 use sea_orm::DatabaseConnection;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
 use crate::error::HttpError;
 use crate::middleware::auth::Claims;
-use crate::services::agent::life;
+use crate::services::{agent::life, digital_life_rig};
 use crate::services::site_owner::site_owner_user_id;
 use axum::http::StatusCode;
 
@@ -22,6 +22,10 @@ pub struct PutPersonaRequest {
     /// Absent keeps the current portrait, explicit `null` clears it.
     #[serde(default, deserialize_with = "present_option")]
     pub portrait_asset_id: Option<Option<String>>,
+    #[serde(default)]
+    pub persona: Option<Value>,
+    #[serde(default)]
+    pub visual_profile: Option<Value>,
 }
 
 fn present_option<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
@@ -228,6 +232,9 @@ pub async fn get_persona(
     if is_owner {
         body["personality"] = json!(persona.personality);
         body["name"] = json!(persona.name);
+        body["persona"] = persona.persona_json.unwrap_or(Value::Null);
+        body["visualProfile"] = persona.visual_profile.unwrap_or(Value::Null);
+        body["portraitGeneration"] = persona.portrait_generation.unwrap_or(Value::Null);
     }
     Ok(Json(body))
 }
@@ -240,6 +247,16 @@ pub async fn put_persona(
 ) -> Result<Json<Value>, HttpError> {
     require_life_enabled().await?;
     let user_id = require_site_owner(&claims, &db).await?;
+    let previous_portrait = life::get_persona(&db)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "[Agent persona] load before save failed");
+            HttpError::from((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            ))
+        })?
+        .and_then(|persona| persona.portrait_asset_id);
     let portrait = match body.portrait_asset_id {
         None => life::PortraitUpdate::Keep,
         Some(None) => life::PortraitUpdate::Clear,
@@ -257,7 +274,33 @@ pub async fn put_persona(
             }
         },
     };
-    let saved = life::upsert_persona(&db, body.name, body.personality, portrait, user_id)
+    let visual_profile = body
+        .visual_profile
+        .as_ref()
+        .map(sanitize_visual_profile)
+        .transpose()?;
+    let persona = body
+        .persona
+        .as_ref()
+        .map(|value| sanitize_structured_persona(&body.name, value, visual_profile.as_ref()))
+        .transpose()?;
+    let contract = life::PersonaContractUpdate {
+        persona: persona
+            .map(life::JsonDocumentUpdate::Set)
+            .unwrap_or(life::JsonDocumentUpdate::Clear),
+        visual_profile: visual_profile
+            .map(life::JsonDocumentUpdate::Set)
+            .unwrap_or_default(),
+        ..life::PersonaContractUpdate::default()
+    };
+    let saved = life::upsert_persona(
+        &db,
+        body.name,
+        body.personality,
+        portrait,
+        contract,
+        user_id,
+    )
         .await
         .map_err(|error| {
             tracing::error!(%error, "[Agent persona] save failed");
@@ -266,9 +309,23 @@ pub async fn put_persona(
                 Json(json!({ "error": "Database error" })),
             ))
         })?;
+    if previous_portrait != saved.portrait_asset_id {
+        digital_life_rig::set_active_asset(&db, None)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "[Agent persona] stale rig invalidation failed");
+                HttpError::from((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "Database error" })),
+                ))
+            })?;
+    }
     Ok(Json(json!({
         "name": saved.name,
         "personality": saved.personality,
+        "persona": saved.persona_json,
+        "visualProfile": saved.visual_profile,
+        "portraitGeneration": saved.portrait_generation,
         "portraitAssetId": saved.portrait_asset_id,
         "hasCustomPersona": life::has_custom_persona(&saved),
     })))
@@ -288,6 +345,15 @@ pub async fn delete_persona(
             Json(json!({ "error": "Database error" })),
         ))
     })?;
+    digital_life_rig::set_active_asset(&db, None)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "[Agent persona] stale rig invalidation failed");
+            HttpError::from((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error" })),
+            ))
+        })?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -506,6 +572,137 @@ fn sanitize_portrait_asset_id(raw: &str) -> Option<String> {
     }
 }
 
+fn sanitize_structured_persona(
+    name: &str,
+    value: &Value,
+    visual_profile: Option<&Value>,
+) -> Result<Value, HttpError> {
+    let language = visual_profile
+        .and_then(|profile| profile.get("language"))
+        .and_then(Value::as_str)
+        .unwrap_or("zh-CN");
+    let outfit = visual_profile.and_then(|profile| profile.get("outfitDesign"));
+    let fallback = myriad_digital_life::fallback_persona_draft(
+        name,
+        language,
+        &[],
+        outfit,
+    );
+    let persona = myriad_digital_life::sanitize_persona_draft(value, &fallback)
+        .filter(myriad_digital_life::persona_draft_is_complete)
+        .ok_or_else(|| {
+            HttpError::from((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Structured persona is incomplete",
+                    "code": "persona_contract_invalid"
+                })),
+            ))
+        })?;
+    Ok(persona)
+}
+
+fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
+    let source = value.as_object().ok_or_else(|| {
+        HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Visual profile must be an object",
+                "code": "visual_profile_invalid"
+            })),
+        ))
+    })?;
+    let mut profile = Map::new();
+    if let Some(gender) = source.get("gender").and_then(Value::as_str) {
+        if !matches!(gender, "female" | "male" | "nonbinary" | "unspecified") {
+            return Err(HttpError::from((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Visual profile gender is invalid",
+                    "code": "visual_profile_invalid"
+                })),
+            )));
+        }
+        profile.insert("gender".into(), json!(gender));
+    }
+    if let Some(language) = source.get("language").and_then(Value::as_str) {
+        profile.insert(
+            "language".into(),
+            json!(normalize_signals_language(language)),
+        );
+    }
+    for (key, max_chars) in [("extraRequirements", 500), ("hairShape", 500)] {
+        if let Some(text) = source.get(key).and_then(Value::as_str) {
+            profile.insert(key.into(), json!(sanitize_visual_text(text, max_chars)?));
+        }
+    }
+    if let Some(identity) = source.get("visualIdentity") {
+        let identity = identity.as_object().ok_or_else(visual_profile_error)?;
+        let mut sanitized = Map::new();
+        for (key, max_chars) in [
+            ("hairShape", 500),
+            ("outfitConstruction", 1_200),
+            ("heroAccessory", 500),
+            ("paletteHint", 500),
+        ] {
+            if let Some(text) = identity.get(key).and_then(Value::as_str) {
+                sanitized.insert(key.into(), json!(sanitize_visual_text(text, max_chars)?));
+            }
+        }
+        profile.insert("visualIdentity".into(), Value::Object(sanitized));
+    }
+    if let Some(outfit) = source.get("outfitDesign") {
+        if outfit.is_null() {
+            profile.insert("outfitDesign".into(), Value::Null);
+        } else {
+            let outfit = outfit.as_object().ok_or_else(visual_profile_error)?;
+            let mut sanitized = Map::new();
+            for (key, max_chars) in [
+                ("id", 80),
+                ("titleZh", 120),
+                ("eraCueZh", 240),
+                ("designZh", 1_200),
+                ("layersEn", 1_200),
+                ("heroAccessoryZh", 500),
+                ("paletteHintZh", 500),
+            ] {
+                if let Some(text) = outfit.get(key).and_then(Value::as_str) {
+                    sanitized.insert(
+                        key.into(),
+                        json!(sanitize_visual_text(text, max_chars)?),
+                    );
+                }
+            }
+            if !["id", "titleZh", "designZh"]
+                .iter()
+                .all(|key| sanitized.get(*key).and_then(Value::as_str).is_some_and(|v| !v.is_empty()))
+            {
+                return Err(visual_profile_error());
+            }
+            profile.insert("outfitDesign".into(), Value::Object(sanitized));
+        }
+    }
+    Ok(Value::Object(profile))
+}
+
+fn sanitize_visual_text(value: &str, max_chars: usize) -> Result<String, HttpError> {
+    let value = value.trim();
+    if value.chars().count() > max_chars || value.chars().any(char::is_control) {
+        return Err(visual_profile_error());
+    }
+    Ok(value.to_string())
+}
+
+fn visual_profile_error() -> HttpError {
+    HttpError::from((
+        StatusCode::BAD_REQUEST,
+        Json(json!({
+            "error": "Visual profile is invalid",
+            "code": "visual_profile_invalid"
+        })),
+    ))
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -558,6 +755,30 @@ mod tests {
             serde_json::from_value(json!({ "name": "瞳", "portraitAssetId": "/a.png" }))
                 .expect("set");
         assert_eq!(set.portrait_asset_id, Some(Some("/a.png".to_string())));
+    }
+
+    #[test]
+    fn visual_profile_keeps_generation_inputs_separate_from_spoken_persona() {
+        let profile = sanitize_visual_profile(&json!({
+            "gender": "nonbinary",
+            "language": "zh-Hans",
+            "extraRequirements": "金色眼睛",
+        }))
+        .expect("valid profile");
+        assert_eq!(profile["language"], "zh-CN");
+        assert_eq!(profile["extraRequirements"], "金色眼睛");
+
+        let persona = sanitize_structured_persona(
+            "瞳",
+            &json!({
+                "summary": "安静但对新事物有持续好奇心",
+                "temperament": ["安静", "好奇"]
+            }),
+            Some(&profile),
+        )
+        .expect("valid persona");
+        assert_eq!(persona["summary"], "安静但对新事物有持续好奇心");
+        assert!(persona.get("gender").is_none());
     }
 
 }

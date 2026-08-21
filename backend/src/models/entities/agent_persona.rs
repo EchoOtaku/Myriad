@@ -10,8 +10,14 @@ pub struct Model {
     pub id: String,
     pub name: String,
     pub personality: String,
+    #[sea_orm(column_type = "Json", nullable)]
+    pub persona_json: Option<Json>,
+    #[sea_orm(column_type = "Json", nullable)]
+    pub visual_profile: Option<Json>,
     #[sea_orm(nullable)]
     pub portrait_asset_id: Option<String>,
+    #[sea_orm(column_type = "Json", nullable)]
+    pub portrait_generation: Option<Json>,
     #[sea_orm(nullable)]
     pub updated_by: Option<i32>,
     pub updated_at: DateTimeWithTimeZone,

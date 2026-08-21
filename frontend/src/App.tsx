@@ -81,6 +81,9 @@ const TappPlayground = lazy(
 
 // Arael AI 助手浮动面板
 const AraelPanel = lazy(() => import('./components/agent/AraelPanel'))
+const AraelFaceOverlay = lazy(
+  () => import('./features/digital-life-companion/AraelFaceOverlay'),
+)
 
 /**
  * 路由守卫：复用全局 AuthContext 认证状态
@@ -672,6 +675,7 @@ export function App() {
                     <AgentAccessGate>
                       <Suspense fallback={null}>
                         <AraelPanel />
+                        <AraelFaceOverlay />
                       </Suspense>
                     </AgentAccessGate>
                     <RouteLoader />

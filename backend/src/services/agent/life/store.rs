@@ -4,6 +4,7 @@ use sea_orm::{
     QueryOrder, QuerySelect, TransactionTrait,
 };
 use uuid::Uuid;
+use serde_json::Value;
 
 use crate::models::entities::{
     agent_addressee_state, agent_diary, agent_persona, agent_proactive_messages, agent_sessions,
@@ -41,13 +42,49 @@ impl PortraitUpdate {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct PersonaContractUpdate {
+    pub persona: JsonDocumentUpdate,
+    pub visual_profile: JsonDocumentUpdate,
+    pub portrait_generation: JsonDocumentUpdate,
+}
+
+#[derive(Debug, Clone, Default)]
+pub enum JsonDocumentUpdate {
+    #[default]
+    Keep,
+    Clear,
+    Set(Value),
+}
+
+fn apply_json_update(field: &mut sea_orm::ActiveValue<Option<Value>>, update: &JsonDocumentUpdate) {
+    match update {
+        JsonDocumentUpdate::Keep => {}
+        JsonDocumentUpdate::Clear => *field = Set(None),
+        JsonDocumentUpdate::Set(value) => *field = Set(Some(value.clone())),
+    }
+}
+
+fn json_update_changes(current: Option<&Value>, update: &JsonDocumentUpdate) -> bool {
+    match update {
+        JsonDocumentUpdate::Keep => false,
+        JsonDocumentUpdate::Clear => current.is_some(),
+        JsonDocumentUpdate::Set(value) => current != Some(value),
+    }
+}
+
 fn apply_persona_update(
     existing: agent_persona::Model,
     name: String,
     personality: String,
     portrait: &PortraitUpdate,
+    contract: &PersonaContractUpdate,
     updated_by: i32,
 ) -> agent_persona::ActiveModel {
+    let generation_inputs_changed = existing.name != name
+        || existing.personality != personality
+        || json_update_changes(existing.persona_json.as_ref(), &contract.persona)
+        || json_update_changes(existing.visual_profile.as_ref(), &contract.visual_profile);
     let mut active: agent_persona::ActiveModel = existing.into();
     active.name = Set(name);
     active.personality = Set(personality);
@@ -55,6 +92,17 @@ fn apply_persona_update(
         PortraitUpdate::Keep => {}
         PortraitUpdate::Clear => active.portrait_asset_id = Set(None),
         PortraitUpdate::Set(value) => active.portrait_asset_id = Set(Some(value.clone())),
+    }
+    apply_json_update(&mut active.persona_json, &contract.persona);
+    apply_json_update(&mut active.visual_profile, &contract.visual_profile);
+    apply_json_update(
+        &mut active.portrait_generation,
+        &contract.portrait_generation,
+    );
+    if (!matches!(portrait, PortraitUpdate::Keep) || generation_inputs_changed)
+        && matches!(contract.portrait_generation, JsonDocumentUpdate::Keep)
+    {
+        active.portrait_generation = Set(None);
     }
     active.updated_by = Set(Some(updated_by));
     active.updated_at = Set(Utc::now().into());
@@ -66,12 +114,13 @@ pub async fn upsert_persona(
     name: String,
     personality: String,
     portrait: PortraitUpdate,
+    contract: PersonaContractUpdate,
     updated_by: i32,
 ) -> Result<agent_persona::Model, anyhow::Error> {
     let (name, personality) = normalize_persona_fields(&name, &personality);
     if let Some(existing) = get_persona(db).await? {
         return Ok(
-            apply_persona_update(existing, name, personality, &portrait, updated_by)
+            apply_persona_update(existing, name, personality, &portrait, &contract, updated_by)
                 .update(db)
                 .await?,
         );
@@ -80,7 +129,19 @@ pub async fn upsert_persona(
         id: Set(PERSONA_ROW_ID.to_string()),
         name: Set(name.clone()),
         personality: Set(personality.clone()),
+        persona_json: Set(match &contract.persona {
+            JsonDocumentUpdate::Set(value) => Some(value.clone()),
+            JsonDocumentUpdate::Keep | JsonDocumentUpdate::Clear => None,
+        }),
+        visual_profile: Set(match &contract.visual_profile {
+            JsonDocumentUpdate::Set(value) => Some(value.clone()),
+            JsonDocumentUpdate::Keep | JsonDocumentUpdate::Clear => None,
+        }),
         portrait_asset_id: Set(portrait.stored()),
+        portrait_generation: Set(match &contract.portrait_generation {
+            JsonDocumentUpdate::Set(value) => Some(value.clone()),
+            JsonDocumentUpdate::Keep | JsonDocumentUpdate::Clear => None,
+        }),
         updated_by: Set(Some(updated_by)),
         updated_at: Set(Utc::now().into()),
     };
@@ -89,7 +150,7 @@ pub async fn upsert_persona(
         Err(err) if is_unique_conflict(&err) => {
             let existing = get_persona(db).await?.ok_or_else(|| anyhow::anyhow!(err))?;
             Ok(
-                apply_persona_update(existing, name, personality, &portrait, updated_by)
+                apply_persona_update(existing, name, personality, &portrait, &contract, updated_by)
                     .update(db)
                     .await?,
             )
@@ -342,7 +403,8 @@ pub async fn touch_proactive(
 
 #[cfg(test)]
 mod tests {
-    use super::is_unique_conflict;
+    use super::*;
+    use serde_json::json;
 
     #[test]
     fn postgres_duplicate_key_is_unique_conflict() {
@@ -351,5 +413,29 @@ mod tests {
         ));
         assert!(!is_unique_conflict(&"connection reset"));
         assert!(!is_unique_conflict(&"null value in column unique_id"));
+    }
+
+    #[test]
+    fn changing_generation_inputs_invalidates_portrait_contract() {
+        let existing = agent_persona::Model {
+            id: PERSONA_ROW_ID.to_string(),
+            name: "Arael".to_string(),
+            personality: "quiet".to_string(),
+            persona_json: Some(json!({ "summary": "quiet" })),
+            visual_profile: Some(json!({ "gender": "unspecified" })),
+            portrait_asset_id: Some("/master.png".to_string()),
+            portrait_generation: Some(json!({ "fingerprint": "a".repeat(64) })),
+            updated_by: Some(1),
+            updated_at: Utc::now().into(),
+        };
+        let active = apply_persona_update(
+            existing,
+            "Arael".to_string(),
+            "more curious".to_string(),
+            &PortraitUpdate::Keep,
+            &PersonaContractUpdate::default(),
+            1,
+        );
+        assert_eq!(active.portrait_generation, Set(None));
     }
 }

@@ -84,6 +84,178 @@ export interface TranslationKeys {
     welcome: string
   }
 
+  companion: {
+    title: string
+    statusBarTitle: string
+    statusLoading: string
+    statusDisabled: string
+    statusNeedLogin: string
+    statusCreateHint: string
+    statusContinueHint: string
+    statusReadyHint: string
+    statusCreate: string
+    statusContinue: string
+    statusOpen: string
+    statusLogin: string
+    tapToOpen: string
+    chat: string
+    memories: string
+    settings: string
+    messagePlaceholder: string
+    send: string
+    emptyMessages: string
+    emptyMemories: string
+    enable: string
+    autonomy: string
+    autonomyLow: string
+    autonomyNormal: string
+    autonomyHigh: string
+    doNotDisturb: string
+    showThought: string
+    collapsedByDefault: string
+    deleteCompanion: string
+    deleteConfirm: string
+    loadFailed: string
+    sendFailed: string
+    statusIdle: string
+    statusThinking: string
+    statusTalking: string
+    unread: string
+    visualTitle: string
+    visualDescription: string
+    visualRequirements: string
+    visualRequirementsDescription: string
+    visualRequirementsPlaceholder: string
+    visualGenerate: string
+    visualRegenerate: string
+    visualGenerating: string
+    visualReady: string
+    visualFailed: string
+    visualConfirm: string
+    motionWorkbench: string
+    motionWorkbenchDescription: string
+    essentials: string
+    essentialsDescription: string
+    details: string
+    detailsDescription: string
+    motionPsd: string
+    motionPsdDescription: string
+    motionSeeThroughToken: string
+    motionSeeThroughTokenCreate: string
+    motionSeeThroughTokenDescription: string
+    motionSeeThroughTokenMissing: string
+    motionSeeThroughTokenEdit: string
+    motionSeeThroughTokenSave: string
+    motionSeeThroughTokenCancel: string
+    motionSeeThroughTokenFailed: string
+    motionSeeThroughGenerate: string
+    motionSeeThroughGenerating: string
+    motionSpring: string
+    motionRuntimeSignals: string
+    motionSignalLocked: string
+    motionSignalOpen: string
+    motionReviewEnter: string
+    motionReviewDescription: string
+    motionReviewExit: string
+    motionReviewPrevious: string
+    motionReviewReplay: string
+    motionReviewNext: string
+    motionSecondary: string
+    motionBreathFrequency: string
+    motionBreathAmplitude: string
+    motionBlinkInterval: string
+    motionSpringFrequency: string
+    motionSpringDamping: string
+    motionSpringResponse: string
+    motionPreview: string
+    motionIntentGreet: string
+    motionIntentRespond: string
+    motionIntentQuestion: string
+    motionIntentDelight: string
+    motionIntentEmphasize: string
+    motionIntentNotify: string
+    motionPresetLibrary: string
+    motionPresetCount: string
+    motionPresetCommunication: string
+    motionPresetEmotion: string
+    motionPresetExpression: string
+    motionPresetAmbient: string
+    motionPerformanceDemos: string
+    motionPerformanceDescription: string
+    motionPerformanceGreeting: string
+    motionPerformanceExplanation: string
+    motionPerformanceCelebration: string
+    motionPerformanceThoughtful: string
+    motionPerformanceFarewell: string
+    motionPerformanceEncouragement: string
+    motionPerformanceApology: string
+    motionPerformanceDiscovery: string
+    motionPerformancePlayful: string
+    motionPerformanceBeatUnit: string
+    motionPerformanceActionUnit: string
+    motionPerformanceProgress: string
+    motionPerformanceComplete: string
+    motionPhaseAnticipation: string
+    motionPhaseAction: string
+    motionPhaseSettle: string
+    motionGenerationLab: string
+    motionGenerationDescription: string
+    motionRegenerateVariant: string
+    motionGeneratedTempo: string
+    motionGeneratedAmplitude: string
+    motionGeneratedFluidity: string
+    motionGeneratedPhrases: string
+    motionPhraseWarmGreeting: string
+    motionPhraseThoughtfulReply: string
+    motionPhraseLivelyExplanation: string
+    motionReset: string
+    motionSave: string
+    motionSaving: string
+    motionSaved: string
+    motionTimeline: string
+    motionTimelineDescription: string
+    motionClip: string
+    motionLayer: string
+    motionKeyframeCurrent: string
+    motionKeyframeEmpty: string
+    motionTranslateX: string
+    motionTranslateY: string
+    motionAuthorPresentation: string
+    motionAuthorPresentationDescription: string
+    motionPlayClip: string
+    motionStartDemo: string
+    motionStopDemo: string
+    motionDemoNow: string
+    motionKeyframes: string
+    motionKeyframeTime: string
+    motionRotation: string
+    motionScaleX: string
+    motionScaleY: string
+    motionAddKeyframe: string
+    motionRemoveKeyframe: string
+    motionSaveClips: string
+    motionRigDiagnostics: string
+    motionRegression: string
+    motionBaseline: string
+    motionCandidate: string
+    motionCaptureBaseline: string
+    motionCompareFrame: string
+    motionMigrateRig: string
+    motionMigrating: string
+    motionMigrationComplete: string
+    motionPsdPreflight: string
+    motionPsdValidating: string
+    motionPsdCommit: string
+    motionNeedsCompiledRig: string
+    faceStage: string
+    adminTitle: string
+    adminDescription: string
+    faceOpen: string
+    adminEnabled: string
+    adminWorker: string
+    adminInterval: string
+  }
+
   // 控制面板
   controlPanel: {
     appearance: string
@@ -1630,6 +1802,8 @@ export interface TranslationKeys {
     permEventPublishHint: string
     permAiImage: string
     permAiImageHint: string
+    perm3dGenerate: string
+    perm3dGenerateHint: string
     permSchedulerRegister: string
     permSchedulerRegisterHint: string
     permSpeechTts: string
@@ -2748,6 +2922,7 @@ export interface TranslationKeys {
     permPublishEvent: string
     permSubscribeEvent: string
     permAiImage: string
+    perm3dGenerate: string
     permSchedulerRegister: string
     permSpeechTts: string
     permSpeechAsr: string
@@ -2792,6 +2967,7 @@ export interface TranslationKeys {
     permPublishEventDesc: string
     permSubscribeEventDesc: string
     permAiImageDesc: string
+    perm3dGenerateDesc: string
     permSchedulerRegisterDesc: string
     permSpeechTtsDesc: string
     permSpeechAsrDesc: string

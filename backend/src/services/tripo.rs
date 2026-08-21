@@ -8,7 +8,7 @@ use crate::config::DynamicConfig;
 use futures::{stream, StreamExt, TryStreamExt};
 use reqwest::{multipart, Client};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -97,6 +97,7 @@ pub enum TripoError {
     Transport(String),
     InvalidModel(String),
     Storage(String),
+    Timeout,
 }
 
 impl std::fmt::Display for TripoError {
@@ -109,6 +110,7 @@ impl std::fmt::Display for TripoError {
             | Self::Transport(message)
             | Self::InvalidModel(message)
             | Self::Storage(message) => formatter.write_str(message),
+            Self::Timeout => write!(formatter, "Tripo task polling timed out"),
             Self::Upstream { status, message } => {
                 write!(formatter, "Tripo API returned HTTP {status}: {message}")
             }
@@ -264,7 +266,7 @@ impl TripoClient {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TripoOperation {
     ImageToModel,
@@ -346,6 +348,125 @@ impl TripoOperation {
             ));
         }
         Ok(())
+    }
+}
+
+pub const TAPP_UPLOAD_MAX_BYTES: usize = 16 * 1024 * 1024;
+pub const PUBLIC_CAPABILITIES: &[&str] = &[
+    "file_upload",
+    "image_to_model",
+    "multiview_to_model",
+    "rig_check",
+    "rig",
+    "retarget",
+    "glb_persist",
+    "glb_inspect",
+];
+
+pub fn is_enabled(config: &DynamicConfig) -> bool {
+    env_bool("TRIPO_ENABLED").unwrap_or(config.tripo_enabled)
+}
+
+pub fn is_configured(config: &DynamicConfig) -> bool {
+    config
+        .tripo_api_key
+        .as_ref()
+        .is_some_and(|value| !value.trim().is_empty())
+        || std::env::var("TRIPO_API_KEY")
+            .ok()
+            .is_some_and(|value| !value.trim().is_empty())
+}
+
+/// Web-budget defaults. Explicit caller choices are preserved.
+pub fn apply_web_defaults(
+    operation: TripoOperation,
+    payload: Value,
+    config: &TripoRuntimeConfig,
+) -> Result<Value, TripoError> {
+    let mut object = payload
+        .as_object()
+        .cloned()
+        .ok_or_else(|| TripoError::InvalidRequest("payload must be a JSON object".to_string()))?;
+    if matches!(operation, TripoOperation::ImageToModel) {
+        if let Some(file_token) = object.remove("file_token") {
+            if object
+                .get("input")
+                .is_some_and(|input| input != &file_token)
+            {
+                return Err(TripoError::InvalidRequest(
+                    "image_to_model input and file_token must not disagree".to_string(),
+                ));
+            }
+            object.entry("input".to_string()).or_insert(file_token);
+        }
+    }
+    match operation {
+        TripoOperation::ImageToModel | TripoOperation::MultiviewToModel => {
+            insert_default(&mut object, "model", json!(config.model));
+            insert_default(&mut object, "face_limit", json!(config.face_limit));
+            insert_default(&mut object, "texture", json!(true));
+            insert_default(&mut object, "pbr", json!(false));
+        }
+        TripoOperation::RigCheck => {}
+        TripoOperation::Rig => {
+            insert_default(&mut object, "model", json!("v1.0-20240301"));
+            insert_default(&mut object, "rig_type", json!("biped"));
+            insert_default(&mut object, "spec", json!("mixamo"));
+            insert_default(&mut object, "out_format", json!("glb"));
+        }
+        TripoOperation::Retarget => {
+            insert_default(&mut object, "out_format", json!("glb"));
+            insert_default(&mut object, "bake_animation", json!(true));
+            insert_default(&mut object, "export_with_geometry", json!(true));
+            insert_default(&mut object, "animate_in_place", json!(true));
+        }
+    }
+    Ok(Value::Object(object))
+}
+
+fn insert_default(object: &mut Map<String, Value>, key: &str, value: Value) {
+    object.entry(key.to_string()).or_insert(value);
+}
+
+pub fn validate_upload_type(file_name: &str, content_type: &str) -> Result<(), TripoError> {
+    let extension = file_name
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase())
+        .unwrap_or_default();
+    let allowed_extension = matches!(
+        extension.as_str(),
+        "jpg" | "jpeg" | "png" | "glb" | "gltf" | "fbx" | "obj" | "stl"
+    );
+    let allowed_content_type = matches!(
+        content_type,
+        "image/jpeg"
+            | "image/png"
+            | "model/gltf-binary"
+            | "model/gltf+json"
+            | "application/octet-stream"
+    );
+    if !allowed_extension || !allowed_content_type {
+        return Err(TripoError::InvalidRequest(
+            "Unsupported upload; use PNG/JPEG or GLB/GLTF/FBX/OBJ/STL".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub async fn poll_until_terminal(
+    client: &TripoClient,
+    task_id: &str,
+) -> Result<TripoTask, TripoError> {
+    let started = tokio::time::Instant::now();
+    loop {
+        let task = client.query_task(task_id).await?;
+        match task.status.as_str() {
+            "success" | "failed" | "cancelled" | "banned" => return Ok(task),
+            _ if started.elapsed() >= client.config().task_timeout => {
+                return Err(TripoError::Timeout);
+            }
+            _ => tokio::time::sleep(client.config().poll_interval).await,
+        }
     }
 }
 
@@ -1071,6 +1192,23 @@ mod tests {
 
         let task = json!([{"task_id": "task_multiview_source"}]);
         validate_multiview_inputs(Some(&task)).unwrap();
+    }
+
+    #[test]
+    fn apply_web_defaults_preserves_explicit_generation_choices() {
+        let config = test_runtime_config();
+        let payload = apply_web_defaults(
+            TripoOperation::ImageToModel,
+            json!({"file_token": "file_a", "face_limit": 8_000, "pbr": true}),
+            &config,
+        )
+        .unwrap();
+        assert_eq!(payload["input"], "file_a");
+        assert!(payload.get("file_token").is_none());
+        assert_eq!(payload["face_limit"], 8_000);
+        assert_eq!(payload["pbr"], true);
+        assert_eq!(payload["model"], DEFAULT_MODEL);
+        assert_eq!(payload["texture"], true);
     }
 
     #[test]

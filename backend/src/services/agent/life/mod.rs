@@ -15,7 +15,8 @@ pub use ingest::{
 pub use store::{
     clear_persona, get_or_create_state, get_persona, insert_diary, insert_proactive, latest_diary,
     list_diary, normalize_persona_fields, recent_proactive, save_departure_mood, save_mood,
-    set_activity, set_do_not_disturb, upsert_persona, PortraitUpdate,
+    set_activity, set_do_not_disturb, upsert_persona, JsonDocumentUpdate,
+    PersonaContractUpdate, PortraitUpdate,
 };
 
 /// Logged-in users only. Guests use negative ids; heartbeat is `SYSTEM_USER_ID` (0).
@@ -395,7 +396,10 @@ mod tests {
             id: "site".into(),
             name: "  ".into(),
             personality: String::new(),
+            persona_json: None,
+            visual_profile: None,
             portrait_asset_id: None,
+            portrait_generation: None,
             updated_by: None,
             updated_at: chrono::Utc::now().into(),
         };

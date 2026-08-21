@@ -28,6 +28,7 @@ import {
   activityKey,
   moodBand,
 } from '../agent/lifeVitals'
+import SiteMotionWorkbench from '../../features/digital-life-companion/SiteMotionWorkbench'
 import PersonaOnboardingPage from '../agent/onboarding/PersonaOnboardingPage'
 import { parseFlattenedPersona } from '../agent/onboarding/onboardingTypes'
 import {
@@ -53,7 +54,7 @@ import {
   AiVendorSources,
   VendorKindIcon,
 } from './AiVendorSources'
-import { usePersonaPage } from './usePersonaPage'
+import { useAiSubpage } from './usePersonaPage'
 import { TencentCloudMark, VolcengineMark } from './vendorIcons'
 
 interface ConfigField {
@@ -262,13 +263,16 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     null,
   )
   const {
-    open: personaPage,
-    navDir: personaPaneNav,
-    openPage: openPersonaPage,
-    closePage: closePersonaPage,
-  } = usePersonaPage((open) => {
-    if (open) setPersonaChrome(null)
+    page: aiSubpage,
+    navDir: aiPaneNav,
+    openPage: openAiSubpage,
+    closePage: closeAiSubpage,
+  } = useAiSubpage((page) => {
+    if (page === 'persona') setPersonaChrome(null)
   })
+  const personaPage = aiSubpage === 'persona'
+  const facePage = aiSubpage === 'face'
+  const subpageOpen = aiSubpage != null
 
   const fieldGuideFor = useCallback(
     (fieldKey: string) => {
@@ -664,7 +668,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   }, [onSpeechTest, t.config.speechTestFailed])
 
   const o = t.life.onboarding
-  const paneKey = personaPage ? 'persona' : 'ai'
+  const paneKey = aiSubpage ?? 'ai'
   const personaGuide = bindGuide('ai.agentLife', g.ai.agentLife)
   const lifeOn = agentLifeEnabled && proEnabled
   const [savedPersonaName, setSavedPersonaName] = useState('')
@@ -798,14 +802,30 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     <SettingSection
       sectionId={sectionId}
       className={personaPage ? 'setting-section--persona' : undefined}
-      title={personaPage ? (personaChrome?.title ?? o.step1Title) : title}
-      icon={personaPage ? undefined : icon}
-      description={
-        personaPage ? (personaChrome?.description ?? o.step1Lead) : description
+      title={
+        personaPage
+          ? (personaChrome?.title ?? o.step1Title)
+          : facePage
+            ? t.companion.adminTitle
+            : title
       }
-      detail={personaPage ? (personaChrome?.description ?? o.step1Lead) : undefined}
+      icon={subpageOpen ? undefined : icon}
+      description={
+        personaPage
+          ? (personaChrome?.description ?? o.step1Lead)
+          : facePage
+            ? t.companion.adminDescription
+            : description
+      }
+      detail={
+        personaPage
+          ? (personaChrome?.description ?? o.step1Lead)
+          : facePage
+            ? t.companion.adminDescription
+            : undefined
+      }
       detailTone={personaPage ? personaChrome?.detailTone : undefined}
-      showResetPage={personaPage ? false : undefined}
+      showResetPage={subpageOpen ? false : undefined}
       {...(personaPage ? personaGuide : {})}
       headerActions={
         personaPage && personaChrome?.action ? (
@@ -822,7 +842,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         ) : null
       }
       headerBetweenPinned={
-        personaPage ? undefined : (
+        subpageOpen ? undefined : (
           <AiVendorAddTrigger
             sources={vendorSources}
             onChange={setVendorSources}
@@ -831,13 +851,21 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         )
       }
       headerLeading={
-        personaPage ? (
+        subpageOpen ? (
           <button
             type="button"
             className="section-header-back"
-            onClick={() => (personaChrome?.onBack ?? closePersonaPage)()}
-            disabled={personaChrome?.backDisabled}
-            aria-label={personaChrome?.backAria ?? t.common.back}
+            onClick={() =>
+              personaPage
+                ? (personaChrome?.onBack ?? closeAiSubpage)()
+                : closeAiSubpage()
+            }
+            disabled={personaPage ? personaChrome?.backDisabled : false}
+            aria-label={
+              personaPage
+                ? (personaChrome?.backAria ?? t.common.back)
+                : t.common.back
+            }
           >
             <LuChevronLeft size={18} aria-hidden />
             <span>{t.common.back}</span>
@@ -846,14 +874,16 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       }
     >
       <AutoHeight contentKey={paneKey} animate={false}>
-        <div key={paneKey} data-nav={personaPaneNav} className="ai-pane sm-pane">
+        <div key={paneKey} data-nav={aiPaneNav} className="ai-pane sm-pane">
           {personaPage ? (
             <PersonaOnboardingPage
-              onBack={closePersonaPage}
+              onBack={closeAiSubpage}
               onChromeChange={setPersonaChrome}
               lifeOn={lifeOn}
               gateLead={personaGateLead}
             />
+          ) : facePage ? (
+            <SiteMotionWorkbench mood={mood} activity={activity} />
           ) : (
             <>
       <SettingGroup
@@ -1014,7 +1044,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                   {
                     key: 'setup',
                     label: hasSavedPersona ? o.editPage : o.openPage,
-                    onClick: () => openPersonaPage(),
+                    onClick: () => openAiSubpage('persona'),
                     disabled: personaBusy,
                   },
                   ...(hasSavedPersona
@@ -1035,6 +1065,21 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           }
           footer={personaError}
         />
+        {lifeOn && hasSavedPersona ? (
+          <InfoActionCard
+            copyable={false}
+            title={t.companion.adminTitle}
+            empty
+            emptyText={t.companion.adminDescription}
+            actions={[
+              {
+                key: 'face',
+                label: t.companion.faceOpen,
+                onClick: () => openAiSubpage('face'),
+              },
+            ]}
+          />
+        ) : null}
       </SettingGroup>
 
       {/* 图片生成模型 */}

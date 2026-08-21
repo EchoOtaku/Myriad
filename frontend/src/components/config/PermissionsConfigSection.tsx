@@ -113,6 +113,7 @@ export interface PermissionConfigValues extends Record<
   user_perm_shortcut_register: boolean
   user_perm_event_publish: boolean
   user_perm_ai_image: boolean
+  user_perm_3d_generate: boolean
   user_perm_scheduler_register: boolean
   user_perm_speech_tts: boolean
   user_perm_speech_asr: boolean
@@ -128,6 +129,7 @@ export interface PermissionConfigValues extends Record<
   guest_perm_shortcut_register: boolean
   guest_perm_event_publish: boolean
   guest_perm_ai_image: boolean
+  guest_perm_3d_generate: boolean
   guest_perm_scheduler_register: boolean
   guest_perm_speech_tts: boolean
   guest_perm_speech_asr: boolean
@@ -195,6 +197,12 @@ export const PermissionsConfigSection: React.FC<
       code: 'ai:image',
       label: t.config.permAiImage,
       hint: t.config.permAiImageHint,
+    },
+    {
+      key: '3d_generate',
+      code: '3d:generate',
+      label: t.config.perm3dGenerate,
+      hint: t.config.perm3dGenerateHint,
     },
     // 语音相关
     {

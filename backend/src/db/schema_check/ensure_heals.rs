@@ -60,7 +60,10 @@ CREATE TABLE IF NOT EXISTS agent_persona (
     id VARCHAR(16) PRIMARY KEY,
     name TEXT NOT NULL DEFAULT '',
     personality TEXT NOT NULL DEFAULT '',
+    persona_json JSONB,
+    visual_profile JSONB,
     portrait_asset_id TEXT,
+    portrait_generation JSONB,
     updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     updated_at TIMESTAMPTZ NOT NULL
 );

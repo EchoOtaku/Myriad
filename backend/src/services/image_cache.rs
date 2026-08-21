@@ -263,6 +263,59 @@ impl ImageCacheService {
         ))
     }
 
+    /// Resolve a public `/api/brew/image-cache/{subdir}/{sha256}.{ext}` URL to
+    /// local bytes. Rejects anything that is not this site's cache path so
+    /// callers cannot turn it into an open HTTP fetch (SSRF).
+    pub fn local_path_for_public_url(&self, url: &str) -> Option<PathBuf> {
+        let path = image_cache_path(url)?;
+        let rest = path.strip_prefix("/api/brew/image-cache/")?;
+        let (subdir, file) = rest.split_once('/')?;
+        if file.contains('/') || file.contains('\\') || file.contains("..") {
+            return None;
+        }
+        let (stem, ext) = file.rsplit_once('.')?;
+        if subdir.len() != 2 || !subdir.chars().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        if stem.len() != 64 || !stem.chars().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        let ext = ext.to_ascii_lowercase();
+        if !matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "gif" | "webp") {
+            return None;
+        }
+        let stem = stem.to_ascii_lowercase();
+        if !stem.starts_with(&subdir.to_ascii_lowercase()) {
+            return None;
+        }
+        Some(self.get_cache_path(&stem, &ext))
+    }
+
+    pub async fn read_local_public_url(&self, url: &str) -> Result<(Vec<u8>, String), String> {
+        let path = self
+            .local_path_for_public_url(url)
+            .ok_or_else(|| "imageUrl must be a local /api/brew/image-cache path".to_string())?;
+        let bytes = fs::read(&path)
+            .await
+            .map_err(|_| "cached image not found".to_string())?;
+        if bytes.is_empty() || bytes.len() > MAX_IMAGE_SIZE {
+            return Err("cached image is empty or too large".to_string());
+        }
+        let ext = path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("png")
+            .to_ascii_lowercase();
+        let mime = match ext.as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            "gif" => "image/gif",
+            "webp" => "image/webp",
+            _ => "application/octet-stream",
+        };
+        Ok((bytes, mime.to_string()))
+    }
+
     /// 处理图片 URL - 如果是 Notion 临时 URL 则缓存，否则返回原 URL
     pub async fn process_image_url(&self, url: Option<&str>) -> Option<String> {
         let url = url?;
@@ -285,6 +338,12 @@ impl ImageCacheService {
             Some(url.to_string())
         }
     }
+}
+
+fn image_cache_path(url: &str) -> Option<&str> {
+    let without_query = url.split('?').next().unwrap_or(url);
+    let start = without_query.find("/api/brew/image-cache/")?;
+    Some(&without_query[start..])
 }
 
 #[cfg(test)]
@@ -324,5 +383,22 @@ mod tests {
 
         assert_ne!(hash1, hash2);
         assert_eq!(hash1.len(), 64); // SHA256 hex = 64 chars
+    }
+
+    #[test]
+    fn local_path_only_accepts_site_image_cache_urls() {
+        let service = ImageCacheService::new();
+        let hash = "a".repeat(64);
+        let ok = format!("https://example.com/api/brew/image-cache/aa/{hash}.png");
+        assert!(service.local_path_for_public_url(&ok).is_some());
+        assert!(service
+            .local_path_for_public_url("https://evil.example/secret.png")
+            .is_none());
+        assert!(service
+            .local_path_for_public_url(&format!("/api/brew/image-cache/ab/{hash}.png"))
+            .is_none());
+        assert!(service
+            .local_path_for_public_url("/api/brew/image-cache/aa/../passwd.png")
+            .is_none());
     }
 }

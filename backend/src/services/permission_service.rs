@@ -24,7 +24,7 @@
 //! - federation:read, federation:write, federation:message, federation:files
 //!
 //! ### Elevated - 可配置下放
-//! - ai:generate, ai:analyze, ai:chat, ai:image
+//! - ai:generate, ai:analyze, ai:chat, ai:image, 3d:generate
 //! - network:fetch, component:theme (authenticated)
 //! - shortcut:register (authenticated), event:publish
 //! - scheduler:register, speech:tts, speech:asr (all authenticated)
@@ -184,6 +184,8 @@ pub enum TappPermission {
     AiChat,
     #[serde(rename = "ai:image")]
     AiImage,
+    #[serde(rename = "3d:generate")]
+    ThreeDGenerate,
     #[serde(rename = "report:write")]
     ReportWrite,
     #[serde(rename = "network:fetch")]
@@ -280,6 +282,7 @@ impl TappPermission {
             | TappPermission::AiAnalyze
             | TappPermission::AiChat
             | TappPermission::AiImage
+            | TappPermission::ThreeDGenerate
             | TappPermission::NetworkFetch
             | TappPermission::ComponentTheme
             | TappPermission::ShortcutRegister
@@ -319,6 +322,7 @@ impl TappPermission {
             TappPermission::AiAnalyze => "AI 分析",
             TappPermission::AiChat => "AI 对话",
             TappPermission::AiImage => "AI 图片生成",
+            TappPermission::ThreeDGenerate => "3D 模型生成",
             TappPermission::ReportRead => "读取报告",
             TappPermission::ReportWrite => "生成报告",
             TappPermission::StorageRead => "读取本地存储",
@@ -358,6 +362,7 @@ impl TappPermission {
             TappPermission::AiAnalyze,
             TappPermission::AiChat,
             TappPermission::AiImage,
+            TappPermission::ThreeDGenerate,
             TappPermission::NetworkFetch,
             TappPermission::ComponentTheme,
             TappPermission::ShortcutRegister,
@@ -393,6 +398,7 @@ impl TappPermission {
             "ai:analyze" => Some(TappPermission::AiAnalyze),
             "ai:chat" => Some(TappPermission::AiChat),
             "ai:image" => Some(TappPermission::AiImage),
+            "3d:generate" => Some(TappPermission::ThreeDGenerate),
             "network:fetch" => Some(TappPermission::NetworkFetch),
             "media:control" => Some(TappPermission::MediaControl),
             "media:read" => Some(TappPermission::MediaRead),
@@ -444,6 +450,7 @@ impl TappPermission {
             TappPermission::AiAnalyze => "ai:analyze",
             TappPermission::AiChat => "ai:chat",
             TappPermission::AiImage => "ai:image",
+            TappPermission::ThreeDGenerate => "3d:generate",
             TappPermission::NetworkFetch => "network:fetch",
             TappPermission::MediaControl => "media:control",
             TappPermission::MediaRead => "media:read",
@@ -556,6 +563,7 @@ impl TappPermissionService {
             TappPermission::AiAnalyze => config.user_perm_ai_analyze,
             TappPermission::AiChat => config.user_perm_ai_chat,
             TappPermission::AiImage => config.user_perm_ai_image,
+            TappPermission::ThreeDGenerate => config.user_perm_3d_generate,
             // report:write 已升 privileged；media:control 已降 basic
             TappPermission::NetworkFetch => config.user_perm_network_fetch,
             TappPermission::ComponentTheme => config.user_perm_component_theme,
@@ -577,6 +585,7 @@ impl TappPermissionService {
             TappPermission::AiAnalyze => config.guest_perm_ai_analyze,
             TappPermission::AiChat => config.guest_perm_ai_chat,
             TappPermission::AiImage => config.guest_perm_ai_image,
+            TappPermission::ThreeDGenerate => config.guest_perm_3d_generate,
             TappPermission::NetworkFetch => config.guest_perm_network_fetch,
             TappPermission::ComponentTheme => false,
             TappPermission::ShortcutRegister => false,
@@ -621,6 +630,7 @@ impl TappPermissionService {
                 ai_analyze: config.user_perm_ai_analyze,
                 ai_chat: config.user_perm_ai_chat,
                 ai_image: config.user_perm_ai_image,
+                three_d_generate: config.user_perm_3d_generate,
                 report_write: false, // 不再下放
                 network_fetch: config.user_perm_network_fetch,
                 // media:control 已降 basic，始终可用；字段保留供 API 兼容
@@ -639,6 +649,7 @@ impl TappPermissionService {
                 ai_analyze: config.guest_perm_ai_analyze,
                 ai_chat: config.guest_perm_ai_chat,
                 ai_image: config.guest_perm_ai_image,
+                three_d_generate: config.guest_perm_3d_generate,
                 report_write: false, // 不再下放
                 network_fetch: config.guest_perm_network_fetch,
                 // media:control 已降 basic，始终可用；字段保留供 API 兼容
@@ -699,6 +710,8 @@ pub struct ElevatedPermissions {
     pub ai_analyze: bool,
     pub ai_chat: bool,
     pub ai_image: bool,
+    #[serde(default)]
+    pub three_d_generate: bool,
     /// 保留字段：始终为 false，前端不再展示
     #[serde(default)]
     pub report_write: bool,
@@ -764,7 +777,10 @@ mod tests {
     fn storage_permissions_split_read_from_delegated_write() {
         let defaults = DynamicConfig::default();
         assert_eq!(TappPermission::StorageRead.level(), PermissionLevel::Basic);
-        assert_eq!(TappPermission::StorageWrite.level(), PermissionLevel::Elevated);
+        assert_eq!(
+            TappPermission::StorageWrite.level(),
+            PermissionLevel::Elevated
+        );
         assert!(TappPermission::from_str("storage").is_none());
         assert!(TappPermissionService::check(
             &defaults,
@@ -924,6 +940,58 @@ mod tests {
             UserRole::User,
             TappPermission::NetworkFetch
         ));
+        assert!(!TappPermissionService::check(
+            &config,
+            UserRole::User,
+            TappPermission::ThreeDGenerate
+        ));
+        assert!(!TappPermissionService::check(
+            &config,
+            UserRole::Guest,
+            TappPermission::ThreeDGenerate
+        ));
+    }
+
+    #[test]
+    fn three_d_generate_round_trips_and_delegates_only_when_enabled() {
+        assert_eq!(
+            TappPermission::from_str("3d:generate"),
+            Some(TappPermission::ThreeDGenerate)
+        );
+        assert_eq!(TappPermission::ThreeDGenerate.as_str(), "3d:generate");
+        assert_eq!(
+            TappPermission::ThreeDGenerate.level(),
+            PermissionLevel::Elevated
+        );
+        assert!(TappPermission::all_elevated().contains(&TappPermission::ThreeDGenerate));
+
+        let defaults = DynamicConfig::default();
+        assert!(!defaults.user_perm_3d_generate);
+        assert!(!defaults.guest_perm_3d_generate);
+        assert!(!TappPermissionService::check(
+            &defaults,
+            UserRole::User,
+            TappPermission::ThreeDGenerate
+        ));
+
+        let delegated = DynamicConfig {
+            user_perm_3d_generate: true,
+            guest_perm_3d_generate: true,
+            ..DynamicConfig::default()
+        };
+        assert!(TappPermissionService::check(
+            &delegated,
+            UserRole::User,
+            TappPermission::ThreeDGenerate
+        ));
+        assert!(TappPermissionService::check(
+            &delegated,
+            UserRole::Guest,
+            TappPermission::ThreeDGenerate
+        ));
+        let effective = TappPermissionService::get_permission_config(&delegated);
+        assert!(effective.user.three_d_generate);
+        assert!(effective.guest.three_d_generate);
     }
 
     #[test]
@@ -1011,10 +1079,7 @@ mod tests {
         let defaults = DynamicConfig::default();
 
         // brew:write remains Basic and requires a durable login; commentWrite is Elevated.
-        assert_eq!(
-            TappPermission::BrewWrite.level(),
-            PermissionLevel::Basic
-        );
+        assert_eq!(TappPermission::BrewWrite.level(), PermissionLevel::Basic);
         assert_eq!(
             TappPermission::BrewCommentWrite.level(),
             PermissionLevel::Elevated

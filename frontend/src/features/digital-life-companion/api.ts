@@ -1,0 +1,344 @@
+import type {
+  CompanionRigCompileRequest,
+  CompanionRigImportSource,
+  CompanionRigManifest,
+  RigMotionProfile,
+} from './rig/types'
+import api from '../../lib/api'
+import { isRigManifest } from './rig/types'
+
+const PREFIX = '/api/digital-life/rig'
+const RIG_MUTATION_TIMEOUT_MS = 180_000
+const SEE_THROUGH_TIMEOUT_MS = 360_000
+
+export class CompanionApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message)
+    this.name = 'CompanionApiError'
+  }
+}
+
+export function isCompanionNotFound(error: unknown): boolean {
+  return error instanceof CompanionApiError && error.status === 404
+}
+
+export interface SiteFace {
+  manifest: CompanionRigManifest | null
+  portraitUrl: string | null
+  generationFingerprint: string | null
+  assetId: string | null
+}
+
+export interface SeeThroughStatus {
+  provider: string
+  tokenConfigured: boolean
+  defaultResolution: number
+  splitArmsAndLegs: boolean
+}
+
+function assertSuccess(status: number, data: unknown, fallback: string): void {
+  if (status < 400) return
+  const payload =
+    data && typeof data === 'object' ? (data as Record<string, unknown>) : {}
+  throw new CompanionApiError(
+    typeof payload.error === 'string'
+      ? payload.error
+      : typeof payload.message === 'string'
+        ? payload.message
+        : typeof data === 'string' && data.trim()
+          ? data
+          : `${fallback} (HTTP ${status})`,
+    status,
+  )
+}
+
+function readPortraitUrl(data: { portraitUrl?: unknown }): string | null {
+  return typeof data.portraitUrl === 'string' && data.portraitUrl.trim()
+    ? data.portraitUrl
+    : null
+}
+
+function companionError(
+  reason: unknown,
+  fallback: string,
+  status = 500,
+): CompanionApiError {
+  const response = (
+    reason as { response?: { status?: unknown; data?: unknown } } | null
+  )?.response
+  const resolvedStatus =
+    typeof response?.status === 'number' ? response.status : status
+  const payload =
+    response?.data && typeof response.data === 'object'
+      ? (response.data as Record<string, unknown>)
+      : {}
+  return new CompanionApiError(
+    typeof payload.error === 'string'
+      ? payload.error
+      : typeof payload.message === 'string'
+        ? payload.message
+        : reason instanceof Error
+          ? reason.message
+          : fallback,
+    resolvedStatus,
+  )
+}
+
+export async function getSiteFace(): Promise<SiteFace> {
+  const response = await api.get<{
+    manifest?: unknown
+    portraitUrl?: unknown
+    generationFingerprint?: unknown
+    assetId?: unknown
+  }>(`${PREFIX}/active`)
+  if (response.status === 404) {
+    return {
+      manifest: null,
+      portraitUrl: null,
+      generationFingerprint: null,
+      assetId: null,
+    }
+  }
+  assertSuccess(response.status, response.data, 'Could not load site face')
+  const manifest = isRigManifest(response.data.manifest)
+    ? response.data.manifest
+    : null
+  if (response.data.manifest != null && !manifest) {
+    throw new Error('Site rig manifest is invalid')
+  }
+  return {
+    manifest,
+    portraitUrl: readPortraitUrl(response.data),
+    generationFingerprint:
+      typeof response.data.generationFingerprint === 'string' &&
+      /^[0-9a-f]{64}$/iu.test(response.data.generationFingerprint)
+        ? response.data.generationFingerprint.toLowerCase()
+        : null,
+    assetId:
+      typeof response.data.assetId === 'string' ? response.data.assetId : null,
+  }
+}
+
+export async function getCompanionRig(): Promise<CompanionRigManifest | null> {
+  return (await getSiteFace()).manifest
+}
+
+export async function getSeeThroughStatus(): Promise<SeeThroughStatus> {
+  const response = await api.get<Partial<SeeThroughStatus>>(
+    `${PREFIX}/see-through/status`,
+  )
+  assertSuccess(response.status, response.data, 'Could not load See-through status')
+  return {
+    provider:
+      typeof response.data.provider === 'string'
+        ? response.data.provider
+        : '24yearsold/see-through-demo',
+    tokenConfigured: response.data.tokenConfigured === true,
+    defaultResolution:
+      typeof response.data.defaultResolution === 'number'
+        ? response.data.defaultResolution
+        : 768,
+    splitArmsAndLegs: response.data.splitArmsAndLegs !== false,
+  }
+}
+
+export async function updateSeeThroughToken(
+  token: string,
+): Promise<SeeThroughStatus> {
+  const response = await api.patch<Partial<SeeThroughStatus>>(
+    `${PREFIX}/see-through/token`,
+    { token },
+  )
+  assertSuccess(response.status, response.data, 'Could not save Hugging Face token')
+  return {
+    provider:
+      typeof response.data.provider === 'string'
+        ? response.data.provider
+        : '24yearsold/see-through-demo',
+    tokenConfigured: response.data.tokenConfigured === true,
+    defaultResolution: 768,
+    splitArmsAndLegs: true,
+  }
+}
+
+async function binaryApiError(
+  status: number,
+  data: unknown,
+  fallback: string,
+): Promise<CompanionApiError> {
+  let payload: unknown = data
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    try {
+      const text = await data.text()
+      payload = text ? JSON.parse(text) : null
+    } catch {
+      payload = null
+    }
+  }
+  const body = payload && typeof payload === 'object'
+    ? (payload as Record<string, unknown>)
+    : {}
+  return new CompanionApiError(
+    typeof body.error === 'string'
+      ? body.error
+      : typeof body.message === 'string'
+        ? body.message
+        : fallback,
+    status,
+  )
+}
+
+export async function decomposeSitePortraitWithSeeThrough(input: {
+  sourceMasterAssetId: string
+  sourceGenerationFingerprint?: string
+  resolution?: number
+  seed?: number
+  splitArmsAndLegs?: boolean
+}): Promise<File> {
+  try {
+    const response = await api.post<Blob>(
+      `${PREFIX}/see-through/decompose`,
+      input,
+      {
+        responseType: 'blob',
+        timeout: SEE_THROUGH_TIMEOUT_MS,
+      },
+    )
+    if (response.status >= 400) {
+      throw await binaryApiError(
+        response.status,
+        response.data,
+        'See-through decomposition failed',
+      )
+    }
+    if (!(response.data instanceof Blob) || response.data.size === 0) {
+      throw new CompanionApiError('See-through returned an empty PSD', 502)
+    }
+    return new File([response.data], 'see-through.psd', {
+      type: 'image/vnd.adobe.photoshop',
+    })
+  } catch (reason) {
+    if (reason instanceof CompanionApiError) throw reason
+    const response = (
+      reason as { response?: { status?: unknown; data?: unknown } } | null
+    )?.response
+    if (typeof response?.status === 'number') {
+      throw await binaryApiError(
+        response.status,
+        response.data,
+        'See-through decomposition failed',
+      )
+    }
+    throw companionError(reason, 'See-through decomposition failed')
+  }
+}
+
+export async function updateCompanionRigMotionProfile(
+  motionProfile: RigMotionProfile,
+): Promise<CompanionRigManifest> {
+  const response = await api.patch<{ manifest: unknown }>(
+    `${PREFIX}/motion-profile`,
+    { motionProfile },
+  )
+  assertSuccess(
+    response.status,
+    response.data,
+    'Could not save companion motion profile',
+  )
+  if (!isRigManifest(response.data.manifest)) {
+    throw new Error('Updated companion rig manifest is invalid')
+  }
+  return response.data.manifest
+}
+
+export async function updateCompanionRigClips(
+  clips: CompanionRigManifest['clips'],
+): Promise<CompanionRigManifest> {
+  const response = await api.patch<{ manifest: unknown }>(`${PREFIX}/clips`, {
+    clips,
+  })
+  assertSuccess(response.status, response.data, 'Could not save companion rig clips')
+  if (!isRigManifest(response.data.manifest)) {
+    throw new Error('Updated companion rig manifest is invalid')
+  }
+  return response.data.manifest
+}
+
+export async function migrateCompanionRig(): Promise<{
+  manifest: CompanionRigManifest
+  migrated: boolean
+}> {
+  const response = await api.post<{ manifest: unknown; migrated?: boolean }>(
+    `${PREFIX}/migrate`,
+  )
+  assertSuccess(response.status, response.data, 'Could not migrate companion rig')
+  if (!isRigManifest(response.data.manifest)) {
+    throw new Error('Migrated companion rig manifest is invalid')
+  }
+  return { manifest: response.data.manifest, migrated: response.data.migrated === true }
+}
+
+export async function compileCompanionRig(
+  _request: CompanionRigCompileRequest,
+): Promise<CompanionRigManifest> {
+  throw new CompanionApiError(
+    'Site faces are compiled from a layered PSD in settings',
+    400,
+  )
+}
+
+export async function importCompanionRig(
+  source: CompanionRigImportSource,
+  atlas: Blob,
+): Promise<CompanionRigManifest> {
+  return submitCompanionRigImport('/import', source, atlas, 'import')
+}
+
+export async function previewCompanionRigImport(
+  source: CompanionRigImportSource,
+  atlas: Blob,
+): Promise<CompanionRigManifest> {
+  return submitCompanionRigImport('/import/preview', source, atlas, 'preview')
+}
+
+async function submitCompanionRigImport(
+  path: string,
+  source: CompanionRigImportSource,
+  atlas: Blob,
+  action: string,
+): Promise<CompanionRigManifest> {
+  const body = new FormData()
+  body.append('source', JSON.stringify(source))
+  body.append('atlas', atlas, 'rig-atlas.png')
+  let response
+  try {
+    response = await api.post<{ manifest: unknown }>(`${PREFIX}${path}`, body, {
+      // The shared Axios instance defaults to application/json. Clearing it is
+      // required so the browser can generate the multipart boundary.
+      headers: { 'Content-Type': undefined },
+      timeout: RIG_MUTATION_TIMEOUT_MS,
+    })
+  } catch (reason) {
+    throw companionError(reason, `Could not ${action} companion rig`)
+  }
+  assertSuccess(response.status, response.data, `Could not ${action} companion rig`)
+  if (!isRigManifest(response.data.manifest)) {
+    throw new Error(`Companion rig ${action} manifest is invalid`)
+  }
+  return response.data.manifest
+}
+
+export async function generateSitePortrait(prompt?: string): Promise<{
+  portraitUrl: string | null
+}> {
+  const response = await api.post<{ portraitUrl?: unknown }>(
+    `${PREFIX}/portrait`,
+    { prompt },
+    { timeout: RIG_MUTATION_TIMEOUT_MS },
+  )
+  assertSuccess(response.status, response.data, 'Could not generate site portrait')
+  return { portraitUrl: readPortraitUrl(response.data) }
+}

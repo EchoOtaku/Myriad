@@ -83,6 +83,9 @@ export interface AgentPersona {
   portraitAssetId: string | null
   hasCustomPersona: boolean
   personality?: string
+  persona?: Record<string, unknown> | null
+  visualProfile?: Record<string, unknown> | null
+  portraitGeneration?: Record<string, unknown> | null
   mood?: number
   activity?: string
   doNotDisturb?: boolean
@@ -898,6 +901,8 @@ class AgentService {
     name: string
     personality: string
     portraitAssetId?: string | null
+    persona?: Record<string, unknown> | null
+    visualProfile?: Record<string, unknown> | null
   }): Promise<AgentPersona> {
     return apiService.put(`${this.baseUrl}/persona`, body)
   }

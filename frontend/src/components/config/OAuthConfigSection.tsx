@@ -16,6 +16,7 @@ import {
   FaPlus,
   FaTrash,
   LuBookOpen,
+  LuChevronDown,
 } from '@lib/icons'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 
@@ -48,6 +49,7 @@ import {
   getOAuthSetupGuideForEntry,
   resolveOAuthPresetId,
 } from './oauthSetupGuides'
+import { useAddedCardOpen, useAddedSlug } from './useAddedCard'
 import './AiVendorAdd.css'
 
 interface ConfigField {
@@ -91,6 +93,16 @@ export function OAuthAddTrigger({
     },
     [onProvidersChange, providers],
   )
+  const guide = useMemo(
+    () => (
+      <OAuthPresetGrid
+        presets={presets}
+        providers={providers}
+        onPick={addFromPreset}
+      />
+    ),
+    [addFromPreset, presets, providers],
+  )
 
   return (
     <SettingTitleGuideEntry
@@ -98,13 +110,7 @@ export function OAuthAddTrigger({
       requireShowDetails={false}
       className="ai-vendor-add-entry"
       panelClassName="ai-vendor-add-float"
-      guide={
-        <OAuthPresetGrid
-          presets={presets}
-          providers={providers}
-          onPick={addFromPreset}
-        />
-      }
+      guide={guide}
       renderTrigger={({ open, closing, toggle, ariaLabel }) => (
         <CheckboxCard
           variant="switch"
@@ -136,6 +142,7 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
 }) => {
   const { t } = useI18n()
   const { catalog: g, bindGuide } = useSettingGuide()
+  const addedSlug = useAddedSlug(providers.map((provider) => provider.slug))
 
   const baseUrl = (
     configFields.find((field) => field.key === 'base_url')?.value || ''
@@ -195,9 +202,10 @@ export const OAuthConfigSection: React.FC<OAuthConfigSectionProps> = ({
 
         {providers.map((entry, idx) => (
           <ProviderCard
-            key={`${entry.slug}-${idx}`}
+            key={entry.slug}
             entry={entry}
             baseUrl={baseUrl}
+            justAdded={entry.slug === addedSlug}
             onChange={(patch) => updateProvider(idx, patch)}
             onRemove={() =>
               onProvidersChange(providers.filter((_, i) => i !== idx))
@@ -238,7 +246,7 @@ function OAuthPresetGrid({
           <button
             key={preset.id}
             type="button"
-            className="oidc-preset-card"
+            className={`oidc-preset-card${usedHint ? ' is-used' : ''}`}
             onClick={() => onPick(preset.id)}
             title={[preset.display_name, kindHint, usedHint]
               .filter(Boolean)
@@ -281,11 +289,13 @@ function OAuthPresetIcon({ preset }: { preset: (typeof OAUTH_PRESETS)[number] })
 function ProviderCard({
   entry,
   baseUrl,
+  justAdded = false,
   onChange,
   onRemove,
 }: {
   entry: OAuthProviderEntry
   baseUrl: string
+  justAdded?: boolean
   onChange: (patch: Partial<OAuthProviderEntry>) => void
   onRemove: () => void
 }) {
@@ -296,7 +306,7 @@ function ProviderCard({
   const title =
     entry.display_name || entry.slug || t.config.oidcNewProvider
   const preset = findPreset(resolveOAuthPresetId(entry))
-  const [open, setOpen] = useState(!configured)
+  const [open, setOpen] = useAddedCardOpen(justAdded, !configured)
   const [copied, setCopied] = useState(false)
   const [copiedData, setCopiedData] = useState(false)
   const callbackUrl =
@@ -312,18 +322,28 @@ function ProviderCard({
       ? `${baseUrl}/api/platforms/discord/oauth/callback`
       : null
 
+  useEffect(() => {
+    if (!copied) return undefined
+    const timer = window.setTimeout(() => setCopied(false), 2000)
+    return () => window.clearTimeout(timer)
+  }, [copied])
+
+  useEffect(() => {
+    if (!copiedData) return undefined
+    const timer = window.setTimeout(() => setCopiedData(false), 2000)
+    return () => window.clearTimeout(timer)
+  }, [copiedData])
+
   const copy = async () => {
     if (!callbackUrl) return
     await navigator.clipboard.writeText(callbackUrl)
     setCopied(true)
-    setTimeout(setCopied, 2000, false)
   }
 
   const copyDataCallback = async () => {
     if (!discordDataCallbackUrl) return
     await navigator.clipboard.writeText(discordDataCallbackUrl)
     setCopiedData(true)
-    setTimeout(setCopiedData, 2000, false)
   }
 
   const setupGuide = getOAuthSetupGuideForEntry(entry, t.config, {
@@ -338,7 +358,7 @@ function ProviderCard({
       data-guide-path="oauth.provider"
       className={`oidc-provider-card ai-vendor-card has-guide-anchor${
         open ? ' is-open' : ''
-      }${entry.enabled ? '' : ' disabled'}`}
+      }${entry.enabled ? '' : ' disabled'}${justAdded ? ' is-added' : ''}`}
     >
       <div className="oidc-provider-header ai-vendor-card-header">
         <button
@@ -537,9 +557,10 @@ function AdvancedFields({
         aria-controls={`oidc-advanced-${entry.slug}`}
         onClick={() => setOpen((value) => !value)}
       >
-        {open ? '▼' : '▶'} {t.config.oauthAdvanced}
+        <LuChevronDown aria-hidden className="oidc-advanced-chevron" />
+        {t.config.oauthAdvanced}
       </button>
-      {open && (
+      <CollapseRegion open={open}>
         <div
           id={`oidc-advanced-${entry.slug}`}
           className="oidc-advanced-content"
@@ -581,7 +602,7 @@ function AdvancedFields({
             layout="vertical"
           />
         </div>
-      )}
+      </CollapseRegion>
     </div>
   )
 }

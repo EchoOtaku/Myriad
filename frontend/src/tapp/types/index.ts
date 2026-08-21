@@ -458,6 +458,7 @@ export type TappPermission =
   | 'ai:analyze'
   | 'ai:chat'
   | 'ai:image'
+  | '3d:generate'
   // 报告权限
   | 'report:read'
   | 'report:write'

@@ -90,6 +90,7 @@ describe('sandbox capability profiles', () => {
     assert.ok(tapp.tappList)
     assert.ok(tapp.component)
     assert.ok(tapp.dynamicContent)
+    assert.ok(tapp.model3d)
     assert.equal(typeof (tapp.ui as Record<string, unknown>).confirm, 'function')
   })
 
@@ -105,6 +106,7 @@ describe('sandbox capability profiles', () => {
     assert.equal(tapp.dynamicContent, undefined)
     assert.equal(tapp.dom, undefined)
     assert.equal(tapp.file, undefined)
+    assert.equal(tapp.model3d, undefined)
     const ui = tapp.ui as Record<string, unknown>
     assert.equal(typeof ui.showNotification, 'function')
     assert.equal(ui.confirm, undefined)
