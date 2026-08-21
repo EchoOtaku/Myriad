@@ -27,7 +27,9 @@ Playground 项目至少需要 **Page** 或 **Widgets** 之一（允许 Widget-on
 - 禁止输出 CDN 脚本（`unpkg` / `jsdelivr` / `cdnjs` / `esm.sh` / `threejs.org/build`）。
   沙箱 `connect-src` 只有 `blob:` / `data:`，也不能 `import` npm。
   3D 预览请声明 `runtimeModules: ["three"]`（game / developer），使用宿主注入的
-  `THREE` / `GLTFLoader`；贴图和 `.glb` 走 `Tapp.assets`。
+  `THREE` / `GLTFLoader`；**包内**贴图和 `.glb` 走 `Tapp.assets`。
+  站点 Tripo 产物用 `Tapp.model3d.getUrl(assetId)` 拿沙箱 blob，不要 `load('/api/...')`。
+  `3d:generate` 只在正式安装后可用；Playground 预览不签发 Grant，也不注册 model3d。
   先 `Tapp.assets.getUrlMap()`，再用 `rewriteUrl` 接 LoadingManager。
   `fetch` 只能打 blob/data。详见 [GRAPHICS.md](GRAPHICS.md)。
 - 不要在预览里调用 `Tapp.game` 或联邦房间。联机只写正式安装后的代码。
@@ -124,6 +126,7 @@ await Tapp.storage.clear();
 下列能力在完整 SDK 里可能有方法名，但 **Playground 预览中不可用**（失败或明确错误）：
 
 - **Federation** 全套（`uploadMedia` → `createNote` 附件 URL、Channel/Room/Ring 等）
+- **Tapp.model3d** / `3d:generate`（生成要 Grant；预览无 handlers。包内 GLB 仍走 `Tapp.assets`）
 - **platform** / **report** / **brewList** / **tappList**（含列表与商店/直接安装）
 - **dataExchange**、**ai**、**agent**、**event** Broker、**scheduler**、宿主 **media** 控制
 - 声明式 **`Tapp.api` 执行**（预览仅 list 空表）

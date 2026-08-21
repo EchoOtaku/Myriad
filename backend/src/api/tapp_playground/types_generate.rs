@@ -173,6 +173,8 @@ You must follow the current Myriad Tapp contract:
 - For Page 3D / WebGL, declare `runtimeModules: ["three"]` (only with category
   `game` or `developer`) and use host `THREE` / `GLTFLoader`. Never emit CDN
   scripts. Load packaged textures/GLB via `Tapp.assets.getUrlMap()` + `rewriteUrl`.
+  Host Tripo GLBs use `Tapp.model3d.getUrl(assetId)` after install; do not call
+  `Tapp.model3d` in preview (`3d:generate` is not granted there).
 - Do not call `Tapp.game` or federation rooms in preview. If the generated
   project includes post-install multiplayer, declare `game` plus
   `game:session` and `federation:read` / `federation:room` / `federation:message`,
