@@ -68,8 +68,7 @@ bash scripts/extra/deploy.sh restart
 bash scripts/extra/deploy.sh down
 ```
 
-手动切换镜像 tag 时，先编辑 `.env` 里的 `MYRIAD_TAG` / `PROXY_TAG` /
-`UPDATER_TAG`，再执行：
+手动切换**业务**镜像时，先编辑 `.env` 里的 `MYRIAD_TAG` / `PROXY_TAG`，再执行：
 
 ```bash
 bash scripts/extra/deploy.sh upgrade

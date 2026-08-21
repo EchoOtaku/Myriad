@@ -50,8 +50,9 @@ Commands:
 
 Notes:
   - This script only handles bootstrap. Normal updates run through the admin UI.
-  - To switch versions, edit MYRIAD_TAG / UPDATER_TAG / PROXY_TAG in .env then
-    run \`$0 upgrade\`.
+  - To switch business versions, edit MYRIAD_TAG / PROXY_TAG in .env then
+    run \`$0 upgrade\`. TCB is digest-pinned (\`UPDATER_IMAGE_REF\`);
+    \`UPDATER_TAG\` is only an unpinned fallback.
 
 Examples:
   $0                 # Start

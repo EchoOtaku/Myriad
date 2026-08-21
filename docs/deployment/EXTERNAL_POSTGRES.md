@@ -40,7 +40,7 @@ updater ──► docker-guard ── sock
 proxy ──┬── frontend
         └── backend ──► DATABASE_URL ──► 外部 PostgreSQL
 updater ──► docker-guard ── sock
-            + 仍管理 MYRIAD_TAG / PROXY_TAG / UPDATER_TAG / 维护模式
+            + 仍管理 MYRIAD_TAG / PROXY_TAG / 维护模式；TCB 看 UPDATER_IMAGE_REF
             + MYRIAD_DB_MODE=external → 不碰 pgdata 快照
 ```
 

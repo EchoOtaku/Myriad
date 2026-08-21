@@ -217,7 +217,8 @@ bash scripts/extra/deploy.sh down
 Manual tag upgrade path:
 
 ```bash
-# Edit MYRIAD_TAG / PROXY_TAG / UPDATER_TAG in .env first.
+# Edit MYRIAD_TAG / PROXY_TAG in .env first (business images).
+# TCB is digest-pinned: use admin self-update or UPDATER_IMAGE_REF / DOCKER_GUARD_IMAGE.
 bash scripts/extra/deploy.sh upgrade
 ```
 
