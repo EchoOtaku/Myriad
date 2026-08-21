@@ -255,8 +255,9 @@ networks:
 
 当前仓库的 `docker-compose.yml` 使用单个宿主 `.env` 作为部署契约。它同时保存业务
 镜像 tag、数据库/JWT 配置，以及 updater 所需的 token/channel。普通业务更新只改写
-`MYRIAD_TAG`；updater 自更新只改写 `UPDATER_TAG`。`PROXY_TAG` 目前走手动 tag
-升级路径。
+`MYRIAD_TAG`；updater 自更新改写 `UPDATER_IMAGE_REF`（`repo@sha256` digest pin）。
+`UPDATER_TAG` 只作首次安装回退，compose **不以** tag 覆盖容器 `MYRIAD_VERSION`
+（身份打在镜像 ENV 里）。`PROXY_TAG` 目前走手动 tag 升级路径。
 
 `.env` 必须包含：
 
@@ -264,6 +265,8 @@ networks:
 MYRIAD_TAG=v1.2.3
 PROXY_TAG=v1.0.0
 UPDATER_TAG=v0.3.0
+UPDATER_IMAGE_REF=docker.io/somekawahitomi/myriad-updater@sha256:<64hex>
+DOCKER_GUARD_IMAGE=docker.io/somekawahitomi/myriad-updater@sha256:<64hex>
 COMPOSE_PROJECT_NAME=myriad
 UPDATE_TOKEN=<32+ char random>
 CHANNEL=stable
