@@ -592,6 +592,7 @@ impl Worker {
     /// `.env` still prevents a fresh/cleared state directory from reporting "unknown".
     pub async fn reconcile_current_deploy(&self) -> Result<()> {
         let mut st = self.state.read_updater()?;
+        let updater_identity_changed = self.heal_running_updater_identity(&mut st);
         let previous_version = st.current_version.clone();
 
         let runtime = self.probe_runtime_identity().await;
@@ -615,6 +616,9 @@ impl Worker {
         };
         let Some(version) = version else {
             warn!("current deploy version remains unknown after startup reconciliation");
+            if updater_identity_changed {
+                self.state.write_updater(&st)?;
+            }
             return Ok(());
         };
 
@@ -659,8 +663,10 @@ impl Worker {
             commit_sha = None;
         }
 
-        let state_changed =
-            version_changed || st.current_commit_sha != commit_sha || st.current_version.is_none();
+        let state_changed = version_changed
+            || updater_identity_changed
+            || st.current_commit_sha != commit_sha
+            || st.current_version.is_none();
         st.current_version = Some(version.clone());
         st.current_commit_sha = commit_sha.clone();
         if state_changed {
@@ -673,6 +679,39 @@ impl Worker {
             "current deploy identity reconciled"
         );
         Ok(())
+    }
+
+    /// Keep `updater.json` and digest-pinned `UPDATER_TAG` aligned with the
+    /// binary that is actually running. Tag-only edits must not advertise a
+    /// TCB version whose image pin was never swapped.
+    fn heal_running_updater_identity(&self, st: &mut crate::state::UpdaterStateFile) -> bool {
+        let running_binary = crate::self_version();
+        let running = MyriadVersion::parse(running_binary).ok();
+        let mut changed = st.updater_version != running;
+        if changed {
+            st.updater_version = running;
+        }
+
+        let self_update_pending = self_update_handoff_pending(self.state.root());
+        if let Ok(mut env) = crate::env_file::EnvFile::load(&self.cli.env_file) {
+            if let Some(healed) = crate::env_file::heal_updater_tag_for_digest_pin(
+                env.get("UPDATER_TAG"),
+                env.get("UPDATER_IMAGE_REF"),
+                running_binary,
+                self_update_pending,
+            ) {
+                let previous = env.get("UPDATER_TAG").unwrap_or("").to_string();
+                if env.set("UPDATER_TAG", &healed).is_ok() && env.save().is_ok() {
+                    warn!(
+                        previous = %previous,
+                        running = %healed,
+                        "UPDATER_TAG was ahead of the digest-pinned updater image; aligned tag with running binary"
+                    );
+                    changed = true;
+                }
+            }
+        }
+        changed
     }
 
     async fn probe_runtime_identity(&self) -> Option<(DeployTag, Option<String>)> {
@@ -2223,6 +2262,22 @@ fn resolve_check_request(
     let mode = mode_override.unwrap_or(saved_mode);
     let persist_cache = channel == saved_channel && mode == saved_mode;
     (channel, mode, persist_cache)
+}
+
+fn self_update_handoff_pending(state_dir: &std::path::Path) -> bool {
+    let path = state_dir.join("self-update-last.json");
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    serde_json::from_slice::<serde_json::Value>(&bytes)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("status")
+                .and_then(|status| status.as_str())
+                .map(|status| status == "pending")
+        })
+        .unwrap_or(false)
 }
 
 fn runtime_identity_from_json(body: &serde_json::Value) -> Option<(DeployTag, Option<String>)> {
