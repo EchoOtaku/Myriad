@@ -681,37 +681,15 @@ impl Worker {
         Ok(())
     }
 
-    /// Keep `updater.json` and digest-pinned `UPDATER_TAG` aligned with the
-    /// binary that is actually running. Tag-only edits must not advertise a
-    /// TCB version whose image pin was never swapped.
+    /// Persist the running binary version. Identity is the image stamp, not
+    /// `UPDATER_TAG` — that key only selects a first-install tag fallback.
     fn heal_running_updater_identity(&self, st: &mut crate::state::UpdaterStateFile) -> bool {
-        let running_binary = crate::self_version();
-        let running = MyriadVersion::parse(running_binary).ok();
-        let mut changed = st.updater_version != running;
-        if changed {
-            st.updater_version = running;
+        let running = MyriadVersion::parse(crate::self_version()).ok();
+        if st.updater_version == running {
+            return false;
         }
-
-        let self_update_pending = self_update_handoff_pending(self.state.root());
-        if let Ok(mut env) = crate::env_file::EnvFile::load(&self.cli.env_file) {
-            if let Some(healed) = crate::env_file::heal_updater_tag_for_digest_pin(
-                env.get("UPDATER_TAG"),
-                env.get("UPDATER_IMAGE_REF"),
-                running_binary,
-                self_update_pending,
-            ) {
-                let previous = env.get("UPDATER_TAG").unwrap_or("").to_string();
-                if env.set("UPDATER_TAG", &healed).is_ok() && env.save().is_ok() {
-                    warn!(
-                        previous = %previous,
-                        running = %healed,
-                        "UPDATER_TAG was ahead of the digest-pinned updater image; aligned tag with running binary"
-                    );
-                    changed = true;
-                }
-            }
-        }
-        changed
+        st.updater_version = running;
+        true
     }
 
     async fn probe_runtime_identity(&self) -> Option<(DeployTag, Option<String>)> {
@@ -2262,22 +2240,6 @@ fn resolve_check_request(
     let mode = mode_override.unwrap_or(saved_mode);
     let persist_cache = channel == saved_channel && mode == saved_mode;
     (channel, mode, persist_cache)
-}
-
-fn self_update_handoff_pending(state_dir: &std::path::Path) -> bool {
-    let path = state_dir.join("self-update-last.json");
-    let Ok(bytes) = std::fs::read(path) else {
-        return false;
-    };
-    serde_json::from_slice::<serde_json::Value>(&bytes)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("status")
-                .and_then(|status| status.as_str())
-                .map(|status| status == "pending")
-        })
-        .unwrap_or(false)
 }
 
 fn runtime_identity_from_json(body: &serde_json::Value) -> Option<(DeployTag, Option<String>)> {

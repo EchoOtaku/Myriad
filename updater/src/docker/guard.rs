@@ -1695,6 +1695,8 @@ fn prevent_release_downgrade(previous: &str, target: &str) -> Result<()> {
 }
 
 async fn running_updater_tag(socket: &Path) -> Result<String> {
+    // Image-baked ENV (Dockerfile), not Compose ${UPDATER_TAG}. Overlaying the
+    // tag made digest-pinned TCB advertise a version it was not running.
     let inspect = daemon_json(socket, "/containers/myriad-updater/json").await?;
     inspect
         .pointer("/Config/Env")

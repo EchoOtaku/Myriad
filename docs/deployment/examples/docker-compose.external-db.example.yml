@@ -228,7 +228,6 @@ services:
       COSIGN_INSECURE_OK: ${COSIGN_INSECURE_OK:-}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
       MYRIAD_DOCKER_NETWORK: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
-      MYRIAD_VERSION: ${UPDATER_TAG}
       TZ: Asia/Shanghai
     volumes:
       - type: bind

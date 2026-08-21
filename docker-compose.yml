@@ -348,7 +348,8 @@ services:
       COSIGN_INSECURE_OK: ${COSIGN_INSECURE_OK:-}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-myriad}
       MYRIAD_DOCKER_NETWORK: ${MYRIAD_DOCKER_NETWORK:-myriad-net}
-      MYRIAD_VERSION: ${UPDATER_TAG}
+      # Identity is baked into the image (Dockerfile ENV). Do not overlay
+      # UPDATER_TAG here: the digest pin in UPDATER_IMAGE_REF is what runs.
       TZ: Asia/Shanghai
     volumes:
       # Deployment definitions are immutable to a compromised updater. Overlay

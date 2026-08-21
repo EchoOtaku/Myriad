@@ -104,7 +104,6 @@ services:
       DOCKER_GUARD_SELF_UPDATE_TOKEN: ${GUARD_SELF_UPDATE_TOKEN:-dev-guard-self-update-token-32chars!!}
       UPDATER_GUARD_ENV_FILE: /run/secrets/docker-guard.env
       COMPOSE_PROJECT_NAME: myriad-dev-updater
-      MYRIAD_VERSION: ${UPDATER_TAG:-v0.0.0-dev}
       TZ: Asia/Shanghai
     volumes:
       - ./.dev-updater:/host/compose:ro

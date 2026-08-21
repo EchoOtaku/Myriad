@@ -36,6 +36,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
 # ---------- runtime ----------
 FROM debian:bookworm-slim AS runtime
 ARG TARGETARCH
+ARG MYRIAD_VERSION=v0.0.0-dev
+ENV MYRIAD_VERSION=${MYRIAD_VERSION}
 ARG MYRIAD_COMMIT_SHA=unknown
 LABEL org.opencontainers.image.revision=${MYRIAD_COMMIT_SHA}
 
