@@ -860,6 +860,11 @@ impl ConfigService {
                 config.user_perm_ai_image = b;
             }
         }
+        if let Some(v) = map.get("user_perm_3d_generate") {
+            if let Some(b) = v.as_bool() {
+                config.user_perm_3d_generate = b;
+            }
+        }
         if let Some(v) = map.get("user_perm_report_write") {
             if let Some(b) = v.as_bool() {
                 config.user_perm_report_write = b;
@@ -950,6 +955,11 @@ impl ConfigService {
         if let Some(v) = map.get("guest_perm_ai_image") {
             if let Some(b) = v.as_bool() {
                 config.guest_perm_ai_image = b;
+            }
+        }
+        if let Some(v) = map.get("guest_perm_3d_generate") {
+            if let Some(b) = v.as_bool() {
+                config.guest_perm_3d_generate = b;
             }
         }
         if let Some(v) = map.get("guest_perm_report_write") {

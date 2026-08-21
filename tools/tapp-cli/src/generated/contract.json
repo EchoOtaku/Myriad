@@ -1636,6 +1636,7 @@
       "ai:analyze": "elevated",
       "ai:chat": "elevated",
       "ai:image": "elevated",
+      "3d:generate": "elevated",
       "report:read": "basic",
       "report:write": "privileged",
       "storage:read": "basic",
@@ -1765,6 +1766,13 @@
       "ai.tasks.usage": "public",
       "ai.tasks.subscribe": "public",
       "ai.tasks.unsubscribe": "public",
+      "model3d.status": "3d:generate",
+      "model3d.upload": "3d:generate",
+      "model3d.createTask": "3d:generate",
+      "model3d.getTask": "3d:generate",
+      "model3d.awaitTask": "3d:generate",
+      "model3d.getUrl": "public",
+      "model3d.getMetadata": "public",
       "report.listReports": "report:read",
       "report.getReport": "report:read",
       "report.getPlatformReport": "report:read",
@@ -1976,7 +1984,14 @@
       "dynamicContent.update",
       "dynamicContent.get",
       "dynamicContent.remove",
-      "file.download"
+      "file.download",
+      "model3d.status",
+      "model3d.upload",
+      "model3d.createTask",
+      "model3d.getTask",
+      "model3d.awaitTask",
+      "model3d.getUrl",
+      "model3d.getMetadata"
     ]
   }
 }

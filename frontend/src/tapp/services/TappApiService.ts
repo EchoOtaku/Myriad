@@ -78,6 +78,13 @@ import {
   setStorage,
 } from './TappStorageApi'
 import {
+  awaitModel3dTask,
+  createModel3dTask,
+  getModel3dStatus,
+  getModel3dTask,
+  uploadModel3dFile,
+} from './TappModel3dApi'
+import {
   getAllWidgets,
   registerTappWidget,
   unregisterTappWidget,
@@ -96,6 +103,7 @@ export * from './TappPlatformApi'
 export * from './TappReportCatalogApi'
 export * from './TappRuntimeAccessApi'
 export * from './TappStorageApi'
+export * from './TappModel3dApi'
 export * from './TappWidgetApi'
 
 export default {
@@ -159,4 +167,9 @@ export default {
   mediaControl,
   mediaStatus,
   getTappAsset,
+  getModel3dStatus,
+  uploadModel3dFile,
+  createModel3dTask,
+  getModel3dTask,
+  awaitModel3dTask,
 }

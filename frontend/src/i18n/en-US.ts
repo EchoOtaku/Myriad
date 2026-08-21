@@ -1921,6 +1921,9 @@ export const enUS: TranslationKeys = {
     permEventPublishHint: 'Allow Tapp to publish events to other Tapps',
     permAiImage: 'AI Image Generation',
     permAiImageHint: 'Allow Tapp to generate images with AI',
+    perm3dGenerate: '3D Model Generation',
+    perm3dGenerateHint:
+      'Allow Tapp to generate, rig, or retarget 3D models with Tripo',
     permSchedulerRegister: 'Register Scheduled Tasks',
     permSchedulerRegisterHint:
       'Allow Tapp to register and manage scheduled tasks',
@@ -3065,6 +3068,7 @@ export const enUS: TranslationKeys = {
     permPublishEvent: 'Publish Event',
     permSubscribeEvent: 'Subscribe Event',
     permAiImage: 'AI Image Generation',
+    perm3dGenerate: '3D Model Generation',
     permSchedulerRegister: 'Register Scheduler',
     permSpeechTts: 'Text-to-Speech',
     permSpeechAsr: 'Speech Recognition',
@@ -3120,6 +3124,8 @@ export const enUS: TranslationKeys = {
     permPublishEventDesc: 'Allow publishing system events',
     permSubscribeEventDesc: 'Allow subscribing to system events',
     permAiImageDesc: 'Allow calling AI to generate images',
+    perm3dGenerateDesc:
+      'Allow calling Tripo to generate, rig, or retarget 3D models',
     permSchedulerRegisterDesc: 'Allow registering and managing scheduled tasks',
     permSpeechTtsDesc: 'Allow using text-to-speech service',
     permSpeechAsrDesc: 'Allow using speech recognition service',

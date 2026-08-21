@@ -137,6 +137,8 @@ export function generateFullSDK(
   let lifecycleDestroyed = false;
   const _assetUrlByPath = new Map();
   const _assetUrls = new Set();
+  const _model3dUrlById = new Map();
+  const _model3dUrls = new Set();
   ${ASSET_URL_HELPER_SOURCE}
   const snapshotAssetUrls = () => {
     const urls = {};
@@ -157,6 +159,11 @@ export function generateFullSDK(
     });
     _assetUrls.clear();
     _assetUrlByPath.clear();
+    _model3dUrls.forEach((url) => {
+      try { URL.revokeObjectURL(url); } catch (e) {}
+    });
+    _model3dUrls.clear();
+    _model3dUrlById.clear();
   };
   const runLifecycleCallbacks = (name) => {
     lifecycleCallbacks[name].slice().forEach((callback) => {
@@ -483,6 +490,36 @@ export function generateFullSDK(
     analytics: {
       getSummary: (o) => sendRequest('analytics', 'getSummary', [o]),
       getVisitorCard: () => sendRequest('analytics', 'getVisitorCard', []),
+    },
+
+    model3d: {
+      status: () => sendRequest('model3d', 'status', []),
+      upload: (request) => sendRequest('model3d', 'upload', [request]),
+      createTask: (request) => sendRequest('model3d', 'createTask', [request]),
+      getTask: (taskId) => sendRequest('model3d', 'getTask', [taskId]),
+      awaitTask: (taskId) => sendRequest('model3d', 'awaitTask', [taskId]),
+      getUrl: async (assetId) => {
+        if (typeof assetId !== 'string' || !assetId) throw new Error('Asset ID required');
+        const cached = _model3dUrlById.get(assetId);
+        if (cached) return cached;
+        const asset = await sendRequest('model3d', 'getUrl', [assetId]);
+        const bytes = decodeBase64ToBytes(asset.base64);
+        const blob = new Blob([bytes], { type: asset.mimeType || 'model/gltf-binary' });
+        const url = URL.createObjectURL(blob);
+        const entry = { url: url, mimeType: asset.mimeType, size: asset.size, assetId: assetId };
+        _model3dUrlById.set(assetId, entry);
+        _model3dUrls.add(url);
+        return entry;
+      },
+      getMetadata: (assetId) => sendRequest('model3d', 'getMetadata', [assetId]),
+      revoke: (url) => {
+        if (typeof url !== 'string') return;
+        try { URL.revokeObjectURL(url); } catch (e) {}
+        _model3dUrls.delete(url);
+        _model3dUrlById.forEach((value, key) => {
+          if (value && value.url === url) _model3dUrlById.delete(key);
+        });
+      },
     },
 
     ai: {
@@ -995,6 +1032,7 @@ export function generateFullSDK(
     delete Tapp.dynamicContent;
     delete Tapp.dom;
     delete Tapp.file;
+    delete Tapp.model3d;
     delete Tapp.widgets;
     delete Tapp.pages;
   }
@@ -1009,6 +1047,7 @@ export function generateFullSDK(
   Object.freeze(Tapp.platform);
   Object.freeze(Tapp.ai.tasks);
   Object.freeze(Tapp.ai);
+  if (Tapp.model3d) Object.freeze(Tapp.model3d);
   Object.freeze(Tapp.report);
   Object.freeze(Tapp.storage);
   Object.freeze(Tapp.dataExchange);
@@ -1185,6 +1224,18 @@ function buildWidgetSdkBody(
         usage: _denied('ai:generate'),
         subscribe: _denied('ai:generate')
       }
+    },`
+
+  const model3dNs = `
+    model3d: {
+      status: _denied('3d:generate'),
+      upload: _denied('3d:generate'),
+      createTask: _denied('3d:generate'),
+      getTask: _denied('3d:generate'),
+      awaitTask: _denied('3d:generate'),
+      getUrl: _denied('3d:generate'),
+      getMetadata: _denied('3d:generate'),
+      revoke: function() {}
     },`
 
   const eventNs = caps.event
@@ -1390,6 +1441,7 @@ function buildWidgetSdkBody(
   // Always freeze optional namespaces (full or stub) so shape stays stable.
   const freezeOptional = [
     'Object.freeze(Tapp.ai.tasks); Object.freeze(Tapp.ai);',
+    'Object.freeze(Tapp.model3d);',
     'Object.freeze(Tapp.platform);',
     'Object.freeze(Tapp.analytics);',
     'Object.freeze(Tapp.report);',
@@ -1763,7 +1815,7 @@ function buildWidgetSdkBody(
       usage: function() { return sendRequest('shared', 'usage', []); },
       onChanged: function(cb) { return addEventListener('sharedChanged', cb); }
     },
-${aiNs}${eventNs}${agentNs}${mediaNs}${platformNs}${analyticsNs}${reportNs}
+${aiNs}${model3dNs}${eventNs}${agentNs}${mediaNs}${platformNs}${analyticsNs}${reportNs}
     background: {
       require: function(r, reason) { return sendRequest('background', 'require', [r, reason]); },
       release: function(r) { return sendRequest('background', 'release', [r]); },

@@ -14,6 +14,8 @@
 - [UI API](#ui-api)
 - [动画 API](#动画-api)
 - [平台 API](#平台-api)
+- [访问统计 API](#访问统计-api)
+- [3D API](#3d-api)
 - [AI API](#ai-api)
 - [Agent Interaction API](#agent-interaction-api)
 - [小组件 API](#小组件-api)
@@ -494,6 +496,39 @@ Manifest 示例：
   "permissions": ["analytics:read"]
 }
 ```
+
+---
+
+## 3D API
+
+**权限**: `3d:generate`（elevated，默认不下放）
+
+生成、绑定、重定向走宿主代调 Tripo；密钥不出沙箱。已持久化的 GLB 仍是公开
+content-addressed 资源，`Tapp.model3d.getUrl` / `getMetadata` 不需要本权限（沙箱
+CSP 不能直接 `fetch` `/api/digital-life/3d/assets/...`，由宿主读回后在 iframe 内
+做成 blob）。
+
+只在 **Page** 注册生成 handlers；Widget 上的 `Tapp.model3d` 是拒绝桩。
+
+```javascript
+const status = await Tapp.model3d.status(); // { enabled, configured, capabilities }
+const { file_token } = await Tapp.model3d.upload({
+  fileName: "front.png",
+  contentType: "image/png",
+  base64,
+});
+const { task_id } = await Tapp.model3d.createTask({
+  operation: "image_to_model",
+  payload: { input: file_token },
+});
+const done = await Tapp.model3d.awaitTask(task_id);
+const { url } = await Tapp.model3d.getUrl(done.assets[0].asset_id);
+const gltf = await new GLTFLoader().loadAsync(url);
+```
+
+`createTask` 的 `operation`：`image_to_model` | `multiview_to_model` | `rig_check` |
+`rig` | `retarget`。未写明的 Web 预算默认值与管理员 Digital Life 管线相同。
+单次上传上限 16 MiB。
 
 ---
 
@@ -1664,6 +1699,7 @@ Tapp.assets.revokeAll(); // 也会在 onDestroy 时自动调用
 | `platform`, `data`                         | 平台数据读取、写入、转换和注册                      | `platform:*`                       |
 | `analytics`                                | 站点访问统计聚合（admin 完整 / 非 admin 访客卡片）  | `analytics:read`                   |
 | `ai`, `report`                             | 服务端治理的 AI Task 与报告读写                     | `ai:*`, `report:*`                 |
+| `model3d`                                  | Tripo 图生 3D / rig / retarget；`getUrl` 回沙箱 blob | `3d:generate`（资产读取 public） |
 | `widget`                                   | 管理员动态注册与配置 Widget                         | `widget:register`                  |
 | `media`                                    | 播放器读取和控制                                    | `media:*`                          |
 | `context`, `user`                          | 应用、用户、导航、系统和地理上下文                  | public                             |

@@ -78,6 +78,13 @@ const zh: TappPermissionGuides = {
     frontend: '应用内的出图/配图功能。',
     notes: '图像模型通常更贵或更慢；需站点已配置 image 能力。',
   },
+  '3d:generate': {
+    what: '允许调用 Tripo 生成、绑定或重定向 3D 模型（图/多视图 → GLB）。',
+    chain:
+      '① 应用上传参考图或已有模型。\n② 宿主代调 Tripo，密钥不出沙箱。\n③ 持久化 GLB 后返回 asset_id，可用 Tapp.model3d.getUrl 在沙箱内加载。',
+    frontend: '应用内的 3D 生成与预览；设置「3D 与 Tripo」为上游配置。',
+    notes: '花费站点 Tripo 额度；默认不下放。读取已有 GLB 不需要本权限。',
+  },
   'report:read': {
     what: '允许读取本站已生成的报告数据。',
     chain:
@@ -403,6 +410,13 @@ const en: TappPermissionGuides = {
     frontend: 'In-app image generation.',
     notes: 'Often slower/costlier; image capability must be configured.',
   },
+  '3d:generate': {
+    what: 'Allows Tripo to generate, rig, or retarget 3D models (image/multiview → GLB).',
+    chain:
+      '1) App uploads a reference image or model.\n2) Host calls Tripo; the API key never enters the sandbox.\n3) Persisted GLB returns an asset_id; Tapp.model3d.getUrl loads it in-sandbox.',
+    frontend: 'In-app 3D generation/preview; site “3D & Tripo” settings.',
+    notes: 'Spends site Tripo credits; not delegated by default. Reading existing GLBs does not need this permission.',
+  },
   'report:read': {
     what: 'Allows reading existing generated reports.',
     chain:
@@ -727,6 +741,13 @@ const ja: TappPermissionGuides = {
       '① 画像リクエスト。\n② 画像モデル設定。\n③ URL/データを返す。',
     frontend: 'アプリ内の画像生成。',
     notes: '遅延・コスト大。画像能力の設定が必要。',
+  },
+  '3d:generate': {
+    what: 'Tripo で 3D モデルの生成・リグ・リターゲットができます（画像/多視点 → GLB）。',
+    chain:
+      '① 参照画像またはモデルをアップロード。\n② 宿主が Tripo を代行し、鍵はサンドボックスに入りません。\n③ 永続化した GLB の asset_id を返し、Tapp.model3d.getUrl で読み込めます。',
+    frontend: 'アプリ内の 3D 生成とプレビュー。設定の「3D と Tripo」。',
+    notes: 'サイトの Tripo クレジットを消費します。既定では委譲しません。既存 GLB の読み取りには不要です。',
   },
   'report:read': {
     what: '生成済みレポートを読めます。',

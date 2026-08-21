@@ -484,6 +484,8 @@ pub struct DynamicConfig {
     pub user_perm_ai_chat: bool,
     /// ai:image - AI 图片生成
     pub user_perm_ai_image: bool,
+    /// 3d:generate - Tripo 3D 模型生成
+    pub user_perm_3d_generate: bool,
     /// report:write - 写入/生成报告
     pub user_perm_report_write: bool,
     /// network:fetch - 发起网络请求
@@ -522,6 +524,8 @@ pub struct DynamicConfig {
     pub guest_perm_ai_chat: bool,
     /// ai:image - AI 图片生成（游客）
     pub guest_perm_ai_image: bool,
+    /// 3d:generate - Tripo 3D 模型生成（游客）
+    pub guest_perm_3d_generate: bool,
     /// report:write - 写入/生成报告（游客）
     pub guest_perm_report_write: bool,
     /// network:fetch - 发起网络请求（游客）
@@ -773,6 +777,7 @@ impl Default for DynamicConfig {
             user_perm_ai_analyze: false,
             user_perm_ai_chat: false,
             user_perm_ai_image: false,
+            user_perm_3d_generate: false,
             user_perm_report_write: false,
             user_perm_network_fetch: false,
             user_perm_media_control: false,
@@ -794,6 +799,7 @@ impl Default for DynamicConfig {
             guest_perm_ai_analyze: false,
             guest_perm_ai_chat: false,
             guest_perm_ai_image: false,
+            guest_perm_3d_generate: false,
             guest_perm_report_write: false,
             guest_perm_network_fetch: false,
             guest_perm_media_control: false,

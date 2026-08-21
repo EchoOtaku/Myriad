@@ -82,6 +82,7 @@ pub struct UpdatePermissionsPayload {
     pub user_perm_ai_analyze: Option<bool>,
     pub user_perm_ai_chat: Option<bool>,
     pub user_perm_ai_image: Option<bool>,
+    pub user_perm_3d_generate: Option<bool>,
     #[allow(dead_code)]
     pub user_perm_report_write: Option<bool>, // 忽略：强制 false
     pub user_perm_network_fetch: Option<bool>,
@@ -103,6 +104,7 @@ pub struct UpdatePermissionsPayload {
     pub guest_perm_ai_analyze: Option<bool>,
     pub guest_perm_ai_chat: Option<bool>,
     pub guest_perm_ai_image: Option<bool>,
+    pub guest_perm_3d_generate: Option<bool>,
     pub guest_perm_network_fetch: Option<bool>,
     pub guest_perm_media_control: Option<bool>,
     pub guest_perm_event_publish: Option<bool>,
@@ -189,6 +191,9 @@ pub async fn update_permissions(
     if let Some(v) = payload.user_perm_ai_image {
         updates.insert("user_perm_ai_image".to_string(), json!(v));
     }
+    if let Some(v) = payload.user_perm_3d_generate {
+        updates.insert("user_perm_3d_generate".to_string(), json!(v));
+    }
     // report:write 不再下放：强制写入 false
     updates.insert("user_perm_report_write".to_string(), json!(false));
     if let Some(v) = payload.user_perm_network_fetch {
@@ -243,6 +248,9 @@ pub async fn update_permissions(
     }
     if let Some(v) = payload.guest_perm_ai_image {
         updates.insert("guest_perm_ai_image".to_string(), json!(v));
+    }
+    if let Some(v) = payload.guest_perm_3d_generate {
+        updates.insert("guest_perm_3d_generate".to_string(), json!(v));
     }
     // report:write 不再下放：强制写入 false
     updates.insert("guest_perm_report_write".to_string(), json!(false));

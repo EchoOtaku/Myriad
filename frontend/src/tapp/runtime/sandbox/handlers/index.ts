@@ -40,4 +40,5 @@ export {
   registerWidgetHandlers,
 } from './platformHandlers'
 
+export { registerModel3dHandlers } from './model3dHandlers'
 export { registerSchedulerHandlers } from './schedulerHandlers'

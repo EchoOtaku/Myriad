@@ -985,6 +985,7 @@ Tapp 私有 storage、报告和内部状态不会因为知道另一个 `tappId` 
 | `ai:analyze`         | AI 数据分析       |
 | `ai:chat`            | AI 对话           |
 | `ai:image`           | AI 图片生成       |
+| `3d:generate`        | 3D 模型生成（Tripo；默认不下放） |
 | `network:fetch`      | 发送 HTTP 请求    |
 | `component:theme`    | 注册自定义主题    |
 | `shortcut:register`  | 注册键盘快捷键    |

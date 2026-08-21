@@ -1630,6 +1630,8 @@ export interface TranslationKeys {
     permEventPublishHint: string
     permAiImage: string
     permAiImageHint: string
+    perm3dGenerate: string
+    perm3dGenerateHint: string
     permSchedulerRegister: string
     permSchedulerRegisterHint: string
     permSpeechTts: string
@@ -2748,6 +2750,7 @@ export interface TranslationKeys {
     permPublishEvent: string
     permSubscribeEvent: string
     permAiImage: string
+    perm3dGenerate: string
     permSchedulerRegister: string
     permSpeechTts: string
     permSpeechAsr: string
@@ -2796,6 +2799,7 @@ export interface TranslationKeys {
     permPublishEventDesc: string
     permSubscribeEventDesc: string
     permAiImageDesc: string
+    perm3dGenerateDesc: string
     permSchedulerRegisterDesc: string
     permSpeechTtsDesc: string
     permSpeechAsrDesc: string

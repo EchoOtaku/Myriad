@@ -14,12 +14,14 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
 use crate::{
     services::tripo::{
-        asset_path, persist_task_models, PersistedTripoAsset, TripoClient, TripoError,
+        apply_web_defaults, asset_path, is_configured, is_enabled, persist_task_models,
+        poll_until_terminal, validate_upload_type, PersistedTripoAsset, TripoClient, TripoError,
         TripoOperation, TripoRuntimeConfig, TripoTask, DEFAULT_BASE_URL, DEFAULT_MODEL,
+        PUBLIC_CAPABILITIES,
     },
     state::AppState,
 };
@@ -83,14 +85,8 @@ pub struct TaskResponse {
 
 pub async fn status(State(state): State<AppState>) -> Json<TripoStatusResponse> {
     let dynamic = state.dynamic_config.read().await;
-    let enabled = env_bool("TRIPO_ENABLED").unwrap_or(dynamic.tripo_enabled);
-    let configured = dynamic
-        .tripo_api_key
-        .as_ref()
-        .is_some_and(|value| !value.trim().is_empty())
-        || std::env::var("TRIPO_API_KEY")
-            .ok()
-            .is_some_and(|value| !value.trim().is_empty());
+    let enabled = is_enabled(&dynamic);
+    let configured = is_configured(&dynamic);
     let base_url = env_string("TRIPO_BASE_URL")
         .unwrap_or_else(|| dynamic.tripo_base_url.clone())
         .trim_end_matches('/')
@@ -126,16 +122,7 @@ pub async fn status(State(state): State<AppState>) -> Json<TripoStatusResponse> 
         poll_interval_seconds,
         task_timeout_seconds,
         max_download_mb,
-        capabilities: &[
-            "file_upload",
-            "image_to_model",
-            "multiview_to_model",
-            "rig_check",
-            "rig",
-            "retarget",
-            "glb_persist",
-            "glb_inspect",
-        ],
+        capabilities: PUBLIC_CAPABILITIES,
     })
 }
 
@@ -154,7 +141,7 @@ pub async fn upload(
         .content_type()
         .unwrap_or("application/octet-stream")
         .to_string();
-    validate_upload_type(&file_name, &content_type)?;
+    validate_upload_type(&file_name, &content_type).map_err(map_tripo_error)?;
     let bytes = field
         .bytes()
         .await
@@ -180,7 +167,8 @@ pub async fn create_task(
     Json(request): Json<CreateTaskRequest>,
 ) -> ApiResult<Json<TaskCreatedResponse>> {
     let client = client_from_state(&state).await?;
-    let payload = with_web_defaults(request.operation, request.payload, client.config())?;
+    let payload =
+        apply_web_defaults(request.operation, request.payload, client.config()).map_err(map_tripo_error)?;
     let task_id = client
         .create_task(request.operation, payload)
         .await
@@ -212,39 +200,26 @@ pub async fn await_task(
     Path(task_id): Path<String>,
 ) -> ApiResult<Json<TaskResponse>> {
     let client = client_from_state(&state).await?;
-    let started = tokio::time::Instant::now();
-    loop {
-        let task = client.query_task(&task_id).await.map_err(map_tripo_error)?;
-        match task.status.as_str() {
-            "success" => {
-                let assets = persist_task_models(&task, client.config().max_download_bytes)
-                    .await
-                    .map_err(map_tripo_error)?;
-                let asset = assets.first().cloned();
-                return Ok(Json(TaskResponse {
-                    task,
-                    asset,
-                    assets,
-                }));
-            }
-            "failed" | "cancelled" | "banned" => {
-                return Ok(Json(TaskResponse {
-                    task,
-                    asset: None,
-                    assets: Vec::new(),
-                }));
-            }
-            _ if started.elapsed() >= client.config().task_timeout => {
-                return Err((
-                    StatusCode::GATEWAY_TIMEOUT,
-                    Json(json!({
-                        "error": "Tripo task polling timed out",
-                        "task_id": task_id,
-                    })),
-                ));
-            }
-            _ => tokio::time::sleep(client.config().poll_interval).await,
+    let task = poll_until_terminal(&client, &task_id)
+        .await
+        .map_err(map_tripo_error)?;
+    match task.status.as_str() {
+        "success" => {
+            let assets = persist_task_models(&task, client.config().max_download_bytes)
+                .await
+                .map_err(map_tripo_error)?;
+            let asset = assets.first().cloned();
+            Ok(Json(TaskResponse {
+                task,
+                asset,
+                assets,
+            }))
         }
+        _ => Ok(Json(TaskResponse {
+            task,
+            asset: None,
+            assets: Vec::new(),
+        })),
     }
 }
 
@@ -297,87 +272,13 @@ async fn client_from_state(state: &AppState) -> ApiResult<TripoClient> {
     TripoClient::new(config).await.map_err(map_tripo_error)
 }
 
-fn with_web_defaults(
-    operation: TripoOperation,
-    payload: Value,
-    config: &TripoRuntimeConfig,
-) -> ApiResult<Value> {
-    let mut object = payload
-        .as_object()
-        .cloned()
-        .ok_or_else(|| bad_request("payload must be a JSON object"))?;
-    if matches!(operation, TripoOperation::ImageToModel) {
-        if let Some(file_token) = object.remove("file_token") {
-            if object
-                .get("input")
-                .is_some_and(|input| input != &file_token)
-            {
-                return Err(bad_request(
-                    "image_to_model input and file_token must not disagree",
-                ));
-            }
-            object.entry("input".to_string()).or_insert(file_token);
-        }
-    }
-    match operation {
-        TripoOperation::ImageToModel | TripoOperation::MultiviewToModel => {
-            insert_default(&mut object, "model", json!(config.model));
-            insert_default(&mut object, "face_limit", json!(config.face_limit));
-            insert_default(&mut object, "texture", json!(true));
-            insert_default(&mut object, "pbr", json!(false));
-        }
-        TripoOperation::RigCheck => {}
-        TripoOperation::Rig => {
-            insert_default(&mut object, "model", json!("v1.0-20240301"));
-            insert_default(&mut object, "rig_type", json!("biped"));
-            insert_default(&mut object, "spec", json!("mixamo"));
-            insert_default(&mut object, "out_format", json!("glb"));
-        }
-        TripoOperation::Retarget => {
-            insert_default(&mut object, "out_format", json!("glb"));
-            insert_default(&mut object, "bake_animation", json!(true));
-            insert_default(&mut object, "export_with_geometry", json!(true));
-            insert_default(&mut object, "animate_in_place", json!(true));
-        }
-    }
-    Ok(Value::Object(object))
-}
-
-fn insert_default(object: &mut Map<String, Value>, key: &str, value: Value) {
-    object.entry(key.to_string()).or_insert(value);
-}
-
-fn validate_upload_type(file_name: &str, content_type: &str) -> ApiResult<()> {
-    let extension = file_name
-        .rsplit_once('.')
-        .map(|(_, extension)| extension.to_ascii_lowercase())
-        .unwrap_or_default();
-    let allowed_extension = matches!(
-        extension.as_str(),
-        "jpg" | "jpeg" | "png" | "glb" | "gltf" | "fbx" | "obj" | "stl"
-    );
-    let allowed_content_type = matches!(
-        content_type,
-        "image/jpeg"
-            | "image/png"
-            | "model/gltf-binary"
-            | "model/gltf+json"
-            | "application/octet-stream"
-    );
-    if !allowed_extension || !allowed_content_type {
-        return Err(bad_request(
-            "Unsupported upload; use PNG/JPEG or GLB/GLTF/FBX/OBJ/STL",
-        ));
-    }
-    Ok(())
-}
-
 fn map_tripo_error(error: TripoError) -> (StatusCode, Json<Value>) {
     let status = match error {
         TripoError::Disabled | TripoError::NotConfigured | TripoError::InvalidConfig(_) => {
             StatusCode::SERVICE_UNAVAILABLE
         }
         TripoError::InvalidRequest(_) | TripoError::InvalidModel(_) => StatusCode::BAD_REQUEST,
+        TripoError::Timeout => StatusCode::GATEWAY_TIMEOUT,
         TripoError::Upstream { status, .. } if status == 401 || status == 403 => {
             StatusCode::BAD_GATEWAY
         }
@@ -405,15 +306,6 @@ fn env_i32(key: &str) -> Option<i32> {
     env_string(key)?.parse().ok()
 }
 
-fn env_bool(key: &str) -> Option<bool> {
-    env_string(key).map(|value| {
-        matches!(
-            value.to_ascii_lowercase().as_str(),
-            "1" | "true" | "yes" | "on"
-        )
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,7 +325,7 @@ mod tests {
 
     #[test]
     fn generation_defaults_are_web_budgeted() {
-        let payload = with_web_defaults(
+        let payload = apply_web_defaults(
             TripoOperation::MultiviewToModel,
             json!({"inputs": [{"front": "file_a"}, {"back": "file_b"}]}),
             &runtime_config(),
@@ -448,7 +340,7 @@ mod tests {
 
     #[test]
     fn explicit_generation_options_are_not_overwritten() {
-        let payload = with_web_defaults(
+        let payload = apply_web_defaults(
             TripoOperation::ImageToModel,
             json!({"input": "file_a", "face_limit": 8_000, "pbr": true}),
             &runtime_config(),
@@ -460,7 +352,7 @@ mod tests {
 
     #[test]
     fn image_file_token_alias_is_normalized_and_explicit_compress_is_preserved() {
-        let payload = with_web_defaults(
+        let payload = apply_web_defaults(
             TripoOperation::ImageToModel,
             json!({"file_token": "file_a", "compress": "geometry"}),
             &runtime_config(),
@@ -470,7 +362,7 @@ mod tests {
         assert!(payload.get("file_token").is_none());
         assert_eq!(payload["compress"], "geometry");
 
-        assert!(with_web_defaults(
+        assert!(apply_web_defaults(
             TripoOperation::ImageToModel,
             json!({"input": "file_a", "file_token": "file_b"}),
             &runtime_config(),

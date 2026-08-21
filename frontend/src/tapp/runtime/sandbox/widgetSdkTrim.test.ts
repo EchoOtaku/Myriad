@@ -58,6 +58,7 @@ describe('generateWidgetSDK permission trim', () => {
     assert.match(sdk, /lifecycle:\s*\{/)
     // Shape preserved for DX; heavy sendRequest bodies omitted
     assert.match(sdk, /\bai:\s*\{/)
+    assert.match(sdk, /\bmodel3d:\s*\{/)
     assert.match(sdk, /\bmedia:\s*\{/)
     assert.match(sdk, /\banalytics:\s*\{/)
     assert.match(sdk, /_denied\(/)

@@ -55,6 +55,7 @@ import {
   registerGameHandlers,
   registerLifecycleHandlers,
   registerMediaHandlers,
+  registerModel3dHandlers,
   registerPlatformHandlers,
   registerReportHandlers,
   registerSchedulerHandlers,
@@ -781,6 +782,9 @@ export const TappPageSandbox: React.FC<TappPageSandboxProps> = ({
         registerBrewListHandlers(bridge, currentTappInstance)
       }
       const closeAITaskStreams = hasAi ? registerAIHandlers(bridge) : () => {}
+      if (!headless) {
+        registerModel3dHandlers(bridge)
+      }
       if (hasReport) {
         registerReportHandlers(bridge, currentTappInstance)
       }
