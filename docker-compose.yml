@@ -165,7 +165,6 @@ services:
       BASE_URL: ${BASE_URL:-}
       RUST_LOG: ${RUST_LOG:-info}
       TZ: Asia/Shanghai
-      MYRIAD_VERSION: ${MYRIAD_TAG}
       # Server-side updater proxy: backend forwards admin-authenticated UI requests
       # to updater-gateway with X-Updater-Gateway-Secret. Gateway injects X-Update-Token;
       # backend does NOT hold UPDATE_TOKEN.
@@ -214,7 +213,6 @@ services:
       PUBLIC_API_URL: ${PUBLIC_API_URL:-}
       NODE_ENV: production
       TZ: Asia/Shanghai
-      MYRIAD_VERSION: ${MYRIAD_TAG}
     depends_on:
       backend: { condition: service_healthy }
     healthcheck:
@@ -249,7 +247,6 @@ services:
       # Direct updater channel is OFF by default. Backend /api/admin/updater/* is the
       # recommended path. Enable only for rescue scenarios when the backend is down.
       PROXY_ALLOW_DIRECT_UPDATER: ${PROXY_ALLOW_DIRECT_UPDATER:-false}
-      MYRIAD_VERSION: ${PROXY_TAG}
       TZ: Asia/Shanghai
     volumes:
       - ./state:/state:ro

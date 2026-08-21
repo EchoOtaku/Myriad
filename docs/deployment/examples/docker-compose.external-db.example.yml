@@ -75,7 +75,6 @@ services:
       BASE_URL: ${BASE_URL:-}
       RUST_LOG: ${RUST_LOG:-info}
       TZ: Asia/Shanghai
-      MYRIAD_VERSION: ${MYRIAD_TAG}
       MYRIAD_UPDATER_URL: http://updater-gateway:1104
       UPDATER_GATEWAY_SECRET: ${UPDATER_GATEWAY_SECRET}
     # No depends_on postgres — external DB is outside this compose project.
@@ -114,7 +113,6 @@ services:
       PUBLIC_API_URL: ${PUBLIC_API_URL:-}
       NODE_ENV: production
       TZ: Asia/Shanghai
-      MYRIAD_VERSION: ${MYRIAD_TAG}
     depends_on:
       backend: { condition: service_healthy }
     healthcheck:
@@ -144,7 +142,6 @@ services:
       PROXY_UPDATER_UPSTREAM: http://updater:1101
       PROXY_TRUSTED_UPSTREAMS: ${PROXY_TRUSTED_UPSTREAMS:-}
       PROXY_ALLOW_DIRECT_UPDATER: ${PROXY_ALLOW_DIRECT_UPDATER:-false}
-      MYRIAD_VERSION: ${PROXY_TAG}
       TZ: Asia/Shanghai
     volumes:
       - ./state:/state:ro
