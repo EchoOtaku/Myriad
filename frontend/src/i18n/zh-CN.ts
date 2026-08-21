@@ -1004,9 +1004,9 @@ export const zhCN: TranslationKeys = {
     updaterSnapshotLimitCounts:
       '当前可自动清理 {eligible} 份 / 上限 {n}；保留或占用中 {protected} 份',
     updaterSnapshotLimitStillOver:
-      '已保存，但仍有 {eligible} 份超过上限 {n}（保留/占用 {protected}）。若长期无效，请确认更新器镜像已 self-update 到含备份上限的版本（UPDATER_TAG）。',
+      '已保存，但仍有 {eligible} 份超过上限 {n}（保留/占用 {protected}）。若长期无效，请在更新管理里 self-update 更新器镜像。',
     updaterSnapshotLimitUpdaterOld:
-      '当前更新器未返回备份上限字段，镜像可能过旧；请先 self-update 更新器或检查 UPDATER_TAG，否则自动删除不会生效。',
+      '当前更新器未返回备份上限字段，镜像可能过旧；请先在更新管理里 self-update 更新器，否则自动删除不会生效。',
     updaterRollback: '回退到此版本',
     updaterRollbackDispatched: '回退已开始',
     updaterDeleteSnapshot: '删除',

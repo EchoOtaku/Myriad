@@ -1058,9 +1058,9 @@ export const jaJP: TranslationKeys = {
     updaterSnapshotLimitCounts:
       '自動管理 {eligible} / 上限 {n}；保持・使用中 {protected}',
     updaterSnapshotLimitStillOver:
-      '保存しましたが、まだ上限 {n} を超える {eligible} 件があります（保持/使用中 {protected}）。続く場合は updater イメージの self-update（UPDATER_TAG）を確認してください。',
+      '保存しましたが、まだ上限 {n} を超える {eligible} 件があります（保持/使用中 {protected}）。続く場合は更新管理から updater を self-update してください。',
     updaterSnapshotLimitUpdaterOld:
-      'この updater はバックアップ上限フィールドを返しません。イメージが古い可能性があります。先に self-update するか UPDATER_TAG を確認してください。',
+      'この updater はバックアップ上限フィールドを返しません。イメージが古い可能性があります。先に更新管理から self-update してください。'
     updaterRollback: 'このバージョンに戻す',
     updaterRollbackDispatched: '巻き戻しを開始しました',
     updaterDeleteSnapshot: '削除',
