@@ -275,6 +275,12 @@ pub(crate) fn tables() -> Vec<TableDef> {
                     default_value: Some("0".into()),
                 },
                 ColumnDef {
+                    name: "failing_since".into(),
+                    data_type: "timestamp with time zone".into(),
+                    is_nullable: true,
+                    default_value: None,
+                },
+                ColumnDef {
                     name: "created_at".into(),
                     data_type: "timestamp with time zone".into(),
                     is_nullable: false,

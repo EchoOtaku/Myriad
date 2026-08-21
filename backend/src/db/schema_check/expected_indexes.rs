@@ -524,6 +524,14 @@ pub(crate) fn get_expected_indexes() -> Vec<IndexDef> {
             columns: vec!["status".into(), "lease_expires_at".into()],
             is_unique: false,
         },
+        // Domain-scoped sweep (relationship revocation) would otherwise seq-scan
+        // the whole retained queue history while holding the instance row lock.
+        IndexDef {
+            name: "idx_delivery_queue_target_domain".into(),
+            table: "federation_delivery_queue".into(),
+            columns: vec!["LOWER(target_domain)".into(), "status".into()],
+            is_unique: false,
+        },
         IndexDef {
             name: "idx_timeline_user_activity".into(),
             table: "federation_timeline".into(),

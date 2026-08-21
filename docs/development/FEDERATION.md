@@ -135,18 +135,37 @@ Classifier: `is_user_cancelled_delivery_error` — exact `cancelled: by user` (c
 or any `cancelled:` prefix (room/channel teardown). Peer errors that merely mention
 “cancelled” mid-string do **not** match.
 
-Remote health uses consecutive outbound delivery outcomes per domain. A successful
-HTTP acknowledgement resets the streak. DNS failures, timeouts,
-connection errors, and non-success HTTP responses increment it; local URL/SSRF
-policy, HTTP-client preparation, key/signing/DB failures, trust-policy rejection,
-lease reclaim, and a remote human not replying do not.
-On the fifth failure, one transaction removes active follows and room memberships,
-closes DM channels, cancels open DM transfers plus transfers in rooms hosted by the
-failed domain, and marks unfinished or otherwise retryable deliveries to that domain
-with a `cancelled:` reason. Locally hosted rooms keep other members; for a room hosted by
-the failed domain, local memberships are removed. Cached actors, room/channel
-messages, activities, and completed deliveries remain as local history. This is a
-liveness teardown, not a trust block; a later new relationship starts a fresh streak.
+Remote health per domain (`federation_instances.failure_count` + `failing_since`)
+tracks one *unreachable* streak. Each outbound attempt falls into three buckets:
+
+| Bucket | Examples | Effect on the streak |
+| --- | --- | --- |
+| unreachable | DNS failure, connection refused, timeout, HTTP 5xx/408/429 | increments; stamps `failing_since` if unset |
+| rejected | permanent 4xx, `not_found` / `not_member` bodies | **neutral** — the peer answered, so it is alive |
+| local | URL/SSRF policy, HTTP-client prep, key/signing/DB failures, trust-policy rejection, lease reclaim, a remote human not replying | never reaches domain health |
+
+Any successful HTTP acknowledgement clears both `failure_count` and `failing_since`.
+
+Revocation needs **both** halves of the gate: ≥ 20 unreachable attempts **and** a
+streak ≥ 7 days old. A count alone is not a signal — the worker drains 20 rows per
+15 s tick, so one fan-out can burn any count while a peer merely restarts; and
+`max_attempts` (12) means no single queue row can reach the count by itself. A
+neutral rejection cannot advance the gate, so a live peer declining one object can
+never tear down its whole domain.
+
+When it fires, one transaction removes active follows and room memberships, closes
+DM channels, cancels open DM transfers plus transfers in rooms hosted by the failed
+domain, and cancels the domain's **unfinished** (`pending` / `delivering`) deliveries
+with a `cancelled:` reason derived from the thresholds. Rows that already reached a
+terminal state are untouched: a dead-letter keeps its real cause and stays eligible
+for `retry-dead`. Every owner of a cancelled row gets a `federation.domain_revoked`
+notification, because the bulk sweep bypasses the per-row dead-letter path. Locally
+hosted rooms keep other members; for a room hosted by the failed domain, local
+memberships are removed. Cached actors, room/channel messages, activities, and
+completed deliveries remain as local history. This is a liveness teardown, not a
+trust block; revocation resets the streak so a later relationship starts fresh.
+`idx_delivery_queue_target_domain` (`LOWER(target_domain), status`) keeps the sweep
+off a full scan of retained queue history.
 
 Resource teardown: `cancel_pending_deliveries_for_resource` **excludes** `RoomDissolve` /
 `ChannelClose` (and `myriad:` variants) so dissolve/close fan-out is never self-cancelled.

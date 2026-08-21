@@ -553,6 +553,7 @@ CREATE TEMP TABLE federation_remote_actors (
 CREATE TEMP TABLE federation_instances (
     domain TEXT PRIMARY KEY,
     failure_count INTEGER NOT NULL DEFAULT 0,
+    failing_since TIMESTAMPTZ,
     last_success_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 ) ON COMMIT DROP;
@@ -828,13 +829,13 @@ INSERT INTO federation_activities
     (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
 SELECT
     'activity-failure-' || n,
-    1,
+    CASE WHEN n = 6 THEN 2 ELSE 1 END,
     'Create',
     'Note',
     json_build_object('id', 'activity-failure-' || n),
     TRUE,
     NOW()
-FROM generate_series(1, 9) AS n;
+FROM generate_series(1, 10) AS n;
 INSERT INTO federation_delivery_queue
     (activity_id, target_inbox, target_domain, status, created_at, next_retry_at, error_message)
 VALUES
@@ -842,18 +843,24 @@ VALUES
     (2, 'https://peer.example/inbox/2', 'peer.example', 'pending', NOW(), NOW(), NULL),
     (3, 'https://peer.example/inbox/3', 'peer.example', 'pending', NOW(), NOW(), NULL),
     (4, 'https://peer.example/inbox/4', 'peer.example', 'pending', NOW(), NOW(), NULL),
-    (5, 'https://peer.example/inbox/5', 'peer.example', 'pending', NOW(), NOW(), NULL),
+    (5, 'https://peer.example/inbox/rejected', 'peer.example', 'pending', NOW(), NOW(), NULL),
     (6, 'https://peer.example/inbox/extra', 'peer.example', 'pending', NOW(), NOW(), NULL),
     (7, 'https://other.example/inbox', 'other.example', 'pending', NOW(), NOW(), NULL),
     (8, 'https://peer.example/inbox/completed', 'peer.example', 'delivered', NOW(), NULL, NULL),
     (9, 'https://peer.example/inbox/already-cancelled', 'peer.example', 'dead', NOW(), NULL,
-     'cancelled: existing teardown');
+     'cancelled: existing teardown'),
+    (10, 'https://peer.example/inbox/local-failure', 'peer.example', 'dead',
+     NOW() - INTERVAL '90 days', NULL, 'Key load failed: decrypt');
 "#,
         )
         .await
         .expect("seed domain relationship revocation contract");
 
-    for queue_id in 1..=5 {
+    // Claim a queue row and hand the settlement a live lease token.
+    async fn claim_for_settlement(
+        outer: &sea_orm::DatabaseTransaction,
+        queue_id: i32,
+    ) -> uuid::Uuid {
         let token = Uuid::new_v4();
         outer
             .execute_raw(Statement::from_sql_and_values(
@@ -866,12 +873,26 @@ VALUES
             ))
             .await
             .expect("claim delivery for failure settlement contract");
+        token
+    }
 
-        let disposition = if queue_id == 5 {
-            crate::federation::delivery::RemoteDeliveryFailureDisposition::Dead
-        } else {
-            crate::federation::delivery::RemoteDeliveryFailureDisposition::RetryAfter(60)
-        };
+    async fn active_channel_count(outer: &sea_orm::DatabaseTransaction) -> i64 {
+        outer
+            .query_one_raw(Statement::from_string(
+                DatabaseBackend::Postgres,
+                "SELECT COUNT(*)::BIGINT AS count FROM federation_channels WHERE status = 'active'"
+                    .to_string(),
+            ))
+            .await
+            .expect("count active channels")
+            .expect("active channel count row")
+            .try_get::<i64>("", "count")
+            .unwrap()
+    }
+
+    // Phase 1 — an unreachable streak accumulates without touching relationships.
+    for queue_id in 1..=4 {
+        let token = claim_for_settlement(&outer, queue_id).await;
         let settlement = crate::federation::delivery::settle_remote_delivery_failure(
             &outer,
             queue_id,
@@ -879,44 +900,164 @@ VALUES
             "peer.example",
             1,
             "HTTP 503 from peer",
-            disposition,
+            crate::federation::delivery::RemoteDeliveryFailureDisposition::RetryAfter(60),
+            true,
         )
         .await
         .expect("settle confirmed remote HTTP failure");
 
         assert!(settlement.applied);
+        assert!(settlement.counted_toward_streak);
         assert_eq!(settlement.consecutive_failures, queue_id);
-        assert_eq!(settlement.relationships_revoked, queue_id == 5);
-        if queue_id < 5 {
-            let active = outer
-                .query_one_raw(Statement::from_string(
-                    DatabaseBackend::Postgres,
-                    "SELECT COUNT(*)::BIGINT AS count FROM federation_channels WHERE status = 'active'"
-                        .to_string(),
-                ))
-                .await
-                .expect("count channels before threshold")
-                .expect("active channel count row");
-            assert_eq!(active.try_get::<i64>("", "count").unwrap(), 2);
-        } else {
-            assert_eq!(settlement.follows_removed, 2);
-            assert_eq!(settlement.channels_closed, 1);
-            assert_eq!(settlement.room_members_removed, 4);
-            assert_eq!(settlement.transfers_cancelled, 2);
-            assert_eq!(settlement.deliveries_cancelled, 6);
-        }
+        assert!(!settlement.relationships_revoked);
+        assert_eq!(active_channel_count(&outer).await, 2);
     }
 
+    // Phase 2 — a permanent rejection proves the peer answered. It must leave the
+    // streak untouched in both directions: no increment, no reset.
+    let token = claim_for_settlement(&outer, 5).await;
+    let rejected = crate::federation::delivery::settle_remote_delivery_failure(
+        &outer,
+        5,
+        token,
+        "peer.example",
+        1,
+        "PERMANENT HTTP 404: not_found",
+        crate::federation::delivery::RemoteDeliveryFailureDisposition::Dead,
+        false,
+    )
+    .await
+    .expect("settle permanent peer rejection");
+    assert!(rejected.applied);
+    assert!(!rejected.counted_toward_streak);
+    assert!(!rejected.relationships_revoked);
+    assert_eq!(rejected.consecutive_failures, 4);
+    let after_reject = outer
+        .query_one_raw(Statement::from_string(
+            DatabaseBackend::Postgres,
+            r#"SELECT failure_count, (failing_since IS NULL) AS streak_cleared
+               FROM federation_instances WHERE domain = 'peer.example'"#
+                .to_string(),
+        ))
+        .await
+        .expect("read health after permanent rejection")
+        .expect("peer instance row after rejection");
+    assert_eq!(after_reject.try_get::<i32>("", "failure_count").unwrap(), 4);
+    assert!(!after_reject
+        .try_get::<bool>("", "streak_cleared")
+        .unwrap());
+
+    // Phase 3 — count alone must not revoke. A fan-out to one peer can burn an
+    // arbitrary failure count inside a single worker tick while it restarts.
+    outer
+        .execute_unprepared(
+            "UPDATE federation_instances SET failure_count = 500, failing_since = NOW()
+             WHERE domain = 'peer.example';",
+        )
+        .await
+        .expect("simulate an instantaneous failure burst");
+    let token = claim_for_settlement(&outer, 6).await;
+    let burst = crate::federation::delivery::settle_remote_delivery_failure(
+        &outer,
+        6,
+        token,
+        "peer.example",
+        1,
+        "Request failed: connection refused",
+        crate::federation::delivery::RemoteDeliveryFailureDisposition::RetryAfter(60),
+        true,
+    )
+    .await
+    .expect("settle burst failure");
+    assert_eq!(burst.consecutive_failures, 501);
+    assert!(burst.streak_secs < 60);
+    assert!(
+        !burst.relationships_revoked,
+        "a burst inside one tick must never revoke, however high the count"
+    );
+    assert_eq!(active_channel_count(&outer).await, 2);
+
+    // Phase 4 — elapsed time alone must not revoke either.
+    outer
+        .execute_unprepared(
+            "UPDATE federation_instances
+             SET failure_count = 3, failing_since = NOW() - INTERVAL '30 days'
+             WHERE domain = 'peer.example';",
+        )
+        .await
+        .expect("simulate a long but sparse failure streak");
+    let token = claim_for_settlement(&outer, 6).await;
+    let sparse = crate::federation::delivery::settle_remote_delivery_failure(
+        &outer,
+        6,
+        token,
+        "peer.example",
+        2,
+        "Request failed: connection refused",
+        crate::federation::delivery::RemoteDeliveryFailureDisposition::RetryAfter(60),
+        true,
+    )
+    .await
+    .expect("settle sparse failure");
+    assert_eq!(sparse.consecutive_failures, 4);
+    assert!(sparse.streak_secs > 29 * 24 * 60 * 60);
+    assert!(
+        !sparse.relationships_revoked,
+        "an old streak with few failures must not revoke"
+    );
+    assert_eq!(active_channel_count(&outer).await, 2);
+
+    // Phase 5 — sustained count *and* a week-long streak together do revoke.
+    outer
+        .execute_unprepared(
+            "UPDATE federation_instances
+             SET failure_count = 19, failing_since = NOW() - INTERVAL '8 days'
+             WHERE domain = 'peer.example';",
+        )
+        .await
+        .expect("simulate a sustained week-long outage");
+    let token = claim_for_settlement(&outer, 6).await;
+    let settlement = crate::federation::delivery::settle_remote_delivery_failure(
+        &outer,
+        6,
+        token,
+        "peer.example",
+        3,
+        "Request failed: connection refused",
+        crate::federation::delivery::RemoteDeliveryFailureDisposition::RetryAfter(60),
+        true,
+    )
+    .await
+    .expect("settle the failure that crosses both thresholds");
+    assert!(settlement.applied);
+    assert_eq!(settlement.consecutive_failures, 20);
+    assert!(settlement.relationships_revoked);
+    assert_eq!(settlement.follows_removed, 2);
+    assert_eq!(settlement.channels_closed, 1);
+    assert_eq!(settlement.room_members_removed, 4);
+    assert_eq!(settlement.transfers_cancelled, 2);
+    // Rows 1-4 and 6 only. The delivered row, the already-cancelled row, the
+    // permanently rejected row and the 90-day-old local dead-letter are all
+    // terminal already and must be left alone.
+    assert_eq!(settlement.deliveries_cancelled, 5);
+    // Every owner of a cancelled row is reported so the caller can notify them;
+    // the bulk sweep never reaches the per-row dead-letter path.
+    assert_eq!(settlement.cancelled_owners, vec![(1, 4), (2, 1)]);
+
+    // Revocation restarts the clock: a re-established relationship gets a fresh
+    // count *and* a fresh window before it can ever be torn down again.
     let instance = outer
         .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
-            "SELECT failure_count FROM federation_instances WHERE domain = 'peer.example'"
+            r#"SELECT failure_count, (failing_since IS NULL) AS streak_cleared
+               FROM federation_instances WHERE domain = 'peer.example'"#
                 .to_string(),
         ))
         .await
         .expect("read reset failure streak")
         .expect("peer instance row");
     assert_eq!(instance.try_get::<i32>("", "failure_count").unwrap(), 0);
+    assert!(instance.try_get::<bool>("", "streak_cleared").unwrap());
 
     let relationship_state = outer
         .query_one_raw(Statement::from_string(
@@ -947,15 +1088,22 @@ VALUES
                     AND status IN ('pending', 'delivering'))::BIGINT AS unfinished_deliveries,
                  (SELECT COUNT(*) FROM federation_delivery_queue
                   WHERE target_domain = 'peer.example'
-                    AND status <> 'delivered'
-                    AND (error_message IS NULL OR error_message NOT ILIKE 'cancelled:%'))::BIGINT AS uncancelled_deliveries,
+                    AND error_message ILIKE 'cancelled: federation relationship revoked%')::BIGINT AS cancelled_deliveries,
                  (SELECT COUNT(*) FROM federation_delivery_queue
                   WHERE target_domain = 'peer.example'
                     AND status = 'delivered')::BIGINT AS preserved_completed_deliveries,
                  (SELECT COUNT(*) FROM federation_delivery_queue
                   WHERE target_inbox = 'https://peer.example/inbox/already-cancelled'
                     AND status = 'dead'
-                    AND error_message = 'cancelled: existing teardown')::BIGINT AS preserved_cancelled_delivery"#
+                    AND error_message = 'cancelled: existing teardown')::BIGINT AS preserved_cancelled_delivery,
+                 (SELECT COUNT(*) FROM federation_delivery_queue
+                  WHERE target_inbox = 'https://peer.example/inbox/local-failure'
+                    AND status = 'dead'
+                    AND error_message = 'Key load failed: decrypt')::BIGINT AS preserved_local_dead_letter,
+                 (SELECT COUNT(*) FROM federation_delivery_queue
+                  WHERE target_inbox = 'https://peer.example/inbox/rejected'
+                    AND status = 'dead'
+                    AND error_message = 'PERMANENT HTTP 404: not_found')::BIGINT AS preserved_peer_rejection"#
                 .to_string(),
         ))
         .await
@@ -1011,9 +1159,9 @@ VALUES
     );
     assert_eq!(
         relationship_state
-            .try_get::<i64>("", "uncancelled_deliveries")
+            .try_get::<i64>("", "cancelled_deliveries")
             .unwrap(),
-        0
+        5
     );
     assert_eq!(
         relationship_state
@@ -1024,6 +1172,21 @@ VALUES
     assert_eq!(
         relationship_state
             .try_get::<i64>("", "preserved_cancelled_delivery")
+            .unwrap(),
+        1
+    );
+    // A dead-letter that failed for a *local* reason keeps its real cause and its
+    // eligibility for `retry_all_dead_for_user`, which skips `cancelled:` rows.
+    // Relabelling it would both misattribute the failure and strand it forever.
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "preserved_local_dead_letter")
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        relationship_state
+            .try_get::<i64>("", "preserved_peer_rejection")
             .unwrap(),
         1
     );
@@ -1075,7 +1238,9 @@ VALUES
     outer
         .execute_unprepared(
             r#"
-UPDATE federation_instances SET failure_count = 4 WHERE domain = 'other.example';
+UPDATE federation_instances
+SET failure_count = 19, failing_since = NOW() - INTERVAL '8 days'
+WHERE domain = 'other.example';
 UPDATE federation_delivery_queue
 SET status = 'delivering', lease_token = '00000000-0000-0000-0000-000000000001',
     lease_expires_at = NOW() + INTERVAL '10 minutes'
@@ -1092,21 +1257,26 @@ WHERE target_domain = 'other.example';
     )
     .await
     .expect("settle successful remote delivery"));
+    // One success clears both halves of the gate, even from the very edge of it.
     let reset = outer
         .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
-            "SELECT failure_count FROM federation_instances WHERE domain = 'other.example'"
+            r#"SELECT failure_count, (failing_since IS NULL) AS streak_cleared
+               FROM federation_instances WHERE domain = 'other.example'"#
                 .to_string(),
         ))
         .await
         .expect("read success reset")
         .expect("other instance row");
     assert_eq!(reset.try_get::<i32>("", "failure_count").unwrap(), 0);
+    assert!(reset.try_get::<bool>("", "streak_cleared").unwrap());
 
     outer
         .execute_unprepared(
             r#"
-UPDATE federation_instances SET failure_count = 3 WHERE domain = 'other.example';
+UPDATE federation_instances
+SET failure_count = 3, failing_since = NOW() - INTERVAL '2 days'
+WHERE domain = 'other.example';
 INSERT INTO federation_activities
     (activity_id, user_id, activity_type, object_type, object_json, is_local, published_at)
 VALUES
@@ -1114,7 +1284,7 @@ VALUES
 INSERT INTO federation_delivery_queue
     (activity_id, target_inbox, target_domain, status, lease_token, lease_expires_at, created_at)
 VALUES
-    (10, 'https://other.example/stale', 'other.example', 'delivering',
+    (11, 'https://other.example/stale', 'other.example', 'delivering',
      '00000000-0000-0000-0000-000000000002', NOW() + INTERVAL '10 minutes', NOW());
 "#,
         )
@@ -1123,23 +1293,26 @@ VALUES
     assert!(
         !crate::federation::delivery::settle_remote_delivery_success(
             &outer,
-            10,
+            11,
             Uuid::parse_str("00000000-0000-0000-0000-000000000003").unwrap(),
             "other.example",
         )
         .await
         .expect("reject stale successful delivery settlement")
     );
+    // A reclaimed/cancelled lease cannot launder a domain back to healthy.
     let stale_health = outer
         .query_one_raw(Statement::from_string(
             DatabaseBackend::Postgres,
-            "SELECT failure_count FROM federation_instances WHERE domain = 'other.example'"
+            r#"SELECT failure_count, (failing_since IS NULL) AS streak_cleared
+               FROM federation_instances WHERE domain = 'other.example'"#
                 .to_string(),
         ))
         .await
         .expect("read health after stale success")
         .expect("other instance health row");
     assert_eq!(stale_health.try_get::<i32>("", "failure_count").unwrap(), 3);
+    assert!(!stale_health.try_get::<bool>("", "streak_cleared").unwrap());
 
     outer
         .rollback()

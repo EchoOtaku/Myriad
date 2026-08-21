@@ -24,6 +24,9 @@ mod retired_history;
 #[path = "014_federation_delivery_leases.rs"]
 mod federation_delivery_leases;
 
+#[path = "015_federation_delivery_health.rs"]
+mod federation_delivery_health;
+
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -43,6 +46,7 @@ impl MigratorTrait for Migrator {
         // to rewrite `seaql_migrations` to make history appear valid.
         migrations.extend(retired_history::migrations());
         migrations.push(Box::new(federation_delivery_leases::Migration));
+        migrations.push(Box::new(federation_delivery_health::Migration));
         migrations
     }
 }
@@ -79,6 +83,10 @@ mod tests {
         assert!(
             unique.contains("014_federation_delivery_leases"),
             "delivery lease ownership migration must remain registered"
+        );
+        assert!(
+            unique.contains("015_federation_delivery_health"),
+            "delivery health streak migration must remain registered"
         );
     }
 }

@@ -33,6 +33,8 @@ pub struct Model {
     pub last_seen_at: Option<DateTimeWithTimeZone>,
     pub last_success_at: Option<DateTimeWithTimeZone>,
     pub failure_count: i32,
+    /// Start of the current unbroken unreachable-delivery streak (NULL = healthy).
+    pub failing_since: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: Option<DateTimeWithTimeZone>,
 }

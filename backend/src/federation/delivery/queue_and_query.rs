@@ -91,16 +91,39 @@ pub struct DeliveryBatchStats {
     pub retried: u32,
     pub lease_lost: u32,
     pub relationships_revoked: u32,
+    /// Queue rows killed by a revocation sweep (domain-wide, not just this batch).
+    pub deliveries_cancelled: u32,
 }
 
 const DELIVERY_LEASE_SECS: i64 = 10 * 60;
 const DELIVERY_LEASE_HEARTBEAT_SECS: u64 = 60;
-const DELIVERY_FAILURE_REVOCATION_THRESHOLD: i32 = 5;
-const DOMAIN_REVOCATION_REASON: &str =
-    "cancelled: federation relationship revoked after 5 consecutive delivery failures";
 
-pub(crate) fn should_revoke_relationships(consecutive_failures: i32) -> bool {
+/// Unreachable delivery attempts required before a domain is considered gone.
+///
+/// A count alone is a poor signal: the worker drains 20 rows per 15s tick, so a
+/// fan-out to one peer can burn an arbitrary count during a single restart. The
+/// count is therefore only half the gate — see the streak window below.
+const DELIVERY_FAILURE_REVOCATION_THRESHOLD: i32 = 20;
+
+/// The failure streak must also have lasted this long, unbroken.
+///
+/// `max_attempts` defaults to 12, so no single queue row can reach the count
+/// threshold by itself; revocation needs sustained traffic that keeps failing
+/// across a full week. Any successful delivery resets both halves of the gate.
+const DELIVERY_FAILURE_REVOCATION_MIN_STREAK_SECS: i64 = 7 * 24 * 60 * 60;
+
+pub(crate) fn should_revoke_relationships(consecutive_failures: i32, streak_secs: i64) -> bool {
     consecutive_failures >= DELIVERY_FAILURE_REVOCATION_THRESHOLD
+        && streak_secs >= DELIVERY_FAILURE_REVOCATION_MIN_STREAK_SECS
+}
+
+/// Derived from the thresholds so the wording can never drift from the policy.
+pub(crate) fn domain_revocation_reason() -> String {
+    format!(
+        "cancelled: federation relationship revoked after {} unreachable delivery attempts over {}+ days with no successful delivery",
+        DELIVERY_FAILURE_REVOCATION_THRESHOLD,
+        DELIVERY_FAILURE_REVOCATION_MIN_STREAK_SECS / 86_400
+    )
 }
 
 struct DeliveryLeaseHeartbeat {
@@ -277,13 +300,21 @@ pub(crate) fn outbound_client_error_counts_as_remote_failure(error: &str) -> boo
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct RemoteDeliveryFailureSettlement {
     pub applied: bool,
+    /// False for permanent peer rejections — the peer answered, so the attempt
+    /// carries no reachability signal and leaves the streak untouched.
+    pub counted_toward_streak: bool,
     pub consecutive_failures: i32,
+    /// Seconds since the current unbroken failure streak began.
+    pub streak_secs: i64,
     pub relationships_revoked: bool,
     pub follows_removed: u64,
     pub channels_closed: u64,
     pub room_members_removed: u64,
     pub transfers_cancelled: u64,
     pub deliveries_cancelled: u64,
+    /// `(user_id, cancelled_rows)` for every owner whose queued deliveries the
+    /// sweep killed, so the caller can notify them once the txn has committed.
+    pub cancelled_owners: Vec<(i32, i64)>,
 }
 
 async fn lock_delivery_instance(
@@ -331,7 +362,7 @@ pub(crate) async fn settle_remote_delivery_success(
     txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
         r#"UPDATE federation_instances
-           SET last_success_at = NOW(), failure_count = 0
+           SET last_success_at = NOW(), failure_count = 0, failing_since = NULL
            WHERE domain = $1"#,
         [target_domain.into()],
     ))
@@ -340,13 +371,22 @@ pub(crate) async fn settle_remote_delivery_success(
     Ok(true)
 }
 
-/// Settle one confirmed remote-reachability delivery failure.
+/// Settle one remote delivery failure.
 ///
-/// DNS resolution, request/connection errors, and non-success HTTP responses
-/// use this path. Local signing/DB/policy failures remain queue-local and never
-/// affect the domain streak. On the fifth consecutive failure, active
-/// relationship rows to the domain are removed (channels are closed to preserve
-/// messages) and its unfinished deliveries are cancelled in the same transaction.
+/// `counts_toward_streak` separates *unreachable* from *rejected*. DNS failures,
+/// connection/timeout errors and retryable HTTP statuses say the peer is not
+/// answering, so they advance the domain's failure streak. A permanent 4xx says
+/// the peer answered and declined this specific activity — it is left neutral:
+/// it neither advances nor resets the streak, because a live peer rejecting one
+/// object must never be able to tear down every relationship with its domain.
+/// Local signing/DB/policy failures never reach this function at all.
+///
+/// Revocation requires both halves of the gate in [`should_revoke_relationships`]
+/// (sustained count *and* elapsed streak). When it fires, active relationship
+/// rows to the domain are removed (channels are closed to preserve messages) and
+/// its **unfinished** deliveries are cancelled in the same transaction. Rows that
+/// already reached a terminal state keep their original error — historical
+/// dead-letters are not rewritten or made unretryable by a later outage.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn settle_remote_delivery_failure(
     db: &(impl ConnectionTrait + TransactionTrait),
@@ -356,9 +396,10 @@ pub(crate) async fn settle_remote_delivery_failure(
     new_attempts: i32,
     error_message: &str,
     disposition: RemoteDeliveryFailureDisposition,
+    counts_toward_streak: bool,
 ) -> Result<RemoteDeliveryFailureSettlement, DbErr> {
     let txn = db.begin().await?;
-    let _ = lock_delivery_instance(&txn, target_domain).await?;
+    let current_failures = lock_delivery_instance(&txn, target_domain).await?;
 
     let queue_update = match disposition {
         RemoteDeliveryFailureDisposition::Dead => {
@@ -404,28 +445,62 @@ pub(crate) async fn settle_remote_delivery_failure(
         return Ok(RemoteDeliveryFailureSettlement::default());
     }
 
+    // A peer that answered with a permanent rejection is demonstrably reachable.
+    // Leave the streak exactly as it was: no increment, and no reset either.
+    if !counts_toward_streak {
+        let settlement = RemoteDeliveryFailureSettlement {
+            applied: true,
+            consecutive_failures: current_failures,
+            ..Default::default()
+        };
+        txn.commit().await?;
+        return Ok(settlement);
+    }
+
+    // `failing_since` is stamped on the first failure of a streak and cleared by
+    // any success, so RETURNING always yields a non-negative age here.
     let failure_row = txn
         .query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"UPDATE federation_instances
-               SET failure_count = failure_count + 1
+               SET failure_count = failure_count + 1,
+                   failing_since = COALESCE(failing_since, NOW())
                WHERE domain = $1
-               RETURNING failure_count"#,
+               RETURNING failure_count,
+                         GREATEST(0, EXTRACT(EPOCH FROM (NOW() - failing_since))::BIGINT)
+                             AS streak_secs"#,
             [target_domain.into()],
         ))
         .await?
         .ok_or_else(|| DbErr::Custom("failed to update federation failure count".into()))?;
     let consecutive_failures = failure_row.try_get("", "failure_count").unwrap_or(0);
+    let streak_secs = failure_row.try_get("", "streak_secs").unwrap_or(0);
     let mut settlement = RemoteDeliveryFailureSettlement {
         applied: true,
+        counted_toward_streak: true,
         consecutive_failures,
+        streak_secs,
         ..Default::default()
     };
 
-    if !should_revoke_relationships(consecutive_failures) {
+    if !should_revoke_relationships(consecutive_failures, streak_secs) {
         txn.commit().await?;
         return Ok(settlement);
     }
+
+    // Serialize the teardown against every other domain's teardown. The
+    // statements below sweep shared tables (room members, transfers) whose row
+    // sets overlap across domains, and two concurrent seq scans can visit blocks
+    // in different orders (`synchronize_seqscans` wraparound) — enough for a
+    // deadlock. Taken only once the gate has passed, so the common failure path
+    // never contends. The per-domain instance row is already locked and differs
+    // between callers, so this cannot invert into a cycle.
+    txn.execute_raw(Statement::from_string(
+        DatabaseBackend::Postgres,
+        "SELECT pg_advisory_xact_lock(hashtext('myriad:federation:domain_revocation')::BIGINT)"
+            .to_string(),
+    ))
+    .await?;
 
     settlement.follows_removed = txn
         .execute_raw(Statement::from_sql_and_values(
@@ -535,34 +610,48 @@ pub(crate) async fn settle_remote_delivery_failure(
         .await?
         .rows_affected();
 
-    settlement.deliveries_cancelled = txn
-        .execute_raw(Statement::from_sql_and_values(
+    // Only unfinished work is cancelled. Rows that already died — including ones
+    // that died for local reasons such as key load or SSRF policy — keep their
+    // real error, stay attributable, and stay retryable via
+    // `retry_all_dead_for_user`, which skips anything prefixed `cancelled:`.
+    // `idx_delivery_queue_target_domain` covers this predicate.
+    let cancelled_rows = txn
+        .query_all_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
-            r#"UPDATE federation_delivery_queue
+            r#"UPDATE federation_delivery_queue dq
                SET status = 'dead',
                    error_message = CASE
-                     WHEN error_message ILIKE 'cancelled:%' THEN error_message
-                     WHEN error_message IS NULL OR BTRIM(error_message) = '' THEN $2
-                     ELSE $2 || '; previous error: ' || error_message
+                     WHEN dq.error_message ILIKE 'cancelled:%' THEN dq.error_message
+                     WHEN dq.error_message IS NULL OR BTRIM(dq.error_message) = '' THEN $2
+                     ELSE $2 || '; previous error: ' || dq.error_message
                    END,
                    last_attempt_at = NOW(), next_retry_at = NULL,
                    lease_token = NULL, lease_expires_at = NULL
-               WHERE LOWER(target_domain) = LOWER($1)
-                 AND (
-                   status IN ('pending', 'delivering')
-                   OR (
-                     status = 'dead'
-                     AND (error_message IS NULL OR error_message NOT ILIKE 'cancelled:%')
-                   )
-                 )"#,
-            [target_domain.into(), DOMAIN_REVOCATION_REASON.into()],
+               WHERE LOWER(dq.target_domain) = LOWER($1)
+                 AND dq.status IN ('pending', 'delivering')
+               RETURNING (
+                   SELECT a.user_id FROM federation_activities a WHERE a.id = dq.activity_id
+               ) AS user_id"#,
+            [target_domain.into(), domain_revocation_reason().into()],
         ))
-        .await?
-        .rows_affected();
+        .await?;
+
+    settlement.deliveries_cancelled = cancelled_rows.len() as u64;
+    let mut owners: std::collections::BTreeMap<i32, i64> = std::collections::BTreeMap::new();
+    for row in &cancelled_rows {
+        if let Ok(Some(user_id)) = row.try_get::<Option<i32>>("", "user_id") {
+            if user_id > 0 {
+                *owners.entry(user_id).or_default() += 1;
+            }
+        }
+    }
+    settlement.cancelled_owners = owners.into_iter().collect();
 
     txn.execute_raw(Statement::from_sql_and_values(
         DatabaseBackend::Postgres,
-        "UPDATE federation_instances SET failure_count = 0 WHERE domain = $1",
+        r#"UPDATE federation_instances
+           SET failure_count = 0, failing_since = NULL
+           WHERE domain = $1"#,
         [target_domain.into()],
     ))
     .await?;
@@ -609,6 +698,11 @@ pub async fn process_delivery_queue_detailed(
     batch_size: u32,
 ) -> Result<DeliveryBatchStats, String> {
     let mut stats = DeliveryBatchStats::default();
+    // Rows counted as `retried` earlier in this batch that a later revocation
+    // then killed. Without this the batch log claims rows are waiting to retry
+    // when the sweep has already dead-lettered them.
+    let mut retried_by_domain: std::collections::HashMap<String, u32> =
+        std::collections::HashMap::new();
 
     // Claim immediately before processing each item. Rows waiting behind a slow
     // peer remain pending and therefore cannot have a lease expire before work
@@ -803,6 +897,9 @@ pub async fn process_delivery_queue_detailed(
                         // Permanent: 4xx from peer, OR 5xx body that is really
                         // not_found / not_member (legacy peers still return 500).
                         let permanent = crate::federation::errors::is_permanent_delivery_error(&e);
+                        // A permanent rejection proves the peer answered, so it
+                        // is not evidence of an unreachable domain.
+                        let counts_toward_streak = !permanent;
                         let terminal = permanent || new_attempts >= max_attempts;
                         let backoff_secs = retry_backoff_secs(new_attempts);
                         let disposition = if terminal {
@@ -818,6 +915,7 @@ pub async fn process_delivery_queue_detailed(
                             new_attempts,
                             &e,
                             disposition,
+                            counts_toward_streak,
                         )
                         .await
                         .map_err(|err| format!("Queue remote failure settlement failed: {err}"))?;
@@ -832,16 +930,35 @@ pub async fn process_delivery_queue_detailed(
 
                         if settlement.relationships_revoked {
                             stats.relationships_revoked += 1;
+                            stats.deliveries_cancelled +=
+                                u32::try_from(settlement.deliveries_cancelled).unwrap_or(u32::MAX);
+                            // Rows this batch already logged as retrying are dead now.
+                            let reclassified =
+                                retried_by_domain.remove(&target_domain).unwrap_or(0);
+                            stats.retried = stats.retried.saturating_sub(reclassified);
+                            stats.dead += reclassified;
                             tracing::warn!(
                                 target_domain = %target_domain,
                                 consecutive_failures = settlement.consecutive_failures,
+                                streak_secs = settlement.streak_secs,
                                 follows_removed = settlement.follows_removed,
                                 channels_closed = settlement.channels_closed,
                                 room_members_removed = settlement.room_members_removed,
                                 transfers_cancelled = settlement.transfers_cancelled,
                                 deliveries_cancelled = settlement.deliveries_cancelled,
-                                "Revoked federation relationships after consecutive delivery failures"
+                                notified_owners = settlement.cancelled_owners.len(),
+                                "Revoked federation relationships after a sustained unreachable streak"
                             );
+                            // The sweep is one bulk statement, so these owners
+                            // never pass through the per-row dead-letter path.
+                            for (owner_id, cancelled) in &settlement.cancelled_owners {
+                                crate::federation::notify::notify_domain_relationship_revoked(
+                                    *owner_id,
+                                    &target_domain,
+                                    *cancelled,
+                                )
+                                .await;
+                            }
                         }
 
                         if terminal {
@@ -859,27 +976,15 @@ pub async fn process_delivery_queue_detailed(
                                     e
                                 );
                             }
-                            let notification_error = if settlement.relationships_revoked {
-                                DOMAIN_REVOCATION_REASON
-                            } else {
-                                &e
-                            };
-                            mark_delivery_dead(
-                                user_id,
-                                &activity_type,
-                                &target_domain,
-                                notification_error,
-                            )
-                            .await;
+                            // This row was already terminal before the sweep ran,
+                            // so it kept its real error — report that, not the
+                            // revocation boilerplate.
+                            mark_delivery_dead(user_id, &activity_type, &target_domain, &e).await;
                             stats.dead += 1;
                         } else if settlement.relationships_revoked {
-                            mark_delivery_dead(
-                                user_id,
-                                &activity_type,
-                                &target_domain,
-                                DOMAIN_REVOCATION_REASON,
-                            )
-                            .await;
+                            // Still `pending` when the sweep ran, so it was
+                            // cancelled with the rest and its owner is already
+                            // covered by the revocation notification above.
                             stats.dead += 1;
                         } else {
                             tracing::warn!(
@@ -890,6 +995,7 @@ pub async fn process_delivery_queue_detailed(
                                 e
                             );
                             stats.retried += 1;
+                            *retried_by_domain.entry(target_domain.clone()).or_default() += 1;
                         }
                     }
                 }
@@ -994,14 +1100,15 @@ pub fn spawn_delivery_worker(db: DatabaseConnection) {
                         || s.relationships_revoked > 0 =>
                 {
                     tracing::info!(
-                        "📤 Delivery worker: claimed={} reclaimed={} delivered={} dead={} retried={} lease_lost={} relationships_revoked={}",
+                        "📤 Delivery worker: claimed={} reclaimed={} delivered={} dead={} retried={} lease_lost={} relationships_revoked={} deliveries_cancelled={}",
                         s.claimed,
                         s.reclaimed,
                         s.delivered,
                         s.dead,
                         s.retried,
                         s.lease_lost,
-                        s.relationships_revoked
+                        s.relationships_revoked,
+                        s.deliveries_cancelled
                     );
                 }
                 Err(e) => {

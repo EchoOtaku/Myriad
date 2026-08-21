@@ -4,13 +4,41 @@ use crate::federation::types::key_id;
 
 use super::queue_and_query::*;
 
+const WEEK_SECS: i64 = 7 * 24 * 60 * 60;
+
 #[test]
-fn federation_relationships_are_revoked_on_the_fifth_consecutive_failure() {
-    for failures in [i32::MIN, -1, 0, 1, 2, 3, 4] {
-        assert!(!should_revoke_relationships(failures));
+fn revocation_needs_both_a_sustained_count_and_a_week_long_streak() {
+    // A count alone is not enough: a 20-row fan-out can fail this many times
+    // inside a single worker tick while the peer is merely restarting.
+    for failures in [i32::MIN, -1, 0, 1, 5, 12, 19, 20, 500] {
+        assert!(
+            !should_revoke_relationships(failures, 0),
+            "instantaneous burst of {failures} must not revoke"
+        );
+        assert!(!should_revoke_relationships(failures, WEEK_SECS - 1));
     }
-    assert!(should_revoke_relationships(5));
-    assert!(should_revoke_relationships(6));
+    // Elapsed time alone is not enough either: a peer we barely talk to can be
+    // failing for months without ever accumulating the count.
+    for failures in [i32::MIN, -1, 0, 1, 5, 12, 19] {
+        assert!(
+            !should_revoke_relationships(failures, WEEK_SECS * 52),
+            "only {failures} failures must not revoke however old the streak is"
+        );
+    }
+    assert!(should_revoke_relationships(20, WEEK_SECS));
+    assert!(should_revoke_relationships(21, WEEK_SECS + 1));
+}
+
+#[test]
+fn revocation_reason_tracks_the_thresholds_it_describes() {
+    let reason = domain_revocation_reason();
+    // `retry_all_dead_for_user` skips anything with this prefix, so losing it
+    // would silently make revoked rows retryable again.
+    assert!(reason.starts_with("cancelled:"));
+    assert!(is_user_cancelled_delivery_error(Some(&reason)));
+    // Derived from the constants rather than restated, so the two cannot drift.
+    assert!(reason.contains("20 unreachable delivery attempts"));
+    assert!(reason.contains("7+ days"));
 }
 
 #[test]

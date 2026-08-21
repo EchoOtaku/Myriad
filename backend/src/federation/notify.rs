@@ -499,6 +499,52 @@ pub async fn notify_delivery_failed(
     manager.upsert(notification).await;
 }
 
+/// 域关系吊销 — 该域下所有未完成投递被一次性取消，按 domain upsert
+///
+/// The revocation sweep kills every unfinished delivery to the domain in one
+/// statement, so the owners of those rows never reach the per-row dead-letter
+/// path. Without this they would lose queued activities silently.
+pub async fn notify_domain_relationship_revoked(
+    user_id: i32,
+    target_domain: &str,
+    cancelled_deliveries: i64,
+) {
+    if user_id <= 0 {
+        return;
+    }
+    let Some(manager) = get_notification_manager() else {
+        return;
+    };
+    let domain = if target_domain.is_empty() {
+        "remote"
+    } else {
+        target_domain
+    };
+    let body = format!(
+        "{} 长期无法送达，已解除与该实例的联邦关系；你有 {} 条待投递活动被取消。",
+        domain, cancelled_deliveries
+    );
+    let mut notification = Notification::new(
+        user_id,
+        NotificationType::SystemInfo,
+        NotificationPriority::High,
+        "联邦关系已解除",
+        body,
+    )
+    .with_metadata(json!({
+        "event_key": "federation.domain_revoked",
+        "route": "/tapp/run/com.myriad.aro?view=messages",
+        "tapp_id": ARO_TAPP_ID,
+        "kind": "domain_revoked",
+        "target_domain": domain,
+        "cancelled_deliveries": cancelled_deliveries,
+    }));
+    // One entry per user+domain; a later revocation of the same domain replaces it.
+    notification.id = format!("fed_dom_revoked_u{}_{}", user_id, stable_hash(domain));
+    notification.read = false;
+    manager.upsert(notification).await;
+}
+
 /// 查询 Room 本地成员 user_id 列表
 pub async fn room_local_user_ids(db: &impl ConnectionTrait, room_id: &str) -> Vec<i32> {
     let rows = db
