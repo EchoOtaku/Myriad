@@ -1,9 +1,8 @@
 import type { RigCharacterHandle } from './rig/RigCharacter'
-import type { CompanionRigManifest, RigMotionProfile } from './rig/types'
+import type { CompanionRigManifest } from './rig/types'
 import type { CompanionActivity } from './types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { FACE_UPDATED_EVENT } from '../../components/agent/lifeVitals'
 import { InfoActionCard, InputItem, SettingGroup } from '../../components/settings'
 import { useI18n } from '../../contexts/I18nContext'
 import {
@@ -11,16 +10,14 @@ import {
   generateSitePortrait,
   getSeeThroughStatus,
   getSiteFace,
-  migrateCompanionRig,
-  updateCompanionRigClips,
-  updateCompanionRigMotionProfile,
   updateSeeThroughToken,
 } from './api'
 import {
   commitRigPsdAsset,
   preflightRigPsdAsset,
 } from './assets/pipeline'
-import MotionWorkbench from './rig/MotionWorkbench'
+import { notifyFaceUpdated } from './events'
+import Anime25DWorkbench from './anime25drig/Anime25DWorkbench'
 import RigCharacter from './rig/RigCharacter'
 import './companion.css'
 import './life-motion-home.css'
@@ -28,11 +25,6 @@ import './life-motion-home.css'
 function toCompanionActivity(raw: string): CompanionActivity {
   if (raw === 'talking' || raw === 'thinking') return raw
   return 'idle'
-}
-
-function notifyFaceUpdated(): void {
-  window.dispatchEvent(new CustomEvent(FACE_UPDATED_EVENT))
-  window.dispatchEvent(new CustomEvent('arael-persona-updated'))
 }
 
 interface Props {
@@ -49,7 +41,6 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
   const [generationFingerprint, setGenerationFingerprint] = useState<
     string | null
   >(null)
-  const [assetId, setAssetId] = useState<string | null>(null)
   const [seeThroughTokenConfigured, setSeeThroughTokenConfigured] = useState(false)
   const [reviewMode, setReviewMode] = useState(false)
   const [error, setError] = useState('')
@@ -58,21 +49,12 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
   const [reviewDock, setReviewDock] = useState<HTMLDivElement | null>(null)
   const [studioHost, setStudioHost] = useState<HTMLDivElement | null>(null)
   const rigCharacterRef = useRef<RigCharacterHandle>(null)
-  const motionState = {
-    energy: 70,
-    mood,
-    boredom: 70,
-    curiosity: 70,
-    social: 70,
-    affection: 70,
-  }
 
   const loadFace = useCallback(async () => {
     const face = await getSiteFace()
     setRigManifest(face.manifest)
     setPortraitUrl(face.portraitUrl)
     setGenerationFingerprint(face.generationFingerprint)
-    setAssetId(face.assetId)
     return face
   }, [])
 
@@ -84,7 +66,6 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
           setRigManifest(null)
           setPortraitUrl(null)
           setGenerationFingerprint(null)
-          setAssetId(null)
           setError(
             reason instanceof Error ? reason.message : t.companion.loadFailed,
           )
@@ -113,36 +94,6 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
       cancelled = true
     }
   }, [t.companion.loadFailed])
-
-  const requireCompiledRig = useCallback(() => {
-    if (assetId) return
-    throw new Error(t.companion.motionNeedsCompiledRig)
-  }, [assetId, t.companion.motionNeedsCompiledRig])
-
-  const saveMotionProfile = useCallback(async (profile: RigMotionProfile) => {
-    requireCompiledRig()
-    const manifest = await updateCompanionRigMotionProfile(profile)
-    setRigManifest(manifest)
-    rigCharacterRef.current?.setMotionProfile(profile)
-    notifyFaceUpdated()
-  }, [requireCompiledRig])
-
-  const saveMotionClips = useCallback(
-    async (clips: CompanionRigManifest['clips']) => {
-      requireCompiledRig()
-      setRigManifest(await updateCompanionRigClips(clips))
-      notifyFaceUpdated()
-    },
-    [requireCompiledRig],
-  )
-
-  const migrateRig = useCallback(async () => {
-    requireCompiledRig()
-    const result = await migrateCompanionRig()
-    setRigManifest(result.manifest)
-    notifyFaceUpdated()
-    return result.migrated
-  }, [requireCompiledRig])
 
   const generatePortrait = useCallback(async () => {
     if (generating) return
@@ -315,18 +266,9 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
           <RigCharacter
             ref={rigCharacterRef}
             activity={toCompanionActivity(activity)}
-            expanded
             fallbackUrl={portraitUrl}
-            gestureNonce={0}
             manifest={rigManifest}
-            busy={false}
-            unreadCount={0}
-            energy={motionState.energy}
-            mood={motionState.mood}
-            boredom={motionState.boredom}
-            curiosity={motionState.curiosity}
-            social={motionState.social}
-            affection={motionState.affection}
+            mood={mood}
           />
         </div>
         <div ref={setReviewDock} className="life-motion-home__dock" />
@@ -336,74 +278,29 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
 
   return (
     <>
-    <MotionWorkbench
+    <Anime25DWorkbench
       essentialsLead={
         <>
           {portraitCard}
           <div ref={setStudioHost} className="life-motion-home__host" />
+          <p className="life-character-home__credit">
+            {t.companion.anime25dRuntimeCredit}{' '}
+            <a
+              href="https://github.com/852wa/Anime2.5DRig"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Anime2.5DRig
+            </a>
+          </p>
         </>
       }
-      manifest={rigManifest}
-      motionState={motionState}
       reviewMode={reviewMode}
       onReviewModeChange={(reviewing) => {
         if (reviewing) setReviewMode(true)
         else exitReview()
       }}
-      onPreviewProfile={(profile) => {
-        rigCharacterRef.current?.setMotionProfile(profile)
-      }}
-      onSaveProfile={async (profile) => {
-        try {
-          setError('')
-          await saveMotionProfile(profile)
-        } catch (reason) {
-          setError(
-            reason instanceof Error ? reason.message : t.companion.loadFailed,
-          )
-          throw reason
-        }
-      }}
-      onPreviewIntent={(intent) =>
-        rigCharacterRef.current?.previewIntent(intent)
-      }
-      onPreviewClip={(clipId, options) =>
-        rigCharacterRef.current?.previewClip(clipId, options)
-      }
-      onPreviewMotionPlan={(plan) =>
-        rigCharacterRef.current?.playMotionPlan(plan)
-      }
-      onPreviewPerformance={(sequence, onProgress) =>
-        rigCharacterRef.current?.previewPerformance(sequence, onProgress) ??
-        null
-      }
-      onStopPerformance={() => rigCharacterRef.current?.stopMotionPlan()}
-      onSaveClips={async (clips) => {
-        try {
-          setError('')
-          await saveMotionClips(clips)
-        } catch (reason) {
-          setError(
-            reason instanceof Error ? reason.message : t.companion.loadFailed,
-          )
-          throw reason
-        }
-      }}
-      onCaptureFrame={() => rigCharacterRef.current?.captureFrame() || null}
-      onReadMotionSignals={() =>
-        rigCharacterRef.current?.readMotionSignals() || null
-      }
-      onMigrateRig={async () => {
-        try {
-          setError('')
-          return await migrateRig()
-        } catch (reason) {
-          setError(
-            reason instanceof Error ? reason.message : t.companion.loadFailed,
-          )
-          throw reason
-        }
-      }}
+      characterRef={rigCharacterRef}
       sourceMasterAssetId={portraitUrl}
       sourceGenerationFingerprint={generationFingerprint || undefined}
       seeThroughTokenConfigured={seeThroughTokenConfigured}

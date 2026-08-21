@@ -40,6 +40,19 @@ html.dark .life-motion-home {
   display: contents;
 }
 
+.life-character-home__credit {
+  margin: 0.35rem 0 0;
+  color: var(--life-muted, #667085);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.life-character-home__credit a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .life-motion-home--settings {
   grid-template-columns: minmax(0, 1fr);
   height: auto;
@@ -147,6 +160,12 @@ html.dark .life-motion-home--settings.is-reviewing {
   padding: 10px 12px 12px;
   border-top: 1px solid var(--ob-liq-border, var(--life-line));
   background: rgb(var(--life-surface-rgb) / 78%);
+}
+
+.life-motion-home__dock-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .life-motion-home__desk {

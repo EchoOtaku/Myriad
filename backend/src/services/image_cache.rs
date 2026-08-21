@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use uuid::Uuid;
 
 /// 最大图片大小 (10MB)
 const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
@@ -16,6 +17,12 @@ const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
 /// 图片缓存服务
 pub struct ImageCacheService {
     cache_dir: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoredImage {
+    pub url: String,
+    pub created: bool,
 }
 
 impl Default for ImageCacheService {
@@ -222,8 +229,13 @@ impl ImageCacheService {
         Ok(cached_url)
     }
 
-    /// Persist already-downloaded image bytes and return the local serve URL.
-    pub async fn store_bytes(&self, bytes: &[u8], media_type: &str) -> Result<String, String> {
+    /// Content-addressed write with creation status for transactional callers
+    /// that need to compensate a later database failure.
+    pub async fn store_bytes_with_status(
+        &self,
+        bytes: &[u8],
+        media_type: &str,
+    ) -> Result<StoredImage, String> {
         if bytes.is_empty() {
             return Err("generated image is empty".to_string());
         }
@@ -238,29 +250,61 @@ impl ImageCacheService {
         };
         let ext = Self::infer_extension("", Some(media_type));
         let cache_path = self.get_cache_path(&filename, ext);
+        let subdir = &filename[..2.min(filename.len())];
+        let url = format!(
+            "/api/brew/image-cache/{}/{}.{}",
+            subdir, filename, ext
+        );
         if cache_path.exists() {
-            let subdir = &filename[..2.min(filename.len())];
-            return Ok(format!(
-                "/api/brew/image-cache/{}/{}.{}",
-                subdir, filename, ext
-            ));
+            return Ok(StoredImage {
+                url,
+                created: false,
+            });
         }
         if let Some(parent) = cache_path.parent() {
             fs::create_dir_all(parent)
                 .await
                 .map_err(|e| format!("Failed to create cache subdirectory: {}", e))?;
         }
-        let mut file = fs::File::create(&cache_path)
+        let temporary_path = cache_path.with_extension(format!("{ext}.{}.tmp", Uuid::new_v4()));
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)
             .await
             .map_err(|e| format!("Failed to create cache file: {}", e))?;
-        file.write_all(bytes)
-            .await
-            .map_err(|e| format!("Failed to write cache file: {}", e))?;
-        let subdir = &filename[..2.min(filename.len())];
-        Ok(format!(
-            "/api/brew/image-cache/{}/{}.{}",
-            subdir, filename, ext
-        ))
+        if let Err(error) = file.write_all(bytes).await {
+            drop(file);
+            let _ = fs::remove_file(&temporary_path).await;
+            return Err(format!("Failed to write cache file: {error}"));
+        }
+        if let Err(error) = file.flush().await {
+            drop(file);
+            let _ = fs::remove_file(&temporary_path).await;
+            return Err(format!("Failed to flush cache file: {error}"));
+        }
+        drop(file);
+        let created = match fs::hard_link(&temporary_path, &cache_path).await {
+            Ok(()) => true,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+            Err(error) => {
+                let _ = fs::remove_file(&temporary_path).await;
+                return Err(format!("Failed to publish cache file: {error}"));
+            }
+        };
+        let _ = fs::remove_file(&temporary_path).await;
+        Ok(StoredImage { url, created })
+    }
+
+    pub async fn remove_stored_url(&self, url: &str) -> Result<(), String> {
+        let path = self
+            .local_path_for_public_url(url)
+            .ok_or_else(|| "generated image URL is not a local cache asset".to_string())?;
+        match fs::remove_file(path).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("Failed to remove generated image: {error}")),
+        }
     }
 
     /// Resolve a public `/api/brew/image-cache/{subdir}/{sha256}.{ext}` URL to

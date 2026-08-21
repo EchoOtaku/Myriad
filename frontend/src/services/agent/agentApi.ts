@@ -886,6 +886,20 @@ class AgentService {
     )
   }
 
+  async suggestPersonaVisualDesign(body: {
+    visualRequirements?: string
+    regenerate?: boolean
+    existingVisualIdentity?: Record<string, string>
+  }): Promise<{ visualIdentity: Record<string, unknown> }> {
+    return sharePersonaGeneration(
+      `visual-design:${body.regenerate === true}:${body.visualRequirements || ''}:${JSON.stringify(body.existingVisualIdentity ?? null)}`,
+      () =>
+        apiService.post(`${this.baseUrl}/persona/visual-design`, body, {
+          timeout: PERSONA_GENERATION_TIMEOUT_MS,
+        }),
+    )
+  }
+
   async getPersona(): Promise<AgentPersona | null> {
     try {
       return await apiService.get(`${this.baseUrl}/persona`)

@@ -21,16 +21,19 @@ use axum::{
 use myriad_digital_life::{
     build_character_asset_contract, build_character_visual_prompt,
     build_portrait_fallback_rig_with_generation, build_standard_face_rig_clips_for_semantics,
-    character_asset_contract_fingerprint, compile_layered_rig, fallback_persona_draft,
-    migrate_rig_manifest, validate_character_asset_source, CharacterVisualSlot, RigBone,
+    character_asset_contract_fingerprint, compile_layered_rig, migrate_rig_manifest,
+    validate_character_asset_source, RigBone,
     RigClip, RigCompileSource,
     RigLayerSource, RigManifest, RigMotionProfile, RigOutfitProfile, RigSemanticAnchor,
     RigSemantics, RigSize, RigSpatialProfile, RigTexture, CHARACTER_ASSET_CONTRACT_VERSION,
-    PORTRAIT_CANVAS_HEIGHT, PORTRAIT_CANVAS_WIDTH,
+    PORTRAIT_CANVAS_HEIGHT, PORTRAIT_CANVAS_WIDTH, PORTRAIT_GENERATION_HEIGHT,
+    PORTRAIT_GENERATION_WIDTH,
 };
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use uuid::Uuid;
+
 use crate::{
     middleware::auth::Claims,
     services::{
@@ -193,15 +196,49 @@ fn valid_generation_fingerprint(value: &str) -> bool {
     value.len() == 64 && value.chars().all(|character| character.is_ascii_hexdigit())
 }
 
-fn portrait_generation_fingerprint(value: Option<&Value>) -> ApiResult<Option<String>> {
+fn portrait_generation_fingerprint(
+    name: &str,
+    visual_profile: &Value,
+    value: Option<&Value>,
+) -> ApiResult<Option<String>> {
     let Some(document) = value else {
         return Ok(None);
     };
-    let fingerprint = document
-        .get("fingerprint")
-        .and_then(Value::as_str)
-        .filter(|value| valid_generation_fingerprint(value))
-        .ok_or_else(|| internal_error("stored portrait generation contract is invalid"))?;
+    let Some(fingerprint) = document.get("fingerprint").and_then(Value::as_str) else {
+        return if document.get("contract").is_none() && document.get("pending").is_some() {
+            Ok(None)
+        } else {
+            Err(internal_error(
+                "stored portrait generation contract is invalid",
+            ))
+        };
+    };
+    if !valid_generation_fingerprint(fingerprint) {
+        return Err(internal_error(
+            "stored portrait generation fingerprint is invalid",
+        ));
+    }
+    let contract = document
+        .get("contract")
+        .ok_or_else(|| internal_error("stored portrait generation contract is missing"))?;
+    if character_asset_contract_fingerprint(contract) != fingerprint.to_ascii_lowercase() {
+        return Err(internal_error(
+            "stored portrait generation fingerprint does not match its contract",
+        ));
+    }
+    let additional_requirements = contract
+        .get("additionalRequirements")
+        .and_then(Value::as_str);
+    let expected = build_character_asset_contract(
+        name,
+        visual_profile,
+        additional_requirements,
+    );
+    if contract != &expected {
+        return Err(internal_error(
+            "stored portrait generation contract does not match the current visual identity",
+        ));
+    }
     Ok(Some(fingerprint.to_ascii_lowercase()))
 }
 
@@ -216,6 +253,8 @@ async fn current_master(db: &DatabaseConnection) -> ApiResult<Option<MasterProve
     Ok(Some(MasterProvenance {
         asset_id,
         generation_fingerprint: portrait_generation_fingerprint(
+            persona.name.trim(),
+            persona.visual_profile.as_ref().unwrap_or(&Value::Null),
             persona.portrait_generation.as_ref(),
         )?,
     }))
@@ -330,12 +369,6 @@ async fn activate_asset(db: &DatabaseConnection, asset_id: &str) -> ApiResult<()
         .map_err(internal_error)
 }
 
-pub(crate) async fn clear_active_asset(db: &DatabaseConnection) -> ApiResult<()> {
-    digital_life_rig::set_active_asset(db, None)
-        .await
-        .map_err(internal_error)
-}
-
 async fn compile_imported_rig(
     source: ImportRigSourceRequest,
     texture_url: String,
@@ -371,6 +404,7 @@ async fn compile_imported_rig(
             semantic_anchors: source.semantic_anchors,
             semantics: source.semantics,
             spatial_profile: source.spatial_profile,
+            anime25d_playback: source.anime25d_playback,
         })
     })
     .await
@@ -414,6 +448,8 @@ struct ImportRigSourceRequest {
     semantics: Option<RigSemantics>,
     #[serde(default)]
     spatial_profile: Option<RigSpatialProfile>,
+    #[serde(default)]
+    anime25d_playback: Option<Value>,
 }
 
 struct ParsedRigImport {
@@ -915,6 +951,33 @@ struct GeneratePortraitRequest {
     prompt: Option<String>,
 }
 
+async fn release_portrait_generation_lease(db: &DatabaseConnection, token: &str) {
+    if let Err(error) = life::release_portrait_generation(db, token).await {
+        tracing::error!(%error, "failed to release portrait generation lease");
+    }
+}
+
+async fn cleanup_uncommitted_portrait(
+    db: &DatabaseConnection,
+    persisted: &image_generation::PersistedGeneratedImage,
+) {
+    if !persisted.created {
+        return;
+    }
+    let is_current = life::get_persona(db)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|persona| persona.portrait_asset_id)
+        .is_some_and(|asset_id| asset_id == persisted.url);
+    if is_current {
+        return;
+    }
+    if let Err(error) = image_generation::remove_persisted_generated(persisted).await {
+        tracing::warn!(%error, url = %persisted.url, "failed to remove uncommitted portrait asset");
+    }
+}
+
 pub async fn generate_portrait(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -941,24 +1004,30 @@ pub async fn generate_portrait(
             "gender": "unspecified",
             "language": "zh-CN"
         }));
-    let structured_persona = persona_for_visual_generation(persona.as_ref(), name);
-    let slot = CharacterVisualSlot::Master;
+    let visual_identity = visual_profile
+        .get("visualIdentity")
+        .unwrap_or(&Value::Null);
+    if !myriad_digital_life::upper_body_visual_identity_is_complete(visual_identity) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Confirm an upper-body visual design before generating the portrait",
+                "code": "visual_design_required"
+            })),
+        ));
+    }
     let generation_contract = build_character_asset_contract(
         name,
-        &structured_persona,
         &visual_profile,
-        slot,
         additional_requirements.as_deref(),
     );
     let contract_fingerprint = character_asset_contract_fingerprint(&generation_contract);
     let prompt = build_character_visual_prompt(
         name,
-        &structured_persona,
         &visual_profile,
-        slot,
         additional_requirements.as_deref(),
     );
-    let (width, height) = slot.dimensions();
+    let (width, height) = (PORTRAIT_GENERATION_WIDTH, PORTRAIT_GENERATION_HEIGHT);
     let dynamic = crate::GLOBAL_DYNAMIC_CONFIG.read().await.clone();
     let config = image_generation::config_from_dynamic(&dynamic).map_err(|error| {
         (
@@ -966,88 +1035,146 @@ pub async fn generate_portrait(
             Json(json!({ "error": error.to_string() })),
         )
     })?;
-    let generated = image_generation::generate_image(&config, &prompt, width, height, None)
-        .await
-        .map_err(|error| {
-            (
-                StatusCode::BAD_GATEWAY,
-                Json(json!({ "error": error.to_string() })),
-            )
-        })?;
-    let url = image_generation::persist_generated(&generated)
-        .await
-        .map_err(|error| bad_request(&error.to_string()))?;
-    let name = persona
-        .as_ref()
-        .map(|row| row.name.clone())
-        .unwrap_or_default();
-    let personality = persona
-        .as_ref()
-        .map(|row| row.personality.clone())
-        .unwrap_or_default();
-    let saved = life::upsert_persona(
+    tracing::info!(
+        provider = %config.provider,
+        model = %config.model,
+        width,
+        height,
+        prompt_chars = prompt.chars().count(),
+        style_school_named = prompt.contains("miHoYo"),
+        lookalike_ban = prompt.contains("找班"),
+        "site portrait generation started"
+    );
+    let generation_token = Uuid::new_v4().to_string();
+    let pending = json!({
+        "token": generation_token,
+        "inputFingerprint": contract_fingerprint,
+        "startedAt": chrono::Utc::now().to_rfc3339(),
+    });
+    let acquired = life::acquire_portrait_generation(
         &db,
         name,
-        personality,
-        life::PortraitUpdate::Set(url.clone()),
-        life::PersonaContractUpdate {
-            portrait_generation: life::JsonDocumentUpdate::Set(json!({
-                "fingerprint": contract_fingerprint,
-                "contract": generation_contract,
-            })),
-            ..life::PersonaContractUpdate::default()
-        },
-        user_id,
+        &visual_profile,
+        &pending,
     )
     .await
     .map_err(internal_error)?;
-    // New master pixels invalidate the compiled atlas — settings must re-import.
-    clear_active_asset(&db).await?;
+    if !acquired {
+        let current = life::get_persona(&db).await.map_err(internal_error)?;
+        let (message, code) = if current.as_ref().is_some_and(|persona| {
+            life::portrait_generation_is_pending(persona.portrait_generation.as_ref())
+        }) {
+            (
+                "A portrait generation is already in progress",
+                "portrait_generation_in_progress",
+            )
+        } else {
+            (
+                "Character visual inputs changed before generation started",
+                "character_visual_inputs_changed",
+            )
+        };
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({ "error": message, "code": code })),
+        ));
+    }
+    let generated = match image_generation::generate_image_with_background(
+        &config,
+        &prompt,
+        width,
+        height,
+        None,
+        Some(image_generation::ImageBackground::Opaque),
+    )
+    .await
+    {
+        Ok(generated) => generated,
+        Err(error) => {
+            release_portrait_generation_lease(&db, &generation_token).await;
+            return Err((
+                StatusCode::BAD_GATEWAY,
+                Json(json!({ "error": error.to_string() })),
+            ));
+        }
+    };
+    let persisted = match image_generation::persist_generated_with_status(&generated).await {
+        Ok(persisted) => persisted,
+        Err(error) => {
+            release_portrait_generation_lease(&db, &generation_token).await;
+            return Err(bad_request(&error.to_string()));
+        }
+    };
+    let url = persisted.url.clone();
+    let portrait_generation = json!({
+        "fingerprint": contract_fingerprint,
+        "contract": generation_contract,
+    });
+    let transaction = match db.begin().await {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            release_portrait_generation_lease(&db, &generation_token).await;
+            cleanup_uncommitted_portrait(&db, &persisted).await;
+            return Err(internal_error(error));
+        }
+    };
+    let completed = match life::complete_portrait_generation(
+        &transaction,
+        name,
+        &visual_profile,
+        &generation_token,
+        &url,
+        &portrait_generation,
+        user_id,
+    )
+    .await
+    {
+        Ok(completed) => completed,
+        Err(error) => {
+            let _ = transaction.rollback().await;
+            release_portrait_generation_lease(&db, &generation_token).await;
+            cleanup_uncommitted_portrait(&db, &persisted).await;
+            return Err(internal_error(error));
+        }
+    };
+    if !completed {
+        let _ = transaction.rollback().await;
+        release_portrait_generation_lease(&db, &generation_token).await;
+        cleanup_uncommitted_portrait(&db, &persisted).await;
+        return Err((
+            StatusCode::CONFLICT,
+            Json(json!({
+                "error": "Character visual inputs changed while the portrait was generating",
+                "code": "character_visual_inputs_changed"
+            })),
+        ));
+    }
+    let cleared_asset = match digital_life_rig::persist_active_asset(&transaction, None).await {
+        Ok(asset_id) => asset_id,
+        Err(error) => {
+            let _ = transaction.rollback().await;
+            release_portrait_generation_lease(&db, &generation_token).await;
+            cleanup_uncommitted_portrait(&db, &persisted).await;
+            return Err(internal_error(error));
+        }
+    };
+    if let Err(error) = transaction.commit().await {
+        release_portrait_generation_lease(&db, &generation_token).await;
+        cleanup_uncommitted_portrait(&db, &persisted).await;
+        return Err(internal_error(error));
+    }
+    digital_life_rig::mirror_active_asset(cleared_asset).await;
     Ok(Json(json!({
-        "portraitUrl": saved.portrait_asset_id,
-        "portraitAssetId": saved.portrait_asset_id,
+        "portraitUrl": url,
+        "portraitAssetId": url,
         "characterAssetContractVersion": CHARACTER_ASSET_CONTRACT_VERSION,
         "generationFingerprint": contract_fingerprint,
     })))
 }
 
-fn persona_for_visual_generation(
-    persona: Option<&crate::models::entities::agent_persona::Model>,
-    name: &str,
-) -> Value {
-    if let Some(structured) = persona.and_then(|row| row.persona_json.clone()) {
-        return structured;
-    }
-    let mut fallback = fallback_persona_draft(name, "zh-CN", &[], None);
-    if let Some(personality) = persona
-        .map(|row| row.personality.trim())
-        .filter(|value| !value.is_empty())
-    {
-        fallback["summary"] = json!(personality);
-    }
-    fallback
-}
-
 #[cfg(test)]
 mod portrait_contract_tests {
     use super::*;
-
-    #[test]
-    fn legacy_personality_is_not_dropped_from_portrait_contract() {
-        let row = crate::models::entities::agent_persona::Model {
-            id: "site".into(),
-            name: "瞳".into(),
-            personality: "安静、认真，也喜欢新事物".into(),
-            persona_json: None,
-            visual_profile: None,
-            portrait_asset_id: None,
-            portrait_generation: None,
-            updated_by: None,
-            updated_at: chrono::Utc::now().into(),
-        };
-        let persona = persona_for_visual_generation(Some(&row), "瞳");
-        assert_eq!(persona["summary"], "安静、认真，也喜欢新事物");
-    }
 
     #[test]
     fn active_manifest_must_match_master_contract_and_generation() {
@@ -1067,5 +1194,48 @@ mod portrait_contract_tests {
         manifest.source_generation_fingerprint = master.generation_fingerprint.clone();
         manifest.canvas.height = 1.0;
         assert!(!manifest_matches_master(&manifest, &master));
+    }
+
+    #[test]
+    fn stored_portrait_contract_is_bound_to_its_fingerprint_and_current_identity() {
+        let profile = json!({
+            "gender": "unspecified",
+            "visualIdentity": { "hairShape": "short bob" }
+        });
+        let contract = build_character_asset_contract(
+            "Nova",
+            &profile,
+            CharacterVisualSlot::Master,
+            Some("soft morning light"),
+        );
+        let fingerprint = character_asset_contract_fingerprint(&contract);
+        let document = json!({
+            "fingerprint": fingerprint,
+            "contract": contract,
+            "pending": { "token": "next-generation" }
+        });
+        assert_eq!(
+            portrait_generation_fingerprint("Nova", &profile, Some(&document)).unwrap(),
+            Some(fingerprint)
+        );
+        assert!(portrait_generation_fingerprint(
+            "Nova",
+            &json!({ "gender": "female" }),
+            Some(&document),
+        )
+        .is_err());
+
+        let mut tampered = document;
+        tampered["contract"]["additionalRequirements"] = json!("different light");
+        assert!(portrait_generation_fingerprint("Nova", &profile, Some(&tampered)).is_err());
+        assert_eq!(
+            portrait_generation_fingerprint(
+                "Nova",
+                &profile,
+                Some(&json!({ "pending": { "token": "first-generation" } })),
+            )
+            .unwrap(),
+            None
+        );
     }
 }

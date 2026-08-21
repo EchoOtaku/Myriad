@@ -1114,6 +1114,193 @@ fieldset.life-ob-field > legend.life-ob-field__label {
   letter-spacing: 0.02em;
 }
 
+/* Step 4: frozen upper-body visual design, kept separate from spoken persona. */
+.life-ob-visual__intro {
+  padding: 15px 18px;
+  border: 1px solid var(--ob-liq-border, var(--life-line));
+  border-radius: 18px;
+  background:
+    var(--ob-liq-sheen, none),
+    color-mix(in srgb, var(--life-accent) 6%, transparent);
+  box-shadow: var(--ob-liq-inset, none);
+}
+
+.life-ob-visual__intro strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--life-ink);
+  font-size: 13px;
+}
+
+.life-ob-visual__intro p {
+  margin: 0;
+  color: var(--life-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.life-ob-visual__design {
+  display: grid;
+  gap: 12px;
+}
+
+.life-ob-visual__design-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.life-ob-visual__design-head h2 {
+  margin: 0;
+  color: var(--life-ink);
+  font-size: 14px;
+}
+
+.life-ob-visual__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.life-ob-visual__row {
+  min-width: 0;
+  padding: 13px 14px;
+  border: 1px solid var(--ob-liq-border, var(--life-line));
+  border-radius: 16px;
+  background: var(--ob-liq-sheen, none), rgb(var(--life-surface-rgb) / 48%);
+  box-shadow: var(--ob-liq-inset, none);
+}
+
+.life-ob-visual__row dt {
+  margin-bottom: 5px;
+  color: var(--life-muted);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: 0.04em;
+}
+
+.life-ob-visual__row dd {
+  margin: 0;
+  color: var(--life-ink);
+  font-size: 12.5px;
+  line-height: 1.58;
+  overflow-wrap: anywhere;
+}
+
+.life-ob-visual__pending {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  min-height: 190px;
+  place-content: center;
+  color: var(--life-muted);
+  text-align: center;
+}
+
+@media (width < 680px) {
+  .life-ob-visual__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Step 5: master portrait on the shared 3:4 character-asset contract. */
+.life-ob-master__layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.72fr) minmax(240px, 1.28fr);
+  gap: clamp(18px, 3vw, 34px);
+  align-items: start;
+}
+
+.life-ob-master__preview {
+  position: relative;
+  width: min(100%, 360px);
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border: 1px solid var(--ob-liq-border, var(--life-line));
+  border-radius: 22px;
+  background:
+    var(--ob-liq-sheen, none),
+    color-mix(in srgb, rgb(var(--life-surface-rgb) / 84%), white 12%);
+  box-shadow: var(--ob-liq-soft-shadow);
+}
+
+.life-ob-master__preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+.life-ob-master__preview.is-empty {
+  border-style: dashed;
+}
+
+.life-ob-master__placeholder {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  color: var(--life-muted);
+  text-align: center;
+}
+
+.life-ob-master__placeholder > svg {
+  width: 34px;
+  height: 34px;
+  opacity: 0.64;
+}
+
+.life-ob-master__controls {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.life-ob-master__contract {
+  padding: 16px 18px;
+  border: 1px solid var(--ob-liq-border, var(--life-line));
+  border-radius: 18px;
+  background:
+    var(--ob-liq-sheen, none),
+    color-mix(in srgb, var(--life-accent) 6%, transparent);
+  box-shadow: var(--ob-liq-inset, none);
+}
+
+.life-ob-master__contract strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--life-ink);
+  font-size: 13px;
+}
+
+.life-ob-master__contract p {
+  margin: 0;
+  color: var(--life-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.life-ob-master__controls > .life-ghost-button {
+  justify-self: end;
+}
+
+@media (width < 680px) {
+  .life-ob-master__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .life-ob-master__preview {
+    width: min(72vw, 310px);
+    justify-self: center;
+  }
+}
+
 .life-ob-persona-groups.is-incomplete .life-ob-persona-view {
   opacity: 0.92;
 }

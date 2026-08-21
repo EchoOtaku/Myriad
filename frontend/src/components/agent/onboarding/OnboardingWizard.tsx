@@ -3,19 +3,28 @@ import type {
   OnboardingHeaderChrome,
   OnboardingStep,
   StructuredPersona,
+  UpperBodyVisualIdentity,
 } from './onboardingTypes'
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
 import { invalidatePublicConfigCache } from '../../../utils/requestDedup'
-import { emptyPersona, flattenPersona, personaFromApi } from './onboardingTypes'
+import {
+  emptyPersona,
+  flattenPersona,
+  personaFromApi,
+  visualIdentityFromProfile,
+} from './onboardingTypes'
 import BasicsStep from './steps/BasicsStep'
+import CharacterVisualDesignStep from './steps/CharacterVisualDesignStep'
+import MasterPortraitStep from './steps/MasterPortraitStep'
 import PersonaEditStep from './steps/PersonaEditStep'
 import TagBubblesStep from './steps/TagBubblesStep'
 
 interface Props {
   initialName?: string
   initialPersona?: StructuredPersona
+  initialVisualProfile?: Record<string, unknown> | null
   step: OnboardingStep
   onStepChange: (step: OnboardingStep) => void
   onBusyChange: (busy: boolean) => void
@@ -26,6 +35,7 @@ interface Props {
 export default function OnboardingWizard({
   initialName = '',
   initialPersona,
+  initialVisualProfile,
   step,
   onStepChange,
   onBusyChange,
@@ -37,11 +47,27 @@ export default function OnboardingWizard({
   const [busy, setBusy] = useState(false)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [displayName, setDisplayName] = useState(initialName)
-  const [gender, setGender] = useState<LifeGender | null>(null)
+  const [gender, setGender] = useState<LifeGender | null>(() => {
+    const saved = initialVisualProfile?.gender
+    return saved === 'female' ||
+      saved === 'male' ||
+      saved === 'nonbinary' ||
+      saved === 'unspecified'
+      ? saved
+      : null
+  })
   const [extraRequirements, setExtraRequirements] = useState('')
   const [persona, setPersona] = useState<StructuredPersona>(
     () => initialPersona ?? emptyPersona(),
   )
+  const [visualIdentity, setVisualIdentity] =
+    useState<UpperBodyVisualIdentity | null>(() =>
+      visualIdentityFromProfile(initialVisualProfile),
+    )
+  const [visualRequirements, setVisualRequirements] = useState(() => {
+    const saved = initialVisualProfile?.extraRequirements
+    return typeof saved === 'string' ? saved : ''
+  })
   const runLock = useRef(false)
   const previousStep = useRef(step)
   const hasStepped = useRef(false)
@@ -94,8 +120,22 @@ export default function OnboardingWizard({
     setPersona(personaFromApi(draft.persona))
   }
 
-  const stepTitle =
-    step === 1 ? o.step1Title : step === 2 ? o.step2Title : o.step3Title
+  const confirmedVisualProfile = () => ({
+    gender: gender ?? 'unspecified',
+    language: locale,
+    ...(visualRequirements.trim()
+      ? { extraRequirements: visualRequirements.trim() }
+      : {}),
+    ...(visualIdentity ? { visualIdentity } : {}),
+  })
+
+  const stepTitle = [
+    o.step1Title,
+    o.step2Title,
+    o.step3Title,
+    o.step4Title,
+    o.step5Title,
+  ][step - 1]
 
   return (
     <section className="life-ob" aria-label={stepTitle}>
@@ -150,19 +190,60 @@ export default function OnboardingWizard({
                         language: locale,
                         draftSource: 'owner-reviewed',
                       },
-                      visualProfile: {
-                        gender: gender ?? 'unspecified',
-                        extraRequirements: extraRequirements.trim(),
-                        language: locale,
-                      },
+                      visualProfile: confirmedVisualProfile(),
                     })
+                    setPersona(next)
                     invalidatePublicConfigCache()
                     window.dispatchEvent(
                       new CustomEvent('arael-persona-updated'),
                     )
-                    onFinished()
+                    return 4
                   })
                 }
+              />
+            )}
+            {step === 4 && (
+              <CharacterVisualDesignStep
+                identity={visualIdentity}
+                requirements={visualRequirements}
+                busy={busy}
+                onIdentity={setVisualIdentity}
+                onRequirements={setVisualRequirements}
+                onBusyChange={(next) => {
+                  setBusy(next)
+                  onBusyChange(next)
+                }}
+                onHeaderChange={onHeaderChange}
+                onConfirm={() =>
+                  run(async () => {
+                    if (!visualIdentity) throw new Error(o.visualDesignFailed)
+                    await agentService.putPersona({
+                      name: displayName.trim(),
+                      personality: flattenPersona(persona),
+                      persona: {
+                        displayName: displayName.trim(),
+                        ...persona,
+                        language: locale,
+                        draftSource: 'owner-reviewed',
+                      },
+                      visualProfile: confirmedVisualProfile(),
+                    })
+                    invalidatePublicConfigCache()
+                    return 5
+                  })
+                }
+              />
+            )}
+            {step === 5 && (
+              <MasterPortraitStep
+                characterName={displayName.trim() || 'Arael'}
+                busy={busy}
+                onBusyChange={(next) => {
+                  setBusy(next)
+                  onBusyChange(next)
+                }}
+                onHeaderChange={onHeaderChange}
+                onFinished={onFinished}
               />
             )}
           </div>

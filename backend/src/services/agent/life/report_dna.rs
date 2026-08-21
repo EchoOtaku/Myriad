@@ -24,7 +24,8 @@ const MAX_REPORT_INSIGHT_CHARS: usize = 1_600;
 const MAX_REPORT_NOTE_CHARS: usize = 800;
 const MAX_ONBOARDING_TAGS: usize = 28;
 const MAX_ONBOARDING_TAG_CHARS: usize = 24;
-const REPORT_DNA_AI_TIMEOUT: Duration = Duration::from_secs(120);
+/// Keep in sync with `PERSONA_GENERATION_TIMEOUT_MS` / `DIGITAL_LIFE_PROXY_TIMEOUT_MS`.
+const REPORT_DNA_AI_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Debug, Clone)]
 struct ReportDnaSource {

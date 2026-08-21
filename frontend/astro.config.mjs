@@ -86,9 +86,9 @@ const BACKEND_TARGET = 'http://127.0.0.1:1103'
 const PLAYGROUND_PROXY_TIMEOUT_MS = 30 * 60 * 1000
 // Federation file-meta downloads / chunk uploads can exceed the default 30s.
 const FEDERATION_TRANSFER_PROXY_TIMEOUT_MS = 10 * 60 * 1000
-// Digital Life 3D + Agent life onboarding (Pro distill / name / draft):
-// backend Pro timeout is 120s and the socket stays idle until the model
-// returns. Default 30s proxy timeout surfaces as "Backend proxy timeout".
+// Digital Life portrait + Agent life onboarding (Pro distill / name / draft /
+// visual design). Backend Pro and image-generation sockets stay idle until the
+// model returns. Default 30s proxy timeout surfaces as "Backend proxy timeout".
 const DIGITAL_LIFE_PROXY_TIMEOUT_MS = 15 * 60 * 1000
 
 const HOP_BY_HOP_HEADERS = new Set([
@@ -133,7 +133,8 @@ function isAgentPersonaGenerationPath(urlPath) {
   return (
     path === '/api/agent/persona/signals' ||
     path === '/api/agent/persona/draft' ||
-    path === '/api/agent/persona/name'
+    path === '/api/agent/persona/name' ||
+    path === '/api/agent/persona/visual-design'
   )
 }
 

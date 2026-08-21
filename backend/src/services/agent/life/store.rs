@@ -1,10 +1,10 @@
 use chrono::Utc;
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter,
-    QueryOrder, QuerySelect, TransactionTrait,
+    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, QuerySelect, Statement,
 };
-use uuid::Uuid;
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::models::entities::{
     agent_addressee_state, agent_diary, agent_persona, agent_proactive_messages, agent_sessions,
@@ -15,6 +15,13 @@ pub const PERSONA_ROW_ID: &str = "site";
 pub async fn get_persona(
     db: &DatabaseConnection,
 ) -> Result<Option<agent_persona::Model>, anyhow::Error> {
+    get_persona_on(db).await
+}
+
+pub async fn get_persona_on<C>(db: &C) -> Result<Option<agent_persona::Model>, anyhow::Error>
+where
+    C: ConnectionTrait,
+{
     Ok(agent_persona::Entity::find_by_id(PERSONA_ROW_ID)
         .one(db)
         .await?)
@@ -82,13 +89,14 @@ fn apply_persona_update(
     updated_by: i32,
 ) -> agent_persona::ActiveModel {
     let generation_inputs_changed = existing.name != name
-        || existing.personality != personality
-        || json_update_changes(existing.persona_json.as_ref(), &contract.persona)
         || json_update_changes(existing.visual_profile.as_ref(), &contract.visual_profile);
     let mut active: agent_persona::ActiveModel = existing.into();
     active.name = Set(name);
     active.personality = Set(personality);
     match portrait {
+        PortraitUpdate::Keep if generation_inputs_changed => {
+            active.portrait_asset_id = Set(None)
+        }
         PortraitUpdate::Keep => {}
         PortraitUpdate::Clear => active.portrait_asset_id = Set(None),
         PortraitUpdate::Set(value) => active.portrait_asset_id = Set(Some(value.clone())),
@@ -109,16 +117,19 @@ fn apply_persona_update(
     active
 }
 
-pub async fn upsert_persona(
-    db: &DatabaseConnection,
+pub async fn upsert_persona_on<C>(
+    db: &C,
     name: String,
     personality: String,
     portrait: PortraitUpdate,
     contract: PersonaContractUpdate,
     updated_by: i32,
-) -> Result<agent_persona::Model, anyhow::Error> {
+) -> Result<agent_persona::Model, anyhow::Error>
+where
+    C: ConnectionTrait,
+{
     let (name, personality) = normalize_persona_fields(&name, &personality);
-    if let Some(existing) = get_persona(db).await? {
+    if let Some(existing) = get_persona_on(db).await? {
         return Ok(
             apply_persona_update(existing, name, personality, &portrait, &contract, updated_by)
                 .update(db)
@@ -148,7 +159,9 @@ pub async fn upsert_persona(
     match active.insert(db).await {
         Ok(model) => Ok(model),
         Err(err) if is_unique_conflict(&err) => {
-            let existing = get_persona(db).await?.ok_or_else(|| anyhow::anyhow!(err))?;
+            let existing = get_persona_on(db)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!(err))?;
             Ok(
                 apply_persona_update(existing, name, personality, &portrait, &contract, updated_by)
                     .update(db)
@@ -159,19 +172,141 @@ pub async fn upsert_persona(
     }
 }
 
-pub async fn clear_persona(db: &DatabaseConnection) -> Result<(), anyhow::Error> {
-    let txn = db.begin().await?;
-    agent_proactive_messages::Entity::delete_many()
-        .exec(&txn)
+/// Acquire the single site-portrait generation lease only while the exact
+/// visual inputs still match. The lease lives in the existing JSON document so
+/// it is shared by every backend replica without adding a second source of
+/// truth. A crashed request becomes replaceable after fifteen minutes.
+pub async fn acquire_portrait_generation<C>(
+    db: &C,
+    expected_name: &str,
+    expected_visual_profile: &Value,
+    pending: &Value,
+) -> Result<bool, anyhow::Error>
+where
+    C: ConnectionTrait,
+{
+    let result = db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE agent_persona
+SET portrait_generation = jsonb_set(
+        COALESCE(portrait_generation, '{}'::jsonb),
+        '{pending}',
+        $1::jsonb,
+        true
+    ),
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $2
+  AND name = $3
+  AND visual_profile = $4::jsonb
+  AND (
+      portrait_generation IS NULL
+      OR NOT (portrait_generation ? 'pending')
+      OR updated_at < CURRENT_TIMESTAMP - INTERVAL '15 minutes'
+  )
+"#,
+            vec![
+                pending.clone().into(),
+                PERSONA_ROW_ID.into(),
+                expected_name.into(),
+                expected_visual_profile.clone().into(),
+            ],
+        ))
         .await?;
-    agent_diary::Entity::delete_many().exec(&txn).await?;
+    Ok(result.rows_affected() == 1)
+}
+
+/// Remove only this request's lease while preserving the last confirmed
+/// portrait contract, if any. A newer request can never be unlocked by an
+/// older request's error path.
+pub async fn release_portrait_generation<C>(db: &C, token: &str) -> Result<(), anyhow::Error>
+where
+    C: ConnectionTrait,
+{
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+UPDATE agent_persona
+SET portrait_generation = CASE
+        WHEN (portrait_generation - 'pending') = '{}'::jsonb THEN NULL
+        ELSE portrait_generation - 'pending'
+    END,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $1
+  AND portrait_generation #>> '{pending,token}' = $2
+"#,
+        vec![PERSONA_ROW_ID.into(), token.into()],
+    ))
+    .await?;
+    Ok(())
+}
+
+/// Commit generated pixels only if this request still owns the lease and the
+/// visual inputs have not changed. Spoken-persona fields are intentionally not
+/// written here, so edits made during a slow image request are preserved.
+pub async fn complete_portrait_generation<C>(
+    db: &C,
+    expected_name: &str,
+    expected_visual_profile: &Value,
+    token: &str,
+    portrait_asset_id: &str,
+    portrait_generation: &Value,
+    updated_by: i32,
+) -> Result<bool, anyhow::Error>
+where
+    C: ConnectionTrait,
+{
+    let result = db
+        .execute_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+UPDATE agent_persona
+SET portrait_asset_id = $1,
+    portrait_generation = $2::jsonb,
+    updated_by = $3,
+    updated_at = CURRENT_TIMESTAMP
+WHERE id = $4
+  AND name = $5
+  AND visual_profile = $6::jsonb
+  AND portrait_generation #>> '{pending,token}' = $7
+"#,
+            vec![
+                portrait_asset_id.into(),
+                portrait_generation.clone().into(),
+                updated_by.into(),
+                PERSONA_ROW_ID.into(),
+                expected_name.into(),
+                expected_visual_profile.clone().into(),
+                token.into(),
+            ],
+        ))
+        .await?;
+    Ok(result.rows_affected() == 1)
+}
+
+pub fn portrait_generation_is_pending(value: Option<&Value>) -> bool {
+    value
+        .and_then(|document| document.get("pending"))
+        .and_then(|pending| pending.get("token"))
+        .and_then(Value::as_str)
+        .is_some_and(|token| !token.is_empty())
+}
+
+pub async fn clear_persona_on<C>(db: &C) -> Result<(), anyhow::Error>
+where
+    C: ConnectionTrait,
+{
+    agent_proactive_messages::Entity::delete_many()
+        .exec(db)
+        .await?;
+    agent_diary::Entity::delete_many().exec(db).await?;
     agent_addressee_state::Entity::delete_many()
-        .exec(&txn)
+        .exec(db)
         .await?;
     agent_persona::Entity::delete_by_id(PERSONA_ROW_ID)
-        .exec(&txn)
+        .exec(db)
         .await?;
-    txn.commit().await?;
     Ok(())
 }
 
@@ -404,6 +539,7 @@ pub async fn touch_proactive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sea_orm::{Database, TransactionTrait};
     use serde_json::json;
 
     #[test]
@@ -431,11 +567,179 @@ mod tests {
         let active = apply_persona_update(
             existing,
             "Arael".to_string(),
-            "more curious".to_string(),
+            "quiet".to_string(),
             &PortraitUpdate::Keep,
-            &PersonaContractUpdate::default(),
+            &PersonaContractUpdate {
+                visual_profile: JsonDocumentUpdate::Set(json!({
+                    "gender": "unspecified",
+                    "visualIdentity": { "hairShape": "short bob" }
+                })),
+                ..PersonaContractUpdate::default()
+            },
             1,
         );
         assert_eq!(active.portrait_generation, Set(None));
+        assert_eq!(active.portrait_asset_id, Set(None));
+    }
+
+    #[test]
+    fn changing_spoken_persona_keeps_confirmed_visual_assets() {
+        let existing = agent_persona::Model {
+            id: PERSONA_ROW_ID.to_string(),
+            name: "Arael".to_string(),
+            personality: "quiet".to_string(),
+            persona_json: Some(json!({ "summary": "quiet" })),
+            visual_profile: Some(json!({ "gender": "unspecified" })),
+            portrait_asset_id: Some("/master.png".to_string()),
+            portrait_generation: Some(json!({ "fingerprint": "a".repeat(64) })),
+            updated_by: Some(1),
+            updated_at: Utc::now().into(),
+        };
+        let active = apply_persona_update(
+            existing,
+            "Arael".to_string(),
+            "more curious".to_string(),
+            &PortraitUpdate::Keep,
+            &PersonaContractUpdate {
+                persona: JsonDocumentUpdate::Set(json!({
+                    "summary": "more curious"
+                })),
+                ..PersonaContractUpdate::default()
+            },
+            1,
+        );
+        assert_eq!(
+            active.portrait_asset_id,
+            sea_orm::ActiveValue::Unchanged(Some("/master.png".to_string()))
+        );
+        assert!(matches!(
+            active.portrait_generation,
+            sea_orm::ActiveValue::Unchanged(Some(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn portrait_generation_lease_preserves_concurrent_persona_and_rejects_visual_change() {
+        let Ok(database_url) = std::env::var("PORTRAIT_TEST_DATABASE_URL") else {
+            return;
+        };
+        let db = Database::connect(database_url).await.unwrap();
+        let transaction = db.begin().await.unwrap();
+        agent_persona::Entity::delete_by_id(PERSONA_ROW_ID)
+            .exec(&transaction)
+            .await
+            .unwrap();
+        let profile = json!({
+            "gender": "unspecified",
+            "visualIdentity": { "hairShape": "short bob" }
+        });
+        agent_persona::ActiveModel {
+            id: Set(PERSONA_ROW_ID.to_string()),
+            name: Set("Nova".to_string()),
+            personality: Set("quiet".to_string()),
+            persona_json: Set(Some(json!({ "summary": "quiet" }))),
+            visual_profile: Set(Some(profile.clone())),
+            portrait_asset_id: Set(None),
+            portrait_generation: Set(None),
+            updated_by: Set(None),
+            updated_at: Set(Utc::now().into()),
+        }
+        .insert(&transaction)
+        .await
+        .unwrap();
+
+        let first_pending = json!({ "token": "first" });
+        assert!(
+            acquire_portrait_generation(&transaction, "Nova", &profile, &first_pending)
+                .await
+                .unwrap()
+        );
+        assert!(portrait_generation_is_pending(
+            get_persona_on(&transaction)
+                .await
+                .unwrap()
+                .unwrap()
+                .portrait_generation
+                .as_ref()
+        ));
+        assert!(
+            !acquire_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                &json!({ "token": "second" }),
+            )
+            .await
+            .unwrap()
+        );
+
+        upsert_persona_on(
+            &transaction,
+            "Nova".to_string(),
+            "more curious".to_string(),
+            PortraitUpdate::Keep,
+            PersonaContractUpdate::default(),
+            1,
+        )
+        .await
+        .unwrap();
+        assert!(
+            complete_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                "first",
+                "/portrait.png",
+                &json!({ "fingerprint": "a".repeat(64), "contract": {} }),
+                1,
+            )
+            .await
+            .unwrap()
+        );
+        let saved = get_persona_on(&transaction).await.unwrap().unwrap();
+        assert_eq!(saved.personality, "more curious");
+        assert_eq!(saved.portrait_asset_id.as_deref(), Some("/portrait.png"));
+
+        assert!(
+            acquire_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                &json!({ "token": "third" }),
+            )
+            .await
+            .unwrap()
+        );
+        let changed_profile = json!({
+            "gender": "unspecified",
+            "visualIdentity": { "hairShape": "long ponytail" }
+        });
+        upsert_persona_on(
+            &transaction,
+            "Nova".to_string(),
+            "more curious".to_string(),
+            PortraitUpdate::Keep,
+            PersonaContractUpdate {
+                visual_profile: JsonDocumentUpdate::Set(changed_profile),
+                ..PersonaContractUpdate::default()
+            },
+            1,
+        )
+        .await
+        .unwrap();
+        assert!(
+            !complete_portrait_generation(
+                &transaction,
+                "Nova",
+                &profile,
+                "third",
+                "/stale.png",
+                &json!({ "fingerprint": "b".repeat(64), "contract": {} }),
+                1,
+            )
+            .await
+            .unwrap()
+        );
+        transaction.rollback().await.unwrap();
     }
 }

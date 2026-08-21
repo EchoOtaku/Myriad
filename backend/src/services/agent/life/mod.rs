@@ -13,10 +13,11 @@ pub use ingest::{
     allow_existing_notify, life_enabled, spawn as spawn_ingest, spawn_diary, spawn_presence,
 };
 pub use store::{
-    clear_persona, get_or_create_state, get_persona, insert_diary, insert_proactive, latest_diary,
-    list_diary, normalize_persona_fields, recent_proactive, save_departure_mood, save_mood,
-    set_activity, set_do_not_disturb, upsert_persona, JsonDocumentUpdate,
-    PersonaContractUpdate, PortraitUpdate,
+    acquire_portrait_generation, clear_persona_on, complete_portrait_generation,
+    get_or_create_state, get_persona, get_persona_on, insert_diary, insert_proactive, latest_diary,
+    list_diary, normalize_persona_fields, portrait_generation_is_pending, recent_proactive,
+    release_portrait_generation, save_departure_mood, save_mood, set_activity, set_do_not_disturb,
+    upsert_persona_on, JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate,
 };
 
 /// Logged-in users only. Guests use negative ids; heartbeat is `SYSTEM_USER_ID` (0).

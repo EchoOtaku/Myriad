@@ -1,4 +1,4 @@
-export type OnboardingStep = 1 | 2 | 3
+export type OnboardingStep = 1 | 2 | 3 | 4 | 5
 
 /** 步骤上报给二级页标题栏：说明 + 可选「换一批」 */
 export interface OnboardingHeaderAction {
@@ -48,6 +48,57 @@ export interface StructuredPersona {
   speechStyle: string
 }
 
+export const UPPER_BODY_VISUAL_IDENTITY_KEYS = [
+  'faceDesign',
+  'eyeDesign',
+  'hairShape',
+  'hairLayerPlan',
+  'upperBodySilhouette',
+  'outfitConstruction',
+  'sleeveArmDesign',
+  'materialPlan',
+  'heroAccessory',
+  'paletteHint',
+  'motif',
+] as const
+
+export type UpperBodyVisualIdentityKey =
+  (typeof UPPER_BODY_VISUAL_IDENTITY_KEYS)[number]
+
+export type UpperBodyVisualIdentity = Record<
+  UpperBodyVisualIdentityKey,
+  string
+>
+
+export function parseUpperBodyVisualIdentity(
+  value: unknown,
+): UpperBodyVisualIdentity | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const source = value as Record<string, unknown>
+  const entries = UPPER_BODY_VISUAL_IDENTITY_KEYS.map((key) => {
+    const field = typeof source[key] === 'string' ? source[key].trim() : ''
+    return [key, field] as const
+  })
+  if (entries.some(([, field]) => !field)) return null
+  return Object.fromEntries(entries) as UpperBodyVisualIdentity
+}
+
+export function visualIdentityFromProfile(
+  value: unknown,
+): UpperBodyVisualIdentity | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  return parseUpperBodyVisualIdentity(
+    (value as Record<string, unknown>).visualIdentity,
+  )
+}
+
+/** Resume at the first incomplete persisted asset stage. */
+export function completedPersonaResumeStep(
+  visualProfile: unknown,
+): OnboardingStep {
+  return visualIdentityFromProfile(visualProfile) ? 5 : 4
+}
+
 export function emptyPersona(): StructuredPersona {
   return {
     summary: '',
@@ -57,6 +108,19 @@ export function emptyPersona(): StructuredPersona {
     socialStyle: '',
     speechStyle: '',
   }
+}
+
+export function structuredPersonaIsComplete(
+  persona: StructuredPersona,
+): boolean {
+  return (
+    persona.summary.trim().length >= 8 &&
+    persona.temperament.length > 0 &&
+    persona.likes.length > 0 &&
+    persona.drives.length > 0 &&
+    persona.socialStyle.trim().length > 0 &&
+    persona.speechStyle.trim().length > 0
+  )
 }
 
 export function parseList(value: string): string[] {

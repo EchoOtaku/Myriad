@@ -1,14 +1,14 @@
 import type {
-  CompanionRigCompileRequest,
   CompanionRigImportSource,
   CompanionRigManifest,
-  RigMotionProfile,
 } from './rig/types'
 import api from '../../lib/api'
 import { isRigManifest } from './rig/types'
 
 const PREFIX = '/api/digital-life/rig'
-const RIG_MUTATION_TIMEOUT_MS = 180_000
+const RIG_MUTATION_TIMEOUT_MS = 6 * 60 * 1000
+/** Keep in sync with DIGITAL_LIFE_PROXY_TIMEOUT_MS and get_long_running_client. */
+const PORTRAIT_GENERATION_TIMEOUT_MS = 15 * 60 * 1000
 const SEE_THROUGH_TIMEOUT_MS = 360_000
 
 export class CompanionApiError extends Error {
@@ -236,60 +236,6 @@ export async function decomposeSitePortraitWithSeeThrough(input: {
   }
 }
 
-export async function updateCompanionRigMotionProfile(
-  motionProfile: RigMotionProfile,
-): Promise<CompanionRigManifest> {
-  const response = await api.patch<{ manifest: unknown }>(
-    `${PREFIX}/motion-profile`,
-    { motionProfile },
-  )
-  assertSuccess(
-    response.status,
-    response.data,
-    'Could not save companion motion profile',
-  )
-  if (!isRigManifest(response.data.manifest)) {
-    throw new Error('Updated companion rig manifest is invalid')
-  }
-  return response.data.manifest
-}
-
-export async function updateCompanionRigClips(
-  clips: CompanionRigManifest['clips'],
-): Promise<CompanionRigManifest> {
-  const response = await api.patch<{ manifest: unknown }>(`${PREFIX}/clips`, {
-    clips,
-  })
-  assertSuccess(response.status, response.data, 'Could not save companion rig clips')
-  if (!isRigManifest(response.data.manifest)) {
-    throw new Error('Updated companion rig manifest is invalid')
-  }
-  return response.data.manifest
-}
-
-export async function migrateCompanionRig(): Promise<{
-  manifest: CompanionRigManifest
-  migrated: boolean
-}> {
-  const response = await api.post<{ manifest: unknown; migrated?: boolean }>(
-    `${PREFIX}/migrate`,
-  )
-  assertSuccess(response.status, response.data, 'Could not migrate companion rig')
-  if (!isRigManifest(response.data.manifest)) {
-    throw new Error('Migrated companion rig manifest is invalid')
-  }
-  return { manifest: response.data.manifest, migrated: response.data.migrated === true }
-}
-
-export async function compileCompanionRig(
-  _request: CompanionRigCompileRequest,
-): Promise<CompanionRigManifest> {
-  throw new CompanionApiError(
-    'Site faces are compiled from a layered PSD in settings',
-    400,
-  )
-}
-
 export async function importCompanionRig(
   source: CompanionRigImportSource,
   atlas: Blob,
@@ -337,7 +283,7 @@ export async function generateSitePortrait(prompt?: string): Promise<{
   const response = await api.post<{ portraitUrl?: unknown }>(
     `${PREFIX}/portrait`,
     { prompt },
-    { timeout: RIG_MUTATION_TIMEOUT_MS },
+    { timeout: PORTRAIT_GENERATION_TIMEOUT_MS },
   )
   assertSuccess(response.status, response.data, 'Could not generate site portrait')
   return { portraitUrl: readPortraitUrl(response.data) }

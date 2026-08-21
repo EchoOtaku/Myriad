@@ -1,5 +1,5 @@
-//! Pro onboarding helpers: name roll + structured persona draft.
-//! Prompts live in `onboarding_prompts`. Visual identity / outfits stay out.
+//! Pro onboarding helpers: name roll, structured persona draft, visual design.
+//! Prompts live in `onboarding_prompts`.
 
 use serde_json::{json, Map, Value};
 use std::time::Duration;
@@ -7,13 +7,15 @@ use std::time::Duration;
 use crate::config::ModelTier;
 use crate::services::ai::create_ai_analyzer_for_tier_with_timeout;
 
-use super::onboarding_prompts::{NAME_SYSTEM_PROMPT, PERSONA_SYSTEM_PROMPT};
+use super::onboarding_prompts::{
+    visual_design_system_prompt, NAME_SYSTEM_PROMPT, PERSONA_SYSTEM_PROMPT,
+};
 use super::report_dna::sanitize_onboarding_tags_for_language;
 
-const ONBOARDING_AI_TIMEOUT: Duration = Duration::from_secs(120);
+/// Keep in sync with `PERSONA_GENERATION_TIMEOUT_MS` / `DIGITAL_LIFE_PROXY_TIMEOUT_MS`.
+const ONBOARDING_AI_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const MAX_PERSONA_LIST_ITEMS: usize = 12;
 const MAX_PERSONA_LIST_ITEM_CHARS: usize = 180;
-const MAX_PERSONA_GUIDANCE_CHARS: usize = 800;
 const MIN_SUMMARY_CHARS: usize = 80;
 const MIN_TEMPERAMENT_ITEMS: usize = 5;
 const MIN_PAIR_ITEMS: usize = 4;
@@ -66,7 +68,7 @@ pub async fn suggest_persona(
     extra_requirements: &str,
 ) -> Result<Value, OnboardingAiError> {
     let tags = sanitize_onboarding_tags_for_language(selected_tags, language);
-    let fallback = fallback_persona_draft(name, language, &tags);
+    let fallback = myriad_digital_life::fallback_persona_draft(name, language, &tags);
     let input = json!({
         "pipeline": "onboarding/persona",
         "task": "design_character_persona",
@@ -87,12 +89,56 @@ pub async fn suggest_persona(
     .to_string();
     let raw = run_onboarding_call(PERSONA_SYSTEM_PROMPT, &input).await?;
     let parsed = parse_json_object(&raw).ok_or(OnboardingAiError::UnusableResponse)?;
-    if !persona_draft_is_complete(&parsed) || !persona_matches_ui_language(&parsed, language) {
+    if !persona_draft_meets_generation_quality(&parsed)
+        || !persona_matches_ui_language(&parsed, language)
+    {
         return Err(OnboardingAiError::UnusableResponse);
     }
-    let persona = sanitize_persona_draft(&parsed, &fallback)
+    let persona = myriad_digital_life::sanitize_persona_draft(&parsed, &fallback)
+        .filter(myriad_digital_life::persona_draft_is_complete)
         .ok_or(OnboardingAiError::UnusableResponse)?;
     Ok(persona)
+}
+
+pub async fn suggest_visual_design(
+    name: &str,
+    language: &str,
+    persona: &Value,
+    gender: &str,
+    visual_requirements: &str,
+    existing_visual_identity: Option<&Value>,
+    regenerate: bool,
+) -> Result<Value, OnboardingAiError> {
+    let source = persona.get("persona").unwrap_or(persona);
+    let persona_input = json!({
+        "summary": source.get("summary").cloned().unwrap_or(Value::Null),
+        "temperament": source.get("temperament").or_else(|| source.get("traits")).cloned().unwrap_or(Value::Null),
+        "likes": source.get("likes").cloned().unwrap_or(Value::Null),
+        "drives": source.get("drives").cloned().unwrap_or(Value::Null),
+        "socialStyle": source.get("socialStyle").cloned().unwrap_or(Value::Null),
+        "speechStyle": source.get("speechStyle").cloned().unwrap_or(Value::Null),
+    });
+    let input = json!({
+        "pipeline": "onboarding/upper-body-visual-design",
+        "task": "design_upper_body_visual_identity",
+        "rollId": format!("v{}", uuid::Uuid::new_v4().simple()),
+        "name": name.chars().take(50).collect::<String>(),
+        "language": language,
+        "genderPresentation": normalize_gender(gender),
+        "persona": persona_input,
+        "visualRequirements": visual_requirements.chars().take(500).collect::<String>(),
+        "regenerate": regenerate,
+        "existingVisualIdentity": existing_visual_identity.cloned().unwrap_or(Value::Null),
+    })
+    .to_string();
+    let raw = run_onboarding_call(&visual_design_system_prompt(), &input).await?;
+    let parsed = parse_json_object(&raw).ok_or(OnboardingAiError::UnusableResponse)?;
+    let identity = myriad_digital_life::sanitize_upper_body_visual_identity(&parsed)
+        .ok_or(OnboardingAiError::UnusableResponse)?;
+    if !visual_design_matches_ui_language(&identity, language) {
+        return Err(OnboardingAiError::UnusableResponse);
+    }
+    Ok(identity)
 }
 
 async fn run_onboarding_call(
@@ -270,47 +316,6 @@ fn sanitize_cjk_display_name(value: &str, japanese: bool) -> String {
     value.chars().take(6).collect()
 }
 
-fn fallback_persona_draft(name: &str, language: &str, tags: &[String]) -> Value {
-    let tags = sanitize_onboarding_tags_for_language(tags, language);
-    json!({
-        "summary": fallback_summary(name, language, &tags),
-        "temperament": tags,
-        "likes": [],
-        "drives": [],
-        "socialStyle": "",
-        "speechStyle": "",
-    })
-}
-
-fn sanitize_persona_draft(value: &Value, fallback: &Value) -> Option<Value> {
-    let source = value.get("persona").unwrap_or(value).as_object()?;
-    let mut result = fallback.as_object()?.clone();
-    replace_text(&mut result, source, "summary", &["summary"], 1_200);
-    replace_list(
-        &mut result,
-        source,
-        "temperament",
-        &["temperament", "traits"],
-    );
-    replace_list(&mut result, source, "likes", &["likes"]);
-    replace_list(&mut result, source, "drives", &["drives", "motivations"]);
-    replace_text(
-        &mut result,
-        source,
-        "socialStyle",
-        &["socialStyle", "social_style"],
-        MAX_PERSONA_GUIDANCE_CHARS,
-    );
-    replace_text(
-        &mut result,
-        source,
-        "speechStyle",
-        &["speechStyle", "speech_style", "voice"],
-        MAX_PERSONA_GUIDANCE_CHARS,
-    );
-    Some(Value::Object(result))
-}
-
 fn persona_matches_ui_language(value: &Value, language: &str) -> bool {
     let source = value.get("persona").unwrap_or(value);
     let mut text = String::new();
@@ -345,7 +350,33 @@ fn persona_matches_ui_language(value: &Value, language: &str) -> bool {
     }
 }
 
-fn persona_draft_is_complete(value: &Value) -> bool {
+fn visual_design_matches_ui_language(value: &Value, language: &str) -> bool {
+    let mut text = String::new();
+    for (key, _) in myriad_digital_life::UPPER_BODY_VISUAL_IDENTITY_FIELDS {
+        if let Some(part) = value.get(key).and_then(Value::as_str) {
+            text.push_str(part);
+        }
+    }
+    let mut latin = 0usize;
+    let mut cjk = 0usize;
+    for ch in text.chars() {
+        if ch.is_ascii_alphabetic() {
+            latin += 1;
+        } else if is_cjk_han(ch) || is_hiragana(ch) || is_katakana_letter(ch) {
+            cjk += 1;
+        }
+    }
+    let total = latin + cjk;
+    if total < 8 {
+        return false;
+    }
+    match language {
+        "en-US" => latin * 2 >= total,
+        _ => cjk * 2 >= total,
+    }
+}
+
+fn persona_draft_meets_generation_quality(value: &Value) -> bool {
     let Some(source) = value.get("persona").unwrap_or(value).as_object() else {
         return false;
     };
@@ -372,100 +403,6 @@ fn persona_draft_is_complete(value: &Value) -> bool {
         && drives_ready
         && social_ready
         && speech_ready
-}
-
-fn flatten_persona_text(persona: &Value) -> String {
-    let source = persona.get("persona").unwrap_or(persona);
-    let mut lines = Vec::new();
-    if let Some(items) = list_from_value(source, &["temperament", "traits"]) {
-        if !items.is_empty() {
-            lines.push(format!("气质：{}", items.join("、")));
-        }
-    }
-    if let Some(items) = list_from_value(source, &["likes"]) {
-        if !items.is_empty() {
-            lines.push(format!("喜好：{}", items.join("、")));
-        }
-    }
-    if let Some(items) = list_from_value(source, &["drives"]) {
-        if !items.is_empty() {
-            lines.push(format!("驱动力：{}", items.join("、")));
-        }
-    }
-    if let Some(text) = source
-        .get("socialStyle")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        lines.push(format!("社交：{text}"));
-    }
-    if let Some(text) = source
-        .get("speechStyle")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        lines.push(format!("表达：{text}"));
-    }
-    if let Some(summary) = source
-        .get("summary")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        if !lines.is_empty() {
-            lines.push(String::new());
-        }
-        lines.push(summary.to_string());
-    }
-    lines.join("\n")
-}
-
-fn fallback_summary(name: &str, language: &str, tags: &[String]) -> String {
-    let name = bounded_text(name, 50);
-    let display = if name.is_empty() { "Arael" } else { name.as_str() };
-    let traits = tags.iter().take(5).cloned().collect::<Vec<_>>();
-    if traits.is_empty() {
-        return match language {
-            "ja-JP" => format!("{display}は、これから個性を育てていく生命です。"),
-            "en-US" => format!("{display} is a life whose personality will grow through shared experiences."),
-            _ => format!("{display}是一个会在相处中逐渐形成独特个性的生命。"),
-        };
-    }
-    match language {
-        "ja-JP" => format!("{display}は、{}という気質を持つ生命です。", traits.join("、")),
-        "en-US" => format!("{display} is a life with a {} temperament.", traits.join(", ")),
-        _ => format!("{display}是一个带有{}气质的生命。", traits.join("、")),
-    }
-}
-
-fn replace_text(
-    target: &mut Map<String, Value>,
-    source: &Map<String, Value>,
-    target_key: &str,
-    source_keys: &[&str],
-    max_chars: usize,
-) {
-    if let Some(value) = source_keys
-        .iter()
-        .find_map(|key| source.get(*key).and_then(Value::as_str))
-        .map(|value| bounded_text(value, max_chars))
-        .filter(|value| !value.is_empty())
-    {
-        target.insert(target_key.to_string(), json!(value));
-    }
-}
-
-fn replace_list(
-    target: &mut Map<String, Value>,
-    source: &Map<String, Value>,
-    target_key: &str,
-    source_keys: &[&str],
-) {
-    if let Some(values) = list_from(source, source_keys).filter(|values| !values.is_empty()) {
-        target.insert(target_key.to_string(), json!(values));
-    }
 }
 
 fn list_from(source: &Map<String, Value>, keys: &[&str]) -> Option<Vec<String>> {
@@ -551,19 +488,19 @@ mod tests {
             r#"{"persona":{"summary":"安静但会认真回应对自己重要的事情。想靠近，又把话说得很短。认定谁值得之后，锋会收起来，把事情一件件安排妥。不爱解释自己为什么忽然变软，也不肯把私人节奏交给别人来定。","temperament":["克制","细心","慢热","嘴硬心软","边界感强"],"likes":["夜里听雨","把桌面重新排好","长时间安静地做事","把一件小事做到位"],"drives":["理解彼此","守住边界","把节奏握在自己手里","对认定的人认真"],"socialStyle":"先听，不抢着说话。熟了之后才会把句子拉长，把真正在意的人留在自己定的距离里。","speechStyle":"话少，用词干净。对在意的人会把锋收起来，把事说清楚，也不用漂亮句子掩饰不耐烦。"}}"#,
         )
         .unwrap();
-        assert!(persona_draft_is_complete(&parsed));
+        assert!(persona_draft_meets_generation_quality(&parsed));
         assert!(persona_matches_ui_language(&parsed, "zh-CN"));
         assert!(!persona_matches_ui_language(&parsed, "en-US"));
-        assert!(!persona_draft_is_complete(&json!({
+        assert!(!persona_draft_meets_generation_quality(&json!({
             "persona": { "summary": "只有一句，没有性格数组" }
         })));
-        assert!(!persona_draft_is_complete(&json!({
+        assert!(!persona_draft_meets_generation_quality(&json!({
             "persona": {
                 "summary": "安静但会认真回应对自己重要的事情。",
                 "temperament": ["克制"]
             }
         })));
-        assert!(!persona_draft_is_complete(&json!({
+        assert!(!persona_draft_meets_generation_quality(&json!({
             "persona": {
                 "summary": "安静但会认真回应对自己重要的事情。想靠近，又把门留一条缝。",
                 "temperament": ["克制","细心","慢热","嘴硬心软","边界感强"],
@@ -587,16 +524,4 @@ mod tests {
         assert!(!persona_matches_ui_language(&english, "ja-JP"));
     }
 
-    #[test]
-    fn flatten_keeps_character_fields_and_drops_looks() {
-        let text = flatten_persona_text(&json!({
-            "summary": "话少，认真。",
-            "temperament": ["克制"],
-            "likes": ["雨声"],
-            "visualIdentity": { "hairShape": "短发" }
-        }));
-        assert!(text.contains("气质：克制"));
-        assert!(text.contains("话少，认真。"));
-        assert!(!text.contains("短发"));
-    }
 }

@@ -11,7 +11,7 @@ use std::{
 
 use anyhow::{anyhow, Context};
 use myriad_digital_life::RigManifest;
-use sea_orm::DatabaseConnection;
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -261,18 +261,43 @@ pub async fn set_active_asset(
     db: &DatabaseConnection,
     asset_id: Option<&str>,
 ) -> anyhow::Result<()> {
+    let normalized = persist_active_asset(db, asset_id).await?;
+    mirror_active_asset(normalized).await;
+    Ok(())
+}
+
+/// Persist the active pointer through any SeaORM connection, including an
+/// existing transaction. The in-process mirror must be updated only after the
+/// caller commits that transaction.
+pub async fn persist_active_asset<C>(
+    db: &C,
+    asset_id: Option<&str>,
+) -> anyhow::Result<Option<String>>
+where
+    C: ConnectionTrait,
+{
     let normalized = match asset_id {
         Some(value) => Some(
             normalize_asset_id(value).ok_or_else(|| anyhow!("invalid rig asset id"))?,
         ),
         None => None,
     };
-    let service = crate::services::config_service::ConfigService::new(db.clone());
-    service
-        .update_config("agent_rig_asset_id", json!(normalized))
-        .await?;
-    crate::GLOBAL_DYNAMIC_CONFIG.write().await.agent_rig_asset_id = normalized;
-    Ok(())
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"
+INSERT INTO configurations (key, value, updated_at)
+VALUES ($1, $2::jsonb, CURRENT_TIMESTAMP)
+ON CONFLICT (key) DO UPDATE
+SET value = $2::jsonb, updated_at = CURRENT_TIMESTAMP
+"#,
+        vec!["agent_rig_asset_id".into(), json!(normalized).into()],
+    ))
+    .await?;
+    Ok(normalized)
+}
+
+pub async fn mirror_active_asset(asset_id: Option<String>) {
+    crate::GLOBAL_DYNAMIC_CONFIG.write().await.agent_rig_asset_id = asset_id;
 }
 
 #[cfg(test)]

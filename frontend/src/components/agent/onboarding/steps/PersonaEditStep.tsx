@@ -3,7 +3,11 @@ import { LuCheck, LuEdit3, LuX } from '@lib/icons'
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { generationFailureMessage } from '../generationError'
-import { joinList, parseList } from '../onboardingTypes'
+import {
+  joinList,
+  parseList,
+  structuredPersonaIsComplete,
+} from '../onboardingTypes'
 import { ActionBar, PrimaryButton, StepBody } from '../ui/Chrome'
 import { ErrorNote } from '../ui/Feedback'
 import { TextArea } from '../ui/Field'
@@ -104,12 +108,6 @@ export default function PersonaEditStep({
     speechStyle: setSpeechStyle,
     summary: setSummary,
   }
-  const optionalFields = new Set<PersonaFieldKey>([
-    'likes',
-    'drives',
-    'socialStyle',
-    'speechStyle',
-  ])
   const rows: Array<{
     key: PersonaFieldKey
     label: string
@@ -128,11 +126,6 @@ export default function PersonaEditStep({
     if (raw) return raw
     return regenBusy ? o.personaFieldGenerating : ''
   }
-
-  const visibleRows = rows.filter((row) => {
-    if (!optionalFields.has(row.key)) return true
-    return Boolean(shownValue(row.key))
-  })
 
   const startEdit = (key: PersonaFieldKey) => {
     setEditingField(key)
@@ -191,7 +184,7 @@ export default function PersonaEditStep({
               ) : null}
             </h2>
             <dl className="life-ob-persona-view">
-              {visibleRows.map((row) => {
+              {rows.map((row) => {
                 const isEditing = editingField === row.key
                 const display = shownValue(row.key)
                 return (
@@ -285,8 +278,14 @@ export default function PersonaEditStep({
           disabled={
             regenBusy ||
             editingField !== null ||
-            !summary.trim() ||
-            parseList(temperament).length === 0
+            !structuredPersonaIsComplete({
+              summary: summary.trim(),
+              temperament: parseList(temperament),
+              likes: parseList(likes),
+              drives: parseList(drives),
+              socialStyle: socialStyle.trim(),
+              speechStyle: speechStyle.trim(),
+            })
           }
           onClick={() => {
             setError('')

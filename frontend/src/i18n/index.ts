@@ -136,6 +136,35 @@ export interface TranslationKeys {
     motionWorkbenchDescription: string
     essentials: string
     essentialsDescription: string
+    anime25dRuntimeCredit: string
+    anime25dDebug: string
+    anime25dDebugDescription: string
+    anime25dHeadX: string
+    anime25dHeadY: string
+    anime25dEyeL: string
+    anime25dEyeR: string
+    anime25dMouth: string
+    anime25dArmY: string
+    anime25dArmPos: string
+    anime25dBust: string
+    anime25dLean: string
+    anime25dTalking: string
+    anime25dPresetIdle: string
+    anime25dPresetSmile: string
+    anime25dPresetTalk: string
+    anime25dPresetLookLeft: string
+    anime25dPresetLookRight: string
+    anime25dPresetWinkLeft: string
+    anime25dPresetWinkRight: string
+    anime25dBlinkNow: string
+    anime25dResetPose: string
+    anime25dInspect: string
+    anime25dInspectLayers: string
+    anime25dInspectStrands: string
+    anime25dInspectEyes: string
+    anime25dInspectMouth: string
+    anime25dInspectCanvas: string
+    anime25dInspectEmpty: string
     details: string
     detailsDescription: string
     motionPsd: string
@@ -2087,6 +2116,8 @@ export interface TranslationKeys {
       step1Short: string
       step2Short: string
       step3Short: string
+      step4Short: string
+      step5Short: string
       step1Title: string
       step1Lead: string
       step2Title: string
@@ -2094,6 +2125,10 @@ export interface TranslationKeys {
       step3Title: string
       step3Lead: string
       step3LeadPending: string
+      step4Title: string
+      step4Lead: string
+      step5Title: string
+      step5Lead: string
       noReports: string
       selectedCount: string
       selectNothingYet: string
@@ -2146,6 +2181,42 @@ export interface TranslationKeys {
       saving: string
       saveAndContinue: string
       saveFailed: string
+      visualDesignScopeTitle: string
+      visualDesignScopeHint: string
+      visualRequirements: string
+      visualRequirementsHint: string
+      visualRequirementsPlaceholder: string
+      visualDesignPreview: string
+      visualFaceDesign: string
+      visualEyeDesign: string
+      visualHairShape: string
+      visualHairLayers: string
+      visualUpperBodySilhouette: string
+      visualOutfitConstruction: string
+      visualSleeveArmDesign: string
+      visualMaterialPlan: string
+      visualHeroAccessory: string
+      visualPalette: string
+      visualMotif: string
+      visualDesignGenerate: string
+      visualDesignGenerating: string
+      visualDesignRegenerate: string
+      visualDesignConfirm: string
+      visualDesignFailed: string
+      visualDesignSaveFailed: string
+      portraitLoading: string
+      portraitEmpty: string
+      portraitContractTitle: string
+      portraitContractHint: string
+      portraitRequirements: string
+      portraitRequirementsHint: string
+      portraitRequirementsPlaceholder: string
+      portraitGenerate: string
+      portraitGenerating: string
+      portraitRegenerate: string
+      portraitGenerateFailed: string
+      portraitLoadFailed: string
+      portraitFinish: string
     }
   }
 
