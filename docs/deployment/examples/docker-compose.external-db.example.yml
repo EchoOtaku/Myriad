@@ -18,6 +18,7 @@
 #   UPDATE_TOKEN / UPDATER_GATEWAY_SECRET
 #   COMPOSE_PROJECT_NAME=myriad
 # .env 必须含 digest 钉死的 DOCKER_GUARD_IMAGE 与 GUARD_SELF_UPDATE_TOKEN。
+# 有 pin 后 compose 以 UPDATER_IMAGE_REF 为准，不要把 UPDATER_TAG 当成正在运行的 TCB。
 # Guard 首次启动写入 ./guard-policy/docker-guard.env。
 #
 # 可选：
