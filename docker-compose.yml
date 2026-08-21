@@ -21,9 +21,10 @@
 # 必需变量（scripts/extra/deploy.sh 会补齐当前布局所需目录、空 UPDATE_TOKEN /
 # UPDATER_GATEWAY_SECRET，以及宿主 Guard 策略中的 GUARD_SELF_UPDATE_TOKEN）
 # ============================================================================
-# MYRIAD_TAG             业务镜像版本，由 updater 维护
-# PROXY_TAG              代理镜像版本（少有变化）
-# UPDATER_TAG            updater 镜像版本（独立节奏；含 docker-guard / gateway 二进制）
+# MYRIAD_TAG             业务镜像版本（选图用，不覆盖容器 MYRIAD_VERSION）
+# PROXY_TAG              代理镜像版本（选图用）
+# UPDATER_IMAGE_REF      TCB digest pin（有则优先于 UPDATER_TAG）
+# UPDATER_TAG            无 pin 时的首次安装回退 tag
 # COMPOSE_PROJECT_NAME=myriad  （compose/updater 使用这个定位同一套 stack）
 #
 # POSTGRES_PASSWORD      数据库密码（≥32 字符）

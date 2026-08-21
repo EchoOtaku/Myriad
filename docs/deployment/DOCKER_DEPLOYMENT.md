@@ -114,7 +114,7 @@ database outage.
 | `FRONTEND_URL` | no | Public frontend origin for redirects/profile links; usually the same as `BASE_URL` |
 | `MYRIAD_TAG` | yes | Backend/frontend image tag, maintained by updater. Selects the image; compose does **not** overlay it as container `MYRIAD_VERSION`. |
 | `PROXY_TAG` | yes | Proxy image tag (image selector only). |
-| `UPDATER_IMAGE_REF` | yes (prod) | Exact `docker.io/somekawahitomi/myriad-updater@sha256:<64hex>`. Compose runs this pin. |
+| `UPDATER_IMAGE_REF` | after TCB pin | Exact `docker.io/somekawahitomi/myriad-updater@sha256:<64hex>`. When set, compose runs this instead of `UPDATER_TAG`. Written by Guard self-update. |
 | `UPDATER_TAG` | yes | First-install / dev fallback tag. After a digest pin exists, this is not the running TCB identity. |
 | `COMPOSE_PROJECT_NAME` | yes | Compose project name, default `myriad` |
 | `UPDATE_TOKEN` | yes | Updater token for updater/gateway; deploy script fills it if empty; **not** injected into backend or docker-guard |

@@ -184,6 +184,10 @@ jobs:
 
 ## 5. 用户侧 docker-compose 结构
 
+下面是结构示意，**以仓库根 `docker-compose.yml` 为准**。现行编排用
+`UPDATER_IMAGE_REF` digest pin 跑 TCB，Guard 不持有 `UPDATE_TOKEN`，也不把
+`MYRIAD_TAG` / `UPDATER_TAG` 盖进容器 `MYRIAD_VERSION`。
+
 ```yaml
 services:
   proxy:
@@ -517,8 +521,8 @@ docker-compose (v1)   ← fallback
 ### 10.2 不假设 compose 文件结构
 
 - 不直接修改 `compose.yaml`
-- 普通更新只修改 `.env` 中的 `MYRIAD_TAG`
-- updater 不修改自身或 docker-guard 的版本；`UPDATER_TAG` 与 Guard 摘要仅由宿主运维流程更新
+- 普通业务更新只修改 `.env` 中的 `MYRIAD_TAG`
+- updater 不靠改 `UPDATER_TAG` 覆盖自身身份；TCB 由 Guard 自更新改写 `UPDATER_IMAGE_REF` / `DOCKER_GUARD_IMAGE`。`UPDATER_TAG` 只作无 digest pin 时的回退
 - `PROXY_TAG` 目前由人工编辑 `.env` 后运行 `scripts/extra/deploy.sh upgrade`
 - compose 文件必须用 `${MYRIAD_TAG}` 引用版本变量
 - 启动时验证 compose 引用了这些变量，没有则拒绝启动
@@ -740,7 +744,8 @@ digest **没有**与签名 release manifest 中的 `expected_digest` 做字节�
 用户可在部署目录手动执行（宿主机管理员路径）：
 
 ```
-# 先修改 .env 中的 UPDATER_TAG，再由宿主 Docker CLI 重建 TCB 服务
+# 生产请改 UPDATER_IMAGE_REF 与 DOCKER_GUARD_IMAGE（同一 digest），再重建 TCB
+# 无 pin 的开发安装才改 UPDATER_TAG
 docker compose --env-file .env --env-file ./guard-policy/docker-guard.env up -d docker-guard updater updater-gateway
 ```
 
@@ -962,8 +967,8 @@ E2E 实际覆盖（11 项 / 全过，2026-07-17）：
 当前仓库只保留 proxy + updater 生产布局：
 
 1. `pgdata` 使用 `./pgdata` bind mount
-2. `.env` 包含 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME`、`UPDATE_TOKEN`，可选 `MYRIAD_DOCKER_NETWORK` / `MYRIAD_ADMIN_NETWORK` / `MYRIAD_DOCKER_GUARD_NETWORK`
-3. compose 文件 image 使用 immutable tag 变量，不使用 `:latest`
+2. `.env` 包含 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME`、`UPDATE_TOKEN`；生产另含 digest 钉死的 `UPDATER_IMAGE_REF` / `DOCKER_GUARD_IMAGE`。可选 `MYRIAD_DOCKER_NETWORK` / `MYRIAD_ADMIN_NETWORK` / `MYRIAD_DOCKER_GUARD_NETWORK`
+3. 业务镜像用 `${MYRIAD_TAG}` / `${PROXY_TAG}`；TCB 用 `UPDATER_IMAGE_REF` digest pin；不使用 `:latest`
 4. 只有 `proxy` 暴露宿主端口
 5. 只有 `docker-guard` 挂载原始 docker.sock；updater 仅通过内部策略代理访问 Docker API
 6. updater 只挂载一次部署根目录；pgdata、state、快照和 `.env` 均从该目录下访问

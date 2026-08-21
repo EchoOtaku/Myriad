@@ -29,7 +29,7 @@ bash scripts/extra/deploy.sh up
 
 - 如缺少 `.env`，从 `.env.production.example` 复制
 - 创建 `./pgdata`、`./state`、`./backups`
-- 补齐 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME=myriad` 等当前布局 key
+- 补齐 `MYRIAD_TAG`、`PROXY_TAG`、`UPDATER_TAG`、`COMPOSE_PROJECT_NAME=myriad` 等当前布局 key。生产 TCB 以 `UPDATER_IMAGE_REF` / `DOCKER_GUARD_IMAGE` digest 为准
 - 若 `UPDATE_TOKEN` 为空则随机生成
 - 若 `.env` / `./guard-policy/docker-guard.env` 缺少 `GUARD_SELF_UPDATE_TOKEN` 则随机生成
 - 未认领的首次安装可直接用浏览器经 proxy 做完向导；编排预置了安装暗号则要对上。官方 compose 没有暗号会拒绝启动；`deploy.sh` 会在空值时生成
@@ -386,7 +386,7 @@ UPDATER_ALLOW_INSECURE_COSIGN=true   # 或 COSIGN_INSECURE_OK=true
 - **本地库：pgdata 必须是 bind mount**：M1 不支持 docker named volume 上的快照。
 - **首次部署 pgdata 尚不存在时 updater 仍可启动**（env-probe 记 warning）；完整更新快照会在路径就绪后才能执行。
 - **外部库**：`MYRIAD_DB_MODE=external` 时跳过 pgdata 快照/恢复；库备份由运维自管。
-- **修改 `.env`**：用户可以随便加自己的 key，updater 只触碰 `MYRIAD_TAG`/`PROXY_TAG`/`UPDATER_TAG` + release 声明的 `env.new`。
+- **修改 `.env`**：用户可以随便加自己的 key。业务更新只触碰 `MYRIAD_TAG`（及 release `env.new`）；`PROXY_TAG` 仍是手动路径；TCB 自更新另写 `UPDATER_IMAGE_REF`（并记录 `UPDATER_TAG`）。
 - **每次更新的 token 验证**：5 次/分钟错误后封 10 分钟。
 
 更多 corner case 见 [updater-spec.md §16-17](../updater-spec.md)。
