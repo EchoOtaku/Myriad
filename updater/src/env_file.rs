@@ -218,34 +218,6 @@ fn rotate_backups(env_path: &Path, keep: usize) -> Result<()> {
     Ok(())
 }
 
-/// When Compose pins updater with `UPDATER_IMAGE_REF=@sha256:…`, `UPDATER_TAG` is
-/// only the `MYRIAD_VERSION` label. A panel or failed TCB handoff can advance the
-/// tag without moving the digest, so Guard/UI advertise a version that is not
-/// running. Align the tag with the running binary unless a self-update handoff
-/// is already writing both keys.
-pub fn heal_updater_tag_for_digest_pin(
-    current_tag: Option<&str>,
-    image_ref: Option<&str>,
-    running_binary: &str,
-    self_update_pending: bool,
-) -> Option<String> {
-    if self_update_pending {
-        return None;
-    }
-    let image_ref = image_ref.map(str::trim).filter(|value| !value.is_empty())?;
-    if !image_ref.contains("@sha256:") {
-        return None;
-    }
-    let tag = current_tag
-        .map(str::trim)
-        .filter(|value| !value.is_empty())?;
-    let running = running_binary.trim();
-    if running.is_empty() || tag == running {
-        return None;
-    }
-    Some(running.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -305,33 +277,6 @@ mod tests {
         assert!(
             !backups.is_empty(),
             "atomic save should rotate a .env.bak.* before replace"
-        );
-    }
-
-    #[test]
-    fn digest_pin_heals_tag_that_ran_ahead_of_the_running_binary() {
-        let image = "docker.io/somekawahitomi/myriad-updater@sha256:2aa447fbef27080a01fa82d2da7bdb6d543c2500cb8f1a4dbc39e5090b0bdae3";
-        assert_eq!(
-            heal_updater_tag_for_digest_pin(Some("v0.3.36"), Some(image), "v0.3.32", false)
-                .as_deref(),
-            Some("v0.3.32")
-        );
-        assert_eq!(
-            heal_updater_tag_for_digest_pin(Some("v0.3.32"), Some(image), "v0.3.32", false),
-            None
-        );
-        assert_eq!(
-            heal_updater_tag_for_digest_pin(Some("v0.3.36"), Some(image), "v0.3.32", true),
-            None
-        );
-        assert_eq!(
-            heal_updater_tag_for_digest_pin(
-                Some("v0.3.36"),
-                Some("docker.io/somekawahitomi/myriad-updater:v0.3.36"),
-                "v0.3.32",
-                false
-            ),
-            None
         );
     }
 
