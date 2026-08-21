@@ -170,13 +170,6 @@ services:
       # backend does NOT hold UPDATE_TOKEN.
       MYRIAD_UPDATER_URL: http://updater-gateway:1104
       UPDATER_GATEWAY_SECRET: ${UPDATER_GATEWAY_SECRET}
-      # Optional platform keys: only inject when host .env has a nonempty value.
-      # Avoid `${VAR:-}` empty strings — older is_ok() gates treated "" as configured;
-      # BE now uses nonempty_env, but unset is still cleaner than empty.
-      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
-      YOUTUBE_CHANNEL_ID: ${YOUTUBE_CHANNEL_ID:-}
-      OPENXBL_API_KEY: ${OPENXBL_API_KEY:-}
-      PSN_NPSSO: ${PSN_NPSSO:-}
     # NOTE: no `ports:` — only proxy exposes a host port.
     depends_on:
       postgres: { condition: service_healthy }
@@ -210,7 +203,6 @@ services:
         limits: { cpus: '1.0', memory: 1G }
         reservations: { cpus: '0.25', memory: 256M }
     environment:
-      PUBLIC_API_URL: ${PUBLIC_API_URL:-}
       NODE_ENV: production
       TZ: Asia/Shanghai
     depends_on:
