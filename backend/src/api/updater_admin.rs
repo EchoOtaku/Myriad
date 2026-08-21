@@ -580,6 +580,34 @@ pub async fn dismiss_last_failed() -> Response {
     }
 }
 
+pub async fn dismiss_self_update_last() -> Response {
+    let c = match require_mutate() {
+        Ok(c) => c,
+        Err(r) => return *r,
+    };
+    match c
+        .post_json::<Value>("/self-update/last/dismiss", None, None)
+        .await
+    {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+pub async fn dismiss_proxy_update_last() -> Response {
+    let c = match require_mutate() {
+        Ok(c) => c,
+        Err(r) => return *r,
+    };
+    match c
+        .post_json::<Value>("/proxy-update/last/dismiss", None, None)
+        .await
+    {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
 #[derive(Deserialize)]
 pub struct RollbackBody {
     pub snapshot_id: String,

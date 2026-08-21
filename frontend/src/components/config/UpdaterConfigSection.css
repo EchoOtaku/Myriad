@@ -1539,6 +1539,10 @@ html.dark .updater-infra-current {
 }
 
 .updater-infra-last-fail {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin: 0;
   padding: 0.45rem 0.55rem;
   border: 1px solid rgb(244 63 94 / 22%);

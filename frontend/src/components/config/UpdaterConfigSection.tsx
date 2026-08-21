@@ -164,6 +164,12 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
   const [dismissedFailedJobId, setDismissedFailedJobId] = useState<
     string | null
   >(null)
+  const [dismissedSelfLastAt, setDismissedSelfLastAt] = useState<string | null>(
+    null,
+  )
+  const [dismissedProxyLastAt, setDismissedProxyLastAt] = useState<
+    string | null
+  >(null)
 
   /** Job we are watching for maintenance → full-page navigate (once). */
   const maintWatchJobRef = useRef<string | null>(null)
@@ -1055,6 +1061,28 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
     }
   }, [api, refresh, status?.last_failed_update])
 
+  const dismissSelfUpdateLast = useCallback(async () => {
+    const at = status?.self_update_last?.at
+    if (at) setDismissedSelfLastAt(at)
+    try {
+      await api.dismissSelfUpdateLast()
+      await refresh()
+    } catch {
+      /* Old updater: local ack hides this outcome until a new one is written. */
+    }
+  }, [api, refresh, status?.self_update_last?.at])
+
+  const dismissProxyUpdateLast = useCallback(async () => {
+    const at = status?.proxy_update_last?.at
+    if (at) setDismissedProxyLastAt(at)
+    try {
+      await api.dismissProxyUpdateLast()
+      await refresh()
+    } catch {
+      /* Old updater: local ack hides this outcome until a new one is written. */
+    }
+  }, [api, refresh, status?.proxy_update_last?.at])
+
   // 渲染
 
   const mood = useMemo<Mood>(() => deriveMood(status), [status])
@@ -1368,7 +1396,8 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                     infraFeedback?.scope === 'self' ? infraFeedback : null
                   }
                   lastFail={
-                    status?.self_update_last?.status === 'failed'
+                    status?.self_update_last?.status === 'failed' &&
+                    dismissedSelfLastAt !== status.self_update_last.at
                       ? format(u.updaterInfraSelfLastFailed, {
                           target: status.self_update_last.target_tag || '—',
                           previous: status.self_update_last.previous_tag || '—',
@@ -1376,6 +1405,9 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                         })
                       : null
                   }
+                  dismissLabel={u.updaterLastFailedDismiss}
+                  dismissAria={u.updaterLastFailedDismissAria}
+                  onDismiss={() => void dismissSelfUpdateLast()}
                 />
                 <div className="updater-infra-card-actions">
                   <SettingsButton
@@ -1430,7 +1462,8 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                     infraFeedback?.scope === 'proxy' ? infraFeedback : null
                   }
                   lastFail={
-                    status?.proxy_update_last?.status === 'failed'
+                    status?.proxy_update_last?.status === 'failed' &&
+                    dismissedProxyLastAt !== status.proxy_update_last.at
                       ? `${format(u.updaterInfraProxyLastFailed, {
                           target: status.proxy_update_last.target_tag || '—',
                           previous: status.proxy_update_last.previous_tag || '—',
@@ -1442,6 +1475,9 @@ export const UpdaterInlinePanel: React.FC<UpdaterInlinePanelProps> = ({
                         }`
                       : null
                   }
+                  dismissLabel={u.updaterLastFailedDismiss}
+                  dismissAria={u.updaterLastFailedDismissAria}
+                  onDismiss={() => void dismissProxyUpdateLast()}
                 />
                 <div className="updater-infra-card-actions">
                   <SettingsButton
@@ -1593,6 +1629,9 @@ function InfraCardNotice({
   reconnecting,
   feedback,
   lastFail,
+  dismissLabel,
+  dismissAria,
+  onDismiss,
 }: {
   inProgress: boolean
   linkDown: boolean
@@ -1600,6 +1639,9 @@ function InfraCardNotice({
   reconnecting: string
   feedback: NonNullable<Toast> | null
   lastFail: string | null
+  dismissLabel?: string
+  dismissAria?: string
+  onDismiss?: () => void
 }) {
   if (inProgress) {
     return (
@@ -1624,9 +1666,20 @@ function InfraCardNotice({
   }
   if (lastFail) {
     return (
-      <p className="updater-infra-last-fail" role="status">
-        {lastFail}
-      </p>
+      <div className="updater-infra-last-fail" role="status">
+        <span>{lastFail}</span>
+        {onDismiss && dismissLabel ? (
+          <button
+            type="button"
+            className="updater-last-failed-dismiss"
+            onClick={onDismiss}
+            aria-label={dismissAria || dismissLabel}
+            title={dismissAria || dismissLabel}
+          >
+            {dismissLabel}
+          </button>
+        ) : null}
+      </div>
     )
   }
   return null

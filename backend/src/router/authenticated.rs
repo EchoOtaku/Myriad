@@ -1106,6 +1106,20 @@ pub(super) fn build_authenticated_router(
             )),
         )
         .route(
+            "/api/admin/updater/self-update/last/dismiss",
+            post(api::updater_admin::dismiss_self_update_last).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::admin_middleware,
+            )),
+        )
+        .route(
+            "/api/admin/updater/proxy-update/last/dismiss",
+            post(api::updater_admin::dismiss_proxy_update_last).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::admin_middleware,
+            )),
+        )
+        .route(
             "/api/admin/updater/rollback",
             post(api::updater_admin::rollback).route_layer(from_fn_with_state(
                 app_state.clone(),
@@ -1309,6 +1323,22 @@ mod security_route_wiring_tests {
                 "admin_middleware"
             ),
             "last-failed dismiss must be registered under admin_middleware"
+        );
+        assert!(
+            route_has_middleware(
+                src,
+                "/api/admin/updater/self-update/last/dismiss",
+                "admin_middleware"
+            ),
+            "self-update last dismiss must be registered under admin_middleware"
+        );
+        assert!(
+            route_has_middleware(
+                src,
+                "/api/admin/updater/proxy-update/last/dismiss",
+                "admin_middleware"
+            ),
+            "proxy-update last dismiss must be registered under admin_middleware"
         );
     }
 }

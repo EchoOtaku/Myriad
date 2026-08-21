@@ -37,6 +37,8 @@ pub fn build(state: ApiState) -> Router {
         .route("/update", post(update))
         .route("/prefs", post(set_prefs))
         .route("/last-failed/dismiss", post(dismiss_last_failed))
+        .route("/self-update/last/dismiss", post(dismiss_self_update_last))
+        .route("/proxy-update/last/dismiss", post(dismiss_proxy_update_last))
         .route("/rollback", post(rollback))
         // One-click recovery for needs_manual / stuck post-swap jobs: same privilege as
         // `/rollback` (admin + token via backend). Does not require host manual-override
@@ -820,6 +822,30 @@ async fn dismiss_last_failed(State(st): State<ApiState>) -> Result<Json<Value>, 
     st.worker
         .sender()
         .send(WorkerCmd::DismissLastFailed { reply: tx })
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
+    rx.await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn dismiss_self_update_last(State(st): State<ApiState>) -> Result<Json<Value>, ApiError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    st.worker
+        .sender()
+        .send(WorkerCmd::DismissSelfUpdateLast { reply: tx })
+        .await
+        .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
+    rx.await
+        .map_err(|_| ApiError(StatusCode::INTERNAL_SERVER_ERROR, "worker dropped".into()))??;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn dismiss_proxy_update_last(State(st): State<ApiState>) -> Result<Json<Value>, ApiError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    st.worker
+        .sender()
+        .send(WorkerCmd::DismissProxyUpdateLast { reply: tx })
         .await
         .map_err(|_| ApiError(StatusCode::SERVICE_UNAVAILABLE, "worker unavailable".into()))?;
     rx.await

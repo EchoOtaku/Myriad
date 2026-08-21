@@ -549,6 +549,12 @@ export function makeUpdaterApi(
     /** Hide the last-failed banner permanently (clears updater.json). */
     dismissLastFailed: () =>
       wrap<{ ok: boolean }>('POST', '/last-failed/dismiss'),
+    /** Hide the TCB self-update last-fail notice (removes self-update-last.json). */
+    dismissSelfUpdateLast: () =>
+      wrap<{ ok: boolean }>('POST', '/self-update/last/dismiss'),
+    /** Hide the proxy-update last-fail notice (removes proxy-update-last.json). */
+    dismissProxyUpdateLast: () =>
+      wrap<{ ok: boolean }>('POST', '/proxy-update/last/dismiss'),
     /** Permanently remove a single backup snapshot. */
     deleteSnapshot: (snapshotId: string) =>
       wrap<{ ok: boolean; id: string }>(

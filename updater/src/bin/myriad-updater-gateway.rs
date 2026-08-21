@@ -127,6 +127,8 @@ fn build_router(state: Arc<GatewayState>) -> Router {
         .route("/update", post(proxy))
         .route("/prefs", post(proxy))
         .route("/last-failed/dismiss", post(proxy))
+        .route("/self-update/last/dismiss", post(proxy))
+        .route("/proxy-update/last/dismiss", post(proxy))
         .route("/rollback", post(proxy))
         .route("/rescue/continue", post(proxy))
         .route("/rescue/exit-maintenance", post(proxy))
@@ -335,7 +337,9 @@ fn validate_capability(
             body: BodySchema::Prefs,
             ..write_capability(false)
         },
-        (&Method::POST, "/last-failed/dismiss") => write_capability(false),
+        (&Method::POST, "/last-failed/dismiss")
+        | (&Method::POST, "/self-update/last/dismiss")
+        | (&Method::POST, "/proxy-update/last/dismiss") => write_capability(false),
         (&Method::POST, "/rollback") => Capability {
             body: BodySchema::Rollback,
             ..write_capability(true)
@@ -1127,5 +1131,10 @@ mod tests {
         let uri: Uri = "/last-failed/dismiss".parse().unwrap();
         assert!(validate_capability(&Method::POST, &uri, &headers, b"").is_ok());
         assert!(validate_capability(&Method::POST, &uri, &headers, br#"{}"#).is_err());
+        for path in ["/self-update/last/dismiss", "/proxy-update/last/dismiss"] {
+            let uri: Uri = path.parse().unwrap();
+            assert!(validate_capability(&Method::POST, &uri, &headers, b"").is_ok());
+            assert!(validate_capability(&Method::POST, &uri, &headers, br#"{}"#).is_err());
+        }
     }
 }

@@ -109,6 +109,14 @@ pub enum Command {
     DismissLastFailed {
         reply: tokio::sync::oneshot::Sender<Result<()>>,
     },
+    /// Clear durable TCB self-update last-outcome (`self-update-last.json`).
+    DismissSelfUpdateLast {
+        reply: tokio::sync::oneshot::Sender<Result<()>>,
+    },
+    /// Clear durable proxy-update last-outcome (`proxy-update-last.json`).
+    DismissProxyUpdateLast {
+        reply: tokio::sync::oneshot::Sender<Result<()>>,
+    },
     SelfUpdate {
         actor: Option<String>,
         reply: tokio::sync::oneshot::Sender<Result<self_update::SelfUpdateReport>>,
@@ -1019,6 +1027,20 @@ impl Worker {
                     let res = self.clone().handle_dismiss_last_failed();
                     let _ = reply.send(res);
                 }
+                Command::DismissSelfUpdateLast { reply } => {
+                    let res = self.clone().handle_dismiss_state_file(
+                        "self-update-last.json",
+                        "audit: self_update_last_dismissed",
+                    );
+                    let _ = reply.send(res);
+                }
+                Command::DismissProxyUpdateLast { reply } => {
+                    let res = self.clone().handle_dismiss_state_file(
+                        proxy_update::PROXY_UPDATE_LAST_FILE,
+                        "audit: proxy_update_last_dismissed",
+                    );
+                    let _ = reply.send(res);
+                }
                 Command::SelfUpdate { actor, reply } => {
                     let res = self_update::run(self.clone(), actor).await;
                     let _ = reply.send(res);
@@ -1500,6 +1522,17 @@ impl Worker {
         let _ = self
             .state
             .append_audit("audit: last_failed_update_dismissed");
+        Ok(())
+    }
+
+    fn handle_dismiss_state_file(self: Arc<Self>, name: &str, audit: &str) -> Result<()> {
+        let path = self.cli.state_dir.join(name);
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        let _ = self.state.append_audit(audit);
         Ok(())
     }
 
