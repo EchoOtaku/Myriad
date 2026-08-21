@@ -5,7 +5,10 @@
 //! instead of a short-lived provider link or an inline data URL.
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use flate2::read::GzDecoder;
 use serde_json::{json, Map, Value};
+use std::borrow::Cow;
+use std::io::Read;
 use std::time::Duration;
 
 use crate::{
@@ -15,6 +18,8 @@ use crate::{
 
 const MAX_PROMPT_CHARS: usize = 32_680;
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+const MAX_PROVIDER_BODY_BYTES: usize = 64 * 1024 * 1024;
+const GPT_IMAGE_2_MIN_PIXELS: u32 = 655_360;
 
 #[derive(Clone, Debug)]
 pub struct ImageGenerationConfig {
@@ -39,7 +44,10 @@ pub struct ImageReference {
 }
 
 impl ImageReference {
-    pub fn new(bytes: Vec<u8>, media_type: impl Into<String>) -> Result<Self, ImageGenerationError> {
+    pub fn new(
+        bytes: Vec<u8>,
+        media_type: impl Into<String>,
+    ) -> Result<Self, ImageGenerationError> {
         let media_type = media_type.into();
         validate_media_type(&media_type)?;
         validate_magic(&bytes, &media_type)?;
@@ -146,9 +154,7 @@ pub fn config_from_dynamic(
                 dynamic.shared_gemini_api_key(),
                 gemini_image_base_url(dynamic, None),
             ),
-            other => {
-                return Err(ImageGenerationError::UnsupportedProvider(other.to_string()))
-            }
+            other => return Err(ImageGenerationError::UnsupportedProvider(other.to_string())),
         }
     };
     let api_key = api_key.ok_or_else(|| {
@@ -208,8 +214,11 @@ pub async fn generate_image(
             let mut form = reqwest::multipart::Form::new()
                 .text("model", strip_openai_prefix(&config.model).to_string())
                 .text("prompt", prompt.to_string())
-                .text("size", format!("{width}x{height}"))
-                .text("input_fidelity", "high");
+                .text("size", image_size_param(config, width, height));
+            // gpt-image-2 always uses high-fidelity references and rejects this field.
+            if !is_gpt_image_2(&config.model) {
+                form = form.text("input_fidelity", "high");
+            }
             if options.include_n {
                 form = form.text("n", "1");
             }
@@ -220,58 +229,32 @@ pub async fn generate_image(
                 form = form.text("output_format", output_format);
             }
             let form = form.part("image", part);
-            client
-                .post(endpoint)
-                .bearer_auth(&config.api_key)
+            apply_image_headers(client.post(endpoint).bearer_auth(&config.api_key))
                 .multipart(form)
                 .send()
                 .await
         } else {
             let (endpoint, body) = request_parts(config, prompt, width, height, None)?;
-            client
-                .post(endpoint)
-                .bearer_auth(&config.api_key)
+            apply_image_headers(client.post(endpoint).bearer_auth(&config.api_key))
                 .json(&body)
                 .send()
                 .await
         }
     } else {
         let reference_data_url = reference.map(ImageReference::data_url);
-        let (endpoint, body) = request_parts(
-            config,
-            prompt,
-            width,
-            height,
-            reference_data_url.as_deref(),
-        )?;
-        client
-            .post(endpoint)
-            .bearer_auth(&config.api_key)
+        let (endpoint, body) =
+            request_parts(config, prompt, width, height, reference_data_url.as_deref())?;
+        apply_image_headers(client.post(endpoint).bearer_auth(&config.api_key))
             .json(&body)
             .send()
             .await
     }
-    .map_err(|error| ImageGenerationError::Provider(error.to_string()))?;
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        let body: String = body.chars().take(600).collect();
-        return Err(ImageGenerationError::Provider(format!(
-            "{} image API returned HTTP {status}: {body}",
-            provider_label(&config.provider)
-        )));
-    }
-    let value: Value = response
-        .json()
-        .await
-        .map_err(|error| ImageGenerationError::InvalidResponse(error.to_string()))?;
-    parse_image_response(&value, width, height)
+    .map_err(|error| ImageGenerationError::Provider(display_error(&error)))?;
+    read_image_api_response(response, &config.provider, width, height).await
 }
 
 /// Persist a provider result into the local image cache and return a serveable URL.
-pub async fn persist_generated(
-    generated: &GeneratedImage,
-) -> Result<String, ImageGenerationError> {
+pub async fn persist_generated(generated: &GeneratedImage) -> Result<String, ImageGenerationError> {
     let (bytes, media_type) = load_generated_bytes(generated).await?;
     ImageCacheService::new()
         .store_bytes(&bytes, &media_type)
@@ -363,12 +346,17 @@ fn request_parts(
             let mut body = json!({
                 "model": strip_openai_prefix(&config.model),
                 "prompt": prompt,
-                "size": size
+                "size": image_size_param(config, width, height)
             });
             if options.include_n {
                 body["n"] = json!(1);
             }
             apply_background_options(&mut body, options);
+            if is_gpt_image_model(&config.model) {
+                // Keep the JSON envelope; streaming replies as SSE, which the old
+                // `response.json()` path reported only as "error decoding response body".
+                body["stream"] = json!(false);
+            }
             Ok((format!("{}/images/generations", config.base_url), body))
         }
         "openrouter" => {
@@ -448,14 +436,42 @@ fn request_options(config: &ImageGenerationConfig) -> ImageRequestOptions {
 }
 
 fn is_gpt_image_2(model: &str) -> bool {
-    strip_openai_prefix(model).eq_ignore_ascii_case("gpt-image-2")
+    let model = strip_openai_prefix(model).to_ascii_lowercase();
+    model == "gpt-image-2" || model.starts_with("gpt-image-2-")
 }
 
 fn is_gpt_image_1(model: &str) -> bool {
     matches!(
         strip_openai_prefix(model).to_ascii_lowercase().as_str(),
-        "gpt-image-1" | "gpt-image-1-mini"
+        "gpt-image-1" | "gpt-image-1-mini" | "gpt-image-1.5"
     )
+}
+
+fn is_gpt_image_model(model: &str) -> bool {
+    is_gpt_image_1(model) || is_gpt_image_2(model)
+}
+
+fn image_size_param(config: &ImageGenerationConfig, width: u32, height: u32) -> String {
+    if !is_gpt_image_2(&config.model) {
+        return format!("{width}x{height}");
+    }
+    let width = snap_multiple(width, 16).clamp(16, 3840);
+    let height = snap_multiple(height, 16).clamp(16, 3840);
+    if width.saturating_mul(height) < GPT_IMAGE_2_MIN_PIXELS {
+        return "1024x1024".to_string();
+    }
+    format!("{width}x{height}")
+}
+
+fn snap_multiple(value: u32, multiple: u32) -> u32 {
+    if multiple == 0 {
+        return value;
+    }
+    let rounded = value
+        .saturating_add(multiple / 2)
+        .saturating_div(multiple)
+        .saturating_mul(multiple);
+    rounded.max(multiple)
 }
 
 fn apply_background_options(body: &mut Value, options: ImageRequestOptions) {
@@ -489,38 +505,258 @@ fn reference_file_name(media_type: &str) -> &'static str {
     }
 }
 
+fn apply_image_headers(request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+    request.header(reqwest::header::ACCEPT, "application/json")
+}
+
+fn display_error(error: &dyn std::error::Error) -> String {
+    let mut message = error.to_string();
+    let mut current = error.source();
+    while let Some(source) = current {
+        let piece = source.to_string();
+        if !piece.is_empty() && !message.contains(&piece) {
+            message.push_str(": ");
+            message.push_str(&piece);
+        }
+        current = source.source();
+    }
+    message
+}
+
+async fn read_image_api_response(
+    response: reqwest::Response,
+    provider: &str,
+    width: u32,
+    height: u32,
+) -> Result<GeneratedImage, ImageGenerationError> {
+    let status = response.status();
+    let content_type = header_value(response.headers(), reqwest::header::CONTENT_TYPE);
+    let content_encoding = header_value(response.headers(), reqwest::header::CONTENT_ENCODING);
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| ImageGenerationError::InvalidResponse(display_error(&error)))?;
+    if bytes.len() > MAX_PROVIDER_BODY_BYTES {
+        return Err(ImageGenerationError::InvalidResponse(
+            "image provider response exceeds size limit".to_string(),
+        ));
+    }
+    if !status.is_success() {
+        let body = String::from_utf8_lossy(&bytes);
+        let body: String = body.chars().take(600).collect();
+        return Err(ImageGenerationError::Provider(format!(
+            "{} image API returned HTTP {status}: {body}",
+            provider_label(provider)
+        )));
+    }
+    let body = decompress_provider_body(&bytes, content_encoding.as_deref())?;
+    if let Some(image) = parse_raw_image(&body, width, height)? {
+        return Ok(image);
+    }
+    let value = decode_provider_body(&body, content_type.as_deref())?;
+    parse_image_response(&value, width, height)
+}
+
+fn header_value(
+    headers: &reqwest::header::HeaderMap,
+    name: reqwest::header::HeaderName,
+) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn decompress_provider_body<'a>(
+    bytes: &'a [u8],
+    content_encoding: Option<&str>,
+) -> Result<Cow<'a, [u8]>, ImageGenerationError> {
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        return Ok(Cow::Owned(gzip_decode(bytes)?));
+    }
+    let encoding = content_encoding.unwrap_or("").to_ascii_lowercase();
+    if encoding.contains("gzip") {
+        tracing::warn!(
+            content_encoding,
+            "image provider advertised gzip without gzip magic; parsing the body as-is"
+        );
+    }
+    Ok(Cow::Borrowed(bytes))
+}
+
+fn gzip_decode(bytes: &[u8]) -> Result<Vec<u8>, ImageGenerationError> {
+    let mut decoder = GzDecoder::new(bytes);
+    let mut out = Vec::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let read = decoder.read(&mut buf).map_err(|error| {
+            ImageGenerationError::InvalidResponse(format!(
+                "error decoding gzip response body: {error}"
+            ))
+        })?;
+        if read == 0 {
+            break;
+        }
+        if out.len().saturating_add(read) > MAX_PROVIDER_BODY_BYTES {
+            return Err(ImageGenerationError::InvalidResponse(
+                "image provider response exceeds size limit".to_string(),
+            ));
+        }
+        out.extend_from_slice(&buf[..read]);
+    }
+    Ok(out)
+}
+
+fn decode_provider_body(
+    bytes: &[u8],
+    content_type: Option<&str>,
+) -> Result<Value, ImageGenerationError> {
+    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
+    if bytes.is_empty() {
+        return Err(ImageGenerationError::InvalidResponse(
+            "image provider returned an empty body".to_string(),
+        ));
+    }
+    match serde_json::from_slice::<Value>(bytes) {
+        Ok(value) => Ok(value),
+        Err(error) => {
+            if let Ok(text) = std::str::from_utf8(bytes) {
+                if looks_like_sse(content_type, text) {
+                    if let Some(value) = parse_sse_image_event(text) {
+                        return Ok(value);
+                    }
+                }
+            }
+            Err(ImageGenerationError::InvalidResponse(format!(
+                "error decoding response body: {error} (content-type {}, {})",
+                content_type.unwrap_or("missing"),
+                body_preview(bytes)
+            )))
+        }
+    }
+}
+
+fn looks_like_sse(content_type: Option<&str>, text: &str) -> bool {
+    content_type.is_some_and(|value| value.to_ascii_lowercase().contains("text/event-stream"))
+        || text.starts_with("event:")
+        || text.starts_with("data:")
+}
+
+fn parse_sse_image_event(text: &str) -> Option<Value> {
+    let mut completed = None;
+    let mut last_with_image = None;
+    let mut data_lines = Vec::new();
+    for line in text.lines().chain(std::iter::once("")) {
+        if let Some(rest) = line.strip_prefix("data:") {
+            data_lines.push(rest.trim().to_string());
+            continue;
+        }
+        if !line.is_empty() {
+            continue;
+        }
+        if data_lines.is_empty() {
+            continue;
+        }
+        let joined = data_lines.join("\n");
+        data_lines.clear();
+        if joined.is_empty() || joined == "[DONE]" {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(&joined) else {
+            continue;
+        };
+        if image_payload_from_value(&value).is_none() {
+            continue;
+        }
+        if value.get("type").and_then(Value::as_str) == Some("image_generation.completed") {
+            completed = Some(value);
+        } else {
+            last_with_image = Some(value);
+        }
+    }
+    completed.or(last_with_image)
+}
+
+fn parse_raw_image(
+    bytes: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<Option<GeneratedImage>, ImageGenerationError> {
+    let media_type = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        "image/png"
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        "image/jpeg"
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        "image/webp"
+    } else {
+        return Ok(None);
+    };
+    if bytes.len() > MAX_IMAGE_BYTES {
+        return Err(ImageGenerationError::InvalidResponse(
+            "generated image exceeds storage limit".to_string(),
+        ));
+    }
+    Ok(Some(GeneratedImage {
+        source: format!("data:{media_type};base64,{}", BASE64.encode(bytes)),
+        media_type: media_type.to_string(),
+        width,
+        height,
+    }))
+}
+
+fn body_preview(bytes: &[u8]) -> String {
+    let take = bytes.len().min(12);
+    match std::str::from_utf8(&bytes[..bytes.len().min(80)]) {
+        Ok(text) => format!("starts {:?}", text.chars().take(48).collect::<String>()),
+        Err(_) => format!(
+            "binary {} bytes, starts {:02x?}",
+            bytes.len(),
+            &bytes[..take]
+        ),
+    }
+}
+
 fn parse_image_response(
     value: &Value,
     width: u32,
     height: u32,
 ) -> Result<GeneratedImage, ImageGenerationError> {
+    let fallback_media_type = media_type_from_output_format(value).unwrap_or("image/png");
     let item = value
         .get("data")
         .and_then(Value::as_array)
         .and_then(|items| items.first())
-        .ok_or_else(|| {
-            ImageGenerationError::InvalidResponse("response contained no image data".to_string())
-        })?;
+        .or_else(|| {
+            value
+                .get("output")
+                .and_then(Value::as_array)
+                .and_then(|items| {
+                    items
+                        .iter()
+                        .find(|item| image_payload_from_value(item).is_some())
+                })
+        })
+        .unwrap_or(value);
+    let Some(source) = image_payload_from_value(item).or_else(|| image_payload_from_value(value))
+    else {
+        return Err(ImageGenerationError::InvalidResponse(
+            "response contained no image data".to_string(),
+        ));
+    };
     let media_type = item
         .get("media_type")
         .and_then(Value::as_str)
+        .or_else(|| media_type_from_output_format(item))
+        .or(Some(fallback_media_type))
         .unwrap_or("image/png")
         .to_string();
-    let source = item
-        .get("b64_json")
-        .and_then(Value::as_str)
-        .map(|encoded| format!("data:{media_type};base64,{encoded}"))
-        .or_else(|| item.get("url").and_then(Value::as_str).map(str::to_string))
-        .ok_or_else(|| {
-            ImageGenerationError::InvalidResponse(
-                "response image has neither b64_json nor url".to_string(),
-            )
-        })?;
-    let (width, height) = item
-        .get("size")
-        .and_then(Value::as_str)
-        .and_then(|size| size.split_once('x'))
-        .and_then(|(width, height)| Some((width.parse().ok()?, height.parse().ok()?)))
+    let source = match source {
+        ImagePayload::Base64(encoded) => format!("data:{media_type};base64,{encoded}"),
+        ImagePayload::Url(url) => url.to_string(),
+    };
+    let (width, height) = size_from_value(item)
+        .or_else(|| size_from_value(value))
         .unwrap_or((width, height));
     Ok(GeneratedImage {
         source,
@@ -528,6 +764,42 @@ fn parse_image_response(
         width,
         height,
     })
+}
+
+enum ImagePayload<'a> {
+    Base64(&'a str),
+    Url(&'a str),
+}
+
+fn image_payload_from_value(value: &Value) -> Option<ImagePayload<'_>> {
+    value
+        .get("b64_json")
+        .and_then(Value::as_str)
+        .or_else(|| value.get("result").and_then(Value::as_str))
+        .map(ImagePayload::Base64)
+        .or_else(|| {
+            value
+                .get("url")
+                .and_then(Value::as_str)
+                .map(ImagePayload::Url)
+        })
+}
+
+fn media_type_from_output_format(value: &Value) -> Option<&'static str> {
+    match value.get("output_format").and_then(Value::as_str)? {
+        "png" => Some("image/png"),
+        "jpeg" | "jpg" => Some("image/jpeg"),
+        "webp" => Some("image/webp"),
+        _ => None,
+    }
+}
+
+fn size_from_value(value: &Value) -> Option<(u32, u32)> {
+    value
+        .get("size")
+        .and_then(Value::as_str)
+        .and_then(|size| size.split_once('x'))
+        .and_then(|(width, height)| Some((width.parse().ok()?, height.parse().ok()?)))
 }
 
 fn validate_media_type(media_type: &str) -> Result<(), ImageGenerationError> {
@@ -641,6 +913,7 @@ mod tests {
         assert_eq!(body["n"], 1);
         assert!(body.get("background").is_none());
         assert!(body.get("output_format").is_none());
+        assert!(body.get("stream").is_none());
     }
 
     #[test]
@@ -703,6 +976,36 @@ mod tests {
     }
 
     #[test]
+    fn gpt_image_2_openai_forces_json_envelope() {
+        let config = ImageGenerationConfig {
+            provider: "openai".to_string(),
+            model: "gpt-image-2".to_string(),
+            api_key: "secret".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+        };
+        let (_, body) = request_parts(&config, "portrait", 1000, 512, None).unwrap();
+        assert_eq!(body["model"], "gpt-image-2");
+        assert_eq!(body["stream"], false);
+        assert_eq!(body["background"], "opaque");
+        assert_eq!(body["n"], 1);
+        // 1000x512 snaps to 16px and is below gpt-image-2's pixel floor.
+        assert_eq!(body["size"], "1024x1024");
+    }
+
+    #[test]
+    fn gpt_image_2_snaps_supported_custom_size() {
+        let config = ImageGenerationConfig {
+            provider: "openai".to_string(),
+            model: "openai/gpt-image-2-2026-04-21".to_string(),
+            api_key: "secret".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+        };
+        let (_, body) = request_parts(&config, "portrait", 1000, 1000, None).unwrap();
+        assert_eq!(body["size"], "1008x1008");
+        assert_eq!(body["stream"], false);
+    }
+
+    #[test]
     fn parses_base64_and_url_responses() {
         let base64 =
             parse_image_response(&json!({ "data": [{ "b64_json": "AA==" }] }), 1024, 1024).unwrap();
@@ -714,6 +1017,85 @@ mod tests {
         )
         .unwrap();
         assert_eq!((url.width, url.height), (768, 1024));
+        let jpeg = parse_image_response(
+            &json!({
+                "data": [{ "b64_json": "AA==" }],
+                "output_format": "jpeg",
+                "size": "1536x1024"
+            }),
+            1024,
+            1024,
+        )
+        .unwrap();
+        assert_eq!(jpeg.media_type, "image/jpeg");
+        assert_eq!((jpeg.width, jpeg.height), (1536, 1024));
+        assert_eq!(jpeg.source, "data:image/jpeg;base64,AA==");
+    }
+
+    #[test]
+    fn parses_gpt_image_completed_sse_and_top_level_payloads() {
+        let sse = concat!(
+            "event: image_generation.partial_image\n",
+            "data: {\"type\":\"image_generation.partial_image\",\"b64_json\":\"partial\"}\n",
+            "\n",
+            "event: image_generation.completed\n",
+            "data: {\"type\":\"image_generation.completed\",\"b64_json\":\"AA==\",\"output_format\":\"png\",\"size\":\"1024x1536\"}\n",
+            "\n",
+        );
+        let value = decode_provider_body(sse.as_bytes(), Some("text/event-stream")).unwrap();
+        let parsed = parse_image_response(&value, 1024, 1024).unwrap();
+        assert_eq!(parsed.source, "data:image/png;base64,AA==");
+        assert_eq!((parsed.width, parsed.height), (1024, 1536));
+
+        let top_level = parse_image_response(
+            &json!({ "b64_json": "AA==", "output_format": "webp" }),
+            512,
+            512,
+        )
+        .unwrap();
+        assert_eq!(top_level.source, "data:image/webp;base64,AA==");
+
+        let responses = parse_image_response(
+            &json!({
+                "output": [{
+                    "type": "image_generation_call",
+                    "status": "completed",
+                    "result": "AA=="
+                }]
+            }),
+            1024,
+            1024,
+        )
+        .unwrap();
+        assert_eq!(responses.source, "data:image/png;base64,AA==");
+    }
+
+    #[test]
+    fn decodes_gzip_wrapped_image_json() {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        use std::io::Write;
+
+        let json = serde_json::to_vec(&json!({ "data": [{ "b64_json": "AA==" }] })).unwrap();
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&json).unwrap();
+        let gz = encoder.finish().unwrap();
+        let body = decompress_provider_body(&gz, Some("gzip")).unwrap();
+        let value = decode_provider_body(&body, Some("application/json")).unwrap();
+        let parsed = parse_image_response(&value, 1024, 1024).unwrap();
+        assert_eq!(parsed.source, "data:image/png;base64,AA==");
+    }
+
+    #[test]
+    fn decode_error_includes_body_preview() {
+        let error =
+            decode_provider_body(b"event: nope\nnot-json", Some("text/event-stream")).unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("error decoding response body"),
+            "{message}"
+        );
+        assert!(message.contains("event:"), "{message}");
     }
 
     #[test]
@@ -747,10 +1129,7 @@ mod tests {
         let gemini = config_from_dynamic(&config).unwrap();
         assert_eq!(gemini.provider, "gemini");
         assert_eq!(gemini.model, "gemini-3.1-flash-image");
-        assert_eq!(
-            gemini.base_url,
-            "https://generativelanguage.googleapis.com"
-        );
+        assert_eq!(gemini.base_url, "https://generativelanguage.googleapis.com");
 
         config.ai_image_provider = "openrouter".to_string();
         config.ai_image_source = "work-gemini".to_string();
