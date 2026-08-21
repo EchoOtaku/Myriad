@@ -36,6 +36,7 @@ pub mod ws_gateway;
 
 // Phase 4: Room 多方通信
 pub mod room;
+pub mod room_peers;
 
 // Phase 5: Ring 去中心化环网
 pub mod ring;

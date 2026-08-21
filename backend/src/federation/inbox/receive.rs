@@ -648,6 +648,8 @@ async fn dispatch_shared_activity<C: ConnectionTrait>(
     if matches!(activity_type, "Create" | "Announce") {
         if let Some(remote_id) = public_remote_id {
             distribute_to_followers(db, remote_id, activity_type, activity).await?;
+            record_room_peer_activity(db, remote_id, actor_url_str, activity_type, activity)
+                .await?;
         }
         return Ok(StatusCode::ACCEPTED);
     }
@@ -1795,6 +1797,81 @@ fn timeline_preview_from_object(object: &serde_json::Value) -> Option<String> {
             plain.chars().take(200).collect::<String>()
         })
         .filter(|s| !s.trim().is_empty())
+}
+
+/// 留存群邻实例的公开帖，即使本地没有任何人关注作者。
+///
+/// 共享收件箱此前只做粉丝分发：没有本地粉丝的公开帖验签通过后就被丢弃，连
+/// `federation_activities` 都不落。群邻语义要的正是这批 —— 同群不同实例、
+/// 互相没关注的用户，他们的帖子必须留存，Aro 首页才有东西可查。
+///
+/// 闸门层层收紧：签名与信任策略在 `post_shared_inbox` 已过；
+/// `may_distribute_to_followers` 挡掉定向给个人的活动；本函数再加两道 ——
+/// 必须寻址到 Public，且作者 domain 必须是群邻。不是群邻的实例照旧丢弃，
+/// 共享收件箱不因此变成开放中继。
+///
+/// 只写 `federation_activities`，不写 `federation_timeline`：后者是「订阅」
+/// 语义，按关注关系投递，群邻帖子进去会污染每个人的订阅页。
+async fn record_room_peer_activity<C: ConnectionTrait>(
+    db: &C,
+    remote_actor_id: i32,
+    actor_url_str: &str,
+    activity_type: &str,
+    activity: &serde_json::Value,
+) -> Result<(), (StatusCode, Json<serde_json::Value>)> {
+    let activity_id = activity["id"].as_str().unwrap_or("");
+    if activity_id.is_empty() {
+        return Ok(());
+    }
+
+    // `may_distribute_to_followers` also passes activities addressed only to the
+    // author's own followers collection. Those are legitimate for follower fan-out
+    // but have no business being retained here: the rooms feed only ever surfaces
+    // Public-addressed rows, so storing them would be retention without a reader.
+    let addressed_to_public = crate::federation::audience::collect_recipients(activity)
+        .iter()
+        .any(|r| crate::federation::audience::is_public_address(r));
+    if !addressed_to_public {
+        return Ok(());
+    }
+
+    let base_url = get_base_url().await;
+    let local_domain = extract_domain(&base_url).unwrap_or_default();
+    let actor_domain = extract_domain(actor_url_str).unwrap_or_default();
+    match crate::federation::room_peers::is_room_peer_domain(db, &local_domain, &actor_domain).await
+    {
+        Ok(true) => {}
+        Ok(false) => return Ok(()),
+        Err(e) => {
+            // 判定失败按「不是群邻」处理：宁可首页少一条，也不放行未经判定的来源。
+            tracing::warn!(
+                actor = %actor_url_str,
+                error = %e,
+                "Room-peer check failed; dropping public activity from shared inbox"
+            );
+            return Ok(());
+        }
+    }
+
+    let object_type = activity["object"]["type"].as_str().map(|s| s.to_string());
+    db.execute_raw(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        r#"INSERT INTO federation_activities
+               (activity_id, remote_actor_id, activity_type, object_type, object_json, is_local, received_at, published_at)
+           VALUES ($1, $2, $3, $4, $5, false, NOW(), NOW())
+           ON CONFLICT (activity_id) DO NOTHING"#,
+        [
+            activity_id.into(),
+            remote_actor_id.into(),
+            activity_type.into(),
+            object_type.into(),
+            activity["object"].clone().into(),
+        ],
+    ))
+    .await
+    .map_err(db_err)?;
+
+    Ok(())
 }
 
 /// 将共享收件箱的活动分发给所有关注该 Actor 的本地用户

@@ -306,7 +306,7 @@ pub async fn publish_content(
 
     // Best-effort fan-out: enqueue deliveries; never fail the publish on queue errors.
     // Direct 走 ExplicitRecipientsOnly —— 没有收件人就一个 inbox 都不投。
-    let delivered_queued = match crate::federation::audience::fan_out_scope(visibility_kind) {
+    let mut delivered_queued = match crate::federation::audience::fan_out_scope(visibility_kind) {
         FanOutScope::AllFollowers => {
             fan_out_to_followers(db, user_id, act_db_id, &activity_json).await
         }
@@ -319,6 +319,12 @@ pub async fn publish_content(
             0
         }
     };
+
+    // 群邻实例扇出：只有 Public 走这条。`Followers` 虽然也 fan-out，但收件人是
+    // 粉丝集合，不是 Public —— 投给群邻会把只给粉丝看的内容送出寻址范围。
+    if visibility_kind == Visibility::Public {
+        delivered_queued += fan_out_to_room_peers(db, act_db_id, &activity_json).await;
+    }
 
     tracing::info!(
         "📢 Published {} #{} as {} ({}); delivered_queued={}",
@@ -1374,6 +1380,94 @@ pub(crate) async fn fan_out_to_followers(
             "Fan-out: no accepted followers for user {} activity_db_id={}",
             user_id,
             activity_db_id
+        );
+    }
+
+    queued
+}
+
+/// 把一条公开活动投给群邻实例（见 `federation::room_peers`）。
+///
+/// 与粉丝扇出并行、不互斥：同一个实例既是粉丝又是群邻时，
+/// `(activity_id, target_inbox)` 唯一约束把重复投递吃掉，收方只收到一份。
+///
+/// 只对 `Visibility::Public` 调用 —— followers / direct 的收件人是明确的，
+/// 群邻不在其中，往那边投等于把非公开内容广播给没被寻址的实例。
+async fn fan_out_to_room_peers(
+    db: &DatabaseConnection,
+    activity_db_id: i32,
+    activity_json: &serde_json::Value,
+) -> u32 {
+    let peers = match crate::federation::room_peers::room_peer_inboxes(db).await {
+        Ok(peers) => peers,
+        Err(e) => {
+            tracing::error!(
+                activity_db_id,
+                error = %e,
+                "Room-peer fan-out query failed; public post reaches followers only"
+            );
+            return 0;
+        }
+    };
+    if peers.is_empty() {
+        return 0;
+    }
+
+    // 本地 actor 的帖子对本实例用户已经可见（federation_activities 就是查询源），
+    // 同域目标只会让投递线程对自己发一次 HTTP。
+    let base_url = get_base_url().await;
+    let local_domain = crate::federation::types::extract_domain(&base_url)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    let mut queued = 0u32;
+    let mut failed = 0u32;
+    for peer in peers {
+        if !local_domain.is_empty() && peer.domain == local_domain {
+            continue;
+        }
+        match db
+            .execute_raw(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                r#"INSERT INTO federation_delivery_queue
+                       (activity_id, target_inbox, target_domain, status, created_at)
+                   VALUES ($1, $2, $3, 'pending', NOW())
+                   ON CONFLICT (activity_id, target_inbox) DO NOTHING"#,
+                [
+                    activity_db_id.into(),
+                    peer.inbox_url.clone().into(),
+                    peer.domain.clone().into(),
+                ],
+            ))
+            .await
+        {
+            Ok(res) => queued += res.rows_affected() as u32,
+            Err(e) => {
+                failed += 1;
+                tracing::error!(
+                    activity_db_id,
+                    target_domain = %peer.domain,
+                    inbox = %peer.inbox_url,
+                    error = %e,
+                    "Room-peer fan-out enqueue failed"
+                );
+            }
+        }
+    }
+
+    if failed > 0 {
+        tracing::warn!(
+            activity_db_id,
+            queued,
+            failed,
+            "Room-peer fan-out partial"
+        );
+    } else if queued > 0 {
+        tracing::info!(
+            activity_db_id,
+            queued,
+            actor = activity_json["actor"].as_str().unwrap_or(""),
+            "Room-peer fan-out queued"
         );
     }
 
