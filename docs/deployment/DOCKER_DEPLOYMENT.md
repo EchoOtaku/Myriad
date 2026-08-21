@@ -107,14 +107,15 @@ database outage.
 | `DATABASE_URL` | yes\*\* | Backend connection string. Default compose builds it from `POSTGRES_PASSWORD` + `postgres` service. \*\*Required explicitly for external DB. |
 | `MYRIAD_DB_MODE` | no | Omit or default = local stack postgres + updater `pgdata` snapshots. Set `external` to skip pgdata snapshot/restore (operator owns DB backups). |
 | `JWT_SECRET` | yes | JWT signing secret; set this yourself before first start |
-| `ANALYTICS_SALT` | recommended | Salt for first-party visitor hashes on Data & stats. Generate with `openssl rand -hex 32`. If unset, a built-in default is used (fine for single-instance personal sites; set it for any shared/production deploy). |
+| `ANALYTICS_SALT` | recommended | Salt for first-party visitor hashes on Data & stats. Generate with `openssl rand -hex 32`. If unset/empty, production derives from `JWT_SECRET` (visitor IDs change if JWT rotates). |
 | `TZ` | optional | Process timezone for container local time (and thus Data-page “today” / daily buckets). Analytics does **not** hard-code an offset; it uses whatever the backend process sees as local time. Compose examples may set `Asia/Shanghai` for convenience — change to match your host. Keep the host/container clock correct. |
 | `CORS_ORIGINS` | yes (prod) | Comma-separated public frontend origin(s). Required when `ENVIRONMENT=production` (startup panics if empty). Never `*`. |
 | `BASE_URL` | no | Public HTTPS origin used for federation Actor URLs and OAuth fallback; required for federation |
 | `FRONTEND_URL` | no | Public frontend origin for redirects/profile links; usually the same as `BASE_URL` |
-| `MYRIAD_TAG` | yes | Backend/frontend image tag, maintained by updater |
-| `PROXY_TAG` | yes | Proxy image tag |
-| `UPDATER_TAG` | yes | Updater image tag |
+| `MYRIAD_TAG` | yes | Backend/frontend image tag, maintained by updater. Selects the image; compose does **not** overlay it as container `MYRIAD_VERSION`. |
+| `PROXY_TAG` | yes | Proxy image tag (image selector only). |
+| `UPDATER_IMAGE_REF` | yes (prod) | Exact `docker.io/somekawahitomi/myriad-updater@sha256:<64hex>`. Compose runs this pin. |
+| `UPDATER_TAG` | yes | First-install / dev fallback tag. After a digest pin exists, this is not the running TCB identity. |
 | `COMPOSE_PROJECT_NAME` | yes | Compose project name, default `myriad` |
 | `UPDATE_TOKEN` | yes | Updater token for updater/gateway; deploy script fills it if empty; **not** injected into backend or docker-guard |
 | `GUARD_SELF_UPDATE_TOKEN` | yes | Dedicated self-update capability; lives in `.env` and is copied to `./guard-policy/docker-guard.env` on first start; deploy generates it if empty; Guard + updater only |
@@ -134,9 +135,16 @@ database outage.
 | `PROXY_ALLOW_DIRECT_UPDATER` | no | Enables `/_updater/*` rescue path, default `false` |
 | `COSIGN_VERIFY` | no | Release signature policy: `strict` (default), `soft`, or `off` |
 | `UPDATER_ALLOW_INSECURE_COSIGN` | no | Required dual key when `COSIGN_VERIFY=off` (`true` / alias `COSIGN_INSECURE_OK`) |
+| `TAPP_STORE_STATS_ENABLED` | no | Official Tapp install counts (no secrets; 1/instance/app/day). Unset: on in `ENVIRONMENT=production` with a non-localhost `BASE_URL`. Compose stock sets `true`. Set `false` to opt out. |
+| `TAPP_STORE_STATS_URL` | no | Stats endpoint, default `https://stats.store.myriad.you` |
 
 Do not set `BACKEND_PORT` or `FRONTEND_PORT` for production. Those are internal
 container ports.
+
+Compose does **not** inject YouTube / OpenXBL / PSN keys — those are site
+settings. `PUBLIC_API_URL` is a frontend **build** stamp (empty = same-origin
+`/api`); the stock image does not read it at runtime. Container `MYRIAD_VERSION`
+comes from the image, not from `MYRIAD_TAG` / `UPDATER_TAG`.
 
 For the full port map, see [PORTS.md](./PORTS.md).
 
