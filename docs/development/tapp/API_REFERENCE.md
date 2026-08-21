@@ -1043,12 +1043,23 @@ const timeline = await Tapp.federation.getTimeline(); // 已登录个人 Timelin
 const following = await Tapp.federation.getFollowing();
 const followers = await Tapp.federation.getFollowers();
 
+const rooms = await Tapp.federation.getRoomsFeed();
+// rooms.audience === "rooms"；item.scope 为 "rooms"
+
 await Tapp.federation.follow("https://peer.example/users/alice");
 await Tapp.federation.unfollow("https://peer.example/users/alice");
 ```
 
 `getFeed()` 是角色感知入口：游客只读公开 Activity，已登录用户合并公开 Activity 与自己的
 Timeline。需要同时展示公开内容时优先 `getFeed()`；`getTimeline()` 保留为原始个人 Timeline。
+
+`getRoomsFeed()`（Myriad ≥ v0.3.38）回答的是另一个问题：**本实例加入的每个群聊里，出现过
+的每个实例的每个用户**的公开帖，去重后按时间倒序。范围按 **实例（domain）** 算而不是按成员
+算 —— 只要某个实例在某个已加入的房间里有过一名活跃成员，该实例上全部用户的公开帖都在结果
+里，本站用户也算。与关注关系无关：关注那条线是 `getFeed()` / `getTimeline()`。
+
+本地公开发帖会同时投递给粉丝和群邻实例的共享收件箱；只有 `visibility: "public"` 走群邻投
+递，`followers` / `direct` 的收件人是明确的，不会扩散出寻址范围。
 
 ### 媒体上传与 freeform Note
 

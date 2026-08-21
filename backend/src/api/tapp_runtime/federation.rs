@@ -12,8 +12,8 @@ use serde_json::{json, Value};
 
 use crate::services::permission_service::TappPermission;
 use crate::services::tapp_federation_feed::{
-    federation_feed_includes_personal, federation_feed_item, merge_federation_feed,
-    FederationFeedRowView,
+    dedupe_federation_feed, federation_feed_includes_personal, federation_feed_item,
+    merge_federation_feed, FederationFeedRowView,
 };
 
 use super::RuntimeGrantContext;
@@ -292,6 +292,158 @@ async fn load_public_feed(
     Ok(rows.into_iter().map(feed_item).collect())
 }
 
+/// Author domain for a `federation_activities` row.
+///
+/// `ra.domain` is authoritative when the actor document was fetched; otherwise
+/// fall back to the authority of whichever actor IRI the activity carries, and
+/// finally to the local domain for self-authored rows (they have no remote actor).
+fn author_domain_expr(local_domain_param: &str) -> String {
+    format!(
+        r#"lower(COALESCE(
+               NULLIF(ra.domain, ''),
+               substring(COALESCE(
+                   a.object_json ->> 'actor',
+                   a.object_json #>> '{{object,attributedTo}}',
+                   a.object_json ->> 'attributedTo',
+                   ra.actor_url
+               ) from '^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+)'),
+               CASE WHEN a.is_local THEN {local_domain_param}::text ELSE NULL END
+           ))"#
+    )
+}
+
+/// Rooms-feed SQL. `$1` = AP Public, `$2` = base URL, `$3` = local domain.
+///
+/// Split out from the loader so the statement can be inspected without a live
+/// connection — it nests three generated fragments and a brace-heavy JSON path
+/// syntax, which is exactly the shape that breaks silently at runtime.
+fn rooms_feed_sql(local_avatar: &str) -> String {
+    format!(
+        r#"WITH peer_domains AS ({peer_domains}),
+           rooms_items AS (
+               SELECT DISTINCT ON (a.activity_id)
+                      a.activity_id,
+                      a.activity_type,
+                      a.object_type,
+                      LEFT(COALESCE(
+                          a.object_json #>> '{{object,content}}',
+                          a.object_json #>> '{{object,source,content}}',
+                          a.object_json ->> 'content',
+                          a.object_json #>> '{{object,summary}}',
+                          a.object_json ->> 'summary'
+                      ), 200) AS content_preview,
+                      COALESCE(
+                          a.object_json -> 'object',
+                          a.object_json
+                      ) AS content_json,
+                      COALESCE(a.received_at, a.published_at) AS received_at,
+                      COALESCE(
+                          a.object_json ->> 'actor',
+                          a.object_json #>> '{{object,attributedTo}}',
+                          a.object_json ->> 'attributedTo',
+                          ra.actor_url
+                      ) AS actor_url,
+                      COALESCE(u.username, ra.username) AS username,
+                      ra.domain,
+                      COALESCE(u.display_name, ra.display_name, u.username, ra.username) AS display_name,
+                      COALESCE(
+                          CASE
+                              WHEN u.username IS NOT NULL AND ({local_avatar}) IS NOT NULL
+                              THEN $2 || '/users/' || u.username || '/avatar'
+                              ELSE NULL
+                          END,
+                          ra.avatar_url
+                      ) AS avatar_url,
+                      'rooms'::TEXT AS scope,
+                      a.is_local AS is_local
+               FROM federation_activities a
+               LEFT JOIN federation_published_content pc ON pc.activity_id = a.activity_id
+               LEFT JOIN users u ON u.id = a.user_id
+               LEFT JOIN federation_remote_actors ra ON ra.id = a.remote_actor_id
+               WHERE a.activity_type IN ('Create', 'Announce')
+                 AND (
+                     pc.visibility = 'public'
+                     OR (
+                         a.is_local = false
+                         AND (
+                             COALESCE((a.object_json -> 'to')::JSONB, '[]'::JSONB) ? $1
+                             OR COALESCE((a.object_json -> 'cc')::JSONB, '[]'::JSONB) ? $1
+                             OR COALESCE((a.object_json #> '{{object,to}}')::JSONB, '[]'::JSONB) ? $1
+                             OR COALESCE((a.object_json #> '{{object,cc}}')::JSONB, '[]'::JSONB) ? $1
+                         )
+                     )
+                 )
+                 AND {author_domain} IN (SELECT domain FROM peer_domains)
+               ORDER BY a.activity_id, COALESCE(a.received_at, a.published_at) DESC
+           )
+           SELECT *
+           FROM rooms_items
+           ORDER BY received_at DESC
+           LIMIT 100"#,
+        peer_domains = crate::federation::room_peers::room_peer_domains_sql("$3"),
+        local_avatar = local_avatar,
+        author_domain = author_domain_expr("$3"),
+    )
+}
+
+/// Public posts authored anywhere on an instance that shares a joined room with
+/// this one — the Aro Home feed.
+///
+/// Scope is the **instance**, not room membership: three instances in one group
+/// chat means all three see every user of the other two, whether or not those
+/// users ever joined the room. See [`crate::federation::room_peers`].
+///
+/// Restricted to `Create`/`Announce` so room-protocol activities (`myriad:Room*`,
+/// stored in the same table by the room fan-out) never surface as posts.
+async fn load_rooms_feed(db: &DatabaseConnection) -> Result<Vec<Value>, HttpError> {
+    let base_url = crate::federation::types::get_base_url().await;
+    let base = base_url.trim_end_matches('/').to_string();
+    let local_domain = crate::federation::types::extract_domain(&base_url)
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let rows = FeedRow::find_by_statement(Statement::from_sql_and_values(
+        DatabaseBackend::Postgres,
+        rooms_feed_sql(&local_user_avatar_expr("u")),
+        [AP_PUBLIC.into(), base.into(), local_domain.into()],
+    ))
+    .all(db)
+    .await
+    .map_err(|error| {
+        tracing::warn!(%error, "Failed to load room-peer federation feed");
+        db_unavailable()
+    })?;
+
+    Ok(rows.into_iter().map(feed_item).collect())
+}
+
+/// GET /api/tapp/federation/rooms-feed
+///
+/// Every public post from every user of every instance represented in a group
+/// chat this instance has joined, local users included, deduplicated.
+///
+/// Separate from [`get_federation_feed`] on purpose: that one answers "what did
+/// the people I subscribed to say", this one answers "what is my neighbourhood
+/// saying". Aro shows them as Home and Subscribed respectively.
+pub async fn get_federation_rooms_feed(
+    State(db): State<DatabaseConnection>,
+    runtime_grant: RuntimeGrantContext,
+) -> Result<Json<Value>, HttpError> {
+    runtime_grant.require(TappPermission::FederationRead)?;
+
+    let mut items = dedupe_federation_feed(load_rooms_feed(&db).await?);
+    // Guests get the same list without like/bookmark state (there is no "me").
+    if federation_feed_includes_personal(runtime_grant.subject_id()) {
+        enrich_feed_items(&db, runtime_grant.subject_id(), &mut items).await;
+    }
+    let total = items.len();
+
+    Ok(Json(json!({
+        "items": items,
+        "total": total,
+        "audience": "rooms",
+    })))
+}
+
 /// GET /api/tapp/federation/feed
 ///
 /// Guests receive public activities only. Authenticated users receive their
@@ -361,5 +513,36 @@ mod tests {
         );
 
         assert_eq!(merged[0]["activity_id"], "newer");
+    }
+
+    /// Guards the four clauses that decide what Home shows. Each was checked
+    /// against a real Postgres fixture with three instances in one room; losing
+    /// any of them fails silently (wrong rows, not an error).
+    #[test]
+    fn rooms_feed_sql_keeps_its_four_gates() {
+        let sql = super::rooms_feed_sql("NULL");
+
+        // 1. Posts only — room-protocol activities live in the same table.
+        assert!(sql.contains("a.activity_type IN ('Create', 'Announce')"));
+        // 2. Public only — local `followers`/`direct` posts and inbound DMs stay out.
+        assert!(sql.contains("pc.visibility = 'public'"));
+        assert!(sql.contains("a.object_json -> 'to'"));
+        // 3. Scoped to instances sharing a joined room, local instance included.
+        assert!(sql.contains("IN (SELECT domain FROM peer_domains)"));
+        assert!(sql.contains("WITH peer_domains AS"));
+        // 4. One row per activity, newest first.
+        assert!(sql.contains("DISTINCT ON (a.activity_id)"));
+        assert!(sql.contains("ORDER BY received_at DESC"));
+    }
+
+    #[test]
+    fn author_domain_falls_back_from_remote_actor_to_iri_to_local() {
+        let expr = super::author_domain_expr("$3");
+        // A member whose actor document has not been fetched yet still resolves.
+        assert!(expr.contains("NULLIF(ra.domain, '')"));
+        assert!(expr.contains("a.object_json ->> 'actor'"));
+        assert!(expr.contains("attributedTo"));
+        // Self-authored rows have no remote actor at all.
+        assert!(expr.contains("CASE WHEN a.is_local THEN $3::text"));
     }
 }

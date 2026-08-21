@@ -433,6 +433,14 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::optional_auth_middleware,
             )),
         )
+        // Room-peer feed: public posts from every instance sharing a joined group chat.
+        .route(
+            "/api/tapp/federation/rooms-feed",
+            get(api::tapp_runtime::get_federation_rooms_feed).route_layer(from_fn_with_state(
+                app_state.clone(),
+                middleware::auth::optional_auth_middleware,
+            )),
+        )
         // Tapp P1 扩展 API
         // Report CRUD -  REQUIRE AUTHENTICATION
         .route(

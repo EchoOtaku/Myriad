@@ -885,6 +885,8 @@ export function generateFullSDK(
       rotateKeys: (confirm) => sendRequest('federation', 'rotateKeys', [confirm]),
       // 时间线
       getFeed: () => sendRequest('federation', 'getFeed', []),
+      /** Public posts from every instance sharing a group chat this one joined. */
+      getRoomsFeed: () => sendRequest('federation', 'getRoomsFeed', []),
       getTimeline: () => sendRequest('federation', 'getTimeline', []),
       /** Resolve public object by id (quote click-through; no follow required). */
       getObject: (objectId) => sendRequest('federation', 'getObject', [objectId]),

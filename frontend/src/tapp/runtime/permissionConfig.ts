@@ -321,6 +321,7 @@ export const PERMISSION_MAP: ReadonlyMap<string, TappPermission | 'public'> =
     // overwrites the local keypair and fans out Update(Person) to followers.
     ['federation.rotateKeys', 'federation:post'],
     ['federation.getFeed', 'federation:read'],
+    ['federation.getRoomsFeed', 'federation:read'],
     ['federation.getTimeline', 'federation:read'],
     ['federation.getObject', 'federation:read'],
     ['federation.getFollowing', 'federation:read'],

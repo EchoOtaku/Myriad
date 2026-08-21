@@ -26,7 +26,10 @@ import { ApiError } from '../../services/api'
 import { federationApi } from '../../services/federationApi'
 import { xShareApi } from '../../services/xShareApi'
 import { isKnownGuest } from '../../utils/authState'
-import { getFederationFeed } from '../services/TappApiService'
+import {
+  getFederationFeed,
+  getFederationRoomsFeed,
+} from '../services/TappApiService'
 import {
   federationMediaUrlRejectionReason,
   isValidFederationMediaUrl,
@@ -313,6 +316,20 @@ export function registerFederationHandlers(
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to get feed',
+      }
+    }
+  })
+
+  bridge.registerHandler('federation.getRoomsFeed', async () => {
+    try {
+      const runtimeGrant = await bridge.getRuntimeGrant()
+      const data = await getFederationRoomsFeed(runtimeGrant)
+      return { success: true, data }
+    } catch (error) {
+      return {
+        success: false,
+        error:
+          error instanceof Error ? error.message : 'Failed to get rooms feed',
       }
     }
   })

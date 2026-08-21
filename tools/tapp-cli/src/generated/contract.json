@@ -1853,6 +1853,7 @@
       "federation.getIdentity": "federation:read",
       "federation.rotateKeys": "federation:post",
       "federation.getFeed": "federation:read",
+      "federation.getRoomsFeed": "federation:read",
       "federation.getTimeline": "federation:read",
       "federation.getObject": "federation:read",
       "federation.getFollowing": "federation:read",

@@ -493,6 +493,7 @@ Interaction 的动作截止时间独立于终态保留时间；所有副本都�
 | 方法 | 路径                         | 身份 | 说明 |
 | ---- | ---------------------------- | ---- | ---- |
 | GET  | `/api/tapp/federation/feed`  | 可选认证 + Runtime Grant | 需 Grant 含 `federation:read`。游客只返回公开活动（`audience: "public"`）；已登录用户返回公开 Feed 与个人时间线的合并结果（`audience: "public+personal"`，同 `activity_id` 时个人条目优先，整体按时间新到旧，条数有上限）。响应形如 `{ items, total, audience }`。 |
+| GET  | `/api/tapp/federation/rooms-feed` | 可选认证 + Runtime Grant | 需 Grant 含 `federation:read`。本实例加入的每个群聊里出现过的每个**实例**（domain）上全部用户的公开帖，去重后按时间新到旧（`audience: "rooms"`，`item.scope: "rooms"`，条数有上限）。与关注关系无关。响应形如 `{ items, total, audience }`。 |
 | GET  | `/api/federation/public/rooms/{room_id}` | **无认证** | 仅 `is_public` 群卡片（name、owner、home_server、member_count 等）。**不**走 Runtime Grant / `host_attribution`（与 WebFinger 同类公开发现）。跨实例 `joinRoom` 用此端点物化本地行。 |
 | GET  | `/api/federation/public/limits` | **无认证** | 活的消息/Note 媒体上限（`message_payload_bytes`、`note_image_bytes`、`note_video_bytes`、`profile`）。宿主桥用来对齐内存节约档；**不**走 Runtime Grant。 |
 

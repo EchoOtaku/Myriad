@@ -301,6 +301,7 @@ export interface TappSdk {
     getRoomMembers(...args: unknown[]): Promise<unknown> // permission: federation:read
     getRoomMessages(...args: unknown[]): Promise<unknown> // permission: federation:read
     getRooms(...args: unknown[]): Promise<unknown> // permission: federation:read
+    getRoomsFeed(...args: unknown[]): Promise<unknown> // permission: federation:read
     getTimeline(...args: unknown[]): Promise<unknown> // permission: federation:read
     getTransfer(...args: unknown[]): Promise<unknown> // permission: federation:files
     getTrustPolicy(...args: unknown[]): Promise<unknown> // permission: federation:trust

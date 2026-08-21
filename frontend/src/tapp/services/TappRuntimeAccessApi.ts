@@ -65,6 +65,20 @@ export async function getFederationFeed(
   return apiRequest('/api/tapp/federation/feed', { runtimeGrant })
 }
 
+export interface FederationRoomsFeedResponse extends TimelineResponse {
+  audience: 'rooms'
+}
+
+/**
+ * Public posts from every instance that shares a joined group chat with this
+ * one — scoped by instance, not by who the viewer follows.
+ */
+export async function getFederationRoomsFeed(
+  runtimeGrant: string,
+): Promise<FederationRoomsFeedResponse> {
+  return apiRequest('/api/tapp/federation/rooms-feed', { runtimeGrant })
+}
+
 export interface PrepareDataExchangeRequest {
   targetTappId: string
   exportId: string

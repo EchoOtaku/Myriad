@@ -122,7 +122,7 @@ pub use shortcuts::{list_shortcuts, register_shortcut, unregister_shortcut};
 pub use events::{publish_event, stream_events};
 
 // Federation API
-pub use federation::get_federation_feed;
+pub use federation::{get_federation_feed, get_federation_rooms_feed};
 
 // Metrics API
 pub use metrics::{get_rate_limit_status, get_tapp_metrics};
