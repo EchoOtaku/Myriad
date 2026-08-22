@@ -122,22 +122,14 @@ impl EnvFile {
         Ok(())
     }
 
-    /// Persist atomically when the parent directory is writable.
+    /// Persist `.env`.
     ///
-    /// Official compose bind-mounts `.env` as a file over a read-only deploy
-    /// root. Sibling `.bak` / `.tmp` creates then hit EROFS (os error 30) and
-    /// SwapTag used to fail after a successful snapshot. Fall back to a backup
-    /// under `UPDATER_STATE_DIR` and an in-place write of the existing file.
+    /// If the parent directory allows sibling creates, use tmp+rename (crash-safe).
+    /// Official compose bind-mounts `.env` over a read-only deploy root — there
+    /// we snapshot into `UPDATER_STATE_DIR` and write the existing inode in place.
+    /// Rename onto a file bind can still return EBUSY; that falls back in place.
     pub fn save(&self) -> Result<()> {
-        if self.path.exists() {
-            snapshot_before_save(&self.path)?;
-        }
-        let bytes = self.render().into_bytes();
-        match atomic::write_atomic_bytes(&self.path, &bytes) {
-            Ok(()) => Ok(()),
-            Err(e) if is_ro_fs(&e) => write_existing_file_in_place(&self.path, &bytes),
-            Err(e) => Err(e),
-        }
+        persist_env_bytes(&self.path, self.render().as_bytes())
     }
 
     fn render(&self) -> String {
@@ -163,6 +155,27 @@ impl EnvFile {
         }
         s
     }
+}
+
+/// Write raw env-file bytes with the same probe-first policy as [`EnvFile::save`].
+///
+/// TCB rollback restores the exact pre-handoff snapshot and must not take a
+/// sibling tmp+rename path that official RO deploy roots cannot complete.
+pub(crate) fn persist_env_bytes(path: &Path, bytes: &[u8]) -> Result<()> {
+    if parent_allows_sibling_creates(path) {
+        if path.exists() {
+            snapshot_before_save(path)?;
+        }
+        return match atomic::write_atomic_bytes(path, bytes) {
+            Ok(()) => Ok(()),
+            Err(e) if needs_in_place_env_write(&e) => write_existing_file_in_place(path, bytes),
+            Err(e) => Err(e),
+        };
+    }
+    if path.exists() {
+        snapshot_into_state_dir(path)?;
+    }
+    write_existing_file_in_place(path, bytes)
 }
 
 fn is_valid_key(k: &str) -> bool {
@@ -199,20 +212,25 @@ fn quote_if_needed(v: &str) -> String {
     format!("\"{escaped}\"")
 }
 
-fn is_ro_fs(err: &UpdaterError) -> bool {
+fn parent_allows_sibling_creates(path: &Path) -> bool {
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    nix::unistd::access(parent, nix::unistd::AccessFlags::W_OK).is_ok()
+}
+
+fn needs_in_place_env_write(err: &UpdaterError) -> bool {
     match err {
         UpdaterError::Io(error) => {
-            error.kind() == std::io::ErrorKind::ReadOnlyFilesystem
-                || error.raw_os_error() == Some(libc_erofs())
-                || error.kind() == std::io::ErrorKind::PermissionDenied
+            matches!(
+                error.kind(),
+                std::io::ErrorKind::ReadOnlyFilesystem
+                    | std::io::ErrorKind::PermissionDenied
+                    | std::io::ErrorKind::ResourceBusy
+            ) || matches!(error.raw_os_error(), Some(30) | Some(16))
         }
         _ => false,
     }
-}
-
-fn libc_erofs() -> i32 {
-    // Linux/macOS EROFS. Keep the numeric fallback so older rustc still matches.
-    30
 }
 
 fn snapshot_before_save(path: &Path) -> Result<()> {
@@ -221,7 +239,7 @@ fn snapshot_before_save(path: &Path) -> Result<()> {
         Ok(_) => rotate_backups(path, 5),
         Err(error) => {
             let wrapped = UpdaterError::from(error);
-            if !is_ro_fs(&wrapped) {
+            if !needs_in_place_env_write(&wrapped) {
                 return Err(wrapped);
             }
             snapshot_into_state_dir(path)
@@ -235,10 +253,7 @@ fn snapshot_into_state_dir(path: &Path) -> Result<()> {
     };
     let dir = PathBuf::from(state).join("env-backups");
     std::fs::create_dir_all(&dir)?;
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(".env");
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or(".env");
     let backup = dir.join(format!(
         "{name}.bak.{}",
         Utc::now().format("%Y%m%dT%H%M%SZ")
@@ -375,6 +390,52 @@ mod tests {
         assert!(std::fs::read_to_string(&p)
             .unwrap()
             .contains("MYRIAD_TAG=dev-7a7f66e"));
+    }
+
+    #[test]
+    fn persist_env_bytes_over_read_only_parent_keeps_existing_inode() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("ro");
+        std::fs::create_dir(&parent).unwrap();
+        let p = parent.join(".env");
+        std::fs::write(&p, "UPDATER_TAG=v0.3.37\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut ro = std::fs::metadata(&parent).unwrap().permissions();
+            ro.set_mode(0o555);
+            std::fs::set_permissions(&parent, ro).unwrap();
+        }
+        let wrote = persist_env_bytes(&p, b"UPDATER_TAG=v0.3.38\nUPDATER_IMAGE_REF=x\n");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut rw = std::fs::metadata(&parent).unwrap().permissions();
+            rw.set_mode(0o755);
+            std::fs::set_permissions(&parent, rw).unwrap();
+        }
+        wrote.unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&p).unwrap(),
+            "UPDATER_TAG=v0.3.38\nUPDATER_IMAGE_REF=x\n"
+        );
+    }
+
+    #[test]
+    fn file_bind_style_io_errors_use_in_place_write() {
+        for (kind, code) in [
+            (std::io::ErrorKind::ReadOnlyFilesystem, 30),
+            (std::io::ErrorKind::PermissionDenied, 13),
+            (std::io::ErrorKind::ResourceBusy, 16),
+        ] {
+            let err = UpdaterError::from(std::io::Error::from_raw_os_error(code));
+            assert!(
+                needs_in_place_env_write(&err),
+                "{kind:?} / os {code} should fall back to in-place write"
+            );
+        }
+        let other = UpdaterError::from(std::io::Error::from(std::io::ErrorKind::NotFound));
+        assert!(!needs_in_place_env_write(&other));
     }
 
     #[test]

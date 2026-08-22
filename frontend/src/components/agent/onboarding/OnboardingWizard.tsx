@@ -1,4 +1,5 @@
 import type {
+  ClothingStyle,
   LifeGender,
   OnboardingHeaderChrome,
   OnboardingStep,
@@ -10,6 +11,7 @@ import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
 import { invalidatePublicConfigCache } from '../../../utils/requestDedup'
 import {
+  clothingStyleFromProfile,
   emptyPersona,
   flattenPersona,
   onboardingSeedsFromProfile,
@@ -70,6 +72,9 @@ export default function OnboardingWizard({
     useState<UpperBodyVisualIdentity | null>(() =>
       visualIdentityFromProfile(initialVisualProfile),
     )
+  const [clothingStyle, setClothingStyle] = useState<ClothingStyle | null>(() =>
+    clothingStyleFromProfile(initialVisualProfile),
+  )
   const [visualRequirements, setVisualRequirements] = useState(() => {
     const saved = initialVisualProfile?.extraRequirements
     return typeof saved === 'string' ? saved : ''
@@ -135,6 +140,7 @@ export default function OnboardingWizard({
   const confirmedVisualProfile = () => ({
     gender: gender ?? 'unspecified',
     language: locale,
+    ...(clothingStyle ? { clothingStyle } : {}),
     ...(visualRequirements.trim()
       ? { extraRequirements: visualRequirements.trim() }
       : {}),
@@ -219,8 +225,10 @@ export default function OnboardingWizard({
             {step === 4 && (
               <CharacterVisualDesignStep
                 identity={visualIdentity}
+                clothingStyle={clothingStyle}
                 requirements={visualRequirements}
                 busy={busy}
+                onClothingStyle={setClothingStyle}
                 onIdentity={setVisualIdentity}
                 onRequirements={setVisualRequirements}
                 onBusyChange={(next) => {

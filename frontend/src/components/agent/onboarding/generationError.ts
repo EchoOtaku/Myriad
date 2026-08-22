@@ -3,6 +3,7 @@ import { ApiError } from '../../../services/api'
 const HOST_GENERATION_CODES = new Set([
   'report_dna_failed',
   'pro_unavailable',
+  'standard_unavailable',
   'name_suggest_failed',
   'persona_draft_failed',
   'visual_design_failed',

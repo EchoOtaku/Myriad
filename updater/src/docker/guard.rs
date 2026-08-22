@@ -2611,9 +2611,8 @@ fn validate_mount_pair(
                 return Err("updater mounts must be fixed host bind paths".into());
             }
             if exact_host_pair("", "/host/compose") {
-                if !read_only {
-                    return Err("updater deployment root must be mounted read-only".into());
-                }
+                // Writable root is required for v0.3.37 SwapTag (sibling .env
+                // tmp/bak). Official RO+file-bind stacks still match this pair.
                 return validate_visible_host_directory(state, "");
             }
             if exact_host_pair(".env", "/host/compose/.env") {

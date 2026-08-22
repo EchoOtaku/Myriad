@@ -11,6 +11,8 @@ export interface OnboardingHeaderAction {
 export interface OnboardingHeaderChrome {
   description: string
   action?: OnboardingHeaderAction
+  /** Return true when this page handled back and the wizard should stay. */
+  onBack?: () => boolean
 }
 
 /** 设定引导二级页标题栏，由引导页合成后交给设置壳 */
@@ -33,6 +35,64 @@ export const GENDER_OPTIONS: LifeGender[] = [
   'unspecified',
 ]
 
+export type NameStyle = 'chinese' | 'japanese' | 'european' | 'mythic'
+
+export const NAME_STYLE_OPTIONS: NameStyle[] = [
+  'chinese',
+  'japanese',
+  'european',
+  'mythic',
+]
+
+export function defaultNameStyle(locale: string): NameStyle {
+  if (locale.startsWith('zh')) return 'chinese'
+  if (locale.startsWith('ja')) return 'japanese'
+  return 'european'
+}
+
+export type ClothingStyle =
+  | 'everyday'
+  | 'uniform'
+  | 'fantasy'
+  | 'urban'
+  | 'east-asian'
+  | 'japanese'
+  | 'sci-fi'
+  | 'formal'
+  | 'sport'
+  | 'idol'
+  | 'gothic'
+  | 'lounge'
+  | 'royal'
+  | 'mystic'
+  | 'travel'
+  | 'vintage'
+  | 'rain'
+
+export const CLOTHING_STYLE_OPTIONS: ClothingStyle[] = [
+  'everyday',
+  'uniform',
+  'fantasy',
+  'urban',
+  'east-asian',
+  'japanese',
+  'sci-fi',
+  'formal',
+  'sport',
+  'idol',
+  'gothic',
+  'lounge',
+  'royal',
+  'mystic',
+  'travel',
+  'vintage',
+  'rain',
+]
+
+export function clothingStylePreview(style: ClothingStyle): string {
+  return `/life/clothing/${style}.svg`
+}
+
 export interface LifeOnboardingTag {
   id: string
   label: string
@@ -48,11 +108,14 @@ export interface StructuredPersona {
   speechStyle: string
 }
 
-export const UPPER_BODY_VISUAL_IDENTITY_KEYS = [
+export const CHARACTER_VISUAL_KEYS = [
   'faceDesign',
   'eyeDesign',
   'hairShape',
   'hairLayerPlan',
+] as const
+
+export const OUTFIT_VISUAL_KEYS = [
   'upperBodySilhouette',
   'outfitConstruction',
   'sleeveArmDesign',
@@ -62,13 +125,23 @@ export const UPPER_BODY_VISUAL_IDENTITY_KEYS = [
   'motif',
 ] as const
 
+export const UPPER_BODY_VISUAL_IDENTITY_KEYS = [
+  ...CHARACTER_VISUAL_KEYS,
+  ...OUTFIT_VISUAL_KEYS,
+] as const
+
+export type CharacterVisualKey = (typeof CHARACTER_VISUAL_KEYS)[number]
+export type OutfitVisualKey = (typeof OUTFIT_VISUAL_KEYS)[number]
 export type UpperBodyVisualIdentityKey =
   (typeof UPPER_BODY_VISUAL_IDENTITY_KEYS)[number]
 
-export type UpperBodyVisualIdentity = Record<
-  UpperBodyVisualIdentityKey,
-  string
->
+export type CharacterVisual = Record<CharacterVisualKey, string>
+export type OutfitVisual = Record<OutfitVisualKey, string>
+
+export interface UpperBodyVisualIdentity {
+  character: CharacterVisual
+  outfit: OutfitVisual
+}
 
 export const UPPER_BODY_VISUAL_IDENTITY_LIMITS: Record<
   UpperBodyVisualIdentityKey,
@@ -87,17 +160,65 @@ export const UPPER_BODY_VISUAL_IDENTITY_LIMITS: Record<
   motif: 500,
 }
 
+function parseFieldGroup<K extends string>(
+  source: Record<string, unknown>,
+  keys: readonly K[],
+): Record<K, string> | null {
+  const entries = keys.map((key) => {
+    const field = typeof source[key] === 'string' ? source[key].trim() : ''
+    return [key, field] as const
+  })
+  if (entries.some(([, field]) => !field)) return null
+  return Object.fromEntries(entries) as Record<K, string>
+}
+
 export function parseUpperBodyVisualIdentity(
   value: unknown,
 ): UpperBodyVisualIdentity | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const source = value as Record<string, unknown>
-  const entries = UPPER_BODY_VISUAL_IDENTITY_KEYS.map((key) => {
-    const field = typeof source[key] === 'string' ? source[key].trim() : ''
-    return [key, field] as const
-  })
-  if (entries.some(([, field]) => !field)) return null
-  return Object.fromEntries(entries) as UpperBodyVisualIdentity
+  const characterSource =
+    source.character &&
+    typeof source.character === 'object' &&
+    !Array.isArray(source.character)
+      ? (source.character as Record<string, unknown>)
+      : source
+  const outfitSource =
+    source.outfit &&
+    typeof source.outfit === 'object' &&
+    !Array.isArray(source.outfit)
+      ? (source.outfit as Record<string, unknown>)
+      : source
+  const character = parseFieldGroup(characterSource, CHARACTER_VISUAL_KEYS)
+  const outfit = parseFieldGroup(outfitSource, OUTFIT_VISUAL_KEYS)
+  if (!character || !outfit) return null
+  return { character, outfit }
+}
+
+export function visualField(
+  identity: UpperBodyVisualIdentity,
+  key: UpperBodyVisualIdentityKey,
+): string {
+  return key in identity.character
+    ? identity.character[key as CharacterVisualKey]
+    : identity.outfit[key as OutfitVisualKey]
+}
+
+export function withVisualField(
+  identity: UpperBodyVisualIdentity,
+  key: UpperBodyVisualIdentityKey,
+  value: string,
+): UpperBodyVisualIdentity {
+  if (key in identity.character) {
+    return {
+      ...identity,
+      character: { ...identity.character, [key]: value },
+    }
+  }
+  return {
+    ...identity,
+    outfit: { ...identity.outfit, [key]: value },
+  }
 }
 
 export function visualIdentityFromProfile(
@@ -107,6 +228,26 @@ export function visualIdentityFromProfile(
   return parseUpperBodyVisualIdentity(
     (value as Record<string, unknown>).visualIdentity,
   )
+}
+
+export function clothingStyleFromProfile(value: unknown): ClothingStyle | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const source = value as Record<string, unknown>
+  const outfit =
+    source.visualIdentity &&
+    typeof source.visualIdentity === 'object' &&
+    !Array.isArray(source.visualIdentity)
+      ? (source.visualIdentity as Record<string, unknown>).outfit
+      : null
+  const outfitStyle =
+    outfit && typeof outfit === 'object' && !Array.isArray(outfit)
+      ? (outfit as Record<string, unknown>).clothingStyle
+      : null
+  const saved = source.clothingStyle ?? outfitStyle
+  return typeof saved === 'string' &&
+    (CLOTHING_STYLE_OPTIONS as string[]).includes(saved)
+    ? (saved as ClothingStyle)
+    : null
 }
 
 /** Resume at the first incomplete persisted asset stage. */

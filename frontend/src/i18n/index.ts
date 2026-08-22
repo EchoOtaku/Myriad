@@ -1277,6 +1277,7 @@ export interface TranslationKeys {
     agentLifeMood: string
     agentLifeActivity: string
     agentLifeEmpty: string
+    agentLifeEmptyLead: string
     agentLifeNeedsReports: string
     agentLifeDelete: string
     agentLifeDeleteConfirm: string
@@ -2099,6 +2100,13 @@ export interface TranslationKeys {
       randomName: string
       randomNameBusy: string
       randomNameFailed: string
+      nameStyleLabel: string
+      nameStyle: {
+        chinese: string
+        japanese: string
+        european: string
+        mythic: string
+      }
       genderLabel: string
       gender: {
         female: string
@@ -2107,6 +2115,30 @@ export interface TranslationKeys {
         unspecified: string
       }
       genderRequired: string
+      clothingStyleLabel: string
+      clothingStyleRequired: string
+      visualStyleAsk: string
+      visualNotesAsk: string
+      visualBackToStyle: string
+      clothingStyle: {
+        everyday: string
+        uniform: string
+        fantasy: string
+        urban: string
+        'east-asian': string
+        japanese: string
+        'sci-fi': string
+        formal: string
+        sport: string
+        idol: string
+        gothic: string
+        lounge: string
+        royal: string
+        mystic: string
+        travel: string
+        vintage: string
+        rain: string
+      }
       extraLabel: string
       extraHint: string
       extraPlaceholder: string
@@ -2133,12 +2165,15 @@ export interface TranslationKeys {
       saveFailed: string
       personaIncompleteHint: string
       proUnavailable: string
+      standardUnavailable: string
       visualDesignScopeTitle: string
       visualDesignScopeHint: string
       visualRequirements: string
       visualRequirementsHint: string
       visualRequirementsPlaceholder: string
       visualDesignPreview: string
+      visualGroupCharacter: string
+      visualGroupOutfit: string
       visualFaceDesign: string
       visualEyeDesign: string
       visualHairShape: string
@@ -2159,6 +2194,7 @@ export interface TranslationKeys {
       visualDesignLanguageFailed: string
       visualDesignRequired: string
       visualDesignSaveFailed: string
+      portraitTalkLead: string
       portraitLoading: string
       portraitEmpty: string
       portraitContractTitle: string

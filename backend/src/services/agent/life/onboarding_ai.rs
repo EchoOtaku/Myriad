@@ -35,29 +35,44 @@ pub async fn suggest_display_name(
     gender: &str,
     avoid_name: Option<&str>,
     language: &str,
+    name_style: &str,
 ) -> Result<String, OnboardingAiError> {
     let seeds = sanitize_onboarding_tags_for_language(selected_tags, language);
+    let style = normalize_name_style(name_style, language);
     let avoid = avoid_name
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.chars().take(40).collect::<String>());
+    let roll_id = format!("n{}", uuid::Uuid::new_v4().simple());
+    let (japanese_form, prefer_chars) = japanese_name_length_hint(&roll_id);
     let input = json!({
         "pipeline": "onboarding/name",
         "task": "recommend_display_name",
-        "rollId": format!("n{}", uuid::Uuid::new_v4().simple()),
+        "rollId": roll_id,
         "language": language,
+        "nameStyle": style,
         "genderPresentation": normalize_gender(gender),
         "selectedTags": seeds,
         "avoidName": avoid.clone().unwrap_or_default(),
-        "nameSchool": match language {
-            "zh-CN" => "liyue-xianzhou-meaning-first",
-            "ja-JP" => "inazuma-meaning-first",
+        "nameSchool": match style {
+            "chinese" => "liyue-xianzhou-meaning-first",
+            "japanese" => "wa-style-modern-or-inazuma",
+            "mythic" => "classical-myth-etymology-first",
             _ => "word-name-etymology-first",
+        },
+        "nameLength": match style {
+            "japanese" => json!({
+                "min": 2,
+                "max": 5,
+                "preferChars": prefer_chars,
+                "form": japanese_form,
+            }),
+            _ => Value::Null,
         },
     })
     .to_string();
-    let raw = run_onboarding_call(NAME_SYSTEM_PROMPT, &input).await?;
-    let name = parse_display_name_suggestion(&raw, avoid.as_deref(), language)
+    let raw = run_onboarding_call_on_tier(ModelTier::Standard, NAME_SYSTEM_PROMPT, &input).await?;
+    let name = parse_display_name_suggestion(&raw, avoid.as_deref(), style)
         .ok_or(OnboardingAiError::UnusableResponse)?;
     Ok(name)
 }
@@ -81,11 +96,13 @@ pub async fn suggest_persona(
         "selectedTags": tags,
         "extraRequirements": extra_requirements.chars().take(500).collect::<String>(),
         "fullness": {
-            "summaryChars": "80-280",
+            "summaryChars": "80-220",
             "temperamentCount": "5-8",
             "likesCount": "4-6",
+            "likesAreHabitsNotScenes": true,
             "drivesCount": "4-6",
-            "guidance": "2-4 sentences each for socialStyle and speechStyle",
+            "guidance": "1-2 sentences each for socialStyle and speechStyle",
+            "noLiterarySludge": true,
         },
     })
     .to_string();
@@ -93,6 +110,7 @@ pub async fn suggest_persona(
     let parsed = parse_json_object(&raw).ok_or(OnboardingAiError::UnusableResponse)?;
     if !persona_draft_meets_generation_quality(&parsed)
         || !persona_matches_ui_language(&parsed, language)
+        || myriad_digital_life::persona_has_literary_sludge(&parsed)
     {
         return Err(OnboardingAiError::UnusableResponse);
     }
@@ -107,9 +125,11 @@ pub async fn suggest_visual_design(
     language: &str,
     persona: &Value,
     gender: &str,
+    clothing_style: &str,
     visual_requirements: &str,
     existing_visual_identity: Option<&Value>,
     regenerate: bool,
+    keep_character: bool,
 ) -> Result<Value, OnboardingAiError> {
     let persona_input = visual_design_persona_input(persona);
     let mut last_error = OnboardingAiError::UnusableResponse;
@@ -119,9 +139,11 @@ pub async fn suggest_visual_design(
             language,
             &persona_input,
             gender,
+            clothing_style,
             visual_requirements,
             existing_visual_identity,
             regenerate,
+            keep_character,
         )
         .await
         {
@@ -140,10 +162,19 @@ async fn suggest_visual_design_once(
     language: &str,
     persona_input: &Value,
     gender: &str,
+    clothing_style: &str,
     visual_requirements: &str,
     existing_visual_identity: Option<&Value>,
     regenerate: bool,
+    keep_character: bool,
 ) -> Result<Value, OnboardingAiError> {
+    let clothing_style = myriad_digital_life::normalize_clothing_style(clothing_style)
+        .ok_or(OnboardingAiError::UnusableResponse)?;
+    let clothing_grammar = myriad_digital_life::clothing_style_grammar(clothing_style)
+        .ok_or(OnboardingAiError::UnusableResponse)?;
+    let kept_character = keep_character
+        .then(|| existing_visual_identity.and_then(myriad_digital_life::character_module))
+        .flatten();
     let input = json!({
         "pipeline": "onboarding/upper-body-visual-design",
         "task": "design_upper_body_visual_identity",
@@ -151,12 +182,27 @@ async fn suggest_visual_design_once(
         "name": name.chars().take(50).collect::<String>(),
         "language": language,
         "genderPresentation": normalize_gender(gender),
+        "clothingStyle": clothing_style,
+        "clothingStyleGrammar": clothing_grammar,
+        "keepCharacter": kept_character.is_some(),
+        "existingCharacter": kept_character.clone().unwrap_or(Value::Null),
         "persona": persona_input,
         "visualRequirements": visual_requirements.chars().take(500).collect::<String>(),
         "paletteFromPersona": {
             "from": ["likes", "temperament", "drives"],
-            "citeSourcesInPaletteHint": true,
+            "citeSourcesInPaletteHint": false,
+            "paletteNamedColorsOnPartsOnly": true,
             "sameSourcesForCostumeAndAccessory": true,
+            "minDistinctHues": 3,
+            "assignColorsToGarmentsAndAccessories": true,
+            "forbidMonochromeFamily": true,
+            "accessories": "hero plus two or three supporting",
+        },
+        "variety": {
+            "clothingStyleIsFamilyNotKit": true,
+            "appliesToEveryStyle": true,
+            "changeConstructionNotJustColors": true,
+            "forbidInterchangeableDefaultKit": true,
         },
         "regenerate": regenerate,
         "existingVisualIdentity": existing_visual_identity.cloned().unwrap_or(Value::Null),
@@ -164,9 +210,19 @@ async fn suggest_visual_design_once(
     .to_string();
     let raw = run_onboarding_call(&visual_design_system_prompt(), &input).await?;
     let parsed = parse_json_object(&raw).ok_or(OnboardingAiError::UnusableResponse)?;
-    let identity = myriad_digital_life::sanitize_upper_body_visual_identity(&parsed)
+    let mut identity = myriad_digital_life::sanitize_upper_body_visual_identity(&parsed)
         .ok_or(OnboardingAiError::UnusableResponse)?;
-    if myriad_digital_life::visual_identity_violates_style_lock(&identity) {
+    if let Some(character) = kept_character {
+        if let Some(root) = identity.as_object_mut() {
+            root.insert("character".into(), character);
+        }
+        identity = myriad_digital_life::sanitize_upper_body_visual_identity(&identity)
+            .ok_or(OnboardingAiError::UnusableResponse)?;
+    }
+    myriad_digital_life::stamp_clothing_style(&mut identity, clothing_style);
+    if myriad_digital_life::visual_identity_violates_style_lock(&identity)
+        || myriad_digital_life::visual_identity_has_literary_sludge(&identity)
+    {
         return Err(OnboardingAiError::UnusableResponse);
     }
     if !visual_design_matches_ui_language(&identity, language) {
@@ -179,14 +235,22 @@ async fn run_onboarding_call(
     system: &str,
     input: &str,
 ) -> Result<String, OnboardingAiError> {
-    {
+    run_onboarding_call_on_tier(ModelTier::Pro, system, input).await
+}
+
+async fn run_onboarding_call_on_tier(
+    tier: ModelTier,
+    system: &str,
+    input: &str,
+) -> Result<String, OnboardingAiError> {
+    if matches!(tier, ModelTier::Pro) {
         let config = crate::GLOBAL_DYNAMIC_CONFIG.read().await;
         if !config.pro_enabled {
             return Err(OnboardingAiError::AnalyzerUnavailable);
         }
     }
     let Some(analyzer) =
-        create_ai_analyzer_for_tier_with_timeout(ModelTier::Pro, Some(ONBOARDING_AI_TIMEOUT)).await
+        create_ai_analyzer_for_tier_with_timeout(tier, Some(ONBOARDING_AI_TIMEOUT)).await
     else {
         return Err(OnboardingAiError::AnalyzerUnavailable);
     };
@@ -224,13 +288,27 @@ fn normalize_gender(value: &str) -> &str {
     }
 }
 
+fn normalize_name_style(value: &str, language: &str) -> &'static str {
+    match value.trim() {
+        "chinese" | "zh" | "liyue" | "xianzhou" => "chinese",
+        "japanese" | "ja" | "inazuma" | "wafuu" | "wa" => "japanese",
+        "european" | "en" | "western" => "european",
+        "mythic" | "mythology" | "classical" | "myth" => "mythic",
+        _ => match language {
+            "zh-CN" => "chinese",
+            "ja-JP" => "japanese",
+            _ => "european",
+        },
+    }
+}
+
 fn parse_json_object(raw: &str) -> Option<Value> {
     let start = raw.find('{')?;
     let end = raw.rfind('}')?;
     serde_json::from_str(&raw[start..=end]).ok()
 }
 
-fn parse_display_name_suggestion(raw: &str, avoid: Option<&str>, language: &str) -> Option<String> {
+fn parse_display_name_suggestion(raw: &str, avoid: Option<&str>, name_style: &str) -> Option<String> {
     let parsed = parse_json_object(raw)?;
     let candidates = if let Some(name) = parsed.get("name").and_then(Value::as_str) {
         vec![name.to_string()]
@@ -244,7 +322,7 @@ fn parse_display_name_suggestion(raw: &str, avoid: Option<&str>, language: &str)
     };
     let avoid_norm = avoid.map(str::trim).filter(|v| !v.is_empty());
     for candidate in candidates {
-        let cleaned = sanitize_display_name_candidate(&candidate, language);
+        let cleaned = sanitize_display_name_candidate(&candidate, name_style);
         if cleaned.is_empty() {
             continue;
         }
@@ -256,7 +334,7 @@ fn parse_display_name_suggestion(raw: &str, avoid: Option<&str>, language: &str)
     None
 }
 
-fn sanitize_display_name_candidate(raw: &str, language: &str) -> String {
+fn sanitize_display_name_candidate(raw: &str, name_style: &str) -> String {
     let trimmed = raw
         .chars()
         .filter(|ch| !ch.is_control())
@@ -268,19 +346,19 @@ fn sanitize_display_name_candidate(raw: &str, language: &str) -> String {
         )
     });
     let collapsed = trimmed.split_whitespace().collect::<Vec<_>>().join("");
-    match language {
-        "en-US" => sanitize_latin_display_name(&collapsed),
-        "ja-JP" => sanitize_cjk_display_name(&collapsed, true),
-        _ => sanitize_cjk_display_name(&collapsed, false),
+    match name_style {
+        "european" | "mythic" => sanitize_latin_display_name(&collapsed, 16),
+        "japanese" => sanitize_cjk_display_name(&collapsed, true, 5),
+        _ => sanitize_cjk_display_name(&collapsed, false, 4),
     }
 }
 
-fn sanitize_latin_display_name(value: &str) -> String {
+fn sanitize_latin_display_name(value: &str, max_chars: usize) -> String {
     if !value.chars().all(|ch| ch.is_ascii_alphabetic()) {
         return String::new();
     }
     let count = value.chars().count();
-    if !(2..=12).contains(&count) {
+    if count < 3 || count > max_chars {
         return String::new();
     }
     if value.chars().filter(|ch| ch.is_ascii_uppercase()).count() > 1 {
@@ -296,6 +374,11 @@ fn is_blocked_en_display_name(value: &str) -> bool {
     const BLOCKED: &[&str] = &[
         "robin", "sunday", "firefly", "sparkle", "stelle", "caelus", "jean", "diluc",
         "amber", "lisa", "maris", "cael", "liora",
+        "zeus", "athena", "apollo", "artemis", "aphrodite", "hera", "hades",
+        "persephone", "hermes", "poseidon", "nike", "nyx", "selene", "helios",
+        "eos", "gaia", "odin", "thor", "loki", "freya", "freyja", "frigg",
+        "baldur", "venus", "mars", "jupiter", "minerva", "diana", "mercury",
+        "neptune", "pluto", "juno", "ceres",
     ];
     let lower = value.to_ascii_lowercase();
     BLOCKED.iter().any(|blocked| lower == *blocked)
@@ -335,14 +418,30 @@ fn is_katakana_letter(ch: char) -> bool {
     matches!(ch, '\u{30A1}'..='\u{30FA}' | '\u{30FC}')
 }
 
-fn sanitize_cjk_display_name(value: &str, japanese: bool) -> String {
+fn japanese_name_length_hint(roll_id: &str) -> (&'static str, u8) {
+    let seed = roll_id
+        .bytes()
+        .fold(0u32, |acc, byte| acc.wrapping_mul(33).wrapping_add(byte as u32));
+    let chars = 2 + (seed % 4) as u8;
+    let form = if seed % 2 == 0 {
+        "modern-personal"
+    } else {
+        "inazuma-meaning"
+    };
+    (form, chars)
+}
+
+fn sanitize_cjk_display_name(value: &str, japanese: bool, max_chars: usize) -> String {
     let count = value.chars().count();
-    if count < 2 {
+    if count < 2 || count > max_chars {
+        return String::new();
+    }
+    if japanese && value.starts_with('々') {
         return String::new();
     }
     let script_ok = value.chars().all(|ch| {
         if japanese {
-            is_cjk_han(ch) || is_hiragana(ch) || is_katakana_letter(ch)
+            is_cjk_han(ch) || is_hiragana(ch) || is_katakana_letter(ch) || ch == '々'
         } else {
             is_cjk_han(ch)
         }
@@ -368,7 +467,7 @@ fn sanitize_cjk_display_name(value: &str, japanese: bool) -> String {
     {
         return String::new();
     }
-    value.chars().take(6).collect()
+    value.to_string()
 }
 
 fn persona_matches_ui_language(value: &Value, language: &str) -> bool {
@@ -407,8 +506,10 @@ fn persona_matches_ui_language(value: &Value, language: &str) -> bool {
 
 fn visual_design_matches_ui_language(value: &Value, language: &str) -> bool {
     let mut text = String::new();
+    let flat = myriad_digital_life::flatten_visual_identity(value)
+        .unwrap_or_else(|| value.clone());
     for (key, _) in myriad_digital_life::UPPER_BODY_VISUAL_IDENTITY_FIELDS {
-        if let Some(part) = value.get(key).and_then(Value::as_str) {
+        if let Some(part) = flat.get(key).and_then(Value::as_str) {
             text.push_str(part);
         }
     }
@@ -511,30 +612,71 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sanitize_display_name_follows_ui_language() {
-        assert!(sanitize_display_name_candidate("Alice", "zh-CN").is_empty());
-        assert!(sanitize_display_name_candidate("阿强", "zh-CN").is_empty());
-        assert!(sanitize_display_name_candidate("小美", "zh-CN").is_empty());
-        assert_eq!(sanitize_display_name_candidate("晚衡", "zh-CN"), "晚衡");
-        assert_eq!(sanitize_display_name_candidate("「听白」", "zh-CN"), "听白");
-        assert!(sanitize_display_name_candidate("澄羽", "zh-CN").is_empty());
-        assert!(sanitize_display_name_candidate("甘雨", "zh-CN").is_empty());
-        assert!(sanitize_display_name_candidate("景元", "zh-CN").is_empty());
-        assert_eq!(sanitize_display_name_candidate("Alice", "en-US"), "Alice");
-        assert!(sanitize_display_name_candidate("NightOwl", "en-US").is_empty());
-        assert!(sanitize_display_name_candidate("Robin", "en-US").is_empty());
-        assert!(sanitize_display_name_candidate("澄羽", "en-US").is_empty());
-        assert_eq!(sanitize_display_name_candidate("あおい", "ja-JP"), "あおい");
-        assert_eq!(sanitize_display_name_candidate("雪見", "ja-JP"), "雪見");
-        assert!(sanitize_display_name_candidate("宵宮", "ja-JP").is_empty());
-        assert!(sanitize_display_name_candidate("Alice", "ja-JP").is_empty());
-        assert!(sanitize_display_name_candidate("澄羽A", "zh-CN").is_empty());
-        assert!(sanitize_display_name_candidate("澄羽Ａ", "zh-CN").is_empty());
-        assert!(sanitize_display_name_candidate("澄羽・", "zh-CN").is_empty());
-        assert!(sanitize_display_name_candidate("Aoi雪", "ja-JP").is_empty());
-        assert_eq!(sanitize_display_name_candidate("ハナ", "ja-JP"), "ハナ");
-        assert_eq!(sanitize_display_name_candidate("サリー", "ja-JP"), "サリー");
-        assert!(sanitize_display_name_candidate("葵ちゃん", "ja-JP").is_empty());
+    fn sanitize_display_name_follows_name_style() {
+        assert_eq!(normalize_name_style("", "zh-CN"), "chinese");
+        assert_eq!(normalize_name_style("european", "zh-CN"), "european");
+        assert_eq!(normalize_name_style("inazuma", "en-US"), "japanese");
+        assert_eq!(normalize_name_style("wafuu", "zh-CN"), "japanese");
+        assert_eq!(normalize_name_style("classical", "zh-CN"), "mythic");
+        assert!(sanitize_display_name_candidate("Athena", "mythic").is_empty());
+        assert!(sanitize_display_name_candidate("Freya", "european").is_empty());
+        assert_eq!(
+            sanitize_display_name_candidate("Cassiopeia", "mythic"),
+            "Cassiopeia"
+        );
+        assert!(sanitize_display_name_candidate("Cassiopeianoxxxxx", "european").is_empty());
+        assert!(sanitize_display_name_candidate("Al", "european").is_empty());
+        assert_eq!(
+            sanitize_display_name_candidate("Helionara", "mythic"),
+            "Helionara"
+        );
+        assert!(sanitize_display_name_candidate("Alice", "chinese").is_empty());
+        assert!(sanitize_display_name_candidate("阿强", "chinese").is_empty());
+        assert!(sanitize_display_name_candidate("小美", "chinese").is_empty());
+        assert_eq!(sanitize_display_name_candidate("晚衡", "chinese"), "晚衡");
+        assert_eq!(sanitize_display_name_candidate("听白川", "chinese"), "听白川");
+        assert_eq!(sanitize_display_name_candidate("司南映雪", "chinese"), "司南映雪");
+        assert!(sanitize_display_name_candidate("秋水长天阔", "chinese").is_empty());
+        assert_eq!(sanitize_display_name_candidate("「听白」", "chinese"), "听白");
+        assert_eq!(
+            sanitize_display_name_candidate("Alexandria", "european"),
+            "Alexandria"
+        );
+        assert!(sanitize_display_name_candidate("澄羽", "chinese").is_empty());
+        assert!(sanitize_display_name_candidate("甘雨", "chinese").is_empty());
+        assert!(sanitize_display_name_candidate("景元", "chinese").is_empty());
+        assert_eq!(sanitize_display_name_candidate("Alice", "european"), "Alice");
+        assert!(sanitize_display_name_candidate("NightOwl", "european").is_empty());
+        assert!(sanitize_display_name_candidate("Robin", "european").is_empty());
+        assert!(sanitize_display_name_candidate("澄羽", "european").is_empty());
+        assert_eq!(sanitize_display_name_candidate("あおい", "japanese"), "あおい");
+        assert_eq!(sanitize_display_name_candidate("佐藤美咲", "japanese"), "佐藤美咲");
+        assert_eq!(sanitize_display_name_candidate("高橋蓮", "japanese"), "高橋蓮");
+        assert_eq!(sanitize_display_name_candidate("中村ひなた", "japanese"), "中村ひなた");
+        assert_eq!(sanitize_display_name_candidate("佐々木結衣", "japanese"), "佐々木結衣");
+        assert_eq!(sanitize_display_name_candidate("ひなた", "japanese"), "ひなた");
+        assert!(sanitize_display_name_candidate("々木美咲", "japanese").is_empty());
+        assert_eq!(sanitize_display_name_candidate("雪見", "japanese"), "雪見");
+        assert_eq!(sanitize_display_name_candidate("月あかり", "japanese"), "月あかり");
+        assert_eq!(sanitize_display_name_candidate("ひまわり", "japanese"), "ひまわり");
+        assert_eq!(sanitize_display_name_candidate("あまのがわ", "japanese"), "あまのがわ");
+        assert_eq!(sanitize_display_name_candidate("ほしのかげ", "japanese"), "ほしのかげ");
+        assert!(sanitize_display_name_candidate("あまのがわや", "japanese").is_empty());
+        assert!(sanitize_display_name_candidate("あまのがわかぜ", "japanese").is_empty());
+        assert!(sanitize_display_name_candidate("宵宮", "japanese").is_empty());
+        assert!(sanitize_display_name_candidate("Alice", "japanese").is_empty());
+        assert!(sanitize_display_name_candidate("澄羽A", "chinese").is_empty());
+        assert!(sanitize_display_name_candidate("澄羽Ａ", "chinese").is_empty());
+        assert!(sanitize_display_name_candidate("澄羽・", "chinese").is_empty());
+        assert!(sanitize_display_name_candidate("Aoi雪", "japanese").is_empty());
+        assert_eq!(sanitize_display_name_candidate("ハナ", "japanese"), "ハナ");
+        assert_eq!(sanitize_display_name_candidate("サリー", "japanese"), "サリー");
+        assert!(sanitize_display_name_candidate("葵ちゃん", "japanese").is_empty());
+        for n in 0..16u8 {
+            let (form, chars) = japanese_name_length_hint(&format!("n{n}"));
+            assert!((2..=5).contains(&chars), "{form} {chars}");
+            assert!(form == "modern-personal" || form == "inazuma-meaning");
+        }
     }
 
     #[test]
@@ -544,8 +686,19 @@ mod tests {
         )
         .unwrap();
         assert!(persona_draft_meets_generation_quality(&parsed));
+        assert!(!myriad_digital_life::persona_has_literary_sludge(&parsed));
         assert!(persona_matches_ui_language(&parsed, "zh-CN"));
         assert!(!persona_matches_ui_language(&parsed, "en-US"));
+        assert!(myriad_digital_life::persona_has_literary_sludge(&json!({
+            "persona": {
+                "summary": "安静但会认真回应对自己重要的事情。想靠近，又把话说得很短。认定谁值得之后，锋会收起来，把事情一件件安排妥。",
+                "temperament": ["克制","细心","慢热","嘴硬心软","边界感强"],
+                "likes": ["色彩取自叠在杯底过夜的纸条","把桌面重新排好","长时间安静地做事","把一件小事做到位"],
+                "drives": ["理解彼此","守住边界","把节奏握在自己手里","对认定的人认真"],
+                "socialStyle": "先听，不抢着说话。熟了之后才会把句子拉长。",
+                "speechStyle": "话少，用词干净。对在意的人会把事说清楚。"
+            }
+        })));
         assert!(!persona_draft_meets_generation_quality(&json!({
             "persona": { "summary": "只有一句，没有性格数组" }
         })));

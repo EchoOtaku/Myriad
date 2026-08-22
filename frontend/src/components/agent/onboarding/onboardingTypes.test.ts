@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  CLOTHING_STYLE_OPTIONS,
+  clothingStyleFromProfile,
+  clothingStylePreview,
   completedPersonaResumeStep,
+  defaultNameStyle,
   flattenPersona,
   incompletePersonaFields,
   onboardingSeedsFromProfile,
@@ -11,6 +15,12 @@ import {
   personaFromApi,
   structuredPersonaIsComplete,
 } from './onboardingTypes'
+
+test('default name style follows UI locale', () => {
+  assert.equal(defaultNameStyle('zh-CN'), 'chinese')
+  assert.equal(defaultNameStyle('ja-JP'), 'japanese')
+  assert.equal(defaultNameStyle('en-US'), 'european')
+})
 
 test('flatten then parse keeps character fields', () => {
   const persona = {
@@ -41,7 +51,25 @@ test('upper-body visual identity requires every frozen design field', () => {
     paletteHint: 'pink, lavender, white, and a little gold',
     motif: 'one restrained star-track arc',
   }
-  assert.deepEqual(parseUpperBodyVisualIdentity(complete), complete)
+  const modular = {
+    character: {
+      faceDesign: complete.faceDesign,
+      eyeDesign: complete.eyeDesign,
+      hairShape: complete.hairShape,
+      hairLayerPlan: complete.hairLayerPlan,
+    },
+    outfit: {
+      upperBodySilhouette: complete.upperBodySilhouette,
+      outfitConstruction: complete.outfitConstruction,
+      sleeveArmDesign: complete.sleeveArmDesign,
+      materialPlan: complete.materialPlan,
+      heroAccessory: complete.heroAccessory,
+      paletteHint: complete.paletteHint,
+      motif: complete.motif,
+    },
+  }
+  assert.deepEqual(parseUpperBodyVisualIdentity(complete), modular)
+  assert.deepEqual(parseUpperBodyVisualIdentity(modular), modular)
   assert.equal(
     parseUpperBodyVisualIdentity({ ...complete, eyeDesign: '' }),
     null,
@@ -104,6 +132,22 @@ test('incomplete persona fields name what is missing', () => {
       personaExtraRequirements: '话少',
     },
   )
+})
+
+test('clothing style is an explicit saved choice', () => {
+  assert.equal(clothingStyleFromProfile({ clothingStyle: 'fantasy' }), 'fantasy')
+  assert.equal(
+    clothingStyleFromProfile({
+      visualIdentity: { outfit: { clothingStyle: 'urban' } },
+    }),
+    'urban',
+  )
+  assert.equal(clothingStyleFromProfile({ clothingStyle: 'idol' }), 'idol')
+  assert.equal(clothingStyleFromProfile({ clothingStyle: '国风' }), null)
+  assert.equal(clothingStyleFromProfile({ language: 'zh-CN' }), null)
+  assert.equal(CLOTHING_STYLE_OPTIONS.length, 17)
+  assert.equal(clothingStylePreview('rain'), '/life/clothing/rain.svg')
+  assert.equal(clothingStyleFromProfile({ clothingStyle: 'military' }), null)
 })
 
 test('completed persona resumes at the first unfinished visual stage', () => {

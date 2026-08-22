@@ -875,10 +875,11 @@ class AgentService {
     selectedTags: string[]
     gender?: string
     avoidName?: string
+    nameStyle?: string
     language: string
   }): Promise<{ name: string }> {
     return sharePersonaGeneration(
-      `name:${body.language || ''}:${body.gender || ''}:${body.avoidName || ''}:${body.selectedTags.join(',')}`,
+      `name:${body.language || ''}:${body.nameStyle || ''}:${body.gender || ''}:${body.avoidName || ''}:${body.selectedTags.join(',')}`,
       () =>
         apiService.post(`${this.baseUrl}/persona/name`, body, {
           timeout: PERSONA_GENERATION_TIMEOUT_MS,
@@ -888,11 +889,13 @@ class AgentService {
 
   async suggestPersonaVisualDesign(body: {
     visualRequirements?: string
+    clothingStyle?: string
+    keepCharacter?: boolean
     regenerate?: boolean
-    existingVisualIdentity?: Record<string, string>
+    existingVisualIdentity?: Record<string, unknown>
   }): Promise<{ visualIdentity: Record<string, unknown> }> {
     return sharePersonaGeneration(
-      `visual-design:${body.regenerate === true}:${body.visualRequirements || ''}:${JSON.stringify(body.existingVisualIdentity ?? null)}`,
+      `visual-design:${body.regenerate === true}:${body.keepCharacter === true}:${body.clothingStyle || ''}:${body.visualRequirements || ''}:${JSON.stringify(body.existingVisualIdentity ?? null)}`,
       () =>
         apiService.post(`${this.baseUrl}/persona/visual-design`, body, {
           timeout: PERSONA_GENERATION_TIMEOUT_MS,

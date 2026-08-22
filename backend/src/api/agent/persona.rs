@@ -62,6 +62,8 @@ pub struct SuggestNameRequest {
     pub gender: String,
     #[serde(default)]
     pub avoid_name: Option<String>,
+    #[serde(default)]
+    pub name_style: String,
     #[serde(default = "default_signals_language")]
     pub language: String,
 }
@@ -71,6 +73,10 @@ pub struct SuggestNameRequest {
 pub struct SuggestVisualDesignRequest {
     #[serde(default)]
     pub visual_requirements: String,
+    #[serde(default)]
+    pub clothing_style: String,
+    #[serde(default)]
+    pub keep_character: bool,
     #[serde(default)]
     pub regenerate: bool,
     #[serde(default)]
@@ -526,7 +532,7 @@ fn distill_error(error: life::report_dna::DistillReportDnaError) -> HttpError {
 }
 
 /// POST /api/agent/persona/name
-/// Pro rolls one OC display name from selected tags + gender.
+/// Standard rolls one OC display name from selected tags, gender, and name style.
 pub async fn suggest_name(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -542,6 +548,7 @@ pub async fn suggest_name(
         &body.gender,
         body.avoid_name.as_deref(),
         language,
+        &body.name_style,
     )
     .await
     {
@@ -551,8 +558,8 @@ pub async fn suggest_name(
         Err(life::onboarding_ai::OnboardingAiError::AnalyzerUnavailable) => Err(HttpError::from((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({
-                "error": "Pro model is unavailable",
-                "code": "pro_unavailable"
+                "error": "Standard model is unavailable",
+                "code": "standard_unavailable"
             })),
         ))),
         Err(_) => Err(HttpError::from((
@@ -670,6 +677,17 @@ pub async fn suggest_visual_design(
         .and_then(|value| value.get("gender"))
         .and_then(Value::as_str)
         .unwrap_or("unspecified");
+    let clothing_style = myriad_digital_life::normalize_clothing_style(&body.clothing_style)
+        .or_else(|| profile.and_then(myriad_digital_life::clothing_style_of))
+        .ok_or_else(|| {
+            HttpError::from((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Choose a clothing style before generating the visual design",
+                    "code": "clothing_style_required"
+                })),
+            ))
+        })?;
     let explicit_existing = match body.existing_visual_identity.as_ref() {
         Some(value) => Some(
             myriad_digital_life::sanitize_upper_body_visual_identity(value).ok_or_else(|| {
@@ -684,7 +702,7 @@ pub async fn suggest_visual_design(
         ),
         None => None,
     };
-    let existing = body.regenerate.then(|| {
+    let existing = (body.regenerate || body.keep_character).then(|| {
         explicit_existing
             .or_else(|| {
                 profile
@@ -698,9 +716,11 @@ pub async fn suggest_visual_design(
         language,
         structured,
         gender,
+        clothing_style,
         &requirements,
         existing.as_ref(),
         body.regenerate,
+        body.keep_character,
     )
     .await
     {
@@ -811,6 +831,19 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
         }
         profile.insert("gender".into(), json!(gender));
     }
+    if let Some(clothing_style) = source.get("clothingStyle").and_then(Value::as_str) {
+        let clothing_style = myriad_digital_life::normalize_clothing_style(clothing_style)
+            .ok_or_else(|| {
+                HttpError::from((
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({
+                        "error": "Visual profile clothing style is invalid",
+                        "code": "visual_profile_invalid"
+                    })),
+                ))
+            })?;
+        profile.insert("clothingStyle".into(), json!(clothing_style));
+    }
     if let Some(language) = source.get("language").and_then(Value::as_str) {
         profile.insert(
             "language".into(),
@@ -837,8 +870,17 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
         }
     }
     if let Some(identity) = source.get("visualIdentity") {
-        let sanitized = myriad_digital_life::sanitize_upper_body_visual_identity(identity)
+        let mut sanitized = myriad_digital_life::sanitize_upper_body_visual_identity(identity)
             .ok_or_else(visual_profile_error)?;
+        if let Some(style) = profile
+            .get("clothingStyle")
+            .and_then(Value::as_str)
+            .and_then(myriad_digital_life::normalize_clothing_style)
+            .or_else(|| myriad_digital_life::clothing_style_of(&sanitized))
+        {
+            profile.insert("clothingStyle".into(), json!(style));
+            myriad_digital_life::stamp_clothing_style(&mut sanitized, style);
+        }
         profile.insert("visualIdentity".into(), sanitized);
     }
     Ok(Value::Object(profile))
@@ -852,7 +894,12 @@ fn merge_visual_profile(incoming: Value, previous: Option<&Value>) -> Value {
         return incoming;
     };
     let mut merged = target.clone();
-    for key in ["visualIdentity", "sourceTags", "personaExtraRequirements"] {
+    for key in [
+        "visualIdentity",
+        "sourceTags",
+        "personaExtraRequirements",
+        "clothingStyle",
+    ] {
         if merged.get(key).is_none() {
             if let Some(value) = previous.get(key) {
                 merged.insert(key.to_string(), value.clone());
@@ -950,6 +997,7 @@ mod tests {
         let profile = sanitize_visual_profile(&json!({
             "gender": "nonbinary",
             "language": "zh-Hans",
+            "clothingStyle": "fantasy",
             "extraRequirements": "金色眼睛",
             "visualIdentity": {
                 "faceDesign": "成熟的鹅蛋脸与自然眉形",
@@ -967,7 +1015,18 @@ mod tests {
         }))
         .expect("valid profile");
         assert_eq!(profile["language"], "zh-CN");
+        assert_eq!(profile["clothingStyle"], "fantasy");
         assert_eq!(profile["extraRequirements"], "金色眼睛");
+        assert!(profile["visualIdentity"].get("character").is_some());
+        assert!(profile["visualIdentity"].get("outfit").is_some());
+        assert_eq!(
+            profile["visualIdentity"]["outfit"]["clothingStyle"],
+            "fantasy"
+        );
+        assert_eq!(
+            profile["visualIdentity"]["character"]["faceDesign"],
+            "成熟的鹅蛋脸与自然眉形"
+        );
         assert!(myriad_digital_life::upper_body_visual_identity_is_complete(
             &profile["visualIdentity"]
         ));
@@ -984,8 +1043,46 @@ mod tests {
         assert_eq!(kept["gender"], "female");
         assert_eq!(kept["sourceTags"], json!(["慢热", "嘴硬心软"]));
         assert_eq!(kept["visualIdentity"], profile["visualIdentity"]);
+        assert_eq!(kept["clothingStyle"], "fantasy");
         assert!(kept.get("extraRequirements").is_none());
         assert!(kept.get("personaExtraRequirements").is_none());
+    }
+
+    #[test]
+    fn visual_profile_copies_outfit_clothing_style_to_root() {
+        let profile = sanitize_visual_profile(&json!({
+            "gender": "female",
+            "language": "zh-CN",
+            "visualIdentity": {
+                "character": {
+                    "faceDesign": "成熟的鹅蛋脸与自然眉形",
+                    "eyeDesign": "金色多层虹膜与克制高光",
+                    "hairShape": "银灰齐颌短发与偏分刘海",
+                    "hairLayerPlan": "后发、刘海和左右侧发形成独立轮廓"
+                },
+                "outfit": {
+                    "clothingStyle": "japanese",
+                    "upperBodySilhouette": "紧凑肩线、清楚领口与胸前焦点",
+                    "outfitConstruction": "高领内搭叠短外套并止于高腰",
+                    "sleeveArmDesign": "左右袖片携局部前臂进入画面",
+                    "materialPlan": "哑光布料、银色金属与小面积宝石",
+                    "heroAccessory": "左胸星轨扣饰",
+                    "paletteHint": "雾蓝为主、银白为辅、金色点缀",
+                    "motif": "单一星轨弧线集中在胸前"
+                }
+            }
+        }))
+        .expect("modular profile");
+        assert_eq!(profile["clothingStyle"], "japanese");
+        assert_eq!(
+            profile["visualIdentity"]["outfit"]["clothingStyle"],
+            "japanese"
+        );
+        assert_eq!(
+            myriad_digital_life::character_module(&profile["visualIdentity"])
+                .unwrap()["faceDesign"],
+            "成熟的鹅蛋脸与自然眉形"
+        );
     }
 
     #[test]

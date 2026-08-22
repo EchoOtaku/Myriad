@@ -72,6 +72,7 @@ export default function PersonaOnboardingPage({
     description: '',
   })
   const actionClickRef = useRef<(() => void) | undefined>(undefined)
+  const stepBackRef = useRef<(() => boolean) | undefined>(undefined)
   const onChromeChangeRef = useRef(onChromeChange)
   onChromeChangeRef.current = onChromeChange
   const chromeRef = useRef<OnboardingPageChrome | null>(null)
@@ -134,10 +135,12 @@ export default function PersonaOnboardingPage({
 
   const handleHeaderChange = useCallback((next: OnboardingHeaderChrome) => {
     actionClickRef.current = next.action?.onClick
+    stepBackRef.current = next.onBack
     setHeader((prev) => {
       if (
         prev.description === next.description &&
-        sameHeaderAction(prev.action, next.action)
+        sameHeaderAction(prev.action, next.action) &&
+        Boolean(prev.onBack) === Boolean(next.onBack)
       ) {
         return prev
       }
@@ -151,17 +154,21 @@ export default function PersonaOnboardingPage({
               onClick: () => actionClickRef.current?.(),
             }
           : undefined,
+        onBack: next.onBack
+          ? () => stepBackRef.current?.() === true
+          : undefined,
       }
     })
   }, [])
 
   const handleBack = useCallback(() => {
+    if (header.onBack?.()) return
     if (lifeOn && step > 1) {
       if (!wizardBusy) setStep((current) => (current - 1) as OnboardingStep)
       return
     }
     onBack()
-  }, [lifeOn, onBack, step, wizardBusy])
+  }, [header.onBack, lifeOn, onBack, step, wizardBusy])
 
   useEffect(() => {
     if (!isOwner) return
@@ -178,8 +185,9 @@ export default function PersonaOnboardingPage({
           }
         : undefined,
       backDisabled: wizardBusy && step > 1,
-      backAria:
-        lifeOn && step > 1
+      backAria: header.onBack
+        ? o.visualBackToStyle
+        : lifeOn && step > 1
           ? o.backTo.replace(
               '{step}',
               [
@@ -188,9 +196,7 @@ export default function PersonaOnboardingPage({
                 o.step3Short,
                 o.step4Short,
                 o.step5Short,
-              ][
-                step - 2
-              ] || '',
+              ][step - 2] || '',
             )
           : t.common.back,
       onBack: handleBack,
@@ -201,7 +207,9 @@ export default function PersonaOnboardingPage({
   }, [
     handleBack,
     header.action,
+    header.onBack,
     isOwner,
+    o.visualBackToStyle,
     lifeOn,
     o.backTo,
     o.step1Short,

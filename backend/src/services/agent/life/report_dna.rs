@@ -558,6 +558,7 @@ fn is_reasonable_persona_tag(label: &str) -> bool {
     }
     const LITERARY: &[&str] = &[
         "质感", "美学", "信仰", "虔诚", "月光", "余温", "藏锋", "证明存在", "消化情绪",
+        "取自", "像把", "在心里",
     ];
     if LITERARY.iter().any(|blocked| label.contains(blocked)) {
         return false;
