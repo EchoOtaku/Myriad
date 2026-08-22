@@ -353,44 +353,6 @@ pub(super) fn build_authenticated_router(
                 middleware::auth::auth_middleware,
             )),
         )
-        // TAPP Tripo 3D — Runtime Grant `3d:generate`; admin Digital Life routes stay admin-only.
-        .route(
-            "/api/tapp/3d/status",
-            get(api::tapp_runtime::model3d_status).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
-        .route(
-            "/api/tapp/3d/files",
-            post(api::tapp_runtime::upload_model3d_file)
-                .route_layer(axum::extract::DefaultBodyLimit::max(24 * 1024 * 1024))
-                .route_layer(from_fn_with_state(
-                    app_state.clone(),
-                    middleware::auth::optional_auth_middleware,
-                )),
-        )
-        .route(
-            "/api/tapp/3d/tasks",
-            post(api::tapp_runtime::create_model3d_task).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
-        .route(
-            "/api/tapp/3d/tasks/{task_id}",
-            get(api::tapp_runtime::get_model3d_task).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
-        .route(
-            "/api/tapp/3d/tasks/{task_id}/await",
-            post(api::tapp_runtime::await_model3d_task).route_layer(from_fn_with_state(
-                app_state.clone(),
-                middleware::auth::optional_auth_middleware,
-            )),
-        )
         // Tapp P0 扩展 API
         // Data Processing: inline transforms support guests; platform/storage
         // inputs and outputs are still denied without their Runtime Grant permissions.
