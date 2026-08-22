@@ -3,6 +3,8 @@ import test from 'node:test'
 import {
   completedPersonaResumeStep,
   flattenPersona,
+  incompletePersonaFields,
+  onboardingSeedsFromProfile,
   parseFlattenedPersona,
   parseList,
   parseUpperBodyVisualIdentity,
@@ -77,6 +79,30 @@ test('structured persona requires every persisted character field', () => {
   assert.equal(
     structuredPersonaIsComplete({ ...complete, likes: [] }),
     false,
+  )
+})
+
+test('incomplete persona fields name what is missing', () => {
+  assert.deepEqual(
+    incompletePersonaFields({
+      summary: '短',
+      temperament: [],
+      likes: ['雨声'],
+      drives: ['理解彼此'],
+      socialStyle: '先听',
+      speechStyle: '',
+    }),
+    ['summary', 'temperament', 'speechStyle'],
+  )
+  assert.deepEqual(
+    onboardingSeedsFromProfile({
+      sourceTags: [' 慢热 ', '', '嘴硬心软'],
+      personaExtraRequirements: '话少',
+    }),
+    {
+      sourceTags: ['慢热', '嘴硬心软'],
+      personaExtraRequirements: '话少',
+    },
   )
 })
 

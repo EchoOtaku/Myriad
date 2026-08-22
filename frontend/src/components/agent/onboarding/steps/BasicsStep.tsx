@@ -81,7 +81,7 @@ export default function BasicsStep({
   return (
     <section aria-label={o.step2Title}>
       <StepBody>
-        <Field label={o.nameLabel} hint={o.nameHint}>
+        <Field label={o.nameLabel}>
           <div className="life-ob-name-row">
             <TextInput
               value={displayName}
@@ -123,12 +123,7 @@ export default function BasicsStep({
           />
         </FieldGroup>
 
-        <Field
-          label={o.extraLabel}
-          optional
-          optionalLabel={o.optional}
-          hint={o.extraHint}
-        >
+        <Field label={o.extraLabel} optional optionalLabel={o.optional}>
           <TextArea
             value={extraRequirements}
             maxLength={500}
@@ -142,8 +137,9 @@ export default function BasicsStep({
       </StepBody>
       <ActionBar>
         <PrimaryButton
-          label={busy ? o.creating : o.createAndContinue}
+          label={o.next}
           busy={busy}
+          disabled={!gender || rollingName}
           onClick={() => {
             setLocalError('')
             if (!gender) {
@@ -156,6 +152,7 @@ export default function BasicsStep({
                   reason,
                   o.createFailed,
                   o.generationTimeout,
+                  { pro_unavailable: o.proUnavailable },
                 ),
               )
             })

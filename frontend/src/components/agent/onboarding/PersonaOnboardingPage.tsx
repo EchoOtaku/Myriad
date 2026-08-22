@@ -65,7 +65,6 @@ export default function PersonaOnboardingPage({
     string,
     unknown
   > | null>(null)
-  const [resumeSaved, setResumeSaved] = useState(false)
   const [ready, setReady] = useState(false)
   const [step, setStep] = useState<OnboardingStep>(1)
   const [wizardBusy, setWizardBusy] = useState(false)
@@ -113,7 +112,6 @@ export default function PersonaOnboardingPage({
             ? structured
             : parseFlattenedPersona(personality),
         )
-        setResumeSaved(true)
         setStep(
           hasStructuredPersona
             ? completedPersonaResumeStep(persona?.visualProfile)
@@ -122,7 +120,6 @@ export default function PersonaOnboardingPage({
       } else {
         setSavedPersona(null)
         setSavedVisualProfile(null)
-        setResumeSaved(false)
       }
     } catch {
       /* 预填失败就从空称呼开始 */
@@ -160,15 +157,11 @@ export default function PersonaOnboardingPage({
 
   const handleBack = useCallback(() => {
     if (lifeOn && step > 1) {
-      if (resumeSaved && step === 3) {
-        if (!wizardBusy) onBack()
-        return
-      }
       if (!wizardBusy) setStep((current) => (current - 1) as OnboardingStep)
       return
     }
     onBack()
-  }, [lifeOn, onBack, resumeSaved, step, wizardBusy])
+  }, [lifeOn, onBack, step, wizardBusy])
 
   useEffect(() => {
     if (!isOwner) return

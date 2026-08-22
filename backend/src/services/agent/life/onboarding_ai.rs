@@ -14,6 +14,7 @@ use super::report_dna::sanitize_onboarding_tags_for_language;
 
 /// Keep in sync with `PERSONA_GENERATION_TIMEOUT_MS` / `DIGITAL_LIFE_PROXY_TIMEOUT_MS`.
 const ONBOARDING_AI_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const VISUAL_DESIGN_ATTEMPTS: u8 = 2;
 const MAX_PERSONA_LIST_ITEMS: usize = 12;
 const MAX_PERSONA_LIST_ITEM_CHARS: usize = 180;
 const MIN_SUMMARY_CHARS: usize = 80;
@@ -26,6 +27,7 @@ pub enum OnboardingAiError {
     AnalyzerUnavailable,
     ProviderFailed,
     UnusableResponse,
+    LanguageMismatch,
 }
 
 pub async fn suggest_display_name(
@@ -109,15 +111,39 @@ pub async fn suggest_visual_design(
     existing_visual_identity: Option<&Value>,
     regenerate: bool,
 ) -> Result<Value, OnboardingAiError> {
-    let source = persona.get("persona").unwrap_or(persona);
-    let persona_input = json!({
-        "summary": source.get("summary").cloned().unwrap_or(Value::Null),
-        "temperament": source.get("temperament").or_else(|| source.get("traits")).cloned().unwrap_or(Value::Null),
-        "likes": source.get("likes").cloned().unwrap_or(Value::Null),
-        "drives": source.get("drives").cloned().unwrap_or(Value::Null),
-        "socialStyle": source.get("socialStyle").cloned().unwrap_or(Value::Null),
-        "speechStyle": source.get("speechStyle").cloned().unwrap_or(Value::Null),
-    });
+    let persona_input = visual_design_persona_input(persona);
+    let mut last_error = OnboardingAiError::UnusableResponse;
+    for _ in 0..VISUAL_DESIGN_ATTEMPTS {
+        match suggest_visual_design_once(
+            name,
+            language,
+            &persona_input,
+            gender,
+            visual_requirements,
+            existing_visual_identity,
+            regenerate,
+        )
+        .await
+        {
+            Ok(identity) => return Ok(identity),
+            Err(error @ (OnboardingAiError::AnalyzerUnavailable | OnboardingAiError::ProviderFailed)) => {
+                return Err(error)
+            }
+            Err(error) => last_error = error,
+        }
+    }
+    Err(last_error)
+}
+
+async fn suggest_visual_design_once(
+    name: &str,
+    language: &str,
+    persona_input: &Value,
+    gender: &str,
+    visual_requirements: &str,
+    existing_visual_identity: Option<&Value>,
+    regenerate: bool,
+) -> Result<Value, OnboardingAiError> {
     let input = json!({
         "pipeline": "onboarding/upper-body-visual-design",
         "task": "design_upper_body_visual_identity",
@@ -127,6 +153,11 @@ pub async fn suggest_visual_design(
         "genderPresentation": normalize_gender(gender),
         "persona": persona_input,
         "visualRequirements": visual_requirements.chars().take(500).collect::<String>(),
+        "paletteFromPersona": {
+            "from": ["likes", "temperament", "drives"],
+            "citeSourcesInPaletteHint": true,
+            "sameSourcesForCostumeAndAccessory": true,
+        },
         "regenerate": regenerate,
         "existingVisualIdentity": existing_visual_identity.cloned().unwrap_or(Value::Null),
     })
@@ -135,8 +166,11 @@ pub async fn suggest_visual_design(
     let parsed = parse_json_object(&raw).ok_or(OnboardingAiError::UnusableResponse)?;
     let identity = myriad_digital_life::sanitize_upper_body_visual_identity(&parsed)
         .ok_or(OnboardingAiError::UnusableResponse)?;
-    if !visual_design_matches_ui_language(&identity, language) {
+    if myriad_digital_life::visual_identity_violates_style_lock(&identity) {
         return Err(OnboardingAiError::UnusableResponse);
+    }
+    if !visual_design_matches_ui_language(&identity, language) {
+        return Err(OnboardingAiError::LanguageMismatch);
     }
     Ok(identity)
 }
@@ -156,10 +190,31 @@ async fn run_onboarding_call(
     else {
         return Err(OnboardingAiError::AnalyzerUnavailable);
     };
-    match analyzer.analyze_with_system(system, input).await {
+    let owner = crate::services::ai_cost_ledger::resolve_site_owner_id().await;
+    match crate::services::ai_cost_ledger::with_site_ai_ledger(
+        owner,
+        "life",
+        "onboarding",
+        analyzer.analyze_with_system(system, input),
+    )
+    .await
+    {
         Ok(raw) if !raw.trim().is_empty() => Ok(raw),
         _ => Err(OnboardingAiError::ProviderFailed),
     }
+}
+
+fn visual_design_persona_input(persona: &Value) -> Value {
+    let source = persona.get("persona").unwrap_or(persona);
+    json!({
+        "temperament": source
+            .get("temperament")
+            .or_else(|| source.get("traits"))
+            .cloned()
+            .unwrap_or(Value::Null),
+        "likes": source.get("likes").cloned().unwrap_or(Value::Null),
+        "drives": source.get("drives").cloned().unwrap_or(Value::Null),
+    })
 }
 
 fn normalize_gender(value: &str) -> &str {
@@ -522,6 +577,31 @@ mod tests {
         });
         assert!(persona_matches_ui_language(&english, "en-US"));
         assert!(!persona_matches_ui_language(&english, "ja-JP"));
+    }
+
+    #[test]
+    fn visual_design_keeps_only_associable_persona_fields() {
+        let input = visual_design_persona_input(&json!({
+            "summary": "安静但对认定的人会把话说清楚。",
+            "temperament": ["克制", "细心"],
+            "likes": ["夜里听雨"],
+            "drives": ["守住边界"],
+            "socialStyle": "先听，不抢着说话。",
+            "speechStyle": "话少，用词干净。",
+            "displayName": "晚衡",
+            "draftSource": "ai"
+        }));
+        assert_eq!(
+            input.as_object().map(|object| object.keys().count()),
+            Some(3)
+        );
+        assert_eq!(input["temperament"][0], "克制");
+        assert_eq!(input["likes"][0], "夜里听雨");
+        assert_eq!(input["drives"][0], "守住边界");
+        assert!(input.get("summary").is_none());
+        assert!(input.get("socialStyle").is_none());
+        assert!(input.get("speechStyle").is_none());
+        assert!(input.get("displayName").is_none());
     }
 
 }

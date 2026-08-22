@@ -51,10 +51,6 @@ export default function TagBubblesStep({
   const cacheKey = signalsCacheKey(locale)
   const cached = getGenerationCache<SignalsCache>(cacheKey)
   const [tags, setTags] = useState<LifeOnboardingTag[]>(() => cached?.tags || [])
-  const [reportCount, setReportCount] = useState(() => cached?.reportCount || 0)
-  const [aiDistilled, setAiDistilled] = useState(
-    () => Boolean(cached?.aiDistilled),
-  )
   const [loading, setLoading] = useState(() => !cached)
   const [regenerating, setRegenerating] = useState(false)
   const [error, setError] = useState('')
@@ -69,8 +65,6 @@ export default function TagBubblesStep({
     const existing = getGenerationCache<SignalsCache>(cacheKey)
     if (!force && existing?.tags?.length) {
       setTags(existing.tags)
-      setReportCount(existing.reportCount)
-      setAiDistilled(existing.aiDistilled)
       setLoading(false)
       setRegenerating(false)
       const kept = keepSelectedPersonaTags(
@@ -95,8 +89,6 @@ export default function TagBubblesStep({
           aiDistilled: signals.aiDistilled === true,
         }
         setTags(next.tags)
-        setReportCount(next.reportCount)
-        setAiDistilled(next.aiDistilled)
         setGenerationCache(cacheKey, next)
         setError('')
         if (nextTags.length > 0) {
@@ -132,7 +124,6 @@ export default function TagBubblesStep({
       cancelled = true
     }
     // selected/onChange 只在换一批后修剪，不跟进当前勾选。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheKey, locale, o.generationTimeout, o.loadSignalsFailed, o.saveFirst, reloadToken])
 
   const reshuffle = useCallback(() => {
@@ -175,15 +166,9 @@ export default function TagBubblesStep({
   )
   const canContinue = selectedCount > 0
   const blocked = loading || regenerating
-  const sourceNote = aiDistilled
-    ? o.aiDistilledMeta.replace('{count}', String(reportCount))
-    : reportCount > 0
-      ? o.reportsButFallback.replace('{count}', String(reportCount))
-      : o.noReports
-
   useLayoutEffect(() => {
     onHeaderChange({
-      description: loading ? o.step1Lead : sourceNote,
+      description: o.step1Lead,
       action: {
         label: regenerating ? o.regeneratingSeeds : o.regenerateSeeds,
         busy: loading || regenerating,
@@ -200,7 +185,6 @@ export default function TagBubblesStep({
     onHeaderChange,
     regenerating,
     reshuffle,
-    sourceNote,
   ])
 
   return (
@@ -253,8 +237,9 @@ export default function TagBubblesStep({
       )}
       <ActionBar>
         <PrimaryButton
-          label={o.next}
-          disabled={!canContinue || blocked}
+          label={blocked ? o.loadingAiSignals : o.next}
+          busy={blocked}
+          disabled={!canContinue}
           onClick={onNext}
         />
       </ActionBar>

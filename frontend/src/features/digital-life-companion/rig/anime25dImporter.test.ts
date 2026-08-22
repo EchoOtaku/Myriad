@@ -129,6 +129,21 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
     assert.deepEqual(prepared.source.semantics?.chains, {
       torso: ['root', 'body', 'head'],
     })
+    const playback = prepared.source.anime25dPlayback
+    assert.ok(playback)
+    assert.equal(playback.anchors.bodyPivot.y, playback.pixelCanvas.height)
+    assert.equal(playback.anchors.bodyPivot.x, playback.anchors.neckPivot.x)
+    const white = playback.layers.find(
+      (item) => item.role === 'eyewhite' && item.side === 'L',
+    )
+    assert.ok(white)
+    assert.notEqual(
+      playback.anchors.eyeL?.closeY,
+      white.y + white.h * 0.62,
+    )
+    assert.ok(
+      playback.layers.every((item, index) => item.z === index),
+    )
   } finally {
     Object.assign(globalThis, {
       document: previousDocument,
@@ -184,7 +199,32 @@ test('preflight rejects a PSD that cannot satisfy the rigid two-arm contract', a
   )
 })
 
-test('preflight rejects deformation-only eye and mouth expressions', async () => {
+test('unknown layers follow rigger head/body split by centroid vs chin', async () => {
+  const source = syntheticSeeThroughPsd()
+  const withUnknown = {
+    ...source,
+    children: [
+      ...(source.children || []),
+      unknownBlob('ribbon', 100, 50, 140, 80),
+      unknownBlob('sash', 90, 190, 160, 230),
+    ],
+  } as Psd
+  const prepared = await prepareWithFakeCanvas(withUnknown)
+  const playback = prepared.source.anime25dPlayback
+  assert.ok(playback)
+  assert.equal(
+    playback.layers.find((layer) => layer.role === 'unknown' && layer.name.includes('ribbon'))
+      ?.group,
+    'head',
+  )
+  assert.equal(
+    playback.layers.find((layer) => layer.role === 'unknown' && layer.name.includes('sash'))
+      ?.group,
+    'body',
+  )
+})
+
+test('missing close-eye and close-mouth layers get Anime2.5DRig generic diffs', async () => {
   const source = syntheticSeeThroughPsd()
   const withoutClosedArtwork = {
     ...source,
@@ -192,9 +232,16 @@ test('preflight rejects deformation-only eye and mouth expressions', async () =>
       (layer) => layer.name !== 'eyelash_c' && layer.name !== 'mouth_c',
     ),
   } as Psd
-  await assert.rejects(
-    () => prepareWithFakeCanvas(withoutClosedArtwork),
-    /independent open\/closed eyes|open\/closed mouth/,
+  const prepared = await prepareWithFakeCanvas(withoutClosedArtwork)
+  assert.ok(
+    prepared.source.layers.some(
+      (layer) => layer.slot === 'eye-left' && layer.variant === 'closed',
+    ),
+  )
+  assert.ok(
+    prepared.source.layers.some(
+      (layer) => layer.slot === 'mouth' && layer.variant === 'closed',
+    ),
   )
 })
 
@@ -240,6 +287,28 @@ async function prepareWithFakeCanvas(
       ImageData: previousImageData,
     })
   }
+}
+
+function unknownBlob(
+  name: string,
+  left: number,
+  top: number,
+  right: number,
+  bottom: number,
+): Layer {
+  const width = 256
+  const height = 256
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let y = top; y < bottom; y += 1) {
+    for (let x = left; x < right; x += 1) {
+      const index = (y * width + x) * 4
+      data[index] = 48
+      data[index + 1] = 32
+      data[index + 2] = 24
+      data[index + 3] = 255
+    }
+  }
+  return { name, left: 0, top: 0, imageData: { width, height, data } }
 }
 
 function syntheticSeeThroughPsd(): Psd {

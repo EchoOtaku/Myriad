@@ -36,6 +36,7 @@ export interface Anime25DCharacterHandle {
   getDriver: () => Anime25DDriver | null
   blinkNow: () => void
   debugSnapshot: () => Anime25DDebugSnapshot | null
+  setMouse: (x: number, y: number, inside: boolean) => void
 }
 
 const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
@@ -55,18 +56,18 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       const currentActivity = activityRef.current
       const smile = Math.max(0, (moodRef.current - 50) / 80)
       player.setTarget({
-        talking: currentActivity === 'talking',
-        mouth: currentActivity === 'talking' ? 0.42 : smile * 0.12,
+        talk: currentActivity === 'talking',
+        mouthOpen: currentActivity === 'talking' ? 0.42 : smile * 0.12,
         angleY: currentActivity === 'thinking' ? 0.08 : 0,
-        lean: currentActivity === 'thinking' ? 0.4 : 0,
+        body: currentActivity === 'thinking' ? 0.4 : 0,
       })
     }
 
     useImperativeHandle(ref, () => ({
       setSpeechEnergy(energy) {
         playerRef.current?.setTarget({
-          mouth: energy == null ? 0 : Math.max(0, Math.min(1, energy)),
-          talking: energy != null && energy > 0.08,
+          mouthOpen: energy == null ? 0 : Math.max(0, Math.min(1, energy)),
+          talk: energy != null && energy > 0.08,
         })
       },
       setSpeechArticulation(articulation) {
@@ -76,7 +77,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
             : articulation.viseme === 'wide'
               ? 0.92
               : 0.55
-        playerRef.current?.setTarget({ mouth: openness, talking: true })
+        playerRef.current?.setTarget({ mouthOpen: openness, talk: true })
       },
       setGazeTarget(target) {
         playerRef.current?.setTarget({
@@ -87,19 +88,18 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       playMotionPlan() {
         manualRef.current = true
         playerRef.current?.setTarget({
-          talking: true,
-          mouth: 0.45,
+          talk: true,
+          mouthOpen: 0.45,
           angleY: -0.08,
-          bust: 0.18,
+          bust: 2.5,
         })
       },
       stopMotionPlan() {
         playerRef.current?.setTarget({
-          mouth: 0,
-          talking: false,
+          mouthOpen: 0,
+          talk: false,
           armY: 0,
           armPos: 0,
-          bust: 0,
         })
       },
       captureFrame() {
@@ -127,6 +127,9 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       debugSnapshot() {
         return playerRef.current?.debugSnapshot() ?? null
       },
+      setMouse(x, y, inside) {
+        playerRef.current?.setMouse(x, y, inside)
+      },
     }))
 
     useEffect(() => {
@@ -139,6 +142,20 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       let frame = 0
       let last = performance.now()
       let cancelled = false
+      const onPointerMove = (event: PointerEvent) => {
+        const bounds = canvas.getBoundingClientRect()
+        if (bounds.width <= 0 || bounds.height <= 0) return
+        player.setMouse(
+          ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+          ((event.clientY - bounds.top) / bounds.height) * 2 - 1,
+          true,
+        )
+      }
+      const onPointerLeave = () => {
+        player.setMouse(0, 0, false)
+      }
+      canvas.addEventListener('pointermove', onPointerMove)
+      canvas.addEventListener('pointerleave', onPointerLeave)
       const resize = () => {
         const rect = wrapper.getBoundingClientRect()
         player.resize(rect.width, rect.height, window.devicePixelRatio || 1)
@@ -162,6 +179,8 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         cancelled = true
         window.cancelAnimationFrame(frame)
         observer.disconnect()
+        canvas.removeEventListener('pointermove', onPointerMove)
+        canvas.removeEventListener('pointerleave', onPointerLeave)
         player.dispose()
         playerRef.current = null
         wrapper.classList.remove('is-ready')
@@ -171,10 +190,10 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     useEffect(() => {
       const smile = Math.max(0, (mood - 50) / 80)
       playerRef.current?.setTarget({
-        talking: activity === 'talking',
-        mouth: activity === 'talking' ? 0.42 : smile * 0.12,
+        talk: activity === 'talking',
+        mouthOpen: activity === 'talking' ? 0.42 : smile * 0.12,
         angleY: activity === 'thinking' ? 0.08 : 0,
-        lean: activity === 'thinking' ? 0.4 : 0,
+        body: activity === 'thinking' ? 0.4 : 0,
       })
     }, [activity, mood])
 

@@ -235,9 +235,14 @@ pub async fn generate_site_seo_copy(
 
     let analyzer = create_ai_analyzer_for_tier(ModelTier::Lite).await;
     if let Some(analyzer) = analyzer {
-        match analyzer
-            .analyze_with_system(SYSTEM_PROMPT, &user_prompt)
-            .await
+        let owner = crate::services::ai_cost_ledger::resolve_site_owner_id().await;
+        match crate::services::ai_cost_ledger::with_site_ai_ledger(
+            owner,
+            "seo",
+            "generate",
+            analyzer.analyze_with_system(SYSTEM_PROMPT, &user_prompt),
+        )
+        .await
         {
             Ok(raw) => {
                 if let Some(parsed) = parse_seo_json(&raw) {

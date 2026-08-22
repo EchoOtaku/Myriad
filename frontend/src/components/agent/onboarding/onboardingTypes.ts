@@ -70,6 +70,23 @@ export type UpperBodyVisualIdentity = Record<
   string
 >
 
+export const UPPER_BODY_VISUAL_IDENTITY_LIMITS: Record<
+  UpperBodyVisualIdentityKey,
+  number
+> = {
+  faceDesign: 500,
+  eyeDesign: 500,
+  hairShape: 500,
+  hairLayerPlan: 700,
+  upperBodySilhouette: 700,
+  outfitConstruction: 1_200,
+  sleeveArmDesign: 700,
+  materialPlan: 1_200,
+  heroAccessory: 500,
+  paletteHint: 500,
+  motif: 500,
+}
+
 export function parseUpperBodyVisualIdentity(
   value: unknown,
 ): UpperBodyVisualIdentity | null {
@@ -113,14 +130,44 @@ export function emptyPersona(): StructuredPersona {
 export function structuredPersonaIsComplete(
   persona: StructuredPersona,
 ): boolean {
-  return (
-    persona.summary.trim().length >= 8 &&
-    persona.temperament.length > 0 &&
-    persona.likes.length > 0 &&
-    persona.drives.length > 0 &&
-    persona.socialStyle.trim().length > 0 &&
-    persona.speechStyle.trim().length > 0
-  )
+  return incompletePersonaFields(persona).length === 0
+}
+
+export function incompletePersonaFields(
+  persona: StructuredPersona,
+): Array<keyof StructuredPersona> {
+  const missing: Array<keyof StructuredPersona> = []
+  if (persona.summary.trim().length < 8) missing.push('summary')
+  if (persona.temperament.length === 0) missing.push('temperament')
+  if (persona.likes.length === 0) missing.push('likes')
+  if (persona.drives.length === 0) missing.push('drives')
+  if (!persona.socialStyle.trim()) missing.push('socialStyle')
+  if (!persona.speechStyle.trim()) missing.push('speechStyle')
+  return missing
+}
+
+export function onboardingSeedsFromProfile(value: unknown): {
+  sourceTags: string[]
+  personaExtraRequirements: string
+} {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return { sourceTags: [], personaExtraRequirements: '' }
+  }
+  const source = value as Record<string, unknown>
+  const sourceTags = Array.isArray(source.sourceTags)
+    ? source.sourceTags
+        .filter((tag): tag is string => typeof tag === 'string')
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .slice(0, 28)
+    : []
+  return {
+    sourceTags,
+    personaExtraRequirements:
+      typeof source.personaExtraRequirements === 'string'
+        ? source.personaExtraRequirements
+        : '',
+  }
 }
 
 export function parseList(value: string): string[] {

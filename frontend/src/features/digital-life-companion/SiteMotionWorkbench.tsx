@@ -236,7 +236,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     </>
   )
 
-  if (!rigManifest || !portraitUrl) {
+  if (!portraitUrl) {
     return (
       <SettingGroup
         title={t.companion.essentials}

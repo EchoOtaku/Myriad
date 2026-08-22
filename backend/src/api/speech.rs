@@ -4,12 +4,13 @@
 //! 服务商由设置里的 `speech_provider` 决定：腾讯云、OpenAI、OpenRouter 或 Gemini。
 
 use axum::{
-    extract::{Query, State},
+    extract::{Extension, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
 };
+use crate::middleware::auth::Claims;
 use sea_orm::DatabaseConnection;
 
 use crate::middleware::auth::verify_current_admin_from_headers;
@@ -390,8 +391,19 @@ fn speech_error_to_response(error: TencentSpeechError) -> (StatusCode, String) {
 /// 文本转语音 API
 ///
 /// POST /api/speech/tts
-pub async fn text_to_speech(Json(request): Json<TtsApiRequest>) -> impl IntoResponse {
-    match synthesize_standalone_tts(&request).await {
+pub async fn text_to_speech(
+    Extension(claims): Extension<Claims>,
+    Json(request): Json<TtsApiRequest>,
+) -> impl IntoResponse {
+    let user_id = claims.sub.parse().unwrap_or(0);
+    match crate::services::ai_cost_ledger::with_site_ai_ledger(
+        user_id,
+        "speech",
+        "tts",
+        synthesize_standalone_tts(&request),
+    )
+    .await
+    {
         Ok(response) => (StatusCode::OK, Json(response)),
         Err(msg) => {
             let status = if msg.contains("不能为空") {
@@ -422,7 +434,21 @@ pub async fn text_to_speech(Json(request): Json<TtsApiRequest>) -> impl IntoResp
 /// 批量文本转语音 API（用于播客）
 ///
 /// POST /api/speech/tts/batch
-pub async fn batch_text_to_speech(Json(request): Json<BatchTtsApiRequest>) -> impl IntoResponse {
+pub async fn batch_text_to_speech(
+    Extension(claims): Extension<Claims>,
+    Json(request): Json<BatchTtsApiRequest>,
+) -> impl IntoResponse {
+    let user_id = claims.sub.parse().unwrap_or(0);
+    crate::services::ai_cost_ledger::with_site_ai_ledger(
+        user_id,
+        "speech",
+        "tts_batch",
+        batch_text_to_speech_inner(request),
+    )
+    .await
+}
+
+async fn batch_text_to_speech_inner(request: BatchTtsApiRequest) -> impl IntoResponse {
     // 验证对话列表
     if request.dialogues.is_empty() {
         return (
@@ -566,6 +592,13 @@ pub async fn batch_text_to_speech(Json(request): Json<BatchTtsApiRequest>) -> im
         // 调用TTS服务
         match service.as_ref().unwrap().text_to_speech(tts_request).await {
             Ok(response) => {
+                crate::services::speech_runtime::note_tts(
+                    "tencent",
+                    "tts",
+                    &dialogue.text,
+                    response.audio.is_some(),
+                )
+                .await;
                 if let Some(audio) = response.audio {
                     // 写入文章缓存目录
                     if let Err(e) = write_article_tts_file(
@@ -600,6 +633,13 @@ pub async fn batch_text_to_speech(Json(request): Json<BatchTtsApiRequest>) -> im
                 }
             }
             Err(e) => {
+                crate::services::speech_runtime::note_tts(
+                    "tencent",
+                    "tts",
+                    &dialogue.text,
+                    false,
+                )
+                .await;
                 let (_, msg) = speech_error_to_response(e);
                 errors.push(BatchTtsError {
                     index: dialogue.index,
@@ -643,7 +683,21 @@ pub async fn batch_text_to_speech(Json(request): Json<BatchTtsApiRequest>) -> im
 ///
 /// POST /api/speech/asr
 pub async fn speech_to_text(
+    Extension(claims): Extension<Claims>,
     Json(request): Json<AsrApiRequest>,
+) -> (StatusCode, Json<AsrApiResponse>) {
+    let user_id = claims.sub.parse().unwrap_or(0);
+    crate::services::ai_cost_ledger::with_site_ai_ledger(
+        user_id,
+        "speech",
+        "stt",
+        speech_to_text_inner(request),
+    )
+    .await
+}
+
+async fn speech_to_text_inner(
+    request: AsrApiRequest,
 ) -> (StatusCode, Json<AsrApiResponse>) {
     // 验证输入
     if request.audio_data.is_none() && request.url.is_none() {
@@ -688,6 +742,7 @@ pub async fn speech_to_text(
     // 构建ASR请求
     let format = request.format.unwrap_or_else(|| "wav".to_string());
     let engine = request.engine.unwrap_or_else(|| "16k_zh".to_string());
+    let mut asr_audio_bytes: usize = 0;
 
     let asr_request = if let Some(audio_data) = &request.audio_data {
         // 解码Base64获取原始数据长度
@@ -706,9 +761,10 @@ pub async fn speech_to_text(
                 );
             }
         };
+        asr_audio_bytes = data_len as usize;
 
         AsrRequest {
-            eng_ser_vice_type: engine,
+            eng_ser_vice_type: engine.clone(),
             source_type: 1,
             voice_format: format,
             data: Some(audio_data.clone()),
@@ -720,7 +776,7 @@ pub async fn speech_to_text(
         }
     } else {
         AsrRequest {
-            eng_ser_vice_type: engine,
+            eng_ser_vice_type: engine.clone(),
             source_type: 0,
             voice_format: format,
             url: request.url,
@@ -734,6 +790,14 @@ pub async fn speech_to_text(
     // 调用ASR服务
     match service.speech_to_text(asr_request).await {
         Ok(response) => {
+            crate::services::speech_runtime::note_stt(
+                "tencent",
+                &engine,
+                asr_audio_bytes,
+                response.result.as_deref().unwrap_or(""),
+                true,
+            )
+            .await;
             let words = response.word_list.map(|list| {
                 list.into_iter()
                     .filter_map(|w| {
@@ -758,6 +822,14 @@ pub async fn speech_to_text(
             )
         }
         Err(e) => {
+            crate::services::speech_runtime::note_stt(
+                "tencent",
+                &engine,
+                asr_audio_bytes,
+                "",
+                false,
+            )
+            .await;
             let (status, msg) = speech_error_to_response(e);
             (
                 status,
@@ -843,8 +915,17 @@ pub async fn get_speech_status() -> impl IntoResponse {
 }
 
 /// POST /api/speech/test
-pub async fn test_speech_service() -> impl IntoResponse {
-    Json(crate::services::speech_runtime::test_speech_roundtrip().await)
+pub async fn test_speech_service(Extension(claims): Extension<Claims>) -> impl IntoResponse {
+    let user_id = claims.sub.parse().unwrap_or(0);
+    Json(
+        crate::services::ai_cost_ledger::with_site_ai_ledger(
+            user_id,
+            "speech",
+            "test",
+            crate::services::speech_runtime::test_speech_roundtrip(),
+        )
+        .await,
+    )
 }
 
 /// 获取可用音色列表

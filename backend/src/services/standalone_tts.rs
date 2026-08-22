@@ -259,6 +259,13 @@ pub async fn synthesize_standalone_tts(request: &TtsApiRequest) -> Result<TtsApi
 
     match service.text_to_speech(tts_request).await {
         Ok(response) => {
+            crate::services::speech_runtime::note_tts(
+                "tencent",
+                "tts",
+                &request.text,
+                response.audio.is_some(),
+            )
+            .await;
             if let Some(ref audio) = response.audio {
                 if let Err(e) =
                     write_tts_file(&text_hash, voice_type, speed, sample_rate, codec, audio).await
@@ -274,7 +281,10 @@ pub async fn synthesize_standalone_tts(request: &TtsApiRequest) -> Result<TtsApi
                 error: None,
             })
         }
-        Err(e) => Err(tencent_speech_error_message(&e)),
+        Err(e) => {
+            crate::services::speech_runtime::note_tts("tencent", "tts", &request.text, false).await;
+            Err(tencent_speech_error_message(&e))
+        }
     }
 }
 

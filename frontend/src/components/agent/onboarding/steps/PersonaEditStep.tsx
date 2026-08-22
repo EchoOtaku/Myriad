@@ -1,9 +1,10 @@
 import type { OnboardingHeaderChrome, StructuredPersona } from '../onboardingTypes'
 import { LuCheck, LuEdit3, LuX } from '@lib/icons'
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { generationFailureMessage } from '../generationError'
 import {
+  incompletePersonaFields,
   joinList,
   parseList,
   structuredPersonaIsComplete,
@@ -15,6 +16,7 @@ import { TextArea } from '../ui/Field'
 interface Props {
   persona: StructuredPersona
   busy: boolean
+  claimAutoGenerate: () => boolean
   onHeaderChange: (chrome: OnboardingHeaderChrome) => void
   onRegenerate: () => Promise<void>
   onSave: (persona: StructuredPersona) => Promise<void>
@@ -39,11 +41,12 @@ function keepText(next: unknown, fallback: string): string {
 export default function PersonaEditStep({
   persona,
   busy,
+  claimAutoGenerate,
   onHeaderChange,
   onRegenerate,
   onSave,
 }: Props) {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const o = t.life.onboarding
   const [summary, setSummary] = useState(() => persona.summary)
   const [temperament, setTemperament] = useState(() =>
@@ -57,6 +60,7 @@ export default function PersonaEditStep({
   const [editingField, setEditingField] = useState<PersonaFieldKey | null>(null)
   const [draft, setDraft] = useState('')
   const [regenBusy, setRegenBusy] = useState(false)
+  const regenBusyRef = useRef(false)
 
   const applyDraft = useCallback((next: StructuredPersona) => {
     setSummary((current) => keepText(next.summary, current))
@@ -72,7 +76,8 @@ export default function PersonaEditStep({
   }, [applyDraft, persona])
 
   const generatePersona = useCallback(async () => {
-    if (regenBusy) return
+    if (regenBusyRef.current) return
+    regenBusyRef.current = true
     setRegenBusy(true)
     setError('')
     try {
@@ -85,12 +90,25 @@ export default function PersonaEditStep({
           reason,
           o.regeneratePersonaFailed,
           o.generationTimeout,
+          { pro_unavailable: o.proUnavailable },
         ),
       )
     } finally {
+      regenBusyRef.current = false
       setRegenBusy(false)
     }
-  }, [o.generationTimeout, o.regeneratePersonaFailed, onRegenerate, regenBusy])
+  }, [
+    o.generationTimeout,
+    o.proUnavailable,
+    o.regeneratePersonaFailed,
+    onRegenerate,
+  ])
+
+  useEffect(() => {
+    if (structuredPersonaIsComplete(persona)) return
+    if (!claimAutoGenerate()) return
+    void generatePersona()
+  }, [])
 
   const values: Record<PersonaFieldKey, string> = {
     temperament,
@@ -142,6 +160,23 @@ export default function PersonaEditStep({
     setDraft('')
   }
 
+  const draftPersona = {
+    summary: summary.trim(),
+    temperament: parseList(temperament),
+    likes: parseList(likes),
+    drives: parseList(drives),
+    socialStyle: socialStyle.trim(),
+    speechStyle: speechStyle.trim(),
+  }
+  const missingFields = incompletePersonaFields(draftPersona)
+  const fieldLabels: Record<(typeof missingFields)[number], string> = {
+    temperament: o.fieldTemperament,
+    likes: o.fieldLikes,
+    drives: o.fieldDrives,
+    socialStyle: o.fieldSocial,
+    speechStyle: o.fieldVoice,
+    summary: o.fieldSummary,
+  }
   const blocked = busy || regenBusy || editingField !== null
   const headerDescription = regenBusy ? o.step3LeadPending : o.step3Lead
 
@@ -171,18 +206,7 @@ export default function PersonaEditStep({
         <div
           className={`life-ob-persona-groups${regenBusy ? ' is-incomplete' : ''}`}
         >
-          <section
-            className="life-ob-persona-group"
-            aria-label={o.personaGroupCharacter}
-          >
-            <h2 className="life-ob-persona-group__title">
-              {o.personaGroupCharacter}
-              {regenBusy ? (
-                <span className="life-ob-persona-group__draft">
-                  {o.personaDraftLabel}
-                </span>
-              ) : null}
-            </h2>
+          <section className="life-ob-persona-group" aria-label={o.step3Title}>
             <dl className="life-ob-persona-view">
               {rows.map((row) => {
                 const isEditing = editingField === row.key
@@ -270,38 +294,40 @@ export default function PersonaEditStep({
           </section>
         </div>
         {error && <ErrorNote>{error}</ErrorNote>}
+        {!error && missingFields.length > 0 && !regenBusy ? (
+          <ErrorNote>
+            {o.personaIncompleteHint.replace(
+              '{fields}',
+              missingFields
+                .map((key) => fieldLabels[key])
+                .join(locale.startsWith('en') ? ', ' : '、'),
+            )}
+          </ErrorNote>
+        ) : null}
       </StepBody>
       <ActionBar>
         <PrimaryButton
-          label={busy ? o.saving : o.saveAndContinue}
-          busy={busy}
+          label={
+            regenBusy ? o.regeneratingPersona : busy ? o.saving : o.next
+          }
+          busy={busy || regenBusy}
           disabled={
-            regenBusy ||
             editingField !== null ||
-            !structuredPersonaIsComplete({
-              summary: summary.trim(),
-              temperament: parseList(temperament),
-              likes: parseList(likes),
-              drives: parseList(drives),
-              socialStyle: socialStyle.trim(),
-              speechStyle: speechStyle.trim(),
-            })
+            !structuredPersonaIsComplete(draftPersona)
           }
           onClick={() => {
             setError('')
-            void onSave({
-              summary: summary.trim(),
-              temperament: parseList(temperament),
-              likes: parseList(likes),
-              drives: parseList(drives),
-              socialStyle: socialStyle.trim(),
-              speechStyle: speechStyle.trim(),
-            }).catch((reason) => {
+            void onSave(draftPersona).catch((reason) => {
               setError(
                 generationFailureMessage(
                   reason,
                   o.saveFailed,
                   o.generationTimeout,
+                  {
+                    pro_unavailable: o.proUnavailable,
+                    persona_contract_invalid: o.saveFailed,
+                    persona_draft_failed: o.regeneratePersonaFailed,
+                  },
                 ),
               )
             })

@@ -1,13 +1,17 @@
 import type { OnboardingHeaderChrome } from '../onboardingTypes'
 import { LuImage } from '@lib/icons'
-import { useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import {
   generateSitePortrait,
   getSiteFace,
 } from '../../../../features/digital-life-companion/api'
 import { notifyFaceUpdated } from '../../../../features/digital-life-companion/events'
-import { generationFailureMessage } from '../generationError'
+import {
+  generationFailureMessage,
+  isGenerationTimeout,
+  isPortraitInProgress,
+} from '../generationError'
 import { ActionBar, GhostButton, PrimaryButton, StepBody } from '../ui/Chrome'
 import { ErrorNote } from '../ui/Feedback'
 import { Field, TextArea } from '../ui/Field'
@@ -31,14 +35,106 @@ export default function MasterPortraitStep({
   const o = t.life.onboarding
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
   const [requirements, setRequirements] = useState('')
-  const [requirementsDirty, setRequirementsDirty] = useState(false)
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
+  const [editing, setEditing] = useState(false)
   const [error, setError] = useState('')
+  const generatingRef = useRef(false)
+  const portraitUrlRef = useRef(portraitUrl)
+  portraitUrlRef.current = portraitUrl
 
-  useLayoutEffect(() => {
-    onHeaderChange({ description: o.step5Lead })
-  }, [o.step5Lead, onHeaderChange])
+  const portraitErrors = {
+    pro_unavailable: o.proUnavailable,
+    visual_design_required: o.visualDesignRequired,
+    image_provider_unconfigured: o.imageProviderUnconfigured,
+    portrait_generation_in_progress: o.portraitInProgress,
+    character_visual_inputs_changed: o.portraitInputsChanged,
+    portrait_generation_failed: o.portraitGenerateFailed,
+    portrait_edit_notes_required: o.portraitEditNeedsNotes,
+    portrait_required_for_edit: o.portraitEmpty,
+    portrait_edit_failed: o.portraitEditFailed,
+  }
+
+  const recoverPortrait = useCallback(
+    async (previousUrl: string | null) => {
+      for (const waitMs of [0, 2000, 3000, 4000, 5000]) {
+        if (waitMs) {
+          await new Promise((resolve) => window.setTimeout(resolve, waitMs))
+        }
+        try {
+          const face = await getSiteFace()
+          if (face.portraitUrl && face.portraitUrl !== previousUrl) {
+            setPortraitUrl(face.portraitUrl)
+            notifyFaceUpdated()
+            return true
+          }
+        } catch {
+          /* keep polling the public face */
+        }
+      }
+      return false
+    },
+    [],
+  )
+
+  const generate = useCallback(async (edit = false) => {
+    if (busy || generatingRef.current) return
+    if (edit && !requirements.trim()) {
+      setError(o.portraitEditNeedsNotes)
+      return
+    }
+    generatingRef.current = true
+    const previousUrl = portraitUrlRef.current
+    setError('')
+    setEditing(edit)
+    setGenerating(true)
+    onBusyChange(true)
+    try {
+      const result = await generateSitePortrait(
+        requirements.trim() || undefined,
+        { edit },
+      )
+      if (!result.portraitUrl) {
+        throw new Error(edit ? o.portraitEditFailed : o.portraitGenerateFailed)
+      }
+      setPortraitUrl(result.portraitUrl)
+      notifyFaceUpdated()
+    } catch (reason) {
+      if (
+        (isPortraitInProgress(reason) || isGenerationTimeout(reason)) &&
+        (await recoverPortrait(previousUrl))
+      ) {
+        return
+      }
+      setError(
+        generationFailureMessage(
+          reason,
+          edit ? o.portraitEditFailed : o.portraitGenerateFailed,
+          o.generationTimeout,
+          portraitErrors,
+        ),
+      )
+    } finally {
+      generatingRef.current = false
+      setGenerating(false)
+      setEditing(false)
+      onBusyChange(false)
+    }
+  }, [
+    busy,
+    o.generationTimeout,
+    o.imageProviderUnconfigured,
+    o.portraitEditFailed,
+    o.portraitEditNeedsNotes,
+    o.portraitGenerateFailed,
+    o.portraitInProgress,
+    o.portraitInputsChanged,
+    o.proUnavailable,
+    o.visualDesignRequired,
+    onBusyChange,
+    recoverPortrait,
+    requirements,
+  ])
 
   useEffect(() => {
     let cancelled = false
@@ -61,34 +157,42 @@ export default function MasterPortraitStep({
     }
   }, [o.portraitLoadFailed])
 
-  const generate = async () => {
-    if (busy || generating) return
-    setError('')
-    setGenerating(true)
-    onBusyChange(true)
-    try {
-      const result = await generateSitePortrait(
-        requirements.trim() || undefined,
-      )
-      if (!result.portraitUrl) throw new Error(o.portraitGenerateFailed)
-      setPortraitUrl(result.portraitUrl)
-      setRequirementsDirty(false)
-      notifyFaceUpdated()
-    } catch (reason) {
-      setError(
-        generationFailureMessage(
-          reason,
-          o.portraitGenerateFailed,
-          o.generationTimeout,
-        ),
-      )
-    } finally {
-      setGenerating(false)
-      onBusyChange(false)
-    }
-  }
-
   const blocked = busy || generating || loading
+
+  useLayoutEffect(() => {
+    onHeaderChange({
+      description:
+        generating && !portraitUrl
+          ? editing
+            ? o.portraitEditing
+            : o.portraitGenerating
+          : o.step5Lead,
+      action: {
+        label: generating
+          ? editing
+            ? o.portraitEditing
+            : o.portraitGenerating
+          : portraitUrl
+            ? o.portraitRegenerate
+            : o.portraitGenerate,
+        busy: generating,
+        disabled: blocked,
+        onClick: () => void generate(false),
+      },
+    })
+  }, [
+    blocked,
+    generate,
+    generating,
+    editing,
+    o.portraitEditing,
+    o.portraitGenerate,
+    o.portraitGenerating,
+    o.portraitRegenerate,
+    o.step5Lead,
+    onHeaderChange,
+    portraitUrl,
+  ])
 
   return (
     <section className="life-ob-master" aria-label={o.step5Title}>
@@ -103,7 +207,11 @@ export default function MasterPortraitStep({
               <div className="life-ob-master__placeholder">
                 <span className="life-loading__orb" aria-hidden />
                 <span>
-                  {generating ? o.portraitGenerating : o.portraitLoading}
+                  {generating
+                    ? editing
+                      ? o.portraitEditing
+                      : o.portraitGenerating
+                    : o.portraitLoading}
                 </span>
               </div>
             ) : (
@@ -115,33 +223,25 @@ export default function MasterPortraitStep({
           </div>
 
           <div className="life-ob-master__controls">
-            <div className="life-ob-master__contract">
-              <strong>{o.portraitContractTitle}</strong>
-              <p>{o.portraitContractHint}</p>
-            </div>
             <Field
               label={o.portraitRequirements}
-              hint={o.portraitRequirementsHint}
               optional
               optionalLabel={o.optional}
             >
               <TextArea
                 value={requirements}
-                rows={4}
+                rows={3}
                 maxLength={2_000}
                 disabled={blocked}
                 placeholder={o.portraitRequirementsPlaceholder}
-                onChange={(event) => {
-                  setRequirements(event.target.value)
-                  setRequirementsDirty(true)
-                }}
+                onChange={(event) => setRequirements(event.target.value)}
               />
             </Field>
             {portraitUrl ? (
               <GhostButton
-                label={generating ? o.portraitGenerating : o.portraitRegenerate}
-                disabled={blocked}
-                onClick={() => void generate()}
+                label={editing ? o.portraitEditing : o.portraitEdit}
+                disabled={blocked || !requirements.trim()}
+                onClick={() => void generate(true)}
               />
             ) : null}
           </div>
@@ -151,17 +251,22 @@ export default function MasterPortraitStep({
       <ActionBar>
         <PrimaryButton
           label={
-            portraitUrl && !requirementsDirty
-              ? o.portraitFinish
-              : generating
-                ? o.portraitGenerating
-                : o.portraitGenerate
+            generating
+              ? editing
+                ? o.portraitEditing
+                : o.portraitGenerating
+              : loading
+                ? o.portraitLoading
+                : portraitUrl
+                  ? o.portraitFinish
+                  : o.portraitGenerate
           }
-          busy={generating}
-          disabled={loading || (busy && !generating)}
+          busy={generating || loading}
+          disabled={loading || (Boolean(portraitUrl) && generating)}
           onClick={() => {
-            if (portraitUrl && !requirementsDirty) onFinished()
-            else void generate()
+            if (blocked) return
+            if (portraitUrl) onFinished()
+            else void generate(false)
           }}
         />
       </ActionBar>

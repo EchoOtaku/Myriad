@@ -2,6 +2,7 @@ import type { RigCharacterHandle } from './rig/RigCharacter'
 import type { CompanionRigManifest } from './rig/types'
 import type { CompanionActivity } from './types'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { ADDRESSEE_UPDATED_EVENT } from '../../components/agent/lifeVitals'
 import { useI18n } from '../../contexts/I18nContext'
 import { isExlight, useAnimationLevel } from '../../hooks/useAnimationLevel'
@@ -23,7 +24,9 @@ function toCompanionActivity(raw: string | undefined): CompanionActivity {
 
 export default function AraelFaceOverlay() {
   const { t } = useI18n()
+  const { pathname } = useLocation()
   const still = isExlight(useAnimationLevel())
+  const settingsOpen = pathname === '/config' || pathname.startsWith('/config/')
   const [visible, setVisible] = useState(false)
   const [manifest, setManifest] = useState<CompanionRigManifest | null>(null)
   const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
@@ -87,7 +90,7 @@ export default function AraelFaceOverlay() {
     }
   }, [])
 
-  if (!visible || !portraitUrl) return null
+  if (!visible || !portraitUrl || settingsOpen) return null
 
   return (
     <aside className="dlc-stage" aria-label={t.companion.faceStage}>

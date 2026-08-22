@@ -228,6 +228,33 @@ pub async fn generate_image_with_background(
     }
     let width = width.clamp(256, 2048);
     let height = height.clamp(256, 2048);
+    let result = generate_image_provider(config, prompt, width, height, reference, background).await;
+    let (input_tokens, output_tokens) =
+        crate::services::ai_cost_ledger::estimate_image_tokens(prompt, width, height);
+    crate::services::ai_cost_ledger::record_ai_tokens_from_attribution(
+        &config.provider,
+        &config.model,
+        input_tokens,
+        output_tokens,
+        if result.is_ok() { "completed" } else { "failed" },
+        if result.is_ok() {
+            None
+        } else {
+            Some("AI_PROVIDER_ERROR")
+        },
+    )
+    .await;
+    result
+}
+
+async fn generate_image_provider(
+    config: &ImageGenerationConfig,
+    prompt: &str,
+    width: u32,
+    height: u32,
+    reference: Option<&ImageReference>,
+    background: Option<ImageBackground>,
+) -> Result<GeneratedImage, ImageGenerationError> {
     if config.provider == "gemini" {
         return crate::services::gemini_media::generate_image(
             config, prompt, width, height, reference,
@@ -296,6 +323,14 @@ pub async fn generate_image_with_background(
 }
 
 /// Persist a provider result into the local image cache and return a serveable URL.
+pub async fn load_local_reference(url: &str) -> Result<ImageReference, ImageGenerationError> {
+    let (bytes, media_type) = ImageCacheService::new()
+        .read_local_public_url(url)
+        .await
+        .map_err(ImageGenerationError::Provider)?;
+    ImageReference::new(bytes, media_type)
+}
+
 pub async fn persist_generated(generated: &GeneratedImage) -> Result<String, ImageGenerationError> {
     Ok(persist_generated_with_status(generated).await?.url)
 }

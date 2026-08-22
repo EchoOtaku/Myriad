@@ -2,12 +2,16 @@
 //!
 //! `tapp_quota_usage` answers "how much budget is left today"; this ledger
 //! answers "which caller spent what, when, on which provider/model". Entries are
-//! written for governed AI tasks (Tapp / scheduler), and for other site-wide
-//! paths (Arael agent, reports, …) when a task-local [`AiLedgerAttribution`] is
-//! active. **Admin subjects are included** — this is full-site usage, not
-//! visitor-stats style staff exclusion. Token counts are the same length/4
-//! estimates the quota system uses; `cost_micro_usd` stays NULL until a pricing
-//! source exists.
+//! written for governed AI tasks (Tapp / scheduler) via [`record_ai_cost`], and
+//! for every other site-wide path from `AiAnalyzer` / image / speech hooks.
+//! When a task-local [`AiLedgerAttribution`] is active, that source/user is
+//! used; otherwise the hook still writes an `internal` row so usage cannot
+//! vanish. Governed tasks wrap their provider call in
+//! [`with_ai_ledger_suppressed`] to avoid double-count. **Admin subjects are
+//! included** — this is full-site usage, not visitor-stats style staff
+//! exclusion. Token counts are the same length/4 estimates the quota system
+//! uses (images/speech use the helpers below); `cost_micro_usd` stays NULL
+//! until a pricing source exists.
 //!
 //! HTTP list endpoint stays in the API layer; only the best-effort append lives
 //! here so AI task execution does not import `crate::api`.
@@ -18,9 +22,10 @@ use std::sync::Arc;
 
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value as SeaValue};
 
-/// Task-local attribution for non-governed paths that call `AiAnalyzer` directly
-/// (Arael, report generation, prompt tools, …). Governed tasks already call
-/// [`record_ai_cost`] explicitly and should **not** set this context (avoids double-count).
+/// Task-local attribution for non-governed paths that call `AiAnalyzer` / image /
+/// speech directly (Arael, report generation, prompt tools, …). Governed tasks
+/// already call [`record_ai_cost`] explicitly and should wrap the provider call
+/// in [`with_ai_ledger_suppressed`] (avoids double-count).
 #[derive(Debug, Clone)]
 pub struct AiLedgerAttribution {
     pub subject_id: i32,
@@ -29,6 +34,22 @@ pub struct AiLedgerAttribution {
     pub operation: String,
     pub tapp_id: String,
     pub task_id: String,
+}
+
+impl AiLedgerAttribution {
+    /// Site-wide caller that is not a Tapp install (`tapp_id` is `__{source}__`).
+    pub fn site(subject_id: i32, source: impl Into<String>, operation: impl Into<String>) -> Self {
+        let source = source.into();
+        let operation = operation.into();
+        Self {
+            subject_id,
+            owner_id: subject_id,
+            tapp_id: format!("__{source}__"),
+            task_id: operation.clone(),
+            source,
+            operation,
+        }
+    }
 }
 
 /// Running token total for one logical unit of work.
@@ -66,6 +87,7 @@ impl AiUsageMeter {
 tokio::task_local! {
     static AI_LEDGER_ATTRIBUTION: AiLedgerAttribution;
     static AI_USAGE_METER: AiUsageMeter;
+    static AI_LEDGER_SUPPRESSED: bool;
 }
 
 /// Run `fut` with ledger attribution for any nested `AiAnalyzer` calls.
@@ -88,6 +110,46 @@ where
     AI_USAGE_METER.scope(meter, fut).await
 }
 
+/// Skip hook writes inside `fut` because the caller records the task itself.
+pub async fn with_ai_ledger_suppressed<F, T>(fut: F) -> T
+where
+    F: Future<Output = T>,
+{
+    AI_LEDGER_SUPPRESSED.scope(true, fut).await
+}
+
+/// Attribute nested analyzer / image / speech calls to a site-wide source.
+pub async fn with_site_ai_ledger<F, T>(
+    subject_id: i32,
+    source: &str,
+    operation: &str,
+    fut: F,
+) -> T
+where
+    F: Future<Output = T>,
+{
+    with_ai_ledger_attribution(AiLedgerAttribution::site(subject_id, source, operation), fut)
+        .await
+}
+
+/// Durable site owner, or `1` when the database is not reachable.
+pub async fn resolve_site_owner_id() -> i32 {
+    match crate::services::tapp_registry::database().await {
+        Ok(db) => crate::services::tapp_ownership::get_admin_user_id(&db)
+            .await
+            .unwrap_or(1),
+        Err(_) => 1,
+    }
+}
+
+fn ledger_write_enabled() -> bool {
+    !AI_LEDGER_SUPPRESSED.try_with(|suppressed| *suppressed).unwrap_or(false)
+}
+
+fn fallback_attribution() -> AiLedgerAttribution {
+    AiLedgerAttribution::site(0, "internal", "unattributed")
+}
+
 fn current_attribution() -> Option<AiLedgerAttribution> {
     AI_LEDGER_ATTRIBUTION.try_with(|c| c.clone()).ok()
 }
@@ -103,7 +165,52 @@ pub fn current_ai_attribution() -> Option<AiLedgerAttribution> {
     current_attribution()
 }
 
-/// Best-effort ledger write when a task-local attribution is active (AiAnalyzer hooks).
+/// Re-install the current attribution inside a detached task.
+pub fn spawn_with_current_ai_attribution<F, Fut>(f: F)
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    let attribution = current_attribution();
+    tokio::spawn(async move {
+        let fut = f();
+        match attribution {
+            Some(attr) => with_ai_ledger_attribution(attr, fut).await,
+            None => fut.await,
+        }
+    });
+}
+
+/// Length/4 estimate used by the text analyzer hook.
+pub fn estimate_text_tokens(chars: usize) -> i32 {
+    i32::try_from(chars / 4).unwrap_or(i32::MAX)
+}
+
+/// Prompt length/4 plus a size-based placeholder for one generated image.
+pub fn estimate_image_tokens(prompt: &str, width: u32, height: u32) -> (i32, i32) {
+    let input = estimate_text_tokens(prompt.len());
+    let pixels = u64::from(width).saturating_mul(u64::from(height));
+    let output = i32::try_from((pixels / 256).clamp(256, 16_384)).unwrap_or(16_384);
+    (input, output)
+}
+
+/// File TTS: charge the spoken text on both sides until audio pricing exists.
+pub fn estimate_tts_tokens(text: &str) -> (i32, i32) {
+    let tokens = estimate_text_tokens(text.len()).max(1);
+    (tokens, tokens)
+}
+
+/// File STT: audio bytes/100 in, transcript length/4 out.
+pub fn estimate_stt_tokens(audio_bytes: usize, transcript: &str) -> (i32, i32) {
+    let input = i32::try_from(audio_bytes / 100).unwrap_or(i32::MAX).max(1);
+    let output = estimate_text_tokens(transcript.len());
+    (input, output)
+}
+
+/// Best-effort ledger write from analyzer / media hooks.
+///
+/// Writes even without a task-local attribution (`source=internal`) so a
+/// forgotten wrapper cannot hide spend. Governed Tapp tasks suppress this.
 pub async fn record_ai_call_from_attribution(
     provider: &str,
     model: &str,
@@ -112,18 +219,38 @@ pub async fn record_ai_call_from_attribution(
     status: &str,
     error_code: Option<&str>,
 ) {
-    let input_tokens = i32::try_from(input_chars / 4).unwrap_or(i32::MAX);
-    let output_tokens = i32::try_from(output_chars / 4).unwrap_or(i32::MAX);
+    record_ai_tokens_from_attribution(
+        provider,
+        model,
+        estimate_text_tokens(input_chars),
+        estimate_text_tokens(output_chars),
+        status,
+        error_code,
+    )
+    .await;
+}
 
-    // Metered before the attribution check: the planner runs outside any
-    // attribution scope today, and a quota settlement must still see its spend.
+/// Same hook with caller-supplied token estimates (images, speech).
+pub async fn record_ai_tokens_from_attribution(
+    provider: &str,
+    model: &str,
+    input_tokens: i32,
+    output_tokens: i32,
+    status: &str,
+    error_code: Option<&str>,
+) {
+    let input_tokens = input_tokens.max(0);
+    let output_tokens = output_tokens.max(0);
+
+    // Metered even without attribution: planner / nested work must still settle.
     let _ = AI_USAGE_METER.try_with(|meter| {
-        meter.add(u64::from(input_tokens.max(0) as u32) + u64::from(output_tokens.max(0) as u32));
+        meter.add(u64::from(input_tokens as u32) + u64::from(output_tokens as u32));
     });
 
-    let Some(attr) = current_attribution() else {
+    if !ledger_write_enabled() {
         return;
-    };
+    }
+    let attr = current_attribution().unwrap_or_else(fallback_attribution);
     let Ok(db) = crate::services::tapp_registry::database().await else {
         return;
     };
@@ -204,8 +331,10 @@ pub async fn record_ai_cost(db: &DatabaseConnection, entry: AiCostLedgerEntry<'_
 #[cfg(test)]
 mod tests {
     use super::{
-        record_ai_call_from_attribution, with_ai_ledger_attribution, with_ai_usage_meter,
-        AiCostLedgerEntry, AiLedgerAttribution, AiUsageMeter,
+        estimate_image_tokens, estimate_stt_tokens, estimate_text_tokens, estimate_tts_tokens,
+        ledger_write_enabled, record_ai_call_from_attribution, with_ai_ledger_attribution,
+        with_ai_ledger_suppressed, with_ai_usage_meter, with_site_ai_ledger, AiCostLedgerEntry,
+        AiLedgerAttribution, AiUsageMeter,
     };
 
     #[tokio::test]
@@ -301,5 +430,59 @@ mod tests {
         .await;
         assert_eq!(seen, Some(42));
         assert!(super::current_attribution().is_none());
+    }
+
+    #[test]
+    fn site_attribution_uses_source_bucket() {
+        let attr = AiLedgerAttribution::site(7, "life", "onboarding");
+        assert_eq!(attr.subject_id, 7);
+        assert_eq!(attr.owner_id, 7);
+        assert_eq!(attr.source, "life");
+        assert_eq!(attr.operation, "onboarding");
+        assert_eq!(attr.tapp_id, "__life__");
+        assert_eq!(attr.task_id, "onboarding");
+    }
+
+    #[test]
+    fn image_and_speech_estimates_are_nonzero() {
+        assert_eq!(estimate_text_tokens(400), 100);
+        let (input, output) = estimate_image_tokens("abcd", 1024, 1024);
+        assert_eq!(input, 1);
+        assert_eq!(output, 4096);
+        let (tts_in, tts_out) = estimate_tts_tokens("hello");
+        assert!(tts_in >= 1);
+        assert_eq!(tts_in, tts_out);
+        let (stt_in, stt_out) = estimate_stt_tokens(2_000, "abcd");
+        assert_eq!(stt_in, 20);
+        assert_eq!(stt_out, 1);
+    }
+
+    #[tokio::test]
+    async fn suppress_disables_ledger_writes_but_meter_still_counts() {
+        assert!(ledger_write_enabled());
+        let meter = AiUsageMeter::new();
+        with_ai_usage_meter(meter.clone(), async {
+            with_ai_ledger_suppressed(async {
+                assert!(!ledger_write_enabled());
+                record_ai_call_from_attribution("openai", "m", 4_000, 0, "completed", None)
+                    .await;
+            })
+            .await;
+            assert!(ledger_write_enabled());
+        })
+        .await;
+        assert_eq!(meter.total_tokens(), 1_000);
+    }
+
+    #[tokio::test]
+    async fn site_helper_installs_attribution() {
+        let seen = with_site_ai_ledger(3, "playground", "generate", async {
+            super::current_attribution().map(|a| (a.subject_id, a.source, a.tapp_id))
+        })
+        .await;
+        assert_eq!(
+            seen,
+            Some((3, "playground".into(), "__playground__".into()))
+        );
     }
 }

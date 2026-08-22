@@ -82,6 +82,22 @@ set_env_file_value() {
     mv "$tmp" "$file"
 }
 
+heal_myriad_guard_env_file() {
+    local file="$1"
+    local current
+    [ -f "$file" ] || return 0
+    current="$(grep '^MYRIAD_GUARD_ENV_FILE=' "$file" | head -1 | cut -d= -f2- || true)"
+    if [ "$current" = "guard-policy/docker-guard.env" ]; then
+        return 0
+    fi
+    set_env_file_value "$file" MYRIAD_GUARD_ENV_FILE "guard-policy/docker-guard.env"
+    if [ -n "$current" ]; then
+        warn "  ! healed MYRIAD_GUARD_ENV_FILE in $file ($current -> guard-policy/docker-guard.env)"
+    else
+        info "  + set MYRIAD_GUARD_ENV_FILE in $file"
+    fi
+}
+
 ensure_guard_policy_secret() {
     local count value
     count="$(grep -c '^GUARD_SELF_UPDATE_TOKEN=' "$GUARD_ENV_FILE" || true)"
@@ -184,6 +200,7 @@ ensure_guard_policy() {
         esac
     fi
     ensure_guard_policy_secret
+    heal_myriad_guard_env_file "$GUARD_ENV_FILE"
     for key in DOCKER_GUARD_IMAGE GUARD_SELF_UPDATE_TOKEN GUARD_COMPOSE_PROJECT_NAME GUARD_MYRIAD_DOCKER_NETWORK GUARD_MYRIAD_ADMIN_NETWORK GUARD_MYRIAD_DOCKER_GUARD_NETWORK MYRIAD_GUARD_ENV_FILE; do
         count="$(grep -c "^${key}=[^[:space:]].*" "$GUARD_ENV_FILE" || true)"
         if [ "$count" != "1" ]; then
@@ -304,6 +321,7 @@ ensure_current_layout() {
     ensure_key CHECK_INTERVAL_SECS 3600
     ensure_key PROXY_ALLOW_DIRECT_UPDATER false
     ensure_key MYRIAD_GUARD_ENV_FILE guard-policy/docker-guard.env
+    heal_myriad_guard_env_file .env
     ensure_key GUARD_COMPOSE_PROJECT_NAME myriad
     ensure_update_token
     ensure_updater_gateway_secret

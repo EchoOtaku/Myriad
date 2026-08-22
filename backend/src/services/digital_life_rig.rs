@@ -154,8 +154,8 @@ pub fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
         offset = chunk_end;
     }
     let (width, height) = dimensions.ok_or_else(|| "Rig atlas PNG is missing an IHDR".to_string())?;
-    if width < 256 || height < 256 || width > 2_048 || height > 2_048 {
-        return Err("Rig atlas must be between 256 and 2048 pixels on each side".to_string());
+    if width < 256 || height < 256 || width > 8_192 || height > 8_192 {
+        return Err("Rig atlas must be between 256 and 8192 pixels on each side".to_string());
     }
     if !saw_iend || compressed.is_empty() {
         return Err("Rig atlas PNG is incomplete".to_string());
@@ -304,8 +304,11 @@ pub async fn mirror_active_asset(asset_id: Option<String>) {
 mod tests {
     use super::*;
     use flate2::{write::ZlibEncoder, Compression};
-    use myriad_digital_life::build_portrait_fallback_rig_with_generation;
-    use std::io::Write;
+    use myriad_digital_life::{
+        RigBone, RigManifest, RigPart, RigPoint, RigQuality, RigTexture, RigVertex,
+        CHARACTER_ASSET_CONTRACT_VERSION, RIG_IR_VERSION, RIG_SCHEMA_VERSION,
+    };
+    use std::{collections::HashMap, io::Write};
 
     fn push_png_chunk(bytes: &mut Vec<u8>, name: &[u8; 4], data: &[u8]) {
         bytes.extend_from_slice(&(data.len() as u32).to_be_bytes());
@@ -347,13 +350,71 @@ mod tests {
         assert!(png_dimensions(b"not-a-png").is_err());
     }
 
+    fn sample_manifest(master: &str, fingerprint: Option<String>) -> RigManifest {
+        RigManifest {
+            schema_version: RIG_SCHEMA_VERSION,
+            rig_ir_version: Some(RIG_IR_VERSION),
+            character_asset_contract_version: Some(CHARACTER_ASSET_CONTRACT_VERSION),
+            source_master_asset_id: Some(master.to_string()),
+            source_generation_fingerprint: fingerprint,
+            quality: RigQuality::Layered2d,
+            canvas: myriad_digital_life::RigSize {
+                width: 1.0,
+                height: 1.3333334,
+            },
+            textures: vec![RigTexture {
+                id: "atlas".to_string(),
+                url: "/atlas.png".to_string(),
+                width: 256,
+                height: 256,
+            }],
+            bones: vec![RigBone {
+                id: "root".to_string(),
+                parent: None,
+                pivot: RigPoint { x: 0.5, y: 0.8 },
+            }],
+            parts: vec![RigPart {
+                id: "body".to_string(),
+                texture_id: "atlas".to_string(),
+                z_index: 0,
+                opacity: 1.0,
+                slot: None,
+                variant: None,
+                vertices: vec![
+                    RigVertex {
+                        position: RigPoint { x: 0.0, y: 0.0 },
+                        uv: RigPoint { x: 0.0, y: 0.0 },
+                        joints: [0, 0, 0, 0],
+                        weights: [1.0, 0.0, 0.0, 0.0],
+                    },
+                    RigVertex {
+                        position: RigPoint { x: 1.0, y: 0.0 },
+                        uv: RigPoint { x: 1.0, y: 0.0 },
+                        joints: [0, 0, 0, 0],
+                        weights: [1.0, 0.0, 0.0, 0.0],
+                    },
+                    RigVertex {
+                        position: RigPoint { x: 0.0, y: 1.0 },
+                        uv: RigPoint { x: 0.0, y: 1.0 },
+                        joints: [0, 0, 0, 0],
+                        weights: [1.0, 0.0, 0.0, 0.0],
+                    },
+                ],
+                indices: vec![0, 1, 2],
+            }],
+            motion_profile: None,
+            outfit_profile: None,
+            semantic_anchors: HashMap::new(),
+            semantics: None,
+            spatial_profile: None,
+            anime25d_playback: None,
+        }
+    }
+
     #[test]
     fn package_identity_covers_provenance_and_manifest_but_not_runtime_url() {
         let atlas = b"atlas-pixels";
-        let mut first = build_portrait_fallback_rig_with_generation(
-            "/master-a.png",
-            Some("a".repeat(64)),
-        );
+        let mut first = sample_manifest("/master-a.png", Some("a".repeat(64)));
         let first_id = package_id_for_manifest(atlas, &first).unwrap();
         assert_eq!(normalize_asset_id(&first_id).as_deref(), Some(first_id.as_str()));
         assert_eq!(normalize_asset_id("abc"), None);

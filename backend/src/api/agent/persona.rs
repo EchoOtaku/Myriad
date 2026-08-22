@@ -300,7 +300,13 @@ pub async fn put_persona(
         None => life::JsonDocumentUpdate::Keep,
         Some(None) => life::JsonDocumentUpdate::Clear,
         Some(Some(value)) => {
-            life::JsonDocumentUpdate::Set(sanitize_visual_profile(value)?)
+            let sanitized = sanitize_visual_profile(value)?;
+            life::JsonDocumentUpdate::Set(merge_visual_profile(
+                sanitized,
+                previous
+                    .as_ref()
+                    .and_then(|persona| persona.visual_profile.as_ref()),
+            ))
         }
     };
     let effective_visual_profile = match &visual_profile {
@@ -708,6 +714,15 @@ pub async fn suggest_visual_design(
                 })),
             )))
         }
+        Err(life::onboarding_ai::OnboardingAiError::LanguageMismatch) => {
+            return Err(HttpError::from((
+                StatusCode::BAD_GATEWAY,
+                Json(json!({
+                    "error": "Visual design did not match the interface language",
+                    "code": "visual_design_language"
+                })),
+            )))
+        }
         Err(_) => {
             return Err(HttpError::from((
                 StatusCode::BAD_GATEWAY,
@@ -802,12 +817,23 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
             json!(normalize_signals_language(language)),
         );
     }
-    for (key, max_chars) in [("extraRequirements", 500)] {
+    for (key, max_chars) in [("extraRequirements", 500), ("personaExtraRequirements", 500)] {
         if let Some(text) = source.get(key).and_then(Value::as_str) {
             let text = sanitize_visual_text(text, max_chars)?;
             if !text.is_empty() {
                 profile.insert(key.into(), json!(text));
             }
+        }
+    }
+    if let Some(tags) = source.get("sourceTags").and_then(Value::as_array) {
+        let tags = tags
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        let tags = life::report_dna::sanitize_onboarding_tags(&tags);
+        if !tags.is_empty() {
+            profile.insert("sourceTags".into(), json!(tags));
         }
     }
     if let Some(identity) = source.get("visualIdentity") {
@@ -816,6 +842,24 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
         profile.insert("visualIdentity".into(), sanitized);
     }
     Ok(Value::Object(profile))
+}
+
+fn merge_visual_profile(incoming: Value, previous: Option<&Value>) -> Value {
+    let Some(previous) = previous.and_then(Value::as_object) else {
+        return incoming;
+    };
+    let Some(target) = incoming.as_object() else {
+        return incoming;
+    };
+    let mut merged = target.clone();
+    for key in ["visualIdentity", "sourceTags", "personaExtraRequirements"] {
+        if merged.get(key).is_none() {
+            if let Some(value) = previous.get(key) {
+                merged.insert(key.to_string(), value.clone());
+            }
+        }
+    }
+    Value::Object(merged)
 }
 
 fn sanitize_visual_text(value: &str, max_chars: usize) -> Result<String, HttpError> {
@@ -927,6 +971,37 @@ mod tests {
         assert!(myriad_digital_life::upper_body_visual_identity_is_complete(
             &profile["visualIdentity"]
         ));
+
+        let kept = merge_visual_profile(
+            sanitize_visual_profile(&json!({
+                "gender": "female",
+                "language": "zh-CN",
+                "sourceTags": [" 慢热 ", "慢热", "嘴硬心软"]
+            }))
+            .expect("partial profile"),
+            Some(&profile),
+        );
+        assert_eq!(kept["gender"], "female");
+        assert_eq!(kept["sourceTags"], json!(["慢热", "嘴硬心软"]));
+        assert_eq!(kept["visualIdentity"], profile["visualIdentity"]);
+        assert!(kept.get("extraRequirements").is_none());
+        assert!(kept.get("personaExtraRequirements").is_none());
+    }
+
+    #[test]
+    fn visual_profile_keeps_persona_seeds() {
+        let profile = sanitize_visual_profile(&json!({
+            "gender": "male",
+            "language": "en-US",
+            "personaExtraRequirements": "quieter with strangers",
+            "sourceTags": ["Night owl", "Clear boundaries"]
+        }))
+        .expect("seeds");
+        assert_eq!(profile["personaExtraRequirements"], "quieter with strangers");
+        assert_eq!(
+            profile["sourceTags"],
+            json!(["Night owl", "Clear boundaries"])
+        );
 
         let persona = sanitize_structured_persona(
             "瞳",

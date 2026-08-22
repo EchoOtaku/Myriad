@@ -3,7 +3,7 @@ import type {
   CompanionRigManifest,
 } from './rig/types'
 import api from '../../lib/api'
-import { isRigManifest } from './rig/types'
+import { isLiveCompanionManifest, isRigManifest } from './rig/types'
 
 const PREFIX = '/api/digital-life/rig'
 const RIG_MUTATION_TIMEOUT_MS = 6 * 60 * 1000
@@ -15,6 +15,7 @@ export class CompanionApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message)
     this.name = 'CompanionApiError'
@@ -39,6 +40,12 @@ export interface SeeThroughStatus {
   splitArmsAndLegs: boolean
 }
 
+function payloadCode(payload: Record<string, unknown>): string | undefined {
+  return typeof payload.code === 'string' && payload.code.trim()
+    ? payload.code
+    : undefined
+}
+
 function assertSuccess(status: number, data: unknown, fallback: string): void {
   if (status < 400) return
   const payload =
@@ -52,6 +59,7 @@ function assertSuccess(status: number, data: unknown, fallback: string): void {
           ? data
           : `${fallback} (HTTP ${status})`,
     status,
+    payloadCode(payload),
   )
 }
 
@@ -84,6 +92,7 @@ function companionError(
           ? reason.message
           : fallback,
     resolvedStatus,
+    payloadCode(payload),
   )
 }
 
@@ -103,12 +112,9 @@ export async function getSiteFace(): Promise<SiteFace> {
     }
   }
   assertSuccess(response.status, response.data, 'Could not load site face')
-  const manifest = isRigManifest(response.data.manifest)
+  const manifest = isLiveCompanionManifest(response.data.manifest)
     ? response.data.manifest
     : null
-  if (response.data.manifest != null && !manifest) {
-    throw new Error('Site rig manifest is invalid')
-  }
   return {
     manifest,
     portraitUrl: readPortraitUrl(response.data),
@@ -277,14 +283,26 @@ async function submitCompanionRigImport(
   return response.data.manifest
 }
 
-export async function generateSitePortrait(prompt?: string): Promise<{
+export async function generateSitePortrait(
+  prompt?: string,
+  options?: { edit?: boolean },
+): Promise<{
   portraitUrl: string | null
 }> {
-  const response = await api.post<{ portraitUrl?: unknown }>(
-    `${PREFIX}/portrait`,
-    { prompt },
-    { timeout: PORTRAIT_GENERATION_TIMEOUT_MS },
-  )
-  assertSuccess(response.status, response.data, 'Could not generate site portrait')
-  return { portraitUrl: readPortraitUrl(response.data) }
+  try {
+    const response = await api.post<{ portraitUrl?: unknown }>(
+      `${PREFIX}/portrait`,
+      { prompt, edit: options?.edit === true },
+      { timeout: PORTRAIT_GENERATION_TIMEOUT_MS },
+    )
+    assertSuccess(
+      response.status,
+      response.data,
+      'Could not generate site portrait',
+    )
+    return { portraitUrl: readPortraitUrl(response.data) }
+  } catch (reason) {
+    if (reason instanceof CompanionApiError) throw reason
+    throw companionError(reason, 'Could not generate site portrait')
+  }
 }

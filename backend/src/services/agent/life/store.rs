@@ -72,11 +72,17 @@ fn apply_json_update(field: &mut sea_orm::ActiveValue<Option<Value>>, update: &J
     }
 }
 
-fn json_update_changes(current: Option<&Value>, update: &JsonDocumentUpdate) -> bool {
+fn visual_generation_inputs_changed(
+    current: Option<&Value>,
+    update: &JsonDocumentUpdate,
+) -> bool {
     match update {
         JsonDocumentUpdate::Keep => false,
         JsonDocumentUpdate::Clear => current.is_some(),
-        JsonDocumentUpdate::Set(value) => current != Some(value),
+        JsonDocumentUpdate::Set(value) => {
+            current.map(myriad_digital_life::appearance_visual_profile).as_ref()
+                != Some(&myriad_digital_life::appearance_visual_profile(value))
+        }
     }
 }
 
@@ -89,7 +95,10 @@ fn apply_persona_update(
     updated_by: i32,
 ) -> agent_persona::ActiveModel {
     let generation_inputs_changed = existing.name != name
-        || json_update_changes(existing.visual_profile.as_ref(), &contract.visual_profile);
+        || visual_generation_inputs_changed(
+            existing.visual_profile.as_ref(),
+            &contract.visual_profile,
+        );
     let mut active: agent_persona::ActiveModel = existing.into();
     active.name = Set(name);
     active.personality = Set(personality);
@@ -603,6 +612,49 @@ mod tests {
             &PersonaContractUpdate {
                 persona: JsonDocumentUpdate::Set(json!({
                     "summary": "more curious"
+                })),
+                ..PersonaContractUpdate::default()
+            },
+            1,
+        );
+        assert_eq!(
+            active.portrait_asset_id,
+            sea_orm::ActiveValue::Unchanged(Some("/master.png".to_string()))
+        );
+        assert!(matches!(
+            active.portrait_generation,
+            sea_orm::ActiveValue::Unchanged(Some(_))
+        ));
+    }
+
+    #[test]
+    fn onboarding_seeds_do_not_invalidate_portrait() {
+        let existing = agent_persona::Model {
+            id: PERSONA_ROW_ID.to_string(),
+            name: "Arael".to_string(),
+            personality: "quiet".to_string(),
+            persona_json: Some(json!({ "summary": "quiet" })),
+            visual_profile: Some(json!({
+                "gender": "unspecified",
+                "visualIdentity": { "hairShape": "short bob" }
+            })),
+            portrait_asset_id: Some("/master.png".to_string()),
+            portrait_generation: Some(json!({ "fingerprint": "a".repeat(64) })),
+            updated_by: Some(1),
+            updated_at: Utc::now().into(),
+        };
+        let active = apply_persona_update(
+            existing,
+            "Arael".to_string(),
+            "quiet".to_string(),
+            &PortraitUpdate::Keep,
+            &PersonaContractUpdate {
+                visual_profile: JsonDocumentUpdate::Set(json!({
+                    "gender": "unspecified",
+                    "language": "zh-CN",
+                    "visualIdentity": { "hairShape": "short bob" },
+                    "sourceTags": ["慢热"],
+                    "personaExtraRequirements": "话少"
                 })),
                 ..PersonaContractUpdate::default()
             },

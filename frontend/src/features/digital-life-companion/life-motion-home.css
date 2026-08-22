@@ -130,7 +130,7 @@ html.dark .life-motion-home--settings.is-reviewing {
 .life-motion-home__stage {
   position: relative;
   display: grid;
-  place-items: end center;
+  place-items: center;
   min-width: 0;
   min-height: 0;
   width: 100%;
@@ -149,7 +149,7 @@ html.dark .life-motion-home--settings.is-reviewing {
 .life-motion-home__stage .dlc-rig img,
 .life-motion-home__stage .dlc-rig canvas {
   object-fit: contain;
-  object-position: center bottom;
+  object-position: center;
 }
 
 .life-motion-home__dock:empty {

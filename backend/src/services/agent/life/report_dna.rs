@@ -199,9 +199,13 @@ pub async fn distill_report_dna(
         "evidence": bundle.evidence,
     })
     .to_string();
-    let result = analyzer
-        .analyze_with_system(TAGS_SYSTEM_PROMPT, &prompt)
-        .await;
+    let result = crate::services::ai_cost_ledger::with_site_ai_ledger(
+        user_id,
+        "life",
+        "report_dna",
+        analyzer.analyze_with_system(TAGS_SYSTEM_PROMPT, &prompt),
+    )
+    .await;
     match result {
         Ok(raw) => {
             let tags = parse_ai_tags(&raw);

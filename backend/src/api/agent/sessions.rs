@@ -301,7 +301,14 @@ pub async fn generate_session_title(
              Return ONLY the title text, no quotes, no explanation.\n\n{}",
             context
         );
-        match analyzer.analyze(&prompt).await {
+        match crate::services::ai_cost_ledger::with_site_ai_ledger(
+            user_id,
+            "agent",
+            "session_title",
+            analyzer.analyze(&prompt),
+        )
+        .await
+        {
             Ok(raw) => {
                 // 清理：去掉首尾引号、多余空白
                 let cleaned = raw

@@ -346,7 +346,14 @@ async fn compose_line(db: &DatabaseConnection, user_id: i32, summary: &str) -> S
         &recent_block,
     );
     let prompt = super::speaking_prompts::compose_proactive_user(summary);
-    match analyzer.analyze_with_system(&system, &prompt).await {
+    match crate::services::ai_cost_ledger::with_site_ai_ledger(
+        user_id,
+        "life",
+        "speak",
+        analyzer.analyze_with_system(&system, &prompt),
+    )
+    .await
+    {
         Ok(raw) => {
             let spoken = sanitize_speech(&raw);
             if is_trivial_line(&spoken) {

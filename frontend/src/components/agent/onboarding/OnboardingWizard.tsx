@@ -5,13 +5,14 @@ import type {
   StructuredPersona,
   UpperBodyVisualIdentity,
 } from './onboardingTypes'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
 import { invalidatePublicConfigCache } from '../../../utils/requestDedup'
 import {
   emptyPersona,
   flattenPersona,
+  onboardingSeedsFromProfile,
   personaFromApi,
   visualIdentityFromProfile,
 } from './onboardingTypes'
@@ -45,7 +46,9 @@ export default function OnboardingWizard({
   const { t, locale } = useI18n()
   const o = t.life.onboarding
   const [busy, setBusy] = useState(false)
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [selectedTags, setSelectedTags] = useState<string[]>(
+    () => onboardingSeedsFromProfile(initialVisualProfile).sourceTags,
+  )
   const [displayName, setDisplayName] = useState(initialName)
   const [gender, setGender] = useState<LifeGender | null>(() => {
     const saved = initialVisualProfile?.gender
@@ -56,7 +59,10 @@ export default function OnboardingWizard({
       ? saved
       : null
   })
-  const [extraRequirements, setExtraRequirements] = useState('')
+  const [extraRequirements, setExtraRequirements] = useState(
+    () =>
+      onboardingSeedsFromProfile(initialVisualProfile).personaExtraRequirements,
+  )
   const [persona, setPersona] = useState<StructuredPersona>(
     () => initialPersona ?? emptyPersona(),
   )
@@ -71,6 +77,12 @@ export default function OnboardingWizard({
   const runLock = useRef(false)
   const previousStep = useRef(step)
   const hasStepped = useRef(false)
+  const claimedAuto = useRef({ persona: false })
+  const claimPersona = useCallback(() => {
+    if (claimedAuto.current.persona) return false
+    claimedAuto.current.persona = true
+    return true
+  }, [])
   const direction = step >= previousStep.current ? 1 : -1
   if (previousStep.current !== step) hasStepped.current = true
   previousStep.current = step
@@ -127,6 +139,10 @@ export default function OnboardingWizard({
       ? { extraRequirements: visualRequirements.trim() }
       : {}),
     ...(visualIdentity ? { visualIdentity } : {}),
+    ...(selectedTags.length ? { sourceTags: selectedTags } : {}),
+    ...(extraRequirements.trim()
+      ? { personaExtraRequirements: extraRequirements.trim() }
+      : {}),
   })
 
   const stepTitle = [
@@ -165,18 +181,16 @@ export default function OnboardingWizard({
                 onGender={setGender}
                 onExtra={setExtraRequirements}
                 onHeaderChange={onHeaderChange}
-                onSubmit={() =>
-                  run(async () => {
-                    await draftPersona()
-                    return 3
-                  })
-                }
+                onSubmit={async () => {
+                  onStepChange(3)
+                }}
               />
             )}
             {step === 3 && (
               <PersonaEditStep
                 persona={persona}
                 busy={busy}
+                claimAutoGenerate={claimPersona}
                 onHeaderChange={onHeaderChange}
                 onRegenerate={draftPersona}
                 onSave={(next) =>

@@ -141,14 +141,49 @@ export interface TranslationKeys {
     anime25dDebugDescription: string
     anime25dHeadX: string
     anime25dHeadY: string
+    anime25dHeadZ: string
     anime25dEyeL: string
     anime25dEyeR: string
+    anime25dEyeX: string
+    anime25dEyeY: string
+    anime25dEyeScaleL: string
+    anime25dEyeScaleR: string
+    anime25dEyeEase: string
+    anime25dEyeCY: string
+    anime25dEyeCAng: string
     anime25dMouth: string
+    anime25dMouthForm: string
+    anime25dMouthCY: string
+    anime25dMouthEase: string
+    anime25dMouthCAng: string
+    anime25dMouthScale: string
     anime25dArmY: string
     anime25dArmPos: string
     anime25dBust: string
+    anime25dBustY: string
     anime25dLean: string
+    anime25dBrow: string
+    anime25dBrowAngSym: string
+    anime25dBrowL: string
+    anime25dBrowR: string
+    anime25dPupil: string
+    anime25dIdle: string
+    anime25dAutoBlink: string
+    anime25dRand: string
+    anime25dMouse: string
+    anime25dPresetUsume: string
+    anime25dPhys: string
+    anime25dFhAmp: string
+    anime25dFhSoft: string
+    anime25dPhysAmp: string
+    anime25dSoft: string
+    anime25dBangL: string
+    anime25dBangC: string
+    anime25dBangR: string
     anime25dTalking: string
+    anime25dPresetShock: string
+    anime25dPresetDeadpan: string
+    anime25dPresetHair: string
     anime25dPresetIdle: string
     anime25dPresetSmile: string
     anime25dPresetTalk: string
@@ -165,8 +200,6 @@ export interface TranslationKeys {
     anime25dInspectMouth: string
     anime25dInspectCanvas: string
     anime25dInspectEmpty: string
-    details: string
-    detailsDescription: string
     motionPsd: string
     motionPsdDescription: string
     motionSeeThroughToken: string
@@ -179,103 +212,12 @@ export interface TranslationKeys {
     motionSeeThroughTokenFailed: string
     motionSeeThroughGenerate: string
     motionSeeThroughGenerating: string
-    motionSpring: string
-    motionRuntimeSignals: string
-    motionSignalLocked: string
-    motionSignalOpen: string
     motionReviewEnter: string
     motionReviewDescription: string
     motionReviewExit: string
-    motionReviewPrevious: string
-    motionReviewReplay: string
-    motionReviewNext: string
-    motionSecondary: string
-    motionBreathFrequency: string
-    motionBreathAmplitude: string
-    motionBlinkInterval: string
-    motionSpringFrequency: string
-    motionSpringDamping: string
-    motionSpringResponse: string
-    motionPreview: string
-    motionIntentGreet: string
-    motionIntentRespond: string
-    motionIntentQuestion: string
-    motionIntentDelight: string
-    motionIntentEmphasize: string
-    motionIntentNotify: string
-    motionPresetLibrary: string
-    motionPresetCount: string
-    motionPresetCommunication: string
-    motionPresetEmotion: string
-    motionPresetExpression: string
-    motionPresetAmbient: string
-    motionPerformanceDemos: string
-    motionPerformanceDescription: string
-    motionPerformanceGreeting: string
-    motionPerformanceExplanation: string
-    motionPerformanceCelebration: string
-    motionPerformanceThoughtful: string
-    motionPerformanceFarewell: string
-    motionPerformanceEncouragement: string
-    motionPerformanceApology: string
-    motionPerformanceDiscovery: string
-    motionPerformancePlayful: string
-    motionPerformanceBeatUnit: string
-    motionPerformanceActionUnit: string
-    motionPerformanceProgress: string
-    motionPerformanceComplete: string
-    motionPhaseAnticipation: string
-    motionPhaseAction: string
-    motionPhaseSettle: string
-    motionGenerationLab: string
-    motionGenerationDescription: string
-    motionRegenerateVariant: string
-    motionGeneratedTempo: string
-    motionGeneratedAmplitude: string
-    motionGeneratedFluidity: string
-    motionGeneratedPhrases: string
-    motionPhraseWarmGreeting: string
-    motionPhraseThoughtfulReply: string
-    motionPhraseLivelyExplanation: string
-    motionReset: string
-    motionSave: string
-    motionSaving: string
-    motionSaved: string
-    motionTimeline: string
-    motionTimelineDescription: string
-    motionClip: string
-    motionLayer: string
-    motionKeyframeCurrent: string
-    motionKeyframeEmpty: string
-    motionTranslateX: string
-    motionTranslateY: string
-    motionAuthorPresentation: string
-    motionAuthorPresentationDescription: string
-    motionPlayClip: string
-    motionStartDemo: string
-    motionStopDemo: string
-    motionDemoNow: string
-    motionKeyframes: string
-    motionKeyframeTime: string
-    motionRotation: string
-    motionScaleX: string
-    motionScaleY: string
-    motionAddKeyframe: string
-    motionRemoveKeyframe: string
-    motionSaveClips: string
-    motionRigDiagnostics: string
-    motionRegression: string
-    motionBaseline: string
-    motionCandidate: string
-    motionCaptureBaseline: string
-    motionCompareFrame: string
-    motionMigrateRig: string
-    motionMigrating: string
-    motionMigrationComplete: string
     motionPsdPreflight: string
     motionPsdValidating: string
     motionPsdCommit: string
-    motionNeedsCompiledRig: string
     faceStage: string
     adminTitle: string
     adminDescription: string
@@ -617,9 +559,17 @@ export interface TranslationKeys {
       aiUsageSourceAgent: string
       aiUsageSourceReports: string
       aiUsageSourceRuntime: string
+      aiUsageSourceLife: string
+      aiUsageSourcePlayground: string
+      aiUsageSourceSpeech: string
+      aiUsageSourceBrewlia: string
+      aiUsageSourcePrompt: string
+      aiUsageSourceSeo: string
+      aiUsageSourceInternal: string
       aiUsageSourceOther: string
       aiUsageFilterUser: string
       aiUsageFilterModel: string
+      aiUsageFilterSource: string
       aiUsageFilterAll: string
       aiUsageFiltersAria: string
       aiUsageNote: string
@@ -2181,6 +2131,8 @@ export interface TranslationKeys {
       saving: string
       saveAndContinue: string
       saveFailed: string
+      personaIncompleteHint: string
+      proUnavailable: string
       visualDesignScopeTitle: string
       visualDesignScopeHint: string
       visualRequirements: string
@@ -2202,7 +2154,10 @@ export interface TranslationKeys {
       visualDesignGenerating: string
       visualDesignRegenerate: string
       visualDesignConfirm: string
+      editVisual: string
       visualDesignFailed: string
+      visualDesignLanguageFailed: string
+      visualDesignRequired: string
       visualDesignSaveFailed: string
       portraitLoading: string
       portraitEmpty: string
@@ -2214,7 +2169,14 @@ export interface TranslationKeys {
       portraitGenerate: string
       portraitGenerating: string
       portraitRegenerate: string
+      portraitEdit: string
+      portraitEditing: string
+      portraitEditFailed: string
+      portraitEditNeedsNotes: string
       portraitGenerateFailed: string
+      portraitInProgress: string
+      portraitInputsChanged: string
+      imageProviderUnconfigured: string
       portraitLoadFailed: string
       portraitFinish: string
     }

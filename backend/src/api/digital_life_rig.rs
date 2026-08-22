@@ -19,15 +19,14 @@ use axum::{
     Extension, Json, Router,
 };
 use myriad_digital_life::{
-    build_character_asset_contract, build_character_visual_prompt,
-    build_portrait_fallback_rig_with_generation, build_standard_face_rig_clips_for_semantics,
+    build_character_asset_contract, build_character_visual_edit_prompt,
+    build_character_visual_prompt,
     character_asset_contract_fingerprint, compile_layered_rig, migrate_rig_manifest,
-    validate_character_asset_source, RigBone,
-    RigClip, RigCompileSource,
-    RigLayerSource, RigManifest, RigMotionProfile, RigOutfitProfile, RigSemanticAnchor,
-    RigSemantics, RigSize, RigSpatialProfile, RigTexture, CHARACTER_ASSET_CONTRACT_VERSION,
-    PORTRAIT_CANVAS_HEIGHT, PORTRAIT_CANVAS_WIDTH, PORTRAIT_GENERATION_HEIGHT,
-    PORTRAIT_GENERATION_WIDTH,
+    validate_character_asset_source, RigBone, RigCompileSource, RigLayerSource,
+    RigManifest, RigMotionProfile, RigOutfitProfile, RigPart, RigPoint, RigQuality,
+    RigSemanticAnchor, RigSemantics, RigSize, RigSpatialProfile, RigTexture, RigVertex,
+    CHARACTER_ASSET_CONTRACT_VERSION, PORTRAIT_CANVAS_HEIGHT, PORTRAIT_CANVAS_WIDTH,
+    PORTRAIT_GENERATION_HEIGHT, PORTRAIT_GENERATION_WIDTH, RIG_SCHEMA_VERSION,
 };
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde::Deserialize;
@@ -52,9 +51,6 @@ const MAX_RIG_IMPORT_ATLAS_BYTES: usize = 20 * 1024 * 1024;
 pub fn create_routes(app_state: AppState) -> Router<AppState> {
     let owner = Router::new()
         .route("/", get(get_site_rig))
-        .route("/motion-profile", patch(update_motion_profile))
-        .route("/clips", patch(update_clips))
-        .route("/migrate", post(migrate_site_rig))
         .route("/portrait", post(generate_portrait))
         .route("/see-through/status", get(get_see_through_status))
         .route("/see-through/token", patch(update_see_through_token))
@@ -80,6 +76,36 @@ pub fn create_routes(app_state: AppState) -> Router<AppState> {
 
 fn bad_request(message: &str) -> ApiError {
     (StatusCode::BAD_REQUEST, Json(json!({ "error": message })))
+}
+
+fn portrait_generation_config_error(
+    error: image_generation::ImageGenerationError,
+) -> ApiError {
+    let code = match &error {
+        image_generation::ImageGenerationError::NotConfigured(_) => {
+            "image_provider_unconfigured"
+        }
+        _ => "portrait_generation_failed",
+    };
+    (
+        StatusCode::BAD_REQUEST,
+        Json(json!({ "error": error.to_string(), "code": code })),
+    )
+}
+
+fn portrait_generation_provider_error(
+    error: image_generation::ImageGenerationError,
+) -> ApiError {
+    let code = match &error {
+        image_generation::ImageGenerationError::NotConfigured(_) => {
+            "image_provider_unconfigured"
+        }
+        _ => "portrait_generation_failed",
+    };
+    (
+        StatusCode::BAD_GATEWAY,
+        Json(json!({ "error": error.to_string(), "code": code })),
+    )
 }
 
 fn not_found(message: &str) -> ApiError {
@@ -256,7 +282,8 @@ async fn current_master(db: &DatabaseConnection) -> ApiResult<Option<MasterProve
             persona.name.trim(),
             persona.visual_profile.as_ref().unwrap_or(&Value::Null),
             persona.portrait_generation.as_ref(),
-        )?,
+        )
+        .unwrap_or(None),
     }))
 }
 
@@ -335,34 +362,6 @@ async fn package_identity_matches(asset_id: &str, manifest: &RigManifest) -> Api
     Ok(matches)
 }
 
-async fn persist_manifest_revision(
-    db: &DatabaseConnection,
-    current_asset_id: &str,
-    manifest: RigManifest,
-) -> ApiResult<(String, RigManifest)> {
-    let atlas_bytes = digital_life_rig::read_atlas_bytes(current_asset_id)
-        .await
-        .map_err(internal_error)?;
-    let asset_id = digital_life_rig::package_id_for_manifest(&atlas_bytes, &manifest)
-        .map_err(internal_error)?;
-    let manifest = rewrite_texture_urls(manifest, &asset_id);
-    let json = serde_json::to_string_pretty(&manifest).map_err(internal_error)?;
-    digital_life_rig::persist_package(&asset_id, &atlas_bytes, &json)
-        .await
-        .map_err(internal_error)?;
-    require_master_match(
-        db,
-        manifest
-            .source_master_asset_id
-            .as_deref()
-            .ok_or_else(|| bad_request("Rig source master is missing"))?,
-        manifest.source_generation_fingerprint.as_deref(),
-    )
-    .await?;
-    activate_asset(db, &asset_id).await?;
-    Ok((asset_id, manifest))
-}
-
 async fn activate_asset(db: &DatabaseConnection, asset_id: &str) -> ApiResult<()> {
     digital_life_rig::set_active_asset(db, Some(asset_id))
         .await
@@ -376,12 +375,6 @@ async fn compile_imported_rig(
     validate_character_asset_source(&source.bones, &source.layers)
         .map_err(|error| bad_request(&format!("Rig character asset preflight failed: {error}")))?;
     let source_master_asset_id = source.source_master_asset_id.clone();
-    let clips = if source.clips.is_empty() {
-        build_standard_face_rig_clips_for_semantics(&source.bones, source.semantics.as_ref())
-            .map_err(|error| bad_request(&format!("Rig import needs motion clips: {error}")))?
-    } else {
-        source.clips
-    };
     let manifest = tokio::task::spawn_blocking(move || {
         compile_layered_rig(RigCompileSource {
             rig_ir_version: source.rig_ir_version,
@@ -397,8 +390,6 @@ async fn compile_imported_rig(
             }],
             bones: source.bones,
             layers: source.layers,
-            clips,
-            default_clip: source.default_clip,
             motion_profile: source.motion_profile,
             outfit_profile: source.outfit_profile,
             semantic_anchors: source.semantic_anchors,
@@ -411,7 +402,7 @@ async fn compile_imported_rig(
     .map_err(internal_error)?
     .map_err(|error| bad_request(&format!("Rig compilation failed: {error}")))?;
     let (manifest, _) = migrate_rig_manifest(manifest, rig_motion_seed(&source_master_asset_id))
-        .map_err(|error| bad_request(&format!("Rig action library migration failed: {error}")))?;
+        .map_err(|error| bad_request(&format!("Rig manifest migration failed: {error}")))?;
     Ok((source_master_asset_id, manifest))
 }
 
@@ -436,8 +427,6 @@ struct ImportRigSourceRequest {
     atlas: ImportRigAtlasRequest,
     bones: Vec<RigBone>,
     layers: Vec<RigLayerSource>,
-    clips: Vec<RigClip>,
-    default_clip: String,
     #[serde(default)]
     motion_profile: Option<RigMotionProfile>,
     #[serde(default)]
@@ -548,25 +537,22 @@ pub async fn get_active_rig(crate::extract::Db(db): crate::extract::Db) -> ApiRe
                 }
                 tracing::warn!(
                     %asset_id,
-                    "active digital-life rig package identity is stale; serving portrait fallback"
+                    "active digital-life rig package identity is stale; serving portrait only"
                 );
             }
             Ok(_) => tracing::warn!(
                 %asset_id,
-                "active digital-life rig provenance is stale; serving portrait fallback"
+                "active digital-life rig provenance is stale; serving portrait only"
             ),
             Err(_) => tracing::warn!(
                 %asset_id,
-                "active digital-life rig package is unavailable; serving portrait fallback"
+                "active digital-life rig package is unavailable; serving portrait only"
             ),
         }
     }
     if let Some(master) = master {
         return Ok(Json(json!({
-            "manifest": build_portrait_fallback_rig_with_generation(
-                &master.asset_id,
-                master.generation_fingerprint.clone(),
-            ),
+            "manifest": Value::Null,
             "portraitUrl": master.asset_id,
             "generationFingerprint": master.generation_fingerprint,
             "assetId": Value::Null,
@@ -813,142 +799,11 @@ pub async fn import_site_rig(
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct UpdateMotionProfileRequest {
-    motion_profile: RigMotionProfile,
-}
-
-pub async fn update_motion_profile(
-    State(db): State<DatabaseConnection>,
-    Extension(claims): Extension<Claims>,
-    Json(request): Json<UpdateMotionProfileRequest>,
-) -> ApiResult<Json<Value>> {
-    require_life_enabled().await?;
-    require_owner(&claims, &db).await?;
-    let asset_id = active_asset_id(&*crate::GLOBAL_DYNAMIC_CONFIG.read().await)
-        .ok_or_else(|| not_found("Active rig is missing"))?;
-    let mut manifest = load_stored_manifest(&asset_id).await?;
-    let master = current_master(&db)
-        .await?
-        .ok_or_else(|| not_found("Site portrait is missing"))?;
-    if !manifest_matches_master(&manifest, &master) {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": "Active rig provenance is stale",
-                "code": "character_asset_provenance_changed"
-            })),
-        ));
-    }
-    if !package_identity_matches(&asset_id, &manifest).await? {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": "Active rig package predates immutable package identity; migrate or re-import it",
-                "code": "rig_package_migration_required"
-            })),
-        ));
-    }
-    manifest.motion_profile = Some(request.motion_profile);
-    manifest
-        .validate()
-        .map_err(|error| bad_request(&format!("Invalid motion profile: {error}")))?;
-    let (asset_id, manifest) = persist_manifest_revision(&db, &asset_id, manifest).await?;
-    Ok(Json(json!({
-        "manifest": manifest,
-        "assetId": asset_id,
-    })))
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct UpdateClipsRequest {
-    clips: Vec<RigClip>,
-}
-
-pub async fn update_clips(
-    State(db): State<DatabaseConnection>,
-    Extension(claims): Extension<Claims>,
-    Json(request): Json<UpdateClipsRequest>,
-) -> ApiResult<Json<Value>> {
-    require_life_enabled().await?;
-    require_owner(&claims, &db).await?;
-    let asset_id = active_asset_id(&*crate::GLOBAL_DYNAMIC_CONFIG.read().await)
-        .ok_or_else(|| not_found("Active rig is missing"))?;
-    let mut manifest = load_stored_manifest(&asset_id).await?;
-    let master = current_master(&db)
-        .await?
-        .ok_or_else(|| not_found("Site portrait is missing"))?;
-    if !manifest_matches_master(&manifest, &master) {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": "Active rig provenance is stale",
-                "code": "character_asset_provenance_changed"
-            })),
-        ));
-    }
-    if !package_identity_matches(&asset_id, &manifest).await? {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": "Active rig package predates immutable package identity; migrate or re-import it",
-                "code": "rig_package_migration_required"
-            })),
-        ));
-    }
-    manifest.clips = request.clips;
-    manifest
-        .validate()
-        .map_err(|error| bad_request(&format!("Invalid rig clips: {error}")))?;
-    let (asset_id, manifest) = persist_manifest_revision(&db, &asset_id, manifest).await?;
-    Ok(Json(json!({
-        "manifest": manifest,
-        "assetId": asset_id,
-    })))
-}
-
-pub async fn migrate_site_rig(
-    State(db): State<DatabaseConnection>,
-    Extension(claims): Extension<Claims>,
-) -> ApiResult<Json<Value>> {
-    require_life_enabled().await?;
-    require_owner(&claims, &db).await?;
-    let asset_id = active_asset_id(&*crate::GLOBAL_DYNAMIC_CONFIG.read().await)
-        .ok_or_else(|| not_found("Active rig is missing"))?;
-    let master = current_master(&db)
-        .await?
-        .ok_or_else(|| not_found("Site portrait is missing"))?;
-    let stored = load_stored_manifest(&asset_id).await?;
-    if !manifest_matches_master(&stored, &master) {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(json!({
-                "error": "Active rig provenance is stale",
-                "code": "character_asset_provenance_changed"
-            })),
-        ));
-    }
-    let package_migrated = !package_identity_matches(&asset_id, &stored).await?;
-    let (manifest, migrated) = migrate_rig_manifest(stored, rig_motion_seed(&master.asset_id))
-        .map_err(|error| bad_request(&format!("Stored rig cannot be migrated: {error}")))?;
-    let migrated = migrated || package_migrated;
-    let (asset_id, manifest) = if migrated {
-        persist_manifest_revision(&db, &asset_id, manifest).await?
-    } else {
-        (asset_id.clone(), rewrite_texture_urls(manifest, &asset_id))
-    };
-    Ok(Json(json!({
-        "manifest": manifest,
-        "assetId": asset_id,
-        "migrated": migrated
-    })))
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
 struct GeneratePortraitRequest {
     #[serde(default)]
     prompt: Option<String>,
+    #[serde(default)]
+    edit: bool,
 }
 
 async fn release_portrait_generation_lease(db: &DatabaseConnection, token: &str) {
@@ -1016,25 +871,55 @@ pub async fn generate_portrait(
             })),
         ));
     }
+    let existing_portrait = persona
+        .as_ref()
+        .and_then(|row| row.portrait_asset_id.as_deref())
+        .filter(|url| !url.is_empty());
+    let reference = if request.edit {
+        let Some(url) = existing_portrait else {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Generate a master portrait before editing it",
+                    "code": "portrait_required_for_edit"
+                })),
+            ));
+        };
+        if additional_requirements.is_none() {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": "Describe the adjustment before editing the portrait",
+                    "code": "portrait_edit_notes_required"
+                })),
+            ));
+        }
+        match image_generation::load_local_reference(url).await {
+            Ok(reference) => Some(reference),
+            Err(error) => return Err(portrait_generation_provider_error(error)),
+        }
+    } else {
+        None
+    };
     let generation_contract = build_character_asset_contract(
         name,
         &visual_profile,
         additional_requirements.as_deref(),
     );
     let contract_fingerprint = character_asset_contract_fingerprint(&generation_contract);
-    let prompt = build_character_visual_prompt(
-        name,
-        &visual_profile,
-        additional_requirements.as_deref(),
-    );
+    let prompt = if request.edit {
+        build_character_visual_edit_prompt(additional_requirements.as_deref().unwrap_or(""))
+    } else {
+        build_character_visual_prompt(
+            name,
+            &visual_profile,
+            additional_requirements.as_deref(),
+        )
+    };
     let (width, height) = (PORTRAIT_GENERATION_WIDTH, PORTRAIT_GENERATION_HEIGHT);
     let dynamic = crate::GLOBAL_DYNAMIC_CONFIG.read().await.clone();
-    let config = image_generation::config_from_dynamic(&dynamic).map_err(|error| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(json!({ "error": error.to_string() })),
-        )
-    })?;
+    let config = image_generation::config_from_dynamic(&dynamic)
+        .map_err(portrait_generation_config_error)?;
     tracing::info!(
         provider = %config.provider,
         model = %config.model,
@@ -1079,23 +964,25 @@ pub async fn generate_portrait(
             Json(json!({ "error": message, "code": code })),
         ));
     }
-    let generated = match image_generation::generate_image_with_background(
-        &config,
-        &prompt,
-        width,
-        height,
-        None,
-        Some(image_generation::ImageBackground::Opaque),
+    let generated = match crate::services::ai_cost_ledger::with_site_ai_ledger(
+        user_id,
+        "life",
+        "portrait",
+        image_generation::generate_image_with_background(
+            &config,
+            &prompt,
+            width,
+            height,
+            reference.as_ref(),
+            Some(image_generation::ImageBackground::Opaque),
+        ),
     )
     .await
     {
         Ok(generated) => generated,
         Err(error) => {
             release_portrait_generation_lease(&db, &generation_token).await;
-            return Err((
-                StatusCode::BAD_GATEWAY,
-                Json(json!({ "error": error.to_string() })),
-            ));
+            return Err(portrait_generation_provider_error(error));
         }
     };
     let persisted = match image_generation::persist_generated_with_status(&generated).await {
@@ -1176,6 +1063,70 @@ pub async fn generate_portrait(
 mod portrait_contract_tests {
     use super::*;
 
+    fn layered_stub_manifest(
+        master_url: &str,
+        source_generation_fingerprint: Option<String>,
+    ) -> RigManifest {
+        RigManifest {
+            schema_version: RIG_SCHEMA_VERSION,
+            rig_ir_version: None,
+            character_asset_contract_version: Some(CHARACTER_ASSET_CONTRACT_VERSION),
+            source_master_asset_id: Some(master_url.to_string()),
+            source_generation_fingerprint,
+            quality: RigQuality::Layered2d,
+            canvas: RigSize {
+                width: PORTRAIT_CANVAS_WIDTH,
+                height: PORTRAIT_CANVAS_HEIGHT,
+            },
+            textures: vec![RigTexture {
+                id: "atlas".to_string(),
+                url: master_url.to_string(),
+                width: 64,
+                height: 64,
+            }],
+            bones: vec![RigBone {
+                id: "root".to_string(),
+                parent: None,
+                pivot: RigPoint { x: 0.5, y: 0.8 },
+            }],
+            parts: vec![RigPart {
+                id: "portrait".to_string(),
+                texture_id: "atlas".to_string(),
+                z_index: 0,
+                opacity: 1.0,
+                slot: None,
+                variant: None,
+                vertices: vec![
+                    RigVertex {
+                        position: RigPoint { x: 0.0, y: 0.0 },
+                        uv: RigPoint { x: 0.0, y: 0.0 },
+                        joints: [0, 0, 0, 0],
+                        weights: [1.0, 0.0, 0.0, 0.0],
+                    },
+                    RigVertex {
+                        position: RigPoint { x: 1.0, y: 0.0 },
+                        uv: RigPoint { x: 1.0, y: 0.0 },
+                        joints: [0, 0, 0, 0],
+                        weights: [1.0, 0.0, 0.0, 0.0],
+                    },
+                    RigVertex {
+                        position: RigPoint { x: 0.0, y: 1.0 },
+                        uv: RigPoint { x: 0.0, y: 1.0 },
+                        joints: [0, 0, 0, 0],
+                        weights: [1.0, 0.0, 0.0, 0.0],
+                    },
+                ],
+                indices: vec![0, 1, 2],
+            }],
+            motion_profile: None,
+            outfit_profile: None,
+            semantic_anchors: HashMap::new(),
+            semantics: None,
+            spatial_profile: None,
+            anime25d_playback: None,
+        }
+    }
+
     #[test]
     fn active_manifest_must_match_master_contract_and_generation() {
         let fingerprint = "a".repeat(64);
@@ -1183,10 +1134,7 @@ mod portrait_contract_tests {
             asset_id: "/master.png".to_string(),
             generation_fingerprint: Some(fingerprint.clone()),
         };
-        let mut manifest = build_portrait_fallback_rig_with_generation(
-            "/master.png",
-            Some(fingerprint),
-        );
+        let mut manifest = layered_stub_manifest("/master.png", Some(fingerprint.clone()));
         assert!(manifest_matches_master(&manifest, &master));
 
         manifest.source_generation_fingerprint = Some("b".repeat(64));
@@ -1205,7 +1153,6 @@ mod portrait_contract_tests {
         let contract = build_character_asset_contract(
             "Nova",
             &profile,
-            CharacterVisualSlot::Master,
             Some("soft morning light"),
         );
         let fingerprint = character_asset_contract_fingerprint(&contract);

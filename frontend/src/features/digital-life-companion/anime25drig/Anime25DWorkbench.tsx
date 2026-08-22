@@ -41,20 +41,84 @@ interface Props {
   essentialsLead?: ReactNode
 }
 
-const PRESETS: Array<{ id: string; driver: Anime25DDriver }> = [
-  { id: 'idle', driver: { ...IDENTITY_DRIVER } },
+const PRESETS: Array<{ id: string; driver: Partial<Anime25DDriver> }> = [
+  {
+    id: 'neutral',
+    driver: {
+      eyeOpenL: 1,
+      eyeOpenR: 1,
+      brow: 0,
+      mouthOpen: 0,
+      mouthForm: 0,
+      irisScale: 1,
+    },
+  },
   {
     id: 'smile',
-    driver: { ...IDENTITY_DRIVER, mouth: 0.18, bust: 0.22, angleY: -0.06 },
+    driver: {
+      eyeOpenL: 0,
+      eyeOpenR: 0,
+      brow: 0.45,
+      mouthOpen: 0,
+      mouthForm: 0.9,
+      irisScale: 1,
+    },
   },
   {
-    id: 'talk',
-    driver: { ...IDENTITY_DRIVER, talking: true, mouth: 0.5 },
+    id: 'usume',
+    driver: {
+      eyeOpenL: 0.5,
+      eyeOpenR: 0.5,
+      brow: 0.35,
+      mouthOpen: 1,
+      mouthForm: 0.8,
+      irisScale: 1,
+    },
   },
-  { id: 'lookLeft', driver: { ...IDENTITY_DRIVER, angleX: -0.48 } },
-  { id: 'lookRight', driver: { ...IDENTITY_DRIVER, angleX: 0.48 } },
-  { id: 'winkLeft', driver: { ...IDENTITY_DRIVER, eyeL: 0 } },
-  { id: 'winkRight', driver: { ...IDENTITY_DRIVER, eyeR: 0 } },
+  {
+    id: 'surprise',
+    driver: {
+      eyeOpenL: 1,
+      eyeOpenR: 1,
+      brow: 1,
+      mouthOpen: 0.75,
+      mouthForm: -0.1,
+      irisScale: 0.7,
+    },
+  },
+  {
+    id: 'jito',
+    driver: {
+      eyeOpenL: 0.4,
+      eyeOpenR: 0.4,
+      brow: -0.6,
+      mouthOpen: 0,
+      mouthForm: -0.4,
+      irisScale: 1,
+    },
+  },
+  {
+    id: 'winkL',
+    driver: {
+      eyeOpenL: 0,
+      eyeOpenR: 1,
+      brow: 0.2,
+      mouthOpen: 0.4,
+      mouthForm: 0.7,
+      irisScale: 1,
+    },
+  },
+  {
+    id: 'winkR',
+    driver: {
+      eyeOpenL: 1,
+      eyeOpenR: 0,
+      brow: 0.2,
+      mouthOpen: 0.4,
+      mouthForm: 0.7,
+      irisScale: 1,
+    },
+  },
 ]
 
 export default function Anime25DWorkbench({
@@ -206,78 +270,41 @@ export default function Anime25DWorkbench({
 
   const sliders = useMemo(
     () => [
-      {
-        key: 'angleX',
-        label: labels.anime25dHeadX,
-        min: -1,
-        max: 1,
-        step: 0.01,
-        value: driver.angleX,
-      },
-      {
-        key: 'angleY',
-        label: labels.anime25dHeadY,
-        min: -1,
-        max: 1,
-        step: 0.01,
-        value: driver.angleY,
-      },
-      {
-        key: 'eyeL',
-        label: labels.anime25dEyeL,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        value: driver.eyeL,
-      },
-      {
-        key: 'eyeR',
-        label: labels.anime25dEyeR,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        value: driver.eyeR,
-      },
-      {
-        key: 'mouth',
-        label: labels.anime25dMouth,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        value: driver.mouth,
-      },
-      {
-        key: 'armY',
-        label: labels.anime25dArmY,
-        min: -1,
-        max: 1,
-        step: 0.01,
-        value: driver.armY,
-      },
-      {
-        key: 'armPos',
-        label: labels.anime25dArmPos,
-        min: -1,
-        max: 1,
-        step: 0.01,
-        value: driver.armPos,
-      },
-      {
-        key: 'bust',
-        label: labels.anime25dBust,
-        min: 0,
-        max: 1,
-        step: 0.01,
-        value: driver.bust,
-      },
-      {
-        key: 'lean',
-        label: labels.anime25dLean,
-        min: -1,
-        max: 1,
-        step: 0.01,
-        value: driver.lean,
-      },
+      { key: 'angleX', label: labels.anime25dHeadX, min: -1, max: 1, value: driver.angleX },
+      { key: 'angleY', label: labels.anime25dHeadY, min: -1, max: 1, value: driver.angleY },
+      { key: 'angleZ', label: labels.anime25dHeadZ, min: -1, max: 1, value: driver.angleZ },
+      { key: 'eyeOpenL', label: labels.anime25dEyeL, min: 0, max: 1, value: driver.eyeOpenL },
+      { key: 'eyeOpenR', label: labels.anime25dEyeR, min: 0, max: 1, value: driver.eyeOpenR },
+      { key: 'eyeX', label: labels.anime25dEyeX, min: -1, max: 1, value: driver.eyeX },
+      { key: 'eyeY', label: labels.anime25dEyeY, min: -1, max: 1, value: driver.eyeY },
+      { key: 'irisScale', label: labels.anime25dPupil, min: 0.5, max: 1.3, value: driver.irisScale },
+      { key: 'eyeScaleL', label: labels.anime25dEyeScaleL, min: 0.5, max: 1.5, value: driver.eyeScaleL },
+      { key: 'eyeScaleR', label: labels.anime25dEyeScaleR, min: 0.5, max: 1.5, value: driver.eyeScaleR },
+      { key: 'eyeEase', label: labels.anime25dEyeEase, min: 0, max: 1, value: driver.eyeEase },
+      { key: 'eyeCY', label: labels.anime25dEyeCY, min: -1, max: 1, value: driver.eyeCY },
+      { key: 'eyeCAng', label: labels.anime25dEyeCAng, min: -1, max: 1, value: driver.eyeCAng },
+      { key: 'brow', label: labels.anime25dBrow, min: -1, max: 1, value: driver.brow },
+      { key: 'browAngSym', label: labels.anime25dBrowAngSym, min: -1, max: 1, value: driver.browAngSym },
+      { key: 'browAngL', label: labels.anime25dBrowL, min: -1, max: 1, value: driver.browAngL },
+      { key: 'browAngR', label: labels.anime25dBrowR, min: -1, max: 1, value: driver.browAngR },
+      { key: 'mouthOpen', label: labels.anime25dMouth, min: 0, max: 1, value: driver.mouthOpen },
+      { key: 'mouthForm', label: labels.anime25dMouthForm, min: -1, max: 1, value: driver.mouthForm },
+      { key: 'mouthCY', label: labels.anime25dMouthCY, min: -1, max: 1, value: driver.mouthCY },
+      { key: 'mouthEase', label: labels.anime25dMouthEase, min: 0, max: 1, value: driver.mouthEase },
+      { key: 'mouthCAng', label: labels.anime25dMouthCAng, min: -1, max: 1, value: driver.mouthCAng },
+      { key: 'mouthScale', label: labels.anime25dMouthScale, min: 0.5, max: 1.5, value: driver.mouthScale },
+      { key: 'fhAmp', label: labels.anime25dFhAmp, min: 0, max: 3, value: driver.fhAmp },
+      { key: 'fhSoft', label: labels.anime25dFhSoft, min: 0, max: 2, value: driver.fhSoft },
+      { key: 'bangL', label: labels.anime25dBangL, min: -1, max: 1, value: driver.bangL },
+      { key: 'bangC', label: labels.anime25dBangC, min: -1, max: 1, value: driver.bangC },
+      { key: 'bangR', label: labels.anime25dBangR, min: -1, max: 1, value: driver.bangR },
+      { key: 'body', label: labels.anime25dLean, min: -1, max: 1, value: driver.body },
+      { key: 'armY', label: labels.anime25dArmY, min: -1, max: 1, value: driver.armY },
+      { key: 'armPos', label: labels.anime25dArmPos, min: -1, max: 1, value: driver.armPos },
+      { key: 'bust', label: labels.anime25dBust, min: 0, max: 4, value: driver.bust },
+      { key: 'bustY', label: labels.anime25dBustY, min: -3, max: 3, value: driver.bustY },
+      { key: 'physAmp', label: labels.anime25dPhysAmp, min: 0, max: 3, value: driver.physAmp },
+      { key: 'soft', label: labels.anime25dSoft, min: 0, max: 3, value: driver.soft },
     ],
     [driver, labels],
   )
@@ -296,7 +323,9 @@ export default function Anime25DWorkbench({
             <SettingsButton
               type="button"
               size="sm"
-              onClick={() => applyDriver(PRESETS[2].driver)}
+              onClick={() =>
+                patchDriver({ talk: true, mouthOpen: 0.5 })
+              }
             >
               {labels.anime25dPresetTalk}
             </SettingsButton>
@@ -457,8 +486,6 @@ export default function Anime25DWorkbench({
         title={labels.anime25dDebug}
         description={labels.anime25dDebugDescription}
         id="life-motion-details"
-        collapsible
-        defaultExpanded
       >
         <div className="life-motion-home__chips">
           <div>
@@ -467,7 +494,7 @@ export default function Anime25DWorkbench({
                 key={preset.id}
                 type="button"
                 size="sm"
-                onClick={() => applyDriver(preset.driver)}
+                onClick={() => patchDriver(preset.driver)}
               >
                 {presetLabel(labels, preset.id)}
               </SettingsButton>
@@ -485,10 +512,40 @@ export default function Anime25DWorkbench({
           </div>
         </div>
         <SwitchItem
+          itemKey="anime25d-idle"
+          label={labels.anime25dIdle}
+          value={driver.idle}
+          onChange={(idle) => patchDriver({ idle })}
+        />
+        <SwitchItem
+          itemKey="anime25d-blink"
+          label={labels.anime25dAutoBlink}
+          value={driver.blink}
+          onChange={(blink) => patchDriver({ blink })}
+        />
+        <SwitchItem
+          itemKey="anime25d-rand"
+          label={labels.anime25dRand}
+          value={driver.rand}
+          onChange={(rand) => patchDriver({ rand })}
+        />
+        <SwitchItem
           itemKey="anime25d-talking"
           label={labels.anime25dTalking}
-          value={driver.talking}
-          onChange={(talking) => patchDriver({ talking })}
+          value={driver.talk}
+          onChange={(talk) => patchDriver({ talk })}
+        />
+        <SwitchItem
+          itemKey="anime25d-mouse"
+          label={labels.anime25dMouse}
+          value={driver.mouse}
+          onChange={(mouse) => patchDriver({ mouse })}
+        />
+        <SwitchItem
+          itemKey="anime25d-phys"
+          label={labels.anime25dPhys}
+          value={driver.phys}
+          onChange={(phys) => patchDriver({ phys })}
         />
         {sliders.map((slider) => (
           <SliderItem
@@ -498,7 +555,7 @@ export default function Anime25DWorkbench({
             value={slider.value}
             min={slider.min}
             max={slider.max}
-            step={slider.step}
+            step={0.01}
             formatValue={(value) => value.toFixed(2)}
             onChange={(value) =>
               patchDriver({ [slider.key]: value } as Partial<Anime25DDriver>)
@@ -558,12 +615,12 @@ function presetLabel(
   labels: TranslationKeys['companion'],
   id: string,
 ): string {
-  if (id === 'idle') return labels.anime25dPresetIdle
+  if (id === 'neutral') return labels.anime25dPresetIdle
   if (id === 'smile') return labels.anime25dPresetSmile
-  if (id === 'talk') return labels.anime25dPresetTalk
-  if (id === 'lookLeft') return labels.anime25dPresetLookLeft
-  if (id === 'lookRight') return labels.anime25dPresetLookRight
-  if (id === 'winkLeft') return labels.anime25dPresetWinkLeft
-  if (id === 'winkRight') return labels.anime25dPresetWinkRight
+  if (id === 'usume') return labels.anime25dPresetUsume
+  if (id === 'surprise') return labels.anime25dPresetShock
+  if (id === 'jito') return labels.anime25dPresetDeadpan
+  if (id === 'winkL') return labels.anime25dPresetWinkLeft
+  if (id === 'winkR') return labels.anime25dPresetWinkRight
   return id
 }

@@ -122,18 +122,22 @@ impl EnvFile {
         Ok(())
     }
 
-    /// Persist atomically, rotating backups (max 5 retained).
+    /// Persist atomically when the parent directory is writable.
+    ///
+    /// Official compose bind-mounts `.env` as a file over a read-only deploy
+    /// root. Sibling `.bak` / `.tmp` creates then hit EROFS (os error 30) and
+    /// SwapTag used to fail after a successful snapshot. Fall back to a backup
+    /// under `UPDATER_STATE_DIR` and an in-place write of the existing file.
     pub fn save(&self) -> Result<()> {
-        let backup = self
-            .path
-            .with_extension(format!("bak.{}", Utc::now().format("%Y%m%dT%H%M%SZ")));
-        // Snapshot the existing file as a backup so a partial overwrite never destroys history.
         if self.path.exists() {
-            std::fs::copy(&self.path, &backup)?;
-            rotate_backups(&self.path, 5)?;
+            snapshot_before_save(&self.path)?;
         }
         let bytes = self.render().into_bytes();
-        atomic::write_atomic_bytes(&self.path, &bytes)
+        match atomic::write_atomic_bytes(&self.path, &bytes) {
+            Ok(()) => Ok(()),
+            Err(e) if is_ro_fs(&e) => write_existing_file_in_place(&self.path, &bytes),
+            Err(e) => Err(e),
+        }
     }
 
     fn render(&self) -> String {
@@ -193,6 +197,67 @@ fn quote_if_needed(v: &str) -> String {
     // Fall back to double-quoting with minimal escaping.
     let escaped = v.replace('\\', "\\\\").replace('"', "\\\"");
     format!("\"{escaped}\"")
+}
+
+fn is_ro_fs(err: &UpdaterError) -> bool {
+    match err {
+        UpdaterError::Io(error) => {
+            error.kind() == std::io::ErrorKind::ReadOnlyFilesystem
+                || error.raw_os_error() == Some(libc_erofs())
+                || error.kind() == std::io::ErrorKind::PermissionDenied
+        }
+        _ => false,
+    }
+}
+
+fn libc_erofs() -> i32 {
+    // Linux/macOS EROFS. Keep the numeric fallback so older rustc still matches.
+    30
+}
+
+fn snapshot_before_save(path: &Path) -> Result<()> {
+    let sibling = path.with_extension(format!("bak.{}", Utc::now().format("%Y%m%dT%H%M%SZ")));
+    match std::fs::copy(path, &sibling) {
+        Ok(_) => rotate_backups(path, 5),
+        Err(error) => {
+            let wrapped = UpdaterError::from(error);
+            if !is_ro_fs(&wrapped) {
+                return Err(wrapped);
+            }
+            snapshot_into_state_dir(path)
+        }
+    }
+}
+
+fn snapshot_into_state_dir(path: &Path) -> Result<()> {
+    let Some(state) = std::env::var_os("UPDATER_STATE_DIR") else {
+        return Ok(());
+    };
+    let dir = PathBuf::from(state).join("env-backups");
+    std::fs::create_dir_all(&dir)?;
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(".env");
+    let backup = dir.join(format!(
+        "{name}.bak.{}",
+        Utc::now().format("%Y%m%dT%H%M%SZ")
+    ));
+    std::fs::copy(path, &backup)?;
+    rotate_backups(&dir.join(name), 5)?;
+    Ok(())
+}
+
+fn write_existing_file_in_place(path: &Path, data: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(path)?;
+    file.write_all(data)?;
+    file.flush()?;
+    file.sync_all()?;
+    Ok(())
 }
 
 fn rotate_backups(env_path: &Path, keep: usize) -> Result<()> {
@@ -278,6 +343,38 @@ mod tests {
             !backups.is_empty(),
             "atomic save should rotate a .env.bak.* before replace"
         );
+    }
+
+    #[test]
+    fn save_over_read_only_parent_updates_the_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("ro");
+        std::fs::create_dir(&parent).unwrap();
+        let p = parent.join(".env");
+        std::fs::write(&p, "MYRIAD_TAG=v0.1.0\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut ro = std::fs::metadata(&parent).unwrap().permissions();
+            ro.set_mode(0o555);
+            std::fs::set_permissions(&parent, ro).unwrap();
+        }
+        let saved = (|| {
+            let mut env = EnvFile::load(&p)?;
+            env.set("MYRIAD_TAG", "dev-7a7f66e")?;
+            env.save()
+        })();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut rw = std::fs::metadata(&parent).unwrap().permissions();
+            rw.set_mode(0o755);
+            std::fs::set_permissions(&parent, rw).unwrap();
+        }
+        saved.unwrap();
+        assert!(std::fs::read_to_string(&p)
+            .unwrap()
+            .contains("MYRIAD_TAG=dev-7a7f66e"));
     }
 
     #[test]

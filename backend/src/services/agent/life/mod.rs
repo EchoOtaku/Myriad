@@ -189,12 +189,16 @@ fn spawn_mood_hint(user_id: i32, text: impl Into<String>) {
         else {
             return;
         };
-        let Ok(raw) = analyzer
-            .analyze_with_system(
+        let Ok(raw) = crate::services::ai_cost_ledger::with_site_ai_ledger(
+            user_id,
+            "life",
+            "mood_hint",
+            analyzer.analyze_with_system(
                 "只输出一个 -2 到 2 的整数，表示这句话对心情的微调。不要解释，不要输出别的字。",
                 &text,
-            )
-            .await
+            ),
+        )
+        .await
         else {
             return;
         };

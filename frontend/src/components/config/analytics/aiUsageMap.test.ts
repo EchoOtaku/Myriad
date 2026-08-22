@@ -6,6 +6,7 @@ import { describe, it } from 'node:test'
 import {
   aiDailyToTrendPoints,
   aiModelsToRankRows,
+  aiSourceDisplayName,
   aiUserDisplayName,
   aiUsersToRankRows,
 } from './aiUsageMap'
@@ -58,5 +59,29 @@ describe('aiUsageMap', () => {
     assert.equal(models[0]!.name, 'gpt-test')
     assert.equal(models[0]!.meta, 'openai')
     assert.equal(models[0]!.value, 400)
+  })
+
+  it('labels ledger sources, including the new site-wide paths', () => {
+    const labels = {
+      scheduler: 'Scheduled jobs',
+      agent: 'Arael',
+      reports: 'Reports',
+      runtime: 'Tapp / runtime',
+      life: 'Digital life',
+      playground: 'Playground',
+      speech: 'Speech',
+      brewlia: 'Brewlia',
+      prompt: 'Prompt',
+      seo: 'SEO',
+      internal: 'Internal',
+      other: 'Other',
+    }
+    assert.equal(aiSourceDisplayName('life', labels), 'Digital life')
+    assert.equal(aiSourceDisplayName('playground', labels), 'Playground')
+    assert.equal(aiSourceDisplayName('speech', labels), 'Speech')
+    assert.equal(aiSourceDisplayName('internal', labels), 'Internal')
+    assert.equal(aiSourceDisplayName('internal:scheduler', labels), 'Scheduled jobs')
+    assert.equal(aiSourceDisplayName('runtime', labels), 'Tapp / runtime')
+    assert.equal(aiSourceDisplayName('', labels), 'Other')
   })
 })

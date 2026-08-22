@@ -199,6 +199,7 @@ fn ensure_host_policy_file(config: &GuardConfig, write_path: &Path) -> Result<()
     }
     if write_path.exists() {
         if host_policy_file_is_pinned(write_path) {
+            heal_host_policy_compose_path(write_path)?;
             return Ok(());
         }
         warn!(
@@ -257,6 +258,74 @@ fn host_policy_file_is_pinned(path: &Path) -> bool {
         return validate_guard_image_ref(image, false).is_ok();
     }
     false
+}
+
+/// Digest-pinned policy files are otherwise left untouched so a newer Guard
+/// cannot rewrite TCB identity. The compose-relative path is not identity:
+/// older deploys wrote `/etc/myriad/docker-guard.env` and that value now
+/// fails updater preflight. Heal only that key.
+fn heal_host_policy_compose_path(path: &Path) -> Result<()> {
+    let text = fs::read_to_string(path)
+        .with_context(|| format!("cannot read {}", path.display()))?;
+    let mut seen = false;
+    let mut changed = false;
+    let mut body = String::with_capacity(text.len().saturating_add(64));
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(value) = trimmed.strip_prefix("MYRIAD_GUARD_ENV_FILE=") {
+            if seen {
+                changed = true;
+                continue;
+            }
+            seen = true;
+            if value == COMPOSE_RELATIVE_POLICY_PATH {
+                body.push_str(line);
+            } else {
+                changed = true;
+                body.push_str("MYRIAD_GUARD_ENV_FILE=");
+                body.push_str(COMPOSE_RELATIVE_POLICY_PATH);
+            }
+            body.push('\n');
+            continue;
+        }
+        body.push_str(line);
+        body.push('\n');
+    }
+    if !seen {
+        changed = true;
+        body.push_str("MYRIAD_GUARD_ENV_FILE=");
+        body.push_str(COMPOSE_RELATIVE_POLICY_PATH);
+        body.push('\n');
+    }
+    if !changed {
+        return Ok(());
+    }
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    warn!(
+        path = %path.display(),
+        "healing MYRIAD_GUARD_ENV_FILE in host Guard policy"
+    );
+    let tmp = parent.join(".docker-guard.env.tmp");
+    {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&tmp)
+            .with_context(|| format!("cannot create {}", tmp.display()))?;
+        file.write_all(body.as_bytes())
+            .with_context(|| format!("cannot write {}", tmp.display()))?;
+        file.sync_all()?;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&tmp, fs::Permissions::from_mode(0o600))?;
+    }
+    fs::rename(&tmp, path).with_context(|| format!("cannot install {}", path.display()))?;
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -2192,7 +2261,14 @@ fn validate_container_create(state: &GuardState, body: &Bytes) -> std::result::R
     }
     reject_nonempty_fields(&host, &host_forbidden)?;
     if let Some(log_config) = host.get("LogConfig").filter(|value| nonempty(Some(value))) {
-        let log_type = log_config.get("Type").and_then(Value::as_str);
+        // Compose v5 sends a zero-value LogConfig (Type="") when the service has
+        // no `logging:` block. The engine then applies the daemon default
+        // (json-file). Rejecting the empty type blocked `compose run`.
+        let log_type = log_config
+            .get("Type")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let type_ok = log_type.is_empty() || log_type == "json-file";
         let config_is_safe = log_config
             .get("Config")
             .and_then(Value::as_object)
@@ -2201,7 +2277,7 @@ fn validate_container_create(state: &GuardState, body: &Bytes) -> std::result::R
                     .keys()
                     .all(|key| matches!(key.as_str(), "max-size" | "max-file"))
             });
-        if log_type != Some("json-file") || !config_is_safe {
+        if !type_ok || !config_is_safe {
             return Err("HostConfig.LogConfig is outside the json-file allowlist".into());
         }
     }
@@ -3205,6 +3281,41 @@ mod tests {
     }
 
     #[test]
+    fn ensure_host_policy_file_heals_legacy_compose_path() {
+        let cfg = state().config.as_ref().clone();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("docker-guard.env");
+        let token = "keep-this-host-token-value-32chars";
+        fs::write(
+            &path,
+            format!(
+                "DOCKER_GUARD_IMAGE={}\n\
+                 GUARD_SELF_UPDATE_TOKEN={token}\n\
+                 GUARD_COMPOSE_PROJECT_NAME=myriad\n\
+                 GUARD_MYRIAD_DOCKER_NETWORK=myriad-net\n\
+                 GUARD_MYRIAD_ADMIN_NETWORK=myriad-admin-net\n\
+                 GUARD_MYRIAD_DOCKER_GUARD_NETWORK=myriad-docker-guard-net\n\
+                 MYRIAD_GUARD_ENV_FILE=/etc/myriad/docker-guard.env\n",
+                cfg.expected_guard_image
+            ),
+        )
+        .unwrap();
+        assert!(ensure_host_policy_file(&cfg, &path).is_ok());
+        let healed = fs::read_to_string(&path).unwrap();
+        assert!(healed.contains(&format!(
+            "DOCKER_GUARD_IMAGE={}",
+            cfg.expected_guard_image
+        )));
+        assert!(healed.contains(&format!("GUARD_SELF_UPDATE_TOKEN={token}")));
+        assert!(healed.contains("MYRIAD_GUARD_ENV_FILE=guard-policy/docker-guard.env"));
+        assert!(!healed.contains("MYRIAD_GUARD_ENV_FILE=/etc/myriad/docker-guard.env"));
+
+        let again = healed.clone();
+        assert!(ensure_host_policy_file(&cfg, &path).is_ok());
+        assert_eq!(fs::read_to_string(&path).unwrap(), again);
+    }
+
+    #[test]
     fn release_self_update_rejects_semver_downgrade() {
         assert!(prevent_release_downgrade("v1.2.3", "v1.2.2").is_err());
         assert!(prevent_release_downgrade("v1.2.3", "v1.2.3").is_ok());
@@ -3430,6 +3541,16 @@ mod tests {
             let body = create("frontend", "docker.io/example/frontend:v1", host);
             assert!(validate_container_create(&state(), &body).is_err());
         }
+    }
+
+    #[test]
+    fn compose_v5_zero_log_config_is_treated_as_daemon_json_file() {
+        let body = create(
+            "frontend",
+            "docker.io/example/frontend:v1",
+            json!({"LogConfig": {"Type": "", "Config": {}}}),
+        );
+        assert!(validate_container_create(&state(), &body).is_ok());
     }
 
     #[test]

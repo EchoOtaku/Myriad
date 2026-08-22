@@ -31,6 +31,7 @@ export interface RigCharacterHandle {
   getDriver: () => Anime25DDriver | null
   blinkNow: () => void
   debugSnapshot: () => Anime25DDebugSnapshot | null
+  setMouse: (x: number, y: number, inside: boolean) => void
 }
 
 const RigCharacter = forwardRef<RigCharacterHandle, Props>(
@@ -57,6 +58,7 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       getDriver: () => animeRef.current?.getDriver() ?? null,
       blinkNow: () => animeRef.current?.blinkNow(),
       debugSnapshot: () => animeRef.current?.debugSnapshot() ?? null,
+      setMouse: (x, y, inside) => animeRef.current?.setMouse(x, y, inside),
     }))
 
     if (playback && atlasUrl) {

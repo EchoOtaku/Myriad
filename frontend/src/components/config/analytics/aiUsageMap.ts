@@ -56,6 +56,45 @@ export function aiUsersToRankRows(
   }))
 }
 
+export type AiUsageSourceLabels = {
+  scheduler: string
+  agent: string
+  reports: string
+  runtime: string
+  life: string
+  playground: string
+  speech: string
+  brewlia: string
+  prompt: string
+  seo: string
+  internal: string
+  other: string
+}
+
+/** Map ledger `source` to the settings-page label. */
+export function aiSourceDisplayName(
+  source: string,
+  labels: AiUsageSourceLabels,
+): string {
+  const key = source.trim().toLowerCase()
+  if (key === 'scheduler' || key.startsWith('internal:scheduler')) {
+    return labels.scheduler
+  }
+  if (key === 'agent') return labels.agent
+  if (key === 'reports') return labels.reports
+  if (key === 'life') return labels.life
+  if (key === 'playground') return labels.playground
+  if (key === 'speech') return labels.speech
+  if (key === 'brewlia') return labels.brewlia
+  if (key === 'prompt') return labels.prompt
+  if (key === 'seo') return labels.seo
+  if (key === 'internal') return labels.internal
+  if (key === 'runtime' || key.startsWith('internal:')) {
+    return labels.runtime
+  }
+  return source || labels.other
+}
+
 export function aiModelsToRankRows(
   models: Array<{
     model: string

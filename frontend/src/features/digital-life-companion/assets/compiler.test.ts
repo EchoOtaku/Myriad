@@ -16,8 +16,6 @@ const manifest = {
   textures: [],
   bones: [{ id: 'root', parent: null, pivot: { x: 0.5, y: 0.9 } }],
   parts: [],
-  clips: [],
-  defaultClip: 'idle',
 } as CompanionRigManifest
 
 test('rig compiler exposes the complete successful artifact DAG', async () => {
