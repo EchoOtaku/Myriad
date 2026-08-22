@@ -48,11 +48,14 @@ export default function MasterPortraitStep({
   const portraitErrors = {
     pro_unavailable: o.proUnavailable,
     visual_design_required: o.visualDesignRequired,
+    visual_gender_required: o.genderRequired,
     image_provider_unconfigured: o.imageProviderUnconfigured,
     portrait_generation_in_progress: o.portraitInProgress,
     character_visual_inputs_changed: o.portraitInputsChanged,
     portrait_generation_failed: o.portraitGenerateFailed,
     portrait_edit_notes_required: o.portraitEditNeedsNotes,
+    portrait_adjustment_invalid: o.portraitAdjustmentOutOfScope,
+    portrait_adjustment_out_of_scope: o.portraitAdjustmentOutOfScope,
     portrait_required_for_edit: o.portraitEmpty,
     portrait_edit_failed: o.portraitEditFailed,
   }

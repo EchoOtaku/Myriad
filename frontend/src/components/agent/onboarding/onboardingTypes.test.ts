@@ -7,6 +7,7 @@ import {
   completedPersonaResumeStep,
   defaultNameStyle,
   flattenPersona,
+  genderFromProfile,
   incompletePersonaFields,
   onboardingSeedsFromProfile,
   parseFlattenedPersona,
@@ -146,12 +147,16 @@ test('clothing style is an explicit saved choice', () => {
   assert.equal(clothingStyleFromProfile({ clothingStyle: '国风' }), null)
   assert.equal(clothingStyleFromProfile({ language: 'zh-CN' }), null)
   assert.equal(CLOTHING_STYLE_OPTIONS.length, 17)
-  assert.equal(clothingStylePreview('rain'), '/life/clothing/rain.svg')
+  assert.equal(clothingStylePreview('rain'), '/life/clothing/rain.png')
   assert.equal(clothingStyleFromProfile({ clothingStyle: 'military' }), null)
 })
 
 test('completed persona resumes at the first unfinished visual stage', () => {
-  assert.equal(completedPersonaResumeStep(null), 4)
+  assert.equal(genderFromProfile(null), null)
+  assert.equal(genderFromProfile({ gender: 'female' }), 'female')
+  assert.equal(genderFromProfile({ gender: 'invalid' }), null)
+  assert.equal(completedPersonaResumeStep(null), 2)
+  assert.equal(completedPersonaResumeStep({ gender: 'female' }), 4)
   const complete = {
     faceDesign: 'oval face',
     eyeDesign: 'violet jewel eyes',
@@ -166,7 +171,8 @@ test('completed persona resumes at the first unfinished visual stage', () => {
     motif: 'one restrained star-track arc',
   }
   assert.equal(
-    completedPersonaResumeStep({ visualIdentity: complete }),
+    completedPersonaResumeStep({ gender: 'female', visualIdentity: complete }),
     5,
   )
+  assert.equal(completedPersonaResumeStep({ visualIdentity: complete }), 2)
 })

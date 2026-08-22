@@ -14,6 +14,7 @@ import {
   clothingStyleFromProfile,
   emptyPersona,
   flattenPersona,
+  genderFromProfile,
   onboardingSeedsFromProfile,
   personaFromApi,
   visualIdentityFromProfile,
@@ -53,13 +54,7 @@ export default function OnboardingWizard({
   )
   const [displayName, setDisplayName] = useState(initialName)
   const [gender, setGender] = useState<LifeGender | null>(() => {
-    const saved = initialVisualProfile?.gender
-    return saved === 'female' ||
-      saved === 'male' ||
-      saved === 'nonbinary' ||
-      saved === 'unspecified'
-      ? saved
-      : null
+    return genderFromProfile(initialVisualProfile)
   })
   const [extraRequirements, setExtraRequirements] = useState(
     () =>
@@ -83,6 +78,48 @@ export default function OnboardingWizard({
   const previousStep = useRef(step)
   const hasStepped = useRef(false)
   const claimedAuto = useRef({ persona: false })
+  const invalidatePersonaAndVisual = useCallback(() => {
+    claimedAuto.current.persona = false
+    setPersona(emptyPersona())
+    setVisualIdentity(null)
+  }, [])
+  const updateSelectedTags = useCallback(
+    (next: string[]) => {
+      if (
+        next.length === selectedTags.length &&
+        next.every((tag, index) => tag === selectedTags[index])
+      ) {
+        return
+      }
+      setSelectedTags(next)
+      invalidatePersonaAndVisual()
+    },
+    [invalidatePersonaAndVisual, selectedTags],
+  )
+  const updateDisplayName = useCallback(
+    (next: string) => {
+      if (next === displayName) return
+      setDisplayName(next)
+      invalidatePersonaAndVisual()
+    },
+    [displayName, invalidatePersonaAndVisual],
+  )
+  const updateGender = useCallback(
+    (next: LifeGender) => {
+      if (next === gender) return
+      setGender(next)
+      invalidatePersonaAndVisual()
+    },
+    [gender, invalidatePersonaAndVisual],
+  )
+  const updatePersonaRequirements = useCallback(
+    (next: string) => {
+      if (next === extraRequirements) return
+      setExtraRequirements(next)
+      invalidatePersonaAndVisual()
+    },
+    [extraRequirements, invalidatePersonaAndVisual],
+  )
   const claimPersona = useCallback(() => {
     if (claimedAuto.current.persona) return false
     claimedAuto.current.persona = true
@@ -108,7 +145,8 @@ export default function OnboardingWizard({
     if (localeRef.current === locale) return
     localeRef.current = locale
     setSelectedTags([])
-  }, [locale])
+    invalidatePersonaAndVisual()
+  }, [invalidatePersonaAndVisual, locale])
 
   const run = async (operation: () => Promise<OnboardingStep | void>) => {
     if (busy || runLock.current) return
@@ -135,20 +173,19 @@ export default function OnboardingWizard({
     })
     if (!draft.persona) throw new Error(o.regeneratePersonaFailed)
     setPersona(personaFromApi(draft.persona))
+    setVisualIdentity(null)
   }
 
-  const confirmedVisualProfile = () => ({
+  const confirmedVisualProfile = (
+    identity: UpperBodyVisualIdentity | null = visualIdentity,
+  ) => ({
     gender: gender ?? 'unspecified',
     language: locale,
     ...(clothingStyle ? { clothingStyle } : {}),
-    ...(visualRequirements.trim()
-      ? { extraRequirements: visualRequirements.trim() }
-      : {}),
-    ...(visualIdentity ? { visualIdentity } : {}),
-    ...(selectedTags.length ? { sourceTags: selectedTags } : {}),
-    ...(extraRequirements.trim()
-      ? { personaExtraRequirements: extraRequirements.trim() }
-      : {}),
+    extraRequirements: visualRequirements.trim(),
+    visualIdentity: identity,
+    sourceTags: selectedTags,
+    personaExtraRequirements: extraRequirements.trim(),
   })
 
   const stepTitle = [
@@ -171,7 +208,7 @@ export default function OnboardingWizard({
             {step === 1 && (
               <TagBubblesStep
                 selected={selectedTags}
-                onChange={setSelectedTags}
+                onChange={updateSelectedTags}
                 onHeaderChange={onHeaderChange}
                 onNext={() => onStepChange(2)}
               />
@@ -183,9 +220,9 @@ export default function OnboardingWizard({
                 extraRequirements={extraRequirements}
                 selectedTags={selectedTags}
                 busy={busy}
-                onDisplayName={setDisplayName}
-                onGender={setGender}
-                onExtra={setExtraRequirements}
+                onDisplayName={updateDisplayName}
+                onGender={updateGender}
+                onExtra={updatePersonaRequirements}
                 onHeaderChange={onHeaderChange}
                 onSubmit={async () => {
                   onStepChange(3)
@@ -201,6 +238,11 @@ export default function OnboardingWizard({
                 onRegenerate={draftPersona}
                 onSave={(next) =>
                   run(async () => {
+                    const personaChanged =
+                      JSON.stringify(next) !== JSON.stringify(persona)
+                    const nextVisualIdentity = personaChanged
+                      ? null
+                      : visualIdentity
                     await agentService.putPersona({
                       name: displayName.trim(),
                       personality: flattenPersona(next),
@@ -210,9 +252,10 @@ export default function OnboardingWizard({
                         language: locale,
                         draftSource: 'owner-reviewed',
                       },
-                      visualProfile: confirmedVisualProfile(),
+                      visualProfile: confirmedVisualProfile(nextVisualIdentity),
                     })
                     setPersona(next)
+                    if (personaChanged) setVisualIdentity(null)
                     invalidatePublicConfigCache()
                     window.dispatchEvent(
                       new CustomEvent('arael-persona-updated'),
@@ -225,12 +268,18 @@ export default function OnboardingWizard({
             {step === 4 && (
               <CharacterVisualDesignStep
                 identity={visualIdentity}
+                gender={gender}
+                language={locale}
                 clothingStyle={clothingStyle}
                 requirements={visualRequirements}
                 busy={busy}
                 onClothingStyle={setClothingStyle}
                 onIdentity={setVisualIdentity}
-                onRequirements={setVisualRequirements}
+                onRequirements={(next) => {
+                  if (next === visualRequirements) return
+                  setVisualRequirements(next)
+                  setVisualIdentity(null)
+                }}
                 onBusyChange={(next) => {
                   setBusy(next)
                   onBusyChange(next)

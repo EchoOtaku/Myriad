@@ -127,7 +127,7 @@ export const enUS: TranslationKeys = {
     visualRequirementsDescription:
       'The visual contract already locks appearance. Refine only lighting, expression, or frame occupancy here; hair, costume, palette, and accessories stay fixed.',
     visualRequirementsPlaceholder:
-      'For example: soft frontal light, larger face, less space above the hair',
+      'For example: soft frontal light, larger face in frame, less headroom above the crown',
     visualGenerate: 'Generate portrait',
     visualRegenerate: 'Regenerate',
     visualGenerating: 'Generating. You can keep using settings.',
@@ -2543,7 +2543,7 @@ export const enUS: TranslationKeys = {
       portraitRequirementsHint:
         'Appearance is already locked. Refine only lighting, expression, or framing density. Return to the previous step to change hair, costume, palette, or accessories.',
       portraitRequirementsPlaceholder:
-        'e.g. shorter bangs, softer light',
+        'e.g. softer light, firmer gaze, slightly larger face in frame',
       portraitGenerate: 'Generate portrait',
       portraitGenerating: 'Generating…',
       portraitRegenerate: 'Generate again',
@@ -2551,6 +2551,8 @@ export const enUS: TranslationKeys = {
       portraitEditing: 'Adjusting…',
       portraitEditFailed: 'Could not adjust the portrait. Try again.',
       portraitEditNeedsNotes: 'Say what to change before sending this portrait to the model.',
+      portraitAdjustmentOutOfScope:
+        'Only small lighting, expression, or frame-occupancy changes are allowed here. Return to visual design for hair, costume, palette, or accessory changes.',
       portraitGenerateFailed: 'Could not generate the master portrait. Try again.',
       portraitInProgress: 'A portrait is already generating. Check back in a moment.',
       portraitInputsChanged: 'The visual design changed during generation. Generate again.',

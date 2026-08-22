@@ -1001,10 +1001,10 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                 <img src={portraitUrl} alt={savedPersonaName || 'Arael'} />
               ) : (
                 <span className="info-action-card-preview-empty is-mosaic">
-                  <img src="/life/clothing/everyday.svg" alt="" />
-                  <img src="/life/clothing/fantasy.svg" alt="" />
-                  <img src="/life/clothing/japanese.svg" alt="" />
-                  <img src="/life/clothing/sci-fi.svg" alt="" />
+                  <img src="/life/clothing/everyday.png" alt="" />
+                  <img src="/life/clothing/fantasy.png" alt="" />
+                  <img src="/life/clothing/japanese.png" alt="" />
+                  <img src="/life/clothing/sci-fi.png" alt="" />
                 </span>
               )
             }

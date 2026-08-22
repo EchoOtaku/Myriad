@@ -2209,6 +2209,7 @@ export interface TranslationKeys {
       portraitEditing: string
       portraitEditFailed: string
       portraitEditNeedsNotes: string
+      portraitAdjustmentOutOfScope: string
       portraitGenerateFailed: string
       portraitInProgress: string
       portraitInputsChanged: string

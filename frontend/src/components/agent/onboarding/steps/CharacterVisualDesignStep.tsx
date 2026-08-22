@@ -1,5 +1,6 @@
 import type {
   ClothingStyle,
+  LifeGender,
   OnboardingHeaderChrome,
   UpperBodyVisualIdentity,
   UpperBodyVisualIdentityKey,
@@ -27,6 +28,8 @@ type VisualPhase = 'setup' | 'draft'
 
 interface Props {
   identity: UpperBodyVisualIdentity | null
+  gender: LifeGender | null
+  language: string
   clothingStyle: ClothingStyle | null
   requirements: string
   busy: boolean
@@ -40,6 +43,8 @@ interface Props {
 
 export default function CharacterVisualDesignStep({
   identity,
+  gender,
+  language,
   clothingStyle,
   requirements,
   busy,
@@ -89,12 +94,18 @@ export default function CharacterVisualDesignStep({
         setError(o.clothingStyleRequired)
         return false
       }
+      if (!gender) {
+        setError(o.genderRequired)
+        return false
+      }
       generatingRef.current = true
       setError('')
       setGenerating(true)
       onBusyChange(true)
       try {
         const response = await agentService.suggestPersonaVisualDesign({
+          gender,
+          language,
           clothingStyle: style,
           visualRequirements: requirements.trim() || undefined,
           keepCharacter,
@@ -118,9 +129,11 @@ export default function CharacterVisualDesignStep({
             {
               pro_unavailable: o.proUnavailable,
               visual_design_language: o.visualDesignLanguageFailed,
+              visual_language_required: o.visualDesignLanguageFailed,
               visual_design_failed: o.visualDesignFailed,
               visual_identity_invalid: o.visualDesignFailed,
               clothing_style_required: o.clothingStyleRequired,
+              gender_required: o.genderRequired,
             },
           ),
         )
@@ -135,6 +148,9 @@ export default function CharacterVisualDesignStep({
       busy,
       clothingStyle,
       o.clothingStyleRequired,
+      o.genderRequired,
+      gender,
+      language,
       o.generationTimeout,
       o.proUnavailable,
       o.visualDesignFailed,
@@ -189,7 +205,7 @@ export default function CharacterVisualDesignStep({
                 ? o.visualDesignGenerating
                 : o.visualDesignRegenerate,
               busy: generating,
-              disabled: blocked || !clothingStyle,
+              disabled: blocked || !clothingStyle || !gender,
               onClick: () => void generate(true),
             }
           : undefined,
@@ -384,6 +400,7 @@ export default function CharacterVisualDesignStep({
           disabled={
             editingField !== null ||
             !clothingStyle ||
+            !gender ||
             (phase === 'draft' && (!identity || generating))
           }
           onClick={() => {

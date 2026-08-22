@@ -35,6 +35,17 @@ export const GENDER_OPTIONS: LifeGender[] = [
   'unspecified',
 ]
 
+export function genderFromProfile(profile: unknown): LifeGender | null {
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
+    return null
+  }
+  const gender = (profile as Record<string, unknown>).gender
+  return typeof gender === 'string' &&
+    (GENDER_OPTIONS as string[]).includes(gender)
+    ? (gender as LifeGender)
+    : null
+}
+
 export type NameStyle = 'chinese' | 'japanese' | 'european' | 'mythic'
 
 export const NAME_STYLE_OPTIONS: NameStyle[] = [
@@ -90,7 +101,7 @@ export const CLOTHING_STYLE_OPTIONS: ClothingStyle[] = [
 ]
 
 export function clothingStylePreview(style: ClothingStyle): string {
-  return `/life/clothing/${style}.svg`
+  return `/life/clothing/${style}.png`
 }
 
 export interface LifeOnboardingTag {
@@ -254,6 +265,7 @@ export function clothingStyleFromProfile(value: unknown): ClothingStyle | null {
 export function completedPersonaResumeStep(
   visualProfile: unknown,
 ): OnboardingStep {
+  if (!genderFromProfile(visualProfile)) return 2
   return visualIdentityFromProfile(visualProfile) ? 5 : 4
 }
 

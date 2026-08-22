@@ -126,7 +126,7 @@ export const jaJP: TranslationKeys = {
     visualRequirementsDescription:
       '外観はビジュアル契約で固定済みです。ここでは光、表情、画面占有率だけを微調整し、髪、衣装、配色、装飾は変更しません。',
     visualRequirementsPlaceholder:
-      '例：柔らかな正面光、顔を大きく、頭上の余白を減らす',
+      '例：柔らかな正面光、画面内の顔を大きく、頭上の余白を減らす',
     visualGenerate: '立ち絵を生成',
     visualRegenerate: '再生成',
     visualGenerating: '生成中です。他の設定は続けられます。',
@@ -2517,7 +2517,7 @@ export const jaJP: TranslationKeys = {
       portraitRequirementsHint:
         '外観は固定済みです。ここでは光、表情、構図密度だけを微調整します。髪、衣装、配色、装飾を変える場合は前の手順へ戻ってください。',
       portraitRequirementsPlaceholder:
-        '例：前髪をもう少し短く、光をもっと柔らかく',
+        '例：光を柔らかく、視線を強く、画面内の顔を少し大きく',
       portraitGenerate: '立ち絵を生成',
       portraitGenerating: '生成中…',
       portraitRegenerate: 'もう一度生成',
@@ -2525,6 +2525,8 @@ export const jaJP: TranslationKeys = {
       portraitEditing: '調整中…',
       portraitEditFailed: '立ち絵の調整に失敗しました。再試行してください。',
       portraitEditNeedsNotes: '先に直したい点を話してから、この絵をモデルに渡してください。',
+      portraitAdjustmentOutOfScope:
+        'ここでは光、表情、画面占有率だけを小さく調整できます。髪、衣装、配色、装飾は前の手順で再設計してください。',
       portraitGenerateFailed: 'メイン立ち絵の生成に失敗しました。再試行してください。',
       portraitInProgress: '立ち絵はすでに生成中です。しばらくしてから確認してください。',
       portraitInputsChanged: '生成中に外観設定が変わったので、もう一度生成してください。',

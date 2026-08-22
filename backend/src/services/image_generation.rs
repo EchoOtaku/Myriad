@@ -1092,12 +1092,18 @@ mod tests {
             api_key: "secret".to_string(),
             base_url: "https://openrouter.ai/api/v1".to_string(),
         };
-        let (_, body) = request_parts(&config, "portrait", 1024, 1024, None).unwrap();
+        let reference = "data:image/png;base64,AA==";
+        let (_, body) =
+            request_parts(&config, "portrait", 1152, 1536, Some(reference)).unwrap();
         assert_eq!(body["background"], "opaque");
         assert_eq!(body["quality"], "high");
         assert!(body.get("output_format").is_none());
         assert!(body.get("n").is_none());
-        assert_eq!(body["aspect_ratio"], "1:1");
+        assert_eq!(body["aspect_ratio"], "3:4");
+        assert_eq!(
+            body["input_references"][0]["image_url"]["url"],
+            reference
+        );
     }
 
     #[test]

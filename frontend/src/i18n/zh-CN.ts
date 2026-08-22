@@ -124,7 +124,8 @@ export const zhCN: TranslationKeys = {
     visualRequirements: '本次立绘补充要求',
     visualRequirementsDescription:
       '角色外观已经由视觉契约锁定；这里只微调光线、表情和画面占比，不能改发型、服装、配色或饰品。',
-    visualRequirementsPlaceholder: '例如：柔和正面光、脸部更大、减少头顶留白',
+    visualRequirementsPlaceholder:
+      '例如：柔和正面光、脸部在画面中更大、减少头顶留白',
     visualGenerate: '生成立绘',
     visualRegenerate: '重新生成',
     visualGenerating: '正在生成，可继续调整其它设置。',
@@ -2398,7 +2399,7 @@ export const zhCN: TranslationKeys = {
       portraitRequirementsHint:
         '角色视觉已经锁定；这里只微调光线、表情和构图密度。如需改变发型、服装、配色或饰品，请返回上一步重新设计。',
       portraitRequirementsPlaceholder:
-        '例如：刘海再短一点，光线再柔一点',
+        '例如：光线更柔、目光更坚定、脸部在画面中再大一点',
       portraitGenerate: '生成主立绘',
       portraitGenerating: '正在生成…',
       portraitRegenerate: '重新生成',
@@ -2406,6 +2407,8 @@ export const zhCN: TranslationKeys = {
       portraitEditing: '正在调整…',
       portraitEditFailed: '按对话调整失败，请重试',
       portraitEditNeedsNotes: '先说要改的地方，再交给模型调整这张图。',
+      portraitAdjustmentOutOfScope:
+        '这里只能小幅调整光线、表情或画面占比；发型、服装、配色和饰品请返回上一步重新设计。',
       portraitGenerateFailed: '主立绘生成失败，请重试',
       portraitInProgress: '已有立绘正在生成，请稍后再看。',
       portraitInputsChanged: '视觉设定在生成期间被改过，请再生成一次。',

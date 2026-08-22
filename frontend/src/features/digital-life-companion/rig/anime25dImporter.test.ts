@@ -168,7 +168,7 @@ test('semantic content framing removes letterboxing and pads into the 3:4 stage'
     width: 1,
     height: 1.3333333333333333,
   })
-  assert.equal(prepared.source.characterAssetContractVersion, 2)
+  assert.equal(prepared.source.characterAssetContractVersion, 3)
   assert.equal(
     prepared.source.sourceGenerationFingerprint,
     generationFingerprint,

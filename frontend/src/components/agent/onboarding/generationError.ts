@@ -8,6 +8,7 @@ const HOST_GENERATION_CODES = new Set([
   'persona_draft_failed',
   'visual_design_failed',
   'visual_design_language',
+  'visual_language_required',
   'visual_design_required',
   'visual_identity_invalid',
   'persona_contract_invalid',
@@ -16,6 +17,8 @@ const HOST_GENERATION_CODES = new Set([
   'image_provider_unconfigured',
   'portrait_generation_failed',
   'portrait_edit_notes_required',
+  'portrait_adjustment_invalid',
+  'portrait_adjustment_out_of_scope',
   'portrait_required_for_edit',
 ])
 
@@ -34,7 +37,8 @@ export function errorCode(reason: unknown): string | undefined {
 
 export function isGenerationTimeout(reason: unknown): boolean {
   if (reason instanceof ApiError && reason.code === 'TIMEOUT') return true
-  const message = reason instanceof Error ? reason.message : String(reason ?? '')
+  const message =
+    reason instanceof Error ? reason.message : String(reason ?? '')
   return /timeout/i.test(message)
 }
 

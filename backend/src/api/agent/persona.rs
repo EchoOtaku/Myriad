@@ -72,6 +72,10 @@ pub struct SuggestNameRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SuggestVisualDesignRequest {
     #[serde(default)]
+    pub gender: String,
+    #[serde(default)]
+    pub language: String,
+    #[serde(default)]
     pub visual_requirements: String,
     #[serde(default)]
     pub clothing_style: String,
@@ -532,7 +536,7 @@ fn distill_error(error: life::report_dna::DistillReportDnaError) -> HttpError {
 }
 
 /// POST /api/agent/persona/name
-/// Standard rolls one OC display name from selected tags, gender, and name style.
+/// Lite (or Standard if Lite is off) rolls one given name in the selected style.
 pub async fn suggest_name(
     State(db): State<DatabaseConnection>,
     Extension(claims): Extension<Claims>,
@@ -666,19 +670,30 @@ pub async fn suggest_visual_design(
             })),
         )));
     }
-    let requirements = sanitize_visual_text(&body.visual_requirements, 500)?;
-    let profile = persona.visual_profile.as_ref();
-    let language = profile
-        .and_then(|value| value.get("language"))
-        .and_then(Value::as_str)
-        .map(normalize_signals_language)
-        .unwrap_or("zh-CN");
-    let gender = profile
-        .and_then(|value| value.get("gender"))
-        .and_then(Value::as_str)
-        .unwrap_or("unspecified");
+    let language = required_visual_language(&body.language).ok_or_else(|| {
+        HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Choose a supported interface language before generating the visual design",
+                "code": "visual_language_required"
+            })),
+        ))
+    })?;
+    let gender = required_visual_gender(&body.gender).ok_or_else(|| {
+        HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Choose a valid gender presentation before generating the visual design",
+                "code": "gender_required"
+            })),
+        ))
+    })?;
+    let requirements =
+        myriad_digital_life::normalize_visual_requirements_for_design_with_gender(
+            &sanitize_visual_text(&body.visual_requirements, 500)?,
+            gender,
+        );
     let clothing_style = myriad_digital_life::normalize_clothing_style(&body.clothing_style)
-        .or_else(|| profile.and_then(myriad_digital_life::clothing_style_of))
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::BAD_REQUEST,
@@ -689,28 +704,35 @@ pub async fn suggest_visual_design(
             ))
         })?;
     let explicit_existing = match body.existing_visual_identity.as_ref() {
-        Some(value) => Some(
-            myriad_digital_life::sanitize_upper_body_visual_identity(value).ok_or_else(|| {
-                HttpError::from((
-                    StatusCode::BAD_REQUEST,
-                    Json(json!({
-                        "error": "Existing visual identity is incomplete",
-                        "code": "visual_identity_invalid"
-                    })),
-                ))
-            })?,
-        ),
+        Some(value) => {
+            let sanitized = myriad_digital_life::sanitize_upper_body_visual_identity(value)
+                .ok_or_else(|| {
+                    HttpError::from((
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({
+                            "error": "Existing visual identity is incomplete",
+                            "code": "visual_identity_invalid"
+                        })),
+                    ))
+                })?;
+            Some(
+                myriad_digital_life::normalize_visual_identity_for_prompt(&sanitized)
+                    .ok_or_else(visual_profile_error)?,
+            )
+        }
         None => None,
     };
-    let existing = (body.regenerate || body.keep_character).then(|| {
-        explicit_existing
-            .or_else(|| {
-                profile
-                    .and_then(|value| value.get("visualIdentity"))
-                    .and_then(myriad_digital_life::sanitize_upper_body_visual_identity)
-            })
-            .unwrap_or(Value::Null)
-    });
+    let existing = (body.regenerate || body.keep_character)
+        .then(|| explicit_existing.unwrap_or(Value::Null));
+    if body.keep_character && existing.as_ref().is_none_or(Value::is_null) {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "An explicit existing visual identity is required to keep the character",
+                "code": "visual_identity_invalid"
+            })),
+        )));
+    }
     let identity = match life::onboarding_ai::suggest_visual_design(
         persona.name.trim(),
         language,
@@ -808,6 +830,26 @@ fn sanitize_structured_persona(
     Ok(persona)
 }
 
+fn required_visual_gender(value: &str) -> Option<&str> {
+    match value.trim() {
+        gender @ ("female" | "male" | "nonbinary" | "unspecified") => Some(gender),
+        _ => None,
+    }
+}
+
+fn required_visual_language(value: &str) -> Option<&'static str> {
+    let language = value.trim();
+    if language.starts_with("zh") {
+        Some("zh-CN")
+    } else if language.starts_with("ja") {
+        Some("ja-JP")
+    } else if language.starts_with("en") {
+        Some("en-US")
+    } else {
+        None
+    }
+}
+
 fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
     let source = value.as_object().ok_or_else(|| {
         HttpError::from((
@@ -853,9 +895,7 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
     for (key, max_chars) in [("extraRequirements", 500), ("personaExtraRequirements", 500)] {
         if let Some(text) = source.get(key).and_then(Value::as_str) {
             let text = sanitize_visual_text(text, max_chars)?;
-            if !text.is_empty() {
-                profile.insert(key.into(), json!(text));
-            }
+            profile.insert(key.into(), json!(text));
         }
     }
     if let Some(tags) = source.get("sourceTags").and_then(Value::as_array) {
@@ -865,11 +905,13 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
             .map(str::to_string)
             .collect::<Vec<_>>();
         let tags = life::report_dna::sanitize_onboarding_tags(&tags);
-        if !tags.is_empty() {
-            profile.insert("sourceTags".into(), json!(tags));
-        }
+        profile.insert("sourceTags".into(), json!(tags));
     }
     if let Some(identity) = source.get("visualIdentity") {
+        if identity.is_null() {
+            profile.insert("visualIdentity".into(), Value::Null);
+            return Ok(Value::Object(profile));
+        }
         let mut sanitized = myriad_digital_life::sanitize_upper_body_visual_identity(identity)
             .ok_or_else(visual_profile_error)?;
         if let Some(style) = profile
@@ -881,6 +923,8 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
             profile.insert("clothingStyle".into(), json!(style));
             myriad_digital_life::stamp_clothing_style(&mut sanitized, style);
         }
+        let sanitized = myriad_digital_life::normalize_visual_identity_for_prompt(&sanitized)
+            .ok_or_else(visual_profile_error)?;
         profile.insert("visualIdentity".into(), sanitized);
     }
     Ok(Value::Object(profile))
@@ -894,12 +938,18 @@ fn merge_visual_profile(incoming: Value, previous: Option<&Value>) -> Value {
         return incoming;
     };
     let mut merged = target.clone();
+    let identity_context_changed = ["gender", "clothingStyle"]
+        .iter()
+        .any(|key| merged.get(*key).is_some() && merged.get(*key) != previous.get(*key));
     for key in [
         "visualIdentity",
         "sourceTags",
         "personaExtraRequirements",
         "clothingStyle",
     ] {
+        if key == "visualIdentity" && identity_context_changed {
+            continue;
+        }
         if merged.get(key).is_none() {
             if let Some(value) = previous.get(key) {
                 merged.insert(key.to_string(), value.clone());
@@ -931,6 +981,25 @@ fn visual_profile_error() -> HttpError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn visual_design_requires_an_explicit_valid_gender() {
+        assert_eq!(required_visual_gender("female"), Some("female"));
+        assert_eq!(required_visual_gender(" male "), Some("male"));
+        assert_eq!(required_visual_gender("nonbinary"), Some("nonbinary"));
+        assert_eq!(required_visual_gender("unspecified"), Some("unspecified"));
+        assert_eq!(required_visual_gender(""), None);
+        assert_eq!(required_visual_gender("invalid"), None);
+    }
+
+    #[test]
+    fn visual_design_requires_an_explicit_supported_language() {
+        assert_eq!(required_visual_language("zh-CN"), Some("zh-CN"));
+        assert_eq!(required_visual_language(" ja-JP "), Some("ja-JP"));
+        assert_eq!(required_visual_language("en-US"), Some("en-US"));
+        assert_eq!(required_visual_language(""), None);
+        assert_eq!(required_visual_language("fr-FR"), None);
+    }
 
     #[test]
     fn draft_tags_use_onboarding_sanitize() {
@@ -1033,19 +1102,77 @@ mod tests {
 
         let kept = merge_visual_profile(
             sanitize_visual_profile(&json!({
-                "gender": "female",
+                "gender": "nonbinary",
                 "language": "zh-CN",
                 "sourceTags": [" 慢热 ", "慢热", "嘴硬心软"]
             }))
             .expect("partial profile"),
             Some(&profile),
         );
-        assert_eq!(kept["gender"], "female");
+        assert_eq!(kept["gender"], "nonbinary");
         assert_eq!(kept["sourceTags"], json!(["慢热", "嘴硬心软"]));
         assert_eq!(kept["visualIdentity"], profile["visualIdentity"]);
         assert_eq!(kept["clothingStyle"], "fantasy");
         assert!(kept.get("extraRequirements").is_none());
         assert!(kept.get("personaExtraRequirements").is_none());
+    }
+
+    #[test]
+    fn visual_profile_explicit_clears_survive_merge_and_context_changes_drop_identity() {
+        let previous = json!({
+            "gender": "female",
+            "language": "zh-CN",
+            "clothingStyle": "fantasy",
+            "extraRequirements": "金色眼睛",
+            "sourceTags": ["慢热"],
+            "personaExtraRequirements": "话少",
+            "visualIdentity": {
+                "character": {
+                    "faceDesign": "紧凑柔和的鹅蛋脸与自然眉形",
+                    "eyeDesign": "中等偏大的金色多层虹膜与克制高光",
+                    "hairShape": "银灰齐颌短发与偏分刘海",
+                    "hairLayerPlan": "后发、刘海和左右侧发形成独立轮廓"
+                },
+                "outfit": {
+                    "clothingStyle": "fantasy",
+                    "upperBodySilhouette": "紧凑肩线、清楚领口与胸前焦点",
+                    "outfitConstruction": "高领内搭叠短外套并止于高腰",
+                    "sleeveArmDesign": "左右袖片携局部前臂进入画面",
+                    "materialPlan": "哑光布料、银色金属与小面积宝石",
+                    "heroAccessory": "左胸星轨扣饰",
+                    "paletteHint": "雾蓝为主、银白为辅、金色点缀",
+                    "motif": "单一星轨弧线集中在胸前"
+                }
+            }
+        });
+        let cleared = merge_visual_profile(
+            sanitize_visual_profile(&json!({
+                "gender": "female",
+                "language": "zh-CN",
+                "clothingStyle": "fantasy",
+                "extraRequirements": "",
+                "sourceTags": [],
+                "personaExtraRequirements": "",
+                "visualIdentity": null
+            }))
+            .expect("explicit clears"),
+            Some(&previous),
+        );
+        assert_eq!(cleared["extraRequirements"], "");
+        assert_eq!(cleared["sourceTags"], json!([]));
+        assert_eq!(cleared["personaExtraRequirements"], "");
+        assert!(cleared["visualIdentity"].is_null());
+
+        let changed_gender = merge_visual_profile(
+            sanitize_visual_profile(&json!({
+                "gender": "male",
+                "language": "zh-CN"
+            }))
+            .expect("changed context"),
+            Some(&previous),
+        );
+        assert!(changed_gender.get("visualIdentity").is_none());
+        assert_eq!(changed_gender["clothingStyle"], "fantasy");
     }
 
     #[test]

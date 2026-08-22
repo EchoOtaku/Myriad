@@ -43,35 +43,16 @@ pub async fn suggest_display_name(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.chars().take(40).collect::<String>());
-    let roll_id = format!("n{}", uuid::Uuid::new_v4().simple());
-    let (japanese_form, prefer_chars) = japanese_name_length_hint(&roll_id);
     let input = json!({
-        "pipeline": "onboarding/name",
-        "task": "recommend_display_name",
-        "rollId": roll_id,
+        "task": "name",
         "language": language,
         "nameStyle": style,
         "genderPresentation": normalize_gender(gender),
-        "selectedTags": seeds,
         "avoidName": avoid.clone().unwrap_or_default(),
-        "nameSchool": match style {
-            "chinese" => "liyue-xianzhou-meaning-first",
-            "japanese" => "wa-style-modern-or-inazuma",
-            "mythic" => "classical-myth-etymology-first",
-            _ => "word-name-etymology-first",
-        },
-        "nameLength": match style {
-            "japanese" => json!({
-                "min": 2,
-                "max": 5,
-                "preferChars": prefer_chars,
-                "form": japanese_form,
-            }),
-            _ => Value::Null,
-        },
+        "selectedTags": seeds,
     })
     .to_string();
-    let raw = run_onboarding_call_on_tier(ModelTier::Standard, NAME_SYSTEM_PROMPT, &input).await?;
+    let raw = run_name_call(NAME_SYSTEM_PROMPT, &input).await?;
     let name = parse_display_name_suggestion(&raw, avoid.as_deref(), style)
         .ok_or(OnboardingAiError::UnusableResponse)?;
     Ok(name)
@@ -175,6 +156,12 @@ async fn suggest_visual_design_once(
     let kept_character = keep_character
         .then(|| existing_visual_identity.and_then(myriad_digital_life::character_module))
         .flatten();
+    let validate_new_face_construction = kept_character.is_none();
+    let comparison_identity = if regenerate && kept_character.is_none() {
+        existing_visual_identity.cloned().unwrap_or(Value::Null)
+    } else {
+        Value::Null
+    };
     let input = json!({
         "pipeline": "onboarding/upper-body-visual-design",
         "task": "design_upper_body_visual_identity",
@@ -190,6 +177,7 @@ async fn suggest_visual_design_once(
         "visualRequirements": visual_requirements.chars().take(500).collect::<String>(),
         "paletteFromPersona": {
             "from": ["likes", "temperament", "drives"],
+            "onlyWhenVisualRequirementsDoNotSetPalette": true,
             "citeSourcesInPaletteHint": false,
             "paletteNamedColorsOnPartsOnly": true,
             "sameSourcesForCostumeAndAccessory": true,
@@ -205,7 +193,7 @@ async fn suggest_visual_design_once(
             "forbidInterchangeableDefaultKit": true,
         },
         "regenerate": regenerate,
-        "existingVisualIdentity": existing_visual_identity.cloned().unwrap_or(Value::Null),
+        "previousVisualIdentityForDifferenceOnly": comparison_identity,
     })
     .to_string();
     let raw = run_onboarding_call(&visual_design_system_prompt(), &input).await?;
@@ -221,7 +209,15 @@ async fn suggest_visual_design_once(
     }
     myriad_digital_life::stamp_clothing_style(&mut identity, clothing_style);
     if myriad_digital_life::visual_identity_violates_style_lock(&identity)
+        || myriad_digital_life::visual_identity_has_body_proportion_drift(&identity)
+        || myriad_digital_life::visual_identity_has_camera_composition_drift(&identity)
         || myriad_digital_life::visual_identity_has_literary_sludge(&identity)
+        || (validate_new_face_construction
+            && (myriad_digital_life::visual_identity_has_facial_construction_drift(&identity)
+                || !myriad_digital_life::visual_identity_matches_gender_presentation(
+                    &identity,
+                    gender,
+                )))
     {
         return Err(OnboardingAiError::UnusableResponse);
     }
@@ -229,6 +225,17 @@ async fn suggest_visual_design_once(
         return Err(OnboardingAiError::LanguageMismatch);
     }
     Ok(identity)
+}
+
+async fn run_name_call(system: &str, input: &str) -> Result<String, OnboardingAiError> {
+    if crate::GLOBAL_DYNAMIC_CONFIG.read().await.lite_enabled {
+        match run_onboarding_call_on_tier(ModelTier::Lite, system, input).await {
+            Ok(raw) => return Ok(raw),
+            Err(OnboardingAiError::AnalyzerUnavailable) => {}
+            Err(error) => return Err(error),
+        }
+    }
+    run_onboarding_call_on_tier(ModelTier::Standard, system, input).await
 }
 
 async fn run_onboarding_call(
@@ -310,6 +317,11 @@ fn parse_json_object(raw: &str) -> Option<Value> {
 
 fn parse_display_name_suggestion(raw: &str, avoid: Option<&str>, name_style: &str) -> Option<String> {
     let parsed = parse_json_object(raw)?;
+    parsed
+        .get("meaning")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| value.chars().count() >= 2)?;
     let candidates = if let Some(name) = parsed.get("name").and_then(Value::as_str) {
         vec![name.to_string()]
     } else if let Some(arr) = parsed.get("names").and_then(Value::as_array) {
@@ -677,6 +689,23 @@ mod tests {
             assert!((2..=5).contains(&chars), "{form} {chars}");
             assert!(form == "modern-personal" || form == "inazuma-meaning");
         }
+    }
+
+    #[test]
+    fn name_parser_requires_a_meaning_clause() {
+        assert!(parse_display_name_suggestion(
+            r#"{"name":"晚衡","meaning":"晚来仍能把方向稳住"}"#,
+            None,
+            "chinese",
+        )
+        .is_some());
+        assert!(parse_display_name_suggestion(r#"{"name":"晚衡"}"#, None, "chinese").is_none());
+        assert!(parse_display_name_suggestion(
+            r#"{"name":"晚衡","meaning":" " }"# ,
+            None,
+            "chinese",
+        )
+        .is_none());
     }
 
     #[test]

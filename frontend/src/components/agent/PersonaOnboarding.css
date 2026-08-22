@@ -1069,12 +1069,13 @@ fieldset.life-ob-field > .life-ob-field__hint {
 
 /* Step 2: one field, style/roll chip inset on the right */
 .life-ob-name-field {
+  --name-dice-inset: 4px;
   position: relative;
   display: flex;
-  gap: 4px;
+  gap: var(--name-dice-inset);
   align-items: stretch;
   min-width: 0;
-  padding: 4px 4px 4px 0;
+  padding: var(--name-dice-inset) var(--name-dice-inset) var(--name-dice-inset) 0;
   border: 1px solid var(--ob-liq-border, var(--life-line));
   border-radius: 14px;
   background: var(--ob-liq-sheen, none), rgb(var(--life-surface-rgb) / 74%);
@@ -1118,8 +1119,8 @@ fieldset.life-ob-field > .life-ob-field__hint {
 .life-ob-name-dice {
   position: relative;
   flex: 0 0 auto;
-  align-self: center;
-  height: 34px;
+  align-self: stretch;
+  height: auto;
 }
 
 .life-ob-name-dice.is-open {
@@ -1219,7 +1220,10 @@ fieldset.life-ob-field > .life-ob-field__hint {
 }
 
 .life-ob-name-dice__roll {
-  width: 34px;
+  flex: 0 0 auto;
+  width: auto;
+  height: 100%;
+  aspect-ratio: 1;
 }
 
 .life-ob-name-dice__roll svg {

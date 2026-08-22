@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { InfoActionCard, InputItem, SettingGroup } from '../../components/settings'
 import { useI18n } from '../../contexts/I18nContext'
+import Anime25DWorkbench from './anime25drig/Anime25DWorkbench'
 import {
+  CompanionApiError,
   decomposeSitePortraitWithSeeThrough,
   generateSitePortrait,
   getSeeThroughStatus,
@@ -17,7 +19,6 @@ import {
   preflightRigPsdAsset,
 } from './assets/pipeline'
 import { notifyFaceUpdated } from './events'
-import Anime25DWorkbench from './anime25drig/Anime25DWorkbench'
 import RigCharacter from './rig/RigCharacter'
 import './companion.css'
 import './life-motion-home.css'
@@ -106,7 +107,13 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
       notifyFaceUpdated()
     } catch (reason) {
       setError(
-        reason instanceof Error ? reason.message : t.companion.visualFailed,
+        reason instanceof CompanionApiError &&
+          (reason.code === 'portrait_adjustment_invalid' ||
+            reason.code === 'portrait_adjustment_out_of_scope')
+          ? t.companion.visualRequirementsDescription
+          : reason instanceof Error
+            ? reason.message
+            : t.companion.visualFailed,
       )
     } finally {
       setGenerating(false)
