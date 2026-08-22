@@ -5,7 +5,6 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, T
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-
 /// Fixed-length secret mask shown to the UI (no real characters).
 pub(crate) fn mask_secret_display_value() -> String {
     "••••••••".to_string()
@@ -175,7 +174,10 @@ pub(crate) fn sanitize_wallpaper_url(raw: &str) -> Option<String> {
 }
 
 fn is_blocked_wallpaper_host(host: &str) -> bool {
-    let h = host.trim().trim_matches(|c| c == '[' || c == ']').to_ascii_lowercase();
+    let h = host
+        .trim()
+        .trim_matches(|c| c == '[' || c == ']')
+        .to_ascii_lowercase();
     if h.is_empty() {
         return true;
     }
@@ -437,13 +439,19 @@ pub struct UiConfig {
     pub config_fields: Vec<ConfigField>,
 }
 
-pub(crate) fn resolve_platform_enabled(explicit_enabled: Option<bool>, fallback_enabled: bool) -> bool {
+pub(crate) fn resolve_platform_enabled(
+    explicit_enabled: Option<bool>,
+    fallback_enabled: bool,
+) -> bool {
     explicit_enabled.unwrap_or(fallback_enabled)
 }
 
 /// 按管理员配置的平台顺序对平台列表排序。
 /// `order` 中的平台按其顺序排在前面，未列出的平台保持原有默认顺序排在最后。
-pub(crate) fn sort_platforms_by_order(platforms: &mut [PlatformConfig], order: Option<&Vec<String>>) {
+pub(crate) fn sort_platforms_by_order(
+    platforms: &mut [PlatformConfig],
+    order: Option<&Vec<String>>,
+) {
     let Some(order) = order else { return };
     let rank = |name: &str| -> usize {
         order
@@ -461,7 +469,9 @@ pub(crate) fn nonempty_db(opt: Option<&String>) -> bool {
 }
 
 pub(crate) fn nonempty_env(key: &str) -> bool {
-    std::env::var(key).ok().is_some_and(|s| !s.trim().is_empty())
+    std::env::var(key)
+        .ok()
+        .is_some_and(|s| !s.trim().is_empty())
 }
 
 /// Agent `config.get` / `platform.connection` / `auth.status` 共用：平台是否按配置视为已接通。
@@ -566,7 +576,10 @@ pub(crate) fn public_ui_config_value(config: &crate::config::DynamicConfig) -> V
     })
 }
 
-pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool) -> ConfigResponse {
+pub(crate) async fn build_config(
+    db: &DatabaseConnection,
+    reveal_sensitive: bool,
+) -> ConfigResponse {
     let db = db.clone();
     // 优先从数据库读取配置
     let config_service = crate::services::config_service::ConfigService::new(db.clone());
@@ -592,11 +605,14 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
         }
     };
 
-    let has_bangumi_username = nonempty_db(db_config.as_ref().and_then(|c| c.bangumi_username.as_ref()))
-        || nonempty_env("BANGUMI_USERNAME");
-    let has_bangumi_access_token =
-        nonempty_db(db_config.as_ref().and_then(|c| c.bangumi_access_token.as_ref()))
-            || nonempty_env("BANGUMI_ACCESS_TOKEN");
+    let has_bangumi_username =
+        nonempty_db(db_config.as_ref().and_then(|c| c.bangumi_username.as_ref()))
+            || nonempty_env("BANGUMI_USERNAME");
+    let has_bangumi_access_token = nonempty_db(
+        db_config
+            .as_ref()
+            .and_then(|c| c.bangumi_access_token.as_ref()),
+    ) || nonempty_env("BANGUMI_ACCESS_TOKEN");
     let has_bangumi_identity = has_bangumi_username || has_bangumi_access_token;
     let github_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.github_enabled),
@@ -615,9 +631,11 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
     );
     let has_youtube_key = nonempty_db(db_config.as_ref().and_then(|c| c.youtube_api_key.as_ref()))
         || nonempty_env("YOUTUBE_API_KEY");
-    let has_youtube_channel =
-        nonempty_db(db_config.as_ref().and_then(|c| c.youtube_channel_id.as_ref()))
-            || nonempty_env("YOUTUBE_CHANNEL_ID");
+    let has_youtube_channel = nonempty_db(
+        db_config
+            .as_ref()
+            .and_then(|c| c.youtube_channel_id.as_ref()),
+    ) || nonempty_env("YOUTUBE_CHANNEL_ID");
     let youtube_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.youtube_enabled),
         has_youtube_key && has_youtube_channel,
@@ -639,9 +657,11 @@ pub(crate) async fn build_config(db: &DatabaseConnection, reveal_sensitive: bool
         db_config.as_ref().and_then(|c| c.x_enabled),
         has_x_username && has_x_bearer,
     );
-    let has_discord_token =
-        nonempty_db(db_config.as_ref().and_then(|c| c.discord_access_token.as_ref()))
-            || nonempty_env("DISCORD_ACCESS_TOKEN");
+    let has_discord_token = nonempty_db(
+        db_config
+            .as_ref()
+            .and_then(|c| c.discord_access_token.as_ref()),
+    ) || nonempty_env("DISCORD_ACCESS_TOKEN");
     let discord_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.discord_enabled),
         has_discord_token,
@@ -2346,11 +2366,7 @@ pub(crate) fn platform_config_is_ready(platform: &PlatformConfig) -> bool {
 ///
 /// Used for SEO/analytics fields so clearing the admin UI cannot be undone by a
 /// leftover env var (e.g. `GA_MEASUREMENT_ID` in process environment).
-pub(crate) fn db_or_env_clearable(
-    db_val: Option<String>,
-    env_key: &str,
-    default: &str,
-) -> String {
+pub(crate) fn db_or_env_clearable(db_val: Option<String>, env_key: &str, default: &str) -> String {
     match db_val {
         Some(v) => v,
         None => std::env::var(env_key).unwrap_or_else(|_| default.to_string()),
@@ -2411,6 +2427,7 @@ pub(crate) struct SettingDescriptor {
 /// `github_client_*` / `github_redirect_url` 不在表里——旧备份里这些键会进 ignored。
 pub(crate) const REGISTERED_CONFIGURATION_KEYS_V1: &[&str] = &[
     "agent_life_enabled",
+    "agent_rig_asset_id",
     "ai_image_model",
     "ai_image_openai_api_key",
     "ai_image_openai_base_url",
@@ -3404,10 +3421,7 @@ mod settings_backup_tests {
         assert!(!updates.contains_key("tripo_api_key"));
         assert_eq!(updates.get("tripo_model"), Some(&json!("P1-20260311")));
         assert_eq!(updates.get("tripo_face_limit"), Some(&json!(20_000)));
-        assert_eq!(
-            updates.get("tripo_poll_interval_seconds"),
-            Some(&json!(2))
-        );
+        assert_eq!(updates.get("tripo_poll_interval_seconds"), Some(&json!(2)));
         assert_eq!(
             updates.get("tripo_task_timeout_seconds"),
             Some(&json!(3_600))
@@ -3617,8 +3631,7 @@ mod settings_backup_tests {
     #[test]
     fn collect_rejects_unsafe_wallpaper_url() {
         let mut config = empty_config();
-        config.ui_config.config_fields =
-            vec![ui_field("wallpaper_url", "javascript:alert(1)")];
+        config.ui_config.config_fields = vec![ui_field("wallpaper_url", "javascript:alert(1)")];
         let updates = collect_database_updates(&config);
         assert!(!updates.contains_key("ui_wallpaper_url"));
 
@@ -3850,11 +3863,7 @@ mod settings_backup_tests {
         for (name, fields) in [
             (
                 "Bangumi",
-                vec![
-                    ("username", ""),
-                    ("access_token", ""),
-                    ("user_agent", ""),
-                ],
+                vec![("username", ""), ("access_token", ""), ("user_agent", "")],
             ),
             ("X", vec![("username", ""), ("bearer_token", "")]),
             ("Steam", vec![("api_key", ""), ("steam_id", "")]),
@@ -3864,10 +3873,7 @@ mod settings_backup_tests {
                 name: name.to_string(),
                 enabled: false,
                 has_token: false,
-                config_fields: fields
-                    .into_iter()
-                    .map(|(k, v)| ui_field(k, v))
-                    .collect(),
+                config_fields: fields.into_iter().map(|(k, v)| ui_field(k, v)).collect(),
                 description: String::new(),
                 icon: String::new(),
             });
@@ -3888,10 +3894,7 @@ mod settings_backup_tests {
         let env_key = "MYRIAD_TEST_PLATFORM_RESOLVE_EMPTY";
         std::env::set_var(env_key, "stale-from-env");
         assert_eq!(db_or_env_clearable(Some(String::new()), env_key, ""), "");
-        assert_eq!(
-            db_or_env_clearable(None, env_key, ""),
-            "stale-from-env"
-        );
+        assert_eq!(db_or_env_clearable(None, env_key, ""), "stale-from-env");
         assert_eq!(
             db_or_env_clearable(Some("from-db".to_string()), env_key, ""),
             "from-db"
@@ -3975,9 +3978,7 @@ pub async fn update_config(
     match config_service.load_config().await {
         Ok(new_config) => {
             // 内存节约档：立即收紧并发/缓存/Argon2；DB 池在下次建连/重启后生效
-            crate::services::memory_profile::apply_from_saver_flag(
-                new_config.memory_saver_enabled,
-            );
+            crate::services::memory_profile::apply_from_saver_flag(new_config.memory_saver_enabled);
             *dynamic_config.write().await = new_config;
             tracing::info!("✅ Dynamic configuration cache updated");
 
@@ -4461,10 +4462,7 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
             "wallpaper_url" => {
                 match sanitize_wallpaper_url(&field.value) {
                     Some(safe) => {
-                        updates.insert(
-                            "ui_wallpaper_url".to_string(),
-                            JsonValue::String(safe),
-                        );
+                        updates.insert("ui_wallpaper_url".to_string(), JsonValue::String(safe));
                     }
                     None => {
                         tracing::warn!(
@@ -4525,15 +4523,11 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 // Cap to match SEO AI generate path (~500 chars) so public
                 // /llms.txt cannot be bloated via the config bag.
                 let capped: String = field.value.chars().take(500).collect();
-                updates.insert(
-                    "site_ai_intro".to_string(),
-                    JsonValue::String(capped),
-                );
+                updates.insert("site_ai_intro".to_string(), JsonValue::String(capped));
                 continue;
             }
-            "site_title" | "site_description" | "site_keywords"
-            | "ga_measurement_id" | "umami_website_id"
-            | "music_source" | "site_icp" | "site_gongan"
+            "site_title" | "site_description" | "site_keywords" | "ga_measurement_id"
+            | "umami_website_id" | "music_source" | "site_icp" | "site_gongan"
             | "cloud_sponsors" | "site_footer_custom" | "proxy_bypass" => {
                 updates.insert(field.key.clone(), JsonValue::String(field.value.clone()));
                 continue;
@@ -4567,13 +4561,11 @@ fn collect_database_updates(config: &ConfigResponse) -> std::collections::HashMa
                 // Legacy-only flip: keep visibility policy in lockstep.
                 updates.insert(
                     "site_visibility_policy".to_string(),
-                    JsonValue::String(
-                        if enabled {
-                            "private".to_string()
-                        } else {
-                            "ai_full".to_string()
-                        },
-                    ),
+                    JsonValue::String(if enabled {
+                        "private".to_string()
+                    } else {
+                        "ai_full".to_string()
+                    }),
                 );
                 continue;
             }
@@ -5003,8 +4995,11 @@ pub async fn get_public_config(
     );
     let youtube_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.youtube_enabled),
-        (nonempty_db(db_config.as_ref().and_then(|c| c.youtube_channel_id.as_ref()))
-            || nonempty_env("YOUTUBE_CHANNEL_ID"))
+        (nonempty_db(
+            db_config
+                .as_ref()
+                .and_then(|c| c.youtube_channel_id.as_ref()),
+        ) || nonempty_env("YOUTUBE_CHANNEL_ID"))
             && (nonempty_db(db_config.as_ref().and_then(|c| c.youtube_api_key.as_ref()))
                 || nonempty_env("YOUTUBE_API_KEY")),
     );
@@ -5016,7 +5011,11 @@ pub async fn get_public_config(
     let bangumi_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.bangumi_enabled),
         nonempty_db(db_config.as_ref().and_then(|c| c.bangumi_username.as_ref()))
-            || nonempty_db(db_config.as_ref().and_then(|c| c.bangumi_access_token.as_ref()))
+            || nonempty_db(
+                db_config
+                    .as_ref()
+                    .and_then(|c| c.bangumi_access_token.as_ref()),
+            )
             || nonempty_env("BANGUMI_USERNAME")
             || nonempty_env("BANGUMI_ACCESS_TOKEN"),
     );
@@ -5029,8 +5028,11 @@ pub async fn get_public_config(
     );
     let discord_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.discord_enabled),
-        nonempty_db(db_config.as_ref().and_then(|c| c.discord_access_token.as_ref()))
-            || nonempty_env("DISCORD_ACCESS_TOKEN"),
+        nonempty_db(
+            db_config
+                .as_ref()
+                .and_then(|c| c.discord_access_token.as_ref()),
+        ) || nonempty_env("DISCORD_ACCESS_TOKEN"),
     );
     let mal_enabled = resolve_platform_enabled(
         db_config.as_ref().and_then(|c| c.mal_enabled),
@@ -5120,7 +5122,9 @@ pub async fn get_public_config(
                 label: "".to_string(),
                 field_type: "text".to_string(),
                 value: get_value(
-                    db_config.as_ref().and_then(|c| c.youtube_channel_id.clone()),
+                    db_config
+                        .as_ref()
+                        .and_then(|c| c.youtube_channel_id.clone()),
                     "YOUTUBE_CHANNEL_ID",
                 ),
                 placeholder: "".to_string(),
@@ -5265,9 +5269,7 @@ pub async fn get_public_config(
     let life_enabled = db_config
         .as_ref()
         .map(|config| config.agent_life_enabled_resolved())
-        .unwrap_or_else(|| {
-            crate::config::DynamicConfig::default().agent_life_enabled_resolved()
-        });
+        .unwrap_or_else(|| crate::config::DynamicConfig::default().agent_life_enabled_resolved());
     let stored_name = if life_enabled {
         crate::services::agent::life::get_persona(&db)
             .await
@@ -5726,11 +5728,8 @@ pub const HITOKOTO_SOURCE_IDS: [&str; 5] = [
 
 /// Builtin quote API hosts (no port) matching FE `BUILTIN_HITOKOTO_SOURCES` URLs.
 /// Proxy SSRF policy is still `outbound_security`; this list is catalog alignment.
-pub const HITOKOTO_BUILTIN_HOSTS: [&str; 3] = [
-    "v1.hitokoto.cn",
-    "api.quotable.io",
-    "meigen.doodlenote.net",
-];
+pub const HITOKOTO_BUILTIN_HOSTS: [&str; 3] =
+    ["v1.hitokoto.cn", "api.quotable.io", "meigen.doodlenote.net"];
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -5990,11 +5989,7 @@ mod hitokoto_catalog_tests {
     fn hitokoto_builtin_hosts_match_frontend_urls() {
         assert_eq!(
             HITOKOTO_BUILTIN_HOSTS,
-            [
-                "v1.hitokoto.cn",
-                "api.quotable.io",
-                "meigen.doodlenote.net",
-            ]
+            ["v1.hitokoto.cn", "api.quotable.io", "meigen.doodlenote.net",]
         );
         for host in HITOKOTO_BUILTIN_HOSTS {
             assert!(!host.is_empty());

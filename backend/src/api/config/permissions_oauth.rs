@@ -77,7 +77,7 @@ pub async fn get_permissions(
 /// 更新 Tapp 权限下放配置（仅管理员）
 #[derive(Debug, Deserialize)]
 pub struct UpdatePermissionsPayload {
-    // 普通用户可下放的 elevated 权限（14 项）
+    // 普通用户可下放的 elevated 权限
     pub user_perm_ai_generate: Option<bool>,
     pub user_perm_ai_analyze: Option<bool>,
     pub user_perm_ai_chat: Option<bool>,
@@ -178,7 +178,7 @@ pub async fn update_permissions(
     let config_service = crate::services::config_service::ConfigService::new(db);
     let mut updates = std::collections::HashMap::new();
 
-    // 普通用户权限（13 项 elevated）
+    // 普通用户权限（elevated）
     if let Some(v) = payload.user_perm_ai_generate {
         updates.insert("user_perm_ai_generate".to_string(), json!(v));
     }
@@ -525,10 +525,7 @@ pub async fn update_oauth_providers(
     if let Some(raw) = payload.tapp_private_install_cleanup.as_deref() {
         let mode = raw.trim().to_ascii_lowercase();
         if mode == "logout" || mode == "inactivity" {
-            updates.insert(
-                "tapp_private_install_cleanup".to_string(),
-                json!(mode),
-            );
+            updates.insert("tapp_private_install_cleanup".to_string(), json!(mode));
         }
     }
     if let Some(days) = payload.tapp_private_install_inactivity_days {

@@ -383,9 +383,10 @@ pub fn apply_web_defaults(
     payload: Value,
     config: &TripoRuntimeConfig,
 ) -> Result<Value, TripoError> {
-    let mut object = payload.as_object().cloned().ok_or_else(|| {
-        TripoError::InvalidRequest("payload must be a JSON object".to_string())
-    })?;
+    let mut object = payload
+        .as_object()
+        .cloned()
+        .ok_or_else(|| TripoError::InvalidRequest("payload must be a JSON object".to_string()))?;
     if matches!(operation, TripoOperation::ImageToModel) {
         if let Some(file_token) = object.remove("file_token") {
             if object

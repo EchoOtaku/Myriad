@@ -13,9 +13,11 @@ pub use ingest::{
     allow_existing_notify, life_enabled, spawn as spawn_ingest, spawn_diary, spawn_presence,
 };
 pub use store::{
-    clear_persona, get_or_create_state, get_persona, insert_diary, insert_proactive, latest_diary,
-    list_diary, normalize_persona_fields, recent_proactive, save_departure_mood, save_mood,
-    set_activity, set_do_not_disturb, upsert_persona, PortraitUpdate,
+    acquire_portrait_generation, clear_persona_on, complete_portrait_generation,
+    get_or_create_state, get_persona, get_persona_on, insert_diary, insert_proactive, latest_diary,
+    list_diary, normalize_persona_fields, portrait_generation_is_pending, recent_proactive,
+    release_portrait_generation, save_departure_mood, save_mood, set_activity, set_do_not_disturb,
+    upsert_persona_on, JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate,
 };
 
 /// Logged-in users only. Guests use negative ids; heartbeat is `SYSTEM_USER_ID` (0).
@@ -187,12 +189,16 @@ fn spawn_mood_hint(user_id: i32, text: impl Into<String>) {
         else {
             return;
         };
-        let Ok(raw) = analyzer
-            .analyze_with_system(
+        let Ok(raw) = crate::services::ai_cost_ledger::with_site_ai_ledger(
+            user_id,
+            "life",
+            "mood_hint",
+            analyzer.analyze_with_system(
                 "只输出一个 -2 到 2 的整数，表示这句话对心情的微调。不要解释，不要输出别的字。",
                 &text,
-            )
-            .await
+            ),
+        )
+        .await
         else {
             return;
         };
@@ -395,7 +401,10 @@ mod tests {
             id: "site".into(),
             name: "  ".into(),
             personality: String::new(),
+            persona_json: None,
+            visual_profile: None,
             portrait_asset_id: None,
+            portrait_generation: None,
             updated_by: None,
             updated_at: chrono::Utc::now().into(),
         };

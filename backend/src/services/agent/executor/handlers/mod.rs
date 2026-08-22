@@ -6,6 +6,7 @@ mod ai_process;
 mod data_read;
 mod data_write;
 mod external;
+mod model3d;
 mod resource_create;
 mod system_op;
 mod ui_control;
@@ -43,7 +44,11 @@ pub async fn execute_capability(
             ai_process::execute(capability_id, action, params, ctx).await
         }
         CapabilityCategory::ResourceCreate => {
-            resource_create::execute(capability_id, params, ctx).await
+            if capability_id.starts_with("model3d.") {
+                model3d::execute(capability_id, params, ctx).await
+            } else {
+                resource_create::execute(capability_id, params, ctx).await
+            }
         }
         CapabilityCategory::SystemOp => system_op::execute(capability_id, params, ctx).await,
         CapabilityCategory::ExternalIntegration => {

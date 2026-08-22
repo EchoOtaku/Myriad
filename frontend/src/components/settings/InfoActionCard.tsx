@@ -78,6 +78,11 @@ export interface InfoActionCardProps {
   actions?: InfoActionButton[]
   /** Extra footer slot (e.g. secondary links). */
   footer?: ReactNode
+  /**
+   * Media beside the body (e.g. character portrait).
+   * Title, body, and actions sit in the text column next to it.
+   */
+  preview?: ReactNode
   tone?: InfoActionCardTone
   /**
    * Master switch for per-field copy controls. Default `true`.
@@ -205,6 +210,54 @@ const FieldRow = React.memo(({
   )
 })
 
+function CardHeader({
+  title,
+  icon,
+}: {
+  title?: ReactNode
+  icon?: ReactNode
+}) {
+  if ((title == null || title === '') && icon == null) return null
+  return (
+    <div className="info-action-card-header">
+      {icon != null && (
+        <span className="info-action-card-icon" aria-hidden>
+          {icon}
+        </span>
+      )}
+      {title != null && title !== '' && (
+        <div className="info-action-card-title">{title}</div>
+      )}
+    </div>
+  )
+}
+
+function CardActions({ actions }: { actions: InfoActionButton[] }) {
+  return (
+    <div className="info-action-card-actions" role="group">
+      {actions.map((a) => (
+        <SettingsButton
+          key={a.key}
+          variant={a.variant ?? 'secondary'}
+          size="sm"
+          disabled={a.disabled}
+          loading={a.loading}
+          icon={a.icon}
+          confirm={a.confirm}
+          title={a.title}
+          aria-label={
+            a.ariaLabel ??
+            (typeof a.label === 'string' ? a.label : undefined)
+          }
+          onClick={a.onClick}
+        >
+          {a.label}
+        </SettingsButton>
+      ))}
+    </div>
+  )
+}
+
 export const InfoActionCard = React.memo(({
   title,
   icon,
@@ -214,6 +267,7 @@ export const InfoActionCard = React.memo(({
   children,
   actions,
   footer,
+  preview,
   tone = 'default',
   copyable = true,
   copyLabel: copyLabelProp,
@@ -225,8 +279,37 @@ export const InfoActionCard = React.memo(({
   const copyLabel = copyLabelProp ?? t.common.copy
   const copiedLabel = copiedLabelProp ?? t.common.copied
   const hasFields = !!(fields && fields.length > 0)
+  const hasChildren = children != null && children !== false && children !== ''
   const showEmpty =
-    empty || (!children && !hasFields && emptyText != null && emptyText !== '')
+    empty || (!hasChildren && !hasFields && emptyText != null && emptyText !== '')
+  const hasPreview = preview != null
+  const hasActions = !!(actions && actions.length > 0)
+  const header = <CardHeader title={title} icon={icon} />
+
+  let body: ReactNode = null
+  if (showEmpty) {
+    body = (
+      <div className="info-action-card-empty" role="status">
+        {emptyText}
+      </div>
+    )
+  } else if (hasChildren) {
+    body = children
+  } else if (hasFields) {
+    body = (
+      <dl className="info-action-card-fields">
+        {fields!.map((f) => (
+          <FieldRow
+            key={f.key}
+            field={f}
+            allowCopy={copyable}
+            copyLabel={copyLabel}
+            copiedLabel={copiedLabel}
+          />
+        ))}
+      </dl>
+    )
+  }
 
   return (
     <div
@@ -234,67 +317,28 @@ export const InfoActionCard = React.memo(({
         'info-action-card',
         toneClass(tone),
         embedded ? 'is-embedded' : '',
+        hasPreview ? 'has-preview' : '',
         className,
       ]
         .filter(Boolean)
         .join(' ')}
     >
-      {(title != null && title !== '') || icon != null ? (
-        <div className="info-action-card-header">
-          {icon != null && (
-            <span className="info-action-card-icon" aria-hidden>
-              {icon}
-            </span>
-          )}
-          {title != null && title !== '' && (
-            <div className="info-action-card-title">{title}</div>
-          )}
-        </div>
-      ) : null}
+      {hasPreview ? null : header}
 
-      <div className="info-action-card-body">
-        {showEmpty ? (
-          <div className="info-action-card-empty" role="status">
-            {emptyText}
-          </div>
-        ) : children ?? hasFields ? (
-          <dl className="info-action-card-fields">
-            {fields!.map((f) => (
-              <FieldRow
-                key={f.key}
-                field={f}
-                allowCopy={copyable}
-                copyLabel={copyLabel}
-                copiedLabel={copiedLabel}
-              />
-            ))}
-          </dl>
+      <div
+        className={`info-action-card-main${hasPreview ? ' has-preview' : ''}`}
+      >
+        {hasPreview ? (
+          <div className="info-action-card-preview">{preview}</div>
         ) : null}
+        <div className="info-action-card-body">
+          {hasPreview ? header : null}
+          {body}
+          {hasPreview && hasActions ? <CardActions actions={actions!} /> : null}
+        </div>
       </div>
 
-      {actions && actions.length > 0 && (
-        <div className="info-action-card-actions" role="group">
-          {actions.map((a) => (
-            <SettingsButton
-              key={a.key}
-              variant={a.variant ?? 'secondary'}
-              size="sm"
-              disabled={a.disabled}
-              loading={a.loading}
-              icon={a.icon}
-              confirm={a.confirm}
-              title={a.title}
-              aria-label={
-                a.ariaLabel ??
-                (typeof a.label === 'string' ? a.label : undefined)
-              }
-              onClick={a.onClick}
-            >
-              {a.label}
-            </SettingsButton>
-          ))}
-        </div>
-      )}
+      {!hasPreview && hasActions ? <CardActions actions={actions!} /> : null}
 
       {footer != null && (
         <div className="info-action-card-footer">{footer}</div>

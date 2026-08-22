@@ -42,6 +42,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
+import { dispatchCompanionPerformance } from '../../features/digital-life-companion/performanceEvents'
 import {
   agentService,
   AgentStreamError,
@@ -1523,6 +1524,16 @@ export const AraelPanel: React.FC = () => {
         selectedAnswer: undefined,
         ...(mergedImageUrls.length > 0 ? { imageUrls: mergedImageUrls } : {}),
       })
+
+      const spokenReply = displayMessage || response.message
+      if (isSuccess && spokenReply?.trim()) {
+        dispatchCompanionPerformance({
+          text: spokenReply,
+          source: 'reply',
+          messageId,
+          motionPlan: responseData?.motionPlan,
+        })
+      }
 
       const hasFailedSteps =
         stepHistory?.some((s) => s.status === 'failed') ?? false

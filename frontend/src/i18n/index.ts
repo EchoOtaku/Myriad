@@ -84,6 +84,149 @@ export interface TranslationKeys {
     welcome: string
   }
 
+  companion: {
+    title: string
+    statusBarTitle: string
+    statusLoading: string
+    statusDisabled: string
+    statusNeedLogin: string
+    statusCreateHint: string
+    statusContinueHint: string
+    statusReadyHint: string
+    statusCreate: string
+    statusContinue: string
+    statusOpen: string
+    statusLogin: string
+    tapToOpen: string
+    chat: string
+    memories: string
+    settings: string
+    messagePlaceholder: string
+    send: string
+    emptyMessages: string
+    emptyMemories: string
+    enable: string
+    autonomy: string
+    autonomyLow: string
+    autonomyNormal: string
+    autonomyHigh: string
+    doNotDisturb: string
+    showThought: string
+    collapsedByDefault: string
+    deleteCompanion: string
+    deleteConfirm: string
+    loadFailed: string
+    sendFailed: string
+    statusIdle: string
+    statusThinking: string
+    statusTalking: string
+    unread: string
+    visualTitle: string
+    visualDescription: string
+    visualRequirements: string
+    visualRequirementsDescription: string
+    visualRequirementsPlaceholder: string
+    visualGenerate: string
+    visualRegenerate: string
+    visualGenerating: string
+    visualReady: string
+    visualFailed: string
+    visualConfirm: string
+    motionWorkbench: string
+    motionWorkbenchDescription: string
+    essentials: string
+    essentialsDescription: string
+    anime25dRuntimeCredit: string
+    anime25dDebug: string
+    anime25dDebugDescription: string
+    anime25dHeadX: string
+    anime25dHeadY: string
+    anime25dHeadZ: string
+    anime25dEyeL: string
+    anime25dEyeR: string
+    anime25dEyeX: string
+    anime25dEyeY: string
+    anime25dEyeScaleL: string
+    anime25dEyeScaleR: string
+    anime25dEyeEase: string
+    anime25dEyeCY: string
+    anime25dEyeCAng: string
+    anime25dMouth: string
+    anime25dMouthForm: string
+    anime25dMouthCY: string
+    anime25dMouthEase: string
+    anime25dMouthCAng: string
+    anime25dMouthScale: string
+    anime25dArmY: string
+    anime25dArmPos: string
+    anime25dBust: string
+    anime25dBustY: string
+    anime25dLean: string
+    anime25dBrow: string
+    anime25dBrowAngSym: string
+    anime25dBrowL: string
+    anime25dBrowR: string
+    anime25dPupil: string
+    anime25dIdle: string
+    anime25dAutoBlink: string
+    anime25dRand: string
+    anime25dMouse: string
+    anime25dPresetUsume: string
+    anime25dPhys: string
+    anime25dFhAmp: string
+    anime25dFhSoft: string
+    anime25dPhysAmp: string
+    anime25dSoft: string
+    anime25dBangL: string
+    anime25dBangC: string
+    anime25dBangR: string
+    anime25dTalking: string
+    anime25dPresetShock: string
+    anime25dPresetDeadpan: string
+    anime25dPresetHair: string
+    anime25dPresetIdle: string
+    anime25dPresetSmile: string
+    anime25dPresetTalk: string
+    anime25dPresetLookLeft: string
+    anime25dPresetLookRight: string
+    anime25dPresetWinkLeft: string
+    anime25dPresetWinkRight: string
+    anime25dBlinkNow: string
+    anime25dResetPose: string
+    anime25dInspect: string
+    anime25dInspectLayers: string
+    anime25dInspectStrands: string
+    anime25dInspectEyes: string
+    anime25dInspectMouth: string
+    anime25dInspectCanvas: string
+    anime25dInspectEmpty: string
+    motionPsd: string
+    motionPsdDescription: string
+    motionSeeThroughToken: string
+    motionSeeThroughTokenCreate: string
+    motionSeeThroughTokenDescription: string
+    motionSeeThroughTokenMissing: string
+    motionSeeThroughTokenEdit: string
+    motionSeeThroughTokenSave: string
+    motionSeeThroughTokenCancel: string
+    motionSeeThroughTokenFailed: string
+    motionSeeThroughGenerate: string
+    motionSeeThroughGenerating: string
+    motionReviewEnter: string
+    motionReviewDescription: string
+    motionReviewExit: string
+    motionPsdPreflight: string
+    motionPsdValidating: string
+    motionPsdCommit: string
+    faceStage: string
+    adminTitle: string
+    adminDescription: string
+    faceOpen: string
+    adminEnabled: string
+    adminWorker: string
+    adminInterval: string
+  }
+
   // 控制面板
   controlPanel: {
     appearance: string
@@ -416,9 +559,17 @@ export interface TranslationKeys {
       aiUsageSourceAgent: string
       aiUsageSourceReports: string
       aiUsageSourceRuntime: string
+      aiUsageSourceLife: string
+      aiUsageSourcePlayground: string
+      aiUsageSourceSpeech: string
+      aiUsageSourceBrewlia: string
+      aiUsageSourcePrompt: string
+      aiUsageSourceSeo: string
+      aiUsageSourceInternal: string
       aiUsageSourceOther: string
       aiUsageFilterUser: string
       aiUsageFilterModel: string
+      aiUsageFilterSource: string
       aiUsageFilterAll: string
       aiUsageFiltersAria: string
       aiUsageNote: string
@@ -1126,6 +1277,7 @@ export interface TranslationKeys {
     agentLifeMood: string
     agentLifeActivity: string
     agentLifeEmpty: string
+    agentLifeEmptyLead: string
     agentLifeNeedsReports: string
     agentLifeDelete: string
     agentLifeDeleteConfirm: string
@@ -1915,6 +2067,8 @@ export interface TranslationKeys {
       step1Short: string
       step2Short: string
       step3Short: string
+      step4Short: string
+      step5Short: string
       step1Title: string
       step1Lead: string
       step2Title: string
@@ -1922,6 +2076,10 @@ export interface TranslationKeys {
       step3Title: string
       step3Lead: string
       step3LeadPending: string
+      step4Title: string
+      step4Lead: string
+      step5Title: string
+      step5Lead: string
       noReports: string
       selectedCount: string
       selectNothingYet: string
@@ -1942,6 +2100,13 @@ export interface TranslationKeys {
       randomName: string
       randomNameBusy: string
       randomNameFailed: string
+      nameStyleLabel: string
+      nameStyle: {
+        chinese: string
+        japanese: string
+        european: string
+        mythic: string
+      }
       genderLabel: string
       gender: {
         female: string
@@ -1950,6 +2115,30 @@ export interface TranslationKeys {
         unspecified: string
       }
       genderRequired: string
+      clothingStyleLabel: string
+      clothingStyleRequired: string
+      visualStyleAsk: string
+      visualNotesAsk: string
+      visualBackToStyle: string
+      clothingStyle: {
+        everyday: string
+        uniform: string
+        fantasy: string
+        urban: string
+        'east-asian': string
+        japanese: string
+        'sci-fi': string
+        formal: string
+        sport: string
+        idol: string
+        gothic: string
+        lounge: string
+        royal: string
+        mystic: string
+        travel: string
+        vintage: string
+        rain: string
+      }
       extraLabel: string
       extraHint: string
       extraPlaceholder: string
@@ -1974,6 +2163,58 @@ export interface TranslationKeys {
       saving: string
       saveAndContinue: string
       saveFailed: string
+      personaIncompleteHint: string
+      proUnavailable: string
+      standardUnavailable: string
+      visualDesignScopeTitle: string
+      visualDesignScopeHint: string
+      visualRequirements: string
+      visualRequirementsHint: string
+      visualRequirementsPlaceholder: string
+      visualDesignPreview: string
+      visualGroupCharacter: string
+      visualGroupOutfit: string
+      visualFaceDesign: string
+      visualEyeDesign: string
+      visualHairShape: string
+      visualHairLayers: string
+      visualUpperBodySilhouette: string
+      visualOutfitConstruction: string
+      visualSleeveArmDesign: string
+      visualMaterialPlan: string
+      visualHeroAccessory: string
+      visualPalette: string
+      visualMotif: string
+      visualDesignGenerate: string
+      visualDesignGenerating: string
+      visualDesignRegenerate: string
+      visualDesignConfirm: string
+      editVisual: string
+      visualDesignFailed: string
+      visualDesignLanguageFailed: string
+      visualDesignRequired: string
+      visualDesignSaveFailed: string
+      portraitTalkLead: string
+      portraitLoading: string
+      portraitEmpty: string
+      portraitContractTitle: string
+      portraitContractHint: string
+      portraitRequirements: string
+      portraitRequirementsHint: string
+      portraitRequirementsPlaceholder: string
+      portraitGenerate: string
+      portraitGenerating: string
+      portraitRegenerate: string
+      portraitEdit: string
+      portraitEditing: string
+      portraitEditFailed: string
+      portraitEditNeedsNotes: string
+      portraitGenerateFailed: string
+      portraitInProgress: string
+      portraitInputsChanged: string
+      imageProviderUnconfigured: string
+      portraitLoadFailed: string
+      portraitFinish: string
     }
   }
 

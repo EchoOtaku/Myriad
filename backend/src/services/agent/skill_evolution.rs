@@ -326,7 +326,7 @@ impl SkillEvolution {
                         let old_instructions = skill.full_instructions.clone();
                         if let Some(evolution) = get_skill_evolution() {
                             let evo = evolution.clone();
-                            tokio::spawn(async move {
+                            crate::services::ai_cost_ledger::spawn_with_current_ai_attribution(move || async move {
                                 match Self::ai_improve_skill(
                                     &evo,
                                     &skill_id_owned,

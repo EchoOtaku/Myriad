@@ -315,7 +315,7 @@ impl Agent {
                     .map(|(i, s)| format!("{}. {} ({})", i + 1, s.action, s.capability_id))
                     .collect::<Vec<_>>()
                     .join("\n");
-                tokio::spawn(async move {
+                crate::services::ai_cost_ledger::spawn_with_current_ai_attribution(move || async move {
                     match evo
                         .auto_create_skill_abstracted(&request_text, &step_descriptions, &step_caps)
                         .await
@@ -823,7 +823,7 @@ impl Agent {
                     .collect::<Vec<_>>()
                     .join("\n");
 
-                tokio::spawn(async move {
+                crate::services::ai_cost_ledger::spawn_with_current_ai_attribution(move || async move {
                     match evo
                         .auto_create_skill_abstracted(&request_text, &step_descriptions, &step_caps)
                         .await

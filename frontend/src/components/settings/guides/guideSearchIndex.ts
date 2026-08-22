@@ -125,7 +125,7 @@ export function buildGuideSearchIndex(locale: Locale): GuideSearchEntry[] {
       // 嵌套分组（如 ai.llm 下的档位）：一层子条目
       if (value && typeof value === 'object') {
         for (const [subKey, subVal] of Object.entries(
-          value as Record<string, SettingGuideEntry>,
+          value as unknown as Record<string, SettingGuideEntry>,
         )) {
           if (!subVal?.what) continue
           const fields = entryFields(subVal)

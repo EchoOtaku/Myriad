@@ -46,6 +46,9 @@ services:
     security_opt: [no-new-privileges:true]
     read_only: true
     tmpfs: [/tmp]
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
 
   backend:
     # NOTE: image tag is driven by updater via ${MYRIAD_TAG}.

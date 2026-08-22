@@ -146,7 +146,7 @@ pub async fn speech_probe() -> SpeechProbe {
 
 pub async fn synthesize_gemini_tts(text: &str) -> Result<Vec<u8>, String> {
     let resolved = resolve_gemini_speech().await.map_err(|e| gemini_message(&e))?;
-    gemini_media::text_to_speech(
+    let result = gemini_media::text_to_speech(
         &resolved.base_url,
         &resolved.api_key,
         &resolved.tts_model,
@@ -154,7 +154,9 @@ pub async fn synthesize_gemini_tts(text: &str) -> Result<Vec<u8>, String> {
         &resolved.voice,
     )
     .await
-    .map_err(|e| gemini_message(&e))
+    .map_err(|e| gemini_message(&e));
+    note_tts("gemini", &resolved.tts_model, text, result.is_ok()).await;
+    result
 }
 
 pub async fn synthesize_openai_tts(text: &str, codec: &str) -> Result<(Vec<u8>, String), String> {
@@ -174,8 +176,10 @@ pub async fn synthesize_openai_tts(text: &str, codec: &str) -> Result<(Vec<u8>, 
             Some("用自然、清楚的中文短句。"),
         )
         .await
-        .map_err(|e| openai_message(&e))?;
-    Ok((audio, resolved.voice))
+        .map_err(|e| openai_message(&e));
+    let provider = configured_provider().await;
+    note_tts(provider.as_str(), &resolved.tts_model, text, audio.is_ok()).await;
+    Ok((audio?, resolved.voice))
 }
 
 pub async fn transcribe_bytes(
@@ -184,7 +188,8 @@ pub async fn transcribe_bytes(
     language: Option<&str>,
 ) -> Result<String, String> {
     let provider = configured_provider().await;
-    match provider {
+    let audio_len = audio.len();
+    let (model, result) = match provider {
         SpeechProviderKind::Tencent => {
             let service = TencentSpeechService::new()
                 .await
@@ -201,25 +206,29 @@ pub async fn transcribe_bytes(
                 data_len: Some(audio.len() as i32),
                 ..Default::default()
             };
-            let response = service
+            let result = service
                 .speech_to_text(request)
                 .await
-                .map_err(|e| tencent_message(&e))?;
-            Ok(response.result.unwrap_or_default())
+                .map(|response| response.result.unwrap_or_default())
+                .map_err(|e| tencent_message(&e));
+            (engine.to_string(), result)
         }
         SpeechProviderKind::OpenAi | SpeechProviderKind::OpenRouter => {
             let resolved = resolve_openai_speech().await.map_err(|e| openai_message(&e))?;
             let filename = format!("speech.{format}");
             let mime = audio_mime(format);
-            resolved
+            let model = resolved.stt_model.clone();
+            let result = resolved
                 .client
                 .speech_to_text(audio, &filename, mime, &resolved.stt_model, language)
                 .await
-                .map_err(|e| openai_message(&e))
+                .map_err(|e| openai_message(&e));
+            (model, result)
         }
         SpeechProviderKind::Gemini => {
             let resolved = resolve_gemini_speech().await.map_err(|e| gemini_message(&e))?;
-            gemini_media::speech_to_text(
+            let model = resolved.stt_model.clone();
+            let result = gemini_media::speech_to_text(
                 &resolved.base_url,
                 &resolved.api_key,
                 &resolved.stt_model,
@@ -228,9 +237,47 @@ pub async fn transcribe_bytes(
                 language,
             )
             .await
-            .map_err(|e| gemini_message(&e))
+            .map_err(|e| gemini_message(&e));
+            (model, result)
         }
-    }
+    };
+    note_stt(
+        provider.as_str(),
+        &model,
+        audio_len,
+        result.as_deref().unwrap_or(""),
+        result.is_ok(),
+    )
+    .await;
+    result
+}
+
+pub(crate) async fn note_tts(provider: &str, model: &str, text: &str, ok: bool) {
+    let (input_tokens, output_tokens) =
+        crate::services::ai_cost_ledger::estimate_tts_tokens(text);
+    crate::services::ai_cost_ledger::record_ai_tokens_from_attribution(
+        provider,
+        model,
+        input_tokens,
+        output_tokens,
+        if ok { "completed" } else { "failed" },
+        if ok { None } else { Some("AI_PROVIDER_ERROR") },
+    )
+    .await;
+}
+
+pub(crate) async fn note_stt(provider: &str, model: &str, audio_bytes: usize, transcript: &str, ok: bool) {
+    let (input_tokens, output_tokens) =
+        crate::services::ai_cost_ledger::estimate_stt_tokens(audio_bytes, transcript);
+    crate::services::ai_cost_ledger::record_ai_tokens_from_attribution(
+        provider,
+        model,
+        input_tokens,
+        output_tokens,
+        if ok { "completed" } else { "failed" },
+        if ok { None } else { Some("AI_PROVIDER_ERROR") },
+    )
+    .await;
 }
 
 pub async fn test_speech_roundtrip() -> SpeechTestResult {
@@ -282,10 +329,19 @@ pub async fn test_speech_roundtrip() -> SpeechTestResult {
                 .await
             {
                 Ok(response) => match response.audio {
-                    Some(audio) => audio,
-                    None => return fail(provider, "TTS 未返回音频".to_string()),
+                    Some(audio) => {
+                        note_tts(provider.as_str(), "tts", phrase, true).await;
+                        audio
+                    }
+                    None => {
+                        note_tts(provider.as_str(), "tts", phrase, false).await;
+                        return fail(provider, "TTS 未返回音频".to_string());
+                    }
                 },
-                Err(e) => return fail(provider, tencent_message(&e)),
+                Err(e) => {
+                    note_tts(provider.as_str(), "tts", phrase, false).await;
+                    return fail(provider, tencent_message(&e));
+                }
             }
         }
         SpeechProviderKind::OpenAi | SpeechProviderKind::OpenRouter => {

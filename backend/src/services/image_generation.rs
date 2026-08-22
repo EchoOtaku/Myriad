@@ -38,9 +38,30 @@ pub struct GeneratedImage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PersistedGeneratedImage {
+    pub url: String,
+    pub created: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImageReference {
     pub bytes: Vec<u8>,
     pub media_type: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageBackground {
+    Opaque,
+    Transparent,
+}
+
+impl ImageBackground {
+    fn as_provider_value(self) -> &'static str {
+        match self {
+            Self::Opaque => "opaque",
+            Self::Transparent => "transparent",
+        }
+    }
 }
 
 impl ImageReference {
@@ -188,6 +209,17 @@ pub async fn generate_image(
     height: u32,
     reference: Option<&ImageReference>,
 ) -> Result<GeneratedImage, ImageGenerationError> {
+    generate_image_with_background(config, prompt, width, height, reference, None).await
+}
+
+pub async fn generate_image_with_background(
+    config: &ImageGenerationConfig,
+    prompt: &str,
+    width: u32,
+    height: u32,
+    reference: Option<&ImageReference>,
+    background: Option<ImageBackground>,
+) -> Result<GeneratedImage, ImageGenerationError> {
     let prompt = prompt.trim();
     if prompt.is_empty() || prompt.chars().count() > MAX_PROMPT_CHARS {
         return Err(ImageGenerationError::Provider(format!(
@@ -196,6 +228,33 @@ pub async fn generate_image(
     }
     let width = width.clamp(256, 2048);
     let height = height.clamp(256, 2048);
+    let result = generate_image_provider(config, prompt, width, height, reference, background).await;
+    let (input_tokens, output_tokens) =
+        crate::services::ai_cost_ledger::estimate_image_tokens(prompt, width, height);
+    crate::services::ai_cost_ledger::record_ai_tokens_from_attribution(
+        &config.provider,
+        &config.model,
+        input_tokens,
+        output_tokens,
+        if result.is_ok() { "completed" } else { "failed" },
+        if result.is_ok() {
+            None
+        } else {
+            Some("AI_PROVIDER_ERROR")
+        },
+    )
+    .await;
+    result
+}
+
+async fn generate_image_provider(
+    config: &ImageGenerationConfig,
+    prompt: &str,
+    width: u32,
+    height: u32,
+    reference: Option<&ImageReference>,
+    background: Option<ImageBackground>,
+) -> Result<GeneratedImage, ImageGenerationError> {
     if config.provider == "gemini" {
         return crate::services::gemini_media::generate_image(
             config, prompt, width, height, reference,
@@ -205,7 +264,7 @@ pub async fn generate_image(
     let client = get_long_running_client().await;
     let response = if config.provider == "openai" {
         if let Some(reference) = reference {
-            let options = request_options(config);
+            let options = request_options(config, background);
             let endpoint = format!("{}/images/edits", config.base_url);
             let part = reqwest::multipart::Part::bytes(reference.bytes.clone())
                 .file_name(reference_file_name(&reference.media_type))
@@ -228,13 +287,17 @@ pub async fn generate_image(
             if let Some(output_format) = options.output_format {
                 form = form.text("output_format", output_format);
             }
+            if let Some(quality) = options.quality {
+                form = form.text("quality", quality);
+            }
             let form = form.part("image", part);
             apply_image_headers(client.post(endpoint).bearer_auth(&config.api_key))
                 .multipart(form)
                 .send()
                 .await
         } else {
-            let (endpoint, body) = request_parts(config, prompt, width, height, None)?;
+            let (endpoint, body) =
+                request_parts_with_background(config, prompt, width, height, None, background)?;
             apply_image_headers(client.post(endpoint).bearer_auth(&config.api_key))
                 .json(&body)
                 .send()
@@ -242,8 +305,14 @@ pub async fn generate_image(
         }
     } else {
         let reference_data_url = reference.map(ImageReference::data_url);
-        let (endpoint, body) =
-            request_parts(config, prompt, width, height, reference_data_url.as_deref())?;
+        let (endpoint, body) = request_parts_with_background(
+            config,
+            prompt,
+            width,
+            height,
+            reference_data_url.as_deref(),
+            background,
+        )?;
         apply_image_headers(client.post(endpoint).bearer_auth(&config.api_key))
             .json(&body)
             .send()
@@ -254,10 +323,40 @@ pub async fn generate_image(
 }
 
 /// Persist a provider result into the local image cache and return a serveable URL.
+pub async fn load_local_reference(url: &str) -> Result<ImageReference, ImageGenerationError> {
+    let (bytes, media_type) = ImageCacheService::new()
+        .read_local_public_url(url)
+        .await
+        .map_err(ImageGenerationError::Provider)?;
+    ImageReference::new(bytes, media_type)
+}
+
 pub async fn persist_generated(generated: &GeneratedImage) -> Result<String, ImageGenerationError> {
+    Ok(persist_generated_with_status(generated).await?.url)
+}
+
+pub async fn persist_generated_with_status(
+    generated: &GeneratedImage,
+) -> Result<PersistedGeneratedImage, ImageGenerationError> {
     let (bytes, media_type) = load_generated_bytes(generated).await?;
+    let stored = ImageCacheService::new()
+        .store_bytes_with_status(&bytes, &media_type)
+        .await
+        .map_err(ImageGenerationError::Provider)?;
+    Ok(PersistedGeneratedImage {
+        url: stored.url,
+        created: stored.created,
+    })
+}
+
+pub async fn remove_persisted_generated(
+    persisted: &PersistedGeneratedImage,
+) -> Result<(), ImageGenerationError> {
+    if !persisted.created {
+        return Ok(());
+    }
     ImageCacheService::new()
-        .store_bytes(&bytes, &media_type)
+        .remove_stored_url(&persisted.url)
         .await
         .map_err(ImageGenerationError::Provider)
 }
@@ -339,8 +438,19 @@ fn request_parts(
     height: u32,
     reference_data_url: Option<&str>,
 ) -> Result<(String, Value), ImageGenerationError> {
+    request_parts_with_background(config, prompt, width, height, reference_data_url, None)
+}
+
+fn request_parts_with_background(
+    config: &ImageGenerationConfig,
+    prompt: &str,
+    width: u32,
+    height: u32,
+    reference_data_url: Option<&str>,
+    background: Option<ImageBackground>,
+) -> Result<(String, Value), ImageGenerationError> {
     let size = format!("{width}x{height}");
-    let options = request_options(config);
+    let options = request_options(config, background);
     match config.provider.as_str() {
         "openai" => {
             let mut body = json!({
@@ -403,35 +513,55 @@ struct ImageRequestOptions {
     background: Option<&'static str>,
     output_format: Option<&'static str>,
     include_n: bool,
+    quality: Option<&'static str>,
 }
 
-fn request_options(config: &ImageGenerationConfig) -> ImageRequestOptions {
+fn request_options(
+    config: &ImageGenerationConfig,
+    background: Option<ImageBackground>,
+) -> ImageRequestOptions {
     if config.provider == "openrouter" {
-        let native_transparency = is_gpt_image_1(&config.model);
+        let native_background = supports_background_option(&config.model);
         return ImageRequestOptions {
-            background: native_transparency.then_some("transparent"),
+            background: native_background.then(|| {
+                background
+                    .unwrap_or_else(|| default_background(&config.model))
+                    .as_provider_value()
+            }),
             output_format: None,
             include_n: false,
+            quality: gpt_image_quality(&config.model),
         };
     }
     if is_gpt_image_2(&config.model) {
         return ImageRequestOptions {
-            background: Some("opaque"),
+            background: Some(
+                background
+                    .unwrap_or(ImageBackground::Opaque)
+                    .as_provider_value(),
+            ),
             output_format: None,
             include_n: true,
+            quality: gpt_image_quality(&config.model),
         };
     }
     if is_gpt_image_1(&config.model) {
         return ImageRequestOptions {
-            background: Some("transparent"),
-            output_format: Some("png"),
+            background: supports_background_option(&config.model).then(|| {
+                background
+                    .unwrap_or_else(|| default_background(&config.model))
+                    .as_provider_value()
+            }),
+            output_format: supports_background_option(&config.model).then_some("png"),
             include_n: true,
+            quality: gpt_image_quality(&config.model),
         };
     }
     ImageRequestOptions {
         background: None,
         output_format: None,
         include_n: true,
+        quality: None,
     }
 }
 
@@ -447,11 +577,38 @@ fn is_gpt_image_1(model: &str) -> bool {
     )
 }
 
+fn is_gpt_image_1_mini(model: &str) -> bool {
+    strip_openai_prefix(model).eq_ignore_ascii_case("gpt-image-1-mini")
+}
+
+fn supports_background_option(model: &str) -> bool {
+    is_gpt_image_2(model) || (is_gpt_image_1(model) && !is_gpt_image_1_mini(model))
+}
+
+fn default_background(model: &str) -> ImageBackground {
+    if is_gpt_image_2(model) {
+        ImageBackground::Opaque
+    } else {
+        ImageBackground::Transparent
+    }
+}
+
+
 fn is_gpt_image_model(model: &str) -> bool {
     is_gpt_image_1(model) || is_gpt_image_2(model)
 }
 
 fn image_size_param(config: &ImageGenerationConfig, width: u32, height: u32) -> String {
+    if is_gpt_image_1(&config.model) {
+        return if width == height {
+            "1024x1024".to_string()
+        } else if width < height {
+            "1024x1536".to_string()
+        } else {
+            "1536x1024".to_string()
+        };
+    }
+
     if !is_gpt_image_2(&config.model) {
         return format!("{width}x{height}");
     }
@@ -481,6 +638,13 @@ fn apply_background_options(body: &mut Value, options: ImageRequestOptions) {
     if let Some(output_format) = options.output_format {
         body["output_format"] = json!(output_format);
     }
+    if let Some(quality) = options.quality {
+        body["quality"] = json!(quality);
+    }
+}
+
+fn gpt_image_quality(model: &str) -> Option<&'static str> {
+    is_gpt_image_model(model).then_some("high")
 }
 
 fn aspect_ratio(width: u32, height: u32) -> &'static str {
@@ -490,6 +654,10 @@ fn aspect_ratio(width: u32, height: u32) -> &'static str {
         "3:2"
     } else if width.saturating_mul(3) == height.saturating_mul(2) {
         "2:3"
+    } else if width.saturating_mul(3) == height.saturating_mul(4) {
+        "4:3"
+    } else if width.saturating_mul(4) == height.saturating_mul(3) {
+        "3:4"
     } else if width > height {
         "16:9"
     } else {
@@ -878,7 +1046,6 @@ fn provider_label(provider: &str) -> &str {
 mod tests {
     use super::*;
     use crate::config::DynamicConfig;
-
     #[test]
     fn builds_each_supported_provider_request() {
         for (provider, expected_suffix) in [
@@ -913,6 +1080,7 @@ mod tests {
         assert_eq!(body["n"], 1);
         assert!(body.get("background").is_none());
         assert!(body.get("output_format").is_none());
+        assert!(body.get("quality").is_none());
         assert!(body.get("stream").is_none());
     }
 
@@ -925,7 +1093,8 @@ mod tests {
             base_url: "https://openrouter.ai/api/v1".to_string(),
         };
         let (_, body) = request_parts(&config, "portrait", 1024, 1024, None).unwrap();
-        assert!(body.get("background").is_none());
+        assert_eq!(body["background"], "opaque");
+        assert_eq!(body["quality"], "high");
         assert!(body.get("output_format").is_none());
         assert!(body.get("n").is_none());
         assert_eq!(body["aspect_ratio"], "1:1");
@@ -945,12 +1114,61 @@ mod tests {
         assert!(body.get("output_format").is_none());
         assert!(body.get("n").is_none());
 
+        let (_, portrait) = request_parts(&generic, "portrait", 1152, 1536, None).unwrap();
+        assert_eq!(portrait["aspect_ratio"], "3:4");
+
         let transparent = ImageGenerationConfig {
             model: "openai/gpt-image-1".to_string(),
             ..generic
         };
         let (_, body) = request_parts(&transparent, "portrait", 1024, 1024, None).unwrap();
         assert_eq!(body["background"], "transparent");
+        assert!(body.get("output_format").is_none());
+    }
+
+    #[test]
+    fn portrait_background_can_override_gpt_image_transparency_default() {
+        let config = ImageGenerationConfig {
+            provider: "openai".to_string(),
+            model: "gpt-image-1".to_string(),
+            api_key: "secret".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+        };
+        let (_, body) = request_parts_with_background(
+            &config,
+            "portrait",
+            1152,
+            1536,
+            None,
+            Some(ImageBackground::Opaque),
+        )
+        .unwrap();
+        assert_eq!(body["background"], "opaque");
+        assert_eq!(body["output_format"], "png");
+        assert_eq!(body["quality"], "high");
+        assert_eq!(body["size"], "1024x1536");
+    }
+
+    #[test]
+    fn gpt_image_1_mini_omits_unsupported_background_and_uses_fixed_size() {
+        let config = ImageGenerationConfig {
+            provider: "openai".to_string(),
+            model: "gpt-image-1-mini".to_string(),
+            api_key: "secret".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+        };
+        let (_, body) = request_parts_with_background(
+            &config,
+            "portrait",
+            1152,
+            1536,
+            None,
+            Some(ImageBackground::Opaque),
+        )
+        .unwrap();
+        assert_eq!(body["size"], "1024x1536");
+        assert_eq!(body["quality"], "high");
+        assert!(body.get("background").is_none());
         assert!(body.get("output_format").is_none());
     }
 

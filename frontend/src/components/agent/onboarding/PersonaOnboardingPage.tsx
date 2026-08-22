@@ -5,10 +5,15 @@ import type {
   StructuredPersona,
 } from './onboardingTypes'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { parseFlattenedPersona } from './onboardingTypes'
 import { useAuth } from '../../../contexts/AuthContext'
 import { useI18n } from '../../../contexts/I18nContext'
 import { agentService } from '../../../services/agent'
+import {
+  completedPersonaResumeStep,
+  parseFlattenedPersona,
+  personaFromApi,
+  structuredPersonaIsComplete,
+} from './onboardingTypes'
 import OnboardingWizard from './OnboardingWizard'
 import '../PersonaOnboarding.css'
 
@@ -56,7 +61,10 @@ export default function PersonaOnboardingPage({
   const [savedPersona, setSavedPersona] = useState<StructuredPersona | null>(
     null,
   )
-  const [resumeSaved, setResumeSaved] = useState(false)
+  const [savedVisualProfile, setSavedVisualProfile] = useState<Record<
+    string,
+    unknown
+  > | null>(null)
   const [ready, setReady] = useState(false)
   const [step, setStep] = useState<OnboardingStep>(1)
   const [wizardBusy, setWizardBusy] = useState(false)
@@ -64,15 +72,22 @@ export default function PersonaOnboardingPage({
     description: '',
   })
   const actionClickRef = useRef<(() => void) | undefined>(undefined)
+  const stepBackRef = useRef<(() => boolean) | undefined>(undefined)
   const onChromeChangeRef = useRef(onChromeChange)
   onChromeChangeRef.current = onChromeChange
   const chromeRef = useRef<OnboardingPageChrome | null>(null)
   const pageTitle = lifeOn
-    ? [o.step1Title, o.step2Title, o.step3Title][step - 1]
+    ? [o.step1Title, o.step2Title, o.step3Title, o.step4Title, o.step5Title][
+        step - 1
+      ]
     : t.config.agentLife
   const pageLead =
     header.description ||
-    (lifeOn ? [o.step1Lead, o.step2Lead, o.step3Lead][step - 1] : gateLead)
+    (lifeOn
+      ? [o.step1Lead, o.step2Lead, o.step3Lead, o.step4Lead, o.step5Lead][
+          step - 1
+        ]
+      : gateLead)
 
   const loadSaved = useCallback(async () => {
     if (!isOwner || !lifeOn) {
@@ -83,18 +98,29 @@ export default function PersonaOnboardingPage({
       const persona = await agentService.getPersona()
       const name = persona?.name?.trim() ?? ''
       const personality = persona?.personality?.trim() ?? ''
+      const structured = personaFromApi(persona?.persona)
+      const hasStructuredPersona = structuredPersonaIsComplete(structured)
       const saved =
         persona?.hasCustomPersona === true ||
         name.length > 0 ||
-        personality.length > 0
+        personality.length > 0 ||
+        hasStructuredPersona
       setName(name)
-      if (saved && personality) {
-        setSavedPersona(parseFlattenedPersona(personality))
-        setResumeSaved(true)
-        setStep(3)
+      setSavedVisualProfile(persona?.visualProfile ?? null)
+      if (saved && (hasStructuredPersona || personality)) {
+        setSavedPersona(
+          hasStructuredPersona
+            ? structured
+            : parseFlattenedPersona(personality),
+        )
+        setStep(
+          hasStructuredPersona
+            ? completedPersonaResumeStep(persona?.visualProfile)
+            : 3,
+        )
       } else {
         setSavedPersona(null)
-        setResumeSaved(false)
+        setSavedVisualProfile(null)
       }
     } catch {
       /* 预填失败就从空称呼开始 */
@@ -109,10 +135,12 @@ export default function PersonaOnboardingPage({
 
   const handleHeaderChange = useCallback((next: OnboardingHeaderChrome) => {
     actionClickRef.current = next.action?.onClick
+    stepBackRef.current = next.onBack
     setHeader((prev) => {
       if (
         prev.description === next.description &&
-        sameHeaderAction(prev.action, next.action)
+        sameHeaderAction(prev.action, next.action) &&
+        Boolean(prev.onBack) === Boolean(next.onBack)
       ) {
         return prev
       }
@@ -126,21 +154,21 @@ export default function PersonaOnboardingPage({
               onClick: () => actionClickRef.current?.(),
             }
           : undefined,
+        onBack: next.onBack
+          ? () => stepBackRef.current?.() === true
+          : undefined,
       }
     })
   }, [])
 
   const handleBack = useCallback(() => {
+    if (header.onBack?.()) return
     if (lifeOn && step > 1) {
-      if (resumeSaved && step === 3) {
-        if (!wizardBusy) onBack()
-        return
-      }
       if (!wizardBusy) setStep((current) => (current - 1) as OnboardingStep)
       return
     }
     onBack()
-  }, [lifeOn, onBack, resumeSaved, step, wizardBusy])
+  }, [header.onBack, lifeOn, onBack, step, wizardBusy])
 
   useEffect(() => {
     if (!isOwner) return
@@ -157,11 +185,18 @@ export default function PersonaOnboardingPage({
           }
         : undefined,
       backDisabled: wizardBusy && step > 1,
-      backAria:
-        lifeOn && step > 1
+      backAria: header.onBack
+        ? o.visualBackToStyle
+        : lifeOn && step > 1
           ? o.backTo.replace(
               '{step}',
-              [o.step1Short, o.step2Short, o.step3Short][step - 2] || '',
+              [
+                o.step1Short,
+                o.step2Short,
+                o.step3Short,
+                o.step4Short,
+                o.step5Short,
+              ][step - 2] || '',
             )
           : t.common.back,
       onBack: handleBack,
@@ -172,12 +207,16 @@ export default function PersonaOnboardingPage({
   }, [
     handleBack,
     header.action,
+    header.onBack,
     isOwner,
+    o.visualBackToStyle,
     lifeOn,
     o.backTo,
     o.step1Short,
     o.step2Short,
     o.step3Short,
+    o.step4Short,
+    o.step5Short,
     pageLead,
     pageTitle,
     step,
@@ -191,6 +230,7 @@ export default function PersonaOnboardingPage({
     <OnboardingWizard
       initialName={name}
       initialPersona={savedPersona ?? undefined}
+      initialVisualProfile={savedVisualProfile}
       step={step}
       onStepChange={setStep}
       onBusyChange={setWizardBusy}

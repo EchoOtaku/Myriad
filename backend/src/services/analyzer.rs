@@ -569,8 +569,8 @@ impl AiAnalyzer {
         result
     }
 
-    /// Best-effort site-wide cost ledger when task-local attribution is set
-    /// (agent / reports). Governed Tapp+scheduler paths record separately.
+    /// Best-effort site-wide cost ledger. Writes even without attribution
+    /// (`source=internal`). Governed Tapp+scheduler paths suppress this hook.
     async fn note_ledger(
         &self,
         input_chars: usize,

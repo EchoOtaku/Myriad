@@ -71,8 +71,8 @@ fn map_tripo_error(error: TripoError) -> ApiError {
 
 async fn client_from_state(state: &AppState) -> Result<TripoClient, ApiError> {
     let dynamic = state.dynamic_config.read().await;
-    let config = crate::services::tripo::TripoRuntimeConfig::resolve(&dynamic)
-        .map_err(map_tripo_error)?;
+    let config =
+        crate::services::tripo::TripoRuntimeConfig::resolve(&dynamic).map_err(map_tripo_error)?;
     drop(dynamic);
     TripoClient::new(config).await.map_err(map_tripo_error)
 }

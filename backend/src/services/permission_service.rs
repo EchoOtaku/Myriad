@@ -846,7 +846,10 @@ mod tests {
     fn storage_permissions_split_read_from_delegated_write() {
         let defaults = DynamicConfig::default();
         assert_eq!(TappPermission::StorageRead.level(), PermissionLevel::Basic);
-        assert_eq!(TappPermission::StorageWrite.level(), PermissionLevel::Elevated);
+        assert_eq!(
+            TappPermission::StorageWrite.level(),
+            PermissionLevel::Elevated
+        );
         assert!(TappPermission::from_str("storage").is_none());
         assert!(TappPermissionService::check(
             &defaults,
@@ -1145,10 +1148,7 @@ mod tests {
         let defaults = DynamicConfig::default();
 
         // brew:write remains Basic and requires a durable login; commentWrite is Elevated.
-        assert_eq!(
-            TappPermission::BrewWrite.level(),
-            PermissionLevel::Basic
-        );
+        assert_eq!(TappPermission::BrewWrite.level(), PermissionLevel::Basic);
         assert_eq!(
             TappPermission::BrewCommentWrite.level(),
             PermissionLevel::Elevated

@@ -238,16 +238,17 @@ pub async fn get_global_client() -> Client {
 
 /// 创建适合图片生成等长耗时上游请求的客户端。
 ///
-/// 图片模型一次请求可能接近两分钟，因此不能复用普通 API 的 30 秒超时；
+/// 主立绘 1152×1536 一次请求经常超过数分钟，因此不能复用普通 API 的 30 秒超时；
 /// 代理来源仍与全局动态配置一致。
 ///
 /// Used by [`crate::services::image_generation`] for provider round-trips.
+/// Keep in sync with `DIGITAL_LIFE_PROXY_TIMEOUT_MS` and the portrait client timeout.
 ///
 /// **MYR-019:** if a proxy is configured and cannot be applied, this panics
 /// instead of silently building a direct client.
 pub async fn get_long_running_client() -> Client {
-    // Image + long LLM-backed image APIs regularly exceed 2–3 minutes.
-    let request_timeout = Duration::from_secs(360);
+    // gpt-image / Gemini image at portrait resolution can exceed 6 minutes.
+    let request_timeout = Duration::from_secs(15 * 60);
     let proxy_config = ProxyConfig::from_dynamic_config().await;
     let builder = Client::builder()
         .timeout(request_timeout)

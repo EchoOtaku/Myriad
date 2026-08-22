@@ -3,16 +3,9 @@ use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-use super::{
-    capability,
-    executor,
-    mcp,
-    memory,
-    skill,
-    types,
-};
 use super::agent_header::*;
 use super::types::*;
+use super::{capability, executor, mcp, memory, skill, types};
 
 /// 记录执行记忆的通用参数
 pub(crate) struct MemoryRecordParams<'a> {
@@ -515,6 +508,7 @@ fn permissions_for_usage_mode(mode: AgentUsageMode) -> std::collections::HashSet
                     "proxy:read",
                     "scheduler:read",
                     "scheduler:write",
+                    "3d:generate",
                 ] {
                     perms.insert((*p).to_string());
                 }
@@ -569,6 +563,7 @@ fn agent_perm_to_tapp(perm: &str) -> Option<crate::services::permission_service:
         "ai:chat" => Some(TappPermission::AiChat),
         "ai:analyze" => Some(TappPermission::AiAnalyze),
         "ai:image" => Some(TappPermission::AiImage),
+        "3d:generate" => Some(TappPermission::ThreeDGenerate),
         "ai:search" | "ai:generate" => Some(TappPermission::AiGenerate),
         // 读（basic，默认全员）
         "brew:read" => Some(TappPermission::BrewRead),
@@ -1047,12 +1042,14 @@ mod tests {
         assert!(!standard.contains("brew:manage"));
         assert!(standard.contains("ai:chat"));
         assert!(!standard.contains("http:fetch"));
+        assert!(!standard.contains("3d:generate"));
 
         let elevated = permissions_for_usage_mode(AgentUsageMode::Elevated);
         assert!(elevated.contains("http:fetch"));
         assert!(elevated.contains("web:scrape"));
         assert!(elevated.contains("tapp:write"));
         assert!(elevated.contains("scheduler:read"));
+        assert!(elevated.contains("3d:generate"));
         assert!(!elevated.contains("brew:manage"));
         assert!(!elevated.contains("report:write"));
 
@@ -1064,6 +1061,10 @@ mod tests {
     fn agent_perm_to_tapp_force_alignment_map() {
         use crate::services::permission_service::TappPermission;
         assert_eq!(agent_perm_to_tapp("ai:chat"), Some(TappPermission::AiChat));
+        assert_eq!(
+            agent_perm_to_tapp("3d:generate"),
+            Some(TappPermission::ThreeDGenerate)
+        );
         assert_eq!(
             agent_perm_to_tapp("ai:search"),
             Some(TappPermission::AiGenerate)

@@ -1,13 +1,18 @@
-import type { LifeGender, OnboardingHeaderChrome } from '../onboardingTypes'
-import { LuLoader2, LuShuffle } from '@lib/icons'
+import type {
+  LifeGender,
+  NameStyle,
+  OnboardingHeaderChrome,
+} from '../onboardingTypes'
 import { useLayoutEffect, useState } from 'react'
 import { useI18n } from '../../../../contexts/I18nContext'
 import { agentService } from '../../../../services/agent'
 import { generationFailureMessage } from '../generationError'
+import { defaultNameStyle } from '../onboardingTypes'
 import { ActionBar, PrimaryButton, StepBody } from '../ui/Chrome'
 import { ErrorNote } from '../ui/Feedback'
 import { Field, FieldGroup, TextArea, TextInput } from '../ui/Field'
 import GenderPicker from '../ui/GenderPicker'
+import NameStyleRoll from '../ui/NameStyleRoll'
 
 interface Props {
   displayName: string
@@ -39,6 +44,9 @@ export default function BasicsStep({
   const [localError, setLocalError] = useState('')
   const [nameError, setNameError] = useState('')
   const [rollingName, setRollingName] = useState(false)
+  const [nameStyle, setNameStyle] = useState<NameStyle>(() =>
+    defaultNameStyle(locale),
+  )
 
   useLayoutEffect(() => {
     onHeaderChange({ description: o.step2Lead })
@@ -57,6 +65,7 @@ export default function BasicsStep({
         selectedTags: tags,
         gender: gender ?? undefined,
         avoidName: displayName.trim() || undefined,
+        nameStyle,
         language: locale,
       })
       .then((response) => {
@@ -72,6 +81,7 @@ export default function BasicsStep({
             reason,
             o.randomNameFailed,
             o.generationTimeout,
+            { standard_unavailable: o.standardUnavailable },
           ),
         )
       })
@@ -81,8 +91,8 @@ export default function BasicsStep({
   return (
     <section aria-label={o.step2Title}>
       <StepBody>
-        <Field label={o.nameLabel} hint={o.nameHint}>
-          <div className="life-ob-name-row">
+        <FieldGroup label={o.nameLabel}>
+          <div className="life-ob-name-field">
             <TextInput
               value={displayName}
               maxLength={40}
@@ -91,27 +101,26 @@ export default function BasicsStep({
               onChange={(event) => onDisplayName(event.target.value)}
               aria-label={o.nameLabel}
             />
-            <button
-              type="button"
-              className="life-ob-name-roll"
-              disabled={busy || rollingName}
-              title={rollingName ? o.randomNameBusy : o.randomName}
-              aria-label={rollingName ? o.randomNameBusy : o.randomName}
-              onClick={rollDisplayName}
-            >
-              {rollingName ? (
-                <LuLoader2 className="life-ob-name-roll__spin" aria-hidden />
-              ) : (
-                <LuShuffle aria-hidden />
-              )}
-            </button>
+            <NameStyleRoll
+              style={nameStyle}
+              labels={o.nameStyle}
+              styleLabel={o.nameStyleLabel}
+              rollLabel={o.randomName}
+              busyLabel={o.randomNameBusy}
+              disabled={busy}
+              rolling={rollingName}
+              onStyle={setNameStyle}
+              onRoll={rollDisplayName}
+            />
           </div>
           {nameError ? (
             <small className="life-ob-field__hint" role="alert">
               {nameError}
             </small>
-          ) : null}
-        </Field>
+          ) : (
+            <small className="life-ob-field__hint">{o.nameHint}</small>
+          )}
+        </FieldGroup>
 
         <FieldGroup label={o.genderLabel}>
           <GenderPicker
@@ -123,12 +132,7 @@ export default function BasicsStep({
           />
         </FieldGroup>
 
-        <Field
-          label={o.extraLabel}
-          optional
-          optionalLabel={o.optional}
-          hint={o.extraHint}
-        >
+        <Field label={o.extraLabel} optional optionalLabel={o.optional}>
           <TextArea
             value={extraRequirements}
             maxLength={500}
@@ -142,8 +146,9 @@ export default function BasicsStep({
       </StepBody>
       <ActionBar>
         <PrimaryButton
-          label={busy ? o.creating : o.createAndContinue}
+          label={o.next}
           busy={busy}
+          disabled={!gender || rollingName}
           onClick={() => {
             setLocalError('')
             if (!gender) {
@@ -156,6 +161,7 @@ export default function BasicsStep({
                   reason,
                   o.createFailed,
                   o.generationTimeout,
+                  { pro_unavailable: o.proUnavailable },
                 ),
               )
             })

@@ -34,9 +34,13 @@ Character design / reference views
        shared WebGL scene/runtime
 ```
 
-Tripo credentials and task creation are admin-only. Persisted model files are
-public, immutable, content-addressed resources so a guest-facing Digital Life
-scene can render without receiving any provider credential or expiring URL.
+Tripo credentials never leave the host outbound client. `/api/digital-life/3d`
+task creation and uploads stay admin-only. TAPPs and the Agent call the same
+Tripo service through `/api/tapp/3d` and `model3d.*` capabilities, gated by the
+elevated `3d:generate` permission (not delegated by default). Persisted model
+files are public, immutable, content-addressed resources so a guest-facing
+Digital Life scene can render without receiving any provider credential or
+expiring URL.
 Provider calls inherit Myriad's outbound proxy and bypass configuration; Tripo
 does not open a separate network path that behaves differently from the other
 external services.

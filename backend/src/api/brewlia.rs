@@ -303,7 +303,14 @@ async fn generate_and_save_annotations(
 
     let prompt = build_annotation_prompt(truncated);
 
-    match ai_analyzer.analyze(&prompt).await {
+    match crate::services::ai_cost_ledger::with_site_ai_ledger(
+        crate::services::ai_cost_ledger::resolve_site_owner_id().await,
+        "brewlia",
+        "annotate",
+        ai_analyzer.analyze(&prompt),
+    )
+    .await
+    {
         Ok(response) => {
             match parse_annotations(&response) {
                 Ok((annotations, detected_language)) => {
@@ -873,7 +880,14 @@ async fn get_podcast_script(
     let prompt = build_podcast_prompt(&title, content);
 
     // 调用 AI 生成
-    match ai_analyzer.analyze(&prompt).await {
+    match crate::services::ai_cost_ledger::with_site_ai_ledger(
+        crate::services::ai_cost_ledger::resolve_site_owner_id().await,
+        "brewlia",
+        "podcast",
+        ai_analyzer.analyze(&prompt),
+    )
+    .await
+    {
         Ok(response) => match parse_podcast_script(&response) {
             Ok((dialogues, language)) => {
                 // 估算时长：平均每个字符 0.15 秒（中文），0.06 秒（英文）
@@ -1323,7 +1337,14 @@ async fn generate_style_tags(
     let prompt = build_style_tags_prompt(&source.name, &articles_summary);
 
     // 调用 AI 生成
-    match ai_analyzer.analyze(&prompt).await {
+    match crate::services::ai_cost_ledger::with_site_ai_ledger(
+        crate::services::ai_cost_ledger::resolve_site_owner_id().await,
+        "brewlia",
+        "style_tags",
+        ai_analyzer.analyze(&prompt),
+    )
+    .await
+    {
         Ok(response) => match parse_style_tags(&response) {
             Ok(tags) => {
                 // 保存到数据库

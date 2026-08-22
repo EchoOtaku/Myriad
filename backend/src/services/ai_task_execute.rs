@@ -868,7 +868,7 @@ pub async fn execute_task(execution: AiTaskExecution) {
     // Keep the provider future independent from the mailbox owner so the
     // owner can always perform its bounded shutdown after cancellation.
     let event_sink = mailbox.sink();
-    let operation = async {
+    let operation = crate::services::ai_cost_ledger::with_ai_ledger_suppressed(async {
         match model {
             PreparedModel::Text(config) => {
                 let system = system_prompt.unwrap_or_else(|| {
@@ -912,11 +912,18 @@ pub async fn execute_task(execution: AiTaskExecution) {
                     });
                 })
                 .await
-                .map(|value| (value, 0, 0))
+                .map(|value| {
+                    let (input, output) = crate::services::ai_cost_ledger::estimate_image_tokens(
+                        &prepared.prompt,
+                        width,
+                        height,
+                    );
+                    (value, input.max(0) as usize, output.max(0) as usize)
+                })
                 .map_err(|error| error.into_pair())
             }
         }
-    };
+    });
 
     let shared_cancel = async {
         loop {
@@ -951,8 +958,14 @@ pub async fn execute_task(execution: AiTaskExecution) {
 
     match outcome {
         Ok((result, input_tokens, output_tokens)) => {
-            if let Err(error) =
-                settle_ai_quota(&db, &reservation, input_tokens + output_tokens).await
+            // Image tasks previously settled 0 tokens. Keep that quota contract;
+            // the ledger row below still carries the size-based estimate.
+            let settle_tokens = if request.operation == TappAiOperation::Image {
+                0
+            } else {
+                input_tokens + output_tokens
+            };
+            if let Err(error) = settle_ai_quota(&db, &reservation, settle_tokens).await
             {
                 tracing::error!(?error, task_id, "[TAPP] Failed to settle AI Task quota");
             }

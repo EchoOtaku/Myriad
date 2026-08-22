@@ -2,7 +2,7 @@
  * 数据及统计 · AI 使用统计
  *
  * 复用访客统计的 TrendChart / RankList / EmptyCard / site-analytics CSS。
- * 数据源：GET /api/analytics/ai-usage（tapp_ai_cost_ledger 按日/用户/模型聚合）。
+ * 数据源：GET /api/analytics/ai-usage（tapp_ai_cost_ledger 按日/用户/模型/来源聚合；含文字、图像、语音）。
  */
 
 import type { SettingOption } from '../settings/types'
@@ -32,6 +32,7 @@ import {
 import {
   aiDailyToTrendPoints,
   aiModelsToRankRows,
+  aiSourceDisplayName,
   aiUserDisplayName,
   aiUsersToRankRows,
 } from './analytics/aiUsageMap'
@@ -120,6 +121,7 @@ interface AiUsageSummary {
   filter_options?: {
     users?: AiUsageUserRow[]
     models?: string[]
+    sources?: string[]
   }
 }
 
@@ -139,6 +141,7 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
   )
   const [subjectId, setSubjectId] = useState<string>('')
   const [model, setModel] = useState<string>('')
+  const [source, setSource] = useState<string>('')
   const [data, setData] = useState<AiUsageSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -151,6 +154,7 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
         const params = new URLSearchParams(analyticsRangeQuery(range))
         if (subjectId) params.set('subject_id', subjectId)
         if (model) params.set('model', model)
+        if (source) params.set('source', source)
         const res = await fetchJson<AiUsageSummary>(
           `${API_URL}/api/analytics/ai-usage?${params.toString()}`,
           signal ? { signal } : undefined,
@@ -173,7 +177,7 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
         if (!signal?.aborted) setLoading(false)
       }
     },
-    [range, subjectId, model, a.aiUsageLoadFailed],
+    [range, subjectId, model, source, a.aiUsageLoadFailed],
   )
 
   useEffect(() => {
@@ -258,23 +262,33 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
   )
 
   const sourceLabel = useCallback(
-    (source: string) => {
-      const key = source.trim().toLowerCase()
-      if (key === 'scheduler' || key.startsWith('internal:scheduler')) {
-        return a.aiUsageSourceScheduler
-      }
-      if (key === 'agent') return a.aiUsageSourceAgent
-      if (key === 'reports') return a.aiUsageSourceReports
-      if (key === 'runtime' || key.startsWith('internal:')) {
-        return a.aiUsageSourceRuntime
-      }
-      return source || a.aiUsageSourceOther
-    },
+    (source: string) =>
+      aiSourceDisplayName(source, {
+        scheduler: a.aiUsageSourceScheduler,
+        agent: a.aiUsageSourceAgent,
+        reports: a.aiUsageSourceReports,
+        runtime: a.aiUsageSourceRuntime,
+        life: a.aiUsageSourceLife,
+        playground: a.aiUsageSourcePlayground,
+        speech: a.aiUsageSourceSpeech,
+        brewlia: a.aiUsageSourceBrewlia,
+        prompt: a.aiUsageSourcePrompt,
+        seo: a.aiUsageSourceSeo,
+        internal: a.aiUsageSourceInternal,
+        other: a.aiUsageSourceOther,
+      }),
     [
       a.aiUsageSourceScheduler,
       a.aiUsageSourceAgent,
       a.aiUsageSourceReports,
       a.aiUsageSourceRuntime,
+      a.aiUsageSourceLife,
+      a.aiUsageSourcePlayground,
+      a.aiUsageSourceSpeech,
+      a.aiUsageSourceBrewlia,
+      a.aiUsageSourcePrompt,
+      a.aiUsageSourceSeo,
+      a.aiUsageSourceInternal,
       a.aiUsageSourceOther,
     ],
   )
@@ -293,6 +307,7 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
 
   const filterUsers = data?.filter_options?.users ?? []
   const filterModels = data?.filter_options?.models ?? []
+  const filterSources = data?.filter_options?.sources ?? []
 
   const userFilterOptions: SettingOption<string>[] = useMemo(() => {
     const opts: SettingOption<string>[] = [
@@ -319,6 +334,17 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
     }
     return opts
   }, [filterModels, a.aiUsageFilterAll, model])
+
+  const sourceFilterOptions: SettingOption<string>[] = useMemo(() => {
+    const opts: SettingOption<string>[] = [
+      { value: '', label: a.aiUsageFilterAll },
+      ...filterSources.map((s) => ({ value: s, label: sourceLabel(s) })),
+    ]
+    if (source && !opts.some((o) => o.value === source)) {
+      opts.push({ value: source, label: sourceLabel(source) })
+    }
+    return opts
+  }, [filterSources, a.aiUsageFilterAll, source, sourceLabel])
 
   const tile = (v: string) => (firstLoad ? '…' : v)
 
@@ -370,6 +396,16 @@ const AiUsageSection: React.FC<AiUsageSectionProps> = () => {
         options={modelFilterOptions}
         onChange={setModel}
         aria-label={a.aiUsageFilterModel}
+        disabled={loading}
+      />
+      <SettingTitleSelect
+        variant="title"
+        icon={<LuActivity size={12} />}
+        label={a.aiUsageFilterSource}
+        value={source}
+        options={sourceFilterOptions}
+        onChange={setSource}
+        aria-label={a.aiUsageFilterSource}
         disabled={loading}
       />
       <AnalyticsRangePicker

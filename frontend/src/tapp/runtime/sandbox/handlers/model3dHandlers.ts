@@ -8,8 +8,11 @@ import * as TappApiService from '../../../services/TappApiService'
 
 const ASSET_ID = /^[0-9a-f]{64}$/i
 
-function argsOf(message: { payload?: { args?: unknown[] } }): unknown[] {
-  return message.payload?.args || []
+function argsOf(message: { payload?: unknown }): unknown[] {
+  const payload = message.payload
+  if (!payload || typeof payload !== 'object') return []
+  const args = (payload as { args?: unknown }).args
+  return Array.isArray(args) ? args : []
 }
 
 function fail(error: unknown, fallback: string) {

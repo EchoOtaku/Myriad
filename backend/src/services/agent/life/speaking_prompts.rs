@@ -107,7 +107,10 @@ mod tests {
             id: "site".into(),
             name: String::new(),
             personality: String::new(),
+            persona_json: None,
+            visual_profile: None,
             portrait_asset_id: None,
+            portrait_generation: None,
             updated_by: None,
             updated_at: chrono::Utc::now().into(),
         };

@@ -150,8 +150,8 @@ html.dark .life-ob {
 /* ---------- 卡片：贴设置页，不再自带毛玻璃 ---------- */
 
 .life-ob__card {
-  --ob-pad: clamp(18px, 3vw, 34px);
-  --ob-label-gap: 10px;
+  --ob-pad: clamp(18px, 3vw, 32px);
+  --ob-label-gap: 8px;
 
   display: flex;
   flex-direction: column;
@@ -192,9 +192,9 @@ html.dark .life-ob {
 
 .life-ob-body {
   display: grid;
-  gap: 14px;
+  gap: 16px;
   align-content: start;
-  padding: 14px var(--ob-pad) 0;
+  padding: 4px var(--ob-pad) 0;
   text-align: left;
 }
 
@@ -427,6 +427,58 @@ html.dark .life-ob-bar .life-ob-cta {
   opacity: 1;
 }
 
+.life-ob-styles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 10px;
+}
+
+.life-ob-styles__card {
+  display: grid;
+  gap: 7px;
+  padding: 0 0 8px;
+  overflow: hidden;
+  border: 1px solid var(--ob-liq-border, var(--life-line));
+  border-radius: 16px;
+  color: var(--life-muted);
+  background:
+    var(--ob-liq-sheen, none),
+    color-mix(in srgb, rgb(var(--life-surface-rgb) / 55%), transparent);
+  box-shadow: var(--ob-liq-inset, none);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 680;
+  text-align: center;
+  cursor: pointer;
+  transition: var(--sm-t-control);
+}
+
+.life-ob-styles__card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  background: #f4f1ea;
+}
+
+.life-ob-styles__card:hover:not(:disabled, .is-on) {
+  color: var(--life-ink);
+  border-color: color-mix(in srgb, var(--life-accent) 36%, var(--life-line));
+}
+
+.life-ob-styles__card.is-on {
+  color: var(--life-ink);
+  border-color: color-mix(in srgb, var(--life-accent) 55%, transparent);
+  box-shadow:
+    var(--ob-liq-inset, none),
+    0 10px 22px color-mix(in srgb, var(--life-accent) 18%, transparent);
+}
+
+.life-ob-styles__card:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .life-gender {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -438,6 +490,10 @@ html.dark .life-ob-bar .life-ob-cta {
     var(--ob-liq-sheen),
     color-mix(in srgb, rgb(var(--life-surface-rgb) / 55%) 78%, transparent);
   box-shadow: var(--ob-liq-inset);
+}
+
+.life-gender--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .life-gender__opt {
@@ -522,6 +578,10 @@ html.dark .life-ob-bar .life-ob-cta {
 @media (width <= 420px) {
   .life-gender {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .life-gender--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -964,6 +1024,10 @@ fieldset.life-ob-field > legend.life-ob-field__label {
   padding: 0;
 }
 
+fieldset.life-ob-field > .life-ob-field__hint {
+  margin-top: var(--ob-label-gap, 10px);
+}
+
 .life-ob-field__label {
   display: flex;
   gap: 8px;
@@ -1003,62 +1067,274 @@ fieldset.life-ob-field > legend.life-ob-field__label {
   transition: var(--sm-t-control);
 }
 
-/* Step 2: name field + icon-only liquid roll (matches fluid ghost buttons) */
-.life-ob-name-row {
+/* Step 2: one field, style/roll chip inset on the right */
+.life-ob-name-field {
+  position: relative;
   display: flex;
-  gap: 10px;
-  align-items: center;
+  gap: 4px;
+  align-items: stretch;
+  min-width: 0;
+  padding: 4px 4px 4px 0;
+  border: 1px solid var(--ob-liq-border, var(--life-line));
+  border-radius: 14px;
+  background: var(--ob-liq-sheen, none), rgb(var(--life-surface-rgb) / 74%);
+  box-shadow: var(--ob-liq-inset, none);
+  transition:
+    border-color var(--sm-dur-base) var(--sm-ease-standard),
+    box-shadow var(--sm-dur-base) var(--sm-ease-standard);
 }
 
-.life-ob-name-row .life-ob-input {
+/* 菜单会盖住下面的性别选项；打开时把整列抬到后面字段之上，避免点到下层。 */
+.life-ob-body > .life-ob-field:has(.life-ob-name-dice.is-open) {
+  position: relative;
+  z-index: 6;
+}
+
+.life-ob-name-field:has(.life-ob-name-dice.is-open) {
+  z-index: 6;
+}
+
+.life-ob-name-field:focus-within {
+  border-color: color-mix(in srgb, var(--life-accent) 58%, var(--life-line));
+  box-shadow:
+    var(--ob-liq-inset, inset 0 1px 0 rgb(255 255 255 / 36%)),
+    0 0 0 4px color-mix(in srgb, var(--life-accent) 12%, transparent);
+}
+
+.life-ob-name-field .life-ob-input {
   flex: 1 1 auto;
   min-width: 0;
+  padding: 8px 10px 8px 14px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
-.life-ob-name-roll {
-  display: grid;
+.life-ob-name-field .life-ob-input:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.life-ob-name-dice {
+  position: relative;
   flex: 0 0 auto;
-  place-items: center;
-  width: 44px;
-  height: 44px;
+  align-self: center;
+  height: 34px;
+}
+
+.life-ob-name-dice.is-open {
+  z-index: 6;
+}
+
+.life-ob-name-dice__face {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid
+    color-mix(in srgb, var(--ob-liq-border, var(--life-line)) 82%, transparent);
+  border-radius: 10px;
+  color: color-mix(in srgb, var(--life-ink) 74%, var(--life-muted));
+  background:
+    var(--ob-liq-sheen, none),
+    color-mix(in srgb, rgb(var(--life-surface-rgb) / 36%), transparent);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 22%);
+  transition:
+    border-color var(--sm-dur-base) var(--sm-ease-standard),
+    color var(--sm-dur-base) var(--sm-ease-standard),
+    box-shadow var(--sm-dur-base) var(--sm-ease-standard);
+}
+
+.life-ob-name-dice:hover .life-ob-name-dice__face,
+.life-ob-name-dice.is-open .life-ob-name-dice__face {
+  border-color: color-mix(in srgb, var(--life-accent) 34%, var(--life-line));
+  color: color-mix(in srgb, var(--life-ink) 88%, var(--life-muted));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 34%),
+    0 8px 16px -12px color-mix(in srgb, var(--life-accent) 30%, transparent);
+}
+
+.life-ob-name-dice__style,
+.life-ob-name-dice__roll {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
   padding: 0;
-  border: 1px solid var(--ob-liq-border, var(--life-line));
-  border-radius: 50%;
-  color: color-mix(in srgb, var(--life-ink) 72%, var(--life-muted));
-  background:
-    var(--ob-liq-sheen, none),
-    color-mix(in srgb, rgb(var(--life-surface-rgb) / 42%), transparent);
-  box-shadow: var(--ob-liq-inset, inset 0 1px 0 rgb(255 255 255 / 28%));
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
   cursor: pointer;
-  transition: var(--sm-t-control);
+  transition:
+    color var(--sm-dur-fast) var(--sm-ease-standard),
+    background-color var(--sm-dur-fast) var(--sm-ease-standard);
 }
 
-.life-ob-name-roll:hover:not(:disabled) {
-  color: var(--life-accent);
-  border-color: color-mix(in srgb, var(--life-accent) 40%, var(--life-line));
+.life-ob-name-dice__style {
+  gap: 3px;
+  min-width: 4.6rem;
+  padding: 0 8px 0 11px;
+  font-size: 12.5px;
+  font-weight: 680;
+}
+
+.life-ob-name-dice__label {
+  max-width: 5.6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.life-ob-name-dice__chevron {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  opacity: 0.62;
+  transition:
+    transform var(--sm-dur-base) var(--sm-ease-standard),
+    opacity var(--sm-dur-fast) var(--sm-ease-standard);
+}
+
+.life-ob-name-dice__style:hover:not(:disabled) .life-ob-name-dice__chevron,
+.life-ob-name-dice.is-open .life-ob-name-dice__chevron {
+  opacity: 0.92;
+}
+
+.life-ob-name-dice.is-open .life-ob-name-dice__chevron {
+  transform: rotate(-180deg);
+}
+
+.life-ob-name-dice__split {
+  flex: 0 0 1px;
+  width: 1px;
+  margin: 8px 0;
+  background: color-mix(in srgb, var(--life-line) 72%, transparent);
+  transition: opacity var(--sm-dur-fast) var(--sm-ease-standard);
+}
+
+.life-ob-name-dice:has(.life-ob-name-dice__style:hover) .life-ob-name-dice__split,
+.life-ob-name-dice:has(.life-ob-name-dice__roll:hover) .life-ob-name-dice__split {
+  opacity: 0;
+}
+
+.life-ob-name-dice__roll {
+  width: 34px;
+}
+
+.life-ob-name-dice__roll svg {
+  transition: transform var(--sm-dur-base) var(--sm-ease-spring, var(--sm-ease-standard));
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .life-ob-name-dice__style:hover:not(:disabled),
+  .life-ob-name-dice__roll:hover:not(:disabled) {
+    color: var(--life-ink);
+    background: color-mix(in srgb, var(--life-ink) 6%, transparent);
+  }
+
+  .life-ob-name-dice__roll:hover:not(:disabled) svg {
+    transform: rotate(-22deg);
+  }
+}
+
+.life-ob-name-dice.is-open .life-ob-name-dice__style {
+  color: var(--life-ink);
+  background: color-mix(in srgb, var(--life-accent) 11%, transparent);
+}
+
+.life-ob-name-dice__style:active:not(:disabled),
+.life-ob-name-dice__roll:active:not(:disabled) {
+  background: color-mix(in srgb, var(--life-ink) 9%, transparent);
+}
+
+.life-ob-name-dice__style:focus-visible,
+.life-ob-name-dice__roll:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--life-accent) 38%, transparent);
+}
+
+.life-ob-name-dice__style:disabled,
+.life-ob-name-dice__roll:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.life-ob-name-dice svg {
+  width: 15px;
+  height: 15px;
+}
+
+.life-ob-name-dice__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 8;
+  display: grid;
+  gap: 2px;
+  min-width: max(100%, 8.6rem);
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  border: 1px solid var(--ob-liq-border, var(--life-line));
+  border-radius: 12px;
   background:
     var(--ob-liq-sheen, none),
-    color-mix(in srgb, var(--life-accent) 12%, transparent);
-  box-shadow: var(
-    --ob-liq-soft-shadow,
-    inset 0 1px 0 rgb(255 255 255 / 36%),
-    0 6px 16px -8px rgb(31 38 135 / 12%)
-  );
-  transform: translateY(var(--sm-lift));
+    rgb(var(--life-surface-rgb) / 92%);
+  box-shadow:
+    var(--ob-liq-inset, inset 0 1px 0 rgb(255 255 255 / 28%)),
+    0 14px 28px -16px rgb(31 38 135 / 28%);
 }
 
-.life-ob-name-roll:active:not(:disabled) {
-  transform: scale(0.96);
+.life-ob-name-dice__option {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--life-ink);
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 620;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color var(--sm-dur-fast) var(--sm-ease-standard),
+    background-color var(--sm-dur-fast) var(--sm-ease-standard);
 }
 
-.life-ob-name-roll:disabled {
-  opacity: 0.5;
-  cursor: wait;
+.life-ob-name-dice__mark {
+  display: grid;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  color: var(--life-accent);
 }
 
-.life-ob-name-roll svg {
-  width: 16px;
-  height: 16px;
+@media (hover: hover) and (pointer: fine) {
+  .life-ob-name-dice__option:hover:not(.is-on) {
+    color: var(--life-ink);
+    background: color-mix(in srgb, var(--life-ink) 6%, transparent);
+  }
+}
+
+.life-ob-name-dice__option.is-on {
+  color: var(--life-accent);
+  background: color-mix(in srgb, var(--life-accent) 12%, transparent);
+}
+
+.life-ob-name-dice__option:active {
+  background: color-mix(in srgb, var(--life-ink) 9%, transparent);
+}
+
+.life-ob-name-dice__option svg {
+  width: 13px;
+  height: 13px;
 }
 
 .life-ob-input:focus {
@@ -1069,14 +1345,14 @@ fieldset.life-ob-field > legend.life-ob-field__label {
 }
 
 .life-ob-input--area {
-  min-height: 84px;
-  line-height: 1.65;
+  min-height: 68px;
+  line-height: 1.6;
   resize: vertical;
 }
 
 .life-ob-persona-groups {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .life-ob-persona-group {
@@ -1114,6 +1390,135 @@ fieldset.life-ob-field > legend.life-ob-field__label {
   letter-spacing: 0.02em;
 }
 
+.life-ob-visual .life-ob-persona-view__row {
+  display: grid;
+  gap: 4px;
+  align-items: start;
+  padding: 11px 14px;
+}
+
+.life-ob-visual .life-ob-persona-view__row dd {
+  font-size: 13px;
+  font-weight: 520;
+  line-height: 1.55;
+}
+
+.life-ob-visual__pending {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  min-height: 220px;
+  place-content: center;
+  color: var(--life-muted);
+  text-align: center;
+}
+
+/* Step 5: master portrait on the shared 3:4 character-asset contract. */
+.life-ob-master__layout {
+  display: grid;
+  justify-items: center;
+  gap: clamp(16px, 2.6vw, 28px);
+}
+
+.life-ob-master__layout.has-talk {
+  grid-template-columns: minmax(188px, 0.86fr) minmax(220px, 1.14fr);
+  place-items: start stretch;
+}
+
+.life-ob-master__preview {
+  position: relative;
+  width: min(100%, 360px);
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border: 1px solid var(--ob-liq-border, var(--life-line));
+  border-radius: 22px;
+  background:
+    var(--ob-liq-sheen, none),
+    color-mix(in srgb, rgb(var(--life-surface-rgb) / 84%), white 12%);
+  box-shadow: var(--ob-liq-soft-shadow);
+}
+
+.life-ob-master__preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center top;
+}
+
+.life-ob-master__preview.is-empty {
+  border-style: dashed;
+}
+
+.life-ob-master__placeholder {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  color: var(--life-muted);
+  text-align: center;
+}
+
+.life-ob-master__placeholder > svg {
+  width: 34px;
+  height: 34px;
+  opacity: 0.64;
+}
+
+.life-ob-talk {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+.life-ob-talk__thread {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.life-ob-talk__turn {
+  justify-self: end;
+  max-width: 92%;
+  padding: 8px 12px;
+  border-radius: 14px 14px 4px;
+  color: var(--life-ink);
+  background:
+    var(--ob-liq-sheen, none),
+    color-mix(in srgb, var(--life-accent) 12%, rgb(var(--life-surface-rgb) / 72%));
+  box-shadow: var(--ob-liq-inset, none);
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.life-ob-talk__composer {
+  display: grid;
+  gap: var(--ob-label-gap, 10px);
+}
+
+.life-ob-talk__send {
+  justify-self: end;
+}
+
+@media (width < 680px) {
+  .life-ob-master__layout.has-talk {
+    grid-template-columns: 1fr;
+  }
+
+  .life-ob-master__preview {
+    width: min(72vw, 310px);
+    justify-self: center;
+  }
+}
+
 .life-ob-persona-groups.is-incomplete .life-ob-persona-view {
   opacity: 0.92;
 }
@@ -1140,7 +1545,7 @@ fieldset.life-ob-field > legend.life-ob-field__label {
   gap: 12px;
   align-items: center;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 11px 14px;
 }
 
 .life-ob-persona-view__row:not(:last-child) {

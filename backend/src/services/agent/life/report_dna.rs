@@ -24,7 +24,8 @@ const MAX_REPORT_INSIGHT_CHARS: usize = 1_600;
 const MAX_REPORT_NOTE_CHARS: usize = 800;
 const MAX_ONBOARDING_TAGS: usize = 28;
 const MAX_ONBOARDING_TAG_CHARS: usize = 24;
-const REPORT_DNA_AI_TIMEOUT: Duration = Duration::from_secs(120);
+/// Keep in sync with `PERSONA_GENERATION_TIMEOUT_MS` / `DIGITAL_LIFE_PROXY_TIMEOUT_MS`.
+const REPORT_DNA_AI_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Debug, Clone)]
 struct ReportDnaSource {
@@ -198,9 +199,13 @@ pub async fn distill_report_dna(
         "evidence": bundle.evidence,
     })
     .to_string();
-    let result = analyzer
-        .analyze_with_system(TAGS_SYSTEM_PROMPT, &prompt)
-        .await;
+    let result = crate::services::ai_cost_ledger::with_site_ai_ledger(
+        user_id,
+        "life",
+        "report_dna",
+        analyzer.analyze_with_system(TAGS_SYSTEM_PROMPT, &prompt),
+    )
+    .await;
     match result {
         Ok(raw) => {
             let tags = parse_ai_tags(&raw);
@@ -553,6 +558,7 @@ fn is_reasonable_persona_tag(label: &str) -> bool {
     }
     const LITERARY: &[&str] = &[
         "质感", "美学", "信仰", "虔诚", "月光", "余温", "藏锋", "证明存在", "消化情绪",
+        "取自", "像把", "在心里",
     ];
     if LITERARY.iter().any(|blocked| label.contains(blocked)) {
         return false;

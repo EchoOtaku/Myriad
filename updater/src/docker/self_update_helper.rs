@@ -15,7 +15,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::env_file::EnvFile;
+use crate::env_file::{persist_env_bytes, EnvFile};
 use crate::error::{Result, UpdaterError};
 use crate::state::atomic;
 
@@ -418,8 +418,8 @@ fn update_policy_files(cfg: &HelperConfig, exact_image: &str, tag: &str) -> Resu
 }
 
 fn restore_files(cfg: &HelperConfig, app: &[u8], guard: &[u8]) -> Result<()> {
-    atomic::write_atomic_bytes(&cfg.app_env_file, app)?;
-    atomic::write_atomic_bytes(&cfg.guard_env_file, guard)
+    persist_env_bytes(&cfg.app_env_file, app)?;
+    persist_env_bytes(&cfg.guard_env_file, guard)
 }
 
 pub(super) fn write_status(path: &Path, status: &SelfUpdateLastStatus) -> Result<()> {
@@ -786,17 +786,37 @@ fn require_mount_targets(service: &Value, expected: &[&str], name: &str) -> Resu
 fn require_updater_mount_targets(service: &Value) -> Result<()> {
     let mut actual = persistent_mount_targets(service);
     actual.sort_unstable();
-    let mut bundled = vec![
-        "/host/compose",
-        "/host/compose/.env",
-        "/host/compose/pgdata",
-        "/host/compose/state",
-        "/run/secrets",
+    // Official: extra .env file bind over a read-only deploy root.
+    // Writable-root: omit that bind so v0.3.37 can persist MYRIAD_TAG via
+    // sibling .bak/.tmp (file-bind + RO root is EROFS). Guard policy stays
+    // the separate /run/secrets mount. External DB omits pgdata.
+    let allowed = [
+        &[
+            "/host/compose",
+            "/host/compose/.env",
+            "/host/compose/pgdata",
+            "/host/compose/state",
+            "/run/secrets",
+        ][..],
+        &[
+            "/host/compose",
+            "/host/compose/.env",
+            "/host/compose/state",
+            "/run/secrets",
+        ][..],
+        &[
+            "/host/compose",
+            "/host/compose/pgdata",
+            "/host/compose/state",
+            "/run/secrets",
+        ][..],
+        &["/host/compose", "/host/compose/state", "/run/secrets"][..],
     ];
-    bundled.sort_unstable();
-    let mut external = bundled.clone();
-    external.retain(|target| *target != "/host/compose/pgdata");
-    if actual == bundled || actual == external {
+    if allowed.iter().any(|expected| {
+        let mut expected = expected.to_vec();
+        expected.sort_unstable();
+        actual == expected
+    }) {
         return Ok(());
     }
     Err(UpdaterError::Precondition(
@@ -1128,6 +1148,18 @@ mod tests {
             .as_array_mut()
             .unwrap()
             .retain(|mount| mount["target"] != "/host/compose/pgdata");
+        let bytes = serde_json::to_vec(&model).unwrap();
+        assert!(validate_compose_model(&bytes, &image, &config()).is_ok());
+    }
+
+    #[test]
+    fn fixed_compose_model_allows_writable_root_without_env_file_bind() {
+        let image = exact_image();
+        let mut model = compose_model(&image);
+        model["services"]["updater"]["volumes"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|mount| mount["target"] != "/host/compose/.env");
         let bytes = serde_json::to_vec(&model).unwrap();
         assert!(validate_compose_model(&bytes, &image, &config()).is_ok());
     }

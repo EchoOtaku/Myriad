@@ -1,5 +1,6 @@
 use crate::error::HttpError;
-use axum::Json;
+use crate::middleware::auth::Claims;
+use axum::{Extension, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::services::ai::create_ai_analyzer;
@@ -19,6 +20,7 @@ pub struct GeneratePromptResponse {
 
 /// 生成图片生成提示词的 API 端点
 pub async fn generate_prompt(
+    Extension(claims): Extension<Claims>,
     Json(payload): Json<GeneratePromptRequest>,
 ) -> Result<Json<GeneratePromptResponse>, HttpError> {
     tracing::info!("Generating prompt for: {}", payload.title);
@@ -47,9 +49,14 @@ Requirements:
 
     // 尝试使用 AI 生成高质量提示词
     if let Some(analyzer) = create_ai_analyzer().await {
-        match analyzer
-            .analyze_with_system(system_prompt, &user_prompt)
-            .await
+        let user_id = claims.sub.parse().unwrap_or(0);
+        match crate::services::ai_cost_ledger::with_site_ai_ledger(
+            user_id,
+            "prompt",
+            "generate",
+            analyzer.analyze_with_system(system_prompt, &user_prompt),
+        )
+        .await
         {
             Ok(result) => {
                 let cleaned = result.trim().trim_matches('"').trim_matches('`').trim();

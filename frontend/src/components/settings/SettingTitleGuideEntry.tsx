@@ -153,6 +153,8 @@ export const SettingTitleGuideEntry: React.FC<SettingTitleGuideEntryProps> = ({
   const exitTimerRef = useRef(0)
   const phaseRef = useRef<FloatPhase>('closed')
   const pinnedRef = useRef(false)
+  /** 本次打开是否已经播过进入动效；避免 guide 内容更新时闪一下位移 */
+  const enteredRef = useRef(false)
   const dragSessionRef = useRef<{
     pointerId: number
     startX: number
@@ -462,24 +464,34 @@ export const SettingTitleGuideEntry: React.FC<SettingTitleGuideEntryProps> = ({
     setDragging(false)
   }, [])
 
-  /* 打开瞬间：先贴合（隐藏态），再加 is-ready 触发进入动效 */
+  /* 打开瞬间：先贴合（隐藏态），再加 is-ready 触发进入动效。
+   * guide 随添加结果重绘时不要把 ready 打回 false，否则会重播 8px 进入位移。 */
   useLayoutEffect(() => {
     if (phase !== 'open') {
       if (phase === 'closed') stopSmooth()
+      if (phase === 'closed' || phase === 'closing') {
+        enteredRef.current = false
+      }
       return
     }
     // 固定中重渲染 guide 内容时不要 snap 回锚点
     if (pinnedRef.current) {
+      enteredRef.current = true
       setReady(true)
       return
     }
-    setReady(false)
-    measureTarget({ snap: true })
+    const replayEnter = !enteredRef.current
+    if (replayEnter) setReady(false)
+    // 内容随添加结果变高时只平滑跟位，不要 snap，否则浮窗会闪一下。
+    measureTarget({ snap: replayEnter })
+    if (!replayEnter) return
     let raf2 = 0
     const raf1 = requestAnimationFrame(() => {
       measureTarget({ snap: true })
       raf2 = requestAnimationFrame(() => {
-        if (phaseRef.current === 'open') setReady(true)
+        if (phaseRef.current !== 'open') return
+        enteredRef.current = true
+        setReady(true)
       })
     })
     return () => {

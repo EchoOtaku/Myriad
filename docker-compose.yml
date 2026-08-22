@@ -111,6 +111,12 @@ services:
     security_opt: [no-new-privileges:true]
     read_only: true
     tmpfs: [/tmp]
+    # Compose v5 sends LogConfig.Type="" when this block is omitted; Guard then
+    # rejects the updater's one-off `compose run` even though the engine would
+    # apply json-file. Keep it explicit.
+    logging:
+      driver: "json-file"
+      options: { max-size: "10m", max-file: "3" }
 
   backend:
     # NOTE: image tag is driven by updater via ${MYRIAD_TAG}.

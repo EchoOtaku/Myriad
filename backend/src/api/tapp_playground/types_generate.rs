@@ -640,6 +640,21 @@ async fn emit_step(
 async fn run_playground_generation(
     request: PlaygroundGenerateRequest,
     step_tx: Option<mpsc::Sender<PlaygroundStreamEvent>>,
+    cancel_rx: Option<watch::Receiver<bool>>,
+) -> Result<PlaygroundGenerateResponse, GenerationError> {
+    let owner = crate::services::ai_cost_ledger::resolve_site_owner_id().await;
+    crate::services::ai_cost_ledger::with_site_ai_ledger(
+        owner,
+        "playground",
+        "generate",
+        run_playground_generation_inner(request, step_tx, cancel_rx),
+    )
+    .await
+}
+
+async fn run_playground_generation_inner(
+    request: PlaygroundGenerateRequest,
+    step_tx: Option<mpsc::Sender<PlaygroundStreamEvent>>,
     mut cancel_rx: Option<watch::Receiver<bool>>,
 ) -> Result<PlaygroundGenerateResponse, GenerationError> {
     if cancel_rx.as_ref().is_some_and(cancelled_from_watch) {

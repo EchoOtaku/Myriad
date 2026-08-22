@@ -335,7 +335,7 @@ export const en: SettingGuidesCatalog = {
     list: {
       what: 'Data & stats overview: connected platforms, visitor stats (pages / events / referrers), and AI usage stats.',
       chain:
-        '1) Under Connected platforms, link GitHub, Steam, Bilibili, etc. and set auto-refresh.\n2) Under Visitor stats, review KPIs, trends, and page/event/referrer sections.\n3) Under AI usage stats, review governed AI calls by user / model / day.\n4) Card switches only control report-page visibility; auto-refresh syncs configured platforms.',
+        '1) Under Connected platforms, link GitHub, Steam, Bilibili, etc. and set auto-refresh.\n2) Under Visitor stats, review KPIs, trends, and page/event/referrer sections.\n3) Under AI usage stats, review full-site text, image, and speech usage.\n4) Card switches only control report-page visibility; auto-refresh syncs configured platforms.',
       frontend:
         'Settings → Data & stats. Platform data feeds library and reports; visitor and AI ledger aggregates are admin-only.',
       notes: 'Visitor stats do not store raw IPs; keep platform secrets private. AI usage is admin-only.',
@@ -371,9 +371,9 @@ export const en: SettingGuidesCatalog = {
     aiUsage: {
       what: 'Full-site AI usage (including admins/owner): daily trend, by user/model/source ranks, with filters.',
       chain:
-        '1) Written to tapp_ai_cost_ledger: Tapp runtime and scheduled jobs settle via governed path; Arael and report generation use task-local attribution.\n2) Admin GET /api/analytics/ai-usage aggregates by the server local calendar day and does not exclude staff.\n3) Bars = calls (left axis), line = tokens (right axis, independent scale so large token counts do not flatten call bars); lists by user, model, and source (including scheduler).\n4) Independent of the visitor-stats collection switch.',
+        '1) Every provider call (text, image, speech) writes tapp_ai_cost_ledger. Tapp / scheduled jobs still settle quota on the governed path; Arael, reports, digital life, playground, and speech are labeled; unlabeled calls land as internal.\n2) Admin GET /api/analytics/ai-usage aggregates by the server local calendar day and does not exclude staff.\n3) Bars = calls (left axis), line = tokens (right axis, independent scale); lists by user, model, and source.\n4) Independent of the visitor-stats collection switch.',
       frontend: 'Settings → Data & stats → “AI usage stats” (KPIs, chart, by user / model / source).',
-      notes: 'Tokens are often estimates. Panel is admin-only.',
+      notes: 'Tokens are often estimates (images by resolution, speech by text/audio length). Panel is admin-only.',
     },
     thirdPartyAnalytics: {
       what: 'Send visits to external analytics (Google Analytics, Umami, …), separate from first-party visitor charts on this page.',

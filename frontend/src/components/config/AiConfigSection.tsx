@@ -28,6 +28,10 @@ import {
   activityKey,
   moodBand,
 } from '../agent/lifeVitals'
+import {
+  FACE_UPDATED_EVENT,
+} from '../../features/digital-life-companion/events'
+import SiteMotionWorkbench from '../../features/digital-life-companion/SiteMotionWorkbench'
 import PersonaOnboardingPage from '../agent/onboarding/PersonaOnboardingPage'
 import { parseFlattenedPersona } from '../agent/onboarding/onboardingTypes'
 import {
@@ -53,7 +57,7 @@ import {
   AiVendorSources,
   VendorKindIcon,
 } from './AiVendorSources'
-import { usePersonaPage } from './usePersonaPage'
+import { useAiSubpage } from './usePersonaPage'
 import { TencentCloudMark, VolcengineMark } from './vendorIcons'
 
 interface ConfigField {
@@ -216,12 +220,6 @@ const ModelTierGroup: React.FC<
   )
 }
 
-function clipCardText(value: string, max = 72): string {
-  const text = value.replace(/\s+/g, ' ').trim()
-  if (text.length <= max) return text
-  return `${text.slice(0, max - 1)}…`
-}
-
 function fieldsForModelTier(
   configFields: ConfigField[],
   prefix: '' | 'lite_' | 'pro_',
@@ -262,13 +260,16 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     null,
   )
   const {
-    open: personaPage,
-    navDir: personaPaneNav,
-    openPage: openPersonaPage,
-    closePage: closePersonaPage,
-  } = usePersonaPage((open) => {
-    if (open) setPersonaChrome(null)
+    page: aiSubpage,
+    navDir: aiPaneNav,
+    openPage: openAiSubpage,
+    closePage: closeAiSubpage,
+  } = useAiSubpage((page) => {
+    if (page === 'persona') setPersonaChrome(null)
   })
+  const personaPage = aiSubpage === 'persona'
+  const facePage = aiSubpage === 'face'
+  const subpageOpen = aiSubpage != null
 
   const fieldGuideFor = useCallback(
     (fieldKey: string) => {
@@ -664,7 +665,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   }, [onSpeechTest, t.config.speechTestFailed])
 
   const o = t.life.onboarding
-  const paneKey = personaPage ? 'persona' : 'ai'
+  const paneKey = aiSubpage ?? 'ai'
   const personaGuide = bindGuide('ai.agentLife', g.ai.agentLife)
   const lifeOn = agentLifeEnabled && proEnabled
   const [savedPersonaName, setSavedPersonaName] = useState('')
@@ -672,6 +673,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   const [mood, setMood] = useState(70)
   const [activity, setActivity] = useState('idle')
   const [personality, setPersonality] = useState('')
+  const [portraitUrl, setPortraitUrl] = useState<string | null>(null)
   const [reportCount, setReportCount] = useState(0)
   const [vitalsReady, setVitalsReady] = useState(false)
   const [personaBusy, setPersonaBusy] = useState(false)
@@ -700,6 +702,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       setMood(70)
       setActivity('idle')
       setPersonality('')
+      setPortraitUrl(null)
       setReportCount(0)
       setVitalsReady(false)
       return
@@ -720,6 +723,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           setMood(typeof persona.mood === 'number' ? persona.mood : 70)
           setActivity(persona.activity ?? 'idle')
           setPersonality(persona.personality?.trim() ?? '')
+          setPortraitUrl(
+            typeof persona.portraitAssetId === 'string' &&
+              persona.portraitAssetId.trim()
+              ? persona.portraitAssetId
+              : null,
+          )
           setReportCount(
             typeof persona.reportCount === 'number' ? persona.reportCount : 0,
           )
@@ -730,6 +739,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             setSavedPersonaName('')
             setHasSavedPersona(false)
             setPersonality('')
+            setPortraitUrl(null)
             setReportCount(0)
             setVitalsReady(false)
           }
@@ -737,10 +747,12 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     }
     load()
     window.addEventListener('arael-persona-updated', load)
+    window.addEventListener(FACE_UPDATED_EVENT, load)
     window.addEventListener(ADDRESSEE_UPDATED_EVENT, load)
     return () => {
       cancelled = true
       window.removeEventListener('arael-persona-updated', load)
+      window.removeEventListener(FACE_UPDATED_EVENT, load)
       window.removeEventListener(ADDRESSEE_UPDATED_EVENT, load)
     }
   }, [lifeOn])
@@ -750,62 +762,44 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       ? t.config.agentLifeNeedsLite
       : t.config.agentLifeHint
 
-  const personaCardFields = useMemo(() => {
-    if (!lifeOn || !hasSavedPersona) return undefined
-    const summary = clipCardText(parseFlattenedPersona(personality).summary, 96)
-    const fields: Array<{
-      key: string
-      label: string
-      value: string
-      copyable: false
-    }> = []
-    if (summary) {
-      fields.push({
-        key: 'summary',
-        label: o.fieldSummary,
-        value: summary,
-        copyable: false,
-      })
+  const personaCardCopy = useMemo(() => {
+    if (!lifeOn || !hasSavedPersona) return null
+    const summary = parseFlattenedPersona(personality).summary.replace(/\s+/g, ' ').trim()
+    return {
+      summary,
+      mood: vitalsReady ? o.mood[moodBand(mood)] : '—',
+      activity: vitalsReady ? o.activity[activityKey(activity)] : '—',
     }
-    fields.push(
-      {
-        key: 'mood',
-        label: t.config.agentLifeMood,
-        value: vitalsReady ? o.mood[moodBand(mood)] : '—',
-        copyable: false,
-      },
-      {
-        key: 'activity',
-        label: t.config.agentLifeActivity,
-        value: vitalsReady ? o.activity[activityKey(activity)] : '—',
-        copyable: false,
-      },
-    )
-    return fields
-  }, [
-    activity,
-    hasSavedPersona,
-    lifeOn,
-    mood,
-    o,
-    personality,
-    t.config.agentLifeActivity,
-    t.config.agentLifeMood,
-    vitalsReady,
-  ])
+  }, [activity, hasSavedPersona, lifeOn, mood, o, personality, vitalsReady])
 
   return (
     <SettingSection
       sectionId={sectionId}
       className={personaPage ? 'setting-section--persona' : undefined}
-      title={personaPage ? (personaChrome?.title ?? o.step1Title) : title}
-      icon={personaPage ? undefined : icon}
-      description={
-        personaPage ? (personaChrome?.description ?? o.step1Lead) : description
+      title={
+        personaPage
+          ? (personaChrome?.title ?? o.step1Title)
+          : facePage
+            ? t.companion.adminTitle
+            : title
       }
-      detail={personaPage ? (personaChrome?.description ?? o.step1Lead) : undefined}
+      icon={subpageOpen ? undefined : icon}
+      description={
+        personaPage
+          ? (personaChrome?.description ?? o.step1Lead)
+          : facePage
+            ? t.companion.adminDescription
+            : description
+      }
+      detail={
+        personaPage
+          ? (personaChrome?.description ?? o.step1Lead)
+          : facePage
+            ? t.companion.adminDescription
+            : undefined
+      }
       detailTone={personaPage ? personaChrome?.detailTone : undefined}
-      showResetPage={personaPage ? false : undefined}
+      showResetPage={subpageOpen ? false : undefined}
       {...(personaPage ? personaGuide : {})}
       headerActions={
         personaPage && personaChrome?.action ? (
@@ -822,7 +816,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         ) : null
       }
       headerBetweenPinned={
-        personaPage ? undefined : (
+        subpageOpen ? undefined : (
           <AiVendorAddTrigger
             sources={vendorSources}
             onChange={setVendorSources}
@@ -831,13 +825,21 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         )
       }
       headerLeading={
-        personaPage ? (
+        subpageOpen ? (
           <button
             type="button"
             className="section-header-back"
-            onClick={() => (personaChrome?.onBack ?? closePersonaPage)()}
-            disabled={personaChrome?.backDisabled}
-            aria-label={personaChrome?.backAria ?? t.common.back}
+            onClick={() =>
+              personaPage
+                ? (personaChrome?.onBack ?? closeAiSubpage)()
+                : closeAiSubpage()
+            }
+            disabled={personaPage ? personaChrome?.backDisabled : false}
+            aria-label={
+              personaPage
+                ? (personaChrome?.backAria ?? t.common.back)
+                : t.common.back
+            }
           >
             <LuChevronLeft size={18} aria-hidden />
             <span>{t.common.back}</span>
@@ -846,14 +848,16 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       }
     >
       <AutoHeight contentKey={paneKey} animate={false}>
-        <div key={paneKey} data-nav={personaPaneNav} className="ai-pane sm-pane">
+        <div key={paneKey} data-nav={aiPaneNav} className="ai-pane sm-pane">
           {personaPage ? (
             <PersonaOnboardingPage
-              onBack={closePersonaPage}
+              onBack={closeAiSubpage}
               onChromeChange={setPersonaChrome}
               lifeOn={lifeOn}
               gateLead={personaGateLead}
             />
+          ) : facePage ? (
+            <SiteMotionWorkbench mood={mood} activity={activity} />
           ) : (
             <>
       <SettingGroup
@@ -983,58 +987,83 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
           ariaLabel: t.config.agentLife,
         }}
       >
-        <InfoActionCard
-          copyable={false}
-          tone={
-            !proEnabled ? 'warn' : lifeOn && !liteEnabled ? 'info' : lifeOn ? 'default' : 'muted'
-          }
-          title={
-            lifeOn
-              ? hasSavedPersona
+        {lifeOn ? (
+          <InfoActionCard
+            copyable={false}
+            tone={!liteEnabled ? 'info' : 'default'}
+            title={
+              hasSavedPersona
                 ? savedPersonaName || 'Arael'
-                : o.setupLabel
-              : undefined
-          }
-          empty={!lifeOn || !hasSavedPersona}
-          emptyText={
-            !proEnabled
-              ? personaGateLead
-              : lifeOn && !hasSavedPersona && reportCount < 3
-                ? t.config.agentLifeNeedsReports
-                    .replace('{count}', String(reportCount))
-                    .replace('{need}', '3')
-                : lifeOn
-                  ? t.config.agentLifeEmpty
-                  : t.config.agentLifeHint
-          }
-          fields={personaCardFields}
-          actions={
-            lifeOn && (hasSavedPersona || reportCount >= 3)
-              ? [
-                  {
-                    key: 'setup',
-                    label: hasSavedPersona ? o.editPage : o.openPage,
-                    onClick: () => openPersonaPage(),
-                    disabled: personaBusy,
-                  },
-                  ...(hasSavedPersona
-                    ? [
-                        {
-                          key: 'delete',
-                          label: t.config.agentLifeDelete,
-                          onClick: () => void handleDeletePersona(),
-                          disabled: personaBusy,
-                          loading: personaBusy,
-                          variant: 'danger' as const,
-                          confirm: t.config.agentLifeDeleteConfirm,
-                        },
-                      ]
-                    : []),
-                ]
-              : undefined
-          }
-          footer={personaError}
-        />
+                : t.config.agentLifeEmpty
+            }
+            preview={
+              portraitUrl && hasSavedPersona ? (
+                <img src={portraitUrl} alt={savedPersonaName || 'Arael'} />
+              ) : (
+                <span className="info-action-card-preview-empty is-mosaic">
+                  <img src="/life/clothing/everyday.svg" alt="" />
+                  <img src="/life/clothing/fantasy.svg" alt="" />
+                  <img src="/life/clothing/japanese.svg" alt="" />
+                  <img src="/life/clothing/sci-fi.svg" alt="" />
+                </span>
+              )
+            }
+            actions={
+              hasSavedPersona || reportCount >= 3
+                ? [
+                    {
+                      key: 'setup',
+                      label: hasSavedPersona ? o.editPage : o.openPage,
+                      onClick: () => openAiSubpage('persona'),
+                      disabled: personaBusy,
+                    },
+                    ...(hasSavedPersona
+                      ? [
+                          {
+                            key: 'face',
+                            label: t.companion.faceOpen,
+                            onClick: () => openAiSubpage('face'),
+                          },
+                          {
+                            key: 'delete',
+                            label: t.config.agentLifeDelete,
+                            onClick: () => void handleDeletePersona(),
+                            disabled: personaBusy,
+                            loading: personaBusy,
+                            variant: 'danger' as const,
+                            confirm: t.config.agentLifeDeleteConfirm,
+                          },
+                        ]
+                      : []),
+                  ]
+                : undefined
+            }
+            footer={personaError}
+          >
+            {personaCardCopy ? (
+              <>
+                {personaCardCopy.summary ? (
+                  <p className="info-action-card-lede">{personaCardCopy.summary}</p>
+                ) : null}
+                <p className="info-action-card-meta">
+                  <span>{personaCardCopy.mood}</span>
+                  <span className="info-action-card-meta-dot" aria-hidden>
+                    ·
+                  </span>
+                  <span>{personaCardCopy.activity}</span>
+                </p>
+              </>
+            ) : (
+              <p className="info-action-card-lede">
+                {reportCount < 3
+                  ? t.config.agentLifeNeedsReports
+                      .replace('{count}', String(reportCount))
+                      .replace('{need}', '3')
+                  : t.config.agentLifeEmptyLead}
+              </p>
+            )}
+          </InfoActionCard>
+        ) : null}
       </SettingGroup>
 
       {/* 图片生成模型 */}

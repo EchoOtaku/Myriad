@@ -167,8 +167,8 @@ pub async fn create_task(
     Json(request): Json<CreateTaskRequest>,
 ) -> ApiResult<Json<TaskCreatedResponse>> {
     let client = client_from_state(&state).await?;
-    let payload =
-        apply_web_defaults(request.operation, request.payload, client.config()).map_err(map_tripo_error)?;
+    let payload = apply_web_defaults(request.operation, request.payload, client.config())
+        .map_err(map_tripo_error)?;
     let task_id = client
         .create_task(request.operation, payload)
         .await

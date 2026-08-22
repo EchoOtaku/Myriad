@@ -83,6 +83,9 @@ export interface AgentPersona {
   portraitAssetId: string | null
   hasCustomPersona: boolean
   personality?: string
+  persona?: Record<string, unknown> | null
+  visualProfile?: Record<string, unknown> | null
+  portraitGeneration?: Record<string, unknown> | null
   mood?: number
   activity?: string
   doNotDisturb?: boolean
@@ -872,12 +875,29 @@ class AgentService {
     selectedTags: string[]
     gender?: string
     avoidName?: string
+    nameStyle?: string
     language: string
   }): Promise<{ name: string }> {
     return sharePersonaGeneration(
-      `name:${body.language || ''}:${body.gender || ''}:${body.avoidName || ''}:${body.selectedTags.join(',')}`,
+      `name:${body.language || ''}:${body.nameStyle || ''}:${body.gender || ''}:${body.avoidName || ''}:${body.selectedTags.join(',')}`,
       () =>
         apiService.post(`${this.baseUrl}/persona/name`, body, {
+          timeout: PERSONA_GENERATION_TIMEOUT_MS,
+        }),
+    )
+  }
+
+  async suggestPersonaVisualDesign(body: {
+    visualRequirements?: string
+    clothingStyle?: string
+    keepCharacter?: boolean
+    regenerate?: boolean
+    existingVisualIdentity?: Record<string, unknown>
+  }): Promise<{ visualIdentity: Record<string, unknown> }> {
+    return sharePersonaGeneration(
+      `visual-design:${body.regenerate === true}:${body.keepCharacter === true}:${body.clothingStyle || ''}:${body.visualRequirements || ''}:${JSON.stringify(body.existingVisualIdentity ?? null)}`,
+      () =>
+        apiService.post(`${this.baseUrl}/persona/visual-design`, body, {
           timeout: PERSONA_GENERATION_TIMEOUT_MS,
         }),
     )
@@ -898,6 +918,8 @@ class AgentService {
     name: string
     personality: string
     portraitAssetId?: string | null
+    persona?: Record<string, unknown> | null
+    visualProfile?: Record<string, unknown> | null
   }): Promise<AgentPersona> {
     return apiService.put(`${this.baseUrl}/persona`, body)
   }

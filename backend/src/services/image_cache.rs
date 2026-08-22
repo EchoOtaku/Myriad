@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use uuid::Uuid;
 
 /// 最大图片大小 (10MB)
 const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
@@ -16,6 +17,12 @@ const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024;
 /// 图片缓存服务
 pub struct ImageCacheService {
     cache_dir: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoredImage {
+    pub url: String,
+    pub created: bool,
 }
 
 impl Default for ImageCacheService {
@@ -222,8 +229,13 @@ impl ImageCacheService {
         Ok(cached_url)
     }
 
-    /// Persist already-downloaded image bytes and return the local serve URL.
-    pub async fn store_bytes(&self, bytes: &[u8], media_type: &str) -> Result<String, String> {
+    /// Content-addressed write with creation status for transactional callers
+    /// that need to compensate a later database failure.
+    pub async fn store_bytes_with_status(
+        &self,
+        bytes: &[u8],
+        media_type: &str,
+    ) -> Result<StoredImage, String> {
         if bytes.is_empty() {
             return Err("generated image is empty".to_string());
         }
@@ -238,29 +250,114 @@ impl ImageCacheService {
         };
         let ext = Self::infer_extension("", Some(media_type));
         let cache_path = self.get_cache_path(&filename, ext);
+        let subdir = &filename[..2.min(filename.len())];
+        let url = format!(
+            "/api/brew/image-cache/{}/{}.{}",
+            subdir, filename, ext
+        );
         if cache_path.exists() {
-            let subdir = &filename[..2.min(filename.len())];
-            return Ok(format!(
-                "/api/brew/image-cache/{}/{}.{}",
-                subdir, filename, ext
-            ));
+            return Ok(StoredImage {
+                url,
+                created: false,
+            });
         }
         if let Some(parent) = cache_path.parent() {
             fs::create_dir_all(parent)
                 .await
                 .map_err(|e| format!("Failed to create cache subdirectory: {}", e))?;
         }
-        let mut file = fs::File::create(&cache_path)
+        let temporary_path = cache_path.with_extension(format!("{ext}.{}.tmp", Uuid::new_v4()));
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary_path)
             .await
             .map_err(|e| format!("Failed to create cache file: {}", e))?;
-        file.write_all(bytes)
+        if let Err(error) = file.write_all(bytes).await {
+            drop(file);
+            let _ = fs::remove_file(&temporary_path).await;
+            return Err(format!("Failed to write cache file: {error}"));
+        }
+        if let Err(error) = file.flush().await {
+            drop(file);
+            let _ = fs::remove_file(&temporary_path).await;
+            return Err(format!("Failed to flush cache file: {error}"));
+        }
+        drop(file);
+        let created = match fs::hard_link(&temporary_path, &cache_path).await {
+            Ok(()) => true,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
+            Err(error) => {
+                let _ = fs::remove_file(&temporary_path).await;
+                return Err(format!("Failed to publish cache file: {error}"));
+            }
+        };
+        let _ = fs::remove_file(&temporary_path).await;
+        Ok(StoredImage { url, created })
+    }
+
+    pub async fn remove_stored_url(&self, url: &str) -> Result<(), String> {
+        let path = self
+            .local_path_for_public_url(url)
+            .ok_or_else(|| "generated image URL is not a local cache asset".to_string())?;
+        match fs::remove_file(path).await {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(format!("Failed to remove generated image: {error}")),
+        }
+    }
+
+    /// Resolve a public `/api/brew/image-cache/{subdir}/{sha256}.{ext}` URL to
+    /// local bytes. Rejects anything that is not this site's cache path so
+    /// callers cannot turn it into an open HTTP fetch (SSRF).
+    pub fn local_path_for_public_url(&self, url: &str) -> Option<PathBuf> {
+        let path = image_cache_path(url)?;
+        let rest = path.strip_prefix("/api/brew/image-cache/")?;
+        let (subdir, file) = rest.split_once('/')?;
+        if file.contains('/') || file.contains('\\') || file.contains("..") {
+            return None;
+        }
+        let (stem, ext) = file.rsplit_once('.')?;
+        if subdir.len() != 2 || !subdir.chars().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        if stem.len() != 64 || !stem.chars().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        let ext = ext.to_ascii_lowercase();
+        if !matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "gif" | "webp") {
+            return None;
+        }
+        let stem = stem.to_ascii_lowercase();
+        if !stem.starts_with(&subdir.to_ascii_lowercase()) {
+            return None;
+        }
+        Some(self.get_cache_path(&stem, &ext))
+    }
+
+    pub async fn read_local_public_url(&self, url: &str) -> Result<(Vec<u8>, String), String> {
+        let path = self
+            .local_path_for_public_url(url)
+            .ok_or_else(|| "imageUrl must be a local /api/brew/image-cache path".to_string())?;
+        let bytes = fs::read(&path)
             .await
-            .map_err(|e| format!("Failed to write cache file: {}", e))?;
-        let subdir = &filename[..2.min(filename.len())];
-        Ok(format!(
-            "/api/brew/image-cache/{}/{}.{}",
-            subdir, filename, ext
-        ))
+            .map_err(|_| "cached image not found".to_string())?;
+        if bytes.is_empty() || bytes.len() > MAX_IMAGE_SIZE {
+            return Err("cached image is empty or too large".to_string());
+        }
+        let ext = path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("png")
+            .to_ascii_lowercase();
+        let mime = match ext.as_str() {
+            "jpg" | "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            "gif" => "image/gif",
+            "webp" => "image/webp",
+            _ => "application/octet-stream",
+        };
+        Ok((bytes, mime.to_string()))
     }
 
     /// 处理图片 URL - 如果是 Notion 临时 URL 则缓存，否则返回原 URL
@@ -285,6 +382,12 @@ impl ImageCacheService {
             Some(url.to_string())
         }
     }
+}
+
+fn image_cache_path(url: &str) -> Option<&str> {
+    let without_query = url.split('?').next().unwrap_or(url);
+    let start = without_query.find("/api/brew/image-cache/")?;
+    Some(&without_query[start..])
 }
 
 #[cfg(test)]
@@ -324,5 +427,22 @@ mod tests {
 
         assert_ne!(hash1, hash2);
         assert_eq!(hash1.len(), 64); // SHA256 hex = 64 chars
+    }
+
+    #[test]
+    fn local_path_only_accepts_site_image_cache_urls() {
+        let service = ImageCacheService::new();
+        let hash = "a".repeat(64);
+        let ok = format!("https://example.com/api/brew/image-cache/aa/{hash}.png");
+        assert!(service.local_path_for_public_url(&ok).is_some());
+        assert!(service
+            .local_path_for_public_url("https://evil.example/secret.png")
+            .is_none());
+        assert!(service
+            .local_path_for_public_url(&format!("/api/brew/image-cache/ab/{hash}.png"))
+            .is_none());
+        assert!(service
+            .local_path_for_public_url("/api/brew/image-cache/aa/../passwd.png")
+            .is_none());
     }
 }

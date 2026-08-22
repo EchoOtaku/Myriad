@@ -1,7 +1,8 @@
 //! Admin AI usage summary from `tapp_ai_cost_ledger`.
 //!
-//! Breaks down governed AI calls by calendar day, user (`subject_id`), and model.
-//! Complements the per-user journal at `GET /api/tapp/ai/v2/ledger`.
+//! Breaks down site-wide AI calls (text, image, speech) by calendar day, user
+//! (`subject_id`), model, and source. Complements the per-user journal at
+//! `GET /api/tapp/ai/v2/ledger`.
 
 use axum::{extract::Query, http::StatusCode, Json};
 use chrono::Duration;
@@ -26,6 +27,8 @@ pub struct AiUsageSummaryQuery {
     pub subject_id: Option<i32>,
     /// Optional exact model id filter.
     pub model: Option<String>,
+    /// Optional ledger source (`agent`, `life`, `runtime`, …).
+    pub source: Option<String>,
 }
 
 fn row_i64(row: &sea_orm::QueryResult, col: &str) -> i64 {
@@ -40,8 +43,11 @@ fn row_string(row: &sea_orm::QueryResult, col: &str) -> String {
     row.try_get::<String>("", col).unwrap_or_default()
 }
 
-/// Build day-range WHERE on bare table (no alias) plus optional subject/model.
-fn bare_where(subject: bool, model: bool) -> String {
+const SOURCE_EXPR: &str = "COALESCE(NULLIF(TRIM(source), ''), 'unknown')";
+const SOURCE_EXPR_L: &str = "COALESCE(NULLIF(TRIM(l.source), ''), 'unknown')";
+
+/// Build day-range WHERE on bare table (no alias) plus optional subject/model/source.
+fn bare_where(subject: bool, model: bool, source: bool) -> String {
     let mut s = String::from("WHERE occurred_at::date >= $1 AND occurred_at::date <= $2");
     let mut idx = 3u32;
     if subject {
@@ -50,13 +56,16 @@ fn bare_where(subject: bool, model: bool) -> String {
     }
     if model {
         s.push_str(&format!(" AND model = ${idx}"));
-        let _ = idx;
+        idx += 1;
+    }
+    if source {
+        s.push_str(&format!(" AND {SOURCE_EXPR} = ${idx}"));
     }
     s
 }
 
 /// Same filters with table alias `l`.
-fn aliased_where(subject: bool, model: bool) -> String {
+fn aliased_where(subject: bool, model: bool, source: bool) -> String {
     let mut s = String::from("WHERE l.occurred_at::date >= $1 AND l.occurred_at::date <= $2");
     let mut idx = 3u32;
     if subject {
@@ -65,7 +74,10 @@ fn aliased_where(subject: bool, model: bool) -> String {
     }
     if model {
         s.push_str(&format!(" AND l.model = ${idx}"));
-        let _ = idx;
+        idx += 1;
+    }
+    if source {
+        s.push_str(&format!(" AND {SOURCE_EXPR_L} = ${idx}"));
     }
     s
 }
@@ -75,6 +87,7 @@ fn base_params(
     today: chrono::NaiveDate,
     subject_id: Option<i32>,
     model: Option<&str>,
+    source: Option<&str>,
 ) -> Vec<SeaValue> {
     let mut values: Vec<SeaValue> = vec![SeaValue::from(from), SeaValue::from(today)];
     if let Some(sid) = subject_id {
@@ -83,10 +96,13 @@ fn base_params(
     if let Some(m) = model {
         values.push(SeaValue::String(Some(m.to_string())));
     }
+    if let Some(src) = source {
+        values.push(SeaValue::String(Some(src.to_string())));
+    }
     values
 }
 
-/// GET /api/analytics/ai-usage?days=7&subject_id=&model=
+/// GET /api/analytics/ai-usage?days=7&subject_id=&model=&source=
 /// or ?from=YYYY-MM-DD&to=YYYY-MM-DD
 pub async fn get_ai_usage_summary(
     crate::extract::Db(db): crate::extract::Db,
@@ -102,12 +118,24 @@ pub async fn get_ai_usage_summary(
         .as_ref()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
+    let source_filter = q
+        .source
+        .as_ref()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
 
     let has_subject = subject_filter.is_some();
     let has_model = model_filter.is_some();
-    let params = base_params(from, to_day, subject_filter, model_filter.as_deref());
-    let where_bare = bare_where(has_subject, has_model);
-    let where_l = aliased_where(has_subject, has_model);
+    let has_source = source_filter.is_some();
+    let params = base_params(
+        from,
+        to_day,
+        subject_filter,
+        model_filter.as_deref(),
+        source_filter.as_deref(),
+    );
+    let where_bare = bare_where(has_subject, has_model, has_source);
+    let where_l = aliased_where(has_subject, has_model, has_source);
 
     let daily_sql = format!(
         r#"
@@ -209,7 +237,13 @@ FROM tapp_ai_cost_ledger
 "#
     );
     let (prev_day_calls, prev_day_tokens) = {
-        let p = base_params(prev_day, prev_day, subject_filter, model_filter.as_deref());
+        let p = base_params(
+            prev_day,
+            prev_day,
+            subject_filter,
+            model_filter.as_deref(),
+            source_filter.as_deref(),
+        );
         db.query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             &sum_sql,
@@ -227,6 +261,7 @@ FROM tapp_ai_cost_ledger
             prev_range_to,
             subject_filter,
             model_filter.as_deref(),
+            source_filter.as_deref(),
         );
         db.query_one_raw(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
@@ -384,15 +419,21 @@ LIMIT 50
         })
         .collect();
 
-    // Filter option lists (day-scoped; one dimension less constrained for pickers).
+    // Filter option lists (day-scoped; the picker dimension itself is unconstrained).
     let mut model_opt_where = String::from(
         "WHERE occurred_at::date >= $1 AND occurred_at::date <= $2",
     );
     let mut model_opt_params: Vec<SeaValue> =
         vec![SeaValue::from(from), SeaValue::from(to_day)];
+    let mut next = 3u32;
     if let Some(sid) = subject_filter {
-        model_opt_where.push_str(" AND subject_id = $3");
+        model_opt_where.push_str(&format!(" AND subject_id = ${next}"));
         model_opt_params.push(SeaValue::Int(Some(sid)));
+        next += 1;
+    }
+    if let Some(ref src) = source_filter {
+        model_opt_where.push_str(&format!(" AND {SOURCE_EXPR} = ${next}"));
+        model_opt_params.push(SeaValue::String(Some(src.clone())));
     }
     let filter_model_rows = db
         .query_all_raw(Statement::from_sql_and_values(
@@ -415,9 +456,15 @@ LIMIT 50
     );
     let mut user_opt_params: Vec<SeaValue> =
         vec![SeaValue::from(from), SeaValue::from(to_day)];
+    let mut next = 3u32;
     if let Some(ref model) = model_filter {
-        user_opt_where.push_str(" AND l.model = $3");
+        user_opt_where.push_str(&format!(" AND l.model = ${next}"));
         user_opt_params.push(SeaValue::String(Some(model.clone())));
+        next += 1;
+    }
+    if let Some(ref src) = source_filter {
+        user_opt_where.push_str(&format!(" AND {SOURCE_EXPR_L} = ${next}"));
+        user_opt_params.push(SeaValue::String(Some(src.clone())));
     }
     let filter_user_rows = db
         .query_all_raw(Statement::from_sql_and_values(
@@ -445,6 +492,37 @@ LIMIT 100
                 "display_name": row.try_get::<Option<String>>("", "display_name").ok().flatten(),
             })
         })
+        .collect();
+
+    let mut source_opt_where = String::from(
+        "WHERE occurred_at::date >= $1 AND occurred_at::date <= $2",
+    );
+    let mut source_opt_params: Vec<SeaValue> =
+        vec![SeaValue::from(from), SeaValue::from(to_day)];
+    let mut next = 3u32;
+    if let Some(sid) = subject_filter {
+        source_opt_where.push_str(&format!(" AND subject_id = ${next}"));
+        source_opt_params.push(SeaValue::Int(Some(sid)));
+        next += 1;
+    }
+    if let Some(ref model) = model_filter {
+        source_opt_where.push_str(&format!(" AND model = ${next}"));
+        source_opt_params.push(SeaValue::String(Some(model.clone())));
+    }
+    let filter_source_rows = db
+        .query_all_raw(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            format!(
+                "SELECT DISTINCT {SOURCE_EXPR} AS source FROM tapp_ai_cost_ledger {source_opt_where} ORDER BY source ASC LIMIT 50"
+            ),
+            source_opt_params,
+        ))
+        .await
+        .unwrap_or_default();
+    let filter_sources: Vec<String> = filter_source_rows
+        .iter()
+        .map(|r| row_string(r, "source"))
+        .filter(|s| !s.is_empty())
         .collect();
 
     (
@@ -475,15 +553,17 @@ LIMIT 100
             "filter_options": {
                 "users": filter_users,
                 "models": filter_models,
+                "sources": filter_sources,
             },
             "filters": {
                 "subject_id": subject_filter,
+                "source": source_filter,
                 "model": model_filter,
             },
             "source": "tapp_ai_cost_ledger",
             // Explicit: unlike visitor analytics, staff (admin/owner) are INCLUDED.
             "staff_included": true,
-            "notes": "Full-site AI usage from tapp_ai_cost_ledger: all users including admin/owner; sources include runtime (Tapp), scheduler (cron/background tasks), agent (Arael), and reports. Tokens may be estimates.",
+            "notes": "Full-site AI usage from tapp_ai_cost_ledger: all users including admin/owner; text, image, and speech calls are recorded. Tokens may be estimates.",
         })),
     )
 }
@@ -503,18 +583,20 @@ mod tests {
 
     #[test]
     fn where_builders_add_optional_params() {
-        assert!(bare_where(false, false).contains("$2"));
-        assert!(bare_where(true, false).contains("subject_id = $3"));
-        assert!(bare_where(true, true).contains("model = $4"));
-        assert!(aliased_where(true, true).contains("l.model = $4"));
+        assert!(bare_where(false, false, false).contains("$2"));
+        assert!(bare_where(true, false, false).contains("subject_id = $3"));
+        assert!(bare_where(true, true, false).contains("model = $4"));
+        assert!(bare_where(true, true, true).contains("source"));
+        assert!(aliased_where(true, true, true).contains("l.model = $4"));
+        assert!(aliased_where(false, false, true).contains("$3"));
     }
 
     #[test]
     fn base_params_order() {
         let from = NaiveDate::from_ymd_opt(2026, 7, 1).unwrap();
         let today = NaiveDate::from_ymd_opt(2026, 7, 7).unwrap();
-        let p = base_params(from, today, Some(3), Some("gpt-test"));
-        assert_eq!(p.len(), 4);
+        let p = base_params(from, today, Some(3), Some("gpt-test"), Some("life"));
+        assert_eq!(p.len(), 5);
     }
 
     #[test]

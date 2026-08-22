@@ -420,6 +420,14 @@ pub struct DynamicConfig {
     /// Agent 生命：设定、状态、主动对话、事件开口。默认关。
     pub agent_life_enabled: bool,
 
+    /// Arael 的页面形象：当前生效的 2.5D 图集包 id（sha256 hex）。
+    /// None = 没有编译过的骨骼，浮动层只回退主立绘。站点级——只有一个 Arael。
+    pub agent_rig_asset_id: Option<String>,
+
+    /// Hugging Face token used only by the backend when invoking the remote
+    /// See-through ZeroGPU Space. This is a write-only host credential.
+    pub see_through_hf_token: Option<String>,
+
     // 3D 模型生成配置（独立于 AI 图片 Provider）
     pub tripo_enabled: bool,
     pub tripo_api_key: Option<String>,
@@ -683,8 +691,7 @@ impl Default for DynamicConfig {
             provider_openrouter_api_key: None,
             provider_gemini_api_key: None,
             provider_volcengine_api_key: None,
-            provider_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3"
-                .to_string(),
+            provider_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
             ai_vendor_sources: Vec::new(),
             ai_source: String::new(),
             lite_ai_source: String::new(),
@@ -737,6 +744,8 @@ impl Default for DynamicConfig {
             ai_image_volcengine_api_key: None,
             ai_image_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
             agent_life_enabled: false,
+            agent_rig_asset_id: None,
+            see_through_hf_token: None,
             // Tripo 3D（低模 Web 角色默认预算）
             tripo_enabled: false,
             tripo_api_key: None,
@@ -771,7 +780,7 @@ impl Default for DynamicConfig {
 
             tapp_window_schemes: None,
 
-            // 普通用户 elevated 权限默认值（13 项）
+            // 普通用户 elevated 权限默认值
             // 默认全部关闭，管理员可选择性开放
             user_perm_ai_generate: false,
             user_perm_ai_analyze: false,
@@ -1293,7 +1302,10 @@ mod tests {
             ai_image_openai_api_key: Some("image-oa".to_string()),
             ..DynamicConfig::default()
         };
-        assert_eq!(config.shared_openrouter_api_key().as_deref(), Some("vault-or"));
+        assert_eq!(
+            config.shared_openrouter_api_key().as_deref(),
+            Some("vault-or")
+        );
         assert_eq!(config.shared_openai_api_key().as_deref(), Some("vault-oa"));
         let resolved = config.resolve_ai_config(ModelTier::Standard);
         assert_eq!(resolved.api_key.as_deref(), Some("vault-or"));
