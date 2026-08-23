@@ -17,6 +17,15 @@ export function httpStatusMessage(status: number): string {
   return t.networkError
 }
 
+export function statusFromErrorText(text: string): number {
+  const m =
+    text.match(/\bHTTP\s+(\d{3})\b/i) ||
+    text.match(/^API Error:\s*(\d{3})$/i) ||
+    text.match(/\((?:HTTP\s*)?(\d{3})\)$/)
+  const status = m ? Number(m[1]) : 0
+  return status >= 400 && status <= 599 ? status : 0
+}
+
 export function isUselessErrorText(text: string): boolean {
   const detail = text.replace(/\s+/g, ' ').trim()
   if (!detail) return true
@@ -34,10 +43,24 @@ export function isUselessErrorText(text: string): boolean {
   if (/^internal (server )?error$/i.test(detail)) return true
   if (/^operation failed$/i.test(detail)) return true
   if (/^failed$/i.test(detail)) return true
+  if (/^failed to (save|load|get|publish|rotate|compose) /i.test(detail)) {
+    return true
+  }
   if (/^no library data available$/i.test(detail)) return true
   if (/^action failed$/i.test(detail)) return true
   if (/^discovery failed$|^import failed$|^failed to add$/i.test(detail)) {
     return true
+  }
+  if (/^database error$/i.test(detail)) return true
+  if (/\((?:HTTP\s*)?\d{3}\)$/i.test(detail)) {
+    const inner = detail.replace(/\s*\((?:HTTP\s*)?\d{3}\)\s*$/i, '').trim()
+    if (
+      !inner ||
+      /^could not [a-z ]+$/i.test(inner) ||
+      /^failed to [a-z ]+$/i.test(inner)
+    ) {
+      return true
+    }
   }
   return false
 }
@@ -90,14 +113,14 @@ function clip(text: string): string {
 export function userFacingError(reason: unknown, fallback?: string): string {
   const t = currentCopy().errors
   const fallbackText = fallback?.trim() || t.unknown
-  const status = readStatus(reason)
-  const code = readCode(reason)
   const raw =
     reason instanceof Error
       ? reason.message.trim()
       : typeof reason === 'string'
         ? reason.trim()
         : ''
+  const status = readStatus(reason) || statusFromErrorText(raw)
+  const code = readCode(reason)
   const hint = readHint(reason)
 
   if (code === 'TIMEOUT' || status === 408) {

@@ -197,7 +197,10 @@ export function TappDetailPage() {
 
   const saveCredential = useCallback(
     async (key: string, value: string) => {
-      if (!value.trim()) throw new Error('Credential is required')
+      if (!value.trim()) {
+        showToastMessage(t.tapp.credentialSaveFailed, 'error')
+        return
+      }
       setCredentialSaving(key)
       try {
         await TappApiService.setTappCredential(tappId, key, value)

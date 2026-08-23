@@ -124,10 +124,7 @@ export function registerUIHandlers(
     } catch (error) {
       return {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to publish notification',
+        error: userFacingError(error),
       }
     }
   })
@@ -760,10 +757,7 @@ export function registerUserHandlers(
     } catch (error) {
       return {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to load permission levels',
+        error: userFacingError(error),
       }
     }
   })
@@ -780,10 +774,7 @@ export function registerUserHandlers(
     } catch (error) {
       return {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to load permission levels',
+        error: userFacingError(error),
       }
     }
   })

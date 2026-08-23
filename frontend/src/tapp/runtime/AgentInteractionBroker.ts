@@ -34,7 +34,7 @@ async function executeHostIntent(
         timestamp: Date.now(),
       })
       if (result === null) {
-        throw new Error('ui.open host adapter is not available')
+        throw new Error(currentCopy().errors.operationFailed)
       }
       return result
     }

@@ -619,11 +619,7 @@ function TappWidgetRuntime({
         setLoading(false)
       } catch (err) {
         if (!cancelled) {
-          setError(
-            err instanceof Error && err.message.trim()
-              ? `${t.tapp.loadAppFailed} · ${err.message}`
-              : t.tapp.loadAppFailed,
-          )
+          setError(userFacingError(err, t.tapp.loadAppFailed))
           setLoading(false)
         }
       }
@@ -719,11 +715,7 @@ function TappWidgetRuntime({
         setLoading(false)
       } catch (err) {
         if (cancelled) return
-        setError(
-          err instanceof Error && err.message.trim()
-            ? `${t.tapp.appCodeLoadFailed} · ${err.message}`
-            : t.tapp.appCodeLoadFailed,
-        )
+        setError(userFacingError(err, t.tapp.appCodeLoadFailed))
         setLoading(false)
       }
     }
@@ -854,11 +846,7 @@ function TappWidgetRuntime({
     try {
       await runtime.startTapp(widget.tappId)
     } catch (error) {
-      setError(
-        error instanceof Error && error.message.trim()
-          ? `${t.tapp.startAppFailed} · ${error.message}`
-          : t.tapp.startAppFailed,
-      )
+      setError(userFacingError(error, t.tapp.startAppFailed))
     }
   }, [widget, runtime, canControlLifecycle, t.tapp.startAppFailed])
 

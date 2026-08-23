@@ -9,7 +9,18 @@ import { useCallback, useState } from 'react'
 import { currentCopy } from '../i18n/localeCopy'
 import { fetchJson } from '../utils/apiHelper'
 import { getCSRFToken } from '../utils/csrf'
-import { userFacingError } from '../utils/userFacingError'
+import {
+  httpStatusMessage,
+  isUselessErrorText,
+  userFacingError,
+} from '../utils/userFacingError'
+
+function throwTaskHttp(data: { error?: string }, status: number): never {
+  const raw = typeof data.error === 'string' ? data.error.trim() : ''
+  throw new Error(
+    raw && !isUselessErrorText(raw) ? raw : httpStatusMessage(status),
+  )
+}
 
 interface SubmitTaskResponse {
   success: boolean
@@ -112,7 +123,7 @@ export function useBackgroundTasks() {
         const data: TaskStatusResponse = await response.json()
 
         if (!response.ok || !data.success) {
-          throw new Error(data.error || `HTTP ${response.status}`)
+          throwTaskHttp(data, response.status)
         }
 
         return data.task || null
@@ -137,7 +148,7 @@ export function useBackgroundTasks() {
         const data: TaskStatusResponse = await response.json()
 
         if (!response.ok || !data.success) {
-          throw new Error(data.error || `HTTP ${response.status}`)
+          throwTaskHttp(data, response.status)
         }
 
         return data.task || null
@@ -162,7 +173,7 @@ export function useBackgroundTasks() {
         const data: CacheStatusResponse = await response.json()
 
         if (!response.ok || !data.success) {
-          throw new Error(data.error || `HTTP ${response.status}`)
+          throwTaskHttp(data, response.status)
         }
 
         return data
@@ -216,7 +227,7 @@ export function useBackgroundTasks() {
         const data = await response.json()
 
         if (!response.ok || !data.success) {
-          throw new Error(data.error || `HTTP ${response.status}`)
+          throwTaskHttp(data, response.status)
         }
 
         return true
@@ -253,7 +264,7 @@ export function useBackgroundTasks() {
         const data = await response.json()
 
         if (!response.ok || !data.success) {
-          throw new Error(data.error || `HTTP ${response.status}`)
+          throwTaskHttp(data, response.status)
         }
 
         return true
@@ -287,7 +298,7 @@ export function useBackgroundTasks() {
       const data = await response.json()
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error || `HTTP ${response.status}`)
+        throwTaskHttp(data, response.status)
       }
 
       return true

@@ -451,6 +451,9 @@ export const jaJP: TranslationKeys = {
     emailOptional: 'メールアドレス（任意）',
     emailPlaceholder: 'you@example.com',
     registerFailed: '登録に失敗しました',
+    registerDisabled: '公開登録はオフです。管理者にアカウント作成を依頼してください。',
+    registerSetupRequired: '登録する前にセットアップを完了してください。',
+    usernameTaken: 'このユーザー名は既に使われています',
     registerResponseIncomplete: '登録レスポンスが不完全です',
     usernameRange3to20: 'ユーザー名は 3〜20 文字で入力してください',
     passwordRule: 'パスワードは 8 文字以上、英数字を含めてください',
@@ -3022,6 +3025,10 @@ export const jaJP: TranslationKeys = {
     adminOnlyGenerate: '管理者のみレポートを生成できます',
     generateFailed: '生成失敗',
     generateFailedRetry: '生成に失敗しました、後でもう一度お試しください',
+    generateNeedData:
+      'このプラットフォームのデータがまだありません。先に取得してからレポートを生成してください。',
+    generateEmptySummary:
+      'データが足りずレポートを生成できません。先にもう少し同期してください。',
 
     // UIテキスト
     close: '閉じる',

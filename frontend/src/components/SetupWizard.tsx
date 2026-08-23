@@ -22,7 +22,10 @@ import { assertConfigWriteSuccess } from '../lib/api'
 import { parseAuthMeResponse } from '../utils/authMe'
 import { getCSRFHeaderName, getCSRFToken } from '../utils/csrf'
 import { consumeSetupSecretFromLocation } from '../utils/setupSecretFromUrl'
-import { userFacingError } from '../utils/userFacingError'
+import {
+  isUselessErrorText,
+  userFacingError,
+} from '../utils/userFacingError'
 import { InputItem, SegmentedControl, SwitchItem } from './settings'
 import { SettingItemWrapper } from './settings/items/SettingItemWrapper'
 import {
@@ -108,10 +111,14 @@ function enterDirBetween(from: Stage, to: Stage): EnterDir {
 async function getResponseError(response: Response, fallback: string) {
   try {
     const body = await response.json()
-    return body.message || body.error || fallback
+    const raw = [body.message, body.error].find(
+      (value) => typeof value === 'string' && value.trim(),
+    )
+    if (raw && !isUselessErrorText(raw)) return raw.trim()
   } catch {
-    return fallback
+    /* use fallback */
   }
+  return fallback
 }
 
 const SetupWizard: React.FC = () => {
@@ -414,10 +421,10 @@ const SetupWizard: React.FC = () => {
         })
         setSavingDb(false)
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setNotice({
         tone: 'error',
-        message: `${t.setup.saveConfigFailed}: ${err.message}`,
+        message: userFacingError(err, t.setup.saveConfigFailed),
       })
       setSavingDb(false)
     }
@@ -508,10 +515,10 @@ const SetupWizard: React.FC = () => {
 
       // 重新检查状态以更新 UI
       await checkSetupStatus()
-    } catch (err: any) {
+    } catch (err: unknown) {
       setNotice({
         tone: 'error',
-        message: `${t.setup.dbMigrationFailed}: ${err.message}`,
+        message: userFacingError(err, t.setup.dbMigrationFailed),
       })
     } finally {
       setMigratingDb(false)
@@ -635,10 +642,10 @@ const SetupWizard: React.FC = () => {
       )
 
       await finishSetup()
-    } catch (err: any) {
+    } catch (err: unknown) {
       setNotice({
         tone: 'error',
-        message: `${t.setup.siteInfoFailed}: ${err.message}`,
+        message: userFacingError(err, t.setup.siteInfoFailed),
       })
       setSavingSite(false)
     }
@@ -717,10 +724,10 @@ const SetupWizard: React.FC = () => {
       }
       setNotice({ tone: 'info', message: t.setup.autoLoginFailed })
       await checkSetupStatus()
-    } catch (err: any) {
+    } catch (err: unknown) {
       setNotice({
         tone: 'error',
-        message: `${t.setup.createFailed}: ${err.message}`,
+        message: userFacingError(err, t.setup.createFailed),
       })
     } finally {
       setCreatingAdmin(false)

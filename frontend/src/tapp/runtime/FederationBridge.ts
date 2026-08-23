@@ -22,6 +22,7 @@
 import type { ComposeXShareRequest } from '../../services/xShareApi'
 import type { TappInstance, TappMessage } from '../types'
 import type { TappBridge } from './TappBridge'
+import { currentCopy } from '../../i18n/localeCopy'
 import { ApiError } from '../../services/api'
 import { userFacingError } from '../../utils/userFacingError'
 import { federationApi } from '../../services/federationApi'
@@ -295,13 +296,7 @@ export function registerFederationHandlers(
         )
         return { success: true, data }
       } catch (error) {
-        return {
-          success: false,
-          error:
-            error instanceof Error
-              ? error.message
-              : 'Failed to rotate federation keys',
-        }
+        return federationFail(error, currentCopy().errors.operationFailed)
       }
     },
   )
@@ -557,13 +552,7 @@ export function registerFederationHandlers(
         const data = await fn(objectId, runtimeGrant)
         return { success: true, data }
       } catch (error) {
-        return {
-          success: false,
-          error:
-            error instanceof Error
-              ? error.message
-              : `Failed to ${action}`,
-        }
+        return federationFail(error, currentCopy().errors.operationFailed)
       }
     }
 
@@ -628,13 +617,7 @@ export function registerFederationHandlers(
       const data = await xShareApi.getStatus()
       return { success: true, data }
     } catch (error) {
-      return {
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to get external share status',
-      }
+      return federationFail(error, currentCopy().errors.operationFailed)
     }
   })
 
@@ -686,13 +669,7 @@ export function registerFederationHandlers(
         }
         return { success: true, data }
       } catch (error) {
-        return {
-          success: false,
-          error:
-            error instanceof Error
-              ? error.message
-              : 'Failed to compose external share',
-        }
+        return federationFail(error, currentCopy().errors.operationFailed)
       }
     },
   )
@@ -867,13 +844,7 @@ export function registerFederationHandlers(
         const data = await federationApi.acceptRoomInvite(roomId, runtimeGrant)
         return { success: true, data }
       } catch (error) {
-        return {
-          success: false,
-          error:
-            error instanceof Error
-              ? error.message
-              : 'Failed to accept room invite',
-        }
+        return federationFail(error, currentCopy().errors.operationFailed)
       }
     },
   )
@@ -889,13 +860,7 @@ export function registerFederationHandlers(
         const data = await federationApi.rejectRoomInvite(roomId, runtimeGrant)
         return { success: true, data }
       } catch (error) {
-        return {
-          success: false,
-          error:
-            error instanceof Error
-              ? error.message
-              : 'Failed to reject room invite',
-        }
+        return federationFail(error, currentCopy().errors.operationFailed)
       }
     },
   )

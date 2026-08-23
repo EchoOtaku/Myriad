@@ -424,6 +424,9 @@ export const zhCN: TranslationKeys = {
     emailOptional: '邮箱（可选）',
     emailPlaceholder: 'you@example.com',
     registerFailed: '注册失败',
+    registerDisabled: '公开注册已关闭，请让管理员创建账号',
+    registerSetupRequired: '请先完成安装向导再注册',
+    usernameTaken: '这个用户名已被使用',
     registerResponseIncomplete: '注册响应不完整',
     usernameRange3to20: '用户名长度应为 3-20 个字符',
     passwordRule: '密码至少 8 位，且必须包含字母与数字',
@@ -2890,6 +2893,8 @@ export const zhCN: TranslationKeys = {
     adminOnlyGenerate: '仅管理员可生成报告',
     generateFailed: '生成失败',
     generateFailedRetry: '生成失败,请稍后重试',
+    generateNeedData: '该平台还没有可用数据。请先成功抓取后再生成报告。',
+    generateEmptySummary: '平台数据太少，无法生成报告。请先同步更多内容。',
 
     // UI 文本
     close: '关闭',

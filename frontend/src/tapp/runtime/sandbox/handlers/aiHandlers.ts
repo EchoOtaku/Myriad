@@ -64,10 +64,7 @@ export function registerAIHandlers(bridge: TappBridge): () => void {
     } catch (error) {
       return {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'AI task cancellation failed',
+        error: userFacingError(error),
       }
     }
   })

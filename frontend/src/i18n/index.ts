@@ -408,6 +408,9 @@ export interface TranslationKeys {
     emailOptional: string
     emailPlaceholder: string
     registerFailed: string
+    registerDisabled: string
+    registerSetupRequired: string
+    usernameTaken: string
     registerResponseIncomplete: string
     usernameRange3to20: string
     passwordRule: string
@@ -2689,6 +2692,8 @@ export interface TranslationKeys {
     adminOnlyGenerate: string
     generateFailed: string
     generateFailedRetry: string
+    generateNeedData: string
+    generateEmptySummary: string
 
     // UI 文本
     close: string

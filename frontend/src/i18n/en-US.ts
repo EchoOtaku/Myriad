@@ -454,6 +454,9 @@ export const enUS: TranslationKeys = {
     emailOptional: 'Email (optional)',
     emailPlaceholder: 'you@example.com',
     registerFailed: 'Registration failed',
+    registerDisabled: 'Public registration is off. Ask an administrator to create an account.',
+    registerSetupRequired: 'Finish setup before creating an account.',
+    usernameTaken: 'This username is already in use',
     registerResponseIncomplete: 'Incomplete registration response',
     usernameRange3to20: 'Username must be 3-20 characters',
     passwordRule:
@@ -3047,6 +3050,10 @@ export const enUS: TranslationKeys = {
     adminOnlyGenerate: 'Only admin can generate reports',
     generateFailed: 'Generation failed',
     generateFailedRetry: 'Generation failed, please try again',
+    generateNeedData:
+      'This platform has no usable data yet. Fetch it first, then generate the report.',
+    generateEmptySummary:
+      'There is not enough platform data to generate a report. Sync more content first.',
 
     // UI text
     close: 'Close',

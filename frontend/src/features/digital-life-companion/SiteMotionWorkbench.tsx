@@ -21,6 +21,7 @@ import {
 } from '../../components/agent/lifeVitals'
 import { SettingsButton, ToggleSwitch } from '../../components/settings'
 import { useI18n } from '../../contexts/I18nContext'
+import { userFacingError } from '../../utils/userFacingError'
 import { agentService } from '../../services/agent'
 import type { AgentPersona } from '../../services/agent/agentApi'
 import Anime25DWorkbench from './anime25drig/Anime25DWorkbench'
@@ -133,9 +134,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
           setRigManifest(null)
           setPortraitUrl(null)
           setGenerationFingerprint(null)
-          setError(
-            reason instanceof Error ? reason.message : t.companion.loadFailed,
-          )
+          setError(userFacingError(reason, t.companion.loadFailed))
         }
       })
     return () => {
@@ -181,9 +180,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
       .catch((reason) => {
         if (!cancelled) {
           setSeeThroughTokenConfigured(false)
-          setError(
-            reason instanceof Error ? reason.message : t.companion.loadFailed,
-          )
+          setError(userFacingError(reason, t.companion.loadFailed))
         }
       })
     return () => {
@@ -207,9 +204,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
         })
         setPersonaSnapshot(saved)
       } catch (reason) {
-        setError(
-          reason instanceof Error ? reason.message : o.visualDesignSaveFailed,
-        )
+        setError(userFacingError(reason, o.visualDesignSaveFailed))
       }
     },
     [o.visualDesignSaveFailed, personaSnapshot],
@@ -233,7 +228,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
         setPersonaSnapshot(saved)
         window.dispatchEvent(new CustomEvent('arael-persona-updated'))
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : o.saveFailed)
+        setError(userFacingError(reason, o.saveFailed))
       }
     },
     [o.saveFailed, personaSnapshot],
@@ -278,7 +273,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
         applyAddressee(await agentService.putAddressee({ doNotDisturb: next }))
       } catch (reason) {
         setDoNotDisturb(previous)
-        setError(reason instanceof Error ? reason.message : t.companion.loadFailed)
+        setError(userFacingError(reason, t.companion.loadFailed))
       } finally {
         setDndBusy(false)
       }
@@ -297,7 +292,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
           }),
         )
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : t.companion.loadFailed)
+        setError(userFacingError(reason, t.companion.loadFailed))
       } finally {
         setDndBusy(false)
       }

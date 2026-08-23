@@ -14,6 +14,8 @@ describe('userFacingError', () => {
     assert.equal(isUselessErrorText('Failed to fetch'), true)
     assert.equal(isUselessErrorText('HTTP 500: Internal Server Error'), true)
     assert.equal(isUselessErrorText('CSRF token unavailable'), true)
+    assert.equal(isUselessErrorText('Database error'), true)
+    assert.equal(isUselessErrorText('Failed to save notification preferences'), true)
     assert.equal(isUselessErrorText('Steam 未返回游戏数据'), false)
   })
 
@@ -35,5 +37,14 @@ describe('userFacingError', () => {
     const text = userFacingError(err)
     assert.equal(/API Error/i.test(text), false)
     assert.match(text, /500/)
+  })
+
+  it('extracts HTTP status from English fallbacks', () => {
+    const text = userFacingError(
+      new Error('Could not load site face (HTTP 502)'),
+      '操作失败',
+    )
+    assert.match(text, /502/)
+    assert.equal(/Could not load/i.test(text), false)
   })
 })

@@ -822,10 +822,7 @@ export function registerSpeechHandlers(
     } catch (error) {
       return {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : 'Failed to get speech status',
+        error: userFacingError(error),
       }
     }
   })
@@ -1460,8 +1457,7 @@ export function registerContextHandlers(
       }
       return {
         success: false,
-        error:
-          grantError instanceof Error ? grantError.message : 'Failed',
+        error: userFacingError(grantError),
       }
     }
   })

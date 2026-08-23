@@ -11,7 +11,7 @@
 import type { TappAPIResponse } from '../types'
 import { currentCopy } from '../../i18n/localeCopy'
 import { getCSRFToken } from '../../utils/csrf'
-import { httpStatusMessage } from '../../utils/userFacingError'
+import { httpStatusMessage, userFacingError } from '../../utils/userFacingError'
 import { TappRuntimeGrant } from './TappRuntimeGrant'
 
 // 类型定义
@@ -454,7 +454,7 @@ export class TappScheduler {
         this.reportTaskComplete(
           event.executionId,
           false,
-          error instanceof Error ? error.message : 'Unknown error',
+          userFacingError(error),
         )
       }
     } else {

@@ -385,7 +385,7 @@ function generatePageHTML(
           console.error('[Page] Render error:', error);
           Tapp.lifecycle._notifyError(error);
           document.getElementById('tapp-content').innerHTML =
-            '<div class="tapp-empty tapp-text-error">' + ${serializeSandboxScriptValue(renderFailed)} + (error && error.message ? ' · ' + error.message : '') + '</div>';
+            '<div class="tapp-empty tapp-text-error">' + ${serializeSandboxScriptValue(renderFailed)} + '</div>';
         }
       }, 50);
     })();

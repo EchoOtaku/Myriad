@@ -273,7 +273,7 @@ function generateWidgetHTML(
           var root = document.getElementById('widget-root');
           if (root) {
             root.innerHTML =
-              '<div class="tapp-empty tapp-text-error">' + ${serializeSandboxScriptValue(labels.renderFailed)} + (error && error.message ? ' · ' + error.message : '') + '</div>';
+              '<div class="tapp-empty tapp-text-error">' + ${serializeSandboxScriptValue(labels.renderFailed)} + '</div>';
           }
         }
       };
