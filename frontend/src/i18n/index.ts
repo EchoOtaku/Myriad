@@ -2413,6 +2413,54 @@ export interface TranslationKeys {
     noticeUpdaterRunning: string
     noticeUpdaterUnknown: string
     noticeUpdaterSubmitted: string
+    noticeFederationRevoked: string
+    noticeFederationRevokedBody: string
+    noticeNewFollower: string
+    noticeNewFollowerBody: string
+    noticeFollowAccepted: string
+    noticeFollowAcceptedBody: string
+    noticeChannelInvite: string
+    noticeChannelInviteBody: string
+    noticeRoomInvite: string
+    noticeRoomInviteBody: string
+    noticeRoomInviteNamedBody: string
+    noticeRoomInviteAccepted: string
+    noticeRoomInviteAcceptedBody: string
+    noticeRoomInviteAcceptedNamedBody: string
+    noticeChannelAccepted: string
+    noticeChannelAcceptedBody: string
+    noticeDeliveryFailed: string
+    noticeDeliveryFailedBody: string
+    noticePreviewPhoto: string
+    noticePreviewFile: string
+    noticePreviewSystem: string
+    noticePreviewEncrypted: string
+    noticePreviewNew: string
+    noticeSkillPruned: string
+    noticeSkillImproved: string
+    noticeSkillChanged: string
+    gameConfigInvalid: string
+    gameMessageInvalid: string
+    agentUnsupported: string
+    agentConfirmExpired: string
+    agentConfirmMissing: string
+    agentTaskCancelled: string
+    agentTaskInterrupted: string
+    agentStepTimeout: string
+    agentInputEmpty: string
+    agentInputTooLong: string
+    subscribeAllFailed: string
+    noticeAgentTaskFailed: string
+    noticeAgentTaskCompleted: string
+    noticeAgentTaskWaiting: string
+    noticeAgentTaskRunning: string
+    privateNetworkBlocked: string
+    feedNotFound: string
+    rsshubUnavailable: string
+    pipelineTooManySteps: string
+    heartbeatAdminRequired: string
+    writeItemsOverCap: string
+    stepNeedsConfirm: string
     httpStatus: string
     lyricsFailed: string
     weatherFailed: string
@@ -3965,6 +4013,8 @@ export interface TranslationKeys {
     resultsCount: string
     refreshAllSources: string
     errorDiscoverFailed: string
+    noMatchingSources: string
+    tryOtherKeywords: string
     errorConfigRsshub: string
     errorEnterUrl: string
     errorLinkNeedName: string

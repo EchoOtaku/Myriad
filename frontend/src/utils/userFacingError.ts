@@ -170,7 +170,12 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return joinParts(t.aiResponseInvalid, usefulExtra(hint, t.aiResponseInvalid))
   }
-  if (code === 'ai_generation_failed' || /^ai error:/i.test(raw)) {
+  if (
+    code === 'ai_generation_failed' ||
+    /^ai error:/i.test(raw) ||
+    /^ai generation failed$/i.test(raw) ||
+    /^gemini api /i.test(raw)
+  ) {
     return joinParts(t.aiGenerationFailed, usefulExtra(hint, t.aiGenerationFailed))
   }
   if (code === 'settings_backup_failed') {
@@ -351,7 +356,27 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (
     code === 'agent_processing_failed' ||
     /^processing failed$/i.test(raw) ||
-    /^处理失败/.test(raw)
+    /^处理失败/.test(raw) ||
+    /抱歉，这次没能完成你的请求|抱歉，执行时遇到了问题|没能执行成功|执行过程中遇到问题/.test(
+      raw,
+    )
+  ) {
+    return t.agentProcessingFailed
+  }
+  if (
+    /^the scheduled task failed$|^the task failed$|^failed$|前端任务执行失败|^任务执行失败$|^任务未完成$|^任务失败$|^未知错误$|^失败$/.test(
+      raw,
+    )
+  ) {
+    return t.agentProcessingFailed
+  }
+  if (
+    /^the failed step was skipped$|用户选择跳过错误步骤/.test(raw)
+  ) {
+    return t.agentProcessingFailed
+  }
+  if (
+    /^the failed step will be retried$|用户选择重试失败步骤/.test(raw)
   ) {
     return t.agentProcessingFailed
   }
@@ -359,10 +384,187 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.agentProcessingFailed
   }
   if (
+    /this action is not supported|that platform is not supported|不支持此操作|不支持的平台名称/i.test(
+      raw,
+    )
+  ) {
+    return t.agentUnsupported
+  }
+  if (
+    /^this confirmation expired$|确认请求已过期/i.test(raw)
+  ) {
+    return t.agentConfirmExpired
+  }
+  if (
+    /this confirmation is no longer available|确认请求不存在/i.test(raw)
+  ) {
+    return t.agentConfirmMissing
+  }
+  if (
+    /^the task was cancelled$|任务已被取消|任务已被用户取消|操作已取消/i.test(
+      raw,
+    )
+  ) {
+    return t.agentTaskCancelled
+  }
+  if (
+    /^the task was interrupted$|任务因服务重启/i.test(raw)
+  ) {
+    return t.agentTaskInterrupted
+  }
+  if (
+    /^the step timed out$|执行超时/i.test(raw)
+  ) {
+    return t.agentStepTimeout
+  }
+  if (/^input is empty$|^输入不能为空$/.test(raw)) {
+    return t.agentInputEmpty
+  }
+  if (/^input is too long$|输入过长/.test(raw)) {
+    return t.agentInputTooLong
+  }
+  if (
+    /could not subscribe to any|尝试了 .* 个源都无法订阅/i.test(raw)
+  ) {
+    return t.subscribeAllFailed
+  }
+  if (
+    /this address is not allowed|不允许访问内网|不允许的 url scheme/i.test(
+      raw,
+    )
+  ) {
+    return t.privateNetworkBlocked
+  }
+  if (
+    /this url is missing a host|url 缺少 host/i.test(raw)
+  ) {
+    return t.invalidUrl
+  }
+  if (
+    /^missing url or feeds$|^no feed url to try$|缺少 url 或 feeds|没有可用的订阅源/i.test(
+      raw,
+    )
+  ) {
+    return t.subscribeAllFailed
+  }
+  if (
+    /^too many items to write at once$|单次最多写入/i.test(raw)
+  ) {
+    return t.writeItemsOverCap
+  }
+  if (
+    /^missing text for speech$|缺少 text 参数，无法进行文字转语音/.test(
+      raw,
+    )
+  ) {
+    return t.emptyDialogueText
+  }
+  if (/^missing music action$|缺少 action 参数/.test(raw)) {
+    return t.agentInputEmpty
+  }
+  if (
+    /^this article cannot be changed$|无权操作该文章/.test(raw)
+  ) {
+    return t.forbidden
+  }
+  if (
+    /^feed not found$|^no feeds are available$|^that feed or author was not found$|^that was not found in subscribed feeds$|^no matching rss feed was found$|未找到匹配|系统中暂无订阅源|未在已订阅源中找到|未能找到匹配的 RSS|未找到名为/.test(
+      raw,
+    )
+  ) {
+    return t.feedNotFound
+  }
+  if (
+    /^no matching articles were found$|未找到符合条件的文章/.test(raw)
+  ) {
+    return t.notFound
+  }
+  if (
+    /^no matching playlist was found$|没有找到相关歌单/.test(raw)
+  ) {
+    return t.notFound
+  }
+  if (/^article not found$|未找到文章/.test(raw)) {
+    return t.notFound
+  }
+  if (/^task not found$|任务不存在或无权访问/.test(raw)) {
+    return t.notFound
+  }
+  if (
+    /could not set up rsshub|could not read rsshub|no rsshub instances|初始化 RSSHub|读取 RSSHub|RSSHub 实例表为空/i.test(
+      raw,
+    )
+  ) {
+    return t.rsshubUnavailable
+  }
+  if (
+    /^too many pipeline steps$|管道步骤数不能超过/.test(raw)
+  ) {
+    return t.pipelineTooManySteps
+  }
+  if (
+    /^heartbeat admin required$|Heartbeat 管理需要管理员/.test(raw)
+  ) {
+    return t.heartbeatAdminRequired
+  }
+  if (
+    /^this step needs confirmation first$|需要人工确认|未经确认的高风险/.test(
+      raw,
+    )
+  ) {
+    return t.stepNeedsConfirm
+  }
+  if (
+    /^missing user intent$|Missing userIntent|请描述你想要执行的操作/.test(
+      raw,
+    )
+  ) {
+    return t.agentInputEmpty
+  }
+  if (
+    /^missing url or query$|需要提供 url 或 query/.test(raw)
+  ) {
+    return t.agentInputEmpty
+  }
+  if (
+    /^this url is invalid$|输入不是有效的 URL/.test(raw)
+  ) {
+    return t.invalidUrl
+  }
+  if (
+    /^this step cannot be called directly$|不应被直接调用/.test(raw)
+  ) {
+    return t.agentUnsupported
+  }
+  if (/^the system is shutting down$|系统正在关闭/.test(raw)) {
+    return t.agentTaskInterrupted
+  }
+  if (
+    /^agent is admin only$|^agent chat is not enabled|Agent 仅管理员|未对普通用户开放/.test(
+      raw,
+    )
+  ) {
+    return t.forbidden
+  }
+  if (
+    /^this service is not configured$|API Key 未配置|图片生成完成，但无法提取/i.test(
+      raw,
+    )
+  ) {
+    return /TTS|语音|Speech/.test(raw) ? t.speechNotConfigured : t.agentProcessingFailed
+  }
+  if (
     /^invalid tappid$/i.test(raw) ||
     /无效的 tappId/.test(raw)
   ) {
     return currentCopy().tapp.invalidId
+  }
+  if (
+    code === 'media_action_invalid' ||
+    code === 'media_mode_invalid' ||
+    /^invalid (action|mode)$/i.test(raw)
+  ) {
+    return t.operationFailed
   }
   if (
     /^invalid url$/i.test(raw) ||
@@ -377,6 +579,39 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     )
   ) {
     return t.federationMoveFailed
+  }
+  if (
+    /failed to initialize federation identity|failed to read user id/i.test(
+      raw,
+    )
+  ) {
+    return t.operationFailed
+  }
+  if (
+    /^(channel|room|ring|transfer|activity|object|user) not found$/i.test(
+      raw,
+    )
+  ) {
+    return t.notFound
+  }
+  if (
+    /transfer is (not ready|already )|channel already closed|channel must be closed/i.test(
+      raw,
+    )
+  ) {
+    return t.channelNotReady
+  }
+  if (
+    /unsupported attachment (mime|type)|unsupported content type|invalid attachment url|attachment url/i.test(
+      raw,
+    )
+  ) {
+    return t.invalidUrl
+  }
+  if (
+    / is required$| are required$|key rotation requires confirm/i.test(raw)
+  ) {
+    return t.agentInputEmpty
   }
   if (
     code === 'notion_url_invalid' ||
@@ -402,7 +637,9 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.feedNameRequired
   }
   if (
-    /unable to reach or parse this rss|无法访问或解析此 RSS/i.test(raw)
+    /unable to reach or parse this rss|无法访问或解析此 RSS|no rsshub instance|rsshub instance not found|没有配置的 RSSHub|RSSHub 实例不存在/i.test(
+      raw,
+    )
   ) {
     return currentCopy().brew.errorDiscoverFailed
   }
@@ -464,8 +701,41 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (code === 'config_mode_required' || /只能在配置模式下修改/.test(raw)) {
     return setup.configModeRequired
   }
-  if (code === 'schedule_invalid' || /^invalid schedule config/i.test(raw)) {
+  if (
+    code === 'schedule_invalid' ||
+    /^invalid schedule (config|type)/i.test(raw) ||
+    /^invalid (execution target|missed policy|scope)/i.test(raw)
+  ) {
     return currentCopy().tapp.unknownError
+  }
+  if (/^task ['"]?[^'"]+['"]? not found$/i.test(raw)) {
+    return t.notFound
+  }
+  if (
+    /stored rig is invalid|rig character asset|rig compilation failed|rig manifest migration|invalid rig (import|source|atlas|analysis)|invalid portrait/i.test(
+      raw,
+    )
+  ) {
+    return currentCopy().companion.visualFailed
+  }
+  if (
+    code === 'GAME_CONFIG_INVALID' ||
+    /invalid game (tapp id|protocol)|game\.max_players|game\.max_message_bytes/i.test(
+      raw,
+    )
+  ) {
+    return t.gameConfigInvalid
+  }
+  if (
+    code === 'GAME_MESSAGE_INVALID' ||
+    /game message_type|game session messages|not a game session|game payload too large/i.test(
+      raw,
+    )
+  ) {
+    return t.gameMessageInvalid
+  }
+  if (/^failed to fetch feed$/i.test(raw)) {
+    return currentCopy().brew.errorDiscoverFailed
   }
 
   const byStatus = status > 0 ? httpStatusMessage(status) : ''

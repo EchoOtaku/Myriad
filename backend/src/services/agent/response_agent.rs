@@ -270,25 +270,22 @@ pub fn completion_message() -> String {
 }
 
 /// 任务失败
-pub fn error_message(err: &str) -> String {
-    format!("抱歉，这次没能完成你的请求：{}", err)
+pub fn error_message(_err: &str) -> String {
+    "Processing failed".to_string()
 }
 
 /// 执行遇到问题
-pub fn execution_error(err: &str) -> String {
-    format!("抱歉，执行时遇到了问题：{}", err)
+pub fn execution_error(_err: &str) -> String {
+    "Processing failed".to_string()
 }
 
 /// 部分完成
 pub fn partial_completion(success: usize, total: usize, errors: &[String]) -> String {
-    let mut msg = format!(
+    let _ = errors;
+    format!(
         "完成了大部分工作（{}/{}），不过有些步骤没能顺利执行",
         success, total
-    );
-    if !errors.is_empty() {
-        msg.push_str(&format!("：{}", errors.join("；")));
-    }
-    msg
+    )
 }
 
 /// 需要更多信息
@@ -307,8 +304,8 @@ pub fn recipe_completed(name: &str) -> String {
 }
 
 /// saved recipe 失败
-pub fn recipe_failed(name: &str, err: &str) -> String {
-    format!("「{}」没能执行成功：{}", name, err)
+pub fn recipe_failed(_name: &str, _err: &str) -> String {
+    "Processing failed".to_string()
 }
 
 /// 步骤进度摘要（实时显示给用户的步骤状态，同步，不调用 AI）
@@ -686,7 +683,7 @@ pub fn done_status() -> String {
 
 /// 不支持的操作
 pub fn unsupported_operation() -> String {
-    "不支持此操作".to_string()
+    "This action is not supported".to_string()
 }
 
 /// 需要更多信息（详细版，用于 Clarify 分流）
@@ -739,17 +736,17 @@ pub fn executing_preset(name: &str) -> String {
 
 /// 操作已取消
 pub fn operation_cancelled() -> String {
-    "操作已取消".to_string()
+    "The task was cancelled".to_string()
 }
 
 /// 确认已过期
 pub fn confirmation_expired() -> String {
-    "确认请求已过期，请重新发起操作".to_string()
+    "This confirmation expired".to_string()
 }
 
 /// 确认不存在或已处理
 pub fn confirmation_not_found() -> String {
-    "确认请求不存在或已处理".to_string()
+    "This confirmation is no longer available".to_string()
 }
 
 /// 取消后建议
@@ -843,32 +840,32 @@ pub fn will_execute(name: &str) -> String {
 
 /// 任务已被取消（SSE 消息）
 pub fn task_cancelled() -> String {
-    "任务已被取消".to_string()
+    "The task was cancelled".to_string()
 }
 
 /// 任务已被用户取消（错误字段）
 pub fn task_cancelled_by_user() -> String {
-    "任务已被用户取消".to_string()
+    "The task was cancelled".to_string()
 }
 
 /// 任务因服务重启中断
 pub fn task_interrupted() -> String {
-    "任务因服务重启而中断，请重新提交".to_string()
+    "The task was interrupted".to_string()
 }
 
 /// 步骤执行超时
-pub fn step_timeout(capability: &str, secs: u64) -> String {
-    format!("能力 '{}' 执行超时（{}秒）", capability, secs)
+pub fn step_timeout(_capability: &str, _secs: u64) -> String {
+    "The step timed out".to_string()
 }
 
 /// 步骤执行出错 — 用户选择题
-pub fn step_error_question(error: &str) -> String {
-    format!("执行过程中遇到问题：{}，你希望如何处理？", error)
+pub fn step_error_question(_error: &str) -> String {
+    "Processing failed".to_string()
 }
 
 /// 步骤执行出错 — 标题
 pub fn step_error_title() -> String {
-    "执行步骤时发生错误".to_string()
+    "A step failed".to_string()
 }
 
 // ─────────────────────────────────────────────
@@ -926,34 +923,28 @@ pub fn scheduled_task_created(name: &str) -> String {
 }
 
 /// 网络搜索回退结果
-pub fn web_search_fallback(count: usize) -> String {
-    format!(
-        "数据库中未找到相关文章，已通过 AI 联网搜索获取 {} 条结果",
-        count
-    )
+pub fn web_search_fallback(_count: usize) -> String {
+    "No matching articles were found; used a web search instead".to_string()
 }
 
 /// 未找到符合条件的文章
-pub fn no_articles_found(criteria: &str) -> String {
-    format!("未找到符合条件的文章（{}）", criteria)
+pub fn no_articles_found(_criteria: &str) -> String {
+    "No matching articles were found".to_string()
 }
 
 /// 未在已订阅源中找到
-pub fn not_found_in_feeds(query: &str) -> String {
-    format!(
-        "未在已订阅源中找到「{}」，可以使用 brew.discover 从 RSSHub 路由中搜索",
-        query
-    )
+pub fn not_found_in_feeds(_query: &str) -> String {
+    "That was not found in subscribed feeds".to_string()
 }
 
 /// 未能找到匹配的 RSS 源
 pub fn no_rss_found() -> String {
-    "未能找到匹配的 RSS 源".to_string()
+    "No matching RSS feed was found".to_string()
 }
 
 /// 未找到歌单
 pub fn playlist_not_found() -> String {
-    "没有找到相关歌单，请尝试其他关键词".to_string()
+    "No matching playlist was found".to_string()
 }
 
 /// 找到歌单
@@ -962,8 +953,8 @@ pub fn playlist_found(count: usize, keyword: &str) -> String {
 }
 
 /// 未找到订阅源或作者
-pub fn feed_ambiguous(name: &str) -> String {
-    format!("未找到名为「{}」的订阅源或作者", name)
+pub fn feed_ambiguous(_name: &str) -> String {
+    "That feed or author was not found".to_string()
 }
 
 /// 订阅源建议
@@ -983,40 +974,37 @@ pub fn active_platforms(count: usize) -> String {
 
 /// TTS 未配置（operator guidance; full code path still implemented）
 pub fn tts_not_configured() -> String {
-    "TTS 服务未配置：请在系统设置中配置腾讯云 SecretId/SecretKey（tencent_secret_id / tencent_secret_key），与 /api/speech/tts 使用同一套密钥。".to_string()
+    "Speech service is not configured".to_string()
 }
 
 /// 图片生成完成但无法提取 URL
 pub fn image_generated_no_url() -> String {
-    "图片生成完成，但无法提取图片 URL，请查看任务详情".to_string()
+    "The image was generated but no URL was returned".to_string()
 }
 
 /// API Key 未配置
-pub fn api_key_not_configured(service: &str) -> String {
-    format!("{} API Key 未配置", service)
+pub fn api_key_not_configured(_service: &str) -> String {
+    "This service is not configured".to_string()
 }
 
 /// 不支持的平台名称
-pub fn unsupported_platform(platform: &str) -> String {
-    format!("不支持的平台名称: {}", platform)
+pub fn unsupported_platform(_platform: &str) -> String {
+    "That platform is not supported".to_string()
 }
 
 /// 输入过长
-pub fn input_too_long(max: usize) -> String {
-    format!("输入过长，最大允许 {} 字符", max)
+pub fn input_too_long(_max: usize) -> String {
+    "Input is too long".to_string()
 }
 
 /// 输入不能为空
 pub fn input_empty() -> String {
-    "输入不能为空".to_string()
+    "Input is empty".to_string()
 }
 
 /// 所有订阅 URL 都失败
-pub fn subscribe_all_failed(tried: usize, last_error: &str) -> String {
-    format!(
-        "尝试了 {} 个源都无法订阅。最后一个错误: {}",
-        tried, last_error
-    )
+pub fn subscribe_all_failed(_tried: usize, _last_error: &str) -> String {
+    "Could not subscribe to any of the feeds".to_string()
 }
 
 /// 文章摘要占位
@@ -1058,8 +1046,8 @@ pub fn fields_returned(count: usize) -> String {
 /// 操作成功/失败（布尔结果）
 pub fn bool_result(success: bool) -> String {
     if success {
-        "成功".to_string()
+        "Succeeded".to_string()
     } else {
-        "失败".to_string()
+        "Failed".to_string()
     }
 }

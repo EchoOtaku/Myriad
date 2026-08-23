@@ -90,17 +90,7 @@ impl Executor {
                         user_id = handler_ctx.user_id,
                         "[Executor] Blocked unconfirmed high-risk dynamic step"
                     );
-                    let is_system = handler_ctx.user_id == crate::services::agent::SYSTEM_USER_ID;
-                    if is_system {
-                        return Err(format!(
-                            "定时任务动态步骤 '{}'（{}，风险 {:?}）需要人工确认，已拒绝自动执行。请手动操作或调整任务指令。",
-                            step.capability_id, step.id, risk
-                        ));
-                    }
-                    return Err(format!(
-                        "步骤 '{}' 涉及未经确认的高风险操作（{}，风险 {:?}），动态生成的子步骤不允许自动执行",
-                        step.id, step.capability_id, risk
-                    ));
+                    return Err("This step needs confirmation first".to_string());
                 }
             }
         }

@@ -68,11 +68,11 @@ async fn execute_data_transform(params: &HashMap<String, Value>) -> Result<Value
         .unwrap_or_default();
 
     let steps = parse_pipeline_steps_lenient(&pipeline_json).map_err(|err| match err {
-        DataTransformError::TooManySteps => "管道步骤数不能超过 20".to_string(),
+        DataTransformError::TooManySteps => "Too many pipeline steps".to_string(),
         other => other.message().to_string(),
     })?;
     let items = apply_pipeline(items_from_agent_input(input), steps).map_err(|err| match err {
-        DataTransformError::TooManySteps => "管道步骤数不能超过 20".to_string(),
+        DataTransformError::TooManySteps => "Too many pipeline steps".to_string(),
         other => other.message().to_string(),
     })?;
 
@@ -307,7 +307,7 @@ async fn require_heartbeat_admin(ctx: &HandlerContext<'_>) -> Result<(), String>
     if crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await {
         Ok(())
     } else {
-        Err("Heartbeat 管理需要管理员权限".to_string())
+        Err("Heartbeat admin required".to_string())
     }
 }
 
@@ -356,7 +356,7 @@ async fn execute_heartbeat_create(
         "frontendAction": {
             "type": "show_notification",
             "params": {
-                "title": "心跳任务已创建",
+                "title": "Heartbeat created",
                 "message": format!("{} · {}", task.name, task.schedule),
                 "taskId": task.id
             },
@@ -624,7 +624,7 @@ async fn execute_rsshub_healthcheck(
     }
 
     if instances.is_empty() {
-        return Err("没有配置的 RSSHub 实例可检查。请在 Brew 设置中添加实例。".to_string());
+        return Err("No RSSHub instance is configured".to_string());
     }
 
     let mut results = Vec::new();

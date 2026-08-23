@@ -26,6 +26,10 @@ const PROMPT_VERSION: &str = "anime25d-chest-region-v1";
 const MIN_AI_CONFIDENCE: f32 = 0.58;
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
+const MIN_AI_MOTION_SCALE: f32 = 0.22;
+const MAX_AI_MOTION_SCALE: f32 = 1.14;
+const AI_MOTION_RAMP_START: f32 = 0.1;
+const AI_MOTION_RAMP_END: f32 = 0.85;
 
 #[derive(Clone, Copy, Debug)]
 struct PlaybackContext {
@@ -245,6 +249,7 @@ fn profile_from_estimate(context: PlaybackContext, estimate: AiChestEstimate) ->
         (face_height * 0.58).min(context.height * 0.28),
     );
     let visible_scale = estimate.visible_scale.clamp(0.0, 1.0);
+    let motion_scale = motion_scale_from_visible(visible_scale);
     Some(json!({
         "version": PROFILE_VERSION,
         "enabled": true,
@@ -254,12 +259,20 @@ fn profile_from_estimate(context: PlaybackContext, estimate: AiChestEstimate) ->
         "radiusX": radius_x,
         "radiusY": radius_y,
         "visibleScale": visible_scale,
-        // Size changes are deliberately sub-linear and bounded; AI never gets
-        // direct control over runtime displacement or spring constants.
-        "motionScale": 0.86 + visible_scale * 0.28,
+        // AI supplies apparent size, not displacement. A smooth conservative
+        // ramp prevents small profiles from inheriting near-full motion.
+        "motionScale": motion_scale,
         "frequencyScale": 1.10 - visible_scale * 0.20,
         "confidence": estimate.confidence,
     }))
+}
+
+fn motion_scale_from_visible(visible_scale: f32) -> f32 {
+    let progress = ((visible_scale - AI_MOTION_RAMP_START)
+        / (AI_MOTION_RAMP_END - AI_MOTION_RAMP_START))
+        .clamp(0.0, 1.0);
+    let eased = progress * progress * (3.0 - 2.0 * progress);
+    MIN_AI_MOTION_SCALE + (MAX_AI_MOTION_SCALE - MIN_AI_MOTION_SCALE) * eased
 }
 
 fn valid_profile(profile: &Value, context: PlaybackContext, require_enabled: bool) -> bool {
@@ -280,7 +293,7 @@ fn valid_profile(profile: &Value, context: PlaybackContext, require_enabled: boo
         && number("radiusY")
             .is_some_and(|value| (1.0..=f64::from(context.height * 0.5)).contains(&value))
         && number("visibleScale").is_some_and(|value| (0.0..=1.0).contains(&value))
-        && number("motionScale").is_some_and(|value| (0.75..=1.25).contains(&value))
+        && number("motionScale").is_some_and(|value| (0.0..=1.25).contains(&value))
         && number("frequencyScale").is_some_and(|value| (0.75..=1.25).contains(&value))
         && number("confidence").is_some_and(|value| (0.0..=1.0).contains(&value))
 }
@@ -481,9 +494,22 @@ mod tests {
         )
         .expect("profile");
         assert_eq!(profile["source"], "ai-vision");
+        assert!(profile["motionScale"].as_f64().unwrap() > 1.1);
         assert!(profile["motionScale"].as_f64().unwrap() <= 1.14);
         assert!(profile["frequencyScale"].as_f64().unwrap() >= 0.9);
         assert!(valid_profile(&profile, context, true));
+    }
+
+    #[test]
+    fn small_ai_size_gets_conservative_continuous_motion() {
+        let small = motion_scale_from_visible(0.35);
+        let medium = motion_scale_from_visible(0.5);
+        let large = motion_scale_from_visible(0.8);
+        assert!((small - 0.4585).abs() < 0.001);
+        assert!(small < medium);
+        assert!(medium < large);
+        assert_eq!(motion_scale_from_visible(0.0), MIN_AI_MOTION_SCALE);
+        assert_eq!(motion_scale_from_visible(1.0), MAX_AI_MOTION_SCALE);
     }
 
     #[test]

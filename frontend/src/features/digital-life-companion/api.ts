@@ -137,7 +137,11 @@ export async function getSeeThroughStatus(): Promise<SeeThroughStatus> {
   const response = await api.get<Partial<SeeThroughStatus>>(
     `${PREFIX}/see-through/status`,
   )
-  assertSuccess(response.status, response.data, 'Could not load See-through status')
+  assertSuccess(
+    response.status,
+    response.data,
+    'Could not load See-through status',
+  )
   return {
     provider:
       typeof response.data.provider === 'string'
@@ -159,7 +163,11 @@ export async function updateSeeThroughToken(
     `${PREFIX}/see-through/token`,
     { token },
   )
-  assertSuccess(response.status, response.data, 'Could not save Hugging Face token')
+  assertSuccess(
+    response.status,
+    response.data,
+    'Could not save Hugging Face token',
+  )
   return {
     provider:
       typeof response.data.provider === 'string'
@@ -185,9 +193,10 @@ async function binaryApiError(
       payload = null
     }
   }
-  const body = payload && typeof payload === 'object'
-    ? (payload as Record<string, unknown>)
-    : {}
+  const body =
+    payload && typeof payload === 'object'
+      ? (payload as Record<string, unknown>)
+      : {}
   return new CompanionApiError(
     typeof body.error === 'string'
       ? body.error
@@ -254,8 +263,15 @@ export async function importCompanionRig(
 export async function previewCompanionRigImport(
   source: CompanionRigImportSource,
   atlas: Blob,
+  analysisReference: Blob,
 ): Promise<CompanionRigManifest> {
-  return submitCompanionRigImport('/import/preview', source, atlas, 'preview')
+  return submitCompanionRigImport(
+    '/import/preview',
+    source,
+    atlas,
+    'preview',
+    analysisReference,
+  )
 }
 
 async function submitCompanionRigImport(
@@ -263,10 +279,14 @@ async function submitCompanionRigImport(
   source: CompanionRigImportSource,
   atlas: Blob,
   action: string,
+  analysisReference?: Blob,
 ): Promise<CompanionRigManifest> {
   const body = new FormData()
   body.append('source', JSON.stringify(source))
   body.append('atlas', atlas, 'rig-atlas.png')
+  if (analysisReference) {
+    body.append('analysisReference', analysisReference, 'rig-analysis.png')
+  }
   let response
   try {
     response = await api.post<{ manifest: unknown }>(`${PREFIX}${path}`, body, {
@@ -278,7 +298,11 @@ async function submitCompanionRigImport(
   } catch (reason) {
     throw companionError(reason, `Could not ${action} companion rig`)
   }
-  assertSuccess(response.status, response.data, `Could not ${action} companion rig`)
+  assertSuccess(
+    response.status,
+    response.data,
+    `Could not ${action} companion rig`,
+  )
   if (!isRigManifest(response.data.manifest)) {
     throw new Error(`Companion rig ${action} manifest is invalid`)
   }

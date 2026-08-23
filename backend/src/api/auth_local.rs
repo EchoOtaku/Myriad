@@ -930,7 +930,7 @@ pub async fn register(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Insert returned no row"})),
+                Json(json!({"error": "Failed to create account", "code": "account_create_failed"})),
             ))
         })?;
 
@@ -1329,7 +1329,7 @@ pub async fn admin_create_user(
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Insert returned no row"})),
+                Json(json!({"error": "Failed to create account", "code": "account_create_failed"})),
             ))
         })?;
 

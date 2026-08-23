@@ -471,12 +471,11 @@ function NotificationPanelList({
                           >
                             {busy
                               ? '…'
-                              : act.label ||
-                                (isAccept
-                                  ? t.common?.confirm || 'Accept'
-                                  : isReject
-                                    ? t.common?.cancel || 'Decline'
-                                    : act.id)}
+                              : isAccept
+                                ? t.common?.confirm || 'Accept'
+                                : isReject
+                                  ? t.common?.cancel || 'Decline'
+                                  : act.label || act.id}
                           </button>
                         )
                       })}

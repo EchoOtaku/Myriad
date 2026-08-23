@@ -598,7 +598,7 @@ impl Agent {
         progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
     ) -> String {
         if task_state.status == TaskStatus::Failed {
-            let err = task_state.error.as_deref().unwrap_or("未知错误");
+            let err = task_state.error.as_deref().unwrap_or("Processing failed");
             return response_agent::error_message(err);
         }
 
@@ -930,7 +930,7 @@ impl Agent {
                 AgentResponseType::Answer
             },
             message: if task_state.status == TaskStatus::Failed {
-                response_agent::error_message(task_state.error.as_deref().unwrap_or("未知错误"))
+                response_agent::error_message(task_state.error.as_deref().unwrap_or("Processing failed"))
             } else {
                 response_agent::completion_message()
             },
@@ -1008,7 +1008,7 @@ impl Agent {
                 AgentResponseType::Answer
             },
             message: if task_state.status == TaskStatus::Failed {
-                response_agent::error_message(task_state.error.as_deref().unwrap_or("未知错误"))
+                response_agent::error_message(task_state.error.as_deref().unwrap_or("Processing failed"))
             } else if task_state.status == TaskStatus::WaitingForInput {
                 response_agent::need_more_info()
             } else {

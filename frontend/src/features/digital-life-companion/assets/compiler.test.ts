@@ -2,11 +2,7 @@ import type { CompanionRigManifest } from '../rig/types'
 import type { RigAssetCompileEvent } from './compiler'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  compileRigAsset,
-  persistRigAsset,
-  preflightRigAsset,
-} from './compiler'
+import { compileRigAsset, persistRigAsset, preflightRigAsset } from './compiler'
 
 const file = new File([new Uint8Array([1])], 'character.psd')
 const manifest = {
@@ -27,7 +23,12 @@ test('rig compiler exposes the complete successful artifact DAG', async () => {
       prepare: async (_file, _assetId, onStage) => {
         onStage?.('validated')
         onStage?.('packing')
-        return { atlas: new Blob(), source: {} as never, partCount: 12 }
+        return {
+          atlas: new Blob(),
+          analysisReference: new Blob(),
+          source: {} as never,
+          partCount: 12,
+        }
       },
       preview: async () => manifest,
       upload: async () => manifest,
@@ -63,6 +64,7 @@ test('rig compiler marks persistence failure as terminal', async () => {
       {
         prepare: async () => ({
           atlas: new Blob(),
+          analysisReference: new Blob(),
           source: {} as never,
           partCount: 2,
         }),
@@ -86,6 +88,7 @@ test('preflight fully compiles and diagnoses without calling persistence', async
   let persisted = false
   const prepared = {
     atlas: new Blob(),
+    analysisReference: new Blob(),
     source: { sourceMasterAssetId: 'master-asset' } as never,
     partCount: 45,
   }
@@ -101,6 +104,27 @@ test('preflight fully compiles and diagnoses without calling persistence', async
     return manifest
   })
   assert.equal(persisted, true)
+})
+
+test('preflight sends the imported PSD composition to one-shot vision analysis', async () => {
+  const analysisReference = new Blob([new Uint8Array([7])], {
+    type: 'image/png',
+  })
+  let receivedReference: Blob | undefined
+  await preflightRigAsset(file, 'master-asset', {
+    prepare: async () => ({
+      atlas: new Blob(),
+      analysisReference,
+      source: { sourceMasterAssetId: 'master-asset' } as never,
+      partCount: 1,
+    }),
+    preview: async (_source, _atlas, reference) => {
+      receivedReference = reference
+      return manifest
+    },
+  })
+
+  assert.equal(receivedReference, analysisReference)
 })
 
 test('preflight carries one-shot chest analysis into the persisted source', async () => {
@@ -137,6 +161,7 @@ test('preflight carries one-shot chest analysis into the persisted source', asyn
   const result = await preflightRigAsset(file, 'master-asset', {
     prepare: async () => ({
       atlas: new Blob(),
+      analysisReference: new Blob(),
       source: source as never,
       partCount: 1,
     }),
@@ -154,6 +179,7 @@ test('failed preview cannot reach persistence', async () => {
     compileRigAsset(file, 'master-asset', {
       prepare: async () => ({
         atlas: new Blob(),
+        analysisReference: new Blob(),
         source: {} as never,
         partCount: 45,
       }),

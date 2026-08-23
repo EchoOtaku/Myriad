@@ -854,7 +854,7 @@ SELECT EXISTS (
         Self::update_task_after_frontend_completion(db, &task, &status, result, error.clone())
             .await?;
         if matches!(status, ExecutionStatus::Failed | ExecutionStatus::Timeout) {
-            Self::notify_task_failure(&task, error.as_deref().unwrap_or("前端任务执行失败")).await;
+            Self::notify_task_failure(&task, error.as_deref().unwrap_or("The scheduled task failed")).await;
         }
         Ok(())
     }

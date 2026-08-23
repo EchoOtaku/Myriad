@@ -52,7 +52,7 @@ pub(crate) async fn toggle_heartbeat(
         Some(enabled) => Ok(Json(json!({ "task_id": task_id, "enabled": enabled }))),
         None => Err(HttpError::from((
             StatusCode::NOT_FOUND,
-            Json(json!({ "error": format!("Task '{}' not found", task_id) })),
+            Json(json!({ "error": "Task not found" })),
         ))),
     }
 }

@@ -30,7 +30,7 @@ use std::net::ToSocketAddrs;
 fn validate_subscribe_url(url: &str) -> Result<(), String> {
     validate_subscribe_url_policy(url)?;
     let parsed = url::Url::parse(url).map_err(|_| "Invalid URL".to_string())?;
-    let host = parsed.host_str().ok_or("URL 缺少 host")?;
+    let host = parsed.host_str().ok_or("This URL is missing a host")?;
     // Hostname path: resolve and reject private IPs (IO).
     if host.parse::<std::net::IpAddr>().is_err() {
         let port = parsed
@@ -40,10 +40,7 @@ fn validate_subscribe_url(url: &str) -> Result<(), String> {
         if let Ok(addrs) = addr_str.to_socket_addrs() {
             for addr in addrs {
                 if is_disallowed_subscribe_ip(addr.ip()) {
-                    return Err(match addr.ip() {
-                        std::net::IpAddr::V6(_) => "不允许访问内网 IPv6 地址".to_string(),
-                        _ => "不允许访问内网地址".to_string(),
-                    });
+                    return Err("This address is not allowed".to_string());
                 }
             }
         }
@@ -405,13 +402,10 @@ async fn execute_brew_subscribe(
                     ..Default::default()
                 };
 
-                let source = new_source
-                    .insert(ctx.db)
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Failed to create brew source: {e}");
-                        "Failed to create feed".to_string()
-                    })?;
+                let source = new_source.insert(ctx.db).await.map_err(|e| {
+                    tracing::error!("Failed to create brew source: {e}");
+                    "Failed to create feed".to_string()
+                })?;
 
                 // 批量构建文章 ActiveModel，一次性 insert 代替 N+1 个单条 insert
                 let item_models: Vec<brew_items::ActiveModel> = feed
@@ -533,7 +527,7 @@ async fn execute_brew_subscribe(
             }
             Err(_) => {
                 tracing::debug!(url = %url, "[Brew] 请求超时，尝试下一个");
-                last_error = format!("{}: 请求超时", url);
+                last_error = format!("{url}: timed out");
             }
         }
     }
@@ -577,7 +571,7 @@ async fn execute_brew_mark(
             tracing::error!(error = %e, "Agent data_write database error");
             "Database error".to_string()
         })?
-        .ok_or("无权操作该文章")?;
+        .ok_or("This article cannot be changed")?;
 
     // 查找或创建用户状态
     let existing = brew_user_states::Entity::find()

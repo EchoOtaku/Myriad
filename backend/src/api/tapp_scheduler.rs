@@ -159,7 +159,7 @@ fn parse_schedule_type(s: &str) -> Result<ScheduleType, HttpError> {
         "interval" => Ok(ScheduleType::Interval),
         "once" => Ok(ScheduleType::Once),
         "daily" => Ok(ScheduleType::Daily),
-        _ => Err(bad_request(format!("Invalid schedule type: {s}"))),
+        _ => Err(bad_request("Invalid schedule config".to_string())),
     }
 }
 
@@ -168,7 +168,7 @@ fn parse_execution_target(s: &str) -> Result<ExecutionTarget, HttpError> {
         "backend" => Ok(ExecutionTarget::Backend),
         "frontend" => Ok(ExecutionTarget::Frontend),
         "both" => Ok(ExecutionTarget::Both),
-        _ => Err(bad_request(format!("Invalid execution target: {s}"))),
+        _ => Err(bad_request("Invalid schedule config".to_string())),
     }
 }
 
@@ -177,7 +177,7 @@ fn parse_missed_policy(s: &str) -> Result<MissedPolicy, HttpError> {
         "skip" => Ok(MissedPolicy::Skip),
         "run-once" | "runonce" => Ok(MissedPolicy::RunOnce),
         "run-all" | "runall" => Ok(MissedPolicy::RunAll),
-        _ => Err(bad_request(format!("Invalid missed policy: {s}"))),
+        _ => Err(bad_request("Invalid schedule config".to_string())),
     }
 }
 
@@ -187,7 +187,7 @@ fn parse_scope(s: &str) -> Result<TaskScope, HttpError> {
         "tapp" => Ok(TaskScope::Tapp),
         "tapp-per-user" | "tapp_per_user" => Ok(TaskScope::TappPerUser),
         "global" => Ok(TaskScope::Global),
-        _ => Err(bad_request(format!("Invalid scope: {s}"))),
+        _ => Err(bad_request("Invalid schedule config".to_string())),
     }
 }
 
@@ -535,7 +535,7 @@ pub async fn get_task(
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(json!({ "error": format!("Task {} not found", task_id) })),
+                Json(json!({ "error": "Task not found" })),
             )
         })?;
 

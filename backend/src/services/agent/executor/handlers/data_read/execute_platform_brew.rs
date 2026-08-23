@@ -698,10 +698,7 @@ async fn execute_brew_read(
                 "matched": false,
                 "notFound": true,
                 "searchedFor": filters.source_name,
-                "message": format!(
-                    "未找到匹配「{}」的订阅源",
-                    filters.source_name.as_deref().unwrap_or("")
-                ),
+                "message": "Feed not found",
             }));
         }
     }
@@ -963,12 +960,9 @@ async fn execute_brew_sources(
         "searchedFor": needle,
         "suggestions": suggestions,
         "message": if total_in_system == 0 {
-            "系统中暂无订阅源".to_string()
+            "No feeds are available".to_string()
         } else {
-            format!(
-                "未找到匹配「{}」的订阅源（系统中共有 {} 个订阅源）",
-                needle, total_in_system
-            )
+            "Feed not found".to_string()
         },
     }))
 }
@@ -1399,14 +1393,14 @@ async fn execute_brew_article(
         .order_by_desc(brew_items::Column::PublishedAt)
         .one(ctx.db)
         .await
-        .map_err(|e| format!("Failed to fetch brew article: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Agent brew article fetch failed");
+            "Article not found".to_string()
+        })?;
 
     match item {
         Some(item) => load_article_with_source(ctx, item).await,
-        None => Err(format!(
-            "未找到文章: id={:?}, key={:?}, url={:?}",
-            lookup.item_id, lookup.article_key, lookup.url
-        )),
+        None => Err("Article not found".to_string()),
     }
 }
 
@@ -2767,7 +2761,7 @@ async fn execute_brew_discover(
     }
 
     if url.is_none() && query.is_none() {
-        return Err("需要提供 url 或 query 参数".to_string());
+        return Err("Missing url or query".to_string());
     }
 
     let found = !feeds.is_empty();
@@ -3086,7 +3080,7 @@ async fn discover_rss_from_website(url: &str) -> Result<Vec<Value>, String> {
     } else if url.starts_with("www.") || looks_like_url(url) {
         format!("https://{}", url)
     } else {
-        return Err("输入不是有效的 URL".to_string());
+        return Err("This URL is invalid".to_string());
     };
 
     let mut feeds = Vec::new();
@@ -4334,10 +4328,7 @@ async fn execute_task_status(
     if let Some(task_id) = task_id {
         return match get_task_for_user(task_id, ctx.user_id).await {
             Some(task) => Ok(task_to_json(&task)),
-            None => Err(format!(
-                "任务不存在或无权访问: {}。请确认 taskId 属于当前用户的 agent 任务。",
-                task_id
-            )),
+            None => Err("Task not found".to_string()),
         };
     }
 
@@ -4355,9 +4346,9 @@ async fn execute_task_status(
         "tasks": items,
         "total": items.len(),
         "message": if items.is_empty() {
-            "当前没有可查询的 agent 任务"
+            "No agent tasks to show"
         } else {
-            "未指定 taskId，已返回最近任务列表"
+            "Recent agent tasks"
         }
     }))
 }
@@ -4533,7 +4524,7 @@ async fn execute_heartbeat_list(
     ctx: &HandlerContext<'_>,
 ) -> Result<Value, String> {
     if !crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await {
-        return Err("Heartbeat 管理需要管理员权限".to_string());
+        return Err("Heartbeat admin required".to_string());
     }
     let manager = crate::services::agent::heartbeat::get_heartbeat()
         .ok_or_else(|| "Heartbeat not initialized".to_string())?;
@@ -4574,27 +4565,20 @@ async fn execute_rsshub_instances(
     let service = RsshubService::new(ctx.db.clone());
 
     service.ensure_default_instances().await.map_err(|e| {
-        format!(
-            "初始化 RSSHub 默认实例失败: {}。请确认数据库已迁移且可写（rsshub_instances 表）。",
-            e
-        )
+        tracing::error!(error = %e, "Agent RSSHub default instances failed");
+        "Could not set up RSSHub".to_string()
     })?;
 
     let instances = service
         .get_instances(Some(ctx.user_id))
         .await
         .map_err(|e| {
-            format!(
-                "读取 RSSHub 实例失败: {}。请确认数据库连接与 brew 迁移状态。",
-                e
-            )
+            tracing::error!(error = %e, "Agent RSSHub instances read failed");
+            "Could not read RSSHub instances".to_string()
         })?;
 
     if instances.is_empty() {
-        return Err(
-            "RSSHub 实例表为空：请在 Brew 设置 → RSSHub 中添加实例，或检查全局默认实例初始化是否成功。"
-                .to_string(),
-        );
+        return Err("No RSSHub instances are configured".to_string());
     }
 
     let healthy_count = instances
@@ -4633,7 +4617,7 @@ async fn execute_rsshub_instances(
 async fn execute_context_reference(_params: &HashMap<String, Value>) -> Result<Value, String> {
     // context.reference 不应被直接调用——步骤间数据传递通过 executor 的
     // resolve_params() 自动处理 xxxFrom 引用。如果走到这里说明 recipe 配置有误。
-    Err("context.reference 不应被直接调用。请使用 xxxFrom 参数引用上游步骤的输出。".to_string())
+    Err("This step cannot be called directly".to_string())
 }
 
 // 补充能力
@@ -4993,7 +4977,10 @@ async fn trigger_ai_web_search_for_reading_list(
         .json(&request_body)
         .send()
         .await
-        .map_err(|e| format!("Gemini API request failed: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Gemini API request failed");
+            "AI generation failed".to_string()
+        })?;
 
     const GEMINI_MAX_BODY: usize = 2 * 1024 * 1024;
     if !response.status().is_success() {
@@ -5003,15 +4990,22 @@ async fn trigger_ai_web_search_for_reading_list(
                 .await
                 .unwrap_or_default();
         let error_text = String::from_utf8_lossy(&error_bytes);
-        return Err(format!("Gemini API error {}: {}", status, error_text));
+        tracing::error!(status = %status, body = %error_text, "Gemini API error");
+        return Err("AI generation failed".to_string());
     }
 
     let body_bytes =
         crate::services::outbound_security::read_limited_body(response, GEMINI_MAX_BODY)
             .await
-            .map_err(|e| format!("Failed to read Gemini response: {e}"))?;
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to read Gemini response");
+                "AI generation failed".to_string()
+            })?;
     let response_json: Value = serde_json::from_slice(&body_bytes)
-        .map_err(|e| format!("Failed to parse Gemini response: {}", e))?;
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to parse Gemini response");
+            "AI generation failed".to_string()
+        })?;
 
     // 提取 AI 回复内容
     let ai_text = response_json

@@ -166,6 +166,10 @@ describe('userFacingError', () => {
     const text = userFacingError('处理失败: database connection closed')
     assert.equal(/database connection/i.test(text), false)
     assert.equal(/处理失败/.test(text), false)
+    const leftover = userFacingError('抱歉，这次没能完成你的请求：boom')
+    assert.equal(/boom/.test(leftover), false)
+    const interrupted = userFacingError('任务因服务重启而中断，请重新提交')
+    assert.equal(/服务重启/.test(interrupted), false)
   })
 
   it('maps leftover Notion URL dumps', () => {
@@ -185,5 +189,124 @@ describe('userFacingError', () => {
   it('maps leftover feed name Chinese', () => {
     const text = userFacingError('订阅源名称不能为空')
     assert.equal(text.includes('不能为空'), false)
+  })
+
+  it('maps leftover subscribe private-network Chinese', () => {
+    const text = userFacingError('不允许访问内网地址')
+    assert.equal(text.includes('不允许访问'), false)
+    assert.equal(/192\.|localhost|内网 IPv6/.test(text), false)
+  })
+
+  it('maps leftover RSSHub setup dumps', () => {
+    const text = userFacingError(
+      '初始化 RSSHub 默认实例失败: relation "rsshub_instances" does not exist。请确认数据库已迁移且可写（rsshub_instances 表）。',
+    )
+    assert.equal(/rsshub_instances|does not exist/.test(text), false)
+  })
+
+  it('maps leftover high-risk step confirmation dumps', () => {
+    const text = userFacingError(
+      "步骤 'dyn-1' 涉及未经确认的高风险操作（system.export，风险 High），动态生成的子步骤不允许自动执行",
+    )
+    assert.equal(/dyn-1|system\.export|High/.test(text), false)
+  })
+
+  it('maps leftover article lookup dumps', () => {
+    const text = userFacingError(
+      '未找到文章: id=Some(12), key=Some("abc"), url=Some("https://example.com/x")',
+    )
+    assert.equal(/example\.com|Some\(/.test(text), false)
+  })
+
+  it('maps leftover feed not-found Chinese without leaking the query', () => {
+    const text = userFacingError('未找到名为「政治」的订阅源或作者')
+    assert.equal(text.includes('政治'), false)
+    assert.equal(text.includes('未找到名为'), false)
+  })
+
+  it('maps leftover agent permission Chinese without leaking setting paths', () => {
+    const text = userFacingError(
+      'Agent 未对普通用户开放 AI 对话（请在「Tapp 权限管理」中下放 ai:chat 或选用助手预设）',
+    )
+    assert.equal(/ai:chat|Tapp 权限管理/.test(text), false)
+  })
+
+  it('maps leftover context.reference Chinese without leaking recipe internals', () => {
+    const text = userFacingError(
+      'context.reference 不应被直接调用。请使用 xxxFrom 参数引用上游步骤的输出。',
+    )
+    assert.equal(/xxxFrom|context\.reference/.test(text), false)
+  })
+
+  it('maps leftover Gemini dumps away from API bodies', () => {
+    const text = userFacingError(
+      'Gemini API error 400: {"error":{"message":"API key not valid"}}',
+    )
+    assert.equal(/API key not valid|error":/.test(text), false)
+  })
+
+  it('maps leftover scheduled-task Chinese without leaking internals', () => {
+    const text = userFacingError('前端任务执行失败')
+    assert.equal(text.includes('前端任务'), false)
+  })
+
+  it('maps leftover bare 失败 without showing it as the only copy', () => {
+    const text = userFacingError('失败')
+    assert.notEqual(text, '失败')
+  })
+
+  it('maps leftover skip-step Chinese', () => {
+    const text = userFacingError('用户选择跳过错误步骤')
+    assert.equal(text.includes('用户选择'), false)
+  })
+
+  it('maps leftover scheduler task-id dumps', () => {
+    const text = userFacingError("Task 'abc-123' not found")
+    assert.equal(/abc-123/.test(text), false)
+  })
+
+  it('maps leftover rig compile dumps', () => {
+    const text = userFacingError(
+      'Rig compilation failed: missing field `layers` at line 1 column 12',
+    )
+    assert.equal(/missing field|layers/.test(text), false)
+  })
+
+  it('maps leftover federation identity dumps', () => {
+    const text = userFacingError('Failed to initialize federation identity')
+    assert.equal(/initialize federation/i.test(text), false)
+  })
+
+  it('maps leftover transfer status dumps', () => {
+    const text = userFacingError('Transfer is already sending')
+    assert.equal(/already sending/.test(text), false)
+  })
+
+  it('maps leftover attachment MIME dumps', () => {
+    const text = userFacingError('Unsupported attachment MIME: application/x-dump')
+    assert.equal(/application\/x-dump/.test(text), false)
+  })
+
+  it('maps leftover attachment URL path dumps', () => {
+    const text = userFacingError(
+      'Attachment URL must be a media file uploaded via POST /api/federation/media',
+    )
+    assert.equal(/federation\/media|POST \//.test(text), false)
+  })
+
+  it('maps leftover database-not-connected Chinese', () => {
+    const text = userFacingError('数据库未连接')
+    assert.equal(text.includes('数据库未连接'), false)
+  })
+
+  it('maps game config dumps away from protocol internals', () => {
+    const text = userFacingError(
+      new ApiError(
+        'game.max_players must be 2-16',
+        400,
+        'GAME_CONFIG_INVALID',
+      ),
+    )
+    assert.equal(/max_players/.test(text), false)
   })
 })

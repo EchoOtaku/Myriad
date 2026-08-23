@@ -416,13 +416,10 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
             active_model.session_id = Set(Some(sid));
         }
 
-        active_model
-            .update(db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to update task: {e}");
-                "Failed to update task".to_string()
-            })?;
+        active_model.update(db).await.map_err(|e| {
+            tracing::error!("Failed to update task: {e}");
+            "Failed to update task".to_string()
+        })?;
     } else {
         // 创建新任务
         let session_id = session_id_from_lane_id(task.lane_id.as_deref());
@@ -454,13 +451,10 @@ pub async fn save_task_to_db(user_id: i32, task: &TaskState) -> Result<(), Strin
             )),
         };
 
-        new_task
-            .insert(db)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to create task: {e}");
-                "Failed to create task".to_string()
-            })?;
+        new_task.insert(db).await.map_err(|e| {
+            tracing::error!("Failed to create task: {e}");
+            "Failed to create task".to_string()
+        })?;
     }
 
     Ok(())

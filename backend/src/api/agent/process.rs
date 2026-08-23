@@ -496,7 +496,7 @@ pub async fn process_stream(
                                     let final_msg = response_value
                                         .get("message")
                                         .and_then(|v| v.as_str())
-                                        .unwrap_or("任务已完成");
+                                        .unwrap_or("The task finished");
                                     let metadata = session_metadata_with_run_identity(
                                         Some(response_value.clone()),
                                         &run_id_for_meta,
@@ -630,9 +630,9 @@ pub async fn process_stream(
                                             == crate::services::agent::types::TaskStatus::Completed;
                                         let message = task.error.clone().unwrap_or_else(|| {
                                             if task_success {
-                                                "任务已完成".to_string()
+                                                "The task finished".to_string()
                                             } else {
-                                                "任务未完成".to_string()
+                                                "Processing failed".to_string()
                                             }
                                         });
                                         (
@@ -1628,9 +1628,9 @@ pub async fn confirm_operation_stream(
                                             == crate::services::agent::types::TaskStatus::Completed;
                                         let message = task.error.clone().unwrap_or_else(|| {
                                             if task_success {
-                                                "任务已完成".to_string()
+                                                "The task finished".to_string()
                                             } else {
-                                                "任务未完成".to_string()
+                                                "Processing failed".to_string()
                                             }
                                         });
                                         (

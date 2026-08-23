@@ -136,17 +136,17 @@ impl NotificationManager {
     pub async fn notify_skill_evolution(&self, skill_id: &str, action: &str, detail: &str) {
         let (title, event_key, priority) = match action {
             "pruned" => (
-                format!("技能已自动淘汰: {}", skill_id),
+                format!("Skill removed: {skill_id}"),
                 "skill.pruned",
                 NotificationPriority::Normal,
             ),
             "improved" => (
-                format!("技能已自动改进: {}", skill_id),
+                format!("Skill improved: {skill_id}"),
                 "skill.improved",
                 NotificationPriority::Low,
             ),
             other => (
-                format!("技能变更 ({}): {}", other, skill_id),
+                format!("Skill changed ({other}): {skill_id}"),
                 "skill.changed",
                 NotificationPriority::Low,
             ),
@@ -245,7 +245,10 @@ impl NotificationManager {
         let (title, priority) = match status {
             "succeeded" => ("System update finished", NotificationPriority::Normal),
             "failed" => ("System update failed", NotificationPriority::High),
-            "needs_manual" => ("System update needs attention", NotificationPriority::Urgent),
+            "needs_manual" => (
+                "System update needs attention",
+                NotificationPriority::Urgent,
+            ),
             "running" => ("System update is running", NotificationPriority::Low),
             "unknown" => ("System update status unknown", NotificationPriority::High),
             _ => ("System update submitted", NotificationPriority::Low),

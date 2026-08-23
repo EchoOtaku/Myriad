@@ -51,7 +51,7 @@ pub async fn media_control(
     if !valid_actions.contains(&req.action.as_str()) {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": format!("Invalid action: {}", req.action) })),
+            Json(json!({ "error": "Invalid action", "code": "media_action_invalid" })),
         )));
     }
 
@@ -83,7 +83,7 @@ pub async fn media_control(
                     if !valid_modes.contains(&mode) {
                         return Err(HttpError::from((
                             StatusCode::BAD_REQUEST,
-                            Json(json!({ "error": format!("Invalid mode: {}", mode) })),
+                            Json(json!({ "error": "Invalid mode", "code": "media_mode_invalid" })),
                         )));
                     }
                 }

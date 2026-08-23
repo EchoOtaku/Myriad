@@ -792,8 +792,8 @@ impl Executor {
                     "cancel" => {
                         context.record_decision(
                             DecisionType::SkipStep,
-                            "用户选择取消任务",
-                            "用户选择不执行该操作",
+                            "The task was cancelled",
+                            "The user chose not to continue",
                             None,
                         );
                         return true; // 跳过后续步骤
@@ -801,8 +801,8 @@ impl Executor {
                     "skip" => {
                         context.record_decision(
                             DecisionType::SkipStep,
-                            "用户选择跳过错误步骤",
-                            "跳过当前步骤继续执行",
+                            "The failed step was skipped",
+                            "Continue without this step",
                             None,
                         );
                         // 不跳过后续所有步骤，只跳过当前出错的
@@ -811,8 +811,8 @@ impl Executor {
                     "retry" => {
                         context.record_decision(
                             DecisionType::ModifyParams,
-                            "用户选择重试失败步骤",
-                            "重新执行出错的步骤",
+                            "The failed step will be retried",
+                            "Retry the failed step",
                             None,
                         );
                         // 实际的重试逻辑由 resume_with_answer 处理（清除步骤结果、重置 DAG 状态）

@@ -55,7 +55,14 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
   class FakeCanvas {
     width = 0
     height = 0
-    readonly context = { putImageData() {}, drawImage() {} }
+    readonly context = {
+      drawCount: 0,
+      putImageData() {},
+      drawImage: () => {
+        this.context.drawCount += 1
+      },
+    }
+
     getContext() {
       return this.context
     }
@@ -64,9 +71,16 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
       callback(new Blob([new Uint8Array([1])], { type: 'image/png' }))
     }
   }
+  const canvases: FakeCanvas[] = []
   Object.assign(globalThis, {
     ImageData: FakeImageData,
-    document: { createElement: () => new FakeCanvas() },
+    document: {
+      createElement: () => {
+        const canvas = new FakeCanvas()
+        canvases.push(canvas)
+        return canvas
+      },
+    },
   })
   try {
     const prepared = await prepareAnime25DRigPsd(psd, 'master')
@@ -75,6 +89,17 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
     const bone = (id: string) =>
       prepared.source.bones.find((candidate) => candidate.id === id)
     assert.equal(prepared.partCount >= 15, true)
+    assert.equal(prepared.analysisReference.type, 'image/png')
+    const neutralLayerCount = layers.filter(
+      (layer) =>
+        !(
+          (layer.slot === 'eye-left' || layer.slot === 'eye-right') &&
+          layer.variant === 'closed'
+        ) &&
+        !(layer.slot === 'mouth' && layer.variant === 'open'),
+    ).length
+    assert.equal(canvases[0]?.context.drawCount, layers.length)
+    assert.equal(canvases[1]?.context.drawCount, neutralLayerCount)
     assert.equal(
       boneIds.some((id) => /upper-arm|forearm|wrist|thigh/.test(id)),
       false,
@@ -125,7 +150,10 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
     assert.equal(leftArmHandles?.length, 1)
     assert.equal(leftArmHandles?.[0].boneId, 'a25d-handwear-left')
     assert.ok(z('a25d-eyewhite-left') < z('a25d-eyelash-left'))
-    assert.equal(layers.some((layer) => layer.id.includes('legwear')), false)
+    assert.equal(
+      layers.some((layer) => layer.id.includes('legwear')),
+      false,
+    )
     assert.deepEqual(prepared.source.semantics?.chains, {
       torso: ['root', 'body', 'head'],
     })
@@ -137,13 +165,8 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
       (item) => item.role === 'eyewhite' && item.side === 'L',
     )
     assert.ok(white)
-    assert.notEqual(
-      playback.anchors.eyeL?.closeY,
-      white.y + white.h * 0.62,
-    )
-    assert.ok(
-      playback.layers.every((item, index) => item.z === index),
-    )
+    assert.notEqual(playback.anchors.eyeL?.closeY, white.y + white.h * 0.62)
+    assert.ok(playback.layers.every((item, index) => item.z === index))
   } finally {
     Object.assign(globalThis, {
       document: previousDocument,
@@ -213,13 +236,15 @@ test('unknown layers follow rigger head/body split by centroid vs chin', async (
   const playback = prepared.source.anime25dPlayback
   assert.ok(playback)
   assert.equal(
-    playback.layers.find((layer) => layer.role === 'unknown' && layer.name.includes('ribbon'))
-      ?.group,
+    playback.layers.find(
+      (layer) => layer.role === 'unknown' && layer.name.includes('ribbon'),
+    )?.group,
     'head',
   )
   assert.equal(
-    playback.layers.find((layer) => layer.role === 'unknown' && layer.name.includes('sash'))
-      ?.group,
+    playback.layers.find(
+      (layer) => layer.role === 'unknown' && layer.name.includes('sash'),
+    )?.group,
     'body',
   )
 })

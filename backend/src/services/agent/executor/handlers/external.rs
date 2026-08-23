@@ -165,8 +165,8 @@ async fn execute_hitokoto_get(params: &HashMap<String, Value>) -> Result<Value, 
 // Notion
 
 async fn execute_notion_query(params: &HashMap<String, Value>) -> Result<Value, String> {
-    let api_key = std::env::var("NOTION_API_KEY")
-        .map_err(|_| "Notion is not configured".to_string())?;
+    let api_key =
+        std::env::var("NOTION_API_KEY").map_err(|_| "Notion is not configured".to_string())?;
 
     let database_id = params
         .get("database_id")

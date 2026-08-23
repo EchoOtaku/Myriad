@@ -1,8 +1,8 @@
+import type { importCompanionRig, previewCompanionRigImport } from '../api'
 import type {
-  importCompanionRig,
-  previewCompanionRigImport,
-} from '../api'
-import type { PreparedRigPsdImport, prepareRigPsdImport } from '../rig/psdImporter'
+  PreparedRigPsdImport,
+  prepareRigPsdImport,
+} from '../rig/psdImporter'
 import type { CompanionRigManifest } from '../rig/types'
 import { diagnoseRig } from '../rig/diagnostics'
 
@@ -95,7 +95,11 @@ export async function preflightRigAsset(
 
   emit(onStage, 'compile-preview', 'started')
   try {
-    const manifest = await dependencies.preview(prepared.source, prepared.atlas)
+    const manifest = await dependencies.preview(
+      prepared.source,
+      prepared.atlas,
+      prepared.analysisReference,
+    )
     copyPreviewChestProfile(prepared.source, manifest)
     emit(onStage, 'compile-preview', 'completed')
     emit(onStage, 'analyze-capabilities', 'started')

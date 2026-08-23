@@ -215,23 +215,23 @@ pub fn plan_user_answer_effects(answer: &UserAnswer, question: &UserQuestion) ->
                 "cancel" => {
                     plan.decisions.push(PlannedDecision {
                         decision_type: DecisionType::SkipStep,
-                        description: "用户选择取消任务".into(),
-                        reasoning: "用户选择不执行该操作".into(),
+                        description: "The task was cancelled".into(),
+                        reasoning: "The user chose not to continue".into(),
                     });
                     plan.should_skip_remaining = true;
                 }
                 "skip" => {
                     plan.decisions.push(PlannedDecision {
                         decision_type: DecisionType::SkipStep,
-                        description: "用户选择跳过错误步骤".into(),
-                        reasoning: "跳过当前步骤继续执行".into(),
+                        description: "The failed step was skipped".into(),
+                        reasoning: "Continue without this step".into(),
                     });
                 }
                 "retry" => {
                     plan.decisions.push(PlannedDecision {
                         decision_type: DecisionType::ModifyParams,
-                        description: "用户选择重试失败步骤".into(),
-                        reasoning: "重新执行出错的步骤".into(),
+                        description: "The failed step will be retried".into(),
+                        reasoning: "Retry the failed step".into(),
                     });
                 }
                 _ => {

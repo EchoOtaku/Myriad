@@ -1925,7 +1925,7 @@ pub async fn cancel_transfer(
     if !["pending", "in-progress"].contains(&status.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("Transfer is already {}", status)})),
+            Json(json!({"error": "Transfer is not ready"})),
         ));
     }
 

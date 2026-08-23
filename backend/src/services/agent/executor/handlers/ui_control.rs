@@ -183,7 +183,7 @@ async fn execute_tapp_understand(
     let user_intent = params
         .get("userIntent")
         .and_then(|v| v.as_str())
-        .ok_or("Missing userIntent - 请描述你想要执行的操作")?;
+        .ok_or("Missing user intent")?;
     // 获取或复用 UI 分析结果
     let ui_analysis = if let Some(existing) = params.get("uiAnalysis") {
         existing.clone()
@@ -1019,7 +1019,7 @@ async fn execute_page_interact(params: &HashMap<String, Value>) -> Result<Value,
     let value = params.get("value").and_then(|v| v.as_str());
 
     if !is_valid_page_interact_action(action) {
-        return Err(format!("Invalid action: {}", action));
+        return Err("Invalid action".to_string());
     }
 
     Ok(json!({
@@ -1116,7 +1116,7 @@ async fn execute_music_control(params: &HashMap<String, Value>) -> Result<Value,
     let action = params
         .get("action")
         .and_then(|v| v.as_str())
-        .ok_or("缺少 action 参数（play/pause/next/previous/volume/mute/unmute）")?;
+        .ok_or("Missing music action")?;
 
     let volume = params.get("volume").and_then(|v| v.as_f64());
     let position = params.get("position").and_then(|v| v.as_f64());
@@ -1292,9 +1292,7 @@ async fn execute_page_content(
             super::data_read::execute("platform.read", &platform_params, ctx).await
         }
         "report" => super::data_read::execute("report.list", params, ctx).await,
-        _ => Err(format!(
-            "Unable to read page content"
-        )),
+        _ => Err(format!("Unable to read page content")),
     }
 }
 

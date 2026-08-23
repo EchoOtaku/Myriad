@@ -1795,7 +1795,10 @@ async fn get_platform_data(
 
             // 处理并缓存该平台数据
             let filtered_data = SmartFilter::process_and_save_single(platform, platform_data)
-                .map_err(|e| format!("Failed to process {}: {}", platform, e))?;
+                .map_err(|e| {
+                    tracing::error!(platform, error = %e, "Failed to process platform data");
+                    "Failed to process platform data".to_string()
+                })?;
 
             tracing::info!(
                 "✓ Successfully processed and cached {} from database",
@@ -1808,7 +1811,7 @@ async fn get_platform_data(
     // 5. FALLBACK: 从平台特定的raw文件读取数据
     let raw_cache_path = PathBuf::from(format!("./cache/raw/{}.json", platform));
     if !raw_cache_path.exists() {
-        return Err(format!("Raw data file not found: {:?}", raw_cache_path));
+        return Err("Raw data file not found".to_string());
     }
 
     tracing::info!("⚙️  Processing {} from raw data...", platform);
@@ -1818,7 +1821,10 @@ async fn get_platform_data(
 
     // 6. 处理并缓存该平台数据（只处理单个平台！）
     let filtered_data = SmartFilter::process_and_save_single(platform, &platform_data)
-        .map_err(|e| format!("Failed to process {}: {}", platform, e))?;
+        .map_err(|e| {
+            tracing::error!(platform, error = %e, "Failed to process platform data");
+            "Failed to process platform data".to_string()
+        })?;
 
     tracing::info!("✓ Successfully processed and cached {}", platform);
     Ok(filtered_data)

@@ -286,9 +286,9 @@ pub async fn create_channel(
             (
                 StatusCode::BAD_REQUEST,
                 Json(json!({
-                "error": "Cannot resolve remote actor",
-                "code": "remote_actor_unresolved",
-            })),
+                    "error": "Cannot resolve remote actor",
+                    "code": "remote_actor_unresolved",
+                })),
             )
         })?;
 
@@ -822,12 +822,10 @@ pub async fn send_message(
     if !["active", "accepted"].contains(&status.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(
-                json!({
-                    "error": "Channel is not ready to send messages",
-                    "code": "channel_not_ready",
-                }),
-            ),
+            Json(json!({
+                "error": "Channel is not ready to send messages",
+                "code": "channel_not_ready",
+            })),
         ));
     }
 

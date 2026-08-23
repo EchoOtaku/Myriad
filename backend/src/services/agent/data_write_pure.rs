@@ -47,7 +47,7 @@ pub fn platform_write_items_over_cap(count: usize) -> bool {
 }
 
 pub fn platform_write_cap_error() -> String {
-    format!("单次最多写入 {MAX_PLATFORM_WRITE_ITEMS} 条数据")
+    "Too many items to write at once".to_string()
 }
 
 /// Disallowed hostname forms for subscribe URLs (before DNS).
@@ -78,24 +78,21 @@ pub fn validate_subscribe_url_policy(url: &str) -> Result<(), String> {
 
     match parsed.scheme() {
         "http" | "https" => {}
-        scheme => return Err(format!("不允许的 URL scheme: {scheme}")),
+        _ => return Err("This address is not allowed".to_string()),
     }
 
     let host = parsed
         .host_str()
-        .ok_or_else(|| "URL 缺少 host".to_string())?;
+        .ok_or_else(|| "This URL is missing a host".to_string())?;
 
     if is_disallowed_subscribe_host(host) {
-        return Err("不允许访问内网地址".to_string());
+        return Err("This address is not allowed".to_string());
     }
 
     // If host is already an IP literal, reject private ranges without DNS.
     if let Ok(ip) = host.parse::<IpAddr>() {
         if is_disallowed_subscribe_ip(ip) {
-            return match ip {
-                IpAddr::V4(_) => Err("不允许访问内网地址".to_string()),
-                IpAddr::V6(_) => Err("不允许访问内网 IPv6 地址".to_string()),
-            };
+            return Err("This address is not allowed".to_string());
         }
     }
 
@@ -165,11 +162,11 @@ pub fn collect_subscribe_url_candidates(
     } else if let Some(url) = single_url {
         vec![(url.to_string(), None)]
     } else {
-        return Err("缺少 url 或 feeds 参数".to_string());
+        return Err("Missing url or feeds".to_string());
     };
 
     if urls_to_try.is_empty() {
-        return Err("没有可用的订阅源 URL".to_string());
+        return Err("No feed URL to try".to_string());
     }
     Ok(urls_to_try)
 }
@@ -203,7 +200,10 @@ mod tests {
         assert_eq!(clamp_update_interval_minutes(30), 30);
         assert!(!platform_write_items_over_cap(10));
         assert!(platform_write_items_over_cap(MAX_PLATFORM_WRITE_ITEMS + 1));
-        assert!(platform_write_cap_error().contains(&MAX_PLATFORM_WRITE_ITEMS.to_string()));
+        assert_eq!(
+            platform_write_cap_error(),
+            "Too many items to write at once"
+        );
     }
 
     #[test]

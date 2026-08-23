@@ -1355,7 +1355,7 @@ impl Agent {
     /// 构建升级提示（使用 ResultEvaluator 的失败模式分析）
     pub(crate) fn build_escalation_hint(&self, task_state: &TaskState, result: &Value) -> String {
         if task_state.status == TaskStatus::Failed {
-            let err = task_state.error.as_deref().unwrap_or("未知错误");
+            let err = task_state.error.as_deref().unwrap_or("Processing failed");
             let err_lower = err.to_lowercase();
             if err.contains("API Key 未配置")
                 || err.contains("未配置")
