@@ -245,7 +245,9 @@ mod tests {
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("## Authority map"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("Apply every fact once"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("previousVisualIdentityForDifferenceOnly"));
-        assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("comparison data for avoiding repetition only"));
+        assert!(
+            VISUAL_DESIGN_SYSTEM_PROMPT.contains("comparison data for avoiding repetition only")
+        );
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("`clothingStyle` is a hard lock"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("UI language is not a costume signal"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("## Gender lock"));
@@ -267,7 +269,9 @@ mod tests {
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("balanced anatomical shoulders"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("one dominant silhouette driver"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("dimensional hero assembly"));
-        assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("flat logo, card, or badge alone is incomplete"));
+        assert!(
+            VISUAL_DESIGN_SYSTEM_PROMPT.contains("flat logo, card, or badge alone is incomplete")
+        );
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("at least three distinct contrasting hues"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("## Portrait scope"));
         assert!(VISUAL_DESIGN_SYSTEM_PROMPT.contains("strict centered eye-level zero-yaw front"));

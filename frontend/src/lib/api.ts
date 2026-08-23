@@ -11,6 +11,7 @@ import {
 } from '../utils/httpRateLimitToast'
 import { checkRateLimit, RateLimitError } from '../utils/rateLimiter'
 import TokenManager from '../utils/tokenManager'
+import { isUselessErrorText } from '../utils/userFacingError'
 
 // 智能 API URL 检测（与 config.ts 保持一致）
 // 生产环境使用相对路径（空字符串），开发环境使用 localhost
@@ -316,8 +317,12 @@ export interface SettingsRestorePreview {
 export async function previewSettingsBackup(backup: unknown) {
   const response = await api.post('/api/config/settings-backup/preview', backup)
   if (response.status >= 400 || !response.data?.preview) {
+    const previewError =
+      typeof response.data?.error === 'string' ? response.data.error : ''
     throw new Error(
-      response.data?.error || currentCopy().errors.settingsBackupPreviewFailed,
+      previewError && !isUselessErrorText(previewError)
+        ? previewError
+        : currentCopy().errors.settingsBackupPreviewFailed,
     )
   }
   return response.data.preview as SettingsRestorePreview
@@ -326,8 +331,12 @@ export async function previewSettingsBackup(backup: unknown) {
 export async function restoreSettingsBackup(backup: unknown) {
   const response = await api.post('/api/config/settings-backup', backup)
   if (response.status >= 400 || response.data?.success !== true) {
+    const restoreError =
+      typeof response.data?.error === 'string' ? response.data.error : ''
     throw new Error(
-      response.data?.error || currentCopy().errors.settingsBackupRestoreFailed,
+      restoreError && !isUselessErrorText(restoreError)
+        ? restoreError
+        : currentCopy().errors.settingsBackupRestoreFailed,
     )
   }
   return response.data

@@ -191,7 +191,7 @@ pub async fn create_admin(
 
     let txn = db.begin().await.map_err(|e| {
         tracing::error!("create-admin begin transaction failed: {:?}", e);
-        HttpError(AppError::internal("Database error").with_message(e.to_string()))
+        HttpError(AppError::internal("Database error"))
     })?;
 
     // Serialize concurrent setup; released automatically on commit/rollback.
@@ -203,7 +203,7 @@ pub async fn create_admin(
     .await
     .map_err(|e| {
         tracing::error!("create-admin advisory lock failed: {:?}", e);
-        HttpError(AppError::internal("Database error").with_message(e.to_string()))
+        HttpError(AppError::internal("Database error"))
     })?;
 
     // Setup-only: reject if any admin already exists (any auth_provider).
@@ -218,7 +218,7 @@ pub async fn create_admin(
         .await
         .map_err(|e| {
             tracing::error!("Failed to check existing admin: {:?}", e);
-            HttpError(AppError::internal("Database error").with_message(e.to_string()))
+            HttpError(AppError::internal("Database error"))
         })?;
 
     let admin_exists: bool = admin_exists_result
@@ -310,9 +310,8 @@ pub async fn create_admin(
         }
         let _ = txn.rollback().await;
         return Err(HttpError(
-            AppError::internal("Failed to close setup window").with_message(
-                "无法写入安装认领标记；管理员账户尚未提交，请检查数据目录权限后重试。",
-            ),
+            AppError::internal("Failed to write setup claim marker")
+                .with_code("setup_claim_failed"),
         ));
     }
 
@@ -938,7 +937,7 @@ pub async fn register(
     let user_id: i32 = insert.try_get("", "id").map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read new user id"})),
+            Json(json!({"error": "Failed to read new user id", "code": "account_create_failed"})),
         ))
     })?;
 
@@ -1337,7 +1336,7 @@ pub async fn admin_create_user(
     let user_id: i32 = insert.try_get("", "id").map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read new id"})),
+            Json(json!({"error": "Failed to read new id", "code": "account_create_failed"})),
         ))
     })?;
 

@@ -2868,7 +2868,7 @@ pub async fn export_settings(
             tracing::error!("Failed to export settings: {}", error);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to read settings"})),
+                Json(json!({"error": "Failed to read settings", "code": "settings_backup_failed"})),
             );
         }
     };
@@ -2881,7 +2881,9 @@ pub async fn export_settings(
                 tracing::error!("Failed to decode configuration key: {}", error);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": "Failed to decode settings"})),
+                    Json(
+                        json!({"error": "Failed to decode settings", "code": "settings_backup_failed"}),
+                    ),
                 );
             }
         };
@@ -2900,7 +2902,9 @@ pub async fn export_settings(
                     tracing::error!("Failed to decode configuration value: {}", error);
                     return (
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({"error": "Failed to decode settings"})),
+                        Json(
+                            json!({"error": "Failed to decode settings", "code": "settings_backup_failed"}),
+                        ),
                     );
                 }
             },
@@ -2995,7 +2999,9 @@ pub async fn restore_settings(
             tracing::error!("Failed to start settings restore transaction: {}", error);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to start settings restore"})),
+                Json(
+                    json!({"error": "Failed to start settings restore", "code": "settings_backup_failed"}),
+                ),
             );
         }
     };
@@ -3055,7 +3061,7 @@ pub async fn restore_settings(
         tracing::error!("Failed to restore settings: {}", error);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": format!("Failed to restore settings: {}", error)})),
+            Json(json!({"error": "Failed to restore settings", "code": "settings_backup_failed"})),
         );
     }
 
@@ -3947,7 +3953,9 @@ pub async fn update_config(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "success": false,
-                "message": format!("Failed to save configuration to database: {}", e)
+                "error": "Failed to save configuration",
+                "code": "config_save_failed",
+                "message": "Failed to save configuration"
             })),
         )));
     }
@@ -3968,7 +3976,9 @@ pub async fn update_config(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({
                     "success": false,
-                    "message": format!("Failed to save configuration: {}", e)
+                    "error": "Failed to save configuration",
+                    "code": "config_save_failed",
+                    "message": "Failed to save configuration"
                 })),
             )));
         }
@@ -4004,10 +4014,9 @@ pub async fn update_config(
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "success": false,
-                "message": format!(
-                    "Configuration was saved, but platform auto-refresh could not be updated: {}",
-                    error
-                )
+                "error": "Failed to update platform auto-refresh",
+                "code": "platform_refresh_reconcile_failed",
+                "message": "Configuration was saved, but platform auto-refresh could not be updated."
             })),
         )));
     }
@@ -5422,11 +5431,14 @@ pub async fn update_dashboard_config(
     }
 
     if let Err(e) = config_service.update_configs(updates).await {
+        tracing::error!("Failed to update dashboard config: {e}");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "success": false,
-                "message": format!("Failed to update dashboard config: {}", e)
+                "error": "Failed to update dashboard config",
+                "code": "config_save_failed",
+                "message": "Failed to update dashboard config"
             })),
         );
     }
@@ -5462,11 +5474,14 @@ pub async fn update_control_panel_config(
     }
 
     if let Err(e) = config_service.update_configs(updates).await {
+        tracing::error!("Failed to update control panel config: {e}");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "success": false,
-                "message": format!("Failed to update control panel config: {}", e)
+                "error": "Failed to update control panel config",
+                "code": "config_save_failed",
+                "message": "Failed to update control panel config"
             })),
         );
     }
@@ -5497,11 +5512,14 @@ pub async fn update_tapp_window_schemes(
     updates.insert("tapp_window_schemes".to_string(), json!(payload.schemes));
 
     if let Err(e) = config_service.update_configs(updates).await {
+        tracing::error!("Failed to update tapp window schemes: {e}");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({
                 "success": false,
-                "message": format!("Failed to update tapp window schemes: {}", e)
+                "error": "Failed to update tapp window schemes",
+                "code": "config_save_failed",
+                "message": "Failed to update tapp window schemes"
             })),
         );
     }

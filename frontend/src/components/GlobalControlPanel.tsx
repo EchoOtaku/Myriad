@@ -31,6 +31,10 @@ import { useNotificationPreferences } from '../hooks/useNotificationPreferences'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
 import { formatMusicError } from '../utils/musicError'
+import {
+  notificationFacingBody,
+  notificationFacingTitle,
+} from '../utils/notificationFacing'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
   notificationSourceFor,
@@ -282,7 +286,9 @@ const GlobalControlPanel: React.FC = () => {
       const icon = (
         <NotificationSourceIcon source={source} className="h-4 w-4" />
       )
-      const snippet = n.body.length > 60 ? `${n.body.slice(0, 60)}…` : n.body
+      const title = notificationFacingTitle(n)
+      const body = notificationFacingBody(n)
+      const snippet = body.length > 60 ? `${body.slice(0, 60)}…` : body
 
       // 1. 接入智能岛轮播（置顶展示，20 秒后自动撤下）
       if (shouldDeliverNotification(notificationPreferences, n, 'island')) {
@@ -290,7 +296,7 @@ const GlobalControlPanel: React.FC = () => {
           {
             type: 'notification',
             icon,
-            text: n.title,
+            text: title,
             subtext: snippet,
             showSubtext: true,
           },
@@ -316,7 +322,7 @@ const GlobalControlPanel: React.FC = () => {
           'panel',
         )
         showToast({
-          title: n.title,
+          title,
           message: snippet,
           type: notificationToastType(n),
           duration: 6000,
@@ -344,8 +350,8 @@ const GlobalControlPanel: React.FC = () => {
       ) {
         try {
           // 构造即展示（无需持有实例），tag 去重同 id 通知
-          void new Notification(n.title, {
-            body: n.body.slice(0, 200),
+          void new Notification(title, {
+            body: body.slice(0, 200),
             tag: n.id,
             icon: notificationSourceIconAsset(source),
           })

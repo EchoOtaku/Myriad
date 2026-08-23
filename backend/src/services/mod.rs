@@ -99,4 +99,5 @@ pub mod brew_scheduler;
 pub mod icon_service;
 pub mod image_cache; // e.g. Notion temporary URLs
 pub mod notion_service;
+pub mod rig_chest_analysis; // One-shot vision profile for Anime2.5D chest motion
 pub mod rsshub_service;

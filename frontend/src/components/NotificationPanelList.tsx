@@ -15,6 +15,10 @@ import { useI18n } from '../contexts/I18nContext'
 import { federationApi } from '../services/federationApi'
 import { notificationSourceFor } from '../services/notificationDelivery'
 import { getGreeting } from '../utils/dynamicContent'
+import {
+  notificationFacingBody,
+  notificationFacingTitle,
+} from '../utils/notificationFacing'
 import { userFacingError } from '../utils/userFacingError'
 import { NotificationSourceIcon } from './notifications/NotificationIcons'
 
@@ -418,14 +422,14 @@ function NotificationPanelList({
                   </div>
 
                   <div className="mt-0.5 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">
-                    {n.title}
+                    {notificationFacingTitle(n)}
                   </div>
                   <p
                     className={`mt-0.5 text-xs text-gray-500 dark:text-gray-400 whitespace-pre-wrap break-words ${
                       expandedId === n.id ? '' : 'line-clamp-2'
                     }`}
                   >
-                    {n.body}
+                    {notificationFacingBody(n)}
                   </p>
                   {typeof n.metadata?.progress === 'number' &&
                     (n.notification_type === 'task_progress' ||

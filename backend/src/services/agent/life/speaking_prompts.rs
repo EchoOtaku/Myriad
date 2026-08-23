@@ -137,7 +137,10 @@ mod tests {
         assert!(!section.contains("72"));
         assert!(!section.contains("/100"));
         assert!(section.contains("不要念出心情数字"));
-        assert!(mood_tone_instruction(8.0).contains("克制") || mood_tone_instruction(8.0).contains("极低"));
+        assert!(
+            mood_tone_instruction(8.0).contains("克制")
+                || mood_tone_instruction(8.0).contains("极低")
+        );
         assert!(mood_tone_instruction(30.0).contains("偏低"));
         assert!(mood_tone_instruction(90.0).contains("轻松"));
     }

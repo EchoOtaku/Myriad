@@ -6,16 +6,13 @@ use crate::services::agent::types::{self, *};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-use super::handlers::HandlerContext;
 use super::executor_footer::*;
-use super::Executor;
-use super::{
-    take_steering, truncate_str,
-};
+use super::handlers::HandlerContext;
 use super::utils;
+use super::Executor;
+use super::{take_steering, truncate_str};
 
 impl Executor {
-
     /// 执行单个步骤
     pub(crate) async fn execute_step(
         &self,
@@ -93,8 +90,7 @@ impl Executor {
                         user_id = handler_ctx.user_id,
                         "[Executor] Blocked unconfirmed high-risk dynamic step"
                     );
-                    let is_system =
-                        handler_ctx.user_id == crate::services::agent::SYSTEM_USER_ID;
+                    let is_system = handler_ctx.user_id == crate::services::agent::SYSTEM_USER_ID;
                     if is_system {
                         return Err(format!(
                             "定时任务动态步骤 '{}'（{}，风险 {:?}）需要人工确认，已拒绝自动执行。请手动操作或调整任务指令。",
@@ -354,7 +350,10 @@ impl Executor {
                         format!(
                             "[{}]: {}",
                             m.role,
-                            m.content.chars().take(USER_TEXT_MAX_CHARS).collect::<String>()
+                            m.content
+                                .chars()
+                                .take(USER_TEXT_MAX_CHARS)
+                                .collect::<String>()
                         )
                     })
                     .collect();

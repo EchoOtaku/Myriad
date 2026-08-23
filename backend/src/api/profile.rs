@@ -496,9 +496,7 @@ pub async fn delete_platform_cache(
 }
 
 // Media URL rewrite (pure) — implementation in services so schedulers/export can share it.
-pub use crate::services::image_proxy_urls::{
-    normalize_json_media_urls, proxy_image_url,
-};
+pub use crate::services::image_proxy_urls::{normalize_json_media_urls, proxy_image_url};
 
 // Library item shaping (pure) — DB I/O stays in this module.
 pub use crate::services::library_items::{

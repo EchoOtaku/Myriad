@@ -134,10 +134,7 @@ async fn require_life_enabled() -> Result<(), HttpError> {
     }
 }
 
-async fn report_platform_count(
-    db: &DatabaseConnection,
-    user_id: i32,
-) -> Result<usize, HttpError> {
+async fn report_platform_count(db: &DatabaseConnection, user_id: i32) -> Result<usize, HttpError> {
     life::report_dna::count_report_platforms(db, user_id)
         .await
         .map_err(|error| {
@@ -287,15 +284,13 @@ pub async fn put_persona(
             Json(json!({ "error": "Database error", "code": "database_error" })),
         ))
     })?;
-    let previous = life::get_persona_on(&transaction)
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "[Agent persona] load before save failed");
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error", "code": "database_error" })),
-            ))
-        })?;
+    let previous = life::get_persona_on(&transaction).await.map_err(|error| {
+        tracing::error!(%error, "[Agent persona] load before save failed");
+        HttpError::from((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": "Database error", "code": "database_error" })),
+        ))
+    })?;
     let previous_portrait = previous
         .as_ref()
         .and_then(|persona| persona.portrait_asset_id.clone());
@@ -417,13 +412,15 @@ pub async fn delete_persona(
             Json(json!({ "error": "Database error", "code": "database_error" })),
         ))
     })?;
-    life::clear_persona_on(&transaction).await.map_err(|error| {
-        tracing::error!(%error, "[Agent persona] clear failed");
-        HttpError::from((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Database error", "code": "database_error" })),
-        ))
-    })?;
+    life::clear_persona_on(&transaction)
+        .await
+        .map_err(|error| {
+            tracing::error!(%error, "[Agent persona] clear failed");
+            HttpError::from((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "Database error", "code": "database_error" })),
+            ))
+        })?;
     let cleared_asset = digital_life_rig::persist_active_asset(&transaction, None)
         .await
         .map_err(|error| {
@@ -519,13 +516,15 @@ pub async fn put_addressee(
                 ))
             })?
     } else {
-        life::get_or_create_state(&db, user_id).await.map_err(|error| {
-            tracing::error!(%error, "[Agent addressee] load failed");
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error", "code": "database_error" })),
-            ))
-        })?
+        life::get_or_create_state(&db, user_id)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "[Agent addressee] load failed");
+                HttpError::from((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(json!({ "error": "Database error", "code": "database_error" })),
+                ))
+            })?
     };
     if body.dnd_start.is_some() || body.dnd_end.is_some() {
         let (start, end) = parse_schedule(body.dnd_start.as_deref(), body.dnd_end.as_deref())?;
@@ -569,14 +568,10 @@ pub async fn report_signals(
         )));
     }
     let language = normalize_signals_language(&request.language);
-    let distilled = life::report_dna::distill_report_dna(
-        &db,
-        user_id,
-        language,
-        request.regenerate,
-    )
-    .await
-    .map_err(distill_error)?;
+    let distilled =
+        life::report_dna::distill_report_dna(&db, user_id, language, request.regenerate)
+            .await
+            .map_err(distill_error)?;
     Ok(Json(json!({
         "reportCount": distilled.report_count,
         "tags": distilled.tags,
@@ -622,7 +617,8 @@ pub async fn suggest_name(
     let user_id = require_site_owner(&claims, &db).await?;
     require_persona_reports(&db, user_id).await?;
     let language = normalize_signals_language(&body.language);
-    let tags = life::report_dna::sanitize_onboarding_tags_for_language(&body.selected_tags, language);
+    let tags =
+        life::report_dna::sanitize_onboarding_tags_for_language(&body.selected_tags, language);
     match life::onboarding_ai::suggest_display_name(
         &tags,
         &body.gender,
@@ -744,11 +740,10 @@ pub async fn suggest_visual_design(
             })),
         ))
     })?;
-    let requirements =
-        myriad_digital_life::normalize_visual_requirements_for_design_with_gender(
-            &sanitize_visual_text(&body.visual_requirements, 500)?,
-            gender,
-        );
+    let requirements = myriad_digital_life::normalize_visual_requirements_for_design_with_gender(
+        &sanitize_visual_text(&body.visual_requirements, 500)?,
+        gender,
+    );
     let clothing_style = myriad_digital_life::normalize_clothing_style(&body.clothing_style)
         .ok_or_else(|| {
             HttpError::from((
@@ -778,8 +773,8 @@ pub async fn suggest_visual_design(
         }
         None => None,
     };
-    let existing = (body.regenerate || body.keep_character)
-        .then(|| explicit_existing.unwrap_or(Value::Null));
+    let existing =
+        (body.regenerate || body.keep_character).then(|| explicit_existing.unwrap_or(Value::Null));
     if body.keep_character && existing.as_ref().is_none_or(Value::is_null) {
         return Err(HttpError::from((
             StatusCode::BAD_REQUEST,
@@ -816,11 +811,7 @@ pub async fn suggest_visual_design(
     })))
 }
 
-fn onboarding_error_body(
-    error: &str,
-    code: &str,
-    message: Option<&str>,
-) -> serde_json::Value {
+fn onboarding_error_body(error: &str, code: &str, message: Option<&str>) -> serde_json::Value {
     let mut body = json!({ "error": error, "code": code });
     if let Some(message) = message.map(str::trim).filter(|value| !value.is_empty()) {
         if message != error {
@@ -1013,7 +1004,10 @@ fn sanitize_visual_profile(value: &Value) -> Result<Value, HttpError> {
             json!(normalize_signals_language(language)),
         );
     }
-    for (key, max_chars) in [("extraRequirements", 500), ("personaExtraRequirements", 500)] {
+    for (key, max_chars) in [
+        ("extraRequirements", 500),
+        ("personaExtraRequirements", 500),
+    ] {
         if let Some(text) = source.get(key).and_then(Value::as_str) {
             let text = sanitize_visual_text(text, max_chars)?;
             profile.insert(key.into(), json!(text));
@@ -1097,7 +1091,6 @@ fn visual_profile_error() -> HttpError {
         })),
     ))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1327,8 +1320,8 @@ mod tests {
             "japanese"
         );
         assert_eq!(
-            myriad_digital_life::character_module(&profile["visualIdentity"])
-                .unwrap()["faceDesign"],
+            myriad_digital_life::character_module(&profile["visualIdentity"]).unwrap()
+                ["faceDesign"],
             "成熟的鹅蛋脸与自然眉形"
         );
     }
@@ -1342,7 +1335,10 @@ mod tests {
             "sourceTags": ["Night owl", "Clear boundaries"]
         }))
         .expect("seeds");
-        assert_eq!(profile["personaExtraRequirements"], "quieter with strangers");
+        assert_eq!(
+            profile["personaExtraRequirements"],
+            "quieter with strangers"
+        );
         assert_eq!(
             profile["sourceTags"],
             json!(["Night owl", "Clear boundaries"])
@@ -1364,5 +1360,4 @@ mod tests {
         assert_eq!(persona["summary"], "安静但对新事物有持续好奇心");
         assert!(persona.get("gender").is_none());
     }
-
 }

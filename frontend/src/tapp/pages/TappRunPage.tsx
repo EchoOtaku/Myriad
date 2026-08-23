@@ -69,6 +69,7 @@ export function TappRunPage() {
   const { isMobile } = useBreakpoints()
   const isMultiWindow = useTappMultiWindowSession()
   const navigate = useNavigate()
+  const { t } = useI18n()
 
   // /tapp/run?multi=true — 无 seed id
   if (!tappId) {
@@ -77,7 +78,7 @@ export function TappRunPage() {
     }
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-neutral-900">
-        <p className="text-gray-500 dark:text-gray-400">无效的 Tapp ID</p>
+        <p className="text-gray-500 dark:text-gray-400">{t.tapp.invalidId}</p>
       </div>
     )
   }

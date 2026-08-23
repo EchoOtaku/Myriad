@@ -346,7 +346,10 @@ mod tests {
 
         let item = tapp_list_item_from_model(model.clone(), true, false);
         assert_eq!(item.status, "error");
-        assert_eq!(item.error_message.as_deref(), Some(UNSUPPORTED_PACKAGE_REASON));
+        assert_eq!(
+            item.error_message.as_deref(),
+            Some(UNSUPPORTED_PACKAGE_REASON)
+        );
 
         let detail = tapp_detail_from_model(
             model,
@@ -366,7 +369,9 @@ mod tests {
     #[test]
     fn any_declared_layer_is_supported() {
         assert!(unsupported_install_reason(&json!({ "core": { "entry": "core.js" } })).is_none());
-        assert!(unsupported_install_reason(&json!({ "page": { "template": "page.html" } })).is_none());
+        assert!(
+            unsupported_install_reason(&json!({ "page": { "template": "page.html" } })).is_none()
+        );
         assert!(unsupported_install_reason(&json!({
             "widgets": [{ "id": "card", "entry": "widget.js" }]
         }))
@@ -466,7 +471,7 @@ mod tests {
             ..Default::default()
         };
         let detail = tapp_detail_from_model(
-                sample_model(json!(["storage:read", "brew:write", "ai:generate"])),
+            sample_model(json!(["storage:read", "brew:write", "ai:generate"])),
             UserRole::User,
             true,
             false,
@@ -499,7 +504,9 @@ mod tests {
             true,
             &config,
         );
-        assert!(detail.granted_permissions.contains(&"storage:read".to_string()));
+        assert!(detail
+            .granted_permissions
+            .contains(&"storage:read".to_string()));
         assert!(!detail
             .granted_permissions
             .iter()

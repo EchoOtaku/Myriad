@@ -10,7 +10,11 @@ import type { TappManifest } from '../types'
 import type { RemoteStoreLocales } from '../utils/storeLocale'
 import type { StorePreviewDescriptor } from '../utils/storePreview'
 import { currentCopy } from '../../i18n/localeCopy'
-import { httpStatusMessage, userFacingError } from '../../utils/userFacingError'
+import {
+  httpStatusMessage,
+  isUselessErrorText,
+  userFacingError,
+} from '../../utils/userFacingError'
 import api from '../../lib/api'
 import { TAPP_ICON_TOKENS } from '../constants/icons'
 import { parseStoreLocales } from '../utils/storeLocale'
@@ -267,6 +271,21 @@ class RemoteStoreServiceImpl {
     return sources.filter((s) => s.enabled)
   }
 
+  private storeSourceFailure(error: unknown, fallback: string): Error {
+    const axiosError = error as {
+      response?: { data?: { error?: unknown } }
+      message?: string
+    }
+    const bodyError =
+      typeof axiosError.response?.data?.error === 'string'
+        ? axiosError.response.data.error
+        : ''
+    const raw = bodyError || axiosError.message || ''
+    return new Error(
+      raw && !isUselessErrorText(raw) ? raw : userFacingError(error, fallback),
+    )
+  }
+
   /** 添加商店源（需要管理员权限） */
   async addSource(
     source: Omit<RemoteStoreSource, 'id' | 'official'>,
@@ -281,7 +300,12 @@ class RemoteStoreServiceImpl {
       })
 
       if (!response.data?.success) {
-        throw new Error(response.data?.error || currentCopy().tapp.storeAddFailed)
+        throw new Error(
+          typeof response.data?.error === 'string' &&
+            !isUselessErrorText(response.data.error)
+            ? response.data.error
+            : currentCopy().tapp.storeAddFailed,
+        )
       }
 
       // 添加成功，刷新本地缓存
@@ -302,7 +326,7 @@ class RemoteStoreServiceImpl {
       if (error.response?.status === 409) {
         throw new Error(currentCopy().tapp.storeSourceExists)
       }
-      throw new Error(error.message || currentCopy().tapp.storeAddFailed)
+      throw this.storeSourceFailure(error, currentCopy().tapp.storeAddFailed)
     }
   }
 
@@ -317,7 +341,12 @@ class RemoteStoreServiceImpl {
       const response = await api.delete(`/api/tapps/store/sources/${sourceId}`)
 
       if (!response.data?.success) {
-        throw new Error(response.data?.error || currentCopy().tapp.storeRemoveFailed)
+        throw new Error(
+          typeof response.data?.error === 'string' &&
+            !isUselessErrorText(response.data.error)
+            ? response.data.error
+            : currentCopy().tapp.storeRemoveFailed,
+        )
       }
 
       // 删除成功，更新本地缓存
@@ -331,7 +360,7 @@ class RemoteStoreServiceImpl {
       if (error.response?.status === 404) {
         throw new Error(currentCopy().tapp.storeSourceNotFound)
       }
-      throw new Error(error.message || currentCopy().tapp.storeRemoveFailed)
+      throw this.storeSourceFailure(error, currentCopy().tapp.storeRemoveFailed)
     }
   }
 
@@ -343,7 +372,12 @@ class RemoteStoreServiceImpl {
       })
 
       if (!response.data?.success) {
-        throw new Error(response.data?.error || currentCopy().tapp.storeUpdateFailed)
+        throw new Error(
+          typeof response.data?.error === 'string' &&
+            !isUselessErrorText(response.data.error)
+            ? response.data.error
+            : currentCopy().tapp.storeUpdateFailed,
+        )
       }
 
       // 更新成功，更新本地缓存
@@ -358,7 +392,7 @@ class RemoteStoreServiceImpl {
       if (error.response?.status === 404) {
         throw new Error(currentCopy().tapp.storeSourceNotFound)
       }
-      throw new Error(error.message || currentCopy().tapp.storeUpdateFailed)
+      throw this.storeSourceFailure(error, currentCopy().tapp.storeUpdateFailed)
     }
   }
 
@@ -388,7 +422,12 @@ class RemoteStoreServiceImpl {
       )
 
       if (!response.data?.success) {
-        throw new Error(response.data?.error || currentCopy().tapp.storeUpdateFailed)
+        throw new Error(
+          typeof response.data?.error === 'string' &&
+            !isUselessErrorText(response.data.error)
+            ? response.data.error
+            : currentCopy().tapp.storeUpdateFailed,
+        )
       }
 
       const data = response.data.data
@@ -429,7 +468,7 @@ class RemoteStoreServiceImpl {
       if (error.response?.status === 400) {
         throw new Error(error.response?.data?.error || currentCopy().tapp.storeInvalidSource)
       }
-      throw new Error(error.message || currentCopy().tapp.storeUpdateFailed)
+      throw this.storeSourceFailure(error, currentCopy().tapp.storeUpdateFailed)
     }
   }
 

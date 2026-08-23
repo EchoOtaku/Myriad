@@ -37,7 +37,7 @@ use uuid::Uuid;
 use crate::{
     middleware::auth::Claims,
     services::{
-        agent::life, digital_life_rig, image_generation, see_through,
+        agent::life, digital_life_rig, image_generation, rig_chest_analysis, see_through,
         site_owner::site_owner_user_id,
     },
     state::AppState,
@@ -225,6 +225,7 @@ fn active_asset_id(config: &crate::config::DynamicConfig) -> Option<String> {
 struct MasterProvenance {
     asset_id: String,
     generation_fingerprint: Option<String>,
+    gender: String,
 }
 
 fn valid_generation_fingerprint(value: &str) -> bool {
@@ -283,6 +284,14 @@ async fn current_master(db: &DatabaseConnection) -> ApiResult<Option<MasterProve
     let Some(persona) = persona else {
         return Ok(None);
     };
+    let gender = persona
+        .visual_profile
+        .as_ref()
+        .and_then(|profile| profile.get("gender"))
+        .and_then(Value::as_str)
+        .filter(|value| matches!(*value, "female" | "male" | "nonbinary" | "unspecified"))
+        .unwrap_or("unspecified")
+        .to_string();
     let Some(asset_id) = persona.portrait_asset_id else {
         return Ok(None);
     };
@@ -294,6 +303,7 @@ async fn current_master(db: &DatabaseConnection) -> ApiResult<Option<MasterProve
             persona.portrait_generation.as_ref(),
         )
         .unwrap_or(None),
+        gender,
     }))
 }
 
@@ -416,6 +426,42 @@ async fn compile_imported_rig(
     Ok((source_master_asset_id, manifest))
 }
 
+async fn prepare_import_chest_profile(
+    user_id: i32,
+    source: &mut ImportRigSourceRequest,
+    gender: &str,
+    analyze_with_ai: bool,
+) {
+    let Some(playback) = source.anime25d_playback.as_mut() else {
+        return;
+    };
+    if gender == "male" {
+        rig_chest_analysis::apply_male_policy(playback);
+        return;
+    }
+    if !analyze_with_ai {
+        rig_chest_analysis::ensure_safe_enabled_profile(playback);
+        return;
+    }
+    let reference = match image_generation::load_local_reference(&source.source_master_asset_id)
+        .await
+    {
+        Ok(reference) => reference,
+        Err(error) => {
+            tracing::warn!(%error, "could not load portrait for chest analysis; using geometry fallback");
+            rig_chest_analysis::ensure_safe_enabled_profile(playback);
+            return;
+        }
+    };
+    crate::services::ai_cost_ledger::with_site_ai_ledger(
+        user_id,
+        "life",
+        "rig-chest-analysis",
+        rig_chest_analysis::analyze_once_or_fallback(playback, &reference),
+    )
+    .await;
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ImportRigAtlasRequest {
@@ -535,8 +581,16 @@ pub async fn get_active_rig(crate::extract::Db(db): crate::extract::Db) -> ApiRe
     let asset_id = active_asset_id(&*crate::GLOBAL_DYNAMIC_CONFIG.read().await);
     if let (Some(asset_id), Some(master)) = (asset_id, master.as_ref()) {
         match load_stored_manifest(&asset_id).await {
-            Ok(manifest) if manifest_matches_master(&manifest, master) => {
-                if matches!(package_identity_matches(&asset_id, &manifest).await, Ok(true)) {
+            Ok(mut manifest) if manifest_matches_master(&manifest, master) => {
+                if matches!(
+                    package_identity_matches(&asset_id, &manifest).await,
+                    Ok(true)
+                ) {
+                    if master.gender == "male" {
+                        if let Some(playback) = manifest.anime25d_playback.as_mut() {
+                            rig_chest_analysis::apply_male_policy(playback);
+                        }
+                    }
                     let manifest = rewrite_texture_urls(manifest, &asset_id);
                     return Ok(Json(json!({
                         "manifest": manifest,
@@ -756,14 +810,15 @@ pub async fn preview_site_rig(
     multipart: Multipart,
 ) -> ApiResult<Json<Value>> {
     require_life_enabled().await?;
-    require_owner(&claims, &db).await?;
-    let ParsedRigImport { source, .. } = parse_rig_import(multipart).await?;
-    require_master_match(
+    let user_id = require_owner(&claims, &db).await?;
+    let ParsedRigImport { mut source, .. } = parse_rig_import(multipart).await?;
+    let master = require_master_match(
         &db,
         &source.source_master_asset_id,
         source.source_generation_fingerprint.as_deref(),
     )
     .await?;
+    prepare_import_chest_profile(user_id, &mut source, &master.gender, true).await;
     let (_, manifest) = compile_imported_rig(source, "preview://rig-atlas".to_owned()).await?;
     Ok(Json(json!({ "manifest": manifest, "persisted": false })))
 }
@@ -774,19 +829,20 @@ pub async fn import_site_rig(
     multipart: Multipart,
 ) -> ApiResult<Json<Value>> {
     require_life_enabled().await?;
-    require_owner(&claims, &db).await?;
+    let user_id = require_owner(&claims, &db).await?;
     let ParsedRigImport {
-        source,
+        mut source,
         atlas_bytes,
     } = parse_rig_import(multipart).await?;
     let source_master_asset_id = source.source_master_asset_id.clone();
     let source_generation_fingerprint = source.source_generation_fingerprint.clone();
-    require_master_match(
+    let master = require_master_match(
         &db,
         &source_master_asset_id,
         source_generation_fingerprint.as_deref(),
     )
     .await?;
+    prepare_import_chest_profile(user_id, &mut source, &master.gender, false).await;
     let (_, manifest) = compile_imported_rig(source, "asset://atlas".to_owned()).await?;
     let asset_id = digital_life_rig::package_id_for_manifest(&atlas_bytes, &manifest)
         .map_err(internal_error)?;
@@ -1292,6 +1348,7 @@ mod portrait_contract_tests {
         let master = MasterProvenance {
             asset_id: "/master.png".to_string(),
             generation_fingerprint: Some(fingerprint.clone()),
+            gender: "female".to_string(),
         };
         let mut manifest = layered_stub_manifest("/master.png", Some(fingerprint.clone()));
         assert!(manifest_matches_master(&manifest, &master));

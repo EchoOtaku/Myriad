@@ -862,7 +862,10 @@ pub async fn initiate_transfer(
     if !["active", "accepted"].contains(&status.as_str()) {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("Channel is {}, cannot transfer files", status)})),
+            Json(json!({
+                "error": "Channel is not ready to send files",
+                "code": "channel_not_ready",
+            })),
         ));
     }
 

@@ -77,10 +77,9 @@ pub async fn suggest_display_name(
     })
     .to_string();
     let raw = run_name_call(NAME_SYSTEM_PROMPT, &input).await?;
-    let name = parse_display_name_suggestion(&raw, avoid.as_deref(), style)
-        .ok_or(OnboardingAiError::UnusableResponse(
-            "name had no usable meaning or script",
-        ))?;
+    let name = parse_display_name_suggestion(&raw, avoid.as_deref(), style).ok_or(
+        OnboardingAiError::UnusableResponse("name had no usable meaning or script"),
+    )?;
     Ok(name)
 }
 
@@ -193,14 +192,12 @@ async fn suggest_visual_design_once(
     regenerate: bool,
     keep_character: bool,
 ) -> Result<Value, OnboardingAiError> {
-    let clothing_style = myriad_digital_life::normalize_clothing_style(clothing_style)
-        .ok_or(OnboardingAiError::UnusableResponse(
-            "clothing style is invalid",
-        ))?;
-    let clothing_grammar = myriad_digital_life::clothing_style_grammar(clothing_style)
-        .ok_or(OnboardingAiError::UnusableResponse(
-            "clothing style grammar is missing",
-        ))?;
+    let clothing_style = myriad_digital_life::normalize_clothing_style(clothing_style).ok_or(
+        OnboardingAiError::UnusableResponse("clothing style is invalid"),
+    )?;
+    let clothing_grammar = myriad_digital_life::clothing_style_grammar(clothing_style).ok_or(
+        OnboardingAiError::UnusableResponse("clothing style grammar is missing"),
+    )?;
     let kept_character = keep_character
         .then(|| existing_visual_identity.and_then(myriad_digital_life::character_module))
         .flatten();
@@ -258,10 +255,9 @@ async fn suggest_visual_design_once(
         if let Some(root) = identity.as_object_mut() {
             root.insert("character".into(), character);
         }
-        identity = myriad_digital_life::sanitize_upper_body_visual_identity(&identity)
-            .ok_or(OnboardingAiError::UnusableResponse(
-                "visual design failed field sanitize",
-            ))?;
+        identity = myriad_digital_life::sanitize_upper_body_visual_identity(&identity).ok_or(
+            OnboardingAiError::UnusableResponse("visual design failed field sanitize"),
+        )?;
     }
     myriad_digital_life::stamp_clothing_style(&mut identity, clothing_style);
     let reject = if myriad_digital_life::visual_identity_violates_style_lock(&identity) {
@@ -312,10 +308,7 @@ async fn run_name_call(system: &str, input: &str) -> Result<String, OnboardingAi
     run_onboarding_call_on_tier(ModelTier::Standard, system, input).await
 }
 
-async fn run_onboarding_call(
-    system: &str,
-    input: &str,
-) -> Result<String, OnboardingAiError> {
+async fn run_onboarding_call(system: &str, input: &str) -> Result<String, OnboardingAiError> {
     run_onboarding_call_on_tier(ModelTier::Pro, system, input).await
 }
 
@@ -398,7 +391,11 @@ fn parse_json_object(raw: &str) -> Option<Value> {
     serde_json::from_str(&raw[start..=end]).ok()
 }
 
-fn parse_display_name_suggestion(raw: &str, avoid: Option<&str>, name_style: &str) -> Option<String> {
+fn parse_display_name_suggestion(
+    raw: &str,
+    avoid: Option<&str>,
+    name_style: &str,
+) -> Option<String> {
     let parsed = parse_json_object(raw)?;
     parsed
         .get("meaning")
@@ -467,35 +464,118 @@ fn sanitize_latin_display_name(value: &str, max_chars: usize) -> String {
 
 fn is_blocked_en_display_name(value: &str) -> bool {
     const BLOCKED: &[&str] = &[
-        "robin", "sunday", "firefly", "sparkle", "stelle", "caelus", "jean", "diluc",
-        "amber", "lisa", "maris", "cael", "liora",
-        "zeus", "athena", "apollo", "artemis", "aphrodite", "hera", "hades",
-        "persephone", "hermes", "poseidon", "nike", "nyx", "selene", "helios",
-        "eos", "gaia", "odin", "thor", "loki", "freya", "freyja", "frigg",
-        "baldur", "venus", "mars", "jupiter", "minerva", "diana", "mercury",
-        "neptune", "pluto", "juno", "ceres",
+        "robin",
+        "sunday",
+        "firefly",
+        "sparkle",
+        "stelle",
+        "caelus",
+        "jean",
+        "diluc",
+        "amber",
+        "lisa",
+        "maris",
+        "cael",
+        "liora",
+        "zeus",
+        "athena",
+        "apollo",
+        "artemis",
+        "aphrodite",
+        "hera",
+        "hades",
+        "persephone",
+        "hermes",
+        "poseidon",
+        "nike",
+        "nyx",
+        "selene",
+        "helios",
+        "eos",
+        "gaia",
+        "odin",
+        "thor",
+        "loki",
+        "freya",
+        "freyja",
+        "frigg",
+        "baldur",
+        "venus",
+        "mars",
+        "jupiter",
+        "minerva",
+        "diana",
+        "mercury",
+        "neptune",
+        "pluto",
+        "juno",
+        "ceres",
     ];
     let lower = value.to_ascii_lowercase();
     BLOCKED.iter().any(|blocked| lower == *blocked)
 }
 
 fn is_blocked_ja_display_name(value: &str) -> bool {
-    const BLOCKED: &[&str] = &["綾華", "绫华", "万葉", "万叶", "宵宮", "宵宫", "早柚", "神子", "雷電", "雷电"];
-    BLOCKED.iter().any(|blocked| value == *blocked || value.contains(blocked))
+    const BLOCKED: &[&str] = &[
+        "綾華", "绫华", "万葉", "万叶", "宵宮", "宵宫", "早柚", "神子", "雷電", "雷电",
+    ];
+    BLOCKED
+        .iter()
+        .any(|blocked| value == *blocked || value.contains(blocked))
 }
 
 fn is_blocked_zh_display_name(value: &str) -> bool {
     const BLOCKED: &[&str] = &[
-        "甘雨", "刻晴", "钟离", "行秋", "重云", "香菱", "凝光", "北斗", "辛焱",
-        "云堇", "夜兰", "申鹤", "胡桃", "七七", "瑶瑶", "白术", "闲云", "魈",
-        "景元", "丹恒", "符玄", "镜流", "彦卿", "素裳", "青雀", "停云", "驭空",
-        "罗刹", "三月七", "花火", "黄泉", "流萤", "知更鸟", "藿藿", "寒鸦",
-        "雪衣", "银狼", "姬子", "澄羽", "岚音", "星语", "月璃", "玄霄", "墨染",
-        "夜雪", "凌霄",
+        "甘雨",
+        "刻晴",
+        "钟离",
+        "行秋",
+        "重云",
+        "香菱",
+        "凝光",
+        "北斗",
+        "辛焱",
+        "云堇",
+        "夜兰",
+        "申鹤",
+        "胡桃",
+        "七七",
+        "瑶瑶",
+        "白术",
+        "闲云",
+        "魈",
+        "景元",
+        "丹恒",
+        "符玄",
+        "镜流",
+        "彦卿",
+        "素裳",
+        "青雀",
+        "停云",
+        "驭空",
+        "罗刹",
+        "三月七",
+        "花火",
+        "黄泉",
+        "流萤",
+        "知更鸟",
+        "藿藿",
+        "寒鸦",
+        "雪衣",
+        "银狼",
+        "姬子",
+        "澄羽",
+        "岚音",
+        "星语",
+        "月璃",
+        "玄霄",
+        "墨染",
+        "夜雪",
+        "凌霄",
     ];
-    BLOCKED
-        .iter()
-        .any(|blocked| value == *blocked || (blocked.chars().count() >= 2 && value.contains(blocked)))
+    BLOCKED.iter().any(|blocked| {
+        value == *blocked || (blocked.chars().count() >= 2 && value.contains(blocked))
+    })
 }
 
 fn is_cjk_han(ch: char) -> bool {
@@ -514,9 +594,9 @@ fn is_katakana_letter(ch: char) -> bool {
 }
 
 fn japanese_name_length_hint(roll_id: &str) -> (&'static str, u8) {
-    let seed = roll_id
-        .bytes()
-        .fold(0u32, |acc, byte| acc.wrapping_mul(33).wrapping_add(byte as u32));
+    let seed = roll_id.bytes().fold(0u32, |acc, byte| {
+        acc.wrapping_mul(33).wrapping_add(byte as u32)
+    });
     let chars = 2 + (seed % 4) as u8;
     let form = if seed % 2 == 0 {
         "modern-personal"
@@ -601,8 +681,7 @@ fn persona_matches_ui_language(value: &Value, language: &str) -> bool {
 
 fn visual_design_matches_ui_language(value: &Value, language: &str) -> bool {
     let mut text = String::new();
-    let flat = myriad_digital_life::flatten_visual_identity(value)
-        .unwrap_or_else(|| value.clone());
+    let flat = myriad_digital_life::flatten_visual_identity(value).unwrap_or_else(|| value.clone());
     for (key, _) in myriad_digital_life::UPPER_BODY_VISUAL_IDENTITY_FIELDS {
         if let Some(part) = flat.get(key).and_then(Value::as_str) {
             text.push_str(part);
@@ -637,9 +716,10 @@ fn persona_draft_meets_generation_quality(value: &Value) -> bool {
         .is_some_and(|summary| summary.trim().chars().count() >= MIN_SUMMARY_CHARS);
     let temperament_ready = list_from(source, &["temperament", "traits"])
         .is_some_and(|items| items.len() >= MIN_TEMPERAMENT_ITEMS);
-    let likes_ready = list_from(source, &["likes"]).is_some_and(|items| items.len() >= MIN_PAIR_ITEMS);
-    let drives_ready =
-        list_from(source, &["drives", "motivations"]).is_some_and(|items| items.len() >= MIN_PAIR_ITEMS);
+    let likes_ready =
+        list_from(source, &["likes"]).is_some_and(|items| items.len() >= MIN_PAIR_ITEMS);
+    let drives_ready = list_from(source, &["drives", "motivations"])
+        .is_some_and(|items| items.len() >= MIN_PAIR_ITEMS);
     let social_ready = ["socialStyle", "social_style"]
         .iter()
         .find_map(|key| source.get(*key).and_then(Value::as_str))
@@ -729,10 +809,19 @@ mod tests {
         assert!(sanitize_display_name_candidate("阿强", "chinese").is_empty());
         assert!(sanitize_display_name_candidate("小美", "chinese").is_empty());
         assert_eq!(sanitize_display_name_candidate("晚衡", "chinese"), "晚衡");
-        assert_eq!(sanitize_display_name_candidate("听白川", "chinese"), "听白川");
-        assert_eq!(sanitize_display_name_candidate("司南映雪", "chinese"), "司南映雪");
+        assert_eq!(
+            sanitize_display_name_candidate("听白川", "chinese"),
+            "听白川"
+        );
+        assert_eq!(
+            sanitize_display_name_candidate("司南映雪", "chinese"),
+            "司南映雪"
+        );
         assert!(sanitize_display_name_candidate("秋水长天阔", "chinese").is_empty());
-        assert_eq!(sanitize_display_name_candidate("「听白」", "chinese"), "听白");
+        assert_eq!(
+            sanitize_display_name_candidate("「听白」", "chinese"),
+            "听白"
+        );
         assert_eq!(
             sanitize_display_name_candidate("Alexandria", "european"),
             "Alexandria"
@@ -740,22 +829,55 @@ mod tests {
         assert!(sanitize_display_name_candidate("澄羽", "chinese").is_empty());
         assert!(sanitize_display_name_candidate("甘雨", "chinese").is_empty());
         assert!(sanitize_display_name_candidate("景元", "chinese").is_empty());
-        assert_eq!(sanitize_display_name_candidate("Alice", "european"), "Alice");
+        assert_eq!(
+            sanitize_display_name_candidate("Alice", "european"),
+            "Alice"
+        );
         assert!(sanitize_display_name_candidate("NightOwl", "european").is_empty());
         assert!(sanitize_display_name_candidate("Robin", "european").is_empty());
         assert!(sanitize_display_name_candidate("澄羽", "european").is_empty());
-        assert_eq!(sanitize_display_name_candidate("あおい", "japanese"), "あおい");
-        assert_eq!(sanitize_display_name_candidate("佐藤美咲", "japanese"), "佐藤美咲");
-        assert_eq!(sanitize_display_name_candidate("高橋蓮", "japanese"), "高橋蓮");
-        assert_eq!(sanitize_display_name_candidate("中村ひなた", "japanese"), "中村ひなた");
-        assert_eq!(sanitize_display_name_candidate("佐々木結衣", "japanese"), "佐々木結衣");
-        assert_eq!(sanitize_display_name_candidate("ひなた", "japanese"), "ひなた");
+        assert_eq!(
+            sanitize_display_name_candidate("あおい", "japanese"),
+            "あおい"
+        );
+        assert_eq!(
+            sanitize_display_name_candidate("佐藤美咲", "japanese"),
+            "佐藤美咲"
+        );
+        assert_eq!(
+            sanitize_display_name_candidate("高橋蓮", "japanese"),
+            "高橋蓮"
+        );
+        assert_eq!(
+            sanitize_display_name_candidate("中村ひなた", "japanese"),
+            "中村ひなた"
+        );
+        assert_eq!(
+            sanitize_display_name_candidate("佐々木結衣", "japanese"),
+            "佐々木結衣"
+        );
+        assert_eq!(
+            sanitize_display_name_candidate("ひなた", "japanese"),
+            "ひなた"
+        );
         assert!(sanitize_display_name_candidate("々木美咲", "japanese").is_empty());
         assert_eq!(sanitize_display_name_candidate("雪見", "japanese"), "雪見");
-        assert_eq!(sanitize_display_name_candidate("月あかり", "japanese"), "月あかり");
-        assert_eq!(sanitize_display_name_candidate("ひまわり", "japanese"), "ひまわり");
-        assert_eq!(sanitize_display_name_candidate("あまのがわ", "japanese"), "あまのがわ");
-        assert_eq!(sanitize_display_name_candidate("ほしのかげ", "japanese"), "ほしのかげ");
+        assert_eq!(
+            sanitize_display_name_candidate("月あかり", "japanese"),
+            "月あかり"
+        );
+        assert_eq!(
+            sanitize_display_name_candidate("ひまわり", "japanese"),
+            "ひまわり"
+        );
+        assert_eq!(
+            sanitize_display_name_candidate("あまのがわ", "japanese"),
+            "あまのがわ"
+        );
+        assert_eq!(
+            sanitize_display_name_candidate("ほしのかげ", "japanese"),
+            "ほしのかげ"
+        );
         assert!(sanitize_display_name_candidate("あまのがわや", "japanese").is_empty());
         assert!(sanitize_display_name_candidate("あまのがわかぜ", "japanese").is_empty());
         assert!(sanitize_display_name_candidate("宵宮", "japanese").is_empty());
@@ -765,7 +887,10 @@ mod tests {
         assert!(sanitize_display_name_candidate("澄羽・", "chinese").is_empty());
         assert!(sanitize_display_name_candidate("Aoi雪", "japanese").is_empty());
         assert_eq!(sanitize_display_name_candidate("ハナ", "japanese"), "ハナ");
-        assert_eq!(sanitize_display_name_candidate("サリー", "japanese"), "サリー");
+        assert_eq!(
+            sanitize_display_name_candidate("サリー", "japanese"),
+            "サリー"
+        );
         assert!(sanitize_display_name_candidate("葵ちゃん", "japanese").is_empty());
         for n in 0..16u8 {
             let (form, chars) = japanese_name_length_hint(&format!("n{n}"));
@@ -784,7 +909,7 @@ mod tests {
         .is_some());
         assert!(parse_display_name_suggestion(r#"{"name":"晚衡"}"#, None, "chinese").is_none());
         assert!(parse_display_name_suggestion(
-            r#"{"name":"晚衡","meaning":" " }"# ,
+            r#"{"name":"晚衡","meaning":" " }"#,
             None,
             "chinese",
         )
@@ -868,5 +993,4 @@ mod tests {
         assert!(input.get("speechStyle").is_none());
         assert!(input.get("displayName").is_none());
     }
-
 }

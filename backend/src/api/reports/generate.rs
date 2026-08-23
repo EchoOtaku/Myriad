@@ -1901,10 +1901,8 @@ async fn last_stored_report_locale(
         .await
         .ok()
         .flatten();
-    row.and_then(|r| {
-        super::locale::locale_from_stored_report(&r.report).map(str::to_string)
-    })
-    .unwrap_or_else(|| super::locale::DEFAULT_AUTO_REGEN_LOCALE.to_string())
+    row.and_then(|r| super::locale::locale_from_stored_report(&r.report).map(str::to_string))
+        .unwrap_or_else(|| super::locale::DEFAULT_AUTO_REGEN_LOCALE.to_string())
 }
 
 /// Bangumi/MAL `status_counts`: always emit five keys (0 when absent).
@@ -1942,12 +1940,7 @@ pub(crate) fn normalize_steam_player_type(raw: &str) -> &'static str {
     }
 }
 
-fn xbox_gamer_type_fallback(
-    locale: &str,
-    completed: usize,
-    avg: f64,
-    gs: i64,
-) -> &'static str {
+fn xbox_gamer_type_fallback(locale: &str, completed: usize, avg: f64, gs: i64) -> &'static str {
     use super::locale::pick;
     if completed >= 5 {
         pick(locale, "全成就猎人", "実績コンプ勢", "Completion hunter")

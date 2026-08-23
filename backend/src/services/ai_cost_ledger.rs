@@ -119,17 +119,15 @@ where
 }
 
 /// Attribute nested analyzer / image / speech calls to a site-wide source.
-pub async fn with_site_ai_ledger<F, T>(
-    subject_id: i32,
-    source: &str,
-    operation: &str,
-    fut: F,
-) -> T
+pub async fn with_site_ai_ledger<F, T>(subject_id: i32, source: &str, operation: &str, fut: F) -> T
 where
     F: Future<Output = T>,
 {
-    with_ai_ledger_attribution(AiLedgerAttribution::site(subject_id, source, operation), fut)
-        .await
+    with_ai_ledger_attribution(
+        AiLedgerAttribution::site(subject_id, source, operation),
+        fut,
+    )
+    .await
 }
 
 /// Durable site owner, or `1` when the database is not reachable.
@@ -143,7 +141,9 @@ pub async fn resolve_site_owner_id() -> i32 {
 }
 
 fn ledger_write_enabled() -> bool {
-    !AI_LEDGER_SUPPRESSED.try_with(|suppressed| *suppressed).unwrap_or(false)
+    !AI_LEDGER_SUPPRESSED
+        .try_with(|suppressed| *suppressed)
+        .unwrap_or(false)
 }
 
 fn fallback_attribution() -> AiLedgerAttribution {
@@ -464,8 +464,7 @@ mod tests {
         with_ai_usage_meter(meter.clone(), async {
             with_ai_ledger_suppressed(async {
                 assert!(!ledger_write_enabled());
-                record_ai_call_from_attribution("openai", "m", 4_000, 0, "completed", None)
-                    .await;
+                record_ai_call_from_attribution("openai", "m", 4_000, 0, "completed", None).await;
             })
             .await;
             assert!(ledger_write_enabled());

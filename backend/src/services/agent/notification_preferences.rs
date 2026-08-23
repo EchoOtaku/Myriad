@@ -426,8 +426,7 @@ mod tests {
             .any(|definition| definition.key == "platform.sync.failed"));
         assert!(preferences.allows("platform.sync.failed"));
         let mut off = preferences.clone();
-        off.events
-            .insert("platform.sync.failed".to_string(), false);
+        off.events.insert("platform.sync.failed".to_string(), false);
         assert!(!off.allows("platform.sync.failed"));
         assert!(preferences.locations["agent"].toast);
         assert!(!preferences.locations.contains_key("removed"));

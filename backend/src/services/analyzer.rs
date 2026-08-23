@@ -447,7 +447,7 @@ fn gemini_response_schema(schema: &serde_json::Value) -> Option<serde_json::Valu
     Some(serde_json::Value::Object(translated))
 }
 
-fn openai_chat_completions_url(base_url: Option<&str>) -> String {
+pub(crate) fn openai_chat_completions_url(base_url: Option<&str>) -> String {
     let base_url = base_url
         .unwrap_or("https://api.openai.com/v1")
         .trim()

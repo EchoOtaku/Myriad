@@ -446,7 +446,9 @@ pub fn register(registry: &mut CapabilityRegistry) {
     registry.register(Capability {
         id: "setup.status".to_string(),
         name: "系统设置状态".to_string(),
-        description: "检查系统初始化状态（库表与管理员；与 HTTP /api/setup/status 一致，不含 AI 钥）".to_string(),
+        description:
+            "检查系统初始化状态（库表与管理员；与 HTTP /api/setup/status 一致，不含 AI 钥）"
+                .to_string(),
         category: CapabilityCategory::SystemOp,
         supported_actions: vec![IntentAction::Query],
         input_schema: json!({

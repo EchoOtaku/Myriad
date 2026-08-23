@@ -19,8 +19,8 @@ pub use store::{
     get_or_create_state, get_persona, get_persona_on, insert_diary, insert_proactive, latest_diary,
     list_diary, normalize_persona_fields, portrait_generation_is_pending, recent_proactive,
     release_portrait_generation, save_departure_mood, save_mood, set_activity, set_dnd_schedule,
-    set_do_not_disturb,
-    upsert_persona_on, JsonDocumentUpdate, PersonaContractUpdate, PortraitUpdate,
+    set_do_not_disturb, upsert_persona_on, JsonDocumentUpdate, PersonaContractUpdate,
+    PortraitUpdate,
 };
 
 /// Logged-in users only. Guests use negative ids; heartbeat is `SYSTEM_USER_ID` (0).

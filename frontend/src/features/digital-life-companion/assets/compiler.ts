@@ -96,6 +96,7 @@ export async function preflightRigAsset(
   emit(onStage, 'compile-preview', 'started')
   try {
     const manifest = await dependencies.preview(prepared.source, prepared.atlas)
+    copyPreviewChestProfile(prepared.source, manifest)
     emit(onStage, 'compile-preview', 'completed')
     emit(onStage, 'analyze-capabilities', 'started')
     const report = diagnoseRig(manifest)
@@ -105,6 +106,16 @@ export async function preflightRigAsset(
     emit(onStage, 'compile-preview', 'failed', errorMessage(error))
     throw error
   }
+}
+
+/** Preserve the one-shot preview analysis so persistence never calls AI again. */
+function copyPreviewChestProfile(
+  source: PreparedRigPsdImport['source'],
+  manifest: CompanionRigManifest,
+): void {
+  const profile = manifest.anime25dPlayback?.chestProfile
+  if (!profile || !source.anime25dPlayback) return
+  source.anime25dPlayback.chestProfile = { ...profile }
 }
 
 /** Commits the exact source and atlas that passed preflight. */

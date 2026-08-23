@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
 import { useManagedFetch } from '../hooks/useManagedFetch'
+import { reportUserFacingError } from '../utils/reportError'
 import { userFacingError } from '../utils/userFacingError'
 import { Spinner } from './Spinner'
 
@@ -250,7 +251,11 @@ export function TaskStatus({
             </h3>
             {task.error && (
               <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                {task.error}
+                {reportUserFacingError(
+                  task.error,
+                  t.reportsPage.generateNeedData,
+                  t.reportsPage,
+                )}
               </p>
             )}
           </div>

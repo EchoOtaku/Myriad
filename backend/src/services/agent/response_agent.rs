@@ -63,7 +63,8 @@ pub async fn generate_final_response(ctx: ResponseContext<'_>) -> String {
     }
 
     // 尝试 AI 生成
-    if let Some(msg) = ai_summarize(ctx.user_request, ctx.user_id, &step_data, ctx.progress_tx).await
+    if let Some(msg) =
+        ai_summarize(ctx.user_request, ctx.user_id, &step_data, ctx.progress_tx).await
     {
         return msg;
     }
@@ -890,8 +891,8 @@ pub fn refresh_submitted(platform: &str) -> String {
 }
 
 /// 刷新提交失败
-pub fn refresh_submit_failed(err: &str) -> String {
-    format!("提交失败: {}", err)
+pub fn refresh_submit_failed(_err: &str) -> String {
+    "Failed to submit refresh".to_string()
 }
 
 /// 刷新提交汇总

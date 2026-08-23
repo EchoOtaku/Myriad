@@ -22,10 +22,8 @@ import { assertConfigWriteSuccess } from '../lib/api'
 import { parseAuthMeResponse } from '../utils/authMe'
 import { getCSRFHeaderName, getCSRFToken } from '../utils/csrf'
 import { consumeSetupSecretFromLocation } from '../utils/setupSecretFromUrl'
-import {
-  isUselessErrorText,
-  userFacingError,
-} from '../utils/userFacingError'
+import { ApiError } from '../services/api'
+import { userFacingError } from '../utils/userFacingError'
 import { InputItem, SegmentedControl, SwitchItem } from './settings'
 import { SettingItemWrapper } from './settings/items/SettingItemWrapper'
 import {
@@ -114,11 +112,19 @@ async function getResponseError(response: Response, fallback: string) {
     const raw = [body.message, body.error].find(
       (value) => typeof value === 'string' && value.trim(),
     )
-    if (raw && !isUselessErrorText(raw)) return raw.trim()
+    return userFacingError(
+      new ApiError(
+        typeof raw === 'string' ? raw : fallback,
+        response.status,
+        typeof body.code === 'string' ? body.code : undefined,
+        undefined,
+        typeof body.hint === 'string' ? body.hint : undefined,
+      ),
+      fallback,
+    )
   } catch {
-    /* use fallback */
+    return userFacingError(new ApiError('', response.status), fallback)
   }
-  return fallback
 }
 
 const SetupWizard: React.FC = () => {
@@ -501,8 +507,13 @@ const SetupWizard: React.FC = () => {
 
       const result = await response.json()
 
-      // 显示详细的验证信息
-      let message = result.message
+      const heading =
+        result.kind === 'initialized' ||
+        (typeof result.message === 'string' &&
+          result.message.includes('初始化完成'))
+          ? t.setup.dbInitialized
+          : t.setup.dbMigrationChecked
+      let message = heading
       if (result.verification) {
         const v = result.verification
         message += `\n\n${t.setup.verificationResult}:`

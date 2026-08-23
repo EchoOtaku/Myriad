@@ -42,10 +42,9 @@ fn db_error(e: impl std::fmt::Debug) -> ApiError {
     )
 }
 
-
 fn http_to_api(err: crate::error::HttpError) -> ApiError {
-    let status = StatusCode::from_u16(err.0.status_u16())
-        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    let status =
+        StatusCode::from_u16(err.0.status_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
     (status, Json(err.0.to_json()))
 }
 

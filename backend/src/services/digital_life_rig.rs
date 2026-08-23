@@ -125,7 +125,10 @@ pub fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
         let chunk_type = &bytes[offset + 4..header_end];
         let data_end = header_end
             .checked_add(length)
-            .filter(|end| end.checked_add(4).is_some_and(|crc_end| crc_end <= bytes.len()))
+            .filter(|end| {
+                end.checked_add(4)
+                    .is_some_and(|crc_end| crc_end <= bytes.len())
+            })
             .ok_or_else(|| "Rig atlas PNG chunk is truncated".to_string())?;
         let chunk_end = data_end + 4;
         let data = &bytes[header_end..data_end];
@@ -153,7 +156,8 @@ pub fn png_dimensions(bytes: &[u8]) -> Result<(u32, u32), String> {
         }
         offset = chunk_end;
     }
-    let (width, height) = dimensions.ok_or_else(|| "Rig atlas PNG is missing an IHDR".to_string())?;
+    let (width, height) =
+        dimensions.ok_or_else(|| "Rig atlas PNG is missing an IHDR".to_string())?;
     if width < 256 || height < 256 || width > 8_192 || height > 8_192 {
         return Err("Rig atlas must be between 256 and 8192 pixels on each side".to_string());
     }
@@ -277,9 +281,9 @@ where
     C: ConnectionTrait,
 {
     let normalized = match asset_id {
-        Some(value) => Some(
-            normalize_asset_id(value).ok_or_else(|| anyhow!("invalid rig asset id"))?,
-        ),
+        Some(value) => {
+            Some(normalize_asset_id(value).ok_or_else(|| anyhow!("invalid rig asset id"))?)
+        }
         None => None,
     };
     db.execute_raw(Statement::from_sql_and_values(
@@ -297,7 +301,10 @@ SET value = $2::jsonb, updated_at = CURRENT_TIMESTAMP
 }
 
 pub async fn mirror_active_asset(asset_id: Option<String>) {
-    crate::GLOBAL_DYNAMIC_CONFIG.write().await.agent_rig_asset_id = asset_id;
+    crate::GLOBAL_DYNAMIC_CONFIG
+        .write()
+        .await
+        .agent_rig_asset_id = asset_id;
 }
 
 #[cfg(test)]
@@ -336,14 +343,8 @@ mod tests {
 
     #[test]
     fn validates_complete_rgba_atlas_stream() {
-        assert_eq!(
-            png_dimensions(&rgba_png(256, 256)).unwrap(),
-            (256, 256)
-        );
-        assert_eq!(
-            png_dimensions(&rgba_png(1024, 1024)).unwrap(),
-            (1024, 1024)
-        );
+        assert_eq!(png_dimensions(&rgba_png(256, 256)).unwrap(), (256, 256));
+        assert_eq!(png_dimensions(&rgba_png(1024, 1024)).unwrap(), (1024, 1024));
         assert!(png_dimensions(&rgba_png(64, 64)).is_err());
         let truncated = rgba_png(256, 256);
         assert!(png_dimensions(&truncated[..truncated.len() - 8]).is_err());
@@ -416,7 +417,10 @@ mod tests {
         let atlas = b"atlas-pixels";
         let mut first = sample_manifest("/master-a.png", Some("a".repeat(64)));
         let first_id = package_id_for_manifest(atlas, &first).unwrap();
-        assert_eq!(normalize_asset_id(&first_id).as_deref(), Some(first_id.as_str()));
+        assert_eq!(
+            normalize_asset_id(&first_id).as_deref(),
+            Some(first_id.as_str())
+        );
         assert_eq!(normalize_asset_id("abc"), None);
 
         first.textures[0].url = "/api/digital-life/rig/assets/runtime-id".to_string();

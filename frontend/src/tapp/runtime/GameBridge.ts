@@ -89,6 +89,9 @@ function classifyJoinError(error: unknown): { error: string; code?: string } {
   if (/unreachable|home returned|timed out|home_server is empty/i.test(message)) {
     return { error: userFacingError(error), code: 'REMOTE_HOME_UNREACHABLE' }
   }
+  if (/failed to (join|materialize) room/i.test(message)) {
+    return { error: userFacingError(error), code: 'ROOM_MATERIALIZE_FAILED' }
+  }
   if (/blocked|trust/i.test(message)) {
     return { error: userFacingError(error), code: 'INSTANCE_BLOCKED' }
   }

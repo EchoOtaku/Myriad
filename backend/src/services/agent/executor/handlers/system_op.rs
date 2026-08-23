@@ -71,11 +71,9 @@ async fn execute_data_transform(params: &HashMap<String, Value>) -> Result<Value
         DataTransformError::TooManySteps => "管道步骤数不能超过 20".to_string(),
         other => other.message().to_string(),
     })?;
-    let items = apply_pipeline(items_from_agent_input(input), steps).map_err(|err| {
-        match err {
-            DataTransformError::TooManySteps => "管道步骤数不能超过 20".to_string(),
-            other => other.message().to_string(),
-        }
+    let items = apply_pipeline(items_from_agent_input(input), steps).map_err(|err| match err {
+        DataTransformError::TooManySteps => "管道步骤数不能超过 20".to_string(),
+        other => other.message().to_string(),
     })?;
 
     let count = items.len();
@@ -137,8 +135,7 @@ async fn execute_scheduler_create(
         .get("executionTarget")
         .or_else(|| params.get("execution_target"))
         .and_then(Value::as_str);
-    let agent_target =
-        parse_execution_target(execution_target_name, backend_actions.is_some())?;
+    let agent_target = parse_execution_target(execution_target_name, backend_actions.is_some())?;
     let execution_target = match agent_target {
         AgentExecutionTarget::Backend => ExecutionTarget::Backend,
         AgentExecutionTarget::Frontend => ExecutionTarget::Frontend,
@@ -614,15 +611,15 @@ async fn execute_rsshub_healthcheck(
     let mut instances = service
         .get_instances(Some(ctx.user_id))
         .await
-        .map_err(|e| format!("读取 RSSHub 实例失败: {}", e))?;
+        .map_err(|e| {
+            tracing::error!("Failed to load RSSHub instances: {e}");
+            "Failed to load RSSHub instances".to_string()
+        })?;
 
     if let Some(id) = instance_id {
         instances.retain(|i| i.id == id);
         if instances.is_empty() {
-            return Err(format!(
-                "RSSHub 实例不存在或无权访问: {}。请用 rsshub.instances 查看已配置实例。",
-                id
-            ));
+            return Err("RSSHub instance not found".to_string());
         }
     }
 
@@ -803,17 +800,22 @@ async fn execute_export_data(params: &HashMap<String, Value>) -> Result<Value, S
     // Ensure dir exists and write
     tokio::fs::create_dir_all("cache/exports")
         .await
-        .map_err(|e| format!("创建导出目录失败: {}", e))?;
+        .map_err(|e| {
+            tracing::error!("Failed to create export directory: {e}");
+            "Failed to export data".to_string()
+        })?;
     tokio::fs::write(&export_path, &export_content)
         .await
-        .map_err(|e| format!("写入导出文件失败: {}", e))?;
+        .map_err(|e| {
+            tracing::error!("Failed to write export file: {e}");
+            "Failed to export data".to_string()
+        })?;
 
     Ok(json!({
         "format": format,
         "data_type": data_type,
         "data": export_data,
         "exportId": export_id,
-        "exportPath": export_path,
         "exported_at": now.to_rfc3339(),
         "frontendAction": {
             "type": "download_file",

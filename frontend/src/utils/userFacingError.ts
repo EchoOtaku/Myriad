@@ -43,8 +43,10 @@ export function isUselessErrorText(text: string): boolean {
   if (/^internal (server )?error$/i.test(detail)) return true
   if (/^operation failed$/i.test(detail)) return true
   if (/^failed$/i.test(detail)) return true
+  if (/^ai generation failed$/i.test(detail)) return true
+  if (/^ai error:/i.test(detail)) return true
   if (
-    /^failed to (save|load|get|publish|rotate|compose|process|verify|create|update|set|read|refresh|fetch) /i.test(
+    /^failed to (save|load|get|publish|rotate|compose|process|verify|create|update|set|read|refresh|fetch|parse|start|decode|clear|collect|restore|seal) /i.test(
       detail,
     )
   ) {
@@ -139,7 +141,8 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (
     code === 'database_error' ||
     code === 'DATABASE_ERROR' ||
-    /^database (error|query failed|not connected)$/i.test(raw)
+    /^database (error|query failed|not connected|is not connected)$/i.test(raw) ||
+    /数据库连接未初始化|数据库未连接/.test(raw)
   ) {
     return joinParts(t.database, usefulExtra(hint, t.database))
   }
@@ -154,6 +157,315 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       currentCopy().auth.registerFailed,
       usefulExtra(hint, currentCopy().auth.registerFailed),
     )
+  }
+  if (
+    code === 'config_file_permission' ||
+    /无法创建配置文件|无法读取配置文件|无法保存配置文件/.test(raw)
+  ) {
+    return joinParts(t.configFilePermission, usefulExtra(hint, t.configFilePermission))
+  }
+  if (
+    code === 'ai_response_invalid' ||
+    /^failed to parse ai response$/i.test(raw)
+  ) {
+    return joinParts(t.aiResponseInvalid, usefulExtra(hint, t.aiResponseInvalid))
+  }
+  if (code === 'ai_generation_failed' || /^ai error:/i.test(raw)) {
+    return joinParts(t.aiGenerationFailed, usefulExtra(hint, t.aiGenerationFailed))
+  }
+  if (code === 'settings_backup_failed') {
+    return joinParts(
+      t.settingsBackupRestoreFailed,
+      usefulExtra(hint, t.settingsBackupRestoreFailed),
+    )
+  }
+  if (code === 'youtube_upstream_failed' || /^youtube upstream failed$/i.test(raw)) {
+    return joinParts(t.serverError.replace('{status}', String(status || 502)))
+  }
+  if (code === 'e2e_key_failed' || /^failed to seal e2e key/i.test(raw)) {
+    return joinParts(t.operationFailed, usefulExtra(hint, t.operationFailed))
+  }
+  if (code === 'config_save_failed') {
+    return joinParts(t.operationFailed, usefulExtra(hint, t.operationFailed))
+  }
+  const brew = currentCopy().brew
+  if (code === 'notion_fetch_failed' || /^failed to fetch notion/i.test(raw)) {
+    return brew.errorNotionFetch
+  }
+  if (
+    code === 'feed_parse_failed' ||
+    /^failed to parse feed/i.test(raw)
+  ) {
+    return brew.errorFeedNeedName
+  }
+  if (
+    code === 'feed_discover_failed' ||
+    /^unable to discover rss/i.test(raw)
+  ) {
+    return brew.errorDiscoverFailed
+  }
+  if (code === 'mcp_config_invalid' || /^invalid mcp config/i.test(raw)) {
+    return currentCopy().config.mcpInvalidConfig
+  }
+  if (
+    /^invalid audio data$/i.test(raw) ||
+    /^please (provide|upload) audio/i.test(raw) ||
+    /无效的Base64|必须提供 audio_data|请上传音频|无效的音频数据/.test(raw)
+  ) {
+    return t.asrInvalidAudio
+  }
+  if (
+    /speech service is not configured|语音服务未配置|TTS 服务未配置/i.test(raw)
+  ) {
+    return t.speechNotConfigured
+  }
+  if (
+    /official speech requires openai|speech tts openai|转写已配置|官方播报请选 OpenAI|OpenRouter 目前没有官方/i.test(
+      raw,
+    )
+  ) {
+    return t.speechTtsOpenAiRequired
+  }
+  if (
+    /speech service returned no audio|tts服务未返回音频|TTS 未返回音频/i.test(raw)
+  ) {
+    return t.speechTtsNoAudio
+  }
+  if (/speech text is too long|文本过长/.test(raw)) {
+    return t.speechTextTooLong
+  }
+  if (
+    /speech text is empty|dialogue list is empty|对话列表不能为空|文本不能为空/i.test(
+      raw,
+    )
+  ) {
+    return raw.toLowerCase().includes('list') || /对话列表/.test(raw)
+      ? t.speechBatchEmpty
+      : t.emptyDialogueText
+  }
+  if (/too many dialogues|对话数量超过限制/i.test(raw)) {
+    return t.speechBatchTooMany
+  }
+  if (
+    /speech service is unreachable|speech service request failed/i.test(raw)
+  ) {
+    return t.speechUpstreamFailed
+  }
+  if (
+    code === 'domain_invalid' ||
+    /^invalid origin$/i.test(raw) ||
+    /^invalid url:/i.test(raw) ||
+    /^origin must /i.test(raw) ||
+    /wildcard origins are not allowed/i.test(raw) ||
+    /http is only allowed for localhost/i.test(raw) ||
+    /unsupported scheme/i.test(raw) ||
+    /cors_origins would be empty/i.test(raw)
+  ) {
+    return t.domainInvalid
+  }
+  if (
+    code === 'oauth_authorize_failed' ||
+    /^failed to start (discord )?authorization/i.test(raw)
+  ) {
+    return t.oauthStartFailed
+  }
+  if (
+    code === 'ROOM_MATERIALIZE_FAILED' ||
+    /failed to (join|materialize) room/i.test(raw)
+  ) {
+    return t.roomJoinFailed
+  }
+  if (code === 'oauth_slug_required' || /^provider slug is required$/i.test(raw)) {
+    return t.oauthSlugRequired
+  }
+  if (code === 'oauth_slug_invalid' || /invalid slug /i.test(raw)) {
+    return t.oauthSlugInvalid
+  }
+  if (code === 'oauth_slug_duplicate' || /duplicate provider slug/i.test(raw)) {
+    return t.oauthSlugDuplicate
+  }
+  if (
+    code === 'oauth_client_id_required' ||
+    /requires client_id/i.test(raw)
+  ) {
+    return t.oauthClientIdRequired
+  }
+  if (
+    code === 'oauth_client_secret_required' ||
+    /requires client_secret/i.test(raw)
+  ) {
+    return t.oauthClientSecretRequired
+  }
+  if (
+    code === 'oauth_discovery_required' ||
+    /requires discovery_url/i.test(raw)
+  ) {
+    return t.oauthDiscoveryRequired
+  }
+  if (
+    code === 'oauth_kind_unsupported' ||
+    /unsupported provider kind/i.test(raw)
+  ) {
+    return t.oauthKindUnsupported
+  }
+  if (
+    code === 'remote_actor_unresolved' ||
+    /cannot resolve (remote actor|actor|peer)/i.test(raw)
+  ) {
+    return t.remoteActorUnresolved
+  }
+  if (
+    code === 'webfinger_failed' ||
+    code === 'webfinger_not_found' ||
+    code === 'webfinger_unavailable' ||
+    /webfinger/i.test(raw)
+  ) {
+    return t.webfingerFailed
+  }
+  if (
+    code === 'steam_not_configured' ||
+    /steam api key 或 steam id 未配置|steam is not configured/i.test(raw)
+  ) {
+    return t.steamNotConfigured
+  }
+  if (
+    code === 'platform_disabled' ||
+    /平台未启用|is not enabled/i.test(raw)
+  ) {
+    return t.platformDisabled
+  }
+  if (
+    code === 'fetch_failed' ||
+    /failed to fetch data|获取失败|获取 .+失败|验证失败|解析响应失败|请求失败/i.test(
+      raw,
+    )
+  ) {
+    return t.platformFetchFailed
+  }
+  if (/^game not found$|未找到游戏信息/i.test(raw)) {
+    return t.notFound
+  }
+  if (/^username is required$|username 为必填/i.test(raw)) {
+    return t.usernameRequired
+  }
+  if (
+    code === 'agent_processing_failed' ||
+    /^processing failed$/i.test(raw) ||
+    /^处理失败/.test(raw)
+  ) {
+    return t.agentProcessingFailed
+  }
+  if (/^confirmation failed$/i.test(raw) || /^确认执行失败/.test(raw)) {
+    return t.agentProcessingFailed
+  }
+  if (
+    /^invalid tappid$/i.test(raw) ||
+    /无效的 tappId/.test(raw)
+  ) {
+    return currentCopy().tapp.invalidId
+  }
+  if (
+    /^invalid url$/i.test(raw) ||
+    /^无效的 URL/.test(raw)
+  ) {
+    return t.invalidUrl
+  }
+  if (
+    code === 'federation_move_failed' ||
+    /failed to move federation identity|shared keys \(G\)|local rewrite \(E\)/i.test(
+      raw,
+    )
+  ) {
+    return t.federationMoveFailed
+  }
+  if (
+    code === 'notion_url_invalid' ||
+    /invalid notion url|unknown resource type/i.test(raw)
+  ) {
+    return t.notionUrlInvalid
+  }
+  if (
+    code === 'channel_not_ready' ||
+    /channel is .+, cannot (send|transfer)/i.test(raw)
+  ) {
+    return t.channelNotReady
+  }
+  if (
+    code === 'invite_invalid_status' ||
+    /cannot accept (invite|this invite)|channel is .+, cannot accept/i.test(raw)
+  ) {
+    return t.inviteInvalid
+  }
+  if (
+    /^feed name is required$|订阅源名称不能为空/.test(raw)
+  ) {
+    return t.feedNameRequired
+  }
+  if (
+    /unable to reach or parse this rss|无法访问或解析此 RSS/i.test(raw)
+  ) {
+    return currentCopy().brew.errorDiscoverFailed
+  }
+  if (
+    /notion is not configured|notion api key 未配置/i.test(raw)
+  ) {
+    return currentCopy().brew.errorNotionFetch
+  }
+  if (/^failed to submit refresh$|^提交失败/.test(raw)) {
+    return t.taskSubmitFailed
+  }
+  const arael = currentCopy().arael
+  if (code === 'preset_title_too_long' || /标题过长|title is too long/i.test(raw)) {
+    return arael.presetTitleTooLong
+  }
+  if (code === 'preset_summary_too_long' || /摘要过长|summary is too long/i.test(raw)) {
+    return arael.presetSummaryTooLong
+  }
+  if (code === 'preset_steps_too_large' || /解析步骤数据过大|parsed steps are too large/i.test(raw)) {
+    return arael.presetStepsTooLarge
+  }
+  if (
+    code === 'preset_history_too_long' ||
+    /对话历史过长|conversation history is too long/i.test(raw)
+  ) {
+    return arael.presetHistoryTooLong
+  }
+  if (
+    code === 'notification_unavailable' ||
+    /^notification system not initialized$/i.test(raw)
+  ) {
+    return t.notificationActionFailed
+  }
+  const setup = currentCopy().setup
+  if (
+    code === 'db_migration_failed' ||
+    /^database migration failed$/i.test(raw) ||
+    /数据库迁移失败/.test(raw)
+  ) {
+    return setup.dbMigrationFailed
+  }
+  if (code === 'schema_ensure_failed' || /^schema ensure failed$/i.test(raw)) {
+    return setup.schemaEnsureFailed
+  }
+  if (
+    code === 'setup_cleanup_failed' ||
+    /^setup window cleanup failed$/i.test(raw) ||
+    /无法持久化安装关闭/.test(raw)
+  ) {
+    return setup.cleanupFailed
+  }
+  if (
+    code === 'setup_claim_failed' ||
+    /failed to write setup claim marker/i.test(raw) ||
+    /无法写入安装认领标记/.test(raw)
+  ) {
+    return setup.claimFailed
+  }
+  if (code === 'config_mode_required' || /只能在配置模式下修改/.test(raw)) {
+    return setup.configModeRequired
+  }
+  if (code === 'schedule_invalid' || /^invalid schedule config/i.test(raw)) {
+    return currentCopy().tapp.unknownError
   }
 
   const byStatus = status > 0 ? httpStatusMessage(status) : ''

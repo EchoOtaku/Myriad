@@ -1,4 +1,3 @@
-
 use super::super::HandlerContext;
 use crate::models::entities::{
     brew_items, brew_sources, brew_user_states, tapp_scheduled_tasks, tapps,
@@ -1875,7 +1874,7 @@ async fn execute_brew_generate_reading_list(
 
     let ai_response = ai_analyzer.analyze(&prompt).await.map_err(|e| {
         tracing::error!(error = %e, "[brew.generateReadingList] AI analysis failed");
-        format!("AI 分析失败: {}", e)
+        "Failed to analyze with AI".to_string()
     })?;
 
     // 解析 AI 响应
@@ -2141,10 +2140,7 @@ fn extract_platform_items(platform: &str, data: &Value) -> Vec<Value> {
                 .and_then(|v| v.as_array())
             {
                 for video in videos {
-                    let video_id = video
-                        .get("video_id")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("");
+                    let video_id = video.get("video_id").and_then(|v| v.as_str()).unwrap_or("");
                     items.push(json!({
                         "type": "video",
                         "title": video.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled"),
@@ -2529,8 +2525,7 @@ async fn execute_fuzzy_search(
         let admin_id = crate::services::tapp_ownership::get_admin_user_id(ctx.db)
             .await
             .map_err(|e| e.to_string())?;
-        let is_admin =
-            crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
+        let is_admin = crate::services::agent::user_is_current_admin(ctx.db, ctx.user_id).await;
         let mut query = tapps::Entity::find();
         if !is_admin {
             query = query.filter(
@@ -2740,7 +2735,7 @@ async fn execute_brew_discover(
                         }
                         Err(_) => {
                             route["verified"] = json!(false);
-                            route["verifyError"] = json!("无法访问或解析此 RSS 源");
+                            route["verifyError"] = json!("Unable to reach or parse this RSS feed");
                         }
                     }
                 }
@@ -2878,7 +2873,7 @@ async fn try_parse_feed(url: &str) -> Result<Value, String> {
         Some("Mozilla/5.0 (compatible; MyriadBot/1.0)"),
     )
     .await
-    .map_err(|e| format!("URL 安全校验失败: {e}"))?;
+    .map_err(|_e| "Invalid URL".to_string())?;
 
     let response = client
         .get(target)
@@ -3045,7 +3040,7 @@ async fn fetch_rsshub_routes() -> Result<Value, String> {
         Some("Myriad Agent/1.0 (rsshub-routes)"),
     )
     .await
-    .map_err(|e| format!("URL 安全校验失败: {e}"))?;
+    .map_err(|_e| "Invalid URL".to_string())?;
 
     // 尝试获取 radar-rules（这是一个 JS 文件，包含路由规则）
     match client.get(target).send().await {
@@ -3056,7 +3051,8 @@ async fn fetch_rsshub_routes() -> Result<Value, String> {
             {
                 let content = String::from_utf8_lossy(&bytes).to_string();
                 // 解析 radar-rules.js 提取路由信息
-                let routes = crate::services::agent::data_read_pure::parse_rsshub_radar_rules(&content);
+                let routes =
+                    crate::services::agent::data_read_pure::parse_rsshub_radar_rules(&content);
 
                 // 缓存到本地
                 let cache_data = json!({
@@ -3101,7 +3097,7 @@ async fn discover_rss_from_website(url: &str) -> Result<Vec<Value>, String> {
         Some("Mozilla/5.0 (compatible; MyriadBot/1.0)"),
     )
     .await
-    .map_err(|e| format!("URL 安全校验失败: {e}"))?;
+    .map_err(|_e| "Invalid URL".to_string())?;
 
     let response = client
         .get(target)
@@ -3569,17 +3565,15 @@ async fn execute_netease_search_playlist(
             .send()
             .await
         {
-            let data = match crate::services::outbound_security::read_limited_body(
-                response,
-                512 * 1024,
-            )
-            .await
-            .ok()
-            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-            {
-                Some(d) => d,
-                None => continue,
-            };
+            let data =
+                match crate::services::outbound_security::read_limited_body(response, 512 * 1024)
+                    .await
+                    .ok()
+                    .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                {
+                    Some(d) => d,
+                    None => continue,
+                };
             if let Some(playlists) = data.get("playlists").and_then(|p| p.as_array()) {
                 if !playlists.is_empty() {
                     tracing::info!(
@@ -4351,10 +4345,7 @@ async fn execute_task_status(
     let mut tasks = get_user_tasks(ctx.user_id).await;
     tasks.sort_by_key(|t| std::cmp::Reverse(t.started_at));
     let limit = std::cmp::min(
-        params
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(20),
+        params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20),
         100,
     ) as usize;
     tasks.truncate(limit);
@@ -4849,10 +4840,9 @@ async fn execute_report_list(
         .filter(|s| !s.is_empty());
 
     let preferred = crate::api::reports::public_report_owner_user_id(ctx.db).await;
-    let owner_id =
-        crate::api::reports::resolve_report_user_id_for_public_read(ctx.db, preferred)
-            .await
-            .unwrap_or(preferred);
+    let owner_id = crate::api::reports::resolve_report_user_id_for_public_read(ctx.db, preferred)
+        .await
+        .unwrap_or(preferred);
 
     let rows = list_user_platform_reports(ctx.db, owner_id)
         .await
@@ -5544,4 +5534,3 @@ mod brew_db_helpers_tests {
         assert!(!install_permission_is_granted(false, false));
     }
 }
-

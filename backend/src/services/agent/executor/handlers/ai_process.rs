@@ -447,9 +447,9 @@ async fn execute_gemini_grounding_search(
     max_results: usize,
 ) -> Result<(String, Vec<Value>), String> {
     let config = GLOBAL_DYNAMIC_CONFIG.read().await;
-    let (api_key, model) = config.resolve_gemini_grounding().ok_or(
-        crate::services::agent::response_agent::api_key_not_configured("Gemini"),
-    )?;
+    let (api_key, model) = config
+        .resolve_gemini_grounding()
+        .ok_or(crate::services::agent::response_agent::api_key_not_configured("Gemini"))?;
     drop(config);
 
     // 清洗用户输入，防止 Prompt Injection
@@ -1156,15 +1156,10 @@ async fn execute_ai_image(params: &HashMap<String, Value>) -> Result<Value, Stri
         .map_err(|error| error.to_string())?;
     drop(dynamic);
 
-    let generated = crate::services::image_generation::generate_image(
-        &config,
-        &prompt,
-        width,
-        height,
-        None,
-    )
-    .await
-    .map_err(|error| error.to_string())?;
+    let generated =
+        crate::services::image_generation::generate_image(&config, &prompt, width, height, None)
+            .await
+            .map_err(|error| error.to_string())?;
     let image_url = crate::services::image_generation::persist_generated(&generated)
         .await
         .map_err(|error| error.to_string())?;

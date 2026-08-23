@@ -58,9 +58,7 @@ impl InboundRouteError {
             Self::BodyTooLarge => "Inbound request body exceeds 1 MiB",
             Self::InvalidParams => "Inbound request parameters are invalid",
             Self::Database => "Database error",
-            Self::NeedsReauthorization => {
-                "Tapp installation requires permission re-authorization"
-            }
+            Self::NeedsReauthorization => "Tapp installation requires permission re-authorization",
         }
     }
 

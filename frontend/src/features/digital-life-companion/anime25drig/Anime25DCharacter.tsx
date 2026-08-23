@@ -192,6 +192,9 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
               activeUntilRef.current = performance.now() + duration
               playerRef.current?.setTarget({
                 ...(baselineRef.current || {}),
+                // Authored cues own the pose until their restore timer fires.
+                // Ambient motion eases to neutral instead of competing.
+                rand: false,
                 ...cueDriverPatch(cue),
               })
               restoreTimerRef.current = window.setTimeout(() => {

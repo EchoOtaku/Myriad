@@ -103,6 +103,51 @@ test('preflight fully compiles and diagnoses without calling persistence', async
   assert.equal(persisted, true)
 })
 
+test('preflight carries one-shot chest analysis into the persisted source', async () => {
+  const source = {
+    anime25dPlayback: {
+      kind: 'anime-2.5d-rig',
+      version: 1,
+      engine: 'Anime2.5DRig',
+      engineUrl: 'https://github.com/852wa/Anime2.5DRig',
+      license: 'MIT',
+      copyright: 'Copyright (c) 2026 hakoniwa',
+      pixelCanvas: { width: 100, height: 120 },
+      layers: [],
+      anchors: {},
+    },
+  }
+  const analyzed = structuredClone(manifest)
+  analyzed.anime25dPlayback = {
+    ...source.anime25dPlayback,
+    chestProfile: {
+      version: 1,
+      enabled: true,
+      source: 'ai-vision',
+      centerX: 50,
+      centerY: 75,
+      radiusX: 20,
+      radiusY: 18,
+      visibleScale: 0.7,
+      motionScale: 1.05,
+      frequencyScale: 0.96,
+      confidence: 0.9,
+    },
+  } as never
+  const result = await preflightRigAsset(file, 'master-asset', {
+    prepare: async () => ({
+      atlas: new Blob(),
+      source: source as never,
+      partCount: 1,
+    }),
+    preview: async () => analyzed,
+  })
+  assert.deepEqual(
+    result.prepared.source.anime25dPlayback?.chestProfile,
+    analyzed.anime25dPlayback.chestProfile,
+  )
+})
+
 test('failed preview cannot reach persistence', async () => {
   let persisted = false
   await assert.rejects(

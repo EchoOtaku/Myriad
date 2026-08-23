@@ -3,20 +3,13 @@
 use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 
-use super::{
-    capability,
-    escalation,
-    executor,
-    orchestrator,
-    planner,
-    recipe,
-    response_agent,
-    skill_evolution,
-    types,
-};
-use super::agent_header::*;
 use super::agent_footer::*;
+use super::agent_header::*;
 use super::types::*;
+use super::{
+    capability, escalation, executor, orchestrator, planner, recipe, response_agent,
+    skill_evolution, types,
+};
 
 fn utterance_index_in_session(request: &UserRequest) -> u32 {
     request
@@ -115,12 +108,7 @@ impl Agent {
                 return Err(error);
             }
         };
-        crate::services::agent::life::note_chat_diary(
-            &self.db,
-            user_id,
-            &request.raw_input,
-        )
-        .await;
+        crate::services::agent::life::note_chat_diary(&self.db, user_id, &request.raw_input).await;
 
         tracing::debug!(
             status = ?planner_output.status,
@@ -386,19 +374,25 @@ impl Agent {
                     .map(|(i, s)| format!("{}. {} ({})", i + 1, s.action, s.capability_id))
                     .collect::<Vec<_>>()
                     .join("\n");
-                crate::services::ai_cost_ledger::spawn_with_current_ai_attribution(move || async move {
-                    match evo
-                        .auto_create_skill_abstracted(&request_text, &step_descriptions, &step_caps)
-                        .await
-                    {
-                        Ok(skill) => {
-                            tracing::info!(skill_id = %skill.id, "[Agent] Auto-created skill from recipe")
+                crate::services::ai_cost_ledger::spawn_with_current_ai_attribution(
+                    move || async move {
+                        match evo
+                            .auto_create_skill_abstracted(
+                                &request_text,
+                                &step_descriptions,
+                                &step_caps,
+                            )
+                            .await
+                        {
+                            Ok(skill) => {
+                                tracing::info!(skill_id = %skill.id, "[Agent] Auto-created skill from recipe")
+                            }
+                            Err(e) => {
+                                tracing::debug!(error = %e, "[Agent] Skill auto-creation skipped")
+                            }
                         }
-                        Err(e) => {
-                            tracing::debug!(error = %e, "[Agent] Skill auto-creation skipped")
-                        }
-                    }
-                });
+                    },
+                );
             }
         }
 
@@ -517,12 +511,7 @@ impl Agent {
                 return Err(error);
             }
         };
-        crate::services::agent::life::note_chat_diary(
-            &self.db,
-            user_id,
-            &request.raw_input,
-        )
-        .await;
+        crate::services::agent::life::note_chat_diary(&self.db, user_id, &request.raw_input).await;
 
         tracing::debug!(
             status = ?planner_output.status,
@@ -972,13 +961,8 @@ impl Agent {
 
         // 副 Agent 生成计划说明（AI 流式推送，告诉用户即将做什么）
         let _plan_msg =
-            response_agent::announce_plan(
-                &request.raw_input,
-                &step_descs,
-                user_id,
-                &progress_tx,
-            )
-            .await;
+            response_agent::announce_plan(&request.raw_input, &step_descs, user_id, &progress_tx)
+                .await;
 
         // 5. 执行方案（带进度回调和升级）
         let result = self
@@ -1009,19 +993,25 @@ impl Agent {
                     .collect::<Vec<_>>()
                     .join("\n");
 
-                crate::services::ai_cost_ledger::spawn_with_current_ai_attribution(move || async move {
-                    match evo
-                        .auto_create_skill_abstracted(&request_text, &step_descriptions, &step_caps)
-                        .await
-                    {
-                        Ok(skill) => {
-                            tracing::info!(skill_id = %skill.id, "[Agent] AI-abstracted skill created from recipe")
+                crate::services::ai_cost_ledger::spawn_with_current_ai_attribution(
+                    move || async move {
+                        match evo
+                            .auto_create_skill_abstracted(
+                                &request_text,
+                                &step_descriptions,
+                                &step_caps,
+                            )
+                            .await
+                        {
+                            Ok(skill) => {
+                                tracing::info!(skill_id = %skill.id, "[Agent] AI-abstracted skill created from recipe")
+                            }
+                            Err(e) => {
+                                tracing::debug!(error = %e, "[Agent] Skill auto-creation skipped")
+                            }
                         }
-                        Err(e) => {
-                            tracing::debug!(error = %e, "[Agent] Skill auto-creation skipped")
-                        }
-                    }
-                });
+                    },
+                );
             }
         }
 
@@ -1280,7 +1270,10 @@ impl Agent {
     }
 
     /// 是否允许联网搜索升级（白名单：generateReadingList + 显式 flag，或纯外部调研链）
-    pub(crate) fn allow_web_search_escalation(task_state: &TaskState, capability_ids: &[String]) -> bool {
+    pub(crate) fn allow_web_search_escalation(
+        task_state: &TaskState,
+        capability_ids: &[String],
+    ) -> bool {
         // brew.generateReadingList 仅在步骤参数显式开启时允许 web
         if let Some(recipe) = &task_state.recipe {
             for step in &recipe.steps {
@@ -1310,7 +1303,9 @@ impl Agent {
     }
 
     /// 构建评估上下文
-    pub(crate) fn evaluation_context_for_task(task_state: &TaskState) -> escalation::EvaluationContext {
+    pub(crate) fn evaluation_context_for_task(
+        task_state: &TaskState,
+    ) -> escalation::EvaluationContext {
         let capability_ids = Self::capability_ids_from_task(task_state);
         let allow_web_search = Self::allow_web_search_escalation(task_state, &capability_ids);
         escalation::EvaluationContext {
@@ -1493,8 +1488,7 @@ impl Agent {
         if let Some(response) = self
             .mood_refuse_response(
                 user_id,
-                crate::services::agent::life::maybe_refuse_new_task(&self.db, user_id)
-                    .await,
+                crate::services::agent::life::maybe_refuse_new_task(&self.db, user_id).await,
                 Some(&progress_tx),
             )
             .await

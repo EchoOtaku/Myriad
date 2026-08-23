@@ -89,7 +89,7 @@ export const SiteUrlField: React.FC<SiteUrlFieldProps> = ({
         })
         // 200 正常返回；4xx/5xx 由 apiService 抛 ApiError
         if (res.success === false || !res.applied) {
-          const fail = res.message || t.config.domainChangeFailed
+          const fail = userFacingError(res.message, t.config.domainChangeFailed)
           setError(fail)
           throw new Error(fail)
         }

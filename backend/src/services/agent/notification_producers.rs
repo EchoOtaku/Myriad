@@ -69,7 +69,7 @@ impl NotificationManager {
         source_name: &str,
         error: &str,
     ) {
-        let summary = format!("{source_name} 连续抓取失败");
+        let summary = format!("{source_name} feed failed repeatedly");
         crate::services::agent::life::spawn_ingest(user_id, "brew.source_error", &summary);
         if !crate::services::agent::life::allow_existing_notify(user_id).await {
             return;
@@ -80,6 +80,7 @@ impl NotificationManager {
         let mut metadata = serde_json::json!({
             "event_key": "brew.source_error",
             "source_id": source_id,
+            "source_name": source_name,
             "status": "failed",
         });
         if crate::services::agent::life::life_enabled().await {
@@ -94,7 +95,7 @@ impl NotificationManager {
             user_id,
             NotificationType::BrewSourceError,
             NotificationPriority::High,
-            format!("{} 连续抓取失败", source_name),
+            format!("{source_name} feed failed repeatedly"),
             error,
         )
         .with_metadata(metadata);
@@ -102,7 +103,7 @@ impl NotificationManager {
     }
 
     pub async fn notify_platform_sync_error(&self, user_id: i32, platform: &str, error: &str) {
-        let summary = format!("{platform} 自动刷新失败");
+        let summary = format!("{platform} auto-refresh failed");
         crate::services::agent::life::spawn_ingest(user_id, "platform.sync.failed", &summary);
         if !crate::services::agent::life::allow_existing_notify(user_id).await {
             return;
@@ -124,7 +125,7 @@ impl NotificationManager {
             user_id,
             NotificationType::SystemInfo,
             NotificationPriority::High,
-            format!("{} 自动刷新失败", platform),
+            format!("{platform} auto-refresh failed"),
             error,
         )
         .with_metadata(metadata);
@@ -180,9 +181,9 @@ impl NotificationManager {
                     NotificationPriority::High
                 },
                 if connected {
-                    format!("MCP {} 已连接", server_id)
+                    format!("MCP {server_id} connected")
                 } else {
-                    format!("MCP {} 连接失败", server_id)
+                    format!("MCP {server_id} disconnected")
                 },
                 detail,
             )
@@ -215,7 +216,7 @@ impl NotificationManager {
             user_id,
             NotificationType::TappNotification,
             priority,
-            title.unwrap_or("Tapp 通知"),
+            title.unwrap_or("App notification"),
             message,
         )
         .with_metadata(serde_json::json!({
@@ -242,12 +243,12 @@ impl NotificationManager {
         detail: &str,
     ) {
         let (title, priority) = match status {
-            "succeeded" => ("系统更新任务已完成", NotificationPriority::Normal),
-            "failed" => ("系统更新任务失败", NotificationPriority::High),
-            "needs_manual" => ("系统更新需要人工处理", NotificationPriority::Urgent),
-            "running" => ("系统更新任务执行中", NotificationPriority::Low),
-            "unknown" => ("系统更新任务状态需确认", NotificationPriority::High),
-            _ => ("系统更新任务已提交", NotificationPriority::Low),
+            "succeeded" => ("System update finished", NotificationPriority::Normal),
+            "failed" => ("System update failed", NotificationPriority::High),
+            "needs_manual" => ("System update needs attention", NotificationPriority::Urgent),
+            "running" => ("System update is running", NotificationPriority::Low),
+            "unknown" => ("System update status unknown", NotificationPriority::High),
+            _ => ("System update submitted", NotificationPriority::Low),
         };
         let mut notification = Notification::new(
             user_id,

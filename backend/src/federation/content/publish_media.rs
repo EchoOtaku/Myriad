@@ -1,4 +1,3 @@
-
 use axum::{http::StatusCode, Json};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use serde::{Deserialize, Serialize};
@@ -1456,12 +1455,7 @@ async fn fan_out_to_room_peers(
     }
 
     if failed > 0 {
-        tracing::warn!(
-            activity_db_id,
-            queued,
-            failed,
-            "Room-peer fan-out partial"
-        );
+        tracing::warn!(activity_db_id, queued, failed, "Room-peer fan-out partial");
     } else if queued > 0 {
         tracing::info!(
             activity_db_id,
@@ -1495,7 +1489,10 @@ async fn deliver_create_to_local_follower(
             [follower_username.into()],
         ))
         .await
-        .map_err(|e| { tracing::error!("DB error: {}", e); "Database error".to_string() })?;
+        .map_err(|e| {
+            tracing::error!("DB error: {}", e);
+            "Database error".to_string()
+        })?;
     let Some(user_row) = user_row else {
         return Ok(false);
     };
@@ -1582,11 +1579,14 @@ async fn ensure_remote_actor_stub(
             if let Ok(Some(row)) = db
                 .query_one_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
-                    format!(r#"SELECT display_name,
+                    format!(
+                        r#"SELECT display_name,
                               {avatar} AS avatar_url
                        FROM users
                        WHERE username = $1
-                       LIMIT 1"#, avatar = crate::services::avatar::avatar_snapshot_expr("users")),
+                       LIMIT 1"#,
+                        avatar = crate::services::avatar::avatar_snapshot_expr("users")
+                    ),
                     [uname.clone().into()],
                 ))
                 .await
@@ -2417,4 +2417,3 @@ mod tests {
         );
     }
 }
-

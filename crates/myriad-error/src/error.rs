@@ -41,9 +41,7 @@ impl AppError {
                 Some("database_error")
             }
             "Failed to fetch data" => Some("fetch_failed"),
-            "Failed to process password" | "Failed to verify password" => {
-                Some("password_failed")
-            }
+            "Failed to process password" | "Failed to verify password" => Some("password_failed"),
             "Failed to create account" => Some("account_create_failed"),
             "Failed to create session token" | "Failed to refresh session token" => {
                 Some("session_failed")
@@ -248,8 +246,7 @@ mod tests {
 
     #[test]
     fn to_json_includes_hint_when_set() {
-        let e = AppError::service_unavailable("updater down")
-            .with_hint("set MYRIAD_UPDATER_URL");
+        let e = AppError::service_unavailable("updater down").with_hint("set MYRIAD_UPDATER_URL");
         let v = e.to_json();
         assert_eq!(v["hint"], "set MYRIAD_UPDATER_URL");
     }

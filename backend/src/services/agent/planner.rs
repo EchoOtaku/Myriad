@@ -185,9 +185,7 @@ impl Planner {
             }
         }
 
-        volatile.extend(
-            crate::services::agent::life::speaking_prompt(request.user_id).await,
-        );
+        volatile.extend(crate::services::agent::life::speaking_prompt(request.user_id).await);
 
         // 1.5. 多 Agent 角色概览（注入 worker 身份摘要）
         if let Some(mgr) = identity::get_identity_manager() {

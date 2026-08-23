@@ -226,11 +226,7 @@ pub fn humanize_platform_fetch_error(platform: &str, error: &str) -> String {
     humanize_platform_fetch_error_for(platform, error, "zh-CN")
 }
 
-pub fn humanize_platform_fetch_error_for(
-    platform: &str,
-    error: &str,
-    locale: &str,
-) -> String {
+pub fn humanize_platform_fetch_error_for(platform: &str, error: &str, locale: &str) -> String {
     let lower = error.to_ascii_lowercase();
     let label = platform_label(platform, locale);
 
@@ -589,13 +585,8 @@ pub async fn refresh_platform_for_scheduler(
             msg
         );
     }
-    Ok(outcome
-        .data
-        .get(platform)
-        .cloned()
-        .unwrap_or(Value::Null))
+    Ok(outcome.data.get(platform).cloned().unwrap_or(Value::Null))
 }
-
 
 pub async fn fetch_fresh_platform_data(
     db: &DatabaseConnection,
@@ -641,7 +632,8 @@ pub async fn fetch_fresh_platform_data(
         "discord" => has_cfg(&config.discord_access_token),
         "mal" => has_cfg(&config.mal_username),
         "xbox" => {
-            let has_gamertag = has_cfg(&config.xbox_gamertag) || std::env::var("XBOX_GAMERTAG").is_ok();
+            let has_gamertag =
+                has_cfg(&config.xbox_gamertag) || std::env::var("XBOX_GAMERTAG").is_ok();
             let has_key = has_cfg(&config.openxbl_api_key)
                 || std::env::var("OPENXBL_API_KEY").is_ok()
                 || std::env::var("XBL_API_KEY").is_ok();
@@ -1638,15 +1630,11 @@ fn clean_platform_data(data: &mut Value) {
                         let al = obj.get("al").cloned();
                         let pic_url = obj.get("picUrl").cloned();
                         let dt = obj.get("dt").cloned();
-                        let fee = obj.get("fee").cloned().or_else(|| {
-                            obj.get("privilege")
-                                .and_then(|p| p.get("fee"))
-                                .cloned()
-                        });
-                        let is_vip = obj
-                            .get("isVip")
-                            .or_else(|| obj.get("is_vip"))
-                            .cloned();
+                        let fee = obj
+                            .get("fee")
+                            .cloned()
+                            .or_else(|| obj.get("privilege").and_then(|p| p.get("fee")).cloned());
+                        let is_vip = obj.get("isVip").or_else(|| obj.get("is_vip")).cloned();
 
                         // 清空对象并只保留必要字段
                         obj.clear();
@@ -2024,11 +2012,7 @@ mod tests {
         assert!(!r.contains("HTTP 429"), "{r}");
         let a = humanize_platform_fetch_error("github", "401 Unauthorized: Bad credentials");
         assert!(a.contains("鉴权"), "{a}");
-        let en = humanize_platform_fetch_error_for(
-            "steam",
-            "HTTP 429 Too Many Requests",
-            "en-US",
-        );
+        let en = humanize_platform_fetch_error_for("steam", "HTTP 429 Too Many Requests", "en-US");
         assert!(en.contains("rate-limited") || en.contains("quota"), "{en}");
         assert!(!en.contains("频繁"), "{en}");
     }
@@ -2051,8 +2035,12 @@ mod tests {
 
     #[test]
     fn platform_data_warning_when_missing_or_null() {
-        assert!(platform_data_warning("steam", None).unwrap().contains("未返回"));
-        assert!(platform_data_warning("steam", Some(&Value::Null)).unwrap().contains("未返回"));
+        assert!(platform_data_warning("steam", None)
+            .unwrap()
+            .contains("未返回"));
+        assert!(platform_data_warning("steam", Some(&Value::Null))
+            .unwrap()
+            .contains("未返回"));
     }
 
     #[test]

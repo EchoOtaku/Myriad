@@ -496,6 +496,8 @@ export interface TranslationKeys {
     dbConnectionTimeout: string
     dbConnectionTimeoutDesc: string
     dbMigrationFailed: string
+    dbMigrationChecked: string
+    dbInitialized: string
     verificationResult: string
     totalTables: string
     usersTable: string
@@ -517,6 +519,10 @@ export interface TranslationKeys {
     setupSecretHint: string
     setupSecretPlaceholder: string
     setupSecretRequired: string
+    schemaEnsureFailed: string
+    cleanupFailed: string
+    claimFailed: string
+    configModeRequired: string
   }
 
   // 配置
@@ -1458,6 +1464,7 @@ export interface TranslationKeys {
     mcpSaveUpdated: string
     mcpSaveDeleted: string
     mcpSaveFailed: string
+    mcpInvalidConfig: string
     mcpLoadFailed: string
     mcpEmpty: string
     mcpEmptyFiltered: string
@@ -2360,6 +2367,52 @@ export interface TranslationKeys {
     database: string
     passwordFailed: string
     sessionFailed: string
+    configFilePermission: string
+    aiResponseInvalid: string
+    aiGenerationFailed: string
+    asrInvalidAudio: string
+    speechNotConfigured: string
+    speechTtsNoAudio: string
+    speechTtsOpenAiRequired: string
+    speechTextTooLong: string
+    speechUpstreamFailed: string
+    speechBatchEmpty: string
+    speechBatchTooMany: string
+    domainInvalid: string
+    oauthStartFailed: string
+    roomJoinFailed: string
+    oauthSlugRequired: string
+    oauthSlugInvalid: string
+    oauthSlugDuplicate: string
+    oauthClientIdRequired: string
+    oauthClientSecretRequired: string
+    oauthDiscoveryRequired: string
+    oauthKindUnsupported: string
+    remoteActorUnresolved: string
+    webfingerFailed: string
+    platformFetchFailed: string
+    steamNotConfigured: string
+    platformDisabled: string
+    usernameRequired: string
+    agentProcessingFailed: string
+    invalidUrl: string
+    federationMoveFailed: string
+    notionUrlInvalid: string
+    channelNotReady: string
+    inviteInvalid: string
+    feedNameRequired: string
+    noticeBrewSourceFailed: string
+    noticePlatformSyncFailed: string
+    noticeMcpFailed: string
+    noticeMcpConnected: string
+    noticeScheduleFailed: string
+    noticeTapp: string
+    noticeUpdaterSucceeded: string
+    noticeUpdaterFailed: string
+    noticeUpdaterNeedsManual: string
+    noticeUpdaterRunning: string
+    noticeUpdaterUnknown: string
+    noticeUpdaterSubmitted: string
     httpStatus: string
     lyricsFailed: string
     weatherFailed: string
@@ -3415,6 +3468,7 @@ export interface TranslationKeys {
     pleaseWait: string
     cannotLoadApp: string
     appNotExist: string
+    invalidId: string
     appCodeLoadFailed: string
     loadAppFailed: string
     startAppFailed: string
@@ -3777,6 +3831,8 @@ export interface TranslationKeys {
     errorNotionTokenRequired: string
     errorAddSuccess: string
     errorAddFailed: string
+    errorFeedNeedName: string
+    errorNotionFetch: string
     errorSelectImage: string
     errorImageTooLarge: string
     errorImageReadFailed: string
@@ -4349,6 +4405,10 @@ export interface TranslationKeys {
     interrupted: string
     executionFailed: string
     unknownError: string
+    presetTitleTooLong: string
+    presetSummaryTooLong: string
+    presetStepsTooLarge: string
+    presetHistoryTooLong: string
     partialComplete: string
     failReason: string
     answerFailed: string

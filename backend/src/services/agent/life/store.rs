@@ -72,15 +72,14 @@ fn apply_json_update(field: &mut sea_orm::ActiveValue<Option<Value>>, update: &J
     }
 }
 
-fn visual_generation_inputs_changed(
-    current: Option<&Value>,
-    update: &JsonDocumentUpdate,
-) -> bool {
+fn visual_generation_inputs_changed(current: Option<&Value>, update: &JsonDocumentUpdate) -> bool {
     match update {
         JsonDocumentUpdate::Keep => false,
         JsonDocumentUpdate::Clear => current.is_some(),
         JsonDocumentUpdate::Set(value) => {
-            current.map(myriad_digital_life::appearance_visual_profile).as_ref()
+            current
+                .map(myriad_digital_life::appearance_visual_profile)
+                .as_ref()
                 != Some(&myriad_digital_life::appearance_visual_profile(value))
         }
     }
@@ -103,9 +102,7 @@ fn apply_persona_update(
     active.name = Set(name);
     active.personality = Set(personality);
     match portrait {
-        PortraitUpdate::Keep if generation_inputs_changed => {
-            active.portrait_asset_id = Set(None)
-        }
+        PortraitUpdate::Keep if generation_inputs_changed => active.portrait_asset_id = Set(None),
         PortraitUpdate::Keep => {}
         PortraitUpdate::Clear => active.portrait_asset_id = Set(None),
         PortraitUpdate::Set(value) => active.portrait_asset_id = Set(Some(value.clone())),
@@ -139,11 +136,16 @@ where
 {
     let (name, personality) = normalize_persona_fields(&name, &personality);
     if let Some(existing) = get_persona_on(db).await? {
-        return Ok(
-            apply_persona_update(existing, name, personality, &portrait, &contract, updated_by)
-                .update(db)
-                .await?,
-        );
+        return Ok(apply_persona_update(
+            existing,
+            name,
+            personality,
+            &portrait,
+            &contract,
+            updated_by,
+        )
+        .update(db)
+        .await?);
     }
     let active = agent_persona::ActiveModel {
         id: Set(PERSONA_ROW_ID.to_string()),
@@ -171,11 +173,16 @@ where
             let existing = get_persona_on(db)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!(err))?;
-            Ok(
-                apply_persona_update(existing, name, personality, &portrait, &contract, updated_by)
-                    .update(db)
-                    .await?,
+            Ok(apply_persona_update(
+                existing,
+                name,
+                personality,
+                &portrait,
+                &contract,
+                updated_by,
             )
+            .update(db)
+            .await?)
         }
         Err(err) => Err(err.into()),
     }
@@ -733,16 +740,14 @@ mod tests {
                 .portrait_generation
                 .as_ref()
         ));
-        assert!(
-            !acquire_portrait_generation(
-                &transaction,
-                "Nova",
-                &profile,
-                &json!({ "token": "second" }),
-            )
-            .await
-            .unwrap()
-        );
+        assert!(!acquire_portrait_generation(
+            &transaction,
+            "Nova",
+            &profile,
+            &json!({ "token": "second" }),
+        )
+        .await
+        .unwrap());
 
         upsert_persona_on(
             &transaction,
@@ -754,33 +759,29 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(
-            complete_portrait_generation(
-                &transaction,
-                "Nova",
-                &profile,
-                "first",
-                "/portrait.png",
-                &json!({ "fingerprint": "a".repeat(64), "contract": {} }),
-                1,
-            )
-            .await
-            .unwrap()
-        );
+        assert!(complete_portrait_generation(
+            &transaction,
+            "Nova",
+            &profile,
+            "first",
+            "/portrait.png",
+            &json!({ "fingerprint": "a".repeat(64), "contract": {} }),
+            1,
+        )
+        .await
+        .unwrap());
         let saved = get_persona_on(&transaction).await.unwrap().unwrap();
         assert_eq!(saved.personality, "more curious");
         assert_eq!(saved.portrait_asset_id.as_deref(), Some("/portrait.png"));
 
-        assert!(
-            acquire_portrait_generation(
-                &transaction,
-                "Nova",
-                &profile,
-                &json!({ "token": "third" }),
-            )
-            .await
-            .unwrap()
-        );
+        assert!(acquire_portrait_generation(
+            &transaction,
+            "Nova",
+            &profile,
+            &json!({ "token": "third" }),
+        )
+        .await
+        .unwrap());
         let changed_profile = json!({
             "gender": "unspecified",
             "visualIdentity": { "hairShape": "long ponytail" }
@@ -798,19 +799,17 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(
-            !complete_portrait_generation(
-                &transaction,
-                "Nova",
-                &profile,
-                "third",
-                "/stale.png",
-                &json!({ "fingerprint": "b".repeat(64), "contract": {} }),
-                1,
-            )
-            .await
-            .unwrap()
-        );
+        assert!(!complete_portrait_generation(
+            &transaction,
+            "Nova",
+            &profile,
+            "third",
+            "/stale.png",
+            &json!({ "fingerprint": "b".repeat(64), "contract": {} }),
+            1,
+        )
+        .await
+        .unwrap());
         transaction.rollback().await.unwrap();
     }
 }

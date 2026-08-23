@@ -174,9 +174,7 @@ pub fn install_path_pair(final_tapp_dir: &Path, primary_entry: Option<&str>) -> 
 pub fn manifest_author_json(
     author: &Option<myriad_tapp_contract::manifest::TappAuthor>,
 ) -> Option<serde_json::Value> {
-    author
-        .as_ref()
-        .and_then(|a| serde_json::to_value(a).ok())
+    author.as_ref().and_then(|a| serde_json::to_value(a).ok())
 }
 
 /// Pre-SeaORM column snapshot for a **new** install insert.
@@ -309,11 +307,7 @@ pub fn classify_install_multipart_field(name: &str) -> InstallMultipartField {
 }
 
 /// Whether accepting `chunk_len` more bytes would exceed the archive cap.
-pub fn archive_upload_would_exceed(
-    current_len: usize,
-    chunk_len: usize,
-    max_bytes: usize,
-) -> bool {
+pub fn archive_upload_would_exceed(current_len: usize, chunk_len: usize, max_bytes: usize) -> bool {
     current_len.saturating_add(chunk_len) > max_bytes
 }
 
@@ -351,9 +345,15 @@ mod tests {
 
     #[test]
     fn parse_install_source_accepts_direct_and_store() {
-        assert_eq!(parse_install_source("direct").unwrap(), InstallSource::Direct);
+        assert_eq!(
+            parse_install_source("direct").unwrap(),
+            InstallSource::Direct
+        );
         assert_eq!(parse_install_source("store").unwrap(), InstallSource::Store);
-        assert_eq!(parse_install_source(" store ").unwrap(), InstallSource::Store);
+        assert_eq!(
+            parse_install_source(" store ").unwrap(),
+            InstallSource::Store
+        );
         assert!(parse_install_source("").is_err());
         assert!(parse_install_source("file").is_err());
         assert_eq!(
@@ -365,23 +365,15 @@ mod tests {
 
     #[test]
     fn map_direct_css_prefers_declared_styles_channels() {
-        let declared = map_direct_css_channels(
-            true,
-            true,
-            Some("w-body".into()),
-            Some("p-body".into()),
-        );
+        let declared =
+            map_direct_css_channels(true, true, Some("w-body".into()), Some("p-body".into()));
         assert_eq!(declared.widget_styles.as_deref(), Some("w-body"));
         assert!(declared.generated_widget_css.is_none());
         assert_eq!(declared.page_styles.as_deref(), Some("p-body"));
         assert!(declared.generated_page_css.is_none());
 
-        let sidecars = map_direct_css_channels(
-            false,
-            false,
-            Some("w-body".into()),
-            Some("p-body".into()),
-        );
+        let sidecars =
+            map_direct_css_channels(false, false, Some("w-body".into()), Some("p-body".into()));
         assert!(sidecars.widget_styles.is_none());
         assert_eq!(sidecars.generated_widget_css.as_deref(), Some("w-body"));
         assert!(sidecars.page_styles.is_none());

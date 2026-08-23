@@ -764,4 +764,3 @@ mod api_contract_tests {
         assert_eq!(api_response.frontend_action, Some(action));
     }
 }
-

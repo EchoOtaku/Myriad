@@ -264,9 +264,9 @@ fn seed_shuffle<T>(items: &mut [T], seed: &str) {
     if items.len() <= 1 {
         return;
     }
-    let mut state = seed
-        .bytes()
-        .fold(0u32, |acc, byte| acc.wrapping_mul(33).wrapping_add(byte as u32));
+    let mut state = seed.bytes().fold(0u32, |acc, byte| {
+        acc.wrapping_mul(33).wrapping_add(byte as u32)
+    });
     if state == 0 {
         state = 1;
     }
@@ -557,16 +557,23 @@ fn is_reasonable_persona_tag(label: &str) -> bool {
         return false;
     }
     const LITERARY: &[&str] = &[
-        "质感", "美学", "信仰", "虔诚", "月光", "余温", "藏锋", "证明存在", "消化情绪",
-        "取自", "像把", "在心里",
+        "质感",
+        "美学",
+        "信仰",
+        "虔诚",
+        "月光",
+        "余温",
+        "藏锋",
+        "证明存在",
+        "消化情绪",
+        "取自",
+        "像把",
+        "在心里",
     ];
     if LITERARY.iter().any(|blocked| label.contains(blocked)) {
         return false;
     }
-    if label.contains('(')
-        || label.contains(')')
-        || label.contains('（')
-        || label.contains('）')
+    if label.contains('(') || label.contains(')') || label.contains('（') || label.contains('）')
     {
         return false;
     }
@@ -617,9 +624,9 @@ pub fn sanitize_onboarding_tags_for_language(tags: &[String], language: &str) ->
 
 pub(crate) fn tag_matches_ui_language(label: &str, language: &str) -> bool {
     let has_latin = label.chars().any(|ch| ch.is_ascii_alphabetic());
-    let has_kana = label.chars().any(|ch| {
-        matches!(ch, '\u{3041}'..='\u{3096}' | '\u{30A1}'..='\u{30FA}' | '\u{30FC}')
-    });
+    let has_kana = label
+        .chars()
+        .any(|ch| matches!(ch, '\u{3041}'..='\u{3096}' | '\u{30A1}'..='\u{30FA}' | '\u{30FC}'));
     let has_han = label.chars().any(|ch| {
         matches!(ch, '\u{4E00}'..='\u{9FFF}' | '\u{3400}'..='\u{4DBF}' | '\u{F900}'..='\u{FAFF}')
     });
@@ -1060,14 +1067,12 @@ mod tests {
 
     #[test]
     fn drops_wrong_script_tags_and_pads_from_pool() {
-        let mixed = vec![
-            "慢热".into(),
-            "Night owl".into(),
-            "境界線がはっきり".into(),
-        ];
+        let mixed = vec!["慢热".into(), "Night owl".into(), "境界線がはっきり".into()];
         let english = complete_ai_tag_deck(&mixed, "en-US", 8);
         assert!(english.contains(&"Night owl".to_string()));
-        assert!(!english.iter().any(|tag| tag == "慢热" || tag.contains('が')));
+        assert!(!english
+            .iter()
+            .any(|tag| tag == "慢热" || tag.contains('が')));
         assert!(english
             .iter()
             .all(|tag| tag_matches_ui_language(tag, "en-US")));
