@@ -38,7 +38,7 @@ fn db_error(e: impl std::fmt::Debug) -> ApiError {
     tracing::error!("admin_users DB error: {:?}", e);
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "Database error"})),
+        Json(json!({"error": "Database error", "code": "database_error"})),
     )
 }
 

@@ -146,7 +146,7 @@ pub async fn get_current_user(
         Err(_) => {
             return Err(HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             )));
         }
     };

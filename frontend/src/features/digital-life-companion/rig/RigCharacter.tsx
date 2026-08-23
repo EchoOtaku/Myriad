@@ -1,15 +1,15 @@
-import type { CompanionActivity } from '../types'
 import type { PerformanceDirective } from '../../../services/agent/types'
-import type { SpeechArticulation } from './articulation'
-import type { GazeSource, GazeTarget } from './motion'
-import type { CompanionRigManifest } from './types'
-import { forwardRef, useImperativeHandle, useRef } from 'react'
-import Anime25DCharacter from '../anime25drig/Anime25DCharacter'
 import type { Anime25DCharacterHandle } from '../anime25drig/Anime25DCharacter'
 import type {
   Anime25DDebugSnapshot,
   Anime25DDriver,
 } from '../anime25drig/player'
+import type { CompanionActivity } from '../types'
+import type { SpeechArticulation } from './articulation'
+import type { GazeSource, GazeTarget } from './motion'
+import type { CompanionRigManifest } from './types'
+import { forwardRef, useImperativeHandle, useRef } from 'react'
+import Anime25DCharacter from '../anime25drig/Anime25DCharacter'
 import { isAnime25DPlayback } from '../anime25drig/types'
 
 interface Props {
@@ -63,12 +63,13 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       setMouse: (x, y, inside) => animeRef.current?.setMouse(x, y, inside),
     }))
 
-    if (playback && atlasUrl) {
+    if (manifest && playback && atlasUrl) {
       return (
         <Anime25DCharacter
           ref={animeRef}
           activity={activity}
           fallbackUrl={fallbackUrl}
+          manifest={manifest}
           playback={playback}
           atlasUrl={atlasUrl}
           mood={mood}

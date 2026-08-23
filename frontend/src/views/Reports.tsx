@@ -639,6 +639,8 @@ export default function Reports() {
             headers: {
               'Content-Type': 'application/json',
               'X-CSRF-Token': csrfToken,
+              'X-Myriad-Locale': locale,
+              'Accept-Language': locale,
             },
             credentials: 'include',
             body: JSON.stringify({ platform: platformId }),
@@ -679,7 +681,14 @@ export default function Reports() {
                 ?.reason
             : null
       if (skippedReason) {
-        showToastMessage(skippedReason, 'error')
+        showToastMessage(
+          reportUserFacingError(
+            skippedReason,
+            t.reportsPage.generateFailed,
+            t.reportsPage,
+          ),
+          'error',
+        )
         return
       }
 
@@ -847,6 +856,8 @@ export default function Reports() {
               headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-Token': csrfToken,
+                'X-Myriad-Locale': locale,
+                'Accept-Language': locale,
               },
               credentials: 'include',
               body: JSON.stringify({ platform: platformId }),

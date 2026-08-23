@@ -1,7 +1,9 @@
-import type { CompanionActivity } from '../types'
 import type { PerformanceDirective } from '../../../services/agent/types'
 import type { SpeechArticulation } from '../rig/articulation'
 import type { GazeSource, GazeTarget } from '../rig/motion'
+import type { CompanionRigManifest } from '../rig/types'
+import type { CompanionActivity } from '../types'
+import type { Anime25DDebugSnapshot, Anime25DDriver } from './player'
 import type { Anime25DPlayback } from './types'
 import {
   forwardRef,
@@ -10,23 +12,22 @@ import {
   useRef,
 } from 'react'
 import {
-  Anime25DPlayer,
-  DEFAULT_FRONT_HAIR_SWAY,
-  DEFAULT_REAR_HAIR_SWAY,
-  IDENTITY_DRIVER,
-  type Anime25DDebugSnapshot,
-  type Anime25DDriver,
-} from './player'
-import {
   baselineDriverPatch,
   cueDriverPatch,
   cueDurationMs,
   cuePriority,
 } from './performanceMotion'
+import {
+  Anime25DPlayer,
+  DEFAULT_FRONT_HAIR_SWAY,
+  DEFAULT_REAR_HAIR_SWAY,
+  IDENTITY_DRIVER,
+} from './player'
 
 interface Props {
   activity: CompanionActivity
   fallbackUrl: string
+  manifest: CompanionRigManifest
   playback: Anime25DPlayback
   atlasUrl: string
   mood: number
@@ -51,7 +52,7 @@ export interface Anime25DCharacterHandle {
 }
 
 const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
-  ({ activity, fallbackUrl, playback, atlasUrl, mood, manualControl = false }, ref) => {
+  ({ activity, fallbackUrl, manifest, playback, atlasUrl, mood, manualControl = false }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const playerRef = useRef<Anime25DPlayer | null>(null)
     const readyRef = useRef(false)
@@ -160,7 +161,9 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         if (
           directive.moodRevision === performanceRevisionRef.current &&
           phaseRank < performancePhaseRankRef.current
-        ) return
+        ) {
+          return
+        }
         if (directive.moodRevision > performanceRevisionRef.current) {
           clearCueTimers()
           performanceRevisionRef.current = directive.moodRevision
@@ -248,7 +251,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       const canvas = canvasRef.current
       const wrapper = wrapperRef.current
       if (!canvas || !wrapper) return undefined
-      const player = new Anime25DPlayer(canvas, playback)
+      const player = new Anime25DPlayer(canvas, playback, manifest)
       playerRef.current = player
       applyDriver(player)
       let frame = 0
@@ -298,7 +301,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         playerRef.current = null
         wrapper.classList.remove('is-ready')
       }
-    }, [atlasUrl, playback])
+    }, [atlasUrl, manifest, playback])
 
     useEffect(() => {
       if (manualRef.current || manualControl) return

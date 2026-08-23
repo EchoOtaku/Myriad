@@ -43,7 +43,11 @@ export function isUselessErrorText(text: string): boolean {
   if (/^internal (server )?error$/i.test(detail)) return true
   if (/^operation failed$/i.test(detail)) return true
   if (/^failed$/i.test(detail)) return true
-  if (/^failed to (save|load|get|publish|rotate|compose) /i.test(detail)) {
+  if (
+    /^failed to (save|load|get|publish|rotate|compose|process|verify|create|update|set|read|refresh|fetch) /i.test(
+      detail,
+    )
+  ) {
     return true
   }
   if (/^no library data available$/i.test(detail)) return true
@@ -131,6 +135,25 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (code === 'CSRF' || /csrf token/i.test(raw)) {
     return joinParts(t.csrfUnavailable, usefulExtra(hint, t.csrfUnavailable))
+  }
+  if (
+    code === 'database_error' ||
+    code === 'DATABASE_ERROR' ||
+    /^database (error|query failed|not connected)$/i.test(raw)
+  ) {
+    return joinParts(t.database, usefulExtra(hint, t.database))
+  }
+  if (code === 'password_failed') {
+    return joinParts(t.passwordFailed, usefulExtra(hint, t.passwordFailed))
+  }
+  if (code === 'session_failed') {
+    return joinParts(t.sessionFailed, usefulExtra(hint, t.sessionFailed))
+  }
+  if (code === 'account_create_failed') {
+    return joinParts(
+      currentCopy().auth.registerFailed,
+      usefulExtra(hint, currentCopy().auth.registerFailed),
+    )
   }
 
   const byStatus = status > 0 ? httpStatusMessage(status) : ''

@@ -201,7 +201,7 @@ async fn get_annotations(
             tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error" })),
+                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
             )
                 .into_response();
         }
@@ -254,7 +254,7 @@ async fn regenerate_annotations(
             tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error" })),
+                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
             )
                 .into_response();
         }
@@ -836,7 +836,7 @@ async fn get_podcast_script(
             tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error" })),
+                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
             )
                 .into_response();
         }
@@ -981,7 +981,7 @@ async fn regenerate_podcast_script(
             tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error" })),
+                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
             )
                 .into_response();
         }
@@ -1245,7 +1245,7 @@ async fn generate_style_tags(
             tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error" })),
+                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
             )
                 .into_response();
         }
@@ -1265,7 +1265,7 @@ async fn generate_style_tags(
             tracing::error!(error = %e, "Brewlia database error");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error" })),
+                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
             )
                 .into_response();
         }

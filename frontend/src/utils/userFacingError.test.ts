@@ -16,6 +16,8 @@ describe('userFacingError', () => {
     assert.equal(isUselessErrorText('CSRF token unavailable'), true)
     assert.equal(isUselessErrorText('Database error'), true)
     assert.equal(isUselessErrorText('Failed to save notification preferences'), true)
+    assert.equal(isUselessErrorText('Failed to process password'), true)
+    assert.equal(isUselessErrorText('Failed to create account'), true)
     assert.equal(isUselessErrorText('Steam 未返回游戏数据'), false)
   })
 
@@ -37,6 +39,19 @@ describe('userFacingError', () => {
     const text = userFacingError(err)
     assert.equal(/API Error/i.test(text), false)
     assert.match(text, /500/)
+  })
+
+  it('maps database_error to actionable copy', () => {
+    const err = new ApiError('Database error', 500, 'database_error')
+    const text = userFacingError(err)
+    assert.match(text, /数据|data|データ/i)
+    assert.equal(/Database error/i.test(text), false)
+  })
+
+  it('maps password_failed away from Failed to process password', () => {
+    const err = new ApiError('Failed to process password', 500, 'password_failed')
+    const text = userFacingError(err)
+    assert.equal(/Failed to process/i.test(text), false)
   })
 
   it('extracts HTTP status from English fallbacks', () => {

@@ -1010,34 +1010,33 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
               )
             }
             actions={
-              hasSavedPersona || reportCount >= 3
+              hasSavedPersona
                 ? [
                     {
-                      key: 'setup',
-                      label: hasSavedPersona ? o.editPage : o.openPage,
-                      onClick: () => openAiSubpage('persona'),
-                      disabled: personaBusy,
+                      key: 'face',
+                      label: t.companion.faceOpen,
+                      onClick: () => openAiSubpage('face'),
                     },
-                    ...(hasSavedPersona
-                      ? [
-                          {
-                            key: 'face',
-                            label: t.companion.faceOpen,
-                            onClick: () => openAiSubpage('face'),
-                          },
-                          {
-                            key: 'delete',
-                            label: t.config.agentLifeDelete,
-                            onClick: () => void handleDeletePersona(),
-                            disabled: personaBusy,
-                            loading: personaBusy,
-                            variant: 'danger' as const,
-                            confirm: t.config.agentLifeDeleteConfirm,
-                          },
-                        ]
-                      : []),
+                    {
+                      key: 'delete',
+                      label: t.config.agentLifeDelete,
+                      onClick: () => void handleDeletePersona(),
+                      disabled: personaBusy,
+                      loading: personaBusy,
+                      variant: 'danger' as const,
+                      confirm: t.config.agentLifeDeleteConfirm,
+                    },
                   ]
-                : undefined
+                : reportCount >= 3
+                  ? [
+                      {
+                        key: 'setup',
+                        label: o.openPage,
+                        onClick: () => openAiSubpage('persona'),
+                        disabled: personaBusy,
+                      },
+                    ]
+                  : undefined
             }
             footer={personaError}
           >

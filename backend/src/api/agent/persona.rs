@@ -144,7 +144,7 @@ async fn report_platform_count(
             tracing::error!(%error, "[Agent persona] report count failed");
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         })
 }
@@ -202,7 +202,7 @@ pub async fn get_persona(
         tracing::error!(%error, "[Agent persona] load failed");
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Database error" })),
+            Json(json!({ "error": "Database error", "code": "database_error" })),
         ))
     })?;
 
@@ -284,7 +284,7 @@ pub async fn put_persona(
         tracing::error!(%error, "[Agent persona] begin save transaction failed");
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Database error" })),
+            Json(json!({ "error": "Database error", "code": "database_error" })),
         ))
     })?;
     let previous = life::get_persona_on(&transaction)
@@ -293,7 +293,7 @@ pub async fn put_persona(
             tracing::error!(%error, "[Agent persona] load before save failed");
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         })?;
     let previous_portrait = previous
@@ -363,7 +363,7 @@ pub async fn put_persona(
         tracing::error!(%error, "[Agent persona] save failed");
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Database error" })),
+            Json(json!({ "error": "Database error", "code": "database_error" })),
         ))
     })?;
     let portrait_changed = previous_portrait != saved.portrait_asset_id;
@@ -375,7 +375,7 @@ pub async fn put_persona(
                     tracing::error!(%error, "[Agent persona] stale rig invalidation failed");
                     HttpError::from((
                         StatusCode::INTERNAL_SERVER_ERROR,
-                        Json(json!({ "error": "Database error" })),
+                        Json(json!({ "error": "Database error", "code": "database_error" })),
                     ))
                 })?,
         )
@@ -386,7 +386,7 @@ pub async fn put_persona(
         tracing::error!(%error, "[Agent persona] commit failed");
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Database error" })),
+            Json(json!({ "error": "Database error", "code": "database_error" })),
         ))
     })?;
     if let Some(asset_id) = cleared_asset {
@@ -414,14 +414,14 @@ pub async fn delete_persona(
         tracing::error!(%error, "[Agent persona] begin delete transaction failed");
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Database error" })),
+            Json(json!({ "error": "Database error", "code": "database_error" })),
         ))
     })?;
     life::clear_persona_on(&transaction).await.map_err(|error| {
         tracing::error!(%error, "[Agent persona] clear failed");
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Database error" })),
+            Json(json!({ "error": "Database error", "code": "database_error" })),
         ))
     })?;
     let cleared_asset = digital_life_rig::persist_active_asset(&transaction, None)
@@ -430,14 +430,14 @@ pub async fn delete_persona(
             tracing::error!(%error, "[Agent persona] stale rig invalidation failed");
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         })?;
     transaction.commit().await.map_err(|error| {
         tracing::error!(%error, "[Agent persona] delete commit failed");
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": "Database error" })),
+            Json(json!({ "error": "Database error", "code": "database_error" })),
         ))
     })?;
     digital_life_rig::mirror_active_asset(cleared_asset).await;
@@ -515,7 +515,7 @@ pub async fn put_addressee(
                 tracing::error!(%error, "[Agent addressee] save failed");
                 HttpError::from((
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": "Database error" })),
+                    Json(json!({ "error": "Database error", "code": "database_error" })),
                 ))
             })?
     } else {
@@ -523,7 +523,7 @@ pub async fn put_addressee(
             tracing::error!(%error, "[Agent addressee] load failed");
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         })?
     };
@@ -535,7 +535,7 @@ pub async fn put_addressee(
                 tracing::error!(%error, "[Agent addressee] schedule save failed");
                 HttpError::from((
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({ "error": "Database error" })),
+                    Json(json!({ "error": "Database error", "code": "database_error" })),
                 ))
             })?;
     }
@@ -590,7 +590,7 @@ fn distill_error(error: life::report_dna::DistillReportDnaError) -> HttpError {
             tracing::error!(%error, "[Agent persona] report DNA load failed");
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         }
         life::report_dna::DistillReportDnaError::AnalyzerUnavailable => HttpError::from((
@@ -696,7 +696,7 @@ pub async fn suggest_visual_design(
             tracing::error!(%error, "[Agent persona] visual design load failed");
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         })?
         .ok_or_else(|| {

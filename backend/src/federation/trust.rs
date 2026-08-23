@@ -464,7 +464,7 @@ pub async fn get_policy(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("DB error: {}", e); json!({"error": "Database error"}) },
+                { tracing::error!("DB error: {}", e); json!({"error": "Database error", "code": "database_error"}) },
             )
         })?;
 
@@ -617,7 +617,7 @@ pub async fn update_policy(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            { tracing::error!("DB error: {}", e); json!({"error": "Database error"}) },
+            { tracing::error!("DB error: {}", e); json!({"error": "Database error", "code": "database_error"}) },
         )
     })?;
 
@@ -709,7 +709,7 @@ pub async fn update_instance_trust(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("DB error: {}", e); json!({"error": "Database error"}) },
+                { tracing::error!("DB error: {}", e); json!({"error": "Database error", "code": "database_error"}) },
             )
         })?;
 
@@ -725,7 +725,7 @@ pub async fn update_instance_trust(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("Failed to update: {}", e); json!({"error": "Database error"}) },
+                { tracing::error!("Failed to update: {}", e); json!({"error": "Database error", "code": "database_error"}) },
             )
         })?;
 
@@ -755,7 +755,7 @@ pub async fn toggle_instance_block(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            { tracing::error!("DB error: {}", e); json!({"error": "Database error"}) },
+            { tracing::error!("DB error: {}", e); json!({"error": "Database error", "code": "database_error"}) },
         )
     })?;
 
@@ -787,7 +787,7 @@ pub async fn list_instances(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("DB error: {}", e); json!({"error": "Database error"}) },
+                { tracing::error!("DB error: {}", e); json!({"error": "Database error", "code": "database_error"}) },
             )
         })?;
 
@@ -931,7 +931,7 @@ pub async fn list_content_filters(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("DB error: {}", e); json!({"error": "Database error"}) },
+                { tracing::error!("DB error: {}", e); json!({"error": "Database error", "code": "database_error"}) },
             )
         })?;
     let filters: Vec<serde_json::Value> = rows
@@ -1000,7 +1000,7 @@ pub async fn create_content_filter(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("DB error: {}", e); json!({"error": "Database error"}) },
+                { tracing::error!("DB error: {}", e); json!({"error": "Database error", "code": "database_error"}) },
             )
         })?;
     let id = row
@@ -1052,7 +1052,7 @@ pub async fn update_content_filter(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("DB error: {}", e); json!({"error": "Database error"}) },
+                { tracing::error!("DB error: {}", e); json!({"error": "Database error", "code": "database_error"}) },
             )
         })?
         .ok_or_else(|| (StatusCode::NOT_FOUND, json!({"error": "filter not found"})))?;
@@ -1086,7 +1086,7 @@ pub async fn update_content_filter(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            { tracing::error!("DB error: {}", e); json!({"error": "Database error"}) },
+            { tracing::error!("DB error: {}", e); json!({"error": "Database error", "code": "database_error"}) },
         )
     })?;
     Ok(json!({ "success": true, "id": id }))
@@ -1107,7 +1107,7 @@ pub async fn delete_content_filter(
         .map_err(|e| {
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("DB error: {}", e); json!({"error": "Database error"}) },
+                { tracing::error!("DB error: {}", e); json!({"error": "Database error", "code": "database_error"}) },
             )
         })?;
     if result.rows_affected() == 0 {

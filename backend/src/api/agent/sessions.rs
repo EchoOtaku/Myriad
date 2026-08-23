@@ -30,7 +30,7 @@ pub async fn create_session(
         .await
         .map_err(|e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("Failed to create session: {}", e); Json(json!({"error": "Database error"})) },
+                { tracing::error!("Failed to create session: {}", e); Json(json!({"error": "Database error", "code": "database_error"})) },
             )))?;
 
     Ok(Json(json!({
@@ -78,7 +78,7 @@ pub async fn list_sessions(
         .await
         .map_err(|e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("Failed to list sessions: {}", e); Json(json!({"error": "Database error"})) },
+                { tracing::error!("Failed to list sessions: {}", e); Json(json!({"error": "Database error", "code": "database_error"})) },
             )))?;
 
     let sessions_json: Vec<Value> = sessions
@@ -114,7 +114,7 @@ pub async fn get_session_messages(
         .await
         .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             )))?;
 
     if session.is_none() {
@@ -132,7 +132,7 @@ pub async fn get_session_messages(
         .await
         .map_err(|e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                { tracing::error!("Failed to list messages: {}", e); Json(json!({"error": "Database error"})) },
+                { tracing::error!("Failed to list messages: {}", e); Json(json!({"error": "Database error", "code": "database_error"})) },
             )))?;
 
     let messages_json: Vec<Value> = messages
@@ -168,7 +168,7 @@ pub async fn archive_session(
         .await
         .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             )))?;
 
     if session.is_none() {
@@ -182,7 +182,7 @@ pub async fn archive_session(
     active.archived = Set(true);
     active.update(&db).await.map_err(|e| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            { tracing::error!("Failed to archive session: {}", e); Json(json!({"error": "Database error"})) },
+            { tracing::error!("Failed to archive session: {}", e); Json(json!({"error": "Database error", "code": "database_error"})) },
         )))?;
 
     Ok(Json(json!({"success": true})))
@@ -210,7 +210,7 @@ pub async fn update_session(
         .await
         .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             )))?;
 
     if session.is_none() {
@@ -226,7 +226,7 @@ pub async fn update_session(
     }
     let updated = active.update(&db).await.map_err(|e| HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            { tracing::error!("Failed to update session: {}", e); Json(json!({"error": "Database error"})) },
+            { tracing::error!("Failed to update session: {}", e); Json(json!({"error": "Database error", "code": "database_error"})) },
         )))?;
 
     Ok(Json(json!({
@@ -253,7 +253,7 @@ pub async fn generate_session_title(
         .await
         .map_err(|_e| HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             )))?;
 
     if session.is_none() {

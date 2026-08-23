@@ -121,7 +121,7 @@ pub async fn create_preset(
             tracing::error!("[Agent Presets] Failed to check existing preset: {}", e);
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         })?;
 
@@ -253,7 +253,7 @@ pub async fn delete_preset(
             tracing::error!("[Agent Presets] Failed to find preset: {}", e);
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         })?;
 
@@ -302,7 +302,7 @@ pub async fn toggle_favorite(
             tracing::error!("[Agent Presets] Failed to find preset: {}", e);
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         })?
         .ok_or_else(|| HttpError::from((
@@ -351,7 +351,7 @@ pub async fn use_preset(
             tracing::error!("[Agent Presets] Failed to find preset: {}", e);
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         })?
         .ok_or_else(|| HttpError::from((
@@ -395,7 +395,7 @@ pub async fn execute_preset(
             tracing::error!("[Agent Presets] Failed to find preset: {}", e);
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": "Database error" })),
+                Json(json!({ "error": "Database error", "code": "database_error" })),
             ))
         })?
         .ok_or_else(|| HttpError::from((

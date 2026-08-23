@@ -34,14 +34,34 @@ pub struct AppError {
 }
 
 impl AppError {
+    /// Stable machine code for well-known public labels.
+    pub fn inferred_code(label: &str) -> Option<&'static str> {
+        match label.trim() {
+            "Database error" | "Database query failed" | "Database not connected" => {
+                Some("database_error")
+            }
+            "Failed to fetch data" => Some("fetch_failed"),
+            "Failed to process password" | "Failed to verify password" => {
+                Some("password_failed")
+            }
+            "Failed to create account" => Some("account_create_failed"),
+            "Failed to create session token" | "Failed to refresh session token" => {
+                Some("session_failed")
+            }
+            _ => None,
+        }
+    }
+
     /// Build with an explicit status. `error` is the short public label.
     pub fn new(status: StatusCode, error: impl Into<String>) -> Self {
+        let error = redact_secrets(&error.into());
+        let code = Self::inferred_code(&error).map(str::to_string);
         Self {
             status,
-            error: redact_secrets(&error.into()),
+            error,
             message: None,
             hint: None,
-            code: None,
+            code,
         }
     }
 
@@ -206,6 +226,13 @@ mod tests {
         assert!(v.get("message").is_none());
         assert!(v.get("hint").is_none());
         assert!(v.get("code").is_none());
+    }
+
+    #[test]
+    fn database_error_label_gets_stable_code() {
+        let v = AppError::internal("Database error").to_json();
+        assert_eq!(v["error"], "Database error");
+        assert_eq!(v["code"], "database_error");
     }
 
     #[test]

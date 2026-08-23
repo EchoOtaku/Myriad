@@ -61,7 +61,7 @@ async fn acquire_password_hash_permit_from(
             tracing::error!("Password hash semaphore closed: {:?}", e);
             Err(HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to process password"})),
+                Json(json!({"error": "Failed to process password", "code": "password_failed"})),
             )))
         }
         Err(_) => {
@@ -370,7 +370,7 @@ pub async fn local_login(
         .map_err(|_e| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             ))
         })?;
 
@@ -395,21 +395,21 @@ pub async fn local_login(
     let user_id: i32 = user_row.try_get("", "id").map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read user data"})),
+            Json(json!({"error": "Failed to read user data", "code": "database_error"})),
         ))
     })?;
 
     let username: String = user_row.try_get("", "username").map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read user data"})),
+            Json(json!({"error": "Failed to read user data", "code": "database_error"})),
         ))
     })?;
 
     let password_hash: String = user_row.try_get("", "password_hash").map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read user data"})),
+            Json(json!({"error": "Failed to read user data", "code": "database_error"})),
         ))
     })?;
 
@@ -453,7 +453,7 @@ pub async fn local_login(
     let token = encode_session_token(&claims).map_err(|_e| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to create session token"})),
+            Json(json!({"error": "Failed to create session token", "code": "session_failed"})),
         ))
     })?;
 
@@ -536,7 +536,7 @@ pub async fn change_password(
         .map_err(|_e| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             ))
         })?;
 
@@ -551,14 +551,14 @@ pub async fn change_password(
     let username: String = user_row.try_get("", "username").map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read user data"})),
+            Json(json!({"error": "Failed to read user data", "code": "database_error"})),
         ))
     })?;
 
     let auth_provider: String = user_row.try_get("", "auth_provider").map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to read user data"})),
+            Json(json!({"error": "Failed to read user data", "code": "database_error"})),
         ))
     })?;
 
@@ -609,13 +609,13 @@ pub async fn change_password(
         .map_err(|_e| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to update password"})),
+                Json(json!({"error": "Failed to update password", "code": "password_failed"})),
             ))
         })?
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to update password"})),
+                Json(json!({"error": "Failed to update password", "code": "password_failed"})),
             ))
         })?;
 
@@ -639,7 +639,7 @@ pub async fn change_password(
     let token = encode_session_token(&new_claims).map_err(|_e| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to refresh session token"})),
+            Json(json!({"error": "Failed to refresh session token", "code": "session_failed"})),
         ))
     })?;
 
@@ -745,7 +745,7 @@ fn blocking_pool_error<T>(e: tokio::task::JoinError) -> Result<T, HttpError> {
     tracing::error!("Password hashing task failed: {:?}", e);
     Err(HttpError::from((
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "Failed to process password"})),
+        Json(json!({"error": "Failed to process password", "code": "password_failed"})),
     )))
 }
 
@@ -768,7 +768,7 @@ async fn hash_password(password: &str) -> Result<String, HttpError> {
             tracing::error!("Failed to hash password: {:?}", e);
             Err(HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to process password"})),
+                Json(json!({"error": "Failed to process password", "code": "password_failed"})),
             )))
         }
         Err(e) => blocking_pool_error(e),
@@ -813,7 +813,7 @@ async fn verify_password(password: &str, hash: &str) -> Result<(), HttpError> {
         }
         Ok(Err(VerifyFail::Internal)) => Err(HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to verify password"})),
+            Json(json!({"error": "Failed to verify password", "code": "password_failed"})),
         ))),
         Err(e) => blocking_pool_error(e),
     }
@@ -867,7 +867,7 @@ pub async fn register(
             tracing::error!(error = %error, "register: failed to read installation claim");
             return Err(HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             )));
         }
     }
@@ -888,7 +888,7 @@ pub async fn register(
         .map_err(|_e| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             ))
         })?;
     if dup.is_some() {
@@ -925,7 +925,7 @@ pub async fn register(
         .map_err(|_e| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to create account"})),
+                Json(json!({"error": "Failed to create account", "code": "account_create_failed"})),
             ))
         })?
         .ok_or_else(|| {
@@ -991,7 +991,7 @@ pub async fn set_password(
         .map_err(|_e| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             ))
         })?
         .ok_or_else(|| {
@@ -1027,7 +1027,7 @@ pub async fn set_password(
         .map_err(|_e| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to set password"})),
+                Json(json!({"error": "Failed to set password", "code": "password_failed"})),
             ))
         })?;
     let new_tv = updated
@@ -1065,7 +1065,7 @@ pub async fn set_password(
     let token = encode_session_token(&new_claims).map_err(|_| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to refresh session token"})),
+            Json(json!({"error": "Failed to refresh session token", "code": "session_failed"})),
         ))
     })?;
     let is_production = crate::oauth_url_builder::SiteConfig::is_production().await;
@@ -1120,7 +1120,7 @@ pub async fn toggle_local_login(
         .map_err(|_e| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             ))
         })?
         .ok_or_else(|| {
@@ -1164,7 +1164,7 @@ pub async fn toggle_local_login(
     .map_err(|_e| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to update"})),
+            Json(json!({"error": "Failed to update", "code": "update_failed"})),
         ))
     })?;
 
@@ -1205,7 +1205,7 @@ async fn issue_session_cookie(
     let token = encode_session_token(&claims).map_err(|_e| {
         HttpError::from((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to create session token"})),
+            Json(json!({"error": "Failed to create session token", "code": "session_failed"})),
         ))
     })?;
 
@@ -1284,7 +1284,7 @@ pub async fn admin_create_user(
         .map_err(|_e| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error"})),
+                Json(json!({"error": "Database error", "code": "database_error"})),
             ))
         })?;
     if dup.is_some() {
@@ -1324,7 +1324,7 @@ pub async fn admin_create_user(
         .map_err(|_e| {
             HttpError::from((
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to create account"})),
+                Json(json!({"error": "Failed to create account", "code": "account_create_failed"})),
             ))
         })?
         .ok_or_else(|| {

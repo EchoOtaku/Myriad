@@ -2357,6 +2357,9 @@ export interface TranslationKeys {
     forbidden: string
     notFound: string
     serverError: string
+    database: string
+    passwordFailed: string
+    sessionFailed: string
     httpStatus: string
     lyricsFailed: string
     weatherFailed: string

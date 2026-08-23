@@ -6,7 +6,7 @@
 mod extract;
 mod generate;
 mod latest_and_list;
-mod locale;
+pub(crate) mod locale;
 mod mock;
 mod prompt_data;
 mod prompts;
