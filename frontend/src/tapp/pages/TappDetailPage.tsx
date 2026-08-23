@@ -54,6 +54,7 @@ import { Spinner } from '../../components/Spinner'
 import Toast from '../../components/Toast'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import { userFacingError } from '../../utils/userFacingError'
 import { usePageSeo } from '../../hooks/usePageSeo'
 import { sanitizeUrl } from '../../utils/inputSanitizer'
 import {
@@ -368,7 +369,7 @@ export function TappDetailPage() {
 
         setLoading(false)
       } catch (err) {
-        setError(err instanceof Error ? err.message : t.tapp.loadAppFailed)
+        setError(userFacingError(err, t.tapp.loadAppFailed))
         setLoading(false)
       }
     }

@@ -22,6 +22,7 @@ import { assertConfigWriteSuccess } from '../lib/api'
 import { parseAuthMeResponse } from '../utils/authMe'
 import { getCSRFHeaderName, getCSRFToken } from '../utils/csrf'
 import { consumeSetupSecretFromLocation } from '../utils/setupSecretFromUrl'
+import { userFacingError } from '../utils/userFacingError'
 import { InputItem, SegmentedControl, SwitchItem } from './settings'
 import { SettingItemWrapper } from './settings/items/SettingItemWrapper'
 import {
@@ -198,13 +199,23 @@ const SetupWizard: React.FC = () => {
       // 先检查健康状态,看是否处于配置模式
       const healthResponse = await fetch(`${API_URL}/health`)
       if (!healthResponse.ok) {
-        throw new Error('Failed to connect to backend')
+        throw new Error(
+          t.errors.backendUnreachable.replace(
+            '{status}',
+            String(healthResponse.status),
+          ),
+        )
       }
       const healthData = await healthResponse.json()
 
       const configResponse = await fetch(`${API_URL}/api/setup/config`)
       if (!configResponse.ok) {
-        throw new Error('Failed to read setup config')
+        throw new Error(
+          t.errors.setupConfigFailed.replace(
+            '{status}',
+            String(configResponse.status),
+          ),
+        )
       }
       const setupConfig = await configResponse.json()
       const setupSecretRequired = Boolean(setupConfig.setup_secret_required)
@@ -259,7 +270,12 @@ const SetupWizard: React.FC = () => {
           setLoading(false)
           return
         }
-        throw new Error('Failed to check setup status')
+        throw new Error(
+          t.errors.setupCheckFailed.replace(
+            '{status}',
+            String(response.status),
+          ),
+        )
       }
       const data = await response.json()
       if (data.is_setup_required && !windowOpen) {
@@ -274,12 +290,12 @@ const SetupWizard: React.FC = () => {
       if (!data.is_setup_required) {
         sessionStorage.removeItem('myriad-setup-started')
       }
-    } catch (_err) {
-      setError(t.setup.connectionFailedDesc)
+    } catch (err) {
+      setError(userFacingError(err, t.setup.connectionFailedDesc))
     } finally {
       setLoading(false)
     }
-  }, [t.setup.connectionFailedDesc])
+  }, [t])
 
   useEffect(() => {
     void checkSetupStatus()

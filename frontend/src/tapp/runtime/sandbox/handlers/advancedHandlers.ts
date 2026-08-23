@@ -17,6 +17,7 @@ import {
   getQQAudioUrlImmediate,
 } from '../../../../utils/musicPlayer'
 import { proxyImageUrlOr } from '../../../../utils/proxyImageUrl'
+import { userFacingError } from '../../../../utils/userFacingError'
 import * as TappApiService from '../../../services/TappApiService'
 import {
   hostBindShortcut,
@@ -129,7 +130,7 @@ export function registerMediaHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -514,7 +515,7 @@ export function registerMediaHandlers(
       return {
         success: false,
         error:
-          error instanceof Error ? error.message : 'Failed to fetch lyrics',
+          userFacingError(error),
       }
     }
   })
@@ -735,7 +736,7 @@ export function registerMediaHandlers(
       return {
         success: false,
         error:
-          error instanceof Error ? error.message : 'Failed to load playlist',
+          userFacingError(error),
       }
     }
   })
@@ -793,7 +794,7 @@ export function registerSpeechHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'TTS failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -806,7 +807,7 @@ export function registerSpeechHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to get voices',
+        error: userFacingError(error),
       }
     }
   })
@@ -867,7 +868,7 @@ export function registerSpeechHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'ASR failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -913,7 +914,7 @@ export function registerBackgroundHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -934,7 +935,7 @@ export function registerBackgroundHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -947,7 +948,7 @@ export function registerBackgroundHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -967,7 +968,7 @@ export function registerBackgroundHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1065,7 +1066,7 @@ export function registerDynamicContentHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1087,7 +1088,7 @@ export function registerDynamicContentHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1104,7 +1105,7 @@ export function registerDynamicContentHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1117,7 +1118,7 @@ export function registerDynamicContentHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1144,7 +1145,7 @@ export function registerAdvancedHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1162,7 +1163,7 @@ export function registerAdvancedHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1180,7 +1181,7 @@ export function registerAdvancedHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1197,7 +1198,7 @@ export function registerAdvancedHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1330,7 +1331,7 @@ export function registerAdvancedHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1354,7 +1355,7 @@ export function registerAdvancedHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1369,7 +1370,7 @@ export function registerAdvancedHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1402,7 +1403,7 @@ export function registerContextHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1553,7 +1554,7 @@ export function registerContextHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1569,7 +1570,7 @@ export function registerContextHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1597,7 +1598,7 @@ export function registerContextHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1627,7 +1628,7 @@ export function registerContextHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1643,7 +1644,7 @@ export function registerContextHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -1658,7 +1659,7 @@ export function registerContextHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })

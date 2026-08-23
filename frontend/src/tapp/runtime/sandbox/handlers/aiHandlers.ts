@@ -4,6 +4,7 @@
 
 import type { AITaskRequest, TappInstance } from '../../../types'
 import type { TappBridge } from '../../TappBridge'
+import { userFacingError } from '../../../../utils/userFacingError'
 import * as TappApiService from '../../../services/TappApiService'
 
 /**
@@ -25,7 +26,7 @@ export function registerAIHandlers(bridge: TappBridge): () => void {
       return {
         success: false,
         error:
-          error instanceof Error ? error.message : 'AI task creation failed',
+          userFacingError(error),
       }
     }
   })
@@ -44,7 +45,7 @@ export function registerAIHandlers(bridge: TappBridge): () => void {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'AI task lookup failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -80,7 +81,7 @@ export function registerAIHandlers(bridge: TappBridge): () => void {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'AI usage failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -107,7 +108,7 @@ export function registerAIHandlers(bridge: TappBridge): () => void {
             event: 'error',
             data: {
               code: 'AI_TASK_STREAM_ERROR',
-              message: error instanceof Error ? error.message : String(error),
+              message: userFacingError(error),
             },
           })
         }
@@ -154,7 +155,7 @@ export function registerReportHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -171,7 +172,7 @@ export function registerReportHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -188,7 +189,7 @@ export function registerReportHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -217,7 +218,7 @@ export function registerReportHandlers(
       } catch (error) {
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed',
+          error: userFacingError(error),
         }
       }
     })
@@ -239,7 +240,7 @@ export function registerReportHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -258,7 +259,7 @@ export function registerReportHandlers(
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed',
+        error: userFacingError(error),
       }
     }
   })
@@ -284,7 +285,7 @@ export function registerReportHandlers(
       } catch (error) {
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed',
+          error: userFacingError(error),
         }
       }
     })
@@ -303,7 +304,7 @@ export function registerReportHandlers(
       } catch (error) {
         return {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed',
+          error: userFacingError(error),
         }
       }
     })
