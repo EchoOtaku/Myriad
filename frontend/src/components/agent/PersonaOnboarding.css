@@ -427,10 +427,32 @@ html.dark .merope-ob-bar .merope-ob-cta {
   opacity: 1;
 }
 
+.merope-ob-field__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.merope-motion-import {
+  display: grid;
+  gap: 10px;
+}
+
 .merope-ob-styles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .merope-ob-styles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .merope-ob-styles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .merope-ob-styles__card {

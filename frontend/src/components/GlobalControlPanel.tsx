@@ -20,6 +20,11 @@ import { useNavigate } from 'react-router-dom'
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
+import {
+  dispatchMeropePerformance,
+  dispatchMeropeState,
+} from '../features/merope/performanceEvents'
+import { dispatchMeropeSpeechUtterance } from '../features/merope/speechEvents'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
 import {
   isReducedAnimation,
@@ -30,11 +35,6 @@ import { useNotificationCenter } from '../hooks/useNotificationCenter'
 import { useNotificationPreferences } from '../hooks/useNotificationPreferences'
 import { usePerformanceProfile } from '../hooks/usePerformanceProfile'
 import { useWallpaper } from '../hooks/useWallpaper'
-import { formatMusicError } from '../utils/musicError'
-import {
-  notificationFacingBody,
-  notificationFacingTitle,
-} from '../utils/notificationFacing'
 import { getDynamicContentProvider } from '../services/DynamicContentProvider'
 import {
   notificationSourceFor,
@@ -42,20 +42,21 @@ import {
   shouldDeliverNotification,
 } from '../services/notificationDelivery'
 import {
-  dispatchMeropeState,
-  dispatchMeropePerformance,
-} from '../features/merope/performanceEvents'
-import {
   getGreeting,
   getRandomQuote,
   getWeatherInfo,
   WEATHER_ICON_ASSETS,
 } from '../utils/dynamicContent'
+import { formatMusicError } from '../utils/musicError'
 import {
   getNavLayoutSnapshot,
   getServerNavLayoutSnapshot,
   subscribeNavLayout,
 } from '../utils/navLayout'
+import {
+  notificationFacingBody,
+  notificationFacingTitle,
+} from '../utils/notificationFacing'
 import { loadResource } from '../utils/resourceLoader'
 import { useThemeMode } from '../utils/themeSubscriber'
 import { showToast } from '../utils/toastManager'
@@ -280,6 +281,12 @@ const GlobalControlPanel: React.FC = () => {
           source: 'proactive',
           messageId: n.id,
           performance: n.metadata.performance,
+        })
+        dispatchMeropeSpeechUtterance({
+          text: n.body,
+          source: 'proactive',
+          messageId: n.id,
+          utteranceId: `proactive-${n.id}`,
         })
       }
       const source = notificationSourceFor(n)

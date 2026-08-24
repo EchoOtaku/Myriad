@@ -45,14 +45,13 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
 import { usePageContentOptional } from '../../contexts/PageContentContext'
 import {
-  errorCode,
-  generationFailureMessage,
-} from './onboarding/generationError'
-import { userFacingError } from '../../utils/userFacingError'
-import {
-  dispatchMeropeState,
   dispatchMeropePerformance,
+  dispatchMeropeState,
 } from '../../features/merope/performanceEvents'
+import {
+  dispatchMeropeSpeech,
+  dispatchMeropeSpeechUtterance,
+} from '../../features/merope/speechEvents'
 import {
   agentService,
   executeFrontendAction,
@@ -63,14 +62,19 @@ import {
 } from '../../services/agent/reattach'
 import { isImeComposing } from '../../utils/ime'
 import { getPublicConfigDeduped } from '../../utils/requestDedup'
-
+import { userFacingError } from '../../utils/userFacingError'
 import { AraelChatMessage } from './components/AraelChatMessage'
+
 import { AraelDebugPanel } from './components/AraelDebugPanel'
 import { AraelInput } from './components/AraelInput'
 import { AraelManageDrawer } from './components/AraelManageDrawer'
 import { AraelPresets } from './components/AraelPresets'
 import { AraelSessionList } from './components/AraelSessionList'
 import { useLongPress, useMessageState, useVoiceRecording } from './hooks'
+import {
+  errorCode,
+  generationFailureMessage,
+} from './onboarding/generationError'
 import { LONG_PRESS_DURATION, SPRING_SNAPPY } from './types'
 import './AraelPanel.css'
 
@@ -81,6 +85,22 @@ function stripNamePrefix(greeting: string, name: string): string {
   const prefix = name.trim()
   if (!prefix || !greeting.startsWith(prefix)) return greeting
   return greeting.slice(prefix.length).replace(/^\s+/, '')
+}
+
+function normalizedSpeechText(text: string): string {
+  return text.trim().replace(/\s+/gu, ' ').slice(0, 2_000)
+}
+
+function rememberSpokenText(
+  remembered: Map<string, string>,
+  messageId: string,
+  text: string,
+): void {
+  if (!remembered.has(messageId) && remembered.size >= 200) {
+    const oldest = remembered.keys().next().value
+    if (typeof oldest === 'string') remembered.delete(oldest)
+  }
+  remembered.set(messageId, text)
 }
 
 /** 连点打开 debug 面板：窗口内点击次数 / 时间窗 */
@@ -196,10 +216,37 @@ export const AraelPanel: React.FC = () => {
   const sessionTitleSetRef = useRef(false)
   const handledResponseKeysRef = useRef(new Set<string>())
   const loadingMessageIdRef = useRef<string | null>(null)
+  const lastSpokenTextByMessageRef = useRef(new Map<string, string>())
+  const speechSequenceRef = useRef(0)
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
   const [sessionTitle, setSessionTitle] = useState<string | null>(null)
   const [personaName, setPersonaName] = useState('Agent')
+
+  const dispatchFinalSpeech = useCallback(
+    (messageId: string, text: string): void => {
+      const normalized = normalizedSpeechText(text)
+      if (
+        !normalized ||
+        lastSpokenTextByMessageRef.current.get(messageId) === normalized
+      ) {
+        return
+      }
+      rememberSpokenText(
+        lastSpokenTextByMessageRef.current,
+        messageId,
+        normalized,
+      )
+      speechSequenceRef.current += 1
+      dispatchMeropeSpeechUtterance({
+        messageId,
+        source: 'reply',
+        text: normalized,
+        utteranceId: `final-${speechSequenceRef.current}-${messageId}`,
+      })
+    },
+    [],
+  )
 
   // 长按检测（提取到 useLongPress hook）
   const { indicator: longPressIndicator } = useLongPress(
@@ -439,6 +486,13 @@ export const AraelPanel: React.FC = () => {
 
   const startNewSession = useCallback(async () => {
     // 新建会话只切换前端视图。旧任务由后端 run 持续执行，并通过通知中心报告状态。
+    if (loadingMessageIdRef.current) {
+      dispatchMeropeSpeech({
+        phase: 'cancel',
+        messageId: loadingMessageIdRef.current,
+        source: 'reply',
+      })
+    }
     loadingMessageIdRef.current = null
     setIsLoading(false)
     setSessionId(null)
@@ -521,6 +575,11 @@ export const AraelPanel: React.FC = () => {
               handleAgentResponseRef.current?.(candidate.messageId, response)
             })
             .catch((error) => {
+              dispatchMeropeSpeech({
+                phase: 'cancel',
+                messageId: candidate.messageId,
+                source: 'reply',
+              })
               console.warn('[AraelPanel] reattach stream ended:', error)
             })
             .finally(() => {
@@ -724,6 +783,11 @@ export const AraelPanel: React.FC = () => {
         m.taskExecution?.status === 'cancelling',
     )
     for (const msg of processingMsgs) {
+      dispatchMeropeSpeech({
+        phase: 'cancel',
+        messageId: msg.id,
+        source: 'reply',
+      })
       const taskId = msg.taskExecution?.taskId
       // 先进入 cancelling，避免乐观地显示 error 而后端仍在跑
       updateMessageExecution(msg.id, { status: 'cancelling' })
@@ -809,6 +873,41 @@ export const AraelPanel: React.FC = () => {
   const createProgressHandler = useCallback(
     (assistantMessageId: string) => {
       let streamedSummary = ''
+      let speechText = ''
+      let speechUtteranceId: string | null = null
+
+      const startSpeech = () => {
+        if (speechUtteranceId) return
+        speechSequenceRef.current += 1
+        speechUtteranceId = `stream-${speechSequenceRef.current}-${assistantMessageId}`
+        speechText = ''
+        dispatchMeropeSpeech({
+          phase: 'start',
+          messageId: assistantMessageId,
+          source: 'reply',
+          utteranceId: speechUtteranceId,
+        })
+      }
+      const finishSpeech = (cancelled = false) => {
+        if (!speechUtteranceId) return
+        dispatchMeropeSpeech({
+          phase: cancelled ? 'cancel' : 'end',
+          messageId: assistantMessageId,
+          source: 'reply',
+          utteranceId: speechUtteranceId,
+        })
+        const normalized = normalizedSpeechText(speechText)
+        if (!cancelled && normalized) {
+          rememberSpokenText(
+            lastSpokenTextByMessageRef.current,
+            assistantMessageId,
+            normalized,
+          )
+        }
+        speechUtteranceId = null
+        speechText = ''
+      }
+
       return (event: ProgressEvent) => {
         // 记录关键 SSE 事件到调试日志
         if (
@@ -887,6 +986,7 @@ export const AraelPanel: React.FC = () => {
           }
 
           case 'step_started': {
+            finishSpeech()
             streamedSummary = '' // ai_summarize 从零开始，替换 announce_plan
             const stepEvent = event as StepStartedEvent
             addExecutionStep(assistantMessageId, {
@@ -978,6 +1078,7 @@ export const AraelPanel: React.FC = () => {
           }
 
           case 'error':
+            finishSpeech(true)
             updateMessageExecution(assistantMessageId, { status: 'error' })
             updateMessage(assistantMessageId, { content: event.message })
             break
@@ -991,9 +1092,23 @@ export const AraelPanel: React.FC = () => {
                   statusMessage: streamedSummary,
                 })
               }
+              finishSpeech()
               // 不清 streamedSummary — step_started 事件负责在步骤开始时重置
             } else {
               streamedSummary += tokenEvent.token
+              if (tokenEvent.token.trim()) {
+                startSpeech()
+                speechText += tokenEvent.token
+                dispatchMeropeSpeech({
+                  phase: 'chunk',
+                  messageId: assistantMessageId,
+                  source: 'reply',
+                  utteranceId: speechUtteranceId,
+                  text: tokenEvent.token,
+                })
+              } else if (speechUtteranceId) {
+                speechText += tokenEvent.token
+              }
               // announce_plan 和 ai_summarize 都写入正文，用户都看得到
               // announce_plan: "好的，让我帮你查一下~"（执行前的温暖感）
               // ai_summarize: "东京25°C，芙莉莲好看~"（执行后的结果）
@@ -1024,6 +1139,7 @@ export const AraelPanel: React.FC = () => {
           }
 
           case 'task_completed': {
+            finishSpeech()
             // 检查任务是否真正完成（多轮问答时可能仍在等待用户输入）
             const completedEvent =
               event as import('../../services/agent/types').TaskCompletedEvent
@@ -1309,6 +1425,11 @@ export const AraelPanel: React.FC = () => {
           handleAgentResponseRef.current(assistantMsgId, response)
         }
       } catch (error) {
+        dispatchMeropeSpeech({
+          phase: 'cancel',
+          messageId: assistantMsgId,
+          source: 'reply',
+        })
         // A budget rejection arrives on the same channel as a real failure and
         // reads as "出错了" without this: the stream is already HTTP 200 by then,
         // so the quota code on the error event is the only signal.
@@ -1448,6 +1569,7 @@ export const AraelPanel: React.FC = () => {
               : ''),
           progress: 100,
         })
+        dispatchFinalSpeech(messageId, pendingQuestion.question)
         return
       }
 
@@ -1575,6 +1697,7 @@ export const AraelPanel: React.FC = () => {
           messageId,
           performance: response.performance,
         })
+        if (spokenReply?.trim()) dispatchFinalSpeech(messageId, spokenReply)
       }
 
       const hasFailedSteps =
@@ -1716,7 +1839,7 @@ export const AraelPanel: React.FC = () => {
         }
       }
     },
-    [updateMessage, updateMessageExecution],
+    [dispatchFinalSpeech, updateMessage, updateMessageExecution],
   )
 
   useEffect(() => {
@@ -1778,6 +1901,11 @@ export const AraelPanel: React.FC = () => {
             )
         handleAgentResponseRef.current?.(messageId, response)
       } catch (error) {
+        dispatchMeropeSpeech({
+          phase: 'cancel',
+          messageId,
+          source: 'reply',
+        })
         const errorMsg = userFacingError(error, t.arael.unknownError)
         updateMessage(messageId, {
           content: format(t.arael.answerFailed, { error: errorMsg }),

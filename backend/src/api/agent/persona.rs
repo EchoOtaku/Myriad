@@ -55,6 +55,19 @@ pub struct DraftPersonaRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ImportPersonaRequest {
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub gender: String,
+    #[serde(default = "default_signals_language")]
+    pub language: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SuggestNameRequest {
     #[serde(default)]
     pub selected_tags: Vec<String>,
@@ -667,6 +680,50 @@ pub async fn draft_persona(
             return Err(onboarding_generation_error(
                 "persona",
                 "Failed to draft a persona",
+                error,
+            ))
+        }
+    };
+    Ok(Json(json!({
+        "persona": persona,
+    })))
+}
+
+/// POST /api/agent/persona/import
+/// Pro rewrites an owner-supplied write-up into the structured persona fields.
+pub async fn import_persona(
+    State(db): State<DatabaseConnection>,
+    Extension(claims): Extension<Claims>,
+    Json(body): Json<ImportPersonaRequest>,
+) -> Result<Json<Value>, HttpError> {
+    require_merope_enabled().await?;
+    let _user_id = require_site_owner(&claims, &db).await?;
+    let language = normalize_signals_language(&body.language);
+    let source = body.source.trim();
+    if source.is_empty() {
+        return Err(HttpError::from((
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "Import source is required",
+                "code": "import_source_required"
+            })),
+        )));
+    }
+    let name = body.name.trim();
+    let display = if name.is_empty() { "Arael" } else { name };
+    let persona = match merope::onboarding_ai::import_persona(
+        display,
+        language,
+        &body.gender,
+        source,
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(error) => {
+            return Err(onboarding_generation_error(
+                "persona",
+                "Failed to import a persona",
                 error,
             ))
         }

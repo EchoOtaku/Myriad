@@ -2256,6 +2256,16 @@ export interface TranslationKeys {
       regeneratePersona: string
       regeneratingPersona: string
       regeneratePersonaFailed: string
+      importPersona: string
+      importPersonaHint: string
+      importPersonaPlaceholder: string
+      importPersonaSubmit: string
+      importPersonaBusy: string
+      importPersonaFailed: string
+      importPersonaEmpty: string
+      importPortrait: string
+      importPortraitBusy: string
+      importPortraitFailed: string
       personaFieldGenerating: string
       personaDraftLabel: string
       editPersona: string

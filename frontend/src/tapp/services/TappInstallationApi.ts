@@ -13,7 +13,7 @@ import {
   buildPlaygroundPackageFiles,
   packageFilesToDirectInstallBody,
 } from '../utils/playgroundPackageFiles'
-import { apiRequest } from './TappHttpClient'
+import { apiRequest, TappHttpError } from './TappHttpClient'
 
 /**
  * 商店包的模块表：`download.code` 是 core 入口，`download.modules` 覆盖其余层。
@@ -459,6 +459,7 @@ export async function installFromStore(
     // Also fall back when peer has no matching DB row for the shared catalog URL —
     // browser can still download if the URL is public.
     const shouldFallback =
+      (error instanceof TappHttpError && error.status === 502) ||
       /502|BAD_GATEWAY|Failed to fetch store|cannot reach store|Failed to fetch manifest|Failed to fetch code|Failed to fetch|NetworkError|ECONNREFUSED|timeout|Load failed|Store source not found|not found/i.test(
         message,
       )
@@ -817,6 +818,7 @@ export async function updateTappFromStore(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const shouldFallback =
+      (error instanceof TappHttpError && error.status === 502) ||
       /502|BAD_GATEWAY|Failed to fetch store|cannot reach store|Failed to fetch manifest|Failed to fetch code|Failed to fetch|NetworkError|ECONNREFUSED|timeout|Load failed|Store source not found|not found|413|Payload Too Large|body.*limit|too large/i.test(
         message,
       )

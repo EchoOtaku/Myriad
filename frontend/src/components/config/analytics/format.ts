@@ -2,7 +2,7 @@
  * 访客统计图表共用：数值 / 时长格式化与坐标轴取整
  */
 
-import { currentCopy } from '../../../i18n/localeCopy'
+import { copyForLocale } from '../../../i18n/localeCopy'
 
 export function formatCount(n: number, locale: string): string {
   if (!Number.isFinite(n)) return '—'
@@ -16,10 +16,10 @@ export function formatCount(n: number, locale: string): string {
   }
 }
 
-export function formatDuration(ms: number, _locale: string): string {
+export function formatDuration(ms: number, locale: string): string {
   if (!Number.isFinite(ms) || ms <= 0) return '—'
   const sec = Math.round(ms / 1000)
-  const t = currentCopy().common
+  const t = copyForLocale(locale).common
   if (sec < 60) {
     return t.durationSeconds.replace('{sec}', String(sec))
   }

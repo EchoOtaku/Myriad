@@ -13,6 +13,8 @@ import {
   type UpperBodyVisualIdentityKey,
 } from '../../components/agent/onboarding/onboardingTypes'
 import PersonaIdentityView from '../../components/agent/onboarding/ui/PersonaIdentityView'
+import PersonaImportPanel from '../../components/agent/onboarding/ui/PersonaImportPanel'
+import PortraitImportButton from '../../components/agent/onboarding/ui/PortraitImportButton'
 import VisualIdentityView from '../../components/agent/onboarding/ui/VisualIdentityView'
 import {
   ADDRESSEE_UPDATED_EVENT,
@@ -40,6 +42,7 @@ import {
 import { notifyFaceUpdated } from './events'
 import { isAnime25DPlayback } from './anime25drig/types'
 import RigCharacter from './rig/RigCharacter'
+import { useRigSpeechLifecycle } from './useRigSpeechLifecycle'
 import './merope.css'
 import './merope-motion-home.css'
 
@@ -101,6 +104,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     useState<StructuredPersona | null>(null)
   const [studioHost, setStudioHost] = useState<HTMLDivElement | null>(null)
   const rigCharacterRef = useRef<RigCharacterHandle>(null)
+  useRigSpeechLifecycle(rigCharacterRef)
   const o = t.agentPersona.onboarding
   const visualLabels: Record<UpperBodyVisualIdentityKey, string> = {
     faceDesign: o.visualFaceDesign,
@@ -209,20 +213,27 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
   )
 
   const saveStructuredPersona = useCallback(
-    async (next: StructuredPersona) => {
+    async (next: StructuredPersona, options?: { resetVisual?: boolean }) => {
       setStructuredPersona(next)
-      if (!personaSnapshot) return
+      const name = personaSnapshot?.name.trim() || 'Arael'
+      const visualProfile = options?.resetVisual
+        ? {
+            ...(personaSnapshot?.visualProfile ?? {}),
+            visualIdentity: null,
+          }
+        : personaSnapshot?.visualProfile
       try {
         const saved = await agentService.putPersona({
-          name: personaSnapshot.name,
+          name,
           personality: flattenPersona(next),
           persona: {
-            ...(personaSnapshot.persona ?? {}),
-            displayName: personaSnapshot.name,
+            ...(personaSnapshot?.persona ?? {}),
+            displayName: name,
             ...next,
           },
-          visualProfile: personaSnapshot.visualProfile,
+          visualProfile,
         })
+        if (options?.resetVisual) setVisualIdentity(null)
         setPersonaSnapshot(saved)
         window.dispatchEvent(new CustomEvent('arael-persona-updated'))
       } catch (reason) {
@@ -570,25 +581,35 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     <p className="merope-motion-home__help">{t.merope.overviewEmpty}</p>
   )
 
-  const personaCard = structuredPersona ? (
-    <PersonaIdentityView
-      persona={structuredPersona}
-      labels={{
-        temperament: o.fieldTemperament,
-        likes: o.fieldLikes,
-        drives: o.fieldDrives,
-        socialStyle: o.fieldSocial,
-        speechStyle: o.fieldVoice,
-        summary: o.fieldSummary,
-      }}
-      editLabel={o.editPersona}
-      cancelLabel={o.cancelEdit}
-      saveLabel={o.doneEditing}
-      groupLabel={t.merope.personaGroup}
-      onPersona={(next) => void saveStructuredPersona(next)}
-    />
-  ) : (
-    <p className="merope-motion-home__help">{t.merope.personaEmpty}</p>
+  const personaCard = (
+    <div className="merope-motion-persona">
+      <PersonaImportPanel
+        appearance="settings"
+        name={personaSnapshot?.name.trim() || 'Arael'}
+        disabled={generating}
+        onImported={(next) => void saveStructuredPersona(next, { resetVisual: true })}
+      />
+      {structuredPersona ? (
+        <PersonaIdentityView
+          persona={structuredPersona}
+          labels={{
+            temperament: o.fieldTemperament,
+            likes: o.fieldLikes,
+            drives: o.fieldDrives,
+            socialStyle: o.fieldSocial,
+            speechStyle: o.fieldVoice,
+            summary: o.fieldSummary,
+          }}
+          editLabel={o.editPersona}
+          cancelLabel={o.cancelEdit}
+          saveLabel={o.doneEditing}
+          groupLabel={t.merope.personaGroup}
+          onPersona={(next) => void saveStructuredPersona(next)}
+        />
+      ) : (
+        <p className="merope-motion-home__help">{t.merope.personaEmpty}</p>
+      )}
+    </div>
   )
 
   const portraitCard = (
@@ -618,6 +639,15 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
             {t.merope.visualDownload}
           </SettingsButton>
         ) : null}
+        <PortraitImportButton
+          appearance="settings"
+          disabled={generating}
+          onError={setError}
+          onUploaded={async () => {
+            setError('')
+            await loadFace()
+          }}
+        />
       </div>
       {error ? (
         <p className="merope-motion-home__help" role="alert">

@@ -8,7 +8,8 @@ use crate::config::ModelTier;
 use crate::services::ai::create_ai_analyzer_for_tier_with_timeout;
 
 use super::onboarding_prompts::{
-    visual_design_system_prompt, NAME_SYSTEM_PROMPT, PERSONA_SYSTEM_PROMPT,
+    visual_design_system_prompt, IMPORT_PERSONA_SYSTEM_PROMPT, NAME_SYSTEM_PROMPT,
+    PERSONA_SYSTEM_PROMPT,
 };
 use super::report_dna::sanitize_onboarding_tags_for_language;
 
@@ -143,6 +144,52 @@ pub async fn suggest_persona(
     Ok(persona)
 }
 
+pub async fn import_persona(
+    name: &str,
+    language: &str,
+    gender: &str,
+    source: &str,
+) -> Result<Value, OnboardingAiError> {
+    let source = source.trim();
+    if source.is_empty() {
+        return Err(OnboardingAiError::UnusableResponse("import source was empty"));
+    }
+    let fallback = myriad_merope::fallback_persona_draft(name, language, &[]);
+    let input = json!({
+        "pipeline": "onboarding/persona-import",
+        "task": "import_character_persona",
+        "name": name.chars().take(50).collect::<String>(),
+        "language": language,
+        "genderPresentation": normalize_gender(gender),
+        "source": source.chars().take(6_000).collect::<String>(),
+    })
+    .to_string();
+    let raw = run_onboarding_call(IMPORT_PERSONA_SYSTEM_PROMPT, &input).await?;
+    let parsed = parse_json_object(&raw).ok_or(OnboardingAiError::UnusableResponse(
+        "imported persona was not valid JSON",
+    ))?;
+    if !persona_draft_meets_generation_quality(&parsed) {
+        return Err(OnboardingAiError::UnusableResponse(
+            "imported persona failed fullness checks",
+        ));
+    }
+    if !persona_matches_ui_language(&parsed, language) {
+        return Err(OnboardingAiError::UnusableResponse(
+            "imported persona failed language check",
+        ));
+    }
+    if myriad_merope::persona_has_literary_sludge(&parsed) {
+        return Err(OnboardingAiError::UnusableResponse(
+            "imported persona used literary sludge",
+        ));
+    }
+    myriad_merope::sanitize_persona_draft(&parsed, &fallback)
+        .filter(myriad_merope::persona_draft_is_complete)
+        .ok_or(OnboardingAiError::UnusableResponse(
+            "imported persona failed sanitize/complete check",
+        ))
+}
+
 pub async fn suggest_visual_design(
     name: &str,
     language: &str,
@@ -262,6 +309,8 @@ async fn suggest_visual_design_once(
     myriad_merope::stamp_clothing_style(&mut identity, clothing_style);
     let reject = if myriad_merope::visual_identity_violates_style_lock(&identity) {
         Some("style-lock")
+    } else if myriad_merope::visual_identity_has_high_collar(&identity) {
+        Some("high-collar")
     } else if myriad_merope::visual_identity_has_body_proportion_drift(&identity) {
         Some("body-proportion")
     } else if myriad_merope::visual_identity_has_camera_composition_drift(&identity) {
@@ -283,6 +332,7 @@ async fn suggest_visual_design_once(
         tracing::warn!(reason, language, "visual design failed quality check");
         return Err(OnboardingAiError::UnusableResponse(match reason {
             "style-lock" => "visual design failed style-lock check",
+            "high-collar" => "visual design covered the neck",
             "body-proportion" => "visual design failed body-proportion check",
             "camera-composition" => "visual design failed camera-composition check",
             "literary-sludge" => "visual design used literary sludge",

@@ -1,5 +1,5 @@
-import { currentCopy } from '../../../i18n/localeCopy'
 import { getDefaultLocale } from '../../../i18n'
+import { currentCopy } from '../../../i18n/localeCopy'
 
 export type OnboardingStep = 1 | 2 | 3 | 4 | 5
 
@@ -338,7 +338,7 @@ export function joinList(value: unknown): string {
   return Array.isArray(value)
     ? value
         .filter((item): item is string => typeof item === 'string')
-        .join(getDefaultLocale() === 'en-US' ? ', ' : '、')
+        .join(getDefaultLocale() === 'en-US' ? '; ' : '、')
     : ''
 }
 
@@ -363,7 +363,9 @@ const PERSONA_PARSE_KEYS = {
 
 export function flattenPersona(persona: StructuredPersona): string {
   const labels = personaFieldLabels()
-  const joiner = getDefaultLocale() === 'en-US' ? ', ' : '、'
+  // ASCII commas may be part of a single English trait (for example,
+  // "Blunt mouth, soft heart"), so use a delimiter parseList can distinguish.
+  const joiner = getDefaultLocale() === 'en-US' ? '; ' : '、'
   const lines: string[] = []
   if (persona.temperament.length) {
     lines.push(`${labels.temperament}：${persona.temperament.join(joiner)}`)
@@ -393,7 +395,7 @@ export function parseFlattenedPersona(raw: string): StructuredPersona {
   for (const line of raw.split('\n')) {
     const trimmed = line.trim()
     if (!trimmed) continue
-    const match = trimmed.match(/^(.+?)[：:](.*)$/)
+    const match = trimmed.match(/^([^：:]+)[：:](.*)$/)
     if (!match) {
       leftover.push(trimmed)
       continue

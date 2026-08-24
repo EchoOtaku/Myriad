@@ -244,6 +244,7 @@ export default function CharacterVisualDesignStep({
               label={o.visualRequirements}
               optional
               optionalLabel={o.optional}
+              hint={o.visualRequirementsHint}
             >
               <TextArea
                 value={requirements}

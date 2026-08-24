@@ -231,6 +231,11 @@ html.dark .merope-motion-page {
   gap: 8px;
 }
 
+.merope-motion-persona {
+  display: grid;
+  gap: 16px;
+}
+
 .merope-motion-rig {
   display: grid;
   gap: 12px;

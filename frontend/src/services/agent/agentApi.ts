@@ -856,6 +856,23 @@ class AgentService {
     )
   }
 
+  async importPersona(body: {
+    source: string
+    name?: string
+    gender?: string
+    language: string
+  }): Promise<{
+    persona: Record<string, unknown>
+  }> {
+    return sharePersonaGeneration(
+      `import:${body.language || ''}:${body.name || ''}:${body.gender || ''}:${body.source.length}:${body.source.slice(0, 80)}`,
+      () =>
+        apiService.post(`${this.baseUrl}/persona/import`, body, {
+          timeout: PERSONA_GENERATION_TIMEOUT_MS,
+        }),
+    )
+  }
+
   async draftPersona(body: {
     name: string
     tags: string[]

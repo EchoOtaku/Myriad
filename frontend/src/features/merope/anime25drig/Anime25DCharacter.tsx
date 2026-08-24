@@ -23,6 +23,10 @@ import {
   DEFAULT_REAR_HAIR_SWAY,
   IDENTITY_DRIVER,
 } from './player'
+import {
+  speechArticulationDriverPatch,
+  speechEnergyDriverPatch,
+} from './speechDriver'
 
 interface Props {
   activity: MeropeActivity
@@ -36,6 +40,8 @@ interface Props {
 }
 
 export interface Anime25DCharacterHandle {
+  setSpeechActive: (active: boolean) => void
+  setAutoSpeech: (active: boolean) => void
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
   setGazeTarget: (target: GazeTarget | null, source?: GazeSource) => void
@@ -59,6 +65,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     const wrapperRef = useRef<HTMLSpanElement>(null)
     const activityRef = useRef(activity)
     const moodRef = useRef(mood)
+    const speechActiveRef = useRef(false)
     const manualRef = useRef(manualControl)
     const baselineRef = useRef<Partial<Anime25DDriver> | null>(null)
     const cueTimersRef = useRef<number[]>([])
@@ -120,27 +127,27 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     }
 
     useImperativeHandle(ref, () => ({
-      setSpeechEnergy(energy) {
+      setSpeechActive(active) {
+        speechActiveRef.current = active
+        playerRef.current?.setSpeechActive(active)
+      },
+      setAutoSpeech(active) {
         playerRef.current?.setTarget({
-          mouthOpen: energy == null ? 0 : Math.max(0, Math.min(1, energy)),
-          talk: energy != null && energy > 0.08,
+          talk: active,
+          mouthOpen: 0,
+          mouthForm: baselineRef.current?.mouthForm ?? 0,
         })
       },
+      setSpeechEnergy(energy) {
+        playerRef.current?.setTarget(speechEnergyDriverPatch(energy))
+      },
       setSpeechArticulation(articulation) {
-        const shape =
-          articulation.viseme === 'closed' || articulation.viseme === 'rest'
-            ? 0
-            : articulation.viseme === 'wide'
-              ? 1
-              : articulation.viseme === 'round'
-                ? 0.68
-                : 0.55
-        const openness = Math.max(0, Math.min(1, shape * articulation.amount))
-        playerRef.current?.setTarget({
-          mouthOpen: openness,
-          mouthForm: articulation.viseme === 'wide' ? 0.25 : articulation.viseme === 'round' ? -0.2 : baselineRef.current?.mouthForm || 0,
-          talk: openness > 0.02,
-        })
+        playerRef.current?.setTarget(
+          speechArticulationDriverPatch(
+            articulation,
+            baselineRef.current?.mouthForm ?? 0,
+          ),
+        )
       },
       setGazeTarget(target) {
         playerRef.current?.setTarget({
@@ -256,6 +263,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       if (!canvas || !wrapper) return undefined
       const player = new Anime25DPlayer(canvas, playback, manifest)
       playerRef.current = player
+      player.setSpeechActive(speechActiveRef.current)
       applyDriver(player)
       let frame = 0
       let last = performance.now()

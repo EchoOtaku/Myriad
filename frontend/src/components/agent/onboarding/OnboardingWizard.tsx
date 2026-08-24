@@ -78,6 +78,7 @@ export default function OnboardingWizard({
   const previousStep = useRef(step)
   const hasStepped = useRef(false)
   const claimedAuto = useRef({ persona: false })
+  const personaWriteSeq = useRef(0)
   const invalidatePersonaAndVisual = useCallback(() => {
     claimedAuto.current.persona = false
     setPersona(emptyPersona())
@@ -164,6 +165,7 @@ export default function OnboardingWizard({
   }
 
   const draftPersona = async () => {
+    const seq = ++personaWriteSeq.current
     const draft = await agentService.draftPersona({
       name: displayName.trim() || 'Arael',
       tags: selectedTags,
@@ -171,6 +173,7 @@ export default function OnboardingWizard({
       extraRequirements: extraRequirements.trim(),
       language: locale,
     })
+    if (seq !== personaWriteSeq.current) return
     if (!draft.persona) throw new Error(o.regeneratePersonaFailed)
     setPersona(personaFromApi(draft.persona))
     setVisualIdentity(null)
@@ -232,10 +235,18 @@ export default function OnboardingWizard({
             {step === 3 && (
               <PersonaEditStep
                 persona={persona}
+                name={displayName.trim() || 'Arael'}
+                gender={gender ?? undefined}
                 busy={busy}
                 claimAutoGenerate={claimPersona}
                 onHeaderChange={onHeaderChange}
                 onRegenerate={draftPersona}
+                onImported={(next) => {
+                  claimedAuto.current.persona = true
+                  personaWriteSeq.current += 1
+                  setPersona(next)
+                  setVisualIdentity(null)
+                }}
                 onSave={(next) =>
                   run(async () => {
                     const personaChanged =
