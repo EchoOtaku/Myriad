@@ -303,7 +303,8 @@ export const jaJP: TranslationKeys = {
     rigTokenReady: 'Token を保存済み',
     rigPreflightTitle: '事前検証の結果',
     rigReadyTitle: 'リグ有効',
-    rigReadyHint: '大画面で呼吸、まばたき、髪を確認できます。',
+    rigReadyHint:
+      '左のプレビューで呼吸、まばたき、髪を確認するか、動作調整で表情を変えられます。',
     motionSeeThroughToken: 'Hugging Face トークン',
     motionSeeThroughTokenCreate: '作成',
     motionSeeThroughTokenDescription:
@@ -326,19 +327,15 @@ export const jaJP: TranslationKeys = {
     motionSeeThroughGenerate: '分解して事前検証',
     motionSeeThroughGenerating:
       'リモート分解を実行中です。完了後にローカル PSD 事前検証を自動で開始します…',
-    motionReviewEnter: '大画面レビューを開く',
-    motionReviewDescription:
-      'Anime2.5DRig の呼吸、まばたき、口、髪をフルサイズで確認します。',
     motionNeedsRig: '先にレイヤーリグを完成させてください。そのあとで立ち絵を操作できます。',
-    motionReviewExit: 'ワークベンチに戻る',
     motionPsdPreflight: 'レイヤー PSD を事前検証',
     motionPsdValidating: 'PSD を検証中…',
     motionPsdCommit: '検証済みリグを確定',
     faceStage: 'ビジュアル',
-    adminTitle: 'ビジュアル',
+    adminTitle: 'ペルソナ設定',
     adminDescription:
       'サイト全体で一つのビジュアルです。立ち絵、リグ、表情とポーズの順。',
-    faceOpen: 'ビジュアル設定を開く',
+    faceOpen: 'ペルソナ設定',
     adminEnabled: 'Agent ペルソナを有効化',
     adminWorker: '自律 Worker を有効化',
     adminInterval: 'Worker スキャン間隔（15〜3600秒）',
@@ -1591,6 +1588,7 @@ export const jaJP: TranslationKeys = {
     memorySaverHint:
       '均衡プロファイルからもう一段締めます。転送チャンク同時量、プロセス内キャッシュ、DB プール、パスワードハッシュ同時数、動画／音声のピークを下げます。日常のメッセージは使えます。大きなメディアは分割転送を、ロスレス音声は節約オフを検討。MYRIAD_MEMORY_PROFILE で上書き可。DB プールは再起動後に完全適用。',
     agentPersona: 'Agent ペルソナ',
+    agentPersonaBeta: 'Beta',
     agentPersonaHint:
       'オンにすると Agent はサイトの設定で話し、相手ごとの気持ちと日記を残し、名簿上の出来事で自分から口を開きます。オフなら会話と用事だけです。',
     agentPersonaNeedsLite:

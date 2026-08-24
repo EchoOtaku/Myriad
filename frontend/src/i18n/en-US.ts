@@ -305,7 +305,8 @@ export const enUS: TranslationKeys = {
     rigTokenReady: 'Token saved',
     rigPreflightTitle: 'Preflight result',
     rigReadyTitle: 'Rig active',
-    rigReadyHint: 'Open the cinematic canvas to check breath, blink, and hair.',
+    rigReadyHint:
+      'Check breath, blink, and hair in the left preview, or adjust expressions under motion.',
     motionSeeThroughToken: 'Hugging Face token',
     motionSeeThroughTokenCreate: 'Create',
     motionSeeThroughTokenDescription:
@@ -328,19 +329,15 @@ export const enUS: TranslationKeys = {
     motionSeeThroughGenerate: 'Split and preflight',
     motionSeeThroughGenerating:
       'Remote decomposition is running. Local PSD preflight starts automatically when it finishes…',
-    motionReviewEnter: 'Open cinematic review',
-    motionReviewDescription:
-      'Inspect Anime2.5DRig breath, blink, mouth, and hair at full size.',
     motionNeedsRig: 'Finish the layered rig first. These controls can drive the portrait only after that.',
-    motionReviewExit: 'Back to workbench',
     motionPsdPreflight: 'Preflight layered PSD',
     motionPsdValidating: 'Validating PSD…',
     motionPsdCommit: 'Commit preflighted rig',
     faceStage: 'Face',
-    adminTitle: 'Face',
+    adminTitle: 'Persona settings',
     adminDescription:
       'One site-wide face. Portrait first, then the rig, then expression and pose.',
-    faceOpen: 'Open face settings',
+    faceOpen: 'Persona settings',
     adminEnabled: 'Enable Agent persona',
     adminWorker: 'Enable autonomy worker',
     adminInterval: 'Worker scan interval (15–3600 seconds)',
@@ -1613,6 +1610,7 @@ export const enUS: TranslationKeys = {
     memorySaverHint:
       'A second notch below the bounded default: smaller chunk inflight, process caches, DB pool, password-hash concurrency, and video/audio peaks. Everyday messages still fit; large media should use chunked transfer, and lossless audio may reject sooner. Env MYRIAD_MEMORY_PROFILE can override. DB pool fully applies after backend restart.',
     agentPersona: 'Agent persona',
+    agentPersonaBeta: 'Beta',
     agentPersonaHint:
       'When on, Agent speaks with the site persona, keeps per-person mood and diary, and may speak after named events. When off, it only chats and does tasks.',
     agentPersonaNeedsLite:

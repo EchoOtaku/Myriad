@@ -307,10 +307,7 @@ export interface TranslationKeys {
     motionSeeThroughUpstream: string
     motionSeeThroughGenerate: string
     motionSeeThroughGenerating: string
-    motionReviewEnter: string
-    motionReviewDescription: string
     motionNeedsRig: string
-    motionReviewExit: string
     motionPsdPreflight: string
     motionPsdValidating: string
     motionPsdCommit: string
@@ -1377,6 +1374,7 @@ export interface TranslationKeys {
     memorySaver: string
     memorySaverHint: string
     agentPersona: string
+    agentPersonaBeta: string
     agentPersonaHint: string
     /** Shown while the Lite tier is off */
     agentPersonaNeedsLite: string

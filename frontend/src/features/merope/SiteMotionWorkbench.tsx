@@ -86,7 +86,6 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     string | null
   >(null)
   const [seeThroughTokenConfigured, setSeeThroughTokenConfigured] = useState(false)
-  const [reviewMode, setReviewMode] = useState(false)
   const [error, setError] = useState('')
   const [generating, setGenerating] = useState(false)
   const [visualIdentity, setVisualIdentity] =
@@ -100,7 +99,6 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
   const [dndBusy, setDndBusy] = useState(false)
   const [structuredPersona, setStructuredPersona] =
     useState<StructuredPersona | null>(null)
-  const [reviewDock, setReviewDock] = useState<HTMLDivElement | null>(null)
   const [studioHost, setStudioHost] = useState<HTMLDivElement | null>(null)
   const rigCharacterRef = useRef<RigCharacterHandle>(null)
   const o = t.agentPersona.onboarding
@@ -396,25 +394,6 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     [loadFace],
   )
 
-  const exitReview = useCallback(() => {
-    rigCharacterRef.current?.stopMotionPlan()
-    setReviewMode(false)
-  }, [])
-
-  useEffect(() => {
-    if (!reviewMode) return undefined
-    const previousOverflow = document.body.style.overflow
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') exitReview()
-    }
-    document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', onKeyDown)
-    return () => {
-      document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', onKeyDown)
-    }
-  }, [exitReview, reviewMode])
-
   const downloadPortrait = useCallback(async () => {
     if (!portraitUrl) return
     try {
@@ -649,15 +628,10 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     </div>
   )
 
-  const studioTarget = reviewMode ? document.body : studioHost
   const studio = (
     <section
-      className={`merope-motion-home merope-motion-home--settings${reviewMode ? ' is-reviewing' : ''}`}
-      aria-label={
-        reviewMode ? t.merope.motionReviewEnter : t.merope.portraitGroup
-      }
-      aria-modal={reviewMode || undefined}
-      role={reviewMode ? 'dialog' : undefined}
+      className="merope-motion-home merope-motion-home--settings"
+      aria-label={t.merope.portraitGroup}
     >
       <div className="merope-motion-home__studio">
         <div className="merope-motion-home__stage">
@@ -670,7 +644,6 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
             manualControl
           />
         </div>
-        <div ref={setReviewDock} className="merope-motion-home__dock" />
       </div>
     </section>
   )
@@ -685,11 +658,6 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
           overviewLead={overviewCard}
           personaLead={personaCard}
           essentialsLead={portraitCard}
-          reviewMode={reviewMode}
-          onReviewModeChange={(reviewing) => {
-            if (reviewing) setReviewMode(true)
-            else exitReview()
-          }}
           characterRef={rigCharacterRef}
           sourceMasterAssetId={portraitUrl || ''}
           sourceGenerationFingerprint={generationFingerprint || undefined}
@@ -698,12 +666,11 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
           onDecomposeRigPsd={decomposeRigPsd}
           onPreflightRigPsd={preflightRigPsd}
           onCommitRigPsd={commitRigPsd}
-          reviewDock={reviewDock}
           motionEnabled={motionEnabled}
         />
       </div>
-      {portraitUrl && motionEnabled && studioTarget
-        ? createPortal(studio, studioTarget)
+      {portraitUrl && motionEnabled && studioHost
+        ? createPortal(studio, studioHost)
         : null}
     </div>
   )

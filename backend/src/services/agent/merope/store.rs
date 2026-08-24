@@ -588,12 +588,31 @@ mod tests {
 
     #[test]
     fn changing_generation_inputs_invalidates_portrait_contract() {
+        let mut changed_visual_profile = json!({
+            "gender": "female",
+            "visualIdentity": {
+                "faceDesign": "女性化读取，紧凑圆润鹅蛋脸",
+                "eyeDesign": "中等偏大的紫色宝石眼，视线坚定",
+                "hairShape": "银灰齐颌短发与偏分刘海",
+                "hairLayerPlan": "后发、刘海和左右侧发形成独立轮廓",
+                "upperBodySilhouette": "紧凑肩线、清楚领口与胸前焦点",
+                "outfitConstruction": "高领内搭叠短外套并止于高腰",
+                "sleeveArmDesign": "左右袖片携局部前臂进入画面",
+                "materialPlan": "哑光布料",
+                "heroAccessory": "左胸星轨扣饰",
+                "paletteHint": "雾蓝为主、银白为辅、金色点缀",
+                "motif": "单一星轨弧线集中在胸前"
+            }
+        });
+        let existing_visual_profile = changed_visual_profile.clone();
+        changed_visual_profile["visualIdentity"]["hairShape"] =
+            json!("银灰高马尾与偏分刘海");
         let existing = agent_persona::Model {
             id: PERSONA_ROW_ID.to_string(),
             name: "Arael".to_string(),
             personality: "quiet".to_string(),
             persona_json: Some(json!({ "summary": "quiet" })),
-            visual_profile: Some(json!({ "gender": "unspecified" })),
+            visual_profile: Some(existing_visual_profile),
             portrait_asset_id: Some("/master.png".to_string()),
             portrait_generation: Some(json!({ "fingerprint": "a".repeat(64) })),
             updated_by: Some(1),
@@ -605,10 +624,7 @@ mod tests {
             "quiet".to_string(),
             &PortraitUpdate::Keep,
             &PersonaContractUpdate {
-                visual_profile: JsonDocumentUpdate::Set(json!({
-                    "gender": "unspecified",
-                    "visualIdentity": { "hairShape": "short bob" }
-                })),
+                visual_profile: JsonDocumentUpdate::Set(changed_visual_profile),
                 ..PersonaContractUpdate::default()
             },
             1,

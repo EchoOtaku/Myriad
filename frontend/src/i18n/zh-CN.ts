@@ -292,7 +292,7 @@ export const zhCN: TranslationKeys = {
     rigTokenReady: 'Token 已保存',
     rigPreflightTitle: '预检结果',
     rigReadyTitle: '骨骼已激活',
-    rigReadyHint: '可以进大画布检查呼吸、眨眼和头发。',
+    rigReadyHint: '可以在左侧预览里检查呼吸、眨眼和头发，或到动作调整里改表情。',
 
     motionSeeThroughToken: 'Hugging Face Token',
     motionSeeThroughTokenCreate: '去创建',
@@ -311,17 +311,14 @@ export const zhCN: TranslationKeys = {
     motionSeeThroughUpstream: 'See-through 返回了无效或不可用的结果。',
     motionSeeThroughGenerate: '拆分并预检',
     motionSeeThroughGenerating: '远端正在拆分，完成后会自动进入本地 PSD 预检…',
-    motionReviewEnter: '进入大画布审片',
-    motionReviewDescription: '全屏检查 Anime2.5DRig 的呼吸、眨眼、口型和头发',
     motionNeedsRig: '先完成分层骨骼，这些选项才能驱动立绘。',
-    motionReviewExit: '返回工作台',
     motionPsdPreflight: '预检分层 PSD',
     motionPsdValidating: '正在校验 PSD…',
     motionPsdCommit: '激活预检通过的 Rig',
     faceStage: '形象',
-    adminTitle: '形象',
+    adminTitle: '人设设定',
     adminDescription: '全站一份形象。先立绘，再骨骼，再调表情和姿态。',
-    faceOpen: '打开形象设置',
+    faceOpen: '人设设定',
     adminEnabled: '启用 Agent 人设',
     adminWorker: '启用自主思考 Worker',
     adminInterval: 'Worker 扫描间隔（15–3600 秒）',
@@ -1504,6 +1501,7 @@ export const zhCN: TranslationKeys = {
     memorySaverHint:
       '在均衡档之上再收一档：分块并发、进程内缓存、连接池、密码哈希并发，以及视频/音频峰值。日常消息仍可用；大媒体请走分块传输，无损音频可能更早拒收。可用 MYRIAD_MEMORY_PROFILE 覆盖。连接池需重启后端后完全生效。',
     agentPersona: 'Agent 人设',
+    agentPersonaBeta: 'Beta',
     agentPersonaHint:
       '打开后 Agent 会用设定说话，记住跟每个人的心情和日记，并在有名单上的事时自己开口。关上则只聊天办事。',
     agentPersonaNeedsLite:

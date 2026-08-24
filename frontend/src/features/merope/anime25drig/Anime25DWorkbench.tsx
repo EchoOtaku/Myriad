@@ -7,7 +7,6 @@ import type {
 import type { RigCharacterHandle } from '../rig/RigCharacter'
 import type { Anime25DDebugSnapshot, Anime25DDriver } from './player'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import {
   InfoActionCard,
   InputItem,
@@ -22,8 +21,6 @@ import { useI18n } from '../../../contexts/I18nContext'
 import { WORKBENCH_DRIVER } from './player'
 
 interface Props {
-  reviewMode: boolean
-  onReviewModeChange: (reviewing: boolean) => void
   characterRef: RefObject<RigCharacterHandle | null>
   sourceMasterAssetId: string
   sourceGenerationFingerprint?: string
@@ -38,7 +35,6 @@ interface Props {
     preflight: RigAssetPreflight,
     onStage: (event: RigAssetCompileEvent) => void,
   ) => Promise<{ partCount: number; score: number }>
-  reviewDock?: HTMLElement | null
   essentialsLead?: ReactNode
   personaLead?: ReactNode
   overviewLead?: ReactNode
@@ -126,8 +122,6 @@ const PRESETS: Array<{ id: string; driver: Partial<Anime25DDriver> }> = [
 ]
 
 export default function Anime25DWorkbench({
-  reviewMode,
-  onReviewModeChange,
   characterRef,
   sourceMasterAssetId,
   sourceGenerationFingerprint,
@@ -136,7 +130,6 @@ export default function Anime25DWorkbench({
   onDecomposeRigPsd,
   onPreflightRigPsd,
   onCommitRigPsd,
-  reviewDock = null,
   essentialsLead = null,
   personaLead = null,
   overviewLead = null,
@@ -404,41 +397,6 @@ export default function Anime25DWorkbench({
     </div>
   )
 
-  const reviewBar =
-    reviewMode && reviewDock
-      ? createPortal(
-          <div className="merope-motion-home__dock-bar">
-            <SettingsButton
-              type="button"
-              size="sm"
-              onClick={() => characterRef.current?.blinkNow()}
-            >
-              {labels.anime25dBlinkNow}
-            </SettingsButton>
-            <SettingsButton
-              type="button"
-              size="sm"
-              onClick={() =>
-                patchDriver({ talk: true, mouthOpen: 0.5 })
-              }
-            >
-              {labels.anime25dPresetTalk}
-            </SettingsButton>
-            <SettingsButton type="button" size="sm" onClick={resetPose}>
-              {labels.anime25dResetPose}
-            </SettingsButton>
-            <SettingsButton
-              type="button"
-              size="sm"
-              onClick={() => onReviewModeChange(false)}
-            >
-              {labels.motionReviewExit}
-            </SettingsButton>
-          </div>,
-          reviewDock,
-        )
-      : null
-
   return (
     <>
       <FaceTabs
@@ -631,14 +589,6 @@ export default function Anime25DWorkbench({
               <section className="merope-motion-rig__status">
                 <strong>{labels.rigReadyTitle}</strong>
                 <p className="merope-motion-rig__hint">{labels.rigReadyHint}</p>
-                <SettingsButton
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => onReviewModeChange(true)}
-                >
-                  {labels.motionReviewEnter}
-                </SettingsButton>
               </section>
             ) : null}
           </div>
@@ -865,7 +815,6 @@ export default function Anime25DWorkbench({
       </SettingGroup>
         </>
       ) : null}
-      {reviewBar}
     </>
   )
 }

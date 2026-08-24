@@ -1439,10 +1439,7 @@ mod portrait_contract_tests {
 
     #[test]
     fn stored_portrait_contract_is_bound_to_its_fingerprint_and_current_identity() {
-        let profile = json!({
-            "gender": "unspecified",
-            "visualIdentity": { "hairShape": "short bob" }
-        });
+        let profile = json!({ "gender": "unspecified" });
         let contract = build_character_asset_contract(
             "Nova",
             &profile,
@@ -1458,12 +1455,15 @@ mod portrait_contract_tests {
             portrait_generation_fingerprint("Nova", &profile, Some(&document)).unwrap(),
             Some(fingerprint)
         );
-        assert!(portrait_generation_fingerprint(
-            "Nova",
-            &json!({ "gender": "female" }),
-            Some(&document),
-        )
-        .is_err());
+        assert_eq!(
+            portrait_generation_fingerprint(
+                "Nova",
+                &json!({ "gender": "female" }),
+                Some(&document),
+            )
+            .unwrap(),
+            None
+        );
 
         let mut tampered = document;
         tampered["contract"]["additionalRequirements"] = json!("different light");

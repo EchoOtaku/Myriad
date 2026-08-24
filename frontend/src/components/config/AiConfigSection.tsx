@@ -13,6 +13,7 @@ import {
   LuPalette,
   LuStore,
   LuRefreshCw,
+  LuNotebookPen,
   LuSparkles,
   SiGooglegemini,
   SiOpenai,
@@ -266,10 +267,10 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     openPage: openAiSubpage,
     closePage: closeAiSubpage,
   } = useAiSubpage((page) => {
-    if (page === 'persona') setPersonaChrome(null)
+    if (page === 'merope-setup') setPersonaChrome(null)
   })
-  const personaPage = aiSubpage === 'persona'
-  const facePage = aiSubpage === 'face'
+  const setupPage = aiSubpage === 'merope-setup'
+  const meropePage = aiSubpage === 'merope'
   const subpageOpen = aiSubpage != null
 
   const fieldGuideFor = useCallback(
@@ -776,34 +777,34 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
   return (
     <SettingSection
       sectionId={sectionId}
-      className={personaPage ? 'setting-section--persona' : undefined}
+      className={setupPage ? 'setting-section--persona' : undefined}
       title={
-        personaPage
+        setupPage
           ? (personaChrome?.title ?? o.step1Title)
-          : facePage
+          : meropePage
             ? t.merope.adminTitle
             : title
       }
       icon={subpageOpen ? undefined : icon}
       description={
-        personaPage
+        setupPage
           ? (personaChrome?.description ?? o.step1Lead)
-          : facePage
+          : meropePage
             ? t.merope.adminDescription
             : description
       }
       detail={
-        personaPage
+        setupPage
           ? (personaChrome?.description ?? o.step1Lead)
-          : facePage
+          : meropePage
             ? t.merope.adminDescription
             : undefined
       }
-      detailTone={personaPage ? personaChrome?.detailTone : undefined}
+      detailTone={setupPage ? personaChrome?.detailTone : undefined}
       showResetPage={subpageOpen ? false : undefined}
-      {...(personaPage ? personaGuide : {})}
+      {...(setupPage ? personaGuide : {})}
       headerActions={
-        personaPage && personaChrome?.action ? (
+        setupPage && personaChrome?.action ? (
           <SettingsButton
             variant="secondary"
             size="sm"
@@ -831,13 +832,13 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             type="button"
             className="section-header-back"
             onClick={() =>
-              personaPage
+              setupPage
                 ? (personaChrome?.onBack ?? closeAiSubpage)()
                 : closeAiSubpage()
             }
-            disabled={personaPage ? personaChrome?.backDisabled : false}
+            disabled={setupPage ? personaChrome?.backDisabled : false}
             aria-label={
-              personaPage
+              setupPage
                 ? (personaChrome?.backAria ?? t.common.back)
                 : t.common.back
             }
@@ -850,14 +851,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     >
       <AutoHeight contentKey={paneKey} animate={false}>
         <div key={paneKey} data-nav={aiPaneNav} className="ai-pane sm-pane">
-          {personaPage ? (
+          {setupPage ? (
             <PersonaOnboardingPage
               onBack={closeAiSubpage}
               onChromeChange={setPersonaChrome}
               meropeOn={meropeOn}
               gateLead={personaGateLead}
             />
-          ) : facePage ? (
+          ) : meropePage ? (
             <SiteMotionWorkbench mood={mood} activity={activity} />
           ) : (
             <>
@@ -977,8 +978,11 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
 
       <SettingGroup
         title={t.config.agentPersona}
-        icon={<LuSparkles />}
+        icon={<LuNotebookPen />}
         description={personaGateLead}
+        titleExtra={
+          <SettingTitleTag variant="beta">{t.config.agentPersonaBeta}</SettingTitleTag>
+        }
         {...bindGuide('ai.agentPersona', g.ai.agentPersona)}
         switch={{
           checked: meropeOn,
@@ -1015,7 +1019,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                     {
                       key: 'face',
                       label: t.merope.faceOpen,
-                      onClick: () => openAiSubpage('face'),
+                      onClick: () => openAiSubpage('merope'),
                     },
                     {
                       key: 'delete',
@@ -1032,7 +1036,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                       {
                         key: 'setup',
                         label: o.openPage,
-                        onClick: () => openAiSubpage('persona'),
+                        onClick: () => openAiSubpage('merope-setup'),
                         disabled: personaBusy,
                       },
                     ]
