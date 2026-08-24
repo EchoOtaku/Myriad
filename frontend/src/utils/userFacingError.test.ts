@@ -294,6 +294,16 @@ describe('userFacingError', () => {
     assert.equal(/federation\/media|POST \//.test(text), false)
   })
 
+  it('maps leftover analytics export codes', () => {
+    const text = userFacingError('export_integrity_failed')
+    assert.equal(/export_integrity|integrity_seal/.test(text), false)
+  })
+
+  it('maps leftover Tapp archive dumps', () => {
+    const text = userFacingError('Invalid Tapp archive entry: zip local header')
+    assert.equal(/zip local header/.test(text), false)
+  })
+
   it('maps leftover database-not-connected Chinese', () => {
     const text = userFacingError('数据库未连接')
     assert.equal(text.includes('数据库未连接'), false)
@@ -308,5 +318,157 @@ describe('userFacingError', () => {
       ),
     )
     assert.equal(/max_players/.test(text), false)
+  })
+
+  it('maps leftover Tapp manifest dumps', () => {
+    const text = userFacingError(
+      'Invalid manifest.json: missing field `id` at line 1 column 12',
+    )
+    assert.equal(/missing field|column 12/.test(text), false)
+    const legacy = userFacingError(
+      'manifest.json uses the pre-layer format (main, hasPage). see docs/features/TAPP_FILE_FORMAT.md',
+    )
+    assert.equal(/hasPage|TAPP_FILE_FORMAT/.test(legacy), false)
+    const schema = userFacingError(
+      'Invalid Agent schema agents/chat.json: Data Exchange schema does not support $ref',
+    )
+    assert.equal(/\$ref|agents\/chat/.test(schema), false)
+  })
+
+  it('maps leftover scheduler action dumps', () => {
+    const text = userFacingError(
+      'Invalid backend action: missing field `action` at line 1 column 2',
+    )
+    assert.equal(/missing field|column 2/.test(text), false)
+  })
+
+  it('maps leftover steering persist dumps', () => {
+    const text = userFacingError(
+      new ApiError(
+        'Failed to persist steering instruction: relation "tapp_registry" does not exist',
+        503,
+        'steering_unavailable',
+      ),
+    )
+    assert.equal(/tapp_registry|does not exist/.test(text), false)
+  })
+
+  it('maps leftover DND schedule English', () => {
+    const invalid = userFacingError(
+      new ApiError('Invalid do-not-disturb start time', 400, 'dnd_schedule_invalid'),
+    )
+    assert.equal(/do-not-disturb start time/.test(invalid), false)
+    const incomplete = userFacingError(
+      new ApiError(
+        'Set both start and end, or clear both',
+        400,
+        'dnd_schedule_incomplete',
+      ),
+    )
+    assert.match(incomplete, /开始和结束|両方|quiet-hours|start and end/)
+  })
+
+  it('maps leftover mereope disabled and guest layout English', () => {
+    const disabled = userFacingError(
+      new ApiError('Agent persona is disabled', 403, 'merope_disabled'),
+    )
+    assert.equal(/Agent persona is disabled/.test(disabled), false)
+    const guest = userFacingError(
+      new ApiError(
+        'Guests cannot modify list card layout',
+        403,
+        'GUEST_LAYOUT_READONLY',
+      ),
+    )
+    assert.equal(/list card layout/.test(guest), false)
+  })
+
+  it('maps leftover game message code without leaking validator text', () => {
+    const text = userFacingError(
+      new ApiError('game.payload too large for protocol', 400, 'GAME_MESSAGE_INVALID'),
+    )
+    assert.equal(/protocol/.test(text), false)
+    const leftover = userFacingError('GAME_MESSAGE_INVALID')
+    assert.equal(/GAME_MESSAGE_INVALID/.test(leftover), false)
+  })
+
+  it('maps leftover e2e serialize dumps', () => {
+    const text = userFacingError('payload serialize: EOF while parsing a value at line 1')
+    assert.equal(/EOF|line 1/.test(text), false)
+  })
+
+  it('maps leftover Tapp declared-API dumps', () => {
+    const http = userFacingError('HTTP request failed: error sending request for url (https://x)')
+    assert.equal(/error sending request|https:\/\/x/.test(http), false)
+    const proxy = userFacingError('Invalid outbound proxy: builder error')
+    assert.equal(/builder error/.test(proxy), false)
+    const chat = userFacingError('Invalid AI chat messages: key must be a string at line 1')
+    assert.equal(/key must be a string/.test(chat), false)
+    const registry = userFacingError('AI_TASK_REGISTRY_UNAVAILABLE: database connection closed')
+    assert.equal(/database connection/.test(registry), false)
+  })
+
+  it('maps leftover report persist dumps', () => {
+    const text = userFacingError('insert report for steam: relation "platform_reports" does not exist')
+    assert.equal(/platform_reports|does not exist/.test(text), false)
+  })
+
+  it('maps leftover OAuth and Discord token dumps', () => {
+    const github = userFacingError('GitHub token exchange failed: RequestTokenError { .. }')
+    assert.equal(/RequestTokenError/.test(github), false)
+    const oidc = userFacingError('OIDC token endpoint returned 400: {"error":"invalid_grant"}')
+    assert.equal(/invalid_grant/.test(oidc), false)
+    const discord = userFacingError('token endpoint 401 — {"error":"invalid_client"}')
+    assert.equal(/invalid_client/.test(discord), false)
+  })
+
+  it('maps leftover game-presence upstream dumps', () => {
+    const text = userFacingError('Upstream HTTP 502: <html>bad gateway</html>')
+    assert.equal(/bad gateway|<html>/.test(text), false)
+  })
+
+  it('maps leftover feed URL and Gemini JSON dumps', () => {
+    const url = userFacingError('Unsafe or invalid URL: Invalid URL')
+    assert.equal(/Invalid URL/.test(url) && url === 'Unsafe or invalid URL: Invalid URL', false)
+    const gemini = userFacingError('invalid Gemini JSON: expected value at line 1')
+    assert.equal(/expected value|line 1/.test(gemini), false)
+    const key = userFacingError('Invalid remote E2E public key: invalid length')
+    assert.equal(/invalid length/.test(key), false)
+  })
+
+  it('maps leftover Tripo and scheduler-connection dumps', () => {
+    const tripo = userFacingError(
+      'Tripo API returned HTTP 502: {"error":"upstream exploded"}',
+    )
+    assert.equal(/upstream exploded/.test(tripo), false)
+    const glb = userFacingError('Invalid GLB JSON: expected value at line 1')
+    assert.equal(/expected value|line 1/.test(glb), false)
+    const sched = userFacingError(
+      'Failed to register scheduler connection: db closed',
+    )
+    assert.equal(/db closed/.test(sched), false)
+    const enqueue = userFacingError(
+      'Failed to enqueue scheduler task: relation "tapp_registry" does not exist',
+    )
+    assert.equal(/tapp_registry/.test(enqueue), false)
+    const schema = userFacingError(
+      'Model response failed output schema validation: missing field `title`',
+    )
+    assert.equal(/missing field|title/.test(schema), false)
+  })
+
+  it('maps leftover avatar, scheduler, and updater dumps', () => {
+    const avatar = userFacingError('Failed to load avatar row: db closed')
+    assert.equal(/db closed/.test(avatar), false)
+    const scheduled = userFacingError(
+      'Scheduled Tapp is no longer accessible: Record not found',
+    )
+    assert.equal(/Record not found/.test(scheduled), false)
+    const retries = userFacingError(
+      'All 3 retries failed. Last error: relation "tapp_scheduled_tasks" does not exist',
+    )
+    assert.equal(/tapp_scheduled_tasks|does not exist/.test(retries), false)
+    const updater = userFacingError('decode json failed: expected value at line 1')
+    assert.equal(/expected value|line 1/.test(updater), false)
   })
 })

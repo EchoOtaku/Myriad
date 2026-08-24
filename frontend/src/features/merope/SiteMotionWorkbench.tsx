@@ -1,33 +1,33 @@
+import type { StructuredPersona, UpperBodyVisualIdentity, UpperBodyVisualIdentityKey } from '../../components/agent/onboarding/onboardingTypes'
+import type { AgentPersona } from '../../services/agent/agentApi'
 import type { RigCharacterHandle } from './rig/RigCharacter'
 import type { MeropeRigManifest } from './rig/types'
 import type { MeropeActivity } from './types'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
+  activityKey,
+  ADDRESSEE_UPDATED_EVENT,
+  moodBand,
+} from '../../components/agent/meropeVitals'
+import { generationFailureMessage } from '../../components/agent/onboarding/generationError'
+import {
   flattenPersona,
   parseFlattenedPersona,
   personaFromApi,
+
   visualIdentityFromProfile,
-  type StructuredPersona,
-  type UpperBodyVisualIdentity,
-  type UpperBodyVisualIdentityKey,
 } from '../../components/agent/onboarding/onboardingTypes'
 import PersonaIdentityView from '../../components/agent/onboarding/ui/PersonaIdentityView'
 import PersonaImportPanel from '../../components/agent/onboarding/ui/PersonaImportPanel'
 import PortraitImportButton from '../../components/agent/onboarding/ui/PortraitImportButton'
 import VisualIdentityView from '../../components/agent/onboarding/ui/VisualIdentityView'
-import {
-  ADDRESSEE_UPDATED_EVENT,
-  activityKey,
-  moodBand,
-} from '../../components/agent/meropeVitals'
 import { SettingsButton, ToggleSwitch } from '../../components/settings'
 import { useI18n } from '../../contexts/I18nContext'
-import { userFacingError } from '../../utils/userFacingError'
 import { agentService } from '../../services/agent'
-import type { AgentPersona } from '../../services/agent/agentApi'
+import { userFacingError } from '../../utils/userFacingError'
 import Anime25DWorkbench from './anime25drig/Anime25DWorkbench'
-import { generationFailureMessage } from '../../components/agent/onboarding/generationError'
+import { isAnime25DPlayback } from './anime25drig/types'
 import {
   decomposeSitePortraitWithSeeThrough,
   generateSitePortrait,
@@ -40,8 +40,8 @@ import {
   preflightRigPsdAsset,
 } from './assets/pipeline'
 import { notifyFaceUpdated } from './events'
-import { isAnime25DPlayback } from './anime25drig/types'
 import RigCharacter from './rig/RigCharacter'
+import { useRigPerformanceLifecycle } from './useRigPerformanceLifecycle'
 import { useRigSpeechLifecycle } from './useRigSpeechLifecycle'
 import './merope.css'
 import './merope-motion-home.css'
@@ -104,6 +104,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     useState<StructuredPersona | null>(null)
   const [studioHost, setStudioHost] = useState<HTMLDivElement | null>(null)
   const rigCharacterRef = useRef<RigCharacterHandle>(null)
+  useRigPerformanceLifecycle(rigCharacterRef)
   useRigSpeechLifecycle(rigCharacterRef)
   const o = t.agentPersona.onboarding
   const visualLabels: Record<UpperBodyVisualIdentityKey, string> = {

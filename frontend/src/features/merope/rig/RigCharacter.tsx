@@ -26,7 +26,7 @@ export interface RigCharacterHandle {
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
   setGazeTarget: (target: GazeTarget | null, source?: GazeSource) => void
-  playMotionPlan: (performance: PerformanceDirective) => void
+  playMotionPlan: (performance: PerformanceDirective) => boolean
   stopMotionPlan: () => void
   captureFrame: () => string | null
   setDriver: (partial: Partial<Anime25DDriver>) => void
@@ -42,6 +42,10 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
   ({ activity, fallbackUrl, manifest, mood, manualControl = false }, ref) => {
     const animeRef = useRef<Anime25DCharacterHandle>(null)
     const speechActiveRef = useRef(false)
+    const latestPerformanceRef = useRef<{
+      directive: PerformanceDirective
+      startedAtMs: number
+    } | null>(null)
     const latestSpeechRef = useRef<
       | { kind: 'auto'; active: boolean }
       | { kind: 'energy'; energy: number | null }
@@ -62,6 +66,12 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
         animeRef.current?.setSpeechEnergy(latest.energy)
       } else {
         animeRef.current?.setSpeechArticulation(latest.articulation)
+      }
+      if (latestPerformanceRef.current) {
+        animeRef.current?.playMotionPlan(
+          latestPerformanceRef.current.directive,
+          latestPerformanceRef.current.startedAtMs,
+        )
       }
     }, [atlasUrl, playback])
 
@@ -84,12 +94,25 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       },
       setGazeTarget: (target, source) =>
         animeRef.current?.setGazeTarget(target, source),
-      playMotionPlan: (performance) => animeRef.current?.playMotionPlan(performance),
-      stopMotionPlan: () => animeRef.current?.stopMotionPlan(),
+      playMotionPlan: (directive) => {
+        const startedAtMs = window.performance.now()
+        const accepted =
+          animeRef.current?.playMotionPlan(directive, startedAtMs) ?? true
+        if (!accepted) return false
+        latestPerformanceRef.current = { directive, startedAtMs }
+        return true
+      },
+      stopMotionPlan: () => {
+        latestPerformanceRef.current = null
+        animeRef.current?.stopMotionPlan()
+      },
       captureFrame: () => animeRef.current?.captureFrame() ?? null,
       setDriver: (partial) => animeRef.current?.setDriver(partial),
       replaceDriver: (driver) => animeRef.current?.replaceDriver(driver),
-      resetDriver: () => animeRef.current?.resetDriver(),
+      resetDriver: () => {
+        latestPerformanceRef.current = null
+        animeRef.current?.resetDriver()
+      },
       getDriver: () => animeRef.current?.getDriver() ?? null,
       blinkNow: () => animeRef.current?.blinkNow(),
       debugSnapshot: () => animeRef.current?.debugSnapshot() ?? null,

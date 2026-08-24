@@ -1059,7 +1059,10 @@ pub(crate) fn validate_tapp_archive_with<R: std::io::Read + std::io::Seek>(
     for index in 0..archive.len() {
         let file = archive
             .by_index(index)
-            .map_err(|error| format!("Invalid Tapp archive entry: {error}"))?;
+            .map_err(|error| {
+                tracing::error!(%error, "Invalid Tapp archive entry");
+                "Invalid Tapp archive".to_string()
+            })?;
         let name = file.name().trim_end_matches('/');
         total_size = validate_archive_entry_with(
             name,

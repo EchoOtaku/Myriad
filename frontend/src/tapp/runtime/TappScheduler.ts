@@ -461,7 +461,7 @@ export class TappScheduler {
       this.reportTaskComplete(
         event.executionId,
         false,
-        'No active Tapp runtime callback',
+        currentCopy().errors.noticeScheduleFailed,
       )
     }
 

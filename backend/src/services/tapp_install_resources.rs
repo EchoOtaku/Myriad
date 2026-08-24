@@ -371,8 +371,10 @@ pub fn validate_agent_schema_bytes(relative: &str, bytes: &[u8]) -> Result<(), S
     }
     let schema = serde_json::from_slice::<serde_json::Value>(bytes)
         .map_err(|_| format!("Agent schema is not valid JSON: {relative}"))?;
-    validate_inline_data_schema(&schema)
-        .map_err(|error| format!("Invalid Agent schema {relative}: {error}"))
+    validate_inline_data_schema(&schema).map_err(|error| {
+        tracing::error!(%error, relative, "invalid agent schema");
+        "Invalid Agent schema".to_string()
+    })
 }
 
 /// Size budget for declared package assets.

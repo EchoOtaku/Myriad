@@ -141,6 +141,8 @@ export interface TranslationKeys {
     anime25dAtlasOverflow: string
     anime25dBoneLimit: string
     rigAtlasFailed: string
+    rigImportFailed: string
+    rigCommitFailed: string
     statusIdle: string
     statusThinking: string
     statusTalking: string
@@ -272,6 +274,9 @@ export interface TranslationKeys {
     anime25dPresetLookRight: string
     anime25dPresetWinkLeft: string
     anime25dPresetWinkRight: string
+    anime25dPresetThinking: string
+    anime25dPresetDizzy: string
+    anime25dPresetSqueeze: string
     anime25dBlinkNow: string
     anime25dResetPose: string
     anime25dInspect: string
@@ -2482,6 +2487,8 @@ export interface TranslationKeys {
     emptyDialogueText: string
     csrfUnavailable: string
     streamUnreadable: string
+    dndScheduleInvalid: string
+    dndScheduleIncomplete: string
   }
 
   wallpaperStatus: {

@@ -378,7 +378,8 @@ pub async fn handle_room_message(
         is_encrypted,
         room_game.as_ref(),
     ) {
-        return Err(format!("GAME_MESSAGE_INVALID: {error}"));
+        tracing::error!(%error, "invalid game message");
+        return Err("GAME_MESSAGE_INVALID".to_string());
     }
     let thread_id = object.get("threadId").and_then(|v| v.as_str());
     let reply_to = object.get("replyTo").and_then(|v| v.as_str());

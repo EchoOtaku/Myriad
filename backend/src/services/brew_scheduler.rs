@@ -152,7 +152,10 @@ impl BrewSchedulerEngine {
             .limit(MAX_SOURCES_PER_TICK)
             .all(db)
             .await
-            .map_err(|e| format!("Failed to query sources: {}", e))?;
+            .map_err(|error| {
+                tracing::error!(%error, "failed to query brew sources");
+                "Failed to query sources".to_string()
+            })?;
 
         // 过滤出真正到了更新间隔的订阅源
         let due_sources: Vec<_> = all_due
@@ -491,7 +494,8 @@ impl BrewSchedulerEngine {
                     Vec::new()
                 }
                 Err(e) => {
-                    return Err(format!("Failed to batch insert items: {e}"));
+                    tracing::error!(%e, source_id = source.id, "failed to batch insert brew items");
+                    return Err("Failed to batch insert items".to_string());
                 }
             };
             let titles: Vec<String> = inserted.iter().map(|m| m.title.clone()).take(5).collect();
@@ -690,7 +694,10 @@ impl BrewSchedulerEngine {
             .limit(MAX_SOURCES_PER_TICK)
             .all(&self.db)
             .await
-            .map_err(|e| format!("Failed to query sources: {e}"))?;
+            .map_err(|error| {
+                tracing::error!(%error, "failed to query brew sources");
+                "Failed to query sources".to_string()
+            })?;
 
         let attempted = sources.len();
         let mut refreshed = 0usize;

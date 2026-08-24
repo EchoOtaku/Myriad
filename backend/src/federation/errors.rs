@@ -48,13 +48,40 @@ pub fn is_permanent_federation_error(msg: &str) -> bool {
     false
 }
 
+fn public_inbox_error(message: &str) -> &'static str {
+    let lower = message.to_lowercase();
+    if lower.contains("not yet present")
+        || lower.contains("retry after channelopen")
+        || lower.contains("retry after roominvite")
+    {
+        return "Activity not ready";
+    }
+    if lower.contains("not_member")
+        || lower.contains("not a member")
+        || lower.contains("not the remote party")
+        || lower.contains("forbidden")
+        || lower.contains("access denied")
+    {
+        return "Access denied";
+    }
+    if lower.contains("closed") || lower.contains("gone") {
+        return "Target is closed";
+    }
+    if lower.contains("not found") || lower.starts_with("not_found:") {
+        return "Not found";
+    }
+    "Inbox processing failed"
+}
+
 /// Map a handler `String` error to HTTP status for ActivityPub inbox responses.
 ///
 /// Permanent → 4xx so remote delivery marks `PERMANENT` and stops retrying.
 /// Transient channel-open race → 503 (retryable).
 /// Everything else → 500.
 pub fn map_inbox_handler_error(e: String) -> (StatusCode, axum::Json<Value>) {
+    tracing::warn!(error = %e, "inbox handler rejected activity");
     let lower = e.to_lowercase();
+    let public = public_inbox_error(&e);
 
     if lower.contains("not yet present")
         || lower.contains("retry after channelopen")
@@ -62,7 +89,7 @@ pub fn map_inbox_handler_error(e: String) -> (StatusCode, axum::Json<Value>) {
     {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            axum::Json(json!({"error": e, "retry": true})),
+            axum::Json(json!({"error": public, "retry": true})),
         );
     }
 
@@ -78,12 +105,12 @@ pub fn map_inbox_handler_error(e: String) -> (StatusCode, axum::Json<Value>) {
         } else {
             StatusCode::NOT_FOUND
         };
-        return (status, axum::Json(json!({"error": e})));
+        return (status, axum::Json(json!({"error": public})));
     }
 
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        axum::Json(json!({"error": e})),
+        axum::Json(json!({"error": public})),
     )
 }
 

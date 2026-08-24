@@ -8,10 +8,13 @@ import {
   normalizeAnime25DLayerName,
   prepareAnime25DRigPsd,
 } from './anime25dImporter'
+import { CHARACTER_ASSET_CONTRACT_VERSION } from './contract'
 
 test('matches Anime2.5DRig normalization without merging numbered hair groups', () => {
   assert.equal(normalizeAnime25DLayerName('mouth'), 'mouth-open')
   assert.equal(normalizeAnime25DLayerName('eyelash_c'), 'eye-close')
+  assert.equal(normalizeAnime25DLayerName('eye_dizzy'), 'eye-dizzy')
+  assert.equal(normalizeAnime25DLayerName('eye_squeeze'), 'eye-squeeze')
   assert.equal(
     normalizeAnime25DLayerName('Front Hair_2 のコピー 3'),
     'front-hair-2',
@@ -94,9 +97,8 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
       (layer) =>
         !(
           (layer.slot === 'eye-left' || layer.slot === 'eye-right') &&
-          layer.variant === 'closed'
-        ) &&
-        !(layer.slot === 'mouth' && layer.variant === 'open'),
+          layer.variant !== 'open'
+        ) && !(layer.slot === 'mouth' && layer.variant === 'open'),
     ).length
     assert.equal(canvases[0]?.context.drawCount, layers.length)
     assert.equal(canvases[1]?.context.drawCount, neutralLayerCount)
@@ -123,6 +125,42 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
           layer.variant === 'closed',
       ),
       'separate closed-eye artwork is crossfaded',
+    )
+    assert.ok(
+      layers.some(
+        (layer) =>
+          layer.id === 'a25d-eye-dizzy-left' &&
+          layer.slot === 'eye-left' &&
+          layer.variant === 'dizzy',
+      ),
+      'independent dizzy-eye artwork is compiled',
+    )
+    assert.ok(
+      layers.some(
+        (layer) =>
+          layer.id === 'a25d-eye-dizzy-right' &&
+          layer.slot === 'eye-right' &&
+          layer.variant === 'dizzy',
+      ),
+      'each eye receives its own dizzy variant',
+    )
+    assert.ok(
+      layers.some(
+        (layer) =>
+          layer.id === 'a25d-eye-squeeze-left' &&
+          layer.slot === 'eye-left' &&
+          layer.variant === 'squeeze',
+      ),
+      'independent screen-left > artwork is compiled',
+    )
+    assert.ok(
+      layers.some(
+        (layer) =>
+          layer.id === 'a25d-eye-squeeze-right' &&
+          layer.slot === 'eye-right' &&
+          layer.variant === 'squeeze',
+      ),
+      'independent screen-right < artwork is compiled',
     )
     assert.ok(
       layers.some(
@@ -167,6 +205,14 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
     assert.ok(white)
     assert.notEqual(playback.anchors.eyeL?.closeY, white.y + white.h * 0.62)
     assert.ok(playback.layers.every((item, index) => item.z === index))
+    assert.equal(
+      playback.layers.filter((item) => item.fade === 'eyeDizzy').length,
+      2,
+    )
+    assert.equal(
+      playback.layers.filter((item) => item.fade === 'eyeSqueeze').length,
+      2,
+    )
   } finally {
     Object.assign(globalThis, {
       document: previousDocument,
@@ -191,7 +237,10 @@ test('semantic content framing removes letterboxing and pads into the 3:4 stage'
     width: 1,
     height: 1.3333333333333333,
   })
-  assert.equal(prepared.source.characterAssetContractVersion, 3)
+  assert.equal(
+    prepared.source.characterAssetContractVersion,
+    CHARACTER_ASSET_CONTRACT_VERSION,
+  )
   assert.equal(
     prepared.source.sourceGenerationFingerprint,
     generationFingerprint,
@@ -268,6 +317,63 @@ test('missing close-eye and close-mouth layers get Anime2.5DRig generic diffs', 
       (layer) => layer.slot === 'mouth' && layer.variant === 'closed',
     ),
   )
+  assert.equal(
+    prepared.source.layers.filter((layer) => layer.variant === 'dizzy').length,
+    2,
+  )
+  assert.equal(
+    prepared.source.layers.filter((layer) => layer.variant === 'squeeze')
+      .length,
+    2,
+  )
+})
+
+test('authored eye_dizzy artwork takes precedence over generated symbols', async () => {
+  const source = syntheticSeeThroughPsd()
+  const withAuthoredDizzyEyes = {
+    ...source,
+    children: [
+      ...(source.children || []),
+      unknownBlob('eye_dizzy_l', 80, 70, 114, 76),
+      unknownBlob('eye_dizzy_r', 142, 70, 176, 76),
+    ],
+  } as Psd
+  const prepared = await prepareWithFakeCanvas(withAuthoredDizzyEyes)
+  const dizzyEyes = prepared.source.layers.filter(
+    (layer) => layer.variant === 'dizzy',
+  )
+  assert.equal(dizzyEyes.length, 2)
+  for (const eye of dizzyEyes) {
+    const xs = eye.mesh.vertices.map((vertex) => vertex.x)
+    const ys = eye.mesh.vertices.map((vertex) => vertex.y)
+    const width = Math.max(...xs) - Math.min(...xs)
+    const height = Math.max(...ys) - Math.min(...ys)
+    assert.ok(width / height > 3, 'authored wide mark must not be replaced')
+  }
+})
+
+test('authored eye_squeeze artwork takes precedence over generated chevrons', async () => {
+  const source = syntheticSeeThroughPsd()
+  const withAuthoredSqueezeEyes = {
+    ...source,
+    children: [
+      ...(source.children || []),
+      unknownBlob('eye_squeeze_l', 80, 68, 114, 82),
+      unknownBlob('eye_squeeze_r', 142, 68, 176, 82),
+    ],
+  } as Psd
+  const prepared = await prepareWithFakeCanvas(withAuthoredSqueezeEyes)
+  const squeezeEyes = prepared.source.layers.filter(
+    (layer) => layer.variant === 'squeeze',
+  )
+  assert.equal(squeezeEyes.length, 2)
+  for (const eye of squeezeEyes) {
+    const xs = eye.mesh.vertices.map((vertex) => vertex.x)
+    const ys = eye.mesh.vertices.map((vertex) => vertex.y)
+    const width = Math.max(...xs) - Math.min(...xs)
+    const height = Math.max(...ys) - Math.min(...ys)
+    assert.ok(width / height > 2, 'authored wide mark must not be replaced')
+  }
 })
 
 async function prepareWithFakeCanvas(

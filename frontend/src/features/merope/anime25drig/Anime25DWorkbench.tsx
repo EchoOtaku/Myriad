@@ -7,6 +7,7 @@ import type {
 import type { RigCharacterHandle } from '../rig/RigCharacter'
 import type { Anime25DDebugSnapshot, Anime25DDriver } from './player'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { generationFailureMessage } from '../../../components/agent/onboarding/generationError'
 import {
   InfoActionCard,
   InputItem,
@@ -16,8 +17,13 @@ import {
   SliderItem,
   SwitchItem,
 } from '../../../components/settings'
-import { generationFailureMessage } from '../../../components/agent/onboarding/generationError'
 import { useI18n } from '../../../contexts/I18nContext'
+import { userFacingError } from '../../../utils/userFacingError'
+import {
+  DIZZY_EXPRESSION_PRESET,
+  SQUEEZE_EXPRESSION_PRESET,
+  THINKING_EXPRESSION_PRESET,
+} from './expressionPresets'
 import { WORKBENCH_DRIVER } from './player'
 
 interface Props {
@@ -96,6 +102,18 @@ const PRESETS: Array<{ id: string; driver: Partial<Anime25DDriver> }> = [
       mouthForm: -0.4,
       irisScale: 1,
     },
+  },
+  {
+    id: 'thinking',
+    driver: { ...THINKING_EXPRESSION_PRESET },
+  },
+  {
+    id: 'dizzy',
+    driver: { ...DIZZY_EXPRESSION_PRESET },
+  },
+  {
+    id: 'squeeze',
+    driver: { ...SQUEEZE_EXPRESSION_PRESET },
   },
   {
     id: 'winkL',
@@ -236,10 +254,13 @@ export default function Anime25DWorkbench({
       setSeeThroughTokenDraft('')
     } catch (reason) {
       setSeeThroughTokenError(
-        generationFailureMessage(
-          reason,
+        userFacingError(
+          generationFailureMessage(
+            reason,
+            labels.motionSeeThroughTokenFailed,
+            labels.motionSeeThroughTimeout,
+          ),
           labels.motionSeeThroughTokenFailed,
-          labels.motionSeeThroughTimeout,
         ),
       )
       throw reason
@@ -261,11 +282,14 @@ export default function Anime25DWorkbench({
       )
     } catch (reason) {
       setRigImportError(
-        generationFailureMessage(
-          reason,
-          'Rig PSD import failed',
-          labels.motionSeeThroughTimeout,
-          seeThroughErrors,
+        userFacingError(
+          generationFailureMessage(
+            reason,
+            labels.rigImportFailed,
+            labels.motionSeeThroughTimeout,
+            seeThroughErrors,
+          ),
+          labels.rigImportFailed,
         ),
       )
     } finally {
@@ -291,11 +315,14 @@ export default function Anime25DWorkbench({
       )
     } catch (reason) {
       setRigImportError(
-        generationFailureMessage(
-          reason,
+        userFacingError(
+          generationFailureMessage(
+            reason,
+            labels.motionSeeThroughUpstream,
+            labels.motionSeeThroughTimeout,
+            seeThroughErrors,
+          ),
           labels.motionSeeThroughUpstream,
-          labels.motionSeeThroughTimeout,
-          seeThroughErrors,
         ),
       )
     } finally {
@@ -314,11 +341,14 @@ export default function Anime25DWorkbench({
       setRigPreflight(null)
     } catch (reason) {
       setRigImportError(
-        generationFailureMessage(
-          reason,
-          'Rig PSD commit failed',
-          labels.motionSeeThroughTimeout,
-          seeThroughErrors,
+        userFacingError(
+          generationFailureMessage(
+            reason,
+            labels.rigCommitFailed,
+            labels.motionSeeThroughTimeout,
+            seeThroughErrors,
+          ),
+          labels.rigCommitFailed,
         ),
       )
     } finally {
@@ -872,6 +902,9 @@ function presetLabel(
   if (id === 'usume') return labels.anime25dPresetUsume
   if (id === 'surprise') return labels.anime25dPresetShock
   if (id === 'jito') return labels.anime25dPresetDeadpan
+  if (id === 'thinking') return labels.anime25dPresetThinking
+  if (id === 'dizzy') return labels.anime25dPresetDizzy
+  if (id === 'squeeze') return labels.anime25dPresetSqueeze
   if (id === 'winkL') return labels.anime25dPresetWinkLeft
   if (id === 'winkR') return labels.anime25dPresetWinkRight
   return id

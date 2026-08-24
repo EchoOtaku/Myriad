@@ -117,7 +117,7 @@ impl PackageLoadError {
                 format!("manifest.json exceeds {MAX_TAPP_MANIFEST_BYTES} bytes")
             }
             Self::ManifestUnreadable => "Failed to read manifest.json".to_string(),
-            Self::ManifestParse(error) => format!("Invalid manifest.json: {error}"),
+            Self::ManifestParse(message) => message.clone(),
         }
     }
 
@@ -228,13 +228,16 @@ pub fn parse_manifest_json(content: &str) -> Result<TappManifest, PackageLoadErr
                         .collect();
                     (!found.is_empty()).then(|| found.join(", "))
                 });
-            Err(PackageLoadError::ManifestParse(match legacy {
-                Some(fields) => format!(
-                    "manifest.json uses the pre-layer format ({fields}). Declare core / page / \
-widgets layers with an `entry` each; see docs/features/TAPP_FILE_FORMAT.md"
-                ),
-                None => error.to_string(),
-            }))
+            if let Some(fields) = legacy.as_deref() {
+                tracing::error!(%error, %fields, "tapp manifest uses the pre-layer format");
+                return Err(PackageLoadError::ManifestParse(
+                    "manifest.json uses the pre-layer format".to_string(),
+                ));
+            }
+            tracing::error!(%error, "invalid tapp manifest.json");
+            Err(PackageLoadError::ManifestParse(
+                "Invalid manifest.json".to_string(),
+            ))
         }
     }
 }
@@ -450,8 +453,7 @@ mod tests {
         );
     }
 
-    /// 旧格式包不再能安装，但错误必须说清是格式问题、指向新契约，
-    /// 而不是把 serde 的 `unknown field: main` 原样抛给用户。
+    /// 旧格式包不再能安装。对外只说是格式问题，字段名和文档路径留在日志里。
     #[test]
     fn legacy_manifest_error_points_at_the_layer_contract() {
         let error = parse_manifest_json(
@@ -468,16 +470,17 @@ mod tests {
         .expect_err("pre-layer manifest must not parse");
         let message = error.message();
         assert!(message.contains("pre-layer format"), "got: {message}");
-        assert!(message.contains("main"), "got: {message}");
-        assert!(message.contains("hasPage"), "got: {message}");
+        assert!(!message.contains("main"), "got: {message}");
+        assert!(!message.contains("hasPage"), "got: {message}");
         assert!(!message.contains("unknown field"), "got: {message}");
+        assert!(!message.contains("TAPP_FILE_FORMAT"), "got: {message}");
     }
 
-    /// 结构性错误仍要保留 serde 的原始诊断。
+    /// 结构性错误也不把 serde 的列号/期望 token 抛给用户。
     #[test]
-    fn non_legacy_parse_errors_keep_serde_detail() {
+    fn non_legacy_parse_errors_stay_stable() {
         let error = parse_manifest_json("{ not json").expect_err("must not parse");
-        assert!(!error.message().contains("pre-layer format"));
+        assert_eq!(error.message(), "Invalid manifest.json");
     }
 
     /// 声明了层入口却不带源码：必须在 staging 之前就报清楚，不能等落盘后

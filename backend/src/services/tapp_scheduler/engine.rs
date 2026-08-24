@@ -35,6 +35,11 @@ use crate::GLOBAL_DYNAMIC_CONFIG;
 
 use super::types_frontend::*;
 
+fn scheduler_store_failed(context: &'static str, error: impl std::fmt::Display) -> String {
+    tracing::error!(%error, context, "scheduler store failed");
+    "Scheduled task failed".to_string()
+}
+
 impl TappSchedulerEngine {
     /// 创建调度引擎
     pub fn new(db: DatabaseConnection) -> Self {
@@ -103,7 +108,7 @@ impl TappSchedulerEngine {
             .order_by_asc(tapp_scheduled_tasks::Column::NextRunAt)
             .all(db)
             .await
-            .map_err(|e| format!("Failed to query due tasks: {}", e))?;
+            .map_err(|error| scheduler_store_failed("query due tasks", error))?;
 
         tracing::debug!("[TappScheduler] Found {} due tasks", due_tasks.len());
 
@@ -186,12 +191,12 @@ impl TappSchedulerEngine {
         let txn = db
             .begin()
             .await
-            .map_err(|e| format!("Failed to begin scheduler claim: {e}"))?;
+            .map_err(|error| scheduler_store_failed("begin claim", error))?;
         let current = tapp_scheduled_tasks::Entity::find_by_id(candidate.id)
             .lock_exclusive()
             .one(&txn)
             .await
-            .map_err(|e| format!("Failed to lock due task: {e}"))?;
+            .map_err(|error| scheduler_store_failed("lock due task", error))?;
         let Some(current) = current else {
             txn.rollback().await.ok();
             return Ok(None);
@@ -212,10 +217,10 @@ impl TappSchedulerEngine {
         active
             .update(&txn)
             .await
-            .map_err(|e| format!("Failed to claim due task: {e}"))?;
+            .map_err(|error| scheduler_store_failed("claim due task", error))?;
         txn.commit()
             .await
-            .map_err(|e| format!("Failed to commit scheduler claim: {e}"))?;
+            .map_err(|error| scheduler_store_failed("commit claim", error))?;
         Ok(Some(current))
     }
 
@@ -331,12 +336,12 @@ impl TappSchedulerEngine {
         let txn = db
             .begin()
             .await
-            .map_err(|e| format!("Failed to begin missed stats update: {e}"))?;
+            .map_err(|error| scheduler_store_failed("begin missed stats", error))?;
         let current = tapp_scheduled_tasks::Entity::find_by_id(task.id)
             .lock_exclusive()
             .one(&txn)
             .await
-            .map_err(|e| format!("Failed to lock missed stats: {e}"))?
+            .map_err(|error| scheduler_store_failed("lock missed stats", error))?
             .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
         let mut stats: TaskStats =
             serde_json::from_value(current.stats.clone()).unwrap_or_default();
@@ -349,10 +354,10 @@ impl TappSchedulerEngine {
         active
             .update(&txn)
             .await
-            .map_err(|e| format!("Failed to update missed stats: {}", e))?;
+            .map_err(|error| scheduler_store_failed("update missed stats", error))?;
         txn.commit()
             .await
-            .map_err(|e| format!("Failed to commit missed stats: {e}"))?;
+            .map_err(|error| scheduler_store_failed("commit missed stats", error))?;
         Ok(())
     }
 
@@ -400,11 +405,13 @@ impl TappSchedulerEngine {
             }
         }
 
-        Err(format!(
-            "All {} retries failed. Last error: {}",
-            max_retries + 1,
-            last_error
-        ))
+        tracing::error!(
+            task_id = %task.task_id,
+            attempts = max_retries + 1,
+            %last_error,
+            "scheduled task failed after retries"
+        );
+        Err("Scheduled task failed".to_string())
     }
 
     /// 执行单个任务
@@ -443,7 +450,7 @@ impl TappSchedulerEngine {
         let execution = execution
             .insert(db)
             .await
-            .map_err(|e| format!("Failed to create execution record: {}", e))?;
+            .map_err(|error| scheduler_store_failed("create execution", error))?;
 
         let mut result: Option<serde_json::Value> = None;
         let authority = Self::validate_task_execution_permissions(db, task).await;
@@ -568,7 +575,7 @@ impl TappSchedulerEngine {
             execution_update
                 .update(db)
                 .await
-                .map_err(|e| format!("Failed to keep frontend execution pending: {}", e))?;
+                .map_err(|error| scheduler_store_failed("keep frontend pending", error))?;
 
             Self::update_task_after_dispatch(db, task, result).await?;
             return Ok(());
@@ -584,7 +591,7 @@ impl TappSchedulerEngine {
         execution_update
             .update(db)
             .await
-            .map_err(|e| format!("Failed to update execution record: {}", e))?;
+            .map_err(|error| scheduler_store_failed("update execution", error))?;
 
         // 更新任务状态和统计
         Self::update_task_after_execution(
@@ -614,7 +621,7 @@ impl TappSchedulerEngine {
         let active_connections =
             shared_registry::list_subject_endpoints(db, SCHEDULER_PRESENCE_NAMESPACE)
                 .await
-                .map_err(|error| format!("Failed to list scheduler connections: {error}"))?;
+                .map_err(|error| scheduler_store_failed("list connections", error))?;
         let mut deliveries = 0usize;
         let mut first_error = None;
         for connection in active_connections {
@@ -645,7 +652,7 @@ impl TappSchedulerEngine {
                 Err(error) => {
                     SCHEDULER_DELIVERY_FAILURES.fetch_add(1, Ordering::Relaxed);
                     first_error.get_or_insert_with(|| {
-                        format!("Failed to enqueue scheduler task: {error}")
+                        scheduler_store_failed("enqueue task", error)
                     });
                 }
             }
@@ -675,7 +682,7 @@ impl TappSchedulerEngine {
                     ))
                     .await
                     .map_err(|error| {
-                        format!("Failed to verify global scheduler audience: {error}")
+                        scheduler_store_failed("verify global audience", error)
                     })?;
                 Ok(row
                     .and_then(|row| row.try_get::<bool>("", "is_admin").ok())
@@ -709,7 +716,7 @@ SELECT EXISTS (
                     ))
                     .await
                     .map_err(|error| {
-                        format!("Failed to verify Tapp scheduler audience: {error}")
+                        scheduler_store_failed("verify tapp audience", error)
                     })?;
                 Ok(row
                     .and_then(|row| row.try_get::<bool>("", "allowed").ok())
@@ -729,7 +736,7 @@ SELECT EXISTS (
         let execution = tapp_task_executions::Entity::find_by_id(execution_id)
             .one(&self.db)
             .await
-            .map_err(|e| format!("Failed to query frontend execution: {}", e))?
+            .map_err(|error| scheduler_store_failed("query frontend execution", error))?
             .ok_or_else(|| format!("Execution {} not found", execution_id))?;
 
         if execution.status != ExecutionStatus::Running {
@@ -739,7 +746,7 @@ SELECT EXISTS (
         let task = tapp_scheduled_tasks::Entity::find_by_id(execution.scheduled_task_id)
             .one(&self.db)
             .await
-            .map_err(|e| format!("Failed to query scheduled task: {}", e))?
+            .map_err(|error| scheduler_store_failed("query scheduled task", error))?
             .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
         if !Self::can_complete_frontend_execution(&self.db, user_id, &execution, &task).await? {
             return Err("Execution does not belong to the current scheduler audience".to_string());
@@ -778,7 +785,7 @@ SELECT EXISTS (
             .filter(tapp_task_executions::Column::ExecutedAt.lte(cutoff))
             .all(db)
             .await
-            .map_err(|e| format!("Failed to query stale frontend executions: {}", e))?;
+            .map_err(|error| scheduler_store_failed("query stale frontend executions", error))?;
 
         for execution in stale {
             if let Err(error) = Self::finalize_frontend_execution(
@@ -808,7 +815,7 @@ SELECT EXISTS (
         let task = tapp_scheduled_tasks::Entity::find_by_id(execution.scheduled_task_id)
             .one(db)
             .await
-            .map_err(|e| format!("Failed to query scheduled task: {}", e))?
+            .map_err(|error| scheduler_store_failed("query scheduled task", error))?
             .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
 
         let now = Utc::now();
@@ -841,7 +848,7 @@ SELECT EXISTS (
             .filter(tapp_task_executions::Column::Status.eq(ExecutionStatus::Running))
             .exec(db)
             .await
-            .map_err(|e| format!("Failed to finalize frontend execution: {}", e))?;
+            .map_err(|error| scheduler_store_failed("finalize frontend execution", error))?;
         if update.rows_affected == 0 {
             return Ok(());
         }
@@ -894,11 +901,11 @@ SELECT EXISTS (
                 [task.user_id.into()],
             ))
             .await
-            .map_err(|e| format!("Failed to verify scheduler user role: {}", e))?
+            .map_err(|error| scheduler_store_failed("verify user role", error))?
             .ok_or_else(|| "Scheduler user no longer exists".to_string())?;
         let is_admin = row
             .try_get::<bool>("", "is_admin")
-            .map_err(|e| format!("Failed to read scheduler user role: {}", e))?;
+            .map_err(|error| scheduler_store_failed("read user role", error))?;
         let role = if is_admin {
             UserRole::Admin
         } else {
@@ -944,7 +951,10 @@ SELECT EXISTS (
             &task.tapp_id,
         )
         .await
-        .map_err(|e| format!("Scheduled Tapp is no longer accessible: {e}"))?;
+        .map_err(|error| {
+            tracing::error!(%error, "scheduled tapp is no longer accessible");
+            "Scheduled Tapp is no longer accessible".to_string()
+        })?;
         crate::services::tapp_runtime_grant::refuse_if_needs_reauthorization(
             tapp.needs_reauthorization,
         )
@@ -1461,12 +1471,12 @@ SELECT EXISTS (
         let txn = db
             .begin()
             .await
-            .map_err(|e| format!("Failed to begin frontend dispatch update: {e}"))?;
+            .map_err(|error| scheduler_store_failed("begin frontend dispatch", error))?;
         let current = tapp_scheduled_tasks::Entity::find_by_id(task.id)
             .lock_exclusive()
             .one(&txn)
             .await
-            .map_err(|e| format!("Failed to lock frontend dispatch task: {e}"))?
+            .map_err(|error| scheduler_store_failed("lock frontend dispatch", error))?
             .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
         let mut stats: TaskStats =
             serde_json::from_value(current.stats.clone()).unwrap_or_default();
@@ -1491,10 +1501,10 @@ SELECT EXISTS (
         active
             .update(&txn)
             .await
-            .map_err(|e| format!("Failed to advance frontend task: {}", e))?;
+            .map_err(|error| scheduler_store_failed("advance frontend task", error))?;
         txn.commit()
             .await
-            .map_err(|e| format!("Failed to commit frontend dispatch: {e}"))?;
+            .map_err(|error| scheduler_store_failed("commit frontend dispatch", error))?;
         Ok(())
     }
 
@@ -1509,12 +1519,12 @@ SELECT EXISTS (
         let txn = db
             .begin()
             .await
-            .map_err(|e| format!("Failed to begin frontend stats update: {e}"))?;
+            .map_err(|error| scheduler_store_failed("begin frontend stats", error))?;
         let current = tapp_scheduled_tasks::Entity::find_by_id(task.id)
             .lock_exclusive()
             .one(&txn)
             .await
-            .map_err(|e| format!("Failed to lock frontend stats task: {e}"))?
+            .map_err(|error| scheduler_store_failed("lock frontend stats", error))?
             .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
         let mut stats: TaskStats =
             serde_json::from_value(current.stats.clone()).unwrap_or_default();
@@ -1535,10 +1545,10 @@ SELECT EXISTS (
         active
             .update(&txn)
             .await
-            .map_err(|e| format!("Failed to finalize frontend task stats: {}", e))?;
+            .map_err(|error| scheduler_store_failed("finalize frontend task stats", error))?;
         txn.commit()
             .await
-            .map_err(|e| format!("Failed to commit frontend stats: {e}"))?;
+            .map_err(|error| scheduler_store_failed("commit frontend stats", error))?;
         Ok(())
     }
 
@@ -1556,12 +1566,12 @@ SELECT EXISTS (
         let txn = db
             .begin()
             .await
-            .map_err(|e| format!("Failed to begin task stats update: {e}"))?;
+            .map_err(|error| scheduler_store_failed("begin task stats", error))?;
         let current = tapp_scheduled_tasks::Entity::find_by_id(task.id)
             .lock_exclusive()
             .one(&txn)
             .await
-            .map_err(|e| format!("Failed to lock task stats: {e}"))?
+            .map_err(|error| scheduler_store_failed("lock task stats", error))?
             .ok_or_else(|| "Scheduled task no longer exists".to_string())?;
         let mut stats: TaskStats =
             serde_json::from_value(current.stats.clone()).unwrap_or_default();
@@ -1599,11 +1609,11 @@ SELECT EXISTS (
         active
             .update(&txn)
             .await
-            .map_err(|e| format!("Failed to update task: {}", e))?;
+            .map_err(|error| scheduler_store_failed("update task", error))?;
 
         txn.commit()
             .await
-            .map_err(|e| format!("Failed to commit task stats: {e}"))?;
+            .map_err(|error| scheduler_store_failed("commit task stats", error))?;
 
         Ok(())
     }
@@ -1875,7 +1885,7 @@ impl TappSchedulerEngine {
             .filter(tapp_task_executions::Column::ScheduledTaskId.eq(task.id))
             .exec(&self.db)
             .await
-            .map_err(|e| format!("Failed to delete executions: {}", e))?;
+            .map_err(|error| scheduler_store_failed("delete executions", error))?;
 
         // 删除任务
         tapp_scheduled_tasks::Entity::delete_by_id(task.id)

@@ -931,7 +931,8 @@ pub fn validate_tapp_manifest(manifest: &TappManifest) -> Result<(), String> {
                             ));
                         }
                         let resolved = binding.resolve().map_err(|error| {
-                            format!("Invalid credential binding for Tapp API {name}: {error}")
+                            tracing::error!(%error, api = %name, "invalid Tapp credential binding");
+                            format!("Invalid credential binding for Tapp API {name}")
                         })?;
                         if binding
                             .prefix

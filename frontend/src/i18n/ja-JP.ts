@@ -139,6 +139,8 @@ export const jaJP: TranslationKeys = {
     anime25dAtlasOverflow: 'レイヤーが {max} キャンバスに収まりません。',
     anime25dBoneLimit: 'Anime2.5DRig のボーン数が {max} を超えています。',
     rigAtlasFailed: 'Rig アトラス PNG の生成に失敗しました。',
+    rigImportFailed: 'レイヤー PSD を読み込めませんでした。',
+    rigCommitFailed: '読み込んだリグを保存できませんでした。',
     statusIdle: '待機中',
     statusThinking: '思考中',
     statusTalking: '返信中',
@@ -278,6 +280,9 @@ export const jaJP: TranslationKeys = {
     anime25dPresetLookRight: '右を見る',
     anime25dPresetWinkLeft: '左ウインク',
     anime25dPresetWinkRight: '右ウインク',
+    anime25dPresetThinking: '考え中',
+    anime25dPresetDizzy: 'くらくら',
+    anime25dPresetSqueeze: '>< ぎゅっと目',
     anime25dBlinkNow: 'まばたき',
     anime25dResetPose: 'リセット',
     anime25dInspect: '再生検査',
@@ -2815,6 +2820,8 @@ export const jaJP: TranslationKeys = {
     emptyDialogueText: '空の台詞があるため、音声を生成できません。',
     csrfUnavailable: 'ログイン状態が切れました。ページを更新して再試行してください。',
     streamUnreadable: 'サーバーから読めるデータストリームが返りませんでした。',
+    dndScheduleInvalid: 'おやすみ時間の指定が正しくありません。',
+    dndScheduleIncomplete: '開始と終了を両方指定するか、両方空にしてください。',
   },
 
   wallpaperStatus: {

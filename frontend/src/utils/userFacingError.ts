@@ -46,7 +46,7 @@ export function isUselessErrorText(text: string): boolean {
   if (/^ai generation failed$/i.test(detail)) return true
   if (/^ai error:/i.test(detail)) return true
   if (
-    /^failed to (save|load|get|publish|rotate|compose|process|verify|create|update|set|read|refresh|fetch|parse|start|decode|clear|collect|restore|seal) /i.test(
+    /^failed to (save|load|get|publish|rotate|compose|process|verify|create|update|set|read|refresh|fetch|parse|start|decode|clear|collect|restore|seal|persist) /i.test(
       detail,
     )
   ) {
@@ -174,7 +174,8 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     code === 'ai_generation_failed' ||
     /^ai error:/i.test(raw) ||
     /^ai generation failed$/i.test(raw) ||
-    /^gemini api /i.test(raw)
+    /^gemini api /i.test(raw) ||
+    /invalid gemini json/i.test(raw)
   ) {
     return joinParts(t.aiGenerationFailed, usefulExtra(hint, t.aiGenerationFailed))
   }
@@ -184,10 +185,135 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       usefulExtra(hint, t.settingsBackupRestoreFailed),
     )
   }
+  if (
+    /^export_hash_failed$|^export_integrity_failed$|^integrity_seal_failed/i.test(
+      raw,
+    )
+  ) {
+    return currentCopy().config.analytics.exportFailed
+  }
+  if (
+    /^invalid tapp archive/i.test(raw) ||
+    /^invalid manifest(\.json)?/i.test(raw) ||
+    /invalid \.tapp file/i.test(raw) ||
+    /manifest\.json (not found|uses the pre-layer format)/i.test(raw) ||
+    /invalid agent schema/i.test(raw) ||
+    /install package is missing/i.test(raw) ||
+    /missing content for declared/i.test(raw)
+  ) {
+    return currentCopy().tapp.installFailed
+  }
+  if (code === 'steering_unavailable' || /^failed to persist steering/i.test(raw)) {
+    return t.agentProcessingFailed
+  }
+  if (code === 'dnd_schedule_invalid' || /invalid do-not-disturb/i.test(raw)) {
+    return t.dndScheduleInvalid
+  }
+  if (
+    code === 'dnd_schedule_incomplete' ||
+    /set both start and end, or clear both/i.test(raw)
+  ) {
+    return t.dndScheduleIncomplete
+  }
+  if (code === 'merope_disabled' || /^agent persona is disabled$/i.test(raw)) {
+    return currentCopy().arael.agentPersonaOff
+  }
+  if (
+    code === 'consent_required' ||
+    /^explicit consent is required$/i.test(raw)
+  ) {
+    return t.stepNeedsConfirm
+  }
+  if (
+    code === 'GUEST_LAYOUT_READONLY' ||
+    code === 'TAPP_PERMISSION_NOT_GRANTED' ||
+    code === 'site_owner_required' ||
+    code === 'admin_required' ||
+    /guests cannot /i.test(raw)
+  ) {
+    return t.forbidden
+  }
+  if (code === 'login_required') {
+    return t.unauthorized
+  }
+  if (code === 'confirmation_stream_required') {
+    return t.stepNeedsConfirm
+  }
+  if (code === 'lyrics_fetch_failed' || /^failed to fetch (verbatim )?lyrics/i.test(raw)) {
+    return t.lyricsFailed.replace('{status}', String(status || 502))
+  }
+  if (
+    code === 'playlist_fetch_failed' ||
+    code === 'song_fetch_failed' ||
+    /^failed to fetch (playlist|song detail)$/i.test(raw)
+  ) {
+    return t.operationFailed
+  }
+  if (
+    code === 'hitokoto_fetch_failed' ||
+    /^failed to (fetch|parse) hitokoto/i.test(raw) ||
+    /^hitokoto api failed$/i.test(raw)
+  ) {
+    return currentCopy().config.hitokotoLoadFailed
+  }
+  if (
+    code === 'storage_read_failed' ||
+    code === 'storage_save_failed' ||
+    code === 'cache_clear_failed' ||
+    code === 'update_failed' ||
+    code === 'preset_update_failed' ||
+    code === 'preset_fetch_failed' ||
+    /invalid backend action/i.test(raw) ||
+    /^http request failed/i.test(raw) ||
+    /^upstream (request failed|http)/i.test(raw) ||
+    /^json parse failed/i.test(raw) ||
+    /^invalid (outbound proxy|ai chat messages|json from upstream)/i.test(raw) ||
+    /^ai[_ ]task[_ ]registry/i.test(raw) ||
+    /^failed to serialize json body/i.test(raw) ||
+    /^failed to save report/i.test(raw) ||
+    /serialize report|insert report|report persist/i.test(raw) ||
+    /^dns resolution failed/i.test(raw) ||
+    /^http client error/i.test(raw) ||
+    /^failed to (load|save) avatar/i.test(raw) ||
+    /^failed to (query sources|batch insert items)/i.test(raw) ||
+    /^failed to (read installation claim|resolve site owner)/i.test(raw) ||
+    /^updater transport|^decode json failed|^updater upstream/i.test(raw) ||
+    /^tripo |invalid (glb json|3d model|tripo )|failed to store 3d/i.test(
+      raw,
+    ) ||
+    code === 'TRIPO_ERROR' ||
+    /invalid credential binding/i.test(raw) ||
+    /^failed to (register|unregister|drain|requeue|count|enqueue|verify|list) scheduler/i.test(
+      raw,
+    ) ||
+    /output schema validation|AI_OUTPUT_SCHEMA_MISMATCH/i.test(raw)
+  ) {
+    return t.operationFailed
+  }
+  if (
+    /^scheduled (tapp is no longer|task failed)/i.test(raw) ||
+    /^all \d+ retries failed/i.test(raw) ||
+    /no active tapp runtime callback/i.test(raw) ||
+    /^failed to .*(due tasks|execution|scheduled task|scheduler)/i.test(raw)
+  ) {
+    return t.noticeScheduleFailed
+  }
+  if (/^player not found$/i.test(raw)) {
+    return t.notFound
+  }
+  if (/^rate limited by upstream/i.test(raw)) {
+    return t.rateLimited
+  }
   if (code === 'youtube_upstream_failed' || /^youtube upstream failed$/i.test(raw)) {
     return joinParts(t.serverError.replace('{status}', String(status || 502)))
   }
-  if (code === 'e2e_key_failed' || /^failed to seal e2e key/i.test(raw)) {
+  if (
+    code === 'e2e_key_failed' ||
+    /^failed to seal e2e key/i.test(raw) ||
+    /payload serialize|envelope (serialize|parse)|plaintext json parse|e2e (seal|unseal)|invalid remote e2e|e2e key wrap/i.test(
+      raw,
+    )
+  ) {
     return joinParts(t.operationFailed, usefulExtra(hint, t.operationFailed))
   }
   if (code === 'config_save_failed') {
@@ -252,7 +378,9 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.speechBatchTooMany
   }
   if (
-    /speech service is unreachable|speech service request failed/i.test(raw)
+    /speech service is unreachable|speech service request failed|invalid transcription json/i.test(
+      raw,
+    )
   ) {
     return t.speechUpstreamFailed
   }
@@ -260,6 +388,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     code === 'domain_invalid' ||
     /^invalid origin$/i.test(raw) ||
     /^invalid url:/i.test(raw) ||
+    /^unsafe or invalid url/i.test(raw) ||
     /^origin must /i.test(raw) ||
     /wildcard origins are not allowed/i.test(raw) ||
     /http is only allowed for localhost/i.test(raw) ||
@@ -270,7 +399,12 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (
     code === 'oauth_authorize_failed' ||
-    /^failed to start (discord )?authorization/i.test(raw)
+    /^failed to start (discord )?authorization/i.test(raw) ||
+    /^state serialize/i.test(raw) ||
+    /^HMAC key error/i.test(raw) ||
+    /github (token|api|\/user)/i.test(raw) ||
+    /^OIDC /i.test(raw) ||
+    /^token (request|endpoint|JSON parse)/i.test(raw)
   ) {
     return t.oauthStartFailed
   }
@@ -491,7 +625,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.notFound
   }
   if (
-    /could not set up rsshub|could not read rsshub|no rsshub instances|初始化 RSSHub|读取 RSSHub|RSSHub 实例表为空/i.test(
+    /could not set up rsshub|could not read rsshub|no rsshub instances|unsafe rsshub url|初始化 RSSHub|读取 RSSHub|RSSHub 实例表为空/i.test(
       raw,
     )
   ) {
@@ -728,7 +862,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (
     code === 'GAME_MESSAGE_INVALID' ||
-    /game message_type|game session messages|not a game session|game payload too large/i.test(
+    /game_message_invalid|invalid game message|game message_type|game session messages|not a game session|game payload too large/i.test(
       raw,
     )
   ) {

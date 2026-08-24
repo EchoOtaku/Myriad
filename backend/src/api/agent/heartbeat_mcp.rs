@@ -665,9 +665,13 @@ pub(crate) async fn steer_session(
     crate::services::agent::executor::enqueue_steering(&db, &task_id, instruction.to_string())
         .await
         .map_err(|error| {
+            tracing::error!(%error, "failed to enqueue steering instruction");
             HttpError::from((
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(json!({ "error": error, "code": "steering_unavailable" })),
+                Json(json!({
+                    "error": "Failed to persist steering instruction",
+                    "code": "steering_unavailable"
+                })),
             ))
         })?;
 

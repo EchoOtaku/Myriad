@@ -356,14 +356,20 @@ impl RsshubService {
             Some("Myriad Brew Reader/1.0 (RSSHub Health Check)"),
         )
         .await
-        .map_err(|e| format!("Unsafe RSSHub URL blocked: {e}"))?;
+        .map_err(|error| {
+            tracing::warn!(%error, "unsafe RSSHub URL blocked");
+            "Unsafe RSSHub URL blocked".to_string()
+        })?;
 
         let start = Instant::now();
         let response = client
             .get(target_url)
             .send()
             .await
-            .map_err(|e| format!("Request failed: {}", e))?;
+            .map_err(|error| {
+                tracing::warn!(%error, "RSSHub health check request failed");
+                "Request failed".to_string()
+            })?;
 
         let elapsed = start.elapsed().as_millis() as i32;
 

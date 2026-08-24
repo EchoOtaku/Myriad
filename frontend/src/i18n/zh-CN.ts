@@ -139,6 +139,8 @@ export const zhCN: TranslationKeys = {
     anime25dAtlasOverflow: '图层原尺寸无法装入 {max} 画布',
     anime25dBoneLimit: 'Anime2.5DRig 骨骼数量超过 {max}',
     rigAtlasFailed: 'Rig 图集 PNG 生成失败',
+    rigImportFailed: '分层 PSD 导入失败',
+    rigCommitFailed: '导入的骨骼没能保存',
     statusIdle: '闲置',
     statusThinking: '思考中',
     statusTalking: '回应中',
@@ -269,6 +271,9 @@ export const zhCN: TranslationKeys = {
     anime25dPresetLookRight: '看右',
     anime25dPresetWinkLeft: '左眨眼',
     anime25dPresetWinkRight: '右眨眼',
+    anime25dPresetThinking: '思考',
+    anime25dPresetDizzy: '晕',
+    anime25dPresetSqueeze: '>< 挤眼',
     anime25dBlinkNow: '眨眼',
     anime25dResetPose: '复位',
     anime25dInspect: '播放检查',
@@ -2685,6 +2690,8 @@ export const zhCN: TranslationKeys = {
     emptyDialogueText: '有一句台词是空的，没法生成语音',
     csrfUnavailable: '登录状态失效，请刷新页面后再试',
     streamUnreadable: '服务器没有返回可读的数据流',
+    dndScheduleInvalid: '免打扰时间无效。',
+    dndScheduleIncomplete: '开始和结束时间要一起填，或者一起留空。',
   },
 
   wallpaperStatus: {

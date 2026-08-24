@@ -264,6 +264,13 @@ export function mapPlaygroundGenerateError(
     return copy.playgroundNetworkHint
   }
 
+  if (
+    /invalid agent plan/i.test(raw) ||
+    /invalid json project/i.test(raw)
+  ) {
+    return copy.playgroundValidationFailedHint
+  }
+
   // Bad request with concrete server message
   if (
     /\bHTTP\s*400\b/i.test(raw) ||

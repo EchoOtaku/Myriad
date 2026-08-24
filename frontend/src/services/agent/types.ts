@@ -133,6 +133,8 @@ export interface PerformanceCue {
     | 'emphasize'
     | 'listen'
     | 'notify'
+    | 'think'
+    | 'dizzy'
   atMs: number
   intensity: number
   tempo: number

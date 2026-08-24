@@ -421,10 +421,11 @@ pub async fn buffer_inbox_body(
 
     let body = axum::body::to_bytes(request.into_body(), body_cap)
         .await
-        .map_err(|e| {
+        .map_err(|error| {
+            tracing::warn!(%error, "failed to read federation inbox body");
             (
                 StatusCode::BAD_REQUEST,
-                Json(json!({"error": format!("Failed to read body: {e}")})),
+                Json(json!({"error": "Failed to read body"})),
             )
         })?;
 

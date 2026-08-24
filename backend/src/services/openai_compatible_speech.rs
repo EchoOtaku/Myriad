@@ -180,7 +180,10 @@ impl OpenAiCompatibleSpeech {
         let parsed: serde_json::Value =
             serde_json::from_slice(&bytes).map_err(|e| OpenAiSpeechError::ApiError {
                 status: status.as_u16(),
-                message: format!("invalid transcription JSON: {e}"),
+                message: {
+                    tracing::error!(%e, "invalid transcription JSON");
+                    "invalid transcription JSON".to_string()
+                },
             })?;
         parsed
             .get("text")

@@ -153,7 +153,10 @@ impl FeedParser {
         )
         .await
         .map(|_| ())
-        .map_err(|e| ParseError::InvalidUrl(format!("Unsafe or invalid URL: {e}")))
+        .map_err(|error| {
+            tracing::warn!(%error, "unsafe or invalid feed URL");
+            ParseError::InvalidUrl("Unsafe or invalid URL".to_string())
+        })
     }
 
     /// 抓取并解析订阅源（SSRF 安全）
@@ -164,14 +167,20 @@ impl FeedParser {
             Some(Self::USER_AGENT),
         )
         .await
-        .map_err(|e| ParseError::InvalidUrl(format!("Unsafe or invalid URL: {e}")))?;
+        .map_err(|error| {
+            tracing::warn!(%error, "unsafe or invalid feed URL");
+            ParseError::InvalidUrl("Unsafe or invalid URL".to_string())
+        })?;
 
         // 抓取内容（客户端已禁用重定向并钉扎公网解析结果）
         let response = client
             .get(target_url)
             .send()
             .await
-            .map_err(|e| ParseError::FetchError(format!("Failed to fetch: {}", e)))?;
+            .map_err(|error| {
+                tracing::warn!(%error, "failed to fetch feed");
+                ParseError::FetchError("Failed to fetch feed".to_string())
+            })?;
 
         if !response.status().is_success() {
             return Err(ParseError::FetchError(format!(
@@ -193,9 +202,10 @@ impl FeedParser {
         let body_bytes =
             crate::services::outbound_security::read_limited_body(response, MAX_FEED_BODY_BYTES)
                 .await
-                .map_err(|e| {
+                .map_err(|error| {
                     // Oversize and I/O failures both surface as FetchError (fail cleanly).
-                    ParseError::FetchError(format!("Failed to read body: {e}"))
+                    tracing::warn!(%error, "failed to read feed body");
+                    ParseError::FetchError("Failed to read body".to_string())
                 })?;
 
         let body = match String::from_utf8(body_bytes) {

@@ -294,7 +294,7 @@ impl DeliveryAttemptError {
 }
 
 pub(crate) fn outbound_client_error_counts_as_remote_failure(error: &str) -> bool {
-    error.starts_with("DNS resolution failed:") || error == "DNS resolution returned no addresses"
+    error.starts_with("DNS resolution failed") || error == "DNS resolution returned no addresses"
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

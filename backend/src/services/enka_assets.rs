@@ -90,13 +90,17 @@ async fn fetch_doc(url: &str) -> Result<Value, String> {
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("request failed: {e}"))?;
+        .map_err(|error| {
+            tracing::warn!(%error, "enka asset request failed");
+            "request failed".to_string()
+        })?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }
-    resp.json::<Value>()
-        .await
-        .map_err(|e| format!("parse failed: {e}"))
+    resp.json::<Value>().await.map_err(|error| {
+        tracing::warn!(%error, "enka asset parse failed");
+        "parse failed".to_string()
+    })
 }
 
 fn disk_path(key: &str) -> PathBuf {

@@ -82,6 +82,11 @@ const TappPlayground = lazy(
 // Agent 浮动面板（项目名 Arael）
 const AraelPanel = lazy(() => import('./components/agent/AraelPanel'))
 
+// Merope UI Demo 覆层（设计评审用）：?merope-demo=1 时叠在真实页面上
+const MeropeDemoOverlay = lazy(
+  () => import('./features/merope/demo/MeropeDemoOverlay'),
+)
+
 /**
  * 路由守卫：复用全局 AuthContext 认证状态
  * 避免每次路由切换都重新发起 /api/auth/me 请求
@@ -674,6 +679,15 @@ export function App() {
                         <AraelPanel />
                       </Suspense>
                     </AgentAccessGate>
+                    {import.meta.env.DEV &&
+                      typeof window !== 'undefined' &&
+                      new URLSearchParams(window.location.search).has(
+                        'merope-demo',
+                      ) && (
+                        <Suspense fallback={null}>
+                          <MeropeDemoOverlay />
+                        </Suspense>
+                      )}
                     <RouteLoader />
                     <CustomScrollbar />
                     {backgroundTappsReady && (

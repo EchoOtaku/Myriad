@@ -27,6 +27,14 @@ use super::receipt::{
     claim_receipt, finish_receipt, receipt_key, ReceiptClaim, ReceiptKey, ReceiptOutcome,
 };
 
+fn inbox_auth_reject(public: &'static str, error: impl std::fmt::Display) -> (StatusCode, Json<serde_json::Value>) {
+    tracing::warn!(%error, public, "inbox signature rejected");
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(json!({"error": public})),
+    )
+}
+
 /// Map handler errors to HTTP status; permanent peer-state mismatches → 4xx.
 fn inbox_err(context: &str, e: String) -> (StatusCode, Json<serde_json::Value>) {
     if is_permanent_federation_error(&e) {
@@ -844,11 +852,11 @@ async fn handle_move(
         (StatusCode::BAD_REQUEST, Json(json!({"error": e})))
     })?;
 
-    let old_doc = fetch_actor_document(db, &old_actor).await.map_err(|e| {
-        tracing::warn!("Move rejected (old actor fetch): {}", e);
+    let old_doc = fetch_actor_document(db, &old_actor).await.map_err(|error| {
+        tracing::warn!(%error, "Move rejected (old actor fetch)");
         (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("Cannot fetch old actor for Move verify: {}", e)})),
+            Json(json!({"error": "Cannot fetch old actor for Move verify"})),
         )
     })?;
 
@@ -857,11 +865,11 @@ async fn handle_move(
         (StatusCode::BAD_REQUEST, Json(json!({"error": e})))
     })?;
 
-    let new_doc = fetch_actor_document(db, &new_actor).await.map_err(|e| {
-        tracing::warn!("Move rejected (new actor fetch): {}", e);
+    let new_doc = fetch_actor_document(db, &new_actor).await.map_err(|error| {
+        tracing::warn!(%error, "Move rejected (new actor fetch)");
         (
             StatusCode::BAD_REQUEST,
-            Json(json!({"error": format!("Cannot fetch new actor for Move verify: {}", e)})),
+            Json(json!({"error": "Cannot fetch new actor for Move verify"})),
         )
     })?;
 
@@ -1997,18 +2005,10 @@ fn verify_preparse_gate(
         )
     })?;
 
-    let parsed = parse_signature_header(sig_header).map_err(|e| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": format!("Invalid Signature header: {}", e)})),
-        )
-    })?;
-    require_covered_headers(&parsed, !body.is_empty()).map_err(|e| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": format!("Invalid signed-header set: {}", e)})),
-        )
-    })?;
+    let parsed = parse_signature_header(sig_header)
+        .map_err(|error| inbox_auth_reject("Invalid Signature header", error))?;
+    require_covered_headers(&parsed, !body.is_empty())
+        .map_err(|error| inbox_auth_reject("Invalid signed-header set", error))?;
 
     let date = unique_header(headers, "date")?.ok_or_else(|| {
         (
@@ -2016,12 +2016,8 @@ fn verify_preparse_gate(
             Json(json!({"error": "Missing Date header"})),
         )
     })?;
-    verify_date_freshness(date, chrono::Utc::now(), HTTP_DATE_MAX_SKEW).map_err(|error| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": format!("Invalid request date: {}", error)})),
-        )
-    })?;
+    verify_date_freshness(date, chrono::Utc::now(), HTTP_DATE_MAX_SKEW)
+        .map_err(|error| inbox_auth_reject("Invalid request date", error))?;
 
     if !body.is_empty() {
         let digest_str = unique_header(headers, "digest")?.ok_or_else(|| {
@@ -2065,18 +2061,10 @@ async fn verify_request_signature(
         )
     })?;
 
-    let parsed = parse_signature_header(sig_header).map_err(|e| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": format!("Invalid Signature header: {}", e)})),
-        )
-    })?;
-    require_covered_headers(&parsed, !body.is_empty()).map_err(|e| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": format!("Invalid signed-header set: {}", e)})),
-        )
-    })?;
+    let parsed = parse_signature_header(sig_header)
+        .map_err(|error| inbox_auth_reject("Invalid Signature header", error))?;
+    require_covered_headers(&parsed, !body.is_empty())
+        .map_err(|error| inbox_auth_reject("Invalid signed-header set", error))?;
 
     let date = unique_header(headers, "date")?.ok_or_else(|| {
         (
@@ -2084,12 +2072,8 @@ async fn verify_request_signature(
             Json(json!({"error": "Missing Date header"})),
         )
     })?;
-    verify_date_freshness(date, chrono::Utc::now(), HTTP_DATE_MAX_SKEW).map_err(|error| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(json!({"error": format!("Invalid request date: {}", error)})),
-        )
-    })?;
+    verify_date_freshness(date, chrono::Utc::now(), HTTP_DATE_MAX_SKEW)
+        .map_err(|error| inbox_auth_reject("Invalid request date", error))?;
 
     // Digest 验证（非空 body 必须携带 Digest header）
     if !body.is_empty() {
@@ -2110,12 +2094,7 @@ async fn verify_request_signature(
     // MYR-022: trusted cache or ephemeral remote fetch — never poison DB on 401.
     let mut resolved: ResolvedRemoteActor = fetch_remote_actor_for_verify(db, actor_url_str, false)
         .await
-        .map_err(|e| {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": format!("Cannot verify actor: {}", e)})),
-            )
-        })?;
+        .map_err(|error| inbox_auth_reject("Cannot verify actor", error))?;
 
     // If we stored a public_key_id for this actor, Signature keyId must match
     // (normalized). On mismatch, force ephemeral re-fetch once — stale cache
@@ -2151,8 +2130,6 @@ async fn verify_request_signature(
                             StatusCode::UNAUTHORIZED,
                             Json(json!({
                                 "error": "Signature keyId does not match actor public key id",
-                                "stored_key_id": fresh_kid,
-                                "request_key_id": parsed.key_id,
                             })),
                         ));
                     }
@@ -2181,12 +2158,8 @@ async fn verify_request_signature(
     let header_map = signing_header_map(headers, &parsed.headers)?;
 
     let valid =
-        verify_signature(public_key_pem, &parsed, method, path, &header_map).map_err(|e| {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(json!({"error": format!("Signature verification failed: {}", e)})),
-            )
-        })?;
+        verify_signature(public_key_pem, &parsed, method, path, &header_map)
+            .map_err(|error| inbox_auth_reject("Signature verification failed", error))?;
 
     if !valid {
         // Ephemeral document is dropped here — never written to DB (MYR-022).

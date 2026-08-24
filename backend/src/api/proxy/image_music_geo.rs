@@ -103,7 +103,10 @@ async fn read_limited_json(resp: reqwest::Response) -> Result<Value, String> {
     let bytes =
         crate::services::outbound_security::read_limited_body(resp, MAX_UPSTREAM_JSON_BYTES)
             .await?;
-    serde_json::from_slice(&bytes).map_err(|e| format!("Invalid JSON from upstream: {e}"))
+    serde_json::from_slice(&bytes).map_err(|error| {
+        tracing::error!(%error, "invalid JSON from music/geo upstream");
+        "Invalid JSON from upstream".to_string()
+    })
 }
 
 static PROXY_LIMITERS: Lazy<Arc<Mutex<HashMap<String, TokenBucket>>>> =

@@ -140,6 +140,8 @@ export const enUS: TranslationKeys = {
     anime25dAtlasOverflow: 'A layer does not fit a {max} canvas.',
     anime25dBoneLimit: 'Anime2.5DRig bone count exceeds {max}.',
     rigAtlasFailed: 'Failed to generate the rig atlas PNG.',
+    rigImportFailed: 'Could not import this layered PSD.',
+    rigCommitFailed: 'Could not save the imported rig.',
     statusIdle: 'Idle',
     statusThinking: 'Thinking',
     statusTalking: 'Replying',
@@ -280,6 +282,9 @@ export const enUS: TranslationKeys = {
     anime25dPresetLookRight: 'Look right',
     anime25dPresetWinkLeft: 'Wink left',
     anime25dPresetWinkRight: 'Wink right',
+    anime25dPresetThinking: 'Thinking',
+    anime25dPresetDizzy: 'Dizzy',
+    anime25dPresetSqueeze: '>< Squeezed eyes',
     anime25dBlinkNow: 'Blink',
     anime25dResetPose: 'Reset pose',
     anime25dInspect: 'Playback inspect',
@@ -2844,6 +2849,8 @@ export const enUS: TranslationKeys = {
     emptyDialogueText: 'One of the lines is empty, so speech cannot be generated.',
     csrfUnavailable: 'Your session expired. Refresh the page and try again.',
     streamUnreadable: 'The server did not return a readable stream.',
+    dndScheduleInvalid: 'That quiet-hours time is not valid.',
+    dndScheduleIncomplete: 'Set both start and end, or clear both.',
   },
 
   wallpaperStatus: {

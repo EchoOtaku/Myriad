@@ -1,4 +1,7 @@
-import type { PerformanceDirective } from '../../../services/agent/types'
+import type {
+  PerformanceBaseline,
+  PerformanceDirective,
+} from '../../../services/agent/types'
 import type { SpeechArticulation } from '../rig/articulation'
 import type { GazeSource, GazeTarget } from '../rig/motion'
 import type { MeropeRigManifest } from '../rig/types'
@@ -11,21 +14,24 @@ import {
   useImperativeHandle,
   useRef,
 } from 'react'
+import { activityExpressionDriverPatch } from './expressionPresets'
+import { PerformanceDirectiveGate } from './performanceExpression'
 import {
-  baselineDriverPatch,
   cueDriverPatch,
-  cueDurationMs,
   cuePriority,
+  idleSpeechDriverPatch,
+  performanceRestDriverPatch,
+  scheduleBodyCues,
+  scheduledBodyCueRemainingDurationMs,
 } from './performanceMotion'
 import {
   Anime25DPlayer,
-  DEFAULT_FRONT_HAIR_SWAY,
-  DEFAULT_REAR_HAIR_SWAY,
   IDENTITY_DRIVER,
 } from './player'
 import {
   speechArticulationDriverPatch,
   speechEnergyDriverPatch,
+  updatedSpeechMouthFormBaseline,
 } from './speechDriver'
 
 interface Props {
@@ -35,7 +41,7 @@ interface Props {
   playback: Anime25DPlayback
   atlasUrl: string
   mood: number
-  /** Settings page: ignore live activity/mood so sliders stay in charge. */
+  /** Settings page: sliders own the base pose; live acting stays additive. */
   manualControl?: boolean
 }
 
@@ -45,7 +51,10 @@ export interface Anime25DCharacterHandle {
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
   setGazeTarget: (target: GazeTarget | null, source?: GazeSource) => void
-  playMotionPlan: (performance: PerformanceDirective) => void
+  playMotionPlan: (
+    performance: PerformanceDirective,
+    startedAtMs?: number,
+  ) => boolean
   stopMotionPlan: () => void
   captureFrame: () => string | null
   setDriver: (partial: Partial<Anime25DDriver>) => void
@@ -66,58 +75,51 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     const activityRef = useRef(activity)
     const moodRef = useRef(mood)
     const speechActiveRef = useRef(false)
+    const speechMouthFormRef = useRef(0)
     const manualRef = useRef(manualControl)
-    const baselineRef = useRef<Partial<Anime25DDriver> | null>(null)
-    const cueTimersRef = useRef<number[]>([])
+    const baselineRef = useRef<PerformanceBaseline | null>(null)
+    const performanceRef = useRef<{
+      directive: PerformanceDirective
+      startedAtMs: number
+    } | null>(null)
+    const performanceGateRef = useRef(new PerformanceDirectiveGate())
+    const cueTimersRef = useRef(new Set<number>())
     const restoreTimerRef = useRef<number | null>(null)
     const activePriorityRef = useRef(0)
     const activeUntilRef = useRef(0)
-    const performanceRevisionRef = useRef(-1)
-    const performancePhaseRankRef = useRef(-1)
     activityRef.current = activity
     moodRef.current = mood
     manualRef.current = manualControl || manualRef.current
 
+    const applyPerformanceDriver = (player: Anime25DPlayer) => {
+      if (manualRef.current || manualControl) return
+      player.setTarget(
+        performanceRestDriverPatch(
+          baselineRef.current,
+          activityRef.current === 'thinking',
+        ),
+      )
+    }
+
     const applyDriver = (player: Anime25DPlayer) => {
       if (manualRef.current || manualControl) return
       const currentActivity = activityRef.current
-      const smile = Math.max(0, (moodRef.current - 50) / 80)
       player.setTarget({
-        angleX: 0,
-        angleY: 0,
-        angleZ: 0,
-        eyeOpenL: 1,
-        eyeOpenR: 1,
-        eyeX: 0,
-        eyeY: 0,
-        irisScale: 1,
-        brow: 0,
-        mouthForm: smile * 0.28,
-        body: 0,
-        armY: 0,
-        armPos: 0,
-        bust: 2.5,
-        physAmp: DEFAULT_REAR_HAIR_SWAY,
-        soft: 2,
-        fhAmp: DEFAULT_FRONT_HAIR_SWAY,
-        idle: true,
-        blink: true,
-        rand: true,
-        phys: true,
-        ...(baselineRef.current || {
-          mouthForm: smile * 0.28,
-        }),
-        talk: false,
-        mouthOpen: 0,
-        ...(currentActivity === 'thinking'
-          ? { angleY: 0.08, body: 0.4 }
-          : {}),
+        ...activityExpressionDriverPatch(currentActivity === 'thinking'),
+        ...performanceRestDriverPatch(
+          baselineRef.current,
+          currentActivity === 'thinking',
+        ),
+        ...idleSpeechDriverPatch(
+          moodRef.current,
+          speechActiveRef.current,
+        ),
       })
     }
 
     const clearCueTimers = () => {
       for (const timer of cueTimersRef.current) window.clearTimeout(timer)
-      cueTimersRef.current = []
+      cueTimersRef.current.clear()
       if (restoreTimerRef.current !== null) {
         window.clearTimeout(restoreTimerRef.current)
         restoreTimerRef.current = null
@@ -126,8 +128,96 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       activeUntilRef.current = 0
     }
 
+    const schedulePerformanceBody = (
+      directive: PerformanceDirective,
+      directiveStartedAt: number,
+      player: Anime25DPlayer | null,
+    ) => {
+      if (manualRef.current || manualControl) return
+      if (directive.plan.baseline) {
+        baselineRef.current = directive.plan.baseline
+      }
+      if (player) applyPerformanceDriver(player)
+
+      for (const scheduled of scheduleBodyCues(
+        directive.plan.cues,
+        directiveStartedAt,
+      )) {
+        const cue = scheduled.cue
+        let scheduledStartAt = scheduled.startMs
+        const timer = window.setTimeout(() => {
+          cueTimersRef.current.delete(timer)
+          const run = () => {
+            const priority = cuePriority(cue)
+            const now = performance.now()
+            const active = now < activeUntilRef.current
+            if (cue.interrupt === 'queue' && active) {
+              scheduledStartAt = activeUntilRef.current
+              const queued = window.setTimeout(() => {
+                cueTimersRef.current.delete(queued)
+                run()
+              }, scheduledStartAt - now)
+              cueTimersRef.current.add(queued)
+              return
+            }
+            if (
+              cue.interrupt === 'if-lower' &&
+              active &&
+              priority <= activePriorityRef.current
+            ) {
+              return
+            }
+            const duration = scheduledBodyCueRemainingDurationMs(
+              {
+                ...scheduled,
+                startMs: scheduledStartAt,
+                endMs:
+                  scheduled.endMs + (scheduledStartAt - scheduled.startMs),
+              },
+              now,
+            )
+            if (duration <= 0) return
+            if (restoreTimerRef.current !== null) window.clearTimeout(restoreTimerRef.current)
+            activePriorityRef.current = priority
+            activeUntilRef.current = now + duration
+            playerRef.current?.setTarget({
+              ...performanceRestDriverPatch(
+                baselineRef.current,
+                activityRef.current === 'thinking',
+              ),
+              // Authored cues own the pose until their restore timer fires.
+              // Ambient motion eases to neutral instead of competing.
+              rand: false,
+              ...cueDriverPatch(cue),
+            })
+            restoreTimerRef.current = window.setTimeout(() => {
+              activePriorityRef.current = 0
+              activeUntilRef.current = 0
+              restoreTimerRef.current = null
+              if (playerRef.current) {
+                applyPerformanceDriver(playerRef.current)
+              }
+            }, duration)
+          }
+          run()
+        }, Math.max(0, scheduledStartAt - performance.now()))
+        cueTimersRef.current.add(timer)
+      }
+    }
+
+    const enterManualControl = () => {
+      if (manualRef.current) return
+      clearCueTimers()
+      if (playerRef.current) applyPerformanceDriver(playerRef.current)
+      manualRef.current = true
+    }
+
     useImperativeHandle(ref, () => ({
       setSpeechActive(active) {
+        if (active && !speechActiveRef.current) {
+          speechMouthFormRef.current =
+            playerRef.current?.getTarget().mouthForm ?? 0
+        }
         speechActiveRef.current = active
         playerRef.current?.setSpeechActive(active)
       },
@@ -135,7 +225,6 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         playerRef.current?.setTarget({
           talk: active,
           mouthOpen: 0,
-          mouthForm: baselineRef.current?.mouthForm ?? 0,
         })
       },
       setSpeechEnergy(energy) {
@@ -145,7 +234,7 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         playerRef.current?.setTarget(
           speechArticulationDriverPatch(
             articulation,
-            baselineRef.current?.mouthForm ?? 0,
+            speechMouthFormRef.current,
           ),
         )
       },
@@ -155,90 +244,59 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
           angleY: target ? target.y * 0.28 : 0,
         })
       },
-      playMotionPlan(directive) {
-        if (manualRef.current || manualControl) return
-        const phaseRank = {
-          mood: 0,
-          reaction: 1,
-          delivery: 2,
-          proactive: 2,
-          outcome: 3,
-        }[directive.phase]
-        if (directive.moodRevision < performanceRevisionRef.current) return
+      playMotionPlan(directive, startedAtMs) {
+        const acceptance = performanceGateRef.current.accept(directive)
+        if (acceptance === 'reject') return false
+        if (acceptance === 'supersede') clearCueTimers()
+        const now = performance.now()
+        const directiveStartedAt = Number.isFinite(startedAtMs)
+          ? Math.max(0, Math.min(now, startedAtMs as number))
+          : now
         if (
-          directive.moodRevision === performanceRevisionRef.current &&
-          phaseRank < performancePhaseRankRef.current
+          playerRef.current &&
+          !playerRef.current.playPerformance(directive, directiveStartedAt / 1_000)
         ) {
-          return
+          return false
         }
-        if (directive.moodRevision > performanceRevisionRef.current) {
-          clearCueTimers()
-          performanceRevisionRef.current = directive.moodRevision
-          performancePhaseRankRef.current = -1
-        }
-        performancePhaseRankRef.current = phaseRank
-        if (directive.plan.baseline) {
-          baselineRef.current = baselineDriverPatch(directive.plan.baseline)
-        }
-        if (playerRef.current) applyDriver(playerRef.current)
-
-        for (const cue of directive.plan.cues) {
-          const timer = window.setTimeout(() => {
-            const run = () => {
-              const priority = cuePriority(cue)
-              const now = performance.now()
-              if (cue.interrupt === 'queue' && now < activeUntilRef.current) {
-                const queued = window.setTimeout(run, activeUntilRef.current - now)
-                cueTimersRef.current.push(queued)
-                return
-              }
-              if (cue.interrupt === 'if-lower' && priority <= activePriorityRef.current) return
-              if (restoreTimerRef.current !== null) window.clearTimeout(restoreTimerRef.current)
-              const duration = cueDurationMs(cue)
-              activePriorityRef.current = priority
-              activeUntilRef.current = performance.now() + duration
-              playerRef.current?.setTarget({
-                ...(baselineRef.current || {}),
-                // Authored cues own the pose until their restore timer fires.
-                // Ambient motion eases to neutral instead of competing.
-                rand: false,
-                ...cueDriverPatch(cue),
-              })
-              restoreTimerRef.current = window.setTimeout(() => {
-                activePriorityRef.current = 0
-                activeUntilRef.current = 0
-                restoreTimerRef.current = null
-                if (playerRef.current) applyDriver(playerRef.current)
-              }, duration)
-            }
-            run()
-          }, cue.atMs)
-          cueTimersRef.current.push(timer)
-        }
+        performanceRef.current = { directive, startedAtMs: directiveStartedAt }
+        schedulePerformanceBody(directive, directiveStartedAt, playerRef.current)
+        return true
       },
       stopMotionPlan() {
         clearCueTimers()
+        playerRef.current?.stopPerformance()
         baselineRef.current = null
-        performanceRevisionRef.current = -1
-        performancePhaseRankRef.current = -1
-        if (playerRef.current) applyDriver(playerRef.current)
+        performanceRef.current = null
+        performanceGateRef.current.reset()
+        if (playerRef.current) applyPerformanceDriver(playerRef.current)
       },
       captureFrame() {
         return playerRef.current?.captureFrame() ?? null
       },
       setDriver(partial) {
-        manualRef.current = true
+        enterManualControl()
+        speechMouthFormRef.current = updatedSpeechMouthFormBaseline(
+          speechMouthFormRef.current,
+          speechActiveRef.current,
+          partial.mouthForm,
+        )
         playerRef.current?.setTarget(partial)
       },
       replaceDriver(driver) {
-        manualRef.current = true
+        enterManualControl()
+        speechMouthFormRef.current = updatedSpeechMouthFormBaseline(
+          speechMouthFormRef.current,
+          speechActiveRef.current,
+          driver.mouthForm,
+        )
         playerRef.current?.replaceTarget(driver)
       },
       resetDriver() {
         clearCueTimers()
+        playerRef.current?.stopPerformance()
         baselineRef.current = null
-        performanceRevisionRef.current = -1
-        performancePhaseRankRef.current = -1
+        performanceRef.current = null
+        performanceGateRef.current.reset()
         manualRef.current = false
         playerRef.current?.replaceTarget({ ...IDENTITY_DRIVER })
         if (playerRef.current) applyDriver(playerRef.current)
@@ -264,6 +322,17 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       const player = new Anime25DPlayer(canvas, playback, manifest)
       playerRef.current = player
       player.setSpeechActive(speechActiveRef.current)
+      if (performanceRef.current) {
+        player.playPerformance(
+          performanceRef.current.directive,
+          performanceRef.current.startedAtMs / 1_000,
+        )
+        schedulePerformanceBody(
+          performanceRef.current.directive,
+          performanceRef.current.startedAtMs,
+          player,
+        )
+      }
       applyDriver(player)
       let frame = 0
       let last = performance.now()

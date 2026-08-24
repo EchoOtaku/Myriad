@@ -201,7 +201,7 @@ pub async fn build_public_http_client(
     timeout: Duration,
     user_agent: Option<&str>,
 ) -> Result<(Url, Client), String> {
-    let parsed = Url::parse(url).map_err(|error| format!("Invalid URL: {error}"))?;
+    let parsed = Url::parse(url).map_err(|_| "Invalid URL".to_string())?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err("Only HTTP and HTTPS URLs are allowed".to_string());
     }
@@ -221,7 +221,7 @@ pub async fn build_public_http_client(
     } else {
         tokio::net::lookup_host((host, port))
             .await
-            .map_err(|error| format!("DNS resolution failed: {error}"))?
+            .map_err(|_| "DNS resolution failed".to_string())?
             .collect()
     };
 
@@ -243,7 +243,7 @@ pub async fn build_public_http_client(
     }
     let client = builder
         .build()
-        .map_err(|error| format!("HTTP client error: {error}"))?;
+        .map_err(|_| "HTTP client error".to_string())?;
     store_cached_client(host, addresses, timeout, user_agent, client.clone());
     Ok((parsed, client))
 }
@@ -283,7 +283,7 @@ pub async fn build_public_http_client_via_proxy(
     user_agent: Option<&str>,
     proxy: reqwest::Proxy,
 ) -> Result<(Url, Client), String> {
-    let parsed = Url::parse(url).map_err(|error| format!("Invalid URL: {error}"))?;
+    let parsed = Url::parse(url).map_err(|_| "Invalid URL".to_string())?;
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err("Only HTTP and HTTPS URLs are allowed".to_string());
     }
@@ -308,7 +308,7 @@ pub async fn build_public_http_client_via_proxy(
     }
     let client = builder
         .build()
-        .map_err(|error| format!("HTTP client error: {error}"))?;
+        .map_err(|_| "HTTP client error".to_string())?;
     Ok((parsed, client))
 }
 
@@ -328,7 +328,7 @@ pub async fn read_limited_body(
     while let Some(chunk) = response
         .chunk()
         .await
-        .map_err(|error| format!("Failed to read response: {error}"))?
+        .map_err(|_| "Failed to read response".to_string())?
     {
         if body.len().saturating_add(chunk.len()) > max_bytes {
             return Err(format!("Response exceeds {max_bytes} bytes"));

@@ -146,35 +146,31 @@ async fn persist_platform_report_atomic(
 ) -> Result<(), String> {
     tracing::debug!("💾 Serializing report for platform: {}", report.platform);
 
-    let report_json = serde_json::to_value(report).map_err(|e| {
-        tracing::error!(
-            "❌ Failed to serialize report for {}: {}",
-            report.platform,
-            e
-        );
-        format!("serialize report for {}: {e}", report.platform)
+    let report_json = serde_json::to_value(report).map_err(|error| {
+        tracing::error!(platform = %report.platform, %error, "failed to serialize report");
+        "Failed to save report".to_string()
     })?;
 
-    let metadata_json = serde_json::to_value(&report.metadata).map_err(|e| {
-        tracing::error!(
-            "❌ Failed to serialize metadata for {}: {}",
-            report.platform,
-            e
-        );
-        format!("serialize metadata for {}: {e}", report.platform)
+    let metadata_json = serde_json::to_value(&report.metadata).map_err(|error| {
+        tracing::error!(platform = %report.platform, %error, "failed to serialize report metadata");
+        "Failed to save report".to_string()
     })?;
 
-    let txn = db
-        .begin()
-        .await
-        .map_err(|e| format!("begin report persist transaction: {e}"))?;
+    let txn = db.begin().await.map_err(|error| {
+        tracing::error!(%error, "failed to begin report persist transaction");
+        "Failed to save report".to_string()
+    })?;
 
     let delete_result = platform_reports::Entity::delete_many()
         .filter(platform_reports::Column::UserId.eq(user_id))
         .filter(platform_reports::Column::Platform.eq(&report.platform))
         .exec(&txn)
         .await
-        .map_err(|e| format!("delete old reports for {}: {e}", report.platform))?;
+        .map_err(|error| {
+            tracing::error!(platform = %report.platform, %error, "failed to delete old reports");
+            "Failed to save report".to_string()
+        })?;
+
 
     if delete_result.rows_affected > 0 {
         tracing::info!(
@@ -197,14 +193,16 @@ async fn persist_platform_report_atomic(
         ..Default::default()
     };
 
-    active_model
-        .insert(&txn)
-        .await
-        .map_err(|e| format!("insert report for {}: {e}", report.platform))?;
+    active_model.insert(&txn).await.map_err(|error| {
+        tracing::error!(platform = %report.platform, %error, "failed to insert report");
+        "Failed to save report".to_string()
+    })?;
 
-    txn.commit()
-        .await
-        .map_err(|e| format!("commit report persist for {}: {e}", report.platform))?;
+    txn.commit().await.map_err(|error| {
+        tracing::error!(platform = %report.platform, %error, "failed to commit report persist");
+        "Failed to save report".to_string()
+    })?;
+
 
     tracing::info!("✅ Saved platform report for {}", report.platform);
     Ok(())
