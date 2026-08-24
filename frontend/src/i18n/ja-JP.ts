@@ -90,11 +90,11 @@ export const jaJP: TranslationKeys = {
     welcome: 'おかえりなさい',
   },
 
-  companion: {
+  merope: {
     title: 'ビジュアル',
     statusBarTitle: 'ビジュアル',
     statusLoading: '読み込み中…',
-    statusDisabled: 'このサイトでは Agent ライフが無効です',
+    statusDisabled: 'このサイトでは Agent ペルソナが無効です',
     statusNeedLogin: 'ログインして Arael を表示',
     statusCreateHint: '設定でペルソナを完成させてください',
     statusContinueHint: '設定が未完了です。設定から続けてください',
@@ -119,8 +119,8 @@ export const jaJP: TranslationKeys = {
     doNotDisturb: 'おやすみモード',
     showThought: '考えを表示',
     collapsedByDefault: '初期状態で折りたたむ',
-    deleteCompanion: 'パートナーを削除',
-    deleteConfirm: 'このパートナーと会話・記憶を完全に削除しますか？',
+    deletePersona: 'ペルソナを削除',
+    deleteConfirm: '今のペルソナと会話・記憶を完全に削除しますか？',
     loadFailed: 'ビジュアルを読み込めませんでした',
     sendFailed: 'メッセージを送信できませんでした',
     psdNeedAsset: '現在のメイン立ち絵にアセット ID がありません。',
@@ -339,7 +339,7 @@ export const jaJP: TranslationKeys = {
     adminDescription:
       'サイト全体で一つのビジュアルです。立ち絵、リグ、表情とポーズの順。',
     faceOpen: 'ビジュアル設定を開く',
-    adminEnabled: 'Agent ライフを有効化',
+    adminEnabled: 'Agent ペルソナを有効化',
     adminWorker: '自律 Worker を有効化',
     adminInterval: 'Worker スキャン間隔（15〜3600秒）',
     personaLabelTemperament: '気質',
@@ -688,7 +688,7 @@ export const jaJP: TranslationKeys = {
         'インポートすると現在の訪問統計（ページ / イベント / 参照元 / 訪問者ハッシュ）がすべて【置き換え】られます。このインスタンスで署名されたバックアップのみ受け入れます。続行しますか？',
       aiUsageTitle: 'AI 使用統計',
       aiUsageDesc:
-        'サイト全体の AI 呼び出し（管理者・オーナーを含む）をユーザー・モデル・出典・日付で集計。テキスト・画像・音声を記録し、Tapp、定期タスク、Arael、レポート、デジタルライフ、プレイグラウンドなどを含む。ユーザー／モデルで絞り込み可。棒＝回数（左軸）、線＝トークン（右軸・独立スケール）。',
+        'サイト全体の AI 呼び出し（管理者・オーナーを含む）をユーザー・モデル・出典・日付で集計。テキスト・画像・音声を記録し、Tapp、定期タスク、Arael、レポート、Agent ペルソナ、プレイグラウンドなどを含む。ユーザー／モデルで絞り込み可。棒＝回数（左軸）、線＝トークン（右軸・独立スケール）。',
       aiUsageLoadFailed: 'AI 使用統計の読み込みに失敗しました',
       aiUsageEmpty: '選択期間に AI 呼び出しはありません',
       aiUsageEmptyUsers: '選択期間にユーザー別の使用量はありません',
@@ -709,7 +709,7 @@ export const jaJP: TranslationKeys = {
       aiUsageByModel: 'モデル別',
       aiUsageBySource: '出典別',
       aiUsageBySourceDesc:
-        'Tapp、定期タスク、Arael、レポート、デジタルライフ、音声、プレイグラウンドなどを分けて表示。訪問統計と違い、管理者の呼び出しも集計します。',
+        'Tapp、定期タスク、Arael、レポート、Agent ペルソナ、音声、プレイグラウンドなどを分けて表示。訪問統計と違い、管理者の呼び出しも集計します。',
       aiUsageColUser: 'ユーザー',
       aiUsageColModel: 'モデル',
       aiUsageColSource: '出典',
@@ -723,7 +723,7 @@ export const jaJP: TranslationKeys = {
       aiUsageSourceAgent: 'Arael',
       aiUsageSourceReports: 'レポート生成',
       aiUsageSourceRuntime: 'Tapp / ランタイム',
-      aiUsageSourceLife: 'デジタルライフ',
+      aiUsageSourcePersona: 'Agent ペルソナ',
       aiUsageSourcePlayground: 'Tapp プレイグラウンド',
       aiUsageSourceSpeech: '音声',
       aiUsageSourceBrewlia: 'Brewlia',
@@ -1590,25 +1590,25 @@ export const jaJP: TranslationKeys = {
     memorySaver: 'メモリ節約',
     memorySaverHint:
       '均衡プロファイルからもう一段締めます。転送チャンク同時量、プロセス内キャッシュ、DB プール、パスワードハッシュ同時数、動画／音声のピークを下げます。日常のメッセージは使えます。大きなメディアは分割転送を、ロスレス音声は節約オフを検討。MYRIAD_MEMORY_PROFILE で上書き可。DB プールは再起動後に完全適用。',
-    agentLife: 'Agent の生命',
-    agentLifeHint:
+    agentPersona: 'Agent ペルソナ',
+    agentPersonaHint:
       'オンにすると Arael はサイトの設定で話し、相手ごとの気持ちと日記を残し、名簿上の出来事で自分から口を開きます。オフなら会話と用事だけです。',
-    agentLifeNeedsLite:
+    agentPersonaNeedsLite:
       'Lite がオフです。会話の口は標準モデルに戻ります。自分から話す文は短く、気持ちの微調整は走りません。',
-    agentLifeNeedsPro:
+    agentPersonaNeedsPro:
       '先に上の Pro モデルを有効にしてください。設定案内には Pro が必要です。',
-    agentLifeNeedsLiteAndPro:
+    agentPersonaNeedsLiteAndPro:
       '先に上の Pro モデルを有効にしてください。',
-    agentLifeMood: '気分',
-    agentLifeActivity: '様子',
-    agentLifeEmpty: '姿はまだありません',
-    agentLifeEmptyLead:
-      'タグから人設、衣装スタイル、デザイン稿、立ち絵まで進めます。終わるとここに立ち絵、性格の要約、いまの気分が残ります。',
-    agentLifeNeedsReports:
-      '人設を作るにはプラットフォーム報告が {need} 件以上必要です。今は {count} 件です。',
-    agentLifeDelete: '人設を削除',
-    agentLifeDeleteConfirm: '今の人設を削除しますか？気分と日記も消えます。',
-    agentLifeDeleteFailed: '人設を削除できませんでした',
+    agentPersonaMood: '気分',
+    agentPersonaActivity: '様子',
+    agentPersonaEmpty: '姿はまだありません',
+    agentPersonaEmptyLead:
+      'タグからペルソナ、衣装スタイル、デザイン稿、立ち絵まで進めます。終わるとここに立ち絵、性格の要約、いまの気分が残ります。',
+    agentPersonaNeedsReports:
+      'ペルソナを作るにはプラットフォーム報告が {need} 件以上必要です。今は {count} 件です。',
+    agentPersonaDelete: 'ペルソナを削除',
+    agentPersonaDeleteConfirm: '今のペルソナを削除しますか？気分と日記も消えます。',
+    agentPersonaDeleteFailed: 'ペルソナを削除できませんでした',
     enableProxy: 'ネットワークプロキシを有効化',
     enableProxyHint:
       '有効にすると、外部APIリクエストはプロキシ経由で送信されます',
@@ -2474,7 +2474,7 @@ export const jaJP: TranslationKeys = {
     title: 'データレポート',
   },
 
-  life: {
+  agentPersona: {
     onboarding: {
       openPage: '設定ガイドを開く',
       editPage: '設定を変更',
@@ -2498,16 +2498,16 @@ export const jaJP: TranslationKeys = {
       optional: '任意',
       step1Short: 'タグ',
       step2Short: '名前',
-      step3Short: '人設',
+      step3Short: 'ペルソナ',
       step4Short: '外観',
       step5Short: '立ち絵',
       step1Title: '特徴タグ',
       step1Lead: '',
       step2Title: '名前',
       step2Lead: '',
-      step3Title: '人設',
+      step3Title: 'ペルソナ',
       step3Lead: '',
-      step3LeadPending: '人設を生成しています',
+      step3LeadPending: 'ペルソナを生成しています',
       step4Title: '外観',
       step4Lead: '',
       step5Title: '立ち絵',
@@ -2578,7 +2578,7 @@ export const jaJP: TranslationKeys = {
       personaGroupCharacter: '性格と社交',
       regeneratePersona: '別のセット',
       regeneratingPersona: '生成中',
-      regeneratePersonaFailed: '人設の再生成に失敗しました。再試行してください。',
+      regeneratePersonaFailed: 'ペルソナの再生成に失敗しました。再試行してください。',
       personaFieldGenerating: '生成中',
       personaDraftLabel: '下書き',
       editPersona: '編集',
@@ -4769,7 +4769,7 @@ export const jaJP: TranslationKeys = {
     personaReset: 'Arael に戻す',
     personaOwnerOnly: '設定を変えられるのはサイトオーナーだけです。',
     personaDoNotDisturb: '先に話しかけないで',
-    personaLifeOff: '先に AI 設定で Agent の生命をオンにしてください。',
+    agentPersonaOff: '先に AI 設定で Agent ペルソナをオンにしてください。',
     statusNeedLogin: 'ログインすると設定を書けます',
     emptyHeartbeat: 'タスクはありません',
     emptyHeartbeatHint:

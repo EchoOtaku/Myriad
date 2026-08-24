@@ -70,11 +70,11 @@ impl NotificationManager {
         error: &str,
     ) {
         let summary = format!("{source_name} feed failed repeatedly");
-        crate::services::agent::life::spawn_ingest(user_id, "brew.source_error", &summary);
-        if !crate::services::agent::life::allow_existing_notify(user_id).await {
+        crate::services::agent::merope::spawn_ingest(user_id, "brew.source_error", &summary);
+        if !crate::services::agent::merope::allow_existing_notify(user_id).await {
             return;
         }
-        // Exactly one click target: with life on the addressee lands in the
+        // Exactly one click target: with Merope on the addressee lands in the
         // conversation, otherwise the old deep link stands. Carrying both would
         // leave `route` dead, since the panel resolves `action` first.
         let mut metadata = serde_json::json!({
@@ -83,10 +83,10 @@ impl NotificationManager {
             "source_name": source_name,
             "status": "failed",
         });
-        if crate::services::agent::life::life_enabled().await {
+        if crate::services::agent::merope::is_enabled().await {
             metadata["action"] = serde_json::json!("open_arael");
             metadata["session_id"] = serde_json::json!(
-                crate::services::agent::life::ingest::latest_session_id_for(user_id).await
+                crate::services::agent::merope::ingest::latest_session_id_for(user_id).await
             );
         } else {
             metadata["route"] = serde_json::json!("/brew");
@@ -104,8 +104,8 @@ impl NotificationManager {
 
     pub async fn notify_platform_sync_error(&self, user_id: i32, platform: &str, error: &str) {
         let summary = format!("{platform} auto-refresh failed");
-        crate::services::agent::life::spawn_ingest(user_id, "platform.sync.failed", &summary);
-        if !crate::services::agent::life::allow_existing_notify(user_id).await {
+        crate::services::agent::merope::spawn_ingest(user_id, "platform.sync.failed", &summary);
+        if !crate::services::agent::merope::allow_existing_notify(user_id).await {
             return;
         }
         let mut metadata = serde_json::json!({
@@ -113,10 +113,10 @@ impl NotificationManager {
             "platform": platform,
             "status": "failed",
         });
-        if crate::services::agent::life::life_enabled().await {
+        if crate::services::agent::merope::is_enabled().await {
             metadata["action"] = serde_json::json!("open_arael");
             metadata["session_id"] = serde_json::json!(
-                crate::services::agent::life::ingest::latest_session_id_for(user_id).await
+                crate::services::agent::merope::ingest::latest_session_id_for(user_id).await
             );
         } else {
             metadata["route"] = serde_json::json!("/config?section=platforms");

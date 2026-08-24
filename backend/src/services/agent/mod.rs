@@ -13,7 +13,7 @@ pub mod external_pure;
 pub mod heartbeat;
 pub mod identity;
 pub mod intent;
-pub mod life;
+pub mod merope;
 pub mod mcp;
 pub mod memory;
 pub mod notification_preferences;

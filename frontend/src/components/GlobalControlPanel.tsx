@@ -42,9 +42,9 @@ import {
   shouldDeliverNotification,
 } from '../services/notificationDelivery'
 import {
-  dispatchCompanionLifeState,
-  dispatchCompanionPerformance,
-} from '../features/digital-life-companion/performanceEvents'
+  dispatchMeropeState,
+  dispatchMeropePerformance,
+} from '../features/merope/performanceEvents'
 import {
   getGreeting,
   getRandomQuote,
@@ -274,8 +274,8 @@ const GlobalControlPanel: React.FC = () => {
   const handleNewNotification = useCallback(
     (n: AppNotification) => {
       if (n.metadata?.performance) {
-        dispatchCompanionLifeState(n.metadata.life_state)
-        dispatchCompanionPerformance({
+        dispatchMeropeState(n.metadata.merope_state)
+        dispatchMeropePerformance({
           text: n.body,
           source: 'proactive',
           messageId: n.id,

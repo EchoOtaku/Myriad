@@ -90,11 +90,11 @@ export const enUS: TranslationKeys = {
     welcome: 'Welcome back',
   },
 
-  companion: {
+  merope: {
     title: 'Face',
     statusBarTitle: 'Face',
     statusLoading: 'Loading…',
-    statusDisabled: 'Agent life is turned off on this site',
+    statusDisabled: 'Agent persona is turned off on this site',
     statusNeedLogin: 'Sign in to see Arael',
     statusCreateHint: 'Finish persona setup in settings',
     statusContinueHint: 'Setup incomplete — continue in settings',
@@ -119,9 +119,9 @@ export const enUS: TranslationKeys = {
     doNotDisturb: 'Do not disturb',
     showThought: 'Show thoughts',
     collapsedByDefault: 'Collapsed by default',
-    deleteCompanion: 'Delete companion',
+    deletePersona: 'Delete persona',
     deleteConfirm:
-      'Permanently delete this companion, its conversations, and memories?',
+      'Permanently delete this persona, its conversations, and memories?',
     loadFailed: 'Could not load the site face',
     sendFailed: 'Could not send message',
     psdNeedAsset: 'The current master portrait is missing an asset id.',
@@ -341,7 +341,7 @@ export const enUS: TranslationKeys = {
     adminDescription:
       'One site-wide face. Portrait first, then the rig, then expression and pose.',
     faceOpen: 'Open face settings',
-    adminEnabled: 'Enable Agent life',
+    adminEnabled: 'Enable Agent persona',
     adminWorker: 'Enable autonomy worker',
     adminInterval: 'Worker scan interval (15–3600 seconds)',
     personaLabelTemperament: 'Temperament',
@@ -699,7 +699,7 @@ export const enUS: TranslationKeys = {
         'Import will REPLACE all current visitor stats (pages, events, referrers, visitor hashes). Only backups signed by this instance are accepted. Continue?',
       aiUsageTitle: 'AI usage stats',
       aiUsageDesc:
-        'Full-site AI calls (including admins and the site owner) by user, model, source, and day. Text, image, and speech are recorded — Tapp, scheduled jobs, Arael, reports, digital life, playground, and more. Filter by user or model; bars are calls (left axis), the line is tokens (right axis, independent scale).',
+        'Full-site AI calls (including admins and the site owner) by user, model, source, and day. Text, image, and speech are recorded — Tapp, scheduled jobs, Arael, reports, Agent persona, playground, and more. Filter by user or model; bars are calls (left axis), the line is tokens (right axis, independent scale).',
       aiUsageLoadFailed: 'Failed to load AI usage stats',
       aiUsageEmpty: 'No AI calls in the selected range',
       aiUsageEmptyUsers: 'No per-user usage in the selected range',
@@ -720,7 +720,7 @@ export const enUS: TranslationKeys = {
       aiUsageByModel: 'By model',
       aiUsageBySource: 'By source',
       aiUsageBySourceDesc:
-        'Splits Tapp, scheduled jobs, Arael, reports, digital life, speech, playground, and other paths. Unlike visitor stats, admin calls are counted.',
+        'Splits Tapp, scheduled jobs, Arael, reports, Agent persona, speech, playground, and other paths. Unlike visitor stats, admin calls are counted.',
       aiUsageColUser: 'User',
       aiUsageColModel: 'Model',
       aiUsageColSource: 'Source',
@@ -734,7 +734,7 @@ export const enUS: TranslationKeys = {
       aiUsageSourceAgent: 'Arael',
       aiUsageSourceReports: 'Report generation',
       aiUsageSourceRuntime: 'Tapp / runtime',
-      aiUsageSourceLife: 'Digital life',
+      aiUsageSourcePersona: 'Agent persona',
       aiUsageSourcePlayground: 'Tapp playground',
       aiUsageSourceSpeech: 'Speech',
       aiUsageSourceBrewlia: 'Brewlia',
@@ -1612,26 +1612,26 @@ export const enUS: TranslationKeys = {
     memorySaver: 'Memory saver',
     memorySaverHint:
       'A second notch below the bounded default: smaller chunk inflight, process caches, DB pool, password-hash concurrency, and video/audio peaks. Everyday messages still fit; large media should use chunked transfer, and lossless audio may reject sooner. Env MYRIAD_MEMORY_PROFILE can override. DB pool fully applies after backend restart.',
-    agentLife: 'Agent life',
-    agentLifeHint:
+    agentPersona: 'Agent persona',
+    agentPersonaHint:
       'When on, Arael speaks with the site persona, keeps per-person mood and diary, and may speak after named events. When off, it only chats and does tasks.',
-    agentLifeNeedsLite:
+    agentPersonaNeedsLite:
       'Lite is off: chat replies fall back to Standard. Proactive lines stay short and mood hints stay off.',
-    agentLifeNeedsPro:
+    agentPersonaNeedsPro:
       'Enable the Pro tier above first — persona setup requires Pro.',
-    agentLifeNeedsLiteAndPro:
+    agentPersonaNeedsLiteAndPro:
       'Enable the Pro tier above first.',
-    agentLifeMood: 'Mood',
-    agentLifeActivity: 'Activity',
-    agentLifeEmpty: 'No companion yet',
-    agentLifeEmptyLead:
+    agentPersonaMood: 'Mood',
+    agentPersonaActivity: 'Activity',
+    agentPersonaEmpty: 'No persona yet',
+    agentPersonaEmptyLead:
       'Go from tags to persona, pick an outfit style, then generate the portrait. This card will keep the portrait, a short summary, and current mood.',
-    agentLifeNeedsReports:
+    agentPersonaNeedsReports:
       'Generate a persona after at least {need} platform reports. You have {count}.',
-    agentLifeDelete: 'Delete persona',
-    agentLifeDeleteConfirm:
+    agentPersonaDelete: 'Delete persona',
+    agentPersonaDeleteConfirm:
       'Delete the current persona? Mood and diary will be cleared too.',
-    agentLifeDeleteFailed: 'Could not delete the persona',
+    agentPersonaDeleteFailed: 'Could not delete the persona',
     enableProxy: 'Enable Network Proxy',
     enableProxyHint:
       'External API requests will be sent through the proxy when enabled',
@@ -2502,7 +2502,7 @@ export const enUS: TranslationKeys = {
     title: 'Data Reports',
   },
 
-  life: {
+  agentPersona: {
     onboarding: {
       openPage: 'Open persona setup',
       editPage: 'Edit persona',
@@ -4785,7 +4785,7 @@ export const enUS: TranslationKeys = {
     personaReset: 'Back to Arael',
     personaOwnerOnly: 'Only the site owner can change the persona.',
     personaDoNotDisturb: 'Don’t reach out first',
-    personaLifeOff: 'Turn on Agent life in AI settings first.',
+    agentPersonaOff: 'Turn on Agent persona in AI settings first.',
     statusNeedLogin: 'Sign in to write the persona and hear your own events',
     emptyHeartbeat: 'No scheduled tasks',
     emptyHeartbeatHint:

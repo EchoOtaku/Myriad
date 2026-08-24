@@ -67,7 +67,7 @@ describe('aiUsageMap', () => {
       agent: 'Arael',
       reports: 'Reports',
       runtime: 'Tapp / runtime',
-      life: 'Digital life',
+      merope: 'Agent persona',
       playground: 'Playground',
       speech: 'Speech',
       brewlia: 'Brewlia',
@@ -76,7 +76,7 @@ describe('aiUsageMap', () => {
       internal: 'Internal',
       other: 'Other',
     }
-    assert.equal(aiSourceDisplayName('life', labels), 'Digital life')
+    assert.equal(aiSourceDisplayName('merope', labels), 'Agent persona')
     assert.equal(aiSourceDisplayName('playground', labels), 'Playground')
     assert.equal(aiSourceDisplayName('speech', labels), 'Speech')
     assert.equal(aiSourceDisplayName('internal', labels), 'Internal')

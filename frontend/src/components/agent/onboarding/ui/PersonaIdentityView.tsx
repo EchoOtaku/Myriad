@@ -75,18 +75,18 @@ export default function PersonaIdentityView({
   }
 
   return (
-    <div className="life-ob-persona-groups">
-      <section className="life-ob-persona-group" aria-label={groupLabel}>
-        <dl className="life-ob-persona-view">
+    <div className="merope-ob-persona-groups">
+      <section className="merope-ob-persona-group" aria-label={groupLabel}>
+        <dl className="merope-ob-persona-view">
           {rows.map((row) => {
             const isEditing = editingField === row.key
             return (
               <div
                 key={row.key}
-                className={`life-ob-persona-view__row${isEditing ? ' is-editing' : ''}`}
+                className={`merope-ob-persona-view__row${isEditing ? ' is-editing' : ''}`}
               >
                 {isEditing ? (
-                  <div className="life-ob-persona-view__editor">
+                  <div className="merope-ob-persona-view__editor">
                     <dt>{labels[row.key]}</dt>
                     <TextArea
                       rows={row.areaRows}
@@ -107,10 +107,10 @@ export default function PersonaIdentityView({
                         }
                       }}
                     />
-                    <div className="life-ob-persona-view__actions">
+                    <div className="merope-ob-persona-view__actions">
                       <button
                         type="button"
-                        className="life-ob-persona-view__action is-cancel"
+                        className="merope-ob-persona-view__action is-cancel"
                         disabled={busy}
                         title={cancelLabel}
                         aria-label={cancelLabel}
@@ -120,7 +120,7 @@ export default function PersonaIdentityView({
                       </button>
                       <button
                         type="button"
-                        className="life-ob-persona-view__action is-save"
+                        className="merope-ob-persona-view__action is-save"
                         disabled={busy}
                         title={saveLabel}
                         aria-label={saveLabel}
@@ -132,13 +132,13 @@ export default function PersonaIdentityView({
                   </div>
                 ) : (
                   <>
-                    <div className="life-ob-persona-view__copy">
+                    <div className="merope-ob-persona-view__copy">
                       <dt>{labels[row.key]}</dt>
                       <dd>{displayValue(persona, row.key)}</dd>
                     </div>
                     <button
                       type="button"
-                      className="life-ob-persona-view__edit"
+                      className="merope-ob-persona-view__edit"
                       disabled={busy}
                       title={editLabel}
                       aria-label={`${editLabel} · ${labels[row.key]}`}

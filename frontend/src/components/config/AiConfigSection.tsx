@@ -28,11 +28,11 @@ import {
   ADDRESSEE_UPDATED_EVENT,
   activityKey,
   moodBand,
-} from '../agent/lifeVitals'
+} from '../agent/meropeVitals'
 import {
   FACE_UPDATED_EVENT,
-} from '../../features/digital-life-companion/events'
-import SiteMotionWorkbench from '../../features/digital-life-companion/SiteMotionWorkbench'
+} from '../../features/merope/events'
+import SiteMotionWorkbench from '../../features/merope/SiteMotionWorkbench'
 import PersonaOnboardingPage from '../agent/onboarding/PersonaOnboardingPage'
 import { parseFlattenedPersona } from '../agent/onboarding/onboardingTypes'
 import {
@@ -102,7 +102,7 @@ interface AiConfigSectionProps {
   configFields: ConfigField[]
   /** 更新配置字段值 */
   updateValue: (key: string, value: string) => void
-  /** ui bag：Agent 生命总开关存在这里，控件挂在 Lite / Pro 旁边 */
+  /** ui bag：Agent 人设总开关存在这里，控件挂在 Lite / Pro 旁边 */
   uiConfigFields: Array<{ key: string; value: string }>
   updateUiFieldValue: (key: string, value: string) => void
   /** 语音测试回调 */
@@ -352,9 +352,9 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     return val === 'true' || val === '1'
   }, [getFieldValue])
 
-  const agentLifeEnabled = useMemo(
+  const agentPersonaEnabled = useMemo(
     () =>
-      uiConfigFields.find((field) => field.key === 'agent_life_enabled')
+      uiConfigFields.find((field) => field.key === 'merope_enabled')
         ?.value === 'true',
     [uiConfigFields],
   )
@@ -665,10 +665,10 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
     }
   }, [onSpeechTest, t.config.speechTestFailed])
 
-  const o = t.life.onboarding
+  const o = t.agentPersona.onboarding
   const paneKey = aiSubpage ?? 'ai'
-  const personaGuide = bindGuide('ai.agentLife', g.ai.agentLife)
-  const lifeOn = agentLifeEnabled && proEnabled
+  const personaGuide = bindGuide('ai.agentPersona', g.ai.agentPersona)
+  const meropeOn = agentPersonaEnabled && proEnabled
   const [savedPersonaName, setSavedPersonaName] = useState('')
   const [hasSavedPersona, setHasSavedPersona] = useState(false)
   const [mood, setMood] = useState(70)
@@ -689,15 +689,15 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       window.dispatchEvent(new CustomEvent('arael-persona-updated'))
     } catch (error) {
       setPersonaError(
-        userFacingError(error, t.config.agentLifeDeleteFailed),
+        userFacingError(error, t.config.agentPersonaDeleteFailed),
       )
     } finally {
       setPersonaBusy(false)
     }
-  }, [t.config.agentLifeDeleteFailed])
+  }, [t.config.agentPersonaDeleteFailed])
 
   useEffect(() => {
-    if (!lifeOn) {
+    if (!meropeOn) {
       setSavedPersonaName('')
       setHasSavedPersona(false)
       setMood(70)
@@ -756,22 +756,22 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       window.removeEventListener(FACE_UPDATED_EVENT, load)
       window.removeEventListener(ADDRESSEE_UPDATED_EVENT, load)
     }
-  }, [lifeOn])
+  }, [meropeOn])
   const personaGateLead = !proEnabled
-    ? t.config.agentLifeNeedsPro
-    : lifeOn && !liteEnabled
-      ? t.config.agentLifeNeedsLite
-      : t.config.agentLifeHint
+    ? t.config.agentPersonaNeedsPro
+    : meropeOn && !liteEnabled
+      ? t.config.agentPersonaNeedsLite
+      : t.config.agentPersonaHint
 
   const personaCardCopy = useMemo(() => {
-    if (!lifeOn || !hasSavedPersona) return null
+    if (!meropeOn || !hasSavedPersona) return null
     const summary = parseFlattenedPersona(personality).summary.replace(/\s+/g, ' ').trim()
     return {
       summary,
       mood: vitalsReady ? o.mood[moodBand(mood)] : '—',
       activity: vitalsReady ? o.activity[activityKey(activity)] : '—',
     }
-  }, [activity, hasSavedPersona, lifeOn, mood, o, personality, vitalsReady])
+  }, [activity, hasSavedPersona, meropeOn, mood, o, personality, vitalsReady])
 
   return (
     <SettingSection
@@ -781,7 +781,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         personaPage
           ? (personaChrome?.title ?? o.step1Title)
           : facePage
-            ? t.companion.adminTitle
+            ? t.merope.adminTitle
             : title
       }
       icon={subpageOpen ? undefined : icon}
@@ -789,14 +789,14 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
         personaPage
           ? (personaChrome?.description ?? o.step1Lead)
           : facePage
-            ? t.companion.adminDescription
+            ? t.merope.adminDescription
             : description
       }
       detail={
         personaPage
           ? (personaChrome?.description ?? o.step1Lead)
           : facePage
-            ? t.companion.adminDescription
+            ? t.merope.adminDescription
             : undefined
       }
       detailTone={personaPage ? personaChrome?.detailTone : undefined}
@@ -854,7 +854,7 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             <PersonaOnboardingPage
               onBack={closeAiSubpage}
               onChromeChange={setPersonaChrome}
-              lifeOn={lifeOn}
+              meropeOn={meropeOn}
               gateLead={personaGateLead}
             />
           ) : facePage ? (
@@ -976,36 +976,36 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
       </SettingGroup>
 
       <SettingGroup
-        title={t.config.agentLife}
+        title={t.config.agentPersona}
         icon={<LuSparkles />}
         description={personaGateLead}
-        {...bindGuide('ai.agentLife', g.ai.agentLife)}
+        {...bindGuide('ai.agentPersona', g.ai.agentPersona)}
         switch={{
-          checked: lifeOn,
+          checked: meropeOn,
           onChange: (value) =>
-            updateUiFieldValue('agent_life_enabled', value ? 'true' : 'false'),
+            updateUiFieldValue('merope_enabled', value ? 'true' : 'false'),
           disabled: !proEnabled,
-          ariaLabel: t.config.agentLife,
+          ariaLabel: t.config.agentPersona,
         }}
       >
-        {lifeOn ? (
+        {meropeOn ? (
           <InfoActionCard
             copyable={false}
             tone={!liteEnabled ? 'info' : 'default'}
             title={
               hasSavedPersona
                 ? savedPersonaName || 'Arael'
-                : t.config.agentLifeEmpty
+                : t.config.agentPersonaEmpty
             }
             preview={
               portraitUrl && hasSavedPersona ? (
                 <img src={portraitUrl} alt={savedPersonaName || 'Arael'} />
               ) : (
                 <span className="info-action-card-preview-empty is-mosaic">
-                  <img src="/life/clothing/everyday.png" alt="" />
-                  <img src="/life/clothing/fantasy.png" alt="" />
-                  <img src="/life/clothing/japanese.png" alt="" />
-                  <img src="/life/clothing/sci-fi.png" alt="" />
+                  <img src="/merope/clothing/everyday.png" alt="" />
+                  <img src="/merope/clothing/fantasy.png" alt="" />
+                  <img src="/merope/clothing/japanese.png" alt="" />
+                  <img src="/merope/clothing/sci-fi.png" alt="" />
                 </span>
               )
             }
@@ -1014,17 +1014,17 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
                 ? [
                     {
                       key: 'face',
-                      label: t.companion.faceOpen,
+                      label: t.merope.faceOpen,
                       onClick: () => openAiSubpage('face'),
                     },
                     {
                       key: 'delete',
-                      label: t.config.agentLifeDelete,
+                      label: t.config.agentPersonaDelete,
                       onClick: () => void handleDeletePersona(),
                       disabled: personaBusy,
                       loading: personaBusy,
                       variant: 'danger' as const,
-                      confirm: t.config.agentLifeDeleteConfirm,
+                      confirm: t.config.agentPersonaDeleteConfirm,
                     },
                   ]
                 : reportCount >= 3
@@ -1056,10 +1056,10 @@ export const AiConfigSection: React.FC<AiConfigSectionProps> = ({
             ) : (
               <p className="info-action-card-lede">
                 {reportCount < 3
-                  ? t.config.agentLifeNeedsReports
+                  ? t.config.agentPersonaNeedsReports
                       .replace('{count}', String(reportCount))
                       .replace('{need}', '3')
-                  : t.config.agentLifeEmptyLead}
+                  : t.config.agentPersonaEmptyLead}
               </p>
             )}
           </InfoActionCard>

@@ -42,9 +42,10 @@ as no-ops after their structure was folded into the base schema:
 The same immutable history includes older/local names:
 
 - `008_tapp_runtime_registry`, `009_activity_events`
-- digital_life experiment (local/dev only — **never rolled to production**):
-  `007_digital_life`, `008_digital_life_phase_two`, `009_digital_life_phase_three`,
-  `010_digital_life_phase_four`, `011_digital_life_asset_subjects`
+- `007_digital_life` / `008_digital_life_phase_two` / `009_digital_life_phase_three` /
+  `010_digital_life_phase_four` / `011_digital_life_asset_subjects`：本地实验名，表已并入
+  `004` 的 `agent_persona` / `agent_addressee_state` / `agent_diary` /
+  `agent_proactive_messages`。这些 version 名只作 SeaORM 历史 no-op，不再建表。
 
 Startup never deletes rows from `seaql_migrations` and never drops retired feature
 tables. Any data cleanup is an explicit, reviewed operator migration with its own

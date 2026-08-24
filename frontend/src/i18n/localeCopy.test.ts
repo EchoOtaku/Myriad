@@ -11,7 +11,7 @@ describe('currentCopy', () => {
     assert.equal(typeof copy.brew.loadSourcesFailed, 'string')
     assert.equal(typeof copy.errors.setupCheckFailed, 'string')
     assert.ok(copy.tapp.storeAppNotFound.includes('{id}'))
-    assert.ok(copy.companion.anime25dPartCount.includes('{max}'))
+    assert.ok(copy.merope.anime25dPartCount.includes('{max}'))
     assert.ok(copy.errors.rateLimitedRetry.includes('{sec}'))
     assert.ok(copy.brew.webSearch.length > 0)
     assert.ok(copy.errors.serverError.includes('{status}'))

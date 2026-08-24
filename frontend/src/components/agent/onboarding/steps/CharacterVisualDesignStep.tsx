@@ -1,6 +1,6 @@
 import type {
   ClothingStyle,
-  LifeGender,
+  PersonaGender,
   OnboardingHeaderChrome,
   UpperBodyVisualIdentity,
   UpperBodyVisualIdentityKey,
@@ -23,7 +23,7 @@ type VisualPhase = 'setup' | 'draft'
 
 interface Props {
   identity: UpperBodyVisualIdentity | null
-  gender: LifeGender | null
+  gender: PersonaGender | null
   language: string
   clothingStyle: ClothingStyle | null
   requirements: string
@@ -51,7 +51,7 @@ export default function CharacterVisualDesignStep({
   onConfirm,
 }: Props) {
   const { t } = useI18n()
-  const o = t.life.onboarding
+  const o = t.agentPersona.onboarding
   const [phase, setPhase] = useState<VisualPhase>(() =>
     identity ? 'draft' : 'setup',
   )
@@ -207,13 +207,13 @@ export default function CharacterVisualDesignStep({
   ])
 
   return (
-    <section className="life-ob-visual" aria-label={o.step4Title}>
+    <section className="merope-ob-visual" aria-label={o.step4Title}>
       <StepBody>
         {phase === 'setup' ? (
           <>
             <FieldGroup label={o.clothingStyleLabel}>
               <div
-                className="life-ob-styles"
+                className="merope-ob-styles"
                 role="radiogroup"
                 aria-label={o.clothingStyleLabel}
               >
@@ -225,7 +225,7 @@ export default function CharacterVisualDesignStep({
                       type="button"
                       role="radio"
                       aria-checked={selected}
-                      className={`life-ob-styles__card${selected ? ' is-on' : ''}`}
+                      className={`merope-ob-styles__card${selected ? ' is-on' : ''}`}
                       disabled={blocked}
                       onClick={() => pickStyle(style)}
                     >
@@ -271,8 +271,8 @@ export default function CharacterVisualDesignStep({
             onEditingChange={setEditing}
           />
         ) : generating ? (
-          <div className="life-ob-visual__pending">
-            <span className="life-loading__orb" aria-hidden />
+          <div className="merope-ob-visual__pending">
+            <span className="merope-loading__orb" aria-hidden />
             <span>{o.visualDesignGenerating}</span>
           </div>
         ) : null}

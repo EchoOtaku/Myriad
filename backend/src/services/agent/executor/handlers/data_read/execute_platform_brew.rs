@@ -2008,7 +2008,7 @@ async fn execute_time_info(params: &HashMap<String, Value>) -> Result<Value, Str
 }
 
 async fn execute_auth_status(ctx: &HandlerContext<'_>) -> Result<Value, String> {
-    use crate::services::agent::life::is_logged_in_addressee;
+    use crate::services::agent::merope::is_logged_in_addressee;
     use crate::services::agent::SYSTEM_USER_ID;
     use sea_orm::{ConnectionTrait, DatabaseBackend, Statement};
 

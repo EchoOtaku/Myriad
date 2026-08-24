@@ -69,7 +69,7 @@ export default function VisualIdentityView({
   }
 
   return (
-    <div className="life-ob-visual life-ob-persona-groups">
+    <div className="merope-ob-visual merope-ob-persona-groups">
       {(
         [
           [characterTitle, CHARACTER_VISUAL_KEYS],
@@ -78,20 +78,20 @@ export default function VisualIdentityView({
       ).map(([title, keys]) => (
         <section
           key={title}
-          className="life-ob-persona-group"
+          className="merope-ob-persona-group"
           aria-label={title}
         >
-          <h2 className="life-ob-persona-group__title">{title}</h2>
-          <dl className="life-ob-persona-view">
+          <h2 className="merope-ob-persona-group__title">{title}</h2>
+          <dl className="merope-ob-persona-view">
             {keys.map((key) => {
               const isEditing = editingField === key
               return (
                 <div
                   key={key}
-                  className={`life-ob-persona-view__row${isEditing ? ' is-editing' : ''}`}
+                  className={`merope-ob-persona-view__row${isEditing ? ' is-editing' : ''}`}
                 >
                   {isEditing ? (
-                    <div className="life-ob-persona-view__editor">
+                    <div className="merope-ob-persona-view__editor">
                       <dt>{labels[key]}</dt>
                       <TextArea
                         rows={4}
@@ -113,10 +113,10 @@ export default function VisualIdentityView({
                           }
                         }}
                       />
-                      <div className="life-ob-persona-view__actions">
+                      <div className="merope-ob-persona-view__actions">
                         <button
                           type="button"
-                          className="life-ob-persona-view__action is-cancel"
+                          className="merope-ob-persona-view__action is-cancel"
                           disabled={busy}
                           title={cancelLabel}
                           aria-label={cancelLabel}
@@ -126,7 +126,7 @@ export default function VisualIdentityView({
                         </button>
                         <button
                           type="button"
-                          className="life-ob-persona-view__action is-save"
+                          className="merope-ob-persona-view__action is-save"
                           disabled={busy}
                           title={saveLabel}
                           aria-label={saveLabel}
@@ -138,13 +138,13 @@ export default function VisualIdentityView({
                     </div>
                   ) : (
                     <>
-                      <div className="life-ob-persona-view__copy">
+                      <div className="merope-ob-persona-view__copy">
                         <dt>{labels[key]}</dt>
                         <dd>{visualField(identity, key)}</dd>
                       </div>
                       <button
                         type="button"
-                        className="life-ob-persona-view__edit"
+                        className="merope-ob-persona-view__edit"
                         disabled={busy}
                         title={editLabel}
                         aria-label={`${editLabel} · ${labels[key]}`}

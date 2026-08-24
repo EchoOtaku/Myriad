@@ -707,7 +707,7 @@ pub struct AgentResponse {
     pub frontend_action: Option<Value>,
     /// Lite-selected semantic performance. Driver values remain client-owned.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub performance: Option<super::life::PerformanceDirective>,
+    pub performance: Option<super::merope::PerformanceDirective>,
 }
 
 impl AgentResponse {
@@ -1663,11 +1663,11 @@ pub enum AgentProgressEvent {
     },
     /// A low-latency semantic motion plan. It may precede the final response.
     PerformancePlan {
-        performance: super::life::PerformanceDirective,
+        performance: super::merope::PerformanceDirective,
     },
-    /// Persisted per-addressee life state for stale-result rejection and UI sync.
-    LifeStateChanged {
-        mood: super::life::MoodTransition,
+    /// Persisted per-addressee Merope state for stale-result rejection and UI sync.
+    MeropeStateChanged {
+        mood: super::merope::MoodTransition,
         activity: String,
     },
     /// 错误

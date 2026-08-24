@@ -28,7 +28,7 @@ import type {
 import { ApiError, apiService } from '../api'
 import { abortSseSubscriptions, executeSSERequest } from './sseTransport'
 
-/** Keep in sync with DIGITAL_LIFE_PROXY_TIMEOUT_MS in frontend/astro.config.mjs */
+/** Keep in sync with MEROPE_PROXY_TIMEOUT_MS in frontend/astro.config.mjs */
 const PERSONA_GENERATION_TIMEOUT_MS = 15 * 60 * 1000
 
 const personaGenerationInflight = new Map<string, Promise<unknown>>()
@@ -912,7 +912,7 @@ class AgentService {
     try {
       return await apiService.get(`${this.baseUrl}/persona`)
     } catch (error) {
-      if (error instanceof ApiError && error.code === 'agent_life_disabled') {
+      if (error instanceof ApiError && error.code === 'merope_disabled') {
         return null
       }
       throw error

@@ -716,7 +716,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       raw,
     )
   ) {
-    return currentCopy().companion.visualFailed
+    return currentCopy().merope.visualFailed
   }
   if (
     code === 'GAME_CONFIG_INVALID' ||

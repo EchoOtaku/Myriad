@@ -182,7 +182,7 @@ pub async fn notify_channel_message(
     notification.id = format!("fed_ch_{}_u{}", stable_hash(channel_id), user_id);
     notification.read = false;
     manager.upsert(notification).await;
-    crate::services::agent::life::spawn_ingest(
+    crate::services::agent::merope::spawn_ingest(
         user_id,
         "federation.channel_message",
         format!("{sender_label} 发来私信：{preview}"),
@@ -227,7 +227,7 @@ pub async fn notify_room_message(
     notification.id = format!("fed_rm_{}_u{}", stable_hash(room_id), user_id);
     notification.read = false;
     manager.upsert(notification).await;
-    crate::services::agent::life::spawn_ingest(
+    crate::services::agent::merope::spawn_ingest(
         user_id,
         "federation.room_message",
         format!("{sender_label} 在群里说话：{preview}"),
@@ -257,7 +257,7 @@ pub async fn notify_new_follower(user_id: i32, actor_url: &str, actor_label: &st
     notification.id = format!("fed_follower_{}_u{}", stable_hash(actor_url), user_id);
     notification.read = false;
     manager.upsert(notification).await;
-    crate::services::agent::life::spawn_ingest(
+    crate::services::agent::merope::spawn_ingest(
         user_id,
         "federation.new_follower",
         format!("{actor_label} 关注了这个人"),

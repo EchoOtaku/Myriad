@@ -90,11 +90,11 @@ export const zhCN: TranslationKeys = {
     welcome: '欢迎回来',
   },
 
-  companion: {
+  merope: {
     title: '形象',
     statusBarTitle: '形象',
     statusLoading: '加载中…',
-    statusDisabled: '站点未开启 Agent 生命',
+    statusDisabled: '站点未开启 Agent 人设',
     statusNeedLogin: '登录后可看到 Arael',
     statusCreateHint: '先在设置里完成设定',
     statusContinueHint: '设定尚未完成，到设置里继续',
@@ -119,8 +119,8 @@ export const zhCN: TranslationKeys = {
     doNotDisturb: '勿扰模式',
     showThought: '显示想法',
     collapsedByDefault: '默认收起',
-    deleteCompanion: '删除数字伙伴',
-    deleteConfirm: '确定永久删除这个数字伙伴及其对话和记忆吗？',
+    deletePersona: '删除人设',
+    deleteConfirm: '确定永久删除现在的人设及其对话和记忆吗？',
     loadFailed: '形象加载失败',
     sendFailed: '消息发送失败',
     psdNeedAsset: '当前主立绘缺少资产标识',
@@ -322,7 +322,7 @@ export const zhCN: TranslationKeys = {
     adminTitle: 'Arael 形象',
     adminDescription: '全站一份形象。先立绘，再骨骼，再调表情和姿态。',
     faceOpen: '打开形象设置',
-    adminEnabled: '启用 Agent 生命',
+    adminEnabled: '启用 Agent 人设',
     adminWorker: '启用自主思考 Worker',
     adminInterval: 'Worker 扫描间隔（15–3600 秒）',
     personaLabelTemperament: '气质',
@@ -643,7 +643,7 @@ export const zhCN: TranslationKeys = {
         '导入将【覆盖】当前全部访客统计数据（页面 / 事件 / 来源 / 访客哈希）。仅接受本实例签名的备份。是否继续？',
       aiUsageTitle: 'AI 使用统计',
       aiUsageDesc:
-        '全站 AI 调用（含管理员与站长）：按用户、模型、来源与日期汇总。文字、图像、语音都会入账，含 Tapp、定时任务、Arael、报告、数字生命、游乐场等。可筛用户与模型；柱=调用次数（左轴），线=Token（右轴，独立刻度）。',
+        '全站 AI 调用（含管理员与站长）：按用户、模型、来源与日期汇总。文字、图像、语音都会入账，含 Tapp、定时任务、Arael、报告、Agent 人设、游乐场等。可筛用户与模型；柱=调用次数（左轴），线=Token（右轴，独立刻度）。',
       aiUsageLoadFailed: '加载 AI 使用统计失败',
       aiUsageEmpty: '所选范围内暂无 AI 调用记录',
       aiUsageEmptyUsers: '所选范围内暂无用户用量',
@@ -664,7 +664,7 @@ export const zhCN: TranslationKeys = {
       aiUsageByModel: '按模型',
       aiUsageBySource: '按来源',
       aiUsageBySourceDesc:
-        '区分 Tapp、定时任务、Arael、报告、数字生命、语音、游乐场等路径（与访客统计不同：管理员调用会计入）。',
+        '区分 Tapp、定时任务、Arael、报告、Agent 人设、语音、游乐场等路径（与访客统计不同：管理员调用会计入）。',
       aiUsageColUser: '用户',
       aiUsageColModel: '模型',
       aiUsageColSource: '来源',
@@ -678,7 +678,7 @@ export const zhCN: TranslationKeys = {
       aiUsageSourceAgent: 'Arael',
       aiUsageSourceReports: '报告生成',
       aiUsageSourceRuntime: 'Tapp / 运行时',
-      aiUsageSourceLife: '数字生命',
+      aiUsageSourcePersona: 'Agent 人设',
       aiUsageSourcePlayground: 'Tapp 游乐场',
       aiUsageSourceSpeech: '语音',
       aiUsageSourceBrewlia: 'Brewlia',
@@ -1503,22 +1503,22 @@ export const zhCN: TranslationKeys = {
     memorySaver: '内存节约',
     memorySaverHint:
       '在均衡档之上再收一档：分块并发、进程内缓存、连接池、密码哈希并发，以及视频/音频峰值。日常消息仍可用；大媒体请走分块传输，无损音频可能更早拒收。可用 MYRIAD_MEMORY_PROFILE 覆盖。连接池需重启后端后完全生效。',
-    agentLife: 'Agent 生命',
-    agentLifeHint:
+    agentPersona: 'Agent 人设',
+    agentPersonaHint:
       '打开后 Arael 会用设定说话，记住跟每个人的心情和日记，并在有名单上的事时自己开口。关上则只聊天办事。',
-    agentLifeNeedsLite:
+    agentPersonaNeedsLite:
       '没开 Lite：聊天开口会退回标准模型；主动开口仍是短句，心情微调不跑。',
-    agentLifeNeedsPro: '写设定需要先启用上面的 Pro 模型。',
-    agentLifeNeedsLiteAndPro: '需要先启用上面的 Pro 模型。',
-    agentLifeMood: '心情',
-    agentLifeActivity: '活动',
-    agentLifeEmpty: '还没有形象',
-    agentLifeEmptyLead:
+    agentPersonaNeedsPro: '写设定需要先启用上面的 Pro 模型。',
+    agentPersonaNeedsLiteAndPro: '需要先启用上面的 Pro 模型。',
+    agentPersonaMood: '心情',
+    agentPersonaActivity: '活动',
+    agentPersonaEmpty: '还没有形象',
+    agentPersonaEmptyLead:
       '从词条到人设，再选服装风格、出设计稿、生成主立绘。做完后这里会留下立绘、性格摘要和现在的心情。',
-    agentLifeNeedsReports: '至少要有 {need} 份平台报告才能生成人设。现在有 {count} 份。',
-    agentLifeDelete: '删除人设',
-    agentLifeDeleteConfirm: '确定删除现在的性格设定？心情和日记也会一起清掉。',
-    agentLifeDeleteFailed: '删除人设失败',
+    agentPersonaNeedsReports: '至少要有 {need} 份平台报告才能生成人设。现在有 {count} 份。',
+    agentPersonaDelete: '删除人设',
+    agentPersonaDeleteConfirm: '确定删除现在的性格设定？心情和日记也会一起清掉。',
+    agentPersonaDeleteFailed: '删除人设失败',
     enableProxy: '启用网络代理',
     enableProxyHint: '开启后将使用代理访问外部API',
     proxyUrl: '代理地址',
@@ -2348,7 +2348,7 @@ export const zhCN: TranslationKeys = {
     title: '数据报告',
   },
 
-  life: {
+  agentPersona: {
     onboarding: {
       openPage: '打开设定引导',
       editPage: '修改设定',
@@ -4562,7 +4562,7 @@ export const zhCN: TranslationKeys = {
     personaReset: '回到 Arael',
     personaOwnerOnly: '只有站长能改设定。',
     personaDoNotDisturb: '先别主动找我',
-    personaLifeOff: '先在 AI 设置里打开 Agent 生命。',
+    agentPersonaOff: '先在 AI 设置里打开 Agent 人设。',
     statusNeedLogin: '登录后才能写设定、听自己的事',
     emptyHeartbeat: '暂无定时任务',
     emptyHeartbeatHint: '让 Arael 按计划自动执行指令，例如每日摘要或定期检查。',

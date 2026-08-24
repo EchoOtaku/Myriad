@@ -320,16 +320,16 @@ async fn run_server() -> anyhow::Result<()> {
                         services::memory_profile::apply_from_saver_flag(
                             dynamic_config.memory_saver_enabled,
                         );
-                        if dynamic_config.agent_life_needs_lite() {
+                        if dynamic_config.merope_needs_lite() {
                             tracing::warn!(
-                                "⚠️  Agent life is on without Lite; proactive speech uses a short \
+                                "⚠️  Merope is on without Lite; proactive speech uses a short \
                                  fallback and mood hints stay off (no Standard spend)"
                             );
                         }
-                        if dynamic_config.agent_life_needs_pro() {
+                        if dynamic_config.merope_needs_pro() {
                             tracing::warn!(
-                                "⚠️  Agent life is switched on but the Pro model is not enabled; \
-                                 life stays off so onboarding and gated calls do not fall back \
+                                "⚠️  Merope is switched on but the Pro model is not enabled; \
+                                 it stays off so onboarding and gated calls do not fall back \
                                  to the standard model"
                             );
                         }

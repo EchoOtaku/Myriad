@@ -183,19 +183,19 @@ async fn ai_announce_plan(
     user_id: i32,
     progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
 ) -> Option<String> {
-    let analyzer = crate::services::agent::life::create_speaking_analyzer().await?;
+    let analyzer = crate::services::agent::merope::create_speaking_analyzer().await?;
 
     let soul = crate::services::agent::identity::get_speaking_soul()
         .await
         .unwrap_or_default();
     let soul: String = soul.chars().take(2000).collect();
-    let life = crate::services::agent::life::speaking_prompt_plain(
-        &crate::services::agent::life::speaking_prompt(user_id).await,
+    let merope_prompt = crate::services::agent::merope::speaking_prompt_plain(
+        &crate::services::agent::merope::speaking_prompt(user_id).await,
     );
-    let life_prefix = if life.is_empty() {
+    let merope_prefix = if merope_prompt.is_empty() {
         String::new()
     } else {
-        format!("{life}\n\n")
+        format!("{merope_prompt}\n\n")
     };
 
     let steps_list = step_descriptions
@@ -206,7 +206,7 @@ async fn ai_announce_plan(
         .join("\n");
 
     let prompt = format!(
-        "{soul}\n\n{life}\
+        "{soul}\n\n{merope}\
          User: \"{user_input}\"\n\n\
          Your plan:\n{steps_list}\n\n\
          Now tell the user what you're about to do. Rules:\n\
@@ -217,7 +217,7 @@ async fn ai_announce_plan(
          - Do NOT use filler phrases like \"好的\" \"没问题\" \"马上开始\" \"让我来\" at the start.\n\
          - Sound like a real person, not a customer service bot.",
         soul = soul,
-        life = life_prefix,
+        merope = merope_prefix,
         user_input = user_input,
         steps_list = steps_list,
     );
@@ -453,7 +453,7 @@ async fn ai_summarize(
     step_data: &[String],
     progress_tx: Option<&tokio::sync::mpsc::Sender<AgentProgressEvent>>,
 ) -> Option<String> {
-    let analyzer = match crate::services::agent::life::create_speaking_analyzer().await {
+    let analyzer = match crate::services::agent::merope::create_speaking_analyzer().await {
         Some(a) => a,
         None => {
             tracing::warn!(
@@ -467,13 +467,13 @@ async fn ai_summarize(
         .await
         .unwrap_or_default();
     let soul: String = soul.chars().take(2000).collect();
-    let life = crate::services::agent::life::speaking_prompt_plain(
-        &crate::services::agent::life::speaking_prompt(user_id).await,
+    let merope_prompt = crate::services::agent::merope::speaking_prompt_plain(
+        &crate::services::agent::merope::speaking_prompt(user_id).await,
     );
-    let life_prefix = if life.is_empty() {
+    let merope_prefix = if merope_prompt.is_empty() {
         String::new()
     } else {
-        format!("{life}\n\n")
+        format!("{merope_prompt}\n\n")
     };
 
     let steps_text = step_data
@@ -493,7 +493,7 @@ async fn ai_summarize(
     );
 
     let prompt = format!(
-        "{soul}\n\n{life}\
+        "{soul}\n\n{merope}\
          用户的请求：「{user_request}」\n\n\
          你为了回答这个请求，执行了多个步骤，以下是各步骤产出的原始素材：\n\
          {steps_text}\n\n\
@@ -506,7 +506,7 @@ async fn ai_summarize(
          - 不要提及步骤编号、JSON、技术细节\n\
          - 如果生成了图片，在末尾自然地提一下",
         soul = soul,
-        life = life_prefix,
+        merope = merope_prefix,
         user_request = user_request,
         steps_text = steps_text,
     );

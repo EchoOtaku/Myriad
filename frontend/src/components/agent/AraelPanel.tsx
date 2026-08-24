@@ -13,7 +13,7 @@
 import type { TranslationKeys } from '../../i18n'
 import type {
   AgentResponse,
-  LifeStateChangedEvent,
+  MeropeStateChangedEvent,
   PerformancePlanEvent,
   PlannerDecisionEvent,
   ProgressEvent,
@@ -50,9 +50,9 @@ import {
 } from './onboarding/generationError'
 import { userFacingError } from '../../utils/userFacingError'
 import {
-  dispatchCompanionLifeState,
-  dispatchCompanionPerformance,
-} from '../../features/digital-life-companion/performanceEvents'
+  dispatchMeropeState,
+  dispatchMeropePerformance,
+} from '../../features/merope/performanceEvents'
 import {
   agentService,
   executeFrontendAction,
@@ -999,18 +999,18 @@ export const AraelPanel: React.FC = () => {
             break
           }
 
-          case 'life_state_changed': {
-            const lifeEvent = event as LifeStateChangedEvent
-            dispatchCompanionLifeState({
-              mood: lifeEvent.mood,
-              activity: lifeEvent.activity,
+          case 'merope_state_changed': {
+            const stateEvent = event as MeropeStateChangedEvent
+            dispatchMeropeState({
+              mood: stateEvent.mood,
+              activity: stateEvent.activity,
             })
             break
           }
 
           case 'performance_plan': {
             const performanceEvent = event as PerformancePlanEvent
-            dispatchCompanionPerformance({
+            dispatchMeropePerformance({
               text: '',
               source: 'reply',
               messageId: assistantMessageId,
@@ -1565,7 +1565,7 @@ export const AraelPanel: React.FC = () => {
 
       const spokenReply = displayMessage || response.message
       if (isSuccess && (spokenReply?.trim() || response.performance)) {
-        dispatchCompanionPerformance({
+        dispatchMeropePerformance({
           text: spokenReply || '',
           source: 'reply',
           messageId,

@@ -47,7 +47,7 @@ export default function PersonaEditStep({
   onSave,
 }: Props) {
   const { t, locale } = useI18n()
-  const o = t.life.onboarding
+  const o = t.agentPersona.onboarding
   const [summary, setSummary] = useState(() => persona.summary)
   const [temperament, setTemperament] = useState(() =>
     joinList(persona.temperament),
@@ -209,20 +209,20 @@ export default function PersonaEditStep({
     <section aria-label={o.step3Title}>
       <StepBody>
         <div
-          className={`life-ob-persona-groups${regenBusy ? ' is-incomplete' : ''}`}
+          className={`merope-ob-persona-groups${regenBusy ? ' is-incomplete' : ''}`}
         >
-          <section className="life-ob-persona-group" aria-label={o.step3Title}>
-            <dl className="life-ob-persona-view">
+          <section className="merope-ob-persona-group" aria-label={o.step3Title}>
+            <dl className="merope-ob-persona-view">
               {rows.map((row) => {
                 const isEditing = editingField === row.key
                 const display = shownValue(row.key)
                 return (
                   <div
                     key={row.key}
-                    className={`life-ob-persona-view__row${isEditing ? ' is-editing' : ''}`}
+                    className={`merope-ob-persona-view__row${isEditing ? ' is-editing' : ''}`}
                   >
                     {isEditing ? (
-                      <div className="life-ob-persona-view__editor">
+                      <div className="merope-ob-persona-view__editor">
                         <dt>{row.label}</dt>
                         <TextArea
                           rows={row.areaRows}
@@ -243,10 +243,10 @@ export default function PersonaEditStep({
                             }
                           }}
                         />
-                        <div className="life-ob-persona-view__actions">
+                        <div className="merope-ob-persona-view__actions">
                           <button
                             type="button"
-                            className="life-ob-persona-view__action is-cancel"
+                            className="merope-ob-persona-view__action is-cancel"
                             disabled={busy}
                             title={o.cancelEdit}
                             aria-label={o.cancelEdit}
@@ -256,7 +256,7 @@ export default function PersonaEditStep({
                           </button>
                           <button
                             type="button"
-                            className="life-ob-persona-view__action is-save"
+                            className="merope-ob-persona-view__action is-save"
                             disabled={busy}
                             title={o.doneEditing}
                             aria-label={o.doneEditing}
@@ -268,7 +268,7 @@ export default function PersonaEditStep({
                       </div>
                     ) : (
                       <>
-                        <div className="life-ob-persona-view__copy">
+                        <div className="merope-ob-persona-view__copy">
                           <dt>{row.label}</dt>
                           <dd
                             className={
@@ -282,7 +282,7 @@ export default function PersonaEditStep({
                         </div>
                         <button
                           type="button"
-                          className="life-ob-persona-view__edit"
+                          className="merope-ob-persona-view__edit"
                           disabled={blocked}
                           title={o.editPersona}
                           aria-label={`${o.editPersona} · ${row.label}`}

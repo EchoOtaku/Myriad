@@ -29,23 +29,23 @@ export interface OnboardingPageChrome {
   onBack: () => void
 }
 
-export type LifeGender = 'female' | 'male' | 'nonbinary' | 'unspecified'
+export type PersonaGender = 'female' | 'male' | 'nonbinary' | 'unspecified'
 
-export const GENDER_OPTIONS: LifeGender[] = [
+export const GENDER_OPTIONS: PersonaGender[] = [
   'female',
   'male',
   'nonbinary',
   'unspecified',
 ]
 
-export function genderFromProfile(profile: unknown): LifeGender | null {
+export function genderFromProfile(profile: unknown): PersonaGender | null {
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
     return null
   }
   const gender = (profile as Record<string, unknown>).gender
   return typeof gender === 'string' &&
     (GENDER_OPTIONS as string[]).includes(gender)
-    ? (gender as LifeGender)
+    ? (gender as PersonaGender)
     : null
 }
 
@@ -104,10 +104,10 @@ export const CLOTHING_STYLE_OPTIONS: ClothingStyle[] = [
 ]
 
 export function clothingStylePreview(style: ClothingStyle): string {
-  return `/life/clothing/${style}.png`
+  return `/merope/clothing/${style}.png`
 }
 
-export interface LifeOnboardingTag {
+export interface OnboardingTag {
   id: string
   label: string
   weight: number
@@ -343,7 +343,7 @@ export function joinList(value: unknown): string {
 }
 
 function personaFieldLabels() {
-  const c = currentCopy().companion
+  const c = currentCopy().merope
   return {
     temperament: c.personaLabelTemperament,
     likes: c.personaLabelLikes,

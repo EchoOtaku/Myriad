@@ -92,7 +92,7 @@ export interface TranslationKeys {
     welcome: string
   }
 
-  companion: {
+  merope: {
     title: string
     statusBarTitle: string
     statusLoading: string
@@ -121,7 +121,7 @@ export interface TranslationKeys {
     doNotDisturb: string
     showThought: string
     collapsedByDefault: string
-    deleteCompanion: string
+    deletePersona: string
     deleteConfirm: string
     loadFailed: string
     sendFailed: string
@@ -669,7 +669,7 @@ export interface TranslationKeys {
       aiUsageSourceAgent: string
       aiUsageSourceReports: string
       aiUsageSourceRuntime: string
-      aiUsageSourceLife: string
+      aiUsageSourcePersona: string
       aiUsageSourcePlayground: string
       aiUsageSourceSpeech: string
       aiUsageSourceBrewlia: string
@@ -1376,22 +1376,22 @@ export interface TranslationKeys {
     memorySaverGroupDesc: string
     memorySaver: string
     memorySaverHint: string
-    agentLife: string
-    agentLifeHint: string
+    agentPersona: string
+    agentPersonaHint: string
     /** Shown while the Lite tier is off */
-    agentLifeNeedsLite: string
+    agentPersonaNeedsLite: string
     /** Shown while the Pro tier is off */
-    agentLifeNeedsPro: string
+    agentPersonaNeedsPro: string
     /** Shown while the Pro tier is off (legacy key, same copy as needsPro) */
-    agentLifeNeedsLiteAndPro: string
-    agentLifeMood: string
-    agentLifeActivity: string
-    agentLifeEmpty: string
-    agentLifeEmptyLead: string
-    agentLifeNeedsReports: string
-    agentLifeDelete: string
-    agentLifeDeleteConfirm: string
-    agentLifeDeleteFailed: string
+    agentPersonaNeedsLiteAndPro: string
+    agentPersonaMood: string
+    agentPersonaActivity: string
+    agentPersonaEmpty: string
+    agentPersonaEmptyLead: string
+    agentPersonaNeedsReports: string
+    agentPersonaDelete: string
+    agentPersonaDeleteConfirm: string
+    agentPersonaDeleteFailed: string
     enableProxy: string
     enableProxyHint: string
     proxyUrl: string
@@ -2153,8 +2153,8 @@ export interface TranslationKeys {
     title: string
   }
 
-  // Agent 设定引导
-  life: {
+  // Agent 人设设定引导
+  agentPersona: {
     onboarding: {
       openPage: string
       editPage: string
@@ -4382,7 +4382,7 @@ export interface TranslationKeys {
     personaReset: string
     personaOwnerOnly: string
     personaDoNotDisturb: string
-    personaLifeOff: string
+    agentPersonaOff: string
     statusNeedLogin: string
     emptyHeartbeat: string
     emptyHeartbeatHint: string

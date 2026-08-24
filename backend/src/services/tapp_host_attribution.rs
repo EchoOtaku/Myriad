@@ -31,7 +31,7 @@ use crate::services::tapp_rate_limit::host_write_rate_limit_operation;
 const HOST_ROUTE_PERMISSIONS_JSON: &str =
     include_str!("../../../docs/development/tapp/fixtures/host_route_permissions.json");
 
-/// Companion action → permission fixture (sandbox `PERMISSION_MAP` domains).
+/// Action → permission fixture (sandbox `PERMISSION_MAP` domains).
 #[cfg(test)]
 const ACTION_PERMISSIONS_JSON: &str =
     include_str!("../../../docs/development/tapp/fixtures/action_permissions.json");

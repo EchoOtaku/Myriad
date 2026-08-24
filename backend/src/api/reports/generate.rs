@@ -1203,9 +1203,9 @@ pub(crate) async fn generate_platform_reports_internal(
             .map(|report| report.platform.as_str())
             .collect::<Vec<_>>()
             .join("、");
-        crate::services::agent::life::spawn_ingest(
+        crate::services::agent::merope::spawn_ingest(
             user_id,
-            "agent.life.report_ready",
+            "agent.merope.report_ready",
             format!("这个人的报告算完了：{names}"),
         );
     }

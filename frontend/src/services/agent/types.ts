@@ -311,8 +311,8 @@ export interface PerformancePlanEvent {
   performance: PerformanceDirective
 }
 
-export interface LifeStateChangedEvent {
-  type: 'life_state_changed'
+export interface MeropeStateChangedEvent {
+  type: 'merope_state_changed'
   mood: MoodTransition
   activity: string
 }
@@ -409,7 +409,7 @@ export type ProgressEvent =
   | SessionTitleUpdatedEvent
   | SummaryTokenEvent
   | PerformancePlanEvent
-  | LifeStateChangedEvent
+  | MeropeStateChangedEvent
   | PlannerDecisionEvent
   | StepDebugEvent
 

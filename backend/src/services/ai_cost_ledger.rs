@@ -434,12 +434,12 @@ mod tests {
 
     #[test]
     fn site_attribution_uses_source_bucket() {
-        let attr = AiLedgerAttribution::site(7, "life", "onboarding");
+        let attr = AiLedgerAttribution::site(7, "merope", "onboarding");
         assert_eq!(attr.subject_id, 7);
         assert_eq!(attr.owner_id, 7);
-        assert_eq!(attr.source, "life");
+        assert_eq!(attr.source, "merope");
         assert_eq!(attr.operation, "onboarding");
-        assert_eq!(attr.tapp_id, "__life__");
+        assert_eq!(attr.tapp_id, "__merope__");
         assert_eq!(attr.task_id, "onboarding");
     }
 

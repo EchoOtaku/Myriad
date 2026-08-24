@@ -241,7 +241,7 @@ pub(crate) async fn update_item_state(
                         }
                     }
                     if is_starred == Some(true) && !was_starred {
-                        crate::services::agent::life::spawn_ingest(
+                        crate::services::agent::merope::spawn_ingest(
                             user_id,
                             "brew.starred",
                             format!("把《{}》标了星", item.title),
@@ -286,7 +286,7 @@ pub(crate) async fn update_item_state(
                         let _ = update_source_unread_count(db, source_id, -1).await;
                     }
                     if is_starred == Some(true) {
-                        crate::services::agent::life::spawn_ingest(
+                        crate::services::agent::merope::spawn_ingest(
                             user_id,
                             "brew.starred",
                             format!("把《{}》标了星", item.title),

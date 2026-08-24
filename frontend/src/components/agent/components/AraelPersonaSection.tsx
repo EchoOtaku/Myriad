@@ -6,7 +6,7 @@ import { invalidatePublicConfigCache } from '../../../utils/requestDedup'
 import {
   ADDRESSEE_UPDATED_EVENT,
   formatVitalsLine,
-} from '../lifeVitals'
+} from '../meropeVitals'
 
 export const AraelPersonaSection: React.FC<{
   isOwner: boolean
@@ -24,7 +24,7 @@ export const AraelPersonaSection: React.FC<{
   const [mood, setMood] = useState(70)
   const [activity, setActivity] = useState('idle')
   const [error, setError] = useState<string | null>(null)
-  const o = t.life.onboarding
+  const o = t.agentPersona.onboarding
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) setLoading(true)
@@ -121,7 +121,7 @@ export const AraelPersonaSection: React.FC<{
 
   if (loading) return null
   if (disabled) {
-    return <div className="arael-manage-empty">{a.personaLifeOff}</div>
+    return <div className="arael-manage-empty">{a.agentPersonaOff}</div>
   }
   if (error && !name && !canEdit) {
     return (

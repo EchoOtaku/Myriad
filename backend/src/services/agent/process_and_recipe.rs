@@ -70,8 +70,8 @@ impl Agent {
             "[Agent] Processing request"
         );
 
-        crate::services::agent::life::mark_activity(&self.db, user_id, "talking").await;
-        let mood_transition = crate::services::agent::life::note_user_turn(
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "talking").await;
+        let mood_transition = crate::services::agent::merope::note_user_turn(
             &self.db,
             user_id,
             &request.raw_input,
@@ -81,9 +81,9 @@ impl Agent {
         let mood_before = mood_transition.as_ref().map(|transition| transition.before);
         if let Some(mood) = mood_transition.clone() {
             spawn_motion_directive(
-                crate::services::agent::life::MotionContext {
+                crate::services::agent::merope::MotionContext {
                     user_id,
-                    phase: crate::services::agent::life::MotionPhase::Reaction,
+                    phase: crate::services::agent::merope::MotionPhase::Reaction,
                     mood,
                     activity: "talking".to_string(),
                     user_text: request.raw_input.clone(),
@@ -98,17 +98,17 @@ impl Agent {
         let planner_output = match self.planner.plan(&request).await {
             Ok(output) => output,
             Err(error) => {
-                crate::services::agent::life::note_chat_diary(
+                crate::services::agent::merope::note_chat_diary(
                     &self.db,
                     user_id,
                     &request.raw_input,
                 )
                 .await;
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 return Err(error);
             }
         };
-        crate::services::agent::life::note_chat_diary(&self.db, user_id, &request.raw_input).await;
+        crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input).await;
 
         tracing::debug!(
             status = ?planner_output.status,
@@ -120,7 +120,7 @@ impl Agent {
         // 2. 根据状态分流
         match planner_output.status {
             PlannerStatus::Chat => {
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 let response = AgentResponse {
                     response_type: AgentResponseType::Answer,
                     message: planner_output
@@ -150,7 +150,7 @@ impl Agent {
                         message: response_agent::need_clarification(),
                         options: vec![],
                     });
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 let response = AgentResponse {
                     response_type: AgentResponseType::Clarification,
                     message: clarification.message.clone(),
@@ -187,7 +187,7 @@ impl Agent {
                     evo.detect_capability_gap(&request.raw_input, &reason).await;
                 }
 
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 let response = AgentResponse {
                     response_type: AgentResponseType::Answer,
                     message: reason.clone(),
@@ -215,7 +215,7 @@ impl Agent {
                 if let Some(response) = self
                     .mood_refuse_response(
                         user_id,
-                        crate::services::agent::life::refuse_new_task_message(mood_before),
+                        crate::services::agent::merope::refuse_new_task_message(mood_before),
                         None,
                     )
                     .await
@@ -253,7 +253,7 @@ impl Agent {
         ) {
             Ok(steps) => steps,
             Err(error) => {
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 return Err(error);
             }
         };
@@ -273,7 +273,7 @@ impl Agent {
             match Self::system_sensitive_gate(user_id, &sensitive_steps) {
                 Some(Ok(())) => {} // 系统任务已自动确认，继续执行
                 Some(Err(blocked)) => {
-                    crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                    crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     return attach_motion_to_result(
                         Ok(blocked),
                         user_id,
@@ -286,7 +286,7 @@ impl Agent {
                 None => {
                     let session_id = request.context.as_ref().and_then(|c| c.session_id.clone());
                     let run_id = request.context.as_ref().and_then(|c| c.run_id.clone());
-                    crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                    crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     let response = self
                         .request_confirmation_v2(
                             &recipe,
@@ -315,7 +315,7 @@ impl Agent {
             .await
         {
             Ok(Some(missing_response)) => {
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 return attach_motion_to_result(
                     Ok(missing_response),
                     user_id,
@@ -327,15 +327,15 @@ impl Agent {
             }
             Ok(None) => {}
             Err(error) => {
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 return Err(error);
             }
         }
 
         // 5. 执行方案
-        crate::services::agent::life::mark_activity(&self.db, user_id, "working").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "working").await;
         let task_result = self.executor.execute(&recipe, user_id).await;
-        crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
         let task_state = task_result?;
         let result = self.extract_final_result(&task_state);
 
@@ -457,8 +457,8 @@ impl Agent {
             "[Agent] Processing request with progress tracking"
         );
 
-        crate::services::agent::life::mark_activity(&self.db, user_id, "talking").await;
-        let mood_transition = crate::services::agent::life::note_user_turn(
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "talking").await;
+        let mood_transition = crate::services::agent::merope::note_user_turn(
             &self.db,
             user_id,
             &request.raw_input,
@@ -469,15 +469,15 @@ impl Agent {
 
         if let Some(mood) = mood_transition.clone() {
             let _ = progress_tx
-                .send(AgentProgressEvent::LifeStateChanged {
+                .send(AgentProgressEvent::MeropeStateChanged {
                     mood: mood.clone(),
                     activity: "talking".to_string(),
                 })
                 .await;
             spawn_motion_directive(
-                crate::services::agent::life::MotionContext {
+                crate::services::agent::merope::MotionContext {
                     user_id,
-                    phase: crate::services::agent::life::MotionPhase::Reaction,
+                    phase: crate::services::agent::merope::MotionPhase::Reaction,
                     mood,
                     activity: "talking".to_string(),
                     user_text: request.raw_input.clone(),
@@ -501,17 +501,17 @@ impl Agent {
         let planner_output = match self.planner.plan(&request).await {
             Ok(output) => output,
             Err(error) => {
-                crate::services::agent::life::note_chat_diary(
+                crate::services::agent::merope::note_chat_diary(
                     &self.db,
                     user_id,
                     &request.raw_input,
                 )
                 .await;
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 return Err(error);
             }
         };
-        crate::services::agent::life::note_chat_diary(&self.db, user_id, &request.raw_input).await;
+        crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input).await;
 
         tracing::debug!(
             status = ?planner_output.status,
@@ -599,9 +599,9 @@ impl Agent {
 
                 let delivery = mood_transition.clone().map(|mood| {
                     spawn_motion_directive(
-                        crate::services::agent::life::MotionContext {
+                        crate::services::agent::merope::MotionContext {
                             user_id,
-                            phase: crate::services::agent::life::MotionPhase::Delivery,
+                            phase: crate::services::agent::merope::MotionPhase::Delivery,
                             mood,
                             activity: "talking".to_string(),
                             user_text: request.raw_input.clone(),
@@ -620,7 +620,7 @@ impl Agent {
                     Some(handle) => handle.await.ok().flatten(),
                     None => None,
                 };
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
 
                 let _ = progress_tx
                     .send(AgentProgressEvent::Progress {
@@ -652,7 +652,7 @@ impl Agent {
 
                 // 流式推送澄清消息
                 Self::stream_text_as_tokens(&progress_tx, &clarification.message).await;
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 let response = AgentResponse {
                     response_type: AgentResponseType::Clarification,
                     message: clarification.message.clone(),
@@ -689,7 +689,7 @@ impl Agent {
                     evo.detect_capability_gap(&request.raw_input, &reason).await;
                 }
 
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 let response = AgentResponse {
                     response_type: AgentResponseType::Answer,
                     message: reason.clone(),
@@ -717,7 +717,7 @@ impl Agent {
                 if let Some(response) = self
                     .mood_refuse_response(
                         user_id,
-                        crate::services::agent::life::refuse_new_task_message(mood_before),
+                        crate::services::agent::merope::refuse_new_task_message(mood_before),
                         Some(&progress_tx),
                     )
                     .await
@@ -743,7 +743,7 @@ impl Agent {
                         planner_output.reasoning.as_deref().map(|r| format!("我的理解是：{}。", r)).unwrap_or_default()
                     );
                     Self::stream_text_as_tokens(&progress_tx, &msg).await;
-                    crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                    crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     let response = AgentResponse {
                         response_type: AgentResponseType::Clarification,
                         message: msg.clone(),
@@ -793,7 +793,7 @@ impl Agent {
         ) {
             Ok(steps) => steps,
             Err(error) => {
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 return Err(error);
             }
         };
@@ -849,7 +849,7 @@ impl Agent {
             match Self::system_sensitive_gate(user_id, &sensitive_steps) {
                 Some(Ok(())) => {} // 系统任务已自动确认，继续执行
                 Some(Err(blocked)) => {
-                    crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                    crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     return attach_motion_to_result(
                         Ok(blocked),
                         user_id,
@@ -862,7 +862,7 @@ impl Agent {
                 None => {
                     let session_id = request.context.as_ref().and_then(|c| c.session_id.clone());
                     let run_id = request.context.as_ref().and_then(|c| c.run_id.clone());
-                    crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                    crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                     let response = self
                         .request_confirmation_v2(
                             &recipe,
@@ -896,7 +896,7 @@ impl Agent {
             .await
         {
             Ok(Some(missing_response)) => {
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 return attach_motion_to_result(
                     Ok(missing_response),
                     user_id,
@@ -908,7 +908,7 @@ impl Agent {
             }
             Ok(None) => {}
             Err(error) => {
-                crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+                crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
                 return Err(error);
             }
         }
@@ -1060,12 +1060,12 @@ impl Agent {
         progress_tx: tokio::sync::mpsc::Sender<AgentProgressEvent>,
     ) -> Result<AgentResponse, String> {
         // 执行 Recipe
-        crate::services::agent::life::mark_activity(&self.db, user_id, "working").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "working").await;
         let task_result = self
             .executor
             .execute_with_progress(recipe, user_id, Some(progress_tx.clone()))
             .await;
-        crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
         let mut task_state = task_result?;
 
         // 注入 Planner 决策到 ExecutionTrace
@@ -1155,13 +1155,13 @@ impl Agent {
 
                         // 执行升级后的 Recipe
                         let progress_tx_for_summary = progress_tx.clone();
-                        crate::services::agent::life::mark_activity(&self.db, user_id, "working")
+                        crate::services::agent::merope::mark_activity(&self.db, user_id, "working")
                             .await;
                         let new_task_result = self
                             .executor
                             .execute_with_progress(&new_recipe, user_id, Some(progress_tx))
                             .await;
-                        crate::services::agent::life::mark_activity(&self.db, user_id, "idle")
+                        crate::services::agent::merope::mark_activity(&self.db, user_id, "idle")
                             .await;
                         let new_task_state = new_task_result?;
                         result = self.extract_final_result(&new_task_state);
@@ -1430,7 +1430,7 @@ impl Agent {
         if let Some(tx) = progress_tx {
             Self::stream_text_as_tokens(tx, &message).await;
         }
-        crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
         Some(AgentResponse {
             response_type: AgentResponseType::Answer,
             message,
@@ -1488,7 +1488,7 @@ impl Agent {
         if let Some(response) = self
             .mood_refuse_response(
                 user_id,
-                crate::services::agent::life::maybe_refuse_new_task(&self.db, user_id).await,
+                crate::services::agent::merope::maybe_refuse_new_task(&self.db, user_id).await,
                 Some(&progress_tx),
             )
             .await
@@ -1540,12 +1540,12 @@ impl Agent {
             .await;
 
         // 直接执行 recipe
-        crate::services::agent::life::mark_activity(&self.db, user_id, "working").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "working").await;
         let task_result = self
             .executor
             .execute_with_progress(&recipe, user_id, Some(progress_tx))
             .await;
-        crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
         let task_state = task_result?;
 
         // 根据执行类型返回结果
@@ -1722,12 +1722,12 @@ impl Agent {
             .await;
 
         // 带进度执行（Skill 可能展开为多个动态子步骤，需要把 progress_tx 传下去）
-        crate::services::agent::life::mark_activity(&self.db, user_id, "working").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "working").await;
         let task_result = self
             .executor
             .execute_with_progress(recipe, user_id, Some(progress_tx.clone()))
             .await;
-        crate::services::agent::life::mark_activity(&self.db, user_id, "idle").await;
+        crate::services::agent::merope::mark_activity(&self.db, user_id, "idle").await;
         let task_state = task_result?;
 
         // 获取执行结果
@@ -1852,11 +1852,11 @@ fn turn_task_id(request: &UserRequest) -> String {
 }
 
 fn spawn_motion_directive(
-    context: crate::services::agent::life::MotionContext,
+    context: crate::services::agent::merope::MotionContext,
     progress_tx: Option<tokio::sync::mpsc::Sender<AgentProgressEvent>>,
-) -> tokio::task::JoinHandle<Option<crate::services::agent::life::PerformanceDirective>> {
+) -> tokio::task::JoinHandle<Option<crate::services::agent::merope::PerformanceDirective>> {
     tokio::spawn(async move {
-        let performance = crate::services::agent::life::direct_motion(context).await;
+        let performance = crate::services::agent::merope::direct_motion(context).await;
         if let (Some(tx), Some(performance)) = (progress_tx, performance.as_ref()) {
             let _ = tx
                 .send(AgentProgressEvent::PerformancePlan {
@@ -1872,7 +1872,7 @@ async fn attach_motion_to_result(
     result: Result<AgentResponse, String>,
     user_id: i32,
     user_text: &str,
-    mood: Option<crate::services::agent::life::MoodTransition>,
+    mood: Option<crate::services::agent::merope::MoodTransition>,
     progress_tx: Option<tokio::sync::mpsc::Sender<AgentProgressEvent>>,
 ) -> Result<AgentResponse, String> {
     let mut response = result?;
@@ -1885,12 +1885,12 @@ async fn attach_motion_to_result(
         _ => None,
     });
     let phase = if task_success.is_some() {
-        crate::services::agent::life::MotionPhase::Outcome
+        crate::services::agent::merope::MotionPhase::Outcome
     } else {
-        crate::services::agent::life::MotionPhase::Delivery
+        crate::services::agent::merope::MotionPhase::Delivery
     };
     let handle = spawn_motion_directive(
-        crate::services::agent::life::MotionContext {
+        crate::services::agent::merope::MotionContext {
             user_id,
             phase,
             mood,

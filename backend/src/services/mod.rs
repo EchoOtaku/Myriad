@@ -20,7 +20,7 @@ pub mod config_service;
 pub mod content_databases; // Preset anime/game/artist databases
 pub mod data_key; // Config-key / federation private-key envelope
 pub mod data_paths;
-pub mod digital_life_rig; // Site-wide compiled 2.5D face package
+pub mod merope_rig; // Site-wide compiled 2.5D face package
 pub mod enka_assets; // Enka character metadata for Hoyoverse cards
 pub mod fetcher;
 pub mod gemini_media; // Gemini generateContent image + speech

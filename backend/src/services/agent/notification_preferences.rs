@@ -49,7 +49,7 @@ pub const EVENT_DEFINITIONS: [NotificationEventDefinition; 34] = [
         source: "agent",
     },
     NotificationEventDefinition {
-        key: "agent.life.platform_activity",
+        key: "agent.merope.platform_activity",
         source: "agent",
     },
     NotificationEventDefinition {

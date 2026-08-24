@@ -27,7 +27,7 @@ pub struct AiUsageSummaryQuery {
     pub subject_id: Option<i32>,
     /// Optional exact model id filter.
     pub model: Option<String>,
-    /// Optional ledger source (`agent`, `life`, `runtime`, …).
+    /// Optional ledger source (`agent`, `merope`, `runtime`, …).
     pub source: Option<String>,
 }
 
@@ -588,7 +588,7 @@ mod tests {
     fn base_params_order() {
         let from = NaiveDate::from_ymd_opt(2026, 7, 1).unwrap();
         let today = NaiveDate::from_ymd_opt(2026, 7, 7).unwrap();
-        let p = base_params(from, today, Some(3), Some("gpt-test"), Some("life"));
+        let p = base_params(from, today, Some(3), Some("gpt-test"), Some("merope"));
         assert_eq!(p.len(), 5);
     }
 

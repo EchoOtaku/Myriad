@@ -54,7 +54,7 @@ These are intentionally broader than event keys so old history remains readable:
 | Arael | `agent.task_failed` | Agent run terminal failure |
 | Arael | `agent.task_cancelled` | User-cancelled run |
 | Arael | `agent.clarification` | Run waiting for user input |
-| Arael | `agent.life.platform_activity` | High-importance connected-platform activity |
+| Arael | `agent.merope.platform_activity` | High-importance connected-platform activity |
 | Heartbeat | `heartbeat.succeeded` | Heartbeat scheduled task success |
 | Heartbeat | `heartbeat.failed` | Heartbeat scheduled task failure |
 | MCP | `mcp.connected` | MCP server connection/recovery |

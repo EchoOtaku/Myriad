@@ -52,8 +52,8 @@ ON CONFLICT (id) DO NOTHING;
     Ok(())
 }
 
-/// 近月功能表兜底（`migrations/004` 已 CREATE）。
-pub(crate) async fn ensure_agent_life_tables(db: &DatabaseConnection) -> Result<(), DbErr> {
+/// 近月功能表兜底（`migrations/004` 已 CREATE）。Agent 人设四表。
+pub(crate) async fn ensure_agent_merope_tables(db: &DatabaseConnection) -> Result<(), DbErr> {
     db.execute_unprepared(
         r#"
 CREATE TABLE IF NOT EXISTS agent_persona (

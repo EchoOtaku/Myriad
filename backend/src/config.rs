@@ -417,8 +417,8 @@ pub struct DynamicConfig {
     pub ai_image_volcengine_api_key: Option<String>,
     pub ai_image_volcengine_base_url: String,
 
-    /// Agent 生命：设定、状态、主动对话、事件开口。默认关。
-    pub agent_life_enabled: bool,
+    /// Merope：设定、状态、主动对话、事件开口。默认关。用户界面叫 Agent 人设。
+    pub merope_enabled: bool,
 
     /// Arael 的页面形象：当前生效的 2.5D 图集包 id（sha256 hex）。
     /// None = 没有编译过的骨骼，浮动层只回退主立绘。站点级——只有一个 Arael。
@@ -743,7 +743,7 @@ impl Default for DynamicConfig {
             ai_image_openrouter_api_key: None,
             ai_image_volcengine_api_key: None,
             ai_image_volcengine_base_url: "https://ark.cn-beijing.volces.com/api/v3".to_string(),
-            agent_life_enabled: false,
+            merope_enabled: false,
             agent_rig_asset_id: None,
             see_through_hf_token: None,
             // Tripo 3D（低模 Web 角色默认预算）
@@ -853,33 +853,33 @@ impl Default for DynamicConfig {
 }
 
 impl DynamicConfig {
-    /// 开关本身：环境变量 `AGENT_LIFE_ENABLED` 覆盖库里的 `agent_life_enabled`。
-    pub fn agent_life_switch_on(&self) -> bool {
-        match std::env::var("AGENT_LIFE_ENABLED") {
+    /// 开关本身：环境变量 `MEROPE_ENABLED` 覆盖库里的 `merope_enabled`。
+    pub fn merope_switch_on(&self) -> bool {
+        match std::env::var("MEROPE_ENABLED") {
             Ok(value) => matches!(
                 value.trim().to_ascii_lowercase().as_str(),
                 "1" | "true" | "yes" | "on"
             ),
-            Err(_) => self.agent_life_enabled,
+            Err(_) => self.merope_enabled,
         }
     }
 
-    /// 生命是否真的生效。
+    /// Merope 是否真的生效。
     ///
     /// 设定引导走 Pro；聊天里的人设只是系统词，跟 Lite 无关。
     /// Lite 只写主动开口和心情微调——档关着时这两处直接停，不回落到标准模型。
-    pub fn agent_life_enabled_resolved(&self) -> bool {
-        self.agent_life_switch_on() && self.pro_enabled
+    pub fn merope_enabled_resolved(&self) -> bool {
+        self.merope_switch_on() && self.pro_enabled
     }
 
     /// 开关开着却缺 Lite。主动开口会走短句兜底，心情微调不会跑。
-    pub fn agent_life_needs_lite(&self) -> bool {
-        self.agent_life_switch_on() && self.pro_enabled && !self.lite_enabled
+    pub fn merope_needs_lite(&self) -> bool {
+        self.merope_switch_on() && self.pro_enabled && !self.lite_enabled
     }
 
     /// 开关开着却缺 Pro。设定引导和开关生效都要这一档。
-    pub fn agent_life_needs_pro(&self) -> bool {
-        self.agent_life_switch_on() && !self.pro_enabled
+    pub fn merope_needs_pro(&self) -> bool {
+        self.merope_switch_on() && !self.pro_enabled
     }
 
     pub fn is_openrouter_base(url: &str) -> bool {

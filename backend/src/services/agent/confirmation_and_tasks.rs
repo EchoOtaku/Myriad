@@ -1034,7 +1034,7 @@ impl Agent {
         planner_reply: &str,
         progress_tx: &tokio::sync::mpsc::Sender<AgentProgressEvent>,
     ) -> String {
-        let analyzer = match crate::services::agent::life::create_speaking_analyzer().await {
+        let analyzer = match crate::services::agent::merope::create_speaking_analyzer().await {
             Some(a) => a,
             None => {
                 // AI 不可用，回退到模拟流式
@@ -1048,13 +1048,13 @@ impl Agent {
             .await
             .unwrap_or_default();
         let soul: String = soul.chars().take(2000).collect();
-        let life_block = crate::services::agent::life::speaking_prompt_plain(
-            &crate::services::agent::life::speaking_prompt(request.user_id).await,
+        let merope_block = crate::services::agent::merope::speaking_prompt_plain(
+            &crate::services::agent::merope::speaking_prompt(request.user_id).await,
         );
-        let life_prefix = if life_block.is_empty() {
+        let merope_prefix = if merope_block.is_empty() {
             String::new()
         } else {
-            format!("{life_block}\n\n")
+            format!("{merope_block}\n\n")
         };
 
         // 构建对话历史
@@ -1081,21 +1081,21 @@ impl Agent {
 
         let prompt = if history_text.is_empty() {
             format!(
-                "{soul}\n\n{life}用户对你说：{input}\n\n\
+                "{soul}\n\n{merope}用户对你说：{input}\n\n\
                  请以你的角色自然地回复用户。使用用户的语言。保持简短、温暖、自然。\
                  不要输出任何 JSON 或格式标记，只输出纯文本回复。",
                 soul = soul,
-                life = life_prefix,
+                merope = merope_prefix,
                 input = request.raw_input,
             )
         } else {
             format!(
-                "{soul}\n\n{life}以下是对话历史：\n{history}\n\n\
+                "{soul}\n\n{merope}以下是对话历史：\n{history}\n\n\
                  用户最新消息：{input}\n\n\
                  请以你的角色自然地回复用户。使用用户的语言。保持简短、温暖、自然。\
                  不要输出任何 JSON 或格式标记，只输出纯文本回复。",
                 soul = soul,
-                life = life_prefix,
+                merope = merope_prefix,
                 history = history_text,
                 input = request.raw_input,
             )

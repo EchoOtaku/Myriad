@@ -20,7 +20,7 @@ export const NOTIFICATION_EVENT_KEYS = [
   'agent.task_failed',
   'agent.task_cancelled',
   'agent.clarification',
-  'agent.life.platform_activity',
+  'agent.merope.platform_activity',
   'heartbeat.succeeded',
   'heartbeat.failed',
   'mcp.connected',

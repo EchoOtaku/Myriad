@@ -641,7 +641,7 @@ async fn execute_brew_mark(
     }
 
     if is_starred == Some(true) && !was_starred {
-        crate::services::agent::life::spawn_ingest(
+        crate::services::agent::merope::spawn_ingest(
             user_id,
             "brew.starred",
             format!("把《{}》标了星", item.title),

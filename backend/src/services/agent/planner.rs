@@ -163,9 +163,9 @@ impl Planner {
         let mut volatile: Vec<String> = Vec::new();
 
         // 1. 身份（全局 SOUL.md）
-        let life_soul = crate::services::agent::identity::get_speaking_soul().await;
+        let speaking_soul = crate::services::agent::identity::get_speaking_soul().await;
         let global_identity = identity::get_identity().await;
-        let role_prompt = life_soul
+        let role_prompt = speaking_soul
             .as_deref()
             .or_else(|| global_identity.as_ref().and_then(|id| id.role_prompt()));
         // 兜底身份此前是死代码：它的条件是 `sections.is_empty()`，而环境段总是先被
@@ -185,7 +185,7 @@ impl Planner {
             }
         }
 
-        volatile.extend(crate::services::agent::life::speaking_prompt(request.user_id).await);
+        volatile.extend(crate::services::agent::merope::speaking_prompt(request.user_id).await);
 
         // 1.5. 多 Agent 角色概览（注入 worker 身份摘要）
         if let Some(mgr) = identity::get_identity_manager() {

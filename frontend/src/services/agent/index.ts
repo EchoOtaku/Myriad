@@ -53,7 +53,7 @@ export type {
   FrontendActionType,
   // Heartbeat
   HeartbeatTask,
-  LifeStateChangedEvent,
+  MeropeStateChangedEvent,
   // 记忆
   MemoryEntry,
   PageElementTarget,

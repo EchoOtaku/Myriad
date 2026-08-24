@@ -32,7 +32,7 @@ async function readPublicAsset(
   }
   const suffix = metadata ? '/metadata' : ''
   const response = await fetch(
-    `/api/digital-life/3d/assets/${encodeURIComponent(assetId)}${suffix}`,
+    `/api/merope/3d/assets/${encodeURIComponent(assetId)}${suffix}`,
   )
   if (!response.ok) {
     throw new Error(
