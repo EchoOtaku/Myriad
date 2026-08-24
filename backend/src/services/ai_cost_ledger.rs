@@ -23,7 +23,7 @@ use std::sync::Arc;
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, Value as SeaValue};
 
 /// Task-local attribution for non-governed paths that call `AiAnalyzer` / image /
-/// speech directly (Arael, report generation, prompt tools, …). Governed tasks
+/// speech directly (Agent, report generation, prompt tools, …). Governed tasks
 /// already call [`record_ai_cost`] explicitly and should wrap the provider call
 /// in [`with_ai_ledger_suppressed`] (avoids double-count).
 #[derive(Debug, Clone)]

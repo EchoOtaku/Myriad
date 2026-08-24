@@ -424,7 +424,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
       const objectUrl = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = objectUrl
-      link.download = 'arael-portrait.png'
+      link.download = 'portrait.png'
       document.body.appendChild(link)
       link.click()
       link.remove()

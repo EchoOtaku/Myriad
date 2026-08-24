@@ -377,7 +377,7 @@ async fn execute_ai_chat(
     let system_prompt = params
         .get("systemPrompt")
         .and_then(|v| v.as_str())
-        .unwrap_or("你是 Arael，Myriad 平台的 AI 助手。你友好、博学，擅长帮助用户处理各种问题。回复时保持简洁和有用。");
+        .unwrap_or("你是 Agent，Myriad 平台的 AI 助手。你友好、博学，擅长帮助用户处理各种问题。回复时保持简洁和有用。");
 
     let context = params.get("context").and_then(|v| v.as_array());
 

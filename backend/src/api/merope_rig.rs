@@ -1,4 +1,4 @@
-//! Site-wide Anime2.5D face for Arael.
+//! Site-wide Anime2.5D face for Agent 人设.
 //!
 //! Owner writes the compiled package. Guests read the same public atlas and
 //! manifest. Hand artwork is one optional layer with bounded follow-through;
@@ -207,7 +207,7 @@ async fn require_owner(claims: &Claims, db: &DatabaseConnection) -> ApiResult<i3
         return Err((
             StatusCode::FORBIDDEN,
             Json(json!({
-                "error": "Only the site owner can change Arael's face",
+                "error": "Only the site owner can change the face",
                 "code": "site_owner_required"
             })),
         ));

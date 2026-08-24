@@ -71,7 +71,7 @@ export const enUS: TranslationKeys = {
     brew: 'Brew',
     brewReading: 'Brew Reader',
     // Agent
-    agent: 'Arael Agent',
+    agent: 'Agent',
     // Tapp (primary nav /tapp = installed apps list)
     tapp: 'Tapp Apps',
     openTapp: 'Open Tapp Apps',
@@ -95,7 +95,7 @@ export const enUS: TranslationKeys = {
     statusBarTitle: 'Face',
     statusLoading: 'Loading…',
     statusDisabled: 'Agent persona is turned off on this site',
-    statusNeedLogin: 'Sign in to see Arael',
+    statusNeedLogin: 'Sign in to see the face',
     statusCreateHint: 'Finish persona setup in settings',
     statusContinueHint: 'Setup incomplete — continue in settings',
     statusReadyHint: '{activity} · mood {mood}',
@@ -103,7 +103,7 @@ export const enUS: TranslationKeys = {
     statusContinue: 'Continue',
     statusOpen: 'Open',
     statusLogin: 'Sign in',
-    tapToOpen: 'Open Arael',
+    tapToOpen: 'Open Agent',
     chat: 'Chat',
     memories: 'Memories',
     settings: 'Settings',
@@ -336,8 +336,8 @@ export const enUS: TranslationKeys = {
     motionPsdPreflight: 'Preflight layered PSD',
     motionPsdValidating: 'Validating PSD…',
     motionPsdCommit: 'Commit preflighted rig',
-    faceStage: 'Arael',
-    adminTitle: 'Arael face',
+    faceStage: 'Face',
+    adminTitle: 'Face',
     adminDescription:
       'One site-wide face. Portrait first, then the rig, then expression and pose.',
     faceOpen: 'Open face settings',
@@ -699,7 +699,7 @@ export const enUS: TranslationKeys = {
         'Import will REPLACE all current visitor stats (pages, events, referrers, visitor hashes). Only backups signed by this instance are accepted. Continue?',
       aiUsageTitle: 'AI usage stats',
       aiUsageDesc:
-        'Full-site AI calls (including admins and the site owner) by user, model, source, and day. Text, image, and speech are recorded — Tapp, scheduled jobs, Arael, reports, Agent persona, playground, and more. Filter by user or model; bars are calls (left axis), the line is tokens (right axis, independent scale).',
+        'Full-site AI calls (including admins and the site owner) by user, model, source, and day. Text, image, and speech are recorded — Tapp, scheduled jobs, Agent, reports, Agent persona, playground, and more. Filter by user or model; bars are calls (left axis), the line is tokens (right axis, independent scale).',
       aiUsageLoadFailed: 'Failed to load AI usage stats',
       aiUsageEmpty: 'No AI calls in the selected range',
       aiUsageEmptyUsers: 'No per-user usage in the selected range',
@@ -720,7 +720,7 @@ export const enUS: TranslationKeys = {
       aiUsageByModel: 'By model',
       aiUsageBySource: 'By source',
       aiUsageBySourceDesc:
-        'Splits Tapp, scheduled jobs, Arael, reports, Agent persona, speech, playground, and other paths. Unlike visitor stats, admin calls are counted.',
+        'Splits Tapp, scheduled jobs, Agent, reports, Agent persona, speech, playground, and other paths. Unlike visitor stats, admin calls are counted.',
       aiUsageColUser: 'User',
       aiUsageColModel: 'Model',
       aiUsageColSource: 'Source',
@@ -731,7 +731,7 @@ export const enUS: TranslationKeys = {
       aiUsageRoleAdmin: 'Admin',
       aiUsageRoleOwner: 'Owner',
       aiUsageSourceScheduler: 'Scheduled jobs',
-      aiUsageSourceAgent: 'Arael',
+      aiUsageSourceAgent: 'Agent',
       aiUsageSourceReports: 'Report generation',
       aiUsageSourceRuntime: 'Tapp / runtime',
       aiUsageSourcePersona: 'Agent persona',
@@ -782,9 +782,9 @@ export const enUS: TranslationKeys = {
         brew_unstar: 'Brew unstar',
         report_stage_open: 'Report stage mode',
         report_play_all: 'Report play all',
-        agent_open: 'Open Arael',
-        agent_send: 'Arael send message',
-        agent_voice: 'Arael voice input',
+        agent_open: 'Open Agent',
+        agent_send: 'Agent send message',
+        agent_voice: 'Agent voice input',
         tapp_open_detail: 'Open Tapp detail',
         tapp_run: 'Run Tapp',
         tapp_playground: 'Tapp playground',
@@ -1614,7 +1614,7 @@ export const enUS: TranslationKeys = {
       'A second notch below the bounded default: smaller chunk inflight, process caches, DB pool, password-hash concurrency, and video/audio peaks. Everyday messages still fit; large media should use chunked transfer, and lossless audio may reject sooner. Env MYRIAD_MEMORY_PROFILE can override. DB pool fully applies after backend restart.',
     agentPersona: 'Agent persona',
     agentPersonaHint:
-      'When on, Arael speaks with the site persona, keeps per-person mood and diary, and may speak after named events. When off, it only chats and does tasks.',
+      'When on, Agent speaks with the site persona, keeps per-person mood and diary, and may speak after named events. When off, it only chats and does tasks.',
     agentPersonaNeedsLite:
       'Lite is off: chat replies fall back to Standard. Proactive lines stay short and mood hints stay off.',
     agentPersonaNeedsPro:
@@ -1651,7 +1651,7 @@ export const enUS: TranslationKeys = {
       'Leave empty for official endpoint, or enter GitHub API mirror URL (Note: OAuth still requires official endpoint)',
     mcpTitle: 'MCP tool servers',
     mcpDesc:
-      'Add, edit, or remove external MCP (stdio) tool processes for Arael. Saving writes the server config and hot-reloads children — no full site restart. Admin only.',
+      'Add, edit, or remove external MCP (stdio) tool processes for Agent. Saving writes the server config and hot-reloads children — no full site restart. Admin only.',
     mcpConfigPathLabel: 'Config file',
     mcpStatServers: 'Servers',
     mcpStatEnabled: 'Enabled',
@@ -2177,21 +2177,21 @@ export const enUS: TranslationKeys = {
     permissions: 'Permission Management',
     permissionsDesc:
       'Configure Tapp elevated delegation and AI quotas. Levels: public / basic / elevated (delegable) / privileged (admin only). Report generation is not delegable',
-    agentPresetTitle: 'Arael Agent Presets',
+    agentPresetTitle: 'Agent Presets',
     agentPresetDesc:
-      'One-click templates for Arael Agent–related elevated toggles; fine-tune below. Does not change media/theme and other unrelated items',
+      'One-click templates for Agent-related elevated toggles; fine-tune below. Does not change media/theme and other unrelated items',
     agentPresetUserHint:
       'Disabled=off AI/outbound; Chat=ai:chat+analyze; Standard=all AI; Elevated=AI+outbound+scheduler',
     agentPresetGuestHint:
-      'Guests have no Arael Agent sessions; enabling ai:chat mainly affects entry visibility and Tapp AI. Use with caution',
+      'Guests have no Agent sessions; enabling ai:chat mainly affects entry visibility and Tapp AI. Use with caution',
     agentPresetCustom: 'Custom',
     agentFineTuneTitle: 'Fine-tune permissions',
     agentFineTuneDesc:
-      'Adjust elevated toggles on top of Arael Agent presets; changes may show the preset as Custom',
+      'Adjust elevated toggles on top of Agent presets; changes may show the preset as Custom',
     // User elevated permissions
     userElevatedPermissions: 'User Permission Delegation',
     userElevatedPermissionsDesc:
-      'Grant elevated permissions per toggle; AI/outbound/scheduler can also be set via Arael Agent presets above',
+      'Grant elevated permissions per toggle; AI/outbound/scheduler can also be set via Agent presets above',
     // Guest elevated permissions
     guestElevatedPermissions: 'Guest Permission Delegation',
     guestElevatedPermissionsDesc:
@@ -2251,7 +2251,7 @@ export const enUS: TranslationKeys = {
     librarySourceLoadFailed: 'Failed to load library source settings',
     moduleVisibilityTitle: 'Page Visibility',
     moduleVisibilityDesc:
-      'Set who can see Library, Brew Reader, Platform Reports, Tapp Store, and Arael Agent',
+      'Set who can see Library, Brew Reader, Platform Reports, Tapp Store, and Agent',
     moduleVisibilityAll: 'Everyone',
     moduleVisibilityAuthenticated: 'Signed In',
     moduleVisibilityAdmin: 'Admins',
@@ -3612,7 +3612,7 @@ export const enUS: TranslationKeys = {
     permMediaRead: 'Read Media Status',
     permMediaAudio: 'Play Audio',
     permRegisterTheme: 'Register Theme',
-    permRegisterAgent: 'Register Arael Agent',
+    permRegisterAgent: 'Register Agent',
     permRegisterShortcut: 'Register Shortcut',
     permPublishEvent: 'Publish Event',
     permSubscribeEvent: 'Subscribe Event',
@@ -3668,7 +3668,7 @@ export const enUS: TranslationKeys = {
     permMediaAudioDesc:
       'Allow playing package/blob/data audio inside the sandbox',
     permRegisterThemeDesc: 'Allow registering custom theme styles',
-    permRegisterAgentDesc: 'Allow registering Arael Agent capabilities',
+    permRegisterAgentDesc: 'Allow registering Agent capabilities',
     permRegisterShortcutDesc: 'Allow registering keyboard shortcuts',
     permPublishEventDesc: 'Allow publishing system events',
     permSubscribeEventDesc: 'Allow subscribing to system events',
@@ -4721,7 +4721,7 @@ export const enUS: TranslationKeys = {
     annotationAbbreviation: 'Abbrev.',
   },
 
-  // Arael AI Assistant
+  // Agent
   arael: {
     greeting: {
       lateNight: 'Late night',
@@ -4755,7 +4755,7 @@ export const enUS: TranslationKeys = {
       'Need anything?',
     ],
     heroSub: 'Your personal AI assistant',
-    askArael: 'Ask Arael',
+    askArael: 'Ask Agent',
     recentConversations: 'Recent conversations',
     noRecentConversations: 'No recent conversations',
     unnamedConversation: 'Unnamed conversation',
@@ -4782,19 +4782,19 @@ export const enUS: TranslationKeys = {
     personaPersonality: 'Personality',
     personaPersonalityHint: 'One person, for everyone they talk to',
     personaSave: 'Save persona',
-    personaReset: 'Back to Arael',
+    personaReset: 'Back to Agent',
     personaOwnerOnly: 'Only the site owner can change the persona.',
     personaDoNotDisturb: 'Don’t reach out first',
     agentPersonaOff: 'Turn on Agent persona in AI settings first.',
     statusNeedLogin: 'Sign in to write the persona and hear your own events',
     emptyHeartbeat: 'No scheduled tasks',
     emptyHeartbeatHint:
-      'Have Arael run instructions on a schedule — daily digests, checks, and more.',
+      'Have Agent run instructions on a schedule — daily digests, checks, and more.',
     emptySkills: 'No skills',
     emptyMemory: 'No memories',
     manageLoadError: 'Failed to load. Please retry.',
     manageActionError: 'Action failed. Please retry.',
-    loginRequiredHint: 'Sign in to chat with Arael. Guest mode is view-only.',
+    loginRequiredHint: 'Sign in to chat with Agent. Guest mode is view-only.',
     manageAdminOnly: 'Only administrators can manage tasks and skills.',
     editHeartbeat: 'Edit',
     saveHeartbeat: 'Save',
@@ -4807,7 +4807,7 @@ export const enUS: TranslationKeys = {
     heartbeatScheduleCustom: 'Custom',
     heartbeatCronHint: 'Cron expression (min hour day month weekday)',
     heartbeatAction: 'Action',
-    heartbeatActionPlaceholder: 'What should Arael do…',
+    heartbeatActionPlaceholder: 'What should Agent do…',
     heartbeatEnabled: 'Enable immediately',
     heartbeatActive: 'Active',
     heartbeatPaused: 'Paused',

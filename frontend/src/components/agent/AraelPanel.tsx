@@ -1,5 +1,5 @@
 /**
- * Arael - AI 助手浮动面板
+ * Agent 浮动面板（项目名 Arael）
  *
  * 对话系统重构版：
  * - message-centric 聊天 UI（替代 task-list）
@@ -77,7 +77,11 @@ import './AraelPanel.css'
 /** 面板内视图 */
 type PanelView = 'chat' | 'sessions' | 'manage' | 'debug'
 
-const ARAEL_PREFIX_RE = /^Arael\s*/
+function stripNamePrefix(greeting: string, name: string): string {
+  const prefix = name.trim()
+  if (!prefix || !greeting.startsWith(prefix)) return greeting
+  return greeting.slice(prefix.length).replace(/^\s+/, '')
+}
 
 /** 连点打开 debug 面板：窗口内点击次数 / 时间窗 */
 const DEBUG_MULTI_CLICK_COUNT = 5
@@ -88,7 +92,7 @@ function getSmartGreeting(
   pathname: string,
   _historyCount: number,
   arael: TranslationKeys['arael'],
-  displayName = 'Arael',
+  displayName = 'Agent',
 ): string {
   const hour = new Date().getHours()
   const g = arael.greeting
@@ -195,7 +199,7 @@ export const AraelPanel: React.FC = () => {
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
   const [sessionTitle, setSessionTitle] = useState<string | null>(null)
-  const [personaName, setPersonaName] = useState('Arael')
+  const [personaName, setPersonaName] = useState('Agent')
 
   // 长按检测（提取到 useLongPress hook）
   const { indicator: longPressIndicator } = useLongPress(
@@ -339,7 +343,7 @@ export const AraelPanel: React.FC = () => {
           : ''
       if (publicName) setPersonaName(publicName)
     } catch {
-      if (!isAuthenticated) setPersonaName('Arael')
+      if (!isAuthenticated) setPersonaName('Agent')
     }
     if (!isAuthenticated) return
     try {
@@ -1862,7 +1866,7 @@ export const AraelPanel: React.FC = () => {
                     ) : (
                       <span className="arael-tasks-title-rest">
                         {sessionTitle ||
-                          smartGreeting.replace(ARAEL_PREFIX_RE, '')}
+                          stripNamePrefix(smartGreeting, personaName)}
                       </span>
                     )}
                   </span>

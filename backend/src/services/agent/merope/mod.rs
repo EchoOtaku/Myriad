@@ -270,10 +270,10 @@ async fn maybe_write_chat_diary(db: &sea_orm::DatabaseConnection, user_id: i32, 
     let _ = insert_diary(db, user_id, &summary, "chat").await;
 }
 
-/// Public face of the site persona. Merope off or empty name → Arael.
+/// Public face: 人设 off → Agent (product). Empty 人设 name → Arael.
 pub fn public_persona_name(is_enabled: bool, stored_name: Option<&str>) -> String {
     if !is_enabled {
-        return "Arael".to_string();
+        return "Agent".to_string();
     }
     stored_name
         .map(str::trim)
@@ -458,7 +458,7 @@ mod tests {
         );
         assert_eq!(super::format_addressee_label(7, None, None), "用户#7");
         assert_eq!(super::format_addressee_label(-12, Some("瞳"), None), "游客");
-        assert_eq!(super::public_persona_name(false, Some("瞳")), "Arael");
+        assert_eq!(super::public_persona_name(false, Some("瞳")), "Agent");
         assert_eq!(super::public_persona_name(true, Some("  瞳  ")), "瞳");
         assert_eq!(super::public_persona_name(true, Some("   ")), "Arael");
         assert_eq!(super::public_persona_name(true, None), "Arael");

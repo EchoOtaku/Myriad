@@ -1308,7 +1308,7 @@ const GlobalControlPanel: React.FC = () => {
     [collapsePanel, navigate],
   )
 
-  // 点击任务类通知：收起面板并打开对应 Arael 会话（AraelPanel 监听该事件；可带 run/task 以 reattach）
+  // 点击任务类通知：收起面板并打开对应 Agent 会话（AraelPanel 监听该事件；可带 run/task 以 reattach）
   const handleOpenNotifSession = useCallback(
     (sessionId: string, opts?: { runId?: string; taskId?: string }) => {
       handleClosePanel()

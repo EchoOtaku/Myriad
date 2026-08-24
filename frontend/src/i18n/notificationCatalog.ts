@@ -53,12 +53,12 @@ const SOURCE_TEXT: Record<
 > = {
   'zh-CN': {
     agent: {
-      title: 'Arael 任务',
+      title: 'Agent 任务',
       description: '任务进度、结果、取消、澄清，以及有价值的平台动态',
     },
     heartbeat: {
       title: 'Heartbeat',
-      description: 'Arael 后台定时任务执行结果',
+      description: 'Agent 后台定时任务执行结果',
     },
     mcp: { title: 'MCP 服务', description: '工具服务器连接和断开状态' },
     brew: { title: 'Brew', description: '订阅源新内容与连续抓取错误' },
@@ -69,13 +69,13 @@ const SOURCE_TEXT: Record<
   },
   'en-US': {
     agent: {
-      title: 'Arael Tasks',
+      title: 'Agent Tasks',
       description:
         'Task progress, results, cancellation, clarification, and notable platform activity',
     },
     heartbeat: {
       title: 'Heartbeat',
-      description: 'Results from Arael background schedules',
+      description: 'Results from Agent background schedules',
     },
     mcp: { title: 'MCP Services', description: 'Tool server connection state' },
     brew: {
@@ -101,13 +101,13 @@ const SOURCE_TEXT: Record<
   },
   'ja-JP': {
     agent: {
-      title: 'Arael タスク',
+      title: 'Agent タスク',
       description:
         '進行状況、結果、キャンセル、確認要求、価値のあるプラットフォームの動き',
     },
     heartbeat: {
       title: 'Heartbeat',
-      description: 'Arael バックグラウンド定期処理の結果',
+      description: 'Agent バックグラウンド定期処理の結果',
     },
     mcp: { title: 'MCP サービス', description: 'ツールサーバーの接続状態' },
     brew: { title: 'Brew', description: '新着フィードと連続取得エラー' },

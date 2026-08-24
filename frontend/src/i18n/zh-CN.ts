@@ -71,7 +71,7 @@ export const zhCN: TranslationKeys = {
     brew: 'Brew',
     brewReading: 'Brew 阅读',
     // Agent
-    agent: 'Arael Agent',
+    agent: 'Agent',
     // Tapp（主导航 /tapp = 已装应用列表）
     tapp: 'Tapp 应用',
     openTapp: '打开 Tapp 应用',
@@ -95,7 +95,7 @@ export const zhCN: TranslationKeys = {
     statusBarTitle: '形象',
     statusLoading: '加载中…',
     statusDisabled: '站点未开启 Agent 人设',
-    statusNeedLogin: '登录后可看到 Arael',
+    statusNeedLogin: '登录后可看到形象',
     statusCreateHint: '先在设置里完成设定',
     statusContinueHint: '设定尚未完成，到设置里继续',
     statusReadyHint: '{activity} · 心情 {mood}',
@@ -103,7 +103,7 @@ export const zhCN: TranslationKeys = {
     statusContinue: '继续',
     statusOpen: '查看',
     statusLogin: '登录',
-    tapToOpen: '打开 Arael',
+    tapToOpen: '打开 Agent',
     chat: '对话',
     memories: '记忆',
     settings: '设置',
@@ -318,8 +318,8 @@ export const zhCN: TranslationKeys = {
     motionPsdPreflight: '预检分层 PSD',
     motionPsdValidating: '正在校验 PSD…',
     motionPsdCommit: '激活预检通过的 Rig',
-    faceStage: 'Arael',
-    adminTitle: 'Arael 形象',
+    faceStage: '形象',
+    adminTitle: '形象',
     adminDescription: '全站一份形象。先立绘，再骨骼，再调表情和姿态。',
     faceOpen: '打开形象设置',
     adminEnabled: '启用 Agent 人设',
@@ -643,7 +643,7 @@ export const zhCN: TranslationKeys = {
         '导入将【覆盖】当前全部访客统计数据（页面 / 事件 / 来源 / 访客哈希）。仅接受本实例签名的备份。是否继续？',
       aiUsageTitle: 'AI 使用统计',
       aiUsageDesc:
-        '全站 AI 调用（含管理员与站长）：按用户、模型、来源与日期汇总。文字、图像、语音都会入账，含 Tapp、定时任务、Arael、报告、Agent 人设、游乐场等。可筛用户与模型；柱=调用次数（左轴），线=Token（右轴，独立刻度）。',
+        '全站 AI 调用（含管理员与站长）：按用户、模型、来源与日期汇总。文字、图像、语音都会入账，含 Tapp、定时任务、Agent、报告、Agent 人设、游乐场等。可筛用户与模型；柱=调用次数（左轴），线=Token（右轴，独立刻度）。',
       aiUsageLoadFailed: '加载 AI 使用统计失败',
       aiUsageEmpty: '所选范围内暂无 AI 调用记录',
       aiUsageEmptyUsers: '所选范围内暂无用户用量',
@@ -664,7 +664,7 @@ export const zhCN: TranslationKeys = {
       aiUsageByModel: '按模型',
       aiUsageBySource: '按来源',
       aiUsageBySourceDesc:
-        '区分 Tapp、定时任务、Arael、报告、Agent 人设、语音、游乐场等路径（与访客统计不同：管理员调用会计入）。',
+        '区分 Tapp、定时任务、Agent、报告、Agent 人设、语音、游乐场等路径（与访客统计不同：管理员调用会计入）。',
       aiUsageColUser: '用户',
       aiUsageColModel: '模型',
       aiUsageColSource: '来源',
@@ -675,7 +675,7 @@ export const zhCN: TranslationKeys = {
       aiUsageRoleAdmin: '管理员',
       aiUsageRoleOwner: '站长',
       aiUsageSourceScheduler: '定时任务',
-      aiUsageSourceAgent: 'Arael',
+      aiUsageSourceAgent: 'Agent',
       aiUsageSourceReports: '报告生成',
       aiUsageSourceRuntime: 'Tapp / 运行时',
       aiUsageSourcePersona: 'Agent 人设',
@@ -726,9 +726,9 @@ export const zhCN: TranslationKeys = {
         brew_unstar: 'Brew 取消收藏',
         report_stage_open: '报告舞台模式',
         report_play_all: '报告播放全部',
-        agent_open: '打开 Arael',
-        agent_send: 'Arael 发送消息',
-        agent_voice: 'Arael 语音输入',
+        agent_open: '打开 Agent',
+        agent_send: 'Agent 发送消息',
+        agent_voice: 'Agent 语音输入',
         tapp_open_detail: '打开 Tapp 详情',
         tapp_run: '运行 Tapp',
         tapp_playground: 'Tapp 游乐场',
@@ -1505,7 +1505,7 @@ export const zhCN: TranslationKeys = {
       '在均衡档之上再收一档：分块并发、进程内缓存、连接池、密码哈希并发，以及视频/音频峰值。日常消息仍可用；大媒体请走分块传输，无损音频可能更早拒收。可用 MYRIAD_MEMORY_PROFILE 覆盖。连接池需重启后端后完全生效。',
     agentPersona: 'Agent 人设',
     agentPersonaHint:
-      '打开后 Arael 会用设定说话，记住跟每个人的心情和日记，并在有名单上的事时自己开口。关上则只聊天办事。',
+      '打开后 Agent 会用设定说话，记住跟每个人的心情和日记，并在有名单上的事时自己开口。关上则只聊天办事。',
     agentPersonaNeedsLite:
       '没开 Lite：聊天开口会退回标准模型；主动开口仍是短句，心情微调不跑。',
     agentPersonaNeedsPro: '写设定需要先启用上面的 Pro 模型。',
@@ -1536,7 +1536,7 @@ export const zhCN: TranslationKeys = {
       '留空使用官方地址，可填写 GitHub API 镜像地址（注意：OAuth 认证仍需使用官方地址）',
     mcpTitle: 'MCP 工具服务器',
     mcpDesc:
-      '在界面中增删改 Arael 可用的外部 MCP（stdio）工具进程。保存后写入服务器配置并热重载，无需重启整站。仅管理员可见。',
+      '在界面中增删改 Agent 可用的外部 MCP（stdio）工具进程。保存后写入服务器配置并热重载，无需重启整站。仅管理员可见。',
     mcpConfigPathLabel: '配置文件',
     mcpStatServers: '服务器',
     mcpStatEnabled: '已启用',
@@ -2041,21 +2041,21 @@ export const zhCN: TranslationKeys = {
     permissions: '权限管理',
     permissionsDesc:
       '配置 Tapp elevated 权限下放及 AI 配额。等级：public / basic / elevated（可下放）/ privileged（仅管理员）。生成报告、管理 Brew 等不可下放',
-    agentPresetTitle: 'Arael Agent 预设',
+    agentPresetTitle: 'Agent 预设',
     agentPresetDesc:
-      '一键套用与 Arael Agent 相关的 elevated 开关模板；仍可在下方逐项微调。不改动媒体/主题等与 Arael Agent 无关的项',
+      '一键套用与 Agent 相关的 elevated 开关模板；仍可在下方逐项微调。不改动媒体/主题等与 Agent 无关的项',
     agentPresetUserHint:
       '禁用=关掉 AI/出站；仅对话=ai:chat+analyze；标准=全部 AI；扩展=AI+出站+定时任务',
     agentPresetGuestHint:
-      '游客无后端 Arael Agent 会话；开启 ai:chat 等仅影响入口展示与 Tapp 侧 AI。请谨慎开放',
+      '游客无后端 Agent 会话；开启 ai:chat 等仅影响入口展示与 Tapp 侧 AI。请谨慎开放',
     agentPresetCustom: '自定义',
     agentFineTuneTitle: '权限细调',
     agentFineTuneDesc:
-      '在 Arael Agent 预设基础上逐项下放 elevated 权限；改动后预设可能显示为「自定义」',
+      '在 Agent 预设基础上逐项下放 elevated 权限；改动后预设可能显示为「自定义」',
     // 用户 elevated 权限
     userElevatedPermissions: '普通用户权限下放',
     userElevatedPermissionsDesc:
-      '逐项下放 elevated 权限；AI/出站/调度亦由上方 Arael Agent 预设批量写入',
+      '逐项下放 elevated 权限；AI/出站/调度亦由上方 Agent 预设批量写入',
     // 游客 elevated 权限
     guestElevatedPermissions: '游客权限下放',
     guestElevatedPermissionsDesc:
@@ -2108,7 +2108,7 @@ export const zhCN: TranslationKeys = {
     librarySourceLoadFailed: '加载资料库来源设置失败',
     moduleVisibilityTitle: '页面可见性',
     moduleVisibilityDesc:
-      '设置资料库、Brew 阅读、平台报告、Tapp 应用商店、Arael Agent 对哪些用户显示',
+      '设置资料库、Brew 阅读、平台报告、Tapp 应用商店、Agent 对哪些用户显示',
     moduleVisibilityAll: '全体',
     moduleVisibilityAuthenticated: '登录用户',
     moduleVisibilityAdmin: '管理员用户',
@@ -3443,7 +3443,7 @@ export const zhCN: TranslationKeys = {
     permMediaRead: '读取媒体状态',
     permMediaAudio: '播放音频',
     permRegisterTheme: '注册主题',
-    permRegisterAgent: '注册 Arael Agent',
+    permRegisterAgent: '注册 Agent',
     permRegisterShortcut: '注册快捷键',
     permPublishEvent: '发布事件',
     permSubscribeEvent: '订阅事件',
@@ -3494,7 +3494,7 @@ export const zhCN: TranslationKeys = {
     permMediaReadDesc: '允许读取当前媒体播放状态',
     permMediaAudioDesc: '允许在沙箱内播放包内/blob/data 音频',
     permRegisterThemeDesc: '允许注册自定义主题样式',
-    permRegisterAgentDesc: '允许注册 Arael Agent 能力',
+    permRegisterAgentDesc: '允许注册 Agent 能力',
     permRegisterShortcutDesc: '允许注册键盘快捷键',
     permPublishEventDesc: '允许发布系统事件',
     permSubscribeEventDesc: '允许订阅系统事件',
@@ -4508,7 +4508,7 @@ export const zhCN: TranslationKeys = {
     annotationAbbreviation: '缩写',
   },
 
-  // Arael AI 助手
+  // Agent
   arael: {
     greeting: {
       lateNight: '夜深了',
@@ -4532,7 +4532,7 @@ export const zhCN: TranslationKeys = {
       '有什么需要吗？',
     ],
     heroSub: '你的私人 AI 助手',
-    askArael: '问 Arael',
+    askArael: '问 Agent',
     recentConversations: '最近对话',
     noRecentConversations: '暂无最近对话',
     unnamedConversation: '未命名对话',
@@ -4559,18 +4559,18 @@ export const zhCN: TranslationKeys = {
     personaPersonality: '性格',
     personaPersonalityHint: '它对谁说话都是这同一个人',
     personaSave: '保存设定',
-    personaReset: '回到 Arael',
+    personaReset: '回到 Agent',
     personaOwnerOnly: '只有站长能改设定。',
     personaDoNotDisturb: '先别主动找我',
     agentPersonaOff: '先在 AI 设置里打开 Agent 人设。',
     statusNeedLogin: '登录后才能写设定、听自己的事',
     emptyHeartbeat: '暂无定时任务',
-    emptyHeartbeatHint: '让 Arael 按计划自动执行指令，例如每日摘要或定期检查。',
+    emptyHeartbeatHint: '让 Agent 按计划自动执行指令，例如每日摘要或定期检查。',
     emptySkills: '暂无技能',
     emptyMemory: '暂无记忆',
     manageLoadError: '加载失败，请重试',
     manageActionError: '操作失败，请重试',
-    loginRequiredHint: '登录后即可与 Arael 对话。游客模式仅可浏览。',
+    loginRequiredHint: '登录后即可与 Agent 对话。游客模式仅可浏览。',
     manageAdminOnly: '仅管理员可管理定时任务与技能。',
     editHeartbeat: '编辑',
     saveHeartbeat: '保存',
@@ -4583,7 +4583,7 @@ export const zhCN: TranslationKeys = {
     heartbeatScheduleCustom: '自定义',
     heartbeatCronHint: 'Cron 表达式（分 时 日 月 周）',
     heartbeatAction: '指令',
-    heartbeatActionPlaceholder: '告诉 Arael 要做什么…',
+    heartbeatActionPlaceholder: '告诉 Agent 要做什么…',
     heartbeatEnabled: '创建后立即启用',
     heartbeatActive: '运行中',
     heartbeatPaused: '已暂停',

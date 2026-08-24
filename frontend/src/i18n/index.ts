@@ -4328,7 +4328,7 @@ export interface TranslationKeys {
     annotationAbbreviation: string
   }
 
-  // Arael AI 助手
+  // Agent
   arael: {
     // 问候语
     greeting: {

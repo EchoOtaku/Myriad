@@ -420,8 +420,8 @@ pub struct DynamicConfig {
     /// Merope：设定、状态、主动对话、事件开口。默认关。用户界面叫 Agent 人设。
     pub merope_enabled: bool,
 
-    /// Arael 的页面形象：当前生效的 2.5D 图集包 id（sha256 hex）。
-    /// None = 没有编译过的骨骼，浮动层只回退主立绘。站点级——只有一个 Arael。
+    /// Agent 人设的页面形象：当前生效的 2.5D 图集包 id（sha256 hex）。
+    /// None = 没有编译过的骨骼，浮动层只回退主立绘。站点级——全站一份形象。
     pub agent_rig_asset_id: Option<String>,
 
     /// Hugging Face token used only by the backend when invoking the remote

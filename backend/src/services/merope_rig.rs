@@ -1,6 +1,6 @@
 //! Site-wide Anime2.5D rig store.
 //!
-//! One Arael, one compiled atlas + manifest. Pixels are not decoded here —
+//! One site face, one compiled atlas + manifest. Pixels are not decoded here —
 //! only the PNG header is read so a selfie or truncated upload cannot be
 //! adopted. Compilation stays in `myriad-merope`.
 

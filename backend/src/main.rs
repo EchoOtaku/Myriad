@@ -271,10 +271,10 @@ async fn run_server() -> anyhow::Result<()> {
                 tracing::info!(db_target = %db_target, "✅ Database connection established");
 
                 // Run database migrations automatically on startup (idempotent).
-                // Published migration names stay in the migrator forever, so
-                // startup never rewrites history to hide a missing file. Any
-                // migration failure is fatal to full mode.
-                use sea_orm_migration::MigratorTrait;
+                // Folded 007–015 names are deleted from `seaql_migrations` first
+                // so SeaORM does not require no-op files for them; leftover
+                // `digital_life_*` experiment tables are dropped in the same
+                // step. Any remaining migration failure is fatal to full mode.
                 tracing::debug!("Checking for pending database migrations...");
                 migration::Migrator::up(&db, None)
                     .await

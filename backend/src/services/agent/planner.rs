@@ -173,7 +173,7 @@ impl Planner {
         stable.push(match role_prompt {
             Some(role) => format!("## 身份\n{}", role),
             None => {
-                "## 身份\n你是 Arael，一个智能 AI 助手。你能理解用户的自然语言请求并规划执行步骤。"
+                "## 身份\n你是 Agent，一个智能 AI 助手。你能理解用户的自然语言请求并规划执行步骤。"
                     .to_string()
             }
         });
@@ -1133,7 +1133,10 @@ mod tests {
             )
             .await;
         assert!(prompt.contains("## 身份"));
-        assert!(prompt.contains("你是 Arael"));
+        assert!(
+            prompt.contains("你是 Agent") || prompt.contains("You are Agent"),
+            "identity names the product Agent"
+        );
     }
 
     #[test]

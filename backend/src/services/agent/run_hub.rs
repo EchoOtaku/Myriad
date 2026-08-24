@@ -510,7 +510,7 @@ WHERE namespace = $1 AND runtime_id = $2
                     "failed" => "The task failed",
                     "cancelled" => "The task was cancelled",
                     "waiting_for_input" => "The task needs your reply",
-                    _ => "Arael is working",
+                    _ => "Agent is working",
                 };
                 manager
                     .notify_task_status(

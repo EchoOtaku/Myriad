@@ -1,6 +1,6 @@
 use sea_orm_migration::prelude::*;
 
-/// Retired coarse permission strings removed from the permission enum.
+/// Retired coarse permission strings removed from the permission enum (#336).
 ///
 /// On upgrade, strip these names out of the two permission columns of every
 /// installed TAPP row (`approved_permissions` and `granted_permissions`) and

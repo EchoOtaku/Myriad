@@ -117,7 +117,7 @@ export function notificationFacingTitle(notification: AppNotification): string {
   if (/任务等待你的回答|The task needs your reply/.test(raw)) {
     return t.noticeAgentTaskWaiting
   }
-  if (/Arael 正在执行任务|^Arael is working$/.test(raw)) {
+  if (/Arael 正在执行任务|^Arael is working$|^Agent is working$/.test(raw)) {
     return t.noticeAgentTaskRunning
   }
   if (/系统更新任务失败/.test(raw)) return t.noticeUpdaterFailed

@@ -71,7 +71,7 @@ export const jaJP: TranslationKeys = {
     brew: 'Brew',
     brewReading: 'Brew リーダー',
     // Agent
-    agent: 'Arael Agent',
+    agent: 'Agent',
     // Tapp（主導航 /tapp = インストール済み一覧）
     tapp: 'Tapp アプリ',
     openTapp: 'Tapp アプリを開く',
@@ -95,7 +95,7 @@ export const jaJP: TranslationKeys = {
     statusBarTitle: 'ビジュアル',
     statusLoading: '読み込み中…',
     statusDisabled: 'このサイトでは Agent ペルソナが無効です',
-    statusNeedLogin: 'ログインして Arael を表示',
+    statusNeedLogin: 'ログインしてビジュアルを表示',
     statusCreateHint: '設定でペルソナを完成させてください',
     statusContinueHint: '設定が未完了です。設定から続けてください',
     statusReadyHint: '{activity} · 気分 {mood}',
@@ -103,7 +103,7 @@ export const jaJP: TranslationKeys = {
     statusContinue: '続ける',
     statusOpen: '開く',
     statusLogin: 'ログイン',
-    tapToOpen: 'Arael を開く',
+    tapToOpen: 'Agent を開く',
     chat: '会話',
     memories: '記憶',
     settings: '設定',
@@ -334,8 +334,8 @@ export const jaJP: TranslationKeys = {
     motionPsdPreflight: 'レイヤー PSD を事前検証',
     motionPsdValidating: 'PSD を検証中…',
     motionPsdCommit: '検証済みリグを確定',
-    faceStage: 'Arael',
-    adminTitle: 'Arael のビジュアル',
+    faceStage: 'ビジュアル',
+    adminTitle: 'ビジュアル',
     adminDescription:
       'サイト全体で一つのビジュアルです。立ち絵、リグ、表情とポーズの順。',
     faceOpen: 'ビジュアル設定を開く',
@@ -688,7 +688,7 @@ export const jaJP: TranslationKeys = {
         'インポートすると現在の訪問統計（ページ / イベント / 参照元 / 訪問者ハッシュ）がすべて【置き換え】られます。このインスタンスで署名されたバックアップのみ受け入れます。続行しますか？',
       aiUsageTitle: 'AI 使用統計',
       aiUsageDesc:
-        'サイト全体の AI 呼び出し（管理者・オーナーを含む）をユーザー・モデル・出典・日付で集計。テキスト・画像・音声を記録し、Tapp、定期タスク、Arael、レポート、Agent ペルソナ、プレイグラウンドなどを含む。ユーザー／モデルで絞り込み可。棒＝回数（左軸）、線＝トークン（右軸・独立スケール）。',
+        'サイト全体の AI 呼び出し（管理者・オーナーを含む）をユーザー・モデル・出典・日付で集計。テキスト・画像・音声を記録し、Tapp、定期タスク、Agent、レポート、Agent ペルソナ、プレイグラウンドなどを含む。ユーザー／モデルで絞り込み可。棒＝回数（左軸）、線＝トークン（右軸・独立スケール）。',
       aiUsageLoadFailed: 'AI 使用統計の読み込みに失敗しました',
       aiUsageEmpty: '選択期間に AI 呼び出しはありません',
       aiUsageEmptyUsers: '選択期間にユーザー別の使用量はありません',
@@ -709,7 +709,7 @@ export const jaJP: TranslationKeys = {
       aiUsageByModel: 'モデル別',
       aiUsageBySource: '出典別',
       aiUsageBySourceDesc:
-        'Tapp、定期タスク、Arael、レポート、Agent ペルソナ、音声、プレイグラウンドなどを分けて表示。訪問統計と違い、管理者の呼び出しも集計します。',
+        'Tapp、定期タスク、Agent、レポート、Agent ペルソナ、音声、プレイグラウンドなどを分けて表示。訪問統計と違い、管理者の呼び出しも集計します。',
       aiUsageColUser: 'ユーザー',
       aiUsageColModel: 'モデル',
       aiUsageColSource: '出典',
@@ -720,7 +720,7 @@ export const jaJP: TranslationKeys = {
       aiUsageRoleAdmin: '管理者',
       aiUsageRoleOwner: 'オーナー',
       aiUsageSourceScheduler: '定期タスク',
-      aiUsageSourceAgent: 'Arael',
+      aiUsageSourceAgent: 'Agent',
       aiUsageSourceReports: 'レポート生成',
       aiUsageSourceRuntime: 'Tapp / ランタイム',
       aiUsageSourcePersona: 'Agent ペルソナ',
@@ -771,9 +771,9 @@ export const jaJP: TranslationKeys = {
         brew_unstar: 'Brew スター解除',
         report_stage_open: 'レポートステージ',
         report_play_all: 'レポート一括再生',
-        agent_open: 'Arael を開く',
-        agent_send: 'Arael 送信',
-        agent_voice: 'Arael 音声入力',
+        agent_open: 'Agent を開く',
+        agent_send: 'Agent 送信',
+        agent_voice: 'Agent 音声入力',
         tapp_open_detail: 'Tapp 詳細',
         tapp_run: 'Tapp 実行',
         tapp_playground: 'Tapp プレイグラウンド',
@@ -1592,7 +1592,7 @@ export const jaJP: TranslationKeys = {
       '均衡プロファイルからもう一段締めます。転送チャンク同時量、プロセス内キャッシュ、DB プール、パスワードハッシュ同時数、動画／音声のピークを下げます。日常のメッセージは使えます。大きなメディアは分割転送を、ロスレス音声は節約オフを検討。MYRIAD_MEMORY_PROFILE で上書き可。DB プールは再起動後に完全適用。',
     agentPersona: 'Agent ペルソナ',
     agentPersonaHint:
-      'オンにすると Arael はサイトの設定で話し、相手ごとの気持ちと日記を残し、名簿上の出来事で自分から口を開きます。オフなら会話と用事だけです。',
+      'オンにすると Agent はサイトの設定で話し、相手ごとの気持ちと日記を残し、名簿上の出来事で自分から口を開きます。オフなら会話と用事だけです。',
     agentPersonaNeedsLite:
       'Lite がオフです。会話の口は標準モデルに戻ります。自分から話す文は短く、気持ちの微調整は走りません。',
     agentPersonaNeedsPro:
@@ -1628,7 +1628,7 @@ export const jaJP: TranslationKeys = {
       '空欄の場合は公式エンドポイント、またはGitHub APIミラーURLを入力（注意：OAuthは公式エンドポイントが必要）',
     mcpTitle: 'MCP ツールサーバー',
     mcpDesc:
-      'Arael が使える外部 MCP（stdio）ツールを UI で追加・編集・削除。保存するとサーバー設定を書き込み、子プロセスを熱再読み込みします（サイト全体の再起動は不要）。管理者のみ表示。',
+      'Agent が使える外部 MCP（stdio）ツールを UI で追加・編集・削除。保存するとサーバー設定を書き込み、子プロセスを熱再読み込みします（サイト全体の再起動は不要）。管理者のみ表示。',
     mcpConfigPathLabel: '設定ファイル',
     mcpStatServers: 'サーバー',
     mcpStatEnabled: '有効',
@@ -2155,21 +2155,21 @@ export const jaJP: TranslationKeys = {
     permissions: '権限管理',
     permissionsDesc:
       'Tappのelevated権限委譲とAI使用制限を設定。権限は4段階：public、basic、elevated（委譲可）、privileged（管理者のみ）',
-    agentPresetTitle: 'Arael Agent プリセット',
+    agentPresetTitle: 'Agent プリセット',
     agentPresetDesc:
-      'Arael Agent 関連の elevated スイッチを一括適用。下で個別調整可。メディア/テーマなど無関係項目は変更しません',
+      'Agent 関連の elevated スイッチを一括適用。下で個別調整可。メディア/テーマなど無関係項目は変更しません',
     agentPresetUserHint:
       '無効=AI/出站オフ；会話のみ=ai:chat+analyze；標準=全AI；拡張=AI+出站+スケジューラ',
     agentPresetGuestHint:
-      'ゲストに Arael Agent セッションはありません。ai:chat 等は入口表示と Tapp AI 向け。慎重に開放してください',
+      'ゲストに Agent セッションはありません。ai:chat 等は入口表示と Tapp AI 向け。慎重に開放してください',
     agentPresetCustom: 'カスタム',
     agentFineTuneTitle: '権限の個別調整',
     agentFineTuneDesc:
-      'Arael Agent プリセットを基に elevated を個別調整。変更後はプリセットが「カスタム」になる場合があります',
+      'Agent プリセットを基に elevated を個別調整。変更後はプリセットが「カスタム」になる場合があります',
     // ユーザーelevated権限
     userElevatedPermissions: 'ユーザー権限委譲',
     userElevatedPermissionsDesc:
-      'elevated を個別付与。AI/出站/スケジューラは上部の Arael Agent プリセットでも一括設定可',
+      'elevated を個別付与。AI/出站/スケジューラは上部の Agent プリセットでも一括設定可',
     // ゲストelevated権限
     guestElevatedPermissions: 'ゲスト権限委譲',
     guestElevatedPermissionsDesc:
@@ -2225,7 +2225,7 @@ export const jaJP: TranslationKeys = {
     librarySourceLoadFailed: 'ライブラリソース設定の読み込みに失敗しました',
     moduleVisibilityTitle: 'ページ表示範囲',
     moduleVisibilityDesc:
-      'ライブラリ、Brew リーダー、プラットフォームレポート、Tapp ストア、Arael Agent を表示できるユーザーを設定',
+      'ライブラリ、Brew リーダー、プラットフォームレポート、Tapp ストア、Agent を表示できるユーザーを設定',
     moduleVisibilityAll: '全員',
     moduleVisibilityAuthenticated: 'ログインユーザー',
     moduleVisibilityAdmin: '管理者ユーザー',
@@ -3589,7 +3589,7 @@ export const jaJP: TranslationKeys = {
     permMediaRead: 'メディア状態読取',
     permMediaAudio: 'オーディオ再生',
     permRegisterTheme: 'テーマ登録',
-    permRegisterAgent: 'Arael Agent 登録',
+    permRegisterAgent: 'Agent 登録',
     permRegisterShortcut: 'ショートカット登録',
     permPublishEvent: 'イベント発行',
     permSubscribeEvent: 'イベント購読',
@@ -3645,7 +3645,7 @@ export const jaJP: TranslationKeys = {
     permMediaAudioDesc:
       'サンドボックス内でパッケージ/blob/data オーディオの再生を許可',
     permRegisterThemeDesc: 'カスタムテーマスタイルの登録を許可',
-    permRegisterAgentDesc: 'Arael Agent 能力の登録を許可',
+    permRegisterAgentDesc: 'Agent 能力の登録を許可',
     permRegisterShortcutDesc: 'キーボードショートカットの登録を許可',
     permPublishEventDesc: 'システムイベントの発行を許可',
     permSubscribeEventDesc: 'システムイベントの購読を許可',
@@ -4710,7 +4710,7 @@ export const jaJP: TranslationKeys = {
     annotationAbbreviation: '略語',
   },
 
-  // Arael AI アシスタント
+  // Agent
   arael: {
     greeting: {
       lateNight: '夜遅くに',
@@ -4739,7 +4739,7 @@ export const jaJP: TranslationKeys = {
       '何かありますか？',
     ],
     heroSub: 'あなたのパーソナル AI アシスタント',
-    askArael: 'Arael に聞く',
+    askArael: 'Agent に聞く',
     recentConversations: '最近の会話',
     noRecentConversations: '最近の会話はありません',
     unnamedConversation: '無題の会話',
@@ -4766,20 +4766,20 @@ export const jaJP: TranslationKeys = {
     personaPersonality: '性格',
     personaPersonalityHint: '誰に話しても同じ一人です',
     personaSave: '設定を保存',
-    personaReset: 'Arael に戻す',
+    personaReset: 'Agent に戻す',
     personaOwnerOnly: '設定を変えられるのはサイトオーナーだけです。',
     personaDoNotDisturb: '先に話しかけないで',
     agentPersonaOff: '先に AI 設定で Agent ペルソナをオンにしてください。',
     statusNeedLogin: 'ログインすると設定を書けます',
     emptyHeartbeat: 'タスクはありません',
     emptyHeartbeatHint:
-      'Arael に定期実行させたい指示を登録できます（日次サマリーや定期チェックなど）。',
+      'Agent に定期実行させたい指示を登録できます（日次サマリーや定期チェックなど）。',
     emptySkills: 'スキルはありません',
     emptyMemory: 'メモリはありません',
     manageLoadError: '読み込みに失敗しました。再試行してください。',
     manageActionError: '操作に失敗しました。再試行してください。',
     loginRequiredHint:
-      'ログイン後に Arael と会話できます。ゲストは閲覧のみです。',
+      'ログイン後に Agent と会話できます。ゲストは閲覧のみです。',
     manageAdminOnly: 'タスクとスキルの管理は管理者のみ可能です。',
     editHeartbeat: '編集',
     saveHeartbeat: '保存',
@@ -4792,7 +4792,7 @@ export const jaJP: TranslationKeys = {
     heartbeatScheduleCustom: 'カスタム',
     heartbeatCronHint: 'Cron 式（分 時 日 月 曜日）',
     heartbeatAction: '指示',
-    heartbeatActionPlaceholder: 'Arael にやらせたいこと…',
+    heartbeatActionPlaceholder: 'Agent にやらせたいこと…',
     heartbeatEnabled: '作成後すぐに有効化',
     heartbeatActive: '稼働中',
     heartbeatPaused: '停止中',

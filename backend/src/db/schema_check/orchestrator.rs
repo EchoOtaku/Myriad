@@ -18,6 +18,9 @@ use super::seeds::{ensure_default_config, ensure_default_platforms};
 /// 变更日志：
 ///
 /// **分工**：数字系列 `migrations/001`–`006` 是新库权威建表，必须完整。
+/// `016` 是既有安装上的数据清理（#336），不是建表。
+/// 007–015 的 `seaql_migrations` 行在 `Migrator::up` 之前删掉，不进 Migrator。
+/// 同一步 `DROP` 残留的 `digital_life_*` 实验表。
 /// 本文件 `ensure_*` 只覆盖**近月新功能**（CREATE 兜底、唯一索引、PK 扩维等）；
 /// **普通缺列**一律走 `get_expected_schema` 通用 ADD。
 ///

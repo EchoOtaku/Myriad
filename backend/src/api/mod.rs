@@ -16,7 +16,7 @@ pub mod cache;
 pub mod config;
 pub mod diagnostics;
 pub mod merope_3d; // Tripo-backed 3D generation + persisted Web GLBs
-pub mod merope_rig; // Site-wide Anime2.5D face for Arael
+pub mod merope_rig; // Site-wide Anime2.5D face for Agent 人设
 pub mod discord;
 pub mod federation; // HTTP adapter (moved out of main)
 pub mod game_presence; // public Enka / Xbox / PSN; no user cookies

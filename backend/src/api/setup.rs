@@ -215,9 +215,10 @@ pub async fn init_database(
     tracing::info!("Running database migrations");
     let tables_existed = check_database_tables(&db).await;
 
-    // Never drop tables or rewrite migration history from an unauthenticated
-    // setup endpoint. Migrator::up is idempotent and applies only pending work;
-    // damaged migration state requires explicit operator intervention.
+    // Never drop feature tables from an unauthenticated setup endpoint.
+    // Migrator::up strips folded 007–015 history rows, drops leftover
+    // `digital_life_*` experiment tables, then applies pending work;
+    // other damaged migration state requires explicit operator intervention.
     // Import the migrator from migrations module
     use crate::db::Migrator;
 

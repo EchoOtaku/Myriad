@@ -64,7 +64,7 @@ describe('aiUsageMap', () => {
   it('labels ledger sources, including the new site-wide paths', () => {
     const labels = {
       scheduler: 'Scheduled jobs',
-      agent: 'Arael',
+      agent: 'Agent',
       reports: 'Reports',
       runtime: 'Tapp / runtime',
       merope: 'Agent persona',

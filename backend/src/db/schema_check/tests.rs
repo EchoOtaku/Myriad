@@ -42,7 +42,7 @@ fn test_recent_month_features_in_expected_schema() {
         "federation_policy_settings",
         "federation_domain_aliases",
         "federation_object_interactions",
-        // 012
+        // 005（原 012/013）
         "federation_inbox_receipts",
     ] {
         assert!(
@@ -87,6 +87,25 @@ fn test_recent_month_features_in_expected_schema() {
         );
     }
 
+    let instances = tables
+        .iter()
+        .find(|t| t.name == "federation_instances")
+        .expect("federation_instances");
+    assert!(
+        instances.columns.iter().any(|c| c.name == "failing_since"),
+        "federation_instances.failing_since must be in expected schema (005 + generic ADD)"
+    );
+    let delivery = tables
+        .iter()
+        .find(|t| t.name == "federation_delivery_queue")
+        .expect("federation_delivery_queue");
+    for col in ["lease_token", "lease_expires_at"] {
+        assert!(
+            delivery.columns.iter().any(|c| c.name == col),
+            "federation_delivery_queue missing column {col}"
+        );
+    }
+
     let indexes = get_expected_indexes();
     let idx_names: Vec<&str> = indexes.iter().map(|i| i.name.as_str()).collect();
     for required in [
@@ -97,6 +116,8 @@ fn test_recent_month_features_in_expected_schema() {
         "idx_fed_interactions_object_kind",
         "idx_fed_interactions_user_kind_created",
         "federation_inbox_receipts_pkey",
+        "idx_delivery_lease_expiry",
+        "idx_delivery_queue_target_domain",
     ] {
         assert!(
             idx_names.contains(&required),
@@ -439,8 +460,8 @@ VALUES
     );
 
     // A review deployment may already have recorded the short-lived first
-    // 012 migration while retaining its scope-less table. 012/013 are retired
-    // no-ops now, so schema_check rebuilds that shape.
+    // 012 migration while retaining its scope-less table. 012/013 names are
+    // purged from seaql_migrations before up; schema_check rebuilds that shape.
     db.execute_unprepared(
         r#"
 DROP TABLE federation_inbox_receipts;

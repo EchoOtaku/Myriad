@@ -216,7 +216,7 @@ async fn execute_tapp_generate(
         .get("code")
         .and_then(Value::as_str)
         .ok_or("Generated response is missing code")?;
-    let author = json!({"name": "Arael Agent", "type": "ai_generated"});
+    let author = json!({"name": "Agent", "type": "ai_generated"});
     let now = persist_agent_tapp(
         ctx,
         &tapp_id,

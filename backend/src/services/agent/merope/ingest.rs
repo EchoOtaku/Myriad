@@ -367,7 +367,7 @@ async fn compose_line(db: &DatabaseConnection, user_id: i32, summary: &str) -> S
     };
     let soul = crate::services::agent::identity::get_speaking_soul()
         .await
-        .unwrap_or_else(|| "你是 Arael。".to_string());
+        .unwrap_or_else(|| "你是 Agent。".to_string());
     let addressee = super::resolve_addressee_label(db, user_id).await;
     let mood_block = match get_or_create_state(db, user_id).await {
         Ok(state) => format!("\n\n{}", format_mood_section(state.mood)),
