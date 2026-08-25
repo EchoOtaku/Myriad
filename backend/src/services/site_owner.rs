@@ -22,11 +22,10 @@ pub async fn installation_has_owner(db: &DatabaseConnection) -> Result<bool, Str
             "Failed to read installation claim".to_string()
         })?
         .ok_or_else(|| "installation claim query returned no row".to_string())?;
-    row.try_get::<bool>("", "claimed")
-        .map_err(|error| {
-            tracing::error!(%error, "failed to decode installation claim state");
-            "Failed to read installation claim".to_string()
-        })
+    row.try_get::<bool>("", "claimed").map_err(|error| {
+        tracing::error!(%error, "failed to decode installation claim state");
+        "Failed to read installation claim".to_string()
+    })
 }
 
 pub async fn site_owner_user_id(db: &DatabaseConnection) -> Result<i32, String> {

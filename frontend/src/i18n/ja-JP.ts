@@ -127,13 +127,16 @@ export const jaJP: TranslationKeys = {
     psdTooLarge: 'PSD は 32 MB 未満である必要があります。',
     psdPreviewFailed: 'PSD プレビューを合成できませんでした。',
     psdSpecInvalid: 'PSD は 256–2048px の 8bit RGB である必要があります。',
-    psdLayerCountInvalid: 'PSD の可視ピクセルレイヤーは 1–64 枚である必要があります。',
+    psdLayerCountInvalid:
+      'PSD の可視ピクセルレイヤーは 1–64 枚である必要があります。',
     canvasUnsupported: 'このブラウザは 2D Canvas に対応していません。',
-    anime25dMissingFace: 'Anime2.5DRig PSD に必須の face レイヤーがありません。',
+    anime25dMissingFace:
+      'Anime2.5DRig PSD に必須の face レイヤーがありません。',
     anime25dInvalidPixels: 'PSD レイヤーのピクセルが無効です。',
     anime25dMissingHandwear: 'Anime2.5DRig に handwear レイヤーがありません。',
     anime25dMissingLayer: 'Anime2.5DRig に {role} レイヤーがありません。',
-    anime25dPartCount: 'Anime2.5DRig のパーツ数は 1–{max} である必要があります。',
+    anime25dPartCount:
+      'Anime2.5DRig のパーツ数は 1–{max} である必要があります。',
     anime25dContractMissing: '2.5D ビジュアル契約に不足があります：{missing}',
     anime25dLayerTooWide: 'レイヤー {id} の幅が {max} を超えています。',
     anime25dAtlasOverflow: 'レイヤーが {max} キャンバスに収まりません。',
@@ -209,7 +212,8 @@ export const jaJP: TranslationKeys = {
     assetEmpty: 'メイン立ち絵がまだありません。先に生成してください。',
     assetMake: '1 · メイン立ち絵',
     assetRig: '2 · レイヤーリグ',
-    assetNeedsPortrait: 'レイヤー PSD の分解や取り込みの前に、メイン立ち絵が必要です。',
+    assetNeedsPortrait:
+      'レイヤー PSD の分解や取り込みの前に、メイン立ち絵が必要です。',
     rigGroup: 'レイヤーリグ',
     rigGroupDescription:
       'レイヤー PSD を取り込むか、See-through でメイン立ち絵を分解します。事前検証を通してから有効化できます。',
@@ -283,6 +287,7 @@ export const jaJP: TranslationKeys = {
     anime25dPresetThinking: '考え中',
     anime25dPresetDizzy: 'くらくら',
     anime25dPresetSqueeze: '>< ぎゅっと目',
+    anime25dPresetCry: '泣く',
     anime25dBlinkNow: 'まばたき',
     anime25dResetPose: 'リセット',
     anime25dInspect: '再生検査',
@@ -304,7 +309,8 @@ export const jaJP: TranslationKeys = {
     rigPathUpload: 'PSD を取り込む',
     rigPathUploadHint: '自分で分けたレイヤー PSD からリグを作ります。',
     rigPathSeeThrough: 'See-through 分解',
-    rigPathSeeThroughHint: '今のメイン立ち絵をリモートで分解し、ローカル事前検証へ進みます。',
+    rigPathSeeThroughHint:
+      '今のメイン立ち絵をリモートで分解し、ローカル事前検証へ進みます。',
     rigTokenReady: 'Token を保存済み',
     rigPreflightTitle: '事前検証の結果',
     rigReadyTitle: 'リグ有効',
@@ -314,25 +320,29 @@ export const jaJP: TranslationKeys = {
     motionSeeThroughTokenCreate: '作成',
     motionSeeThroughTokenDescription:
       'Read 権限のトークンを入力します。自動分解にだけ使い、このマシンに保存され、立ち絵には入りません。',
-    motionSeeThroughTokenMissing: '未設定です。自動分解の前にトークンを保存してください。',
+    motionSeeThroughTokenMissing:
+      '未設定です。自動分解の前にトークンを保存してください。',
     motionSeeThroughTokenEdit: 'Token を追加・変更',
     motionSeeThroughTokenSave: '安全に保存',
     motionSeeThroughTokenCancel: 'キャンセル',
     motionSeeThroughTokenFailed: 'Hugging Face Token を保存できませんでした',
     motionSeeThroughTokenRequired:
       'See-through を使う前に Hugging Face Token を保存してください。',
-    motionSeeThroughBusy: 'See-through は実行中です。少し待って再試行してください。',
+    motionSeeThroughBusy:
+      'See-through は実行中です。少し待って再試行してください。',
     motionSeeThroughAuthFailed:
       'Hugging Face がこの Token を拒否しました。権限を確認して再試行してください。',
     motionSeeThroughQuota:
       'See-through の ZeroGPU が使えません。Token と枠を確認してください。',
-    motionSeeThroughTimeout: 'See-through の推論がタイムアウトしました。再試行してください。',
+    motionSeeThroughTimeout:
+      'See-through の推論がタイムアウトしました。再試行してください。',
     motionSeeThroughUpstream:
       'See-through が無効または利用できない結果を返しました。',
     motionSeeThroughGenerate: '分解して事前検証',
     motionSeeThroughGenerating:
       'リモート分解を実行中です。完了後にローカル PSD 事前検証を自動で開始します…',
-    motionNeedsRig: '先にレイヤーリグを完成させてください。そのあとで立ち絵を操作できます。',
+    motionNeedsRig:
+      '先にレイヤーリグを完成させてください。そのあとで立ち絵を操作できます。',
     motionPsdPreflight: 'レイヤー PSD を事前検証',
     motionPsdValidating: 'PSD を検証中…',
     motionPsdCommit: '検証済みリグを確定',
@@ -453,7 +463,8 @@ export const jaJP: TranslationKeys = {
     emailOptional: 'メールアドレス（任意）',
     emailPlaceholder: 'you@example.com',
     registerFailed: '登録に失敗しました',
-    registerDisabled: '公開登録はオフです。管理者にアカウント作成を依頼してください。',
+    registerDisabled:
+      '公開登録はオフです。管理者にアカウント作成を依頼してください。',
     registerSetupRequired: '登録する前にセットアップを完了してください。',
     usernameTaken: 'このユーザー名は既に使われています',
     registerResponseIncomplete: '登録レスポンスが不完全です',
@@ -1110,11 +1121,13 @@ export const jaJP: TranslationKeys = {
     usersInstalledTapps: 'インストール済みアプリ',
     usersNoTapps: 'アプリ未インストール',
     usersUninstallTapp: 'アンインストール',
-    usersUninstallTappConfirm: 'このユーザーの「{name}」をアンインストールしますか？アプリのファイルは削除されます。',
+    usersUninstallTappConfirm:
+      'このユーザーの「{name}」をアンインストールしますか？アプリのファイルは削除されます。',
     usersEnableTappInstall: 'アプリのインストールを許可',
     usersDisableTappInstall: 'アプリのインストールを禁止',
     usersTappInstallDisabled: 'インストール禁止中',
-    usersErrorCannotRestrictOwnerInstall: 'サイト所有者のインストールを禁止できません。',
+    usersErrorCannotRestrictOwnerInstall:
+      'サイト所有者のインストールを禁止できません。',
     usersErrorTappNotFound: 'そのアプリのインストールが見つかりません。',
     usersRole: 'ロール',
     usersRoleAdmin: '管理者',
@@ -1600,8 +1613,7 @@ export const jaJP: TranslationKeys = {
       'Lite がオフです。会話の口は標準モデルに戻ります。自分から話す文は短く、気持ちの微調整は走りません。',
     agentPersonaNeedsPro:
       '先に上の Pro モデルを有効にしてください。設定案内には Pro が必要です。',
-    agentPersonaNeedsLiteAndPro:
-      '先に上の Pro モデルを有効にしてください。',
+    agentPersonaNeedsLiteAndPro: '先に上の Pro モデルを有効にしてください。',
     agentPersonaMood: '気分',
     agentPersonaActivity: '様子',
     agentPersonaEmpty: '姿はまだありません',
@@ -1610,7 +1622,8 @@ export const jaJP: TranslationKeys = {
     agentPersonaNeedsReports:
       'ペルソナを作るにはプラットフォーム報告が {need} 件以上必要です。今は {count} 件です。',
     agentPersonaDelete: 'ペルソナを削除',
-    agentPersonaDeleteConfirm: '今のペルソナを削除しますか？気分と日記も消えます。',
+    agentPersonaDeleteConfirm:
+      '今のペルソナを削除しますか？気分と日記も消えます。',
     agentPersonaDeleteFailed: 'ペルソナを削除できませんでした',
     enableProxy: 'ネットワークプロキシを有効化',
     enableProxyHint:
@@ -1691,7 +1704,8 @@ export const jaJP: TranslationKeys = {
     mcpSaveUpdated: 'MCP 設定を保存し再読み込みしました',
     mcpSaveDeleted: 'MCP サーバーを削除し再読み込みしました',
     mcpSaveFailed: 'MCP 設定の保存に失敗しました',
-    mcpInvalidConfig: 'MCP 設定の形式が正しくありません。コマンドと引数を確認してください。',
+    mcpInvalidConfig:
+      'MCP 設定の形式が正しくありません。コマンドと引数を確認してください。',
     mcpLoadFailed: 'MCP 設定を読み込めません',
     mcpEmpty:
       'MCP サーバーはまだありません。「サーバーを追加」から始めてください。',
@@ -1856,13 +1870,16 @@ export const jaJP: TranslationKeys = {
     aiVendorSetupAzurePortalTitle: 'Azure ポータルを開く',
     aiVendorSetupAzurePortalDesc: 'Azure OpenAI のリソースを開きます。',
     aiVendorSetupAzureCreateTitle: 'キーとエンドポイントをコピー',
-    aiVendorSetupAzureCreateDesc: '「キーとエンドポイント」から Key と Endpoint をコピーします。',
+    aiVendorSetupAzureCreateDesc:
+      '「キーとエンドポイント」から Key と Endpoint をコピーします。',
     aiVendorSetupAzureFillTitle: 'このページに貼る',
     aiVendorSetupAzureFillDesc: 'Key は API Key、Endpoint は Base URL へ。',
     aiVendorSetupCompatiblePortalTitle: '互換 API を用意',
-    aiVendorSetupCompatiblePortalDesc: 'OpenAI 互換の /v1 があることを確認します。',
+    aiVendorSetupCompatiblePortalDesc:
+      'OpenAI 互換の /v1 があることを確認します。',
     aiVendorSetupCompatibleCreateTitle: 'キーをコピー',
-    aiVendorSetupCompatibleCreateDesc: 'そのサービスの API Key をコピーします。',
+    aiVendorSetupCompatibleCreateDesc:
+      'そのサービスの API Key をコピーします。',
     aiVendorSetupCompatibleFillTitle: 'このページに貼る',
     aiVendorSetupCompatibleFillDesc: 'API Key と Base URL を記入します。',
     aiVendorSetupOllamaPortalTitle: 'Ollama を入れる',
@@ -1870,11 +1887,13 @@ export const jaJP: TranslationKeys = {
     aiVendorSetupOllamaCreateTitle: 'モデルを取る',
     aiVendorSetupOllamaCreateDesc: '例：ollama pull llama3.2。',
     aiVendorSetupOllamaFillTitle: 'このページを埋める',
-    aiVendorSetupOllamaFillDesc: 'API Key は何でも可。URL は既定で localhost です。',
+    aiVendorSetupOllamaFillDesc:
+      'API Key は何でも可。URL は既定で localhost です。',
     aiVendorSetupTencentPortalTitle: '騰訊雲の鍵を開く',
     aiVendorSetupTencentPortalDesc: 'アクセス管理 → API キーへ。',
     aiVendorSetupTencentCreateTitle: 'キーペアを作る',
-    aiVendorSetupTencentCreateDesc: 'SecretId と SecretKey を作ってコピーします。',
+    aiVendorSetupTencentCreateDesc:
+      'SecretId と SecretKey を作ってコピーします。',
     aiVendorSetupTencentFillTitle: 'このページに貼る',
     aiVendorSetupTencentFillDesc: '下の2欄に貼り、リージョンを選びます。',
     // AI画像生成設定
@@ -2520,7 +2539,8 @@ export const jaJP: TranslationKeys = {
       selectNothingYet: 'まだ選んでいません',
       skipTags: 'スキップ',
       dragCanvas: 'ドラッグして続きを見る',
-      signalsEmpty: 'タグの準備ができていません。少ししてから再試行してください。',
+      signalsEmpty:
+        'タグの準備ができていません。少ししてから再試行してください。',
       loadingAiSignals: 'プラットフォーム報告からタグを抽出しています',
       loadSignalsFailed: 'タグの読み込みに失敗しました',
       generationTimeout: '生成がタイムアウトしました。もう一度試してください。',
@@ -2531,7 +2551,8 @@ export const jaJP: TranslationKeys = {
       regeneratingSeeds: '生成中',
       saveFirst: '先に設定を保存してください。',
       nameLabel: '呼び名',
-      nameHint: '空なら対外は Arael のまま。名前の風格を選んでからランダム。Standard モデルを使います。',
+      nameHint:
+        '空なら対外は Arael のまま。名前の風格を選んでからランダム。Standard モデルを使います。',
       namePlaceholder: '名前を入力',
       randomName: 'ランダム',
       randomNameBusy: '生成中',
@@ -2581,17 +2602,21 @@ export const jaJP: TranslationKeys = {
       personaGroupCharacter: '性格と社交',
       regeneratePersona: '別のセット',
       regeneratingPersona: '生成中',
-      regeneratePersonaFailed: 'ペルソナの再生成に失敗しました。再試行してください。',
+      regeneratePersonaFailed:
+        'ペルソナの再生成に失敗しました。再試行してください。',
       importPersona: 'ペルソナを取り込む',
       importPersonaHint: '既存の設定文を貼ると、今の形式に整理します。',
-      importPersonaPlaceholder: 'キャラ紹介、設定稿、会話用ペルソナを貼ってください…',
+      importPersonaPlaceholder:
+        'キャラ紹介、設定稿、会話用ペルソナを貼ってください…',
       importPersonaSubmit: '整理して取り込む',
       importPersonaBusy: '整理中…',
-      importPersonaFailed: 'ペルソナの取り込みに失敗しました。再試行してください。',
+      importPersonaFailed:
+        'ペルソナの取り込みに失敗しました。再試行してください。',
       importPersonaEmpty: '先に取り込む文を貼ってください。',
       importPortrait: '立ち絵を取り込む',
       importPortraitBusy: 'アップロード中…',
-      importPortraitFailed: '立ち絵の取り込みに失敗しました。再試行してください。',
+      importPortraitFailed:
+        '立ち絵の取り込みに失敗しました。再試行してください。',
       personaFieldGenerating: '生成中',
       personaDraftLabel: '下書き',
       editPersona: '編集',
@@ -2609,9 +2634,11 @@ export const jaJP: TranslationKeys = {
       saving: '保存中…',
       saveAndContinue: '保存して続ける',
       saveFailed: '保存に失敗しました',
-      personaIncompleteHint: '{fields} が足りません。埋めるか、別のセットを生成してください。',
+      personaIncompleteHint:
+        '{fields} が足りません。埋めるか、別のセットを生成してください。',
       proUnavailable: 'Pro モデルが使えません。先に設定で有効にしてください。',
-      standardUnavailable: 'Standard モデルが使えません。先に設定を確認してください。',
+      standardUnavailable:
+        'Standard モデルが使えません。先に設定を確認してください。',
       visualDesignScopeTitle: '上半身ビジュアル契約',
       visualDesignScopeHint:
         '髪全体から下胸またはハイウエストまでだけを設計します。顔、瞳、髪レイヤー、上衣構造、素材、配色、装飾、左右の袖または腕の一部を含み、脚、靴、完全な腕関節列は含みません。',
@@ -2639,10 +2666,12 @@ export const jaJP: TranslationKeys = {
       visualDesignRegenerate: '別のデザイン',
       visualDesignConfirm: '確認して続ける',
       editVisual: '編集',
-      visualDesignFailed: 'キャラクター外観の生成に失敗しました。再試行してください。',
+      visualDesignFailed:
+        'キャラクター外観の生成に失敗しました。再試行してください。',
       visualDesignLanguageFailed:
         'デザインの言語が画面の言語と一致しません。もう一度生成してください。',
-      visualDesignRequired: '先に上半身デザインを確認してから立ち絵を生成してください。',
+      visualDesignRequired:
+        '先に上半身デザインを確認してから立ち絵を生成してください。',
       visualDesignSaveFailed: 'キャラクター外観を保存できませんでした',
       portraitTalkLead: '直したいところを話してください',
       portraitLoading: '既存の立ち絵を読み込み中',
@@ -2661,22 +2690,28 @@ export const jaJP: TranslationKeys = {
       portraitEdit: '調整する',
       portraitEditing: '調整中…',
       portraitEditFailed: '立ち絵の調整に失敗しました。再試行してください。',
-      portraitEditNeedsNotes: '先に直したい点を話してから、この絵をモデルに渡してください。',
+      portraitEditNeedsNotes:
+        '先に直したい点を話してから、この絵をモデルに渡してください。',
       portraitAdjustmentOutOfScope:
         'ここでは光、表情、画面占有率だけを小さく調整できます。髪、衣装、配色、装飾は前の手順で再設計してください。',
-      portraitGenerateFailed: 'メイン立ち絵の生成に失敗しました。再試行してください。',
-      portraitInProgress: '立ち絵はすでに生成中です。しばらくしてから確認してください。',
-      portraitInputsChanged: '生成中に外観設定が変わったので、もう一度生成してください。',
+      portraitGenerateFailed:
+        'メイン立ち絵の生成に失敗しました。再試行してください。',
+      portraitInProgress:
+        '立ち絵はすでに生成中です。しばらくしてから確認してください。',
+      portraitInputsChanged:
+        '生成中に外観設定が変わったので、もう一度生成してください。',
       imageProviderUnconfigured:
         '画像生成元が未設定です。設定で接続してから立ち絵を生成してください。',
       imageProviderCredits: '画像生成元の残高が不足しています。',
       imageProviderUnauthorized: '画像生成元のキーが無効か、権限がありません。',
-      imageProviderRateLimited: '画像生成元が混み合っています。少し待って再試行してください。',
+      imageProviderRateLimited:
+        '画像生成元が混み合っています。少し待って再試行してください。',
       imageProviderRejected: '画像生成元がこのリクエストを拒否しました。',
       imageProviderInvalidResponse: '画像生成元の応答を読み取れませんでした。',
       nameUnusable: 'この名前は使えません。もう一度ランダムしてください。',
       personaUnusable: 'この設定稿は使えません。もう一度生成してください。',
-      visualDesignUnusable: 'このビジュアル案は使えません。もう一度生成してください。',
+      visualDesignUnusable:
+        'このビジュアル案は使えません。もう一度生成してください。',
       portraitLoadFailed: 'メイン立ち絵を読み込めませんでした',
       portraitFinish: '設定を完了',
     },
@@ -2691,34 +2726,130 @@ export const jaJP: TranslationKeys = {
     requestFailed: 'リクエストに失敗しました。',
     invalidResponse: 'サーバーの応答形式が無効です ({status})。',
     operationFailed: '操作に失敗しました。',
+    tappSaveFailed:
+      'アプリを保存できませんでした。空き容量を確認して再試行してください。',
+    tappGenerateFailed:
+      'アプリを生成できませんでした。もう一度お試しください。',
+    reportSaveFailed:
+      'レポートを保存できませんでした。もう一度お試しください。',
+    reminderSaveFailed:
+      'リマインダーを保存できませんでした。もう一度お試しください。',
+    noteSaveFailed: 'メモを保存できませんでした。もう一度お試しください。',
+    bookmarkSaveFailed:
+      'ブックマークを保存できませんでした。もう一度お試しください。',
+    reportLoadFailed:
+      'レポートを読み込めませんでした。もう一度お試しください。',
+    tappAccessCheckFailed: 'Tapp のアクセス権を確認できませんでした。',
+    tappResourceLoadFailed: 'この Tapp のリソースを読み込めませんでした。',
+    tappFindFailed: 'その Tapp は見つかりませんでした。',
+    tappInstallCheckFailed: 'Tapp のインストール権限を確認できませんでした。',
+    imageCacheFailed:
+      '画像キャッシュに書き込めませんでした。空き容量と権限を確認してください。',
+    imageTooLarge: 'この画像は大きすぎます。',
+    storageNotWritable:
+      'サーバーがデータディレクトリに書き込めません。ボリューム権限を確認してください。',
+    psnNpssoExpired:
+      'PSN の NPSSO が未設定か期限切れです。プラットフォーム設定で更新してください。',
+    psnRequestFailed:
+      'PSN に接続できませんでした。ネットワークを確認して再試行してください。',
+    schemaMismatch:
+      'モデル出力の形式が合いませんでした。もう一度お試しください。',
+    dnsFailed:
+      'そのアドレスを解決できませんでした。ネットワークと DNS を確認してください。',
+    inboxNotReady:
+      'この連合アクティビティはまだ準備できていません。後で再試行されます。',
+    inboxFailed: 'この連合アクティビティを処理できませんでした。',
+    federationInitFailed:
+      'このサイトの連合アイデンティティを用意できませんでした。もう一度お試しください。',
+    federationDataFailed: '連合データを読み込めませんでした。',
+    federationKeyRotateFailed: '連合キーをローテーションできませんでした。',
+    model3dFailed: '3D モデルを生成できませんでした。もう一度お試しください。',
+    profileTextLoadFailed: '表示名と自己紹介の取得元を読み込めませんでした。',
+    profileTextSaveFailed: '表示名と自己紹介の取得元を保存できませんでした。',
+    avatarSourceLoadFailed: 'アバターの取得元を読み込めませんでした。',
+    avatarSourceSaveFailed: 'アバターの取得元を保存できませんでした。',
+    platformNamedFetchFailed: '{name} のデータを読み込めませんでした。',
+    brewRefreshFailed: 'このフィードを更新できませんでした。',
+    brewParseFailed: 'このフィードを解析できませんでした。',
+    brewInvalidUrl: 'このフィードのアドレスは使えません。',
+    brewSourceSaveFailed: 'このフィードを保存できませんでした。',
+    brewSourceDeleteFailed: 'このフィードを削除できませんでした。',
+    brewCategorySaveFailed: 'このカテゴリを保存できませんでした。',
+    brewCategoryDeleteFailed: 'このカテゴリを削除できませんでした。',
+    brewLoadFailed: 'フィードデータを読み込めませんでした。',
+    platformCacheMissing:
+      'キャッシュされた {name} データがありません。先にプラットフォーム設定で更新してください。',
+    mcpTalkFailed: 'MCP サーバーと通信できませんでした。',
+    mcpTimeout: 'MCP サーバーがタイムアウトしました。',
+    mcpResponseInvalid: 'MCP サーバーの応答が無効です。',
+    mcpToolFailed: 'MCP ツールが失敗しました。',
+    aiStepFailed: 'この AI ステップに失敗しました。',
+    skillFileFailed: 'このスキルファイルを更新できませんでした。',
+    skillFileInvalid: 'このスキルファイルの形式が正しくありません。',
+    skillCooldown: 'このスキルは更新したばかりです。しばらくしてから再試行してください。',
+    commentLoadFailed: 'コメントを読み込めませんでした。',
+    commentSaveFailed: 'このコメントを保存できませんでした。',
+    commentDeleteFailed: 'このコメントを削除できませんでした。',
+    articleLoadFailed: 'この記事を読み込めませんでした。',
+    readingStateFailed: '読書状態を更新できませんでした。',
+    contentSaveFailed: 'この内容を保存できませんでした。',
+    tappStorageFailed: 'アプリの保存領域を更新できませんでした。',
     rateLimited: 'リクエストが多すぎます。しばらくしてから再試行してください。',
-    rateLimitedLogin: 'ログイン試行が多すぎます。しばらくしてから再試行してください。',
-    rateLimitedFetch: 'データの取得が頻繁すぎます。しばらくしてから再試行してください。',
-    rateLimitedAnalysis: '分析リクエストが頻繁すぎます。しばらくしてから再試行してください。',
+    rateLimitedLogin:
+      'ログイン試行が多すぎます。しばらくしてから再試行してください。',
+    rateLimitedFetch:
+      'データの取得が頻繁すぎます。しばらくしてから再試行してください。',
+    rateLimitedAnalysis:
+      '分析リクエストが頻繁すぎます。しばらくしてから再試行してください。',
     rateLimitedRetry: 'リクエストが多すぎます。{sec}秒後に再試行してください',
     passwordMinLength: 'パスワードは8文字以上にしてください',
     passwordNeedLower: '小文字を含めてください',
     passwordNeedUpper: '大文字を含めてください',
     passwordNeedDigit: '数字を含めてください',
     passwordNeedSpecial: '記号を含めてください',
-    passwordTooCommon: 'よく使われるパスワードです。より複雑なものを使ってください',
-    timeout: 'リクエストがタイムアウトしました。しばらくしてから再試行してください。',
+    passwordTooCommon:
+      'よく使われるパスワードです。より複雑なものを使ってください',
+    timeout:
+      'リクエストがタイムアウトしました。しばらくしてから再試行してください。',
     unauthorized: '続けるにはログインしてください。',
     forbidden: 'この操作を行う権限がありません。',
     notFound: '要求した内容が見つかりません。',
     serverError: 'サーバーエラーです（{status}）。',
-    database: 'データを読み出せませんでした。しばらくしてから再試行してください。',
-    passwordFailed: 'パスワードを処理できませんでした。しばらくしてから再試行してください。',
-    sessionFailed: 'ログインセッションを開始できませんでした。しばらくしてから再試行してください。',
-    configFilePermission: '設定ファイルを書き込めませんでした。ディスク権限を確認してください。',
+    database:
+      'データを読み出せませんでした。しばらくしてから再試行してください。',
+    passwordFailed:
+      'パスワードを処理できませんでした。しばらくしてから再試行してください。',
+    sessionFailed:
+      'ログインセッションを開始できませんでした。しばらくしてから再試行してください。',
+    agentSessionLoadFailed: 'この会話を読み込めませんでした。',
+    agentSessionSaveFailed: 'この会話を保存できませんでした。',
+    agentSessionArchiveFailed: 'この会話をアーカイブできませんでした。',
+    personaLoadFailed: 'ペルソナを読み込めませんでした。',
+    personaSaveFailed: 'ペルソナを保存できませんでした。',
+    personaDeleteFailed: 'ペルソナを削除できませんでした。',
+    addresseeLoadFailed: '話し相手の設定を読み込めませんでした。',
+    addresseeSaveFailed: '話し相手の設定を保存できませんでした。',
+    presetLoadFailed: 'このタスクプリセットを読み込めませんでした。',
+    presetSaveFailed: 'このタスクプリセットを保存できませんでした。',
+    presetDeleteFailed: 'このタスクプリセットを削除できませんでした。',
+    configFilePermission:
+      '設定ファイルを書き込めませんでした。ディスク権限を確認してください。',
+    configFileReadFailed: '設定ファイルを読み込めませんでした。',
+    iconSaveFailed: 'このフィードのアイコンを保存できませんでした。',
     aiResponseInvalid: 'AI の応答を解析できませんでした。再試行してください。',
-    aiGenerationFailed: 'AI 生成に失敗しました。しばらくしてから再試行してください。',
-    asrInvalidAudio: '音声データが無効です。もう一度録音またはアップロードしてください。',
-    speechNotConfigured: '音声サービスが未設定です。先に AI 設定でキーを入れてください。',
-    speechTtsNoAudio: '音声サービスから音声が返りませんでした。再試行してください。',
-    speechTtsOpenAiRequired: '公式の読み上げは OpenAI を選んでください。文字起こしはそのまま使えます。',
+    aiGenerationFailed:
+      'AI 生成に失敗しました。しばらくしてから再試行してください。',
+    asrInvalidAudio:
+      '音声データが無効です。もう一度録音またはアップロードしてください。',
+    speechNotConfigured:
+      '音声サービスが未設定です。先に AI 設定でキーを入れてください。',
+    speechTtsNoAudio:
+      '音声サービスから音声が返りませんでした。再試行してください。',
+    speechTtsOpenAiRequired:
+      '公式の読み上げは OpenAI を選んでください。文字起こしはそのまま使えます。',
     speechTextTooLong: 'テキストが長すぎます。短くして再試行してください。',
-    speechUpstreamFailed: '音声サービスに接続できません。しばらくしてから再試行してください。',
+    speechUpstreamFailed:
+      '音声サービスに接続できません。しばらくしてから再試行してください。',
     speechBatchEmpty: '変換できる台詞がありません。',
     speechBatchTooMany: '一度に変換できるのは 100 件までです。',
     domainInvalid:
@@ -2726,23 +2857,28 @@ export const jaJP: TranslationKeys = {
     oauthStartFailed: '認可を開始できませんでした。再試行してください。',
     roomJoinFailed: 'ルームに参加できませんでした。再試行してください。',
     oauthSlugRequired: 'このログイン方法の識別子を入力してください。',
-    oauthSlugInvalid:
-      'ログイン識別子は英数字と - _ のみ、32 文字までです。',
+    oauthSlugInvalid: 'ログイン識別子は英数字と - _ のみ、32 文字までです。',
     oauthSlugDuplicate: '同じ識別子のログイン方法がすでにあります。',
     oauthClientIdRequired: '有効にする前に Client ID を入力してください。',
-    oauthClientSecretRequired: '有効にする前に Client Secret を入力してください。',
+    oauthClientSecretRequired:
+      '有効にする前に Client Secret を入力してください。',
     oauthDiscoveryRequired: 'OpenID ログインには Discovery URL が必要です。',
     oauthKindUnsupported: 'この種類のログイン方法は使えません。',
-    remoteActorUnresolved: 'その連合アカウントが見つかりません。アドレスを確認して再試行してください。',
-    webfingerFailed: '相手のサイトから使えるアカウント情報を取得できませんでした。',
-    platformFetchFailed: 'プラットフォームデータを取得できません。アカウントとキーを確認して再試行してください。',
+    remoteActorUnresolved:
+      'その連合アカウントが見つかりません。アドレスを確認して再試行してください。',
+    webfingerFailed:
+      '相手のサイトから使えるアカウント情報を取得できませんでした。',
+    platformFetchFailed:
+      'プラットフォームデータを取得できません。アカウントとキーを確認して再試行してください。',
     steamNotConfigured: 'Steam API キーまたは Steam ID が未設定です。',
     platformDisabled: 'このプラットフォームは有効になっていません。',
     usernameRequired: 'ユーザー名を入力してください。',
     agentProcessingFailed: '処理を完了できませんでした。再試行してください。',
     invalidUrl: 'このアドレスは無効です。',
-    federationMoveFailed: 'サイトの移行を完了できませんでした。再試行してください。',
-    notionUrlInvalid: 'この Notion アドレスは無効です。確認して再試行してください。',
+    federationMoveFailed:
+      'サイトの移行を完了できませんでした。再試行してください。',
+    notionUrlInvalid:
+      'この Notion アドレスは無効です。確認して再試行してください。',
     channelNotReady: '相手がまだ承認していないため、今は送れません。',
     inviteInvalid: 'この招待はもう受け取れません。',
     feedNameRequired: '購読名を入力してください。',
@@ -2795,14 +2931,18 @@ export const jaJP: TranslationKeys = {
     agentStepTimeout: 'この手順がタイムアウトしました。再試行してください。',
     agentInputEmpty: '内容が入力されていません。',
     agentInputTooLong: 'テキストが長すぎます。短くして再試行してください。',
-    subscribeAllFailed: 'どのフィードも購読できませんでした。アドレスを確認して再試行してください。',
+    subscribeAllFailed:
+      'どのフィードも購読できませんでした。アドレスを確認して再試行してください。',
     noticeAgentTaskFailed: 'アシスタントのタスクが失敗しました',
     noticeAgentTaskCompleted: 'アシスタントのタスクが完了しました',
     noticeAgentTaskWaiting: 'アシスタントが返信を待っています',
     noticeAgentTaskRunning: 'アシスタントが処理中です',
     privateNetworkBlocked: 'このアドレスにはアクセスできません。',
     feedNotFound: 'そのフィードは見つかりませんでした。',
-    rsshubUnavailable: 'RSSHub の準備ができていません。先に購読設定でインスタンスを追加してください。',
+    rsshubUnavailable:
+      'RSSHub の準備ができていません。先に購読設定でインスタンスを追加してください。',
+    rsshubLoadFailed: 'RSSHub インスタンスを読み込めませんでした。',
+    rsshubSaveFailed: 'この RSSHub インスタンスを保存できませんでした。',
     pipelineTooManySteps: 'このパイプラインはステップが多すぎます。',
     heartbeatAdminRequired: 'ハートビートタスクは管理者権限が必要です。',
     writeItemsOverCap: '一度に書き込める件数が多すぎます。',
@@ -2818,7 +2958,8 @@ export const jaJP: TranslationKeys = {
     backendUnreachable: 'バックエンドに接続できません（{status}）。',
     setupConfigFailed: 'セットアップ設定を読めません（{status}）。',
     emptyDialogueText: '空の台詞があるため、音声を生成できません。',
-    csrfUnavailable: 'ログイン状態が切れました。ページを更新して再試行してください。',
+    csrfUnavailable:
+      'ログイン状態が切れました。ページを更新して再試行してください。',
     streamUnreadable: 'サーバーから読めるデータストリームが返りませんでした。',
     dndScheduleInvalid: 'おやすみ時間の指定が正しくありません。',
     dndScheduleIncomplete: '開始と終了を両方指定するか、両方空にしてください。',
@@ -2949,8 +3090,10 @@ export const jaJP: TranslationKeys = {
     listRepeat: 'リストリピート',
     loadPlaylistFailed: 'プレイリストの読み込みに失敗しました',
     playlistEmpty: 'プレイリストが空か、この ID に再生できる曲がありません。',
-    playlistRateLimited: '音楽ソースが混み合っています。少し待つか QQ 音楽に切り替えてください。',
-    playlistBlocked: 'このプレイリストは著作権または地域制限で再生できません。QQ 音楽を試してください。',
+    playlistRateLimited:
+      '音楽ソースが混み合っています。少し待つか QQ 音楽に切り替えてください。',
+    playlistBlocked:
+      'このプレイリストは著作権または地域制限で再生できません。QQ 音楽を試してください。',
     playFailed:
       '再生に失敗しました。ネットワーク接続または曲の利用可能性を確認してください',
     vipPlayFailed: 'VIP曲を再生できません（会員または試聴が必要）',
@@ -3577,9 +3720,11 @@ export const jaJP: TranslationKeys = {
     privilegedPermission: '特権',
     grantedPermissions: '付与済み権限',
     reauthorizationRequired: '再承認が必要',
-    reauthorizationMessage: '権限の有効期限が切れました。設定で再承認してから実行してください。',
+    reauthorizationMessage:
+      '権限の有効期限が切れました。設定で再承認してから実行してください。',
     packageUnusable: 'パッケージが利用できません',
-    packageUnusableMessage: 'このパッケージは現在の Tapp 形式と一致しません。現行バージョン向けにビルドされたパッケージを再インストールしてください。',
+    packageUnusableMessage:
+      'このパッケージは現在の Tapp 形式と一致しません。現行バージョン向けにビルドされたパッケージを再インストールしてください。',
 
     // 権限ラベル
     permRegisterWidget: 'ウィジェット登録',
@@ -3645,7 +3790,8 @@ export const jaJP: TranslationKeys = {
     permWriteReportDesc: 'レポートの作成、更新、削除を許可',
     permStorageReadDesc:
       'このアプリ専用のプライベートストレージの読み取りを許可（読み取り専用、永続書き込みなし）',
-    permStorageWriteDesc: 'このアプリ専用のプライベートストレージへの書き込みを許可',
+    permStorageWriteDesc:
+      'このアプリ専用のプライベートストレージへの書き込みを許可',
     permNotificationDesc: 'システム通知の送信を許可',
     permFullscreenDesc: 'フルスクリーン表示のリクエストを許可',
     permReadThemeDesc: '現在のテーマ設定の読取を許可',
@@ -3673,8 +3819,7 @@ export const jaJP: TranslationKeys = {
     permManageTappListDesc: 'Tapp のインストール、更新、削除を許可',
     permReadBrewDesc: 'Brew のフィード、記事、コメントの読取を許可',
     permWriteBrewDesc: '自分の記事の既読状態とお気に入りの変更を許可',
-    permCommentWriteBrewDesc:
-      'Brew コメントと返信の作成・編集・削除を許可',
+    permCommentWriteBrewDesc: 'Brew コメントと返信の作成・編集・削除を許可',
     permManageBrewDesc: 'Brew ソースと詳細設定の管理を許可',
     permReadFederationDesc:
       'Federation のルーム、チャンネル、メンバーの読取を許可',
@@ -4268,8 +4413,10 @@ export const jaJP: TranslationKeys = {
     errorNotionTokenRequired: 'Notion Integration Token を入力してください',
     errorAddSuccess: '追加しました！',
     errorAddFailed: '追加に失敗しました',
-    errorFeedNeedName: 'このフィードを解析できませんでした。名前を入力すれば追加できます。',
-    errorNotionFetch: 'この Notion ソースに接続できませんでした。Token とページを確認してください。',
+    errorFeedNeedName:
+      'このフィードを解析できませんでした。名前を入力すれば追加できます。',
+    errorNotionFetch:
+      'この Notion ソースに接続できませんでした。Token とページを確認してください。',
     errorSelectImage: '画像ファイルを選択してください',
     errorImageTooLarge: '画像サイズは 500KB 以下にしてください',
     errorImageReadFailed: '画像の読み込みに失敗しました',

@@ -44,11 +44,15 @@ pub fn is_permanent_federation_error(msg: &str) -> bool {
     if lower.contains("already closed") || lower.contains("access denied") {
         return true;
     }
+    if lower.contains("ownership") || lower.contains("trust policy") {
+        return true;
+    }
 
     false
 }
 
-fn public_inbox_error(message: &str) -> &'static str {
+/// Stable peer-facing label. Internals stay in logs.
+pub fn public_inbox_error(message: &str) -> &'static str {
     let lower = message.to_lowercase();
     if lower.contains("not yet present")
         || lower.contains("retry after channelopen")
@@ -61,10 +65,12 @@ fn public_inbox_error(message: &str) -> &'static str {
         || lower.contains("not the remote party")
         || lower.contains("forbidden")
         || lower.contains("access denied")
+        || lower.contains("ownership")
+        || lower.contains("trust policy")
     {
         return "Access denied";
     }
-    if lower.contains("closed") || lower.contains("gone") {
+    if lower.contains("is closed") || lower.contains("already closed") || lower.contains("gone") {
         return "Target is closed";
     }
     if lower.contains("not found") || lower.starts_with("not_found:") {
@@ -98,6 +104,9 @@ pub fn map_inbox_handler_error(e: String) -> (StatusCode, axum::Json<Value>) {
             || lower.contains("not a member")
             || lower.contains("not the remote party")
             || lower.contains("forbidden")
+            || lower.contains("ownership")
+            || lower.contains("trust policy")
+            || lower.contains("access denied")
         {
             StatusCode::FORBIDDEN
         } else if lower.contains("closed") || lower.contains("gone") {
@@ -212,7 +221,7 @@ mod tests {
         assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(
             body.0.get("error").and_then(|v| v.as_str()),
-            Some("DB connection refused")
+            Some("Inbox processing failed")
         );
         assert!(!is_permanent_federation_error("DB connection refused"));
     }
@@ -245,7 +254,31 @@ mod tests {
         assert_eq!(st, StatusCode::INTERNAL_SERVER_ERROR);
         assert_eq!(
             body.0.get("error").and_then(|v| v.as_str()),
-            Some("DB connection refused")
+            Some("Inbox processing failed")
+        );
+    }
+
+    #[test]
+    fn sql_and_ownership_do_not_leak_internals() {
+        assert_eq!(
+            public_inbox_error(
+                "claim inbound receipt insert: relation \"federation_inbox_receipts\" does not exist"
+            ),
+            "Inbox processing failed"
+        );
+        assert_eq!(
+            public_inbox_error("Object ownership check failed: attributedTo https://a"),
+            "Access denied"
+        );
+        assert_eq!(
+            public_inbox_error("Rejected by trust policy"),
+            "Access denied"
+        );
+        let (st, body) = map_inbox_handler_error("Object ownership check failed".into());
+        assert_eq!(st, StatusCode::FORBIDDEN);
+        assert_eq!(
+            body.0.get("error").and_then(|v| v.as_str()),
+            Some("Access denied")
         );
     }
 }

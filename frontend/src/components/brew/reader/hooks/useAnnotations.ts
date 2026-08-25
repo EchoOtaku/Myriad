@@ -94,7 +94,9 @@ export function useAnnotations({
           `${t.brew.foundAnnotations.replace('{count}', String(response.annotations.length))}${cacheHint}`,
         )
       } else {
-        setAnnotationsError(response.error || t.brew.fetchAnnotationFailed)
+        setAnnotationsError(
+          userFacingError(response.error, t.brew.fetchAnnotationFailed),
+        )
       }
     } catch (err) {
       console.error('Failed to load annotations:', err)

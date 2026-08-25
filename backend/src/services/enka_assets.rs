@@ -86,14 +86,10 @@ async fn fetch_doc(url: &str) -> Result<Value, String> {
     .await
     .map_err(|e| e.to_string())?;
 
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|error| {
-            tracing::warn!(%error, "enka asset request failed");
-            "request failed".to_string()
-        })?;
+    let resp = client.get(url).send().await.map_err(|error| {
+        tracing::warn!(%error, "enka asset request failed");
+        "request failed".to_string()
+    })?;
     if !resp.status().is_success() {
         return Err(format!("HTTP {}", resp.status()));
     }

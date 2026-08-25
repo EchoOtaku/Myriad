@@ -61,7 +61,10 @@ impl Agent {
                 confirmation.user_id,
             )
             .await
-            .map_err(|error| format!("Failed to consume confirmation: {error}"))?;
+            .map_err(|error| {
+                tracing::error!(%error, "Failed to consume confirmation");
+                "Failed to consume confirmation".to_string()
+            })?;
         PENDING_CONFIRMATIONS
             .write()
             .await
@@ -490,7 +493,10 @@ impl Agent {
             confirmation_request.expires_at.timestamp(),
         )
         .await
-        .map_err(|error| format!("Failed to persist confirmation: {error}"))?;
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to persist confirmation");
+            "Failed to persist confirmation".to_string()
+        })?;
         PENDING_CONFIRMATIONS
             .write()
             .await
@@ -930,7 +936,9 @@ impl Agent {
                 AgentResponseType::Answer
             },
             message: if task_state.status == TaskStatus::Failed {
-                response_agent::error_message(task_state.error.as_deref().unwrap_or("Processing failed"))
+                response_agent::error_message(
+                    task_state.error.as_deref().unwrap_or("Processing failed"),
+                )
             } else {
                 response_agent::completion_message()
             },
@@ -1008,7 +1016,9 @@ impl Agent {
                 AgentResponseType::Answer
             },
             message: if task_state.status == TaskStatus::Failed {
-                response_agent::error_message(task_state.error.as_deref().unwrap_or("Processing failed"))
+                response_agent::error_message(
+                    task_state.error.as_deref().unwrap_or("Processing failed"),
+                )
             } else if task_state.status == TaskStatus::WaitingForInput {
                 response_agent::need_more_info()
             } else {

@@ -356,7 +356,11 @@ async fn apply_task_mood(db: &DatabaseConnection, user_id: i32, event_key: &str,
     };
     let _ = save_mood(db, user_id, next, false).await;
     if !is_extremely_low(mood) && is_extremely_low(next) {
-        spawn(user_id, "agent.merope.mood_floor", "跟这个人的心情掉到了极低");
+        spawn(
+            user_id,
+            "agent.merope.mood_floor",
+            "跟这个人的心情掉到了极低",
+        );
     }
 }
 

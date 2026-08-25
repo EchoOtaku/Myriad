@@ -26,6 +26,11 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::net::ToSocketAddrs;
 
+fn write_store_failed(context: &'static str, error: impl std::fmt::Display) -> String {
+    tracing::error!(%error, context, "agent data_write store failed");
+    format!("Failed to {context}")
+}
+
 /// 验证订阅 URL 安全性，防止 SSRF（纯策略 + DNS 解析检查）。
 fn validate_subscribe_url(url: &str) -> Result<(), String> {
     validate_subscribe_url_policy(url)?;
@@ -269,10 +274,7 @@ async fn execute_tapp_storage(
                 .filter(tapp_storage::Column::UserId.eq(user_id))
                 .exec(ctx.db)
                 .await
-                .map_err(|e| {
-                    tracing::error!(error = %e, "Agent data_write database error");
-                    "Database error".to_string()
-                })?;
+                .map_err(|error| write_store_failed("delete Tapp storage", error))?;
 
             Ok(json!({
                 "success": true,
@@ -354,10 +356,7 @@ async fn execute_brew_subscribe(
             .filter(brew_sources::Column::Url.eq(&url))
             .one(ctx.db)
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to check existing brew source: {e}");
-                "Database error".to_string()
-            })?;
+            .map_err(|error| write_store_failed("check existing brew source", error))?;
 
         if existing.is_some() {
             tracing::debug!(url = %url, "[Brew] 跳过已订阅的源");
@@ -556,10 +555,7 @@ async fn execute_brew_mark(
     let item = brew_items::Entity::find_by_id(item_id)
         .one(ctx.db)
         .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write database error");
-            "Database error".to_string()
-        })?
+        .map_err(|error| write_store_failed("find article", error))?
         .ok_or("Article not found")?;
 
     // 验证文章所属 source 归当前用户所有，防止越权操作
@@ -567,10 +563,7 @@ async fn execute_brew_mark(
         .filter(brew_sources::Column::UserId.eq(user_id))
         .one(ctx.db)
         .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write database error");
-            "Database error".to_string()
-        })?
+        .map_err(|error| write_store_failed("find brew source", error))?
         .ok_or("This article cannot be changed")?;
 
     // 查找或创建用户状态
@@ -579,10 +572,7 @@ async fn execute_brew_mark(
         .filter(brew_user_states::Column::ItemId.eq(item_id))
         .one(ctx.db)
         .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write database error");
-            "Database error".to_string()
-        })?;
+        .map_err(|error| write_store_failed("find reading state", error))?;
 
     let (is_read, is_starred) = match action {
         "read" => (Some(true), None),
@@ -611,10 +601,10 @@ async fn execute_brew_mark(
             }
         }
         active.updated_at = Set(now.into());
-        active.update(ctx.db).await.map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write: failed to update state");
-            "Database error".to_string()
-        })?;
+        active
+            .update(ctx.db)
+            .await
+            .map_err(|error| write_store_failed("update reading state", error))?;
     } else {
         let new_state = brew_user_states::ActiveModel {
             user_id: Set(user_id),
@@ -634,10 +624,10 @@ async fn execute_brew_mark(
             updated_at: Set(now.into()),
             ..Default::default()
         };
-        new_state.insert(ctx.db).await.map_err(|e| {
-            tracing::error!(error = %e, "Agent data_write: failed to create state");
-            "Database error".to_string()
-        })?;
+        new_state
+            .insert(ctx.db)
+            .await
+            .map_err(|error| write_store_failed("create reading state", error))?;
     }
 
     if is_starred == Some(true) && !was_starred {
@@ -724,10 +714,10 @@ async fn execute_content_write(
         updated_at: Set(now.into()),
         ..Default::default()
     };
-    new_record.insert(ctx.db).await.map_err(|e| {
-        tracing::error!(error = %e, "Agent data_write: failed to save content");
-        "Database error".to_string()
-    })?;
+    new_record
+        .insert(ctx.db)
+        .await
+        .map_err(|error| write_store_failed("save content", error))?;
 
     Ok(json!({
         "success": true,

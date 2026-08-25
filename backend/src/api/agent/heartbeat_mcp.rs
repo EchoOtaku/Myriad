@@ -306,18 +306,34 @@ pub(crate) async fn mcp_put_config(
             })))
         }
         Err(e) => {
-            let status = if e.starts_with("server ")
+            tracing::error!(error = %e, "MCP config replace failed");
+            let validation = e.starts_with("server ")
                 || e.contains("duplicate")
                 || e.contains("empty")
                 || e.contains("too many")
                 || e.contains("too long")
-                || e.contains("may only")
-            {
+                || e.contains("may only");
+            let status = if validation {
                 StatusCode::BAD_REQUEST
             } else {
                 StatusCode::SERVICE_UNAVAILABLE
             };
-            Err(HttpError::from((status, Json(json!({ "error": e })))))
+            let public = if validation {
+                e
+            } else {
+                "Failed to save MCP config".to_string()
+            };
+            Err(HttpError::from((
+                status,
+                Json(json!({
+                    "error": public,
+                    "code": if validation {
+                        "mcp_config_invalid"
+                    } else {
+                        "mcp_config_save_failed"
+                    }
+                })),
+            )))
         }
     }
 }

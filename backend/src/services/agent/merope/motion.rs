@@ -146,10 +146,11 @@ fn truncate(value: &str, max_chars: usize) -> String {
 const MOTION_SYSTEM_PROMPT: &str = r#"你是 Merope 的动作导演。输入中的 mood 是已保存的事实，不要修改心情。
 只选择语义表演，不输出骨骼、坐标、角度、blendshape、口型或逐帧数据。
 baseline.expression 只能是 withdrawn/subdued/steady/warm；baseline.posture 只能是 closed/neutral/open。
-cues.intent 只能是 greet/respond/question/delight/emphasize/listen/notify/think/dizzy，最多 3 个。
+cues.intent 只能是 greet/respond/question/delight/emphasize/listen/notify/think/dizzy/cry，最多 3 个。
 reaction 要立即回应用户输入；delivery 配合即将说出的话；outcome 配合任务结果。
 只有确实需要斟酌、回忆或推理时才使用 think；不要让每次普通回复都思考。
 只有文本明确表现眩晕、困惑、认知过载或无奈时才使用 dizzy；普通失败不要使用。
+只有文本明确表现正在哭泣、落泪、强烈悲伤或情绪崩溃时才使用 cry；普通低心情、失败或道歉不要使用。
 低心情应克制，高心情可以更开放，但不要夸张。输出必须符合 JSON schema。"#;
 
 fn motion_schema() -> serde_json::Value {
@@ -172,7 +173,7 @@ fn motion_schema() -> serde_json::Value {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "intent": { "type": "string", "enum": ["greet", "respond", "question", "delight", "emphasize", "listen", "notify", "think", "dizzy"] },
+                        "intent": { "type": "string", "enum": ["greet", "respond", "question", "delight", "emphasize", "listen", "notify", "think", "dizzy", "cry"] },
                         "atMs": { "type": "integer", "minimum": 0, "maximum": 5000 },
                         "intensity": { "type": "number", "minimum": 0.2, "maximum": 1.4 },
                         "tempo": { "type": "number", "minimum": 0.5, "maximum": 1.6 },
@@ -240,6 +241,8 @@ mod tests {
             .unwrap();
         assert!(intents.iter().any(|value| value == "think"));
         assert!(intents.iter().any(|value| value == "dizzy"));
+        assert!(intents.iter().any(|value| value == "cry"));
+        assert!(MOTION_SYSTEM_PROMPT.contains("普通低心情、失败或道歉不要使用"));
         assert!(!MOTION_SYSTEM_PROMPT.contains("angleZ"));
     }
 }

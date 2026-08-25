@@ -130,9 +130,11 @@ export const enUS: TranslationKeys = {
     psdSpecInvalid: 'The PSD must be a 256–2048px 8-bit RGB document.',
     psdLayerCountInvalid: 'The PSD must have 1–64 visible pixel layers.',
     canvasUnsupported: 'This browser does not support 2D Canvas.',
-    anime25dMissingFace: 'The Anime2.5DRig PSD is missing the required face layer.',
+    anime25dMissingFace:
+      'The Anime2.5DRig PSD is missing the required face layer.',
     anime25dInvalidPixels: 'A PSD layer has invalid pixels.',
-    anime25dMissingHandwear: 'The Anime2.5DRig PSD is missing a handwear layer.',
+    anime25dMissingHandwear:
+      'The Anime2.5DRig PSD is missing a handwear layer.',
     anime25dMissingLayer: 'The Anime2.5DRig PSD is missing the {role} layer.',
     anime25dPartCount: 'Anime2.5DRig part count must be 1–{max}.',
     anime25dContractMissing: 'The 2.5D visual contract is missing: {missing}',
@@ -176,7 +178,8 @@ export const enUS: TranslationKeys = {
     anime25dDebugDescription:
       'Adjust Anime2.5DRig by head, face, hair, and body.',
     overviewGroup: 'Overview',
-    overviewGroupDescription: 'Name, mood, current state, and whether the portrait and rig are ready.',
+    overviewGroupDescription:
+      'Name, mood, current state, and whether the portrait and rig are ready.',
     overviewName: 'Name',
     overviewMood: 'Mood',
     overviewActivity: 'Current state',
@@ -211,7 +214,8 @@ export const enUS: TranslationKeys = {
     assetEmpty: 'No master portrait yet. Generate one first.',
     assetMake: '1 · Master portrait',
     assetRig: '2 · Layered rig',
-    assetNeedsPortrait: 'Generate the master portrait before splitting or uploading a layered PSD.',
+    assetNeedsPortrait:
+      'Generate the master portrait before splitting or uploading a layered PSD.',
     rigGroup: 'Layered rig',
     rigGroupDescription:
       'Upload a layered PSD, or split the master portrait with See-through. Activate only after preflight passes.',
@@ -285,6 +289,7 @@ export const enUS: TranslationKeys = {
     anime25dPresetThinking: 'Thinking',
     anime25dPresetDizzy: 'Dizzy',
     anime25dPresetSqueeze: '>< Squeezed eyes',
+    anime25dPresetCry: 'Crying',
     anime25dBlinkNow: 'Blink',
     anime25dResetPose: 'Reset pose',
     anime25dInspect: 'Playback inspect',
@@ -306,7 +311,8 @@ export const enUS: TranslationKeys = {
     rigPathUpload: 'Upload PSD',
     rigPathUploadHint: 'Build the rig from your own layered PSD.',
     rigPathSeeThrough: 'See-through split',
-    rigPathSeeThroughHint: 'Split the current master portrait remotely, then run local preflight.',
+    rigPathSeeThroughHint:
+      'Split the current master portrait remotely, then run local preflight.',
     rigTokenReady: 'Token saved',
     rigPreflightTitle: 'Preflight result',
     rigReadyTitle: 'Rig active',
@@ -316,7 +322,8 @@ export const enUS: TranslationKeys = {
     motionSeeThroughTokenCreate: 'Create',
     motionSeeThroughTokenDescription:
       'Paste a token with Read access. It is only used to split layers, stays on this machine, and never goes into the portrait.',
-    motionSeeThroughTokenMissing: 'Not set yet. Save a token before auto-splitting.',
+    motionSeeThroughTokenMissing:
+      'Not set yet. Save a token before auto-splitting.',
     motionSeeThroughTokenEdit: 'Add or replace token',
     motionSeeThroughTokenSave: 'Save securely',
     motionSeeThroughTokenCancel: 'Cancel',
@@ -334,7 +341,8 @@ export const enUS: TranslationKeys = {
     motionSeeThroughGenerate: 'Split and preflight',
     motionSeeThroughGenerating:
       'Remote decomposition is running. Local PSD preflight starts automatically when it finishes…',
-    motionNeedsRig: 'Finish the layered rig first. These controls can drive the portrait only after that.',
+    motionNeedsRig:
+      'Finish the layered rig first. These controls can drive the portrait only after that.',
     motionPsdPreflight: 'Preflight layered PSD',
     motionPsdValidating: 'Validating PSD…',
     motionPsdCommit: 'Commit preflighted rig',
@@ -456,7 +464,8 @@ export const enUS: TranslationKeys = {
     emailOptional: 'Email (optional)',
     emailPlaceholder: 'you@example.com',
     registerFailed: 'Registration failed',
-    registerDisabled: 'Public registration is off. Ask an administrator to create an account.',
+    registerDisabled:
+      'Public registration is off. Ask an administrator to create an account.',
     registerSetupRequired: 'Finish setup before creating an account.',
     usernameTaken: 'This username is already in use',
     registerResponseIncomplete: 'Incomplete registration response',
@@ -1123,11 +1132,13 @@ export const enUS: TranslationKeys = {
     usersInstalledTapps: 'Installed apps',
     usersNoTapps: 'No apps installed',
     usersUninstallTapp: 'Uninstall',
-    usersUninstallTappConfirm: 'Uninstall {name} for this user? App files will be removed.',
+    usersUninstallTappConfirm:
+      'Uninstall {name} for this user? App files will be removed.',
     usersEnableTappInstall: 'Allow app installs',
     usersDisableTappInstall: 'Block app installs',
     usersTappInstallDisabled: 'Installs blocked',
-    usersErrorCannotRestrictOwnerInstall: 'Cannot block app installs for the site owner.',
+    usersErrorCannotRestrictOwnerInstall:
+      'Cannot block app installs for the site owner.',
     usersErrorTappNotFound: 'That app install was not found.',
     usersRole: 'Role',
     usersRoleAdmin: 'Admin',
@@ -1202,7 +1213,8 @@ export const enUS: TranslationKeys = {
     updaterLastFailedTitle: 'Last update did not complete',
     updaterLastFailedBody: 'From {from} to {to} failed. Reason: {reason}',
     updaterLastFailedDismiss: 'Don’t show again',
-    updaterLastFailedDismissAria: 'Permanently dismiss this failed-update notice',
+    updaterLastFailedDismissAria:
+      'Permanently dismiss this failed-update notice',
     updaterHintHealthy: 'No updates are available on this channel.',
     updaterHintUpdating: 'The system will be checked when it finishes.',
     updaterHintMaintenance: 'Exit maintenance mode below when ready.',
@@ -1622,8 +1634,7 @@ export const enUS: TranslationKeys = {
       'Lite is off: chat replies fall back to Standard. Proactive lines stay short and mood hints stay off.',
     agentPersonaNeedsPro:
       'Enable the Pro tier above first — persona setup requires Pro.',
-    agentPersonaNeedsLiteAndPro:
-      'Enable the Pro tier above first.',
+    agentPersonaNeedsLiteAndPro: 'Enable the Pro tier above first.',
     agentPersonaMood: 'Mood',
     agentPersonaActivity: 'Activity',
     agentPersonaEmpty: 'No persona yet',
@@ -1714,7 +1725,8 @@ export const enUS: TranslationKeys = {
     mcpSaveUpdated: 'MCP config saved and reloaded',
     mcpSaveDeleted: 'MCP server deleted and reloaded',
     mcpSaveFailed: 'Failed to save MCP config',
-    mcpInvalidConfig: 'This MCP config is invalid. Check the command and arguments.',
+    mcpInvalidConfig:
+      'This MCP config is invalid. Check the command and arguments.',
     mcpLoadFailed: 'Could not load MCP config',
     mcpEmpty: 'No MCP servers yet. Click “Add server” to start.',
     mcpEmptyFiltered: 'No servers match this filter',
@@ -1832,7 +1844,8 @@ export const enUS: TranslationKeys = {
     aiLiteModelDesc: 'Low-cost tier for light, high-frequency tasks',
     aiLiteEnable: 'Enable Lite Model',
     aiLiteEnableDesc: 'When off, Lite tasks fall back to Standard',
-    aiLiteProviderHint: 'May differ from Standard; keys live in Providers above',
+    aiLiteProviderHint:
+      'May differ from Standard; keys live in Providers above',
     aiStandardModelTitle: 'Standard Model',
     aiStandardModelDesc: 'Default tier for everyday tasks',
     aiProModelTitle: 'Pro Model',
@@ -1878,33 +1891,40 @@ export const enUS: TranslationKeys = {
     aiVendorSetupAzurePortalTitle: 'Open Azure Portal',
     aiVendorSetupAzurePortalDesc: 'Open your Azure OpenAI resource.',
     aiVendorSetupAzureCreateTitle: 'Copy key and endpoint',
-    aiVendorSetupAzureCreateDesc: 'Copy the key and endpoint from Keys and Endpoint.',
+    aiVendorSetupAzureCreateDesc:
+      'Copy the key and endpoint from Keys and Endpoint.',
     aiVendorSetupAzureFillTitle: 'Paste them here',
-    aiVendorSetupAzureFillDesc: 'Key goes in API Key. Endpoint goes in Base URL.',
+    aiVendorSetupAzureFillDesc:
+      'Key goes in API Key. Endpoint goes in Base URL.',
     aiVendorSetupCompatiblePortalTitle: 'Prepare a compatible API',
-    aiVendorSetupCompatiblePortalDesc: 'Use a host that speaks OpenAI-compatible /v1.',
+    aiVendorSetupCompatiblePortalDesc:
+      'Use a host that speaks OpenAI-compatible /v1.',
     aiVendorSetupCompatibleCreateTitle: 'Copy the key',
     aiVendorSetupCompatibleCreateDesc: 'Copy the API key from that service.',
     aiVendorSetupCompatibleFillTitle: 'Paste them here',
     aiVendorSetupCompatibleFillDesc: 'Fill API Key and Base URL below.',
     aiVendorSetupOllamaPortalTitle: 'Install Ollama',
-    aiVendorSetupOllamaPortalDesc: 'Install Ollama and start it on this machine.',
+    aiVendorSetupOllamaPortalDesc:
+      'Install Ollama and start it on this machine.',
     aiVendorSetupOllamaCreateTitle: 'Pull a model',
     aiVendorSetupOllamaCreateDesc: 'For example: ollama pull llama3.2.',
     aiVendorSetupOllamaFillTitle: 'Fill this page',
-    aiVendorSetupOllamaFillDesc: 'API Key can be any placeholder. The URL defaults to localhost.',
+    aiVendorSetupOllamaFillDesc:
+      'API Key can be any placeholder. The URL defaults to localhost.',
     aiVendorSetupTencentPortalTitle: 'Open Tencent Cloud keys',
     aiVendorSetupTencentPortalDesc: 'Go to CAM → API Keys.',
     aiVendorSetupTencentCreateTitle: 'Create a key pair',
     aiVendorSetupTencentCreateDesc: 'Create and copy SecretId and SecretKey.',
     aiVendorSetupTencentFillTitle: 'Paste them here',
-    aiVendorSetupTencentFillDesc: 'Fill the two fields below and pick a region.',
+    aiVendorSetupTencentFillDesc:
+      'Fill the two fields below and pick a region.',
     // AI Image Generation Configuration
     aiImageTitle: 'Image Generation Model',
     aiImageDesc: 'Generate images; size is set per request',
     // Speech service (TTS/ASR) configuration
     speechServiceTitle: 'Speech Service',
-    speechServiceDesc: 'Read-aloud and recognition. Pick an audio-capable provider above.',
+    speechServiceDesc:
+      'Read-aloud and recognition. Pick an audio-capable provider above.',
     tencentSecretId: 'Tencent Cloud Secret ID',
     tencentSecretIdPlaceholder: 'Get from Tencent Cloud Console',
     tencentSecretKey: 'Tencent Cloud Secret Key',
@@ -2559,7 +2579,8 @@ export const enUS: TranslationKeys = {
       regeneratingSeeds: 'Generating',
       saveFirst: 'Save settings first.',
       nameLabel: 'Name',
-      nameHint: 'Leave blank to stay Arael. Pick a name style, then shuffle. Uses the Standard model.',
+      nameHint:
+        'Leave blank to stay Arael. Pick a name style, then shuffle. Uses the Standard model.',
       namePlaceholder: 'Enter a name',
       randomName: 'Shuffle',
       randomNameBusy: 'Generating',
@@ -2611,8 +2632,10 @@ export const enUS: TranslationKeys = {
       regeneratingPersona: 'Generating',
       regeneratePersonaFailed: 'Could not regenerate the persona. Try again.',
       importPersona: 'Import persona',
-      importPersonaHint: 'Paste an existing write-up. It will be rewritten into this format.',
-      importPersonaPlaceholder: 'Paste a character brief, profile, or chat persona…',
+      importPersonaHint:
+        'Paste an existing write-up. It will be rewritten into this format.',
+      importPersonaPlaceholder:
+        'Paste a character brief, profile, or chat persona…',
       importPersonaSubmit: 'Rewrite and import',
       importPersonaBusy: 'Rewriting…',
       importPersonaFailed: 'Could not import the persona. Try again.',
@@ -2637,9 +2660,12 @@ export const enUS: TranslationKeys = {
       saving: 'Saving…',
       saveAndContinue: 'Save and continue',
       saveFailed: 'Could not save',
-      personaIncompleteHint: 'Still missing {fields}. Fill them in, or generate a new set.',
-      proUnavailable: 'The Pro model is unavailable. Enable it in settings first.',
-      standardUnavailable: 'The Standard model is unavailable. Check it in settings first.',
+      personaIncompleteHint:
+        'Still missing {fields}. Fill them in, or generate a new set.',
+      proUnavailable:
+        'The Pro model is unavailable. Enable it in settings first.',
+      standardUnavailable:
+        'The Standard model is unavailable. Check it in settings first.',
       visualDesignScopeTitle: 'Upper-body visual contract',
       visualDesignScopeHint:
         'Design only full hair through lower chest or high waist: face, eyes, hair layers, topwear construction, materials, palette, accessories, and left/right sleeve or partial-arm fragments. No legs, footwear, or complete limb chain.',
@@ -2667,10 +2693,12 @@ export const enUS: TranslationKeys = {
       visualDesignRegenerate: 'New design',
       visualDesignConfirm: 'Confirm and continue',
       editVisual: 'Edit',
-      visualDesignFailed: 'Could not generate the character visual design. Try again.',
+      visualDesignFailed:
+        'Could not generate the character visual design. Try again.',
       visualDesignLanguageFailed:
         'The design came back in the wrong language. Generate again.',
-      visualDesignRequired: 'Confirm the upper-body visual design before generating the portrait.',
+      visualDesignRequired:
+        'Confirm the upper-body visual design before generating the portrait.',
       visualDesignSaveFailed: 'Could not save the character visual design',
       portraitTalkLead: 'Say what to change',
       portraitLoading: 'Loading the existing portrait',
@@ -2689,22 +2717,30 @@ export const enUS: TranslationKeys = {
       portraitEdit: 'Adjust',
       portraitEditing: 'Adjusting…',
       portraitEditFailed: 'Could not adjust the portrait. Try again.',
-      portraitEditNeedsNotes: 'Say what to change before sending this portrait to the model.',
+      portraitEditNeedsNotes:
+        'Say what to change before sending this portrait to the model.',
       portraitAdjustmentOutOfScope:
         'Only small lighting, expression, or frame-occupancy changes are allowed here. Return to visual design for hair, costume, palette, or accessory changes.',
-      portraitGenerateFailed: 'Could not generate the master portrait. Try again.',
-      portraitInProgress: 'A portrait is already generating. Check back in a moment.',
-      portraitInputsChanged: 'The visual design changed during generation. Generate again.',
+      portraitGenerateFailed:
+        'Could not generate the master portrait. Try again.',
+      portraitInProgress:
+        'A portrait is already generating. Check back in a moment.',
+      portraitInputsChanged:
+        'The visual design changed during generation. Generate again.',
       imageProviderUnconfigured:
         'No image provider is configured. Connect one in settings before generating a portrait.',
       imageProviderCredits: 'The image provider is out of credit.',
-      imageProviderUnauthorized: 'The image provider key is invalid or unauthorized.',
-      imageProviderRateLimited: 'The image provider rate-limited this request. Try again shortly.',
+      imageProviderUnauthorized:
+        'The image provider key is invalid or unauthorized.',
+      imageProviderRateLimited:
+        'The image provider rate-limited this request. Try again shortly.',
       imageProviderRejected: 'The image provider rejected this request.',
-      imageProviderInvalidResponse: 'The image provider returned a result that could not be read.',
+      imageProviderInvalidResponse:
+        'The image provider returned a result that could not be read.',
       nameUnusable: 'That name did not pass checks. Roll again.',
       personaUnusable: 'That persona draft could not be used. Generate again.',
-      visualDesignUnusable: 'That visual design could not be used. Generate again.',
+      visualDesignUnusable:
+        'That visual design could not be used. Generate again.',
       portraitLoadFailed: 'Could not load the master portrait',
       portraitFinish: 'Finish setup',
     },
@@ -2714,15 +2750,78 @@ export const enUS: TranslationKeys = {
   errors: {
     networkError: 'Network connection failed',
     unknown: 'Unknown error',
-    setupCheckFailed: 'Could not reach the server to check setup status ({status}).',
+    setupCheckFailed:
+      'Could not reach the server to check setup status ({status}).',
     requestRejected: 'The request was rejected.',
     requestFailed: 'The request failed.',
     invalidResponse: 'The server returned an invalid response ({status}).',
     operationFailed: 'The operation failed.',
+    tappSaveFailed: 'Could not save the app. Check disk space and try again.',
+    tappGenerateFailed: 'Could not generate the app. Try again.',
+    reportSaveFailed: 'Could not save the report. Try again.',
+    reminderSaveFailed: 'Could not save the reminder. Try again.',
+    noteSaveFailed: 'Could not save the note. Try again.',
+    bookmarkSaveFailed: 'Could not save the bookmark. Try again.',
+    reportLoadFailed: 'Could not load reports. Try again.',
+    tappAccessCheckFailed: 'Could not verify Tapp access.',
+    tappResourceLoadFailed: 'Could not load this Tapp resource.',
+    tappFindFailed: 'That Tapp could not be found.',
+    tappInstallCheckFailed: 'Could not check Tapp install permission.',
+    imageCacheFailed:
+      'Could not write the image cache. Check disk space and permissions.',
+    imageTooLarge: 'That image is too large.',
+    storageNotWritable:
+      'The server cannot write its data directory. Check volume permissions.',
+    psnNpssoExpired:
+      'PSN NPSSO is missing or expired. Update it in platform settings.',
+    psnRequestFailed: 'Could not reach PSN. Check the network and try again.',
+    schemaMismatch:
+      'The model output did not match the required format. Try again.',
+    dnsFailed: 'Could not resolve that address. Check the network and DNS.',
+    inboxNotReady:
+      'This federated activity is not ready yet. It will be retried.',
+    inboxFailed: 'This federated activity could not be processed.',
+    federationInitFailed:
+      'Could not set up federation for this site. Try again.',
+    federationDataFailed: 'Could not load federation data.',
+    federationKeyRotateFailed: 'Could not rotate federation keys.',
+    model3dFailed: 'Could not generate the 3D model. Try again.',
+    profileTextLoadFailed: 'Could not load name & bio sources.',
+    profileTextSaveFailed: 'Could not save the name & bio source.',
+    avatarSourceLoadFailed: 'Could not load avatar sources.',
+    avatarSourceSaveFailed: 'Could not save the avatar source.',
+    platformNamedFetchFailed: 'Could not load {name} data.',
+    brewRefreshFailed: 'Could not refresh this feed.',
+    brewParseFailed: 'Could not parse this feed.',
+    brewInvalidUrl: 'This feed address is not allowed.',
+    brewSourceSaveFailed: 'Could not save this feed.',
+    brewSourceDeleteFailed: 'Could not delete this feed.',
+    brewCategorySaveFailed: 'Could not save this category.',
+    brewCategoryDeleteFailed: 'Could not delete this category.',
+    brewLoadFailed: 'Could not load feed data.',
+    platformCacheMissing:
+      'No cached {name} data. Refresh it in platform settings first.',
+    mcpTalkFailed: 'Could not talk to the MCP server.',
+    mcpTimeout: 'The MCP server timed out.',
+    mcpResponseInvalid: 'The MCP server returned an invalid response.',
+    mcpToolFailed: 'The MCP tool failed.',
+    aiStepFailed: 'This AI step failed.',
+    skillFileFailed: 'Could not update this skill file.',
+    skillFileInvalid: 'This skill file is not valid.',
+    skillCooldown: 'This skill was just updated. Try again later.',
+    commentLoadFailed: 'Could not load comments.',
+    commentSaveFailed: 'Could not save this comment.',
+    commentDeleteFailed: 'Could not delete this comment.',
+    articleLoadFailed: 'Could not load this article.',
+    readingStateFailed: 'Could not update reading status.',
+    contentSaveFailed: 'Could not save this content.',
+    tappStorageFailed: 'Could not update app storage.',
     rateLimited: 'Too many requests. Please try again later.',
     rateLimitedLogin: 'Too many login attempts. Please try again later.',
-    rateLimitedFetch: 'Data is being requested too quickly. Please try again later.',
-    rateLimitedAnalysis: 'Analysis is being requested too quickly. Please try again later.',
+    rateLimitedFetch:
+      'Data is being requested too quickly. Please try again later.',
+    rateLimitedAnalysis:
+      'Analysis is being requested too quickly. Please try again later.',
     rateLimitedRetry: 'Too many requests. Retry in {sec}s',
     passwordMinLength: 'Password must be at least 8 characters',
     passwordNeedLower: 'Add a lowercase letter',
@@ -2738,15 +2837,32 @@ export const enUS: TranslationKeys = {
     database: 'Could not read data just now. Please try again.',
     passwordFailed: 'Could not process the password. Please try again.',
     sessionFailed: 'Could not start a sign-in session. Please try again.',
-    configFilePermission: 'Could not write the configuration file. Check disk permissions.',
+    agentSessionLoadFailed: 'Could not load this conversation.',
+    agentSessionSaveFailed: 'Could not save this conversation.',
+    agentSessionArchiveFailed: 'Could not archive this conversation.',
+    personaLoadFailed: 'Could not load the persona.',
+    personaSaveFailed: 'Could not save the persona.',
+    personaDeleteFailed: 'Could not delete the persona.',
+    addresseeLoadFailed: 'Could not load addressee settings.',
+    addresseeSaveFailed: 'Could not save addressee settings.',
+    presetLoadFailed: 'Could not load this task preset.',
+    presetSaveFailed: 'Could not save this task preset.',
+    presetDeleteFailed: 'Could not delete this task preset.',
+    configFilePermission:
+      'Could not write the configuration file. Check disk permissions.',
+    configFileReadFailed: 'Could not read the configuration file.',
+    iconSaveFailed: 'Could not save this feed icon.',
     aiResponseInvalid: 'The AI response could not be parsed. Please try again.',
     aiGenerationFailed: 'AI generation failed. Please try again.',
     asrInvalidAudio: 'The audio data is invalid. Record or upload it again.',
-    speechNotConfigured: 'Speech is not configured. Add the provider key in AI settings first.',
+    speechNotConfigured:
+      'Speech is not configured. Add the provider key in AI settings first.',
     speechTtsNoAudio: 'The speech service returned no audio. Please try again.',
-    speechTtsOpenAiRequired: 'Official speech requires OpenAI. Transcription can still be used.',
+    speechTtsOpenAiRequired:
+      'Official speech requires OpenAI. Transcription can still be used.',
     speechTextTooLong: 'That text is too long. Shorten it and try again.',
-    speechUpstreamFailed: 'The speech service is unreachable. Please try again later.',
+    speechUpstreamFailed:
+      'The speech service is unreachable. Please try again later.',
     speechBatchEmpty: 'There are no lines to convert.',
     speechBatchTooMany: 'You can convert at most 100 lines at a time.',
     domainInvalid:
@@ -2757,21 +2873,27 @@ export const enUS: TranslationKeys = {
     oauthSlugInvalid:
       'The sign-in id can only use letters, numbers, - and _, up to 32 characters.',
     oauthSlugDuplicate: 'Another sign-in method already uses that id.',
-    oauthClientIdRequired: 'Add a client ID before enabling this sign-in method.',
+    oauthClientIdRequired:
+      'Add a client ID before enabling this sign-in method.',
     oauthClientSecretRequired:
       'Add a client secret before enabling this sign-in method.',
     oauthDiscoveryRequired: 'OpenID sign-in needs a discovery URL.',
     oauthKindUnsupported: 'That sign-in method type is not supported.',
-    remoteActorUnresolved: 'Could not find that federated account. Check the address and try again.',
+    remoteActorUnresolved:
+      'Could not find that federated account. Check the address and try again.',
     webfingerFailed: 'That site did not return usable account information.',
-    platformFetchFailed: 'Could not load platform data. Check the account and keys, then try again.',
+    platformFetchFailed:
+      'Could not load platform data. Check the account and keys, then try again.',
     steamNotConfigured: 'Steam API key or Steam ID is not set.',
     platformDisabled: 'This platform is not enabled.',
     usernameRequired: 'Enter a username.',
-    agentProcessingFailed: 'That request could not be completed. Please try again.',
+    agentProcessingFailed:
+      'That request could not be completed. Please try again.',
     invalidUrl: 'That address is not valid.',
-    federationMoveFailed: 'Could not finish moving this site. Please try again.',
-    notionUrlInvalid: 'That Notion address is not valid. Check it and try again.',
+    federationMoveFailed:
+      'Could not finish moving this site. Please try again.',
+    notionUrlInvalid:
+      'That Notion address is not valid. Check it and try again.',
     channelNotReady: 'This conversation is not ready to send messages yet.',
     inviteInvalid: 'This invite can no longer be accepted.',
     feedNameRequired: 'Enter a name for this feed.',
@@ -2824,14 +2946,18 @@ export const enUS: TranslationKeys = {
     agentStepTimeout: 'That step timed out. Please try again.',
     agentInputEmpty: 'Nothing was entered.',
     agentInputTooLong: 'That text is too long. Shorten it and try again.',
-    subscribeAllFailed: 'None of those feeds could be subscribed. Check the addresses and try again.',
+    subscribeAllFailed:
+      'None of those feeds could be subscribed. Check the addresses and try again.',
     noticeAgentTaskFailed: 'The assistant task failed',
     noticeAgentTaskCompleted: 'The assistant task finished',
     noticeAgentTaskWaiting: 'The assistant needs your reply',
     noticeAgentTaskRunning: 'The assistant is working',
     privateNetworkBlocked: 'That address cannot be reached.',
     feedNotFound: 'That feed was not found.',
-    rsshubUnavailable: 'RSSHub is not ready. Add an instance in feed settings first.',
+    rsshubUnavailable:
+      'RSSHub is not ready. Add an instance in feed settings first.',
+    rsshubLoadFailed: 'Could not load RSSHub instances.',
+    rsshubSaveFailed: 'Could not save this RSSHub instance.',
     pipelineTooManySteps: 'That pipeline has too many steps.',
     heartbeatAdminRequired: 'Heartbeat tasks require an administrator.',
     writeItemsOverCap: 'Too many items to write at once.',
@@ -2846,7 +2972,8 @@ export const enUS: TranslationKeys = {
     settingsBackupRestoreFailed: 'Could not restore this settings backup.',
     backendUnreachable: 'Could not reach the backend ({status}).',
     setupConfigFailed: 'Could not read setup config ({status}).',
-    emptyDialogueText: 'One of the lines is empty, so speech cannot be generated.',
+    emptyDialogueText:
+      'One of the lines is empty, so speech cannot be generated.',
     csrfUnavailable: 'Your session expired. Refresh the page and try again.',
     streamUnreadable: 'The server did not return a readable stream.',
     dndScheduleInvalid: 'That quiet-hours time is not valid.',
@@ -2977,8 +3104,10 @@ export const enUS: TranslationKeys = {
     listRepeat: 'List Repeat',
     loadPlaylistFailed: 'Failed to load playlist',
     playlistEmpty: 'This playlist is empty, or the ID has no playable songs.',
-    playlistRateLimited: 'The music source rate-limited this request. Try again later or switch to QQ Music.',
-    playlistBlocked: 'This playlist is blocked by copyright or region limits. Try QQ Music.',
+    playlistRateLimited:
+      'The music source rate-limited this request. Try again later or switch to QQ Music.',
+    playlistBlocked:
+      'This playlist is blocked by copyright or region limits. Try QQ Music.',
     playFailed: 'Playback failed, please check network or song availability',
     vipPlayFailed: 'VIP song unavailable (membership or trial required)',
   },
@@ -3600,9 +3729,11 @@ export const enUS: TranslationKeys = {
     privilegedPermission: 'Privileged',
     grantedPermissions: 'Granted Permissions',
     reauthorizationRequired: 'Reauthorization required',
-    reauthorizationMessage: 'Permissions expired. Reauthorize in settings before running.',
+    reauthorizationMessage:
+      'Permissions expired. Reauthorize in settings before running.',
     packageUnusable: 'Package not usable',
-    packageUnusableMessage: 'This package does not match the current Tapp format. Reinstall a package built for this version.',
+    packageUnusableMessage:
+      'This package does not match the current Tapp format. Reinstall a package built for this version.',
 
     // Permission labels
     permRegisterWidget: 'Register Widget',
@@ -4291,8 +4422,10 @@ export const enUS: TranslationKeys = {
     errorNotionTokenRequired: 'Please enter Notion Integration Token',
     errorAddSuccess: 'Added successfully!',
     errorAddFailed: 'Failed to add',
-    errorFeedNeedName: 'Could not parse this feed. Enter a name to add it anyway.',
-    errorNotionFetch: 'Could not reach this Notion source. Check the token and page.',
+    errorFeedNeedName:
+      'Could not parse this feed. Enter a name to add it anyway.',
+    errorNotionFetch:
+      'Could not reach this Notion source. Check the token and page.',
     errorSelectImage: 'Please select an image file',
     errorImageTooLarge: 'Image size must not exceed 500KB',
     errorImageReadFailed: 'Failed to read image',

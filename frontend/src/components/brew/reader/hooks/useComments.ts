@@ -9,6 +9,7 @@ import type {
 } from '../../../../services/brewApi'
 import type { ThemeKey } from '../types'
 import { useCallback, useRef, useState } from 'react'
+import { userFacingError } from '../../../../utils/userFacingError'
 import * as brewApi from '../../../../services/brewApi'
 
 export interface UseCommentsOptions {
@@ -190,7 +191,7 @@ export function useComments({
       }
     } catch (err) {
       console.error('Failed to submit comment:', err)
-      showToastMessage(t.brew.addCommentFailed)
+      showToastMessage(userFacingError(err, t.brew.addCommentFailed))
     } finally {
       setCommentSubmitting(false)
     }
@@ -217,6 +218,7 @@ export function useComments({
         }
       } catch (err) {
         console.error('Failed to delete comment:', err)
+        showToastMessage(userFacingError(err, t.errors?.commentDeleteFailed))
       }
     },
     [comments.length, showToastMessage, t],

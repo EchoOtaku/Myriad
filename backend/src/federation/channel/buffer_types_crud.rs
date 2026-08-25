@@ -1606,11 +1606,10 @@ pub async fn handle_key_exchange(
         .and_then(|v| v.as_str())
         .unwrap_or(crate::federation::e2e::E2E_ALGORITHM);
 
-    crate::federation::e2e::validate_public_key_b64(public_key)
-        .map_err(|error| {
-            tracing::error!(%error, "invalid remote E2E public key");
-            "Invalid remote E2E public key".to_string()
-        })?;
+    crate::federation::e2e::validate_public_key_b64(public_key).map_err(|error| {
+        tracing::error!(%error, "invalid remote E2E public key");
+        "Invalid remote E2E public key".to_string()
+    })?;
 
     // 验证发送方是该 Channel 的远程方，并读取 properties
     let ch_row = db

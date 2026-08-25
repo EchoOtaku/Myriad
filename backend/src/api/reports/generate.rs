@@ -171,7 +171,6 @@ async fn persist_platform_report_atomic(
             "Failed to save report".to_string()
         })?;
 
-
     if delete_result.rows_affected > 0 {
         tracing::info!(
             "🗑️ Deleted {} old report(s) for platform {} (txn)",
@@ -202,7 +201,6 @@ async fn persist_platform_report_atomic(
         tracing::error!(platform = %report.platform, %error, "failed to commit report persist");
         "Failed to save report".to_string()
     })?;
-
 
     tracing::info!("✅ Saved platform report for {}", report.platform);
     Ok(())
@@ -1818,8 +1816,8 @@ async fn get_platform_data(
     let platform_data: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
     // 6. 处理并缓存该平台数据（只处理单个平台！）
-    let filtered_data = SmartFilter::process_and_save_single(platform, &platform_data)
-        .map_err(|e| {
+    let filtered_data =
+        SmartFilter::process_and_save_single(platform, &platform_data).map_err(|e| {
             tracing::error!(platform, error = %e, "Failed to process platform data");
             "Failed to process platform data".to_string()
         })?;

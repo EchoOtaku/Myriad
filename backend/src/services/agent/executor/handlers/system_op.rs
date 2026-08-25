@@ -911,7 +911,10 @@ async fn execute_brew_schedule(params: &HashMap<String, Value>) -> Result<Value,
                                 "Refreshed {refreshed} sources ({failed} failed), {new_items} new items"
                             )
                         })),
-                        Err(e) => Err(format!("Failed to refresh sources: {e}")),
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to refresh sources");
+                            Err("Failed to refresh sources".to_string())
+                        }
                     }
                 }
             } else {

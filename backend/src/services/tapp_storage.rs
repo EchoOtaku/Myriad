@@ -33,7 +33,7 @@ impl TappStorageError {
     pub fn message(&self) -> String {
         match self {
             Self::InvalidKey(reason) => (*reason).to_string(),
-            Self::Database => "Database error".to_string(),
+            Self::Database => "Failed to update Tapp storage".to_string(),
             Self::TooLarge => "Storage value or quota exceeded".to_string(),
         }
     }

@@ -2,6 +2,7 @@
 
 use crate::services::agent::ai_process_pure::USER_TEXT_MAX_CHARS;
 use crate::services::agent::capability::get_registry;
+use crate::services::agent::external_pure::classify_outbound_fetch;
 use crate::services::agent::types::{self, *};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -503,10 +504,10 @@ impl Executor {
             count_hint = count_hint,
         );
 
-        let ai_result = analyzer
-            .analyze(&prompt)
-            .await
-            .map_err(|e| format!("Skill AI planning failed: {}", e))?;
+        let ai_result = analyzer.analyze(&prompt).await.map_err(|error| {
+            tracing::error!(%error, "Skill AI planning failed");
+            classify_outbound_fetch("Skill AI planning failed", &error.to_string())
+        })?;
 
         tracing::debug!(
             skill_id = skill_id,

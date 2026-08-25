@@ -108,7 +108,8 @@ impl Agent {
                 return Err(error);
             }
         };
-        crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input).await;
+        crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input)
+            .await;
 
         tracing::debug!(
             status = ?planner_output.status,
@@ -511,7 +512,8 @@ impl Agent {
                 return Err(error);
             }
         };
-        crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input).await;
+        crate::services::agent::merope::note_chat_diary(&self.db, user_id, &request.raw_input)
+            .await;
 
         tracing::debug!(
             status = ?planner_output.status,
@@ -1821,7 +1823,10 @@ impl Agent {
             confirmation_id,
         )
         .await
-        .map_err(|error| format!("Failed to load confirmation: {error}"))?;
+        .map_err(|error| {
+            tracing::error!(%error, "Failed to load confirmation");
+            "Failed to load confirmation".to_string()
+        })?;
         Ok(pending
             .filter(|pending| pending.user_id == user_id)
             .map(|pending| ConfirmationResumeContext {

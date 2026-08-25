@@ -14,6 +14,11 @@ use tokio::sync::RwLock;
 
 use crate::models::entities::rsshub_instances::{self, HealthStatus, Model as InstanceModel};
 
+fn rsshub_store_failed(context: &'static str, error: impl std::fmt::Display) -> String {
+    tracing::error!(%error, context, "rsshub store failed");
+    format!("Failed to {context}")
+}
+
 /// Pure: path + query from an RSSHub-style URL (no host/fragment).
 ///
 /// Used by [`RsshubService::extract_route`] and unit-tested without a DB.
@@ -112,7 +117,7 @@ impl RsshubService {
             .order_by_asc(rsshub_instances::Column::Priority)
             .all(&self.db)
             .await
-            .map_err(|e| format!("Failed to fetch global instances: {}", e))?;
+            .map_err(|error| rsshub_store_failed("fetch RSSHub instances", error))?;
 
         // 如果有用户 ID，也获取用户自己的实例
         if let Some(uid) = user_id {
@@ -121,7 +126,7 @@ impl RsshubService {
                 .order_by_asc(rsshub_instances::Column::Priority)
                 .all(&self.db)
                 .await
-                .map_err(|e| format!("Failed to fetch user instances: {}", e))?;
+                .map_err(|error| rsshub_store_failed("fetch RSSHub instances", error))?;
 
             instances.extend(user_instances);
         }
@@ -144,7 +149,7 @@ impl RsshubService {
             .filter(rsshub_instances::Column::UserId.is_null())
             .all(&self.db)
             .await
-            .map_err(|e| format!("Failed to check existing instances: {}", e))?;
+            .map_err(|error| rsshub_store_failed("check RSSHub instances", error))?;
 
         if !existing.is_empty() {
             tracing::debug!("[RSSHub] Default instances already exist, skipping initialization");
@@ -362,14 +367,10 @@ impl RsshubService {
         })?;
 
         let start = Instant::now();
-        let response = client
-            .get(target_url)
-            .send()
-            .await
-            .map_err(|error| {
-                tracing::warn!(%error, "RSSHub health check request failed");
-                "Request failed".to_string()
-            })?;
+        let response = client.get(target_url).send().await.map_err(|error| {
+            tracing::warn!(%error, "RSSHub health check request failed");
+            "Request failed".to_string()
+        })?;
 
         let elapsed = start.elapsed().as_millis() as i32;
 
@@ -457,7 +458,7 @@ impl RsshubService {
         new_instance
             .insert(&self.db)
             .await
-            .map_err(|e| format!("Failed to insert instance: {}", e))
+            .map_err(|error| rsshub_store_failed("create RSSHub instance", error))
     }
 
     /// 更新实例
@@ -476,7 +477,7 @@ impl RsshubService {
         let instance = rsshub_instances::Entity::find_by_id(id)
             .one(&self.db)
             .await
-            .map_err(|e| format!("Failed to find instance: {}", e))?
+            .map_err(|error| rsshub_store_failed("find RSSHub instance", error))?
             .ok_or_else(|| "Instance not found".to_string())?;
 
         // 全局实例仅管理员可改；用户实例仅本人可改
@@ -512,7 +513,7 @@ impl RsshubService {
         active
             .update(&self.db)
             .await
-            .map_err(|e| format!("Failed to update instance: {}", e))
+            .map_err(|error| rsshub_store_failed("update RSSHub instance", error))
     }
 
     /// 删除实例
@@ -525,7 +526,7 @@ impl RsshubService {
         let instance = rsshub_instances::Entity::find_by_id(id)
             .one(&self.db)
             .await
-            .map_err(|e| format!("Failed to find instance: {}", e))?
+            .map_err(|error| rsshub_store_failed("find RSSHub instance", error))?
             .ok_or_else(|| "Instance not found".to_string())?;
 
         if instance.user_id.is_none() {
@@ -543,7 +544,7 @@ impl RsshubService {
         rsshub_instances::Entity::delete_by_id(id)
             .exec(&self.db)
             .await
-            .map_err(|e| format!("Failed to delete instance: {}", e))?;
+            .map_err(|error| rsshub_store_failed("delete RSSHub instance", error))?;
 
         Ok(())
     }
@@ -558,7 +559,7 @@ impl RsshubService {
         let instance = rsshub_instances::Entity::find_by_id(id)
             .one(&self.db)
             .await
-            .map_err(|e| format!("Failed to find instance: {}", e))?
+            .map_err(|error| rsshub_store_failed("find RSSHub instance", error))?
             .ok_or_else(|| "Instance not found".to_string())?;
 
         if instance.user_id.is_none() {
@@ -583,7 +584,7 @@ impl RsshubService {
         active
             .update(&self.db)
             .await
-            .map_err(|e| format!("Failed to reset instance: {}", e))?;
+            .map_err(|error| rsshub_store_failed("reset RSSHub instance", error))?;
 
         Ok(())
     }

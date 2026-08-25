@@ -6,6 +6,7 @@
 use super::HandlerContext;
 use crate::models::entities::{tapp_scheduled_tasks, tapp_task_executions, tapp_widgets, tapps};
 use crate::services::agent::ai_process_pure::USER_TEXT_MAX_CHARS;
+use crate::services::agent::external_pure::classify_outbound_fetch;
 use crate::services::agent::ui_analysis::{
     build_breadcrumb, build_navigate_full_path, detect_page_type, extract_json_from_response,
     extract_route_context, generate_suggested_actions, get_page_name, is_safe_agent_tapp_id,
@@ -240,10 +241,10 @@ async fn execute_tapp_understand(
         user_intent = user_intent,
     );
 
-    let ai_result = analyzer
-        .analyze(&prompt)
-        .await
-        .map_err(|e| format!("AI analysis failed: {}", e))?;
+    let ai_result = analyzer.analyze(&prompt).await.map_err(|error| {
+        tracing::error!(%error, "UI analysis failed");
+        classify_outbound_fetch("UI analysis failed", &error.to_string())
+    })?;
 
     let parsed: Value = extract_json_from_response(&ai_result)
         .and_then(|json_str| serde_json::from_str(&json_str).ok())
@@ -1063,10 +1064,10 @@ async fn execute_page_understand(
             truncated_context, query
         );
 
-        let result = analyzer
-            .analyze(&prompt)
-            .await
-            .map_err(|e| format!("AI analysis failed: {}", e))?;
+        let result = analyzer.analyze(&prompt).await.map_err(|error| {
+            tracing::error!(%error, "UI analysis failed");
+            classify_outbound_fetch("UI analysis failed", &error.to_string())
+        })?;
 
         return Ok(json!({
             "query": query,

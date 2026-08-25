@@ -115,6 +115,47 @@ function clip(text: string): string {
   return text.length > 180 ? `${text.slice(0, 179)}…` : text
 }
 
+function isInternalDump(text: string): boolean {
+  const detail = text.replace(/\s+/g, ' ').trim()
+  if (!detail) return true
+  if (
+    /relation "|does not exist|duplicate key value|violates (unique|not-null|foreign)/i.test(
+      detail,
+    )
+  ) {
+    return true
+  }
+  if (
+    /missing field|at line \d+ column|expected value|key must be a string/i.test(
+      detail,
+    )
+  ) {
+    return true
+  }
+  if (
+    /error sending request|os error \d+|builder error|error trying to connect/i.test(
+      detail,
+    )
+  ) {
+    return true
+  }
+  if (/zip (local )?header|invalid zip/i.test(detail)) return true
+  if (/^\{[\s\S]*\}$/.test(detail) || /<html[\s>]|<\/html>/i.test(detail)) {
+    return true
+  }
+  if (/RequestTokenError|invalid_grant|invalid_client/i.test(detail)) return true
+  return false
+}
+
+/** Category label plus any leftover that still helps the user locate the fault. */
+function classified(label: string, raw: string, hint = ''): string {
+  const colon = raw.indexOf(':')
+  const rest = colon >= 0 ? raw.slice(colon + 1).trim() : ''
+  const keep =
+    rest && !isInternalDump(rest) && !isUselessErrorText(rest) ? clip(rest) : ''
+  return joinParts(label, keep, usefulExtra(hint, label, keep))
+}
+
 /** Localized, diagnosable copy for anything that can land in the UI. */
 export function userFacingError(reason: unknown, fallback?: string): string {
   const t = currentCopy().errors
@@ -152,6 +193,73 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (code === 'session_failed') {
     return joinParts(t.sessionFailed, usefulExtra(hint, t.sessionFailed))
   }
+  if (
+    /^failed to (list sessions|find session|load session messages)/i.test(raw)
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.agentSessionLoadFailed, action), raw, hint)
+  }
+  if (
+    /^failed to (create session|update session|save user message|save assistant message)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.agentSessionSaveFailed, action), raw, hint)
+  }
+  if (/^failed to archive session/i.test(raw)) {
+    return classified(t.agentSessionArchiveFailed, raw, hint)
+  }
+  if (
+    /^failed to (count persona reports|load persona|load persona reports)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.personaLoadFailed, action), raw, hint)
+  }
+  if (
+    /^failed to (begin persona save|save persona|update persona portrait|commit persona save)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.personaSaveFailed, action), raw, hint)
+  }
+  if (
+    /^failed to (begin persona delete|delete persona|clear persona portrait|commit persona delete)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.personaDeleteFailed, action), raw, hint)
+  }
+  if (/^failed to load addressee/i.test(raw)) {
+    return classified(t.addresseeLoadFailed, raw, hint)
+  }
+  if (/^failed to (save addressee|save quiet-hours)/i.test(raw)) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.addresseeSaveFailed, action), raw, hint)
+  }
+  if (
+    code === 'preset_fetch_failed' ||
+    /^failed to (fetch favorites|fetch history|find preset|check existing preset)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.presetLoadFailed, action), raw, hint)
+  }
+  if (
+    code === 'preset_update_failed' ||
+    /^failed to (create preset|update preset|toggle favorite)/i.test(raw)
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.presetSaveFailed, action), raw, hint)
+  }
+  if (/^failed to delete preset/i.test(raw)) {
+    return classified(t.presetDeleteFailed, raw, hint)
+  }
   if (code === 'account_create_failed') {
     return joinParts(
       currentCopy().auth.registerFailed,
@@ -159,10 +267,18 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     )
   }
   if (
-    code === 'config_file_permission' ||
-    /无法创建配置文件|无法读取配置文件|无法保存配置文件/.test(raw)
+    code === 'config_file_read_failed' ||
+    /^failed to read configuration/i.test(raw) ||
+    /无法读取配置文件/.test(raw)
   ) {
-    return joinParts(t.configFilePermission, usefulExtra(hint, t.configFilePermission))
+    return classified(t.configFileReadFailed, raw, hint)
+  }
+  if (
+    code === 'config_file_permission' ||
+    /^failed to (write|create) configuration/i.test(raw) ||
+    /无法创建配置文件|无法保存配置文件/.test(raw)
+  ) {
+    return classified(t.configFilePermission, raw, hint)
   }
   if (
     code === 'ai_response_invalid' ||
@@ -171,13 +287,57 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return joinParts(t.aiResponseInvalid, usefulExtra(hint, t.aiResponseInvalid))
   }
   if (
+    /^(annotation generation|podcast script generation|smart filter|content comparison|prompt generation|translation|code explanation|ai abstraction|skill ai generation|skill ai planning|ui analysis) failed/i.test(
+      raw,
+    ) ||
+    /^failed to parse skill ai json/i.test(raw)
+  ) {
+    const action =
+      raw.match(
+        /^(annotation generation|podcast script generation|smart filter|content comparison|prompt generation|translation|code explanation|ai abstraction|skill ai generation|skill ai planning|ui analysis)/i,
+      )?.[1] ||
+      (/parse skill ai json/i.test(raw) ? 'skill AI JSON' : '')
+    const status = raw.match(/\bHTTP\s+(\d{3})\b/i)
+    const colon = raw.indexOf(':')
+    const rest = colon >= 0 ? raw.slice(colon + 1).trim() : ''
+    const keep =
+      rest && !isInternalDump(rest) && !isUselessErrorText(rest) ? clip(rest) : ''
+    const http = status ? `HTTP ${status[1]}` : ''
+    return joinParts(
+      t.aiStepFailed,
+      action,
+      keep && keep !== http ? keep : '',
+      http,
+      usefulExtra(hint, t.aiStepFailed, action, keep, http),
+    )
+  }
+  if (
     code === 'ai_generation_failed' ||
     /^ai error:/i.test(raw) ||
     /^ai generation failed$/i.test(raw) ||
+    /^ai (analysis|search) failed$/i.test(raw) ||
     /^gemini api /i.test(raw) ||
     /invalid gemini json/i.test(raw)
   ) {
     return joinParts(t.aiGenerationFailed, usefulExtra(hint, t.aiGenerationFailed))
+  }
+  if (/skill improvement on cooldown/i.test(raw)) {
+    const wait = raw.match(/(\d+) seconds remaining/i)?.[1]
+    return joinParts(
+      t.skillCooldown,
+      wait ? `${wait}s` : '',
+      usefulExtra(hint, t.skillCooldown),
+    )
+  }
+  if (/^invalid skill file format/i.test(raw)) {
+    return t.skillFileInvalid
+  }
+  if (
+    /^failed to (backup|read|write|replace) skill/i.test(raw) ||
+    /^failed to (create skill trash directory|move skill to trash)/i.test(raw) ||
+    /^skill file missing/i.test(raw)
+  ) {
+    return classified(t.skillFileFailed, raw, hint)
   }
   if (code === 'settings_backup_failed') {
     return joinParts(
@@ -249,54 +409,282 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return t.operationFailed
   }
-  if (
-    code === 'hitokoto_fetch_failed' ||
-    /^failed to (fetch|parse) hitokoto/i.test(raw) ||
-    /^hitokoto api failed$/i.test(raw)
-  ) {
+  if (code === 'hitokoto_fetch_failed' || /^hitokoto api failed$/i.test(raw)) {
     return currentCopy().config.hitokotoLoadFailed
+  }
+  if (
+    /failed to fetch (hitokoto|bilibili|bangumi|steam|weather|netease|game details)/i.test(
+      raw,
+    ) ||
+    /^(bilibili|bangumi|weather|netease|steam) api error/i.test(raw)
+  ) {
+    const name = /hitokoto/i.test(raw)
+      ? 'Hitokoto'
+      : /bilibili/i.test(raw)
+        ? 'Bilibili'
+        : /bangumi/i.test(raw)
+          ? 'Bangumi'
+          : /steam|game details/i.test(raw)
+            ? 'Steam'
+            : /weather/i.test(raw)
+              ? 'Weather'
+              : /netease/i.test(raw)
+                ? 'Netease'
+                : 'Platform'
+    const label = t.platformNamedFetchFailed.replace('{name}', name)
+    const status = raw.match(/\bHTTP\s+(\d{3})\b/i)
+    const colon = raw.indexOf(':')
+    const rest = colon >= 0 ? raw.slice(colon + 1).trim() : ''
+    const keep =
+      rest && !isInternalDump(rest) && !isUselessErrorText(rest) ? clip(rest) : ''
+    const http = status ? `HTTP ${status[1]}` : ''
+    return joinParts(
+      label,
+      keep && keep !== http ? keep : '',
+      http,
+      usefulExtra(hint, label, keep, http),
+    )
+  }
+  if (
+    /^no cached \w+ data/i.test(raw) ||
+    /^no data available for platform:/i.test(raw) ||
+    /^platform data not found$/i.test(raw)
+  ) {
+    const found =
+      raw.match(/^no cached (\w+) data/i)?.[1] ||
+      raw.match(/platform:\s*(\w+)/i)?.[1] ||
+      'platform'
+    const name = `${found.charAt(0).toUpperCase()}${found.slice(1)}`
+    return joinParts(
+      t.platformCacheMissing.replace('{name}', name),
+      usefulExtra(hint, t.platformCacheMissing),
+    )
+  }
+  if (
+    /^failed to (read|parse) \w+ data/i.test(raw) ||
+    /^failed to (read|parse) cache/i.test(raw)
+  ) {
+    const found = raw.match(/^failed to (?:read|parse) (\w+) data/i)?.[1] || 'platform'
+    const name = `${found.charAt(0).toUpperCase()}${found.slice(1)}`
+    return classified(
+      t.platformNamedFetchFailed.replace('{name}', name),
+      raw,
+      hint,
+    )
+  }
+  if (
+    /^http request failed/i.test(raw) ||
+    /^request failed(:|$)/i.test(raw) ||
+    /^fetch failed/i.test(raw) ||
+    /^read failed/i.test(raw) ||
+    /^http client error/i.test(raw) ||
+    /^invalid outbound proxy/i.test(raw)
+  ) {
+    return classified(t.networkError, raw, hint)
+  }
+  if (/^dns resolution failed/i.test(raw)) {
+    return classified(t.dnsFailed, raw, hint)
+  }
+  if (
+    /^failed to parse json/i.test(raw) ||
+    /^json parse failed/i.test(raw) ||
+    /^invalid (ai chat messages|json from upstream)/i.test(raw) ||
+    /^failed to serialize json body/i.test(raw)
+  ) {
+    return classified(t.aiResponseInvalid, raw, hint)
+  }
+  if (/^failed to (consume|persist|load) confirmation/i.test(raw)) {
+    return classified(t.agentConfirmMissing, raw, hint)
+  }
+  if (
+    /persist tapp interaction wait/i.test(raw) ||
+    /failed to (create tapp staging|activate staged)/i.test(raw) ||
+    (/tapp/i.test(raw) &&
+      /storage is not writable|not enough disk space/i.test(raw))
+  ) {
+    return classified(t.tappSaveFailed, raw, hint)
+  }
+  if (/^failed to serialize manifest/i.test(raw)) {
+    return classified(currentCopy().tapp.installFailed, raw, hint)
+  }
+  if (/^tapp generation failed/i.test(raw)) {
+    return classified(t.tappGenerateFailed, raw, hint)
+  }
+  if (/^failed to fetch tapps/i.test(raw)) {
+    return classified(currentCopy().tapp.loadAppFailed, raw, hint)
+  }
+  if (
+    /^failed to list agent reports/i.test(raw) ||
+    /^failed to (load|fetch) reports?/i.test(raw)
+  ) {
+    return classified(t.reportLoadFailed, raw, hint)
+  }
+  if (/^failed to (create|update|delete) report/i.test(raw)) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.reportSaveFailed, action), raw, hint)
+  }
+  if (
+    code === 'tapp_access_check_failed' ||
+    /^failed to verify tapp access/i.test(raw)
+  ) {
+    return classified(t.tappAccessCheckFailed, raw, hint)
+  }
+  if (/^failed to find tapp$/i.test(raw)) {
+    return classified(t.tappFindFailed, raw, hint)
+  }
+  if (/^failed to check tapp install permission/i.test(raw)) {
+    return classified(t.tappInstallCheckFailed, raw, hint)
+  }
+  if (
+    code === 'TAPP_CREDENTIAL_LOAD_FAILED' ||
+    /^failed to load (shortcuts|components|tapp credentials)/i.test(raw)
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.tappResourceLoadFailed, action), raw, hint)
+  }
+  if (/^image too large/i.test(raw)) {
+    return classified(t.imageTooLarge, raw, hint)
+  }
+  if (
+    /storage preflight|create storage directory|write storage probe|list tapp owner directories|failed to inspect tapp resources/i.test(
+      raw,
+    )
+  ) {
+    return classified(t.storageNotWritable, raw, hint)
+  }
+  if (
+    /failed to (create|write|flush|publish) cache|failed to remove generated image|failed to download image|failed to read image data/i.test(
+      raw,
+    )
+  ) {
+    return classified(t.imageCacheFailed, raw, hint)
+  }
+  if (/^mcp server timeout/i.test(raw)) {
+    const method = raw.match(/method ['"]([^'"]+)['"]/i)?.[1] || ''
+    return joinParts(t.mcpTimeout, method, usefulExtra(hint, t.mcpTimeout, method))
+  }
+  if (
+    /^invalid (json-rpc|mcp initialize|mcp tools\/list|mcp tools\/call) response/i.test(
+      raw,
+    ) ||
+    /^invalid (initialize|tools\/list|tools\/call) response/i.test(raw)
+  ) {
+    return classified(t.mcpResponseInvalid, raw, hint)
+  }
+  if (/^mcp (error|tool (error|failed))/i.test(raw)) {
+    return classified(t.mcpToolFailed, raw, hint)
+  }
+  if (/^mcp server ['"][^'"]+['"] is not ready/i.test(raw)) {
+    const id = raw.match(/mcp server ['"]([^'"]+)['"]/i)?.[1] || ''
+    const state = raw.match(/not ready \(([^)]+)\)/i)?.[1] || ''
+    return joinParts(t.mcpTalkFailed, id, state, usefulExtra(hint, t.mcpTalkFailed, id, state))
+  }
+  if (
+    /^failed to (read from mcp|drain mcp|write to mcp|flush mcp|serialize mcp|write mcp)/i.test(
+      raw,
+    ) ||
+    /^mcp (line is not valid utf-8|message exceeds|request exceeds|notification exceeds|server closed)/i.test(
+      raw,
+    ) ||
+    /^json serialize error/i.test(raw) ||
+    /^too many concurrent mcp/i.test(raw)
+  ) {
+    return classified(t.mcpTalkFailed, raw, hint)
+  }
+  if (/^upstream (request failed|http)/i.test(raw)) {
+    return classified(
+      t.serverError.replace('{status}', String(status || 502)),
+      raw,
+      hint,
+    )
+  }
+  if (
+    /^failed to save report/i.test(raw) ||
+    /serialize report|insert report|report persist/i.test(raw)
+  ) {
+    return classified(t.reportSaveFailed, raw, hint)
+  }
+  if (/^failed to save reminder/i.test(raw)) {
+    return classified(t.reminderSaveFailed, raw, hint)
+  }
+  if (/^failed to save note/i.test(raw)) {
+    return classified(t.noteSaveFailed, raw, hint)
+  }
+  if (/^failed to save bookmark/i.test(raw)) {
+    return classified(t.bookmarkSaveFailed, raw, hint)
+  }
+  if (
+    /failed to (save|load|resolve) profile text|failed to list identities/i.test(
+      raw,
+    )
+  ) {
+    const label = /save/i.test(raw)
+      ? t.profileTextSaveFailed
+      : t.profileTextLoadFailed
+    return classified(label, raw, hint)
+  }
+  if (/failed to (load|save) avatar source/i.test(raw)) {
+    const label = /save/i.test(raw)
+      ? t.avatarSourceSaveFailed
+      : t.avatarSourceLoadFailed
+    return classified(label, raw, hint)
+  }
+  if (/^failed to (load|save) avatar/i.test(raw)) {
+    return classified(currentCopy().merope.loadFailed, raw, hint)
   }
   if (
     code === 'storage_read_failed' ||
     code === 'storage_save_failed' ||
-    code === 'cache_clear_failed' ||
-    code === 'update_failed' ||
-    code === 'preset_update_failed' ||
-    code === 'preset_fetch_failed' ||
-    /invalid backend action/i.test(raw) ||
-    /^http request failed/i.test(raw) ||
-    /^upstream (request failed|http)/i.test(raw) ||
-    /^json parse failed/i.test(raw) ||
-    /^invalid (outbound proxy|ai chat messages|json from upstream)/i.test(raw) ||
-    /^ai[_ ]task[_ ]registry/i.test(raw) ||
-    /^failed to serialize json body/i.test(raw) ||
-    /^failed to save report/i.test(raw) ||
-    /serialize report|insert report|report persist/i.test(raw) ||
-    /^dns resolution failed/i.test(raw) ||
-    /^http client error/i.test(raw) ||
-    /^failed to (load|save) avatar/i.test(raw) ||
-    /^failed to (query sources|batch insert items)/i.test(raw) ||
-    /^failed to (read installation claim|resolve site owner)/i.test(raw) ||
-    /^updater transport|^decode json failed|^updater upstream/i.test(raw) ||
-    /^tripo |invalid (glb json|3d model|tripo )|failed to store 3d/i.test(
-      raw,
-    ) ||
-    code === 'TRIPO_ERROR' ||
-    /invalid credential binding/i.test(raw) ||
-    /^failed to (register|unregister|drain|requeue|count|enqueue|verify|list) scheduler/i.test(
-      raw,
-    ) ||
-    /output schema validation|AI_OUTPUT_SCHEMA_MISMATCH/i.test(raw)
+    /^failed to (read|save) storage/i.test(raw) ||
+    /^failed to (update|delete) tapp storage/i.test(raw)
   ) {
-    return t.operationFailed
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.tappStorageFailed, action), raw, hint)
   }
   if (
+    code === 'cache_clear_failed' ||
+    /^failed to (read installation claim|resolve site owner)/i.test(raw) ||
+    /^ai[_ ]task[_ ]registry/i.test(raw)
+  ) {
+    return classified(t.database, raw, hint)
+  }
+  if (
+    code === 'update_failed' ||
+    /^updater transport|^decode json failed|^updater upstream/i.test(raw)
+  ) {
+    return classified(t.noticeUpdaterFailed, raw, hint)
+  }
+  if (
+    /^tripo |invalid (glb json|3d model|tripo )|failed to store 3d/i.test(raw) ||
+    code === 'TRIPO_ERROR'
+  ) {
+    return classified(t.model3dFailed, raw, hint)
+  }
+  if (/invalid credential binding/i.test(raw)) {
+    return classified(t.unauthorized, raw, hint)
+  }
+  if (/output schema validation|AI_OUTPUT_SCHEMA_MISMATCH/i.test(raw)) {
+    return classified(t.schemaMismatch, raw, hint)
+  }
+  if (
+    /invalid backend action|invalid schedule config/i.test(raw) ||
     /^scheduled (tapp is no longer|task failed)/i.test(raw) ||
     /^all \d+ retries failed/i.test(raw) ||
     /no active tapp runtime callback/i.test(raw) ||
-    /^failed to .*(due tasks|execution|scheduled task|scheduler)/i.test(raw)
+    /^(query|insert|delete|update) failed/i.test(raw) ||
+    /^failed to .*(due tasks|due task|execution|scheduled task|scheduler|frontend dispatch|frontend pending|frontend stats|task stats|missed stats|audience|enqueue task|user role|delete storage|list connections)/i.test(
+      raw,
+    )
   ) {
-    return t.noticeScheduleFailed
+    const action =
+      raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() ||
+      raw.match(/^(query|insert|delete|update) failed/i)?.[1]?.toLowerCase() ||
+      ''
+    return classified(
+      joinParts(t.noticeScheduleFailed, action),
+      raw,
+      hint,
+    )
   }
   if (/^player not found$/i.test(raw)) {
     return t.notFound
@@ -320,23 +708,58 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return joinParts(t.operationFailed, usefulExtra(hint, t.operationFailed))
   }
   const brew = currentCopy().brew
-  if (code === 'notion_fetch_failed' || /^failed to fetch notion/i.test(raw)) {
-    return brew.errorNotionFetch
+  if (
+    code === 'notion_fetch_failed' ||
+    /^failed to fetch notion/i.test(raw) ||
+    /notion api error|failed to reach notion|failed to parse notion|failed to fetch page content/i.test(
+      raw,
+    )
+  ) {
+    const status = raw.match(/\bHTTP\s+(\d{3})\b/i)
+    const colon = raw.indexOf(':')
+    const rest = colon >= 0 ? raw.slice(colon + 1).trim() : ''
+    const phrase = rest.replace(/^HTTP\s+\d{3}\s*:?\s*/i, '').trim()
+    const keep =
+      phrase && !isInternalDump(phrase) && !isUselessErrorText(phrase)
+        ? clip(phrase)
+        : ''
+    const http = status ? `HTTP ${status[1]}` : ''
+    return joinParts(
+      brew.errorNotionFetch,
+      keep && keep !== http ? keep : '',
+      http,
+      usefulExtra(hint, brew.errorNotionFetch, keep, http),
+    )
   }
   if (
     code === 'feed_parse_failed' ||
-    /^failed to parse feed/i.test(raw)
+    /^failed to parse feed\. please provide a name/i.test(raw)
   ) {
     return brew.errorFeedNeedName
+  }
+  if (/^failed to parse feed/i.test(raw)) {
+    return classified(t.brewParseFailed, raw, hint)
   }
   if (
     code === 'feed_discover_failed' ||
     /^unable to discover rss/i.test(raw)
   ) {
-    return brew.errorDiscoverFailed
+    return classified(brew.errorDiscoverFailed, raw, hint)
+  }
+  if (/^invalid feed url/i.test(raw)) {
+    return classified(t.brewInvalidUrl, raw, hint)
+  }
+  if (
+    code === 'mcp_config_save_failed' ||
+    /^failed to save mcp config/i.test(raw) ||
+    /serialize mcp config|create mcp config|write mcp config|replace mcp config/i.test(
+      raw,
+    )
+  ) {
+    return classified(currentCopy().config.mcpSaveFailed, raw, hint)
   }
   if (code === 'mcp_config_invalid' || /^invalid mcp config/i.test(raw)) {
-    return currentCopy().config.mcpInvalidConfig
+    return classified(currentCopy().config.mcpInvalidConfig, raw, hint)
   }
   if (
     /^invalid audio data$/i.test(raw) ||
@@ -462,6 +885,21 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.webfingerFailed
   }
   if (
+    /psn npsso is empty|npsso exchange failed|cookie may be expired|psn_npsso not configured/i.test(
+      raw,
+    )
+  ) {
+    const statusMatch = raw.match(/\b(?:status\s+|HTTP\s+)(\d{3})\b/i)
+    return joinParts(
+      t.psnNpssoExpired,
+      statusMatch ? `HTTP ${statusMatch[1]}` : '',
+      usefulExtra(hint, t.psnNpssoExpired),
+    )
+  }
+  if (/^psn (authorize|token)/i.test(raw) || /psn credential budget/i.test(raw)) {
+    return classified(t.psnRequestFailed, raw, hint)
+  }
+  if (
     code === 'steam_not_configured' ||
     /steam api key 或 steam id 未配置|steam is not configured/i.test(raw)
   ) {
@@ -480,6 +918,23 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     )
   ) {
     return t.platformFetchFailed
+  }
+  if (
+    code === 'platform_refresh_reconcile_failed' ||
+    /platform auto-refresh/i.test(raw) ||
+    /failed to (load core platform tasks|disable stale core task|(update|create|disable) \w+ core task)/i.test(
+      raw,
+    )
+  ) {
+    const plat = raw.match(/failed to (?:update|create|disable) (\w+) core task/i)
+    const name = plat?.[1]
+      ? `${plat[1].charAt(0).toUpperCase()}${plat[1].slice(1)}`
+      : 'Platform'
+    return classified(
+      t.noticePlatformSyncFailed.replace('{name}', name),
+      raw,
+      hint,
+    )
   }
   if (/^game not found$|未找到游戏信息/i.test(raw)) {
     return t.notFound
@@ -621,8 +1076,76 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^article not found$|未找到文章/.test(raw)) {
     return t.notFound
   }
+  if (/^comment not found$/i.test(raw)) {
+    return t.notFound
+  }
+  if (
+    /^failed to (load comments|load comment replies|find comment)/i.test(raw)
+  ) {
+    return classified(t.commentLoadFailed, raw, hint)
+  }
+  if (/^failed to (save|update) comment/i.test(raw)) {
+    return classified(t.commentSaveFailed, raw, hint)
+  }
+  if (/^failed to delete comment/i.test(raw)) {
+    return classified(t.commentDeleteFailed, raw, hint)
+  }
+  if (/^failed to load (source|articles)(?:\s|:|$)/i.test(raw)) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.brewLoadFailed, action), raw, hint)
+  }
+  if (/^failed to (find|load) article(?:\s|:|$)/i.test(raw)) {
+    return classified(t.articleLoadFailed, raw, hint)
+  }
+  if (
+    /^failed to (create icons directory|create icon file|write icon file|read icon bytes)/i.test(
+      raw,
+    )
+  ) {
+    return classified(t.iconSaveFailed, raw, hint)
+  }
+  if (
+    /^failed to (check existing brew source|find brew source)/i.test(raw)
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.brewLoadFailed, action), raw, hint)
+  }
+  if (/^failed to (find|update|create) reading state/i.test(raw)) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.readingStateFailed, action), raw, hint)
+  }
+  if (/^failed to save content/i.test(raw)) {
+    return classified(t.contentSaveFailed, raw, hint)
+  }
+  if (/^failed to delete tapp storage/i.test(raw)) {
+    return classified(t.tappStorageFailed, raw, hint)
+  }
   if (/^task not found$|任务不存在或无权访问/.test(raw)) {
     return t.notFound
+  }
+  if (
+    /^only admins can /i.test(raw) ||
+    /^cannot delete the default global instance$/i.test(raw)
+  ) {
+    return joinParts(t.forbidden, clip(raw), usefulExtra(hint, t.forbidden))
+  }
+  if (/^instance not found$/i.test(raw)) {
+    return t.notFound
+  }
+  if (
+    /^failed to (fetch|check) rsshub instances/i.test(raw) ||
+    /^failed to (fetch global instances|fetch user instances|check existing instances)/i.test(
+      raw,
+    )
+  ) {
+    return classified(t.rsshubLoadFailed, raw, hint)
+  }
+  if (
+    /^failed to (create|update|delete|reset|find) rsshub instance/i.test(raw) ||
+    /^failed to (insert|find|update|delete|reset) instance/i.test(raw)
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.rsshubSaveFailed, action), raw, hint)
   }
   if (
     /could not set up rsshub|could not read rsshub|no rsshub instances|unsafe rsshub url|初始化 RSSHub|读取 RSSHub|RSSHub 实例表为空/i.test(
@@ -714,12 +1237,58 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return t.federationMoveFailed
   }
+  if (/failed to initialize federation identity/i.test(raw)) {
+    return classified(t.federationInitFailed, raw, hint)
+  }
+  if (/^failed to rotate federation keys/i.test(raw)) {
+    return classified(t.federationKeyRotateFailed, raw, hint)
+  }
   if (
-    /failed to initialize federation identity|failed to read user id/i.test(
+    /^failed to (list following|list followers|list follows|load timeline|load delivery stats|list delivery)/i.test(
       raw,
     )
   ) {
-    return t.operationFailed
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.federationDataFailed, action), raw, hint)
+  }
+  if (/failed to read user id/i.test(raw)) {
+    return classified(t.database, raw, hint)
+  }
+  if (/activity not ready/i.test(raw)) {
+    return classified(t.inboxNotReady, raw, hint)
+  }
+  if (
+    /claim inbound receipt|finish inbound receipt/i.test(raw)
+  ) {
+    return classified(t.database, raw, hint)
+  }
+  if (
+    /inbox processing failed|activity was permanently rejected/i.test(raw) ||
+    /queue (claim|dead-letter|delivery|remote failure)/i.test(raw) ||
+    /^permanent http/i.test(raw)
+  ) {
+    return classified(t.inboxFailed, raw, hint)
+  }
+  if (/^HTTP\s+\d{3}:\s*\{/i.test(raw)) {
+    return classified(
+      httpStatusMessage(status || statusFromErrorText(raw) || 502),
+      raw,
+      hint,
+    )
+  }
+  if (
+    /object ownership check failed|rejected by trust policy|object attributedto |not same-origin with signing actor/i.test(
+      raw,
+    )
+  ) {
+    return t.forbidden
+  }
+  if (
+    /invalid (request header encoding|`.+` header encoding)|ambiguous request: (a signed header|header)/i.test(
+      raw,
+    )
+  ) {
+    return t.requestRejected
   }
   if (
     /^(channel|room|ring|transfer|activity|object|user) not found$/i.test(
@@ -868,8 +1437,42 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return t.gameMessageInvalid
   }
-  if (/^failed to fetch feed$/i.test(raw)) {
-    return currentCopy().brew.errorDiscoverFailed
+  if (/^failed to fetch feed/i.test(raw)) {
+    return classified(t.brewRefreshFailed, raw, hint)
+  }
+  if (
+    /^failed to (fetch|count) brew /i.test(raw) ||
+    /^failed to count (starred|read) items/i.test(raw) ||
+    /^failed to (list sources|find source|list categories|find category|list articles|export sources)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.brewLoadFailed, action), raw, hint)
+  }
+  if (
+    /^failed to (save|update) source/i.test(raw) ||
+    /^failed to import sources/i.test(raw) ||
+    /^failed to (check existing items|update source counts|query sources|batch insert items)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(
+      joinParts(t.brewSourceSaveFailed, action),
+      raw,
+      hint,
+    )
+  }
+  if (/^failed to delete source/i.test(raw)) {
+    return classified(t.brewSourceDeleteFailed, raw, hint)
+  }
+  if (/^failed to (save|update) category/i.test(raw)) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.brewCategorySaveFailed, action), raw, hint)
+  }
+  if (/^failed to delete category/i.test(raw)) {
+    return classified(t.brewCategoryDeleteFailed, raw, hint)
   }
 
   const byStatus = status > 0 ? httpStatusMessage(status) : ''

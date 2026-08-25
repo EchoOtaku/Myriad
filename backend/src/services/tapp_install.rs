@@ -216,8 +216,10 @@ pub fn build_new_install_persist(
     now: DateTime<FixedOffset>,
 ) -> Result<NewInstallPersist, String> {
     let paths = install_path_pair(final_tapp_dir, manifest.layer_entries().first().copied());
-    let manifest_json =
-        serde_json::to_value(manifest).map_err(|e| format!("Failed to serialize manifest: {e}"))?;
+    let manifest_json = serde_json::to_value(manifest).map_err(|e| {
+        tracing::error!(error = %e, "Failed to serialize manifest");
+        "Failed to serialize manifest".to_string()
+    })?;
     Ok(NewInstallPersist {
         tapp_id: manifest.id.clone(),
         user_id: installation_owner_id,
@@ -269,8 +271,10 @@ pub fn build_update_install_persist(
     now: DateTime<FixedOffset>,
 ) -> Result<UpdateInstallPersist, String> {
     let paths = install_path_pair(final_tapp_dir, manifest.layer_entries().first().copied());
-    let manifest_json =
-        serde_json::to_value(manifest).map_err(|e| format!("Failed to serialize manifest: {e}"))?;
+    let manifest_json = serde_json::to_value(manifest).map_err(|e| {
+        tracing::error!(error = %e, "Failed to serialize manifest");
+        "Failed to serialize manifest".to_string()
+    })?;
     Ok(UpdateInstallPersist {
         name: manifest.name.clone(),
         version: manifest.version.clone(),

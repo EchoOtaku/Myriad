@@ -575,10 +575,15 @@ export const FederationDeliveryQueue: React.FC<
         subtitle: (
           <>
             {target}
-            {item.error_message ? (
+            {!cancelled && item.error_message ? (
               <>
                 <br />
-                <span className="managed-list-error">{item.error_message}</span>
+                <span className="managed-list-error">
+                  {userFacingError(
+                    item.error_message,
+                    t.errors.noticeDeliveryFailed,
+                  )}
+                </span>
               </>
             ) : null}
           </>
@@ -588,7 +593,15 @@ export const FederationDeliveryQueue: React.FC<
         busy: !!busyAction,
       }
     })
-  }, [filteredItems, rowBusy, anyBusy, c, handleRetry, handleRemove])
+  }, [
+    filteredItems,
+    rowBusy,
+    anyBusy,
+    c,
+    handleRetry,
+    handleRemove,
+    t.errors.noticeDeliveryFailed,
+  ])
 
   return (
     <ManagedList

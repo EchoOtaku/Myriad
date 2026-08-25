@@ -37,7 +37,7 @@ use super::types_frontend::*;
 
 fn scheduler_store_failed(context: &'static str, error: impl std::fmt::Display) -> String {
     tracing::error!(%error, context, "scheduler store failed");
-    "Scheduled task failed".to_string()
+    format!("Failed to {context}")
 }
 
 impl TappSchedulerEngine {
@@ -651,9 +651,8 @@ impl TappSchedulerEngine {
                 }
                 Err(error) => {
                     SCHEDULER_DELIVERY_FAILURES.fetch_add(1, Ordering::Relaxed);
-                    first_error.get_or_insert_with(|| {
-                        scheduler_store_failed("enqueue task", error)
-                    });
+                    first_error
+                        .get_or_insert_with(|| scheduler_store_failed("enqueue task", error));
                 }
             }
         }
@@ -681,9 +680,7 @@ impl TappSchedulerEngine {
                         [user_id.into()],
                     ))
                     .await
-                    .map_err(|error| {
-                        scheduler_store_failed("verify global audience", error)
-                    })?;
+                    .map_err(|error| scheduler_store_failed("verify global audience", error))?;
                 Ok(row
                     .and_then(|row| row.try_get::<bool>("", "is_admin").ok())
                     .unwrap_or(false))
@@ -715,9 +712,7 @@ SELECT EXISTS (
                         [task.tapp_id.clone().into(), user_id.into()],
                     ))
                     .await
-                    .map_err(|error| {
-                        scheduler_store_failed("verify tapp audience", error)
-                    })?;
+                    .map_err(|error| scheduler_store_failed("verify tapp audience", error))?;
                 Ok(row
                     .and_then(|row| row.try_get::<bool>("", "allowed").ok())
                     .unwrap_or(false))
@@ -861,7 +856,11 @@ SELECT EXISTS (
         Self::update_task_after_frontend_completion(db, &task, &status, result, error.clone())
             .await?;
         if matches!(status, ExecutionStatus::Failed | ExecutionStatus::Timeout) {
-            Self::notify_task_failure(&task, error.as_deref().unwrap_or("The scheduled task failed")).await;
+            Self::notify_task_failure(
+                &task,
+                error.as_deref().unwrap_or("The scheduled task failed"),
+            )
+            .await;
         }
         Ok(())
     }
@@ -998,7 +997,10 @@ SELECT EXISTS (
                 Err(_) => {
                     // 回退：尝试解析为旧格式并转换
                     let actions: Vec<BackendAction> = serde_json::from_value(actions_json.clone())
-                        .map_err(|e| format!("Invalid backend actions: {}", e))?;
+                        .map_err(|error| {
+                            tracing::error!(%error, "Invalid backend actions");
+                            "Invalid backend actions".to_string()
+                        })?;
                     actions
                         .into_iter()
                         .map(|action| BackendActionWrapper {
@@ -1325,7 +1327,7 @@ SELECT EXISTS (
             .filter(tapp_storage::Column::Key.eq(key))
             .exec(db)
             .await
-            .map_err(|e| format!("Storage delete failed: {}", e))?;
+            .map_err(|error| scheduler_store_failed("delete storage", error))?;
 
         Ok(json!({ "key": key, "deleted": true }))
     }
@@ -1421,10 +1423,10 @@ SELECT EXISTS (
             request = request.json(&body_json);
         }
 
-        let response = request
-            .send()
-            .await
-            .map_err(|e| format!("Fetch failed: {}", e))?;
+        let response = request.send().await.map_err(|e| {
+            tracing::warn!(error = %e, "Scheduled fetch failed");
+            "Fetch failed".to_string()
+        })?;
 
         let status = response.status().as_u16();
         let body = crate::services::outbound_security::read_limited_body(
@@ -1624,8 +1626,11 @@ SELECT EXISTS (
         schedule_config: &serde_json::Value,
         from: DateTime<Utc>,
     ) -> Result<Option<DateTime<Utc>>, String> {
-        let config: ScheduleConfig = serde_json::from_value(schedule_config.clone())
-            .map_err(|e| format!("Invalid schedule config: {}", e))?;
+        let config: ScheduleConfig =
+            serde_json::from_value(schedule_config.clone()).map_err(|error| {
+                tracing::error!(%error, "Invalid schedule config");
+                "Invalid schedule config".to_string()
+            })?;
 
         match schedule_type {
             ScheduleType::Interval => {
@@ -1644,8 +1649,10 @@ SELECT EXISTS (
             }
             ScheduleType::Daily => {
                 let time_str = config.time.ok_or("Missing time")?;
-                let time = NaiveTime::parse_from_str(&time_str, "%H:%M")
-                    .map_err(|e| format!("Invalid time format (use HH:mm): {}", e))?;
+                let time = NaiveTime::parse_from_str(&time_str, "%H:%M").map_err(|error| {
+                    tracing::warn!(%error, time = %time_str, "invalid daily time");
+                    format!("Invalid time format (use HH:mm): {time_str}")
+                })?;
                 // Wall clock: process local TZ by default (TZ env / container),
                 // not UTC — matches "每天上午 9 点" docs and operator intuition.
                 let next = daily_next_wall_clock(time, from, config.timezone.as_deref())?;
@@ -1653,8 +1660,10 @@ SELECT EXISTS (
             }
             ScheduleType::Cron => {
                 let cron_str = config.cron.ok_or("Missing cron")?;
-                let schedule = Schedule::from_str(&cron_str)
-                    .map_err(|e| format!("Invalid cron expression: {}", e))?;
+                let schedule = Schedule::from_str(&cron_str).map_err(|error| {
+                    tracing::warn!(%error, cron = %cron_str, "invalid cron expression");
+                    format!("Invalid cron expression: {cron_str}")
+                })?;
 
                 let next = schedule.after(&from).next();
                 Ok(next)
@@ -1813,7 +1822,7 @@ impl TappSchedulerEngine {
             .filter(tapp_scheduled_tasks::Column::TaskId.eq(task_id))
             .one(&self.db)
             .await
-            .map_err(|e| format!("Query failed: {}", e))?;
+            .map_err(|error| scheduler_store_failed("register scheduled task", error))?;
 
         if let Some(existing) = existing {
             tracing::debug!(
@@ -1852,7 +1861,7 @@ impl TappSchedulerEngine {
         let task = task
             .insert(&self.db)
             .await
-            .map_err(|e| format!("Insert failed: {}", e))?;
+            .map_err(|error| scheduler_store_failed("create scheduled task", error))?;
 
         tracing::info!(
             "[TappScheduler] Registered task {} for tapp {} (user {})",
@@ -1877,7 +1886,7 @@ impl TappSchedulerEngine {
             .filter(tapp_scheduled_tasks::Column::TaskId.eq(task_id))
             .one(&self.db)
             .await
-            .map_err(|e| format!("Query failed: {}", e))?
+            .map_err(|error| scheduler_store_failed("find scheduled task", error))?
             .ok_or_else(|| format!("Task {} not found", task_id))?;
 
         // 删除执行历史
@@ -1891,7 +1900,7 @@ impl TappSchedulerEngine {
         tapp_scheduled_tasks::Entity::delete_by_id(task.id)
             .exec(&self.db)
             .await
-            .map_err(|e| format!("Delete failed: {}", e))?;
+            .map_err(|error| scheduler_store_failed("delete scheduled task", error))?;
 
         tracing::info!(
             "[TappScheduler] Unregistered task {} for tapp {} (user {})",
@@ -1921,7 +1930,7 @@ impl TappSchedulerEngine {
             .order_by_asc(tapp_scheduled_tasks::Column::CreatedAt)
             .all(&self.db)
             .await
-            .map_err(|e| format!("Query failed: {}", e))
+            .map_err(|error| scheduler_store_failed("list scheduled tasks", error))
     }
 
     /// 获取单个任务
@@ -1938,7 +1947,7 @@ impl TappSchedulerEngine {
             .filter(tapp_scheduled_tasks::Column::TaskId.eq(task_id))
             .one(&self.db)
             .await
-            .map_err(|e| format!("Query failed: {}", e))
+            .map_err(|error| scheduler_store_failed("load scheduled task", error))
     }
 
     /// 启用/禁用任务
@@ -1961,7 +1970,7 @@ impl TappSchedulerEngine {
         active
             .update(&self.db)
             .await
-            .map_err(|e| format!("Update failed: {}", e))?;
+            .map_err(|error| scheduler_store_failed("update scheduled task", error))?;
 
         Ok(())
     }

@@ -1215,22 +1215,16 @@ mod tests {
 
     #[test]
     fn parses_merope_flag_from_database_config() {
-        let on = ConfigService::parse_config(HashMap::from([(
-            "merope_enabled".into(),
-            json!(true),
-        )]));
+        let on =
+            ConfigService::parse_config(HashMap::from([("merope_enabled".into(), json!(true))]));
         assert!(on.merope_enabled);
 
-        let from_str = ConfigService::parse_config(HashMap::from([(
-            "merope_enabled".into(),
-            json!("true"),
-        )]));
+        let from_str =
+            ConfigService::parse_config(HashMap::from([("merope_enabled".into(), json!("true"))]));
         assert!(from_str.merope_enabled);
 
-        let off = ConfigService::parse_config(HashMap::from([(
-            "merope_enabled".into(),
-            json!(false),
-        )]));
+        let off =
+            ConfigService::parse_config(HashMap::from([("merope_enabled".into(), json!(false))]));
         assert!(!off.merope_enabled);
     }
 

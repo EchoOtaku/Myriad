@@ -277,6 +277,7 @@ export interface TranslationKeys {
     anime25dPresetThinking: string
     anime25dPresetDizzy: string
     anime25dPresetSqueeze: string
+    anime25dPresetCry: string
     anime25dBlinkNow: string
     anime25dResetPose: string
     anime25dInspect: string
@@ -2361,6 +2362,59 @@ export interface TranslationKeys {
     requestFailed: string
     invalidResponse: string
     operationFailed: string
+    tappSaveFailed: string
+    tappGenerateFailed: string
+    reportSaveFailed: string
+    reminderSaveFailed: string
+    noteSaveFailed: string
+    bookmarkSaveFailed: string
+    reportLoadFailed: string
+    tappAccessCheckFailed: string
+    tappResourceLoadFailed: string
+    tappFindFailed: string
+    tappInstallCheckFailed: string
+    imageCacheFailed: string
+    imageTooLarge: string
+    storageNotWritable: string
+    psnNpssoExpired: string
+    psnRequestFailed: string
+    schemaMismatch: string
+    dnsFailed: string
+    inboxNotReady: string
+    inboxFailed: string
+    federationInitFailed: string
+    federationDataFailed: string
+    federationKeyRotateFailed: string
+    model3dFailed: string
+    profileTextLoadFailed: string
+    profileTextSaveFailed: string
+    avatarSourceLoadFailed: string
+    avatarSourceSaveFailed: string
+    platformNamedFetchFailed: string
+    brewRefreshFailed: string
+    brewParseFailed: string
+    brewInvalidUrl: string
+    brewSourceSaveFailed: string
+    brewSourceDeleteFailed: string
+    brewCategorySaveFailed: string
+    brewCategoryDeleteFailed: string
+    brewLoadFailed: string
+    platformCacheMissing: string
+    mcpTalkFailed: string
+    mcpTimeout: string
+    mcpResponseInvalid: string
+    mcpToolFailed: string
+    aiStepFailed: string
+    skillFileFailed: string
+    skillFileInvalid: string
+    skillCooldown: string
+    commentLoadFailed: string
+    commentSaveFailed: string
+    commentDeleteFailed: string
+    articleLoadFailed: string
+    readingStateFailed: string
+    contentSaveFailed: string
+    tappStorageFailed: string
     rateLimited: string
     rateLimitedLogin: string
     rateLimitedFetch: string
@@ -2380,7 +2434,20 @@ export interface TranslationKeys {
     database: string
     passwordFailed: string
     sessionFailed: string
+    agentSessionLoadFailed: string
+    agentSessionSaveFailed: string
+    agentSessionArchiveFailed: string
+    personaLoadFailed: string
+    personaSaveFailed: string
+    personaDeleteFailed: string
+    addresseeLoadFailed: string
+    addresseeSaveFailed: string
+    presetLoadFailed: string
+    presetSaveFailed: string
+    presetDeleteFailed: string
     configFilePermission: string
+    configFileReadFailed: string
+    iconSaveFailed: string
     aiResponseInvalid: string
     aiGenerationFailed: string
     asrInvalidAudio: string
@@ -2470,6 +2537,8 @@ export interface TranslationKeys {
     privateNetworkBlocked: string
     feedNotFound: string
     rsshubUnavailable: string
+    rsshubLoadFailed: string
+    rsshubSaveFailed: string
     pipelineTooManySteps: string
     heartbeatAdminRequired: string
     writeItemsOverCap: string

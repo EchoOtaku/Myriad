@@ -439,12 +439,11 @@ pub fn decrypt_json_payload(
     session: &EncryptionSession,
     encrypted_payload: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    let envelope: EncryptedEnvelope = serde_json::from_value(encrypted_payload.clone()).map_err(
-        |error| {
+    let envelope: EncryptedEnvelope =
+        serde_json::from_value(encrypted_payload.clone()).map_err(|error| {
             tracing::error!(%error, "e2e envelope parse failed");
             "envelope parse failed".to_string()
-        },
-    )?;
+        })?;
     let plain = decrypt_with_session(session, &envelope)?;
     serde_json::from_slice(&plain).map_err(|error| {
         tracing::error!(%error, "e2e plaintext json parse failed");
@@ -520,8 +519,8 @@ pub fn encrypt_for_recipients(
 
         let shared = compute_shared_secret(&eph_sk, &rpk);
         let wrap_aad = [aad, b"|wrap:", rpk_b64.as_bytes()].concat();
-        let wrapped = encrypt_message(&content_key, &shared, &eph_pk, &wrap_aad)
-            .map_err(|error| {
+        let wrapped =
+            encrypt_message(&content_key, &shared, &eph_pk, &wrap_aad).map_err(|error| {
                 tracing::error!(%error, hint = %hint, "e2e key wrap failed");
                 "e2e key wrap failed".to_string()
             })?;
@@ -680,12 +679,10 @@ pub fn unseal_private_key(stored: &str, jwt_secret: &str) -> Result<String, Stri
     let Some(rest) = stored.strip_prefix(E2E_SK_SEAL_PREFIX) else {
         return Ok(stored.to_string());
     };
-    let combined = B64
-        .decode(rest)
-        .map_err(|error| {
-            tracing::error!(%error, "e2e unseal failed");
-            "e2e unseal failed".to_string()
-        })?;
+    let combined = B64.decode(rest).map_err(|error| {
+        tracing::error!(%error, "e2e unseal failed");
+        "e2e unseal failed".to_string()
+    })?;
     if combined.len() < 13 {
         return Err("e2e sealed key too short".into());
     }

@@ -152,7 +152,9 @@ pub async fn import_persona(
 ) -> Result<Value, OnboardingAiError> {
     let source = source.trim();
     if source.is_empty() {
-        return Err(OnboardingAiError::UnusableResponse("import source was empty"));
+        return Err(OnboardingAiError::UnusableResponse(
+            "import source was empty",
+        ));
     }
     let fallback = myriad_merope::fallback_persona_draft(name, language, &[]);
     let input = json!({
@@ -293,8 +295,8 @@ async fn suggest_visual_design_once(
         tracing::warn!("visual design returned non-JSON");
         OnboardingAiError::UnusableResponse("visual design was not valid JSON")
     })?;
-    let mut identity = myriad_merope::sanitize_upper_body_visual_identity(&parsed)
-        .ok_or_else(|| {
+    let mut identity =
+        myriad_merope::sanitize_upper_body_visual_identity(&parsed).ok_or_else(|| {
             tracing::warn!("visual design failed field sanitize");
             OnboardingAiError::UnusableResponse("visual design failed field sanitize")
         })?;

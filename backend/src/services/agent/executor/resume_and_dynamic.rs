@@ -458,7 +458,8 @@ impl Executor {
                     task_store::save_task_to_db(user_id, &task_state)
                         .await
                         .map_err(|error| {
-                            format!("persist Tapp interaction wait state failed: {error}")
+                            tracing::error!(%error, "persist Tapp interaction wait state failed");
+                            "Failed to persist Tapp interaction wait state".to_string()
                         })?;
                     return Ok(task_state);
                 }

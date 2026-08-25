@@ -86,11 +86,10 @@ pub fn normalize_backend_actions(
             object.insert("action".to_string(), action_type);
         }
 
-        serde_json::from_value::<BackendActionWrapper>(value.clone())
-            .map_err(|error| {
-                tracing::error!(%error, "invalid backend action");
-                "Invalid backend action".to_string()
-            })?;
+        serde_json::from_value::<BackendActionWrapper>(value.clone()).map_err(|error| {
+            tracing::error!(%error, "invalid backend action");
+            "Invalid backend action".to_string()
+        })?;
         normalized.push(value);
     }
 
@@ -108,8 +107,8 @@ pub fn backend_action_permissions(
 
     let mut permissions = Vec::new();
     for value in actions {
-        let wrapper: BackendActionWrapper = serde_json::from_value(value.clone())
-            .map_err(|error| {
+        let wrapper: BackendActionWrapper =
+            serde_json::from_value(value.clone()).map_err(|error| {
                 tracing::error!(%error, "invalid backend action");
                 "Invalid backend action".to_string()
             })?;
@@ -144,8 +143,8 @@ pub fn validate_backend_action_declarations(
         return Ok(None);
     };
     let uses_ai_generate = actions.iter().try_fold(false, |uses_ai, value| {
-        let wrapper: BackendActionWrapper = serde_json::from_value(value.clone())
-            .map_err(|error| {
+        let wrapper: BackendActionWrapper =
+            serde_json::from_value(value.clone()).map_err(|error| {
                 tracing::error!(%error, "invalid backend action");
                 "Invalid backend action".to_string()
             })?;

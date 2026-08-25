@@ -111,11 +111,7 @@ export type AgentResponseType =
   | 'error'
 
 export type PerformancePhase =
-  | 'reaction'
-  | 'delivery'
-  | 'outcome'
-  | 'proactive'
-  | 'mood'
+  'reaction' | 'delivery' | 'outcome' | 'proactive' | 'mood'
 
 export interface PerformanceBaseline {
   expression: 'withdrawn' | 'subdued' | 'steady' | 'warm'
@@ -135,6 +131,7 @@ export interface PerformanceCue {
     | 'notify'
     | 'think'
     | 'dizzy'
+    | 'cry'
   atMs: number
   intensity: number
   tempo: number

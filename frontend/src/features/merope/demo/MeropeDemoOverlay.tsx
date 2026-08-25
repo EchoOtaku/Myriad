@@ -17,6 +17,8 @@ import type { RigCharacterHandle } from '../rig/RigCharacter'
 import type { MeropeRigManifest } from '../rig/types'
 import type { MeropeActivity } from '../types'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { currentCopy } from '../../../i18n/localeCopy'
+import { userFacingError } from '../../../utils/userFacingError'
 import { useLongPress } from '../../../components/agent/hooks/useLongPress'
 import RigCharacter from '../rig/RigCharacter'
 import { dispatchMeropeSpeechUtterance } from '../speechEvents'
@@ -124,7 +126,11 @@ export default function MeropeDemoOverlay() {
         if (!cancelled) setManifest(data as MeropeRigManifest)
       })
       .catch((error) => {
-        if (!cancelled) setLoadError(String(error))
+        if (!cancelled) {
+          setLoadError(
+            userFacingError(error, currentCopy().merope.loadFailed),
+          )
+        }
       })
     return () => {
       cancelled = true
@@ -600,9 +606,7 @@ export default function MeropeDemoOverlay() {
               <p className="md-console-hint">
                 空白处<b>长按 500ms</b>{' '}
                 唤起。她始终在底部正中；覆层是透明的，底下页面一直在。
-                {loadError && (
-                  <span className="md-err">rig 加载失败：{loadError}</span>
-                )}
+                {loadError && <span className="md-err">{loadError}</span>}
               </p>
             </div>
           )}

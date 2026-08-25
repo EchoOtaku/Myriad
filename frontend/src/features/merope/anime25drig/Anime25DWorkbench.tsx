@@ -20,6 +20,7 @@ import {
 import { useI18n } from '../../../contexts/I18nContext'
 import { userFacingError } from '../../../utils/userFacingError'
 import {
+  CRY_EXPRESSION_PRESET,
   DIZZY_EXPRESSION_PRESET,
   SQUEEZE_EXPRESSION_PRESET,
   THINKING_EXPRESSION_PRESET,
@@ -114,6 +115,10 @@ const PRESETS: Array<{ id: string; driver: Partial<Anime25DDriver> }> = [
   {
     id: 'squeeze',
     driver: { ...SQUEEZE_EXPRESSION_PRESET },
+  },
+  {
+    id: 'cry',
+    driver: { ...CRY_EXPRESSION_PRESET },
   },
   {
     id: 'winkL',
@@ -277,9 +282,7 @@ export default function Anime25DWorkbench({
       setRigPreflight(null)
       const imported = await onPreflightRigPsd(file, setRigImportStage)
       setRigPreflight(imported)
-      setRigImportResult(
-        `${imported.partCount} · ${imported.report.score}/100`,
-      )
+      setRigImportResult(`${imported.partCount} · ${imported.report.score}/100`)
     } catch (reason) {
       setRigImportError(
         userFacingError(
@@ -310,9 +313,7 @@ export default function Anime25DWorkbench({
       const file = await onDecomposeRigPsd()
       const imported = await onPreflightRigPsd(file, setRigImportStage)
       setRigPreflight(imported)
-      setRigImportResult(
-        `${imported.partCount} · ${imported.report.score}/100`,
-      )
+      setRigImportResult(`${imported.partCount} · ${imported.report.score}/100`)
     } catch (reason) {
       setRigImportError(
         userFacingError(
@@ -358,41 +359,251 @@ export default function Anime25DWorkbench({
 
   const sliders = useMemo(
     () => [
-      { key: 'angleX', label: labels.anime25dHeadX, min: -1, max: 1, value: driver.angleX },
-      { key: 'angleY', label: labels.anime25dHeadY, min: -1, max: 1, value: driver.angleY },
-      { key: 'angleZ', label: labels.anime25dHeadZ, min: -1, max: 1, value: driver.angleZ },
-      { key: 'eyeOpenL', label: labels.anime25dEyeL, min: 0, max: 1, value: driver.eyeOpenL },
-      { key: 'eyeOpenR', label: labels.anime25dEyeR, min: 0, max: 1, value: driver.eyeOpenR },
-      { key: 'eyeX', label: labels.anime25dEyeX, min: -1, max: 1, value: driver.eyeX },
-      { key: 'eyeY', label: labels.anime25dEyeY, min: -1, max: 1, value: driver.eyeY },
-      { key: 'irisScale', label: labels.anime25dPupil, min: 0.5, max: 1.3, value: driver.irisScale },
-      { key: 'eyeScaleL', label: labels.anime25dEyeScaleL, min: 0.5, max: 1.5, value: driver.eyeScaleL },
-      { key: 'eyeScaleR', label: labels.anime25dEyeScaleR, min: 0.5, max: 1.5, value: driver.eyeScaleR },
-      { key: 'eyeEase', label: labels.anime25dEyeEase, min: 0, max: 1, value: driver.eyeEase },
-      { key: 'eyeCY', label: labels.anime25dEyeCY, min: -1, max: 1, value: driver.eyeCY },
-      { key: 'eyeCAng', label: labels.anime25dEyeCAng, min: -1, max: 1, value: driver.eyeCAng },
-      { key: 'brow', label: labels.anime25dBrow, min: -1, max: 1, value: driver.brow },
-      { key: 'browAngSym', label: labels.anime25dBrowAngSym, min: -1, max: 1, value: driver.browAngSym },
-      { key: 'browAngL', label: labels.anime25dBrowL, min: -1, max: 1, value: driver.browAngL },
-      { key: 'browAngR', label: labels.anime25dBrowR, min: -1, max: 1, value: driver.browAngR },
-      { key: 'mouthOpen', label: labels.anime25dMouth, min: 0, max: 1, value: driver.mouthOpen },
-      { key: 'mouthForm', label: labels.anime25dMouthForm, min: -1, max: 1, value: driver.mouthForm },
-      { key: 'mouthCY', label: labels.anime25dMouthCY, min: -1, max: 1, value: driver.mouthCY },
-      { key: 'mouthEase', label: labels.anime25dMouthEase, min: 0, max: 1, value: driver.mouthEase },
-      { key: 'mouthCAng', label: labels.anime25dMouthCAng, min: -1, max: 1, value: driver.mouthCAng },
-      { key: 'mouthScale', label: labels.anime25dMouthScale, min: 0.5, max: 1.5, value: driver.mouthScale },
-      { key: 'fhAmp', label: labels.anime25dFhAmp, min: 0, max: 3, value: driver.fhAmp },
-      { key: 'fhSoft', label: labels.anime25dFhSoft, min: 0, max: 2, value: driver.fhSoft },
-      { key: 'bangL', label: labels.anime25dBangL, min: -1, max: 1, value: driver.bangL },
-      { key: 'bangC', label: labels.anime25dBangC, min: -1, max: 1, value: driver.bangC },
-      { key: 'bangR', label: labels.anime25dBangR, min: -1, max: 1, value: driver.bangR },
-      { key: 'body', label: labels.anime25dLean, min: -1, max: 1, value: driver.body },
-      { key: 'armY', label: labels.anime25dArmY, min: -1, max: 1, value: driver.armY },
-      { key: 'armPos', label: labels.anime25dArmPos, min: -1, max: 1, value: driver.armPos },
-      { key: 'bust', label: labels.anime25dBust, min: 0, max: 4, value: driver.bust },
-      { key: 'bustY', label: labels.anime25dBustY, min: -3, max: 3, value: driver.bustY },
-      { key: 'physAmp', label: labels.anime25dPhysAmp, min: 0, max: 3, value: driver.physAmp },
-      { key: 'soft', label: labels.anime25dSoft, min: 0, max: 3, value: driver.soft },
+      {
+        key: 'angleX',
+        label: labels.anime25dHeadX,
+        min: -1,
+        max: 1,
+        value: driver.angleX,
+      },
+      {
+        key: 'angleY',
+        label: labels.anime25dHeadY,
+        min: -1,
+        max: 1,
+        value: driver.angleY,
+      },
+      {
+        key: 'angleZ',
+        label: labels.anime25dHeadZ,
+        min: -1,
+        max: 1,
+        value: driver.angleZ,
+      },
+      {
+        key: 'eyeOpenL',
+        label: labels.anime25dEyeL,
+        min: 0,
+        max: 1,
+        value: driver.eyeOpenL,
+      },
+      {
+        key: 'eyeOpenR',
+        label: labels.anime25dEyeR,
+        min: 0,
+        max: 1,
+        value: driver.eyeOpenR,
+      },
+      {
+        key: 'eyeX',
+        label: labels.anime25dEyeX,
+        min: -1,
+        max: 1,
+        value: driver.eyeX,
+      },
+      {
+        key: 'eyeY',
+        label: labels.anime25dEyeY,
+        min: -1,
+        max: 1,
+        value: driver.eyeY,
+      },
+      {
+        key: 'irisScale',
+        label: labels.anime25dPupil,
+        min: 0.5,
+        max: 1.3,
+        value: driver.irisScale,
+      },
+      {
+        key: 'eyeScaleL',
+        label: labels.anime25dEyeScaleL,
+        min: 0.5,
+        max: 1.5,
+        value: driver.eyeScaleL,
+      },
+      {
+        key: 'eyeScaleR',
+        label: labels.anime25dEyeScaleR,
+        min: 0.5,
+        max: 1.5,
+        value: driver.eyeScaleR,
+      },
+      {
+        key: 'eyeEase',
+        label: labels.anime25dEyeEase,
+        min: 0,
+        max: 1,
+        value: driver.eyeEase,
+      },
+      {
+        key: 'eyeCY',
+        label: labels.anime25dEyeCY,
+        min: -1,
+        max: 1,
+        value: driver.eyeCY,
+      },
+      {
+        key: 'eyeCAng',
+        label: labels.anime25dEyeCAng,
+        min: -1,
+        max: 1,
+        value: driver.eyeCAng,
+      },
+      {
+        key: 'brow',
+        label: labels.anime25dBrow,
+        min: -1,
+        max: 1,
+        value: driver.brow,
+      },
+      {
+        key: 'browAngSym',
+        label: labels.anime25dBrowAngSym,
+        min: -1,
+        max: 1,
+        value: driver.browAngSym,
+      },
+      {
+        key: 'browAngL',
+        label: labels.anime25dBrowL,
+        min: -1,
+        max: 1,
+        value: driver.browAngL,
+      },
+      {
+        key: 'browAngR',
+        label: labels.anime25dBrowR,
+        min: -1,
+        max: 1,
+        value: driver.browAngR,
+      },
+      {
+        key: 'mouthOpen',
+        label: labels.anime25dMouth,
+        min: 0,
+        max: 1,
+        value: driver.mouthOpen,
+      },
+      {
+        key: 'mouthForm',
+        label: labels.anime25dMouthForm,
+        min: -1,
+        max: 1,
+        value: driver.mouthForm,
+      },
+      {
+        key: 'mouthCY',
+        label: labels.anime25dMouthCY,
+        min: -1,
+        max: 1,
+        value: driver.mouthCY,
+      },
+      {
+        key: 'mouthEase',
+        label: labels.anime25dMouthEase,
+        min: 0,
+        max: 1,
+        value: driver.mouthEase,
+      },
+      {
+        key: 'mouthCAng',
+        label: labels.anime25dMouthCAng,
+        min: -1,
+        max: 1,
+        value: driver.mouthCAng,
+      },
+      {
+        key: 'mouthScale',
+        label: labels.anime25dMouthScale,
+        min: 0.5,
+        max: 1.5,
+        value: driver.mouthScale,
+      },
+      {
+        key: 'fhAmp',
+        label: labels.anime25dFhAmp,
+        min: 0,
+        max: 3,
+        value: driver.fhAmp,
+      },
+      {
+        key: 'fhSoft',
+        label: labels.anime25dFhSoft,
+        min: 0,
+        max: 2,
+        value: driver.fhSoft,
+      },
+      {
+        key: 'bangL',
+        label: labels.anime25dBangL,
+        min: -1,
+        max: 1,
+        value: driver.bangL,
+      },
+      {
+        key: 'bangC',
+        label: labels.anime25dBangC,
+        min: -1,
+        max: 1,
+        value: driver.bangC,
+      },
+      {
+        key: 'bangR',
+        label: labels.anime25dBangR,
+        min: -1,
+        max: 1,
+        value: driver.bangR,
+      },
+      {
+        key: 'body',
+        label: labels.anime25dLean,
+        min: -1,
+        max: 1,
+        value: driver.body,
+      },
+      {
+        key: 'armY',
+        label: labels.anime25dArmY,
+        min: -1,
+        max: 1,
+        value: driver.armY,
+      },
+      {
+        key: 'armPos',
+        label: labels.anime25dArmPos,
+        min: -1,
+        max: 1,
+        value: driver.armPos,
+      },
+      {
+        key: 'bust',
+        label: labels.anime25dBust,
+        min: 0,
+        max: 4,
+        value: driver.bust,
+      },
+      {
+        key: 'bustY',
+        label: labels.anime25dBustY,
+        min: -3,
+        max: 3,
+        value: driver.bustY,
+      },
+      {
+        key: 'physAmp',
+        label: labels.anime25dPhysAmp,
+        min: 0,
+        max: 3,
+        value: driver.physAmp,
+      },
+      {
+        key: 'soft',
+        label: labels.anime25dSoft,
+        min: 0,
+        max: 3,
+        value: driver.soft,
+      },
     ],
     [driver, labels],
   )
@@ -436,413 +647,424 @@ export default function Anime25DWorkbench({
         onChange={setPanel}
       />
       {panel === 'overview' ? (
-      <SettingGroup
-        title={labels.overviewGroup}
-        description={labels.overviewGroupDescription}
-        id="merope-motion-overview"
-      >
-        {overviewLead}
-      </SettingGroup>
+        <SettingGroup
+          title={labels.overviewGroup}
+          description={labels.overviewGroupDescription}
+          id="merope-motion-overview"
+        >
+          {overviewLead}
+        </SettingGroup>
       ) : null}
       {panel === 'persona' ? (
-      <SettingGroup
-        title={labels.personaGroup}
-        description={labels.personaGroupDescription}
-        id="merope-motion-persona"
-      >
-        {personaLead}
-      </SettingGroup>
+        <SettingGroup
+          title={labels.personaGroup}
+          description={labels.personaGroupDescription}
+          id="merope-motion-persona"
+        >
+          {personaLead}
+        </SettingGroup>
       ) : null}
       {panel === 'portrait' ? (
-      <SettingGroup
-        title={labels.portraitGroup}
-        description={labels.portraitGroupDescription}
-        id="merope-motion-portrait"
-      >
-        {essentialsLead}
-      </SettingGroup>
+        <SettingGroup
+          title={labels.portraitGroup}
+          description={labels.portraitGroupDescription}
+          id="merope-motion-portrait"
+        >
+          {essentialsLead}
+        </SettingGroup>
       ) : null}
       {panel === 'rig' ? (
-      <SettingGroup
-        title={labels.rigGroup}
-        description={labels.rigGroupDescription}
-        id="merope-motion-asset"
-      >
-        {!sourceMasterAssetId ? (
-          <p className="merope-motion-home__help">{labels.assetNeedsPortrait}</p>
-        ) : (
-          <div className="merope-motion-rig">
-            <FaceTabs
-              className="merope-motion-rig__tabs"
-              ariaLabel={labels.rigGroup}
-              value={rigPath}
-              options={rigPaths}
-              onChange={setRigPath}
-            />
-            {rigPath === 'upload' ? (
-              <section className="merope-motion-rig__path">
-                <p className="merope-motion-rig__hint">{labels.rigPathUploadHint}</p>
-                <SettingsButton
-                  type="button"
-                  size="sm"
-                  disabled={importingRig}
-                  loading={rigImportOperation === 'manual'}
-                  onClick={() => rigPsdInputRef.current?.click()}
-                >
-                  {rigImportOperation === 'manual'
-                    ? labels.motionPsdUploading
-                    : labels.motionPsdUpload}
-                </SettingsButton>
-              </section>
-            ) : (
-              <section className="merope-motion-rig__path">
-                <p className="merope-motion-rig__hint">
-                  {labels.rigPathSeeThroughHint}
-                </p>
-                {seeThroughTokenConfigured ? (
-                  <p className="merope-motion-rig__token-ready">
-                    {labels.rigTokenReady}
+        <SettingGroup
+          title={labels.rigGroup}
+          description={labels.rigGroupDescription}
+          id="merope-motion-asset"
+        >
+          {!sourceMasterAssetId ? (
+            <p className="merope-motion-home__help">
+              {labels.assetNeedsPortrait}
+            </p>
+          ) : (
+            <div className="merope-motion-rig">
+              <FaceTabs
+                className="merope-motion-rig__tabs"
+                ariaLabel={labels.rigGroup}
+                value={rigPath}
+                options={rigPaths}
+                onChange={setRigPath}
+              />
+              {rigPath === 'upload' ? (
+                <section className="merope-motion-rig__path">
+                  <p className="merope-motion-rig__hint">
+                    {labels.rigPathUploadHint}
                   </p>
-                ) : null}
-                <InputItem
-                  itemKey="see-through-hf-token"
-                  label={labels.motionSeeThroughToken}
-                  labelAccessory={
-                    <SettingTitleTag
-                      onClick={() =>
-                        window.open(
-                          'https://huggingface.co/settings/tokens',
-                          '_blank',
-                          'noopener,noreferrer',
-                        )
-                      }
-                    >
-                      {labels.motionSeeThroughTokenCreate}
-                    </SettingTitleTag>
-                  }
-                  description={labels.motionSeeThroughTokenDescription}
-                  value={
-                    seeThroughTokenDraft ||
-                    (seeThroughTokenConfigured ? '••••••••' : '')
-                  }
-                  onChange={(value) => {
-                    setSeeThroughTokenDraft(value)
-                    setSeeThroughTokenError(undefined)
-                  }}
-                  inputType="password"
-                  autoComplete="off"
-                  placeholder="hf_…"
-                  variant="clickToEdit"
-                  emptyLabel={labels.motionSeeThroughTokenMissing}
-                  editLabel={labels.motionSeeThroughTokenEdit}
-                  saveLabel={labels.motionSeeThroughTokenSave}
-                  cancelLabel={labels.motionSeeThroughTokenCancel}
-                  onCommit={saveSeeThroughToken}
-                  error={seeThroughTokenError}
-                  clearable={false}
-                />
-                <SettingsButton
-                  type="button"
-                  size="sm"
-                  disabled={importingRig || !seeThroughTokenConfigured}
-                  loading={rigImportOperation === 'decompose'}
-                  onClick={() => void decomposeRigPsd()}
-                >
-                  {rigImportOperation === 'decompose'
-                    ? labels.motionSeeThroughGenerating
-                    : labels.motionSeeThroughGenerate}
-                </SettingsButton>
-              </section>
-            )}
-            <input
-              ref={rigPsdInputRef}
-              type="file"
-              accept=".psd,image/vnd.adobe.photoshop"
-              hidden
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0]
-                event.currentTarget.value = ''
-                if (file) void preflightRigPsd(file)
-              }}
-            />
-            {rigImportStage ||
-            rigImportResult ||
-            rigImportError ||
-            rigPreflight ? (
-              <section className="merope-motion-rig__status" aria-live="polite">
-                <strong>{labels.rigPreflightTitle}</strong>
-                {rigImportStage && !rigImportResult && !rigImportError ? (
-                  <p className="merope-motion-home__help" role="status">
-                    {rigImportStage.stage} · {rigImportStage.status}
-                  </p>
-                ) : null}
-                {rigImportResult ? (
-                  <p className="merope-motion-home__help" role="status">
-                    {rigImportResult}
-                  </p>
-                ) : null}
-                {rigPreflight && rigPreflight.report.issues.length > 0 ? (
-                  <ul className="merope-motion-rig__issues">
-                    {rigPreflight.report.issues.slice(0, 6).map((item) => (
-                      <li
-                        key={`${item.code}:${item.clipId || item.boneId || ''}`}
-                      >
-                        {item.severity}: {item.message}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {rigImportError ? (
-                  <p className="merope-motion-home__help" role="alert">
-                    {rigImportError}
-                  </p>
-                ) : null}
-                {rigPreflight ? (
                   <SettingsButton
                     type="button"
                     size="sm"
-                    disabled={
-                      importingRig ||
-                      rigPreflight.report.issues.some(
-                        (item) => item.severity === 'error',
-                      )
-                    }
-                    loading={rigImportOperation === 'commit'}
-                    onClick={() => void commitRigPsd()}
+                    disabled={importingRig}
+                    loading={rigImportOperation === 'manual'}
+                    onClick={() => rigPsdInputRef.current?.click()}
                   >
-                    {labels.motionPsdCommit}
+                    {rigImportOperation === 'manual'
+                      ? labels.motionPsdUploading
+                      : labels.motionPsdUpload}
                   </SettingsButton>
-                ) : null}
-              </section>
-            ) : null}
-            {motionEnabled ? (
-              <section className="merope-motion-rig__status">
-                <strong>{labels.rigReadyTitle}</strong>
-                <p className="merope-motion-rig__hint">{labels.rigReadyHint}</p>
-              </section>
-            ) : null}
-          </div>
-        )}
-        <p className="merope-character-home__credit">
-          {labels.anime25dRuntimeCredit}{' '}
-          <a
-            href="https://github.com/852wa/Anime2.5DRig"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Anime2.5DRig
-          </a>
-        </p>
-      </SettingGroup>
+                </section>
+              ) : (
+                <section className="merope-motion-rig__path">
+                  <p className="merope-motion-rig__hint">
+                    {labels.rigPathSeeThroughHint}
+                  </p>
+                  {seeThroughTokenConfigured ? (
+                    <p className="merope-motion-rig__token-ready">
+                      {labels.rigTokenReady}
+                    </p>
+                  ) : null}
+                  <InputItem
+                    itemKey="see-through-hf-token"
+                    label={labels.motionSeeThroughToken}
+                    labelAccessory={
+                      <SettingTitleTag
+                        onClick={() =>
+                          window.open(
+                            'https://huggingface.co/settings/tokens',
+                            '_blank',
+                            'noopener,noreferrer',
+                          )
+                        }
+                      >
+                        {labels.motionSeeThroughTokenCreate}
+                      </SettingTitleTag>
+                    }
+                    description={labels.motionSeeThroughTokenDescription}
+                    value={
+                      seeThroughTokenDraft ||
+                      (seeThroughTokenConfigured ? '••••••••' : '')
+                    }
+                    onChange={(value) => {
+                      setSeeThroughTokenDraft(value)
+                      setSeeThroughTokenError(undefined)
+                    }}
+                    inputType="password"
+                    autoComplete="off"
+                    placeholder="hf_…"
+                    variant="clickToEdit"
+                    emptyLabel={labels.motionSeeThroughTokenMissing}
+                    editLabel={labels.motionSeeThroughTokenEdit}
+                    saveLabel={labels.motionSeeThroughTokenSave}
+                    cancelLabel={labels.motionSeeThroughTokenCancel}
+                    onCommit={saveSeeThroughToken}
+                    error={seeThroughTokenError}
+                    clearable={false}
+                  />
+                  <SettingsButton
+                    type="button"
+                    size="sm"
+                    disabled={importingRig || !seeThroughTokenConfigured}
+                    loading={rigImportOperation === 'decompose'}
+                    onClick={() => void decomposeRigPsd()}
+                  >
+                    {rigImportOperation === 'decompose'
+                      ? labels.motionSeeThroughGenerating
+                      : labels.motionSeeThroughGenerate}
+                  </SettingsButton>
+                </section>
+              )}
+              <input
+                ref={rigPsdInputRef}
+                type="file"
+                accept=".psd,image/vnd.adobe.photoshop"
+                hidden
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]
+                  event.currentTarget.value = ''
+                  if (file) void preflightRigPsd(file)
+                }}
+              />
+              {rigImportStage ||
+              rigImportResult ||
+              rigImportError ||
+              rigPreflight ? (
+                <section
+                  className="merope-motion-rig__status"
+                  aria-live="polite"
+                >
+                  <strong>{labels.rigPreflightTitle}</strong>
+                  {rigImportStage && !rigImportResult && !rigImportError ? (
+                    <p className="merope-motion-home__help" role="status">
+                      {rigImportStage.stage} · {rigImportStage.status}
+                    </p>
+                  ) : null}
+                  {rigImportResult ? (
+                    <p className="merope-motion-home__help" role="status">
+                      {rigImportResult}
+                    </p>
+                  ) : null}
+                  {rigPreflight && rigPreflight.report.issues.length > 0 ? (
+                    <ul className="merope-motion-rig__issues">
+                      {rigPreflight.report.issues.slice(0, 6).map((item) => (
+                        <li
+                          key={`${item.code}:${item.clipId || item.boneId || ''}`}
+                        >
+                          {item.severity}: {item.message}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {rigImportError ? (
+                    <p className="merope-motion-home__help" role="alert">
+                      {rigImportError}
+                    </p>
+                  ) : null}
+                  {rigPreflight ? (
+                    <SettingsButton
+                      type="button"
+                      size="sm"
+                      disabled={
+                        importingRig ||
+                        rigPreflight.report.issues.some(
+                          (item) => item.severity === 'error',
+                        )
+                      }
+                      loading={rigImportOperation === 'commit'}
+                      onClick={() => void commitRigPsd()}
+                    >
+                      {labels.motionPsdCommit}
+                    </SettingsButton>
+                  ) : null}
+                </section>
+              ) : null}
+              {motionEnabled ? (
+                <section className="merope-motion-rig__status">
+                  <strong>{labels.rigReadyTitle}</strong>
+                  <p className="merope-motion-rig__hint">
+                    {labels.rigReadyHint}
+                  </p>
+                </section>
+              ) : null}
+            </div>
+          )}
+          <p className="merope-character-home__credit">
+            {labels.anime25dRuntimeCredit}{' '}
+            <a
+              href="https://github.com/852wa/Anime2.5DRig"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Anime2.5DRig
+            </a>
+          </p>
+        </SettingGroup>
       ) : null}
       {panel === 'motion' ? (
         <>
-      <SettingGroup
-        title={labels.expressionGroup}
-        description={
-          motionEnabled
-            ? labels.expressionGroupDescription
-            : labels.motionNeedsRig
-        }
-        id="merope-motion-expression"
-      >
-        <div className="merope-motion-home__chips">
-          <div>
-            {PRESETS.map((preset) => (
-              <SettingsButton
-                key={preset.id}
-                type="button"
-                size="sm"
-                disabled={!motionEnabled}
-                onClick={() => applyPreset(preset.driver)}
-              >
-                {presetLabel(labels, preset.id)}
-              </SettingsButton>
-            ))}
-            <SettingsButton
-              type="button"
-              size="sm"
+          <SettingGroup
+            title={labels.expressionGroup}
+            description={
+              motionEnabled
+                ? labels.expressionGroupDescription
+                : labels.motionNeedsRig
+            }
+            id="merope-motion-expression"
+          >
+            <div className="merope-motion-home__chips">
+              <div>
+                {PRESETS.map((preset) => (
+                  <SettingsButton
+                    key={preset.id}
+                    type="button"
+                    size="sm"
+                    disabled={!motionEnabled}
+                    onClick={() => applyPreset(preset.driver)}
+                  >
+                    {presetLabel(labels, preset.id)}
+                  </SettingsButton>
+                ))}
+                <SettingsButton
+                  type="button"
+                  size="sm"
+                  disabled={!motionEnabled}
+                  onClick={() => characterRef.current?.blinkNow()}
+                >
+                  {labels.anime25dBlinkNow}
+                </SettingsButton>
+                <SettingsButton
+                  type="button"
+                  size="sm"
+                  disabled={!motionEnabled}
+                  onClick={resetPose}
+                >
+                  {labels.anime25dResetPose}
+                </SettingsButton>
+              </div>
+            </div>
+            <SwitchItem
+              itemKey="anime25d-idle"
+              label={labels.anime25dIdle}
+              value={driver.idle}
               disabled={!motionEnabled}
-              onClick={() => characterRef.current?.blinkNow()}
-            >
-              {labels.anime25dBlinkNow}
-            </SettingsButton>
-            <SettingsButton
-              type="button"
-              size="sm"
+              onChange={(idle) => patchDriver({ idle })}
+            />
+            <SwitchItem
+              itemKey="anime25d-blink"
+              label={labels.anime25dAutoBlink}
+              value={driver.blink}
               disabled={!motionEnabled}
-              onClick={resetPose}
-            >
-              {labels.anime25dResetPose}
-            </SettingsButton>
-          </div>
-        </div>
-        <SwitchItem
-          itemKey="anime25d-idle"
-          label={labels.anime25dIdle}
-          value={driver.idle}
-          disabled={!motionEnabled}
-          onChange={(idle) => patchDriver({ idle })}
-        />
-        <SwitchItem
-          itemKey="anime25d-blink"
-          label={labels.anime25dAutoBlink}
-          value={driver.blink}
-          disabled={!motionEnabled}
-          onChange={(blink) => patchDriver({ blink })}
-        />
-        <SwitchItem
-          itemKey="anime25d-rand"
-          label={labels.anime25dRand}
-          value={driver.rand}
-          disabled={!motionEnabled}
-          onChange={(rand) => patchDriver({ rand })}
-        />
-        <SwitchItem
-          itemKey="anime25d-talking"
-          label={labels.anime25dTalking}
-          value={driver.talk}
-          disabled={!motionEnabled}
-          onChange={(talk) => patchDriver({ talk })}
-        />
-        <SwitchItem
-          itemKey="anime25d-mouse"
-          label={labels.anime25dMouse}
-          value={driver.mouse}
-          disabled={!motionEnabled}
-          onChange={(mouse) => patchDriver({ mouse })}
-        />
-      </SettingGroup>
-      <SettingGroup
-        title={labels.poseGroup}
-        description={
-          motionEnabled ? labels.poseGroupDescription : labels.motionNeedsRig
-        }
-        id="merope-motion-pose"
-      >
-        {sliderCluster(labels.clusterHead, ['angleX', 'angleY', 'angleZ'])}
-        {sliderCluster(labels.clusterEyes, [
-          'eyeOpenL',
-          'eyeOpenR',
-          'eyeX',
-          'eyeY',
-          'irisScale',
-          'eyeScaleL',
-          'eyeScaleR',
-          'eyeEase',
-          'eyeCY',
-          'eyeCAng',
-        ])}
-        {sliderCluster(labels.clusterBrows, [
-          'brow',
-          'browAngSym',
-          'browAngL',
-          'browAngR',
-        ])}
-        {sliderCluster(labels.clusterMouth, [
-          'mouthOpen',
-          'mouthForm',
-          'mouthCY',
-          'mouthEase',
-          'mouthCAng',
-          'mouthScale',
-        ])}
-      </SettingGroup>
-      <SettingGroup
-        title={labels.hairBodyGroup}
-        description={
-          motionEnabled
-            ? labels.hairBodyGroupDescription
-            : labels.motionNeedsRig
-        }
-        id="merope-motion-hair-body"
-      >
-        <SwitchItem
-          itemKey="anime25d-phys"
-          label={labels.anime25dPhys}
-          value={driver.phys}
-          disabled={!motionEnabled}
-          onChange={(phys) => patchDriver({ phys })}
-        />
-        {sliderCluster(labels.clusterHair, [
-          'fhAmp',
-          'fhSoft',
-          'bangL',
-          'bangC',
-          'bangR',
-          'physAmp',
-          'soft',
-        ])}
-        {sliderCluster(labels.clusterBody, [
-          'body',
-          'armY',
-          'armPos',
-          'bust',
-          'bustY',
-        ])}
-      </SettingGroup>
-      <SettingGroup
-        title={labels.anime25dInspect}
-        description={labels.inspectGroupDescription}
-        id="merope-motion-inspect"
-      >
-        <InfoActionCard
-          copyable={false}
-          title={labels.anime25dInspect}
-          fields={
-            snapshot
-              ? [
-                  {
-                    key: 'layers',
-                    label: labels.anime25dInspectLayers,
-                    value: fillInspect(labels.anime25dInspectLayersValue, {
-                      count: snapshot.layerCount,
-                    }),
-                    copyable: false,
-                  },
-                  {
-                    key: 'strands',
-                    label: labels.anime25dInspectStrands,
-                    value: fillInspect(labels.anime25dInspectStrandsValue, {
-                      strands: snapshot.strandCount,
-                      layers: snapshot.hairLayerCount,
-                    }),
-                    copyable: false,
-                  },
-                  {
-                    key: 'eyes',
-                    label: labels.anime25dInspectEyes,
-                    value: fillInspect(labels.anime25dInspectEyesValue, {
-                      open: snapshot.eyeOpenLayers,
-                      close: snapshot.eyeCloseLayers,
-                    }),
-                    copyable: false,
-                  },
-                  {
-                    key: 'mouth',
-                    label: labels.anime25dInspectMouth,
-                    value: fillInspect(labels.anime25dInspectMouthValue, {
-                      open: snapshot.mouthOpenLayers,
-                      close: snapshot.mouthCloseLayers,
-                    }),
-                    copyable: false,
-                  },
-                  {
-                    key: 'canvas',
-                    label: labels.anime25dInspectCanvas,
-                    value: fillInspect(labels.anime25dInspectCanvasValue, {
-                      width: Math.round(snapshot.canvas.width),
-                      height: Math.round(snapshot.canvas.height),
-                    }),
-                    copyable: false,
-                  },
-                ]
-              : undefined
-          }
-          empty={!snapshot}
-          emptyText={labels.anime25dInspectEmpty}
-        />
-      </SettingGroup>
+              onChange={(blink) => patchDriver({ blink })}
+            />
+            <SwitchItem
+              itemKey="anime25d-rand"
+              label={labels.anime25dRand}
+              value={driver.rand}
+              disabled={!motionEnabled}
+              onChange={(rand) => patchDriver({ rand })}
+            />
+            <SwitchItem
+              itemKey="anime25d-talking"
+              label={labels.anime25dTalking}
+              value={driver.talk}
+              disabled={!motionEnabled}
+              onChange={(talk) => patchDriver({ talk })}
+            />
+            <SwitchItem
+              itemKey="anime25d-mouse"
+              label={labels.anime25dMouse}
+              value={driver.mouse}
+              disabled={!motionEnabled}
+              onChange={(mouse) => patchDriver({ mouse })}
+            />
+          </SettingGroup>
+          <SettingGroup
+            title={labels.poseGroup}
+            description={
+              motionEnabled
+                ? labels.poseGroupDescription
+                : labels.motionNeedsRig
+            }
+            id="merope-motion-pose"
+          >
+            {sliderCluster(labels.clusterHead, ['angleX', 'angleY', 'angleZ'])}
+            {sliderCluster(labels.clusterEyes, [
+              'eyeOpenL',
+              'eyeOpenR',
+              'eyeX',
+              'eyeY',
+              'irisScale',
+              'eyeScaleL',
+              'eyeScaleR',
+              'eyeEase',
+              'eyeCY',
+              'eyeCAng',
+            ])}
+            {sliderCluster(labels.clusterBrows, [
+              'brow',
+              'browAngSym',
+              'browAngL',
+              'browAngR',
+            ])}
+            {sliderCluster(labels.clusterMouth, [
+              'mouthOpen',
+              'mouthForm',
+              'mouthCY',
+              'mouthEase',
+              'mouthCAng',
+              'mouthScale',
+            ])}
+          </SettingGroup>
+          <SettingGroup
+            title={labels.hairBodyGroup}
+            description={
+              motionEnabled
+                ? labels.hairBodyGroupDescription
+                : labels.motionNeedsRig
+            }
+            id="merope-motion-hair-body"
+          >
+            <SwitchItem
+              itemKey="anime25d-phys"
+              label={labels.anime25dPhys}
+              value={driver.phys}
+              disabled={!motionEnabled}
+              onChange={(phys) => patchDriver({ phys })}
+            />
+            {sliderCluster(labels.clusterHair, [
+              'fhAmp',
+              'fhSoft',
+              'bangL',
+              'bangC',
+              'bangR',
+              'physAmp',
+              'soft',
+            ])}
+            {sliderCluster(labels.clusterBody, [
+              'body',
+              'armY',
+              'armPos',
+              'bust',
+              'bustY',
+            ])}
+          </SettingGroup>
+          <SettingGroup
+            title={labels.anime25dInspect}
+            description={labels.inspectGroupDescription}
+            id="merope-motion-inspect"
+          >
+            <InfoActionCard
+              copyable={false}
+              title={labels.anime25dInspect}
+              fields={
+                snapshot
+                  ? [
+                      {
+                        key: 'layers',
+                        label: labels.anime25dInspectLayers,
+                        value: fillInspect(labels.anime25dInspectLayersValue, {
+                          count: snapshot.layerCount,
+                        }),
+                        copyable: false,
+                      },
+                      {
+                        key: 'strands',
+                        label: labels.anime25dInspectStrands,
+                        value: fillInspect(labels.anime25dInspectStrandsValue, {
+                          strands: snapshot.strandCount,
+                          layers: snapshot.hairLayerCount,
+                        }),
+                        copyable: false,
+                      },
+                      {
+                        key: 'eyes',
+                        label: labels.anime25dInspectEyes,
+                        value: fillInspect(labels.anime25dInspectEyesValue, {
+                          open: snapshot.eyeOpenLayers,
+                          close: snapshot.eyeCloseLayers,
+                        }),
+                        copyable: false,
+                      },
+                      {
+                        key: 'mouth',
+                        label: labels.anime25dInspectMouth,
+                        value: fillInspect(labels.anime25dInspectMouthValue, {
+                          open: snapshot.mouthOpenLayers,
+                          close: snapshot.mouthCloseLayers,
+                        }),
+                        copyable: false,
+                      },
+                      {
+                        key: 'canvas',
+                        label: labels.anime25dInspectCanvas,
+                        value: fillInspect(labels.anime25dInspectCanvasValue, {
+                          width: Math.round(snapshot.canvas.width),
+                          height: Math.round(snapshot.canvas.height),
+                        }),
+                        copyable: false,
+                      },
+                    ]
+                  : undefined
+              }
+              empty={!snapshot}
+              emptyText={labels.anime25dInspectEmpty}
+            />
+          </SettingGroup>
         </>
       ) : null}
     </>
@@ -873,7 +1095,9 @@ function FaceTabs<T extends string>({
 }) {
   return (
     <div
-      className={['merope-motion-page__tabs', className].filter(Boolean).join(' ')}
+      className={['merope-motion-page__tabs', className]
+        .filter(Boolean)
+        .join(' ')}
       role="tablist"
       aria-label={ariaLabel}
     >
@@ -893,10 +1117,7 @@ function FaceTabs<T extends string>({
   )
 }
 
-function presetLabel(
-  labels: TranslationKeys['merope'],
-  id: string,
-): string {
+function presetLabel(labels: TranslationKeys['merope'], id: string): string {
   if (id === 'neutral') return labels.anime25dPresetIdle
   if (id === 'smile') return labels.anime25dPresetSmile
   if (id === 'usume') return labels.anime25dPresetUsume
@@ -905,6 +1126,7 @@ function presetLabel(
   if (id === 'thinking') return labels.anime25dPresetThinking
   if (id === 'dizzy') return labels.anime25dPresetDizzy
   if (id === 'squeeze') return labels.anime25dPresetSqueeze
+  if (id === 'cry') return labels.anime25dPresetCry
   if (id === 'winkL') return labels.anime25dPresetWinkLeft
   if (id === 'winkR') return labels.anime25dPresetWinkRight
   return id

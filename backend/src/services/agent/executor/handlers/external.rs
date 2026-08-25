@@ -5,9 +5,9 @@
 
 use super::HandlerContext;
 use crate::services::agent::external_pure::{
-    compress_and_truncate_text, hitokoto_type, http_body_size_error, http_fetch_method,
-    mcp_arguments, optional_string_param, parse_http_body_value, parse_mcp_capability_id,
-    scrape_max_length, scrape_selector, scrape_should_skip_tag,
+    classify_outbound_fetch, compress_and_truncate_text, hitokoto_type, http_body_size_error,
+    http_fetch_method, mcp_arguments, optional_string_param, parse_http_body_value,
+    parse_mcp_capability_id, scrape_max_length, scrape_selector, scrape_should_skip_tag,
 };
 use crate::services::fetcher::PlatformFetcher;
 use crate::services::outbound_security;
@@ -35,7 +35,10 @@ fn fixed_host_client() -> Result<reqwest::Client, String> {
         .timeout(Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::none())
         .build()
-        .map_err(|e| format!("HTTP client error: {e}"))
+        .map_err(|e| {
+            tracing::error!(error = %e, "HTTP client build failed");
+            "HTTP client error".to_string()
+        })
 }
 
 /// Default success body cap for fixed-host JSON APIs (hitokoto / weather / etc.).
@@ -45,8 +48,14 @@ const FIXED_HOST_ERR_MAX: usize = 64 * 1024;
 async fn limited_json(response: reqwest::Response, max: usize) -> Result<Value, String> {
     let bytes = outbound_security::read_limited_body(response, max)
         .await
-        .map_err(|e| format!("Failed to read response: {e}"))?;
-    serde_json::from_slice(&bytes).map_err(|e| format!("Failed to parse JSON: {e}"))
+        .map_err(|e| {
+            tracing::warn!(error = %e, "Failed to read response");
+            "Failed to read response".to_string()
+        })?;
+    serde_json::from_slice(&bytes).map_err(|e| {
+        tracing::warn!(error = %e, "Failed to parse JSON");
+        "Failed to parse JSON".to_string()
+    })
 }
 
 async fn limited_error_text(response: reqwest::Response) -> String {
@@ -54,6 +63,26 @@ async fn limited_error_text(response: reqwest::Response) -> String {
         .await
         .map(|b| String::from_utf8_lossy(&b).to_string())
         .unwrap_or_default()
+}
+
+fn reqwest_fetch_error(label: &str, error: reqwest::Error) -> String {
+    tracing::warn!(%error, label, "outbound fetch failed");
+    if let Some(status) = error.status() {
+        return format!("{label} (HTTP {})", status.as_u16());
+    }
+    if error.is_timeout() {
+        return format!("{label}: timed out");
+    }
+    if error.is_connect() {
+        return format!("{label}: could not connect");
+    }
+    classify_outbound_fetch(label, &error.to_string())
+}
+
+fn display_fetch_error(label: &str, error: impl std::fmt::Display) -> String {
+    let detail = error.to_string();
+    tracing::warn!(error = %detail, label, "outbound fetch failed");
+    classify_outbound_fetch(label, &detail)
 }
 
 /// 执行外部集成能力
@@ -102,13 +131,15 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
                 .json(&body)
                 .send()
                 .await
-                .map_err(|e| format!("HTTP request failed: {}", e))?
+                .map_err(|e| {
+                    tracing::warn!(error = %e, "HTTP request failed");
+                    "HTTP request failed".to_string()
+                })?
         }
-        _ => client
-            .get(target_url)
-            .send()
-            .await
-            .map_err(|e| format!("HTTP request failed: {}", e))?,
+        _ => client.get(target_url).send().await.map_err(|e| {
+            tracing::warn!(error = %e, "HTTP request failed");
+            "HTTP request failed".to_string()
+        })?,
     };
 
     let status = response.status().as_u16();
@@ -120,7 +151,8 @@ async fn execute_http_fetch(params: &HashMap<String, Value>) -> Result<Value, St
             if e.contains("exceeds") {
                 http_body_size_error()
             } else {
-                format!("Failed to read response: {e}")
+                tracing::warn!(error = %e, "Failed to read response");
+                "Failed to read response".to_string()
             }
         })?;
     let body = String::from_utf8_lossy(&body_bytes).to_string();
@@ -150,7 +182,7 @@ async fn execute_hitokoto_get(params: &HashMap<String, Value>) -> Result<Value, 
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch hitokoto: {}", e))?;
+        .map_err(|error| reqwest_fetch_error("Failed to fetch hitokoto", error))?;
 
     let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
@@ -230,7 +262,7 @@ async fn execute_bilibili_user(params: &HashMap<String, Value>) -> Result<Value,
         .header("User-Agent", "Mozilla/5.0")
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch Bilibili user: {}", e))?;
+        .map_err(|error| reqwest_fetch_error("Failed to fetch Bilibili user", error))?;
 
     let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
@@ -246,7 +278,12 @@ async fn execute_bilibili_user(params: &HashMap<String, Value>) -> Result<Value,
             "following": user_data.get("following")
         }))
     } else {
-        Err(format!("Bilibili API error: {:?}", data.get("message")))
+        Err(classify_outbound_fetch(
+            "Failed to fetch Bilibili user",
+            data.get("message")
+                .and_then(|value| value.as_str())
+                .unwrap_or(""),
+        ))
     }
 }
 
@@ -271,7 +308,7 @@ async fn execute_bilibili_video(params: &HashMap<String, Value>) -> Result<Value
         .header("User-Agent", "Mozilla/5.0")
         .send()
         .await
-        .map_err(|e| format!("Failed to fetch Bilibili video: {}", e))?;
+        .map_err(|error| reqwest_fetch_error("Failed to fetch Bilibili video", error))?;
 
     let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
@@ -288,7 +325,12 @@ async fn execute_bilibili_video(params: &HashMap<String, Value>) -> Result<Value
             "duration": video.get("duration")
         }))
     } else {
-        Err(format!("Bilibili API error: {:?}", data.get("message")))
+        Err(classify_outbound_fetch(
+            "Failed to fetch Bilibili video",
+            data.get("message")
+                .and_then(|value| value.as_str())
+                .unwrap_or(""),
+        ))
     }
 }
 
@@ -303,7 +345,7 @@ async fn execute_bangumi_user(params: &HashMap<String, Value>) -> Result<Value, 
     let user = fetcher
         .fetch_bangumi_user(&username, access_token.as_deref(), user_agent.as_deref())
         .await
-        .map_err(|e| format!("Failed to fetch Bangumi user: {}", e))?;
+        .map_err(|error| display_fetch_error("Failed to fetch Bangumi user", error))?;
 
     Ok(json!({
         "username": user.get("username"),
@@ -323,7 +365,7 @@ async fn execute_bangumi_collections(params: &HashMap<String, Value>) -> Result<
     let collections = fetcher
         .fetch_bangumi_collections(&username, access_token.as_deref(), user_agent.as_deref())
         .await
-        .map_err(|e| format!("Failed to fetch Bangumi collections: {}", e))?;
+        .map_err(|error| display_fetch_error("Failed to fetch Bangumi collections", error))?;
     let total = collections.len();
 
     Ok(json!({
@@ -398,7 +440,7 @@ async fn execute_weather_get(params: &HashMap<String, Value>) -> Result<Value, S
         .header("User-Agent", "curl/7.68.0")
         .send()
         .await
-        .map_err(|e| format!("Weather API error: {}", e))?;
+        .map_err(|error| reqwest_fetch_error("Failed to fetch weather", error))?;
 
     let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
@@ -444,7 +486,7 @@ async fn execute_netease_song(params: &HashMap<String, Value>) -> Result<Value, 
         .header("Referer", "https://music.163.com")
         .send()
         .await
-        .map_err(|e| format!("Netease API error: {}", e))?;
+        .map_err(|error| reqwest_fetch_error("Failed to fetch Netease song", error))?;
 
     let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
@@ -494,7 +536,7 @@ async fn execute_netease_playlist_detail(params: &HashMap<String, Value>) -> Res
         .header("Referer", "https://music.163.com")
         .send()
         .await
-        .map_err(|e| format!("Netease API error: {}", e))?;
+        .map_err(|error| reqwest_fetch_error("Failed to fetch Netease playlist", error))?;
 
     let data: Value = limited_json(response, FIXED_HOST_JSON_MAX).await?;
 
@@ -553,7 +595,7 @@ async fn execute_steam_game(params: &HashMap<String, Value>) -> Result<Value, St
             }
             Err("Failed to fetch game details".to_string())
         }
-        Err(e) => Err(format!("Steam API error: {}", e)),
+        Err(error) => Err(reqwest_fetch_error("Failed to fetch Steam game", error)),
     }
 }
 
@@ -578,11 +620,14 @@ async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, St
         .header("Accept", "text/html,application/xhtml+xml,*/*")
         .send()
         .await
-        .map_err(|e| format!("Fetch failed: {}", e))?;
+        .map_err(|e| {
+            tracing::warn!(error = %e, "Fetch failed");
+            "Fetch failed".to_string()
+        })?;
 
     let status = response.status().as_u16();
     if status >= 400 {
-        return Err(format!("HTTP {}: {}", status, url));
+        return Err(format!("HTTP {status}"));
     }
 
     // Stream-capped (do not `.text()` then reject — still OOMs on huge pages).
@@ -593,7 +638,8 @@ async fn execute_web_scrape(params: &HashMap<String, Value>) -> Result<Value, St
             if e.contains("exceeds") {
                 "Page too large (>5MB)".to_string()
             } else {
-                format!("Read failed: {e}")
+                tracing::warn!(error = %e, "Read failed");
+                "Read failed".to_string()
             }
         })?;
     let html = String::from_utf8_lossy(&html_bytes).to_string();

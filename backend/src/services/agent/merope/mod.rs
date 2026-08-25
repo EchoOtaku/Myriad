@@ -139,7 +139,11 @@ pub async fn note_user_turn(
         spawn_mood_hint(user_id, text);
     }
     if !is_extremely_low(state.mood) && is_extremely_low(next) {
-        spawn_ingest(user_id, "agent.merope.mood_floor", "跟这个人的心情掉到了极低");
+        spawn_ingest(
+            user_id,
+            "agent.merope.mood_floor",
+            "跟这个人的心情掉到了极低",
+        );
     }
     let cause = if scolded {
         "user_scold"
@@ -507,7 +511,8 @@ mod tests {
             crate::services::agent::merope::store::normalize_persona_fields("  瞳  ", "  认真  ");
         assert_eq!(name, "瞳");
         assert_eq!(personality, "认真");
-        let (empty, _) = crate::services::agent::merope::store::normalize_persona_fields(" \t ", "");
+        let (empty, _) =
+            crate::services::agent::merope::store::normalize_persona_fields(" \t ", "");
         assert!(empty.is_empty());
     }
 

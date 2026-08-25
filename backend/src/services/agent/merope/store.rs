@@ -605,8 +605,7 @@ mod tests {
             }
         });
         let existing_visual_profile = changed_visual_profile.clone();
-        changed_visual_profile["visualIdentity"]["hairShape"] =
-            json!("银灰高马尾与偏分刘海");
+        changed_visual_profile["visualIdentity"]["hairShape"] = json!("银灰高马尾与偏分刘海");
         let existing = agent_persona::Model {
             id: PERSONA_ROW_ID.to_string(),
             name: "Arael".to_string(),

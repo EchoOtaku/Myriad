@@ -748,14 +748,13 @@ async fn decode_response<T: for<'de> Deserialize<'de>>(
         .bytes()
         .await
         .map_err(|error| TripoError::Transport(error.to_string()))?;
-    let envelope: TripoEnvelope<T> =
-        serde_json::from_slice(&bytes).map_err(|error| {
-            tracing::error!(%error, %status, "invalid Tripo JSON response");
-            TripoError::Upstream {
-                status: status.as_u16(),
-                message: "Invalid JSON response".to_string(),
-            }
-        })?;
+    let envelope: TripoEnvelope<T> = serde_json::from_slice(&bytes).map_err(|error| {
+        tracing::error!(%error, %status, "invalid Tripo JSON response");
+        TripoError::Upstream {
+            status: status.as_u16(),
+            message: "Invalid JSON response".to_string(),
+        }
+    })?;
     if !status.is_success() || envelope.code != 0 {
         let mut message = envelope
             .message

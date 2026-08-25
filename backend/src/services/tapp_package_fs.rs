@@ -109,14 +109,17 @@ pub fn filesystem_error_status_hint(kind: ErrorKind) -> u16 {
     }
 }
 
-/// Human-readable filesystem failure message preserved by the install API.
+/// Human-readable filesystem failure. Names the action and cause, not OS dumps.
 pub fn filesystem_error_message(action: &str, kind: ErrorKind, error_display: &str) -> String {
-    if is_storage_unwritable_error(kind) {
-        format!(
-            "Tapp storage is not writable by the backend service account; repair the backend data volume ownership/permissions and retry ({action}: {error_display})"
-        )
-    } else {
-        format!("{action}: {error_display}")
+    let _ = error_display;
+    match kind {
+        ErrorKind::PermissionDenied | ErrorKind::ReadOnlyFilesystem => {
+            format!("{action}: storage is not writable. Check data volume ownership/permissions.")
+        }
+        ErrorKind::StorageFull => format!("{action}: not enough disk space."),
+        ErrorKind::NotFound => format!("{action}: path not found."),
+        ErrorKind::AlreadyExists => format!("{action}: already exists."),
+        _ => format!("{action} failed."),
     }
 }
 
@@ -366,7 +369,16 @@ mod tests {
         );
         assert_eq!(filesystem_error_status_hint(ErrorKind::Other), 500);
         let other = filesystem_error_message("activate", ErrorKind::Other, "boom");
-        assert_eq!(other, "activate: boom");
+        assert_eq!(other, "activate failed.");
+        assert!(!denied.contains("denied"));
+        assert!(denied.contains("create staging"));
+        let full = filesystem_error_message(
+            "create staging",
+            ErrorKind::StorageFull,
+            "No space left on device (os error 28)",
+        );
+        assert_eq!(full, "create staging: not enough disk space.");
+        assert!(!full.contains("os error"));
     }
 
     #[test]

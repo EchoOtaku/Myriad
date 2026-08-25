@@ -1067,8 +1067,8 @@ async fn run_playground_generation_inner(
 }
 
 fn parse_agent_plan(raw: &str) -> Result<PlaygroundAgentPlan, String> {
-    let plan: PlaygroundAgentPlan = serde_json::from_str(extract_json_object(raw)?)
-        .map_err(|error| {
+    let plan: PlaygroundAgentPlan =
+        serde_json::from_str(extract_json_object(raw)?).map_err(|error| {
             tracing::error!(%error, "invalid agent plan JSON");
             "invalid agent plan".to_string()
         })?;

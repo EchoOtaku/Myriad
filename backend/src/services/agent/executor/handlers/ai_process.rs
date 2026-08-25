@@ -13,10 +13,17 @@ use crate::services::agent::ai_process_pure::{
     USER_TEXT_MAX_CHARS,
 };
 use crate::services::agent::data_read_pure::extract_json_array_from_ai_response;
+use crate::services::agent::external_pure::classify_outbound_fetch;
 use crate::GLOBAL_DYNAMIC_CONFIG;
 use sea_orm::EntityTrait;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+
+fn ai_step_failed(label: &str, error: impl std::fmt::Display) -> String {
+    let detail = error.to_string();
+    tracing::error!(error = %detail, label, "AI step failed");
+    classify_outbound_fetch(label, &detail)
+}
 
 /// 注入执行上下文到 AI 参数：角色身份 + 对话历史
 fn inject_role_identity(
@@ -203,13 +210,10 @@ async fn execute_ai_summarize(
         ),
     );
 
-    let result = analyzer
-        .analyze(&prompt)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "AI summarize failed");
-            "AI generation failed".to_string()
-        })?;
+    let result = analyzer.analyze(&prompt).await.map_err(|e| {
+        tracing::error!(error = %e, "AI summarize failed");
+        "AI generation failed".to_string()
+    })?;
 
     Ok(json!({
         "summary": result,
@@ -291,13 +295,10 @@ async fn execute_ai_analyze(
         },
     );
 
-    let result = analyzer
-        .analyze(&prompt)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "AI analysis failed");
-            "AI generation failed".to_string()
-        })?;
+    let result = analyzer.analyze(&prompt).await.map_err(|e| {
+        tracing::error!(error = %e, "AI analysis failed");
+        "AI generation failed".to_string()
+    })?;
 
     Ok(json!({
         "analysis": result,
@@ -340,13 +341,10 @@ async fn execute_ai_recommend(
         ),
     );
 
-    let result = analyzer
-        .analyze(&prompt)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "AI recommendation failed");
-            "AI generation failed".to_string()
-        })?;
+    let result = analyzer.analyze(&prompt).await.map_err(|e| {
+        tracing::error!(error = %e, "AI recommendation failed");
+        "AI generation failed".to_string()
+    })?;
 
     // 尝试解析 JSON 数组，否则回退到文本
     let recommendations: Value = {
@@ -404,13 +402,10 @@ async fn execute_ai_chat(
 
     full_prompt.push_str(&format!("用户：{}\n\n请回复：", message));
 
-    let result = analyzer
-        .analyze(&full_prompt)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "AI chat failed");
-            "AI generation failed".to_string()
-        })?;
+    let result = analyzer.analyze(&full_prompt).await.map_err(|e| {
+        tracing::error!(error = %e, "AI chat failed");
+        "AI generation failed".to_string()
+    })?;
 
     Ok(json!({
         "reply": result
@@ -551,11 +546,10 @@ async fn execute_gemini_grounding_search(
                 tracing::error!(error = %e, "Failed to read Gemini response");
                 "AI generation failed".to_string()
             })?;
-    let response_json: Value = serde_json::from_slice(&body_bytes)
-        .map_err(|e| {
-            tracing::error!(error = %e, "Failed to parse Gemini response");
-            "AI generation failed".to_string()
-        })?;
+    let response_json: Value = serde_json::from_slice(&body_bytes).map_err(|e| {
+        tracing::error!(error = %e, "Failed to parse Gemini response");
+        "AI generation failed".to_string()
+    })?;
 
     // 提取 AI 回复内容
     let ai_text = response_json
@@ -658,7 +652,7 @@ async fn execute_brewlia_annotate(
     let result = analyzer
         .analyze(&prompt)
         .await
-        .map_err(|e| format!("Annotation generation failed: {}", e))?;
+        .map_err(|error| ai_step_failed("Annotation generation failed", error))?;
 
     let annotations: Value = {
         let arr = extract_json_array_from_ai_response(&result);
@@ -739,7 +733,7 @@ async fn execute_brewlia_podcast(
     let result = analyzer
         .analyze(&prompt)
         .await
-        .map_err(|e| format!("Podcast script generation failed: {}", e))?;
+        .map_err(|error| ai_step_failed("Podcast script generation failed", error))?;
 
     // 基于中文平均语速约 200 字/分钟估算
     let estimated_duration = result.chars().count() as f64 / 200.0;
@@ -896,7 +890,7 @@ async fn execute_smart_filter(
             let result = analyzer
                 .analyze(&prompt)
                 .await
-                .map_err(|e| format!("Smart filter failed: {}", e))?;
+                .map_err(|error| ai_step_failed("Smart filter failed", error))?;
 
             return Ok(json!({
                 "platform": platform,
@@ -952,7 +946,7 @@ async fn execute_compare_content(
             let result = analyzer
                 .analyze(&prompt)
                 .await
-                .map_err(|e| format!("Content comparison failed: {}", e))?;
+                .map_err(|error| ai_step_failed("Content comparison failed", error))?;
 
             return Ok(json!({
                 "platform": platform,
@@ -1063,7 +1057,7 @@ async fn execute_prompt_generate(
     let result = analyzer
         .analyze(&prompt)
         .await
-        .map_err(|e| format!("Prompt generation failed: {}", e))?;
+        .map_err(|error| ai_step_failed("Prompt generation failed", error))?;
 
     // 清理：去除 AI 可能添加的引号和多余空白
     let cleaned = result.trim().trim_matches('"').trim_matches('`').trim();
@@ -1115,7 +1109,7 @@ async fn execute_translate_text(
     let result = analyzer
         .analyze(&prompt)
         .await
-        .map_err(|e| format!("Translation failed: {}", e))?;
+        .map_err(|error| ai_step_failed("Translation failed", error))?;
 
     Ok(json!({
         "originalText": text,
@@ -1149,7 +1143,7 @@ async fn execute_code_explain(
     let result = analyzer
         .analyze(&prompt)
         .await
-        .map_err(|e| format!("Code explanation failed: {}", e))?;
+        .map_err(|error| ai_step_failed("Code explanation failed", error))?;
 
     let complexity = if code.len() < 100 {
         "简单"

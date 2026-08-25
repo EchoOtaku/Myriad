@@ -20,7 +20,6 @@ pub mod config_service;
 pub mod content_databases; // Preset anime/game/artist databases
 pub mod data_key; // Config-key / federation private-key envelope
 pub mod data_paths;
-pub mod merope_rig; // Site-wide compiled 2.5D face package
 pub mod enka_assets; // Enka character metadata for Hoyoverse cards
 pub mod fetcher;
 pub mod gemini_media; // Gemini generateContent image + speech
@@ -32,6 +31,7 @@ pub mod json_schema_subset;
 pub mod kugou_service; // Kugou lyrics (KRC) supplement
 pub mod library_items; // Library item pure builders (Bangumi/MAL/preferences)
 pub mod memory_profile; // default vs memory-saver process budgets
+pub mod merope_rig; // Site-wide compiled 2.5D face package
 pub mod metadata_service;
 pub mod module_visibility; // Module visibility for Agent (no api::config import)
 pub mod netease_service;

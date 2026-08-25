@@ -26,6 +26,18 @@ use crate::models::entities::brew_annotations::{self, AnnotationType};
 use crate::services::ai::create_ai_analyzer_for_tier;
 use crate::services::data_paths::paths;
 
+fn brewlia_store_failed(context: &'static str, error: impl std::fmt::Display) -> axum::response::Response {
+    tracing::error!(%error, context, "brewlia store failed");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({
+            "success": false,
+            "error": format!("Failed to {context}"),
+        })),
+    )
+        .into_response()
+}
+
 // 权限验证辅助函数
 
 /// 验证是否是管理员（用于生成/编辑操作）
@@ -195,12 +207,7 @@ async fn get_annotations(
                 .into_response();
         }
         Err(e) => {
-            tracing::error!(error = %e, "Brewlia database error");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
-            )
-                .into_response();
+            return brewlia_store_failed("load article", e);
         }
     };
 
@@ -248,12 +255,7 @@ async fn regenerate_annotations(
                 .into_response();
         }
         Err(e) => {
-            tracing::error!(error = %e, "Brewlia database error");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
-            )
-                .into_response();
+            return brewlia_store_failed("load article", e);
         }
     };
 
@@ -834,12 +836,7 @@ async fn get_podcast_script(
                 .into_response();
         }
         Err(e) => {
-            tracing::error!(error = %e, "Brewlia database error");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
-            )
-                .into_response();
+            return brewlia_store_failed("load article", e);
         }
     };
 
@@ -984,12 +981,7 @@ async fn regenerate_podcast_script(
                 .into_response();
         }
         Err(e) => {
-            tracing::error!(error = %e, "Brewlia database error");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
-            )
-                .into_response();
+            return brewlia_store_failed("load article", e);
         }
     };
 
@@ -1248,12 +1240,7 @@ async fn generate_style_tags(
                 .into_response();
         }
         Err(e) => {
-            tracing::error!(error = %e, "Brewlia database error");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
-            )
-                .into_response();
+            return brewlia_store_failed("load source", e);
         }
     };
 
@@ -1268,12 +1255,7 @@ async fn generate_style_tags(
     {
         Ok(items) => items,
         Err(e) => {
-            tracing::error!(error = %e, "Brewlia database error");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "success": false, "error": "Database error", "code": "database_error" })),
-            )
-                .into_response();
+            return brewlia_store_failed("load articles", e);
         }
     };
 

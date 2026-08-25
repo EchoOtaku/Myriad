@@ -144,14 +144,10 @@ impl OidcProvider {
 
         tracing::debug!("🔄 Refreshing OIDC discovery for {}", self.slug);
         let (endpoint, http) = oidc_client(&self.discovery_url).await?;
-        let resp = http
-            .get(endpoint)
-            .send()
-            .await
-            .map_err(|error| {
-                tracing::error!(error = ?error, "OIDC discovery GET failed");
-                "OIDC discovery GET failed".to_string()
-            })?;
+        let resp = http.get(endpoint).send().await.map_err(|error| {
+            tracing::error!(error = ?error, "OIDC discovery GET failed");
+            "OIDC discovery GET failed".to_string()
+        })?;
         let doc: DiscoveryDoc = oidc_json(resp, "discovery").await?;
 
         let mut guard = self.cache.write().await;
@@ -182,14 +178,10 @@ impl OidcProvider {
             .ok_or_else(|| "OIDC discovery missing 'jwks_uri'".to_string())?;
         // jwks_uri 来自 discovery 响应 —— 由远端决定，必须走 SSRF 策略
         let (endpoint, http) = oidc_client(jwks_uri).await?;
-        let resp = http
-            .get(endpoint)
-            .send()
-            .await
-            .map_err(|error| {
-                tracing::error!(error = ?error, "OIDC JWKS GET failed");
-                "OIDC JWKS GET failed".to_string()
-            })?;
+        let resp = http.get(endpoint).send().await.map_err(|error| {
+            tracing::error!(error = ?error, "OIDC JWKS GET failed");
+            "OIDC JWKS GET failed".to_string()
+        })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -212,11 +204,10 @@ impl OidcProvider {
             .issuer
             .as_deref()
             .ok_or_else(|| "OIDC discovery missing 'issuer'".to_string())?;
-        let header =
-            decode_header(id_token).map_err(|error| {
-                tracing::error!(%error, "OIDC id_token header invalid");
-                "OIDC id_token header invalid".to_string()
-            })?;
+        let header = decode_header(id_token).map_err(|error| {
+            tracing::error!(%error, "OIDC id_token header invalid");
+            "OIDC id_token header invalid".to_string()
+        })?;
 
         ensure_asymmetric_id_token_alg(header.alg)?;
 
@@ -224,22 +215,20 @@ impl OidcProvider {
         let jwk = select_jwk(&jwks, header.kid.as_deref())?;
         ensure_jwk_matches_id_token(jwk, header.alg)?;
 
-        let key = DecodingKey::from_jwk(jwk)
-            .map_err(|error| {
-                tracing::error!(%error, "OIDC JWK decoding key invalid");
-                "OIDC JWK decoding key invalid".to_string()
-            })?;
+        let key = DecodingKey::from_jwk(jwk).map_err(|error| {
+            tracing::error!(%error, "OIDC JWK decoding key invalid");
+            "OIDC JWK decoding key invalid".to_string()
+        })?;
         let mut validation = Validation::new(header.alg);
         validation.set_audience(&[self.client_id.as_str()]);
         validation.set_issuer(&[issuer]);
         validation.set_required_spec_claims(&["exp", "iss", "aud", "sub"]);
         validation.validate_nbf = true;
 
-        let data = decode::<serde_json::Value>(id_token, &key, &validation)
-            .map_err(|error| {
-                tracing::error!(%error, "OIDC id_token verification failed");
-                "OIDC id_token verification failed".to_string()
-            })?;
+        let data = decode::<serde_json::Value>(id_token, &key, &validation).map_err(|error| {
+            tracing::error!(%error, "OIDC id_token verification failed");
+            "OIDC id_token verification failed".to_string()
+        })?;
         validate_authorized_party(&data.claims, &self.client_id)?;
         if let Some(expected) = expected_nonce.filter(|n| !n.is_empty()) {
             validate_id_token_nonce(&data.claims, expected)?;
@@ -262,7 +251,10 @@ async fn read_error_body_limited(resp: reqwest::Response) -> String {
                 s.into_owned()
             }
         }
-        Err(e) => format!("<body unread: {e}>"),
+        Err(e) => {
+            tracing::warn!(error = %e, "OIDC error body unread");
+            "<body unread>".to_string()
+        }
     }
 }
 

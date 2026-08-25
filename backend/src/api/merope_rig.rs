@@ -20,14 +20,13 @@ use axum::{
 };
 use myriad_merope::{
     build_character_asset_contract, build_character_visual_edit_prompt,
-    build_character_visual_prompt,
-    character_asset_contract_fingerprint, compile_layered_rig, migrate_rig_manifest,
-    validate_character_asset_source, RigBone, RigCompileSource, RigLayerSource,
-    RigManifest, RigMotionProfile, RigOutfitProfile, RigPart, RigPoint, RigQuality,
+    build_character_visual_prompt, character_asset_contract_fingerprint, compile_layered_rig,
+    migrate_rig_manifest, validate_character_asset_source, RigBone, RigCompileSource,
+    RigLayerSource, RigManifest, RigMotionProfile, RigOutfitProfile, RigPart, RigPoint, RigQuality,
     RigSemanticAnchor, RigSemantics, RigSize, RigSpatialProfile, RigTexture, RigVertex,
-    CHARACTER_ASSET_CONTRACT_VERSION, MEROPE_STYLE_REFERENCE_SHA256,
-    MEROPE_VISUAL_SCHOOL_VERSION, PORTRAIT_CANVAS_HEIGHT, PORTRAIT_CANVAS_WIDTH,
-    PORTRAIT_GENERATION_HEIGHT, PORTRAIT_GENERATION_WIDTH, RIG_SCHEMA_VERSION,
+    CHARACTER_ASSET_CONTRACT_VERSION, MEROPE_STYLE_REFERENCE_SHA256, MEROPE_VISUAL_SCHOOL_VERSION,
+    PORTRAIT_CANVAS_HEIGHT, PORTRAIT_CANVAS_WIDTH, PORTRAIT_GENERATION_HEIGHT,
+    PORTRAIT_GENERATION_WIDTH, RIG_SCHEMA_VERSION,
 };
 use sea_orm::{DatabaseConnection, TransactionTrait};
 use serde::Deserialize;
@@ -37,7 +36,7 @@ use uuid::Uuid;
 use crate::{
     middleware::auth::Claims,
     services::{
-        agent::merope, merope_rig, image_generation, rig_chest_analysis, see_through,
+        agent::merope, image_generation, merope_rig, rig_chest_analysis, see_through,
         site_owner::site_owner_user_id,
     },
     state::AppState,
@@ -52,10 +51,8 @@ const MAX_RIG_ANALYSIS_REFERENCE_BYTES: usize = 10 * 1024 * 1024;
 const MEROPE_STYLE_REFERENCE_BYTES: &[u8] =
     include_bytes!("../../assets/merope/style-reference.png");
 
-fn merope_style_reference() -> Result<
-    image_generation::ImageReference,
-    image_generation::ImageGenerationError,
-> {
+fn merope_style_reference(
+) -> Result<image_generation::ImageReference, image_generation::ImageGenerationError> {
     image_generation::ImageReference::new(MEROPE_STYLE_REFERENCE_BYTES.to_vec(), "image/png")
 }
 
@@ -93,9 +90,7 @@ fn bad_request(message: &str) -> ApiError {
     (StatusCode::BAD_REQUEST, Json(json!({ "error": message })))
 }
 
-fn portrait_generation_config_error(
-    error: image_generation::ImageGenerationError,
-) -> ApiError {
+fn portrait_generation_config_error(error: image_generation::ImageGenerationError) -> ApiError {
     let code = image_generation::image_generation_failure_code(&error);
     tracing::error!(%error, code, "site portrait generation rejected before provider call");
     (
@@ -104,9 +99,7 @@ fn portrait_generation_config_error(
     )
 }
 
-fn portrait_generation_provider_error(
-    error: image_generation::ImageGenerationError,
-) -> ApiError {
+fn portrait_generation_provider_error(error: image_generation::ImageGenerationError) -> ApiError {
     let code = image_generation::image_generation_failure_code(&error);
     tracing::error!(%error, code, "site portrait generation failed");
     (
@@ -266,11 +259,7 @@ fn portrait_generation_fingerprint(
     let additional_requirements = contract
         .get("additionalRequirements")
         .and_then(Value::as_str);
-    let expected = build_character_asset_contract(
-        name,
-        visual_profile,
-        additional_requirements,
-    );
+    let expected = build_character_asset_contract(name, visual_profile, additional_requirements);
     if contract != &expected {
         tracing::warn!(
             "stored portrait generation contract does not match the current visual identity; serving portrait without fingerprint"
@@ -361,11 +350,10 @@ async fn load_stored_manifest(asset_id: &str) -> ApiResult<RigManifest> {
     let bytes = merope_rig::read_manifest_bytes(asset_id)
         .await
         .map_err(|_| not_found("Active rig is missing"))?;
-    serde_json::from_slice(&bytes)
-        .map_err(|error| {
-            tracing::error!(%error, "Stored rig is invalid");
-            bad_request("Stored rig is invalid")
-        })
+    serde_json::from_slice(&bytes).map_err(|error| {
+        tracing::error!(%error, "Stored rig is invalid");
+        bad_request("Stored rig is invalid")
+    })
 }
 
 async fn package_identity_matches(asset_id: &str, manifest: &RigManifest) -> ApiResult<bool> {
@@ -377,8 +365,8 @@ async fn package_identity_matches(asset_id: &str, manifest: &RigManifest) -> Api
     let atlas_bytes = merope_rig::read_atlas_bytes(asset_id)
         .await
         .map_err(|_| not_found("Active rig atlas is missing"))?;
-    let expected = merope_rig::package_id_for_manifest(&atlas_bytes, manifest)
-        .map_err(internal_error)?;
+    let expected =
+        merope_rig::package_id_for_manifest(&atlas_bytes, manifest).map_err(internal_error)?;
     let matches = expected == asset_id;
     if matches {
         verified.write().await.insert(asset_id.to_string());
@@ -396,11 +384,10 @@ async fn compile_imported_rig(
     source: ImportRigSourceRequest,
     texture_url: String,
 ) -> ApiResult<(String, RigManifest)> {
-    validate_character_asset_source(&source.bones, &source.layers)
-        .map_err(|error| {
-            tracing::error!(%error, "Rig character asset preflight failed");
-            bad_request("Rig character asset is invalid")
-        })?;
+    validate_character_asset_source(&source.bones, &source.layers).map_err(|error| {
+        tracing::error!(%error, "Rig character asset preflight failed");
+        bad_request("Rig character asset is invalid")
+    })?;
     let source_master_asset_id = source.source_master_asset_id.clone();
     let manifest = tokio::task::spawn_blocking(move || {
         compile_layered_rig(RigCompileSource {
@@ -529,20 +516,13 @@ async fn parse_rig_import(mut multipart: Multipart) -> ApiResult<ParsedRigImport
     let mut source_bytes = None;
     let mut atlas_bytes = None;
     let mut analysis_reference_bytes = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Invalid rig import body");
-            bad_request("Invalid rig import")
-        })?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|error| {
+        tracing::error!(%error, "Invalid rig import body");
+        bad_request("Invalid rig import")
+    })? {
         match field.name() {
             Some("source") if source_bytes.is_none() => {
-                let bytes = field
-                    .bytes()
-                    .await
-                    .map_err(|error| {
+                let bytes = field.bytes().await.map_err(|error| {
                     tracing::error!(%error, "Invalid rig source");
                     bad_request("Invalid rig import")
                 })?;
@@ -555,10 +535,7 @@ async fn parse_rig_import(mut multipart: Multipart) -> ApiResult<ParsedRigImport
                 if field.content_type() != Some("image/png") {
                     return Err(bad_request("Rig atlas must be a PNG image"));
                 }
-                let bytes = field
-                    .bytes()
-                    .await
-                    .map_err(|error| {
+                let bytes = field.bytes().await.map_err(|error| {
                     tracing::error!(%error, "Invalid rig atlas");
                     bad_request("Invalid rig import")
                 })?;
@@ -620,11 +597,10 @@ async fn parse_rig_import(mut multipart: Multipart) -> ApiResult<ParsedRigImport
         return Err(bad_request("Rig atlas contract is invalid"));
     }
     if let Some(reference) = analysis_reference_bytes.as_deref() {
-        merope_rig::png_dimensions(reference)
-            .map_err(|error| {
-                        tracing::error!(%error, "Invalid rig analysis reference");
-                        bad_request("Invalid rig import")
-                    })?;
+        merope_rig::png_dimensions(reference).map_err(|error| {
+            tracing::error!(%error, "Invalid rig analysis reference");
+            bad_request("Invalid rig import")
+        })?;
     }
     Ok(ParsedRigImport {
         source,
@@ -685,14 +661,12 @@ pub async fn get_active_rig(crate::extract::Db(db): crate::extract::Db) -> ApiRe
 pub async fn get_atlas(Path(asset_id): Path<String>) -> ApiResult<Response> {
     let asset_id = merope_rig::normalize_asset_id(&asset_id)
         .ok_or_else(|| bad_request("Invalid rig asset id"))?;
-    let bytes = merope_rig::read_atlas_bytes(&asset_id)
-        .await
-        .map_err(|_| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(json!({ "error": "Rig atlas not found" })),
-            )
-        })?;
+    let bytes = merope_rig::read_atlas_bytes(&asset_id).await.map_err(|_| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Rig atlas not found" })),
+        )
+    })?;
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, HeaderValue::from_static("image/png"))
@@ -915,8 +889,8 @@ pub async fn import_site_rig(
     .await?;
     prepare_import_chest_profile(user_id, &mut source, &master.gender, false, None).await;
     let (_, manifest) = compile_imported_rig(source, "asset://atlas".to_owned()).await?;
-    let asset_id = merope_rig::package_id_for_manifest(&atlas_bytes, &manifest)
-        .map_err(internal_error)?;
+    let asset_id =
+        merope_rig::package_id_for_manifest(&atlas_bytes, &manifest).map_err(internal_error)?;
     let manifest = rewrite_texture_urls(manifest, &asset_id);
     let json = serde_json::to_string_pretty(&manifest).map_err(internal_error)?;
     merope_rig::persist_package(&asset_id, &atlas_bytes, &json)
@@ -976,14 +950,10 @@ pub async fn upload_portrait(
     require_merope_enabled().await?;
     let user_id = require_owner(&claims, &db).await?;
     let mut image_bytes = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "Invalid portrait upload");
-            bad_request("Invalid portrait image")
-        })?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(|error| {
+        tracing::error!(%error, "Invalid portrait upload");
+        bad_request("Invalid portrait image")
+    })? {
         match field.name() {
             Some("image") if image_bytes.is_none() => {
                 let media_type = match field.content_type() {
@@ -991,10 +961,7 @@ pub async fn upload_portrait(
                     Some("image/webp") => "image/webp",
                     _ => "image/png",
                 };
-                let bytes = field
-                    .bytes()
-                    .await
-                    .map_err(|error| {
+                let bytes = field.bytes().await.map_err(|error| {
                     tracing::error!(%error, "Invalid portrait image");
                     bad_request("Invalid portrait image")
                 })?;
@@ -1005,7 +972,9 @@ pub async fn upload_portrait(
                     .map_err(|error| bad_request(&error.to_string()))?;
                 image_bytes = Some(reference);
             }
-            Some("image") => return Err(bad_request("Portrait upload fields must not be duplicated")),
+            Some("image") => {
+                return Err(bad_request("Portrait upload fields must not be duplicated"))
+            }
             _ => return Err(bad_request("Portrait upload contains an unsupported field")),
         }
     }
@@ -1088,10 +1057,12 @@ pub async fn generate_portrait(
     let visual_profile = persona
         .as_ref()
         .and_then(|row| row.visual_profile.clone())
-        .unwrap_or_else(|| json!({
-            "gender": "unspecified",
-            "language": "zh-CN"
-        }));
+        .unwrap_or_else(|| {
+            json!({
+                "gender": "unspecified",
+                "language": "zh-CN"
+            })
+        });
     let gender = visual_profile.get("gender").and_then(Value::as_str);
     if !matches!(
         gender,
@@ -1105,9 +1076,7 @@ pub async fn generate_portrait(
             })),
         ));
     }
-    let visual_identity = visual_profile
-        .get("visualIdentity")
-        .unwrap_or(&Value::Null);
+    let visual_identity = visual_profile.get("visualIdentity").unwrap_or(&Value::Null);
     if !myriad_merope::upper_body_visual_identity_is_complete(visual_identity)
         || myriad_merope::normalize_visual_identity_for_prompt(visual_identity).is_none()
         || !myriad_merope::visual_identity_matches_gender_presentation(
@@ -1156,20 +1125,13 @@ pub async fn generate_portrait(
             "rendering-technique-only",
         )
     };
-    let generation_contract = build_character_asset_contract(
-        name,
-        &visual_profile,
-        additional_requirements.as_deref(),
-    );
+    let generation_contract =
+        build_character_asset_contract(name, &visual_profile, additional_requirements.as_deref());
     let contract_fingerprint = character_asset_contract_fingerprint(&generation_contract);
     let prompt = if request.edit {
         build_character_visual_edit_prompt(additional_requirements.as_deref().unwrap_or(""))
     } else {
-        build_character_visual_prompt(
-            name,
-            &visual_profile,
-            additional_requirements.as_deref(),
-        )
+        build_character_visual_prompt(name, &visual_profile, additional_requirements.as_deref())
     };
     let (width, height) = (PORTRAIT_GENERATION_WIDTH, PORTRAIT_GENERATION_HEIGHT);
     let dynamic = crate::GLOBAL_DYNAMIC_CONFIG.read().await.clone();
@@ -1194,14 +1156,9 @@ pub async fn generate_portrait(
         "inputFingerprint": contract_fingerprint,
         "startedAt": chrono::Utc::now().to_rfc3339(),
     });
-    let acquired = merope::acquire_portrait_generation(
-        &db,
-        name,
-        &visual_profile,
-        &pending,
-    )
-    .await
-    .map_err(internal_error)?;
+    let acquired = merope::acquire_portrait_generation(&db, name, &visual_profile, &pending)
+        .await
+        .map_err(internal_error)?;
     if !acquired {
         let current = merope::get_persona(&db).await.map_err(internal_error)?;
         let (message, code) = if current.as_ref().is_some_and(|persona| {
@@ -1440,11 +1397,7 @@ mod portrait_contract_tests {
     #[test]
     fn stored_portrait_contract_is_bound_to_its_fingerprint_and_current_identity() {
         let profile = json!({ "gender": "unspecified" });
-        let contract = build_character_asset_contract(
-            "Nova",
-            &profile,
-            Some("soft morning light"),
-        );
+        let contract = build_character_asset_contract("Nova", &profile, Some("soft morning light"));
         let fingerprint = character_asset_contract_fingerprint(&contract);
         let document = json!({
             "fingerprint": fingerprint,

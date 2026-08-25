@@ -46,7 +46,7 @@ impl ShortcutRegistryError {
             } => {
                 format!("Shortcut key conflict with {conflicting_shortcut}")
             }
-            Self::Database => "Database error".to_string(),
+            Self::Database => "Failed to load shortcuts".to_string(),
             Self::NotFound => "Shortcut not found".to_string(),
             Self::RegisterFailed => "Failed to register shortcut".to_string(),
             Self::UpdateFailed => "Failed to update shortcut".to_string(),

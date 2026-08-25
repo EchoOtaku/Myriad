@@ -4,6 +4,7 @@ import type {
   prepareRigPsdImport,
 } from '../rig/psdImporter'
 import type { MeropeRigManifest } from '../rig/types'
+import { userFacingError } from '../../../utils/userFacingError'
 import { diagnoseRig } from '../rig/diagnostics'
 
 export type RigAssetCompileStage =
@@ -153,5 +154,6 @@ function emit(
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  const fallback = error instanceof Error ? error.message : String(error)
+  return userFacingError(error, fallback)
 }

@@ -950,13 +950,10 @@ async fn set_avatar_source_txn(
         }
     };
 
-    let txn = db
-        .begin()
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "failed to begin avatar source transaction");
-            "Failed to save avatar source".to_string()
-        })?;
+    let txn = db.begin().await.map_err(|error| {
+        tracing::error!(%error, "failed to begin avatar source transaction");
+        "Failed to save avatar source".to_string()
+    })?;
 
     if let Some(github_id) = linked_github_id {
         txn.execute_raw(Statement::from_sql_and_values(
@@ -1018,12 +1015,10 @@ async fn set_avatar_source_txn(
     // Platform metadata is unchanged here — resolve it via the pool connection.
     let avatar_url = refresh_avatar_snapshot_on(&txn, db, user_id).await?;
 
-    txn.commit()
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "failed to commit avatar source transaction");
-            "Failed to save avatar source".to_string()
-        })?;
+    txn.commit().await.map_err(|error| {
+        tracing::error!(%error, "failed to commit avatar source transaction");
+        "Failed to save avatar source".to_string()
+    })?;
 
     Ok(avatar_url)
 }

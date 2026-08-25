@@ -15,6 +15,7 @@ test('matches Anime2.5DRig normalization without merging numbered hair groups', 
   assert.equal(normalizeAnime25DLayerName('eyelash_c'), 'eye-close')
   assert.equal(normalizeAnime25DLayerName('eye_dizzy'), 'eye-dizzy')
   assert.equal(normalizeAnime25DLayerName('eye_squeeze'), 'eye-squeeze')
+  assert.equal(normalizeAnime25DLayerName('eye_cry'), 'eye-cry')
   assert.equal(
     normalizeAnime25DLayerName('Front Hair_2 のコピー 3'),
     'front-hair-2',
@@ -98,7 +99,7 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
         !(
           (layer.slot === 'eye-left' || layer.slot === 'eye-right') &&
           layer.variant !== 'open'
-        ) && !(layer.slot === 'mouth' && layer.variant === 'open'),
+        ) && !(layer.slot === 'mouth' && layer.variant !== 'closed'),
     ).length
     assert.equal(canvases[0]?.context.drawCount, layers.length)
     assert.equal(canvases[1]?.context.drawCount, neutralLayerCount)
@@ -165,11 +166,38 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
     assert.ok(
       layers.some(
         (layer) =>
+          layer.id === 'a25d-eye-cry-left' &&
+          layer.slot === 'eye-left' &&
+          layer.variant === 'cry',
+      ),
+      'screen-left crying artwork is compiled from its own eye anchor',
+    )
+    assert.ok(
+      layers.some(
+        (layer) =>
+          layer.id === 'a25d-eye-cry-right' &&
+          layer.slot === 'eye-right' &&
+          layer.variant === 'cry',
+      ),
+      'screen-right crying artwork is compiled from its own eye anchor',
+    )
+    assert.ok(
+      layers.some(
+        (layer) =>
           layer.id === 'a25d-mouth-close' &&
           layer.slot === 'mouth' &&
           layer.variant === 'closed',
       ),
       'separate closed-mouth artwork is crossfaded',
+    )
+    assert.ok(
+      layers.some(
+        (layer) =>
+          layer.id === 'a25d-mouth-cry' &&
+          layer.slot === 'mouth' &&
+          layer.variant === 'cry',
+      ),
+      'independent crying-mouth artwork is compiled',
     )
     assert.ok(
       layers
@@ -212,6 +240,14 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
     assert.equal(
       playback.layers.filter((item) => item.fade === 'eyeSqueeze').length,
       2,
+    )
+    assert.equal(
+      playback.layers.filter((item) => item.fade === 'eyeCry').length,
+      2,
+    )
+    assert.equal(
+      playback.layers.filter((item) => item.fade === 'mouthCry').length,
+      1,
     )
   } finally {
     Object.assign(globalThis, {
@@ -298,7 +334,7 @@ test('unknown layers follow rigger head/body split by centroid vs chin', async (
   )
 })
 
-test('missing close-eye and close-mouth layers get Anime2.5DRig generic diffs', async () => {
+test('plain See-through mouth becomes closed art while open and cry variants are generated', async () => {
   const source = syntheticSeeThroughPsd()
   const withoutClosedArtwork = {
     ...source,
@@ -314,7 +350,26 @@ test('missing close-eye and close-mouth layers get Anime2.5DRig generic diffs', 
   )
   assert.ok(
     prepared.source.layers.some(
-      (layer) => layer.slot === 'mouth' && layer.variant === 'closed',
+      (layer) =>
+        layer.id === 'a25d-mouth-close' &&
+        layer.slot === 'mouth' &&
+        layer.variant === 'closed',
+    ),
+  )
+  assert.ok(
+    prepared.source.layers.some(
+      (layer) =>
+        layer.id === 'a25d-mouth-open' &&
+        layer.slot === 'mouth' &&
+        layer.variant === 'open',
+    ),
+  )
+  assert.ok(
+    prepared.source.layers.some(
+      (layer) =>
+        layer.id === 'a25d-mouth-cry' &&
+        layer.slot === 'mouth' &&
+        layer.variant === 'cry',
     ),
   )
   assert.equal(
@@ -325,6 +380,18 @@ test('missing close-eye and close-mouth layers get Anime2.5DRig generic diffs', 
     prepared.source.layers.filter((layer) => layer.variant === 'squeeze')
       .length,
     2,
+  )
+  assert.equal(
+    prepared.source.layers.filter(
+      (layer) => layer.variant === 'cry' && layer.slot !== 'mouth',
+    ).length,
+    2,
+  )
+  assert.equal(
+    prepared.source.layers.filter(
+      (layer) => layer.variant === 'cry' && layer.slot === 'mouth',
+    ).length,
+    1,
   )
 })
 
@@ -373,6 +440,30 @@ test('authored eye_squeeze artwork takes precedence over generated chevrons', as
     const width = Math.max(...xs) - Math.min(...xs)
     const height = Math.max(...ys) - Math.min(...ys)
     assert.ok(width / height > 2, 'authored wide mark must not be replaced')
+  }
+})
+
+test('authored eye_cry artwork takes precedence over generated crying eyes', async () => {
+  const source = syntheticSeeThroughPsd()
+  const withAuthoredCryEyes = {
+    ...source,
+    children: [
+      ...(source.children || []),
+      unknownBlob('eye_cry_l', 78, 66, 116, 118),
+      unknownBlob('eye_cry_r', 140, 66, 178, 121),
+    ],
+  } as Psd
+  const prepared = await prepareWithFakeCanvas(withAuthoredCryEyes)
+  const cryingEyes = prepared.source.layers.filter(
+    (layer) => layer.variant === 'cry' && layer.slot !== 'mouth',
+  )
+  assert.equal(cryingEyes.length, 2)
+  for (const eye of cryingEyes) {
+    const xs = eye.mesh.vertices.map((vertex) => vertex.x)
+    const ys = eye.mesh.vertices.map((vertex) => vertex.y)
+    const width = Math.max(...xs) - Math.min(...xs)
+    const height = Math.max(...ys) - Math.min(...ys)
+    assert.ok(height > width, 'authored tall tear artwork must not be replaced')
   }
 })
 

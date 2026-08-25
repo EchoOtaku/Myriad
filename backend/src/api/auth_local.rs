@@ -23,6 +23,19 @@ use crate::middleware::auth::{
     notify_auth_cache_invalidation,
 };
 
+fn auth_store_http(context: &'static str, error: impl std::fmt::Display) -> HttpError {
+    tracing::error!(%error, context, "auth store failed");
+    HttpError::from((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        Json(json!({ "error": format!("Failed to {context}") })),
+    ))
+}
+
+fn auth_store_app(context: &'static str, error: impl std::fmt::Display) -> HttpError {
+    tracing::error!(%error, context, "auth store failed");
+    HttpError(AppError::internal(format!("Failed to {context}")))
+}
+
 /// Modest global cap on concurrent Argon2 hash/verify work (MYR-006).
 ///
 /// Argon2 is intentionally CPU- and memory-heavy. Unbounded `spawn_blocking`
@@ -163,7 +176,8 @@ pub(crate) fn map_create_admin_insert_error(err: &dyn std::fmt::Display) -> AppE
         // first-admin race almost always means setup already completed.
         return admin_already_exists_error();
     }
-    AppError::internal("Failed to create admin account").with_message(s)
+    tracing::error!(error = %s, "create admin insert failed");
+    AppError::internal("Failed to create admin account")
 }
 
 /// POST /api/setup/create-admin
@@ -189,10 +203,10 @@ pub async fn create_admin(
 
     use sea_orm::Value as SeaValue;
 
-    let txn = db.begin().await.map_err(|e| {
-        tracing::error!("create-admin begin transaction failed: {:?}", e);
-        HttpError(AppError::internal("Database error"))
-    })?;
+    let txn = db
+        .begin()
+        .await
+        .map_err(|error| auth_store_app("begin admin setup", error))?;
 
     // Serialize concurrent setup; released automatically on commit/rollback.
     txn.execute_raw(Statement::from_sql_and_values(
@@ -201,10 +215,7 @@ pub async fn create_admin(
         [CREATE_ADMIN_ADVISORY_LOCK_KEY.into()],
     ))
     .await
-    .map_err(|e| {
-        tracing::error!("create-admin advisory lock failed: {:?}", e);
-        HttpError(AppError::internal("Database error"))
-    })?;
+    .map_err(|error| auth_store_app("lock admin setup", error))?;
 
     // Setup-only: reject if any admin already exists (any auth_provider).
     let admin_exists_result = txn
@@ -216,10 +227,7 @@ pub async fn create_admin(
             vec![],
         ))
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to check existing admin: {:?}", e);
-            HttpError(AppError::internal("Database error"))
-        })?;
+        .map_err(|error| auth_store_app("check existing admin", error))?;
 
     let admin_exists: bool = admin_exists_result
         .and_then(|row| row.try_get("", "exists").ok())
@@ -366,12 +374,7 @@ pub async fn local_login(
             vec![SeaValue::String(Some(request.username.clone()))],
         ))
         .await
-        .map_err(|_e| {
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error", "code": "database_error"})),
-            ))
-        })?;
+        .map_err(|error| auth_store_http("look up account", error))?;
 
     let user_row = match user_result {
         Some(row) => row,
@@ -532,12 +535,7 @@ pub async fn change_password(
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|_e| {
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error", "code": "database_error"})),
-            ))
-        })?;
+        .map_err(|error| auth_store_http("look up account", error))?;
 
     let user_row = user_result.ok_or_else(|| {
         tracing::warn!("User not found: {}", user_id);
