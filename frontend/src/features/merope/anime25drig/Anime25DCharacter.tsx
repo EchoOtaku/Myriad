@@ -50,6 +50,7 @@ export interface Anime25DCharacterHandle {
   setAutoSpeech: (active: boolean) => void
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
+  enqueueSpeechText: (text: string, locale?: string) => void
   setGazeTarget: (target: GazeTarget | null, source?: GazeSource) => void
   playMotionPlan: (
     performance: PerformanceDirective,
@@ -76,6 +77,9 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     const moodRef = useRef(mood)
     const speechActiveRef = useRef(false)
     const speechMouthFormRef = useRef(0)
+    const pendingSpeechTextRef = useRef<
+      Array<{ text: string; locale?: string }>
+    >([])
     const manualRef = useRef(manualControl)
     const baselineRef = useRef<PerformanceBaseline | null>(null)
     const performanceRef = useRef<{
@@ -222,9 +226,14 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         playerRef.current?.setSpeechActive(active)
       },
       setAutoSpeech(active) {
+        if (!active) playerRef.current?.clearSpeechText()
         playerRef.current?.setTarget({
           talk: active,
           mouthOpen: 0,
+          mouthWide: 0,
+          mouthRound: 0,
+          mouthNarrow: 0,
+          mouthSeal: 0,
         })
       },
       setSpeechEnergy(energy) {
@@ -237,6 +246,13 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
             speechMouthFormRef.current,
           ),
         )
+      },
+      enqueueSpeechText(text, locale) {
+        if (playerRef.current) {
+          playerRef.current.enqueueSpeechText(text, locale)
+        } else {
+          pendingSpeechTextRef.current.push({ text, locale })
+        }
       },
       setGazeTarget(target) {
         playerRef.current?.setTarget({
@@ -322,6 +338,10 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       const player = new Anime25DPlayer(canvas, playback, manifest)
       playerRef.current = player
       player.setSpeechActive(speechActiveRef.current)
+      for (const chunk of pendingSpeechTextRef.current) {
+        player.enqueueSpeechText(chunk.text, chunk.locale)
+      }
+      pendingSpeechTextRef.current = []
       if (performanceRef.current) {
         player.playPerformance(
           performanceRef.current.directive,

@@ -243,9 +243,10 @@ export const AraelPanel: React.FC = () => {
         source: 'reply',
         text: normalized,
         utteranceId: `final-${speechSequenceRef.current}-${messageId}`,
+        locale,
       })
     },
-    [],
+    [locale],
   )
 
   // 长按检测（提取到 useLongPress hook）
@@ -886,6 +887,7 @@ export const AraelPanel: React.FC = () => {
           messageId: assistantMessageId,
           source: 'reply',
           utteranceId: speechUtteranceId,
+          locale,
         })
       }
       const finishSpeech = (cancelled = false) => {
@@ -895,6 +897,7 @@ export const AraelPanel: React.FC = () => {
           messageId: assistantMessageId,
           source: 'reply',
           utteranceId: speechUtteranceId,
+          locale,
         })
         const normalized = normalizedSpeechText(speechText)
         if (!cancelled && normalized) {
@@ -1105,6 +1108,7 @@ export const AraelPanel: React.FC = () => {
                   source: 'reply',
                   utteranceId: speechUtteranceId,
                   text: tokenEvent.token,
+                  locale,
                 })
               } else if (speechUtteranceId) {
                 speechText += tokenEvent.token
@@ -1259,6 +1263,7 @@ export const AraelPanel: React.FC = () => {
       addExecutionStep,
       updateExecutionStep,
       pushDebugLog,
+      locale,
     ],
   )
 

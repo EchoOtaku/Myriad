@@ -15,6 +15,8 @@ export function useRigSpeechLifecycle(
       setSpeechEnergy: (energy) => rigRef.current?.setSpeechEnergy(energy),
       setSpeechArticulation: (articulation) =>
         rigRef.current?.setSpeechArticulation(articulation),
+      enqueueSpeechText: (text, locale) =>
+        rigRef.current?.enqueueSpeechText(text, locale),
     })
     const onSpeech = (event: Event) => {
       const detail = meropeSpeechEventDetail(

@@ -25,6 +25,7 @@ export interface RigCharacterHandle {
   setAutoSpeech: (active: boolean) => void
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
+  enqueueSpeechText: (text: string, locale?: string) => void
   setGazeTarget: (target: GazeTarget | null, source?: GazeSource) => void
   playMotionPlan: (performance: PerformanceDirective) => boolean
   stopMotionPlan: () => void
@@ -42,6 +43,9 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
   ({ activity, fallbackUrl, manifest, mood, manualControl = false }, ref) => {
     const animeRef = useRef<Anime25DCharacterHandle>(null)
     const speechActiveRef = useRef(false)
+    const pendingSpeechTextRef = useRef<
+      Array<{ text: string; locale?: string }>
+    >([])
     const latestPerformanceRef = useRef<{
       directive: PerformanceDirective
       startedAtMs: number
@@ -67,6 +71,10 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       } else {
         animeRef.current?.setSpeechArticulation(latest.articulation)
       }
+      for (const chunk of pendingSpeechTextRef.current) {
+        animeRef.current?.enqueueSpeechText(chunk.text, chunk.locale)
+      }
+      pendingSpeechTextRef.current = []
       if (latestPerformanceRef.current) {
         animeRef.current?.playMotionPlan(
           latestPerformanceRef.current.directive,
@@ -91,6 +99,13 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       setSpeechArticulation: (articulation) => {
         latestSpeechRef.current = { kind: 'articulation', articulation }
         animeRef.current?.setSpeechArticulation(articulation)
+      },
+      enqueueSpeechText: (text, locale) => {
+        if (animeRef.current) {
+          animeRef.current.enqueueSpeechText(text, locale)
+        } else {
+          pendingSpeechTextRef.current.push({ text, locale })
+        }
       },
       setGazeTarget: (target, source) =>
         animeRef.current?.setGazeTarget(target, source),

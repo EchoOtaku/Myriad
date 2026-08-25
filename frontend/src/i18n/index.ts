@@ -2445,6 +2445,10 @@ export interface TranslationKeys {
     presetLoadFailed: string
     presetSaveFailed: string
     presetDeleteFailed: string
+    accountLoadFailed: string
+    accountSaveFailed: string
+    passwordChangeFailed: string
+    localLoginSaveFailed: string
     configFilePermission: string
     configFileReadFailed: string
     iconSaveFailed: string

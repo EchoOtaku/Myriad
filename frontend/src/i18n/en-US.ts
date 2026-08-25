@@ -2848,6 +2848,10 @@ export const enUS: TranslationKeys = {
     presetLoadFailed: 'Could not load this task preset.',
     presetSaveFailed: 'Could not save this task preset.',
     presetDeleteFailed: 'Could not delete this task preset.',
+    accountLoadFailed: 'Could not load this account.',
+    accountSaveFailed: 'Could not save this account.',
+    passwordChangeFailed: 'Could not change the password.',
+    localLoginSaveFailed: 'Could not update local login.',
     configFilePermission:
       'Could not write the configuration file. Check disk permissions.',
     configFileReadFailed: 'Could not read the configuration file.',

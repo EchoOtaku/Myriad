@@ -334,7 +334,7 @@ test('unknown layers follow rigger head/body split by centroid vs chin', async (
   )
 })
 
-test('plain See-through mouth becomes closed art while open and cry variants are generated', async () => {
+test('plain See-through mouth becomes closed art while speaking and cry variants are generated', async () => {
   const source = syntheticSeeThroughPsd()
   const withoutClosedArtwork = {
     ...source,
@@ -348,6 +348,16 @@ test('plain See-through mouth becomes closed art while open and cry variants are
       (layer) => layer.slot === 'eye-left' && layer.variant === 'closed',
     ),
   )
+  for (const variant of ['wide', 'round', 'narrow'] as const) {
+    assert.ok(
+      prepared.source.layers.some(
+        (layer) =>
+          layer.id === `a25d-mouth-${variant}` &&
+          layer.slot === 'mouth' &&
+          layer.variant === variant,
+      ),
+    )
+  }
   assert.ok(
     prepared.source.layers.some(
       (layer) =>

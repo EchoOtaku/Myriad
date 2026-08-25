@@ -260,6 +260,29 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^failed to delete preset/i.test(raw)) {
     return classified(t.presetDeleteFailed, raw, hint)
   }
+  if (
+    /^failed to (look up account|load current user|check existing admin|check username|read installation claim)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.accountLoadFailed, action), raw, hint)
+  }
+  if (
+    /^failed to (begin admin setup|lock admin setup|create admin account)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.accountSaveFailed, action), raw, hint)
+  }
+  if (/^failed to (change password|set password)/i.test(raw)) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(joinParts(t.passwordChangeFailed, action), raw, hint)
+  }
+  if (/^failed to update local login/i.test(raw)) {
+    return classified(t.localLoginSaveFailed, raw, hint)
+  }
   if (code === 'account_create_failed') {
     return joinParts(
       currentCopy().auth.registerFailed,
@@ -643,7 +666,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (
     code === 'cache_clear_failed' ||
-    /^failed to (read installation claim|resolve site owner)/i.test(raw) ||
+    /^failed to resolve site owner/i.test(raw) ||
     /^ai[_ ]task[_ ]registry/i.test(raw)
   ) {
     return classified(t.database, raw, hint)

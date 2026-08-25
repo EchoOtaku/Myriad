@@ -603,18 +603,8 @@ pub async fn change_password(
             ],
         ))
         .await
-        .map_err(|_e| {
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to update password", "code": "password_failed"})),
-            ))
-        })?
-        .ok_or_else(|| {
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to update password", "code": "password_failed"})),
-            ))
-        })?;
+        .map_err(|error| auth_store_http("change password", error))?
+        .ok_or_else(|| auth_store_http("change password", "no user row returned"))?;
 
     let new_tv: i64 = updated
         .try_get::<i32>("", "token_version")
@@ -861,11 +851,7 @@ pub async fn register(
             )));
         }
         Err(error) => {
-            tracing::error!(error = %error, "register: failed to read installation claim");
-            return Err(HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error", "code": "database_error"})),
-            )));
+            return Err(auth_store_http("read installation claim", error));
         }
     }
 
@@ -882,12 +868,7 @@ pub async fn register(
             vec![SeaValue::String(Some(req.username.clone()))],
         ))
         .await
-        .map_err(|_e| {
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error", "code": "database_error"})),
-            ))
-        })?;
+        .map_err(|error| auth_store_http("check username", error))?;
     if dup.is_some() {
         return Err(HttpError::from((
             StatusCode::CONFLICT,
@@ -985,12 +966,7 @@ pub async fn set_password(
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|_e| {
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error", "code": "database_error"})),
-            ))
-        })?
+        .map_err(|error| auth_store_http("look up account", error))?
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::NOT_FOUND,
@@ -1021,12 +997,7 @@ pub async fn set_password(
             vec![SeaValue::String(Some(hash)), SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|_e| {
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Failed to set password", "code": "password_failed"})),
-            ))
-        })?;
+        .map_err(|error| auth_store_http("set password", error))?;
     let new_tv = updated
         .as_ref()
         .and_then(|row| {
@@ -1114,12 +1085,7 @@ pub async fn toggle_local_login(
             vec![SeaValue::Int(Some(user_id))],
         ))
         .await
-        .map_err(|_e| {
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error", "code": "database_error"})),
-            ))
-        })?
+        .map_err(|error| auth_store_http("look up account", error))?
         .ok_or_else(|| {
             HttpError::from((
                 StatusCode::NOT_FOUND,
@@ -1158,12 +1124,7 @@ pub async fn toggle_local_login(
         vec![SeaValue::Bool(Some(disabled)), SeaValue::Int(Some(user_id))],
     ))
     .await
-    .map_err(|_e| {
-        HttpError::from((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error": "Failed to update", "code": "update_failed"})),
-        ))
-    })?;
+    .map_err(|error| auth_store_http("update local login", error))?;
 
     Ok(Json(json!({"success": true, "enabled": req.enabled})))
 }
@@ -1278,12 +1239,7 @@ pub async fn admin_create_user(
             vec![SeaValue::String(Some(req.username.clone()))],
         ))
         .await
-        .map_err(|_e| {
-            HttpError::from((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({"error": "Database error", "code": "database_error"})),
-            ))
-        })?;
+        .map_err(|error| auth_store_http("check username", error))?;
     if dup.is_some() {
         return Err(HttpError::from((
             StatusCode::CONFLICT,

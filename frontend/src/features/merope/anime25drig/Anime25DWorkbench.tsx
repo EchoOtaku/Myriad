@@ -1044,7 +1044,11 @@ export default function Anime25DWorkbench({
                         key: 'mouth',
                         label: labels.anime25dInspectMouth,
                         value: fillInspect(labels.anime25dInspectMouthValue, {
-                          open: snapshot.mouthOpenLayers,
+                          open:
+                            snapshot.mouthOpenLayers +
+                            snapshot.mouthWideLayers +
+                            snapshot.mouthRoundLayers +
+                            snapshot.mouthNarrowLayers,
                           close: snapshot.mouthCloseLayers,
                         }),
                         copyable: false,

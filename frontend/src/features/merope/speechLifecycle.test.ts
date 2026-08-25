@@ -51,13 +51,16 @@ function fakeTarget() {
   const auto: boolean[] = []
   const energy: Array<number | null> = []
   const articulation: SpeechArticulation[] = []
+  const text: Array<{ text: string; locale?: string }> = []
   const target: SpeechLifecycleTarget = {
     setSpeechActive: (value) => active.push(value),
     setAutoSpeech: (value) => auto.push(value),
     setSpeechEnergy: (value) => energy.push(value),
     setSpeechArticulation: (value) => articulation.push(value),
+    enqueueSpeechText: (value, locale) =>
+      text.push({ text: value, ...(locale ? { locale } : {}) }),
   }
-  return { target, active, auto, energy, articulation }
+  return { target, active, auto, energy, articulation, text }
 }
 
 test('keeps fallback prosody alive for a complete non-streamed reply', () => {

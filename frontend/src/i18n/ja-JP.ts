@@ -2832,6 +2832,10 @@ export const jaJP: TranslationKeys = {
     presetLoadFailed: 'このタスクプリセットを読み込めませんでした。',
     presetSaveFailed: 'このタスクプリセットを保存できませんでした。',
     presetDeleteFailed: 'このタスクプリセットを削除できませんでした。',
+    accountLoadFailed: 'このアカウントを読み込めませんでした。',
+    accountSaveFailed: 'このアカウントを保存できませんでした。',
+    passwordChangeFailed: 'パスワードを変更できませんでした。',
+    localLoginSaveFailed: 'ローカルログイン設定を保存できませんでした。',
     configFilePermission:
       '設定ファイルを書き込めませんでした。ディスク権限を確認してください。',
     configFileReadFailed: '設定ファイルを読み込めませんでした。',

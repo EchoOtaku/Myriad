@@ -34,12 +34,14 @@ pub(crate) const LEGACY_PRIMARY_ADMIN_ID: i32 = 1;
 
 type ApiError = (StatusCode, Json<Value>);
 
-fn db_error(e: impl std::fmt::Debug) -> ApiError {
-    tracing::error!("admin_users DB error: {:?}", e);
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({"error": "Database error", "code": "database_error"})),
-    )
+fn db_error(context: &'static str) -> impl FnOnce(impl std::fmt::Display) -> ApiError {
+    move |error| {
+        tracing::error!(%error, context, "admin users store failed");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to {context}") })),
+        )
+    }
 }
 
 fn http_to_api(err: crate::error::HttpError) -> ApiError {
@@ -125,7 +127,7 @@ async fn load_is_owner(db: &DatabaseConnection, user_id: i32) -> Result<bool, Ap
             [user_id.into()],
         ))
         .await
-        .map_err(db_error)?;
+        .map_err(db_error("check owner"))?;
     Ok(row
         .and_then(|r| r.try_get::<bool>("", "is_owner").ok())
         .unwrap_or(false))
@@ -236,7 +238,7 @@ pub async fn list_users(
             vec![],
         ))
         .await
-        .map_err(db_error)?;
+        .map_err(db_error("list users"))?;
 
     let identity_rows = db
         .query_all_raw(Statement::from_sql_and_values(
@@ -247,7 +249,7 @@ pub async fn list_users(
             vec![],
         ))
         .await
-        .map_err(db_error)?;
+        .map_err(db_error("list user identities"))?;
 
     let mut identities_by_user: HashMap<i32, Vec<Value>> = HashMap::new();
     for row in &identity_rows {
@@ -285,7 +287,7 @@ pub async fn get_user(
             [user_id.into()],
         ))
         .await
-        .map_err(db_error)?
+        .map_err(db_error("find user"))?
         .ok_or_else(not_found)?;
 
     let identity_rows = db
@@ -298,7 +300,7 @@ pub async fn get_user(
             [user_id.into()],
         ))
         .await
-        .map_err(db_error)?;
+        .map_err(db_error("list user identities"))?;
     let identities: Vec<Value> = identity_rows.iter().map(identity_row_to_json).collect();
 
     let tapp_rows = db
@@ -309,7 +311,7 @@ pub async fn get_user(
             [user_id.into()],
         ))
         .await
-        .map_err(db_error)?;
+        .map_err(db_error("list user apps"))?;
     let tapps: Vec<Value> = tapp_rows
         .iter()
         .map(|row| {

@@ -710,6 +710,35 @@ describe('userFacingError', () => {
     assert.notEqual(favorites, currentCopy().errors.database)
   })
 
+  it('maps leftover account lookup password and local login without unifying them', () => {
+    const lookup = userFacingError(
+      'Failed to look up account: relation "users" does not exist',
+    )
+    const current = userFacingError('Failed to load current user')
+    const username = userFacingError('Failed to check username')
+    const change = userFacingError('Failed to change password')
+    const set = userFacingError('Failed to set password')
+    const local = userFacingError('Failed to update local login')
+    const updater = userFacingError('decode json failed: expected value at line 1')
+    const register = userFacingError(
+      new ApiError('Failed to create account', 500, 'account_create_failed'),
+    )
+    assert.equal(/users"|does not exist/.test(lookup), false)
+    assert.match(lookup, /账号|account|アカウント/)
+    assert.match(lookup, /look up account/)
+    assert.match(current, /load current user/)
+    assert.match(username, /check username/)
+    assert.match(change, /密码|password|パスワード/)
+    assert.match(set, /密码|password|パスワード/)
+    assert.match(local, /本地登录|local login|ローカルログイン/)
+    assert.notEqual(lookup, change)
+    assert.notEqual(change, local)
+    assert.notEqual(local, updater)
+    assert.notEqual(lookup, register)
+    assert.notEqual(lookup, currentCopy().errors.database)
+    assert.notEqual(local, currentCopy().errors.noticeUpdaterFailed)
+  })
+
   it('maps leftover inbox and delivery dumps', () => {
     const sql = userFacingError(
       'claim inbound receipt insert: relation "federation_inbox_receipts" does not exist',
