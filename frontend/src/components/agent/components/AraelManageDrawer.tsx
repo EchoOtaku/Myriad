@@ -222,7 +222,15 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = ({
           }
         }
       } catch (e) {
-        setError(userFacingError(e, i18n.arael.manageLoadError))
+        const fallback =
+          currentTab === 'heartbeat'
+            ? i18n.arael.heartbeatLoadFailed
+            : currentTab === 'skills'
+              ? i18n.arael.skillsLoadFailed
+              : currentTab === 'memory'
+                ? i18n.arael.memoryLoadFailed
+                : i18n.arael.manageLoadError
+        setError(userFacingError(e, fallback))
       } finally {
         setLoading(false)
       }
@@ -231,6 +239,9 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = ({
       isAdmin,
       isAuthenticated,
       i18n.arael.manageLoadError,
+      i18n.arael.heartbeatLoadFailed,
+      i18n.arael.skillsLoadFailed,
+      i18n.arael.memoryLoadFailed,
       i18n.arael.manageAdminOnly,
       i18n.arael.loginRequiredHint,
     ],
@@ -248,10 +259,10 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = ({
         await agentService.deleteMemory(memoryId)
       } catch (e) {
         setMemories(snapshot)
-        setError(userFacingError(e, i18n.arael.manageActionError))
+        setError(userFacingError(e, i18n.arael.memoryDeleteFailed))
       }
     },
-    [memories, i18n.arael.manageActionError],
+    [memories, i18n.arael.memoryDeleteFailed],
   )
 
   const handleUpdateMemory = useCallback(
@@ -263,10 +274,10 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = ({
         const m = await agentService.getMemories()
         setMemories(m)
       } catch (e) {
-        setError(userFacingError(e, i18n.arael.manageActionError))
+        setError(userFacingError(e, i18n.arael.memorySaveFailed))
       }
     },
-    [i18n.arael.manageActionError],
+    [i18n.arael.memorySaveFailed],
   )
 
   const handleDeleteSkill = useCallback(
@@ -277,10 +288,10 @@ export const AraelManageDrawer: React.FC<AraelManageDrawerProps> = ({
         await agentService.deleteSkill(skillId)
       } catch (e) {
         setSkills(snapshot)
-        setError(userFacingError(e, i18n.arael.manageActionError))
+        setError(userFacingError(e, i18n.arael.skillDeleteFailed))
       }
     },
-    [skills, i18n.arael.manageActionError],
+    [skills, i18n.arael.skillDeleteFailed],
   )
 
   const memoryTypeLabel = (type: string) => {

@@ -624,7 +624,7 @@ class RemoteStoreServiceImpl {
         } catch (error) {
           return {
             source,
-            error: userFacingError(error, currentCopy().tapp.unknownError),
+            error: userFacingError(error, currentCopy().tapp.loadRemoteFailed),
           }
         }
       }),

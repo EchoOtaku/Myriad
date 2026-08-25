@@ -25,6 +25,7 @@ import type {
   TaskPresetListResponse,
 } from './types'
 
+import { currentCopy } from '../../i18n/localeCopy'
 import { ApiError, apiService } from '../api'
 import { abortSseSubscriptions, executeSSERequest } from './sseTransport'
 
@@ -513,7 +514,7 @@ class AgentService {
       await new Promise((resolve) => setTimeout(resolve, intervalMs))
     }
 
-    throw new Error(`Task ${taskId} timed out after ${timeoutMs}ms`)
+    throw new Error(currentCopy().errors.agentStepTimeout)
   }
 
   // 任务预设 API

@@ -165,8 +165,9 @@ describe('userFacingError', () => {
 
   it('maps leftover agent processing Chinese without dumping internals', () => {
     const text = userFacingError('处理失败: database connection closed')
-    assert.equal(/database connection/i.test(text), false)
+    assert.match(text, /database connection closed/)
     assert.equal(/处理失败/.test(text), false)
+    assert.notEqual(text, currentCopy().errors.operationFailed)
     const leftover = userFacingError('抱歉，这次没能完成你的请求：boom')
     assert.equal(/boom/.test(leftover), false)
     const interrupted = userFacingError('任务因服务重启而中断，请重新提交')
@@ -288,6 +289,8 @@ describe('userFacingError', () => {
   it('maps leftover skip-step Chinese', () => {
     const text = userFacingError('用户选择跳过错误步骤')
     assert.equal(text.includes('用户选择'), false)
+    assert.notEqual(text, currentCopy().errors.agentProcessingFailed)
+    assert.notEqual(text, currentCopy().errors.operationFailed)
   })
 
   it('maps leftover scheduler task-id dumps', () => {
@@ -300,6 +303,8 @@ describe('userFacingError', () => {
       'Rig compilation failed: missing field `layers` at line 1 column 12',
     )
     assert.equal(/missing field|layers/.test(text), false)
+    assert.notEqual(text, currentCopy().merope.visualFailed)
+    assert.match(text, /骨骼|rig|リグ/i)
   })
 
   it('maps leftover federation identity dumps', () => {
@@ -567,6 +572,8 @@ describe('userFacingError', () => {
   it('maps leftover e2e serialize dumps', () => {
     const text = userFacingError('payload serialize: EOF while parsing a value at line 1')
     assert.equal(/EOF|line 1/.test(text), false)
+    assert.notEqual(text, currentCopy().errors.operationFailed)
+    assert.match(text, /端到端|end-to-end|エンドツーエンド/)
   })
 
   it('maps leftover Tapp declared-API dumps', () => {
@@ -737,6 +744,32 @@ describe('userFacingError', () => {
     assert.notEqual(lookup, register)
     assert.notEqual(lookup, currentCopy().errors.database)
     assert.notEqual(local, currentCopy().errors.noticeUpdaterFailed)
+  })
+
+  it('maps leftover admin user store failures without unifying them', () => {
+    const list = userFacingError(
+      'Failed to list users: relation "users" does not exist',
+    )
+    const identities = userFacingError('Failed to list user identities')
+    const update = userFacingError('Failed to update user')
+    const unlink = userFacingError('Failed to unlink identity')
+    const remove = userFacingError('Failed to delete user')
+    const commit = userFacingError('Failed to commit user delete')
+    assert.equal(/users"|does not exist/.test(list), false)
+    assert.match(list, /用户|user|ユーザー/)
+    assert.match(list, /list users/)
+    assert.match(identities, /list user identities/)
+    assert.match(update, /用户|user|ユーザー/)
+    assert.match(unlink, /解绑|unlink|解除/)
+    assert.match(remove, /删除|delete|削除/)
+    assert.match(commit, /commit user delete/)
+    assert.notEqual(list, identities)
+    assert.notEqual(list, update)
+    assert.notEqual(update, unlink)
+    assert.notEqual(remove, commit)
+    assert.notEqual(list, currentCopy().errors.database)
+    assert.notEqual(list, currentCopy().errors.operationFailed)
+    assert.notEqual(update, currentCopy().errors.operationFailed)
   })
 
   it('maps leftover inbox and delivery dumps', () => {
@@ -962,7 +995,8 @@ describe('userFacingError', () => {
     assert.notEqual(save, load)
     assert.notEqual(save, currentCopy().errors.operationFailed)
     const identity = userFacingError('Identity not found for this user')
-    assert.match(identity, /Identity not found/)
+    assert.equal(/Identity not found/.test(identity), false)
+    assert.match(identity, /找不到|not found|見つかり/)
   })
 
   it('maps avatar source leftovers away from the site-face copy', () => {
@@ -1122,4 +1156,101 @@ describe('userFacingError', () => {
     assert.notEqual(token, currentCopy().errors.operationFailed)
     assert.notEqual(npsso, token)
   })
+
+  it('maps leftover playlist song youtube config media and schedule without unifying them', () => {
+    const playlist = userFacingError(
+      new ApiError('Failed to fetch playlist: timed out', 502, 'playlist_fetch_failed'),
+    )
+    const song = userFacingError(
+      new ApiError('Failed to fetch song detail', 502, 'song_fetch_failed'),
+    )
+    const youtube = userFacingError(
+      new ApiError('YouTube upstream failed', 502, 'youtube_upstream_failed'),
+    )
+    const configSave = userFacingError(
+      new ApiError('Failed to save', 500, 'config_save_failed'),
+    )
+    const configLoad = userFacingError('Failed to load config')
+    const media = userFacingError(
+      new ApiError('Invalid action', 400, 'media_action_invalid'),
+    )
+    const mode = userFacingError(
+      new ApiError('Invalid mode', 400, 'media_mode_invalid'),
+    )
+    const schedule = userFacingError(
+      new ApiError('Invalid schedule config', 400, 'schedule_invalid'),
+    )
+    const retry = userFacingError('The failed step will be retried')
+    const skipped = userFacingError('The failed step was skipped')
+    const confirm = userFacingError('Confirmation failed')
+    const steering = userFacingError(
+      new ApiError(
+        'Failed to persist steering instruction: disk is full',
+        503,
+        'steering_unavailable',
+      ),
+    )
+    assert.match(playlist, /歌单|playlist|プレイリスト/)
+    assert.match(playlist, /timed out/)
+    assert.match(song, /歌曲|song|曲/)
+    assert.match(youtube, /YouTube/)
+    assert.match(youtube, /502/)
+    assert.match(configSave, /配置|settings|設定/)
+    assert.match(configLoad, /读取|read|読み込/)
+    assert.notEqual(playlist, song)
+    assert.notEqual(configSave, configLoad)
+    assert.notEqual(media, mode)
+    assert.match(media, /播放|playback|再生/)
+    assert.match(schedule, /时间|schedule|スケジュール/)
+    assert.notEqual(retry, skipped)
+    assert.notEqual(confirm, retry)
+    assert.notEqual(steering, currentCopy().errors.agentProcessingFailed)
+    assert.match(steering, /disk is full/)
+    assert.notEqual(playlist, currentCopy().errors.operationFailed)
+    assert.notEqual(song, currentCopy().errors.operationFailed)
+    assert.notEqual(youtube, currentCopy().errors.operationFailed)
+    assert.notEqual(configSave, currentCopy().errors.operationFailed)
+    assert.notEqual(media, currentCopy().errors.operationFailed)
+    assert.notEqual(schedule, currentCopy().tapp.unknownError)
+    assert.notEqual(schedule, currentCopy().errors.operationFailed)
+  })
+
+  it('maps leftover rig portrait and see-through without calling them generation failures', () => {
+    const compile = userFacingError(
+      'Rig compilation failed: missing field `layers` at line 1 column 12',
+    )
+    const stored = userFacingError('Stored rig is invalid')
+    const atlas = userFacingError('Rig atlas exceeds 20 MB')
+    const imported = userFacingError('Invalid rig import')
+    const portrait = userFacingError('Portrait image exceeds 10 MB')
+    const missing = userFacingError(
+      'The current master portrait is not available in the site image cache',
+    )
+    const token = userFacingError(
+      new ApiError(
+        'Configure a Hugging Face API token before using See-through',
+        428,
+        'see_through_token_required',
+      ),
+    )
+    const busy = userFacingError(
+      new ApiError(
+        'A See-through decomposition is already running',
+        409,
+        'see_through_busy',
+      ),
+    )
+    assert.equal(/missing field|layers/.test(compile), false)
+    assert.notEqual(compile, currentCopy().merope.visualFailed)
+    assert.notEqual(stored, compile)
+    assert.notEqual(atlas, imported)
+    assert.notEqual(portrait, missing)
+    assert.notEqual(portrait, currentCopy().merope.visualFailed)
+    assert.match(atlas, /20 MB/)
+    assert.match(portrait, /10 MB/)
+    assert.match(token, /token|令牌|トークン/i)
+    assert.notEqual(token, busy)
+    assert.notEqual(missing, currentCopy().merope.visualFailed)
+  })
 })
+

@@ -143,6 +143,11 @@ export interface TranslationKeys {
     rigAtlasFailed: string
     rigImportFailed: string
     rigCommitFailed: string
+    rigCompileFailed: string
+    rigStoredInvalid: string
+    portraitUnavailable: string
+    portraitDownloadFailed: string
+    portraitUploadFailed: string
     statusIdle: string
     statusThinking: string
     statusTalking: string
@@ -1016,6 +1021,11 @@ export interface TranslationKeys {
     usersRefreshDesc: string
     usersLoadError: string
     usersActionError: string
+    usersUpdateFailed: string
+    usersCreateFailed: string
+    usersDeleteFailed: string
+    usersUninstallFailed: string
+    usersUnlinkFailed: string
     usersErrorUnlinkLast: string
     usersErrorDeleteSelf: string
     usersErrorLastAdmin: string
@@ -1930,6 +1940,7 @@ export interface TranslationKeys {
     moduleVisibilityAdmin: string
     moduleVisibilitySaved: string
     moduleVisibilityLoadFailed: string
+    moduleVisibilitySaveFailed: string
     agentUsageGuest: string
     agentUsageUser: string
     agentUsageNone: string
@@ -1953,6 +1964,7 @@ export interface TranslationKeys {
     hitokotoAuthorFieldHint: string
     hitokotoSaved: string
     hitokotoLoadFailed: string
+    hitokotoSaveFailed: string
     reportSettingsTitle: string
     reportSettingsDesc: string
     reportExpiryEnabled: string
@@ -1964,6 +1976,7 @@ export interface TranslationKeys {
     reportExpiryDaysHint: string
     reportSettingsSaved: string
     reportSettingsLoadFailed: string
+    reportSettingsSaveFailed: string
     aiQuotaTitle: string
     aiQuotaDesc: string
     userAiQuota: string
@@ -2562,6 +2575,26 @@ export interface TranslationKeys {
     streamUnreadable: string
     dndScheduleInvalid: string
     dndScheduleIncomplete: string
+    e2eKeyFailed: string
+    configSaveFailed: string
+    mediaActionInvalid: string
+    mediaModeInvalid: string
+    scheduleInvalid: string
+    federationPublishFailed: string
+    federationShareFailed: string
+    federationActionFailed: string
+    transferNotReady: string
+    federationMediaUploadFailed: string
+    agentStepSkipped: string
+    agentStepRetrying: string
+    agentConfirmFailed: string
+    agentSteeringFailed: string
+    geoLoadFailed: string
+    tappOpenFailed: string
+    scheduleRegisterFailed: string
+    serviceNotConfigured: string
+    notificationUnavailable: string
+    notificationPrefsSaveFailed: string
   }
 
   wallpaperStatus: {
@@ -2688,6 +2721,7 @@ export interface TranslationKeys {
     shuffle: string
     listRepeat: string
     loadPlaylistFailed: string
+    loadSongFailed: string
     playlistEmpty: string
     playlistRateLimited: string
     playlistBlocked: string
@@ -3608,6 +3642,7 @@ export interface TranslationKeys {
     appCodeLoadFailed: string
     loadAppFailed: string
     startAppFailed: string
+    stopAppFailed: string
     widgetNotFound: string
     needStartToShow: string
     defaultNotificationTitle: string
@@ -3805,6 +3840,8 @@ export interface TranslationKeys {
     invalidUrl: string
     addSourceFailed: string
     updateSourceFailed: string
+    deleteSourceFailed: string
+    toggleSourceFailed: string
     refreshAllStores: string
     confirmDeleteSource: string
 
@@ -4478,6 +4515,16 @@ export interface TranslationKeys {
     emptyMemory: string
     manageLoadError: string
     manageActionError: string
+    heartbeatSaveFailed: string
+    heartbeatToggleFailed: string
+    heartbeatDeleteFailed: string
+    heartbeatLoadFailed: string
+    skillsLoadFailed: string
+    memoryLoadFailed: string
+    memorySaveFailed: string
+    memoryDeleteFailed: string
+    skillDeleteFailed: string
+    cancelFailed: string
     loginRequiredHint: string
     manageAdminOnly: string
     editHeartbeat: string

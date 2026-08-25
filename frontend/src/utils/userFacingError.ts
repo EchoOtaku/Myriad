@@ -126,7 +126,7 @@ function isInternalDump(text: string): boolean {
     return true
   }
   if (
-    /missing field|at line \d+ column|expected value|key must be a string/i.test(
+    /missing field|at line \d+|expected value|key must be a string|eof while parsing|trailing characters|invalid length/i.test(
       detail,
     )
   ) {
@@ -153,7 +153,15 @@ function classified(label: string, raw: string, hint = ''): string {
   const rest = colon >= 0 ? raw.slice(colon + 1).trim() : ''
   const keep =
     rest && !isInternalDump(rest) && !isUselessErrorText(rest) ? clip(rest) : ''
-  return joinParts(label, keep, usefulExtra(hint, label, keep))
+  const size = raw.match(/\d+\s*MB/i)?.[0] || ''
+  const png = /\bPNG\b/i.test(raw) && /must be/i.test(raw) ? 'PNG' : ''
+  return joinParts(
+    label,
+    keep,
+    size && keep.indexOf(size) < 0 ? size : '',
+    png && keep.toUpperCase().indexOf('PNG') < 0 ? png : '',
+    usefulExtra(hint, label, keep),
+  )
 }
 
 /** Localized, diagnosable copy for anything that can land in the UI. */
@@ -283,6 +291,36 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^failed to update local login/i.test(raw)) {
     return classified(t.localLoginSaveFailed, raw, hint)
   }
+  if (
+    /^failed to (check owner|list users|list user identities|find user|list user apps|count admins|count identities|load identity)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(
+      joinParts(currentCopy().config.usersLoadError, action),
+      raw,
+      hint,
+    )
+  }
+  if (/^failed to update user/i.test(raw)) {
+    return classified(currentCopy().config.usersUpdateFailed, raw, hint)
+  }
+  if (/^failed to unlink identity/i.test(raw)) {
+    return classified(currentCopy().config.usersUnlinkFailed, raw, hint)
+  }
+  if (
+    /^failed to (begin user delete|cleanup user data|delete user|rollback user delete|commit user delete)/i.test(
+      raw,
+    )
+  ) {
+    const action = raw.match(/^failed to ([^:]+)/i)?.[1]?.trim() || ''
+    return classified(
+      joinParts(currentCopy().config.usersDeleteFailed, action),
+      raw,
+      hint,
+    )
+  }
   if (code === 'account_create_failed') {
     return joinParts(
       currentCopy().auth.registerFailed,
@@ -387,7 +425,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return currentCopy().tapp.installFailed
   }
   if (code === 'steering_unavailable' || /^failed to persist steering/i.test(raw)) {
-    return t.agentProcessingFailed
+    return classified(t.agentSteeringFailed, raw, hint)
   }
   if (code === 'dnd_schedule_invalid' || /invalid do-not-disturb/i.test(raw)) {
     return t.dndScheduleInvalid
@@ -427,10 +465,12 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   }
   if (
     code === 'playlist_fetch_failed' ||
-    code === 'song_fetch_failed' ||
-    /^failed to fetch (playlist|song detail)$/i.test(raw)
+    /^failed to fetch (verbatim )?playlist/i.test(raw)
   ) {
-    return t.operationFailed
+    return classified(currentCopy().music.loadPlaylistFailed, raw, hint)
+  }
+  if (code === 'song_fetch_failed' || /^failed to fetch song detail/i.test(raw)) {
+    return classified(currentCopy().music.loadSongFailed, raw, hint)
   }
   if (code === 'hitokoto_fetch_failed' || /^hitokoto api failed$/i.test(raw)) {
     return currentCopy().config.hitokotoLoadFailed
@@ -439,7 +479,8 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     /failed to fetch (hitokoto|bilibili|bangumi|steam|weather|netease|game details)/i.test(
       raw,
     ) ||
-    /^(bilibili|bangumi|weather|netease|steam) api error/i.test(raw)
+    /^(bilibili|bangumi|weather|netease|steam) api error/i.test(raw) ||
+    /获取\s*(Steam|Bilibili|Bangumi|Hitokoto|天气|网易)/i.test(raw)
   ) {
     const name = /hitokoto/i.test(raw)
       ? 'Hitokoto'
@@ -449,9 +490,9 @@ export function userFacingError(reason: unknown, fallback?: string): string {
           ? 'Bangumi'
           : /steam|game details/i.test(raw)
             ? 'Steam'
-            : /weather/i.test(raw)
+            : /weather|天气/i.test(raw)
               ? 'Weather'
-              : /netease/i.test(raw)
+              : /netease|网易/i.test(raw)
                 ? 'Netease'
                 : 'Platform'
     const label = t.platformNamedFetchFailed.replace('{name}', name)
@@ -716,7 +757,12 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.rateLimited
   }
   if (code === 'youtube_upstream_failed' || /^youtube upstream failed$/i.test(raw)) {
-    return joinParts(t.serverError.replace('{status}', String(status || 502)))
+    const label = t.platformNamedFetchFailed.replace('{name}', 'YouTube')
+    return joinParts(
+      label,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, label),
+    )
   }
   if (
     code === 'e2e_key_failed' ||
@@ -725,10 +771,15 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       raw,
     )
   ) {
-    return joinParts(t.operationFailed, usefulExtra(hint, t.operationFailed))
+    return classified(t.e2eKeyFailed, raw, hint)
   }
-  if (code === 'config_save_failed') {
-    return joinParts(t.operationFailed, usefulExtra(hint, t.operationFailed))
+  if (
+    code === 'config_save_failed' ||
+    /^failed to (load|save) config$/i.test(raw) ||
+    /^failed to serialize providers$/i.test(raw)
+  ) {
+    const label = /load config/i.test(raw) ? t.configFileReadFailed : t.configSaveFailed
+    return classified(label, raw, hint)
   }
   const brew = currentCopy().brew
   if (
@@ -940,7 +991,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       raw,
     )
   ) {
-    return t.platformFetchFailed
+    return classified(t.platformFetchFailed, raw, hint)
   }
   if (
     code === 'platform_refresh_reconcile_failed' ||
@@ -968,7 +1019,11 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (
     code === 'agent_processing_failed' ||
     /^processing failed$/i.test(raw) ||
-    /^处理失败/.test(raw) ||
+    /^处理失败/.test(raw)
+  ) {
+    return classified(t.agentProcessingFailed, raw, hint)
+  }
+  if (
     /抱歉，这次没能完成你的请求|抱歉，执行时遇到了问题|没能执行成功|执行过程中遇到问题/.test(
       raw,
     )
@@ -976,24 +1031,27 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.agentProcessingFailed
   }
   if (
-    /^the scheduled task failed$|^the task failed$|^failed$|前端任务执行失败|^任务执行失败$|^任务未完成$|^任务失败$|^未知错误$|^失败$/.test(
+    /^the scheduled task failed$|前端任务执行失败|^任务执行失败$|^任务未完成$|^任务失败$/.test(
       raw,
     )
   ) {
+    return classified(t.noticeScheduleFailed, raw, hint)
+  }
+  if (/^the task failed$|^failed$|^未知错误$|^失败$/.test(raw)) {
     return t.agentProcessingFailed
   }
   if (
     /^the failed step was skipped$|用户选择跳过错误步骤/.test(raw)
   ) {
-    return t.agentProcessingFailed
+    return t.agentStepSkipped
   }
   if (
     /^the failed step will be retried$|用户选择重试失败步骤/.test(raw)
   ) {
-    return t.agentProcessingFailed
+    return t.agentStepRetrying
   }
   if (/^confirmation failed$/i.test(raw) || /^确认执行失败/.test(raw)) {
-    return t.agentProcessingFailed
+    return t.agentConfirmFailed
   }
   if (
     /this action is not supported|that platform is not supported|不支持此操作|不支持的平台名称/i.test(
@@ -1227,11 +1285,12 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return t.forbidden
   }
   if (
-    /^this service is not configured$|API Key 未配置|图片生成完成，但无法提取/i.test(
-      raw,
-    )
+    /^this service is not configured$|API Key 未配置/i.test(raw)
   ) {
-    return /TTS|语音|Speech/.test(raw) ? t.speechNotConfigured : t.agentProcessingFailed
+    return /TTS|语音|Speech/.test(raw) ? t.speechNotConfigured : t.serviceNotConfigured
+  }
+  if (/图片生成完成，但无法提取/.test(raw)) {
+    return currentCopy().agentPersona.onboarding.imageProviderInvalidResponse
   }
   if (
     /^invalid tappid$/i.test(raw) ||
@@ -1239,12 +1298,11 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   ) {
     return currentCopy().tapp.invalidId
   }
-  if (
-    code === 'media_action_invalid' ||
-    code === 'media_mode_invalid' ||
-    /^invalid (action|mode)$/i.test(raw)
-  ) {
-    return t.operationFailed
+  if (code === 'media_action_invalid' || /^invalid action$/i.test(raw)) {
+    return classified(t.mediaActionInvalid, raw, hint)
+  }
+  if (code === 'media_mode_invalid' || /^invalid mode$/i.test(raw)) {
+    return classified(t.mediaModeInvalid, raw, hint)
   }
   if (
     /^invalid url$/i.test(raw) ||
@@ -1397,7 +1455,7 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     code === 'notification_unavailable' ||
     /^notification system not initialized$/i.test(raw)
   ) {
-    return t.notificationActionFailed
+    return t.notificationUnavailable
   }
   const setup = currentCopy().setup
   if (
@@ -1432,17 +1490,94 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     /^invalid schedule (config|type)/i.test(raw) ||
     /^invalid (execution target|missed policy|scope)/i.test(raw)
   ) {
-    return currentCopy().tapp.unknownError
+    return classified(t.scheduleInvalid, raw, hint)
   }
   if (/^task ['"]?[^'"]+['"]? not found$/i.test(raw)) {
     return t.notFound
   }
+  if (/identity not found/i.test(raw)) {
+    return t.notFound
+  }
   if (
-    /stored rig is invalid|rig character asset|rig compilation failed|rig manifest migration|invalid rig (import|source|atlas|analysis)|invalid portrait/i.test(
+    /^media upload failed/i.test(raw) ||
+    /failed to upload (federation )?media/i.test(raw)
+  ) {
+    return classified(t.federationMediaUploadFailed, raw, hint)
+  }
+  const merope = currentCopy().merope
+  if (
+    code === 'see_through_token_required' ||
+    /hugging face api token is not configured/i.test(raw)
+  ) {
+    return merope.motionSeeThroughTokenRequired
+  }
+  if (
+    code === 'see_through_busy' ||
+    /see-through decomposition is already running/i.test(raw)
+  ) {
+    return merope.motionSeeThroughBusy
+  }
+  if (
+    code === 'see_through_auth_failed' ||
+    /hugging face rejected the (configured )?api token/i.test(raw)
+  ) {
+    return merope.motionSeeThroughAuthFailed
+  }
+  if (
+    code === 'see_through_quota_unavailable' ||
+    /zerogpu (quota is exhausted|is unavailable)/i.test(raw)
+  ) {
+    return merope.motionSeeThroughQuota
+  }
+  if (
+    code === 'see_through_timeout' ||
+    /see-through inference timed out/i.test(raw)
+  ) {
+    return merope.motionSeeThroughTimeout
+  }
+  if (
+    code === 'see_through_upstream_failed' ||
+    code === 'see_through_invalid_input' ||
+    /see-through (returned|event stream|returned an invalid)/i.test(raw) ||
+    /hugging face token must be a valid/i.test(raw)
+  ) {
+    return classified(merope.motionSeeThroughUpstream, raw, hint)
+  }
+  if (
+    /stored rig is invalid|active rig is missing|active rig atlas is missing|invalid rig asset id/i.test(
       raw,
     )
   ) {
-    return currentCopy().merope.visualFailed
+    return classified(merope.rigStoredInvalid, raw, hint)
+  }
+  if (
+    /rig compilation failed|rig character asset|rig manifest migration|merope_rig_failed/i.test(
+      raw,
+    )
+  ) {
+    return classified(merope.rigCompileFailed, raw, hint)
+  }
+  if (/rig atlas|invalid rig atlas/i.test(raw)) {
+    return classified(merope.rigAtlasFailed, raw, hint)
+  }
+  if (
+    /invalid rig (import|source|analysis)|rig import|rig source exceeds|rig analysis reference|rig preview is missing/i.test(
+      raw,
+    )
+  ) {
+    return classified(merope.rigImportFailed, raw, hint)
+  }
+  if (
+    /master portrait is not available|the current master portrait/i.test(raw)
+  ) {
+    return merope.portraitUnavailable
+  }
+  if (
+    /invalid portrait|portrait image exceeds|portrait upload|portrait is missing image/i.test(
+      raw,
+    )
+  ) {
+    return classified(merope.portraitUploadFailed, raw, hint)
   }
   if (
     code === 'GAME_CONFIG_INVALID' ||

@@ -239,7 +239,7 @@ export async function getContextGeo(
   if (result.success && result.data) {
     return result.data
   }
-  throw new Error(currentCopy().errors.operationFailed)
+  throw new Error(currentCopy().errors.geoLoadFailed)
 }
 
 // Tapp API 声明系统

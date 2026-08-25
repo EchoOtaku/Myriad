@@ -1243,7 +1243,7 @@ export function TappPlaygroundPage() {
           startError instanceof Error ? startError.message.trim() : ''
         const detail =
           raw && !isUselessErrorText(raw)
-            ? userFacingError(startError, t.tapp.unknownError)
+            ? userFacingError(startError, t.tapp.startAppFailed)
             : ''
         setNotice(
           detail

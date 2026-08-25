@@ -249,6 +249,9 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
       playback.layers.filter((item) => item.fade === 'mouthCry').length,
       1,
     )
+    assert.equal(playback.mouthProfile.source, 'alpha-contour')
+    assert.equal(playback.mouthProfile.silhouettes.length, 5)
+    assert.equal(playback.mouthProfile.bridges.length, 10)
   } finally {
     Object.assign(globalThis, {
       document: previousDocument,

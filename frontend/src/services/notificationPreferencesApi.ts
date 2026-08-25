@@ -1,5 +1,6 @@
 import { currentCopy } from '../i18n/localeCopy'
 import apiService from './api'
+import { userFacingError } from '../utils/userFacingError'
 
 export const NOTIFICATION_SOURCE_KEYS = [
   'agent',
@@ -162,7 +163,10 @@ export const notificationPreferencesApi = {
     }>(BASE, preferences)
     if (!response.success || !response.preferences) {
       throw new Error(
-        response.message || currentCopy().errors.operationFailed,
+        userFacingError(
+          response.message,
+          currentCopy().errors.notificationPrefsSaveFailed,
+        ),
       )
     }
     window.dispatchEvent(

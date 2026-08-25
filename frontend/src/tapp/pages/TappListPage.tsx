@@ -386,7 +386,7 @@ export function TappListPage() {
       await runtime.stopTapp(tappId)
     } catch (error) {
       console.error('Failed to stop Tapp:', error)
-      showToastMessage(userFacingError(error, t.tapp.unknownError), 'error')
+      showToastMessage(userFacingError(error, t.tapp.stopAppFailed), 'error')
     }
   }
 

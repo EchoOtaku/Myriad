@@ -808,7 +808,7 @@ export const AraelPanel: React.FC = () => {
               : undefined,
             content:
               msg.content ||
-              `${t.arael.interrupted} (${t.arael.unknownError})`,
+              `${t.arael.interrupted} (${t.arael.cancelFailed})`,
           })
         }
       } else {
@@ -1343,7 +1343,7 @@ export const AraelPanel: React.FC = () => {
             statusMessage: result.message,
           })
         } catch (error) {
-          const errorMessage = userFacingError(error, t.arael.unknownError)
+          const errorMessage = userFacingError(error, t.errors.agentSteeringFailed)
           setLastError(errorMessage)
           setMessages((prev) => [
             ...prev,
@@ -1440,7 +1440,7 @@ export const AraelPanel: React.FC = () => {
         // so the quota code on the error event is the only signal.
         const errorMsg = generationFailureMessage(
           error,
-          t.arael.unknownError,
+          t.arael.executionFailed,
           t.arael.requestTimeout,
           {
             AI_COOLDOWN_ACTIVE: t.arael.quotaCooldown,
@@ -1636,13 +1636,23 @@ export const AraelPanel: React.FC = () => {
         const failedSteps = stepHistory.filter((s) => s.status === 'failed')
         if (failedSteps.length > 0 && failedSteps.length < stepHistory.length) {
           const failInfo = failedSteps
-            .map((s) => s.error || s.outputSummary || t.arael.executionFailed)
+            .map((s) =>
+              userFacingError(
+                s.error || s.outputSummary,
+                t.arael.executionFailed,
+              ),
+            )
             .join('；')
           displayMessage = `${displayMessage || ''}\n${format(t.arael.failReason, { reason: failInfo })}`
         } else if (failedSteps.length === stepHistory.length) {
           displayMessage = t.arael.executionFailed
           const failInfo = failedSteps
-            .map((s) => s.error || s.outputSummary || t.arael.unknownError)
+            .map((s) =>
+              userFacingError(
+                s.error || s.outputSummary,
+                t.arael.executionFailed,
+              ),
+            )
             .join('；')
           displayMessage += `\n${failInfo}`
         }
@@ -1911,7 +1921,7 @@ export const AraelPanel: React.FC = () => {
           messageId,
           source: 'reply',
         })
-        const errorMsg = userFacingError(error, t.arael.unknownError)
+        const errorMsg = userFacingError(error, t.errors.agentConfirmFailed)
         updateMessage(messageId, {
           content: format(t.arael.answerFailed, { error: errorMsg }),
         })
@@ -1930,7 +1940,7 @@ export const AraelPanel: React.FC = () => {
       updateMessageExecution,
       createProgressHandler,
       t.arael.confirmExpiredHint,
-      t.arael.unknownError,
+      t.errors.agentConfirmFailed,
       t.arael.answerFailed,
       format,
     ],

@@ -47,11 +47,11 @@ export const AraelPersonaSection: React.FC<{
       )
     } catch (e) {
       setDisabled(false)
-      setError(userFacingError(e, a.manageLoadError))
+      setError(userFacingError(e, t.errors.personaLoadFailed))
     } finally {
       setLoading(false)
     }
-  }, [a.manageLoadError, isOwner])
+  }, [t.errors.personaLoadFailed, isOwner])
 
   useEffect(() => {
     void load()
@@ -80,11 +80,11 @@ export const AraelPersonaSection: React.FC<{
       invalidatePublicConfigCache()
       window.dispatchEvent(new CustomEvent('arael-persona-updated'))
     } catch (e) {
-      setError(userFacingError(e, a.manageActionError))
+      setError(userFacingError(e, t.errors.personaSaveFailed))
     } finally {
       setSaving(false)
     }
-  }, [name, personality, onPersonaSaved, a.manageActionError])
+  }, [name, personality, onPersonaSaved, t.errors.personaSaveFailed])
 
   const reset = useCallback(async () => {
     setSaving(true)
@@ -97,11 +97,11 @@ export const AraelPersonaSection: React.FC<{
       invalidatePublicConfigCache()
       window.dispatchEvent(new CustomEvent('arael-persona-updated'))
     } catch (e) {
-      setError(userFacingError(e, a.manageActionError))
+      setError(userFacingError(e, t.errors.personaDeleteFailed))
     } finally {
       setSaving(false)
     }
-  }, [onPersonaSaved, a.manageActionError])
+  }, [onPersonaSaved, t.errors.personaDeleteFailed])
 
   const toggleDnd = useCallback(async () => {
     const next = !doNotDisturb
@@ -115,9 +115,9 @@ export const AraelPersonaSection: React.FC<{
       window.dispatchEvent(new CustomEvent(ADDRESSEE_UPDATED_EVENT))
     } catch (e) {
       setDoNotDisturb(!next)
-      setError(userFacingError(e, a.manageActionError))
+      setError(userFacingError(e, t.errors.addresseeSaveFailed))
     }
-  }, [doNotDisturb, a.manageActionError])
+  }, [doNotDisturb, t.errors.addresseeSaveFailed])
 
   if (loading) return null
   if (disabled) {

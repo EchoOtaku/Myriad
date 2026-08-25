@@ -270,7 +270,7 @@ function NotificationPanelList({
         }
       } catch (err) {
         setActionError(
-          userFacingError(err, t.errors.notificationActionFailed),
+          userFacingError(err, t.errors.inviteInvalid),
         )
       } finally {
         setActionBusyId(null)

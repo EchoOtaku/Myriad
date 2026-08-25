@@ -476,12 +476,12 @@ export const AraelHeartbeatSection: React.FC<AraelHeartbeatSectionProps> = ({
             t.id === taskId ? { ...t, enabled: rolledBackEnabled } : t,
           ),
         )
-        setActionError(userFacingError(e, a.manageActionError))
+        setActionError(userFacingError(e, a.heartbeatToggleFailed))
       } finally {
         setTogglingId(null)
       }
     },
-    [tasks, onTasksChange, a.manageActionError],
+    [tasks, onTasksChange, a.heartbeatToggleFailed],
   )
 
   const handleSave = useCallback(async () => {
@@ -512,7 +512,7 @@ export const AraelHeartbeatSection: React.FC<AraelHeartbeatSectionProps> = ({
       }
       cancelForm()
     } catch (e) {
-      setActionError(userFacingError(e, a.manageActionError))
+      setActionError(userFacingError(e, a.heartbeatSaveFailed))
     } finally {
       setSaving(false)
     }
@@ -522,7 +522,7 @@ export const AraelHeartbeatSection: React.FC<AraelHeartbeatSectionProps> = ({
     editingId,
     onTasksChange,
     cancelForm,
-    a.manageActionError,
+    a.heartbeatSaveFailed,
   ])
 
   const handleDelete = useCallback(
@@ -542,7 +542,7 @@ export const AraelHeartbeatSection: React.FC<AraelHeartbeatSectionProps> = ({
         await agentService.deleteHeartbeat(task.id)
       } catch (e) {
         if (snapshot) onTasksChange(snapshot)
-        setActionError(userFacingError(e, a.manageActionError))
+        setActionError(userFacingError(e, a.heartbeatDeleteFailed))
       }
     },
     [
@@ -551,7 +551,7 @@ export const AraelHeartbeatSection: React.FC<AraelHeartbeatSectionProps> = ({
       cancelForm,
       format,
       a.confirmDeleteHeartbeat,
-      a.manageActionError,
+      a.heartbeatDeleteFailed,
     ],
   )
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { currentCopy } from '../i18n/localeCopy'
 import apiService from '../services/api'
 import { dedupedFetch } from './requestDedup'
+import { userFacingError } from './userFacingError'
 
 export type ModuleVisibilityLevel = 'all' | 'authenticated' | 'admin'
 export type ModuleVisibilityKey =
@@ -309,7 +310,10 @@ export async function updateModuleVisibilityPreferences(
   )
   if (!response.success) {
     throw new Error(
-      response.message || currentCopy().errors.operationFailed,
+      userFacingError(
+        response.message,
+        currentCopy().config.moduleVisibilitySaveFailed,
+      ),
     )
   }
   const next = normalizeModuleVisibilityPreferences(response.preferences)

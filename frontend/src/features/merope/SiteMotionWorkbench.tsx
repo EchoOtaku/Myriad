@@ -379,7 +379,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
   }, [])
 
   const decomposeRigPsd = useCallback(async () => {
-    if (!portraitUrl) throw new Error(t.merope.visualFailed)
+    if (!portraitUrl) throw new Error(t.merope.assetNeedsPortrait)
     return decomposeSitePortraitWithSeeThrough({
       sourceMasterAssetId: portraitUrl,
       sourceGenerationFingerprint: generationFingerprint || undefined,
@@ -387,7 +387,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
       seed: 42,
       splitArmsAndLegs: true,
     })
-  }, [generationFingerprint, portraitUrl, t.merope.visualFailed])
+  }, [generationFingerprint, portraitUrl, t.merope.assetNeedsPortrait])
 
   const commitRigPsd = useCallback(
     async (
@@ -410,7 +410,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     if (!portraitUrl) return
     try {
       const response = await fetch(portraitUrl)
-      if (!response.ok) throw new Error(t.merope.visualFailed)
+      if (!response.ok) throw new Error(t.merope.portraitDownloadFailed)
       const blob = await response.blob()
       const objectUrl = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -423,7 +423,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
     } catch {
       window.open(portraitUrl, '_blank', 'noopener,noreferrer')
     }
-  }, [portraitUrl, t.merope.visualFailed])
+  }, [portraitUrl, t.merope.portraitDownloadFailed])
 
   const motionEnabled = Boolean(
     rigManifest?.anime25dPlayback &&
