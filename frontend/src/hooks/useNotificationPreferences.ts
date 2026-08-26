@@ -4,6 +4,9 @@ import type {
   NotificationSourceKey,
 } from '../services/notificationPreferencesApi'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { currentCopy } from '../i18n/localeCopy'
+import { showError } from '../utils/toastManager'
+import { userFacingError } from '../utils/userFacingError'
 import notificationPreferencesApi, {
   DEFAULT_NOTIFICATION_CATALOG,
   DEFAULT_NOTIFICATION_PREFERENCES,
@@ -40,6 +43,13 @@ export function useNotificationPreferences(userId?: number) {
       setEvents(response.catalog.events)
     } catch (error) {
       console.warn('[Notifications] Failed to load preferences:', error)
+      if (userIdRef.current !== requestedUserId) return
+      showError(
+        userFacingError(
+          error,
+          currentCopy().errors.notificationPrefsLoadFailed,
+        ),
+      )
     } finally {
       if (userIdRef.current === requestedUserId) setLoading(false)
     }

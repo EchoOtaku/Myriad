@@ -42,6 +42,7 @@ import {
   processEmbeds,
 } from '../../utils/embedProcessor'
 import { escapeHtml } from '../../utils/inputSanitizer'
+import { userFacingError } from '../../utils/userFacingError'
 import { proxyImageUrl } from '../../utils/proxyImageUrl'
 import { processRssContent } from '../../utils/rssContentProcessor'
 import {
@@ -1116,6 +1117,7 @@ export default function BrewReader({
       showToastMessage(t.brew.linkCopied)
     } catch (err) {
       console.error('Failed to copy:', err)
+      showToastMessage(userFacingError(err, t.errors.clipboardFailed))
     }
   }
 

@@ -145,7 +145,7 @@ test('preflight carries one-shot chest analysis into the persisted source', asyn
   analyzed.anime25dPlayback = {
     ...source.anime25dPlayback,
     chestProfile: {
-      version: 1,
+      version: 2,
       enabled: true,
       source: 'ai-vision',
       centerX: 50,
@@ -155,6 +155,8 @@ test('preflight carries one-shot chest analysis into the persisted source', asyn
       visibleScale: 0.7,
       motionScale: 1.05,
       frequencyScale: 0.96,
+      supportScale: 0.35,
+      garmentMotionScale: 0.8,
       confidence: 0.9,
     },
   } as never

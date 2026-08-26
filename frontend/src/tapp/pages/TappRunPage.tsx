@@ -218,7 +218,7 @@ function TappRunPageStandard({
           if (runtime.canControlLifecycle(instance)) {
             await runtime.startTapp(tappId)
           } else {
-            setError(t.tapp.stopped || 'Tapp is not running')
+            setError(t.tapp.stopped)
             setLoading(false)
             return
           }
@@ -248,6 +248,7 @@ function TappRunPageStandard({
     retryGeneration,
     t.tapp.appNotExist,
     t.tapp.loadAppFailed,
+    t.tapp.stopped,
   ])
 
   // 安装更新完成后，资源代际已由 runtime 提升；重新走完整 Page 加载并重建 iframe。
@@ -309,8 +310,9 @@ function TappRunPageStandard({
       goBack()
     } catch (err) {
       console.error('Failed to stop Tapp:', err)
+      setError(userFacingError(err, t.tapp.stopAppFailed))
     }
-  }, [runtime, tappId, goBack])
+  }, [runtime, tappId, goBack, t.tapp.stopAppFailed])
 
   // 切换全屏
   const toggleFullscreen = useCallback(() => {

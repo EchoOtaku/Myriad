@@ -183,13 +183,13 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
       .catch((reason) => {
         if (!cancelled) {
           setSeeThroughTokenConfigured(false)
-          setError(userFacingError(reason, t.merope.loadFailed))
+          setError(userFacingError(reason, t.merope.seeThroughStatusFailed))
         }
       })
     return () => {
       cancelled = true
     }
-  }, [t.merope.loadFailed])
+  }, [t.merope.seeThroughStatusFailed])
 
   const saveVisualIdentity = useCallback(
     async (next: UpperBodyVisualIdentity) => {
@@ -283,12 +283,12 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
         applyAddressee(await agentService.putAddressee({ doNotDisturb: next }))
       } catch (reason) {
         setDoNotDisturb(previous)
-        setError(userFacingError(reason, t.merope.loadFailed))
+        setError(userFacingError(reason, t.errors.addresseeSaveFailed))
       } finally {
         setDndBusy(false)
       }
     },
-    [applyAddressee, doNotDisturb, t.merope.loadFailed],
+    [applyAddressee, doNotDisturb, t.errors.addresseeSaveFailed],
   )
 
   const saveDndSchedule = useCallback(
@@ -302,12 +302,12 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
           }),
         )
       } catch (reason) {
-        setError(userFacingError(reason, t.merope.loadFailed))
+        setError(userFacingError(reason, t.errors.addresseeSaveFailed))
       } finally {
         setDndBusy(false)
       }
     },
-    [applyAddressee, t.merope.loadFailed],
+    [applyAddressee, t.errors.addresseeSaveFailed],
   )
 
   const generatePortrait = useCallback(async () => {

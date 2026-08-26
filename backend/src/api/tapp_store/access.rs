@@ -28,7 +28,9 @@ pub(super) async fn ensure_tapp_install_allowed(
         ))
         .await
         .map_err(|_| {
-            HttpError(AppError::internal("Failed to check Tapp install permission"))
+            HttpError(AppError::internal(
+                "Failed to check Tapp install permission",
+            ))
         })?;
     let disabled = row
         .and_then(|row| row.try_get::<bool>("", "tapp_install_disabled").ok())

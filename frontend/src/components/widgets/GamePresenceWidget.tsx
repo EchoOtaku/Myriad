@@ -18,6 +18,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { API_URL } from '../../config'
 import { useI18n } from '../../contexts/I18nContext'
+import { userFacingError } from '../../utils/userFacingError'
 import { useVisibilityInterval } from '../../hooks/animation'
 import { useAnimationLevel } from '../../hooks/useAnimationLevel'
 import { useWidgetSize } from '../../hooks/useWidgetSize'
@@ -450,15 +451,18 @@ async function fetchGamePresence(
         `${API_URL}/api/game/presence?${params}`,
         { signal: AbortSignal.timeout(15000) },
       )
-      if (!res.ok) return null
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const body = await res.json()
       if (body?.success && body?.data) {
         dataCache.set(key, { data: body.data, at: Date.now() })
         return body.data as GamePresenceData
       }
       return null
-    } catch {
-      return null
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return null
+      }
+      throw error
     } finally {
       inflight.delete(key)
     }
@@ -558,19 +562,27 @@ const GamePresenceWidget = memo(
           setLoading(true)
           setError(null)
         }
-        const d = await fetchGamePresence('hoyolab', accountId, game, locale)
-        if (cancelled) return
-        if (isInitial) setLoading(false)
-        if (d) {
-          hasData = true
-          setData(d)
-          setError(null)
-        } else if (!hasData) {
-          // 还没有任何可展示的数据：进入错误态并安排短周期重试；
-          // 有旧数据时后台轮询失败则静默保留，避免闪成错误态
-          setData(null)
-          setError(tw.fetchFailed)
-          scheduleRetry()
+        try {
+          const d = await fetchGamePresence('hoyolab', accountId, game, locale)
+          if (cancelled) return
+          if (isInitial) setLoading(false)
+          if (d) {
+            hasData = true
+            setData(d)
+            setError(null)
+          } else if (!hasData) {
+            setData(null)
+            setError(tw.showcaseEmpty)
+            scheduleRetry()
+          }
+        } catch (error) {
+          if (cancelled) return
+          if (isInitial) setLoading(false)
+          if (!hasData) {
+            setData(null)
+            setError(userFacingError(error, tw.fetchFailed))
+            scheduleRetry()
+          }
         }
       }
 

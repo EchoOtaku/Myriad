@@ -1621,6 +1621,24 @@ stop_frontend() {
     print_success "Frontend stopped"
 }
 
+# Vite's optimize-deps cache. Stale entries show up as "504 Outdated Optimize Dep"
+# after a restart; wipe it only when the dev server is already down.
+clear_vite_cache() {
+    local vite="$PROJECT_ROOT/frontend/node_modules/.vite"
+    local vite_temp="$PROJECT_ROOT/frontend/node_modules/.vite-temp"
+    if [[ ! -e "$vite" && ! -e "$vite_temp" ]]; then
+        return 0
+    fi
+    print_info "Clearing Vite cache…"
+    rm -rf "$vite" "$vite_temp" 2>/dev/null || true
+}
+
+restart_frontend() {
+    stop_frontend || true
+    clear_vite_cache
+    start_frontend
+}
+
 # ==================== Foreground supervisor (--fg / up) ====================
 # Prefixes interleaved logs and takes both services down on a single Ctrl-C.
 # Portable: macOS /bin/bash 3.2 has no `wait -n`, so we poll.
@@ -1869,7 +1887,18 @@ stop_all() {
 }
 
 restart_all() {
-    stop_all
+    # Bounce app processes only. A running postgres already has the schema;
+    # stop+start just adds downtime and races the backend.
+    echo ""
+    echo -e "${BRIGHT_CYAN}${BOLD}${ICON_REFRESH} Restarting Services${NC}"
+    echo ""
+    stop_frontend || true
+    stop_backend || true
+    stop_updater || true
+    clear_vite_cache
+    if get_service_status database; then
+        print_info "Database is already running — leaving it up"
+    fi
     start_all
 }
 
@@ -1925,7 +1954,9 @@ END \$\$;" > /dev/null 2>&1 || true
     sleep 0.3
     
     ((current++)); progress_bar $current $total 40 "Cleaning"
-    rm -rf "$PROJECT_ROOT/frontend/dist" "$PROJECT_ROOT/frontend/.astro" 2>/dev/null || true
+    rm -rf "$PROJECT_ROOT/frontend/dist" "$PROJECT_ROOT/frontend/.astro" \
+        "$PROJECT_ROOT/frontend/node_modules/.vite" \
+        "$PROJECT_ROOT/frontend/node_modules/.vite-temp" 2>/dev/null || true
     sleep 0.3
     
     ((current++)); progress_bar $current $total 40 "Cleaning"
@@ -2104,7 +2135,7 @@ main() {
                     ;;
                 database|db) stop_database; sleep 1; start_database ;;
                 backend) stop_backend; sleep 1; start_backend ;;
-                frontend) stop_frontend; sleep 1; start_frontend ;;
+                frontend) restart_frontend ;;
                 updater) USE_NATIVE=0; stop_updater; sleep 1; start_updater ;;
                 *) print_error "Unknown service: $service"; exit 1 ;;
             esac ;;

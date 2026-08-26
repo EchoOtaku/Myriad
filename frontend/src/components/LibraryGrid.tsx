@@ -3386,10 +3386,10 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
       }
     } catch (err) {
       if (generation !== libraryFetchGenerationRef.current) return
-      setError(userFacingError(err, t.library.emptyLibrary))
+      setError(userFacingError(err, t.library.loadFailed))
       setLoading(false)
     }
-  }, [filter, t.library.emptyLibrary])
+  }, [filter, t.library.loadFailed])
 
   useEffect(() => {
     void fetchLibraryData()
@@ -3442,13 +3442,14 @@ export default function LibraryGrid({ filter }: LibraryGridProps) {
     } catch (err) {
       if (err instanceof Error && err.name !== 'AbortError') {
         console.error('Failed to load the next library page:', err)
+        setError(userFacingError(err, t.library.loadFailed))
       }
     } finally {
       if (generation === libraryFetchGenerationRef.current) {
         libraryPageLoadingRef.current = false
       }
     }
-  }, [filter])
+  }, [filter, t.library.loadFailed])
 
   loadNextLibraryPageRef.current = loadNextLibraryPage
 

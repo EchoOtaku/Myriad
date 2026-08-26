@@ -26,7 +26,10 @@ use crate::models::entities::brew_annotations::{self, AnnotationType};
 use crate::services::ai::create_ai_analyzer_for_tier;
 use crate::services::data_paths::paths;
 
-fn brewlia_store_failed(context: &'static str, error: impl std::fmt::Display) -> axum::response::Response {
+fn brewlia_store_failed(
+    context: &'static str,
+    error: impl std::fmt::Display,
+) -> axum::response::Response {
     tracing::error!(%error, context, "brewlia store failed");
     (
         StatusCode::INTERNAL_SERVER_ERROR,

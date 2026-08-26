@@ -909,7 +909,10 @@ class RemoteStoreServiceImpl {
       if (!relativePath) {
         if (requiredLabel) {
           throw new Error(
-            `Store index is missing download path for required ${requiredLabel}`,
+            currentCopy().tapp.storeDownloadFailed.replace(
+              '{name}',
+              requiredLabel,
+            ),
           )
         }
         return undefined
@@ -920,7 +923,13 @@ class RemoteStoreServiceImpl {
         if (!response.ok) {
           if (requiredLabel) {
             throw new Error(
-              `Failed to download ${requiredLabel} (${relativePath}): HTTP ${response.status}`,
+              userFacingError(
+                `HTTP ${response.status}`,
+                currentCopy().tapp.storeDownloadFailed.replace(
+                  '{name}',
+                  requiredLabel,
+                ),
+              ),
             )
           }
           return undefined
@@ -930,7 +939,15 @@ class RemoteStoreServiceImpl {
         if (requiredLabel) {
           throw e instanceof Error
             ? e
-            : new Error(`Failed to download ${requiredLabel}: ${String(e)}`)
+            : new Error(
+                userFacingError(
+                  e,
+                  currentCopy().tapp.storeDownloadFailed.replace(
+                    '{name}',
+                    requiredLabel,
+                  ),
+                ),
+              )
         }
         return undefined
       }
@@ -976,7 +993,9 @@ class RemoteStoreServiceImpl {
       app.version.trim() !== manifest.version.trim()
     ) {
       throw new Error(
-        `Store package version mismatch: catalog lists ${app.version} but manifest.json is ${manifest.version}. Refresh the store and retry.`,
+        currentCopy().tapp.storeVersionMismatch
+          .replace('{catalog}', app.version.trim())
+          .replace('{manifest}', manifest.version.trim()),
       )
     }
 
@@ -1175,7 +1194,10 @@ class RemoteStoreServiceImpl {
         const assetPath = declared[i]!
         if (!assetPath.startsWith('assets/')) {
           throw new Error(
-            `Invalid asset path (must be under assets/): ${assetPath}`,
+            userFacingError(
+              assetPath,
+              currentCopy().tapp.installFailed,
+            ),
           )
         }
         const storeRel = storeAssetStorePath(packageRoot, assetPath)
@@ -1186,7 +1208,13 @@ class RemoteStoreServiceImpl {
         )
         if (!response.ok) {
           throw new Error(
-            `Failed to fetch asset ${assetPath}: HTTP ${response.status}`,
+            userFacingError(
+              `HTTP ${response.status}`,
+              currentCopy().tapp.storeDownloadFailed.replace(
+                '{name}',
+                assetPath,
+              ),
+            ),
           )
         }
         const buffer = await response.arrayBuffer()

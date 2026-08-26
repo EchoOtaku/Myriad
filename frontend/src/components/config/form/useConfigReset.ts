@@ -211,7 +211,7 @@ export function useConfigReset(args: {
         }),
       )
     } catch (error) {
-      const errorMsg = `${t.config.resetFailed}${userFacingError(error, t.errors.unknown)}`
+      const errorMsg = userFacingError(error, t.config.resetFailed)
       showMessage(errorMsg, 'error', 0)
       window.dispatchEvent(
         new CustomEvent('config-reset-result', {
@@ -451,7 +451,7 @@ export function useConfigReset(args: {
         3000,
       )
     } catch (error) {
-      const errorMsg = `${t.config.resetFailed}${userFacingError(error, t.errors.unknown)}`
+      const errorMsg = userFacingError(error, t.config.resetFailed)
       showMessage(errorMsg, 'error', 0)
     } finally {
       setSaving(false)

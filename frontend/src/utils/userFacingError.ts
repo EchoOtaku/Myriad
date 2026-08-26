@@ -578,6 +578,82 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return classified(currentCopy().tapp.loadAppFailed, raw, hint)
   }
   if (
+    /^failed to (load|list) (the )?app list/i.test(raw) ||
+    /failed to load site tapp catalog/i.test(raw)
+  ) {
+    return joinParts(
+      currentCopy().tapp.listLoadFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, currentCopy().tapp.listLoadFailed),
+    )
+  }
+  if (
+    /tapp \S+ is not installed/i.test(raw) ||
+    /tapp \S+ is already being uninstalled/i.test(raw)
+  ) {
+    return currentCopy().tapp.appNotExist
+  }
+  if (/tapp \S+ requires permission reauthorization/i.test(raw)) {
+    return currentCopy().tapp.reauthorizationMessage
+  }
+  if (
+    /^failed to save (to cloud|window schemes)/i.test(raw)
+  ) {
+    return joinParts(
+      currentCopy().tapp.schemeSaveFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, currentCopy().tapp.schemeSaveFailed),
+    )
+  }
+  if (/^failed to save dashboard layout/i.test(raw)) {
+    return joinParts(
+      t.dashboardLayoutSaveFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, t.dashboardLayoutSaveFailed),
+    )
+  }
+  if (/^failed to save dashboard title/i.test(raw)) {
+    return joinParts(
+      t.dashboardTitleSaveFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, t.dashboardTitleSaveFailed),
+    )
+  }
+  if (/^failed to save custom platforms/i.test(raw)) {
+    return joinParts(
+      t.customPlatformsSaveFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, t.customPlatformsSaveFailed),
+    )
+  }
+  if (/^failed to save control panel/i.test(raw)) {
+    return joinParts(
+      t.controlPanelSaveFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, t.controlPanelSaveFailed),
+    )
+  }
+  if (/^failed to save title style/i.test(raw)) {
+    return joinParts(
+      t.titleStyleSaveFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, t.titleStyleSaveFailed),
+    )
+  }
+  if (/^failed to save widget theme/i.test(raw)) {
+    return joinParts(
+      t.widgetThemeSaveFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, t.widgetThemeSaveFailed),
+    )
+  }
+  if (/^failed to (load|save) tapp settings/i.test(raw)) {
+    const label = /load/i.test(raw)
+      ? currentCopy().tapp.settingsLoadFailed
+      : currentCopy().tapp.settingSaveFailed
+    return joinParts(label, status ? `HTTP ${status}` : '', usefulExtra(hint, label))
+  }
+  if (
     /^failed to list agent reports/i.test(raw) ||
     /^failed to (load|fetch) reports?/i.test(raw)
   ) {
@@ -719,7 +795,9 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return classified(t.noticeUpdaterFailed, raw, hint)
   }
   if (
-    /^tripo |invalid (glb json|3d model|tripo )|failed to store 3d/i.test(raw) ||
+    /^tripo |could not (load|create|query) tripo|invalid (glb json|3d model|tripo )|failed to store 3d/i.test(
+      raw,
+    ) ||
     code === 'TRIPO_ERROR'
   ) {
     return classified(t.model3dFailed, raw, hint)
@@ -776,10 +854,52 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (
     code === 'config_save_failed' ||
     /^failed to (load|save) config$/i.test(raw) ||
+    /^failed to save (configuration|permissions)/i.test(raw) ||
     /^failed to serialize providers$/i.test(raw)
   ) {
     const label = /load config/i.test(raw) ? t.configFileReadFailed : t.configSaveFailed
     return classified(label, raw, hint)
+  }
+  if (/^failed to reload configuration/i.test(raw)) {
+    return classified(t.configReloadFailed, raw, hint)
+  }
+  if (
+    /^failed to fetch public config/i.test(raw) ||
+    /public config does not contain platforms/i.test(raw)
+  ) {
+    return joinParts(
+      t.configFileReadFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, t.configFileReadFailed),
+    )
+  }
+  if (
+    /failed to download |failed to fetch asset |store index is missing download path/i.test(
+      raw,
+    )
+  ) {
+    const name =
+      raw.match(/download ([^(]+)/i)?.[1]?.trim() ||
+      raw.match(/asset (\S+)/i)?.[1] ||
+      raw.match(/required (\S+)/i)?.[1] ||
+      ''
+    const http = raw.match(/HTTP\s+(\d{3})/i)
+    const label = currentCopy().tapp.storeDownloadFailed.replace(
+      '{name}',
+      name || 'asset',
+    )
+    return joinParts(
+      label,
+      http ? `HTTP ${http[1]}` : '',
+      usefulExtra(hint, label),
+    )
+  }
+  if (/store package version mismatch/i.test(raw)) {
+    const catalog = raw.match(/catalog lists (\S+)/i)?.[1] || '?'
+    const packed = raw.match(/manifest\.json is (\S+)/i)?.[1] || '?'
+    return currentCopy().tapp.storeVersionMismatch
+      .replace('{catalog}', catalog)
+      .replace('{manifest}', packed)
   }
   const brew = currentCopy().brew
   if (
@@ -1160,9 +1280,10 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^comment not found$/i.test(raw)) {
     return t.notFound
   }
-  if (
-    /^failed to (load comments|load comment replies|find comment)/i.test(raw)
-  ) {
+  if (/^failed to load comment replies/i.test(raw)) {
+    return classified(t.commentRepliesLoadFailed, raw, hint)
+  }
+  if (/^failed to (load comments|find comment)/i.test(raw)) {
     return classified(t.commentLoadFailed, raw, hint)
   }
   if (/^failed to (save|update) comment/i.test(raw)) {
@@ -1495,6 +1616,71 @@ export function userFacingError(reason: unknown, fallback?: string): string {
   if (/^task ['"]?[^'"]+['"]? not found$/i.test(raw)) {
     return t.notFound
   }
+  if (/^no library data available$/i.test(raw)) {
+    return currentCopy().library.loadFailed
+  }
+  if (/unable to load analytics/i.test(raw)) {
+    return joinParts(
+      currentCopy().config.analytics.loadFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, currentCopy().config.analytics.loadFailed),
+    )
+  }
+  if (/unable to load ai usage/i.test(raw)) {
+    return joinParts(
+      currentCopy().config.analytics.aiUsageLoadFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, currentCopy().config.analytics.aiUsageLoadFailed),
+    )
+  }
+  if (/unable to load platform data preview/i.test(raw)) {
+    return joinParts(
+      currentCopy().dataManagement.previewLoadFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, currentCopy().dataManagement.previewLoadFailed),
+    )
+  }
+  if (/unable to load platform previews/i.test(raw)) {
+    return joinParts(
+      currentCopy().dataManagement.previewLoadFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, currentCopy().dataManagement.previewLoadFailed),
+    )
+  }
+  if (/unable to load platform data status/i.test(raw)) {
+    return joinParts(
+      currentCopy().dataManagement.statusUnavailable,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, currentCopy().dataManagement.statusUnavailable),
+    )
+  }
+  if (/unable to load visitor stats|visitor card unavailable/i.test(raw)) {
+    return joinParts(
+      currentCopy().visitorStats.loadFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, currentCopy().visitorStats.loadFailed),
+    )
+  }
+  if (/missing (room_id|channel_id)/i.test(raw)) {
+    return t.inviteInvalid
+  }
+  if (/runtime event stream/i.test(raw)) {
+    return joinParts(
+      t.streamUnreadable,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, t.streamUnreadable),
+    )
+  }
+  if (/failed to save to cloud/i.test(raw)) {
+    return joinParts(
+      currentCopy().tapp.schemeSaveFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, currentCopy().tapp.schemeSaveFailed),
+    )
+  }
+  if (/hitokoto response missing text field/i.test(raw)) {
+    return currentCopy().config.hitokotoLoadFailed
+  }
   if (/identity not found/i.test(raw)) {
     return t.notFound
   }
@@ -1573,11 +1759,62 @@ export function userFacingError(reason: unknown, fallback?: string): string {
     return merope.portraitUnavailable
   }
   if (
-    /invalid portrait|portrait image exceeds|portrait upload|portrait is missing image/i.test(
+    /invalid portrait|portrait image exceeds|portrait upload|portrait is missing image|could not upload portrait/i.test(
       raw,
     )
   ) {
     return classified(merope.portraitUploadFailed, raw, hint)
+  }
+  if (/could not generate site portrait/i.test(raw)) {
+    return joinParts(
+      merope.visualFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, merope.visualFailed),
+    )
+  }
+  if (/could not load site face/i.test(raw)) {
+    return joinParts(
+      merope.loadFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, merope.loadFailed),
+    )
+  }
+  if (/could not load see-through status/i.test(raw)) {
+    return joinParts(
+      merope.seeThroughStatusFailed,
+      status ? `HTTP ${status}` : '',
+      usefulExtra(hint, merope.seeThroughStatusFailed),
+    )
+  }
+  if (/could not save hugging face token/i.test(raw)) {
+    return classified(merope.motionSeeThroughTokenFailed, raw, hint)
+  }
+  if (/see-through decomposition failed/i.test(raw)) {
+    return classified(merope.motionSeeThroughUpstream, raw, hint)
+  }
+  if (/could not commit persona rig/i.test(raw)) {
+    return classified(merope.rigCommitFailed, raw, hint)
+  }
+  if (/could not (preview|import|diagnose) persona rig/i.test(raw)) {
+    return classified(merope.rigImportFailed, raw, hint)
+  }
+  if (/persona rig .+ manifest is invalid/i.test(raw)) {
+    return classified(merope.rigCompileFailed, raw, hint)
+  }
+  if (/webgl2 is required/i.test(raw)) {
+    return merope.anime25dWebglFailed
+  }
+  if (/anime2\.5drig playback missing/i.test(raw)) {
+    const role = raw.match(/missing (\S+)/i)?.[1] || ''
+    return merope.anime25dMissingLayer.replace('{role}', role || '?')
+  }
+  if (
+    /anime2\.5drig (mesh buffers|layer crop|layer texture|program|shader|link)/i.test(
+      raw,
+    ) ||
+    /^missing uniform /i.test(raw)
+  ) {
+    return merope.anime25dPlaybackFailed
   }
   if (
     code === 'GAME_CONFIG_INVALID' ||

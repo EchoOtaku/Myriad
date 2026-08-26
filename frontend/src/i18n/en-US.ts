@@ -149,6 +149,10 @@ export const enUS: TranslationKeys = {
     portraitUnavailable: 'The current master portrait is not available.',
     portraitDownloadFailed: 'Could not download the master portrait.',
     portraitUploadFailed: 'Could not upload the master portrait.',
+    seeThroughStatusFailed: 'Could not load See-through status.',
+    anime25dWebglFailed:
+      'This browser does not support WebGL2, so 2.5D motion cannot play.',
+    anime25dPlaybackFailed: '2.5D motion could not play.',
     statusIdle: 'Idle',
     statusThinking: 'Thinking',
     statusTalking: 'Replying',
@@ -1825,7 +1829,7 @@ export const enUS: TranslationKeys = {
     placeholderSiteFavicon: '/favicon.webp or https://example.com/icon.png',
     callbackUrl: 'Callback URL',
     savingDefault: 'Saving default configuration...',
-    resetFailed: 'Failed to reset configuration: ',
+    resetFailed: 'Could not reset the configuration.',
     refreshing: 'Refreshing...',
     refreshFailed: 'Failed to refresh configuration',
     savedSuccess: 'Configuration saved successfully!',
@@ -2502,6 +2506,7 @@ export const enUS: TranslationKeys = {
     // Empty states
     emptyLibrary:
       'Library is empty, please fetch platform data in config page first',
+    loadFailed: 'Could not load the library.',
     emptyCategory: 'No content in this category, try switching to another',
     canvasPanHint:
       'Drag cards or empty space · Arrow keys pan · + / - zoom · 0 resets',
@@ -2823,6 +2828,7 @@ export const enUS: TranslationKeys = {
     skillFileInvalid: 'This skill file is not valid.',
     skillCooldown: 'This skill was just updated. Try again later.',
     commentLoadFailed: 'Could not load comments.',
+    commentRepliesLoadFailed: 'Could not load comment replies.',
     commentSaveFailed: 'Could not save this comment.',
     commentDeleteFailed: 'Could not delete this comment.',
     articleLoadFailed: 'Could not load this article.',
@@ -2864,6 +2870,7 @@ export const enUS: TranslationKeys = {
     accountLoadFailed: 'Could not load this account.',
     accountSaveFailed: 'Could not save this account.',
     passwordChangeFailed: 'Could not change the password.',
+    passwordSetFailed: 'Could not set the password.',
     localLoginSaveFailed: 'Could not update local login.',
     configFilePermission:
       'Could not write the configuration file. Check disk permissions.',
@@ -2997,6 +3004,16 @@ export const enUS: TranslationKeys = {
     dndScheduleIncomplete: 'Set both start and end, or clear both.',
     e2eKeyFailed: 'Could not process the end-to-end key.',
     configSaveFailed: 'Could not save site settings.',
+    dashboardLayoutSaveFailed: 'Could not save the home layout.',
+    dashboardTitleSaveFailed: 'Could not save the home title.',
+    customPlatformsSaveFailed: 'Could not save custom social platforms.',
+    controlPanelSaveFailed: 'Could not save the control panel layout.',
+    controlPanelLoadFailed: 'Could not load the control panel layout.',
+    titleStyleSaveFailed: 'Could not save the title style.',
+    widgetThemeSaveFailed: 'Could not save the card appearance.',
+    notificationDeleteFailed: 'Could not delete that notification.',
+    notificationClearFailed: 'Could not clear all notifications.',
+    configReloadFailed: 'Could not reload site settings.',
     mediaActionInvalid: 'That playback action is not valid.',
     mediaModeInvalid: 'That playback mode is not valid.',
     scheduleInvalid: 'That schedule is not valid.',
@@ -3015,6 +3032,10 @@ export const enUS: TranslationKeys = {
     serviceNotConfigured: 'That service is not configured yet.',
     notificationUnavailable: 'The notification system is not ready yet.',
     notificationPrefsSaveFailed: 'Could not save notification preferences.',
+    notificationPrefsLoadFailed: 'Could not load notification preferences.',
+    clipboardFailed: 'Could not copy to the clipboard.',
+    localeLoadFailed: 'Could not load that language pack. Switched to English.',
+    ttsSettingsSaveFailed: 'Could not save speech settings.',
   },
 
   wallpaperStatus: {
@@ -3222,7 +3243,8 @@ export const enUS: TranslationKeys = {
     oauthUnbind: 'Unlink',
     oauthUnbindConfirm:
       'Unlink this account? You will no longer be able to sign in with it.',
-    oauthUnbindFailed: 'Failed to unlink',
+    oauthUnbindFailed: 'Could not unlink that account.',
+    oauthLoadFailed: 'Could not load linked accounts.',
     oauthNoProviders: 'No third-party sign-in methods configured yet',
     oauthNotConfigured: 'This sign-in method is disabled',
     profileDisplaySourcesTitle: 'Display sources',
@@ -3494,6 +3516,7 @@ export const enUS: TranslationKeys = {
   // Recent Activity Widget
   recentActivity: {
     widgetTitle: 'Recent Activity',
+    loadFailed: 'Could not load recent activity.',
     yes: 'Yes',
     no: 'No',
     unknownProject: 'Unknown Project',
@@ -3666,7 +3689,8 @@ export const enUS: TranslationKeys = {
     fillPopupContent: 'Please enter popup content',
     invalidUrlPattern:
       'Invalid URL pattern\n\nRequirements:\n• Must start with http://, https://, or mailto:\n• Cannot contain special characters < > " \' ` \\',
-    createCustomPlatformFailed: 'Failed to create custom platform',
+    createCustomPlatformFailed: 'Could not create that custom social platform.',
+    deleteCustomPlatformFailed: 'Could not delete that custom social platform.',
     confirmDeleteCustomPlatform:
       'Are you sure you want to delete this custom platform?',
     close: 'Close',
@@ -3953,7 +3977,7 @@ export const enUS: TranslationKeys = {
     playgroundSessions: 'Sessions',
     playgroundMemoryChain: 'Edit trail',
     playgroundMemoryChainEmpty:
-      'No modification trail yet. User and agent turns will appear here after you generate or edit.',
+      'No modification trail yet. User and Agent turns will appear here after you generate or edit.',
     playgroundMemoryUser: 'You',
     playgroundMemoryAgent: 'Agent',
     playgroundMemoryFailed: 'Failed',
@@ -4034,6 +4058,7 @@ export const enUS: TranslationKeys = {
     playgroundBadRequestHint: 'Invalid request: {detail}',
     playgroundErrorDetail: 'Details: {detail}',
     playgroundRuntimeError: 'Preview runtime error: {message}',
+    playgroundUnknownError: 'The preview ran into a runtime error.',
     playgroundCancel: 'Cancel',
     playgroundCancelled:
       'Generation cancelled. Your project and prompt were kept — send again when ready.',
@@ -4099,6 +4124,7 @@ export const enUS: TranslationKeys = {
     invalidId: 'This app address is not valid',
     appCodeLoadFailed: 'App code loading failed',
     loadAppFailed: 'Failed to load app',
+    listLoadFailed: 'Could not load the app list.',
     startAppFailed: 'Failed to start the app',
     stopAppFailed: 'Failed to stop the app',
     widgetNotFound: 'This widget could not be found',
@@ -4119,6 +4145,8 @@ export const enUS: TranslationKeys = {
     windowScheme: 'Window Scheme',
     scheme: 'Scheme',
     saveCurrentScheme: 'Save Current Scheme',
+    schemeSaveFailed: 'Could not save the window scheme.',
+    schemeLoadFailed: 'Could not load window schemes.',
     saving: 'Saving...',
     noSavedSchemes: 'No saved schemes',
     windowCount: '{count} windows',
@@ -4160,7 +4188,8 @@ export const enUS: TranslationKeys = {
     visit: 'Visit',
     loading: 'Loading...',
     settingSaved: 'Settings saved',
-    settingSaveFailed: 'Save failed',
+    settingSaveFailed: 'Could not save app settings.',
+    settingsLoadFailed: 'Could not load app settings.',
     apiCredentials: 'API Credentials',
     apiCredentialsDesc:
       'Encrypted by the host and sent only to fixed HTTPS services declared in the manifest; apps and visitors cannot read the value',
@@ -4192,6 +4221,7 @@ export const enUS: TranslationKeys = {
       'The manifest target or permission changed; enter the credential again to authorize it',
     credentialSaved: 'Credential saved securely',
     credentialSaveFailed: 'Failed to save credential',
+    credentialLoadFailed: 'Could not load credential status.',
     credentialRemoved: 'Credential removed',
     credentialRemoveFailed: 'Failed to remove credential',
 
@@ -4250,6 +4280,8 @@ export const enUS: TranslationKeys = {
     storeUrlExists: 'That store source URL already exists.',
     storeInvalidIndex: 'The store index format is invalid.',
     storeDownloadFailed: 'Could not download module: {name}',
+    storeVersionMismatch:
+      'The store lists {catalog}, but the package is {manifest}. Refresh the store and retry.',
     storeAddFailed: 'Failed to add the store source.',
     storeRemoveFailed: 'Failed to remove the store source.',
     storeUpdateFailed: 'Failed to update the store source.',
@@ -4317,6 +4349,7 @@ export const enUS: TranslationKeys = {
     article: 'Article',
     loadSourcesFailed: 'Failed to load sources',
     loadArticlesFailed: 'Failed to load articles',
+    starFailed: 'Could not update that star.',
     subscription: 'Subscription',
     subscriptions: 'Subscriptions',
     unread: 'Unread',
@@ -5103,6 +5136,7 @@ export const enUS: TranslationKeys = {
     title: 'Notifications',
     tabControl: 'Controls',
     empty: 'No notifications',
+    loadFailed: 'Could not load notifications.',
     clearAll: 'Clear all',
     clearConfirm: 'Confirm clear?',
     enableSystemNotif: 'Enable system notifications',

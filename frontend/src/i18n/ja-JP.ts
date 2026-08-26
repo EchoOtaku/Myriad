@@ -149,6 +149,10 @@ export const jaJP: TranslationKeys = {
     portraitUnavailable: '現在のメイン立ち絵は使えません。',
     portraitDownloadFailed: 'メイン立ち絵をダウンロードできませんでした。',
     portraitUploadFailed: 'メイン立ち絵をアップロードできませんでした。',
+    seeThroughStatusFailed: 'See-through の状態を読み込めませんでした。',
+    anime25dWebglFailed:
+      'このブラウザは WebGL2 に対応していないため、2.5D モーションを再生できません。',
+    anime25dPlaybackFailed: '2.5D モーションを再生できませんでした。',
     statusIdle: '待機中',
     statusThinking: '思考中',
     statusTalking: '返信中',
@@ -1805,7 +1809,7 @@ export const jaJP: TranslationKeys = {
     placeholderSiteFavicon: '/favicon.webp または https://example.com/icon.png',
     callbackUrl: 'コールバックURL',
     savingDefault: 'デフォルト設定を保存中...',
-    resetFailed: '設定のリセットに失敗：',
+    resetFailed: '設定をリセットできませんでした。',
     refreshing: '更新中...',
     refreshFailed: '設定の更新に失敗しました',
     savedSuccess: '設定を正常に保存しました！',
@@ -2472,6 +2476,7 @@ export const jaJP: TranslationKeys = {
     // 空状態
     emptyLibrary:
       'ライブラリが空です。設定ページでプラットフォームデータを取得してください',
+    loadFailed: 'ライブラリを読み込めませんでした。',
     emptyCategory:
       'このカテゴリにはコンテンツがありません。他のカテゴリをお試しください',
     canvasPanHint:
@@ -2801,6 +2806,7 @@ export const jaJP: TranslationKeys = {
     skillFileInvalid: 'このスキルファイルの形式が正しくありません。',
     skillCooldown: 'このスキルは更新したばかりです。しばらくしてから再試行してください。',
     commentLoadFailed: 'コメントを読み込めませんでした。',
+    commentRepliesLoadFailed: 'コメントの返信を読み込めませんでした。',
     commentSaveFailed: 'このコメントを保存できませんでした。',
     commentDeleteFailed: 'このコメントを削除できませんでした。',
     articleLoadFailed: 'この記事を読み込めませんでした。',
@@ -2848,6 +2854,7 @@ export const jaJP: TranslationKeys = {
     accountLoadFailed: 'このアカウントを読み込めませんでした。',
     accountSaveFailed: 'このアカウントを保存できませんでした。',
     passwordChangeFailed: 'パスワードを変更できませんでした。',
+    passwordSetFailed: 'パスワードを設定できませんでした。',
     localLoginSaveFailed: 'ローカルログイン設定を保存できませんでした。',
     configFilePermission:
       '設定ファイルを書き込めませんでした。ディスク権限を確認してください。',
@@ -2982,6 +2989,16 @@ export const jaJP: TranslationKeys = {
     dndScheduleIncomplete: '開始と終了を両方指定するか、両方空にしてください。',
     e2eKeyFailed: 'エンドツーエンド鍵を処理できませんでした。',
     configSaveFailed: 'サイト設定を保存できませんでした。',
+    dashboardLayoutSaveFailed: 'ホームのレイアウトを保存できませんでした。',
+    dashboardTitleSaveFailed: 'ホームのタイトルを保存できませんでした。',
+    customPlatformsSaveFailed: 'カスタム SNS を保存できませんでした。',
+    controlPanelSaveFailed: 'コントロールパネルのレイアウトを保存できませんでした。',
+    controlPanelLoadFailed: 'コントロールパネルのレイアウトを読み込めませんでした。',
+    titleStyleSaveFailed: 'タイトルスタイルを保存できませんでした。',
+    widgetThemeSaveFailed: 'カードの見た目を保存できませんでした。',
+    notificationDeleteFailed: 'その通知を削除できませんでした。',
+    notificationClearFailed: '通知をすべて消せませんでした。',
+    configReloadFailed: 'サイト設定を再読み込みできませんでした。',
     mediaActionInvalid: 'その再生操作は無効です。',
     mediaModeInvalid: 'その再生モードは無効です。',
     scheduleInvalid: 'そのスケジュール設定は無効です。',
@@ -3000,6 +3017,10 @@ export const jaJP: TranslationKeys = {
     serviceNotConfigured: 'そのサービスはまだ設定されていません。',
     notificationUnavailable: '通知システムはまだ準備できていません。',
     notificationPrefsSaveFailed: '通知の設定を保存できませんでした。',
+    notificationPrefsLoadFailed: '通知の設定を読み込めませんでした。',
+    clipboardFailed: 'クリップボードにコピーできませんでした。',
+    localeLoadFailed: '言語パックを読み込めませんでした。英語に切り替えました。',
+    ttsSettingsSaveFailed: '音声設定を保存できませんでした。',
   },
 
   wallpaperStatus: {
@@ -3210,7 +3231,8 @@ export const jaJP: TranslationKeys = {
     oauthUnbind: '解除',
     oauthUnbindConfirm:
       'このアカウントの連携を解除しますか？解除後はこのアカウントでログインできなくなります。',
-    oauthUnbindFailed: '連携解除に失敗しました',
+    oauthUnbindFailed: 'そのアカウントの連携を解除できませんでした。',
+    oauthLoadFailed: '連携アカウントを読み込めませんでした。',
     oauthNoProviders: '外部ログインはまだ設定されていません',
     oauthNotConfigured: 'このログイン方法は無効になっています',
     profileDisplaySourcesTitle: '表示の取得元',
@@ -3485,6 +3507,7 @@ export const jaJP: TranslationKeys = {
   // 最近のアクティビティウィジェット
   recentActivity: {
     widgetTitle: '最近のアクティビティ',
+    loadFailed: '最近のアクティビティを読み込めませんでした。',
     yes: 'はい',
     no: 'いいえ',
     unknownProject: '不明なプロジェクト',
@@ -3657,7 +3680,8 @@ export const jaJP: TranslationKeys = {
     fillPopupContent: '表示内容を入力してください',
     invalidUrlPattern:
       'URLパターンが無効です\n\n要件：\n• http://、https://、または mailto: で始まる必要があります\n• 特殊文字 < > " \' ` \\ を含めることはできません',
-    createCustomPlatformFailed: 'カスタムプラットフォームの作成に失敗しました',
+    createCustomPlatformFailed: 'カスタム SNS を作成できませんでした。',
+    deleteCustomPlatformFailed: 'カスタム SNS を削除できませんでした。',
     confirmDeleteCustomPlatform:
       'このカスタムプラットフォームを削除してもよろしいですか？',
     close: '閉じる',
@@ -3942,9 +3966,9 @@ export const jaJP: TranslationKeys = {
     playgroundSessions: 'セッション',
     playgroundMemoryChain: '修正の流れ',
     playgroundMemoryChainEmpty:
-      'まだ修正の流れはありません。生成や編集を行うと、ユーザーとエージェントの往復がここに表示されます。',
+      'まだ修正の流れはありません。生成や編集を行うと、ユーザーと Agent の往復がここに表示されます。',
     playgroundMemoryUser: 'ユーザー',
-    playgroundMemoryAgent: 'エージェント',
+    playgroundMemoryAgent: 'Agent',
     playgroundMemoryFailed: '失敗',
     playgroundMemoryNoExplanation: '（説明なし）',
     playgroundNewSession: '新しいセッション',
@@ -4022,6 +4046,7 @@ export const jaJP: TranslationKeys = {
     playgroundBadRequestHint: '無効なリクエスト：{detail}',
     playgroundErrorDetail: '詳細：{detail}',
     playgroundRuntimeError: 'プレビュー実行エラー：{message}',
+    playgroundUnknownError: 'プレビュー実行中にエラーが発生しました。',
     playgroundCancel: 'キャンセル',
     playgroundCancelled:
       '生成をキャンセルしました。プロジェクトと入力は保持されています。準備ができたら再送してください。',
@@ -4088,6 +4113,7 @@ export const jaJP: TranslationKeys = {
     invalidId: 'このアプリのアドレスは無効です',
     appCodeLoadFailed: 'アプリコードの読み込みに失敗しました',
     loadAppFailed: 'アプリの読み込みに失敗しました',
+    listLoadFailed: 'アプリ一覧を読み込めませんでした。',
     startAppFailed: 'アプリを起動できませんでした',
     stopAppFailed: 'アプリを停止できませんでした',
     widgetNotFound: 'このウィジェットが見つかりません',
@@ -4108,6 +4134,8 @@ export const jaJP: TranslationKeys = {
     windowScheme: 'ウィンドウスキーム',
     scheme: 'スキーム',
     saveCurrentScheme: '現在のスキームを保存',
+    schemeSaveFailed: 'ウィンドウスキームを保存できませんでした。',
+    schemeLoadFailed: 'ウィンドウスキームを読み込めませんでした。',
     saving: '保存中...',
     noSavedSchemes: '保存されたスキームはありません',
     windowCount: '{count} 個のウィンドウ',
@@ -4149,7 +4177,8 @@ export const jaJP: TranslationKeys = {
     visit: 'アクセス',
     loading: '読み込み中...',
     settingSaved: '設定を保存しました',
-    settingSaveFailed: '保存に失敗しました',
+    settingSaveFailed: 'アプリ設定を保存できませんでした。',
+    settingsLoadFailed: 'アプリ設定を読み込めませんでした。',
     apiCredentials: 'API 認証情報',
     apiCredentialsDesc:
       'ホストが暗号化して保存し、マニフェストで宣言された固定 HTTPS サービスにのみ送信します。アプリや訪問者は値を読み取れません',
@@ -4181,6 +4210,7 @@ export const jaJP: TranslationKeys = {
       'マニフェストの送信先または権限が変更されました。再入力して承認してください',
     credentialSaved: '認証情報を安全に保存しました',
     credentialSaveFailed: '認証情報の保存に失敗しました',
+    credentialLoadFailed: '認証情報の状態を読み込めませんでした。',
     credentialRemoved: '認証情報を削除しました',
     credentialRemoveFailed: '認証情報の削除に失敗しました',
 
@@ -4239,6 +4269,8 @@ export const jaJP: TranslationKeys = {
     storeUrlExists: 'このストアソース URL は既に存在します。',
     storeInvalidIndex: 'ストア索引の形式が無効です。',
     storeDownloadFailed: 'モジュールをダウンロードできませんでした: {name}',
+    storeVersionMismatch:
+      'ストアのバージョンは {catalog}、パッケージは {manifest} です。ストアを更新してから再試行してください。',
     storeAddFailed: 'ストアソースの追加に失敗しました。',
     storeRemoveFailed: 'ストアソースの削除に失敗しました。',
     storeUpdateFailed: 'ストアソースの更新に失敗しました。',
@@ -4307,6 +4339,7 @@ export const jaJP: TranslationKeys = {
     article: '記事',
     loadSourcesFailed: '購読元の読み込みに失敗しました',
     loadArticlesFailed: '記事の読み込みに失敗しました',
+    starFailed: 'スターを更新できませんでした。',
     subscription: '購読',
     subscriptions: '購読',
     unread: '未読',
@@ -5102,6 +5135,7 @@ export const jaJP: TranslationKeys = {
     title: '通知',
     tabControl: 'コントロール',
     empty: '通知はありません',
+    loadFailed: '通知を読み込めませんでした。',
     clearAll: 'すべて削除',
     clearConfirm: '削除しますか？',
     enableSystemNotif: 'システム通知を有効化',
@@ -5109,7 +5143,7 @@ export const jaJP: TranslationKeys = {
     minutesAgo: '{n}分前',
     hoursAgo: '{n}時間前',
     daysAgo: '{n}日前',
-    sourceAgent: 'エージェントタスク',
+    sourceAgent: 'Agent タスク',
     sourceHeartbeat: '定期タスク',
     sourceMcp: 'MCPサーバー',
     sourceSystem: 'システム',

@@ -147,11 +147,12 @@ export function useComments({
       }
     } catch (err) {
       console.error('Failed to load comments:', err)
+      showToastMessage(userFacingError(err, t.errors.commentLoadFailed))
     } finally {
       setCommentsLoading(false)
       commentsLoadingRef.current = false
     }
-  }, [isAuthenticated, itemId])
+  }, [isAuthenticated, itemId, showToastMessage, t.errors.commentLoadFailed])
 
   // 提交评论
   const submitComment = useCallback(async () => {
@@ -236,8 +237,9 @@ export function useComments({
       }
     } catch (err) {
       console.error('Failed to load replies:', err)
+      showToastMessage(userFacingError(err, t.errors.commentRepliesLoadFailed))
     }
-  }, [])
+  }, [showToastMessage, t.errors.commentRepliesLoadFailed])
 
   // 展开/收起回复
   const toggleReplies = useCallback(

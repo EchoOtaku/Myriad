@@ -12,6 +12,7 @@ import type { NotificationSourceKey } from '../services/notificationPreferencesA
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../contexts/I18nContext'
+import { currentCopy } from '../i18n/localeCopy'
 import { federationApi } from '../services/federationApi'
 import { notificationSourceFor } from '../services/notificationDelivery'
 import { getGreeting } from '../utils/dynamicContent'
@@ -59,7 +60,7 @@ async function runFederationInviteAction(
     typeof n.metadata?.channel_id === 'string' ? n.metadata.channel_id : ''
 
   if (kind === 'room_invite' || (roomId && !channelId)) {
-    if (!roomId) throw new Error('Missing room_id')
+    if (!roomId) throw new Error(currentCopy().errors.inviteInvalid)
     if (actionId === 'accept') {
       await federationApi.acceptRoomInvite(roomId)
       return
@@ -70,7 +71,7 @@ async function runFederationInviteAction(
     }
   }
   if (kind === 'channel_invite' || channelId) {
-    if (!channelId) throw new Error('Missing channel_id')
+    if (!channelId) throw new Error(currentCopy().errors.inviteInvalid)
     if (actionId === 'accept') {
       await federationApi.acceptChannel(channelId)
       return
@@ -80,7 +81,7 @@ async function runFederationInviteAction(
       return
     }
   }
-  throw new Error(`Unsupported invite action: ${actionId}`)
+  throw new Error(currentCopy().errors.agentUnsupported)
 }
 
 /** Apple 风格胶囊按钮基础样式 */

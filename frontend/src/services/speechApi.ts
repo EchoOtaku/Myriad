@@ -9,6 +9,7 @@ import { currentCopy } from '../i18n/localeCopy'
 import { ApiError, parseApiErrorBody } from './api'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
 import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
+import { userFacingError } from '../utils/userFacingError'
 
 function speechHttpError(status: number, raw: string, fallback: string): ApiError {
   let parsed: unknown
@@ -531,14 +532,20 @@ export class CloudPodcastPlayer {
           // 显示第一个错误
           const firstError = response.errors[0]
           throw new Error(
-            `${currentCopy().brew.generateFailed}: ${
+            userFacingError(
               firstError.error === 'empty_dialogue_text'
                 ? currentCopy().errors.emptyDialogueText
-                : firstError.error
-            }`,
+                : firstError.error,
+              currentCopy().brew.generateFailed,
+            ),
           )
         } else if (response.error) {
-          throw new Error(response.error)
+          throw new Error(
+            userFacingError(
+              response.error,
+              currentCopy().brew.generatePodcastFailed,
+            ),
+          )
         } else {
           throw new Error(currentCopy().brew.generatePodcastFailed)
         }
@@ -857,6 +864,11 @@ export function saveTTSSettings(settings: Partial<TTSSettings>) {
     localStorage.setItem('brewlia_tts_settings', JSON.stringify(merged))
   } catch (e) {
     console.warn('[TTS] Failed to save settings:', e)
+    void import('../utils/toastManager').then(({ showError }) => {
+      showError(
+        userFacingError(e, currentCopy().errors.ttsSettingsSaveFailed),
+      )
+    })
   }
 }
 

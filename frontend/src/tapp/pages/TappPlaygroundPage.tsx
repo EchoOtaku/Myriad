@@ -1084,7 +1084,8 @@ export function TappPlaygroundPage() {
 
   /** Page sandbox errors may auto-repair (existing behavior). */
   const handleSandboxError = (sandboxError: Error) => {
-    const message = sandboxError.message || 'Unknown sandbox runtime error'
+    const message =
+      sandboxError.message || t.tapp.playgroundUnknownError
     setPreviewError(mapPlaygroundRuntimeError(message, t.tapp, format))
     // Widget-only projects have no page sandbox; never auto-repair for page absence.
     if (isWidgetOnly || !hasUsablePage) return
@@ -1106,7 +1107,8 @@ export function TappPlaygroundPage() {
 
   /** Widget errors surface in the status band but do not trigger auto-repair. */
   const handleWidgetError = (sandboxError: Error) => {
-    const message = sandboxError.message || 'Unknown widget runtime error'
+    const message =
+      sandboxError.message || t.tapp.playgroundUnknownError
     setPreviewError(mapPlaygroundRuntimeError(message, t.tapp, format))
   }
 

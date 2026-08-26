@@ -148,6 +148,9 @@ export interface TranslationKeys {
     portraitUnavailable: string
     portraitDownloadFailed: string
     portraitUploadFailed: string
+    seeThroughStatusFailed: string
+    anime25dWebglFailed: string
+    anime25dPlaybackFailed: string
     statusIdle: string
     statusThinking: string
     statusTalking: string
@@ -2135,6 +2138,7 @@ export interface TranslationKeys {
     playbackNotSupported: string
     // 空状态
     emptyLibrary: string
+    loadFailed: string
     emptyCategory: string
     canvasPanHint: string
     /** Touch-first short copy for narrow viewports */
@@ -2422,6 +2426,7 @@ export interface TranslationKeys {
     skillFileInvalid: string
     skillCooldown: string
     commentLoadFailed: string
+    commentRepliesLoadFailed: string
     commentSaveFailed: string
     commentDeleteFailed: string
     articleLoadFailed: string
@@ -2461,6 +2466,7 @@ export interface TranslationKeys {
     accountLoadFailed: string
     accountSaveFailed: string
     passwordChangeFailed: string
+    passwordSetFailed: string
     localLoginSaveFailed: string
     configFilePermission: string
     configFileReadFailed: string
@@ -2577,6 +2583,16 @@ export interface TranslationKeys {
     dndScheduleIncomplete: string
     e2eKeyFailed: string
     configSaveFailed: string
+    dashboardLayoutSaveFailed: string
+    dashboardTitleSaveFailed: string
+    customPlatformsSaveFailed: string
+    controlPanelSaveFailed: string
+    controlPanelLoadFailed: string
+    titleStyleSaveFailed: string
+    widgetThemeSaveFailed: string
+    notificationDeleteFailed: string
+    notificationClearFailed: string
+    configReloadFailed: string
     mediaActionInvalid: string
     mediaModeInvalid: string
     scheduleInvalid: string
@@ -2595,6 +2611,10 @@ export interface TranslationKeys {
     serviceNotConfigured: string
     notificationUnavailable: string
     notificationPrefsSaveFailed: string
+    notificationPrefsLoadFailed: string
+    clipboardFailed: string
+    localeLoadFailed: string
+    ttsSettingsSaveFailed: string
   }
 
   wallpaperStatus: {
@@ -2802,6 +2822,7 @@ export interface TranslationKeys {
     oauthUnbind: string
     oauthUnbindConfirm: string
     oauthUnbindFailed: string
+    oauthLoadFailed: string
     oauthNoProviders: string
     oauthNotConfigured: string
     profileDisplaySourcesTitle: string
@@ -3068,6 +3089,7 @@ export interface TranslationKeys {
   // 最近活动小组件
   recentActivity: {
     widgetTitle: string
+    loadFailed: string
     yes: string
     no: string
     unknownProject: string
@@ -3239,6 +3261,7 @@ export interface TranslationKeys {
     fillPopupContent: string
     invalidUrlPattern: string
     createCustomPlatformFailed: string
+    deleteCustomPlatformFailed: string
     confirmDeleteCustomPlatform: string
     close: string
     delete: string
@@ -3584,6 +3607,7 @@ export interface TranslationKeys {
     playgroundErrorDetail: string
     /** Preview sandbox/widget runtime; `{message}`. */
     playgroundRuntimeError: string
+    playgroundUnknownError: string
     playgroundCancel: string
     playgroundCancelled: string
     playgroundAgentTrace: string
@@ -3641,6 +3665,7 @@ export interface TranslationKeys {
     invalidId: string
     appCodeLoadFailed: string
     loadAppFailed: string
+    listLoadFailed: string
     startAppFailed: string
     stopAppFailed: string
     widgetNotFound: string
@@ -3660,6 +3685,8 @@ export interface TranslationKeys {
     windowScheme: string
     scheme: string
     saveCurrentScheme: string
+    schemeSaveFailed: string
+    schemeLoadFailed: string
     saving: string
     noSavedSchemes: string
     windowCount: string
@@ -3707,6 +3734,7 @@ export interface TranslationKeys {
     loading: string
     settingSaved: string
     settingSaveFailed: string
+    settingsLoadFailed: string
     apiCredentials: string
     apiCredentialsDesc: string
     credentialConfigured: string
@@ -3734,6 +3762,7 @@ export interface TranslationKeys {
     credentialReauthorizationRequired: string
     credentialSaved: string
     credentialSaveFailed: string
+    credentialLoadFailed: string
     credentialRemoved: string
     credentialRemoveFailed: string
 
@@ -3796,6 +3825,7 @@ export interface TranslationKeys {
     storeUrlExists: string
     storeInvalidIndex: string
     storeDownloadFailed: string
+    storeVersionMismatch: string
     storeAddFailed: string
     storeRemoveFailed: string
     storeUpdateFailed: string
@@ -3861,6 +3891,7 @@ export interface TranslationKeys {
     article: string
     loadSourcesFailed: string
     loadArticlesFailed: string
+    starFailed: string
     subscription: string
     subscriptions: string
     unread: string
@@ -4647,6 +4678,7 @@ export interface TranslationKeys {
     title: string
     tabControl: string
     empty: string
+    loadFailed: string
     clearAll: string
     clearConfirm: string
     enableSystemNotif: string
