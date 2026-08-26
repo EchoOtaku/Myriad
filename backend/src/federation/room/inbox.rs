@@ -197,8 +197,10 @@ pub async fn handle_room_invite(
                WHEN btrim(federation_rooms.home_server) = ''
                     OR lower(btrim(federation_rooms.home_server))
                        = lower(btrim(EXCLUDED.home_server))
-               THEN COALESCE(federation_rooms.shared_data_config, '{}'::jsonb)
-                    || EXCLUDED.shared_data_config
+               -- Column is `json`, which has no `||`. Merge through jsonb and cast
+               -- back so every CASE branch resolves to `json`.
+               THEN (COALESCE(federation_rooms.shared_data_config::jsonb, '{}'::jsonb)
+                     || EXCLUDED.shared_data_config::jsonb)::json
                ELSE federation_rooms.shared_data_config
              END,
              updated_at = CASE
@@ -738,8 +740,9 @@ pub async fn handle_room_join(
                 db.execute_raw(Statement::from_sql_and_values(
                     DatabaseBackend::Postgres,
                     r#"UPDATE federation_rooms
-                       SET shared_data_config = COALESCE(shared_data_config, '{}'::jsonb)
-                           || $2::jsonb,
+                       SET shared_data_config =
+                             (COALESCE(shared_data_config::jsonb, '{}'::jsonb)
+                              || $2::jsonb)::json,
                            updated_at = NOW()
                        WHERE room_id = $1
                          AND (shared_data_config -> 'game') IS NULL"#,
