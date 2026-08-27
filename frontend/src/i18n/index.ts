@@ -286,6 +286,9 @@ export interface TranslationKeys {
     anime25dPresetDizzy: string
     anime25dPresetSqueeze: string
     anime25dPresetCry: string
+    anime25dPresetAngry: string
+    anime25dPresetSpeechless: string
+    anime25dPresetManiac: string
     anime25dBlinkNow: string
     anime25dResetPose: string
     anime25dInspect: string
@@ -303,6 +306,39 @@ export interface TranslationKeys {
     rigPathSeeThroughHint: string
     rigTokenReady: string
     rigPreflightTitle: string
+    rigPreflightSummary: string
+    rigPreflightReady: string
+    rigPreflightActivated: string
+    rigPreflightIssuesTitle: string
+    rigPreflightNoIssues: string
+    rigPreflightStepValidate: string
+    rigPreflightStepValidateDescription: string
+    rigPreflightStepPack: string
+    rigPreflightStepPackDescription: string
+    rigPreflightStepPreview: string
+    rigPreflightStepPreviewDescription: string
+    rigPreflightStepAnalyze: string
+    rigPreflightStepAnalyzeDescription: string
+    rigPreflightStepActivate: string
+    rigPreflightStepActivateDescription: string
+    rigPreflightStatusPending: string
+    rigPreflightStatusRunning: string
+    rigPreflightStatusCompleted: string
+    rigPreflightStatusFailed: string
+    rigDiagnosticSeverityError: string
+    rigDiagnosticSeverityWarning: string
+    rigDiagnosticSeverityInfo: string
+    rigDiagnosticMissingPresentationFallback: string
+    rigDiagnosticUnknownPresentationVariant: string
+    rigDiagnosticMissingHead: string
+    rigDiagnosticMissingBody: string
+    rigDiagnosticMissingMouth: string
+    rigDiagnosticMissingGaze: string
+    rigDiagnosticMissingFacialVariants: string
+    rigDiagnosticMissingSecondaryMotion: string
+    rigDiagnosticMissingOutfitProfile: string
+    rigDiagnosticMissingSpatialProfile: string
+    rigDiagnosticRigidPartDeformation: string
     rigReadyTitle: string
     rigReadyHint: string
     motionSeeThroughToken: string
@@ -2027,6 +2063,7 @@ export interface TranslationKeys {
   // 小组件
   widgets: {
     welcome: string
+    agentPersona: string
     quickStats: string
     recentActivity: string
     friendLinks: string
@@ -3655,6 +3692,7 @@ export interface TranslationKeys {
     selectTappFile: string
     invalidTappFile: string
     installFailed: string
+    alreadyInstalled: string
     installSuccess: string
 
     // 运行页面

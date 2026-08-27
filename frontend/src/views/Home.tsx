@@ -88,13 +88,19 @@ export default function Home() {
         size: '2x2',
         position: { x: 6, y: 0 },
       },
+      {
+        id: 'default-agent-persona',
+        type: 'agent-persona',
+        size: '4x4',
+        position: { x: 8, y: 0 },
+      },
     ],
     [],
   )
 
   // Shared built-in catalog (same source as Control Panel)
   const AVAILABLE_WIDGETS: WidgetType[] = useMemo(
-    () => getBuiltinWidgets(t.widgets),
+    () => getBuiltinWidgets(t.widgets, 'home'),
     [t.widgets],
   )
 

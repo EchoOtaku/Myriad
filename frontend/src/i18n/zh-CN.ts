@@ -291,6 +291,9 @@ export const zhCN: TranslationKeys = {
     anime25dPresetDizzy: '晕',
     anime25dPresetSqueeze: '>< 挤眼',
     anime25dPresetCry: '哭',
+    anime25dPresetAngry: '愤怒',
+    anime25dPresetSpeechless: '无语',
+    anime25dPresetManiac: '狂笑',
     anime25dBlinkNow: '眨眼',
     anime25dResetPose: '复位',
     anime25dInspect: '播放检查',
@@ -315,6 +318,53 @@ export const zhCN: TranslationKeys = {
     rigPathSeeThroughHint: '从当前主立绘远端拆层，再走本地预检。',
     rigTokenReady: 'Token 已保存',
     rigPreflightTitle: '预检结果',
+    rigPreflightSummary: '已识别 {parts} 个可动部件 · 质量评分 {score}/100',
+    rigPreflightReady:
+      '前四步已完成。确认下方能力检查后，激活会直接保存本次预检产物，不会重新拆层。',
+    rigPreflightActivated: 'Rig 已激活，当前形象已开始使用这份预检结果。',
+    rigPreflightIssuesTitle: '能力检查',
+    rigPreflightNoIssues: '没有发现会影响动作表现的问题。',
+    rigPreflightStepValidate: '读取并校验 PSD',
+    rigPreflightStepValidateDescription:
+      '检查文件结构、有效图层和来源绑定，排除空画布或失效 PSD。',
+    rigPreflightStepPack: '整理图层与图集',
+    rigPreflightStepPackDescription:
+      '裁切可见像素、打包纹理，并建立部件、网格与骨骼数据。',
+    rigPreflightStepPreview: '生成安全预览',
+    rigPreflightStepPreviewDescription:
+      '由后端编译临时 Rig；这一步不会替换当前正在使用的 Rig。',
+    rigPreflightStepAnalyze: '检查动作能力',
+    rigPreflightStepAnalyzeDescription:
+      '检查面部、口型、视线、二级运动、服装适配与网格形变能力。',
+    rigPreflightStepActivate: '激活预检结果',
+    rigPreflightStepActivateDescription:
+      '保存刚才通过预检的图集和 Rig 数据，并替换当前 Rig。',
+    rigPreflightStatusPending: '等待',
+    rigPreflightStatusRunning: '进行中',
+    rigPreflightStatusCompleted: '完成',
+    rigPreflightStatusFailed: '失败',
+    rigDiagnosticSeverityError: '错误',
+    rigDiagnosticSeverityWarning: '提醒',
+    rigDiagnosticSeverityInfo: '建议',
+    rigDiagnosticMissingPresentationFallback:
+      '展示素材缺少必需的默认变体，部分表情无法安全回退。',
+    rigDiagnosticUnknownPresentationVariant:
+      '展示素材包含播放器不支持的表情变体。',
+    rigDiagnosticMissingHead: '没有识别到头部语义骨骼。',
+    rigDiagnosticMissingBody: '没有识别到身体或躯干语义骨骼。',
+    rigDiagnosticMissingMouth: '没有可用于口型同步的嘴、唇或下颌骨骼。',
+    rigDiagnosticMissingGaze:
+      '缺少独立的左右眼纹理；只有眼睛骨骼还不能形成可见视线。',
+    rigDiagnosticMissingFacialVariants:
+      '已经识别到面部骨骼，但眼睛、头部或嘴部的离散表情素材不完整。',
+    rigDiagnosticMissingSecondaryMotion:
+      '没有独立拆分的头发或饰品链，暂时无法生成二级摆动。',
+    rigDiagnosticMissingOutfitProfile:
+      '缺少服装拓扑、安全范围或角色比例锚点，服装自适应会受限。',
+    rigDiagnosticMissingSpatialProfile:
+      '缺少角色局部的头部与躯干范围，交互和形变的安全限制会受限。',
+    rigDiagnosticRigidPartDeformation:
+      '所有顶点都只绑定单根骨骼，关节弯曲时可能出现分段感。',
     rigReadyTitle: '骨骼已激活',
     rigReadyHint:
       '可以在左侧预览里检查呼吸、眨眼和头发，或到动作调整里改表情。',
@@ -2243,6 +2293,7 @@ export const zhCN: TranslationKeys = {
   // 小组件
   widgets: {
     welcome: '欢迎',
+    agentPersona: 'Agent 人设',
     quickStats: '内容数据概览',
     recentActivity: '最近活动',
     friendLinks: '友情链接',
@@ -3875,6 +3926,7 @@ export const zhCN: TranslationKeys = {
     selectTappFile: '选择 .tapp 文件',
     invalidTappFile: '请选择 .tapp 文件',
     installFailed: '安装失败',
+    alreadyInstalled: '这个应用已经装过了。',
     installSuccess: '已安装 {name}',
 
     // 运行页面

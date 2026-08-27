@@ -587,6 +587,9 @@ export function userFacingError(reason: unknown, fallback?: string): string {
       usefulExtra(hint, currentCopy().tapp.listLoadFailed),
     )
   }
+  if (/tapp \S+ is already installed/i.test(raw)) {
+    return currentCopy().tapp.alreadyInstalled
+  }
   if (
     /tapp \S+ is not installed/i.test(raw) ||
     /tapp \S+ is already being uninstalled/i.test(raw)

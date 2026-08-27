@@ -1330,6 +1330,7 @@ describe('userFacingError', () => {
     )
     const scheme = userFacingError('Failed to save window schemes: HTTP 502')
     const missing = userFacingError('Tapp weather-clock is not installed')
+    const already = userFacingError('Tapp weather-clock is already installed')
     const reauth = userFacingError(
       'Tapp weather-clock requires permission reauthorization',
     )
@@ -1343,6 +1344,9 @@ describe('userFacingError', () => {
     assert.match(scheme, /502/)
     assert.equal(/Failed to save window schemes/i.test(scheme), false)
     assert.equal(/is not installed/i.test(missing), false)
+    assert.equal(/Tapp weather-clock is already installed/i.test(already), false)
+    assert.notEqual(already, missing)
+    assert.notEqual(already, currentCopy().tapp.installFailed)
     assert.equal(/reauthorization/i.test(reauth), false)
     assert.notEqual(missing, reauth)
     assert.match(list, /列表|list|一覧/i)

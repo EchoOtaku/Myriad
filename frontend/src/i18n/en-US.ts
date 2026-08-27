@@ -299,6 +299,9 @@ export const enUS: TranslationKeys = {
     anime25dPresetDizzy: 'Dizzy',
     anime25dPresetSqueeze: '>< Squeezed eyes',
     anime25dPresetCry: 'Crying',
+    anime25dPresetAngry: 'Angry',
+    anime25dPresetSpeechless: 'Speechless',
+    anime25dPresetManiac: 'Maniacal laugh',
     anime25dBlinkNow: 'Blink',
     anime25dResetPose: 'Reset pose',
     anime25dInspect: 'Playback inspect',
@@ -324,6 +327,56 @@ export const enUS: TranslationKeys = {
       'Split the current master portrait remotely, then run local preflight.',
     rigTokenReady: 'Token saved',
     rigPreflightTitle: 'Preflight result',
+    rigPreflightSummary:
+      '{parts} movable parts found · Quality score {score}/100',
+    rigPreflightReady:
+      'The first four steps are complete. Review the capability checks below; activation saves this exact preflight output without splitting the PSD again.',
+    rigPreflightActivated:
+      'Rig activated. The current portrait is now using this preflight result.',
+    rigPreflightIssuesTitle: 'Capability checks',
+    rigPreflightNoIssues: 'No issues affecting motion quality were found.',
+    rigPreflightStepValidate: 'Read and validate the PSD',
+    rigPreflightStepValidateDescription:
+      'Check the file structure, usable layers, and source binding; reject empty or invalid PSDs.',
+    rigPreflightStepPack: 'Prepare layers and atlas',
+    rigPreflightStepPackDescription:
+      'Trim visible pixels, pack textures, and build part, mesh, and bone data.',
+    rigPreflightStepPreview: 'Build a safe preview',
+    rigPreflightStepPreviewDescription:
+      'Compile a temporary rig on the backend without replacing the currently active rig.',
+    rigPreflightStepAnalyze: 'Check motion capabilities',
+    rigPreflightStepAnalyzeDescription:
+      'Check face, lip sync, gaze, secondary motion, outfit adaptation, and mesh deformation.',
+    rigPreflightStepActivate: 'Activate the preflight result',
+    rigPreflightStepActivateDescription:
+      'Save the atlas and rig data that passed preflight, then replace the current rig.',
+    rigPreflightStatusPending: 'Waiting',
+    rigPreflightStatusRunning: 'Running',
+    rigPreflightStatusCompleted: 'Done',
+    rigPreflightStatusFailed: 'Failed',
+    rigDiagnosticSeverityError: 'Error',
+    rigDiagnosticSeverityWarning: 'Notice',
+    rigDiagnosticSeverityInfo: 'Suggestion',
+    rigDiagnosticMissingPresentationFallback:
+      'A presentation slot is missing its required fallback, so some expressions cannot fall back safely.',
+    rigDiagnosticUnknownPresentationVariant:
+      'Presentation assets contain an expression variant the player does not support.',
+    rigDiagnosticMissingHead: 'No semantic head bone was found.',
+    rigDiagnosticMissingBody: 'No semantic body or torso bone was found.',
+    rigDiagnosticMissingMouth:
+      'No mouth, lip, or jaw bone is available for lip sync.',
+    rigDiagnosticMissingGaze:
+      'Independent left and right eye textures are missing; eye bones alone cannot produce visible gaze.',
+    rigDiagnosticMissingFacialVariants:
+      'Face bones were found, but the discrete eye, head, or mouth expression assets are incomplete.',
+    rigDiagnosticMissingSecondaryMotion:
+      'No independently split hair or accessory chain is available for secondary motion.',
+    rigDiagnosticMissingOutfitProfile:
+      'Outfit topology, safety bounds, or character proportion anchors are missing, limiting outfit adaptation.',
+    rigDiagnosticMissingSpatialProfile:
+      'Character-local head and torso bounds are missing, limiting interaction and deformation safety.',
+    rigDiagnosticRigidPartDeformation:
+      'Every vertex is bound to one bone, so bending joints may still look segmented.',
     rigReadyTitle: 'Rig active',
     rigReadyHint:
       'Check breath, blink, and hair in the left preview, or adjust expressions under motion.',
@@ -2394,6 +2447,7 @@ export const enUS: TranslationKeys = {
   // Widgets
   widgets: {
     welcome: 'Welcome',
+    agentPersona: 'Agent Persona',
     quickStats: 'Quick Stats',
     recentActivity: 'Recent Activity',
     friendLinks: 'Friend Links',
@@ -4114,6 +4168,7 @@ export const enUS: TranslationKeys = {
     selectTappFile: 'Select .tapp file',
     invalidTappFile: 'Please select a .tapp file',
     installFailed: 'Installation failed',
+    alreadyInstalled: 'That app is already installed.',
     installSuccess: 'Installed {name}',
 
     // Run page

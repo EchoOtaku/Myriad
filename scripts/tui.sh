@@ -271,12 +271,18 @@ tui_size() {
 }
 
 tui_read_byte() {
-    # -d '' keeps newline as data. rc=0 + empty still means Enter
-    # (bash 3.2 delimiter). rc!=0 + empty is the 1s VTIME idle.
+    # bash 3.2 `read -n` resets termios (VMIN=1 VTIME=0), so stty VTIME
+    # never fires and the TUI never idles. dd uses the current tty settings.
+    # `printf X` keeps a trailing newline (Enter) which $(...) would strip.
+    local raw
     TUI_BYTE=""
-    TUI_READ_RC=0
-    IFS= read -r -s -n 1 -d '' TUI_BYTE
-    TUI_READ_RC=$?
+    TUI_READ_RC=1
+    raw="$(dd bs=1 count=1 2>/dev/null; printf X)"
+    raw="${raw%X}"
+    if [[ -n "$raw" ]]; then
+        TUI_BYTE="$raw"
+        TUI_READ_RC=0
+    fi
 }
 
 tui_read_key() {
@@ -284,11 +290,7 @@ tui_read_key() {
     local k="" rest=""
     tui_read_byte
     if [[ -z "$TUI_BYTE" ]]; then
-        if [[ "$TUI_READ_RC" -eq 0 ]]; then
-            TUI_KEY="enter"
-        else
-            TUI_KEY="timeout"
-        fi
+        TUI_KEY="timeout"
         return 0
     fi
     k="$TUI_BYTE"
@@ -517,7 +519,7 @@ tui_refresh_status() {
         TUI_CACHE_BE_STATE="running"
         TUI_CACHE_BE_DETAIL=":${BACKEND_PORT}"
         TUI_EXPECT_BE_UNTIL=0
-    elif [[ "$now" -lt "${TUI_EXPECT_BE_UNTIL:-0}" ]]; then
+    elif [[ "$now" -lt "${TUI_EXPECT_BE_UNTIL:-0}" ]] || [[ -n "$(list_backend_pids 2>/dev/null || true)" ]]; then
         TUI_CACHE_BE_STATE="starting"
         TUI_CACHE_BE_DETAIL="cargo"
     else
@@ -529,7 +531,7 @@ tui_refresh_status() {
         TUI_CACHE_FE_STATE="running"
         TUI_CACHE_FE_DETAIL=":${FRONTEND_PORT}"
         TUI_EXPECT_FE_UNTIL=0
-    elif [[ "$now" -lt "${TUI_EXPECT_FE_UNTIL:-0}" ]]; then
+    elif [[ "$now" -lt "${TUI_EXPECT_FE_UNTIL:-0}" ]] || [[ -n "$(list_frontend_pids 2>/dev/null || true)" ]]; then
         TUI_CACHE_FE_STATE="starting"
         TUI_CACHE_FE_DETAIL="pnpm"
     else
@@ -1437,7 +1439,7 @@ tui_bg_on() {
 }
 
 tui_run_quiet() {
-    local work="$1" done="$2" tmp rc last old_e=0
+    local work="$1" done="$2" tmp rc last old_e=0 pid now
     shift 2
     if [[ -n "$work" ]]; then
         tui_set_msg "$work"
@@ -1451,7 +1453,22 @@ tui_run_quiet() {
     tui_bg_on
     DEV_START_NOWAIT=1
     set +e
-    "$@" >"$tmp" 2>&1
+    "$@" >"$tmp" 2>&1 </dev/null &
+    pid=$!
+    # Keep Overview/clock alive while the job runs. Keys are drained so they
+    # don't pile up and fire after start/stop returns.
+    while kill -0 "$pid" 2>/dev/null; do
+        tui_read_key
+        [[ "$TUI_KEY" == "timeout" ]] || continue
+        tui_refresh_status || true
+        tui_tick_clock
+        now="$(date +%s)"
+        if [[ "$now" -ge $((TUI_OVERVIEW_PULSE_AT + TUI_OVERVIEW_PULSE_SECS)) ]]; then
+            tui_set_msg "${work}  $(tui_live_msg)"
+            tui_render || true
+        fi
+    done
+    wait "$pid"
     rc=$?
     DEV_START_NOWAIT=0
     [[ $old_e -eq 1 ]] && set -e

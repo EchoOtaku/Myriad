@@ -132,6 +132,9 @@ export interface PerformanceCue {
     | 'think'
     | 'dizzy'
     | 'cry'
+    | 'angry'
+    | 'speechless'
+    | 'maniac'
   atMs: number
   intensity: number
   tempo: number

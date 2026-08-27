@@ -20,9 +20,12 @@ import {
 import { useI18n } from '../../../contexts/I18nContext'
 import { userFacingError } from '../../../utils/userFacingError'
 import {
+  ANGRY_EXPRESSION_PRESET,
   CRY_EXPRESSION_PRESET,
   DIZZY_EXPRESSION_PRESET,
+  MANIAC_EXPRESSION_PRESET,
   SQUEEZE_EXPRESSION_PRESET,
+  SPEECHLESS_EXPRESSION_PRESET,
   THINKING_EXPRESSION_PRESET,
 } from './expressionPresets'
 import { WORKBENCH_DRIVER } from './player'
@@ -46,6 +49,25 @@ interface Props {
   personaLead?: ReactNode
   overviewLead?: ReactNode
   motionEnabled?: boolean
+}
+
+const RIG_IMPORT_STEP_ORDER: RigAssetCompileEvent['stage'][] = [
+  'validate-source',
+  'pack-atlas',
+  'compile-preview',
+  'analyze-capabilities',
+  'persist-manifest',
+]
+
+type RigImportStepStatus = RigAssetCompileEvent['status'] | 'pending'
+type RigImportStepState = Partial<
+  Record<RigAssetCompileEvent['stage'], RigAssetCompileEvent['status']>
+>
+
+interface RigImportSummary {
+  partCount: number
+  score: number
+  activated: boolean
 }
 
 const PRESETS: Array<{ id: string; driver: Partial<Anime25DDriver> }> = [
@@ -121,6 +143,18 @@ const PRESETS: Array<{ id: string; driver: Partial<Anime25DDriver> }> = [
     driver: { ...CRY_EXPRESSION_PRESET },
   },
   {
+    id: 'angry',
+    driver: { ...ANGRY_EXPRESSION_PRESET },
+  },
+  {
+    id: 'speechless',
+    driver: { ...SPEECHLESS_EXPRESSION_PRESET },
+  },
+  {
+    id: 'maniac',
+    driver: { ...MANIAC_EXPRESSION_PRESET },
+  },
+  {
     id: 'winkL',
     driver: {
       eyeOpenL: 0,
@@ -192,7 +226,9 @@ export default function Anime25DWorkbench({
   const rigPsdInputRef = useRef<HTMLInputElement>(null)
   const [rigImportStage, setRigImportStage] =
     useState<RigAssetCompileEvent | null>(null)
-  const [rigImportResult, setRigImportResult] = useState<string | null>(null)
+  const [rigImportSteps, setRigImportSteps] = useState<RigImportStepState>({})
+  const [rigImportResult, setRigImportResult] =
+    useState<RigImportSummary | null>(null)
   const [rigImportError, setRigImportError] = useState<string | null>(null)
   const [rigPreflight, setRigPreflight] = useState<RigAssetPreflight | null>(
     null,
@@ -208,6 +244,8 @@ export default function Anime25DWorkbench({
 
   useEffect(() => {
     setRigPreflight(null)
+    setRigImportStage(null)
+    setRigImportSteps({})
     setRigImportResult(null)
     setRigImportError(null)
     syncedDriverRef.current = false
@@ -272,17 +310,30 @@ export default function Anime25DWorkbench({
     }
   }
 
+  const recordRigImportStage = (event: RigAssetCompileEvent) => {
+    setRigImportStage(event)
+    setRigImportSteps((current) => ({
+      ...current,
+      [event.stage]: event.status,
+    }))
+  }
+
   const preflightRigPsd = async (file: File) => {
     if (importingRig || !sourceMasterAssetId) return
     setRigImportOperation('manual')
     setRigImportStage(null)
+    setRigImportSteps({})
     setRigImportResult(null)
     setRigImportError(null)
     try {
       setRigPreflight(null)
-      const imported = await onPreflightRigPsd(file, setRigImportStage)
+      const imported = await onPreflightRigPsd(file, recordRigImportStage)
       setRigPreflight(imported)
-      setRigImportResult(`${imported.partCount} · ${imported.report.score}/100`)
+      setRigImportResult({
+        partCount: imported.partCount,
+        score: imported.report.score,
+        activated: false,
+      })
     } catch (reason) {
       setRigImportError(
         userFacingError(
@@ -306,14 +357,19 @@ export default function Anime25DWorkbench({
     }
     setRigImportOperation('decompose')
     setRigImportStage(null)
+    setRigImportSteps({})
     setRigImportResult(null)
     setRigImportError(null)
     try {
       setRigPreflight(null)
       const file = await onDecomposeRigPsd()
-      const imported = await onPreflightRigPsd(file, setRigImportStage)
+      const imported = await onPreflightRigPsd(file, recordRigImportStage)
       setRigPreflight(imported)
-      setRigImportResult(`${imported.partCount} · ${imported.report.score}/100`)
+      setRigImportResult({
+        partCount: imported.partCount,
+        score: imported.report.score,
+        activated: false,
+      })
     } catch (reason) {
       setRigImportError(
         userFacingError(
@@ -337,8 +393,12 @@ export default function Anime25DWorkbench({
     setRigImportStage(null)
     setRigImportError(null)
     try {
-      const imported = await onCommitRigPsd(rigPreflight, setRigImportStage)
-      setRigImportResult(`${imported.partCount} · ${imported.score}/100`)
+      const imported = await onCommitRigPsd(rigPreflight, recordRigImportStage)
+      setRigImportResult({
+        partCount: imported.partCount,
+        score: imported.score,
+        activated: true,
+      })
       setRigPreflight(null)
     } catch (reason) {
       setRigImportError(
@@ -789,26 +849,82 @@ export default function Anime25DWorkbench({
                   aria-live="polite"
                 >
                   <strong>{labels.rigPreflightTitle}</strong>
-                  {rigImportStage && !rigImportResult && !rigImportError ? (
-                    <p className="merope-motion-home__help" role="status">
-                      {rigImportStage.stage} · {rigImportStage.status}
-                    </p>
-                  ) : null}
-                  {rigImportResult ? (
-                    <p className="merope-motion-home__help" role="status">
-                      {rigImportResult}
-                    </p>
-                  ) : null}
-                  {rigPreflight && rigPreflight.report.issues.length > 0 ? (
-                    <ul className="merope-motion-rig__issues">
-                      {rigPreflight.report.issues.slice(0, 6).map((item) => (
+                  <ol className="merope-motion-rig__steps">
+                    {RIG_IMPORT_STEP_ORDER.map((stage, index) => {
+                      const status = rigImportSteps[stage] ?? 'pending'
+                      const copy = rigImportStepCopy(labels, stage)
+                      return (
                         <li
-                          key={`${item.code}:${item.clipId || item.boneId || ''}`}
+                          key={stage}
+                          className={`merope-motion-rig__step is-${status}`}
+                          aria-current={
+                            status === 'started' ? 'step' : undefined
+                          }
                         >
-                          {item.severity}: {item.message}
+                          <span
+                            className="merope-motion-rig__step-marker"
+                            aria-hidden="true"
+                          >
+                            {status === 'completed' ? '✓' : index + 1}
+                          </span>
+                          <span className="merope-motion-rig__step-copy">
+                            <b>{copy.title}</b>
+                            <span>{copy.description}</span>
+                          </span>
+                          <span className="merope-motion-rig__step-state">
+                            {rigImportStatusLabel(labels, status)}
+                          </span>
                         </li>
-                      ))}
-                    </ul>
+                      )
+                    })}
+                  </ol>
+                  {rigImportResult ? (
+                    <div className="merope-motion-rig__summary" role="status">
+                      <b>
+                        {labels.rigPreflightSummary
+                          .replace('{parts}', String(rigImportResult.partCount))
+                          .replace('{score}', String(rigImportResult.score))}
+                      </b>
+                      <span>
+                        {rigImportResult.activated
+                          ? labels.rigPreflightActivated
+                          : labels.rigPreflightReady}
+                      </span>
+                    </div>
+                  ) : null}
+                  {rigPreflight ? (
+                    <div className="merope-motion-rig__checks">
+                      <b>{labels.rigPreflightIssuesTitle}</b>
+                      {rigPreflight.report.issues.length > 0 ? (
+                        <ul className="merope-motion-rig__issues">
+                          {rigPreflight.report.issues
+                            .slice(0, 6)
+                            .map((item) => (
+                              <li
+                                key={`${item.code}:${item.clipId || item.boneId || ''}`}
+                              >
+                                <span
+                                  className={`merope-motion-rig__severity is-${item.severity}`}
+                                >
+                                  {rigDiagnosticSeverityLabel(
+                                    labels,
+                                    item.severity,
+                                  )}
+                                </span>{' '}
+                                {rigDiagnosticMessage(
+                                  labels,
+                                  item.code,
+                                  item.message,
+                                )}
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <p className="merope-motion-rig__hint">
+                          {labels.rigPreflightNoIssues}
+                        </p>
+                      )}
+                    </div>
                   ) : null}
                   {rigImportError ? (
                     <p className="merope-motion-home__help" role="alert">
@@ -1121,6 +1237,92 @@ function FaceTabs<T extends string>({
   )
 }
 
+function rigImportStepCopy(
+  labels: TranslationKeys['merope'],
+  stage: RigAssetCompileEvent['stage'],
+): { title: string; description: string } {
+  if (stage === 'validate-source') {
+    return {
+      title: labels.rigPreflightStepValidate,
+      description: labels.rigPreflightStepValidateDescription,
+    }
+  }
+  if (stage === 'pack-atlas') {
+    return {
+      title: labels.rigPreflightStepPack,
+      description: labels.rigPreflightStepPackDescription,
+    }
+  }
+  if (stage === 'compile-preview') {
+    return {
+      title: labels.rigPreflightStepPreview,
+      description: labels.rigPreflightStepPreviewDescription,
+    }
+  }
+  if (stage === 'analyze-capabilities') {
+    return {
+      title: labels.rigPreflightStepAnalyze,
+      description: labels.rigPreflightStepAnalyzeDescription,
+    }
+  }
+  return {
+    title: labels.rigPreflightStepActivate,
+    description: labels.rigPreflightStepActivateDescription,
+  }
+}
+
+function rigImportStatusLabel(
+  labels: TranslationKeys['merope'],
+  status: RigImportStepStatus,
+): string {
+  if (status === 'started') return labels.rigPreflightStatusRunning
+  if (status === 'completed') return labels.rigPreflightStatusCompleted
+  if (status === 'failed') return labels.rigPreflightStatusFailed
+  return labels.rigPreflightStatusPending
+}
+
+function rigDiagnosticSeverityLabel(
+  labels: TranslationKeys['merope'],
+  severity: 'error' | 'warning' | 'info',
+): string {
+  if (severity === 'error') return labels.rigDiagnosticSeverityError
+  if (severity === 'warning') return labels.rigDiagnosticSeverityWarning
+  return labels.rigDiagnosticSeverityInfo
+}
+
+function rigDiagnosticMessage(
+  labels: TranslationKeys['merope'],
+  code: string,
+  fallback: string,
+): string {
+  if (code === 'missing-presentation-fallback') {
+    return labels.rigDiagnosticMissingPresentationFallback
+  }
+  if (code === 'unknown-presentation-variant') {
+    return labels.rigDiagnosticUnknownPresentationVariant
+  }
+  if (code === 'missing-head') return labels.rigDiagnosticMissingHead
+  if (code === 'missing-body') return labels.rigDiagnosticMissingBody
+  if (code === 'missing-mouth') return labels.rigDiagnosticMissingMouth
+  if (code === 'missing-gaze') return labels.rigDiagnosticMissingGaze
+  if (code === 'missing-facial-variants') {
+    return labels.rigDiagnosticMissingFacialVariants
+  }
+  if (code === 'missing-secondary-motion') {
+    return labels.rigDiagnosticMissingSecondaryMotion
+  }
+  if (code === 'missing-outfit-profile') {
+    return labels.rigDiagnosticMissingOutfitProfile
+  }
+  if (code === 'missing-spatial-profile') {
+    return labels.rigDiagnosticMissingSpatialProfile
+  }
+  if (code === 'rigid-part-deformation') {
+    return labels.rigDiagnosticRigidPartDeformation
+  }
+  return fallback
+}
+
 function presetLabel(labels: TranslationKeys['merope'], id: string): string {
   if (id === 'neutral') return labels.anime25dPresetIdle
   if (id === 'smile') return labels.anime25dPresetSmile
@@ -1131,6 +1333,9 @@ function presetLabel(labels: TranslationKeys['merope'], id: string): string {
   if (id === 'dizzy') return labels.anime25dPresetDizzy
   if (id === 'squeeze') return labels.anime25dPresetSqueeze
   if (id === 'cry') return labels.anime25dPresetCry
+  if (id === 'angry') return labels.anime25dPresetAngry
+  if (id === 'speechless') return labels.anime25dPresetSpeechless
+  if (id === 'maniac') return labels.anime25dPresetManiac
   if (id === 'winkL') return labels.anime25dPresetWinkLeft
   if (id === 'winkR') return labels.anime25dPresetWinkRight
   return id

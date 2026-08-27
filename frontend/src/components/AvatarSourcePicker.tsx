@@ -77,8 +77,8 @@ export function AvatarSourcePicker({
           : sourceKey(data.current.kind, data.current.ref),
       )
       setError('')
-    } catch {
-      setError(t.userModal.profileSourceFailed)
+    } catch (error) {
+      setError(userFacingError(error, t.userModal.profileSourceFailed))
     } finally {
       setLoading(false)
     }

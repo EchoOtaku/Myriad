@@ -99,7 +99,10 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
         !(
           (layer.slot === 'eye-left' || layer.slot === 'eye-right') &&
           layer.variant !== 'open'
-        ) && !(layer.slot === 'mouth' && layer.variant !== 'closed'),
+        ) &&
+        !(layer.slot === 'mouth' && layer.variant !== 'closed') &&
+        layer.id !== 'a25d-anger-mark' &&
+        layer.id !== 'a25d-speechless-sweat',
     ).length
     assert.equal(canvases[0]?.context.drawCount, layers.length)
     assert.equal(canvases[1]?.context.drawCount, neutralLayerCount)
@@ -200,6 +203,23 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
       'independent crying-mouth artwork is compiled',
     )
     assert.ok(
+      layers.some(
+        (layer) =>
+          layer.id === 'a25d-mouth-maniac' &&
+          layer.slot === 'mouth' &&
+          layer.variant === 'maniac',
+      ),
+      'face-scaled maniac laugh artwork is compiled independently',
+    )
+    assert.ok(
+      layers.some((layer) => layer.id === 'a25d-anger-mark'),
+      'anger accent is synthesized without replacing the face artwork',
+    )
+    assert.ok(
+      layers.some((layer) => layer.id === 'a25d-speechless-sweat'),
+      'speechless sweat accent is synthesized independently',
+    )
+    assert.ok(
       layers
         .filter((layer) => /hair|topwear|handwear/.test(layer.id))
         .every((layer) => (layer.mesh?.vertices.length || 0) > 8),
@@ -249,9 +269,13 @@ test('see-through PSD builds blink, mouth, strand, chest, and rigid side-arm fra
       playback.layers.filter((item) => item.fade === 'mouthCry').length,
       1,
     )
+    assert.equal(
+      playback.layers.filter((item) => item.fade === 'mouthManiac').length,
+      1,
+    )
     assert.equal(playback.mouthProfile.source, 'alpha-contour')
-    assert.equal(playback.mouthProfile.silhouettes.length, 5)
-    assert.equal(playback.mouthProfile.bridges.length, 10)
+    assert.equal(playback.mouthProfile.silhouettes.length, 6)
+    assert.equal(playback.mouthProfile.bridges.length, 15)
   } finally {
     Object.assign(globalThis, {
       document: previousDocument,
@@ -349,6 +373,14 @@ test('plain See-through mouth becomes closed art while speaking and cry variants
   assert.ok(
     prepared.source.layers.some(
       (layer) => layer.slot === 'eye-left' && layer.variant === 'closed',
+    ),
+  )
+  assert.ok(
+    prepared.source.layers.some(
+      (layer) =>
+        layer.id === 'a25d-mouth-maniac' &&
+        layer.slot === 'mouth' &&
+        layer.variant === 'maniac',
     ),
   )
   for (const variant of ['wide', 'round', 'narrow'] as const) {

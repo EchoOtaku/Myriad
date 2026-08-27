@@ -76,7 +76,7 @@ export const ControlPanelWidgets: React.FC<ControlPanelWidgetsProps> = memo(
 
     // Shared built-in catalog (same source as Home)
     const BUILTIN_WIDGETS: WidgetType[] = useMemo(
-      () => getBuiltinWidgets(t.widgets),
+      () => getBuiltinWidgets(t.widgets, 'control-panel'),
       [t.widgets],
     )
 

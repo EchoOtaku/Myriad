@@ -61,8 +61,8 @@ export function ProfileTextSourcePicker({
           : sourceKey(data.current.kind, data.current.ref),
       )
       setError('')
-    } catch {
-      setError(t.userModal.profileTextSourceFailed)
+    } catch (error) {
+      setError(userFacingError(error, t.userModal.profileTextSourceFailed))
     } finally {
       setLoading(false)
     }

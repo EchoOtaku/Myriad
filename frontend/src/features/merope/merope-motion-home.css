@@ -269,6 +269,115 @@ html.dark .merope-motion-page {
   font-weight: 650;
 }
 
+.merope-motion-rig__steps {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.merope-motion-rig__step {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid color-mix(in srgb, var(--merope-line) 62%, transparent);
+}
+
+.merope-motion-rig__step:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+
+.merope-motion-rig__step-marker {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--merope-line);
+  border-radius: 999px;
+  color: var(--merope-muted, #667085);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.merope-motion-rig__step-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.merope-motion-rig__step-copy b {
+  color: var(--merope-ink, inherit);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.merope-motion-rig__step-copy span,
+.merope-motion-rig__step-state {
+  color: var(--merope-muted, #667085);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.merope-motion-rig__step-state {
+  padding-top: 3px;
+  white-space: nowrap;
+}
+
+.merope-motion-rig__step.is-started .merope-motion-rig__step-marker {
+  border-color: var(--merope-accent);
+  color: var(--merope-accent);
+  background: color-mix(in srgb, var(--merope-accent) 10%, transparent);
+}
+
+.merope-motion-rig__step.is-started .merope-motion-rig__step-state,
+.merope-motion-rig__step.is-completed .merope-motion-rig__step-state {
+  color: var(--merope-accent);
+}
+
+.merope-motion-rig__step.is-completed .merope-motion-rig__step-marker {
+  border-color: color-mix(in srgb, var(--merope-accent) 68%, transparent);
+  color: white;
+  background: var(--merope-accent);
+}
+
+.merope-motion-rig__step.is-failed .merope-motion-rig__step-marker,
+.merope-motion-rig__step.is-failed .merope-motion-rig__step-state {
+  border-color: #d92d20;
+  color: #d92d20;
+}
+
+.merope-motion-rig__summary,
+.merope-motion-rig__checks {
+  display: grid;
+  gap: 5px;
+}
+
+.merope-motion-rig__summary {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--merope-accent) 9%, transparent);
+}
+
+.merope-motion-rig__summary b,
+.merope-motion-rig__checks > b {
+  color: var(--merope-ink, inherit);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.merope-motion-rig__summary span {
+  color: var(--merope-muted, #667085);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .merope-motion-rig__hint,
 .merope-motion-rig__token-ready {
   margin: 0;
@@ -288,6 +397,23 @@ html.dark .merope-motion-page {
   color: var(--merope-muted, #667085);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.merope-motion-rig__issues li + li {
+  margin-top: 4px;
+}
+
+.merope-motion-rig__severity {
+  color: var(--merope-muted, #667085);
+  font-weight: 650;
+}
+
+.merope-motion-rig__severity.is-error {
+  color: #d92d20;
+}
+
+.merope-motion-rig__severity.is-warning {
+  color: #b54708;
 }
 
 .merope-motion-asset__live .merope-motion-home,

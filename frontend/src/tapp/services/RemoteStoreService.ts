@@ -240,9 +240,13 @@ class RemoteStoreServiceImpl {
         this.sourcesLoaded = true
       } catch (error) {
         console.error('[RemoteStore] Failed to load sources from API:', error)
-        // 降级：使用默认官方商店
         this.sources = [OFFICIAL_STORE]
         this.sourcesLoaded = true
+        void import('../../utils/toastManager').then(({ showError }) => {
+          showError(
+            userFacingError(error, currentCopy().tapp.loadRemoteFailed),
+          )
+        })
       } finally {
         this.pruneCacheToSources()
         this.loadingPromise = null

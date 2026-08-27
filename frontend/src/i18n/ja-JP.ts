@@ -297,6 +297,9 @@ export const jaJP: TranslationKeys = {
     anime25dPresetDizzy: 'くらくら',
     anime25dPresetSqueeze: '>< ぎゅっと目',
     anime25dPresetCry: '泣く',
+    anime25dPresetAngry: '怒り',
+    anime25dPresetSpeechless: '呆れ',
+    anime25dPresetManiac: '狂笑',
     anime25dBlinkNow: 'まばたき',
     anime25dResetPose: 'リセット',
     anime25dInspect: '再生検査',
@@ -322,6 +325,56 @@ export const jaJP: TranslationKeys = {
       '今のメイン立ち絵をリモートで分解し、ローカル事前検証へ進みます。',
     rigTokenReady: 'Token を保存済み',
     rigPreflightTitle: '事前検証の結果',
+    rigPreflightSummary: '可動パーツ {parts} 個 · 品質スコア {score}/100',
+    rigPreflightReady:
+      '最初の4工程が完了しました。下の能力チェックを確認してください。有効化では再分解せず、この検証結果をそのまま保存します。',
+    rigPreflightActivated:
+      'リグを有効化しました。現在の立ち絵にこの検証結果が適用されています。',
+    rigPreflightIssuesTitle: '能力チェック',
+    rigPreflightNoIssues: '動作品質に影響する問題は見つかりませんでした。',
+    rigPreflightStepValidate: 'PSD を読み込んで検証',
+    rigPreflightStepValidateDescription:
+      'ファイル構造、有効なレイヤー、元画像との紐付けを確認し、空または無効な PSD を除外します。',
+    rigPreflightStepPack: 'レイヤーとアトラスを準備',
+    rigPreflightStepPackDescription:
+      '表示ピクセルを切り出してテクスチャをまとめ、パーツ、メッシュ、ボーンのデータを作ります。',
+    rigPreflightStepPreview: '安全なプレビューを生成',
+    rigPreflightStepPreviewDescription:
+      '現在のリグを置き換えず、バックエンドで一時リグをコンパイルします。',
+    rigPreflightStepAnalyze: '動作能力をチェック',
+    rigPreflightStepAnalyzeDescription:
+      '顔、リップシンク、視線、揺れ、衣装適応、メッシュ変形を確認します。',
+    rigPreflightStepActivate: '検証結果を有効化',
+    rigPreflightStepActivateDescription:
+      '検証を通過したアトラスとリグデータを保存し、現在のリグを置き換えます。',
+    rigPreflightStatusPending: '待機',
+    rigPreflightStatusRunning: '処理中',
+    rigPreflightStatusCompleted: '完了',
+    rigPreflightStatusFailed: '失敗',
+    rigDiagnosticSeverityError: 'エラー',
+    rigDiagnosticSeverityWarning: '注意',
+    rigDiagnosticSeverityInfo: '提案',
+    rigDiagnosticMissingPresentationFallback:
+      '表示素材に必要なフォールバックがなく、一部の表情を安全に切り替えられません。',
+    rigDiagnosticUnknownPresentationVariant:
+      '表示素材にプレイヤー未対応の表情バリエーションがあります。',
+    rigDiagnosticMissingHead: '頭部のセマンティックボーンを認識できません。',
+    rigDiagnosticMissingBody:
+      '身体または胴体のセマンティックボーンを認識できません。',
+    rigDiagnosticMissingMouth:
+      'リップシンクに使える口、唇、顎のボーンがありません。',
+    rigDiagnosticMissingGaze:
+      '左右独立の目テクスチャがありません。目のボーンだけでは視線を表示できません。',
+    rigDiagnosticMissingFacialVariants:
+      '顔のボーンはありますが、目、頭部、口の表情素材が揃っていません。',
+    rigDiagnosticMissingSecondaryMotion:
+      '独立した髪またはアクセサリーのチェーンがなく、二次揺れを作れません。',
+    rigDiagnosticMissingOutfitProfile:
+      '衣装トポロジー、安全範囲、または体型アンカーがなく、衣装適応が制限されます。',
+    rigDiagnosticMissingSpatialProfile:
+      '頭部と胴体のローカル範囲がなく、インタラクションと変形の安全制御が制限されます。',
+    rigDiagnosticRigidPartDeformation:
+      'すべての頂点が1本のボーンだけに紐付き、関節を曲げると分割感が出る場合があります。',
     rigReadyTitle: 'リグ有効',
     rigReadyHint:
       '左のプレビューで呼吸、まばたき、髪を確認するか、動作調整で表情を変えられます。',
@@ -2364,6 +2417,7 @@ export const jaJP: TranslationKeys = {
   // ウィジェット
   widgets: {
     welcome: 'ようこそ',
+    agentPersona: 'Agent ペルソナ',
     quickStats: 'コンテンツ概要',
     recentActivity: '最近のアクティビティ',
     friendLinks: '相互リンク',
@@ -2804,7 +2858,8 @@ export const jaJP: TranslationKeys = {
     aiStepFailed: 'この AI ステップに失敗しました。',
     skillFileFailed: 'このスキルファイルを更新できませんでした。',
     skillFileInvalid: 'このスキルファイルの形式が正しくありません。',
-    skillCooldown: 'このスキルは更新したばかりです。しばらくしてから再試行してください。',
+    skillCooldown:
+      'このスキルは更新したばかりです。しばらくしてから再試行してください。',
     commentLoadFailed: 'コメントを読み込めませんでした。',
     commentRepliesLoadFailed: 'コメントの返信を読み込めませんでした。',
     commentSaveFailed: 'このコメントを保存できませんでした。',
@@ -2992,8 +3047,10 @@ export const jaJP: TranslationKeys = {
     dashboardLayoutSaveFailed: 'ホームのレイアウトを保存できませんでした。',
     dashboardTitleSaveFailed: 'ホームのタイトルを保存できませんでした。',
     customPlatformsSaveFailed: 'カスタム SNS を保存できませんでした。',
-    controlPanelSaveFailed: 'コントロールパネルのレイアウトを保存できませんでした。',
-    controlPanelLoadFailed: 'コントロールパネルのレイアウトを読み込めませんでした。',
+    controlPanelSaveFailed:
+      'コントロールパネルのレイアウトを保存できませんでした。',
+    controlPanelLoadFailed:
+      'コントロールパネルのレイアウトを読み込めませんでした。',
     titleStyleSaveFailed: 'タイトルスタイルを保存できませんでした。',
     widgetThemeSaveFailed: 'カードの見た目を保存できませんでした。',
     notificationDeleteFailed: 'その通知を削除できませんでした。',
@@ -3019,7 +3076,8 @@ export const jaJP: TranslationKeys = {
     notificationPrefsSaveFailed: '通知の設定を保存できませんでした。',
     notificationPrefsLoadFailed: '通知の設定を読み込めませんでした。',
     clipboardFailed: 'クリップボードにコピーできませんでした。',
-    localeLoadFailed: '言語パックを読み込めませんでした。英語に切り替えました。',
+    localeLoadFailed:
+      '言語パックを読み込めませんでした。英語に切り替えました。',
     ttsSettingsSaveFailed: '音声設定を保存できませんでした。',
   },
 
@@ -4103,6 +4161,7 @@ export const jaJP: TranslationKeys = {
     selectTappFile: '.tapp ファイルを選択',
     invalidTappFile: '.tapp ファイルを選択してください',
     installFailed: 'インストール失敗',
+    alreadyInstalled: 'そのアプリはすでにインストールされています。',
     installSuccess: '{name} をインストールしました',
 
     // 実行ページ
