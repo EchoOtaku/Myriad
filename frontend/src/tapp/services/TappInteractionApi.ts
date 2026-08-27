@@ -241,16 +241,6 @@ export async function streamAgentInteractions(
   )
 }
 
-export async function getAgentInteraction(
-  interactionId: string,
-  runtimeGrant: string,
-): Promise<AgentInteractionV2> {
-  return apiRequest(
-    `/api/tapp/agent/v2/interactions/${encodeURIComponent(interactionId)}`,
-    { runtimeGrant },
-  )
-}
-
 export async function acceptAgentInteraction(
   interactionId: string,
   runtimeGrant: string,

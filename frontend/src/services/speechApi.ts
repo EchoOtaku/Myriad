@@ -6,10 +6,10 @@
 
 import { API_URL } from '../config'
 import { currentCopy } from '../i18n/localeCopy'
-import { ApiError, parseApiErrorBody } from './api'
 import { clearCSRFToken, getCSRFToken } from '../utils/csrf'
 import { notifyHttpRateLimit } from '../utils/httpRateLimitToast'
 import { userFacingError } from '../utils/userFacingError'
+import { ApiError, parseApiErrorBody } from './api'
 
 function speechHttpError(status: number, raw: string, fallback: string): ApiError {
   let parsed: unknown
@@ -896,13 +896,6 @@ export interface ClearCacheResponse {
   freed_size: number
   freed_size_formatted: string
   error?: string
-}
-
-/**
- * 获取 TTS 缓存统计
- */
-export async function getCacheStats(): Promise<CacheStatsResponse> {
-  return request<CacheStatsResponse>('/cache/stats')
 }
 
 /**

@@ -669,7 +669,7 @@ export default function SiteMotionWorkbench({ mood, activity }: Props) {
           <RigCharacter
             ref={rigCharacterRef}
             activity={toMeropeActivity(activity)}
-            fallbackUrl={portraitUrl || ''}
+            fallbackUrl={portraitUrl}
             manifest={rigManifest}
             mood={mood}
             manualControl

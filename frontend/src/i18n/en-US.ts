@@ -92,38 +92,16 @@ export const enUS: TranslationKeys = {
 
   merope: {
     title: 'Face',
-    statusBarTitle: 'Face',
     statusLoading: 'Loading…',
-    statusDisabled: 'Agent persona is turned off on this site',
     statusNeedLogin: 'Sign in to see the face',
-    statusCreateHint: 'Finish persona setup in settings',
-    statusContinueHint: 'Setup incomplete — continue in settings',
-    statusReadyHint: '{activity} · mood {mood}',
-    statusCreate: 'Create',
-    statusContinue: 'Continue',
-    statusOpen: 'Open',
-    statusLogin: 'Sign in',
-    tapToOpen: 'Open Agent',
     chat: 'Chat',
     memories: 'Memories',
     settings: 'Settings',
-    messagePlaceholder: 'Say something…',
     send: 'Send',
-    emptyMessages: 'No conversation yet. Say hello.',
-    emptyMemories: 'No long-term memories yet.',
     enable: 'Enable autonomy',
-    autonomy: 'Autonomy frequency',
-    autonomyLow: 'Low',
-    autonomyNormal: 'Normal',
-    autonomyHigh: 'High',
     doNotDisturb: 'Do not disturb',
-    showThought: 'Show thoughts',
-    collapsedByDefault: 'Collapsed by default',
     deletePersona: 'Delete persona',
-    deleteConfirm:
-      'Permanently delete this persona, its conversations, and memories?',
     loadFailed: 'Could not load the site face',
-    sendFailed: 'Could not send message',
     psdNeedAsset: 'The current master portrait is missing an asset id.',
     psdTooLarge: 'The PSD must be smaller than 32 MB.',
     psdPreviewFailed: 'Could not compose a PSD preview.',
@@ -132,7 +110,6 @@ export const enUS: TranslationKeys = {
     canvasUnsupported: 'This browser does not support 2D Canvas.',
     anime25dMissingFace:
       'The Anime2.5DRig PSD is missing the required face layer.',
-    anime25dInvalidPixels: 'A PSD layer has invalid pixels.',
     anime25dMissingHandwear:
       'The Anime2.5DRig PSD is missing a handwear layer.',
     anime25dMissingLayer: 'The Anime2.5DRig PSD is missing the {role} layer.',
@@ -153,22 +130,14 @@ export const enUS: TranslationKeys = {
     anime25dWebglFailed:
       'This browser does not support WebGL2, so 2.5D motion cannot play.',
     anime25dPlaybackFailed: '2.5D motion could not play.',
-    statusIdle: 'Idle',
-    statusThinking: 'Thinking',
-    statusTalking: 'Replying',
     unread: 'unread messages',
     visualTitle: 'Master portrait',
-    visualDescription:
-      'Generate a front-facing 3:4 head-and-torso master portrait. Layering and everyday motion stay in this section.',
     visualRequirements: 'Light and framing',
-    visualRequirementsDescription:
-      'The visual contract already locks appearance. Refine only lighting, expression, or frame occupancy here; hair, costume, palette, and accessories stay fixed.',
     visualRequirementsPlaceholder:
       'For example: soft frontal light, larger face in frame, less headroom above the crown',
     visualGenerate: 'Generate portrait',
     visualRegenerate: 'Regenerate',
     visualGenerating: 'Generating. You can keep using settings.',
-    visualReady: 'Master portrait is ready',
     visualDownload: 'Download portrait',
     visualFailed: 'Could not generate the master portrait',
     motionPsdUpload: 'Upload layered PSD',
@@ -176,16 +145,9 @@ export const enUS: TranslationKeys = {
 
     visualConfirm:
       'The image model may incur charges. Generate the master portrait now? Regenerating clears the imported rig.',
-    motionWorkbench: 'Motion Workbench',
-    motionWorkbenchDescription:
-      'Preview the Anime2.5DRig player: blinks, mouth, hair, breathing, and head turns.',
-    essentials: 'Portrait',
-    essentialsDescription: 'Generate and preview the 3:4 master portrait.',
     anime25dRuntimeCredit:
       'After See-through, motion is replicated from Anime2.5DRig (MIT).',
     anime25dDebug: 'Motion',
-    anime25dDebugDescription:
-      'Adjust Anime2.5DRig by head, face, hair, and body.',
     overviewGroup: 'Overview',
     overviewGroupDescription:
       'Name, mood, current state, and whether the portrait and rig are ready.',
@@ -193,8 +155,6 @@ export const enUS: TranslationKeys = {
     overviewMood: 'Mood',
     overviewActivity: 'Current state',
     overviewDoNotDisturb: 'Do not disturb',
-    overviewDoNotDisturbHint:
-      'Turn on to stay quiet now. You can also set a daily window that wraps past midnight.',
     overviewDndWindow: 'Quiet hours',
     overviewDndStart: 'Starts',
     overviewDndEnd: 'Ends',
@@ -218,11 +178,7 @@ export const enUS: TranslationKeys = {
     visualSourceTitle: 'Character visual',
     visualSourceEmpty: 'No confirmed upper-body visual design yet.',
     assetGroup: 'Portrait and rig',
-    assetGroupDescription:
-      'Generate the master portrait first. Then split it or upload a layered PSD. Motion unlocks after the rig is active.',
     assetEmpty: 'No master portrait yet. Generate one first.',
-    assetMake: '1 · Master portrait',
-    assetRig: '2 · Layered rig',
     assetNeedsPortrait:
       'Generate the master portrait before splitting or uploading a layered PSD.',
     rigGroup: 'Layered rig',
@@ -287,12 +243,8 @@ export const enUS: TranslationKeys = {
     anime25dTalking: 'Talking',
     anime25dPresetShock: 'Shock',
     anime25dPresetDeadpan: 'Deadpan',
-    anime25dPresetHair: 'Hair',
     anime25dPresetIdle: 'Idle',
     anime25dPresetSmile: 'Smile',
-    anime25dPresetTalk: 'Talk',
-    anime25dPresetLookLeft: 'Look left',
-    anime25dPresetLookRight: 'Look right',
     anime25dPresetWinkLeft: 'Wink left',
     anime25dPresetWinkRight: 'Wink right',
     anime25dPresetThinking: 'Thinking',
@@ -317,9 +269,6 @@ export const enUS: TranslationKeys = {
     anime25dInspectCanvasValue: '{width}×{height} px',
     anime25dInspectEmpty:
       'No rig data yet. Finish the layered rig to check that layers match the player.',
-    motionPsd: 'Layered PSD',
-    motionPsdDescription:
-      'After the master portrait exists, upload a layered PSD or split this portrait with See-through. Preflight must pass before activation.',
     rigPathUpload: 'Upload PSD',
     rigPathUploadHint: 'Build the rig from your own layered PSD.',
     rigPathSeeThrough: 'See-through split',
@@ -405,17 +354,11 @@ export const enUS: TranslationKeys = {
       'Remote decomposition is running. Local PSD preflight starts automatically when it finishes…',
     motionNeedsRig:
       'Finish the layered rig first. These controls can drive the portrait only after that.',
-    motionPsdPreflight: 'Preflight layered PSD',
-    motionPsdValidating: 'Validating PSD…',
     motionPsdCommit: 'Commit preflighted rig',
-    faceStage: 'Face',
     adminTitle: 'Persona settings',
     adminDescription:
       'One site-wide face. Portrait first, then the rig, then expression and pose.',
     faceOpen: 'Persona settings',
-    adminEnabled: 'Enable Agent persona',
-    adminWorker: 'Enable autonomy worker',
-    adminInterval: 'Worker scan interval (15–3600 seconds)',
     personaLabelTemperament: 'Temperament',
     personaLabelLikes: 'Likes',
     personaLabelDrives: 'Drive',
@@ -1701,9 +1644,6 @@ export const enUS: TranslationKeys = {
       'Lite is off: chat replies fall back to Standard. Proactive lines stay short and mood hints stay off.',
     agentPersonaNeedsPro:
       'Enable the Pro tier above first — persona setup requires Pro.',
-    agentPersonaNeedsLiteAndPro: 'Enable the Pro tier above first.',
-    agentPersonaMood: 'Mood',
-    agentPersonaActivity: 'Activity',
     agentPersonaEmpty: 'No persona yet',
     agentPersonaEmptyLead:
       'Go from tags to persona, pick an outfit style, then generate the portrait. This card will keep the portrait, a short summary, and current mood.',
@@ -2600,9 +2540,6 @@ export const enUS: TranslationKeys = {
   agentPersona: {
     onboarding: {
       openPage: 'Open persona setup',
-      editPage: 'Edit persona',
-      setupLabel: 'Persona',
-      currentPersona: 'Saved as {name}',
       mood: {
         floor: 'very low',
         low: 'low',
@@ -2635,18 +2572,13 @@ export const enUS: TranslationKeys = {
       step4Lead: '',
       step5Title: 'Master portrait',
       step5Lead: '',
-      noReports: 'You need at least 3 platform reports to distill tags.',
       selectedCount: '{count} selected',
       selectNothingYet: 'None selected yet',
-      skipTags: 'Skip',
       dragCanvas: 'Drag to see more',
       signalsEmpty: 'Tags are not ready. Retry in a moment.',
       loadingAiSignals: 'Reading personality tags from platform reports',
       loadSignalsFailed: 'Could not load tags',
       generationTimeout: 'Generation timed out. Try again.',
-      aiDistilledMeta: 'Distilled by the Pro model from {count} reports.',
-      reportsButFallback:
-        'Read {count} reports. Pro distillation did not finish, showing fallback tags.',
       regenerateSeeds: 'New set',
       regeneratingSeeds: 'Generating',
       saveFirst: 'Save settings first.',
@@ -2675,7 +2607,6 @@ export const enUS: TranslationKeys = {
       clothingStyleLabel: 'Outfit style',
       clothingStyleRequired: 'Choose an outfit style first',
       visualStyleAsk: 'Pick an outfit style, then add hair or eyes if you want',
-      visualNotesAsk: 'Add hair, eyes, or anything that must stay',
       visualBackToStyle: 'Back to style',
       clothingStyle: {
         everyday: 'Everyday',
@@ -2699,7 +2630,6 @@ export const enUS: TranslationKeys = {
       extraLabel: 'Extra notes',
       extraHint: 'Optional. Shapes personality only.',
       extraPlaceholder: 'e.g. Quiet, earnest, softer with people they know',
-      personaGroupCharacter: 'Personality and social style',
       regeneratePersona: 'New set',
       regeneratingPersona: 'Generating',
       regeneratePersonaFailed: 'Could not regenerate the persona. Try again.',
@@ -2716,7 +2646,6 @@ export const enUS: TranslationKeys = {
       importPortraitBusy: 'Uploading…',
       importPortraitFailed: 'Could not import the portrait. Try again.',
       personaFieldGenerating: 'Generating',
-      personaDraftLabel: 'Draft',
       editPersona: 'Edit',
       doneEditing: 'Done',
       cancelEdit: 'Cancel',
@@ -2727,10 +2656,8 @@ export const enUS: TranslationKeys = {
       fieldVoice: 'Voice',
       fieldSummary: 'Personality summary',
       creating: 'Creating…',
-      createAndContinue: 'Create and continue',
       createFailed: 'Could not create',
       saving: 'Saving…',
-      saveAndContinue: 'Save and continue',
       saveFailed: 'Could not save',
       personaIncompleteHint:
         'Still missing {fields}. Fill them in, or generate a new set.',
@@ -2738,9 +2665,6 @@ export const enUS: TranslationKeys = {
         'The Pro model is unavailable. Enable it in settings first.',
       standardUnavailable:
         'The Standard model is unavailable. Check it in settings first.',
-      visualDesignScopeTitle: 'Upper-body visual contract',
-      visualDesignScopeHint:
-        'Design only full hair through lower chest or high waist: face, eyes, hair layers, topwear construction, materials, palette, accessories, and left/right sleeve or partial-arm fragments. No legs, footwear, or complete limb chain.',
       visualRequirements: 'Visual requirements',
       visualRequirementsHint:
         'Colors, garments, accessories, and motifs written here take priority. Art school, gender, an uncovered neck, and the clothing family stay locked.',
@@ -2763,7 +2687,6 @@ export const enUS: TranslationKeys = {
       visualDesignGenerate: 'Generate character design',
       visualDesignGenerating: 'Designing…',
       visualDesignRegenerate: 'New design',
-      visualDesignConfirm: 'Confirm and continue',
       editVisual: 'Edit',
       visualDesignFailed:
         'Could not generate the character visual design. Try again.',
@@ -2775,12 +2698,7 @@ export const enUS: TranslationKeys = {
       portraitTalkLead: 'Say what to change',
       portraitLoading: 'Loading the existing portrait',
       portraitEmpty: 'No master portrait yet',
-      portraitContractTitle: 'Locked generation range',
-      portraitContractHint:
-        'Front-facing 3:4 upper body with the entire uncut head and hair, a gutter above the crown, framed through the lower chest or high waist. Sleeves or partial arms must enter both sides; no legs, and hands are optional.',
       portraitRequirements: 'What to change',
-      portraitRequirementsHint:
-        'Appearance is already locked. Refine only lighting, expression, or framing density. Return to the previous step to change hair, costume, palette, or accessories.',
       portraitRequirementsPlaceholder:
         'e.g. softer light, firmer gaze, slightly larger face in frame',
       portraitGenerate: 'Generate portrait',

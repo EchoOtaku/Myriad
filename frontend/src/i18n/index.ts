@@ -94,37 +94,16 @@ export interface TranslationKeys {
 
   merope: {
     title: string
-    statusBarTitle: string
     statusLoading: string
-    statusDisabled: string
     statusNeedLogin: string
-    statusCreateHint: string
-    statusContinueHint: string
-    statusReadyHint: string
-    statusCreate: string
-    statusContinue: string
-    statusOpen: string
-    statusLogin: string
-    tapToOpen: string
     chat: string
     memories: string
     settings: string
-    messagePlaceholder: string
     send: string
-    emptyMessages: string
-    emptyMemories: string
     enable: string
-    autonomy: string
-    autonomyLow: string
-    autonomyNormal: string
-    autonomyHigh: string
     doNotDisturb: string
-    showThought: string
-    collapsedByDefault: string
     deletePersona: string
-    deleteConfirm: string
     loadFailed: string
-    sendFailed: string
     psdNeedAsset: string
     psdTooLarge: string
     psdPreviewFailed: string
@@ -132,7 +111,6 @@ export interface TranslationKeys {
     psdLayerCountInvalid: string
     canvasUnsupported: string
     anime25dMissingFace: string
-    anime25dInvalidPixels: string
     anime25dMissingHandwear: string
     anime25dMissingLayer: string
     anime25dPartCount: string
@@ -151,38 +129,26 @@ export interface TranslationKeys {
     seeThroughStatusFailed: string
     anime25dWebglFailed: string
     anime25dPlaybackFailed: string
-    statusIdle: string
-    statusThinking: string
-    statusTalking: string
     unread: string
     visualTitle: string
-    visualDescription: string
     visualRequirements: string
-    visualRequirementsDescription: string
     visualRequirementsPlaceholder: string
     visualGenerate: string
     visualRegenerate: string
     visualGenerating: string
-    visualReady: string
     visualDownload: string
     visualFailed: string
     motionPsdUpload: string
     motionPsdUploading: string
     visualConfirm: string
-    motionWorkbench: string
-    motionWorkbenchDescription: string
-    essentials: string
-    essentialsDescription: string
     anime25dRuntimeCredit: string
     anime25dDebug: string
-    anime25dDebugDescription: string
     overviewGroup: string
     overviewGroupDescription: string
     overviewName: string
     overviewMood: string
     overviewActivity: string
     overviewDoNotDisturb: string
-    overviewDoNotDisturbHint: string
     overviewDndWindow: string
     overviewDndStart: string
     overviewDndEnd: string
@@ -205,10 +171,7 @@ export interface TranslationKeys {
     visualSourceTitle: string
     visualSourceEmpty: string
     assetGroup: string
-    assetGroupDescription: string
     assetEmpty: string
-    assetMake: string
-    assetRig: string
     assetNeedsPortrait: string
     rigGroup: string
     rigGroupDescription: string
@@ -274,12 +237,8 @@ export interface TranslationKeys {
     anime25dTalking: string
     anime25dPresetShock: string
     anime25dPresetDeadpan: string
-    anime25dPresetHair: string
     anime25dPresetIdle: string
     anime25dPresetSmile: string
-    anime25dPresetTalk: string
-    anime25dPresetLookLeft: string
-    anime25dPresetLookRight: string
     anime25dPresetWinkLeft: string
     anime25dPresetWinkRight: string
     anime25dPresetThinking: string
@@ -298,8 +257,6 @@ export interface TranslationKeys {
     anime25dInspectMouth: string
     anime25dInspectCanvas: string
     anime25dInspectEmpty: string
-    motionPsd: string
-    motionPsdDescription: string
     rigPathUpload: string
     rigPathUploadHint: string
     rigPathSeeThrough: string
@@ -358,16 +315,10 @@ export interface TranslationKeys {
     motionSeeThroughGenerate: string
     motionSeeThroughGenerating: string
     motionNeedsRig: string
-    motionPsdPreflight: string
-    motionPsdValidating: string
     motionPsdCommit: string
-    faceStage: string
     adminTitle: string
     adminDescription: string
     faceOpen: string
-    adminEnabled: string
-    adminWorker: string
-    adminInterval: string
     personaLabelTemperament: string
     personaLabelLikes: string
     personaLabelDrives: string
@@ -1436,9 +1387,6 @@ export interface TranslationKeys {
     /** Shown while the Pro tier is off */
     agentPersonaNeedsPro: string
     /** Shown while the Pro tier is off (legacy key, same copy as needsPro) */
-    agentPersonaNeedsLiteAndPro: string
-    agentPersonaMood: string
-    agentPersonaActivity: string
     agentPersonaEmpty: string
     agentPersonaEmptyLead: string
     agentPersonaNeedsReports: string
@@ -2215,9 +2163,6 @@ export interface TranslationKeys {
   agentPersona: {
     onboarding: {
       openPage: string
-      editPage: string
-      setupLabel: string
-      currentPersona: string
       mood: {
         floor: string
         low: string
@@ -2250,17 +2195,13 @@ export interface TranslationKeys {
       step4Lead: string
       step5Title: string
       step5Lead: string
-      noReports: string
       selectedCount: string
       selectNothingYet: string
-      skipTags: string
       dragCanvas: string
       signalsEmpty: string
       loadingAiSignals: string
       loadSignalsFailed: string
       generationTimeout: string
-      aiDistilledMeta: string
-      reportsButFallback: string
       regenerateSeeds: string
       regeneratingSeeds: string
       saveFirst: string
@@ -2288,7 +2229,6 @@ export interface TranslationKeys {
       clothingStyleLabel: string
       clothingStyleRequired: string
       visualStyleAsk: string
-      visualNotesAsk: string
       visualBackToStyle: string
       clothingStyle: {
         everyday: string
@@ -2312,7 +2252,6 @@ export interface TranslationKeys {
       extraLabel: string
       extraHint: string
       extraPlaceholder: string
-      personaGroupCharacter: string
       regeneratePersona: string
       regeneratingPersona: string
       regeneratePersonaFailed: string
@@ -2327,7 +2266,6 @@ export interface TranslationKeys {
       importPortraitBusy: string
       importPortraitFailed: string
       personaFieldGenerating: string
-      personaDraftLabel: string
       editPersona: string
       doneEditing: string
       cancelEdit: string
@@ -2338,16 +2276,12 @@ export interface TranslationKeys {
       fieldVoice: string
       fieldSummary: string
       creating: string
-      createAndContinue: string
       createFailed: string
       saving: string
-      saveAndContinue: string
       saveFailed: string
       personaIncompleteHint: string
       proUnavailable: string
       standardUnavailable: string
-      visualDesignScopeTitle: string
-      visualDesignScopeHint: string
       visualRequirements: string
       visualRequirementsHint: string
       visualRequirementsPlaceholder: string
@@ -2368,7 +2302,6 @@ export interface TranslationKeys {
       visualDesignGenerate: string
       visualDesignGenerating: string
       visualDesignRegenerate: string
-      visualDesignConfirm: string
       editVisual: string
       visualDesignFailed: string
       visualDesignLanguageFailed: string
@@ -2377,10 +2310,7 @@ export interface TranslationKeys {
       portraitTalkLead: string
       portraitLoading: string
       portraitEmpty: string
-      portraitContractTitle: string
-      portraitContractHint: string
       portraitRequirements: string
-      portraitRequirementsHint: string
       portraitRequirementsPlaceholder: string
       portraitGenerate: string
       portraitGenerating: string

@@ -24,10 +24,6 @@ export class MeropeApiError extends Error {
   }
 }
 
-export function isMeropeNotFound(error: unknown): boolean {
-  return error instanceof MeropeApiError && error.status === 404
-}
-
 export interface SiteFace {
   manifest: MeropeRigManifest | null
   portraitUrl: string | null
@@ -132,10 +128,6 @@ export async function getSiteFace(): Promise<SiteFace> {
     assetId:
       typeof response.data.assetId === 'string' ? response.data.assetId : null,
   }
-}
-
-export async function getMeropeRig(): Promise<MeropeRigManifest | null> {
-  return (await getSiteFace()).manifest
 }
 
 export async function getSeeThroughStatus(): Promise<SeeThroughStatus> {

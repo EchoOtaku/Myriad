@@ -370,12 +370,6 @@ export async function reloadSystemConfig() {
   return response.data
 }
 
-// Speech
-export async function checkSpeechStatus() {
-  const response = await api.get('/api/speech/status')
-  return response.data
-}
-
 export interface SpeechTestResponse {
   success: boolean
   provider?: string

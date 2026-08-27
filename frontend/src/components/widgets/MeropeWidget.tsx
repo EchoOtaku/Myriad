@@ -6,6 +6,7 @@ import type { WidgetComponentProps } from '../WidgetGrid'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useI18n } from '../../contexts/I18nContext'
+import { isAnime25DPlayback } from '../../features/merope/anime25drig/types'
 import { getSiteFace } from '../../features/merope/api'
 import {
   FACE_UPDATED_EVENT,
@@ -17,6 +18,7 @@ import {
 } from '../../features/merope/performanceEvents'
 import RigCharacter from '../../features/merope/rig/RigCharacter'
 import { useRigPerformanceLifecycle } from '../../features/merope/useRigPerformanceLifecycle'
+import { useRigSingingLifecycle } from '../../features/merope/useRigSingingLifecycle'
 import { useRigSpeechLifecycle } from '../../features/merope/useRigSpeechLifecycle'
 import { agentService } from '../../services/agent'
 import { ADDRESSEE_UPDATED_EVENT, moodBand } from '../agent/meropeVitals'
@@ -37,12 +39,20 @@ const MOOD_LEVEL: Record<MoodBand, number> = {
 
 const LEVEL_SLOTS = [0, 1, 2, 3]
 
-function Nameplate({ name, band }: { name: string, band: MoodBand | null }) {
+function Nameplate({
+  name,
+  band,
+  compact,
+}: {
+  name: string
+  band: MoodBand | null
+  compact?: boolean
+}) {
   const o = useI18n().t.agentPersona.onboarding
   return (
     <div className="merope-widget__identity glass-surface">
       <strong>{name}</strong>
-      {band ? (
+      {!compact && band ? (
         <div className="merope-widget__mood">
           <span>{o.moodLine.replace('{band}', o.mood[band])}</span>
           <span className="merope-widget__mood-level" aria-hidden>
@@ -61,6 +71,16 @@ function toMeropeActivity(raw: string | undefined): MeropeActivity {
   return 'idle'
 }
 
+function hasPlayableRig(
+  manifest: Awaited<ReturnType<typeof getSiteFace>>['manifest'],
+): boolean {
+  return Boolean(
+    manifest &&
+      isAnime25DPlayback(manifest.anime25dPlayback) &&
+      manifest.textures[0]?.url,
+  )
+}
+
 /**
  * 取景框与人物画布同比 → 播放器的等比缩放由宽度决定，人物横向铺满卡片，
  * 纵向溢出的身体被卡片裁掉。没有 rig 时交给 CSS 回落到 master portrait 的 3:4。
@@ -74,24 +94,20 @@ function portraitFrameStyle(
   } as CSSProperties
 }
 
-function MeropeWidgetPreview() {
+function MeropeWidgetPreview({ compact }: { compact?: boolean }) {
   return (
-    <WidgetShell padding={0} className="merope-widget">
-      <div className="merope-widget__surface merope-widget__surface--preview">
-        <span className="merope-widget__halo" aria-hidden />
-        <img
-          className="merope-widget__preview-avatar"
-          src="/icons/notifications/arael.webp"
-          alt=""
-          draggable={false}
-        />
-        <Nameplate name={DEFAULT_AGENT_NAME} band={moodBand(DEFAULT_MOOD)} />
+    <WidgetShell
+      padding={0}
+      className={`merope-widget${compact ? ' merope-widget--compact' : ''}`}
+    >
+      <div className="merope-widget__surface">
+        <Nameplate name={DEFAULT_AGENT_NAME} compact={compact} />
       </div>
     </WidgetShell>
   )
 }
 
-function LiveMeropeWidget() {
+function LiveMeropeWidget({ compact }: { compact: boolean }) {
   const { t } = useI18n()
   const { hasChecked, isAuthenticated } = useAuth()
   const [manifest, setManifest] =
@@ -105,9 +121,11 @@ function LiveMeropeWidget() {
   const [vitalsReady, setVitalsReady] = useState(false)
   const faceRequestRef = useRef(0)
   const rigRef = useRef<RigCharacterHandle>(null)
+  const speechOccupancyRef = useRef(false)
 
   useRigPerformanceLifecycle(rigRef)
-  useRigSpeechLifecycle(rigRef)
+  useRigSpeechLifecycle(rigRef, speechOccupancyRef)
+  useRigSingingLifecycle(rigRef, speechOccupancyRef)
 
   const loadFace = useCallback(() => {
     const request = ++faceRequestRef.current
@@ -184,6 +202,8 @@ function LiveMeropeWidget() {
     }
   }, [hasChecked, isAuthenticated])
 
+  const playableRig = hasPlayableRig(manifest)
+  const showCharacter = playableRig || Boolean(portraitUrl)
   const stateClass = `merope-widget__rig merope-widget__rig--${activity}`
   const band = vitalsReady ? moodBand(mood) : null
   const surfaceStyle = useMemo(
@@ -192,32 +212,33 @@ function LiveMeropeWidget() {
   )
 
   return (
-    <WidgetShell padding={0} className="merope-widget">
+    <WidgetShell
+      padding={0}
+      className={`merope-widget${compact ? ' merope-widget--compact' : ''}`}
+    >
       <div
         className="merope-widget__surface"
         style={surfaceStyle}
         aria-label={`${t.widgets.agentPersona}: ${agentName}`}
       >
-        <span className="merope-widget__halo" aria-hidden />
-
-        {portraitUrl ? (
-          <div className={stateClass}>
-            <RigCharacter
-              ref={rigRef}
-              activity={activity}
-              fallbackUrl={portraitUrl}
-              manifest={manifest}
-              mood={mood}
-            />
-          </div>
+        {showCharacter ? (
+          <>
+            <div className={stateClass}>
+              <RigCharacter
+                ref={rigRef}
+                activity={activity}
+                fallbackUrl={playableRig ? undefined : portraitUrl}
+                manifest={manifest}
+                mood={mood}
+              />
+            </div>
+            <Nameplate name={agentName} band={band} compact={compact} />
+          </>
         ) : !loading ? (
-          <div className="merope-widget__empty" role="status">
-            <img src="/icons/notifications/arael.webp" alt="" />
-            <span>{failed ? t.merope.loadFailed : t.merope.assetEmpty}</span>
-          </div>
+          <p className="merope-widget__empty" role="status">
+            {failed ? t.merope.loadFailed : t.merope.assetEmpty}
+          </p>
         ) : null}
-
-        <Nameplate name={agentName} band={band} />
 
         <WidgetSkeletonCover
           active={loading}
@@ -231,7 +252,12 @@ function LiveMeropeWidget() {
 }
 
 export const MeropeWidget = memo(
-  ({ isPreview = false }: WidgetComponentProps) => {
-    return isPreview ? <MeropeWidgetPreview /> : <LiveMeropeWidget />
+  ({ isPreview = false, config }: WidgetComponentProps) => {
+    const compact = config.size === '2x2'
+    return isPreview ? (
+      <MeropeWidgetPreview compact={compact} />
+    ) : (
+      <LiveMeropeWidget compact={compact} />
+    )
   },
 )

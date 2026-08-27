@@ -153,6 +153,29 @@ test('cancellation is scoped to its active message', () => {
   assert.deepEqual(rig.active, [true, false])
 })
 
+test('occupancy stays busy after end until the auto-speech tail finishes', () => {
+  const scheduler = new FakeScheduler()
+  const rig = fakeTarget()
+  const occupancy = { current: false }
+  const controller = new SpeechLifecycleController(
+    rig.target,
+    scheduler,
+    occupancy,
+  )
+  const base = {
+    messageId: 'message-1',
+    utteranceId: 'message-1:final',
+    source: 'reply' as const,
+  }
+  controller.handle({ ...base, phase: 'start' })
+  assert.equal(occupancy.current, true)
+  controller.handle({ ...base, phase: 'chunk', text: '你好，这是一段回答。' })
+  controller.handle({ ...base, phase: 'end' })
+  assert.equal(occupancy.current, true)
+  scheduler.advance(3_000)
+  assert.equal(occupancy.current, false)
+})
+
 test('bounds local duration estimates for short and very long replies', () => {
   assert.equal(estimateAutoSpeechDurationMs('好'), 600)
   assert.ok(estimateAutoSpeechDurationMs('This is a short answer.') >= 1_500)

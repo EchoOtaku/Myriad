@@ -5,6 +5,7 @@ import type {
 import type { SpeechArticulation } from '../rig/articulation'
 import type { GazeSource, GazeTarget } from '../rig/motion'
 import type { MeropeRigManifest } from '../rig/types'
+import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { MeropeActivity } from '../types'
 import type { Anime25DDebugSnapshot, Anime25DDriver } from './player'
 import type { Anime25DPlayback } from './types'
@@ -36,7 +37,6 @@ import {
 
 interface Props {
   activity: MeropeActivity
-  fallbackUrl: string
   manifest: MeropeRigManifest
   playback: Anime25DPlayback
   atlasUrl: string
@@ -47,6 +47,8 @@ interface Props {
 
 export interface Anime25DCharacterHandle {
   setSpeechActive: (active: boolean) => void
+  setSinging: (active: boolean) => void
+  setSingingSpectrum: (drive: SingingSpectrumDrive | null) => void
   setAutoSpeech: (active: boolean) => void
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
@@ -68,7 +70,7 @@ export interface Anime25DCharacterHandle {
 }
 
 const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
-  ({ activity, fallbackUrl, manifest, playback, atlasUrl, mood, manualControl = false }, ref) => {
+  ({ activity, manifest, playback, atlasUrl, mood, manualControl = false }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const playerRef = useRef<Anime25DPlayer | null>(null)
     const readyRef = useRef(false)
@@ -76,6 +78,8 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
     const activityRef = useRef(activity)
     const moodRef = useRef(mood)
     const speechActiveRef = useRef(false)
+    const singingActiveRef = useRef(false)
+    const singingSpectrumRef = useRef<SingingSpectrumDrive | null>(null)
     const speechMouthFormRef = useRef(0)
     const pendingSpeechTextRef = useRef<
       Array<{ text: string; locale?: string }>
@@ -225,6 +229,14 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         speechActiveRef.current = active
         playerRef.current?.setSpeechActive(active)
       },
+      setSinging(active) {
+        singingActiveRef.current = active
+        playerRef.current?.setSinging(active)
+      },
+      setSingingSpectrum(drive) {
+        singingSpectrumRef.current = drive
+        playerRef.current?.setSingingSpectrum(drive)
+      },
       setAutoSpeech(active) {
         if (!active) playerRef.current?.clearSpeechText()
         playerRef.current?.setTarget({
@@ -338,6 +350,8 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
       const player = new Anime25DPlayer(canvas, playback, manifest)
       playerRef.current = player
       player.setSpeechActive(speechActiveRef.current)
+      player.setSinging(singingActiveRef.current)
+      player.setSingingSpectrum(singingSpectrumRef.current)
       for (const chunk of pendingSpeechTextRef.current) {
         player.enqueueSpeechText(chunk.text, chunk.locale)
       }
@@ -415,7 +429,6 @@ const Anime25DCharacter = forwardRef<Anime25DCharacterHandle, Props>(
         data-rig-quality="layered-2d"
         data-runtime="Anime2.5DRig"
       >
-        <img src={fallbackUrl} alt="" draggable={false} />
         <canvas ref={canvasRef} aria-hidden />
       </span>
     )

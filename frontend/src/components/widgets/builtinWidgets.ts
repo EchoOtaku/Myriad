@@ -82,9 +82,9 @@ export const BUILTIN_WIDGET_BASE_CONFIG = {
     supportedSizes: ['2x2', '4x2'] as WidgetSize[],
   },
   'agent-persona': {
-    defaultSize: '4x4' as WidgetSize,
+    defaultSize: '2x2' as WidgetSize,
     component: MeropeWidget,
-    supportedSizes: ['4x4'] as WidgetSize[],
+    supportedSizes: ['2x2', '4x4'] as WidgetSize[],
     hosts: ['home'] as const,
   },
   'quick-stats': {

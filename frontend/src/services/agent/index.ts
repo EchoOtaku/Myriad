@@ -7,7 +7,7 @@
 // 导出类型
 // 便捷函数
 
-import type { AgentResponse, ProcessContext, ProgressCallback } from './types'
+import type { AgentResponse, ProcessContext } from './types'
 
 import { agentService } from './agentApi'
 
@@ -53,13 +53,13 @@ export type {
   FrontendActionType,
   // Heartbeat
   HeartbeatTask,
-  MeropeStateChangedEvent,
   // 记忆
   MemoryEntry,
+  MeropeStateChangedEvent,
   PageElementTarget,
   PerformanceDirective,
-  PerformancePlanEvent,
   PerformancePhase,
+  PerformancePlanEvent,
   PlannerDecisionEvent,
   // 预设
   PresetType,
@@ -117,15 +117,4 @@ export async function chat(
   context?: Partial<ProcessContext>,
 ): Promise<AgentResponse> {
   return agentService.process(input, context)
-}
-
-/**
- * 带实时进度更新的处理函数
- */
-export async function askWithProgress(
-  input: string,
-  onProgress: ProgressCallback,
-  context?: Partial<ProcessContext>,
-): Promise<AgentResponse> {
-  return agentService.processWithProgress(input, onProgress, context)
 }

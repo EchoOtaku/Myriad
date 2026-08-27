@@ -23,23 +23,6 @@
   overflow: hidden;
 }
 
-.merope-widget__halo {
-  position: absolute;
-  top: 10%;
-  left: 50%;
-  width: 82%;
-  aspect-ratio: 1;
-  border-radius: 999px;
-  background: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--color-primary, #94a3b8) 26%, transparent) 0 34%,
-    transparent 70%
-  );
-  filter: blur(10px);
-  transform: translateX(-50%);
-  pointer-events: none;
-}
-
 /*
  * 与画布同比例的取景框：播放器按 min(w, h) 等比缩放画布，
  * 框和画布同比 ⇒ 缩放由宽度决定 ⇒ 人物横向铺满，纵向溢出到卡片外被裁掉。
@@ -66,10 +49,7 @@
 .merope-widget__rig .merope-rig img,
 .merope-widget__rig .merope-rig canvas {
   display: block;
-  filter: drop-shadow(0 14px 15px rgb(20 25 54 / 22%));
-  transition:
-    opacity 120ms ease,
-    filter 180ms ease;
+  transition: opacity 120ms ease;
 }
 
 .merope-widget__rig .merope-rig img {
@@ -88,10 +68,6 @@
 .merope-widget__rig .merope-rig canvas {
   opacity: 0;
   pointer-events: auto;
-}
-
-.merope-widget__rig .merope-rig[data-rig-quality='layered-2d'].is-ready img {
-  opacity: 0;
 }
 
 .merope-widget__rig .merope-rig[data-rig-quality='layered-2d'].is-ready canvas {
@@ -199,42 +175,39 @@
   height: 8px;
 }
 
-/* 空态／库内预览用的是贴纸头像，不参与铺满裁切 */
 .merope-widget__empty {
   position: absolute;
   z-index: 1;
-  inset: 18% 14% 24%;
+  inset: 0;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
   align-items: center;
   justify-content: center;
+  margin: 0;
+  padding: 16px;
   color: var(--text-secondary, #74788d);
   font-size: 12px;
-  line-height: 1.5;
+  font-weight: 500;
+  line-height: 1.4;
   text-align: center;
 }
 
-.merope-widget__empty img,
-.merope-widget__preview-avatar {
-  width: 72px;
-  height: 72px;
-  border-radius: 999px;
-  box-shadow: 0 14px 30px rgb(18 20 40 / 16%);
+.merope-widget--compact .merope-widget__surface {
+  --merope-widget-fill: 1.18;
 }
 
-.merope-widget__surface--preview .merope-widget__halo {
-  top: 15%;
+.merope-widget--compact .merope-widget__identity {
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 6px 3px;
 }
 
-.merope-widget__preview-avatar {
-  position: absolute;
-  top: 42%;
-  left: 50%;
-  width: 46%;
-  height: auto;
-  max-width: 128px;
-  transform: translate(-50%, -50%);
+.merope-widget--compact .merope-widget__identity strong {
+  font-size: 11px;
+}
+
+.merope-widget--compact .merope-widget__empty {
+  padding: 10px;
+  font-size: 11px;
 }
 
 @keyframes merope-widget-float {

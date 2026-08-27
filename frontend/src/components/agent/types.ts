@@ -54,15 +54,6 @@ export interface ExecutionStep {
   imageUrl?: string
 }
 
-/** 日志条目 */
-export interface LogEntry {
-  id: string
-  timestamp: Date
-  type: 'info' | 'success' | 'warning' | 'error' | 'debug'
-  message: string
-  data?: unknown
-}
-
 /** 待回答问题 */
 export interface PendingQuestion {
   questionId: string

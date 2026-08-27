@@ -4,6 +4,7 @@ import type {
   Anime25DDebugSnapshot,
   Anime25DDriver,
 } from '../anime25drig/player'
+import type { SingingSpectrumDrive } from '../singing/singingGroove'
 import type { MeropeActivity } from '../types'
 import type { SpeechArticulation } from './articulation'
 import type { GazeSource, GazeTarget } from './motion'
@@ -14,7 +15,7 @@ import { isAnime25DPlayback } from '../anime25drig/types'
 
 interface Props {
   activity: MeropeActivity
-  fallbackUrl: string
+  fallbackUrl?: string | null
   manifest: MeropeRigManifest | null
   mood: number
   manualControl?: boolean
@@ -22,6 +23,8 @@ interface Props {
 
 export interface RigCharacterHandle {
   setSpeechActive: (active: boolean) => void
+  setSinging: (active: boolean) => void
+  setSingingSpectrum: (drive: SingingSpectrumDrive | null) => void
   setAutoSpeech: (active: boolean) => void
   setSpeechEnergy: (energy: number | null) => void
   setSpeechArticulation: (articulation: SpeechArticulation) => void
@@ -43,6 +46,8 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
   ({ activity, fallbackUrl, manifest, mood, manualControl = false }, ref) => {
     const animeRef = useRef<Anime25DCharacterHandle>(null)
     const speechActiveRef = useRef(false)
+    const singingActiveRef = useRef(false)
+    const singingSpectrumRef = useRef<SingingSpectrumDrive | null>(null)
     const pendingSpeechTextRef = useRef<
       Array<{ text: string; locale?: string }>
     >([])
@@ -63,6 +68,8 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
 
     useEffect(() => {
       animeRef.current?.setSpeechActive(speechActiveRef.current)
+      animeRef.current?.setSinging(singingActiveRef.current)
+      animeRef.current?.setSingingSpectrum(singingSpectrumRef.current)
       const latest = latestSpeechRef.current
       if (latest.kind === 'auto') {
         animeRef.current?.setAutoSpeech(latest.active)
@@ -87,6 +94,14 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
       setSpeechActive: (active) => {
         speechActiveRef.current = active
         animeRef.current?.setSpeechActive(active)
+      },
+      setSinging: (active) => {
+        singingActiveRef.current = active
+        animeRef.current?.setSinging(active)
+      },
+      setSingingSpectrum: (drive) => {
+        singingSpectrumRef.current = drive
+        animeRef.current?.setSingingSpectrum(drive)
       },
       setAutoSpeech: (active) => {
         latestSpeechRef.current = { kind: 'auto', active }
@@ -139,7 +154,6 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
         <Anime25DCharacter
           ref={animeRef}
           activity={activity}
-          fallbackUrl={fallbackUrl}
           manifest={manifest}
           playback={playback}
           atlasUrl={atlasUrl}
@@ -148,6 +162,8 @@ const RigCharacter = forwardRef<RigCharacterHandle, Props>(
         />
       )
     }
+
+    if (!fallbackUrl) return null
 
     return (
       <span className="merope-rig is-ready" data-rig-quality="static">

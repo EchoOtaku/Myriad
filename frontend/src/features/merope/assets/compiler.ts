@@ -30,39 +30,17 @@ export interface RigAssetPreflight extends ImportedRigAsset {
   prepared: PreparedRigPsdImport
 }
 
-export interface RigAssetCompilerDependencies {
+/** 预检要的两件外部事：解析打包、送后端编译。落库由 persistRigAsset 单独拿 upload。 */
+interface RigAssetPreflightDependencies {
   prepare: typeof prepareRigPsdImport
   preview: typeof previewMeropeRigImport
-  upload: typeof importMeropeRig
-}
-
-/**
- * Executes the PSD → atlas → persisted manifest DAG with observable stages.
- * A failed stage is terminal, so callers never mistake a packed atlas for a
- * successfully stored character asset.
- */
-export async function compileRigAsset(
-  file: File,
-  sourceMasterAssetId: string,
-  dependencies: RigAssetCompilerDependencies,
-  onStage?: (event: RigAssetCompileEvent) => void,
-  sourceGenerationFingerprint?: string,
-): Promise<ImportedRigAsset> {
-  const preflight = await preflightRigAsset(
-    file,
-    sourceMasterAssetId,
-    dependencies,
-    onStage,
-    sourceGenerationFingerprint,
-  )
-  return persistRigAsset(preflight, dependencies.upload, onStage)
 }
 
 /** Parses, packs, server-compiles, migrates and diagnoses without persistence. */
 export async function preflightRigAsset(
   file: File,
   sourceMasterAssetId: string,
-  dependencies: Pick<RigAssetCompilerDependencies, 'prepare' | 'preview'>,
+  dependencies: RigAssetPreflightDependencies,
   onStage?: (event: RigAssetCompileEvent) => void,
   sourceGenerationFingerprint?: string,
 ): Promise<RigAssetPreflight> {

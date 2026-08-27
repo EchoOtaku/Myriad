@@ -1391,23 +1391,6 @@ fieldset.merope-ob-field > .merope-ob-field__hint {
   letter-spacing: 0.04em;
 }
 
-.merope-ob-persona-group__draft {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 7px;
-  border-radius: 999px;
-  border: 1px solid
-    color-mix(in srgb, var(--merope-warn, #c98a2e) 45%, transparent);
-  color: color-mix(
-    in srgb,
-    var(--merope-warn, #c98a2e) 92%,
-    var(--merope-ink, #222)
-  );
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
 .merope-ob-visual .merope-ob-persona-view__row {
   display: grid;
   gap: 4px;

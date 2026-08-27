@@ -2,7 +2,7 @@ import type { MeropeRigManifest } from '../rig/types'
 import type { RigAssetCompileEvent } from './compiler'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { compileRigAsset, persistRigAsset, preflightRigAsset } from './compiler'
+import { persistRigAsset, preflightRigAsset } from './compiler'
 
 const file = new File([new Uint8Array([1])], 'character.psd')
 const manifest = {
@@ -16,7 +16,7 @@ const manifest = {
 
 test('rig compiler exposes the complete successful artifact DAG', async () => {
   const events: RigAssetCompileEvent[] = []
-  const result = await compileRigAsset(
+  const preflight = await preflightRigAsset(
     file,
     'master-asset',
     {
@@ -31,8 +31,12 @@ test('rig compiler exposes the complete successful artifact DAG', async () => {
         }
       },
       preview: async () => manifest,
-      upload: async () => manifest,
     },
+    (event) => events.push(event),
+  )
+  const result = await persistRigAsset(
+    preflight,
+    async () => manifest,
     (event) => events.push(event),
   )
   assert.equal(result.manifest, manifest)
@@ -57,21 +61,25 @@ test('rig compiler exposes the complete successful artifact DAG', async () => {
 
 test('rig compiler marks persistence failure as terminal', async () => {
   const events: RigAssetCompileEvent[] = []
+  const preflight = await preflightRigAsset(
+    file,
+    'master-asset',
+    {
+      prepare: async () => ({
+        atlas: new Blob(),
+        analysisReference: new Blob(),
+        source: {} as never,
+        partCount: 2,
+      }),
+      preview: async () => manifest,
+    },
+    (event) => events.push(event),
+  )
   await assert.rejects(
-    compileRigAsset(
-      file,
-      'master-asset',
-      {
-        prepare: async () => ({
-          atlas: new Blob(),
-          analysisReference: new Blob(),
-          source: {} as never,
-          partCount: 2,
-        }),
-        preview: async () => manifest,
-        upload: async () => {
-          throw new Error('storage unavailable')
-        },
+    persistRigAsset(
+      preflight,
+      async () => {
+        throw new Error('storage unavailable')
       },
       (event) => events.push(event),
     ),
@@ -175,25 +183,35 @@ test('preflight carries one-shot chest analysis into the persisted source', asyn
   )
 })
 
-test('failed preview cannot reach persistence', async () => {
-  let persisted = false
+test('failed preview never produces anything to persist', async () => {
+  const events: RigAssetCompileEvent[] = []
   await assert.rejects(
-    compileRigAsset(file, 'master-asset', {
-      prepare: async () => ({
-        atlas: new Blob(),
-        analysisReference: new Blob(),
-        source: {} as never,
-        partCount: 45,
-      }),
-      preview: async () => {
-        throw new Error('semantic chain rejected')
+    preflightRigAsset(
+      file,
+      'master-asset',
+      {
+        prepare: async () => ({
+          atlas: new Blob(),
+          analysisReference: new Blob(),
+          source: {} as never,
+          partCount: 45,
+        }),
+        preview: async () => {
+          throw new Error('semantic chain rejected')
+        },
       },
-      upload: async () => {
-        persisted = true
-        return manifest
-      },
-    }),
+      (event) => events.push(event),
+    ),
     /semantic chain rejected/,
   )
-  assert.equal(persisted, false)
+  // 拿不到 preflight 就无从落库；阶段流里也不该出现落库这一步。
+  assert.deepEqual(events.at(-1), {
+    stage: 'compile-preview',
+    status: 'failed',
+    error: 'semantic chain rejected',
+  })
+  assert.equal(
+    events.some((event) => event.stage === 'persist-manifest'),
+    false,
+  )
 })

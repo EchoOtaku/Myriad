@@ -92,37 +92,16 @@ export const jaJP: TranslationKeys = {
 
   merope: {
     title: 'ビジュアル',
-    statusBarTitle: 'ビジュアル',
     statusLoading: '読み込み中…',
-    statusDisabled: 'このサイトでは Agent ペルソナが無効です',
     statusNeedLogin: 'ログインしてビジュアルを表示',
-    statusCreateHint: '設定でペルソナを完成させてください',
-    statusContinueHint: '設定が未完了です。設定から続けてください',
-    statusReadyHint: '{activity} · 気分 {mood}',
-    statusCreate: '作成',
-    statusContinue: '続ける',
-    statusOpen: '開く',
-    statusLogin: 'ログイン',
-    tapToOpen: 'Agent を開く',
     chat: '会話',
     memories: '記憶',
     settings: '設定',
-    messagePlaceholder: '話しかけてみる…',
     send: '送信',
-    emptyMessages: 'まだ会話がありません。挨拶してみましょう。',
-    emptyMemories: '長期記憶はまだありません。',
     enable: '自律活動を有効化',
-    autonomy: '自律頻度',
-    autonomyLow: '低',
-    autonomyNormal: '標準',
-    autonomyHigh: '高',
     doNotDisturb: 'おやすみモード',
-    showThought: '考えを表示',
-    collapsedByDefault: '初期状態で折りたたむ',
     deletePersona: 'ペルソナを削除',
-    deleteConfirm: '今のペルソナと会話・記憶を完全に削除しますか？',
     loadFailed: 'ビジュアルを読み込めませんでした',
-    sendFailed: 'メッセージを送信できませんでした',
     psdNeedAsset: '現在のメイン立ち絵にアセット ID がありません。',
     psdTooLarge: 'PSD は 32 MB 未満である必要があります。',
     psdPreviewFailed: 'PSD プレビューを合成できませんでした。',
@@ -132,7 +111,6 @@ export const jaJP: TranslationKeys = {
     canvasUnsupported: 'このブラウザは 2D Canvas に対応していません。',
     anime25dMissingFace:
       'Anime2.5DRig PSD に必須の face レイヤーがありません。',
-    anime25dInvalidPixels: 'PSD レイヤーのピクセルが無効です。',
     anime25dMissingHandwear: 'Anime2.5DRig に handwear レイヤーがありません。',
     anime25dMissingLayer: 'Anime2.5DRig に {role} レイヤーがありません。',
     anime25dPartCount:
@@ -153,46 +131,29 @@ export const jaJP: TranslationKeys = {
     anime25dWebglFailed:
       'このブラウザは WebGL2 に対応していないため、2.5D モーションを再生できません。',
     anime25dPlaybackFailed: '2.5D モーションを再生できませんでした。',
-    statusIdle: '待機中',
-    statusThinking: '思考中',
-    statusTalking: '返信中',
     unread: '件の未読メッセージ',
     visualTitle: 'メイン立ち絵',
-    visualDescription:
-      '正面向き 3:4 の頭部〜上半身メイン立ち絵を生成します。レイヤー化と日常モーションはこの欄で続けます。',
     visualRequirements: '光と構図',
-    visualRequirementsDescription:
-      '外観はビジュアル契約で固定済みです。ここでは光、表情、画面占有率だけを微調整し、髪、衣装、配色、装飾は変更しません。',
     visualRequirementsPlaceholder:
       '例：柔らかな正面光、画面内の顔を大きく、頭上の余白を減らす',
     visualGenerate: '立ち絵を生成',
     visualRegenerate: '再生成',
     visualGenerating: '生成中です。他の設定は続けられます。',
-    visualReady: 'メイン立ち絵の準備ができました',
     visualDownload: '立ち絵をダウンロード',
     visualFailed: 'メイン立ち絵を生成できませんでした',
     motionPsdUpload: 'レイヤー PSD をアップロード',
     motionPsdUploading: 'PSD を読み込み中…',
     visualConfirm:
       '画像モデルの料金が発生する場合があります。生成を開始しますか？再生成すると取り込み済みのリグは消えます。',
-    motionWorkbench: 'モーションワークベンチ',
-    motionWorkbenchDescription:
-      'Anime2.5DRig プレイヤーをリアルタイムで確認します。まばたき、口、髪、呼吸、頭の向き。',
-    essentials: '立ち絵',
-    essentialsDescription: '3:4 のメイン立ち絵を生成して確認します。',
     anime25dRuntimeCredit:
       'See-through のあと、モーション実行系は Anime2.5DRig（MIT）を復刻しています。',
     anime25dDebug: 'モーション',
-    anime25dDebugDescription:
-      '頭・顔・髪・体に分けて Anime2.5DRig を調整します。',
     overviewGroup: '概要',
     overviewGroupDescription: '名前、気分、今の状態、立ち絵とリグの準備状況。',
     overviewName: '名前',
     overviewMood: '気分',
     overviewActivity: '今の状態',
     overviewDoNotDisturb: '取り込み中',
-    overviewDoNotDisturbHint:
-      'オンにすると今すぐ静かになります。毎日の時間帯も設定でき、日付をまたげます。',
     overviewDndWindow: '静かな時間',
     overviewDndStart: '開始',
     overviewDndEnd: '終了',
@@ -216,11 +177,7 @@ export const jaJP: TranslationKeys = {
     visualSourceTitle: 'キャラクター外観',
     visualSourceEmpty: '確定済みの上半身ビジュアルがまだありません。',
     assetGroup: '立ち絵とリグ',
-    assetGroupDescription:
-      '先にメイン立ち絵を生成します。そのあと分解するかレイヤー PSD を取り込みます。リグが有効になるとモーションが使えます。',
     assetEmpty: 'メイン立ち絵がまだありません。先に生成してください。',
-    assetMake: '1 · メイン立ち絵',
-    assetRig: '2 · レイヤーリグ',
     assetNeedsPortrait:
       'レイヤー PSD の分解や取り込みの前に、メイン立ち絵が必要です。',
     rigGroup: 'レイヤーリグ',
@@ -285,12 +242,8 @@ export const jaJP: TranslationKeys = {
     anime25dTalking: '会話',
     anime25dPresetShock: '驚き',
     anime25dPresetDeadpan: '無表情',
-    anime25dPresetHair: '髪',
     anime25dPresetIdle: '静止',
     anime25dPresetSmile: '微笑',
-    anime25dPresetTalk: '会話',
-    anime25dPresetLookLeft: '左を見る',
-    anime25dPresetLookRight: '右を見る',
     anime25dPresetWinkLeft: '左ウインク',
     anime25dPresetWinkRight: '右ウインク',
     anime25dPresetThinking: '考え中',
@@ -315,9 +268,6 @@ export const jaJP: TranslationKeys = {
     anime25dInspectCanvasValue: '{width}×{height} px',
     anime25dInspectEmpty:
       'リグデータがまだありません。レイヤーリグを完成させると、再生との対応を確認できます。',
-    motionPsd: 'レイヤー PSD',
-    motionPsdDescription:
-      'メイン立ち絵のあと、レイヤー PSD を取り込むか、See-through でこの立ち絵を分解します。有効化の前に事前検証が必要です。',
     rigPathUpload: 'PSD を取り込む',
     rigPathUploadHint: '自分で分けたレイヤー PSD からリグを作ります。',
     rigPathSeeThrough: 'See-through 分解',
@@ -405,17 +355,11 @@ export const jaJP: TranslationKeys = {
       'リモート分解を実行中です。完了後にローカル PSD 事前検証を自動で開始します…',
     motionNeedsRig:
       '先にレイヤーリグを完成させてください。そのあとで立ち絵を操作できます。',
-    motionPsdPreflight: 'レイヤー PSD を事前検証',
-    motionPsdValidating: 'PSD を検証中…',
     motionPsdCommit: '検証済みリグを確定',
-    faceStage: 'ビジュアル',
     adminTitle: 'ペルソナ設定',
     adminDescription:
       'サイト全体で一つのビジュアルです。立ち絵、リグ、表情とポーズの順。',
     faceOpen: 'ペルソナ設定',
-    adminEnabled: 'Agent ペルソナを有効化',
-    adminWorker: '自律 Worker を有効化',
-    adminInterval: 'Worker スキャン間隔（15〜3600秒）',
     personaLabelTemperament: '気質',
     personaLabelLikes: '好み',
     personaLabelDrives: '原動力',
@@ -1680,9 +1624,6 @@ export const jaJP: TranslationKeys = {
       'Lite がオフです。会話の口は標準モデルに戻ります。自分から話す文は短く、気持ちの微調整は走りません。',
     agentPersonaNeedsPro:
       '先に上の Pro モデルを有効にしてください。設定案内には Pro が必要です。',
-    agentPersonaNeedsLiteAndPro: '先に上の Pro モデルを有効にしてください。',
-    agentPersonaMood: '気分',
-    agentPersonaActivity: '様子',
     agentPersonaEmpty: '姿はまだありません',
     agentPersonaEmptyLead:
       'タグからペルソナ、衣装スタイル、デザイン稿、立ち絵まで進めます。終わるとここに立ち絵、性格の要約、いまの気分が残ります。',
@@ -2571,9 +2512,6 @@ export const jaJP: TranslationKeys = {
   agentPersona: {
     onboarding: {
       openPage: '設定ガイドを開く',
-      editPage: '設定を変更',
-      setupLabel: '性格設定',
-      currentPersona: '保存済み：{name}',
       mood: {
         floor: 'とても低い',
         low: '低め',
@@ -2606,19 +2544,14 @@ export const jaJP: TranslationKeys = {
       step4Lead: '',
       step5Title: '立ち絵',
       step5Lead: '',
-      noReports: 'タグを抽出するにはプラットフォーム報告が 3 件以上必要です。',
       selectedCount: '{count} 件選択中',
       selectNothingYet: 'まだ選んでいません',
-      skipTags: 'スキップ',
       dragCanvas: 'ドラッグして続きを見る',
       signalsEmpty:
         'タグの準備ができていません。少ししてから再試行してください。',
       loadingAiSignals: 'プラットフォーム報告からタグを抽出しています',
       loadSignalsFailed: 'タグの読み込みに失敗しました',
       generationTimeout: '生成がタイムアウトしました。もう一度試してください。',
-      aiDistilledMeta: 'Pro モデルが {count} 件の報告から抽出しました。',
-      reportsButFallback:
-        '{count} 件の報告は読めましたが、Pro 抽出が終わらず予備タグを出しています。',
       regenerateSeeds: '別のセット',
       regeneratingSeeds: '生成中',
       saveFirst: '先に設定を保存してください。',
@@ -2647,7 +2580,6 @@ export const jaJP: TranslationKeys = {
       clothingStyleLabel: '衣装スタイル',
       clothingStyleRequired: '先に衣装スタイルを選んでください',
       visualStyleAsk: '衣装スタイルを選び、必要なら髪や目を足せます',
-      visualNotesAsk: '髪、目、必ず残したい要素を足せます',
       visualBackToStyle: 'スタイルに戻る',
       clothingStyle: {
         everyday: '普段着',
@@ -2671,7 +2603,6 @@ export const jaJP: TranslationKeys = {
       extraLabel: '補足',
       extraHint: '任意。性格にだけ効きます。',
       extraPlaceholder: '例：口数が少ない、まじめ、親しい人には少しやわらかい',
-      personaGroupCharacter: '性格と社交',
       regeneratePersona: '別のセット',
       regeneratingPersona: '生成中',
       regeneratePersonaFailed:
@@ -2690,7 +2621,6 @@ export const jaJP: TranslationKeys = {
       importPortraitFailed:
         '立ち絵の取り込みに失敗しました。再試行してください。',
       personaFieldGenerating: '生成中',
-      personaDraftLabel: '下書き',
       editPersona: '編集',
       doneEditing: '完了',
       cancelEdit: 'キャンセル',
@@ -2701,19 +2631,14 @@ export const jaJP: TranslationKeys = {
       fieldVoice: '話し方',
       fieldSummary: '性格の要約',
       creating: '作成中…',
-      createAndContinue: '作成して続ける',
       createFailed: '作成に失敗しました',
       saving: '保存中…',
-      saveAndContinue: '保存して続ける',
       saveFailed: '保存に失敗しました',
       personaIncompleteHint:
         '{fields} が足りません。埋めるか、別のセットを生成してください。',
       proUnavailable: 'Pro モデルが使えません。先に設定で有効にしてください。',
       standardUnavailable:
         'Standard モデルが使えません。先に設定を確認してください。',
-      visualDesignScopeTitle: '上半身ビジュアル契約',
-      visualDesignScopeHint:
-        '髪全体から下胸またはハイウエストまでだけを設計します。顔、瞳、髪レイヤー、上衣構造、素材、配色、装飾、左右の袖または腕の一部を含み、脚、靴、完全な腕関節列は含みません。',
       visualRequirements: '外観の追加要件',
       visualRequirementsHint:
         'ここに書いた色、衣装、装飾、モチーフが優先されます。画風、性別、首の露出、衣装の大分類は変わりません。',
@@ -2736,7 +2661,6 @@ export const jaJP: TranslationKeys = {
       visualDesignGenerate: '外観デザインを生成',
       visualDesignGenerating: 'デザイン中…',
       visualDesignRegenerate: '別のデザイン',
-      visualDesignConfirm: '確認して続ける',
       editVisual: '編集',
       visualDesignFailed:
         'キャラクター外観の生成に失敗しました。再試行してください。',
@@ -2748,12 +2672,7 @@ export const jaJP: TranslationKeys = {
       portraitTalkLead: '直したいところを話してください',
       portraitLoading: '既存の立ち絵を読み込み中',
       portraitEmpty: 'メイン立ち絵はまだありません',
-      portraitContractTitle: '固定された生成範囲',
-      portraitContractHint:
-        '正面向きの 3:4 上半身。頭と髪全体を切らずに入れ、頭頂に余白を残し、下胸またはハイウエストまで収めます。左右に袖か腕の一部を必ず表示します。脚は出さず、手は任意です。',
       portraitRequirements: 'どこを直す',
-      portraitRequirementsHint:
-        '外観は固定済みです。ここでは光、表情、構図密度だけを微調整します。髪、衣装、配色、装飾を変える場合は前の手順へ戻ってください。',
       portraitRequirementsPlaceholder:
         '例：光を柔らかく、視線を強く、画面内の顔を少し大きく',
       portraitGenerate: '立ち絵を生成',

@@ -93,20 +93,3 @@ export function getGreeting(
 
   return { text, icon, time }
 }
-
-/**
- * 获取主题状态信息
- * @param translations 翻译对象（可选）
- */
-export function getThemeInfo(translations?: { dark: string; light: string }): {
-  text: string
-  icon: ThemeIconName
-} {
-  const isDark = document.documentElement.classList.contains('dark')
-  const panel = currentCopy().controlPanel
-  const t = translations || { dark: panel.dark, light: panel.light }
-  return {
-    text: isDark ? t.dark : t.light,
-    icon: isDark ? 'moon' : 'sun',
-  }
-}

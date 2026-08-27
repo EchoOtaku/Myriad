@@ -20,11 +20,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAnimationPreference } from '../contexts/AnimationPreferenceContext'
 import { useAuth } from '../contexts/AuthContext'
 import { useI18n } from '../contexts/I18nContext'
-import {
-  dispatchMeropePerformance,
-  dispatchMeropeState,
-} from '../features/merope/performanceEvents'
-import { dispatchMeropeSpeechUtterance } from '../features/merope/speechEvents'
+import { agentFace } from '../features/merope/agentFaceChannel'
 import { batchRead, batchWrite, observeResize } from '../hooks/animation'
 import {
   isReducedAnimation,
@@ -275,18 +271,12 @@ const GlobalControlPanel: React.FC = () => {
   const handleNewNotification = useCallback(
     (n: AppNotification) => {
       if (n.metadata?.performance) {
-        dispatchMeropeState(n.metadata.merope_state)
-        dispatchMeropePerformance({
+        agentFace.updateState(n.metadata.merope_state)
+        agentFace.deliver({
+          messageId: n.id,
           text: n.body,
           source: 'proactive',
-          messageId: n.id,
           performance: n.metadata.performance,
-        })
-        dispatchMeropeSpeechUtterance({
-          text: n.body,
-          source: 'proactive',
-          messageId: n.id,
-          utteranceId: `proactive-${n.id}`,
         })
       }
       const source = notificationSourceFor(n)
